@@ -93,7 +93,7 @@ return OrderbookResponse(available_from=None, snapshot=snapshots_tbl.query_at(en
 |---|---|
 | `hoga/parser/__init__.py` | Use `hoga.tables.dispatch.parse_row` instead of `hoga.parser.tsv.parse_row`. Use `tables.X.write_parquet` instead of `writer.write_X_parquet`. Use `parse_info_row` (kept local) for StockInfo. Cross-table validation stays here. |
 | `hoga/api/queries.py` | Shrink to `list_stock_dates`, `get_meta`. Per-table queries (`get_orderbook_at`, `first_snapshot_ts`, `get_trades_*`, `get_candles`, `get_brokers_at`) delegate to `tables.X.query_*`. |
-| `hoga/api/routes.py` | Replace inline row→model conversion with `tables.X.to_api(row)` calls. |
+| `hoga/api/routes.py` | Replace inline row→model conversion with direct `tables.X.query_*` calls (queries return Pydantic models). |
 | `hoga/api/models.py` | Keep only API container models (`OrderbookResponse`, `TradesResponse`, `CandlesResponse`, `BrokersResponse`, `Meta`, `StockDate`). Entity models (`Trade`, `OrderbookSnapshot`, `Candle`, `BrokerEntry`) become re-exports from `tables.X.ApiX` or are removed and `routes.py` imports directly. |
 
 ### Files to be deleted (in Task 6/7)
@@ -251,7 +251,6 @@ from hoga.tables.trades import (
     Trade,
     query_range,
     query_up_to,
-    to_api,
     write_parquet,
 )
 
@@ -314,7 +313,7 @@ def test_write_parquet_roundtrip(tmp_path: Path) -> None:
     assert tbl.column("ts_ms").to_pylist() == sorted(tbl.column("ts_ms").to_pylist()), "ascending"
 
 
-def test_query_up_to(tmp_path: Path) -> None:
+def test_query_up_to_returns_api_models_descending(tmp_path: Path) -> None:
     out = tmp_path / "trades.parquet"
     write_parquet(
         [PARSERS[1](_AUCTION_TRADE), PARSERS[1](_CONTINUOUS_TRADE)], out
@@ -322,10 +321,13 @@ def test_query_up_to(tmp_path: Path) -> None:
     con = duckdb.connect()
     rows = query_up_to(con, path=out, t_ms=90009000, limit=10)
     assert len(rows) == 2
-    assert rows[0]["ts_ms"] >= rows[1]["ts_ms"]  # descending
+    assert all(isinstance(r, ApiTrade) for r in rows)
+    assert rows[0].ts_ms >= rows[1].ts_ms  # descending
+    # ApiTrade has no forensic fields (unknown_14, _16, _17, _18 absent).
+    assert not hasattr(rows[0], "unknown_14")
 
 
-def test_query_range(tmp_path: Path) -> None:
+def test_query_range_returns_api_models(tmp_path: Path) -> None:
     out = tmp_path / "trades.parquet"
     write_parquet(
         [PARSERS[3](_PREMARKET), PARSERS[1](_AUCTION_TRADE)], out
@@ -333,22 +335,8 @@ def test_query_range(tmp_path: Path) -> None:
     con = duckdb.connect()
     rows = query_range(con, path=out, from_ms=90008000, to_ms=90009000, limit=10)
     assert len(rows) == 1
-    assert rows[0]["ts_ms"] == 90008618
-
-
-def test_to_api_strips_forensic_fields() -> None:
-    t = PARSERS[1](_CONTINUOUS_TRADE)
-    row = {
-        "ts_ms": t.ts_ms, "seq": t.seq, "price": t.price, "qty": t.qty,
-        "side": t.side, "cum_vol": t.cum_vol, "cum_trades": t.cum_trades,
-        "low_so_far": t.low_so_far, "high_so_far": t.high_so_far,
-        "net_pressure": t.net_pressure, "change_pct": t.change_pct,
-    }
-    api = to_api(row)
-    assert isinstance(api, ApiTrade)
-    assert api.ts_ms == t.ts_ms
-    assert api.qty == t.qty
-    assert api.side == t.side
+    assert isinstance(rows[0], ApiTrade)
+    assert rows[0].ts_ms == 90008618
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -506,40 +494,6 @@ def write_parquet(trades: Iterable[Trade], path: Path) -> None:
     pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
 
 
-# === Query ===
-
-
-_QUERY_COLS = ("ts_ms", "seq", "price", "change_pct", "qty", "side", "cum_vol",
-               "cum_trades", "low_so_far", "high_so_far", "net_pressure")
-_SELECT = ", ".join(_QUERY_COLS)
-
-
-def query_up_to(
-    con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int, limit: int
-) -> list[dict[str, Any]]:
-    rows = con.execute(
-        f"SELECT {_SELECT} FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT ?",
-        [str(path), t_ms, limit],
-    ).fetchall()
-    return [dict(zip(_QUERY_COLS, r, strict=True)) for r in rows]
-
-
-def query_range(
-    con: duckdb.DuckDBPyConnection,
-    *,
-    path: Path,
-    from_ms: int,
-    to_ms: int,
-    limit: int,
-) -> list[dict[str, Any]]:
-    rows = con.execute(
-        f"SELECT {_SELECT} FROM read_parquet(?) WHERE ts_ms >= ? AND ts_ms <= ? "
-        "ORDER BY ts_ms DESC LIMIT ?",
-        [str(path), from_ms, to_ms, limit],
-    ).fetchall()
-    return [dict(zip(_QUERY_COLS, r, strict=True)) for r in rows]
-
-
 # === API representation (wire format for clients; excludes forensic fields) ===
 
 
@@ -557,19 +511,59 @@ class ApiTrade(BaseModel):
     net_pressure: int
 
 
-def to_api(row: dict[str, Any]) -> ApiTrade:
-    return ApiTrade(**{k: row[k] for k in ApiTrade.model_fields})
+# === Query (returns ApiTrade directly — no intermediate dict) ===
+
+
+_QUERY_COLS = (
+    "ts_ms", "seq", "price", "change_pct", "qty", "side", "cum_vol",
+    "cum_trades", "low_so_far", "high_so_far", "net_pressure",
+)
+_SELECT = ", ".join(_QUERY_COLS)
+
+
+def _row_to_api(r: tuple) -> ApiTrade:
+    return ApiTrade(
+        ts_ms=r[0], seq=r[1], price=r[2], change_pct=r[3], qty=r[4], side=r[5],
+        cum_vol=r[6], cum_trades=r[7], low_so_far=r[8], high_so_far=r[9],
+        net_pressure=r[10],
+    )
+
+
+def query_up_to(
+    con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int, limit: int
+) -> list[ApiTrade]:
+    rows = con.execute(
+        f"SELECT {_SELECT} FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT ?",
+        [str(path), t_ms, limit],
+    ).fetchall()
+    return [_row_to_api(r) for r in rows]
+
+
+def query_range(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    from_ms: int,
+    to_ms: int,
+    limit: int,
+) -> list[ApiTrade]:
+    rows = con.execute(
+        f"SELECT {_SELECT} FROM read_parquet(?) WHERE ts_ms >= ? AND ts_ms <= ? "
+        "ORDER BY ts_ms DESC LIMIT ?",
+        [str(path), from_ms, to_ms, limit],
+    ).fetchall()
+    return [_row_to_api(r) for r in rows]
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_tables_trades.py -v`
-Expected: 9 passed.
+Expected: 8 passed.
 
 - [ ] **Step 5: Run full test suite (no regressions)**
 
 Run: `python -m pytest -q`
-Expected: 67 passed (58 + 9 new).
+Expected: 66 passed (58 + 8 new).
 
 - [ ] **Step 6: Ruff clean**
 
@@ -587,7 +581,7 @@ git commit -m "refactor(tables): Trades module (dataclass + parsers + schema + w
 
 ## Task 3: Create `hoga/tables/snapshots.py`
 
-**Goal:** Build the Snapshots table module. Snapshots is structurally similar to Trades but has flat columns (`ask_p1..p10`, `ask_q1..q10`, `ask_d1..d10`, `bid_p1..p10`, `bid_q1..q10`, `bid_d1..d10`, plus 4 totals). The in-memory entity uses 10-tuples; the Parquet schema flattens. The write_parquet and to_api functions handle the conversion. Same gating: not wired yet, existing tests still pass.
+**Goal:** Build the Snapshots table module. Snapshots is structurally similar to Trades but has flat columns (`ask_p1..p10`, `ask_q1..q10`, `ask_d1..d10`, `bid_p1..p10`, `bid_q1..q10`, `bid_d1..d10`, plus 4 totals). The in-memory entity uses 10-tuples; the Parquet schema flattens. `write_parquet` and `query_at` handle the flatten/unflatten across the seam. Same gating: not wired yet, existing tests still pass.
 
 **Files:**
 - Create: `hoga/tables/snapshots.py`
@@ -611,8 +605,8 @@ from hoga.tables.snapshots import (
     ApiOrderbookSnapshot,
     Orderbook,
     query_at,
+    query_first_ts,
     query_time_bounds,
-    to_api,
     write_parquet,
 )
 
@@ -664,14 +658,18 @@ def test_write_parquet_roundtrip(tmp_path: Path) -> None:
     assert tbl.column("ask_p1").to_pylist() == [25700, 25700]
 
 
-def test_query_at_returns_latest_before(tmp_path: Path) -> None:
+def test_query_at_returns_api_model_for_latest_before(tmp_path: Path) -> None:
     obs = [PARSERS[2](_ob_parts(ts_ms=t, seq=i)) for i, t in enumerate([90000000, 90001000, 90002000], start=1)]
     out = tmp_path / "snapshots.parquet"
     write_parquet(obs, out)
     con = duckdb.connect()
-    row = query_at(con, path=out, t_ms=90001500)
-    assert row is not None
-    assert row["ts_ms"] == 90001000
+    api = query_at(con, path=out, t_ms=90001500)
+    assert isinstance(api, ApiOrderbookSnapshot)
+    assert api.ts_ms == 90001000
+    # 10-level arrays unflattened from flat ask_pN columns
+    assert api.ask_p == [25700, 25750, 25800, 0, 0, 0, 0, 0, 0, 0]
+    assert len(api.ask_d) == 10
+    assert len(api.bid_d) == 10
 
 
 def test_query_at_returns_none_before_first(tmp_path: Path) -> None:
@@ -693,23 +691,19 @@ def test_query_time_bounds(tmp_path: Path) -> None:
 def test_query_time_bounds_empty(tmp_path: Path) -> None:
     con = duckdb.connect()
     missing = tmp_path / "missing.parquet"
-    # write empty
     write_parquet([], missing)
     assert query_time_bounds(con, path=missing) is None
 
 
-def test_to_api_unflattens_levels(tmp_path: Path) -> None:
-    obs = [PARSERS[2](_ob_parts())]
+def test_query_first_ts(tmp_path: Path) -> None:
+    obs = [PARSERS[2](_ob_parts(ts_ms=t, seq=i)) for i, t in enumerate([90000000, 90001000], start=1)]
     out = tmp_path / "snapshots.parquet"
     write_parquet(obs, out)
     con = duckdb.connect()
-    row = query_at(con, path=out, t_ms=90001000)
-    assert row is not None
-    api = to_api(row)
-    assert isinstance(api, ApiOrderbookSnapshot)
-    assert api.ask_p == [25700, 25750, 25800, 0, 0, 0, 0, 0, 0, 0]
-    assert len(api.ask_d) == 10
-    assert len(api.bid_d) == 10
+    assert query_first_ts(con, path=out) == 90000000
+    empty = tmp_path / "empty.parquet"
+    write_parquet([], empty)
+    assert query_first_ts(con, path=empty) is None
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -832,41 +826,6 @@ def write_parquet(snapshots: Iterable[Orderbook], path: Path) -> None:
     pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
 
 
-# === Query ===
-
-
-def query_at(
-    con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int
-) -> dict[str, Any] | None:
-    """Return the latest snapshot row with ts_ms <= t_ms, or None if before any data."""
-    row = con.execute(
-        "SELECT * FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT 1",
-        [str(path), t_ms],
-    ).fetchone()
-    if row is None:
-        return None
-    cols = [d[0] for d in con.description]
-    return dict(zip(cols, row, strict=True))
-
-
-def query_time_bounds(
-    con: duckdb.DuckDBPyConnection, *, path: Path
-) -> tuple[int, int] | None:
-    """Return (min ts_ms, max ts_ms) across the snapshots, or None if empty."""
-    row = con.execute(
-        "SELECT min(ts_ms), max(ts_ms) FROM read_parquet(?)", [str(path)]
-    ).fetchone()
-    if row is None or row[0] is None:
-        return None
-    return int(row[0]), int(row[1])
-
-
-def query_first_ts(con: duckdb.DuckDBPyConnection, *, path: Path) -> int | None:
-    """Return min ts_ms or None."""
-    bounds = query_time_bounds(con, path=path)
-    return bounds[0] if bounds else None
-
-
 # === API representation ===
 
 
@@ -885,21 +844,54 @@ class ApiOrderbookSnapshot(BaseModel):
     tot_bid_d: int
 
 
-def to_api(row: dict[str, Any]) -> ApiOrderbookSnapshot:
+# === Query (returns ApiOrderbookSnapshot directly — unflattens flat columns inline) ===
+
+
+def query_at(
+    con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int
+) -> ApiOrderbookSnapshot | None:
+    """Return the latest snapshot at ts_ms <= t_ms as an ApiOrderbookSnapshot, or None
+    if before any data."""
+    row = con.execute(
+        "SELECT * FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT 1",
+        [str(path), t_ms],
+    ).fetchone()
+    if row is None:
+        return None
+    cols = [d[0] for d in con.description]
+    by_name = dict(zip(cols, row, strict=True))
     return ApiOrderbookSnapshot(
-        ts_ms=row["ts_ms"],
-        seq=row["seq"],
-        ask_p=[row[f"ask_p{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-        ask_q=[row[f"ask_q{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-        ask_d=[row[f"ask_d{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-        bid_p=[row[f"bid_p{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-        bid_q=[row[f"bid_q{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-        bid_d=[row[f"bid_d{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-        tot_ask=row["tot_ask"],
-        tot_ask_d=row["tot_ask_d"],
-        tot_bid=row["tot_bid"],
-        tot_bid_d=row["tot_bid_d"],
+        ts_ms=by_name["ts_ms"],
+        seq=by_name["seq"],
+        ask_p=[by_name[f"ask_p{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
+        ask_q=[by_name[f"ask_q{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
+        ask_d=[by_name[f"ask_d{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
+        bid_p=[by_name[f"bid_p{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
+        bid_q=[by_name[f"bid_q{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
+        bid_d=[by_name[f"bid_d{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
+        tot_ask=by_name["tot_ask"],
+        tot_ask_d=by_name["tot_ask_d"],
+        tot_bid=by_name["tot_bid"],
+        tot_bid_d=by_name["tot_bid_d"],
     )
+
+
+def query_time_bounds(
+    con: duckdb.DuckDBPyConnection, *, path: Path
+) -> tuple[int, int] | None:
+    """Return (min ts_ms, max ts_ms) across the snapshots, or None if empty."""
+    row = con.execute(
+        "SELECT min(ts_ms), max(ts_ms) FROM read_parquet(?)", [str(path)]
+    ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    return int(row[0]), int(row[1])
+
+
+def query_first_ts(con: duckdb.DuckDBPyConnection, *, path: Path) -> int | None:
+    """Return min ts_ms or None."""
+    bounds = query_time_bounds(con, path=path)
+    return bounds[0] if bounds else None
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -949,7 +941,6 @@ from hoga.tables.brokers import (
     ApiBrokerEntry,
     BrokerRow,
     query_at,
-    to_api_list,
     write_parquet,
 )
 
@@ -1001,35 +992,29 @@ def test_write_parquet_roundtrip(tmp_path: Path) -> None:
     assert set(tbl.column("side").to_pylist()) == {"sell", "buy"}
 
 
-def test_query_at_returns_latest_snapshot(tmp_path: Path) -> None:
+def test_query_at_returns_ts_and_api_entries(tmp_path: Path) -> None:
     earlier = PARSERS[4](_broker_parts(ts_ms=90019919, seq=912))
     later = PARSERS[4](_broker_parts(ts_ms=90030000, seq=913))
     out = tmp_path / "brokers.parquet"
     write_parquet(earlier + later, out)
     con = duckdb.connect()
-    rows = query_at(con, path=out, t_ms=90025000)
-    # Returns 10 rows from the latest snapshot <= t_ms (the earlier one in this case)
-    assert len(rows) == 10
-    assert rows[0]["ts_ms"] == 90019919
-
-
-def test_query_at_returns_empty_before_any_data(tmp_path: Path) -> None:
-    rows = PARSERS[4](_broker_parts())
-    out = tmp_path / "brokers.parquet"
-    write_parquet(rows, out)
-    con = duckdb.connect()
-    assert query_at(con, path=out, t_ms=80000000) == []
-
-
-def test_to_api_list(tmp_path: Path) -> None:
-    rows = PARSERS[4](_broker_parts())
-    out = tmp_path / "brokers.parquet"
-    write_parquet(rows, out)
-    con = duckdb.connect()
-    fetched = query_at(con, path=out, t_ms=90030000)
-    entries = to_api_list(fetched)
+    ts_ms, entries = query_at(con, path=out, t_ms=90025000)
+    # The latest snapshot <= t_ms is the earlier one.
+    assert ts_ms == 90019919
     assert len(entries) == 10
     assert all(isinstance(e, ApiBrokerEntry) for e in entries)
+    sides = {e.side for e in entries}
+    assert sides == {"buy", "sell"}
+
+
+def test_query_at_returns_none_and_empty_before_any_data(tmp_path: Path) -> None:
+    rows = PARSERS[4](_broker_parts())
+    out = tmp_path / "brokers.parquet"
+    write_parquet(rows, out)
+    con = duckdb.connect()
+    ts_ms, entries = query_at(con, path=out, t_ms=80000000)
+    assert ts_ms is None
+    assert entries == []
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1148,28 +1133,6 @@ def write_parquet(rows: Iterable[BrokerRow], path: Path) -> None:
     pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
 
 
-# === Query ===
-
-
-def query_at(
-    con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int
-) -> list[dict[str, Any]]:
-    """Return all 10 broker rows for the latest snapshot ts_ms <= t_ms, or empty list."""
-    latest = con.execute(
-        "SELECT max(ts_ms) FROM read_parquet(?) WHERE ts_ms <= ?",
-        [str(path), t_ms],
-    ).fetchone()
-    if latest is None or latest[0] is None:
-        return []
-    rows = con.execute(
-        "SELECT ts_ms, side, rank, broker, qty_today, qty_delta FROM read_parquet(?) "
-        "WHERE ts_ms = ? ORDER BY side, rank",
-        [str(path), latest[0]],
-    ).fetchall()
-    cols = ["ts_ms", "side", "rank", "broker", "qty_today", "qty_delta"]
-    return [dict(zip(cols, r, strict=True)) for r in rows]
-
-
 # === API representation ===
 
 
@@ -1181,25 +1144,48 @@ class ApiBrokerEntry(BaseModel):
     qty_delta: int
 
 
-def to_api_list(rows: list[dict[str, Any]]) -> list[ApiBrokerEntry]:
-    return [
+# === Query (returns (ts_ms, [ApiBrokerEntry]) directly) ===
+
+
+def query_at(
+    con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int
+) -> tuple[int | None, list[ApiBrokerEntry]]:
+    """Return (ts_ms, entries) for the latest broker snapshot at ts_ms <= t_ms.
+
+    Returns ``(None, [])`` if no broker snapshot exists at or before ``t_ms``.
+    Otherwise ``ts_ms`` is the snapshot's timestamp and ``entries`` has all 10
+    rows (5 sell + 5 buy) as ApiBrokerEntry objects.
+    """
+    latest = con.execute(
+        "SELECT max(ts_ms) FROM read_parquet(?) WHERE ts_ms <= ?",
+        [str(path), t_ms],
+    ).fetchone()
+    if latest is None or latest[0] is None:
+        return None, []
+    ts_ms_value = int(latest[0])
+    rows = con.execute(
+        "SELECT side, rank, broker, qty_today, qty_delta FROM read_parquet(?) "
+        "WHERE ts_ms = ? ORDER BY side, rank",
+        [str(path), ts_ms_value],
+    ).fetchall()
+    entries = [
         ApiBrokerEntry(
-            side=r["side"], rank=r["rank"], broker=r["broker"],
-            qty_today=r["qty_today"], qty_delta=r["qty_delta"],
+            side=r[0], rank=r[1], broker=r[2], qty_today=r[3], qty_delta=r[4]
         )
         for r in rows
     ]
+    return ts_ms_value, entries
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_tables_brokers.py -v`
-Expected: 7 passed.
+Expected: 6 passed.
 
 - [ ] **Step 5: Run full test suite**
 
 Run: `python -m pytest -q`
-Expected: 83 passed.
+Expected: 81 passed.
 
 - [ ] **Step 6: Ruff + commit**
 
@@ -1238,7 +1224,6 @@ from hoga.tables.candles import (
     Candle,
     parse_row,
     query_all,
-    to_api,
     write_parquet,
 )
 
@@ -1288,7 +1273,7 @@ def test_write_parquet_sorts_ascending(tmp_path: Path) -> None:
     assert tbl.column("ts_ms").to_pylist() == [30600000, 30660000]
 
 
-def test_query_all_ascending(tmp_path: Path) -> None:
+def test_query_all_returns_ascending_api_models(tmp_path: Path) -> None:
     out = tmp_path / "candles.parquet"
     write_parquet(
         [
@@ -1299,18 +1284,10 @@ def test_query_all_ascending(tmp_path: Path) -> None:
     )
     con = duckdb.connect()
     rows = query_all(con, path=out)
-    assert [r["ts_ms"] for r in rows] == [30600000, 30660000]
-
-
-def test_to_api() -> None:
-    row = {
-        "ts_ms": 30600000, "open": 281000, "close": 281000,
-        "high": 281000, "low": 281000, "vol_a": 119, "vol_b": 0,
-    }
-    api = to_api(row)
-    assert isinstance(api, ApiCandle)
-    assert api.open == 281000
-    assert api.vol_a == 119
+    assert all(isinstance(r, ApiCandle) for r in rows)
+    assert [r.ts_ms for r in rows] == [30600000, 30660000]
+    assert rows[0].open == 2  # ascending sort moves second-inserted to first
+    assert rows[1].open == 1
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1420,16 +1397,6 @@ def write_parquet(candles: Iterable[Candle], path: Path) -> None:
 # === Query ===
 
 
-def query_all(con: duckdb.DuckDBPyConnection, *, path: Path) -> list[dict[str, Any]]:
-    rows = con.execute(
-        'SELECT ts_ms, "open", "close", high, low, vol_a, vol_b '
-        "FROM read_parquet(?) ORDER BY ts_ms ASC",
-        [str(path)],
-    ).fetchall()
-    cols = ["ts_ms", "open", "close", "high", "low", "vol_a", "vol_b"]
-    return [dict(zip(cols, r, strict=True)) for r in rows]
-
-
 # === API representation ===
 
 
@@ -1443,19 +1410,32 @@ class ApiCandle(BaseModel):
     vol_b: int
 
 
-def to_api(row: dict[str, Any]) -> ApiCandle:
-    return ApiCandle(**{k: row[k] for k in ApiCandle.model_fields})
+# === Query (returns list[ApiCandle] directly) ===
+
+
+def query_all(con: duckdb.DuckDBPyConnection, *, path: Path) -> list[ApiCandle]:
+    rows = con.execute(
+        'SELECT ts_ms, "open", "close", high, low, vol_a, vol_b '
+        "FROM read_parquet(?) ORDER BY ts_ms ASC",
+        [str(path)],
+    ).fetchall()
+    return [
+        ApiCandle(
+            ts_ms=r[0], open=r[1], close=r[2], high=r[3], low=r[4], vol_a=r[5], vol_b=r[6]
+        )
+        for r in rows
+    ]
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_tables_candles.py -v`
-Expected: 6 passed.
+Expected: 5 passed.
 
 - [ ] **Step 5: Run full test suite**
 
 Run: `python -m pytest -q`
-Expected: 89 passed.
+Expected: 86 passed.
 
 - [ ] **Step 6: Ruff + commit**
 
@@ -1790,7 +1770,7 @@ rm tests/test_parser_tsv.py
 - [ ] **Step 7: Run full test suite**
 
 Run: `python -m pytest -q`
-Expected: 89 − 11 (deleted test_parser_tsv) + 7 (new dispatch registry tests) = 85 passed. Adjust count if numbers differ.
+Expected: 86 − 11 (deleted test_parser_tsv) + 7 (new dispatch registry tests) = 82 passed. Adjust count if numbers differ.
 
 If tests fail:
 - Look for remaining imports of `hoga.parser.events` / `hoga.parser.tsv` / `hoga.parser.writer` in any file under `hoga/`. Replace with the new locations.
@@ -1813,7 +1793,7 @@ git commit -m "refactor(tables): dispatch via registry; delete parser/tsv.py + p
 
 ## Task 7: Migrate writers + API; delete writer.py; shrink api/queries.py + api/models.py
 
-**Goal:** Now all table modules export `write_parquet`. Delete `hoga/parser/writer.py` and `tests/test_parser_writer.py` (writer tests are duplicated in `test_tables_*.py`). Shrink `api/queries.py` to cross-table-only (`list_stock_dates`, `get_meta`); the per-table query methods delegate to `tables.X.query_*`. Update `api/routes.py` to use `tables.X.to_api(row)`. Shrink `api/models.py` to API container models only.
+**Goal:** Now all table modules export `write_parquet`. Delete `hoga/parser/writer.py` and `tests/test_parser_writer.py` (writer tests are duplicated in `test_tables_*.py`). Shrink `api/queries.py` to cross-table-only (`list_stock_dates`, `get_meta`); the per-table query methods delegate to `tables.X.query_*` (which return Pydantic models directly). Update `api/routes.py` to use those queries directly with no row→model translation. Shrink `api/models.py` to API container models only.
 
 **Files:**
 - Delete: `hoga/parser/writer.py`
@@ -1909,7 +1889,8 @@ class QueryEngine:
 
 ```python
 """FastAPI route handlers. Each per-table handler delegates to the table
-module's ``query_*`` + ``to_api`` functions; this file is the thin glue layer.
+module's ``query_*`` function, which returns Pydantic models directly.
+This file is the thin glue layer.
 """
 from __future__ import annotations
 
@@ -1951,11 +1932,11 @@ def build_router(engine: QueryEngine) -> APIRouter:
             path = engine.parquet_dir(date, code) / "snapshots.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        row = snapshots_tbl.query_at(engine.conn, path=path, t_ms=t)
-        if row is None:
+        snap = snapshots_tbl.query_at(engine.conn, path=path, t_ms=t)
+        if snap is None:
             first_ts = snapshots_tbl.query_first_ts(engine.conn, path=path)
             return OrderbookResponse(available_from=first_ts, snapshot=None)
-        return OrderbookResponse(available_from=None, snapshot=snapshots_tbl.to_api(row))
+        return OrderbookResponse(available_from=None, snapshot=snap)
 
     @router.get("/trades", response_model=TradesResponse)
     def trades(
@@ -1976,7 +1957,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
             rows = trades_tbl.query_up_to(engine.conn, path=path, t_ms=t, limit=limit)
         else:
             raise HTTPException(status_code=400, detail="provide either ?t= or ?from=&to=")
-        return TradesResponse(trades=[trades_tbl.to_api(r) for r in rows])
+        return TradesResponse(trades=rows)
 
     @router.get("/candles", response_model=CandlesResponse)
     def candles(code: str, date: str) -> CandlesResponse:
@@ -1984,8 +1965,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
             path = engine.parquet_dir(date, code) / "candles.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        rows = candles_tbl.query_all(engine.conn, path=path)
-        return CandlesResponse(candles=[candles_tbl.to_api(r) for r in rows])
+        return CandlesResponse(candles=candles_tbl.query_all(engine.conn, path=path))
 
     @router.get("/brokers", response_model=BrokersResponse)
     def brokers(code: str, date: str, t: int = Query(...)) -> BrokersResponse:
@@ -1993,11 +1973,8 @@ def build_router(engine: QueryEngine) -> APIRouter:
             path = engine.parquet_dir(date, code) / "brokers.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        rows = brokers_tbl.query_at(engine.conn, path=path, t_ms=t)
-        if not rows:
-            return BrokersResponse(ts_ms=None, entries=[])
-        ts = rows[0]["ts_ms"]
-        return BrokersResponse(ts_ms=ts, entries=brokers_tbl.to_api_list(rows))
+        ts_ms, entries = brokers_tbl.query_at(engine.conn, path=path, t_ms=t)
+        return BrokersResponse(ts_ms=ts_ms, entries=entries)
 
     return router
 ```
@@ -2068,7 +2045,7 @@ class Meta(BaseModel):
 - [ ] **Step 5: Run full test suite**
 
 Run: `python -m pytest -q`
-Expected: 85 − 4 (deleted test_parser_writer) = 81 passed.
+Expected: 82 − 4 (deleted test_parser_writer) = 78 passed.
 
 If tests fail:
 - Check imports in `hoga/api/app.py` (should be unaffected).
@@ -2097,7 +2074,7 @@ git commit -m "refactor(api): delegate per-table queries to tables/*; shrink api
 - [ ] **Step 1: Full test suite green**
 
 Run: `python -m pytest -v`
-Expected: ~81 passed (final count). No failures or errors.
+Expected: ~78 passed (final count). No failures or errors.
 
 - [ ] **Step 2: Ruff complete clean**
 
