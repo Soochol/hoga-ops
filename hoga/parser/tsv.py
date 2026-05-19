@@ -8,11 +8,26 @@ from __future__ import annotations
 
 from hoga.parser.events import BrokerRow, Candle, Orderbook, StockInfo, Trade
 
+# Event type codes (field 2 of every first.tsv row).
+EVENT_TYPE_TRADE = 1
+EVENT_TYPE_ORDERBOOK = 2
+EVENT_TYPE_PREMARKET = 3
+EVENT_TYPE_BROKER = 4
+
+# Minimum field count for parse_row to read the event_type field.
+MIN_DISPATCH_FIELDS = 2
+
+# Minimum field count for parse_info_row.
+INFO_MIN_FIELDS = 22
+
+# Minimum field count for parse_candle_row.
+CANDLE_MIN_FIELDS = 8
+
 EXPECTED_FIELD_COUNTS = {
-    1: 18,  # trade
-    2: 70,  # orderbook (6 header + 10*6 levels + 4 totals)
-    3: 10,  # pre-market summary
-    4: 42,  # broker (6 header + 5+5+5+5+5+5 + 6 trailing)
+    EVENT_TYPE_TRADE: 18,
+    EVENT_TYPE_ORDERBOOK: 70,  # 6 header + 10*6 levels + 4 totals
+    EVENT_TYPE_PREMARKET: 10,
+    EVENT_TYPE_BROKER: 42,  # 6 header + 5+5+5+5+5+5 + 6 trailing
 }
 
 
@@ -32,7 +47,7 @@ def _split(line: str) -> list[str]:
 def parse_row(line: str) -> Trade | Orderbook | list[BrokerRow]:
     """Dispatch on field 2 (event_type)."""
     parts = _split(line)
-    if len(parts) < 2:
+    if len(parts) < MIN_DISPATCH_FIELDS:
         raise FieldCountError(f"row too short: {len(parts)} fields")
     try:
         event_type = int(parts[1])
@@ -47,13 +62,13 @@ def parse_row(line: str) -> Trade | Orderbook | list[BrokerRow]:
             f"event_type={event_type} expects {expected} fields, got {len(parts)}"
         )
 
-    if event_type == 1:
+    if event_type == EVENT_TYPE_TRADE:
         return _parse_trade(parts)
-    if event_type == 2:
+    if event_type == EVENT_TYPE_ORDERBOOK:
         return _parse_orderbook(parts)
-    if event_type == 3:
+    if event_type == EVENT_TYPE_PREMARKET:
         return _parse_premarket(parts)
-    if event_type == 4:
+    if event_type == EVENT_TYPE_BROKER:
         return _parse_broker(parts)
     raise AssertionError("unreachable")  # pragma: no cover
 
@@ -185,8 +200,8 @@ def _parse_broker(parts: list[str]) -> list[BrokerRow]:
 
 def parse_info_row(line: str) -> StockInfo:
     parts = _split(line)
-    if len(parts) < 22:
-        raise FieldCountError(f"info row expects >=22 fields, got {len(parts)}")
+    if len(parts) < INFO_MIN_FIELDS:
+        raise FieldCountError(f"info row expects >={INFO_MIN_FIELDS} fields, got {len(parts)}")
     unknowns = {
         "f11": parts[10],
         "f16": parts[15],
@@ -213,8 +228,8 @@ def parse_info_row(line: str) -> StockInfo:
 
 def parse_candle_row(line: str) -> Candle:
     parts = _split(line)
-    if len(parts) < 8:
-        raise FieldCountError(f"candle row expects >=8 fields, got {len(parts)}")
+    if len(parts) < CANDLE_MIN_FIELDS:
+        raise FieldCountError(f"candle row expects >={CANDLE_MIN_FIELDS} fields, got {len(parts)}")
     return Candle(
         ts_ms=int(parts[0]),
         open_=int(parts[2]),

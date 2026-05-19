@@ -5,5 +5,9 @@ target-version = "py311"
 select = ["E", "F", "I", "B", "UP", "SIM", "PL"]
 ignore = ["PLR0913"]
 
+[lint.per-file-ignores]
+# Tests use literal expected values in assertions — that's their nature.
+"tests/**/*.py" = ["PLR2004"]
+
 [format]
 quote-style = "double"
