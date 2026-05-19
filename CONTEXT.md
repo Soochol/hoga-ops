@@ -43,12 +43,21 @@ _Avoid_: "auction trade" alone, "opening trade", "closing trade"
 **Price Tick**:
 A 3-field `section=3 type=5 price` heartbeat broadcast emitted by hogaplay throughout the session. Carries only the current price — no qty, side, or seq. Discovered during E2E validation 2026-05-20. Parser drops these rows entirely; the same information is already present in trade events.
 
+**Entity**:
+The in-memory frozen-dataclass representation of one row of table data inside hoga-ops. Carries every field including **forensic** ones — fields whose meaning is partially or fully undecoded (`unknown_14`, `unknown_16`, `unknown_17`, `unknown_18`) kept to enable later decoding without re-collection. Used by the parser on the write path. Internal — never returned by the API. Examples: `Trade`, `Orderbook`, `BrokerRow`, `Candle` in `hoga/tables/*`.
+_Avoid_: "model", "domain object", "record"
+
+**Wire Model**:
+The pydantic model returned by API endpoints — the shape clients see. Strips forensic fields (and any other internal-only data). Each table module pairs an **Entity** with its Wire Model: `Trade`↔`ApiTrade`, `Orderbook`↔`ApiOrderbookSnapshot`, `BrokerRow`↔`ApiBrokerEntry`, `Candle`↔`ApiCandle`. Query helpers (`query_at`, `query_up_to`, etc.) return Wire Models directly — there is no intermediate dict materialization.
+_Avoid_: "API model" alone (ambiguous with response containers like `OrderbookResponse`), "DTO"
+
 ## Relationships
 
 - A **Stock-Date** has exactly one **Data Window** and exactly one **Full Capture**.
 - A **Stock-Date**'s **Regular Session** sits inside its **Data Window**.
 - A **Full Capture** is built from N **Pages**; consecutive Pages may overlap.
 - The collector captures the entire **Data Window**; UI and analysis default to the **Regular Session** but can extend to the **Data Window**.
+- Each Parquet table has one **Entity** type (for the parser write path) and one **Wire Model** type (for the API read path). Both live in the same `hoga/tables/*.py` module.
 
 ## Flagged ambiguities
 
