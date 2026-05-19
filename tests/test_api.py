@@ -125,3 +125,55 @@ def test_brokers_before_any_data(app_client: TestClient) -> None:
     payload = r.json()
     assert payload["ts_ms"] is None
     assert payload["entries"] == []
+
+
+def test_orderbook_returns_delta_arrays(app_client: TestClient) -> None:
+    r = app_client.get(
+        "/api/orderbook",
+        params={"code": "003490", "date": "20260519", "t": 90020000},
+    )
+    assert r.status_code == 200
+    snap = r.json()["snapshot"]
+    assert "ask_d" in snap
+    assert "bid_d" in snap
+    assert len(snap["ask_d"]) == 10
+    assert len(snap["bid_d"]) == 10
+
+
+def test_trades_returns_extended_fields(app_client: TestClient) -> None:
+    r = app_client.get(
+        "/api/trades",
+        params={"code": "003490", "date": "20260519", "t": 90010500, "limit": 1},
+    )
+    assert r.status_code == 200
+    trade = r.json()["trades"][0]
+    for field in ("change_pct", "cum_trades", "low_so_far", "high_so_far", "net_pressure"):
+        assert field in trade, f"missing {field}"
+
+
+def test_trades_range_query(app_client: TestClient) -> None:
+    # Fixture has trades at: 84000352 (premarket), 90010023, 90010160, 90010173, 90010335, 90010351
+    r = app_client.get(
+        "/api/trades",
+        params={
+            "code": "003490",
+            "date": "20260519",
+            "from": 90010100,
+            "to": 90010300,
+            "limit": 100,
+        },  # noqa: E501
+    )
+    assert r.status_code == 200
+    trades = r.json()["trades"]
+    # Two trades in [90010100, 90010300]: 90010160 and 90010173
+    assert len(trades) == 2
+    ts = [t["ts_ms"] for t in trades]
+    assert ts == [90010173, 90010160]  # descending
+
+
+def test_trades_neither_t_nor_range_returns_400(app_client: TestClient) -> None:
+    r = app_client.get(
+        "/api/trades",
+        params={"code": "003490", "date": "20260519"},
+    )
+    assert r.status_code == 400

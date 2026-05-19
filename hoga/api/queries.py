@@ -95,11 +95,49 @@ class QueryEngine:
     def get_trades_up_to(self, date: str, code: str, t_ms: int, limit: int) -> list[dict[str, Any]]:
         path = self.parquet_dir(date, code) / "trades.parquet"
         rows = self._conn.execute(
-            "SELECT ts_ms, seq, price, qty, side, cum_vol FROM read_parquet(?) "
+            "SELECT ts_ms, seq, price, change_pct, qty, side, cum_vol, cum_trades, "
+            "low_so_far, high_so_far, net_pressure FROM read_parquet(?) "
             "WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT ?",
             [str(path), t_ms, limit],
         ).fetchall()
-        cols = ["ts_ms", "seq", "price", "qty", "side", "cum_vol"]
+        cols = [
+            "ts_ms",
+            "seq",
+            "price",
+            "change_pct",
+            "qty",
+            "side",
+            "cum_vol",
+            "cum_trades",
+            "low_so_far",
+            "high_so_far",
+            "net_pressure",
+        ]
+        return [dict(zip(cols, r, strict=True)) for r in rows]
+
+    def get_trades_in_range(
+        self, date: str, code: str, from_ms: int, to_ms: int, limit: int
+    ) -> list[dict[str, Any]]:
+        path = self.parquet_dir(date, code) / "trades.parquet"
+        rows = self._conn.execute(
+            "SELECT ts_ms, seq, price, change_pct, qty, side, cum_vol, cum_trades, "
+            "low_so_far, high_so_far, net_pressure FROM read_parquet(?) "
+            "WHERE ts_ms >= ? AND ts_ms <= ? ORDER BY ts_ms DESC LIMIT ?",
+            [str(path), from_ms, to_ms, limit],
+        ).fetchall()
+        cols = [
+            "ts_ms",
+            "seq",
+            "price",
+            "change_pct",
+            "qty",
+            "side",
+            "cum_vol",
+            "cum_trades",
+            "low_so_far",
+            "high_so_far",
+            "net_pressure",
+        ]
         return [dict(zip(cols, r, strict=True)) for r in rows]
 
     def get_candles(self, date: str, code: str) -> list[dict[str, Any]]:

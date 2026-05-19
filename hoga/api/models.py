@@ -22,10 +22,14 @@ class OrderbookSnapshot(BaseModel):
     seq: int
     ask_p: list[int]  # length 10
     ask_q: list[int]
+    ask_d: list[int]  # length 10, signed deltas
     bid_p: list[int]
     bid_q: list[int]
+    bid_d: list[int]
     tot_ask: int
+    tot_ask_d: int
     tot_bid: int
+    tot_bid_d: int
 
 
 class OrderbookResponse(BaseModel):
@@ -37,9 +41,14 @@ class Trade(BaseModel):
     ts_ms: int
     seq: int
     price: int
+    change_pct: float
     qty: int
     side: int  # -1, 0, +1
     cum_vol: int
+    cum_trades: int
+    low_so_far: int
+    high_so_far: int
+    net_pressure: int
 
 
 class TradesResponse(BaseModel):

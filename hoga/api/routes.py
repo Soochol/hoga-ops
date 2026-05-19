@@ -50,17 +50,36 @@ def build_router(engine: QueryEngine) -> APIRouter:
             seq=row["seq"],
             ask_p=[row[f"ask_p{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
             ask_q=[row[f"ask_q{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
+            ask_d=[row[f"ask_d{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
             bid_p=[row[f"bid_p{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
             bid_q=[row[f"bid_q{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
+            bid_d=[row[f"bid_d{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
             tot_ask=row["tot_ask"],
+            tot_ask_d=row["tot_ask_d"],
             tot_bid=row["tot_bid"],
+            tot_bid_d=row["tot_bid_d"],
         )
         return OrderbookResponse(available_from=None, snapshot=snap)
 
     @router.get("/trades", response_model=TradesResponse)
-    def trades(code: str, date: str, t: int = Query(...), limit: int = 50) -> TradesResponse:
+    def trades(
+        code: str,
+        date: str,
+        t: int | None = Query(None),
+        from_ms: int | None = Query(None, alias="from"),
+        to_ms: int | None = Query(None, alias="to"),
+        limit: int = 50,
+    ) -> TradesResponse:
         try:
-            rows = engine.get_trades_up_to(date, code, t, limit)
+            if from_ms is not None and to_ms is not None:
+                rows = engine.get_trades_in_range(date, code, from_ms, to_ms, limit)
+            elif t is not None:
+                rows = engine.get_trades_up_to(date, code, t, limit)
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="provide either ?t= or ?from=&to=",
+                )
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
         return TradesResponse(trades=[Trade(**r) for r in rows])
