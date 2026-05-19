@@ -55,6 +55,7 @@ Each row's `(field1, field2)` determines event type and field count.
 | 2 | 1 | 19 | trade schema | **Streaming trade** (체결) |
 | 2 | 2 | 71 | orderbook schema | **Streaming orderbook update** |
 | 2 | 4 | 43 | broker schema | **상위 거래원** (top 5 buy/sell brokers) |
+| 3 | 5 | 3 | `3 5 <price>` | **Price-tick heartbeat** — current price broadcast, no qty/side. Skipped by parser (information already in trade events). Discovered during E2E validation 2026-05-20. |
 
 Section 1 = preamble (state up to request time). Section 2 = events after request time.
 

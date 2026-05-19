@@ -100,6 +100,10 @@ def _collect_events(
                 continue
             raise ParserError(msg) from e
 
+        if parsed is None:
+            # Price-tick / heartbeat — no structured data to retain.
+            continue
+
         if isinstance(parsed, list):
             _add_broker_rows(parsed, brokers=brokers, seen_seqs=seen_seqs)
             continue

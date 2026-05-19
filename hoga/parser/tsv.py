@@ -13,6 +13,7 @@ EVENT_TYPE_TRADE = 1
 EVENT_TYPE_ORDERBOOK = 2
 EVENT_TYPE_PREMARKET = 3
 EVENT_TYPE_BROKER = 4
+EVENT_TYPE_PRICE_TICK = 5  # 3-field `section=3 type=5 price` price-only heartbeat
 
 # Minimum field count for parse_row to read the event_type field.
 MIN_DISPATCH_FIELDS = 2
@@ -28,6 +29,7 @@ EXPECTED_FIELD_COUNTS = {
     EVENT_TYPE_ORDERBOOK: 70,  # 6 header + 10*6 levels + 4 totals
     EVENT_TYPE_PREMARKET: 10,
     EVENT_TYPE_BROKER: 42,  # 6 header + 5+5+5+5+5+5 + 6 trailing
+    EVENT_TYPE_PRICE_TICK: 3,  # `3 5 <price>` price-only broadcast; intentionally skipped
 }
 
 
@@ -44,8 +46,13 @@ def _split(line: str) -> list[str]:
     return parts
 
 
-def parse_row(line: str) -> Trade | Orderbook | list[BrokerRow]:
-    """Dispatch on field 2 (event_type)."""
+def parse_row(line: str) -> Trade | Orderbook | list[BrokerRow] | None:
+    """Dispatch on field 2 (event_type).
+
+    Returns None for event types that carry no new structured information
+    (e.g. EVENT_TYPE_PRICE_TICK — a price-only broadcast already covered by
+    trade events). The orchestrator skips None.
+    """
     parts = _split(line)
     if len(parts) < MIN_DISPATCH_FIELDS:
         raise FieldCountError(f"row too short: {len(parts)} fields")
@@ -70,6 +77,8 @@ def parse_row(line: str) -> Trade | Orderbook | list[BrokerRow]:
         return _parse_premarket(parts)
     if event_type == EVENT_TYPE_BROKER:
         return _parse_broker(parts)
+    if event_type == EVENT_TYPE_PRICE_TICK:
+        return None  # heartbeat-style price broadcast; data already in trades
     raise AssertionError("unreachable")  # pragma: no cover
 
 

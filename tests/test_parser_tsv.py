@@ -161,6 +161,12 @@ def test_parse_unknown_event_type_raises() -> None:
         parse_row(line)
 
 
+def test_parse_price_tick_returns_none() -> None:
+    # `section=3 type=5 <price>` — price-only heartbeat, no structured data.
+    line = "3\t5\t25700"
+    assert parse_row(line) is None
+
+
 def test_parse_wrong_field_count_raises() -> None:
     line = "2\t1\t0\t1\t90000000"
     with pytest.raises(FieldCountError):
