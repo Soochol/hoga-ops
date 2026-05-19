@@ -24,6 +24,8 @@ Co-locating all knowledge of one table in one module makes the schema the interf
 
 - **Module size grows.** Each table module is ~150 lines (dataclass + parsers + schema + writer + queries + API model + mapping). This is intentional — locality beats line-count minimization for this kind of work.
 
+- **Snapshots use flat columns (`ask_p1..p10` etc.), not pyarrow list types.** Reason: DuckDB column pushdown is more efficient on flat columns, and `WHERE ask_p1 > X` reads better than `WHERE list_extract(ask_p, 1) > X`. The in-memory `Orderbook` dataclass uses 10-tuples for ergonomics; the flatten/unflatten happens in `write_parquet` and inside `query_at` when building the `ApiOrderbookSnapshot`. Don't "improve" this back to a list column — the API stays clean either way, but DuckDB queries get awkward.
+
 - **Cross-table behavior still lives elsewhere.** Validation that spans tables (`cum_vol` monotonic across trades, `global_seq` dedup across event types) stays in `parser/__init__.py`. List/index queries that span tables (`list_stock_dates`, which uses `meta.json` + snapshot time bounds) stay in `api/queries.py`. The table modules are not self-sufficient applications; they are the unit of *table-shaped concern*, not the unit of feature.
 
 - **The dispatcher (`hoga/tables/dispatch.py`) builds its registry from each table's `PARSERS: dict[int, Callable]` at import time.** Adding a new event type means adding an entry to one table's `PARSERS`. Skip-list (`{5}` for Price Tick) lives in `dispatch.py` since it's truly cross-table.

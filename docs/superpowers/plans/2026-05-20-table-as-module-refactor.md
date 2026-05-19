@@ -2,7 +2,63 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Refactor hoga-ops so each Parquet table (`trades`, `snapshots`, `brokers`, `candles`) is a single module under `hoga/tables/` owning dataclass + parsers + pyarrow schema + writer + DuckDB queries + pydantic API model + row→API mapping. The schema becomes the explicit interface at the producer↔consumer seam.
+**Goal:** Refactor hoga-ops so each Parquet table (`trades`, `snapshots`, `brokers`, `candles`) is a single module under `hoga/tables/` owning dataclass + parsers + pyarrow schema + writer + DuckDB queries + pydantic API model. Query functions return the Pydantic API model directly (no intermediate dict materialization). The schema becomes the explicit interface at the producer↔consumer seam.
+
+**Plan revision 2026-05-20:** During eng review, the original plan exposed `query_*` as `-> dict[str, Any]` and a separate `to_api(row)` as `-> ApiX`. Revised so query functions return `ApiX` directly. Eliminates the implicit dict-shape contract (which was the original code smell). One conversion step, not two.
+
+### Revision override for all per-table tasks (Tasks 2–5)
+
+When implementing each table module, override the code shown later with this contract:
+
+- **No `to_api` / `to_api_list` function.** Drop them entirely.
+- **Query functions return Pydantic models, not dicts.** Construct the `ApiX` inline inside the query function from the DuckDB row tuple.
+
+Concretely, for each table:
+
+| Table | Old (in task code) | New (apply this) |
+|---|---|---|
+| trades | `query_up_to(...) -> list[dict[str, Any]]` + `to_api(row) -> ApiTrade` | `query_up_to(...) -> list[ApiTrade]` (Pydantic inline) |
+| trades | `query_range(...) -> list[dict[str, Any]]` + `to_api` | `query_range(...) -> list[ApiTrade]` |
+| snapshots | `query_at(...) -> dict[str, Any] \| None` + `to_api(row)` | `query_at(...) -> ApiOrderbookSnapshot \| None` |
+| brokers | `query_at(...) -> list[dict[str, Any]]` + `to_api_list(rows)` | `query_at(...) -> tuple[int \| None, list[ApiBrokerEntry]]` (returns `(ts_ms, entries)`; both empty when no data) |
+| candles | `query_all(...) -> list[dict[str, Any]]` + `to_api(row)` | `query_all(...) -> list[ApiCandle]` |
+
+`query_time_bounds` and `query_first_ts` (snapshots) keep their primitive return types — they're not entity-shaped.
+
+Example concrete shape for `trades.query_up_to`:
+
+```python
+def query_up_to(
+    con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int, limit: int
+) -> list[ApiTrade]:
+    rows = con.execute(
+        "SELECT ts_ms, seq, price, change_pct, qty, side, cum_vol, "
+        "cum_trades, low_so_far, high_so_far, net_pressure "
+        "FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT ?",
+        [str(path), t_ms, limit],
+    ).fetchall()
+    return [
+        ApiTrade(
+            ts_ms=r[0], seq=r[1], price=r[2], change_pct=r[3], qty=r[4], side=r[5],
+            cum_vol=r[6], cum_trades=r[7], low_so_far=r[8], high_so_far=r[9],
+            net_pressure=r[10],
+        )
+        for r in rows
+    ]
+```
+
+Tests in each `test_tables_*.py` should be updated to:
+- Drop `test_to_api_*` tests entirely (no `to_api` exists).
+- Update `query_*` tests to assert on `ApiX` attributes rather than dict keys (`assert rows[0].ts_ms == X` instead of `assert rows[0]["ts_ms"] == X`).
+
+`routes.py` simplifies — no more `to_api(row)` calls:
+
+```python
+# Before (task code):
+return OrderbookResponse(available_from=None, snapshot=snapshots_tbl.to_api(row))
+# After (override):
+return OrderbookResponse(available_from=None, snapshot=snapshots_tbl.query_at(engine.conn, path=path, t_ms=t))
+```
 
 **Architecture:** Pure structural refactor — no observable behavior change. Parquet column names, API responses, and CLI semantics are unchanged. All 53 existing tests must continue to pass at every commit. New tests at `hoga/tables/*` interfaces are added; obsolete tests on deleted modules (`tsv.py`, `writer.py`, `events.py`) are removed.
 
@@ -20,11 +76,11 @@
 | File | Responsibility |
 |---|---|
 | `hoga/tables/__init__.py` | package marker |
-| `hoga/tables/dispatch.py` | TSV tokenizer (`_split`, `FieldCountError`), event-type registry built from each table's `PARSERS`, skip set for Price Tick, `parse_row()` entry point |
-| `hoga/tables/trades.py` | Trade entity: dataclass, parsers (event types 1 + 3), pa schema, write_parquet, query helpers, ApiTrade model, to_api |
-| `hoga/tables/snapshots.py` | Orderbook entity: dataclass, parsers (event type 2), pa schema (with flat ask_p1..p10 etc.), write_parquet, query helpers, ApiOrderbookSnapshot, to_api |
-| `hoga/tables/brokers.py` | BrokerRow entity (long-format): dataclass, parser (event type 4, fans 1 row → 10 BrokerRows), pa schema, write_parquet, query helpers, ApiBrokerEntry, to_api |
-| `hoga/tables/candles.py` | Candle entity: dataclass, `parse_candle_row(line)` (chart.tsv source, no EVENT_TYPES), pa schema, write_parquet, query helpers, ApiCandle, to_api |
+| `hoga/tables/dispatch.py` | TSV tokenizer (`split_row`, `FieldCountError`), event-type registry built from each table's `PARSERS`, skip set for Price Tick, `parse_row()` entry point |
+| `hoga/tables/trades.py` | Trade entity: dataclass, parsers (event types 1 + 3), pa schema, write_parquet, query helpers, ApiTrade model (queries return ApiTrade directly) |
+| `hoga/tables/snapshots.py` | Orderbook entity: dataclass, parsers (event type 2), pa schema (with flat ask_p1..p10 etc.), write_parquet, query helpers, ApiOrderbookSnapshot (queries return ApiOrderbookSnapshot directly) |
+| `hoga/tables/brokers.py` | BrokerRow entity (long-format): dataclass, parser (event type 4, fans 1 row → 10 BrokerRows), pa schema, write_parquet, query helpers, ApiBrokerEntry (queries return list[ApiBrokerEntry] + ts_ms) |
+| `hoga/tables/candles.py` | Candle entity: dataclass, `parse_candle_row(line)` (chart.tsv source, no EVENT_TYPES), pa schema, write_parquet, query helpers, ApiCandle (queries return list[ApiCandle] directly) |
 | `tests/test_dispatch.py` | tokenizer + registry + skip behavior |
 | `tests/test_tables_trades.py` | Trades module interface |
 | `tests/test_tables_snapshots.py` | Snapshots module interface |
@@ -82,23 +138,23 @@ from __future__ import annotations
 
 import pytest
 
-from hoga.tables.dispatch import FieldCountError, _split
+from hoga.tables.dispatch import FieldCountError, split_row
 
 
-def test_split_strips_trailing_newline() -> None:
-    assert _split("a\tb\tc\n") == ["a", "b", "c"]
+def test_split_row_strips_trailing_newline() -> None:
+    assert split_row("a\tb\tc\n") == ["a", "b", "c"]
 
 
-def test_split_strips_trailing_tab_empty_field() -> None:
-    assert _split("a\tb\tc\t\n") == ["a", "b", "c"]
+def test_split_row_strips_trailing_tab_empty_field() -> None:
+    assert split_row("a\tb\tc\t\n") == ["a", "b", "c"]
 
 
-def test_split_strips_crlf() -> None:
-    assert _split("a\tb\tc\r\n") == ["a", "b", "c"]
+def test_split_row_strips_crlf() -> None:
+    assert split_row("a\tb\tc\r\n") == ["a", "b", "c"]
 
 
-def test_split_preserves_inner_empties() -> None:
-    assert _split("a\t\tb\t\t\tc") == ["a", "", "b", "", "", "c"]
+def test_split_row_preserves_inner_empties() -> None:
+    assert split_row("a\t\tb\t\t\tc") == ["a", "", "b", "", "", "c"]
 
 
 def test_field_count_error_is_value_error() -> None:
@@ -131,7 +187,7 @@ class FieldCountError(ValueError):
     """A row's tab-separated field count doesn't match the expected count for its event_type."""
 
 
-def _split(line: str) -> list[str]:
+def split_row(line: str) -> list[str]:
     """Tokenize a TSV row.
 
     Strips trailing CR/LF and one trailing empty field (hogaplay rows often
@@ -170,7 +226,7 @@ git commit -m "refactor(tables): scaffold tables package + dispatcher tokenizer"
 
 ## Task 2: Create `hoga/tables/trades.py`
 
-**Goal:** Build the full Trades table module — Trade dataclass, both parsers (event types 1 and 3), pyarrow schema, write_parquet, query helpers, ApiTrade model, to_api. The module is **not yet wired** to parser/__init__.py or api/queries.py; old code paths continue to work. Existing 53 tests pass; ~10 new tests added.
+**Goal:** Build the full Trades table module — Trade dataclass, both parsers (event types 1 and 3), pyarrow schema, write_parquet, query helpers, ApiTrade model (queries return ApiTrade directly). The module is **not yet wired** to parser/__init__.py or api/queries.py; old code paths continue to work. Existing 53 tests pass; ~10 new tests added.
 
 **Files:**
 - Create: `hoga/tables/trades.py`
@@ -1197,10 +1253,22 @@ def test_parse_row() -> None:
     assert c.vol_b == 0
 
 
-def test_no_parsers_export() -> None:
-    """Candles is parsed from chart.tsv, not from first.tsv rows. The dispatcher won't register it."""
-    import hoga.tables.candles as mod
-    assert not hasattr(mod, "PARSERS") or mod.PARSERS == {}
+def test_candles_not_in_dispatcher_registry() -> None:
+    """Candles is parsed from chart.tsv, not first.tsv. It must NOT register any event_type.
+
+    This is a contract test against the dispatcher: if a future change accidentally
+    adds ``PARSERS = {6: parse_row}`` to candles.py, the dispatcher would pick it up
+    and try to feed first.tsv rows through it. Catch that here.
+    """
+    from hoga.tables import candles as candles_mod
+    from hoga.tables.dispatch import PARSERS as registry
+
+    assert getattr(candles_mod, "PARSERS", {}) == {}, "candles must not declare PARSERS"
+    # And no registry entry should call into candles.parse_row.
+    candles_funcs = {candles_mod.parse_row}
+    assert not (set(registry.values()) & candles_funcs), (
+        "candles.parse_row leaked into the dispatcher registry"
+    )
 
 
 def test_parquet_schema_columns() -> None:
@@ -1272,7 +1340,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
-from hoga.tables.dispatch import FieldCountError, _split
+from hoga.tables.dispatch import FieldCountError, split_row
 
 CANDLE_MIN_FIELDS = 8
 
@@ -1300,7 +1368,7 @@ def parse_row(line: str) -> Candle:
     chart.tsv columns: relative_ts_ms, HH:MM:SS, open, close, high, low,
     vol_a, vol_b, [unknown], cum_a, cum_b. We only retain the first 8.
     """
-    parts = _split(line)
+    parts = split_row(line)
     if len(parts) < CANDLE_MIN_FIELDS:
         raise FieldCountError(
             f"candle row expects >={CANDLE_MIN_FIELDS} fields, got {len(parts)}"
@@ -1526,6 +1594,10 @@ class FieldCountError(ValueError):
 
 
 # Build registry by aggregating each table module's PARSERS + EXPECTED_FIELD_COUNTS.
+# The collision check below is an import-time safety net (loud failure if two
+# tables claim the same event type). It is intentionally not unit-tested:
+# triggering it requires mutating module globals at import time, which is
+# awkward and lower value than the protection itself.
 PARSERS: dict[int, Callable[[list[str]], Any]] = {}
 EXPECTED_FIELD_COUNTS: dict[int, int] = {}
 for _table in _TABLES:
@@ -1540,7 +1612,7 @@ for _table in _TABLES:
         EXPECTED_FIELD_COUNTS[_et] = _count
 
 
-def _split(line: str) -> list[str]:
+def split_row(line: str) -> list[str]:
     """Tokenize a TSV row.
 
     Strips trailing CR/LF and one trailing empty field (hogaplay rows often
@@ -1559,7 +1631,7 @@ _MIN_DISPATCH_FIELDS = 2
 def parse_row(line: str) -> Any:
     """Dispatch on field 2 (event_type). Returns the parsed entity, a list of
     entities (broker rows), or None (skip set)."""
-    parts = _split(line)
+    parts = split_row(line)
     if len(parts) < _MIN_DISPATCH_FIELDS:
         raise FieldCountError(f"row too short: {len(parts)} fields")
     try:
@@ -1657,7 +1729,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from hoga.tables.dispatch import FieldCountError, _split
+from hoga.tables.dispatch import FieldCountError, split_row
 
 INFO_MIN_FIELDS = 22
 
@@ -1680,7 +1752,7 @@ class StockInfo:
 
 
 def parse_info_row(line: str) -> StockInfo:
-    parts = _split(line)
+    parts = split_row(line)
     if len(parts) < INFO_MIN_FIELDS:
         raise FieldCountError(f"info row expects >={INFO_MIN_FIELDS} fields, got {len(parts)}")
     unknowns = {
