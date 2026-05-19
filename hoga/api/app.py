@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from hoga.api.queries import QueryEngine
 from hoga.api.routes import build_router
+from hoga.config import Config
 
 
 def create_app(data_dir: Path) -> FastAPI:
@@ -33,3 +34,9 @@ def create_app(data_dir: Path) -> FastAPI:
     app.include_router(build_router(engine))
     app.state.engine = engine
     return app
+
+
+def default_app() -> FastAPI:
+    """Factory used by uvicorn — reads data dir from cwd."""
+    cfg = Config.from_cwd()
+    return create_app(cfg.data_dir)
