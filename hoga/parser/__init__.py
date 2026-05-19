@@ -158,7 +158,16 @@ def _collect_candles(
 
 
 def _validate_trades_monotonic(trades: list[Trade], *, lenient: bool) -> None:
-    sorted_trades = sorted(trades, key=lambda t: t.ts_ms)
+    """cum_vol must be non-decreasing across continuous-trading (side != 0) rows.
+
+    Auction Cross trades (side == 0 — opening/closing/pre-market single-price
+    matchings) carry cum_vol = 0 and are excluded from this check; their volume
+    is folded into the next continuous trade.
+    """
+    sorted_trades = sorted(
+        (t for t in trades if t.side != 0),
+        key=lambda t: t.ts_ms,
+    )
     prev = -1
     for t in sorted_trades:
         if t.cum_vol < prev:
