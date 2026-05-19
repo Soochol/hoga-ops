@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+import shutil
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from hoga.api.app import create_app
+from hoga.parser import parse_stock_date
+
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "tiny_tsv"
+
+
+@pytest.fixture
+def app_client(tmp_path: Path) -> TestClient:
+    """Set up data/parquet/20260519/003490 from the tiny_tsv fixture and return a TestClient."""
+    raw = tmp_path / "data" / "raw" / "20260519" / "003490"
+    raw.mkdir(parents=True)
+    for name in ("info.tsv", "first_001.tsv", "chart.tsv"):
+        shutil.copy(FIXTURE_DIR / name, raw / name)
+    parse_stock_date(code="003490", date="20260519", data_dir=tmp_path / "data")
+    app = create_app(data_dir=tmp_path / "data")
+    return TestClient(app)
+
+
+def test_stock_dates(app_client: TestClient) -> None:
+    r = app_client.get("/api/stock-dates")
+    assert r.status_code == 200
+    entries = r.json()
+    assert isinstance(entries, list)
+    assert len(entries) == 1
+    s = entries[0]
+    assert s["code"] == "003490"
+    assert s["date"] == "20260519"
+    assert s["name"] == "대한항공"
+
+
+def test_meta(app_client: TestClient) -> None:
+    r = app_client.get("/api/meta", params={"code": "003490", "date": "20260519"})
+    assert r.status_code == 200
+    m = r.json()
+    assert m["code"] == "003490"
+    assert m["regular_session_open_ms"] == 90000000
+
+
+def test_meta_unknown_returns_404(app_client: TestClient) -> None:
+    r = app_client.get("/api/meta", params={"code": "999999", "date": "20260519"})
+    assert r.status_code == 404
+
+
+def test_orderbook_at_returns_latest(app_client: TestClient) -> None:
+    r = app_client.get(
+        "/api/orderbook",
+        params={"code": "003490", "date": "20260519", "t": 90020000},
+    )
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["snapshot"] is not None
+    assert payload["snapshot"]["ts_ms"] == 90010435
+    assert payload["snapshot"]["ask_p"][:3] == [25700, 25750, 25800]
+
+
+def test_orderbook_before_any_data(app_client: TestClient) -> None:
+    r = app_client.get(
+        "/api/orderbook",
+        params={"code": "003490", "date": "20260519", "t": 80000000},
+    )
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["snapshot"] is None
+    assert payload["available_from"] == 85959530
+
+
+def test_trades_up_to(app_client: TestClient) -> None:
+    r = app_client.get(
+        "/api/trades",
+        params={"code": "003490", "date": "20260519", "t": 90010500, "limit": 10},
+    )
+    assert r.status_code == 200
+    trades = r.json()["trades"]
+    assert len(trades) == 6
+    ts = [t["ts_ms"] for t in trades]
+    assert ts == sorted(ts, reverse=True)
+
+
+def test_trades_limit(app_client: TestClient) -> None:
+    r = app_client.get(
+        "/api/trades",
+        params={"code": "003490", "date": "20260519", "t": 90010500, "limit": 3},
+    )
+    assert r.status_code == 200
+    assert len(r.json()["trades"]) == 3
+
+
+def test_candles(app_client: TestClient) -> None:
+    r = app_client.get("/api/candles", params={"code": "003490", "date": "20260519"})
+    assert r.status_code == 200
+    candles = r.json()["candles"]
+    assert len(candles) == 2
+    ts = [c["ts_ms"] for c in candles]
+    assert ts == sorted(ts), "candles ascending"
+
+
+def test_brokers_at(app_client: TestClient) -> None:
+    r = app_client.get(
+        "/api/brokers",
+        params={"code": "003490", "date": "20260519", "t": 90020000},
+    )
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["ts_ms"] == 90019919
+    entries = payload["entries"]
+    assert len(entries) == 10
+    sides = {e["side"] for e in entries}
+    assert sides == {"buy", "sell"}
+
+
+def test_brokers_before_any_data(app_client: TestClient) -> None:
+    r = app_client.get(
+        "/api/brokers",
+        params={"code": "003490", "date": "20260519", "t": 80000000},
+    )
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["ts_ms"] is None
+    assert payload["entries"] == []
