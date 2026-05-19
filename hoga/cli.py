@@ -1,4 +1,5 @@
 """Typer CLI for hoga-ops. Subcommands are wired in their own modules."""
+
 from __future__ import annotations
 
 import typer
