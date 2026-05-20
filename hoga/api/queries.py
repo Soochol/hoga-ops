@@ -93,6 +93,9 @@ class QueryEngine:
                     price_max = 0
                     total_volume = 0
 
+                # Stock-Date dirs are flat by construction (parse_stock_date emits
+                # only top-level parquet/meta files), so non-recursive iteration is
+                # sufficient and intentional here.
                 files = [p for p in code_dir.iterdir() if p.is_file()]
                 captured_at = (
                     int(max(p.stat().st_mtime for p in files) * 1000) if files else 0
