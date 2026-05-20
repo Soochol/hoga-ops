@@ -14,12 +14,11 @@ beforeAll(() => {
   }));
   // jsdom doesn't ship ResizeObserver either; the pane uses it for layout.
   if (typeof globalThis.ResizeObserver === 'undefined') {
-    // @ts-expect-error — minimal stub.
     globalThis.ResizeObserver = class {
       observe() {}
       disconnect() {}
       unobserve() {}
-    };
+    } as unknown as typeof ResizeObserver;
   }
 });
 
