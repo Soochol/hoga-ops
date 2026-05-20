@@ -7,10 +7,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
+from hoga.api.bundle import build_bundle
 from hoga.api.models import (
     CandlesResponse,
     Meta,
     OrderbookResponse,
+    SessionBundle,
     StockDate,
     TradesResponse,
 )
@@ -123,5 +125,29 @@ def build_router(engine: QueryEngine) -> APIRouter:
                 update={"ts_ms": hhmmssms_to_unix_ms(date, result.ts_ms)}
             )
         return result
+
+    @router.get("/session", response_model=SessionBundle)
+    def session(
+        code: str,
+        date: str,
+        price_min: int | None = Query(None),
+        price_max: int | None = Query(None),
+        depth_bucket_ms: int = Query(5000),
+        vp_bins: int = Query(24),
+    ) -> SessionBundle:
+        try:
+            engine.parquet_dir(date, code)
+        except StockDateNotFound as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return build_bundle(
+            engine.conn,
+            code=code,
+            date=date,
+            data_dir=engine.data_dir,
+            price_min=price_min,
+            price_max=price_max,
+            depth_bucket_ms=depth_bucket_ms,
+            vp_bins=vp_bins,
+        )
 
     return router

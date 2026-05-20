@@ -1,6 +1,7 @@
 """DuckDB-driven session bundle slices, one builder per slice."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import duckdb
@@ -11,6 +12,7 @@ from hoga.api.models import (
     FillStrengthPoint,
     QuoteRatio,
     QuoteRatioPoint,
+    SessionBundle,
     VolumeProfile,
     VolumeProfileBin,
 )
@@ -255,4 +257,57 @@ def build_fill_strength_slice(
             )
             for r in rows
         ],
+    )
+
+
+def build_bundle(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    code: str,
+    date: str,
+    data_dir: Path,
+    price_min: int | None = None,
+    price_max: int | None = None,
+    depth_bucket_ms: int = 5000,
+    vp_bins: int = 24,
+) -> SessionBundle:
+    code_dir = data_dir / "parquet" / date / code
+    meta = json.loads((code_dir / "meta.json").read_text())
+    session_open_ms = hhmmssms_to_unix_ms(date, meta["regular_session_open_ms"])
+    session_close_ms = hhmmssms_to_unix_ms(date, meta["regular_session_close_ms"])
+
+    candles = build_candles_slice(conn, code=code, date=date, data_dir=data_dir)
+    qr = build_quote_ratio_slice(
+        conn, code=code, date=date, data_dir=data_dir, bucket_ms=1000
+    )
+    di = build_depth_intensity_slice(
+        conn,
+        code=code,
+        date=date,
+        data_dir=data_dir,
+        price_min=price_min,
+        price_max=price_max,
+        depth_bucket_ms=depth_bucket_ms,
+    )
+    vp = build_volume_profile_slice(
+        conn,
+        code=code,
+        date=date,
+        data_dir=data_dir,
+        price_min=price_min,
+        price_max=price_max,
+        vp_bins=vp_bins,
+    )
+    fs = build_fill_strength_slice(conn, code=code, date=date, data_dir=data_dir)
+
+    return SessionBundle(
+        code=code,
+        date=date,
+        session_open_ms=session_open_ms,
+        session_close_ms=session_close_ms,
+        candles=candles,
+        quote_ratio=qr,
+        depth_intensity=di,
+        volume_profile=vp,
+        fill_strength=fs,
     )
