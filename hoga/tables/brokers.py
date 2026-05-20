@@ -128,6 +128,12 @@ class ApiBrokerEntry(BaseModel):
     qty_delta: int
 
 
+# BrokersAt: per-query container.
+#
+# Brokers is the only table whose query returns "N rows from a single
+# point in time" — ts_ms is metadata on the result set, not on each row.
+# Other tables either return one row (ApiOrderbookSnapshot) or rows each
+# carrying their own ts_ms (ApiTrade, ApiCandle), so no container is needed.
 class BrokersAt(BaseModel):
     """Result of `query_at`: ts_ms of the snapshot + all 10 broker entries (or empty)."""
 

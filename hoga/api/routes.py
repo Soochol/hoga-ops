@@ -8,7 +8,6 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from hoga.api.models import (
-    BrokersResponse,
     CandlesResponse,
     Meta,
     OrderbookResponse,
@@ -20,6 +19,7 @@ from hoga.tables import brokers as brokers_tbl
 from hoga.tables import candles as candles_tbl
 from hoga.tables import snapshots as snapshots_tbl
 from hoga.tables import trades as trades_tbl
+from hoga.tables.brokers import BrokersAt
 
 
 def build_router(engine: QueryEngine) -> APIRouter:
@@ -80,13 +80,12 @@ def build_router(engine: QueryEngine) -> APIRouter:
             raise HTTPException(status_code=404, detail=str(e)) from e
         return CandlesResponse(candles=candles_tbl.query_all(engine.conn, path=path))
 
-    @router.get("/brokers", response_model=BrokersResponse)
-    def brokers(code: str, date: str, t: int = Query(...)) -> BrokersResponse:
+    @router.get("/brokers", response_model=BrokersAt)
+    def brokers(code: str, date: str, t: int = Query(...)) -> BrokersAt:
         try:
             path = engine.parquet_dir(date, code) / "brokers.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        result = brokers_tbl.query_at(engine.conn, path=path, t_ms=t)
-        return BrokersResponse(ts_ms=result.ts_ms, entries=result.entries)
+        return brokers_tbl.query_at(engine.conn, path=path, t_ms=t)
 
     return router

@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from hoga.tables.brokers import ApiBrokerEntry
 from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
 from hoga.tables.trades import ApiTrade
@@ -35,11 +34,6 @@ class TradesResponse(BaseModel):
 
 class CandlesResponse(BaseModel):
     candles: list[ApiCandle]
-
-
-class BrokersResponse(BaseModel):
-    ts_ms: int | None
-    entries: list[ApiBrokerEntry]
 
 
 class Meta(BaseModel):
