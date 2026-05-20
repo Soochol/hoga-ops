@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiUrl } from './client';
+import { STOCK_DATES_QUERY_KEY } from './stock-dates';
 import type { SSEEvent } from './types';
 
 let _source: EventSource | null = null;
@@ -54,7 +55,7 @@ export function useEventStream() {
     void open();
     const handler = (e: SSEEvent) => {
       if (e.type === 'inventory_added' || e.type === 'inventory_removed') {
-        qc.invalidateQueries({ queryKey: ['stock-dates'] });
+        qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
       }
     };
     _subscribers.add(handler);

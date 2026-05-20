@@ -3,26 +3,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import duckdb
+
 from hoga.api.timeenc import ms_from_midnight_to_unix_ms
+from hoga.tables import candles as candles_tbl
 from hoga.tables.candles import ApiCandle
 
 
-def build_candles_slice(conn, *, code: str, date: str, data_dir: Path) -> list[ApiCandle]:
-    path = str(data_dir / "parquet" / date / code / "candles.parquet")
-    rows = conn.execute(
-        'SELECT ts_ms, "open", "close", high, low, vol_a, vol_b '
-        "FROM read_parquet(?) ORDER BY ts_ms ASC",
-        [path],
-    ).fetchall()
+def build_candles_slice(
+    conn: duckdb.DuckDBPyConnection, *, code: str, date: str, data_dir: Path
+) -> list[ApiCandle]:
+    path = data_dir / "parquet" / date / code / "candles.parquet"
+    rows = candles_tbl.query_all(conn, path=path)
     return [
-        ApiCandle(
-            ts_ms=ms_from_midnight_to_unix_ms(date, r[0]),
-            open=r[1],
-            close=r[2],
-            high=r[3],
-            low=r[4],
-            vol_a=r[5],
-            vol_b=r[6],
-        )
+        r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
         for r in rows
     ]
