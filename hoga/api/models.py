@@ -66,3 +66,60 @@ class Meta(BaseModel):
     pages_collected: int
     total_unique_events: int
     parser_version: str
+
+
+class QuoteRatioPoint(BaseModel):
+    t: int          # Unix ms
+    bid_total: int
+    ask_total: int
+
+
+class QuoteRatio(BaseModel):
+    bucket_ms: int
+    points: list[QuoteRatioPoint]
+
+
+class DepthIntensity(BaseModel):
+    bucket_ms: int
+    price_min: int
+    price_max: int
+    price_step: int
+    times: list[int]              # Unix ms per bucket
+    bid_grid: list[list[float]]   # len(times) × price_bins
+    ask_grid: list[list[float]]
+
+
+class VolumeProfileBin(BaseModel):
+    price_low: int
+    qty: int
+
+
+class VolumeProfile(BaseModel):
+    bin_count: int
+    price_min: int
+    price_max: int
+    bin_width: int
+    bins: list[VolumeProfileBin]
+
+
+class FillStrengthPoint(BaseModel):
+    t: int
+    buy_qty: int
+    sell_qty: int
+
+
+class FillStrength(BaseModel):
+    bucket_ms: int
+    points: list[FillStrengthPoint]
+
+
+class SessionBundle(BaseModel):
+    code: str
+    date: str
+    session_open_ms: int
+    session_close_ms: int
+    candles: list[ApiCandle]
+    quote_ratio: QuoteRatio
+    depth_intensity: DepthIntensity
+    volume_profile: VolumeProfile
+    fill_strength: FillStrength
