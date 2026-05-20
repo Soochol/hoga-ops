@@ -53,6 +53,7 @@ Build a browser frontend for the existing hoga-ops local API that lets the user:
 | Styling | Tailwind CSS + CSS variables driven by design tokens (§5.1) | Dark theme only in v1. |
 | Date picker | `react-day-picker` v9 | Per-day disable for sparse capture inventory (native `<input type="date">` only supports continuous min/max). Headless — styled with DESIGN.md tokens. ~25 KB gzip. |
 | Router | `react-router` v7 (declarative data routers) | Six routes (`/replay`, `/inventory`, `/capture`, `/search`, `/notes`, `/settings`) under one nav shell; URL state encoding for `/replay` query params (§7). Battle-tested, well-documented. ~25 KB gzip. |
+| Real-time inventory push | Browser native `EventSource` (SSE) + backend `sse-starlette` + `watchdog` | One persistent connection per app for `/api/events`. Backend pushes `inventory_added` / `inventory_removed` events; frontend invalidates the `stock-dates` query and the combobox updates without a manual refresh. |
 | Tests | Vitest + Testing Library; Playwright for one smoke E2E | Match local-tool ethos — light, fast. |
 
 Frontend source lives in `frontend/` at repo root (new directory). It is **not** bundled or served by FastAPI; it's a standalone Vite dev server. Production deploy is out of scope.
@@ -262,7 +263,38 @@ Used by the three cursor-following sidebar cards. All return small responses; cl
 
 All three already exist per the backend spec (`docs/superpowers/specs/2026-05-19-hoga-ops-design.md`). v1 frontend uses them as-is; no signature changes.
 
-### 4.3 Stock-date search
+### 4.3 `GET /api/events` — Server-Sent Events channel (new)
+
+Long-lived HTTP connection. Backend pushes notifications when the data directory changes (a new capture lands, an existing one is removed) so the frontend can refresh its inventory in near-real-time without polling.
+
+```
+Connection: keep-alive
+Content-Type: text/event-stream
+
+event: inventory_added
+data: {"code":"207940","date":"20260521","name":"삼성바이오로직스","captured_at":1747825200000}
+
+event: inventory_removed
+data: {"code":"005930","date":"20260518"}
+```
+
+**v1 event types:**
+- `inventory_added` — a new Stock-Date directory appeared. Payload: `{code, date, name, captured_at}` (`captured_at` is Unix ms when the directory was created).
+- `inventory_removed` — a Stock-Date directory disappeared (user deleted it). Payload: `{code, date}`.
+- `heartbeat` — every 30 s, empty payload, so the frontend can detect a stale connection.
+
+**Backend implementation (out of frontend spec scope, but required dependencies):**
+- `sse-starlette` for `EventSourceResponse` on FastAPI.
+- `watchdog` to observe the `data/parquet/` directory tree and emit `inventory_added` / `inventory_removed` events.
+- The watcher runs in the FastAPI `lifespan` context and feeds an asyncio queue that the SSE endpoint drains.
+
+**Frontend wiring:**
+- `api/sse.ts` exposes a single `useEventStream()` hook. It opens one `EventSource` to `/api/events` for the lifetime of the app (not per tab).
+- On `inventory_added` / `inventory_removed`, the hook calls `queryClient.invalidateQueries(['stock-dates'])` — every place that uses the inventory (combobox dropdown, date picker disabled-day set, nav badge, future Inventory page) refetches automatically.
+- The browser's `EventSource` auto-reconnects on transient network failures. If `heartbeat` misses for >60 s, the hook closes and reopens the connection.
+- v1 does not push UI for incoming events (no toast). The list just silently updates. If the user wants to see what just changed, the future Inventory page will show a "recently added" affordance.
+
+### 4.4 Stock-date search
 
 `/api/stock-dates` already returns the inventory with `name`. Frontend uses it to power name+code search (client-side filter on a small list — single-user local tool).
 
@@ -358,9 +390,11 @@ frontend/
     styles/
       tokens.css             # design tokens (§5.2)
     api/
-      client.ts              # fetch wrapper, base URL from env
+      client.ts              # fetch wrapper, base URL from /config.json
       session.ts             # react-query hook for the /api/session bundle
       useSpot.ts             # ~30 LoC: 30 ms debounce + LRU(100) for cursor fetches
+      sse.ts                 # EventSource hook for /api/events, app-wide singleton
+      stock-dates.ts         # react-query hook for /api/stock-dates inventory
       types.ts               # shared with backend (hand-mirrored)
     state/
       tabs.ts                # Zustand: tabs[], activeTabId, addTab/closeTab/...
@@ -514,7 +548,7 @@ Three parallel spot fetches: orderbook(t), brokers(t), trades(t-5s, t)
 Sidebar cards render from spot responses (each cached in tab.spotLRU)
 ```
 
-- **Bundle prefetch on Load:** one `/api/session` call per selected Stock-Date, fired in parallel with `Promise.allSettled`. Per §6.5: 404 results drop silently from the virtual axis; 5xx results render a red retry segment. Other dates still render either way. Backend computes the 5 bundle slices via concurrent DuckDB queries; total time on localhost ~300–800 ms per Stock-Date.
+- **Bundle prefetch on Load (progressive render):** when the user clicks Load with N Stock-Dates selected, the app fires N `/api/session` calls in parallel and renders **each day's segment as soon as its bundle arrives** — not after all are done. Day 1 may appear at t+500 ms; Day 5 may appear at t+1.2 s. The chart looks like it's filling left-to-right (or in actual response order). Each segment uses `tab.bundles[date]` independently the moment it's populated. The virtual axis preallocates N slots based on `selection`, so partial state has explicit empty slots (not collapsed). Per §6.5: 404 results drop silently from the virtual axis; 5xx results render a red retry segment. Backend computes the 5 bundle slices via concurrent DuckDB queries; total time per Stock-Date on localhost ~300–800 ms.
 - **Bundle lookup is synchronous:** every chart pane reads from `tab.bundles[date]` directly. No React Suspense, no react-query for bundles. Once Load finishes, scrolling and zooming don't fetch anything.
 - **Spot fetches on cursor move:** three small GETs at 30 ms debounce. Each ~500 B – 1 KB. Total per cursor move = ~2 KB on the wire.
 - **Spot LRU cache:** per tab, capped at 100 entries each. Recently visited cursor positions stay hot; far-away keys evict. Cache shape: `Map<keyHash, response>` with LRU eviction. Memory bound: ~200 KB/tab worst case.
@@ -600,6 +634,9 @@ State is serialized to the URL so reloading restores the workspace, the browser 
 | Stock change clears date range? | **Yes** | Avoids silent date-mismatch when switching to a code with a different capture inventory. |
 | URL state encoding? | `?tabs=code:from:to,...&active=N` (always 3 colon parts, comma-separated, zero-indexed active) | URL-safe characters, unambiguous, easy to parse. |
 | Date range hard cap? | **None** | Single-user tool; analyst is in control. Sluggishness past ~10 days is documented, not enforced. |
+| Inventory refresh when a new capture lands during a session? | **SSE auto-push** via `GET /api/events` | Real-time; the user can run the collector in a separate terminal and the combobox updates without a manual refresh. SSE is one-direction, browser-native, and simpler than WebSocket for this use case. |
+| Multi-day bundle fetch: wait or progressive? | **Parallel fetch, progressive render** | Each day appears as soon as its bundle arrives. First data visible in ~500 ms; full chart in ~1 s. |
+| Time encoding across the API? | **Unix epoch ms (UTC) everywhere** | Captured in ADR 0003. Parquet stores native hogaplay encodings; the `Api*` boundary converts. |
 
 ## 10. Risks and mitigations
 
