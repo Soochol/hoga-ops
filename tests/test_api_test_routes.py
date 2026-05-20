@@ -1,0 +1,65 @@
+"""Dev test route: gated, copies fixtures, parses, returns 200."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from hoga.api.app import create_app
+
+
+@pytest.fixture
+def enable_test_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOGA_ENABLE_TEST_ENDPOINTS", "1")
+
+
+def test_add_stockdate_disabled_when_env_unset(tmp_path: Path) -> None:
+    """Without the env var, the route is not mounted -> 404."""
+    app = create_app(data_dir=tmp_path / "data")
+    client = TestClient(app)
+    r = client.post(
+        "/api/test/add-stockdate", params={"code": "005930", "date": "20260520"}
+    )
+    assert r.status_code == 404
+
+
+def test_add_stockdate_copies_and_parses(
+    enable_test_endpoints: None, tmp_path: Path
+) -> None:
+    data_dir = tmp_path / "data"
+    (data_dir / "parquet").mkdir(parents=True)
+    app = create_app(data_dir=data_dir)
+    client = TestClient(app)
+    with client:
+        r = client.post(
+            "/api/test/add-stockdate",
+            params={"code": "005930", "date": "20260520"},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body == {"ok": True, "code": "005930", "date": "20260520"}
+        # Verify the parquet directory was created
+        assert (
+            data_dir / "parquet" / "20260520" / "005930" / "meta.json"
+        ).exists()
+        # And inventory now sees it
+        inv = client.get("/api/stock-dates").json()
+        assert any(
+            e["code"] == "005930" and e["date"] == "20260520" for e in inv
+        )
+
+
+def test_add_stockdate_unknown_code_returns_404(
+    enable_test_endpoints: None, tmp_path: Path
+) -> None:
+    data_dir = tmp_path / "data"
+    (data_dir / "parquet").mkdir(parents=True)
+    app = create_app(data_dir=data_dir)
+    client = TestClient(app)
+    r = client.post(
+        "/api/test/add-stockdate",
+        params={"code": "999999", "date": "20260520"},
+    )
+    assert r.status_code == 404

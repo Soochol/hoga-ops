@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from hoga.api.queries import QueryEngine
 from hoga.api.routes import build_router
 from hoga.api.sse import build_sse
+from hoga.api.test_routes import build_test_router
 from hoga.config import Config
 
 
@@ -38,6 +40,8 @@ def create_app(data_dir: Path) -> FastAPI:
     )
     app.include_router(build_router(engine))
     app.include_router(sse_router)
+    if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
+        app.include_router(build_test_router(data_dir))
     app.state.engine = engine
     return app
 
