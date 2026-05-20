@@ -4,12 +4,11 @@ import VolumeProfileOverlay from '../../src/chart/VolumeProfileOverlay';
 
 beforeAll(() => {
   // jsdom canvas + ResizeObserver stubs.
-  // @ts-expect-error — stubbing jsdom's missing canvas implementation.
   HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
     clearRect: vi.fn(),
     fillRect: vi.fn(),
-    set fillStyle(_v) {},
-  });
+    set fillStyle(_v: string) {},
+  }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
   if (typeof globalThis.ResizeObserver === 'undefined') {
     globalThis.ResizeObserver = class {
       observe() {}
