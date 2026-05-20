@@ -7,6 +7,7 @@
 - `DESIGN.md` (repo root) — design system tokens (colors, fonts, spacing, motion). **Source of truth for any visual question this spec does not answer.**
 - `docs/superpowers/designs/2026-05-20-replay-viewer.html` — interactive HTML mockup of Replay Viewer with realistic dummy data. **Source of truth for layout pixels.**
 - `docs/superpowers/specs/2026-05-19-hoga-ops-design.md` — backend spec.
+- `docs/adr/0003-api-time-encoding.md` — API timestamps are Unix epoch ms (UTC). Backend dependency this spec relies on.
 - `CONTEXT.md` — domain language.
 
 **Authority order if these disagree:** This spec (WHAT and WHY) → `DESIGN.md` (visual tokens) → HTML mockup (pixel reference). If the mockup contradicts `DESIGN.md`, the mockup is stale and must be regenerated.
@@ -51,6 +52,7 @@ Build a browser frontend for the existing hoga-ops local API that lets the user:
 | Client state | Zustand | Per-tab `{selection, cursorMs, bundles[date], spotLRU}` plus `tabs[]` and `activeTabId`. |
 | Styling | Tailwind CSS + CSS variables driven by design tokens (§5.1) | Dark theme only in v1. |
 | Date picker | `react-day-picker` v9 | Per-day disable for sparse capture inventory (native `<input type="date">` only supports continuous min/max). Headless — styled with DESIGN.md tokens. ~25 KB gzip. |
+| Router | `react-router` v7 (declarative data routers) | Six routes (`/replay`, `/inventory`, `/capture`, `/search`, `/notes`, `/settings`) under one nav shell; URL state encoding for `/replay` query params (§7). Battle-tested, well-documented. ~25 KB gzip. |
 | Tests | Vitest + Testing Library; Playwright for one smoke E2E | Match local-tool ethos — light, fast. |
 
 Frontend source lives in `frontend/` at repo root (new directory). It is **not** bundled or served by FastAPI; it's a standalone Vite dev server. Production deploy is out of scope.
@@ -71,6 +73,26 @@ Two-tier API split that matches the UI:
 - **Cursor spot endpoints (§4.2)** — three small per-cursor fetches as the user moves the crosshair. Each request returns one event (or a small window) at the cursor's `t`. Used by the three sidebar cards. Bounded LRU cache on the client.
 
 This split eliminates the previous "many-keyed react-query cache" memory hazard: the bundle is one stable object per (tab, date), and spot fetches are bounded by LRU.
+
+### Time encoding (backend dependency)
+
+**All API responses and requests must use Unix epoch milliseconds (UTC) for every timestamp field**, regardless of how the underlying Parquet tables store time. This is a backend requirement that this spec depends on.
+
+Today the parsed Parquet tables use two different time encodings (verified 2026-05-20 against `hoga/tables/trades.py` and `hoga/tables/candles.py`):
+
+| Source table | `ts_ms` encoding | Example for 15:30:00 |
+|---|---|---|
+| `trades.parquet` (`Trade.ts_ms`) | HHMMSSmmm decimal-packed | `153000000` |
+| `snapshots.parquet` (`Orderbook.ts_ms`) | HHMMSSmmm decimal-packed | `153000000` |
+| `brokers.parquet` (`BrokerRow.ts_ms`) | HHMMSSmmm decimal-packed | `153000000` |
+| `candles.parquet` (`Candle.ts_ms`) | ms-from-midnight | `55800000` |
+| `info.tsv` session_open / session_close | HHMMSSmmm decimal-packed | `153000000` |
+
+Mixing these encodings in the frontend would silently produce wrong cursors and misaligned virtual axes. **The frontend treats every `ts_ms` field from the API as Unix ms** and uses a single time axis throughout (chart, cursor parameter, virtual stitching, URL).
+
+The backend converts at the API boundary, not at the Parquet write boundary — Parquet tables stay untouched; only `ApiTrade`, `ApiCandle`, `ApiOrderbookSnapshot`, `ApiBrokerEntry`, and `Meta.regular_session_open_ms` / `close_ms` change to ship Unix ms. Cursor `t` query params (`/api/orderbook?t=`, etc.) accept Unix ms too. The (date YYYYMMDD + intra-day offset) → Unix ms conversion is one helper in `hoga/api/`.
+
+This is a backend change the frontend depends on, captured as **ADR 0003** (`docs/adr/0003-api-time-encoding.md`).
 
 ### Time domain (what data exists when)
 
@@ -110,9 +132,17 @@ Response shape:
 }
 ```
 
-Backend runs the 5 DuckDB queries in parallel internally and returns one cohesive response (~1–2 MB JSON, ~300–600 KB gzipped). Either all five succeed or the request fails — partial bundles aren't useful.
+Backend runs the 5 DuckDB queries in parallel internally and returns one cohesive response (~4–6 MB JSON uncompressed, ~1–2 MB gzipped on the wire). Either all five succeed or the request fails — partial bundles aren't useful.
 
-**`candles`** — 1-minute OHLCV bars from `candles.parquet`, as-is. Each: `{t, o, c, h, l, vol}`. ~390 rows/day.
+**`candles`** — 1-minute OHLCV bars from `candles.parquet`, ts converted to Unix ms per §4 time encoding. Each: `{t, o, c, h, l, vol}`. ~420 rows/day across 09:00–16:00.
+
+Candles cover the entire trading-active window including the single-price phases:
+- **Continuous Trading 09:00–15:20**: normal OHLC with real intra-minute price variation. ~320 rows.
+- **Closing Auction Window 15:20–15:30**: hogaplay produces a candle per minute even though no continuous trades happen. Empirical pattern (confirmed against the captured pre-market 08:30 candle in `tests/fixtures/tiny_tsv/chart.tsv`): OHLC are all equal to the converging expected match price; `vol_a` reflects accumulated/expected matched quantity for that minute. 10 rows.
+- **Closing Auction Cross 15:30:00**: one candle whose `vol_a` includes the auction cross volume; OHLC sit at the cross price.
+- **After-Hours Trading 15:30–16:00**: 30 candles. OHLC all equal to the closing price (after-hours matching is single-price at the close); `vol_a` reflects each minute's executed after-hours volume.
+
+The Price/Volume/Profile pane therefore shows a normal candle pattern through 15:20, a flat (single-price) segment for the closing Auction Window with non-zero volume bars, a single tall volume bar at 15:30 (auction cross), then a continued flat line through 16:00 with variable volume. This is the data's true shape, not a rendering artifact.
 
 **`quote_ratio`** — bid/ask total quantities sampled in 1 s buckets. Backend ships **raw totals**; client computes the signed imbalance for display (formula below).
 
@@ -141,19 +171,35 @@ A 1.2× sell-heavy state plots at `+0.2`; 1.2× buy-heavy at `−0.2`; balance a
 
 ```json
 "depth_intensity": {
-  "bucket_ms": 1000,
-  "price_min": 67500, "price_max": 71200, "price_step": 50,
-  "times":    [1747526400000, 1747526401000, ...],
+  "bucket_ms": 5000,
+  "price_min": 67500, "price_max": 71200, "price_step": 100,
+  "times":    [1747526400000, 1747526405000, ...],
   "bid_grid": [[0, 0, 12000, 8500, ...], ...],   // shape: len(times) × price_bins
   "ask_grid": [[0, 0, 14000, 9100, ...], ...]    // shape: len(times) × price_bins
 }
 ```
 
-Per cell semantics: for each (time bucket, price bin), `bid_grid[t][p]` is the **max bid quantity** observed at that price across all 10 bid levels during the bucket; `ask_grid[t][p]` is the corresponding **max ask quantity** across all 10 ask levels. Most cells are 0 (each snapshot has 10 nonzero bid levels + 10 nonzero ask levels out of `price_bins` possible).
+**Price binning = KRX tick size (호가단위), exactly.** Every bin represents one tradable price point. No aliasing, no information loss. `price_step` is determined by KRX's price-tier table applied to `price_max` for the Stock-Date:
 
-Source: `snapshots.parquet`. DuckDB unpivots the 20 level columns, splits by side (level 1–10 ask vs level 1–10 bid), bins by price.
+| Price range (KRW) | Tick size (`price_step`) |
+|---|---|
+| `< 2,000` | 1 |
+| `2,000 – 5,000` | 5 |
+| `5,000 – 20,000` | 10 |
+| `20,000 – 50,000` | 50 |
+| `50,000 – 200,000` | 100 |
+| `200,000 – 500,000` | 500 |
+| `≥ 500,000` | 1,000 |
 
-Response size: each grid capped at 200 × 1000 = 200k cells; bundle ships both = up to 400k cells per Stock-Date (~3–4 MB JSON). Still within bundle target. Server enforces cap by widening `bucket_ms` or downsampling `price_bins` if the raw resolution would exceed it.
+`price_bins = (price_max − price_min) / price_step + 1`. Examples: 삼성전자 ~70,000 with day range 67,500–71,200 → tick 100 → 38 bins. SK하이닉스 ~150,000 with day range 145,000–155,000 → tick 100 → 101 bins.
+
+**Tier-crossing edge case:** if the price crosses a tier boundary intra-day (e.g., 49,900 → 50,100 changes tick 50 → 100), the server picks the tick at `price_max` (the larger tick) and rebins lower-price snapshots onto that grid. Snapshots at finer-tick prices get assigned to the nearest coarser bin — minor accuracy loss only for the tier-crossing portion of the day. Rare in practice (most stocks stay in one tier for one day).
+
+Per cell semantics: for each (time bucket, price bin), `bid_grid[t][p]` is the **max bid quantity** observed at that price across all 10 bid levels during the bucket; `ask_grid[t][p]` is the corresponding **max ask quantity** across all 10 ask levels.
+
+Source: `snapshots.parquet`. DuckDB unpivots the 20 level columns, splits by side, bins by tick-aligned price.
+
+**Default time resolution: 5 s buckets.** Trading day 09:00–16:00 has 25,200 s → 5,040 time columns per day. For 삼성전자 (38 bins): 5,040 × 38 × 2 grids = ~383k cells = ~3 MB JSON. For wider-range stocks (~100 bins): ~5 MB. Configurable via `?depth_bucket_ms=` query param (e.g., 1000 for 1 s precision when the analyst wants it; backend caps total cells per grid at 2M to prevent runaway responses, widens bucket if exceeded).
 
 **Auction Window note:** during 15:20–15:30 the orderbook briefly allows `bid_price >= ask_price` (overlapping orders awaiting the single-price cross). In this window both grids may have nonzero values at the same (time, price) cell. The client renders both cells stacked (additive alpha) — the visual overlap is the analyst's signal that the auction is converging.
 
@@ -184,7 +230,25 @@ Response size: each grid capped at 200 × 1000 = 200k cells; bundle ships both =
 
 Source: `trades.parquet` summed per minute. `side = +1` → `buy_qty`, `side = -1` → `sell_qty`, `side = 0` → excluded (per the `CONTEXT.md` Auction Cross rule — this IS an aggressor-based metric). The pane shows stacked bars; the closing Auction Cross at 15:30:00 produces an explicit zero-bar minute followed by `side = 0` excluded — visible as a natural gap.
 
-**Bundle size summary:** stock activity affects only `depth_intensity` (capped) and `quote_ratio` (~25k points = ~200 KB). Bundle is fixed-size regardless of stock activity: ~1–2 MB / Stock-Date.
+**Bundle size summary:**
+
+| Stage | Size per Stock-Date |
+|---|---|
+| Uncompressed JSON (server-side, in-memory build) | **~4–6 MB** (varies with daily price range) |
+| gzip on the wire (FastAPI `GZipMiddleware` enabled) | ~1–2 MB |
+| Parsed JS objects (browser memory) | ~8–14 MB |
+
+**Independent of stock activity.** Every slice is pre-aggregated (per-second buckets for quote_ratio, per-minute candles, fixed bin counts, tick-aligned depth grids), so a wildly active stock (e.g. 삼성전자, ~2M trades/day) and a quiet small-cap (~2,000 trades/day) produce responses of essentially the same byte size given the same daily price range.
+
+**Mild variation with daily price range.** Because `depth_intensity` now uses tick-aligned price bins (§4.1), a stock that traded across a wider price range that day has more bins → slightly larger grid. Concrete examples: 삼성전자 with ~38 ticks/day ≈ 4.5 MB total bundle; SK하이닉스 with ~100 ticks/day ≈ 6 MB. Stays well within the design budget either way.
+
+What **does** vary with activity is **backend compute time**:
+- Active stock: ~500 ms – 1 s per Stock-Date (DuckDB scans more rows)
+- Quiet stock: ~50 – 200 ms per Stock-Date
+
+Captured in §10 Risks. Memory math at 5 tabs × 3 days: 5 × 3 × ~12 MB (parsed in browser) = ~180 MB — well within desktop budget.
+
+Raw trades are deliberately **not** in the bundle. Including them would make response size scale with activity (삼성전자 ≈ 160 MB / day). Cursor-following spot fetches (§4.2) handle the trades-around-cursor use case at ~1 KB per request.
 
 ### 4.2 Spot endpoints (existing, unchanged)
 
@@ -429,7 +493,7 @@ store.setSelection(tabId, sel)
     │
     ▼
 For each Stock-Date in dateRange (parallel):
-    GET /api/session?code&date  ──► one bundle per Stock-Date (~1–2 MB)
+    GET /api/session?code&date  ──► one bundle per Stock-Date (~4–6 MB JSON, ~1–2 MB gzipped on wire)
     │
     ▼
 tab.bundles[date] = bundle    (cached in Zustand per tab, lives until tab close)
@@ -542,8 +606,8 @@ State is serialized to the URL so reloading restores the workspace, the browser 
 - **Bundle compute time.** All 5 DuckDB queries run in parallel; total backend time is dominated by `depth_intensity` (unpivot + split by side + bin, two grids). Spike this first — target <1 s per Stock-Date on a representative captured day. If slower, add server-side caching (`depth_intensity` for the same `(code, date)` is deterministic).
 - **lightweight-charts custom pane limits.** v5 supports multiple panes well, but custom canvas overlays (volume profile, intensity heatmap) must be hand-wired to its time-scale. Spike this first too.
 - **Tab isolation duplicate fetches.** Opening two tabs on the same Stock-Date fetches the same bundle twice. Acceptable for v1 (local API, fast); fix with a shared bundle cache keyed by `(code, date)` if it becomes annoying.
-- **Date range size.** No hard cap, no warning, no modal in v1 — the analyst is in control. 10 days × 1.5 MB = 15 MB per tab is fine; chart rendering past ~10 days starts to feel sluggish; 30+ days will be slow. Documented here, not enforced in the UI. If sluggishness becomes a real complaint, add a soft warning chip in v1+1.
-- **Bundle size for top-tier stocks** (삼성전자, SK하이닉스). `depth_intensity` is capped, `quote_ratio` is bucketed — bundle size is activity-independent. The cost shifts to backend compute time (more snapshots to scan), not to wire size.
+- **Date range size.** No hard cap, no warning, no modal in v1 — the analyst is in control. 10 days × ~12 MB (parsed) = ~120 MB per tab is fine on desktop; chart rendering past ~10 days starts to feel sluggish; 30+ days will be slow. Documented here, not enforced in the UI. If sluggishness becomes a real complaint, add a soft warning chip in v1+1.
+- **Bundle compute time for top-tier stocks** (삼성전자, SK하이닉스). Bundle byte size is ~4–6 MB uncompressed (~1–2 MB gzipped), independent of activity — every slice is pre-aggregated, so the response shape doesn't depend on raw trade count. The cost shifts entirely to backend compute time: active stocks scan more raw rows (~500 ms – 1 s) than quiet stocks (~50 – 200 ms). If active-stock compute time exceeds the <1 s target, cache the deterministic `depth_intensity` per `(code, date)` server-side first.
 
 ## 11. Out of scope, captured for follow-ups
 
