@@ -11,17 +11,22 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from hoga.api.queries import QueryEngine
 from hoga.api.routes import build_router
+from hoga.api.sse import build_sse
 from hoga.config import Config
 
 
 def create_app(data_dir: Path) -> FastAPI:
     engine = QueryEngine(data_dir)
+    sse_router, _bus, observer = build_sse(data_dir / "parquet")
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        observer.start()
         try:
             yield
         finally:
+            observer.stop()
+            observer.join()
             engine.close()
 
     app = FastAPI(title="hoga-ops API", version="0.1.0", lifespan=lifespan)
@@ -32,6 +37,7 @@ def create_app(data_dir: Path) -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(build_router(engine))
+    app.include_router(sse_router)
     app.state.engine = engine
     return app
 
