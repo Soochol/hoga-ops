@@ -35,14 +35,16 @@ const fresh = (): Tab => ({
   bundles: new Map(),
 });
 
-const SOFT_CAP = 8;
+export const TABS_SOFT_CAP = 8;
+
+const initial = fresh();
 
 export const useTabsStore = create<Store>((set, get) => ({
-  tabs: [fresh()],
-  activeTabId: '',
+  tabs: [initial],
+  activeTabId: initial.id,
   newTab: (opts) => {
     let { tabs } = get();
-    if (tabs.length >= SOFT_CAP) {
+    if (tabs.length >= TABS_SOFT_CAP) {
       if (!opts?.confirmEvictOldest) return get().activeTabId;
       tabs = tabs.slice(1);
     }
@@ -51,10 +53,18 @@ export const useTabsStore = create<Store>((set, get) => ({
     return t.id;
   },
   closeTab: (id) => {
-    const { tabs } = get();
+    const { tabs, activeTabId } = get();
     if (tabs.length <= 1) return;
+    const idx = tabs.findIndex((t) => t.id === id);
+    if (idx === -1) return;
     const next = tabs.filter((t) => t.id !== id);
-    set({ tabs: next, activeTabId: next[next.length - 1].id });
+    const wasActive = activeTabId === id;
+    // Closing the active tab moves focus to the neighbor to the right (else left).
+    // Closing a non-active tab leaves activeTabId untouched.
+    const nextActive = wasActive
+      ? (next[idx]?.id ?? next[idx - 1]?.id ?? next[0].id)
+      : activeTabId;
+    set({ tabs: next, activeTabId: nextActive });
   },
   setActive: (id) => set({ activeTabId: id }),
   setSelection: (id, sel) =>
@@ -77,6 +87,3 @@ export const useTabsStore = create<Store>((set, get) => ({
     set({ tabs: [t], activeTabId: t.id });
   },
 }));
-
-// initialize activeTabId on first import
-useTabsStore.setState({ activeTabId: useTabsStore.getState().tabs[0].id });

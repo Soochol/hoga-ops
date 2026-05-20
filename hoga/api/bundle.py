@@ -39,8 +39,8 @@ def build_quote_ratio_slice(
                   ask_q6 + ask_q7 + ask_q8 + ask_q9 + ask_q10) AS ask_total,
                  (bid_q1 + bid_q2 + bid_q3 + bid_q4 + bid_q5 +
                   bid_q6 + bid_q7 + bid_q8 + bid_q9 + bid_q10) AS bid_total,
-                 ts_ms / {bucket_ms} AS bucket,
-                 ROW_NUMBER() OVER (PARTITION BY ts_ms / {bucket_ms}
+                 (ts_ms / {bucket_ms})::BIGINT AS bucket,
+                 ROW_NUMBER() OVER (PARTITION BY (ts_ms / {bucket_ms})::BIGINT
                                    ORDER BY ts_ms DESC) AS rn
           FROM read_parquet(?)
         )
@@ -76,18 +76,22 @@ def tick_size(price_max: int) -> int:
     return 1_000
 
 
-def _build_unpivot_sql(snapshots_path: str) -> str:
-    """Generate the 20-row UNPIVOT (10 ask + 10 bid) for snapshots.parquet."""
+def _build_unpivot_sql() -> str:
+    """Generate the 20-row UNPIVOT (10 ask + 10 bid) against a single `snap` CTE.
+
+    Caller must define a `snap` CTE binding `read_parquet(?)` so the parquet
+    file is scanned once and the path is parameter-bound (not f-string
+    interpolated — which would be an injection surface if `code`/`date`
+    ever flowed in unsanitized).
+    """
     parts = []
     for i in range(1, 11):
         parts.append(
-            f"SELECT ts_ms, 'ask' AS side, ask_p{i} AS price, ask_q{i} AS qty "
-            f"FROM read_parquet('{snapshots_path}')"
+            f"SELECT ts_ms, 'ask' AS side, ask_p{i} AS price, ask_q{i} AS qty FROM snap"
         )
     for i in range(1, 11):
         parts.append(
-            f"SELECT ts_ms, 'bid', bid_p{i}, bid_q{i} "
-            f"FROM read_parquet('{snapshots_path}')"
+            f"SELECT ts_ms, 'bid', bid_p{i}, bid_q{i} FROM snap"
         )
     return "\n  UNION ALL\n  ".join(parts)
 
@@ -125,11 +129,14 @@ def build_depth_intensity_slice(
             break
         depth_bucket_ms *= 2
 
-    # 3. UNPIVOT + bin
-    unpivot_sql = _build_unpivot_sql(snapshots_path)
+    # 3. UNPIVOT + bin (single parquet scan via `snap` CTE; path is parameter-bound)
+    unpivot_sql = _build_unpivot_sql()
     rows = conn.execute(
         f"""
-        WITH unpivoted AS (
+        WITH snap AS (
+          SELECT * FROM read_parquet(?)
+        ),
+        unpivoted AS (
           {unpivot_sql}
         ),
         binned AS (
@@ -144,6 +151,7 @@ def build_depth_intensity_slice(
         SELECT bucket * {depth_bucket_ms}, side, bin_idx, max_qty
         FROM binned ORDER BY bucket, side, bin_idx
         """,
+        [snapshots_path],
     ).fetchall()
 
     # 4. Reshape into grids
