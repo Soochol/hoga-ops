@@ -25,22 +25,17 @@ def engine(tmp_path: Path) -> QueryEngine:
     return QueryEngine(tmp_path / "data")
 
 
-def test_session_candles_slice(engine: QueryEngine, tmp_path: Path) -> None:
-    rows = build_candles_slice(
-        engine.conn, code="003490", date="20260519", data_dir=tmp_path / "data"
-    )
+def test_session_candles_slice(engine: QueryEngine) -> None:
+    rows = build_candles_slice(engine, code="003490", date="20260519")
     assert len(rows) >= 1
     assert all(r.ts_ms > 1_700_000_000_000 for r in rows)
     # OHLCV plausibility
     assert all(r.high >= r.low for r in rows)
 
 
-def test_session_quote_ratio_slice(engine: QueryEngine, tmp_path: Path) -> None:
+def test_session_quote_ratio_slice(engine: QueryEngine) -> None:
     from hoga.api.bundle import build_quote_ratio_slice
-    qr = build_quote_ratio_slice(
-        engine.conn, code="003490", date="20260519",
-        data_dir=tmp_path / "data", bucket_ms=1000,
-    )
+    qr = build_quote_ratio_slice(engine, code="003490", date="20260519", bucket_ms=1000)
     assert qr.bucket_ms == 1000
     assert len(qr.points) >= 1
     # Last-snapshot-per-bucket semantics: timestamps strictly non-decreasing
@@ -50,11 +45,10 @@ def test_session_quote_ratio_slice(engine: QueryEngine, tmp_path: Path) -> None:
     assert all(p.bid_total >= 0 and p.ask_total >= 0 for p in qr.points)
 
 
-def test_session_depth_intensity_bid_ask_split(engine: QueryEngine, tmp_path: Path) -> None:
+def test_session_depth_intensity_bid_ask_split(engine: QueryEngine) -> None:
     from hoga.api.bundle import build_depth_intensity_slice
     di = build_depth_intensity_slice(
-        engine.conn, code="003490", date="20260519",
-        data_dir=tmp_path / "data", depth_bucket_ms=5000,
+        engine, code="003490", date="20260519", depth_bucket_ms=5000,
     )
     # Two grids of equal length
     assert len(di.bid_grid) == len(di.ask_grid)
@@ -66,7 +60,7 @@ def test_session_depth_intensity_bid_ask_split(engine: QueryEngine, tmp_path: Pa
         assert len(di.bid_grid) * len(di.bid_grid[0]) <= 2_000_000
 
 
-def test_depth_intensity_cap_widens_bucket(engine: QueryEngine, tmp_path: Path) -> None:
+def test_depth_intensity_cap_widens_bucket(engine: QueryEngine) -> None:
     """If raw 1-s bucket would exceed cap, bucket widens automatically.
 
     Contract: when default bucket would exceed ``max_cells``, the algorithm
@@ -76,19 +70,15 @@ def test_depth_intensity_cap_widens_bucket(engine: QueryEngine, tmp_path: Path) 
     """
     from hoga.api.bundle import build_depth_intensity_slice
     di = build_depth_intensity_slice(
-        engine.conn, code="003490", date="20260519",
-        data_dir=tmp_path / "data", depth_bucket_ms=1000, max_cells=100,
+        engine, code="003490", date="20260519", depth_bucket_ms=1000, max_cells=100,
     )
     # Bucket must have widened beyond the requested 1000 ms.
     assert di.bucket_ms > 1000
 
 
-def test_session_volume_profile_slice(engine: QueryEngine, tmp_path: Path) -> None:
+def test_session_volume_profile_slice(engine: QueryEngine) -> None:
     from hoga.api.bundle import build_volume_profile_slice
-    vp = build_volume_profile_slice(
-        engine.conn, code="003490", date="20260519",
-        data_dir=tmp_path / "data", vp_bins=24,
-    )
+    vp = build_volume_profile_slice(engine, code="003490", date="20260519", vp_bins=24)
     assert vp.bin_count == 24
     assert len(vp.bins) == 24
     # Bins are price-sorted ascending
@@ -99,15 +89,12 @@ def test_session_volume_profile_slice(engine: QueryEngine, tmp_path: Path) -> No
     assert total >= 0
 
 
-def test_session_fill_strength_excludes_auctions(engine: QueryEngine, tmp_path: Path) -> None:
+def test_session_fill_strength_excludes_auctions(engine: QueryEngine) -> None:
     from hoga.api.bundle import build_fill_strength_slice
-    fs = build_fill_strength_slice(
-        engine.conn, code="003490", date="20260519",
-        data_dir=tmp_path / "data",
-    )
+    fs = build_fill_strength_slice(engine, code="003490", date="20260519")
     assert fs.bucket_ms == 60000
     # Per spec §4.1: fill_strength excludes side = 0
-    trades_path = str(tmp_path / "data" / "parquet" / "20260519" / "003490" / "trades.parquet")
+    trades_path = str(engine.parquet_dir("20260519", "003490") / "trades.parquet")
     expected = engine.conn.execute(
         "SELECT SUM(qty) FROM read_parquet(?) WHERE side != 0",
         [trades_path],

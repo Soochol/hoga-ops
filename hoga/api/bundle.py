@@ -1,10 +1,18 @@
-"""DuckDB-driven session bundle slices, one builder per slice."""
+"""DuckDB-driven session bundle slices, one builder per slice.
+
+Each ``build_*_slice`` takes a :class:`QueryEngine` (per ADR-0001 the
+cross-table coordinator) and resolves its own Parquet path via
+``engine.parquet_dir``. The engine also owns the DuckDB connection.
+
+Why the engine instead of ``(conn, data_dir)``:
+  * single source of truth for path layout (``parquet_dir`` raises
+    ``StockDateNotFound`` consistently);
+  * builders compose into ``build_bundle`` without threading three
+    arguments through every call site;
+  * ``meta.json`` access goes through ``engine.get_meta`` instead of
+    re-reading the file by hand.
+"""
 from __future__ import annotations
-
-import json
-from pathlib import Path
-
-import duckdb
 
 from hoga.api.models import (
     DepthIntensity,
@@ -16,16 +24,17 @@ from hoga.api.models import (
     VolumeProfile,
     VolumeProfileBin,
 )
+from hoga.api.queries import QueryEngine
 from hoga.api.timeenc import hhmmssms_to_unix_ms, ms_from_midnight_to_unix_ms
 from hoga.tables import candles as candles_tbl
 from hoga.tables.candles import ApiCandle
 
 
 def build_candles_slice(
-    conn: duckdb.DuckDBPyConnection, *, code: str, date: str, data_dir: Path
+    engine: QueryEngine, *, code: str, date: str
 ) -> list[ApiCandle]:
-    path = data_dir / "parquet" / date / code / "candles.parquet"
-    rows = candles_tbl.query_all(conn, path=path)
+    path = engine.parquet_dir(date, code) / "candles.parquet"
+    rows = candles_tbl.query_all(engine.conn, path=path)
     return [
         r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
         for r in rows
@@ -33,15 +42,14 @@ def build_candles_slice(
 
 
 def build_quote_ratio_slice(
-    conn: duckdb.DuckDBPyConnection,
+    engine: QueryEngine,
     *,
     code: str,
     date: str,
-    data_dir: Path,
     bucket_ms: int = 1000,
 ) -> QuoteRatio:
-    path = str(data_dir / "parquet" / date / code / "snapshots.parquet")
-    rows = conn.execute(
+    path = str(engine.parquet_dir(date, code) / "snapshots.parquet")
+    rows = engine.conn.execute(
         f"""
         WITH bucketed AS (
           SELECT ts_ms,
@@ -107,23 +115,22 @@ def _build_unpivot_sql() -> str:
 
 
 def build_depth_intensity_slice(
-    conn: duckdb.DuckDBPyConnection,
+    engine: QueryEngine,
     *,
     code: str,
     date: str,
-    data_dir: Path,
     price_min: int | None = None,
     price_max: int | None = None,
     depth_bucket_ms: int = 5000,
     max_cells: int = 2_000_000,
 ) -> DepthIntensity:
-    code_dir = data_dir / "parquet" / date / code
+    code_dir = engine.parquet_dir(date, code)
     candles_path = str(code_dir / "candles.parquet")
     snapshots_path = str(code_dir / "snapshots.parquet")
 
     # 1. Determine price range from candles MIN(low)/MAX(high)
     if price_min is None or price_max is None:
-        row = conn.execute(
+        row = engine.conn.execute(
             "SELECT MIN(low), MAX(high) FROM read_parquet(?)", [candles_path],
         ).fetchone()
         price_min = int(row[0])
@@ -141,7 +148,7 @@ def build_depth_intensity_slice(
 
     # 3. UNPIVOT + bin (single parquet scan via `snap` CTE; path is parameter-bound)
     unpivot_sql = _build_unpivot_sql()
-    rows = conn.execute(
+    rows = engine.conn.execute(
         f"""
         WITH snap AS (
           SELECT * FROM read_parquet(?)
@@ -182,27 +189,26 @@ def build_depth_intensity_slice(
 
 
 def build_volume_profile_slice(
-    conn: duckdb.DuckDBPyConnection,
+    engine: QueryEngine,
     *,
     code: str,
     date: str,
-    data_dir: Path,
     price_min: int | None = None,
     price_max: int | None = None,
     vp_bins: int = 24,
 ) -> VolumeProfile:
-    code_dir = data_dir / "parquet" / date / code
+    code_dir = engine.parquet_dir(date, code)
     candles_path = str(code_dir / "candles.parquet")
     trades_path = str(code_dir / "trades.parquet")
     if price_min is None or price_max is None:
-        row = conn.execute(
+        row = engine.conn.execute(
             "SELECT MIN(low), MAX(high) FROM read_parquet(?)", [candles_path],
         ).fetchone()
         price_min = int(row[0])
         price_max = int(row[1])
     bin_width = (price_max - price_min) / vp_bins
     # No side filter — auction crosses count toward volume profile per spec §4.1
-    rows = conn.execute(
+    rows = engine.conn.execute(
         f"""
         SELECT FLOOR((price - {price_min}) / {bin_width})::BIGINT AS bin_idx, SUM(qty) AS qty
         FROM read_parquet(?)
@@ -228,15 +234,14 @@ def build_volume_profile_slice(
 
 
 def build_fill_strength_slice(
-    conn: duckdb.DuckDBPyConnection,
+    engine: QueryEngine,
     *,
     code: str,
     date: str,
-    data_dir: Path,
     bucket_ms: int = 60_000,
 ) -> FillStrength:
-    path = str(data_dir / "parquet" / date / code / "trades.parquet")
-    rows = conn.execute(
+    path = str(engine.parquet_dir(date, code) / "trades.parquet")
+    rows = engine.conn.execute(
         f"""
         SELECT ((ts_ms / {bucket_ms})::BIGINT * {bucket_ms}) AS bucket,
                SUM(CASE WHEN side = 1 THEN qty ELSE 0 END) AS buy_qty,
@@ -261,44 +266,38 @@ def build_fill_strength_slice(
 
 
 def build_bundle(
-    conn: duckdb.DuckDBPyConnection,
+    engine: QueryEngine,
     *,
     code: str,
     date: str,
-    data_dir: Path,
     price_min: int | None = None,
     price_max: int | None = None,
     depth_bucket_ms: int = 5000,
     vp_bins: int = 24,
 ) -> SessionBundle:
-    code_dir = data_dir / "parquet" / date / code
-    meta = json.loads((code_dir / "meta.json").read_text())
+    meta = engine.get_meta(date, code)
     session_open_ms = hhmmssms_to_unix_ms(date, meta["regular_session_open_ms"])
     session_close_ms = hhmmssms_to_unix_ms(date, meta["regular_session_close_ms"])
 
-    candles = build_candles_slice(conn, code=code, date=date, data_dir=data_dir)
-    qr = build_quote_ratio_slice(
-        conn, code=code, date=date, data_dir=data_dir, bucket_ms=1000
-    )
+    candles = build_candles_slice(engine, code=code, date=date)
+    qr = build_quote_ratio_slice(engine, code=code, date=date, bucket_ms=1000)
     di = build_depth_intensity_slice(
-        conn,
+        engine,
         code=code,
         date=date,
-        data_dir=data_dir,
         price_min=price_min,
         price_max=price_max,
         depth_bucket_ms=depth_bucket_ms,
     )
     vp = build_volume_profile_slice(
-        conn,
+        engine,
         code=code,
         date=date,
-        data_dir=data_dir,
         price_min=price_min,
         price_max=price_max,
         vp_bins=vp_bins,
     )
-    fs = build_fill_strength_slice(conn, code=code, date=date, data_dir=data_dir)
+    fs = build_fill_strength_slice(engine, code=code, date=date)
 
     return SessionBundle(
         code=code,

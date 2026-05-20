@@ -132,10 +132,9 @@ def build_router(engine: QueryEngine) -> APIRouter:
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
         return build_bundle(
-            engine.conn,
+            engine,
             code=code,
             date=date,
-            data_dir=engine.data_dir,
             price_min=price_min,
             price_max=price_max,
             depth_bucket_ms=depth_bucket_ms,
