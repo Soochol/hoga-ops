@@ -41,7 +41,24 @@ export type OrderbookLevel = { side: 'ask' | 'bid'; rank: number; price: number;
 export type OrderbookSnapshot = { ts_ms: number; levels: OrderbookLevel[] };
 
 export type BrokerEntry = { name: string; side: 'buy' | 'sell'; rank: number; qty: number };
-export type Trade = { ts_ms: number; price: number; qty: number; side: -1 | 0 | 1 };
+
+// Mirrors hoga/tables/trades.py::ApiTrade. `side` is -1 / 0 / +1 by convention
+// (sell / auction-cross / buy) but typed as number — the backend does not
+// enforce the literal, and a runtime guard would be more honest than a TS
+// fiction here.
+export type Trade = {
+  ts_ms: number;
+  seq: number;
+  price: number;
+  change_pct: number;
+  qty: number;
+  side: number;
+  cum_vol: number;
+  cum_trades: number;
+  low_so_far: number;
+  high_so_far: number;
+  net_pressure: number;
+};
 
 export type SSEEvent =
   | { type: 'inventory_added'; code: string; date: string }
