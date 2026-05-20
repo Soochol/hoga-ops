@@ -20,7 +20,7 @@ Concretely, for each table:
 | trades | `query_up_to(...) -> list[dict[str, Any]]` + `to_api(row) -> ApiTrade` | `query_up_to(...) -> list[ApiTrade]` (Pydantic inline) |
 | trades | `query_range(...) -> list[dict[str, Any]]` + `to_api` | `query_range(...) -> list[ApiTrade]` |
 | snapshots | `query_at(...) -> dict[str, Any] \| None` + `to_api(row)` | `query_at(...) -> ApiOrderbookSnapshot \| None` |
-| brokers | `query_at(...) -> list[dict[str, Any]]` + `to_api_list(rows)` | `query_at(...) -> tuple[int \| None, list[ApiBrokerEntry]]` (returns `(ts_ms, entries)`; both empty when no data) |
+| brokers | `query_at(...) -> list[dict[str, Any]]` + `to_api_list(rows)` | `query_at(...) -> BrokersAt` (Pydantic container with `ts_ms` + `entries`; both empty when no data) |
 | candles | `query_all(...) -> list[dict[str, Any]]` + `to_api(row)` | `query_all(...) -> list[ApiCandle]` |
 
 `query_time_bounds` and `query_first_ts` (snapshots) keep their primitive return types — they're not entity-shaped.
@@ -1135,6 +1135,7 @@ from hoga.tables.brokers import (
     PARQUET_SCHEMA,
     ApiBrokerEntry,
     BrokerRow,
+    BrokersAt,
     query_at,
     write_parquet,
 )
@@ -1187,29 +1188,30 @@ def test_write_parquet_roundtrip(tmp_path: Path) -> None:
     assert set(tbl.column("side").to_pylist()) == {"sell", "buy"}
 
 
-def test_query_at_returns_ts_and_api_entries(tmp_path: Path) -> None:
+def test_query_at_returns_brokers_at_with_entries(tmp_path: Path) -> None:
     earlier = PARSERS[4](_broker_parts(ts_ms=90019919, seq=912))
     later = PARSERS[4](_broker_parts(ts_ms=90030000, seq=913))
     out = tmp_path / "brokers.parquet"
     write_parquet(earlier + later, out)
     con = duckdb.connect()
-    ts_ms, entries = query_at(con, path=out, t_ms=90025000)
+    result = query_at(con, path=out, t_ms=90025000)
+    assert isinstance(result, BrokersAt)
     # The latest snapshot <= t_ms is the earlier one.
-    assert ts_ms == 90019919
-    assert len(entries) == 10
-    assert all(isinstance(e, ApiBrokerEntry) for e in entries)
-    sides = {e.side for e in entries}
-    assert sides == {"buy", "sell"}
+    assert result.ts_ms == 90019919
+    assert len(result.entries) == 10
+    assert all(isinstance(e, ApiBrokerEntry) for e in result.entries)
+    assert {e.side for e in result.entries} == {"buy", "sell"}
 
 
-def test_query_at_returns_none_and_empty_before_any_data(tmp_path: Path) -> None:
+def test_query_at_returns_empty_brokers_at_before_any_data(tmp_path: Path) -> None:
     rows = PARSERS[4](_broker_parts())
     out = tmp_path / "brokers.parquet"
     write_parquet(rows, out)
     con = duckdb.connect()
-    ts_ms, entries = query_at(con, path=out, t_ms=80000000)
-    assert ts_ms is None
-    assert entries == []
+    result = query_at(con, path=out, t_ms=80000000)
+    assert isinstance(result, BrokersAt)
+    assert result.ts_ms is None
+    assert result.entries == []
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1339,16 +1341,24 @@ class ApiBrokerEntry(BaseModel):
     qty_delta: int
 
 
-# === Query (returns (ts_ms, [ApiBrokerEntry]) directly) ===
+class BrokersAt(BaseModel):
+    """Result of `query_at`: ts_ms of the snapshot + all 10 broker entries (or empty)."""
+
+    ts_ms: int | None
+    entries: list[ApiBrokerEntry]
+
+
+# === Query (returns BrokersAt — Pydantic, consistent with other tables) ===
 
 
 def query_at(
     con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int
-) -> tuple[int | None, list[ApiBrokerEntry]]:
-    """Return (ts_ms, entries) for the latest broker snapshot at ts_ms <= t_ms.
+) -> BrokersAt:
+    """Return the latest broker snapshot at ts_ms <= t_ms.
 
-    Returns ``(None, [])`` if no broker snapshot exists at or before ``t_ms``.
-    Otherwise ``ts_ms`` is the snapshot's timestamp and ``entries`` has all 10
+    If no broker snapshot exists at or before ``t_ms``, returns
+    ``BrokersAt(ts_ms=None, entries=[])``. Otherwise returns a BrokersAt with
+    ``ts_ms`` set to the snapshot's timestamp and ``entries`` holding all 10
     rows (5 sell + 5 buy) as ApiBrokerEntry objects.
     """
     latest = con.execute(
@@ -1356,7 +1366,7 @@ def query_at(
         [str(path), t_ms],
     ).fetchone()
     if latest is None or latest[0] is None:
-        return None, []
+        return BrokersAt(ts_ms=None, entries=[])
     ts_ms_value = int(latest[0])
     rows = con.execute(
         "SELECT side, rank, broker, qty_today, qty_delta FROM read_parquet(?) "
@@ -1369,7 +1379,7 @@ def query_at(
         )
         for r in rows
     ]
-    return ts_ms_value, entries
+    return BrokersAt(ts_ms=ts_ms_value, entries=entries)
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -2182,8 +2192,8 @@ def build_router(engine: QueryEngine) -> APIRouter:
             path = engine.parquet_dir(date, code) / "brokers.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        ts_ms, entries = brokers_tbl.query_at(engine.conn, path=path, t_ms=t)
-        return BrokersResponse(ts_ms=ts_ms, entries=entries)
+        result = brokers_tbl.query_at(engine.conn, path=path, t_ms=t)
+        return BrokersResponse(ts_ms=result.ts_ms, entries=result.entries)
 
     return router
 ```
