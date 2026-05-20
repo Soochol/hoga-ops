@@ -1722,14 +1722,15 @@ from hoga.parser.writer import (
 Replace with:
 
 ```python
-from hoga.parser.info import StockInfo, parse_info_row
 from hoga.tables import brokers, candles, snapshots, trades
 from hoga.tables.brokers import BrokerRow
 from hoga.tables.candles import Candle
-from hoga.tables.dispatch import FieldCountError, parse_row
+from hoga.tables.dispatch import FieldCountError, parse_row, split_row
 from hoga.tables.snapshots import Orderbook
 from hoga.tables.trades import Trade
 ```
+
+`StockInfo` and `parse_info_row` are defined inline in this same file (see Step 5 below — kept here because `StockInfo` is a singleton metadata record per Stock-Date, not a table-shaped concern that warrants its own module).
 
 Then find and replace the four writer calls in `parse_stock_date`:
 
@@ -1763,21 +1764,16 @@ Replace with:
 
 (Rename the local list variables: existing code uses `trades`, `snapshots`, `brokers`, `candles` as both local variable names AND imported module names — that will shadow imports. Rename locals to `trades_list`, `snapshots_list`, `brokers_list`, `candles_list` throughout `_collect_events`, `_collect_candles`, and `parse_stock_date`. Do the rename carefully; check every usage.)
 
-- [ ] **Step 5: Create `hoga/parser/info.py` to host StockInfo + parse_info_row**
+- [ ] **Step 5: Inline `StockInfo` + `parse_info_row` into `hoga/parser/__init__.py`**
 
-Move from `hoga/parser/tsv.py` (current `parse_info_row` + `StockInfo` from `events.py`) into a new file:
+Move from the soon-to-be-deleted `hoga/parser/tsv.py` (current `parse_info_row` + `StockInfo` from `events.py`) directly into the top of `hoga/parser/__init__.py`. Add these definitions right after the imports added in Step 4:
 
 ```python
-"""StockInfo: the singleton metadata row from info.tsv.
-
-Not a table — there is exactly one StockInfo per Stock-Date, written into
-meta.json rather than Parquet. Lives here in parser/ (not tables/) for that reason.
-"""
-from __future__ import annotations
-
-from dataclasses import dataclass
-
-from hoga.tables.dispatch import FieldCountError, split_row
+# === StockInfo: the singleton metadata row from info.tsv ===
+#
+# Not a table — there is exactly one StockInfo per Stock-Date, written into
+# meta.json rather than Parquet. Lives here in parser/__init__.py (not
+# hoga/tables/) for that reason. See docs/adr/0001-table-as-module.md.
 
 INFO_MIN_FIELDS = 22
 
@@ -1826,6 +1822,8 @@ def parse_info_row(line: str) -> StockInfo:
         unknowns=unknowns,
     )
 ```
+
+Make sure `from dataclasses import dataclass` is imported at the top of `parser/__init__.py` (it likely already is — the orchestrator may already use `@dataclass` for return-value containers; if not, add the import).
 
 - [ ] **Step 6: Delete obsolete files**
 
@@ -2250,7 +2248,7 @@ ls hoga/ hoga/parser/ hoga/tables/ hoga/api/
 ```
 
 Expected:
-- `hoga/parser/` contains only `__init__.py` and `info.py`
+- `hoga/parser/` contains only `__init__.py` (StockInfo + parse_info_row inlined; orchestrator is the rest)
 - `hoga/tables/` contains `__init__.py`, `dispatch.py`, `trades.py`, `snapshots.py`, `brokers.py`, `candles.py`
 - `hoga/api/` contains `__init__.py`, `app.py`, `queries.py`, `routes.py`, `models.py`
 - `events.py`, `tsv.py`, `writer.py` are all gone from `hoga/parser/`
