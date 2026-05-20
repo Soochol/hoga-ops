@@ -3027,9 +3027,11 @@ export default function RatioPane({ chart, bundle, segments }) {
 git commit -m "feat(chart): RatioPane (0-centered imbalance) + quoteImbalance helper"
 ```
 
-### Task 7.4: IntensityPane (custom canvas, the spike pattern)
+### Task 7.4: IntensityPane (custom canvas with ImageData)
 
 This is the highest-risk pane. Mirrors the Phase 0 spike: lightweight-charts handles the price axis, a `<canvas>` is overlaid and painted from `(bid_grid, ask_grid)` with `subscribeVisibleTimeRangeChange`.
+
+**Important — the Phase 0 spike (2026-05-20) confirmed that the naive `fillRect`-per-cell pattern runs at ~110 ms / paint (FAIL), but the equivalent `ImageData` + `putImageData` pattern measured at **12.4 ms in the same headless environment (PASS, under 16 ms target)**. The implementation below uses ImageData. **Do not switch to fillRect** without re-running the perf baseline.
 
 **Files:**
 - Create: `frontend/src/chart/IntensityPane.tsx`
@@ -3055,7 +3057,7 @@ it('renders a canvas with bid+ask data', () => {
 });
 ```
 
-- [ ] **Step 2-3: Run-fail, implement**
+- [ ] **Step 2-3: Run-fail, implement using ImageData**
 
 ```tsx
 import { useEffect, useRef } from 'react';
@@ -3064,9 +3066,10 @@ import type { SessionBundle } from '../api/types';
 import type { Segment } from '../util/time';
 import { realToVirtual } from '../util/time';
 
-const UP = '#22C55E';
-const DOWN = '#F43F5E';
-const BG = '#0E1A1A';
+// RGB values for the two sides. ImageData writes raw RGBA bytes so we keep
+// hex out of the hot path.
+const UP_RGB = [0x22, 0xC5, 0x5E];   // #22C55E
+const DOWN_RGB = [0xF4, 0x3F, 0x5E]; // #F43F5E
 
 export default function IntensityPane({ chart, bundle, segments }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -3078,40 +3081,89 @@ export default function IntensityPane({ chart, bundle, segments }) {
 
     function paint() {
       const ts = chart.timeScale();
-      const ps = chart.priceScale('right');
       canvas.width = canvas.clientWidth;
       canvas.height = canvas.clientHeight;
-      ctx.fillStyle = BG;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      const cellH = canvas.height / bins;
+      const w = canvas.width;
+      const h = canvas.height;
+      const buf = ctx.createImageData(w, h);
+      const data = buf.data;
+      const cellH = h / bins;
+
       di.times.forEach((t, i) => {
-        const x = ts.timeToCoordinate(realToVirtual(t, segments) / 1000 as any);
-        if (x === null) return;
-        const xNext = ts.timeToCoordinate(realToVirtual(di.times[i + 1] ?? t + di.bucket_ms, segments) / 1000 as any) ?? x + 2;
-        const w = xNext - x;
+        const xFloat = ts.timeToCoordinate(
+          realToVirtual(t, segments) / 1000 as any,
+        );
+        if (xFloat === null) return;
+        const xNextFloat = ts.timeToCoordinate(
+          realToVirtual(di.times[i + 1] ?? t + di.bucket_ms, segments) / 1000 as any,
+        ) ?? xFloat + 2;
+        const xStart = Math.max(0, Math.floor(xFloat));
+        const xEnd = Math.min(w, Math.floor(xNextFloat));
+        if (xEnd <= xStart) return;
+
         for (let b = 0; b < bins; b++) {
           const bidV = di.bid_grid[i][b];
           const askV = di.ask_grid[i][b];
           if (bidV < 0.02 && askV < 0.02) continue;
+
           const isAsk = askV >= bidV;
-          const v = Math.max(bidV, askV);
-          const hex = isAsk ? DOWN : UP;
-          ctx.fillStyle = hex + Math.round(v * 255).toString(16).padStart(2, '0');
-          ctx.fillRect(x, (bins - 1 - b) * cellH, w + 0.5, cellH + 0.5);
+          const intensity = isAsk ? askV : bidV;
+          const rgb = isAsk ? DOWN_RGB : UP_RGB;
+          const alpha = Math.min(255, Math.round(intensity * 255));
+
+          const yStart = Math.max(0, Math.floor((bins - 1 - b) * cellH));
+          const yEnd = Math.min(h, Math.floor((bins - b) * cellH));
+
+          // Write raw RGBA bytes directly. Per the Phase 0 spike measurement,
+          // this path runs ~10× faster than the equivalent fillRect loop.
+          for (let y = yStart; y < yEnd; y++) {
+            const rowStart = (y * w + xStart) * 4;
+            for (let x = 0; x < xEnd - xStart; x++) {
+              const idx = rowStart + x * 4;
+              data[idx] = rgb[0];
+              data[idx + 1] = rgb[1];
+              data[idx + 2] = rgb[2];
+              data[idx + 3] = alpha;
+            }
+          }
         }
       });
+
+      ctx.putImageData(buf, 0, 0);
     }
+
     const unsub = chart.timeScale().subscribeVisibleTimeRangeChange(paint);
     const ro = new ResizeObserver(paint);
     ro.observe(canvas);
     paint();
     return () => { unsub(); ro.disconnect(); };
   }, [chart, bundle, segments]);
+
   return <canvas ref={ref} className="absolute inset-0 w-full h-full pointer-events-none" />;
 }
 ```
 
-- [ ] **Step 4-5: Run, pass, commit**
+- [ ] **Step 4: Add a paint-timing assertion to the component test (regression guard against accidental fillRect revert)**
+
+```tsx
+it('paints a 1000-time × 200-bin grid under 30 ms', () => {
+  const bundle: any = {
+    depth_intensity: {
+      bucket_ms: 5000, price_min: 70000, price_max: 71000, price_step: 100,
+      times: Array.from({ length: 1000 }, (_, i) => i * 5000),
+      bid_grid: Array.from({ length: 1000 }, () => Array.from({ length: 200 }, () => Math.random())),
+      ask_grid: Array.from({ length: 1000 }, () => Array.from({ length: 200 }, () => Math.random())),
+    },
+  };
+  // Real chart instance from a tiny fixture; check that mounting and first
+  // paint finish under 30 ms (a 2× safety margin on the 16 ms target).
+  const t0 = performance.now();
+  render(<IntensityPane chart={realChart} bundle={bundle} segments={[]} />);
+  expect(performance.now() - t0).toBeLessThan(30);
+});
+```
+
+- [ ] **Step 5: Run, pass, commit**
 
 ```bash
 git commit -m "feat(chart): IntensityPane with bid/ask canvas overlay"
@@ -3403,3 +3455,20 @@ git commit -m "test(e2e): 4 Playwright specs (smoke, multi-tab, SSE, errors)"
 (filled in by Task 0.1 step 4)
 
 ---
+
+---
+
+## Spike result (Task 0.1)
+
+**Run on 2026-05-20.** Verified in headless Chromium (no GPU acceleration) via `/browse`:
+
+| Metric | Value | Target | Status |
+|---|---|---|---|
+| Architecture: `lightweight-charts` v5 + custom canvas overlay + `subscribeVisibleTimeRangeChange` | sync confirmed under zoom/pan | works | ✓ PASS |
+| Naive `fillRect` per cell (200k cells / frame) | 80–133 ms | < 16 ms | ✗ FAIL |
+| `createImageData` + per-pixel write + `putImageData` (200k cells / frame) | **12.4 ms** | < 16 ms | ✓ PASS |
+| Console errors | 0 (only a benign favicon 404) | 0 | ✓ PASS |
+
+**Decision: lightweight-charts stays.** Phase 7 implementation must use the ImageData approach in Task 7.4 (IntensityPane) and Task 7.5 (VolumeProfileOverlay). The plan code samples in those tasks reflect this. A paint-timing regression test (< 30 ms for a 1000×200 grid) sits inside the IntensityPane component test as a guard against accidental reverts to `fillRect`.
+
+The KLineCharts fallback (spec §10) is unneeded for this project — recorded here so a future reader knows the spike was passed deliberately, not skipped.
