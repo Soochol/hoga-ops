@@ -753,10 +753,28 @@ State is serialized to the URL so reloading restores the workspace, the browser 
 
 ## 8. Testing strategy
 
-- **Unit (Vitest):** `timeAxis.ts` (virtual↔real conversion, day boundaries, edge cases at session open/close), `state/tabs.ts` (add/close/active, 8-tab limit, bundle storage, cursor persistence on mouse leave), `useSpot` hook (debounce timing, LRU eviction at 100 entries), `quoteImbalance` formula, URL serialization round-trip, formatters.
-- **Component (Testing Library):** TabStrip (active state, close, add, drag-reorder), StockCombobox (filter, select), OrderbookTable, BrokerNetTable, FillTape with fixture JSON. Chart panes are NOT unit-tested (canvas) — covered by E2E screenshot only.
-- **E2E (Playwright, one smoke):** open a tab, click Load, assert `/api/session` fires once per Stock-Date, assert all 4 chart panes render from the bundle, move crosshair and assert exactly 3 spot fetches per debounce tick (orderbook + brokers + trades), assert sidebar updates, open a second tab with a different code, assert bundle isolation (data doesn't leak between tabs). Run against a backend started with a test fixture data dir.
-- **Backend additions:** the new `/api/session` endpoint gets DuckDB-driven unit tests in `tests/api/` covering each of the 5 bundle slices independently, plus one integration test asserting the full bundle structure. Existing per-cursor endpoints (`orderbook`, `brokers`, `trades`) already have tests in current `tests/`.
+- **Unit (Vitest):**
+  - `timeAxis.ts` — virtual↔real conversion, day boundaries, edge cases at session open/close, Unix-ms encoding round-trip (ADR 0003).
+  - `state/tabs.ts` — add/close/active, 8-tab limit, last-tab close X disabled, bundle storage, cursor persistence on mouse leave, no cross-tab cursor sync.
+  - `useSpot` hook — 30 ms debounce timing, LRU eviction at 100 entries, in-flight cancellation on rapid cursor moves.
+  - `quoteImbalance` formula — 0 at balance, signed offset semantics.
+  - URL serialization round-trip — `?tabs=code:from:to,...&active=N` parse + emit, malformed-input fallback.
+  - Multi-day unified price grid math — union of `price_min`/`price_max` across selected Stock-Dates with KRX tick-tier table applied.
+  - Formatters — KRW, qty (K/M auto), timestamp (Unix ms → `YYYY-MM-DD HH:MM`).
+- **Component (Testing Library):** TabStrip (active state, close, add, drag-reorder via `@dnd-kit`), StockCombobox (name + code search, sort order, dropdown open/close), DateRangePicker (disabled non-captured days, stock-change resets dates), OrderbookTable (20 rows, normalized depth bars), BrokerNetTable (10 rows, 4-char names, signed numbers), FillTape (newest-top, ▲/▼ icons, empty state, auction marker), OnboardingCard (state-to-step mapping). Chart panes are NOT unit-tested (canvas) — covered by E2E screenshot only.
+- **E2E (Playwright, one smoke):**
+  - Open a tab, click Load with two Stock-Dates, assert two `/api/session` requests fire in parallel and segments render progressively as each arrives.
+  - Assert all **5 chart panes** render from the bundles (candle, volume, ratio, intensity, fill_strength).
+  - Move crosshair across day boundary, assert exactly 3 spot fetches per debounced tick (orderbook + brokers + trades).
+  - Assert sidebar cards update; verify `cursorMs` survives the mouse leaving the chart and entering the sidebar.
+  - Open a second tab with a different code, assert bundle isolation (no leakage of data, cursor, or LRU between tabs).
+  - Trigger SSE `inventory_added` (against fixture-controlled backend), assert combobox refreshes.
+  - Run against a backend started with a test fixture data dir.
+- **Backend additions:**
+  - `/api/session` — DuckDB-driven unit tests in `tests/api/` covering each of the 5 bundle slices independently, plus one integration test asserting the full bundle structure and Unix-ms encoding (ADR 0003).
+  - `/api/stock-dates` extended — assert new fields (price_min/max, captured_at, total_volume, pages_collected, file_size_bytes, OHLC) are present and correctly derived.
+  - `/api/events` SSE — assert the endpoint streams `inventory_added` when a new directory is added to the test fixture data dir, and emits `heartbeat` at the 30 s cadence.
+  - Existing per-cursor endpoints (`orderbook`, `brokers`, `trades`) already have tests in current `tests/`; extend to assert Unix-ms encoding in responses.
 
 ## 9. Open questions resolved
 
