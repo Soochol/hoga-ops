@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter
 from sse_starlette.sse import EventSourceResponse
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
+
+logger = logging.getLogger(__name__)
 
 
 class _Bus:
@@ -28,7 +31,10 @@ class _Bus:
             try:
                 q.put_nowait(evt)
             except asyncio.QueueFull:
-                pass
+                # Slow subscriber: log so the consistency gap is visible.
+                # CONTEXT.md inventory events are advisory; the client always
+                # has /api/stock-dates as the authoritative re-sync path.
+                logger.warning("SSE queue full, dropped event: %s", evt)
 
 
 class _InventoryHandler(FileSystemEventHandler):

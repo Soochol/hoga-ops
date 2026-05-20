@@ -27,7 +27,7 @@ export function useCursor(): {
 
 export function useOrderbookAtCursor() {
   const { tabId, code, date, cursorMs } = useCursor();
-  const key = code && date && cursorMs ? `${tabId}|ob|${code}|${date}|${cursorMs}` : null;
+  const key = code && date && Number.isFinite(cursorMs) ? `${tabId}|ob|${code}|${date}|${cursorMs}` : null;
   const { data } = useSpot(key, () =>
     apiGet<OrderbookResponse>(`/api/orderbook?code=${code}&date=${date}&t=${cursorMs}`).then(
       (r) => r.snapshot,
@@ -41,7 +41,7 @@ export function useOrderbookAtCursor() {
 
 export function useBrokersAtCursor() {
   const { tabId, code, date, cursorMs } = useCursor();
-  const key = code && date && cursorMs ? `${tabId}|br|${code}|${date}|${cursorMs}` : null;
+  const key = code && date && Number.isFinite(cursorMs) ? `${tabId}|br|${code}|${date}|${cursorMs}` : null;
   const { data } = useSpot(key, () =>
     apiGet<{ ts_ms: number | null; entries: BrokerEntry[] }>(
       `/api/brokers?code=${code}&date=${date}&t=${cursorMs}`,
@@ -56,7 +56,7 @@ export function useBrokersAtCursor() {
 export function useTradesAroundCursor(windowMs: number = 5000, limit: number = 20) {
   const { tabId, code, date, cursorMs } = useCursor();
   const key =
-    code && date && cursorMs
+    code && date && Number.isFinite(cursorMs)
       ? `${tabId}|tr|${code}|${date}|${cursorMs}|${windowMs}|${limit}`
       : null;
   const { data } = useSpot(key, () =>
