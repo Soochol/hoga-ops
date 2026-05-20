@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
 import { type Segment, virtualToReal } from '../util/time';
+import { resolveTokens } from '../util/tokens';
 import { useViewportStore } from '../state/viewport';
 import CandlePane from './CandlePane';
 import VolumePane from './VolumePane';
@@ -10,30 +11,12 @@ import IntensityPane from './IntensityPane';
 import FillStrengthPane from './FillStrengthPane';
 import VolumeProfileOverlay from './VolumeProfileOverlay';
 
-/**
- * Resolves a CSS custom property from `:root` to a concrete string value
- * (e.g. "#13131C"). lightweight-charts paints to a canvas, which can't
- * interpret CSS variables — so we resolve the design tokens at chart-create
- * time. Tokens are defined in `src/styles/tokens.css`.
- */
-function resolveTokens() {
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
-    // SSR / non-DOM safety net. The chart only constructs in the browser,
-    // but TS doesn't know that.
-    return { bgCard: '#13131C', fg: '#E2E8F0', grid: '#1A1A26', border: '#1F1F2A' };
-  }
-  const cs = getComputedStyle(document.documentElement);
-  const v = (name: string, fallback: string) => {
-    const raw = cs.getPropertyValue(name).trim();
-    return raw.length > 0 ? raw : fallback;
-  };
-  return {
-    bgCard: v('--bg-card', '#13131C'),
-    fg: v('--fg', '#E2E8F0'),
-    grid: v('--grid', '#1A1A26'),
-    border: v('--border', '#1F1F2A'),
-  };
-}
+const CHART_TOKEN_SPEC = {
+  bgCard: ['--bg-card', '#13131C'],
+  fg: ['--fg', '#E2E8F0'],
+  grid: ['--grid', '#1A1A26'],
+  border: ['--border', '#1F1F2A'],
+} as const;
 
 export type ChartStageProps = {
   /**
@@ -95,7 +78,7 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const tokens = resolveTokens();
+    const tokens = resolveTokens(CHART_TOKEN_SPEC);
 
     const c = createChart(containerRef.current, {
       layout: {

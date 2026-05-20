@@ -2,23 +2,12 @@ import { useEffect } from 'react';
 import { HistogramSeries, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
 import { type Segment, realToVirtual } from '../util/time';
+import { resolveTokens } from '../util/tokens';
 
-/**
- * Resolves DESIGN.md up/down color tokens from `:root` to concrete strings.
- * lightweight-charts paints to a canvas and cannot interpret `var(--…)`,
- * so we resolve once on mount and pass concrete hex values to the series.
- * Tokens live in `src/styles/tokens.css`.
- */
-function resolveTokens(): { up: string; down: string } {
-  if (typeof document === 'undefined') {
-    return { up: '#22C55E', down: '#F43F5E' };
-  }
-  const cs = getComputedStyle(document.documentElement);
-  return {
-    up: cs.getPropertyValue('--up').trim() || '#22C55E',
-    down: cs.getPropertyValue('--down').trim() || '#F43F5E',
-  };
-}
+const TOKEN_SPEC = {
+  up: ['--up', '#22C55E'],
+  down: ['--down', '#F43F5E'],
+} as const;
 
 type Props = {
   chart: IChartApi;
@@ -40,7 +29,7 @@ type Props = {
  */
 export default function VolumePane({ chart, bundle, segments, paneIndex = 0 }: Props) {
   useEffect(() => {
-    const { up, down } = resolveTokens();
+    const { up, down } = resolveTokens(TOKEN_SPEC);
     const series = chart.addSeries(
       HistogramSeries,
       {

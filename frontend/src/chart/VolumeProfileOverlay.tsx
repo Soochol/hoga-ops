@@ -3,13 +3,15 @@ import { createPortal } from 'react-dom';
 import type { IChartApi } from 'lightweight-charts';
 import type { SessionBundle, VolumeProfileBin } from '../api/types';
 import { type Segment, realToVirtual } from '../util/time';
+import { resolveTokens } from '../util/tokens';
 
-// Use --accent (teal) at varied opacity. Canvas can't read CSS vars, so we
-// resolve once and write RGBA bytes.
+const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
+
+// Canvas can't read CSS vars; resolve once to hex, then parse to RGB bytes
+// for the ImageData / RGBA paint path.
 function resolveAccentRGB(): [number, number, number] {
-  if (typeof document === 'undefined') return [0x14, 0xb8, 0xa6];
-  const hex = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-  if (!hex || hex.length < 7) return [0x14, 0xb8, 0xa6];
+  const hex = resolveTokens(TOKEN_SPEC).accent;
+  if (hex.length < 7) return [0x14, 0xb8, 0xa6];
   return [
     parseInt(hex.slice(1, 3), 16),
     parseInt(hex.slice(3, 5), 16),

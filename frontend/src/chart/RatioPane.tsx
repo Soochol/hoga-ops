@@ -3,16 +3,9 @@ import { LineSeries, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
 import { type Segment, realToVirtual } from '../util/time';
 import { quoteImbalance } from '../util/imbalance';
+import { resolveTokens } from '../util/tokens';
 
-/**
- * Resolves the DESIGN.md `--accent` token from `:root` to a concrete hex.
- * lightweight-charts paints to a canvas and cannot interpret `var(--…)`,
- * so we resolve once on mount.
- */
-function resolveAccent(): string {
-  if (typeof document === 'undefined') return '#14B8A6';
-  return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#14B8A6';
-}
+const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
 
 type Props = {
   chart: IChartApi;
@@ -34,7 +27,7 @@ type Props = {
  */
 export default function RatioPane({ chart, bundle, segments, paneIndex = 0 }: Props) {
   useEffect(() => {
-    const accent = resolveAccent();
+    const { accent } = resolveTokens(TOKEN_SPEC);
     const series = chart.addSeries(
       LineSeries,
       {

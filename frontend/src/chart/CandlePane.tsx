@@ -2,28 +2,13 @@ import { useEffect } from 'react';
 import { CandlestickSeries, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
 import { type Segment, realToVirtual } from '../util/time';
+import { resolveTokens } from '../util/tokens';
 
-/**
- * Resolves DESIGN.md color tokens from `:root` to concrete strings.
- * lightweight-charts paints to a canvas and cannot interpret `var(--…)`,
- * so we resolve once on mount and pass concrete hex values to the series.
- * Tokens live in `src/styles/tokens.css`.
- */
-function resolveTokens(): { up: string; down: string; muted: string } {
-  if (typeof document === 'undefined') {
-    return { up: '#22C55E', down: '#F43F5E', muted: '#94A3B8' };
-  }
-  const cs = getComputedStyle(document.documentElement);
-  const v = (n: string, fallback: string) => {
-    const raw = cs.getPropertyValue(n).trim();
-    return raw.length > 0 ? raw : fallback;
-  };
-  return {
-    up: v('--up', '#22C55E'),
-    down: v('--down', '#F43F5E'),
-    muted: v('--fg-dim', '#94A3B8'),
-  };
-}
+const TOKEN_SPEC = {
+  up: ['--up', '#22C55E'],
+  down: ['--down', '#F43F5E'],
+  muted: ['--fg-dim', '#94A3B8'],
+} as const;
 
 type Props = {
   chart: IChartApi;
@@ -46,7 +31,7 @@ type Props = {
  */
 export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: Props) {
   useEffect(() => {
-    const { up, down, muted } = resolveTokens();
+    const { up, down, muted } = resolveTokens(TOKEN_SPEC);
     const series = chart.addSeries(
       CandlestickSeries,
       {
