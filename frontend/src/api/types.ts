@@ -63,4 +63,5 @@ export type Trade = {
 export type SSEEvent =
   | { type: 'inventory_added'; code: string; date: string }
   | { type: 'inventory_removed'; code: string; date: string }
-  | { type: 'heartbeat' };
+  | { type: 'heartbeat' }
+  | { type: 'disconnected' };
