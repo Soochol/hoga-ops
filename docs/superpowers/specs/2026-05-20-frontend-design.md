@@ -53,6 +53,7 @@ Build a browser frontend for the existing hoga-ops local API that lets the user:
 | Styling | Tailwind CSS + CSS variables driven by design tokens (§5.1) | Dark theme only in v1. |
 | Date picker | `react-day-picker` v9 | Per-day disable for sparse capture inventory (native `<input type="date">` only supports continuous min/max). Headless — styled with DESIGN.md tokens. ~25 KB gzip. |
 | Router | `react-router` v7 (declarative data routers) | Six routes (`/replay`, `/inventory`, `/capture`, `/search`, `/notes`, `/settings`) under one nav shell; URL state encoding for `/replay` query params (§7). Battle-tested, well-documented. ~25 KB gzip. |
+| Tab drag-reorder | `@dnd-kit/core` + `@dnd-kit/sortable` | Smooth tab reordering with proper drop indicators, ESC-to-cancel, keyboard accessibility. Native HTML5 drag is too rough at this UX level. ~20 KB gzip combined. |
 | Real-time inventory push | Browser native `EventSource` (SSE) + backend `sse-starlette` + `watchdog` | One persistent connection per app for `/api/events`. Backend pushes `inventory_added` / `inventory_removed` events; frontend invalidates the `stock-dates` query and the combobox updates without a manual refresh. |
 | Tests | Vitest + Testing Library; Playwright for one smoke E2E | Match local-tool ethos — light, fast. |
 
@@ -180,7 +181,7 @@ A 1.2× sell-heavy state plots at `+0.2`; 1.2× buy-heavy at `−0.2`; balance a
 }
 ```
 
-**Price binning = KRX tick size (호가단위), exactly.** Every bin represents one tradable price point. No aliasing, no information loss. `price_step` is determined by KRX's price-tier table applied to `price_max` for the Stock-Date:
+**Price binning = KRX tick size (호가단위), exactly.** Every bin represents one tradable price point. No aliasing, no information loss. `price_step` is determined by KRX's price-tier table applied to the request's effective `price_max`:
 
 | Price range (KRW) | Tick size (`price_step`) |
 |---|---|
@@ -195,6 +196,20 @@ A 1.2× sell-heavy state plots at `+0.2`; 1.2× buy-heavy at `−0.2`; balance a
 `price_bins = (price_max − price_min) / price_step + 1`. Examples: 삼성전자 ~70,000 with day range 67,500–71,200 → tick 100 → 38 bins. SK하이닉스 ~150,000 with day range 145,000–155,000 → tick 100 → 101 bins.
 
 **Tier-crossing edge case:** if the price crosses a tier boundary intra-day (e.g., 49,900 → 50,100 changes tick 50 → 100), the server picks the tick at `price_max` (the larger tick) and rebins lower-price snapshots onto that grid. Snapshots at finer-tick prices get assigned to the nearest coarser bin — minor accuracy loss only for the tier-crossing portion of the day. Rare in practice (most stocks stay in one tier for one day).
+
+**Multi-day unified price grid.** When the user selects N Stock-Dates, the four chart panes must align on a single y-axis so the analyst can compare price levels across days. The client computes the **union price range** across all selected dates using `price_min` / `price_max` fields already present in each `/api/stock-dates` inventory entry (so no extra round trip), then includes that range as query params when fetching each per-date session bundle:
+
+```
+GET /api/session?code=005930&date=20260518&price_min=67500&price_max=72500
+GET /api/session?code=005930&date=20260519&price_min=67500&price_max=72500
+GET /api/session?code=005930&date=20260520&price_min=67500&price_max=72500
+```
+
+Backend bins all three days onto the same tick-aligned grid (e.g., 67,500–72,500 / tick 100 → 51 bins). Each day's `depth_intensity` arrives with identical `times` length (per day's 09:00–16:00) but **identical** `price_min`/`price_max`/`price_step` and shared bin indices. The client stacks them along the compressed virtual time axis with perfect vertical alignment.
+
+For single-Stock-Date loads, query params are omitted and the backend uses that day's natural range — backward compatible with the simple case.
+
+This requires `/api/stock-dates` to include `price_min` / `price_max` per entry (small additions to existing inventory model, ~16 bytes per entry). Captured as backend dependency in §11 follow-ups if missing.
 
 Per cell semantics: for each (time bucket, price bin), `bid_grid[t][p]` is the **max bid quantity** observed at that price across all 10 bid levels during the bucket; `ask_grid[t][p]` is the corresponding **max ask quantity** across all 10 ask levels.
 
@@ -328,7 +343,7 @@ data: {"code":"005930","date":"20260518"}
 - Tab content: status dot (loaded / loading / empty), code (mono, teal), name, date-range hint.
 - Active tab has a 2 px teal top accent and background matching the toolbar; inactive tabs are dimmer.
 - `[+ 새 분석]` button creates a new empty tab. Soft cap of 8 simultaneous tabs (shown as `N / 8 open`) to bound memory; the 9th opens a confirmation modal warning that the oldest tab will be evicted.
-- Tabs are reorderable via drag (native HTML5 drag-and-drop, no library — 8 tab max keeps it simple) and closeable via the X button shown on hover.
+- Tabs are reorderable via drag (powered by `@dnd-kit/sortable` — smooth drop indicators, ESC-to-cancel, sensible touch/keyboard fallbacks even though v1 is desktop-only) and closeable via the X button shown on hover.
 - **The last remaining tab has its close X disabled** (hidden on hover, no click affordance). The app never reaches a zero-tab state and never re-creates a tab the user just tried to close. If the user wants to clear everything, they leave one empty tab — explicitly the intended "blank slate".
 
 **Toolbar (60 px, per-tab):**
@@ -484,6 +499,7 @@ type Store = {
 - **Bundles** are tab-scoped (`tab.bundles[date]`). Closing a tab drops its bundles entirely. Two tabs holding the same Stock-Date fetch twice — acceptable in v1 (shared series cache is a follow-up, §11).
 - **Spot LRU** is per tab, capped at 100 entries. Trivial memory bound (~200 KB worst case); evicted on tab close.
 - **Cursor follows the mouse only**; when the mouse leaves the chart, `cursorMs` stays at its last value and the sidebar keeps showing that data. No pin/lock concept in v1.
+- **No cross-tab cursor sync.** Each tab's `cursorMs` is fully independent — moving the mouse in Tab A does not move the cursor in Tab B, even if both tabs hold the same code or the same Stock-Date. Multi-tab is an independent-session pattern; sync would couple tabs that the user explicitly opened to be parallel.
 
 **Tab UI by state:** before a tab has loaded data, the workarea (chart + sidebar) renders an **onboarding card** that walks the user through the required steps. The card replaces both the chart panes and the sidebar; once `status === 'loaded'`, the card disappears and the chart + sidebar take over.
 
@@ -659,11 +675,15 @@ State is serialized to the URL so reloading restores the workspace, the browser 
 | Inventory refresh when a new capture lands during a session? | **SSE auto-push** via `GET /api/events` | Real-time; the user can run the collector in a separate terminal and the combobox updates without a manual refresh. SSE is one-direction, browser-native, and simpler than WebSocket for this use case. |
 | Multi-day bundle fetch: wait or progressive? | **Parallel fetch, progressive render** | Each day appears as soon as its bundle arrives. First data visible in ~500 ms; full chart in ~1 s. |
 | Time encoding across the API? | **Unix epoch ms (UTC) everywhere** | Captured in ADR 0003. Parquet stores native hogaplay encodings; the `Api*` boundary converts. |
+| Cursor sync between tabs? | **No** — fully independent per tab | Multi-tab is an independent-session pattern by design. Sync would silently couple tabs the user opened to be parallel. |
+| Multi-day depth_intensity / matprofile alignment? | **Backend unifies on a single tick-aligned price grid via `price_min` / `price_max` query params** | Same y-axis across all selected dates so heatmap cells align cleanly across day boundaries. Requires `/api/stock-dates` to ship per-Stock-Date price range. |
 
 ## 10. Risks and mitigations
 
 - **Bundle compute time.** All 5 DuckDB queries run in parallel; total backend time is dominated by `depth_intensity` (unpivot + split by side + bin, two grids). Spike this first — target <1 s per Stock-Date on a representative captured day. If slower, add server-side caching (`depth_intensity` for the same `(code, date)` is deterministic).
-- **lightweight-charts custom pane limits.** v5 supports multiple panes well, but custom canvas overlays (volume profile, intensity heatmap) must be hand-wired to its time-scale. Spike this first too.
+- **lightweight-charts custom pane limits.** v5 supports multiple panes natively for candles/line/histogram, but the three custom visualizations (호가잔량 intensity heatmap, 매물대 horizontal histogram overlay, 체결 강도 stacked buy/sell bars) require hand-drawn `<canvas>` layers wired to the chart's `timeScale` and `priceScale`. Three risks: (a) keeping the overlay's pixel coordinates in sync with the chart on zoom/pan via `subscribeVisibleTimeRangeChange` and `subscribeCrosshairMove`; (b) rendering performance for the heatmap (~200k cells per Stock-Date, must repaint on every zoom change); (c) Z-order stacking against the chart's internal layers.
+
+   **Mandatory pre-implementation spike (1–2 days).** Before the writing-plans phase starts, build a throwaway prototype with one Stock-Date of real captured data showing: candles + volume in lightweight-charts native, the intensity heatmap as a Canvas overlay, and one cursor crosshair crossing both. Confirm zoom/pan stays in sync, repaint stays under 16 ms (60 fps) at the cap'd cell count, and overlay z-order works. If the spike fails or hits a wall on overlay sync, the fallback library is **KLineCharts** (built-in custom series — heatmap, volume profile, fill strength all expressible as `IndicatorSeries`) at the cost of a less TradingView-shaped feel; second fallback is ECharts with bigger bundle / different visual.
 - **Tab isolation duplicate fetches.** Opening two tabs on the same Stock-Date fetches the same bundle twice. Acceptable for v1 (local API, fast); fix with a shared bundle cache keyed by `(code, date)` if it becomes annoying.
 - **Date range size.** No hard cap, no warning, no modal in v1 — the analyst is in control. 10 days × ~12 MB (parsed) = ~120 MB per tab is fine on desktop; chart rendering past ~10 days starts to feel sluggish; 30+ days will be slow. Documented here, not enforced in the UI. If sluggishness becomes a real complaint, add a soft warning chip in v1+1.
 - **Bundle compute time for top-tier stocks** (삼성전자, SK하이닉스). Bundle byte size is ~4–6 MB uncompressed (~1–2 MB gzipped), independent of activity — every slice is pre-aggregated, so the response shape doesn't depend on raw trade count. The cost shifts entirely to backend compute time: active stocks scan more raw rows (~500 ms – 1 s) than quiet stocks (~50 – 200 ms). If active-stock compute time exceeds the <1 s target, cache the deterministic `depth_intensity` per `(code, date)` server-side first.
