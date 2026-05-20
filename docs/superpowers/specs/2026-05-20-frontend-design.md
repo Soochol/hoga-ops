@@ -266,7 +266,13 @@ The Value Area is the cumulative top-volume bins covering 70% of day volume, sca
 }
 ```
 
-Source: `trades.parquet` summed per minute. `side = +1` → `buy_qty`, `side = -1` → `sell_qty`, `side = 0` → excluded (per the `CONTEXT.md` Auction Cross rule — this IS an aggressor-based metric). The pane shows stacked bars; the closing Auction Cross at 15:30:00 produces an explicit zero-bar minute followed by `side = 0` excluded — visible as a natural gap.
+Source: `trades.parquet` summed per minute. `side = +1` → `buy_qty`, `side = -1` → `sell_qty`, `side = 0` → excluded (per the `CONTEXT.md` Auction Cross rule — this IS an aggressor-based metric).
+
+**Pane rendering:**
+- Vertical bars centered on `y = 0`. Each minute draws a **buy bar pointing up** (height = `buy_qty`, color `--up`) and a **sell bar pointing down** (height = `sell_qty`, color `--down`). The "매수 우세 = 위" convention matches the quote_ratio pane for consistency across the chart stage.
+- Y-axis is **absolute volume** (shares), auto-fitted to the actual data range with K/M auto-format on the tick labels (e.g., `2.4M`, `300K`). Not a percentage — analysts want to read magnitude directly.
+- Bar width ~70% of a minute slot. One bar pair per minute.
+- **Empty minutes:** the closing Auction Window 15:20–15:30 has no `side ≠ 0` trades → no bars (natural visible gap). The 15:30:00 auction cross is `side = 0` and is excluded → still no bar. After-Hours Trading 15:30:00–16:00:00 has continuous-trading rows again → bars resume, typically smaller volumes than the open day.
 
 **Bundle size summary:**
 
@@ -393,8 +399,15 @@ The viewport-dependent current price + viewport-dependent delta + cursor-depende
 
 **Workarea:**
 - Left 1fr / right 320 px sidebar.
-- Left: 4 panes stacked vertically with `grid-template-rows: 1fr 0.5fr 1fr 0.6fr` — Price/Volume/Profile, Bid/Ask Ratio, Depth Intensity, Fill Strength.
+- Left: **5 panes stacked vertically** with `grid-template-rows: 1.4fr 0.3fr 0.4fr 0.8fr 0.4fr` (~42% / 9% / 12% / 24% / 12% of left area height):
+  1. **Price + Matprofile overlay** — candles with the horizontal-bar 매물대 (volume profile) overlay drawn behind them. POC + VAH line live here.
+  2. **Volume** — per-minute total volume as a vertical bar, colored to match that minute's candle direction (green if close ≥ open, rose otherwise). Right y-axis with K/M auto-formatting. Standard TradingView-style volume row.
+  3. **Bid / Ask Ratio** — signed imbalance line, 0-centered.
+  4. **Depth Intensity** — bid + ask heatmap on a single y-axis.
+  5. **Fill Strength** — per-minute buy/sell bars, 0-centered.
 - Right: 3 cards stacked with `grid-template-rows: 2fr 1fr 1fr` (50% / 25% / 25%) — Orderbook 10호가, Broker Net Flow, Recent Fills.
+
+Volume bars and fill_strength are intentionally not the same signal. Volume bars show **total magnitude per minute, color-keyed to price direction** — the "was that minute up or down, and how heavy". Fill_strength shows **buy vs sell aggressor volume per minute** — the "who was the aggressor". They commonly tell different stories (e.g. green candle + sell-heavy fill_strength means aggressive sellers crossed bids but limit buyers absorbed it).
 
 The 2:1:1 ratio gives Orderbook the breathing room it needs (21 rows = 10 ask + spread + 10 bid). Inside Orderbook, the 21 rows fit when row height is ~14 px in mono 11.5 px — tight but readable. Broker Net Flow and Recent Fills each get ~150 px of vertical space and scroll internally when their content (up to 10 broker rows / 20 fill rows) exceeds the visible area. Every card has `overflow-y: auto` on its body.
 
@@ -491,9 +504,10 @@ frontend/
     chart/
       ChartStage.tsx         # owns lightweight-charts instance + pane composition
       CandlePane.tsx
+      VolumePane.tsx         # per-minute volume bars (separate pane)
       RatioPane.tsx
       IntensityPane.tsx      # custom canvas layer
-      VolumeProfileOverlay.tsx
+      VolumeProfileOverlay.tsx  # matprofile overlay on CandlePane
       FillStrengthPane.tsx
     sidebar/
       CursorSidebar.tsx
