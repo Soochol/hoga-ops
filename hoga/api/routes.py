@@ -15,6 +15,7 @@ from hoga.api.models import (
     TradesResponse,
 )
 from hoga.api.queries import QueryEngine, StockDateNotFound
+from hoga.api.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
 from hoga.tables import brokers as brokers_tbl
 from hoga.tables import candles as candles_tbl
 from hoga.tables import snapshots as snapshots_tbl
@@ -62,16 +63,23 @@ def build_router(engine: QueryEngine) -> APIRouter:
             path = engine.parquet_dir(date, code) / "trades.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        if from_ms is not None and to_ms is not None:
-            rows = trades_tbl.query_range(
-                engine.conn, path=path, from_ms=from_ms, to_ms=to_ms, limit=limit, date=date
-            )
-        elif t is not None:
-            rows = trades_tbl.query_up_to(
-                engine.conn, path=path, t_ms=t, limit=limit, date=date
-            )
-        else:
-            raise HTTPException(status_code=400, detail="provide either ?t= or ?from=&to=")
+        try:
+            if from_ms is not None and to_ms is not None:
+                raw_from = unix_ms_to_hhmmssms(date, from_ms)
+                raw_to = unix_ms_to_hhmmssms(date, to_ms)
+                rows = trades_tbl.query_range(
+                    engine.conn, path=path, from_ms=raw_from, to_ms=raw_to, limit=limit
+                )
+            elif t is not None:
+                raw_t = unix_ms_to_hhmmssms(date, t)
+                rows = trades_tbl.query_up_to(
+                    engine.conn, path=path, t_ms=raw_t, limit=limit
+                )
+            else:
+                raise HTTPException(status_code=400, detail="provide either ?t= or ?from=&to=")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        rows = [r.model_copy(update={"ts_ms": hhmmssms_to_unix_ms(date, r.ts_ms)}) for r in rows]
         return TradesResponse(trades=rows)
 
     @router.get("/candles", response_model=CandlesResponse)

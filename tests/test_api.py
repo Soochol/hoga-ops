@@ -198,6 +198,16 @@ def test_trades_neither_t_nor_range_returns_400(app_client: TestClient) -> None:
     assert r.status_code == 400
 
 
+def test_trades_out_of_day_cursor_returns_400(app_client: TestClient) -> None:
+    # Cursor on 2026-05-20 but date=20260519 → cross-day → 400
+    bad_t = hhmmssms_to_unix_ms("20260520", 120000000)
+    r = app_client.get(
+        "/api/trades",
+        params={"code": "003490", "date": "20260519", "t": bad_t, "limit": 5},
+    )
+    assert r.status_code == 400
+
+
 def test_trades_ts_ms_is_unix(app_client: TestClient) -> None:
     t_noon = hhmmssms_to_unix_ms("20260519", 120000000)  # 12:00 KST on 2026-05-19
     r = app_client.get(
