@@ -337,9 +337,44 @@ data: {"code":"005930","date":"20260518"}
 - The browser's `EventSource` auto-reconnects on transient network failures. If `heartbeat` misses for >60 s, the hook closes and reopens the connection.
 - v1 does not push UI for incoming events (no toast). The list just silently updates. If the user wants to see what just changed, the future Inventory page will show a "recently added" affordance.
 
-### 4.4 Stock-date search
+### 4.4 `GET /api/stock-dates` — Inventory (extended)
 
-`/api/stock-dates` already returns the inventory with `name`. Frontend uses it to power name+code search (client-side filter on a small list — single-user local tool).
+Returns the full captured inventory. The existing fields (`date`, `code`, `name`, session bounds, data window bounds) stay; the frontend depends on several **additional fields** for the multi-day price grid (§4.1) and the Inventory page (§5.3):
+
+```json
+[
+  {
+    "date": "20260518",
+    "code": "005930",
+    "name": "삼성전자",
+    "regular_session_open_ms": 1747526400000,
+    "regular_session_close_ms": 1747555200000,
+    "data_window_first_ms": 1747523040000,
+    "data_window_last_ms": 1747557000000,
+    "price_min": 67500,
+    "price_max": 71200,
+    "captured_at": 1747560000000,
+    "total_volume": 30186229,
+    "pages_collected": 47,
+    "file_size_bytes": 12453678,
+    "today_open": 70500,
+    "today_high": 71200,
+    "today_low": 67500,
+    "today_close": 70800
+  },
+  ...
+]
+```
+
+The frontend uses these fields for:
+- Combobox name + code search (existing).
+- Date-picker disabled-day set (existing).
+- Multi-day unified price grid via `price_min` / `price_max` (§4.1).
+- Inventory page columns (§5.3): all of the above shown as a sortable table.
+
+`captured_at` is the directory's most-recent file mtime (proxy for "when did the capture finish"). `file_size_bytes` is the recursive sum of the Stock-Date's Parquet files — displayed as `MB` rounded in the UI.
+
+Backend dependency: existing `Meta` fields (`pages_collected`, `total_unique_events`, OHLC) are already computed at parse time and live in `meta.json`; the new endpoint reads them straight. `price_min` / `price_max` / `file_size_bytes` / `captured_at` are cheap to compute or look up from filesystem.
 
 ## 5. Layout & Design System
 
@@ -463,8 +498,8 @@ The aesthetic direction is **Industrial/Utilitarian × Modern Professional** ("M
 | Nav item | Page | v1 content |
 |---|---|---|
 | Replay Viewer | `/replay` | Full Replay Viewer with multi-tab analysis sessions. |
-| Inventory | `/inventory` | Stub page with table of captured Stock-Dates (read-only). |
-| Capture | `/capture` | Stub — placeholder ("v1: 외부 collector CLI 사용"). |
+| Inventory | `/inventory` | **Full implementation (not a stub).** Read-only sortable table of every captured Stock-Date with: code, name, date, captured_at (file mtime, when the collector finished), total_volume, pages_collected, file_size_mb, today_open/high/low/close. Click on a row opens that Stock-Date in a new Replay Viewer tab. Auto-updates via the SSE `inventory_added` / `inventory_removed` events. Default sort: captured_at descending (most recent first). |
+| Capture | `/capture` | Stub with **inline guide** to the manual collector workflow: example command (`$ hoga capture --code 005930 --date 20260520`), one-line explanation, and a callout that completed captures appear in Inventory automatically (via the SSE `inventory_added` event). v1+1 will replace the guide with a real "start capture" form. |
 | Search | `/search` | Stub — placeholder. |
 | Notes | `/notes` | Stub — placeholder. |
 | Settings | `/settings` | Stub showing the API URL (read at runtime from `/config.json`) and the app version. Data dir path, capture stats, and disk usage need a new `/api/config` endpoint (deferred to v1+1, §11). |
@@ -628,8 +663,10 @@ type Segment = { date: string; sessionOpenMs: number; sessionCloseMs: number; vi
 
 - `realToVirtual(realMs, segment)` → virtual ms used on the chart.
 - `virtualToReal(virtualMs)` → finds the segment by binary search, returns the real ms used for cursor-following API calls.
-- Day boundaries are rendered as faint vertical guides with the date as a label.
+- Day boundaries are rendered as **vertical lines** on every pane with the date label at the top.
 - **Intra-day segments are NOT visually distinguished.** The Auction Window (15:20–15:30) and After-Hours Trading (15:30–16:00) share the same background as Continuous Trading. The analyst reads the time from the x-axis to know which segment they're in. Rationale: this is a single-user tool, the user already knows the KRX session structure, and visual segmentation would add chrome that doesn't help analysis.
+
+**X-axis tick labels — always full `YYYY-MM-DD HH:MM`.** No zoom-level adaptation: even when zoomed in, ticks read `2026-05-18 13:30`, not abbreviated `13:30`. This trades visual compactness for unambiguous readability — every tick on screen is self-describing without needing to look up the day context. The chart picks tick spacing automatically based on viewport width (so far-apart ticks at full zoom-out, dense ticks when zoomed in), but each rendered tick uses the full format.
 - All four panes within a tab use the same virtual axis (lightweight-charts handles sync automatically when they share a chart instance).
 
 This logic lives in `state/timeAxis.ts` and is the single source of truth for time conversion. Every API call out is real-ms; every chart coordinate is virtual-ms.
