@@ -20,7 +20,16 @@ export default function DateRangePicker({
     [data, code],
   );
 
-  const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '');
+  // Use local date components, NOT toISOString() — the picker's Date objects
+  // represent local-midnight calendar days; toISOString() converts to UTC,
+  // which off-by-ones at any nonzero timezone offset (KST is +09:00, so
+  // local May 20 midnight becomes UTC May 19 15:00 → "20260519" mismatch).
+  const fmt = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}${m}${day}`;
+  };
 
   const disabledMatcher = (d: Date) => !captured.has(fmt(d));
 

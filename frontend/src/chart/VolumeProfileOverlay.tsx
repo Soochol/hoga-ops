@@ -70,7 +70,10 @@ export default function VolumeProfileOverlay({
         const p = panes[paneIndex];
         const el = p?.getHTMLElement?.() ?? null;
         if (el) {
-          setPaneEl(el);
+          // lightweight-charts returns the <tr>; portal into the inner <div>
+          // so React's DOM-nesting validator is happy.
+          const inner = el.querySelector('td > div') as HTMLElement | null;
+          setPaneEl(inner ?? el);
           return;
         }
       } catch {
@@ -162,16 +165,20 @@ export default function VolumeProfileOverlay({
     };
   }, [chart, bundle, segments, mode, valueAreaFrac]);
 
-  const canvasEl = (
-    <canvas ref={ref} className="absolute inset-0 w-full h-full pointer-events-none" />
+  // Wrap canvas in a div — portal target is lightweight-charts' <tr>,
+  // and <canvas> can't be a direct child of <tr> (DOM nesting warning).
+  const overlayEl = (
+    <div className="absolute inset-0 pointer-events-none">
+      <canvas ref={ref} className="absolute inset-0 w-full h-full" />
+    </div>
   );
   if (paneEl) {
     if (getComputedStyle(paneEl).position === 'static') {
       paneEl.style.position = 'relative';
     }
-    return createPortal(canvasEl, paneEl);
+    return createPortal(overlayEl, paneEl);
   }
-  return canvasEl;
+  return overlayEl;
 }
 
 function pocIndex(bins: VolumeProfileBin[]): number {

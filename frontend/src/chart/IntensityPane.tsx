@@ -74,7 +74,14 @@ export default function IntensityPane({ chart, bundle, segments, paneIndex }: Pr
         const p = panes[paneIndex];
         const el = p?.getHTMLElement?.() ?? null;
         if (el) {
-          setPaneEl(el);
+          // lightweight-charts panes use a <table><tr><td><div>…</div></td></tr>
+          // layout. getHTMLElement() returns the <tr>. We can't portal a <div>
+          // (or <canvas>) directly into a <tr> without React's DOM-nesting
+          // validator complaining, so walk down to the first <div> child of a
+          // <td> and portal there. Fall back to the original element if no
+          // such div exists (older lightweight-charts versions).
+          const inner = el.querySelector('td > div') as HTMLElement | null;
+          setPaneEl(inner ?? el);
           return;
         }
       } catch {
@@ -171,23 +178,29 @@ export default function IntensityPane({ chart, bundle, segments, paneIndex }: Pr
     };
   }, [chart, bundle, segments]);
 
-  const canvasEl = (
-    <canvas
-      ref={ref}
-      className="absolute inset-0 w-full h-full pointer-events-none"
-      style={{ mixBlendMode: 'screen' }}
-    />
+  // Wrap the canvas in a div so the portal target (which lightweight-charts
+  // renders as a <tr>) doesn't directly host a <canvas> — invalid HTML
+  // nesting that React's validateDOMNesting flags. The wrapper is benign:
+  // absolute inset-0 contents anchor to the nearest positioned ancestor.
+  const overlayEl = (
+    <div className="absolute inset-0 pointer-events-none">
+      <canvas
+        ref={ref}
+        className="absolute inset-0 w-full h-full"
+        style={{ mixBlendMode: 'screen' }}
+      />
+    </div>
   );
 
   // When portaled into the pane DOM element, the parent <div data-pane> in
   // ChartStage no longer paints anything visible (canvas lives elsewhere in
   // the DOM tree). The pane element needs `position: relative` for the
-  // absolutely-positioned canvas to anchor correctly.
+  // absolutely-positioned wrapper to anchor correctly.
   if (paneEl) {
     if (getComputedStyle(paneEl).position === 'static') {
       paneEl.style.position = 'relative';
     }
-    return createPortal(canvasEl, paneEl);
+    return createPortal(overlayEl, paneEl);
   }
-  return canvasEl;
+  return overlayEl;
 }

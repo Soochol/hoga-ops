@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
-import type { Segment } from '../util/time';
+import { type Segment, virtualToReal } from '../util/time';
 import { useViewportStore } from '../state/viewport';
 import CandlePane from './CandlePane';
 import VolumePane from './VolumePane';
@@ -84,6 +84,14 @@ const PANE_STRETCH = [1.4, 0.3, 0.4, 0.8, 0.4] as const;
 export default function ChartStage({ bundle, segments }: ChartStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
+  // Keep latest segments visible to the once-mounted subscribeVisibleTimeRange
+  // handler. lightweight-charts emits times on our VIRTUAL axis (Task 6.1);
+  // viewport consumers need REAL Unix-ms, so the handler reads this ref and
+  // converts via virtualToReal.
+  const segmentsRef = useRef<Segment[]>(segments);
+  useEffect(() => {
+    segmentsRef.current = segments;
+  }, [segments]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -110,13 +118,21 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
     setChart(c);
 
     // Wire visible-range subscription. The chart emits ranges as
-    // { from, to } in UTCTimestamp (seconds); convert to ms for the rest
-    // of the app.
+    // { from, to } in UTCTimestamp (seconds) on the VIRTUAL axis;
+    // convert to virtual-ms then to REAL Unix-ms via the active segments
+    // before publishing — the rest of the app (PriceStrip, useCursor → spot
+    // fetches) expects Unix-ms cursors per ADR 0003.
     const ts = c.timeScale();
     const handler = (range: unknown) => {
       const r = range as { from?: number | null; to?: number | null } | null;
-      const fromMs = r?.from != null ? r.from * 1000 : null;
-      const toMs = r?.to != null ? r.to * 1000 : null;
+      const segs = segmentsRef.current;
+      const toReal = (sec: number | null | undefined) => {
+        if (sec == null) return null;
+        const virtualMs = sec * 1000;
+        return segs.length === 0 ? null : virtualToReal(segs, virtualMs);
+      };
+      const fromMs = toReal(r?.from);
+      const toMs = toReal(r?.to);
       // Publish to the viewport store so sibling components (PriceStrip,
       // Task 6.5) can subscribe without prop-drilling.
       useViewportStore.getState().set(fromMs, toMs);

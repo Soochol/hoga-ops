@@ -34,8 +34,14 @@ def create_app(data_dir: Path) -> FastAPI:
     app = FastAPI(title="hoga-ops API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
-        allow_methods=["GET"],
+        # 127.0.0.1 and localhost are treated as separate origins by browsers.
+        # Allow both so the dev frontend works regardless of which host the
+        # user / harness opens.
+        allow_origins=[
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
     app.include_router(build_router(engine))
