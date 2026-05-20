@@ -16,7 +16,45 @@
 **ADR:** [`docs/adr/0003-api-time-encoding.md`](../../adr/0003-api-time-encoding.md)
 **Glossary:** [`CONTEXT.md`](../../../CONTEXT.md) — Stock-Date, Auction Window, After-Hours Trading, etc.
 
-**Plan convention.** Phases 0-4 are written at fine-grained step level (write-test → run-fail → implement → run-pass → commit). Phases 5-10 are written at task level with the key code snippets shown — the executing agent expands each task into the same TDD micro-steps in its own session. This trade-off keeps the plan under ~1500 lines while still being executable. The executor (`/superpowers:subagent-driven-development`) should treat each Phase-5+ task as a small project: write a failing test for the component, then implement, then verify, then commit.
+**Plan convention.** Phases 0-4 and Phase 7 are written at fine-grained step level (write-test → run-fail → implement → run-pass → commit). Phases 5-6 and 8-10 are written at task level with the key code snippets shown — the executing agent expands each task into the same TDD micro-steps in its own session. The executor (`/superpowers:subagent-driven-development`) should treat each Phase-5/6/8-10 task as a small project: write a failing test for the component, then implement, then verify, then commit.
+
+---
+
+## Parallelization lanes
+
+Not every phase needs to run in strict serial. The executor can run independent lanes concurrently in separate worktrees or sequential subagent dispatches without conflict.
+
+```
+Wave 1 (after Phase 0 spike passes):
+  ├── Lane A: Phase 1 (backend)      — touches hoga/api/, tests/test_api_*
+  └── Lane B: Phase 2-4 (FE scaffold + nav + state) — touches frontend/src/{config,api,state,nav,replay}
+
+Wave 2 (after Wave 1 complete):
+  ├── Lane C: Phase 5 (Toolbar + OnboardingCard + PriceStrip slot)
+  │            depends on: Lane B
+  │            touches:    frontend/src/replay/
+  └── Lane D: Phase 6 (Chart bootstrap — timeAxis, useSpot, useSession, ChartStage)
+               depends on: Lane A, Lane B
+               touches:    frontend/src/chart/, frontend/src/util/, frontend/src/api/
+
+Wave 3 (after Wave 2):
+  ├── Lane E: Phase 7 (5 chart panes)
+  │            depends on: Lane D, Phase 0 spike
+  │            touches:    frontend/src/chart/
+  └── Lane F: Phase 8 (sidebar)
+               depends on: Lane A, Lane B (useSpot lives in Lane D, but sidebar
+               imports it as a dependency)
+               touches:    frontend/src/sidebar/
+
+Wave 4 (final):
+  └── Lane G: Phase 9 (Inventory + Capture + Settings) + Phase 10 (URL state + E2E + ship)
+               depends on: C, D, E, F
+               touches:    frontend/src/pages/, frontend/tests/e2e/
+```
+
+**Conflict surface:** Lane D commits `ChartStage.tsx`. Lane E adds 5 sibling files in `frontend/src/chart/`. As long as Lane D's `ChartStage.tsx` lands before Lane E starts, no merge conflict. Same for Lane B → D (config/types modules).
+
+For subagent-driven-development: dispatch Wave-1 lanes in parallel (two implementer agents at once), then run Wave-2 lanes after both report DONE, etc. The reviewer cadence stays per-task within each lane.
 
 ---
 
@@ -487,28 +525,188 @@ git add hoga/api/models.py hoga/api/queries.py tests/test_api_stock_dates.py
 git commit -m "feat(api): extend StockDate with price range, captured_at, file size, OHLC"
 ```
 
-### Task 1.3: Extend Api* response models to Unix ms
+### Task 1.3 — split: convert each table module's ts_ms to Unix ms (ADR 0003)
+
+Task 1.3 splits into 4 sub-tasks, one per table module. Each is a tight TDD cycle: failing test → modify query helper to convert `ts_ms` to Unix ms at the boundary → modify route to pass `date` and convert incoming cursor `?t=` from Unix ms → run, pass, commit.
+
+The signature change for every query helper is: add a required `date: str` parameter. The route handler reads `date` from the request and forwards it. Cursor `t` params (`/api/orderbook?t=`, etc.) accept Unix ms from the client; the route converts back to HHMMSSmmm via `unix_ms_to_hhmmssms(date, t)` before calling the query.
+
+### Task 1.3a: Trades — Unix-ms boundary
 
 **Files:**
-- Modify: `hoga/tables/trades.py`, `hoga/tables/snapshots.py`, `hoga/tables/brokers.py`, `hoga/tables/candles.py`
-- Modify: `hoga/api/models.py`
+- Modify: `hoga/tables/trades.py` (`query_up_to`, `query_range`)
+- Modify: `hoga/api/routes.py` (`trades` handler)
 - Modify: `tests/test_api.py`
 
-Each table module's `query_*` function converts `ts_ms` to Unix ms at the boundary. The `Api*` models keep field name `ts_ms` but the value is now Unix.
-
-- [ ] **Step 1: Write failing tests**
-
-Add to `tests/test_api.py`:
+- [ ] **Step 1: Write failing test**
 
 ```python
 def test_trades_ts_ms_is_unix(tiny_data_dir):
     app = create_app(tiny_data_dir)
     client = TestClient(app)
-    r = client.get("/api/trades?code=003490&date=20260519&t=1747652000000&limit=5")
+    # Cursor as Unix ms (2026-05-19 12:30 KST ≈ 1747615800000)
+    r = client.get("/api/trades?code=003490&date=20260519&t=1747615800000&limit=5")
     rows = r.json()["trades"]
-    assert all(t["ts_ms"] > 1_700_000_000_000 for t in rows)
+    assert all(t["ts_ms"] > 1_700_000_000_000 for t in rows), "ts_ms must be Unix ms"
+```
 
+- [ ] **Step 2: Run to verify failure**
 
+```bash
+pytest tests/test_api.py::test_trades_ts_ms_is_unix -v
+# Expected: FAIL (current ts_ms are 9-digit HHMMSSmmm)
+```
+
+- [ ] **Step 3: Modify `hoga/tables/trades.py`**
+
+Add `date: str` to `query_up_to` and `query_range` signatures. At the SELECT entry, convert Unix-ms `t` back to HHMMSSmmm for the WHERE clause. At each row, convert outgoing `ts_ms` to Unix ms.
+
+```python
+from hoga.api.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
+
+def query_up_to(conn, *, path, t_ms, limit, date):
+    raw_t = unix_ms_to_hhmmssms(date, t_ms)
+    rows = conn.execute(
+        "SELECT ts_ms, seq, price, change_pct, qty, side, cum_vol, cum_trades, "
+        "low_so_far, high_so_far, net_pressure "
+        "FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT ?",
+        [str(path), raw_t, limit],
+    ).fetchall()
+    return [
+        ApiTrade(
+            ts_ms=hhmmssms_to_unix_ms(date, r[0]),
+            seq=r[1], price=r[2], change_pct=r[3], qty=r[4], side=r[5],
+            cum_vol=r[6], cum_trades=r[7], low_so_far=r[8], high_so_far=r[9],
+            net_pressure=r[10],
+        )
+        for r in rows
+    ]
+
+def query_range(conn, *, path, from_ms, to_ms, limit, date):
+    raw_from = unix_ms_to_hhmmssms(date, from_ms)
+    raw_to = unix_ms_to_hhmmssms(date, to_ms)
+    rows = conn.execute(
+        "SELECT ts_ms, seq, price, change_pct, qty, side, cum_vol, cum_trades, "
+        "low_so_far, high_so_far, net_pressure "
+        "FROM read_parquet(?) WHERE ts_ms BETWEEN ? AND ? ORDER BY ts_ms LIMIT ?",
+        [str(path), raw_from, raw_to, limit],
+    ).fetchall()
+    return [
+        ApiTrade(
+            ts_ms=hhmmssms_to_unix_ms(date, r[0]),
+            seq=r[1], price=r[2], change_pct=r[3], qty=r[4], side=r[5],
+            cum_vol=r[6], cum_trades=r[7], low_so_far=r[8], high_so_far=r[9],
+            net_pressure=r[10],
+        )
+        for r in rows
+    ]
+```
+
+- [ ] **Step 4: Update `hoga/api/routes.py` trades handler to forward `date`**
+
+```python
+@router.get("/trades", response_model=TradesResponse)
+def trades(code: str, date: str, t: int | None = Query(None),
+           from_ms: int | None = Query(None, alias="from"),
+           to_ms: int | None = Query(None, alias="to"),
+           limit: int = 50) -> TradesResponse:
+    try:
+        path = engine.parquet_dir(date, code) / "trades.parquet"
+    except StockDateNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    if from_ms is not None and to_ms is not None:
+        rows = trades_tbl.query_range(engine.conn, path=path,
+                                       from_ms=from_ms, to_ms=to_ms,
+                                       limit=limit, date=date)
+    elif t is not None:
+        rows = trades_tbl.query_up_to(engine.conn, path=path, t_ms=t,
+                                        limit=limit, date=date)
+    else:
+        raise HTTPException(status_code=400, detail="provide either ?t= or ?from=&to=")
+    return TradesResponse(trades=rows)
+```
+
+- [ ] **Step 5: Run + commit**
+
+```bash
+pytest tests/test_api.py::test_trades_ts_ms_is_unix -v
+git add hoga/tables/trades.py hoga/api/routes.py tests/test_api.py
+git commit -m "feat(trades): ts_ms Unix encoding at API boundary (ADR 0003)"
+```
+
+### Task 1.3b: Orderbook snapshots — Unix-ms boundary
+
+**Files:**
+- Modify: `hoga/tables/snapshots.py` (`query_at`, `query_first_ts`)
+- Modify: `hoga/api/routes.py` (`orderbook` handler)
+- Modify: `tests/test_api.py`
+
+Same pattern as 1.3a. `query_at(conn, *, path, t_ms, date)` converts the incoming Unix-ms `t_ms` via `unix_ms_to_hhmmssms`, queries, then converts the row's `ts_ms` back to Unix ms. `query_first_ts` returns Unix ms when present.
+
+- [ ] **Step 1: Write failing test**
+
+```python
+def test_orderbook_ts_ms_is_unix(tiny_data_dir):
+    app = create_app(tiny_data_dir)
+    client = TestClient(app)
+    r = client.get("/api/orderbook?code=003490&date=20260519&t=1747615800000")
+    snap = r.json()["snapshot"]
+    if snap is not None:
+        assert snap["ts_ms"] > 1_700_000_000_000
+```
+
+- [ ] **Step 2-5: Run-fail, implement (same pattern as 1.3a), verify, commit**
+
+```bash
+git add hoga/tables/snapshots.py hoga/api/routes.py tests/test_api.py
+git commit -m "feat(snapshots): ts_ms Unix encoding at API boundary (ADR 0003)"
+```
+
+### Task 1.3c: Brokers — Unix-ms boundary
+
+**Files:**
+- Modify: `hoga/tables/brokers.py` (`query_at`)
+- Modify: `hoga/api/routes.py` (`brokers` handler)
+- Modify: `tests/test_api.py`
+
+Same pattern. `BrokersAt` model has a `ts_ms` field; convert it.
+
+- [ ] **Step 1: Write failing test → Step 5: commit**
+
+```bash
+git commit -m "feat(brokers): ts_ms Unix encoding at API boundary (ADR 0003)"
+```
+
+### Task 1.3d: Candles — ms-from-midnight → Unix-ms
+
+**Files:**
+- Modify: `hoga/tables/candles.py` (`query_all`)
+- Modify: `hoga/api/routes.py` (`candles` handler)
+- Modify: `tests/test_api.py`
+
+Different from 1.3a-c: candles' raw `ts_ms` is `ms-from-midnight`, not HHMMSSmmm. Use `ms_from_midnight_to_unix_ms(date, raw)` for the conversion.
+
+```python
+from hoga.api.timeenc import ms_from_midnight_to_unix_ms
+
+def query_all(conn, *, path, date):
+    rows = conn.execute(
+        'SELECT ts_ms, "open", "close", high, low, vol_a, vol_b '
+        "FROM read_parquet(?) ORDER BY ts_ms ASC",
+        [str(path)],
+    ).fetchall()
+    return [
+        ApiCandle(
+            ts_ms=ms_from_midnight_to_unix_ms(date, r[0]),
+            open=r[1], close=r[2], high=r[3], low=r[4], vol_a=r[5], vol_b=r[6],
+        )
+        for r in rows
+    ]
+```
+
+- [ ] **Step 1: Write failing test**
+
+```python
 def test_candle_ts_ms_is_unix(tiny_data_dir):
     app = create_app(tiny_data_dir)
     client = TestClient(app)
@@ -517,47 +715,10 @@ def test_candle_ts_ms_is_unix(tiny_data_dir):
     assert all(c["ts_ms"] > 1_700_000_000_000 for c in candles)
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [ ] **Step 2-5: Run-fail, implement, verify, commit**
 
 ```bash
-pytest tests/test_api.py -v -k "ts_ms_is_unix"
-# Expected: FAIL (current ts_ms are 9-digit HHMMSSmmm or ms-from-midnight)
-```
-
-- [ ] **Step 3: Convert ts_ms at the query boundary**
-
-In `hoga/tables/trades.py` `query_up_to`/`query_range`/etc., wrap each `ts_ms` with `hhmmssms_to_unix_ms(date, raw)`. Same for `snapshots`, `brokers`. For `candles`, use `ms_from_midnight_to_unix_ms`.
-
-Example for trades:
-
-```python
-from hoga.api.timeenc import hhmmssms_to_unix_ms
-
-def query_up_to(conn, *, path, t_ms, limit, date):
-    # t_ms is now Unix ms in; convert back for the parquet query
-    from hoga.api.timeenc import unix_ms_to_hhmmssms
-    raw_t = unix_ms_to_hhmmssms(date, t_ms)
-    rows = conn.execute(
-        "SELECT ... FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT ?",
-        [str(path), raw_t, limit],
-    ).fetchall()
-    return [ApiTrade(ts_ms=hhmmssms_to_unix_ms(date, r[0]), ...) for r in rows]
-```
-
-Update route handlers in `hoga/api/routes.py` to pass `date` to query helpers.
-
-- [ ] **Step 4: Run to verify pass**
-
-```bash
-pytest tests/test_api.py -v
-# Expected: all PASS
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add hoga/tables/ hoga/api/routes.py tests/test_api.py
-git commit -m "feat(api): all Api* models ship Unix epoch ms (ADR 0003)"
+git commit -m "feat(candles): ts_ms Unix encoding at API boundary (ADR 0003)"
 ```
 
 ### Task 1.4: Session bundle endpoint — schema
@@ -634,170 +795,219 @@ git add hoga/api/models.py
 git commit -m "feat(api): SessionBundle schema (5 slices)"
 ```
 
-### Task 1.5: Session bundle endpoint — implementation
+### Task 1.5 — split: session bundle compute, one slice at a time
 
-**Files:**
-- Create: `hoga/api/bundle.py` (compute helpers)
-- Modify: `hoga/api/routes.py`
-- Modify: `hoga/api/queries.py`
-- Create: `tests/test_api_session.py`
+Task 1.5 splits into 5 sub-tasks (1.5a-1.5e), one per slice. Each implements its slice with a focused correctness test, then the wire-up task (1.5f) assembles them under `/api/session`. This keeps each task within reviewable size and makes per-slice bugs catchable in isolation.
+
+**Files (shared across 1.5a-1.5f):**
+- Create: `hoga/api/bundle.py` (compute helpers — extended per task)
+- Modify: `hoga/api/routes.py` (the `/api/session` handler in 1.5f only)
+- Create: `tests/test_api_session.py` (one focused test added per task)
+
+### Task 1.5a: `candles` slice
 
 - [ ] **Step 1: Write failing test**
 
-Create `tests/test_api_session.py`:
-
 ```python
-def test_session_bundle_shape(tiny_data_dir):
-    app = create_app(tiny_data_dir)
-    client = TestClient(app)
-    r = client.get("/api/session?code=003490&date=20260519")
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["code"] == "003490"
-    assert body["session_open_ms"] > 1_700_000_000_000
-    assert "candles" in body
-    qr = body["quote_ratio"]
-    assert qr["bucket_ms"] == 1000
-    assert isinstance(qr["points"], list)
-    di = body["depth_intensity"]
-    assert len(di["times"]) == len(di["bid_grid"])
-    assert len(di["bid_grid"]) == len(di["ask_grid"])
-    vp = body["volume_profile"]
-    assert vp["bin_count"] == 24
-    fs = body["fill_strength"]
-    assert fs["bucket_ms"] == 60000
-
-
-def test_session_bundle_unified_price_grid(tiny_data_dir):
-    """When price_min and price_max are supplied, depth_intensity must use them."""
-    app = create_app(tiny_data_dir)
-    client = TestClient(app)
-    r = client.get("/api/session?code=003490&date=20260519&price_min=25000&price_max=26000")
-    body = r.json()
-    di = body["depth_intensity"]
-    assert di["price_min"] == 25000
-    assert di["price_max"] == 26000
+def test_session_candles_slice(tiny_data_dir):
+    from hoga.api.bundle import build_candles_slice
+    from hoga.api.queries import QueryEngine
+    eng = QueryEngine(tiny_data_dir)
+    rows = build_candles_slice(eng.conn, code="003490", date="20260519",
+                                data_dir=tiny_data_dir)
+    assert len(rows) >= 1
+    assert all(r.ts_ms > 1_700_000_000_000 for r in rows)
+    # OHLCV plausibility
+    assert all(r.high >= r.low for r in rows)
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [ ] **Step 2: Run, fail**
 
-```bash
-pytest tests/test_api_session.py -v
-# Expected: 404 — endpoint does not exist
-```
+- [ ] **Step 3: Implement `build_candles_slice`**
 
-- [ ] **Step 3: Implement bundle compute**
-
-Create `hoga/api/bundle.py`:
+Create `hoga/api/bundle.py` (initially with just this slice):
 
 ```python
-"""DuckDB-driven session bundle computation.
-
-Five slices computed via concurrent queries:
-- candles (raw read)
-- quote_ratio (snapshots, last-per-bucket of bid_total / ask_total)
-- depth_intensity (snapshots, max per price bin per time bucket, bid/ask split)
-- volume_profile (trades, 24 equal-width bins by default)
-- fill_strength (trades side != 0, per-minute aggregate)
-"""
+"""DuckDB-driven session bundle slices, one builder per slice."""
 from __future__ import annotations
 
-import asyncio
+import json
 from pathlib import Path
 
 import duckdb
 
 from hoga.api.timeenc import hhmmssms_to_unix_ms, ms_from_midnight_to_unix_ms
-from hoga.api.models import (
-    SessionBundle, QuoteRatio, QuoteRatioPoint,
-    DepthIntensity, VolumeProfile, VolumeProfileBin,
-    FillStrength, FillStrengthPoint, ApiCandle,
-)
+from hoga.api.models import ApiCandle
 
 
-KRX_TICK_TIERS = [
-    (2_000, 1),
-    (5_000, 5),
-    (20_000, 10),
-    (50_000, 50),
-    (200_000, 100),
-    (500_000, 500),
-    (float("inf"), 1_000),
-]
-
-
-def tick_size(price_max: int) -> int:
-    for threshold, tick in KRX_TICK_TIERS:
-        if price_max < threshold:
-            return tick
-    return 1_000
-
-
-def build_bundle(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    code: str,
-    date: str,
-    data_dir: Path,
-    price_min: int | None = None,
-    price_max: int | None = None,
-    depth_bucket_ms: int = 5000,
-    vp_bins: int = 24,
-) -> SessionBundle:
-    code_dir = data_dir / "parquet" / date / code
-    candles_path = str(code_dir / "candles.parquet")
-    snapshots_path = str(code_dir / "snapshots.parquet")
-    trades_path = str(code_dir / "trades.parquet")
-
-    meta = json.loads((code_dir / "meta.json").read_text())
-    session_open_ms = hhmmssms_to_unix_ms(date, meta["regular_session_open_ms"])
-    session_close_ms = hhmmssms_to_unix_ms(date, meta["regular_session_close_ms"])
-
-    # ----- candles -----
-    candle_rows = conn.execute(
+def build_candles_slice(conn, *, code, date, data_dir):
+    path = str(data_dir / "parquet" / date / code / "candles.parquet")
+    rows = conn.execute(
         'SELECT ts_ms, "open", "close", high, low, vol_a, vol_b '
         "FROM read_parquet(?) ORDER BY ts_ms ASC",
-        [candles_path],
+        [path],
     ).fetchall()
-    candles = [
+    return [
         ApiCandle(
             ts_ms=ms_from_midnight_to_unix_ms(date, r[0]),
             open=r[1], close=r[2], high=r[3], low=r[4], vol_a=r[5], vol_b=r[6],
         )
-        for r in candle_rows
+        for r in rows
     ]
+```
 
-    # ----- quote_ratio: last snapshot per 1-second bucket -----
-    qr_rows = conn.execute(
-        """
+- [ ] **Step 4-5: Run, pass, commit**
+
+```bash
+git add hoga/api/bundle.py tests/test_api_session.py
+git commit -m "feat(bundle): candles slice"
+```
+
+### Task 1.5b: `quote_ratio` slice
+
+- [ ] **Step 1: Write failing test**
+
+```python
+def test_session_quote_ratio_slice(tiny_data_dir):
+    from hoga.api.bundle import build_quote_ratio_slice
+    from hoga.api.queries import QueryEngine
+    eng = QueryEngine(tiny_data_dir)
+    qr = build_quote_ratio_slice(eng.conn, code="003490", date="20260519",
+                                  data_dir=tiny_data_dir, bucket_ms=1000)
+    assert qr.bucket_ms == 1000
+    assert len(qr.points) >= 1
+    # Last-snapshot-per-bucket semantics: timestamps strictly increasing
+    ts = [p.t for p in qr.points]
+    assert ts == sorted(ts)
+    # Both totals are non-negative
+    assert all(p.bid_total >= 0 and p.ask_total >= 0 for p in qr.points)
+```
+
+- [ ] **Step 2-5: Run-fail, implement, run-pass, commit**
+
+Add to `hoga/api/bundle.py`:
+
+```python
+from hoga.api.models import QuoteRatio, QuoteRatioPoint
+
+def build_quote_ratio_slice(conn, *, code, date, data_dir, bucket_ms=1000):
+    path = str(data_dir / "parquet" / date / code / "snapshots.parquet")
+    rows = conn.execute(
+        f"""
         WITH bucketed AS (
           SELECT ts_ms,
                  (ask_q1 + ask_q2 + ask_q3 + ask_q4 + ask_q5 +
                   ask_q6 + ask_q7 + ask_q8 + ask_q9 + ask_q10) AS ask_total,
                  (bid_q1 + bid_q2 + bid_q3 + bid_q4 + bid_q5 +
                   bid_q6 + bid_q7 + bid_q8 + bid_q9 + bid_q10) AS bid_total,
-                 ts_ms / 1000 AS bucket,
-                 ROW_NUMBER() OVER (PARTITION BY ts_ms / 1000 ORDER BY ts_ms DESC) AS rn
+                 ts_ms / {bucket_ms} AS bucket,
+                 ROW_NUMBER() OVER (PARTITION BY ts_ms / {bucket_ms}
+                                   ORDER BY ts_ms DESC) AS rn
           FROM read_parquet(?)
         )
-        SELECT bucket * 1000, bid_total, ask_total
+        SELECT bucket * {bucket_ms}, bid_total, ask_total
         FROM bucketed WHERE rn = 1 ORDER BY bucket
         """,
-        [snapshots_path],
+        [path],
     ).fetchall()
-    qr = QuoteRatio(
-        bucket_ms=1000,
+    return QuoteRatio(
+        bucket_ms=bucket_ms,
         points=[
             QuoteRatioPoint(
                 t=hhmmssms_to_unix_ms(date, r[0]),
                 bid_total=int(r[1]), ask_total=int(r[2]),
             )
-            for r in qr_rows
+            for r in rows
         ],
     )
+```
 
-    # ----- depth_intensity: bid_grid + ask_grid -----
-    # Determine price range and tick.
+```bash
+git commit -m "feat(bundle): quote_ratio slice (last snapshot per bucket)"
+```
+
+### Task 1.5c: `depth_intensity` slice (most complex, includes cell cap)
+
+- [ ] **Step 1: Write failing tests**
+
+```python
+def test_session_depth_intensity_bid_ask_split(tiny_data_dir):
+    from hoga.api.bundle import build_depth_intensity_slice
+    from hoga.api.queries import QueryEngine
+    eng = QueryEngine(tiny_data_dir)
+    di = build_depth_intensity_slice(
+        eng.conn, code="003490", date="20260519",
+        data_dir=tiny_data_dir, depth_bucket_ms=5000,
+    )
+    # Two grids of equal length
+    assert len(di.bid_grid) == len(di.ask_grid)
+    # All cells non-negative
+    for col in di.bid_grid + di.ask_grid:
+        assert all(v >= 0 for v in col)
+    # Cap respected: at most 2M cells per grid
+    assert len(di.bid_grid) * len(di.bid_grid[0]) <= 2_000_000
+
+
+def test_depth_intensity_cap_widens_bucket(tiny_data_dir):
+    """If raw 1-s bucket would exceed cap, bucket widens automatically."""
+    from hoga.api.bundle import build_depth_intensity_slice
+    from hoga.api.queries import QueryEngine
+    eng = QueryEngine(tiny_data_dir)
+    # Force a tiny cap to exercise the widening branch
+    di = build_depth_intensity_slice(
+        eng.conn, code="003490", date="20260519",
+        data_dir=tiny_data_dir, depth_bucket_ms=1000, max_cells=100,
+    )
+    assert len(di.bid_grid) * len(di.bid_grid[0]) <= 100
+    assert di.bucket_ms >= 1000
+```
+
+- [ ] **Step 2-3: Run-fail, implement**
+
+Add to `hoga/api/bundle.py`:
+
+```python
+from hoga.api.models import DepthIntensity
+
+KRX_TICK_TIERS = [
+    (2_000, 1), (5_000, 5), (20_000, 10),
+    (50_000, 50), (200_000, 100),
+    (500_000, 500), (float("inf"), 1_000),
+]
+
+def tick_size(price_max):
+    for threshold, t in KRX_TICK_TIERS:
+        if price_max < threshold:
+            return t
+    return 1_000
+
+
+def _build_unpivot_sql(snapshots_path: str) -> str:
+    """Generate the 20-row UNPIVOT (10 ask + 10 bid) for snapshots.parquet."""
+    parts = []
+    for i in range(1, 11):
+        parts.append(
+            f"SELECT ts_ms, 'ask' AS side, ask_p{i} AS price, ask_q{i} AS qty "
+            f"FROM read_parquet('{snapshots_path}')"
+        )
+    for i in range(1, 11):
+        parts.append(
+            f"SELECT ts_ms, 'bid', bid_p{i}, bid_q{i} "
+            f"FROM read_parquet('{snapshots_path}')"
+        )
+    return "\n  UNION ALL\n  ".join(parts)
+
+
+def build_depth_intensity_slice(
+    conn, *, code, date, data_dir,
+    price_min=None, price_max=None,
+    depth_bucket_ms=5000, max_cells=2_000_000,
+):
+    code_dir = data_dir / "parquet" / date / code
+    candles_path = str(code_dir / "candles.parquet")
+    snapshots_path = str(code_dir / "snapshots.parquet")
+
+    # 1. Determine price range
     if price_min is None or price_max is None:
         row = conn.execute(
             "SELECT MIN(low), MAX(high) FROM read_parquet(?)", [candles_path],
@@ -806,13 +1016,21 @@ def build_bundle(
         price_max = int(row[1])
     tick = tick_size(price_max)
     bin_count = (price_max - price_min) // tick + 1
-    # Unpivot 20 levels then bin. (Pseudo — actual SQL is long but mechanical.)
-    di_rows = conn.execute(
+
+    # 2. Cell-cap enforcement: widen bucket until len(times) * bin_count <= max_cells
+    # Trading window = 7 hours = 25,200,000 ms. Times count = 25_200_000 // bucket.
+    while True:
+        n_times = 25_200_000 // depth_bucket_ms
+        if n_times * bin_count <= max_cells:
+            break
+        depth_bucket_ms *= 2
+
+    # 3. Run unpivot + bin
+    unpivot_sql = _build_unpivot_sql(snapshots_path)
+    rows = conn.execute(
         f"""
         WITH unpivoted AS (
-          SELECT ts_ms, 'ask' AS side, ask_p1 AS price, ask_q1 AS qty FROM read_parquet(?)
-          UNION ALL SELECT ts_ms, 'ask', ask_p2, ask_q2 FROM read_parquet(?)
-          -- ... 18 more UNION ALLs for ask_p3..p10 and bid_p1..p10 ...
+          {unpivot_sql}
         ),
         binned AS (
           SELECT (ts_ms / {depth_bucket_ms}) AS bucket,
@@ -826,26 +1044,75 @@ def build_bundle(
         SELECT bucket * {depth_bucket_ms}, side, bin_idx, max_qty
         FROM binned ORDER BY bucket, side, bin_idx
         """,
-        [snapshots_path] * 20,
     ).fetchall()
-    # Reshape into grids
-    times_set = sorted({r[0] for r in di_rows})
+
+    # 4. Reshape into grids
+    times_set = sorted({r[0] for r in rows})
     times = [hhmmssms_to_unix_ms(date, t) for t in times_set]
     bid_grid = [[0.0] * bin_count for _ in times_set]
     ask_grid = [[0.0] * bin_count for _ in times_set]
     t_idx = {t: i for i, t in enumerate(times_set)}
-    for t, side, b, q in di_rows:
+    for t, side, b, q in rows:
         target = ask_grid if side == "ask" else bid_grid
         target[t_idx[t]][b] = float(q)
-    di = DepthIntensity(
+
+    return DepthIntensity(
         bucket_ms=depth_bucket_ms,
         price_min=price_min, price_max=price_max, price_step=tick,
         times=times, bid_grid=bid_grid, ask_grid=ask_grid,
     )
+```
 
-    # ----- volume_profile: 24 equal-width bins across (price_min, price_max) -----
+- [ ] **Step 4-5: Run, pass, commit**
+
+```bash
+git commit -m "feat(bundle): depth_intensity slice with bid/ask split + cell cap"
+```
+
+### Task 1.5d: `volume_profile` slice
+
+- [ ] **Step 1: Write failing test**
+
+```python
+def test_session_volume_profile_slice(tiny_data_dir):
+    from hoga.api.bundle import build_volume_profile_slice
+    from hoga.api.queries import QueryEngine
+    eng = QueryEngine(tiny_data_dir)
+    vp = build_volume_profile_slice(
+        eng.conn, code="003490", date="20260519",
+        data_dir=tiny_data_dir, vp_bins=24,
+    )
+    assert vp.bin_count == 24
+    assert len(vp.bins) == 24
+    # Bins are price-sorted ascending
+    prices = [b.price_low for b in vp.bins]
+    assert prices == sorted(prices)
+    # Includes auction-cross volume (no side filter)
+    total = sum(b.qty for b in vp.bins)
+    assert total >= 0
+```
+
+- [ ] **Step 2-5: Run-fail, implement, run-pass, commit**
+
+```python
+from hoga.api.models import VolumeProfile, VolumeProfileBin
+
+def build_volume_profile_slice(
+    conn, *, code, date, data_dir,
+    price_min=None, price_max=None, vp_bins=24,
+):
+    code_dir = data_dir / "parquet" / date / code
+    candles_path = str(code_dir / "candles.parquet")
+    trades_path = str(code_dir / "trades.parquet")
+    if price_min is None or price_max is None:
+        row = conn.execute(
+            "SELECT MIN(low), MAX(high) FROM read_parquet(?)", [candles_path],
+        ).fetchone()
+        price_min = int(row[0])
+        price_max = int(row[1])
     bin_width = (price_max - price_min) / vp_bins
-    vp_rows = conn.execute(
+    # No side filter — auction crosses count toward volume profile per spec §4.1
+    rows = conn.execute(
         f"""
         SELECT FLOOR((price - {price_min}) / {bin_width}) AS bin_idx, SUM(qty) AS qty
         FROM read_parquet(?)
@@ -854,39 +1121,146 @@ def build_bundle(
         """,
         [trades_path],
     ).fetchall()
-    vp_bins_arr = [VolumeProfileBin(price_low=int(price_min + i * bin_width), qty=0) for i in range(vp_bins)]
-    for idx, qty in vp_rows:
-        if 0 <= int(idx) < vp_bins:
-            vp_bins_arr[int(idx)] = VolumeProfileBin(
-                price_low=int(price_min + int(idx) * bin_width), qty=int(qty),
+    bins_arr = [
+        VolumeProfileBin(price_low=int(price_min + i * bin_width), qty=0)
+        for i in range(vp_bins)
+    ]
+    for idx, qty in rows:
+        i = int(idx)
+        if 0 <= i < vp_bins:
+            bins_arr[i] = VolumeProfileBin(
+                price_low=int(price_min + i * bin_width), qty=int(qty),
             )
-    vp = VolumeProfile(
+    return VolumeProfile(
         bin_count=vp_bins, price_min=price_min, price_max=price_max,
-        bin_width=int(bin_width), bins=vp_bins_arr,
+        bin_width=int(bin_width), bins=bins_arr,
     )
+```
 
-    # ----- fill_strength: per-minute buy / sell qty (side != 0 only) -----
-    fs_rows = conn.execute(
-        """
-        SELECT (ts_ms / 60000) * 60000 AS bucket,
+```bash
+git commit -m "feat(bundle): volume_profile slice (24 equal-width bins, all sides)"
+```
+
+### Task 1.5e: `fill_strength` slice
+
+- [ ] **Step 1: Write failing test**
+
+```python
+def test_session_fill_strength_excludes_auctions(tiny_data_dir):
+    from hoga.api.bundle import build_fill_strength_slice
+    from hoga.api.queries import QueryEngine
+    eng = QueryEngine(tiny_data_dir)
+    fs = build_fill_strength_slice(eng.conn, code="003490", date="20260519",
+                                    data_dir=tiny_data_dir)
+    assert fs.bucket_ms == 60000
+    # Per spec §4.1: fill_strength excludes side = 0
+    # So sum(buy + sell) == sum(trades with side != 0, .qty)
+    expected = eng.conn.execute(
+        "SELECT SUM(qty) FROM read_parquet(?) WHERE side != 0",
+        [str(tiny_data_dir / 'parquet' / '20260519' / '003490' / 'trades.parquet')],
+    ).fetchone()[0] or 0
+    actual = sum(p.buy_qty + p.sell_qty for p in fs.points)
+    assert actual == expected
+```
+
+- [ ] **Step 2-5: Run-fail, implement, run-pass, commit**
+
+```python
+from hoga.api.models import FillStrength, FillStrengthPoint
+
+def build_fill_strength_slice(conn, *, code, date, data_dir, bucket_ms=60_000):
+    path = str(data_dir / "parquet" / date / code / "trades.parquet")
+    rows = conn.execute(
+        f"""
+        SELECT (ts_ms / {bucket_ms}) * {bucket_ms} AS bucket,
                SUM(CASE WHEN side = 1 THEN qty ELSE 0 END) AS buy_qty,
                SUM(CASE WHEN side = -1 THEN qty ELSE 0 END) AS sell_qty
         FROM read_parquet(?)
         WHERE side != 0
         GROUP BY 1 ORDER BY 1
         """,
-        [trades_path],
+        [path],
     ).fetchall()
-    fs = FillStrength(
-        bucket_ms=60000,
+    return FillStrength(
+        bucket_ms=bucket_ms,
         points=[
             FillStrengthPoint(
                 t=hhmmssms_to_unix_ms(date, r[0]),
                 buy_qty=int(r[1]), sell_qty=int(r[2]),
             )
-            for r in fs_rows
+            for r in rows
         ],
     )
+```
+
+```bash
+git commit -m "feat(bundle): fill_strength slice (per-minute, side != 0)"
+```
+
+### Task 1.5f: Assemble `build_bundle()` + wire `/api/session` route
+
+- [ ] **Step 1: Write failing tests (the integration tests from before)**
+
+```python
+def test_session_bundle_shape(tiny_data_dir):
+    app = create_app(tiny_data_dir)
+    client = TestClient(app)
+    r = client.get("/api/session?code=003490&date=20260519")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["code"] == "003490"
+    assert body["session_open_ms"] > 1_700_000_000_000
+    for slice_name in ("candles", "quote_ratio", "depth_intensity",
+                        "volume_profile", "fill_strength"):
+        assert slice_name in body
+
+
+def test_session_bundle_unified_price_grid(tiny_data_dir):
+    app = create_app(tiny_data_dir)
+    client = TestClient(app)
+    r = client.get("/api/session?code=003490&date=20260519"
+                   "&price_min=25000&price_max=26000")
+    di = r.json()["depth_intensity"]
+    assert di["price_min"] == 25000
+    assert di["price_max"] == 26000
+```
+
+- [ ] **Step 2: Run, fail (route 404)**
+
+- [ ] **Step 3: Add `build_bundle` assembly to `hoga/api/bundle.py`**
+
+Append to `hoga/api/bundle.py` (the slice builders from 1.5a-1.5e are already there):
+
+```python
+import json
+from hoga.api.models import SessionBundle
+
+
+def build_bundle(
+    conn, *, code: str, date: str, data_dir: Path,
+    price_min: int | None = None,
+    price_max: int | None = None,
+    depth_bucket_ms: int = 5000,
+    vp_bins: int = 24,
+) -> SessionBundle:
+    code_dir = data_dir / "parquet" / date / code
+    meta = json.loads((code_dir / "meta.json").read_text())
+    session_open_ms = hhmmssms_to_unix_ms(date, meta["regular_session_open_ms"])
+    session_close_ms = hhmmssms_to_unix_ms(date, meta["regular_session_close_ms"])
+
+    candles = build_candles_slice(conn, code=code, date=date, data_dir=data_dir)
+    qr = build_quote_ratio_slice(conn, code=code, date=date,
+                                  data_dir=data_dir, bucket_ms=1000)
+    di = build_depth_intensity_slice(
+        conn, code=code, date=date, data_dir=data_dir,
+        price_min=price_min, price_max=price_max,
+        depth_bucket_ms=depth_bucket_ms,
+    )
+    vp = build_volume_profile_slice(
+        conn, code=code, date=date, data_dir=data_dir,
+        price_min=price_min, price_max=price_max, vp_bins=vp_bins,
+    )
+    fs = build_fill_strength_slice(conn, code=code, date=date, data_dir=data_dir)
 
     return SessionBundle(
         code=code, date=date,
@@ -896,24 +1270,23 @@ def build_bundle(
     )
 ```
 
-The `depth_intensity` UNION ALL is mechanical — write all 20 `ask_p1..p10` and `bid_p1..p10` columns. Cell count cap enforcement: after computing `bin_count`, if `len(times) * bin_count > 2_000_000`, widen `depth_bucket_ms` until it fits and recompute.
-
-- [ ] **Step 4: Wire route**
-
-In `hoga/api/routes.py`:
+- [ ] **Step 4: Wire `/api/session` route in `hoga/api/routes.py`**
 
 ```python
 from hoga.api.bundle import build_bundle
 
 @router.get("/session", response_model=SessionBundle)
 def session(
-    code: str,
-    date: str,
+    code: str, date: str,
     price_min: int | None = Query(None),
     price_max: int | None = Query(None),
     depth_bucket_ms: int = Query(5000),
     vp_bins: int = Query(24),
 ) -> SessionBundle:
+    try:
+        engine.parquet_dir(date, code)
+    except StockDateNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     return build_bundle(
         engine.conn, code=code, date=date, data_dir=engine.data_dir,
         price_min=price_min, price_max=price_max,
@@ -921,18 +1294,12 @@ def session(
     )
 ```
 
-- [ ] **Step 5: Run to verify pass**
+- [ ] **Step 5: Run + commit**
 
 ```bash
 pytest tests/test_api_session.py -v
-# Expected: 2 PASS
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
 git add hoga/api/bundle.py hoga/api/routes.py tests/test_api_session.py
-git commit -m "feat(api): GET /api/session bundle endpoint"
+git commit -m "feat(api): GET /api/session bundle assembled from 5 slices"
 ```
 
 ### Task 1.6: SSE channel + watchdog
@@ -2443,33 +2810,382 @@ Phase 6 commit per task.
 
 ---
 
-## Phase 7 — 5 chart panes (6 tasks)
+## Phase 7 — 5 chart panes (6 tasks, step-level)
+
+Phase 7 is written at step-level because it is the highest-risk frontend phase (custom canvas overlays + cross-pane sync). Each pane task is a tight TDD cycle with concrete code.
+
+**Shared pane pattern** all 5 panes follow: each is a React component that takes `(chart: IChartApi, paneIndex: number, bundle: SessionBundle, segments: Segment[])` props. It mounts on first render, sets up its lightweight-charts series or custom canvas, returns a cleanup. Re-renders only when `bundle` reference changes (memo with deep equality on bundle.date is sufficient — bundles are immutable from `useSession`).
 
 ### Task 7.1: CandlePane
 
-lightweight-charts `CandlestickSeries`. Up/down colored. Auction Window + After-Hours minutes rendered with a muted color (per spec §4.1 candle behavior).
+**Files:**
+- Create: `frontend/src/chart/CandlePane.tsx`
+- Create: `frontend/tests/component/CandlePane.test.tsx`
 
-### Task 7.2: VolumeProfileOverlay (canvas)
+- [ ] **Step 1: Write failing test**
 
-Per spec §4.1 horizontal-bar overlay. Per-day overlay rendered in each day's segment width. Bars at 20% opacity teal, POC at 50%, VAH line at 100%. Pane header toggle switches to combined mode (single overlay across all dates) — toggle state in tab store.
+```tsx
+import { render } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import CandlePane from '../../src/chart/CandlePane';
 
-### Task 7.3: VolumePane
+const mockChart = {
+  addSeries: vi.fn().mockReturnValue({ setData: vi.fn(), applyOptions: vi.fn() }),
+};
 
-`HistogramSeries`. Color = candle-direction sync (green/rose) computed from candles array. Right y-axis K/M auto-format.
+it('mounts CandlestickSeries on chart with bundle data', () => {
+  const bundle: any = {
+    candles: [
+      { ts_ms: 1747526400000, open: 70000, close: 70100, high: 70200, low: 69900, vol_a: 100, vol_b: 0 },
+    ],
+  };
+  render(<CandlePane chart={mockChart as any} bundle={bundle} segments={[]} />);
+  expect(mockChart.addSeries).toHaveBeenCalled();
+  const series = mockChart.addSeries.mock.results[0].value;
+  expect(series.setData).toHaveBeenCalledWith(expect.arrayContaining([
+    expect.objectContaining({ open: 70000, close: 70100 }),
+  ]));
+});
+```
 
-### Task 7.4: RatioPane
+- [ ] **Step 2: Run, fail**
 
-`LineSeries`. Y-axis: auto-fit, no clipping. Custom tick labels via `priceFormat.formatter` (e.g., `1.2× S`, `0`, `1.2× B`). Teal dashed baseline at 0.
+- [ ] **Step 3: Implement**
 
-### Task 7.5: IntensityPane (canvas — the Phase 0 spike pattern)
+```tsx
+import { useEffect } from 'react';
+import { CandlestickSeries, type IChartApi } from 'lightweight-charts';
+import type { SessionBundle } from '../api/types';
+import type { Segment } from '../util/time';
+import { realToVirtual } from '../util/time';
 
-Two grids stacked (bid + ask, different hues). 5-second buckets default, tick-aligned price bins. Repaint on visible-range change.
+const UP = 'var(--up)';
+const DOWN = 'var(--down)';
+const MUTED = 'var(--fg-dim)';
+
+type Props = { chart: IChartApi; bundle: SessionBundle; segments: Segment[] };
+
+export default function CandlePane({ chart, bundle, segments }: Props) {
+  useEffect(() => {
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: UP, downColor: DOWN, wickUpColor: UP, wickDownColor: DOWN, borderVisible: false,
+    });
+    const data = bundle.candles.map(c => {
+      // Detect auction window or after-hours via candle position relative to session_close_ms
+      const inAuctionOrAfter = c.ts_ms >= bundle.session_open_ms + (6 * 3600 + 20 * 60) * 1000;
+      const color = inAuctionOrAfter ? MUTED : (c.close >= c.open ? UP : DOWN);
+      return {
+        time: realToVirtual(c.ts_ms, segments) / 1000 as any,
+        open: c.open, close: c.close, high: c.high, low: c.low,
+        color, borderColor: color, wickColor: color,
+      };
+    });
+    series.setData(data);
+    return () => { chart.removeSeries(series); };
+  }, [chart, bundle, segments]);
+  return null;
+}
+```
+
+- [ ] **Step 4: Run, pass + commit**
+
+```bash
+cd frontend && npx vitest run tests/component/CandlePane.test.tsx
+cd .. && git add frontend/ && git commit -m "feat(chart): CandlePane with auction/after-hours muted color"
+```
+
+### Task 7.2: VolumePane
+
+**Files:**
+- Create: `frontend/src/chart/VolumePane.tsx`
+- Create: `frontend/tests/component/VolumePane.test.tsx`
+
+- [ ] **Step 1: Write failing test**
+
+```tsx
+it('colors volume bar by candle direction', () => {
+  const bundle: any = {
+    candles: [
+      { ts_ms: 100, open: 70000, close: 70100, high: 70200, low: 69900, vol_a: 50, vol_b: 50 },
+      { ts_ms: 200, open: 70100, close: 69900, high: 70150, low: 69900, vol_a: 80, vol_b: 20 },
+    ],
+  };
+  render(<VolumePane chart={mockChart as any} bundle={bundle} segments={[]} />);
+  const series = mockChart.addSeries.mock.results[0].value;
+  const calls = series.setData.mock.calls[0][0];
+  // First bar (up): green; second (down): rose
+  expect(calls[0].color).toMatch(/up|22C55E/);
+  expect(calls[1].color).toMatch(/down|F43F5E/);
+});
+```
+
+- [ ] **Step 2-3: Run-fail, implement**
+
+```tsx
+import { useEffect } from 'react';
+import { HistogramSeries, type IChartApi } from 'lightweight-charts';
+import type { SessionBundle } from '../api/types';
+import type { Segment } from '../util/time';
+import { realToVirtual } from '../util/time';
+
+const UP = 'var(--up)';
+const DOWN = 'var(--down)';
+
+export default function VolumePane({ chart, bundle, segments }) {
+  useEffect(() => {
+    const series = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'right',
+    });
+    const data = bundle.candles.map(c => ({
+      time: realToVirtual(c.ts_ms, segments) / 1000 as any,
+      value: c.vol_a + c.vol_b,
+      color: c.close >= c.open ? UP : DOWN,
+    }));
+    series.setData(data);
+    return () => { chart.removeSeries(series); };
+  }, [chart, bundle, segments]);
+  return null;
+}
+```
+
+- [ ] **Step 4-5: Run, pass, commit**
+
+```bash
+git commit -m "feat(chart): VolumePane with candle-direction color"
+```
+
+### Task 7.3: RatioPane (Bid/Ask Imbalance)
+
+**Files:**
+- Create: `frontend/src/chart/RatioPane.tsx`
+- Create: `frontend/src/util/imbalance.ts` (the quoteImbalance formula)
+- Create: `frontend/tests/unit/imbalance.test.ts`
+- Create: `frontend/tests/component/RatioPane.test.tsx`
+
+- [ ] **Step 1: Write failing tests**
+
+```ts
+// imbalance.test.ts
+import { quoteImbalance } from '../../src/util/imbalance';
+it('returns 0 at balance', () => expect(quoteImbalance(100, 100)).toBe(0));
+it('returns +0.2 when ask 1.2× bid (sell heavy)', () =>
+  expect(quoteImbalance(100, 120)).toBeCloseTo(0.2, 5));
+it('returns -0.2 when bid 1.2× ask (buy heavy)', () =>
+  expect(quoteImbalance(120, 100)).toBeCloseTo(-0.2, 5));
+it('returns 0 when either side is 0', () => expect(quoteImbalance(0, 100)).toBe(0));
+```
+
+- [ ] **Step 2-3: Run-fail, implement**
+
+```ts
+// util/imbalance.ts
+export function quoteImbalance(bid: number, ask: number): number {
+  if (bid <= 0 || ask <= 0) return 0;
+  return ask >= bid ? (ask / bid - 1) : -(bid / ask - 1);
+}
+```
+
+```tsx
+// chart/RatioPane.tsx
+import { useEffect } from 'react';
+import { LineSeries, type IChartApi } from 'lightweight-charts';
+import { quoteImbalance } from '../util/imbalance';
+
+export default function RatioPane({ chart, bundle, segments }) {
+  useEffect(() => {
+    const series = chart.addSeries(LineSeries, {
+      color: 'var(--accent)',
+      lineWidth: 1.4,
+      priceFormat: {
+        type: 'custom',
+        formatter: (v: number) => {
+          if (Math.abs(v) < 0.005) return '0';
+          const r = (1 + Math.abs(v)).toFixed(1);
+          return v >= 0 ? `${r}× S` : `${r}× B`;
+        },
+      },
+    });
+    const data = bundle.quote_ratio.points.map(p => ({
+      time: realToVirtual(p.t, segments) / 1000 as any,
+      value: quoteImbalance(p.bid_total, p.ask_total),
+    }));
+    series.setData(data);
+    // Baseline at 0
+    series.createPriceLine({
+      price: 0, color: 'var(--accent)', lineStyle: 1, lineWidth: 1, title: '',
+    });
+    return () => { chart.removeSeries(series); };
+  }, [chart, bundle, segments]);
+  return null;
+}
+```
+
+- [ ] **Step 4-5: Run, pass, commit**
+
+```bash
+git commit -m "feat(chart): RatioPane (0-centered imbalance) + quoteImbalance helper"
+```
+
+### Task 7.4: IntensityPane (custom canvas, the spike pattern)
+
+This is the highest-risk pane. Mirrors the Phase 0 spike: lightweight-charts handles the price axis, a `<canvas>` is overlaid and painted from `(bid_grid, ask_grid)` with `subscribeVisibleTimeRangeChange`.
+
+**Files:**
+- Create: `frontend/src/chart/IntensityPane.tsx`
+- Create: `frontend/tests/component/IntensityPane.test.tsx`
+
+- [ ] **Step 1: Write failing test (canvas not unit-tested deeply — just mount)**
+
+```tsx
+import { render } from '@testing-library/react';
+import IntensityPane from '../../src/chart/IntensityPane';
+
+it('renders a canvas with bid+ask data', () => {
+  const bundle: any = {
+    depth_intensity: {
+      bucket_ms: 5000, price_min: 70000, price_max: 71000, price_step: 100,
+      times: [1, 2], bid_grid: [[0.5, 0], [0, 0.3]], ask_grid: [[0, 0.4], [0.6, 0]],
+    },
+  };
+  const { container } = render(
+    <IntensityPane chart={mockChart as any} bundle={bundle} segments={[]} />,
+  );
+  expect(container.querySelector('canvas')).toBeInTheDocument();
+});
+```
+
+- [ ] **Step 2-3: Run-fail, implement**
+
+```tsx
+import { useEffect, useRef } from 'react';
+import type { IChartApi } from 'lightweight-charts';
+import type { SessionBundle } from '../api/types';
+import type { Segment } from '../util/time';
+import { realToVirtual } from '../util/time';
+
+const UP = '#22C55E';
+const DOWN = '#F43F5E';
+const BG = '#0E1A1A';
+
+export default function IntensityPane({ chart, bundle, segments }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current!;
+    const ctx = canvas.getContext('2d')!;
+    const di = bundle.depth_intensity;
+    const bins = di.bid_grid[0]?.length ?? 0;
+
+    function paint() {
+      const ts = chart.timeScale();
+      const ps = chart.priceScale('right');
+      canvas.width = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const cellH = canvas.height / bins;
+      di.times.forEach((t, i) => {
+        const x = ts.timeToCoordinate(realToVirtual(t, segments) / 1000 as any);
+        if (x === null) return;
+        const xNext = ts.timeToCoordinate(realToVirtual(di.times[i + 1] ?? t + di.bucket_ms, segments) / 1000 as any) ?? x + 2;
+        const w = xNext - x;
+        for (let b = 0; b < bins; b++) {
+          const bidV = di.bid_grid[i][b];
+          const askV = di.ask_grid[i][b];
+          if (bidV < 0.02 && askV < 0.02) continue;
+          const isAsk = askV >= bidV;
+          const v = Math.max(bidV, askV);
+          const hex = isAsk ? DOWN : UP;
+          ctx.fillStyle = hex + Math.round(v * 255).toString(16).padStart(2, '0');
+          ctx.fillRect(x, (bins - 1 - b) * cellH, w + 0.5, cellH + 0.5);
+        }
+      });
+    }
+    const unsub = chart.timeScale().subscribeVisibleTimeRangeChange(paint);
+    const ro = new ResizeObserver(paint);
+    ro.observe(canvas);
+    paint();
+    return () => { unsub(); ro.disconnect(); };
+  }, [chart, bundle, segments]);
+  return <canvas ref={ref} className="absolute inset-0 w-full h-full pointer-events-none" />;
+}
+```
+
+- [ ] **Step 4-5: Run, pass, commit**
+
+```bash
+git commit -m "feat(chart): IntensityPane with bid/ask canvas overlay"
+```
+
+### Task 7.5: VolumeProfileOverlay (custom canvas on candle pane)
+
+**Files:**
+- Create: `frontend/src/chart/VolumeProfileOverlay.tsx`
+- Create: `frontend/tests/component/VolumeProfileOverlay.test.tsx`
+
+Similar canvas pattern as IntensityPane but rendered ON the candle pane. Horizontal bars per price bin per day's segment.
+
+- [ ] **Step 1: Write failing test (mount + bar count per day check)**
+
+```tsx
+it('renders one bar per bin per day segment', () => {
+  const bundle: any = {
+    volume_profile: {
+      bin_count: 4, price_min: 70000, price_max: 70400, bin_width: 100,
+      bins: [{ price_low: 70000, qty: 10 }, { price_low: 70100, qty: 50 },
+              { price_low: 70200, qty: 30 }, { price_low: 70300, qty: 20 }],
+    },
+  };
+  const { container } = render(
+    <VolumeProfileOverlay chart={mockChart as any} bundle={bundle}
+      segments={[{ date: '20260518', sessionOpenMs: 0, sessionCloseMs: 100, virtualStart: 0 }]}
+      mode="per-day" />,
+  );
+  expect(container.querySelector('canvas')).toBeInTheDocument();
+});
+```
+
+- [ ] **Step 2-3: Run-fail, implement** (same canvas pattern as IntensityPane; opacity 0.2 default, POC at 0.5, VAH horizontal line, toggle via prop)
+
+- [ ] **Step 4-5: Run, pass, commit**
+
+```bash
+git commit -m "feat(chart): VolumeProfileOverlay with POC + VAH line"
+```
 
 ### Task 7.6: FillStrengthPane
 
-`HistogramSeries` × 2 stacked at center. Buy bars up (`--up`), sell bars down (`--down`), 0 baseline.
+**Files:**
+- Create: `frontend/src/chart/FillStrengthPane.tsx`
+- Create: `frontend/tests/component/FillStrengthPane.test.tsx`
 
-Commit per pane.
+Two stacked HistogramSeries (buy up, sell down). 0-centered.
+
+- [ ] **Step 1-5: TDD per pattern**
+
+```tsx
+import { useEffect } from 'react';
+import { HistogramSeries, type IChartApi } from 'lightweight-charts';
+
+export default function FillStrengthPane({ chart, bundle, segments }) {
+  useEffect(() => {
+    const buy = chart.addSeries(HistogramSeries, { color: 'var(--up)', base: 0 });
+    const sell = chart.addSeries(HistogramSeries, { color: 'var(--down)', base: 0 });
+    buy.setData(bundle.fill_strength.points.map(p => ({
+      time: realToVirtual(p.t, segments) / 1000 as any, value: p.buy_qty,
+    })));
+    sell.setData(bundle.fill_strength.points.map(p => ({
+      time: realToVirtual(p.t, segments) / 1000 as any, value: -p.sell_qty,  // negative
+    })));
+    return () => { chart.removeSeries(buy); chart.removeSeries(sell); };
+  }, [chart, bundle, segments]);
+  return null;
+}
+```
+
+```bash
+git commit -m "feat(chart): FillStrengthPane (buy up, sell down, 0-centered)"
+```
 
 ---
 
@@ -2534,21 +3250,142 @@ Commit per page.
 
 `parseUrl(search) → { tabs: TabSelection[], active: number }` and `emitUrl(...) → string`. Hook to ReplayViewer that syncs tabs ↔ URL on selection change.
 
-### Task 10.2: Playwright smoke
+### Task 10.2: Playwright E2E tests (4 specs)
+
+**Files:**
+- Create: `frontend/tests/e2e/replay-smoke.spec.ts`
+- Create: `frontend/tests/e2e/multi-tab.spec.ts`
+- Create: `frontend/tests/e2e/sse-refresh.spec.ts`
+- Create: `frontend/tests/e2e/error-states.spec.ts`
+- Create: `frontend/playwright.config.ts`
+
+**Setup precondition:** the backend starts against `tests/fixtures/` (extended for at least 2 captured Stock-Dates). A script `frontend/tests/e2e/setup.sh` starts the backend at port 8000 and frontend at 5173 before the test run.
+
+#### 10.2a — replay-smoke.spec.ts (the happy path)
 
 ```ts
 import { test, expect } from '@playwright/test';
 
-test('replay viewer smoke', async ({ page }) => {
-  await page.goto('http://localhost:5173/replay');
+test('replay viewer happy path renders all 5 panes', async ({ page }) => {
+  await page.goto('/replay');
   await expect(page.getByText('분석 시작')).toBeVisible();
-  await page.getByText('종목 선택').click();
+
+  // Pick stock
+  await page.getByRole('button', { name: /종목 선택|005930/ }).click();
   await page.getByText('삼성전자').click();
-  // ... pick dates, click Load, verify 5 panes render
-  await page.waitForSelector('[data-pane="candles"]');
-  await page.waitForSelector('[data-pane="volume"]');
-  // ...
+
+  // Pick a single date
+  await page.locator('.date-field').first().click();
+  await page.getByRole('button', { name: '20' }).click();  // pick 5/20
+  await page.locator('.date-field').nth(1).click();
+  await page.getByRole('button', { name: '20' }).click();
+
+  // Click Load
+  await page.getByRole('button', { name: /데이터 불러오기/ }).click();
+
+  // Verify all 5 panes render
+  for (const pane of ['candle', 'volume', 'ratio', 'intensity', 'fill-strength']) {
+    await expect(page.locator(`[data-pane="${pane}"]`)).toBeVisible({ timeout: 5000 });
+  }
+
+  // Sidebar 3 cards
+  await expect(page.locator('[data-card="orderbook"]')).toBeVisible();
+  await expect(page.locator('[data-card="brokers"]')).toBeVisible();
+  await expect(page.locator('[data-card="fills"]')).toBeVisible();
 });
+```
+
+#### 10.2b — multi-tab.spec.ts (bundle isolation across tabs)
+
+```ts
+test('two tabs with different stocks isolate bundles', async ({ page }) => {
+  await page.goto('/replay');
+  // Open first tab with 005930
+  await loadStockDate(page, '005930', '20260520');
+  await expect(page.getByText('삼성전자')).toBeVisible();
+
+  // Add a new tab
+  await page.getByText('+ 새 분석').click();
+  await loadStockDate(page, '000660', '20260520');
+  await expect(page.getByText('SK하이닉스')).toBeVisible();
+
+  // Switch back to tab 1
+  await page.locator('.tab').first().click();
+  await expect(page.locator('.tab.active .tab-code')).toHaveText('005930');
+
+  // Asserting bundle isolation: read network requests and confirm
+  // /api/session was called twice with different ?code= params
+  const sessionRequests = await page.evaluate(() =>
+    performance.getEntriesByType('resource')
+      .filter(r => r.name.includes('/api/session'))
+      .map(r => r.name)
+  );
+  expect(sessionRequests.filter(u => u.includes('code=005930')).length).toBeGreaterThan(0);
+  expect(sessionRequests.filter(u => u.includes('code=000660')).length).toBeGreaterThan(0);
+});
+```
+
+#### 10.2c — sse-refresh.spec.ts (inventory auto-update)
+
+```ts
+test('SSE inventory_added refreshes the combobox without reload', async ({ page, request }) => {
+  await page.goto('/replay');
+  await page.getByRole('button', { name: /종목 선택/ }).click();
+  const before = await page.locator('.combo-option').count();
+
+  // Trigger a new capture via the test backend admin endpoint
+  // (or have the test runner mkdir the new Stock-Date in fixture data dir)
+  await request.post('http://localhost:8000/api/test/add-stockdate?code=999999&date=20260520');
+
+  // Within 2 seconds, the combobox refreshes (SSE invalidates the query)
+  await expect(page.locator('.combo-option')).toHaveCount(before + 1, { timeout: 2000 });
+});
+```
+
+Note: this test requires a `/api/test/add-stockdate` test helper or direct filesystem mutation. The fixture data dir is in tmp; tests can `await fs.mkdir(...)` directly.
+
+#### 10.2d — error-states.spec.ts (404 silent vs 5xx red)
+
+```ts
+test('5xx renders red retry segment, 404 silently drops', async ({ page, route }) => {
+  // Intercept /api/session: first date 200, second date 5xx
+  await page.route('**/api/session*', (route, request) => {
+    const url = new URL(request.url());
+    if (url.searchParams.get('date') === '20260519') {
+      return route.fulfill({ status: 503, body: 'overloaded' });
+    }
+    return route.continue();
+  });
+
+  await page.goto('/replay?tabs=005930:20260518:20260520&active=0');
+  await page.getByRole('button', { name: /데이터 불러오기|Reload/ }).click();
+
+  // Day 5/19 should render with red retry segment
+  await expect(page.locator('[data-segment-status="error"]')).toBeVisible();
+  await expect(page.getByText(/Retry/)).toBeVisible();
+
+  // Days 5/18 and 5/20 still rendered
+  await expect(page.locator('[data-segment-status="loaded"]')).toHaveCount(2);
+});
+
+test('404 silently drops from virtual axis', async ({ page }) => {
+  // Mock /api/session to return 404 for date 20260524 (a Sunday, "market closed")
+  await page.route('**/api/session*date=20260524*', route => route.fulfill({ status: 404 }));
+
+  // Direct URL navigation with that date
+  await page.goto('/replay?tabs=005930:20260520:20260524&active=0');
+  // The 5/24 segment is silently absent — no red, no "Load failed" message
+  await expect(page.getByText(/Load failed/)).not.toBeVisible();
+  // Only the 5/20–5/23 segments visible (or however many real ones exist)
+  await expect(page.locator('[data-segment-status="loaded"]')).toHaveCount(1);
+});
+```
+
+- [ ] **Step 1-5 (TDD per spec):** write failing E2E, run backend + frontend, run Playwright, fix, commit per spec.
+
+```bash
+git add frontend/tests/e2e/ frontend/playwright.config.ts
+git commit -m "test(e2e): 4 Playwright specs (smoke, multi-tab, SSE, errors)"
 ```
 
 ### Task 10.3: Final ship checklist
