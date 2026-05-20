@@ -4,23 +4,64 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
-from hoga.parser.events import BrokerRow, Candle, Orderbook, StockInfo, Trade
-from hoga.parser.tsv import (
-    FieldCountError,
-    parse_candle_row,
-    parse_info_row,
-    parse_row,
-)
-from hoga.parser.writer import (
-    write_brokers_parquet,
-    write_candles_parquet,
-    write_snapshots_parquet,
-    write_trades_parquet,
-)
+from hoga.tables import brokers, candles, snapshots, trades
+from hoga.tables.brokers import BrokerRow
+from hoga.tables.candles import Candle
+from hoga.tables.dispatch import FieldCountError, parse_row, split_row
+from hoga.tables.snapshots import Orderbook
+from hoga.tables.trades import Trade
 
 PARSER_VERSION = "0.1.0"
+
+INFO_MIN_FIELDS = 22
+
+
+@dataclass(frozen=True)
+class StockInfo:
+    code: str
+    name: str
+    regular_session_open_ms: int
+    regular_session_close_ms: int
+    prev_close: int
+    upper_limit: int
+    lower_limit: int
+    today_open: int
+    today_high: int
+    today_low: int
+    today_close: int
+    raw_line: str
+    unknowns: dict[str, str]
+
+
+def parse_info_row(line: str) -> StockInfo:
+    parts = split_row(line)
+    if len(parts) < INFO_MIN_FIELDS:
+        raise FieldCountError(f"info row expects >={INFO_MIN_FIELDS} fields, got {len(parts)}")
+    unknowns = {
+        "f11": parts[10],
+        "f16": parts[15],
+        "f17": parts[16],
+        "f21": parts[20],
+        "f22": parts[21],
+    }
+    return StockInfo(
+        code=parts[1],
+        name=parts[2],
+        regular_session_open_ms=int(parts[4]),
+        regular_session_close_ms=int(parts[5]),
+        prev_close=int(parts[11]),
+        upper_limit=int(parts[12]),
+        lower_limit=int(parts[13]),
+        today_open=int(parts[14]),
+        today_high=int(parts[17]),
+        today_low=int(parts[18]),
+        today_close=int(parts[19]),
+        raw_line=line.rstrip("\n"),
+        unknowns=unknowns,
+    )
 
 
 class ParserError(RuntimeError):
@@ -54,17 +95,19 @@ def parse_stock_date(
     info_text = (raw_dir / "info.tsv").read_text(encoding="utf-8").strip()
     info = parse_info_row(info_text)
 
-    trades, snapshots, brokers, seen_seqs, skipped = _collect_events(raw_dir, lenient=lenient)
+    trades_list, snapshots_list, brokers_list, seen_seqs, skipped = _collect_events(
+        raw_dir, lenient=lenient
+    )
 
-    _validate_trades_monotonic(trades, lenient=lenient)
-    _validate_snapshot_price_order(snapshots, lenient=lenient)
+    trades.validate(trades_list, lenient=lenient)
+    snapshots.validate(snapshots_list, lenient=lenient)
 
-    candles = _collect_candles(raw_dir, skipped=skipped, lenient=lenient)
+    candles_list = _collect_candles(raw_dir, skipped=skipped, lenient=lenient)
 
-    write_trades_parquet(trades, out_dir / "trades.parquet")
-    write_snapshots_parquet(snapshots, out_dir / "snapshots.parquet")
-    write_brokers_parquet(brokers, out_dir / "brokers.parquet")
-    write_candles_parquet(candles, out_dir / "candles.parquet")
+    trades.write_parquet(trades_list, out_dir / "trades.parquet")
+    snapshots.write_parquet(snapshots_list, out_dir / "snapshots.parquet")
+    brokers.write_parquet(brokers_list, out_dir / "brokers.parquet")
+    candles.write_parquet(candles_list, out_dir / "candles.parquet")
 
     meta = _build_meta(info=info, seen_seqs=seen_seqs, skipped=skipped, raw_dir=raw_dir)
     (out_dir / "meta.json").write_text(
@@ -85,9 +128,9 @@ def _collect_events(
     list[tuple[str, int, str]],
 ]:
     seen_seqs: set[int] = set()
-    trades: list[Trade] = []
-    snapshots: list[Orderbook] = []
-    brokers: list[BrokerRow] = []
+    trades_list: list[Trade] = []
+    snapshots_list: list[Orderbook] = []
+    brokers_list: list[BrokerRow] = []
     skipped: list[tuple[str, int, str]] = []
 
     for page_path, lineno, line in _iter_first_lines(raw_dir):
@@ -105,24 +148,24 @@ def _collect_events(
             continue
 
         if isinstance(parsed, list):
-            _add_broker_rows(parsed, brokers=brokers, seen_seqs=seen_seqs)
+            _add_broker_rows(parsed, brokers_list=brokers_list, seen_seqs=seen_seqs)
             continue
 
         if parsed.seq in seen_seqs:
             continue
         seen_seqs.add(parsed.seq)
         if isinstance(parsed, Trade):
-            trades.append(parsed)
+            trades_list.append(parsed)
         elif isinstance(parsed, Orderbook):
-            snapshots.append(parsed)
+            snapshots_list.append(parsed)
 
-    return trades, snapshots, brokers, seen_seqs, skipped
+    return trades_list, snapshots_list, brokers_list, seen_seqs, skipped
 
 
 def _add_broker_rows(
     parsed: list[BrokerRow],
     *,
-    brokers: list[BrokerRow],
+    brokers_list: list[BrokerRow],
     seen_seqs: set[int],
 ) -> None:
     """Dedup broker rows by seq and append to brokers list."""
@@ -131,7 +174,7 @@ def _add_broker_rows(
         return
     if sample_seq is not None:
         seen_seqs.add(sample_seq)
-    brokers.extend(parsed)
+    brokers_list.extend(parsed)
 
 
 def _collect_candles(
@@ -140,58 +183,21 @@ def _collect_candles(
     skipped: list[tuple[str, int, str]],
     lenient: bool,
 ) -> list[Candle]:
-    candles: list[Candle] = []
+    candles_list: list[Candle] = []
     chart_path = raw_dir / "chart.tsv"
     if not chart_path.exists():
-        return candles
+        return candles_list
     for line in chart_path.read_text(encoding="utf-8").splitlines():
         if not line:
             continue
         try:
-            candles.append(parse_candle_row(line))
+            candles_list.append(candles.parse_row(line))
         except (FieldCountError, ValueError) as e:
             if lenient:
                 skipped.append(("chart.tsv", 0, str(e)))
                 continue
             raise ParserError(f"chart.tsv: {e}") from e
-    return candles
-
-
-def _validate_trades_monotonic(trades: list[Trade], *, lenient: bool) -> None:
-    """cum_vol must be non-decreasing across continuous-trading (side != 0) rows.
-
-    Auction Cross trades (side == 0 — opening/closing/pre-market single-price
-    matchings) carry cum_vol = 0 and are excluded from this check; their volume
-    is folded into the next continuous trade.
-    """
-    sorted_trades = sorted(
-        (t for t in trades if t.side != 0),
-        key=lambda t: t.ts_ms,
-    )
-    prev = -1
-    for t in sorted_trades:
-        if t.cum_vol < prev:
-            msg = f"cum_vol decreased at seq={t.seq}: {prev} -> {t.cum_vol}"
-            if lenient:
-                continue
-            raise ParserError(msg)
-        prev = t.cum_vol
-
-
-def _validate_snapshot_price_order(snapshots: list[Orderbook], *, lenient: bool) -> None:
-    for ob in snapshots:
-        nz_ask = [p for p in ob.ask_p if p > 0]
-        if nz_ask != sorted(nz_ask):
-            msg = f"ask prices not sorted at seq={ob.seq}: {nz_ask}"
-            if lenient:
-                continue
-            raise ParserError(msg)
-        nz_bid = [p for p in ob.bid_p if p > 0]
-        if nz_bid != sorted(nz_bid, reverse=True):
-            msg = f"bid prices not sorted at seq={ob.seq}: {nz_bid}"
-            if lenient:
-                continue
-            raise ParserError(msg)
+    return candles_list
 
 
 def _build_meta(
