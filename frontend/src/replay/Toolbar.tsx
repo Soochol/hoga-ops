@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTabsStore } from '../state/tabs';
 import StockCombobox from './StockCombobox';
 import DateRangePicker from './DateRangePicker';
@@ -10,6 +10,22 @@ export default function Toolbar() {
     from: active.selection?.fromDate ?? null,
     to: active.selection?.toDate ?? null,
   });
+
+  // Sync draft from the store when the user switches tabs (active.id changes).
+  // URL hydration also goes through this path because the hydrator calls
+  // tabsStore.reset() which produces a fresh tab id — so a deep-link like
+  // /replay?tabs=005930:20260520:20260520 correctly populates the toolbar.
+  // We intentionally don't sync on selection-within-the-same-tab changes:
+  // that would clobber the user's in-progress draft if any other code path
+  // mutated selection while they were editing.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setDraft({
+      code: active.selection?.code ?? null,
+      from: active.selection?.fromDate ?? null,
+      to: active.selection?.toDate ?? null,
+    });
+  }, [active.id]);
 
   // Stock change → clear dates (Task 4.5)
   const setCode = (code: string) => setDraft({ code, from: null, to: null });

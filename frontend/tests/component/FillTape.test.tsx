@@ -19,7 +19,7 @@ const trade = (overrides: Partial<Record<string, number>>) => ({
 
 describe('FillTape', () => {
   it('shows loading when null', () => {
-    render(<FillTape trades={null} />);
+    render(<FillTape trades={undefined} />);
     expect(screen.getByText(/로딩 중/)).toBeInTheDocument();
   });
 

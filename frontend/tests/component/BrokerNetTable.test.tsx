@@ -4,7 +4,7 @@ import BrokerNetTable from '../../src/sidebar/BrokerNetTable';
 
 describe('BrokerNetTable', () => {
   it('shows loading state when null', () => {
-    render(<BrokerNetTable brokers={null} />);
+    render(<BrokerNetTable brokers={undefined} />);
     expect(screen.getByText(/로딩 중/)).toBeInTheDocument();
   });
 

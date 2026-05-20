@@ -34,7 +34,10 @@ export function useOrderbookAtCursor() {
       reshapeOrderbook,
     ),
   );
-  return data ?? null;
+  // Preserve the (T | null | undefined) shape: undefined = haven't fetched
+  // yet (no cursor / loading), null = fetched but empty, value = data.
+  // Consumers distinguish loading vs no-data via the undefined check.
+  return data;
 }
 
 export function useBrokersAtCursor() {
@@ -45,7 +48,10 @@ export function useBrokersAtCursor() {
       `/api/brokers?code=${code}&date=${date}&t=${cursorMs}`,
     ).then((r) => r.entries),
   );
-  return data ?? null;
+  // Preserve the (T | null | undefined) shape: undefined = haven't fetched
+  // yet (no cursor / loading), null = fetched but empty, value = data.
+  // Consumers distinguish loading vs no-data via the undefined check.
+  return data;
 }
 
 export function useTradesAroundCursor(windowMs: number = 5000, limit: number = 20) {
@@ -59,5 +65,8 @@ export function useTradesAroundCursor(windowMs: number = 5000, limit: number = 2
       `/api/trades?code=${code}&date=${date}&from=${cursorMs! - windowMs}&to=${cursorMs}&limit=${limit}`,
     ).then((r) => r.trades),
   );
-  return data ?? null;
+  // Preserve the (T | null | undefined) shape: undefined = haven't fetched
+  // yet (no cursor / loading), null = fetched but empty, value = data.
+  // Consumers distinguish loading vs no-data via the undefined check.
+  return data;
 }

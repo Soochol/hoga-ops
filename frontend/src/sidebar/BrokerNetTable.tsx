@@ -1,18 +1,18 @@
 import { useMemo } from 'react';
 import type { BrokerEntry } from '../api/types';
 
-type Props = { brokers: BrokerEntry[] | null };
+type Props = { brokers: BrokerEntry[] | null | undefined };
 
 export default function BrokerNetTable({ brokers }: Props) {
   const rows = useMemo(() => computeNet(brokers ?? []), [brokers]);
-  if (!brokers) {
+  if (brokers === undefined) {
     return (
       <div className="grid place-items-center h-full text-fg-dimmer text-xs">
         커서 위치 로딩 중…
       </div>
     );
   }
-  if (rows.length === 0) {
+  if (brokers === null || rows.length === 0) {
     return (
       <div className="grid place-items-center h-full text-fg-dimmer text-xs">거래원 정보 없음</div>
     );

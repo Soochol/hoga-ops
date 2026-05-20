@@ -1,12 +1,19 @@
 import type { OrderbookSnapshot } from '../api/types';
 
-type Props = { snapshot: OrderbookSnapshot | null };
+type Props = { snapshot: OrderbookSnapshot | null | undefined };
 
 export default function OrderbookTable({ snapshot }: Props) {
-  if (!snapshot) {
+  if (snapshot === undefined) {
     return (
       <div className="grid place-items-center h-full text-fg-dimmer text-xs">
         커서 위치 로딩 중…
+      </div>
+    );
+  }
+  if (snapshot === null) {
+    return (
+      <div className="grid place-items-center h-full text-fg-dimmer text-xs">
+        호가 데이터 없음
       </div>
     );
   }

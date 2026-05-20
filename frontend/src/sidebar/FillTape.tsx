@@ -1,23 +1,22 @@
 import { useMemo } from 'react';
 import type { Trade } from '../api/types';
 
-type Props = { trades: Trade[] | null };
+type Props = { trades: Trade[] | null | undefined };
 
 export default function FillTape({ trades }: Props) {
   const display = useMemo(() => {
-    if (!trades) return null;
-    // Newest at top — copy + reverse if API returns ascending.
+    if (trades == null) return trades; // preserve undefined vs null
     return [...trades].sort((a, b) => b.ts_ms - a.ts_ms);
   }, [trades]);
 
-  if (!display) {
+  if (display === undefined) {
     return (
       <div className="grid place-items-center h-full text-fg-dimmer text-xs">
         커서 위치 로딩 중…
       </div>
     );
   }
-  if (display.length === 0) {
+  if (display === null || display.length === 0) {
     return (
       <div className="grid place-items-center h-full text-fg-dimmer text-xs">체결 없음</div>
     );

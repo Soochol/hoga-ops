@@ -12,7 +12,7 @@ const mkSnap = (asks: number[], bids: number[]) => ({
 
 describe('OrderbookTable', () => {
   it('renders loading state when snapshot is null', () => {
-    render(<OrderbookTable snapshot={null} />);
+    render(<OrderbookTable snapshot={undefined} />);
     expect(screen.getByText(/로딩 중/)).toBeInTheDocument();
   });
 
