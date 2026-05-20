@@ -25,7 +25,11 @@ export default {
       },
       fontFamily: {
         ui: 'var(--font-ui)',
+        sans: 'var(--font-ui)',
         mono: 'var(--font-mono)',
+      },
+      borderColor: {
+        DEFAULT: 'var(--border)',
       },
       fontSize: {
         xs: 'var(--text-xs)',
