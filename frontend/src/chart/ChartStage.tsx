@@ -55,16 +55,32 @@ export type ChartStageProps = {
  * / fill-strength) plus the VolumeProfileOverlay once the chart is ready and
  * a `SessionBundle` is available.
  *
- * Single-pane MVP: all 5 series-based panes currently register on
- * lightweight-charts pane 0. Multi-pane split via `addSeries(..., paneIndex)`
- * is a follow-up (see plan Phase 7+). The `data-pane="…"` wrappers exist so
- * E2E selectors can verify each pane has mounted independently of the
- * underlying canvas layout.
+ * Multi-pane split: each pane component receives a `paneIndex` so its series
+ * register on a distinct lightweight-charts pane. Pane heights are set via
+ * `IPaneApi.setStretchFactor` after mount with the ratios from DESIGN.md /
+ * spec §6.3:
+ *   - Pane 0: Candle (1.4) + VolumeProfileOverlay
+ *   - Pane 1: Volume (0.3)
+ *   - Pane 2: Ratio (0.4)
+ *   - Pane 3: Intensity overlay (0.8)
+ *   - Pane 4: FillStrength (0.4)
+ *
+ * IntensityPane has no series of its own (canvas heatmap), so we mount an
+ * invisible histogram on pane 3 to force the pane to exist, then portal the
+ * canvas into that pane's DOM element via `getHTMLElement()`. The `data-pane`
+ * wrappers remain for E2E selectors.
  *
  * Viewport publisher: subscribes to the chart's visible-range and writes
  * (fromMs, toMs) into `useViewportStore` so sibling components like
  * PriceStrip can read viewport state without prop-drilling (Task 6.5).
  */
+/**
+ * Pane stretch factors (DESIGN.md / spec §6.3). Indexes:
+ *   0 = candle, 1 = volume, 2 = ratio, 3 = intensity, 4 = fill-strength.
+ * Total = 3.3; lightweight-charts treats these as proportional weights.
+ */
+const PANE_STRETCH = [1.4, 0.3, 0.4, 0.8, 0.4] as const;
+
 export default function ChartStage({ bundle, segments }: ChartStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
@@ -118,6 +134,39 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Apply pane stretch factors AFTER the children's effects have run and
+  // created panes 0-4 via `addSeries(..., paneIndex)`. rAF lets all child
+  // effects flush first; we then size each pane proportionally.
+  useEffect(() => {
+    if (!chart || !bundle) return;
+    let cancelled = false;
+    const apply = () => {
+      if (cancelled) return;
+      try {
+        const panes = chart.panes();
+        // If panes haven't materialised yet (race with child mount), retry
+        // once on the next frame. After two rAFs everything is settled.
+        if (panes.length < PANE_STRETCH.length) {
+          requestAnimationFrame(apply);
+          return;
+        }
+        panes.forEach((p, i) => {
+          const f = PANE_STRETCH[i];
+          if (f !== undefined && typeof p.setStretchFactor === 'function') {
+            p.setStretchFactor(f);
+          }
+        });
+      } catch {
+        // ignore — chart may be tearing down
+      }
+    };
+    const raf = requestAnimationFrame(apply);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [chart, bundle]);
+
   return (
     <div className="relative h-full min-h-0 bg-bg-card">
       <div ref={containerRef} className="absolute inset-0" />
@@ -130,31 +179,33 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
             asserting "pane was mounted".
           */}
           <div data-pane="candle" className="hidden">
-            <CandlePane chart={chart} bundle={bundle} segments={segments} />
+            <CandlePane chart={chart} bundle={bundle} segments={segments} paneIndex={0} />
           </div>
           <div data-pane="volume" className="hidden">
-            <VolumePane chart={chart} bundle={bundle} segments={segments} />
+            <VolumePane chart={chart} bundle={bundle} segments={segments} paneIndex={1} />
           </div>
           <div data-pane="ratio" className="hidden">
-            <RatioPane chart={chart} bundle={bundle} segments={segments} />
+            <RatioPane chart={chart} bundle={bundle} segments={segments} paneIndex={2} />
           </div>
           <div data-pane="fill-strength" className="hidden">
-            <FillStrengthPane chart={chart} bundle={bundle} segments={segments} />
+            <FillStrengthPane chart={chart} bundle={bundle} segments={segments} paneIndex={4} />
           </div>
           {/*
-            Canvas overlay panes — paint absolutely on top of the chart
-            container. `pointer-events-none` lets crosshair / drag interactions
-            pass through to lightweight-charts underneath.
+            Canvas overlay panes — portaled into their target pane's DOM
+            element via `chart.panes()[paneIndex].getHTMLElement()`. The
+            wrappers here are kept for E2E selectors but no longer host the
+            canvases themselves (the canvas lives inside the pane element).
           */}
-          <div data-pane="intensity" className="absolute inset-0 pointer-events-none">
-            <IntensityPane chart={chart} bundle={bundle} segments={segments} />
+          <div data-pane="intensity" className="hidden">
+            <IntensityPane chart={chart} bundle={bundle} segments={segments} paneIndex={3} />
           </div>
-          <div data-pane="volume-profile" className="absolute inset-0 pointer-events-none">
+          <div data-pane="volume-profile" className="hidden">
             <VolumeProfileOverlay
               chart={chart}
               bundle={bundle}
               segments={segments}
               mode="composite"
+              paneIndex={0}
             />
           </div>
         </>

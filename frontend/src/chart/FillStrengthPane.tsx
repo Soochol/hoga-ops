@@ -20,7 +20,13 @@ function resolveTokens(): { up: string; down: string } {
   };
 }
 
-type Props = { chart: IChartApi; bundle: SessionBundle; segments: Segment[] };
+type Props = {
+  chart: IChartApi;
+  bundle: SessionBundle;
+  segments: Segment[];
+  /** Pane index for multi-pane split. Defaults to 0. */
+  paneIndex?: number;
+};
 
 /**
  * FillStrengthPane — paints buy/sell fill strength as two stacked
@@ -32,11 +38,11 @@ type Props = { chart: IChartApi; bundle: SessionBundle; segments: Segment[] };
  * Multi-day x-axis stitching is handled by mapping each point's real
  * Unix-ms timestamp through `realToVirtual(segments, …)`.
  */
-export default function FillStrengthPane({ chart, bundle, segments }: Props) {
+export default function FillStrengthPane({ chart, bundle, segments, paneIndex = 0 }: Props) {
   useEffect(() => {
     const { up, down } = resolveTokens();
-    const buy = chart.addSeries(HistogramSeries, { color: up, base: 0 } as any);
-    const sell = chart.addSeries(HistogramSeries, { color: down, base: 0 } as any);
+    const buy = chart.addSeries(HistogramSeries, { color: up, base: 0 } as any, paneIndex);
+    const sell = chart.addSeries(HistogramSeries, { color: down, base: 0 } as any, paneIndex);
     buy.setData(
       bundle.fill_strength.points.map((p) => ({
         // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
@@ -56,6 +62,6 @@ export default function FillStrengthPane({ chart, bundle, segments }: Props) {
       chart.removeSeries(buy);
       chart.removeSeries(sell);
     };
-  }, [chart, bundle, segments]);
+  }, [chart, bundle, segments, paneIndex]);
   return null;
 }

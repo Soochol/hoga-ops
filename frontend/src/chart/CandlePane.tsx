@@ -25,7 +25,13 @@ function resolveTokens(): { up: string; down: string; muted: string } {
   };
 }
 
-type Props = { chart: IChartApi; bundle: SessionBundle; segments: Segment[] };
+type Props = {
+  chart: IChartApi;
+  bundle: SessionBundle;
+  segments: Segment[];
+  /** Pane index for multi-pane split. Defaults to 0 (top pane). */
+  paneIndex?: number;
+};
 
 /**
  * CandlePane — mounts a CandlestickSeries onto the shared chart instance and
@@ -38,16 +44,20 @@ type Props = { chart: IChartApi; bundle: SessionBundle; segments: Segment[] };
  * stitching is handled by mapping each candle's real Unix-ms timestamp
  * through `realToVirtual(segments, …)`.
  */
-export default function CandlePane({ chart, bundle, segments }: Props) {
+export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: Props) {
   useEffect(() => {
     const { up, down, muted } = resolveTokens();
-    const series = chart.addSeries(CandlestickSeries, {
-      upColor: up,
-      downColor: down,
-      wickUpColor: up,
-      wickDownColor: down,
-      borderVisible: false,
-    });
+    const series = chart.addSeries(
+      CandlestickSeries,
+      {
+        upColor: up,
+        downColor: down,
+        wickUpColor: up,
+        wickDownColor: down,
+        borderVisible: false,
+      },
+      paneIndex,
+    );
     // After-hours / auction-window threshold: regular session_close is at
     // 15:30 KST. Spec §1 defines after-hours / auction-window as anything
     // after 15:20 (auction starts at 15:20). Compute the threshold as
@@ -74,6 +84,6 @@ export default function CandlePane({ chart, bundle, segments }: Props) {
     return () => {
       chart.removeSeries(series);
     };
-  }, [chart, bundle, segments]);
+  }, [chart, bundle, segments, paneIndex]);
   return null;
 }

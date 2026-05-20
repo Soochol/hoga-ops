@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
-import type { IChartApi } from 'lightweight-charts';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { LineSeries, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
 import { type Segment, realToVirtual } from '../util/time';
 
@@ -9,7 +10,18 @@ import { type Segment, realToVirtual } from '../util/time';
 const UP_RGB = [0x22, 0xc5, 0x5e] as const; // --up
 const DOWN_RGB = [0xf4, 0x3f, 0x5e] as const; // --down
 
-type Props = { chart: IChartApi; bundle: SessionBundle; segments: Segment[] };
+type Props = {
+  chart: IChartApi;
+  bundle: SessionBundle;
+  segments: Segment[];
+  /**
+   * Pane index to overlay onto. When provided, the canvas is portaled into the
+   * pane's DOM element (via `chart.panes()[paneIndex].getHTMLElement()`) so
+   * the heatmap aligns with that pane only. Falls back to a chart-wide overlay
+   * if the pane element can't be resolved.
+   */
+  paneIndex?: number;
+};
 
 /**
  * IntensityPane — overlays a canvas onto the shared chart that paints the
@@ -23,8 +35,66 @@ type Props = { chart: IChartApi; bundle: SessionBundle; segments: Segment[] };
  * fillRect-per-cell path measured ~110 ms (FAIL). DO NOT switch back to
  * fillRect without re-running the perf baseline.
  */
-export default function IntensityPane({ chart, bundle, segments }: Props) {
+export default function IntensityPane({ chart, bundle, segments, paneIndex }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
+  // Resolve the target pane's DOM element when `paneIndex` is provided. The
+  // pane may not exist on first render (the series-bearing pane components
+  // create it via `addSeries(..., paneIndex)` in their own effects), so we
+  // poll on rAF for a few frames before giving up and rendering chart-wide.
+  const [paneEl, setPaneEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (paneIndex === undefined) {
+      setPaneEl(null);
+      return;
+    }
+    // IntensityPane has no series of its own — it's a pure canvas heatmap.
+    // To force lightweight-charts to create pane N (so its DOM element exists
+    // and `setStretchFactor` can size it), we mount a transparent anchor
+    // series on the target paneIndex. The series carries no data; it just
+    // owns the pane until we unmount.
+    let anchor: ReturnType<IChartApi['addSeries']> | null = null;
+    try {
+      anchor = chart.addSeries(
+        LineSeries,
+        { color: 'rgba(0,0,0,0)', lineWidth: 1 as any, lastValueVisible: false, priceLineVisible: false },
+        paneIndex,
+      );
+    } catch {
+      // If lightweight-charts rejects the call (older version, etc.), the
+      // canvas falls back to chart-wide rendering.
+    }
+
+    let cancelled = false;
+    let attempts = 0;
+    const tryResolve = () => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const panes = chart.panes();
+        const p = panes[paneIndex];
+        const el = p?.getHTMLElement?.() ?? null;
+        if (el) {
+          setPaneEl(el);
+          return;
+        }
+      } catch {
+        // ignore — lightweight-charts may throw if accessed mid-mount
+      }
+      if (attempts < 30) requestAnimationFrame(tryResolve);
+    };
+    requestAnimationFrame(tryResolve);
+    return () => {
+      cancelled = true;
+      if (anchor) {
+        try {
+          chart.removeSeries(anchor);
+        } catch {
+          // chart may already be torn down
+        }
+      }
+    };
+  }, [chart, paneIndex]);
+
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
@@ -101,11 +171,23 @@ export default function IntensityPane({ chart, bundle, segments }: Props) {
     };
   }, [chart, bundle, segments]);
 
-  return (
+  const canvasEl = (
     <canvas
       ref={ref}
       className="absolute inset-0 w-full h-full pointer-events-none"
       style={{ mixBlendMode: 'screen' }}
     />
   );
+
+  // When portaled into the pane DOM element, the parent <div data-pane> in
+  // ChartStage no longer paints anything visible (canvas lives elsewhere in
+  // the DOM tree). The pane element needs `position: relative` for the
+  // absolutely-positioned canvas to anchor correctly.
+  if (paneEl) {
+    if (getComputedStyle(paneEl).position === 'static') {
+      paneEl.style.position = 'relative';
+    }
+    return createPortal(canvasEl, paneEl);
+  }
+  return canvasEl;
 }

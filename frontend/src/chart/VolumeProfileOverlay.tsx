@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { IChartApi } from 'lightweight-charts';
 import type { SessionBundle, VolumeProfileBin } from '../api/types';
 import { type Segment, realToVirtual } from '../util/time';
@@ -23,6 +24,12 @@ type Props = {
   mode?: 'per-day' | 'composite';
   /** Approximate fraction of total volume covered by the value area (default 0.7). */
   valueAreaFrac?: number;
+  /**
+   * Pane index to overlay onto. When provided, the canvas is portaled into
+   * that pane's DOM element so the profile aligns with the candle pane only.
+   * Falls back to chart-wide overlay if the pane can't be resolved.
+   */
+  paneIndex?: number;
 };
 
 /**
@@ -43,8 +50,40 @@ export default function VolumeProfileOverlay({
   segments,
   mode = 'composite',
   valueAreaFrac = 0.7,
+  paneIndex,
 }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
+  // Resolve target pane element (see IntensityPane for rationale).
+  const [paneEl, setPaneEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (paneIndex === undefined) {
+      setPaneEl(null);
+      return;
+    }
+    let cancelled = false;
+    let attempts = 0;
+    const tryResolve = () => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const panes = chart.panes();
+        const p = panes[paneIndex];
+        const el = p?.getHTMLElement?.() ?? null;
+        if (el) {
+          setPaneEl(el);
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      if (attempts < 30) requestAnimationFrame(tryResolve);
+    };
+    requestAnimationFrame(tryResolve);
+    return () => {
+      cancelled = true;
+    };
+  }, [chart, paneIndex]);
+
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
@@ -123,9 +162,16 @@ export default function VolumeProfileOverlay({
     };
   }, [chart, bundle, segments, mode, valueAreaFrac]);
 
-  return (
+  const canvasEl = (
     <canvas ref={ref} className="absolute inset-0 w-full h-full pointer-events-none" />
   );
+  if (paneEl) {
+    if (getComputedStyle(paneEl).position === 'static') {
+      paneEl.style.position = 'relative';
+    }
+    return createPortal(canvasEl, paneEl);
+  }
+  return canvasEl;
 }
 
 function pocIndex(bins: VolumeProfileBin[]): number {

@@ -20,7 +20,13 @@ function resolveTokens(): { up: string; down: string } {
   };
 }
 
-type Props = { chart: IChartApi; bundle: SessionBundle; segments: Segment[] };
+type Props = {
+  chart: IChartApi;
+  bundle: SessionBundle;
+  segments: Segment[];
+  /** Pane index for multi-pane split. Defaults to 0. */
+  paneIndex?: number;
+};
 
 /**
  * VolumePane — mounts a HistogramSeries onto the shared chart instance and
@@ -32,13 +38,17 @@ type Props = { chart: IChartApi; bundle: SessionBundle; segments: Segment[] };
  * stitching is handled by mapping each candle's real Unix-ms timestamp
  * through `realToVirtual(segments, …)`.
  */
-export default function VolumePane({ chart, bundle, segments }: Props) {
+export default function VolumePane({ chart, bundle, segments, paneIndex = 0 }: Props) {
   useEffect(() => {
     const { up, down } = resolveTokens();
-    const series = chart.addSeries(HistogramSeries, {
-      priceFormat: { type: 'volume' },
-      priceScaleId: 'right',
-    });
+    const series = chart.addSeries(
+      HistogramSeries,
+      {
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'right',
+      },
+      paneIndex,
+    );
     const data = bundle.candles.map((c) => ({
       // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
       // The `as any` cast keeps us free of the library's branded `Time`
@@ -51,6 +61,6 @@ export default function VolumePane({ chart, bundle, segments }: Props) {
     return () => {
       chart.removeSeries(series);
     };
-  }, [chart, bundle, segments]);
+  }, [chart, bundle, segments, paneIndex]);
   return null;
 }
