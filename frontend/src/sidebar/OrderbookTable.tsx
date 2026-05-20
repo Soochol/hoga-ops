@@ -17,18 +17,20 @@ export default function OrderbookTable({ snapshot }: Props) {
       </div>
     );
   }
-  const asks = snapshot.levels
-    .filter((l) => l.side === 'ask')
-    .sort((a, b) => a.rank - b.rank); // rank 1 = best ask
-  const bids = snapshot.levels
-    .filter((l) => l.side === 'bid')
-    .sort((a, b) => a.rank - b.rank); // rank 1 = best bid
+  // Wire shape per ADR-0004: ask/bid each ship as length-10 arrays with
+  // index 0 = best price. Rank is the (1-based) index.
+  const asks = snapshot.ask;
+  const bids = snapshot.bid;
 
-  // Depth bar normalization across all 20 levels
-  const maxQty = Math.max(1, ...snapshot.levels.map((l) => l.qty));
+  // Depth bar normalization across all 20 levels.
+  const maxQty = Math.max(
+    1,
+    ...asks.map((l) => l.qty),
+    ...bids.map((l) => l.qty),
+  );
 
-  // Asks displayed top-down with worst (rank 10) at top, best (rank 1) at bottom
-  // — best ask is closest to spread divider.
+  // Asks displayed worst → best (top → bottom), so best ask hugs the spread
+  // divider. Bids continue best → worst below the divider.
   const displayedAsks = [...asks].reverse();
 
   const bestAsk = asks[0]?.price ?? null;
@@ -37,12 +39,14 @@ export default function OrderbookTable({ snapshot }: Props) {
 
   return (
     <div className="font-mono text-[11.5px] tabular-nums">
-      {displayedAsks.map((l) => (
-        <Row key={`a-${l.rank}`} side="ask" price={l.price} qty={l.qty} maxQty={maxQty} />
+      {displayedAsks.map((l, i) => (
+        // i counts top→bottom across displayedAsks; reverse it for stable
+        // keys tied to rank (best = 1).
+        <Row key={`a-${asks.length - i}`} side="ask" price={l.price} qty={l.qty} maxQty={maxQty} />
       ))}
       <SpreadDivider spread={spread} />
-      {bids.map((l) => (
-        <Row key={`b-${l.rank}`} side="bid" price={l.price} qty={l.qty} maxQty={maxQty} />
+      {bids.map((l, i) => (
+        <Row key={`b-${i + 1}`} side="bid" price={l.price} qty={l.qty} maxQty={maxQty} />
       ))}
     </div>
   );

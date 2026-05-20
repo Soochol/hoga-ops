@@ -4,8 +4,7 @@
 import { useTabsStore } from '../state/tabs';
 import { apiGet } from './client';
 import { useSpot } from './useSpot';
-import type { BrokerEntry, Trade } from './types';
-import { reshapeOrderbook, type OrderbookResponse } from './adapters';
+import type { BrokerEntry, OrderbookResponse, Trade } from './types';
 
 /** Read the active tab's cursorMs (or null when no cursor set). */
 export function useCursor(): {
@@ -31,7 +30,7 @@ export function useOrderbookAtCursor() {
   const key = code && date && cursorMs ? `${tabId}|ob|${code}|${date}|${cursorMs}` : null;
   const { data } = useSpot(key, () =>
     apiGet<OrderbookResponse>(`/api/orderbook?code=${code}&date=${date}&t=${cursorMs}`).then(
-      reshapeOrderbook,
+      (r) => r.snapshot,
     ),
   );
   // Preserve the (T | null | undefined) shape: undefined = haven't fetched

@@ -63,7 +63,8 @@ def test_orderbook_at_returns_latest(app_client: TestClient) -> None:
     payload = r.json()
     assert payload["snapshot"] is not None
     assert payload["snapshot"]["ts_ms"] == hhmmssms_to_unix_ms("20260519", 90010435)
-    assert payload["snapshot"]["ask_p"][:3] == [25700, 25750, 25800]
+    ask = payload["snapshot"]["ask"]
+    assert [lvl["price"] for lvl in ask[:3]] == [25700, 25750, 25800]
 
 
 def test_orderbook_before_any_data(app_client: TestClient) -> None:
@@ -166,7 +167,11 @@ def test_brokers_before_any_data(app_client: TestClient) -> None:
     assert payload["entries"] == []
 
 
-def test_orderbook_returns_delta_arrays(app_client: TestClient) -> None:
+def test_orderbook_wire_shape(app_client: TestClient) -> None:
+    """Wire Model ships ``ask`` / ``bid`` as length-10 arrays of
+    ``{price, qty}`` Level objects (ADR-0004). Delta columns
+    (``ask_d``/``bid_d``) stay on the internal Entity / Parquet but are
+    not exposed on the wire."""
     r = app_client.get(
         "/api/orderbook",
         params={
@@ -177,10 +182,12 @@ def test_orderbook_returns_delta_arrays(app_client: TestClient) -> None:
     )
     assert r.status_code == 200
     snap = r.json()["snapshot"]
-    assert "ask_d" in snap
-    assert "bid_d" in snap
-    assert len(snap["ask_d"]) == 10
-    assert len(snap["bid_d"]) == 10
+    assert len(snap["ask"]) == 10
+    assert len(snap["bid"]) == 10
+    # Each level has the wire-level fields only — no rank, no side
+    # (side encoded by which array; rank encoded by index).
+    assert set(snap["ask"][0].keys()) == {"price", "qty"}
+    assert "ask_d" not in snap and "bid_d" not in snap
 
 
 def test_trades_returns_extended_fields(app_client: TestClient) -> None:

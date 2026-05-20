@@ -150,19 +150,26 @@ def validate(snapshots: list[Orderbook], *, lenient: bool = False) -> None:
 # === API representation ===
 
 
+class ApiOrderbookLevel(BaseModel):
+    """One depth row on the wire. Index in the parent ``ask``/``bid`` list
+    encodes rank (index 0 = best price)."""
+
+    price: int
+    qty: int
+
+
 class ApiOrderbookSnapshot(BaseModel):
+    """Wire Model — shape consumers (frontend, notebook clients) receive
+    verbatim, per ADR-0004. Internal forensic columns (``ask_d``/``bid_d``
+    delta volumes, ``tot_ask_d``/``tot_bid_d``) stay on the :class:`Orderbook`
+    Entity / in Parquet but are not exposed here."""
+
     ts_ms: int
     seq: int
-    ask_p: list[int]  # length 10
-    ask_q: list[int]
-    ask_d: list[int]
-    bid_p: list[int]
-    bid_q: list[int]
-    bid_d: list[int]
+    ask: list[ApiOrderbookLevel]  # length 10, index 0 = best ask
+    bid: list[ApiOrderbookLevel]  # length 10, index 0 = best bid
     tot_ask: int
-    tot_ask_d: int
     tot_bid: int
-    tot_bid_d: int
 
 
 # === Query (returns ApiOrderbookSnapshot directly — unflattens flat columns inline) ===
@@ -196,16 +203,16 @@ def query_at(
     return ApiOrderbookSnapshot(
         ts_ms=by_name["ts_ms"],
         seq=by_name["seq"],
-        ask_p=[by_name[f"ask_p{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-        ask_q=[by_name[f"ask_q{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-        ask_d=[by_name[f"ask_d{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-        bid_p=[by_name[f"bid_p{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-        bid_q=[by_name[f"bid_q{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-        bid_d=[by_name[f"bid_d{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
+        ask=[
+            ApiOrderbookLevel(price=by_name[f"ask_p{i}"], qty=by_name[f"ask_q{i}"])
+            for i in range(1, ORDERBOOK_LEVELS + 1)
+        ],
+        bid=[
+            ApiOrderbookLevel(price=by_name[f"bid_p{i}"], qty=by_name[f"bid_q{i}"])
+            for i in range(1, ORDERBOOK_LEVELS + 1)
+        ],
         tot_ask=by_name["tot_ask"],
-        tot_ask_d=by_name["tot_ask_d"],
         tot_bid=by_name["tot_bid"],
-        tot_bid_d=by_name["tot_bid_d"],
     )
 
 

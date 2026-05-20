@@ -38,8 +38,23 @@ export type SessionBundle = {
   fill_strength: FillStrength;
 };
 
-export type OrderbookLevel = { side: 'ask' | 'bid'; rank: number; price: number; qty: number };
-export type OrderbookSnapshot = { ts_ms: number; levels: OrderbookLevel[] };
+// Wire shape per ADR-0004 — backend ships ApiOrderbookSnapshot verbatim,
+// no adapter layer. Side encoded by which array (ask vs bid); rank by index.
+export type OrderbookLevel = { price: number; qty: number };
+export type OrderbookSnapshot = {
+  ts_ms: number;
+  seq: number;
+  ask: OrderbookLevel[]; // length 10, index 0 = best ask
+  bid: OrderbookLevel[]; // length 10, index 0 = best bid
+  tot_ask: number;
+  tot_bid: number;
+};
+
+/** GET /api/orderbook response envelope. */
+export type OrderbookResponse = {
+  available_from: number | null;
+  snapshot: OrderbookSnapshot | null;
+};
 
 export type BrokerEntry = { name: string; side: 'buy' | 'sell'; rank: number; qty: number };
 
