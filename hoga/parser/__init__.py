@@ -78,6 +78,17 @@ def _iter_first_lines(raw_dir: Path) -> Iterable[tuple[Path, int, str]]:
             yield page_path, lineno, line
 
 
+def _iter_chart_lines(raw_dir: Path) -> Iterable[tuple[Path, int, str]]:
+    chart_path = raw_dir / "chart.tsv"
+    if not chart_path.exists():
+        return
+    text = chart_path.read_text(encoding="utf-8")
+    for lineno, line in enumerate(text.splitlines(keepends=False), start=1):
+        if not line:
+            continue
+        yield chart_path, lineno, line
+
+
 def parse_stock_date(
     *,
     code: str,
@@ -197,19 +208,14 @@ def _collect_candles(
     lenient: bool,
 ) -> list[Candle]:
     candles_list: list[Candle] = []
-    chart_path = raw_dir / "chart.tsv"
-    if not chart_path.exists():
-        return candles_list
-    for line in chart_path.read_text(encoding="utf-8").splitlines():
-        if not line:
-            continue
+    for chart_path, lineno, line in _iter_chart_lines(raw_dir):
         try:
             candles_list.append(candles.parse_row(line))
         except (FieldCountError, ValueError) as e:
             if lenient:
-                skipped.append(("chart.tsv", 0, str(e)))
+                skipped.append((chart_path.name, lineno, str(e)))
                 continue
-            raise ParserError(f"chart.tsv: {e}") from e
+            raise ParserError(f"{chart_path.name}:{lineno} {e}") from e
     return candles_list
 
 
