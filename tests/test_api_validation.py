@@ -13,27 +13,8 @@ review caught (e.g. ``date=".."`` flowing into ``data_dir/parquet/{date}/{code}`
 
 from __future__ import annotations
 
-import shutil
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
-
-from hoga.api.app import create_app
-from hoga.parser import parse_stock_date
-
-FIXTURE_DIR = Path(__file__).parent / "fixtures" / "tiny_tsv"
-
-
-@pytest.fixture
-def app_client(tmp_path: Path) -> TestClient:
-    raw = tmp_path / "data" / "raw" / "20260519" / "003490"
-    raw.mkdir(parents=True)
-    for name in ("info.tsv", "first_001.tsv", "chart.tsv"):
-        shutil.copy(FIXTURE_DIR / name, raw / name)
-    parse_stock_date(code="003490", date="20260519", data_dir=tmp_path / "data")
-    app = create_app(data_dir=tmp_path / "data")
-    return TestClient(app)
 
 
 @pytest.mark.parametrize(

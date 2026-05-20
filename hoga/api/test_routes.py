@@ -10,15 +10,10 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 
+from hoga.api.params import Code, StockDate
 from hoga.parser import parse_stock_date
-
-# Reject any non-canonical Code / Stock-Date BEFORE it reaches `dest = data_dir /
-# "raw" / date / code`, which would otherwise allow filesystem path traversal
-# (e.g. date="..") when this dev-only router is enabled.
-_CODE_PATTERN = r"^\d{6}$"
-_DATE_PATTERN = r"^\d{8}$"
 
 
 def build_test_router(data_dir: Path) -> APIRouter:
@@ -40,10 +35,7 @@ def build_test_router(data_dir: Path) -> APIRouter:
             break
 
     @router.post("/add-stockdate")
-    def add_stockdate(
-        code: str = Query(..., pattern=_CODE_PATTERN),
-        date: str = Query(..., pattern=_DATE_PATTERN),
-    ) -> dict:
+    def add_stockdate(code: Code, date: StockDate) -> dict:
         if fixtures_root is None:
             raise HTTPException(
                 status_code=503,

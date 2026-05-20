@@ -32,8 +32,6 @@ class _Bus:
                 q.put_nowait(evt)
             except asyncio.QueueFull:
                 # Slow subscriber: log so the consistency gap is visible.
-                # CONTEXT.md inventory events are advisory; the client always
-                # has /api/stock-dates as the authoritative re-sync path.
                 logger.warning("SSE queue full, dropped event: %s", evt)
 
 

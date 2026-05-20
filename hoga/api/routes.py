@@ -8,15 +8,16 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from hoga.api.bundle import build_bundle
+from hoga.api.cursor import cursor_to_native
 from hoga.api.models import (
     CandlesResponse,
     Meta,
     OrderbookResponse,
     SessionBundle,
-    StockDate,
+    StockDate as StockDateModel,
     TradesResponse,
 )
-from hoga.api.cursor import cursor_to_native
+from hoga.api.params import Code, StockDate
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.timeenc import (
     hhmmssms_to_unix_ms,
@@ -28,25 +29,16 @@ from hoga.tables import snapshots as snapshots_tbl
 from hoga.tables import trades as trades_tbl
 from hoga.tables.brokers import BrokersAt
 
-# Validate Code and Stock-Date at the boundary so they can never reach filesystem
-# joins or DuckDB queries as arbitrary strings. CONTEXT.md defines Code as a
-# 6-digit KRX ticker and Stock-Date as YYYYMMDD.
-_CODE_PATTERN = r"^\d{6}$"
-_DATE_PATTERN = r"^\d{8}$"
-
 
 def build_router(engine: QueryEngine) -> APIRouter:
     router = APIRouter(prefix="/api")
 
-    @router.get("/stock-dates", response_model=list[StockDate])
-    def stock_dates() -> list[StockDate]:
+    @router.get("/stock-dates", response_model=list[StockDateModel])
+    def stock_dates() -> list[StockDateModel]:
         return engine.list_stock_dates()
 
     @router.get("/meta", response_model=Meta)
-    def meta(
-        code: str = Query(..., pattern=_CODE_PATTERN),
-        date: str = Query(..., pattern=_DATE_PATTERN),
-    ) -> Meta:
+    def meta(code: Code, date: StockDate) -> Meta:
         try:
             m = engine.get_meta(date, code)
         except StockDateNotFound as e:
@@ -54,11 +46,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         return Meta(**{k: m[k] for k in Meta.model_fields})
 
     @router.get("/orderbook", response_model=OrderbookResponse)
-    def orderbook(
-        code: str = Query(..., pattern=_CODE_PATTERN),
-        date: str = Query(..., pattern=_DATE_PATTERN),
-        t: int = Query(...),
-    ) -> OrderbookResponse:
+    def orderbook(code: Code, date: StockDate, t: int = Query(...)) -> OrderbookResponse:
         try:
             path = engine.parquet_dir(date, code) / "snapshots.parquet"
         except StockDateNotFound as e:
@@ -76,8 +64,8 @@ def build_router(engine: QueryEngine) -> APIRouter:
 
     @router.get("/trades", response_model=TradesResponse)
     def trades(
-        code: str = Query(..., pattern=_CODE_PATTERN),
-        date: str = Query(..., pattern=_DATE_PATTERN),
+        code: Code,
+        date: StockDate,
         t: int | None = Query(None),
         from_ms: int | None = Query(None, alias="from"),
         to_ms: int | None = Query(None, alias="to"),
@@ -105,10 +93,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         return TradesResponse(trades=rows)
 
     @router.get("/candles", response_model=CandlesResponse)
-    def candles(
-        code: str = Query(..., pattern=_CODE_PATTERN),
-        date: str = Query(..., pattern=_DATE_PATTERN),
-    ) -> CandlesResponse:
+    def candles(code: Code, date: StockDate) -> CandlesResponse:
         try:
             path = engine.parquet_dir(date, code) / "candles.parquet"
         except StockDateNotFound as e:
@@ -121,11 +106,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         return CandlesResponse(candles=rows)
 
     @router.get("/brokers", response_model=BrokersAt)
-    def brokers(
-        code: str = Query(..., pattern=_CODE_PATTERN),
-        date: str = Query(..., pattern=_DATE_PATTERN),
-        t: int = Query(...),
-    ) -> BrokersAt:
+    def brokers(code: Code, date: StockDate, t: int = Query(...)) -> BrokersAt:
         try:
             path = engine.parquet_dir(date, code) / "brokers.parquet"
         except StockDateNotFound as e:
@@ -140,8 +121,8 @@ def build_router(engine: QueryEngine) -> APIRouter:
 
     @router.get("/session", response_model=SessionBundle)
     def session(
-        code: str = Query(..., pattern=_CODE_PATTERN),
-        date: str = Query(..., pattern=_DATE_PATTERN),
+        code: Code,
+        date: StockDate,
         price_min: int | None = Query(None),
         price_max: int | None = Query(None),
         depth_bucket_ms: int = Query(5000),

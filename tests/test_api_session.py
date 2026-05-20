@@ -103,17 +103,6 @@ def test_session_fill_strength_excludes_auctions(engine: QueryEngine) -> None:
     assert actual == expected
 
 
-@pytest.fixture
-def app_client(tmp_path: Path) -> TestClient:
-    raw = tmp_path / "data" / "raw" / "20260519" / "003490"
-    raw.mkdir(parents=True)
-    for name in ("info.tsv", "first_001.tsv", "chart.tsv"):
-        shutil.copy(FIXTURE_DIR / name, raw / name)
-    parse_stock_date(code="003490", date="20260519", data_dir=tmp_path / "data")
-    app = create_app(data_dir=tmp_path / "data")
-    return TestClient(app)
-
-
 def test_session_bundle_shape(app_client: TestClient) -> None:
     r = app_client.get("/api/session?code=003490&date=20260519")
     assert r.status_code == 200, r.text
