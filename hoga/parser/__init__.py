@@ -6,6 +6,7 @@ import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import assert_never
 
 from hoga.tables import brokers, candles, snapshots, trades
 from hoga.tables.brokers import BrokerRow
@@ -143,21 +144,23 @@ def _collect_events(
                 continue
             raise ParserError(msg) from e
 
-        if parsed is None:
-            # Price-tick / heartbeat — no structured data to retain.
-            continue
-
-        if isinstance(parsed, list):
-            _add_broker_rows(parsed, brokers_list=brokers_list, seen_seqs=seen_seqs)
-            continue
-
-        if parsed.seq in seen_seqs:
-            continue
-        seen_seqs.add(parsed.seq)
-        if isinstance(parsed, Trade):
-            trades_list.append(parsed)
-        elif isinstance(parsed, Orderbook):
-            snapshots_list.append(parsed)
+        match parsed:
+            case None:
+                # Price-tick / heartbeat — no structured data to retain.
+                continue
+            case list():
+                _add_broker_rows(parsed, brokers_list=brokers_list, seen_seqs=seen_seqs)
+            case Trade() if parsed.seq not in seen_seqs:
+                seen_seqs.add(parsed.seq)
+                trades_list.append(parsed)
+            case Orderbook() if parsed.seq not in seen_seqs:
+                seen_seqs.add(parsed.seq)
+                snapshots_list.append(parsed)
+            case Trade() | Orderbook():
+                # Duplicate seq — drop.
+                continue
+            case _:
+                assert_never(parsed)
 
     return trades_list, snapshots_list, brokers_list, seen_seqs, skipped
 

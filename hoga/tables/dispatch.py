@@ -16,9 +16,19 @@ structured data; e.g. the Price Tick heartbeat).
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypeAlias
 
 from hoga.tables import brokers, snapshots, trades
+from hoga.tables.brokers import BrokerRow
+from hoga.tables.snapshots import Orderbook
+from hoga.tables.trades import Trade
+
+# The declared shape of a parsed first.tsv row.
+#
+# Concretely: type-1/3 → Trade, type-2 → Orderbook, type-4 → list[BrokerRow]
+# (one TSV row fans into 10 entities), type-5 (Price Tick) → None.
+# Callers should use ``match`` + ``assert_never`` for exhaustive routing.
+ParsedRow: TypeAlias = Trade | Orderbook | list[BrokerRow] | None
 
 # Tables that register parsers with the dispatcher. Candles is intentionally
 # excluded — it's parsed from chart.tsv, not first.tsv.
@@ -62,9 +72,13 @@ def split_row(line: str) -> list[str]:
 _MIN_DISPATCH_FIELDS = 2
 
 
-def parse_row(line: str) -> Any:
+def parse_row(line: str) -> ParsedRow:
     """Dispatch on field 2 (event_type). Returns the parsed entity, a list of
-    entities (broker rows), or None (skip set)."""
+    entities (broker rows), or None (skip set).
+
+    The return type is the declared union ``ParsedRow``; callers should
+    exhaustively match on it.
+    """
     parts = split_row(line)
     if len(parts) < _MIN_DISPATCH_FIELDS:
         raise FieldCountError(f"row too short: {len(parts)} fields")
