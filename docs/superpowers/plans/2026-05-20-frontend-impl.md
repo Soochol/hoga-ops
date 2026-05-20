@@ -527,9 +527,33 @@ git commit -m "feat(api): extend StockDate with price range, captured_at, file s
 
 ### Task 1.3 — split: convert each table module's ts_ms to Unix ms (ADR 0003)
 
-Task 1.3 splits into 4 sub-tasks, one per table module. Each is a tight TDD cycle: failing test → modify query helper to convert `ts_ms` to Unix ms at the boundary → modify route to pass `date` and convert incoming cursor `?t=` from Unix ms → run, pass, commit.
+Task 1.3 splits into 4 sub-tasks, one per table module. Each is a tight TDD cycle: failing test → wire the conversion at the route boundary → run, pass, commit.
 
-The signature change for every query helper is: add a required `date: str` parameter. The route handler reads `date` from the request and forwards it. Cursor `t` params (`/api/orderbook?t=`, etc.) accept Unix ms from the client; the route converts back to HHMMSSmmm via `unix_ms_to_hhmmssms(date, t)` before calling the query.
+> **PLAN CORRECTION — ADR 0003 layer placement.**
+>
+> The per-subtask code snippets in 1.3a–1.3d show the time conversion inside the table-module query helpers (with `from hoga.api.timeenc import …` at the top of `hoga/tables/*.py`). **That is a plan-text bug** — it violates ADR 0003 lines 37 and 39, which state:
+>
+> 1. "Conversion lives in `hoga/api/` as a helper. … Don't replicate the conversion logic in individual table modules."
+> 2. "The route handlers convert back to the encoding the underlying Parquet table expects before calling `snapshots_tbl.query_at(...)`."
+>
+> When implementing 1.3a–1.3d, treat the example code as illustrative of WHAT must convert (cursors in, ts_ms out) but place the conversion in `hoga/api/routes.py`, not in the table module. Concretely:
+>
+> - `hoga/tables/*.py` query helpers keep their pre-task signatures (no new `date` parameter); they continue to accept HHMMSSmmm cursors and return `ApiTrade` / `ApiOrderbookSnapshot` / `ApiBrokerEntry` with `ts_ms` still in HHMMSSmmm.
+> - The route handler does both directions:
+>   ```python
+>   try:
+>       raw_t = unix_ms_to_hhmmssms(date, t)
+>   except ValueError as e:
+>       raise HTTPException(status_code=400, detail=str(e)) from e
+>   rows = trades_tbl.query_up_to(engine.conn, path=path, t_ms=raw_t, limit=limit)
+>   rows = [r.model_copy(update={"ts_ms": hhmmssms_to_unix_ms(date, r.ts_ms)}) for r in rows]
+>   return TradesResponse(trades=rows)
+>   ```
+> - Out-of-day cursors (`unix_ms_to_hhmmssms` raises `ValueError`) become HTTP 400, not 500.
+> - `tests/test_tables_trades.py` (and analogues for snapshots/brokers/candles) keep testing the native HHMMSSmmm layer — no `date=` kwarg, no Unix-ms wrapping.
+> - `tests/test_api.py` keeps the Unix-ms wrapping for cursors and expected `ts_ms` — that's the API contract.
+>
+> Bundle compute helpers in Task 1.5a–1.5f live in `hoga/api/queries.py` (the API layer), so conversion inside them is correct and the ADR is honored.
 
 ### Task 1.3a: Trades — Unix-ms boundary
 
