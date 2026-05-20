@@ -223,16 +223,28 @@ Source: `snapshots.parquet`. DuckDB unpivots the 20 level columns, splits by sid
 
 ```json
 "volume_profile": {
-  "price_min": 67500, "price_max": 71200, "price_step": 50,
+  "bin_count": 24,
+  "price_min": 67500, "price_max": 71200, "bin_width": 154,
   "bins": [{"price_low": 67500, "qty": 12340}, ...]
 }
 ```
 
+Standard volume-profile representation: the day's `[price_min, price_max]` range is divided into **N equal-width bins** (default `N = 24`, TradingView-like). Each bin's `qty` is the total executed volume at any price falling into that bin's range. Bins are **not** tick-aligned — they are a rough overview of "where did volume happen" across the day, intentionally coarser than `depth_intensity` (which IS tick-aligned and answers a different question: precise per-tick book depth at each moment).
+
+Configurable via `?vp_bins=N` query param (range 10–100). Bigger N = finer resolution, more horizontal-bar rows but more visual noise.
+
 `qty` is **total executed volume** at each price bin — includes both continuous-trading (`side = ±1`) and auction-cross (`side = 0`) rows. The volume profile answers "where did trades happen", and KRX opening/closing auctions are a meaningful slice of that signal (often 5–15% of daily volume for large caps). The `CONTEXT.md` Auction Cross exclusion rule applies to aggressor-based metrics (CVD), not plain volume aggregation. No buy/sell split.
 
+**Rendering — horizontal bar overlay across the candle pane:**
+
+The matprofile is drawn as a horizontal-bar histogram **overlaid on the candle pane**, not as a strip on the right edge. For each price bin (y-axis horizontal slice), one teal bar extends from the **left edge of the day's segment toward the right**, with length proportional to that price bin's volume. The bar is rendered at ~60% opacity over the candles so candle bodies remain readable underneath. The bar at the **POC (Point of Control — price bin with max volume)** is drawn at 100% opacity to stand out.
+
+A horizontal **VAH (Value Area High) line** is overlaid at the upper boundary of the Value Area — the price where the cumulative top-volume bins reach 70% of total day volume, scanning from POC outward. v1 omits the VAL (Value Area Low) line; only VAH ships. VAL can be added later if useful.
+
 **Multi-day rendering** (when the user selects N Stock-Dates):
-- **Default = per-day side-by-side.** Each Stock-Date's `volume_profile` is rendered as its own vertical histogram strip at the right edge of that day's segment on the compressed time axis. Days are visually comparable side-by-side.
-- **Toggle = single combined.** A small toggle in the Price/Volume/Profile pane header switches to one combined histogram at the right edge of the whole chart. Client rebins the N per-day grids onto a common price scale (union of all `[price_min, price_max]` ranges, 100 bins) and sums. Rebinning is coarse interpolation — acceptable since the histogram itself is a coarse summary.
+- **Default = per-day**, one matprofile inside each day's segment. The bars for day D start at the left edge of D's segment on the compressed virtual time axis and extend rightward up to (their proportion × the segment's width). Each day has its own POC bar and VAH line. Days are visually comparable across the chart.
+- **Toggle = single combined.** A small toggle in the Price/Volume/Profile pane header switches to one combined matprofile that spans the **full chart width** (all days). Bars start at the very left edge of the chart and extend rightward proportionally. Client rebins the N per-day grids onto the unified price grid (per the §4.1 multi-day unified price grid rule), sums, then renders. One combined POC bar and one combined VAH line.
+- In both modes, direction is the same: **qty 0 at the left, max qty at the right**, bars are horizontal, stacked vertically along the y-axis (one bar per price bin).
 - Backend ships per-Stock-Date `volume_profile` always; the toggle is a client-side rendering choice with no extra fetch.
 
 **`fill_strength`** — per-minute aggregated buy vs sell volume for the chart pane.
@@ -403,7 +415,7 @@ The 2:1:1 ratio gives Orderbook the breathing room it needs (21 rows = 10 ask + 
 - **No visual bar.** Numbers only: 4-char-truncated broker name + signed qty with thousands separators (e.g., `키움증권 +432,100`, `NH투자증 −312,800`).
 - Broker names longer than 4 characters are truncated to 4 with an ellipsis only when truncation isn't itself ambiguous (`삼성증권` → `삼성증권`, `한국투자증권` → `한국투자`, `NH투자증권` → `NH투자`). The 4-char rule comes from KRX brokerage naming where the first 4 characters are essentially always unique among large brokers.
 
-**Pane header controls:** the Price/Volume/Profile pane header carries a small toggle for the matprofile rendering mode — default "per-day" (side-by-side histograms per Stock-Date), alternate "combined" (single histogram across all selected dates). See §4.1 `volume_profile` for the underlying data and rebinning behavior.
+**Pane header controls:** the Price/Volume/Profile pane header carries a small toggle for the matprofile rendering mode — default "per-day" (one horizontal-bar overlay within each Stock-Date's segment) and alternate "combined" (one overlay spanning all selected dates). See §4.1 `volume_profile` for the underlying data, the horizontal-bar overlay direction (qty 0 at left → max qty at right), POC emphasis, and the VAH line.
 
 ### 5.2 Design tokens
 
