@@ -24,6 +24,10 @@
   /* ───── Color · Accent + Semantic ───── */
   --accent: #14B8A6;
   --accent-fg: #0A0A12;
+  /* Sanctioned brand-mark gradient stop — DESIGN.md's "no gradients" rule
+     has a single mockup-approved exception: the 24x24 H brand logo in LeftNav.
+     Do not extend this exception to any other UI chrome. */
+  --accent-shade: #0D7A6F;
   --up: #22C55E;
   --down: #F43F5E;
 

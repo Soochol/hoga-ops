@@ -6,7 +6,7 @@ export default function LeftNav() {
     <nav className="flex flex-col h-full bg-bg-subtle border-r">
       <div className="p-4 border-b flex items-center gap-2.5">
         <div className="w-6 h-6 rounded grid place-items-center text-bg font-bold text-xs"
-             style={{ background: 'linear-gradient(135deg, var(--accent), #0D7A6F)' }}>H</div>
+             style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-shade))' }}>H</div>
         <div>
           <div className="font-semibold text-sm">hoga-ops</div>
           <div className="text-[9.5px] text-fg-dim uppercase tracking-wider">orderbook replay</div>
