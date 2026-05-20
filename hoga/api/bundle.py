@@ -7,6 +7,8 @@ import duckdb
 
 from hoga.api.models import (
     DepthIntensity,
+    FillStrength,
+    FillStrengthPoint,
     QuoteRatio,
     QuoteRatioPoint,
     VolumeProfile,
@@ -220,4 +222,37 @@ def build_volume_profile_slice(
     return VolumeProfile(
         bin_count=vp_bins, price_min=price_min, price_max=price_max,
         bin_width=int(bin_width), bins=bins_arr,
+    )
+
+
+def build_fill_strength_slice(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    code: str,
+    date: str,
+    data_dir: Path,
+    bucket_ms: int = 60_000,
+) -> FillStrength:
+    path = str(data_dir / "parquet" / date / code / "trades.parquet")
+    rows = conn.execute(
+        f"""
+        SELECT ((ts_ms / {bucket_ms})::BIGINT * {bucket_ms}) AS bucket,
+               SUM(CASE WHEN side = 1 THEN qty ELSE 0 END) AS buy_qty,
+               SUM(CASE WHEN side = -1 THEN qty ELSE 0 END) AS sell_qty
+        FROM read_parquet(?)
+        WHERE side != 0
+        GROUP BY 1 ORDER BY 1
+        """,
+        [path],
+    ).fetchall()
+    return FillStrength(
+        bucket_ms=bucket_ms,
+        points=[
+            FillStrengthPoint(
+                t=hhmmssms_to_unix_ms(date, r[0]),
+                buy_qty=int(r[1]),
+                sell_qty=int(r[2]),
+            )
+            for r in rows
+        ],
     )

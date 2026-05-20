@@ -95,3 +95,20 @@ def test_session_volume_profile_slice(engine: QueryEngine, tmp_path: Path) -> No
     # Includes auction-cross volume (no side filter)
     total = sum(b.qty for b in vp.bins)
     assert total >= 0
+
+
+def test_session_fill_strength_excludes_auctions(engine: QueryEngine, tmp_path: Path) -> None:
+    from hoga.api.bundle import build_fill_strength_slice
+    fs = build_fill_strength_slice(
+        engine.conn, code="003490", date="20260519",
+        data_dir=tmp_path / "data",
+    )
+    assert fs.bucket_ms == 60000
+    # Per spec §4.1: fill_strength excludes side = 0
+    trades_path = str(tmp_path / "data" / "parquet" / "20260519" / "003490" / "trades.parquet")
+    expected = engine.conn.execute(
+        "SELECT SUM(qty) FROM read_parquet(?) WHERE side != 0",
+        [trades_path],
+    ).fetchone()[0] or 0
+    actual = sum(p.buy_qty + p.sell_qty for p in fs.points)
+    assert actual == expected
