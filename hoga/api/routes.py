@@ -27,7 +27,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
 
     @router.get("/stock-dates", response_model=list[StockDate])
     def stock_dates() -> list[StockDate]:
-        return [StockDate(**s) for s in engine.list_stock_dates()]
+        return engine.list_stock_dates()
 
     @router.get("/meta", response_model=Meta)
     def meta(code: str, date: str) -> Meta:

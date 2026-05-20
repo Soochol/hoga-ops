@@ -8,6 +8,7 @@ from typing import Any
 
 import duckdb
 
+from hoga.api.models import StockDate
 from hoga.tables import snapshots
 
 
@@ -39,11 +40,11 @@ class QueryEngine:
             raise StockDateNotFound(f"{date}/{code}")
         return d
 
-    def list_stock_dates(self) -> list[dict[str, Any]]:
+    def list_stock_dates(self) -> list[StockDate]:
         base = self.data_dir / "parquet"
         if not base.exists():
             return []
-        out: list[dict[str, Any]] = []
+        out: list[StockDate] = []
         for date_dir in sorted(base.iterdir()):
             if not date_dir.is_dir():
                 continue
@@ -58,19 +59,19 @@ class QueryEngine:
                     else None
                 )
                 out.append(
-                    {
-                        "date": date_dir.name,
-                        "code": code_dir.name,
-                        "name": meta["name"],
-                        "regular_session_open_ms": meta["regular_session_open_ms"],
-                        "regular_session_close_ms": meta["regular_session_close_ms"],
-                        "data_window_first_ms": bounds[0]
+                    StockDate(
+                        date=date_dir.name,
+                        code=code_dir.name,
+                        name=meta["name"],
+                        regular_session_open_ms=meta["regular_session_open_ms"],
+                        regular_session_close_ms=meta["regular_session_close_ms"],
+                        data_window_first_ms=bounds[0]
                         if bounds
                         else meta["regular_session_open_ms"],
-                        "data_window_last_ms": bounds[1]
+                        data_window_last_ms=bounds[1]
                         if bounds
                         else meta["regular_session_close_ms"],
-                    }
+                    )
                 )
         return out
 

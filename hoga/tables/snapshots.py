@@ -168,19 +168,31 @@ class ApiOrderbookSnapshot(BaseModel):
 # === Query (returns ApiOrderbookSnapshot directly — unflattens flat columns inline) ===
 
 
+def _build_query_cols() -> tuple[str, ...]:
+    cols: list[str] = ["ts_ms", "seq"]
+    for prefix in ("ask_p", "ask_q", "ask_d", "bid_p", "bid_q", "bid_d"):
+        for i in range(1, ORDERBOOK_LEVELS + 1):
+            cols.append(f"{prefix}{i}")
+    cols.extend(("tot_ask", "tot_ask_d", "tot_bid", "tot_bid_d"))
+    return tuple(cols)
+
+
+_QUERY_COLS: tuple[str, ...] = _build_query_cols()
+_SELECT: str = ", ".join(_QUERY_COLS)
+
+
 def query_at(
     con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int
 ) -> ApiOrderbookSnapshot | None:
     """Return the latest snapshot at ts_ms <= t_ms as an ApiOrderbookSnapshot, or None
     if before any data."""
     row = con.execute(
-        "SELECT * FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT 1",
+        f"SELECT {_SELECT} FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT 1",
         [str(path), t_ms],
     ).fetchone()
     if row is None:
         return None
-    cols = [d[0] for d in con.description]
-    by_name = dict(zip(cols, row, strict=True))
+    by_name = dict(zip(_QUERY_COLS, row, strict=True))
     return ApiOrderbookSnapshot(
         ts_ms=by_name["ts_ms"],
         seq=by_name["seq"],
