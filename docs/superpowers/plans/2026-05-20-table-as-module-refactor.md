@@ -114,6 +114,74 @@ return OrderbookResponse(available_from=None, snapshot=snapshots_tbl.query_at(en
 
 ---
 
+## Task 0: Capture API baseline for byte-parity verification
+
+**Goal:** Refactor's load-bearing invariant is "no observable behavior change." Capture the current API responses now so Task 8 can `diff` against them. This is the cheapest, most objective way to prove behavior preservation. Must be done BEFORE any code changes.
+
+**Files:** none modified (captures go to `/tmp/api-baseline/`)
+
+- [ ] **Step 1: Ensure data is parsed and server is reachable**
+
+Existing data should already be at `data/parquet/20260519/{003490,005930}/` from Phase 1 validation. Verify:
+
+```bash
+cd C:\code\hoga-ops
+ls data/parquet/20260519/
+# expect: 003490/  005930/
+```
+
+If the parquet directories are missing, run `python -m hoga parse --code 003490 --date 20260519` first (raw data should still be at `data/raw/20260519/`).
+
+- [ ] **Step 2: Start server in background**
+
+```bash
+python -m hoga serve --port 8000 &
+SERVER_PID=$!
+sleep 2
+```
+
+- [ ] **Step 3: Capture each endpoint's response**
+
+```bash
+mkdir -p /tmp/api-baseline
+curl -sS "http://127.0.0.1:8000/api/stock-dates" > /tmp/api-baseline/stock-dates.json
+curl -sS "http://127.0.0.1:8000/api/meta?code=003490&date=20260519" > /tmp/api-baseline/meta-003490.json
+curl -sS "http://127.0.0.1:8000/api/orderbook?code=003490&date=20260519&t=120000000" > /tmp/api-baseline/orderbook-003490-12h.json
+curl -sS "http://127.0.0.1:8000/api/orderbook?code=003490&date=20260519&t=80000000" > /tmp/api-baseline/orderbook-003490-before-data.json
+curl -sS "http://127.0.0.1:8000/api/trades?code=003490&date=20260519&t=120000000&limit=20" > /tmp/api-baseline/trades-003490-t.json
+curl -sS "http://127.0.0.1:8000/api/trades?code=003490&date=20260519&from=143000000&to=143010000&limit=100" > /tmp/api-baseline/trades-003490-range.json
+curl -sS "http://127.0.0.1:8000/api/candles?code=003490&date=20260519" > /tmp/api-baseline/candles-003490.json
+curl -sS "http://127.0.0.1:8000/api/brokers?code=003490&date=20260519&t=140000000" > /tmp/api-baseline/brokers-003490-14h.json
+curl -sS "http://127.0.0.1:8000/api/brokers?code=003490&date=20260519&t=80000000" > /tmp/api-baseline/brokers-003490-before.json
+ls -la /tmp/api-baseline/
+```
+
+Expected: 9 non-empty JSON files.
+
+- [ ] **Step 4: Stop server**
+
+```bash
+kill $SERVER_PID
+```
+
+- [ ] **Step 5: Sanity check baseline isn't empty**
+
+```bash
+for f in /tmp/api-baseline/*.json; do
+  size=$(wc -c < "$f")
+  echo "$f: $size bytes"
+  if [ "$size" -lt 10 ]; then
+    echo "  WARNING: suspiciously small"
+  fi
+done
+```
+
+Expected: each file at least 50 bytes (HTTP 4xx responses are short — only `orderbook-before-data` and `brokers-before` are intentionally near-empty payloads, but valid JSON).
+
+**Do not commit the baselines** — they're in `/tmp`, transient. They serve one purpose: Task 8 will diff against them. If you restart your machine between Task 0 and Task 8, re-run Task 0.
+
+---
+
 ## Task 1: Scaffold `hoga/tables/` package + dispatcher shell
 
 **Goal:** Create the package skeleton and the dispatcher module that holds tokenizer + registry infrastructure. No table modules yet; nothing called from this task. Existing 53 tests must pass unchanged.
@@ -2128,25 +2196,52 @@ print('day_vol:', con.execute(\"SELECT max(cum_vol) FROM read_parquet('data/parq
 
 Expected: trades ≈ 16,363; day_vol = 1,956,286 (same as Phase 1 validation).
 
-- [ ] **Step 5: Restart server, hit each endpoint**
+- [ ] **Step 5: Restart server and capture post-refactor responses**
 
 ```bash
-# In one terminal:
 python -m hoga serve --port 8000 &
 SERVER_PID=$!
 sleep 2
 
-# Hit endpoints and confirm same shape as Phase 1:
-curl -sS http://127.0.0.1:8000/api/stock-dates | python -m json.tool | head -10
-curl -sS "http://127.0.0.1:8000/api/orderbook?code=003490&date=20260519&t=120000000" | python -m json.tool | head -20
-curl -sS "http://127.0.0.1:8000/api/trades?code=003490&date=20260519&t=120000000&limit=3" | python -m json.tool
-curl -sS "http://127.0.0.1:8000/api/brokers?code=003490&date=20260519&t=140000000" | python -m json.tool | head -20
+mkdir -p /tmp/api-after
+curl -sS "http://127.0.0.1:8000/api/stock-dates" > /tmp/api-after/stock-dates.json
+curl -sS "http://127.0.0.1:8000/api/meta?code=003490&date=20260519" > /tmp/api-after/meta-003490.json
+curl -sS "http://127.0.0.1:8000/api/orderbook?code=003490&date=20260519&t=120000000" > /tmp/api-after/orderbook-003490-12h.json
+curl -sS "http://127.0.0.1:8000/api/orderbook?code=003490&date=20260519&t=80000000" > /tmp/api-after/orderbook-003490-before-data.json
+curl -sS "http://127.0.0.1:8000/api/trades?code=003490&date=20260519&t=120000000&limit=20" > /tmp/api-after/trades-003490-t.json
+curl -sS "http://127.0.0.1:8000/api/trades?code=003490&date=20260519&from=143000000&to=143010000&limit=100" > /tmp/api-after/trades-003490-range.json
+curl -sS "http://127.0.0.1:8000/api/candles?code=003490&date=20260519" > /tmp/api-after/candles-003490.json
+curl -sS "http://127.0.0.1:8000/api/brokers?code=003490&date=20260519&t=140000000" > /tmp/api-after/brokers-003490-14h.json
+curl -sS "http://127.0.0.1:8000/api/brokers?code=003490&date=20260519&t=80000000" > /tmp/api-after/brokers-003490-before.json
 
-# Stop server:
 kill $SERVER_PID
 ```
 
-Expected: All endpoints return non-empty payloads with the same JSON shape as Phase 1 validation (orderbook has ask_p, ask_q, ask_d, bid_p, bid_q, bid_d arrays of length 10; trades have 11 fields including change_pct, cum_trades, etc.; brokers have 10 entries with side/rank/broker/qty_today/qty_delta).
+- [ ] **Step 5b: Byte-parity diff against Task 0 baselines**
+
+The refactor's load-bearing invariant is "no observable behavior change." Diff every captured endpoint:
+
+```bash
+for name in stock-dates meta-003490 orderbook-003490-12h orderbook-003490-before-data \
+            trades-003490-t trades-003490-range candles-003490 \
+            brokers-003490-14h brokers-003490-before; do
+    if diff -q "/tmp/api-baseline/$name.json" "/tmp/api-after/$name.json" > /dev/null 2>&1; then
+        echo "$name: IDENTICAL"
+    else
+        echo "$name: DIFFERS"
+        diff "/tmp/api-baseline/$name.json" "/tmp/api-after/$name.json" | head -20
+    fi
+done
+```
+
+Expected: **all 9 lines report IDENTICAL.**
+
+If any DIFFERS, investigate before declaring the refactor done. The most likely culprits:
+- Pydantic field order in a model differs from the dict-key order DuckDB returned (e.g. `seq` before `ts_ms` instead of after) — fix by reordering the model fields to match the prior layout.
+- A float field renders differently (`0.59` vs `0.5900000000000001`) — usually means the pydantic model field type changed; verify it's still `float` and not `Decimal`.
+- A field is missing entirely — check the `_row_to_api` helper (or the inline construction in `query_at`) maps every column the prior `to_api` produced.
+
+If `/tmp/api-baseline/` is missing (e.g., you started Task 8 on a fresh machine), re-run Task 0 against the **current** HEAD's parent (`git stash && git checkout HEAD~1` etc.) to regenerate baselines. Don't skip this step — silent JSON shape drift is the failure mode this refactor must prove it doesn't have.
 
 - [ ] **Step 6: Inspect final file structure**
 
