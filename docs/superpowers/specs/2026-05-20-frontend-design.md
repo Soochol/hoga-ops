@@ -364,6 +364,11 @@ data: {"code":"005930","date":"20260518"}
   - **Tools** — Search, Notes.
   - **System** (bottom) — Settings.
 - Footer shows API status dot and version.
+  - Status dot is driven entirely by the SSE connection (no separate health-check endpoint — SSE liveness implies API liveness, same server):
+    - 🟢 `--up` — SSE connected and last `heartbeat` event received within the last 60 s.
+    - 🟡 `--accent` (pulsing) — SSE disconnected or no `heartbeat` for >60 s; browser is auto-reconnecting.
+    - 🔴 `--down` — SSE error event received OR auto-reconnect failed AND the most recent regular API call returned 5xx. Indicates the backend is likely down.
+  - Hover tooltip: `SSE 연결 활성 · 마지막 갱신 HH:MM:SS` (green), `재연결 중...` (yellow), or `백엔드 응답 없음` (red).
 - v1: only Replay Viewer renders real content. Other nav items render a placeholder page with the section title and a "coming soon" stub.
 
 **Tab strip (Replay Viewer page only, 40 px tall):**
@@ -384,7 +389,10 @@ data: {"code":"005930","date":"20260518"}
   - **Hangul initials search** (e.g. `ㅅㅅㅈㅈ` → 삼성전자) is a v1+1 follow-up — useful but needs a small lookup helper.
 - 기간: from/to date fields, each opens a `react-day-picker` calendar popover. Days not in the captured inventory for the selected code are disabled (greyed, unclickable). Disabled-day set comes from `/api/stock-dates` filtered to the active code. For single-day analysis, the user sets `from = to`.
 - **Changing the stock clears the date range.** When the user picks a different code in the combobox, `from`/`to` reset to empty and the user re-selects dates against the new code's inventory. Avoids the "I selected 5/20 which exists for 005930 but not for 000660" silent-mismatch problem, and forces the user to consciously re-scope after switching symbols.
-- `데이터 불러오기` primary button: triggers prefetch for the current tab.
+- `데이터 불러오기` primary button: triggers the bundle prefetch for the current tab.
+  - **Disabled until code + `from` + `to` are all filled.** While disabled the button renders in `--fg-dimmer` color with no hover effect; the tab is still on its onboarding card (per §6.2 state table) and the highlighted step explains what's missing. Hovering the disabled button shows the same hint as a tooltip (e.g. `기간을 선택하세요`).
+  - Active state: primary teal background, full opacity. Click fires N parallel `/api/session` calls and the workarea transitions from onboarding card → loading card → loaded chart per §6.2.
+  - When the tab is already in `loaded` state and the user changes any toolbar input, the button switches to "Reload" labeling to make it explicit a re-fetch will replace cached data; clicking it discards `tab.bundles` and `tab.spotLRU`, then fetches fresh.
 
 No quick-range presets in v1. Analysts pick specific captured Stock-Dates, not sliding windows; presets like "1W" don't map cleanly to the capture-driven workflow. A "fill-from-to back N captures" shortcut may be added later if calendar clicking proves slow.
 
@@ -660,6 +668,9 @@ Sidebar cards render from spot responses (each cached in tab.spotLRU)
 - **Bundle prefetch on Load (progressive render):** when the user clicks Load with N Stock-Dates selected, the app fires N `/api/session` calls in parallel and renders **each day's segment as soon as its bundle arrives** — not after all are done. Day 1 may appear at t+500 ms; Day 5 may appear at t+1.2 s. The chart looks like it's filling left-to-right (or in actual response order). Each segment uses `tab.bundles[date]` independently the moment it's populated. The virtual axis preallocates N slots based on `selection`, so partial state has explicit empty slots (not collapsed). Per §6.6: 404 results drop silently from the virtual axis; 5xx results render a red retry segment. Backend computes the 5 bundle slices via concurrent DuckDB queries; total time per Stock-Date on localhost ~300–800 ms.
 - **Bundle lookup is synchronous:** every chart pane reads from `tab.bundles[date]` directly. No React Suspense, no react-query for bundles. Once Load finishes, scrolling and zooming don't fetch anything.
 - **Spot fetches on cursor move:** three small GETs at 30 ms debounce. Each ~500 B – 1 KB. Total per cursor move = ~2 KB on the wire.
+- **All 5 chart panes share the same cursor.** lightweight-charts handles multi-pane crosshair sync natively — wherever the mouse hovers (candle, volume, ratio, intensity, fill_strength), the cursor `t` is the same for all panes and for the sidebar.
+- **Initial cursor on Load:** the cursor defaults to the **right edge of the loaded data** (latest available timestamp). The sidebar cards therefore have data the moment the workarea renders — no blank state immediately after Load.
+- **Stale-during-fetch behavior:** while a spot fetch is in-flight after a cursor move, the sidebar cards keep showing the previous successful values (stable, slightly stale) rather than blanking. A small pulsing teal dot in each card header marks "fetching"; it disappears when the new response lands. If the LRU cache already has the new key, the swap is instant with no dot. Data stability beats visual flicker.
 - **Spot LRU cache:** per tab, capped at 100 entries each. Recently visited cursor positions stay hot; far-away keys evict. Cache shape: `Map<keyHash, response>` with LRU eviction. Memory bound: ~200 KB/tab worst case.
 - **Tab switching:** instant. Bundles for inactive tabs stay in memory; spot LRU stays per tab. Switching back is `tab.bundles[date]` lookup + `tab.cursorMs` re-broadcast.
 - **Cursor persists when mouse leaves the chart.** `cursorMs` holds its last value while the mouse is over the sidebar or anywhere off the chart; sidebar cards keep their data. Re-entering the chart at a new position updates the cursor normally. No explicit pin/lock action — the persistence is automatic.
