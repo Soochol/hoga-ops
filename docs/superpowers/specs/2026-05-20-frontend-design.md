@@ -498,7 +498,29 @@ type Store = {
 
 Toolbar inputs are **always visible and always interactive** — even when `status === 'loaded'`, the user can change the stock or dates and click Load again. The onboarding card is purely workarea content, not chrome.
 
-### 6.3 Compressed multi-day time axis
+### 6.3 Chart zoom, pan, and interaction
+
+Bounded interaction so the chart can't be zoomed/panned into useless states.
+
+**Zoom limits** (configured on `lightweight-charts` time scale):
+- **Maximum zoom-in (smallest visible window):** ~5 candles visible. Below this density the OHLC marks blur into a noisy line — no analytical value.
+- **Maximum zoom-out (largest visible window):** the full selected date range plus a **10% padding on each side**. The padding gives the chart breathing room at the edges and matches TradingView convention.
+
+**Pan limits:**
+- Soft: the user can pan beyond the data into the 10% padding region but not further. lightweight-charts' `rightBarStaysOnScroll: true` + `lockVisibleTimeRangeOnResize: false` keeps drag within bounds.
+- The viewport always shows at least 1 actual candle — the app refuses to scroll the entire dataset off-screen.
+
+**Mouse / keyboard:**
+- Mouse wheel: zoom (TradingView convention).
+- Click and drag: pan.
+- Double-click: reset to full-range view (zoom-out to max).
+- Box-zoom and keyboard shortcuts (arrow keys, +/−) are not in v1 — added if needed.
+
+**Viewport tracking interactions** (per §5.1 price strip):
+- "Current price" = close of the candle at the viewport's **right visible edge**. If the user pans into the right-padding region (no real candle there), the value stays at the rightmost real candle's close — it does not blank out.
+- "Delta chip" = same definition relative to the viewport's left edge. Same fallback to last real candle when the left edge is in padding.
+
+### 6.4 Compressed multi-day time axis
 
 **Problem:** Concatenating multiple Stock-Dates raw leaves a 17.5-hour gap between consecutive Regular Sessions, wasting screen space.
 
@@ -517,7 +539,7 @@ type Segment = { date: string; sessionOpenMs: number; sessionCloseMs: number; vi
 
 This logic lives in `state/timeAxis.ts` and is the single source of truth for time conversion. Every API call out is real-ms; every chart coordinate is virtual-ms.
 
-### 6.4 Data flow
+### 6.5 Data flow
 
 ```
 Active tab's Toolbar (code + dateRange + Load)
@@ -548,7 +570,7 @@ Three parallel spot fetches: orderbook(t), brokers(t), trades(t-5s, t)
 Sidebar cards render from spot responses (each cached in tab.spotLRU)
 ```
 
-- **Bundle prefetch on Load (progressive render):** when the user clicks Load with N Stock-Dates selected, the app fires N `/api/session` calls in parallel and renders **each day's segment as soon as its bundle arrives** — not after all are done. Day 1 may appear at t+500 ms; Day 5 may appear at t+1.2 s. The chart looks like it's filling left-to-right (or in actual response order). Each segment uses `tab.bundles[date]` independently the moment it's populated. The virtual axis preallocates N slots based on `selection`, so partial state has explicit empty slots (not collapsed). Per §6.5: 404 results drop silently from the virtual axis; 5xx results render a red retry segment. Backend computes the 5 bundle slices via concurrent DuckDB queries; total time per Stock-Date on localhost ~300–800 ms.
+- **Bundle prefetch on Load (progressive render):** when the user clicks Load with N Stock-Dates selected, the app fires N `/api/session` calls in parallel and renders **each day's segment as soon as its bundle arrives** — not after all are done. Day 1 may appear at t+500 ms; Day 5 may appear at t+1.2 s. The chart looks like it's filling left-to-right (or in actual response order). Each segment uses `tab.bundles[date]` independently the moment it's populated. The virtual axis preallocates N slots based on `selection`, so partial state has explicit empty slots (not collapsed). Per §6.6: 404 results drop silently from the virtual axis; 5xx results render a red retry segment. Backend computes the 5 bundle slices via concurrent DuckDB queries; total time per Stock-Date on localhost ~300–800 ms.
 - **Bundle lookup is synchronous:** every chart pane reads from `tab.bundles[date]` directly. No React Suspense, no react-query for bundles. Once Load finishes, scrolling and zooming don't fetch anything.
 - **Spot fetches on cursor move:** three small GETs at 30 ms debounce. Each ~500 B – 1 KB. Total per cursor move = ~2 KB on the wire.
 - **Spot LRU cache:** per tab, capped at 100 entries each. Recently visited cursor positions stay hot; far-away keys evict. Cache shape: `Map<keyHash, response>` with LRU eviction. Memory bound: ~200 KB/tab worst case.
@@ -556,7 +578,7 @@ Sidebar cards render from spot responses (each cached in tab.spotLRU)
 - **Cursor persists when mouse leaves the chart.** `cursorMs` holds its last value while the mouse is over the sidebar or anywhere off the chart; sidebar cards keep their data. Re-entering the chart at a new position updates the cursor normally. No explicit pin/lock action — the persistence is automatic.
 - **No react-query for cursor data.** The 30 ms debounce + spot LRU is implemented as a small hook (`useSpot<T>(key, fetcher)`) — ~30 LoC. react-query is reserved for the bundle fetch where its retry/dedupe shine.
 
-### 6.5 Error handling
+### 6.6 Error handling
 
 | Failure mode | Behavior |
 |---|---|
