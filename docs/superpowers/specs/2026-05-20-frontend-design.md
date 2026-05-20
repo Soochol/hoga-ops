@@ -167,7 +167,9 @@ function quoteImbalance(bid: number, ask: number): number {
 }
 ```
 
-A 1.2× sell-heavy state plots at `+0.2`; 1.2× buy-heavy at `−0.2`; balance at `0`. The line crosses `0` continuously when imbalance flips. Y-axis ticks formatted back to the ratio: `1.2× SELL`, `1.5× SELL`, `BALANCE`, `1.2× BUY`, `1.5× BUY`. Range capped at ±2.0 (≈ 3× ratio); larger values clip.
+A 1.2× sell-heavy state plots at `+0.2`; 1.2× buy-heavy at `−0.2`; balance at `0`. The line crosses `0` continuously when imbalance flips.
+
+**Y-axis auto-fits the actual data range — no clipping.** If imbalance spikes to ±4 (5× ratio), the axis expands to show it. The whole line is always visible regardless of magnitude. Tick labels formatted back to the ratio (`1.2× S`, `1.5× S`, `2× S`, `0`, `1.2× B`, `1.5× B`, `2× B`, etc., with `S` = SELL, `B` = BUY). At y = 0, a thin teal dashed baseline marks balance and visually separates the sell-heavy region (above) from the buy-heavy region (below).
 
 **`depth_intensity`** — two parallel 2-D heatmap grids (one for bid quantities, one for ask) sharing the same time + price axes. The pane renders bid cells in one hue (typically the buy/up color) below the natural mid-price cluster and ask cells in another hue (sell/down color) above. The two grids never overlap in practice (orderbook invariant: `bid_max < ask_min` outside the Auction Window cross moment).
 
@@ -237,9 +239,17 @@ Configurable via `?vp_bins=N` query param (range 10–100). Bigger N = finer res
 
 **Rendering — horizontal bar overlay across the candle pane:**
 
-The matprofile is drawn as a horizontal-bar histogram **overlaid on the candle pane**, not as a strip on the right edge. For each price bin (y-axis horizontal slice), one teal bar extends from the **left edge of the day's segment toward the right**, with length proportional to that price bin's volume. The bar is rendered at ~60% opacity over the candles so candle bodies remain readable underneath. The bar at the **POC (Point of Control — price bin with max volume)** is drawn at 100% opacity to stand out.
+The matprofile is drawn as a horizontal-bar histogram **overlaid on the candle pane**, not as a strip on the right edge. For each price bin (y-axis horizontal slice), one teal bar extends from the **left edge of the day's segment toward the right**, with length proportional to that price bin's volume.
 
-A horizontal **VAH (Value Area High) line** is overlaid at the upper boundary of the Value Area — the price where the cumulative top-volume bins reach 70% of total day volume, scanning from POC outward. v1 omits the VAL (Value Area Low) line; only VAH ships. VAL can be added later if useful.
+**Z-order and opacity** (candles must stay readable over the overlay):
+- Matprofile bars layer: **20% opacity teal**.
+- POC (Point of Control — price bin with max volume) bar: **50% opacity teal** — emphasized but still translucent.
+- Candles draw **on top** of the matprofile (z-order: candles > matprofile). The matprofile lives as background tint.
+- VAH (Value Area High) line: solid 1 px teal with a small `VAH 70,500` label at the right edge of the day segment.
+
+The Value Area is the cumulative top-volume bins covering 70% of day volume, scanned outward from POC. v1 ships only the VAH line; the lower bound (VAL) is deferred.
+
+**Toggle in the pane header.** A small `매물대` toggle (default **on**) lives in the Price/Volume/Profile pane header. Off hides all matprofile bars, POC emphasis, and the VAH line — so the analyst can read raw candles without the overlay. Toggle state is per-tab, in-session only (resets to on after page reload). URL encoding of pane toggles is deferred to v1+1.
 
 **Multi-day rendering** (when the user selects N Stock-Dates):
 - **Default = per-day**, one matprofile inside each day's segment. The bars for day D start at the left edge of D's segment on the compressed virtual time axis and extend rightward up to (their proportion × the segment's width). Each day has its own POC bar and VAH line. Days are visually comparable across the chart.
@@ -746,3 +756,4 @@ State is serialized to the URL so reloading restores the workspace, the browser 
 - Real implementations of Inventory / Capture / Search / Notes pages.
 - `GET /api/config` (or `/api/system`) — backend endpoint exposing global state (data dir path, captured Stock-Date count, disk usage). Needed for a real Settings page; deferred to v1+1.
 - Hangul initials (초성) search in the stock combobox (e.g. `ㅅㅅㅈㅈ` → 삼성전자) — deferred to v1+1.
+- URL encoding of per-pane toggles (e.g. matprofile on/off, future indicator visibility) — deferred to v1+1.
