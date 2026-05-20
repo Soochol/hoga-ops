@@ -1,73 +1,66 @@
-# React + TypeScript + Vite
+# hoga-ops Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite client for the hoga-ops replay viewer.
 
-Currently, two official plugins are available:
+See `DESIGN.md` at the repo root for the design system and
+`docs/superpowers/designs/2026-05-20-replay-viewer.html` for the approved visual reference.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Prerequisites
 
-## React Compiler
+- Node.js 20+ and npm
+- Backend running (see "Backend" below) on port 8000 by default
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Setup
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Common commands
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Vite dev server with HMR on `http://localhost:5173` |
+| `npm run build` | Type-check (`tsc -b`) + production bundle to `dist/` |
+| `npm run preview` | Serve the built `dist/` locally |
+| `npx vitest run` | Run unit + component tests (vitest, JSDOM) |
+| `npx vitest` | Watch mode |
+| `npx playwright test` | E2E specs (gated — see `tests/e2e/README.md`) |
+| `npm run lint` | ESLint |
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Backend
+
+The backend is a FastAPI app served by uvicorn. From the repo root:
+
+```bash
+uv run uvicorn hoga.api.app:app --reload --port 8000
 ```
+
+This exposes the SSE replay stream the frontend consumes.
+
+## Runtime configuration
+
+The frontend reads `/config.json` at startup to pick up the API base URL.
+A default `public/config.json` ships with `{ "apiBaseUrl": "http://localhost:8000" }`.
+Override per-deployment by replacing the file in the served `dist/` directory —
+no rebuild required.
+
+## Project layout
+
+```
+frontend/
+  src/
+    components/      # presentational React components
+    hooks/           # data hooks (SSE, snapshots, etc.)
+    store/           # Zustand stores
+    api/             # fetch + SSE clients
+    tests/           # vitest unit + component tests
+  tests/e2e/         # Playwright specs (gated)
+  public/config.json # runtime API base URL
+```
+
+## Status
+
+The shell, routing, URL state, and data hooks are wired. Several panes
+(Workarea, ChartStage, CursorSidebarConnected) exist as components but are
+not yet mounted in the live layout — they're scheduled for Phase 11.
