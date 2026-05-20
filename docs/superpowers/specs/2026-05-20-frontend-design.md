@@ -30,7 +30,7 @@ Build a browser frontend for the existing hoga-ops local API that lets the user:
 6. See three cursor-following indicators in a right sidebar that update as the user moves the chart crosshair — all raw event streams fetched as a spot lookup at the cursor's `t`:
    - 10호가 테이블 — orderbook snapshot at cursor `t`.
    - 거래원 입체 분석 — net (buy − sell) by broker at cursor `t`.
-   - 체결 데이터 그래프 — recent trades around cursor `t` (small tape).
+   - 체결 데이터 (recent trades tape) — table of recent trades around cursor `t`, no chart.
 
 ## 2. Non-goals (v1)
 
@@ -348,6 +348,12 @@ data: {"code":"005930","date":"20260518"}
 
 **Toolbar (60 px, per-tab):**
 - 종목 combobox: searchable dropdown sourced from `/api/stock-dates` inventory, shows code + name + captured-dates count.
+  - **Search matches both 종목명 (name) and 종목코드 (code).** Code uses prefix matching (`005` → 005380, 005930). Name uses substring matching (`삼성` → 삼성전자, 삼성바이오로직스, 삼성SDI).
+  - Empty search shows the full inventory.
+  - **Default sort: captured-dates count descending** (most-analyzed stocks rise to the top). When search is active, results are ranked by match strength (code-prefix matches first, then name-substring matches); ties break on code ascending.
+  - **Keyboard:** ↑ / ↓ navigate, Enter selects, ESC closes — standard combobox conventions.
+  - Click anywhere on the field opens the dropdown with the full list visible; the search input is purely a filter.
+  - **Hangul initials search** (e.g. `ㅅㅅㅈㅈ` → 삼성전자) is a v1+1 follow-up — useful but needs a small lookup helper.
 - 기간: from/to date fields, each opens a `react-day-picker` calendar popover. Days not in the captured inventory for the selected code are disabled (greyed, unclickable). Disabled-day set comes from `/api/stock-dates` filtered to the active code. For single-day analysis, the user sets `from = to`.
 - **Changing the stock clears the date range.** When the user picks a different code in the combobox, `from`/`to` reset to empty and the user re-selects dates against the new code's inventory. Avoids the "I selected 5/20 which exists for 005930 but not for 000660" silent-mismatch problem, and forces the user to consciously re-scope after switching symbols.
 - `데이터 불러오기` primary button: triggers prefetch for the current tab.
@@ -366,7 +372,36 @@ The viewport-dependent current price + viewport-dependent delta + cursor-depende
 **Workarea:**
 - Left 1fr / right 320 px sidebar.
 - Left: 4 panes stacked vertically with `grid-template-rows: 1fr 0.5fr 1fr 0.6fr` — Price/Volume/Profile, Bid/Ask Ratio, Depth Intensity, Fill Strength.
-- Right: 3 cards stacked — Orderbook 10 Levels, Broker Net Flow, Recent Fills.
+- Right: 3 cards stacked with `grid-template-rows: 2fr 1fr 1fr` (50% / 25% / 25%) — Orderbook 10호가, Broker Net Flow, Recent Fills.
+
+The 2:1:1 ratio gives Orderbook the breathing room it needs (21 rows = 10 ask + spread + 10 bid). Inside Orderbook, the 21 rows fit when row height is ~14 px in mono 11.5 px — tight but readable. Broker Net Flow and Recent Fills each get ~150 px of vertical space and scroll internally when their content (up to 10 broker rows / 20 fill rows) exceeds the visible area. Every card has `overflow-y: auto` on its body.
+
+**Orderbook (10호가) card:**
+- Source: `/api/orderbook?code&date&t` returns the 20-level snapshot — **10 ask levels + 10 bid levels** — per KRX 10호가 (the term "10호가" refers to 10 levels *each side*, not 10 total).
+- Layout: 10 ask rows in rose at the top (rank 10 ask price at the very top, rank 1 ask closest to the spread), one `SPREAD · MID <price>` separator row in the middle, then 10 bid rows in green below (rank 1 bid closest to the spread, rank 10 at the very bottom). Spread line vertically centered, fixed position.
+- Each row: rank index, price (mono, signed color), qty (mono, right-aligned).
+- **Depth bar normalization:** every row has a horizontal gradient bar (rose for asks, green for bids) whose width is normalized **across all 20 levels** — the largest single-level qty among the 20 = 100% width. Smaller levels scale proportionally. So the visual immediately shows where the deepest level of the entire book is, regardless of which side it's on.
+- Empty levels (qty = 0 at some rank) show a blank cell, never collapse — keeps the 20-row structure stable.
+- Click on a price row: v1 no interaction (display only).
+
+**Recent Fills (체결 데이터) card:**
+- Source: `/api/trades?code&date&from=t-5000&to=t&limit=20` returns up to 20 trades from the last 5 seconds before the cursor.
+- **Table only, no chart.** Each row: time, price, qty, side icon.
+  - Time: `HH:MM:SS` (no milliseconds; millisecond precision shown only in a hover tooltip).
+  - Price: green if `side = +1` (buy aggressor), rose if `side = −1` (sell aggressor). 자릿수 콤마 구분.
+  - Qty: white, right-aligned, comma-separated.
+  - Side icon: ▲ for buy, ▼ for sell — color also encodes (double signal so colorblind users still see direction).
+- **Sort:** newest at top. Users always want the most recent row visible without scrolling.
+- **Auction Cross rows** (`side = 0`, 15:30:00.000) display in neutral color with the symbol `◆` to mark "auction" instead of `▲/▼`. They never sort above a real trade with the same wall-clock second because the auction cross happens at the boundary.
+- **Empty state:** if the 5-second window contains no trades (e.g., cursor sits inside the 15:20–15:30 Auction Window where no continuous trades happen), the card body shows a dim `체결 없음` message, no error.
+- No grouping or aggregation — analyst wants the raw stream.
+
+**Broker Net Flow card:**
+- Source: `/api/brokers?code&date&t` returns the top 5 buy-side brokers + top 5 sell-side brokers at cursor `t` — up to 10 rows total.
+- Each row's `net` is signed: buy-side entries plot as `+qty_today` (positive, green), sell-side entries as `−qty_today` (negative, rose).
+- **Sort:** all 10 rows by signed `net` descending — biggest net buyer at top, biggest net seller at bottom. A broker that appears in both lists shows as two separate rows.
+- **No visual bar.** Numbers only: 4-char-truncated broker name + signed qty with thousands separators (e.g., `키움증권 +432,100`, `NH투자증 −312,800`).
+- Broker names longer than 4 characters are truncated to 4 with an ellipsis only when truncation isn't itself ambiguous (`삼성증권` → `삼성증권`, `한국투자증권` → `한국투자`, `NH투자증권` → `NH투자`). The 4-char rule comes from KRX brokerage naming where the first 4 characters are essentially always unique among large brokers.
 
 **Pane header controls:** the Price/Volume/Profile pane header carries a small toggle for the matprofile rendering mode — default "per-day" (side-by-side histograms per Stock-Date), alternate "combined" (single histogram across all selected dates). See §4.1 `volume_profile` for the underlying data and rebinning behavior.
 
@@ -698,3 +733,4 @@ State is serialized to the URL so reloading restores the workspace, the browser 
 - Broker history time-series (already-aggregated server-side is a separate ticket).
 - Real implementations of Inventory / Capture / Search / Notes pages.
 - `GET /api/config` (or `/api/system`) — backend endpoint exposing global state (data dir path, captured Stock-Date count, disk usage). Needed for a real Settings page; deferred to v1+1.
+- Hangul initials (초성) search in the stock combobox (e.g. `ㅅㅅㅈㅈ` → 삼성전자) — deferred to v1+1.
