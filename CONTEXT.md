@@ -40,6 +40,14 @@ The increment applied to the `time` query parameter between successive collector
 A trade matched via a call auction (단일가 매매), not continuous trading. Occurs at the open (~09:00:00.000), the close (~15:30:00.000), and pre-market single-price periods. Recognizable in the trade schema by **absence of `+`/`-` sign** on the qty field (event type 1) OR by being an event type 3 row (single-price summary, used for both opening and closing auctions — confirmed in production 2026-05-20). Stored as `side = 0` (distinct from continuous-trading `+1` buy-aggressor / `-1` sell-aggressor). Excluded from CVD, aggressor-based metrics, and `cum_vol` monotonicity validation (`side=0` rows carry `cum_vol=0`).
 _Avoid_: "auction trade" alone, "opening trade", "closing trade"
 
+**Auction Window**:
+The period leading up to an **Auction Cross** during which limit orders accumulate but no continuous matching happens. KRX has two within the Regular Session: the closing **Auction Window** runs 15:20:00–15:30:00 and resolves with a cross at 15:30:00.000. The opening Auction Window (pre-market, part of the Data Window) is symmetric. **Snapshots are present and meaningful during an Auction Window** — bid/ask quantities at each level accumulate visibly. **Trades are absent** during the window itself; the cross at the window's close produces a single `side = 0` trade. UI metrics that rely on snapshots (호가비, depth intensity) render continuously across an Auction Window; UI metrics that rely on continuous trades (fill strength) show a natural gap then a single bar at the cross.
+_Avoid_: "auction period", "auction phase", "auction time" (all overloaded)
+
+**After-Hours Trading**:
+The KRX 장후 시간외 종가매매 window that runs from the closing Auction Cross at 15:30:00 to 16:00:00. All trades during this window match at the closing price (the cross price from 15:30:00) — so the price stays flat while volume continues to accumulate. Both snapshots and trades are present in hogaplay's capture across this window. Trades have continuous-trading `side = ±1` (not `side = 0`) — they are aggressor-matched at a fixed price, not auction crosses. Outside `CONTEXT.md`'s strict Regular Session definition (09:00–15:30) but inside hogaplay's Data Window and inside the v1 frontend display range.
+_Avoid_: "after-hours" alone (ambiguous with overnight or block-trade markets), "post-market"
+
 **Price Tick**:
 A 3-field `section=3 type=5 price` heartbeat broadcast emitted by hogaplay throughout the session. Carries only the current price — no qty, side, or seq. Discovered during E2E validation 2026-05-20. Parser drops these rows entirely; the same information is already present in trade events.
 
