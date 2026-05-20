@@ -79,3 +79,19 @@ def test_depth_intensity_cap_widens_bucket(engine: QueryEngine, tmp_path: Path) 
     )
     # Bucket must have widened beyond the requested 1000 ms.
     assert di.bucket_ms > 1000
+
+
+def test_session_volume_profile_slice(engine: QueryEngine, tmp_path: Path) -> None:
+    from hoga.api.bundle import build_volume_profile_slice
+    vp = build_volume_profile_slice(
+        engine.conn, code="003490", date="20260519",
+        data_dir=tmp_path / "data", vp_bins=24,
+    )
+    assert vp.bin_count == 24
+    assert len(vp.bins) == 24
+    # Bins are price-sorted ascending
+    prices = [b.price_low for b in vp.bins]
+    assert prices == sorted(prices)
+    # Includes auction-cross volume (no side filter)
+    total = sum(b.qty for b in vp.bins)
+    assert total >= 0

@@ -5,7 +5,13 @@ from pathlib import Path
 
 import duckdb
 
-from hoga.api.models import DepthIntensity, QuoteRatio, QuoteRatioPoint
+from hoga.api.models import (
+    DepthIntensity,
+    QuoteRatio,
+    QuoteRatioPoint,
+    VolumeProfile,
+    VolumeProfileBin,
+)
 from hoga.api.timeenc import hhmmssms_to_unix_ms, ms_from_midnight_to_unix_ms
 from hoga.tables import candles as candles_tbl
 from hoga.tables.candles import ApiCandle
@@ -168,4 +174,50 @@ def build_depth_intensity_slice(
         bucket_ms=depth_bucket_ms,
         price_min=price_min, price_max=price_max, price_step=tick,
         times=times, bid_grid=bid_grid, ask_grid=ask_grid,
+    )
+
+
+def build_volume_profile_slice(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    code: str,
+    date: str,
+    data_dir: Path,
+    price_min: int | None = None,
+    price_max: int | None = None,
+    vp_bins: int = 24,
+) -> VolumeProfile:
+    code_dir = data_dir / "parquet" / date / code
+    candles_path = str(code_dir / "candles.parquet")
+    trades_path = str(code_dir / "trades.parquet")
+    if price_min is None or price_max is None:
+        row = conn.execute(
+            "SELECT MIN(low), MAX(high) FROM read_parquet(?)", [candles_path],
+        ).fetchone()
+        price_min = int(row[0])
+        price_max = int(row[1])
+    bin_width = (price_max - price_min) / vp_bins
+    # No side filter — auction crosses count toward volume profile per spec §4.1
+    rows = conn.execute(
+        f"""
+        SELECT FLOOR((price - {price_min}) / {bin_width})::BIGINT AS bin_idx, SUM(qty) AS qty
+        FROM read_parquet(?)
+        WHERE price BETWEEN {price_min} AND {price_max}
+        GROUP BY 1 ORDER BY 1
+        """,
+        [trades_path],
+    ).fetchall()
+    bins_arr = [
+        VolumeProfileBin(price_low=int(price_min + i * bin_width), qty=0)
+        for i in range(vp_bins)
+    ]
+    for idx, qty in rows:
+        i = int(idx)
+        if 0 <= i < vp_bins:
+            bins_arr[i] = VolumeProfileBin(
+                price_low=int(price_min + i * bin_width), qty=int(qty),
+            )
+    return VolumeProfile(
+        bin_count=vp_bins, price_min=price_min, price_max=price_max,
+        bin_width=int(bin_width), bins=bins_arr,
     )
