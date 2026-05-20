@@ -1,10 +1,36 @@
 import { type ReactNode } from 'react';
+import OrderbookTable from './OrderbookTable';
+import BrokerNetTable from './BrokerNetTable';
+import FillTape from './FillTape';
+import {
+  useOrderbookAtCursor,
+  useBrokersAtCursor,
+  useTradesAroundCursor,
+} from '../api/useCursor';
 
 type Props = {
   orderbook?: ReactNode;
   brokers?: ReactNode;
   fills?: ReactNode;
 };
+
+/**
+ * Connected variant that pulls live cursor-keyed data from `useCursor` and
+ * renders the 3 sidebar cards. Used by ReplayViewer; the dumb
+ * `CursorSidebar` below remains exported for testability.
+ */
+export function CursorSidebarConnected() {
+  const orderbook = useOrderbookAtCursor();
+  const brokers = useBrokersAtCursor();
+  const trades = useTradesAroundCursor();
+  return (
+    <CursorSidebar
+      orderbook={<OrderbookTable snapshot={orderbook} />}
+      brokers={<BrokerNetTable brokers={brokers} />}
+      fills={<FillTape trades={trades} />}
+    />
+  );
+}
 
 export default function CursorSidebar({ orderbook, brokers, fills }: Props) {
   return (
