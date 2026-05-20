@@ -104,6 +104,15 @@ def build_router(engine: QueryEngine) -> APIRouter:
             path = engine.parquet_dir(date, code) / "brokers.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        return brokers_tbl.query_at(engine.conn, path=path, t_ms=t)
+        try:
+            raw_t = unix_ms_to_hhmmssms(date, t)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        result = brokers_tbl.query_at(engine.conn, path=path, t_ms=raw_t)
+        if result.ts_ms is not None:
+            result = result.model_copy(
+                update={"ts_ms": hhmmssms_to_unix_ms(date, result.ts_ms)}
+            )
+        return result
 
     return router
