@@ -5,6 +5,7 @@ import TabStrip from '../replay/TabStrip';
 import Toolbar from '../replay/Toolbar';
 import PriceStrip from '../replay/PriceStrip';
 import OnboardingCard from '../replay/OnboardingCard';
+import Workarea from '../replay/Workarea';
 
 function useUrlSync() {
   const hydrated = useRef(false);
@@ -50,13 +51,8 @@ export default function ReplayViewer() {
       <Toolbar />
       <PriceStrip />
       <div className="bg-bg min-h-0 overflow-hidden">
-        {active.status !== 'loaded' ? <OnboardingCard tab={active} /> : <Workarea />}
+        {!active.selection ? <OnboardingCard tab={active} /> : <Workarea tab={active} />}
       </div>
     </div>
   );
-}
-
-function Workarea() {
-  // Phase 6+: ChartStage + CursorSidebar
-  return <div className="grid place-items-center h-full text-fg-dim">Workarea — Phase 6</div>;
 }
