@@ -312,13 +312,19 @@ from pathlib import Path
 import duckdb
 import pyarrow.parquet as pq
 
+from dataclasses import replace
+
+import pytest
+
 from hoga.tables.trades import (
     PARSERS,
     PARQUET_SCHEMA,
     ApiTrade,
     Trade,
+    TradeValidationError,
     query_range,
     query_up_to,
+    validate,
     write_parquet,
 )
 
@@ -405,6 +411,29 @@ def test_query_range_returns_api_models(tmp_path: Path) -> None:
     assert len(rows) == 1
     assert isinstance(rows[0], ApiTrade)
     assert rows[0].ts_ms == 90008618
+
+
+def test_validate_passes_for_monotonic_cum_vol() -> None:
+    # Auction Cross (side=0, cum_vol=0) is excluded; only the continuous trade is checked.
+    trades = [PARSERS[3](_PREMARKET), PARSERS[1](_AUCTION_TRADE), PARSERS[1](_CONTINUOUS_TRADE)]
+    validate(trades)  # should not raise
+
+
+def test_validate_raises_on_cum_vol_regression() -> None:
+    # Build two continuous trades where the second has lower cum_vol than the first.
+    base = PARSERS[1](_CONTINUOUS_TRADE)  # cum_vol=789300, ts_ms=90008726
+    earlier = replace(base, ts_ms=90008000, seq=2122, cum_vol=1000)
+    later = replace(base, ts_ms=90008500, seq=2123, cum_vol=500)  # cum_vol drops!
+    with pytest.raises(TradeValidationError, match="cum_vol decreased"):
+        validate([earlier, later])
+
+
+def test_validate_lenient_skips_violations() -> None:
+    base = PARSERS[1](_CONTINUOUS_TRADE)
+    earlier = replace(base, ts_ms=90008000, seq=2122, cum_vol=1000)
+    later = replace(base, ts_ms=90008500, seq=2123, cum_vol=500)
+    # No exception raised in lenient mode
+    validate([earlier, later], lenient=True)
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -562,6 +591,40 @@ def write_parquet(trades: Iterable[Trade], path: Path) -> None:
     pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
 
 
+# === Within-table invariants ===
+
+
+class TradeValidationError(ValueError):
+    """A trades-table invariant was violated (e.g. cum_vol regressed)."""
+
+
+def validate(trades: list[Trade], *, lenient: bool = False) -> None:
+    """Check trades-table invariants.
+
+    Invariant: ``cum_vol`` is non-decreasing across continuous-trading rows
+    (``side != 0``) ordered by ``ts_ms``. Auction Cross rows (``side == 0``)
+    carry ``cum_vol = 0`` and are excluded — their volume folds into the next
+    continuous trade.
+
+    In strict mode (default) raises ``TradeValidationError`` on first violation.
+    In lenient mode skips violations silently (caller is responsible for noting
+    the data may be imperfect).
+    """
+    sorted_trades = sorted(
+        (t for t in trades if t.side != 0),
+        key=lambda t: t.ts_ms,
+    )
+    prev = -1
+    for t in sorted_trades:
+        if t.cum_vol < prev:
+            if lenient:
+                continue
+            raise TradeValidationError(
+                f"cum_vol decreased at seq={t.seq}: {prev} -> {t.cum_vol}"
+            )
+        prev = t.cum_vol
+
+
 # === API representation (wire format for clients; excludes forensic fields) ===
 
 
@@ -626,12 +689,12 @@ def query_range(
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_tables_trades.py -v`
-Expected: 8 passed.
+Expected: 11 passed.
 
 - [ ] **Step 5: Run full test suite (no regressions)**
 
 Run: `python -m pytest -q`
-Expected: 66 passed (58 + 8 new).
+Expected: 69 passed (58 + 11 new).
 
 - [ ] **Step 6: Ruff clean**
 
@@ -667,14 +730,20 @@ from pathlib import Path
 import duckdb
 import pyarrow.parquet as pq
 
+from dataclasses import replace
+
+import pytest
+
 from hoga.tables.snapshots import (
     PARSERS,
     PARQUET_SCHEMA,
     ApiOrderbookSnapshot,
     Orderbook,
+    SnapshotValidationError,
     query_at,
     query_first_ts,
     query_time_bounds,
+    validate,
     write_parquet,
 )
 
@@ -772,6 +841,27 @@ def test_query_first_ts(tmp_path: Path) -> None:
     empty = tmp_path / "empty.parquet"
     write_parquet([], empty)
     assert query_first_ts(con, path=empty) is None
+
+
+def test_validate_passes_for_correctly_ordered_book() -> None:
+    obs = [PARSERS[2](_ob_parts())]  # ask 25700/25750/25800 ascending, bid 25650/25600/25550 descending
+    validate(obs)  # should not raise
+
+
+def test_validate_raises_when_ask_prices_not_sorted() -> None:
+    base = PARSERS[2](_ob_parts())
+    bad_ask = (25700, 25800, 25750) + tuple([0] * 7)  # 25800 > 25750 — out of order
+    broken = replace(base, ask_p=bad_ask)
+    with pytest.raises(SnapshotValidationError, match="ask prices not sorted"):
+        validate([broken])
+
+
+def test_validate_raises_when_bid_prices_not_sorted() -> None:
+    base = PARSERS[2](_ob_parts())
+    bad_bid = (25650, 25550, 25600) + tuple([0] * 7)  # 25550 < 25600 — should be descending
+    broken = replace(base, bid_p=bad_bid)
+    with pytest.raises(SnapshotValidationError, match="bid prices not sorted"):
+        validate([broken])
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -894,6 +984,43 @@ def write_parquet(snapshots: Iterable[Orderbook], path: Path) -> None:
     pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
 
 
+# === Within-table invariants ===
+
+
+class SnapshotValidationError(ValueError):
+    """A snapshots-table invariant was violated (e.g. price arrays out of order)."""
+
+
+def validate(snapshots: list[Orderbook], *, lenient: bool = False) -> None:
+    """Check snapshots-table invariants.
+
+    Invariants:
+    - ``ask_p`` is non-decreasing (excluding placeholder ``0``s at the tail).
+    - ``bid_p`` is non-increasing (excluding placeholder ``0``s at the tail).
+
+    These mirror Korean orderbook ladder semantics: best ask is the lowest sell
+    price, deeper asks rise; best bid is the highest buy price, deeper bids fall.
+
+    In strict mode (default) raises ``SnapshotValidationError`` on first violation.
+    In lenient mode skips violations silently.
+    """
+    for ob in snapshots:
+        nz_ask = [p for p in ob.ask_p if p > 0]
+        if nz_ask != sorted(nz_ask):
+            if lenient:
+                continue
+            raise SnapshotValidationError(
+                f"ask prices not sorted at seq={ob.seq}: {nz_ask}"
+            )
+        nz_bid = [p for p in ob.bid_p if p > 0]
+        if nz_bid != sorted(nz_bid, reverse=True):
+            if lenient:
+                continue
+            raise SnapshotValidationError(
+                f"bid prices not sorted at seq={ob.seq}: {nz_bid}"
+            )
+
+
 # === API representation ===
 
 
@@ -965,12 +1092,12 @@ def query_first_ts(con: duckdb.DuckDBPyConnection, *, path: Path) -> int | None:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_tables_snapshots.py -v`
-Expected: 9 passed.
+Expected: 12 passed.
 
 - [ ] **Step 5: Run full test suite**
 
 Run: `python -m pytest -q`
-Expected: 76 passed.
+Expected: 81 passed (69 + 12 new).
 
 - [ ] **Step 6: Ruff + commit**
 
@@ -1253,7 +1380,7 @@ Expected: 6 passed.
 - [ ] **Step 5: Run full test suite**
 
 Run: `python -m pytest -q`
-Expected: 81 passed.
+Expected: 87 passed (81 + 6 new).
 
 - [ ] **Step 6: Ruff + commit**
 
@@ -1503,7 +1630,7 @@ Expected: 5 passed.
 - [ ] **Step 5: Run full test suite**
 
 Run: `python -m pytest -q`
-Expected: 86 passed.
+Expected: 92 passed (87 + 5 new).
 
 - [ ] **Step 6: Ruff + commit**
 
@@ -1764,6 +1891,22 @@ Replace with:
 
 (Rename the local list variables: existing code uses `trades`, `snapshots`, `brokers`, `candles` as both local variable names AND imported module names — that will shadow imports. Rename locals to `trades_list`, `snapshots_list`, `brokers_list`, `candles_list` throughout `_collect_events`, `_collect_candles`, and `parse_stock_date`. Do the rename carefully; check every usage.)
 
+Find the validator calls in `parse_stock_date`:
+
+```python
+    _validate_trades_monotonic(trades_list, lenient=lenient)
+    _validate_snapshot_price_order(snapshots_list, lenient=lenient)
+```
+
+Replace with delegated per-table calls (the validators now live in their table modules — see ADR 0001):
+
+```python
+    trades.validate(trades_list, lenient=lenient)
+    snapshots.validate(snapshots_list, lenient=lenient)
+```
+
+Then **delete** the now-unused functions `_validate_trades_monotonic` and `_validate_snapshot_price_order` from `parser/__init__.py`. The orchestrator only handles cross-table concerns (dedup across event types via `seen_seqs`) — per-table invariants live with their table.
+
 - [ ] **Step 5: Inline `StockInfo` + `parse_info_row` into `hoga/parser/__init__.py`**
 
 Move from the soon-to-be-deleted `hoga/parser/tsv.py` (current `parse_info_row` + `StockInfo` from `events.py`) directly into the top of `hoga/parser/__init__.py`. Add these definitions right after the imports added in Step 4:
@@ -1836,7 +1979,7 @@ rm tests/test_parser_tsv.py
 - [ ] **Step 7: Run full test suite**
 
 Run: `python -m pytest -q`
-Expected: 86 − 11 (deleted test_parser_tsv) + 7 (new dispatch registry tests) = 82 passed. Adjust count if numbers differ.
+Expected: 92 − 11 (deleted test_parser_tsv) + 7 (new dispatch registry tests) = 88 passed. Adjust count if numbers differ.
 
 If tests fail:
 - Look for remaining imports of `hoga.parser.events` / `hoga.parser.tsv` / `hoga.parser.writer` in any file under `hoga/`. Replace with the new locations.
@@ -2111,7 +2254,7 @@ class Meta(BaseModel):
 - [ ] **Step 5: Run full test suite**
 
 Run: `python -m pytest -q`
-Expected: 82 − 4 (deleted test_parser_writer) = 78 passed.
+Expected: 88 − 4 (deleted test_parser_writer) = 84 passed.
 
 If tests fail:
 - Check imports in `hoga/api/app.py` (should be unaffected).
@@ -2140,7 +2283,7 @@ git commit -m "refactor(api): delegate per-table queries to tables/*; shrink api
 - [ ] **Step 1: Full test suite green**
 
 Run: `python -m pytest -v`
-Expected: ~78 passed (final count). No failures or errors.
+Expected: ~84 passed (final count). No failures or errors.
 
 - [ ] **Step 2: Ruff complete clean**
 

@@ -26,7 +26,15 @@ Co-locating all knowledge of one table in one module makes the schema the interf
 
 - **Snapshots use flat columns (`ask_p1..p10` etc.), not pyarrow list types.** Reason: DuckDB column pushdown is more efficient on flat columns, and `WHERE ask_p1 > X` reads better than `WHERE list_extract(ask_p, 1) > X`. The in-memory `Orderbook` dataclass uses 10-tuples for ergonomics; the flatten/unflatten happens in `write_parquet` and inside `query_at` when building the `ApiOrderbookSnapshot`. Don't "improve" this back to a list column — the API stays clean either way, but DuckDB queries get awkward.
 
-- **Cross-table behavior still lives elsewhere.** Validation that spans tables (`cum_vol` monotonic across trades, `global_seq` dedup across event types) stays in `parser/__init__.py`. List/index queries that span tables (`list_stock_dates`, which uses `meta.json` + snapshot time bounds) stay in `api/queries.py`. The table modules are not self-sufficient applications; they are the unit of *table-shaped concern*, not the unit of feature.
+- **Cross-table behavior still lives elsewhere — but per-table invariants live with their table.** Cross-table operations stay in `parser/__init__.py` (the orchestrator) or `api/queries.py`. *Within*-table invariants ride along with the table.
+  - In the orchestrator: `global_seq` dedup across event types (sees `Trade.seq`, `Orderbook.seq`, `BrokerRow.seq` together — genuinely cross-table).
+  - In `api/queries.py`: `list_stock_dates` (uses `meta.json` + snapshot time bounds — cross-table inventory).
+  - In `hoga/tables/trades.py::validate`: `cum_vol` monotonic across trade rows (within-table invariant — touches only `Trade` objects).
+  - In `hoga/tables/snapshots.py::validate`: ask prices non-decreasing, bid prices non-increasing (within-table invariant — touches only `Orderbook` objects).
+
+  An earlier draft of this ADR mis-classified `cum_vol` monotonic as cross-table; corrected 2026-05-20. The test is: if the validator only iterates one table's `Entity` objects, it belongs in that table's module.
+
+  Table modules are not self-sufficient applications; they are the unit of *table-shaped concern* (including its invariants), not the unit of feature.
 
 - **The dispatcher (`hoga/tables/dispatch.py`) builds its registry from each table's `PARSERS: dict[int, Callable]` at import time.** Adding a new event type means adding an entry to one table's `PARSERS`. Skip-list (`{5}` for Price Tick) lives in `dispatch.py` since it's truly cross-table.
 
