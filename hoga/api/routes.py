@@ -1,24 +1,25 @@
-"""Route handlers."""
+"""FastAPI route handlers. Each per-table handler delegates to the table
+module's ``query_*`` function, which returns Pydantic models directly.
+This file is the thin glue layer.
+"""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
 from hoga.api.models import (
-    BrokerEntry,
     BrokersResponse,
-    Candle,
     CandlesResponse,
     Meta,
     OrderbookResponse,
-    OrderbookSnapshot,
     StockDate,
-    Trade,
     TradesResponse,
 )
 from hoga.api.queries import QueryEngine, StockDateNotFound
-
-ORDERBOOK_LEVELS = 10
+from hoga.tables import brokers as brokers_tbl
+from hoga.tables import candles as candles_tbl
+from hoga.tables import snapshots as snapshots_tbl
+from hoga.tables import trades as trades_tbl
 
 
 def build_router(engine: QueryEngine) -> APIRouter:
@@ -39,26 +40,13 @@ def build_router(engine: QueryEngine) -> APIRouter:
     @router.get("/orderbook", response_model=OrderbookResponse)
     def orderbook(code: str, date: str, t: int = Query(...)) -> OrderbookResponse:
         try:
-            row = engine.get_orderbook_at(date, code, t)
+            path = engine.parquet_dir(date, code) / "snapshots.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        if row is None:
-            first_ts = engine.first_snapshot_ts(date, code)
+        snap = snapshots_tbl.query_at(engine.conn, path=path, t_ms=t)
+        if snap is None:
+            first_ts = snapshots_tbl.query_first_ts(engine.conn, path=path)
             return OrderbookResponse(available_from=first_ts, snapshot=None)
-        snap = OrderbookSnapshot(
-            ts_ms=row["ts_ms"],
-            seq=row["seq"],
-            ask_p=[row[f"ask_p{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-            ask_q=[row[f"ask_q{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-            ask_d=[row[f"ask_d{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-            bid_p=[row[f"bid_p{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-            bid_q=[row[f"bid_q{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-            bid_d=[row[f"bid_d{i}"] for i in range(1, ORDERBOOK_LEVELS + 1)],
-            tot_ask=row["tot_ask"],
-            tot_ask_d=row["tot_ask_d"],
-            tot_bid=row["tot_bid"],
-            tot_bid_d=row["tot_bid_d"],
-        )
         return OrderbookResponse(available_from=None, snapshot=snap)
 
     @router.get("/trades", response_model=TradesResponse)
@@ -71,46 +59,34 @@ def build_router(engine: QueryEngine) -> APIRouter:
         limit: int = 50,
     ) -> TradesResponse:
         try:
-            if from_ms is not None and to_ms is not None:
-                rows = engine.get_trades_in_range(date, code, from_ms, to_ms, limit)
-            elif t is not None:
-                rows = engine.get_trades_up_to(date, code, t, limit)
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail="provide either ?t= or ?from=&to=",
-                )
+            path = engine.parquet_dir(date, code) / "trades.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        return TradesResponse(trades=[Trade(**r) for r in rows])
+        if from_ms is not None and to_ms is not None:
+            rows = trades_tbl.query_range(
+                engine.conn, path=path, from_ms=from_ms, to_ms=to_ms, limit=limit
+            )
+        elif t is not None:
+            rows = trades_tbl.query_up_to(engine.conn, path=path, t_ms=t, limit=limit)
+        else:
+            raise HTTPException(status_code=400, detail="provide either ?t= or ?from=&to=")
+        return TradesResponse(trades=rows)
 
     @router.get("/candles", response_model=CandlesResponse)
     def candles(code: str, date: str) -> CandlesResponse:
         try:
-            rows = engine.get_candles(date, code)
+            path = engine.parquet_dir(date, code) / "candles.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        return CandlesResponse(candles=[Candle(**r) for r in rows])
+        return CandlesResponse(candles=candles_tbl.query_all(engine.conn, path=path))
 
     @router.get("/brokers", response_model=BrokersResponse)
     def brokers(code: str, date: str, t: int = Query(...)) -> BrokersResponse:
         try:
-            rows = engine.get_brokers_at(date, code, t)
+            path = engine.parquet_dir(date, code) / "brokers.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        if not rows:
-            return BrokersResponse(ts_ms=None, entries=[])
-        ts = rows[0]["ts_ms"]
-        entries = [
-            BrokerEntry(
-                side=r["side"],
-                rank=r["rank"],
-                broker=r["broker"],
-                qty_today=r["qty_today"],
-                qty_delta=r["qty_delta"],
-            )
-            for r in rows
-        ]
-        return BrokersResponse(ts_ms=ts, entries=entries)
+        result = brokers_tbl.query_at(engine.conn, path=path, t_ms=t)
+        return BrokersResponse(ts_ms=result.ts_ms, entries=result.entries)
 
     return router

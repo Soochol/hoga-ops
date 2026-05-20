@@ -1,4 +1,4 @@
-"""DuckDB queries against the Parquet data lake."""
+"""Cross-table query coordinator. Per-table queries live in ``hoga/tables/``."""
 
 from __future__ import annotations
 
@@ -8,13 +8,19 @@ from typing import Any
 
 import duckdb
 
+from hoga.tables import snapshots
+
 
 class StockDateNotFound(LookupError):
-    """No parquet directory for (code, date)."""
+    """No parquet directory for (date, code)."""
 
 
 class QueryEngine:
-    """One-process shared DuckDB connection."""
+    """Owns the shared DuckDB connection; exposes cross-table queries (inventory + meta).
+
+    Per-table queries (orderbook, trades, candles, brokers) live in the table
+    modules and are called by routes.py directly with this engine's connection.
+    """
 
     def __init__(self, data_dir: Path) -> None:
         self.data_dir = data_dir
@@ -22,6 +28,10 @@ class QueryEngine:
 
     def close(self) -> None:
         self._conn.close()
+
+    @property
+    def conn(self) -> duckdb.DuckDBPyConnection:
+        return self._conn
 
     def parquet_dir(self, date: str, code: str) -> Path:
         d = self.data_dir / "parquet" / date / code
@@ -41,7 +51,12 @@ class QueryEngine:
                 if not (code_dir / "meta.json").exists():
                     continue
                 meta = json.loads((code_dir / "meta.json").read_text(encoding="utf-8"))
-                ts_range = self._snapshot_time_bounds(code_dir / "snapshots.parquet")
+                snap_path = code_dir / "snapshots.parquet"
+                bounds = (
+                    snapshots.query_time_bounds(self._conn, path=snap_path)
+                    if snap_path.exists()
+                    else None
+                )
                 out.append(
                     {
                         "date": date_dir.name,
@@ -49,119 +64,16 @@ class QueryEngine:
                         "name": meta["name"],
                         "regular_session_open_ms": meta["regular_session_open_ms"],
                         "regular_session_close_ms": meta["regular_session_close_ms"],
-                        "data_window_first_ms": ts_range[0]
-                        if ts_range
+                        "data_window_first_ms": bounds[0]
+                        if bounds
                         else meta["regular_session_open_ms"],
-                        "data_window_last_ms": ts_range[1]
-                        if ts_range
+                        "data_window_last_ms": bounds[1]
+                        if bounds
                         else meta["regular_session_close_ms"],
                     }
                 )
         return out
 
-    def _snapshot_time_bounds(self, parquet_path: Path) -> tuple[int, int] | None:
-        if not parquet_path.exists():
-            return None
-        row = self._conn.execute(
-            "SELECT min(ts_ms), max(ts_ms) FROM read_parquet(?)",
-            [str(parquet_path)],
-        ).fetchone()
-        if row is None or row[0] is None:
-            return None
-        return int(row[0]), int(row[1])
-
     def get_meta(self, date: str, code: str) -> dict[str, Any]:
         path = self.parquet_dir(date, code) / "meta.json"
         return json.loads(path.read_text(encoding="utf-8"))
-
-    def get_orderbook_at(self, date: str, code: str, t_ms: int) -> dict[str, Any] | None:
-        path = self.parquet_dir(date, code) / "snapshots.parquet"
-        row = self._conn.execute(
-            "SELECT * FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT 1",
-            [str(path), t_ms],
-        ).fetchone()
-        if row is None:
-            return None
-        cols = [d[0] for d in self._conn.description]
-        return dict(zip(cols, row, strict=True))
-
-    def first_snapshot_ts(self, date: str, code: str) -> int | None:
-        path = self.parquet_dir(date, code) / "snapshots.parquet"
-        row = self._conn.execute("SELECT min(ts_ms) FROM read_parquet(?)", [str(path)]).fetchone()
-        if row is None or row[0] is None:
-            return None
-        return int(row[0])
-
-    def get_trades_up_to(self, date: str, code: str, t_ms: int, limit: int) -> list[dict[str, Any]]:
-        path = self.parquet_dir(date, code) / "trades.parquet"
-        rows = self._conn.execute(
-            "SELECT ts_ms, seq, price, change_pct, qty, side, cum_vol, cum_trades, "
-            "low_so_far, high_so_far, net_pressure FROM read_parquet(?) "
-            "WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT ?",
-            [str(path), t_ms, limit],
-        ).fetchall()
-        cols = [
-            "ts_ms",
-            "seq",
-            "price",
-            "change_pct",
-            "qty",
-            "side",
-            "cum_vol",
-            "cum_trades",
-            "low_so_far",
-            "high_so_far",
-            "net_pressure",
-        ]
-        return [dict(zip(cols, r, strict=True)) for r in rows]
-
-    def get_trades_in_range(
-        self, date: str, code: str, from_ms: int, to_ms: int, limit: int
-    ) -> list[dict[str, Any]]:
-        path = self.parquet_dir(date, code) / "trades.parquet"
-        rows = self._conn.execute(
-            "SELECT ts_ms, seq, price, change_pct, qty, side, cum_vol, cum_trades, "
-            "low_so_far, high_so_far, net_pressure FROM read_parquet(?) "
-            "WHERE ts_ms >= ? AND ts_ms <= ? ORDER BY ts_ms DESC LIMIT ?",
-            [str(path), from_ms, to_ms, limit],
-        ).fetchall()
-        cols = [
-            "ts_ms",
-            "seq",
-            "price",
-            "change_pct",
-            "qty",
-            "side",
-            "cum_vol",
-            "cum_trades",
-            "low_so_far",
-            "high_so_far",
-            "net_pressure",
-        ]
-        return [dict(zip(cols, r, strict=True)) for r in rows]
-
-    def get_candles(self, date: str, code: str) -> list[dict[str, Any]]:
-        path = self.parquet_dir(date, code) / "candles.parquet"
-        rows = self._conn.execute(
-            'SELECT ts_ms, "open", "close", high, low, vol_a, vol_b '
-            "FROM read_parquet(?) ORDER BY ts_ms ASC",
-            [str(path)],
-        ).fetchall()
-        cols = ["ts_ms", "open", "close", "high", "low", "vol_a", "vol_b"]
-        return [dict(zip(cols, r, strict=True)) for r in rows]
-
-    def get_brokers_at(self, date: str, code: str, t_ms: int) -> list[dict[str, Any]]:
-        path = self.parquet_dir(date, code) / "brokers.parquet"
-        latest = self._conn.execute(
-            "SELECT max(ts_ms) FROM read_parquet(?) WHERE ts_ms <= ?",
-            [str(path), t_ms],
-        ).fetchone()
-        if latest is None or latest[0] is None:
-            return []
-        rows = self._conn.execute(
-            "SELECT ts_ms, side, rank, broker, qty_today, qty_delta FROM read_parquet(?) "
-            "WHERE ts_ms = ? ORDER BY side, rank",
-            [str(path), latest[0]],
-        ).fetchall()
-        cols = ["ts_ms", "side", "rank", "broker", "qty_today", "qty_delta"]
-        return [dict(zip(cols, r, strict=True)) for r in rows]
