@@ -3,7 +3,13 @@
 **Status:** Draft (awaiting user review)
 **Date:** 2026-05-20
 **Spec owner:** blessp@naver.com
-**Related:** `docs/superpowers/specs/2026-05-19-hoga-ops-design.md` (backend), `CONTEXT.md`
+**Related:**
+- `DESIGN.md` (repo root) — design system tokens (colors, fonts, spacing, motion). **Source of truth for any visual question this spec does not answer.**
+- `docs/superpowers/designs/2026-05-20-replay-viewer.html` — interactive HTML mockup of Replay Viewer with realistic dummy data. **Source of truth for layout pixels.**
+- `docs/superpowers/specs/2026-05-19-hoga-ops-design.md` — backend spec.
+- `CONTEXT.md` — domain language.
+
+**Authority order if these disagree:** This spec (WHAT and WHY) → `DESIGN.md` (visual tokens) → HTML mockup (pixel reference). If the mockup contradicts `DESIGN.md`, the mockup is stale and must be regenerated.
 
 ---
 
@@ -154,57 +160,15 @@ Returns a price-binned histogram of executed volume for one Stock-Date.
 - Left: 4 panes stacked vertically with `grid-template-rows: 1fr 0.5fr 1fr 0.6fr` — Price/Volume/Profile, Bid/Ask Ratio, Depth Intensity, Fill Strength.
 - Right: 3 cards stacked — Orderbook 10 Levels, Broker Net Flow, Recent Fills.
 
-### 5.2 Design tokens (Modern Trading Lab)
+### 5.2 Design tokens
 
-A single CSS-variable file `src/styles/tokens.css` is the source of truth. Tailwind is configured to read these variables.
+**Source of truth:** `DESIGN.md` at the repo root (created via `/design-consultation`, 2026-05-20). It defines every color, font, spacing value, border radius, and motion easing as a named token.
 
-```css
-:root {
-  /* Colors */
-  --bg:             #0E0E14;
-  --bg-card:        #13131C;
-  --bg-subtle:      #0A0A12;
-  --bg-input:       #1A1A26;
-  --bg-input-hover: #22222F;
-  --border:         #1F1F2A;
-  --border-strong: #2A2A38;
-  --fg:             #E2E8F0;
-  --fg-dim:         #94A3B8;
-  --fg-dimmer:      #64748B;
-  --accent:         #14B8A6;   /* teal — single accent */
-  --up:             #22C55E;
-  --down:           #F43F5E;
-  --grid:           #1A1A26;
-  --heat-lo:        #0E1A1A;
-  --heat-hi:        #14B8A6;
+Implementation: `src/styles/tokens.css` is a 1:1 mirror of `DESIGN.md` as CSS custom properties (`--bg`, `--accent`, etc.). Tailwind is configured to read these variables. Tokens are never hardcoded in components — only the variable name appears in code.
 
-  /* Typography */
-  --font-ui:        'Inter', sans-serif;
-  --font-mono:      'JetBrains Mono', monospace;
+The aesthetic direction is **Industrial/Utilitarian × Modern Professional** ("Modern Trading Lab"). The full rationale and discipline rules (e.g., teal accent reserved for UI state, never data; up/down colors reserved for data, never chrome) live in `DESIGN.md`.
 
-  /* Geometry */
-  --radius:         6px;
-  --pane-gap:       8px;
-  --nav-w:          210px;
-  --sidebar-w:      320px;
-  --tabs-h:         40px;
-  --toolbar-h:      60px;
-  --price-strip-h:  52px;
-
-  /* Label style (small-caps section headings) */
-  --label-size:     10.5px;
-  --label-weight:   600;
-  --label-spacing:  0.08em;
-}
-```
-
-**Color rules:**
-- All "up" prices, buy quantities, positive deltas use `--up`. All "down" uses `--down`. Teal is reserved for UI accents (active states, buttons, focus, crosshair, primary controls) — never for data values.
-- The teal-tinted backgrounds (`rgba(20,184,166,0.12)`) mark *current selection* (active nav item, active tab, primary button hover) — visually distinct from `--up` data states.
-
-**Typography rules:**
-- All numeric values use `--font-mono`. All prose/labels/names use `--font-ui`.
-- Section headers use small-caps style: 10.5 px / 600 weight / 0.08em letter-spacing / uppercase.
+**Visual reference:** `docs/superpowers/designs/2026-05-20-replay-viewer.html` is the approved interactive mockup. Open it in a browser to see every token rendered with realistic dummy data.
 
 ### 5.3 Pages (v1 scope)
 
