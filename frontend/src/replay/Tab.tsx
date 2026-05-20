@@ -16,13 +16,13 @@ export default function Tab({
   return (
     <div
       onClick={onActivate}
-      className={`relative flex items-center gap-2 h-8 px-3.5 -mb-px rounded-t cursor-pointer border ${
+      className={`tab ${isActive ? 'active' : ''} relative flex items-center gap-2 h-8 px-3.5 -mb-px rounded-t cursor-pointer border ${
         isActive ? 'bg-bg-card z-10 border-b-transparent' : 'bg-bg-input text-fg-dim'
       }`}
     >
       {isActive && <span className="absolute top-0 inset-x-0 h-0.5 bg-accent rounded-t" />}
       <TabStatusDot status={tab.status} />
-      <span className="font-mono text-[11.5px] text-accent">{tab.selection?.code ?? '—'}</span>
+      <span className="tab-code font-mono text-[11.5px] text-accent">{tab.selection?.code ?? '—'}</span>
       <span className="text-[12.5px]">{tab.selection ? '...' : '새 탭'}</span>
       {!isLast && (
         <button

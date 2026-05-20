@@ -1,3 +1,6 @@
+// Status: live but requires Playwright globalSetup to seed 005930/000660 (W6.4).
+// Activation pattern matches W5.4's replay-smoke; spec will fail at the stock-pick
+// step until the backend fixture seeding (multi-stock) lands.
 import { test, expect, type Page } from '@playwright/test';
 
 async function loadStockDate(page: Page, code: string, date: string) {
@@ -11,8 +14,6 @@ async function loadStockDate(page: Page, code: string, date: string) {
 }
 
 test.describe('Multi-tab isolation', () => {
-  test.skip(true, 'Gated on Workarea wiring + backend fixture with >=2 stocks.');
-
   test('two tabs with different stocks isolate bundles', async ({ page }) => {
     await page.goto('/replay');
     await loadStockDate(page, '005930', '20260520');
