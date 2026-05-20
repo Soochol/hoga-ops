@@ -64,10 +64,12 @@ def build_router(engine: QueryEngine) -> APIRouter:
             raise HTTPException(status_code=404, detail=str(e)) from e
         if from_ms is not None and to_ms is not None:
             rows = trades_tbl.query_range(
-                engine.conn, path=path, from_ms=from_ms, to_ms=to_ms, limit=limit
+                engine.conn, path=path, from_ms=from_ms, to_ms=to_ms, limit=limit, date=date
             )
         elif t is not None:
-            rows = trades_tbl.query_up_to(engine.conn, path=path, t_ms=t, limit=limit)
+            rows = trades_tbl.query_up_to(
+                engine.conn, path=path, t_ms=t, limit=limit, date=date
+            )
         else:
             raise HTTPException(status_code=400, detail="provide either ?t= or ?from=&to=")
         return TradesResponse(trades=rows)

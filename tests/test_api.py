@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hoga.api.app import create_app
+from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.parser import parse_stock_date
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "tiny_tsv"
@@ -75,7 +76,12 @@ def test_orderbook_before_any_data(app_client: TestClient) -> None:
 def test_trades_up_to(app_client: TestClient) -> None:
     r = app_client.get(
         "/api/trades",
-        params={"code": "003490", "date": "20260519", "t": 90010500, "limit": 10},
+        params={
+            "code": "003490",
+            "date": "20260519",
+            "t": hhmmssms_to_unix_ms("20260519", 90010500),
+            "limit": 10,
+        },
     )
     assert r.status_code == 200
     trades = r.json()["trades"]
@@ -87,7 +93,12 @@ def test_trades_up_to(app_client: TestClient) -> None:
 def test_trades_limit(app_client: TestClient) -> None:
     r = app_client.get(
         "/api/trades",
-        params={"code": "003490", "date": "20260519", "t": 90010500, "limit": 3},
+        params={
+            "code": "003490",
+            "date": "20260519",
+            "t": hhmmssms_to_unix_ms("20260519", 90010500),
+            "limit": 3,
+        },
     )
     assert r.status_code == 200
     assert len(r.json()["trades"]) == 3
@@ -143,7 +154,12 @@ def test_orderbook_returns_delta_arrays(app_client: TestClient) -> None:
 def test_trades_returns_extended_fields(app_client: TestClient) -> None:
     r = app_client.get(
         "/api/trades",
-        params={"code": "003490", "date": "20260519", "t": 90010500, "limit": 1},
+        params={
+            "code": "003490",
+            "date": "20260519",
+            "t": hhmmssms_to_unix_ms("20260519", 90010500),
+            "limit": 1,
+        },
     )
     assert r.status_code == 200
     trade = r.json()["trades"][0]
@@ -158,8 +174,8 @@ def test_trades_range_query(app_client: TestClient) -> None:
         params={
             "code": "003490",
             "date": "20260519",
-            "from": 90010100,
-            "to": 90010300,
+            "from": hhmmssms_to_unix_ms("20260519", 90010100),
+            "to": hhmmssms_to_unix_ms("20260519", 90010300),
             "limit": 100,
         },  # noqa: E501
     )
@@ -168,7 +184,10 @@ def test_trades_range_query(app_client: TestClient) -> None:
     # Two trades in [90010100, 90010300]: 90010160 and 90010173
     assert len(trades) == 2
     ts = [t["ts_ms"] for t in trades]
-    assert ts == [90010173, 90010160]  # descending
+    assert ts == [
+        hhmmssms_to_unix_ms("20260519", 90010173),
+        hhmmssms_to_unix_ms("20260519", 90010160),
+    ]  # descending
 
 
 def test_trades_neither_t_nor_range_returns_400(app_client: TestClient) -> None:
@@ -177,3 +196,16 @@ def test_trades_neither_t_nor_range_returns_400(app_client: TestClient) -> None:
         params={"code": "003490", "date": "20260519"},
     )
     assert r.status_code == 400
+
+
+def test_trades_ts_ms_is_unix(app_client: TestClient) -> None:
+    t_noon = hhmmssms_to_unix_ms("20260519", 120000000)  # 12:00 KST on 2026-05-19
+    r = app_client.get(
+        "/api/trades",
+        params={"code": "003490", "date": "20260519", "t": t_noon, "limit": 5},
+    )
+    assert r.status_code == 200
+    trades = r.json()["trades"]
+    assert len(trades) > 0
+    for t in trades:
+        assert t["ts_ms"] > 1_700_000_000_000

@@ -20,6 +20,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
+from hoga.api.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
+
 # === In-memory entity ===
 
 
@@ -218,9 +220,9 @@ _QUERY_COLS = (
 _SELECT = ", ".join(_QUERY_COLS)
 
 
-def _row_to_api(r: tuple) -> ApiTrade:
+def _row_to_api(r: tuple, *, date: str) -> ApiTrade:
     return ApiTrade(
-        ts_ms=r[0],
+        ts_ms=hhmmssms_to_unix_ms(date, r[0]),
         seq=r[1],
         price=r[2],
         change_pct=r[3],
@@ -235,13 +237,14 @@ def _row_to_api(r: tuple) -> ApiTrade:
 
 
 def query_up_to(
-    con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int, limit: int
+    con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int, limit: int, date: str
 ) -> list[ApiTrade]:
+    raw_t = unix_ms_to_hhmmssms(date, t_ms)
     rows = con.execute(
         f"SELECT {_SELECT} FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT ?",
-        [str(path), t_ms, limit],
+        [str(path), raw_t, limit],
     ).fetchall()
-    return [_row_to_api(r) for r in rows]
+    return [_row_to_api(r, date=date) for r in rows]
 
 
 def query_range(
@@ -251,10 +254,13 @@ def query_range(
     from_ms: int,
     to_ms: int,
     limit: int,
+    date: str,
 ) -> list[ApiTrade]:
+    raw_from = unix_ms_to_hhmmssms(date, from_ms)
+    raw_to = unix_ms_to_hhmmssms(date, to_ms)
     rows = con.execute(
         f"SELECT {_SELECT} FROM read_parquet(?) WHERE ts_ms >= ? AND ts_ms <= ? "
         "ORDER BY ts_ms DESC LIMIT ?",
-        [str(path), from_ms, to_ms, limit],
+        [str(path), raw_from, raw_to, limit],
     ).fetchall()
-    return [_row_to_api(r) for r in rows]
+    return [_row_to_api(r, date=date) for r in rows]
