@@ -53,24 +53,32 @@ def test_meta_unknown_returns_404(app_client: TestClient) -> None:
 def test_orderbook_at_returns_latest(app_client: TestClient) -> None:
     r = app_client.get(
         "/api/orderbook",
-        params={"code": "003490", "date": "20260519", "t": 90020000},
+        params={
+            "code": "003490",
+            "date": "20260519",
+            "t": hhmmssms_to_unix_ms("20260519", 90020000),
+        },
     )
     assert r.status_code == 200
     payload = r.json()
     assert payload["snapshot"] is not None
-    assert payload["snapshot"]["ts_ms"] == 90010435
+    assert payload["snapshot"]["ts_ms"] == hhmmssms_to_unix_ms("20260519", 90010435)
     assert payload["snapshot"]["ask_p"][:3] == [25700, 25750, 25800]
 
 
 def test_orderbook_before_any_data(app_client: TestClient) -> None:
     r = app_client.get(
         "/api/orderbook",
-        params={"code": "003490", "date": "20260519", "t": 80000000},
+        params={
+            "code": "003490",
+            "date": "20260519",
+            "t": hhmmssms_to_unix_ms("20260519", 80000000),
+        },
     )
     assert r.status_code == 200
     payload = r.json()
     assert payload["snapshot"] is None
-    assert payload["available_from"] == 85959530
+    assert payload["available_from"] == hhmmssms_to_unix_ms("20260519", 85959530)
 
 
 def test_trades_up_to(app_client: TestClient) -> None:
@@ -141,7 +149,11 @@ def test_brokers_before_any_data(app_client: TestClient) -> None:
 def test_orderbook_returns_delta_arrays(app_client: TestClient) -> None:
     r = app_client.get(
         "/api/orderbook",
-        params={"code": "003490", "date": "20260519", "t": 90020000},
+        params={
+            "code": "003490",
+            "date": "20260519",
+            "t": hhmmssms_to_unix_ms("20260519", 90020000),
+        },
     )
     assert r.status_code == 200
     snap = r.json()["snapshot"]
@@ -219,3 +231,28 @@ def test_trades_ts_ms_is_unix(app_client: TestClient) -> None:
     assert len(trades) > 0
     for t in trades:
         assert t["ts_ms"] > 1_700_000_000_000
+
+
+def test_orderbook_ts_ms_is_unix(app_client: TestClient) -> None:
+    t_noon = hhmmssms_to_unix_ms("20260519", 120000000)  # 12:00 KST on 2026-05-19
+    r = app_client.get(
+        "/api/orderbook",
+        params={"code": "003490", "date": "20260519", "t": t_noon},
+    )
+    assert r.status_code == 200
+    payload = r.json()
+    snap = payload["snapshot"]
+    if snap is not None:
+        assert snap["ts_ms"] > 1_700_000_000_000
+    if payload["available_from"] is not None:
+        assert payload["available_from"] > 1_700_000_000_000
+
+
+def test_orderbook_out_of_day_cursor_returns_400(app_client: TestClient) -> None:
+    # Cursor on 2026-05-20 but date=20260519 → cross-day → 400
+    bad_t = hhmmssms_to_unix_ms("20260520", 120000000)
+    r = app_client.get(
+        "/api/orderbook",
+        params={"code": "003490", "date": "20260519", "t": bad_t},
+    )
+    assert r.status_code == 400

@@ -44,10 +44,18 @@ def build_router(engine: QueryEngine) -> APIRouter:
             path = engine.parquet_dir(date, code) / "snapshots.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        snap = snapshots_tbl.query_at(engine.conn, path=path, t_ms=t)
+        try:
+            raw_t = unix_ms_to_hhmmssms(date, t)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        snap = snapshots_tbl.query_at(engine.conn, path=path, t_ms=raw_t)
         if snap is None:
             first_ts = snapshots_tbl.query_first_ts(engine.conn, path=path)
-            return OrderbookResponse(available_from=first_ts, snapshot=None)
+            available_from = (
+                hhmmssms_to_unix_ms(date, first_ts) if first_ts is not None else None
+            )
+            return OrderbookResponse(available_from=available_from, snapshot=None)
+        snap = snap.model_copy(update={"ts_ms": hhmmssms_to_unix_ms(date, snap.ts_ms)})
         return OrderbookResponse(available_from=None, snapshot=snap)
 
     @router.get("/trades", response_model=TradesResponse)
