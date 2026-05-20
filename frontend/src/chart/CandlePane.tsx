@@ -20,9 +20,10 @@ type Props = {
 
 /**
  * CandlePane — mounts a CandlestickSeries onto the shared chart instance and
- * paints the session's OHLC bars. Candles in the auction / after-hours window
- * (≥ session_open + 6h 20m, i.e. KST 15:20 onward) are rendered muted so the
- * regular-session structure stays visually dominant.
+ * paints the Regular Session's OHLC bars. Candles inside the closing
+ * Auction Window or After-Hours Trading (≥ session_open + 6h 20m, i.e. KST
+ * 15:20 onward) are rendered muted so the continuous-trading structure
+ * stays visually dominant.
  *
  * The pane does not render any DOM — it only acts as a controller for the
  * series lifecycle (add on mount, remove on unmount). Multi-day x-axis
@@ -43,10 +44,12 @@ export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: P
       },
       paneIndex,
     );
-    // After-hours / auction-window threshold: regular session_close is at
-    // 15:30 KST. Spec §1 defines after-hours / auction-window as anything
-    // after 15:20 (auction starts at 15:20). Compute the threshold as
-    // session_open_ms + (6h 20m) so auction + after-hours candles render muted.
+    // Auction Window / After-Hours Trading threshold: the Regular Session
+    // closes at 15:30 KST and the closing Auction Window runs 15:20–15:30
+    // (CONTEXT.md). Compute the threshold as session_open_ms + (6h 20m) so
+    // candles inside the closing Auction Window or After-Hours Trading render
+    // muted (continuous-trading candles inside the Regular Session keep their
+    // up/down color).
     const auctionThresholdMs = bundle.session_open_ms + (6 * 3600 + 20 * 60) * 1000;
     const data = bundle.candles.map((c) => {
       const inAuctionOrAfter = c.ts_ms >= auctionThresholdMs;

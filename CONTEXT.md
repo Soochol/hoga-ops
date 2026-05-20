@@ -71,6 +71,10 @@ ts_ms which may differ in encoding), "t param".
 The pydantic model returned by API endpoints — the shape clients see. Strips forensic fields (and any other internal-only data). Each table module pairs an **Entity** with its Wire Model: `Trade`↔`ApiTrade`, `Orderbook`↔`ApiOrderbookSnapshot`, `BrokerRow`↔`ApiBrokerEntry`, `Candle`↔`ApiCandle`. Query helpers (`query_at`, `query_up_to`, etc.) return Wire Models directly — there is no intermediate dict materialization.
 _Avoid_: "API model" alone (ambiguous with response containers like `OrderbookResponse`), "DTO"
 
+**SessionBundle**:
+The Wire Model returned by `GET /api/session` for one **Stock-Date** — bundles five pre-aggregated time-series (`candles`, `quote_ratio`, `depth_intensity`, `volume_profile`, `fill_strength`) plus the **Stock-Date**'s `session_open_ms` and `session_close_ms` (the **Regular Session** bounds, in Unix ms per ADR 0003). The Korean prose noun "Session" inside this compound refers specifically to the **Regular Session** — the displayed window the bundle's series cover spans the **Regular Session** plus the closing **Auction Window** plus the trailing **After-Hours Trading**. Built in `hoga/api/bundle.py::build_bundle`. The frontend hook `useSession(code, date)` calls this endpoint; the frontend type `SessionBundle` mirrors the Wire Model verbatim per ADR-0004. This compound is sanctioned despite the bare "Session" noun being _Avoid_'d elsewhere — the established class name across plan / spec / route / frontend types is `SessionBundle`. Do not rename to `RegularSessionBundle` or `StockDateBundle`; the compound is the term.
+_Avoid_: dropping the "Bundle" suffix when referring to this concept — "the session" alone is _Avoid_'d, but "the SessionBundle for {code}/{date}" is the canonical reference.
+
 ## Relationships
 
 - A **Stock-Date** has exactly one **Data Window** and exactly one **Full Capture**.

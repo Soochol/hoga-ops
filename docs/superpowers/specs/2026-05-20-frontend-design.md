@@ -35,7 +35,7 @@ Build a browser frontend for the existing hoga-ops local API that lets the user:
 ## 2. Non-goals (v1)
 
 - Real-time / live streaming. Replay only — data is already captured.
-- Drawing tools, alerts, custom indicators, multi-symbol overlays.
+- Drawing tools, alerts, custom indicators, multi-Code overlays.
 - Authentication, multi-user, persistence of user state across reloads (other than URL params).
 - Mobile layout. Desktop-only, dark theme only.
 - Pre-market display (~08:40–09:00 per `CONTEXT.md` Data Window). v1 shows 09:00–16:00 only; extending the left edge to pre-market is a follow-up.
@@ -217,7 +217,7 @@ Per cell semantics: for each (time bucket, price bin), `bid_grid[t][p]` is the *
 
 Source: `snapshots.parquet`. DuckDB unpivots the 20 level columns, splits by side, bins by tick-aligned price.
 
-**Default time resolution: 5 s buckets.** Trading day 09:00–16:00 has 25,200 s → 5,040 time columns per day. For 삼성전자 (38 bins): 5,040 × 38 × 2 grids = ~383k cells = ~3 MB JSON. For wider-range stocks (~100 bins): ~5 MB. Configurable via `?depth_bucket_ms=` query param (e.g., 1000 for 1 s precision when the analyst wants it; backend caps total cells per grid at 2M to prevent runaway responses, widens bucket if exceeded).
+**Default time resolution: 5 s buckets.** The displayed window — Regular Session (09:00–15:30) plus After-Hours Trading (15:30–16:00) — spans 25,200 s → 5,040 time columns per Stock-Date. For 삼성전자 (38 bins): 5,040 × 38 × 2 grids = ~383k cells = ~3 MB JSON. For wider-range stocks (~100 bins): ~5 MB. Configurable via `?depth_bucket_ms=` query param (e.g., 1000 for 1 s precision when the analyst wants it; backend caps total cells per grid at 2M to prevent runaway responses, widens bucket if exceeded).
 
 **Auction Window note:** during 15:20–15:30 the orderbook briefly allows `bid_price >= ask_price` (overlapping orders awaiting the single-price cross). In this window both grids may have nonzero values at the same (time, price) cell. The client renders both cells stacked (additive alpha) — the visual overlap is the analyst's signal that the auction is converging.
 
@@ -433,7 +433,7 @@ Search and Notes have been removed from the v1 nav — their intent was never sh
 No quick-range presets in v1. Analysts pick specific captured Stock-Dates, not sliding windows; presets like "1W" don't map cleanly to the capture-driven workflow. A "fill-from-to back N captures" shortcut may be added later if calendar clicking proves slow.
 
 **Price strip (52 px, per-tab):**
-- Symbol block (code + name).
+- Code block (Code + name).
 - **Current price** (mono 22 px) — the close of the candle at the **right edge of the visible viewport**. Viewport-dependent: as the user pans/zooms, this value updates via `timeScale().subscribeVisibleTimeRangeChange()`. When fully zoomed out, it equals the last loaded candle's close.
 - **Delta chip** — `(current_price − viewport_left_edge_close) / viewport_left_edge_close × 100%`. Also viewport-dependent: the "change" answers "how did price move across what I'm currently looking at". Sign drives the chip tint (pos = green tint, neg = rose tint).
 - **OHLC + Vol** at cursor `t` (compact mono) — independent of viewport; tracks the crosshair.
@@ -796,7 +796,7 @@ State is serialized to the URL so reloading restores the workspace, the browser 
 | Quick range presets? | **Removed in v1** | Captured-date-driven analysis doesn't map to sliding "1W" windows — analysts pick specific dates. |
 | Current price meaning at price strip? | Close of the candle at the **viewport's right edge** (dynamic on pan/zoom) | Tracks "what I'm looking at right now". OHLC separately tracks the cursor. |
 | Delta chip baseline? | `(current price − viewport's left-edge close) / left-edge close` | Same viewport-bound model; answers "how price moved across what I'm looking at". |
-| Intra-day segment shading (Continuous / Auction Window / After-Hours)? | **No** — analyst reads time off the x-axis | Single-user tool; visual segmentation is chrome the user doesn't need. |
+| Intra-day segment shading (Continuous / Auction Window / After-Hours Trading)? | **No** — analyst reads time off the x-axis | Single-user tool; visual segmentation is chrome the user doesn't need. |
 | `depth_intensity` representation? | Two parallel grids (`bid_grid`, `ask_grid`) sharing axes | Required to color bid/ask separately; orderbook invariant `bid_max < ask_min` means they never overlap (except auction-cross moment). |
 | `volume_profile` for multi-day? | Per-day side-by-side **(default)** with toggle to combined single histogram | Per-day comparison is the more useful first view; combined available for whole-period perspective. |
 | Cursor pin/lock? | **None in v1** | Mouse-driven cursor with automatic persistence on chart leave covers the analytics workflow; pin adds UI surface without clear payoff. |
