@@ -47,6 +47,15 @@ def create_app(data_dir: Path) -> FastAPI:
 
 
 def default_app() -> FastAPI:
-    """Factory used by uvicorn — reads data dir from cwd."""
+    """Factory used by uvicorn.
+
+    Data dir resolution:
+      * ``HOGA_DATA_DIR`` env var if set (used by E2E harness to point at a
+        clean, throwaway directory).
+      * Otherwise the ``data/`` dir under ``Config.from_cwd()``.
+    """
+    env_dir = os.environ.get("HOGA_DATA_DIR")
+    if env_dir:
+        return create_app(Path(env_dir))
     cfg = Config.from_cwd()
     return create_app(cfg.data_dir)
