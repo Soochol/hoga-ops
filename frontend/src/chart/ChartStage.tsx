@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi } from 'lightweight-charts';
+import { useViewportStore } from '../state/viewport';
 
 export type ChartStageProps = {
   /**
@@ -88,21 +89,19 @@ export default function ChartStage({ onReady, onVisibleRangeChange }: ChartStage
     // of the app.
     const ts = chart.timeScale();
     const handler = (range: unknown) => {
-      if (!onVisibleRangeChange) return;
       const r = range as { from?: number | null; to?: number | null } | null;
-      if (!r) {
-        onVisibleRangeChange(null, null);
-        return;
-      }
-      onVisibleRangeChange(
-        r.from != null ? r.from * 1000 : null,
-        r.to != null ? r.to * 1000 : null,
-      );
+      const fromMs = r?.from != null ? r.from * 1000 : null;
+      const toMs = r?.to != null ? r.to * 1000 : null;
+      // Publish to the viewport store so sibling components (PriceStrip,
+      // Task 6.5) can subscribe without prop-drilling.
+      useViewportStore.getState().set(fromMs, toMs);
+      onVisibleRangeChange?.(fromMs, toMs);
     };
     ts.subscribeVisibleTimeRangeChange(handler);
 
     return () => {
       ts.unsubscribeVisibleTimeRangeChange(handler);
+      useViewportStore.getState().reset();
       chart.remove();
       chartRef.current = null;
     };
