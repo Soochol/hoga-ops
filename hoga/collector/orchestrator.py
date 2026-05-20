@@ -9,14 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from hoga.collector.page_step import PageStepController
+
 # Time constants in HHMMSSmmm encoding.
 DATA_WINDOW_START_MS = 84000000  # 08:40:00.000
-DATA_WINDOW_END_MS = 160000000  # 16:00:00.000
 CHART_FINAL_TIME_MS = 153100000  # 15:31:00.000
-
-DEFAULT_PAGE_STEP_MS = 60000  # 1 minute
-MIN_PAGE_STEP_MS = 1000  # 1 second floor
-TERMINATION_EMPTY_PAGES = 3  # consecutive empty Pages past Data Window end
 
 # Field index constants for TSV row parsing.
 _IDX_GLOBAL_SEQ = 3
@@ -169,58 +166,28 @@ def _page_step_loop(
     t: int,
 ) -> tuple[set[int], int, int]:
     """Run the Page Step pagination loop; return (seen_seqs, page_idx, final_t)."""
-    empty_in_a_row = 0
-    step = DEFAULT_PAGE_STEP_MS
     progress_path = raw_dir / "_progress.json"
+    controller = PageStepController(initial_t=t)
 
     while True:
         body, page_idx, new_seqs = _fetch_and_store_page(
-            raw_dir, client, code, date, t, page_idx, seen_seqs
+            raw_dir, client, code, date, controller.next_t, page_idx, seen_seqs
         )
-        max_t = _max_event_time(body)
-        target = t + step
-        covered = max_t is not None and max_t >= target
-
-        if not covered and max_t is not None and step > MIN_PAGE_STEP_MS and t < DATA_WINDOW_END_MS:
-            # Cap detected: response stopped short. Halve step, retry from t + new_step.
-            step = max(step // 2, MIN_PAGE_STEP_MS)
-            t = t + step
-            empty_in_a_row = 0
-            _write_progress(
-                progress_path,
-                last_time_ms=t,
-                pages_done=page_idx,
-                seq_count=len(seen_seqs),
-                started_at=started_at,
-                finished_at=None,
-            )
-            if rate_limit_s > 0:
-                _time.sleep(rate_limit_s)
-            continue
-
-        if not new_seqs:
-            empty_in_a_row += 1
-        else:
-            empty_in_a_row = 0
-            if step < DEFAULT_PAGE_STEP_MS:
-                step = min(step * 2, DEFAULT_PAGE_STEP_MS)
-
+        decision = controller.observe(max_event_time=_max_event_time(body), new_seqs=len(new_seqs))
         _write_progress(
             progress_path,
-            last_time_ms=t,
+            last_time_ms=decision.progress_t,
             pages_done=page_idx,
             seq_count=len(seen_seqs),
             started_at=started_at,
             finished_at=None,
         )
-        t += step
-
-        if t >= DATA_WINDOW_END_MS and empty_in_a_row >= TERMINATION_EMPTY_PAGES:
+        if decision.should_stop:
             break
         if rate_limit_s > 0:
             _time.sleep(rate_limit_s)
 
-    return seen_seqs, page_idx, t
+    return seen_seqs, page_idx, controller.next_t
 
 
 def collect_stock_date(
