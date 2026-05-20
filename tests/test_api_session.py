@@ -31,3 +31,18 @@ def test_session_candles_slice(engine: QueryEngine, tmp_path: Path) -> None:
     assert all(r.ts_ms > 1_700_000_000_000 for r in rows)
     # OHLCV plausibility
     assert all(r.high >= r.low for r in rows)
+
+
+def test_session_quote_ratio_slice(engine: QueryEngine, tmp_path: Path) -> None:
+    from hoga.api.bundle import build_quote_ratio_slice
+    qr = build_quote_ratio_slice(
+        engine.conn, code="003490", date="20260519",
+        data_dir=tmp_path / "data", bucket_ms=1000,
+    )
+    assert qr.bucket_ms == 1000
+    assert len(qr.points) >= 1
+    # Last-snapshot-per-bucket semantics: timestamps strictly non-decreasing
+    ts = [p.t for p in qr.points]
+    assert ts == sorted(ts)
+    # Both totals are non-negative
+    assert all(p.bid_total >= 0 and p.ask_total >= 0 for p in qr.points)
