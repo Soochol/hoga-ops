@@ -100,10 +100,20 @@ def parse_stock_date(
         raw_dir, lenient=lenient
     )
 
-    trades.validate(trades_list, lenient=lenient)
-    snapshots.validate(snapshots_list, lenient=lenient)
-
     candles_list = _collect_candles(raw_dir, skipped=skipped, lenient=lenient)
+
+    # Per-table validation registry: a table module participates by exporting
+    # ``validate(entities, *, lenient: bool) -> None``. Tables without
+    # invariants (brokers, candles) simply don't define it.
+    for table_mod, entities in (
+        (trades, trades_list),
+        (snapshots, snapshots_list),
+        (brokers, brokers_list),
+        (candles, candles_list),
+    ):
+        validate = getattr(table_mod, "validate", None)
+        if validate is not None:
+            validate(entities, lenient=lenient)
 
     trades.write_parquet(trades_list, out_dir / "trades.parquet")
     snapshots.write_parquet(snapshots_list, out_dir / "snapshots.parquet")
