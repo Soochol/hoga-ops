@@ -12,7 +12,11 @@ from hoga.tables.trades import ApiTrade
 
 
 class StockDate(BaseModel):
-    """Inventory entry: one captured Stock-Date with its boundaries."""
+    """Inventory entry: one captured Stock-Date with its boundaries.
+
+    All time fields are Unix epoch ms (UTC) per ADR 0003 — the on-disk
+    HHMMSSmmm encoding is converted at the API boundary.
+    """
 
     date: str
     code: str
@@ -21,6 +25,17 @@ class StockDate(BaseModel):
     regular_session_close_ms: int
     data_window_first_ms: int
     data_window_last_ms: int
+    # Frontend spec §4.4 — inventory card fields:
+    price_min: int
+    price_max: int
+    captured_at: int  # Unix ms of latest mtime in the Stock-Date dir
+    total_volume: int
+    pages_collected: int
+    file_size_bytes: int
+    today_open: int
+    today_high: int
+    today_low: int
+    today_close: int
 
 
 class OrderbookResponse(BaseModel):
