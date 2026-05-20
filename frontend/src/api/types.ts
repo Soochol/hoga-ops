@@ -19,9 +19,10 @@ export type DepthIntensity = {
   times: number[]; bid_grid: number[][]; ask_grid: number[][];
 };
 
+export type VolumeProfileBin = { price_low: number; qty: number };
 export type VolumeProfile = {
   bin_count: number; price_min: number; price_max: number; bin_width: number;
-  bins: { price_low: number; qty: number }[];
+  bins: VolumeProfileBin[];
 };
 
 export type FillStrengthPoint = { t: number; buy_qty: number; sell_qty: number };
