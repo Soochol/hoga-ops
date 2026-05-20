@@ -55,6 +55,18 @@ A 3-field `section=3 type=5 price` heartbeat broadcast emitted by hogaplay throu
 The in-memory frozen-dataclass representation of one row of table data inside hoga-ops. Carries every field including **forensic** ones — fields whose meaning is partially or fully undecoded (`unknown_14`, `unknown_16`, `unknown_17`, `unknown_18`) kept to enable later decoding without re-collection. Used by the parser on the write path. Internal — never returned by the API. Examples: `Trade`, `Orderbook`, `BrokerRow`, `Candle` in `hoga/tables/*`.
 _Avoid_: "model", "domain object", "record"
 
+**Cursor**:
+A single Unix-ms (UTC) point on the API contract — the value of the `?t=`
+query parameter on spot endpoints (`/api/orderbook`, `/api/brokers`,
+`/api/trades`), the frontend tab's `cursorMs`, and the right edge of the
+viewport published by `ChartStage`. Always a real Unix-ms per ADR 0003 —
+never the native HHMMSSmmm or ms-from-midnight encodings the Parquet
+tables use. Conversion to native happens once at the route boundary via
+`hoga.api.cursor::cursor_to_native`, which raises HTTPException(400) when
+the Cursor falls outside the requested **Stock-Date**.
+_Avoid_: "timestamp" alone (ambiguous with Entity ts_ms and Wire Model
+ts_ms which may differ in encoding), "t param".
+
 **Wire Model**:
 The pydantic model returned by API endpoints — the shape clients see. Strips forensic fields (and any other internal-only data). Each table module pairs an **Entity** with its Wire Model: `Trade`↔`ApiTrade`, `Orderbook`↔`ApiOrderbookSnapshot`, `BrokerRow`↔`ApiBrokerEntry`, `Candle`↔`ApiCandle`. Query helpers (`query_at`, `query_up_to`, etc.) return Wire Models directly — there is no intermediate dict materialization.
 _Avoid_: "API model" alone (ambiguous with response containers like `OrderbookResponse`), "DTO"
