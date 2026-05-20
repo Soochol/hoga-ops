@@ -278,27 +278,27 @@ from hoga.api.timeenc import (
 def test_hhmmssms_round_trip_at_open():
     # 2026-05-18 09:00:00.000 KST = 2026-05-18 00:00:00.000 UTC
     unix_ms = hhmmssms_to_unix_ms("20260518", 90000000)
-    assert unix_ms == 1747526400000
+    assert unix_ms == 1779062400000
     assert unix_ms_to_hhmmssms("20260518", unix_ms) == 90000000
 
 
 def test_hhmmssms_round_trip_at_close():
     unix_ms = hhmmssms_to_unix_ms("20260518", 153000000)
     # 15:30 KST = 06:30 UTC
-    assert unix_ms == 1747526400000 + 23400000  # +6h30m
+    assert unix_ms == 1779062400000 + 23400000  # +6h30m
     assert unix_ms_to_hhmmssms("20260518", unix_ms) == 153000000
 
 
 def test_ms_from_midnight_to_unix_at_open():
     # 09:00 = 32_400_000 ms from midnight (9 hours)
     unix_ms = ms_from_midnight_to_unix_ms("20260518", 32_400_000)
-    assert unix_ms == 1747526400000
+    assert unix_ms == 1779062400000
 
 
 def test_ms_from_midnight_to_unix_at_premarket():
     # 08:30 = 30_600_000 ms (matches the chart.tsv fixture)
     unix_ms = ms_from_midnight_to_unix_ms("20260518", 30_600_000)
-    assert unix_ms == 1747526400000 - 1800000  # 30 min before 09:00 KST
+    assert unix_ms == 1779062400000 - 1800000  # 30 min before 09:00 KST
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -336,7 +336,7 @@ def _date_unix_ms_at_kst_midnight(date: str) -> int:
 def hhmmssms_to_unix_ms(date: str, hhmmssms: int) -> int:
     """Convert hogaplay's HHMMSSmmm packed-decimal time to Unix ms (UTC).
 
-    Example: ``hhmmssms_to_unix_ms("20260518", 90000000) == 1747526400000``
+    Example: ``hhmmssms_to_unix_ms("20260518", 90000000) == 1779062400000``
     (09:00:00.000 KST on 2026-05-18).
     """
     h = hhmmssms // 10_000_000
@@ -2836,7 +2836,7 @@ const mockChart = {
 it('mounts CandlestickSeries on chart with bundle data', () => {
   const bundle: any = {
     candles: [
-      { ts_ms: 1747526400000, open: 70000, close: 70100, high: 70200, low: 69900, vol_a: 100, vol_b: 0 },
+      { ts_ms: 1779062400000, open: 70000, close: 70100, high: 70200, low: 69900, vol_a: 100, vol_b: 0 },
     ],
   };
   render(<CandlePane chart={mockChart as any} bundle={bundle} segments={[]} />);
