@@ -1,0 +1,70 @@
+/**
+ * Design tokens — hoga-ops
+ * Source of truth: DESIGN.md at the repo root.
+ * v1 is dark-mode only; tokens live on :root.
+ */
+:root,
+[data-theme='dark'] {
+  /* ───── Color · Surfaces ───── */
+  --bg: #0E0E14;
+  --bg-card: #13131C;
+  --bg-subtle: #0A0A12;
+  --bg-input: #1A1A26;
+  --bg-input-hover: #22222F;
+
+  /* ───── Color · Borders ───── */
+  --border: #1F1F2A;
+  --border-strong: #2A2A38;
+
+  /* ───── Color · Foreground ───── */
+  --fg: #E2E8F0;
+  --fg-dim: #94A3B8;
+  --fg-dimmer: #64748B;
+
+  /* ───── Color · Accent + Semantic ───── */
+  --accent: #14B8A6;
+  --accent-fg: #0A0A12;
+  --up: #22C55E;
+  --down: #F43F5E;
+
+  /* ───── Color · Chart & Heatmap ───── */
+  --grid: #1A1A26;
+  --heat-lo: #0E1A1A;
+  --heat-hi: #14B8A6;
+
+  /* ───── Tint backgrounds ───── */
+  --tint-selection: rgba(20, 184, 166, 0.12);
+  --tint-up: rgba(34, 197, 94, 0.10);
+  --tint-down: rgba(244, 63, 94, 0.10);
+
+  /* ───── Typography ───── */
+  --font-ui: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, 'Liberation Mono', 'Courier New', monospace;
+
+  /* ───── Font size scale (rem-based, root 16px) ───── */
+  --text-xs: 0.65625rem;   /* 10.5px — small-caps labels, badges */
+  --text-sm: 0.71875rem;   /* 11.5px — table rows, secondary mono */
+  --text-base: 0.8125rem;  /* 13px   — body / UI default */
+  --text-md: 0.875rem;     /* 14px   — section / page headings */
+  --text-lg: 1rem;         /* 16px   — brand text */
+  --text-xl: 1.375rem;     /* 22px   — current price (price strip) */
+  --text-2xl: 2rem;        /* 32px   — future hero numerics */
+
+  /* ───── Spacing (4px base) ───── */
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+
+  /* ───── Border radius ───── */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-full: 9999px;
+}
