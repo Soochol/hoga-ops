@@ -1,23 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi } from 'lightweight-charts';
+import type { SessionBundle } from '../api/types';
+import type { Segment } from '../util/time';
 import { useViewportStore } from '../state/viewport';
-
-export type ChartStageProps = {
-  /**
-   * Notified when the chart instance is created. Phase 7 panes will use this
-   * to add their series to the right paneIndex.
-   */
-  onReady?: (chart: IChartApi) => void;
-  /**
-   * Notified when the visible time range changes. Task 6.5 (PriceStrip
-   * viewport tracking) will subscribe via this.
-   *
-   * Values are Unix milliseconds (the app-wide convention). The chart's
-   * internal time axis uses UTCTimestamp seconds; we convert here so
-   * consumers don't have to.
-   */
-  onVisibleRangeChange?: (from: number | null, to: number | null) => void;
-};
+import CandlePane from './CandlePane';
+import VolumePane from './VolumePane';
+import RatioPane from './RatioPane';
+import IntensityPane from './IntensityPane';
+import FillStrengthPane from './FillStrengthPane';
+import VolumeProfileOverlay from './VolumeProfileOverlay';
 
 /**
  * Resolves a CSS custom property from `:root` to a concrete string value
@@ -44,25 +35,45 @@ function resolveTokens() {
   };
 }
 
+export type ChartStageProps = {
+  /**
+   * The full session payload (candles, ratio series, intensity matrix, fill
+   * strength, etc.). When `null` (loading / error), no panes mount and the
+   * stage shows only the bare chart chrome.
+   */
+  bundle: SessionBundle | null;
+  /**
+   * Stitched time-axis segments for the multi-day virtual timeline (Task 6.1).
+   * Each pane converts real-ms data to the virtual axis using these.
+   */
+  segments: Segment[];
+};
+
 /**
  * ChartStage — owns the single `lightweight-charts` instance for the replay
- * viewer and lays out the 5-pane grid (candles / volume / ratio / intensity /
- * fill-strength). Pane content is filled in Phase 7; this scaffold brings the
- * chart instance up and wires the visible-range subscription that
- * Task 6.5 (PriceStrip viewport tracking) will hook into.
+ * viewer and mounts the 5 pane children (candles / volume / ratio / intensity
+ * / fill-strength) plus the VolumeProfileOverlay once the chart is ready and
+ * a `SessionBundle` is available.
  *
- * Multi-day data is stitched on the chart's time axis (Task 6.1).
+ * Single-pane MVP: all 5 series-based panes currently register on
+ * lightweight-charts pane 0. Multi-pane split via `addSeries(..., paneIndex)`
+ * is a follow-up (see plan Phase 7+). The `data-pane="…"` wrappers exist so
+ * E2E selectors can verify each pane has mounted independently of the
+ * underlying canvas layout.
+ *
+ * Viewport publisher: subscribes to the chart's visible-range and writes
+ * (fromMs, toMs) into `useViewportStore` so sibling components like
+ * PriceStrip can read viewport state without prop-drilling (Task 6.5).
  */
-export default function ChartStage({ onReady, onVisibleRangeChange }: ChartStageProps) {
+export default function ChartStage({ bundle, segments }: ChartStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const [ready, setReady] = useState(false);
+  const [chart, setChart] = useState<IChartApi | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
     const tokens = resolveTokens();
 
-    const chart = createChart(containerRef.current, {
+    const c = createChart(containerRef.current, {
       layout: {
         background: { color: tokens.bgCard },
         textColor: tokens.fg,
@@ -80,14 +91,12 @@ export default function ChartStage({ onReady, onVisibleRangeChange }: ChartStage
       rightPriceScale: { borderColor: tokens.border },
       autoSize: true,
     });
-    chartRef.current = chart;
-    setReady(true);
-    onReady?.(chart);
+    setChart(c);
 
     // Wire visible-range subscription. The chart emits ranges as
     // { from, to } in UTCTimestamp (seconds); convert to ms for the rest
     // of the app.
-    const ts = chart.timeScale();
+    const ts = c.timeScale();
     const handler = (range: unknown) => {
       const r = range as { from?: number | null; to?: number | null } | null;
       const fromMs = r?.from != null ? r.from * 1000 : null;
@@ -95,36 +104,60 @@ export default function ChartStage({ onReady, onVisibleRangeChange }: ChartStage
       // Publish to the viewport store so sibling components (PriceStrip,
       // Task 6.5) can subscribe without prop-drilling.
       useViewportStore.getState().set(fromMs, toMs);
-      onVisibleRangeChange?.(fromMs, toMs);
     };
     ts.subscribeVisibleTimeRangeChange(handler);
 
     return () => {
       ts.unsubscribeVisibleTimeRangeChange(handler);
+      c.remove();
+      setChart(null);
       useViewportStore.getState().reset();
-      chart.remove();
-      chartRef.current = null;
     };
     // The chart is mounted exactly once. Re-creating it on every prop
-    // identity change would tear down panes / series added by Phase 7.
-    // Consumers wire callbacks via stable refs upstream.
+    // identity change would tear down panes / series added by the children.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div className="grid grid-rows-[1.4fr_0.3fr_0.4fr_0.8fr_0.4fr] h-full min-h-0 gap-2 p-1 bg-bg relative">
-      {/*
-        Pane slots — Phase 7 will fill these with CandlePane / VolumePane /
-        RatioPane / IntensityPane / FillStrengthPane, each mounting to a
-        distinct `paneIndex` on the shared chart instance. For now, the
-        chart container spans all five rows so the empty stage still
-        renders with visible grid/axis chrome.
-      */}
-      <div ref={containerRef} className="row-span-5 relative" />
-      {!ready && (
-        <span className="absolute inset-0 grid place-items-center text-fg-dim text-sm">
-          차트 준비 중…
-        </span>
+    <div className="relative h-full min-h-0 bg-bg-card">
+      <div ref={containerRef} className="absolute inset-0" />
+      {chart && bundle && (
+        <>
+          {/*
+            Series-only panes return null after registering their series on
+            the chart. The wrapping `data-pane` divs are `hidden` so they
+            don't occupy layout space but remain selectable by E2E specs
+            asserting "pane was mounted".
+          */}
+          <div data-pane="candle" className="hidden">
+            <CandlePane chart={chart} bundle={bundle} segments={segments} />
+          </div>
+          <div data-pane="volume" className="hidden">
+            <VolumePane chart={chart} bundle={bundle} segments={segments} />
+          </div>
+          <div data-pane="ratio" className="hidden">
+            <RatioPane chart={chart} bundle={bundle} segments={segments} />
+          </div>
+          <div data-pane="fill-strength" className="hidden">
+            <FillStrengthPane chart={chart} bundle={bundle} segments={segments} />
+          </div>
+          {/*
+            Canvas overlay panes — paint absolutely on top of the chart
+            container. `pointer-events-none` lets crosshair / drag interactions
+            pass through to lightweight-charts underneath.
+          */}
+          <div data-pane="intensity" className="absolute inset-0 pointer-events-none">
+            <IntensityPane chart={chart} bundle={bundle} segments={segments} />
+          </div>
+          <div data-pane="volume-profile" className="absolute inset-0 pointer-events-none">
+            <VolumeProfileOverlay
+              chart={chart}
+              bundle={bundle}
+              segments={segments}
+              mode="composite"
+            />
+          </div>
+        </>
       )}
     </div>
   );
