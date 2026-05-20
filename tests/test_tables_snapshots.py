@@ -79,9 +79,11 @@ def test_query_at_returns_api_model_for_latest_before(tmp_path: Path) -> None:
     api = query_at(con, path=out, t_ms=90001500)
     assert isinstance(api, ApiOrderbookSnapshot)
     assert api.ts_ms == 90001000
-    assert api.ask_p == [25700, 25750, 25800, 0, 0, 0, 0, 0, 0, 0]
-    assert len(api.ask_d) == 10
-    assert len(api.bid_d) == 10
+    assert [lvl.price for lvl in api.ask] == [25700, 25750, 25800, 0, 0, 0, 0, 0, 0, 0]
+    assert len(api.ask) == 10
+    assert len(api.bid) == 10
+    # Wire Model drops delta columns (ADR-0004) — they stay on the Entity.
+    assert not hasattr(api, "ask_d") and not hasattr(api, "bid_d")
 
 
 def test_query_at_returns_none_before_first(tmp_path: Path) -> None:
