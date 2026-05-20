@@ -39,3 +39,11 @@ Co-locating all knowledge of one table in one module makes the schema the interf
 - **The dispatcher (`hoga/tables/dispatch.py`) builds its registry from each table's `PARSERS: dict[int, Callable]` at import time.** Adding a new event type means adding an entry to one table's `PARSERS`. Skip-list (`{5}` for Price Tick) lives in `dispatch.py` since it's truly cross-table.
 
 - **Don't push this pattern further than tables.** `StockInfo` (info.tsv → meta.json) is not a table — there's one per Stock-Date, no row stream. Resist the temptation to invent `hoga/tables/info.py`; leave its parsing in `parser/__init__.py`.
+
+- **Table modules come in three data-source flavors.** The contract — `Entity` dataclass + `PARQUET_SCHEMA` + `write_parquet` + `query_*` + `Wire Model` — is the same across all three; only the *source* and *trigger* differ.
+
+  1. **`first.tsv`-sourced** (`trades`, `snapshots`, `brokers`). Register `PARSERS: dict[int, Callable]`. Listed in `dispatch._TABLES`. The dispatcher feeds them rows during the parse_stock_date orchestrator's main loop.
+  2. **`chart.tsv`-sourced** (`candles`). No `PARSERS`. Exports a public `parse_row(line) -> Entity`. The orchestrator (or a per-file driver) calls it directly.
+  3. **Derived from another Parquet** (Phase 2 — e.g. CVD, anomaly score, broker-concentration). No parser at all. Exports `compute(con, *, source_path) -> list[Entity]` (or similar) that reads upstream Parquet and writes its own. Called by an analyzer step, not by the orchestrator. **NOT** added to `dispatch._TABLES`.
+
+  When adding a Phase 2 derived table: write the module following the standard contract, add the `compute()` call to whatever analyzer step runs after parse. Do **not** add it to `dispatch._TABLES` — that registry is only for first.tsv event types.
