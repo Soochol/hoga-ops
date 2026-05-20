@@ -18,7 +18,7 @@
 
 Build a browser frontend for the existing hoga-ops local API that lets the user:
 
-1. Navigate between pages via a **persistent left navigation** (Replay Viewer, Inventory, Capture, Search, Notes, Settings). v1 ships only Replay Viewer with usable content; the other items appear in nav but are stub pages.
+1. Navigate between pages via a **persistent left navigation** (Replay Viewer, Inventory, Capture, Settings). v1 ships Replay Viewer and Inventory with usable content; Capture is a guide stub; Settings is a small read-only info card.
 2. On the Replay Viewer page, open **multiple analysis sessions as browser-style tabs** along the top — each tab independently holds its own (code, date range, cursor, cached data). Switching tabs is instant if data is cached.
 3. Within an active tab: search/pick a Code, pick a date range (1..N **Stock-Dates**), and load.
 4. See a TradingView-style multi-pane chart with **candles + volume** across multiple Stock-Dates stitched on a compressed time axis. v1 shows the **trading-active window 09:00–16:00** per Stock-Date — Regular Session (09:00–15:30, including the closing **Auction Window** 15:20–15:30) plus the After-Hours Trading window (15:30–16:00, continuous matching at the closing price).
@@ -394,10 +394,11 @@ Backend dependency: existing `Meta` fields (`pages_collected`, `total_unique_eve
 
 **Left nav (210 px, persistent across pages):**
 - Brand block at top (`hoga-ops` + `orderbook replay`).
-- Three sections separated by small-caps labels:
+- Two sections separated by small-caps labels:
   - **Workspace** — Replay Viewer (v1 active, badge = open tab count), Inventory (badge = captured Stock-Date count), Capture.
-  - **Tools** — Search, Notes.
   - **System** (bottom) — Settings.
+
+Search and Notes have been removed from the v1 nav — their intent was never sharp enough to justify a permanent slot. Either can return when there's a clear use case (e.g. cross-Stock-Date pattern search, per-spot annotation).
 - Footer shows API status dot and version.
   - Status dot is driven entirely by the SSE connection (no separate health-check endpoint — SSE liveness implies API liveness, same server):
     - 🟢 `--up` — SSE connected and last `heartbeat` event received within the last 60 s.
@@ -500,8 +501,6 @@ The aesthetic direction is **Industrial/Utilitarian × Modern Professional** ("M
 | Replay Viewer | `/replay` | Full Replay Viewer with multi-tab analysis sessions. |
 | Inventory | `/inventory` | **Full implementation (not a stub).** Read-only sortable table of every captured Stock-Date with: code, name, date, captured_at (file mtime, when the collector finished), total_volume, pages_collected, file_size_mb, today_open/high/low/close. Click on a row opens that Stock-Date in a new Replay Viewer tab. Auto-updates via the SSE `inventory_added` / `inventory_removed` events. Default sort: captured_at descending (most recent first). |
 | Capture | `/capture` | Stub with **inline guide** to the manual collector workflow: example command (`$ hoga capture --code 005930 --date 20260520`), one-line explanation, and a callout that completed captures appear in Inventory automatically (via the SSE `inventory_added` event). v1+1 will replace the guide with a real "start capture" form. |
-| Search | `/search` | Stub — placeholder. |
-| Notes | `/notes` | Stub — placeholder. |
 | Settings | `/settings` | Stub showing the API URL (read at runtime from `/config.json`) and the app version. Data dir path, capture stats, and disk usage need a new `/api/config` endpoint (deferred to v1+1, §11). |
 
 Stub pages render the nav and a simple "준비 중" card so the nav is always navigable.
@@ -534,8 +533,6 @@ frontend/
       ReplayViewer.tsx       # tabs + toolbar + price strip + workarea
       Inventory.tsx          # stub
       Capture.tsx            # stub
-      Search.tsx             # stub
-      Notes.tsx              # stub
       Settings.tsx           # stub
     replay/
       TabStrip.tsx
@@ -815,7 +812,7 @@ State is serialized to the URL so reloading restores the workspace, the browser 
 - Keyboard shortcuts for tab navigation (Ctrl+Tab / Ctrl+Shift+Tab). v1 is mouse-only; keyboard shortcuts are a follow-up.
 - Persist open tabs across reloads in localStorage (v1 uses URL only).
 - Broker history time-series (already-aggregated server-side is a separate ticket).
-- Real implementations of Inventory / Capture / Search / Notes pages.
+- Real Capture page (in-app capture trigger form replacing the v1 guide stub).
 - `GET /api/config` (or `/api/system`) — backend endpoint exposing global state (data dir path, captured Stock-Date count, disk usage). Needed for a real Settings page; deferred to v1+1.
 - Hangul initials (초성) search in the stock combobox (e.g. `ㅅㅅㅈㅈ` → 삼성전자) — deferred to v1+1.
 - URL encoding of per-pane toggles (e.g. matprofile on/off, future indicator visibility) — deferred to v1+1.
