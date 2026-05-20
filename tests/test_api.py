@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hoga.api.app import create_app
-from hoga.api.timeenc import hhmmssms_to_unix_ms
+from hoga.api.timeenc import hhmmssms_to_unix_ms, ms_from_midnight_to_unix_ms
 from hoga.parser import parse_stock_date
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "tiny_tsv"
@@ -119,6 +119,18 @@ def test_candles(app_client: TestClient) -> None:
     assert len(candles) == 2
     ts = [c["ts_ms"] for c in candles]
     assert ts == sorted(ts), "candles ascending"
+
+
+def test_candle_ts_ms_is_unix(app_client: TestClient) -> None:
+    r = app_client.get("/api/candles", params={"code": "003490", "date": "20260519"})
+    assert r.status_code == 200
+    candles = r.json()["candles"]
+    assert len(candles) > 0
+    for c in candles:
+        assert c["ts_ms"] > 1_700_000_000_000
+    # 30_600_000 ms-from-midnight == 08:30 KST on 2026-05-19 in Unix ms
+    expected = ms_from_midnight_to_unix_ms("20260519", 30_600_000)
+    assert any(c["ts_ms"] == expected for c in candles)
 
 
 def test_brokers_at(app_client: TestClient) -> None:

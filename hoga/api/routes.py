@@ -15,7 +15,11 @@ from hoga.api.models import (
     TradesResponse,
 )
 from hoga.api.queries import QueryEngine, StockDateNotFound
-from hoga.api.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
+from hoga.api.timeenc import (
+    hhmmssms_to_unix_ms,
+    ms_from_midnight_to_unix_ms,
+    unix_ms_to_hhmmssms,
+)
 from hoga.tables import brokers as brokers_tbl
 from hoga.tables import candles as candles_tbl
 from hoga.tables import snapshots as snapshots_tbl
@@ -96,7 +100,12 @@ def build_router(engine: QueryEngine) -> APIRouter:
             path = engine.parquet_dir(date, code) / "candles.parquet"
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        return CandlesResponse(candles=candles_tbl.query_all(engine.conn, path=path))
+        rows = candles_tbl.query_all(engine.conn, path=path)
+        rows = [
+            r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
+            for r in rows
+        ]
+        return CandlesResponse(candles=rows)
 
     @router.get("/brokers", response_model=BrokersAt)
     def brokers(code: str, date: str, t: int = Query(...)) -> BrokersAt:
