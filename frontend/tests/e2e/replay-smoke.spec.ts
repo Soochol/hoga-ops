@@ -1,11 +1,19 @@
 import { test, expect } from '@playwright/test';
 
+/**
+ * STATUS (Wave 5.4): Live but flaky pending backend data setup.
+ *
+ * The spec is no longer skipped — Playwright will attempt to run it. However,
+ * the "pick stock" step depends on the running backend's stock-date inventory
+ * containing the fixture codes (005930, 000660). No setup script currently
+ * bootstraps `tests/fixtures/tiny_tsv_multi/<code>/*` into `data/raw/...` and
+ * triggers the parser, so this test will fail at the stock combobox step in
+ * a fresh environment.
+ *
+ * See `frontend/tests/e2e/README.md` ("Remaining gating") for the items still
+ * blocking a clean run.
+ */
 test.describe('Replay smoke', () => {
-  test.skip(
-    true,
-    'Gated on Workarea wiring (ChartStage + CursorSidebarConnected mounted) and data-pane attributes on the 5 chart panes.',
-  );
-
   test('replay viewer happy path renders all 5 panes', async ({ page }) => {
     await page.goto('/replay');
     await expect(page.getByText('분석 시작')).toBeVisible();
