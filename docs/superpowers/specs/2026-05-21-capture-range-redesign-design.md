@@ -59,7 +59,7 @@ The form is *additive*: pressing **Start Capture** appends items to the running 
 
 ## 2. Decisions Log
 
-Recorded for traceability into the implementation plan; details elaborated in subsequent sections.
+Recorded for traceability into the implementation plan; details elaborated in subsequent sections. Q14–Q21 (post-`/grill-with-docs`) live in §11 with full deltas.
 
 | # | Question | Decision |
 |---|---|---|
@@ -76,6 +76,14 @@ Recorded for traceability into the implementation plan; details elaborated in su
 | Q11 | Calendar marker style | **Corner badge (✓/⚠/✕)** — top-right of each cell. |
 | Q12 | Search dropdown row style | **Rich row** — name, code, market chip, capture count. |
 | Q13 | Multi-symbol queueing | **Incremental accumulation.** Start = append to queue. Form auto-resets. |
+| Q14 | 18:00 today-lock scope | **Backend-enforced**, not UI-only; `allow_partial` option removed. See §11.Q14. |
+| Q15 | Duplicate (code, date) protection | **Enqueue dedupe + per-(code, date) inflight lock** (two layers). See §11.Q15. |
+| Q16 | `force_retry` lifecycle | **Snapshot at Start**; row `⚠ force` chip; no retroactive change in v1+2. See §11.Q16. |
+| Q17 | Module split for shared disk-state logic | **Extract `hoga/api/disk_state.py`**; **ADR-0007** amends ADR-0006. See §11.Q17. |
+| Q18 | `captured_count` semantics | **Complete-only** in dropdown; full breakdown in tooltip. See §11.Q18. |
+| Q19 | pykrx cold-start UX | **3-tier**: lifespan prefetch + GET dedupe via Future + stale/unavailable fallback. See §11.Q19. |
+| Q20 | `Cancel All` while paused | **Resets everything** (queue + active + paused flag + pause_origin downgrade). See §11.Q20. |
+| Q21 | Calendar SSE vs GET race | **`as_of_ms` + client-side reconciliation.** Inventory storm dedupe = follow-up. See §11.Q21. |
 
 ---
 
@@ -715,3 +723,146 @@ Production `POST /api/captures/items` is the entry point; `FakeHogaplayClient` i
 8. **LeftNav pill rewrite.**
 9. **Remove old single-capture endpoints + tests; add range tests.**
 10. **E2E + manual verification on real hogaplay.**
+
+---
+
+## 11. Grilling Outcomes (2026-05-21, post-`/grill-with-docs`)
+
+Eight follow-up clarifications that supersede or extend the corresponding sections above. The Decisions Log (§2) is appended with Q14–Q21 below; sections 1, 3, 4, 5, 7, 9, 10 are amended as noted.
+
+### Q14. 18:00 KST today-lock is backend-enforced, not UI-only — `allow_partial` removed
+
+**Decision.** The 18:00 KST today-eligibility cutoff is a single backend-enforced rule, mirrored in the UI. `allow_partial` is removed from the form, from the request body, and from the deciding-phase code path. Rationale: the only legitimate use case for `allow_partial` (capture today before Data Window close) is now covered by the 18:00 rule (no capture before 18 KST), and keeping the option creates a UI/backend asymmetry.
+
+**Amendments:**
+
+- **§1.2 In scope** — strike "`allow_partial` option" from the bullet 7 ("Single capture flow removed…"). Add bullet: "Remove `allow_partial` from the form, the request body, and the deciding-phase code path. Superseded by the 18:00 KST rule."
+- **`hoga/collector/orchestrator.py`** — keep `_DATA_WINDOW_CLOSE_HOUR = 16` (semantic meaning: when Data Window closes, separate concept). Remove the `allow_partial` parameter from `collect_stock_date` and `PartialCaptureRefused`. The rename to `_DATA_WINDOW_CLOSE_HOUR` already happened in the predecessor spec.
+- **§3.3 Routes — `POST /api/captures/items`** — backend rejects with `400` `code="today_too_early"` if any date in the requested range equals today and `now_kst.hour < 18`. The body lists the offending date(s).
+- **§3.2 Worker pool** — deciding phase additionally checks `_today_too_early(item.date)` and immediately marks `failed` with `code="today_too_early"`. This is defense-in-depth — the route guard should normally prevent this, but a date that was 17:59 at enqueue and 18:00 at deciding still needs the guard (race window exists).
+- **Frontend** — `DateRangePicker` disables today's cell visually (🔒) before 18 KST; `useEffect` re-evaluates every 60s so the cell unlocks live without a reload.
+
+### Q15. Enqueue dedupe + per-(code, date) inflight lock — two layers
+
+**Decision.** Two layered protections against duplicate (code, date) processing:
+
+- **Layer 1 — enqueue-time dedupe.** `POST /api/captures/items` examines the union of `_queue`, `_active`, and `_inflight_paths`; (code, date) pairs already present are dropped from the request. Response body includes `{enqueued: [...], deduped: [{code, date, reason: "already_in_queue" | "already_running"}]}`.
+- **Layer 2 — per-(code, date) inflight lock.** New singleton `_inflight_paths: set[tuple[code, date]]`. Worker enters `deciding` phase under `_lock`, adds (code, date) to `_inflight_paths`; if already present, the worker requeues the item to the back of `_queue` and exits the slot. Removed in the worker's `finally`.
+
+**Amendments:**
+
+- **§3.2 Queue / worker pool — state singletons** — add `_inflight_paths: set[tuple[str, str]]  # (code, date) pairs currently in deciding/capturing/parsing`.
+- **§3.3 Routes — `POST /api/captures/items`** — response shape updated to include `deduped: [...]`.
+- **§5.2 Worker algorithm** — at the top of the deciding block, under `_lock`: `if (item.code, item.date) in _inflight_paths: _queue.append(item); _active.pop(item.id); continue` else add to `_inflight_paths`. In `finally`, remove from `_inflight_paths`.
+- **§7.1 Backend tests** — add: `test_enqueue_dedupes_duplicates_in_queue`, `test_enqueue_dedupes_active`, `test_worker_defers_when_inflight_collision`.
+
+### Q16. `force_retry` is a Start-time snapshot, frozen into items
+
+**Decision.** The `force_retry` toggle's value at the moment of `POST /api/captures/items` is captured into each newly enqueued `QueueItem` as a boolean field. Once enqueued, items do not respond to subsequent toggle changes. Per-row retroactive change is not supported in v1+2. Retry (↻) on a failed row re-enqueues with the **original** `force_retry` value; users wanting a different behavior cancel + re-Start with a different toggle.
+
+**Amendments:**
+
+- **§3.2 / models** — `QueueItem` gains `force_retry: bool` (frozen at enqueue).
+- **§4.2 — `CaptureQueueRow`** — when `item.force_retry == true`, render a small `⚠ force` chip next to the row's status icon (style: same as the partial badge, smaller, no animation). Makes the "why is this source-partial date running" visually obvious.
+- **§4.2 — `CaptureQueueRow` retry action** — `↻` re-enqueues using the row's existing `force_retry`; no inline override.
+- **§7.2 Frontend tests** — add: `CaptureQueueRow.test.tsx::shows_force_chip_when_set`, `..::retry_preserves_force_retry`.
+
+### Q17. `disk_state.py` extracted as horizontal seam; ADR-0007 supersedes ADR-0006's growth budget
+
+**Decision.** A new module `hoga/api/disk_state.py` hosts:
+- `class DiskState(Enum): NONE, CLIENT_INCOMPLETE, SOURCE_PARTIAL, COMPLETE`
+- `def check_disk_state(data_dir, code, date) -> DiskState`
+- `def has_meaningful_gaps(snapshots_df) -> bool`
+
+Consumers: (a) worker deciding phase in `captures.py`, (b) `GET /api/inventory/calendar` in `calendar.py`, (c) parser when writing `meta.json`. The two-adapters rule from ADR-0006 is met: a second call site (calendar) appears that needs the same logic, and inlining it as `captures.py` private would mislead future readers about its scope.
+
+`ADR-0007 — Capture module grows to queue + workers; disk_state extracted as horizontal seam` will be authored as the first task of the implementation plan, explicitly amending ADR-0006's growth-budget clause. The remainder of `captures.py` stays single-module per ADR-0006's spirit (queue state + workers + routes + cookie pause remain co-located).
+
+**Amendments:**
+
+- **§3.1 Module changes** — add row: `hoga/api/disk_state.py [new] — DiskState enum + check_disk_state + has_meaningful_gaps; shared by captures, calendar, parser`.
+- **§3.5 Completeness** — note that the status derivation table is implemented in `disk_state.check_disk_state` (single source of truth).
+- **§3.6 `has_meaningful_gaps`** — function moves from "in parser" to `disk_state.has_meaningful_gaps`; parser imports.
+- **§5.3 Calendar marker computation** — `_disk_state_to_status` becomes a thin wrapper over `disk_state.check_disk_state` (plus the trading-day / future / today_locked overlays that are calendar-specific).
+- **§10 Implementation order** — insert as step 0: "Author ADR-0007 amending ADR-0006; extract `disk_state.py` with stub `check_disk_state`."
+
+### Q18. `captured_count` shows complete-only in the dropdown; full breakdown in tooltip
+
+**Decision.** The `SymbolHit` wire model carries both a primary count and a breakdown:
+```python
+class SymbolHit(BaseModel):
+    code: str
+    name: str
+    market: Literal["KOSPI", "KOSDAQ"]
+    captured_count: int                  # complete only — the headline number
+    captured_breakdown: dict[str, int]   # {"complete": N, "source_partial": M, "client_incomplete": K}
+```
+
+Dropdown row: `{N} complete` (e.g., "14 complete", "no complete data" if 0). Hover tooltip on the row: `Complete 14 · Partial 3 · Incomplete 2`.
+
+**Amendments:**
+
+- **§3.3 Routes — `GET /api/symbols`** — response items now carry `captured_count` (complete) and `captured_breakdown` (object).
+- **§4.2 — `SymbolSearch`** — display rule updated: dropdown row primary = complete count; hover tooltip = breakdown.
+- **§7.1 — `test_api_symbols.py`** — assert breakdown values match the four-state classification.
+
+### Q19. pykrx cold start — 3-tier policy with status indicator
+
+**Decision.** A three-tier cache policy:
+
+- **Tier 1 — fire-and-forget prefetch at lifespan startup.** `hoga/api/app.py::lifespan` schedules `asyncio.create_task(symbols.ensure_cache_warm())` without awaiting. Boot stays fast.
+- **Tier 2 — GET-time dedupe via Future.** `GET /api/symbols/all` checks cache freshness; on miss, takes a module-level `asyncio.Lock` and either starts a new fetch task or awaits the in-flight one (per-process Future dedupe). N concurrent GETs trigger exactly one pykrx call.
+- **Tier 3 — fallback on fetch failure.** Last-known cache is served with `status="stale"` (or `"unavailable"` if no cache ever existed). UI degrades to code-only input mode when status is `unavailable`.
+
+`GET /api/symbols/all` response envelope:
+```python
+class SymbolsAllResponse(BaseModel):
+    symbols: list[SymbolHit]
+    status: Literal["fresh", "loading", "stale", "unavailable"]
+    fetched_at_ms: int | None
+```
+
+UI: small status indicator next to the `SymbolSearch` input — `loading dot` (loading), `green ●` (fresh), `amber ⏱` (stale + refreshing), `red !` (unavailable).
+
+**Amendments:**
+
+- **§3.1 Module changes** — note that `hoga/api/symbols.py` owns the prefetch task lifecycle and the GET-time Future dedupe.
+- **§3.3 Routes — `GET /api/symbols/all`** — response shape updated to the envelope.
+- **§4.2 — `SymbolSearch`** — render the status indicator; when `status == "unavailable"`, switch to code-only input with banner "종목 목록 미가용 — 6자리 코드로 직접 입력하세요."
+- **§7.1 — `test_api_symbols.py`** — add: `test_concurrent_gets_dedupe_to_one_fetch`, `test_status_field_reflects_cache_state`, `test_lifespan_prefetch_schedules_task`.
+
+### Q20. Cancel All in paused state resets everything
+
+**Decision.** `POST /api/captures/cancel-all` is defined as "reset to idle" regardless of prior state. In paused state, it (a) drains the queue (all queued → cancelled), (b) cancels any active (already cancelled if pause happened; idempotent), (c) downgrades all `pause_origin=True` cancelled items in `_done` to plain `cancelled` (so Resume would no longer re-enqueue them), and (d) sets `_queue_paused = False`. Emits `CaptureQueueResumedEvent(reason="cancel_all")` if it was paused, followed by `CaptureFinishedEvent` per item cancelled.
+
+**Amendments:**
+
+- **§3.7 Cookie-expired pool pause** — the `_resume_queue` description retains pause-origin re-enqueue semantics. Add new paragraph documenting `cancel_all` behavior in paused state (per above).
+- **§4.4 Layout** — the paused banner gains an explicit `Cancel All` button: `Cookie expired · [Refresh & Resume] [Cancel All]`.
+- **§7.1 — `test_api_captures_queue.py`** — add: `test_cancel_all_in_paused_resets_queue_and_pause_flag`, `test_cancel_all_in_paused_downgrades_pause_origin_cancelled`.
+
+### Q21. Calendar GET response carries `as_of_ms`; client reconciles with SSE patches
+
+**Decision.** `GET /api/inventory/calendar?code&year&month` response gains a top-level `as_of_ms: int` (server wall-clock at the moment the cells were read). Client-side, the calendar query cache holds per-cell `patched_at_ms` populated by SSE handlers. When a new GET response arrives, the reconciler keeps any cell where `prev.patched_at_ms > incoming.as_of_ms` — i.e., SSE patches that landed after the response was generated are preserved.
+
+**Amendments:**
+
+- **§3.3 Routes — `GET /api/inventory/calendar`** — response shape gains `as_of_ms`.
+- **§4.3 — `useCalendar`** — implement `setQueryData`-time reconciliation per Grill #8 sketch. SSE patch handler stamps `patched_at_ms = Date.now()` on the patched cell.
+- **§7.2 Frontend tests** — add: `useCalendar.test.ts::reconciles_sse_patch_against_get_response`, `..::ignores_older_patch`.
+- **§9.3 Open follow-ups** — add: "Inventory SSE storm dedupe — N=3 workers finishing in close succession cause N invalidations on `STOCK_DATES_QUERY_KEY`. Apply the same `as_of_ms` reconciliation pattern or debounce(invalidate, 300ms)."
+
+---
+
+### Summary patch index
+
+| Q | Touches |
+|---|---|
+| Q14 | §1.2, §3.2, §3.3, §3.8, §4.2, §7.1, orchestrator.py (param removal) |
+| Q15 | §3.2 (`_inflight_paths`), §3.3 (response shape), §5.2 (worker), §7.1 |
+| Q16 | models (`QueueItem.force_retry`), §4.2 (chip), §7.2 |
+| Q17 | §3.1 (new module), §3.5/§3.6/§5.3 (consumers), §10 (ADR-0007 first), ADR-0007 file |
+| Q18 | §3.3 (`SymbolHit` shape), §4.2 (dropdown), §7.1 |
+| Q19 | §3.1, §3.3 (envelope), §4.2 (indicator), §7.1, lifespan |
+| Q20 | §3.7, §4.4 (banner button), §7.1 |
+| Q21 | §3.3 (as_of_ms), §4.3 (reconciliation), §7.2, §9.3 |
