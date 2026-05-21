@@ -207,3 +207,89 @@ def test_post_captures_409_when_running(tmp_path: Path, _patch_run_job) -> None:
     })
     assert r2.status_code == 409
     assert r2.json()["detail"]["latest"]["code"] == "005930"
+
+
+def test_get_latest_null_when_idle(tmp_path: Path) -> None:
+    reset_state_for_tests()
+    client = _make_app(tmp_path, _FakeFastClient)
+    r = client.get("/api/captures/latest")
+    assert r.status_code == 200
+    assert r.json() is None
+
+
+def test_cancel_when_idle_409(tmp_path: Path) -> None:
+    reset_state_for_tests()
+    client = _make_app(tmp_path, _FakeFastClient)
+    r = client.post("/api/captures/latest/cancel")
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "not_running"
+
+
+def test_dismiss_when_idle_204(tmp_path: Path) -> None:
+    reset_state_for_tests()
+    client = _make_app(tmp_path, _FakeFastClient)
+    r = client.delete("/api/captures/latest")
+    assert r.status_code == 204
+
+
+def test_dismiss_when_running_409(tmp_path: Path, _patch_run_job) -> None:
+    """POST a capture (mocked to no-op), then DELETE → 409 still_running."""
+    del _patch_run_job
+    reset_state_for_tests()
+    client = _make_app(tmp_path, _FakeFastClient)
+    r1 = client.post("/api/captures", json={
+        "code": "005930", "date": "20260520",
+        "allow_partial": True, "resume": False, "capture_only": True,
+    })
+    assert r1.status_code == 201
+    r2 = client.delete("/api/captures/latest")
+    assert r2.status_code == 409
+    assert r2.json()["detail"]["code"] == "still_running"
+
+
+def test_cancel_running_returns_202(tmp_path: Path, _patch_run_job) -> None:
+    """POST a job (mocked), POST /latest/cancel → 202."""
+    del _patch_run_job
+    reset_state_for_tests()
+    client = _make_app(tmp_path, _FakeFastClient)
+    client.post("/api/captures", json={
+        "code": "005930", "date": "20260520",
+        "allow_partial": True, "resume": False, "capture_only": True,
+    })
+    r = client.post("/api/captures/latest/cancel")
+    assert r.status_code == 202
+
+
+def test_dismiss_after_terminal_clears(tmp_path: Path) -> None:
+    """Manually set _latest to a terminal state, DELETE → 204, GET → null."""
+    reset_state_for_tests()
+    state = CaptureJobState(
+        job_id="done-job",
+        code="005930",
+        date="20260520",
+        options={"allow_partial": True, "resume": False, "capture_only": True},
+        phase="done",
+    )
+    cap_mod._latest = state
+    client = _make_app(tmp_path, _FakeFastClient)
+    r = client.delete("/api/captures/latest")
+    assert r.status_code == 204
+    r2 = client.get("/api/captures/latest")
+    assert r2.json() is None
+
+
+def test_cancel_when_terminal_409(tmp_path: Path) -> None:
+    """latest is `done` → POST /latest/cancel returns 409 not_running."""
+    reset_state_for_tests()
+    state = CaptureJobState(
+        job_id="done-job",
+        code="005930",
+        date="20260520",
+        options={"allow_partial": True, "resume": False, "capture_only": True},
+        phase="done",
+    )
+    cap_mod._latest = state
+    client = _make_app(tmp_path, _FakeFastClient)
+    r = client.post("/api/captures/latest/cancel")
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "not_running"

@@ -359,4 +359,33 @@ def build_router(
             )
             return _state_to_wire(state)
 
+    @router.get("/latest")
+    async def get_latest_route() -> CaptureJob | None:
+        if _latest is None:
+            return None
+        return _state_to_wire(_latest)
+
+    @router.post("/latest/cancel", status_code=202)
+    async def cancel_latest() -> dict:
+        if _latest is None or _latest.is_terminal:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "not_running",
+                        "message": "no running capture to cancel"},
+            )
+        if _latest.cancel_token is not None:
+            _latest.cancel_token.cancel()
+        return {"status": "cancel_signal_delivered", "job_id": _latest.job_id}
+
+    @router.delete("/latest", status_code=204)
+    async def dismiss_latest() -> None:
+        global _latest  # noqa: PLW0603 — module singleton write
+        if _latest is not None and not _latest.is_terminal:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "still_running",
+                        "message": "cancel the running capture before dismissing"},
+            )
+        _latest = None
+
     return router
