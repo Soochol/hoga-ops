@@ -81,3 +81,40 @@ def test_legacy_meta_without_bits_defaults_to_client_incomplete(tmp_path: Path) 
     treat as client_incomplete so the worker tries to resume and upgrade the meta."""
     _write_meta(tmp_path, "005930", "20260520")  # neither field
     assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.CLIENT_INCOMPLETE
+
+
+from hoga.api.disk_state import has_meaningful_gaps
+
+
+# CHART_FINAL_TIME_MS = 153100000 (15:31:00.000 in HHMMSSmmm)
+# Regular session open ≈ 90000000 (09:00:00.000)
+
+
+def test_no_gaps_when_snapshots_dense() -> None:
+    # One snapshot per second from 09:00:00 to 09:00:30 — no gap exceeds 1s.
+    ts = [90000000 + i * 1000 for i in range(31)]
+    assert has_meaningful_gaps(ts) is False
+
+
+def test_gap_detected_when_60s_empty() -> None:
+    # 09:00:00 then jump to 09:01:30 (90 seconds later) — gap exceeds threshold.
+    assert has_meaningful_gaps([90000000, 90130000]) is True
+
+
+def test_gap_outside_continuous_session_ignored() -> None:
+    """A gap that crosses the pre-session/session boundary must not count.
+    Three dense in-session events prove there is no gap WITHIN the session;
+    the pre-session sample at 08:40 is filtered out before gap analysis."""
+    ts = [84000000, 90000000, 90001000, 90002000]
+    # in_session = [90000000, 90001000, 90002000] — three points, 1s apart, no 60s gap.
+    assert has_meaningful_gaps(ts) is False
+
+
+def test_empty_list_returns_true() -> None:
+    """Empty input → True (conservative: caller can't prove completeness)."""
+    assert has_meaningful_gaps([]) is True
+
+
+def test_single_in_session_event_returns_true() -> None:
+    """One in-session datapoint isn't enough to compute gap presence; conservative True."""
+    assert has_meaningful_gaps([90000000]) is True

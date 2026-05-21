@@ -9,6 +9,7 @@ the bits on the wire). See ADR-0007 for why this lives in its own module.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
 
@@ -49,3 +50,32 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> DiskState:
         return DiskState.CLIENT_INCOMPLETE
 
     return DiskState.NONE
+
+
+_SESSION_OPEN_MS = 90000000      # 09:00:00.000 in HHMMSSmmm
+_CHART_FINAL_TIME_MS = 153100000  # 15:31:00.000 in HHMMSSmmm — the orchestrator's terminus
+_GAP_THRESHOLD_MS = 60_000        # 1 minute
+
+
+def has_meaningful_gaps(ts_ms_values: Iterable[int]) -> bool:
+    """True if any consecutive pair within continuous-trading hours has a gap
+    ≥ 1 minute. Pure function — no I/O.
+
+    Args:
+      ts_ms_values: snapshot timestamps in HHMMSSmmm encoding (parser's native form).
+        Pre-session and post-close events are filtered out before gap analysis,
+        so passing the full snapshot stream is safe and intended.
+
+    Returns:
+      True if a gap is detected OR input has fewer than 2 in-session datapoints
+      (too sparse to prove completeness — conservative default).
+    """
+    in_session = sorted(
+        t for t in ts_ms_values if _SESSION_OPEN_MS <= t <= _CHART_FINAL_TIME_MS
+    )
+    if len(in_session) < 2:
+        return True
+    for prev, curr in zip(in_session, in_session[1:]):
+        if curr - prev >= _GAP_THRESHOLD_MS:
+            return True
+    return False
