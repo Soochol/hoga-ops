@@ -23,8 +23,10 @@ _IDX_EVENT_TIME = 4
 _MIN_FIELDS_EVENT_TIME = 5
 _MIN_FIELDS_GLOBAL_SEQ = 4
 
-# Regular Session closes at 16:00 KST; captures before that hour are partial.
-_REGULAR_SESSION_CLOSE_HOUR = 16
+# Data Window closes at 16:00 KST (Regular Session close 15:30 +
+# Auction Cross + After-Hours Trading 15:30–16:00). Captures before
+# 16:00 on a today-date are partial — see CONTEXT.md.
+_DATA_WINDOW_CLOSE_HOUR = 16
 
 KST = dt.timezone(dt.timedelta(hours=9))
 
@@ -96,7 +98,7 @@ def _is_partial_capture(date: str, now: dt.datetime) -> bool:
         return False
     if d != now.date():
         return False
-    return now.hour < _REGULAR_SESSION_CLOSE_HOUR
+    return now.hour < _DATA_WINDOW_CLOSE_HOUR
 
 
 def _max_event_time(page_body: str) -> int | None:
@@ -267,7 +269,8 @@ def collect_stock_date(
     now = _now_kst()
     if not allow_partial and _is_partial_capture(date, now):
         raise PartialCaptureRefused(
-            f"date={date} is today (KST) and Regular Session has not closed. "
+            f"date={date} is today (KST) and the Data Window has not closed "
+            f"(closes at {_DATA_WINDOW_CLOSE_HOUR}:00 KST). "
             "Pass --allow-partial to capture anyway."
         )
 
