@@ -141,6 +141,7 @@ def _write_progress(
     seq_count: int,
     started_at: str,
     finished_at: str | None,
+    finished: bool = False,
 ) -> None:
     path.write_text(
         json.dumps(
@@ -150,6 +151,7 @@ def _write_progress(
                 "global_seqs_seen": seq_count,
                 "started_at": started_at,
                 "finished_at": finished_at,
+                "finished": finished,
             },
             indent=2,
         ),
@@ -325,6 +327,7 @@ def collect_stock_date(
         seq_count=len(seen_seqs),
         started_at=started_at,
         finished_at=finished_at,
+        finished=True,
     )
 
     return CollectResult(raw_dir=raw_dir, pages_written=page_idx, unique_events=len(seen_seqs))
