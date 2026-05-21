@@ -4,6 +4,8 @@ module (``hoga/tables/{trades,snapshots,brokers,candles}.py``).
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from hoga.tables.candles import ApiCandle
@@ -123,3 +125,41 @@ class SessionBundle(BaseModel):
     depth_intensity: DepthIntensity
     volume_profile: VolumeProfile
     fill_strength: FillStrength
+
+
+CapturePhase = Literal["capturing", "parsing", "done", "failed", "cancelled"]
+
+
+class CaptureProgress(BaseModel):
+    pages_done: int
+    events_seen: int
+    frontier_ms: int  # Unix epoch ms per ADR-0003 (converted from HHMMSSmmm)
+    estimate_pct: int  # 0..98 — backend-computed (see spec §5.5)
+    elapsed_ms: int
+
+
+class CaptureResult(BaseModel):
+    """Mirrors hoga.collector.orchestrator.CollectResult, plus parse outcome."""
+
+    pages_written: int
+    unique_events: int
+    raw_dir: str  # absolute path as string
+    parsed: bool  # True when capture_only=false and parse succeeded
+
+
+class CaptureError(BaseModel):
+    code: str  # see spec §4.1 error mapping table
+    message: str
+    at_page: int | None = None
+
+
+class CaptureJob(BaseModel):
+    job_id: str
+    code: str
+    date: str
+    phase: CapturePhase
+    options: dict  # {allow_partial, resume, capture_only}
+    started_at_ms: int  # Unix ms, set just before collect_stock_date call
+    progress: CaptureProgress | None = None
+    result: CaptureResult | None = None
+    error: CaptureError | None = None
