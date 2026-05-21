@@ -171,3 +171,22 @@ export function isDayBoundary(segments: Segment[], realMs: number): boolean {
   }
   return false;
 }
+
+/** Format a Unix-ms timestamp as HH:MM:SS in KST (UTC+9). */
+export function unixMsToKSTClock(ms: number): string {
+  const d = new Date(ms + 9 * 60 * 60 * 1000); // shift to KST
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  const ss = String(d.getUTCSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+/** Format milliseconds as M:SS or H:MM:SS. */
+export function formatElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
