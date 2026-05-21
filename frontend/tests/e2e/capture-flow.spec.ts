@@ -22,6 +22,11 @@ import { test, expect } from '@playwright/test';
  * because the real client_factory reads `.cookie` and won't return a
  * deterministic fake job.
  */
+// Serial mode required: the backend enforces one capture at a time per server
+// process (singleton _latest + asyncio.Lock). With fullyParallel=true, two
+// tests racing on POST /api/captures would collide on the singleton.
+test.describe.configure({ mode: 'serial' });
+
 test.describe('Capture flow', () => {
   test('happy path: form → progress → done → Open in Replay', async ({ page }) => {
     await page.goto('/capture');
