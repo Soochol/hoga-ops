@@ -618,22 +618,21 @@ matching the spec §3.9 conservative migration rule."
 
 ---
 
-## Task 5: Implement `has_meaningful_gaps`
+## Task 5: Implement `has_meaningful_gaps` (list-based signature)
 
 **Files:**
 - Modify: `hoga/api/disk_state.py`
 - Modify: `tests/test_api_disk_state.py`
 
-`has_meaningful_gaps(snapshots_parquet)` scans the snapshot timestamps and returns True if any consecutive pair has a gap ≥ 60_000 ms within the continuous-trading window (between Regular Session open and CHART_FINAL_TIME_MS). Read via `pyarrow` to avoid pulling DuckDB for what is a single-column scan.
+**Design decision (eng review D1, option B):** `has_meaningful_gaps` takes an in-memory list of `ts_ms` ints rather than reading the parquet file itself. The parser already has the snapshot entities in memory at the moment it computes meta — re-reading the just-written parquet is wasteful and creates a hidden ordering invariant ("must run after snapshots.write_parquet"). Passing data directly makes the dependency explicit.
+
+`has_meaningful_gaps(ts_ms_values)` returns True if any consecutive pair within the continuous-trading window has a gap ≥ 60_000 ms. Pure function — no I/O.
 
 - [ ] **Step 1: Write the failing tests**
 
 Append to `tests/test_api_disk_state.py`:
 
 ```python
-import pyarrow as pa
-import pyarrow.parquet as pq
-
 from hoga.api.disk_state import has_meaningful_gaps
 
 
@@ -641,75 +640,71 @@ from hoga.api.disk_state import has_meaningful_gaps
 # Regular session open ≈ 90000000 (09:00:00.000)
 
 
-def _write_snapshots_parquet(path: Path, ts_ms_values: list[int]) -> None:
-    """Write a minimal snapshots.parquet with only a ts_ms column."""
-    table = pa.table({"ts_ms": pa.array(ts_ms_values, type=pa.int64())})
-    pq.write_table(table, path)
-
-
-def test_no_gaps_when_snapshots_dense(tmp_path: Path) -> None:
-    path = tmp_path / "snapshots.parquet"
+def test_no_gaps_when_snapshots_dense() -> None:
     # One snapshot per second from 09:00:00 to 09:00:30 — no gap exceeds 1s.
     ts = [90000000 + i * 1000 for i in range(31)]
-    _write_snapshots_parquet(path, ts)
-    assert has_meaningful_gaps(path) is False
+    assert has_meaningful_gaps(ts) is False
 
 
-def test_gap_detected_when_60s_empty(tmp_path: Path) -> None:
-    path = tmp_path / "snapshots.parquet"
+def test_gap_detected_when_60s_empty() -> None:
     # 09:00:00 then jump to 09:01:30 (90 seconds later) — gap exceeds threshold.
-    _write_snapshots_parquet(path, [90000000, 90130000])
-    assert has_meaningful_gaps(path) is True
+    assert has_meaningful_gaps([90000000, 90130000]) is True
 
 
-def test_gap_outside_continuous_session_ignored(tmp_path: Path) -> None:
-    """A gap entirely before regular session open or after CHART_FINAL is not meaningful."""
-    path = tmp_path / "snapshots.parquet"
-    # Pre-session at 08:40, then jump to 09:00 (within Pre-market) — gap is in the
-    # pre-market auction window, where event absence is normal.
-    _write_snapshots_parquet(path, [84000000, 90000000])
-    assert has_meaningful_gaps(path) is False
+def test_gap_outside_continuous_session_ignored() -> None:
+    """A gap that crosses the pre-session/session boundary must not count.
+    Three dense in-session events prove there is no gap WITHIN the session;
+    the pre-session sample at 08:40 is filtered out before gap analysis."""
+    ts = [84000000, 90000000, 90001000, 90002000]
+    # in_session = [90000000, 90001000, 90002000] — three points, 1s apart, no 60s gap.
+    assert has_meaningful_gaps(ts) is False
 
 
-def test_missing_parquet_returns_true(tmp_path: Path) -> None:
-    """If snapshots.parquet is missing, treat as 'has gaps' — conservative."""
-    assert has_meaningful_gaps(tmp_path / "missing.parquet") is True
+def test_empty_list_returns_true() -> None:
+    """Empty input → True (conservative: caller can't prove completeness)."""
+    assert has_meaningful_gaps([]) is True
+
+
+def test_single_in_session_event_returns_true() -> None:
+    """One in-session datapoint isn't enough to compute gap presence; conservative True."""
+    assert has_meaningful_gaps([90000000]) is True
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_api_disk_state.py -v`
-Expected: The four new tests FAIL with `ImportError: cannot import name 'has_meaningful_gaps' from 'hoga.api.disk_state'`.
+Expected: The five new tests FAIL with `ImportError: cannot import name 'has_meaningful_gaps' from 'hoga.api.disk_state'`.
 
 - [ ] **Step 3: Add `has_meaningful_gaps` to the module**
 
 Append to `hoga/api/disk_state.py`:
 
 ```python
-import pyarrow.parquet as pq
+from collections.abc import Iterable
 
 _SESSION_OPEN_MS = 90000000      # 09:00:00.000 in HHMMSSmmm
 _CHART_FINAL_TIME_MS = 153100000  # 15:31:00.000 in HHMMSSmmm — the orchestrator's terminus
 _GAP_THRESHOLD_MS = 60_000        # 1 minute
 
 
-def has_meaningful_gaps(snapshots_parquet: Path) -> bool:
-    """True if any consecutive snapshot pair within continuous trading has a gap
-    ≥ 1 minute. Missing file → True (conservative: caller can't prove completeness).
+def has_meaningful_gaps(ts_ms_values: Iterable[int]) -> bool:
+    """True if any consecutive pair within continuous-trading hours has a gap
+    ≥ 1 minute. Pure function — no I/O.
+
+    Args:
+      ts_ms_values: snapshot timestamps in HHMMSSmmm encoding (parser's native form).
+        Pre-session and post-close events are filtered out before gap analysis,
+        so passing the full snapshot stream is safe and intended.
+
+    Returns:
+      True if a gap is detected OR input has fewer than 2 in-session datapoints
+      (too sparse to prove completeness — conservative default).
     """
-    if not snapshots_parquet.exists():
-        return True
-    table = pq.read_table(str(snapshots_parquet), columns=["ts_ms"])
-    ts = table.column("ts_ms").to_pylist()
-    if not ts:
-        return True
-    # Filter to continuous-trading window (excludes pre-market and post-close auction
-    # windows, where event absence is normal).
-    in_session = [t for t in ts if _SESSION_OPEN_MS <= t <= _CHART_FINAL_TIME_MS]
+    in_session = sorted(
+        t for t in ts_ms_values if _SESSION_OPEN_MS <= t <= _CHART_FINAL_TIME_MS
+    )
     if len(in_session) < 2:
-        # Too sparse to compute gaps; treat as gappy.
         return True
-    in_session.sort()
     for prev, curr in zip(in_session, in_session[1:]):
         if curr - prev >= _GAP_THRESHOLD_MS:
             return True
@@ -725,7 +720,14 @@ Expected: All tests in the file PASS.
 
 ```bash
 git add hoga/api/disk_state.py tests/test_api_disk_state.py
-git commit -m "feat(disk_state): add has_meaningful_gaps heuristic (1-min threshold)"
+git commit -m "$(cat <<'EOF'
+feat(disk_state): add has_meaningful_gaps heuristic (1-min threshold)
+
+Pure function over an iterable of HHMMSSmmm timestamps — no I/O. Parser passes
+the in-memory snapshot list directly rather than re-reading the just-written
+parquet (avoids the hidden ordering invariant flagged in eng review D1).
+EOF
+)"
 ```
 
 ---
@@ -815,9 +817,17 @@ def test_meta_is_partial_field_present(tmp_path: Path) -> None:
 Run: `uv run pytest tests/test_parser_completeness.py -v`
 Expected: All four tests FAIL with `KeyError: 'collection_complete'` (or `assert ... is True` on `None`).
 
-- [ ] **Step 3: Update `_build_meta` to accept and emit both fields**
+- [ ] **Step 3: Update `_build_meta` to accept snapshot data + emit both fields**
 
-In `hoga/parser/__init__.py:222-244`, change `_build_meta`'s signature and body:
+In `hoga/parser/__init__.py:222-248`, change `_build_meta`'s signature and body. The new `snapshots_list` parameter makes the gap-analysis input explicit — no implicit dependency on `snapshots.write_parquet` having run already.
+
+Add a top-level import (with the other imports near the top of the file):
+
+```python
+from hoga.api.disk_state import has_meaningful_gaps
+```
+
+Then replace `_build_meta`:
 
 ```python
 def _build_meta(
@@ -826,7 +836,7 @@ def _build_meta(
     seen_seqs: set[int],
     skipped: list[tuple[str, int, str]],
     raw_dir: Path,
-    out_dir: Path,
+    snapshots_list: list[Orderbook],
 ) -> dict[str, object]:
     pages = sorted(raw_dir.glob("first_*.tsv"))
     progress_path = raw_dir / "_progress.json"
@@ -838,11 +848,10 @@ def _build_meta(
         except (ValueError, OSError):
             collection_complete = False
 
-    # is_partial: the captured data does not cover the full Data Window. Until
-    # snapshots are written we can't compute gaps; this function runs AFTER
-    # snapshots.write_parquet, so the file exists.
-    from hoga.api.disk_state import has_meaningful_gaps
-    is_partial = has_meaningful_gaps(out_dir / "snapshots.parquet")
+    # Pure data-in/data-out: pass the in-memory snapshot timestamps directly.
+    # Avoids re-reading the just-written parquet and the hidden ordering
+    # invariant that would create (must run after snapshots.write_parquet).
+    is_partial = has_meaningful_gaps(s.ts_ms for s in snapshots_list)
 
     return {
         "code": info.code,
@@ -872,8 +881,16 @@ The three keys `total_unique_events`, `parser_version`, and `warnings` are prese
 Then update the call site at `hoga/parser/__init__.py:134`:
 
 ```python
-    meta = _build_meta(info=info, seen_seqs=seen_seqs, skipped=skipped, raw_dir=raw_dir, out_dir=out_dir)
+    meta = _build_meta(
+        info=info,
+        seen_seqs=seen_seqs,
+        skipped=skipped,
+        raw_dir=raw_dir,
+        snapshots_list=snapshots_list,
+    )
 ```
+
+`snapshots_list` is the local variable already populated by `_collect_events()` earlier in `parse_stock_date` (line 110-112); passing it through requires no other plumbing change.
 
 - [ ] **Step 4: Run parser completeness tests to verify they pass**
 
@@ -893,9 +910,9 @@ git commit -m "$(cat <<'EOF'
 feat(parser): write collection_complete + is_partial into meta.json
 
 collection_complete is read from _progress.json["finished"] (False if missing).
-is_partial is computed via disk_state.has_meaningful_gaps against the just-
-written snapshots.parquet — running AFTER snapshots.write_parquet in
-parse_stock_date guarantees the file exists.
+is_partial is computed via disk_state.has_meaningful_gaps against the in-memory
+snapshots_list — explicit data-in/data-out, no hidden ordering invariant on
+parquet writes.
 
 Together these two bits drive the four-state classification in
 disk_state.check_disk_state.
@@ -1226,3 +1243,103 @@ git add -A && git commit -m "chore: post-plan fix-ups from full-suite verificati
 - **Plan C** (frontend — SymbolSearch, DateRangePicker, CaptureQueue, hooks, LeftNav pill rewrite, paused banner, force-retry chip, calendar `as_of_ms` reconciliation).
 - Removing `allow_partial` from the collector / API surface — Plan B work (paired with the 18:00 backend guard).
 - Migrating any existing on-disk meta.json files — none in current state; `disk_state.check_disk_state` handles legacy defensively.
+
+---
+
+## What already exists (reuse audit)
+
+- **`hoga/api/queries.py::QueryEngine.list_stock_dates`** — already iterates `data/parquet/{date}/{code}/`, reads `meta.json`, builds `StockDate`. Plan A extends this in place rather than building a parallel scanner. ✓
+- **`hoga/collector/orchestrator.py::_write_progress`** — already manages `_progress.json` lifecycle (mid-loop + terminal writes). Plan A adds one field; does NOT add a parallel state file. ✓
+- **`hoga/parser/__init__.py::_build_meta`** — already produces `meta.json`. Plan A appends two keys; does NOT branch a second writer. ✓
+- **`tests/fixtures/tiny_tsv/`** — already used by `test_parser_e2e.py`. Plan A's `test_parser_completeness.py` reuses it via `_stage_raw`. ✓
+- **`pyarrow.parquet`** — already a transitive dep via `hoga/tables/*`. No new runtime dep introduced. ✓
+
+No parallel implementations were considered necessary. The plan's bottom-up extension pattern reuses every existing boundary.
+
+---
+
+## Implementation Tasks (synthesized from this review)
+
+Both findings produced inline plan patches (already applied above). No additional tasks remain post-review.
+
+- [x] **T1 (P1, human: ~5min / CC: ~2min)** — Plan A Task 5 + Task 6 — _build_meta + has_meaningful_gaps signature refactor
+  - Surfaced by: Section 1 / D1 — _build_meta's implicit ordering invariant on `snapshots.write_parquet`
+  - Files: `docs/superpowers/plans/2026-05-21-capture-completeness-foundation.md`
+  - Verify: plan patches replace parquet-path-based signature with `Iterable[int]` + `snapshots_list` parameter
+  - Status: applied inline before this report
+
+- [x] **T2 (P1, human: ~3min / CC: ~1min)** — Plan A Task 5 — test_gap_outside_continuous_session_ignored fixture fix
+  - Surfaced by: Section 3 / D2 — fixture only has 1 in-session datapoint, falls into "too sparse" branch
+  - Files: `docs/superpowers/plans/2026-05-21-capture-completeness-foundation.md`
+  - Verify: fixture now uses `[84000000, 90000000, 90001000, 90002000]` (3 in-session datapoints)
+  - Status: applied inline before this report
+
+No P2/P3 tasks. Plan B and Plan C absorb every remaining spec requirement.
+
+---
+
+## Failure modes (per new codepath)
+
+| Codepath | Realistic failure | Test? | Error handling? | User signal? |
+|---|---|---|---|---|
+| `_write_progress(finished=True)` | disk full at terminal write | no (existing path) | inherits orchestrator's `OSError` propagation | yes (capture fails loudly) |
+| `check_disk_state` (meta read) | malformed `meta.json` JSON | no — silent default to client_incomplete | conservative default | NO — silent. Calendar would show ✗ on a date that's actually fine. |
+| `has_meaningful_gaps` | empty input | yes (`test_empty_list_returns_true`) | conservative True | yes (would mark as partial) |
+| `list_stock_dates` (legacy meta) | missing both bits | yes (`test_stock_date_legacy_meta_defaults_to_safe_values`) | safe defaults | UI shows as `client_incomplete` per spec |
+
+**Critical gaps flagged:** 1 — malformed `meta.json` in `check_disk_state` silently degrades to `client_incomplete` without logging. **Follow-up TODO** (not blocking): add a warning log when `json.loads` raises so a corrupted meta surface in a structured way rather than as a phantom incomplete marker.
+
+---
+
+## Worktree parallelization strategy
+
+**Sequential implementation, limited parallelization opportunity.**
+
+| Task | Modules touched | Depends on |
+|---|---|---|
+| Task 0 (ADR-0007) | `docs/adr/` | — |
+| Task 1 (collector finished marker) | `hoga/collector/` | — |
+| Tasks 2-5 (disk_state.py) | `hoga/api/` (new module) | — |
+| Task 6 (parser writes meta bits) | `hoga/parser/` | Tasks 1, 5 |
+| Task 7 (StockDate wire + queries) | `hoga/api/`, `hoga/api/models.py` | Task 6 |
+| Task 8 (E2E smoke) | `tests/` | Tasks 1, 6, 7 |
+| Task 9 (full sweep) | — | all above |
+
+Lane A: Tasks 0 → 1 → 6 → 7 → 8 → 9 (parser/wire chain, fully sequential)
+Lane B: Tasks 2 → 3 → 4 → 5 (disk_state module, independent until Task 6 needs it)
+
+**Parallel opportunity:** Lane A (Task 1) and Lane B (Tasks 2-5) can run side-by-side until Task 6 joins them. Saves ~10 min on a ~40 min plan. For Plan A's small size, sequential execution in one worktree is simpler and the parallelization gain doesn't justify the merge overhead.
+
+---
+
+## Completion Summary
+
+- Step 0: Scope Challenge — **scope accepted as-is** (11 files justified by spec decomposition + 4 are tests + 1 is ADR)
+- Architecture Review: **1 issue found** (D1 — implicit ordering invariant → fixed via signature refactor)
+- Code Quality Review: **0 issues found**
+- Test Review: diagram produced, **1 gap identified** (D2 — fixture contradiction → fixed)
+- Performance Review: **0 issues found** (D1 fix even improves perf — eliminates 1 parquet read)
+- NOT in scope: written (existing in plan)
+- What already exists: written
+- TODOS.md updates: 0 new (one critical-gap follow-up noted for malformed meta.json logging — bundled into Plan B as part of disk_state hardening)
+- Failure modes: 1 critical gap flagged (silent meta.json corruption → client_incomplete)
+- Outside voice: skipped (Plan A scope is foundational + small; outside voice deferred until Plan B which has bigger architectural surface)
+- Parallelization: 2 lanes (collector + disk_state in parallel), sequential merge at parser
+- Lake Score: 2/2 recommendations chose complete option (D1B explicit-data-flow, D2A test fixture fix vs deletion)
+
+**Unresolved decisions:** none — both D1 and D2 received explicit user responses.
+
+---
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | not run (Plan A is implementation foundation, scope set by spec brainstorming) |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | not run (deferred to Plan B per skill recommendation for smaller plans) |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 2 findings (D1 ordering invariant, D2 test fixture bug) — both fixed inline |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | N/A | Plan A is backend-only; design review applies to Plan C |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | N/A | Plan A doesn't ship developer-facing surface |
+
+**UNRESOLVED:** 0
+**VERDICT:** **ENG CLEARED** — ready to implement Plan A via `/superpowers:subagent-driven-development`. Plan B/C reviews will be run when those plans are authored (after Plan A merges).
