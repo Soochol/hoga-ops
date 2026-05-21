@@ -1,8 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CaptureForm } from './CaptureForm';
 
 describe('CaptureForm', () => {
+  beforeEach(() => {
+    // Form persists code/date to localStorage; tests must start from a clean
+    // slate or the initial state bleeds between cases.
+    localStorage.clear();
+  });
+
   it('disables Start when fields are invalid', () => {
     render(<CaptureForm onStart={vi.fn()} />);
     const btn = screen.getByTestId('capture-start') as HTMLButtonElement;
@@ -26,5 +32,15 @@ describe('CaptureForm', () => {
       code: '005930', date: '20100101',
       allow_partial: false, resume: false, capture_only: false,
     });
+  });
+
+  it('restores last-typed code and date from localStorage on remount', () => {
+    localStorage.setItem('hoga.capture.code', '000660');
+    localStorage.setItem('hoga.capture.date', '20240715');
+    render(<CaptureForm onStart={vi.fn()} />);
+    expect((screen.getByTestId('capture-code') as HTMLInputElement).value).toBe('000660');
+    expect((screen.getByTestId('capture-date') as HTMLInputElement).value).toBe('20240715');
+    // Start is enabled too — form is ready to re-submit the previous capture.
+    expect((screen.getByTestId('capture-start') as HTMLButtonElement).disabled).toBe(false);
   });
 });
