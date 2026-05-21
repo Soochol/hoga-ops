@@ -111,30 +111,22 @@ export interface CaptureJob {
   error: CaptureError | null;
 }
 
+// SSE event variants — mirror `hoga/api/models.py::{CaptureProgressEvent,
+// CapturePhaseEvent, CaptureFinishedEvent}` verbatim per ADR-0004. The `progress`
+// field on capture_progress is the same shape as `CaptureJob.progress` — patching
+// the React Query cache is a single nested assignment.
+export interface CaptureEventBase {
+  job_id: string;
+  code: string;
+  date: string;
+  phase: CapturePhase;
+}
+
 export type SSEEvent =
   | { type: 'inventory_added'; code: string; date: string }
   | { type: 'inventory_removed'; code: string; date: string }
-  | {
-      type: 'capture_progress';
-      job_id: string;
-      code: string;
-      date: string;
-      phase: CapturePhase;
-      pages_done: number;
-      events_seen: number;
-      frontier_ms: number;
-      estimate_pct: number;
-      elapsed_ms: number;
-    }
-  | { type: 'capture_phase'; job_id: string; code: string; date: string; phase: CapturePhase }
-  | {
-      type: 'capture_finished';
-      job_id: string;
-      code: string;
-      date: string;
-      phase: CapturePhase;
-      result: CaptureResult | null;
-      error: CaptureError | null;
-    }
+  | (CaptureEventBase & { type: 'capture_progress'; progress: CaptureProgress })
+  | (CaptureEventBase & { type: 'capture_phase' })
+  | (CaptureEventBase & { type: 'capture_finished'; result: CaptureResult | null; error: CaptureError | null })
   | { type: 'heartbeat' }
   | { type: 'disconnected' };

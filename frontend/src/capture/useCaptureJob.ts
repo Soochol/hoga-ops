@@ -23,19 +23,12 @@ export function useCaptureJob() {
   useEffect(() => {
     const off = subscribeToCaptureEvents((e) => {
       if (e.type === 'capture_progress') {
+        // The event's `progress` field has the same shape as CaptureJob.progress
+        // (both reference the CaptureProgress Wire Model), so we patch by nested
+        // assignment — no field-by-field reconstruction needed.
         qc.setQueryData<CaptureJob | null>(KEY, (prev) =>
           prev && prev.job_id === e.job_id
-            ? {
-                ...prev,
-                phase: e.phase,
-                progress: {
-                  pages_done: e.pages_done,
-                  events_seen: e.events_seen,
-                  frontier_ms: e.frontier_ms,
-                  estimate_pct: e.estimate_pct,
-                  elapsed_ms: e.elapsed_ms,
-                },
-              }
+            ? { ...prev, phase: e.phase, progress: e.progress }
             : prev,
         );
       } else if (e.type === 'capture_phase') {

@@ -163,3 +163,38 @@ class CaptureJob(BaseModel):
     progress: CaptureProgress | None = None
     result: CaptureResult | None = None
     error: CaptureError | None = None
+
+
+# SSE event Wire Models — same ADR-0004 rule applies to events as to HTTP responses:
+# the schema is declared once here and shipped verbatim to consumers. Frontend
+# types.ts hand-mirrors these; drift is caught by TypeScript at compile time.
+#
+# Each subclass carries its own `type` Literal so pydantic serializes the
+# discriminator automatically — class name is the source of truth, no manual
+# string juggling.
+
+
+class _CaptureEventBase(BaseModel):
+    job_id: str
+    code: str
+    date: str
+    phase: CapturePhase
+
+
+class CaptureProgressEvent(_CaptureEventBase):
+    type: Literal["capture_progress"] = "capture_progress"
+    progress: CaptureProgress
+
+
+class CapturePhaseEvent(_CaptureEventBase):
+    """Phase transition without progress payload (e.g. capturing → parsing)."""
+
+    type: Literal["capture_phase"] = "capture_phase"
+
+
+class CaptureFinishedEvent(_CaptureEventBase):
+    """Terminal event. `phase` is one of done | failed | cancelled."""
+
+    type: Literal["capture_finished"] = "capture_finished"
+    result: CaptureResult | None = None
+    error: CaptureError | None = None

@@ -18,8 +18,11 @@ from pydantic import BaseModel, Field
 
 from hoga.api.models import (
     CaptureError,
+    CaptureFinishedEvent,
     CaptureJob,
+    CapturePhaseEvent,
     CaptureProgress,
+    CaptureProgressEvent,
     CaptureResult,
 )
 from hoga.api.timeenc import hhmmssms_to_unix_ms
@@ -152,14 +155,23 @@ def set_bus(bus: Any, loop: asyncio.AbstractEventLoop | None = None) -> None:
     _loop = loop
 
 
-def _publish(evt: dict) -> None:
-    """Thread-safe publish. Called from the executor thread for capture_*
-    progress events; the call_soon_threadsafe hop ensures the SSE bus's
-    asyncio.Queue.put_nowait runs on the event loop where the queue lives.
+def _publish_event(event: BaseModel) -> None:
+    """Thread-safe publish of a typed SSE event Wire Model.
+
+    Two responsibilities, intentionally fused:
+    (1) Serialize the pydantic model to a dict (the bus is type-blind, takes
+        dicts only — preserves backwards compat with the inventory event path
+        that still emits dicts directly).
+    (2) Thread-safety: the on_progress callback fires from the collector's
+        executor thread; asyncio.Queue.put_nowait is not loop-safe, so we hop
+        to the event loop via call_soon_threadsafe. Same pattern as the
+        watchdog handler in sse.py.
+
+    No-op when bus/loop aren't wired (test mode).
     """
     if _bus is None or _loop is None:
         return
-    _loop.call_soon_threadsafe(_bus.publish, evt)
+    _loop.call_soon_threadsafe(_bus.publish, event.model_dump(mode="json"))
 
 
 def _make_progress_callback(state: CaptureJobState):
@@ -178,18 +190,19 @@ def _make_progress_callback(state: CaptureJobState):
         state.estimate_pct = min(98, max(0, int(100 * offset / span)))
         # SSE payload uses Unix-ms per ADR-0003.
         frontier_unix = hhmmssms_to_unix_ms(evt.date, evt.frontier_hhmmss)
-        _publish({
-            "type": "capture_progress",
-            "job_id": state.job_id,
-            "code": state.code,
-            "date": state.date,
-            "phase": state.phase,
-            "pages_done": state.pages_done,
-            "events_seen": state.events_seen,
-            "frontier_ms": frontier_unix,
-            "estimate_pct": state.estimate_pct,
-            "elapsed_ms": state.elapsed_ms,
-        })
+        _publish_event(CaptureProgressEvent(
+            job_id=state.job_id,
+            code=state.code,
+            date=state.date,
+            phase=state.phase,
+            progress=CaptureProgress(
+                pages_done=state.pages_done,
+                events_seen=state.events_seen,
+                frontier_ms=frontier_unix,
+                estimate_pct=state.estimate_pct,
+                elapsed_ms=state.elapsed_ms,
+            ),
+        ))
     return _on_progress
 
 
@@ -208,11 +221,10 @@ async def _run_capture_job(
     state.cancel_token = CancelToken()
     state.started_at_ms = int(time.time() * 1000)
     state.phase = "capturing"
-    _publish({
-        "type": "capture_phase",
-        "job_id": state.job_id, "code": state.code, "date": state.date,
-        "phase": state.phase,
-    })
+    _publish_event(CapturePhaseEvent(
+        job_id=state.job_id, code=state.code, date=state.date,
+        phase=state.phase,
+    ))
 
     loop = asyncio.get_running_loop()
 
@@ -234,11 +246,10 @@ async def _run_capture_job(
         parsed = False
         if not state.options.get("capture_only", False):
             state.phase = "parsing"
-            _publish({
-                "type": "capture_phase",
-                "job_id": state.job_id, "code": state.code, "date": state.date,
-                "phase": state.phase,
-            })
+            _publish_event(CapturePhaseEvent(
+                job_id=state.job_id, code=state.code, date=state.date,
+                phase=state.phase,
+            ))
             await loop.run_in_executor(
                 None,
                 lambda: parse_stock_date(
@@ -268,13 +279,12 @@ async def _run_capture_job(
         )
         state.phase = "failed"
 
-    _publish({
-        "type": "capture_finished",
-        "job_id": state.job_id, "code": state.code, "date": state.date,
-        "phase": state.phase,
-        "result": state.result.model_dump() if state.result else None,
-        "error": state.error.model_dump() if state.error else None,
-    })
+    _publish_event(CaptureFinishedEvent(
+        job_id=state.job_id, code=state.code, date=state.date,
+        phase=state.phase,
+        result=state.result,
+        error=state.error,
+    ))
 
 
 KST = timezone(timedelta(hours=9))
