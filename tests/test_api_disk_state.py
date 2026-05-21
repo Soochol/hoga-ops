@@ -4,7 +4,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hoga.api.disk_state import DiskState, check_disk_state, has_meaningful_gaps
+from hoga.api.disk_state import (
+    DiskState,
+    check_disk_state,
+    classify_from_meta,
+    has_meaningful_gaps,
+)
 from hoga.api.timeenc import HogaMs
 
 
@@ -80,6 +85,33 @@ def test_legacy_meta_without_bits_defaults_to_client_incomplete(tmp_path: Path) 
     treat as client_incomplete so the worker tries to resume and upgrade the meta."""
     _write_meta(tmp_path, "005930", "20260520")  # neither field
     assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.CLIENT_INCOMPLETE
+
+
+def test_classify_from_meta_complete() -> None:
+    meta = {"collection_complete": True, "is_partial": False}
+    assert classify_from_meta(meta) == DiskState.COMPLETE
+
+
+def test_classify_from_meta_source_partial() -> None:
+    meta = {"collection_complete": True, "is_partial": True}
+    assert classify_from_meta(meta) == DiskState.SOURCE_PARTIAL
+
+
+def test_classify_from_meta_client_incomplete_when_not_complete() -> None:
+    # If collection didn't finish, the value of is_partial is irrelevant —
+    # CLIENT_INCOMPLETE wins. This is the "normalize ambiguity" guarantee
+    # callers rely on.
+    assert classify_from_meta(
+        {"collection_complete": False, "is_partial": False},
+    ) == DiskState.CLIENT_INCOMPLETE
+    assert classify_from_meta(
+        {"collection_complete": False, "is_partial": True},
+    ) == DiskState.CLIENT_INCOMPLETE
+
+
+def test_classify_from_meta_legacy_empty_dict() -> None:
+    """Pre-foundation meta with neither field → CLIENT_INCOMPLETE (conservative)."""
+    assert classify_from_meta({}) == DiskState.CLIENT_INCOMPLETE
 
 
 def test_malformed_meta_json_returns_client_incomplete(tmp_path: Path) -> None:

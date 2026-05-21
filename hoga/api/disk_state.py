@@ -23,15 +23,31 @@ class DiskState(Enum):
     COMPLETE = "complete"
 
 
+def classify_from_meta(meta: dict[str, object]) -> DiskState:
+    """Classify the disk state from an already-loaded meta.json dict.
+
+    Single source of truth for the meta → DiskState mapping. Used both by
+    :func:`check_disk_state` (which loads meta from disk) and by callers
+    that already have the meta dict in memory (e.g., ``queries.list_stock_dates``
+    iterating Stock-Date directories) — sharing the helper avoids reading
+    meta.json twice per row.
+
+    Legacy meta (pre-foundation) lacks both completeness fields. Conservative
+    default is CLIENT_INCOMPLETE so a subsequent capture run will upgrade it.
+    """
+    collection_complete = bool(meta.get("collection_complete", False))
+    is_partial = bool(meta.get("is_partial", True))
+    if not collection_complete:
+        return DiskState.CLIENT_INCOMPLETE
+    return DiskState.SOURCE_PARTIAL if is_partial else DiskState.COMPLETE
+
+
 def check_disk_state(data_dir: Path, code: str, date: str) -> DiskState:
     """Classify the on-disk state for (code, date) under ``data_dir``.
 
     Resolution order:
-      1. ``data/parquet/{date}/{code}/meta.json`` exists → COMPLETE or SOURCE_PARTIAL
-         (depending on meta["collection_complete"] and meta["is_partial"]).
-         Falls through to CLIENT_INCOMPLETE if meta says the capture was
-         interrupted (collection_complete=False) — this matches the case
-         where parse ran on partial raw and we want to resume.
+      1. ``data/parquet/{date}/{code}/meta.json`` exists → delegate to
+         :func:`classify_from_meta`. Truncated / unreadable JSON → CLIENT_INCOMPLETE.
       2. ``data/raw/{date}/{code}/`` has any TSV files → CLIENT_INCOMPLETE.
       3. Otherwise → NONE.
     """
@@ -45,13 +61,7 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> DiskState:
             # so the worker re-captures rather than crashing the calendar / inventory.
             # Matches hoga/parser/__init__.py's pattern for _progress.json reads.
             return DiskState.CLIENT_INCOMPLETE
-        # Legacy meta (pre-foundation) lacks both fields. Conservative default
-        # is "client incomplete" so a subsequent capture run will upgrade it.
-        collection_complete = bool(meta.get("collection_complete", False))
-        is_partial = bool(meta.get("is_partial", True))
-        if not collection_complete:
-            return DiskState.CLIENT_INCOMPLETE
-        return DiskState.SOURCE_PARTIAL if is_partial else DiskState.COMPLETE
+        return classify_from_meta(meta)
 
     raw_dir = data_dir / "raw" / date / code
     if raw_dir.exists() and any(raw_dir.glob("first_*.tsv")):
