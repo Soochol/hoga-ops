@@ -19,15 +19,15 @@ from hoga.api.captures import (
     get_latest,
     reset_state_for_tests,
 )
-from hoga.api.timeenc import hhmmssms_to_unix_ms
+from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector import orchestrator as orch
-from hoga.config import CookieMissingError
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
 from hoga.collector.orchestrator import (
     CaptureCancelled,
     PartialCaptureRefused,
     ProgressEvent,
 )
+from hoga.config import CookieMissingError
 
 
 def test_maps_partial_refused() -> None:
@@ -89,11 +89,11 @@ def test_to_wire_converts_frontier_to_unix_ms() -> None:
         options={"allow_partial": False, "resume": False, "capture_only": False},
         pages_done=5,
         events_seen=100,
-        frontier_hhmmss=132400000,  # 13:24:00.000
+        frontier=HogaMs(132400000),  # 13:24:00.000
     )
     wire = state.to_wire()
     assert wire.progress is not None
-    assert wire.progress.frontier_ms == hhmmssms_to_unix_ms("20260520", 132400000)
+    assert wire.progress.frontier_ms == hhmmssms_to_unix_ms("20260520", HogaMs(132400000))
     # Sanity: result is a plausible Unix-ms (post-2025, pre-2030).
     assert 1_735_689_600_000 < wire.progress.frontier_ms < 1_893_456_000_000
 
@@ -124,7 +124,7 @@ async def test_progress_callback_hops_to_loop_when_wired() -> None:
         callback = cap_mod._make_progress_callback(state)
         evt = ProgressEvent(
             code="005930", date="20260520",
-            pages_done=5, events_seen=100, frontier_hhmmss=132400000,
+            pages_done=5, events_seen=100, frontier=HogaMs(132400000),
         )
         callback(evt)
         # Mutation has NOT happened yet — it's scheduled on the loop.
@@ -132,7 +132,7 @@ async def test_progress_callback_hops_to_loop_when_wired() -> None:
         # Yield to let the scheduled callback run.
         await asyncio.sleep(0)
         assert state.pages_done == 5
-        assert state.frontier_hhmmss == 132400000
+        assert state.frontier == 132400000
     finally:
         cap_mod.set_bus(None, None)
 

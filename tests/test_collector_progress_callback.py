@@ -60,7 +60,7 @@ def test_on_progress_called_per_page(tmp_path: Path) -> None:
         assert e.date == "20260520"
         assert e.pages_done >= 1
         assert e.events_seen >= 0
-        assert e.frontier_hhmmss >= 84000000  # >= DATA_WINDOW_START_MS
+        assert e.frontier >= 84000000  # >= DATA_WINDOW_START_MS
 
 
 def test_no_callback_keeps_cli_behavior(tmp_path: Path) -> None:

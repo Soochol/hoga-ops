@@ -25,7 +25,7 @@ from hoga.api.models import (
     CaptureProgressEvent,
     CaptureResult,
 )
-from hoga.api.timeenc import hhmmssms_to_unix_ms
+from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
 from hoga.collector.orchestrator import (
     CHART_FINAL_TIME_MS,
@@ -80,7 +80,7 @@ class CaptureJobState:
     started_at_ms: int = 0
     pages_done: int = 0
     events_seen: int = 0
-    frontier_hhmmss: int = 0  # raw collector encoding
+    frontier: HogaMs = HogaMs(0)  # collector encoding (HHMMSSmmm); see ADR-0003
     elapsed_ms: int = 0
     estimate_pct: int = 0
     result: CaptureResult | None = None
@@ -98,7 +98,7 @@ class CaptureJobState:
         return CaptureProgress(
             pages_done=self.pages_done,
             events_seen=self.events_seen,
-            frontier_ms=hhmmssms_to_unix_ms(self.date, self.frontier_hhmmss),
+            frontier_ms=hhmmssms_to_unix_ms(self.date, self.frontier),
             estimate_pct=self.estimate_pct,
             elapsed_ms=self.elapsed_ms,
         )
@@ -203,11 +203,12 @@ def _apply_progress(state: CaptureJobState, evt: ProgressEvent) -> None:
     """
     state.pages_done = evt.pages_done
     state.events_seen = evt.events_seen
-    state.frontier_hhmmss = evt.frontier_hhmmss
+    state.frontier = evt.frontier
     state.elapsed_ms = int(time.time() * 1000) - state.started_at_ms
-    # Estimate: % of Data Window covered (raw HHMMSSmmm math; see spec §5.5).
+    # Estimate: % of Data Window covered. HogaMs arithmetic returns int
+    # (NewType subtraction is identity), so span/offset are plain ints.
     span = CHART_FINAL_TIME_MS - DATA_WINDOW_START_MS
-    offset = max(0, evt.frontier_hhmmss - DATA_WINDOW_START_MS)
+    offset = max(0, evt.frontier - DATA_WINDOW_START_MS)
     state.estimate_pct = min(98, max(0, int(100 * offset / span)))
     progress = state.to_progress()
     assert progress is not None  # pages_done > 0 since on_progress just fired

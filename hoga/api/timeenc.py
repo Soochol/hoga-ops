@@ -8,9 +8,17 @@ is a fixed +09:00 with no DST.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import NewType
 
 KST = timezone(timedelta(hours=9))
+
+# Encoding-as-type for hogaplay's native packed-decimal time. HogaMs values
+# are HHMMSSmmm (e.g., 90000000 = 09:00:00.000) — they MUST be converted via
+# hhmmssms_to_unix_ms before reaching any wire surface (ADR-0003). Pyright
+# uses this to catch accidental encoding mixups in collector / capture state.
+# Runtime is identity (zero-cost); the type only carries meaning at check time.
+HogaMs = NewType("HogaMs", int)
 
 
 def _date_unix_ms_at_kst_midnight(date: str) -> int:

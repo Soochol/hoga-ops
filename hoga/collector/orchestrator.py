@@ -11,11 +11,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from hoga.api.timeenc import HogaMs
 from hoga.collector.page_step import PageStepController
 
-# Time constants in HHMMSSmmm encoding.
-DATA_WINDOW_START_MS = 84000000  # 08:40:00.000
-CHART_FINAL_TIME_MS = 153100000  # 15:31:00.000
+# Time constants — HogaMs (HHMMSSmmm) per ADR-0003. The type alias makes
+# the encoding explicit at every call site, so Pyright catches accidental
+# Unix-ms mixups (the relevant footgun once Plan B adds worker pools).
+DATA_WINDOW_START_MS: HogaMs = HogaMs(84000000)   # 08:40:00.000
+CHART_FINAL_TIME_MS: HogaMs = HogaMs(153100000)   # 15:31:00.000
 
 # Field index constants for TSV row parsing.
 _IDX_GLOBAL_SEQ = 3
@@ -76,15 +79,16 @@ class CollectResult:
 class ProgressEvent:
     """Snapshot of capture progress, emitted after each Page write.
 
-    `frontier_hhmmss` is the raw HHMMSSmmm value (collector encoding); the
-    API layer converts to Unix-ms before publishing to clients (see
-    CONTEXT.md `Capture Frontier`).
+    `frontier` is a HogaMs value (HHMMSSmmm encoding — see CONTEXT.md
+    `Capture Frontier`). The API layer converts to Unix-ms before publishing
+    to clients per ADR-0003. The HogaMs type enforces this at check time —
+    accidental Unix-ms assignment fails Pyright.
     """
     code: str
     date: str
     pages_done: int
     events_seen: int
-    frontier_hhmmss: int
+    frontier: HogaMs
 
 
 def _now_kst() -> dt.datetime:
@@ -244,7 +248,7 @@ def _page_step_loop(
                 date=date,
                 pages_done=page_idx,
                 events_seen=len(seen_seqs),
-                frontier_hhmmss=decision.progress_t,
+                frontier=HogaMs(decision.progress_t),
             ))
             last_emitted_t = decision.progress_t
             last_emitted_pages = page_idx
