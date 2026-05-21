@@ -4,7 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from hoga.api.queries import QueryEngine
 
@@ -14,9 +15,10 @@ def _write_full_stock_date(tmp_path: Path, code: str, date: str, **completeness:
     parquet_dir = tmp_path / "parquet" / date / code
     parquet_dir.mkdir(parents=True)
 
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-    pq.write_table(pa.table({"ts_ms": pa.array([], type=pa.int64())}), parquet_dir / "snapshots.parquet")
+    pq.write_table(
+        pa.table({"ts_ms": pa.array([], type=pa.int64())}),
+        parquet_dir / "snapshots.parquet",
+    )
     pq.write_table(
         pa.table({"low": pa.array([], type=pa.int64()), "high": pa.array([], type=pa.int64()),
                   "vol_a": pa.array([], type=pa.int64()), "vol_b": pa.array([], type=pa.int64())}),
@@ -42,7 +44,10 @@ def _write_full_stock_date(tmp_path: Path, code: str, date: str, **completeness:
 
 
 def test_stock_date_exposes_collection_complete_and_is_partial(tmp_path: Path) -> None:
-    _write_full_stock_date(tmp_path, "005930", "20260520", collection_complete=True, is_partial=False)
+    _write_full_stock_date(
+        tmp_path, "005930", "20260520",
+        collection_complete=True, is_partial=False,
+    )
     eng = QueryEngine(tmp_path)
     try:
         rows = eng.list_stock_dates()

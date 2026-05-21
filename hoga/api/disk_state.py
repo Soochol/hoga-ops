@@ -52,9 +52,10 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> DiskState:
     return DiskState.NONE
 
 
-_SESSION_OPEN_MS = 90000000      # 09:00:00.000 in HHMMSSmmm
-_CHART_FINAL_TIME_MS = 153100000  # 15:31:00.000 in HHMMSSmmm — the orchestrator's terminus
-_GAP_THRESHOLD_MS = 60_000        # 1 minute
+_SESSION_OPEN_MS = 90000000        # 09:00:00.000 in HHMMSSmmm
+_CHART_FINAL_TIME_MS = 153100000   # 15:31:00.000 in HHMMSSmmm — the orchestrator's terminus
+_GAP_THRESHOLD_MS = 60_000         # 1 minute
+_MIN_DATAPOINTS_FOR_GAP_ANALYSIS = 2  # need ≥2 to compute consecutive deltas
 
 
 def has_meaningful_gaps(ts_ms_values: Iterable[int]) -> bool:
@@ -73,9 +74,11 @@ def has_meaningful_gaps(ts_ms_values: Iterable[int]) -> bool:
     in_session = sorted(
         t for t in ts_ms_values if _SESSION_OPEN_MS <= t <= _CHART_FINAL_TIME_MS
     )
-    if len(in_session) < 2:
+    if len(in_session) < _MIN_DATAPOINTS_FOR_GAP_ANALYSIS:
         return True
-    for prev, curr in zip(in_session, in_session[1:]):
-        if curr - prev >= _GAP_THRESHOLD_MS:
-            return True
-    return False
+    # strict=False is correct: in_session[1:] is intentionally one shorter
+    # (we're walking consecutive pairs, last element has no successor).
+    return any(
+        curr - prev >= _GAP_THRESHOLD_MS
+        for prev, curr in zip(in_session, in_session[1:], strict=False)
+    )

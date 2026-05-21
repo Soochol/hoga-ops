@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from hoga.api.queries import QueryEngine
 from hoga.collector.orchestrator import collect_stock_date
 from hoga.parser import parse_stock_date
@@ -43,7 +41,9 @@ class _NaturalTermFakeClient:
             for i in range(5)
         ) + "\n"
 
-    def fetch_chart(self, code: str, date: str, time_ms: int, bong: int = 1, gap: int = 60000) -> str:
+    def fetch_chart(
+        self, code: str, date: str, time_ms: int, bong: int = 1, gap: int = 60000,
+    ) -> str:
         del code, date, time_ms, bong, gap
         return ""
 

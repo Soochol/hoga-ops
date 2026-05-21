@@ -33,7 +33,9 @@ class _FakeClientNaturalTerm:
             f"1\t1\t0\t{seq_base + i}\t{t_base + i}\t000\t1000" for i in range(5)
         ) + "\n"
 
-    def fetch_chart(self, code: str, date: str, time_ms: int, bong: int = 1, gap: int = 60000) -> str:
+    def fetch_chart(
+        self, code: str, date: str, time_ms: int, bong: int = 1, gap: int = 60000,
+    ) -> str:
         del code, date, time_ms, bong, gap
         return ""
 
@@ -56,7 +58,9 @@ class _FakeClientNeverEnds:
             f"1\t1\t0\t{seq_base + i}\t{t_base + i}\t000\t1000" for i in range(5)
         ) + "\n"
 
-    def fetch_chart(self, code: str, date: str, time_ms: int, bong: int = 1, gap: int = 60000) -> str:
+    def fetch_chart(
+        self, code: str, date: str, time_ms: int, bong: int = 1, gap: int = 60000,
+    ) -> str:
         del code, date, time_ms, bong, gap
         return ""
 

@@ -4,9 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
-from hoga.api.disk_state import DiskState, check_disk_state
+from hoga.api.disk_state import DiskState, check_disk_state, has_meaningful_gaps
 
 
 def test_disk_state_enum_has_four_members() -> None:
@@ -81,9 +79,6 @@ def test_legacy_meta_without_bits_defaults_to_client_incomplete(tmp_path: Path) 
     treat as client_incomplete so the worker tries to resume and upgrade the meta."""
     _write_meta(tmp_path, "005930", "20260520")  # neither field
     assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.CLIENT_INCOMPLETE
-
-
-from hoga.api.disk_state import has_meaningful_gaps
 
 
 # CHART_FINAL_TIME_MS = 153100000 (15:31:00.000 in HHMMSSmmm)
