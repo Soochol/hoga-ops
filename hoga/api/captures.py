@@ -7,9 +7,14 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from hoga.api.models import (
     CaptureError,
@@ -26,6 +31,7 @@ from hoga.collector.orchestrator import (
     CaptureCancelled,
     PartialCaptureRefused,
     ProgressEvent,
+    _is_partial_capture,
     collect_stock_date,
 )
 from hoga.parser import parse_stock_date
@@ -269,3 +275,88 @@ async def _run_capture_job(
         "result": state.result.model_dump() if state.result else None,
         "error": state.error.model_dump() if state.error else None,
     })
+
+
+KST = timezone(timedelta(hours=9))
+
+
+class StartCaptureRequest(BaseModel):
+    code: str = Field(pattern=r"^\d{6}$")
+    date: str = Field(pattern=r"^\d{8}$")
+    allow_partial: bool = False
+    resume: bool = False
+    capture_only: bool = False
+
+
+def _make_job_id(code: str, date: str) -> str:
+    now = datetime.now(tz=KST).strftime("%Y%m%dT%H%M%S")
+    return f"{now}-{code}-{date}"
+
+
+def _state_to_wire(state: CaptureJobState) -> CaptureJob:
+    """Wrap to_wire() with the timeenc conversion for frontier_ms."""
+    wire = state.to_wire()
+    if wire.progress is not None and state.frontier_hhmmss:
+        wire = wire.model_copy(update={
+            "progress": wire.progress.model_copy(update={
+                "frontier_ms": hhmmssms_to_unix_ms(state.date, state.frontier_hhmmss),
+            }),
+        })
+    return wire
+
+
+def build_router(
+    *,
+    data_dir: Path,
+    client_factory: Callable[[], object],
+) -> APIRouter:
+    """Build the captures router.
+
+    `client_factory()` returns a fresh HogaplayClientProto. In production this
+    yields a real HogaplayClient; tests inject a fake.
+    """
+    router = APIRouter(prefix="/api/captures", tags=["captures"])
+
+    @router.post("", status_code=201)
+    async def start_capture(req: StartCaptureRequest) -> CaptureJob:
+        global _latest  # noqa: PLW0603 — module singleton write under _lock
+        async with _lock:
+            if _latest is not None and not _latest.is_terminal:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "already_running",
+                        "latest": _state_to_wire(_latest).model_dump(),
+                    },
+                )
+            # Backend re-validation of partial capture (defense in depth).
+            now_kst = datetime.now(tz=KST)
+            if not req.allow_partial and _is_partial_capture(req.date, now_kst):
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "partial_refused",
+                        "message": (
+                            f"date={req.date} is today (KST) before Data Window close."
+                        ),
+                    },
+                )
+
+            state = CaptureJobState(
+                job_id=_make_job_id(req.code, req.date),
+                code=req.code,
+                date=req.date,
+                options={
+                    "allow_partial": req.allow_partial,
+                    "resume": req.resume,
+                    "capture_only": req.capture_only,
+                },
+            )
+            _latest = state
+            client = client_factory()
+            state.task = asyncio.create_task(
+                _run_capture_job(state=state, client=client, data_dir=data_dir)
+            )
+            return _state_to_wire(state)
+
+    return router
