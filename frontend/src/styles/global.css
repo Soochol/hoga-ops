@@ -13,3 +13,11 @@ body {
   font-size: var(--text-base);
   line-height: 1.45;
 }
+
+@keyframes capture-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.capture-pulse {
+  animation: capture-pulse 1.5s ease-in-out infinite;
+}
