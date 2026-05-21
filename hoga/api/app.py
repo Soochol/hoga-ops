@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from hoga.api.captures import build_router as build_captures_router
 from hoga.api.captures import cancel_latest_on_shutdown
 from hoga.api.captures import set_bus as set_captures_bus
+from hoga.api.captures_fake import FakeHogaplayClient
 from hoga.api.queries import QueryEngine
 from hoga.api.routes import build_router
 from hoga.api.sse import build_sse
@@ -30,7 +31,14 @@ def create_app(data_dir: Path) -> FastAPI:
         cfg = Config.from_cwd()
         return HogaplayClient(cookie=cfg.cookie())
 
-    client_factory = _real_client_factory
+    def _fake_client_factory():
+        return FakeHogaplayClient()
+
+    # Choose client factory: fake when the test env flag is set.
+    if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
+        client_factory = _fake_client_factory
+    else:
+        client_factory = _real_client_factory
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:

@@ -342,15 +342,21 @@ def build_router(
                     },
                 )
 
+            options: dict[str, Any] = {
+                "allow_partial": req.allow_partial,
+                "resume": req.resume,
+                "capture_only": req.capture_only,
+            }
+            # In test mode (same flag that swaps in FakeHogaplayClient),
+            # also drop the 0.2s rate-limit so the ~1267 empty-page
+            # termination iterations don't dominate run time.
+            if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
+                options["_fast_test"] = True
             state = CaptureJobState(
                 job_id=_make_job_id(req.code, req.date),
                 code=req.code,
                 date=req.date,
-                options={
-                    "allow_partial": req.allow_partial,
-                    "resume": req.resume,
-                    "capture_only": req.capture_only,
-                },
+                options=options,
             )
             _latest = state
             client = client_factory()
