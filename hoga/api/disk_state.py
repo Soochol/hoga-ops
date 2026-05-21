@@ -40,7 +40,6 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> DiskState:
 
     raw_dir = data_dir / "raw" / date / code
     if raw_dir.exists() and any(raw_dir.glob("first_*.tsv")):
-        # Implemented in Task 3
-        raise NotImplementedError("raw-only branch — see Task 3")
+        return DiskState.CLIENT_INCOMPLETE
 
     return DiskState.NONE
