@@ -86,12 +86,16 @@ class CaptureJobState:
     task: asyncio.Task | None = None
 
     def to_wire(self) -> CaptureJob:
+        """Build the consumer-facing Wire Model. This is the ONLY to-wire entry
+        point — the HHMMSSmmm → Unix-ms conversion (per ADR-0003) happens here,
+        not in a separate helper, because state already knows its own date.
+        """
         progress = None
         if self.pages_done > 0:
             progress = CaptureProgress(
                 pages_done=self.pages_done,
                 events_seen=self.events_seen,
-                frontier_ms=0,  # filled by the route layer after timeenc conversion
+                frontier_ms=hhmmssms_to_unix_ms(self.date, self.frontier_hhmmss),
                 estimate_pct=self.estimate_pct,
                 elapsed_ms=self.elapsed_ms,
             )
@@ -303,18 +307,6 @@ def _make_job_id(code: str, date: str) -> str:
     return f"{now}-{code}-{date}"
 
 
-def _state_to_wire(state: CaptureJobState) -> CaptureJob:
-    """Wrap to_wire() with the timeenc conversion for frontier_ms."""
-    wire = state.to_wire()
-    if wire.progress is not None and state.frontier_hhmmss:
-        wire = wire.model_copy(update={
-            "progress": wire.progress.model_copy(update={
-                "frontier_ms": hhmmssms_to_unix_ms(state.date, state.frontier_hhmmss),
-            }),
-        })
-    return wire
-
-
 def build_router(
     *,
     data_dir: Path,
@@ -336,7 +328,7 @@ def build_router(
                     status_code=409,
                     detail={
                         "code": "already_running",
-                        "latest": _state_to_wire(_latest).model_dump(),
+                        "latest": _latest.to_wire().model_dump(),
                     },
                 )
             # Backend re-validation of partial capture (defense in depth).
@@ -373,13 +365,13 @@ def build_router(
             state.task = asyncio.create_task(
                 _run_capture_job(state=state, client=client, data_dir=data_dir)
             )
-            return _state_to_wire(state)
+            return state.to_wire()
 
     @router.get("/latest")
     async def get_latest_route() -> CaptureJob | None:
         if _latest is None:
             return None
-        return _state_to_wire(_latest)
+        return _latest.to_wire()
 
     @router.post("/latest/cancel", status_code=202)
     async def cancel_latest() -> dict:

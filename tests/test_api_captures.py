@@ -18,6 +18,7 @@ from hoga.api.captures import (
     get_latest,
     reset_state_for_tests,
 )
+from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.collector import orchestrator as orch
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
 from hoga.collector.orchestrator import CaptureCancelled, PartialCaptureRefused
@@ -65,6 +66,30 @@ def test_capture_job_state_initial_phase() -> None:
     assert state.to_wire().phase == "capturing"
     assert state.to_wire().progress is None
     assert state.to_wire().error is None
+
+
+def test_to_wire_converts_frontier_to_unix_ms() -> None:
+    """state.to_wire() is the single encoding seam — caller never touches HHMMSSmmm.
+
+    The conversion delegates to hoga.api.timeenc.hhmmssms_to_unix_ms (the same
+    helper ADR-0003 mandates as the project-wide source of truth). We assert
+    against the helper rather than a hand-computed number so this test stays
+    correct if the helper's KST offset / DST handling ever evolves.
+    """
+    state = CaptureJobState(
+        job_id="job-1",
+        code="005930",
+        date="20260520",
+        options={"allow_partial": False, "resume": False, "capture_only": False},
+        pages_done=5,
+        events_seen=100,
+        frontier_hhmmss=132400000,  # 13:24:00.000
+    )
+    wire = state.to_wire()
+    assert wire.progress is not None
+    assert wire.progress.frontier_ms == hhmmssms_to_unix_ms("20260520", 132400000)
+    # Sanity: result is a plausible Unix-ms (post-2025, pre-2030).
+    assert 1_735_689_600_000 < wire.progress.frontier_ms < 1_893_456_000_000
 
 
 @pytest.mark.asyncio
