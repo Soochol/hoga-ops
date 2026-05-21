@@ -721,6 +721,15 @@ def reset_state_for_tests() -> None:
     """For pytest fixtures only — clears the module singleton."""
     global _latest
     _latest = None
+
+
+def cancel_latest_on_shutdown() -> None:
+    """Best-effort cancel called from app lifespan teardown. Raw pages on disk
+    are preserved for the user to Resume; the asyncio task is abandoned (the
+    server is going down anyway). See spec §9 'server restart loses state'.
+    """
+    if _latest is not None and not _latest.is_terminal and _latest.cancel_token is not None:
+        _latest.cancel_token.cancel()
 ```
 
 - [ ] **Step 4: Run to verify pass**
@@ -827,19 +836,33 @@ from hoga.collector.orchestrator import (
 
 
 # Bus injection point: the captures router holds a reference to the SSE _Bus
-# (see Task 12). For unit tests, _publish is a no-op when _bus is None.
+# AND the event loop, because the collector runs in a thread executor and its
+# on_progress callback fires from the worker thread, NOT the event loop.
+# asyncio.Queue.put_nowait is not loop-safe across threads — same reason the
+# existing watchdog handler in sse.py:57 uses loop.call_soon_threadsafe.
 _bus = None
+_loop: asyncio.AbstractEventLoop | None = None
 
 
-def set_bus(bus) -> None:
-    """Wired from app.py during startup; see Task 12."""
-    global _bus
+def set_bus(bus, loop: asyncio.AbstractEventLoop | None = None) -> None:
+    """Wired from app.py during startup; see Task 10.
+
+    `loop` is required for thread-safe publishes from the executor thread.
+    Passing None turns _publish into a no-op (test mode).
+    """
+    global _bus, _loop
     _bus = bus
+    _loop = loop
 
 
 def _publish(evt: dict) -> None:
-    if _bus is not None:
-        _bus.publish(evt)
+    """Thread-safe publish. Called from the executor thread for capture_*
+    progress events; the call_soon_threadsafe hop ensures the SSE bus's
+    asyncio.Queue.put_nowait runs on the event loop where the queue lives.
+    """
+    if _bus is None or _loop is None:
+        return
+    _loop.call_soon_threadsafe(_bus.publish, evt)
 
 
 def _make_progress_callback(state: CaptureJobState):
@@ -1037,6 +1060,38 @@ def test_post_captures_returns_201(tmp_path: Path) -> None:
     assert body["options"]["allow_partial"] is True
 
 
+def test_post_captures_400_partial_refused(tmp_path: Path, monkeypatch) -> None:
+    """Today's KST date with allow_partial=false → 400 partial_refused.
+
+    Mocks the KST clock used by _is_partial_capture by patching `datetime.now`
+    inside hoga.collector.orchestrator so the route's guard sees 'today'.
+    """
+    import datetime as _dt
+    from hoga.collector import orchestrator as orch
+
+    # Pretend today is 2026-05-20 at 10:00 KST (before 16:00 Data Window close).
+    fixed_now = _dt.datetime(2026, 5, 20, 10, 0, tzinfo=_dt.timezone(_dt.timedelta(hours=9)))
+
+    class _FixedDateTime(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_now
+
+    monkeypatch.setattr(orch.dt, "datetime", _FixedDateTime)
+    # Also patch the captures router's datetime if it imports its own.
+    from hoga.api import captures as cap_mod
+    monkeypatch.setattr(cap_mod, "datetime", _FixedDateTime, raising=False)
+
+    reset_state_for_tests()
+    client = _make_app(tmp_path, lambda: _FakeFastClient())
+    r = client.post("/api/captures", json={
+        "code": "005930", "date": "20260520",  # matches fixed_now date
+        "allow_partial": False, "resume": False, "capture_only": True,
+    })
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "partial_refused"
+
+
 def test_post_captures_409_when_running(tmp_path: Path) -> None:
     reset_state_for_tests()
     # Fake client that blocks forever on fetch_first so the first job stays running.
@@ -1208,6 +1263,96 @@ def test_dismiss_when_idle_204(tmp_path: Path) -> None:
     client = _make_app(tmp_path, lambda: _FakeFastClient())
     r = client.delete("/api/captures/latest")
     assert r.status_code == 204
+
+
+def test_cancel_happy_path_202(tmp_path: Path) -> None:
+    """POST /latest/cancel on a running job returns 202; job ends as cancelled."""
+    reset_state_for_tests()
+    class _SlowClient:
+        def __init__(self): self.calls = 0
+        def fetch_info(self, *_, **__): return "k\tv\n"
+        def fetch_first(self, *_, **__):
+            import time; time.sleep(0.5); self.calls += 1
+            if self.calls > 100: return ""
+            return "1\t1\t0\t1\t90000000\t0\t100\n"
+        def fetch_chart(self, *_, **__): return ""
+    client = _make_app(tmp_path, lambda: _SlowClient())
+    client.post("/api/captures", json={
+        "code": "005930", "date": "20260520",
+        "allow_partial": True, "resume": False, "capture_only": True,
+    })
+    r = client.post("/api/captures/latest/cancel")
+    assert r.status_code == 202
+    # Poll until terminal
+    import time
+    for _ in range(50):
+        time.sleep(0.1)
+        latest = client.get("/api/captures/latest").json()
+        if latest and latest["phase"] == "cancelled":
+            break
+    assert latest["phase"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_run_capture_job_failed_branch(tmp_path: Path) -> None:
+    """Collector raises a non-cancellation exception → phase=failed, error populated."""
+    from hoga.collector.client import CookieExpiredError
+    reset_state_for_tests()
+    state = CaptureJobState(
+        job_id="job-f",
+        code="005930",
+        date="20260520",
+        options={"allow_partial": True, "resume": False, "capture_only": True, "_fast_test": True},
+    )
+    from hoga.api import captures as cap_mod
+    cap_mod._latest = state
+
+    class _BadClient:
+        def fetch_info(self, *_, **__): raise CookieExpiredError("401 from /info.php")
+        def fetch_first(self, *_, **__): return ""
+        def fetch_chart(self, *_, **__): return ""
+
+    await _run_capture_job(state=state, client=_BadClient(), data_dir=tmp_path)
+    assert state.phase == "failed"
+    assert state.error is not None
+    assert state.error.code == "cookie_expired"
+
+
+@pytest.mark.asyncio
+async def test_run_capture_job_cancelled_branch(tmp_path: Path) -> None:
+    """cancel_token set mid-flight → phase=cancelled, no error, raw preserved."""
+    reset_state_for_tests()
+    state = CaptureJobState(
+        job_id="job-c",
+        code="005930",
+        date="20260520",
+        options={"allow_partial": True, "resume": False, "capture_only": True, "_fast_test": True},
+    )
+    from hoga.api import captures as cap_mod
+    cap_mod._latest = state
+
+    class _SlowClient:
+        def __init__(self): self.calls = 0
+        def fetch_info(self, *_, **__): return "k\tv\n"
+        def fetch_first(self, *_, **__):
+            import time; time.sleep(0.05); self.calls += 1
+            if self.calls > 50: return ""
+            return f"1\t1\t0\t{self.calls}\t{90000000 + self.calls * 60000}\t0\t100\n"
+        def fetch_chart(self, *_, **__): return ""
+
+    async def cancel_soon():
+        await asyncio.sleep(0.2)
+        if state.cancel_token is not None:
+            state.cancel_token.cancel()
+
+    cancel_task = asyncio.create_task(cancel_soon())
+    await _run_capture_job(state=state, client=_SlowClient(), data_dir=tmp_path)
+    await cancel_task
+    assert state.phase == "cancelled"
+    assert state.error is None
+    # Raw files preserved
+    raw_dir = tmp_path / "raw" / "20260520" / "005930"
+    assert len(list(raw_dir.glob("first_*.tsv"))) >= 1
 
 
 def test_dismiss_when_running_409(tmp_path: Path) -> None:
@@ -1401,6 +1546,7 @@ Edit `hoga/api/app.py`:
 ```python
 from hoga.api.captures import build_router as build_captures_router
 from hoga.api.captures import set_bus as set_captures_bus
+from hoga.api.captures import cancel_latest_on_shutdown
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config
 
@@ -1420,14 +1566,17 @@ def create_app(data_dir: Path) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         observer.start()
-        set_captures_bus(bus)  # wire SSE bus into captures module
+        set_captures_bus(bus, asyncio.get_running_loop())  # bus + loop for thread-safe publishes
         try:
             yield
         finally:
             observer.stop()
             observer.join()
             engine.close()
-            set_captures_bus(None)
+            # Best-effort cancel of an in-flight job at shutdown — raw files
+            # are preserved on disk for Resume. Spec §9 documents this behavior.
+            cancel_latest_on_shutdown()
+            set_captures_bus(None, None)
 
     app = FastAPI(title="hoga-ops API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
@@ -2276,21 +2425,24 @@ export function CaptureProgress({ job, onCancel }: Props) {
   const [confirming, setConfirming] = useState(false);
   const logRef = useRef<LogLine[]>([]);
   const lastPageRef = useRef(0);
+  const lastEventsSeenRef = useRef(0);
   const [, force] = useState(0);
 
   useEffect(() => {
     if (!job.progress) return;
     if (job.progress.pages_done !== lastPageRef.current) {
-      const prevPages = lastPageRef.current;
-      const added = job.progress.events_seen - (logRef.current[0]?.events_added ?? 0);
+      // events_added = delta of cumulative events_seen across pages.
+      // Bug guard: events_seen is cumulative; the previous line's count is
+      // stored in lastEventsSeenRef, not events_added (which is itself a delta).
+      const added = Math.max(0, job.progress.events_seen - lastEventsSeenRef.current);
       logRef.current = [
         { page: job.progress.pages_done, frontier_ms: job.progress.frontier_ms,
-          events_added: Math.max(0, added) },
+          events_added: added },
         ...logRef.current,
       ].slice(0, 10);
       lastPageRef.current = job.progress.pages_done;
+      lastEventsSeenRef.current = job.progress.events_seen;
       force((n) => n + 1);
-      void prevPages;
     }
   }, [job.progress]);
 
@@ -2488,7 +2640,109 @@ function Stat({ label, value, highlight }: { label: string; value: string; highl
 }
 ```
 
-- [ ] **Step 4: Typecheck**
+- [ ] **Step 4: Add component tests**
+
+```tsx
+// frontend/src/capture/CaptureProgress.test.tsx
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { CaptureProgress } from './CaptureProgress';
+import type { CaptureJob } from '../api/types';
+
+function makeJob(overrides: Partial<CaptureJob> = {}): CaptureJob {
+  return {
+    job_id: 'j1', code: '005930', date: '20260520', phase: 'capturing',
+    options: { allow_partial: false, resume: false, capture_only: false },
+    started_at_ms: 0, result: null, error: null,
+    progress: {
+      pages_done: 47, events_seen: 12401,
+      frontier_ms: Date.UTC(2026, 4, 20, 4, 24, 0), // 13:24 KST
+      estimate_pct: 62, elapsed_ms: 134_000,
+    },
+    ...overrides,
+  };
+}
+
+describe('CaptureProgress', () => {
+  it('renders three big numbers from progress', () => {
+    render(<CaptureProgress job={makeJob()} onCancel={vi.fn()} />);
+    expect(screen.getByText('47')).toBeInTheDocument();
+    expect(screen.getByText('12,401')).toBeInTheDocument();
+    expect(screen.getByText('13:24:00')).toBeInTheDocument();
+  });
+
+  it('shows PARSING label when phase=parsing', () => {
+    render(<CaptureProgress job={makeJob({ phase: 'parsing' })} onCancel={vi.fn()} />);
+    expect(screen.getByTestId('capture-phase')).toHaveTextContent('PARSING');
+  });
+
+  it('cancel button shows confirm popover', () => {
+    const onCancel = vi.fn();
+    render(<CaptureProgress job={makeJob()} onCancel={onCancel} />);
+    fireEvent.click(screen.getByText('Cancel'));
+    expect(screen.getByText(/Cancel capture/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Cancel capture/));
+    expect(onCancel).toHaveBeenCalled();
+  });
+});
+```
+
+```tsx
+// frontend/src/capture/CaptureResult.test.tsx
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
+import { CaptureResult } from './CaptureResult';
+import type { CaptureJob } from '../api/types';
+
+function wrap(ui: React.ReactNode) {
+  return <MemoryRouter>{ui}</MemoryRouter>;
+}
+
+const base: CaptureJob = {
+  job_id: 'j1', code: '005930', date: '20260520', phase: 'done',
+  options: { allow_partial: false, resume: false, capture_only: false },
+  started_at_ms: 0, error: null,
+  progress: { pages_done: 76, events_seen: 19873, frontier_ms: 0, estimate_pct: 98, elapsed_ms: 222_000 },
+  result: { pages_written: 76, unique_events: 19873, raw_dir: '/tmp', parsed: true },
+};
+
+describe('CaptureResult', () => {
+  it('done phase shows Open in Replay CTA', () => {
+    render(wrap(<CaptureResult job={base} onDismiss={vi.fn()} onResume={vi.fn()} />));
+    expect(screen.getByText(/Open in Replay/)).toBeInTheDocument();
+    expect(screen.getByText(/View in Inventory/)).toBeInTheDocument();
+  });
+
+  it('failed phase shows error message and Retry with Resume', () => {
+    const job: CaptureJob = {
+      ...base, phase: 'failed', result: null,
+      error: { code: 'cookie_expired', message: 'Refresh your .cookie...', at_page: 34 },
+    };
+    const onResume = vi.fn();
+    render(wrap(<CaptureResult job={job} onDismiss={vi.fn()} onResume={onResume} />));
+    expect(screen.getByText('cookie_expired')).toBeInTheDocument();
+    expect(screen.getByText(/Refresh your \.cookie/)).toBeInTheDocument();
+    expect(screen.getByText(/Retry with Resume/)).toBeInTheDocument();
+  });
+
+  it('cancelled phase shows Resume from page N', () => {
+    const job: CaptureJob = { ...base, phase: 'cancelled', result: null };
+    render(wrap(<CaptureResult job={job} onDismiss={vi.fn()} onResume={vi.fn()} />));
+    expect(screen.getByText(/Resume from page 76/)).toBeInTheDocument();
+  });
+});
+```
+
+Run:
+
+```bash
+cd frontend && npm test -- Capture
+```
+
+Expected: all passing (combines CaptureForm + CaptureProgress + CaptureResult tests).
+
+- [ ] **Step 5: Typecheck**
 
 ```bash
 cd frontend && npm run typecheck
@@ -2496,10 +2750,10 @@ cd frontend && npm run typecheck
 
 Expected: passing.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add frontend/src/capture/CaptureProgress.tsx frontend/src/capture/CaptureLog.tsx frontend/src/capture/CaptureResult.tsx
+git add frontend/src/capture/CaptureProgress.tsx frontend/src/capture/CaptureLog.tsx frontend/src/capture/CaptureResult.tsx frontend/src/capture/CaptureProgress.test.tsx frontend/src/capture/CaptureResult.test.tsx
 git commit -m "feat(frontend): CaptureProgress + CaptureLog + CaptureResult components"
 ```
 
@@ -2724,14 +2978,7 @@ Edit `frontend/src/nav/LeftNav.tsx`:
 import CaptureStatusPill from './CaptureStatusPill';
 ```
 
-Replace the `<div className="flex-1" />` block (line 20) with:
-
-```tsx
-      <div className="flex-1" />
-      <CaptureStatusPill />
-```
-
-That is — insert the `<CaptureStatusPill />` IMMEDIATELY AFTER `<div className="flex-1" />` and IMMEDIATELY BEFORE `<Section label="System">`. The result:
+**Insert** `<CaptureStatusPill />` IMMEDIATELY AFTER the existing `<div className="flex-1" />` (line 20) and IMMEDIATELY BEFORE `<Section label="System">` (line 21). Do NOT remove the spacer — the spacer is what pushes the pill against the System block. The result:
 
 ```tsx
       <Section label="Workspace">
@@ -2926,3 +3173,38 @@ After all tasks complete, verify against the spec:
 ---
 
 **Plan complete.** Save path: `docs/superpowers/plans/2026-05-21-capture-ui.md`.
+
+---
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | not run (single-user local tool; product framing settled in spec) |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | not run |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR_WITH_FIXES | 7 findings (2 P1, 3 P2, 2 P3); all P1 + P2 applied inline to plan |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | not run (spec grilling Q16 covered placement + tokens; design system reuse) |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | not run (no public SDK / dev-facing surface) |
+
+**Findings applied to plan:**
+- **F1 [P1] Thread-safe SSE publish** — collector runs in `run_in_executor` thread; original plan called `_bus.publish` directly (not loop-safe). Fixed: `set_bus(bus, loop)` accepts loop reference; `_publish` uses `loop.call_soon_threadsafe`. Matches existing watchdog pattern in `hoga/api/sse.py:57`.
+- **F2 [P1] CaptureProgress log buffer math** — `events_added` delta was computed against previous delta instead of previous cumulative. Fixed: added `lastEventsSeenRef` to track previous cumulative; `added = events_seen - lastEventsSeen`.
+- **F3 [P2] Backend branch test gaps** — added 4 tests: `test_post_captures_400_partial_refused` (mocked KST clock), `test_cancel_happy_path_202`, `test_run_capture_job_failed_branch` (CookieExpiredError path), `test_run_capture_job_cancelled_branch`.
+- **F4 [P2] Frontend component tests** — added `CaptureProgress.test.tsx` (3 cases) and `CaptureResult.test.tsx` (3 phase branches).
+- **F6 [P3] Graceful uvicorn shutdown** — added `cancel_latest_on_shutdown()` helper called from lifespan teardown; raw files preserved for Resume.
+- **F7 [P3] LeftNav edit instruction** — rephrased "Replace" → "Insert AFTER", added "Do NOT remove the spacer" guardrail.
+
+**Findings deferred (not applied):**
+- **F5 [P2] Spec/plan UX divergence** — spec §5.3 says "inline tooltip" when clicking Start while running; plan disables the button. Plan is simpler. Recommendation: align spec to plan in a follow-up doc cleanup (the implementation does what the plan says).
+
+**UNRESOLVED:** none (all P1/P2 fixed inline; F5 documented as known divergence).
+
+**VERDICT:** ENG CLEARED — ready to implement. Plan revisions are small and localized; no architectural rework required.
+
+**Worktree parallelization:**
+- Lane A (Backend): Tasks 1 → 2 → 3 → 4 → 5–10 (sequential, all touch `hoga/`)
+- Lane B (Frontend): Tasks 12 → 13 → 14 → 15 → 16 → 17–19 (sequential, all touch `frontend/src/`)
+- Lane C (LeftNav pill): Tasks 20–22 (depends on Lane B's hook)
+- Lane D (E2E): Task 23 (depends on Lanes A + B + C all merged)
+- **Parallel execution**: Lanes A and B independent up through Task 19. Could ship in parallel worktrees, merge, then proceed to C+D sequentially.
+
