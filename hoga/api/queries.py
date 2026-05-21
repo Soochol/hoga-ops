@@ -121,6 +121,8 @@ class QueryEngine:
                         today_high=int(meta["today_high"]),
                         today_low=int(meta["today_low"]),
                         today_close=int(meta["today_close"]),
+                        collection_complete=bool(meta.get("collection_complete", False)),
+                        is_partial=bool(meta.get("is_partial", True)),
                     )
                 )
         return out

@@ -38,6 +38,8 @@ class StockDate(BaseModel):
     today_high: int
     today_low: int
     today_close: int
+    collection_complete: bool
+    is_partial: bool
 
 
 class OrderbookResponse(BaseModel):
