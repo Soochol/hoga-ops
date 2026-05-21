@@ -40,7 +40,7 @@ class HogaplayClientProto(Protocol):
 
 
 class PartialCaptureRefused(RuntimeError):
-    """Capture target is today + Regular Session not yet closed and allow_partial=False."""
+    """Capture target is today + Data Window not yet closed (16:00 KST) and allow_partial=False."""
 
 
 class CaptureCancelled(RuntimeError):
