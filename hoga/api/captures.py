@@ -178,35 +178,57 @@ def _publish_event(event: BaseModel) -> None:
     _loop.call_soon_threadsafe(_bus.publish, event.model_dump(mode="json"))
 
 
-def _make_progress_callback(state: CaptureJobState):
-    """Closure that updates `state` and emits an SSE event per ProgressEvent.
+def _apply_progress(state: CaptureJobState, evt: ProgressEvent) -> None:
+    """Apply a ProgressEvent to `state` and emit the SSE event.
 
-    Conversion seam (spec §4.3): HHMMSSmmm → Unix-ms happens HERE, not in collector.
+    Single-thread invariant: this function MUST only run on the event loop.
+    Callers from the collector's executor thread go through
+    _make_progress_callback, which hops to the loop via call_soon_threadsafe.
+    Concentrating all state mutation in one thread eliminates the race window
+    between mutation and concurrent reads (GET /latest, state.to_wire()).
+
+    Conversion seam (spec §4.3 + ADR-0003): HHMMSSmmm → Unix-ms happens HERE,
+    not in the collector.
+    """
+    state.pages_done = evt.pages_done
+    state.events_seen = evt.events_seen
+    state.frontier_hhmmss = evt.frontier_hhmmss
+    state.elapsed_ms = int(time.time() * 1000) - state.started_at_ms
+    # Estimate: % of Data Window covered (raw HHMMSSmmm math; see spec §5.5).
+    span = CHART_FINAL_TIME_MS - DATA_WINDOW_START_MS
+    offset = max(0, evt.frontier_hhmmss - DATA_WINDOW_START_MS)
+    state.estimate_pct = min(98, max(0, int(100 * offset / span)))
+    frontier_unix = hhmmssms_to_unix_ms(evt.date, evt.frontier_hhmmss)
+    _publish_event(CaptureProgressEvent(
+        job_id=state.job_id,
+        code=state.code,
+        date=state.date,
+        phase=state.phase,
+        progress=CaptureProgress(
+            pages_done=state.pages_done,
+            events_seen=state.events_seen,
+            frontier_ms=frontier_unix,
+            estimate_pct=state.estimate_pct,
+            elapsed_ms=state.elapsed_ms,
+        ),
+    ))
+
+
+def _make_progress_callback(state: CaptureJobState):
+    """Returns a callback the collector invokes from its executor thread.
+
+    The callback does NOT mutate state directly — it hops to the event loop
+    so all state mutation lives on a single thread. If _loop is unwired
+    (test-mode mutation without a running loop), mutation happens inline as
+    a fallback so unit tests can verify behavior without spinning up uvicorn.
     """
     def _on_progress(evt: ProgressEvent) -> None:
-        state.pages_done = evt.pages_done
-        state.events_seen = evt.events_seen
-        state.frontier_hhmmss = evt.frontier_hhmmss
-        state.elapsed_ms = int(time.time() * 1000) - state.started_at_ms
-        # Estimate: % of Data Window covered (raw HHMMSSmmm math; see spec §5.5).
-        span = CHART_FINAL_TIME_MS - DATA_WINDOW_START_MS
-        offset = max(0, evt.frontier_hhmmss - DATA_WINDOW_START_MS)
-        state.estimate_pct = min(98, max(0, int(100 * offset / span)))
-        # SSE payload uses Unix-ms per ADR-0003.
-        frontier_unix = hhmmssms_to_unix_ms(evt.date, evt.frontier_hhmmss)
-        _publish_event(CaptureProgressEvent(
-            job_id=state.job_id,
-            code=state.code,
-            date=state.date,
-            phase=state.phase,
-            progress=CaptureProgress(
-                pages_done=state.pages_done,
-                events_seen=state.events_seen,
-                frontier_ms=frontier_unix,
-                estimate_pct=state.estimate_pct,
-                elapsed_ms=state.elapsed_ms,
-            ),
-        ))
+        if _loop is None:
+            # Test-mode fallback: no loop wired → apply inline so unit tests
+            # that exercise the collector path can assert against state.
+            _apply_progress(state, evt)
+            return
+        _loop.call_soon_threadsafe(_apply_progress, state, evt)
     return _on_progress
 
 

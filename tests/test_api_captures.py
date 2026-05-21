@@ -1,6 +1,7 @@
 """Unit tests for hoga.api.captures._exception_to_error_code (spec §4.1 table)."""
 from __future__ import annotations
 
+import asyncio
 import datetime as _dt
 from pathlib import Path
 
@@ -21,7 +22,11 @@ from hoga.api.captures import (
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.collector import orchestrator as orch
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
-from hoga.collector.orchestrator import CaptureCancelled, PartialCaptureRefused
+from hoga.collector.orchestrator import (
+    CaptureCancelled,
+    PartialCaptureRefused,
+    ProgressEvent,
+)
 
 
 def test_maps_partial_refused() -> None:
@@ -96,6 +101,47 @@ def test_to_wire_converts_frontier_to_unix_ms() -> None:
 async def test_lock_acquire_release_roundtrip() -> None:
     async with _lock:
         pass  # smoke test: lock is an asyncio.Lock, usable in async ctx
+
+
+@pytest.mark.asyncio
+async def test_progress_callback_hops_to_loop_when_wired() -> None:
+    """When _loop is wired, the callback dispatches via call_soon_threadsafe
+    instead of mutating state inline. This is the single-thread invariant —
+    all CaptureJobState mutation happens on the event loop, not the collector
+    thread. Race window between callback and concurrent reads is eliminated.
+    """
+    loop = asyncio.get_running_loop()
+    cap_mod.set_bus(_StubBus(), loop)
+    try:
+        state = CaptureJobState(
+            job_id="j-thread",
+            code="005930",
+            date="20260520",
+            options={"allow_partial": True, "resume": False, "capture_only": True},
+            started_at_ms=int(asyncio.get_running_loop().time() * 1000),
+        )
+        callback = cap_mod._make_progress_callback(state)
+        evt = ProgressEvent(
+            code="005930", date="20260520",
+            pages_done=5, events_seen=100, frontier_hhmmss=132400000,
+        )
+        callback(evt)
+        # Mutation has NOT happened yet — it's scheduled on the loop.
+        assert state.pages_done == 0
+        # Yield to let the scheduled callback run.
+        await asyncio.sleep(0)
+        assert state.pages_done == 5
+        assert state.frontier_hhmmss == 132400000
+    finally:
+        cap_mod.set_bus(None, None)
+
+
+class _StubBus:
+    """Minimal bus that swallows publishes — keeps _publish_event a no-op
+    without spinning up the real SSE infrastructure.
+    """
+    def publish(self, evt: dict) -> None:  # noqa: ARG002
+        del evt
 
 
 class _FakeFastClient:
