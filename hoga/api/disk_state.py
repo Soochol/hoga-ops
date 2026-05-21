@@ -35,8 +35,14 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> DiskState:
     parquet_dir = data_dir / "parquet" / date / code
     meta_path = parquet_dir / "meta.json"
     if meta_path.exists():
-        # Implemented in Task 4
-        raise NotImplementedError("meta.json branch — see Task 4")
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        # Legacy meta (pre-foundation) lacks both fields. Conservative default
+        # is "client incomplete" so a subsequent capture run will upgrade it.
+        collection_complete = bool(meta.get("collection_complete", False))
+        is_partial = bool(meta.get("is_partial", True))
+        if not collection_complete:
+            return DiskState.CLIENT_INCOMPLETE
+        return DiskState.SOURCE_PARTIAL if is_partial else DiskState.COMPLETE
 
     raw_dir = data_dir / "raw" / date / code
     if raw_dir.exists() and any(raw_dir.glob("first_*.tsv")):
