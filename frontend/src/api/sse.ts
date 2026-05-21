@@ -22,6 +22,15 @@ async function open() {
     src.addEventListener('inventory_removed', (e: MessageEvent) =>
       emit({ type: 'inventory_removed', ...JSON.parse(e.data) }),
     );
+    src.addEventListener('capture_progress', (e: MessageEvent) =>
+      emit({ type: 'capture_progress', ...JSON.parse(e.data) }),
+    );
+    src.addEventListener('capture_phase', (e: MessageEvent) =>
+      emit({ type: 'capture_phase', ...JSON.parse(e.data) }),
+    );
+    src.addEventListener('capture_finished', (e: MessageEvent) =>
+      emit({ type: 'capture_finished', ...JSON.parse(e.data) }),
+    );
     src.addEventListener('heartbeat', () => {
       _lastHeartbeatMs = Date.now();
       emit({ type: 'heartbeat' });
@@ -56,6 +65,9 @@ export function useEventStream() {
     const handler = (e: SSEEvent) => {
       if (e.type === 'inventory_added' || e.type === 'inventory_removed') {
         qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
+      } else if (e.type === 'disconnected') {
+        qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
+        qc.invalidateQueries({ queryKey: ['capture', 'latest'] });
       }
     };
     _subscribers.add(handler);
@@ -63,4 +75,22 @@ export function useEventStream() {
       _subscribers.delete(handler);
     };
   }, [qc]);
+}
+
+export function subscribeToCaptureEvents(handler: (e: SSEEvent) => void): () => void {
+  // Ensure the EventSource is open even if only a capture page mounts this hook.
+  void open();
+  const wrapped = (e: SSEEvent) => {
+    if (
+      e.type === 'capture_progress' ||
+      e.type === 'capture_phase' ||
+      e.type === 'capture_finished'
+    ) {
+      handler(e);
+    }
+  };
+  _subscribers.add(wrapped);
+  return () => {
+    _subscribers.delete(wrapped);
+  };
 }
