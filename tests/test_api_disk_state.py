@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from hoga.api.disk_state import DiskState, check_disk_state, has_meaningful_gaps
+from hoga.api.timeenc import HogaMs
 
 
 def test_disk_state_enum_has_four_members() -> None:
@@ -95,20 +96,20 @@ def test_malformed_meta_json_returns_client_incomplete(tmp_path: Path) -> None:
 
 def test_no_gaps_when_snapshots_dense() -> None:
     # One snapshot per second from 09:00:00 to 09:00:30 — no gap exceeds 1s.
-    ts = [90000000 + i * 1000 for i in range(31)]
+    ts = [HogaMs(90000000 + i * 1000) for i in range(31)]
     assert has_meaningful_gaps(ts) is False
 
 
 def test_gap_detected_when_60s_empty() -> None:
     # 09:00:00 then jump to 09:01:30 (90 seconds later) — gap exceeds threshold.
-    assert has_meaningful_gaps([90000000, 90130000]) is True
+    assert has_meaningful_gaps([HogaMs(90000000), HogaMs(90130000)]) is True
 
 
 def test_gap_outside_continuous_session_ignored() -> None:
     """A gap that crosses the pre-session/session boundary must not count.
     Three dense in-session events prove there is no gap WITHIN the session;
     the pre-session sample at 08:40 is filtered out before gap analysis."""
-    ts = [84000000, 90000000, 90001000, 90002000]
+    ts = [HogaMs(84000000), HogaMs(90000000), HogaMs(90001000), HogaMs(90002000)]
     # in_session = [90000000, 90001000, 90002000] — three points, 1s apart, no 60s gap.
     assert has_meaningful_gaps(ts) is False
 
@@ -120,4 +121,4 @@ def test_empty_list_returns_true() -> None:
 
 def test_single_in_session_event_returns_true() -> None:
     """One in-session datapoint isn't enough to compute gap presence; conservative True."""
-    assert has_meaningful_gaps([90000000]) is True
+    assert has_meaningful_gaps([HogaMs(90000000)]) is True

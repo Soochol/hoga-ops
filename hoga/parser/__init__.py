@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import assert_never
 
 from hoga.api.disk_state import has_meaningful_gaps
+from hoga.api.timeenc import HogaMs
 from hoga.tables import brokers, candles, snapshots, trades
 from hoga.tables.brokers import BrokerRow
 from hoga.tables.candles import Candle
@@ -226,6 +227,17 @@ def _collect_candles(
     return candles_list
 
 
+def _snapshot_ts_hhmmssms(snapshots: list[Orderbook]) -> list[HogaMs]:
+    """Extract HHMMSSmmm timestamps from Orderbook entities (encoding seam).
+
+    Orderbook.ts_ms is stored as plain ``int`` on the entity for now (entity-
+    level HogaMs adoption is a separate sweep). This helper is the single
+    place where the encoding is asserted by casting to HogaMs, so any future
+    schema drift surfaces here rather than silently breaking has_meaningful_gaps.
+    """
+    return [HogaMs(s.ts_ms) for s in snapshots]
+
+
 def _build_meta(
     *,
     info: StockInfo,
@@ -244,10 +256,10 @@ def _build_meta(
         except (ValueError, OSError):
             collection_complete = False
 
-    # Pure data-in/data-out: pass the in-memory snapshot timestamps directly.
-    # Avoids re-reading the just-written parquet and the hidden ordering
-    # invariant that would create (must run after snapshots.write_parquet).
-    is_partial = has_meaningful_gaps(s.ts_ms for s in snapshots_list)
+    # Encoding seam: Orderbook.ts_ms is HHMMSSmmm (entity native); cast to
+    # HogaMs at this single extraction point so future entity changes break
+    # here loudly rather than silently producing wrong is_partial values.
+    is_partial = has_meaningful_gaps(_snapshot_ts_hhmmssms(snapshots_list))
 
     return {
         "code": info.code,

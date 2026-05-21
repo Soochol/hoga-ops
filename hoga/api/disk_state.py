@@ -13,6 +13,8 @@ from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
 
+from hoga.api.timeenc import HogaMs
+
 
 class DiskState(Enum):
     NONE = "none"
@@ -58,20 +60,22 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> DiskState:
     return DiskState.NONE
 
 
-_SESSION_OPEN_MS = 90000000        # 09:00:00.000 in HHMMSSmmm
-_CHART_FINAL_TIME_MS = 153100000   # 15:31:00.000 in HHMMSSmmm — the orchestrator's terminus
-_GAP_THRESHOLD_MS = 60_000         # 1 minute
-_MIN_DATAPOINTS_FOR_GAP_ANALYSIS = 2  # need ≥2 to compute consecutive deltas
+_SESSION_OPEN_MS: HogaMs = HogaMs(90000000)        # 09:00:00.000
+_CHART_FINAL_TIME_MS: HogaMs = HogaMs(153100000)   # 15:31:00.000 — collector terminus
+_GAP_THRESHOLD_MS = 60_000                         # 1 minute (a duration, not a HogaMs)
+_MIN_DATAPOINTS_FOR_GAP_ANALYSIS = 2               # need ≥2 to compute consecutive deltas
 
 
-def has_meaningful_gaps(ts_ms_values: Iterable[int]) -> bool:
+def has_meaningful_gaps(ts_ms_values: Iterable[HogaMs]) -> bool:
     """True if any consecutive pair within continuous-trading hours has a gap
     ≥ 1 minute. Pure function — no I/O.
 
     Args:
-      ts_ms_values: snapshot timestamps in HHMMSSmmm encoding (parser's native form).
+      ts_ms_values: snapshot timestamps as HogaMs (HHMMSSmmm encoding).
         Pre-session and post-close events are filtered out before gap analysis,
-        so passing the full snapshot stream is safe and intended.
+        so passing the full snapshot stream is safe and intended. Callers
+        responsible for the HogaMs cast — typically a parser-side helper that
+        extracts from `Orderbook` entities.
 
     Returns:
       True if a gap is detected OR input has fewer than 2 in-session datapoints
