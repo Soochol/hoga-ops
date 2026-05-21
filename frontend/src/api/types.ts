@@ -76,8 +76,65 @@ export type Trade = {
   net_pressure: number;
 };
 
+export type CapturePhase = 'capturing' | 'parsing' | 'done' | 'failed' | 'cancelled';
+
+export interface CaptureProgress {
+  pages_done: number;
+  events_seen: number;
+  frontier_ms: number; // Unix epoch ms per ADR-0003
+  estimate_pct: number;
+  elapsed_ms: number;
+}
+
+export interface CaptureResult {
+  pages_written: number;
+  unique_events: number;
+  raw_dir: string;
+  parsed: boolean;
+}
+
+export interface CaptureError {
+  code: string;
+  message: string;
+  at_page?: number | null;
+}
+
+export interface CaptureJob {
+  job_id: string;
+  code: string;
+  date: string;
+  phase: CapturePhase;
+  options: { allow_partial: boolean; resume: boolean; capture_only: boolean };
+  started_at_ms: number;
+  progress: CaptureProgress | null;
+  result: CaptureResult | null;
+  error: CaptureError | null;
+}
+
 export type SSEEvent =
   | { type: 'inventory_added'; code: string; date: string }
   | { type: 'inventory_removed'; code: string; date: string }
+  | {
+      type: 'capture_progress';
+      job_id: string;
+      code: string;
+      date: string;
+      phase: CapturePhase;
+      pages_done: number;
+      events_seen: number;
+      frontier_ms: number;
+      estimate_pct: number;
+      elapsed_ms: number;
+    }
+  | { type: 'capture_phase'; job_id: string; code: string; date: string; phase: CapturePhase }
+  | {
+      type: 'capture_finished';
+      job_id: string;
+      code: string;
+      date: string;
+      phase: CapturePhase;
+      result: CaptureResult | null;
+      error: CaptureError | null;
+    }
   | { type: 'heartbeat' }
   | { type: 'disconnected' };
