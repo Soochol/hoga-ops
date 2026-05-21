@@ -22,6 +22,22 @@ export function useCaptureJob() {
 
   useEffect(() => {
     const off = subscribeToCaptureEvents((e) => {
+      if (
+        e.type !== 'capture_progress' &&
+        e.type !== 'capture_phase' &&
+        e.type !== 'capture_finished'
+      ) {
+        return;
+      }
+      // When a new job starts (or DELETE/dismiss happened in another tab
+      // before a new POST), the cached job_id no longer matches the event's
+      // job_id — patch-only would leave the UI on a stale terminal state.
+      // Invalidate so the next GET /latest replaces the cache wholesale.
+      const cached = qc.getQueryData<CaptureJob | null>(KEY);
+      if (cached && cached.job_id !== e.job_id) {
+        qc.invalidateQueries({ queryKey: KEY });
+        return;
+      }
       if (e.type === 'capture_progress') {
         // The event's `progress` field has the same shape as CaptureJob.progress
         // (both reference the CaptureProgress Wire Model), so we patch by nested
