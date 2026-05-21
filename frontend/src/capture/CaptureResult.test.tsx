@@ -1,12 +1,17 @@
 import '@testing-library/jest-dom/vitest';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { CaptureResult } from './CaptureResult';
 import type { CaptureJob } from '../api/types';
 
 function wrap(ui: React.ReactNode) {
   return <MemoryRouter>{ui}</MemoryRouter>;
+}
+
+function LocationProbe() {
+  const loc = useLocation();
+  return <div data-testid="loc">{loc.pathname + loc.search}</div>;
 }
 
 const base: CaptureJob = {
@@ -22,6 +27,22 @@ describe('CaptureResult', () => {
     render(wrap(<CaptureResult job={base} onDismiss={vi.fn()} onResume={vi.fn()} />));
     expect(screen.getByText(/Open in Replay/)).toBeInTheDocument();
     expect(screen.getByText(/View in Inventory/)).toBeInTheDocument();
+  });
+
+  it('Open in Replay navigates with the Replay page tabs= schema', () => {
+    // Locks the URL contract: ReplayViewer's useUrlSync hydrates tabs from
+    // `?tabs=CODE:fromDate:toDate&active=N`. The bare `?code=...&date=...`
+    // form was silently dropped, leaving the user on an empty Replay page.
+    render(
+      <MemoryRouter initialEntries={['/start']}>
+        <Routes>
+          <Route path="/start" element={<CaptureResult job={base} onDismiss={vi.fn()} onResume={vi.fn()} />} />
+          <Route path="/replay" element={<LocationProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText(/Open in Replay/));
+    expect(screen.getByTestId('loc').textContent).toBe('/replay?tabs=005930:20260520:20260520&active=0');
   });
 
   it('failed phase shows error message and Retry with Resume', () => {

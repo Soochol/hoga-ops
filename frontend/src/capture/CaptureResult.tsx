@@ -22,7 +22,14 @@ export function CaptureResult({ job, onDismiss, onResume }: Props) {
       <Shell job={job} elapsed={elapsed} kind="done" onDismiss={onDismiss}
              actions={
                <>
-                 <button onClick={() => navigate(`/replay?code=${job.code}&date=${job.date}`)} className={PRIMARY_BTN}>
+                 {/* Match the Replay page's URL schema (state/url.ts):
+                     `?tabs=CODE:fromDate:toDate&active=N`. Use the same
+                     Stock-Date as both fromDate and toDate so the new
+                     capture lands as a single-day tab. */}
+                 <button
+                   onClick={() => navigate(`/replay?tabs=${job.code}:${job.date}:${job.date}&active=0`)}
+                   className={PRIMARY_BTN}
+                 >
                    Open in Replay →
                  </button>
                  <button onClick={() => navigate('/inventory')} className={SECONDARY_BTN}>
