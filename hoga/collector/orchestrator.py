@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import json
 import time as _time
@@ -38,6 +39,28 @@ class HogaplayClientProto(Protocol):
 
 class PartialCaptureRefused(RuntimeError):
     """Capture target is today + Regular Session not yet closed and allow_partial=False."""
+
+
+class CaptureCancelled(RuntimeError):
+    """Raised by collect_stock_date when its CancelToken is set."""
+
+
+class CancelToken:
+    """Thin asyncio.Event wrapper for cooperative cancellation.
+
+    The API layer creates one token per job, passes it to collect_stock_date,
+    and calls .cancel() on POST /api/captures/latest/cancel.
+    """
+
+    def __init__(self) -> None:
+        self._event = asyncio.Event()
+
+    def cancel(self) -> None:
+        self._event.set()
+
+    @property
+    def cancelled(self) -> bool:
+        return self._event.is_set()
 
 
 @dataclass
@@ -181,12 +204,15 @@ def _page_step_loop(
     page_idx: int,
     t: int,
     on_progress: Callable[[ProgressEvent], None] | None = None,
+    cancel_token: CancelToken | None = None,
 ) -> tuple[set[int], int, int]:
     """Run the Page Step pagination loop; return (seen_seqs, page_idx, final_t)."""
     progress_path = raw_dir / "_progress.json"
     controller = PageStepController(initial_t=t)
 
     while True:
+        if cancel_token is not None and cancel_token.cancelled:
+            raise CaptureCancelled(f"capture cancelled at page {page_idx}")
         body, page_idx, new_seqs = _fetch_and_store_page(
             raw_dir, client, code, date, controller.next_t, page_idx, seen_seqs
         )
@@ -225,6 +251,7 @@ def collect_stock_date(
     allow_partial: bool = False,
     resume: bool = False,
     on_progress: Callable[[ProgressEvent], None] | None = None,
+    cancel_token: CancelToken | None = None,
 ) -> CollectResult:
     """Drive the full capture for one Stock-Date.
 
@@ -267,9 +294,12 @@ def collect_stock_date(
     seen_seqs, page_idx, t = _page_step_loop(
         raw_dir, client, code, date, started_at, rate_limit_s, seen_seqs, page_idx, t,
         on_progress=on_progress,
+        cancel_token=cancel_token,
     )
 
     # 3. chart.php once
+    if cancel_token is not None and cancel_token.cancelled:
+        raise CaptureCancelled("capture cancelled before chart fetch")
     chart_body = client.fetch_chart(code, date, CHART_FINAL_TIME_MS)
     (raw_dir / "chart.tsv").write_text(chart_body, encoding="utf-8")
 

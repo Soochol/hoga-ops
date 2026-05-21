@@ -3,7 +3,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from hoga.collector.orchestrator import (
+    CancelToken,
+    CaptureCancelled,
     ProgressEvent,
     collect_stock_date,
 )
@@ -72,3 +76,31 @@ def test_no_callback_keeps_cli_behavior(tmp_path: Path) -> None:
         on_progress=None,
     )
     assert result.pages_written >= 1
+
+
+def test_cancel_token_stops_loop(tmp_path: Path) -> None:
+    token = CancelToken()
+    seen: list[ProgressEvent] = []
+
+    def on_progress(e: ProgressEvent) -> None:
+        seen.append(e)
+        if len(seen) == 2:
+            token.cancel()
+
+    client = _FakeClient()
+    with pytest.raises(CaptureCancelled):
+        collect_stock_date(
+            client=client,
+            code="005930",
+            date="20260520",
+            data_dir=tmp_path,
+            rate_limit_s=0.0,
+            allow_partial=True,
+            on_progress=on_progress,
+            cancel_token=token,
+        )
+
+    # Raw pages written before cancel are preserved.
+    raw_dir = tmp_path / "raw" / "20260520" / "005930"
+    written = sorted(raw_dir.glob("first_*.tsv"))
+    assert len(written) >= 1
