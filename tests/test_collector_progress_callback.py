@@ -15,9 +15,11 @@ class _FakeClient:
         self.first_calls = 0
 
     def fetch_info(self, code: str, date: str) -> str:
+        del code, date
         return "info_field\tvalue\n"
 
     def fetch_first(self, code: str, date: str, time_ms: int) -> str:
+        del code, date, time_ms
         self.first_calls += 1
         if self.first_calls > 3:
             return ""
@@ -30,6 +32,7 @@ class _FakeClient:
     def fetch_chart(
         self, code: str, date: str, time_ms: int, bong: int = 1, gap: int = 60000
     ) -> str:
+        del code, date, time_ms, bong, gap
         return ""
 
 
