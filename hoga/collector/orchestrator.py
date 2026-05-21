@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import time as _time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -44,6 +45,21 @@ class CollectResult:
     raw_dir: Path
     pages_written: int
     unique_events: int
+
+
+@dataclass(frozen=True)
+class ProgressEvent:
+    """Snapshot of capture progress, emitted after each Page write.
+
+    `frontier_hhmmss` is the raw HHMMSSmmm value (collector encoding); the
+    API layer converts to Unix-ms before publishing to clients (see
+    CONTEXT.md `Capture Frontier`).
+    """
+    code: str
+    date: str
+    pages_done: int
+    events_seen: int
+    frontier_hhmmss: int
 
 
 def _now_kst() -> dt.datetime:
@@ -164,6 +180,7 @@ def _page_step_loop(
     seen_seqs: set[int],
     page_idx: int,
     t: int,
+    on_progress: Callable[[ProgressEvent], None] | None = None,
 ) -> tuple[set[int], int, int]:
     """Run the Page Step pagination loop; return (seen_seqs, page_idx, final_t)."""
     progress_path = raw_dir / "_progress.json"
@@ -182,6 +199,14 @@ def _page_step_loop(
             started_at=started_at,
             finished_at=None,
         )
+        if on_progress is not None:
+            on_progress(ProgressEvent(
+                code=code,
+                date=date,
+                pages_done=page_idx,
+                events_seen=len(seen_seqs),
+                frontier_hhmmss=decision.progress_t,
+            ))
         if decision.should_stop:
             break
         if rate_limit_s > 0:
@@ -199,6 +224,7 @@ def collect_stock_date(
     rate_limit_s: float = 0.2,
     allow_partial: bool = False,
     resume: bool = False,
+    on_progress: Callable[[ProgressEvent], None] | None = None,
 ) -> CollectResult:
     """Drive the full capture for one Stock-Date.
 
@@ -239,7 +265,8 @@ def collect_stock_date(
         t = DATA_WINDOW_START_MS
 
     seen_seqs, page_idx, t = _page_step_loop(
-        raw_dir, client, code, date, started_at, rate_limit_s, seen_seqs, page_idx, t
+        raw_dir, client, code, date, started_at, rate_limit_s, seen_seqs, page_idx, t,
+        on_progress=on_progress,
     )
 
     # 3. chart.php once
