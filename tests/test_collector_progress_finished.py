@@ -72,7 +72,6 @@ def test_progress_json_has_finished_true_on_natural_termination(tmp_path: Path) 
         date="20260520",
         data_dir=tmp_path,
         rate_limit_s=0.0,
-        allow_partial=True,
     )
     progress = json.loads(
         (tmp_path / "raw" / "20260520" / "005930" / "_progress.json").read_text(encoding="utf-8")
@@ -90,7 +89,6 @@ def test_progress_json_finished_false_on_cancel(tmp_path: Path) -> None:
             date="20260520",
             data_dir=tmp_path,
             rate_limit_s=0.0,
-            allow_partial=True,
             cancel_token=token,
         )
     progress_path = tmp_path / "raw" / "20260520" / "005930" / "_progress.json"

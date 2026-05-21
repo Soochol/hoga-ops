@@ -26,7 +26,6 @@ def _cfg() -> Config:
 def collect(
     code: str = typer.Option(..., "--code"),
     date: str = typer.Option(..., "--date"),
-    allow_partial: bool = typer.Option(False, "--allow-partial"),
     resume: bool = typer.Option(False, "--resume"),
 ) -> None:
     """Capture a Stock-Date from hogaplay.com."""
@@ -44,7 +43,6 @@ def collect(
                 code=code,
                 date=date,
                 data_dir=cfg.data_dir,
-                allow_partial=allow_partial,
                 resume=resume,
             )
         except Exception as e:  # noqa: BLE001

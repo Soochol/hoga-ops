@@ -42,8 +42,8 @@ class HogaplayClientProto(Protocol):
     ) -> str: ...
 
 
-class PartialCaptureRefused(RuntimeError):
-    """Capture target is today + Data Window not yet closed (16:00 KST) and allow_partial=False."""
+class TodayTooEarlyRefused(RuntimeError):
+    """Capture target is today (KST) and now.hour < 18 — policy refuses regardless of Data Window state."""
 
 
 class CaptureCancelled(RuntimeError):
@@ -95,14 +95,20 @@ def _now_kst() -> dt.datetime:
     return dt.datetime.now(tz=KST)
 
 
-def is_partial_capture(date: str, now: dt.datetime) -> bool:
+# Policy cutoff for "is it too early to capture today?" — distinct from
+# _DATA_WINDOW_CLOSE_HOUR (= 16, when raw data stops). The 2-hour buffer
+# accounts for hogaplay's post-close aggregation lag. See spec §11 Q14.
+_TODAY_TOO_EARLY_HOUR = 18
+
+
+def is_today_too_early(date: str, now: dt.datetime) -> bool:
     try:
         d = dt.date(int(date[:4]), int(date[4:6]), int(date[6:8]))
     except (ValueError, IndexError):
         return False
     if d != now.date():
         return False
-    return now.hour < _DATA_WINDOW_CLOSE_HOUR
+    return now.hour < _TODAY_TOO_EARLY_HOUR
 
 
 def _max_event_time(page_body: str) -> int | None:
@@ -267,7 +273,6 @@ def collect_stock_date(
     date: str,
     data_dir: Path,
     rate_limit_s: float = 0.2,
-    allow_partial: bool = False,
     resume: bool = False,
     on_progress: Callable[[ProgressEvent], None] | None = None,
     cancel_token: CancelToken | None = None,
@@ -284,11 +289,10 @@ def collect_stock_date(
       4. chart.php once at CHART_FINAL_TIME_MS.
     """
     now = _now_kst()
-    if not allow_partial and is_partial_capture(date, now):
-        raise PartialCaptureRefused(
-            f"date={date} is today (KST) and the Data Window has not closed "
-            f"(closes at {_DATA_WINDOW_CLOSE_HOUR}:00 KST). "
-            "Pass --allow-partial to capture anyway."
+    if is_today_too_early(date, now):
+        raise TodayTooEarlyRefused(
+            f"date={date} is today (KST) and now.hour={now.hour} < {_TODAY_TOO_EARLY_HOUR}. "
+            "Wait until 18:00 KST."
         )
 
     raw_dir = data_dir / "raw" / date / code

@@ -50,7 +50,6 @@ def test_on_progress_called_per_page(tmp_path: Path) -> None:
         date="20260520",
         data_dir=tmp_path,
         rate_limit_s=0.0,
-        allow_partial=True,
         on_progress=events.append,
     )
 
@@ -72,7 +71,6 @@ def test_no_callback_keeps_cli_behavior(tmp_path: Path) -> None:
         date="20260520",
         data_dir=tmp_path,
         rate_limit_s=0.0,
-        allow_partial=True,
         on_progress=None,
     )
     assert result.pages_written >= 1
@@ -95,7 +93,6 @@ def test_cancel_token_stops_loop(tmp_path: Path) -> None:
             date="20260520",
             data_dir=tmp_path,
             rate_limit_s=0.0,
-            allow_partial=True,
             on_progress=on_progress,
             cancel_token=token,
         )

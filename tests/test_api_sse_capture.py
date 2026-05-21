@@ -70,7 +70,7 @@ async def test_sse_capture_finished_after_progress(tmp_path: Path, monkeypatch) 
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.post(f"{base}/api/captures", json={
                 "code": "005930", "date": "20260520",
-                "allow_partial": True, "resume": False, "capture_only": True,
+                "resume": False, "capture_only": True,
             })
             assert r.status_code == 201, r.text
 

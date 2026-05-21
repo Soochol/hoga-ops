@@ -32,10 +32,10 @@ from hoga.collector.orchestrator import (
     DATA_WINDOW_START_MS,
     CancelToken,
     CaptureCancelled,
-    PartialCaptureRefused,
     ProgressEvent,
+    TodayTooEarlyRefused,
     collect_stock_date,
-    is_partial_capture,
+    is_today_too_early,
 )
 from hoga.config import CookieMissingError
 from hoga.parser import parse_stock_date
@@ -56,8 +56,8 @@ def _exception_to_error_code(exc: BaseException) -> str | None:
     Returns None for CaptureCancelled — that produces a `cancelled` phase,
     not a `failed` one.
     """
-    if isinstance(exc, PartialCaptureRefused):
-        return "partial_refused"
+    if isinstance(exc, TodayTooEarlyRefused):
+        return "today_too_early"
     if isinstance(exc, CookieMissingError):
         return "cookie_missing"
     if isinstance(exc, CookieExpiredError):
@@ -266,7 +266,6 @@ async def _run_capture_job(
                 date=state.date,
                 data_dir=data_dir,
                 rate_limit_s=0.0 if state.options.get("_fast_test", False) else 0.2,
-                allow_partial=bool(state.options.get("allow_partial", False)),
                 resume=bool(state.options.get("resume", False)),
                 on_progress=_make_progress_callback(state),
                 cancel_token=state.cancel_token,
@@ -322,7 +321,6 @@ KST = timezone(timedelta(hours=9))
 class StartCaptureRequest(BaseModel):
     code: str = Field(pattern=r"^\d{6}$")
     date: str = Field(pattern=r"^\d{8}$")
-    allow_partial: bool = False
     resume: bool = False
     capture_only: bool = False
 
@@ -356,21 +354,20 @@ def build_router(
                         "latest": _latest.to_wire().model_dump(),
                     },
                 )
-            # Backend re-validation of partial capture (defense in depth).
+            # Backend re-validation of today-too-early policy (defense in depth).
             now_kst = datetime.now(tz=KST)
-            if not req.allow_partial and is_partial_capture(req.date, now_kst):
+            if is_today_too_early(req.date, now_kst):
                 raise HTTPException(
                     status_code=400,
                     detail={
-                        "code": "partial_refused",
+                        "code": "today_too_early",
                         "message": (
-                            f"date={req.date} is today (KST) before Data Window close."
+                            f"date={req.date} is today (KST) and now.hour={now_kst.hour} < 18."
                         ),
                     },
                 )
 
             options: dict[str, Any] = {
-                "allow_partial": req.allow_partial,
                 "resume": req.resume,
                 "capture_only": req.capture_only,
             }

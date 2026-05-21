@@ -160,7 +160,7 @@ class CaptureJob(BaseModel):
     code: str
     date: str
     phase: CapturePhase
-    options: dict  # {allow_partial, resume, capture_only}
+    options: dict  # {resume, capture_only}
     started_at_ms: int  # Unix ms, set just before collect_stock_date call
     progress: CaptureProgress | None = None
     result: CaptureResult | None = None

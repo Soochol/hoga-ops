@@ -24,14 +24,14 @@ from hoga.collector import orchestrator as orch
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
 from hoga.collector.orchestrator import (
     CaptureCancelled,
-    PartialCaptureRefused,
     ProgressEvent,
+    TodayTooEarlyRefused,
 )
 from hoga.config import CookieMissingError
 
 
-def test_maps_partial_refused() -> None:
-    assert _exception_to_error_code(PartialCaptureRefused("x")) == "partial_refused"
+def test_maps_today_too_early() -> None:
+    assert _exception_to_error_code(TodayTooEarlyRefused("x")) == "today_too_early"
 
 
 def test_maps_cookie_expired() -> None:
@@ -67,7 +67,7 @@ def test_capture_job_state_initial_phase() -> None:
         job_id="20260521T100000-005930-20260520",
         code="005930",
         date="20260520",
-        options={"allow_partial": False, "resume": False, "capture_only": False},
+        options={"resume": False, "capture_only": False},
     )
     assert state.to_wire().phase == "capturing"
     assert state.to_wire().progress is None
@@ -86,7 +86,7 @@ def test_to_wire_converts_frontier_to_unix_ms() -> None:
         job_id="job-1",
         code="005930",
         date="20260520",
-        options={"allow_partial": False, "resume": False, "capture_only": False},
+        options={"resume": False, "capture_only": False},
         pages_done=5,
         events_seen=100,
         frontier=HogaMs(132400000),  # 13:24:00.000
@@ -118,7 +118,7 @@ async def test_progress_callback_hops_to_loop_when_wired() -> None:
             job_id="j-thread",
             code="005930",
             date="20260520",
-            options={"allow_partial": True, "resume": False, "capture_only": True},
+            options={"resume": False, "capture_only": True},
             started_at_ms=int(asyncio.get_running_loop().time() * 1000),
         )
         callback = cap_mod._make_progress_callback(state)
@@ -172,7 +172,7 @@ async def test_run_capture_job_reaches_done(tmp_path: Path) -> None:
         job_id="job-1",
         code="005930",
         date="20260520",
-        options={"allow_partial": True, "resume": False, "capture_only": True, "_fast_test": True},
+        options={"resume": False, "capture_only": True, "_fast_test": True},
     )
     cap_mod._latest = state
 
@@ -233,7 +233,7 @@ def test_post_captures_400_when_cookie_missing(tmp_path: Path, _patch_run_job) -
     client = _make_app(tmp_path, _failing_factory)
     r = client.post("/api/captures", json={
         "code": "005930", "date": "20260520",
-        "allow_partial": True, "resume": False, "capture_only": True,
+        "resume": False, "capture_only": True,
     })
     assert r.status_code == 400
     assert r.json()["detail"]["code"] == "cookie_missing"
@@ -251,26 +251,27 @@ def test_post_captures_returns_201(tmp_path: Path, _patch_run_job) -> None:
     client = _make_app(tmp_path, _FakeFastClient)
     r = client.post("/api/captures", json={
         "code": "005930", "date": "20260520",
-        "allow_partial": True, "resume": False, "capture_only": True,
+        "resume": False, "capture_only": True,
     })
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["code"] == "005930"
     assert body["date"] == "20260520"
     assert body["phase"] == "capturing"
-    assert body["options"]["allow_partial"] is True
+    assert body["options"]["resume"] is False
 
 
-def test_post_captures_400_partial_refused(
+def test_post_captures_400_today_too_early(
     tmp_path: Path, monkeypatch, _patch_run_job,
 ) -> None:
-    """Today's KST date with allow_partial=false → 400 partial_refused.
+    """Today's KST date before 18:00 → 400 today_too_early.
 
-    Mocks the KST clock used by is_partial_capture by patching `datetime.now`
+    Mocks the KST clock used by is_today_too_early by patching `datetime.now`
     inside hoga.collector.orchestrator so the route's guard sees 'today'.
     """
-    # Pretend today is 2026-05-20 at 10:00 KST (before 16:00 Data Window close).
-    fixed_now = _dt.datetime(2026, 5, 20, 10, 0, tzinfo=_dt.timezone(_dt.timedelta(hours=9)))
+    del _patch_run_job
+    # Pretend today is 2026-05-20 at 17:30 KST (before 18:00 cutoff).
+    fixed_now = _dt.datetime(2026, 5, 20, 17, 30, tzinfo=_dt.timezone(_dt.timedelta(hours=9)))
 
     class _FixedDateTime(_dt.datetime):
         @classmethod
@@ -285,10 +286,10 @@ def test_post_captures_400_partial_refused(
     client = _make_app(tmp_path, _FakeFastClient)
     r = client.post("/api/captures", json={
         "code": "005930", "date": "20260520",  # matches fixed_now date
-        "allow_partial": False, "resume": False, "capture_only": True,
+        "resume": False, "capture_only": True,
     })
     assert r.status_code == 400
-    assert r.json()["detail"]["code"] == "partial_refused"
+    assert r.json()["detail"]["code"] == "today_too_early"
 
 
 def test_post_captures_409_when_running(tmp_path: Path, _patch_run_job) -> None:
@@ -299,12 +300,12 @@ def test_post_captures_409_when_running(tmp_path: Path, _patch_run_job) -> None:
     client = _make_app(tmp_path, _FakeFastClient)
     r1 = client.post("/api/captures", json={
         "code": "005930", "date": "20260520",
-        "allow_partial": True, "resume": False, "capture_only": True,
+        "resume": False, "capture_only": True,
     })
     assert r1.status_code == 201
     r2 = client.post("/api/captures", json={
         "code": "000660", "date": "20260520",
-        "allow_partial": True, "resume": False, "capture_only": True,
+        "resume": False, "capture_only": True,
     })
     assert r2.status_code == 409
     assert r2.json()["detail"]["latest"]["code"] == "005930"
@@ -340,7 +341,7 @@ def test_dismiss_when_running_409(tmp_path: Path, _patch_run_job) -> None:
     client = _make_app(tmp_path, _FakeFastClient)
     r1 = client.post("/api/captures", json={
         "code": "005930", "date": "20260520",
-        "allow_partial": True, "resume": False, "capture_only": True,
+        "resume": False, "capture_only": True,
     })
     assert r1.status_code == 201
     r2 = client.delete("/api/captures/latest")
@@ -355,7 +356,7 @@ def test_cancel_running_returns_202(tmp_path: Path, _patch_run_job) -> None:
     client = _make_app(tmp_path, _FakeFastClient)
     client.post("/api/captures", json={
         "code": "005930", "date": "20260520",
-        "allow_partial": True, "resume": False, "capture_only": True,
+        "resume": False, "capture_only": True,
     })
     r = client.post("/api/captures/latest/cancel")
     assert r.status_code == 202
@@ -368,7 +369,7 @@ def test_dismiss_after_terminal_clears(tmp_path: Path) -> None:
         job_id="done-job",
         code="005930",
         date="20260520",
-        options={"allow_partial": True, "resume": False, "capture_only": True},
+        options={"resume": False, "capture_only": True},
         phase="done",
     )
     cap_mod._latest = state
@@ -386,7 +387,7 @@ def test_cancel_when_terminal_409(tmp_path: Path) -> None:
         job_id="done-job",
         code="005930",
         date="20260520",
-        options={"allow_partial": True, "resume": False, "capture_only": True},
+        options={"resume": False, "capture_only": True},
         phase="done",
     )
     cap_mod._latest = state

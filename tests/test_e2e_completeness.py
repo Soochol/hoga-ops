@@ -55,7 +55,6 @@ def test_collect_then_parse_then_query_marks_complete(tmp_path: Path) -> None:
         date="20260520",
         data_dir=tmp_path,
         rate_limit_s=0.0,
-        allow_partial=True,
     )
     parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
     eng = QueryEngine(tmp_path)
