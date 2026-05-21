@@ -36,7 +36,13 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> DiskState:
     parquet_dir = data_dir / "parquet" / date / code
     meta_path = parquet_dir / "meta.json"
     if meta_path.exists():
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            # Truncated / zero-byte / unreadable meta.json — treat as in-progress
+            # so the worker re-captures rather than crashing the calendar / inventory.
+            # Matches hoga/parser/__init__.py's pattern for _progress.json reads.
+            return DiskState.CLIENT_INCOMPLETE
         # Legacy meta (pre-foundation) lacks both fields. Conservative default
         # is "client incomplete" so a subsequent capture run will upgrade it.
         collection_complete = bool(meta.get("collection_complete", False))

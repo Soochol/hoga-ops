@@ -81,6 +81,14 @@ def test_legacy_meta_without_bits_defaults_to_client_incomplete(tmp_path: Path) 
     assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.CLIENT_INCOMPLETE
 
 
+def test_malformed_meta_json_returns_client_incomplete(tmp_path: Path) -> None:
+    """Truncated / corrupt meta.json must not crash callers — conservative fallback."""
+    parquet_dir = tmp_path / "parquet" / "20260520" / "005930"
+    parquet_dir.mkdir(parents=True)
+    (parquet_dir / "meta.json").write_text("{not valid json", encoding="utf-8")
+    assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.CLIENT_INCOMPLETE
+
+
 # CHART_FINAL_TIME_MS = 153100000 (15:31:00.000 in HHMMSSmmm)
 # Regular session open ≈ 90000000 (09:00:00.000)
 
