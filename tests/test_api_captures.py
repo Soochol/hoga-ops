@@ -21,6 +21,7 @@ from hoga.api.captures import (
 )
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.collector import orchestrator as orch
+from hoga.config import CookieMissingError
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
 from hoga.collector.orchestrator import (
     CaptureCancelled,
@@ -214,6 +215,35 @@ def _patch_run_job(monkeypatch):
         # Leave state.phase at its "capturing" default so is_terminal stays False.
         return
     monkeypatch.setattr(cap_mod, "_run_capture_job", _noop)
+
+
+def test_post_captures_400_when_cookie_missing(tmp_path: Path, _patch_run_job) -> None:
+    """client_factory raising CookieMissingError → 400, NOT 500.
+
+    Regression for the bug where the factory ran AFTER _latest was assigned,
+    so a missing cookie left _latest stuck in "capturing" forever and every
+    subsequent POST returned 409 already_running.
+    """
+    del _patch_run_job
+    reset_state_for_tests()
+
+    def _failing_factory():
+        raise CookieMissingError("No cookie found. test fixture.")
+
+    client = _make_app(tmp_path, _failing_factory)
+    r = client.post("/api/captures", json={
+        "code": "005930", "date": "20260520",
+        "allow_partial": True, "resume": False, "capture_only": True,
+    })
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "cookie_missing"
+
+    # AND _latest must NOT be polluted — a follow-up POST should NOT see 409.
+    # We can't actually retry without a working factory, but we can verify
+    # via GET that the singleton is clean.
+    r2 = client.get("/api/captures/latest")
+    assert r2.status_code == 200
+    assert r2.json() is None, "stuck _latest pollutes singleton — the bug"
 
 
 def test_post_captures_returns_201(tmp_path: Path, _patch_run_job) -> None:

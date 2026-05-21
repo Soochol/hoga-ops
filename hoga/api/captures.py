@@ -37,6 +37,7 @@ from hoga.collector.orchestrator import (
     collect_stock_date,
     is_partial_capture,
 )
+from hoga.config import CookieMissingError
 from hoga.parser import parse_stock_date
 
 # Fail fast if someone runs uvicorn multi-worker — see spec §4.4.
@@ -57,6 +58,8 @@ def _exception_to_error_code(exc: BaseException) -> str | None:
     """
     if isinstance(exc, PartialCaptureRefused):
         return "partial_refused"
+    if isinstance(exc, CookieMissingError):
+        return "cookie_missing"
     if isinstance(exc, CookieExpiredError):
         return "cookie_expired"
     if isinstance(exc, HogaplayHTTPError):
@@ -375,6 +378,19 @@ def build_router(
             # termination iterations don't dominate run time.
             if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
                 options["_fast_test"] = True
+            # Build the client FIRST. If it raises (missing/invalid cookie,
+            # config error), the request fails cleanly without polluting the
+            # _latest singleton — otherwise the failed state would stick
+            # around as a non-terminal "capturing" job that every subsequent
+            # POST sees as 409 already_running.
+            try:
+                client = client_factory()
+            except CookieMissingError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "cookie_missing", "message": str(exc)},
+                ) from exc
+
             state = CaptureJobState(
                 job_id=_make_job_id(req.code, req.date),
                 code=req.code,
@@ -388,7 +404,6 @@ def build_router(
             # 202 while the capture continued.
             state.cancel_token = CancelToken()
             _latest = state
-            client = client_factory()
             state.task = asyncio.create_task(
                 _run_capture_job(state=state, client=client, data_dir=data_dir)
             )
