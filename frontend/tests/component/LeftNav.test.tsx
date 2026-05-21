@@ -1,6 +1,11 @@
+import { vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import LeftNav from '../../src/nav/LeftNav';
+
+vi.mock('../../src/capture/useCaptureJob', () => ({
+  useCaptureJob: () => ({ job: null }),
+}));
 
 it('renders 4 nav items', () => {
   render(<MemoryRouter><LeftNav /></MemoryRouter>);

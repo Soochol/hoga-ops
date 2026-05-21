@@ -1,5 +1,6 @@
 import NavItem from './NavItem';
 import StatusDot from './StatusDot';
+import CaptureStatusPill from './CaptureStatusPill';
 
 export default function LeftNav() {
   return (
@@ -18,6 +19,7 @@ export default function LeftNav() {
         <NavItem to="/capture" label="Capture" />
       </Section>
       <div className="flex-1" />
+      <CaptureStatusPill />
       <Section label="System">
         <NavItem to="/settings" label="Settings" />
       </Section>
