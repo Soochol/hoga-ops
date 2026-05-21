@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import assert_never
 
+from hoga.api.disk_state import has_meaningful_gaps
 from hoga.tables import brokers, candles, snapshots, trades
 from hoga.tables.brokers import BrokerRow
 from hoga.tables.candles import Candle
@@ -131,7 +132,13 @@ def parse_stock_date(
     brokers.write_parquet(brokers_list, out_dir / "brokers.parquet")
     candles.write_parquet(candles_list, out_dir / "candles.parquet")
 
-    meta = _build_meta(info=info, seen_seqs=seen_seqs, skipped=skipped, raw_dir=raw_dir)
+    meta = _build_meta(
+        info=info,
+        seen_seqs=seen_seqs,
+        skipped=skipped,
+        raw_dir=raw_dir,
+        snapshots_list=snapshots_list,
+    )
     (out_dir / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -225,8 +232,23 @@ def _build_meta(
     seen_seqs: set[int],
     skipped: list[tuple[str, int, str]],
     raw_dir: Path,
+    snapshots_list: list[Orderbook],
 ) -> dict[str, object]:
     pages = sorted(raw_dir.glob("first_*.tsv"))
+    progress_path = raw_dir / "_progress.json"
+    collection_complete = False
+    if progress_path.exists():
+        try:
+            progress = json.loads(progress_path.read_text(encoding="utf-8"))
+            collection_complete = bool(progress.get("finished", False))
+        except (ValueError, OSError):
+            collection_complete = False
+
+    # Pure data-in/data-out: pass the in-memory snapshot timestamps directly.
+    # Avoids re-reading the just-written parquet and the hidden ordering
+    # invariant that would create (must run after snapshots.write_parquet).
+    is_partial = has_meaningful_gaps(s.ts_ms for s in snapshots_list)
+
     return {
         "code": info.code,
         "name": info.name,
@@ -245,4 +267,6 @@ def _build_meta(
         "total_unique_events": len(seen_seqs),
         "parser_version": PARSER_VERSION,
         "warnings": [{"file": f, "line": ln, "reason": r} for f, ln, r in skipped],
+        "collection_complete": collection_complete,
+        "is_partial": is_partial,
     }
