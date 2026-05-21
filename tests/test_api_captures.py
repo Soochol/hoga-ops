@@ -236,7 +236,7 @@ def test_post_captures_400_partial_refused(
 ) -> None:
     """Today's KST date with allow_partial=false → 400 partial_refused.
 
-    Mocks the KST clock used by _is_partial_capture by patching `datetime.now`
+    Mocks the KST clock used by is_partial_capture by patching `datetime.now`
     inside hoga.collector.orchestrator so the route's guard sees 'today'.
     """
     # Pretend today is 2026-05-20 at 10:00 KST (before 16:00 Data Window close).

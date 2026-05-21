@@ -34,8 +34,8 @@ from hoga.collector.orchestrator import (
     CaptureCancelled,
     PartialCaptureRefused,
     ProgressEvent,
-    _is_partial_capture,
     collect_stock_date,
+    is_partial_capture,
 )
 from hoga.parser import parse_stock_date
 
@@ -85,28 +85,36 @@ class CaptureJobState:
     cancel_token: Any = None  # CancelToken; typed loosely to avoid circular import
     task: asyncio.Task | None = None
 
-    def to_wire(self) -> CaptureJob:
-        """Build the consumer-facing Wire Model. This is the ONLY to-wire entry
-        point — the HHMMSSmmm → Unix-ms conversion (per ADR-0003) happens here,
-        not in a separate helper, because state already knows its own date.
+    def to_progress(self) -> CaptureProgress | None:
+        """Build the wire-side CaptureProgress for this state, or None if no
+        page has completed yet. Owns the HHMMSSmmm → Unix-ms conversion per
+        ADR-0003 — both to_wire() and the SSE emission path go through here.
         """
-        progress = None
-        if self.pages_done > 0:
-            progress = CaptureProgress(
-                pages_done=self.pages_done,
-                events_seen=self.events_seen,
-                frontier_ms=hhmmssms_to_unix_ms(self.date, self.frontier_hhmmss),
-                estimate_pct=self.estimate_pct,
-                elapsed_ms=self.elapsed_ms,
-            )
+        if self.pages_done == 0:
+            return None
+        return CaptureProgress(
+            pages_done=self.pages_done,
+            events_seen=self.events_seen,
+            frontier_ms=hhmmssms_to_unix_ms(self.date, self.frontier_hhmmss),
+            estimate_pct=self.estimate_pct,
+            elapsed_ms=self.elapsed_ms,
+        )
+
+    def event_header(self) -> dict[str, Any]:
+        """Common fields every capture_* SSE event carries."""
+        return {
+            "job_id": self.job_id,
+            "code": self.code,
+            "date": self.date,
+            "phase": self.phase,
+        }
+
+    def to_wire(self) -> CaptureJob:
         return CaptureJob(
-            job_id=self.job_id,
-            code=self.code,
-            date=self.date,
-            phase=self.phase,  # type: ignore[arg-type]
+            **self.event_header(),  # type: ignore[arg-type]
             options=self.options,
             started_at_ms=self.started_at_ms,
-            progress=progress,
+            progress=self.to_progress(),
             result=self.result,
             error=self.error,
         )
@@ -198,20 +206,9 @@ def _apply_progress(state: CaptureJobState, evt: ProgressEvent) -> None:
     span = CHART_FINAL_TIME_MS - DATA_WINDOW_START_MS
     offset = max(0, evt.frontier_hhmmss - DATA_WINDOW_START_MS)
     state.estimate_pct = min(98, max(0, int(100 * offset / span)))
-    frontier_unix = hhmmssms_to_unix_ms(evt.date, evt.frontier_hhmmss)
-    _publish_event(CaptureProgressEvent(
-        job_id=state.job_id,
-        code=state.code,
-        date=state.date,
-        phase=state.phase,
-        progress=CaptureProgress(
-            pages_done=state.pages_done,
-            events_seen=state.events_seen,
-            frontier_ms=frontier_unix,
-            estimate_pct=state.estimate_pct,
-            elapsed_ms=state.elapsed_ms,
-        ),
-    ))
+    progress = state.to_progress()
+    assert progress is not None  # pages_done > 0 since on_progress just fired
+    _publish_event(CaptureProgressEvent(**state.event_header(), progress=progress))
 
 
 def _make_progress_callback(state: CaptureJobState):
@@ -252,10 +249,7 @@ async def _run_capture_job(
         state.cancel_token = CancelToken()
     state.started_at_ms = int(time.time() * 1000)
     state.phase = "capturing"
-    _publish_event(CapturePhaseEvent(
-        job_id=state.job_id, code=state.code, date=state.date,
-        phase=state.phase,
-    ))
+    _publish_event(CapturePhaseEvent(**state.event_header()))
 
     loop = asyncio.get_running_loop()
 
@@ -277,10 +271,7 @@ async def _run_capture_job(
         parsed = False
         if not state.options.get("capture_only", False):
             state.phase = "parsing"
-            _publish_event(CapturePhaseEvent(
-                job_id=state.job_id, code=state.code, date=state.date,
-                phase=state.phase,
-            ))
+            _publish_event(CapturePhaseEvent(**state.event_header()))
             await loop.run_in_executor(
                 None,
                 lambda: parse_stock_date(
@@ -315,8 +306,7 @@ async def _run_capture_job(
         state.phase = "failed"
 
     _publish_event(CaptureFinishedEvent(
-        job_id=state.job_id, code=state.code, date=state.date,
-        phase=state.phase,
+        **state.event_header(),
         result=state.result,
         error=state.error,
     ))
@@ -364,7 +354,7 @@ def build_router(
                 )
             # Backend re-validation of partial capture (defense in depth).
             now_kst = datetime.now(tz=KST)
-            if not req.allow_partial and _is_partial_capture(req.date, now_kst):
+            if not req.allow_partial and is_partial_capture(req.date, now_kst):
                 raise HTTPException(
                     status_code=400,
                     detail={

@@ -91,7 +91,7 @@ def _now_kst() -> dt.datetime:
     return dt.datetime.now(tz=KST)
 
 
-def _is_partial_capture(date: str, now: dt.datetime) -> bool:
+def is_partial_capture(date: str, now: dt.datetime) -> bool:
     try:
         d = dt.date(int(date[:4]), int(date[4:6]), int(date[6:8]))
     except (ValueError, IndexError):
@@ -212,6 +212,8 @@ def _page_step_loop(
     progress_path = raw_dir / "_progress.json"
     controller = PageStepController(initial_t=t)
 
+    last_emitted_t = -1
+    last_emitted_pages = -1
     while True:
         if cancel_token is not None and cancel_token.cancelled:
             raise CaptureCancelled(f"capture cancelled at page {page_idx}")
@@ -227,7 +229,14 @@ def _page_step_loop(
             started_at=started_at,
             finished_at=None,
         )
-        if on_progress is not None:
+        # Skip the callback when neither frontier nor pages_done advanced.
+        # The empty-page termination drain runs ~1262 iterations after the
+        # Data Window end; without this guard, every drain tick fires a
+        # no-op on_progress event that the API layer then ships across the
+        # SSE bus, swamping the queue and re-rendering the frontend.
+        if on_progress is not None and (
+            decision.progress_t != last_emitted_t or page_idx != last_emitted_pages
+        ):
             on_progress(ProgressEvent(
                 code=code,
                 date=date,
@@ -235,6 +244,8 @@ def _page_step_loop(
                 events_seen=len(seen_seqs),
                 frontier_hhmmss=decision.progress_t,
             ))
+            last_emitted_t = decision.progress_t
+            last_emitted_pages = page_idx
         if decision.should_stop:
             break
         if rate_limit_s > 0:
@@ -267,7 +278,7 @@ def collect_stock_date(
       4. chart.php once at CHART_FINAL_TIME_MS.
     """
     now = _now_kst()
-    if not allow_partial and _is_partial_capture(date, now):
+    if not allow_partial and is_partial_capture(date, now):
         raise PartialCaptureRefused(
             f"date={date} is today (KST) and the Data Window has not closed "
             f"(closes at {_DATA_WINDOW_CLOSE_HOUR}:00 KST). "

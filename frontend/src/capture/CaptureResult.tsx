@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import type { CaptureJob } from '../api/types';
 import { formatElapsed } from '../util/time';
@@ -8,86 +9,85 @@ interface Props {
   onResume: (job: CaptureJob) => void;
 }
 
+const PRIMARY_BTN = 'bg-accent text-bg font-semibold text-[13px] px-3.5 py-2 rounded';
+const SECONDARY_BTN = 'bg-bg-input border text-fg font-medium text-[13px] px-3.5 py-2 rounded';
+
 export function CaptureResult({ job, onDismiss, onResume }: Props) {
   const navigate = useNavigate();
   const elapsed = job.progress ? formatElapsed(job.progress.elapsed_ms) : '?';
 
   if (job.phase === 'done' && job.result) {
+    const r = job.result;
     return (
-      <div className="bg-bg-card border rounded p-3.5">
-        <Header job={job} elapsed={elapsed} kind="done" />
+      <Shell job={job} elapsed={elapsed} kind="done" onDismiss={onDismiss}
+             actions={
+               <>
+                 <button onClick={() => navigate(`/replay?code=${job.code}&date=${job.date}`)} className={PRIMARY_BTN}>
+                   Open in Replay →
+                 </button>
+                 <button onClick={() => navigate('/inventory')} className={SECONDARY_BTN}>
+                   View in Inventory
+                 </button>
+               </>
+             }>
         <div className="grid grid-cols-4 gap-3 mb-4">
-          <Stat label="Pages" value={job.result.pages_written.toString()} />
-          <Stat label="Events" value={job.result.unique_events.toLocaleString()} />
-          <Stat label="Parsed" value={job.result.parsed ? 'Y' : 'N'} highlight={job.result.parsed ? 'up' : undefined} />
+          <Stat label="Pages" value={r.pages_written.toString()} />
+          <Stat label="Events" value={r.unique_events.toLocaleString()} />
+          <Stat label="Parsed" value={r.parsed ? 'Y' : 'N'} highlight={r.parsed ? 'up' : undefined} />
           <Stat label="Raw" value="✓" />
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => navigate(`/replay?code=${job.code}&date=${job.date}`)}
-                  className="bg-accent text-bg font-semibold text-[13px] px-3.5 py-2 rounded">
-            Open in Replay →
-          </button>
-          <button onClick={() => navigate('/inventory')}
-                  className="bg-bg-input border text-fg font-medium text-[13px] px-3.5 py-2 rounded">
-            View in Inventory
-          </button>
-          <div className="flex-1" />
-          <button onClick={onDismiss}
-                  className="bg-bg-input border text-fg font-medium text-[13px] px-3.5 py-2 rounded">
-            Dismiss
-          </button>
-        </div>
-      </div>
+      </Shell>
     );
   }
 
   if (job.phase === 'failed' && job.error) {
     return (
-      <div className="bg-bg-card border rounded p-3.5">
-        <Header job={job} elapsed={elapsed} kind="failed" />
+      <Shell job={job} elapsed={elapsed} kind="failed" onDismiss={onDismiss}
+             actions={<button onClick={() => onResume(job)} className={PRIMARY_BTN}>Retry with Resume</button>}>
         <div className="bg-[rgba(244,63,94,0.08)] border border-[rgba(244,63,94,0.3)] rounded p-3 mb-3">
-          <div className="text-[12px] font-semibold text-[--down] mb-1.5 font-mono">
-            {job.error.code}
-          </div>
+          <div className="text-[12px] font-semibold text-[--down] mb-1.5 font-mono">{job.error.code}</div>
           <div className="text-[11.5px] text-fg-dim leading-relaxed">{job.error.message}</div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => onResume(job)}
-                  className="bg-accent text-bg font-semibold text-[13px] px-3.5 py-2 rounded">
-            Retry with Resume
-          </button>
-          <div className="flex-1" />
-          <button onClick={onDismiss}
-                  className="bg-bg-input border text-fg font-medium text-[13px] px-3.5 py-2 rounded">
-            Dismiss
-          </button>
-        </div>
-      </div>
+      </Shell>
     );
   }
 
   return (
-    <div className="bg-bg-card border rounded p-3.5">
-      <Header job={job} elapsed={elapsed} kind="cancelled" />
+    <Shell job={job} elapsed={elapsed} kind="cancelled" onDismiss={onDismiss}
+           actions={
+             <button onClick={() => onResume(job)} className={PRIMARY_BTN}>
+               Resume from page {job.progress?.pages_done ?? '?'}
+             </button>
+           }>
       <div className="text-[12px] text-fg-dim mb-3">
         Cancelled at page {job.progress?.pages_done ?? '?'}. Raw pages preserved on disk; click Resume to continue.
       </div>
+    </Shell>
+  );
+}
+
+type Kind = 'done' | 'failed' | 'cancelled';
+
+function Shell({
+  job, elapsed, kind, actions, onDismiss, children,
+}: {
+  job: CaptureJob; elapsed: string; kind: Kind;
+  actions: ReactNode; onDismiss: () => void; children: ReactNode;
+}) {
+  return (
+    <div className="bg-bg-card border rounded p-3.5">
+      <Header job={job} elapsed={elapsed} kind={kind} />
+      {children}
       <div className="flex gap-2">
-        <button onClick={() => onResume(job)}
-                className="bg-accent text-bg font-semibold text-[13px] px-3.5 py-2 rounded">
-          Resume from page {job.progress?.pages_done ?? '?'}
-        </button>
+        {actions}
         <div className="flex-1" />
-        <button onClick={onDismiss}
-                className="bg-bg-input border text-fg font-medium text-[13px] px-3.5 py-2 rounded">
-          Dismiss
-        </button>
+        <button onClick={onDismiss} className={SECONDARY_BTN}>Dismiss</button>
       </div>
     </div>
   );
 }
 
-function Header({ job, elapsed, kind }: { job: CaptureJob; elapsed: string; kind: 'done' | 'failed' | 'cancelled' }) {
+function Header({ job, elapsed, kind }: { job: CaptureJob; elapsed: string; kind: Kind }) {
   const tint = {
     done: ['bg-[rgba(34,197,94,0.10)]', 'text-[--up]', '✓'],
     failed: ['bg-[rgba(244,63,94,0.10)]', 'text-[--down]', '×'],
@@ -113,9 +113,9 @@ function Stat({ label, value, highlight }: { label: string; value: string; highl
   return (
     <div>
       <div className="text-[10.5px] uppercase tracking-wider text-fg-dim mb-1">{label}</div>
-      <div className={`font-mono text-[22px] font-medium tabular-nums ${
-        highlight === 'up' ? 'text-[--up]' : 'text-fg'
-      }`}>{value}</div>
+      <div className={`font-mono text-[22px] font-medium tabular-nums ${highlight === 'up' ? 'text-[--up]' : 'text-fg'}`}>
+        {value}
+      </div>
     </div>
   );
 }

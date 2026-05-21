@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CaptureJob } from '../api/types';
 import { formatElapsed, unixMsToKSTClock } from '../util/time';
 import { CaptureLog, type LogLine } from './CaptureLog';
@@ -10,27 +10,20 @@ interface Props {
 
 export function CaptureProgress({ job, onCancel }: Props) {
   const [confirming, setConfirming] = useState(false);
-  const logRef = useRef<LogLine[]>([]);
-  const lastPageRef = useRef(0);
-  const lastEventsSeenRef = useRef(0);
-  const [, force] = useState(0);
+  const [log, setLog] = useState<LogLine[]>([]);
 
   useEffect(() => {
     if (!job.progress) return;
-    if (job.progress.pages_done !== lastPageRef.current) {
-      // events_added = delta of cumulative events_seen across pages.
-      // Bug guard: events_seen is cumulative; the previous line's count is
-      // stored in lastEventsSeenRef, not events_added (which is itself a delta).
-      const added = Math.max(0, job.progress.events_seen - lastEventsSeenRef.current);
-      logRef.current = [
-        { page: job.progress.pages_done, frontier_ms: job.progress.frontier_ms,
-          events_added: added },
-        ...logRef.current,
-      ].slice(0, 10);
-      lastPageRef.current = job.progress.pages_done;
-      lastEventsSeenRef.current = job.progress.events_seen;
-      force((n) => n + 1);
-    }
+    const { pages_done, events_seen, frontier_ms } = job.progress;
+    setLog((prev) => {
+      if (prev[0]?.page === pages_done) return prev;
+      // events_seen is cumulative; events_added on each line is the delta
+      // for that page, so the previous cumulative total is the sum across
+      // all retained log lines.
+      const prevTotal = prev.reduce((acc, l) => acc + l.events_added, 0);
+      const events_added = Math.max(0, events_seen - prevTotal);
+      return [{ page: pages_done, frontier_ms, events_added }, ...prev].slice(0, 10);
+    });
   }, [job.progress]);
 
   const p = job.progress;
@@ -75,7 +68,7 @@ export function CaptureProgress({ job, onCancel }: Props) {
       <div className="text-[10px] uppercase tracking-wider text-fg-dimmer font-semibold mb-1.5">
         Live log
       </div>
-      <CaptureLog lines={logRef.current} />
+      <CaptureLog lines={log} />
 
       <div className="mt-3 text-right">
         {confirming ? (

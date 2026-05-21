@@ -29,12 +29,10 @@ class FakeHogaplayClient:
         del code, date, time_ms
         self._first_call += 1
         if self._first_call > _VISIBLE_PAGES:
-            # The PageStepController terminates on t >= DATA_WINDOW_END_MS
-            # after TERMINATION_EMPTY_PAGES empty pages, so ~1262 empty
-            # iterations run after the visible 5 pages. The 3ms throttle
-            # paces production below the SSE bus's 64-slot queue overflow,
-            # ensuring the terminal capture_finished event is delivered.
-            time.sleep(0.003)
+            # Empty page → collector's drain loop. The orchestrator now skips
+            # on_progress when frontier is unchanged, so the drain no longer
+            # publishes a flood of SSE events and the prior 3ms throttle is
+            # unnecessary.
             return ""
         # 150ms throttle on the first 5 pages so the visible progress is paced.
         time.sleep(0.15)
