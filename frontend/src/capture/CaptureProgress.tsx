@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CaptureJob } from '../api/types';
 import { formatElapsed, unixMsToKSTClock } from '../util/time';
 import { CaptureLog, type LogLine } from './CaptureLog';
@@ -11,17 +11,27 @@ interface Props {
 export function CaptureProgress({ job, onCancel }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [log, setLog] = useState<LogLine[]>([]);
+  // Tracks the cumulative events_seen we last logged. Survives the 10-entry
+  // log cap (sum-of-log would undercount once entries roll off) AND the
+  // mid-capture component remount (sum-of-log would be 0 and credit the
+  // entire cumulative count to the first log line). null = not yet observed.
+  const lastEventsSeenRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!job.progress) return;
     const { pages_done, events_seen, frontier_ms } = job.progress;
+    // First observation (component mount mid-capture): prime the ref to the
+    // current total so we don't dump it all into a fake "page X · +N events"
+    // log line. The user starts seeing per-page deltas from the NEXT page.
+    if (lastEventsSeenRef.current === null) {
+      lastEventsSeenRef.current = events_seen;
+      return;
+    }
+    if (events_seen === lastEventsSeenRef.current) return;
+    const events_added = Math.max(0, events_seen - lastEventsSeenRef.current);
+    lastEventsSeenRef.current = events_seen;
     setLog((prev) => {
       if (prev[0]?.page === pages_done) return prev;
-      // events_seen is cumulative; events_added on each line is the delta
-      // for that page, so the previous cumulative total is the sum across
-      // all retained log lines.
-      const prevTotal = prev.reduce((acc, l) => acc + l.events_added, 0);
-      const events_added = Math.max(0, events_seen - prevTotal);
       return [{ page: pages_done, frontier_ms, events_added }, ...prev].slice(0, 10);
     });
   }, [job.progress]);
