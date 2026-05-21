@@ -1,12 +1,16 @@
 """Unit tests for hoga.api.captures._exception_to_error_code (spec §4.1 table)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from hoga.api import captures as cap_mod
 from hoga.api.captures import (
     CaptureJobState,
     _exception_to_error_code,
     _lock,
+    _run_capture_job,
     get_latest,
     reset_state_for_tests,
 )
@@ -62,3 +66,47 @@ def test_capture_job_state_initial_phase() -> None:
 async def test_lock_acquire_release_roundtrip() -> None:
     async with _lock:
         pass  # smoke test: lock is an asyncio.Lock, usable in async ctx
+
+
+class _FakeFastClient:
+    """3 pages then empty, no rate limit."""
+    def __init__(self) -> None:
+        self.first_calls = 0
+    def fetch_info(self, code: str, date: str) -> str:
+        del code, date
+        return "k\tv\n"
+    def fetch_first(self, code: str, date: str, time_ms: int) -> str:
+        del code, date, time_ms
+        self.first_calls += 1
+        if self.first_calls > 3:
+            return ""
+        base = self.first_calls * 1000
+        t = 90000000 + (self.first_calls - 1) * 60000
+        return "\n".join(f"1\t1\t0\t{base+i}\t{t+i}\t0\t100" for i in range(3)) + "\n"
+    def fetch_chart(self, code: str, date: str, time_ms: int, **_) -> str:
+        del code, date, time_ms
+        return ""
+
+
+@pytest.mark.asyncio
+async def test_run_capture_job_reaches_done(tmp_path: Path) -> None:
+    reset_state_for_tests()
+    state = CaptureJobState(
+        job_id="job-1",
+        code="005930",
+        date="20260520",
+        options={"allow_partial": True, "resume": False, "capture_only": True, "_fast_test": True},
+    )
+    cap_mod._latest = state
+
+    await _run_capture_job(
+        state=state,
+        client=_FakeFastClient(),
+        data_dir=tmp_path,
+    )
+
+    assert state.phase == "done"
+    assert state.result is not None
+    assert state.result.pages_written >= 1
+    assert state.started_at_ms > 0
+    assert state.pages_done >= 1
