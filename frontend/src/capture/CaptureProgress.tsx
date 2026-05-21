@@ -34,7 +34,11 @@ export function CaptureProgress({ job, onCancel }: Props) {
   }, [job.progress]);
 
   const p = job.progress;
-  const phasePill = job.phase === 'capturing' ? 'CAPTURING' : 'PARSING';
+  // Parent Capture.tsx only mounts CaptureProgress while phase ∈ {capturing, parsing}.
+  // Reading the ternary with `parsing` as the explicit branch makes the default
+  // fall on the correct side if a future call site mounts us with a different
+  // phase (terminal states display "CAPTURING" rather than "PARSING").
+  const phasePill = job.phase === 'parsing' ? 'PARSING' : 'CAPTURING';
 
   return (
     <div className="bg-bg-card border rounded p-3.5">

@@ -244,7 +244,12 @@ async def _run_capture_job(
     'started_at_ms definition'. collect_stock_date is sync; we run it in a
     thread executor so the event loop stays free for SSE / other requests.
     """
-    state.cancel_token = CancelToken()
+    # cancel_token is created in the POST handler so a cancel arriving before
+    # this task ticks for the first time still finds a real token. Only create
+    # one here if state arrived without (defensive — covers test-only entry
+    # points that bypass the route).
+    if state.cancel_token is None:
+        state.cancel_token = CancelToken()
     state.started_at_ms = int(time.time() * 1000)
     state.phase = "capturing"
     _publish_event(CapturePhaseEvent(
@@ -296,7 +301,11 @@ async def _run_capture_job(
         state.phase = "done"
     except CaptureCancelled:
         state.phase = "cancelled"
-    except BaseException as exc:  # noqa: BLE001 — terminal failure path
+    except Exception as exc:  # noqa: BLE001 — terminal failure path
+        # Intentionally NOT catching BaseException: asyncio.CancelledError must
+        # propagate so graceful shutdown can unwind cleanly. KeyboardInterrupt
+        # / SystemExit aren't expected from the executor thread but if they
+        # arrive we want them to bubble too.
         code = _exception_to_error_code(exc)
         state.error = CaptureError(
             code=code or "internal_error",
@@ -382,6 +391,12 @@ def build_router(
                 date=req.date,
                 options=options,
             )
+            # Create the cancel token here, BEFORE the task is scheduled, so a
+            # cancel POST arriving in the micro-window between this return and
+            # _run_capture_job's first tick still finds a real token. Otherwise
+            # the cancel handler would no-op silently and the user would see
+            # 202 while the capture continued.
+            state.cancel_token = CancelToken()
             _latest = state
             client = client_factory()
             state.task = asyncio.create_task(
