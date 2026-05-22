@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { createChart, TickMarkType, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
-import { type Segment, virtualToReal } from '../util/time';
+import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
 import { CHART_LAYOUT_OPTIONS, CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 import { useViewportStore } from '../state/viewport';
@@ -30,10 +30,12 @@ export type ChartStageProps = {
    */
   bundle: RangeBundle | null;
   /**
-   * Stitched time-axis segments for the multi-day virtual timeline (Task 6.1).
-   * Each pane converts real-ms data to the virtual axis using these.
+   * Stitched Virtual Axis for the multi-day timeline (Task 6.1). Each pane
+   * converts real-ms data to the virtual axis through this object's methods.
+   * Construct once via `createVirtualAxis(...)` and pass down; the methods are
+   * frozen so identity-based memoisation in children stays cheap.
    */
-  segments: Segment[];
+  axis: VirtualAxis;
 };
 
 /**
@@ -72,21 +74,21 @@ function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-export default function ChartStage({ bundle, segments }: ChartStageProps) {
+export default function ChartStage({ bundle, axis }: ChartStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
   // Per-tab volume-profile mode (Task 9 / Task 21). Read from the active tab's
   // ChartViewPrefs so toggling 전체/일별 in the sidebar re-renders the overlay.
   const activeTabId = useTabsStore((s) => s.activeTabId);
   const volumeProfileMode = useTabsStore((s) => s.getPrefs(activeTabId).volumeProfileMode);
-  // Keep latest segments visible to the once-mounted subscribeVisibleTimeRange
+  // Keep the latest axis visible to the once-mounted subscribeVisibleTimeRange
   // handler. lightweight-charts emits times on our VIRTUAL axis (Task 6.1);
   // viewport consumers need REAL Unix-ms, so the handler reads this ref and
-  // converts via virtualToReal.
-  const segmentsRef = useRef<Segment[]>(segments);
+  // converts via axis.toReal.
+  const axisRef: MutableRefObject<VirtualAxis> = useRef<VirtualAxis>(axis);
   useEffect(() => {
-    segmentsRef.current = segments;
-  }, [segments]);
+    axisRef.current = axis;
+  }, [axis]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -118,9 +120,9 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
         // formatting" and replay-zoom-density plan Task 17c.
         tickMarkFormatter: (time: UTCTimestamp, tickType: TickMarkType): string => {
           const virtualMs = (time as number) * 1000;
-          const segs = segmentsRef.current;
-          if (segs.length === 0) return '';
-          const realMs = virtualToReal(segs, virtualMs);
+          const a = axisRef.current;
+          if (a.segments.length === 0) return '';
+          const realMs = a.toReal(virtualMs);
           const d = new Date(realMs + 9 * 3600_000); // KST = UTC + 9h
           switch (tickType) {
             case TickMarkType.Year:
@@ -149,11 +151,11 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
     const ts = c.timeScale();
     const handler = (range: unknown) => {
       const r = range as { from?: number | null; to?: number | null } | null;
-      const segs = segmentsRef.current;
+      const a = axisRef.current;
       const toReal = (sec: number | null | undefined) => {
         if (sec == null) return null;
         const virtualMs = sec * 1000;
-        return segs.length === 0 ? null : virtualToReal(segs, virtualMs);
+        return a.segments.length === 0 ? null : a.toReal(virtualMs);
       };
       const fromMs = toReal(r?.from);
       const toMs = toReal(r?.to);
@@ -248,16 +250,16 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
             asserting "pane was mounted".
           */}
           <div data-pane="candle" className="hidden">
-            <CandlePane chart={chart} bundle={bundle} segments={segments} paneIndex={0} />
+            <CandlePane chart={chart} bundle={bundle} axis={axis} paneIndex={0} />
           </div>
           <div data-pane="volume" className="hidden">
-            <VolumePane chart={chart} bundle={bundle} segments={segments} paneIndex={1} />
+            <VolumePane chart={chart} bundle={bundle} axis={axis} paneIndex={1} />
           </div>
           <div data-pane="ratio" className="hidden">
-            <RatioPane chart={chart} bundle={bundle} segments={segments} paneIndex={2} />
+            <RatioPane chart={chart} bundle={bundle} axis={axis} paneIndex={2} />
           </div>
           <div data-pane="fill-strength" className="hidden">
-            <FillStrengthPane chart={chart} bundle={bundle} segments={segments} paneIndex={4} />
+            <FillStrengthPane chart={chart} bundle={bundle} axis={axis} paneIndex={4} />
           </div>
           {/*
             Canvas overlay panes — portaled into their target pane's DOM
@@ -266,13 +268,13 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
             canvases themselves (the canvas lives inside the pane element).
           */}
           <div data-pane="intensity" className="hidden">
-            <IntensityPane chart={chart} bundle={bundle} segments={segments} paneIndex={3} />
+            <IntensityPane chart={chart} bundle={bundle} axis={axis} paneIndex={3} />
           </div>
           <div data-pane="volume-profile" className="hidden">
             <VolumeProfileOverlay
               chart={chart}
               bundle={bundle}
-              segments={segments}
+              axis={axis}
               mode={volumeProfileMode}
               paneIndex={0}
             />
@@ -282,7 +284,7 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
             segment boundary. pointer-events-none so it doesn't interfere with
             chart crosshair interaction.
           */}
-          <DayBoundaryOverlay chart={chart} segments={segments} />
+          <DayBoundaryOverlay chart={chart} axis={axis} />
         </>
       )}
     </div>

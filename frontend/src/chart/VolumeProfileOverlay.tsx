@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { IChartApi } from 'lightweight-charts';
 import type { RangeBundle, VolumeProfile, VolumeProfileBin } from '../api/types';
-import { type Segment, realToVirtual } from '../util/time';
+import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
@@ -22,7 +22,7 @@ function resolveAccentRGB(): [number, number, number] {
 type Props = {
   chart: IChartApi;
   bundle: RangeBundle;
-  segments: Segment[];
+  axis: VirtualAxis;
   mode?: 'per-day' | 'range';
   /** Approximate fraction of total volume covered by the value area (default 0.7). */
   valueAreaFrac?: number;
@@ -50,7 +50,7 @@ type Props = {
 export default function VolumeProfileOverlay({
   chart,
   bundle,
-  segments,
+  axis,
   mode = 'range',
   valueAreaFrac = 0.7,
   paneIndex,
@@ -123,16 +123,16 @@ export default function VolumeProfileOverlay({
       } else {
         // per-day: pair each segment with its own profile (volume_profile_by_day[i]).
         const byDay = bundle.volume_profile_by_day ?? [];
-        const n = Math.min(segments.length, byDay.length);
+        const n = Math.min(axis.segments.length, byDay.length);
         for (let i = 0; i < n; i++) {
-          const seg = segments[i];
+          const seg = axis.segments[i];
           const vp = byDay[i];
           if (!vp || vp.bins.length === 0) continue;
           const x0 = ts.timeToCoordinate(
-            (realToVirtual(segments, seg.sessionOpenMs) / 1000) as any,
+            (axis.toVirtual(seg.sessionOpenMs) / 1000) as any,
           );
           const x1 = ts.timeToCoordinate(
-            (realToVirtual(segments, seg.sessionCloseMs) / 1000) as any,
+            (axis.toVirtual(seg.sessionCloseMs) / 1000) as any,
           );
           const a = Math.max(0, Math.floor(x0 ?? 0));
           const z = Math.min(w, Math.floor(x1 ?? w));
@@ -179,7 +179,7 @@ export default function VolumeProfileOverlay({
       ts.unsubscribeVisibleTimeRangeChange(paint);
       ro.disconnect();
     };
-  }, [chart, bundle, segments, mode, valueAreaFrac]);
+  }, [chart, bundle, axis, mode, valueAreaFrac]);
 
   // Wrap canvas in a div — portal target is lightweight-charts' <tr>,
   // and <canvas> can't be a direct child of <tr> (DOM nesting warning).

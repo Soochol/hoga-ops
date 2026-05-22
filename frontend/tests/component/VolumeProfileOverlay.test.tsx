@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react';
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import VolumeProfileOverlay from '../../src/chart/VolumeProfileOverlay';
+import { createVirtualAxis } from '../../src/util/virtualAxis';
 
 beforeAll(() => {
   // jsdom canvas + ResizeObserver stubs.
@@ -48,9 +49,9 @@ describe('VolumeProfileOverlay', () => {
       <VolumeProfileOverlay
         chart={chart}
         bundle={bundle}
-        segments={[
-          { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 100, virtualStart: 0 },
-        ]}
+        axis={createVirtualAxis([
+          { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 100 },
+        ])}
         mode="per-day"
       />,
     );
@@ -69,7 +70,7 @@ describe('VolumeProfileOverlay', () => {
       },
     };
     const { unmount } = render(
-      <VolumeProfileOverlay chart={chart} bundle={bundle} segments={[]} mode="composite" />,
+      <VolumeProfileOverlay chart={chart} bundle={bundle} axis={createVirtualAxis([])} mode="range" />,
     );
     expect(ts.subscribeVisibleTimeRangeChange).toHaveBeenCalled();
     unmount();

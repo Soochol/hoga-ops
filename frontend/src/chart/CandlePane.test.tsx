@@ -12,7 +12,7 @@ vi.mock('lightweight-charts', async () => {
 });
 
 import CandlePane from './CandlePane';
-import { buildSegments } from '../util/time';
+import { createVirtualAxis } from '../util/virtualAxis';
 
 const makeChart = () =>
   ({
@@ -66,7 +66,7 @@ describe('CandlePane — per-segment Auction Window threshold (multi-day)', () =
       { date: '20260512', sessionOpenMs: day1Open, sessionCloseMs: day1Open + 6.5 * 3600_000 },
       { date: '20260513', sessionOpenMs: day2Open, sessionCloseMs: day2Open + 6.5 * 3600_000 },
     ];
-    const built = buildSegments(segs);
+    const axis = createVirtualAxis(segs);
     const candles = [
       { ts_ms: day1Open + 1000, open: 100, close: 101, high: 102, low: 99 }, // day1 normal
       { ts_ms: day1Auction + 1000, open: 100, close: 101, high: 102, low: 99 }, // day1 muted
@@ -76,7 +76,7 @@ describe('CandlePane — per-segment Auction Window threshold (multi-day)', () =
     const bundle = makeBundle(segs, candles);
 
     render(
-      <CandlePane chart={makeChart()} bundle={bundle} segments={built} paneIndex={0} />,
+      <CandlePane chart={makeChart()} bundle={bundle} axis={axis} paneIndex={0} />,
     );
 
     expect(setData).toHaveBeenCalledTimes(1);
@@ -95,7 +95,7 @@ describe('CandlePane — per-segment Auction Window threshold (multi-day)', () =
     const segs = [
       { date: '20260512', sessionOpenMs: day1Open, sessionCloseMs: day1Open + 6.5 * 3600_000 },
     ];
-    const built = buildSegments(segs);
+    const axis = createVirtualAxis(segs);
     const candles = [
       { ts_ms: day1Open + 1000, open: 100, close: 101, high: 102, low: 99 },
       { ts_ms: day1Auction + 1000, open: 100, close: 101, high: 102, low: 99 },
@@ -103,7 +103,7 @@ describe('CandlePane — per-segment Auction Window threshold (multi-day)', () =
     const bundle = makeBundle(segs, candles);
 
     render(
-      <CandlePane chart={makeChart()} bundle={bundle} segments={built} paneIndex={0} />,
+      <CandlePane chart={makeChart()} bundle={bundle} axis={axis} paneIndex={0} />,
     );
 
     expect(setData).toHaveBeenCalledTimes(1);

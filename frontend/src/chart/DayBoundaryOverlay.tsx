@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
-import type { Segment } from '../util/time';
+import type { VirtualAxis } from '../util/virtualAxis';
 
 type Props = {
   chart: IChartApi;
-  segments: Segment[];
+  axis: VirtualAxis;
 };
 
 function fmtMD(yyyymmdd: string): string {
@@ -19,7 +19,7 @@ function fmtMD(yyyymmdd: string): string {
  *
  * N segments → N-1 boundaries (no boundary at the start of segment[0]).
  */
-export default function DayBoundaryOverlay({ chart, segments }: Props) {
+export default function DayBoundaryOverlay({ chart, axis }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
 
@@ -42,12 +42,12 @@ export default function DayBoundaryOverlay({ chart, segments }: Props) {
     };
   }, [chart]);
 
-  if (segments.length < 2) return null;
+  if (axis.segments.length < 2) return null;
 
   const ts = chart.timeScale();
-  const boundaries = segments.slice(1).map((seg) => {
-    const x = ts.timeToCoordinate((seg.virtualStart / 1000) as UTCTimestamp);
-    return { date: seg.date, x };
+  const boundaries = axis.dayBoundaries.map((b) => {
+    const x = ts.timeToCoordinate((b.virtualStart / 1000) as UTCTimestamp);
+    return { date: b.date, x };
   });
 
   return (

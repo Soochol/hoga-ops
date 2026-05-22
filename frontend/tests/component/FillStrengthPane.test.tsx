@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import FillStrengthPane from '../../src/chart/FillStrengthPane';
+import { createVirtualAxis } from '../../src/util/virtualAxis';
 
 const makeMockChart = () => {
   const series1 = { setData: vi.fn() };
@@ -26,14 +27,13 @@ describe('FillStrengthPane', () => {
       <FillStrengthPane
         chart={chart}
         bundle={bundle}
-        segments={[
+        axis={createVirtualAxis([
           {
             date: '20260518',
             sessionOpenMs: 1779062400000,
             sessionCloseMs: 1779062400000 + 23400000,
-            virtualStart: 0,
           },
-        ]}
+        ])}
       />,
     );
     expect(chart.addSeries).toHaveBeenCalledTimes(2);
@@ -68,14 +68,13 @@ describe('FillStrengthPane', () => {
       <FillStrengthPane
         chart={chart}
         bundle={bundle}
-        segments={[
+        axis={createVirtualAxis([
           {
             date: '20260511',
             sessionOpenMs,
             sessionCloseMs: sessionOpenMs + 23_400_000,
-            virtualStart: 0,
           },
-        ]}
+        ])}
       />,
     );
     const buyData = buySeries.setData.mock.calls[0][0];

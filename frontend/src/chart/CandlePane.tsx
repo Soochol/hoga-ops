@@ -1,12 +1,7 @@
 import { useEffect } from 'react';
 import { CandlestickSeries, type IChartApi } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
-import {
-  type Segment,
-  findSegmentByReal,
-  isWithinSessions,
-  realToVirtual,
-} from '../util/time';
+import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = {
@@ -18,7 +13,7 @@ const TOKEN_SPEC = {
 type Props = {
   chart: IChartApi;
   bundle: RangeBundle;
-  segments: Segment[];
+  axis: VirtualAxis;
   /** Pane index for multi-pane split. Defaults to 0 (top pane). */
   paneIndex?: number;
 };
@@ -33,9 +28,9 @@ type Props = {
  * The pane does not render any DOM — it only acts as a controller for the
  * series lifecycle (add on mount, remove on unmount). Multi-day x-axis
  * stitching is handled by mapping each candle's real Unix-ms timestamp
- * through `realToVirtual(segments, …)`.
+ * through `axis.toVirtual(…)`.
  */
-export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: Props) {
+export default function CandlePane({ chart, bundle, axis, paneIndex = 0 }: Props) {
   useEffect(() => {
     const { up, down, muted } = resolveTokens(TOKEN_SPEC);
     const series = chart.addSeries(
@@ -71,12 +66,12 @@ export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: P
     // Drop pre-open auction candles (8:30-9:00 KST) and any other points that
     // fall outside the regular-session segments — they would all collapse to
     // virtual-time=0 and lightweight-charts.setData would throw "asc ordered
-    // by time" on the duplicate. See util/time.ts:isWithinSessions docs.
+    // by time" on the duplicate. See virtualAxis.ts:contains docs.
     const data = bundle.candles
-      .filter((c) => isWithinSessions(segments, c.ts_ms))
+      .filter((c) => axis.contains(c.ts_ms))
       .map((c) => {
-        const segIdx = findSegmentByReal(segments, c.ts_ms);
-        const seg = segments[segIdx];
+        const segIdx = axis.findByReal(c.ts_ms);
+        const seg = axis.segments[segIdx];
         const threshold = seg.sessionOpenMs + AUCTION_WINDOW_OFFSET_MS;
         const inAuctionOrAfter = c.ts_ms >= threshold;
         const color = inAuctionOrAfter ? muted : c.close >= c.open ? up : down;
@@ -84,7 +79,7 @@ export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: P
           // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
           // The `as any` cast keeps us free of the library's branded `Time`
           // type without dragging it into the public API.
-          time: (realToVirtual(segments, c.ts_ms) / 1000) as any,
+          time: (axis.toVirtual(c.ts_ms) / 1000) as any,
           open: c.open,
           close: c.close,
           high: c.high,
@@ -106,6 +101,6 @@ export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: P
         // chart already torn down
       }
     };
-  }, [chart, bundle, segments, paneIndex]);
+  }, [chart, bundle, axis, paneIndex]);
   return null;
 }

@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import CandlePane from '../../src/chart/CandlePane';
+import { createVirtualAxis } from '../../src/util/virtualAxis';
 
 const makeMockChart = () => {
   const series = { setData: vi.fn(), applyOptions: vi.fn() };
@@ -30,14 +31,13 @@ describe('CandlePane', () => {
       <CandlePane
         chart={chart}
         bundle={bundle}
-        segments={[
+        axis={createVirtualAxis([
           {
             date: '20260518',
             sessionOpenMs: 1779062400000,
             sessionCloseMs: 1779062400000 + 23400000,
-            virtualStart: 0,
           },
-        ]}
+        ])}
       />,
     );
     expect(chart.addSeries).toHaveBeenCalled();
@@ -77,14 +77,13 @@ describe('CandlePane', () => {
       <CandlePane
         chart={chart}
         bundle={bundle}
-        segments={[
+        axis={createVirtualAxis([
           {
             date: '20260518',
             sessionOpenMs: open,
             sessionCloseMs: open + 23400000,
-            virtualStart: 0,
           },
-        ]}
+        ])}
       />,
     );
     const passed = series.setData.mock.calls[0][0];
@@ -109,14 +108,13 @@ describe('CandlePane', () => {
       <CandlePane
         chart={chart}
         bundle={bundle}
-        segments={[
+        axis={createVirtualAxis([
           {
             date: '20260511',
             sessionOpenMs,
             sessionCloseMs: sessionOpenMs + 23_400_000,
-            virtualStart: 0,
           },
-        ]}
+        ])}
       />,
     );
     expect(series.setData).toHaveBeenCalledTimes(1);

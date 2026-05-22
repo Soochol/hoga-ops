@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { HistogramSeries, type IChartApi } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
-import { type Segment, realToVirtual, isWithinSessions } from '../util/time';
+import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = {
@@ -12,7 +12,7 @@ const TOKEN_SPEC = {
 type Props = {
   chart: IChartApi;
   bundle: RangeBundle;
-  segments: Segment[];
+  axis: VirtualAxis;
   /** Pane index for multi-pane split. Defaults to 0. */
   paneIndex?: number;
 };
@@ -25,9 +25,9 @@ type Props = {
  * the down color. Both series share the same priceScale via `base: 0`.
  *
  * Multi-day x-axis stitching is handled by mapping each point's real
- * Unix-ms timestamp through `realToVirtual(segments, …)`.
+ * Unix-ms timestamp through `axis.toVirtual(…)`.
  */
-export default function FillStrengthPane({ chart, bundle, segments, paneIndex = 0 }: Props) {
+export default function FillStrengthPane({ chart, bundle, axis, paneIndex = 0 }: Props) {
   useEffect(() => {
     const { up, down } = resolveTokens(TOKEN_SPEC);
     // Custom integer-comma formatter matches CandlePane / VolumePane. The buy
@@ -49,10 +49,8 @@ export default function FillStrengthPane({ chart, bundle, segments, paneIndex = 
     // segments. Without this filter, multiple pre-session points collapse to
     // virtual-time=0 and lightweight-charts.setData throws "data must be asc
     // ordered by time". The filtered list is shared between buy and sell so
-    // we only run isWithinSessions once. See util/time.ts:isWithinSessions.
-    const inSession = bundle.fill_strength.points.filter((p) =>
-      isWithinSessions(segments, p.t),
-    );
+    // we only run axis.contains once. See virtualAxis.ts:contains.
+    const inSession = bundle.fill_strength.points.filter((p) => axis.contains(p.t));
     // Backend (build_fill_strength_slice) now buckets on linear ms-from-midnight
     // and guarantees strictly-ascending unique timestamps per ADR-0010.
     // sortAndDedupeByTime in util/time.ts remains available as defense-in-depth.
@@ -61,13 +59,13 @@ export default function FillStrengthPane({ chart, bundle, segments, paneIndex = 
         // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
         // The `as any` cast keeps us free of the library's branded `Time`
         // type without dragging it into the public API.
-        time: (realToVirtual(segments, p.t) / 1000) as any,
+        time: (axis.toVirtual(p.t) / 1000) as any,
         value: p.buy_qty,
       })),
     );
     sell.setData(
       inSession.map((p) => ({
-        time: (realToVirtual(segments, p.t) / 1000) as any,
+        time: (axis.toVirtual(p.t) / 1000) as any,
         value: -p.sell_qty, // negative — renders below the 0 baseline
       })),
     );
@@ -84,6 +82,6 @@ export default function FillStrengthPane({ chart, bundle, segments, paneIndex = 
         // chart already torn down
       }
     };
-  }, [chart, bundle, segments, paneIndex]);
+  }, [chart, bundle, axis, paneIndex]);
   return null;
 }

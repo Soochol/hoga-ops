@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react';
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import IntensityPane from '../../src/chart/IntensityPane';
+import { createVirtualAxis } from '../../src/util/virtualAxis';
 
 // jsdom doesn't implement canvas. Stub getContext so IntensityPane reaches the
 // subscribe/cleanup paths we want to exercise. We don't validate pixel output
@@ -57,14 +58,13 @@ describe('IntensityPane', () => {
       <IntensityPane
         chart={chart}
         bundle={bundle}
-        segments={[
+        axis={createVirtualAxis([
           {
             date: '20260518',
             sessionOpenMs: 0,
             sessionCloseMs: 23400000,
-            virtualStart: 0,
           },
-        ]}
+        ])}
       />,
     );
     expect(container.querySelector('canvas')).toBeInTheDocument();
@@ -89,14 +89,13 @@ describe('IntensityPane', () => {
       <IntensityPane
         chart={chart}
         bundle={bundle}
-        segments={[
+        axis={createVirtualAxis([
           {
             date: '20260518',
             sessionOpenMs: 0,
             sessionCloseMs: 23400000,
-            virtualStart: 0,
           },
-        ]}
+        ])}
       />,
     );
     expect(ts.subscribeVisibleTimeRangeChange).toHaveBeenCalled();

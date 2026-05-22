@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import VolumePane from '../../src/chart/VolumePane';
+import { createVirtualAxis } from '../../src/util/virtualAxis';
 
 const makeMockChart = () => {
   const series = { setData: vi.fn() };
@@ -24,9 +25,9 @@ describe('VolumePane', () => {
       <VolumePane
         chart={chart}
         bundle={bundle}
-        segments={[
-          { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 1000, virtualStart: 0 },
-        ]}
+        axis={createVirtualAxis([
+          { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 1000 },
+        ])}
       />,
     );
     const passed = series.setData.mock.calls[0][0];
@@ -51,14 +52,13 @@ describe('VolumePane', () => {
       <VolumePane
         chart={chart}
         bundle={bundle}
-        segments={[
+        axis={createVirtualAxis([
           {
             date: '20260511',
             sessionOpenMs,
             sessionCloseMs: sessionOpenMs + 23_400_000,
-            virtualStart: 0,
           },
-        ]}
+        ])}
       />,
     );
     const data = series.setData.mock.calls[0][0];

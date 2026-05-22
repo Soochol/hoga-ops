@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { LineSeries, type IChartApi } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
-import { type Segment, realToVirtual, isWithinSessions } from '../util/time';
+import { type VirtualAxis } from '../util/virtualAxis';
 import { quoteImbalance } from '../util/imbalance';
 import { resolveTokens } from '../util/tokens';
 
@@ -10,7 +10,7 @@ const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
 type Props = {
   chart: IChartApi;
   bundle: RangeBundle;
-  segments: Segment[];
+  axis: VirtualAxis;
   /** Pane index for multi-pane split. Defaults to 0. */
   paneIndex?: number;
 };
@@ -23,9 +23,9 @@ type Props = {
  *
  * Returns null; this component only controls the series lifecycle (add on
  * mount, remove on unmount). Multi-day x-axis stitching is handled by
- * mapping each point's real Unix-ms timestamp through `realToVirtual`.
+ * mapping each point's real Unix-ms timestamp through `axis.toVirtual`.
  */
-export default function RatioPane({ chart, bundle, segments, paneIndex = 0 }: Props) {
+export default function RatioPane({ chart, bundle, axis, paneIndex = 0 }: Props) {
   useEffect(() => {
     const { accent } = resolveTokens(TOKEN_SPEC);
     const series = chart.addSeries(
@@ -53,9 +53,9 @@ export default function RatioPane({ chart, bundle, segments, paneIndex = 0 }: Pr
     // the backend side; sortAndDedupeByTime in util/time.ts is still available
     // as a defense-in-depth wrapper.
     const data = bundle.quote_ratio.points
-      .filter((p) => isWithinSessions(segments, p.t))
+      .filter((p) => axis.contains(p.t))
       .map((p) => ({
-        time: (realToVirtual(segments, p.t) / 1000) as any,
+        time: (axis.toVirtual(p.t) / 1000) as any,
         value: quoteImbalance(p.bid_total, p.ask_total),
       }));
     series.setData(data);
@@ -79,6 +79,6 @@ export default function RatioPane({ chart, bundle, segments, paneIndex = 0 }: Pr
         // chart already torn down — safe to ignore
       }
     };
-  }, [chart, bundle, segments, paneIndex]);
+  }, [chart, bundle, axis, paneIndex]);
   return null;
 }

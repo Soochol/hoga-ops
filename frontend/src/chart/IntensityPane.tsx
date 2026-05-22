@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { LineSeries, type IChartApi } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
-import { type Segment, realToVirtual } from '../util/time';
+import { type VirtualAxis } from '../util/virtualAxis';
 
 // RGB bytes for the two sides. ImageData writes raw RGBA so we keep hex out of
 // the hot path. Tokens still drive the rest of the UI (DESIGN.md governs); the
@@ -13,7 +13,7 @@ const DOWN_RGB = [0xf4, 0x3f, 0x5e] as const; // --down
 type Props = {
   chart: IChartApi;
   bundle: RangeBundle;
-  segments: Segment[];
+  axis: VirtualAxis;
   /**
    * Pane index to overlay onto. When provided, the canvas is portaled into the
    * pane's DOM element (via `chart.panes()[paneIndex].getHTMLElement()`) so
@@ -35,7 +35,7 @@ type Props = {
  * fillRect-per-cell path measured ~110 ms (FAIL). DO NOT switch back to
  * fillRect without re-running the perf baseline.
  */
-export default function IntensityPane({ chart, bundle, segments, paneIndex }: Props) {
+export default function IntensityPane({ chart, bundle, axis, paneIndex }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   // Resolve the target pane's DOM element when `paneIndex` is provided. The
   // pane may not exist on first render (the series-bearing pane components
@@ -130,13 +130,11 @@ export default function IntensityPane({ chart, bundle, segments, paneIndex }: Pr
       const cellH = h / bins;
 
       di.times.forEach((t, i) => {
-        const xFloat = ts.timeToCoordinate(
-          (realToVirtual(segments, t) / 1000) as any,
-        );
+        const xFloat = ts.timeToCoordinate((axis.toVirtual(t) / 1000) as any);
         if (xFloat === null) return;
         const nextT = di.times[i + 1] ?? t + di.bucket_ms;
         const xNextFloat =
-          ts.timeToCoordinate((realToVirtual(segments, nextT) / 1000) as any) ?? xFloat + 2;
+          ts.timeToCoordinate((axis.toVirtual(nextT) / 1000) as any) ?? xFloat + 2;
         const xStart = Math.max(0, Math.floor(xFloat));
         const xEnd = Math.min(w, Math.floor(xNextFloat));
         if (xEnd <= xStart) return;
@@ -182,7 +180,7 @@ export default function IntensityPane({ chart, bundle, segments, paneIndex }: Pr
       ts.unsubscribeVisibleTimeRangeChange(paint);
       ro.disconnect();
     };
-  }, [chart, bundle, segments]);
+  }, [chart, bundle, axis]);
 
   // Wrap the canvas in a div so the portal target (which lightweight-charts
   // renders as a <tr>) doesn't directly host a <canvas> — invalid HTML

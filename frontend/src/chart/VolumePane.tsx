@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { HistogramSeries, type IChartApi } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
-import { type Segment, realToVirtual, isWithinSessions } from '../util/time';
+import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = {
@@ -12,7 +12,7 @@ const TOKEN_SPEC = {
 type Props = {
   chart: IChartApi;
   bundle: RangeBundle;
-  segments: Segment[];
+  axis: VirtualAxis;
   /** Pane index for multi-pane split. Defaults to 0. */
   paneIndex?: number;
 };
@@ -25,9 +25,9 @@ type Props = {
  * The pane does not render any DOM — it only acts as a controller for the
  * series lifecycle (add on mount, remove on unmount). Multi-day x-axis
  * stitching is handled by mapping each candle's real Unix-ms timestamp
- * through `realToVirtual(segments, …)`.
+ * through `axis.toVirtual(…)`.
  */
-export default function VolumePane({ chart, bundle, segments, paneIndex = 0 }: Props) {
+export default function VolumePane({ chart, bundle, axis, paneIndex = 0 }: Props) {
   useEffect(() => {
     const { up, down } = resolveTokens(TOKEN_SPEC);
     const series = chart.addSeries(
@@ -45,12 +45,12 @@ export default function VolumePane({ chart, bundle, segments, paneIndex = 0 }: P
       paneIndex,
     );
     const data = bundle.candles
-      .filter((c) => isWithinSessions(segments, c.ts_ms))
+      .filter((c) => axis.contains(c.ts_ms))
       .map((c) => ({
         // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
         // The `as any` cast keeps us free of the library's branded `Time`
         // type without dragging it into the public API.
-        time: (realToVirtual(segments, c.ts_ms) / 1000) as any,
+        time: (axis.toVirtual(c.ts_ms) / 1000) as any,
         value: c.vol_a + c.vol_b,
         color: c.close >= c.open ? up : down,
       }));
@@ -63,6 +63,6 @@ export default function VolumePane({ chart, bundle, segments, paneIndex = 0 }: P
         // chart already torn down
       }
     };
-  }, [chart, bundle, segments, paneIndex]);
+  }, [chart, bundle, axis, paneIndex]);
   return null;
 }

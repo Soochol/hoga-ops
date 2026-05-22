@@ -1,0 +1,210 @@
+import { describe, it, expect } from 'vitest';
+import { createVirtualAxis } from './virtualAxis';
+
+// KST 09:00 — 15:30 = 6h30m = 23_400_000 ms.
+const SESSION_LEN_MS = 6.5 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// 2026-05-18 09:00 KST.
+const DAY1_OPEN = 1779062400000;
+const DAY1_CLOSE = DAY1_OPEN + SESSION_LEN_MS;
+const DAY2_OPEN = DAY1_OPEN + DAY_MS;
+const DAY2_CLOSE = DAY2_OPEN + SESSION_LEN_MS;
+const DAY3_OPEN = DAY2_OPEN + DAY_MS;
+const DAY3_CLOSE = DAY3_OPEN + SESSION_LEN_MS;
+
+const RAW_3 = [
+  { date: '20260518', sessionOpenMs: DAY1_OPEN, sessionCloseMs: DAY1_CLOSE },
+  { date: '20260519', sessionOpenMs: DAY2_OPEN, sessionCloseMs: DAY2_CLOSE },
+  { date: '20260520', sessionOpenMs: DAY3_OPEN, sessionCloseMs: DAY3_CLOSE },
+];
+
+const RAW_SMALL = [
+  { date: '20260512', sessionOpenMs: 1_000_000, sessionCloseMs: 2_000_000 },
+  { date: '20260513', sessionOpenMs: 3_000_000, sessionCloseMs: 4_000_000 },
+];
+
+describe('createVirtualAxis — construction', () => {
+  it('returns an axis with empty segments + empty dayBoundaries for empty input', () => {
+    const axis = createVirtualAxis([]);
+    expect(axis.segments).toHaveLength(0);
+    expect(axis.dayBoundaries).toHaveLength(0);
+  });
+
+  it('returns N-1 dayBoundaries for N segments', () => {
+    const axis1 = createVirtualAxis(RAW_3.slice(0, 1));
+    expect(axis1.segments).toHaveLength(1);
+    expect(axis1.dayBoundaries).toHaveLength(0);
+
+    const axis3 = createVirtualAxis(RAW_3);
+    expect(axis3.segments).toHaveLength(3);
+    expect(axis3.dayBoundaries).toHaveLength(2);
+  });
+
+  it('axis.dayBoundaries[0] mirrors segments[1] date + virtualStart', () => {
+    const axis = createVirtualAxis(RAW_3);
+    expect(axis.dayBoundaries[0].date).toBe('20260519');
+    expect(axis.dayBoundaries[0].virtualStart).toBe(axis.segments[1].virtualStart);
+    expect(axis.dayBoundaries[1].date).toBe('20260520');
+    expect(axis.dayBoundaries[1].virtualStart).toBe(axis.segments[2].virtualStart);
+  });
+
+  it('axis.segments and axis.dayBoundaries are frozen', () => {
+    const axis = createVirtualAxis(RAW_3);
+    expect(Object.isFrozen(axis)).toBe(true);
+    expect(Object.isFrozen(axis.segments)).toBe(true);
+    expect(Object.isFrozen(axis.dayBoundaries)).toBe(true);
+    // Mutation attempts must throw in strict mode (vitest runs in strict).
+    expect(() => {
+      (axis.segments as unknown as { length: number }).length = 0;
+    }).toThrow();
+  });
+});
+
+describe('createVirtualAxis — toVirtual / toReal round-trip', () => {
+  const axis = createVirtualAxis(RAW_3);
+
+  it('round-trips inside any segment (excluding mid-axis closes that share virtual offset with next open)', () => {
+    const samples = [
+      DAY1_OPEN,
+      DAY1_OPEN + 1234567,
+      DAY2_OPEN,
+      DAY2_OPEN + 60_000,
+      DAY3_OPEN + 7_000_000,
+      DAY3_CLOSE,
+    ];
+    for (const realMs of samples) {
+      expect(axis.toReal(axis.toVirtual(realMs))).toBe(realMs);
+    }
+  });
+
+  it('exactly at a session open returns the segment virtualStart', () => {
+    expect(axis.toVirtual(DAY1_OPEN)).toBe(0);
+    expect(axis.toVirtual(DAY2_OPEN)).toBe(SESSION_LEN_MS);
+    expect(axis.toVirtual(DAY3_OPEN)).toBe(2 * SESSION_LEN_MS);
+  });
+
+  it('gap times snap forward to next segment virtualStart', () => {
+    const mid = DAY1_CLOSE + 2 * 60 * 60 * 1000;
+    expect(axis.toVirtual(mid)).toBe(SESSION_LEN_MS);
+  });
+
+  it('empty axis collapses to 0 in both directions', () => {
+    const empty = createVirtualAxis([]);
+    expect(empty.toVirtual(DAY1_OPEN)).toBe(0);
+    expect(empty.toReal(1234)).toBe(0);
+  });
+
+  it('negative virtual clamps to first sessionOpenMs', () => {
+    expect(axis.toReal(-1)).toBe(DAY1_OPEN);
+  });
+});
+
+describe('createVirtualAxis — contains', () => {
+  const axis = createVirtualAxis(RAW_3);
+
+  it('false for empty axis', () => {
+    expect(createVirtualAxis([]).contains(DAY1_OPEN)).toBe(false);
+  });
+
+  it('false for pre-axis realMs (before first open)', () => {
+    expect(axis.contains(DAY1_OPEN - 60_000)).toBe(false);
+  });
+
+  it('true at open + interior + close boundaries', () => {
+    expect(axis.contains(DAY1_OPEN)).toBe(true);
+    expect(axis.contains(DAY1_OPEN + 60_000)).toBe(true);
+    expect(axis.contains(DAY1_CLOSE)).toBe(true);
+  });
+
+  it('false in inter-session gaps', () => {
+    expect(axis.contains(DAY1_CLOSE + 1)).toBe(false);
+  });
+});
+
+describe('createVirtualAxis — isInGap', () => {
+  const axis = createVirtualAxis(RAW_3);
+
+  it('false inside any session', () => {
+    expect(axis.isInGap(DAY1_OPEN + 1000)).toBe(false);
+    expect(axis.isInGap(DAY2_OPEN + 60 * 60 * 1000)).toBe(false);
+    expect(axis.isInGap(DAY3_CLOSE - 1)).toBe(false);
+  });
+
+  it('true in between-session gaps', () => {
+    expect(axis.isInGap(DAY1_CLOSE + 1)).toBe(true);
+    expect(axis.isInGap(DAY2_OPEN - 1)).toBe(true);
+  });
+
+  it('true after final close', () => {
+    expect(axis.isInGap(DAY3_CLOSE + 1)).toBe(true);
+  });
+
+  it('false before first open (pre-axis, not a gap)', () => {
+    expect(axis.isInGap(DAY1_OPEN - 1)).toBe(false);
+  });
+
+  it('false for empty axis', () => {
+    expect(createVirtualAxis([]).isInGap(DAY1_OPEN)).toBe(false);
+  });
+});
+
+describe('createVirtualAxis — findByReal', () => {
+  const axis = createVirtualAxis(RAW_SMALL);
+
+  it('returns -1 for empty axis', () => {
+    expect(createVirtualAxis([]).findByReal(1_500_000)).toBe(-1);
+  });
+
+  it('returns -1 for realMs before first segment open', () => {
+    expect(axis.findByReal(500_000)).toBe(-1);
+  });
+
+  it('returns 0 for realMs inside first segment', () => {
+    expect(axis.findByReal(1_500_000)).toBe(0);
+  });
+
+  it('returns 1 for realMs inside second segment', () => {
+    expect(axis.findByReal(3_500_000)).toBe(1);
+  });
+
+  it('returns previous segment idx for realMs inside a gap', () => {
+    expect(axis.findByReal(2_500_000)).toBe(0);
+  });
+
+  it('returns last idx for realMs past final close', () => {
+    expect(axis.findByReal(5_000_000)).toBe(1);
+  });
+
+  it('boundary: realMs exactly at sessionOpenMs belongs to that segment', () => {
+    expect(axis.findByReal(3_000_000)).toBe(1);
+  });
+
+  it('boundary: realMs exactly at sessionCloseMs belongs to that segment (not the gap)', () => {
+    expect(axis.findByReal(2_000_000)).toBe(0);
+  });
+});
+
+describe('createVirtualAxis — findByVirtual', () => {
+  it('binary search across 12 segments', () => {
+    const raw = Array.from({ length: 12 }, (_, i) => ({
+      date: `2026050${i}`,
+      sessionOpenMs: DAY1_OPEN + i * DAY_MS,
+      sessionCloseMs: DAY1_OPEN + i * DAY_MS + SESSION_LEN_MS,
+    }));
+    const axis = createVirtualAxis(raw);
+    expect(axis.segments).toHaveLength(12);
+
+    expect(axis.findByVirtual(0)).toBe(0);
+    expect(axis.findByVirtual(SESSION_LEN_MS - 1)).toBe(0);
+    expect(axis.findByVirtual(SESSION_LEN_MS)).toBe(1);
+    expect(axis.findByVirtual(5 * SESSION_LEN_MS + 1000)).toBe(5);
+    expect(axis.findByVirtual(11 * SESSION_LEN_MS)).toBe(11);
+    expect(axis.findByVirtual(11 * SESSION_LEN_MS + 1000)).toBe(11);
+    expect(axis.findByVirtual(-1)).toBe(-1);
+  });
+
+  it('returns -1 for empty axis', () => {
+    expect(createVirtualAxis([]).findByVirtual(0)).toBe(-1);
+  });
+});

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTabsStore, type Tab } from '../state/tabs';
 import { useRange } from '../api/range';
-import { buildSegments, type Segment } from '../util/time';
+import { createVirtualAxis } from '../util/virtualAxis';
 import ChartStage from '../chart/ChartStage';
 import ChartErrorBoundary from '../chart/ChartErrorBoundary';
 import { CursorSidebarConnected } from '../sidebar/CursorSidebar';
@@ -26,15 +26,17 @@ export default function Workarea({ tab }: { tab: Tab }) {
   const { data: bundle, isLoading, isError, error } = useRange(code, fromDate, toDate, timeframe);
   const [noticeDismissed, setNoticeDismissed] = useState(false);
 
-  const segments: Segment[] = bundle
-    ? buildSegments(
-        bundle.segments.map((s) => ({
+  const axis = useMemo(
+    () =>
+      createVirtualAxis(
+        bundle?.segments.map((s) => ({
           date: s.date,
           sessionOpenMs: s.session_open_ms,
           sessionCloseMs: s.session_close_ms,
-        })),
-      )
-    : [];
+        })) ?? [],
+      ),
+    [bundle?.segments],
+  );
 
   useEffect(() => {
     if (!tab.selection) return;
@@ -92,7 +94,7 @@ export default function Workarea({ tab }: { tab: Tab }) {
           <ChartStage
             key={`${code}:${fromDate}:${toDate}`}
             bundle={bundle ?? null}
-            segments={segments}
+            axis={axis}
           />
         </ChartErrorBoundary>
         <CursorSidebarConnected />

@@ -68,6 +68,7 @@ beforeAll(() => {
 
 import ChartStage from '../../src/chart/ChartStage';
 import { TickMarkType } from 'lightweight-charts';
+import { createVirtualAxis } from '../../src/util/virtualAxis';
 
 function makeBundle(barCount: number): any {
   // Minimal RangeBundle shape; only `candles.length` is read by the clamp
@@ -100,9 +101,9 @@ describe('ChartStage — fitContent + zoom clamps (17b)', () => {
     render(
       <ChartStage
         bundle={makeBundle(100)}
-        segments={[
-          { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 23_400_000, virtualStart: 0 },
-        ]}
+        axis={createVirtualAxis([
+          { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 23_400_000 },
+        ])}
       />,
     );
     expect(lastCreated.ts.fitContent).toHaveBeenCalled();
@@ -114,9 +115,9 @@ describe('ChartStage — fitContent + zoom clamps (17b)', () => {
     render(
       <ChartStage
         bundle={makeBundle(totalBars)}
-        segments={[
-          { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 23_400_000, virtualStart: 0 },
-        ]}
+        axis={createVirtualAxis([
+          { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 23_400_000 },
+        ])}
       />,
     );
     const handler = lastCreated.ts.subscribeVisibleLogicalRangeChange.mock.calls[0][0];
@@ -129,9 +130,9 @@ describe('ChartStage — fitContent + zoom clamps (17b)', () => {
     render(
       <ChartStage
         bundle={makeBundle(100)}
-        segments={[
-          { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 23_400_000, virtualStart: 0 },
-        ]}
+        axis={createVirtualAxis([
+          { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 23_400_000 },
+        ])}
       />,
     );
     // Override the options mock so barSpacing reports >50 for this assertion.
@@ -143,14 +144,14 @@ describe('ChartStage — fitContent + zoom clamps (17b)', () => {
 });
 
 describe('ChartStage — KST tickMarkFormatter (17c)', () => {
-  it('formats Time ticks as HH:MM in KST (virtual-ms → real-ms via segments)', () => {
+  it('formats Time ticks as HH:MM in KST (virtual-ms → real-ms via axis)', () => {
     const sessionOpenMs = Date.UTC(2026, 4, 18, 0, 0, 0); // 2026-05-18 00:00 UTC = 09:00 KST
     render(
       <ChartStage
         bundle={makeBundle(1)}
-        segments={[
-          { date: '20260518', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000, virtualStart: 0 },
-        ]}
+        axis={createVirtualAxis([
+          { date: '20260518', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000 },
+        ])}
       />,
     );
     const fmt = lastCreated.options.timeScale.tickMarkFormatter as (
@@ -168,9 +169,9 @@ describe('ChartStage — KST tickMarkFormatter (17c)', () => {
     render(
       <ChartStage
         bundle={makeBundle(1)}
-        segments={[
-          { date: '20260518', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000, virtualStart: 0 },
-        ]}
+        axis={createVirtualAxis([
+          { date: '20260518', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000 },
+        ])}
       />,
     );
     const fmt = lastCreated.options.timeScale.tickMarkFormatter as (
@@ -184,7 +185,7 @@ describe('ChartStage — KST tickMarkFormatter (17c)', () => {
     render(
       <ChartStage
         bundle={null}
-        segments={[]}
+        axis={createVirtualAxis([])}
       />,
     );
     const fmt = lastCreated.options.timeScale.tickMarkFormatter as (
