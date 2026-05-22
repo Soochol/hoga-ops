@@ -54,7 +54,7 @@ Three new compounds and one updated entry landed in CONTEXT.md as part of this d
 ### Errors
 - Empty Stock-Date Range (no captured Stock-Date in `[from, to]`): "이 범위에 캡처된 Stock-Date가 없습니다" with a button to focus the Toolbar.
 - Range > 30 days: blocked by Toolbar pre-validation with message "최대 30일까지 조회 가능".
-- Inventory partially missing dates (weekends, holidays, uncaptured days): silently dropped from `segments`; the chart skips those days naturally via Virtual Axis stitching.
+- Inventory partially missing dates (weekends, holidays, uncaptured weekdays): the chart skips those days via Virtual Axis stitching. When the missing date is `fromDate` or `toDate` (i.e. the user's input doesn't match the actual rendered window), a quiet `RangeAdjustmentNotice` chip below the Toolbar tells the user — see §8 for the exact behavior.
 
 ## 4. Architecture Overview
 
@@ -209,7 +209,7 @@ export type TabSelection = {
 };
 
 export type ChartViewPrefs = {                         // NEW; tab-scoped, non-URL
-  volumeProfileMode: 'range' | 'day';                  // default 'range'
+  volumeProfileMode: 'range' | 'per-day';              // default 'range'
 };
 ```
 
@@ -233,20 +233,28 @@ Stateless segmented control:
 
 ### 6.4 useRange Hook (`api/range.ts`)
 
+Mirrors the existing `useSession` pattern (the hook it replaces per ADR-0013): uses the `apiGet<T>` helper for consistent error handling and base URL, `staleTime: Infinity` because captured **Stock-Date**s are immutable historical data, and preserves the optional `priceRange` parameter that drives `VolumeProfileOverlay`'s visible-price filtering.
+
 ```ts
+import { useQuery } from '@tanstack/react-query';
+import { apiGet } from './client';
+import type { RangeBundle } from './types';
+
 export function useRange(
   code: string | null,
   from: string | null,
   to: string | null,
   timeframe: Timeframe | null,
+  priceRange?: { min: number; max: number },
 ) {
   const bucketMs = timeframe ? TIMEFRAME_TO_MS[timeframe] : null;
-  return useQuery<RangeBundle, Error>({
-    queryKey: ['range', code, from, to, bucketMs],
-    queryFn: () => fetch(`/api/range?code=${code}&from=${from}&to=${to}&bucket_ms=${bucketMs}`)
-                     .then(r => r.ok ? r.json() : Promise.reject(new Error(r.statusText))),
-    enabled: !!(code && from && to && bucketMs),
-    staleTime: 5 * 60_000,
+  const enabled = !!(code && from && to && bucketMs);
+  const qs = priceRange ? `&price_min=${priceRange.min}&price_max=${priceRange.max}` : '';
+  return useQuery({
+    queryKey: ['range', code, from, to, bucketMs, priceRange?.min, priceRange?.max],
+    queryFn: () => apiGet<RangeBundle>(`/api/range?code=${code}&from=${from}&to=${to}&bucket_ms=${bucketMs}${qs}`),
+    enabled,
+    staleTime: Infinity,
   });
 }
 ```
@@ -326,38 +334,22 @@ timeScale: {
 - Reads `segments` + `chart.timeScale().timeToCoordinate(virtualSec)` for each `segments[i].virtualStart` (skip `i=0`).
 - Renders one absolute-positioned `<div>` per boundary: `1px` solid `--border` (strengthened: e.g. `rgba(255,255,255,0.18)`) vertical line full-height; `MM/DD` chip at top with `bg-bg-card text-fg-dim text-xs px-1.5 py-0.5 rounded`.
 - Repositions on `subscribeVisibleLogicalRangeChange` + `ResizeObserver` on container.
+- **rAF throttle**: `subscribeVisibleLogicalRangeChange` can fire on every mouse-wheel/drag frame. The reposition handler coalesces events through `requestAnimationFrame` (one update per frame) and mutates only `transform: translateX(...)` on each boundary `<div>` to keep updates on the GPU compositor and avoid layout thrash. 30-day Range × ~22 segments ⇒ ~21 boundary nodes × 60Hz cap = 1260 transform writes/sec worst case, comfortably within compositor budget.
 
 **(d) Timeframe-change time-window preservation**:
 
-The Toolbar's `onLoad` handler (not Workarea) owns this — it is the *only* synchronous moment at which both (i) the *current* in-DOM viewport is still valid and (ii) the *next* selection is known. Approach:
+`ChartStage` keys its single `lightweight-charts` instance on `(code, fromDate, toDate)` — **not** `timeframe`. When only `timeframe` changes, the chart instance is preserved and each pane's `useEffect([chart, bundle, segments, paneIndex])` simply calls `series.setData(newData)` with the re-aggregated payload. lightweight-charts retains its `visibleLogicalRange` across `setData` calls, so the user's current view stays anchored to the same time region (the same logical bar indices map to different real durations under different `bucket_ms`, so the rendered time window may drift by up to one bucket — acceptable for v1).
 
-```ts
-// Toolbar.tsx — onLoad
-const onLoad = () => {
-  if (!ready) return;
-  const prevTf = active.selection?.timeframe;
-  const nextTf = draft.timeframe!;
-  if (prevTf && prevTf !== nextTf) {
-    const { fromMs, toMs } = useViewportStore.getState();
-    if (fromMs != null && toMs != null) {
-      useTabsStore.getState().setPendingViewRestore(active.id, { fromMs, toMs });
-    }
-  }
-  useTabsStore.getState().setSelection(active.id, { ...draft });
-};
-```
+When `(code, fromDate, toDate)` changes (a true reload, not a Timeframe switch), the chart instance is re-created via React's key reconciliation and the initial-fit logic in §6.6(a) runs, snapping to `fitContent()`.
 
-`useTabsStore` gains `pendingViewRestore: Map<tabId, {fromMs,toMs}>` and a `consumePendingViewRestore(tabId)` action that returns the value and clears it. `ChartStage` reads the value once, after the new bundle mounts, and either:
-- Calls `ts.setVisibleRange({ from: realToVirtual(segments, fromMs)/1000, to: realToVirtual(segments, toMs)/1000 })`, or
-- Falls back to `ts.fitContent()` if no pending restore exists.
-
-This avoids a Workarea-local `useRef` whose lifetime is fragile across React Query refetches.
+This replaces the earlier draft of a 4-hop Toolbar → tabs-store → ChartStage snapshot/restore mechanism. Trade-off: drift up to one bucket (`bucket_ms`) vs zero coupling to view-state in `useTabsStore`. If v1 prototype reveals user-visible drift, the explicit snapshot/restore path is available as a follow-up.
 
 ### 6.7 VolumeProfileOverlay Changes
 
-- Existing `mode="composite"` is the new `mode="range"` (rename + extend `mode` union).
-- New `mode="day"`: iterates `segments`, draws one profile bar group per Stock-Date, positioned by `timeToCoordinate(segment.virtualStart)`.
-- Toggle UI: a small segmented control in the sidebar header `[전체 | 일별]` driving `ChartViewPrefs.volumeProfileMode`.
+- The existing `mode` union is `'per-day' | 'composite'`. Rename `'composite'` to `'range'`; keep `'per-day'` (its name is already accurate). Final union: `mode?: 'range' | 'per-day'` (default `'range'`).
+- `'per-day'` mode: iterates `segments`, draws one profile bar group per **Stock-Date**, positioned via `timeToCoordinate(segment.virtualStart)`. Already structurally supported by the existing per-day rendering branch.
+- `'range'` mode: paints one profile spanning the right ~30% of the chart from the new `RangeBundle.volume_profile_range` field.
+- Toggle UI: a small segmented control in the sidebar header `[전체 | 일별]` driving `ChartViewPrefs.volumeProfileMode`. The label set is Korean-facing — the wire/code identifiers stay `'range'`/`'per-day'`.
 
 ### 6.8 Unchanged
 
@@ -372,18 +364,18 @@ This avoids a Workarea-local `useRef` whose lifetime is fragile across React Que
 |---|---|---|
 | `timeframe` in `TabSelection` | `useTabsStore` | URL synced |
 | `volumeProfileMode` in `ChartViewPrefs` | `useTabsStore` (tab-scoped map) | In-memory only (lost on reload) |
-| Range data | React Query | `staleTime: 5min`, key `['range', code, from, to, bucketMs]` |
-| Preserved time-window across timeframe switch | `useRef` in Workarea | Per-instance, lost on unmount |
+| Range data | React Query | `staleTime: Infinity` (captured Stock-Dates are immutable), key `['range', code, from, to, bucketMs, priceRange.min, priceRange.max]` |
+| Time-window across timeframe switch | lightweight-charts internal `visibleLogicalRange` | Preserved automatically because the chart instance survives Timeframe changes (only `(code, fromDate, toDate)` triggers re-creation) |
 
 ## 8. Error Handling and Edge Cases
 
 - **No Stock-Date in range** (404 from API): Workarea shows "이 범위에 캡처된 Stock-Date가 없습니다" with action button focusing Toolbar.
 - **Range > 30 days**: Toolbar `onLoad` pre-validates and shows inline message; BE returns 400 as second defense.
 - **Invalid bucket_ms**: cannot occur from frontend (enum), BE whitelists.
-- **Inventory partially missing dates** (weekends, holidays): silently skipped; `segments` reflects only captured days; Virtual Axis naturally skips the gap.
+- **Inventory partially missing dates** (weekends, holidays, uncaptured weekdays): `segments` reflects only captured days; Virtual Axis naturally skips the gap. When the user's `fromDate` or `toDate` falls outside captured inventory (e.g. `fromDate=20260501` but the first captured Stock-Date in range is `20260503`), the chart toolbar surfaces a quiet info chip: `"fromDate (5/1)는 아직 캡처 안 됨. 실제 표시: 5/3부터"` (one chip per skipped boundary, dismissible). The chip is a separate `<RangeAdjustmentNotice>` component placed below the Toolbar, fed by comparing `tab.selection.fromDate/toDate` against `bundle.segments[0].date` / `bundle.segments.at(-1).date`. No automatic adjustment of the selection; the user clicks an action ("Capture missing dates" or "Adjust to actual range") if they want.
 - **Large response payload**: 30 days × 1m × 5 series ≈ tens of MB JSON in worst case. Mitigation: response gzip (FastAPI middleware) + a `total_points` field in `RangeBundle` for future client-side warning. Hard streaming/pagination is out of scope.
-- **Single-day Range**: behavior identical to today's `useSession` flow except the chart now auto-fits the full day and x-axis labels are KST. No `DayBoundaryOverlay` lines rendered (only `segments[1..]` produce lines; with N=1 there are none).
-- **Timeframe switch on empty viewport**: if no visible range exists (data not loaded yet), `preservedRangeRef` stays null and ChartStage falls back to `fitContent()`.
+- **Single-day Range**: behavior matches the historical single-day flow except the chart now auto-fits the full day and x-axis labels are KST. No `DayBoundaryOverlay` lines rendered (only `segments[1..]` produce lines; with N=1 there are none).
+- **Timeframe switch on empty viewport**: if the chart instance hasn't completed its initial fit yet, the next bundle's effect will simply call `fitContent()` (the §6.6(a) handler) — no special handling needed.
 - **Pre-open auction candles** (08:30–09:00): already filtered by `isWithinSessions` in each pane — unchanged.
 - **ChartErrorBoundary**: existing — wraps the whole stack, unchanged.
 
@@ -391,16 +383,18 @@ This avoids a Workarea-local `useRef` whose lifetime is fragile across React Que
 
 | Layer | Test Kind | Key Cases |
 |---|---|---|
-| `util/time.ts` | unit (vitest) | Multi-day `buildSegments`, virtual↔real round-trip, partial-inventory segments (skip weekends) |
+| `util/time.ts` | unit (vitest) | Multi-day `buildSegments`, virtual↔real round-trip, partial-inventory segments (skip weekends), **new `findSegmentByReal`** (empty input, in-segment, in-gap, before-first, past-last, exact boundary — symmetric with existing `findSegmentByVirtual`) |
 | `hoga/api/bundle.py::downsample_candles` | unit (pytest) | OHLC correctness, last partial bucket, empty input, `bucket_ms == 60_000` identity, all 6 bucket sizes |
 | `hoga/api/bundle.py::build_range_bundle` | unit | Inventory with gaps, segments ordering, both `volume_profile_*` populated |
 | `hoga/api/bundle.py::build_volume_profile_range` | unit | Multi-date union, price-bin alignment |
-| `hoga/api/routes.py::/api/range` | route (FastAPI TestClient) | 200 happy path, 400 (range > 90d / invalid bucket_ms / from > to), 404 (zero dates), partial-inventory |
+| `hoga/api/routes.py::/api/range` | route (FastAPI TestClient) | 200 happy path, 400 (range > 30d / invalid bucket_ms / from > to), 404 (zero dates), partial-inventory (gaps inside range, fromDate before first captured, toDate after last captured) |
 | `frontend/src/api/range.ts` | hook (vitest + msw) | Cache key correctness, `enabled` gating, error propagation |
 | `replay/TimeframeSelector.tsx` | RTL | Active state, keyboard navigation, `onChange` callback |
 | `replay/Toolbar.tsx` | RTL | Draft → setSelection includes `timeframe`, 30-day pre-validation |
-| `replay/Workarea.tsx` | RTL | useRange wiring, time-window preservation across timeframe change |
-| `chart/ChartStage.tsx` | RTL + lightweight-charts mock | `fitContent` on initial bundle, zoom clamp at totalBars and barSpacing 50, `tickMarkFormatter` outputs KST |
+| `replay/Workarea.tsx` | RTL | useRange wiring, RangeAdjustmentNotice shows when fromDate/toDate fall outside captured inventory |
+| `replay/RangeAdjustmentNotice.tsx` (new) | RTL | Chip renders for fromDate-skip case, toDate-skip case, both-ends-skip, dismissible behavior, action buttons |
+| `chart/ChartStage.tsx` | RTL + lightweight-charts mock | `fitContent` on initial bundle, zoom clamp at totalBars and barSpacing 50, `tickMarkFormatter` outputs KST, **chart instance survives Timeframe change** (key is `(code, fromDate, toDate)`, not including timeframe) |
+| `chart/CandlePane.tsx` | RTL + lightweight-charts mock | **Multi-day per-segment auction threshold**: 2-segment fixture, verify candles ≥ segments[0].sessionOpenMs+6h20m are muted while candles ≥ segments[1].sessionOpenMs+6h20m are also muted but candles in 09:00–15:20 of each are not. **Regression**: N=1 RangeBundle (single-day degenerate case) renders identically to historical single-day SessionBundle behavior. |
 | `chart/DayBoundaryOverlay.tsx` | RTL | One line per non-first segment, repositions on visible range change |
 | E2E (playwright) | Browser | Open page → change Timeframe → candle count changes + time window preserved + day boundary visible (range covering 2+ days) |
 | Visual | `design-review` skill | DESIGN.md token compliance, day boundary color strength, TimeframeSelector active/inactive consistency |
