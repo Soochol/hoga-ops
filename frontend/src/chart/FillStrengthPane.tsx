@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { HistogramSeries, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
-import { type Segment, realToVirtual, isWithinSessions, sortAndDedupeByTime } from '../util/time';
+import { type Segment, realToVirtual, isWithinSessions } from '../util/time';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = {
@@ -40,11 +40,10 @@ export default function FillStrengthPane({ chart, bundle, segments, paneIndex = 
     const inSession = bundle.fill_strength.points.filter((p) =>
       isWithinSessions(segments, p.t),
     );
-    // sortAndDedupeByTime defends against backend fill_strength.points being
-    // concatenated from multiple session segments without re-sorting (the
-    // 003490 fixture had 4 out-of-order entries with up to 39-min backward
-    // jumps). lightweight-charts strictly requires ascending unique time.
-    const buyData = sortAndDedupeByTime(
+    // Backend (build_fill_strength_slice) now buckets on linear ms-from-midnight
+    // and guarantees strictly-ascending unique timestamps per ADR-0010.
+    // sortAndDedupeByTime in util/time.ts remains available as defense-in-depth.
+    buy.setData(
       inSession.map((p) => ({
         // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
         // The `as any` cast keeps us free of the library's branded `Time`
@@ -53,14 +52,12 @@ export default function FillStrengthPane({ chart, bundle, segments, paneIndex = 
         value: p.buy_qty,
       })),
     );
-    const sellData = sortAndDedupeByTime(
+    sell.setData(
       inSession.map((p) => ({
         time: (realToVirtual(segments, p.t) / 1000) as any,
         value: -p.sell_qty, // negative — renders below the 0 baseline
       })),
     );
-    buy.setData(buyData);
-    sell.setData(sellData);
     return () => {
       // Guard: see RatioPane.tsx for the unwind-order rationale.
       try {

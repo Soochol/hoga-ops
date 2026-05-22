@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { LineSeries, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
-import { type Segment, realToVirtual, isWithinSessions, sortAndDedupeByTime } from '../util/time';
+import { type Segment, realToVirtual, isWithinSessions } from '../util/time';
 import { quoteImbalance } from '../util/imbalance';
 import { resolveTokens } from '../util/tokens';
 
@@ -47,18 +47,17 @@ export default function RatioPane({ chart, bundle, segments, paneIndex = 0 }: Pr
       },
       paneIndex,
     );
-    // sortAndDedupeByTime defends against backend quote_ratio.points carrying
-    // duplicate timestamps at bucket boundaries (~0.8% of points in the
-    // 003490 fixture). Without this, setData throws "data must be asc
-    // ordered by time" on the first colliding pair.
-    const data = sortAndDedupeByTime(
-      bundle.quote_ratio.points
-        .filter((p) => isWithinSessions(segments, p.t))
-        .map((p) => ({
-          time: (realToVirtual(segments, p.t) / 1000) as any,
-          value: quoteImbalance(p.bid_total, p.ask_total),
-        })),
-    );
+    // Backend (build_quote_ratio_slice) now buckets on linear ms-from-midnight
+    // and guarantees strictly-ascending unique timestamps per ADR-0010. If
+    // setData ever throws "asc ordered by time" again, the regression is on
+    // the backend side; sortAndDedupeByTime in util/time.ts is still available
+    // as a defense-in-depth wrapper.
+    const data = bundle.quote_ratio.points
+      .filter((p) => isWithinSessions(segments, p.t))
+      .map((p) => ({
+        time: (realToVirtual(segments, p.t) / 1000) as any,
+        value: quoteImbalance(p.bid_total, p.ask_total),
+      }));
     series.setData(data);
     // 0-baseline reference line (lineStyle 1 = solid).
     series.createPriceLine({
