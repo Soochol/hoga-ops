@@ -18,9 +18,15 @@ def _reset():
 
 
 def _stub_pykrx(monkeypatch, kospi=None, kosdaq=None, *, raise_exc=None):
-    """Patch pykrx fetch with an in-memory list (bypasses the DataFrame layer)."""
+    """Patch pykrx fetch with an in-memory list (bypasses the DataFrame layer).
+
+    Also sets KRX_ID/KRX_PW so the new krx_creds_present() pre-check passes
+    (unless the test is explicitly testing the missing-credentials path).
+    """
     kospi = kospi if kospi is not None else [("005930", "삼성전자")]
     kosdaq = kosdaq if kosdaq is not None else [("035720", "카카오")]
+    monkeypatch.setenv("KRX_ID", "stub_id")
+    monkeypatch.setenv("KRX_PW", "stub_pw")
     if raise_exc is not None:
         async def _raise():
             raise raise_exc
@@ -63,6 +69,8 @@ async def test_initial_status_is_loading_then_fresh(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_concurrent_gets_dedupe_to_one_fetch(monkeypatch, tmp_path):
     """N concurrent GETs trigger exactly one underlying fetch."""
+    monkeypatch.setenv("KRX_ID", "stub_id")
+    monkeypatch.setenv("KRX_PW", "stub_pw")
     counter = {"n": 0}
     sem = asyncio.Event()
 
@@ -160,3 +168,167 @@ def test_calendar_response_accepts_reason() -> None:
 
     resp_default = CalendarResponse(cells=[], as_of_ms=123)
     assert resp_default.reason is None
+
+
+import pytest
+from pathlib import Path
+
+from hoga.api import symbols as symbols_module
+from hoga.api.error_codes import UpstreamCode
+
+
+@pytest.fixture(autouse=False)
+def _reset_symbols_state():
+    """Each test starts with a clean module state."""
+    symbols_module.reset_state_for_tests()
+    yield
+    symbols_module.reset_state_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_get_all_unavailable_when_creds_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_symbols_state: None,
+) -> None:
+    """No creds → pre-check sets reason; pykrx is NOT called."""
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+
+    call_log: list[str] = []
+    async def _spy() -> list:
+        call_log.append("pykrx-called")
+        return []
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _spy)
+
+    resp = await symbols_module.get_all(data_dir=tmp_path)
+    assert resp.status == "unavailable"
+    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
+    assert call_log == [], "pykrx should not be called when creds are missing"
+
+
+@pytest.mark.asyncio
+async def test_get_all_empty_creds_treated_as_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_symbols_state: None,
+) -> None:
+    monkeypatch.setenv("KRX_ID", "")
+    monkeypatch.setenv("KRX_PW", "")
+
+    async def _spy() -> list:
+        return []
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _spy)
+
+    resp = await symbols_module.get_all(data_dir=tmp_path)
+    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
+
+
+@pytest.mark.asyncio
+async def test_get_all_fetch_failed_when_creds_set_but_pykrx_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_symbols_state: None,
+) -> None:
+    monkeypatch.setenv("KRX_ID", "u")
+    monkeypatch.setenv("KRX_PW", "p")
+
+    async def _raise() -> list:
+        raise RuntimeError("pykrx exploded")
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _raise)
+
+    resp = await symbols_module.get_all(data_dir=tmp_path)
+    assert resp.status == "unavailable"
+    assert resp.reason == UpstreamCode.KRX_FETCH_FAILED
+
+
+@pytest.mark.asyncio
+async def test_get_all_stale_path_carries_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_symbols_state: None,
+) -> None:
+    """Spec §5.3 2-axis matrix — status='stale' + reason='krx_fetch_failed'.
+
+    Scenario: a prior successful fetch warmed the cache. A subsequent refresh
+    fails. The endpoint should serve the stale cache AND surface reason.
+    """
+    monkeypatch.setenv("KRX_ID", "u")
+    monkeypatch.setenv("KRX_PW", "p")
+
+    from hoga.api.models import SymbolHit
+
+    # First call: succeed, prime the cache.
+    async def _ok() -> list[SymbolHit]:
+        return [SymbolHit(code="005930", name="삼성전자", market="KOSPI",
+                          captured_count=0,
+                          captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0})]
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _ok)
+    resp1 = await symbols_module.get_all(data_dir=tmp_path)
+    assert resp1.status == "fresh"
+    assert len(resp1.symbols) == 1
+
+    # Force cache to look stale, then make pykrx fail.
+    symbols_module.invalidate_cache_for_tests()
+    async def _raise() -> list[SymbolHit]:
+        raise RuntimeError("pykrx exploded mid-session")
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _raise)
+
+    resp2 = await symbols_module.get_all(data_dir=tmp_path)
+    assert resp2.status == "stale", "cache exists → status should downgrade to stale, not unavailable"
+    assert resp2.reason == UpstreamCode.KRX_FETCH_FAILED
+    assert len(resp2.symbols) == 1, "stale cache should still be served"
+
+
+@pytest.mark.asyncio
+async def test_get_all_reason_cleared_on_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_symbols_state: None,
+) -> None:
+    monkeypatch.setenv("KRX_ID", "u")
+    monkeypatch.setenv("KRX_PW", "p")
+
+    from hoga.api.models import SymbolHit
+
+    async def _ok() -> list[SymbolHit]:
+        return [SymbolHit(code="005930", name="삼성전자", market="KOSPI",
+                          captured_count=0,
+                          captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0})]
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _ok)
+
+    resp = await symbols_module.get_all(data_dir=tmp_path)
+    assert resp.status == "fresh"
+    assert resp.reason is None
+    assert len(resp.symbols) == 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_calls_load_env_with_override_true(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_symbols_state: None,
+) -> None:
+    """Calling refresh() invokes load_env(override=True) under the lock."""
+    monkeypatch.setenv("KRX_ID", "u")
+    monkeypatch.setenv("KRX_PW", "p")
+
+    calls: list[bool] = []
+    def _spy(*, override: bool) -> None:
+        calls.append(override)
+        return None
+    monkeypatch.setattr(symbols_module, "load_env", _spy)
+
+    async def _ok() -> list:
+        return []
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _ok)
+
+    await symbols_module.refresh(data_dir=tmp_path)
+    assert calls == [True], "refresh should call load_env(override=True) exactly once"
+
+
+def test_reset_state_for_tests_clears_reason() -> None:
+    """Make sure reset_state_for_tests handles the new state."""
+    symbols_module._last_failure_reason = UpstreamCode.KRX_FETCH_FAILED  # type: ignore[attr-defined]
+    symbols_module.reset_state_for_tests()
+    assert symbols_module._last_failure_reason is None  # type: ignore[attr-defined]

@@ -17,7 +17,9 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 
 from hoga.api.disk_state import DiskState, check_disk_state
+from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import SymbolHit, SymbolsAllResponse
+from hoga.env import krx_creds_present, load_env
 
 # Module-level state (per ADR-0006 single-module pattern, scoped to symbols.py).
 _cache: list[SymbolHit] = []
@@ -26,11 +28,13 @@ _status: str = "loading"  # one of: loading / fresh / stale / unavailable
 _lock = asyncio.Lock()
 _inflight: asyncio.Future | None = None
 _CACHE_TTL_MS = 24 * 60 * 60 * 1000  # 24h
+_last_failure_reason: UpstreamCode | None = None
 
 
 def reset_state_for_tests() -> None:
-    global _cache, _fetched_at_ms, _status, _inflight  # noqa: PLW0603
+    global _cache, _fetched_at_ms, _status, _inflight, _last_failure_reason  # noqa: PLW0603
     _cache, _fetched_at_ms, _status, _inflight = [], None, "loading", None
+    _last_failure_reason = None
 
 
 def invalidate_cache_for_tests() -> None:
@@ -133,15 +137,24 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
 
 async def _do_fetch_and_populate(data_dir: Path) -> None:
     """Inner helper — runs under in-flight Future protection."""
-    global _cache, _fetched_at_ms, _status  # noqa: PLW0603
-    try:
-        hits = await _fetch_from_pykrx()
-    except Exception:  # noqa: BLE001 — pykrx failure path
-        # Don't clobber the cache; downgrade status.
+    global _cache, _fetched_at_ms, _status, _last_failure_reason  # noqa: PLW0603
+
+    # Pre-check: deterministically classify "missing credentials" without
+    # depending on pykrx's exception-message format (which can drift across
+    # versions). Also saves the network round-trip when creds are absent.
+    if not krx_creds_present():
+        _last_failure_reason = UpstreamCode.KRX_CREDENTIALS_MISSING
         _status = "stale" if _cache else "unavailable"
         return
+
+    try:
+        hits = await _fetch_from_pykrx()
+    except Exception:  # noqa: BLE001 — pykrx failure path (preserved)
+        _last_failure_reason = UpstreamCode.KRX_FETCH_FAILED
+        _status = "stale" if _cache else "unavailable"
+        return
+
     # Single-pass walk → {code: breakdown}; assign per symbol.
-    # Walks the filesystem in the executor to keep the loop responsive.
     loop = asyncio.get_running_loop()
     breakdowns = await loop.run_in_executor(None, _build_all_captured_breakdowns, data_dir)
     empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0}
@@ -152,6 +165,7 @@ async def _do_fetch_and_populate(data_dir: Path) -> None:
     _cache = hits
     _fetched_at_ms = int(time.time() * 1000)
     _status = "fresh"
+    _last_failure_reason = None
 
 
 async def ensure_cache_warm(data_dir: Path) -> None:
@@ -173,6 +187,7 @@ async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
                 symbols=list(_cache),
                 status="fresh",
                 fetched_at_ms=_fetched_at_ms,
+                reason=_last_failure_reason,
             )
         if _inflight is None:
             _status = "loading" if not _cache else _status
@@ -193,13 +208,21 @@ async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
         symbols=list(_cache),
         status=_status,  # type: ignore[arg-type]
         fetched_at_ms=_fetched_at_ms,
+        reason=_last_failure_reason,
     )
 
 
 async def refresh(*, data_dir: Path) -> SymbolsAllResponse:
-    """POST /api/symbols/refresh — force a synchronous re-fetch."""
+    """POST /api/symbols/refresh — force a synchronous re-fetch.
+
+    load_env(override=True) runs under _lock so the os.environ mutation
+    and the _fetched_at_ms reset share one critical section. The inflight
+    Future dedupe inside get_all() collapses concurrent refresh storms to
+    one pykrx call.
+    """
     global _fetched_at_ms  # noqa: PLW0603
     async with _lock:
+        load_env(override=True)
         _fetched_at_ms = None
     return await get_all(data_dir=data_dir)
 
