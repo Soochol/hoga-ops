@@ -22,7 +22,7 @@ export default function FillTape({ trades }: Props) {
     );
   }
   return (
-    <div className="font-mono text-[11.5px] tabular-nums">
+    <div className="font-mono text-sm tabular-nums">
       {display.map((t) => (
         <FillRow key={`${t.ts_ms}-${t.seq}`} trade={t} />
       ))}
@@ -37,7 +37,7 @@ function FillRow({ trade }: { trade: Trade }) {
   return (
     <div className="grid grid-cols-[16px_1fr_auto_auto] gap-2 px-2.5 py-0.5 items-center">
       <span className={iconCls}>{icon}</span>
-      <span className="text-fg-dimmer text-[10.5px]">{time}</span>
+      <span className="text-fg-dimmer text-xs">{time}</span>
       <span>{trade.price.toLocaleString('ko-KR')}</span>
       <span className="text-fg-dim">{trade.qty.toLocaleString('ko-KR')}</span>
     </div>

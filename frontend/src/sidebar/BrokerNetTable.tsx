@@ -18,7 +18,7 @@ export default function BrokerNetTable({ brokers }: Props) {
     );
   }
   return (
-    <div className="font-mono text-[11.5px] tabular-nums">
+    <div className="font-mono text-sm tabular-nums">
       {rows.map((r) => (
         <div key={r.name} className="grid grid-cols-[1fr_auto] gap-3 px-2.5 py-0.5">
           <span className="truncate">{trunc(r.name)}</span>

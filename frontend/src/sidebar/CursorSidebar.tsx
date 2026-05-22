@@ -34,7 +34,7 @@ export function CursorSidebarConnected() {
 
 export default function CursorSidebar({ orderbook, brokers, fills }: Props) {
   return (
-    <aside className="grid grid-rows-[2fr_1fr_1fr] gap-2 p-2 bg-bg w-[320px] h-full min-h-0">
+    <aside className="grid grid-rows-[2fr_1fr_1fr] gap-2 p-2 bg-bg w-sidebar h-full min-h-0">
       <SidebarCard label="10호가" testId="card-orderbook">
         {orderbook ?? <Placeholder />}
       </SidebarCard>
@@ -63,7 +63,7 @@ function SidebarCard({
       data-card={testId.replace(/^card-/, '')}
       className="flex flex-col min-h-0 bg-bg-card border rounded overflow-hidden"
     >
-      <header className="px-3 py-2 border-b text-[10.5px] font-semibold uppercase tracking-wider text-fg-dimmer">
+      <header className="px-3 py-2 border-b text-xs font-semibold uppercase tracking-wider text-fg-dimmer">
         {label}
       </header>
       <div className="flex-1 min-h-0 overflow-auto">{children}</div>

@@ -38,7 +38,7 @@ export default function OrderbookTable({ snapshot }: Props) {
   const spread = bestAsk != null && bestBid != null ? bestAsk - bestBid : null;
 
   return (
-    <div className="font-mono text-[11.5px] tabular-nums">
+    <div className="font-mono text-sm tabular-nums">
       {displayedAsks.map((l, i) => (
         // i counts top→bottom across displayedAsks; reverse it for stable
         // keys tied to rank (best = 1).
@@ -82,7 +82,7 @@ function Row({
 
 function SpreadDivider({ spread }: { spread: number | null }) {
   return (
-    <div className="border-y bg-bg-subtle px-2.5 py-1 text-[10px] font-semibold tracking-wider uppercase text-fg-dimmer flex justify-between">
+    <div className="border-y bg-bg-subtle px-2.5 py-1 text-xs font-semibold tracking-wider uppercase text-fg-dimmer flex justify-between">
       <span>Spread</span>
       <span className="font-mono">{spread != null ? spread.toLocaleString('ko-KR') : '—'}</span>
     </div>
