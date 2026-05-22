@@ -300,6 +300,73 @@ def build_volume_profile_slice(
     )
 
 
+def build_volume_profile_range(
+    engine: QueryEngine,
+    *,
+    code: str,
+    dates: list[str],
+    vp_bins: int = 24,
+) -> VolumeProfile:
+    """Union trades.parquet across all in-range Stock-Dates into one price-binned
+    profile (range-wide POC view, ADR-0013).
+
+    Bin-count policy mirrors build_volume_profile_slice (vp_bins=24 by default)
+    applied to the unioned price range. Uses DuckDB's multi-file read_parquet
+    via a list parameter — no f-string SQL for the path (matches bundle.py:145
+    convention; see plan-eng-review D3).
+    """
+    if not dates:
+        return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
+
+    paths = [str(engine.parquet_dir(d, code) / "trades.parquet") for d in dates]
+
+    min_max = engine.conn.execute(
+        "SELECT MIN(price), MAX(price) FROM read_parquet(?)", [paths],
+    ).fetchone()
+    if min_max is None or min_max[0] is None:
+        return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
+    price_min, price_max = int(min_max[0]), int(min_max[1])
+
+    # Bin-width derived from vp_bins, mirroring build_volume_profile_slice.
+    # Guard against zero-width range (single-price day) by flooring at 1.
+    bin_width_raw = (price_max - price_min) / vp_bins if vp_bins > 0 else 1
+    if bin_width_raw <= 0:
+        bin_width_raw = 1
+
+    # No side filter — auction crosses count toward volume profile per spec §4.1.
+    # Path is parameter-bound (list) for multi-file glob; bin arithmetic is
+    # f-string'd since price_min/bin_width_raw are server-derived numerics.
+    rows = engine.conn.execute(
+        f"""
+        SELECT FLOOR((price - {price_min}) / {bin_width_raw})::BIGINT AS bin_idx,
+               SUM(qty) AS qty
+        FROM read_parquet(?)
+        WHERE price BETWEEN {price_min} AND {price_max}
+        GROUP BY 1 ORDER BY 1
+        """,
+        [paths],
+    ).fetchall()
+
+    bins_arr = [
+        VolumeProfileBin(price_low=int(price_min + i * bin_width_raw), qty=0)
+        for i in range(vp_bins)
+    ]
+    for idx, qty in rows:
+        i = int(idx)
+        if 0 <= i < vp_bins:
+            bins_arr[i] = VolumeProfileBin(
+                price_low=int(price_min + i * bin_width_raw), qty=int(qty),
+            )
+
+    return VolumeProfile(
+        bin_count=vp_bins,
+        price_min=price_min,
+        price_max=price_max,
+        bin_width=int(bin_width_raw),
+        bins=bins_arr,
+    )
+
+
 def build_fill_strength_slice(
     engine: QueryEngine,
     *,

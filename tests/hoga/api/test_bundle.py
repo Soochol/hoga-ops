@@ -153,3 +153,84 @@ def test_build_bundle_rejects_invalid_bucket_ms():
     mock_engine = _mock_engine_with_meta()
     with pytest.raises(ValueError, match="bucket_ms"):
         build_bundle(mock_engine, code="005930", date="20260512", bucket_ms=42_000)
+
+
+# ---------------------------------------------------------------------------
+# build_volume_profile_range (ADR-0013): multi-date trades unioned into one profile
+# ---------------------------------------------------------------------------
+
+def test_build_volume_profile_range_empty_dates_returns_empty():
+    from hoga.api.bundle import build_volume_profile_range
+    mock_engine = MagicMock()
+    out = build_volume_profile_range(mock_engine, code="005930", dates=[])
+    assert out.bin_count == 0
+    assert out.bins == []
+
+
+def test_build_volume_profile_range_single_date_uses_multi_file_glob():
+    """One-date range: still calls read_parquet with a list parameter."""
+    from hoga.api.bundle import build_volume_profile_range
+
+    mock_engine = MagicMock()
+    mock_engine.parquet_dir.side_effect = lambda d, c: __import__("pathlib").Path(f"/data/{c}/{d}")
+    # First execute (MIN/MAX): returns (100, 200)
+    # Second execute (GROUP BY bin): returns rows like [(0, 10), (1, 20), ...]
+    mock_engine.conn.execute.side_effect = [
+        MagicMock(fetchone=lambda: (100, 200)),
+        MagicMock(fetchall=lambda: [(0, 10), (1, 20)]),
+    ]
+
+    out = build_volume_profile_range(mock_engine, code="005930", dates=["20260512"])
+
+    # Verify the first call's parameter list contains a path-list element
+    # (DuckDB multi-file glob: execute(sql, [paths]) where paths=list[str]).
+    calls = mock_engine.conn.execute.call_args_list
+    assert len(calls) >= 1
+    # args = (sql, params_list); params_list = [paths] where paths is list[str]
+    params = calls[0].args[1]
+    assert isinstance(params, list)
+    assert any(isinstance(p, list) and all(isinstance(s, str) for s in p) for p in params)
+    assert out.bin_count > 0
+    assert out.price_min == 100
+    assert out.price_max == 200
+
+
+def test_build_volume_profile_range_multi_date_unions_paths():
+    """Multi-date range: paths list contains every date's trades.parquet."""
+    from hoga.api.bundle import build_volume_profile_range
+
+    mock_engine = MagicMock()
+    mock_engine.parquet_dir.side_effect = lambda d, c: __import__("pathlib").Path(f"/data/{c}/{d}")
+    mock_engine.conn.execute.side_effect = [
+        MagicMock(fetchone=lambda: (100, 200)),
+        MagicMock(fetchall=lambda: [(0, 10), (1, 20), (2, 30)]),
+    ]
+
+    out = build_volume_profile_range(mock_engine, code="005930", dates=["20260512", "20260513", "20260514"])
+
+    # Find the path-list parameter and verify it contains all 3 trades.parquet entries.
+    # Each execute call's params is [paths] where paths is list[str] of size 3.
+    calls = mock_engine.conn.execute.call_args_list
+    path_lists = []
+    for call in calls:
+        params = call.args[1] if len(call.args) > 1 else []
+        if isinstance(params, list):
+            for p in params:
+                if isinstance(p, list) and all(isinstance(s, str) for s in p):
+                    path_lists.append(p)
+    assert path_lists, "Expected at least one path-list parameter"
+    assert any(len(pl) == 3 for pl in path_lists), "Expected a 3-element paths list for 3 dates"
+    assert out.bin_count > 0
+
+
+def test_build_volume_profile_range_no_trades_returns_empty():
+    """If MIN/MAX returns (None, None), no trades captured → empty profile."""
+    from hoga.api.bundle import build_volume_profile_range
+
+    mock_engine = MagicMock()
+    mock_engine.parquet_dir.side_effect = lambda d, c: __import__("pathlib").Path(f"/data/{c}/{d}")
+    mock_engine.conn.execute.return_value = MagicMock(fetchone=lambda: (None, None))
+
+    out = build_volume_profile_range(mock_engine, code="005930", dates=["20260512"])
+    assert out.bin_count == 0
+    assert out.bins == []
