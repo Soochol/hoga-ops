@@ -103,8 +103,23 @@ export interface CaptureResult {
   parsed: boolean;
 }
 
+/** Mirrors hoga/api/error_codes.py::CaptureErrorCode verbatim.
+ *  Single source of truth for backend-emitted `code` strings — appears both
+ *  as HTTPException detail.code on REST errors AND as CaptureError.code on
+ *  the per-item SSE capture_finished payload. Per ADR-0004 mirror discipline:
+ *  adding a value to the Python enum requires adding the same string here. */
+export type CaptureErrorCode =
+  | 'today_too_early'
+  | 'missing_range'
+  | 'cookie_expired'
+  | 'cookie_missing'
+  | 'hogaplay_http_error'
+  | 'terminal'
+  | 'not_found'
+  | 'internal_error';
+
 export interface CaptureError {
-  code: string;
+  code: CaptureErrorCode;
   message: string;
   at_page?: number | null;
 }

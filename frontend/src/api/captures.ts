@@ -1,11 +1,22 @@
 import { apiUrl } from './client';
-import type { EnqueueRequest, EnqueueResponse, QueueSnapshot } from './types';
+import type { CaptureErrorCode, EnqueueRequest, EnqueueResponse, QueueSnapshot } from './types';
+
+/** Error thrown by captures-router calls when the backend returns a
+ *  non-OK status with a structured detail body. Consumers can branch on
+ *  `code` for typed error handling (e.g. "today_too_early" → suggest waiting). */
+export interface CaptureRestError extends Error {
+  code?: CaptureErrorCode;
+  status?: number;
+}
 
 function rejectWithDetail(r: Response, body: unknown, fallback: string): never {
   const detail = (body as { detail?: { code?: string; message?: string } })?.detail;
-  const err = new Error(detail?.message ?? `${fallback} ${r.status}`);
-  (err as { code?: string; status?: number }).code = detail?.code;
-  (err as { code?: string; status?: number }).status = r.status;
+  const err = new Error(detail?.message ?? `${fallback} ${r.status}`) as CaptureRestError;
+  // Cast through CaptureErrorCode — backend mirrors via ADR-0004 discipline,
+  // so any code the backend ships should be in the union. An unknown string
+  // would mean the backend added a code without updating types.ts.
+  err.code = detail?.code as CaptureErrorCode | undefined;
+  err.status = r.status;
   throw err;
 }
 

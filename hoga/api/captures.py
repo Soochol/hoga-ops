@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
+from hoga.api.error_codes import CaptureErrorCode
 from hoga.api.models import (
     CaptureError,
     CaptureFinishedEvent,
@@ -55,23 +56,23 @@ if int(os.environ.get("WEB_CONCURRENCY", "1")) > 1:
     )
 
 
-def _exception_to_error_code(exc: BaseException) -> str | None:
+def _exception_to_error_code(exc: BaseException) -> CaptureErrorCode | None:
     """Map a Python exception class to the API `code` field.
 
     Returns None for CaptureCancelled — that produces a `cancelled` phase,
     not a `failed` one.
     """
     if isinstance(exc, TodayTooEarlyRefused):
-        return "today_too_early"
+        return CaptureErrorCode.TODAY_TOO_EARLY
     if isinstance(exc, CookieMissingError):
-        return "cookie_missing"
+        return CaptureErrorCode.COOKIE_MISSING
     if isinstance(exc, CookieExpiredError):
-        return "cookie_expired"
+        return CaptureErrorCode.COOKIE_EXPIRED
     if isinstance(exc, HogaplayHTTPError):
-        return "hogaplay_http_error"
+        return CaptureErrorCode.HOGAPLAY_HTTP_ERROR
     if isinstance(exc, CaptureCancelled):
         return None
-    return "internal_error"
+    return CaptureErrorCode.INTERNAL_ERROR
 
 
 @dataclass
@@ -572,7 +573,7 @@ async def _worker_loop() -> None:
             await _run_item(state)
         except CookieExpiredError as exc:
             state.error = CaptureError(
-                code="cookie_expired",
+                code=CaptureErrorCode.COOKIE_EXPIRED,
                 message=str(exc),
                 at_page=state.pages_done or None,
             )
@@ -584,7 +585,7 @@ async def _worker_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001 — terminal path
             state.error = CaptureError(
-                code=_exception_to_error_code(exc) or "internal_error",
+                code=_exception_to_error_code(exc) or CaptureErrorCode.INTERNAL_ERROR,
                 message=str(exc),
                 at_page=state.pages_done or None,
             )
@@ -689,7 +690,7 @@ def build_router(
             candidate_dates = _expand_to_trading_days(req.start_date, req.end_date)
         else:
             raise HTTPException(status_code=400, detail={
-                "code": "missing_range",
+                "code": CaptureErrorCode.MISSING_RANGE,
                 "message": "Provide either dates=[...] or start_date+end_date.",
             })
 
@@ -698,7 +699,7 @@ def build_router(
         too_early = find_ineligible_dates(candidate_dates=candidate_dates, now=now)
         if too_early:
             raise HTTPException(status_code=400, detail={
-                "code": "today_too_early",
+                "code": CaptureErrorCode.TODAY_TOO_EARLY,
                 "message": (
                     f"Dates {too_early} are today (KST) and now.hour={now.hour} < 18."
                 ),
@@ -774,9 +775,9 @@ def build_router(
             for s in _done:
                 if s.item_id == item_id:
                     raise HTTPException(status_code=409, detail={
-                        "code": "terminal", "phase": s.phase,
+                        "code": CaptureErrorCode.TERMINAL, "phase": s.phase,
                     })
-        raise HTTPException(status_code=404, detail={"code": "not_found"})
+        raise HTTPException(status_code=404, detail={"code": CaptureErrorCode.NOT_FOUND})
 
     @router.post("/cancel-all", status_code=202)
     async def cancel_all_route() -> dict:
