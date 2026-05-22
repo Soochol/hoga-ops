@@ -43,12 +43,10 @@ export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: Capture
         <span className="font-normal text-sm text-fg-dim">
           {symbolName}
           {item.force_retry && (
-            <span title="Force re-capture" style={{
-              marginLeft: 6, fontSize: 9,
-              border: '1px solid var(--warn)',
-              color: 'var(--warn)',
-              borderRadius: 3, padding: '0 3px',
-            }}>⚠ force</span>
+            <span
+              title="Force re-capture"
+              className="ml-1.5 text-badge rounded-md px-[0.15rem] border border-[var(--warn)] text-[var(--warn)]"
+            >⚠ force</span>
           )}
         </span>
         <span style={{ background: descriptor.chipColor }} className="py-[0.1rem] px-xs rounded-md text-fg-dim">
