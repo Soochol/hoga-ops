@@ -1,0 +1,93 @@
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DateRangePicker } from './DateRangePicker';
+import type { ReactNode } from 'react';
+
+function W(qc: QueryClient) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  };
+}
+
+const HISTORY_RESPONSE = {
+  cells: [
+    { date: '20260518', status: 'complete', captured_at_ms: 1 },
+    { date: '20260519', status: 'none', captured_at_ms: null },
+    { date: '20260520', status: 'none', captured_at_ms: null },
+  ],
+  as_of_ms: 1,
+};
+
+function setupCalendar() {
+  vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+    ok: true, status: 200, json: async () => HISTORY_RESPONSE,
+  } as Response);
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
+
+beforeEach(() => { vi.restoreAllMocks(); });
+
+describe('DateRangePicker', () => {
+  it('renders two months side by side (current + next)', async () => {
+    const qc = setupCalendar();
+    render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={() => {}} />, {
+      wrapper: W(qc),
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByText('2026.05')).toBeTruthy();
+    expect(screen.getByText('2026.06')).toBeTruthy();
+  });
+
+  it('first click sets anchor; second click sets end (no swap when ordered)', async () => {
+    const qc = setupCalendar();
+    const onChange = vi.fn();
+    render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={onChange} />, {
+      wrapper: W(qc),
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260519'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
+    expect(onChange).toHaveBeenLastCalledWith({ start: '20260519', end: '20260520' });
+  });
+
+  it('second click before anchor swaps start/end', async () => {
+    const qc = setupCalendar();
+    const onChange = vi.fn();
+    render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={onChange} />, {
+      wrapper: W(qc),
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260519'));
+    expect(onChange).toHaveBeenLastCalledWith({ start: '20260519', end: '20260520' });
+  });
+
+  it('third click resets to a new start anchor', async () => {
+    const qc = setupCalendar();
+    const onChange = vi.fn();
+    render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={onChange} />, {
+      wrapper: W(qc),
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260519'));
+    // Third click is a new anchor (range incomplete) — onChange is called with null end.
+    expect(onChange).toHaveBeenLastCalledWith({ start: '20260519', end: null });
+  });
+
+  it('Q14 re-eval ticks every 60s (interval registered)', async () => {
+    vi.useFakeTimers();
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const qc = setupCalendar();
+    render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={() => {}} />, {
+      wrapper: W(qc),
+    });
+    await act(async () => { vi.advanceTimersByTime(0); });
+    // Verify a 60s interval was scheduled.
+    const intervals = setIntervalSpy.mock.calls.map((c) => c[1]);
+    expect(intervals).toContain(60_000);
+    vi.useRealTimers();
+  });
+});
