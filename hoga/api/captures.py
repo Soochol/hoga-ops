@@ -5,6 +5,7 @@ See docs/superpowers/specs/2026-05-21-capture-ui-design.md §4.
 from __future__ import annotations
 
 import asyncio
+import collections
 import os
 import time
 from collections.abc import Callable
@@ -137,8 +138,82 @@ class CaptureJobState:
         return self.phase in ("done", "failed", "cancelled")
 
 
+@dataclass
+class QueueItemState:
+    """Mutable server-side state for one queue item. Not a Wire Model."""
+    item_id: str
+    code: str
+    date: str
+    force_retry: bool
+    enqueued_at_ms: int
+    phase: str = "queued"
+    pause_origin: bool = False
+    started_at_ms: int | None = None
+    pages_done: int = 0
+    events_seen: int = 0
+    frontier: HogaMs = HogaMs(0)  # collector encoding (HHMMSSmmm); see ADR-0003
+    elapsed_ms: int = 0
+    estimate_pct: int = 0
+    result: CaptureResult | None = None
+    error: CaptureError | None = None
+    skip_reason: str | None = None
+    cancel_token: Any = None
+
+    def to_progress(self) -> CaptureProgress | None:
+        if self.pages_done == 0:
+            return None
+        return CaptureProgress(
+            pages_done=self.pages_done,
+            events_seen=self.events_seen,
+            frontier_ms=hhmmssms_to_unix_ms(self.date, self.frontier),
+            estimate_pct=self.estimate_pct,
+            elapsed_ms=self.elapsed_ms,
+        )
+
+    def event_header(self) -> dict[str, Any]:
+        return {
+            "item_id": self.item_id,
+            "code": self.code,
+            "date": self.date,
+            "phase": self.phase,
+        }
+
+    def to_wire(self):
+        from hoga.api.models import QueueItem
+        return QueueItem(
+            item_id=self.item_id,
+            code=self.code,
+            date=self.date,
+            phase=self.phase,                # type: ignore[arg-type]
+            force_retry=self.force_retry,
+            pause_origin=self.pause_origin,
+            enqueued_at_ms=self.enqueued_at_ms,
+            started_at_ms=self.started_at_ms,
+            progress=self.to_progress(),
+            result=self.result,
+            error=self.error,
+            skip_reason=self.skip_reason,    # type: ignore[arg-type]
+        )
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.phase in ("done", "failed", "cancelled", "skipped")
+
+
 _lock = asyncio.Lock()
 _latest: CaptureJobState | None = None
+
+# --- Queue state singletons (Plan B) ---------------------------------------
+# These coexist with the legacy `_latest` until Task 13 removes the old
+# singleton. New code paths only ever touch the queue surface.
+
+_queue: collections.deque[Any] = collections.deque()    # deque[QueueItemState]
+_active: dict[str, Any] = {}                            # item_id → QueueItemState
+_done: list[Any] = []                                   # terminal items, cleared by DELETE /done
+_inflight_paths: set[tuple[str, str]] = set()           # (code, date) — see spec §11 Q15 Layer 2
+_queue_paused: bool = False
+_max_concurrent: int = int(os.environ.get("HOGA_MAX_CONCURRENT", "3"))
+_wakeup: asyncio.Event | None = None                    # lazily constructed when the first worker starts
 
 
 def get_latest() -> CaptureJobState | None:
@@ -146,9 +221,14 @@ def get_latest() -> CaptureJobState | None:
 
 
 def reset_state_for_tests() -> None:
-    """For pytest fixtures only — clears the module singleton."""
-    global _latest  # noqa: PLW0603 — intentional test-only reset of module singleton
+    """For pytest fixtures only — clears all module singletons."""
+    global _latest, _queue_paused  # noqa: PLW0603 — intentional test-only reset of module singletons
     _latest = None
+    _queue.clear()
+    _active.clear()
+    _done.clear()
+    _inflight_paths.clear()
+    _queue_paused = False
 
 
 def cancel_latest_on_shutdown() -> None:
@@ -338,6 +418,20 @@ class StartCaptureRequest(BaseModel):
 def _make_job_id(code: str, date: str) -> str:
     now = datetime.now(tz=KST).strftime("%Y%m%dT%H%M%S")
     return f"{now}-{code}-{date}"
+
+
+from hoga.api.models import QueueSnapshot  # noqa: E402 — placed near consumers to mirror the existing late-import style
+
+
+def get_queue_snapshot() -> QueueSnapshot:
+    """Build the wire-side snapshot of queue/active/done. Read-only."""
+    return QueueSnapshot(
+        active=[s.to_wire() for s in _active.values()],
+        queued=[s.to_wire() for s in _queue],
+        done=[s.to_wire() for s in _done],
+        paused=_queue_paused,
+        max_concurrent=_max_concurrent,
+    )
 
 
 def build_router(

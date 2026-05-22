@@ -243,6 +243,16 @@ class CaptureQueueDrainedEvent(BaseModel):
     total_skipped: int
 
 
+class QueueSnapshot(BaseModel):
+    """Wire model for the full queue/worker state at one moment in time."""
+
+    active: list[QueueItem]
+    queued: list[QueueItem]
+    done: list[QueueItem]
+    paused: bool
+    max_concurrent: int
+
+
 # --- Sibling-endpoint wire models (Tasks 16–17) -----------------------------
 
 
