@@ -90,3 +90,97 @@ def test_calendar_uses_disk_state_for_captured_cells(monkeypatch, tmp_path):
         cell = next(c for c in body["cells"] if c["date"] == "20260518")
         assert cell["status"] == "complete"
         assert cell["captured_at_ms"] is not None
+
+
+import pytest
+from pathlib import Path
+
+from hoga.api import calendar as calendar_module
+from hoga.api.error_codes import UpstreamCode
+
+
+@pytest.fixture(autouse=False)
+def _reset_calendar_state():
+    calendar_module.reset_cache_for_tests()
+    yield
+    calendar_module.reset_cache_for_tests()
+
+
+def test_trading_days_for_returns_none_when_creds_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_calendar_state: None,
+) -> None:
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+
+    assert calendar_module._trading_days_for(2026, 5) is None
+    assert calendar_module.last_failure_reason() == UpstreamCode.KRX_CREDENTIALS_MISSING
+
+
+def test_trading_days_for_returns_none_when_pykrx_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_calendar_state: None,
+) -> None:
+    monkeypatch.setenv("KRX_ID", "u")
+    monkeypatch.setenv("KRX_PW", "p")
+
+    # The function does `from pykrx import stock` — patch the import path.
+    import sys
+    class _FakeStock:
+        @staticmethod
+        def get_market_ohlcv(*args, **kwargs):
+            raise RuntimeError("pykrx exploded")
+    fake_pykrx = type(sys)("pykrx")
+    fake_pykrx.stock = _FakeStock
+    monkeypatch.setitem(sys.modules, "pykrx", fake_pykrx)
+
+    assert calendar_module._trading_days_for(2026, 5) is None
+    assert calendar_module.last_failure_reason() == UpstreamCode.KRX_FETCH_FAILED
+
+
+def test_get_month_map_fail_soft_when_creds_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_calendar_state: None,
+) -> None:
+    """Calendar UI still renders every weekday; banner reason is set."""
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+
+    resp = calendar_module.get_month_map(data_dir=tmp_path, code="005930", year=2026, month=5)
+    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
+    # May 2026 has 31 days; all are present as cells.
+    assert len(resp.cells) == 31
+    import datetime as dt
+    weekday_cells = [c for c in resp.cells
+                     if dt.date(int(c.date[:4]), int(c.date[4:6]), int(c.date[6:8])).weekday() < 5]
+    weekend_cells = [c for c in resp.cells
+                     if dt.date(int(c.date[:4]), int(c.date[4:6]), int(c.date[6:8])).weekday() >= 5]
+    assert all(c.status in ("none", "future", "today_locked") for c in weekday_cells), \
+        "weekdays should not be misclassified as holiday when KRX is unavailable"
+    # Future weekend days show "future" (date > today check happens first in _cell_status_for).
+    assert all(c.status in ("weekend", "future") for c in weekend_cells)
+
+
+def test_trading_days_in_range_raises_when_creds_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_calendar_state: None,
+) -> None:
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+
+    with pytest.raises(calendar_module.KrxUnavailableError) as exc_info:
+        calendar_module.trading_days_in_range("20260501", "20260531")
+    assert exc_info.value.code == UpstreamCode.KRX_CREDENTIALS_MISSING
+
+
+def test_reset_cache_clears_last_failure_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_calendar_state: None,
+) -> None:
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+    calendar_module._trading_days_for(2026, 5)
+    assert calendar_module.last_failure_reason() is not None
+    calendar_module.reset_cache_for_tests()
+    assert calendar_module.last_failure_reason() is None

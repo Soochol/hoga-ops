@@ -13,12 +13,14 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 
 from hoga.api.disk_state import DiskState, check_disk_state
+from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import CalendarCell, CalendarResponse
 # Single Clock seam: KST + now_kst + is_today_too_early all live on
 # orchestrator.py per Refactor 3. The today_locked overlay below reuses
 # the same predicate that captures.py's enqueue guard uses — keeps the
 # 18-KST cutoff in one place.
 from hoga.collector.orchestrator import is_today_too_early, now_kst as _now_kst
+from hoga.env import krx_creds_present
 
 
 # Module-level cache: (year, month) → set of YYYYMMDD trading-day strings.
@@ -28,27 +30,62 @@ from hoga.collector.orchestrator import is_today_too_early, now_kst as _now_kst
 # rare enough that bouncing the server fixes it.
 _month_cache: dict[tuple[int, int], set[str]] = {}
 
+_last_failure_reason: UpstreamCode | None = None
 
-def _trading_days_for(year: int, month: int) -> set[str]:
-    """Return YYYYMMDD strings for KRX trading days in (year, month). Cached."""
+
+def last_failure_reason() -> UpstreamCode | None:
+    """Public accessor for the most recent KRX-availability failure."""
+    return _last_failure_reason
+
+
+class KrxUnavailableError(RuntimeError):
+    """KRX trading-day data unavailable. Carries an UpstreamCode for HTTP surfacing."""
+    def __init__(self, code: UpstreamCode) -> None:
+        super().__init__(f"KRX unavailable: {code.value}")
+        self.code = code
+
+
+def _trading_days_for(year: int, month: int) -> set[str] | None:
+    """Return YYYYMMDD strings for KRX trading days in (year, month).
+
+    Returns None when KRX data cannot be obtained (no creds, or pykrx failed).
+    The most recent failure reason is exposed via :func:`last_failure_reason`.
+    Cached results from earlier successful fetches stay valid.
+    """
+    global _last_failure_reason  # noqa: PLW0603
+
     key = (year, month)
     cached = _month_cache.get(key)
     if cached is not None:
         return cached
+
+    if not krx_creds_present():
+        _last_failure_reason = UpstreamCode.KRX_CREDENTIALS_MISSING
+        return None
+
     start = f"{year:04d}{month:02d}01"
     last_day = stdlib_calendar.monthrange(year, month)[1]
     end = f"{year:04d}{month:02d}{last_day:02d}"
-    from pykrx import stock
-    df = stock.get_market_ohlcv(start, end, "005930")
+    try:
+        from pykrx import stock
+        df = stock.get_market_ohlcv(start, end, "005930")
+    except Exception:  # noqa: BLE001
+        _last_failure_reason = UpstreamCode.KRX_FETCH_FAILED
+        return None
+
     result = {d.strftime("%Y%m%d") for d in df.index}
     _month_cache[key] = result
+    _last_failure_reason = None
     return result
 
 
 def trading_days_in_range(start: str, end: str) -> list[str]:
     """Public helper used by captures.py Task 7. Returns YYYYMMDD trading days
-    in [start, end] inclusive, sorted. Composes _trading_days_for across all
-    months the range spans, so multi-month ranges only hit pykrx once per month.
+    in [start, end] inclusive, sorted.
+
+    Raises :class:`KrxUnavailableError` when KRX data is unavailable for any
+    month spanned by the range — fail-fast on the enqueue path so the user
+    can't proceed with a guessed day list.
 
     Tests should monkeypatch this function (or pre-populate ``_month_cache``)
     rather than rely on live KRX access — KRX endpoints require KRX_ID / KRX_PW
@@ -62,6 +99,8 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
     cur = dt.date(start_d.year, start_d.month, 1)
     while cur <= end_d:
         days = _trading_days_for(cur.year, cur.month)
+        if days is None:
+            raise KrxUnavailableError(last_failure_reason() or UpstreamCode.KRX_FETCH_FAILED)
         for d in sorted(days):
             if start <= d <= end:
                 out.append(d)
@@ -75,7 +114,25 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
 
 def reset_cache_for_tests() -> None:
     """Test helper — clears the trading-day cache between tests."""
+    global _last_failure_reason  # noqa: PLW0603
     _month_cache.clear()
+    _last_failure_reason = None
+
+
+def _all_weekdays_in_month(year: int, month: int) -> set[str]:
+    """Fallback when KRX data is unavailable: treat every Mon–Fri as trading day.
+
+    Holidays mis-classify as ``status="none"`` rather than ``"holiday"``, but the
+    user sees the banner from ``CalendarResponse.reason`` and knows holiday
+    accuracy is off.
+    """
+    last_day = stdlib_calendar.monthrange(year, month)[1]
+    out: set[str] = set()
+    for day in range(1, last_day + 1):
+        d = dt.date(year, month, day)
+        if d.weekday() < 5:
+            out.add(f"{year:04d}{month:02d}{day:02d}")
+    return out
 
 
 def _disk_state_to_status(st: DiskState) -> str:
@@ -117,20 +174,26 @@ def _cell_status_for(date_str: str, now: dt.datetime, trading_days: set[str],
 
 
 def get_month_map(*, data_dir: Path, code: str, year: int, month: int) -> CalendarResponse:
-    """Build the month status map. Pure read-side."""
+    """Build the month status map. Pure read-side. Fail-soft on KRX outage."""
     now = _now_kst()
     trading_days = _trading_days_for(year, month)
+    if trading_days is None:
+        reason = last_failure_reason()
+        effective_trading_days = _all_weekdays_in_month(year, month)
+    else:
+        reason = None
+        effective_trading_days = trading_days
     last_day = stdlib_calendar.monthrange(year, month)[1]
     cells: list[CalendarCell] = []
     for day in range(1, last_day + 1):
         date_str = f"{year:04d}{month:02d}{day:02d}"
-        status = _cell_status_for(date_str, now, trading_days, data_dir, code)
+        status = _cell_status_for(date_str, now, effective_trading_days, data_dir, code)
         captured_ms = (_captured_at_ms(data_dir, code, date_str)
-                        if status in ("complete", "source_partial", "client_incomplete")
-                        else None)
+                       if status in ("complete", "source_partial", "client_incomplete")
+                       else None)
         cells.append(CalendarCell(date=date_str, status=status,  # type: ignore[arg-type]
-                                   captured_at_ms=captured_ms))
-    return CalendarResponse(cells=cells, as_of_ms=int(time.time() * 1000))
+                                  captured_at_ms=captured_ms))
+    return CalendarResponse(cells=cells, as_of_ms=int(time.time() * 1000), reason=reason)
 
 
 def build_router(*, data_dir: Path) -> APIRouter:
