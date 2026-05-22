@@ -1,10 +1,17 @@
 import type { Tab } from '../state/tabs';
+import { useToolbarDraftStore } from '../state/toolbarDraft';
 
 export default function OnboardingCard({ tab }: { tab: Tab }) {
-  const step =
-    !tab.selection?.code ? 1 :
-    !tab.selection?.fromDate || !tab.selection?.toDate ? 2 :
-    3;
+  // Subscribe to the draft store so the step indicator updates as the user
+  // fills in the toolbar — without waiting for "데이터 불러오기" to commit.
+  // Falls back to tab.selection when present (covers cases where the tab was
+  // hydrated from URL but the user hasn't touched the toolbar yet).
+  const draft = useToolbarDraftStore((s) => s.getDraft(tab.id));
+  const code = draft.code ?? tab.selection?.code ?? null;
+  const from = draft.from ?? tab.selection?.fromDate ?? null;
+  const to = draft.to ?? tab.selection?.toDate ?? null;
+
+  const step = !code ? 1 : !from || !to ? 2 : 3;
   return (
     <div className="grid place-items-center h-full">
       <div className="max-w-md bg-bg-card border rounded p-6 space-y-3">
