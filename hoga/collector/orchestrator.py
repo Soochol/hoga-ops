@@ -92,8 +92,18 @@ class ProgressEvent:
     frontier: HogaMs
 
 
-def _now_kst() -> dt.datetime:
+def now_kst() -> dt.datetime:
+    """Current KST instant. Single source of truth — both captures.py
+    (item-id stamping, today_too_early route guard) and calendar.py
+    (today_locked overlay) import this rather than redefining locally.
+    """
     return dt.datetime.now(tz=KST)
+
+
+# Internal alias preserved so tests that monkeypatch `_now_kst` at
+# orchestrator scope keep working through the rename. New callers
+# should import `now_kst` directly.
+_now_kst = now_kst
 
 
 # Policy cutoff for "is it too early to capture today?" — distinct from

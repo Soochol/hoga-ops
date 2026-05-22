@@ -10,7 +10,6 @@ import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -287,7 +286,6 @@ def _make_progress_callback(state: QueueItemState):
     return _on_progress
 
 
-KST = timezone(timedelta(hours=9))
 
 
 from hoga.api.models import QueueSnapshot  # noqa: E402 — placed near consumers to mirror the existing late-import style
@@ -642,9 +640,11 @@ async def wait_drained() -> None:
         await asyncio.sleep(0.01)
 
 
-def _now_kst() -> datetime:
-    """Wall-clock now() in KST. Wrapped so tests can monkeypatch."""
-    return datetime.now(tz=KST)
+# `_now_kst` is re-exported from the canonical Clock owner (orchestrator)
+# so the today_too_early policy + item-id stamping use the same wall-clock
+# source. Tests still patch `hoga.api.captures._now_kst` because the name
+# is bound at this module's scope (standard Python patching convention).
+from hoga.collector.orchestrator import now_kst as _now_kst  # noqa: E402
 
 
 def _expand_to_trading_days(start: str, end: str) -> list[str]:

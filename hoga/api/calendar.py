@@ -14,13 +14,11 @@ from fastapi import APIRouter, Query
 
 from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.models import CalendarCell, CalendarResponse
-
-KST = dt.timezone(dt.timedelta(hours=9))
-_TODAY_TOO_EARLY_HOUR = 18
-
-
-def _now_kst() -> dt.datetime:
-    return dt.datetime.now(tz=KST)
+# Single Clock seam: KST + now_kst + is_today_too_early all live on
+# orchestrator.py per Refactor 3. The today_locked overlay below reuses
+# the same predicate that captures.py's enqueue guard uses — keeps the
+# 18-KST cutoff in one place.
+from hoga.collector.orchestrator import is_today_too_early, now_kst as _now_kst
 
 
 # Module-level cache: (year, month) → set of YYYYMMDD trading-day strings.
@@ -111,7 +109,7 @@ def _cell_status_for(date_str: str, now: dt.datetime, trading_days: set[str],
     today = now.date()
     if d > today:
         return "future"
-    if d == today and now.hour < _TODAY_TOO_EARLY_HOUR:
+    if is_today_too_early(date_str, now):
         return "today_locked"
     if date_str not in trading_days:
         return "weekend" if d.weekday() >= 5 else "holiday"
