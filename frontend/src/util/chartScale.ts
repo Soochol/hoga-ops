@@ -11,7 +11,13 @@
  * must be updated alongside. See DESIGN.md "Scale Factor" for the
  * intentional scope limitation.
  */
-import type { DeepPartial, LayoutOptions, TimeScaleOptions } from 'lightweight-charts';
+import { CrosshairMode } from 'lightweight-charts';
+import type {
+  CrosshairOptions,
+  DeepPartial,
+  LayoutOptions,
+  TimeScaleOptions,
+} from 'lightweight-charts';
 
 /** Library default font is 12; we use 15 (= 12 × 1.25). */
 export const CHART_LAYOUT_OPTIONS: DeepPartial<LayoutOptions> = {
@@ -29,3 +35,18 @@ export const CHART_TIMESCALE_OPTIONS: DeepPartial<TimeScaleOptions> = {
 
 /** Crosshair line widths stay at 1px for sharpness. No scaling. */
 export const CHART_CROSSHAIR_LINE_WIDTH = 1;
+
+/**
+ * Crosshair behavior. `Normal` (= 0) lets the crosshair track the actual
+ * mouse position; the library default (`Magnet` = 1) snaps the horizontal
+ * line to the close of the candle under the cursor, which makes off-candle
+ * price readouts feel wrong. We want exact mouse tracking — the price-axis
+ * label then reflects the cursor's Y, not a snapped close.
+ *
+ * `CHART_CROSSHAIR_LINE_WIDTH` above stays a separate constant; line width
+ * lives under `crosshair.vertLine` / `crosshair.horzLine` subfields and is
+ * not part of this `mode`-only override.
+ */
+export const CHART_CROSSHAIR_OPTIONS: DeepPartial<CrosshairOptions> = {
+  mode: CrosshairMode.Normal,
+};

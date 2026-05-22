@@ -9,7 +9,11 @@ import {
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
-import { CHART_LAYOUT_OPTIONS, CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
+import {
+  CHART_CROSSHAIR_OPTIONS,
+  CHART_LAYOUT_OPTIONS,
+  CHART_TIMESCALE_OPTIONS,
+} from '../util/chartScale';
 import { useViewportStore } from '../state/viewport';
 import { useTabsStore } from '../state/tabs';
 import CandlePane from './CandlePane';
@@ -111,6 +115,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
         vertLines: { color: tokens.grid },
         horzLines: { color: tokens.grid },
       },
+      crosshair: CHART_CROSSHAIR_OPTIONS,
       localization: {
         // Crosshair floating label sits on a different code path than
         // tickMarkFormatter below: the library reads `localization.timeFormatter`
