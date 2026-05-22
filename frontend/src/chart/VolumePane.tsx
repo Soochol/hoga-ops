@@ -41,6 +41,9 @@ export default function VolumePane({ chart, bundle, axis, paneIndex = 0 }: Props
           minMove: 1,
         },
         priceScaleId: 'right',
+        // Suppress the library-default horizontal line at the latest bar.
+        // The right-axis chip still shows the latest total volume.
+        priceLineVisible: false,
       },
       paneIndex,
     );

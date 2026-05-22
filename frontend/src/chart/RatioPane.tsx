@@ -1,11 +1,30 @@
 import { useEffect } from 'react';
-import { LineSeries, type IChartApi } from 'lightweight-charts';
+import { BaselineSeries, type IChartApi } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { quoteImbalance } from '../util/imbalance';
 import { resolveTokens } from '../util/tokens';
 
-const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
+const TOKEN_SPEC = {
+  ratioAsk: ['--ratio-ask', '#3B82F6'],
+  // Reused: same hex as price-direction --down, but here it encodes
+  // bid-heavy order-book pressure (below 0). Inline comment marks the
+  // semantic distinction so future maintainers don't refactor it away.
+  ratioBid: ['--down', '#F43F5E'],
+  baseline: ['--fg-dimmer', '#64748B'],
+} as const;
+
+/**
+ * Convert a `#RRGGBB` hex string to `rgba(R, G, B, a)`. Used to derive
+ * the soft gradient fill colors for `BaselineSeries`' top/bottom areas
+ * from the solid token colors.
+ */
+function rgba(hex: string, a: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
 
 type Props = {
   chart: IChartApi;
@@ -27,14 +46,23 @@ type Props = {
  */
 export default function RatioPane({ chart, bundle, axis, paneIndex = 0 }: Props) {
   useEffect(() => {
-    const { accent } = resolveTokens(TOKEN_SPEC);
+    const { ratioAsk, ratioBid, baseline } = resolveTokens(TOKEN_SPEC);
     const series = chart.addSeries(
-      LineSeries,
+      BaselineSeries,
       {
-        color: accent,
+        baseValue: { type: 'price', price: 0 },
+        topLineColor: ratioAsk,
+        topFillColor1: rgba(ratioAsk, 0.28),
+        topFillColor2: rgba(ratioAsk, 0.05),
+        bottomLineColor: ratioBid,
+        bottomFillColor1: rgba(ratioBid, 0.05),
+        bottomFillColor2: rgba(ratioBid, 0.28),
         // lightweight-charts wants an integer 1-4; the design calls for a
         // hair-line emphasis, but the runtime accepts a float here.
         lineWidth: 1.4 as any,
+        // Suppress the library-default horizontal line at the latest value.
+        // The right-axis chip still shows the latest value via lastValueVisible.
+        priceLineVisible: false,
         priceFormat: {
           type: 'custom',
           formatter: (v: number) => {
@@ -59,10 +87,12 @@ export default function RatioPane({ chart, bundle, axis, paneIndex = 0 }: Props)
         value: quoteImbalance(p.bid_total, p.ask_total),
       }));
     series.setData(data);
-    // 0-baseline reference line (lineStyle 1 = solid).
+    // 0-baseline reference line. Drawn explicitly because BaselineSeries
+    // switches color at baseValue but does not paint a visible line there.
+    // Color is --fg-dimmer (neutral) so it reads as a reference, not data.
     series.createPriceLine({
       price: 0,
-      color: accent,
+      color: baseline,
       lineWidth: 1,
       lineStyle: 1,
       axisLabelVisible: false,
