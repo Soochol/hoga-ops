@@ -7,7 +7,8 @@ from hoga.api.bundle import downsample_candles
 from hoga.tables.candles import ApiCandle
 
 
-def _c(ts_ms: int, o: float, h: float, l: float, c: float, va: int = 0, vb: int = 0) -> ApiCandle:
+def _c(ts_ms: int, o: int, h: int, l: int, c: int, va: int = 0, vb: int = 0) -> ApiCandle:
+    """KRX prices are integer-won (see hoga/tables/candles.py:ApiCandle)."""
     return ApiCandle(ts_ms=ts_ms, open=o, close=c, high=h, low=l, vol_a=va, vol_b=vb)
 
 
