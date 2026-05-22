@@ -222,13 +222,18 @@ def get_latest() -> CaptureJobState | None:
 
 def reset_state_for_tests() -> None:
     """For pytest fixtures only — clears all module singletons."""
-    global _latest, _queue_paused  # noqa: PLW0603 — intentional test-only reset of module singletons
+    global _latest, _queue_paused, _wakeup  # noqa: PLW0603 — intentional test-only reset of module singletons
     _latest = None
     _queue.clear()
     _active.clear()
     _done.clear()
     _inflight_paths.clear()
     _queue_paused = False
+    # _wakeup is an asyncio.Event bound to an event loop — pytest-asyncio
+    # creates a fresh loop per test, so we must drop the stale Event or the
+    # next test gets "bound to a different event loop" errors. Workers
+    # construct one lazily in start_workers().
+    _wakeup = None
 
 
 def cancel_latest_on_shutdown() -> None:
@@ -432,6 +437,118 @@ def get_queue_snapshot() -> QueueSnapshot:
         paused=_queue_paused,
         max_concurrent=_max_concurrent,
     )
+
+
+async def _publish_phase(state: QueueItemState) -> None:
+    _publish_event(CapturePhaseEvent(**state.event_header()))
+
+
+async def _run_item(state: QueueItemState) -> None:
+    """Default item-running path. Tasks 5+ replace this with the deciding/
+    capturing/parsing pipeline. Stub for Task 4: just mark done immediately
+    so the pump infrastructure can be tested in isolation."""
+    state.phase = "done"
+
+
+async def _finalize_item(state: QueueItemState) -> None:
+    """Move state into _done, publish finished, wake other workers, emit
+    drained if applicable."""
+    from hoga.api.models import CaptureQueueDrainedEvent
+    async with _lock:
+        _active.pop(state.item_id, None)
+        _inflight_paths.discard((state.code, state.date))
+        _done.append(state)
+        # Drain detection — also check we're not paused (drained only fires
+        # when the queue has naturally bottomed out).
+        drained_event: CaptureQueueDrainedEvent | None = None
+        if not _queue and not _active and not _queue_paused:
+            totals = {
+                "total_done": sum(1 for s in _done if s.phase == "done"),
+                "total_failed": sum(1 for s in _done if s.phase == "failed"),
+                "total_cancelled": sum(1 for s in _done if s.phase == "cancelled"),
+                "total_skipped": sum(1 for s in _done if s.phase == "skipped"),
+            }
+            drained_event = CaptureQueueDrainedEvent(**totals)
+        if _wakeup is not None:
+            _wakeup.set()
+    if drained_event is not None:
+        _publish_event(drained_event)
+    _publish_event(CaptureFinishedEvent(
+        **state.event_header(),
+        result=state.result,
+        error=state.error,
+        skip_reason=state.skip_reason,  # type: ignore[arg-type]
+    ))
+
+
+async def _worker_loop() -> None:
+    """One of N coroutines. Pulls items off _queue under the lock, runs each,
+    finalizes."""
+    global _wakeup  # noqa: PLW0603
+    while True:
+        async with _lock:
+            if _queue_paused or len(_active) >= _max_concurrent or not _queue:
+                if _wakeup is None:
+                    _wakeup = asyncio.Event()
+                wait = _wakeup.wait()
+                state = None
+            else:
+                state = _queue.popleft()
+                state.phase = "deciding"
+                _active[state.item_id] = state
+                wait = None
+        if wait is not None:
+            await wait
+            async with _lock:
+                if _wakeup is not None:
+                    _wakeup.clear()
+            continue
+        assert state is not None
+        # Outside the lock: notify deciding, run, finalize.
+        await _publish_phase(state)
+        try:
+            await _run_item(state)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — terminal path
+            state.error = CaptureError(
+                code=_exception_to_error_code(exc) or "internal_error",
+                message=str(exc),
+                at_page=state.pages_done or None,
+            )
+            state.phase = "failed"
+        await _finalize_item(state)
+
+
+def start_workers(n: int | None = None) -> list[asyncio.Task]:
+    """Spin up the worker pool. Idempotent in test scope only — production
+    lifespan calls this exactly once."""
+    global _wakeup  # noqa: PLW0603
+    if _wakeup is None:
+        _wakeup = asyncio.Event()
+    n = n if n is not None else _max_concurrent
+    return [asyncio.create_task(_worker_loop(), name=f"capture-worker-{i}") for i in range(n)]
+
+
+async def stop_workers(workers: list[asyncio.Task]) -> None:
+    for w in workers:
+        w.cancel()
+    for w in workers:
+        try:
+            await w
+        except asyncio.CancelledError:
+            pass
+
+
+async def wait_drained() -> None:
+    """Block until both _queue and _active are empty (and not paused).
+    Used by tests; production code listens for the SSE event instead."""
+    while True:
+        async with _lock:
+            done = not _queue and not _active and not _queue_paused
+        if done:
+            return
+        await asyncio.sleep(0.01)
 
 
 def build_router(
