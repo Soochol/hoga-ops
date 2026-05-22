@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
@@ -251,6 +251,28 @@ class QueueSnapshot(BaseModel):
     done: list[QueueItem]
     paused: bool
     max_concurrent: int
+
+
+# --- POST /api/captures/items request/response (Plan B Task 7) --------------
+
+
+class EnqueueRequest(BaseModel):
+    code: str = Field(pattern=r"^\d{6}$")
+    start_date: str | None = Field(default=None, pattern=r"^\d{8}$")
+    end_date: str | None = Field(default=None, pattern=r"^\d{8}$")
+    dates: list[str] | None = None       # alternative to start/end
+    force_retry: bool = False
+
+
+class EnqueueDedupedRow(BaseModel):
+    code: str
+    date: str
+    reason: Literal["already_in_queue", "already_running"]
+
+
+class EnqueueResponse(BaseModel):
+    enqueued: list[QueueItem]
+    deduped: list[EnqueueDedupedRow]
 
 
 # --- Sibling-endpoint wire models (Tasks 16–17) -----------------------------

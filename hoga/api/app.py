@@ -11,6 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from hoga.api import captures as _captures_module
 from hoga.api.captures import build_router as build_captures_router
 from hoga.api.captures import cancel_latest_on_shutdown
 from hoga.api.captures import set_bus as set_captures_bus
@@ -47,9 +48,16 @@ def create_app(data_dir: Path) -> FastAPI:
         observer.start()
         # bus + loop for thread-safe publishes from the watchdog thread.
         set_captures_bus(bus, asyncio.get_running_loop())
+        # Start the Plan B worker pool. Sits alongside the legacy _latest
+        # shutdown hook until Task 13 retires the singleton path.
+        _captures_module._workers = _captures_module.start_workers()
         try:
             yield
         finally:
+            # Stop the worker pool first so in-flight items observe cancellation
+            # while bus + observer are still live (they emit terminal events).
+            await _captures_module.stop_workers(_captures_module._workers)
+            _captures_module._workers = []
             # Best-effort cancel of an in-flight job at shutdown — raw files
             # are preserved on disk for Resume. Spec §9 documents this behavior.
             cancel_latest_on_shutdown()

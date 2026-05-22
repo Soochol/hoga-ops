@@ -26,7 +26,11 @@ from hoga.api.models import (
     CapturePhaseEvent,
     CaptureProgress,
     CaptureProgressEvent,
+    CaptureQueuedEvent,
     CaptureResult,
+    EnqueueDedupedRow,
+    EnqueueRequest,
+    EnqueueResponse,
 )
 from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
@@ -216,6 +220,7 @@ _inflight_paths: set[tuple[str, str]] = set()           # (code, date) — see s
 _queue_paused: bool = False
 _max_concurrent: int = int(os.environ.get("HOGA_MAX_CONCURRENT", "3"))
 _wakeup: asyncio.Event | None = None                    # lazily constructed when the first worker starts
+_workers: list[asyncio.Task] = []                       # populated by app lifespan; stopped on shutdown
 
 # Production dependencies set during build_router(); sentinels keep the names
 # valid before init (e.g. for tests that bypass build_router via the
@@ -630,10 +635,16 @@ async def _worker_loop() -> None:
 
 def start_workers(n: int | None = None) -> list[asyncio.Task]:
     """Spin up the worker pool. Idempotent in test scope only — production
-    lifespan calls this exactly once."""
+    lifespan calls this exactly once.
+
+    Always replaces ``_wakeup`` so the Event is bound to the currently
+    running event loop. Otherwise sequential FastAPI TestClient lifespans
+    across tests would inherit a stale Event and ``stop_workers`` would
+    raise "bound to a different event loop" when teardown tries to await
+    on the worker tasks still waiting on the old Event.
+    """
     global _wakeup  # noqa: PLW0603
-    if _wakeup is None:
-        _wakeup = asyncio.Event()
+    _wakeup = asyncio.Event()
     n = n if n is not None else _max_concurrent
     return [asyncio.create_task(_worker_loop(), name=f"capture-worker-{i}") for i in range(n)]
 
@@ -657,6 +668,28 @@ async def wait_drained() -> None:
         if done:
             return
         await asyncio.sleep(0.01)
+
+
+def _now_kst() -> datetime:
+    """Wall-clock now() in KST. Wrapped so tests can monkeypatch."""
+    return datetime.now(tz=KST)
+
+
+def _expand_to_trading_days(start: str, end: str) -> list[str]:
+    """Return YYYYMMDD strings for each KRX trading day in [start, end].
+
+    Delegates to hoga.api.calendar.trading_days_in_range which owns the
+    pykrx-backed cache (Task 15). Late import so tests can monkeypatch
+    the calendar function source.
+    """
+    from hoga.api.calendar import trading_days_in_range
+    return trading_days_in_range(start, end)
+
+
+def _make_item_id(code: str, date: str) -> str:
+    """Stable per-enqueue item id: YYYYMMDDTHHMMSSmmm-CODE-DATE."""
+    stamp = _now_kst().strftime("%Y%m%dT%H%M%S%f")[:-3]  # ms precision
+    return f"{stamp}-{code}-{date}"
 
 
 def build_router(
@@ -767,5 +800,80 @@ def build_router(
                         "message": "cancel the running capture before dismissing"},
             )
         _latest = None
+
+    @router.post("/items", status_code=201)
+    async def enqueue_items(req: EnqueueRequest) -> EnqueueResponse:
+        """Enqueue items for one (code, range or dates) request.
+
+        Q14 guard: any date in the request equal to today_kst with
+        now.hour < 18 → 400 today_too_early.
+        Q15 Layer 1: per-(code, date) dedupe against
+        _queue ∪ _active ∪ _inflight_paths and within-request duplicates.
+        Returns the dedupe list in the response.
+        """
+        # 1. Expand to a flat list of candidate dates.
+        if req.dates is not None:
+            candidate_dates = list(req.dates)
+        elif req.start_date and req.end_date:
+            candidate_dates = _expand_to_trading_days(req.start_date, req.end_date)
+        else:
+            raise HTTPException(status_code=400, detail={
+                "code": "missing_range",
+                "message": "Provide either dates=[...] or start_date+end_date.",
+            })
+
+        # 2. Q14 today-too-early guard.
+        now = _now_kst()
+        too_early = [d for d in candidate_dates if is_today_too_early(d, now)]
+        if too_early:
+            raise HTTPException(status_code=400, detail={
+                "code": "today_too_early",
+                "message": (
+                    f"Dates {too_early} are today (KST) and now.hour={now.hour} < 18."
+                ),
+                "dates": too_early,
+            })
+
+        # 3. Q15 Layer 1 dedupe: against queue ∪ active ∪ inflight ∪ within-request.
+        enqueued: list[QueueItemState] = []
+        deduped_rows: list[EnqueueDedupedRow] = []
+        enqueued_at_ms = int(time.time() * 1000)
+        async with _lock:
+            active_pairs = {(s.code, s.date) for s in _active.values()}
+            queue_pairs = {(s.code, s.date) for s in _queue}
+            existing_pairs = set(_inflight_paths) | queue_pairs | active_pairs
+            seen_in_request: set[tuple[str, str]] = set()
+            for date in candidate_dates:
+                pair = (req.code, date)
+                if pair in existing_pairs or pair in seen_in_request:
+                    reason = (
+                        "already_running" if pair in active_pairs
+                        else "already_in_queue"
+                    )
+                    deduped_rows.append(EnqueueDedupedRow(
+                        code=req.code, date=date, reason=reason,
+                    ))
+                    continue
+                seen_in_request.add(pair)
+                state = QueueItemState(
+                    item_id=_make_item_id(req.code, date),
+                    code=req.code,
+                    date=date,
+                    force_retry=req.force_retry,
+                    enqueued_at_ms=enqueued_at_ms,
+                )
+                _queue.append(state)
+                enqueued.append(state)
+            if enqueued and _wakeup is not None:
+                _wakeup.set()
+
+        # 4. Emit queued event (skipped when nothing landed).
+        if enqueued:
+            _publish_event(CaptureQueuedEvent(items=[s.to_wire() for s in enqueued]))
+
+        return EnqueueResponse(
+            enqueued=[s.to_wire() for s in enqueued],
+            deduped=deduped_rows,
+        )
 
     return router
