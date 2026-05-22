@@ -46,6 +46,7 @@ export default function Inventory() {
       code: r.code,
       fromDate: r.date,
       toDate: r.date,
+      timeframe: '1m',
     });
     navigate('/replay');
   };
