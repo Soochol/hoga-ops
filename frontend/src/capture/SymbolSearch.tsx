@@ -5,6 +5,15 @@ import { symbolSearchHints } from '../api/upstream-hints';
 import { refreshSymbols } from '../api/symbols';
 import type { SymbolHit, SymbolsCacheStatus } from '../api/types';
 
+const STALE_NUDGE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
+
+function formatRelativeShort(ms: number): string {
+  const delta = Date.now() - ms;
+  const days = Math.floor(delta / 86_400_000);
+  if (days < 1) return '오늘';
+  return `${days}일 전`;
+}
+
 export interface SymbolSearchProps {
   value: SymbolHit | null;
   onChange: (hit: SymbolHit | null) => void;
@@ -28,6 +37,9 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
   const queryClient = useQueryClient();
   const cacheStatus: SymbolsCacheStatus = data?.status ?? 'loading';
   const reason = data?.reason ?? null;
+  const fetchedAtMs = data?.fetched_at_ms ?? null;
+  const isStaleByAge =
+    fetchedAtMs !== null && Date.now() - fetchedAtMs > STALE_NUDGE_THRESHOLD_MS;
   const showRefresh = cacheStatus === 'unavailable' || cacheStatus === 'stale';
 
   const hint = (reason && symbolSearchHints[reason])
@@ -152,6 +164,13 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
             // F3: empty state — tells the user the input is processed but matched nothing.
             <div className="py-md px-sm font-normal text-sm text-fg-dim">
               검색 결과가 없습니다. 종목명 또는 6자리 코드를 확인하세요.
+              {isStaleByAge && fetchedAtMs !== null && (
+                <div className="mt-2 text-xs text-fg-dimmer">
+                  Symbol Master가 {formatRelativeShort(fetchedAtMs)} 업데이트되었습니다 —
+                  신규 상장 종목이 누락되었을 수 있습니다.{' '}
+                  <a href="/settings" className="underline">설정에서 Update</a>
+                </div>
+              )}
             </div>
           ) : (
             hits.map((h, i) => (

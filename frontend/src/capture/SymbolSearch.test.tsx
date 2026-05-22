@@ -192,3 +192,67 @@ describe('SymbolSearch reason-aware empty state', () => {
     expect(screen.getByText(/종목 목록 미가용/)).toBeTruthy();
   });
 });
+
+describe('SymbolSearch — empty-result staleness nudge', () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  function wrapWithData(ui: ReactNode, initialData: unknown) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(['symbols', 'all'], initialData);
+    return <QueryClientProvider client={qc}>{ui}</QueryClientProvider>;
+  }
+
+  it('renders nudge when catalog is older than 7 days and search has no hits', () => {
+    const TEN_DAYS_AGO = Date.now() - 10 * 24 * 60 * 60 * 1000;
+    render(wrapWithData(
+      <SymbolSearch value={null} onChange={() => {}} />,
+      {
+        symbols: [
+          {
+            code: '005930',
+            name: '삼성전자',
+            market: 'KOSPI',
+            captured_count: 0,
+            captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 },
+          },
+        ],
+        status: 'fresh',
+        fetched_at_ms: TEN_DAYS_AGO,
+        reason: null,
+      },
+    ));
+    const input = screen.getByPlaceholderText(/종목명/);
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'nonexistent-name' } });
+
+    expect(screen.getByText(/검색 결과가 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/Symbol Master.*업데이트되었습니다/)).toBeInTheDocument();
+  });
+
+  it('does NOT render nudge when catalog is younger than 7 days', () => {
+    const ONE_DAY_AGO = Date.now() - 24 * 60 * 60 * 1000;
+    render(wrapWithData(
+      <SymbolSearch value={null} onChange={() => {}} />,
+      {
+        symbols: [
+          {
+            code: '005930',
+            name: '삼성전자',
+            market: 'KOSPI',
+            captured_count: 0,
+            captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 },
+          },
+        ],
+        status: 'fresh',
+        fetched_at_ms: ONE_DAY_AGO,
+        reason: null,
+      },
+    ));
+    const input = screen.getByPlaceholderText(/종목명/);
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'nonexistent-name' } });
+
+    expect(screen.getByText(/검색 결과가 없습니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/Symbol Master.*업데이트되었습니다/)).not.toBeInTheDocument();
+  });
+});
