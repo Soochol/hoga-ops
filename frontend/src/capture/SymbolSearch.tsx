@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSymbols, useSymbolSearch } from './useSymbols';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSymbols, useSymbolSearch, SYMBOLS_QUERY_KEY } from './useSymbols';
+import { symbolSearchHints } from '../api/upstream-hints';
+import { refreshSymbols } from '../api/symbols';
 import type { SymbolHit, SymbolsCacheStatus } from '../api/types';
 
 export interface SymbolSearchProps {
@@ -22,7 +25,25 @@ const STATUS_COLOR: Record<SymbolsCacheStatus, string> = {
 
 export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
   const { data } = useSymbols();
+  const queryClient = useQueryClient();
   const cacheStatus: SymbolsCacheStatus = data?.status ?? 'loading';
+  const reason = data?.reason ?? null;
+  const showRefresh = cacheStatus === 'unavailable' || cacheStatus === 'stale';
+
+  const hint = (reason && symbolSearchHints[reason])
+    ? symbolSearchHints[reason]
+    : (
+        <>
+          종목 목록 미가용 — 6자리 코드 입력 후{' '}
+          <kbd className="bg-bg-input border rounded-md px-xs font-[inherit]">Enter</kbd>{' '}
+          로 확정.
+        </>
+      );
+
+  const handleRefresh = async () => {
+    await refreshSymbols();
+    await queryClient.invalidateQueries({ queryKey: SYMBOLS_QUERY_KEY });
+  };
   const [text, setText] = useState(value ? `${value.name} ${value.code}` : '');
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -109,7 +130,16 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
       </div>
       {cacheStatus === 'unavailable' && (
         <div className="mt-1.5 text-xs text-fg-dim">
-          종목 목록 미가용 — 6자리 코드 입력 후 <kbd className="bg-bg-input border rounded-md px-xs font-[inherit]">Enter</kbd> 로 확정.
+          <p className="m-0">{hint}</p>
+          {showRefresh && (
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className="mt-1.5 bg-bg-input border border-border rounded-md px-xs py-0.5 text-fg-dim hover:text-fg cursor-pointer font-[inherit] text-xs"
+            >
+              Refresh
+            </button>
+          )}
         </div>
       )}
       {dropdownVisible && (

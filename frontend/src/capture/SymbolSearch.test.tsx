@@ -149,3 +149,46 @@ describe('SymbolSearch', () => {
     expect(screen.getByText(/검색 결과가 없습니다/)).toBeTruthy();
   });
 });
+
+describe('SymbolSearch reason-aware empty state', () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  function wrapWithData(ui: ReactNode, initialData: unknown) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(['symbols', 'all'], initialData);
+    return <QueryClientProvider client={qc}>{ui}</QueryClientProvider>;
+  }
+
+  it('shows krx_credentials_missing hint when reason is set', () => {
+    render(wrapWithData(
+      <SymbolSearch value={null} onChange={() => {}} />,
+      { symbols: [], status: 'unavailable', fetched_at_ms: null, reason: 'krx_credentials_missing' },
+    ));
+    expect(screen.getByText(/KRX 자격증명이 없습니다/)).toBeTruthy();
+  });
+
+  it('shows Refresh button when status is unavailable', () => {
+    render(wrapWithData(
+      <SymbolSearch value={null} onChange={() => {}} />,
+      { symbols: [], status: 'unavailable', fetched_at_ms: null, reason: 'krx_credentials_missing' },
+    ));
+    expect(screen.getByRole('button', { name: /refresh/i })).toBeTruthy();
+  });
+
+  it('does NOT show Refresh button when status is fresh', () => {
+    render(wrapWithData(
+      <SymbolSearch value={null} onChange={() => {}} />,
+      { symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI', captured_count: 0, captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 } }],
+        status: 'fresh', fetched_at_ms: 0 },
+    ));
+    expect(screen.queryByRole('button', { name: /refresh/i })).toBeNull();
+  });
+
+  it('falls back to default empty-state copy when reason is null', () => {
+    render(wrapWithData(
+      <SymbolSearch value={null} onChange={() => {}} />,
+      { symbols: [], status: 'unavailable', fetched_at_ms: null, reason: null },
+    ));
+    expect(screen.getByText(/종목 목록 미가용/)).toBeTruthy();
+  });
+});
