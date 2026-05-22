@@ -49,6 +49,7 @@
     Consolas, 'Liberation Mono', 'Courier New', monospace;
 
   /* ───── Font size scale (rem-based, root 16px) ───── */
+  --text-badge: 0.53125rem;      /* 10.625px @ default; 8.5px base intent — SymbolSearch market badge, dedicated token to preserve visual hierarchy below --text-xs */
   --text-xs: 0.65625rem;   /* 10.5px — small-caps labels, badges */
   --text-sm: 0.71875rem;   /* 11.5px — table rows, secondary mono */
   --text-base: 0.8125rem;  /* 13px   — body / UI default */
@@ -72,4 +73,16 @@
   --radius-md: 4px;
   --radius-lg: 6px;
   --radius-full: 9999px;
+
+  /* ───── Layout (rem-based; rendered px shown @ 20px root = default density) ───── */
+  --nav-w: 13.125rem;            /* 262.5px @ default; 210px base intent */
+  --sidebar-w: 20rem;            /* 400px @ default; 320px base intent */
+  --combobox-min-w: 13.75rem;    /* 275px @ default; 220px base intent */
+  --dropdown-min-w: 20rem;       /* 400px @ default; 320px base intent */
+  --h-tab: 2rem;                 /* 40px @ default; 32px base intent */
+  --h-tab-secondary: 1.875rem;   /* 37.5px @ default; 30px base intent — intentional 2px-shorter secondary action */
+  --h-toolbar: 3.75rem;          /* 75px @ default; 60px base intent */
+  --h-pricestrip: 3.25rem;       /* 65px @ default; 52px base intent */
+  --h-orderbook-row: 1.375rem;   /* 27.5px @ default; 22px base intent */
+  --h-capture-row: 2.25rem;      /* 45px @ default; 36px base intent */
 }

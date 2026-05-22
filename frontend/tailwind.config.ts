@@ -36,6 +36,7 @@ export default {
         DEFAULT: 'var(--border)',
       },
       fontSize: {
+        badge: 'var(--text-badge)',
         xs: 'var(--text-xs)',
         sm: 'var(--text-sm)',
         base: 'var(--text-base)',
@@ -59,6 +60,22 @@ export default {
         md: 'var(--radius-md)',
         lg: 'var(--radius-lg)',
         full: 'var(--radius-full)',
+      },
+      width: {
+        nav: 'var(--nav-w)',
+        sidebar: 'var(--sidebar-w)',
+      },
+      height: {
+        tab: 'var(--h-tab)',
+        'tab-secondary': 'var(--h-tab-secondary)',
+        toolbar: 'var(--h-toolbar)',
+        pricestrip: 'var(--h-pricestrip)',
+        'orderbook-row': 'var(--h-orderbook-row)',
+        'capture-row': 'var(--h-capture-row)',
+      },
+      minWidth: {
+        combobox: 'var(--combobox-min-w)',
+        dropdown: 'var(--dropdown-min-w)',
       },
     },
   },
