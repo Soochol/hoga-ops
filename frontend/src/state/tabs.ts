@@ -1,10 +1,23 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
-import type { SessionBundle } from '../api/types';
+import type { RangeBundle, Timeframe } from '../api/types';
 import { useToolbarDraftStore } from './toolbarDraft';
 
-export type TabSelection = { code: string; fromDate: string; toDate: string };
+export type TabSelection = {
+  code: string;
+  fromDate: string;
+  toDate: string;
+  timeframe: Timeframe;
+};
 export type TabStatus = 'empty' | 'loading' | 'loaded' | 'error';
+
+/** Per-tab chart view preferences (volume profile mode, etc.). Stored in a
+ *  Map<tabId, ChartViewPrefs> on the store for parity with Tab.bundles (CQ1). */
+export type ChartViewPrefs = {
+  volumeProfileMode: 'range' | 'per-day';
+};
+
+const DEFAULT_PREFS: ChartViewPrefs = { volumeProfileMode: 'range' };
 
 export type Tab = {
   id: string;
@@ -12,19 +25,24 @@ export type Tab = {
   cursorMs: number | null;
   status: TabStatus;
   errorMessage?: string;
-  bundles: Map<string, SessionBundle>;
+  // Wire Model transition (ADR-0013): bundles are now keyed by from_date and
+  // hold a RangeBundle. Tasks 15-17 update Workarea/Panes to consume this.
+  bundles: Map<string, RangeBundle>;
 };
 
 type Store = {
   tabs: Tab[];
   activeTabId: string;
+  prefs: Map<string, ChartViewPrefs>;
   newTab: (opts?: { confirmEvictOldest?: boolean }) => string;
   closeTab: (id: string) => void;
   setActive: (id: string) => void;
   setSelection: (id: string, sel: TabSelection) => void;
   setStatus: (id: string, status: TabStatus, errorMessage?: string) => void;
   setCursor: (id: string, ms: number | null) => void;
-  putBundle: (id: string, date: string, bundle: SessionBundle) => void;
+  putBundle: (id: string, date: string, bundle: RangeBundle) => void;
+  getPrefs: (id: string) => ChartViewPrefs;
+  setVolumeProfileMode: (id: string, mode: ChartViewPrefs['volumeProfileMode']) => void;
   reset: () => void;
 };
 
@@ -43,6 +61,7 @@ const initial = fresh();
 export const useTabsStore = create<Store>((set, get) => ({
   tabs: [initial],
   activeTabId: initial.id,
+  prefs: new Map(),
   newTab: (opts) => {
     let { tabs } = get();
     if (tabs.length >= TABS_SOFT_CAP) {
@@ -54,7 +73,7 @@ export const useTabsStore = create<Store>((set, get) => ({
     return t.id;
   },
   closeTab: (id) => {
-    const { tabs, activeTabId } = get();
+    const { tabs, activeTabId, prefs } = get();
     if (tabs.length <= 1) return;
     const idx = tabs.findIndex((t) => t.id === id);
     if (idx === -1) return;
@@ -66,7 +85,10 @@ export const useTabsStore = create<Store>((set, get) => ({
       ? (next[idx]?.id ?? next[idx - 1]?.id ?? next[0].id)
       : activeTabId;
     useToolbarDraftStore.getState().clearTab(id);
-    set({ tabs: next, activeTabId: nextActive });
+    // Clean up per-tab prefs to prevent leak (CQ1).
+    const nextPrefs = new Map(prefs);
+    nextPrefs.delete(id);
+    set({ tabs: next, activeTabId: nextActive, prefs: nextPrefs });
   },
   setActive: (id) => set({ activeTabId: id }),
   setSelection: (id, sel) =>
@@ -84,8 +106,15 @@ export const useTabsStore = create<Store>((set, get) => ({
         return { ...t, bundles, status: 'loaded' as const };
       }),
     })),
+  getPrefs: (id) => get().prefs.get(id) ?? DEFAULT_PREFS,
+  setVolumeProfileMode: (id, mode) =>
+    set((s) => {
+      const next = new Map(s.prefs);
+      next.set(id, { ...DEFAULT_PREFS, ...next.get(id), volumeProfileMode: mode });
+      return { prefs: next };
+    }),
   reset: () => {
     const t = fresh();
-    set({ tabs: [t], activeTabId: t.id });
+    set({ tabs: [t], activeTabId: t.id, prefs: new Map() });
   },
 }));
