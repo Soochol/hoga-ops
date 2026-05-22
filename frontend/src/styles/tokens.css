@@ -5,6 +5,12 @@
  */
 :root,
 [data-theme='dark'] {
+  /* ───── Scale dial (single source for default density) ─────
+     :root font-size is the ONE dial. 20px = 1.25× default; 16px would be 1.0×.
+     All rem-based tokens (--text-*, --space-*, layout tokens) follow automatically.
+     Chart canvas options in util/chartScale.ts are NOT reactive — see DESIGN.md Scale Factor. */
+  font-size: 20px;
+
   /* ───── Color · Surfaces ───── */
   --bg: #0E0E14;
   --bg-card: #13131C;
@@ -58,15 +64,15 @@
   --text-xl: 1.375rem;     /* 22px   — current price (price strip) */
   --text-2xl: 2rem;        /* 32px   — future hero numerics */
 
-  /* ───── Spacing (4px base) ───── */
-  --space-2xs: 2px;
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 12px;
-  --space-lg: 16px;
-  --space-xl: 24px;
-  --space-2xl: 32px;
-  --space-3xl: 48px;
+  /* ───── Spacing (rem-based; rendered px @ 20px root shown) ───── */
+  --space-2xs: 0.125rem;  /* 2.5px @ default; 2px base intent */
+  --space-xs: 0.25rem;    /* 5px @ default; 4px base intent */
+  --space-sm: 0.5rem;     /* 10px @ default; 8px base intent */
+  --space-md: 0.75rem;    /* 15px @ default; 12px base intent */
+  --space-lg: 1rem;       /* 20px @ default; 16px base intent */
+  --space-xl: 1.5rem;     /* 30px @ default; 24px base intent */
+  --space-2xl: 2rem;      /* 40px @ default; 32px base intent */
+  --space-3xl: 3rem;      /* 60px @ default; 48px base intent */
 
   /* ───── Border radius ───── */
   --radius-sm: 2px;
