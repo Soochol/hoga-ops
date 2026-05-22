@@ -621,6 +621,8 @@ async def _worker_loop() -> None:
         await _publish_phase(state)
         try:
             await _run_item(state)
+        except CaptureCancelled:
+            state.phase = "cancelled"
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 — terminal path
@@ -879,5 +881,62 @@ def build_router(
             enqueued=[s.to_wire() for s in enqueued],
             deduped=deduped_rows,
         )
+
+    @router.post("/items/{item_id}/cancel", status_code=202)
+    async def cancel_item(item_id: str) -> dict:
+        async with _lock:
+            # Queued case — drop from _queue, mark cancelled, push to _done.
+            for i, s in enumerate(_queue):
+                if s.item_id == item_id:
+                    del _queue[i]
+                    s.phase = "cancelled"
+                    _done.append(s)
+                    if _wakeup is not None:
+                        _wakeup.set()
+                    _publish_event(CaptureFinishedEvent(
+                        **s.event_header(),
+                        result=None,
+                        error=None,
+                        skip_reason=None,
+                    ))
+                    return {"status": "cancelled", "item_id": item_id}
+            # Active case — signal cancel; worker observes via cancel_token.
+            state = _active.get(item_id)
+            if state is not None and state.cancel_token is not None:
+                state.cancel_token.cancel()
+                return {"status": "cancel_signal_delivered", "item_id": item_id}
+            # Terminal case.
+            for s in _done:
+                if s.item_id == item_id:
+                    raise HTTPException(status_code=409, detail={
+                        "code": "terminal", "phase": s.phase,
+                    })
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+
+    @router.post("/cancel-all", status_code=202)
+    async def cancel_all() -> dict:
+        # Note: Task 10 rewrites this route to delegate to a cancel_all()
+        # module function that handles Q20 paused-state semantics. For Task 9,
+        # the simple direct implementation is fine.
+        drained: list[Any] = []
+        async with _lock:
+            while _queue:
+                s = _queue.popleft()
+                s.phase = "cancelled"
+                _done.append(s)
+                drained.append(s)
+            for s in list(_active.values()):
+                if s.cancel_token is not None:
+                    s.cancel_token.cancel()
+            if _wakeup is not None:
+                _wakeup.set()
+        for s in drained:
+            _publish_event(CaptureFinishedEvent(
+                **s.event_header(),
+                result=None,
+                error=None,
+                skip_reason=None,
+            ))
+        return {"status": "cancel_all_delivered", "drained_count": len(drained)}
 
     return router

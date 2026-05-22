@@ -373,3 +373,106 @@ def test_get_queue_returns_snapshot(monkeypatch, tmp_path):
         assert "active" in body and "queued" in body and "done" in body
         assert "paused" in body and "max_concurrent" in body
         assert isinstance(body["max_concurrent"], int)
+
+
+# --- Task 9: Cancel routes --------------------------------------------------
+
+
+def test_cancel_queued_item_removes_and_marks_cancelled(monkeypatch, tmp_path):
+    """Item not yet active → POST /cancel drops it from queue, marks cancelled."""
+    app = _build_test_app(monkeypatch, tmp_path)
+    monkeypatch.setattr("hoga.api.disk_state.check_disk_state",
+                        lambda *_a, **_k: DiskState.NONE)
+    # Patch _run_capture_and_parse to block so items stay queued/active.
+    sem = asyncio.Event()
+
+    async def _block(state, resume):
+        await sem.wait()
+        state.phase = "done"
+
+    monkeypatch.setattr(captures, "_run_capture_and_parse", _block)
+
+    with TestClient(app) as c:
+        # Enqueue more items than workers so at least one stays in _queue.
+        # _max_concurrent defaults to 3; submit 5 to be safe.
+        r = c.post("/api/captures/items", json={
+            "code": "005930",
+            "dates": ["20260513", "20260514", "20260515", "20260518", "20260519"],
+            "force_retry": False,
+        })
+        assert r.status_code == 201, r.text
+        items = r.json()["enqueued"]
+        # Target the last one — it'll still be in the queue (workers blocked).
+        target = items[-1]
+        # Give workers a moment to pick up the first batch so target sits in _queue.
+        for _ in range(20):
+            snap = c.get("/api/captures/queue").json()
+            if any(it["item_id"] == target["item_id"] for it in snap["queued"]):
+                break
+            time.sleep(0.02)
+        cr = c.post(f"/api/captures/items/{target['item_id']}/cancel")
+        assert cr.status_code == 202, cr.text
+        body = cr.json()
+        assert body["status"] == "cancelled"
+        assert body["item_id"] == target["item_id"]
+        # Snapshot should show it in done with cancelled phase.
+        snap = c.get("/api/captures/queue").json()
+        cancelled = [it for it in snap["done"] if it["item_id"] == target["item_id"]]
+        assert cancelled and cancelled[0]["phase"] == "cancelled"
+        # Let the rest drain so the test teardown is clean.
+        sem.set()
+
+
+def test_cancel_terminal_item_returns_409(monkeypatch, tmp_path):
+    app = _build_test_app(monkeypatch, tmp_path)
+    monkeypatch.setattr("hoga.api.disk_state.check_disk_state",
+                        lambda *_a, **_k: DiskState.COMPLETE)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260518"], "force_retry": False,
+        })
+        item_id = r.json()["enqueued"][0]["item_id"]
+        # Wait for it to terminate (COMPLETE → skipped, terminal).
+        for _ in range(40):
+            snap = c.get("/api/captures/queue").json()
+            if snap["active"] == [] and any(it["item_id"] == item_id for it in snap["done"]):
+                break
+            time.sleep(0.05)
+        cr = c.post(f"/api/captures/items/{item_id}/cancel")
+        assert cr.status_code == 409, cr.text
+        assert cr.json()["detail"]["code"] == "terminal"
+
+
+def test_cancel_all_drains_queue(monkeypatch, tmp_path):
+    app = _build_test_app(monkeypatch, tmp_path)
+    monkeypatch.setattr("hoga.api.disk_state.check_disk_state",
+                        lambda *_a, **_k: DiskState.NONE)
+    sem = asyncio.Event()
+
+    async def _block(state, resume):
+        await sem.wait()
+        state.phase = "done"
+
+    monkeypatch.setattr(captures, "_run_capture_and_parse", _block)
+
+    with TestClient(app) as c:
+        c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260518", "20260519", "20260520"],
+            "force_retry": False,
+        })
+        cr = c.post("/api/captures/cancel-all")
+        assert cr.status_code == 202, cr.text
+        body = cr.json()
+        assert body["status"] == "cancel_all_delivered"
+        assert "drained_count" in body
+        sem.set()
+        # All terminal.
+        for _ in range(60):
+            snap = c.get("/api/captures/queue").json()
+            if not snap["queued"] and not snap["active"]:
+                break
+            time.sleep(0.05)
+        snap = c.get("/api/captures/queue").json()
+        assert snap["queued"] == []
+        assert snap["active"] == []
+        assert all(it["phase"] in ("done", "cancelled") for it in snap["done"])
