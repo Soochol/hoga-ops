@@ -90,4 +90,56 @@ describe('DateRangePicker', () => {
     expect(intervals).toContain(60_000);
     vi.useRealTimers();
   });
+
+  // Navigation: prev / next / select / Today
+  it('Next button advances the visible months by one', async () => {
+    const qc = setupCalendar();
+    render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={() => {}} />, {
+      wrapper: W(qc),
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByText('2026.05')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Next month'));
+    expect(screen.getByText('2026.06')).toBeTruthy();
+    expect(screen.getByText('2026.07')).toBeTruthy();
+  });
+
+  it('Previous button steps back one month, crossing year boundary', async () => {
+    const qc = setupCalendar();
+    render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={1} value={null} onChange={() => {}} />, {
+      wrapper: W(qc),
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByLabelText('Previous month'));
+    expect(screen.getByText('2025.12')).toBeTruthy();
+    expect(screen.getByText('2026.01')).toBeTruthy();
+  });
+
+  it('Year/Month selects jump directly to the chosen month', async () => {
+    const qc = setupCalendar();
+    render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={() => {}} />, {
+      wrapper: W(qc),
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '2024' } });
+    fireEvent.change(screen.getByLabelText('Month'), { target: { value: '11' } });
+    expect(screen.getByText('2024.11')).toBeTruthy();
+    expect(screen.getByText('2024.12')).toBeTruthy();
+  });
+
+  it('Today button returns to the reference month and is disabled when already there', async () => {
+    const qc = setupCalendar();
+    render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={() => {}} />, {
+      wrapper: W(qc),
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    const today = screen.getByRole('button', { name: 'Today' }) as HTMLButtonElement;
+    expect(today.disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText('Next month'));
+    fireEvent.click(screen.getByLabelText('Next month'));
+    expect(screen.getByText('2026.07')).toBeTruthy();
+    expect(today.disabled).toBe(false);
+    fireEvent.click(today);
+    expect(screen.getByText('2026.05')).toBeTruthy();
+  });
 });

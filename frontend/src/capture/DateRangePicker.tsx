@@ -67,6 +67,14 @@ function MonthGrid({
   );
 }
 
+function shiftMonth(year: number, month: number, delta: number): { year: number; month: number } {
+  // month is 1-12. Shift by delta months, normalizing across year boundaries.
+  const idx = (year * 12 + (month - 1)) + delta;
+  return { year: Math.floor(idx / 12), month: (idx % 12) + 1 };
+}
+
+const YEAR_SPAN = 5;  // year selector covers [reference-YEAR_SPAN, reference+1]
+
 export function DateRangePicker({ code, referenceYear, referenceMonth, value, onChange }: DateRangePickerProps) {
   // Q14: re-render every 60s so today_locked transitions cleanly through 18:00 KST.
   const [, setTick] = useState(0);
@@ -80,11 +88,30 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
   // through `value`. Cleared once a complete range is emitted.
   const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
 
-  const nextYear = referenceMonth === 12 ? referenceYear + 1 : referenceYear;
-  const nextMonth = referenceMonth === 12 ? 1 : referenceMonth + 1;
+  // Internal display state — props are initial values only. Lets the picker
+  // navigate (prev / next / jump / today) without the parent re-rendering.
+  const [displayYear, setDisplayYear] = useState(referenceYear);
+  const [displayMonth, setDisplayMonth] = useState(referenceMonth);
 
-  const left = useCalendar(code, referenceYear, referenceMonth);
+  const nextYear = displayMonth === 12 ? displayYear + 1 : displayYear;
+  const nextMonth = displayMonth === 12 ? 1 : displayMonth + 1;
+
+  const left = useCalendar(code, displayYear, displayMonth);
   const right = useCalendar(code, nextYear, nextMonth);
+
+  const shiftBy = (delta: number) => {
+    const { year, month } = shiftMonth(displayYear, displayMonth, delta);
+    setDisplayYear(year);
+    setDisplayMonth(month);
+  };
+  const goToToday = () => {
+    setDisplayYear(referenceYear);
+    setDisplayMonth(referenceMonth);
+  };
+
+  // Year selector: a small window around the reference month — enough for
+  // common back-fills without flooding the dropdown.
+  const yearOptions = Array.from({ length: YEAR_SPAN + 2 }, (_, i) => referenceYear - YEAR_SPAN + i);
 
   const statusByDate = useMemo(() => {
     const m = new Map<string, CalendarStatus>();
@@ -121,10 +148,70 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
   const displayValue: DateRange | null =
     value ?? (pendingAnchor === null ? null : { start: pendingAnchor, end: null });
 
+  const atReference = displayYear === referenceYear && displayMonth === referenceMonth;
+
   return (
-    <div style={{ display: 'flex', gap: 16 }}>
-      <MonthGrid code={code} year={referenceYear} month={referenceMonth} value={displayValue} statusByDate={statusByDate} onPick={onPick} />
-      <MonthGrid code={code} year={nextYear} month={nextMonth} value={displayValue} statusByDate={statusByDate} onPick={onPick} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div data-testid="picker-nav" style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        font: '500 11px "Geist Mono", monospace', color: 'var(--fg-dim)',
+      }}>
+        <button type="button" aria-label="Previous month" onClick={() => shiftBy(-1)} style={navBtn()}>‹</button>
+        <select
+          aria-label="Year"
+          value={displayYear}
+          onChange={(e) => setDisplayYear(Number(e.target.value))}
+          style={navSelect()}
+        >
+          {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <select
+          aria-label="Month"
+          value={displayMonth}
+          onChange={(e) => setDisplayMonth(Number(e.target.value))}
+          style={navSelect()}
+        >
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+            <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+          ))}
+        </select>
+        <button type="button" aria-label="Next month" onClick={() => shiftBy(1)} style={navBtn()}>›</button>
+        <button
+          type="button"
+          onClick={goToToday}
+          disabled={atReference}
+          style={{ ...navBtn(), padding: '2px 8px', opacity: atReference ? 0.4 : 1 }}
+        >Today</button>
+      </div>
+      <div style={{ display: 'flex', gap: 16 }}>
+        <MonthGrid code={code} year={displayYear} month={displayMonth} value={displayValue} statusByDate={statusByDate} onPick={onPick} />
+        <MonthGrid code={code} year={nextYear} month={nextMonth} value={displayValue} statusByDate={statusByDate} onPick={onPick} />
+      </div>
     </div>
   );
+}
+
+function navBtn(): React.CSSProperties {
+  return {
+    background: 'transparent',
+    borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border-strong)',
+    color: 'var(--fg-dim)',
+    borderRadius: 4,
+    padding: '2px 6px',
+    font: '500 11px "Geist Mono", monospace',
+    cursor: 'pointer',
+    lineHeight: 1,
+  };
+}
+
+function navSelect(): React.CSSProperties {
+  return {
+    background: 'var(--bg-input)',
+    borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
+    color: 'var(--fg)',
+    borderRadius: 4,
+    padding: '2px 4px',
+    font: '500 11px "Geist Mono", monospace',
+    cursor: 'pointer',
+  };
 }
