@@ -58,15 +58,27 @@ chart canvas internal coordinates) stays in `px`.
 
 ### Why this approach over alternatives
 
-- **Single dial.** Future density modes (`data-density="compact"` etc.) are a
-  one-line `font-size` change. Without rem conversion, every density change
-  would require editing every spacing/layout token.
+- **Single dial for CSS.** Future density modes (`data-density="compact"`
+  etc.) are a one-line `font-size` change on the CSS side. Without rem
+  conversion, every density change would require editing every spacing
+  and layout token.
 - **Faithful to browser zoom semantics.** Browser zoom scales everything
   proportionally — fonts, spacing, fixed widths, line heights. Our
   rem-based system replicates this at the token layer.
 - **Truthful documentation.** DESIGN.md can declare a "base intent" and a
   "rendered at default density" in parallel, so future density modes just
   add columns rather than rewriting numbers.
+
+### Scope of the single dial — CSS only, chart updated alongside
+
+The single-dial property applies to CSS-rendered chrome. The
+`lightweight-charts` canvas remains a separate concern: its options
+(`layout.fontSize`, `barSpacing`, etc.) are static integer constants
+in `frontend/src/util/chartScale.ts`. If a future density mode is added,
+**both `:root font-size` and `chartScale.ts` must be updated together.**
+The cost of integrating chart values into the CSS dial (e.g., via a
+`--chart-font-size` CSS variable read by `resolveTokens`) was considered
+and deferred — see Risks below.
 
 ## Token Values
 
@@ -109,17 +121,21 @@ rem values are calibrated for 20px root, so `Xrem × 20 = rendered px`.
 |---|---|---|---|---|
 | `--nav-w` | 210px | 262.5px | `13.125rem` | `App.tsx grid-cols-[210px_...]` |
 | `--sidebar-w` | 320px | 400px | `20rem` | `CursorSidebar w-[320px]` |
-| `--combobox-min-w` | 220px | 275px | `13.75rem` | `StockCombobox min-w-[240px]` (code had 240; design intent is 220) |
+| `--combobox-min-w` | 220px | 275px | `13.75rem` | `StockCombobox min-w-[240px]` (code had 240; design intent is 220 — normalized as drift) |
 | `--dropdown-min-w` | 320px | 400px | `20rem` | `StockCombobox min-w-[320px]` |
-| `--row-tab-h` | 32px | 40px | `2rem` | `TabStrip h-[30px]` (code had 30; design intent is 32) |
+| `--row-tab-h` | 32px | 40px | `2rem` | `Tab` main tab height |
+| `--row-tab-secondary-h` | 30px | 37.5px | `1.875rem` | `TabStrip` "+ 새 분석" button (intentionally 2px shorter than main tab — secondary action) |
 | `--row-toolbar-h` | 60px | 75px | `3.75rem` | `Toolbar h-[60px]` |
 | `--row-pricestrip-h` | 52px | 65px | `3.25rem` | `PriceStrip h-[52px]` |
 | `--row-orderbook-h` | 22px | 27.5px | `1.375rem` | OrderbookTable row height |
 | `--row-capture-h` | 36px | 45px | `2.25rem` | `CaptureQueueRow height: 36` |
 
-Off-grid hardcoded values (e.g., `h-[30px]` where the design called for 32px,
-`min-w-[240px]` where 220px was the design value) are normalized to the
-design-system value during migration.
+Off-grid hardcoded values are classified during migration as either
+**intentional design difference** (preserved via a dedicated token, e.g.,
+`TabStrip` 30px button → new `--row-tab-secondary-h`) or **drift**
+(normalized to the design-system value, e.g., `StockCombobox` 240px →
+220px design intent). The classification is made case-by-case based on
+code intent and git history; ambiguous cases default to drift.
 
 ### Stays in px (intentionally)
 
@@ -135,22 +151,33 @@ design-system value during migration.
 `lightweight-charts` renders to `<canvas>` and does not inherit CSS sizing
 for its internal text. Scaling is applied through library options.
 
-A new module `frontend/src/util/chartScale.ts` centralizes the scaled values:
+**Current state:** `ChartStage.tsx`'s `createChart(...)` call passes only
+color tokens and `attributionLogo: false` — no `layout.fontSize`, no
+`barSpacing`, no `rightOffset`. Chart text therefore renders at the
+library's default font size (currently 12 in lightweight-charts v5).
 
-| Option | Library default | New value | Notes |
+**New module** `frontend/src/util/chartScale.ts` exports explicit option
+values that all chart components apply:
+
+| Option | Currently | New value | Notes |
 |---|---|---|---|
-| `layout.fontSize` | 12 | 15 | Axis labels, crosshair price |
-| `timeScale.fontSize` (if exposed) | 12 | 15 | Time axis labels |
-| `priceScale` label size | 12 | 15 | Price axis labels |
+| `layout.fontSize` | unset (library default 12) | **add as 15** | Axis labels, crosshair price |
+| `timeScale.fontSize` (if exposed) | unset | **add as 15** | Time axis labels |
+| `priceScale` label size | unset | **add as 15** | Price axis labels |
 | `crosshair.vertLine.width` | 1 | 1 (kept) | Stays at 1px for sharpness |
 | `crosshair.horzLine.width` | 1 | 1 (kept) | Stays at 1px for sharpness |
-| `rightOffset`, `barSpacing` | library default | × 1.25 | Pane spacing |
+| `rightOffset`, `barSpacing` | library default | × 1.25 of library defaults | Pane spacing |
 
 All seven chart components (`CandlePane`, `VolumePane`, `RatioPane`,
 `IntensityPane`, `FillStrengthPane`, `VolumeProfileOverlay`, plus
 `ChartStage`) consume `chartScale.ts` rather than hardcoding their own
 font sizes. This mirrors the existing `util/tokens.ts` pattern that already
 resolves CSS variables into canvas-compatible color strings.
+
+**Important:** `chartScale.ts` values are static constants. They are NOT
+reactive to `:root font-size` changes. If a future density mode is added,
+`chartScale.ts` must be updated alongside the CSS dial (see "Scope of the
+single dial" above).
 
 ## Code Migration
 
@@ -208,10 +235,89 @@ not preserved during migration.
 1. One PR, not one-per-component — token changes must be atomic to avoid
    partial scaling artifacts.
 2. Preserve semantic meaning when decomposing composite styles (`font:`
-   shorthand → `text-*` + `font-*` + `text-*` classes).
-3. Normalize off-token hardcodes to the nearest design-system value during
-   migration; do not preserve violations.
+   shorthand → `text-*` + `font-*` + `font-mono`/`font-sans` classes).
+   Font weights map to Tailwind weight utilities (`font-normal`,
+   `font-medium`, `font-semibold`, `font-bold`).
+3. Classify off-token hardcodes as intentional design difference or drift
+   case-by-case. Drift normalizes to design value; intentional differences
+   get a dedicated token (see `--row-tab-secondary-h`).
 4. Chart options consolidated in `chartScale.ts`, never inlined per-component.
+5. Tailwind preset spacing (`p-2`, `gap-2`, `mb-px` etc.) is **not migrated**
+   to design tokens unless the value is also a design-system spacing point.
+   Tailwind's default scale is rem-based (`p-2 = 0.5rem`) so it auto-scales
+   with `:root font-size`. Where existing usage happens to match a design
+   token (e.g., `gap-2` = `0.5rem` = `--space-sm`), migration is optional.
+6. Component inventory — these files contain hardcoded values to migrate:
+   shell (`App.tsx`, `LeftNav.tsx`, `NavItem.tsx`, `CaptureStatusPill.tsx`,
+   `StatusDot.tsx`), replay (`TabStrip.tsx`, `Tab.tsx`, `PriceStrip.tsx`,
+   `Toolbar.tsx`, `StockCombobox.tsx`, `DateRangePicker.tsx`,
+   `OnboardingCard.tsx`), sidebar (`CursorSidebar.tsx`, `OrderbookTable.tsx`,
+   `BrokerNetTable.tsx`, `FillTape.tsx`), capture (`CaptureQueueRow.tsx`,
+   `SymbolSearch.tsx`). Chart files are migrated as part of step 7.
+
+## Documentation Updates
+
+This spec also defines updates to existing documentation. They are part
+of the implementation, not separate work.
+
+### ADR-0008 (new) — Default UI density is 1.25× base intent
+
+Single ADR capturing **the decision and its rationale only**:
+- Why the default density shifts (lived-experience preference, density
+  feedback indicates the original 1.0× was too dense for the analyst
+  workflow).
+- Why one decision instead of "let users toggle" — single-user tool,
+  shipping a sensible default is more valuable than density chrome.
+- Why the chart is excluded from the single dial (B-answer trade-off:
+  static `chartScale.ts` is simpler today; density toggle UI is non-goal).
+
+Implementation details (rem conversion mechanics, 2-column DESIGN.md
+structure, chartScale.ts pattern) live in DESIGN.md, not the ADR. The
+ADR cross-references DESIGN.md's "Scale Factor" section.
+
+### DESIGN.md — New "Scale Factor" section + 2-column tables + Components disclaimer
+
+A new top-level section "Scale Factor" is added near the top of DESIGN.md
+(after "Product Context", before "Aesthetic Direction"). It defines:
+- Base intent (1.0×) — the original pixel target captured in token rems
+  against a 16px root.
+- Default density (1.25×) — what 100% browser zoom currently renders,
+  via `:root { font-size: 20px }`.
+- The CSS single-dial mechanism and its scope (CSS only, chart updated
+  alongside).
+- Future density modes deferred to a backlog issue; this section is the
+  hook point.
+
+`## Typography` and `## Spacing` token tables adopt 2-column structure
+(`Base intent (1.0×)` + `Rendered @ default (1.25×)`).
+
+`## Components` section receives a single disclaimer line at the top:
+> All px values in this section are **1.0× base intent**. Default rendering
+> = × 1.25. See Scale Factor section.
+
+Existing component px values stay as-is — the disclaimer reframes them.
+
+### Approved mockup HTML — label-only update
+
+`docs/superpowers/designs/2026-05-20-replay-viewer.html` is the approved
+visual reference per CLAUDE.md and DESIGN.md. It is rendered at 1.0× base
+intent. After this spec lands, it no longer matches the live default
+density.
+
+The HTML file gets a comment block at the top:
+
+```html
+<!--
+  Visual reference for hoga-ops design system.
+  This file is rendered at BASE INTENT (1.0× scale factor).
+  The current default density is 1.25× — see DESIGN.md "Scale Factor".
+  Do not edit the rem/px values to match the new default; this file is
+  the canonical 1.0× artifact.
+-->
+```
+
+The DESIGN.md reference to this file gets parallel clarification:
+"approved mockup at 1.0× base intent".
 
 ## Implementation Sequence
 
@@ -223,7 +329,8 @@ not preserved during migration.
 5. refactor(frontend/sidebar): migrate sidebar tables
 6. refactor(frontend/capture): migrate capture page components
 7. feat(frontend/chart): scale lightweight-charts via chartScale.ts
-8. docs: update DESIGN.md to 2-column scale, add density ADR
+8. docs: DESIGN.md Scale Factor section + 2-column tables +
+   Components disclaimer + mockup HTML label + ADR-0008
 ```
 
 The order is intentional: infrastructure first so the compiler can flag
@@ -258,9 +365,12 @@ scaling only if chart layout breaks but CSS is fine).
 - [ ] Eight core screens render without breakage
 
 **Documentation**
-- [ ] DESIGN.md token tables use 2-column "Base intent / Rendered @ default" structure
-- [ ] DESIGN.md introduces "Scale factor" concept with future density mode pathway
-- [ ] `docs/adr/NNNN-default-ui-density.md` written, capturing rationale and infrastructure for future modes
+- [ ] DESIGN.md `## Typography` and `## Spacing` tables use 2-column "Base intent / Rendered @ default" structure
+- [ ] DESIGN.md gains new `## Scale Factor` section explaining the dial mechanism, scope (CSS only), and density-mode hook
+- [ ] DESIGN.md `## Components` section has 1-line disclaimer reframing existing px values as 1.0× base intent
+- [ ] DESIGN.md reference to approved mockup mentions "at 1.0× base intent"
+- [ ] `docs/superpowers/designs/2026-05-20-replay-viewer.html` gains a top-level comment block labeling it as 1.0× base intent reference
+- [ ] `docs/adr/0008-default-ui-density.md` written — decision + Why + Consequences only; cross-references DESIGN.md Scale Factor for implementation
 
 **Verification**
 - [ ] `grep -rE "text-\[|w-\[[0-9]|h-\[[0-9]|style=\{\{" frontend/src/` returns zero results (excluding legitimate remnants: 1px borders, color-only inline styles)
@@ -282,12 +392,13 @@ scaling only if chart layout breaks but CSS is fine).
 - `docs/superpowers/specs/2026-05-22-default-ui-scale-up-design.md` — this file
 
 **Implementation produces (via writing-plans → executing-plans)**
-- `frontend/src/styles/tokens.css` — token redefinition
-- `frontend/tailwind.config.ts` — new layout token registration
+- `frontend/src/styles/tokens.css` — token redefinition + `:root { font-size: 20px }`
+- `frontend/tailwind.config.ts` — new layout token registration (including `--row-tab-secondary-h`)
 - `frontend/src/util/chartScale.ts` — new module, chart option constants
-- `frontend/src/**/*.tsx` — ~15-20 components migrated off hardcoded px
-- `DESIGN.md` — 2-column scale, updated token tables
-- `docs/adr/NNNN-default-ui-density.md` — new ADR
+- `frontend/src/**/*.tsx` — ~15-20 components migrated off hardcoded px (TabStrip preserves intentional secondary height via dedicated token)
+- `DESIGN.md` — new `## Scale Factor` section + 2-column Typography/Spacing tables + Components disclaimer + approved-mockup label
+- `docs/superpowers/designs/2026-05-20-replay-viewer.html` — top-level HTML comment block labeling as 1.0× base intent reference
+- `docs/adr/0008-default-ui-density.md` — new ADR (decision + Why + Consequences)
 
 ## Out of Scope (Backlog Issues)
 
