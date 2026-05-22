@@ -1,7 +1,7 @@
 """pykrx symbol master cache + search + captured breakdown via disk_state.
 
 Three-tier policy (spec §11 Q19):
-- Tier 1: lifespan schedules ``ensure_cache_warm()`` fire-and-forget at startup.
+- Tier 1: lifespan calls load_disk_state() at startup (disk-backed boot).
 - Tier 2: GET-time ``asyncio.Lock`` + in-flight Future dedupe — N concurrent
   GETs trigger exactly one pykrx call.
 - Tier 3: pykrx failure returns the last-known cache with ``status="stale"``
@@ -70,7 +70,6 @@ _fetched_at_ms: int | None = None
 _state: SymbolCacheState = SymbolCacheState.loading()
 _lock = asyncio.Lock()
 _inflight: asyncio.Future | None = None
-_CACHE_TTL_MS = 24 * 60 * 60 * 1000  # 24h
 SCHEMA_VERSION = 1
 
 
@@ -167,13 +166,6 @@ def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> 
     os.replace(tmp_path, path)
 
 
-def invalidate_cache_for_tests() -> None:
-    """Mark current cache stale (for stale-fallback testing)."""
-    global _fetched_at_ms  # noqa: PLW0603
-    if _fetched_at_ms is not None:
-        _fetched_at_ms -= _CACHE_TTL_MS * 2
-
-
 async def _fetch_from_pykrx() -> list[SymbolHit]:
     """Override in tests. Production implementation calls pykrx directly.
 
@@ -207,12 +199,6 @@ async def _fetch_from_pykrx() -> list[SymbolHit]:
         )
         for c, n, m in rows
     ]
-
-
-def _is_fresh() -> bool:
-    if _fetched_at_ms is None:
-        return False
-    return (int(time.time() * 1000) - _fetched_at_ms) < _CACHE_TTL_MS
 
 
 def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
@@ -303,13 +289,6 @@ async def _do_fetch_and_populate(data_dir: Path) -> None:
     _state = SymbolCacheState.fresh()
 
 
-async def ensure_cache_warm(data_dir: Path) -> None:
-    """Tier 1 entry point — called from lifespan fire-and-forget."""
-    if _is_fresh():
-        return
-    await get_all(data_dir=data_dir)
-
-
 async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
     """Tier 2: GET-time lock + Future dedupe.
 
@@ -317,13 +296,6 @@ async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
     """
     global _inflight, _state  # noqa: PLW0603
     async with _lock:
-        if _is_fresh():
-            return SymbolsAllResponse(
-                symbols=list(_cache),
-                status=_state.status,
-                fetched_at_ms=_fetched_at_ms,
-                reason=_state.reason,
-            )
         if _inflight is None:
             # Downgrade to loading only when there's no cache to serve.
             if not _cache:

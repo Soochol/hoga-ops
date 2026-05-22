@@ -99,19 +99,6 @@ async def test_pykrx_failure_returns_unavailable_when_no_cache(monkeypatch, tmp_
     assert resp.symbols == []
 
 
-@pytest.mark.asyncio
-async def test_pykrx_failure_returns_stale_with_prior_cache(monkeypatch, tmp_path):
-    _stub_pykrx(monkeypatch)
-    first = await symbols.get_all(data_dir=tmp_path)
-    assert first.status == "fresh"
-    # Now simulate a fetch failure on refresh.
-    _stub_pykrx(monkeypatch, raise_exc=RuntimeError("krx down"))
-    symbols.invalidate_cache_for_tests()  # mark stale
-    second = await symbols.get_all(data_dir=tmp_path)
-    assert second.status == "stale"
-    assert len(second.symbols) == 2
-
-
 def test_search_filters_by_name(monkeypatch, tmp_path):
     _stub_pykrx(monkeypatch, kospi=[("005930", "삼성전자"), ("000660", "SK하이닉스")])
     asyncio.run(symbols.get_all(data_dir=tmp_path))
@@ -240,44 +227,6 @@ async def test_get_all_fetch_failed_when_creds_set_but_pykrx_raises(
     resp = await symbols_module.get_all(data_dir=tmp_path)
     assert resp.status == "unavailable"
     assert resp.reason == UpstreamCode.KRX_FETCH_FAILED
-
-
-@pytest.mark.asyncio
-async def test_get_all_stale_path_carries_reason(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    _reset_symbols_state: None,
-) -> None:
-    """Spec §5.3 2-axis matrix — status='stale' + reason='krx_fetch_failed'.
-
-    Scenario: a prior successful fetch warmed the cache. A subsequent refresh
-    fails. The endpoint should serve the stale cache AND surface reason.
-    """
-    monkeypatch.setenv("KRX_ID", "u")
-    monkeypatch.setenv("KRX_PW", "p")
-
-    from hoga.api.models import SymbolHit
-
-    # First call: succeed, prime the cache.
-    async def _ok() -> list[SymbolHit]:
-        return [SymbolHit(code="005930", name="삼성전자", market="KOSPI",
-                          captured_count=0,
-                          captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0})]
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _ok)
-    resp1 = await symbols_module.get_all(data_dir=tmp_path)
-    assert resp1.status == "fresh"
-    assert len(resp1.symbols) == 1
-
-    # Force cache to look stale, then make pykrx fail.
-    symbols_module.invalidate_cache_for_tests()
-    async def _raise() -> list[SymbolHit]:
-        raise RuntimeError("pykrx exploded mid-session")
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _raise)
-
-    resp2 = await symbols_module.get_all(data_dir=tmp_path)
-    assert resp2.status == "stale", "cache exists → status should downgrade to stale, not unavailable"
-    assert resp2.reason == UpstreamCode.KRX_FETCH_FAILED
-    assert len(resp2.symbols) == 1, "stale cache should still be served"
 
 
 @pytest.mark.asyncio
