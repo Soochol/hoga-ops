@@ -120,7 +120,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
             )
         return result
 
-@router.get("/range", response_model=RangeBundle)
+    @router.get("/range", response_model=RangeBundle)
     def api_range(
         code: Code,
         from_date: str = Query(..., alias="from"),
