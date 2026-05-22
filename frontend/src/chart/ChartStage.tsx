@@ -11,6 +11,7 @@ import RatioPane from './RatioPane';
 import IntensityPane from './IntensityPane';
 import FillStrengthPane from './FillStrengthPane';
 import VolumeProfileOverlay from './VolumeProfileOverlay';
+import DayBoundaryOverlay from './DayBoundaryOverlay';
 
 const CHART_TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -275,6 +276,12 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
               paneIndex={0}
             />
           </div>
+          {/*
+            Day Boundary overlay (Task 18). Vertical line + MM/DD chip at each
+            segment boundary. pointer-events-none so it doesn't interfere with
+            chart crosshair interaction.
+          */}
+          <DayBoundaryOverlay chart={chart} segments={segments} />
         </>
       )}
     </div>

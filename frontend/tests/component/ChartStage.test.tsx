@@ -54,6 +54,7 @@ vi.mock('../../src/chart/RatioPane', () => ({ default: () => null }));
 vi.mock('../../src/chart/IntensityPane', () => ({ default: () => null }));
 vi.mock('../../src/chart/FillStrengthPane', () => ({ default: () => null }));
 vi.mock('../../src/chart/VolumeProfileOverlay', () => ({ default: () => null }));
+vi.mock('../../src/chart/DayBoundaryOverlay', () => ({ default: () => null }));
 
 beforeAll(() => {
   if (typeof globalThis.ResizeObserver === 'undefined') {
