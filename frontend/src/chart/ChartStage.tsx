@@ -3,6 +3,7 @@ import { createChart, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
 import { type Segment, virtualToReal } from '../util/time';
 import { resolveTokens } from '../util/tokens';
+import { CHART_LAYOUT_OPTIONS, CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 import { useViewportStore } from '../state/viewport';
 import CandlePane from './CandlePane';
 import VolumePane from './VolumePane';
@@ -82,6 +83,7 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
 
     const c = createChart(containerRef.current, {
       layout: {
+        ...CHART_LAYOUT_OPTIONS,
         background: { color: tokens.bgCard },
         textColor: tokens.fg,
         attributionLogo: false,
@@ -91,6 +93,7 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
         horzLines: { color: tokens.grid },
       },
       timeScale: {
+        ...CHART_TIMESCALE_OPTIONS,
         timeVisible: true,
         secondsVisible: false,
         borderColor: tokens.border,
