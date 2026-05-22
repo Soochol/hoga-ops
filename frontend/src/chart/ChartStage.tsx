@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
-import { createChart, TickMarkType, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
+import {
+  createChart,
+  TickMarkType,
+  type IChartApi,
+  type Time,
+  type UTCTimestamp,
+} from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
@@ -104,6 +110,21 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
       grid: {
         vertLines: { color: tokens.grid },
         horzLines: { color: tokens.grid },
+      },
+      localization: {
+        // Crosshair floating label sits on a different code path than
+        // tickMarkFormatter below: the library reads `localization.timeFormatter`
+        // when rendering the time chip that follows the cursor on the x-axis.
+        // Without this, our virtual-axis values get decoded as Unix-epoch
+        // seconds and the chip reads "02 1월'70 03:26" et al.
+        timeFormatter: (time: Time): string => {
+          const virtualMs = (time as number) * 1000;
+          const a = axisRef.current;
+          if (a.segments.length === 0) return '';
+          const realMs = a.toReal(virtualMs);
+          const d = new Date(realMs + 9 * 3600_000); // KST = UTC + 9h
+          return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+        },
       },
       timeScale: {
         ...CHART_TIMESCALE_OPTIONS,
