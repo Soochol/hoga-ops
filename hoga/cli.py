@@ -11,7 +11,7 @@ from rich.table import Table
 
 from hoga.collector.client import HogaplayClient
 from hoga.collector.orchestrator import collect_stock_date
-from hoga.config import Config, CookieMissingError
+from hoga.config import Config, CookieMissingError, resolve_data_dir
 from hoga.parser import parse_stock_date
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="hoga-ops backend CLI")
@@ -19,6 +19,9 @@ console = Console()
 
 
 def _cfg() -> Config:
+    # Cookie lookup stays cwd-relative (per-branch .cookie file is normal).
+    # Data dir is resolved separately via resolve_data_dir() so captures
+    # land in the machine-global store regardless of branch / worktree.
     return Config.from_cwd()
 
 
@@ -42,7 +45,7 @@ def collect(
                 client=client,
                 code=code,
                 date=date,
-                data_dir=cfg.data_dir,
+                data_dir=resolve_data_dir(),
                 resume=resume,
             )
         except Exception as e:  # noqa: BLE001
@@ -62,9 +65,8 @@ def parse(
     report: bool = typer.Option(False, "--report"),
 ) -> None:
     """Parse captured raw TSV into Parquet."""
-    cfg = _cfg()
     try:
-        out = parse_stock_date(code=code, date=date, data_dir=cfg.data_dir, lenient=lenient)
+        out = parse_stock_date(code=code, date=date, data_dir=resolve_data_dir(), lenient=lenient)
     except Exception as e:  # noqa: BLE001
         console.print(f"[red]parse failed: {e}[/red]")
         raise typer.Exit(code=1) from e
@@ -92,9 +94,8 @@ def serve(port: int = typer.Option(8000, "--port")) -> None:
 @app.command(name="ls")
 def list_stock_dates() -> None:
     """Show captured/parsed Stock-Dates."""
-    cfg = _cfg()
-    raw_root = cfg.data_dir / "raw"
-    parquet_root = cfg.data_dir / "parquet"
+    raw_root = resolve_data_dir() / "raw"
+    parquet_root = resolve_data_dir() / "parquet"
     pairs: dict[tuple[str, str], dict[str, bool]] = {}
     if raw_root.exists():
         for date_dir in raw_root.iterdir():

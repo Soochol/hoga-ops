@@ -23,7 +23,7 @@ from hoga.api.sse import build_sse
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.collector.client import HogaplayClient
-from hoga.config import Config
+from hoga.config import Config, resolve_data_dir
 
 
 def create_app(data_dir: Path) -> FastAPI:
@@ -102,13 +102,11 @@ def create_app(data_dir: Path) -> FastAPI:
 def default_app() -> FastAPI:
     """Factory used by uvicorn.
 
-    Data dir resolution:
-      * ``HOGA_DATA_DIR`` env var if set (used by E2E harness to point at a
-        clean, throwaway directory).
-      * Otherwise the ``data/`` dir under ``Config.from_cwd()``.
+    Delegates to ``resolve_data_dir()`` (HOGA_DATA_DIR env →
+    XDG_DATA_HOME/hoga-ops/data → ~/.local/share/hoga-ops/data).
+    Captures from any branch / worktree share the same store, so heavy
+    raw-TSV downloads aren't duplicated.
     """
-    env_dir = os.environ.get("HOGA_DATA_DIR")
-    if env_dir:
-        return create_app(Path(env_dir))
-    cfg = Config.from_cwd()
-    return create_app(cfg.data_dir)
+    data_dir = resolve_data_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return create_app(data_dir)
