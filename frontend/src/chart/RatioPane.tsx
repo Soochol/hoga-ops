@@ -51,15 +51,24 @@ export default function RatioPane({ chart, bundle, axis, paneIndex = 0 }: Props)
       BaselineSeries,
       {
         baseValue: { type: 'price', price: 0 },
+        // Gradient relative to the data range, not the full pane. Without this,
+        // when data hugs the baseline (small imbalances near 0), the fill
+        // sits in the "near-baseline" alpha (0.1) zone and reads as invisible.
+        // With true, the saturated fill (0.55) is concentrated at the data
+        // peaks where the user actually looks.
+        relativeGradient: true,
         topLineColor: ratioAsk,
-        topFillColor1: rgba(ratioAsk, 0.28),
-        topFillColor2: rgba(ratioAsk, 0.05),
+        topFillColor1: rgba(ratioAsk, 0.55),
+        topFillColor2: rgba(ratioAsk, 0.1),
         bottomLineColor: ratioBid,
-        bottomFillColor1: rgba(ratioBid, 0.05),
-        bottomFillColor2: rgba(ratioBid, 0.28),
-        // lightweight-charts wants an integer 1-4; the design calls for a
-        // hair-line emphasis, but the runtime accepts a float here.
-        lineWidth: 1.4 as any,
+        bottomFillColor1: rgba(ratioBid, 0.1),
+        bottomFillColor2: rgba(ratioBid, 0.55),
+        // Bumped from 1.4 → 3: at the typical pane height (~62px) with
+        // mostly small-magnitude imbalance values plus rare outlier spikes
+        // that dominate the autoscale, hairlines disappear into the baseline.
+        // A 3px stroke survives both the small-magnitude near-baseline runs
+        // and the cross-day extreme spikes that compress the visible range.
+        lineWidth: 3 as any,
         // Suppress the library-default horizontal line at the latest value.
         // The right-axis chip still shows the latest value via lastValueVisible.
         priceLineVisible: false,
