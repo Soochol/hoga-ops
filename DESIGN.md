@@ -85,6 +85,7 @@ The design system has a **single density dial** at `:root font-size`.
   | `--grid` | `#1A1A26` | Chart grid lines, table row borders |
   | `--heat-lo` | `#0E1A1A` | Heatmap low intensity (depth intensity pane) |
   | `--heat-hi` | `#14B8A6` | Heatmap high intensity (teal ramp) |
+  | `--ratio-ask` | `#3B82F6` | Ratio pane — ask-heavy fill/line (above 0 baseline). Distinct from `--down` which encodes price direction; this encodes order-book pressure (KRX convention). |
 
 - **Discipline rule:** Teal is for UI state, never for data. Up/down semantic colors are for data values, never for UI chrome. This separation prevents confusion ("is this teal cell up? down? selected?").
 

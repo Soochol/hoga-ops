@@ -42,6 +42,7 @@
   --grid: #1A1A26;
   --heat-lo: #0E1A1A;
   --heat-hi: #14B8A6;
+  --ratio-ask: #3B82F6;  /* Bid/ask ratio — ask-heavy (above 0), KRX-style sell blue */
 
   /* ───── Tint backgrounds ───── */
   --tint-selection: rgba(20, 184, 166, 0.12);
