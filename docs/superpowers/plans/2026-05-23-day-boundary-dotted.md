@@ -107,6 +107,18 @@ Do NOT add a fallback `background:` shorthand alongside — `backgroundImage` al
 
 - [ ] **Step 4 complete:** `style` object swapped, file compiles in IDE.
 
+### Step 4b: Lift the overlay above the lightweight-charts canvases
+
+Discovered during execution: `lightweight-charts` paints its pane canvases at `z-index: 2` (verified in DevTools — `<canvas style="z-index:2">` inside the chart container). The `DayBoundaryOverlay` is a SIBLING of the chart container, and the chart container has `z-index: auto`, so the chart's inner canvases leak into the parent stacking context and sit ABOVE the boundary div. The boundary then only peeks through transparent gaps in the canvases, defeating the visibility goal.
+
+Fix: add Tailwind `z-10` to the boundary overlay's outer container (matches the convention used by `Tab.tsx`, `SymbolSearch.tsx`, `DateRangePicker.tsx` for in-chrome overlays). The outer container already has `absolute inset-0 pointer-events-none`; the new className becomes:
+
+```tsx
+<div ref={containerRef} className="absolute inset-0 pointer-events-none z-10">
+```
+
+- [ ] **Step 4b complete:** `z-10` added; boundary now paints above the chart canvases.
+
 ### Step 5: Type-check the project
 
 Run from `frontend/`:

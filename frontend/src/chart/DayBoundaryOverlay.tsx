@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
+import { resolveTokens } from '../util/tokens';
+
+const TOKEN_SPEC = { borderStrong: ['--border-strong', '#2A2A38'] } as const;
 
 type Props = {
   chart: IChartApi;
@@ -44,6 +47,8 @@ export default function DayBoundaryOverlay({ chart, axis }: Props) {
 
   if (axis.segments.length < 2) return null;
 
+  const { borderStrong } = resolveTokens(TOKEN_SPEC);
+
   const ts = chart.timeScale();
   const boundaries = axis.dayBoundaries.map((b) => {
     const x = ts.timeToCoordinate((b.virtualStart / 1000) as UTCTimestamp);
@@ -51,7 +56,7 @@ export default function DayBoundaryOverlay({ chart, axis }: Props) {
   });
 
   return (
-    <div ref={containerRef} className="absolute inset-0 pointer-events-none">
+    <div ref={containerRef} className="absolute inset-0 pointer-events-none z-10">
       {boundaries.map((b) =>
         b.x == null ? null : (
           <div
@@ -60,7 +65,7 @@ export default function DayBoundaryOverlay({ chart, axis }: Props) {
             className="absolute top-0 bottom-0 w-px"
             style={{
               transform: `translateX(${b.x as number}px)`,
-              background: 'rgba(255,255,255,0.18)',
+              backgroundImage: `repeating-linear-gradient(to bottom, ${borderStrong} 0 3px, transparent 3px 6px)`,
             }}
           >
             <span className="absolute top-1 left-1 bg-bg-card text-fg-dim text-xs px-1.5 py-0.5 rounded">
