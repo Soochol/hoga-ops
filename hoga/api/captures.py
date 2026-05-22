@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
-from hoga.api.error_codes import CaptureErrorCode
+from hoga.api.error_codes import CaptureErrorCode, UpstreamCode
 from hoga.api.models import (
     CaptureError,
     CaptureFinishedEvent,
@@ -56,7 +56,7 @@ if int(os.environ.get("WEB_CONCURRENCY", "1")) > 1:
     )
 
 
-def _exception_to_error_code(exc: BaseException) -> CaptureErrorCode | None:
+def _exception_to_error_code(exc: BaseException) -> CaptureErrorCode | UpstreamCode | None:
     """Map a Python exception class to the API `code` field.
 
     Returns None for CaptureCancelled — that produces a `cancelled` phase,
@@ -65,11 +65,11 @@ def _exception_to_error_code(exc: BaseException) -> CaptureErrorCode | None:
     if isinstance(exc, TodayTooEarlyRefused):
         return CaptureErrorCode.TODAY_TOO_EARLY
     if isinstance(exc, CookieMissingError):
-        return CaptureErrorCode.COOKIE_MISSING
+        return UpstreamCode.COOKIE_MISSING
     if isinstance(exc, CookieExpiredError):
-        return CaptureErrorCode.COOKIE_EXPIRED
+        return UpstreamCode.COOKIE_EXPIRED
     if isinstance(exc, HogaplayHTTPError):
-        return CaptureErrorCode.HOGAPLAY_HTTP_ERROR
+        return UpstreamCode.HOGAPLAY_HTTP_ERROR
     if isinstance(exc, CaptureCancelled):
         return None
     return CaptureErrorCode.INTERNAL_ERROR
@@ -573,7 +573,7 @@ async def _worker_loop() -> None:
             await _run_item(state)
         except CookieExpiredError as exc:
             state.error = CaptureError(
-                code=CaptureErrorCode.COOKIE_EXPIRED,
+                code=UpstreamCode.COOKIE_EXPIRED,
                 message=str(exc),
                 at_page=state.pages_done or None,
             )

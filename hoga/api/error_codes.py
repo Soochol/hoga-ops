@@ -29,20 +29,13 @@ from enum import StrEnum
 
 
 class CaptureErrorCode(StrEnum):
-    """Closed set of error codes emitted by the captures router.
+    """Captures-domain non-upstream codes (ADR-0009).
 
-    Categories (informal — both flow through the same wire field):
-    - REST request gating: TODAY_TOO_EARLY, MISSING_RANGE, TERMINAL, NOT_FOUND
-    - Per-item failure classification (CaptureError.code on capture_finished):
-      COOKIE_EXPIRED, COOKIE_MISSING, HOGAPLAY_HTTP_ERROR
-    - Fallback: INTERNAL_ERROR
+    Migrated 2026-05-22: cookie/hogaplay codes moved to UpstreamCode.
     """
 
     TODAY_TOO_EARLY = "today_too_early"
     MISSING_RANGE = "missing_range"
-    COOKIE_EXPIRED = "cookie_expired"
-    COOKIE_MISSING = "cookie_missing"
-    HOGAPLAY_HTTP_ERROR = "hogaplay_http_error"
     TERMINAL = "terminal"
     NOT_FOUND = "not_found"
     INTERNAL_ERROR = "internal_error"
