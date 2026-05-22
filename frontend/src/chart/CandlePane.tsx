@@ -41,6 +41,10 @@ export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: P
         wickUpColor: up,
         wickDownColor: down,
         borderVisible: false,
+        // KRX equities are integer-won; show no decimals on the price axis.
+        // minMove=1 matches the smallest KRX tick (1원), keeping crosshair
+        // labels and price scale grid aligned to whole won values.
+        priceFormat: { type: 'price', precision: 0, minMove: 1 },
       },
       paneIndex,
     );
