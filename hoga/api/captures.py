@@ -17,8 +17,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from hoga.api import disk_state as _disk_state_module
-from hoga.api.disk_state import DiskState
+from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.models import (
     CaptureError,
     CaptureFinishedEvent,
@@ -415,9 +414,7 @@ async def _run_item(state: QueueItemState) -> None:
     - NONE → fresh capture (resume=False)
     """
     data_dir = _resolve_data_dir()
-    # Late attribute lookup so tests can monkeypatch
-    # "hoga.api.disk_state.check_disk_state" at the source module.
-    disk = _disk_state_module.check_disk_state(data_dir, state.code, state.date)
+    disk = check_disk_state(data_dir, state.code, state.date)
 
     if disk == DiskState.COMPLETE:
         state.phase = "skipped"
