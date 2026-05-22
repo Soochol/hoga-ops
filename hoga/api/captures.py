@@ -16,7 +16,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from hoga.api.disk_state import DiskState, check_disk_state
+from hoga.api.eligibility import decide_capture, find_ineligible_dates
 from hoga.api.models import (
     CaptureError,
     CaptureFinishedEvent,
@@ -41,7 +41,6 @@ from hoga.collector.orchestrator import (
     ProgressEvent,
     TodayTooEarlyRefused,
     collect_stock_date,
-    is_today_too_early,
 )
 from hoga.config import CookieMissingError
 from hoga.parser import parse_stock_date
@@ -412,19 +411,17 @@ async def _run_item(state: QueueItemState) -> None:
     - NONE → fresh capture (resume=False)
     """
     data_dir = _resolve_data_dir()
-    disk = check_disk_state(data_dir, state.code, state.date)
-
-    if disk == DiskState.COMPLETE:
+    decision = decide_capture(
+        data_dir=data_dir,
+        code=state.code,
+        date=state.date,
+        force_retry=state.force_retry,
+    )
+    if decision.skip_reason is not None:
         state.phase = "skipped"
-        state.skip_reason = "already_complete"
+        state.skip_reason = decision.skip_reason
         return
-    if disk == DiskState.SOURCE_PARTIAL and not state.force_retry:
-        state.phase = "skipped"
-        state.skip_reason = "source_partial"
-        return
-
-    resume_flag = (disk == DiskState.CLIENT_INCOMPLETE)
-    await _run_capture_and_parse(state, resume=resume_flag)
+    await _run_capture_and_parse(state, resume=decision.resume)
 
 
 async def _finalize_item(state: QueueItemState) -> None:
@@ -704,9 +701,9 @@ def build_router(
                 "message": "Provide either dates=[...] or start_date+end_date.",
             })
 
-        # 2. Q14 today-too-early guard.
+        # 2. Q14 today-too-early guard — delegate to the eligibility seam.
         now = _now_kst()
-        too_early = [d for d in candidate_dates if is_today_too_early(d, now)]
+        too_early = find_ineligible_dates(candidate_dates=candidate_dates, now=now)
         if too_early:
             raise HTTPException(status_code=400, detail={
                 "code": "today_too_early",
