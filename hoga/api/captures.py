@@ -16,6 +16,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from hoga.api.calendar import KrxUnavailableError
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
 from hoga.api.error_codes import CaptureErrorCode, UpstreamCode
 from hoga.api.models import (
@@ -687,7 +688,16 @@ def build_router(
         if req.dates is not None:
             candidate_dates = list(req.dates)
         elif req.start_date and req.end_date:
-            candidate_dates = _expand_to_trading_days(req.start_date, req.end_date)
+            try:
+                candidate_dates = _expand_to_trading_days(req.start_date, req.end_date)
+            except KrxUnavailableError as e:
+                raise HTTPException(status_code=503, detail={
+                    "code": e.code,
+                    "message": (
+                        "KRX trading-day list unavailable. Configure KRX_ID / KRX_PW "
+                        "in repo-root .env and try again."
+                    ),
+                }) from e
         else:
             raise HTTPException(status_code=400, detail={
                 "code": CaptureErrorCode.MISSING_RANGE,

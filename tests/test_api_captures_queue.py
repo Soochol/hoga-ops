@@ -691,6 +691,30 @@ def test_dismiss_done_clears_terminals_only(monkeypatch, tmp_path):
         assert snap["done"] == []
 
 
+def test_enqueue_range_returns_503_when_krx_creds_missing(monkeypatch, tmp_path):
+    """When KRX creds are missing, range-based enqueue returns 503 with code."""
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+
+    # Reset calendar cache so the pre-check kicks in.
+    from hoga.api import calendar as calendar_module
+    calendar_module.reset_cache_for_tests()
+
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        response = c.post("/api/captures/items", json={
+            "code": "005930",
+            "start_date": "20260501",
+            "end_date": "20260531",
+            "force_retry": False,
+        })
+        assert response.status_code == 503
+        detail = response.json()["detail"]
+        assert detail["code"] == "krx_credentials_missing"
+        assert "KRX" in detail["message"] or "krx" in detail["message"].lower()
+
+
 async def test_cancel_during_429_backoff_aborts_immediately(monkeypatch, tmp_path):
     """Cancel signal during the backoff sleep raises CaptureCancelled and
     the worker marks the item cancelled (NOT failed, NOT done)."""
