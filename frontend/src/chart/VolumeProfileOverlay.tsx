@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { IChartApi } from 'lightweight-charts';
-import type { SessionBundle, VolumeProfileBin } from '../api/types';
+import type { RangeBundle, VolumeProfile, VolumeProfileBin } from '../api/types';
 import { type Segment, realToVirtual } from '../util/time';
 import { resolveTokens } from '../util/tokens';
 
@@ -21,9 +21,9 @@ function resolveAccentRGB(): [number, number, number] {
 
 type Props = {
   chart: IChartApi;
-  bundle: SessionBundle;
+  bundle: RangeBundle;
   segments: Segment[];
-  mode?: 'per-day' | 'composite';
+  mode?: 'per-day' | 'range';
   /** Approximate fraction of total volume covered by the value area (default 0.7). */
   valueAreaFrac?: number;
   /**
@@ -42,15 +42,16 @@ type Props = {
  * - Other bins render at 0.2 opacity.
  * - VAH (Value Area High) is drawn as a single horizontal line at the top of
  *   the price range covering ~`valueAreaFrac` (default 0.7) of total volume.
- * - `mode: 'composite'` paints one profile anchored to the right ~30% of the
- *   chart; `mode: 'per-day'` paints one profile per segment, anchored to the
- *   right ~30% of that segment's pixel range.
+ * - `mode: 'range'` paints one profile (from `volume_profile_range`) anchored
+ *   to the right ~30% of the chart; `mode: 'per-day'` paints one profile per
+ *   segment using `volume_profile_by_day[i]`, anchored to the right ~30% of
+ *   that segment's pixel range.
  */
 export default function VolumeProfileOverlay({
   chart,
   bundle,
   segments,
-  mode = 'composite',
+  mode = 'range',
   valueAreaFrac = 0.7,
   paneIndex,
 }: Props) {
@@ -94,13 +95,15 @@ export default function VolumeProfileOverlay({
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const vp = bundle.volume_profile;
-    if (vp.bins.length === 0) return;
 
     const [r, g, b] = resolveAccentRGB();
-    const poc = pocIndex(vp.bins);
-    const va = valueArea(vp.bins, valueAreaFrac);
 
+    // Build the list of (profile, xRange) entries to render.
+    //   - 'range' mode: a single entry — bundle.volume_profile_range painted
+    //     across the right 30% of the full chart width.
+    //   - 'per-day' mode: one entry per segments[i] — profile is
+    //     bundle.volume_profile_by_day[i], xRange is the right 30% of that
+    //     segment's pixel span.
     function paint() {
       if (!canvas || !ctx) return;
       const ts = chart.timeScale();
@@ -111,32 +114,43 @@ export default function VolumeProfileOverlay({
       if (w === 0 || h === 0) return;
       ctx.clearRect(0, 0, w, h);
 
-      // Pick the horizontal anchor x-range based on mode.
-      // For 'composite', the profile spans the right 30% of the chart width.
-      // For 'per-day', anchor each segment's virtual range and use its right
-      // 30% as the profile zone.
-      const ranges: Array<[number, number]> =
-        mode === 'composite'
-          ? [[Math.max(0, Math.floor(w * 0.7)), w]]
-          : segments.map((s) => {
-              const x0 = ts.timeToCoordinate(
-                (realToVirtual(segments, s.sessionOpenMs) / 1000) as any,
-              );
-              const x1 = ts.timeToCoordinate(
-                (realToVirtual(segments, s.sessionCloseMs) / 1000) as any,
-              );
-              const a = Math.max(0, Math.floor(x0 ?? 0));
-              const z = Math.min(w, Math.floor(x1 ?? w));
-              return [Math.max(a, z - Math.floor((z - a) * 0.3)), z];
-            });
+      const entries: Array<{ vp: VolumeProfile; range: [number, number] }> = [];
+      if (mode === 'range') {
+        const vp = bundle.volume_profile_range;
+        if (vp && vp.bins.length > 0) {
+          entries.push({ vp, range: [Math.max(0, Math.floor(w * 0.7)), w] });
+        }
+      } else {
+        // per-day: pair each segment with its own profile (volume_profile_by_day[i]).
+        const byDay = bundle.volume_profile_by_day ?? [];
+        const n = Math.min(segments.length, byDay.length);
+        for (let i = 0; i < n; i++) {
+          const seg = segments[i];
+          const vp = byDay[i];
+          if (!vp || vp.bins.length === 0) continue;
+          const x0 = ts.timeToCoordinate(
+            (realToVirtual(segments, seg.sessionOpenMs) / 1000) as any,
+          );
+          const x1 = ts.timeToCoordinate(
+            (realToVirtual(segments, seg.sessionCloseMs) / 1000) as any,
+          );
+          const a = Math.max(0, Math.floor(x0 ?? 0));
+          const z = Math.min(w, Math.floor(x1 ?? w));
+          if (z <= a) continue;
+          entries.push({ vp, range: [Math.max(a, z - Math.floor((z - a) * 0.3)), z] });
+        }
+      }
 
-      const maxQty = Math.max(1, ...vp.bins.map((bn) => bn.qty));
-      const binCount = vp.bins.length;
-      const binH = h / binCount;
-
-      for (const [xStart, xEnd] of ranges) {
+      for (const { vp, range } of entries) {
+        const [xStart, xEnd] = range;
         if (xEnd <= xStart) continue;
         const width = xEnd - xStart;
+        const poc = pocIndex(vp.bins);
+        const va = valueArea(vp.bins, valueAreaFrac);
+        const maxQty = Math.max(1, ...vp.bins.map((bn) => bn.qty));
+        const binCount = vp.bins.length;
+        const binH = h / binCount;
+
         for (let i = 0; i < binCount; i++) {
           const bin = vp.bins[i];
           if (bin.qty <= 0) continue;

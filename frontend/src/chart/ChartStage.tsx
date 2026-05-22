@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, TickMarkType, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
-import type { RangeBundle, SessionBundle } from '../api/types';
+import type { RangeBundle } from '../api/types';
 import { type Segment, virtualToReal } from '../util/time';
 import { resolveTokens } from '../util/tokens';
 import { CHART_LAYOUT_OPTIONS, CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
@@ -39,7 +39,7 @@ export type ChartStageProps = {
  * ChartStage — owns the single `lightweight-charts` instance for the replay
  * viewer and mounts the 5 pane children (candles / volume / ratio / intensity
  * / fill-strength) plus the VolumeProfileOverlay once the chart is ready and
- * a `SessionBundle` is available.
+ * a `RangeBundle` is available.
  *
  * Multi-pane split: each pane component receives a `paneIndex` so its series
  * register on a distinct lightweight-charts pane. Pane heights are set via
@@ -266,13 +266,9 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
           <div data-pane="volume-profile" className="hidden">
             <VolumeProfileOverlay
               chart={chart}
-              // Task 19 retypes VolumeProfileOverlay to RangeBundle (rename
-              // mode 'composite' → 'range', switch to volume_profile_range /
-              // volume_profile_by_day). Until then, cast at the boundary so
-              // 17a remains a clean type-only diff.
-              bundle={bundle as unknown as SessionBundle}
+              bundle={bundle}
               segments={segments}
-              mode="composite"
+              mode="range"
               paneIndex={0}
             />
           </div>
