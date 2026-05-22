@@ -1,44 +1,47 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useTabsStore } from '../state/tabs';
+import { useToolbarDraftStore } from '../state/toolbarDraft';
 import StockCombobox from './StockCombobox';
 import DateRangePicker from './DateRangePicker';
 
 export default function Toolbar() {
   const active = useTabsStore((s) => s.tabs.find((t) => t.id === s.activeTabId)!);
-  const [draft, setDraft] = useState<{ code: string | null; from: string | null; to: string | null }>({
-    code: active.selection?.code ?? null,
-    from: active.selection?.fromDate ?? null,
-    to: active.selection?.toDate ?? null,
-  });
+  const draft = useToolbarDraftStore((s) => s.getDraft(active.id));
 
-  // Sync draft from the store when the user switches tabs (active.id changes).
-  // URL hydration also goes through this path because the hydrator calls
-  // tabsStore.reset() which produces a fresh tab id — so a deep-link like
-  // /replay?tabs=005930:20260520:20260520 correctly populates the toolbar.
-  // We intentionally don't sync on selection-within-the-same-tab changes:
-  // that would clobber the user's in-progress draft if any other code path
-  // mutated selection while they were editing.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Sync draft from the store-committed selection when the user switches tabs.
+  // We seed the draft with the selection so a tab that already loaded data
+  // shows its current values in the toolbar instead of empty fields.
   useEffect(() => {
-    setDraft({
-      code: active.selection?.code ?? null,
-      from: active.selection?.fromDate ?? null,
-      to: active.selection?.toDate ?? null,
-    });
+    const cur = useToolbarDraftStore.getState().getDraft(active.id);
+    const sel = active.selection;
+    const isEmpty = cur.code === null && cur.from === null && cur.to === null;
+    if (isEmpty && sel) {
+      useToolbarDraftStore.getState().setDraft(active.id, {
+        code: sel.code,
+        from: sel.fromDate,
+        to: sel.toDate,
+      });
+    }
+    // Note: we intentionally don't overwrite a non-empty draft — the user may
+    // be mid-edit. Lifting from local state preserves the original behavior.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active.id]);
 
-  // Stock change → clear dates (Task 4.5)
-  const setCode = (code: string) => setDraft({ code, from: null, to: null });
-  const setDates = (from: string, to: string) => setDraft((d) => ({ ...d, from, to }));
+  const setCode = (code: string) =>
+    useToolbarDraftStore.getState().setStock(active.id, code);
+  const setDates = (from: string, to: string) =>
+    useToolbarDraftStore.getState().setDates(active.id, from, to);
 
   const ready = !!(draft.code && draft.from && draft.to);
   const loaded = active.status === 'loaded';
 
   const onLoad = () => {
     if (!ready) return;
-    useTabsStore
-      .getState()
-      .setSelection(active.id, { code: draft.code!, fromDate: draft.from!, toDate: draft.to! });
+    useTabsStore.getState().setSelection(active.id, {
+      code: draft.code!,
+      fromDate: draft.from!,
+      toDate: draft.to!,
+    });
   };
 
   return (
