@@ -30,8 +30,21 @@ type Props = {
 export default function FillStrengthPane({ chart, bundle, segments, paneIndex = 0 }: Props) {
   useEffect(() => {
     const { up, down } = resolveTokens(TOKEN_SPEC);
-    const buy = chart.addSeries(HistogramSeries, { color: up, base: 0 } as any, paneIndex);
-    const sell = chart.addSeries(HistogramSeries, { color: down, base: 0 } as any, paneIndex);
+    // Custom integer-comma formatter matches CandlePane / VolumePane. The buy
+    // series owns the price-axis labels for this pane (sell renders below the
+    // 0 baseline using mirrored negative values), but we apply the same format
+    // to both so crosshair / tooltips stay consistent. `Math.abs` so the sell
+    // baseline label shows e.g. "1,200" not "-1,200".
+    const histOpts = {
+      base: 0,
+      priceFormat: {
+        type: 'custom' as const,
+        formatter: (v: number) => Math.round(Math.abs(v)).toLocaleString('ko-KR'),
+        minMove: 1,
+      },
+    };
+    const buy = chart.addSeries(HistogramSeries, { color: up, ...histOpts } as any, paneIndex);
+    const sell = chart.addSeries(HistogramSeries, { color: down, ...histOpts } as any, paneIndex);
     // Drop pre-open auction points and any others outside the regular-session
     // segments. Without this filter, multiple pre-session points collapse to
     // virtual-time=0 and lightweight-charts.setData throws "data must be asc

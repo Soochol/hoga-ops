@@ -33,7 +33,13 @@ export default function VolumePane({ chart, bundle, segments, paneIndex = 0 }: P
     const series = chart.addSeries(
       HistogramSeries,
       {
-        priceFormat: { type: 'volume' },
+        // Default { type: 'volume' } abbreviates to "1.2k / 5M" with a decimal.
+        // Use an integer-comma formatter to match the CandlePane price axis.
+        priceFormat: {
+          type: 'custom',
+          formatter: (v: number) => Math.round(v).toLocaleString('ko-KR'),
+          minMove: 1,
+        },
         priceScaleId: 'right',
       },
       paneIndex,

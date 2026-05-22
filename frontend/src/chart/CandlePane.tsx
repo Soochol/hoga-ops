@@ -41,10 +41,16 @@ export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: P
         wickUpColor: up,
         wickDownColor: down,
         borderVisible: false,
-        // KRX equities are integer-won; show no decimals on the price axis.
-        // minMove=1 matches the smallest KRX tick (1원), keeping crosshair
-        // labels and price scale grid aligned to whole won values.
-        priceFormat: { type: 'price', precision: 0, minMove: 1 },
+        // KRX equities are integer-won. Use a custom formatter so the price
+        // axis renders "25,600" (with a thousands separator) instead of the
+        // built-in "25.6k" abbreviation that lightweight-charts falls back to
+        // at higher magnitudes. minMove=1 keeps the price grid stepping on
+        // whole-won increments (the smallest KRX tick).
+        priceFormat: {
+          type: 'custom',
+          formatter: (p: number) => Math.round(p).toLocaleString('ko-KR'),
+          minMove: 1,
+        },
       },
       paneIndex,
     );
