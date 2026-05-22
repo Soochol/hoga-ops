@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from hoga.config import Config, CookieMissingError, resolve_data_dir
+from hoga.config import Config, CookieMissingError, resolve_data_dir, resolve_symbol_master_path
 
 
 def test_cookie_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -68,3 +68,23 @@ def test_resolve_data_dir_ignores_cwd(monkeypatch: pytest.MonkeyPatch, tmp_path:
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.chdir(tmp_path / "some" / "worktree" if False else tmp_path)
     assert resolve_data_dir() == tmp_path / ".local" / "share" / "hoga-ops" / "data"
+
+
+def test_resolve_symbol_master_path_xdg_data_home_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    result = resolve_symbol_master_path()
+    assert result == tmp_path / "hoga-ops" / "symbol-master.json"
+
+
+def test_resolve_symbol_master_path_xdg_data_home_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    result = resolve_symbol_master_path()
+    assert result == Path.home() / ".local" / "share" / "hoga-ops" / "symbol-master.json"
+
+
+def test_resolve_symbol_master_path_independent_of_hoga_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """HOGA_DATA_DIR is for capture data only — Symbol Master is a sibling, not a child."""
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path / "sandbox"))
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    result = resolve_symbol_master_path()
+    assert "sandbox" not in str(result)

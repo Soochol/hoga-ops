@@ -38,6 +38,22 @@ def resolve_data_dir() -> Path:
     return base / "hoga-ops" / "data"
 
 
+def resolve_symbol_master_path() -> Path:
+    """Return the canonical path for the persisted Symbol Master JSON.
+
+    Resolution order:
+      1. ``$XDG_DATA_HOME/hoga-ops/symbol-master.json`` if XDG_DATA_HOME is set.
+      2. ``~/.local/share/hoga-ops/symbol-master.json`` — XDG default.
+
+    Sibling of resolve_data_dir() but NOT inside data/. HOGA_DATA_DIR overrides
+    do not apply — the Symbol Master is a machine-global KRX catalog, not
+    capture data. Tests sandbox via monkeypatch on this function directly.
+    """
+    xdg = os.environ.get("XDG_DATA_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
+    return base / "hoga-ops" / "symbol-master.json"
+
+
 @dataclass(frozen=True)
 class Config:
     repo_root: Path
