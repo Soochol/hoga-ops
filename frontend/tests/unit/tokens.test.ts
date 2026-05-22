@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resolveTokens } from '../../src/util/tokens';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const tokensCSS = readFileSync(
+  resolve(__dirname, '../../src/styles/tokens.css'),
+  'utf-8',
+);
 
 describe('resolveTokens', () => {
   let originalGetComputedStyle: typeof globalThis.getComputedStyle;
@@ -65,34 +72,29 @@ describe('resolveTokens', () => {
 });
 
 describe('tokens.css declarations', () => {
-  const css = readFileSync(
-    resolve(__dirname, '../../src/styles/tokens.css'),
-    'utf-8',
-  );
-
   it('sets :root font-size to 20px (single density dial)', () => {
-    expect(css).toMatch(/font-size:\s*20px/);
+    expect(tokensCSS).toMatch(/font-size:\s*20px/);
   });
 
   it('declares spacing tokens in rem', () => {
-    expect(css).toMatch(/--space-md:\s*0\.75rem/);
-    expect(css).toMatch(/--space-sm:\s*0\.5rem/);
-    expect(css).toMatch(/--space-lg:\s*1rem/);
+    expect(tokensCSS).toMatch(/--space-md:\s*0\.75rem/);
+    expect(tokensCSS).toMatch(/--space-sm:\s*0\.5rem/);
+    expect(tokensCSS).toMatch(/--space-lg:\s*1rem/);
   });
 
   it('declares layout tokens in rem', () => {
-    expect(css).toMatch(/--nav-w:\s*13\.125rem/);
-    expect(css).toMatch(/--sidebar-w:\s*20rem/);
-    expect(css).toMatch(/--h-tab:\s*2rem/);
-    expect(css).toMatch(/--h-tab-secondary:\s*1\.875rem/);
+    expect(tokensCSS).toMatch(/--nav-w:\s*13\.125rem/);
+    expect(tokensCSS).toMatch(/--sidebar-w:\s*20rem/);
+    expect(tokensCSS).toMatch(/--h-tab:\s*2rem/);
+    expect(tokensCSS).toMatch(/--h-tab-secondary:\s*1\.875rem/);
   });
 
   it('declares the --text-badge token for hierarchical badges', () => {
-    expect(css).toMatch(/--text-badge:\s*0\.53125rem/);
+    expect(tokensCSS).toMatch(/--text-badge:\s*0\.53125rem/);
   });
 
   it('keeps existing --text-* rem values unchanged (they auto-scale via root)', () => {
-    expect(css).toMatch(/--text-base:\s*0\.8125rem/);
-    expect(css).toMatch(/--text-xs:\s*0\.65625rem/);
+    expect(tokensCSS).toMatch(/--text-base:\s*0\.8125rem/);
+    expect(tokensCSS).toMatch(/--text-xs:\s*0\.65625rem/);
   });
 });
