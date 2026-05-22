@@ -1,30 +1,147 @@
-"""GET /api/inventory/calendar (Task 15 implements).
+"""GET /api/inventory/calendar — per-symbol month status map.
 
-Task 7 ships only the trading-day expansion helper used by
-POST /api/captures/items. The pykrx call here is uncached; Task 15
-expands this file with a (year, month) cache + a fuller cell-status
-implementation for the calendar endpoint.
+Composes disk_state.check_disk_state with the KRX trading-day list and a
+today/18-KST overlay. Pure read-side; no mutation. See spec §5.3, §11 Q21.
 """
 from __future__ import annotations
 
-from datetime import datetime
+import calendar as stdlib_calendar
+import datetime as dt
+import time
+from pathlib import Path
+
+from fastapi import APIRouter, Query
+
+from hoga.api.disk_state import DiskState, check_disk_state
+from hoga.api.models import CalendarCell, CalendarResponse
+
+KST = dt.timezone(dt.timedelta(hours=9))
+_TODAY_TOO_EARLY_HOUR = 18
+
+
+def _now_kst() -> dt.datetime:
+    return dt.datetime.now(tz=KST)
+
+
+# Module-level cache: (year, month) → set of YYYYMMDD trading-day strings.
+# KRX trading days for past months are stable (holidays don't reschedule retro-
+# actively), so an unbounded dict is fine for one process. For the current
+# month we accept up to 24h staleness — a new holiday landing mid-month is
+# rare enough that bouncing the server fixes it.
+_month_cache: dict[tuple[int, int], set[str]] = {}
+
+
+def _trading_days_for(year: int, month: int) -> set[str]:
+    """Return YYYYMMDD strings for KRX trading days in (year, month). Cached."""
+    key = (year, month)
+    cached = _month_cache.get(key)
+    if cached is not None:
+        return cached
+    start = f"{year:04d}{month:02d}01"
+    last_day = stdlib_calendar.monthrange(year, month)[1]
+    end = f"{year:04d}{month:02d}{last_day:02d}"
+    from pykrx import stock
+    df = stock.get_market_ohlcv(start, end, "005930")
+    result = {d.strftime("%Y%m%d") for d in df.index}
+    _month_cache[key] = result
+    return result
 
 
 def trading_days_in_range(start: str, end: str) -> list[str]:
-    """Returns YYYYMMDD trading days in [start, end] inclusive.
+    """Public helper used by captures.py Task 7. Returns YYYYMMDD trading days
+    in [start, end] inclusive, sorted. Composes _trading_days_for across all
+    months the range spans, so multi-month ranges only hit pykrx once per month.
 
-    Task 7 version: direct pykrx call, no cache (acceptable for enqueue
-    which fires once per Start click). Task 15 adds the (year, month)
-    cache used by the calendar endpoint.
-
-    Tests should monkeypatch this function (or the captures-side
-    ``_expand_to_trading_days``) rather than rely on live KRX access —
-    KRX endpoints require KRX_ID / KRX_PW env vars.
+    Tests should monkeypatch this function (or pre-populate ``_month_cache``)
+    rather than rely on live KRX access — KRX endpoints require KRX_ID / KRX_PW
+    env vars.
     """
-    from pykrx import stock
-    start_d = datetime.strptime(start, "%Y%m%d").date()
-    end_d = datetime.strptime(end, "%Y%m%d").date()
+    start_d = dt.date(int(start[:4]), int(start[4:6]), int(start[6:8]))
+    end_d = dt.date(int(end[:4]), int(end[4:6]), int(end[6:8]))
     if end_d < start_d:
         raise ValueError("end_date < start_date")
-    cal = stock.get_market_ohlcv(start, end, "005930")
-    return [d.strftime("%Y%m%d") for d in cal.index]
+    out: list[str] = []
+    cur = dt.date(start_d.year, start_d.month, 1)
+    while cur <= end_d:
+        days = _trading_days_for(cur.year, cur.month)
+        for d in sorted(days):
+            if start <= d <= end:
+                out.append(d)
+        # Advance to the first day of the next month.
+        if cur.month == 12:
+            cur = dt.date(cur.year + 1, 1, 1)
+        else:
+            cur = dt.date(cur.year, cur.month + 1, 1)
+    return out
+
+
+def reset_cache_for_tests() -> None:
+    """Test helper — clears the trading-day cache between tests."""
+    _month_cache.clear()
+
+
+def _disk_state_to_status(st: DiskState) -> str:
+    return {
+        DiskState.COMPLETE: "complete",
+        DiskState.SOURCE_PARTIAL: "source_partial",
+        DiskState.CLIENT_INCOMPLETE: "client_incomplete",
+        DiskState.NONE: "none",
+    }[st]
+
+
+def _captured_at_ms(data_dir: Path, code: str, date: str) -> int | None:
+    parquet = data_dir / "parquet" / date / code
+    if parquet.exists():
+        try:
+            return int(parquet.stat().st_mtime * 1000)
+        except OSError:
+            return None
+    raw = data_dir / "raw" / date / code
+    if raw.exists():
+        try:
+            return int(raw.stat().st_mtime * 1000)
+        except OSError:
+            return None
+    return None
+
+
+def _cell_status_for(date_str: str, now: dt.datetime, trading_days: set[str],
+                     data_dir: Path, code: str) -> str:
+    d = dt.date(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]))
+    today = now.date()
+    if d > today:
+        return "future"
+    if d == today and now.hour < _TODAY_TOO_EARLY_HOUR:
+        return "today_locked"
+    if date_str not in trading_days:
+        return "weekend" if d.weekday() >= 5 else "holiday"
+    return _disk_state_to_status(check_disk_state(data_dir, code, date_str))
+
+
+def get_month_map(*, data_dir: Path, code: str, year: int, month: int) -> CalendarResponse:
+    """Build the month status map. Pure read-side."""
+    now = _now_kst()
+    trading_days = _trading_days_for(year, month)
+    last_day = stdlib_calendar.monthrange(year, month)[1]
+    cells: list[CalendarCell] = []
+    for day in range(1, last_day + 1):
+        date_str = f"{year:04d}{month:02d}{day:02d}"
+        status = _cell_status_for(date_str, now, trading_days, data_dir, code)
+        captured_ms = (_captured_at_ms(data_dir, code, date_str)
+                        if status in ("complete", "source_partial", "client_incomplete")
+                        else None)
+        cells.append(CalendarCell(date=date_str, status=status,  # type: ignore[arg-type]
+                                   captured_at_ms=captured_ms))
+    return CalendarResponse(cells=cells, as_of_ms=int(time.time() * 1000))
+
+
+def build_router(*, data_dir: Path) -> APIRouter:
+    router = APIRouter(prefix="/api/inventory", tags=["inventory"])
+
+    @router.get("/calendar")
+    async def calendar_route(code: str = Query(..., pattern=r"^\d{6}$"),
+                              year: int = Query(..., ge=2000, le=2100),
+                              month: int = Query(..., ge=1, le=12)) -> CalendarResponse:
+        return get_month_map(data_dir=data_dir, code=code, year=year, month=month)
+
+    return router

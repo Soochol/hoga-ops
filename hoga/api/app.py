@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from hoga.api import captures as _captures_module
 from hoga.api import symbols as _symbols_module
+from hoga.api.calendar import build_router as build_calendar_router
 from hoga.api.captures import build_router as build_captures_router
 from hoga.api.captures import cancel_all_on_shutdown
 from hoga.api.captures import set_bus as set_captures_bus
@@ -91,6 +92,7 @@ def create_app(data_dir: Path) -> FastAPI:
         build_captures_router(data_dir=data_dir, client_factory=client_factory)
     )
     app.include_router(build_symbols_router(data_dir=data_dir))
+    app.include_router(build_calendar_router(data_dir=data_dir))
     if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
         app.include_router(build_test_router(data_dir))
     app.state.engine = engine
