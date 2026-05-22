@@ -234,3 +234,107 @@ def test_build_volume_profile_range_no_trades_returns_empty():
     out = build_volume_profile_range(mock_engine, code="005930", dates=["20260512"])
     assert out.bin_count == 0
     assert out.bins == []
+
+
+# ---------------------------------------------------------------------------
+# build_range_bundle (ADR-0013/0014): 30-day cap, partial-inventory, segments
+# ---------------------------------------------------------------------------
+
+def _mock_session_bundle(date: str, bucket_ms: int = 60_000):
+    """Stub SessionBundle return value for a single build_bundle call."""
+    from hoga.api.models import (
+        DepthIntensity, FillStrength, QuoteRatio, SessionBundle, VolumeProfile,
+    )
+    return SessionBundle(
+        code="005930", date=date,
+        session_open_ms=1_700_000_000_000, session_close_ms=1_700_023_400_000,
+        candles=[],
+        quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=[]),
+        depth_intensity=DepthIntensity(
+            bucket_ms=bucket_ms, price_min=100, price_max=200,
+            price_step=1, times=[], bid_grid=[], ask_grid=[],
+        ),
+        fill_strength=FillStrength(bucket_ms=bucket_ms, points=[]),
+        volume_profile=VolumeProfile(
+            bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[],
+        ),
+    )
+
+
+def test_build_range_bundle_single_day_yields_one_segment():
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import VolumeProfile
+
+    mock_engine = MagicMock()
+    mock_engine.list_stock_dates_in_range.return_value = ["20260512"]
+    with (
+        patch.object(bundle_mod, "build_bundle", side_effect=lambda e, *, code, date, bucket_ms: _mock_session_bundle(date, bucket_ms)),
+        patch.object(bundle_mod, "build_volume_profile_range", return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
+    ):
+        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=60_000)
+
+    assert len(rb.segments) == 1
+    assert rb.segments[0].date == "20260512"
+    assert rb.bucket_ms == 60_000
+    assert len(rb.depth_intensity_by_day) == 1
+    assert len(rb.volume_profile_by_day) == 1
+
+
+def test_build_range_bundle_multi_day_concatenates_per_segment_lists():
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import VolumeProfile
+
+    mock_engine = MagicMock()
+    mock_engine.list_stock_dates_in_range.return_value = ["20260512", "20260513"]
+    with (
+        patch.object(bundle_mod, "build_bundle", side_effect=lambda e, *, code, date, bucket_ms: _mock_session_bundle(date, bucket_ms)),
+        patch.object(bundle_mod, "build_volume_profile_range", return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
+    ):
+        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260513", bucket_ms=60_000)
+
+    assert len(rb.segments) == 2
+    assert [s.date for s in rb.segments] == ["20260512", "20260513"]
+    assert len(rb.depth_intensity_by_day) == 2
+    assert len(rb.volume_profile_by_day) == 2
+
+
+def test_build_range_bundle_rejects_from_gt_to():
+    from fastapi import HTTPException
+    from hoga.api.bundle import build_range_bundle
+
+    mock_engine = MagicMock()
+    with pytest.raises(HTTPException) as exc:
+        build_range_bundle(mock_engine, code="005930", from_date="20260520", to_date="20260512", bucket_ms=60_000)
+    assert exc.value.status_code == 400
+
+
+def test_build_range_bundle_rejects_range_over_30_days():
+    from fastapi import HTTPException
+    from hoga.api.bundle import build_range_bundle
+
+    mock_engine = MagicMock()
+    with pytest.raises(HTTPException) as exc:
+        build_range_bundle(mock_engine, code="005930", from_date="20260101", to_date="20260201", bucket_ms=60_000)
+    assert exc.value.status_code == 400
+    assert "30 days" in str(exc.value.detail)
+
+
+def test_build_range_bundle_raises_404_on_empty_inventory():
+    from fastapi import HTTPException
+    from hoga.api.bundle import build_range_bundle
+
+    mock_engine = MagicMock()
+    mock_engine.list_stock_dates_in_range.return_value = []
+    with pytest.raises(HTTPException) as exc:
+        build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260520", bucket_ms=60_000)
+    assert exc.value.status_code == 404
+
+
+def test_build_range_bundle_rejects_invalid_bucket_ms():
+    from hoga.api.bundle import build_range_bundle
+
+    mock_engine = MagicMock()
+    with pytest.raises(ValueError, match="bucket_ms"):
+        build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=42_000)

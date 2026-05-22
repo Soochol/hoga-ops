@@ -140,3 +140,27 @@ class QueryEngine:
     def get_meta(self, date: str, code: str) -> dict[str, Any]:
         path = self.parquet_dir(date, code) / "meta.json"
         return json.loads(path.read_text(encoding="utf-8"))
+
+    def list_stock_dates_in_range(
+        self, *, code: str, from_date: str, to_date: str
+    ) -> list[str]:
+        """Ascending list of captured YYYYMMDD strings for ``code`` in [from_date, to_date].
+
+        Filters the parquet inventory by code and inclusive date range. Compares
+        as YYYYMMDD strings — lexical order matches calendar order for that format.
+        Returns ``[]`` when no Stock-Date matches (caller maps to HTTP 404).
+        """
+        base = self.data_dir / "parquet"
+        if not base.exists():
+            return []
+        out: list[str] = []
+        for date_dir in sorted(base.iterdir()):
+            if not date_dir.is_dir():
+                continue
+            date = date_dir.name
+            if date < from_date or date > to_date:
+                continue
+            code_dir = date_dir / code
+            if (code_dir / "meta.json").exists():
+                out.append(date)
+        return out

@@ -14,12 +14,18 @@ Why the engine instead of ``(conn, data_dir)``:
 """
 from __future__ import annotations
 
+from datetime import datetime
+
+from fastapi import HTTPException
+
 from hoga.api.models import (
     DepthIntensity,
     FillStrength,
     FillStrengthPoint,
     QuoteRatio,
     QuoteRatioPoint,
+    RangeBundle,
+    RangeSegment,
     SessionBundle,
     VolumeProfile,
     VolumeProfileBin,
@@ -460,4 +466,86 @@ def build_bundle(
         depth_intensity=di,
         volume_profile=vp,
         fill_strength=fs,
+    )
+
+
+MAX_RANGE_DAYS = 30
+
+
+def build_range_bundle(
+    engine: QueryEngine,
+    *,
+    code: str,
+    from_date: str,
+    to_date: str,
+    bucket_ms: int,
+) -> RangeBundle:
+    """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
+
+    Validates ``bucket_ms``, ``from_date <= to_date``, and span <= 30 days.
+    Returns HTTP 404 if no Stock-Date in range has captured data.
+
+    Loops over captured Stock-Dates: per-day :func:`build_bundle` for series.
+    ``depth_intensity`` and ``volume_profile`` are returned as per-segment
+    lists (each Stock-Date has its own price grid — they cannot be
+    meaningfully concatenated). ``quote_ratio.points`` and
+    ``fill_strength.points`` ARE concatenated because they are flat
+    ``(t, value)`` arrays. ``volume_profile_range`` is computed once across
+    all dates via :func:`build_volume_profile_range`.
+    """
+    validate_bucket_ms(bucket_ms)
+
+    try:
+        d_from = datetime.strptime(from_date, "%Y%m%d").date()
+        d_to = datetime.strptime(to_date, "%Y%m%d").date()
+    except ValueError as e:
+        raise HTTPException(400, f"Invalid YYYYMMDD date: {e}") from e
+    if d_to < d_from:
+        raise HTTPException(400, "from > to")
+    if (d_to - d_from).days > MAX_RANGE_DAYS:
+        raise HTTPException(400, f"range exceeds {MAX_RANGE_DAYS} days")
+
+    dates = engine.list_stock_dates_in_range(
+        code=code, from_date=from_date, to_date=to_date,
+    )
+    if not dates:
+        raise HTTPException(
+            404,
+            f"no captured Stock-Date for code={code} in [{from_date}, {to_date}]",
+        )
+
+    segments: list[RangeSegment] = []
+    candles: list[ApiCandle] = []
+    ratio_pts: list[QuoteRatioPoint] = []
+    fill_pts: list[FillStrengthPoint] = []
+    intensity_by_day: list[DepthIntensity] = []
+    profiles_by_day: list[VolumeProfile] = []
+
+    for d in dates:
+        sub = build_bundle(engine, code=code, date=d, bucket_ms=bucket_ms)
+        segments.append(RangeSegment(
+            date=d,
+            session_open_ms=sub.session_open_ms,
+            session_close_ms=sub.session_close_ms,
+        ))
+        candles.extend(sub.candles)
+        ratio_pts.extend(sub.quote_ratio.points)
+        fill_pts.extend(sub.fill_strength.points)
+        intensity_by_day.append(sub.depth_intensity)
+        profiles_by_day.append(sub.volume_profile)
+
+    profile_range = build_volume_profile_range(engine, code=code, dates=dates)
+
+    return RangeBundle(
+        code=code,
+        from_date=from_date,
+        to_date=to_date,
+        bucket_ms=bucket_ms,
+        segments=segments,
+        candles=candles,
+        quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=ratio_pts),
+        depth_intensity_by_day=intensity_by_day,
+        fill_strength=FillStrength(bucket_ms=bucket_ms, points=fill_pts),
+        volume_profile_range=profile_range,
+        volume_profile_by_day=profiles_by_day,
     )
