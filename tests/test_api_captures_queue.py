@@ -353,3 +353,23 @@ def test_enqueue_requires_either_range_or_dates(monkeypatch, tmp_path):
         r = c.post("/api/captures/items", json={"code": "005930", "force_retry": False})
         assert r.status_code == 400
         assert r.json()["detail"]["code"] == "missing_range"
+
+
+# --- Task 8: GET /api/captures/queue snapshot route -------------------------
+
+
+def test_get_queue_returns_snapshot(monkeypatch, tmp_path):
+    app = _build_test_app(monkeypatch, tmp_path)
+    # Avoid live KRX: stub trading_days_in_range to return the single date.
+    monkeypatch.setattr("hoga.api.calendar.trading_days_in_range",
+                        lambda s, e: [s])
+    with TestClient(app) as c:
+        c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520"], "force_retry": False,
+        })
+        r = c.get("/api/captures/queue")
+        assert r.status_code == 200
+        body = r.json()
+        assert "active" in body and "queued" in body and "done" in body
+        assert "paused" in body and "max_concurrent" in body
+        assert isinstance(body["max_concurrent"], int)

@@ -772,6 +772,10 @@ def build_router(
             )
             return state.to_wire()
 
+    @router.get("/queue")
+    async def get_queue() -> QueueSnapshot:
+        return get_queue_snapshot()
+
     @router.get("/latest")
     async def get_latest_route() -> CaptureJob | None:
         if _latest is None:
