@@ -133,3 +133,30 @@ def test_captured_breakdown_classifies_states(monkeypatch, tmp_path):
 
     breakdowns = symbols._build_all_captured_breakdowns(tmp_path)
     assert breakdowns["005930"] == {"complete": 1, "source_partial": 1, "client_incomplete": 1}
+
+
+def test_symbols_all_response_accepts_reason() -> None:
+    """SymbolsAllResponse.reason is optional and accepts UpstreamCode values."""
+    from hoga.api.error_codes import UpstreamCode
+    from hoga.api.models import SymbolsAllResponse
+
+    resp = SymbolsAllResponse(symbols=[], status="unavailable", fetched_at_ms=None,
+                              reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
+    assert resp.reason == "krx_credentials_missing"
+
+    # Default is None for backward compat.
+    resp_default = SymbolsAllResponse(symbols=[], status="fresh", fetched_at_ms=123)
+    assert resp_default.reason is None
+
+
+def test_calendar_response_accepts_reason() -> None:
+    """CalendarResponse.reason is optional and accepts UpstreamCode values."""
+    from hoga.api.error_codes import UpstreamCode
+    from hoga.api.models import CalendarResponse
+
+    resp = CalendarResponse(cells=[], as_of_ms=123,
+                            reason=UpstreamCode.KRX_FETCH_FAILED)
+    assert resp.reason == "krx_fetch_failed"
+
+    resp_default = CalendarResponse(cells=[], as_of_ms=123)
+    assert resp_default.reason is None

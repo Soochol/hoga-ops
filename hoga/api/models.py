@@ -8,6 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from hoga.api.error_codes import UpstreamCode
 from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
 from hoga.tables.trades import ApiTrade
@@ -287,6 +288,7 @@ class SymbolsAllResponse(BaseModel):
     symbols: list[SymbolHit]
     status: Literal["fresh", "loading", "stale", "unavailable"]
     fetched_at_ms: int | None
+    reason: UpstreamCode | None = None
 
 
 CalendarStatus = Literal[
@@ -304,3 +306,4 @@ class CalendarCell(BaseModel):
 class CalendarResponse(BaseModel):
     cells: list[CalendarCell]
     as_of_ms: int                       # server wall-clock when cells were read (spec §11 Q21)
+    reason: UpstreamCode | None = None
