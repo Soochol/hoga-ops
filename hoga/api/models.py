@@ -291,6 +291,14 @@ class SymbolsAllResponse(BaseModel):
     reason: UpstreamCode | None = None
 
 
+class SymbolMasterInfo(BaseModel):
+    """Lightweight metadata for the Settings page — no entries payload."""
+    count: int
+    fetched_at_ms: int | None
+    status: Literal["loading", "fresh", "stale", "unavailable"]
+    reason: UpstreamCode | None = None
+
+
 CalendarStatus = Literal[
     "complete", "source_partial", "client_incomplete", "none",
     "weekend", "holiday", "future", "today_locked",
