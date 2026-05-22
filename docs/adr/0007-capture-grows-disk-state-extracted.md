@@ -1,6 +1,6 @@
 # 0007 — Capture module grows to queue + workers; `disk_state` extracted as horizontal seam
 
-**Status:** accepted (2026-05-21) — amends ADR-0006
+**Status:** accepted (2026-05-21) — amends ADR-0006; Plan B landed 2026-05-22 confirming the queue/worker/pause growth
 **Supersedes parts of:** ADR-0006 (`captures.py` stays single module)
 
 ## Decision
@@ -35,3 +35,25 @@ The two-adapters rule from the architecture vocabulary (introduce a seam only wh
 - **If a fifth caller appears** (e.g., a CLI inventory-status command), they import from `disk_state.py` like everyone else — no further extraction needed.
 - **The growth budget in ADR-0006 has effectively retired.** Future growth in `captures.py` is judged on the same internal-cohesion grounds, not against a line count.
 - **`has_meaningful_gaps` heuristic is intentionally crude in v1** — "≥1 minute consecutive empty in continuous-trading hours." Refine after observing real data; not an ADR-level decision.
+
+## Postscript — Plan B landing notes (2026-05-22)
+
+Plan B (`docs/superpowers/plans/2026-05-22-capture-queue-backend.md`)
+implemented the queue + worker pool + cookie pause + sibling endpoints
+(`symbols.py`, `calendar.py`). `hoga/api/captures.py` reached ~920 lines
+and stays single-module per the decision above. Two new sibling modules
+appeared exactly where the spec said they would; no further seams
+emerged in the process.
+
+Plan B's eng-review surfaced six pre-execution gaps that would have
+broken the implementation as written — most notably (a) `pykrx`
+was missing from project deps, (b) `HogaplayHTTPError` had no
+`status_code` attribute so the 429 backoff couldn't dispatch, and
+(c) the planned `hoga/inventory/trading_days.py` helper module did
+not exist. Each fix landed inline before any subagent dispatched
+code. Reinforces the lesson that **plan-eng-review's real work is
+plan-↔-code reconciliation**, not abstract architecture review.
+
+`disk_state.check_disk_state` now has three confirmed consumers
+(worker `deciding` phase, `symbols._build_all_captured_breakdowns`,
+`calendar._cell_status_for`) — the horizontal-seam rationale stands.
