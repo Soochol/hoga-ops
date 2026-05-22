@@ -590,9 +590,12 @@ def build_volume_profile_range(
         return VolumeProfile(price_bins=[], bin_width=0, totals=[])
 
     paths = [str(engine.parquet_dir(d, code) / "trades.parquet") for d in dates]
-    # Min/Max price across all input parquet files
+    # Min/Max price across all input parquet files. Use parameterised query
+    # to mirror the rest of bundle.py (e.g. line 145) and avoid f-string SQL
+    # composition — DuckDB accepts a Python list parameter for read_parquet
+    # and expands it into a multi-file glob.
     min_max = engine.conn.execute(
-        f"SELECT MIN(price), MAX(price) FROM read_parquet({paths!r})"
+        "SELECT MIN(price), MAX(price) FROM read_parquet(?)", [paths],
     ).fetchone()
     if min_max is None or min_max[0] is None:
         return VolumeProfile(price_bins=[], bin_width=0, totals=[])
@@ -603,12 +606,15 @@ def build_volume_profile_range(
     # If not yet extracted, do that refactor in THIS commit.
     bin_width = _choose_bin_width(price_min, price_max)
 
-    rows = engine.conn.execute(f"""
-        SELECT CAST((price - {price_min}) / {bin_width} AS INTEGER) AS bin,
+    rows = engine.conn.execute(
+        """
+        SELECT CAST((price - ?) / ? AS INTEGER) AS bin,
                SUM(qty) AS qty
-        FROM read_parquet({paths!r})
+        FROM read_parquet(?)
         GROUP BY bin ORDER BY bin
-    """).fetchall()
+        """,
+        [price_min, bin_width, paths],
+    ).fetchall()
 
     # Materialise into VolumeProfile (densify bin index → 0..N)
     n_bins = int((price_max - price_min) / bin_width) + 1
@@ -1005,18 +1011,22 @@ export type Tab = {
 type Store = {
   tabs: Tab[];
   activeTabId: string;
-  prefs: Record<string, ChartViewPrefs>;  // keyed by tab id
+  prefs: Map<string, ChartViewPrefs>;  // keyed by tab id — Map for parity with Tab.bundles
   // ... existing actions ...
   getPrefs: (id: string) => ChartViewPrefs;
   setVolumeProfileMode: (id: string, mode: ChartViewPrefs['volumeProfileMode']) => void;
 };
 
 // In the store body, add to initial state:
-//   prefs: {},
-// And add the new actions:
-//   getPrefs: (id) => get().prefs[id] ?? DEFAULT_PREFS,
-//   setVolumeProfileMode: (id, mode) =>
-//     set((s) => ({ prefs: { ...s.prefs, [id]: { ...DEFAULT_PREFS, ...s.prefs[id], volumeProfileMode: mode } } })),
+//   prefs: new Map(),
+// And add the new actions (Map mutations need fresh Map for React reactivity):
+//   getPrefs: (id) => get().prefs.get(id) ?? DEFAULT_PREFS,
+//   setVolumeProfileMode: (id, mode) => set((s) => {
+//     const next = new Map(s.prefs);
+//     next.set(id, { ...DEFAULT_PREFS, ...next.get(id), volumeProfileMode: mode });
+//     return { prefs: next };
+//   }),
+// Also extend closeTab to call s.prefs.delete(id) (in a fresh Map) for leak prevention.
 
 // Also: putBundle's type signature changes from SessionBundle to RangeBundle
 //   putBundle: (id: string, date: string, bundle: RangeBundle) => void;
@@ -1857,17 +1867,21 @@ git commit -m "fix(chart/CandlePane): per-segment Auction Window threshold (mult
 
 ---
 
-### Task 17: `ChartStage` types switch + initial-fit + zoom clamps + tickMarkFormatter
+### Task 17: `ChartStage` types switch + Pane retypes + initial-fit + zoom clamps + tickMarkFormatter
 
 **Files:**
 - Modify: `frontend/src/chart/ChartStage.tsx`
+- Modify: `frontend/src/chart/VolumePane.tsx`
+- Modify: `frontend/src/chart/RatioPane.tsx`
+- Modify: `frontend/src/chart/IntensityPane.tsx`
+- Modify: `frontend/src/chart/FillStrengthPane.tsx`
 - Test: `frontend/src/chart/ChartStage.test.tsx`
 
-This task is large — split into 4 sub-commits via the 5-step pattern below.
+This task is large — split into 3 sub-commits via the 5-step pattern below. Each sub-commit leaves typecheck clean (no WIP / broken intermediate states).
 
-#### 17a: Switch `bundle` prop type to `RangeBundle`
+#### 17a: Switch `bundle` prop type to `RangeBundle` across ChartStage + all 4 pane consumers (atomic)
 
-- [ ] **Step 1: Update prop type**
+- [ ] **Step 1: Update `ChartStage.tsx` prop type**
 
 ```tsx
 import type { RangeBundle } from '../api/types';
@@ -1878,18 +1892,42 @@ export type ChartStageProps = {
 };
 ```
 
-Update the four pane children invocations to pass `bundle` of type RangeBundle (no behavioural change — Pane components retyped in Task 20).
+Update the four pane children invocations in JSX (no code change — just the type they pass through).
 
-- [ ] **Step 2: Typecheck**
+- [ ] **Step 2: Retype `bundle` prop in the 4 non-CandlePane components in the SAME commit**
+
+In each of `frontend/src/chart/VolumePane.tsx`, `RatioPane.tsx`, `IntensityPane.tsx`, `FillStrengthPane.tsx`:
+
+```tsx
+import type { RangeBundle } from '../api/types';
+
+type Props = {
+  chart: IChartApi;
+  bundle: RangeBundle;          // was SessionBundle
+  segments: Segment[];
+  paneIndex?: number;
+};
+```
+
+No behavioural change — these panes read only their own series payload which exists identically in RangeBundle.
+
+(CandlePane retype + per-segment auction threshold is Task 16, already committed in its own commit.)
+
+- [ ] **Step 3: Typecheck**
 
 Run: `cd frontend && pnpm tsc --noEmit`
-Expected: All Pane components that still expect SessionBundle will fail — defer fixes to Task 20.
+Expected: No errors. All Pane consumers now accept RangeBundle and produce no compile errors.
 
-- [ ] **Step 3: Commit (partial WIP)**
+- [ ] **Step 4: Run chart tests**
+
+Run: `cd frontend && pnpm vitest run src/chart/`
+Expected: All pass.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/src/chart/ChartStage.tsx
-git commit -m "refactor(chart/ChartStage): bundle prop type → RangeBundle (panes pending)"
+git add frontend/src/chart/ChartStage.tsx frontend/src/chart/VolumePane.tsx frontend/src/chart/RatioPane.tsx frontend/src/chart/IntensityPane.tsx frontend/src/chart/FillStrengthPane.tsx
+git commit -m "refactor(chart): ChartStage + 4 panes retype bundle as RangeBundle (no behaviour change)"
 ```
 
 #### 17b: Add initial `fitContent` + zoom clamp effect
@@ -2183,46 +2221,13 @@ git commit -m "refactor(chart/VolumeProfileOverlay): rename composite→range, u
 
 ---
 
-### Task 20: Other pane components — retype `bundle` from `SessionBundle` to `RangeBundle`
+### Task 20: ~~Other pane retypes~~ — merged into Task 17a (see plan-eng-review D2)
 
-**Files:**
-- Modify: `frontend/src/chart/VolumePane.tsx`
-- Modify: `frontend/src/chart/RatioPane.tsx`
-- Modify: `frontend/src/chart/IntensityPane.tsx`
-- Modify: `frontend/src/chart/FillStrengthPane.tsx`
+This task was originally a separate retype step but was merged into Task 17a so all five Pane consumers (ChartStage + 4 non-CandlePane panes) change their `bundle` type to `RangeBundle` atomically — every commit stays typecheck-clean and `git bisect` stays clean.
 
-- [ ] **Step 1: Update each file's `bundle` prop type**
+CandlePane's behavioural change (per-segment auction threshold) remains in Task 16.
 
-In each of the four files:
-```tsx
-import type { RangeBundle } from '../api/types';
-
-type Props = {
-  chart: IChartApi;
-  bundle: RangeBundle;          // was SessionBundle
-  segments: Segment[];
-  paneIndex?: number;
-};
-```
-
-No behavioural change — these panes read only their own series payload (`bundle.quote_ratio`, `bundle.volume`, etc.) which exists in both Wire Models.
-
-- [ ] **Step 2: Run full typecheck**
-
-Run: `cd frontend && pnpm tsc --noEmit`
-Expected: No errors.
-
-- [ ] **Step 3: Run all chart tests**
-
-Run: `cd frontend && pnpm vitest run src/chart/`
-Expected: All pass.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add frontend/src/chart/VolumePane.tsx frontend/src/chart/RatioPane.tsx frontend/src/chart/IntensityPane.tsx frontend/src/chart/FillStrengthPane.tsx
-git commit -m "refactor(chart/panes): retype bundle as RangeBundle (no behavioural change)"
-```
+Skip this task during execution.
 
 ---
 
@@ -2495,10 +2500,84 @@ gh pr create --title "feat(replay): multi-day Stock-Date Range viewer with Timef
 - `apiCall<T>` is the project's HTTP helper (not `apiGet` as the spec mentions — spec was slightly inaccurate).
 - The decision to key `ChartStage` on `(code, fromDate, toDate)` only (Task 17d) is what makes the Timeframe-change time-window preservation work without any explicit snapshot/restore machinery — preserve this contract.
 - Phase 7's `RangeAdjustmentNotice` is a UX decision committed in plan-eng-review T2 (spec §3, §8). Do not skip even though it adds a small component.
-- Phase 8 Task 15 leaves `ChartStage`'s typecheck temporarily broken (fixed in Phase 9 Task 17) — accept the intermediate WIP commit and move on.
+- Phase 8 Task 15 (Workarea→useRange) leaves `ChartStage`'s typecheck temporarily broken — that's expected to be brief (next commit). Resolved cleanly by Task 17a which retypes ChartStage + 4 panes atomically. No long-lived WIP commit.
 
 ## Total Counts
 
-- **25 tasks** across **12 phases**
-- ~**110 steps** total (TDD pattern: test → fail → impl → pass → commit)
-- ~**8 commits** per phase on average, **25 commits** total (one per task — some tasks split into 4 sub-commits at Task 17)
+- **24 active tasks** across **12 phases** (Task 20 deprecated — merged into Task 17a)
+- ~**105 steps** total (TDD pattern: test → fail → impl → pass → commit)
+- ~**24 commits** total (one per task — Task 17 split into 3 sub-commits; all commits typecheck-clean per plan-eng-review D2)
+
+---
+
+## NOT in scope (explicitly deferred)
+
+- **Multi-date `read_parquet` SQL optimisation** — v1 keeps the N-call loop in `build_range_bundle`; bound by the 30-day cap. Profile after v1 ships, optimise in a follow-up PR.
+- **Server-side caching of downsampled candles** — recomputed each request. Optimise only if profiling shows it matters.
+- **Streaming / pagination** for ranges > 30 days. The 30-day hard cap is the v1 boundary.
+- **Auto-Timeframe (zoom-driven)** — explicitly rejected in ADR-0014. Possible future addition.
+- **Sub-minute Timeframes (10s, 30s)** — underlying candles parquet is 1m fixed.
+- **Custom user Timeframes (7m, 2h, 1d)** — six fixed values keep the selector compact.
+- **`RangeAdjustmentNotice` "Capture missing dates" button** — spec §8 only requires "Adjust to actual range" action; full capture-trigger wiring deferred.
+
+## What already exists (reused, not rebuilt)
+
+- `util/time.ts` virtual axis stitching — `buildSegments`, `realToVirtual`, `isWithinSessions`, `findSegmentByVirtual` all reused unchanged. New `findSegmentByReal` is the sibling helper added in Task 3.
+- `DateRangePicker` + `TabSelection { fromDate, toDate }` — UI for date range selection already exists; the plan only adds `timeframe` to the TabSelection shape.
+- `bundle.py` quote_ratio / depth_intensity / fill_strength builders — already parameterised by `bucket_ms`. Plan only adds the new `downsample_candles` and `build_volume_profile_range` companions.
+- ChartErrorBoundary, all 5 Pane components — structurally unchanged; only `bundle` prop type retyped.
+- `chartScale.ts` — `barSpacing=8`, `rightOffset=15` preserved per DESIGN.md.
+- `apiCall<T>` HTTP helper — reused via `useRange` (not `fetch` directly).
+
+## Failure modes (per new codepath)
+
+| Codepath | Realistic failure | Test? | Error handling? | User sees? |
+|---|---|---|---|---|
+| `downsample_candles` (Task 4) | Invalid `bucket_ms` | ✓ (Task 4) | `ValueError` raise | API returns 400 |
+| `build_range_bundle` (Task 7) | Inventory empty in range | ✓ (Task 7) | `HTTPException(404)` | Workarea shows error message + Toolbar focus |
+| `/api/range` (Task 8) | Range > 30 days | ✓ (Task 8) | `HTTPException(400)` | Toolbar inline error (pre-validated) |
+| `useRange` (Task 11) | Network timeout / 500 | implicit via React Query | `isError=true` propagated | Workarea shows "Load failed: ..." |
+| `RangeAdjustmentNotice` (Task 14) | bundle.segments empty | ✓ implied | Component returns null early | Nothing rendered |
+| `ChartStage.tickMarkFormatter` | segments empty during early render | ✓ (Task 17c) | Returns empty string | No tick labels (acceptable) |
+| `DayBoundaryOverlay` (Task 18) | `timeToCoordinate` returns null (off-screen) | implicit | Per-boundary `null`-check skips rendering | Boundary line hidden until visible |
+| `CandlePane` per-segment (Task 16) | candle with ts_ms outside any segment | ✓ (filtered by `isWithinSessions`) | Pre-filtered, never reaches threshold check | Candle hidden (existing behaviour) |
+
+**Critical gap check**: no codepath identified that has no test AND no error handling AND silent failure to user. **0 critical gaps.**
+
+## Worktree parallelization strategy
+
+| Phase | Modules touched | Depends on |
+|------|----------------|------------|
+| Phase 1 (Tasks 1-3) | `hoga/api/models.py`, `frontend/src/api/types.ts`, `frontend/src/util/` | — |
+| Phase 2-3 (Tasks 4-7) | `hoga/api/bundle.py`, `hoga/api/queries.py`, `tests/hoga/` | Phase 1 (models) |
+| Phase 4 (Task 8) | `hoga/api/routes.py`, `tests/hoga/api/` | Phase 2-3 (build_range_bundle) |
+| Phase 5-6 (Tasks 9-11) | `frontend/src/state/`, `frontend/src/api/range.ts` | Phase 1 (types) |
+| Phase 7 (Tasks 12-14) | `frontend/src/replay/` (TimeframeSelector, Toolbar, RangeAdjustmentNotice) | Phase 5 (state) |
+| Phase 8 (Task 15) | `frontend/src/replay/Workarea.tsx` | Phase 6 (useRange), Phase 7 (RangeAdjustmentNotice) |
+| Phase 9 (Tasks 16-21) | `frontend/src/chart/`, `frontend/src/sidebar/` | Phase 8 (Workarea passes RangeBundle) |
+| Phase 10 (Tasks 22-23) | `hoga/api/`, `frontend/src/api/` (deletions) | Phase 9 (all callers migrated) |
+| Phase 11-12 (Tasks 24-25) | `frontend/e2e/`, `docs/adr/` | Phase 10 (impl complete) |
+
+**Parallel lanes:**
+- Lane A: Phase 1 → Phase 2-3 → Phase 4 (backend, sequential within lane)
+- Lane B: Phase 1 → Phase 5-6 → Phase 7 → Phase 8 (frontend setup, sequential within lane)
+- Phase 9-12: must wait for both lanes (frontend integrates RangeBundle from backend)
+
+**Execution order:** Phase 1 first (foundational types — single lane), then Lane A (backend) and Lane B (frontend non-chart) in parallel worktrees, then Phase 9-12 sequentially after both lanes merge.
+
+**Conflict flags:** Lane A and Lane B touch different module directories (`hoga/` vs `frontend/`). No merge conflicts expected within Phase 1-8.
+
+---
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | not run (engineering-only change) |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | not run |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 2 | CLEAR (PLAN) | spec review: 8 issues / all resolved; plan review: 3 issues / all resolved |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | not run (uses existing DESIGN.md tokens) |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | not run (internal viewer change, not developer-facing API) |
+
+- **UNRESOLVED:** 0
+- **VERDICT:** ENG CLEARED (2 reviews — spec + plan) — ready for `/subagent-driven-development`.
