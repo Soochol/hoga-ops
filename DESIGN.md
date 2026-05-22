@@ -2,7 +2,7 @@
 
 **Created:** 2026-05-20 via `/design-consultation`
 **Project:** hoga-ops — Korean stock orderbook + trade replay analysis tool
-**Approved mockup:** `docs/superpowers/designs/2026-05-20-replay-viewer.html`
+**Approved mockup (at 1.0× base intent):** `docs/superpowers/designs/2026-05-20-replay-viewer.html`
 
 ## Product Context
 
@@ -12,12 +12,30 @@
 - **Project type:** Local desktop web app, analyst workstation.
 - **Memorable thing:** "A trading desk that feels modern, not 1990s — information density that stays readable."
 
+## Scale Factor
+
+The design system has a **single density dial** at `:root font-size`.
+
+| Term | Meaning |
+|---|---|
+| **Base intent (1.0×)** | The pixel target captured in token rem values, calibrated against a 16px root. Reflects the original 2026-05-20 design intent. |
+| **Default density (1.25×)** | What the app renders at browser zoom 100%. `:root { font-size: 20px }` lifts every rem-based token by 1.25×. |
+| **Scale dial** | The `:root font-size` declaration in `frontend/src/styles/tokens.css`. Changing it shifts all CSS sizing uniformly. |
+
+**Scope of the dial:**
+- ✅ CSS-rendered chrome — fonts, spacing, layout widths, line-heights (all rem-based).
+- ❌ `lightweight-charts` canvas — text and bar spacing live in `frontend/src/util/chartScale.ts` as static constants. Must be updated alongside the dial.
+- ❌ 1px borders, hairlines, small radii (2–6px), chart canvas internal coordinates — stay in px to protect anti-aliasing and pixel-grid sharpness.
+
+**Future density modes (backlog):** A user-facing toggle (Compact 1.0× / Comfortable 1.25× / Cozy 1.4×) would set `:root font-size` via `[data-density="..."]` and require `chartScale.ts` values updated in lockstep. Not in scope today.
+
 ## Aesthetic Direction
 
 - **Direction:** Industrial/Utilitarian × Modern Professional ("Modern Trading Lab")
 - **Decoration level:** Minimal-intentional — typography does the work. Single accent color. No patterns, textures, gradients, or decorative blobs.
 - **Mood:** Serious. Information-first. The product should feel like a precision tool, not a SaaS dashboard. Closer in spirit to Linear than to a Y Combinator startup landing page.
 - **Reference points:** TradingView (chart syntax), Linear (UI restraint), Vercel (typography), Bloomberg (data density — but without the 1990s color palette).
+- **Density posture:** Ships at a comfortable density (1.25× of base intent) that approaches typical-SaaS sizing. The original 1.0× intent (`denser than typical SaaS`, Bloomberg-leaning) is preserved in the token system and reachable through a future Compact density toggle. The product DNA is "Linear-like restraint" at the chosen density, not "must always be small."
 
 ## Typography
 
@@ -29,16 +47,17 @@
 
 - **Loading strategy:** Google Fonts CDN in v1 (`@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap')`). Self-host as v1+1 if network latency becomes annoying on cold start.
 
-- **Scale (rem-based, root 16px):**
-  | Token | px | Use |
-  |---|---|---|
-  | `xs` | 10–10.5 | Small-caps labels, badges |
-  | `sm` | 11–11.5 | Table rows, secondary mono values |
-  | `base` | 13 | Body / UI default |
-  | `md` | 14 | Section / page headings |
-  | `lg` | 16 | Brand text |
-  | `xl` | 22 | Current price (price strip) |
-  | `2xl` | 32 | Future hero numerics (if added) |
+- **Scale (rem-based, single dial at `:root font-size`):**
+
+  | Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
+  |---|---|---|---|
+  | `xs` | 10.5px | 13.125px | Small-caps labels, badges |
+  | `sm` | 11.5px | 14.375px | Table rows, secondary mono values |
+  | `base` | 13px | 16.25px | Body / UI default |
+  | `md` | 14px | 17.5px | Section / page headings |
+  | `lg` | 16px | 20px | Brand text |
+  | `xl` | 22px | 27.5px | Current price (price strip) |
+  | `2xl` | 32px | 40px | Future hero numerics |
 
 ## Color
 
@@ -81,25 +100,25 @@
 
 ## Spacing
 
-- **Base unit:** 4px
-- **Density:** Comfortable-tight. Denser than typical SaaS, looser than Bloomberg.
-- **Scale:**
+- **Base unit:** 4px (base intent); 5px (rendered @ default density)
+- **Density:** Comfortable at default density (1.25×) — capable of reaching Bloomberg-density via a future Compact mode (1.0× = base intent). Density is a spectrum, not a fixed point. The token system holds both; default rendering picks one.
+- **Scale (rem-based, single dial):**
 
-  | Token | px | Use |
-  |---|---|---|
-  | `2xs` | 2 | Hairline gaps |
-  | `xs` | 4 | Pane gap, tight stacking |
-  | `sm` | 8 | Card padding inside, gap between sidebar cards |
-  | `md` | 12 | Card padding default |
-  | `lg` | 16 | Section spacing, nav item padding |
-  | `xl` | 24 | Major section dividers |
-  | `2xl` | 32 | (rarely used) |
-  | `3xl` | 48 | (rarely used) |
+  | Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
+  |---|---|---|---|
+  | `2xs` | 2px | 2.5px | Hairline gaps |
+  | `xs` | 4px | 5px | Pane gap, tight stacking |
+  | `sm` | 8px | 10px | Card padding inside, gap between sidebar cards |
+  | `md` | 12px | 15px | Card padding default |
+  | `lg` | 16px | 20px | Section spacing, nav item padding |
+  | `xl` | 24px | 30px | Major section dividers |
+  | `2xl` | 32px | 40px | (rarely used) |
+  | `3xl` | 48px | 60px | (rarely used) |
 
-- **Card padding:** 12–14px standard. Sidebar cards 12px. Pane bodies 4–6px (info density priority).
-- **Pane gap:** 8px between chart panes.
-- **Sidebar width:** 320px fixed.
-- **Nav width:** 210px fixed.
+- **Card padding:** 12–14px standard. Sidebar cards 12px. Pane bodies 4–6px (info density priority) (base intent — rendered ×1.25 at default density).
+- **Pane gap:** 8px between chart panes (base intent — rendered ×1.25 at default density).
+- **Sidebar width:** 320px base intent / 400px rendered (token: --sidebar-w).
+- **Nav width:** 210px base intent / 262.5px rendered (token: --nav-w).
 
 ## Layout
 
@@ -135,6 +154,9 @@
 - **What we do NOT animate:** chart pane resizes, sidebar updates, value changes (numbers snap, no tween — analysts want exact values not gradients).
 
 ## Components — Design Tokens for Specific Patterns
+
+> **Scale note:** All px values in this section are **1.0× base intent**.
+> Default rendering = × 1.25. See [Scale Factor](#scale-factor).
 
 ### Tabs (Replay Viewer page)
 - Height: 32px
