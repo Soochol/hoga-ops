@@ -35,4 +35,35 @@ describe('VolumePane', () => {
     expect(passed[1].value).toBe(100);
     expect(passed[0].color).not.toEqual(passed[1].color); // up ≠ down
   });
+
+  it('drops pre-open auction candles to keep virtual times unique and ascending', () => {
+    const { chart, series } = makeMockChart();
+    const sessionOpenMs = 1_778_457_600_000;
+    const bundle: any = {
+      session_open_ms: sessionOpenMs,
+      candles: [
+        { ts_ms: sessionOpenMs - 30 * 60_000, open: 1, close: 1, high: 1, low: 1, vol_a: 111, vol_b: 0 },
+        { ts_ms: sessionOpenMs, open: 1, close: 1, high: 1, low: 1, vol_a: 200, vol_b: 50 },
+        { ts_ms: sessionOpenMs + 60_000, open: 1, close: 1, high: 1, low: 1, vol_a: 50, vol_b: 80 },
+      ],
+    };
+    render(
+      <VolumePane
+        chart={chart}
+        bundle={bundle}
+        segments={[
+          {
+            date: '20260511',
+            sessionOpenMs,
+            sessionCloseMs: sessionOpenMs + 23_400_000,
+            virtualStart: 0,
+          },
+        ]}
+      />,
+    );
+    const data = series.setData.mock.calls[0][0];
+    expect(data).toHaveLength(2);
+    expect(data[0].time).toBe(0);
+    expect(data[1].time).toBe(60);
+  });
 });

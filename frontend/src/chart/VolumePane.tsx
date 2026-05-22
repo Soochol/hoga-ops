@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { HistogramSeries, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
-import { type Segment, realToVirtual } from '../util/time';
+import { type Segment, realToVirtual, isWithinSessions } from '../util/time';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = {
@@ -38,14 +38,16 @@ export default function VolumePane({ chart, bundle, segments, paneIndex = 0 }: P
       },
       paneIndex,
     );
-    const data = bundle.candles.map((c) => ({
-      // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
-      // The `as any` cast keeps us free of the library's branded `Time`
-      // type without dragging it into the public API.
-      time: (realToVirtual(segments, c.ts_ms) / 1000) as any,
-      value: c.vol_a + c.vol_b,
-      color: c.close >= c.open ? up : down,
-    }));
+    const data = bundle.candles
+      .filter((c) => isWithinSessions(segments, c.ts_ms))
+      .map((c) => ({
+        // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
+        // The `as any` cast keeps us free of the library's branded `Time`
+        // type without dragging it into the public API.
+        time: (realToVirtual(segments, c.ts_ms) / 1000) as any,
+        value: c.vol_a + c.vol_b,
+        color: c.close >= c.open ? up : down,
+      }));
     series.setData(data);
     return () => {
       chart.removeSeries(series);
