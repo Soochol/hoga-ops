@@ -5,8 +5,9 @@
 ## Decision
 
 The Replay Viewer's five pre-aggregated series (`candles`, `quote_ratio`,
-`depth_intensity`, `fill_strength`, `volume_profile`) are aggregated at a
-**single Timeframe** per `RangeBundle` request. The Timeframe is one of
+`depth_intensity_by_day`, `fill_strength`, `volume_profile_range` /
+`volume_profile_by_day`) are aggregated at a **single Timeframe** per
+`RangeBundle` request. The Timeframe is one of
 the six fixed values surfaced through the toolbar's `TimeframeSelector`
 (1m / 3m / 5m / 10m / 15m / 30m) and travels on the wire as
 `bucket_ms` (60_000 / 180_000 / 300_000 / 600_000 / 900_000 / 1_800_000).
