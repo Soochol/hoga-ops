@@ -20,7 +20,7 @@ export function CaptureStatusPill() {
   return (
     <Link
       to="/capture"
-      className="flex flex-col gap-1 py-sm px-md bg-bg-card border rounded-md no-underline"
+      className="flex flex-col gap-1 py-sm px-md bg-bg-card border rounded-lg no-underline"
     >
       <span className="flex items-center gap-1.5">
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, animation: dotAnim }} />
