@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { HistogramSeries, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
-import { type Segment, realToVirtual } from '../util/time';
+import { type Segment, realToVirtual, isWithinSessions } from '../util/time';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = {
@@ -32,8 +32,16 @@ export default function FillStrengthPane({ chart, bundle, segments, paneIndex = 
     const { up, down } = resolveTokens(TOKEN_SPEC);
     const buy = chart.addSeries(HistogramSeries, { color: up, base: 0 } as any, paneIndex);
     const sell = chart.addSeries(HistogramSeries, { color: down, base: 0 } as any, paneIndex);
+    // Drop pre-open auction points and any others outside the regular-session
+    // segments. Without this filter, multiple pre-session points collapse to
+    // virtual-time=0 and lightweight-charts.setData throws "data must be asc
+    // ordered by time". The filtered list is shared between buy and sell so
+    // we only run isWithinSessions once. See util/time.ts:isWithinSessions.
+    const inSession = bundle.fill_strength.points.filter((p) =>
+      isWithinSessions(segments, p.t),
+    );
     buy.setData(
-      bundle.fill_strength.points.map((p) => ({
+      inSession.map((p) => ({
         // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
         // The `as any` cast keeps us free of the library's branded `Time`
         // type without dragging it into the public API.
@@ -42,7 +50,7 @@ export default function FillStrengthPane({ chart, bundle, segments, paneIndex = 
       })),
     );
     sell.setData(
-      bundle.fill_strength.points.map((p) => ({
+      inSession.map((p) => ({
         time: (realToVirtual(segments, p.t) / 1000) as any,
         value: -p.sell_qty, // negative — renders below the 0 baseline
       })),
