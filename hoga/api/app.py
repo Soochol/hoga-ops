@@ -12,12 +12,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from hoga.api import captures as _captures_module
+from hoga.api import symbols as _symbols_module
 from hoga.api.captures import build_router as build_captures_router
 from hoga.api.captures import cancel_all_on_shutdown
 from hoga.api.captures import set_bus as set_captures_bus
 from hoga.api.queries import QueryEngine
 from hoga.api.routes import build_router
 from hoga.api.sse import build_sse
+from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config
@@ -51,6 +53,10 @@ def create_app(data_dir: Path) -> FastAPI:
         # Start the Plan B worker pool. Sits alongside the legacy _latest
         # shutdown hook until Task 13 retires the singleton path.
         _captures_module._workers = _captures_module.start_workers()
+        # Tier 1 of the pykrx 3-tier cache policy: prefetch the symbol master
+        # cache fire-and-forget so the first GET /api/symbols/all is warm.
+        # Failure is tolerated — Tier 3 stale-fallback covers boot-time KRX outages.
+        asyncio.create_task(_symbols_module.ensure_cache_warm(data_dir))
         try:
             yield
         finally:
@@ -84,6 +90,7 @@ def create_app(data_dir: Path) -> FastAPI:
     app.include_router(
         build_captures_router(data_dir=data_dir, client_factory=client_factory)
     )
+    app.include_router(build_symbols_router(data_dir=data_dir))
     if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
         app.include_router(build_test_router(data_dir))
     app.state.engine = engine
