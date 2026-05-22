@@ -31,6 +31,18 @@ async function open() {
     src.addEventListener('capture_finished', (e: MessageEvent) =>
       emit({ type: 'capture_finished', ...JSON.parse(e.data) }),
     );
+    src.addEventListener('capture_queued', (e: MessageEvent) =>
+      emit({ type: 'capture_queued', ...JSON.parse(e.data) }),
+    );
+    src.addEventListener('capture_queue_paused', (e: MessageEvent) =>
+      emit({ type: 'capture_queue_paused', ...JSON.parse(e.data) }),
+    );
+    src.addEventListener('capture_queue_resumed', (e: MessageEvent) =>
+      emit({ type: 'capture_queue_resumed', ...JSON.parse(e.data) }),
+    );
+    src.addEventListener('capture_queue_drained', (e: MessageEvent) =>
+      emit({ type: 'capture_queue_drained', ...JSON.parse(e.data) }),
+    );
     src.addEventListener('heartbeat', () => {
       _lastHeartbeatMs = Date.now();
       emit({ type: 'heartbeat' });
@@ -67,7 +79,6 @@ export function useEventStream() {
         qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
       } else if (e.type === 'disconnected') {
         qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
-        qc.invalidateQueries({ queryKey: ['capture', 'latest'] });
       }
     };
     _subscribers.add(handler);
@@ -84,7 +95,11 @@ export function subscribeToCaptureEvents(handler: (e: SSEEvent) => void): () => 
     if (
       e.type === 'capture_progress' ||
       e.type === 'capture_phase' ||
-      e.type === 'capture_finished'
+      e.type === 'capture_finished' ||
+      e.type === 'capture_queued' ||
+      e.type === 'capture_queue_paused' ||
+      e.type === 'capture_queue_resumed' ||
+      e.type === 'capture_queue_drained'
     ) {
       handler(e);
     }
