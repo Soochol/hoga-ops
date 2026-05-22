@@ -3,7 +3,7 @@ import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
 
-const TOKEN_SPEC = { borderStrong: ['--border-strong', '#2A2A38'] } as const;
+const TOKEN_SPEC = { boundary: ['--fg-dimmer', '#64748B'] } as const;
 
 type Props = {
   chart: IChartApi;
@@ -47,7 +47,7 @@ export default function DayBoundaryOverlay({ chart, axis }: Props) {
 
   if (axis.segments.length < 2) return null;
 
-  const { borderStrong } = resolveTokens(TOKEN_SPEC);
+  const { boundary } = resolveTokens(TOKEN_SPEC);
 
   const ts = chart.timeScale();
   const boundaries = axis.dayBoundaries.map((b) => {
@@ -65,7 +65,7 @@ export default function DayBoundaryOverlay({ chart, axis }: Props) {
             className="absolute top-0 bottom-0 w-px"
             style={{
               transform: `translateX(${b.x as number}px)`,
-              backgroundImage: `repeating-linear-gradient(to bottom, ${borderStrong} 0 3px, transparent 3px 6px)`,
+              backgroundImage: `repeating-linear-gradient(to bottom, ${boundary} 0 3px, transparent 3px 6px)`,
             }}
           >
             <span className="absolute top-1 left-1 bg-bg-card text-fg-dim text-xs px-1.5 py-0.5 rounded">
