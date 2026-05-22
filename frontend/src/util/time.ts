@@ -169,6 +169,33 @@ export function isWithinSessions(segments: Segment[], realMs: number): boolean {
 }
 
 /**
+ * Sort by `time` ascending and dedupe so the output is strictly monotonic.
+ * lightweight-charts asserts both conditions inside `setData`; the backend
+ * does not currently guarantee either (quote_ratio.points carry duplicate
+ * timestamps at bucket boundaries, fill_strength.points are concatenated
+ * from multiple segments without re-sorting). When two items share a time,
+ * the LATER one in the input wins — bucket-boundary collisions usually
+ * reflect a late-arriving update that supersedes the earlier value.
+ *
+ * Safe for series outputs (already mapped to virtual axis seconds). Cost
+ * is O(n log n); for the largest series we see (~20k quote_ratio points)
+ * this is still sub-millisecond on modern hardware.
+ */
+export function sortAndDedupeByTime<T extends { time: number }>(items: T[]): T[] {
+  if (items.length <= 1) return items;
+  const sorted = items.slice().sort((a, b) => a.time - b.time);
+  const out: T[] = [];
+  for (const item of sorted) {
+    if (out.length === 0 || out[out.length - 1].time < item.time) {
+      out.push(item);
+    } else {
+      out[out.length - 1] = item;
+    }
+  }
+  return out;
+}
+
+/**
  * True if realMs falls in the gap between two adjacent segments, OR after the
  * last segment's close. Useful for drawing grey "non-session" bands on the
  * chart and for disabling interaction in those regions.

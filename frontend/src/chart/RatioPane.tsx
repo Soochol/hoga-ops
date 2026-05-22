@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { LineSeries, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
-import { type Segment, realToVirtual, isWithinSessions } from '../util/time';
+import { type Segment, realToVirtual, isWithinSessions, sortAndDedupeByTime } from '../util/time';
 import { quoteImbalance } from '../util/imbalance';
 import { resolveTokens } from '../util/tokens';
 
@@ -47,12 +47,18 @@ export default function RatioPane({ chart, bundle, segments, paneIndex = 0 }: Pr
       },
       paneIndex,
     );
-    const data = bundle.quote_ratio.points
-      .filter((p) => isWithinSessions(segments, p.t))
-      .map((p) => ({
-        time: (realToVirtual(segments, p.t) / 1000) as any,
-        value: quoteImbalance(p.bid_total, p.ask_total),
-      }));
+    // sortAndDedupeByTime defends against backend quote_ratio.points carrying
+    // duplicate timestamps at bucket boundaries (~0.8% of points in the
+    // 003490 fixture). Without this, setData throws "data must be asc
+    // ordered by time" on the first colliding pair.
+    const data = sortAndDedupeByTime(
+      bundle.quote_ratio.points
+        .filter((p) => isWithinSessions(segments, p.t))
+        .map((p) => ({
+          time: (realToVirtual(segments, p.t) / 1000) as any,
+          value: quoteImbalance(p.bid_total, p.ask_total),
+        })),
+    );
     series.setData(data);
     // 0-baseline reference line (lineStyle 1 = solid).
     series.createPriceLine({
@@ -64,7 +70,15 @@ export default function RatioPane({ chart, bundle, segments, paneIndex = 0 }: Pr
       title: '',
     } as any);
     return () => {
-      chart.removeSeries(series);
+      // Guard: when a sibling pane throws and ChartErrorBoundary unmounts
+      // ChartStage, the parent's chart.remove() may run before this cleanup,
+      // leaving the series handle dangling. lightweight-charts then throws
+      // "Value is undefined" inside removeSeries. Matches IntensityPane.
+      try {
+        chart.removeSeries(series);
+      } catch {
+        // chart already torn down — safe to ignore
+      }
     };
   }, [chart, bundle, segments, paneIndex]);
   return null;

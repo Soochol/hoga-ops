@@ -248,3 +248,80 @@ describe('realToVirtual — documented pre-session clamp', () => {
     expect(realToVirtual(segments, 1_778_457_600_000)).toBe(0);
   });
 });
+
+import { sortAndDedupeByTime } from '../../src/util/time';
+
+describe('sortAndDedupeByTime', () => {
+  it('returns same array for empty / single-item input', () => {
+    expect(sortAndDedupeByTime([])).toEqual([]);
+    expect(sortAndDedupeByTime([{ time: 5, value: 'a' }])).toEqual([
+      { time: 5, value: 'a' },
+    ]);
+  });
+
+  it('sorts ascending by time', () => {
+    const input = [
+      { time: 10, value: 'c' },
+      { time: 3, value: 'a' },
+      { time: 7, value: 'b' },
+    ];
+    expect(sortAndDedupeByTime(input)).toEqual([
+      { time: 3, value: 'a' },
+      { time: 7, value: 'b' },
+      { time: 10, value: 'c' },
+    ]);
+  });
+
+  it('drops duplicates and keeps the LAST item at each time (last-wins)', () => {
+    // Backend may emit two updates for the same bucket_ms; the later one is
+    // the more recent reading.
+    const input = [
+      { time: 5, value: 'first' },
+      { time: 5, value: 'second' },
+      { time: 5, value: 'third' },
+    ];
+    expect(sortAndDedupeByTime(input)).toEqual([{ time: 5, value: 'third' }]);
+  });
+
+  it('handles the realistic mixed case — RatioPane 003490 fixture pattern', () => {
+    // 170 dups out of 20326 points: dups are at bucket boundaries.
+    const input = [
+      { time: 1, value: 'a' },
+      { time: 2, value: 'b' },
+      { time: 2, value: 'b2' }, // dup
+      { time: 3, value: 'c' },
+    ];
+    expect(sortAndDedupeByTime(input)).toEqual([
+      { time: 1, value: 'a' },
+      { time: 2, value: 'b2' },
+      { time: 3, value: 'c' },
+    ]);
+  });
+
+  it('handles the realistic OOS case — FillStrengthPane 003490 fixture pattern', () => {
+    // The backend concatenated two session segments without re-sorting,
+    // producing a 39-minute backward jump at index 201.
+    const input = [
+      { time: 100, value: 'a' },
+      { time: 9620, value: 'b' },
+      { time: 7240, value: 'c' }, // out-of-order, before 9620
+      { time: 9700, value: 'd' },
+    ];
+    expect(sortAndDedupeByTime(input)).toEqual([
+      { time: 100, value: 'a' },
+      { time: 7240, value: 'c' },
+      { time: 9620, value: 'b' },
+      { time: 9700, value: 'd' },
+    ]);
+  });
+
+  it('does NOT mutate the input array', () => {
+    const input = [
+      { time: 3, value: 'b' },
+      { time: 1, value: 'a' },
+    ];
+    const copy = input.slice();
+    sortAndDedupeByTime(input);
+    expect(input).toEqual(copy);
+  });
+});

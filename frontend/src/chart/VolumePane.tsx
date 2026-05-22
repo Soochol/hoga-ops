@@ -50,7 +50,12 @@ export default function VolumePane({ chart, bundle, segments, paneIndex = 0 }: P
       }));
     series.setData(data);
     return () => {
-      chart.removeSeries(series);
+      // Guard: see CandlePane.tsx for the unwind-order rationale.
+      try {
+        chart.removeSeries(series);
+      } catch {
+        // chart already torn down
+      }
     };
   }, [chart, bundle, segments, paneIndex]);
   return null;

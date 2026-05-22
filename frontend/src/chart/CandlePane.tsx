@@ -76,7 +76,15 @@ export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: P
       });
     series.setData(data);
     return () => {
-      chart.removeSeries(series);
+      // Guard: when a sibling pane throws and ChartErrorBoundary unmounts
+      // ChartStage, the parent's chart.remove() may run before this cleanup,
+      // leaving the series handle dangling. lightweight-charts then throws
+      // "Value is undefined" inside removeSeries. Matches IntensityPane.
+      try {
+        chart.removeSeries(series);
+      } catch {
+        // chart already torn down
+      }
     };
   }, [chart, bundle, segments, paneIndex]);
   return null;
