@@ -47,7 +47,12 @@ export default function Workarea({ tab }: { tab: Tab }) {
     } else if (isError) {
       useTabsStore.getState().setStatus(tab.id, 'error', String(error ?? 'unknown error'));
     } else if (bundle) {
-      useTabsStore.getState().putBundle(tab.id, bundle.from_date, bundle);
+      // TODO(ADR-0013): Workarea still consumes useSession (SessionBundle); the
+      // store + chart pipeline now type bundles as RangeBundle. Runtime fields
+      // overlap (both expose `candles`, `quote_ratio`, etc.) so the cast is safe
+      // at runtime, but a follow-up PR must replace useSession with useRange and
+      // migrate ChartStage Props to RangeBundle. Remove this cast then.
+      useTabsStore.getState().putBundle(tab.id, bundle.from_date, bundle as unknown as RangeBundle);
       // putBundle also sets status to 'loaded'.
     }
   }, [tab.id, tab.selection, isLoading, isError, error, bundle]);
