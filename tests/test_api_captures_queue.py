@@ -665,6 +665,34 @@ async def test_429_backoff_exhausted_marks_failed(monkeypatch, tmp_path):
     assert snap.done[0].phase == "failed"
 
 
+# ---------------------------------------------------------------------------
+# Task 12: DELETE /api/captures/done — dismiss terminal items
+# ---------------------------------------------------------------------------
+
+
+def test_dismiss_done_clears_terminals_only(monkeypatch, tmp_path):
+    app = _build_test_app(monkeypatch, tmp_path)
+    monkeypatch.setattr("hoga.api.calendar.trading_days_in_range",
+                        lambda s, e: ["20260518", "20260519"])
+    monkeypatch.setattr("hoga.api.captures._disk_state_module.check_disk_state",
+                        lambda *_a, **_k: DiskState.COMPLETE)
+    with TestClient(app) as c:
+        c.post("/api/captures/items", json={
+            "code": "005930", "start_date": "20260518", "end_date": "20260519",
+            "force_retry": False,
+        })
+        # Wait until both items terminate (they skip immediately given COMPLETE).
+        for _ in range(40):
+            snap = c.get("/api/captures/queue").json()
+            if len(snap["done"]) == 2 and not snap["active"]:
+                break
+            time.sleep(0.05)
+        r = c.delete("/api/captures/done")
+        assert r.status_code == 204
+        snap = c.get("/api/captures/queue").json()
+        assert snap["done"] == []
+
+
 async def test_cancel_during_429_backoff_aborts_immediately(monkeypatch, tmp_path):
     """Cancel signal during the backoff sleep raises CaptureCancelled and
     the worker marks the item cancelled (NOT failed, NOT done)."""

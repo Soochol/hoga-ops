@@ -1064,4 +1064,9 @@ def build_router(
         await resume_queue()
         return {"status": "resumed"}
 
+    @router.delete("/done", status_code=204)
+    async def dismiss_done() -> None:
+        async with _lock:
+            _done.clear()
+
     return router
