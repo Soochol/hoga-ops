@@ -107,15 +107,15 @@ export default function IntensityPane({ chart, bundle, axis, paneIndex }: Props)
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    // RangeBundle carries one DepthIntensity grid per segment (ADR-0013). Until
-    // a follow-up wires per-segment iteration (Task 19-style adaptation for
-    // intensity is not yet planned — flagged in Task 17a), render the first
-    // day's grid so the type retype stays behaviour-preserving for single-day
-    // ranges (the only case the prior single-grid code rendered correctly).
-    const di = bundle.depth_intensity_by_day[0];
-    if (!di) return;
-    const bins = di.bid_grid[0]?.length ?? 0;
-    if (bins === 0 || di.times.length === 0) return;
+    // RangeBundle carries one DepthIntensity grid per segment (ADR-0013).
+    // Each segment owns its own price grid (price_min/price_max/price_step
+    // differ across days), so a single heatmap surface cannot stitch them
+    // into one continuous grid. Instead we paint each segment's grid
+    // independently into that segment's virtual-time x-range — the chart's
+    // virtual axis already collapses inter-session gaps to zero so adjacent
+    // day grids appear visually contiguous.
+    const grids = bundle.depth_intensity_by_day;
+    if (grids.length === 0) return;
 
     function paint() {
       if (!canvas || !ctx) return;
@@ -127,45 +127,52 @@ export default function IntensityPane({ chart, bundle, axis, paneIndex }: Props)
       if (w === 0 || h === 0) return;
       const buf = ctx.createImageData(w, h);
       const data = buf.data;
-      const cellH = h / bins;
 
-      di.times.forEach((t, i) => {
-        const xFloat = ts.timeToCoordinate((axis.toVirtual(t) / 1000) as any);
-        if (xFloat === null) return;
-        const nextT = di.times[i + 1] ?? t + di.bucket_ms;
-        const xNextFloat =
-          ts.timeToCoordinate((axis.toVirtual(nextT) / 1000) as any) ?? xFloat + 2;
-        const xStart = Math.max(0, Math.floor(xFloat));
-        const xEnd = Math.min(w, Math.floor(xNextFloat));
-        if (xEnd <= xStart) return;
+      // One outer iteration per segment. `cellH` is segment-local because
+      // each day's grid has its own bin count (price range differs per day).
+      grids.forEach((di) => {
+        const bins = di.bid_grid[0]?.length ?? 0;
+        if (bins === 0 || di.times.length === 0) return;
+        const cellH = h / bins;
 
-        for (let b = 0; b < bins; b++) {
-          const bidV = di.bid_grid[i][b];
-          const askV = di.ask_grid[i][b];
-          if (bidV < 0.02 && askV < 0.02) continue;
+        di.times.forEach((t, i) => {
+          const xFloat = ts.timeToCoordinate((axis.toVirtual(t) / 1000) as any);
+          if (xFloat === null) return;
+          const nextT = di.times[i + 1] ?? t + di.bucket_ms;
+          const xNextFloat =
+            ts.timeToCoordinate((axis.toVirtual(nextT) / 1000) as any) ?? xFloat + 2;
+          const xStart = Math.max(0, Math.floor(xFloat));
+          const xEnd = Math.min(w, Math.floor(xNextFloat));
+          if (xEnd <= xStart) return;
 
-          const isAsk = askV >= bidV;
-          const intensity = isAsk ? askV : bidV;
-          const rgb = isAsk ? DOWN_RGB : UP_RGB;
-          const alpha = Math.min(255, Math.round(intensity * 255));
+          for (let b = 0; b < bins; b++) {
+            const bidV = di.bid_grid[i][b];
+            const askV = di.ask_grid[i][b];
+            if (bidV < 0.02 && askV < 0.02) continue;
 
-          const yStart = Math.max(0, Math.floor((bins - 1 - b) * cellH));
-          const yEnd = Math.min(h, Math.floor((bins - b) * cellH));
+            const isAsk = askV >= bidV;
+            const intensity = isAsk ? askV : bidV;
+            const rgb = isAsk ? DOWN_RGB : UP_RGB;
+            const alpha = Math.min(255, Math.round(intensity * 255));
 
-          // Raw RGBA byte writes — Phase 0 spike confirmed this is ~10× faster
-          // than the equivalent fillRect loop. DO NOT switch back without
-          // re-running the perf baseline.
-          for (let y = yStart; y < yEnd; y++) {
-            const rowStart = (y * w + xStart) * 4;
-            for (let x = 0; x < xEnd - xStart; x++) {
-              const idx = rowStart + x * 4;
-              data[idx] = rgb[0];
-              data[idx + 1] = rgb[1];
-              data[idx + 2] = rgb[2];
-              data[idx + 3] = alpha;
+            const yStart = Math.max(0, Math.floor((bins - 1 - b) * cellH));
+            const yEnd = Math.min(h, Math.floor((bins - b) * cellH));
+
+            // Raw RGBA byte writes — Phase 0 spike confirmed this is ~10× faster
+            // than the equivalent fillRect loop. DO NOT switch back without
+            // re-running the perf baseline.
+            for (let y = yStart; y < yEnd; y++) {
+              const rowStart = (y * w + xStart) * 4;
+              for (let x = 0; x < xEnd - xStart; x++) {
+                const idx = rowStart + x * 4;
+                data[idx] = rgb[0];
+                data[idx + 1] = rgb[1];
+                data[idx + 2] = rgb[2];
+                data[idx + 3] = alpha;
+              }
             }
           }
-        }
+        });
       });
 
       ctx.putImageData(buf, 0, 0);
