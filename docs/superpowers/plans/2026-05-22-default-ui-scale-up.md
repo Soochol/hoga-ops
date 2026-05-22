@@ -853,7 +853,7 @@ the CSS dial — see DESIGN.md Scale Factor section."
 
 ## Task 8: Documentation updates
 
-**Goal:** DESIGN.md gains the "Scale Factor" section and 2-column tables. Components disclaimer added. Approved mockup HTML labeled. ADR-0010 written.
+**Goal:** DESIGN.md gains the "Scale Factor" section and 2-column tables. Components disclaimer added. Identity rhetoric in Aesthetic + Spacing reconciled with new default density. Approved mockup HTML labeled. ADR-0010 written.
 
 **Files:**
 - Modify: `DESIGN.md`
@@ -927,7 +927,7 @@ Before:
 After:
 ```markdown
 - **Base unit:** 4px (base intent); 5px (rendered @ default density)
-- **Density:** Comfortable-tight at base intent. Renders at 1.25× by default — see Scale Factor section.
+- **Density:** Comfortable at default density (1.25×) — capable of reaching Bloomberg-density via a future Compact mode (1.0× = base intent). Density is a spectrum, not a fixed point. The token system holds both; default rendering picks one.
 - **Scale (rem-based, single dial):**
 
   | Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
@@ -947,6 +947,19 @@ Also update the bullet lines that follow:
 - `Pane gap: 8px between chart panes.` → append same suffix.
 - `Sidebar width: 320px fixed.` → `Sidebar width: 320px base intent / 400px rendered (token: --sidebar-w).`
 - `Nav width: 210px fixed.` → `Nav width: 210px base intent / 262.5px rendered (token: --nav-w).`
+
+- [ ] **Step 3.5: Reconcile identity rhetoric in Aesthetic Direction**
+
+In `DESIGN.md`'s `## Aesthetic Direction` section, the bullet "Denser than typical SaaS, looser than Bloomberg" no longer matches what ships at the default density. Update the surrounding bullets to:
+
+- Keep the "Modern Trading Lab" identity verbatim — it remains the design philosophy.
+- After the "Reference points" bullet, insert:
+
+```markdown
+- **Density posture:** Ships at a comfortable density (1.25× of base intent) that approaches typical-SaaS sizing. The original 1.0× intent (`denser than typical SaaS`, Bloomberg-leaning) is preserved in the token system and reachable through a future Compact density toggle. The product DNA is "Linear-like restraint" at the chosen density, not "must always be small."
+```
+
+This reconciles the lived-experience preference (1.25× = comfortable) with the original design intent (1.0× = dense, Linear-like) without abandoning either. Surfaced by design review D2.
 
 - [ ] **Step 4: Add disclaimer to Components section**
 
@@ -1143,7 +1156,7 @@ cd frontend && npm run lint && npm run build
 ```
 Expected: zero errors.
 
-- [ ] **Step 5: Capture eight-screen visual regression**
+- [ ] **Step 5: Capture ten-screen visual regression**
 
 Start dev server:
 ```bash
@@ -1158,10 +1171,12 @@ In the browser, take screenshots of each of these screens (use OS screenshot too
 4. Capture Queue page showing pending / in-progress / complete rows
 5. Stock Combobox closed AND open (two screenshots, or one with combobox open over the closed-state context)
 6. DateRangePicker open (replay or capture variant)
-7. SymbolSearch dropdown open with results
+7. SymbolSearch dropdown open with results — **verify market badge (KOSPI/KOSDAQ) is visibly smaller than name/code via the new `text-badge` token**
 8. Four-pane chart stage (CandlePane + VolumePane + RatioPane + IntensityPane visible; verify text sizes match surrounding UI)
+9. **Settings page** — verify text hierarchy (heading > body > metadata) preserved after `text-xs` normalization
+10. **Inventory page** — verify calendar grid alignment, tabular-nums column header alignment, mono-font row data alignment
 
-Save each as `01-leftnav-capture.png`, `02-leftnav-replay.png`, etc.
+Save each as `01-leftnav-capture.png`, `02-leftnav-replay.png`, ..., `10-inventory.png`. Surfaced by design review D3 (pages were migrated but missing from visual regression list).
 
 - [ ] **Step 6: Write PR description draft**
 
@@ -1197,7 +1212,7 @@ Source spec: `docs/superpowers/specs/2026-05-22-default-ui-scale-up-design.md`
 - [x] `npm test` all pass (unit + component)
 - [x] `npx playwright test` all pass (E2E)
 - [x] Verification grep zero hits (or only legitimate `var(--*)` and percent cases)
-- [x] Eight-screen visual regression confirmed
+- [x] Ten-screen visual regression confirmed
 
 ## Out of scope (filed as follow-up issues)
 
@@ -1242,7 +1257,7 @@ Items deliberately deferred. Each is a follow-up issue, NOT a TODO bundled into 
 | Reactive chart scaling (`chartScale.ts` reads `:root font-size`) | Static constants are simpler today; the additional plumbing only pays for itself when a density toggle UI exists. See spec Section "Scope of the single dial". |
 | Chart color tokenization | Current chart colors work via `util/tokens.ts`; not related to density. |
 | Light mode | DESIGN.md v1 explicitly excludes. |
-| Automated visual regression (Percy / Chromatic) | Cost-benefit unfavorable for 1-user tool; 8-screen manual regression is the equivalent. |
+| Automated visual regression (Percy / Chromatic) | Cost-benefit unfavorable for 1-user tool; 10-screen manual regression is the equivalent. |
 | `em`-based dial for OS font-preference accessibility | Acknowledged in ADR-0010; defer until accessibility surfaces as a real need. |
 
 ## What Already Exists (reused, not rebuilt)
@@ -1350,7 +1365,7 @@ Synthesized from review findings. Each task derives from a specific finding abov
 - [ ] **T8 (P1, human: ~30min / CC: ~5min)** — Documentation — DESIGN.md `## Scale Factor` section + 2-column Typography/Spacing tables + Components disclaimer + mockup HTML label + ADR-0010
   - Surfaced by: Spec Documentation Updates + grilling Q3 (ADR-0010 scope) + Q4 (mockup label) + Q5 (Components disclaimer)
   - Files: `DESIGN.md`, `docs/superpowers/designs/2026-05-20-replay-viewer.html`, `docs/adr/0010-default-ui-density.md` (new)
-- [ ] **T9 (P1, human: ~30min / CC: ~10min)** — Verification + PR prep — grep audit, full test suite + Playwright, 8-screen visual regression, PR description draft
+- [ ] **T9 (P1, human: ~30min / CC: ~10min)** — Verification + PR prep — grep audit, full test suite + Playwright, 10-screen visual regression, PR description draft
   - Surfaced by: Spec Definition of Done + Test Review coverage diagram
   - Files: (no edits — verification only)
   - Verify: zero hits on `grep -rEn 'text-\[|w-\[[0-9]|h-\[[0-9]'`; `npx playwright test` green; screenshots captured
@@ -1362,10 +1377,10 @@ Synthesized from review findings. Each task derives from a specific finding abov
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | not run (scope already decided in brainstorming/grilling) |
 | Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | not run (outside voice skipped — see notes) |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | **CLEAR (PLAN)** | 2 issues found and resolved (D2 token naming, D3 badge token); 0 critical gaps; test coverage adequate |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | not run (visual outputs verified in Task 9 manual regression) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | **CLEAR (PLAN)** | initial 8/10 → final 9/10; 2 decisions added (identity rhetoric reconciled in Aesthetic+Spacing, visual regression expanded from 8→10 screens with Settings+Inventory) |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | n/a (not a developer-facing product) |
 
 - **CROSS-MODEL:** No cross-model comparison (outside voice not invoked this review).
 - **UNRESOLVED:** 0 unresolved decisions.
-- **VERDICT:** ENG REVIEW CLEARED — ready to implement. Step 0 scope accepted as-is; D2 and D3 findings fully integrated into plan (token names `--h-*`, new `--text-badge` token, SymbolSearch market badge uses `text-badge`).
+- **VERDICT:** ENG REVIEW + DESIGN REVIEW BOTH CLEARED — ready to implement. Step 0 scope accepted as-is; eng findings D2 (token `--h-*` prefix) and D3 (text-badge token) integrated; design findings D2 (DESIGN.md identity rhetoric reconciliation) and D3 (10-screen regression) integrated. Implementation may proceed to subagent-driven-development.
 
