@@ -20,28 +20,19 @@ export function CaptureStatusPill() {
   return (
     <Link
       to="/capture"
-      style={{
-        display: 'flex', flexDirection: 'column', gap: 4,
-        padding: '8px 12px',
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border)',
-        borderRadius: 6,
-        textDecoration: 'none',
-      }}
+      className="flex flex-col gap-1 py-sm px-md bg-bg-card border rounded-md no-underline"
     >
-      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span className="flex items-center gap-1.5">
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, animation: dotAnim }} />
-        <span style={{
-          font: '600 9.5px "Geist Sans", sans-serif',
-          letterSpacing: '0.08em',
-          color: paused ? 'var(--warn)' : 'var(--accent)',
-        }}>{label}</span>
+        <span
+          className="font-semibold text-xs tracking-[0.08em]"
+          style={{ color: paused ? 'var(--warn)' : 'var(--accent)' }}
+        >{label}</span>
       </span>
-      <span style={{
-        font: '500 10px "Geist Mono", monospace',
-        color: 'var(--fg-dim)',
-        fontVariantNumeric: 'tabular-nums',
-      }}>{stats}</span>
+      <span
+        className="font-medium text-xs font-mono"
+        style={{ color: 'var(--fg-dim)', fontVariantNumeric: 'tabular-nums' }}
+      >{stats}</span>
     </Link>
   );
 }

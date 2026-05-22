@@ -5,7 +5,7 @@ import { useEventStream } from './api/sse';
 export default function App() {
   useEventStream();
   return (
-    <div className="grid grid-cols-[210px_1fr] h-screen w-screen overflow-hidden">
+    <div className="grid grid-cols-[var(--nav-w)_1fr] h-screen w-screen overflow-hidden">
       <LeftNav />
       <main className="overflow-hidden min-w-0"><Outlet /></main>
     </div>

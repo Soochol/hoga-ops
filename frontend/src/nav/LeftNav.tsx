@@ -10,7 +10,7 @@ export default function LeftNav() {
              style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-shade))' }}>H</div>
         <div>
           <div className="font-semibold text-sm">hoga-ops</div>
-          <div className="text-[9.5px] text-fg-dim uppercase tracking-wider">orderbook replay</div>
+          <div className="text-xs text-fg-dim uppercase tracking-wider">orderbook replay</div>
         </div>
       </div>
       <Section label="Workspace">
@@ -23,7 +23,7 @@ export default function LeftNav() {
       <Section label="System">
         <NavItem to="/settings" label="Settings" />
       </Section>
-      <div className="p-3 border-t flex justify-between font-mono text-[10.5px] text-fg-dimmer">
+      <div className="p-3 border-t flex justify-between font-mono text-xs text-fg-dimmer">
         <StatusDot />
         <span>v0.1.0</span>
       </div>
@@ -34,7 +34,7 @@ export default function LeftNav() {
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="pl-4 pt-3 pb-1 text-[9.5px] font-semibold uppercase tracking-wider text-fg-dimmer">{label}</div>
+      <div className="pl-4 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider text-fg-dimmer">{label}</div>
       <div className="px-2 py-1 flex flex-col gap-px">{children}</div>
     </div>
   );
