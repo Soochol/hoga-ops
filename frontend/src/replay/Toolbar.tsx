@@ -45,7 +45,7 @@ export default function Toolbar() {
   };
 
   return (
-    <div className="flex items-center gap-2.5 px-4 bg-bg-card border-b h-[60px]">
+    <div className="flex items-center gap-2.5 px-4 bg-bg-card border-b h-toolbar">
       <StockCombobox value={draft.code} onChange={setCode} />
       <DateRangePicker code={draft.code} from={draft.from} to={draft.to} onChange={setDates} />
       <span className="flex-1" />

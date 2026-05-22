@@ -12,3 +12,4 @@ node_modules/
 .worktrees/
 .superpowers/
 .playwright-mcp/
+.env

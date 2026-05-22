@@ -22,8 +22,8 @@ export default function Tab({
     >
       {isActive && <span className="absolute top-0 inset-x-0 h-0.5 bg-accent rounded-t" />}
       <TabStatusDot status={tab.status} />
-      <span className="tab-code font-mono text-[11.5px] text-accent">{tab.selection?.code ?? '—'}</span>
-      <span className="text-[12.5px]">{tab.selection ? '...' : '새 탭'}</span>
+      <span className="tab-code font-mono text-sm text-accent">{tab.selection?.code ?? '—'}</span>
+      <span className="text-sm">{tab.selection ? '...' : '새 탭'}</span>
       {!isLast && (
         <button
           className="w-4 h-4 opacity-0 hover:opacity-100"

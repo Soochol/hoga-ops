@@ -36,7 +36,7 @@ export default function PriceStrip() {
   }, [active.id, active.status, toMs]);
 
   if (active.status !== 'loaded') {
-    return <div className="h-[52px] bg-bg-subtle border-b" />;
+    return <div className="h-pricestrip bg-bg-subtle border-b" />;
   }
 
   // Resolve the latest candle close at-or-before `atMs`. allCandles is
@@ -61,7 +61,7 @@ export default function PriceStrip() {
       : null;
 
   return (
-    <div className="flex items-center gap-4 px-4 bg-bg-subtle border-b h-[52px]">
+    <div className="flex items-center gap-4 px-4 bg-bg-subtle border-b h-pricestrip">
       <span className="font-mono text-sm">{active.selection?.code}</span>
       <span className="text-lg font-semibold font-mono">
         {rightClose != null ? rightClose.toLocaleString('ko-KR') : '—'}

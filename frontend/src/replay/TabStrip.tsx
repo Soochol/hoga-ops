@@ -36,12 +36,12 @@ export default function TabStrip() {
       </DndContext>
       <button
         onClick={() => newTab()}
-        className="h-[30px] px-3 mb-px ml-1.5 border border-dashed border-border-strong rounded text-fg-dim hover:text-fg hover:border-accent text-xs font-medium"
+        className="h-tab-secondary px-3 mb-px ml-1.5 border border-dashed border-border-strong rounded text-fg-dim hover:text-fg hover:border-accent text-xs font-medium"
       >
         + 새 분석
       </button>
       <span className="flex-1" />
-      <span className="font-mono text-[10.5px] text-fg-dimmer pb-2">
+      <span className="font-mono text-xs text-fg-dimmer pb-2">
         {tabCount} / {TABS_SOFT_CAP} open
       </span>
     </div>

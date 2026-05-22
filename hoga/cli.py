@@ -12,6 +12,7 @@ from rich.table import Table
 from hoga.collector.client import HogaplayClient
 from hoga.collector.orchestrator import collect_stock_date
 from hoga.config import Config, CookieMissingError, resolve_data_dir
+from hoga.env import load_env
 from hoga.parser import parse_stock_date
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="hoga-ops backend CLI")
@@ -82,6 +83,7 @@ def parse(
 @app.command()
 def serve(port: int = typer.Option(8000, "--port")) -> None:
     """Start the FastAPI server."""
+    load_env()  # ADR-0008: discover and load .env (no override at startup)
     uvicorn.run(
         "hoga.api.app:default_app",
         factory=True,

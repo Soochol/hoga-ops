@@ -46,14 +46,14 @@ export default function StockCombobox({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 px-2.5 py-1.5 bg-bg-input border rounded text-sm min-w-[240px] hover:bg-bg-input-hover"
+        className="flex items-center gap-2 px-2.5 py-1.5 bg-bg-input border rounded text-sm min-w-combobox hover:bg-bg-input-hover"
       >
         <span className="font-mono text-accent">{selected?.code ?? '종목 선택'}</span>
         <span className="flex-1 text-left">{selected?.name ?? ''}</span>
         <span className="text-fg-dim">▾</span>
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 min-w-[320px] bg-bg-card border border-border-strong rounded shadow-xl z-50">
+        <div className="absolute top-full left-0 mt-1 min-w-dropdown bg-bg-card border border-border-strong rounded shadow-xl z-50">
           <input
             autoFocus
             value={q}
@@ -87,7 +87,7 @@ export default function StockCombobox({
               >
                 <span className="font-mono text-xs text-accent w-14">{s.code}</span>
                 <span className="flex-1 text-sm">{s.name}</span>
-                <span className="font-mono text-[10.5px] text-fg-dim">{s.dates} dates</span>
+                <span className="font-mono text-xs text-fg-dim">{s.dates} dates</span>
               </div>
             ))}
           </div>
