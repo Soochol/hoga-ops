@@ -7,15 +7,17 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from hoga.api.bundle import build_bundle
+from hoga.api.bundle import build_bundle, build_range_bundle
 from hoga.api.cursor import cursor_to_native
 from hoga.api.models import (
     CandlesResponse,
     Meta,
     OrderbookResponse,
+    RangeBundle,
     SessionBundle,
     StockDate as StockDateModel,
     TradesResponse,
+    validate_bucket_ms,
 )
 from hoga.api.params import Code, StockDate
 from hoga.api.queries import QueryEngine, StockDateNotFound
@@ -139,6 +141,25 @@ def build_router(engine: QueryEngine) -> APIRouter:
             price_min=price_min,
             price_max=price_max,
             vp_bins=vp_bins,
+            bucket_ms=bucket_ms,
+        )
+
+    @router.get("/range", response_model=RangeBundle)
+    def api_range(
+        code: Code,
+        from_date: str = Query(..., alias="from"),
+        to_date: str = Query(..., alias="to"),
+        bucket_ms: int = Query(...),
+    ) -> RangeBundle:
+        try:
+            validate_bucket_ms(bucket_ms)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return build_range_bundle(
+            engine,
+            code=code,
+            from_date=from_date,
+            to_date=to_date,
             bucket_ms=bucket_ms,
         )
 
