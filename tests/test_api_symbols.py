@@ -60,7 +60,8 @@ def _stub_pykrx(monkeypatch, kospi=None, kosdaq=None, *, raise_exc=None):
 @pytest.mark.asyncio
 async def test_initial_status_is_loading_then_fresh(monkeypatch, tmp_path):
     _stub_pykrx(monkeypatch)
-    resp = await symbols.get_all(data_dir=tmp_path)
+    path = tmp_path / "sm.json"
+    resp = await symbols.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "fresh"
     assert len(resp.symbols) == 2
     assert resp.fetched_at_ms is not None
@@ -68,7 +69,7 @@ async def test_initial_status_is_loading_then_fresh(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_concurrent_gets_dedupe_to_one_fetch(monkeypatch, tmp_path):
-    """N concurrent GETs trigger exactly one underlying fetch."""
+    """N concurrent refresh calls trigger exactly one underlying fetch."""
     monkeypatch.setenv("KRX_ID", "stub_id")
     monkeypatch.setenv("KRX_PW", "stub_pw")
     counter = {"n": 0}
@@ -80,10 +81,11 @@ async def test_concurrent_gets_dedupe_to_one_fetch(monkeypatch, tmp_path):
         return []
 
     monkeypatch.setattr(symbols, "_fetch_from_pykrx", _slow_fetch)
+    path = tmp_path / "sm.json"
 
-    t1 = asyncio.create_task(symbols.get_all(data_dir=tmp_path))
-    t2 = asyncio.create_task(symbols.get_all(data_dir=tmp_path))
-    t3 = asyncio.create_task(symbols.get_all(data_dir=tmp_path))
+    t1 = asyncio.create_task(symbols.refresh(path=path, data_dir=tmp_path))
+    t2 = asyncio.create_task(symbols.refresh(path=path, data_dir=tmp_path))
+    t3 = asyncio.create_task(symbols.refresh(path=path, data_dir=tmp_path))
     await asyncio.sleep(0.05)
     assert counter["n"] == 1
     sem.set()
@@ -94,21 +96,24 @@ async def test_concurrent_gets_dedupe_to_one_fetch(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_pykrx_failure_returns_unavailable_when_no_cache(monkeypatch, tmp_path):
     _stub_pykrx(monkeypatch, raise_exc=RuntimeError("krx down"))
-    resp = await symbols.get_all(data_dir=tmp_path)
+    path = tmp_path / "sm.json"
+    resp = await symbols.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "unavailable"
     assert resp.symbols == []
 
 
 def test_search_filters_by_name(monkeypatch, tmp_path):
     _stub_pykrx(monkeypatch, kospi=[("005930", "삼성전자"), ("000660", "SK하이닉스")])
-    asyncio.run(symbols.get_all(data_dir=tmp_path))
+    path = tmp_path / "sm.json"
+    asyncio.run(symbols.refresh(path=path, data_dir=tmp_path))
     hits = symbols.search("삼성", limit=5)
     assert [h.code for h in hits] == ["005930"]
 
 
 def test_search_filters_by_code_prefix(monkeypatch, tmp_path):
     _stub_pykrx(monkeypatch, kospi=[("005930", "삼성전자"), ("005935", "삼성전자우")])
-    asyncio.run(symbols.get_all(data_dir=tmp_path))
+    path = tmp_path / "sm.json"
+    asyncio.run(symbols.refresh(path=path, data_dir=tmp_path))
     hits = symbols.search("00593", limit=5)
     assert sorted(h.code for h in hits) == ["005930", "005935"]
 
@@ -181,6 +186,8 @@ async def test_get_all_unavailable_when_creds_missing(
     """No creds → pre-check sets reason; pykrx is NOT called."""
     monkeypatch.delenv("KRX_ID", raising=False)
     monkeypatch.delenv("KRX_PW", raising=False)
+    # Prevent load_env from loading real .env credentials during the test.
+    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
 
     call_log: list[str] = []
     async def _spy() -> list:
@@ -188,7 +195,8 @@ async def test_get_all_unavailable_when_creds_missing(
         return []
     monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _spy)
 
-    resp = await symbols_module.get_all(data_dir=tmp_path)
+    path = tmp_path / "sm.json"
+    resp = await symbols_module.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "unavailable"
     assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
     assert call_log == [], "pykrx should not be called when creds are missing"
@@ -202,12 +210,15 @@ async def test_get_all_empty_creds_treated_as_missing(
 ) -> None:
     monkeypatch.setenv("KRX_ID", "")
     monkeypatch.setenv("KRX_PW", "")
+    # Prevent load_env from overwriting empty env vars with real .env credentials.
+    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
 
     async def _spy() -> list:
         return []
     monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _spy)
 
-    resp = await symbols_module.get_all(data_dir=tmp_path)
+    path = tmp_path / "sm.json"
+    resp = await symbols_module.refresh(path=path, data_dir=tmp_path)
     assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
 
 
@@ -224,7 +235,8 @@ async def test_get_all_fetch_failed_when_creds_set_but_pykrx_raises(
         raise RuntimeError("pykrx exploded")
     monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _raise)
 
-    resp = await symbols_module.get_all(data_dir=tmp_path)
+    path = tmp_path / "sm.json"
+    resp = await symbols_module.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "unavailable"
     assert resp.reason == UpstreamCode.KRX_FETCH_FAILED
 
@@ -246,7 +258,8 @@ async def test_get_all_reason_cleared_on_success(
                           captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0})]
     monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _ok)
 
-    resp = await symbols_module.get_all(data_dir=tmp_path)
+    path = tmp_path / "sm.json"
+    resp = await symbols_module.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "fresh"
     assert resp.reason is None
     assert len(resp.symbols) == 1
@@ -272,7 +285,8 @@ async def test_refresh_calls_load_env_with_override_true(
         return []
     monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _ok)
 
-    await symbols_module.refresh(data_dir=tmp_path)
+    path = tmp_path / "sm.json"
+    await symbols_module.refresh(path=path, data_dir=tmp_path)
     assert calls == [True], "refresh should call load_env(override=True) exactly once"
 
 
@@ -550,3 +564,113 @@ async def test_get_all_returns_cached_entries(tmp_path, monkeypatch):
     assert len(resp.symbols) == 1
     assert resp.status == "fresh"
     assert resp.fetched_at_ms == 99
+
+
+# ---------------------------------------------------------------------------
+# T8 — refresh(*, path, data_dir): sole pykrx entry point, disk write, dedupe
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_refresh_happy_path(tmp_path, monkeypatch):
+    symbols_module.reset_state_for_tests()
+    monkeypatch.setenv("KRX_ID", "x")
+    monkeypatch.setenv("KRX_PW", "y")
+
+    async def _fake_fetch():
+        return [_make_hit("005930", "삼성전자")]
+
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _fake_fetch)
+    path = tmp_path / "sm.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    resp = await symbols_module.refresh(path=path, data_dir=data_dir)
+
+    assert path.exists(), "disk file must be written on success"
+    assert len(resp.symbols) == 1
+    assert resp.status == "fresh"
+    assert resp.reason is None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 1
+    assert len(payload["entries"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_missing_creds(tmp_path, monkeypatch):
+    symbols_module.reset_state_for_tests()
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+    # Prevent load_env from loading real .env credentials during the test.
+    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
+
+    async def _must_not_call():
+        raise AssertionError("pykrx must not be called when creds missing")
+
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _must_not_call)
+    path = tmp_path / "sm.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    resp = await symbols_module.refresh(path=path, data_dir=data_dir)
+
+    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
+    assert resp.status == "unavailable"
+    assert not path.exists(), "no disk write when creds missing"
+
+
+@pytest.mark.asyncio
+async def test_refresh_pykrx_failure_preserves_disk(tmp_path, monkeypatch):
+    symbols_module.reset_state_for_tests()
+    monkeypatch.setenv("KRX_ID", "x")
+    monkeypatch.setenv("KRX_PW", "y")
+    path = tmp_path / "sm.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    async def _ok():
+        return [_make_hit("005930", "삼성전자")]
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _ok)
+    await symbols_module.refresh(path=path, data_dir=data_dir)
+    original_content = path.read_text(encoding="utf-8")
+
+    async def _boom():
+        raise RuntimeError("KRX down")
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _boom)
+    resp = await symbols_module.refresh(path=path, data_dir=data_dir)
+
+    assert resp.reason == UpstreamCode.KRX_FETCH_FAILED
+    assert resp.status == "stale", "cache populated → state is stale, not unavailable"
+    assert path.read_text(encoding="utf-8") == original_content
+
+
+@pytest.mark.asyncio
+async def test_refresh_concurrent_dedupe(tmp_path, monkeypatch):
+    """Two simultaneous refresh calls collapse to one pykrx fetch."""
+    import asyncio as _asyncio
+
+    symbols_module.reset_state_for_tests()
+    monkeypatch.setenv("KRX_ID", "x")
+    monkeypatch.setenv("KRX_PW", "y")
+    call_count = 0
+
+    async def _slow():
+        nonlocal call_count
+        call_count += 1
+        await _asyncio.sleep(0.05)
+        return [_make_hit("005930", "삼성전자")]
+
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _slow)
+    path = tmp_path / "sm.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    results = await _asyncio.gather(
+        symbols_module.refresh(path=path, data_dir=data_dir),
+        symbols_module.refresh(path=path, data_dir=data_dir),
+        symbols_module.refresh(path=path, data_dir=data_dir),
+    )
+
+    assert call_count == 1, "concurrent refreshes must dedupe to one fetch"
+    for r in results:
+        assert r.status == "fresh"

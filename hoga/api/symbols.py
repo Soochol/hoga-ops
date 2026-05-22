@@ -211,7 +211,7 @@ async def _fetch_from_pykrx() -> list[SymbolHit]:
 def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
     """Walk ``data/parquet/*`` and ``data/raw/*`` ONCE, building ``{code: breakdown}``.
 
-    A per-symbol bucketing pass called from :func:`_do_fetch_and_populate`
+    A per-symbol bucketing pass called from :func:`_do_refresh`
     would be ``O(symbols × parquet_dates)`` — 6000 ×
     100 = 600,000 stat calls per cache rebuild. This single-pass walk is
     ``O(total_stock_date_dirs)`` — orders of magnitude fewer disk ops when the
@@ -289,44 +289,6 @@ def load_disk_state(*, path: Path, data_dir: Path) -> None:
     _state = SymbolCacheState.fresh()
 
 
-async def _do_fetch_and_populate(data_dir: Path) -> None:
-    """Inner helper — runs under in-flight Future protection."""
-    global _cache, _fetched_at_ms, _state  # noqa: PLW0603
-
-    # Pre-check: deterministically classify "missing credentials" without
-    # depending on pykrx's exception-message format (which can drift across
-    # versions). Also saves the network round-trip when creds are absent.
-    if not krx_creds_present():
-        _state = (
-            SymbolCacheState.stale(reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
-            if _cache
-            else SymbolCacheState.unavailable(reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
-        )
-        return
-
-    try:
-        hits = await _fetch_from_pykrx()
-    except Exception:  # noqa: BLE001 — pykrx failure path (preserved)
-        _state = (
-            SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
-            if _cache
-            else SymbolCacheState.unavailable(reason=UpstreamCode.KRX_FETCH_FAILED)
-        )
-        return
-
-    # Single-pass walk → {code: breakdown}; assign per symbol.
-    loop = asyncio.get_running_loop()
-    breakdowns = await loop.run_in_executor(None, _build_all_captured_breakdowns, data_dir)
-    empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0}
-    for h in hits:
-        breakdown = breakdowns.get(h.code, empty)
-        h.captured_count = breakdown["complete"]
-        h.captured_breakdown = breakdown
-    _cache = hits
-    _fetched_at_ms = int(time.time() * 1000)
-    _state = SymbolCacheState.fresh()
-
-
 async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
     """Return the in-memory Symbol Master.
 
@@ -346,19 +308,89 @@ async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
     )
 
 
-async def refresh(*, data_dir: Path) -> SymbolsAllResponse:
-    """POST /api/symbols/refresh — force a synchronous re-fetch.
+async def refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
+    """POST /api/symbols/refresh — the only pykrx entry point.
 
-    load_env(override=True) runs under _lock so the os.environ mutation
-    and the _fetched_at_ms reset share one critical section. The inflight
-    Future dedupe inside get_all() collapses concurrent refresh storms to
-    one pykrx call.
+    Concurrency: _lock + _inflight Future dedupe concurrent refresh clicks
+    (Settings + SymbolSearch may fire together). load_env(override=True) and
+    the disk write share the lock so .env hot-reload, fetch result, and disk
+    file all align.
+
+    Failure semantics: pykrx exception → disk file unchanged, memory state
+    stale (if cache populated) or unavailable.
     """
-    global _fetched_at_ms  # noqa: PLW0603
+    global _state, _inflight  # noqa: PLW0603
     async with _lock:
-        load_env(override=True)
-        _fetched_at_ms = None
-    return await get_all(data_dir=data_dir)
+        if _inflight is not None:
+            fut = _inflight
+        else:
+            load_env(override=True)
+            if not krx_creds_present():
+                _state = (
+                    SymbolCacheState.stale(reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
+                    if _cache
+                    else SymbolCacheState.unavailable(reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
+                )
+                return SymbolsAllResponse(
+                    symbols=list(_cache),
+                    status=_state.status,
+                    fetched_at_ms=_fetched_at_ms,
+                    reason=_state.reason,
+                )
+            _state = SymbolCacheState.loading()
+            loop = asyncio.get_running_loop()
+            _inflight = loop.create_future()
+            fetch_task = asyncio.create_task(_do_refresh(path=path, data_dir=data_dir))
+
+            def _signal(_t: asyncio.Task) -> None:
+                if _inflight is not None and not _inflight.done():
+                    _inflight.set_result(None)
+
+            fetch_task.add_done_callback(_signal)
+            fut = _inflight
+    await fut
+    async with _lock:
+        _inflight = None
+    return SymbolsAllResponse(
+        symbols=list(_cache),
+        status=_state.status,
+        fetched_at_ms=_fetched_at_ms,
+        reason=_state.reason,
+    )
+
+
+async def _do_refresh(*, path: Path, data_dir: Path) -> None:
+    """Inner refresh routine — runs under in-flight Future protection."""
+    global _cache, _fetched_at_ms, _state  # noqa: PLW0603
+    try:
+        entries = await _fetch_from_pykrx()
+    except Exception:  # noqa: BLE001 — pykrx failure path
+        _state = (
+            SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
+            if _cache
+            else SymbolCacheState.unavailable(reason=UpstreamCode.KRX_FETCH_FAILED)
+        )
+        return
+    now_ms = int(time.time() * 1000)
+    try:
+        _write_to_disk(path, entries, now_ms)
+    except OSError:
+        _state = (
+            SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
+            if _cache
+            else SymbolCacheState.unavailable(reason=UpstreamCode.KRX_FETCH_FAILED)
+        )
+        return
+    loop = asyncio.get_running_loop()
+    breakdowns = await loop.run_in_executor(None, _build_all_captured_breakdowns, data_dir)
+    empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0}
+    for h in entries:
+        breakdown = breakdowns.get(h.code, empty)
+        h.captured_count = breakdown["complete"]
+        h.captured_breakdown = breakdown
+    _cache = entries
+    _fetched_at_ms = now_ms
+    _state = SymbolCacheState.fresh()
 
 
 def search(q: str, *, limit: int = 20) -> list[SymbolHit]:
@@ -381,7 +413,7 @@ def search(q: str, *, limit: int = 20) -> list[SymbolHit]:
     return matches[:limit]
 
 
-def build_router(*, data_dir: Path) -> APIRouter:
+def build_router(*, path: Path, data_dir: Path) -> APIRouter:
     router = APIRouter(prefix="/api/symbols", tags=["symbols"])
 
     @router.get("/all")
@@ -393,13 +425,10 @@ def build_router(*, data_dir: Path) -> APIRouter:
         q: str = Query("", min_length=0),
         limit: int = Query(20, ge=1, le=100),
     ) -> list[SymbolHit]:
-        # If cache empty, populate first.
-        if not _cache:
-            await get_all(data_dir=data_dir)
         return search(q, limit=limit)
 
     @router.post("/refresh")
     async def refresh_route() -> SymbolsAllResponse:
-        return await refresh(data_dir=data_dir)
+        return await refresh(path=path, data_dir=data_dir)
 
     return router

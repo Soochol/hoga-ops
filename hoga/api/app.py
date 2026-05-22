@@ -23,7 +23,7 @@ from hoga.api.sse import build_sse
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.collector.client import HogaplayClient
-from hoga.config import Config, resolve_data_dir
+from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 
 
 def create_app(data_dir: Path) -> FastAPI:
@@ -54,10 +54,11 @@ def create_app(data_dir: Path) -> FastAPI:
         # Start the Plan B worker pool. Sits alongside the legacy _latest
         # shutdown hook until Task 13 retires the singleton path.
         _captures_module._workers = _captures_module.start_workers()
-        # Tier 1 of the pykrx 3-tier cache policy: prefetch the symbol master
-        # cache fire-and-forget so the first GET /api/symbols/all is warm.
-        # Failure is tolerated — Tier 3 stale-fallback covers boot-time KRX outages.
-        asyncio.create_task(_symbols_module.ensure_cache_warm(data_dir))
+        # Tier 1 of the pykrx 3-tier cache policy: load Symbol Master from disk
+        # at boot so GET /api/symbols/all is immediately warm without a network call.
+        _symbols_module.load_disk_state(
+            path=resolve_symbol_master_path(), data_dir=data_dir
+        )
         try:
             yield
         finally:
@@ -91,7 +92,9 @@ def create_app(data_dir: Path) -> FastAPI:
     app.include_router(
         build_captures_router(data_dir=data_dir, client_factory=client_factory)
     )
-    app.include_router(build_symbols_router(data_dir=data_dir))
+    app.include_router(
+        build_symbols_router(path=resolve_symbol_master_path(), data_dir=data_dir)
+    )
     app.include_router(build_calendar_router(data_dir=data_dir))
     if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
         app.include_router(build_test_router(data_dir))
