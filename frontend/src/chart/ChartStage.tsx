@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, type IChartApi } from 'lightweight-charts';
+import { createChart, TickMarkType, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 import type { RangeBundle, SessionBundle } from '../api/types';
 import { type Segment, virtualToReal } from '../util/time';
 import { resolveTokens } from '../util/tokens';
@@ -66,6 +66,10 @@ export type ChartStageProps = {
  */
 const PANE_STRETCH = [1.4, 0.3, 0.4, 0.8, 0.4] as const;
 
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
 export default function ChartStage({ bundle, segments }: ChartStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
@@ -98,6 +102,33 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
         timeVisible: true,
         secondsVisible: false,
         borderColor: tokens.border,
+        // lightweight-charts treats time-axis values as raw Unix seconds
+        // offsets from the epoch. We use a stitched virtual axis
+        // (util/time.ts) where virtual-ms is offset from
+        // segments[0].sessionOpenMs, not from epoch — so the library's
+        // default labels would be meaningless ("1970-01-01 + virtualMs").
+        // This formatter converts back to real Unix-ms via virtualToReal and
+        // formats in KST (UTC+9). See spec §6.6(b) "Virtual Axis Label
+        // formatting" and replay-zoom-density plan Task 17c.
+        tickMarkFormatter: (time: UTCTimestamp, tickType: TickMarkType): string => {
+          const virtualMs = (time as number) * 1000;
+          const segs = segmentsRef.current;
+          if (segs.length === 0) return '';
+          const realMs = virtualToReal(segs, virtualMs);
+          const d = new Date(realMs + 9 * 3600_000); // KST = UTC + 9h
+          switch (tickType) {
+            case TickMarkType.Year:
+            case TickMarkType.Month:
+            case TickMarkType.DayOfMonth:
+              return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+            case TickMarkType.Time:
+              return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+            case TickMarkType.TimeWithSeconds:
+              return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+            default:
+              return '';
+          }
+        },
       },
       rightPriceScale: { borderColor: tokens.border },
       autoSize: true,

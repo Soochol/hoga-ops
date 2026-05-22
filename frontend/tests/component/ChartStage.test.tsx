@@ -66,6 +66,7 @@ beforeAll(() => {
 });
 
 import ChartStage from '../../src/chart/ChartStage';
+import { TickMarkType } from 'lightweight-charts';
 
 function makeBundle(barCount: number): any {
   // Minimal RangeBundle shape; only `candles.length` is read by the clamp
@@ -137,5 +138,58 @@ describe('ChartStage — fitContent + zoom clamps (17b)', () => {
     const handler = lastCreated.ts.subscribeVisibleLogicalRangeChange.mock.calls[0][0];
     handler({ from: 10, to: 20 }); // len = 10 ≤ 100, falls through to bs check
     expect(lastCreated.ts.applyOptions).toHaveBeenCalledWith({ barSpacing: 50 });
+  });
+});
+
+describe('ChartStage — KST tickMarkFormatter (17c)', () => {
+  it('formats Time ticks as HH:MM in KST (virtual-ms → real-ms via segments)', () => {
+    const sessionOpenMs = Date.UTC(2026, 4, 18, 0, 0, 0); // 2026-05-18 00:00 UTC = 09:00 KST
+    render(
+      <ChartStage
+        bundle={makeBundle(1)}
+        segments={[
+          { date: '20260518', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000, virtualStart: 0 },
+        ]}
+      />,
+    );
+    const fmt = lastCreated.options.timeScale.tickMarkFormatter as (
+      t: number,
+      tt: number,
+    ) => string;
+    // virtual=0s → realMs = sessionOpenMs → +9h KST = 09:00
+    expect(fmt(0 as any, TickMarkType.Time)).toBe('09:00');
+    // virtual=3600s = +1h → real = sessionOpenMs + 1h → KST 10:00
+    expect(fmt(3600 as any, TickMarkType.Time)).toBe('10:00');
+  });
+
+  it('formats DayOfMonth ticks as MM/DD in KST', () => {
+    const sessionOpenMs = Date.UTC(2026, 4, 18, 0, 0, 0);
+    render(
+      <ChartStage
+        bundle={makeBundle(1)}
+        segments={[
+          { date: '20260518', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000, virtualStart: 0 },
+        ]}
+      />,
+    );
+    const fmt = lastCreated.options.timeScale.tickMarkFormatter as (
+      t: number,
+      tt: number,
+    ) => string;
+    expect(fmt(0 as any, TickMarkType.DayOfMonth)).toBe('05/18');
+  });
+
+  it('returns empty string when no segments are available', () => {
+    render(
+      <ChartStage
+        bundle={null}
+        segments={[]}
+      />,
+    );
+    const fmt = lastCreated.options.timeScale.tickMarkFormatter as (
+      t: number,
+      tt: number,
+    ) => string;
+    expect(fmt(0 as any, TickMarkType.Time)).toBe('');
   });
 });
