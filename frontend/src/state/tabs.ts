@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import type { SessionBundle } from '../api/types';
+import { useToolbarDraftStore } from './toolbarDraft';
 
 export type TabSelection = { code: string; fromDate: string; toDate: string };
 export type TabStatus = 'empty' | 'loading' | 'loaded' | 'error';
@@ -64,6 +65,7 @@ export const useTabsStore = create<Store>((set, get) => ({
     const nextActive = wasActive
       ? (next[idx]?.id ?? next[idx - 1]?.id ?? next[0].id)
       : activeTabId;
+    useToolbarDraftStore.getState().clearTab(id);
     set({ tabs: next, activeTabId: nextActive });
   },
   setActive: (id) => set({ activeTabId: id }),
