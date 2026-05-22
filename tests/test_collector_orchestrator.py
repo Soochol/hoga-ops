@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from hoga.collector import orchestrator as orch
-from hoga.collector.orchestrator import collect_stock_date
+from hoga.collector.orchestrator import collect_stock_date, page_sort_key
 
 # Magic constants used across tests.
 _UNIQUE_EVENTS_BASIC = 3
@@ -211,3 +211,21 @@ def test_collect_stock_date_today_after_18_allowed(
         data_dir=tmp_path / "data",
         rate_limit_s=0.0,
     )
+
+
+def test_page_sort_key_numeric_across_digit_widths(tmp_path: Path) -> None:
+    # Regression: real capture for 005930/20260520 (1756 pages) failed because
+    # legacy `first_{idx:03d}.tsv` rolls over to 4 digits at idx=1000, and the
+    # parser's `sorted(glob)` then puts `first_1000.tsv` BEFORE `first_997.tsv`
+    # lexically. The dedup-first-occurrence-wins flow then assigned same-ms
+    # rows to the wrong order and broke cum_vol monotonicity downstream.
+    # page_sort_key must restore numeric ordering regardless of padding width.
+    raw = tmp_path
+    for idx in [1, 9, 10, 99, 100, 997, 998, 999, 1000, 1500]:
+        (raw / f"first_{idx:03d}.tsv").touch()
+    pages = sorted(raw.glob("first_*.tsv"), key=page_sort_key)
+    indices = [page_sort_key(p) for p in pages]
+    assert indices == [1, 9, 10, 99, 100, 997, 998, 999, 1000, 1500]
+    # Sanity: plain lexical sort would NOT match (proves the test is meaningful).
+    lexical = [page_sort_key(p) for p in sorted(raw.glob("first_*.tsv"))]
+    assert lexical != indices

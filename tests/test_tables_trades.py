@@ -162,3 +162,19 @@ def test_validate_lenient_skips_violations() -> None:
     later = replace(base, ts_ms=90008500, seq=2123, cum_vol=500)
     # No exception raised in lenient mode
     validate([earlier, later], lenient=True)
+
+
+def test_validate_tie_breaks_by_seq_on_identical_ts_ms() -> None:
+    # Regression: real-data 005930/20260520 capture failed because the parser's
+    # dedup-first-occurrence-wins inserted seq=356045 into trades_list BEFORE
+    # seq=356044 (page 1000 read before page 997 due to lexical sort bug).
+    # Both seqs shared ts_ms=12:35:49.069 (sub-ms collision), so the stable
+    # ts_ms-only sort preserved the wrong order and cum_vol regressed.
+    # Fix: validate sorts by (ts_ms, seq), so any input order produces the
+    # canonical seq order for identical-ts_ms rows.
+    base = PARSERS[1](_CONTINUOUS_TRADE)
+    # Same ts_ms, different seqs. cum_vol is monotonic in seq order.
+    row_later_seq = replace(base, ts_ms=90008000, seq=200, cum_vol=22301687)
+    row_earlier_seq = replace(base, ts_ms=90008000, seq=199, cum_vol=22301662)
+    # Input order is (later_seq, earlier_seq) — would fail without tie-break.
+    validate([row_later_seq, row_earlier_seq])  # should not raise

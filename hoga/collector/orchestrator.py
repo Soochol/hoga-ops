@@ -26,6 +26,22 @@ _IDX_EVENT_TIME = 4
 _MIN_FIELDS_EVENT_TIME = 5
 _MIN_FIELDS_GLOBAL_SEQ = 4
 
+
+def page_sort_key(path: Path) -> int:
+    """Numeric sort key for `first_NNN.tsv` page files.
+
+    Lexical sort breaks once page indices cross a decimal-digit-width boundary
+    (e.g. `first_1000.tsv` sorts BEFORE `first_997.tsv` alphabetically). The
+    parser's dedup-first-occurrence-wins semantics then assigns out-of-time
+    seqs to the wrong page, which silently re-orders rows with identical
+    millisecond timestamps and breaks trades.validate()'s cum_vol monotonicity
+    check. Confirmed root cause for the 005930/20260520 capture failure
+    (qa-3-rows real cookie test, 1756 pages).
+
+    Used everywhere `raw_dir.glob("first_*.tsv")` is sorted.
+    """
+    return int(path.stem.split("_", 1)[1])
+
 # Data Window closes at 16:00 KST (Regular Session close 15:30 +
 # Auction Cross + After-Hours Trading 15:30–16:00). Captures before
 # 16:00 on a today-date are partial — see CONTEXT.md.
@@ -183,7 +199,7 @@ def _write_progress(
 def _resume_state(raw_dir: Path) -> tuple[set[int], int, int]:
     seen: set[int] = set()
     last_idx = 0
-    for page_path in sorted(raw_dir.glob("first_*.tsv")):
+    for page_path in sorted(raw_dir.glob("first_*.tsv"), key=page_sort_key):
         last_idx += 1
         text = page_path.read_text(encoding="utf-8")
         seen.update(_seqs(text))
@@ -213,7 +229,10 @@ def _fetch_and_store_page(
     new_seqs = page_seqs - seen_seqs
     if body:
         page_idx += 1
-        (raw_dir / f"first_{page_idx:03d}.tsv").write_text(body, encoding="utf-8")
+        # :05d so lexical sort stays correct up to 99999 pages (a single
+        # Stock-Date Data Window rarely exceeds ~2000 pages, but pre-padding
+        # is cheap insurance even though page_sort_key handles mixed widths).
+        (raw_dir / f"first_{page_idx:05d}.tsv").write_text(body, encoding="utf-8")
         seen_seqs.update(page_seqs)
     return body, page_idx, new_seqs
 

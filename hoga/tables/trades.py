@@ -169,9 +169,13 @@ def validate(trades: list[Trade], *, lenient: bool = False) -> None:
     In lenient mode skips violations silently (caller is responsible for noting
     the data may be imperfect).
     """
+    # Tie-break by seq for same-ms rows: ts_ms has ms precision, but seq is
+    # strictly increasing per CONTEXT.md and reflects actual trade order. Without
+    # the secondary key, sort stability hands order to dedup-insertion order,
+    # which can re-order same-ms trades and falsely flag cum_vol regressions.
     sorted_trades = sorted(
         (t for t in trades if t.side != 0),
-        key=lambda t: t.ts_ms,
+        key=lambda t: (t.ts_ms, t.seq),
     )
     prev = -1
     for t in sorted_trades:
