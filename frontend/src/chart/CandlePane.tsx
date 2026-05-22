@@ -1,7 +1,12 @@
 import { useEffect } from 'react';
 import { CandlestickSeries, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
-import { type Segment, realToVirtual, isWithinSessions } from '../util/time';
+import {
+  type Segment,
+  findSegmentByReal,
+  isWithinSessions,
+  realToVirtual,
+} from '../util/time';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = {
@@ -54,13 +59,15 @@ export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: P
       },
       paneIndex,
     );
-    // Auction Window / After-Hours Trading threshold: the Regular Session
-    // closes at 15:30 KST and the closing Auction Window runs 15:20–15:30
-    // (CONTEXT.md). Compute the threshold as session_open_ms + (6h 20m) so
-    // candles inside the closing Auction Window or After-Hours Trading render
-    // muted (continuous-trading candles inside the Regular Session keep their
-    // up/down color).
-    const auctionThresholdMs = bundle.session_open_ms + (6 * 3600 + 20 * 60) * 1000;
+    // Auction Window / After-Hours Trading threshold (PER SEGMENT — ADR-0013):
+    // the Regular Session closes at 15:30 KST and the closing Auction Window
+    // runs 15:20–15:30 (CONTEXT.md). For each candle, find its owning segment
+    // and compute the threshold as that segment's session_open_ms + (6h 20m)
+    // so candles inside the closing Auction Window or After-Hours Trading
+    // render muted (continuous-trading candles inside the Regular Session keep
+    // their up/down color). The previous single-day formula (bundle.session_open_ms
+    // + 6h20m) over-muted every day after the first when N>1.
+    const AUCTION_WINDOW_OFFSET_MS = (6 * 3600 + 20 * 60) * 1000;
     // Drop pre-open auction candles (8:30-9:00 KST) and any other points that
     // fall outside the regular-session segments — they would all collapse to
     // virtual-time=0 and lightweight-charts.setData would throw "asc ordered
@@ -68,7 +75,10 @@ export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: P
     const data = bundle.candles
       .filter((c) => isWithinSessions(segments, c.ts_ms))
       .map((c) => {
-        const inAuctionOrAfter = c.ts_ms >= auctionThresholdMs;
+        const segIdx = findSegmentByReal(segments, c.ts_ms);
+        const seg = segments[segIdx];
+        const threshold = seg.sessionOpenMs + AUCTION_WINDOW_OFFSET_MS;
+        const inAuctionOrAfter = c.ts_ms >= threshold;
         const color = inAuctionOrAfter ? muted : c.close >= c.open ? up : down;
         return {
           // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
