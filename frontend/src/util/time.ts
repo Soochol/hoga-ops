@@ -220,6 +220,38 @@ export function isDayBoundary(segments: Segment[], realMs: number): boolean {
   return false;
 }
 
+/**
+ * Binary search for the segment whose [sessionOpenMs, sessionCloseMs] range contains
+ * realMs. If realMs sits inside a Day Boundary (gap between two segments), returns
+ * the index of the PRIOR segment (the gap "belongs" to the day just closed). If
+ * realMs is past the final close, returns the last segment index. If realMs is
+ * before the first segment open, returns -1.
+ *
+ * Sibling of findSegmentByVirtual — both operate on the same Segment[] but key
+ * off real-ms vs virtual-ms respectively. Used by CandlePane to compute
+ * per-segment Auction Window thresholds (ADR-0013 Consequences).
+ *
+ * Returns -1 if segments is empty or realMs < segments[0].sessionOpenMs.
+ */
+export function findSegmentByReal(segments: Segment[], realMs: number): number {
+  if (segments.length === 0) return -1;
+  if (realMs < segments[0].sessionOpenMs) return -1;
+
+  let lo = 0;
+  let hi = segments.length - 1;
+  let ans = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    if (segments[mid].sessionOpenMs <= realMs) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return ans;
+}
+
 /** Format a Unix-ms timestamp as HH:MM:SS in KST (UTC+9). */
 export function unixMsToKSTClock(ms: number): string {
   const d = new Date(ms + 9 * 60 * 60 * 1000); // shift to KST
