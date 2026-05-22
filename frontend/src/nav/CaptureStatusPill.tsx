@@ -23,16 +23,13 @@ export function CaptureStatusPill() {
       className="flex flex-col gap-1 py-sm px-md bg-bg-card border rounded-lg no-underline"
     >
       <span className="flex items-center gap-1.5">
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, animation: dotAnim }} />
+        <span className="rounded-full" style={{ width: 6, height: 6, background: dotColor, animation: dotAnim }} />
         <span
           className="font-semibold text-xs tracking-[0.08em]"
           style={{ color: paused ? 'var(--warn)' : 'var(--accent)' }}
         >{label}</span>
       </span>
-      <span
-        className="font-medium text-xs font-mono"
-        style={{ color: 'var(--fg-dim)', fontVariantNumeric: 'tabular-nums' }}
-      >{stats}</span>
+      <span className="font-medium text-xs font-mono text-fg-dim tabular-nums">{stats}</span>
     </Link>
   );
 }
