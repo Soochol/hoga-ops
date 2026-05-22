@@ -372,3 +372,117 @@ def test_symbol_cache_state_stale_requires_keyword_reason() -> None:
         SymbolCacheState.stale()  # type: ignore[call-arg]
     with pytest.raises(TypeError):
         SymbolCacheState.unavailable()  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
+# T4 — disk I/O helpers: _load_from_disk / _write_to_disk / SCHEMA_VERSION
+# ---------------------------------------------------------------------------
+
+import json
+import os
+from pathlib import Path
+
+from hoga.api import symbols as symbols_module
+from hoga.api.models import SymbolHit
+
+
+def _make_hit(code: str, name: str, market: str = "KOSPI") -> SymbolHit:
+    return SymbolHit(
+        code=code,
+        name=name,
+        market=market,  # type: ignore[arg-type]
+        captured_count=0,
+        captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0},
+    )
+
+
+def test_disk_round_trip(tmp_path):
+    path = tmp_path / "symbol-master.json"
+    entries = [_make_hit("005930", "삼성전자"), _make_hit("000660", "SK하이닉스")]
+    symbols_module._write_to_disk(path, entries, fetched_at_ms=1747900000000)
+
+    result = symbols_module._load_from_disk(path)
+    assert result is not None
+    loaded, fetched_at_ms = result
+    assert fetched_at_ms == 1747900000000
+    assert [(h.code, h.name, h.market) for h in loaded] == [
+        ("005930", "삼성전자", "KOSPI"),
+        ("000660", "SK하이닉스", "KOSPI"),
+    ]
+
+
+def test_load_missing_file_returns_none(tmp_path):
+    assert symbols_module._load_from_disk(tmp_path / "absent.json") is None
+
+
+def test_load_corrupt_json_returns_none(tmp_path):
+    path = tmp_path / "corrupt.json"
+    path.write_text("{ this is not valid json", encoding="utf-8")
+    assert symbols_module._load_from_disk(path) is None
+
+
+def test_load_wrong_schema_version_returns_none(tmp_path):
+    path = tmp_path / "wrong-version.json"
+    path.write_text(
+        json.dumps({"schema_version": 999, "fetched_at_ms": 1, "entries": []}),
+        encoding="utf-8",
+    )
+    assert symbols_module._load_from_disk(path) is None
+
+
+def test_load_missing_entries_array_returns_none(tmp_path):
+    path = tmp_path / "no-entries.json"
+    path.write_text(
+        json.dumps({"schema_version": 1, "fetched_at_ms": 1}),
+        encoding="utf-8",
+    )
+    assert symbols_module._load_from_disk(path) is None
+
+
+def test_load_malformed_entry_returns_none(tmp_path):
+    path = tmp_path / "bad-entry.json"
+    path.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "fetched_at_ms": 1,
+            "entries": [{"code": "005930"}],  # missing name and market
+        }),
+        encoding="utf-8",
+    )
+    assert symbols_module._load_from_disk(path) is None
+
+
+def test_write_strips_captured_breakdown(tmp_path):
+    path = tmp_path / "sm.json"
+    hit = _make_hit("005930", "삼성전자")
+    hit.captured_count = 99
+    hit.captured_breakdown = {"complete": 99, "source_partial": 0, "client_incomplete": 0}
+    symbols_module._write_to_disk(path, [hit], fetched_at_ms=1)
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert "captured_count" not in payload["entries"][0]
+    assert "captured_breakdown" not in payload["entries"][0]
+    assert set(payload["entries"][0].keys()) == {"code", "name", "market"}
+
+
+def test_write_creates_parent_dir(tmp_path):
+    path = tmp_path / "nested" / "deeper" / "sm.json"
+    symbols_module._write_to_disk(path, [_make_hit("005930", "삼성전자")], fetched_at_ms=1)
+    assert path.exists()
+
+
+def test_atomic_write_rollback_on_replace_failure(tmp_path, monkeypatch):
+    path = tmp_path / "sm.json"
+    symbols_module._write_to_disk(path, [_make_hit("005930", "기존")], fetched_at_ms=1)
+    original_content = path.read_text(encoding="utf-8")
+
+    def fail_replace(_src, _dst):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr("os.replace", fail_replace)
+    try:
+        symbols_module._write_to_disk(path, [_make_hit("000660", "신규")], fetched_at_ms=2)
+    except OSError:
+        pass
+
+    assert path.read_text(encoding="utf-8") == original_content

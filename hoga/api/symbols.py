@@ -11,10 +11,16 @@ Three-tier policy (spec §11 Q19):
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
+import os
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Query
 
@@ -65,11 +71,100 @@ _state: SymbolCacheState = SymbolCacheState.loading()
 _lock = asyncio.Lock()
 _inflight: asyncio.Future | None = None
 _CACHE_TTL_MS = 24 * 60 * 60 * 1000  # 24h
+SCHEMA_VERSION = 1
 
 
 def reset_state_for_tests() -> None:
     global _cache, _fetched_at_ms, _state, _inflight  # noqa: PLW0603
     _cache, _fetched_at_ms, _state, _inflight = [], None, SymbolCacheState.loading(), None
+
+
+def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
+    """Read the Symbol Master file. Return (entries, fetched_at_ms) or None.
+
+    Returns None when:
+      - the file does not exist (no log; this is the first-boot normal path),
+      - the JSON cannot be parsed,
+      - schema_version is missing or != SCHEMA_VERSION,
+      - the entries array is missing or malformed.
+
+    Every failure path other than "file absent" emits a logger.warning so
+    developers can diagnose disk-corruption events without user reporting.
+    Per ADR-0015 (consequences): "corruption is diagnosed via server logs."
+
+    captured_breakdown is NOT populated here — load_disk_state fills it from
+    the data_dir walk.
+    """
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Symbol Master disk file unreadable at %s: %s", path, e)
+        return None
+    if not isinstance(payload, dict) or payload.get("schema_version") != SCHEMA_VERSION:
+        logger.warning(
+            "Symbol Master disk file schema mismatch at %s (got %r, expected %d)",
+            path, payload.get("schema_version") if isinstance(payload, dict) else None, SCHEMA_VERSION,
+        )
+        return None
+    raw_entries = payload.get("entries")
+    fetched_at_ms = payload.get("fetched_at_ms")
+    if not isinstance(raw_entries, list) or not isinstance(fetched_at_ms, int):
+        logger.warning(
+            "Symbol Master disk file missing/malformed entries or fetched_at_ms at %s",
+            path,
+        )
+        return None
+    try:
+        entries = [
+            SymbolHit(
+                code=e["code"],
+                name=e["name"],
+                market=e["market"],
+                captured_count=0,
+                captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0},
+            )
+            for e in raw_entries
+        ]
+    except (KeyError, TypeError) as e:
+        logger.warning(
+            "Symbol Master disk file has malformed entry at %s: %s", path, e,
+        )
+        return None
+    return entries, fetched_at_ms
+
+
+def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> None:
+    """Atomically persist the catalog. Creates parent dir if needed.
+
+    Atomicity: temp file in target's parent + os.replace. captured_breakdown
+    fields are stripped — disk file holds KRX-side data only (breakdown is a
+    runtime view of data_dir).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "fetched_at_ms": fetched_at_ms,
+        "source": "pykrx",
+        "entries": [
+            {"code": e.code, "name": e.name, "market": e.market}
+            for e in entries
+        ],
+    }
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=path.name + ".",
+        suffix=".tmp",
+        delete=False,
+    ) as tmp:
+        json.dump(payload, tmp, ensure_ascii=False, indent=2)
+        tmp.flush()
+        os.fsync(tmp.fileno())
+        tmp_path = Path(tmp.name)
+    os.replace(tmp_path, path)
 
 
 def invalidate_cache_for_tests() -> None:
