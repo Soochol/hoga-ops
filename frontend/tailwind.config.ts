@@ -1,5 +1,15 @@
 import type { Config } from 'tailwindcss';
+import { TAILWIND_THEME } from './src/styles/tokens.generated';
 
+/**
+ * Size/spacing/layout/radius tokens are generated from design-tokens.ts —
+ * see src/styles/tokens.generated.ts. Regenerate via `npm run gen:tokens`.
+ *
+ * Color/font-family tokens stay here (manually edited) because:
+ *   - Colors don't participate in the density dial.
+ *   - Font-family tokens reference CSS variables that map to OS-aware stacks.
+ *   - DESIGN.md treats both as a separate concern from sizing.
+ */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
@@ -35,48 +45,8 @@ export default {
       borderColor: {
         DEFAULT: 'var(--border)',
       },
-      fontSize: {
-        badge: 'var(--text-badge)',
-        xs: 'var(--text-xs)',
-        sm: 'var(--text-sm)',
-        base: 'var(--text-base)',
-        md: 'var(--text-md)',
-        lg: 'var(--text-lg)',
-        xl: 'var(--text-xl)',
-        '2xl': 'var(--text-2xl)',
-      },
-      spacing: {
-        '2xs': 'var(--space-2xs)',
-        xs: 'var(--space-xs)',
-        sm: 'var(--space-sm)',
-        md: 'var(--space-md)',
-        lg: 'var(--space-lg)',
-        xl: 'var(--space-xl)',
-        '2xl': 'var(--space-2xl)',
-        '3xl': 'var(--space-3xl)',
-      },
-      borderRadius: {
-        sm: 'var(--radius-sm)',
-        md: 'var(--radius-md)',
-        lg: 'var(--radius-lg)',
-        full: 'var(--radius-full)',
-      },
-      width: {
-        nav: 'var(--nav-w)',
-        sidebar: 'var(--sidebar-w)',
-      },
-      height: {
-        tab: 'var(--h-tab)',
-        'tab-secondary': 'var(--h-tab-secondary)',
-        toolbar: 'var(--h-toolbar)',
-        pricestrip: 'var(--h-pricestrip)',
-        'orderbook-row': 'var(--h-orderbook-row)',
-        'capture-row': 'var(--h-capture-row)',
-      },
-      minWidth: {
-        combobox: 'var(--combobox-min-w)',
-        dropdown: 'var(--dropdown-min-w)',
-      },
+      // Generated tokens (size, spacing, layout, radius) — see comment above.
+      ...TAILWIND_THEME,
     },
   },
   plugins: [],

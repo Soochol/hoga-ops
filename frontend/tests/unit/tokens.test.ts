@@ -1,14 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resolveTokens } from '../../src/util/tokens';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const tokensCSS = readFileSync(
-  resolve(__dirname, '../../src/styles/tokens.css'),
-  'utf-8',
-);
+import { SIZE_TOKENS, FIXED_PX_TOKENS } from '../../src/styles/design-tokens';
 
 describe('resolveTokens', () => {
   let originalGetComputedStyle: typeof globalThis.getComputedStyle;
@@ -71,30 +63,54 @@ describe('resolveTokens', () => {
   });
 });
 
-describe('tokens.css declarations', () => {
-  it('sets :root font-size to 20px (single density dial)', () => {
-    expect(tokensCSS).toMatch(/font-size:\s*20px/);
+/**
+ * Token registry tests run directly against design-tokens.ts — no CSS file
+ * parsing, no fs reads, no ESM `__dirname` plumbing. Strongly typed: a
+ * misspelled token name fails at compile time, not at test time.
+ */
+describe('design-tokens registry', () => {
+  it('SIZE_TOKENS satisfy `rem × 16 == baseIntentPx` (drift check)', () => {
+    for (const [name, t] of Object.entries(SIZE_TOKENS)) {
+      const expected = t.rem * 16;
+      expect(Math.abs(expected - t.baseIntentPx), `token ${name}: rem=${t.rem} × 16 != baseIntentPx=${t.baseIntentPx}`)
+        .toBeLessThan(0.001);
+    }
   });
 
-  it('declares spacing tokens in rem', () => {
-    expect(tokensCSS).toMatch(/--space-md:\s*0\.75rem/);
-    expect(tokensCSS).toMatch(/--space-sm:\s*0\.5rem/);
-    expect(tokensCSS).toMatch(/--space-lg:\s*1rem/);
+  it('SIZE_TOKENS render exact 1.25× at default density (20px root)', () => {
+    for (const [name, t] of Object.entries(SIZE_TOKENS)) {
+      const rendered = t.rem * 20;
+      const expected = t.baseIntentPx * 1.25;
+      expect(Math.abs(rendered - expected), `token ${name}: rendered=${rendered} != 1.25× base intent=${expected}`)
+        .toBeLessThan(0.001);
+    }
   });
 
-  it('declares layout tokens in rem', () => {
-    expect(tokensCSS).toMatch(/--nav-w:\s*13\.125rem/);
-    expect(tokensCSS).toMatch(/--sidebar-w:\s*20rem/);
-    expect(tokensCSS).toMatch(/--h-tab:\s*2rem/);
-    expect(tokensCSS).toMatch(/--h-tab-secondary:\s*1\.875rem/);
+  it('--text-base has the documented value (anchor against accidental drift)', () => {
+    expect(SIZE_TOKENS['text-base']).toEqual({
+      rem: 0.8125,
+      baseIntentPx: 13,
+      usage: 'Body / UI default',
+    });
   });
 
-  it('declares the --text-badge token for hierarchical badges', () => {
-    expect(tokensCSS).toMatch(/--text-badge:\s*0\.53125rem/);
+  it('--text-badge preserves SymbolSearch market-badge hierarchy below text-xs', () => {
+    expect(SIZE_TOKENS['text-badge'].baseIntentPx).toBe(8.5);
+    expect(SIZE_TOKENS['text-badge'].baseIntentPx).toBeLessThan(SIZE_TOKENS['text-xs'].baseIntentPx);
   });
 
-  it('keeps existing --text-* rem values unchanged (they auto-scale via root)', () => {
-    expect(tokensCSS).toMatch(/--text-base:\s*0\.8125rem/);
-    expect(tokensCSS).toMatch(/--text-xs:\s*0\.65625rem/);
+  it('--h-tab-secondary is intentionally 2px shorter than --h-tab at base intent', () => {
+    expect(SIZE_TOKENS['h-tab'].baseIntentPx - SIZE_TOKENS['h-tab-secondary'].baseIntentPx).toBe(2);
+  });
+
+  it('--sidebar-w and --dropdown-min-w share the same base intent (both 320px)', () => {
+    expect(SIZE_TOKENS['sidebar-w'].baseIntentPx).toBe(SIZE_TOKENS['dropdown-min-w'].baseIntentPx);
+  });
+
+  it('FIXED_PX_TOKENS keep ADR-0011-sanctioned absolute pixels', () => {
+    expect(FIXED_PX_TOKENS['radius-sm'].px).toBe(2);
+    expect(FIXED_PX_TOKENS['radius-md'].px).toBe(4);
+    expect(FIXED_PX_TOKENS['radius-lg'].px).toBe(6);
+    expect(FIXED_PX_TOKENS['radius-full'].px).toBe(9999);
   });
 });

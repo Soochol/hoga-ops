@@ -49,15 +49,18 @@ The design system has a **single density dial** at `:root font-size`.
 
 - **Scale (rem-based, single dial at `:root font-size`):**
 
-  | Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
-  |---|---|---|---|
-  | `xs` | 10.5px | 13.125px | Small-caps labels, badges |
-  | `sm` | 11.5px | 14.375px | Table rows, secondary mono values |
-  | `base` | 13px | 16.25px | Body / UI default |
-  | `md` | 14px | 17.5px | Section / page headings |
-  | `lg` | 16px | 20px | Brand text |
-  | `xl` | 22px | 27.5px | Current price (price strip) |
-  | `2xl` | 32px | 40px | Future hero numerics |
+<!-- BEGIN AUTO: tokens-typography -->
+| Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
+|---|---|---|---|
+| `badge` | 8.5px | 10.625px | Hierarchical badges (e.g., SymbolSearch market tag) |
+| `xs` | 10.5px | 13.125px | Small-caps labels, badges |
+| `sm` | 11.5px | 14.375px | Table rows, secondary mono values |
+| `base` | 13px | 16.25px | Body / UI default |
+| `md` | 14px | 17.5px | Section / page headings |
+| `lg` | 16px | 20px | Brand text |
+| `xl` | 22px | 27.5px | Current price (price strip) |
+| `2xl` | 32px | 40px | Future hero numerics |
+<!-- END AUTO: tokens-typography -->
 
 ## Color
 
@@ -104,16 +107,18 @@ The design system has a **single density dial** at `:root font-size`.
 - **Density:** Comfortable at default density (1.25×) — capable of reaching Bloomberg-density via a future Compact mode (1.0× = base intent). Density is a spectrum, not a fixed point. The token system holds both; default rendering picks one.
 - **Scale (rem-based, single dial):**
 
-  | Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
-  |---|---|---|---|
-  | `2xs` | 2px | 2.5px | Hairline gaps |
-  | `xs` | 4px | 5px | Pane gap, tight stacking |
-  | `sm` | 8px | 10px | Card padding inside, gap between sidebar cards |
-  | `md` | 12px | 15px | Card padding default |
-  | `lg` | 16px | 20px | Section spacing, nav item padding |
-  | `xl` | 24px | 30px | Major section dividers |
-  | `2xl` | 32px | 40px | (rarely used) |
-  | `3xl` | 48px | 60px | (rarely used) |
+<!-- BEGIN AUTO: tokens-spacing -->
+| Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
+|---|---|---|---|
+| `2xs` | 2px | 2.5px | Hairline gaps |
+| `xs` | 4px | 5px | Pane gap, tight stacking |
+| `sm` | 8px | 10px | Card padding inside, gap between sidebar cards |
+| `md` | 12px | 15px | Card padding default |
+| `lg` | 16px | 20px | Section spacing, nav item padding |
+| `xl` | 24px | 30px | Major section dividers |
+| `2xl` | 32px | 40px | (rarely used) |
+| `3xl` | 48px | 60px | (rarely used) |
+<!-- END AUTO: tokens-spacing -->
 
 - **Card padding:** 12–14px standard. Sidebar cards 12px. Pane bodies 4–6px (info density priority) (base intent — rendered ×1.25 at default density).
 - **Pane gap:** 8px between chart panes (base intent — rendered ×1.25 at default density).
