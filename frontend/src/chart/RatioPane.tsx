@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { LineSeries, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
-import { type Segment, realToVirtual } from '../util/time';
+import { type Segment, realToVirtual, isWithinSessions } from '../util/time';
 import { quoteImbalance } from '../util/imbalance';
 import { resolveTokens } from '../util/tokens';
 
@@ -47,10 +47,12 @@ export default function RatioPane({ chart, bundle, segments, paneIndex = 0 }: Pr
       },
       paneIndex,
     );
-    const data = bundle.quote_ratio.points.map((p) => ({
-      time: (realToVirtual(segments, p.t) / 1000) as any,
-      value: quoteImbalance(p.bid_total, p.ask_total),
-    }));
+    const data = bundle.quote_ratio.points
+      .filter((p) => isWithinSessions(segments, p.t))
+      .map((p) => ({
+        time: (realToVirtual(segments, p.t) / 1000) as any,
+        value: quoteImbalance(p.bid_total, p.ask_total),
+      }));
     series.setData(data);
     // 0-baseline reference line (lineStyle 1 = solid).
     series.createPriceLine({

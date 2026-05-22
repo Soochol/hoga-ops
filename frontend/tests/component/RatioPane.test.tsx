@@ -42,4 +42,38 @@ describe('RatioPane', () => {
     // createPriceLine called for the 0-baseline
     expect(series.createPriceLine).toHaveBeenCalled();
   });
+
+  it('drops pre-open auction quote_ratio points', () => {
+    const { chart, series } = makeMockChart();
+    const sessionOpenMs = 1_778_457_600_000;
+    const bundle: any = {
+      session_open_ms: sessionOpenMs,
+      quote_ratio: {
+        bucket_ms: 1000,
+        points: [
+          { t: sessionOpenMs - 30 * 60_000, bid_total: 100, ask_total: 100 }, // pre-open: drop
+          { t: sessionOpenMs,              bid_total: 100, ask_total: 200 }, // keep
+          { t: sessionOpenMs + 1000,       bid_total: 150, ask_total: 100 }, // keep
+        ],
+      },
+    };
+    render(
+      <RatioPane
+        chart={chart}
+        bundle={bundle}
+        segments={[
+          {
+            date: '20260511',
+            sessionOpenMs,
+            sessionCloseMs: sessionOpenMs + 23_400_000,
+            virtualStart: 0,
+          },
+        ]}
+      />,
+    );
+    const data = series.setData.mock.calls[0][0];
+    expect(data).toHaveLength(2);
+    expect(data[0].time).toBe(0);
+    expect(data[1].time).toBe(1);
+  });
 });
