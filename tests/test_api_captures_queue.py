@@ -476,3 +476,126 @@ def test_cancel_all_drains_queue(monkeypatch, tmp_path):
         assert snap["queued"] == []
         assert snap["active"] == []
         assert all(it["phase"] in ("done", "cancelled") for it in snap["done"])
+
+
+# --- Task 10: cookie expiry pause + resume + Q20 cancel-all semantics -------
+
+
+async def test_cookie_expired_pauses_pool(monkeypatch):
+    """When _run_capture_and_parse raises CookieExpiredError, the whole pool
+    pauses and OTHER active items are cancelled with pause_origin=True."""
+    from hoga.collector.client import CookieExpiredError
+    from hoga.collector.orchestrator import CaptureCancelled, CancelToken
+
+    # Synchronization: the runner that throws cookie-expired waits until all
+    # 3 workers are active before raising, so the OTHER active items exist
+    # when _handle_cookie_expired sweeps _active.
+    barrier = asyncio.Event()
+
+    async def _runner(state, resume):
+        # Ensure cancel_token is set so _handle_cookie_expired can trip it.
+        if state.cancel_token is None:
+            state.cancel_token = CancelToken()
+        # Wait until all 3 workers are active.
+        for _ in range(500):
+            if len(captures._active) >= 3:
+                break
+            await asyncio.sleep(0.005)
+        # The designated "cookie expirer" is whichever worker ended up with x-0.
+        if state.item_id == "x-0":
+            raise CookieExpiredError("cookie expired")
+        # Other workers block until the pause cancels their token.
+        while True:
+            if state.cancel_token is not None and state.cancel_token.cancelled:
+                raise CaptureCancelled()
+            try:
+                await asyncio.wait_for(barrier.wait(), timeout=0.02)
+            except asyncio.TimeoutError:
+                continue
+
+    # Bypass disk-state checks (route into _run_capture_and_parse directly).
+    async def _direct_run(state):
+        await captures._run_capture_and_parse(state, resume=False)
+
+    monkeypatch.setattr(captures, "_run_capture_and_parse", _runner)
+    monkeypatch.setattr(captures, "_run_item", _direct_run)
+    monkeypatch.setattr(captures, "_max_concurrent", 3, raising=False)
+
+    for i in range(3):
+        captures._queue.append(_make_item(f"x-{i}", date=f"2026052{i}"))
+
+    workers = captures.start_workers(n=3)
+    # Wait until pool reports paused.
+    for _ in range(500):
+        if captures._queue_paused:
+            break
+        await asyncio.sleep(0.01)
+    assert captures._queue_paused is True
+
+    # Wait for the other two to land in _done as pause-cancelled.
+    for _ in range(500):
+        pause_cancelled = [
+            s for s in captures._done
+            if s.pause_origin and s.phase == "cancelled"
+        ]
+        if len(pause_cancelled) >= 1:
+            break
+        await asyncio.sleep(0.01)
+    pause_cancelled = [
+        s for s in captures._done
+        if s.pause_origin and s.phase == "cancelled"
+    ]
+    assert len(pause_cancelled) >= 1
+    await captures.stop_workers(workers)
+
+
+async def test_resume_reenqueues_pause_origin():
+    """resume_queue() moves pause_origin items from _done back to the FRONT
+    of _queue, clears flags, and clears _queue_paused."""
+    s1 = _make_item("p-1", date="20260518")
+    s1.phase = "cancelled"
+    s1.pause_origin = True
+    s2 = _make_item("p-2", date="20260519")
+    s2.phase = "cancelled"
+    s2.pause_origin = True
+    captures._done.append(s1)
+    captures._done.append(s2)
+    captures._queue_paused = True
+
+    await captures.resume_queue()
+
+    assert captures._queue_paused is False
+    assert s1 not in captures._done
+    assert s2 not in captures._done
+    queued_ids = [s.item_id for s in captures._queue]
+    assert "p-1" in queued_ids and "p-2" in queued_ids
+    for s in captures._queue:
+        assert s.phase == "queued"
+        assert s.pause_origin is False
+
+
+async def test_cancel_all_in_paused_resets_everything():
+    """Q20: cancel_all() called while _queue_paused clears the pause flag and
+    downgrades pause_origin items to plain cancelled."""
+    paused_item = _make_item("p-1", date="20260518")
+    paused_item.phase = "cancelled"
+    paused_item.pause_origin = True
+    captures._done.append(paused_item)
+
+    queued_item = _make_item("q-1", date="20260519")
+    captures._queue.append(queued_item)
+
+    captures._queue_paused = True
+
+    result = await captures.cancel_all()
+
+    assert result["was_paused"] is True
+    assert captures._queue_paused is False
+    assert paused_item.pause_origin is False
+    # Both items now in _done with cancelled phase; queue empty.
+    assert len(captures._queue) == 0
+    done_ids = {s.item_id for s in captures._done}
+    assert {"p-1", "q-1"} <= done_ids
+    for s in captures._done:
+        if s.item_id in {"p-1", "q-1"}:
+            assert s.phase == "cancelled"

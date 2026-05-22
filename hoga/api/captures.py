@@ -27,6 +27,8 @@ from hoga.api.models import (
     CaptureProgress,
     CaptureProgressEvent,
     CaptureQueuedEvent,
+    CaptureQueuePausedEvent,
+    CaptureQueueResumedEvent,
     CaptureResult,
     EnqueueDedupedRow,
     EnqueueRequest,
@@ -583,6 +585,91 @@ async def _finalize_item(state: QueueItemState) -> None:
     ))
 
 
+async def _handle_cookie_expired(state: QueueItemState) -> None:
+    """Pause the pool atomically. Cancels OTHER active items with pause_origin=True.
+
+    Idempotent — second call while already paused is a no-op. The triggering
+    item's phase/error were set by the caller (the worker loop). All other
+    active items are marked pause_origin so resume_queue() can re-enqueue
+    them at the FRONT.
+    """
+    global _queue_paused  # noqa: PLW0603 — module singleton write under _lock
+    async with _lock:
+        if _queue_paused:
+            return
+        _queue_paused = True
+        for other in _active.values():
+            if other.item_id == state.item_id:
+                continue
+            other.pause_origin = True
+            if other.cancel_token is not None:
+                other.cancel_token.cancel()
+    _publish_event(CaptureQueuePausedEvent(
+        reason="cookie_expired",
+        message="Cookie expired — pool paused. Refresh .cookie and POST /api/captures/queue/resume.",
+    ))
+
+
+async def resume_queue() -> None:
+    """Re-queue pause_origin items from _done to the FRONT (appendleft).
+    Clears _queue_paused and wakes workers.
+    """
+    global _queue_paused  # noqa: PLW0603 — module singleton write under _lock
+    async with _lock:
+        _queue_paused = False
+        # Items cancelled BY the pause go back to the front of the queue.
+        to_reenqueue = [s for s in _done if s.pause_origin and s.phase == "cancelled"]
+        for s in reversed(to_reenqueue):
+            s.phase = "queued"
+            s.pause_origin = False
+            _queue.appendleft(s)
+        # Remove them from _done.
+        _done[:] = [s for s in _done if s not in to_reenqueue]
+        if _wakeup is not None and _queue:
+            _wakeup.set()
+    _publish_event(CaptureQueueResumedEvent(reason="user_resume"))
+
+
+async def cancel_all() -> dict:
+    """Drain queue + cancel all active. Q20 semantics in paused state:
+    downgrade pause_origin cancelled items to plain cancelled + clear pause flag.
+    """
+    global _queue_paused  # noqa: PLW0603 — module singleton write under _lock
+    was_paused = False
+    drained: list[QueueItemState] = []
+    async with _lock:
+        was_paused = _queue_paused
+        while _queue:
+            s = _queue.popleft()
+            s.phase = "cancelled"
+            _done.append(s)
+            drained.append(s)
+        for s in list(_active.values()):
+            if s.cancel_token is not None:
+                s.cancel_token.cancel()
+        if was_paused:
+            for s in _done:
+                if s.pause_origin:
+                    s.pause_origin = False
+            _queue_paused = False
+        if _wakeup is not None:
+            _wakeup.set()
+    for s in drained:
+        _publish_event(CaptureFinishedEvent(
+            **s.event_header(),
+            result=None,
+            error=None,
+            skip_reason=None,
+        ))
+    if was_paused:
+        _publish_event(CaptureQueueResumedEvent(reason="cancel_all"))
+    return {
+        "status": "cancel_all_delivered",
+        "drained_count": len(drained),
+        "was_paused": was_paused,
+    }
+
+
 async def _worker_loop() -> None:
     """One of N coroutines. Pulls items off _queue under the lock, runs each,
     finalizes."""
@@ -621,6 +708,14 @@ async def _worker_loop() -> None:
         await _publish_phase(state)
         try:
             await _run_item(state)
+        except CookieExpiredError as exc:
+            state.error = CaptureError(
+                code="cookie_expired",
+                message=str(exc),
+                at_page=state.pages_done or None,
+            )
+            state.phase = "failed"
+            await _handle_cookie_expired(state)
         except CaptureCancelled:
             state.phase = "cancelled"
         except asyncio.CancelledError:
@@ -914,29 +1009,12 @@ def build_router(
         raise HTTPException(status_code=404, detail={"code": "not_found"})
 
     @router.post("/cancel-all", status_code=202)
-    async def cancel_all() -> dict:
-        # Note: Task 10 rewrites this route to delegate to a cancel_all()
-        # module function that handles Q20 paused-state semantics. For Task 9,
-        # the simple direct implementation is fine.
-        drained: list[Any] = []
-        async with _lock:
-            while _queue:
-                s = _queue.popleft()
-                s.phase = "cancelled"
-                _done.append(s)
-                drained.append(s)
-            for s in list(_active.values()):
-                if s.cancel_token is not None:
-                    s.cancel_token.cancel()
-            if _wakeup is not None:
-                _wakeup.set()
-        for s in drained:
-            _publish_event(CaptureFinishedEvent(
-                **s.event_header(),
-                result=None,
-                error=None,
-                skip_reason=None,
-            ))
-        return {"status": "cancel_all_delivered", "drained_count": len(drained)}
+    async def cancel_all_route() -> dict:
+        return await cancel_all()
+
+    @router.post("/queue/resume", status_code=200)
+    async def resume_route() -> dict:
+        await resume_queue()
+        return {"status": "resumed"}
 
     return router
