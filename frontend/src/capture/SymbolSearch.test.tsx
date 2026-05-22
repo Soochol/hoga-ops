@@ -92,7 +92,51 @@ describe('SymbolSearch', () => {
     const qc = setup({ symbols: [], status: 'unavailable' as const, fetched_at_ms: null });
     render(<SymbolSearch value={null} onChange={() => {}} />, { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
     await new Promise((r) => setTimeout(r, 30));
-    expect(screen.getByText(/6자리 코드로 직접 입력/)).toBeTruthy();
+    expect(screen.getByText(/6자리 코드/)).toBeTruthy();
+  });
+
+  // BUG-001 regression: when cache is unavailable, the user is told to enter a
+  // 6-digit code directly. The Enter key must promote that code to a placeholder
+  // SymbolHit so the form can proceed — without this, Start stays disabled
+  // forever (the bug observed in /qa).
+  it('BUG-001: unavailable + 6-digit + Enter promotes to placeholder SymbolHit', async () => {
+    const qc = setup({ symbols: [], status: 'unavailable' as const, fetched_at_ms: null });
+    const onChange = vi.fn();
+    render(<SymbolSearch value={null} onChange={onChange} />, { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    await new Promise((r) => setTimeout(r, 30));
+    const input = screen.getByPlaceholderText(/종목/i);
+    fireEvent.change(input, { target: { value: '005930' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      code: '005930',
+      name: '—',
+      market: 'KOSPI',
+    }));
+  });
+
+  it('BUG-001: unavailable + non-numeric + Enter does NOT promote', async () => {
+    const qc = setup({ symbols: [], status: 'unavailable' as const, fetched_at_ms: null });
+    const onChange = vi.fn();
+    render(<SymbolSearch value={null} onChange={onChange} />, { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    await new Promise((r) => setTimeout(r, 30));
+    const input = screen.getByPlaceholderText(/종목/i);
+    fireEvent.change(input, { target: { value: '삼성' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    // onChange called with null (clear) on change event is OK, but never with a hit.
+    const hitCalls = onChange.mock.calls.filter((c) => c[0] !== null);
+    expect(hitCalls).toHaveLength(0);
+  });
+
+  it('BUG-001: unavailable + 5-digit (incomplete code) + Enter does NOT promote', async () => {
+    const qc = setup({ symbols: [], status: 'unavailable' as const, fetched_at_ms: null });
+    const onChange = vi.fn();
+    render(<SymbolSearch value={null} onChange={onChange} />, { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    await new Promise((r) => setTimeout(r, 30));
+    const input = screen.getByPlaceholderText(/종목/i);
+    fireEvent.change(input, { target: { value: '00593' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    const hitCalls = onChange.mock.calls.filter((c) => c[0] !== null);
+    expect(hitCalls).toHaveLength(0);
   });
 
   // F3 (design review): empty-state dropdown when no matches

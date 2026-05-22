@@ -117,7 +117,7 @@ export function CaptureQueue() {
           type="button"
           onClick={handleCancelAll}
           style={cancelAllArmed
-            ? { ...ghostButton(), borderColor: 'var(--down)', color: 'var(--down)' }
+            ? ghostButton('var(--down)', 'var(--down)')
             : ghostButton()
           }
         >{cancelAllArmed ? 'Click again to confirm' : 'Cancel All'}</button>
@@ -205,11 +205,16 @@ function VirtualList({
   );
 }
 
-function ghostButton(): React.CSSProperties {
+function ghostButton(borderColor = 'var(--border-strong)', fgColor = 'var(--fg-dim)'): React.CSSProperties {
+  // Use longhand border properties (borderWidth / borderStyle / borderColor)
+  // so callers can override borderColor without React's "shorthand and
+  // non-shorthand on the same value" warning (BUG-002 from /qa).
   return {
     background: 'transparent',
-    border: '1px solid var(--border-strong)',
-    color: 'var(--fg-dim)',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor,
+    color: fgColor,
     borderRadius: 4,
     padding: '4px 10px',
     font: '500 10.5px "Geist Sans", sans-serif',

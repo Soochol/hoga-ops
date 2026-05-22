@@ -48,11 +48,39 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
     setOpen(false);
   };
 
+  // BUG-001 fallback: when the symbol cache is unavailable (KRX auth missing,
+  // network blip, etc.), the user is told to enter a 6-digit code directly —
+  // but the dropdown is gated off, so there's no way to commit the typed code
+  // to a SymbolHit. Enter key promotes a 6-digit numeric query to a placeholder
+  // SymbolHit. name='—' marks it as unverified; the form proceeds.
+  const promoteUnverifiedCode = () => {
+    if (cacheStatus !== 'unavailable') return false;
+    if (!/^\d{6}$/.test(query)) return false;
+    select({
+      code: query,
+      name: '—',
+      market: 'KOSPI',
+      captured_count: 0,
+      captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 },
+    });
+    return true;
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      if (dropdownVisible && hits.length > 0) {
+        e.preventDefault();
+        select(hits[highlight]);
+        return;
+      }
+      if (promoteUnverifiedCode()) {
+        e.preventDefault();
+        return;
+      }
+    }
     if (!dropdownVisible) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight((h) => Math.min(h + 1, hits.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight((h) => Math.max(h - 1, 0)); }
-    else if (e.key === 'Enter') { e.preventDefault(); select(hits[highlight]); }
     else if (e.key === 'Escape') { setOpen(false); }
   };
 
@@ -88,7 +116,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
       </div>
       {cacheStatus === 'unavailable' && (
         <div style={{ marginTop: 6, fontSize: 11, color: 'var(--fg-dim)' }}>
-          종목 목록 미가용 — 6자리 코드로 직접 입력하세요.
+          종목 목록 미가용 — 6자리 코드 입력 후 <kbd style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 3, padding: '0 4px', fontFamily: 'inherit' }}>Enter</kbd> 로 확정.
         </div>
       )}
       {dropdownVisible && (
