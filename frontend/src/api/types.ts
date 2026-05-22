@@ -76,12 +76,22 @@ export type Trade = {
   net_pressure: number;
 };
 
-export type CapturePhase = 'capturing' | 'parsing' | 'done' | 'failed' | 'cancelled';
+export type CapturePhase =
+  | 'queued'
+  | 'deciding'
+  | 'capturing'
+  | 'parsing'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
+  | 'skipped';
+
+export type SkipReason = 'already_complete' | 'source_partial';
 
 export interface CaptureProgress {
   pages_done: number;
   events_seen: number;
-  frontier_ms: number; // Unix epoch ms per ADR-0003
+  frontier_ms: number;       // Unix epoch ms per ADR-0003
   estimate_pct: number;
   elapsed_ms: number;
 }
@@ -99,24 +109,26 @@ export interface CaptureError {
   at_page?: number | null;
 }
 
-export interface CaptureJob {
-  job_id: string;
+/** Mirrors hoga/api/models.py::QueueItem. */
+export interface QueueItem {
+  item_id: string;
   code: string;
   date: string;
   phase: CapturePhase;
-  options: { allow_partial: boolean; resume: boolean; capture_only: boolean };
-  started_at_ms: number;
+  force_retry: boolean;
+  pause_origin: boolean;
+  enqueued_at_ms: number;
+  started_at_ms: number | null;
   progress: CaptureProgress | null;
   result: CaptureResult | null;
   error: CaptureError | null;
+  skip_reason: SkipReason | null;
 }
 
-// SSE event variants — mirror `hoga/api/models.py::{CaptureProgressEvent,
-// CapturePhaseEvent, CaptureFinishedEvent}` verbatim per ADR-0004. The `progress`
-// field on capture_progress is the same shape as `CaptureJob.progress` — patching
-// the React Query cache is a single nested assignment.
+/** Common header on every per-item SSE event (capture_progress / capture_phase /
+ *  capture_finished). Mirrors hoga/api/models.py::_CaptureEventBase. */
 export interface CaptureEventBase {
-  job_id: string;
+  item_id: string;
   code: string;
   date: string;
   phase: CapturePhase;
@@ -127,6 +139,96 @@ export type SSEEvent =
   | { type: 'inventory_removed'; code: string; date: string }
   | (CaptureEventBase & { type: 'capture_progress'; progress: CaptureProgress })
   | (CaptureEventBase & { type: 'capture_phase' })
-  | (CaptureEventBase & { type: 'capture_finished'; result: CaptureResult | null; error: CaptureError | null })
+  | (CaptureEventBase & {
+      type: 'capture_finished';
+      result: CaptureResult | null;
+      error: CaptureError | null;
+      skip_reason: SkipReason | null;
+    })
+  | { type: 'capture_queued'; items: QueueItem[] }
+  | { type: 'capture_queue_paused'; reason: 'cookie_expired'; message: string }
+  | { type: 'capture_queue_resumed'; reason: 'user_resume' | 'cancel_all' }
+  | {
+      type: 'capture_queue_drained';
+      total_done: number;
+      total_failed: number;
+      total_cancelled: number;
+      total_skipped: number;
+    }
   | { type: 'heartbeat' }
   | { type: 'disconnected' };
+
+/** Mirrors hoga/api/models.py::SymbolHit. */
+export interface SymbolHit {
+  code: string;
+  name: string;
+  market: 'KOSPI' | 'KOSDAQ';
+  captured_count: number;                              // complete-only headline
+  captured_breakdown: {
+    complete: number;
+    source_partial: number;
+    client_incomplete: number;
+  };
+}
+
+export type SymbolsCacheStatus = 'loading' | 'fresh' | 'stale' | 'unavailable';
+
+/** Mirrors hoga/api/models.py::SymbolsAllResponse. */
+export interface SymbolsAllResponse {
+  symbols: SymbolHit[];
+  status: SymbolsCacheStatus;
+  fetched_at_ms: number | null;
+}
+
+export type CalendarStatus =
+  | 'complete'
+  | 'source_partial'
+  | 'client_incomplete'
+  | 'none'
+  | 'weekend'
+  | 'holiday'
+  | 'future'
+  | 'today_locked';
+
+/** Mirrors hoga/api/models.py::CalendarCell. */
+export interface CalendarCell {
+  date: string;
+  status: CalendarStatus;
+  captured_at_ms: number | null;
+}
+
+/** Mirrors hoga/api/models.py::CalendarResponse. */
+export interface CalendarResponse {
+  cells: CalendarCell[];
+  as_of_ms: number;                                    // spec §11 Q21 reconciliation key
+}
+
+/** Mirrors hoga/api/models.py::EnqueueRequest. */
+export interface EnqueueRequest {
+  code: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  dates?: string[] | null;
+  force_retry: boolean;
+}
+
+export interface EnqueueDedupedRow {
+  code: string;
+  date: string;
+  reason: 'already_in_queue' | 'already_running';
+}
+
+/** Mirrors hoga/api/models.py::EnqueueResponse. */
+export interface EnqueueResponse {
+  enqueued: QueueItem[];
+  deduped: EnqueueDedupedRow[];
+}
+
+/** Mirrors hoga/api/models.py::QueueSnapshot. */
+export interface QueueSnapshot {
+  active: QueueItem[];
+  queued: QueueItem[];
+  done: QueueItem[];
+  paused: boolean;
+  max_concurrent: number;
+}
