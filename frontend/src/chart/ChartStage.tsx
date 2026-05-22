@@ -5,6 +5,7 @@ import { type Segment, virtualToReal } from '../util/time';
 import { resolveTokens } from '../util/tokens';
 import { CHART_LAYOUT_OPTIONS, CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 import { useViewportStore } from '../state/viewport';
+import { useTabsStore } from '../state/tabs';
 import CandlePane from './CandlePane';
 import VolumePane from './VolumePane';
 import RatioPane from './RatioPane';
@@ -74,6 +75,10 @@ function pad(n: number): string {
 export default function ChartStage({ bundle, segments }: ChartStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
+  // Per-tab volume-profile mode (Task 9 / Task 21). Read from the active tab's
+  // ChartViewPrefs so toggling 전체/일별 in the sidebar re-renders the overlay.
+  const activeTabId = useTabsStore((s) => s.activeTabId);
+  const volumeProfileMode = useTabsStore((s) => s.getPrefs(activeTabId).volumeProfileMode);
   // Keep latest segments visible to the once-mounted subscribeVisibleTimeRange
   // handler. lightweight-charts emits times on our VIRTUAL axis (Task 6.1);
   // viewport consumers need REAL Unix-ms, so the handler reads this ref and
@@ -268,7 +273,7 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
               chart={chart}
               bundle={bundle}
               segments={segments}
-              mode="range"
+              mode={volumeProfileMode}
               paneIndex={0}
             />
           </div>

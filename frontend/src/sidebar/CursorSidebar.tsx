@@ -7,17 +7,23 @@ import {
   useBrokersAtCursor,
   useTradesAroundCursor,
 } from '../api/useCursor';
+import { useTabsStore } from '../state/tabs';
 
 type Props = {
   orderbook?: ReactNode;
   brokers?: ReactNode;
   fills?: ReactNode;
+  /** Optional toolbar slot rendered above the 3 cards (e.g. volume-profile toggle). */
+  header?: ReactNode;
 };
 
 /**
  * Connected variant that pulls live cursor-keyed data from `useCursor` and
  * renders the 3 sidebar cards. Used by ReplayViewer; the dumb
  * `CursorSidebar` below remains exported for testability.
+ *
+ * Also wires the per-tab `volumeProfileMode` toggle (전체 / 일별) into the
+ * `header` slot — read/write goes through `useTabsStore` (Task 9 / Task 21).
  */
 export function CursorSidebarConnected() {
   const orderbook = useOrderbookAtCursor();
@@ -25,6 +31,7 @@ export function CursorSidebarConnected() {
   const trades = useTradesAroundCursor();
   return (
     <CursorSidebar
+      header={<VolumeProfileModeToggle />}
       orderbook={<OrderbookTable snapshot={orderbook} />}
       brokers={<BrokerNetTable brokers={brokers} />}
       fills={<FillTape trades={trades} />}
@@ -32,9 +39,47 @@ export function CursorSidebarConnected() {
   );
 }
 
-export default function CursorSidebar({ orderbook, brokers, fills }: Props) {
+function VolumeProfileModeToggle() {
+  const activeId = useTabsStore((s) => s.activeTabId);
+  const volMode = useTabsStore((s) => s.getPrefs(activeId).volumeProfileMode);
+  const setVolMode = (m: 'range' | 'per-day') => {
+    if (volMode !== m) useTabsStore.getState().setVolumeProfileMode(activeId, m);
+  };
   return (
-    <aside className="grid grid-rows-[2fr_1fr_1fr] gap-2 p-2 bg-bg w-sidebar h-full min-h-0">
+    <div
+      data-testid="volume-profile-mode-toggle"
+      className="flex items-center gap-1 text-xs px-1 py-1"
+    >
+      <span className="text-fg-dim mr-2">Volume Profile</span>
+      {(['range', 'per-day'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          aria-pressed={volMode === m}
+          onClick={() => setVolMode(m)}
+          className={
+            volMode === m
+              ? 'px-2 py-0.5 bg-accent text-accent-fg rounded'
+              : 'px-2 py-0.5 text-fg-dim hover:text-fg'
+          }
+        >
+          {m === 'range' ? '전체' : '일별'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export default function CursorSidebar({ orderbook, brokers, fills, header }: Props) {
+  return (
+    <aside
+      className={
+        header
+          ? 'grid grid-rows-[auto_2fr_1fr_1fr] gap-2 p-2 bg-bg w-sidebar h-full min-h-0'
+          : 'grid grid-rows-[2fr_1fr_1fr] gap-2 p-2 bg-bg w-sidebar h-full min-h-0'
+      }
+    >
+      {header}
       <SidebarCard label="10호가" testId="card-orderbook">
         {orderbook ?? <Placeholder />}
       </SidebarCard>
