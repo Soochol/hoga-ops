@@ -36,6 +36,14 @@ def test_capture_error_code_no_longer_has_upstream_values() -> None:
         )
 
 
+def test_symbol_master_not_initialized_value() -> None:
+    assert UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED.value == "symbol_master_not_initialized"
+
+
+def test_symbol_master_not_initialized_in_upstream_code() -> None:
+    assert "symbol_master_not_initialized" in {v.value for v in UpstreamCode}
+
+
 def test_exception_to_error_code_returns_upstream_for_cookie() -> None:
     """captures.py:_exception_to_error_code maps cookie/hogaplay exceptions to UpstreamCode."""
     from hoga.api.captures import _exception_to_error_code

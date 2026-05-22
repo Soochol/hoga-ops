@@ -58,3 +58,4 @@ class UpstreamCode(StrEnum):
     COOKIE_EXPIRED = "cookie_expired"
     COOKIE_MISSING = "cookie_missing"
     HOGAPLAY_HTTP_ERROR = "hogaplay_http_error"
+    SYMBOL_MASTER_NOT_INITIALIZED = "symbol_master_not_initialized"
