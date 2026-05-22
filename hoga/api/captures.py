@@ -477,12 +477,59 @@ async def _publish_phase(state: QueueItemState) -> None:
     _publish_event(CapturePhaseEvent(**state.event_header()))
 
 
+_BACKOFF_DELAYS: tuple[float, ...] = (5.0, 10.0, 30.0)
+
+
+async def _cancel_aware_sleep(state: QueueItemState, delay: float) -> bool:
+    """Sleep `delay` seconds but return True if state.cancel_token signals.
+
+    Uses asyncio.wait_for on CancelToken._event (asyncio.Event) so we react
+    immediately to a cancel rather than polling. Accessing the private
+    ``_event`` attr is intentional — that's why CancelToken exposes one.
+    """
+    if state.cancel_token is None:
+        await asyncio.sleep(delay)
+        return False
+    if state.cancel_token.cancelled:
+        return True
+    try:
+        await asyncio.wait_for(state.cancel_token._event.wait(), timeout=delay)
+        return True
+    except asyncio.TimeoutError:
+        return False
+
+
 async def _run_capture_and_parse(state: QueueItemState, resume: bool) -> None:
+    """Wrap ``_run_capture_inner`` with 429 exponential backoff.
+
+    3 retries (5/10/30s) then propagate. Cancellation during the sleep raises
+    ``CaptureCancelled``, caught by the worker loop. Public symbol preserved
+    so earlier tests (Tasks 5/6/9/10) that monkeypatch this name keep working
+    — Task 11 backoff is INTERNAL.
+    """
+    from hoga.collector.orchestrator import CaptureCancelled
+    if state.cancel_token is None:
+        state.cancel_token = CancelToken()
+    last_exc: BaseException | None = None
+    for delay in (*_BACKOFF_DELAYS, None):
+        try:
+            await _run_capture_inner(state, resume=resume)
+            return
+        except HogaplayHTTPError as exc:
+            if exc.status_code != 429 or delay is None:
+                raise
+            last_exc = exc
+            if await _cancel_aware_sleep(state, delay):
+                raise CaptureCancelled() from exc
+    if last_exc is not None:
+        raise last_exc
+
+
+async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
     """Run the collector then the parser. Equivalent to the old
     _run_capture_job (sans the partial/cookie-missing rejection — those
-    moved to the route guard and the cookie-pause path). Task 11 wraps this
-    with the 429 backoff; the canonical symbol name is kept stable so
-    Tasks 5/6/9/10 tests can monkeypatch it.
+    moved to the route guard and the cookie-pause path). Task 11's
+    ``_run_capture_and_parse`` wrapper provides 429 backoff around this.
     """
     if state.cancel_token is None:
         state.cancel_token = CancelToken()

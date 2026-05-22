@@ -599,3 +599,101 @@ async def test_cancel_all_in_paused_resets_everything():
     for s in captures._done:
         if s.item_id in {"p-1", "q-1"}:
             assert s.phase == "cancelled"
+
+
+# ---------------------------------------------------------------------------
+# Task 11: 429 per-item exponential backoff + cancel-aware sleep
+# ---------------------------------------------------------------------------
+
+
+async def test_429_backoff_then_success(monkeypatch, tmp_path):
+    """3 consecutive 429s succeed on the 4th attempt; phase=done."""
+    from hoga.collector.client import HogaplayHTTPError
+
+    monkeypatch.setattr("hoga.api.captures._data_dir_for_tests",
+                        lambda: tmp_path, raising=False)
+    monkeypatch.setattr("hoga.api.disk_state.check_disk_state",
+                        lambda *_a, **_k: DiskState.NONE)
+    # Zero the backoff so the test doesn't actually wait 5+10+30s.
+    monkeypatch.setattr(captures, "_BACKOFF_DELAYS", (0.0, 0.0, 0.0))
+
+    attempts = {"n": 0}
+
+    async def _flaky_inner(state, resume):
+        attempts["n"] += 1
+        if attempts["n"] <= 3:
+            raise HogaplayHTTPError("429 rate limited", status_code=429)
+        state.phase = "done"
+    monkeypatch.setattr(captures, "_run_capture_inner", _flaky_inner)
+
+    captures._queue.append(_make_item("x-1"))
+    workers = captures.start_workers(n=1)
+    try:
+        await asyncio.wait_for(captures.wait_drained(), timeout=2.0)
+    finally:
+        await captures.stop_workers(workers)
+
+    assert attempts["n"] == 4
+    snap = captures.get_queue_snapshot()
+    assert len(snap.done) == 1
+    assert snap.done[0].phase == "done"
+
+
+async def test_429_backoff_exhausted_marks_failed(monkeypatch, tmp_path):
+    """Persistent 429 after all retries → terminal failed."""
+    from hoga.collector.client import HogaplayHTTPError
+
+    monkeypatch.setattr("hoga.api.captures._data_dir_for_tests",
+                        lambda: tmp_path, raising=False)
+    monkeypatch.setattr("hoga.api.disk_state.check_disk_state",
+                        lambda *_a, **_k: DiskState.NONE)
+    monkeypatch.setattr(captures, "_BACKOFF_DELAYS", (0.0, 0.0, 0.0))
+
+    async def _always_429(state, resume):
+        raise HogaplayHTTPError("429 rate limited", status_code=429)
+    monkeypatch.setattr(captures, "_run_capture_inner", _always_429)
+
+    captures._queue.append(_make_item("x-1"))
+    workers = captures.start_workers(n=1)
+    try:
+        await asyncio.wait_for(captures.wait_drained(), timeout=2.0)
+    finally:
+        await captures.stop_workers(workers)
+
+    snap = captures.get_queue_snapshot()
+    assert len(snap.done) == 1
+    assert snap.done[0].phase == "failed"
+
+
+async def test_cancel_during_429_backoff_aborts_immediately(monkeypatch, tmp_path):
+    """Cancel signal during the backoff sleep raises CaptureCancelled and
+    the worker marks the item cancelled (NOT failed, NOT done)."""
+    from hoga.collector.client import HogaplayHTTPError
+
+    monkeypatch.setattr("hoga.api.captures._data_dir_for_tests",
+                        lambda: tmp_path, raising=False)
+    monkeypatch.setattr("hoga.api.disk_state.check_disk_state",
+                        lambda *_a, **_k: DiskState.NONE)
+    # One backoff slot, long enough that we definitely cancel during it.
+    monkeypatch.setattr(captures, "_BACKOFF_DELAYS", (5.0,))
+
+    async def _always_429(state, resume):
+        raise HogaplayHTTPError("429 rate limited", status_code=429)
+    monkeypatch.setattr(captures, "_run_capture_inner", _always_429)
+
+    captures._queue.append(_make_item("x-1"))
+    workers = captures.start_workers(n=1)
+    try:
+        # Let the worker pick up the item, fail once, enter the sleep.
+        await asyncio.sleep(0.1)
+        active = next(iter(captures._active.values()), None)
+        assert active is not None, "expected item to be active in backoff sleep"
+        assert active.cancel_token is not None
+        active.cancel_token.cancel()
+        await asyncio.wait_for(captures.wait_drained(), timeout=1.0)
+    finally:
+        await captures.stop_workers(workers)
+
+    snap = captures.get_queue_snapshot()
+    assert len(snap.done) == 1
+    assert snap.done[0].phase == "cancelled"
