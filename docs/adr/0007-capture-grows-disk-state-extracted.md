@@ -57,3 +57,26 @@ plan-↔-code reconciliation**, not abstract architecture review.
 `disk_state.check_disk_state` now has three confirmed consumers
 (worker `deciding` phase, `symbols._build_all_captured_breakdowns`,
 `calendar._cell_status_for`) — the horizontal-seam rationale stands.
+
+## Postscript — Plan C landing notes (2026-05-23)
+
+Plan C (`docs/superpowers/plans/2026-05-23-capture-queue-frontend.md`)
+shipped the redesigned `/capture` UI on top of Plan B's queue backend.
+Notable additions: `@tanstack/react-virtual` for queue rows past 200,
+and a `HOGA_ENABLE_TEST_ENDPOINTS`-gated `POST /api/test/cookie_expire_at`
+hook on top of FakeHogaplayClient so the Playwright `cookie-pause`
+spec can deterministically exercise the pause/resume path. Frontend
+`api/types.ts` mirrors the backend wire shapes verbatim per
+ADR-0004; no adapter layer was introduced.
+
+Two plan-vs-impl reconciliations were needed during execution:
+1. `CaptureQueue.tsx` as written in the plan called `useMemo` after
+   an early-return — would have crashed React's rules-of-hooks on the
+   first loading render. Hoisted the memo above the early-return.
+2. `SymbolSearch.tsx` initialised its displayed `text` only on mount,
+   so the form-reset flow (parent flips `value` back to null) left the
+   input populated. Added a `useEffect` that syncs `text` whenever the
+   external `value` prop changes.
+
+Both fixes were inline (no follow-up issue). Reinforces Plan B's lesson:
+plan-vs-impl reconciliation is the work, not abstract review.
