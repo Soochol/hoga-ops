@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Query
 
@@ -21,20 +23,53 @@ from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import SymbolHit, SymbolsAllResponse
 from hoga.env import krx_creds_present, load_env
 
+@dataclass(frozen=True)
+class SymbolCacheState:
+    """Atomic state for the Symbol Master cache (spec §5.3 2-axis matrix).
+
+    Valid combinations (enforced by the factory classmethods):
+      - SymbolCacheState.loading()                          status="loading",     reason=None
+      - SymbolCacheState.fresh()                            status="fresh",       reason=None
+      - SymbolCacheState.stale(reason=...)                  status="stale",       reason=UpstreamCode
+      - SymbolCacheState.unavailable(reason=...)            status="unavailable", reason=UpstreamCode
+
+    Frontend hint visibility and Refresh-button visibility derive from
+    this two-axis matrix; constructing through the factories preserves
+    spec §5.3's invariants.
+    """
+
+    status: Literal["loading", "fresh", "stale", "unavailable"]
+    reason: UpstreamCode | None = None
+
+    @classmethod
+    def loading(cls) -> "SymbolCacheState":
+        return cls(status="loading", reason=None)
+
+    @classmethod
+    def fresh(cls) -> "SymbolCacheState":
+        return cls(status="fresh", reason=None)
+
+    @classmethod
+    def stale(cls, *, reason: UpstreamCode) -> "SymbolCacheState":
+        return cls(status="stale", reason=reason)
+
+    @classmethod
+    def unavailable(cls, *, reason: UpstreamCode) -> "SymbolCacheState":
+        return cls(status="unavailable", reason=reason)
+
+
 # Module-level state (per ADR-0006 single-module pattern, scoped to symbols.py).
 _cache: list[SymbolHit] = []
 _fetched_at_ms: int | None = None
-_status: str = "loading"  # one of: loading / fresh / stale / unavailable
+_state: SymbolCacheState = SymbolCacheState.loading()
 _lock = asyncio.Lock()
 _inflight: asyncio.Future | None = None
 _CACHE_TTL_MS = 24 * 60 * 60 * 1000  # 24h
-_last_failure_reason: UpstreamCode | None = None
 
 
 def reset_state_for_tests() -> None:
-    global _cache, _fetched_at_ms, _status, _inflight, _last_failure_reason  # noqa: PLW0603
-    _cache, _fetched_at_ms, _status, _inflight = [], None, "loading", None
-    _last_failure_reason = None
+    global _cache, _fetched_at_ms, _state, _inflight  # noqa: PLW0603
+    _cache, _fetched_at_ms, _state, _inflight = [], None, SymbolCacheState.loading(), None
 
 
 def invalidate_cache_for_tests() -> None:
@@ -137,21 +172,27 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
 
 async def _do_fetch_and_populate(data_dir: Path) -> None:
     """Inner helper — runs under in-flight Future protection."""
-    global _cache, _fetched_at_ms, _status, _last_failure_reason  # noqa: PLW0603
+    global _cache, _fetched_at_ms, _state  # noqa: PLW0603
 
     # Pre-check: deterministically classify "missing credentials" without
     # depending on pykrx's exception-message format (which can drift across
     # versions). Also saves the network round-trip when creds are absent.
     if not krx_creds_present():
-        _last_failure_reason = UpstreamCode.KRX_CREDENTIALS_MISSING
-        _status = "stale" if _cache else "unavailable"
+        _state = (
+            SymbolCacheState.stale(reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
+            if _cache
+            else SymbolCacheState.unavailable(reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
+        )
         return
 
     try:
         hits = await _fetch_from_pykrx()
     except Exception:  # noqa: BLE001 — pykrx failure path (preserved)
-        _last_failure_reason = UpstreamCode.KRX_FETCH_FAILED
-        _status = "stale" if _cache else "unavailable"
+        _state = (
+            SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
+            if _cache
+            else SymbolCacheState.unavailable(reason=UpstreamCode.KRX_FETCH_FAILED)
+        )
         return
 
     # Single-pass walk → {code: breakdown}; assign per symbol.
@@ -164,8 +205,7 @@ async def _do_fetch_and_populate(data_dir: Path) -> None:
         h.captured_breakdown = breakdown
     _cache = hits
     _fetched_at_ms = int(time.time() * 1000)
-    _status = "fresh"
-    _last_failure_reason = None
+    _state = SymbolCacheState.fresh()
 
 
 async def ensure_cache_warm(data_dir: Path) -> None:
@@ -180,17 +220,19 @@ async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
 
     N concurrent calls share one underlying fetch.
     """
-    global _inflight, _status  # noqa: PLW0603
+    global _inflight, _state  # noqa: PLW0603
     async with _lock:
         if _is_fresh():
             return SymbolsAllResponse(
                 symbols=list(_cache),
-                status="fresh",
+                status=_state.status,
                 fetched_at_ms=_fetched_at_ms,
-                reason=_last_failure_reason,
+                reason=_state.reason,
             )
         if _inflight is None:
-            _status = "loading" if not _cache else _status
+            # Downgrade to loading only when there's no cache to serve.
+            if not _cache:
+                _state = SymbolCacheState.loading()
             loop = asyncio.get_running_loop()
             _inflight = loop.create_future()
             fetch_task = asyncio.create_task(_do_fetch_and_populate(data_dir))
@@ -206,9 +248,9 @@ async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
         _inflight = None
     return SymbolsAllResponse(
         symbols=list(_cache),
-        status=_status,  # type: ignore[arg-type]
+        status=_state.status,
         fetched_at_ms=_fetched_at_ms,
-        reason=_last_failure_reason,
+        reason=_state.reason,
     )
 
 

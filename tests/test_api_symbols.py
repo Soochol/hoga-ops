@@ -328,7 +328,47 @@ async def test_refresh_calls_load_env_with_override_true(
 
 
 def test_reset_state_for_tests_clears_reason() -> None:
-    """Make sure reset_state_for_tests handles the new state."""
-    symbols_module._last_failure_reason = UpstreamCode.KRX_FETCH_FAILED  # type: ignore[attr-defined]
+    """Reset returns the state to loading()."""
+    symbols_module._state = SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
     symbols_module.reset_state_for_tests()
-    assert symbols_module._last_failure_reason is None  # type: ignore[attr-defined]
+    assert symbols_module._state.reason is None
+    assert symbols_module._state.status == "loading"
+
+
+from hoga.api.symbols import SymbolCacheState
+
+
+def test_symbol_cache_state_factories_enforce_invariants() -> None:
+    """Spec §5.3 2-axis matrix is enforced by classmethod factories.
+
+    The factories are the only sanctioned way to construct a SymbolCacheState
+    in production code. Direct dataclass construction is technically allowed
+    but bypasses the invariant guidance — a code-review concern, not a type
+    error.
+    """
+    # Loading and fresh carry no reason.
+    assert SymbolCacheState.loading().status == "loading"
+    assert SymbolCacheState.loading().reason is None
+    assert SymbolCacheState.fresh().status == "fresh"
+    assert SymbolCacheState.fresh().reason is None
+
+    # Stale and unavailable require a reason.
+    stale = SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
+    assert stale.status == "stale"
+    assert stale.reason == UpstreamCode.KRX_FETCH_FAILED
+
+    unavailable = SymbolCacheState.unavailable(reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
+    assert unavailable.status == "unavailable"
+    assert unavailable.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
+
+    # Frozen — immutable after construction.
+    with pytest.raises(Exception):  # dataclasses.FrozenInstanceError
+        stale.reason = None  # type: ignore[misc]
+
+
+def test_symbol_cache_state_stale_requires_keyword_reason() -> None:
+    """The factory rejects positional/missing reason — invariant aid."""
+    with pytest.raises(TypeError):
+        SymbolCacheState.stale()  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        SymbolCacheState.unavailable()  # type: ignore[call-arg]
