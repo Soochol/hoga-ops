@@ -41,4 +41,28 @@ test.describe('Replay smoke', () => {
     await expect(page.locator('[data-card="brokers"]')).toBeVisible();
     await expect(page.locator('[data-card="fills"]')).toBeVisible();
   });
+
+  test('대한항공 (003490, 2026-05-11) loads without unmounting the app', async ({ page }) => {
+    const consoleErrors: string[] = [];
+    page.on('pageerror', (e) => consoleErrors.push(e.message));
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') consoleErrors.push(msg.text());
+    });
+
+    await page.goto('/replay?tabs=003490:20260511:20260511&active=0');
+
+    // 5개 차트 pane이 모두 mount되어야 한다
+    for (const pane of ['candle', 'volume', 'ratio', 'intensity', 'fill-strength']) {
+      await expect(page.locator(`[data-pane="${pane}"]`)).toBeVisible({ timeout: 5000 });
+    }
+
+    // 사이드 네비가 살아 있어야 한다 (root unmount 회귀 가드)
+    await expect(page.getByRole('link', { name: 'Replay Viewer' })).toBeVisible();
+
+    // lightweight-charts assertion 메시지가 콘솔에 떠선 안 된다
+    const assertionErr = consoleErrors.find((e) =>
+      e.includes('data must be asc ordered by time'),
+    );
+    expect(assertionErr, `unexpected chart assertion: ${assertionErr}`).toBeUndefined();
+  });
 });
