@@ -63,3 +63,23 @@ def test_add_stockdate_unknown_code_returns_404(
         params={"code": "999999", "date": "20260520"},
     )
     assert r.status_code == 404
+
+
+def test_cookie_expire_at_configures_fake(
+    enable_test_endpoints: None, tmp_path: Path
+) -> None:
+    """The /api/test/cookie_expire_at hook wires through to the fake's
+    failure-injection state. Verifies the route accepts a positive index
+    and a negative-disable value.
+    """
+    from hoga.api import captures_fake
+
+    app = create_app(data_dir=tmp_path / "data")
+    client = TestClient(app)
+    r = client.post("/api/test/cookie_expire_at", json={"index": 3})
+    assert r.status_code == 200
+    assert captures_fake._raise_on_request_index == 3
+
+    r = client.post("/api/test/cookie_expire_at", json={"index": -1})
+    assert r.status_code == 200
+    assert captures_fake._raise_on_request_index is None

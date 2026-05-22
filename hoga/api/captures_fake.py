@@ -8,8 +8,25 @@ from __future__ import annotations
 
 import time
 
+from hoga.collector.client import CookieExpiredError
+
 # Number of non-empty Pages the fake emits before draining the loop.
 _VISIBLE_PAGES = 5
+
+# Cross-instance counter and trigger for cookie-expiry injection.
+# Used by /api/test/cookie_expire_at so a Playwright spec can deterministically
+# exercise the cookie-pause path. None disables injection.
+_global_first_calls = 0
+_raise_on_request_index: int | None = None
+
+
+def configure_fake_to_raise_on(request_index: int | None) -> None:
+    """Cause the fake to raise CookieExpiredError on its Nth global
+    fetch_first call. Pass None (or a negative value) to disable.
+    """
+    global _raise_on_request_index, _global_first_calls
+    _raise_on_request_index = request_index if (request_index is not None and request_index > 0) else None
+    _global_first_calls = 0
 
 
 class FakeHogaplayClient:
@@ -26,8 +43,12 @@ class FakeHogaplayClient:
         )
 
     def fetch_first(self, code: str, date: str, time_ms: int) -> str:
+        global _global_first_calls
         del code, date, time_ms
         self._first_call += 1
+        _global_first_calls += 1
+        if _raise_on_request_index is not None and _global_first_calls == _raise_on_request_index:
+            raise CookieExpiredError("fake cookie expiry (test injection)")
         if self._first_call > _VISIBLE_PAGES:
             # Empty page → collector's drain loop. The orchestrator now skips
             # on_progress when frontier is unchanged, so the drain no longer

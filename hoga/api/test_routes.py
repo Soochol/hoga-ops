@@ -11,9 +11,15 @@ import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
+from hoga.api.captures_fake import configure_fake_to_raise_on
 from hoga.api.params import Code, StockDate
 from hoga.parser import parse_stock_date
+
+
+class CookieExpireAt(BaseModel):
+    index: int
 
 
 def build_test_router(data_dir: Path) -> APIRouter:
@@ -60,5 +66,13 @@ def build_test_router(data_dir: Path) -> APIRouter:
         # Parse -> parquet (this triggers the watchdog observer)
         parse_stock_date(code=code, date=date, data_dir=data_dir)
         return {"ok": True, "code": code, "date": date}
+
+    @router.post("/cookie_expire_at")
+    def cookie_expire_at(req: CookieExpireAt) -> dict:
+        """Configure FakeHogaplayClient to raise CookieExpiredError on the Nth
+        global fetch_first call. Pass index <= 0 to disable.
+        """
+        configure_fake_to_raise_on(req.index)
+        return {"ok": True}
 
     return router
