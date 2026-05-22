@@ -23,7 +23,7 @@
 | 5 | Migrate sidebar components | `CursorSidebar.tsx`, `OrderbookTable.tsx`, `BrokerNetTable.tsx`, `FillTape.tsx` |
 | 6 | Migrate capture + page components | `CaptureQueueRow.tsx`, `SymbolSearch.tsx`, `capture/DateRangePicker.tsx`, `CalendarCell.tsx`, `CaptureForm.tsx`, `CaptureQueue.tsx`, `CaptureRowDetail.tsx`, `pages/Capture.tsx`, `pages/Settings.tsx`, `pages/Inventory.tsx` |
 | 7 | Create `chartScale.ts` + migrate chart components | new `util/chartScale.ts`, `ChartStage.tsx`, 6 chart panes |
-| 8 | Documentation updates | `DESIGN.md`, mockup HTML, `docs/adr/0008-default-ui-density.md` |
+| 8 | Documentation updates | `DESIGN.md`, mockup HTML, `docs/adr/0010-default-ui-density.md` |
 | 9 | Verification + PR prep | grep audit, test suite, visual screenshots |
 
 ---
@@ -104,25 +104,42 @@ Pattern: `text-[9.5px]`, `text-[10.5px]`, `text-[12.5px]`.
 
 - [ ] **Step 1: Add layout tokens to tokens.css**
 
-In `frontend/src/styles/tokens.css`, append a new `Layout` block inside the `:root, [data-theme='dark']` selector, after the `Border radius` block:
+In `frontend/src/styles/tokens.css`, append a new `Layout` block inside the `:root, [data-theme='dark']` selector, after the `Border radius` block. Height tokens use the `--h-*` prefix (uniform with Tailwind utility class names like `h-tab`); width tokens use `--*-w`; the new badge text size token follows the existing `--text-*` family.
 
 ```css
   /* ───── Layout (rem-based; rendered px shown @ 20px root = default density) ───── */
-  --nav-w: 13.125rem;              /* 262.5px @ default; 210px base intent */
-  --sidebar-w: 20rem;              /* 400px @ default; 320px base intent */
-  --combobox-min-w: 13.75rem;      /* 275px @ default; 220px base intent */
-  --dropdown-min-w: 20rem;         /* 400px @ default; 320px base intent */
-  --row-tab-h: 2rem;               /* 40px @ default; 32px base intent */
-  --row-tab-secondary-h: 1.875rem; /* 37.5px @ default; 30px base intent — intentional 2px-shorter secondary action */
-  --row-toolbar-h: 3.75rem;        /* 75px @ default; 60px base intent */
-  --row-pricestrip-h: 3.25rem;     /* 65px @ default; 52px base intent */
-  --row-orderbook-h: 1.375rem;     /* 27.5px @ default; 22px base intent */
-  --row-capture-h: 2.25rem;        /* 45px @ default; 36px base intent */
+  --nav-w: 13.125rem;            /* 262.5px @ default; 210px base intent */
+  --sidebar-w: 20rem;            /* 400px @ default; 320px base intent */
+  --combobox-min-w: 13.75rem;    /* 275px @ default; 220px base intent */
+  --dropdown-min-w: 20rem;       /* 400px @ default; 320px base intent */
+  --h-tab: 2rem;                 /* 40px @ default; 32px base intent */
+  --h-tab-secondary: 1.875rem;   /* 37.5px @ default; 30px base intent — intentional 2px-shorter secondary action */
+  --h-toolbar: 3.75rem;          /* 75px @ default; 60px base intent */
+  --h-pricestrip: 3.25rem;       /* 65px @ default; 52px base intent */
+  --h-orderbook-row: 1.375rem;   /* 27.5px @ default; 22px base intent */
+  --h-capture-row: 2.25rem;      /* 45px @ default; 36px base intent */
 ```
+
+Then append a new badge text size token to the existing `--text-*` family (in the Typography block where `--text-xs` through `--text-2xl` live):
+
+```css
+  --text-badge: 0.53125rem;      /* 10.625px @ default; 8.5px base intent — SymbolSearch market badge, dedicated token to preserve visual hierarchy below --text-xs */
+```
+
+Math: `0.53125rem × 16 = 8.5px` (base intent, matches the existing inline `font: '600 8.5px ...'` in SymbolSearch). `0.53125rem × 20 = 10.625px` (default rendering, scales 1.25× uniformly with all other tokens). The badge grows from current 8.5px to 10.625px (+25%) like every other text token; the dedicated `--text-badge` exists to preserve the **hierarchical relationship** (badge smaller than `--text-xs`) rather than to fix the absolute pixel size.
 
 - [ ] **Step 2: Register layout tokens in tailwind.config.ts**
 
-Modify `frontend/tailwind.config.ts`. Extend `theme.extend` with `width`, `height`, and `minWidth`:
+Modify `frontend/tailwind.config.ts`. Extend `theme.extend` with `width`, `height`, and `minWidth` (new blocks). Also add `badge: 'var(--text-badge)'` to the **existing** `fontSize` block — paste it as the first entry, above `xs`:
+
+```ts
+      fontSize: {
+        badge: 'var(--text-badge)',  // NEW — below --text-xs, used for hierarchical badges
+        // ... existing xs, sm, base, md, lg, xl, 2xl entries stay
+      },
+```
+
+Then add these new top-level entries to `theme.extend`:
 
 ```ts
       width: {
@@ -130,12 +147,12 @@ Modify `frontend/tailwind.config.ts`. Extend `theme.extend` with `width`, `heigh
         sidebar: 'var(--sidebar-w)',
       },
       height: {
-        tab: 'var(--row-tab-h)',
-        'tab-secondary': 'var(--row-tab-secondary-h)',
-        toolbar: 'var(--row-toolbar-h)',
-        pricestrip: 'var(--row-pricestrip-h)',
-        'orderbook-row': 'var(--row-orderbook-h)',
-        'capture-row': 'var(--row-capture-h)',
+        tab: 'var(--h-tab)',
+        'tab-secondary': 'var(--h-tab-secondary)',
+        toolbar: 'var(--h-toolbar)',
+        pricestrip: 'var(--h-pricestrip)',
+        'orderbook-row': 'var(--h-orderbook-row)',
+        'capture-row': 'var(--h-capture-row)',
       },
       minWidth: {
         combobox: 'var(--combobox-min-w)',
@@ -164,12 +181,12 @@ git add frontend/src/styles/tokens.css frontend/tailwind.config.ts
 git commit -m "chore(frontend): add layout tokens to tailwind config
 
 Introduces --nav-w, --sidebar-w, --combobox-min-w, --dropdown-min-w,
---row-tab-h, --row-tab-secondary-h, --row-toolbar-h, --row-pricestrip-h,
---row-orderbook-h, --row-capture-h. Registered as Tailwind width/height/
-minWidth utilities (w-nav, w-sidebar, h-tab, h-tab-secondary, h-toolbar,
-h-pricestrip, h-orderbook-row, h-capture-row, min-w-combobox,
-min-w-dropdown). No visible change yet — tokens are unreferenced.
-Prep work for the default density shift to 1.25x."
+--h-tab, --h-tab-secondary, --h-toolbar, --h-pricestrip,
+--h-orderbook-row, --h-capture-row, --text-badge. Registered as Tailwind
+width/height/minWidth/fontSize utilities (w-nav, w-sidebar, h-tab,
+h-tab-secondary, h-toolbar, h-pricestrip, h-orderbook-row, h-capture-row,
+min-w-combobox, min-w-dropdown, text-badge). No visible change yet —
+tokens are unreferenced. Prep work for the default density shift to 1.25x."
 ```
 
 ---
@@ -253,8 +270,12 @@ describe('tokens.css declarations', () => {
   it('declares layout tokens in rem', () => {
     expect(css).toMatch(/--nav-w:\s*13\.125rem/);
     expect(css).toMatch(/--sidebar-w:\s*20rem/);
-    expect(css).toMatch(/--row-tab-h:\s*2rem/);
-    expect(css).toMatch(/--row-tab-secondary-h:\s*1\.875rem/);
+    expect(css).toMatch(/--h-tab:\s*2rem/);
+    expect(css).toMatch(/--h-tab-secondary:\s*1\.875rem/);
+  });
+
+  it('declares the --text-badge token for hierarchical badges', () => {
+    expect(css).toMatch(/--text-badge:\s*0\.53125rem/);
   });
 
   it('keeps existing --text-* rem values unchanged (they auto-scale via root)', () => {
@@ -581,7 +602,7 @@ Read the file. The inline styles are extensive. Apply Category 2 to all:
 - `font: '400 12px "Geist Sans"'` → `font-normal text-sm`.
 - `font: '400 13px "Geist Sans"'` → `font-normal text-base`.
 - `font: '500 11px "Geist Mono"'` → `font-medium text-sm font-mono`.
-- `font: '600 8.5px "Geist Sans", letterSpacing: '0.06em'` → `font-semibold text-xs tracking-wider` (8.5px normalizes up to text-xs = 10.5 intent — accept the bump as part of the off-token cleanup).
+- `font: '600 8.5px "Geist Sans", letterSpacing: '0.06em'` → `font-semibold text-badge tracking-wider` (uses the dedicated `--text-badge` token to preserve hierarchical position below `text-xs` — see Task 1 Step 2 for token definition).
 - `font: '500 10px "Geist Mono"'` → `font-medium text-xs font-mono`.
 - `padding: '12px 10px'` → `py-md px-sm`.
 - Dynamic values (background by index, etc.) stay inline.
@@ -832,12 +853,12 @@ the CSS dial — see DESIGN.md Scale Factor section."
 
 ## Task 8: Documentation updates
 
-**Goal:** DESIGN.md gains the "Scale Factor" section and 2-column tables. Components disclaimer added. Approved mockup HTML labeled. ADR-0008 written.
+**Goal:** DESIGN.md gains the "Scale Factor" section and 2-column tables. Components disclaimer added. Approved mockup HTML labeled. ADR-0010 written.
 
 **Files:**
 - Modify: `DESIGN.md`
 - Modify: `docs/superpowers/designs/2026-05-20-replay-viewer.html`
-- Create: `docs/adr/0008-default-ui-density.md`
+- Create: `docs/adr/0010-default-ui-density.md`
 
 - [ ] **Step 1: Add "Scale Factor" section to DESIGN.md**
 
@@ -963,9 +984,9 @@ Edit `docs/superpowers/designs/2026-05-20-replay-viewer.html`. After the existin
 -->
 ```
 
-- [ ] **Step 7: Write ADR-0008**
+- [ ] **Step 7: Write ADR-0010**
 
-Create `docs/adr/0008-default-ui-density.md`:
+Create `docs/adr/0010-default-ui-density.md`:
 
 ```markdown
 # 0008 — Default UI density is 1.25× base intent
@@ -1062,8 +1083,8 @@ the dial, update this file too."
 - [ ] **Step 8: Commit documentation**
 
 ```bash
-git add DESIGN.md docs/superpowers/designs/2026-05-20-replay-viewer.html docs/adr/0008-default-ui-density.md
-git commit -m "docs: default density 1.25x — DESIGN.md scale factor + ADR-0008
+git add DESIGN.md docs/superpowers/designs/2026-05-20-replay-viewer.html docs/adr/0010-default-ui-density.md
+git commit -m "docs: default density 1.25x — DESIGN.md scale factor + ADR-0010
 
 DESIGN.md gains '## Scale Factor' section with base intent / rendered
 columns. Typography and Spacing tables converted to 2-column form.
@@ -1074,7 +1095,7 @@ labels file as '1.0x base intent'.
 Mockup HTML gets a comment block declaring it the canonical 1.0x
 artifact — do not edit to match new default.
 
-ADR-0008 captures the decision, the lived-experience rationale, the
+ADR-0010 captures the decision, the lived-experience rationale, the
 chart-outside-the-dial trade-off, and future-reader consequences."
 ```
 
@@ -1161,7 +1182,7 @@ zoom 125% used to.
   constants — must be updated alongside any future density dial change).
 - DESIGN.md gains a `## Scale Factor` section; Typography/Spacing tables
   adopt 2-column "Base intent / Rendered @ default" structure.
-- ADR-0008 captures the decision and chart-outside-the-dial trade-off.
+- ADR-0010 captures the decision and chart-outside-the-dial trade-off.
 
 Source spec: `docs/superpowers/specs/2026-05-22-default-ui-scale-up-design.md`
 
@@ -1202,9 +1223,149 @@ Expected: 8 task commits visible (chore, feat, refactor × 4, feat, docs). Branc
 
 - **Spec coverage:** All 9 sections of the spec (Problem, Goals, Non-Goals, Approach, Token Values, Chart Scaling, Code Migration, Documentation Updates, Implementation Sequence, Risks, Rollback, DoD, Deliverables, Out-of-Scope) have at least one task implementing them. ADR creation, DESIGN.md updates, mockup label, chartScale.ts, and `--row-tab-secondary-h` token are all explicitly handled.
 - **No placeholders:** Every "TODO"-style instruction has concrete code or an exact command. Per-file workflow steps reference specific line numbers from current code where applicable.
-- **Type consistency:** Token names used in code (`w-sidebar`, `h-tab-secondary`, `min-w-combobox`, `CHART_LAYOUT_OPTIONS`, `CHART_TIMESCALE_OPTIONS`) match across Task 1 (creation), Task 2 (definition), Tasks 3-6 (consumption), and Task 7 (chart module). ADR-0008 file path matches the spec's `docs/adr/0008-default-ui-density.md`.
+- **Type consistency:** Token names used in code (`w-sidebar`, `h-tab-secondary`, `min-w-combobox`, `CHART_LAYOUT_OPTIONS`, `CHART_TIMESCALE_OPTIONS`) match across Task 1 (creation), Task 2 (definition), Tasks 3-6 (consumption), and Task 7 (chart module). ADR-0010 file path matches the spec's `docs/adr/0010-default-ui-density.md`.
 - **TDD adaptation:** Pure CSS changes (Task 2) cannot be unit-tested for rendered px (JSDOM doesn't compute styles fully), so the tokens.css test verifies declarations textually plus the manual browser smoke is the rendering check. `chartScale.ts` (Task 7) follows full TDD. Component migrations (Tasks 3-6) lean on existing component tests as a regression net plus type-check plus manual visual — appropriate for refactoring with no behavior change.
 
 ---
 
 **End of plan.**
+
+---
+
+## NOT in Scope
+
+Items deliberately deferred. Each is a follow-up issue, NOT a TODO bundled into this PR.
+
+| Item | Why deferred |
+|---|---|
+| User-facing density toggle UI (Compact / Comfortable / Cozy) | Infrastructure is laid down (single dial + chartScale.ts); UI is dead code until a 2nd user disagrees with the default. 1-user tool. |
+| Reactive chart scaling (`chartScale.ts` reads `:root font-size`) | Static constants are simpler today; the additional plumbing only pays for itself when a density toggle UI exists. See spec Section "Scope of the single dial". |
+| Chart color tokenization | Current chart colors work via `util/tokens.ts`; not related to density. |
+| Light mode | DESIGN.md v1 explicitly excludes. |
+| Automated visual regression (Percy / Chromatic) | Cost-benefit unfavorable for 1-user tool; 8-screen manual regression is the equivalent. |
+| `em`-based dial for OS font-preference accessibility | Acknowledged in ADR-0010; defer until accessibility surfaces as a real need. |
+
+## What Already Exists (reused, not rebuilt)
+
+- **Token system foundation** — `frontend/src/styles/tokens.css` already houses CSS custom properties; `--text-*` family is already rem-based. This plan extends the existing structure, not parallel.
+- **Tailwind token integration** — `frontend/tailwind.config.ts` already maps `--text-*`, `--space-*`, color variables to utility classes via `theme.extend`. New layout/badge tokens follow the existing pattern.
+- **Canvas-color token resolver** — `frontend/src/util/tokens.ts` (`resolveTokens` helper) bridges CSS variables to `lightweight-charts` color strings. The new `util/chartScale.ts` mirrors this single-purpose, static-pattern approach.
+- **Component-level testing infrastructure** — Vitest + 11 existing component tests. This plan uses them as a regression net (class-name swaps don't break behavior tests).
+- **E2E coverage of critical flows** — 7 Playwright specs (replay-smoke, range-capture, multi-tab, calendar-markers, cookie-pause, error-states, sse-refresh). Reused as the integration-level regression net.
+
+## Failure Modes
+
+Realistic production-failure scenarios for new codepaths and whether the plan handles them:
+
+| Codepath | Scenario | Test? | Error handling? | User-visible? |
+|---|---|---|---|---|
+| `:root font-size: 20px` | Future imported CSS framework sets its own `:root font-size`, clobbering ours | ❌ No | ❌ No | Visible (everything shrinks) — but unlikely in tightly-controlled stylesheet |
+| `chartScale.ts` exports | `lightweight-charts` API drift removes `layout.fontSize` option | ✅ Yes (TypeScript `DeepPartial<ChartOptions>` compile-time check) | ✅ TypeScript build fails | Build-time, not user-visible |
+| Tailwind preset spacing (`p-2`) | Misalignment between Tailwind default rem scale and our `--space-*` tokens after dial shift | ❌ No automated | ❌ No | Visible drift between `p-2`-using and token-using components |
+| `:root font-size: 20px` absolute | User has OS font preference > 16px for accessibility | ❌ No | ❌ No | Visible (smaller than user expects) — known limitation per ADR-0010 |
+
+**No critical gaps:** No silent failure modes (every issue manifests visibly during manual regression check or compile time).
+
+## Worktree Parallelization Strategy
+
+### Dependency table
+
+| Step | Modules touched | Depends on |
+|------|----------------|------------|
+| Task 1 | `frontend/src/styles/`, `frontend/tailwind.config.ts` | — |
+| Task 2 | `frontend/src/styles/`, `frontend/tests/unit/` | Task 1 |
+| Task 3 | `frontend/src/App.tsx`, `frontend/src/nav/` | Tasks 1, 2 |
+| Task 4 | `frontend/src/replay/` | Tasks 1, 2 |
+| Task 5 | `frontend/src/sidebar/` | Tasks 1, 2 |
+| Task 6 | `frontend/src/capture/`, `frontend/src/pages/` | Tasks 1, 2 |
+| Task 7 | `frontend/src/util/chartScale.ts` (new), `frontend/src/chart/` | Tasks 1, 2 |
+| Task 8 | `DESIGN.md`, `docs/superpowers/designs/`, `docs/adr/` | — (parallel with code work) |
+| Task 9 | (verification only) | All others |
+
+### Parallel lanes
+
+```
+Lane A (foundation): Task 1 → Task 2          (sequential, shared tokens.css)
+Lane B (shell):      Task 3                    (independent, src/nav/ + src/App.tsx)
+Lane C (replay):     Task 4                    (independent, src/replay/)
+Lane D (sidebar):    Task 5                    (independent, src/sidebar/)
+Lane E (capture):    Task 6                    (independent, src/capture/ + src/pages/)
+Lane F (chart):      Task 7                    (independent, src/util/ + src/chart/)
+Lane G (docs):       Task 8                    (independent, docs/ + DESIGN.md)
+Lane H (verify):     Task 9                    (final, after all lanes merged)
+```
+
+### Execution order
+
+```
+Phase 1 (sequential):  Lane A (Tasks 1 → 2 on main worktree)
+Phase 2 (parallel):    Lanes B, C, D, E, F, G — five code worktrees + one docs worktree concurrently
+Phase 3 (sequential):  Merge B-G back to main; resolve any cross-lane conflicts (rare)
+Phase 4 (sequential):  Lane H (Task 9 verification + PR prep)
+```
+
+### Conflict flags
+
+- Lanes B-F do NOT share any module directories. Zero merge conflict risk.
+- Lane G (docs) is fully independent of code lanes. Zero conflict risk.
+- Phase 1's Task 2 modifies `tokens.css` — every Phase 2 lane will see Task 2's tokens via the shared base branch. No cross-lane coordination needed.
+
+### Estimated time savings
+
+Single-threaded: Tasks 1-9 ≈ 4-6 hours total.
+Parallel (Phase 2 across 6 worktrees): Tasks 1-2 ≈ 30min + max(Tasks 3-8) ≈ 1h + Task 9 ≈ 30min = **~2 hours**.
+
+## Implementation Tasks
+
+Synthesized from review findings. Each task derives from a specific finding above. Run with Claude Code subagents (per CHECKPOINT_MODE: continuous, each task auto-commits a WIP). Checkbox as you ship.
+
+- [ ] **T1 (P1, human: ~30min / CC: ~3min)** — tokens + tailwind config — Add `--h-*` height tokens, `--*-w` width tokens, `--text-badge` font-size token
+  - Surfaced by: Step 0 scope agreement + D2 (token naming `--h-*` prefix) + D3 (`--text-badge` for hierarchical badge)
+  - Files: `frontend/src/styles/tokens.css`, `frontend/tailwind.config.ts`
+  - Verify: `cd frontend && npm run build && npm run lint`
+- [ ] **T2 (P1, human: ~15min / CC: ~2min)** — tokens.css scale shift — Lift `:root font-size: 20px`, convert `--space-*` to rem; add unit test asserting declarations
+  - Surfaced by: Spec Approach + Plan Task 2
+  - Files: `frontend/src/styles/tokens.css`, `frontend/tests/unit/tokens.test.ts`
+  - Verify: `cd frontend && npm test -- tokens`
+- [ ] **T3 (P1, human: ~30min / CC: ~5min)** — Migrate shell — App + LeftNav + NavItem + CaptureStatusPill + StatusDot off arbitrary-value classes
+  - Surfaced by: Code Migration §1 + §2 + §3
+  - Files: `frontend/src/App.tsx`, `frontend/src/nav/*.tsx`
+  - Verify: `cd frontend && npm run build && npm test -- LeftNav CaptureStatusPill`
+- [ ] **T4 (P1, human: ~45min / CC: ~10min)** — Migrate replay viewer — TabStrip (use `h-tab-secondary` for "+ 새 분석"), Tab, PriceStrip, Toolbar, StockCombobox (240→220 drift normalize), OnboardingCard, replay/DateRangePicker
+  - Surfaced by: Code Migration recipe + intentional secondary preservation (grilling Q2)
+  - Files: `frontend/src/replay/*.tsx`
+  - Verify: `cd frontend && npm run build && npm test -- replay`
+- [ ] **T5 (P1, human: ~30min / CC: ~5min)** — Migrate sidebar — CursorSidebar (w-sidebar), OrderbookTable + BrokerNetTable + FillTape (text-* normalization)
+  - Surfaced by: Code Migration recipe
+  - Files: `frontend/src/sidebar/*.tsx`
+  - Verify: `cd frontend && npm run build && npm test -- sidebar`
+- [ ] **T6 (P1, human: ~45min / CC: ~10min)** — Migrate capture + pages — CaptureQueueRow (h-capture-row + decomposed inline styles), SymbolSearch (use `text-badge` for market badge per D3-A), capture/DateRangePicker, CalendarCell, CaptureForm, CaptureQueue, CaptureRowDetail, pages/Capture, pages/Settings, pages/Inventory
+  - Surfaced by: Code Migration recipe + D3 (text-badge for SymbolSearch market hierarchy)
+  - Files: `frontend/src/capture/*.tsx`, `frontend/src/pages/*.tsx`
+  - Verify: `cd frontend && npm run build && npm test -- capture`
+- [ ] **T7 (P1, human: ~30min / CC: ~5min)** — Create chartScale.ts + wire ChartStage — TDD: unit test → constants module → ChartStage spread
+  - Surfaced by: Chart Scaling section + grilling Q1 (B answer: static constants)
+  - Files: `frontend/src/util/chartScale.ts` (new), `frontend/tests/unit/chartScale.test.ts` (new), `frontend/src/chart/ChartStage.tsx`
+  - Verify: `cd frontend && npm test -- chartScale && npm test -- chart`
+- [ ] **T8 (P1, human: ~30min / CC: ~5min)** — Documentation — DESIGN.md `## Scale Factor` section + 2-column Typography/Spacing tables + Components disclaimer + mockup HTML label + ADR-0010
+  - Surfaced by: Spec Documentation Updates + grilling Q3 (ADR-0010 scope) + Q4 (mockup label) + Q5 (Components disclaimer)
+  - Files: `DESIGN.md`, `docs/superpowers/designs/2026-05-20-replay-viewer.html`, `docs/adr/0010-default-ui-density.md` (new)
+- [ ] **T9 (P1, human: ~30min / CC: ~10min)** — Verification + PR prep — grep audit, full test suite + Playwright, 8-screen visual regression, PR description draft
+  - Surfaced by: Spec Definition of Done + Test Review coverage diagram
+  - Files: (no edits — verification only)
+  - Verify: zero hits on `grep -rEn 'text-\[|w-\[[0-9]|h-\[[0-9]'`; `npx playwright test` green; screenshots captured
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | not run (scope already decided in brainstorming/grilling) |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | not run (outside voice skipped — see notes) |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | **CLEAR (PLAN)** | 2 issues found and resolved (D2 token naming, D3 badge token); 0 critical gaps; test coverage adequate |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | not run (visual outputs verified in Task 9 manual regression) |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | n/a (not a developer-facing product) |
+
+- **CROSS-MODEL:** No cross-model comparison (outside voice not invoked this review).
+- **UNRESOLVED:** 0 unresolved decisions.
+- **VERDICT:** ENG REVIEW CLEARED — ready to implement. Step 0 scope accepted as-is; D2 and D3 findings fully integrated into plan (token names `--h-*`, new `--text-badge` token, SymbolSearch market badge uses `text-badge`).
+

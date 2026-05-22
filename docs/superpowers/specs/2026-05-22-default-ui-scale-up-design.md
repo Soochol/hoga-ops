@@ -260,7 +260,7 @@ not preserved during migration.
 This spec also defines updates to existing documentation. They are part
 of the implementation, not separate work.
 
-### ADR-0008 (new) — Default UI density is 1.25× base intent
+### ADR-0010 (new) — Default UI density is 1.25× base intent
 
 Single ADR capturing **the decision and its rationale only**:
 - Why the default density shifts (lived-experience preference, density
@@ -330,7 +330,7 @@ The DESIGN.md reference to this file gets parallel clarification:
 6. refactor(frontend/capture): migrate capture page components
 7. feat(frontend/chart): scale lightweight-charts via chartScale.ts
 8. docs: DESIGN.md Scale Factor section + 2-column tables +
-   Components disclaimer + mockup HTML label + ADR-0008
+   Components disclaimer + mockup HTML label + ADR-0010
 ```
 
 The order is intentional: infrastructure first so the compiler can flag
@@ -370,7 +370,7 @@ scaling only if chart layout breaks but CSS is fine).
 - [ ] DESIGN.md `## Components` section has 1-line disclaimer reframing existing px values as 1.0× base intent
 - [ ] DESIGN.md reference to approved mockup mentions "at 1.0× base intent"
 - [ ] `docs/superpowers/designs/2026-05-20-replay-viewer.html` gains a top-level comment block labeling it as 1.0× base intent reference
-- [ ] `docs/adr/0008-default-ui-density.md` written — decision + Why + Consequences only; cross-references DESIGN.md Scale Factor for implementation
+- [ ] `docs/adr/0010-default-ui-density.md` written — decision + Why + Consequences only; cross-references DESIGN.md Scale Factor for implementation
 
 **Verification**
 - [ ] `grep -rE "text-\[|w-\[[0-9]|h-\[[0-9]|style=\{\{" frontend/src/` returns zero results (excluding legitimate remnants: 1px borders, color-only inline styles)
@@ -398,7 +398,7 @@ scaling only if chart layout breaks but CSS is fine).
 - `frontend/src/**/*.tsx` — ~15-20 components migrated off hardcoded px (TabStrip preserves intentional secondary height via dedicated token)
 - `DESIGN.md` — new `## Scale Factor` section + 2-column Typography/Spacing tables + Components disclaimer + approved-mockup label
 - `docs/superpowers/designs/2026-05-20-replay-viewer.html` — top-level HTML comment block labeling as 1.0× base intent reference
-- `docs/adr/0008-default-ui-density.md` — new ADR (decision + Why + Consequences)
+- `docs/adr/0010-default-ui-density.md` — new ADR (decision + Why + Consequences)
 
 ## Out of Scope (Backlog Issues)
 
