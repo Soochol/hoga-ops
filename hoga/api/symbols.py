@@ -75,42 +75,6 @@ async def _fetch_from_pykrx() -> list[SymbolHit]:
     ]
 
 
-def _count_captured_states(data_dir: Path, code: str) -> dict[str, int]:
-    """Walk ``data/parquet/*/{code}`` + ``data/raw/*/{code}`` to bucket each
-    Stock-Date by disk state. Used by tests to verify the bucketing logic
-    on a per-symbol basis; the runtime cache build uses the single-pass
-    :func:`_build_all_captured_breakdowns` instead.
-    """
-    counts = {"complete": 0, "source_partial": 0, "client_incomplete": 0}
-    parquet_root = data_dir / "parquet"
-    if parquet_root.exists():
-        for date_dir in parquet_root.iterdir():
-            target = date_dir / code
-            if not target.exists():
-                continue
-            st = check_disk_state(data_dir, code, date_dir.name)
-            if st == DiskState.COMPLETE:
-                counts["complete"] += 1
-            elif st == DiskState.SOURCE_PARTIAL:
-                counts["source_partial"] += 1
-            elif st == DiskState.CLIENT_INCOMPLETE:
-                counts["client_incomplete"] += 1
-    # Also walk raw-only dates (no parquet/{date}/{code} but raw/{date}/{code} exists).
-    raw_root = data_dir / "raw"
-    if raw_root.exists():
-        for date_dir in raw_root.iterdir():
-            target = date_dir / code
-            if not target.exists():
-                continue
-            # Skip if parquet already counted this date.
-            if (parquet_root / date_dir.name / code).exists():
-                continue
-            st = check_disk_state(data_dir, code, date_dir.name)
-            if st == DiskState.CLIENT_INCOMPLETE:
-                counts["client_incomplete"] += 1
-    return counts
-
-
 def _is_fresh() -> bool:
     if _fetched_at_ms is None:
         return False
@@ -120,8 +84,8 @@ def _is_fresh() -> bool:
 def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
     """Walk ``data/parquet/*`` and ``data/raw/*`` ONCE, building ``{code: breakdown}``.
 
-    The naive approach (calling :func:`_count_captured_states` per symbol from
-    :func:`_do_fetch_and_populate`) is ``O(symbols × parquet_dates)`` — 6000 ×
+    A per-symbol bucketing pass called from :func:`_do_fetch_and_populate`
+    would be ``O(symbols × parquet_dates)`` — 6000 ×
     100 = 600,000 stat calls per cache rebuild. This single-pass walk is
     ``O(total_stock_date_dirs)`` — orders of magnitude fewer disk ops when the
     typical user has <200 captured Stock-Dates across all symbols.

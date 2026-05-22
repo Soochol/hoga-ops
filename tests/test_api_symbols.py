@@ -131,5 +131,5 @@ def test_captured_breakdown_classifies_states(monkeypatch, tmp_path):
     (tmp_path / "raw" / "20260520" / "005930").mkdir(parents=True)
     (tmp_path / "raw" / "20260520" / "005930" / "first_0001.tsv").write_text("")  # client_incomplete
 
-    breakdown = symbols._count_captured_states(tmp_path, "005930")
-    assert breakdown == {"complete": 1, "source_partial": 1, "client_incomplete": 1}
+    breakdowns = symbols._build_all_captured_breakdowns(tmp_path)
+    assert breakdowns["005930"] == {"complete": 1, "source_partial": 1, "client_incomplete": 1}
