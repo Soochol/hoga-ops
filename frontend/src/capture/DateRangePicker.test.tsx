@@ -143,3 +143,36 @@ describe('DateRangePicker', () => {
     expect(screen.getByText('2026.05')).toBeTruthy();
   });
 });
+
+describe('DateRangePicker reason banner', () => {
+  // Helper: mock fetch returning a CalendarResponse with an optional reason.
+  // Both useCalendar calls (left + right month) hit the same fetch mock, so
+  // the same reason is returned for both months.
+  function setupCalendarWithReason(reason: string | null) {
+    const response = { ...HISTORY_RESPONSE, reason };
+    vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+      ok: true, status: 200, json: async () => response,
+    } as Response);
+    return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  }
+
+  it('shows banner when left month has krx_credentials_missing reason', async () => {
+    const qc = setupCalendarWithReason('krx_credentials_missing');
+    render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={() => {}} />, {
+      wrapper: W(qc),
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    // calendarHints.krx_credentials_missing contains this Korean phrase
+    expect(screen.getByText(/KRX 자격증명이 없어 휴일 표시가/)).toBeTruthy();
+  });
+
+  it('hides banner when both months have null reason', async () => {
+    const qc = setupCalendarWithReason(null);
+    render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={() => {}} />, {
+      wrapper: W(qc),
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    // No banner copy should appear
+    expect(screen.queryByText(/휴일 표시가/)).toBeNull();
+  });
+});

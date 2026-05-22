@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCalendar } from '../api/calendar';
-import type { CalendarCell, CalendarResponse, CalendarStatus } from '../api/types';
+import type { CalendarCell, CalendarResponse, CalendarStatus, UpstreamCode } from '../api/types';
 
 /** Calendar cell extended with a client-only `patched_at_ms` annotation
  *  stamped by SSE handlers. The backend wire shape (CalendarCell in types.ts)
@@ -12,6 +12,7 @@ export interface EnrichedCell extends CalendarCell {
 export interface EnrichedCalendarResponse {
   cells: EnrichedCell[];
   as_of_ms: number;
+  reason?: UpstreamCode | null;
 }
 
 export const CALENDAR_QUERY_KEY = (code: string, year: number, month: number) =>
@@ -25,7 +26,7 @@ export function reconcileCalendar(
   incoming: CalendarResponse,
 ): EnrichedCalendarResponse {
   if (prior === undefined) {
-    return { cells: incoming.cells.map((c) => ({ ...c })), as_of_ms: incoming.as_of_ms };
+    return { cells: incoming.cells.map((c) => ({ ...c })), as_of_ms: incoming.as_of_ms, reason: incoming.reason };
   }
   const priorByDate = new Map(prior.cells.map((c) => [c.date, c]));
   const cells: EnrichedCell[] = incoming.cells.map((c) => {
@@ -35,7 +36,7 @@ export function reconcileCalendar(
     }
     return { ...c };
   });
-  return { cells, as_of_ms: incoming.as_of_ms };
+  return { cells, as_of_ms: incoming.as_of_ms, reason: incoming.reason };
 }
 
 /** Stamp a per-cell SSE patch with `patched_at_ms = now`. Used by useCaptureQueue

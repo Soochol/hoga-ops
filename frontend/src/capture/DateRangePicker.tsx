@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useCalendar } from './useCalendar';
 import { CalendarCell } from './CalendarCell';
 import type { CalendarStatus } from '../api/types';
+import { calendarHints } from '../api/upstream-hints';
 
 export interface DateRange {
   start: string;       // YYYYMMDD
@@ -99,6 +100,11 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
   const left = useCalendar(code, displayYear, displayMonth);
   const right = useCalendar(code, nextYear, nextMonth);
 
+  const bannerReason = left.data?.reason ?? right.data?.reason ?? null;
+  const bannerCopy = bannerReason
+    ? calendarHints[bannerReason as keyof typeof calendarHints]
+    : null;
+
   const shiftBy = (delta: number) => {
     const { year, month } = shiftMonth(displayYear, displayMonth, delta);
     setDisplayYear(year);
@@ -152,6 +158,22 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
 
   return (
     <div className="flex flex-col gap-2">
+      {bannerCopy && (
+        <div
+          role="status"
+          style={{
+            padding: '8px 12px',
+            marginBottom: 8,
+            background: 'var(--bg-input)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm, 4px)',
+            fontSize: 'var(--font-size-sm, 0.875rem)',
+            color: 'var(--text-primary)',
+          }}
+        >
+          {bannerCopy}
+        </div>
+      )}
       <div data-testid="picker-nav" className="flex items-center gap-1.5 font-medium text-sm font-mono text-fg-dim">
         <button type="button" aria-label="Previous month" onClick={() => shiftBy(-1)} className={navBtnCls}>‹</button>
         <select
