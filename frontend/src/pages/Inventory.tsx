@@ -60,7 +60,7 @@ export default function Inventory() {
   return (
     <div className="p-6 h-full overflow-auto">
       <h2 className="text-md font-semibold mb-4">Inventory ({rows.length})</h2>
-      <table className="w-full border-collapse font-mono text-[11.5px] tabular-nums">
+      <table className="w-full border-collapse font-mono text-sm tabular-nums">
         <thead className="bg-bg-subtle">
           <tr>
             <Th sortKey="code" current={sortKey} dir={sortDir} onClick={onHeader}>Code</Th>
@@ -117,7 +117,7 @@ function Th({
   return (
     <th
       onClick={() => onClick(sortKey)}
-      className={`px-3 py-2 border-b cursor-pointer select-none text-[10.5px] uppercase tracking-wider font-semibold text-fg-dimmer hover:text-fg ${
+      className={`px-3 py-2 border-b cursor-pointer select-none text-xs uppercase tracking-wider font-semibold text-fg-dimmer hover:text-fg ${
         right ? 'text-right' : 'text-left'
       } ${active ? 'text-fg' : ''}`}
     >

@@ -66,7 +66,7 @@ export function CaptureQueue() {
   };
 
   if (queue === undefined) {
-    return <div style={{ padding: 12, color: 'var(--fg-dim)' }}>Loading queue…</div>;
+    return <div className="p-3 text-fg-dim">Loading queue…</div>;
   }
 
   const totalRows = queue.active.length + queue.queued.length + queue.done.length;
@@ -74,18 +74,9 @@ export function CaptureQueue() {
     return (
       <div
         data-testid="queue-empty"
-        style={{
-          height: '100%',
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          gap: 8,
-          padding: 24,
-          color: 'var(--fg-dim)',
-          font: '400 12px "Geist Sans", sans-serif',
-          textAlign: 'center',
-        }}
+        className="h-full flex flex-col items-center justify-center gap-2 p-6 text-fg-dim font-normal text-sm text-center"
       >
-        <div style={{ font: '500 13px "Geist Sans", sans-serif', color: 'var(--fg)' }}>
+        <div className="font-medium text-base text-fg">
           큐가 비어 있습니다
         </div>
         <div>
@@ -108,9 +99,9 @@ export function CaptureQueue() {
   const shouldVirtualize = allRows.length > VIRTUALIZE_THRESHOLD;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 8px' }}>
-        <div style={{ flex: 1, font: '500 11px "Geist Mono", monospace', color: 'var(--fg-dim)', fontVariantNumeric: 'tabular-nums' }}>
+    <div className="flex flex-col gap-2 h-full">
+      <div className="flex items-center gap-3 px-sm">
+        <div className="flex-1 font-medium text-sm font-mono text-fg-dim tabular-nums">
           {summary.done} of {summary.total} done · {summary.failed} failed · {summary.capturing} capturing
         </div>
         <button
@@ -128,21 +119,15 @@ export function CaptureQueue() {
         >Dismiss Done</button>
       </div>
 
-      <div style={{ height: 4, background: 'var(--bg-input)', borderRadius: 1, position: 'relative' }}>
-        <div style={{
-          position: 'absolute', left: 0, top: 0, bottom: 0,
-          width: `${summary.total > 0 ? (summary.done / summary.total) * 100 : 0}%`,
-          background: 'var(--accent)', borderRadius: 1,
-        }} />
+      <div className="h-1 bg-bg-input rounded-sm relative">
+        <div style={{ width: `${summary.total > 0 ? (summary.done / summary.total) * 100 : 0}%` }}
+          className="absolute left-0 top-0 bottom-0 bg-accent rounded-sm" />
       </div>
 
       {queue.paused && (
-        <div role="alert" style={{
-          padding: '8px 12px', background: 'rgba(245,158,11,0.10)', border: '1px solid var(--warn)',
-          borderRadius: 4, display: 'flex', alignItems: 'center', gap: 12,
-          font: '500 11px "Geist Mono", monospace', color: 'var(--warn)',
-        }}>
-          <span style={{ flex: 1 }}>Cookie expired · refresh .cookie on disk, then resume</span>
+        <div role="alert" className="py-sm px-3 flex items-center gap-3 font-medium text-sm font-mono rounded-md border border-[--warn]"
+          style={{ background: 'rgba(245,158,11,0.10)', color: 'var(--warn)' }}>
+          <span className="flex-1">Cookie expired · refresh .cookie on disk, then resume</span>
           <button type="button" onClick={() => resumeQueue.mutate()} style={ghostButton()}>Refresh &amp; Resume</button>
           <button type="button" onClick={() => cancelAll.mutate()} style={ghostButton()}>Cancel All</button>
         </div>
@@ -151,7 +136,7 @@ export function CaptureQueue() {
       <div
         data-testid="queue-list"
         data-virtualized={shouldVirtualize}
-        style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 4 }}
+        className="flex-1 overflow-y-auto border rounded-md"
       >
         {shouldVirtualize
           ? <VirtualList rows={allRows} nameByCode={nameByCode} onCancel={cancelItem.mutate} onRetry={onRetry} />
@@ -217,7 +202,7 @@ function ghostButton(borderColor = 'var(--border-strong)', fgColor = 'var(--fg-d
     color: fgColor,
     borderRadius: 4,
     padding: '4px 10px',
-    font: '500 10.5px "Geist Sans", sans-serif',
+    font: '500 var(--text-xs) "Geist Sans", sans-serif',
     letterSpacing: '0.04em',
     cursor: 'pointer',
   };

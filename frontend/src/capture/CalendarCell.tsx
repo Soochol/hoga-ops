@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type MouseEventHandler } from 'react';
+import { useState, type MouseEventHandler } from 'react';
 import { markerFor } from './useCalendar';
 import type { CalendarStatus } from '../api/types';
 
@@ -53,7 +53,7 @@ export function CalendarCell({ date, status, selected = false, inRange = false, 
   else if (hovered && !disabled) background = 'var(--bg-input-hover)';   // F1
 
   const color: string = selected ? 'var(--bg)' : baseColor;
-  const cursor: CSSProperties['cursor'] = disabled ? 'not-allowed' : 'pointer';
+  const cursor = disabled ? 'not-allowed' : 'pointer';
 
   const marker = markerFor(status);
   const markerColor = STATUS_BADGE_COLOR[status];
@@ -76,31 +76,20 @@ export function CalendarCell({ date, status, selected = false, inRange = false, 
       title={tooltipFor(status, date)}        // F2: spec §4.2 tooltip
       aria-label={tooltipFor(status, date)}
       style={{
-        position: 'relative',
-        width: 32, height: 32,
-        borderRadius: 4,
-        border: 'none',
-        padding: 0,
         background,
         color,
         cursor,
-        font: '500 12px "Geist Mono", monospace',
-        fontVariantNumeric: 'tabular-nums',
         // Focus ring per DESIGN.md focus state (teal accent border).
-        outline: 'none',
         boxShadow: hovered && !disabled && !selected ? '0 0 0 1px var(--accent)' : 'none',
       }}
+      className="relative w-8 h-8 rounded-md border-none p-0 font-medium text-sm font-mono tabular-nums outline-none"
     >
       {day}
       {marker !== null && (
         <span
           aria-hidden
-          style={{
-            position: 'absolute',
-            top: 1, right: 2,
-            fontSize: 9, lineHeight: 1,
-            color: markerColor ?? 'inherit',
-          }}
+          style={{ color: markerColor ?? 'inherit' }}
+          className="absolute top-px right-0.5 text-xs leading-none"
         >
           {marker}
         </span>

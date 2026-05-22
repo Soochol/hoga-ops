@@ -57,10 +57,10 @@ function MonthGrid({
   }
   return (
     <div>
-      <div style={{ font: '500 11px "Geist Mono", monospace', color: 'var(--fg-dim)', marginBottom: 6 }}>
+      <div className="font-medium text-sm font-mono text-fg-dim mb-1.5">
         {`${year}.${String(month).padStart(2, '0')}`}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 32px)', gap: 2 }}>
+      <div className="grid grid-cols-[repeat(7,2rem)] gap-0.5">
         {cells}
       </div>
     </div>
@@ -151,17 +151,14 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
   const atReference = displayYear === referenceYear && displayMonth === referenceMonth;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div data-testid="picker-nav" style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        font: '500 11px "Geist Mono", monospace', color: 'var(--fg-dim)',
-      }}>
-        <button type="button" aria-label="Previous month" onClick={() => shiftBy(-1)} style={navBtn()}>‹</button>
+    <div className="flex flex-col gap-2">
+      <div data-testid="picker-nav" className="flex items-center gap-1.5 font-medium text-sm font-mono text-fg-dim">
+        <button type="button" aria-label="Previous month" onClick={() => shiftBy(-1)} className={navBtnCls}>‹</button>
         <select
           aria-label="Year"
           value={displayYear}
           onChange={(e) => setDisplayYear(Number(e.target.value))}
-          style={navSelect()}
+          className={navSelectCls}
         >
           {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
@@ -169,21 +166,21 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
           aria-label="Month"
           value={displayMonth}
           onChange={(e) => setDisplayMonth(Number(e.target.value))}
-          style={navSelect()}
+          className={navSelectCls}
         >
           {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
             <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
           ))}
         </select>
-        <button type="button" aria-label="Next month" onClick={() => shiftBy(1)} style={navBtn()}>›</button>
+        <button type="button" aria-label="Next month" onClick={() => shiftBy(1)} className={navBtnCls}>›</button>
         <button
           type="button"
           onClick={goToToday}
           disabled={atReference}
-          style={{ ...navBtn(), padding: '2px 8px', opacity: atReference ? 0.4 : 1 }}
+          className={`${navBtnCls} px-2${atReference ? ' opacity-40' : ''}`}
         >Today</button>
       </div>
-      <div style={{ display: 'flex', gap: 16 }}>
+      <div className="flex gap-4">
         <MonthGrid code={code} year={displayYear} month={displayMonth} value={displayValue} statusByDate={statusByDate} onPick={onPick} />
         <MonthGrid code={code} year={nextYear} month={nextMonth} value={displayValue} statusByDate={statusByDate} onPick={onPick} />
       </div>
@@ -191,27 +188,5 @@ export function DateRangePicker({ code, referenceYear, referenceMonth, value, on
   );
 }
 
-function navBtn(): React.CSSProperties {
-  return {
-    background: 'transparent',
-    borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border-strong)',
-    color: 'var(--fg-dim)',
-    borderRadius: 4,
-    padding: '2px 6px',
-    font: '500 11px "Geist Mono", monospace',
-    cursor: 'pointer',
-    lineHeight: 1,
-  };
-}
-
-function navSelect(): React.CSSProperties {
-  return {
-    background: 'var(--bg-input)',
-    borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
-    color: 'var(--fg)',
-    borderRadius: 4,
-    padding: '2px 4px',
-    font: '500 11px "Geist Mono", monospace',
-    cursor: 'pointer',
-  };
-}
+const navBtnCls = 'bg-transparent border border-border-strong text-fg-dim rounded-md py-[0.1rem] px-xs font-medium text-sm font-mono cursor-pointer leading-none';
+const navSelectCls = 'bg-bg-input border text-fg rounded-md py-[0.1rem] px-xs font-medium text-sm font-mono cursor-pointer';

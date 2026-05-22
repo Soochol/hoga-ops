@@ -35,23 +35,12 @@ export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: Capture
         aria-label={`Capture row ${item.code} ${item.date} ${item.phase}. Press Enter to ${expanded ? 'collapse' : 'expand'} details.`}
         onClick={() => setExpanded((v) => !v)}
         onKeyDown={onKeyDown}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '20px 90px 60px 1fr 90px 50px 50px 120px 24px',
-          alignItems: 'center', gap: 8,
-          height: 36, padding: '0 8px',
-          borderBottom: '1px solid var(--border)',
-          font: '500 11px "Geist Mono", monospace',
-          fontVariantNumeric: 'tabular-nums',
-          color: 'var(--fg)',
-          cursor: 'pointer',
-          outline: 'none',
-        }}
+        className="grid grid-cols-[1rem_4.5rem_3rem_1fr_4.5rem_2.5rem_2.5rem_6rem_1.2rem] items-center gap-2 h-capture-row px-sm border-b font-medium text-sm font-mono tabular-nums text-fg cursor-pointer outline-none"
       >
         <span>{descriptor.icon}</span>
         <span>{item.date}</span>
         <span>{item.code}</span>
-        <span style={{ font: '400 12px "Geist Sans", sans-serif', color: 'var(--fg-dim)' }}>
+        <span className="font-normal text-sm text-fg-dim">
           {symbolName}
           {item.force_retry && (
             <span title="Force re-capture" style={{
@@ -62,33 +51,27 @@ export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: Capture
             }}>⚠ force</span>
           )}
         </span>
-        <span style={{ background: descriptor.chipColor, padding: '2px 6px', borderRadius: 3, color: 'var(--fg-dim)' }}>
+        <span style={{ background: descriptor.chipColor }} className="py-[0.1rem] px-xs rounded-md text-fg-dim">
           {item.phase}
         </span>
         <span>{item.progress?.pages_done ?? '–'}</span>
         <span>{item.progress?.events_seen ?? '–'}</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ flex: 1, height: 2, background: 'var(--bg-input)', borderRadius: 1, position: 'relative' }}>
-            <span style={{
-              position: 'absolute', left: 0, top: 0, bottom: 0,
-              width: `${item.progress?.estimate_pct ?? 0}%`,
-              background: 'var(--accent)', borderRadius: 1,
-            }} />
+        <span className="flex items-center gap-1.5">
+          <span className="flex-1 h-0.5 bg-bg-input rounded-sm relative">
+            <span style={{ width: `${item.progress?.estimate_pct ?? 0}%` }}
+              className="absolute left-0 top-0 bottom-0 bg-accent rounded-sm" />
           </span>
-          <span style={{ width: 28, textAlign: 'right', color: 'var(--fg-dim)' }}>
+          <span className="w-7 text-right text-fg-dim">
             {item.progress?.estimate_pct !== undefined ? `${item.progress.estimate_pct}%` : '–'}
           </span>
         </span>
-        <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <span className="flex justify-end">
           {showCancel && (
             <button
               type="button"
               aria-label="Cancel"
               onClick={(e) => { e.stopPropagation(); onCancel(item.item_id); }}
-              style={{
-                background: 'transparent', border: 'none', color: 'var(--fg-dim)',
-                cursor: 'pointer', fontSize: 14, padding: 0,
-              }}
+              className="bg-transparent border-none text-fg-dim cursor-pointer text-sm p-0"
             >✕</button>
           )}
           {showRetry && (
@@ -96,10 +79,7 @@ export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: Capture
               type="button"
               aria-label="Retry"
               onClick={(e) => { e.stopPropagation(); onRetry(item); }}
-              style={{
-                background: 'transparent', border: 'none', color: 'var(--accent)',
-                cursor: 'pointer', fontSize: 14, padding: 0,
-              }}
+              className="bg-transparent border-none text-accent cursor-pointer text-sm p-0"
             >↻</button>
           )}
         </span>

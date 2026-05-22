@@ -44,7 +44,7 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontFamily: 'Geist Sans, sans-serif' }}>
+    <div className="flex flex-col gap-4 font-ui">
       <section>
         <Label>Symbol</Label>
         <SymbolSearch value={symbol} onChange={setSymbol} />
@@ -63,7 +63,7 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
 
       <section>
         <Label>Options</Label>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: 'var(--fg)' }}>
+        <label className="flex gap-2 items-center text-sm text-fg">
           <input
             type="checkbox"
             checked={forceRetry}
@@ -80,20 +80,17 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
         style={{
           background: valid ? 'var(--accent)' : 'var(--bg-input)',
           color: valid ? 'var(--bg)' : 'var(--fg-dimmer)',
-          border: 'none', borderRadius: 6,
-          padding: '10px 18px',
-          font: '600 13px "Geist Sans", sans-serif',
-          cursor: valid ? 'pointer' : 'not-allowed',
         }}
+        className="border-none rounded-lg py-2.5 px-4.5 font-semibold text-base cursor-pointer disabled:cursor-not-allowed"
       >
         ▶ Start Capture
       </button>
 
       {error !== null && (
-        <div role="alert" style={{ fontSize: 11, color: 'var(--down)' }}>{error}</div>
+        <div role="alert" className="text-xs text-down">{error}</div>
       )}
 
-      <div style={{ marginTop: 12, fontSize: 11, color: 'var(--fg-dim)' }}>
+      <div className="mt-3 text-xs text-fg-dim">
         Legend: ✓ complete · ⚠ partial · ✕ broken · 🔒 today &lt; 18:00 KST
       </div>
     </div>
@@ -102,10 +99,6 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
 
 function Label({ children }: { children: string }) {
   return (
-    <div style={{
-      font: '600 10.5px "Geist Sans", sans-serif',
-      letterSpacing: '0.08em', textTransform: 'uppercase',
-      color: 'var(--fg-dim)', marginBottom: 6,
-    }}>{children}</div>
+    <div className="font-semibold text-xs tracking-widest uppercase text-fg-dim mb-1.5">{children}</div>
   );
 }

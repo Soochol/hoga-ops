@@ -63,23 +63,10 @@ export default function Capture() {
   return (
     <div
       ref={containerRef}
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `${leftPct}fr 12px ${100 - leftPct}fr`,
-        gap: 0,
-        padding: 16,
-        height: '100%',
-        background: 'var(--bg)',
-        color: 'var(--fg)',
-      }}
+      style={{ gridTemplateColumns: `${leftPct}fr 12px ${100 - leftPct}fr` }}
+      className="grid gap-0 p-4 h-full bg-bg text-fg"
     >
-      <section style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border)',
-        borderRadius: 6,
-        padding: 16,
-        overflowY: 'auto',
-      }}>
+      <section className="bg-bg-card border rounded-lg p-4 overflow-y-auto">
         <CaptureForm referenceYear={year} referenceMonth={month} />
       </section>
 
@@ -93,13 +80,7 @@ export default function Capture() {
         onMouseDown={onDividerDown}
         onDoubleClick={() => setLeftPct(DEFAULT_LEFT_PCT)}
         title="Drag to resize · Double-click to reset"
-        style={{
-          cursor: 'col-resize',
-          display: 'flex',
-          alignItems: 'stretch',
-          justifyContent: 'center',
-          background: 'transparent',
-        }}
+        className="cursor-col-resize flex items-stretch justify-center bg-transparent"
       >
         <div
           aria-hidden
@@ -120,14 +101,7 @@ export default function Capture() {
         />
       </div>
 
-      <section style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border)',
-        borderRadius: 6,
-        padding: 12,
-        display: 'flex', flexDirection: 'column',
-        minHeight: 0,
-      }}>
+      <section className="bg-bg-card border rounded-lg p-3 flex flex-col min-h-0">
         <CaptureQueue />
       </section>
     </div>

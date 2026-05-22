@@ -85,8 +85,8 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
   };
 
   return (
-    <div style={{ position: 'relative', fontFamily: 'Geist Sans, sans-serif' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="relative font-ui">
+      <div className="flex items-center gap-2">
         <input
           ref={inputRef}
           type="text"
@@ -95,50 +95,32 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder="종목명 또는 6자리 코드"
-          style={{
-            flex: 1,
-            background: 'var(--bg-input)',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            color: 'var(--fg)',
-            padding: '8px 10px',
-            fontSize: 13,
-          }}
+          className="flex-1 bg-bg-input border rounded-lg text-fg py-sm px-sm text-base"
         />
         <span
           data-testid="symbol-cache-status"
           data-status={cacheStatus}
           title={`Symbols cache: ${cacheStatus}`}
-          style={{ color: STATUS_COLOR[cacheStatus], fontSize: 14, lineHeight: 1 }}
+          style={{ color: STATUS_COLOR[cacheStatus] }}
+          className="text-sm leading-none"
         >
           {STATUS_LABEL[cacheStatus]}
         </span>
       </div>
       {cacheStatus === 'unavailable' && (
-        <div style={{ marginTop: 6, fontSize: 11, color: 'var(--fg-dim)' }}>
-          종목 목록 미가용 — 6자리 코드 입력 후 <kbd style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 3, padding: '0 4px', fontFamily: 'inherit' }}>Enter</kbd> 로 확정.
+        <div className="mt-1.5 text-xs text-fg-dim">
+          종목 목록 미가용 — 6자리 코드 입력 후 <kbd className="bg-bg-input border rounded-md px-xs font-[inherit]">Enter</kbd> 로 확정.
         </div>
       )}
       {dropdownVisible && (
         <div
           role="listbox"
-          style={{
-            position: 'absolute', zIndex: 10,
-            top: '100%', left: 0, right: 0, marginTop: 4,
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-strong)',
-            borderRadius: 6,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-            maxHeight: 320, overflowY: 'auto',
-          }}
+          style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+          className="absolute z-10 top-full left-0 right-0 mt-1 bg-bg-card border-border-strong border rounded-lg max-h-80 overflow-y-auto"
         >
           {isEmpty ? (
             // F3: empty state — tells the user the input is processed but matched nothing.
-            <div style={{
-              padding: '12px 10px',
-              font: '400 12px "Geist Sans", sans-serif',
-              color: 'var(--fg-dim)',
-            }}>
+            <div className="py-md px-sm font-normal text-sm text-fg-dim">
               검색 결과가 없습니다. 종목명 또는 6자리 코드를 확인하세요.
             </div>
           ) : (
@@ -161,30 +143,16 @@ function SymbolRow({ hit, highlighted, onClick }: { hit: SymbolHit; highlighted:
       aria-selected={highlighted}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      style={{
-        padding: '8px 10px',
-        background: highlighted ? 'rgba(20,184,166,0.10)' : 'transparent',
-        display: 'grid',
-        gridTemplateColumns: '1fr auto auto auto',
-        gap: 10,
-        alignItems: 'center',
-        cursor: 'pointer',
-      }}
+      style={{ background: highlighted ? 'rgba(20,184,166,0.10)' : 'transparent' }}
+      className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center py-sm px-sm cursor-pointer"
     >
-      <span style={{ font: '400 13px "Geist Sans", sans-serif', color: 'var(--fg)' }}>{hit.name}</span>
-      <span style={{ font: '500 11px "Geist Mono", monospace', color: 'var(--fg-dim)', fontVariantNumeric: 'tabular-nums' }}>{hit.code}</span>
-      <span style={{
-        border: '1px solid var(--border-strong)', borderRadius: 4, padding: '0 4px',
-        font: '600 8.5px "Geist Sans", sans-serif', letterSpacing: '0.06em',
-        color: 'var(--fg-dim)',
-      }}>{hit.market}</span>
+      <span className="font-normal text-base text-fg">{hit.name}</span>
+      <span className="font-medium text-sm font-mono text-fg-dim tabular-nums">{hit.code}</span>
+      <span className="border border-border-strong rounded-md px-xs font-semibold text-badge tracking-wider text-fg-dim">{hit.market}</span>
       <span
         title={breakdown}
-        style={{
-          font: '500 10px "Geist Mono", monospace',
-          color: hit.captured_count > 0 ? 'var(--accent)' : 'var(--fg-dimmer)',
-          fontVariantNumeric: 'tabular-nums',
-        }}
+        style={{ color: hit.captured_count > 0 ? 'var(--accent)' : 'var(--fg-dimmer)' }}
+        className="font-medium text-xs font-mono tabular-nums"
       >
         {countText}
       </span>
