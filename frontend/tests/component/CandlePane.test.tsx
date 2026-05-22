@@ -90,4 +90,41 @@ describe('CandlePane', () => {
     const passed = series.setData.mock.calls[0][0];
     expect(passed[0].color).not.toEqual(passed[1].color); // regular ≠ muted
   });
+
+  it('drops pre-open auction candles that fall outside any segment', () => {
+    const { chart, series } = makeMockChart();
+    const sessionOpenMs = 1_778_457_600_000;
+    const bundle: any = {
+      session_open_ms: sessionOpenMs,
+      candles: [
+        // pre-open auction (8:30 KST, 30 min before sessionOpen) — must be dropped
+        { ts_ms: sessionOpenMs - 30 * 60_000, open: 27050, close: 27050, high: 27050, low: 27050, vol_a: 111, vol_b: 0 },
+        // session-open candle — kept
+        { ts_ms: sessionOpenMs, open: 27050, close: 27100, high: 27100, low: 27050, vol_a: 200, vol_b: 50 },
+        // mid-session candle — kept
+        { ts_ms: sessionOpenMs + 60_000, open: 27100, close: 27090, high: 27110, low: 27080, vol_a: 50, vol_b: 80 },
+      ],
+    };
+    render(
+      <CandlePane
+        chart={chart}
+        bundle={bundle}
+        segments={[
+          {
+            date: '20260511',
+            sessionOpenMs,
+            sessionCloseMs: sessionOpenMs + 23_400_000,
+            virtualStart: 0,
+          },
+        ]}
+      />,
+    );
+    expect(series.setData).toHaveBeenCalledTimes(1);
+    const data = series.setData.mock.calls[0][0];
+    expect(data).toHaveLength(2); // pre-open dropped
+    // Times must be strictly ascending and non-zero-duplicate
+    expect(data[0].time).toBe(0);                    // session-open at virtualStart=0
+    expect(data[1].time).toBe(60);                   // +60s in virtual axis (seconds)
+    expect(data[0].time).toBeLessThan(data[1].time); // ASC ordered
+  });
 });

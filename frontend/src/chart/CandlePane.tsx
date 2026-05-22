@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { CandlestickSeries, type IChartApi } from 'lightweight-charts';
 import type { SessionBundle } from '../api/types';
-import { type Segment, realToVirtual } from '../util/time';
+import { type Segment, realToVirtual, isWithinSessions } from '../util/time';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = {
@@ -51,23 +51,29 @@ export default function CandlePane({ chart, bundle, segments, paneIndex = 0 }: P
     // muted (continuous-trading candles inside the Regular Session keep their
     // up/down color).
     const auctionThresholdMs = bundle.session_open_ms + (6 * 3600 + 20 * 60) * 1000;
-    const data = bundle.candles.map((c) => {
-      const inAuctionOrAfter = c.ts_ms >= auctionThresholdMs;
-      const color = inAuctionOrAfter ? muted : c.close >= c.open ? up : down;
-      return {
-        // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
-        // The `as any` cast keeps us free of the library's branded `Time`
-        // type without dragging it into the public API.
-        time: (realToVirtual(segments, c.ts_ms) / 1000) as any,
-        open: c.open,
-        close: c.close,
-        high: c.high,
-        low: c.low,
-        color,
-        borderColor: color,
-        wickColor: color,
-      };
-    });
+    // Drop pre-open auction candles (8:30-9:00 KST) and any other points that
+    // fall outside the regular-session segments — they would all collapse to
+    // virtual-time=0 and lightweight-charts.setData would throw "asc ordered
+    // by time" on the duplicate. See util/time.ts:isWithinSessions docs.
+    const data = bundle.candles
+      .filter((c) => isWithinSessions(segments, c.ts_ms))
+      .map((c) => {
+        const inAuctionOrAfter = c.ts_ms >= auctionThresholdMs;
+        const color = inAuctionOrAfter ? muted : c.close >= c.open ? up : down;
+        return {
+          // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
+          // The `as any` cast keeps us free of the library's branded `Time`
+          // type without dragging it into the public API.
+          time: (realToVirtual(segments, c.ts_ms) / 1000) as any,
+          open: c.open,
+          close: c.close,
+          high: c.high,
+          low: c.low,
+          color,
+          borderColor: color,
+          wickColor: color,
+        };
+      });
     series.setData(data);
     return () => {
       chart.removeSeries(series);
