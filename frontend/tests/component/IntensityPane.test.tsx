@@ -35,21 +35,23 @@ describe('IntensityPane', () => {
   it('renders a canvas overlay', () => {
     const { chart } = makeMockChart();
     const bundle: any = {
-      depth_intensity: {
-        bucket_ms: 5000,
-        price_min: 70000,
-        price_max: 71000,
-        price_step: 100,
-        times: [1, 2],
-        bid_grid: [
-          [0.5, 0],
-          [0, 0.3],
-        ],
-        ask_grid: [
-          [0, 0.4],
-          [0.6, 0],
-        ],
-      },
+      depth_intensity_by_day: [
+        {
+          bucket_ms: 5000,
+          price_min: 70000,
+          price_max: 71000,
+          price_step: 100,
+          times: [1, 2],
+          bid_grid: [
+            [0.5, 0],
+            [0, 0.3],
+          ],
+          ask_grid: [
+            [0, 0.4],
+            [0.6, 0],
+          ],
+        },
+      ],
     };
     const { container } = render(
       <IntensityPane
@@ -71,15 +73,17 @@ describe('IntensityPane', () => {
   it('subscribes to chart visible range and cleans up on unmount', () => {
     const { chart, ts } = makeMockChart();
     const bundle: any = {
-      depth_intensity: {
-        bucket_ms: 5000,
-        price_min: 70000,
-        price_max: 71000,
-        price_step: 100,
-        times: [1],
-        bid_grid: [[0.1]],
-        ask_grid: [[0.1]],
-      },
+      depth_intensity_by_day: [
+        {
+          bucket_ms: 5000,
+          price_min: 70000,
+          price_max: 71000,
+          price_step: 100,
+          times: [1],
+          bid_grid: [[0.1]],
+          ask_grid: [[0.1]],
+        },
+      ],
     };
     const { unmount } = render(
       <IntensityPane

@@ -6,7 +6,6 @@ import ChartStage from '../chart/ChartStage';
 import ChartErrorBoundary from '../chart/ChartErrorBoundary';
 import { CursorSidebarConnected } from '../sidebar/CursorSidebar';
 import RangeAdjustmentNotice from './RangeAdjustmentNotice';
-import type { SessionBundle } from '../api/types';
 
 /**
  * Workarea — wires `useRange` to `ChartStage` + `CursorSidebarConnected`
@@ -17,9 +16,6 @@ import type { SessionBundle } from '../api/types';
  *  - `isLoading` → `setStatus(tab.id, 'loading')`
  *  - `isError`   → `setStatus(tab.id, 'error', message)`
  *  - `bundle`    → `putBundle(tab.id, bundle.from_date, bundle)` (also sets status to `'loaded'`)
- *
- * NOTE: `ChartStage` still types `bundle: SessionBundle | null` — Task 17
- * retypes to `RangeBundle | null`. For this task we cast at the boundary.
  */
 export default function Workarea({ tab }: { tab: Tab }) {
   const code = tab.selection?.code ?? null;
@@ -95,8 +91,7 @@ export default function Workarea({ tab }: { tab: Tab }) {
         <ChartErrorBoundary>
           <ChartStage
             key={`${code}:${fromDate}:${toDate}`}
-            // Task 17 retypes ChartStage to RangeBundle; cast at boundary for now.
-            bundle={(bundle ?? null) as unknown as SessionBundle | null}
+            bundle={bundle ?? null}
             segments={segments}
           />
         </ChartErrorBoundary>

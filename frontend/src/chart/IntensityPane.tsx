@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { LineSeries, type IChartApi } from 'lightweight-charts';
-import type { SessionBundle } from '../api/types';
+import type { RangeBundle } from '../api/types';
 import { type Segment, realToVirtual } from '../util/time';
 
 // RGB bytes for the two sides. ImageData writes raw RGBA so we keep hex out of
@@ -12,7 +12,7 @@ const DOWN_RGB = [0xf4, 0x3f, 0x5e] as const; // --down
 
 type Props = {
   chart: IChartApi;
-  bundle: SessionBundle;
+  bundle: RangeBundle;
   segments: Segment[];
   /**
    * Pane index to overlay onto. When provided, the canvas is portaled into the
@@ -107,7 +107,13 @@ export default function IntensityPane({ chart, bundle, segments, paneIndex }: Pr
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const di = bundle.depth_intensity;
+    // RangeBundle carries one DepthIntensity grid per segment (ADR-0013). Until
+    // a follow-up wires per-segment iteration (Task 19-style adaptation for
+    // intensity is not yet planned — flagged in Task 17a), render the first
+    // day's grid so the type retype stays behaviour-preserving for single-day
+    // ranges (the only case the prior single-grid code rendered correctly).
+    const di = bundle.depth_intensity_by_day[0];
+    if (!di) return;
     const bins = di.bid_grid[0]?.length ?? 0;
     if (bins === 0 || di.times.length === 0) return;
 

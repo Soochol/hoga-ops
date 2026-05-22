@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { CandlestickSeries, type IChartApi } from 'lightweight-charts';
-import type { SessionBundle } from '../api/types';
+import type { RangeBundle } from '../api/types';
 import {
   type Segment,
   findSegmentByReal,
@@ -17,7 +17,7 @@ const TOKEN_SPEC = {
 
 type Props = {
   chart: IChartApi;
-  bundle: SessionBundle;
+  bundle: RangeBundle;
   segments: Segment[];
   /** Pane index for multi-pane split. Defaults to 0 (top pane). */
   paneIndex?: number;

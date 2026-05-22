@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi } from 'lightweight-charts';
-import type { SessionBundle } from '../api/types';
+import type { RangeBundle, SessionBundle } from '../api/types';
 import { type Segment, virtualToReal } from '../util/time';
 import { resolveTokens } from '../util/tokens';
 import { CHART_LAYOUT_OPTIONS, CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
@@ -21,11 +21,12 @@ const CHART_TOKEN_SPEC = {
 
 export type ChartStageProps = {
   /**
-   * The full session payload (candles, ratio series, intensity matrix, fill
-   * strength, etc.). When `null` (loading / error), no panes mount and the
-   * stage shows only the bare chart chrome.
+   * The full range payload (candles, ratio series, intensity matrix, fill
+   * strength, etc.) for the Stock-Date Range (ADR-0013). When `null`
+   * (loading / error), no panes mount and the stage shows only the bare
+   * chart chrome.
    */
-  bundle: SessionBundle | null;
+  bundle: RangeBundle | null;
   /**
    * Stitched time-axis segments for the multi-day virtual timeline (Task 6.1).
    * Each pane converts real-ms data to the virtual axis using these.
@@ -204,7 +205,11 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
           <div data-pane="volume-profile" className="hidden">
             <VolumeProfileOverlay
               chart={chart}
-              bundle={bundle}
+              // Task 19 retypes VolumeProfileOverlay to RangeBundle (rename
+              // mode 'composite' → 'range', switch to volume_profile_range /
+              // volume_profile_by_day). Until then, cast at the boundary so
+              // 17a remains a clean type-only diff.
+              bundle={bundle as unknown as SessionBundle}
               segments={segments}
               mode="composite"
               paneIndex={0}

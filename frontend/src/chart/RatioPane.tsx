@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { LineSeries, type IChartApi } from 'lightweight-charts';
-import type { SessionBundle } from '../api/types';
+import type { RangeBundle } from '../api/types';
 import { type Segment, realToVirtual, isWithinSessions } from '../util/time';
 import { quoteImbalance } from '../util/imbalance';
 import { resolveTokens } from '../util/tokens';
@@ -9,7 +9,7 @@ const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
 
 type Props = {
   chart: IChartApi;
-  bundle: SessionBundle;
+  bundle: RangeBundle;
   segments: Segment[];
   /** Pane index for multi-pane split. Defaults to 0. */
   paneIndex?: number;
