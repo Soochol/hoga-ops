@@ -1,4 +1,21 @@
-import type { QueueItem } from '../api/types';
+import type { CaptureError, QueueItem, UpstreamCode } from '../api/types';
+import { captureFinishedHints } from '../api/upstream-hints';
+
+function ErrorBlock({ error }: { error: CaptureError }) {
+  const knownHint = (error.code in captureFinishedHints)
+    ? captureFinishedHints[error.code as UpstreamCode]
+    : null;
+  return (
+    <>
+      <div>{knownHint ?? <>{error.code}: {error.message}{error.at_page != null ? ` (page ${error.at_page})` : ''}</>}</div>
+      {knownHint && (
+        <div style={{ fontSize: 'var(--font-size-xs, 0.85em)', opacity: 0.8, marginTop: 4 }}>
+          {error.message}{error.at_page != null ? ` (page ${error.at_page})` : ''}
+        </div>
+      )}
+    </>
+  );
+}
 
 function formatKstClock(unixMs: number | null): string {
   if (unixMs === null) return '–';
@@ -31,8 +48,7 @@ export function CaptureRowDetail({ item }: { item: QueueItem }) {
         <>
           <span className="text-down">error</span>
           <span className="text-down">
-            {item.error.code}: {item.error.message}
-            {item.error.at_page !== null && item.error.at_page !== undefined ? ` (page ${item.error.at_page})` : ''}
+            <ErrorBlock error={item.error} />
           </span>
         </>
       )}

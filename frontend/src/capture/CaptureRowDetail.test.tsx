@@ -21,12 +21,33 @@ describe('CaptureRowDetail', () => {
   });
 
   it('shows error message verbatim when item.error is set', () => {
-    render(<CaptureRowDetail item={{ ...base, phase: 'failed', error: { code: 'cookie_expired', message: 'cookie missing on page 5', at_page: 5 } }} />);
-    expect(screen.getByText(/cookie missing on page 5/)).toBeTruthy();
+    render(<CaptureRowDetail item={{ ...base, phase: 'failed', error: { code: 'internal_error', message: 'unexpected internal failure', at_page: null } }} />);
+    expect(screen.getByText(/internal_error: unexpected internal failure/)).toBeTruthy();
   });
 
   it('omits error section when item.error is null', () => {
     render(<CaptureRowDetail item={base} />);
     expect(screen.queryByText(/error/i)).toBeNull();
+  });
+});
+
+describe('CaptureRowDetail UpstreamCode map-driven copy', () => {
+  it('shows captureFinishedHints copy when error.code is an UpstreamCode (cookie_expired)', () => {
+    render(
+      <CaptureRowDetail
+        item={{
+          ...base,
+          phase: 'failed',
+          error: {
+            code: 'cookie_expired',
+            message: 'cookie missing on page 5',
+            at_page: 5,
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText(/캡처 실패 — hogaplay 쿠키 만료/)).toBeTruthy();
+    // The raw message should still be visible (preserved as a debug-context line).
+    expect(screen.getByText(/cookie missing on page 5/)).toBeTruthy();
   });
 });
