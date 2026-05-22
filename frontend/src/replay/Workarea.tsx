@@ -1,52 +1,56 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useTabsStore, type Tab } from '../state/tabs';
-import { useStockDates } from '../api/stock-dates';
-import { useSession } from '../api/session';
+import { useRange } from '../api/range';
 import { buildSegments, type Segment } from '../util/time';
 import ChartStage from '../chart/ChartStage';
 import ChartErrorBoundary from '../chart/ChartErrorBoundary';
 import { CursorSidebarConnected } from '../sidebar/CursorSidebar';
+import RangeAdjustmentNotice from './RangeAdjustmentNotice';
+import type { SessionBundle, RangeBundle } from '../api/types';
 
 /**
- * Workarea — wires `useSession` to `ChartStage` + `CursorSidebarConnected`
- * for the active tab. MVP: single-day only (`fromDate === toDate`).
+ * Workarea — wires `useRange` to `ChartStage` + `CursorSidebarConnected`
+ * for the active tab. Supports a Stock-Date Range (fromDate..toDate) at a
+ * given Timeframe (ADR-0013, ADR-0014).
  *
  * Status transitions:
  *  - `isLoading` → `setStatus(tab.id, 'loading')`
  *  - `isError`   → `setStatus(tab.id, 'error', message)`
- *  - `session`   → `putBundle(tab.id, date, session)` (also sets status to `'loaded'`)
+ *  - `bundle`    → `putBundle(tab.id, bundle.from_date, bundle)` (also sets status to `'loaded'`)
+ *
+ * NOTE: `ChartStage` still types `bundle: SessionBundle | null` — Task 17
+ * retypes to `RangeBundle | null`. For this task we cast at the boundary.
  */
 export default function Workarea({ tab }: { tab: Tab }) {
   const code = tab.selection?.code ?? null;
-  const date = tab.selection?.fromDate ?? null; // MVP: single-day only
-  const { data: session, isLoading, isError, error } = useSession(code, date);
-  const { data: inventory = [] } = useStockDates();
+  const fromDate = tab.selection?.fromDate ?? null;
+  const toDate = tab.selection?.toDate ?? null;
+  const timeframe = tab.selection?.timeframe ?? null;
 
-  // Build segments from inventory for the active code+date.
-  const segments: Segment[] = useMemo(() => {
-    if (!code || !date) return [];
-    const matches = inventory.filter((r) => r.code === code && r.date === date);
-    return buildSegments(
-      matches.map((r) => ({
-        date: r.date,
-        sessionOpenMs: r.regular_session_open_ms,
-        sessionCloseMs: r.regular_session_close_ms,
-      })),
-    );
-  }, [inventory, code, date]);
+  const { data: bundle, isLoading, isError, error } = useRange(code, fromDate, toDate, timeframe);
+  const [noticeDismissed, setNoticeDismissed] = useState(false);
 
-  // Status transitions: loading/loaded/error → store.
+  const segments: Segment[] = bundle
+    ? buildSegments(
+        bundle.segments.map((s) => ({
+          date: s.date,
+          sessionOpenMs: s.session_open_ms,
+          sessionCloseMs: s.session_close_ms,
+        })),
+      )
+    : [];
+
   useEffect(() => {
     if (!tab.selection) return;
     if (isLoading) {
       useTabsStore.getState().setStatus(tab.id, 'loading');
     } else if (isError) {
       useTabsStore.getState().setStatus(tab.id, 'error', String(error ?? 'unknown error'));
-    } else if (session && date) {
-      useTabsStore.getState().putBundle(tab.id, date, session);
+    } else if (bundle) {
+      useTabsStore.getState().putBundle(tab.id, bundle.from_date, bundle);
       // putBundle also sets status to 'loaded'.
     }
-  }, [tab.id, tab.selection, isLoading, isError, error, session, date]);
+  }, [tab.id, tab.selection, isLoading, isError, error, bundle]);
 
   if (isError) {
     return (
@@ -56,12 +60,48 @@ export default function Workarea({ tab }: { tab: Tab }) {
     );
   }
 
+  const showNotice =
+    !noticeDismissed &&
+    bundle != null &&
+    fromDate != null &&
+    toDate != null &&
+    bundle.segments.length > 0 &&
+    (bundle.segments[0].date !== fromDate ||
+      bundle.segments[bundle.segments.length - 1].date !== toDate);
+
+  const onAdjust = () => {
+    if (!bundle || !tab.selection) return;
+    useTabsStore.getState().setSelection(tab.id, {
+      ...tab.selection,
+      fromDate: bundle.segments[0].date,
+      toDate: bundle.segments[bundle.segments.length - 1].date,
+    });
+    setNoticeDismissed(false);
+  };
+
   return (
-    <div className="grid grid-cols-[1fr_var(--sidebar-w)] gap-2 p-2 h-full min-h-0 bg-bg">
-      <ChartErrorBoundary>
-        <ChartStage bundle={session ?? null} segments={segments} />
-      </ChartErrorBoundary>
-      <CursorSidebarConnected />
+    <div className="flex flex-col h-full min-h-0 bg-bg">
+      {showNotice && (
+        <RangeAdjustmentNotice
+          requestedFrom={fromDate!}
+          requestedTo={toDate!}
+          actualFirst={bundle!.segments[0].date}
+          actualLast={bundle!.segments[bundle!.segments.length - 1].date}
+          onAdjust={onAdjust}
+          onDismiss={() => setNoticeDismissed(true)}
+        />
+      )}
+      <div className="grid grid-cols-[1fr_var(--sidebar-w)] gap-2 p-2 flex-1 min-h-0">
+        <ChartErrorBoundary>
+          <ChartStage
+            key={`${code}:${fromDate}:${toDate}`}
+            // Task 17 retypes ChartStage to RangeBundle; cast at boundary for now.
+            bundle={(bundle ?? null) as unknown as SessionBundle | null}
+            segments={segments}
+          />
+        </ChartErrorBoundary>
+        <CursorSidebarConnected />
+      </div>
     </div>
   );
 }
