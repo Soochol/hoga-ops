@@ -277,11 +277,15 @@ async def test_refresh_calls_load_env_with_override_true(
 
 
 def test_reset_state_for_tests_clears_reason() -> None:
-    """Reset returns the state to loading()."""
+    """Reset returns the state to unavailable(SYMBOL_MASTER_NOT_INITIALIZED).
+
+    T7: reset now mirrors the module-level default — boot must populate via
+    load_disk_state(); if it hasn't run, state is unavailable, not loading.
+    """
     symbols_module._state = SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
     symbols_module.reset_state_for_tests()
-    assert symbols_module._state.reason is None
-    assert symbols_module._state.status == "loading"
+    assert symbols_module._state.status == "unavailable"
+    assert symbols_module._state.reason == UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
 
 
 from hoga.api.symbols import SymbolCacheState
@@ -495,3 +499,54 @@ def test_load_disk_state_valid_file(tmp_path):
     assert symbols_module._fetched_at_ms == 1747900000000
     assert symbols_module._state.status == "fresh"
     assert symbols_module._state.reason is None
+
+
+# ---------------------------------------------------------------------------
+# T7 — get_all is a pure memory read (no fetch trigger)
+# ---------------------------------------------------------------------------
+
+
+async def _patch_fetch_to_raise(monkeypatch):
+    async def _boom():
+        raise AssertionError("get_all() must not trigger pykrx fetch")
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _boom)
+
+
+@pytest.mark.asyncio
+async def test_get_all_does_not_trigger_fetch_when_empty(tmp_path, monkeypatch):
+    symbols_module.reset_state_for_tests()
+    await _patch_fetch_to_raise(monkeypatch)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    resp = await symbols_module.get_all(data_dir=data_dir)
+
+    assert resp.symbols == []
+    assert resp.status == "unavailable"
+    assert resp.fetched_at_ms is None
+
+
+@pytest.mark.asyncio
+async def test_get_all_returns_cached_entries(tmp_path, monkeypatch):
+    symbols_module.reset_state_for_tests()
+    await _patch_fetch_to_raise(monkeypatch)
+    # Pre-populate state via load_disk_state with a valid file.
+    path = tmp_path / "sm.json"
+    path.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "fetched_at_ms": 99,
+            "source": "pykrx",
+            "entries": [{"code": "005930", "name": "삼성전자", "market": "KOSPI"}],
+        }),
+        encoding="utf-8",
+    )
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    symbols_module.load_disk_state(path=path, data_dir=data_dir)
+
+    resp = await symbols_module.get_all(data_dir=data_dir)
+
+    assert len(resp.symbols) == 1
+    assert resp.status == "fresh"
+    assert resp.fetched_at_ms == 99

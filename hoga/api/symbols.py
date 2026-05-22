@@ -67,7 +67,9 @@ class SymbolCacheState:
 # Module-level state (per ADR-0006 single-module pattern, scoped to symbols.py).
 _cache: list[SymbolHit] = []
 _fetched_at_ms: int | None = None
-_state: SymbolCacheState = SymbolCacheState.loading()
+_state: SymbolCacheState = SymbolCacheState.unavailable(
+    reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
+)
 _lock = asyncio.Lock()
 _inflight: asyncio.Future | None = None
 SCHEMA_VERSION = 1
@@ -75,7 +77,12 @@ SCHEMA_VERSION = 1
 
 def reset_state_for_tests() -> None:
     global _cache, _fetched_at_ms, _state, _inflight  # noqa: PLW0603
-    _cache, _fetched_at_ms, _state, _inflight = [], None, SymbolCacheState.loading(), None
+    _cache, _fetched_at_ms, _state, _inflight = (
+        [],
+        None,
+        SymbolCacheState.unavailable(reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED),
+        None,
+    )
 
 
 def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
@@ -321,29 +328,16 @@ async def _do_fetch_and_populate(data_dir: Path) -> None:
 
 
 async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
-    """Tier 2: GET-time lock + Future dedupe.
+    """Return the in-memory Symbol Master.
 
-    N concurrent calls share one underlying fetch.
+    Pure read — no fetching, no locking, no Future. Boot already populated
+    _cache via load_disk_state(); explicit refresh via POST /api/symbols/refresh
+    is the only mutation entry point.
+
+    data_dir is preserved in the signature for backwards-compat with existing
+    route wiring; it is unused on the read path.
     """
-    global _inflight, _state  # noqa: PLW0603
-    async with _lock:
-        if _inflight is None:
-            # Downgrade to loading only when there's no cache to serve.
-            if not _cache:
-                _state = SymbolCacheState.loading()
-            loop = asyncio.get_running_loop()
-            _inflight = loop.create_future()
-            fetch_task = asyncio.create_task(_do_fetch_and_populate(data_dir))
-
-            def _signal(_t: asyncio.Task) -> None:
-                if _inflight is not None and not _inflight.done():
-                    _inflight.set_result(None)
-
-            fetch_task.add_done_callback(_signal)
-        fut = _inflight
-    await fut
-    async with _lock:
-        _inflight = None
+    del data_dir  # unused — kept for route-handler signature compatibility
     return SymbolsAllResponse(
         symbols=list(_cache),
         status=_state.status,
