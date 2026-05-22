@@ -104,9 +104,14 @@ class CaptureJobState:
         )
 
     def event_header(self) -> dict[str, Any]:
-        """Common fields every capture_* SSE event carries."""
+        """Common fields every capture_* SSE event carries.
+
+        Internal field name (`self.job_id`) is unchanged for now — Task 13
+        removes the legacy singleton entirely. The wire field is `item_id`
+        per spec §3.4.
+        """
         return {
-            "job_id": self.job_id,
+            "item_id": self.job_id,
             "code": self.code,
             "date": self.date,
             "phase": self.phase,
@@ -114,9 +119,14 @@ class CaptureJobState:
 
     def to_wire(self) -> CaptureJob:
         return CaptureJob(
-            **self.event_header(),  # type: ignore[arg-type]
-            options=self.options,
-            started_at_ms=self.started_at_ms,
+            item_id=self.job_id,
+            code=self.code,
+            date=self.date,
+            phase=self.phase,                # type: ignore[arg-type]
+            force_retry=False,                # old singleton path never set this
+            pause_origin=False,
+            enqueued_at_ms=self.started_at_ms or 0,
+            started_at_ms=self.started_at_ms or None,
             progress=self.to_progress(),
             result=self.result,
             error=self.error,

@@ -258,7 +258,9 @@ def test_post_captures_returns_201(tmp_path: Path, _patch_run_job) -> None:
     assert body["code"] == "005930"
     assert body["date"] == "20260520"
     assert body["phase"] == "capturing"
-    assert body["options"]["resume"] is False
+    # `options` was on the old CaptureJob; QueueItem (Task 2) dropped it. Test
+    # dies in Task 13 with the rest of the legacy singleton.
+    assert body["item_id"]
 
 
 def test_post_captures_400_today_too_early(

@@ -129,7 +129,11 @@ class SessionBundle(BaseModel):
     fill_strength: FillStrength
 
 
-CapturePhase = Literal["capturing", "parsing", "done", "failed", "cancelled"]
+CapturePhase = Literal[
+    "queued", "deciding", "capturing", "parsing",
+    "done", "failed", "cancelled", "skipped",
+]
+SkipReason = Literal["already_complete", "source_partial"]
 
 
 class CaptureProgress(BaseModel):
@@ -155,16 +159,25 @@ class CaptureError(BaseModel):
     at_page: int | None = None
 
 
-class CaptureJob(BaseModel):
-    job_id: str
+class QueueItem(BaseModel):
+    """Wire model for one item in the capture queue. Mirrors backend state."""
+
+    item_id: str
     code: str
     date: str
     phase: CapturePhase
-    options: dict  # {resume, capture_only}
-    started_at_ms: int  # Unix ms, set just before collect_stock_date call
+    force_retry: bool          # frozen at enqueue per spec §11 Q16
+    pause_origin: bool         # True when cancelled by cookie-expired pool pause
+    enqueued_at_ms: int
+    started_at_ms: int | None = None
     progress: CaptureProgress | None = None
     result: CaptureResult | None = None
     error: CaptureError | None = None
+    skip_reason: SkipReason | None = None
+
+
+# Transitional alias — Task 13 deletes CaptureJob along with the old _latest singleton.
+CaptureJob = QueueItem
 
 
 # SSE event Wire Models — same ADR-0004 rule applies to events as to HTTP responses:
@@ -177,7 +190,7 @@ class CaptureJob(BaseModel):
 
 
 class _CaptureEventBase(BaseModel):
-    job_id: str
+    item_id: str
     code: str
     date: str
     phase: CapturePhase
@@ -195,8 +208,70 @@ class CapturePhaseEvent(_CaptureEventBase):
 
 
 class CaptureFinishedEvent(_CaptureEventBase):
-    """Terminal event. `phase` is one of done | failed | cancelled."""
+    """Terminal event. `phase` is one of done | failed | cancelled | skipped."""
 
     type: Literal["capture_finished"] = "capture_finished"
     result: CaptureResult | None = None
     error: CaptureError | None = None
+    skip_reason: SkipReason | None = None  # set when phase == "skipped"
+
+
+# --- Queue-level SSE events (Plan B) ----------------------------------------
+
+
+class CaptureQueuedEvent(BaseModel):
+    type: Literal["capture_queued"] = "capture_queued"
+    items: list[QueueItem]
+
+
+class CaptureQueuePausedEvent(BaseModel):
+    type: Literal["capture_queue_paused"] = "capture_queue_paused"
+    reason: Literal["cookie_expired"]
+    message: str
+
+
+class CaptureQueueResumedEvent(BaseModel):
+    type: Literal["capture_queue_resumed"] = "capture_queue_resumed"
+    reason: Literal["user_resume", "cancel_all"] = "user_resume"
+
+
+class CaptureQueueDrainedEvent(BaseModel):
+    type: Literal["capture_queue_drained"] = "capture_queue_drained"
+    total_done: int
+    total_failed: int
+    total_cancelled: int
+    total_skipped: int
+
+
+# --- Sibling-endpoint wire models (Tasks 16–17) -----------------------------
+
+
+class SymbolHit(BaseModel):
+    code: str
+    name: str
+    market: Literal["KOSPI", "KOSDAQ"]
+    captured_count: int                 # complete only — headline number (spec §11 Q18)
+    captured_breakdown: dict[str, int]  # {"complete": N, "source_partial": M, "client_incomplete": K}
+
+
+class SymbolsAllResponse(BaseModel):
+    symbols: list[SymbolHit]
+    status: Literal["fresh", "loading", "stale", "unavailable"]
+    fetched_at_ms: int | None
+
+
+CalendarStatus = Literal[
+    "complete", "source_partial", "client_incomplete", "none",
+    "weekend", "holiday", "future", "today_locked",
+]
+
+
+class CalendarCell(BaseModel):
+    date: str
+    status: CalendarStatus
+    captured_at_ms: int | None = None
+
+
+class CalendarResponse(BaseModel):
+    cells: list[CalendarCell]
+    as_of_ms: int                       # server wall-clock when cells were read (spec §11 Q21)
