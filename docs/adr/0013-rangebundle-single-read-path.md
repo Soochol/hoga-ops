@@ -1,6 +1,6 @@
 # 0013 — RangeBundle is the single read-path Wire Model; SessionBundle retired
 
-**Status:** proposed (2026-05-22)
+**Status:** accepted (2026-05-22)
 
 ## Decision
 

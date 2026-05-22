@@ -1,6 +1,6 @@
 # 0014 — All Replay series share a single Timeframe
 
-**Status:** proposed (2026-05-22)
+**Status:** accepted (2026-05-22)
 
 ## Decision
 
