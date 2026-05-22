@@ -26,7 +26,7 @@ from fastapi import APIRouter, Query
 
 from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.error_codes import UpstreamCode
-from hoga.api.models import SymbolHit, SymbolsAllResponse
+from hoga.api.models import SymbolHit, SymbolMasterInfo, SymbolsAllResponse
 from hoga.env import krx_creds_present, load_env
 
 @dataclass(frozen=True)
@@ -438,5 +438,14 @@ def build_router(*, path: Path, data_dir: Path) -> APIRouter:
     @router.post("/refresh")
     async def refresh_route() -> SymbolsAllResponse:
         return await refresh(path=path, data_dir=data_dir)
+
+    @router.get("/info")
+    async def info_route() -> SymbolMasterInfo:
+        return SymbolMasterInfo(
+            count=len(_cache),
+            fetched_at_ms=_fetched_at_ms,
+            status=_state.status,
+            reason=_state.reason,
+        )
 
     return router

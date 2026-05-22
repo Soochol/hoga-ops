@@ -674,3 +674,36 @@ async def test_refresh_concurrent_dedupe(tmp_path, monkeypatch):
     assert call_count == 1, "concurrent refreshes must dedupe to one fetch"
     for r in results:
         assert r.status == "fresh"
+
+
+# ---------------------------------------------------------------------------
+# T10 — GET /api/symbols/info lightweight metadata endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from hoga.api.app import create_app
+
+    symbols_module.reset_state_for_tests()
+    # Isolate disk path so we don't read the real machine-global file.
+    # The import is via `from hoga.config import resolve_symbol_master_path`
+    # in hoga/api/app.py, so we patch the name in that module's namespace.
+    monkeypatch.setattr(
+        "hoga.api.app.resolve_symbol_master_path",
+        lambda: tmp_path / "symbol-master.json",
+    )
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOGA_DATA_DIR", str(data_dir))
+
+    app = create_app(data_dir)
+    with TestClient(app) as client:
+        resp = client.get("/api/symbols/info")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 0
+    assert body["status"] == "unavailable"
+    assert body["fetched_at_ms"] is None
+    assert body["reason"] == "symbol_master_not_initialized"
