@@ -81,15 +81,22 @@ def load_env(*, override: bool = False) -> Path | None:
     """Load discovered .env into os.environ. Returns path loaded, or None.
 
     - ``override=False`` (default): shell env wins over .env. Use at startup.
+      Discovery result is cached so the subprocess git call runs at most
+      once per process on this path.
     - ``override=True``: .env wins over shell env. Use after the user has
-      edited .env and explicitly triggered a refresh.
+      edited .env and explicitly triggered a refresh. **Always re-discovers**
+      because the user's signal ("I changed something on disk") includes the
+      possibility that ``.env`` was created or removed since boot — caching a
+      ``None`` discovery from cold boot would otherwise block hot-reload after
+      the user creates ``.env`` for the first time.
 
-    Safe to call under an asyncio Lock — the subprocess git call only runs
-    on the first invocation per process; subsequent calls hit the in-memory
-    cache and only re-read the .env file content via python-dotenv.
+    Safe to call under an asyncio Lock — when the local worktree ``.env``
+    exists, no subprocess is involved on either path (it's a single
+    ``Path.exists()`` check). The git-based fallback subprocess only fires
+    when the local ``.env`` is absent.
     """
     global _discovered  # noqa: PLW0603
-    if _discovered is _NOT_DISCOVERED:
+    if override or _discovered is _NOT_DISCOVERED:
         _discovered = _discover_env_file()
     if _discovered is None:
         return None

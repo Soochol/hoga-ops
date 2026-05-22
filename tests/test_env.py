@@ -165,9 +165,41 @@ def test_discovery_cache_only_one_subprocess_when_falling_back(
     monkeypatch.setattr(env_module, "_main_repo_root", _spy)
 
     env_module.load_env()
-    env_module.load_env(override=True)
-    env_module.load_env()
-    assert call_count["n"] == 1, "_main_repo_root should be called exactly once across N load_env calls"
+    env_module.load_env()  # cached
+    env_module.load_env()  # cached
+    assert call_count["n"] == 1, (
+        "_main_repo_root should be called exactly once across N load_env() calls "
+        "with override=False (the cache-warming path)"
+    )
+
+
+def test_override_true_always_rediscovers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """override=True bypasses the discovery cache.
+
+    Cold boot with no .env caches a None discovery. If the user then creates
+    .env and hits the Refresh button (which calls load_env(override=True)),
+    the cached None would otherwise block hot-reload. Verifies the bug fix
+    discovered during T15 manual verification.
+    """
+    import hoga.env as env_module
+
+    monkeypatch.setattr(env_module, "_WORKING_TREE", tmp_path)
+    monkeypatch.setattr(env_module, "_main_repo_root", lambda: None)
+    _purge_keys(monkeypatch, "KRX_ID")
+
+    # Cold boot: no .env present.
+    assert env_module.load_env() is None
+    assert "KRX_ID" not in os.environ
+
+    # User creates .env after boot.
+    (tmp_path / ".env").write_text("KRX_ID=appeared-after-boot\n", encoding="utf-8")
+
+    # Refresh path should re-discover and pick up the new file.
+    loaded = env_module.load_env(override=True)
+    assert loaded == tmp_path / ".env"
+    assert os.environ["KRX_ID"] == "appeared-after-boot"
 
 
 def test_krx_creds_present_truthiness(monkeypatch: pytest.MonkeyPatch) -> None:
