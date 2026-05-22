@@ -187,3 +187,39 @@ async def test_force_retry_overrides_source_partial_skip(monkeypatch, tmp_path):
     assert captured.get("resume") is False  # fresh, not resume
     snap = captures.get_queue_snapshot()
     assert snap.done[0].phase == "done"
+
+
+@pytest.mark.asyncio
+async def test_worker_defers_when_inflight_collision(monkeypatch, tmp_path):
+    """If two items have the same (code, date) and the first is already in
+    _inflight_paths, the second worker requeues it instead of double-running."""
+    monkeypatch.setattr("hoga.api.captures._data_dir_for_tests", lambda: tmp_path, raising=False)
+    monkeypatch.setattr("hoga.api.disk_state.check_disk_state",
+                        lambda *_a, **_k: DiskState.NONE)
+
+    start_order: list[str] = []
+    finish_order: list[str] = []
+    sem = asyncio.Semaphore(0)
+
+    async def _capture(state, resume):
+        start_order.append(state.item_id)
+        await sem.acquire()
+        state.phase = "done"
+        finish_order.append(state.item_id)
+    monkeypatch.setattr(captures, "_run_capture_and_parse", _capture)
+
+    # Both items share (005930, 20260520)
+    captures._queue.append(_make_item("x-1", date="20260520"))
+    captures._queue.append(_make_item("x-2", date="20260520"))
+
+    workers = captures.start_workers(n=2)
+    await asyncio.sleep(0.1)
+    # Only one started; the other got requeued.
+    assert len(start_order) == 1
+    sem.release()
+    await asyncio.sleep(0.1)
+    sem.release()
+    await asyncio.wait_for(captures.wait_drained(), timeout=2.0)
+    await captures.stop_workers(workers)
+
+    assert sorted(finish_order) == ["x-1", "x-2"]

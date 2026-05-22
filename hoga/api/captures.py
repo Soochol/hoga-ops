@@ -591,16 +591,27 @@ async def _worker_loop() -> None:
                 state = None
             else:
                 state = _queue.popleft()
-                state.phase = "deciding"
-                _active[state.item_id] = state
-                wait = None
+                # Q15 Layer 2: per-(code, date) inflight lock.
+                if (state.code, state.date) in _inflight_paths:
+                    # Collision — requeue to back, do not occupy a slot.
+                    _queue.append(state)
+                    state = None
+                    wait = None
+                else:
+                    _inflight_paths.add((state.code, state.date))
+                    state.phase = "deciding"
+                    _active[state.item_id] = state
+                    wait = None
         if wait is not None:
             await wait
             async with _lock:
                 if _wakeup is not None:
                     _wakeup.clear()
             continue
-        assert state is not None
+        if state is None:
+            # Requeued; yield so other workers / the requeued slot can proceed.
+            await asyncio.sleep(0)
+            continue
         # Outside the lock: notify deciding, run, finalize.
         await _publish_phase(state)
         try:
