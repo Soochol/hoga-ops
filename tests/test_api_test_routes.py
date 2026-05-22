@@ -76,10 +76,15 @@ def test_cookie_expire_at_configures_fake(
 
     app = create_app(data_dir=tmp_path / "data")
     client = TestClient(app)
-    r = client.post("/api/test/cookie_expire_at", json={"index": 3})
-    assert r.status_code == 200
-    assert captures_fake._raise_on_request_index == 3
+    try:
+        r = client.post("/api/test/cookie_expire_at", json={"index": 3})
+        assert r.status_code == 200
+        assert captures_fake._raise_on_request_index == 3
 
-    r = client.post("/api/test/cookie_expire_at", json={"index": -1})
-    assert r.status_code == 200
-    assert captures_fake._raise_on_request_index is None
+        r = client.post("/api/test/cookie_expire_at", json={"index": -1})
+        assert r.status_code == 200
+        assert captures_fake._raise_on_request_index is None
+    finally:
+        # Defensive reset: ensure mid-test assertion failure doesn't leak
+        # injection state into downstream tests.
+        captures_fake.configure_fake_to_raise_on(None)
