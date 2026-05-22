@@ -37,7 +37,7 @@ export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: Capture
         onKeyDown={onKeyDown}
         style={{
           display: 'grid',
-          gridTemplateColumns: '20px 90px 60px 1fr 90px 50px 50px 80px 24px',
+          gridTemplateColumns: '20px 90px 60px 1fr 90px 50px 50px 120px 24px',
           alignItems: 'center', gap: 8,
           height: 36, padding: '0 8px',
           borderBottom: '1px solid var(--border)',
@@ -67,12 +67,17 @@ export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: Capture
         </span>
         <span>{item.progress?.pages_done ?? '–'}</span>
         <span>{item.progress?.events_seen ?? '–'}</span>
-        <span style={{ width: 80, height: 2, background: 'var(--bg-input)', borderRadius: 1, position: 'relative' }}>
-          <span style={{
-            position: 'absolute', left: 0, top: 0, bottom: 0,
-            width: `${item.progress?.estimate_pct ?? 0}%`,
-            background: 'var(--accent)', borderRadius: 1,
-          }} />
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ flex: 1, height: 2, background: 'var(--bg-input)', borderRadius: 1, position: 'relative' }}>
+            <span style={{
+              position: 'absolute', left: 0, top: 0, bottom: 0,
+              width: `${item.progress?.estimate_pct ?? 0}%`,
+              background: 'var(--accent)', borderRadius: 1,
+            }} />
+          </span>
+          <span style={{ width: 28, textAlign: 'right', color: 'var(--fg-dim)' }}>
+            {item.progress?.estimate_pct !== undefined ? `${item.progress.estimate_pct}%` : '–'}
+          </span>
         </span>
         <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
           {showCancel && (
