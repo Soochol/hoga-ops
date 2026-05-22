@@ -170,6 +170,35 @@ export default function ChartStage({ bundle, segments }: ChartStageProps) {
     };
   }, [chart, bundle]);
 
+  // Initial fit-to-data + zoom clamps. Fires when the chart becomes ready and
+  // a bundle is available. Without `fitContent`, lightweight-charts leaves
+  // the visible range at its default barSpacing, which over-zooms on small
+  // ranges and under-zooms on multi-day ranges.
+  // Clamp invariants:
+  //   - Logical range can never exceed total bar count (no infinite zoom-out).
+  //   - barSpacing capped at 50 (no extreme zoom-in past one bar per ~50 px).
+  // See spec §6.6(a) "Zoom Density" / replay-zoom-density plan Task 17b.
+  useEffect(() => {
+    if (!chart || !bundle) return;
+    const ts = chart.timeScale();
+    ts.fitContent();
+    const totalBars = bundle.candles.length;
+    const handler = (range: { from: number; to: number } | null) => {
+      if (!range) return;
+      const len = range.to - range.from;
+      if (len > totalBars) {
+        ts.setVisibleLogicalRange({ from: 0, to: totalBars });
+        return;
+      }
+      const bs = ts.options().barSpacing;
+      if (typeof bs === 'number' && bs > 50) {
+        ts.applyOptions({ barSpacing: 50 });
+      }
+    };
+    ts.subscribeVisibleLogicalRangeChange(handler);
+    return () => ts.unsubscribeVisibleLogicalRangeChange(handler);
+  }, [chart, bundle]);
+
   return (
     <div className="relative h-full min-h-0 bg-bg-card">
       <div ref={containerRef} className="absolute inset-0" />
