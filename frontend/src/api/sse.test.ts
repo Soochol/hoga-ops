@@ -1,12 +1,18 @@
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { describe, expect, it, beforeEach } from 'vitest';
 import { __resetForTests, subscribeToCaptureEvents } from './sse';
 import type { SSEEvent } from './types';
 
 // Helper that mounts a fake EventSource so addEventListener traps capture events.
+// Instances tracked at module scope rather than as a static class field — tsconfig's
+// `erasableSyntaxOnly` rejects static class fields.
+const _fakeInstances: FakeEventSource[] = [];
 class FakeEventSource {
-  static instances: FakeEventSource[] = [];
+  url: string;
   listeners = new Map<string, ((e: MessageEvent) => void)[]>();
-  constructor(public url: string) { FakeEventSource.instances.push(this); }
+  constructor(url: string) {
+    this.url = url;
+    _fakeInstances.push(this);
+  }
   addEventListener(t: string, cb: (e: MessageEvent) => void) {
     const arr = this.listeners.get(t) ?? [];
     arr.push(cb);
@@ -22,7 +28,7 @@ class FakeEventSource {
 
 beforeEach(() => {
   __resetForTests();
-  FakeEventSource.instances = [];
+  _fakeInstances.length = 0;
   (globalThis as { EventSource?: unknown }).EventSource = FakeEventSource;
 });
 
@@ -32,7 +38,7 @@ describe('subscribeToCaptureEvents', () => {
     subscribeToCaptureEvents((e) => events.push(e));
     // Let open() resolve.
     await new Promise((r) => setTimeout(r, 0));
-    const src = FakeEventSource.instances[0];
+    const src = _fakeInstances[0];
     src.fire('capture_queued', { items: [{ item_id: 'x', code: '005930', date: '20260520' }] });
     expect(events).toHaveLength(1);
     expect(events[0].type).toBe('capture_queued');
@@ -42,7 +48,7 @@ describe('subscribeToCaptureEvents', () => {
     const events: SSEEvent[] = [];
     subscribeToCaptureEvents((e) => events.push(e));
     await new Promise((r) => setTimeout(r, 0));
-    const src = FakeEventSource.instances[0];
+    const src = _fakeInstances[0];
     src.fire('capture_queue_paused', { reason: 'cookie_expired', message: 'expired' });
     src.fire('capture_queue_resumed', { reason: 'user_resume' });
     src.fire('capture_queue_drained', { total_done: 1, total_failed: 0, total_cancelled: 0, total_skipped: 0 });
@@ -55,7 +61,7 @@ describe('subscribeToCaptureEvents', () => {
     const events: SSEEvent[] = [];
     subscribeToCaptureEvents((e) => events.push(e));
     await new Promise((r) => setTimeout(r, 0));
-    const src = FakeEventSource.instances[0];
+    const src = _fakeInstances[0];
     src.fire('inventory_added', { code: '005930', date: '20260520' });
     expect(events).toHaveLength(0);
   });
