@@ -435,3 +435,63 @@ def test_atomic_write_rollback_on_replace_failure(tmp_path, monkeypatch):
         pass
 
     assert path.read_text(encoding="utf-8") == original_content
+
+
+# ---------------------------------------------------------------------------
+# T6 — load_disk_state boot entry point
+# ---------------------------------------------------------------------------
+
+
+def test_load_disk_state_no_file(tmp_path):
+    symbols_module.reset_state_for_tests()
+    path = tmp_path / "absent.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    symbols_module.load_disk_state(path=path, data_dir=data_dir)
+
+    assert symbols_module._cache == []
+    assert symbols_module._fetched_at_ms is None
+    assert symbols_module._state.status == "unavailable"
+    assert symbols_module._state.reason == UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
+
+
+def test_load_disk_state_corrupt_file(tmp_path):
+    symbols_module.reset_state_for_tests()
+    path = tmp_path / "corrupt.json"
+    path.write_text("not json", encoding="utf-8")
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    symbols_module.load_disk_state(path=path, data_dir=data_dir)
+
+    assert symbols_module._state.status == "unavailable"
+    assert symbols_module._state.reason == UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
+
+
+def test_load_disk_state_valid_file(tmp_path):
+    symbols_module.reset_state_for_tests()
+    path = tmp_path / "sm.json"
+    path.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "fetched_at_ms": 1747900000000,
+            "source": "pykrx",
+            "entries": [
+                {"code": "005930", "name": "삼성전자", "market": "KOSPI"},
+                {"code": "000660", "name": "SK하이닉스", "market": "KOSPI"},
+            ],
+        }),
+        encoding="utf-8",
+    )
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    symbols_module.load_disk_state(path=path, data_dir=data_dir)
+
+    assert len(symbols_module._cache) == 2
+    assert symbols_module._cache[0].code == "005930"
+    assert symbols_module._cache[0].name == "삼성전자"
+    assert symbols_module._fetched_at_ms == 1747900000000
+    assert symbols_module._state.status == "fresh"
+    assert symbols_module._state.reason is None

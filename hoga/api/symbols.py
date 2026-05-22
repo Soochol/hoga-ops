@@ -251,6 +251,37 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
     return breakdowns
 
 
+def load_disk_state(*, path: Path, data_dir: Path) -> None:
+    """Boot-time entry: populate in-memory state from disk + data_dir walk.
+
+    No pykrx, no network — pure disk read. Called once from lifespan startup
+    (see hoga/api/app.py — wired in T11). Replaces the deleted ensure_cache_warm.
+
+    On success the in-memory cache is fresh with the disk file's contents and
+    captured_breakdown filled from a single data_dir walk. On any disk-load
+    failure (file absent, corrupt, schema mismatch, malformed entries) the
+    cache is empty and _state surfaces SYMBOL_MASTER_NOT_INITIALIZED so the
+    UI prompts the user to click Update.
+    """
+    global _cache, _fetched_at_ms, _state  # noqa: PLW0603
+    result = _load_from_disk(path)
+    if result is None:
+        _cache = []
+        _fetched_at_ms = None
+        _state = SymbolCacheState.unavailable(reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED)
+        return
+    entries, fetched_at_ms = result
+    breakdowns = _build_all_captured_breakdowns(data_dir)
+    empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0}
+    for h in entries:
+        breakdown = breakdowns.get(h.code, empty)
+        h.captured_count = breakdown["complete"]
+        h.captured_breakdown = breakdown
+    _cache = entries
+    _fetched_at_ms = fetched_at_ms
+    _state = SymbolCacheState.fresh()
+
+
 async def _do_fetch_and_populate(data_dir: Path) -> None:
     """Inner helper — runs under in-flight Future protection."""
     global _cache, _fetched_at_ms, _state  # noqa: PLW0603
