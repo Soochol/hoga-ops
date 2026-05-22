@@ -10,3 +10,5 @@ node_modules/
 *.egg-info/
 .gstack/
 .worktrees/
+.superpowers/
+.playwright-mcp/

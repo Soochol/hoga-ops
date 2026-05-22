@@ -67,6 +67,10 @@ the Cursor falls outside the requested **Stock-Date**.
 _Avoid_: "timestamp" alone (ambiguous with Entity ts_ms and Wire Model
 ts_ms which may differ in encoding), "t param".
 
+**Capture Frontier**:
+The collector's next-request position for an in-flight **Full Capture** — the `t` value the next `first.php` call will use, equivalently the upper bound of the Data Window range already processed. Internally tracked as HHMMSSmmm (matches hogaplay's `first.php` `time` parameter and the `last_time_ms` field written to `_progress.json`, sourced from `PageStepController.next_t`); surfaced through the capture API as `frontier_ms` in Unix-ms per ADR-0003. Distinct from **Cursor** (which is an API/UI contract concept on the read path).
+_Avoid_: "cursor" (overloaded with the API/UI **Cursor**), "current position", "progress timestamp", "last_time_ms" (the internal HHMMSSmmm field name — don't use on the API surface)
+
 **Wire Model**:
 The pydantic model returned by API endpoints — the shape clients see. Strips forensic fields (and any other internal-only data). Each table module pairs an **Entity** with its Wire Model: `Trade`↔`ApiTrade`, `Orderbook`↔`ApiOrderbookSnapshot`, `BrokerRow`↔`ApiBrokerEntry`, `Candle`↔`ApiCandle`. Query helpers (`query_at`, `query_up_to`, etc.) return Wire Models directly — there is no intermediate dict materialization.
 _Avoid_: "API model" alone (ambiguous with response containers like `OrderbookResponse`), "DTO"
@@ -86,3 +90,4 @@ _Avoid_: dropping the "Bundle" suffix when referring to this concept — "the se
 ## Flagged ambiguities
 
 - "session" was used ambiguously to mean both **Regular Session** (info.tsv's `session_open`/`session_close` fields) and **Data Window** (collector loop range, scrubber range) — resolved 2026-05-19: these are distinct, use the precise term.
+- "cursor" was used in early Capture UI mockups to label the collector's progress marker; this clashes with the API/UI **Cursor** — resolved 2026-05-21: in-flight progress is **Capture Frontier**, **Cursor** is reserved for read-path API/UI use.

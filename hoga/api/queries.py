@@ -8,6 +8,7 @@ from typing import Any
 
 import duckdb
 
+from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.models import StockDate
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.tables import snapshots
@@ -54,6 +55,7 @@ class QueryEngine:
                 if not (code_dir / "meta.json").exists():
                     continue
                 meta = json.loads((code_dir / "meta.json").read_text(encoding="utf-8"))
+                _state = classify_from_meta(meta)
                 snap_path = code_dir / "snapshots.parquet"
                 # snapshots.ts_ms is stored as HHMMSSmmm (per existing tests
                 # asserting e.g. ts_ms == 90010435). Convert to Unix ms here.
@@ -121,6 +123,16 @@ class QueryEngine:
                         today_high=int(meta["today_high"]),
                         today_low=int(meta["today_low"]),
                         today_close=int(meta["today_close"]),
+                        # Single source of truth for meta → completeness bits.
+                        # The DiskState enum normalizes the rule "if collection
+                        # didn't finish, is_partial is True regardless of what
+                        # meta says" — see classify_from_meta docstring.
+                        collection_complete=_state in (
+                            DiskState.COMPLETE, DiskState.SOURCE_PARTIAL,
+                        ),
+                        is_partial=_state in (
+                            DiskState.SOURCE_PARTIAL, DiskState.CLIENT_INCOMPLETE,
+                        ),
                     )
                 )
         return out

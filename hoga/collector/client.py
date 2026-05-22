@@ -26,12 +26,16 @@ HTTP_STATUS_FORBIDDEN: Final = 403
 HTTP_STATUS_SERVER_ERROR: Final = 500
 
 
-class CookieExpiredError(RuntimeError):
-    """401/403 from hogaplay — session cookie expired."""
-
-
 class HogaplayHTTPError(RuntimeError):
-    """Other 4xx, or persistent 5xx after retries."""
+    """HTTP error from hogaplay. `status_code` is None for low-level errors
+    (timeout, connection reset) that never received a response."""
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class CookieExpiredError(HogaplayHTTPError):
+    """401/403 from hogaplay — session cookie expired."""
 
 
 class HogaplayClient:
@@ -92,14 +96,21 @@ class HogaplayClient:
             if r.status_code in (HTTP_STATUS_UNAUTHORIZED, HTTP_STATUS_FORBIDDEN):
                 raise CookieExpiredError(
                     f"hogaplay returned {r.status_code} for {endpoint}. "
-                    "Refresh your .cookie from a logged-in browser session."
+                    "Refresh your .cookie from a logged-in browser session.",
+                    status_code=r.status_code,
                 )
             if r.status_code >= HTTP_STATUS_SERVER_ERROR:
-                last_error = HogaplayHTTPError(f"{r.status_code} from {endpoint}: {r.text[:200]}")
+                last_error = HogaplayHTTPError(
+                    f"{r.status_code} from {endpoint}: {r.text[:200]}",
+                    status_code=r.status_code,
+                )
                 time.sleep(self._backoff_base * (2**attempt))
                 continue
             if r.status_code >= HTTP_STATUS_BAD_REQUEST:
-                raise HogaplayHTTPError(f"{r.status_code} from {endpoint}: {r.text[:500]}")
+                raise HogaplayHTTPError(
+                    f"{r.status_code} from {endpoint}: {r.text[:500]}",
+                    status_code=r.status_code,
+                )
             return r.text
         assert last_error is not None
         raise HogaplayHTTPError(f"exhausted retries for {endpoint}: {last_error}")

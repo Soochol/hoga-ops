@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import assert_never
 
+from hoga.api.disk_state import has_meaningful_gaps
+from hoga.api.timeenc import HogaMs
+from hoga.collector.orchestrator import page_sort_key
 from hoga.tables import brokers, candles, snapshots, trades
 from hoga.tables.brokers import BrokerRow
 from hoga.tables.candles import Candle
@@ -70,7 +73,10 @@ class ParserError(RuntimeError):
 
 
 def _iter_first_lines(raw_dir: Path) -> Iterable[tuple[Path, int, str]]:
-    for page_path in sorted(raw_dir.glob("first_*.tsv")):
+    # Numeric sort: lexical sort breaks past page index 999 (`first_1000.tsv`
+    # alphabetically precedes `first_997.tsv`), corrupting dedup-first-wins
+    # ordering and ultimately breaking trades.validate cum_vol monotonicity.
+    for page_path in sorted(raw_dir.glob("first_*.tsv"), key=page_sort_key):
         text = page_path.read_text(encoding="utf-8")
         for lineno, line in enumerate(text.splitlines(keepends=False), start=1):
             if not line:
@@ -131,7 +137,13 @@ def parse_stock_date(
     brokers.write_parquet(brokers_list, out_dir / "brokers.parquet")
     candles.write_parquet(candles_list, out_dir / "candles.parquet")
 
-    meta = _build_meta(info=info, seen_seqs=seen_seqs, skipped=skipped, raw_dir=raw_dir)
+    meta = _build_meta(
+        info=info,
+        seen_seqs=seen_seqs,
+        skipped=skipped,
+        raw_dir=raw_dir,
+        snapshots_list=snapshots_list,
+    )
     (out_dir / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -219,14 +231,40 @@ def _collect_candles(
     return candles_list
 
 
+def _snapshot_ts_hhmmssms(snapshots: list[Orderbook]) -> list[HogaMs]:
+    """Extract HHMMSSmmm timestamps from Orderbook entities (encoding seam).
+
+    Orderbook.ts_ms is stored as plain ``int`` on the entity for now (entity-
+    level HogaMs adoption is a separate sweep). This helper is the single
+    place where the encoding is asserted by casting to HogaMs, so any future
+    schema drift surfaces here rather than silently breaking has_meaningful_gaps.
+    """
+    return [HogaMs(s.ts_ms) for s in snapshots]
+
+
 def _build_meta(
     *,
     info: StockInfo,
     seen_seqs: set[int],
     skipped: list[tuple[str, int, str]],
     raw_dir: Path,
+    snapshots_list: list[Orderbook],
 ) -> dict[str, object]:
-    pages = sorted(raw_dir.glob("first_*.tsv"))
+    pages = sorted(raw_dir.glob("first_*.tsv"), key=page_sort_key)
+    progress_path = raw_dir / "_progress.json"
+    collection_complete = False
+    if progress_path.exists():
+        try:
+            progress = json.loads(progress_path.read_text(encoding="utf-8"))
+            collection_complete = bool(progress.get("finished", False))
+        except (ValueError, OSError):
+            collection_complete = False
+
+    # Encoding seam: Orderbook.ts_ms is HHMMSSmmm (entity native); cast to
+    # HogaMs at this single extraction point so future entity changes break
+    # here loudly rather than silently producing wrong is_partial values.
+    is_partial = has_meaningful_gaps(_snapshot_ts_hhmmssms(snapshots_list))
+
     return {
         "code": info.code,
         "name": info.name,
@@ -245,4 +283,6 @@ def _build_meta(
         "total_unique_events": len(seen_seqs),
         "parser_version": PARSER_VERSION,
         "warnings": [{"file": f, "line": ln, "reason": r} for f, ln, r in skipped],
+        "collection_complete": collection_complete,
+        "is_partial": is_partial,
     }

@@ -11,6 +11,33 @@ class CookieMissingError(RuntimeError):
     """Raised when no cookie source is available."""
 
 
+def resolve_data_dir() -> Path:
+    """Return the canonical hoga-ops data directory.
+
+    Resolution order:
+      1. ``HOGA_DATA_DIR`` env var — explicit override (E2E sandboxes,
+         temporary captures, scratch experiments).
+      2. ``$XDG_DATA_HOME/hoga-ops/data`` if XDG_DATA_HOME is set.
+      3. ``~/.local/share/hoga-ops/data`` — XDG default.
+
+    Cwd is intentionally NOT consulted. Pre-Option-A the default was
+    ``Path.cwd() / "data"``, which split captures across every git
+    worktree (the same Stock-Date would be re-fetched on each branch,
+    costing ~160MB and ~10 min per day per code). Captures are now
+    machine-global by default.
+
+    The legacy ``Config.from_cwd().data_dir`` (cwd/data) is left in place
+    for callers that *want* a per-repo sandbox, but no production code
+    path uses it.
+    """
+    env = os.environ.get("HOGA_DATA_DIR")
+    if env:
+        return Path(env)
+    xdg = os.environ.get("XDG_DATA_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
+    return base / "hoga-ops" / "data"
+
+
 @dataclass(frozen=True)
 class Config:
     repo_root: Path
@@ -29,6 +56,8 @@ class Config:
 
     @property
     def data_dir(self) -> Path:
+        # Legacy: per-repo sandbox path. Production callers go through
+        # ``resolve_data_dir()`` so captures land in the global store.
         return self.repo_root / "data"
 
     def raw_dir(self, date: str, code: str) -> Path:

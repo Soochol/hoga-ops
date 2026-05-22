@@ -29,4 +29,18 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
+  webServer: [
+    {
+      command: 'cd .. && HOGA_ENABLE_TEST_ENDPOINTS=1 HOGA_DATA_DIR=/tmp/hoga-e2e-data uv run hoga serve --port 8765',
+      url: 'http://127.0.0.1:8765/health',
+      timeout: 30_000,
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command: 'npm run dev -- --port 5173',
+      url: 'http://127.0.0.1:5173',
+      timeout: 30_000,
+      reuseExistingServer: !process.env.CI,
+    },
+  ],
 });

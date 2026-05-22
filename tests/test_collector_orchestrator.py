@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from hoga.collector import orchestrator as orch
-from hoga.collector.orchestrator import collect_stock_date
+from hoga.collector.orchestrator import collect_stock_date, page_sort_key
 
 # Magic constants used across tests.
 _UNIQUE_EVENTS_BASIC = 3
@@ -104,7 +104,6 @@ def test_collect_writes_info_first_chart_progress(tmp_path: Path) -> None:
         date="20260519",
         data_dir=tmp_path / "data",
         rate_limit_s=0.0,
-        allow_partial=True,
     )
 
     raw_dir = tmp_path / "data" / "raw" / "20260519" / "003490"
@@ -133,7 +132,6 @@ def test_collect_dedupes_overlapping_pages(tmp_path: Path) -> None:
         date="20260519",
         data_dir=tmp_path / "data",
         rate_limit_s=0.0,
-        allow_partial=True,
     )
     assert result.unique_events == _UNIQUE_EVENTS_DEDUP
 
@@ -165,7 +163,6 @@ def test_collect_cap_detection_halves_step(tmp_path: Path) -> None:
         date="20260519",
         data_dir=tmp_path / "data",
         rate_limit_s=0.0,
-        allow_partial=True,
     )
     assert result.unique_events == _UNIQUE_EVENTS_CAP
     first_times = [c.time_ms for c in fake.calls if c.endpoint == "first"]
@@ -177,28 +174,29 @@ def test_collect_cap_detection_halves_step(tmp_path: Path) -> None:
     )
 
 
-def test_partial_capture_today_aborts_without_flag(
+def test_collect_stock_date_today_too_early_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fixed_now = dt.datetime(2026, 5, 19, 10, 0, 0, tzinfo=dt.timezone(dt.timedelta(hours=9)))
+    """Today's date + now.hour < 18 raises TodayTooEarlyRefused."""
+    fixed_now = dt.datetime(2026, 5, 22, 17, 30, 0, tzinfo=dt.timezone(dt.timedelta(hours=9)))
     monkeypatch.setattr(orch, "_now_kst", lambda: fixed_now)
 
     fake = FakeClient(info_body="", first_pages={}, chart_body="")
-    with pytest.raises(orch.PartialCaptureRefused):
+    with pytest.raises(orch.TodayTooEarlyRefused):
         collect_stock_date(
             client=fake,
             code="003490",
-            date="20260519",
+            date="20260522",  # same day as fixed_now
             data_dir=tmp_path / "data",
             rate_limit_s=0.0,
-            allow_partial=False,
         )
 
 
-def test_partial_capture_today_allowed_with_flag(
+def test_collect_stock_date_today_after_18_allowed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fixed_now = dt.datetime(2026, 5, 19, 10, 0, 0, tzinfo=dt.timezone(dt.timedelta(hours=9)))
+    """Today's date + now.hour >= 18 proceeds normally."""
+    fixed_now = dt.datetime(2026, 5, 22, 18, 0, 0, tzinfo=dt.timezone(dt.timedelta(hours=9)))
     monkeypatch.setattr(orch, "_now_kst", lambda: fixed_now)
 
     fake = FakeClient(
@@ -209,8 +207,25 @@ def test_partial_capture_today_allowed_with_flag(
     collect_stock_date(
         client=fake,
         code="003490",
-        date="20260519",
+        date="20260522",
         data_dir=tmp_path / "data",
         rate_limit_s=0.0,
-        allow_partial=True,
     )
+
+
+def test_page_sort_key_numeric_across_digit_widths(tmp_path: Path) -> None:
+    # Regression: real capture for 005930/20260520 (1756 pages) failed because
+    # legacy `first_{idx:03d}.tsv` rolls over to 4 digits at idx=1000, and the
+    # parser's `sorted(glob)` then puts `first_1000.tsv` BEFORE `first_997.tsv`
+    # lexically. The dedup-first-occurrence-wins flow then assigned same-ms
+    # rows to the wrong order and broke cum_vol monotonicity downstream.
+    # page_sort_key must restore numeric ordering regardless of padding width.
+    raw = tmp_path
+    for idx in [1, 9, 10, 99, 100, 997, 998, 999, 1000, 1500]:
+        (raw / f"first_{idx:03d}.tsv").touch()
+    pages = sorted(raw.glob("first_*.tsv"), key=page_sort_key)
+    indices = [page_sort_key(p) for p in pages]
+    assert indices == [1, 9, 10, 99, 100, 997, 998, 999, 1000, 1500]
+    # Sanity: plain lexical sort would NOT match (proves the test is meaningful).
+    lexical = [page_sort_key(p) for p in sorted(raw.glob("first_*.tsv"))]
+    assert lexical != indices
