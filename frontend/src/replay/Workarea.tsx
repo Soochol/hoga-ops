@@ -4,6 +4,7 @@ import { useStockDates } from '../api/stock-dates';
 import { useSession } from '../api/session';
 import { buildSegments, type Segment } from '../util/time';
 import ChartStage from '../chart/ChartStage';
+import ChartErrorBoundary from '../chart/ChartErrorBoundary';
 import { CursorSidebarConnected } from '../sidebar/CursorSidebar';
 
 /**
@@ -57,7 +58,9 @@ export default function Workarea({ tab }: { tab: Tab }) {
 
   return (
     <div className="grid grid-cols-[1fr_320px] gap-2 p-2 h-full min-h-0 bg-bg">
-      <ChartStage bundle={session ?? null} segments={segments} />
+      <ChartErrorBoundary>
+        <ChartStage bundle={session ?? null} segments={segments} />
+      </ChartErrorBoundary>
       <CursorSidebarConnected />
     </div>
   );
