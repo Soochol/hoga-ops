@@ -1,4 +1,7 @@
 import type { TabSelection } from './tabs';
+import { TIMEFRAME_LABELS, type Timeframe } from '../api/types';
+
+const TIMEFRAME_SET = new Set<string>(TIMEFRAME_LABELS);
 
 export type ParsedReplayUrl = { tabs: TabSelection[]; active: number };
 
@@ -6,6 +9,9 @@ export type ParsedReplayUrl = { tabs: TabSelection[]; active: number };
  * Parse the `?tabs=...&active=N` part of a URL search string.
  * Bad entries are silently dropped (they are a UI mistake, not a system error).
  * If `?tabs=` is missing or empty, returns { tabs: [], active: 0 }.
+ *
+ * Segment format: `<code>:<from>:<to>:<timeframe>`. Legacy 3-part segments
+ * (no timeframe) parse with default `'1m'`.
  */
 export function parseReplayUrl(search: string): ParsedReplayUrl {
   const sp = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
@@ -15,12 +21,19 @@ export function parseReplayUrl(search: string): ParsedReplayUrl {
   const tabs: TabSelection[] = [];
   let dropped = 0;
   for (const segment of raw.split(',')) {
-    const [code, fromDate, toDate] = segment.split(':');
-    if (!isValidCode(code) || !isValidDate(fromDate) || !isValidDate(toDate)) {
+    const parts = segment.split(':');
+    const [code, fromDate, toDate, timeframeRaw] = parts;
+    const timeframe = (parts.length >= 4 ? timeframeRaw : '1m') as Timeframe;
+    if (
+      !isValidCode(code) ||
+      !isValidDate(fromDate) ||
+      !isValidDate(toDate) ||
+      !TIMEFRAME_SET.has(timeframe)
+    ) {
       dropped += 1;
       continue;
     }
-    tabs.push({ code, fromDate, toDate });
+    tabs.push({ code, fromDate, toDate, timeframe });
   }
   if (dropped > 0) {
     console.warn(`[parseReplayUrl] dropped ${dropped} invalid tab(s) from URL`);
@@ -45,7 +58,9 @@ export function emitReplayUrl(tabs: (TabSelection | null)[], activeIdx: number):
     }
     realCount += 1;
   }
-  const tabStr = real.map((t) => `${t.code}:${t.fromDate}:${t.toDate}`).join(',');
+  const tabStr = real
+    .map((t) => `${t.code}:${t.fromDate}:${t.toDate}:${t.timeframe}`)
+    .join(',');
   return `?tabs=${tabStr}&active=${realActive}`;
 }
 
