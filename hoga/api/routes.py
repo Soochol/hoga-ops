@@ -125,8 +125,8 @@ def build_router(engine: QueryEngine) -> APIRouter:
         date: StockDate,
         price_min: int | None = Query(None),
         price_max: int | None = Query(None),
-        depth_bucket_ms: int = Query(5000),
         vp_bins: int = Query(24),
+        bucket_ms: int = Query(60_000),
     ) -> SessionBundle:
         try:
             engine.parquet_dir(date, code)
@@ -138,8 +138,8 @@ def build_router(engine: QueryEngine) -> APIRouter:
             date=date,
             price_min=price_min,
             price_max=price_max,
-            depth_bucket_ms=depth_bucket_ms,
             vp_bins=vp_bins,
+            bucket_ms=bucket_ms,
         )
 
     return router

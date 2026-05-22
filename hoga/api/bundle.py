@@ -347,22 +347,31 @@ def build_bundle(
     date: str,
     price_min: int | None = None,
     price_max: int | None = None,
-    depth_bucket_ms: int = 5000,
     vp_bins: int = 24,
+    bucket_ms: int = 60_000,
 ) -> SessionBundle:
+    """Assemble a SessionBundle for one Stock-Date at the requested Timeframe.
+
+    ``bucket_ms`` (ADR-0014) drives the time bucket for every time-aware
+    series: candles (via :func:`downsample_candles`), quote_ratio,
+    depth_intensity, and fill_strength. ``volume_profile`` is time-agnostic
+    and is not affected. ``bucket_ms`` must be in ``ALLOWED_TIMEFRAME_MS``.
+    """
+    validate_bucket_ms(bucket_ms)
     meta = engine.get_meta(date, code)
     session_open_ms = hhmmssms_to_unix_ms(date, meta["regular_session_open_ms"])
     session_close_ms = hhmmssms_to_unix_ms(date, meta["regular_session_close_ms"])
 
-    candles = build_candles_slice(engine, code=code, date=date)
-    qr = build_quote_ratio_slice(engine, code=code, date=date, bucket_ms=1000)
+    raw_candles = build_candles_slice(engine, code=code, date=date)
+    candles = downsample_candles(raw_candles, bucket_ms=bucket_ms)
+    qr = build_quote_ratio_slice(engine, code=code, date=date, bucket_ms=bucket_ms)
     di = build_depth_intensity_slice(
         engine,
         code=code,
         date=date,
         price_min=price_min,
         price_max=price_max,
-        depth_bucket_ms=depth_bucket_ms,
+        depth_bucket_ms=bucket_ms,
     )
     vp = build_volume_profile_slice(
         engine,
@@ -372,7 +381,7 @@ def build_bundle(
         price_max=price_max,
         vp_bins=vp_bins,
     )
-    fs = build_fill_strength_slice(engine, code=code, date=date)
+    fs = build_fill_strength_slice(engine, code=code, date=date, bucket_ms=bucket_ms)
 
     return SessionBundle(
         code=code,
