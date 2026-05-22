@@ -17,6 +17,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from hoga.api import disk_state as _disk_state_module
+from hoga.api.disk_state import DiskState
 from hoga.api.models import (
     CaptureError,
     CaptureFinishedEvent,
@@ -214,6 +216,31 @@ _inflight_paths: set[tuple[str, str]] = set()           # (code, date) — see s
 _queue_paused: bool = False
 _max_concurrent: int = int(os.environ.get("HOGA_MAX_CONCURRENT", "3"))
 _wakeup: asyncio.Event | None = None                    # lazily constructed when the first worker starts
+
+# Production dependencies set during build_router(); sentinels keep the names
+# valid before init (e.g. for tests that bypass build_router via the
+# _data_dir_for_tests / _client_factory_for_tests injection seams below).
+_data_dir: Path | None = None
+_client_factory: Callable[[], object] | None = None
+
+# Test injection seams — production replaces these via build_router() globals.
+_data_dir_for_tests: Callable[[], Path] | None = None
+_client_factory_for_tests: Callable[[], Any] | None = None
+
+
+def _resolve_data_dir() -> Path:
+    if _data_dir_for_tests is not None:
+        return _data_dir_for_tests()
+    # build_router() sets _data_dir; if unset, that's a programming error.
+    assert _data_dir is not None, "captures._data_dir not initialized; call build_router()"
+    return _data_dir
+
+
+def _resolve_client_factory() -> Callable[[], Any]:
+    if _client_factory_for_tests is not None:
+        return _client_factory_for_tests
+    assert _client_factory is not None, "captures._client_factory not initialized; call build_router()"
+    return _client_factory
 
 
 def get_latest() -> CaptureJobState | None:
@@ -443,11 +470,81 @@ async def _publish_phase(state: QueueItemState) -> None:
     _publish_event(CapturePhaseEvent(**state.event_header()))
 
 
-async def _run_item(state: QueueItemState) -> None:
-    """Default item-running path. Tasks 5+ replace this with the deciding/
-    capturing/parsing pipeline. Stub for Task 4: just mark done immediately
-    so the pump infrastructure can be tested in isolation."""
+async def _run_capture_and_parse(state: QueueItemState, resume: bool) -> None:
+    """Run the collector then the parser. Equivalent to the old
+    _run_capture_job (sans the partial/cookie-missing rejection — those
+    moved to the route guard and the cookie-pause path). Task 11 wraps this
+    with the 429 backoff; the canonical symbol name is kept stable so
+    Tasks 5/6/9/10 tests can monkeypatch it.
+    """
+    if state.cancel_token is None:
+        state.cancel_token = CancelToken()
+    data_dir = _resolve_data_dir()
+    client = _resolve_client_factory()()
+
+    state.started_at_ms = int(time.time() * 1000)
+    state.phase = "capturing"
+    await _publish_phase(state)
+
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(
+        None,
+        lambda: collect_stock_date(
+            client=client,
+            code=state.code,
+            date=state.date,
+            data_dir=data_dir,
+            rate_limit_s=0.0 if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1" else 0.2,
+            resume=resume,
+            on_progress=_make_progress_callback(state),
+            cancel_token=state.cancel_token,
+        ),
+    )
+
+    state.phase = "parsing"
+    await _publish_phase(state)
+    await loop.run_in_executor(
+        None,
+        lambda: parse_stock_date(
+            code=state.code, date=state.date, data_dir=data_dir, lenient=False,
+        ),
+    )
+
+    state.result = CaptureResult(
+        pages_written=result.pages_written,
+        unique_events=result.unique_events,
+        raw_dir=str(result.raw_dir),
+        parsed=True,
+    )
     state.phase = "done"
+
+
+async def _run_item(state: QueueItemState) -> None:
+    """Full pipeline: deciding → (skipped | capturing → parsing → done).
+
+    Disk-state branches (see spec §5.2 + §11 Q16):
+    - COMPLETE → skipped/already_complete
+    - SOURCE_PARTIAL + not force_retry → skipped/source_partial
+    - SOURCE_PARTIAL + force_retry → fresh capture (resume=False)
+    - CLIENT_INCOMPLETE → resume=True (continue from existing pages)
+    - NONE → fresh capture (resume=False)
+    """
+    data_dir = _resolve_data_dir()
+    # Late attribute lookup so tests can monkeypatch
+    # "hoga.api.disk_state.check_disk_state" at the source module.
+    disk = _disk_state_module.check_disk_state(data_dir, state.code, state.date)
+
+    if disk == DiskState.COMPLETE:
+        state.phase = "skipped"
+        state.skip_reason = "already_complete"
+        return
+    if disk == DiskState.SOURCE_PARTIAL and not state.force_retry:
+        state.phase = "skipped"
+        state.skip_reason = "source_partial"
+        return
+
+    resume_flag = (disk == DiskState.CLIENT_INCOMPLETE)
+    await _run_capture_and_parse(state, resume=resume_flag)
 
 
 async def _finalize_item(state: QueueItemState) -> None:
@@ -561,6 +658,9 @@ def build_router(
     `client_factory()` returns a fresh HogaplayClientProto. In production this
     yields a real HogaplayClient; tests inject a fake.
     """
+    global _data_dir, _client_factory  # noqa: PLW0603 — production wiring of module globals
+    _data_dir = data_dir
+    _client_factory = client_factory
     router = APIRouter(prefix="/api/captures", tags=["captures"])
 
     @router.post("", status_code=201)
