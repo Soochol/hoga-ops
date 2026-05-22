@@ -307,3 +307,54 @@ class CalendarResponse(BaseModel):
     cells: list[CalendarCell]
     as_of_ms: int                       # server wall-clock when cells were read (spec §11 Q21)
     reason: UpstreamCode | None = None
+
+
+# === RangeBundle (ADR-0013) — multi-Stock-Date read-path Wire Model ===
+
+ALLOWED_TIMEFRAME_MS: tuple[int, ...] = (
+    60_000,      # 1m
+    180_000,     # 3m
+    300_000,     # 5m
+    600_000,     # 10m
+    900_000,     # 15m
+    1_800_000,   # 30m
+)
+
+
+def validate_bucket_ms(value: int) -> int:
+    """Whitelist-validate a Timeframe bucket_ms (ADR-0014). Raise ValueError otherwise."""
+    if value not in ALLOWED_TIMEFRAME_MS:
+        raise ValueError(
+            f"bucket_ms must be one of {ALLOWED_TIMEFRAME_MS}, got {value}"
+        )
+    return value
+
+
+class RangeSegment(BaseModel):
+    """One captured Stock-Date inside a Stock-Date Range.
+
+    The frontend stitches these onto a virtual axis (see util/time.ts).
+    """
+
+    date: str
+    session_open_ms: int
+    session_close_ms: int
+
+
+class RangeBundle(BaseModel):
+    """The sole read-path Wire Model for a Stock-Date Range (ADR-0013).
+
+    All series aggregated at the same Timeframe (ADR-0014).
+    """
+
+    code: str
+    from_date: str
+    to_date: str
+    bucket_ms: int
+    segments: list[RangeSegment]
+    candles: list[ApiCandle]
+    quote_ratio: QuoteRatio
+    depth_intensity: DepthIntensity
+    fill_strength: FillStrength
+    volume_profile_range: VolumeProfile
+    volume_profile_by_day: list[VolumeProfile]
