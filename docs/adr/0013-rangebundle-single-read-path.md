@@ -72,6 +72,16 @@ doing it now avoids a future audit.
   cardinality change forces the consumer-side adjustment, consistent
   with that ADR's "consumer never reshapes" rule (the segments structure
   IS the wire shape; consumers index into it without reshaping).
+- Series with per-day price-grid dependency ship as per-segment lists:
+  `depth_intensity_by_day: list[DepthIntensity]`, `volume_profile_by_day:
+  list[VolumeProfile]`. Each Stock-Date has its own `price_min` /
+  `price_max` / `price_step` (DepthIntensity) and `bin_count` / `bin_width`
+  (VolumeProfile), so the grids cannot be concatenated meaningfully. Series
+  with flat (t, value) point arrays — `candles`, `quote_ratio.points`,
+  `fill_strength.points` — ARE concatenated across segments because they
+  share a single time axis and have no per-day grid binding. Frontend
+  IntensityPane iterates `depth_intensity_by_day` and renders each grid
+  into its own segment's virtual range.
 - ADR-0004's "each table → one Wire Model" remains the operative
   principle. `RangeBundle` is not a table-derived Wire Model (it
   composes five table-derived ones plus the segments array), but the

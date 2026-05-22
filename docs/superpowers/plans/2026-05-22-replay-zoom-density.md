@@ -63,7 +63,7 @@ def test_range_bundle_requires_at_least_one_segment_and_consistent_bucket():
         segments=[RangeSegment(date="20260512", session_open_ms=1, session_close_ms=2)],
         candles=[],
         quote_ratio=QuoteRatio(bucket_ms=60_000, points=[]),
-        depth_intensity=DepthIntensity(bucket_ms=60_000, time_starts_ms=[], side=[], bin_idx=[], qty=[]),
+        depth_intensity_by_day=[DepthIntensity(bucket_ms=60_000, price_min=0, price_max=0, price_step=1, times=[], bid_grid=[], ask_grid=[])],
         fill_strength=FillStrength(bucket_ms=60_000, points=[]),
         volume_profile_range=VolumeProfile(price_bins=[], bin_width=0, totals=[]),
         volume_profile_by_day=[VolumeProfile(price_bins=[], bin_width=0, totals=[])],
@@ -121,7 +121,7 @@ class RangeBundle(BaseModel):
     segments: list[RangeSegment]
     candles: list[ApiCandle]
     quote_ratio: QuoteRatio
-    depth_intensity: DepthIntensity
+    depth_intensity_by_day: list[DepthIntensity]  # per-segment — each day has its own price grid
     fill_strength: FillStrength
     volume_profile_range: VolumeProfile
     volume_profile_by_day: list[VolumeProfile]
@@ -180,7 +180,7 @@ export type RangeBundle = {
   segments: RangeSegment[];
   candles: ApiCandle[];
   quote_ratio: QuoteRatio;
-  depth_intensity: DepthIntensity;
+  depth_intensity_by_day: DepthIntensity[];  // per-segment — each day has its own price grid
   fill_strength: FillStrength;
   volume_profile_range: VolumeProfile;
   volume_profile_by_day: VolumeProfile[];
@@ -763,10 +763,7 @@ def build_range_bundle(
     segments: list[RangeSegment] = []
     candles: list[ApiCandle] = []
     ratio_pts: list = []
-    intensity_time_starts: list[int] = []
-    intensity_side: list[int] = []
-    intensity_bin_idx: list[int] = []
-    intensity_qty: list[float] = []
+    intensity_by_day: list[DepthIntensity] = []  # per-segment: price grids differ across days
     fill_pts: list = []
     profiles_by_day: list[VolumeProfile] = []
 
@@ -779,10 +776,7 @@ def build_range_bundle(
         ))
         candles.extend(sub.candles)
         ratio_pts.extend(sub.quote_ratio.points)
-        intensity_time_starts.extend(sub.depth_intensity.time_starts_ms)
-        intensity_side.extend(sub.depth_intensity.side)
-        intensity_bin_idx.extend(sub.depth_intensity.bin_idx)
-        intensity_qty.extend(sub.depth_intensity.qty)
+        intensity_by_day.append(sub.depth_intensity)
         fill_pts.extend(sub.fill_strength.points)
         profiles_by_day.append(sub.volume_profile)
 
@@ -796,13 +790,7 @@ def build_range_bundle(
         segments=segments,
         candles=candles,
         quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=ratio_pts),
-        depth_intensity=DepthIntensity(
-            bucket_ms=bucket_ms,
-            time_starts_ms=intensity_time_starts,
-            side=intensity_side,
-            bin_idx=intensity_bin_idx,
-            qty=intensity_qty,
-        ),
+        depth_intensity_by_day=intensity_by_day,
         fill_strength=FillStrength(bucket_ms=bucket_ms, points=fill_pts),
         volume_profile_range=profile_range,
         volume_profile_by_day=profiles_by_day,

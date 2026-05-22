@@ -123,7 +123,7 @@ class RangeBundle(BaseModel):
     segments: list[RangeSegment]      # len >= 1, ascending by date
     candles: list[ApiCandle]
     quote_ratio: ApiQuoteRatio
-    depth_intensity: ApiDepthIntensity
+    depth_intensity_by_day: list[ApiDepthIntensity]  # per-segment — each day has its own price grid
     fill_strength: ApiFillStrength
     volume_profile_range: ApiVolumeProfile     # range-wide, always present
     volume_profile_by_day: list[ApiVolumeProfile]  # day-wise, len == len(segments)
@@ -137,7 +137,7 @@ class RangeBundle(BaseModel):
 |---|---|---|
 | **candles** | OHLC re-aggregation: `open = first(open)`, `close = last(close)`, `high = max(high)`, `low = min(low)`, `vol_a = sum(vol_a)`, `vol_b = sum(vol_b)` | New `downsample_candles(candles_1m, bucket_ms)` in `hoga/api/bundle.py`. Last partial bucket included. `bucket_ms == 60000` is identity. |
 | **quote_ratio** | First snapshot per bucket (`ROW_NUMBER() OVER (PARTITION BY bucket ORDER BY ts) = 1`) | Existing SQL in `bundle.py:64-80` — already parameterized by `bucket_ms`. |
-| **depth_intensity** | `MAX(qty)` over bucket × bin | Existing SQL in `bundle.py:170-185` — already parameterized by `depth_bucket_ms`. Cell-cap logic (`max_cells`) preserved. |
+| **depth_intensity_by_day** | `MAX(qty)` over bucket × bin, **per-segment list** | Existing SQL in `bundle.py:170-185` — already parameterized by `depth_bucket_ms`. Cell-cap logic (`max_cells`) preserved. Each segment has its own `price_min/price_max/price_step` grid so the grids cannot be concatenated meaningfully — list-of-DepthIntensity, one per Stock-Date (same pattern as `volume_profile_by_day`). |
 | **fill_strength** | Existing bucket metric | Already parameterized by `bucket_ms`. Default changes from 60_000 to the request's `bucket_ms`. |
 | **volume_profile_range** | All trades in `[from, to]` grouped by price bin | New `build_volume_profile_range(engine, code, dates)` — unions trades across all in-range Stock-Dates' parquet files into one profile. Bin width = same logic as existing single-day profile. |
 | **volume_profile_by_day** | Existing single-day profile, computed N times | Loop over dates, reuse existing `build_volume_profile` per Stock-Date. |
@@ -169,7 +169,7 @@ def build_range_bundle(engine, code, from_date, to_date, bucket_ms):
         ))
         candles.extend(bundle.candles)
         ratio_pts.extend(bundle.quote_ratio.points)
-        intensity_cells.extend(bundle.depth_intensity.cells)
+        intensity_by_day.append(bundle.depth_intensity)
         fill_pts.extend(bundle.fill_strength.points)
         profiles_by_day.append(bundle.volume_profile)
 
@@ -180,7 +180,7 @@ def build_range_bundle(engine, code, from_date, to_date, bucket_ms):
         segments=segments,
         candles=candles,
         quote_ratio=ApiQuoteRatio(bucket_ms=bucket_ms, points=ratio_pts),
-        depth_intensity=ApiDepthIntensity(bucket_ms=bucket_ms, cells=intensity_cells, ...),
+        depth_intensity_by_day=intensity_by_day,
         fill_strength=ApiFillStrength(bucket_ms=bucket_ms, points=fill_pts),
         volume_profile_range=profile_range,
         volume_profile_by_day=profiles_by_day,
