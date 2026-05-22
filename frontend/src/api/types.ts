@@ -103,23 +103,35 @@ export interface CaptureResult {
   parsed: boolean;
 }
 
-/** Mirrors hoga/api/error_codes.py::CaptureErrorCode verbatim.
- *  Single source of truth for backend-emitted `code` strings — appears both
- *  as HTTPException detail.code on REST errors AND as CaptureError.code on
- *  the per-item SSE capture_finished payload. Per ADR-0004 mirror discipline:
- *  adding a value to the Python enum requires adding the same string here. */
+/** Mirrors hoga/api/error_codes.py::CaptureErrorCode verbatim — captures-domain
+ *  non-upstream codes. Per ADR-0009 cookie/hogaplay codes moved to UpstreamCode.
+ *  Per ADR-0004 mirror discipline: adding a value to the Python enum requires
+ *  adding the same string here. */
 export type CaptureErrorCode =
   | 'today_too_early'
   | 'missing_range'
-  | 'cookie_expired'
-  | 'cookie_missing'
-  | 'hogaplay_http_error'
   | 'terminal'
   | 'not_found'
   | 'internal_error';
 
+/** Mirrors hoga/api/error_codes.py::UpstreamCode verbatim (ADR-0009). Used as
+ *  `reason: UpstreamCode | null` on cache envelopes (SymbolsAllResponse,
+ *  CalendarResponse), as `detail.code: UpstreamCode` on HTTP 5xx error
+ *  bodies, and as `CaptureError.code` on per-item SSE failures (via the
+ *  `CaptureFinishedErrorCode` alias below). */
+export type UpstreamCode =
+  | 'krx_credentials_missing'
+  | 'krx_fetch_failed'
+  | 'cookie_expired'
+  | 'cookie_missing'
+  | 'hogaplay_http_error';
+
+/** Union used wherever an error code can be either domain — currently
+ *  CaptureError.code on the per-item SSE capture_finished payload. */
+export type CaptureFinishedErrorCode = CaptureErrorCode | UpstreamCode;
+
 export interface CaptureError {
-  code: CaptureErrorCode;
+  code: CaptureFinishedErrorCode;
   message: string;
   at_page?: number | null;
 }
@@ -193,6 +205,7 @@ export interface SymbolsAllResponse {
   symbols: SymbolHit[];
   status: SymbolsCacheStatus;
   fetched_at_ms: number | null;
+  reason?: UpstreamCode | null;
 }
 
 export type CalendarStatus =
@@ -216,6 +229,7 @@ export interface CalendarCell {
 export interface CalendarResponse {
   cells: CalendarCell[];
   as_of_ms: number;                                    // spec §11 Q21 reconciliation key
+  reason?: UpstreamCode | null;
 }
 
 /** Mirrors hoga/api/models.py::EnqueueRequest. */
