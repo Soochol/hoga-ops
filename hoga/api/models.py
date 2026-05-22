@@ -176,9 +176,6 @@ class QueueItem(BaseModel):
     skip_reason: SkipReason | None = None
 
 
-# Transitional alias — Task 13 deletes CaptureJob along with the old _latest singleton.
-CaptureJob = QueueItem
-
 
 # SSE event Wire Models — same ADR-0004 rule applies to events as to HTTP responses:
 # the schema is declared once here and shipped verbatim to consumers. Frontend

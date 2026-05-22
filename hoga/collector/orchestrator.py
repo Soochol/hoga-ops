@@ -53,8 +53,9 @@ class CaptureCancelled(RuntimeError):
 class CancelToken:
     """Thin asyncio.Event wrapper for cooperative cancellation.
 
-    The API layer creates one token per job, passes it to collect_stock_date,
-    and calls .cancel() on POST /api/captures/latest/cancel.
+    The API layer creates one token per queue item, passes it to
+    collect_stock_date, and calls .cancel() on
+    POST /api/captures/items/{item_id}/cancel.
     """
 
     def __init__(self) -> None:

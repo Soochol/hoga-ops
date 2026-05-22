@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from hoga.api import captures as _captures_module
 from hoga.api.captures import build_router as build_captures_router
-from hoga.api.captures import cancel_latest_on_shutdown
+from hoga.api.captures import cancel_all_on_shutdown
 from hoga.api.captures import set_bus as set_captures_bus
 from hoga.api.queries import QueryEngine
 from hoga.api.routes import build_router
@@ -58,9 +58,9 @@ def create_app(data_dir: Path) -> FastAPI:
             # while bus + observer are still live (they emit terminal events).
             await _captures_module.stop_workers(_captures_module._workers)
             _captures_module._workers = []
-            # Best-effort cancel of an in-flight job at shutdown — raw files
+            # Best-effort cancel of any in-flight items at shutdown — raw files
             # are preserved on disk for Resume. Spec §9 documents this behavior.
-            cancel_latest_on_shutdown()
+            cancel_all_on_shutdown()
             observer.stop()
             observer.join()
             engine.close()

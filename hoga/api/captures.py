@@ -15,14 +15,13 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from hoga.api import disk_state as _disk_state_module
 from hoga.api.disk_state import DiskState
 from hoga.api.models import (
     CaptureError,
     CaptureFinishedEvent,
-    CaptureJob,
     CapturePhaseEvent,
     CaptureProgress,
     CaptureProgressEvent,
@@ -76,74 +75,6 @@ def _exception_to_error_code(exc: BaseException) -> str | None:
     if isinstance(exc, CaptureCancelled):
         return None
     return "internal_error"
-
-
-@dataclass
-class CaptureJobState:
-    """Mutable server-side state for the current/last job. Not a Wire Model."""
-    job_id: str
-    code: str
-    date: str
-    options: dict[str, Any]
-    phase: str = "capturing"
-    started_at_ms: int = 0
-    pages_done: int = 0
-    events_seen: int = 0
-    frontier: HogaMs = HogaMs(0)  # collector encoding (HHMMSSmmm); see ADR-0003
-    elapsed_ms: int = 0
-    estimate_pct: int = 0
-    result: CaptureResult | None = None
-    error: CaptureError | None = None
-    cancel_token: Any = None  # CancelToken; typed loosely to avoid circular import
-    task: asyncio.Task | None = None
-
-    def to_progress(self) -> CaptureProgress | None:
-        """Build the wire-side CaptureProgress for this state, or None if no
-        page has completed yet. Owns the HHMMSSmmm → Unix-ms conversion per
-        ADR-0003 — both to_wire() and the SSE emission path go through here.
-        """
-        if self.pages_done == 0:
-            return None
-        return CaptureProgress(
-            pages_done=self.pages_done,
-            events_seen=self.events_seen,
-            frontier_ms=hhmmssms_to_unix_ms(self.date, self.frontier),
-            estimate_pct=self.estimate_pct,
-            elapsed_ms=self.elapsed_ms,
-        )
-
-    def event_header(self) -> dict[str, Any]:
-        """Common fields every capture_* SSE event carries.
-
-        Internal field name (`self.job_id`) is unchanged for now — Task 13
-        removes the legacy singleton entirely. The wire field is `item_id`
-        per spec §3.4.
-        """
-        return {
-            "item_id": self.job_id,
-            "code": self.code,
-            "date": self.date,
-            "phase": self.phase,
-        }
-
-    def to_wire(self) -> CaptureJob:
-        return CaptureJob(
-            item_id=self.job_id,
-            code=self.code,
-            date=self.date,
-            phase=self.phase,                # type: ignore[arg-type]
-            force_retry=False,                # old singleton path never set this
-            pause_origin=False,
-            enqueued_at_ms=self.started_at_ms or 0,
-            started_at_ms=self.started_at_ms or None,
-            progress=self.to_progress(),
-            result=self.result,
-            error=self.error,
-        )
-
-    @property
-    def is_terminal(self) -> bool:
-        return self.phase in ("done", "failed", "cancelled")
 
 
 @dataclass
@@ -209,11 +140,8 @@ class QueueItemState:
 
 
 _lock = asyncio.Lock()
-_latest: CaptureJobState | None = None
 
 # --- Queue state singletons (Plan B) ---------------------------------------
-# These coexist with the legacy `_latest` until Task 13 removes the old
-# singleton. New code paths only ever touch the queue surface.
 
 _queue: collections.deque[Any] = collections.deque()    # deque[QueueItemState]
 _active: dict[str, Any] = {}                            # item_id → QueueItemState
@@ -250,14 +178,9 @@ def _resolve_client_factory() -> Callable[[], Any]:
     return _client_factory
 
 
-def get_latest() -> CaptureJobState | None:
-    return _latest
-
-
 def reset_state_for_tests() -> None:
     """For pytest fixtures only — clears all module singletons."""
-    global _latest, _queue_paused, _wakeup  # noqa: PLW0603 — intentional test-only reset of module singletons
-    _latest = None
+    global _queue_paused, _wakeup  # noqa: PLW0603 — intentional test-only reset of module singletons
     _queue.clear()
     _active.clear()
     _done.clear()
@@ -270,13 +193,16 @@ def reset_state_for_tests() -> None:
     _wakeup = None
 
 
-def cancel_latest_on_shutdown() -> None:
-    """Best-effort cancel called from app lifespan teardown. Raw pages on disk
-    are preserved for the user to Resume; the asyncio task is abandoned (the
+def cancel_all_on_shutdown() -> None:
+    """Best-effort cancel called from app lifespan teardown.
+
+    Cancels every active queue item's cancel_token. Raw pages on disk are
+    preserved for the user to Resume; the asyncio tasks are abandoned (the
     server is going down anyway). See spec §9 'server restart loses state'.
     """
-    if _latest is not None and not _latest.is_terminal and _latest.cancel_token is not None:
-        _latest.cancel_token.cancel()
+    for s in _active.values():
+        if s.cancel_token is not None:
+            s.cancel_token.cancel()
 
 
 # Bus injection point: the captures router holds a reference to the SSE _Bus
@@ -318,7 +244,7 @@ def _publish_event(event: BaseModel) -> None:
     _loop.call_soon_threadsafe(_bus.publish, event.model_dump(mode="json"))
 
 
-def _apply_progress(state: CaptureJobState, evt: ProgressEvent) -> None:
+def _apply_progress(state: QueueItemState, evt: ProgressEvent) -> None:
     """Apply a ProgressEvent to `state` and emit the SSE event.
 
     Single-thread invariant: this function MUST only run on the event loop.
@@ -333,7 +259,7 @@ def _apply_progress(state: CaptureJobState, evt: ProgressEvent) -> None:
     state.pages_done = evt.pages_done
     state.events_seen = evt.events_seen
     state.frontier = evt.frontier
-    state.elapsed_ms = int(time.time() * 1000) - state.started_at_ms
+    state.elapsed_ms = int(time.time() * 1000) - (state.started_at_ms or 0)
     # Estimate: % of Data Window covered. HogaMs arithmetic returns int
     # (NewType subtraction is identity), so span/offset are plain ints.
     span = CHART_FINAL_TIME_MS - DATA_WINDOW_START_MS
@@ -344,7 +270,7 @@ def _apply_progress(state: CaptureJobState, evt: ProgressEvent) -> None:
     _publish_event(CaptureProgressEvent(**state.event_header(), progress=progress))
 
 
-def _make_progress_callback(state: CaptureJobState):
+def _make_progress_callback(state: QueueItemState):
     """Returns a callback the collector invokes from its executor thread.
 
     The callback does NOT mutate state directly — it hops to the event loop
@@ -362,101 +288,7 @@ def _make_progress_callback(state: CaptureJobState):
     return _on_progress
 
 
-async def _run_capture_job(
-    *,
-    state: CaptureJobState,
-    client: Any,
-    data_dir: Path,
-) -> None:
-    """Runs collector (+ optional parse) on the asyncio event loop.
-
-    Sets state.started_at_ms just before the collector entry per spec §4.1
-    'started_at_ms definition'. collect_stock_date is sync; we run it in a
-    thread executor so the event loop stays free for SSE / other requests.
-    """
-    # cancel_token is created in the POST handler so a cancel arriving before
-    # this task ticks for the first time still finds a real token. Only create
-    # one here if state arrived without (defensive — covers test-only entry
-    # points that bypass the route).
-    if state.cancel_token is None:
-        state.cancel_token = CancelToken()
-    state.started_at_ms = int(time.time() * 1000)
-    state.phase = "capturing"
-    _publish_event(CapturePhaseEvent(**state.event_header()))
-
-    loop = asyncio.get_running_loop()
-
-    try:
-        result = await loop.run_in_executor(
-            None,
-            lambda: collect_stock_date(
-                client=client,
-                code=state.code,
-                date=state.date,
-                data_dir=data_dir,
-                rate_limit_s=0.0 if state.options.get("_fast_test", False) else 0.2,
-                resume=bool(state.options.get("resume", False)),
-                on_progress=_make_progress_callback(state),
-                cancel_token=state.cancel_token,
-            ),
-        )
-        parsed = False
-        if not state.options.get("capture_only", False):
-            state.phase = "parsing"
-            _publish_event(CapturePhaseEvent(**state.event_header()))
-            await loop.run_in_executor(
-                None,
-                lambda: parse_stock_date(
-                    code=state.code,
-                    date=state.date,
-                    data_dir=data_dir,
-                    lenient=False,
-                ),
-            )
-            parsed = True
-
-        state.result = CaptureResult(
-            pages_written=result.pages_written,
-            unique_events=result.unique_events,
-            raw_dir=str(result.raw_dir),
-            parsed=parsed,
-        )
-        state.phase = "done"
-    except CaptureCancelled:
-        state.phase = "cancelled"
-    except Exception as exc:  # noqa: BLE001 — terminal failure path
-        # Intentionally NOT catching BaseException: asyncio.CancelledError must
-        # propagate so graceful shutdown can unwind cleanly. KeyboardInterrupt
-        # / SystemExit aren't expected from the executor thread but if they
-        # arrive we want them to bubble too.
-        code = _exception_to_error_code(exc)
-        state.error = CaptureError(
-            code=code or "internal_error",
-            message=str(exc),
-            at_page=state.pages_done or None,
-        )
-        state.phase = "failed"
-
-    _publish_event(CaptureFinishedEvent(
-        **state.event_header(),
-        result=state.result,
-        error=state.error,
-    ))
-
-
 KST = timezone(timedelta(hours=9))
-
-
-class StartCaptureRequest(BaseModel):
-    code: str = Field(pattern=r"^\d{6}$")
-    date: str = Field(pattern=r"^\d{8}$")
-    resume: bool = False
-    capture_only: bool = False
-
-
-def _make_job_id(code: str, date: str) -> str:
-    now = datetime.now(tz=KST).strftime("%Y%m%dT%H%M%S")
-    return f"{now}-{code}-{date}"
 
 
 from hoga.api.models import QueueSnapshot  # noqa: E402 — placed near consumers to mirror the existing late-import style
@@ -526,9 +358,8 @@ async def _run_capture_and_parse(state: QueueItemState, resume: bool) -> None:
 
 
 async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
-    """Run the collector then the parser. Equivalent to the old
-    _run_capture_job (sans the partial/cookie-missing rejection — those
-    moved to the route guard and the cookie-pause path). Task 11's
+    """Run the collector then the parser. Cookie-missing/expired rejection
+    happens via the cookie-pause path in the worker loop. Task 11's
     ``_run_capture_and_parse`` wrapper provides 429 backoff around this.
     """
     if state.cancel_token is None:
@@ -851,103 +682,9 @@ def build_router(
     _client_factory = client_factory
     router = APIRouter(prefix="/api/captures", tags=["captures"])
 
-    @router.post("", status_code=201)
-    async def start_capture(req: StartCaptureRequest) -> CaptureJob:
-        global _latest  # noqa: PLW0603 — module singleton write under _lock
-        async with _lock:
-            if _latest is not None and not _latest.is_terminal:
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "code": "already_running",
-                        "latest": _latest.to_wire().model_dump(),
-                    },
-                )
-            # Backend re-validation of today-too-early policy (defense in depth).
-            now_kst = datetime.now(tz=KST)
-            if is_today_too_early(req.date, now_kst):
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "code": "today_too_early",
-                        "message": (
-                            f"date={req.date} is today (KST) and now.hour={now_kst.hour} < 18."
-                        ),
-                    },
-                )
-
-            options: dict[str, Any] = {
-                "resume": req.resume,
-                "capture_only": req.capture_only,
-            }
-            # In test mode (same flag that swaps in FakeHogaplayClient),
-            # also drop the 0.2s rate-limit so the ~1267 empty-page
-            # termination iterations don't dominate run time.
-            if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
-                options["_fast_test"] = True
-            # Build the client FIRST. If it raises (missing/invalid cookie,
-            # config error), the request fails cleanly without polluting the
-            # _latest singleton — otherwise the failed state would stick
-            # around as a non-terminal "capturing" job that every subsequent
-            # POST sees as 409 already_running.
-            try:
-                client = client_factory()
-            except CookieMissingError as exc:
-                raise HTTPException(
-                    status_code=400,
-                    detail={"code": "cookie_missing", "message": str(exc)},
-                ) from exc
-
-            state = CaptureJobState(
-                job_id=_make_job_id(req.code, req.date),
-                code=req.code,
-                date=req.date,
-                options=options,
-            )
-            # Create the cancel token here, BEFORE the task is scheduled, so a
-            # cancel POST arriving in the micro-window between this return and
-            # _run_capture_job's first tick still finds a real token. Otherwise
-            # the cancel handler would no-op silently and the user would see
-            # 202 while the capture continued.
-            state.cancel_token = CancelToken()
-            _latest = state
-            state.task = asyncio.create_task(
-                _run_capture_job(state=state, client=client, data_dir=data_dir)
-            )
-            return state.to_wire()
-
     @router.get("/queue")
     async def get_queue() -> QueueSnapshot:
         return get_queue_snapshot()
-
-    @router.get("/latest")
-    async def get_latest_route() -> CaptureJob | None:
-        if _latest is None:
-            return None
-        return _latest.to_wire()
-
-    @router.post("/latest/cancel", status_code=202)
-    async def cancel_latest() -> dict:
-        if _latest is None or _latest.is_terminal:
-            raise HTTPException(
-                status_code=409,
-                detail={"code": "not_running",
-                        "message": "no running capture to cancel"},
-            )
-        if _latest.cancel_token is not None:
-            _latest.cancel_token.cancel()
-        return {"status": "cancel_signal_delivered", "job_id": _latest.job_id}
-
-    @router.delete("/latest", status_code=204)
-    async def dismiss_latest() -> None:
-        global _latest  # noqa: PLW0603 — module singleton write
-        if _latest is not None and not _latest.is_terminal:
-            raise HTTPException(
-                status_code=409,
-                detail={"code": "still_running",
-                        "message": "cancel the running capture before dismissing"},
-            )
-        _latest = None
 
     @router.post("/items", status_code=201)
     async def enqueue_items(req: EnqueueRequest) -> EnqueueResponse:
