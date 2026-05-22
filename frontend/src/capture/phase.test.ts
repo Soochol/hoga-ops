@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PHASE, GROUP_ORDER, phaseToCalendarStatus } from './phase';
+import { PHASE, GROUP_ORDER, getPhase, phaseToCalendarStatus } from './phase';
 import type { CapturePhase } from '../api/types';
 
 describe('PHASE descriptor table', () => {
@@ -48,6 +48,35 @@ describe('PHASE descriptor table', () => {
     for (const p of Object.keys(PHASE) as CapturePhase[]) {
       expect(PHASE[p].terminal).toBe(terminals.includes(p));
     }
+  });
+});
+
+describe('getPhase (wire-drift fallback)', () => {
+  it('returns the matching descriptor for a known phase', () => {
+    expect(getPhase('done')).toBe(PHASE.done);
+    expect(getPhase('capturing')).toBe(PHASE.capturing);
+  });
+
+  it('returns a safe fallback descriptor for an unknown phase string', () => {
+    // Backend ships a new phase before the frontend's CapturePhase union
+    // is updated — getPhase must not throw or return undefined.
+    const unknown = getPhase('paused-future-phase');
+    expect(unknown).toBeDefined();
+    expect(unknown.icon).toBe('?');
+    expect(unknown.terminal).toBe(true);
+    expect(unknown.group).toBe('terminal');
+  });
+
+  it('fallback keeps queue rendering alive (no exception on property access)', () => {
+    // Regression guard for the pre-helper crash: PHASE[unknown] → undefined →
+    // accessing .terminal threw TypeError mid-render.
+    expect(() => {
+      const d = getPhase('totally-bogus');
+      void d.icon;
+      void d.chipColor;
+      void d.group;
+      void d.terminal;
+    }).not.toThrow();
   });
 });
 

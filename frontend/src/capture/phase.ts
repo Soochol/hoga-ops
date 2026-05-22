@@ -27,6 +27,26 @@ export const PHASE: Record<CapturePhase, PhaseDescriptor> = {
   skipped:   { icon: '⚠', chipColor: NEUTRAL_TINT, group: 'terminal', terminal: true  },
 };
 
+/** Fallback for wire drift — a backend phase added before the frontend's
+ *  CapturePhase union is updated would otherwise hit `PHASE[unknown]` →
+ *  undefined → TypeError mid-render. Renders as a `?` neutral chip so the
+ *  queue stays alive while the type mismatch is noticed. terminal=true so
+ *  the row gets no action button (safer than offering cancel on something
+ *  we don't understand). */
+const UNKNOWN_PHASE: PhaseDescriptor = {
+  icon: '?',
+  chipColor: NEUTRAL_TINT,
+  group: 'terminal',
+  terminal: true,
+};
+
+/** Look up a phase descriptor with runtime safety. Always returns a
+ *  PhaseDescriptor — falls back to UNKNOWN_PHASE for any string outside
+ *  the CapturePhase union (defends against wire drift mid-deploy). */
+export function getPhase(phase: string): PhaseDescriptor {
+  return PHASE[phase as CapturePhase] ?? UNKNOWN_PHASE;
+}
+
 /** Display order: active items first, then queued, then terminals at the bottom. */
 export const GROUP_ORDER: Record<PhaseDescriptor['group'], number> = {
   active: 0,

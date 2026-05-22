@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCaptureQueue } from './useCaptureQueue';
 import { useSymbols } from './useSymbols';
 import { CaptureQueueRow } from './CaptureQueueRow';
-import { GROUP_ORDER, PHASE } from './phase';
+import { GROUP_ORDER, getPhase } from './phase';
 import type { QueueItem, QueueSnapshot } from '../api/types';
 
 export interface HeaderSummary {
@@ -46,7 +46,7 @@ export function CaptureQueue() {
     if (queue === undefined) return [];
     const merged = [...queue.active, ...queue.queued, ...queue.done];
     merged.sort((a, b) => {
-      const p = GROUP_ORDER[PHASE[a.phase].group] - GROUP_ORDER[PHASE[b.phase].group];
+      const p = GROUP_ORDER[getPhase(a.phase).group] - GROUP_ORDER[getPhase(b.phase).group];
       if (p !== 0) return p;
       return a.enqueued_at_ms - b.enqueued_at_ms;
     });

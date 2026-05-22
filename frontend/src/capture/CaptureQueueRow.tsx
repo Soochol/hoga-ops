@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CaptureRowDetail } from './CaptureRowDetail';
-import { PHASE } from './phase';
+import { getPhase } from './phase';
 import type { QueueItem } from '../api/types';
 
 export interface CaptureQueueRowProps {
@@ -13,7 +13,7 @@ export interface CaptureQueueRowProps {
 
 export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: CaptureQueueRowProps) {
   const [expanded, setExpanded] = useState(false);
-  const descriptor = PHASE[item.phase];
+  const descriptor = getPhase(item.phase);
   const showCancel = !descriptor.terminal;
   const showRetry = item.phase === 'failed';
 
