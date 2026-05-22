@@ -261,3 +261,38 @@ export interface QueueSnapshot {
   paused: boolean;
   max_concurrent: number;
 }
+
+// === RangeBundle (ADR-0013) ===
+
+export type RangeSegment = {
+  date: string;            // YYYYMMDD KST
+  session_open_ms: number; // Unix ms
+  session_close_ms: number;
+};
+
+export type Timeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m';
+
+export const TIMEFRAME_TO_MS: Record<Timeframe, number> = {
+  '1m': 60_000,
+  '3m': 180_000,
+  '5m': 300_000,
+  '10m': 600_000,
+  '15m': 900_000,
+  '30m': 1_800_000,
+};
+
+export const TIMEFRAME_LABELS: ReadonlyArray<Timeframe> = ['1m', '3m', '5m', '10m', '15m', '30m'];
+
+export type RangeBundle = {
+  code: string;
+  from_date: string;
+  to_date: string;
+  bucket_ms: number;
+  segments: RangeSegment[];
+  candles: Candle[];
+  quote_ratio: QuoteRatio;
+  depth_intensity_by_day: DepthIntensity[];   // per-segment — each day has its own price grid
+  fill_strength: FillStrength;
+  volume_profile_range: VolumeProfile;
+  volume_profile_by_day: VolumeProfile[];
+};
