@@ -9,7 +9,8 @@ import {
   applyCellPatch,
   type EnrichedCalendarResponse,
 } from './useCalendar';
-import type { QueueItem, QueueSnapshot, SSEEvent, CalendarStatus, SkipReason } from '../api/types';
+import { phaseToCalendarStatus } from './phase';
+import type { QueueItem, QueueSnapshot, SSEEvent } from '../api/types';
 
 export const CAPTURE_QUEUE_QUERY_KEY = ['capture', 'queue'] as const;
 
@@ -38,13 +39,6 @@ export function patchQueueItem(
 function yearOf(date8: string): number { return parseInt(date8.slice(0, 4), 10); }
 function monthOf(date8: string): number { return parseInt(date8.slice(4, 6), 10); }
 
-function finishedToStatus(phase: QueueItem['phase'], skipReason: SkipReason | null): CalendarStatus | null {
-  if (phase === 'done') return 'complete';
-  if (phase === 'skipped') return skipReason === 'source_partial' ? 'source_partial' : 'complete';
-  if (phase === 'failed' || phase === 'cancelled') return 'client_incomplete';
-  return null;
-}
-
 export function useCaptureQueue() {
   const qc = useQueryClient();
   const queue = useQuery<QueueSnapshot>({
@@ -68,7 +62,7 @@ export function useCaptureQueue() {
         qc.invalidateQueries({ queryKey: CAPTURE_QUEUE_QUERY_KEY });
         // Patch the calendar cell for (e.code, e.date) without refetching the month.
         const key = CALENDAR_QUERY_KEY(e.code, yearOf(e.date), monthOf(e.date));
-        const status = finishedToStatus(e.phase, e.skip_reason);
+        const status = phaseToCalendarStatus(e.phase, e.skip_reason);
         if (status !== null) {
           qc.setQueryData<EnrichedCalendarResponse>(key, (prev) =>
             prev ? applyCellPatch(prev, e.date, { status }, Date.now()) : prev,

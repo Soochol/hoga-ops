@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { CaptureQueueRow, statusIcon, phaseChipColor } from './CaptureQueueRow';
+import { CaptureQueueRow } from './CaptureQueueRow';
 import type { QueueItem } from '../api/types';
 
 const base: QueueItem = {
@@ -9,29 +9,6 @@ const base: QueueItem = {
   enqueued_at_ms: 1, started_at_ms: null,
   progress: null, result: null, error: null, skip_reason: null,
 };
-
-describe('statusIcon', () => {
-  it('maps phases to glyphs', () => {
-    expect(statusIcon('done')).toBe('✓');
-    expect(statusIcon('failed')).toBe('✕');
-    expect(statusIcon('cancelled')).toBe('✕');
-    expect(statusIcon('skipped')).toBe('⚠');
-    expect(statusIcon('capturing')).toBe('●');
-    expect(statusIcon('queued')).toBe('○');
-  });
-});
-
-describe('phaseChipColor', () => {
-  it('teal tint for in-progress', () => {
-    expect(phaseChipColor('capturing')).toContain('20,184,166');
-  });
-  it('up tint for done', () => {
-    expect(phaseChipColor('done')).toContain('34,197,94');
-  });
-  it('down tint for failed', () => {
-    expect(phaseChipColor('failed')).toContain('244,63,94');
-  });
-});
 
 describe('CaptureQueueRow', () => {
   it('renders date / code / phase chip', () => {

@@ -1,24 +1,7 @@
 import { useState } from 'react';
 import { CaptureRowDetail } from './CaptureRowDetail';
-import type { CapturePhase, QueueItem } from '../api/types';
-
-export function statusIcon(phase: CapturePhase): string {
-  switch (phase) {
-    case 'done': return '✓';
-    case 'failed': return '✕';
-    case 'cancelled': return '✕';
-    case 'skipped': return '⚠';
-    case 'capturing': case 'parsing': case 'deciding': return '●';
-    case 'queued': default: return '○';
-  }
-}
-
-export function phaseChipColor(phase: CapturePhase): string {
-  if (phase === 'capturing' || phase === 'parsing' || phase === 'deciding') return 'rgba(20,184,166,0.12)';
-  if (phase === 'done') return 'rgba(34,197,94,0.10)';
-  if (phase === 'failed') return 'rgba(244,63,94,0.10)';
-  return 'rgba(148,163,184,0.10)';
-}
+import { PHASE } from './phase';
+import type { QueueItem } from '../api/types';
 
 export interface CaptureQueueRowProps {
   item: QueueItem;
@@ -30,8 +13,8 @@ export interface CaptureQueueRowProps {
 
 export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: CaptureQueueRowProps) {
   const [expanded, setExpanded] = useState(false);
-  const isTerminal = item.phase === 'done' || item.phase === 'skipped' || item.phase === 'cancelled' || item.phase === 'failed';
-  const showCancel = !isTerminal;
+  const descriptor = PHASE[item.phase];
+  const showCancel = !descriptor.terminal;
   const showRetry = item.phase === 'failed';
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -65,7 +48,7 @@ export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: Capture
           outline: 'none',
         }}
       >
-        <span>{statusIcon(item.phase)}</span>
+        <span>{descriptor.icon}</span>
         <span>{item.date}</span>
         <span>{item.code}</span>
         <span style={{ font: '400 12px "Geist Sans", sans-serif', color: 'var(--fg-dim)' }}>
@@ -79,7 +62,7 @@ export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: Capture
             }}>⚠ force</span>
           )}
         </span>
-        <span style={{ background: phaseChipColor(item.phase), padding: '2px 6px', borderRadius: 3, color: 'var(--fg-dim)' }}>
+        <span style={{ background: descriptor.chipColor, padding: '2px 6px', borderRadius: 3, color: 'var(--fg-dim)' }}>
           {item.phase}
         </span>
         <span>{item.progress?.pages_done ?? '–'}</span>
