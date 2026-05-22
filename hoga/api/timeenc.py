@@ -44,6 +44,51 @@ def ms_from_midnight_to_unix_ms(date: str, intra_ms: int) -> int:
     return _date_unix_ms_at_kst_midnight(date) + intra_ms
 
 
+def hhmmssms_to_intra_ms_sql(col: str) -> str:
+    """Build a DuckDB SQL expression that decodes a HHMMSSmmm column to
+    linear ms-from-midnight.
+
+    Why this exists:
+
+      Parquet `ts_ms` columns (snapshots, trades, brokers) carry hogaplay's
+      native HHMMSSmmm packed-decimal time. The encoding is NON-LINEAR — the
+      integer values jump at minute (`...59999` → `...100000`) and hour
+      (`...959999` → `...1000000`) boundaries. Any arithmetic bucketing of
+      the raw HHMMSSmmm (e.g. `ts_ms // 60000` for 1-minute buckets) lands
+      in invalid HHMMSSmmm regions (`seconds=60+`, `minutes=60+`) which
+      `hhmmssms_to_unix_ms` then decodes back into valid-looking but WRONG
+      Unix-ms values, producing duplicate or out-of-order series points
+      (frontend lightweight-charts throws "asc ordered by time" on these).
+
+      The fix is to decode HHMMSSmmm → linear ms-from-midnight BEFORE
+      bucketing, then bucket on the linear space. Callers should pass the
+      bucket-aligned intra_ms through ``ms_from_midnight_to_unix_ms`` (not
+      ``hhmmssms_to_unix_ms``) on the way out.
+
+    Use ``//`` (DuckDB integer division) inside the expression — the plain
+    ``/`` operator returns DOUBLE, and ``::BIGINT`` rounds half-to-even,
+    which IS the root cause of the dup bug this helper exists to prevent.
+
+    Example::
+
+        sql = f\"\"\"
+          WITH linear AS (
+            SELECT {hhmmssms_to_intra_ms_sql('ts_ms')} AS intra_ms, ...
+            FROM read_parquet(?)
+          )
+          SELECT (intra_ms // {bucket_ms}) * {bucket_ms} AS bucket_intra_ms,
+                 ...
+          FROM linear GROUP BY 1 ORDER BY 1
+        \"\"\"
+    """
+    return (
+        f"((({col} // 10000000) * 3600000)"
+        f" + ((({col} // 100000) % 100) * 60000)"
+        f" + ((({col} // 1000) % 100) * 1000)"
+        f" + ({col} % 1000))"
+    )
+
+
 def unix_ms_to_hhmmssms(date: str, unix_ms: int) -> int:
     """Inverse of :func:`hhmmssms_to_unix_ms` — used by route handlers that
     take a Unix-ms cursor and need to query a Parquet table that stores

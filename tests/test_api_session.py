@@ -38,9 +38,14 @@ def test_session_quote_ratio_slice(engine: QueryEngine) -> None:
     qr = build_quote_ratio_slice(engine, code="003490", date="20260519", bucket_ms=1000)
     assert qr.bucket_ms == 1000
     assert len(qr.points) >= 1
-    # Last-snapshot-per-bucket semantics: timestamps strictly non-decreasing
+    # STRICTLY ascending — lightweight-charts.setData asserts on duplicate or
+    # out-of-order time keys and unmounts the chart tree. The previous
+    # `(ts_ms / 1000)::BIGINT` SQL pattern collapsed minute-boundary samples
+    # (e.g. 08:50:59.500 rounded into the invalid HHMMSSmmm bucket
+    # "08:50:60.000" which `hhmmssms_to_unix_ms` then folded back into
+    # 08:51:00.000 — colliding with the next valid second). Use //.
     ts = [p.t for p in qr.points]
-    assert ts == sorted(ts)
+    assert ts == sorted(set(ts)), "quote_ratio timestamps must be strictly ascending and unique"
     # Both totals are non-negative
     assert all(p.bid_total >= 0 and p.ask_total >= 0 for p in qr.points)
 
@@ -101,6 +106,30 @@ def test_session_fill_strength_excludes_auctions(engine: QueryEngine) -> None:
     ).fetchone()[0] or 0
     actual = sum(p.buy_qty + p.sell_qty for p in fs.points)
     assert actual == expected
+
+
+def test_session_fill_strength_strictly_ascending(engine: QueryEngine) -> None:
+    """Regression: HHMMSSmmm bucketing produced 39-min backward jumps when
+    integer-rounded `(ts_ms / 60000)::BIGINT * 60000` folded into invalid
+    minute fields and `hhmmssms_to_unix_ms` decoded them as ghost times."""
+    from hoga.api.bundle import build_fill_strength_slice
+    fs = build_fill_strength_slice(engine, code="003490", date="20260519")
+    ts = [p.t for p in fs.points]
+    assert ts == sorted(set(ts)), (
+        f"fill_strength timestamps must be strictly ascending and unique; "
+        f"got {len(ts)} points, {len(set(ts))} unique, sorted={ts == sorted(ts)}"
+    )
+
+
+def test_session_depth_intensity_strictly_ascending(engine: QueryEngine) -> None:
+    """Same regression as fill_strength but at 5-second bucket granularity."""
+    from hoga.api.bundle import build_depth_intensity_slice
+    di = build_depth_intensity_slice(
+        engine, code="003490", date="20260519", depth_bucket_ms=5000,
+    )
+    assert di.times == sorted(set(di.times)), (
+        "depth_intensity.times must be strictly ascending and unique"
+    )
 
 
 def test_session_bundle_shape(app_client: TestClient) -> None:

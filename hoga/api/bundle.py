@@ -25,7 +25,11 @@ from hoga.api.models import (
     VolumeProfileBin,
 )
 from hoga.api.queries import QueryEngine
-from hoga.api.timeenc import hhmmssms_to_unix_ms, ms_from_midnight_to_unix_ms
+from hoga.api.timeenc import (
+    hhmmssms_to_intra_ms_sql,
+    hhmmssms_to_unix_ms,
+    ms_from_midnight_to_unix_ms,
+)
 from hoga.tables import candles as candles_tbl
 from hoga.tables.candles import ApiCandle
 
@@ -48,7 +52,13 @@ def build_quote_ratio_slice(
     date: str,
     bucket_ms: int = 1000,
 ) -> QuoteRatio:
+    # Bucket on LINEAR ms-from-midnight, not raw HHMMSSmmm. The raw encoding
+    # has gaps at minute / hour boundaries, so arithmetic bucketing of HHMMSSmmm
+    # produces invalid HHMMSSmmm values that decode (via hhmmssms_to_unix_ms)
+    # to duplicate or out-of-order Unix-ms outputs — which lightweight-charts
+    # then rejects with "asc ordered by time". See hhmmssms_to_intra_ms_sql.
     path = str(engine.parquet_dir(date, code) / "snapshots.parquet")
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     rows = engine.conn.execute(
         f"""
         WITH bucketed AS (
@@ -57,8 +67,8 @@ def build_quote_ratio_slice(
                   ask_q6 + ask_q7 + ask_q8 + ask_q9 + ask_q10) AS ask_total,
                  (bid_q1 + bid_q2 + bid_q3 + bid_q4 + bid_q5 +
                   bid_q6 + bid_q7 + bid_q8 + bid_q9 + bid_q10) AS bid_total,
-                 (ts_ms / {bucket_ms})::BIGINT AS bucket,
-                 ROW_NUMBER() OVER (PARTITION BY (ts_ms / {bucket_ms})::BIGINT
+                 ({intra_ms_expr} // {bucket_ms}) AS bucket,
+                 ROW_NUMBER() OVER (PARTITION BY ({intra_ms_expr} // {bucket_ms})
                                    ORDER BY ts_ms DESC) AS rn
           FROM read_parquet(?)
         )
@@ -71,7 +81,8 @@ def build_quote_ratio_slice(
         bucket_ms=bucket_ms,
         points=[
             QuoteRatioPoint(
-                t=hhmmssms_to_unix_ms(date, r[0]),
+                # r[0] is bucket-aligned ms-from-midnight, not HHMMSSmmm.
+                t=ms_from_midnight_to_unix_ms(date, r[0]),
                 bid_total=int(r[1]),
                 ask_total=int(r[2]),
             )
@@ -147,7 +158,10 @@ def build_depth_intensity_slice(
         depth_bucket_ms *= 2
 
     # 3. UNPIVOT + bin (single parquet scan via `snap` CTE; path is parameter-bound)
+    # Bucket on LINEAR ms-from-midnight via hhmmssms_to_intra_ms_sql — see
+    # build_quote_ratio_slice for the rationale (HHMMSSmmm non-linearity).
     unpivot_sql = _build_unpivot_sql()
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     rows = engine.conn.execute(
         f"""
         WITH snap AS (
@@ -157,7 +171,7 @@ def build_depth_intensity_slice(
           {unpivot_sql}
         ),
         binned AS (
-          SELECT (ts_ms / {depth_bucket_ms})::BIGINT AS bucket,
+          SELECT ({intra_ms_expr} // {depth_bucket_ms}) AS bucket,
                  side,
                  ((price - {price_min}) / {tick})::BIGINT AS bin_idx,
                  MAX(qty) AS max_qty
@@ -172,8 +186,9 @@ def build_depth_intensity_slice(
     ).fetchall()
 
     # 4. Reshape into grids
+    # r[0] is bucket-aligned ms-from-midnight (linear), not HHMMSSmmm.
     times_set = sorted({r[0] for r in rows})
-    times = [hhmmssms_to_unix_ms(date, t) for t in times_set]
+    times = [ms_from_midnight_to_unix_ms(date, t) for t in times_set]
     bid_grid = [[0.0] * bin_count for _ in times_set]
     ask_grid = [[0.0] * bin_count for _ in times_set]
     t_idx = {t: i for i, t in enumerate(times_set)}
@@ -240,10 +255,17 @@ def build_fill_strength_slice(
     date: str,
     bucket_ms: int = 60_000,
 ) -> FillStrength:
+    # Bucket on LINEAR ms-from-midnight, not HHMMSSmmm. With the previous
+    # `(ts_ms / 60000)::BIGINT * 60000` pattern, a raw 11:00:59.000
+    # (HHMMSSmmm=110_059_000) bucketed to integer 1834, multiplied back to
+    # 110_040_000 = HHMMSSmmm "11:00:40.000" — an out-of-order ghost time
+    # that fold-decoded via hhmmssms_to_unix_ms to 11:40:20 KST (39-min
+    # backward jump). See hhmmssms_to_intra_ms_sql for the encoding details.
     path = str(engine.parquet_dir(date, code) / "trades.parquet")
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     rows = engine.conn.execute(
         f"""
-        SELECT ((ts_ms / {bucket_ms})::BIGINT * {bucket_ms}) AS bucket,
+        SELECT (({intra_ms_expr} // {bucket_ms}) * {bucket_ms}) AS bucket,
                SUM(CASE WHEN side = 1 THEN qty ELSE 0 END) AS buy_qty,
                SUM(CASE WHEN side = -1 THEN qty ELSE 0 END) AS sell_qty
         FROM read_parquet(?)
@@ -256,7 +278,8 @@ def build_fill_strength_slice(
         bucket_ms=bucket_ms,
         points=[
             FillStrengthPoint(
-                t=hhmmssms_to_unix_ms(date, r[0]),
+                # r[0] is bucket-aligned ms-from-midnight (linear), not HHMMSSmmm.
+                t=ms_from_midnight_to_unix_ms(date, r[0]),
                 buy_qty=int(r[1]),
                 sell_qty=int(r[2]),
             )
