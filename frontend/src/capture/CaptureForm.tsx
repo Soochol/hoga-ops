@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { SymbolSearch } from './SymbolSearch';
 import { DateRangePicker, type DateRange } from './DateRangePicker';
 import { useCaptureQueue } from './useCaptureQueue';
-import type { SymbolHit } from '../api/types';
+import { enqueueErrorHints } from '../api/upstream-hints';
+import type { ApiError } from '../api/client';
+import type { SymbolHit, UpstreamCode } from '../api/types';
 
 export interface CaptureFormProps {
   /** Reference month for DateRangePicker's left grid. Defaults to current KST month. */
@@ -15,6 +18,7 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
   const [range, setRange] = useState<DateRange | null>(null);
   const [forceRetry, setForceRetry] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inlineError, setInlineError] = useState<ReactNode>(null);
 
   const { addItems } = useCaptureQueue();
   const valid = symbol !== null && range !== null && range.end !== null;
@@ -22,6 +26,7 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
   const onStart = () => {
     if (!valid) return;
     setError(null);
+    setInlineError(null);
     addItems.mutate(
       {
         code: symbol!.code,
@@ -36,6 +41,12 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
           setForceRetry(false);
         },
         onError: (err: unknown) => {
+          const apiErr = err as ApiError;
+          const code = apiErr.code;
+          if (code && code in enqueueErrorHints) {
+            setInlineError(enqueueErrorHints[code as UpstreamCode]);
+            return;
+          }
           const msg = err instanceof Error ? err.message : 'Failed to enqueue';
           setError(msg);
         },
@@ -88,6 +99,23 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
 
       {error !== null && (
         <div role="alert" className="text-xs text-down">{error}</div>
+      )}
+
+      {inlineError !== null && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 8,
+            padding: '8px 12px',
+            background: 'var(--bg-input)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm, 4px)',
+            color: 'var(--down)',
+            fontSize: 'var(--font-size-sm, 0.875rem)',
+          }}
+        >
+          {inlineError}
+        </div>
       )}
 
       <div className="mt-3 text-xs text-fg-dim">

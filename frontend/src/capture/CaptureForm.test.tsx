@@ -114,3 +114,50 @@ describe('CaptureForm', () => {
     expect(screen.getByText(/pre-18 KST/)).toBeTruthy();
   });
 });
+
+describe('CaptureForm enqueue 503 reason surfacing', () => {
+  it('shows enqueueErrorHints copy when 503 returns krx_credentials_missing', async () => {
+    const { qc, fetchMock } = setup();
+    fetchMock.mockImplementation(async (url: RequestInfo | URL) => {
+      const s = String(url);
+      if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
+      if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
+      if (s.includes('/api/captures/items')) return { ok: false, status: 503, json: async () => ({ detail: { code: 'krx_credentials_missing', message: 'KRX credentials not set' } }) } as Response;
+      if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }) } as Response;
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+    render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.change(screen.getByPlaceholderText(/종목/i), { target: { value: '삼성' } });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByText('삼성전자'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(screen.getByText(/범위 캡처 시작 실패 — KRX 자격증명/)).toBeTruthy();
+  });
+
+  it('shows generic error when 503 code is unknown', async () => {
+    const { qc, fetchMock } = setup();
+    fetchMock.mockImplementation(async (url: RequestInfo | URL) => {
+      const s = String(url);
+      if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
+      if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
+      if (s.includes('/api/captures/items')) return { ok: false, status: 503, json: async () => ({ detail: { code: 'unrecognized_code', message: 'KRX is down' } }) } as Response;
+      if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }) } as Response;
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+    render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.change(screen.getByPlaceholderText(/종목/i), { target: { value: '삼성' } });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByText('삼성전자'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    await new Promise((r) => setTimeout(r, 60));
+    // Unknown code falls back to the server message, not an UpstreamCode hint
+    expect(screen.getByText(/KRX is down/)).toBeTruthy();
+  });
+});
