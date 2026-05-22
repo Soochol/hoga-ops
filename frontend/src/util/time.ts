@@ -1,14 +1,15 @@
 /**
- * Compressed virtual time axis math for the replay viewer.
+ * Segment + segment construction + time-formatting utilities.
  *
- * Hoga-ops stitches multiple Stock-Dates onto a single, apparently-continuous
- * timeline. The gaps between trading sessions (15:30 close → 09:00 next-day
- * open) are compressed away so the user sees one smooth axis.
+ * The Replay Viewer stitches multiple Stock-Dates onto a single virtual ms
+ * axis (see CONTEXT.md "Virtual Axis"). The math for that axis (projections,
+ * lookups, predicates, derived shapes) lives in `virtualAxis.ts` behind the
+ * `VirtualAxis` factory; this module keeps only the `Segment` type, the
+ * `buildSegments` constructor that `createVirtualAxis` calls internally, and
+ * a handful of Segment-agnostic time-formatting utilities used elsewhere.
  *
  * - Real time = actual Unix milliseconds (UTC epoch).
  * - Virtual time = monotonic ms offset that skips inter-session gaps.
- *
- * See spec §6.3 + the frontend plan (Task 6.1).
  */
 
 export type Segment = {
@@ -28,6 +29,9 @@ export type Segment = {
  * Input is assumed to be sorted by date ascending. We walk in order and
  * accumulate `virtualStart` by stacking each session's real length onto the
  * previous segment's virtual end — collapsing the inter-session gap to zero.
+ *
+ * Production callers should construct a `VirtualAxis` via `createVirtualAxis`
+ * (which calls this internally) rather than threading raw `Segment[]` arrays.
  */
 export function buildSegments(
   raw: { date: string; sessionOpenMs: number; sessionCloseMs: number }[],
@@ -47,139 +51,11 @@ export function buildSegments(
 }
 
 /**
- * Virtual end of a segment (virtualStart + session length).
- */
-function virtualEnd(seg: Segment): number {
-  return seg.virtualStart + (seg.sessionCloseMs - seg.sessionOpenMs);
-}
-
-/**
- * Real Unix-ms → virtual axis ms.
- *
- * Edge-case decisions:
- *  - Empty segments → 0 (no axis exists yet; safe sentinel for renderers).
- *  - realMs before the first segment's open → 0.
- *  - realMs inside a session → virtualStart + (realMs - sessionOpenMs).
- *  - realMs inside a between-day gap → snaps forward to the next segment's
- *    virtualStart. Choosing "next" matches the viewer behavior where the
- *    grey gap band is non-interactive and the cursor lands on the next open.
- *  - realMs after the final close → the final segment's virtual end.
- *  - Pre-session times collapse to virtualStart=0. CALLERS THAT PRODUCE
- *    SERIES DATA MUST PRE-FILTER WITH `isWithinSessions` — otherwise two
- *    pre-session points produce duplicate virtual-time=0 entries and
- *    lightweight-charts' setData throws.
- */
-export function realToVirtual(segments: Segment[], realMs: number): number {
-  if (segments.length === 0) return 0;
-  const first = segments[0];
-  if (realMs <= first.sessionOpenMs) return first.virtualStart; // == 0 by construction
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    if (realMs >= seg.sessionOpenMs && realMs <= seg.sessionCloseMs) {
-      // Inside this session.
-      return seg.virtualStart + (realMs - seg.sessionOpenMs);
-    }
-    if (realMs > seg.sessionCloseMs) {
-      const next = segments[i + 1];
-      if (next && realMs < next.sessionOpenMs) {
-        // In the gap between seg and next → snap to next open.
-        return next.virtualStart;
-      }
-      // Otherwise keep scanning; if no next, we're past the last close.
-      if (!next) return virtualEnd(seg);
-    }
-  }
-  // Shouldn't reach here, but guard anyway: clamp to final virtual end.
-  return virtualEnd(segments[segments.length - 1]);
-}
-
-/**
- * Virtual axis ms → real Unix-ms.
- *
- * Edge-case decisions:
- *  - Empty segments → 0.
- *  - virtualMs < 0 → clamped to first segment's sessionOpenMs.
- *  - virtualMs exactly at a segment boundary (== next.virtualStart) maps to
- *    next.sessionOpenMs (the "next" segment owns its starting boundary).
- *  - virtualMs past the last segment's virtual end → last segment's
- *    sessionCloseMs (clamped).
- */
-export function virtualToReal(segments: Segment[], virtualMs: number): number {
-  if (segments.length === 0) return 0;
-  if (virtualMs <= 0) return segments[0].sessionOpenMs;
-
-  const idx = findSegmentByVirtual(segments, virtualMs);
-  if (idx < 0) return segments[0].sessionOpenMs;
-
-  const seg = segments[idx];
-  const offset = virtualMs - seg.virtualStart;
-  const sessionLen = seg.sessionCloseMs - seg.sessionOpenMs;
-  if (offset >= sessionLen) {
-    // At/past this segment's virtual end. If a next segment exists and we are
-    // exactly at its virtualStart, prefer mapping to next.sessionOpenMs.
-    const next = segments[idx + 1];
-    if (next && virtualMs >= next.virtualStart) return next.sessionOpenMs;
-    return seg.sessionCloseMs;
-  }
-  return seg.sessionOpenMs + offset;
-}
-
-/**
- * Binary search for the segment whose [virtualStart, virtualEnd] range contains
- * virtualMs. If virtualMs sits exactly on a boundary, the *later* segment owns
- * it (so a query at next.virtualStart returns the next index, not the prior
- * one's end).
- *
- * Returns -1 if virtualMs < segments[0].virtualStart.
- */
-export function findSegmentByVirtual(segments: Segment[], virtualMs: number): number {
-  if (segments.length === 0) return -1;
-  if (virtualMs < segments[0].virtualStart) return -1;
-
-  let lo = 0;
-  let hi = segments.length - 1;
-  let ans = 0;
-  while (lo <= hi) {
-    const mid = (lo + hi) >>> 1;
-    if (segments[mid].virtualStart <= virtualMs) {
-      ans = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return ans;
-}
-
-/**
- * True if realMs falls inside ANY segment's [sessionOpenMs, sessionCloseMs]
- * (inclusive on both ends). Used by chart panes to filter out pre-open auction
- * candles (8:30–9:00 KST) and post-close points before mapping through
- * `realToVirtual`. Without this guard, those points collapse to virtual time
- * 0 and lightweight-charts throws "data must be asc ordered by time" on the
- * second clamped point.
- *
- * Returns false for empty segments.
- */
-export function isWithinSessions(segments: Segment[], realMs: number): boolean {
-  for (const seg of segments) {
-    if (realMs >= seg.sessionOpenMs && realMs <= seg.sessionCloseMs) return true;
-  }
-  return false;
-}
-
-/**
  * Sort by `time` ascending and dedupe so the output is strictly monotonic.
  * lightweight-charts asserts both conditions inside `setData`; the backend
- * does not currently guarantee either (quote_ratio.points carry duplicate
- * timestamps at bucket boundaries, fill_strength.points are concatenated
- * from multiple segments without re-sorting). When two items share a time,
- * the LATER one in the input wins — bucket-boundary collisions usually
- * reflect a late-arriving update that supersedes the earlier value.
- *
- * Safe for series outputs (already mapped to virtual axis seconds). Cost
- * is O(n log n); for the largest series we see (~20k quote_ratio points)
- * this is still sub-millisecond on modern hardware.
+ * does not currently guarantee either. When two items share a time, the
+ * LATER one in the input wins — bucket-boundary collisions usually reflect
+ * a late-arriving update that supersedes the earlier value.
  */
 export function sortAndDedupeByTime<T extends { time: number }>(items: T[]): T[] {
   if (items.length <= 1) return items;
@@ -193,63 +69,6 @@ export function sortAndDedupeByTime<T extends { time: number }>(items: T[]): T[]
     }
   }
   return out;
-}
-
-/**
- * True if realMs falls in the gap between two adjacent segments, OR after the
- * last segment's close. Useful for drawing grey "non-session" bands on the
- * chart and for disabling interaction in those regions.
- *
- * Returns false if there are no segments, or if realMs is before the first
- * open (that's a "pre-axis" region, not a gap between sessions).
- */
-export function isDayBoundary(segments: Segment[], realMs: number): boolean {
-  if (segments.length === 0) return false;
-  if (realMs < segments[0].sessionOpenMs) return false;
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    if (realMs >= seg.sessionOpenMs && realMs <= seg.sessionCloseMs) {
-      return false;
-    }
-    if (realMs > seg.sessionCloseMs) {
-      const next = segments[i + 1];
-      if (!next) return true; // past final close
-      if (realMs < next.sessionOpenMs) return true; // in inter-session gap
-    }
-  }
-  return false;
-}
-
-/**
- * Binary search for the segment whose [sessionOpenMs, sessionCloseMs] range contains
- * realMs. If realMs sits inside a Day Boundary (gap between two segments), returns
- * the index of the PRIOR segment (the gap "belongs" to the day just closed). If
- * realMs is past the final close, returns the last segment index. If realMs is
- * before the first segment open, returns -1.
- *
- * Sibling of findSegmentByVirtual — both operate on the same Segment[] but key
- * off real-ms vs virtual-ms respectively. Used by CandlePane to compute
- * per-segment Auction Window thresholds (ADR-0013 Consequences).
- *
- * Returns -1 if segments is empty or realMs < segments[0].sessionOpenMs.
- */
-export function findSegmentByReal(segments: Segment[], realMs: number): number {
-  if (segments.length === 0) return -1;
-  if (realMs < segments[0].sessionOpenMs) return -1;
-
-  let lo = 0;
-  let hi = segments.length - 1;
-  let ans = 0;
-  while (lo <= hi) {
-    const mid = (lo + hi) >>> 1;
-    if (segments[mid].sessionOpenMs <= realMs) {
-      ans = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return ans;
 }
 
 /** Format a Unix-ms timestamp as HH:MM:SS in KST (UTC+9). */
