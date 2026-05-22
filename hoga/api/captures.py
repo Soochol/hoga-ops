@@ -149,29 +149,21 @@ _max_concurrent: int = int(os.environ.get("HOGA_MAX_CONCURRENT", "3"))
 _wakeup: asyncio.Event | None = None                    # lazily constructed when the first worker starts
 _workers: list[asyncio.Task] = []                       # populated by app lifespan; stopped on shutdown
 
-# Production dependencies set during build_router(); sentinels keep the names
-# valid before init (e.g. for tests that bypass build_router via the
-# _data_dir_for_tests / _client_factory_for_tests injection seams below).
+# Production dependencies — set by build_router() at startup.
+# Tests bypass build_router() by writing directly: `captures._data_dir = tmp_path`.
+# That's the deliberate DI surface: the module attribute IS the seam, no
+# additional sentinel + resolver indirection.
 _data_dir: Path | None = None
 _client_factory: Callable[[], object] | None = None
 
-# Test injection seams — production replaces these via build_router() globals.
-_data_dir_for_tests: Callable[[], Path] | None = None
-_client_factory_for_tests: Callable[[], Any] | None = None
 
-
-def _resolve_data_dir() -> Path:
-    if _data_dir_for_tests is not None:
-        return _data_dir_for_tests()
-    # build_router() sets _data_dir; if unset, that's a programming error.
-    assert _data_dir is not None, "captures._data_dir not initialized; call build_router()"
+def _require_data_dir() -> Path:
+    assert _data_dir is not None, "captures._data_dir not initialized; call build_router() or set in test fixture"
     return _data_dir
 
 
-def _resolve_client_factory() -> Callable[[], Any]:
-    if _client_factory_for_tests is not None:
-        return _client_factory_for_tests
-    assert _client_factory is not None, "captures._client_factory not initialized; call build_router()"
+def _require_client_factory() -> Callable[[], object]:
+    assert _client_factory is not None, "captures._client_factory not initialized; call build_router() or set in test fixture"
     return _client_factory
 
 
@@ -360,8 +352,8 @@ async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
     """
     if state.cancel_token is None:
         state.cancel_token = CancelToken()
-    data_dir = _resolve_data_dir()
-    client = _resolve_client_factory()()
+    data_dir = _require_data_dir()
+    client = _require_client_factory()()
 
     state.started_at_ms = int(time.time() * 1000)
     state.phase = "capturing"
@@ -410,7 +402,7 @@ async def _run_item(state: QueueItemState) -> None:
     - CLIENT_INCOMPLETE → resume=True (continue from existing pages)
     - NONE → fresh capture (resume=False)
     """
-    data_dir = _resolve_data_dir()
+    data_dir = _require_data_dir()
     decision = decide_capture(
         data_dir=data_dir,
         code=state.code,

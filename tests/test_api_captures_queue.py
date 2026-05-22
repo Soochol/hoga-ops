@@ -112,7 +112,7 @@ async def test_worker_pool_respects_max_concurrent(monkeypatch):
 @pytest.mark.asyncio
 async def test_deciding_skips_complete(monkeypatch, tmp_path):
     """When disk_state.check_disk_state returns COMPLETE, item is skipped."""
-    monkeypatch.setattr("hoga.api.captures._data_dir_for_tests", lambda: tmp_path, raising=False)
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
                         lambda *_a, **_k: DiskState.COMPLETE)
 
@@ -129,7 +129,7 @@ async def test_deciding_skips_complete(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_deciding_skips_source_partial(monkeypatch, tmp_path):
-    monkeypatch.setattr("hoga.api.captures._data_dir_for_tests", lambda: tmp_path, raising=False)
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
                         lambda *_a, **_k: DiskState.SOURCE_PARTIAL)
 
@@ -146,7 +146,7 @@ async def test_deciding_skips_source_partial(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_deciding_resumes_client_incomplete(monkeypatch, tmp_path):
     """CLIENT_INCOMPLETE forces resume=True in the collector call."""
-    monkeypatch.setattr("hoga.api.captures._data_dir_for_tests", lambda: tmp_path, raising=False)
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
                         lambda *_a, **_k: DiskState.CLIENT_INCOMPLETE)
 
@@ -167,7 +167,7 @@ async def test_deciding_resumes_client_incomplete(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_force_retry_overrides_source_partial_skip(monkeypatch, tmp_path):
     """SOURCE_PARTIAL + force_retry=True → falls through to fresh capture."""
-    monkeypatch.setattr("hoga.api.captures._data_dir_for_tests", lambda: tmp_path, raising=False)
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
                         lambda *_a, **_k: DiskState.SOURCE_PARTIAL)
 
@@ -193,7 +193,7 @@ async def test_force_retry_overrides_source_partial_skip(monkeypatch, tmp_path):
 async def test_worker_defers_when_inflight_collision(monkeypatch, tmp_path):
     """If two items have the same (code, date) and the first is already in
     _inflight_paths, the second worker requeues it instead of double-running."""
-    monkeypatch.setattr("hoga.api.captures._data_dir_for_tests", lambda: tmp_path, raising=False)
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
                         lambda *_a, **_k: DiskState.NONE)
 
@@ -610,8 +610,7 @@ async def test_429_backoff_then_success(monkeypatch, tmp_path):
     """3 consecutive 429s succeed on the 4th attempt; phase=done."""
     from hoga.collector.client import HogaplayHTTPError
 
-    monkeypatch.setattr("hoga.api.captures._data_dir_for_tests",
-                        lambda: tmp_path, raising=False)
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
                         lambda *_a, **_k: DiskState.NONE)
     # Zero the backoff so the test doesn't actually wait 5+10+30s.
@@ -643,8 +642,7 @@ async def test_429_backoff_exhausted_marks_failed(monkeypatch, tmp_path):
     """Persistent 429 after all retries → terminal failed."""
     from hoga.collector.client import HogaplayHTTPError
 
-    monkeypatch.setattr("hoga.api.captures._data_dir_for_tests",
-                        lambda: tmp_path, raising=False)
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
                         lambda *_a, **_k: DiskState.NONE)
     monkeypatch.setattr(captures, "_BACKOFF_DELAYS", (0.0, 0.0, 0.0))
@@ -698,8 +696,7 @@ async def test_cancel_during_429_backoff_aborts_immediately(monkeypatch, tmp_pat
     the worker marks the item cancelled (NOT failed, NOT done)."""
     from hoga.collector.client import HogaplayHTTPError
 
-    monkeypatch.setattr("hoga.api.captures._data_dir_for_tests",
-                        lambda: tmp_path, raising=False)
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
                         lambda *_a, **_k: DiskState.NONE)
     # One backoff slot, long enough that we definitely cancel during it.
