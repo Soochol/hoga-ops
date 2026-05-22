@@ -174,13 +174,20 @@ def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> 
 
 
 async def _fetch_from_pykrx() -> list[SymbolHit]:
-    """Override in tests. Production implementation calls pykrx directly.
+    """Verified against pykrx 1.2.8 in Task 9 Step 1 (Variant B).
 
-    CRITICAL: uses ``pykrx.stock.get_market_cap(date, market=...)`` which returns
-    a DataFrame containing both ticker codes (index) AND names (``종목명`` column)
-    in ONE call per market. The naive N=6000 sequential ``get_market_ticker_name``
-    approach would take ~10 minutes at boot — this version takes ~2 seconds.
+    In pykrx 1.2.8, ``get_market_cap`` no longer returns a ``종목명`` column
+    (columns: ['종가','시가총액','거래량','거래대금','상장주식수']), and
+    ``get_market_fundamental`` also lacks it. Per-ticker ``get_market_ticker_name``
+    is the only reliable name-lookup API.
+
+    ThreadPoolExecutor batches per-code get_market_ticker_name calls (max_workers=8).
+    Total fetch ~30-120s for ~2600 codes across both markets; acceptable because pykrx
+    is called only on explicit user trigger. All-or-nothing: any per-market or per-code
+    failure raises and aborts.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     from pykrx import stock
 
     loop = asyncio.get_running_loop()
@@ -189,10 +196,11 @@ async def _fetch_from_pykrx() -> list[SymbolHit]:
     def _scrape() -> list[tuple[str, str, str]]:
         rows: list[tuple[str, str, str]] = []
         for market in ("KOSPI", "KOSDAQ"):
-            df = stock.get_market_cap(today, market=market)  # ONE call returns code+name
-            for code in df.index:
-                name = str(df.loc[code, "종목명"])
-                rows.append((str(code), name, market))
+            codes = stock.get_market_ticker_list(today, market=market)
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                names = list(pool.map(stock.get_market_ticker_name, codes))
+            for code, name in zip(codes, names, strict=True):
+                rows.append((str(code), str(name), market))
         return rows
 
     rows = await loop.run_in_executor(None, _scrape)
