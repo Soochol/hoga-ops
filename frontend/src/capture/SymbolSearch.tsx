@@ -36,6 +36,11 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
   const isEmpty = dropdownVisible && hits.length === 0;
 
   useEffect(() => { setHighlight(0); }, [query]);
+  // Sync displayed text when parent resets selection (e.g. form reset after Start).
+  useEffect(() => {
+    if (value === null) setText('');
+    else setText(`${value.name} ${value.code}`);
+  }, [value]);
 
   const select = (hit: SymbolHit) => {
     onChange(hit);
