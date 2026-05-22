@@ -28,16 +28,6 @@ export type VolumeProfile = {
 export type FillStrengthPoint = { t: number; buy_qty: number; sell_qty: number };
 export type FillStrength = { bucket_ms: number; points: FillStrengthPoint[] };
 
-export type SessionBundle = {
-  code: string; date: string;
-  session_open_ms: number; session_close_ms: number;
-  candles: Candle[];
-  quote_ratio: QuoteRatio;
-  depth_intensity: DepthIntensity;
-  volume_profile: VolumeProfile;
-  fill_strength: FillStrength;
-};
-
 // Wire shape per ADR-0004 — backend ships ApiOrderbookSnapshot verbatim,
 // no adapter layer. Side encoded by which array (ask vs bid); rank by index.
 export type OrderbookLevel = { price: number; qty: number };

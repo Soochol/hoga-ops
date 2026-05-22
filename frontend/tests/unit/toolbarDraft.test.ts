@@ -8,7 +8,7 @@ describe('toolbarDraftStore', () => {
 
   it('starts empty for a fresh tab', () => {
     const d = useToolbarDraftStore.getState().getDraft('tab-1');
-    expect(d).toEqual({ code: null, from: null, to: null });
+    expect(d).toEqual({ code: null, from: null, to: null, timeframe: '1m' });
   });
 
   it('setDraft persists per tab id', () => {
@@ -18,11 +18,13 @@ describe('toolbarDraftStore', () => {
       code: '003490',
       from: null,
       to: null,
+      timeframe: '1m',
     });
     expect(useToolbarDraftStore.getState().getDraft('tab-2')).toEqual({
       code: '005930',
       from: '20260520',
       to: '20260520',
+      timeframe: '1m',
     });
   });
 
@@ -35,6 +37,7 @@ describe('toolbarDraftStore', () => {
       code: '005930',
       from: null,
       to: null,
+      timeframe: '1m',
     });
   });
 
@@ -45,6 +48,7 @@ describe('toolbarDraftStore', () => {
       code: null,
       from: null,
       to: null,
+      timeframe: '1m',
     });
   });
 });

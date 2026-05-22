@@ -52,6 +52,7 @@ describe('tabs store', () => {
       code: null,
       from: null,
       to: null,
+      timeframe: '1m',
     });
     // Other tab's draft untouched
     expect(useToolbarDraftStore.getState().getDraft(id2).code).toBe('005930');

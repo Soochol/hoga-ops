@@ -9,7 +9,7 @@ describe('parseReplayUrl', () => {
 
   it('parses single tab', () => {
     expect(parseReplayUrl('?tabs=005930:20260518:20260520&active=0')).toEqual({
-      tabs: [{ code: '005930', fromDate: '20260518', toDate: '20260520' }],
+      tabs: [{ code: '005930', fromDate: '20260518', toDate: '20260520', timeframe: '1m' }],
       active: 0,
     });
   });
@@ -22,7 +22,7 @@ describe('parseReplayUrl', () => {
 
   it('drops invalid entries silently', () => {
     const r = parseReplayUrl('?tabs=BAD,005930:20260518:20260520,xx:yy:zz&active=0');
-    expect(r.tabs).toEqual([{ code: '005930', fromDate: '20260518', toDate: '20260520' }]);
+    expect(r.tabs).toEqual([{ code: '005930', fromDate: '20260518', toDate: '20260520', timeframe: '1m' }]);
   });
 
   it('clamps out-of-range active to 0', () => {
@@ -37,12 +37,12 @@ describe('emitReplayUrl', () => {
   });
 
   it('skips null tabs and remaps active', () => {
-    const sel = { code: '005930', fromDate: '20260518', toDate: '20260520' };
-    expect(emitReplayUrl([null, sel, null], 1)).toBe('?tabs=005930:20260518:20260520&active=0');
+    const sel = { code: '005930', fromDate: '20260518', toDate: '20260520', timeframe: '1m' as const };
+    expect(emitReplayUrl([null, sel, null], 1)).toBe('?tabs=005930:20260518:20260520:1m&active=0');
   });
 
   it('round-trips a 2-tab URL', () => {
-    const url = '?tabs=005930:20260518:20260520,000660:20260520:20260520&active=1';
+    const url = '?tabs=005930:20260518:20260520:1m,000660:20260520:20260520:5m&active=1';
     const parsed = parseReplayUrl(url);
     const sel: (typeof parsed.tabs[0] | null)[] = parsed.tabs;
     expect(emitReplayUrl(sel, parsed.active)).toBe(url);

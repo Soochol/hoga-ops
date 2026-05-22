@@ -26,15 +26,10 @@ function makeBundle(
   candles: { ts_ms: number; open: number; close: number; high: number; low: number }[],
 ): any {
   // Test bundle uses the loose `as any` shape — CandlePane's behavior depends only
-  // on `bundle.candles` and the `segments` prop, not on the full SessionBundle/RangeBundle
-  // wire shape. Task 17 will migrate the prop type from SessionBundle → RangeBundle.
+  // on `bundle.candles` and the `segments` prop, not on the full RangeBundle wire shape.
   return {
     code: '005930',
     date: segments[0].date,
-    // SessionBundle compat (legacy; ignored by new per-segment threshold)
-    session_open_ms: segments[0].sessionOpenMs,
-    session_close_ms: segments[0].sessionCloseMs,
-    // RangeBundle compat (forward-looking)
     from_date: segments[0].date,
     to_date: segments[segments.length - 1].date,
     bucket_ms: 60_000,

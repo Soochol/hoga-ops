@@ -18,7 +18,7 @@ export default function PriceStrip() {
   const toMs = useViewportStore((s) => s.toMs);
 
   // Flatten candles across all loaded bundles for the active tab. Bundles
-  // map date -> SessionBundle; for multi-day selections we want to walk
+  // map date -> RangeBundle; for multi-day selections we want to walk
   // them in chronological order so the viewport->close lookup walks a
   // single sorted ts_ms array.
   const allCandles = useMemo(() => {

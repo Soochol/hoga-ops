@@ -6,9 +6,9 @@ import { TIMEFRAME_TO_MS, type RangeBundle, type Timeframe } from './types';
 /**
  * Fetch a Stock-Date Range bundle (ADR-0013, ADR-0014).
  *
- * Mirrors useSession's pattern: apiCall helper, staleTime: Infinity (captured
- * Stock-Dates are immutable historical data), and an optional priceRange
- * parameter that drives VolumeProfileOverlay's visible-price filtering.
+ * Uses apiCall helper, staleTime: Infinity (captured Stock-Dates are
+ * immutable historical data), and an optional priceRange parameter that
+ * drives VolumeProfileOverlay's visible-price filtering.
  */
 export function useRange(
   code: string | null,
