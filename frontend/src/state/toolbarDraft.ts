@@ -13,7 +13,7 @@ const EMPTY: Draft = { code: null, from: null, to: null, timeframe: '1m' };
 type Store = {
   drafts: Record<string, Draft>;
   getDraft: (tabId: string) => Draft;
-  setDraft: (tabId: string, draft: Draft) => void;
+  setDraft: (tabId: string, draft: Partial<Draft>) => void;
   setStock: (tabId: string, code: string) => void;
   setDates: (tabId: string, from: string, to: string) => void;
   setTimeframe: (tabId: string, timeframe: Timeframe) => void;
@@ -32,7 +32,10 @@ type Store = {
 export const useToolbarDraftStore = create<Store>((set, get) => ({
   drafts: {},
   getDraft: (tabId) => get().drafts[tabId] ?? EMPTY,
-  setDraft: (tabId, draft) => set((s) => ({ drafts: { ...s.drafts, [tabId]: draft } })),
+  setDraft: (tabId, draft) =>
+    set((s) => ({
+      drafts: { ...s.drafts, [tabId]: { ...EMPTY, ...s.drafts[tabId], ...draft } },
+    })),
   setStock: (tabId, code) =>
     set((s) => {
       const cur = s.drafts[tabId] ?? EMPTY;
