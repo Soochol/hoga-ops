@@ -1,6 +1,6 @@
 import NavItem from './NavItem';
 import StatusDot from './StatusDot';
-import CaptureStatusPill from './CaptureStatusPill';
+import { CaptureStatusPill } from './CaptureStatusPill';
 
 export default function LeftNav() {
   return (
