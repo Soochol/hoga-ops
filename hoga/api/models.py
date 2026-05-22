@@ -118,18 +118,6 @@ class FillStrength(BaseModel):
     points: list[FillStrengthPoint]
 
 
-class SessionBundle(BaseModel):
-    code: str
-    date: str
-    session_open_ms: int
-    session_close_ms: int
-    candles: list[ApiCandle]
-    quote_ratio: QuoteRatio
-    depth_intensity: DepthIntensity
-    volume_profile: VolumeProfile
-    fill_strength: FillStrength
-
-
 CapturePhase = Literal[
     "queued", "deciding", "capturing", "parsing",
     "done", "failed", "cancelled", "skipped",

@@ -1,4 +1,4 @@
-"""DuckDB-driven session bundle slices, one builder per slice.
+"""DuckDB-driven range bundle slices, one builder per slice.
 
 Each ``build_*_slice`` takes a :class:`QueryEngine` (per ADR-0001 the
 cross-table coordinator) and resolves its own Parquet path via
@@ -7,7 +7,7 @@ cross-table coordinator) and resolves its own Parquet path via
 Why the engine instead of ``(conn, data_dir)``:
   * single source of truth for path layout (``parquet_dir`` raises
     ``StockDateNotFound`` consistently);
-  * builders compose into ``build_bundle`` without threading three
+  * builders compose into ``build_range_bundle`` without threading three
     arguments through every call site;
   * ``meta.json`` access goes through ``engine.get_meta`` instead of
     re-reading the file by hand.
@@ -26,7 +26,6 @@ from hoga.api.models import (
     QuoteRatioPoint,
     RangeBundle,
     RangeSegment,
-    SessionBundle,
     VolumeProfile,
     VolumeProfileBin,
     validate_bucket_ms,
@@ -413,62 +412,6 @@ def build_fill_strength_slice(
     )
 
 
-def build_bundle(
-    engine: QueryEngine,
-    *,
-    code: str,
-    date: str,
-    price_min: int | None = None,
-    price_max: int | None = None,
-    vp_bins: int = 24,
-    bucket_ms: int = 60_000,
-) -> SessionBundle:
-    """Assemble a SessionBundle for one Stock-Date at the requested Timeframe.
-
-    ``bucket_ms`` (ADR-0014) drives the time bucket for every time-aware
-    series: candles (via :func:`downsample_candles`), quote_ratio,
-    depth_intensity, and fill_strength. ``volume_profile`` is time-agnostic
-    and is not affected. ``bucket_ms`` must be in ``ALLOWED_TIMEFRAME_MS``.
-    """
-    validate_bucket_ms(bucket_ms)
-    meta = engine.get_meta(date, code)
-    session_open_ms = hhmmssms_to_unix_ms(date, meta["regular_session_open_ms"])
-    session_close_ms = hhmmssms_to_unix_ms(date, meta["regular_session_close_ms"])
-
-    raw_candles = build_candles_slice(engine, code=code, date=date)
-    candles = downsample_candles(raw_candles, bucket_ms=bucket_ms)
-    qr = build_quote_ratio_slice(engine, code=code, date=date, bucket_ms=bucket_ms)
-    di = build_depth_intensity_slice(
-        engine,
-        code=code,
-        date=date,
-        price_min=price_min,
-        price_max=price_max,
-        depth_bucket_ms=bucket_ms,
-    )
-    vp = build_volume_profile_slice(
-        engine,
-        code=code,
-        date=date,
-        price_min=price_min,
-        price_max=price_max,
-        vp_bins=vp_bins,
-    )
-    fs = build_fill_strength_slice(engine, code=code, date=date, bucket_ms=bucket_ms)
-
-    return SessionBundle(
-        code=code,
-        date=date,
-        session_open_ms=session_open_ms,
-        session_close_ms=session_close_ms,
-        candles=candles,
-        quote_ratio=qr,
-        depth_intensity=di,
-        volume_profile=vp,
-        fill_strength=fs,
-    )
-
-
 MAX_RANGE_DAYS = 30
 
 
@@ -485,7 +428,7 @@ def build_range_bundle(
     Validates ``bucket_ms``, ``from_date <= to_date``, and span <= 30 days.
     Returns HTTP 404 if no Stock-Date in range has captured data.
 
-    Loops over captured Stock-Dates: per-day :func:`build_bundle` for series.
+    Loops over captured Stock-Dates calling each per-slice builder directly.
     ``depth_intensity`` and ``volume_profile`` are returned as per-segment
     lists (each Stock-Date has its own price grid — they cannot be
     meaningfully concatenated). ``quote_ratio.points`` and
@@ -522,17 +465,26 @@ def build_range_bundle(
     profiles_by_day: list[VolumeProfile] = []
 
     for d in dates:
-        sub = build_bundle(engine, code=code, date=d, bucket_ms=bucket_ms)
+        meta = engine.get_meta(d, code)
+        raw_candles = build_candles_slice(engine, code=code, date=d)
+        candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
+        qr_d = build_quote_ratio_slice(engine, code=code, date=d, bucket_ms=bucket_ms)
+        di_d = build_depth_intensity_slice(
+            engine, code=code, date=d, depth_bucket_ms=bucket_ms,
+        )
+        fs_d = build_fill_strength_slice(engine, code=code, date=d, bucket_ms=bucket_ms)
+        vp_d = build_volume_profile_slice(engine, code=code, date=d)
+
         segments.append(RangeSegment(
             date=d,
-            session_open_ms=sub.session_open_ms,
-            session_close_ms=sub.session_close_ms,
+            session_open_ms=hhmmssms_to_unix_ms(d, meta["regular_session_open_ms"]),
+            session_close_ms=hhmmssms_to_unix_ms(d, meta["regular_session_close_ms"]),
         ))
-        candles.extend(sub.candles)
-        ratio_pts.extend(sub.quote_ratio.points)
-        fill_pts.extend(sub.fill_strength.points)
-        intensity_by_day.append(sub.depth_intensity)
-        profiles_by_day.append(sub.volume_profile)
+        candles.extend(candles_d)
+        ratio_pts.extend(qr_d.points)
+        fill_pts.extend(fs_d.points)
+        intensity_by_day.append(di_d)
+        profiles_by_day.append(vp_d)
 
     profile_range = build_volume_profile_range(engine, code=code, dates=dates)
 

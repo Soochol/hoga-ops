@@ -287,12 +287,3 @@ def test_brokers_out_of_day_cursor_returns_400(app_client: TestClient) -> None:
     assert r.status_code == 400
 
 
-def test_backend_smoke(app_client: TestClient) -> None:
-    inv = app_client.get("/api/stock-dates").json()
-    assert inv
-    code, date = inv[0]["code"], inv[0]["date"]
-    bundle = app_client.get(f"/api/session?code={code}&date={date}").json()
-    assert "candles" in bundle
-    t = bundle["candles"][0]["ts_ms"]
-    ob = app_client.get(f"/api/orderbook?code={code}&date={date}&t={t}").json()
-    assert ob is not None

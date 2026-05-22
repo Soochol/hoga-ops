@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from hoga.api.bundle import build_bundle, downsample_candles
+from hoga.api.bundle import downsample_candles
 from hoga.tables.candles import ApiCandle
 
 
@@ -65,94 +65,6 @@ def test_downsample_candles_handles_all_six_timeframes():
         assert sum(c.vol_a for c in out) == 30
         for c in out:
             assert c.ts_ms % bucket_ms == 0
-
-
-# ---------------------------------------------------------------------------
-# build_bundle: bucket_ms propagation (ADR-0014)
-# ---------------------------------------------------------------------------
-
-def _mock_engine_with_meta() -> MagicMock:
-    """Engine stub whose get_meta returns the keys build_bundle actually reads."""
-    mock_engine = MagicMock()
-    mock_engine.get_meta.return_value = {
-        "regular_session_open_ms": 90_000_000,   # HHMMSSmmm: 09:00:00.000
-        "regular_session_close_ms": 153_000_000,  # HHMMSSmmm: 15:30:00.000
-    }
-    return mock_engine
-
-
-def test_build_bundle_propagates_bucket_ms_to_all_series():
-    """All four series builders + downsample_candles must receive bucket_ms."""
-    from hoga.api import bundle as bundle_mod
-    from hoga.api.models import DepthIntensity, FillStrength, QuoteRatio, VolumeProfile
-
-    qr = QuoteRatio(bucket_ms=300_000, points=[])
-    di = DepthIntensity(
-        bucket_ms=300_000, price_min=0, price_max=0, price_step=1,
-        times=[], bid_grid=[], ask_grid=[],
-    )
-    fs = FillStrength(bucket_ms=300_000, points=[])
-    vp = VolumeProfile(
-        bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[],
-    )
-
-    mock_engine = _mock_engine_with_meta()
-
-    with (
-        patch.object(bundle_mod, "build_candles_slice", return_value=[]),
-        patch.object(bundle_mod, "build_quote_ratio_slice", return_value=qr) as p_qr,
-        patch.object(bundle_mod, "build_depth_intensity_slice", return_value=di) as p_di,
-        patch.object(bundle_mod, "build_fill_strength_slice", return_value=fs) as p_fs,
-        patch.object(bundle_mod, "build_volume_profile_slice", return_value=vp),
-        patch.object(bundle_mod, "downsample_candles", return_value=[]) as p_down,
-    ):
-        build_bundle(mock_engine, code="005930", date="20260512", bucket_ms=300_000)
-
-    assert p_qr.call_args.kwargs.get("bucket_ms") == 300_000
-    di_kwargs = p_di.call_args.kwargs
-    assert (
-        di_kwargs.get("depth_bucket_ms") == 300_000
-        or di_kwargs.get("bucket_ms") == 300_000
-    )
-    assert p_fs.call_args.kwargs.get("bucket_ms") == 300_000
-    assert p_down.call_args.kwargs.get("bucket_ms") == 300_000
-
-
-def test_build_bundle_default_bucket_ms_is_60000():
-    """Default keeps existing 1-minute behaviour."""
-    from hoga.api import bundle as bundle_mod
-    from hoga.api.models import DepthIntensity, FillStrength, QuoteRatio, VolumeProfile
-
-    qr = QuoteRatio(bucket_ms=60_000, points=[])
-    di = DepthIntensity(
-        bucket_ms=60_000, price_min=0, price_max=0, price_step=1,
-        times=[], bid_grid=[], ask_grid=[],
-    )
-    fs = FillStrength(bucket_ms=60_000, points=[])
-    vp = VolumeProfile(
-        bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[],
-    )
-    mock_engine = _mock_engine_with_meta()
-
-    with (
-        patch.object(bundle_mod, "build_candles_slice", return_value=[]),
-        patch.object(bundle_mod, "build_quote_ratio_slice", return_value=qr) as p_qr,
-        patch.object(bundle_mod, "build_depth_intensity_slice", return_value=di),
-        patch.object(bundle_mod, "build_fill_strength_slice", return_value=fs),
-        patch.object(bundle_mod, "build_volume_profile_slice", return_value=vp),
-        patch.object(bundle_mod, "downsample_candles", return_value=[]) as p_down,
-    ):
-        build_bundle(mock_engine, code="005930", date="20260512")
-
-    assert p_qr.call_args.kwargs.get("bucket_ms") == 60_000
-    assert p_down.call_args.kwargs.get("bucket_ms") == 60_000
-
-
-def test_build_bundle_rejects_invalid_bucket_ms():
-    """bucket_ms must be in ALLOWED_TIMEFRAME_MS (ADR-0014)."""
-    mock_engine = _mock_engine_with_meta()
-    with pytest.raises(ValueError, match="bucket_ms"):
-        build_bundle(mock_engine, code="005930", date="20260512", bucket_ms=42_000)
 
 
 # ---------------------------------------------------------------------------
@@ -240,38 +152,54 @@ def test_build_volume_profile_range_no_trades_returns_empty():
 # build_range_bundle (ADR-0013/0014): 30-day cap, partial-inventory, segments
 # ---------------------------------------------------------------------------
 
-def _mock_session_bundle(date: str, bucket_ms: int = 60_000):
-    """Stub SessionBundle return value for a single build_bundle call."""
+def _patch_slice_builders(bundle_mod, bucket_ms: int = 60_000):
+    """Return a list of context managers that stub every per-slice builder."""
+    from unittest.mock import patch
     from hoga.api.models import (
-        DepthIntensity, FillStrength, QuoteRatio, SessionBundle, VolumeProfile,
+        DepthIntensity, FillStrength, QuoteRatio, VolumeProfile,
     )
-    return SessionBundle(
-        code="005930", date=date,
-        session_open_ms=1_700_000_000_000, session_close_ms=1_700_023_400_000,
-        candles=[],
-        quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=[]),
-        depth_intensity=DepthIntensity(
-            bucket_ms=bucket_ms, price_min=100, price_max=200,
-            price_step=1, times=[], bid_grid=[], ask_grid=[],
-        ),
-        fill_strength=FillStrength(bucket_ms=bucket_ms, points=[]),
-        volume_profile=VolumeProfile(
-            bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[],
-        ),
+    qr = QuoteRatio(bucket_ms=bucket_ms, points=[])
+    di = DepthIntensity(
+        bucket_ms=bucket_ms, price_min=100, price_max=200,
+        price_step=1, times=[], bid_grid=[], ask_grid=[],
     )
+    fs = FillStrength(bucket_ms=bucket_ms, points=[])
+    vp = VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
+    return [
+        patch.object(bundle_mod, "build_candles_slice", return_value=[]),
+        patch.object(bundle_mod, "downsample_candles", return_value=[]),
+        patch.object(bundle_mod, "build_quote_ratio_slice", return_value=qr),
+        patch.object(bundle_mod, "build_depth_intensity_slice", return_value=di),
+        patch.object(bundle_mod, "build_fill_strength_slice", return_value=fs),
+        patch.object(bundle_mod, "build_volume_profile_slice", return_value=vp),
+    ]
+
+
+def _engine_with_meta_for_dates(dates):
+    """MagicMock engine with list_stock_dates_in_range + get_meta wired."""
+    from unittest.mock import MagicMock
+    eng = MagicMock()
+    eng.list_stock_dates_in_range.return_value = dates
+    eng.get_meta.return_value = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+    }
+    return eng
 
 
 def test_build_range_bundle_single_day_yields_one_segment():
+    import contextlib
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
     from hoga.api.models import VolumeProfile
 
-    mock_engine = MagicMock()
-    mock_engine.list_stock_dates_in_range.return_value = ["20260512"]
-    with (
-        patch.object(bundle_mod, "build_bundle", side_effect=lambda e, *, code, date, bucket_ms: _mock_session_bundle(date, bucket_ms)),
+    mock_engine = _engine_with_meta_for_dates(["20260512"])
+    patches = _patch_slice_builders(bundle_mod) + [
         patch.object(bundle_mod, "build_volume_profile_range", return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
-    ):
+    ]
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
         rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=60_000)
 
     assert len(rb.segments) == 1
@@ -282,16 +210,18 @@ def test_build_range_bundle_single_day_yields_one_segment():
 
 
 def test_build_range_bundle_multi_day_concatenates_per_segment_lists():
+    import contextlib
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
     from hoga.api.models import VolumeProfile
 
-    mock_engine = MagicMock()
-    mock_engine.list_stock_dates_in_range.return_value = ["20260512", "20260513"]
-    with (
-        patch.object(bundle_mod, "build_bundle", side_effect=lambda e, *, code, date, bucket_ms: _mock_session_bundle(date, bucket_ms)),
+    mock_engine = _engine_with_meta_for_dates(["20260512", "20260513"])
+    patches = _patch_slice_builders(bundle_mod) + [
         patch.object(bundle_mod, "build_volume_profile_range", return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
-    ):
+    ]
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
         rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260513", bucket_ms=60_000)
 
     assert len(rb.segments) == 2
