@@ -114,7 +114,8 @@ export type UpstreamCode =
   | 'krx_fetch_failed'
   | 'cookie_expired'
   | 'cookie_missing'
-  | 'hogaplay_http_error';
+  | 'hogaplay_http_error'
+  | 'symbol_master_not_initialized';
 
 /** Union used wherever an error code can be either domain — currently
  *  CaptureError.code on the per-item SSE capture_finished payload. */
@@ -189,6 +190,14 @@ export interface SymbolHit {
 }
 
 export type SymbolsCacheStatus = 'loading' | 'fresh' | 'stale' | 'unavailable';
+
+/** Mirrors hoga/api/models.py::SymbolMasterInfo. See ADR-0004 (mirror discipline). */
+export interface SymbolMasterInfo {
+  count: number;
+  fetched_at_ms: number | null;
+  status: SymbolsCacheStatus;
+  reason: UpstreamCode | null;
+}
 
 /** Mirrors hoga/api/models.py::SymbolsAllResponse. */
 export interface SymbolsAllResponse {
