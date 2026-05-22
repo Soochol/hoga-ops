@@ -95,7 +95,7 @@ async def test_concurrent_gets_dedupe_to_one_fetch(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_pykrx_failure_returns_unavailable_when_no_cache(monkeypatch, tmp_path):
-    _stub_pykrx(monkeypatch, raise_exc=RuntimeError("krx down"))
+    _stub_pykrx(monkeypatch, raise_exc=symbols.KrxFetchFailed("krx down"))
     path = tmp_path / "sm.json"
     resp = await symbols.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "unavailable"
@@ -183,42 +183,14 @@ async def test_get_all_unavailable_when_creds_missing(
     monkeypatch: pytest.MonkeyPatch,
     _reset_symbols_state: None,
 ) -> None:
-    """No creds → pre-check sets reason; pykrx is NOT called."""
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
-    # Prevent load_env from loading real .env credentials during the test.
-    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
-
-    call_log: list[str] = []
-    async def _spy() -> list:
-        call_log.append("pykrx-called")
-        return []
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _spy)
+    """_fetch_from_pykrx raising KrxCredentialsMissing surfaces as the matching reason."""
+    async def _raise_missing() -> list:
+        raise symbols_module.KrxCredentialsMissing()
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _raise_missing)
 
     path = tmp_path / "sm.json"
     resp = await symbols_module.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "unavailable"
-    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
-    assert call_log == [], "pykrx should not be called when creds are missing"
-
-
-@pytest.mark.asyncio
-async def test_get_all_empty_creds_treated_as_missing(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    _reset_symbols_state: None,
-) -> None:
-    monkeypatch.setenv("KRX_ID", "")
-    monkeypatch.setenv("KRX_PW", "")
-    # Prevent load_env from overwriting empty env vars with real .env credentials.
-    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
-
-    async def _spy() -> list:
-        return []
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _spy)
-
-    path = tmp_path / "sm.json"
-    resp = await symbols_module.refresh(path=path, data_dir=tmp_path)
     assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
 
 
@@ -228,11 +200,8 @@ async def test_get_all_fetch_failed_when_creds_set_but_pykrx_raises(
     monkeypatch: pytest.MonkeyPatch,
     _reset_symbols_state: None,
 ) -> None:
-    monkeypatch.setenv("KRX_ID", "u")
-    monkeypatch.setenv("KRX_PW", "p")
-
     async def _raise() -> list:
-        raise RuntimeError("pykrx exploded")
+        raise symbols_module.KrxFetchFailed("pykrx exploded")
     monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _raise)
 
     path = tmp_path / "sm.json"
@@ -265,13 +234,11 @@ async def test_get_all_reason_cleared_on_success(
     assert len(resp.symbols) == 1
 
 
-@pytest.mark.asyncio
-async def test_refresh_calls_load_env_with_override_true(
-    tmp_path: Path,
+def test_ensure_krx_credentials_calls_load_env_override_true(
     monkeypatch: pytest.MonkeyPatch,
     _reset_symbols_state: None,
 ) -> None:
-    """Calling refresh() invokes load_env(override=True) under the lock."""
+    """_ensure_krx_credentials hot-reloads .env (override wins over shell env)."""
     monkeypatch.setenv("KRX_ID", "u")
     monkeypatch.setenv("KRX_PW", "p")
 
@@ -281,13 +248,34 @@ async def test_refresh_calls_load_env_with_override_true(
         return None
     monkeypatch.setattr(symbols_module, "load_env", _spy)
 
-    async def _ok() -> list:
-        return []
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _ok)
+    symbols_module._ensure_krx_credentials()
+    assert calls == [True]
 
-    path = tmp_path / "sm.json"
-    await symbols_module.refresh(path=path, data_dir=tmp_path)
-    assert calls == [True], "refresh should call load_env(override=True) exactly once"
+
+def test_ensure_krx_credentials_raises_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_symbols_state: None,
+) -> None:
+    """Missing KRX_ID/KRX_PW → KrxCredentialsMissing before any pykrx call."""
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
+
+    with pytest.raises(symbols_module.KrxCredentialsMissing):
+        symbols_module._ensure_krx_credentials()
+
+
+def test_ensure_krx_credentials_empty_strings_treated_as_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_symbols_state: None,
+) -> None:
+    """Empty-string KRX_ID/KRX_PW are treated as missing (not as valid creds)."""
+    monkeypatch.setenv("KRX_ID", "")
+    monkeypatch.setenv("KRX_PW", "")
+    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
+
+    with pytest.raises(symbols_module.KrxCredentialsMissing):
+        symbols_module._ensure_krx_credentials()
 
 
 def test_reset_state_for_tests_clears_reason() -> None:
@@ -598,16 +586,13 @@ async def test_refresh_happy_path(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_refresh_missing_creds(tmp_path, monkeypatch):
+    """KrxCredentialsMissing → reason + no disk write."""
     symbols_module.reset_state_for_tests()
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
-    # Prevent load_env from loading real .env credentials during the test.
-    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
 
-    async def _must_not_call():
-        raise AssertionError("pykrx must not be called when creds missing")
+    async def _raise_missing():
+        raise symbols_module.KrxCredentialsMissing()
 
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _must_not_call)
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _raise_missing)
     path = tmp_path / "sm.json"
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -635,7 +620,7 @@ async def test_refresh_pykrx_failure_preserves_disk(tmp_path, monkeypatch):
     original_content = path.read_text(encoding="utf-8")
 
     async def _boom():
-        raise RuntimeError("KRX down")
+        raise symbols_module.KrxFetchFailed("KRX down")
     monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _boom)
     resp = await symbols_module.refresh(path=path, data_dir=data_dir)
 

@@ -16,6 +16,7 @@ import logging
 import os
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -28,6 +29,33 @@ from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import SymbolHit, SymbolMasterInfo, SymbolsAllResponse
 from hoga.env import krx_creds_present, load_env
+
+class PykrxFetchError(Exception):
+    """Base for typed _fetch_from_pykrx failures.
+
+    Subclasses distinguish the two upstream failure modes that need
+    different ``reason`` codes on the response envelope. Caller
+    (``_do_refresh``) maps each subclass to its UpstreamCode without an
+    ``isinstance`` chain on a generic Exception.
+    """
+
+
+class KrxCredentialsMissing(PykrxFetchError):
+    """KRX_ID/KRX_PW absent after ``load_env(override=True)``.
+
+    Surfaces as ``UpstreamCode.KRX_CREDENTIALS_MISSING``. Raised before any
+    pykrx call so a missing-creds refresh is a fast, network-free no-op.
+    """
+
+
+class KrxFetchFailed(PykrxFetchError):
+    """pykrx network/auth/parsing failure.
+
+    Surfaces as ``UpstreamCode.KRX_FETCH_FAILED``. Wraps the underlying
+    exception via ``raise KrxFetchFailed() from e`` so logs preserve the
+    original traceback.
+    """
+
 
 @dataclass(frozen=True)
 class SymbolCacheState:
@@ -64,25 +92,75 @@ class SymbolCacheState:
         return cls(status="unavailable", reason=reason)
 
 
+class _RefreshCoordinator:
+    """Single-flight coordinator: N concurrent refreshes trigger one fetch.
+
+    Owns the lock + in-flight future that previously lived as module-level
+    globals. The lock guards transitions on ``_inflight``; the future
+    broadcasts task completion to every caller that joined during the flight.
+
+    The coupling is intentional: every read or write of ``_inflight`` must
+    happen under ``_lock`` to avoid a race where two callers both see ``None``
+    and both create a task.
+    """
+
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._inflight: asyncio.Future | None = None
+
+    async def coalesce(self, task_factory: Callable[[], asyncio.Task]) -> None:
+        """Start ``task_factory()`` once for the in-flight group; join existing.
+
+        First caller wins: creates the task and the broadcast future under
+        the lock. Subsequent callers that arrive while the task is running
+        await the same future. When the task completes, all waiters unblock
+        and the in-flight slot clears so the next click can start fresh.
+
+        ``task_factory`` runs under the lock — use it for state mutations
+        that must be visible before any waiter resumes (e.g. setting
+        ``SymbolCacheState.loading()``).
+        """
+        async with self._lock:
+            if self._inflight is not None:
+                fut = self._inflight
+            else:
+                loop = asyncio.get_running_loop()
+                self._inflight = loop.create_future()
+                fut = self._inflight
+                task = task_factory()
+
+                def _signal(_t: asyncio.Task) -> None:
+                    if self._inflight is not None and not self._inflight.done():
+                        self._inflight.set_result(None)
+
+                task.add_done_callback(_signal)
+        await fut
+        async with self._lock:
+            self._inflight = None
+
+    def reset(self) -> None:
+        """Test helper — clear in-flight state between tests."""
+        self._inflight = None
+
+
 # Module-level state (per ADR-0006 single-module pattern, scoped to symbols.py).
 _cache: list[SymbolHit] = []
 _fetched_at_ms: int | None = None
 _state: SymbolCacheState = SymbolCacheState.unavailable(
     reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
 )
-_lock = asyncio.Lock()
-_inflight: asyncio.Future | None = None
+_refresh_coordinator = _RefreshCoordinator()
 SCHEMA_VERSION = 1
 
 
 def reset_state_for_tests() -> None:
-    global _cache, _fetched_at_ms, _state, _inflight  # noqa: PLW0603
-    _cache, _fetched_at_ms, _state, _inflight = (
+    global _cache, _fetched_at_ms, _state  # noqa: PLW0603
+    _cache, _fetched_at_ms, _state = (
         [],
         None,
         SymbolCacheState.unavailable(reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED),
-        None,
     )
+    _refresh_coordinator.reset()
 
 
 def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
@@ -173,19 +251,45 @@ def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> 
     os.replace(tmp_path, path)
 
 
-async def _fetch_from_pykrx() -> list[SymbolHit]:
-    """Verified against pykrx 1.2.8 in Task 9 Step 1 (Variant B).
+def _ensure_krx_credentials() -> None:
+    """Reload .env and verify KRX_ID/KRX_PW are present.
 
-    In pykrx 1.2.8, ``get_market_cap`` no longer returns a ``종목명`` column
-    (columns: ['종가','시가총액','거래량','거래대금','상장주식수']), and
-    ``get_market_fundamental`` also lacks it. Per-ticker ``get_market_ticker_name``
-    is the only reliable name-lookup API.
+    Called by :func:`_fetch_from_pykrx` before any pykrx I/O so the user's
+    most recent ``.env`` edits take effect on every explicit refresh click
+    (override=True wins over shell env). Raises :class:`KrxCredentialsMissing`
+    when either value is empty after the reload — a fast, network-free
+    failure mode.
 
-    ThreadPoolExecutor batches per-code get_market_ticker_name calls (max_workers=8).
-    Total fetch ~30-120s for ~2600 codes across both markets; acceptable because pykrx
-    is called only on explicit user trigger. All-or-nothing: any per-market or per-code
-    failure raises and aborts.
+    Safe to call under an asyncio Lock: when a local worktree ``.env`` exists
+    no subprocess runs, and the git-fallback subprocess (when it does fire)
+    is bounded by a short timeout in :func:`hoga.env.load_env`.
     """
+    load_env(override=True)
+    if not krx_creds_present():
+        raise KrxCredentialsMissing()
+
+
+async def _fetch_from_pykrx() -> list[SymbolHit]:
+    """Sole upstream entry point — loads creds, calls pykrx, maps errors.
+
+    Self-contained: callers do not load .env or check credentials. The two
+    failure modes surface as typed exceptions (:class:`KrxCredentialsMissing`,
+    :class:`KrxFetchFailed`) so :func:`_do_refresh` maps each to its
+    UpstreamCode without an opaque catch-all.
+
+    Verified against pykrx 1.2.8 in Task 9 Step 1 (Variant B). In pykrx 1.2.8,
+    ``get_market_cap`` no longer returns a ``종목명`` column
+    (columns: ['종가','시가총액','거래량','거래대금','상장주식수']), and
+    ``get_market_fundamental`` also lacks it. Per-ticker
+    ``get_market_ticker_name`` is the only reliable name-lookup API.
+
+    ThreadPoolExecutor batches per-code get_market_ticker_name calls
+    (max_workers=8). Total fetch ~30-120s for ~2600 codes across both markets;
+    acceptable because pykrx is called only on explicit user trigger.
+    All-or-nothing: any per-market or per-code failure raises and aborts.
+    """
+    _ensure_krx_credentials()
+
     from concurrent.futures import ThreadPoolExecutor
 
     from pykrx import stock
@@ -203,7 +307,10 @@ async def _fetch_from_pykrx() -> list[SymbolHit]:
                 rows.append((str(code), str(name), market))
         return rows
 
-    rows = await loop.run_in_executor(None, _scrape)
+    try:
+        rows = await loop.run_in_executor(None, _scrape)
+    except Exception as e:  # noqa: BLE001 — pykrx exposes no typed errors
+        raise KrxFetchFailed() from e
     return [
         SymbolHit(
             code=c,
@@ -319,46 +426,22 @@ async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
 async def refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
     """POST /api/symbols/refresh — the only pykrx entry point.
 
-    Concurrency: _lock + _inflight Future dedupe concurrent refresh clicks
-    (Settings + SymbolSearch may fire together). load_env(override=True) and
-    the disk write share the lock so .env hot-reload, fetch result, and disk
-    file all align.
+    Concurrency: :data:`_refresh_coordinator` dedupes simultaneous clicks
+    (Settings + SymbolSearch may fire together) — N concurrent calls trigger
+    exactly one underlying fetch. Credentials handling (load_env + presence
+    check) lives inside :func:`_fetch_from_pykrx`.
 
     Failure semantics: pykrx exception → disk file unchanged, memory state
     stale (if cache populated) or unavailable.
     """
-    global _state, _inflight  # noqa: PLW0603
-    async with _lock:
-        if _inflight is not None:
-            fut = _inflight
-        else:
-            load_env(override=True)
-            if not krx_creds_present():
-                _state = (
-                    SymbolCacheState.stale(reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
-                    if _cache
-                    else SymbolCacheState.unavailable(reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
-                )
-                return SymbolsAllResponse(
-                    symbols=list(_cache),
-                    status=_state.status,
-                    fetched_at_ms=_fetched_at_ms,
-                    reason=_state.reason,
-                )
-            _state = SymbolCacheState.loading()
-            loop = asyncio.get_running_loop()
-            _inflight = loop.create_future()
-            fetch_task = asyncio.create_task(_do_refresh(path=path, data_dir=data_dir))
+    global _state  # noqa: PLW0603
 
-            def _signal(_t: asyncio.Task) -> None:
-                if _inflight is not None and not _inflight.done():
-                    _inflight.set_result(None)
+    def _start_refresh_task() -> asyncio.Task:
+        global _state  # noqa: PLW0603
+        _state = SymbolCacheState.loading()
+        return asyncio.create_task(_do_refresh(path=path, data_dir=data_dir))
 
-            fetch_task.add_done_callback(_signal)
-            fut = _inflight
-    await fut
-    async with _lock:
-        _inflight = None
+    await _refresh_coordinator.coalesce(_start_refresh_task)
     return SymbolsAllResponse(
         symbols=list(_cache),
         status=_state.status,
@@ -367,27 +450,32 @@ async def refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
     )
 
 
+def _set_stale_or_unavailable(reason: UpstreamCode) -> None:
+    """Pick stale vs unavailable based on whether the cache has prior data."""
+    global _state  # noqa: PLW0603
+    _state = (
+        SymbolCacheState.stale(reason=reason)
+        if _cache
+        else SymbolCacheState.unavailable(reason=reason)
+    )
+
+
 async def _do_refresh(*, path: Path, data_dir: Path) -> None:
     """Inner refresh routine — runs under in-flight Future protection."""
     global _cache, _fetched_at_ms, _state  # noqa: PLW0603
     try:
         entries = await _fetch_from_pykrx()
-    except Exception:  # noqa: BLE001 — pykrx failure path
-        _state = (
-            SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
-            if _cache
-            else SymbolCacheState.unavailable(reason=UpstreamCode.KRX_FETCH_FAILED)
-        )
+    except KrxCredentialsMissing:
+        _set_stale_or_unavailable(UpstreamCode.KRX_CREDENTIALS_MISSING)
+        return
+    except KrxFetchFailed:
+        _set_stale_or_unavailable(UpstreamCode.KRX_FETCH_FAILED)
         return
     now_ms = int(time.time() * 1000)
     try:
         _write_to_disk(path, entries, now_ms)
     except OSError:
-        _state = (
-            SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
-            if _cache
-            else SymbolCacheState.unavailable(reason=UpstreamCode.KRX_FETCH_FAILED)
-        )
+        _set_stale_or_unavailable(UpstreamCode.KRX_FETCH_FAILED)
         return
     loop = asyncio.get_running_loop()
     breakdowns = await loop.run_in_executor(None, _build_all_captured_breakdowns, data_dir)
