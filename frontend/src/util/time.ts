@@ -64,6 +64,10 @@ function virtualEnd(seg: Segment): number {
  *    virtualStart. Choosing "next" matches the viewer behavior where the
  *    grey gap band is non-interactive and the cursor lands on the next open.
  *  - realMs after the final close → the final segment's virtual end.
+ *  - Pre-session times collapse to virtualStart=0. CALLERS THAT PRODUCE
+ *    SERIES DATA MUST PRE-FILTER WITH `isWithinSessions` — otherwise two
+ *    pre-session points produce duplicate virtual-time=0 entries and
+ *    lightweight-charts' setData throws.
  */
 export function realToVirtual(segments: Segment[], realMs: number): number {
   if (segments.length === 0) return 0;
@@ -145,6 +149,23 @@ export function findSegmentByVirtual(segments: Segment[], virtualMs: number): nu
     }
   }
   return ans;
+}
+
+/**
+ * True if realMs falls inside ANY segment's [sessionOpenMs, sessionCloseMs]
+ * (inclusive on both ends). Used by chart panes to filter out pre-open auction
+ * candles (8:30–9:00 KST) and post-close points before mapping through
+ * `realToVirtual`. Without this guard, those points collapse to virtual time
+ * 0 and lightweight-charts throws "data must be asc ordered by time" on the
+ * second clamped point.
+ *
+ * Returns false for empty segments.
+ */
+export function isWithinSessions(segments: Segment[], realMs: number): boolean {
+  for (const seg of segments) {
+    if (realMs >= seg.sessionOpenMs && realMs <= seg.sessionCloseMs) return true;
+  }
+  return false;
 }
 
 /**

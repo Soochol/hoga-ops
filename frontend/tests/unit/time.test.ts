@@ -199,3 +199,52 @@ describe('isDayBoundary', () => {
     expect(isDayBoundary([], DAY1_OPEN)).toBe(false);
   });
 });
+
+import { isWithinSessions } from '../../src/util/time';
+
+const seg = (date: string, openMs: number, lengthMs: number, virtualStart = 0): Segment => ({
+  date,
+  sessionOpenMs: openMs,
+  sessionCloseMs: openMs + lengthMs,
+  virtualStart,
+});
+
+describe('isWithinSessions', () => {
+  const segments: Segment[] = [seg('20260511', 1_778_457_600_000, 23_400_000)];
+
+  it('returns false for empty segments', () => {
+    expect(isWithinSessions([], 1_778_457_600_000)).toBe(false);
+  });
+  it('returns false for ts before session open (pre-open auction)', () => {
+    // 30 minutes before session open — the exact scenario that crashed prod
+    expect(isWithinSessions(segments, 1_778_455_800_000)).toBe(false);
+  });
+  it('returns true at session open boundary', () => {
+    expect(isWithinSessions(segments, 1_778_457_600_000)).toBe(true);
+  });
+  it('returns true inside session', () => {
+    expect(isWithinSessions(segments, 1_778_457_600_000 + 3_600_000)).toBe(true);
+  });
+  it('returns true at session close boundary', () => {
+    expect(isWithinSessions(segments, 1_778_457_600_000 + 23_400_000)).toBe(true);
+  });
+  it('returns false in inter-session gap', () => {
+    const multi: Segment[] = [
+      seg('20260511', 1_778_457_600_000, 23_400_000, 0),
+      seg('20260512', 1_778_544_000_000, 23_400_000, 23_400_000),
+    ];
+    // Between day-1 close and day-2 open
+    expect(isWithinSessions(multi, 1_778_500_000_000)).toBe(false);
+  });
+});
+
+describe('realToVirtual — documented pre-session clamp', () => {
+  const segments: Segment[] = [seg('20260511', 1_778_457_600_000, 23_400_000)];
+  it('clamps any pre-session time to virtualStart (0) — consumers MUST filter first', () => {
+    // This is the documented behavior that caused ISSUE-001 when consumers
+    // forgot to filter. We keep it for backward compatibility with
+    // viewport publishing in ChartStage; chart panes now filter upstream.
+    expect(realToVirtual(segments, 1_778_455_800_000)).toBe(0);
+    expect(realToVirtual(segments, 1_778_457_600_000)).toBe(0);
+  });
+});
