@@ -23,6 +23,7 @@ from hoga.api.models import (
     SessionBundle,
     VolumeProfile,
     VolumeProfileBin,
+    validate_bucket_ms,
 )
 from hoga.api.queries import QueryEngine
 from hoga.api.timeenc import (
@@ -32,6 +33,57 @@ from hoga.api.timeenc import (
 )
 from hoga.tables import candles as candles_tbl
 from hoga.tables.candles import ApiCandle
+
+
+def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiCandle]:
+    """Re-aggregate 1-minute OHLCV candles into the requested Timeframe bucket.
+
+    Aggregation per bucket: open = first.open, close = last.close,
+    high = max(high), low = min(low), vol_a/vol_b = sum.
+
+    Input must be sorted by ts_ms ascending (this function does NOT sort).
+    `bucket_ms == 60_000` returns the input verbatim (identity case).
+    The last bucket may be partial (fewer than bucket_ms/60_000 source candles).
+
+    Raises ValueError if bucket_ms is not in ALLOWED_TIMEFRAME_MS (ADR-0014).
+    """
+    validate_bucket_ms(bucket_ms)
+    if bucket_ms == 60_000 or not candles:
+        return list(candles)
+
+    out: list[ApiCandle] = []
+    bucket_start = (candles[0].ts_ms // bucket_ms) * bucket_ms
+    bucket_open = candles[0].open
+    bucket_high = candles[0].high
+    bucket_low = candles[0].low
+    bucket_close = candles[0].close
+    bucket_va = candles[0].vol_a
+    bucket_vb = candles[0].vol_b
+
+    for c in candles[1:]:
+        c_bucket = (c.ts_ms // bucket_ms) * bucket_ms
+        if c_bucket != bucket_start:
+            out.append(ApiCandle(
+                ts_ms=bucket_start, open=bucket_open, close=bucket_close,
+                high=bucket_high, low=bucket_low, vol_a=bucket_va, vol_b=bucket_vb,
+            ))
+            bucket_start = c_bucket
+            bucket_open = c.open
+            bucket_high = c.high
+            bucket_low = c.low
+            bucket_va = 0
+            bucket_vb = 0
+        bucket_high = max(bucket_high, c.high)
+        bucket_low = min(bucket_low, c.low)
+        bucket_close = c.close
+        bucket_va += c.vol_a
+        bucket_vb += c.vol_b
+
+    out.append(ApiCandle(
+        ts_ms=bucket_start, open=bucket_open, close=bucket_close,
+        high=bucket_high, low=bucket_low, vol_a=bucket_va, vol_b=bucket_vb,
+    ))
+    return out
 
 
 def build_candles_slice(
