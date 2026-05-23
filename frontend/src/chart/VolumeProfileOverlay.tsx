@@ -56,7 +56,9 @@ export default function VolumeProfileOverlay({
   paneIndex,
 }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
-  // Resolve target pane element (see IntensityPane for rationale).
+  // Resolve target pane element (portal the canvas into the specific pane's
+  // DOM via chart.panes()[paneIndex].getHTMLElement() so the overlay aligns
+  // with that pane only).
   const [paneEl, setPaneEl] = useState<HTMLElement | null>(null);
   useEffect(() => {
     if (paneIndex === undefined) {
