@@ -4,6 +4,7 @@ import { loadConfig, type AppConfig } from '../config';
 import { getSymbolMasterInfo, refreshSymbols } from '../api/symbols';
 import { SYMBOLS_QUERY_KEY } from '../capture/useSymbols';
 import { symbolMasterSettingsHints } from '../api/upstream-hints';
+import { loadForceRetryDefault, saveForceRetryDefault } from '../capture/forceRetryDefault';
 
 const VERSION = 'v0.1.0';
 const SYMBOLS_INFO_QUERY_KEY = ['symbols', 'info'] as const;
@@ -35,6 +36,7 @@ export default function Settings() {
       <Row label="API URL" value={config?.api_url ?? '…'} />
       <Row label="Version" value={VERSION} />
       <SymbolMasterSection />
+      <CaptureDefaultsSection />
       <p className="text-xs text-fg-dimmer pt-4">
         편집 가능한 설정은 v1+1에서 `/api/config` 라우트와 함께 제공 예정.
       </p>
@@ -79,6 +81,34 @@ function SymbolMasterSection() {
       >
         {updating ? 'Updating… (~30-120s)' : 'Update Now'}
       </button>
+    </section>
+  );
+}
+
+function CaptureDefaultsSection() {
+  const [forceRetryDefault, setForceRetryDefault] = useState<boolean>(
+    () => loadForceRetryDefault(),
+  );
+  const onToggle = () => {
+    const next = !forceRetryDefault;
+    setForceRetryDefault(next);
+    saveForceRetryDefault(next);
+  };
+  return (
+    <section className="space-y-2 pt-4 border-t border-border">
+      <h3 className="text-sm font-semibold">Capture defaults</h3>
+      <label className="flex gap-2 items-center text-sm text-fg">
+        <input
+          type="checkbox"
+          checked={forceRetryDefault}
+          onChange={onToggle}
+          data-testid="settings-force-retry-default"
+        />
+        <span>⚠ Force re-capture source-partial dates</span>
+      </label>
+      <p className="text-xs text-fg-dimmer">
+        새 캡처를 시작할 때 이 옵션이 기본으로 켜집니다. 캡처 폼에서 매번 토글할 수 있습니다.
+      </p>
     </section>
   );
 }
