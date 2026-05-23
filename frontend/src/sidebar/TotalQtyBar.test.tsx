@@ -88,3 +88,30 @@ describe('TotalQtyBar — normal render', () => {
     expect(getByLabelText('매수총잔량 18,220')).toBeInTheDocument();
   });
 });
+
+describe('TotalQtyBar — masking', () => {
+  it('shows bar fill when maskRatio=false', () => {
+    const { queryByTestId } = render(
+      <TotalQtyBar snapshot={snap(12_840, 18_220)} maskRatio={false} />,
+    );
+    expect(queryByTestId('total-qty-bar-fill')).not.toBeNull();
+    expect(queryByTestId('total-qty-bar-masked')).toBeNull();
+  });
+
+  it('hides bar fill and shows "Auction" annotation when maskRatio=true', () => {
+    const { queryByTestId, getByText } = render(
+      <TotalQtyBar snapshot={snap(12_840, 18_220)} maskRatio={true} />,
+    );
+    expect(queryByTestId('total-qty-bar-fill')).toBeNull();
+    expect(queryByTestId('total-qty-bar-masked')).not.toBeNull();
+    expect(getByText('Auction')).toBeInTheDocument();
+  });
+
+  it('keeps flank numbers visible when maskRatio=true', () => {
+    const { getByText } = render(
+      <TotalQtyBar snapshot={snap(12_840, 18_220)} maskRatio={true} />,
+    );
+    expect(getByText('12,840')).toBeInTheDocument();
+    expect(getByText('18,220')).toBeInTheDocument();
+  });
+});
