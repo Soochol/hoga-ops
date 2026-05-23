@@ -4,6 +4,7 @@ import type { IChartApi } from 'lightweight-charts';
 import type { RangeBundle, VolumeProfile, VolumeProfileBin } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
+import { useChartPrefs } from './ChartPrefsContext';
 
 const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
 
@@ -23,7 +24,6 @@ type Props = {
   chart: IChartApi;
   bundle: RangeBundle;
   axis: VirtualAxis;
-  mode?: 'per-day' | 'range';
   /** Approximate fraction of total volume covered by the value area (default 0.7). */
   valueAreaFrac?: number;
   /**
@@ -51,10 +51,10 @@ export default function VolumeProfileOverlay({
   chart,
   bundle,
   axis,
-  mode = 'range',
   valueAreaFrac = 0.7,
   paneIndex,
 }: Props) {
+  const { volumeProfileMode: mode } = useChartPrefs();
   const ref = useRef<HTMLCanvasElement>(null);
   // Resolve target pane element (portal the canvas into the specific pane's
   // DOM via chart.panes()[paneIndex].getHTMLElement() so the overlay aligns

@@ -2,7 +2,8 @@ import { render } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import RatioPane from '../../src/chart/RatioPane';
 import { createVirtualAxis } from '../../src/util/virtualAxis';
-import { useTabsStore } from '../../src/state/tabs';
+import { useTabsStore, DEFAULT_PREFS } from '../../src/state/tabs';
+import { ChartPrefsProvider } from '../../src/chart/ChartPrefsContext';
 
 const makeMockChart = () => {
   const series = { setData: vi.fn(), createPriceLine: vi.fn() };
@@ -118,9 +119,6 @@ describe('RatioPane', () => {
     const { chart, series } = makeMockChart();
     const sessionOpenMs = 1_779_062_400_000;
     const auctionStart = sessionOpenMs + (6 * 3600 + 20 * 60) * 1000;
-    // Flip the per-tab flag BEFORE rendering so the component picks it up.
-    const activeId = useTabsStore.getState().activeTabId;
-    useTabsStore.getState().setToggle(activeId, 'auctionWindowMask', false);
 
     const bundle: any = {
       quote_ratio: {
@@ -132,13 +130,15 @@ describe('RatioPane', () => {
       },
     };
     render(
-      <RatioPane
-        chart={chart}
-        bundle={bundle}
-        axis={createVirtualAxis([
-          { date: '20260518', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000 },
-        ])}
-      />,
+      <ChartPrefsProvider value={{ ...DEFAULT_PREFS, auctionWindowMask: false }}>
+        <RatioPane
+          chart={chart}
+          bundle={bundle}
+          axis={createVirtualAxis([
+            { date: '20260518', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000 },
+          ])}
+        />
+      </ChartPrefsProvider>,
     );
     const data = series.setData.mock.calls[0][0];
     expect(data[0].value).toBeCloseTo(9, 5);    // 500/50 - 1

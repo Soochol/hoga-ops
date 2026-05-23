@@ -1,7 +1,9 @@
 import { render } from '@testing-library/react';
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import VolumeProfileOverlay from '../../src/chart/VolumeProfileOverlay';
+import { ChartPrefsProvider } from '../../src/chart/ChartPrefsContext';
 import { createVirtualAxis } from '../../src/util/virtualAxis';
+import { DEFAULT_PREFS } from '../../src/state/tabs';
 
 beforeAll(() => {
   // jsdom canvas + ResizeObserver stubs.
@@ -46,14 +48,15 @@ describe('VolumeProfileOverlay', () => {
       },
     };
     const { container } = render(
-      <VolumeProfileOverlay
-        chart={chart}
-        bundle={bundle}
-        axis={createVirtualAxis([
-          { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 100 },
-        ])}
-        mode="per-day"
-      />,
+      <ChartPrefsProvider value={{ ...DEFAULT_PREFS, volumeProfileMode: 'per-day' }}>
+        <VolumeProfileOverlay
+          chart={chart}
+          bundle={bundle}
+          axis={createVirtualAxis([
+            { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 100 },
+          ])}
+        />
+      </ChartPrefsProvider>,
     );
     expect(container.querySelector('canvas')).toBeInTheDocument();
   });
@@ -70,7 +73,7 @@ describe('VolumeProfileOverlay', () => {
       },
     };
     const { unmount } = render(
-      <VolumeProfileOverlay chart={chart} bundle={bundle} axis={createVirtualAxis([])} mode="range" />,
+      <VolumeProfileOverlay chart={chart} bundle={bundle} axis={createVirtualAxis([])} />,
     );
     expect(ts.subscribeVisibleTimeRangeChange).toHaveBeenCalled();
     unmount();

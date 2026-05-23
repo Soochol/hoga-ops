@@ -4,7 +4,7 @@ import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { quoteImbalance } from '../util/imbalance';
 import { resolveTokens } from '../util/tokens';
-import { useTabsStore } from '../state/tabs';
+import { useChartPrefs } from './ChartPrefsContext';
 
 const TOKEN_SPEC = {
   ratioAsk: ['--ratio-ask', '#3B82F6'],
@@ -46,10 +46,7 @@ type Props = {
  * mapping each point's real Unix-ms timestamp through `axis.toVirtual`.
  */
 export default function RatioPane({ chart, bundle, axis, paneIndex = 0 }: Props) {
-  const activeTabId = useTabsStore((s) => s.activeTabId);
-  const auctionWindowMask = useTabsStore(
-    (s) => s.getPrefs(activeTabId).auctionWindowMask,
-  );
+  const { auctionWindowMask } = useChartPrefs();
   useEffect(() => {
     const { ratioAsk, ratioBid, baseline } = resolveTokens(TOKEN_SPEC);
     const series = chart.addSeries(

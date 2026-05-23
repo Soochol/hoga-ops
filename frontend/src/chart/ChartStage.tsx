@@ -23,6 +23,7 @@ import QuoteTotalsPane from './QuoteTotalsPane';
 import FillStrengthPane from './FillStrengthPane';
 import VolumeProfileOverlay from './VolumeProfileOverlay';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
+import { ChartPrefsProvider } from './ChartPrefsContext';
 
 const CHART_TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -84,10 +85,12 @@ function pad(n: number): string {
 export default function ChartStage({ bundle, axis }: ChartStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
-  // Per-tab volume-profile mode (Task 9 / Task 21). Read from the active tab's
-  // ChartViewPrefs so toggling 전체/일별 in the sidebar re-renders the overlay.
+  // Single per-tab ChartViewPrefs subscription. Distributed to descendant
+  // panes via ChartPrefsProvider so each pane reads through useChartPrefs()
+  // without re-subscribing to the store. Toggling any pref in the Settings
+  // modal re-renders ChartStage and propagates fresh prefs down the tree.
   const activeTabId = useTabsStore((s) => s.activeTabId);
-  const volumeProfileMode = useTabsStore((s) => s.getPrefs(activeTabId).volumeProfileMode);
+  const prefs = useTabsStore((s) => s.getPrefs(activeTabId));
   // Keep the latest axis visible to the once-mounted subscribeVisibleTimeRange
   // handler. lightweight-charts emits times on our VIRTUAL axis (Task 6.1);
   // viewport consumers need REAL Unix-ms, so the handler reads this ref and
@@ -265,7 +268,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
     <div className="relative h-full min-h-0 bg-bg-card">
       <div ref={containerRef} className="absolute inset-0" />
       {chart && bundle && (
-        <>
+        <ChartPrefsProvider value={prefs}>
           {/*
             Series-only panes return null after registering their series on
             the chart. The wrapping `data-pane` divs are `hidden` so they
@@ -307,7 +310,6 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
               chart={chart}
               bundle={bundle}
               axis={axis}
-              mode={volumeProfileMode}
               paneIndex={0}
             />
           </div>
@@ -317,7 +319,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
             chart crosshair interaction.
           */}
           <DayBoundaryOverlay chart={chart} axis={axis} />
-        </>
+        </ChartPrefsProvider>
       )}
     </div>
   );

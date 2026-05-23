@@ -43,7 +43,7 @@ const TOGGLE_DEFAULTS = Object.fromEntries(
   CHART_TOGGLES.map((t) => [t.key, t.default]),
 ) as { [K in ChartToggleKey]: boolean };
 
-const DEFAULT_PREFS: ChartViewPrefs = {
+export const DEFAULT_PREFS: ChartViewPrefs = {
   volumeProfileMode: 'range',
   ...TOGGLE_DEFAULTS,
 };
