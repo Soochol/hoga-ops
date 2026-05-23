@@ -71,14 +71,27 @@ All sizes are rem-based per `DESIGN.md` Scale Factor rules. The component render
 
 ## Data
 
-Source: the same `OrderbookSnapshot` that `OrderbookTable` already consumes from `CursorSidebar`. Both components receive the same prop, so they always agree.
+Source: the same `OrderbookSnapshot` that `OrderbookTable` already consumes. The wire model carries pre-computed total fields:
 
-Computation, client-side and memoized:
+```ts
+type OrderbookSnapshot = {
+  ts_ms: number;
+  seq: number;
+  ask: OrderbookLevel[];   // length 10
+  bid: OrderbookLevel[];   // length 10
+  tot_ask: number;         // ← used here
+  tot_bid: number;         // ← used here
+};
+```
+
+These totals come straight from hogaplay's TSV (`hoga/tables/snapshots.py:34-37` reads them directly from the wire at fixed field positions, not by summing q1-q10). They represent the authoritative total as hogaplay itself reports — the same number a user sees in hogaplay's own UI.
+
+Computation, derived in the component and memoized:
 
 ```ts
 function computeTotals(snapshot: OrderbookSnapshot) {
-  const askTotal = snapshot.ask.reduce((s, l) => s + l.qty, 0);
-  const bidTotal = snapshot.bid.reduce((s, l) => s + l.qty, 0);
+  const askTotal = snapshot.tot_ask;
+  const bidTotal = snapshot.tot_bid;
   const total = askTotal + bidTotal;
   const askPct = total > 0 ? askTotal / total : 0.5;
   const bidPct = total > 0 ? bidTotal / total : 0.5;
@@ -86,9 +99,9 @@ function computeTotals(snapshot: OrderbookSnapshot) {
 }
 ```
 
-Why not consume `RangeBundle.quote_ratio.points`? That series is bucketed (typically 1s or 1min). The cursor lands at an exact moment that may not align with a bucket boundary, so the bucketed `bid_total` / `ask_total` would not match what `OrderbookTable` shows above. Summing the snapshot guarantees consistency with the table.
+Why not consume `RangeBundle.quote_ratio.points`? That series is bucketed (typically 1s or 1min) and sums q1-q10 server-side (`hoga/api/bundle.py:123-125`). The cursor lands at an exact snapshot moment that may not align with a bucket boundary, and the q1-q10 sum is not necessarily equal to `tot_ask` (hogaplay may include levels beyond the visible 10 in its total). Reading the snapshot's pre-computed totals guarantees consistency with what hogaplay's source UI shows and avoids any sum-vs-total discrepancy.
 
-The backend definition matches: `hoga/api/bundle.py:123-125` already defines `bid_total` / `ask_total` as `q1 + q2 + … + q10`. Same semantics, different point of computation.
+Why not sum the snapshot's `ask` / `bid` arrays client-side? The wire already carries the totals; recomputing on the client would (a) waste work, (b) silently diverge from hogaplay's reported total if `tot_ask` includes off-screen depth.
 
 ## Edge cases
 
