@@ -64,7 +64,7 @@ The design system has a **single density dial** at `:root font-size`.
 
 ## Color
 
-- **Approach:** Restrained. Single UI accent (teal). Up/down semantic colors reserved for data values only.
+- **Approach:** Restrained. Single UI accent (teal). Three mutually-exclusive color categories for UI state, status semantic, and price direction.
 - **Palette (dark mode only — v1 has no light mode):**
 
   | Token | Hex | Use |
@@ -80,25 +80,32 @@ The design system has a **single density dial** at `:root font-size`.
   | `--fg-dim` | `#94A3B8` | Secondary text, dim labels |
   | `--fg-dimmer` | `#64748B` | Tertiary text, disabled |
   | `--accent` | `#14B8A6` | Teal — UI states only (buttons, focus, crosshair, active tab, primary CTAs) |
-  | `--up` | `#22C55E` | Up prices, buy quantities, positive deltas (data only) |
-  | `--down` | `#F43F5E` | Down prices, sell quantities, negative deltas (data only) |
+  | `--success` | `#22C55E` | UI 상태 semantic — 캡처 완료, 양호 상태, 체크리스트 done |
+  | `--error` | `#F43F5E` | UI 상태 semantic — 실패, 에러 메시지, 비정상 상태 |
+  | `--price-up` | `#DC2626` | 시장 데이터 — 상승, 매수, KRX 빨강 컨벤션 |
+  | `--price-down` | `#2563EB` | 시장 데이터 — 하락, 매도, KRX 파랑 컨벤션 |
   | `--grid` | `#1A1A26` | Chart grid lines, table row borders |
   | `--heat-lo` | `#0E1A1A` | Heatmap low intensity (depth intensity pane) |
   | `--heat-hi` | `#14B8A6` | Heatmap high intensity (teal ramp) |
-  | `--ratio-ask` | `#3B82F6` | Ratio pane — ask-heavy fill/line (above 0 baseline). Distinct from `--down` which encodes price direction; this encodes order-book pressure (KRX convention). |
 
-- **Discipline rule:** Teal is for UI state, never for data. Up/down semantic colors are for data values, never for UI chrome. This separation prevents confusion ("is this teal cell up? down? selected?").
+- **Discipline rule:** Three mutually-exclusive color categories.
+  - **UI state** (teal `--accent`): buttons, focus rings, active tabs, crosshair, primary CTAs. Never for data.
+  - **Status semantic** (`--success`/`--error`): system feedback — capture complete/failed, error banners, calendar cell state, status dots. Never for market data.
+  - **Price direction** (`--price-up`/`--price-down`): KRX convention — red = up/buy/positive delta, blue = down/sell/negative delta. Never for UI state or status.
+  - This three-way separation prevents the "is this red because it failed, or because it's up?" ambiguity.
 
-- **Tint backgrounds (for chip / hover states):**
-  - Selection tint: `rgba(20,184,166,0.12)` (active nav, active tab, primary hover)
-  - Up tint: `rgba(34,197,94,0.10)` (positive delta chip background)
-  - Down tint: `rgba(244,63,94,0.10)` (negative delta chip background)
+- **Tint backgrounds (alpha-tinted chip / hover):**
+  - Selection tint: `rgba(20,184,166,0.12)` — active nav, active tab, primary hover
+  - Success tint: `rgba(34,197,94,0.10)` — completion chip background
+  - Error tint: `rgba(244,63,94,0.10)` — error chip background
+  - Price-up tint: `rgba(220,38,38,0.10)` — buy depth bar, positive market chip
+  - Price-down tint: `rgba(37,99,235,0.10)` — sell depth bar, negative market chip
 
-- **Semantic (for future banners / toasts):**
-  - Success: reuse `--up`
-  - Error: reuse `--down`
-  - Warning: `#F59E0B` (amber — not yet used)
-  - Info: reuse `--accent`
+- **Semantic (banners / toasts):**
+  - Success: `--success` (#22C55E)
+  - Error: `--error` (#F43F5E)
+  - Warning: `--warn` (#F59E0B, amber)
+  - Info: `--accent` (teal)
 
 - **Dark mode:** Only mode in v1. Light mode is out of scope.
 
@@ -170,7 +177,7 @@ The design system has a **single density dial** at `:root font-size`.
 - Inactive: `--bg-input` background, dim text, full border
 - Hover: `--bg-input-hover`
 - Close X: 18px × 18px, opacity 0 by default, 1 on hover
-- Status dot: 6px circle, `--up` solid (loaded), `--accent` pulsing (loading), `--fg-dimmer` outline (empty)
+- Status dot: 6px circle, `--success` solid (loaded), `--accent` pulsing (loading), `--fg-dimmer` outline (empty)
 - Soft cap: 8 tabs (shown as `N / 8 open`)
 
 ### Combobox (stock selector)
@@ -200,7 +207,7 @@ The design system has a **single density dial** at `:root font-size`.
 ### Orderbook table row
 - Height: 22px
 - Mono 11.5px
-- Right side bar gradient (depth visualization): 18% alpha of side color
+- Right side bar gradient (depth visualization): `--tint-price-up` for bid side, `--tint-price-down` for ask side (10% alpha; the underlying token names encode KRX convention — red for buy/up, blue for sell/down).
 - Mid spread row: subtle bg, small-caps teal label
 
 ### Status dot (general)
@@ -216,3 +223,4 @@ The design system has a **single density dial** at `:root font-size`.
 | 2026-05-20 | Compressed multi-day time axis (no overnight gap) | Screen density over chronological accuracy; matches TradingView's convention for analyzing across sessions. |
 | 2026-05-20 | Tab status pulse dot | Multi-tab async state needs to be visible. One small animation is worth the tradeoff. |
 | 2026-05-20 | Monospace 100% for numbers | Tabular-nums is required for orderbook column alignment. Two-font cost (~50 KB extra) is negligible on localhost. |
+| 2026-05-23 | Adopted KRX market convention (up=red `#DC2626`, down=blue `#2563EB`) | Single-user Korean analyst — Western up=green is counter-intuitive. Renamed `--up`/`--down` → `--success`/`--error` to disambiguate status semantic from price direction; introduced `--price-up`/`--price-down`. Removed `--ratio-ask` (folded into `--price-down`). All chart series now hide both `priceLineVisible` and `lastValueVisible` — analysts read latest values via crosshair. |
