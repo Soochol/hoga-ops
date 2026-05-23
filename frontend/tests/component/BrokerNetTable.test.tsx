@@ -1,37 +1,44 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import BrokerNetTable from '../../src/sidebar/BrokerNetTable';
+import type { BrokerEntry } from '../../src/api/types';
 
 describe('BrokerNetTable', () => {
-  it('shows loading state when null', () => {
+  it('shows loading state when undefined', () => {
     render(<BrokerNetTable brokers={undefined} />);
     expect(screen.getByText(/로딩 중/)).toBeInTheDocument();
   });
 
-  it('aggregates buy minus sell per broker, sorts net DESC, caps at 10', () => {
-    const brokers: any[] = [
-      { name: '키움증권', side: 'buy', rank: 1, qty: 1000 },
-      { name: '키움증권', side: 'sell', rank: 1, qty: 300 }, // net +700
-      { name: 'NH투자증권', side: 'buy', rank: 2, qty: 500 }, // net +500
-      { name: '미래에셋', side: 'sell', rank: 1, qty: 800 }, // net -800
+  it('shows empty state when null', () => {
+    render(<BrokerNetTable brokers={null} />);
+    expect(screen.getByText('거래원 정보 없음')).toBeInTheDocument();
+  });
+
+  it('aggregates buy minus sell per broker using qty_today, sorts net DESC, caps at 10', () => {
+    // Mirrors the wire shape returned by /api/brokers — see hoga/tables/brokers.py::ApiBrokerEntry.
+    // Fields: side, rank, broker (name), qty_today (cumulative), qty_delta (last-tick increment).
+    const brokers: BrokerEntry[] = [
+      { broker: '키움증권', side: 'buy', rank: 1, qty_today: 1000, qty_delta: 10 },
+      { broker: '키움증권', side: 'sell', rank: 1, qty_today: 300, qty_delta: 5 }, // net +700
+      { broker: 'NH투자증권', side: 'buy', rank: 2, qty_today: 500, qty_delta: 0 }, // net +500
+      { broker: '미래에셋', side: 'sell', rank: 1, qty_today: 800, qty_delta: 20 }, // net -800
     ];
     render(<BrokerNetTable brokers={brokers} />);
-    const rows = screen.getAllByText(
-      (_, el) => el?.tagName === 'SPAN' && /(\+|-)?[0-9,]+/.test(el.textContent ?? ''),
-    );
-    expect(rows.length).toBeGreaterThanOrEqual(3);
-    // Net values render with sign
     expect(screen.getByText('+700')).toBeInTheDocument();
     expect(screen.getByText('+500')).toBeInTheDocument();
     expect(screen.getByText('-800')).toBeInTheDocument();
   });
 
-  it('truncates names longer than 4 characters', () => {
-    render(
-      <BrokerNetTable
-        brokers={[{ name: 'NH투자증권', side: 'buy', rank: 1, qty: 100 } as any]}
-      />,
-    );
+  it('truncates broker names longer than 4 characters', () => {
+    const brokers: BrokerEntry[] = [
+      { broker: 'NH투자증권', side: 'buy', rank: 1, qty_today: 100, qty_delta: 0 },
+    ];
+    render(<BrokerNetTable brokers={brokers} />);
     expect(screen.getByText('NH투자')).toBeInTheDocument();
+  });
+
+  it('renders 거래원 정보 없음 for an empty entries array', () => {
+    render(<BrokerNetTable brokers={[]} />);
+    expect(screen.getByText('거래원 정보 없음')).toBeInTheDocument();
   });
 });

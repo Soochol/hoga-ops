@@ -41,7 +41,18 @@ export type OrderbookResponse = {
   snapshot: OrderbookSnapshot | null;
 };
 
-export type BrokerEntry = { name: string; side: 'buy' | 'sell'; rank: number; qty: number };
+// Mirrors hoga/tables/brokers.py::ApiBrokerEntry verbatim. `broker` is the
+// firm's name; `qty_today` is the cumulative quantity through the cursor
+// moment and `qty_delta` is the increment since the previous broker tick.
+// The Replay Viewer's BrokerNetTable aggregates qty_today by side to
+// render net pressure.
+export type BrokerEntry = {
+  side: 'buy' | 'sell';
+  rank: number;
+  broker: string;
+  qty_today: number;
+  qty_delta: number;
+};
 
 // Mirrors hoga/tables/trades.py::ApiTrade. `side` is -1 / 0 / +1 by convention
 // (sell / auction-cross / buy) but typed as number — the backend does not

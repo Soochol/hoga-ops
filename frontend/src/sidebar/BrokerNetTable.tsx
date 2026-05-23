@@ -20,8 +20,8 @@ export default function BrokerNetTable({ brokers }: Props) {
   return (
     <div className="font-mono text-sm tabular-nums">
       {rows.map((r) => (
-        <div key={r.name} className="grid grid-cols-[1fr_auto] gap-3 px-2.5 py-0.5">
-          <span className="truncate">{trunc(r.name)}</span>
+        <div key={r.broker} className="grid grid-cols-[1fr_auto] gap-3 px-2.5 py-0.5">
+          <span className="truncate">{trunc(r.broker)}</span>
           <span className={r.net > 0 ? 'text-price-up' : r.net < 0 ? 'text-price-down' : 'text-fg-dim'}>
             {r.net > 0 ? '+' : ''}
             {r.net.toLocaleString('ko-KR')}
@@ -37,14 +37,21 @@ function trunc(name: string): string {
   return name.length > 4 ? name.slice(0, 4) : name;
 }
 
-function computeNet(entries: BrokerEntry[]): { name: string; net: number }[] {
+/**
+ * Aggregate cumulative `qty_today` per broker, signed by side (buy +, sell −),
+ * sort by absolute net activity, and keep the top 10. `qty_today` (the
+ * cumulative position through the cursor moment) is the right magnitude for
+ * "net pressure" — `qty_delta` would show only the most recent tick's
+ * movement, which jitters as new ticks arrive.
+ */
+function computeNet(entries: BrokerEntry[]): { broker: string; net: number }[] {
   const map = new Map<string, number>();
   for (const e of entries) {
-    const cur = map.get(e.name) ?? 0;
-    map.set(e.name, cur + (e.side === 'buy' ? e.qty : -e.qty));
+    const cur = map.get(e.broker) ?? 0;
+    map.set(e.broker, cur + (e.side === 'buy' ? e.qty_today : -e.qty_today));
   }
   return [...map.entries()]
-    .map(([name, net]) => ({ name, net }))
+    .map(([broker, net]) => ({ broker, net }))
     .sort((a, b) => b.net - a.net)
     .slice(0, 10);
 }
