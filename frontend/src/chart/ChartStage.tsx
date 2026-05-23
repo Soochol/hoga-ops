@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import {
   createChart,
   TickMarkType,
@@ -280,29 +280,25 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
             hosts the canvas itself.
           */}
           {PANE_SPECS.map((spec, paneIndex) => (
-            <Fragment key={spec.name}>
-              <div data-pane={spec.name} className="hidden">
-                <RangeSeriesPane
-                  chart={chart}
-                  bundle={bundle}
-                  axis={axis}
-                  paneIndex={paneIndex}
-                  spec={spec}
-                />
-              </div>
-              {paneIndex === 0 && (
-                <div data-pane="moving-average" className="hidden">
-                  <RangeSeriesPane
-                    chart={chart}
-                    bundle={bundle}
-                    axis={axis}
-                    paneIndex={0}
-                    spec={MOVING_AVERAGE_SPEC}
-                  />
-                </div>
-              )}
-            </Fragment>
+            <div key={spec.name} data-pane={spec.name} className="hidden">
+              <RangeSeriesPane
+                chart={chart}
+                bundle={bundle}
+                axis={axis}
+                paneIndex={paneIndex}
+                spec={spec}
+              />
+            </div>
           ))}
+          <div data-pane="moving-average" className="hidden">
+            <RangeSeriesPane
+              chart={chart}
+              bundle={bundle}
+              axis={axis}
+              paneIndex={0}
+              spec={MOVING_AVERAGE_SPEC}
+            />
+          </div>
           <div data-pane="volume-profile" className="hidden">
             <VolumeProfileOverlay
               chart={chart}
