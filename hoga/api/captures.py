@@ -369,7 +369,9 @@ async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
             code=state.code,
             date=state.date,
             data_dir=data_dir,
-            rate_limit_s=0.0 if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1" else 0.2,
+            # Production rate. Keep in sync with collect_stock_date's default in orchestrator.py
+            # (currently 0.05 per ADR-0017). HOGA_ENABLE_TEST_ENDPOINTS=1 skips the sleep entirely for tests.
+            rate_limit_s=0.0 if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1" else 0.05,
             resume=resume,
             on_progress=_make_progress_callback(state),
             cancel_token=state.cancel_token,
