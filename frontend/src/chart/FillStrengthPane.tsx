@@ -5,8 +5,8 @@ import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = {
-  up: ['--up', '#22C55E'],
-  down: ['--down', '#F43F5E'],
+  buy:  ['--price-up',   '#DC2626'],  // 체결 매수 (KRX 빨강)
+  sell: ['--price-down', '#2563EB'],  // 체결 매도 (KRX 파랑)
 } as const;
 
 type Props = {
@@ -29,7 +29,7 @@ type Props = {
  */
 export default function FillStrengthPane({ chart, bundle, axis, paneIndex = 0 }: Props) {
   useEffect(() => {
-    const { up, down } = resolveTokens(TOKEN_SPEC);
+    const { buy: buyColor, sell: sellColor } = resolveTokens(TOKEN_SPEC);
     // Custom integer-comma formatter matches CandlePane / VolumePane. The buy
     // series owns the price-axis labels for this pane (sell renders below the
     // 0 baseline using mirrored negative values), but we apply the same format
@@ -42,9 +42,11 @@ export default function FillStrengthPane({ chart, bundle, axis, paneIndex = 0 }:
         formatter: (v: number) => Math.round(Math.abs(v)).toLocaleString('ko-KR'),
         minMove: 1,
       },
+      priceLineVisible: false,
+      lastValueVisible: false,
     };
-    const buy = chart.addSeries(HistogramSeries, { color: up, ...histOpts } as any, paneIndex);
-    const sell = chart.addSeries(HistogramSeries, { color: down, ...histOpts } as any, paneIndex);
+    const buy = chart.addSeries(HistogramSeries, { color: buyColor, ...histOpts } as any, paneIndex);
+    const sell = chart.addSeries(HistogramSeries, { color: sellColor, ...histOpts } as any, paneIndex);
     // Drop pre-open auction points and any others outside the regular-session
     // segments. Without this filter, multiple pre-session points collapse to
     // virtual-time=0 and lightweight-charts.setData throws "data must be asc
