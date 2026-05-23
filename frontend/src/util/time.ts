@@ -24,11 +24,25 @@ export type Segment = {
 };
 
 /**
+ * Synthetic virtual-ms inserted between consecutive segments. Without it,
+ * day N's closing candle (real_ms == sessionCloseMs) and day N+1's opening
+ * candle (real_ms == sessionOpenMs) would both map to the same virtual
+ * offset (== prior segment's session length), and lightweight-charts'
+ * `setData` would throw "data must be asc ordered by time" with two
+ * neighbours sharing a timestamp. 1000 ms guarantees integer-second
+ * uniqueness after the `/1000` conversion to `UTCTimestamp`, while being
+ * visually invisible at any realistic bar spacing (≈0.1 px at 60 px/min).
+ */
+export const INTER_SEGMENT_GAP_MS = 1000;
+
+/**
  * Build segments from raw Stock-Date open/close pairs.
  *
  * Input is assumed to be sorted by date ascending. We walk in order and
- * accumulate `virtualStart` by stacking each session's real length onto the
- * previous segment's virtual end — collapsing the inter-session gap to zero.
+ * accumulate `virtualStart` by stacking each session's real length — plus
+ * a 1-second `INTER_SEGMENT_GAP_MS` — onto the previous segment's virtual
+ * end. The synthetic gap keeps adjacent boundary candles on distinct virtual
+ * timestamps; it is small enough to remain visually contiguous.
  *
  * Production callers should construct a `VirtualAxis` via `createVirtualAxis`
  * (which calls this internally) rather than threading raw `Segment[]` arrays.
@@ -45,7 +59,7 @@ export function buildSegments(
       sessionCloseMs: r.sessionCloseMs,
       virtualStart: cursor,
     });
-    cursor += r.sessionCloseMs - r.sessionOpenMs;
+    cursor += r.sessionCloseMs - r.sessionOpenMs + INTER_SEGMENT_GAP_MS;
   }
   return out;
 }
