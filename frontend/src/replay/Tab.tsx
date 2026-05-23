@@ -2,17 +2,20 @@ import type { Tab as TabModel } from '../state/tabs';
 
 export default function Tab({
   tab,
+  name,
   isActive,
   isLast,
   onActivate,
   onClose,
 }: {
   tab: TabModel;
+  name: string | undefined;
   isActive: boolean;
   isLast: boolean;
   onActivate: () => void;
   onClose: () => void;
 }) {
+  const label = tab.selection ? (name ?? tab.selection.code) : '새 탭';
   return (
     <div
       onClick={onActivate}
@@ -22,8 +25,7 @@ export default function Tab({
     >
       {isActive && <span className="absolute top-0 inset-x-0 h-0.5 bg-accent rounded-t" />}
       <TabStatusDot status={tab.status} />
-      <span className="tab-code font-mono text-sm text-accent">{tab.selection?.code ?? '—'}</span>
-      <span className="text-sm">{tab.selection ? '...' : '새 탭'}</span>
+      <span className="text-sm">{label}</span>
       {!isLast && (
         <button
           className="w-4 h-4 opacity-0 hover:opacity-100"

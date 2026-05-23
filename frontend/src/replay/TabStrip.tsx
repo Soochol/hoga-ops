@@ -1,13 +1,35 @@
-import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
+import { useMemo } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
 import { SortableContext, useSortable, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useTabsStore, TABS_SOFT_CAP } from '../state/tabs';
+import { useSymbols } from '../capture/useSymbols';
 import Tab from './Tab';
 import type { Tab as TabModel } from '../state/tabs';
 
 export default function TabStrip() {
   const { tabs, activeTabId, setActive, closeTab, newTab } = useTabsStore();
   const tabCount = useTabsStore((s) => s.tabs.length);
+  const { data: symbolsData } = useSymbols();
+  const nameByCode = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of symbolsData?.symbols ?? []) m.set(s.code, s.name);
+    return m;
+  }, [symbolsData]);
+
+  // Activate drag only after 8px of movement so single-clicks reach onClick on
+  // tabs (activate) and the close button. Without this, the dnd-kit pointer
+  // listeners spread on the SortableTab wrapper swallow click events.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
 
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
@@ -20,12 +42,13 @@ export default function TabStrip() {
 
   return (
     <div className="flex items-end gap-px px-3.5 bg-bg-subtle border-b h-10">
-      <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
           {tabs.map((t) => (
             <SortableTab
               key={t.id}
               tab={t}
+              name={t.selection ? nameByCode.get(t.selection.code) : undefined}
               isActive={t.id === activeTabId}
               isLast={tabs.length === 1}
               onActivate={() => setActive(t.id)}
@@ -50,6 +73,7 @@ export default function TabStrip() {
 
 function SortableTab(props: {
   tab: TabModel;
+  name: string | undefined;
   isActive: boolean;
   isLast: boolean;
   onActivate: () => void;
