@@ -38,6 +38,7 @@ from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
 from hoga.collector.orchestrator import (
     CHART_FINAL_TIME_MS,
     DATA_WINDOW_START_MS,
+    DEFAULT_RATE_LIMIT_S,
     CancelToken,
     CaptureCancelled,
     ProgressEvent,
@@ -369,9 +370,9 @@ async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
             code=state.code,
             date=state.date,
             data_dir=data_dir,
-            # Production rate. Keep in sync with collect_stock_date's default in orchestrator.py
-            # (currently 0.05 per ADR-0017). HOGA_ENABLE_TEST_ENDPOINTS=1 skips the sleep entirely for tests.
-            rate_limit_s=0.0 if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1" else 0.05,
+            # Production rate from ADR-0017. HOGA_ENABLE_TEST_ENDPOINTS=1 skips the sleep
+            # entirely for tests; otherwise we use the same default as collect_stock_date.
+            rate_limit_s=0.0 if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1" else DEFAULT_RATE_LIMIT_S,
             resume=resume,
             on_progress=_make_progress_callback(state),
             cancel_token=state.cancel_token,

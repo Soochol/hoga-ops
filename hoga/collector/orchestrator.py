@@ -33,6 +33,11 @@ _IDX_EVENT_TIME = 4
 _MIN_FIELDS_EVENT_TIME = 5
 _MIN_FIELDS_GLOBAL_SEQ = 4
 
+# Default sleep between consecutive first.php requests. 0.05 adopted by
+# ADR-0017 (Phase 1 matrix sweep). Lowering this further (toward 0) increases
+# throttle risk; raising it back to 0.2 was the pre-tuning value.
+DEFAULT_RATE_LIMIT_S = 0.05
+
 # Throttle-aware backoff constants — see spec §8.2.
 THROTTLE_BACKOFF_FACTOR = 2.0
 THROTTLE_BACKOFF_HOLD_PAGES = 10  # Open Question #3: revisit if Phase 2 says otherwise
@@ -282,7 +287,7 @@ def _page_step_loop(
     last_emitted_t = -1
     last_emitted_pages = -1
     iter_idx = 0
-    backoff_remaining = 0  # countdown of pages held at doubled rate after a 429/503
+    backoff_remaining = 0  # countdown of pages held at doubled rate after a 429
     while True:
         if cancel_token is not None and cancel_token.cancelled:
             raise CaptureCancelled(f"capture cancelled at page {page_idx}")
@@ -370,7 +375,7 @@ def collect_stock_date(
     code: str,
     date: str,
     data_dir: Path,
-    rate_limit_s: float = 0.05,  # was 0.2 — see ADR-0017 / Phase 1 matrix sweep
+    rate_limit_s: float = DEFAULT_RATE_LIMIT_S,  # was 0.2 — see ADR-0017 / Phase 1 matrix sweep
     resume: bool = False,
     on_progress: Callable[[ProgressEvent], None] | None = None,
     cancel_token: CancelToken | None = None,
