@@ -19,7 +19,8 @@ import { useTabsStore } from '../state/tabs';
 import CandlePane from './CandlePane';
 import VolumePane from './VolumePane';
 import RatioPane from './RatioPane';
-import QuoteTotalsPane from './QuoteTotalsPane';
+import RangeSeriesPane from './RangeSeriesPane';
+import { QUOTE_TOTALS_SPEC } from './projectors/quoteTotals';
 import FillStrengthPane from './FillStrengthPane';
 import VolumeProfileOverlay from './VolumeProfileOverlay';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
@@ -302,7 +303,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
             hosts the canvas itself.
           */}
           <div data-pane="quote-totals" className="hidden">
-            <QuoteTotalsPane chart={chart} bundle={bundle} axis={axis} paneIndex={3} />
+            <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={3} spec={QUOTE_TOTALS_SPEC} />
           </div>
           <div data-pane="fill-strength" className="hidden">
             <FillStrengthPane chart={chart} bundle={bundle} axis={axis} paneIndex={4} />
