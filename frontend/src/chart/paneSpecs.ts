@@ -1,4 +1,5 @@
 import type { PaneSpec } from './RangeSeriesPane';
+import { CANDLE_SPEC } from './projectors/candle';
 import { QUOTE_TOTALS_SPEC } from './projectors/quoteTotals';
 import { VOLUME_SPEC } from './projectors/volume';
 import { FILL_STRENGTH_SPEC } from './projectors/fillStrength';
@@ -19,7 +20,7 @@ import { FILL_STRENGTH_SPEC } from './projectors/fillStrength';
  * `<RangeSeriesPane>` rather than reading positions from this array.
  */
 export const PANE_SPECS: PaneSpec<any>[] = [
-  // pane 0 (candle) — still hand-mounted
+  CANDLE_SPEC,
   VOLUME_SPEC,
   // pane 2 (ratio) — still hand-mounted
   QUOTE_TOTALS_SPEC,

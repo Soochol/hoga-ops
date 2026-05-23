@@ -16,9 +16,9 @@ import {
 } from '../util/chartScale';
 import { useViewportStore } from '../state/viewport';
 import { useTabsStore } from '../state/tabs';
-import CandlePane from './CandlePane';
 import RatioPane from './RatioPane';
 import RangeSeriesPane from './RangeSeriesPane';
+import { CANDLE_SPEC } from './projectors/candle';
 import { QUOTE_TOTALS_SPEC } from './projectors/quoteTotals';
 import { VOLUME_SPEC } from './projectors/volume';
 import { FILL_STRENGTH_SPEC } from './projectors/fillStrength';
@@ -279,7 +279,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
             asserting "pane was mounted".
           */}
           <div data-pane="candle" className="hidden">
-            <CandlePane chart={chart} bundle={bundle} axis={axis} paneIndex={0} />
+            <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0} spec={CANDLE_SPEC} />
           </div>
           <div data-pane="volume" className="hidden">
             <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={1} spec={VOLUME_SPEC} />
