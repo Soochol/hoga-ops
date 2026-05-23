@@ -47,6 +47,16 @@
   --heat-lo: #0E1A1A;
   --heat-hi: #14B8A6;
 
+  /* ───── Color · Moving Average ─────
+     Per spec docs/superpowers/specs/2026-05-23-replay-moving-average-design.md §5.
+     HTS 관습을 따른 5색 팔레트. price-up/down 토큰과 색역이 다른 채도(분홍/파랑/주황/녹색/하양)
+     를 골라 KRX 가격 방향 색(빨강/파랑)과 시각적으로 분리한다. */
+  --ma-1: #EC4899; /* period 5  */
+  --ma-2: #3B82F6; /* period 10 */
+  --ma-3: #F97316; /* period 20 */
+  --ma-4: #22C55E; /* period 60 */
+  --ma-5: #F8FAFC; /* period 120 */
+
   /* ───── Tint backgrounds ───── */
   --tint-selection:  rgba(20, 184, 166, 0.12);
   --tint-success:    rgba(34, 197, 94, 0.10);
