@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import CursorSidebar from '../../src/sidebar/CursorSidebar';
+import { createVirtualAxis } from '../../src/util/virtualAxis';
 
 describe('CursorSidebar', () => {
   it('renders three labeled cards', () => {
@@ -25,7 +26,8 @@ describe('CursorSidebar', () => {
 
   it('CursorSidebarConnected renders without a Volume Profile mode toggle', async () => {
     const { CursorSidebarConnected } = await import('../../src/sidebar/CursorSidebar');
-    render(<CursorSidebarConnected />);
+    const axis = createVirtualAxis([]);
+    render(<CursorSidebarConnected axis={axis} />);
     expect(screen.queryByTestId('volume-profile-mode-toggle')).toBeNull();
   });
 });
