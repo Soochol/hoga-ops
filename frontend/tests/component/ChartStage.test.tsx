@@ -37,6 +37,8 @@ vi.mock('lightweight-charts', async () => {
         }),
         removeSeries: vi.fn(),
         remove: vi.fn(),
+        subscribeCrosshairMove: vi.fn(),
+        unsubscribeCrosshairMove: vi.fn(),
       };
       lastCreated.ts = ts;
       lastCreated.options = options;

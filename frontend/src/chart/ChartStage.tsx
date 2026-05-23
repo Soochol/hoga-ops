@@ -182,8 +182,29 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
     };
     ts.subscribeVisibleTimeRangeChange(handler);
 
+    // Wire crosshair-move subscription. The sidebar's 10호가/거래원/체결
+    // cards key off `tab.cursorMs`; users expect that cursor to follow
+    // the MOUSE crosshair on the chart, not the viewport's right edge.
+    // PriceStrip still writes the right edge as a fallback (initial
+    // mount + pan/zoom with no concurrent hover), so the cards have a
+    // sensible cursor before any hover happens. `param.time` is
+    // undefined when the mouse leaves the chart or hovers an empty
+    // area — in those cases we KEEP the last cursor (user preference,
+    // 2026-05-23 grilling), so the cards don't blank out on mouseout.
+    const crosshairHandler = (param: { time?: Time | undefined }) => {
+      if (param.time === undefined) return;
+      const a = axisRef.current;
+      if (a.segments.length === 0) return;
+      const virtualMs = (param.time as number) * 1000;
+      const realMs = a.toReal(virtualMs);
+      const id = useTabsStore.getState().activeTabId;
+      useTabsStore.getState().setCursor(id, realMs);
+    };
+    c.subscribeCrosshairMove(crosshairHandler);
+
     return () => {
       ts.unsubscribeVisibleTimeRangeChange(handler);
+      c.unsubscribeCrosshairMove(crosshairHandler);
       c.remove();
       setChart(null);
       useViewportStore.getState().reset();
