@@ -392,6 +392,13 @@ async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
         parsed=True,
     )
     state.phase = "done"
+    # Spec §5.5: estimate_pct is clipped to 0..98 during capture; 100 is reserved
+    # for the terminal `done` state. Bump it here and emit a final progress event
+    # so the UI fills the bar — without this, the row shows "done" alongside 98%.
+    state.estimate_pct = 100
+    progress = state.to_progress()
+    if progress is not None:
+        _publish_event(CaptureProgressEvent(**state.event_header(), progress=progress))
 
 
 async def _run_item(state: QueueItemState) -> None:

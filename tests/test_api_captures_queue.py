@@ -638,6 +638,33 @@ async def test_429_backoff_then_success(monkeypatch, tmp_path):
     assert snap.done[0].phase == "done"
 
 
+async def test_done_phase_bumps_estimate_pct_to_100(monkeypatch, tmp_path):
+    """Spec §5.5: estimate_pct is clipped to 0–98 during capture; 100 is reserved
+    for the terminal `done` state. _run_capture_and_parse must bump it to 100
+    when transitioning to done — otherwise the UI shows "done" beside 98%."""
+    from hoga.collector.orchestrator import CollectResult
+
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
+    monkeypatch.setattr(captures, "_client_factory", lambda: object())
+
+    def _stub_collect(**kwargs):
+        return CollectResult(raw_dir=tmp_path, pages_written=10, unique_events=100)
+
+    def _stub_parse(**kwargs):
+        return None
+
+    monkeypatch.setattr(captures, "collect_stock_date", _stub_collect)
+    monkeypatch.setattr(captures, "parse_stock_date", _stub_parse)
+
+    state = _make_item("x-done")
+    state.estimate_pct = 98  # Simulates the cap at the end of capture.
+
+    await captures._run_capture_and_parse(state, resume=False)
+
+    assert state.phase == "done"
+    assert state.estimate_pct == 100
+
+
 async def test_429_backoff_exhausted_marks_failed(monkeypatch, tmp_path):
     """Persistent 429 after all retries → terminal failed."""
     from hoga.collector.client import HogaplayHTTPError
