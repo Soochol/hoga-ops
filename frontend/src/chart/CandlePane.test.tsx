@@ -40,7 +40,6 @@ function makeBundle(
     })),
     candles: candles.map((c) => ({ ...c, vol_a: 0, vol_b: 0 })),
     quote_ratio: { bucket_ms: 60_000, points: [] },
-    depth_intensity: { bucket_ms: 60_000, price_min: 0, price_max: 0, bin_count: 0, bin_width: 0, points: [] },
     fill_strength: { bucket_ms: 60_000, points: [] },
     volume_profile: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },

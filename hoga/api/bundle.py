@@ -147,20 +147,6 @@ def build_quote_ratio_slice(
     )
 
 
-KRX_TICK_TIERS = [
-    (2_000, 1), (5_000, 5), (20_000, 10),
-    (50_000, 50), (200_000, 100),
-    (500_000, 500), (float("inf"), 1_000),
-]
-
-
-def tick_size(price_max: int) -> int:
-    for threshold, t in KRX_TICK_TIERS:
-        if price_max < threshold:
-            return t
-    return 1_000
-
-
 def build_volume_profile_slice(
     engine: QueryEngine,
     *,
