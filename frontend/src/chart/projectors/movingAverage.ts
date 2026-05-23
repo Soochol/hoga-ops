@@ -21,7 +21,7 @@ const { ma1, ma2, ma3, ma4, ma5 } = resolveTokens(TOKEN_SPEC);
  * `ChartViewPrefs.movingAverages` slots. Resolved once at module load from
  * the `--ma-1..--ma-5` design tokens (T1).
  */
-export const MA_COLORS: string[] = [ma1, ma2, ma3, ma4, ma5];
+const MA_COLORS: string[] = [ma1, ma2, ma3, ma4, ma5];
 
 /**
  * Simple Moving Average over `closes` with window `period`. O(n) sliding-
@@ -52,11 +52,9 @@ export function computeSMA(closes: number[], period: number): (number | null)[] 
 }
 
 /** Per-render context passed to every MA series' `data` projector. */
-export type MAContext = { configs: readonly MAConfig[] };
+export type MAContext = readonly MAConfig[];
 
-const useMAContext = (): MAContext => ({
-  configs: useChartPrefs().movingAverages,
-});
+const useMAContext = (): MAContext => useChartPrefs().movingAverages;
 
 function makeSeries(index: number): SeriesSpec<MAContext> {
   return {
@@ -69,7 +67,7 @@ function makeSeries(index: number): SeriesSpec<MAContext> {
       crosshairMarkerVisible: false,
     },
     data: (bundle: RangeBundle, axis: VirtualAxis, ctx: MAContext) => {
-      const cfg = ctx.configs[index];
+      const cfg = ctx[index];
       if (!cfg || !cfg.enabled) return [];
       const closes = bundle.candles.map((c) => c.close);
       const sma = computeSMA(closes, cfg.period);

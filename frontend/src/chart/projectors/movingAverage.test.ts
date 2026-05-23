@@ -40,7 +40,7 @@ describe('MOVING_AVERAGE_SPEC series[0].data', () => {
     toVirtual: (ms: number) => ms,
   };
 
-  const makeCtx = (configs: MAConfig[]): MAContext => ({ configs });
+  const makeCtx = (configs: MAConfig[]): MAContext => configs;
 
   it('emits whitespace for warm-up slots and {time,value} for filled SMA slots', () => {
     const ctx = makeCtx([
