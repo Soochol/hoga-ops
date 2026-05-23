@@ -13,7 +13,12 @@ from pathlib import Path
 from typing import Protocol
 
 from hoga.api.timeenc import HogaMs
-from hoga.collector.page_step import PageStepController
+from hoga.collector.page_step import (
+    DATA_WINDOW_END_MS,
+    DEFAULT_PAGE_STEP_MS,
+    MIN_PAGE_STEP_MS,
+    PageStepController,
+)
 
 # Time constants — HogaMs (HHMMSSmmm) per ADR-0003. The type alias makes
 # the encoding explicit at every call site, so Pyright catches accidental
@@ -250,8 +255,16 @@ def _page_step_loop(
     t: int,
     on_progress: Callable[[ProgressEvent], None] | None = None,
     cancel_token: CancelToken | None = None,
-    initial_step_ms: int = 60000,  # exposed for Phase 1 matrix experiments
+    initial_step_ms: int = DEFAULT_PAGE_STEP_MS,
 ) -> tuple[set[int], int, int]:
+    """Run the Page Step pagination loop; return (seen_seqs, page_idx, final_t).
+
+    When env var HOGA_PROFILE=1, also writes one JSONL line per iteration
+    to raw_dir/_profile.jsonl for post-hoc throughput analysis.
+
+    initial_step_ms tunes the PageStepController's step ceiling (Phase 1
+    matrix experiments). Defaults to DEFAULT_PAGE_STEP_MS for production.
+    """
     progress_path = raw_dir / "_progress.json"
     controller = PageStepController(initial_t=t, initial_step_ms=initial_step_ms)
     profile_enabled = os.environ.get("HOGA_PROFILE") == "1"
@@ -282,8 +295,13 @@ def _page_step_loop(
             finished_at=None,
         )
         if profile_path is not None:
-            cap_hit = max_t is not None and max_t < (t_in + step_before)
-            post_window = t_in >= 160_000_000
+            cap_hit = (
+                max_t is not None
+                and max_t < (t_in + step_before)
+                and step_before > MIN_PAGE_STEP_MS
+                and t_in < DATA_WINDOW_END_MS
+            )
+            post_window = t_in >= DATA_WINDOW_END_MS
             line = json.dumps({
                 "iter": iter_idx, "t_in": t_in, "step_ms": step_before,
                 "http_ms": round(http_ms, 2), "body_len": len(body),
