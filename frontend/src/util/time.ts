@@ -94,6 +94,21 @@ export function unixMsToKSTClock(ms: number): string {
   return `${hh}:${mm}:${ss}`;
 }
 
+/**
+ * Format a Unix-ms timestamp as the YYYYMMDD of the KST calendar day it
+ * falls into. Used by the read-path Cursor → Stock-Date resolver:
+ * `useCursor` needs the Stock-Date matching the chart's right-edge
+ * cursor so spot-data queries (/api/orderbook, /api/brokers, /api/trades)
+ * pass the API contract's `unix_ms_to_hhmmssms(date, t)` precheck.
+ */
+export function unixMsToKSTDate(ms: number): string {
+  const d = new Date(ms + 9 * 60 * 60 * 1000); // shift to KST
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return `${yyyy}${mm}${dd}`;
+}
+
 /** Format milliseconds as M:SS or H:MM:SS. */
 export function formatElapsed(ms: number): string {
   const s = Math.floor(ms / 1000);

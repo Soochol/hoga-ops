@@ -1,12 +1,27 @@
-// Task 8.5: useCursor + useSpot wiring. Each sidebar card subscribes to
+// useCursor + useSpot wiring. Each sidebar card subscribes to
 // `tab.cursorMs` for the active tab and pulls spot data keyed by
 // (tabId, endpoint, t). Trades pull a 5s look-back window of up to 20 fills.
 import { useTabsStore } from '../state/tabs';
 import { apiGet } from './client';
 import { useSpot } from './useSpot';
+import { unixMsToKSTDate } from '../util/time';
 import type { BrokerEntry, OrderbookResponse, Trade } from './types';
 
-/** Read the active tab's cursorMs (or null when no cursor set). */
+/**
+ * Read the active tab's cursorMs (or null when no cursor set), plus the
+ * Stock-Date that cursor falls into.
+ *
+ * `date` is derived from `cursorMs` (KST calendar day), NOT from
+ * `selection.fromDate`. In a multi-day Stock-Date Range the chart's
+ * right-edge cursor commonly lands on `toDate` or any day in between;
+ * the API contract (per `hoga.api.cursor.cursor_to_native`) requires the
+ * `date` query param to match the Stock-Date that `t` belongs to,
+ * otherwise the endpoints reject with HTTPException(400). The prior
+ * "fromDate is the active day" shortcut (Task 8.5, single-day only) was
+ * not generalized when ADR-0013 introduced multi-day ranges, leaving the
+ * 10호가 / 거래원 / 체결 cards stuck at "커서 위치 로딩 중…" because
+ * `useSpot.catch` swallowed every 400 silently.
+ */
 export function useCursor(): {
   tabId: string;
   code: string | null;
@@ -15,12 +30,15 @@ export function useCursor(): {
 } {
   return useTabsStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
+    const cursorMs = tab?.cursorMs ?? null;
     return {
       tabId: tab?.id ?? '',
       code: tab?.selection?.code ?? null,
-      // Task 8.5: single-day cursor for now — fromDate is the active day.
-      date: tab?.selection?.fromDate ?? null,
-      cursorMs: tab?.cursorMs ?? null,
+      date:
+        cursorMs !== null && Number.isFinite(cursorMs)
+          ? unixMsToKSTDate(cursorMs)
+          : null,
+      cursorMs,
     };
   });
 }
