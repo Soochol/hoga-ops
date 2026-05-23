@@ -8,7 +8,9 @@
 
 The Replay Viewer's bid/ask imbalance ratio (호가비) goes nonsensical during the closing **Auction Window** (15:20–15:30 KST). KRX pauses continuous matching for ten minutes before the close so orders can accumulate for the single 15:30 cross; during that window `ask_total / bid_total` whips to extreme one-sided values that don't reflect continuous-trading sentiment. The spike also dominates the BaselineSeries autoscale and crushes the rest of the day's signal into a flat horizontal band.
 
-The mirror window 15:30–16:00 (After-Hours Trading) has the same distortion in principle, but the existing `axis.contains` filter already drops those points before they reach the chart (segments end at `sessionCloseMs = 15:30`). No fix needed there.
+CONTEXT.md's Auction Window entry was refined in the same commit chain to encode the domain rule: **raw snapshot quantities** (Quote Totals) remain meaningful during the window — the accumulating levels are themselves the signal — but **derived ratios** built from those quantities are dominated by one-sided accumulation and read as misleading extremes. The 호가비 indicator is the canonical example of the latter, so it masks the Auction Window by default.
+
+The mirror window 15:30–16:00 (After-Hours Trading) has the same ratio distortion in principle, but the existing `axis.contains` filter already drops those points before they reach the chart (segments end at `sessionCloseMs = 15:30`). The user confirmed during grilling that the visible-on-screen distortion they reported is entirely the 15:20–15:30 band; the 15:30–16:00 period not being drawn at all is acceptable. Extending the Virtual Axis to include After-Hours Trading is a separate, much larger structural change tracked as backlog.
 
 The user wants the auction band's values **zeroed (not dropped)** so the line falls cleanly to the 0 baseline during the band, and they want the behavior **controlled by a toggle** that lives inside a new **Settings modal** — a generic settings hub that's expected to grow more controls over time.
 
@@ -35,13 +37,13 @@ The user wants the auction band's values **zeroed (not dropped)** so the line fa
 
 ### Data gate (RatioPane.tsx)
 
-Mirror `CandlePane.tsx:65`'s precedent. Inside the existing `useEffect`, after `resolveTokens`, read the per-tab `auctionZeroing` flag and gate the `value` field of each mapped point:
+Mirror `CandlePane.tsx:65`'s precedent. Inside the existing `useEffect`, after `resolveTokens`, read the per-tab `auctionWindowMask` flag and gate the `value` field of each mapped point:
 
 ```ts
 const AUCTION_WINDOW_OFFSET_MS = (6 * 3600 + 20 * 60) * 1000;
 
 const activeTabId = useTabsStore((s) => s.activeTabId);
-const auctionZeroing = useTabsStore((s) => s.getPrefs(activeTabId).auctionZeroing);
+const auctionWindowMask = useTabsStore((s) => s.getPrefs(activeTabId).auctionWindowMask);
 
 const data = bundle.quote_ratio.points
   .filter((p) => axis.contains(p.t))
@@ -51,27 +53,27 @@ const data = bundle.quote_ratio.points
     const inAuctionOrAfter = p.t >= seg.sessionOpenMs + AUCTION_WINDOW_OFFSET_MS;
     return {
       time: (axis.toVirtual(p.t) / 1000) as any,
-      value: auctionZeroing && inAuctionOrAfter
+      value: auctionWindowMask && inAuctionOrAfter
         ? 0
         : quoteImbalance(p.bid_total, p.ask_total),
     };
   });
 ```
 
-The `axis.contains` filter already guarantees `findByReal` returns a valid segment index, so no defensive `if (segIdx < 0)` is needed. Reading `auctionZeroing` from inside the component via the `useTabsStore` selector causes the `useEffect` to re-run on toggle change (the selector is referenced as a dep), so the chart re-paints without a manual refresh.
+The `axis.contains` filter already guarantees `findByReal` returns a valid segment index, so no defensive `if (segIdx < 0)` is needed. Reading `auctionWindowMask` from inside the component via the `useTabsStore` selector causes the `useEffect` to re-run on toggle change (the selector is referenced as a dep), so the chart re-paints without a manual refresh.
 
 ### State (tabs.ts)
 
-Extend `ChartViewPrefs` with `auctionZeroing: boolean`, default `true`. Add `setAuctionZeroing(id, enabled)` action mirroring the shape of the existing `setVolumeProfileMode`:
+Extend `ChartViewPrefs` with `auctionWindowMask: boolean`, default `true`. Add `setAuctionZeroing(id, enabled)` action mirroring the shape of the existing `setVolumeProfileMode`:
 
 ```ts
 export type ChartViewPrefs = {
   volumeProfileMode: 'range' | 'per-day';
-  auctionZeroing: boolean;
+  auctionWindowMask: boolean;
 };
 const DEFAULT_PREFS: ChartViewPrefs = {
   volumeProfileMode: 'range',
-  auctionZeroing: true,
+  auctionWindowMask: true,
 };
 // + setAuctionZeroing(id: string, enabled: boolean): void
 ```
@@ -149,7 +151,7 @@ Interaction:
 
 ## Testing
 
-- **Unit (RatioPane)** — extend `frontend/tests/component/RatioPane.test.tsx`. Add a case mirroring the existing "drops pre-open auction points" test (around lines 46–77): fixture with one normal-band point and one auction-band point, mock `useTabsStore` to return `{ auctionZeroing: true }`, assert the auction point's `value === 0` and the normal point's `value` matches `quoteImbalance(...)`. Add a second case with `auctionZeroing: false` to verify the gate honors OFF.
+- **Unit (RatioPane)** — extend `frontend/tests/component/RatioPane.test.tsx`. Add a case mirroring the existing "drops pre-open auction points" test (around lines 46–77): fixture with one normal-band point and one auction-band point, mock `useTabsStore` to return `{ auctionWindowMask: true }`, assert the auction point's `value === 0` and the normal point's `value` matches `quoteImbalance(...)`. Add a second case with `auctionWindowMask: false` to verify the gate honors OFF.
 - **Unit (SettingsModal)** — new file `frontend/src/replay/SettingsModal.test.tsx`. Cover: renders when open, calls `onClose` on Escape / backdrop click / close button, toggle change invokes the store action with the correct args, toggle's `aria-pressed` reflects the store state.
 - **Unit (Toolbar)** — extend `frontend/src/replay/Toolbar.test.tsx` if it exists, else create one focused on the new button. Assert the gear button is present, clicking it shows the modal (queried by `role="dialog"` or the `설정` text), closing the modal hides it.
 - **Type check** — `cd frontend && npx tsc -b` clean.
@@ -161,8 +163,8 @@ Interaction:
 
 ## Risks
 
-- **`useEffect` dep on `auctionZeroing`** — adding the new selector value to the existing `useEffect` deps array will cause one extra re-mount of the BaselineSeries when the toggle flips. Acceptable: the user expects a visible change on toggle, and the cleanup/unmount path is already exercised on bundle/axis changes.
-- **`activeTabId` may not be set during first render** — `getPrefs` falls back to `DEFAULT_PREFS` (which has `auctionZeroing: true`), so the default behavior is masked. No null-guard needed in RatioPane.
+- **`useEffect` dep on `auctionWindowMask`** — adding the new selector value to the existing `useEffect` deps array will cause one extra re-mount of the BaselineSeries when the toggle flips. Acceptable: the user expects a visible change on toggle, and the cleanup/unmount path is already exercised on bundle/axis changes.
+- **`activeTabId` may not be set during first render** — `getPrefs` falls back to `DEFAULT_PREFS` (which has `auctionWindowMask: true`), so the default behavior is masked. No null-guard needed in RatioPane.
 - **Modal accessibility** — no focus trap means Tab key can wander out of the modal. Acceptable for v1; if a screen-reader user files a complaint, add `react-focus-lock` or equivalent in a follow-up.
 - **Refresh resets prefs** — by design (no `persist` middleware). Spec calls this out so the user isn't surprised.
 
@@ -173,4 +175,8 @@ Interaction:
 - Focus trap inside the modal.
 - Keyboard navigation between sidebar items.
 - Backend opt-in to drop auction points (would change the protocol; not worth the complexity for a frontend visual concern).
-- A separate setting for the 15:30–16:00 after-hours band (already filtered out today).
+- Extending the Virtual Axis to include After-Hours Trading (15:30–16:00) as displayed time — would surface that band on every pane and require its own design pass. Tracked here only as the reason 15:30–16:00 isn't masked: there's no display surface to mask.
+
+## Adjacent drift noted during grilling (not addressed here)
+
+- `CandlePane.tsx`'s muting comment claims candles "in the closing Auction Window or After-Hours Trading" render muted, but `axis.contains` filters everything past `sessionCloseMs` (15:30) before the muting threshold check ever runs, so the "or After-Hours Trading" half of the comment is dead code. The IntensityPane retirement noted in CONTEXT.md's RangeBundle entry similarly has not finished landing in the source tree. Both are out of scope here and should land in their own commits when the user wants to clean them up.
