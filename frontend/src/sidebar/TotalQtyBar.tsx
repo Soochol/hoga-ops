@@ -21,7 +21,7 @@ type Props = {
   maskRatio: boolean;
 };
 
-export default function TotalQtyBar({ snapshot, maskRatio }: Props) {
+export default function TotalQtyBar({ snapshot }: Props) {
   if (snapshot == null) return null;
   return <div data-testid="total-qty-bar" />;
 }
