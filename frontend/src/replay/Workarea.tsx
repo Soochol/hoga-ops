@@ -97,7 +97,7 @@ export default function Workarea({ tab }: { tab: Tab }) {
             axis={axis}
           />
         </ChartErrorBoundary>
-        <CursorSidebarConnected />
+        <CursorSidebarConnected axis={axis} />
       </div>
     </div>
   );

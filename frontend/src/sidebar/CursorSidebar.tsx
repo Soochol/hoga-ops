@@ -1,12 +1,17 @@
-import { type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import OrderbookTable from './OrderbookTable';
 import BrokerNetTable from './BrokerNetTable';
 import FillTape from './FillTape';
+import TotalQtyBar from './TotalQtyBar';
 import {
   useOrderbookAtCursor,
   useBrokersAtCursor,
   useTradesAroundCursor,
+  useCursor,
 } from '../api/useCursor';
+import { useTabsStore } from '../state/tabs';
+import type { VirtualAxis } from '../util/virtualAxis';
+
 type Props = {
   orderbook?: ReactNode;
   brokers?: ReactNode;
@@ -22,13 +27,27 @@ type Props = {
  * sidebar's header slot — it was relocated to the Settings modal's "차트"
  * category by the 2026-05-23 Volume Profile Settings Relocation work.
  */
-export function CursorSidebarConnected() {
+export function CursorSidebarConnected({ axis }: { axis: VirtualAxis }) {
   const orderbook = useOrderbookAtCursor();
   const brokers = useBrokersAtCursor();
   const trades = useTradesAroundCursor();
+  const { cursorMs } = useCursor();
+  const auctionWindowMask = useTabsStore((s) => s.getPrefs(s.activeTabId).auctionWindowMask);
+
+  const maskRatio = useMemo(() => {
+    if (!auctionWindowMask) return false;
+    if (cursorMs == null || !Number.isFinite(cursorMs)) return false;
+    return axis.inClosingAuctionWindow(cursorMs);
+  }, [auctionWindowMask, cursorMs, axis]);
+
   return (
     <CursorSidebar
-      orderbook={<OrderbookTable snapshot={orderbook} />}
+      orderbook={
+        <>
+          <OrderbookTable snapshot={orderbook} />
+          <TotalQtyBar snapshot={orderbook} maskRatio={maskRatio} />
+        </>
+      }
       brokers={<BrokerNetTable brokers={brokers} />}
       fills={<FillTape trades={trades} />}
     />
