@@ -32,6 +32,7 @@ from hoga.collector.client import (
 )
 from hoga.collector.orchestrator import CancelToken, CaptureCancelled, collect_stock_date
 from hoga.config import Config
+from hoga.env import load_env
 
 CELL_DURATION_S = 90
 COOLDOWN_S = 60
@@ -51,7 +52,7 @@ START_TIMES = [
     ("close", 152000000),   # 15:20:00.000
 ]
 CODE = "003490"  # use 대한항공 to isolate step-ceiling effect (low activity)
-DATE = "20260423"  # CHANGE to an uncaptured weekday at run time
+DATE = "20260428"  # uncaptured weekday — change to a fresh one at run time
 
 
 def _plant_fake_progress(raw_dir: Path, start_t: int) -> None:
@@ -134,6 +135,7 @@ def run_cell(
 
 
 def main() -> None:
+    load_env()  # ADR-0008: discover .env (worktree fallback) so HOGAPLAY_COOKIE is available
     cfg = Config.from_cwd()
     cookie = cfg.cookie()
     results: list[dict] = []
