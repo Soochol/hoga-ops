@@ -41,18 +41,18 @@ describe('useTabsStore — timeframe + prefs (Map-based, CQ1)', () => {
     expect(useTabsStore.getState().getPrefs(id).auctionWindowMask).toBe(true);
   });
 
-  it('setAuctionWindowMask flips the per-tab flag', () => {
+  it('setToggle flips a per-tab boolean toggle by key', () => {
     const id = useTabsStore.getState().tabs[0].id;
-    useTabsStore.getState().setAuctionWindowMask(id, false);
+    useTabsStore.getState().setToggle(id, 'auctionWindowMask', false);
     expect(useTabsStore.getState().getPrefs(id).auctionWindowMask).toBe(false);
-    useTabsStore.getState().setAuctionWindowMask(id, true);
+    useTabsStore.getState().setToggle(id, 'auctionWindowMask', true);
     expect(useTabsStore.getState().getPrefs(id).auctionWindowMask).toBe(true);
   });
 
-  it('setAuctionWindowMask preserves volumeProfileMode on the same tab', () => {
+  it('setToggle preserves volumeProfileMode on the same tab', () => {
     const id = useTabsStore.getState().tabs[0].id;
     useTabsStore.getState().setVolumeProfileMode(id, 'per-day');
-    useTabsStore.getState().setAuctionWindowMask(id, false);
+    useTabsStore.getState().setToggle(id, 'auctionWindowMask', false);
     const prefs = useTabsStore.getState().getPrefs(id);
     expect(prefs.volumeProfileMode).toBe('per-day');
     expect(prefs.auctionWindowMask).toBe(false);

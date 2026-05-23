@@ -11,23 +11,41 @@ export type TabSelection = {
 };
 export type TabStatus = 'empty' | 'loading' | 'loaded' | 'error';
 
-/** Per-tab chart view preferences (volume profile mode, etc.). Stored in a
- *  Map<tabId, ChartViewPrefs> on the store for parity with Tab.bundles (CQ1). */
+/**
+ * Declarative registry of boolean chart toggles surfaced in the Settings
+ * modal. Each entry is the single source of truth for one toggle: its key
+ * (used as a `ChartViewPrefs` field), default value, and UI strings.
+ *
+ * Adding a toggle = one entry here. The type below (`ChartToggleKey`),
+ * the `ChartViewPrefs` boolean fields, the default values, and the
+ * `SettingsModal` row rendering all derive from this list.
+ */
+export const CHART_TOGGLES = [
+  {
+    key: 'auctionWindowMask',
+    label: '호가비 동시호가 마스킹',
+    description: '15:20–15:30 KST 동시호가 구간의 호가비를 0 으로 처리합니다.',
+    default: true,
+  },
+] as const;
+
+export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];
+
+/** Per-tab chart view preferences. Stored in a `Map<tabId, ChartViewPrefs>`
+ *  on the store for parity with `Tab.bundles` (CQ1). Boolean fields come
+ *  from `CHART_TOGGLES`; non-boolean prefs (e.g. `volumeProfileMode`) sit
+ *  alongside as explicit fields. */
 export type ChartViewPrefs = {
   volumeProfileMode: 'range' | 'per-day';
-  /**
-   * When `true`, RatioPane masks the 15:20–15:30 KST Auction Window band by
-   * forcing each `value` to 0 instead of the raw `quoteImbalance(...)` result.
-   * The Window is dominated by one-sided order accumulation, so the derived
-   * ratio whips to non-informative extremes there (see CONTEXT.md "Auction
-   * Window" entry). Default `true`.
-   */
-  auctionWindowMask: boolean;
-};
+} & { [K in ChartToggleKey]: boolean };
+
+const TOGGLE_DEFAULTS = Object.fromEntries(
+  CHART_TOGGLES.map((t) => [t.key, t.default]),
+) as { [K in ChartToggleKey]: boolean };
 
 const DEFAULT_PREFS: ChartViewPrefs = {
   volumeProfileMode: 'range',
-  auctionWindowMask: true,
+  ...TOGGLE_DEFAULTS,
 };
 
 export type Tab = {
@@ -54,7 +72,8 @@ type Store = {
   putBundle: (id: string, date: string, bundle: RangeBundle) => void;
   getPrefs: (id: string) => ChartViewPrefs;
   setVolumeProfileMode: (id: string, mode: ChartViewPrefs['volumeProfileMode']) => void;
-  setAuctionWindowMask: (id: string, enabled: boolean) => void;
+  /** Generic setter for any boolean toggle in `CHART_TOGGLES`. */
+  setToggle: (id: string, key: ChartToggleKey, value: boolean) => void;
   reset: () => void;
 };
 
@@ -125,10 +144,10 @@ export const useTabsStore = create<Store>((set, get) => ({
       next.set(id, { ...DEFAULT_PREFS, ...next.get(id), volumeProfileMode: mode });
       return { prefs: next };
     }),
-  setAuctionWindowMask: (id, enabled) =>
+  setToggle: (id, key, value) =>
     set((s) => {
       const next = new Map(s.prefs);
-      next.set(id, { ...DEFAULT_PREFS, ...next.get(id), auctionWindowMask: enabled });
+      next.set(id, { ...DEFAULT_PREFS, ...next.get(id), [key]: value });
       return { prefs: next };
     }),
   reset: () => {

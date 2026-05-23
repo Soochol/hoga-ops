@@ -120,7 +120,7 @@ describe('RatioPane', () => {
     const auctionStart = sessionOpenMs + (6 * 3600 + 20 * 60) * 1000;
     // Flip the per-tab flag BEFORE rendering so the component picks it up.
     const activeId = useTabsStore.getState().activeTabId;
-    useTabsStore.getState().setAuctionWindowMask(activeId, false);
+    useTabsStore.getState().setToggle(activeId, 'auctionWindowMask', false);
 
     const bundle: any = {
       quote_ratio: {

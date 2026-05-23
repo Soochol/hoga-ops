@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useTabsStore } from '../state/tabs';
+import { CHART_TOGGLES, useTabsStore, type ChartToggleKey } from '../state/tabs';
 
 type Props = {
   onClose: () => void;
@@ -7,10 +7,53 @@ type Props = {
 
 type Category = 'chart';
 
+/** Single binary toggle row inside the Settings modal. Stateless — owner
+ *  passes the current checked value and a click handler. */
+function ToggleRow({
+  label,
+  description,
+  checked,
+  onToggle,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between py-2">
+      <div className="flex-1 pr-4">
+        <div className="text-fg text-sm">{label}</div>
+        <div className="text-fg-dim text-xs mt-0.5">{description}</div>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={onToggle}
+        className={
+          checked
+            ? 'relative inline-flex h-5 w-9 items-center rounded-full bg-accent transition-colors'
+            : 'relative inline-flex h-5 w-9 items-center rounded-full bg-bg-input-hover transition-colors'
+        }
+      >
+        <span
+          className={
+            checked
+              ? 'inline-block h-4 w-4 transform rounded-full bg-accent-fg translate-x-[18px] transition-transform'
+              : 'inline-block h-4 w-4 transform rounded-full bg-fg-dim translate-x-[2px] transition-transform'
+          }
+        />
+      </button>
+    </div>
+  );
+}
+
 /**
- * Centered modal overlay for chart settings. First category "차트" hosts the
- * Auction Window masking toggle; future categories slot in alongside without
- * a layout rewrite (sidebar + content split).
+ * Centered modal overlay for chart settings. The "차트" category iterates
+ * `CHART_TOGGLES` (the declarative registry on the tabs store) so adding a
+ * new toggle is one entry in that array — no JSX edits here.
  *
  * Close paths: Escape key, backdrop click, header ✕, footer 닫기.
  * Toggle changes persist immediately to the per-tab prefs (no save button) —
@@ -19,10 +62,8 @@ type Category = 'chart';
 export default function SettingsModal({ onClose }: Props) {
   const [category, setCategory] = useState<Category>('chart');
   const activeTabId = useTabsStore((s) => s.activeTabId);
-  const auctionWindowMask = useTabsStore(
-    (s) => s.getPrefs(activeTabId).auctionWindowMask,
-  );
-  const setAuctionWindowMask = useTabsStore((s) => s.setAuctionWindowMask);
+  const prefs = useTabsStore((s) => s.getPrefs(activeTabId));
+  const setToggle = useTabsStore((s) => s.setToggle);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -80,34 +121,18 @@ export default function SettingsModal({ onClose }: Props) {
                 <h3 className="text-fg text-base font-medium pb-2 mb-2 border-b border-border">
                   차트
                 </h3>
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex-1 pr-4">
-                    <div className="text-fg text-sm">호가비 동시호가 마스킹</div>
-                    <div className="text-fg-dim text-xs mt-0.5">
-                      15:20–15:30 KST 동시호가 구간의 호가비를 0 으로 처리합니다.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={auctionWindowMask}
-                    aria-label="호가비 동시호가 마스킹"
-                    onClick={() => setAuctionWindowMask(activeTabId, !auctionWindowMask)}
-                    className={
-                      auctionWindowMask
-                        ? 'relative inline-flex h-5 w-9 items-center rounded-full bg-accent transition-colors'
-                        : 'relative inline-flex h-5 w-9 items-center rounded-full bg-bg-input-hover transition-colors'
-                    }
-                  >
-                    <span
-                      className={
-                        auctionWindowMask
-                          ? 'inline-block h-4 w-4 transform rounded-full bg-accent-fg translate-x-[18px] transition-transform'
-                          : 'inline-block h-4 w-4 transform rounded-full bg-fg-dim translate-x-[2px] transition-transform'
-                      }
+                {CHART_TOGGLES.map((toggle) => {
+                  const key: ChartToggleKey = toggle.key;
+                  return (
+                    <ToggleRow
+                      key={key}
+                      label={toggle.label}
+                      description={toggle.description}
+                      checked={prefs[key]}
+                      onToggle={() => setToggle(activeTabId, key, !prefs[key])}
                     />
-                  </button>
-                </div>
+                  );
+                })}
               </>
             )}
           </div>
