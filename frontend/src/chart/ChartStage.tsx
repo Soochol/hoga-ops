@@ -21,7 +21,7 @@ import RatioPane from './RatioPane';
 import RangeSeriesPane from './RangeSeriesPane';
 import { QUOTE_TOTALS_SPEC } from './projectors/quoteTotals';
 import { VOLUME_SPEC } from './projectors/volume';
-import FillStrengthPane from './FillStrengthPane';
+import { FILL_STRENGTH_SPEC } from './projectors/fillStrength';
 import VolumeProfileOverlay from './VolumeProfileOverlay';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
 import { ChartPrefsProvider } from './ChartPrefsContext';
@@ -306,7 +306,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
             <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={3} spec={QUOTE_TOTALS_SPEC} />
           </div>
           <div data-pane="fill-strength" className="hidden">
-            <FillStrengthPane chart={chart} bundle={bundle} axis={axis} paneIndex={4} />
+            <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={4} spec={FILL_STRENGTH_SPEC} />
           </div>
           <div data-pane="volume-profile" className="hidden">
             <VolumeProfileOverlay
