@@ -4,6 +4,16 @@ import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { quoteImbalance } from '../util/imbalance';
 import { resolveTokens } from '../util/tokens';
+import { useTabsStore } from '../state/tabs';
+
+/**
+ * Closing Auction Window starts at sessionOpenMs + 6h 20m (KST 15:20).
+ * Mirrors CandlePane.tsx's per-segment threshold (CONTEXT.md "Auction
+ * Window"). During this band, derived ratios are dominated by one-sided
+ * accumulation and read as misleading extremes; the toggle on the tabs
+ * store gates the mask on a per-tab basis.
+ */
+const AUCTION_WINDOW_OFFSET_MS = (6 * 3600 + 20 * 60) * 1000;
 
 const TOKEN_SPEC = {
   ratioAsk: ['--ratio-ask', '#3B82F6'],
@@ -45,6 +55,10 @@ type Props = {
  * mapping each point's real Unix-ms timestamp through `axis.toVirtual`.
  */
 export default function RatioPane({ chart, bundle, axis, paneIndex = 0 }: Props) {
+  const activeTabId = useTabsStore((s) => s.activeTabId);
+  const auctionWindowMask = useTabsStore(
+    (s) => s.getPrefs(activeTabId).auctionWindowMask,
+  );
   useEffect(() => {
     const { ratioAsk, ratioBid, baseline } = resolveTokens(TOKEN_SPEC);
     const series = chart.addSeries(
@@ -91,10 +105,18 @@ export default function RatioPane({ chart, bundle, axis, paneIndex = 0 }: Props)
     // as a defense-in-depth wrapper.
     const data = bundle.quote_ratio.points
       .filter((p) => axis.contains(p.t))
-      .map((p) => ({
-        time: (axis.toVirtual(p.t) / 1000) as any,
-        value: quoteImbalance(p.bid_total, p.ask_total),
-      }));
+      .map((p) => {
+        const segIdx = axis.findByReal(p.t);
+        const seg = axis.segments[segIdx];
+        const inAuctionWindow =
+          p.t >= seg.sessionOpenMs + AUCTION_WINDOW_OFFSET_MS;
+        return {
+          time: (axis.toVirtual(p.t) / 1000) as any,
+          value: auctionWindowMask && inAuctionWindow
+            ? 0
+            : quoteImbalance(p.bid_total, p.ask_total),
+        };
+      });
     series.setData(data);
     // 0-baseline reference line. Drawn explicitly because BaselineSeries
     // switches color at baseValue but does not paint a visible line there.
@@ -118,6 +140,6 @@ export default function RatioPane({ chart, bundle, axis, paneIndex = 0 }: Props)
         // chart already torn down — safe to ignore
       }
     };
-  }, [chart, bundle, axis, paneIndex]);
+  }, [chart, bundle, axis, paneIndex, auctionWindowMask]);
   return null;
 }
