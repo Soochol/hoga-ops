@@ -43,6 +43,13 @@ describe('Toolbar — Timeframe + 30-day validation', () => {
     expect(sel?.timeframe).toBe('5m');
   });
 
+  it('opens the SettingsModal when the gear button is clicked', () => {
+    renderToolbar();
+    expect(screen.queryByRole('dialog', { name: '설정' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '설정' }));
+    expect(screen.getByRole('dialog', { name: '설정' })).toBeTruthy();
+  });
+
   it('shows inline error when range > 30 days and does NOT commit selection', () => {
     const id = useTabsStore.getState().tabs[0].id;
     useToolbarDraftStore.getState().setDraft(id, {
