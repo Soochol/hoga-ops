@@ -42,7 +42,7 @@ export default function TotalQtyBar({ snapshot, maskRatio }: Props) {
     >
       <span
         aria-label={`매도총잔량 ${askStr}`}
-        className="text-right text-price-down"
+        className="min-w-[6ch] text-right text-price-down"
       >
         {askStr}
       </span>
@@ -52,7 +52,7 @@ export default function TotalQtyBar({ snapshot, maskRatio }: Props) {
         {maskRatio ? (
           <div
             data-testid="total-qty-bar-masked"
-            className="h-full flex items-center justify-center text-fg-dimmer text-xs uppercase tracking-wider"
+            className="h-full flex items-center justify-center text-fg-dimmer text-[8px] leading-none uppercase tracking-wider"
           >
             Auction
           </div>
@@ -69,7 +69,7 @@ export default function TotalQtyBar({ snapshot, maskRatio }: Props) {
       </div>
       <span
         aria-label={`매수총잔량 ${bidStr}`}
-        className="text-left text-price-up"
+        className="min-w-[6ch] text-left text-price-up"
       >
         {bidStr}
       </span>
