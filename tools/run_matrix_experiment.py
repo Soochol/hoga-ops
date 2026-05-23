@@ -17,7 +17,6 @@ Output: matrix-results.json with one entry per cell.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import shutil
@@ -108,11 +107,11 @@ def run_cell(
             rate_limit_s=rate_s, resume=True, cancel_token=token,
             initial_step_ms=step_ms,
         )
-    except HogaplayHTTPError as e:
-        outcome = f"http_{e.status_code}"
-        err_msg = str(e)
     except CookieExpiredError as e:
         outcome = "cookie_expired"
+        err_msg = str(e)
+    except HogaplayHTTPError as e:
+        outcome = f"http_{e.status_code}" if e.status_code is not None else "http_low_level"
         err_msg = str(e)
     except Exception as e:  # noqa: BLE001
         outcome = type(e).__name__
