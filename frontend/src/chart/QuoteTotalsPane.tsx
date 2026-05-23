@@ -5,8 +5,8 @@ import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = {
-  up: ['--up', '#22C55E'],
-  down: ['--down', '#F43F5E'],
+  bid: ['--price-up',   '#DC2626'],  // 매수 호가 총합 (KRX 빨강)
+  ask: ['--price-down', '#2563EB'],  // 매도 호가 총합 (KRX 파랑)
 } as const;
 
 type Props = {
@@ -31,7 +31,7 @@ export default function QuoteTotalsPane({
   paneIndex = 0,
 }: Props) {
   useEffect(() => {
-    const { up, down } = resolveTokens(TOKEN_SPEC);
+    const { bid, ask } = resolveTokens(TOKEN_SPEC);
     const priceFormat = {
       type: 'custom' as const,
       formatter: (v: number) => Math.round(v).toLocaleString('ko-KR'),
@@ -39,12 +39,12 @@ export default function QuoteTotalsPane({
     };
     const bidSeries = chart.addSeries(
       LineSeries,
-      { color: up, lineWidth: 1, priceFormat } as any,
+      { color: bid, lineWidth: 1, priceFormat, priceLineVisible: false, lastValueVisible: false } as any,
       paneIndex,
     );
     const askSeries = chart.addSeries(
       LineSeries,
-      { color: down, lineWidth: 1, priceFormat } as any,
+      { color: ask, lineWidth: 1, priceFormat, priceLineVisible: false, lastValueVisible: false } as any,
       paneIndex,
     );
     const inSession = bundle.quote_ratio.points.filter((p) => axis.contains(p.t));
