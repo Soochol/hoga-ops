@@ -14,11 +14,6 @@ export type Candle = { ts_ms: number; open: number; close: number; high: number;
 export type QuoteRatioPoint = { t: number; bid_total: number; ask_total: number };
 export type QuoteRatio = { bucket_ms: number; points: QuoteRatioPoint[] };
 
-export type DepthIntensity = {
-  bucket_ms: number; price_min: number; price_max: number; price_step: number;
-  times: number[]; bid_grid: number[][]; ask_grid: number[][];
-};
-
 export type VolumeProfileBin = { price_low: number; qty: number };
 export type VolumeProfile = {
   bin_count: number; price_min: number; price_max: number; bin_width: number;
@@ -290,7 +285,6 @@ export type RangeBundle = {
   segments: RangeSegment[];
   candles: Candle[];
   quote_ratio: QuoteRatio;
-  depth_intensity_by_day: DepthIntensity[];   // per-segment — each day has its own price grid
   fill_strength: FillStrength;
   volume_profile_range: VolumeProfile;
   volume_profile_by_day: VolumeProfile[];

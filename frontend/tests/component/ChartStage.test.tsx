@@ -89,7 +89,6 @@ function makeBundle(barCount: number): any {
       vol_b: 0,
     })),
     quote_ratio: { points: [] },
-    depth_intensity_by_day: [],
     fill_strength: { points: [] },
     volume_profile_range: { bins: [] },
     volume_profile_by_day: [],

@@ -18,7 +18,6 @@ const fakeBundle: RangeBundle = {
   code: '005930', from_date: '20260512', to_date: '20260512', bucket_ms: 60_000,
   segments: [], candles: [],
   quote_ratio: { bucket_ms: 60_000, points: [] },
-  depth_intensity_by_day: [],
   fill_strength: { bucket_ms: 60_000, points: [] },
   volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
   volume_profile_by_day: [],
