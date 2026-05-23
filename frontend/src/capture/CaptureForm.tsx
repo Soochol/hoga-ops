@@ -17,7 +17,6 @@ export interface CaptureFormProps {
 export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps) {
   const [symbol, setSymbol] = useState<SymbolHit | null>(null);
   const [range, setRange] = useState<DateRange | null>(null);
-  const [forceRetry, setForceRetry] = useState<boolean>(() => loadForceRetryDefault());
   const [error, setError] = useState<string | null>(null);
   const [inlineError, setInlineError] = useState<ReactNode>(null);
 
@@ -33,13 +32,14 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
         code: symbol!.code,
         start_date: range!.start,
         end_date: range!.end!,
-        force_retry: forceRetry,
+        // Read at submit time so a Settings change between mount and submit
+        // is honored without remounting the form.
+        force_retry: loadForceRetryDefault(),
       },
       {
         onSuccess: () => {
           setSymbol(null);
           setRange(null);
-          setForceRetry(loadForceRetryDefault());
         },
         onError: (err: unknown) => {
           const apiErr = err as ApiError;
@@ -71,18 +71,6 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
           value={range}
           onChange={setRange}
         />
-      </section>
-
-      <section>
-        <Label>Options</Label>
-        <label className="flex gap-2 items-center text-sm text-fg">
-          <input
-            type="checkbox"
-            checked={forceRetry}
-            onChange={(e) => setForceRetry(e.target.checked)}
-          />
-          <span>⚠ Force re-capture source-partial dates</span>
-        </label>
       </section>
 
       <button

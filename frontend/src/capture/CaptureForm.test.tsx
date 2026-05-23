@@ -61,7 +61,11 @@ describe('CaptureForm', () => {
     expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('Start POSTs addItems with current symbol + range + force_retry', async () => {
+  it('Start POSTs addItems with force_retry sourced from the Settings default', async () => {
+    // The per-capture checkbox is gone — force_retry comes exclusively from
+    // the persisted Settings default. Pre-seed localStorage to assert that
+    // the form reads it at submit time.
+    localStorage.setItem('capture.force_retry_default', 'true');
     const { qc, fetchMock } = setup();
     render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
@@ -70,7 +74,6 @@ describe('CaptureForm', () => {
     fireEvent.click(screen.getByText('삼성전자'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
     fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
-    fireEvent.click(screen.getByLabelText(/Force re-capture/i));
     fireEvent.click(screen.getByRole('button', { name: /Start/i }));
     await new Promise((r) => setTimeout(r, 30));
     const itemsCall = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/captures/items'));
@@ -79,6 +82,23 @@ describe('CaptureForm', () => {
     expect(body).toEqual({
       code: '005930', start_date: '20260518', end_date: '20260520', force_retry: true,
     });
+  });
+
+  it('Start POSTs force_retry: false when the Settings default is unset', async () => {
+    const { qc, fetchMock } = setup();
+    render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.change(screen.getByPlaceholderText(/종목/i), { target: { value: '삼성' } });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByText('삼성전자'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    await new Promise((r) => setTimeout(r, 30));
+    const itemsCall = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/captures/items'));
+    expect(itemsCall).toBeDefined();
+    const body = JSON.parse(itemsCall![1]!.body as string);
+    expect(body.force_retry).toBe(false);
   });
 
   it('form resets after a successful Start', async () => {
@@ -95,14 +115,11 @@ describe('CaptureForm', () => {
     expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toBe('');
   });
 
-  it('Force re-capture checkbox initializes from the localStorage default', async () => {
-    localStorage.setItem('capture.force_retry_default', 'true');
+  it('does not render the per-capture Force re-capture checkbox (moved to Settings)', async () => {
     const { qc } = setup();
     render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
-
-    const cb = screen.getByLabelText(/Force re-capture/i) as HTMLInputElement;
-    expect(cb.checked).toBe(true);
+    expect(screen.queryByLabelText(/Force re-capture/i)).toBeNull();
   });
 
   it('shows today_too_early error inline when backend rejects', async () => {
