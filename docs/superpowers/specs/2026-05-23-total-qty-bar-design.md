@@ -8,20 +8,27 @@
 
 Add a slim horizontal 100% stack bar to the replay-viewer sidebar that shows the proportion of total ask quantity (left, blue) versus total bid quantity (right, red) at the current cursor — summed across the 10 orderbook levels per Korean HTS convention.
 
-The bar complements the existing time-series `quote_totals` pane: that pane shows how `bid_total` / `ask_total` evolved over the session as lines, while `TotalQtyBar` answers "at this exact cursor, who has more?" as a single instant visual.
+The bar is a spot presentation of **Quote Totals** (the canonical term defined in `CONTEXT.md` for raw `bid_total` + `ask_total` snapshot quantities). It complements the existing time-series `quote_totals` pane: that pane shows how Quote Totals evolved over the session as lines, while `TotalQtyBar` answers "at this exact cursor, who has more?" as a single instant visual.
 
 ## Placement
 
-Lives inside `CursorSidebar` as a direct sibling of `OrderbookTable`, immediately below it. Order in the sidebar:
+`CursorSidebar` is a 3-row grid of `SidebarCard` wrappers (10호가, 거래원, 체결). `TotalQtyBar` does **not** introduce a fourth card — it lives **inside the existing "10호가" card body**, beneath `OrderbookTable` and separated by a 1px `--border-strong` divider.
 
-1. `OrderbookTable`
-2. **`TotalQtyBar`** (new)
-3. `BrokerNetTable`
-4. `FillTape`
+```
+┌─ SidebarCard label="10호가" ──────────────────┐
+│ header: 10호가                                │
+│ body:                                         │
+│   ├─ OrderbookTable (existing)                │
+│   ├─ 1px --border-strong divider              │
+│   └─ TotalQtyBar (new)                        │
+└───────────────────────────────────────────────┘
+```
 
-A 1px `--border-strong` divider sits between the orderbook and the bar to mark the boundary between per-level depth and aggregate.
+Composition happens in `CursorSidebarConnected`: the existing `<OrderbookTable snapshot={…} />` is wrapped in a fragment that also includes `<TotalQtyBar … />`, and that fragment is passed as the `orderbook` slot to `CursorSidebar`. `CursorSidebar` itself stays unchanged.
 
-`TotalQtyBar` is a sibling, not a child of `OrderbookTable`. `OrderbookTable` stays a pure per-level renderer with a single `snapshot` prop; the new aggregate view is composed at the sidebar level.
+Why inside the card and not a fourth card? The 10호가 card already represents "what the orderbook says at this cursor", and the aggregate total is part of the same answer at a tighter granularity. A fourth card would force a regrid (`grid-rows-[2fr_1fr_1fr]` → 4 tracks) and break the existing space allocation that was tuned for the three cards. Same domain, same card.
+
+`OrderbookTable` stays a pure per-level renderer with a single `snapshot` prop; the new aggregate view is composed alongside it at the connected-sidebar level.
 
 ## Visual
 
@@ -90,13 +97,15 @@ The backend definition matches: `hoga/api/bundle.py:123-125` already defines `bi
 - **`askTotal === 0 && bidTotal === 0`**: render the container with both flank numbers showing `0` and an empty bar (no color fills, only `--bg-subtle` background and `--border-strong` border). This is a guard for a near-impossible state.
 - **One side zero**: handled naturally by the 100% stack — the non-zero side fills the full bar width.
 - **Extreme ratios (e.g. 1:99)**: the minority side remains visible as a thin colored segment inside the bar. At a 320px sidebar with ~200px bar width, even 1% renders as ~2px — still detectable.
-- **Auction Window**: respects the per-tab `auctionWindowMask` setting from `SettingsModal`.
-  - Cursor outside Auction Window OR `auctionWindowMask === false`: render normally.
-  - Cursor inside Auction Window AND `auctionWindowMask === true`: hide only the bar fills (keep the container chrome and the absolute qty flank numbers visible). Add a small `text-fg-dimmer` "Auction" annotation inside the empty container.
+- **Closing Auction Window** (15:20:00–15:30:00): respects the per-tab `auctionWindowMask` toggle from `state/tabs.ts` (surfaced in `SettingsModal`).
+  - Cursor outside the closing Auction Window OR `auctionWindowMask === false`: render normally.
+  - Cursor inside the closing Auction Window AND `auctionWindowMask === true`: hide only the bar fills (keep the container chrome and the absolute qty flank numbers visible). Add a small `text-fg-dimmer` "Auction" annotation inside the empty container.
+
+  The window check uses the existing `VirtualAxis.inClosingAuctionWindow(realMs)` predicate (`frontend/src/util/virtualAxis.ts`), the same one already powering `RatioPane`'s mask. No new helper, no extraction.
 
   Rationale comes straight from `CONTEXT.md`: during an Auction Window, raw snapshot quantities render continuously (they're the signal), but _derived ratios_ from those quantities read as misleading extremes and the `RatioPane` masks them. `TotalQtyBar`'s 100% stack is a ratio visualization, so it follows the same rule.
 
-If the Auction Window helper is currently inlined inside `frontend/src/chart/projectors/ratio.ts`, extract it to a shared module (e.g. `frontend/src/util/auctionWindow.ts`) and import it from both call sites. If it's already shared, just reuse.
+- **Opening Auction Window**: not masked. The codebase currently has no opening-auction predicate on `VirtualAxis`; existing `RatioPane` masking is also closing-only. Adding opening-auction masking is a separate, codebase-wide change (predicate first, then both `RatioPane` and `TotalQtyBar` adopt it together) and is **out of scope** for this work to keep mask behavior consistent with what's already shipped.
 
 ## Accessibility
 
@@ -107,28 +116,47 @@ If the Auction Window helper is currently inlined inside `frontend/src/chart/pro
 
 ## Component contract
 
-`TotalQtyBar` is a pure presentation component. Three props, all resolved by `CursorSidebar`:
+`TotalQtyBar` is a pure presentation component. Two props:
 
 ```ts
 type Props = {
   snapshot: OrderbookSnapshot | null | undefined;
-  segment: BundleSegment | null;        // active segment from RangeBundle, carries session_open_ms / session_close_ms
-  auctionWindowMask: boolean;            // from ChartPrefsContext / SettingsModal, per-tab
+  maskRatio: boolean;                  // true → hide bar fills, show "Auction" annotation; numbers always visible
 };
 ```
 
-The component receives no context, no hooks beyond `useMemo` for the totals computation, and no router or store access. All state needed for the Auction Window decision is passed in, which keeps the component trivially testable and the render path explicit.
+The parent decides `maskRatio = auctionWindowMask && inClosingAuctionWindow(cursorMs)`. The component receives no context, no hooks beyond `useMemo` for the totals computation, and no store access. All state needed for the masking decision is folded into one boolean prop, which keeps the component trivially testable and the render path explicit.
 
-`CursorSidebar` is responsible for wiring `segment` and `auctionWindowMask` from its existing sources alongside the already-wired `snapshot`.
+### Wiring (where the props come from)
+
+`CursorSidebarConnected` is where the wiring lives. It already reads cursor data via `useCursor()` and `useOrderbookAtCursor()`. To compute `maskRatio`, it needs the `VirtualAxis` (for `inClosingAuctionWindow`) and the per-tab `auctionWindowMask` pref.
+
+Changes required to expose the axis:
+
+- `Workarea.tsx` already constructs `axis: VirtualAxis` and passes it to `ChartStage`. Add it as a prop to `CursorSidebarConnected` too: `<CursorSidebarConnected axis={axis} />`.
+- `CursorSidebarConnected` reads `auctionWindowMask` from `useTabsStore((s) => s.getPrefs(s.activeTabId).auctionWindowMask)` (same pattern as other store consumers — `ChartPrefsContext` is intentionally chart-subtree only and not available here).
+- `CursorSidebarConnected` then computes `maskRatio` and passes it to `TotalQtyBar`.
+
+The sidebar card composition stays simple:
+
+```tsx
+const orderbookContent = (
+  <>
+    <OrderbookTable snapshot={orderbook} />
+    <TotalQtyBar snapshot={orderbook} maskRatio={maskRatio} />
+  </>
+);
+return <CursorSidebar orderbook={orderbookContent} brokers={…} fills={…} />;
+```
 
 ## Files touched
 
 - **New**: `frontend/src/sidebar/TotalQtyBar.tsx` — component
 - **New**: `frontend/src/sidebar/TotalQtyBar.test.tsx` — Vitest unit and integration tests
-- **Modified**: `frontend/src/sidebar/CursorSidebar.tsx` — insert `TotalQtyBar` after `OrderbookTable` with the divider
-- **Possibly modified**: `frontend/src/chart/projectors/ratio.ts` — extract Auction Window helper if inlined; new file `frontend/src/util/auctionWindow.ts` if extraction is needed
+- **Modified**: `frontend/src/sidebar/CursorSidebar.tsx` — compose `TotalQtyBar` alongside `OrderbookTable` inside the 10호가 card; accept `axis` prop on `CursorSidebarConnected`; compute `maskRatio` from `useTabsStore` prefs and `axis.inClosingAuctionWindow(cursorMs)`
+- **Modified**: `frontend/src/replay/Workarea.tsx` — pass `axis={axis}` to `<CursorSidebarConnected />`
 
-No backend changes. No API changes. No `DESIGN.md` token table changes.
+No new helper modules. No backend changes. No API changes. No `DESIGN.md` token table changes. The existing `VirtualAxis.inClosingAuctionWindow` predicate is reused as-is.
 
 ## Test plan
 
@@ -143,11 +171,14 @@ Vitest, alongside the existing sidebar test patterns.
    - `snapshot === null` → renders `null`
    - Normal snapshot → left flank shows ask total in `text-price-down`, right flank shows bid total in `text-price-up`, bar grid-template-columns matches the computed ratio
    - Extreme ratio (1:99) → grid-template-columns reflects the ratio precisely
-3. **Auction Window integration**
-   - Cursor outside Auction Window + mask=true → bar fills render
-   - Cursor inside Auction Window + mask=true → bar fills hidden, container chrome and flank numbers remain, "Auction" annotation present
-   - Cursor inside Auction Window + mask=false → bar fills render normally
-4. **Accessibility**
+3. **Mask behavior** (component-level, exercised purely through the `maskRatio` prop)
+   - `maskRatio === false` → bar fills render
+   - `maskRatio === true` → bar fills hidden, container chrome and flank numbers remain, "Auction" annotation present
+4. **Wiring** (integration test on `CursorSidebarConnected`)
+   - Active tab `auctionWindowMask=true` + cursor inside the closing Auction Window of the active segment → `TotalQtyBar` receives `maskRatio=true`
+   - Active tab `auctionWindowMask=true` + cursor outside the closing Auction Window → `maskRatio=false`
+   - Active tab `auctionWindowMask=false` (any cursor) → `maskRatio=false`
+5. **Accessibility**
    - `role="group"` with `aria-label="총잔량"` present on wrapper
    - Both flank spans carry the expected `aria-label`
 
@@ -178,3 +209,7 @@ Out of scope for this work, listed so the implementation plan does not drift:
 | Sum the `OrderbookSnapshot` client-side instead of consuming `quote_ratio.points` | The snapshot is the exact cursor moment; `quote_ratio.points` is bucketed and may not align with the cursor. |
 | Inline 0.55 alpha, no new tokens | Existing `--tint-price-*` tokens at 10% alpha are too weak for a foreground 100% stack; new tokens would expand the system surface for one use. YAGNI until a second component needs the same strength. |
 | Respect `auctionWindowMask` toggle | `CONTEXT.md`: derived ratios are masked during Auction Windows; `TotalQtyBar` is a ratio visualization, so it follows the same rule. |
+| Place inside the existing "10호가" `SidebarCard`, not as a fourth card | Avoids regridding the sidebar (`grid-rows-[2fr_1fr_1fr]`) that was tuned for three cards; aggregate totals are semantically the same domain as the orderbook itself. |
+| Two-prop component (`snapshot`, `maskRatio`) instead of three (`snapshot`, `segment`, `auctionWindowMask`) | Parent computes the masking decision once, component stays purely presentational and trivially testable. The intermediate `inClosingAuctionWindow` check lives at the wiring layer, not inside the bar. |
+| Reuse `VirtualAxis.inClosingAuctionWindow`, do not introduce a new helper module | The predicate is already extracted and tested as part of `VirtualAxis`. Pulling it into a separate `util/auctionWindow.ts` would duplicate the responsibility. |
+| Closing-only mask (opening Auction Window not masked) | `VirtualAxis` exposes only `inClosingAuctionWindow`; existing `RatioPane` is also closing-only. Adding opening masking is a separate codebase-wide change (predicate first, then both panes adopt it). |
