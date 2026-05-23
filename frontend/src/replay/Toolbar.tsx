@@ -37,8 +37,16 @@ export default function Toolbar() {
     useToolbarDraftStore.getState().setStock(active.id, code);
   const setDates = (from: string, to: string) =>
     useToolbarDraftStore.getState().setDates(active.id, from, to);
-  const setTimeframe = (tf: Timeframe) =>
+  const setTimeframe = (tf: Timeframe) => {
     useToolbarDraftStore.getState().setTimeframe(active.id, tf);
+    // 이미 데이터가 로드된 탭이면 timeframe만 갈아끼워 즉시 재요청.
+    // selection의 code/from/to를 그대로 쓰는 이유: 사용자가 draft에서 stock/date를
+    // 수정 중일 수도 있으므로 그 in-flight 편집은 Reload 전까지 draft에 남겨둔다.
+    const sel = useTabsStore.getState().tabs.find((t) => t.id === active.id)?.selection;
+    if (sel) {
+      useTabsStore.getState().setSelection(active.id, { ...sel, timeframe: tf });
+    }
+  };
 
   const ready = !!(draft.code && draft.from && draft.to && draft.timeframe);
   const loaded = active.status === 'loaded';
