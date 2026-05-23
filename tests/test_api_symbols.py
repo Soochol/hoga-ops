@@ -692,3 +692,215 @@ def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
     assert body["status"] == "unavailable"
     assert body["fetched_at_ms"] is None
     assert body["reason"] == "symbol_master_not_initialized"
+
+
+# ---------------------------------------------------------------------------
+# Regression guards — refactor of _RefreshCoordinator + _do_refresh safety net
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_refresh_invokes_ensure_credentials_in_production_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end: refresh() must call load_env(override=True) via _ensure_krx_credentials.
+
+    Uses the missing-creds short-circuit so we don't have to mock pykrx. The
+    refresh-level tests elsewhere all stub _fetch_from_pykrx, which would
+    silently pass even if a future change removed the _ensure_krx_credentials()
+    call from the real implementation. This test catches that.
+    """
+    symbols_module.reset_state_for_tests()
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+
+    calls: list[bool] = []
+    def _spy_load_env(*, override: bool) -> None:
+        calls.append(override)
+    monkeypatch.setattr(symbols_module, "load_env", _spy_load_env)
+
+    path = tmp_path / "sm.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    resp = await symbols_module.refresh(path=path, data_dir=data_dir)
+
+    assert calls == [True], "refresh() must call load_env(override=True) via the real fetch path"
+    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
+
+
+@pytest.mark.asyncio
+async def test_refresh_short_circuits_before_pykrx_import_when_creds_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The credentials pre-check must run BEFORE the pykrx import in _fetch_from_pykrx.
+
+    Replaces sys.modules['pykrx.stock'] with a sentinel that raises on any
+    attribute access; missing-creds short-circuit must prevent any access.
+    """
+    import sys
+    symbols_module.reset_state_for_tests()
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
+
+    class _ForbiddenStock:
+        def __getattr__(self, name):
+            raise AssertionError(f"pykrx.stock.{name} accessed despite missing creds")
+
+    fake_pykrx = type(sys)("pykrx")
+    fake_pykrx.stock = _ForbiddenStock()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pykrx", fake_pykrx)
+    monkeypatch.setitem(sys.modules, "pykrx.stock", _ForbiddenStock())
+
+    path = tmp_path / "sm.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    resp = await symbols_module.refresh(path=path, data_dir=data_dir)
+
+    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
+
+
+@pytest.mark.asyncio
+async def test_refresh_back_to_back_flights_isolate_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two sequential waves of concurrent refreshes must not contaminate each other.
+
+    Regression guard for the universal-clear race in the old _RefreshCoordinator:
+    a lingering wave-1 waiter could clobber wave-2's _inflight slot, causing
+    duplicate fetches and/or deadlocked waiters. The new initiator-only-clears
+    design plus result-broadcast through the future prevents both.
+    """
+    symbols_module.reset_state_for_tests()
+    monkeypatch.setenv("KRX_ID", "u")
+    monkeypatch.setenv("KRX_PW", "p")
+
+    call_count = 0
+    async def _fetch():
+        nonlocal call_count
+        call_count += 1
+        await asyncio.sleep(0.01)
+        return [_make_hit(f"{call_count:06d}", f"name{call_count}")]
+
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _fetch)
+    path = tmp_path / "sm.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    wave1 = await asyncio.gather(
+        symbols_module.refresh(path=path, data_dir=data_dir),
+        symbols_module.refresh(path=path, data_dir=data_dir),
+        symbols_module.refresh(path=path, data_dir=data_dir),
+    )
+    assert call_count == 1, "wave 1 must trigger exactly one fetch"
+    for r in wave1:
+        assert r.status == "fresh"
+        assert r.symbols[0].code == "000001"
+
+    wave2 = await asyncio.gather(
+        symbols_module.refresh(path=path, data_dir=data_dir),
+        symbols_module.refresh(path=path, data_dir=data_dir),
+        symbols_module.refresh(path=path, data_dir=data_dir),
+    )
+    assert call_count == 2, "wave 2 must trigger exactly one new fetch (no clobber, no duplicate)"
+    for r in wave2:
+        assert r.status == "fresh"
+        assert r.symbols[0].code == "000002", "every wave-2 waiter must see the same snapshot"
+
+
+@pytest.mark.asyncio
+async def test_refresh_unhandled_exception_recovers_to_terminal_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ImportError or other unexpected exceptions must NOT leave _state at loading().
+
+    Regression guard for the narrowed-except-clauses bug: pre-fix, an
+    ImportError from a broken pykrx (or OSError from _build_all_captured_breakdowns)
+    would escape _do_refresh and strand _state at loading() forever.
+    """
+    symbols_module.reset_state_for_tests()
+
+    async def _explode():
+        raise ImportError("pykrx broken")
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _explode)
+
+    path = tmp_path / "sm.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    resp = await symbols_module.refresh(path=path, data_dir=data_dir)
+
+    assert resp.status != "loading", "broad except must surface a terminal state"
+    assert resp.status in ("stale", "unavailable")
+    assert resp.reason == UpstreamCode.KRX_FETCH_FAILED
+    assert symbols_module._state.status != "loading", \
+        "module _state must not be stranded at loading() — /info would otherwise lie"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_recovers_when_task_factory_raises() -> None:
+    """task_factory raising must roll back _inflight so future calls aren't deadlocked.
+
+    Regression guard for the deadlock-after-factory-raise bug: pre-fix,
+    `self._inflight = loop.create_future()` ran BEFORE `task_factory()`,
+    so a raising factory left _inflight pointing at an unresolved Future
+    with no callback. Every subsequent refresh() would await it forever.
+    """
+    from hoga.api.symbols import _RefreshCoordinator
+
+    coord: _RefreshCoordinator[str] = _RefreshCoordinator()
+
+    def _bad_factory() -> asyncio.Task[str]:
+        raise RuntimeError("factory failed")
+
+    with pytest.raises(RuntimeError, match="factory failed"):
+        await coord.coalesce(_bad_factory)
+
+    assert coord._inflight is None, "must roll back so the next call isn't deadlocked"
+
+    async def _noop() -> str:
+        return "ok"
+
+    def _good_factory() -> asyncio.Task[str]:
+        return asyncio.create_task(_noop())
+
+    result = await coord.coalesce(_good_factory)
+    assert result == "ok"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_propagates_task_exception_to_all_waiters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the in-flight task raises, every joined waiter must receive the exception.
+
+    Today _do_refresh's broad except prevents this in practice, but the
+    coordinator must remain correct for any task that does raise — otherwise
+    waiters would hang on an unresolved future.
+    """
+    from hoga.api.symbols import _RefreshCoordinator
+
+    coord: _RefreshCoordinator[str] = _RefreshCoordinator()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _boom() -> str:
+        started.set()
+        await release.wait()
+        raise ValueError("intentional")
+
+    def _factory() -> asyncio.Task[str]:
+        return asyncio.create_task(_boom())
+
+    # Initiator + one joiner.
+    t1 = asyncio.create_task(coord.coalesce(_factory))
+    await started.wait()
+    t2 = asyncio.create_task(coord.coalesce(_factory))
+    await asyncio.sleep(0)  # let t2 attach as joiner
+    release.set()
+
+    with pytest.raises(ValueError, match="intentional"):
+        await t1
+    with pytest.raises(ValueError, match="intentional"):
+        await t2
+
+    assert coord._inflight is None, "initiator must still clear _inflight on task failure"

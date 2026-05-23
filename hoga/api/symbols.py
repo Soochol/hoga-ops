@@ -19,7 +19,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Generic, Literal, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -92,54 +92,85 @@ class SymbolCacheState:
         return cls(status="unavailable", reason=reason)
 
 
-class _RefreshCoordinator:
+T = TypeVar("T")
+
+
+class _RefreshCoordinator(Generic[T]):
     """Single-flight coordinator: N concurrent refreshes trigger one fetch.
 
     Owns the lock + in-flight future that previously lived as module-level
-    globals. The lock guards transitions on ``_inflight``; the future
-    broadcasts task completion to every caller that joined during the flight.
+    globals. The future *carries the task's result* so every joined caller
+    receives the same snapshot — no second read of module globals required
+    after coalesce() returns. The lock guards transitions on ``_inflight``.
 
-    The coupling is intentional: every read or write of ``_inflight`` must
-    happen under ``_lock`` to avoid a race where two callers both see ``None``
-    and both create a task.
+    Ownership rule: only the initiator (the caller that created the future)
+    clears ``_inflight``. Joining waiters MUST NOT clear it, otherwise a
+    follow-on flight's future can be clobbered, defeating single-flight.
     """
 
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
-        self._inflight: asyncio.Future | None = None
+        self._inflight: asyncio.Future[T] | None = None
 
-    async def coalesce(self, task_factory: Callable[[], asyncio.Task]) -> None:
+    async def coalesce(self, task_factory: Callable[[], asyncio.Task[T]]) -> T:
         """Start ``task_factory()`` once for the in-flight group; join existing.
 
         First caller wins: creates the task and the broadcast future under
         the lock. Subsequent callers that arrive while the task is running
-        await the same future. When the task completes, all waiters unblock
-        and the in-flight slot clears so the next click can start fresh.
+        await the same future and receive the same result. When the task
+        completes, all waiters unblock with that result; the initiator
+        clears the in-flight slot so the next click starts fresh.
 
         ``task_factory`` runs under the lock — use it for state mutations
         that must be visible before any waiter resumes (e.g. setting
-        ``SymbolCacheState.loading()``).
+        ``SymbolCacheState.loading()``). If ``task_factory`` raises, the
+        in-flight slot is rolled back so the failure does not deadlock
+        every future call.
         """
         async with self._lock:
             if self._inflight is not None:
                 fut = self._inflight
+                is_initiator = False
             else:
                 loop = asyncio.get_running_loop()
-                self._inflight = loop.create_future()
-                fut = self._inflight
-                task = task_factory()
+                fut = loop.create_future()
+                self._inflight = fut
+                is_initiator = True
+                try:
+                    task = task_factory()
+                except BaseException:
+                    # Roll back — no task was scheduled, future would never resolve.
+                    self._inflight = None
+                    raise
 
-                def _signal(_t: asyncio.Task) -> None:
-                    if self._inflight is not None and not self._inflight.done():
-                        self._inflight.set_result(None)
+                def _signal(t: asyncio.Task[T]) -> None:
+                    if fut.done():
+                        return
+                    if t.cancelled():
+                        fut.cancel()
+                        return
+                    exc = t.exception()
+                    if exc is not None:
+                        fut.set_exception(exc)
+                    else:
+                        fut.set_result(t.result())
 
                 task.add_done_callback(_signal)
-        await fut
-        async with self._lock:
-            self._inflight = None
+        try:
+            return await fut
+        finally:
+            if is_initiator:
+                async with self._lock:
+                    self._inflight = None
 
     def reset(self) -> None:
-        """Test helper — clear in-flight state between tests."""
+        """Test helper — clear in-flight state between tests.
+
+        Cancels any live future to surface logic errors (a test should have
+        awaited refresh() before calling reset_state_for_tests).
+        """
+        if self._inflight is not None and not self._inflight.done():
+            self._inflight.cancel()
         self._inflight = None
 
 
@@ -149,7 +180,7 @@ _fetched_at_ms: int | None = None
 _state: SymbolCacheState = SymbolCacheState.unavailable(
     reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
 )
-_refresh_coordinator = _RefreshCoordinator()
+_refresh_coordinator: _RefreshCoordinator[SymbolsAllResponse] = _RefreshCoordinator()
 SCHEMA_VERSION = 1
 
 
@@ -428,26 +459,21 @@ async def refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
 
     Concurrency: :data:`_refresh_coordinator` dedupes simultaneous clicks
     (Settings + SymbolSearch may fire together) — N concurrent calls trigger
-    exactly one underlying fetch. Credentials handling (load_env + presence
-    check) lives inside :func:`_fetch_from_pykrx`.
+    exactly one underlying fetch and every joined caller receives the same
+    response snapshot. Credentials handling (load_env + presence check) lives
+    inside :func:`_fetch_from_pykrx`.
 
     Failure semantics: pykrx exception → disk file unchanged, memory state
-    stale (if cache populated) or unavailable.
+    stale (if cache populated) or unavailable. Any other unexpected exception
+    is caught by :func:`_do_refresh`'s broad fallback and surfaces as
+    ``KRX_FETCH_FAILED`` — the cache is never left stuck at ``loading``.
     """
-    global _state  # noqa: PLW0603
-
-    def _start_refresh_task() -> asyncio.Task:
+    def _start_refresh_task() -> asyncio.Task[SymbolsAllResponse]:
         global _state  # noqa: PLW0603
         _state = SymbolCacheState.loading()
         return asyncio.create_task(_do_refresh(path=path, data_dir=data_dir))
 
-    await _refresh_coordinator.coalesce(_start_refresh_task)
-    return SymbolsAllResponse(
-        symbols=list(_cache),
-        status=_state.status,
-        fetched_at_ms=_fetched_at_ms,
-        reason=_state.reason,
-    )
+    return await _refresh_coordinator.coalesce(_start_refresh_task)
 
 
 def _set_stale_or_unavailable(reason: UpstreamCode) -> None:
@@ -460,33 +486,62 @@ def _set_stale_or_unavailable(reason: UpstreamCode) -> None:
     )
 
 
-async def _do_refresh(*, path: Path, data_dir: Path) -> None:
-    """Inner refresh routine — runs under in-flight Future protection."""
+def _build_response() -> SymbolsAllResponse:
+    """Snapshot module state into a response envelope.
+
+    Called from :func:`_do_refresh` so the snapshot is captured at
+    task-completion time and broadcast by the coordinator's future. This
+    keeps joined waiters from observing transient state from a subsequent
+    refresh cycle.
+    """
+    return SymbolsAllResponse(
+        symbols=list(_cache),
+        status=_state.status,
+        fetched_at_ms=_fetched_at_ms,
+        reason=_state.reason,
+    )
+
+
+async def _do_refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
+    """Inner refresh routine — runs as the single-flight task.
+
+    Returns the response snapshot the coordinator hands back to every
+    waiter joined to this flight. Always returns — the broad ``except``
+    safety net at the bottom guarantees ``_state`` is never left at
+    ``loading()`` even when an unexpected exception (e.g. ``ImportError``
+    from a broken pykrx, ``OSError`` from a filesystem walk) escapes the
+    typed handlers above.
+    """
     global _cache, _fetched_at_ms, _state  # noqa: PLW0603
     try:
-        entries = await _fetch_from_pykrx()
-    except KrxCredentialsMissing:
-        _set_stale_or_unavailable(UpstreamCode.KRX_CREDENTIALS_MISSING)
-        return
-    except KrxFetchFailed:
-        _set_stale_or_unavailable(UpstreamCode.KRX_FETCH_FAILED)
-        return
-    now_ms = int(time.time() * 1000)
-    try:
+        try:
+            entries = await _fetch_from_pykrx()
+        except KrxCredentialsMissing:
+            _set_stale_or_unavailable(UpstreamCode.KRX_CREDENTIALS_MISSING)
+            return _build_response()
+        except KrxFetchFailed:
+            _set_stale_or_unavailable(UpstreamCode.KRX_FETCH_FAILED)
+            return _build_response()
+
+        now_ms = int(time.time() * 1000)
         _write_to_disk(path, entries, now_ms)
-    except OSError:
+        loop = asyncio.get_running_loop()
+        breakdowns = await loop.run_in_executor(
+            None, _build_all_captured_breakdowns, data_dir
+        )
+        empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0}
+        for h in entries:
+            breakdown = breakdowns.get(h.code, empty)
+            h.captured_count = breakdown["complete"]
+            h.captured_breakdown = breakdown
+        _cache = entries
+        _fetched_at_ms = now_ms
+        _state = SymbolCacheState.fresh()
+        return _build_response()
+    except Exception:  # noqa: BLE001 — safety net so _state never sticks at loading()
+        logger.exception("Symbol refresh failed unexpectedly")
         _set_stale_or_unavailable(UpstreamCode.KRX_FETCH_FAILED)
-        return
-    loop = asyncio.get_running_loop()
-    breakdowns = await loop.run_in_executor(None, _build_all_captured_breakdowns, data_dir)
-    empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0}
-    for h in entries:
-        breakdown = breakdowns.get(h.code, empty)
-        h.captured_count = breakdown["complete"]
-        h.captured_breakdown = breakdown
-    _cache = entries
-    _fetched_at_ms = now_ms
-    _state = SymbolCacheState.fresh()
+        return _build_response()
 
 
 def search(q: str, *, limit: int = 20) -> list[SymbolHit]:
