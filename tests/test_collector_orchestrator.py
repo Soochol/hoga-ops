@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -229,3 +230,43 @@ def test_page_sort_key_numeric_across_digit_widths(tmp_path: Path) -> None:
     # Sanity: plain lexical sort would NOT match (proves the test is meaningful).
     lexical = [page_sort_key(p) for p in sorted(raw.glob("first_*.tsv"))]
     assert lexical != indices
+
+
+def test_profile_jsonl_not_created_when_env_unset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default behaviour: no _profile.jsonl created (zero-cost when disabled)."""
+    monkeypatch.delenv("HOGA_PROFILE", raising=False)
+    fake = FakeClient(
+        info_body="info\n",
+        first_pages={84000000: _row(1, 1, 1, 1001, 84001000)},
+        chart_body="chart\n",
+    )
+    collect_stock_date(
+        client=fake, code="003490", date="20260519",
+        data_dir=tmp_path, rate_limit_s=0,
+    )
+    profile = tmp_path / "raw" / "20260519" / "003490" / "_profile.jsonl"
+    assert not profile.exists()
+
+
+def test_profile_jsonl_created_and_line_format_when_env_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """HOGA_PROFILE=1: one JSONL line per fetch iteration with required fields."""
+    monkeypatch.setenv("HOGA_PROFILE", "1")
+    fake = FakeClient(
+        info_body="info\n",
+        first_pages={84000000: _row(1, 1, 1, 1001, 84001000)},
+        chart_body="chart\n",
+    )
+    collect_stock_date(
+        client=fake, code="003490", date="20260519",
+        data_dir=tmp_path, rate_limit_s=0,
+    )
+    profile = tmp_path / "raw" / "20260519" / "003490" / "_profile.jsonl"
+    assert profile.exists()
+    lines = [json.loads(line) for line in profile.read_text().splitlines() if line]
+    assert len(lines) >= 1
+    required = {"iter", "t_in", "step_ms", "http_ms", "body_len",
+               "new_seqs", "max_event_time", "cap_hit", "empty_streak",
+               "post_window", "page_idx"}
+    assert required.issubset(lines[0].keys())

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import json
+import os
 import time as _time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -249,20 +250,29 @@ def _page_step_loop(
     t: int,
     on_progress: Callable[[ProgressEvent], None] | None = None,
     cancel_token: CancelToken | None = None,
+    initial_step_ms: int = 60000,  # exposed for Phase 1 matrix experiments
 ) -> tuple[set[int], int, int]:
-    """Run the Page Step pagination loop; return (seen_seqs, page_idx, final_t)."""
     progress_path = raw_dir / "_progress.json"
-    controller = PageStepController(initial_t=t)
+    controller = PageStepController(initial_t=t, initial_step_ms=initial_step_ms)
+    profile_enabled = os.environ.get("HOGA_PROFILE") == "1"
+    profile_path = raw_dir / "_profile.jsonl" if profile_enabled else None
 
     last_emitted_t = -1
     last_emitted_pages = -1
+    iter_idx = 0
     while True:
         if cancel_token is not None and cancel_token.cancelled:
             raise CaptureCancelled(f"capture cancelled at page {page_idx}")
+        iter_idx += 1
+        t_in = controller.next_t
+        step_before = controller.step_ms
+        http_t0 = _time.perf_counter()
         body, page_idx, new_seqs = _fetch_and_store_page(
-            raw_dir, client, code, date, controller.next_t, page_idx, seen_seqs
+            raw_dir, client, code, date, t_in, page_idx, seen_seqs
         )
-        decision = controller.observe(max_event_time=_max_event_time(body), new_seqs=len(new_seqs))
+        http_ms = (_time.perf_counter() - http_t0) * 1000
+        max_t = _max_event_time(body)
+        decision = controller.observe(max_event_time=max_t, new_seqs=len(new_seqs))
         _write_progress(
             progress_path,
             last_time_ms=decision.progress_t,
@@ -271,6 +281,18 @@ def _page_step_loop(
             started_at=started_at,
             finished_at=None,
         )
+        if profile_path is not None:
+            cap_hit = max_t is not None and max_t < (t_in + step_before)
+            post_window = t_in >= 160_000_000
+            line = json.dumps({
+                "iter": iter_idx, "t_in": t_in, "step_ms": step_before,
+                "http_ms": round(http_ms, 2), "body_len": len(body),
+                "new_seqs": len(new_seqs), "max_event_time": max_t,
+                "cap_hit": cap_hit, "empty_streak": controller._empty_in_a_row,
+                "post_window": post_window, "page_idx": page_idx,
+            })
+            with profile_path.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
         # Skip the callback when neither frontier nor pages_done advanced.
         # The empty-page termination drain runs ~1262 iterations after the
         # Data Window end; without this guard, every drain tick fires a
