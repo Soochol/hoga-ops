@@ -11,6 +11,12 @@ const TOKEN_SPEC = {
 
 const { up, down } = resolveTokens(TOKEN_SPEC);
 
+const priceFormat = {
+  type: 'custom' as const,
+  formatter: (v: number) => Math.round(v).toLocaleString('ko-KR'),
+  minMove: 1,
+};
+
 export function projectVolume(bundle: RangeBundle, axis: VirtualAxis): any[] {
   return bundle.candles
     .filter((c) => axis.contains(c.ts_ms))
@@ -28,11 +34,7 @@ export const VOLUME_SPEC: PaneSpec = {
     {
       type: HistogramSeries,
       options: {
-        priceFormat: {
-          type: 'custom' as const,
-          formatter: (v: number) => Math.round(v).toLocaleString('ko-KR'),
-          minMove: 1,
-        },
+        priceFormat,
         priceScaleId: 'right',
         priceLineVisible: false,
         lastValueVisible: false,

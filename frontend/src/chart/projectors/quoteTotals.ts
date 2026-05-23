@@ -9,6 +9,8 @@ const TOKEN_SPEC = {
   ask: ['--price-down', '#2563EB'], // 매도 호가 총합 (KRX 파랑)
 } as const;
 
+const { bid, ask } = resolveTokens(TOKEN_SPEC);
+
 const priceFormat = {
   type: 'custom' as const,
   formatter: (v: number) => Math.round(v).toLocaleString('ko-KR'),
@@ -26,8 +28,6 @@ export function projectAsk(bundle: RangeBundle, axis: VirtualAxis): any[] {
     .filter((p) => axis.contains(p.t))
     .map((p) => ({ time: (axis.toVirtual(p.t) / 1000) as any, value: p.ask_total }));
 }
-
-const { bid, ask } = resolveTokens(TOKEN_SPEC);
 
 export const QUOTE_TOTALS_SPEC: PaneSpec = {
   name: 'quote-totals',
