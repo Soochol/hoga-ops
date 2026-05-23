@@ -32,6 +32,8 @@ function inRange(date: string, range: DateRange | null): boolean {
   return date >= range.start && date <= range.end;
 }
 
+const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const;
+
 function MonthGrid({
   code, year, month, value, statusByDate, onPick,
 }: {
@@ -43,10 +45,18 @@ function MonthGrid({
   onPick: (date: string) => void;
 }) {
   const last = daysInMonth(year, month);
+  // JS Date.getDay(): 0=Sun … 6=Sat — placeholders for offset so day-1 lands
+  // under its real weekday column instead of always the top-left.
+  const firstDow = new Date(year, month - 1, 1).getDay();
   const cells = [];
   for (let day = 1; day <= last; day++) {
     const d = dateStr(year, month, day);
-    const status: CalendarStatus = statusByDate.get(d) ?? 'none';
+    // Backend status wins (it knows holiday vs weekend distinctions), but
+    // when no symbol is selected the API returns no cells — fall back to a
+    // weekday check so Sat/Sun stay disabled and grey unconditionally.
+    const dow = new Date(year, month - 1, day).getDay();
+    const isWeekend = dow === 0 || dow === 6;
+    const status: CalendarStatus = statusByDate.get(d) ?? (isWeekend ? 'weekend' : 'none');
     const selected = value?.start === d || value?.end === d;
     cells.push(
       <CalendarCell
@@ -61,7 +71,20 @@ function MonthGrid({
       <div className="font-medium text-sm font-mono text-fg-dim mb-1.5">
         {`${year}.${String(month).padStart(2, '0')}`}
       </div>
+      <div aria-hidden className="grid grid-cols-[repeat(7,2rem)] gap-0.5 mb-0.5 font-medium text-xs font-mono">
+        {WEEKDAY_LABELS.map((label, i) => (
+          <div
+            key={label}
+            className={`w-8 h-5 leading-5 text-center ${i === 0 || i === 6 ? 'text-fg-dimmer' : 'text-fg-dim'}`}
+          >
+            {label}
+          </div>
+        ))}
+      </div>
       <div className="grid grid-cols-[repeat(7,2rem)] gap-0.5">
+        {Array.from({ length: firstDow }, (_, i) => (
+          <div key={`pad-${i}`} aria-hidden className="w-8 h-8" />
+        ))}
         {cells}
       </div>
     </div>
