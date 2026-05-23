@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import OrderbookTable from './OrderbookTable';
 import BrokerNetTable from './BrokerNetTable';
 import FillTape from './FillTape';
@@ -7,9 +7,8 @@ import {
   useOrderbookAtCursor,
   useBrokersAtCursor,
   useTradesAroundCursor,
-  useCursor,
 } from '../api/useCursor';
-import { useTabsStore } from '../state/tabs';
+import { useAuctionMaskActive } from '../state/useAuctionMaskActive';
 import type { VirtualAxis } from '../util/virtualAxis';
 
 type Props = {
@@ -31,14 +30,7 @@ export function CursorSidebarConnected({ axis }: { axis: VirtualAxis }) {
   const orderbook = useOrderbookAtCursor();
   const brokers = useBrokersAtCursor();
   const trades = useTradesAroundCursor();
-  const { cursorMs } = useCursor();
-  const auctionWindowMask = useTabsStore((s) => s.getPrefs(s.activeTabId).auctionWindowMask);
-
-  const maskRatio = useMemo(() => {
-    if (!auctionWindowMask) return false;
-    if (cursorMs == null || !Number.isFinite(cursorMs)) return false;
-    return axis.inClosingAuctionWindow(cursorMs);
-  }, [auctionWindowMask, cursorMs, axis]);
+  const maskRatio = useAuctionMaskActive(axis);
 
   return (
     <CursorSidebar
