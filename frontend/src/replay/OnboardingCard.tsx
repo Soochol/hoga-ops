@@ -26,7 +26,7 @@ export default function OnboardingCard({ tab }: { tab: Tab }) {
 
 function Step({ n, done, active, label }: { n: number; done: boolean; active: boolean; label: string }) {
   return (
-    <div className={`flex gap-3 items-center ${done ? 'text-up' : active ? 'text-fg' : 'text-fg-dim'}`}>
+    <div className={`flex gap-3 items-center ${done ? 'text-success' : active ? 'text-fg' : 'text-fg-dim'}`}>
       <span className="font-mono text-xs">{done ? '✓' : n + '.'}</span>
       <span className={active ? 'font-medium' : ''}>{label}</span>
     </div>

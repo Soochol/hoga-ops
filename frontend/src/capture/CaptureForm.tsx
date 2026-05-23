@@ -98,7 +98,7 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
       </button>
 
       {error !== null && (
-        <div role="alert" className="text-xs text-down">{error}</div>
+        <div role="alert" className="text-xs text-error">{error}</div>
       )}
 
       {inlineError !== null && (

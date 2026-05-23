@@ -42,7 +42,7 @@ export default function Tab({
 function TabStatusDot({ status }: { status: TabModel['status'] }) {
   const cls =
     status === 'loaded'
-      ? 'bg-up'
+      ? 'bg-success'
       : status === 'loading'
       ? 'bg-accent animate-pulse'
       : 'border border-fg-dimmer';

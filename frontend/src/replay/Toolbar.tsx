@@ -84,7 +84,7 @@ export default function Toolbar() {
       </button>
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <span className="flex-1" />
-      {rangeError && <span className="text-down text-sm ml-2">{rangeError}</span>}
+      {rangeError && <span className="text-error text-sm ml-2">{rangeError}</span>}
       <button
         disabled={!ready}
         onClick={onLoad}

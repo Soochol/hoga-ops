@@ -52,7 +52,7 @@ export default function Workarea({ tab }: { tab: Tab }) {
 
   if (isError) {
     return (
-      <div className="grid place-items-center h-full text-down">
+      <div className="grid place-items-center h-full text-error">
         Load failed: {String(error ?? 'unknown')}
       </div>
     );

@@ -46,8 +46,8 @@ export function CaptureRowDetail({ item }: { item: QueueItem }) {
       </span>
       {item.error !== null && (
         <>
-          <span className="text-down">error</span>
-          <span className="text-down">
+          <span className="text-error">error</span>
+          <span className="text-error">
             <ErrorBlock error={item.error} />
           </span>
         </>

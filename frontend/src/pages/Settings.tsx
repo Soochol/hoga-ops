@@ -69,7 +69,7 @@ function SymbolMasterSection() {
       <Row label="Last fetched" value={formatRelative(data?.fetched_at_ms)} />
       <Row label="Status" value={data?.status ?? '…'} />
       {data?.reason && (
-        <div className="text-xs text-down">{symbolMasterSettingsHints[data.reason]}</div>
+        <div className="text-xs text-error">{symbolMasterSettingsHints[data.reason]}</div>
       )}
       <button
         type="button"
