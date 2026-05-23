@@ -5,8 +5,8 @@ import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = {
-  up: ['--up', '#22C55E'],
-  down: ['--down', '#F43F5E'],
+  up: ['--price-up',   '#DC2626'],
+  down: ['--price-down', '#2563EB'],
   muted: ['--fg-dim', '#94A3B8'],
 } as const;
 
@@ -41,6 +41,9 @@ export default function CandlePane({ chart, bundle, axis, paneIndex = 0 }: Props
         wickUpColor: up,
         wickDownColor: down,
         borderVisible: false,
+        // 우측 축 마지막값 라인/칩 제거 — crosshair로만 값 확인.
+        priceLineVisible: false,
+        lastValueVisible: false,
         // KRX equities are integer-won. Use a custom formatter so the price
         // axis renders "25,600" (with a thousands separator) instead of the
         // built-in "25.6k" abbreviation that lightweight-charts falls back to
