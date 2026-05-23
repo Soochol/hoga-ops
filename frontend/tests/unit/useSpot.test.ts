@@ -167,4 +167,23 @@ describe('useSpot', () => {
 
     expect(result.current.data).toBe('B');
   });
+
+  it('fetch failure surfaces via console.error and leaves data undefined', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fetcher = vi.fn(() => Promise.reject(new Error('boom')));
+    const { result } = renderHook(() => useSpot<string>('k', fetcher, 30));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30);
+    });
+    await flushMicrotasks();
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isFetching).toBe(false);
+    // The diagnostic exists so a future "card stuck on loading" regression
+    // is not silently masked — the message must include the failing key.
+    expect(consoleSpy).toHaveBeenCalledOnce();
+    const [msg, errArg] = consoleSpy.mock.calls[0];
+    expect(String(msg)).toContain('k');
+    expect((errArg as Error).message).toBe('boom');
+    consoleSpy.mockRestore();
+  });
 });

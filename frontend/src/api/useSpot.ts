@@ -61,8 +61,15 @@ export function useSpot<T>(
           setData(value);
           setIsFetching(false);
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           if (token !== tokenRef.current) return;
+          // Surface the failure so a future bug of the shape "card stuck on
+          // '커서 위치 로딩 중…' forever" is not silently masked. We keep
+          // `data` as undefined (callers distinguish loading vs no-data via
+          // the undefined check), but at least the error reaches the console
+          // for diagnosis. The prior empty catch hid a 400 on multi-day
+          // ranges for weeks.
+          console.error(`[useSpot] fetch failed for key=${key}:`, err);
           setIsFetching(false);
         });
     }, debounceMs);
