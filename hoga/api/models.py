@@ -84,16 +84,6 @@ class QuoteRatio(BaseModel):
     points: list[QuoteRatioPoint]
 
 
-class DepthIntensity(BaseModel):
-    bucket_ms: int
-    price_min: int
-    price_max: int
-    price_step: int
-    times: list[int]              # Unix ms per bucket
-    bid_grid: list[list[float]]   # len(times) × price_bins
-    ask_grid: list[list[float]]
-
-
 class VolumeProfileBin(BaseModel):
     price_low: int
     qty: int
@@ -342,7 +332,7 @@ class RangeBundle(BaseModel):
 
     All series aggregated at the same Timeframe (ADR-0014).
 
-    depth_intensity is per-segment (mirrors volume_profile_by_day) because each
+    volume_profile is per-segment (volume_profile_by_day) because each
     Stock-Date has its own price grid (price_min/price_max/price_step) — the
     grids cannot be concatenated meaningfully. QuoteRatio.points and
     FillStrength.points ARE concatenated across segments because they are flat
@@ -356,7 +346,6 @@ class RangeBundle(BaseModel):
     segments: list[RangeSegment]
     candles: list[ApiCandle]
     quote_ratio: QuoteRatio
-    depth_intensity_by_day: list[DepthIntensity]
     fill_strength: FillStrength
     volume_profile_range: VolumeProfile
     volume_profile_by_day: list[VolumeProfile]

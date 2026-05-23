@@ -156,20 +156,15 @@ def _patch_slice_builders(bundle_mod, bucket_ms: int = 60_000):
     """Return a list of context managers that stub every per-slice builder."""
     from unittest.mock import patch
     from hoga.api.models import (
-        DepthIntensity, FillStrength, QuoteRatio, VolumeProfile,
+        FillStrength, QuoteRatio, VolumeProfile,
     )
     qr = QuoteRatio(bucket_ms=bucket_ms, points=[])
-    di = DepthIntensity(
-        bucket_ms=bucket_ms, price_min=100, price_max=200,
-        price_step=1, times=[], bid_grid=[], ask_grid=[],
-    )
     fs = FillStrength(bucket_ms=bucket_ms, points=[])
     vp = VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
     return [
         patch.object(bundle_mod, "build_candles_slice", return_value=[]),
         patch.object(bundle_mod, "downsample_candles", return_value=[]),
         patch.object(bundle_mod, "build_quote_ratio_slice", return_value=qr),
-        patch.object(bundle_mod, "build_depth_intensity_slice", return_value=di),
         patch.object(bundle_mod, "build_fill_strength_slice", return_value=fs),
         patch.object(bundle_mod, "build_volume_profile_slice", return_value=vp),
     ]
@@ -205,7 +200,6 @@ def test_build_range_bundle_single_day_yields_one_segment():
     assert len(rb.segments) == 1
     assert rb.segments[0].date == "20260512"
     assert rb.bucket_ms == 60_000
-    assert len(rb.depth_intensity_by_day) == 1
     assert len(rb.volume_profile_by_day) == 1
 
 
@@ -226,7 +220,6 @@ def test_build_range_bundle_multi_day_concatenates_per_segment_lists():
 
     assert len(rb.segments) == 2
     assert [s.date for s in rb.segments] == ["20260512", "20260513"]
-    assert len(rb.depth_intensity_by_day) == 2
     assert len(rb.volume_profile_by_day) == 2
 
 

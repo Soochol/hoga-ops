@@ -5,7 +5,6 @@ import pytest
 
 from hoga.api.models import (
     ALLOWED_TIMEFRAME_MS,
-    DepthIntensity,
     FillStrength,
     QuoteRatio,
     RangeBundle,
@@ -51,17 +50,6 @@ def test_range_bundle_requires_at_least_one_segment_and_consistent_bucket():
         ],
         candles=[],
         quote_ratio=QuoteRatio(bucket_ms=60_000, points=[]),
-        depth_intensity_by_day=[
-            DepthIntensity(
-                bucket_ms=60_000,
-                price_min=0,
-                price_max=0,
-                price_step=1,
-                times=[],
-                bid_grid=[],
-                ask_grid=[],
-            ),
-        ],
         fill_strength=FillStrength(bucket_ms=60_000, points=[]),
         volume_profile_range=VolumeProfile(
             bin_count=0,
@@ -82,5 +70,4 @@ def test_range_bundle_requires_at_least_one_segment_and_consistent_bucket():
     )
     assert bundle.bucket_ms == 60_000
     assert len(bundle.segments) == 1
-    assert len(bundle.depth_intensity_by_day) == 1
     assert len(bundle.volume_profile_by_day) == 1

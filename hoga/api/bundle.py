@@ -19,7 +19,6 @@ from datetime import datetime
 from fastapi import HTTPException
 
 from hoga.api.models import (
-    DepthIntensity,
     FillStrength,
     FillStrengthPoint,
     QuoteRatio,
@@ -160,104 +159,6 @@ def tick_size(price_max: int) -> int:
         if price_max < threshold:
             return t
     return 1_000
-
-
-def _build_unpivot_sql() -> str:
-    """Generate the 20-row UNPIVOT (10 ask + 10 bid) against a single `snap` CTE.
-
-    Caller must define a `snap` CTE binding `read_parquet(?)` so the parquet
-    file is scanned once and the path is parameter-bound (not f-string
-    interpolated — which would be an injection surface if `code`/`date`
-    ever flowed in unsanitized).
-    """
-    parts = []
-    for i in range(1, 11):
-        parts.append(
-            f"SELECT ts_ms, 'ask' AS side, ask_p{i} AS price, ask_q{i} AS qty FROM snap"
-        )
-    for i in range(1, 11):
-        parts.append(
-            f"SELECT ts_ms, 'bid', bid_p{i}, bid_q{i} FROM snap"
-        )
-    return "\n  UNION ALL\n  ".join(parts)
-
-
-def build_depth_intensity_slice(
-    engine: QueryEngine,
-    *,
-    code: str,
-    date: str,
-    price_min: int | None = None,
-    price_max: int | None = None,
-    depth_bucket_ms: int = 5000,
-    max_cells: int = 2_000_000,
-) -> DepthIntensity:
-    code_dir = engine.parquet_dir(date, code)
-    candles_path = str(code_dir / "candles.parquet")
-    snapshots_path = str(code_dir / "snapshots.parquet")
-
-    # 1. Determine price range from candles MIN(low)/MAX(high)
-    if price_min is None or price_max is None:
-        row = engine.conn.execute(
-            "SELECT MIN(low), MAX(high) FROM read_parquet(?)", [candles_path],
-        ).fetchone()
-        price_min = int(row[0])
-        price_max = int(row[1])
-    tick = tick_size(price_max)
-    bin_count = (price_max - price_min) // tick + 1
-
-    # 2. Cell-cap: widen bucket until n_times * bin_count <= max_cells.
-    # Trading window = 7 hours = 25,200,000 ms.
-    while True:
-        n_times = 25_200_000 // depth_bucket_ms
-        if n_times * bin_count <= max_cells:
-            break
-        depth_bucket_ms *= 2
-
-    # 3. UNPIVOT + bin (single parquet scan via `snap` CTE; path is parameter-bound)
-    # Bucket on LINEAR ms-from-midnight via hhmmssms_to_intra_ms_sql — see
-    # build_quote_ratio_slice for the rationale (HHMMSSmmm non-linearity).
-    unpivot_sql = _build_unpivot_sql()
-    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    rows = engine.conn.execute(
-        f"""
-        WITH snap AS (
-          SELECT * FROM read_parquet(?)
-        ),
-        unpivoted AS (
-          {unpivot_sql}
-        ),
-        binned AS (
-          SELECT ({intra_ms_expr} // {depth_bucket_ms}) AS bucket,
-                 side,
-                 ((price - {price_min}) / {tick})::BIGINT AS bin_idx,
-                 MAX(qty) AS max_qty
-          FROM unpivoted
-          WHERE price BETWEEN {price_min} AND {price_max}
-          GROUP BY 1, 2, 3
-        )
-        SELECT bucket * {depth_bucket_ms}, side, bin_idx, max_qty
-        FROM binned ORDER BY bucket, side, bin_idx
-        """,
-        [snapshots_path],
-    ).fetchall()
-
-    # 4. Reshape into grids
-    # r[0] is bucket-aligned ms-from-midnight (linear), not HHMMSSmmm.
-    times_set = sorted({r[0] for r in rows})
-    times = [ms_from_midnight_to_unix_ms(date, t) for t in times_set]
-    bid_grid = [[0.0] * bin_count for _ in times_set]
-    ask_grid = [[0.0] * bin_count for _ in times_set]
-    t_idx = {t: i for i, t in enumerate(times_set)}
-    for t, side, b, q in rows:
-        target = ask_grid if side == "ask" else bid_grid
-        target[t_idx[t]][int(b)] = float(q)
-
-    return DepthIntensity(
-        bucket_ms=depth_bucket_ms,
-        price_min=price_min, price_max=price_max, price_step=tick,
-        times=times, bid_grid=bid_grid, ask_grid=ask_grid,
-    )
 
 
 def build_volume_profile_slice(
@@ -429,12 +330,11 @@ def build_range_bundle(
     Returns HTTP 404 if no Stock-Date in range has captured data.
 
     Loops over captured Stock-Dates calling each per-slice builder directly.
-    ``depth_intensity`` and ``volume_profile`` are returned as per-segment
-    lists (each Stock-Date has its own price grid — they cannot be
-    meaningfully concatenated). ``quote_ratio.points`` and
-    ``fill_strength.points`` ARE concatenated because they are flat
-    ``(t, value)`` arrays. ``volume_profile_range`` is computed once across
-    all dates via :func:`build_volume_profile_range`.
+    ``volume_profile`` is returned as a per-segment list (each Stock-Date
+    has its own price grid — they cannot be meaningfully concatenated).
+    ``quote_ratio.points`` and ``fill_strength.points`` ARE concatenated
+    because they are flat ``(t, value)`` arrays. ``volume_profile_range``
+    is computed once across all dates via :func:`build_volume_profile_range`.
     """
     validate_bucket_ms(bucket_ms)
 
@@ -461,7 +361,6 @@ def build_range_bundle(
     candles: list[ApiCandle] = []
     ratio_pts: list[QuoteRatioPoint] = []
     fill_pts: list[FillStrengthPoint] = []
-    intensity_by_day: list[DepthIntensity] = []
     profiles_by_day: list[VolumeProfile] = []
 
     for d in dates:
@@ -469,9 +368,6 @@ def build_range_bundle(
         raw_candles = build_candles_slice(engine, code=code, date=d)
         candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
         qr_d = build_quote_ratio_slice(engine, code=code, date=d, bucket_ms=bucket_ms)
-        di_d = build_depth_intensity_slice(
-            engine, code=code, date=d, depth_bucket_ms=bucket_ms,
-        )
         fs_d = build_fill_strength_slice(engine, code=code, date=d, bucket_ms=bucket_ms)
         vp_d = build_volume_profile_slice(engine, code=code, date=d)
 
@@ -483,7 +379,6 @@ def build_range_bundle(
         candles.extend(candles_d)
         ratio_pts.extend(qr_d.points)
         fill_pts.extend(fs_d.points)
-        intensity_by_day.append(di_d)
         profiles_by_day.append(vp_d)
 
     profile_range = build_volume_profile_range(engine, code=code, dates=dates)
@@ -496,7 +391,6 @@ def build_range_bundle(
         segments=segments,
         candles=candles,
         quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=ratio_pts),
-        depth_intensity_by_day=intensity_by_day,
         fill_strength=FillStrength(bucket_ms=bucket_ms, points=fill_pts),
         volume_profile_range=profile_range,
         volume_profile_by_day=profiles_by_day,

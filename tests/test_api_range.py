@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 def _build_range_bundle_stub(*, code, from_date, to_date, bucket_ms):
     """Return a minimal valid RangeBundle for happy-path tests."""
     from hoga.api.models import (
-        DepthIntensity,
         FillStrength,
         QuoteRatio,
         RangeBundle,
@@ -27,17 +26,6 @@ def _build_range_bundle_stub(*, code, from_date, to_date, bucket_ms):
         ],
         candles=[],
         quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=[]),
-        depth_intensity_by_day=[
-            DepthIntensity(
-                bucket_ms=bucket_ms,
-                price_min=0,
-                price_max=0,
-                price_step=1,
-                times=[],
-                bid_grid=[],
-                ask_grid=[],
-            ),
-        ],
         fill_strength=FillStrength(bucket_ms=bucket_ms, points=[]),
         volume_profile_range=VolumeProfile(
             bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[],
@@ -66,7 +54,6 @@ def test_api_range_happy_path(app_client: TestClient) -> None:
     assert "candles" in body
     assert "volume_profile_range" in body
     assert "volume_profile_by_day" in body
-    assert "depth_intensity_by_day" in body
 
 
 def test_api_range_400_on_invalid_bucket_ms(app_client: TestClient) -> None:
