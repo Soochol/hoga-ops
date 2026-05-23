@@ -7,9 +7,9 @@ const DISABLED_STATUSES: ReadonlySet<CalendarStatus> = new Set([
 ]);
 
 const STATUS_BADGE_COLOR: Partial<Record<CalendarStatus, string>> = {
-  complete: 'var(--up)',
+  complete: 'var(--success)',
   source_partial: 'var(--warn)',
-  client_incomplete: 'var(--down)',
+  client_incomplete: 'var(--error)',
 };
 
 export interface CalendarCellProps {

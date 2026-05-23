@@ -27,9 +27,9 @@ const STATUS_LABEL: Record<SymbolsCacheStatus, string> = {
 };
 const STATUS_COLOR: Record<SymbolsCacheStatus, string> = {
   loading: 'var(--fg-dim)',
-  fresh: 'var(--up)',
+  fresh: 'var(--success)',
   stale: 'var(--warn)',
-  unavailable: 'var(--down)',
+  unavailable: 'var(--error)',
 };
 
 export function SymbolSearch({ value, onChange }: SymbolSearchProps) {

@@ -17,7 +17,7 @@ export default function StatusDot() {
     return () => clearInterval(id);
   }, []);
   const color =
-    status === 'green' ? 'var(--up)' : status === 'yellow' ? 'var(--accent)' : 'var(--down)';
+    status === 'green' ? 'var(--success)' : status === 'yellow' ? 'var(--accent)' : 'var(--error)';
   const text =
     status === 'green'
       ? 'SSE 연결 활성'

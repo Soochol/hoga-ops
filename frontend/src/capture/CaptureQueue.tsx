@@ -108,7 +108,7 @@ export function CaptureQueue() {
           type="button"
           onClick={handleCancelAll}
           style={cancelAllArmed
-            ? ghostButton('var(--down)', 'var(--down)')
+            ? ghostButton('var(--error)', 'var(--error)')
             : ghostButton()
           }
         >{cancelAllArmed ? 'Click again to confirm' : 'Cancel All'}</button>

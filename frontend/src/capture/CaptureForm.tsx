@@ -110,7 +110,7 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
             background: 'var(--bg-input)',
             border: '1px solid var(--border)',
             borderRadius: 'var(--radius-sm, 4px)',
-            color: 'var(--down)',
+            color: 'var(--error)',
             fontSize: 'var(--font-size-sm, 0.875rem)',
           }}
         >
