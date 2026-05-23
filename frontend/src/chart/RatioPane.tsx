@@ -78,8 +78,7 @@ export default function RatioPane({ chart, bundle, axis, paneIndex = 0 }: Props)
           type: 'custom',
           formatter: (v: number) => {
             if (Math.abs(v) < 0.005) return '0';
-            const r = (1 + Math.abs(v)).toFixed(1);
-            return v >= 0 ? `${r}× S` : `${r}× B`;
+            return (1 + Math.abs(v)).toFixed(1);
           },
           minMove: 0.01,
         },
