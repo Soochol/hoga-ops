@@ -331,3 +331,42 @@ def test_collect_backs_off_rate_limit_on_429(tmp_path: Path) -> None:
     from collections import Counter
     counts = Counter(first_calls)
     assert any(c == 2 for c in counts.values()), "throttled page should be retried after backoff"
+
+
+def test_collect_doubles_rate_for_THROTTLE_BACKOFF_HOLD_PAGES_after_429(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """After a 429, next 10 pages sleep at 2x rate_limit_s, then page 11 returns to 1x."""
+    from hoga.collector.client import HogaplayHTTPError
+    from hoga.collector import orchestrator as orch
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(orch._time, "sleep", lambda s: sleeps.append(s))
+
+    # Build a fake with 15 sequential pages so we can observe rate over 10+ post-throttle pages.
+    first_pages = {84000000 + i*60000: _row(1, 1, 1, 2000+i, 84000000+i*60000+1000) for i in range(15)}
+
+    class ThrottleOnce(FakeClient):
+        def __init__(self) -> None:
+            super().__init__(info_body="info\n", first_pages=first_pages, chart_body="chart\n")
+            self._iter = 0
+        def fetch_first(self, code: str, date: str, time_ms: int) -> str:
+            self._iter += 1
+            if self._iter == 3:  # throttle on the 3rd call
+                self.calls.append(_Call("first", code, date, time_ms))
+                raise HogaplayHTTPError("throttled", status_code=429)
+            return super().fetch_first(code, date, time_ms)
+
+    fake = ThrottleOnce()
+    collect_stock_date(
+        client=fake, code="003490", date="20260519",
+        data_dir=tmp_path, rate_limit_s=0.05,
+    )
+
+    # The throttle backoff sleep is max(0.05*2.0, 1.0) = 1.0
+    assert 1.0 in sleeps, f"throttle backoff sleep (1.0) not found in {sleeps}"
+    # After throttle: 10 pages at 2x rate (0.10), then back to 0.05
+    doubled = sleeps.count(0.1)
+    normal_after = sleeps.count(0.05)
+    assert doubled >= 10, f"expected ≥10 doubled-rate sleeps after throttle, got {doubled} (all sleeps: {sleeps})"
+    assert normal_after >= 1, f"expected return to normal rate after 10 pages, got {normal_after}"

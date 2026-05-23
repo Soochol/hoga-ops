@@ -36,7 +36,10 @@ _MIN_FIELDS_GLOBAL_SEQ = 4
 # Throttle-aware backoff constants — see spec §8.2.
 THROTTLE_BACKOFF_FACTOR = 2.0
 THROTTLE_BACKOFF_HOLD_PAGES = 10  # Open Question #3: revisit if Phase 2 says otherwise
-THROTTLED_STATUSES = frozenset({429, 503})
+# Only 429 surfaces here as-is. 503 is retried internally by HogaplayClient
+# (with exponential backoff) and only escapes as an "exhausted retries"
+# HogaplayHTTPError with status_code=None — caller-killing intentionally.
+THROTTLED_STATUSES = frozenset({429})
 
 
 def page_sort_key(path: Path) -> int:
@@ -294,6 +297,13 @@ def _page_step_loop(
             http_ms = (_time.perf_counter() - http_t0) * 1000
         except HogaplayHTTPError as e:
             if e.status_code in THROTTLED_STATUSES:
+                if profile_path is not None:
+                    marker = json.dumps({
+                        "iter": iter_idx, "t_in": t_in,
+                        "throttled": True, "status_code": e.status_code,
+                    })
+                    with profile_path.open("a", encoding="utf-8") as f:
+                        f.write(marker + "\n")
                 _time.sleep(max(rate_limit_s * THROTTLE_BACKOFF_FACTOR, 1.0))
                 backoff_remaining = THROTTLE_BACKOFF_HOLD_PAGES
                 iter_idx -= 1
