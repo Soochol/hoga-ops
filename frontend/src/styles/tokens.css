@@ -37,6 +37,12 @@
   --up: #22C55E;
   --down: #F43F5E;
   --warn: #F59E0B;
+  /* New: status semantic (hex unchanged, names disambiguate from price-direction). */
+  --success: #22C55E;
+  --error:   #F43F5E;
+  /* New: KRX market convention — buy/up = red, sell/down = blue. */
+  --price-up:   #DC2626;
+  --price-down: #2563EB;
 
   /* ───── Color · Chart & Heatmap ───── */
   --grid: #1A1A26;
@@ -48,6 +54,10 @@
   --tint-selection: rgba(20, 184, 166, 0.12);
   --tint-up: rgba(34, 197, 94, 0.10);
   --tint-down: rgba(244, 63, 94, 0.10);
+  --tint-success:    rgba(34, 197, 94, 0.10);
+  --tint-error:      rgba(244, 63, 94, 0.10);
+  --tint-price-up:   rgba(220, 38, 38, 0.10);  /* DC2626 @ 10% */
+  --tint-price-down: rgba(37, 99, 235, 0.10);  /* 2563EB @ 10% */
 
   /* BEGIN AUTO-GENERATED (size + radius + layout) — regenerate via npm run gen:tokens */
   /* ───── Typography sizes (rem-based) ───── */
