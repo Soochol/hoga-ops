@@ -36,6 +36,28 @@ describe('useTabsStore — timeframe + prefs (Map-based, CQ1)', () => {
     expect(prefs).toBeInstanceOf(Map);
   });
 
+  it('getPrefs returns default auctionWindowMask=true if not set', () => {
+    const id = useTabsStore.getState().tabs[0].id;
+    expect(useTabsStore.getState().getPrefs(id).auctionWindowMask).toBe(true);
+  });
+
+  it('setAuctionWindowMask flips the per-tab flag', () => {
+    const id = useTabsStore.getState().tabs[0].id;
+    useTabsStore.getState().setAuctionWindowMask(id, false);
+    expect(useTabsStore.getState().getPrefs(id).auctionWindowMask).toBe(false);
+    useTabsStore.getState().setAuctionWindowMask(id, true);
+    expect(useTabsStore.getState().getPrefs(id).auctionWindowMask).toBe(true);
+  });
+
+  it('setAuctionWindowMask preserves volumeProfileMode on the same tab', () => {
+    const id = useTabsStore.getState().tabs[0].id;
+    useTabsStore.getState().setVolumeProfileMode(id, 'per-day');
+    useTabsStore.getState().setAuctionWindowMask(id, false);
+    const prefs = useTabsStore.getState().getPrefs(id);
+    expect(prefs.volumeProfileMode).toBe('per-day');
+    expect(prefs.auctionWindowMask).toBe(false);
+  });
+
   it('closeTab removes the closed tab from prefs Map', () => {
     const id1 = useTabsStore.getState().tabs[0].id;
     const id2 = useTabsStore.getState().newTab();

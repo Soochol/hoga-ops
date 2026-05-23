@@ -15,9 +15,20 @@ export type TabStatus = 'empty' | 'loading' | 'loaded' | 'error';
  *  Map<tabId, ChartViewPrefs> on the store for parity with Tab.bundles (CQ1). */
 export type ChartViewPrefs = {
   volumeProfileMode: 'range' | 'per-day';
+  /**
+   * When `true`, RatioPane masks the 15:20–15:30 KST Auction Window band by
+   * forcing each `value` to 0 instead of the raw `quoteImbalance(...)` result.
+   * The Window is dominated by one-sided order accumulation, so the derived
+   * ratio whips to non-informative extremes there (see CONTEXT.md "Auction
+   * Window" entry). Default `true`.
+   */
+  auctionWindowMask: boolean;
 };
 
-const DEFAULT_PREFS: ChartViewPrefs = { volumeProfileMode: 'range' };
+const DEFAULT_PREFS: ChartViewPrefs = {
+  volumeProfileMode: 'range',
+  auctionWindowMask: true,
+};
 
 export type Tab = {
   id: string;
@@ -43,6 +54,7 @@ type Store = {
   putBundle: (id: string, date: string, bundle: RangeBundle) => void;
   getPrefs: (id: string) => ChartViewPrefs;
   setVolumeProfileMode: (id: string, mode: ChartViewPrefs['volumeProfileMode']) => void;
+  setAuctionWindowMask: (id: string, enabled: boolean) => void;
   reset: () => void;
 };
 
@@ -111,6 +123,12 @@ export const useTabsStore = create<Store>((set, get) => ({
     set((s) => {
       const next = new Map(s.prefs);
       next.set(id, { ...DEFAULT_PREFS, ...next.get(id), volumeProfileMode: mode });
+      return { prefs: next };
+    }),
+  setAuctionWindowMask: (id, enabled) =>
+    set((s) => {
+      const next = new Map(s.prefs);
+      next.set(id, { ...DEFAULT_PREFS, ...next.get(id), auctionWindowMask: enabled });
       return { prefs: next };
     }),
   reset: () => {
