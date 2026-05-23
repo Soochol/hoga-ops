@@ -2,17 +2,23 @@
 
 **원본:** ~/.local/share/hoga-ops/data/raw/20260518/003490/ (3931 pages, finished=False)
 
-**Summary** (from drain-summary-20260518.txt):
+**Summary (from drain-summary-20260518.txt):**
 - total_pages: 3931
-- post_window_first_idx (max_event_time ≥ 160M): None — 데이터가 공식 윈도우 끝(16:00)에 도달하지 않음
-- drain_iterations (실측, page 103~3931): 3829
-- post_window_empty_resets: 0 (page 102 이후 new_seqs > 0 없음)
-- max_empty_streak_post_window: 3829 (단조 증가 — 리셋 없음)
+- post_window_first_idx: None — 스크립트가 `max_event_time ≥ DATA_WINDOW_END_MS(160M ms = 16:00)` 탐지 기준이라 한 번도 충족되지 않음
+- post_window_empty_resets: 0
+- max_empty_streak_post_window: 0 — post_window가 한 번도 발동되지 않아 post-window empty streak 없음
 - avg_reset_gap_pages: N/A
+
+**TSV 실측 (page 103~3931):**
+- drain_iterations: 3829 (연속 empty 페이지 수)
+- global_max_empty_streak: 3829 (단조 증가 — 리셋 없음, cap-hit가 매 페이지 `_empty_in_a_row`를 리셋하기 때문)
 
 **참고:** `drain-summary-20260518.txt`의 `post_window_first_idx=None`은 스크립트가
 `max_event_time ≥ DATA_WINDOW_END_MS(160,000,000ms = 16:00)`를 탐지하도록 작성됐기 때문.
 실제 시장 데이터는 ~90,345,810ms(≈09:03:45 KST)에서 끊겼으므로 이 조건은 한 번도 충족되지 않음.
+따라서 summary 파일의 `max_empty_streak_post_window=0`은 정확함 — post_window가 발동된 적 없으므로
+post-window empty streak도 0이 맞음. 3829는 summary 파일의 post-window 지표가 아니라
+TSV 전체에서 측정한 global empty streak (drain_iterations)임.
 drain 경계는 별도로 측정: page 102가 마지막 new_seqs > 0, page 103부터 3829 페이지가 연속 empty.
 
 ## 실제 종료 실패 메커니즘
