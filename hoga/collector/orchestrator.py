@@ -370,7 +370,7 @@ def collect_stock_date(
     code: str,
     date: str,
     data_dir: Path,
-    rate_limit_s: float = 0.2,
+    rate_limit_s: float = 0.05,  # was 0.2 — see ADR-0017 / Phase 1 matrix sweep
     resume: bool = False,
     on_progress: Callable[[ProgressEvent], None] | None = None,
     cancel_token: CancelToken | None = None,
