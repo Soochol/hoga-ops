@@ -40,6 +40,7 @@ Sorted by avg_pages_per_90s descending.
 - `rate=0.05` delivered **1014 pages in 90 s** at open start vs 367 pages at `rate=0.2`
   — a **2.76× throughput gain** with zero 429/403/503 errors observed across all 27
   cells. The server tolerated the higher request rate without any throttle response.
+  rate=0.1 was also tested safely (open: 634 pages vs 1014 at rate=0.05 — 37% less throughput) but strictly dominated by rate=0.05 within the tested matrix; no observed benefit.
 - `step_ms=60000` is kept unchanged. It already yielded cap_hit_rate ≈ 0.5% for 003490
   at open — well within the acceptable range. Increasing step to 120k or 240k introduces
   progressively higher cap_hit rates (see Rejected cells below) with no throughput benefit
@@ -62,7 +63,7 @@ Sorted by avg_pages_per_90s descending.
   with no benefit for 003490's activity profile
 - Not competitive with step=60k at any rate tested
 
-**rate > 0.05 not explored:**
+**rate < 0.05 not explored:**
 - `rate=0.05` is the fastest rate tested. `rate=0.02` would probe the true safety floor.
   Left as future work for Task 8 weekday re-verification.
 
@@ -83,14 +84,14 @@ capture client, not a server-enforced event cap.
 
 ## Open Question #2 — HogaMs Overflow (spec §8.3)
 
-**Answer: hogaplay tolerates HogaMs values beyond typical trading-session bounds.**
+**OQ#2 (HogaMs overflow tolerance):** Confirmed tolerant.
 
-The matrix included start_label="close" with start_t=152_000_000 ms
-(equivalent to `84_152_000_000` ns = ~15:12 KST), and step=120k/240k cells
-reached effective HogaMs of `84_272_000_000` and `84_392_000_000` respectively.
-All returned outcome=ok with normal HTTP 200 responses (no HTTP 400 seen). hogaplay
-gracefully returns what data exists for the requested range and does not reject
-out-of-session HogaMs values with an error.
+start_t values used (HHMMSSmmm encoding):
+- 90_000_000 = 09:00:00.000 KST (open)
+- 120_000_000 = 12:00:00.000 KST (lunch)
+- 152_000_000 = 15:20:00.000 KST (close, start of closing Auction Window)
+
+Each cell drove `t` forward by step_ms increments (60_000 / 120_000 / 240_000). For step=240k starting at 15:20, t crosses 16:00:00.000 (160_000_000) within ~33 iterations. Hogaplay returned HTTP 200 for all such queries across all 27 cells — no HTTP 400 for HogaMs values past 16:00 (e.g., 160_240_000 = "16:02:40.000"). Server is tolerant of these synthetic overflow values.
 
 ## Caveat — Saturday Night Measurement
 
@@ -99,7 +100,7 @@ All 27 cells were captured on **Saturday 2026-05-23 at approximately 23:00 KST**
 
 Two risks for weekday generalization:
 1. **RTT may be higher on weekdays** due to increased hogaplay load during market hours.
-   The p95 HTTP latencies observed (44–144 ms) may rise, which could affect whether
+   p95 HTTP latencies observed across all 27 cells: 44–144 ms (individual cells; averaged per (rate, step) pair: 48.9–91.9 ms — see table). Weekday p95 may differ.
    `rate=0.05` remains safe under sustained load.
 2. **Throttle policy may differ during market hours.** The complete absence of 429/503
    responses at `rate=0.05` is encouraging but was not stress-tested under concurrent

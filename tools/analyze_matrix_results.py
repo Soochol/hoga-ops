@@ -37,12 +37,13 @@ def main() -> None:
             "avg_http_ms_p95": round(avg_p95, 1),
             "avg_body_len_p50": round(avg_body, 0),
             "safe_runs": len(ok_runs),
+            "total_runs": len(runs),
         })
     rows.sort(key=lambda r: r["avg_pages_per_90s"], reverse=True)
     print("| rate | step | pages/90s | cap_hit | http_p95 | body_p50 | safe |")
     print("|---|---|---|---|---|---|---|")
     for r in rows:
-        print(f"| {r['rate_s']} | {r['step_ms']} | {r['avg_pages_per_90s']} | {r['avg_cap_hit_rate']} | {r['avg_http_ms_p95']} | {r['avg_body_len_p50']} | {r['safe_runs']}/3 |")
+        print(f"| {r['rate_s']} | {r['step_ms']} | {r['avg_pages_per_90s']} | {r['avg_cap_hit_rate']} | {r['avg_http_ms_p95']} | {r['avg_body_len_p50']} | {r['safe_runs']}/{r['total_runs']} |")
 
 
 if __name__ == "__main__":
