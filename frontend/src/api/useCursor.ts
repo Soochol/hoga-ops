@@ -1,6 +1,10 @@
 // useCursor + useSpot wiring. Each sidebar card subscribes to
 // `tab.cursorMs` for the active tab and pulls spot data keyed by
-// (tabId, endpoint, t). Trades pull a 5s look-back window of up to 20 fills.
+// (tabId, endpoint, t). Trades pull the last N fills at-or-before the
+// cursor via the backend's ?t= mode — a fixed-time-window query used to
+// return empty arrays in low-volume minutes (e.g. mid-session lulls,
+// auction edges), making the 체결 card read as broken when it was just
+// sparse. "Last N before cursor" matches the UI's intent ("체결 흐름").
 import { useTabsStore } from '../state/tabs';
 import { apiGet } from './client';
 import { useSpot } from './useSpot';
@@ -71,15 +75,15 @@ export function useBrokersAtCursor() {
   return data;
 }
 
-export function useTradesAroundCursor(windowMs: number = 5000, limit: number = 20) {
+export function useTradesAroundCursor(limit: number = 20) {
   const { tabId, code, date, cursorMs } = useCursor();
   const key =
     code && date && Number.isFinite(cursorMs)
-      ? `${tabId}|tr|${code}|${date}|${cursorMs}|${windowMs}|${limit}`
+      ? `${tabId}|tr|${code}|${date}|${cursorMs}|${limit}`
       : null;
   const { data } = useSpot(key, () =>
     apiGet<{ trades: Trade[] }>(
-      `/api/trades?code=${code}&date=${date}&from=${cursorMs! - windowMs}&to=${cursorMs}&limit=${limit}`,
+      `/api/trades?code=${code}&date=${date}&t=${cursorMs}&limit=${limit}`,
     ).then((r) => r.trades),
   );
   // Preserve the (T | null | undefined) shape: undefined = haven't fetched
