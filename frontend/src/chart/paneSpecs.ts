@@ -1,5 +1,6 @@
 import type { PaneSpec } from './RangeSeriesPane';
 import { QUOTE_TOTALS_SPEC } from './projectors/quoteTotals';
+import { VOLUME_SPEC } from './projectors/volume';
 
 /**
  * Master registry of `PaneSpec`s rendered by ChartStage in paneIndex
@@ -18,8 +19,8 @@ import { QUOTE_TOTALS_SPEC } from './projectors/quoteTotals';
  */
 export const PANE_SPECS: PaneSpec<any>[] = [
   // pane 0 (candle) — still hand-mounted
-  // pane 1 (volume) — still hand-mounted
+  VOLUME_SPEC,
   // pane 2 (ratio) — still hand-mounted
-  QUOTE_TOTALS_SPEC, // mounted at paneIndex=3 explicitly by ChartStage during migration
+  QUOTE_TOTALS_SPEC,
   // pane 4 (fill-strength) — still hand-mounted
 ];

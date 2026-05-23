@@ -17,10 +17,10 @@ import {
 import { useViewportStore } from '../state/viewport';
 import { useTabsStore } from '../state/tabs';
 import CandlePane from './CandlePane';
-import VolumePane from './VolumePane';
 import RatioPane from './RatioPane';
 import RangeSeriesPane from './RangeSeriesPane';
 import { QUOTE_TOTALS_SPEC } from './projectors/quoteTotals';
+import { VOLUME_SPEC } from './projectors/volume';
 import FillStrengthPane from './FillStrengthPane';
 import VolumeProfileOverlay from './VolumeProfileOverlay';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
@@ -282,7 +282,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
             <CandlePane chart={chart} bundle={bundle} axis={axis} paneIndex={0} />
           </div>
           <div data-pane="volume" className="hidden">
-            <VolumePane chart={chart} bundle={bundle} axis={axis} paneIndex={1} />
+            <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={1} spec={VOLUME_SPEC} />
           </div>
           <div data-pane="ratio" className="hidden">
             <RatioPane chart={chart} bundle={bundle} axis={axis} paneIndex={2} />
