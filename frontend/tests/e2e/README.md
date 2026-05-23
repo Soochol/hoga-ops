@@ -5,7 +5,7 @@ These Playwright specs are committed as the **canonical contract** for E2E cover
 ## Resolved gating
 
 1. ~~**Workarea wiring (Phase 6+ deferred):**~~ **DONE (Wave 5.2)** — `Workarea.tsx` now wires `useSession` → `<ChartStage />` + `<CursorSidebarConnected />`.
-2. ~~**`data-pane` attributes:**~~ **DONE (Wave 5.1)** — `ChartStage` wraps each of the 5 panes in `<div data-pane="candle|volume|ratio|fill-strength|intensity|volume-profile">`.
+2. ~~**`data-pane` attributes:**~~ **DONE (Wave 5.1)** — `ChartStage` wraps each of the 5 panes in `<div data-pane="candle|volume|ratio|fill-strength|quote-totals|volume-profile">`.
 3. ~~**`data-card` attributes:**~~ **DONE (Wave 5.4)** — `CursorSidebar`'s `SidebarCard` now emits both `data-testid="card-<key>"` and `data-card="<key>"`.
 4. ~~**Backend fixture extension:**~~ **DONE** — `tests/fixtures/tiny_tsv_multi/` ships 005930 and 000660.
 5. ~~**`.tab` CSS classes for `multi-tab.spec.ts`:**~~ **DONE (W6.2)** — `Tab.tsx` now emits `class="tab"`, `class="tab active"`, and `class="tab-code"` markers. The spec is unskipped, but still depends on **Remaining gating #1** (Playwright globalSetup with multi-stock seeding, W6.4) before it can pass end-to-end.

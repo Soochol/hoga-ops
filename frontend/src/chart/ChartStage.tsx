@@ -34,8 +34,10 @@ const CHART_TOKEN_SPEC = {
 
 export type ChartStageProps = {
   /**
-   * The full range payload (candles, ratio series, intensity matrix, fill
-   * strength, etc.) for the Stock-Date Range (ADR-0013). When `null`
+   * The full range payload for the Stock-Date Range (ADR-0013): candles,
+   * `quote_ratio` (carries `bid_total`/`ask_total` totals consumed by both
+   * RatioPane and QuoteTotalsPane), `fill_strength`, and the
+   * `volume_profile_range` / `volume_profile_by_day` series. When `null`
    * (loading / error), no panes mount and the stage shows only the bare
    * chart chrome.
    */

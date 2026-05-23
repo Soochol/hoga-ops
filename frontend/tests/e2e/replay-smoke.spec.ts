@@ -32,7 +32,7 @@ test.describe('Replay smoke', () => {
     await page.getByRole('button', { name: /데이터 불러오기/ }).click();
 
     // Verify all 5 panes render (gated on data-pane attribute additions)
-    for (const pane of ['candle', 'volume', 'ratio', 'intensity', 'fill-strength']) {
+    for (const pane of ['candle', 'volume', 'ratio', 'quote-totals', 'fill-strength']) {
       await expect(page.locator(`[data-pane="${pane}"]`)).toBeVisible({ timeout: 5000 });
     }
 
@@ -52,7 +52,7 @@ test.describe('Replay smoke', () => {
     await page.goto('/replay?tabs=003490:20260511:20260511&active=0');
 
     // 5개 차트 pane이 모두 mount되어야 한다
-    for (const pane of ['candle', 'volume', 'ratio', 'intensity', 'fill-strength']) {
+    for (const pane of ['candle', 'volume', 'ratio', 'quote-totals', 'fill-strength']) {
       await expect(page.locator(`[data-pane="${pane}"]`)).toBeVisible({ timeout: 5000 });
     }
 
