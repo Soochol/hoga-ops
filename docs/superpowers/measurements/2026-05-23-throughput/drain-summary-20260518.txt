@@ -1,0 +1,7 @@
+---SUMMARY---
+total_pages=3931
+post_window_first_idx=None
+drain_iterations=0
+post_window_empty_resets=0
+max_empty_streak_post_window=0
+avg_reset_gap_pages=0.0
