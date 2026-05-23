@@ -1028,48 +1028,85 @@ EOF
 
 ## Phase 3 — 코드화 + 안전 가드 + ADR (Tasks 9-13)
 
-### Task 9: drain 조기 종료 가드
+### Task 9: stagnation 종료 가드 (v2 — Task 1 발견 반영)
 
 **Files:**
-- Modify: `hoga/collector/page_step.py` (top constants + `PageStepController.observe`)
+- Modify: `hoga/collector/page_step.py` (top constants + `PageStepController.__init__` + `observe`)
 - Modify: `tests/test_page_step.py` (new test)
 
-**Background:** Task 1의 분석에서 도출된 `MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END` 값을 사용. 분석 결과에서 추출한 값을 아래 `<MAX_DRAIN>`에 대입.
+**Background:** Task 1 분석이 spec v1의 가정을 뒤집었습니다 (`docs/superpowers/measurements/2026-05-23-throughput/drain-analysis-20260518.md` 참조). 폭주는 "post-window drain"이 아니라 hogaplay가 응답을 동결시켰을 때 `observe()`의 cap-hit 분기가 매 페이지 empty counter를 리셋해 정상 종료가 영원히 미충족되는 현상. spec §8.3 v2의 stagnation 감지 가드로 구현.
+
+가드 동작:
+- `observe()` 매 호출에서 `max_event_time`이 직전 값과 동일(또는 None) AND `new_seqs == 0`이면 `_stagnant_pages += 1`
+- 둘 중 하나라도 advance했으면 `_stagnant_pages = 0`
+- `_stagnant_pages >= MAX_STAGNANT_PAGES`(기본 100)이면 `should_stop = True`
 
 - [ ] **Step 1: 실패 테스트 작성**
 
 Append to `tests/test_page_step.py`:
 
 ```python
-def test_drain_guard_forces_stop_after_max_iterations() -> None:
-    """When iterating past DATA_WINDOW_END without natural termination,
-    the guard caps post-window iterations and forces should_stop=True."""
-    from hoga.collector.page_step import PageStepController, DATA_WINDOW_END_MS
+def test_stagnation_guard_forces_stop_when_max_frozen_and_no_new_seqs() -> None:
+    """When hogaplay freezes max_event_time and returns no new seqs for
+    MAX_STAGNANT_PAGES iterations, the controller forces should_stop=True."""
+    from hoga.collector.page_step import PageStepController
 
-    # Start already past the data window end.
     ctrl = PageStepController(
-        initial_t=DATA_WINDOW_END_MS,
-        initial_step_ms=1000,
-        max_drain_iterations_after_window_end=5,  # NEW kwarg
+        initial_t=84000000,
+        initial_step_ms=60000,
+        max_stagnant_pages=5,  # NEW kwarg, small value for fast test
     )
-    # Feed it pages where new_seqs > 0 keeps resetting empty_in_a_row.
-    decisions = []
+    # First call: max=84050000, new_seqs=1 — establishes baseline (not stagnant)
+    d0 = ctrl.observe(max_event_time=84050000, new_seqs=1)
+    assert not d0.should_stop
+
+    # Subsequent calls: same max, no new seqs → stagnant counter grows
+    decisions = [d0]
     for _ in range(10):
-        d = ctrl.observe(max_event_time=DATA_WINDOW_END_MS + 100, new_seqs=1)
+        d = ctrl.observe(max_event_time=84050000, new_seqs=0)
         decisions.append(d)
         if d.should_stop:
             break
+
     assert decisions[-1].should_stop
-    assert len(decisions) == 5  # capped by max_drain
+    # 5 stagnant calls after the baseline → 6 total (baseline + 5)
+    assert len(decisions) == 6
+
+
+def test_stagnation_guard_resets_when_max_advances() -> None:
+    """If max_event_time advances at any point, stagnant counter resets."""
+    from hoga.collector.page_step import PageStepController
+
+    ctrl = PageStepController(
+        initial_t=84000000,
+        initial_step_ms=60000,
+        max_stagnant_pages=3,
+    )
+    ctrl.observe(max_event_time=84050000, new_seqs=1)
+    # 2 stagnant pages (under threshold)
+    ctrl.observe(max_event_time=84050000, new_seqs=0)
+    ctrl.observe(max_event_time=84050000, new_seqs=0)
+    # Advance: max moves forward → reset
+    ctrl.observe(max_event_time=84100000, new_seqs=2)
+    # Now 3 more stagnant — should still NOT stop (counter was reset)
+    d1 = ctrl.observe(max_event_time=84100000, new_seqs=0)
+    d2 = ctrl.observe(max_event_time=84100000, new_seqs=0)
+    d3 = ctrl.observe(max_event_time=84100000, new_seqs=0)
+    # Should stop on the 4th post-reset stagnant call (threshold=3 → exceeds after 3)
+    # Actually with threshold=3, the 3rd stagnant call hits should_stop:
+    assert not d1.should_stop  # 1 stagnant
+    assert not d2.should_stop  # 2 stagnant
+    assert d3.should_stop      # 3 stagnant → stop
 ```
 
 - [ ] **Step 2: 실패 확인**
 
 ```bash
-uv run pytest tests/test_page_step.py::test_drain_guard_forces_stop_after_max_iterations -v
+cd /home/dev/code/hoga-ops/.claude/worktrees/feat+frontend3
+uv run pytest tests/test_page_step.py::test_stagnation_guard_forces_stop_when_max_frozen_and_no_new_seqs tests/test_page_step.py::test_stagnation_guard_resets_when_max_advances -v
 ```
 
-Expected: FAIL (`TypeError: __init__() got an unexpected keyword argument 'max_drain_iterations_after_window_end'`).
+Expected: FAIL (`TypeError: __init__() got an unexpected keyword argument 'max_stagnant_pages'`).
 
 - [ ] **Step 3: 구현 — page_step.py 수정**
 
@@ -1077,7 +1114,7 @@ Expected: FAIL (`TypeError: __init__() got an unexpected keyword argument 'max_d
 
 ```python
 # hoga/collector/page_step.py 상단
-MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END = <MAX_DRAIN>  # from Task 1 analysis
+MAX_STAGNANT_PAGES = 100  # see spec §8.3 v2 — guards against hogaplay response freeze
 ```
 
 `PageStepController.__init__` 시그니처 + 본문 수정:
@@ -1091,7 +1128,7 @@ def __init__(
     min_step_ms: int = MIN_PAGE_STEP_MS,
     data_window_end_ms: int = DATA_WINDOW_END_MS,
     termination_empty_pages: int = TERMINATION_EMPTY_PAGES,
-    max_drain_iterations_after_window_end: int = MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END,
+    max_stagnant_pages: int = MAX_STAGNANT_PAGES,
 ) -> None:
     self._t = initial_t
     self._step_ms = initial_step_ms
@@ -1099,25 +1136,53 @@ def __init__(
     self._min_step_ms = min_step_ms
     self._data_window_end_ms = data_window_end_ms
     self._termination_empty_pages = termination_empty_pages
-    self._max_drain_iters = max_drain_iterations_after_window_end
+    self._max_stagnant = max_stagnant_pages
     self._empty_in_a_row = 0
-    self._drain_iters = 0
+    self._stagnant_pages = 0
+    self._last_max_event_time: int | None = None
 ```
 
-`observe` 의 normal-advance 분기 끝부분 (`should_stop` 계산):
+`observe` 의 본문 — 진입 시 stagnation 업데이트 + `should_stop`에 OR 조건 추가:
 
 ```python
-# After the existing t += step_ms advance:
-if self._t >= self._data_window_end_ms:
-    self._drain_iters += 1
-should_stop = (
-    self._t >= self._data_window_end_ms
-    and (
-        self._empty_in_a_row >= self._termination_empty_pages
-        or self._drain_iters >= self._max_drain_iters
+def observe(self, *, max_event_time: int | None, new_seqs: int) -> StepDecision:
+    # Update stagnation counter (must run BEFORE cap-hit branch which may not return early changes)
+    if max_event_time == self._last_max_event_time and new_seqs == 0:
+        self._stagnant_pages += 1
+    else:
+        self._stagnant_pages = 0
+    self._last_max_event_time = max_event_time
+
+    target = self._t + self._step_ms
+    cap_hit = (
+        max_event_time is not None
+        and max_event_time < target
+        and self._step_ms > self._min_step_ms
+        and self._t < self._data_window_end_ms
     )
-)
-return StepDecision(progress_t=progress_t, should_stop=should_stop)
+    if cap_hit:
+        self._step_ms = max(self._step_ms // 2, self._min_step_ms)
+        self._t = self._t + self._step_ms
+        self._empty_in_a_row = 0
+        # NEW: even in cap-hit branch, stagnation guard can fire
+        if self._stagnant_pages >= self._max_stagnant:
+            return StepDecision(progress_t=self._t, should_stop=True)
+        return StepDecision(progress_t=self._t, should_stop=False)
+
+    # Normal advance (unchanged from existing code)
+    if new_seqs == 0:
+        self._empty_in_a_row += 1
+    else:
+        self._empty_in_a_row = 0
+        if self._step_ms < self._initial_step_ms:
+            self._step_ms = min(self._step_ms * 2, self._initial_step_ms)
+    progress_t = self._t
+    self._t += self._step_ms
+    should_stop = (
+        self._t >= self._data_window_end_ms
+        and self._empty_in_a_row >= self._termination_empty_pages
+    ) or self._stagnant_pages >= self._max_stagnant
+    return StepDecision(progress_t=progress_t, should_stop=should_stop)
 ```
 
 - [ ] **Step 4: 테스트 + 회귀 확인**
@@ -1126,24 +1191,29 @@ return StepDecision(progress_t=progress_t, should_stop=should_stop)
 uv run pytest tests/test_page_step.py tests/test_collector_orchestrator.py -v
 ```
 
-Expected: 신규 테스트 + 기존 모두 PASS
+Expected: 신규 2 테스트 + 기존 모두 PASS. 만약 기존 cap-detection 테스트가 stagnation 가드와 상호작용하면 (예: `_CAP_RETRY_LOW`/`_CAP_RETRY_HIGH` 시나리오에서 max가 정지된 채 cap-hit 반복) → 해당 테스트의 fake first_pages를 max가 advance하도록 조정 또는 `max_stagnant_pages=999999`로 충분히 크게 우회.
 
 - [ ] **Step 5: commit**
 
 ```bash
 git add hoga/collector/page_step.py tests/test_page_step.py
 git commit -m "$(cat <<'EOF'
-feat(page_step): drain runaway guard (max iterations post-window)
+feat(page_step): stagnation termination guard (max_event_time freeze)
 
-Adds MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END=<MAX_DRAIN> (sized from the
-20260518 003490 post-hoc analysis: max empty_streak <3 + sporadic
-new_seqs kept resetting the counter, letting drain run to 3931 pages).
+Adds MAX_STAGNANT_PAGES=100 guard. Task 1's post-hoc analysis of the
+20260518/003490 runaway capture (drain-analysis-20260518.md) showed
+that spec v1's "post-window iteration cap" was based on a wrong
+assumption — hogaplay froze its response at t≈09:03:45, max_event_time
+never advanced, observe()'s cap-hit branch reset empty_in_a_row every
+page, and t never reached data_window_end. Result: 3829 wasted pages
+before the capture was killed externally.
 
-PageStepController now tracks _drain_iters and forces should_stop=True
-when the cap is hit, preventing future runaway captures regardless of
-hogaplay's post-window response shape.
+The v2 stagnation guard fires when max_event_time stays equal to its
+previous value AND new_seqs==0 for MAX_STAGNANT_PAGES consecutive calls,
+regardless of whether the cap-hit branch is active. Counter resets the
+moment either signal advances.
 
-Spec §8.3.
+Spec §8.3 (v2).
 Measurement: docs/superpowers/measurements/2026-05-23-throughput/drain-analysis-20260518.md
 EOF
 )"

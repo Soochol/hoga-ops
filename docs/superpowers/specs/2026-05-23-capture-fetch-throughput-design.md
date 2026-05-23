@@ -172,7 +172,7 @@ DEFAULT_RATE_LIMIT_S = <Phase 1+2에서 채택>  # was 0.2
 
 # hoga/collector/page_step.py
 DEFAULT_PAGE_STEP_MS = <Phase 1+2에서 채택>  # was 60_000
-MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END = <Phase 0.1 분석값 × 안전 마진>  # new
+MAX_STAGNANT_PAGES = 100  # new — see §8.3 for mechanism (was MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END in spec v1, retired after Phase 0.1)
 ```
 
 ### 8.2 차단 감지 시 자동 백오프
@@ -183,11 +183,29 @@ MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END = <Phase 0.1 분석값 × 안전 마진>  
 # 직후 N=10 페이지 동안 4xx 없으면 원복.
 ```
 
-### 8.3 drain 조기 종료 가드
+### 8.3 stagnation 종료 가드 (v2 — Phase 0.1 발견 반영)
 
-`PageStepController`에 `iters_since_window_end` 카운터 추가, `MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END` 초과 시 강제 종료 (warning log).
+**v1 가정 폐기**: spec v1은 "post-window iteration cap"을 가드로 제안했으나 20260518 사후 분석에서 폭주의 실제 root cause가 다른 것으로 드러남:
 
-이 가드가 있었다면 20260518 폭주는 1271 + 마진(예: 50) ≈ 1321에서 멈췄을 것.
+- hogaplay가 09:03:45 이후 같은 응답만 반환 → `max_event_time`이 advance 안 함
+- `t < window_end`인 동안 `max_event_time < t + step_ms` 항상 참 → `observe()`의 cap-hit 분기 발동
+- cap-hit 분기 안에서 `_empty_in_a_row = 0` 리셋 → `TERMINATION_EMPTY_PAGES=3` 영원히 미충족
+- t가 window_end 도달 못함 → v1 가드(`iters_since_window_end`) 발동 불가
+
+근거: `docs/superpowers/measurements/2026-05-23-throughput/drain-analysis-20260518.md`
+
+**v2 가드 메커니즘**:
+
+`PageStepController`에 stagnation 감지 카운터 추가. 매 `observe()` 호출에서:
+- `max_event_time`이 직전 호출과 동일 (또는 None) **AND** `new_seqs == 0` → `_stagnant_pages += 1`
+- 둘 중 하나라도 advance했으면 → `_stagnant_pages = 0`
+- `_stagnant_pages >= MAX_STAGNANT_PAGES (=100)` → `should_stop = True`
+
+값 sizing 근거 (100):
+- 정상 캡처에서 데이터가 100 페이지 연속(평균 28초) 없을 일은 거의 없음 (점심 시간 003490 같은 저활성도 데이터 dribble은 있음)
+- 폭주 케이스(stagnant 3829)와 비교해 가드는 100에서 발동, ~28초 안에 강제 종료
+
+이 가드가 도입되면 20260518 폭주는 page 103 + 100 = page 203 근처에서 종료됐을 것.
 
 ### 8.4 ADR-00XX
 
@@ -198,7 +216,7 @@ MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END = <Phase 0.1 분석값 × 안전 마진>  
 ## 9. 테스트 변경
 
 - `tests/test_collector_orchestrator.py`: `DEFAULT_RATE_LIMIT_S` / `DEFAULT_PAGE_STEP_MS` 변경에 따른 기대값 업데이트
-- `tests/test_page_step.py`: drain 가드 동작 (`MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END` 초과 시 종료) 신규 테스트
+- `tests/test_page_step.py`: stagnation 가드 동작 (`MAX_STAGNANT_PAGES` 초과 시 종료) 신규 테스트
 - `tests/test_collector_client.py`: 차단 백오프 동작 신규 테스트 (FakeTransport로 429 주입 후 rate_limit_s 적응 확인)
 - 통과 기준: 기존 테스트 회귀 0건 + 신규 3건 통과
 
@@ -221,4 +239,4 @@ MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END = <Phase 0.1 분석값 × 안전 마진>  
 1. hogaplay 응답에 시간 윈도우와 별개의 이벤트-개수 cap이 있는가? (Phase 1.D~I에서 결정)
 2. HogaMs 오버플로우 값(예: `t=84_180_000`)을 서버가 너그럽게 처리하는가? (Phase 1.G~I에서 결정)
 3. 차단 감지 후 백오프 회수 시점은 N=10 페이지가 적절한가? (Phase 2에서 검증, 미검증이면 conservative N=30)
-4. drain 가드의 안전 마진은 +50 적절한가? (Phase 0.1 분석에서 결정)
+4. ~~drain 가드의 안전 마진은 +50 적절한가? (Phase 0.1 분석에서 결정)~~ **해결됨 (Phase 0.1)**: drain 가드 메커니즘 자체가 잘못된 가정이었음. v2에서 stagnation 감지로 교체 (§8.3 참조). 새 값 `MAX_STAGNANT_PAGES=100`.
