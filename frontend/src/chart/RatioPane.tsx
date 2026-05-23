@@ -7,11 +7,10 @@ import { resolveTokens } from '../util/tokens';
 import { useChartPrefs } from './ChartPrefsContext';
 
 const TOKEN_SPEC = {
-  ratioAsk: ['--ratio-ask', '#3B82F6'],
-  // Reused: same hex as price-direction --down, but here it encodes
-  // bid-heavy order-book pressure (below 0). Inline comment marks the
-  // semantic distinction so future maintainers don't refactor it away.
-  ratioBid: ['--down', '#F43F5E'],
+  // KRX 컨벤션: 매수=상승=빨강, 매도=하락=파랑. RatioPane은 price-direction
+  // 토큰을 직접 차용해 의미 충돌 없음 (도서 압력 부호와 가격 방향이 정렬됨).
+  ratioBid: ['--price-up',   '#DC2626'],
+  ratioAsk: ['--price-down', '#2563EB'],
   baseline: ['--fg-dimmer', '#64748B'],
 } as const;
 
@@ -71,9 +70,10 @@ export default function RatioPane({ chart, bundle, axis, paneIndex = 0 }: Props)
         // A 3px stroke survives both the small-magnitude near-baseline runs
         // and the cross-day extreme spikes that compress the visible range.
         lineWidth: 3 as any,
-        // Suppress the library-default horizontal line at the latest value.
-        // The right-axis chip still shows the latest value via lastValueVisible.
+        // Suppress the library-default horizontal line + right-axis chip at the
+        // latest value. Analysts read the latest ratio via crosshair.
         priceLineVisible: false,
+        lastValueVisible: false,
         priceFormat: {
           type: 'custom',
           formatter: (v: number) => {
