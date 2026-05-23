@@ -5,8 +5,8 @@ import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = {
-  up: ['--up', '#22C55E'],
-  down: ['--down', '#F43F5E'],
+  up: ['--price-up',   '#DC2626'],
+  down: ['--price-down', '#2563EB'],
 } as const;
 
 type Props = {
@@ -41,9 +41,9 @@ export default function VolumePane({ chart, bundle, axis, paneIndex = 0 }: Props
           minMove: 1,
         },
         priceScaleId: 'right',
-        // Suppress the library-default horizontal line at the latest bar.
-        // The right-axis chip still shows the latest total volume.
+        // 우측 축 마지막값 라인/칩 모두 제거 — crosshair로만 값 확인.
         priceLineVisible: false,
+        lastValueVisible: false,
       },
       paneIndex,
     );
