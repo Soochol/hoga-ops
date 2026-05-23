@@ -1114,7 +1114,7 @@ Expected: FAIL (`TypeError: __init__() got an unexpected keyword argument 'max_s
 
 ```python
 # hoga/collector/page_step.py 상단
-MAX_STAGNANT_PAGES = 100  # see spec §8.3 v2 — guards against hogaplay response freeze
+MAX_STAGNANT_PAGES = 200  # see spec §8.3 v2 — guards against hogaplay response freeze (raised from initial 100 after Phase 0 baseline showed normal captures reach stagnant streaks up to 130; ×1.5 margin)
 ```
 
 `PageStepController.__init__` 시그니처 + 본문 수정:

@@ -172,7 +172,7 @@ DEFAULT_RATE_LIMIT_S = <Phase 1+2에서 채택>  # was 0.2
 
 # hoga/collector/page_step.py
 DEFAULT_PAGE_STEP_MS = <Phase 1+2에서 채택>  # was 60_000
-MAX_STAGNANT_PAGES = 100  # new — see §8.3 for mechanism (was MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END in spec v1, retired after Phase 0.1)
+MAX_STAGNANT_PAGES = 200  # new — see §8.3 for mechanism (was MAX_DRAIN_ITERATIONS_AFTER_WINDOW_END in spec v1; value raised 100 → 200 after Phase 0 baseline showed normal captures reach stagnant streaks of 130 (003490) / 120 (005930))
 ```
 
 ### 8.2 차단 감지 시 자동 백오프
@@ -201,11 +201,13 @@ MAX_STAGNANT_PAGES = 100  # new — see §8.3 for mechanism (was MAX_DRAIN_ITERA
 - 둘 중 하나라도 advance했으면 → `_stagnant_pages = 0`
 - `_stagnant_pages >= MAX_STAGNANT_PAGES (=100)` → `should_stop = True`
 
-값 sizing 근거 (100):
-- 정상 캡처에서 데이터가 100 페이지 연속(평균 28초) 없을 일은 거의 없음 (점심 시간 003490 같은 저활성도 데이터 dribble은 있음)
-- 폭주 케이스(stagnant 3829)와 비교해 가드는 100에서 발동, ~28초 안에 강제 종료
+값 sizing 근거 (200, Phase 0 baseline 측정 후 조정):
+- baseline에서 정상 캡처(003490, 005930)의 **최대 stagnant streak 130 / 120 페이지** 측정 — 종료 직전 자연스럽게 발생 (마지막 데이터 fetch 후 잔여 페이지 drain 동안 max_event_time 정지 + new_seqs=0)
+- 안전 마진 ×1.5 = ~195 → **200** (정상 캡처 false-positive 종료 방지)
+- 폭주 케이스(20260518 stagnant 3829)는 page 103 + 200 ≈ page 303에서 종료 — wall-clock 약 56초 추가 비용 후 강제 중단
+- 이전 값 100은 spec v2 초안 추정치 — Phase 0 측정으로 정상 캡처 실제 stagnant streak이 100을 초과한다는 발견 후 상향
 
-이 가드가 도입되면 20260518 폭주는 page 103 + 100 = page 203 근처에서 종료됐을 것.
+이 가드가 도입되면 20260518 폭주는 page 303 근처에서 종료됐을 것 (현재 3931 → 92% 단축).
 
 ### 8.4 ADR-00XX
 
