@@ -56,6 +56,10 @@ export default function RangeSeriesPane<Ctx>({
   paneIndex,
   spec,
 }: Props<Ctx>) {
+  // Hook position is stable: PaneSpec is a module-level constant per
+  // caller (spec.useContext presence never flips between renders), so
+  // this conditional call doesn't violate rules-of-hooks. See PaneSpec
+  // JSDoc for the full justification.
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const ctx = spec.useContext ? spec.useContext() : (undefined as Ctx);
   useEffect(() => {

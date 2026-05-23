@@ -37,7 +37,7 @@ export type ChartStageProps = {
   /**
    * The full range payload for the Stock-Date Range (ADR-0013): candles,
    * `quote_ratio` (carries `bid_total`/`ask_total` totals consumed by both
-   * RatioPane and QuoteTotalsPane), `fill_strength`, and the
+   * RatioPane and the Quote Totals pane), `fill_strength`, and the
    * `volume_profile_range` / `volume_profile_by_day` series. When `null`
    * (loading / error), no panes mount and the stage shows only the bare
    * chart chrome.
@@ -292,9 +292,9 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
             does not auto-create intermediate panes: `addSeries(...,
             paneIndex=4)` while only panes 0-2 exist lands the first series
             on pane 3 (next available index), not pane 4. Mounting
-            FillStrengthPane before QuoteTotalsPane therefore splits its
+            FillStrengthPane before the Quote Totals pane therefore splits its
             buy/sell histograms across pane 3 (Quote Totals slot) and pane 4.
-            QuoteTotalsPane's two LineSeries claim pane 3 first so
+            The quote-totals RangeSeriesPane's two LineSeries claim pane 3 first so
             FillStrengthPane's pair both land on 4.
 
             VolumeProfileOverlay below is still a canvas-overlay pane portaled
