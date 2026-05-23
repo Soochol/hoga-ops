@@ -19,7 +19,7 @@ import { useTabsStore } from '../state/tabs';
 import CandlePane from './CandlePane';
 import VolumePane from './VolumePane';
 import RatioPane from './RatioPane';
-import IntensityPane from './IntensityPane';
+import QuoteTotalsPane from './QuoteTotalsPane';
 import FillStrengthPane from './FillStrengthPane';
 import VolumeProfileOverlay from './VolumeProfileOverlay';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
@@ -50,9 +50,9 @@ export type ChartStageProps = {
 
 /**
  * ChartStage — owns the single `lightweight-charts` instance for the replay
- * viewer and mounts the 5 pane children (candles / volume / ratio / intensity
- * / fill-strength) plus the VolumeProfileOverlay once the chart is ready and
- * a `RangeBundle` is available.
+ * viewer and mounts the 5 pane children (candles / volume / ratio /
+ * quote-totals / fill-strength) plus the VolumeProfileOverlay once the
+ * chart is ready and a `RangeBundle` is available.
  *
  * Multi-pane split: each pane component receives a `paneIndex` so its series
  * register on a distinct lightweight-charts pane. Pane heights are set via
@@ -61,13 +61,8 @@ export type ChartStageProps = {
  *   - Pane 0: Candle (1.4) + VolumeProfileOverlay
  *   - Pane 1: Volume (0.3)
  *   - Pane 2: Ratio (0.4)
- *   - Pane 3: Intensity overlay (0.8)
+ *   - Pane 3: Quote Totals (0.4) — bid/ask 1–10호가 total LineSeries
  *   - Pane 4: FillStrength (0.4)
- *
- * IntensityPane has no series of its own (canvas heatmap), so we mount an
- * invisible histogram on pane 3 to force the pane to exist, then portal the
- * canvas into that pane's DOM element via `getHTMLElement()`. The `data-pane`
- * wrappers remain for E2E selectors.
  *
  * Viewport publisher: subscribes to the chart's visible-range and writes
  * (fromMs, toMs) into `useViewportStore` so sibling components like
@@ -75,10 +70,12 @@ export type ChartStageProps = {
  */
 /**
  * Pane stretch factors (DESIGN.md / spec §6.3). Indexes:
- *   0 = candle, 1 = volume, 2 = ratio, 3 = intensity, 4 = fill-strength.
- * Total = 3.3; lightweight-charts treats these as proportional weights.
+ *   0 = candle, 1 = volume, 2 = ratio, 3 = quote-totals, 4 = fill-strength.
+ * Total = 2.9; lightweight-charts treats these as proportional weights.
+ * Candle share rises ~42% → ~48% vs the prior heatmap layout — intentional;
+ * two lines do not need the vertical budget the heatmap consumed.
  */
-const PANE_STRETCH = [1.4, 0.3, 0.4, 0.8, 0.4] as const;
+const PANE_STRETCH = [1.4, 0.3, 0.4, 0.4, 0.4] as const;
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
@@ -284,17 +281,26 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
           <div data-pane="ratio" className="hidden">
             <RatioPane chart={chart} bundle={bundle} axis={axis} paneIndex={2} />
           </div>
+          {/*
+            Render order must match paneIndex order. lightweight-charts v5
+            does not auto-create intermediate panes: `addSeries(...,
+            paneIndex=4)` while only panes 0-2 exist lands the first series
+            on pane 3 (next available index), not pane 4. Mounting
+            FillStrengthPane before QuoteTotalsPane therefore splits its
+            buy/sell histograms across pane 3 (Quote Totals slot) and pane 4.
+            QuoteTotalsPane's two LineSeries claim pane 3 first so
+            FillStrengthPane's pair both land on 4.
+
+            VolumeProfileOverlay below is still a canvas-overlay pane portaled
+            into its target pane's DOM via `chart.panes()[0].getHTMLElement()`;
+            the `data-pane` wrapper is kept for E2E selectors but no longer
+            hosts the canvas itself.
+          */}
+          <div data-pane="quote-totals" className="hidden">
+            <QuoteTotalsPane chart={chart} bundle={bundle} axis={axis} paneIndex={3} />
+          </div>
           <div data-pane="fill-strength" className="hidden">
             <FillStrengthPane chart={chart} bundle={bundle} axis={axis} paneIndex={4} />
-          </div>
-          {/*
-            Canvas overlay panes — portaled into their target pane's DOM
-            element via `chart.panes()[paneIndex].getHTMLElement()`. The
-            wrappers here are kept for E2E selectors but no longer host the
-            canvases themselves (the canvas lives inside the pane element).
-          */}
-          <div data-pane="intensity" className="hidden">
-            <IntensityPane chart={chart} bundle={bundle} axis={axis} paneIndex={3} />
           </div>
           <div data-pane="volume-profile" className="hidden">
             <VolumeProfileOverlay
