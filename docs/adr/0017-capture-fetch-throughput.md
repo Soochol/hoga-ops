@@ -29,9 +29,10 @@ Three levers were evaluated. Two are adopted; one is rejected.
 
 ### Background
 
-Per-Stock-Date capture wall-clock was 5–10 min. Profiling showed that ~72–81 % of
-the per-page time (~0.27 s) was the `rate_limit` sleep; HTTP RTT was ~46–80 ms — the
-network layer was already efficient.
+Per-Stock-Date capture wall-clock was 5–10 min. Profiling showed that ~75–84 % of
+the per-page time (~0.24–0.27 s) was the `rate_limit` sleep (0.20 s of every page).
+HTTP RTT was already efficient (~46–80 ms via httpx keep-alive). Cutting the sleep
+was therefore the dominant lever.
 
 Three orthogonal levers were identified and measured across two phases:
 
@@ -106,9 +107,12 @@ instead of page 3 931 — a 92 % reduction in wasted fetches.
   is high due to PageStep cap-hit dependency ordering. The adopted rate=0.05 already
   meets the target. YAGNI.
 - **(rejected) HTTP infrastructure improvements (HTTP/2, gzip).** httpx keep-alive is
-  already in use. HTTP RTT is ~46–80 ms — 18–28 % of the per-page budget at
-  rate=0.05. The marginal improvement from HTTP/2 or compression does not justify the
-  implementation cost given that the adopted values achieve the target.
+  already in use. HTTP RTT is ~46–80 ms — roughly half the per-page budget at rate=0.05
+  (sleep=50 ms + RTT ≈ 95–130 ms; HTTP share ~47–57 %). The share grew from ~28 %
+  (under the old rate=0.2 baseline) because we cut the sleep first. HTTP/2 / gzip could
+  in principle shave the remaining ~50 ms RTT further, but the adopted settings already
+  meet the wall-clock KPI without that complexity. Revisit only if a future scope
+  (e.g. multi-stock parallel captures) makes per-page HTTP latency the dominant term again.
 
 ## Consequences
 
