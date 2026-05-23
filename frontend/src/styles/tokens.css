@@ -51,6 +51,8 @@
      Per spec docs/superpowers/specs/2026-05-23-replay-moving-average-design.md §5.
      HTS 관습을 따른 5색 팔레트. price-up/down 토큰과 색역이 다른 채도(분홍/파랑/주황/녹색/하양)
      를 골라 KRX 가격 방향 색(빨강/파랑)과 시각적으로 분리한다. */
+  /* Slots are 0-indexed in code (prefs.movingAverages) but 1-indexed here
+     for human readability. IndicatorsSection.tsx bridges the offset. */
   --ma-1: #EC4899; /* period 5  */
   --ma-2: #3B82F6; /* period 10 */
   --ma-3: #F97316; /* period 20 */

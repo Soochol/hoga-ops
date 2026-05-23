@@ -39,10 +39,33 @@ export type MAConfig = {
   enabled: boolean;
 };
 
-/** Default Moving Average configuration: 5 slots, all enabled, with
- *  periods 5 / 10 / 20 / 60 / 120 캔들. The array is frozen so it cannot
- *  be mutated by accident; consumers should make a mutable copy before
- *  writing (see `DEFAULT_PREFS`). */
+/** Number of Moving Average slots surfaced in the UI. Single source of
+ *  truth — DEFAULT_MOVING_AVERAGES.length, the bounds check in
+ *  setMovingAverage, and the loop assembling MOVING_AVERAGE_SPEC.series
+ *  all derive their fixed cardinality from this constant. Bumping it
+ *  requires updating DEFAULT_MOVING_AVERAGES (add a default entry) and
+ *  tokens.css (add --ma-N for the new slot); the rest follows. */
+export const MA_SLOT_COUNT = 5;
+
+/** Valid MA slot index. Derived from MA_SLOT_COUNT; do not hand-write the union. */
+export type MAIndex = 0 | 1 | 2 | 3 | 4;
+
+// Type-level guard: this expression fails to typecheck if MAIndex doesn't
+// cover exactly [0..MA_SLOT_COUNT-1]. Adjust both together.
+type _MAIndexCheck =
+  [MAIndex, typeof MA_SLOT_COUNT] extends [0 | 1 | 2 | 3 | 4, 5] ? true : never;
+const _maIndexCheckOk: _MAIndexCheck = true;
+void _maIndexCheckOk;
+
+/**
+ * Canonical MA slot defaults (period + enabled). Frozen so direct mutation
+ * trips at runtime; DEFAULT_PREFS holds a deep mutable copy so each tab
+ * gets an independently mutable array via the `setMovingAverage` action.
+ *
+ * To add a new slot: append here (the new index will need a matching
+ * --ma-N token in tokens.css and a bump of MA_SLOT_COUNT). MAIndex and
+ * the type-level guard will then fail to compile until updated.
+ */
 export const DEFAULT_MOVING_AVERAGES: readonly MAConfig[] = Object.freeze([
   { period: 5, enabled: true },
   { period: 10, enabled: true },
@@ -100,7 +123,7 @@ type Store = {
    *  Period validation is intentionally NOT done here — the UI layer (T5)
    *  owns range checks so that downstream callers can apply identical
    *  patches without re-validating. */
-  setMovingAverage: (id: string, index: 0 | 1 | 2 | 3 | 4, patch: Partial<MAConfig>) => void;
+  setMovingAverage: (id: string, index: MAIndex, patch: Partial<MAConfig>) => void;
   reset: () => void;
 };
 
@@ -179,11 +202,12 @@ export const useTabsStore = create<Store>((set, get) => ({
     }),
   setMovingAverage: (id, index, patch) =>
     set((s) => {
-      if (index < 0 || index > 4) return {};
+      if (index < 0 || index >= MA_SLOT_COUNT) return {};
       const next = new Map(s.prefs);
       const current: ChartViewPrefs = { ...DEFAULT_PREFS, ...next.get(id) };
+      // MA_SLOT_COUNT is the cardinality invariant; current.movingAverages
+      // is guaranteed to have MA_SLOT_COUNT entries via DEFAULT_PREFS.
       const mas = current.movingAverages;
-      if (index >= mas.length) return {};
       const nextMas = mas.map((m, i) => (i === index ? { ...m, ...patch } : m));
       next.set(id, { ...current, movingAverages: nextMas });
       return { prefs: next };

@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useTabsStore, type MAConfig } from '../../state/tabs';
-
-type MARowIndex = 0 | 1 | 2 | 3 | 4;
+import { useTabsStore, type MAConfig, type MAIndex } from '../../state/tabs';
 
 /** One row in the Moving Average list: checkbox + label + period input +
  *  color dot. The period input keeps its own draft string so partial edits
@@ -12,7 +10,7 @@ function MovingAverageRow({
   config,
   onChange,
 }: {
-  index: MARowIndex;
+  index: MAIndex;
   config: MAConfig;
   onChange: (patch: Partial<MAConfig>) => void;
 }) {
@@ -71,6 +69,11 @@ function MovingAverageRow({
         aria-label={`${label} 기간`}
         className="w-[72px] text-right text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1 tabular-nums"
       />
+      {/*
+        Slot indices are 0-based in code (prefs.movingAverages[0..4]) but the
+        CSS tokens are 1-based (--ma-1..--ma-5) for human readability per
+        tokens.css convention. The +1 offset bridges the two.
+      */}
       <span
         aria-hidden="true"
         data-testid={`ma-color-dot-${index}`}
@@ -101,7 +104,7 @@ export default function IndicatorsSection() {
       </div>
       <div>
         {prefs.movingAverages.map((cfg, i) => {
-          const index = i as MARowIndex;
+          const index = i as MAIndex;
           return (
             <MovingAverageRow
               key={index}

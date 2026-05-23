@@ -3,7 +3,7 @@ import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import { useChartPrefs } from '../ChartPrefsContext';
-import type { MAConfig } from '../../state/tabs';
+import { MA_SLOT_COUNT, type MAConfig, type MAIndex } from '../../state/tabs';
 import type { PaneSpec, SeriesSpec } from '../RangeSeriesPane';
 
 const TOKEN_SPEC = {
@@ -54,9 +54,21 @@ export function computeSMA(closes: number[], period: number): (number | null)[] 
 /** Per-render context passed to every MA series' `data` projector. */
 export type MAContext = readonly MAConfig[];
 
+/**
+ * Returns the current MA configuration array.
+ *
+ * Identity is intentionally stable: `useChartPrefs().movingAverages` is the
+ * reference held in the tabs store, mutated only when `setMovingAverage`
+ * rebuilds it via `.map(...)`. RangeSeriesPane lists `ctx` in its useEffect
+ * dependency array, so if we ever wrap this in a fresh object (e.g.
+ * `{ configs: ... }`) all five LineSeries will be torn down and re-added on
+ * every unrelated pref change — flickering the chart.
+ *
+ * Keep the return shape as the array itself, not a wrapper.
+ */
 const useMAContext = (): MAContext => useChartPrefs().movingAverages;
 
-function makeSeries(index: number): SeriesSpec<MAContext> {
+function makeSeries(index: MAIndex): SeriesSpec<MAContext> {
   return {
     type: LineSeries,
     options: {
@@ -100,5 +112,5 @@ export const MOVING_AVERAGE_SPEC: PaneSpec<MAContext> = {
   name: 'moving-average',
   stretch: 0,
   useContext: useMAContext,
-  series: [makeSeries(0), makeSeries(1), makeSeries(2), makeSeries(3), makeSeries(4)],
+  series: Array.from({ length: MA_SLOT_COUNT }, (_, i) => makeSeries(i as MAIndex)),
 };
