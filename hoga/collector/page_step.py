@@ -16,6 +16,8 @@ DEFAULT_PAGE_STEP_MS = 60000
 MIN_PAGE_STEP_MS = 1000
 DATA_WINDOW_END_MS = 160000000
 TERMINATION_EMPTY_PAGES = 3
+# see spec §8.3 v2 — guards against hogaplay response freeze (raised from initial 100 after Phase 0 baseline showed normal captures reach stagnant streaks up to 130; ×1.5 margin)
+MAX_STAGNANT_PAGES = 200
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,7 @@ class PageStepController:
         min_step_ms: int = MIN_PAGE_STEP_MS,
         data_window_end_ms: int = DATA_WINDOW_END_MS,
         termination_empty_pages: int = TERMINATION_EMPTY_PAGES,
+        max_stagnant_pages: int = MAX_STAGNANT_PAGES,
     ) -> None:
         self._t = initial_t
         self._step_ms = initial_step_ms
@@ -50,7 +53,10 @@ class PageStepController:
         self._min_step_ms = min_step_ms
         self._data_window_end_ms = data_window_end_ms
         self._termination_empty_pages = termination_empty_pages
+        self._max_stagnant = max_stagnant_pages
         self._empty_in_a_row = 0
+        self._stagnant_pages = 0
+        self._last_max_event_time: int | None = None
 
     @property
     def next_t(self) -> int:
@@ -69,7 +75,19 @@ class PageStepController:
         Normal advance: update empty counter, possibly double step back, then
         t += step. If t passed data window end and empty streak >= threshold,
         stop.
+
+        Stagnation guard (spec §8.3 v2): if max_event_time stays frozen at
+        its previous value AND new_seqs==0, increment _stagnant_pages. Either
+        signal advancing resets the counter. At MAX_STAGNANT_PAGES consecutive
+        stagnant calls, force should_stop=True regardless of branch.
         """
+        # Update stagnation counter (must run BEFORE cap-hit branch which may not return early changes)
+        if max_event_time == self._last_max_event_time and new_seqs == 0:
+            self._stagnant_pages += 1
+        else:
+            self._stagnant_pages = 0
+        self._last_max_event_time = max_event_time
+
         target = self._t + self._step_ms
         cap_hit = (
             max_event_time is not None
@@ -81,6 +99,9 @@ class PageStepController:
             self._step_ms = max(self._step_ms // 2, self._min_step_ms)
             self._t = self._t + self._step_ms
             self._empty_in_a_row = 0
+            # NEW: even in cap-hit branch, stagnation guard can fire
+            if self._stagnant_pages >= self._max_stagnant:
+                return StepDecision(progress_t=self._t, should_stop=True)
             # Cap-hit progress write uses the NEW (advanced) t.
             return StepDecision(progress_t=self._t, should_stop=False)
 
@@ -96,5 +117,5 @@ class PageStepController:
         should_stop = (
             self._t >= self._data_window_end_ms
             and self._empty_in_a_row >= self._termination_empty_pages
-        )
+        ) or self._stagnant_pages >= self._max_stagnant
         return StepDecision(progress_t=progress_t, should_stop=should_stop)

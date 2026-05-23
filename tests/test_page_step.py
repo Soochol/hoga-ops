@@ -150,3 +150,56 @@ def test_progress_t_asymmetry_cap_vs_normal() -> None:
     # Normal: progress_t is OLD t (100); next_t advanced to 120.
     assert normal_decision.progress_t == 100
     assert c2.next_t == 120
+
+
+def test_stagnation_guard_forces_stop_when_max_frozen_and_no_new_seqs() -> None:
+    """When hogaplay freezes max_event_time and returns no new seqs for
+    MAX_STAGNANT_PAGES iterations, the controller forces should_stop=True."""
+    from hoga.collector.page_step import PageStepController
+
+    ctrl = PageStepController(
+        initial_t=84000000,
+        initial_step_ms=60000,
+        max_stagnant_pages=5,  # NEW kwarg, small value for fast test
+    )
+    # First call: max=84050000, new_seqs=1 — establishes baseline (not stagnant)
+    d0 = ctrl.observe(max_event_time=84050000, new_seqs=1)
+    assert not d0.should_stop
+
+    # Subsequent calls: same max, no new seqs → stagnant counter grows
+    decisions = [d0]
+    for _ in range(10):
+        d = ctrl.observe(max_event_time=84050000, new_seqs=0)
+        decisions.append(d)
+        if d.should_stop:
+            break
+
+    assert decisions[-1].should_stop
+    # 5 stagnant calls after the baseline → 6 total (baseline + 5)
+    assert len(decisions) == 6
+
+
+def test_stagnation_guard_resets_when_max_advances() -> None:
+    """If max_event_time advances at any point, stagnant counter resets."""
+    from hoga.collector.page_step import PageStepController
+
+    ctrl = PageStepController(
+        initial_t=84000000,
+        initial_step_ms=60000,
+        max_stagnant_pages=3,
+    )
+    ctrl.observe(max_event_time=84050000, new_seqs=1)
+    # 2 stagnant pages (under threshold)
+    ctrl.observe(max_event_time=84050000, new_seqs=0)
+    ctrl.observe(max_event_time=84050000, new_seqs=0)
+    # Advance: max moves forward → reset
+    ctrl.observe(max_event_time=84100000, new_seqs=2)
+    # Now 3 more stagnant — should still NOT stop (counter was reset)
+    d1 = ctrl.observe(max_event_time=84100000, new_seqs=0)
+    d2 = ctrl.observe(max_event_time=84100000, new_seqs=0)
+    d3 = ctrl.observe(max_event_time=84100000, new_seqs=0)
+    # Should stop on the 4th post-reset stagnant call (threshold=3 → exceeds after 3)
+    # Actually with threshold=3, the 3rd stagnant call hits should_stop:
+    assert not d1.should_stop  # 1 stagnant
+    assert not d2.should_stop  # 2 stagnant
+    assert d3.should_stop      # 3 stagnant → stop
