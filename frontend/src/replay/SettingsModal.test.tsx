@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SettingsModal from './SettingsModal';
 import { useTabsStore } from '../state/tabs';
@@ -74,5 +74,25 @@ describe('SettingsModal', () => {
     expect(screen.getByText('MA 120')).toBeTruthy();
     // Chart toggle is no longer in the DOM.
     expect(screen.queryByRole('switch', { name: '호가비 동시호가 마스킹' })).toBeNull();
+  });
+
+  it('Volume Profile segment reflects current prefs.volumeProfileMode via aria-pressed', () => {
+    render(<SettingsModal onClose={vi.fn()} />);
+    const seg = screen.getByTestId('settings-volume-profile-mode');
+    expect(within(seg).getByRole('button', { name: '전체' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(seg).getByRole('button', { name: '일별' }).getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('Volume Profile segment click writes per-day to the store and updates aria-pressed', () => {
+    render(<SettingsModal onClose={vi.fn()} />);
+    const seg = screen.getByTestId('settings-volume-profile-mode');
+    fireEvent.click(within(seg).getByRole('button', { name: '일별' }));
+
+    const activeId = useTabsStore.getState().activeTabId;
+    expect(useTabsStore.getState().getPrefs(activeId).volumeProfileMode).toBe('per-day');
+
+    const segAfter = screen.getByTestId('settings-volume-profile-mode');
+    expect(within(segAfter).getByRole('button', { name: '일별' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(segAfter).getByRole('button', { name: '전체' }).getAttribute('aria-pressed')).toBe('false');
   });
 });

@@ -51,6 +51,49 @@ function ToggleRow({
   );
 }
 
+/** Segmented control row for the per-tab `volumeProfileMode` preference.
+ *  Visually parallels `ToggleRow` (left label + right control). The two
+ *  buttons render as a small inline segment — same active/inactive token
+ *  pair previously used by the sidebar VolumeProfileModeToggle. */
+function VolumeProfileModeRow() {
+  const activeTabId = useTabsStore((s) => s.activeTabId);
+  const mode = useTabsStore((s) => s.getPrefs(activeTabId).volumeProfileMode);
+  const setMode = useTabsStore((s) => s.setVolumeProfileMode);
+  return (
+    <div className="flex items-center justify-between py-2">
+      <div className="flex-1 pr-4">
+        <div className="text-fg text-sm">Volume Profile</div>
+        <div className="text-fg-dim text-xs mt-0.5">전체 기간 합산 / 날짜별 분리</div>
+      </div>
+      <div
+        role="group"
+        aria-label="Volume Profile"
+        data-testid="settings-volume-profile-mode"
+        className="flex items-center gap-1 text-xs"
+      >
+        {(['range', 'per-day'] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            aria-label={m === 'range' ? '전체' : '일별'}
+            aria-pressed={mode === m}
+            onClick={() => {
+              if (mode !== m) setMode(activeTabId, m);
+            }}
+            className={
+              mode === m
+                ? 'px-2 py-0.5 bg-accent text-accent-fg rounded'
+                : 'px-2 py-0.5 text-fg-dim hover:text-fg'
+            }
+          >
+            {m === 'range' ? '전체' : '일별'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Centered modal overlay for chart settings. The "차트" category iterates
  * `CHART_TOGGLES` (the declarative registry on the tabs store) so adding a
@@ -146,6 +189,7 @@ export default function SettingsModal({ onClose }: Props) {
                     />
                   );
                 })}
+                <VolumeProfileModeRow />
               </>
             )}
             {category === 'indicators' && <IndicatorsSection />}
