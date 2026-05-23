@@ -16,11 +16,11 @@ import {
 } from '../util/chartScale';
 import { useViewportStore } from '../state/viewport';
 import { useTabsStore } from '../state/tabs';
-import RatioPane from './RatioPane';
 import RangeSeriesPane from './RangeSeriesPane';
 import { CANDLE_SPEC } from './projectors/candle';
 import { QUOTE_TOTALS_SPEC } from './projectors/quoteTotals';
 import { VOLUME_SPEC } from './projectors/volume';
+import { RATIO_SPEC } from './projectors/ratio';
 import { FILL_STRENGTH_SPEC } from './projectors/fillStrength';
 import VolumeProfileOverlay from './VolumeProfileOverlay';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
@@ -285,7 +285,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
             <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={1} spec={VOLUME_SPEC} />
           </div>
           <div data-pane="ratio" className="hidden">
-            <RatioPane chart={chart} bundle={bundle} axis={axis} paneIndex={2} />
+            <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={2} spec={RATIO_SPEC} />
           </div>
           {/*
             Render order must match paneIndex order. lightweight-charts v5

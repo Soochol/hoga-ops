@@ -48,7 +48,6 @@ vi.mock('lightweight-charts', async () => {
 
 // Pane children depend on bundle field reads; stub them out so the test
 // focuses on ChartStage's own effects (fitContent, clamps, formatter).
-vi.mock('../../src/chart/RatioPane', () => ({ default: () => null }));
 vi.mock('../../src/chart/RangeSeriesPane', () => ({ default: () => null }));
 vi.mock('../../src/chart/VolumeProfileOverlay', () => ({ default: () => null }));
 vi.mock('../../src/chart/DayBoundaryOverlay', () => ({ default: () => null }));
