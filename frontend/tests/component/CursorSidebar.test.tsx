@@ -22,4 +22,10 @@ describe('CursorSidebar', () => {
     expect(screen.getByText('BR-CONTENT')).toBeInTheDocument();
     expect(screen.getByText('FT-CONTENT')).toBeInTheDocument();
   });
+
+  it('CursorSidebarConnected renders without a Volume Profile mode toggle', async () => {
+    const { CursorSidebarConnected } = await import('../../src/sidebar/CursorSidebar');
+    render(<CursorSidebarConnected />);
+    expect(screen.queryByTestId('volume-profile-mode-toggle')).toBeNull();
+  });
 });

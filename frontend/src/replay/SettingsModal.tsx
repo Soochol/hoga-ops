@@ -100,8 +100,7 @@ function VolumeProfileModeRow() {
  * new toggle is one entry in that array — no JSX edits here.
  *
  * Close paths: Escape key, backdrop click, header ✕, footer 닫기.
- * Toggle changes persist immediately to the per-tab prefs (no save button) —
- * mirrors CursorSidebar's volumeProfileMode live-write pattern.
+ * Toggle changes persist immediately to the per-tab prefs (no save button).
  */
 export default function SettingsModal({ onClose }: Props) {
   const [category, setCategory] = useState<Category>('chart');
