@@ -36,7 +36,10 @@ function setup(addItemsResp: unknown = { enqueued: [{}], deduped: [] }) {
   return { qc, fetchMock };
 }
 
-beforeEach(() => { vi.restoreAllMocks(); });
+beforeEach(() => {
+  vi.restoreAllMocks();
+  localStorage.clear();
+});
 
 describe('CaptureForm', () => {
   it('disables Start when no symbol selected', async () => {
@@ -90,6 +93,16 @@ describe('CaptureForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /Start/i }));
     await new Promise((r) => setTimeout(r, 60));
     expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toBe('');
+  });
+
+  it('Force re-capture checkbox initializes from the localStorage default', async () => {
+    localStorage.setItem('capture.force_retry_default', 'true');
+    const { qc } = setup();
+    render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+
+    const cb = screen.getByLabelText(/Force re-capture/i) as HTMLInputElement;
+    expect(cb.checked).toBe(true);
   });
 
   it('shows today_too_early error inline when backend rejects', async () => {

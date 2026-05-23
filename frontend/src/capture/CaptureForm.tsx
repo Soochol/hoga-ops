@@ -6,6 +6,7 @@ import { useCaptureQueue } from './useCaptureQueue';
 import { enqueueErrorHints } from '../api/upstream-hints';
 import type { ApiError } from '../api/client';
 import type { SymbolHit, UpstreamCode } from '../api/types';
+import { loadForceRetryDefault } from './forceRetryDefault';
 
 export interface CaptureFormProps {
   /** Reference month for DateRangePicker's left grid. Defaults to current KST month. */
@@ -16,7 +17,7 @@ export interface CaptureFormProps {
 export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps) {
   const [symbol, setSymbol] = useState<SymbolHit | null>(null);
   const [range, setRange] = useState<DateRange | null>(null);
-  const [forceRetry, setForceRetry] = useState(false);
+  const [forceRetry, setForceRetry] = useState<boolean>(() => loadForceRetryDefault());
   const [error, setError] = useState<string | null>(null);
   const [inlineError, setInlineError] = useState<ReactNode>(null);
 
@@ -38,7 +39,7 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
         onSuccess: () => {
           setSymbol(null);
           setRange(null);
-          setForceRetry(false);
+          setForceRetry(loadForceRetryDefault());
         },
         onError: (err: unknown) => {
           const apiErr = err as ApiError;
