@@ -346,6 +346,7 @@ def collect_stock_date(
     resume: bool = False,
     on_progress: Callable[[ProgressEvent], None] | None = None,
     cancel_token: CancelToken | None = None,
+    initial_step_ms: int = DEFAULT_PAGE_STEP_MS,
 ) -> CollectResult:
     """Drive the full capture for one Stock-Date.
 
@@ -389,6 +390,7 @@ def collect_stock_date(
         raw_dir, client, code, date, started_at, rate_limit_s, seen_seqs, page_idx, t,
         on_progress=on_progress,
         cancel_token=cancel_token,
+        initial_step_ms=initial_step_ms,
     )
 
     # 3. chart.php once

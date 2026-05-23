@@ -270,3 +270,23 @@ def test_profile_jsonl_created_and_line_format_when_env_set(
                "new_seqs", "max_event_time", "cap_hit", "empty_streak",
                "post_window", "page_idx"}
     assert required.issubset(lines[0].keys())
+
+
+def test_collect_stock_date_accepts_initial_step_ms(tmp_path: Path) -> None:
+    """initial_step_ms parameter threads through to PageStepController."""
+    # With step_ms=120000, the first fetch is at t=84000000, the second at
+    # t=84120000 (if no cap-hit). We confirm via the recorded calls.
+    fake = FakeClient(
+        info_body="info\n",
+        first_pages={
+            84000000: _row(1, 1, 1, 1001, 84120000),  # max_t == target → no cap-hit
+            84120000: _row(1, 1, 1, 1002, 84121000),
+        },
+        chart_body="chart\n",
+    )
+    collect_stock_date(
+        client=fake, code="003490", date="20260519",
+        data_dir=tmp_path, rate_limit_s=0, initial_step_ms=120000,
+    )
+    first_times = [c.time_ms for c in fake.calls if c.endpoint == "first"]
+    assert first_times[:2] == [84000000, 84120000]
