@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { CHART_TOGGLES, useTabsStore, type ChartToggleKey } from '../state/tabs';
+import IndicatorsSection from './settings/IndicatorsSection';
 
 type Props = {
   onClose: () => void;
 };
 
-type Category = 'chart';
+type Category = 'chart' | 'indicators';
 
 /** Single binary toggle row inside the Settings modal. Stateless — owner
  *  passes the current checked value and a click handler. */
@@ -113,6 +114,18 @@ export default function SettingsModal({ onClose }: Props) {
             >
               차트
             </button>
+            <button
+              type="button"
+              onClick={() => setCategory('indicators')}
+              aria-pressed={category === 'indicators'}
+              className={
+                category === 'indicators'
+                  ? 'block w-full text-left px-4 py-2 text-sm bg-bg-input text-fg font-medium border-l-2 border-accent'
+                  : 'block w-full text-left px-4 py-2 text-sm text-fg-dim hover:bg-bg-input-hover hover:text-fg'
+              }
+            >
+              보조지표
+            </button>
           </nav>
 
           <div className="flex-1 px-5 py-4">
@@ -135,6 +148,7 @@ export default function SettingsModal({ onClose }: Props) {
                 })}
               </>
             )}
+            {category === 'indicators' && <IndicatorsSection />}
           </div>
         </div>
 

@@ -56,4 +56,23 @@ describe('SettingsModal', () => {
     const activeId = useTabsStore.getState().activeTabId;
     expect(useTabsStore.getState().getPrefs(activeId).auctionWindowMask).toBe(false);
   });
+
+  it('defaults to 차트 category on first open and shows the chart toggle', () => {
+    render(<SettingsModal onClose={vi.fn()} />);
+    const chartBtn = screen.getByRole('button', { name: '차트' });
+    expect(chartBtn.getAttribute('aria-pressed')).toBe('true');
+    const indicatorsBtn = screen.getByRole('button', { name: '보조지표' });
+    expect(indicatorsBtn.getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('switch', { name: '호가비 동시호가 마스킹' })).toBeTruthy();
+  });
+
+  it('clicking 보조지표 switches content to IndicatorsSection (MA rows)', () => {
+    render(<SettingsModal onClose={vi.fn()} />);
+    expect(screen.queryByText('MA 5')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '보조지표' }));
+    expect(screen.getByText('MA 5')).toBeTruthy();
+    expect(screen.getByText('MA 120')).toBeTruthy();
+    // Chart toggle is no longer in the DOM.
+    expect(screen.queryByRole('switch', { name: '호가비 동시호가 마스킹' })).toBeNull();
+  });
 });
