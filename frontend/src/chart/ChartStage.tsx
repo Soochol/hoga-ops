@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { Fragment, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import {
   createChart,
   TickMarkType,
@@ -18,6 +18,7 @@ import { useViewportStore } from '../state/viewport';
 import { useTabsStore } from '../state/tabs';
 import RangeSeriesPane from './RangeSeriesPane';
 import { PANE_SPECS, PANE_STRETCH } from './paneSpecs';
+import { MOVING_AVERAGE_SPEC } from './projectors/movingAverage';
 import VolumeProfileOverlay from './VolumeProfileOverlay';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
 import { ChartPrefsProvider } from './ChartPrefsContext';
@@ -279,15 +280,28 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
             hosts the canvas itself.
           */}
           {PANE_SPECS.map((spec, paneIndex) => (
-            <div key={spec.name} data-pane={spec.name} className="hidden">
-              <RangeSeriesPane
-                chart={chart}
-                bundle={bundle}
-                axis={axis}
-                paneIndex={paneIndex}
-                spec={spec}
-              />
-            </div>
+            <Fragment key={spec.name}>
+              <div data-pane={spec.name} className="hidden">
+                <RangeSeriesPane
+                  chart={chart}
+                  bundle={bundle}
+                  axis={axis}
+                  paneIndex={paneIndex}
+                  spec={spec}
+                />
+              </div>
+              {paneIndex === 0 && (
+                <div data-pane="moving-average" className="hidden">
+                  <RangeSeriesPane
+                    chart={chart}
+                    bundle={bundle}
+                    axis={axis}
+                    paneIndex={0}
+                    spec={MOVING_AVERAGE_SPEC}
+                  />
+                </div>
+              )}
+            </Fragment>
           ))}
           <div data-pane="volume-profile" className="hidden">
             <VolumeProfileOverlay
