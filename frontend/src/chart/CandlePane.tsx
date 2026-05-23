@@ -54,15 +54,13 @@ export default function CandlePane({ chart, bundle, axis, paneIndex = 0 }: Props
       },
       paneIndex,
     );
-    // Auction Window / After-Hours Trading threshold (PER SEGMENT — ADR-0013):
-    // the Regular Session closes at 15:30 KST and the closing Auction Window
-    // runs 15:20–15:30 (CONTEXT.md). For each candle, find its owning segment
-    // and compute the threshold as that segment's session_open_ms + (6h 20m)
-    // so candles inside the closing Auction Window or After-Hours Trading
-    // render muted (continuous-trading candles inside the Regular Session keep
-    // their up/down color). The previous single-day formula (bundle.session_open_ms
-    // + 6h20m) over-muted every day after the first when N>1.
-    const AUCTION_WINDOW_OFFSET_MS = (6 * 3600 + 20 * 60) * 1000;
+    // CONTEXT.md "Auction Window": candles inside the closing Auction Window
+    // (15:20–15:30 KST, per segment) render muted so continuous-trading
+    // candles keep visual dominance. The Virtual Axis owns the per-segment
+    // threshold via `inClosingAuctionWindow` — see virtualAxis.ts. After-Hours
+    // candles (15:30–16:00) are already dropped by `axis.contains` so the
+    // muted treatment never applies there in practice.
+    //
     // Drop pre-open auction candles (8:30-9:00 KST) and any other points that
     // fall outside the regular-session segments — they would all collapse to
     // virtual-time=0 and lightweight-charts.setData would throw "asc ordered
@@ -70,11 +68,8 @@ export default function CandlePane({ chart, bundle, axis, paneIndex = 0 }: Props
     const data = bundle.candles
       .filter((c) => axis.contains(c.ts_ms))
       .map((c) => {
-        const segIdx = axis.findByReal(c.ts_ms);
-        const seg = axis.segments[segIdx];
-        const threshold = seg.sessionOpenMs + AUCTION_WINDOW_OFFSET_MS;
-        const inAuctionOrAfter = c.ts_ms >= threshold;
-        const color = inAuctionOrAfter ? muted : c.close >= c.open ? up : down;
+        const inClosingAuction = axis.inClosingAuctionWindow(c.ts_ms);
+        const color = inClosingAuction ? muted : c.close >= c.open ? up : down;
         return {
           // lightweight-charts uses UTCTimestamp (seconds) on the time axis.
           // The `as any` cast keeps us free of the library's branded `Time`

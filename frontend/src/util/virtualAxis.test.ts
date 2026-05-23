@@ -4,6 +4,13 @@ import { createVirtualAxis } from './virtualAxis';
 // KST 09:00 — 15:30 = 6h30m = 23_400_000 ms.
 const SESSION_LEN_MS = 6.5 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Must mirror INTER_SEGMENT_GAP_MS in util/time.ts. The 1s synthetic gap
+// keeps day N's 15:30 candle and day N+1's 09:00 candle on distinct virtual
+// timestamps (otherwise lightweight-charts setData throws "asc ordered by
+// time" on the N-1 boundary collisions for multi-day ranges).
+const GAP_MS = 1000;
+// Virtual step between consecutive segments' virtualStart values.
+const SEG_STRIDE_MS = SESSION_LEN_MS + GAP_MS;
 
 // 2026-05-18 09:00 KST.
 const DAY1_OPEN = 1779062400000;
@@ -64,12 +71,17 @@ describe('createVirtualAxis — construction', () => {
 describe('createVirtualAxis — toVirtual / toReal round-trip', () => {
   const axis = createVirtualAxis(RAW_3);
 
-  it('round-trips inside any segment (excluding mid-axis closes that share virtual offset with next open)', () => {
+  it('round-trips inside any segment, including mid-axis session closes', () => {
+    // With the 1s INTER_SEGMENT_GAP_MS, day N's sessionCloseMs no longer
+    // shares a virtual offset with day N+1's sessionOpenMs, so mid-axis
+    // closes round-trip too.
     const samples = [
       DAY1_OPEN,
       DAY1_OPEN + 1234567,
+      DAY1_CLOSE,
       DAY2_OPEN,
       DAY2_OPEN + 60_000,
+      DAY2_CLOSE,
       DAY3_OPEN + 7_000_000,
       DAY3_CLOSE,
     ];
@@ -80,13 +92,21 @@ describe('createVirtualAxis — toVirtual / toReal round-trip', () => {
 
   it('exactly at a session open returns the segment virtualStart', () => {
     expect(axis.toVirtual(DAY1_OPEN)).toBe(0);
-    expect(axis.toVirtual(DAY2_OPEN)).toBe(SESSION_LEN_MS);
-    expect(axis.toVirtual(DAY3_OPEN)).toBe(2 * SESSION_LEN_MS);
+    expect(axis.toVirtual(DAY2_OPEN)).toBe(SEG_STRIDE_MS);
+    expect(axis.toVirtual(DAY3_OPEN)).toBe(2 * SEG_STRIDE_MS);
+  });
+
+  it('day N close and day N+1 open are distinct on the virtual axis', () => {
+    // Regression: without the synthetic gap these collided at SESSION_LEN_MS
+    // and broke lightweight-charts setData on N>=2 ranges.
+    expect(axis.toVirtual(DAY1_CLOSE)).toBe(SESSION_LEN_MS);
+    expect(axis.toVirtual(DAY2_OPEN)).toBe(SESSION_LEN_MS + GAP_MS);
+    expect(axis.toVirtual(DAY1_CLOSE)).not.toBe(axis.toVirtual(DAY2_OPEN));
   });
 
   it('gap times snap forward to next segment virtualStart', () => {
     const mid = DAY1_CLOSE + 2 * 60 * 60 * 1000;
-    expect(axis.toVirtual(mid)).toBe(SESSION_LEN_MS);
+    expect(axis.toVirtual(mid)).toBe(SEG_STRIDE_MS);
   });
 
   it('empty axis collapses to 0 in both directions', () => {
@@ -149,6 +169,48 @@ describe('createVirtualAxis — isInGap', () => {
   });
 });
 
+describe('createVirtualAxis — inClosingAuctionWindow', () => {
+  const axis = createVirtualAxis(RAW_3);
+  // KST 15:20 = sessionOpenMs + 6h20m
+  const AUCTION_OFFSET = (6 * 3600 + 20 * 60) * 1000;
+
+  it('true for realMs in the auction band [open+6h20m, close]', () => {
+    expect(axis.inClosingAuctionWindow(DAY1_OPEN + AUCTION_OFFSET)).toBe(true);
+    expect(axis.inClosingAuctionWindow(DAY1_OPEN + AUCTION_OFFSET + 60_000)).toBe(true);
+    expect(axis.inClosingAuctionWindow(DAY1_CLOSE)).toBe(true);
+  });
+
+  it('false for realMs before the auction band (in-session, continuous trading)', () => {
+    expect(axis.inClosingAuctionWindow(DAY1_OPEN)).toBe(false);
+    expect(axis.inClosingAuctionWindow(DAY1_OPEN + 60_000)).toBe(false);
+    expect(axis.inClosingAuctionWindow(DAY1_OPEN + AUCTION_OFFSET - 1)).toBe(false);
+  });
+
+  it('false for pre-axis realMs (before first session open)', () => {
+    expect(axis.inClosingAuctionWindow(DAY1_OPEN - 1)).toBe(false);
+    expect(axis.inClosingAuctionWindow(DAY1_OPEN - 60 * 60 * 1000)).toBe(false);
+  });
+
+  it('false for realMs in an inter-session gap', () => {
+    expect(axis.inClosingAuctionWindow(DAY1_CLOSE + 1)).toBe(false);
+    expect(axis.inClosingAuctionWindow(DAY1_CLOSE + 60 * 60 * 1000)).toBe(false);
+  });
+
+  it('false for realMs after the final session close', () => {
+    expect(axis.inClosingAuctionWindow(DAY3_CLOSE + 1)).toBe(false);
+  });
+
+  it('per-segment threshold — day 2 has its own auction band', () => {
+    expect(axis.inClosingAuctionWindow(DAY2_OPEN + AUCTION_OFFSET)).toBe(true);
+    expect(axis.inClosingAuctionWindow(DAY2_OPEN + AUCTION_OFFSET - 1)).toBe(false);
+    expect(axis.inClosingAuctionWindow(DAY2_CLOSE)).toBe(true);
+  });
+
+  it('false for empty axis', () => {
+    expect(createVirtualAxis([]).inClosingAuctionWindow(DAY1_OPEN + AUCTION_OFFSET)).toBe(false);
+  });
+});
+
 describe('createVirtualAxis — findByReal', () => {
   const axis = createVirtualAxis(RAW_SMALL);
 
@@ -196,11 +258,14 @@ describe('createVirtualAxis — findByVirtual', () => {
     expect(axis.segments).toHaveLength(12);
 
     expect(axis.findByVirtual(0)).toBe(0);
+    // SESSION_LEN_MS sits in the gap window — still owned by segment 0
+    // (segment 1 starts at SESSION_LEN_MS + GAP_MS).
     expect(axis.findByVirtual(SESSION_LEN_MS - 1)).toBe(0);
-    expect(axis.findByVirtual(SESSION_LEN_MS)).toBe(1);
-    expect(axis.findByVirtual(5 * SESSION_LEN_MS + 1000)).toBe(5);
-    expect(axis.findByVirtual(11 * SESSION_LEN_MS)).toBe(11);
-    expect(axis.findByVirtual(11 * SESSION_LEN_MS + 1000)).toBe(11);
+    expect(axis.findByVirtual(SESSION_LEN_MS)).toBe(0);
+    expect(axis.findByVirtual(SESSION_LEN_MS + GAP_MS)).toBe(1);
+    expect(axis.findByVirtual(5 * SEG_STRIDE_MS + 1000)).toBe(5);
+    expect(axis.findByVirtual(11 * SEG_STRIDE_MS)).toBe(11);
+    expect(axis.findByVirtual(11 * SEG_STRIDE_MS + 1000)).toBe(11);
     expect(axis.findByVirtual(-1)).toBe(-1);
   });
 

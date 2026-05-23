@@ -4,10 +4,14 @@
  *
  * Hoga-ops splices several Stock-Dates onto one apparently-continuous timeline.
  * The gaps between trading sessions (15:30 close → 09:00 next-day open) are
- * compressed away so the user sees one smooth axis. The math used to live as a
- * bag of free functions in `util/time.ts`; this module promotes the bag to a
- * first-class `VirtualAxis` value object with frozen state and short method
- * names. Construction goes through `createVirtualAxis(rawSegments)`.
+ * compressed away — minus a 1-second `INTER_SEGMENT_GAP_MS` (see `util/time.ts`)
+ * that keeps day N's closing candle and day N+1's opening candle on distinct
+ * virtual timestamps. The gap is too small to perceive but large enough to
+ * survive the `/1000` rounding into lightweight-charts' integer-second
+ * `UTCTimestamp`. The math used to live as a bag of free functions in
+ * `util/time.ts`; this module promotes the bag to a first-class `VirtualAxis`
+ * value object with frozen state and short method names. Construction goes
+ * through `createVirtualAxis(rawSegments)`.
  *
  * Decisions captured in `docs/adr/` from the `/improve-codebase-architecture`
  * grilling (G1-G4):
@@ -68,7 +72,25 @@ export type VirtualAxis = Readonly<{
    * False for pre-axis realMs. See `isDayBoundary` in `util/time.ts`.
    */
   isInGap(realMs: number): boolean;
+  /**
+   * True if realMs falls inside its owning segment's **Closing Auction Window**
+   * (15:20:00–15:30:00 KST, i.e. `[sessionOpenMs + 6h20m, sessionCloseMs]`).
+   * False for realMs outside any segment, before the auction band, or anywhere
+   * in the pre-axis / gap / post-axis regions. Mirrors the CONTEXT.md
+   * "Auction Window" entry. Used by panes that suppress derived metrics
+   * (e.g. RatioPane masks 호가비 to 0; CandlePane mutes candle colors) during
+   * the band where one-sided order accumulation makes data non-informative.
+   */
+  inClosingAuctionWindow(realMs: number): boolean;
 }>;
+
+/**
+ * KRX closing Auction Window starts at sessionOpenMs + 6h 20m (= 15:20 KST,
+ * because the Regular Session opens at 09:00 KST). Kept module-private so the
+ * predicate `inClosingAuctionWindow` is the only public touch-point — callers
+ * never reconstruct the threshold themselves.
+ */
+const AUCTION_WINDOW_OFFSET_MS = (6 * 3600 + 20 * 60) * 1000;
 
 /**
  * Construct a `VirtualAxis` from raw session open/close pairs. The input is
@@ -203,6 +225,16 @@ export function createVirtualAxis(
     return false;
   }
 
+  function inClosingAuctionWindow(realMs: number): boolean {
+    const idx = findByReal(realMs);
+    if (idx < 0) return false;
+    const seg = segments[idx];
+    // Re-check upper bound so pre-axis collapsing in findByReal (which returns
+    // the prior segment for realMs in a gap) doesn't leak into a `true`.
+    if (realMs > seg.sessionCloseMs) return false;
+    return realMs >= seg.sessionOpenMs + AUCTION_WINDOW_OFFSET_MS;
+  }
+
   return Object.freeze({
     segments,
     dayBoundaries,
@@ -210,6 +242,7 @@ export function createVirtualAxis(
     toReal,
     findByReal,
     findByVirtual,
+    inClosingAuctionWindow,
     contains,
     isInGap,
   });

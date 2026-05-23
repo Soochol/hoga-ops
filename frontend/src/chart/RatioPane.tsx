@@ -6,15 +6,6 @@ import { quoteImbalance } from '../util/imbalance';
 import { resolveTokens } from '../util/tokens';
 import { useTabsStore } from '../state/tabs';
 
-/**
- * Closing Auction Window starts at sessionOpenMs + 6h 20m (KST 15:20).
- * Mirrors CandlePane.tsx's per-segment threshold (CONTEXT.md "Auction
- * Window"). During this band, derived ratios are dominated by one-sided
- * accumulation and read as misleading extremes; the toggle on the tabs
- * store gates the mask on a per-tab basis.
- */
-const AUCTION_WINDOW_OFFSET_MS = (6 * 3600 + 20 * 60) * 1000;
-
 const TOKEN_SPEC = {
   ratioAsk: ['--ratio-ask', '#3B82F6'],
   // Reused: same hex as price-direction --down, but here it encodes
@@ -105,18 +96,16 @@ export default function RatioPane({ chart, bundle, axis, paneIndex = 0 }: Props)
     // as a defense-in-depth wrapper.
     const data = bundle.quote_ratio.points
       .filter((p) => axis.contains(p.t))
-      .map((p) => {
-        const segIdx = axis.findByReal(p.t);
-        const seg = axis.segments[segIdx];
-        const inAuctionWindow =
-          p.t >= seg.sessionOpenMs + AUCTION_WINDOW_OFFSET_MS;
-        return {
-          time: (axis.toVirtual(p.t) / 1000) as any,
-          value: auctionWindowMask && inAuctionWindow
-            ? 0
-            : quoteImbalance(p.bid_total, p.ask_total),
-        };
-      });
+      .map((p) => ({
+        time: (axis.toVirtual(p.t) / 1000) as any,
+        // CONTEXT.md "Auction Window" — during 15:20–15:30 the bid/ask
+        // ratio is dominated by one-sided accumulation and reads as
+        // misleading extremes. Per-tab `auctionWindowMask` gates the
+        // zeroing; axis.inClosingAuctionWindow owns the threshold.
+        value: auctionWindowMask && axis.inClosingAuctionWindow(p.t)
+          ? 0
+          : quoteImbalance(p.bid_total, p.ask_total),
+      }));
     series.setData(data);
     // 0-baseline reference line. Drawn explicitly because BaselineSeries
     // switches color at baseValue but does not paint a visible line there.
