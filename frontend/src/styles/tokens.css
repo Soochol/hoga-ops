@@ -34,13 +34,11 @@
      has a single mockup-approved exception: the 24x24 H brand logo in LeftNav.
      Do not extend this exception to any other UI chrome. */
   --accent-shade: #0D7A6F;
-  --up: #22C55E;
-  --down: #F43F5E;
-  --warn: #F59E0B;
-  /* New: status semantic (hex unchanged, names disambiguate from price-direction). */
+  /* Status semantic — UI feedback (success/error). Distinct from price direction. */
   --success: #22C55E;
   --error:   #F43F5E;
-  /* New: KRX market convention — buy/up = red, sell/down = blue. */
+  --warn: #F59E0B;
+  /* Price direction — KRX convention: buy/up = red, sell/down = blue. */
   --price-up:   #DC2626;
   --price-down: #2563EB;
 
@@ -48,12 +46,9 @@
   --grid: #1A1A26;
   --heat-lo: #0E1A1A;
   --heat-hi: #14B8A6;
-  --ratio-ask: #3B82F6;  /* Bid/ask ratio — ask-heavy (above 0), KRX-style sell blue */
 
   /* ───── Tint backgrounds ───── */
-  --tint-selection: rgba(20, 184, 166, 0.12);
-  --tint-up: rgba(34, 197, 94, 0.10);
-  --tint-down: rgba(244, 63, 94, 0.10);
+  --tint-selection:  rgba(20, 184, 166, 0.12);
   --tint-success:    rgba(34, 197, 94, 0.10);
   --tint-error:      rgba(244, 63, 94, 0.10);
   --tint-price-up:   rgba(220, 38, 38, 0.10);  /* DC2626 @ 10% */
