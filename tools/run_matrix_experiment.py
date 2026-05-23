@@ -30,7 +30,7 @@ from hoga.collector.client import (
     HogaplayClient,
     HogaplayHTTPError,
 )
-from hoga.collector.orchestrator import CancelToken, collect_stock_date
+from hoga.collector.orchestrator import CancelToken, CaptureCancelled, collect_stock_date
 from hoga.config import Config
 
 CELL_DURATION_S = 90
@@ -64,8 +64,10 @@ def _plant_fake_progress(raw_dir: Path, start_t: int) -> None:
     (raw_dir / "info.tsv").write_text("")
 
 
-def _cancel_after(token: CancelToken, seconds: float) -> None:
-    threading.Timer(seconds, token.cancel).start()
+def _cancel_after(token: CancelToken, seconds: float) -> threading.Timer:
+    t = threading.Timer(seconds, token.cancel)
+    t.start()
+    return t
 
 
 def _summarize_profile(profile_path: Path) -> dict:
@@ -96,26 +98,31 @@ def run_cell(
     raw_dir = sandbox / "raw" / DATE / CODE
     _plant_fake_progress(raw_dir, start_t)
     token = CancelToken()
-    _cancel_after(token, CELL_DURATION_S)
+    timer = _cancel_after(token, CELL_DURATION_S)
     os.environ["HOGA_PROFILE"] = "1"
     t0 = time.perf_counter()
     outcome = "ok"
     err_msg = None
     try:
-        collect_stock_date(
-            client=client, code=CODE, date=DATE, data_dir=sandbox,
-            rate_limit_s=rate_s, resume=True, cancel_token=token,
-            initial_step_ms=step_ms,
-        )
-    except CookieExpiredError as e:
-        outcome = "cookie_expired"
-        err_msg = str(e)
-    except HogaplayHTTPError as e:
-        outcome = f"http_{e.status_code}" if e.status_code is not None else "http_low_level"
-        err_msg = str(e)
-    except Exception as e:  # noqa: BLE001
-        outcome = type(e).__name__
-        err_msg = str(e)
+        try:
+            collect_stock_date(
+                client=client, code=CODE, date=DATE, data_dir=sandbox,
+                rate_limit_s=rate_s, resume=True, cancel_token=token,
+                initial_step_ms=step_ms,
+            )
+        except CaptureCancelled:
+            pass  # 90s cell timeout — intended normal termination, outcome stays "ok"
+        except CookieExpiredError as e:
+            outcome = "cookie_expired"
+            err_msg = str(e)
+        except HogaplayHTTPError as e:
+            outcome = f"http_{e.status_code}" if e.status_code is not None else "http_low_level"
+            err_msg = str(e)
+        except Exception as e:  # noqa: BLE001
+            outcome = type(e).__name__
+            err_msg = str(e)
+    finally:
+        timer.cancel()
     elapsed = time.perf_counter() - t0
     summary = _summarize_profile(raw_dir / "_profile.jsonl")
     return {
