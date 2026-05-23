@@ -31,12 +31,33 @@ export const CHART_TOGGLES = [
 
 export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];
 
+/** Per-MA configuration. Indexed slot in `ChartViewPrefs.movingAverages`
+ *  aligns 1:1 with `MA_COLORS` (T1). Period range (2..400) is validated
+ *  at the UI layer (T5), not in the store. */
+export type MAConfig = {
+  period: number;
+  enabled: boolean;
+};
+
+/** Default Moving Average configuration: 5 slots, all enabled, with
+ *  periods 5 / 10 / 20 / 60 / 120 캔들. The array is frozen so it cannot
+ *  be mutated by accident; consumers should make a mutable copy before
+ *  writing (see `DEFAULT_PREFS`). */
+export const DEFAULT_MOVING_AVERAGES: readonly MAConfig[] = Object.freeze([
+  { period: 5, enabled: true },
+  { period: 10, enabled: true },
+  { period: 20, enabled: true },
+  { period: 60, enabled: true },
+  { period: 120, enabled: true },
+]);
+
 /** Per-tab chart view preferences. Stored in a `Map<tabId, ChartViewPrefs>`
  *  on the store for parity with `Tab.bundles` (CQ1). Boolean fields come
- *  from `CHART_TOGGLES`; non-boolean prefs (e.g. `volumeProfileMode`) sit
- *  alongside as explicit fields. */
+ *  from `CHART_TOGGLES`; non-boolean prefs (e.g. `volumeProfileMode`,
+ *  `movingAverages`) sit alongside as explicit fields. */
 export type ChartViewPrefs = {
   volumeProfileMode: 'range' | 'per-day';
+  movingAverages: MAConfig[];
 } & { [K in ChartToggleKey]: boolean };
 
 const TOGGLE_DEFAULTS = Object.fromEntries(
@@ -45,6 +66,7 @@ const TOGGLE_DEFAULTS = Object.fromEntries(
 
 export const DEFAULT_PREFS: ChartViewPrefs = {
   volumeProfileMode: 'range',
+  movingAverages: DEFAULT_MOVING_AVERAGES.map((c) => ({ ...c })),
   ...TOGGLE_DEFAULTS,
 };
 
@@ -74,6 +96,11 @@ type Store = {
   setVolumeProfileMode: (id: string, mode: ChartViewPrefs['volumeProfileMode']) => void;
   /** Generic setter for any boolean toggle in `CHART_TOGGLES`. */
   setToggle: (id: string, key: ChartToggleKey, value: boolean) => void;
+  /** Patch one slot of `movingAverages`. Out-of-range `index` is a no-op.
+   *  Period validation is intentionally NOT done here — the UI layer (T5)
+   *  owns range checks so that downstream callers can apply identical
+   *  patches without re-validating. */
+  setMovingAverage: (id: string, index: 0 | 1 | 2 | 3 | 4, patch: Partial<MAConfig>) => void;
   reset: () => void;
 };
 
@@ -148,6 +175,17 @@ export const useTabsStore = create<Store>((set, get) => ({
     set((s) => {
       const next = new Map(s.prefs);
       next.set(id, { ...DEFAULT_PREFS, ...next.get(id), [key]: value });
+      return { prefs: next };
+    }),
+  setMovingAverage: (id, index, patch) =>
+    set((s) => {
+      if (index < 0 || index > 4) return {};
+      const next = new Map(s.prefs);
+      const current: ChartViewPrefs = { ...DEFAULT_PREFS, ...next.get(id) };
+      const mas = current.movingAverages;
+      if (index >= mas.length) return {};
+      const nextMas = mas.map((m, i) => (i === index ? { ...m, ...patch } : m));
+      next.set(id, { ...current, movingAverages: nextMas });
       return { prefs: next };
     }),
   reset: () => {
