@@ -42,3 +42,18 @@ describe('computeTotals', () => {
     expect(r.bidPct).toBe(0);
   });
 });
+
+import { render } from '@testing-library/react';
+import TotalQtyBar from './TotalQtyBar';
+
+describe('TotalQtyBar — empty states', () => {
+  it('renders nothing when snapshot is undefined (loading)', () => {
+    const { container } = render(<TotalQtyBar snapshot={undefined} maskRatio={false} />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('renders nothing when snapshot is null (no data)', () => {
+    const { container } = render(<TotalQtyBar snapshot={null} maskRatio={false} />);
+    expect(container.firstChild).toBeNull();
+  });
+});

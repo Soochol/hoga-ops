@@ -15,3 +15,13 @@ export function computeTotals(snapshot: OrderbookSnapshot): Totals {
   const bidPct = total > 0 ? bidTotal / total : 0.5;
   return { askTotal, bidTotal, askPct, bidPct };
 }
+
+type Props = {
+  snapshot: OrderbookSnapshot | null | undefined;
+  maskRatio: boolean;
+};
+
+export default function TotalQtyBar({ snapshot, maskRatio }: Props) {
+  if (snapshot == null) return null;
+  return <div data-testid="total-qty-bar" />;
+}
