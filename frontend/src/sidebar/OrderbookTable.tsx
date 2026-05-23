@@ -64,8 +64,8 @@ function Row({
   maxQty: number;
 }) {
   const widthPct = maxQty > 0 ? (qty / maxQty) * 100 : 0;
-  const barClass = side === 'ask' ? 'bg-tint-down' : 'bg-tint-up';
-  const priceColor = side === 'ask' ? 'text-down' : 'text-up';
+  const barClass   = side === 'ask' ? 'bg-tint-price-down' : 'bg-tint-price-up';
+  const priceColor = side === 'ask' ? 'text-price-down'    : 'text-price-up';
   // Depth bar extends from the left on the qty side; spec §5.1 shows depth
   // bars rendered behind the qty column.
   return (

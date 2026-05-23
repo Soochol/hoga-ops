@@ -32,7 +32,7 @@ export default function FillTape({ trades }: Props) {
 
 function FillRow({ trade }: { trade: Trade }) {
   const icon = trade.side > 0 ? '▲' : trade.side < 0 ? '▼' : '◆';
-  const iconCls = trade.side > 0 ? 'text-up' : trade.side < 0 ? 'text-down' : 'text-fg-dim';
+  const iconCls = trade.side > 0 ? 'text-price-up' : trade.side < 0 ? 'text-price-down' : 'text-fg-dim';
   const time = formatTime(trade.ts_ms);
   return (
     <div className="grid grid-cols-[16px_1fr_auto_auto] gap-2 px-2.5 py-0.5 items-center">

@@ -69,7 +69,7 @@ export default function PriceStrip() {
       {delta != null && (
         <span
           className={`font-mono text-sm ${
-            delta > 0 ? 'text-up' : delta < 0 ? 'text-down' : 'text-fg-dim'
+            delta > 0 ? 'text-price-up' : delta < 0 ? 'text-price-down' : 'text-fg-dim'
           }`}
         >
           {delta > 0 ? '+' : ''}

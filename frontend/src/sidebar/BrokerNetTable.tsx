@@ -22,7 +22,7 @@ export default function BrokerNetTable({ brokers }: Props) {
       {rows.map((r) => (
         <div key={r.name} className="grid grid-cols-[1fr_auto] gap-3 px-2.5 py-0.5">
           <span className="truncate">{trunc(r.name)}</span>
-          <span className={r.net > 0 ? 'text-up' : r.net < 0 ? 'text-down' : 'text-fg-dim'}>
+          <span className={r.net > 0 ? 'text-price-up' : r.net < 0 ? 'text-price-down' : 'text-fg-dim'}>
             {r.net > 0 ? '+' : ''}
             {r.net.toLocaleString('ko-KR')}
           </span>
