@@ -57,3 +57,34 @@ describe('TotalQtyBar — empty states', () => {
     expect(container.firstChild).toBeNull();
   });
 });
+
+describe('TotalQtyBar — normal render', () => {
+  it('shows formatted ask total on the left and bid total on the right with KRX colors', () => {
+    const { getByText, getByRole } = render(
+      <TotalQtyBar snapshot={snap(12_840, 18_220)} maskRatio={false} />,
+    );
+    const ask = getByText('12,840');
+    const bid = getByText('18,220');
+    expect(ask.className).toMatch(/text-price-down/);
+    expect(bid.className).toMatch(/text-price-up/);
+    const group = getByRole('group', { name: '총잔량' });
+    expect(group).toContainElement(ask);
+    expect(group).toContainElement(bid);
+  });
+
+  it('sets the bar fill grid-template-columns to the computed ratio', () => {
+    const { container } = render(
+      <TotalQtyBar snapshot={snap(12_840, 18_220)} maskRatio={false} />,
+    );
+    const fill = container.querySelector('[data-testid="total-qty-bar-fill"]') as HTMLElement;
+    expect(fill.style.gridTemplateColumns).toBe('12840fr 18220fr');
+  });
+
+  it('aria-labels each flank with its semantic meaning', () => {
+    const { getByLabelText } = render(
+      <TotalQtyBar snapshot={snap(12_840, 18_220)} maskRatio={false} />,
+    );
+    expect(getByLabelText('매도총잔량 12,840')).toBeInTheDocument();
+    expect(getByLabelText('매수총잔량 18,220')).toBeInTheDocument();
+  });
+});
