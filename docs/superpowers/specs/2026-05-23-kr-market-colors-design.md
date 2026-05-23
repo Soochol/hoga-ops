@@ -168,7 +168,7 @@ BaselineSeries에 `lastValueVisible: false` 추가 (`priceLineVisible: false`는
 | `capture/CaptureRowDetail.tsx:49,50` | `'text-down'` (error 라벨) | 상태 | `text-error` |
 | `pages/Settings.tsx:72` | `'text-down'` (symbol master hint) | 상태 | `text-error` |
 
-총 5개가 시장 데이터, 9개가 상태로 분류됨.
+Tailwind callsite 분류 합계: 시장 데이터 5건, 상태 8건. CSS 변수 직접 참조 7건은 모두 상태.
 
 ## Mockup HTML 갱신
 
@@ -264,4 +264,4 @@ npm test
 | `frontend/src/pages/Settings.tsx` | `text-error` |
 | `docs/superpowers/designs/2026-05-20-replay-viewer.html` | 시장 데이터 hex 치환, `tab-status.loaded` 예외 유지 |
 
-총 약 22개 파일.
+총 24개 파일.
