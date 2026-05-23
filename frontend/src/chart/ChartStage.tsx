@@ -17,11 +17,7 @@ import {
 import { useViewportStore } from '../state/viewport';
 import { useTabsStore } from '../state/tabs';
 import RangeSeriesPane from './RangeSeriesPane';
-import { CANDLE_SPEC } from './projectors/candle';
-import { QUOTE_TOTALS_SPEC } from './projectors/quoteTotals';
-import { VOLUME_SPEC } from './projectors/volume';
-import { RATIO_SPEC } from './projectors/ratio';
-import { FILL_STRENGTH_SPEC } from './projectors/fillStrength';
+import { PANE_SPECS, PANE_STRETCH } from './paneSpecs';
 import VolumeProfileOverlay from './VolumeProfileOverlay';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
 import { ChartPrefsProvider } from './ChartPrefsContext';
@@ -61,25 +57,16 @@ export type ChartStageProps = {
  * Multi-pane split: each pane component receives a `paneIndex` so its series
  * register on a distinct lightweight-charts pane. Pane heights are set via
  * `IPaneApi.setStretchFactor` after mount with the ratios from DESIGN.md /
- * spec §6.3:
- *   - Pane 0: Candle (1.4) + VolumeProfileOverlay
- *   - Pane 1: Volume (0.3)
- *   - Pane 2: Ratio (0.4)
- *   - Pane 3: Quote Totals (0.4) — bid/ask 1–10호가 total LineSeries
- *   - Pane 4: FillStrength (0.4)
+ * spec §6.3.
+ *   See `paneSpecs.ts` for the canonical pane registry. ChartStage
+ *   reads PANE_SPECS in order and mounts one `<RangeSeriesPane spec=...>`
+ *   per entry. VolumeProfileOverlay (pane 0 canvas overlay) and
+ *   DayBoundaryOverlay (chart-wide) remain hand-mounted alongside.
  *
  * Viewport publisher: subscribes to the chart's visible-range and writes
  * (fromMs, toMs) into `useViewportStore` so sibling components like
  * PriceStrip can read viewport state without prop-drilling (Task 6.5).
  */
-/**
- * Pane stretch factors (DESIGN.md / spec §6.3). Indexes:
- *   0 = candle, 1 = volume, 2 = ratio, 3 = quote-totals, 4 = fill-strength.
- * Total = 2.9; lightweight-charts treats these as proportional weights.
- * Candle share rises ~42% → ~48% vs the prior heatmap layout — intentional;
- * two lines do not need the vertical budget the heatmap consumed.
- */
-const PANE_STRETCH = [1.4, 0.3, 0.4, 0.4, 0.4] as const;
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
@@ -278,36 +265,30 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
             don't occupy layout space but remain selectable by E2E specs
             asserting "pane was mounted".
           */}
-          <div data-pane="candle" className="hidden">
-            <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0} spec={CANDLE_SPEC} />
-          </div>
-          <div data-pane="volume" className="hidden">
-            <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={1} spec={VOLUME_SPEC} />
-          </div>
-          <div data-pane="ratio" className="hidden">
-            <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={2} spec={RATIO_SPEC} />
-          </div>
           {/*
-            Render order must match paneIndex order. lightweight-charts v5
-            does not auto-create intermediate panes: `addSeries(...,
-            paneIndex=4)` while only panes 0-2 exist lands the first series
-            on pane 3 (next available index), not pane 4. Mounting
-            FillStrengthPane before the Quote Totals pane therefore splits its
-            buy/sell histograms across pane 3 (Quote Totals slot) and pane 4.
-            The quote-totals RangeSeriesPane's two LineSeries claim pane 3 first so
-            FillStrengthPane's pair both land on 4.
+            Render order matches PANE_SPECS array index. The array's
+            position carries the pane-index invariant: lightweight-charts
+            v5 does not auto-create intermediate panes — a requested
+            `paneIndex=N` while only K<N panes exist clamps to K. Mapping
+            in order ensures every spec's paneIndex matches its array
+            position so the clamp never fires.
 
-            VolumeProfileOverlay below is still a canvas-overlay pane portaled
-            into its target pane's DOM via `chart.panes()[0].getHTMLElement()`;
+            VolumeProfileOverlay below is still a canvas-overlay pane
+            portaled into pane 0's DOM via `chart.panes()[0].getHTMLElement()`;
             the `data-pane` wrapper is kept for E2E selectors but no longer
             hosts the canvas itself.
           */}
-          <div data-pane="quote-totals" className="hidden">
-            <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={3} spec={QUOTE_TOTALS_SPEC} />
-          </div>
-          <div data-pane="fill-strength" className="hidden">
-            <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={4} spec={FILL_STRENGTH_SPEC} />
-          </div>
+          {PANE_SPECS.map((spec, paneIndex) => (
+            <div key={spec.name} data-pane={spec.name} className="hidden">
+              <RangeSeriesPane
+                chart={chart}
+                bundle={bundle}
+                axis={axis}
+                paneIndex={paneIndex}
+                spec={spec}
+              />
+            </div>
+          ))}
           <div data-pane="volume-profile" className="hidden">
             <VolumeProfileOverlay
               chart={chart}
