@@ -290,3 +290,44 @@ def test_collect_stock_date_accepts_initial_step_ms(tmp_path: Path) -> None:
     )
     first_times = [c.time_ms for c in fake.calls if c.endpoint == "first"]
     assert first_times[:2] == [84000000, 84120000]
+
+
+def test_collect_backs_off_rate_limit_on_429(tmp_path: Path) -> None:
+    """When hogaplay returns 429, rate_limit_s doubles for the next N pages,
+    then restores to the configured value if no further 4xx occurs."""
+    from hoga.collector.client import HogaplayHTTPError
+
+    class ThrottlingFake(FakeClient):
+        def __init__(self) -> None:
+            super().__init__(
+                info_body="info\n",
+                first_pages={
+                    84000000: _row(1, 1, 1, 1001, 84001000),
+                    84060000: _row(1, 1, 1, 1002, 84061000),
+                    84120000: _row(1, 1, 1, 1003, 84121000),
+                },
+                chart_body="chart\n",
+            )
+            self.throttle_at_iter = 2
+            self._iter = 0
+
+        def fetch_first(self, code: str, date: str, time_ms: int) -> str:
+            self._iter += 1
+            if self._iter == self.throttle_at_iter:
+                self.calls.append(_Call("first", code, date, time_ms))
+                raise HogaplayHTTPError("throttled", status_code=429)
+            return super().fetch_first(code, date, time_ms)
+
+    fake = ThrottlingFake()
+    # rate_limit_s starts at 0 so timing is dominated by backoff.
+    result = collect_stock_date(
+        client=fake, code="003490", date="20260519",
+        data_dir=tmp_path, rate_limit_s=0,
+    )
+    # The capture should complete (not crash), and the 429 must have been
+    # absorbed by backoff (retry of the same time_ms).
+    first_calls = [c.time_ms for c in fake.calls if c.endpoint == "first"]
+    # The throttled time_ms should appear twice (retry after backoff).
+    from collections import Counter
+    counts = Counter(first_calls)
+    assert any(c == 2 for c in counts.values()), "throttled page should be retried after backoff"

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Protocol
 
 from hoga.api.timeenc import HogaMs
+from hoga.collector.client import HogaplayHTTPError
 from hoga.collector.page_step import (
     DATA_WINDOW_END_MS,
     DEFAULT_PAGE_STEP_MS,
@@ -31,6 +32,11 @@ _IDX_GLOBAL_SEQ = 3
 _IDX_EVENT_TIME = 4
 _MIN_FIELDS_EVENT_TIME = 5
 _MIN_FIELDS_GLOBAL_SEQ = 4
+
+# Throttle-aware backoff constants — see spec §8.2.
+THROTTLE_BACKOFF_FACTOR = 2.0
+THROTTLE_BACKOFF_HOLD_PAGES = 10  # Open Question #3: revisit if Phase 2 says otherwise
+THROTTLED_STATUSES = frozenset({429, 503})
 
 
 def page_sort_key(path: Path) -> int:
@@ -273,17 +279,26 @@ def _page_step_loop(
     last_emitted_t = -1
     last_emitted_pages = -1
     iter_idx = 0
+    backoff_remaining = 0  # countdown of pages held at doubled rate after a 429/503
     while True:
         if cancel_token is not None and cancel_token.cancelled:
             raise CaptureCancelled(f"capture cancelled at page {page_idx}")
         iter_idx += 1
         t_in = controller.next_t
         step_before = controller.step_ms
-        http_t0 = _time.perf_counter()
-        body, page_idx, new_seqs = _fetch_and_store_page(
-            raw_dir, client, code, date, t_in, page_idx, seen_seqs
-        )
-        http_ms = (_time.perf_counter() - http_t0) * 1000
+        try:
+            http_t0 = _time.perf_counter()
+            body, page_idx, new_seqs = _fetch_and_store_page(
+                raw_dir, client, code, date, t_in, page_idx, seen_seqs
+            )
+            http_ms = (_time.perf_counter() - http_t0) * 1000
+        except HogaplayHTTPError as e:
+            if e.status_code in THROTTLED_STATUSES:
+                _time.sleep(max(rate_limit_s * THROTTLE_BACKOFF_FACTOR, 1.0))
+                backoff_remaining = THROTTLE_BACKOFF_HOLD_PAGES
+                iter_idx -= 1
+                continue  # retry same t_in, do not advance controller
+            raise
         max_t = _max_event_time(body)
         decision = controller.observe(max_event_time=max_t, new_seqs=len(new_seqs))
         _write_progress(
@@ -330,8 +345,11 @@ def _page_step_loop(
             last_emitted_pages = page_idx
         if decision.should_stop:
             break
-        if rate_limit_s > 0:
-            _time.sleep(rate_limit_s)
+        effective_rate = (rate_limit_s * THROTTLE_BACKOFF_FACTOR) if backoff_remaining > 0 else rate_limit_s
+        if backoff_remaining > 0:
+            backoff_remaining -= 1
+        if effective_rate > 0:
+            _time.sleep(effective_rate)
 
     return seen_seqs, page_idx, controller.next_t
 
