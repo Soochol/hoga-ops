@@ -1,6 +1,6 @@
 # Series-Level Invariants — Catalog Split + Existing Validator Integration
 
-**Status:** draft (2026-05-24)
+**Status:** implemented (2026-05-24)
 
 ## 1. Goal
 
