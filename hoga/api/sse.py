@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter
 from sse_starlette.sse import EventSourceResponse
@@ -12,6 +13,55 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 logger = logging.getLogger(__name__)
+
+WatchdogKind = Literal["created", "modified", "deleted"]
+
+
+def classify_inventory_event(
+    src_path: str,
+    parquet_root: Path,
+    *,
+    is_directory: bool,
+    kind: WatchdogKind,
+) -> dict | None:
+    """Decide whether a watchdog filesystem event should produce an
+    inventory_* SSE event, and build the payload if so.
+
+    Returns None when the event is irrelevant (wrong path, wrong depth,
+    or wrong kind/is_directory combination). Returns a payload dict
+    when the event maps to a visible inventory change.
+
+    Pure function: no asyncio, no Bus, no I/O. Filesystem state is
+    implicit in the inputs.
+
+    Rules:
+      - ``inventory_removed`` fires on directory deletion at depth=2
+        (``parquet/<date>/<code>/``). When the dir vanishes, the row
+        vanishes from ``list_stock_dates``.
+      - ``inventory_added`` fires on ``meta.json`` create OR modify at
+        depth=3 (``parquet/<date>/<code>/meta.json``). The capture
+        worker writes ``meta.json`` LAST, so its appearance is when
+        ``list_stock_dates`` first sees the row; re-captures overwrite
+        the file, firing ``on_modified`` — also a refresh signal.
+      - Everything else returns ``None``.
+    """
+    p = Path(src_path)
+    try:
+        rel = p.relative_to(parquet_root)
+    except ValueError:
+        return None
+    parts = rel.parts
+
+    if kind == "deleted" and is_directory and len(parts) == 2:
+        date, code = parts
+        return {"type": "inventory_removed", "code": code, "date": date}
+
+    if kind in ("created", "modified") and not is_directory and len(parts) == 3:
+        date, code, fname = parts
+        if fname == "meta.json":
+            return {"type": "inventory_added", "code": code, "date": date}
+
+    return None
 
 
 class _Bus:
