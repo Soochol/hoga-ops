@@ -7,6 +7,7 @@ import { enqueueErrorHints } from '../api/upstream-hints';
 import type { ApiError } from '../api/client';
 import type { SymbolHit, UpstreamCode } from '../api/types';
 import { loadForceRetryDefault } from './forceRetryDefault';
+import { legendText } from './calendarStatus';
 
 export interface CaptureFormProps {
   /** Reference month for DateRangePicker's left grid. Defaults to current KST month. */
@@ -104,7 +105,7 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
       )}
 
       <div className="mt-3 text-xs text-fg-dim">
-        Legend: ✓ complete · ⚠ partial · ✕ broken · – no upstream data · 🔒 today &lt; 18:00 KST
+        {legendText()}
       </div>
     </div>
   );

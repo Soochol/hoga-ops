@@ -227,6 +227,7 @@ export type CalendarStatus =
   | 'complete'
   | 'source_partial'
   | 'client_incomplete'
+  | 'invalid'          // ADR-0020 — mirrors backend; was missing from frontend before
   | 'none'
   | 'weekend'
   | 'holiday'

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCalendar } from '../api/calendar';
-import type { CalendarCell, CalendarResponse, CalendarStatus, UpstreamCode } from '../api/types';
+import type { CalendarCell, CalendarResponse, UpstreamCode } from '../api/types';
 
 /** Calendar cell extended with a client-only `patched_at_ms` annotation
  *  stamped by SSE handlers. The backend wire shape (CalendarCell in types.ts)
@@ -76,12 +76,8 @@ export function useCalendar(code: string | null, year: number, month: number) {
   });
 }
 
-/** Status → calendar marker glyph convention (used by tests + CalendarCell). */
-export function markerFor(status: CalendarStatus): '✓' | '⚠' | '✕' | '🔒' | '–' | null {
-  if (status === 'complete') return '✓';
-  if (status === 'source_partial') return '⚠';
-  if (status === 'client_incomplete') return '✕';
-  if (status === 'today_locked') return '🔒';
-  if (status === 'no_upstream_data') return '–';   // ADR-0021
-  return null;
-}
+/** Status → calendar marker glyph convention (used by tests + CalendarCell).
+ *  Implementation lives in calendarStatus.ts as part of the single
+ *  CalendarStatusDescriptor table; re-exported here for backward
+ *  compatibility with existing import sites. */
+export { markerFor } from './calendarStatus';
