@@ -80,5 +80,45 @@ export const DEFAULT_PREFS: ChartViewPrefs = {
   ...TOGGLE_DEFAULTS,
 };
 
-// useActivePrefs lives in this module too (Task 3). Adding the import
-// here would create an unused-import error until then; deferred to T3.
+/**
+ * Store-injection seam to break the chartPrefs.ts ↔ tabs.ts module cycle.
+ *
+ * Why: ESM hoists `import` statements regardless of source position.
+ * A top-level `import { useTabsStore } from './tabs'` here would force
+ * tabs.ts to evaluate while chartPrefs.ts's namespace is still empty —
+ * and tabs.ts's `seedInitialState()` reads `CHART_TOGGLES` at module
+ * load, which would then be undefined.
+ *
+ * tabs.ts calls `registerTabsStore(useTabsStore)` immediately after
+ * `create(...)`. By the time any React component renders and invokes
+ * `useActivePrefs`, registration has happened. The runtime null-check
+ * is a tripwire if a non-React caller fires before tabs.ts loads.
+ */
+type ActiveTabPrefsStoreApi = {
+  <U>(selector: (state: { activeTabId: string; getPrefs: (id: string) => ChartViewPrefs }) => U): U;
+};
+let _activeTabPrefsStore: ActiveTabPrefsStoreApi | null = null;
+export function registerTabsStore(store: ActiveTabPrefsStoreApi): void {
+  _activeTabPrefsStore = store;
+}
+
+/**
+ * Subscribe to a slice of the active tab's `ChartViewPrefs`.
+ *
+ * Fine-grained: re-renders only when the selected slice changes (by
+ * Zustand's default `Object.is` equality). Use this in chart components
+ * and projectors instead of reading the whole prefs object — RatioPane
+ * shouldn't re-render when the user flips `volumeProfileMode`.
+ *
+ * Replaces the prior `useChartPrefs()` + `ChartPrefsContext` pattern,
+ * which threaded the whole prefs object through context and forced
+ * every consumer to re-render on any pref change.
+ */
+export function useActivePrefs<T>(selector: (prefs: ChartViewPrefs) => T): T {
+  if (_activeTabPrefsStore === null) {
+    throw new Error(
+      'useActivePrefs called before tabs store registered. Ensure ./tabs is imported.',
+    );
+  }
+  return _activeTabPrefsStore((s) => selector(s.getPrefs(s.activeTabId)));
+}

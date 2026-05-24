@@ -40,6 +40,7 @@ import {
   CHART_TOGGLES,
   DEFAULT_PREFS,
   MA_SLOT_COUNT,
+  registerTabsStore,
   type ChartToggleKey,
   type ChartViewPrefs,
   type MAConfig,
@@ -192,6 +193,10 @@ export const useTabsStore = create<Store>((set, get) => ({
     set({ tabs: [t], activeTabId: t.id, prefs: new Map() });
   },
 }));
+
+// Register the store with chartPrefs.ts so `useActivePrefs` can subscribe
+// to it without a top-level import-cycle (see chartPrefs.ts comment).
+registerTabsStore(useTabsStore);
 
 /** Debounced persistence — every store mutation schedules a save 250ms out.
  *  See spec §"Save 디바운싱" for rationale. */
