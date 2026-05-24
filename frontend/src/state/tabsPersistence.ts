@@ -127,7 +127,7 @@ export function mergePrefs(
  *  for the "empty tabs → seed a fresh tab" fallback. */
 export function loadPersisted(): ReplayTabsSnapshot | null {
   if (typeof localStorage === 'undefined') return null;
-  let raw: string | null = null;
+  let raw: string | null;
   try {
     raw = localStorage.getItem(STORAGE_KEY);
   } catch {
