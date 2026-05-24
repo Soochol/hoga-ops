@@ -5,6 +5,7 @@ today/18-KST overlay. Pure read-side; no mutation. See spec §5.3, §11 Q21.
 """
 from __future__ import annotations
 
+import asyncio
 import calendar as stdlib_calendar
 import datetime as dt
 import time
@@ -205,6 +206,14 @@ def build_router(*, data_dir: Path) -> APIRouter:
     async def calendar_route(code: str = Query(..., pattern=r"^\d{6}$"),
                               year: int = Query(..., ge=2000, le=2100),
                               month: int = Query(..., ge=1, le=12)) -> CalendarResponse:
-        return get_month_map(data_dir=data_dir, code=code, year=year, month=month)
+        # Offload the entire build to a threadpool so the cold-month pykrx
+        # HTTP fetch inside _trading_days_for doesn't block the event loop.
+        # Warm calls (cache hit) still incur the round-trip; overhead is
+        # negligible (~microseconds) vs the per-stall (seconds) we avoid.
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: get_month_map(data_dir=data_dir, code=code, year=year, month=month),
+        )
 
     return router

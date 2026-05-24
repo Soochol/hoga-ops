@@ -867,7 +867,16 @@ def build_router(
             candidate_dates = list(req.dates)
         elif req.start_date and req.end_date:
             try:
-                candidate_dates = _expand_to_trading_days(req.start_date, req.end_date)
+                # Offload the pykrx-backed cold-month fetch to a threadpool
+                # so it doesn't block the event loop. Warm cache hit returns
+                # in microseconds; cold hit can be 1-3 s of network.
+                loop = asyncio.get_running_loop()
+                candidate_dates = await loop.run_in_executor(
+                    None,
+                    _expand_to_trading_days,
+                    req.start_date,
+                    req.end_date,
+                )
             except KrxUnavailableError as e:
                 raise HTTPException(status_code=503, detail={
                     "code": e.code,
