@@ -106,6 +106,31 @@ class CancelToken:
         return self._event.is_set()
 
 
+# Cooperative cancellation poll interval used inside long sleeps (the 1.0s
+# throttle backoff). Matches the lowest production rate_limit_s so cancel
+# response time inside backoff is bounded by the same interval that bounds
+# it everywhere else in the loop.
+_CANCEL_POLL_INTERVAL_S = 0.05
+
+
+def _cancellable_sleep(seconds: float, cancel_token: CancelToken | None) -> None:
+    """Sleep for ``seconds`` while polling ``cancel_token`` every
+    _CANCEL_POLL_INTERVAL_S. Raises CaptureCancelled if the token fires
+    during the sleep. Equivalent to _time.sleep when cancel_token is None.
+    """
+    if cancel_token is None:
+        _time.sleep(seconds)
+        return
+    deadline = _time.monotonic() + seconds
+    while True:
+        if cancel_token.cancelled:
+            raise CaptureCancelled("capture cancelled during backoff sleep")
+        remaining = deadline - _time.monotonic()
+        if remaining <= 0:
+            return
+        _time.sleep(min(_CANCEL_POLL_INTERVAL_S, remaining))
+
+
 @dataclass
 class CollectResult:
     raw_dir: Path
@@ -318,7 +343,10 @@ def _page_step_loop(
                     })
                     with profile_path.open("a", encoding="utf-8") as f:
                         f.write(marker + "\n")
-                _time.sleep(max(rate_limit_s * THROTTLE_BACKOFF_FACTOR, 1.0))
+                _cancellable_sleep(
+                    max(rate_limit_s * THROTTLE_BACKOFF_FACTOR, 1.0),
+                    cancel_token,
+                )
                 backoff_remaining = THROTTLE_BACKOFF_HOLD_PAGES
                 iter_idx -= 1
                 continue  # retry same t_in, do not advance controller

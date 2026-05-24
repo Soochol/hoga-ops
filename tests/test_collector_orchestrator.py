@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from hoga.collector import orchestrator as orch
-from hoga.collector.orchestrator import collect_stock_date, page_sort_key
+from hoga.collector.orchestrator import (
+    CancelToken,
+    CaptureCancelled,
+    collect_stock_date,
+    page_sort_key,
+)
 
 # Magic constants used across tests.
 _UNIQUE_EVENTS_BASIC = 3
@@ -370,6 +375,56 @@ def test_collect_doubles_rate_for_THROTTLE_BACKOFF_HOLD_PAGES_after_429(
     normal_after = sleeps.count(0.05)
     assert doubled >= 10, f"expected ≥10 doubled-rate sleeps after throttle, got {doubled} (all sleeps: {sleeps})"
     assert normal_after >= 1, f"expected return to normal rate after 10 pages, got {normal_after}"
+
+
+def test_throttle_backoff_aborts_on_cancel_within_poll_interval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """During a 429 backoff sleep the cancel token must be observed within
+    one poll interval (~50ms), not held hostage by the full 1.0s floor.
+    Prior to the fix _time.sleep(1.0) blocked Cancel for the full second.
+    """
+    from hoga.collector.client import HogaplayHTTPError
+    from hoga.collector import orchestrator as orch
+
+    sleeps: list[float] = []
+
+    def fake_sleep(s: float) -> None:
+        sleeps.append(s)
+        # After the first slice of the backoff sleep, the user cancels.
+        if s <= orch._CANCEL_POLL_INTERVAL_S and len(sleeps) >= 1:
+            token.cancel()
+
+    monkeypatch.setattr(orch._time, "sleep", fake_sleep)
+    # Drive monotonic forward by sleep duration so the deadline loop exits
+    # naturally if cancel never fires (sanity).
+    base = [1000.0]
+    monkeypatch.setattr(orch._time, "monotonic", lambda: base[0])
+    orig_sleep = fake_sleep
+    def advancing_sleep(s: float) -> None:
+        base[0] += s
+        orig_sleep(s)
+    monkeypatch.setattr(orch._time, "sleep", advancing_sleep)
+
+    class ThrottleAlways(FakeClient):
+        def fetch_first(self, code: str, date: str, time_ms: int) -> str:
+            self.calls.append(_Call("first", code, date, time_ms))
+            raise HogaplayHTTPError("throttled", status_code=429)
+
+    token = CancelToken()
+    fake = ThrottleAlways(info_body="info\n", first_pages={}, chart_body="chart\n")
+    with pytest.raises(CaptureCancelled):
+        collect_stock_date(
+            client=fake, code="003490", date="20260519",
+            data_dir=tmp_path, rate_limit_s=0.05,
+            cancel_token=token,
+        )
+    # The cancel should fire on the first poll slice (≤50ms), not after the
+    # full 1.0s floor.
+    assert sum(sleeps) < 0.2, (
+        f"expected cancel to interrupt backoff in <0.2s of sleep budget, "
+        f"observed {sleeps}"
+    )
 
 
 def test_collect_records_stagnation_abort_in_progress_and_result(
