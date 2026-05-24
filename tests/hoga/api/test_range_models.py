@@ -71,3 +71,48 @@ def test_range_bundle_requires_at_least_one_segment_and_consistent_bucket():
     assert bundle.bucket_ms == 60_000
     assert len(bundle.segments) == 1
     assert len(bundle.volume_profile_by_day) == 1
+
+
+def test_range_bundle_has_excluded_dates_field_default_empty() -> None:
+    from hoga.api.models import (
+        ExcludedDate, DateWarning,
+    )
+    rb = RangeBundle(
+        code="005930", from_date="20260520", to_date="20260520",
+        bucket_ms=60_000,
+        segments=[RangeSegment(date="20260520",
+                               session_open_ms=1_000_000_000_000,
+                               session_close_ms=1_000_000_001_000)],
+        candles=[],
+        quote_ratio=QuoteRatio(bucket_ms=60_000, points=[]),
+        fill_strength=FillStrength(bucket_ms=60_000, points=[]),
+        volume_profile_range=VolumeProfile(
+            bin_count=0,
+            price_min=0,
+            price_max=0,
+            bin_width=0,
+            bins=[]),
+        volume_profile_by_day=[],
+    )
+    assert rb.excluded_dates == []
+    assert rb.data_warnings == []
+
+
+def test_excluded_date_round_trip() -> None:
+    from hoga.api.models import ExcludedDate
+    ed = ExcludedDate(date="20260518", violations=[
+        {"invariant_id": "meta.close_after_open", "severity": "error",
+         "message": "x", "ctx": {"open_ms": 1, "close_ms": 0}},
+    ])
+    assert ed.model_dump()["date"] == "20260518"
+    assert len(ed.model_dump()["violations"]) == 1
+
+
+def test_date_warning_round_trip() -> None:
+    from hoga.api.models import DateWarning
+    dw = DateWarning(date="20260518", warnings=[
+        {"invariant_id": "collection.finished", "severity": "warn",
+         "message": "x", "ctx": {"complete": False}},
+    ])
+    assert dw.model_dump()["date"] == "20260518"
+    assert len(dw.model_dump()["warnings"]) == 1

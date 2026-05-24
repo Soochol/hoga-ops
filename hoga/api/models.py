@@ -357,6 +357,22 @@ class RangeSegment(BaseModel):
     session_close_ms: int
 
 
+class ExcludedDate(BaseModel):
+    """A Stock-Date that build_range_bundle skipped due to error-severity
+    invariant violations (ADR-0020). Surfaced so the UI can explain the gap.
+    """
+    date: str
+    violations: list[dict]   # each: {invariant_id, severity, message, ctx}
+
+
+class DateWarning(BaseModel):
+    """A Stock-Date that was included in the bundle but tripped warn-severity
+    invariants. The UI should mark the segment but render its data (ADR-0020).
+    """
+    date: str
+    warnings: list[dict]
+
+
 class RangeBundle(BaseModel):
     """The sole read-path Wire Model for a Stock-Date Range (ADR-0013).
 
@@ -367,6 +383,9 @@ class RangeBundle(BaseModel):
     grids cannot be concatenated meaningfully. QuoteRatio.points and
     FillStrength.points ARE concatenated across segments because they are flat
     (t, value) point arrays with no per-day grid dependency.
+
+    excluded_dates / data_warnings surface invariant outcomes (ADR-0020).
+    Both default to empty lists so existing clients are unaffected.
     """
 
     code: str
@@ -379,3 +398,5 @@ class RangeBundle(BaseModel):
     fill_strength: FillStrength
     volume_profile_range: VolumeProfile
     volume_profile_by_day: list[VolumeProfile]
+    excluded_dates: list[ExcludedDate] = []
+    data_warnings: list[DateWarning] = []
