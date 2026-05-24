@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useTabsStore, DEFAULT_MOVING_AVERAGES } from './tabs';
+import { STORAGE_KEY } from './tabsPersistence';
 
 describe('useTabsStore — timeframe + prefs (Map-based, CQ1)', () => {
   beforeEach(() => {
@@ -123,5 +124,66 @@ describe('useTabsStore — timeframe + prefs (Map-based, CQ1)', () => {
     expect(useTabsStore.getState().prefs.has(id2)).toBe(false);
     // id1 prefs unchanged
     expect(useTabsStore.getState().getPrefs(id1).volumeProfileMode).toBe('range');
+  });
+});
+
+describe('useTabsStore — persistence integration', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.useFakeTimers();
+    useTabsStore.getState().reset();
+    useTabsStore.setState((s) => ({ ...s, prefs: new Map() }));
+    // reset() itself triggers a save tick; flush before each test.
+    vi.runAllTimers();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('writes a snapshot 250ms after a selection change', () => {
+    const id = useTabsStore.getState().tabs[0].id;
+    useTabsStore.getState().setSelection(id, {
+      code: '005930', fromDate: '20260512', toDate: '20260512', timeframe: '1m',
+    });
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    vi.advanceTimersByTime(250);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    expect(raw).not.toBeNull();
+    const parsed = JSON.parse(raw!);
+    expect(parsed.version).toBe(1);
+    expect(parsed.tabs[0].selection.code).toBe('005930');
+  });
+
+  it('writes a snapshot after newTab + close round-trip', () => {
+    useTabsStore.getState().newTab();
+    vi.advanceTimersByTime(250);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).tabs).toHaveLength(2);
+    const toClose = useTabsStore.getState().tabs[1].id;
+    useTabsStore.getState().closeTab(toClose);
+    vi.advanceTimersByTime(250);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).tabs).toHaveLength(1);
+  });
+
+  it('persists prefs changes (volumeProfileMode)', () => {
+    const id = useTabsStore.getState().tabs[0].id;
+    useTabsStore.getState().setVolumeProfileMode(id, 'per-day');
+    vi.advanceTimersByTime(250);
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(parsed.tabs[0].prefs.volumeProfileMode).toBe('per-day');
+  });
+
+  it('coalesces rapid changes into a single write (debounce)', () => {
+    const id = useTabsStore.getState().tabs[0].id;
+    useTabsStore.getState().setToggle(id, 'auctionWindowMask', false);
+    vi.advanceTimersByTime(100);
+    useTabsStore.getState().setToggle(id, 'auctionWindowMask', true);
+    vi.advanceTimersByTime(100);
+    useTabsStore.getState().setToggle(id, 'auctionWindowMask', false);
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull(); // not yet
+    vi.advanceTimersByTime(250);
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(parsed.tabs[0].prefs.auctionWindowMask).toBe(false);
   });
 });
