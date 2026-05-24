@@ -736,7 +736,8 @@ async def test_refresh_disk_write_oserror_maps_to_warning_not_unexpected(
     detached container volume) must NOT fall through to the broad
     'Symbol refresh failed unexpectedly' ERROR-level stack trace — it's a
     routine operational class. Map to a WARNING with the actual cause and
-    set the cache reason to KRX_FETCH_FAILED.
+    surface UpstreamCode.DISK_WRITE_FAILED so operators can distinguish
+    "upstream down" from "couldn't write the response".
     """
     import logging
     symbols_module.reset_state_for_tests()
@@ -758,7 +759,7 @@ async def test_refresh_disk_write_oserror_maps_to_warning_not_unexpected(
     with caplog.at_level(logging.WARNING, logger=symbols_module.logger.name):
         resp = await symbols_module.refresh(path=path, data_dir=data_dir)
 
-    assert resp.reason == UpstreamCode.KRX_FETCH_FAILED
+    assert resp.reason == UpstreamCode.DISK_WRITE_FAILED
     assert resp.status == "unavailable"
     # No ERROR-level "failed unexpectedly" stack trace.
     assert not any(

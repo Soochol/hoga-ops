@@ -59,3 +59,9 @@ class UpstreamCode(StrEnum):
     COOKIE_MISSING = "cookie_missing"
     HOGAPLAY_HTTP_ERROR = "hogaplay_http_error"
     SYMBOL_MASTER_NOT_INITIALIZED = "symbol_master_not_initialized"
+    # Disk-write failure during a cache flush — distinguishes "the upstream
+    # source is down" (KRX_FETCH_FAILED) from "the upstream returned data
+    # but we couldn't persist it" (full volume, EACCES, detached volume).
+    # Operators see distinct reasons; UIs can surface a different remediation
+    # ("free disk space" vs "check KRX credentials").
+    DISK_WRITE_FAILED = "disk_write_failed"

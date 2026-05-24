@@ -543,16 +543,14 @@ async def _do_refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
         except OSError as exc:
             # Disk-related failures (full volume, read-only mount, missing
             # parent dir, EACCES) are an expected operational class — log
-            # a single warning with the cause instead of falling through
-            # to the broad "failed unexpectedly" path that emits a full
-            # stack trace and pages on-call. The user-facing reason stays
-            # KRX_FETCH_FAILED so the existing UI surface is unchanged;
-            # a dedicated UpstreamCode for disk failures can ship in a
-            # follow-up that touches the wire mirror discipline.
+            # a single warning with the cause and surface the dedicated
+            # DISK_WRITE_FAILED reason so operators and the UI can
+            # distinguish "the upstream source is down" from "we couldn't
+            # persist what the upstream gave us".
             logger.warning(
                 "Symbol cache disk write failed at %s: %s", path, exc,
             )
-            _set_stale_or_unavailable(UpstreamCode.KRX_FETCH_FAILED)
+            _set_stale_or_unavailable(UpstreamCode.DISK_WRITE_FAILED)
             return _build_response()
         loop = asyncio.get_running_loop()
         breakdowns = await loop.run_in_executor(
