@@ -9,7 +9,7 @@ import collections
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -216,20 +216,31 @@ _loop: asyncio.AbstractEventLoop | None = None
 
 # --- Queue manifest persistence (ADR-0019) --------------------------------
 
+def _items_in_restore_order() -> Iterator[QueueItemState]:
+    """Yield queue items in the order they should be restored after a crash.
+
+    Active items first, then queued items. The invariant (spec §4.5,
+    ADR-0019 §5): on restart, items that were previously running get
+    re-queued before strictly-queued ones, so they pick up resume=True
+    via decide_capture sooner and the user sees in-flight work continue
+    fastest. Naming the iterator concentrates this ordering decision in
+    one place — both _persist_queue_locked (write side) and
+    _restore_queue_from_manifest (read side) rely on it implicitly.
+    """
+    yield from _active.values()
+    yield from _queue
+
+
 def _persist_queue_locked() -> None:
     """Snapshot _active + _queue + _queue_paused to the on-disk manifest.
 
     INVARIANT: caller holds ``_lock``. Called from every mutation site that
     touches _queue or _active. _done is intentionally excluded (volatile —
     cleared by DELETE /done; see ADR-0019).
-
-    Active-before-queued ordering matters: items that were running in the
-    previous session get restored first into _queue, so workers pick them
-    up before strictly-queued items. This preserves the "resume in-flight
-    first" UX (see spec §4.5 Ordering invariant).
     """
     if _data_dir is None:
-        return  # test fixture without data_dir wired
+        return  # test fixture without data_dir wired — no lock check needed
+    assert _lock.locked(), "must hold _lock — see ADR-0019"
     items = [
         QueueManifestItem(
             item_id=s.item_id,
@@ -239,7 +250,7 @@ def _persist_queue_locked() -> None:
             enqueued_at_ms=s.enqueued_at_ms,
             pause_origin=s.pause_origin,
         )
-        for s in (*_active.values(), *_queue)
+        for s in _items_in_restore_order()
     ]
     save_manifest(_data_dir, QueueManifest(paused=_queue_paused, items=items))
 
@@ -676,8 +687,12 @@ async def _worker_loop() -> None:
 
 
 def start_workers(n: int | None = None) -> list[asyncio.Task]:
-    """Spin up the worker pool. Idempotent in test scope only — production
-    lifespan calls this exactly once.
+    """Spin up the worker pool WITHOUT restoring the manifest.
+
+    Production callers use :func:`start_capture_pool` instead, which
+    bundles the ADR-0019 ordering invariant (restore-before-spawn).
+    Tests use this directly when they want bare worker control without
+    touching the on-disk manifest.
 
     Always replaces ``_wakeup`` so the Event is bound to the currently
     running event loop. Otherwise sequential FastAPI TestClient lifespans
@@ -689,6 +704,20 @@ def start_workers(n: int | None = None) -> list[asyncio.Task]:
     _wakeup = asyncio.Event()
     n = n if n is not None else _max_concurrent
     return [asyncio.create_task(_worker_loop(), name=f"capture-worker-{i}") for i in range(n)]
+
+
+def start_capture_pool(data_dir: Path) -> list[asyncio.Task]:
+    """Production boot entry: restore the queue manifest from disk (if any),
+    then spawn the worker pool.
+
+    Bundles the ADR-0019 ordering invariant — restore-before-spawn — into a
+    single call so future readers (and new callers like a test harness) can't
+    accidentally start workers against an empty queue when the disk holds
+    items to recover. ``app.py`` lifespan uses this; tests that exercise the
+    full boot path should too.
+    """
+    _restore_queue_from_manifest(data_dir)
+    return start_workers()
 
 
 async def stop_workers(workers: list[asyncio.Task]) -> None:
