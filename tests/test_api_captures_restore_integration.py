@@ -22,7 +22,7 @@ def _reset(tmp_path):
     captures.reset_state_for_tests()
 
 
-async def test_restore_after_simulated_restart_drains_queue(tmp_path: Path):
+async def test_restore_after_simulated_restart_drains_queue(tmp_path: Path, monkeypatch):
     """1. Enqueue 2 items.
     2. Stop workers (simulates server shutdown leaving manifest behind).
     3. Reset in-memory state but keep manifest on disk.
@@ -59,7 +59,9 @@ async def test_restore_after_simulated_restart_drains_queue(tmp_path: Path):
 
     async def _stub_run_item(state):
         state.phase = "done"
-    captures._run_item = _stub_run_item  # type: ignore[assignment]
+    # Use monkeypatch (not direct module write) so the stub auto-reverts at
+    # teardown and does not leak _run_item into other test modules.
+    monkeypatch.setattr(captures, "_run_item", _stub_run_item)
 
     workers = captures.start_workers(n=2)
     try:
