@@ -136,9 +136,9 @@ FILL STRENGTH
 ```
 
 - 서브헤더 스타일: 기존 `text-fg-dim text-[11px] uppercase tracking-wider mb-2` 재사용.
-- 토글 row grid: `grid-cols-[36px_1fr]` (period input/color dot 없으니 MA row 대비 단순).
-- 토글 스위치: MA row의 패턴 그대로 (`bg-accent` ↔ `bg-bg-input-hover`).
-- `data-testid="fill-strength-cumulative-toggle"`.
+- 토글 row: SettingsModal의 `ToggleRow` 컴포넌트를 그대로 재사용 (CHART_TOGGLES 의 label/description 사용). MA row의 toggle 마크업과 픽셀-동일하나 코드는 SettingsModal에서 공유 import 형태로 분리해 단일 source 유지.
+- `data-testid="settings-toggle-fillStrengthCumulative"` — SettingsModal의 차트 카테고리 ToggleRow와 동일 명명 규칙(`settings-toggle-{key}`).
+- IndicatorsSection은 hard-coded "FILL STRENGTH" 서브헤더 1개를 그리고 그 아래로 `CHART_TOGGLES.filter((t) => t.category === 'indicators').map(...)`. 향후 indicator-scoped toggle 추가 시 IndicatorsSection 코드 무변경.
 
 ## 엣지 케이스 / Invariant
 
