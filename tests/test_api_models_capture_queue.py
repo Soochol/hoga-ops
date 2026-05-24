@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from hoga.api.models import (
     CalendarCell,
     CalendarResponse,
@@ -113,3 +115,26 @@ def test_queue_paused_resumed_drained_event_types():
     assert json.loads(resumed.model_dump_json())["type"] == "capture_queue_resumed"
     assert json.loads(drained.model_dump_json())["type"] == "capture_queue_drained"
     assert json.loads(drained.model_dump_json())["total_done"] == 5
+
+
+def test_queue_manifest_item_roundtrip():
+    from hoga.api.models import QueueManifestItem
+    item = QueueManifestItem(
+        item_id="20260524T100000000-005930-20260520",
+        code="005930",
+        date="20260520",
+        force_retry=False,
+        enqueued_at_ms=1700000000000,
+        pause_origin=False,
+    )
+    raw = item.model_dump_json()
+    back = QueueManifestItem.model_validate_json(raw)
+    assert back == item
+
+
+def test_queue_manifest_defaults_schema_version_to_1():
+    from hoga.api.models import QueueManifest
+    m = QueueManifest(paused=False, items=[])
+    assert m.schema_version == 1
+    assert m.paused is False
+    assert m.items == []

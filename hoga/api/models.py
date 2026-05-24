@@ -233,6 +233,32 @@ class QueueSnapshot(BaseModel):
     max_concurrent: int
 
 
+class QueueManifestItem(BaseModel):
+    """On-disk representation of one queue item. Persistence-only — never
+    returned by API endpoints. Fields are the minimum needed to reconstruct
+    a QueueItemState on restart: phase is always 'queued' on restore (see
+    spec §4.2 and ADR-0019).
+    """
+
+    item_id: str
+    code: str
+    date: str
+    force_retry: bool
+    enqueued_at_ms: int
+    pause_origin: bool
+
+
+class QueueManifest(BaseModel):
+    """On-disk capture-queue manifest. Written to ``<data_dir>/.queue.json``
+    on every queue mutation. Loaded once at lifespan startup to restore the
+    queue (ADR-0019).
+    """
+
+    schema_version: int = 1
+    paused: bool
+    items: list[QueueManifestItem]
+
+
 # --- POST /api/captures/items request/response (Plan B Task 7) --------------
 
 
