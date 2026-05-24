@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
@@ -62,13 +62,19 @@ export default function RangeSeriesPane<Ctx>({
   // JSDoc for the full justification.
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const ctx = spec.useContext ? spec.useContext() : (undefined as Ctx);
+  const seriesRef = useRef<ISeriesApi<any>[]>([]);
+  // Lifecycle effect: create LineSeries once per (chart, paneIndex, spec)
+  // tuple and tear them down on unmount. Does NOT depend on ctx/bundle/axis,
+  // so prefs edits (e.g. Moving Average period bump) don't churn series
+  // handles. Without this split, MA edits visibly redraw the entire MA
+  // layer because all 5 LineSeries are removed and re-added.
   useEffect(() => {
     const seriesList: ISeriesApi<any>[] = spec.series.map((s) => {
       const series = chart.addSeries(s.type, s.options, paneIndex);
       s.afterAdd?.(series);
-      series.setData(s.data(bundle, axis, ctx));
       return series;
     });
+    seriesRef.current = seriesList;
     return () => {
       // Guard: when a sibling pane throws and ChartErrorBoundary unmounts
       // ChartStage, the parent's chart.remove() may run before this
@@ -83,7 +89,19 @@ export default function RangeSeriesPane<Ctx>({
           // chart already torn down
         }
       }
+      seriesRef.current = [];
     };
-  }, [chart, bundle, axis, paneIndex, spec, ctx]);
+  }, [chart, paneIndex, spec]);
+
+  // Data effect: push new projected data into existing series whenever
+  // bundle/axis/ctx changes. Cheap (setData on a held handle), so it's
+  // fine to run on every render where any of those changes.
+  useEffect(() => {
+    const seriesList = seriesRef.current;
+    if (seriesList.length !== spec.series.length) return;
+    spec.series.forEach((s, i) => {
+      seriesList[i].setData(s.data(bundle, axis, ctx));
+    });
+  }, [bundle, axis, ctx, spec]);
   return null;
 }

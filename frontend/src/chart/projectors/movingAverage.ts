@@ -57,14 +57,11 @@ export type MAContext = readonly MAConfig[];
 /**
  * Returns the current MA configuration array.
  *
- * Identity is intentionally stable: `useChartPrefs().movingAverages` is the
- * reference held in the tabs store, mutated only when `setMovingAverage`
- * rebuilds it via `.map(...)`. RangeSeriesPane lists `ctx` in its useEffect
- * dependency array, so if we ever wrap this in a fresh object (e.g.
- * `{ configs: ... }`) all five LineSeries will be torn down and re-added on
- * every unrelated pref change — flickering the chart.
- *
- * Keep the return shape as the array itself, not a wrapper.
+ * RangeSeriesPane splits series lifecycle from data updates: series are
+ * added once per (chart, spec) and only `setData` runs when `ctx` changes.
+ * So a fresh reference here triggers a cheap re-projection, not a series
+ * teardown — the previous "identity must stay stable across
+ * setMovingAverage" contract is no longer load-bearing.
  */
 const useMAContext = (): MAContext => useChartPrefs().movingAverages;
 
