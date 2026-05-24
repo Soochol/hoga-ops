@@ -4,8 +4,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from hoga.api.captures_persistence import (
     MANIFEST_FILENAME,
     load_manifest,
@@ -86,7 +84,7 @@ def test_load_quarantines_missing_required_field(tmp_path: Path) -> None:
     assert len(quarantined) == 1
 
 
-def test_save_swallows_oserror_via_unwritable_parent(tmp_path: Path, monkeypatch, caplog) -> None:
+def test_save_swallows_oserror_via_unwritable_parent(tmp_path: Path, caplog) -> None:
     """save_manifest must NOT propagate OSError — in-memory state is the
     runtime source of truth; disk failure is best-effort only."""
     bad_dir = tmp_path / "readonly"
