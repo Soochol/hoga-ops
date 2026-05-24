@@ -1,8 +1,8 @@
 # Replay Chart — Mouse Wheel Interactions (Modifier-Aware Zoom & Pan)
 
 **Date**: 2026-05-24
-**Status**: Draft
-**Scope**: `frontend/src/chart/ChartStage.tsx` (+ new test file for the pure-logic helper)
+**Status**: Approved
+**Scope**: `frontend/src/chart/ChartStage.tsx`, `frontend/src/util/wheelInteractions.ts` (new), `frontend/src/util/wheelInteractions.test.ts` (new)
 
 ## Problem
 
@@ -38,6 +38,8 @@ The plain-wheel anchor is the headline change: when zooming out, the right edge 
 - Changing wheel behavior on other charts (capture inventory views, etc.) — `/replay` only.
 
 ## Design
+
+A note on coordinate systems: this spec works in `lightweight-charts`' **logical range** — a bar-index coordinate exposed by `timeScale.getVisibleLogicalRange()` / `setVisibleLogicalRange()`. This is distinct from the project's **Virtual Axis** (which maps real Unix-ms to virtual-ms for the stitched multi-day timeline). The Virtual Axis already underlies the chart's time mapping; bar-index manipulation composes correctly on top of it because the library handles the index → virtual-ms → render pixel conversion internally.
 
 ### Disable the library's built-in wheel handler
 
@@ -162,6 +164,8 @@ The user phrased the default anchor as "the latest candle on screen." We interpr
 - **Last logical index in the data** (`bundle.candles.length - 1`): rejected. When the user has panned away from the right edge to study earlier data, anchoring at the absolute last bar would jerk the view toward "now" on every wheel tick. That breaks the "I'm looking at this region, just give me more or less of it" expectation.
 - **Right edge of visible range including `rightOffset` padding**: this is what `range.to` already represents. Acceptable — when zooming out, the padding bar count stays proportional to the visible span, which is the standard behavior.
 
+Multi-day **Stock-Date Range** case: bar-index is continuous across **Day Boundaries** (the 1-second virtual-axis gap is invisible at the index layer). If `range.to` happens to land in a Day Boundary gap, the anchor still works correctly — no special handling needed.
+
 ### Interaction with existing subscribers
 
 `setVisibleLogicalRange` triggers `subscribeVisibleLogicalRangeChange` and `subscribeVisibleTimeRangeChange`. Both already exist in `ChartStage`:
@@ -169,7 +173,7 @@ The user phrased the default anchor as "the latest candle on screen." We interpr
 1. The zoom-in cap at [ChartStage.tsx:293-300](frontend/src/chart/ChartStage.tsx#L293-L300) — checks `barSpacing > 50` and snaps it back. Still applies; we don't need to duplicate the cap in the helper.
 2. The viewport publisher at [ChartStage.tsx:178-192](frontend/src/chart/ChartStage.tsx#L178-L192) — publishes `(fromMs, toMs)` to `useViewportStore`. Pan and zoom will both correctly republish viewport; downstream consumers (PriceStrip, hover cards) see the change as if the library had handled it.
 
-The crosshair handler at [ChartStage.tsx:203-212](frontend/src/chart/ChartStage.tsx#L203-L212) is unaffected — it subscribes to mouse-move, not wheel.
+The crosshair handler at [ChartStage.tsx:203-212](frontend/src/chart/ChartStage.tsx#L203-L212) is unaffected — it subscribes to mouse-move, not wheel. **Cursor** (the per-`Replay Tab` `cursorMs`) updates via the existing PriceStrip fallback path: wheel → `setVisibleLogicalRange` → `visibleTimeRange` change → `useViewportStore` republish → PriceStrip writes the new right edge as the Cursor when no hover is active. No extra wiring needed.
 
 ## File Layout
 
