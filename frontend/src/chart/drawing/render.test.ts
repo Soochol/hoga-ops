@@ -91,15 +91,9 @@ describe('renderHline price badge', () => {
     expect(x).toBeLessThan(ctx.width);
   });
 
-  it('preserves fractional precision on non-candle panes (ratio)', () => {
-    // Ratio pane lives in −1..1; rounding to KRW integer would collapse
-    // −0.34 to 0 and read as misleading "no imbalance". See render.ts
-    // formatBadgePrice — candle branch rounds, indicator branch keeps
-    // up to 4 fraction digits.
-    // Chart stub now has 3 panes — pane 0 (candle 400px), pane 1 (volume 80px),
-    // pane 2 (ratio 80px). paneTopY('ratio') = 480; the test's
-    // priceToCoordinate returns pane-local 200 which lands at chart-global
-    // y = 680 (outside the panes but the test only cares about the badge text).
+  it('rounds the badge to an integer on every pane (no decimals)', () => {
+    // User decision 2026-05-25: all panes show integers — accepts that
+    // a ratio drawing at −0.34 displays as "0".
     const ctx: ProjectCtx = {
       ...makeProjectCtx(),
       chart: {
@@ -122,8 +116,8 @@ describe('renderHline price badge', () => {
     };
     renderDrawing(c, ctx, h, false);
     const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
-    expect(labels.some((l) => l.includes('0.34'))).toBe(true);
-    expect(labels).not.toContain('0');
+    expect(labels).toContain('0');
+    expect(labels.every((l) => !l.includes('.'))).toBe(true);
   });
 
   it('does not paint a badge when the price scale is unavailable (y == null)', () => {

@@ -71,15 +71,14 @@ function luminance(hex: string): number {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 }
 
-function formatBadgePrice(price: number, paneId: PaneId): string {
-  // Candle (KRW) → integer with thousand separators per the original
-  // ADR-0025 rule. Indicator panes carry sub-unit values (ratio in
-  // −1..1, fill-strength in 0..1, etc.) where Math.round would collapse
-  // them to 0 / ±1 and mislead the analyst. v1 reuses the candle
-  // formatter only on the candle pane; everywhere else we preserve up
-  // to 4 fraction digits with the same ko-KR locale separators.
-  if (paneId === 'candle') return Math.round(price).toLocaleString('ko-KR');
-  return price.toLocaleString('ko-KR', { maximumFractionDigits: 4 });
+function formatBadgePrice(price: number): string {
+  // User decision (2026-05-25): all panes show integers, no decimals.
+  // The earlier "preserve fractional precision on non-candle panes" path
+  // was reverted — user accepts that ratio (−1..1) and fill-strength (0..1)
+  // values collapse to 0 / ±1 on the hline badge in exchange for label
+  // consistency across panes. ADR-0025's ko-KR locale formatter applies
+  // uniformly.
+  return Math.round(price).toLocaleString('ko-KR');
 }
 
 function drawPriceBadge(
@@ -87,11 +86,10 @@ function drawPriceBadge(
   canvasWidth: number,
   y: number,
   price: number,
-  paneId: PaneId,
   bgColor: string,
   selected: boolean,
 ) {
-  const text = formatBadgePrice(price, paneId);
+  const text = formatBadgePrice(price);
   c.save();
   c.font = BADGE_FONT;
   c.textBaseline = 'middle';
@@ -126,7 +124,7 @@ function renderHline(c: CanvasRenderingContext2D, ctx: ProjectCtx, h: Hline, sel
     c.lineTo(ctx.width, y);
     c.stroke();
   });
-  drawPriceBadge(c, ctx.width, y, h.price, h.paneId, h.color, selected);
+  drawPriceBadge(c, ctx.width, y, h.price, h.color, selected);
 }
 
 function renderTrendline(
