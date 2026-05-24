@@ -100,6 +100,7 @@ describe('renderHline price badge', () => {
         priceToCoordinate: vi.fn(() => 200),
         coordinateToPrice: vi.fn(),
       } as any]]),
+      paneId: 'ratio',
     };
     const c = makeCanvasSpy();
     const h: Hline = {
