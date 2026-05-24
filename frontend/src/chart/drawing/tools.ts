@@ -117,6 +117,11 @@ export type ToolCtx = {
   update(id: string, patch: Partial<Drawing>): void;
   remove(id: string): void;
   setSelected(id: string | null): void;
+  /** Helper that selects the just-committed drawing and reverts the active
+   *  tool to `select`. Called by tools that auto-revert after commit
+   *  (hline, trendline, pencil). The overlay's buildCtx wires this to
+   *  `setSelected(id)` + `setActiveTool('select')` on the store. */
+  commitAndRevert(id: string): void;
 };
 
 export interface DrawingToolSpec {
@@ -220,13 +225,15 @@ export const hlineTool: DrawingToolSpec = {
   onPointerDown(ctx) {
     const data = ctx.pixelToData(ctx.px, ctx.py);
     if (!data) return;
+    const id = nanoid(8);
     ctx.add({
-      id: nanoid(8),
+      id,
       kind: 'hline',
       price: data.price,
       color: ctx.accentColor,
       width: DRAWING_WIDTH,
     });
+    ctx.commitAndRevert(id);
   },
 };
 

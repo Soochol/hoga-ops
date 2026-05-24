@@ -25,6 +25,7 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     py: 200,
     pointerId: 1,
     capturePointer: vi.fn(),
+    commitAndRevert: vi.fn(),
     releasePointer: vi.fn(),
     pixelToData: vi.fn(() => defaultPoint),
     realMsToCanvasX: vi.fn(() => 100),
@@ -82,6 +83,14 @@ describe('hlineTool.onPointerDown', () => {
     const ctx = makeCtx({ pixelToData: vi.fn(() => null) });
     hlineTool.onPointerDown!(ctx);
     expect(ctx.add).not.toHaveBeenCalled();
+  });
+
+  it('calls commitAndRevert with the new id after add', () => {
+    const ctx = makeCtx();
+    hlineTool.onPointerDown!(ctx);
+    expect(ctx.commitAndRevert).toHaveBeenCalledOnce();
+    const addedId = ((ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
+    expect(ctx.commitAndRevert).toHaveBeenCalledWith(addedId);
   });
 });
 
