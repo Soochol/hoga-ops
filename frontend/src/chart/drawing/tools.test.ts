@@ -159,7 +159,7 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
 
 describe('eraserTool', () => {
   it('removes the drawing under the cursor', () => {
-    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5 };
+    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, paneId: 'candle' };
     const ctx = makeCtx({ hitTestAt: vi.fn(() => target) });
     eraserTool.onPointerDown!(ctx);
     expect(ctx.remove).toHaveBeenCalledWith('h1');
@@ -172,7 +172,7 @@ describe('eraserTool', () => {
   });
 
   it('never calls commitAndRevert (continuous-erase flow)', () => {
-    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5 };
+    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, paneId: 'candle' };
     const ctx = makeCtx({ hitTestAt: vi.fn(() => target) });
     eraserTool.onPointerDown!(ctx);
     expect(ctx.commitAndRevert).not.toHaveBeenCalled();
@@ -230,7 +230,7 @@ describe('selectTool', () => {
   });
 
   it('sets selection and initiates body drag on hit', () => {
-    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5 };
+    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, paneId: 'candle' };
     const ctx = makeCtx({ hitTestAt: vi.fn(() => target) });
     selectTool.onPointerDown!(ctx);
     expect(ctx.setSelected).toHaveBeenCalledWith('h1');

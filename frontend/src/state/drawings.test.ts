@@ -7,7 +7,7 @@ const A = '005930';
 const B = '003490';
 
 function mkHline(id: string, price: number): Drawing {
-  return { id, kind: 'hline', price, color: '#FFD60A', width: 1.5 };
+  return { id, kind: 'hline', price, color: '#FFD60A', width: 1.5, paneId: 'candle' };
 }
 
 beforeEach(() => {

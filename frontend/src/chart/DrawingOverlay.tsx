@@ -125,6 +125,7 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
             points: draft.points,
             color: accentColor,
             width: 1.5,
+            paneId: 'candle',
           },
           false,
         );

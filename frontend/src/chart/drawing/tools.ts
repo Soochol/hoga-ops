@@ -237,6 +237,7 @@ export const hlineTool: DrawingToolSpec = {
       price: data.price,
       color: ctx.accentColor,
       width: DRAWING_WIDTH,
+      paneId: 'candle',
     });
     ctx.commitAndRevert(id);
   },
@@ -273,6 +274,7 @@ export const trendlineTool: DrawingToolSpec = {
       b: data,
       color: ctx.accentColor,
       width: DRAWING_WIDTH,
+      paneId: 'candle',
     });
     ctx.commitAndRevert(id);
   },
@@ -318,6 +320,7 @@ export const pencilTool: DrawingToolSpec = {
       points: draft.points,
       color: ctx.accentColor,
       width: DRAWING_WIDTH,
+      paneId: 'candle',
     });
     ctx.commitAndRevert(id);
   },

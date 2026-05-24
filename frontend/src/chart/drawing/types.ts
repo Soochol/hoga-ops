@@ -5,12 +5,16 @@
  * NOT virtual-ms from the Virtual Axis — so drawings remain valid across
  * different Stock-Date Range loads of the same Code (see ADR-0024 and
  * the design spec).
+ *
+ * Every Drawing is bound to one chart pane via `paneId`. The id mirrors
+ * `PaneSpec.name` and is the stable persistence key — see ADR-0028.
  */
 
 export type Point = {
   /** Real Unix-ms (UTC), per ADR-0003. */
   realMs: number;
-  /** Price in KRW. */
+  /** Value on the pane's Y-domain. KRW on candle, share count on volume,
+   *  signed -1..1 on ratio, etc. */
   price: number;
 };
 
@@ -20,12 +24,24 @@ export type DrawingKind = 'hline' | 'trendline' | 'pencil';
 
 export type DrawingTool = 'select' | 'hline' | 'trendline' | 'pencil' | 'eraser';
 
+/** Stable identifier for a chart pane. Mirrors `PaneSpec.name`. Renaming
+ *  any literal here is a breaking change — strands every user's saved
+ *  drawings bound to that name. See ADR-0028. */
+export type PaneId =
+  | 'candle'
+  | 'volume'
+  | 'ratio'
+  | 'quote-totals'
+  | 'fill-strength';
+
 interface DrawingBase {
   id: DrawingId;
   /** Stroke color. v1 always references the accent token via util/tokens. */
   color: string;
   /** Stroke width in CSS pixels. v1 fixed to 1.5. */
   width: number;
+  /** Pane this drawing belongs to. Required. See ADR-0028. */
+  paneId: PaneId;
 }
 
 export interface Hline extends DrawingBase {

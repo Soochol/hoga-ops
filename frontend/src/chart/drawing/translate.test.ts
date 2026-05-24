@@ -8,7 +8,7 @@ const baseStyle = { color: '#14B8A6', width: 1.5 };
 
 describe('translateDrawing — hline', () => {
   it('shifts price by dPrice and ignores dMs (hline has no time coordinate)', () => {
-    const h: Hline = { id: 'h1', kind: 'hline', price: 100, ...baseStyle };
+    const h: Hline = { id: 'h1', kind: 'hline', price: 100, ...baseStyle, paneId: 'candle' };
     expect(translateDrawing(h, 999, 5)).toEqual({ price: 105 });
     expect(translateDrawing(h, -1_000_000, -10)).toEqual({ price: 90 });
   });
@@ -22,6 +22,7 @@ describe('translateDrawing — trendline', () => {
       a: { realMs: 1_000, price: 100 },
       b: { realMs: 2_000, price: 200 },
       ...baseStyle,
+      paneId: 'candle',
     };
     expect(translateDrawing(t, 500, 5)).toEqual({
       a: { realMs: 1_500, price: 105 },
@@ -41,6 +42,7 @@ describe('translateDrawing — pencil', () => {
         { realMs: 1_020, price: 110 },
       ],
       ...baseStyle,
+      paneId: 'candle',
     };
     expect(translateDrawing(p, 50, 2)).toEqual({
       points: [
@@ -52,7 +54,7 @@ describe('translateDrawing — pencil', () => {
   });
 
   it('handles an empty point list cleanly (no crash; returns empty points)', () => {
-    const p: Pencil = { id: 'p1', kind: 'pencil', points: [], ...baseStyle };
+    const p: Pencil = { id: 'p1', kind: 'pencil', points: [], ...baseStyle, paneId: 'candle' };
     const result = translateDrawing(p, 100, 10) as Partial<Pencil>;
     expect(result.points).toEqual([]);
   });
@@ -64,15 +66,16 @@ describe('translateDrawing — exhaustiveness', () => {
     // translateDrawing, this test still compiles but TypeScript flags the
     // missing case in the switch — see types.ts.
     const cases: Drawing[] = [
-      { id: '1', kind: 'hline', price: 0, ...baseStyle },
+      { id: '1', kind: 'hline', price: 0, ...baseStyle, paneId: 'candle' },
       {
         id: '2',
         kind: 'trendline',
         a: { realMs: 0, price: 0 },
         b: { realMs: 0, price: 0 },
         ...baseStyle,
+        paneId: 'candle',
       },
-      { id: '3', kind: 'pencil', points: [], ...baseStyle },
+      { id: '3', kind: 'pencil', points: [], ...baseStyle, paneId: 'candle' },
     ];
     for (const d of cases) expect(translateDrawing(d, 1, 1)).toBeTypeOf('object');
   });

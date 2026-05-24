@@ -64,6 +64,7 @@ describe('renderHline price badge', () => {
       price: 74_500,
       color: '#14B8A6',
       width: 1.5,
+      paneId: 'candle',
     };
     renderDrawing(c, ctx, h, false);
     const calls = (c.fillText as ReturnType<typeof vi.fn>).mock.calls;
@@ -74,7 +75,7 @@ describe('renderHline price badge', () => {
   it('positions the badge near the right edge (within 100px inset)', () => {
     const c = makeCanvasSpy();
     const ctx = makeProjectCtx();
-    const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5 };
+    const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, paneId: 'candle' };
     renderDrawing(c, ctx, h, false);
     const roundRectCalls = (c.roundRect as ReturnType<typeof vi.fn>).mock.calls;
     expect(roundRectCalls.length).toBeGreaterThan(0);
@@ -93,7 +94,7 @@ describe('renderHline price badge', () => {
         priceToCoordinate: vi.fn(() => null),
       } as unknown as ProjectCtx['priceSeries'],
     };
-    const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5 };
+    const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, paneId: 'candle' };
     renderDrawing(c, ctx, h, false);
     expect((c.fillText as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
   });

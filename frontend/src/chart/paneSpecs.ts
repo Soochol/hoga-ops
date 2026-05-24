@@ -13,6 +13,16 @@ import { FILL_STRENGTH_SPEC } from './projectors/fillStrength';
  * lightweight-charts v5 auto-clamps a requested `paneIndex` to the
  * next-available index, so the ordering invariant lives in this
  * array's position, not in JSX.
+ *
+ * ──────────────────────────────────────────────────────────────────────
+ *  STABLE PERSISTENCE IDS — DO NOT RENAME `PaneSpec.name`
+ * ──────────────────────────────────────────────────────────────────────
+ * Each spec's `name` is the stable persistence key under which user
+ * Drawings store their pane binding (see `drawing/types.ts::PaneId` and
+ * ADR-0028). Renaming an existing `name` orphans every saved drawing
+ * bound to that name. Reordering this array is safe (drawings reference
+ * by name, not index). Adding a new pane: append a new literal to
+ * `PaneId` in types.ts and use it as the `name` here.
  */
 export const PANE_SPECS: PaneSpec<any>[] = [
   CANDLE_SPEC,         // paneIndex 0

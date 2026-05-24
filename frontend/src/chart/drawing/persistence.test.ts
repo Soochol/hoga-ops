@@ -23,7 +23,7 @@ describe('saveDrawings / loadDrawings round-trip', () => {
 
   it('persists and recovers a heterogeneous drawing list', () => {
     const items: Drawing[] = [
-      { id: 'a', kind: 'hline', price: 75000, color: '#FFD60A', width: 1.5 },
+      { id: 'a', kind: 'hline', price: 75000, color: '#FFD60A', width: 1.5, paneId: 'candle' },
       {
         id: 'b',
         kind: 'trendline',
@@ -31,6 +31,7 @@ describe('saveDrawings / loadDrawings round-trip', () => {
         b: { realMs: 1_700_003_600_000, price: 72000 },
         color: '#FFD60A',
         width: 1.5,
+        paneId: 'candle',
       },
     ];
     saveDrawings(CODE, items);
