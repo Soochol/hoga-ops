@@ -1,0 +1,1 @@
+spec 작성 완료 후  -> /grill-with-docs , 결정사항은 네가 추천한것으로 자동 진행 -> /writing-plans -> /subagent-driven-development -> /improve-codebase-architecture , 여기도 네가 추천한것으로 자동 진행 .
