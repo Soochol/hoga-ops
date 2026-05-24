@@ -460,14 +460,28 @@ async def refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
     Concurrency: :data:`_refresh_coordinator` dedupes simultaneous clicks
     (Settings + SymbolSearch may fire together) — N concurrent calls trigger
     exactly one underlying fetch and every joined caller receives the same
-    response snapshot. Credentials handling (load_env + presence check) lives
-    inside :func:`_fetch_from_pykrx`.
+    response snapshot.
+
+    Credentials are verified on a fast-path BEFORE flipping ``_state`` to
+    ``loading()`` so a missing-creds system never produces a transient
+    ``loading`` status flash. Concurrent GET /api/symbols/all would
+    otherwise briefly observe ``status='loading'`` and the UI would
+    spinner-flash before re-flipping to KRX_CREDENTIALS_MISSING.
 
     Failure semantics: pykrx exception → disk file unchanged, memory state
     stale (if cache populated) or unavailable. Any other unexpected exception
     is caught by :func:`_do_refresh`'s broad fallback and surfaces as
-    ``KRX_FETCH_FAILED`` — the cache is never left stuck at ``loading``.
+    ``KRX_FETCH_FAILED``.
     """
+    try:
+        _ensure_krx_credentials()
+    except KrxCredentialsMissing:
+        # Idempotent: concurrent callers without .env all converge on the
+        # same stale/unavailable snapshot. No need to route through the
+        # coordinator's single-flight machinery — there is no flight.
+        _set_stale_or_unavailable(UpstreamCode.KRX_CREDENTIALS_MISSING)
+        return _build_response()
+
     def _start_refresh_task() -> asyncio.Task[SymbolsAllResponse]:
         global _state  # noqa: PLW0603
         _state = SymbolCacheState.loading()
@@ -524,7 +538,22 @@ async def _do_refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
             return _build_response()
 
         now_ms = int(time.time() * 1000)
-        _write_to_disk(path, entries, now_ms)
+        try:
+            _write_to_disk(path, entries, now_ms)
+        except OSError as exc:
+            # Disk-related failures (full volume, read-only mount, missing
+            # parent dir, EACCES) are an expected operational class — log
+            # a single warning with the cause instead of falling through
+            # to the broad "failed unexpectedly" path that emits a full
+            # stack trace and pages on-call. The user-facing reason stays
+            # KRX_FETCH_FAILED so the existing UI surface is unchanged;
+            # a dedicated UpstreamCode for disk failures can ship in a
+            # follow-up that touches the wire mirror discipline.
+            logger.warning(
+                "Symbol cache disk write failed at %s: %s", path, exc,
+            )
+            _set_stale_or_unavailable(UpstreamCode.KRX_FETCH_FAILED)
+            return _build_response()
         loop = asyncio.get_running_loop()
         breakdowns = await loop.run_in_executor(
             None, _build_all_captured_breakdowns, data_dir

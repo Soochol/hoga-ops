@@ -729,6 +729,90 @@ async def test_refresh_invokes_ensure_credentials_in_production_path(
 
 
 @pytest.mark.asyncio
+async def test_refresh_disk_write_oserror_maps_to_warning_not_unexpected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog
+) -> None:
+    """B3 regression: an OSError from _write_to_disk (full volume, EACCES,
+    detached container volume) must NOT fall through to the broad
+    'Symbol refresh failed unexpectedly' ERROR-level stack trace — it's a
+    routine operational class. Map to a WARNING with the actual cause and
+    set the cache reason to KRX_FETCH_FAILED.
+    """
+    import logging
+    symbols_module.reset_state_for_tests()
+    monkeypatch.setenv("KRX_ID", "x")
+    monkeypatch.setenv("KRX_PW", "y")
+
+    async def _ok():
+        return [_make_hit("005930", "삼성전자")]
+    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _ok)
+
+    def _raise_disk_full(*_args, **_kwargs):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(symbols_module, "_write_to_disk", _raise_disk_full)
+
+    path = tmp_path / "sm.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    with caplog.at_level(logging.WARNING, logger=symbols_module.logger.name):
+        resp = await symbols_module.refresh(path=path, data_dir=data_dir)
+
+    assert resp.reason == UpstreamCode.KRX_FETCH_FAILED
+    assert resp.status == "unavailable"
+    # No ERROR-level "failed unexpectedly" stack trace.
+    assert not any(
+        r.levelno >= logging.ERROR and "unexpectedly" in r.getMessage()
+        for r in caplog.records
+    ), "disk OSError should not surface as 'failed unexpectedly'"
+    # Warning includes the cause so operators can recognize disk issues.
+    assert any(
+        r.levelno == logging.WARNING and "disk write failed" in r.getMessage()
+        for r in caplog.records
+    ), f"expected a 'disk write failed' WARNING; got {[r.getMessage() for r in caplog.records]}"
+
+
+@pytest.mark.asyncio
+async def test_refresh_skips_loading_state_when_creds_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B4 regression: a missing-creds refresh must NOT flip _state to loading()
+    on its way to stale/unavailable. The previous flow set loading() inside
+    the coordinator's task factory before the credentials check ran, so a
+    concurrent GET /api/symbols/all could briefly observe status='loading'
+    and flash a spinner before the refresh task's typed handler reset it.
+
+    Spy SymbolCacheState.loading: if it's called during refresh(), the
+    transient flash is back.
+    """
+    symbols_module.reset_state_for_tests()
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
+
+    loading_calls = []
+    original_loading = symbols_module.SymbolCacheState.loading
+
+    def _spy_loading():
+        loading_calls.append(True)
+        return original_loading()
+
+    monkeypatch.setattr(symbols_module.SymbolCacheState, "loading", _spy_loading)
+
+    path = tmp_path / "sm.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    resp = await symbols_module.refresh(path=path, data_dir=data_dir)
+
+    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
+    assert loading_calls == [], (
+        "refresh() must short-circuit before flipping _state to loading() "
+        "when credentials are missing — otherwise a concurrent GET observes a "
+        "transient 'loading' status"
+    )
+
+
+@pytest.mark.asyncio
 async def test_refresh_short_circuits_before_pykrx_import_when_creds_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
