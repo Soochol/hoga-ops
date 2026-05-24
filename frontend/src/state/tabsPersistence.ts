@@ -160,3 +160,31 @@ export function savePersisted(snapshot: ReplayTabsSnapshot): void {
     /* privacy mode / quota — silently ignore (matches replayLayout pattern). */
   }
 }
+
+/** Hydrate a stored snapshot into live store shape. Returns the three slots
+ *  (`tabs`, `prefs`, `activeTabId`) the caller must atomically `set()` to
+ *  keep them consistent — see spec §"prefs Map 시드".
+ *
+ *  Pure with respect to `deps`: this module never reaches for `nanoid` or
+ *  `DEFAULT_PREFS` itself, which keeps `state/tabs.ts ↔ tabsPersistence.ts`
+ *  acyclic for value imports (only the type imports remain). */
+export function fromSnapshot(
+  snapshot: ReplayTabsSnapshot,
+  deps: SnapshotDeps,
+): { tabs: Tab[]; prefs: Map<string, ChartViewPrefs>; activeTabId: string } {
+  if (snapshot.tabs.length === 0) {
+    const seed = deps.freshTab();
+    return { tabs: [seed], prefs: new Map(), activeTabId: seed.id };
+  }
+  const tabs: Tab[] = [];
+  const prefs = new Map<string, ChartViewPrefs>();
+  for (const persisted of snapshot.tabs) {
+    const t = deps.freshTab();
+    // Carry the persisted selection (already validated by loadPersisted).
+    t.selection = persisted.selection;
+    tabs.push(t);
+    prefs.set(t.id, mergePrefs(persisted.prefs, deps.defaultPrefs));
+  }
+  const idx = Math.min(Math.max(0, snapshot.activeIndex), tabs.length - 1);
+  return { tabs, prefs, activeTabId: tabs[idx].id };
+}

@@ -208,7 +208,7 @@ describe('loadPersisted', () => {
 
   it('returns null when localStorage is unavailable', () => {
     const orig = globalThis.localStorage;
-    // @ts-expect-error — simulating SSR/private mode
+    // simulating SSR/private mode
     delete (globalThis as Record<string, unknown>).localStorage;
     try {
       expect(loadPersisted()).toBeNull();
@@ -266,7 +266,7 @@ describe('savePersisted', () => {
 
   it('silently no-ops when localStorage is undefined', () => {
     const orig = globalThis.localStorage;
-    // @ts-expect-error — simulating SSR
+    // simulating SSR
     delete (globalThis as Record<string, unknown>).localStorage;
     try {
       expect(() =>
@@ -275,5 +275,62 @@ describe('savePersisted', () => {
     } finally {
       Object.defineProperty(globalThis, 'localStorage', { value: orig, configurable: true });
     }
+  });
+});
+
+import { fromSnapshot } from './tabsPersistence';
+import type { SnapshotDeps } from './tabsPersistence';
+
+function makeDeps(seq: () => number): SnapshotDeps {
+  let n = seq();
+  return {
+    defaultPrefs,
+    freshTab: () => ({
+      id: `fresh-${++n}`,
+      selection: null,
+      cursorMs: null,
+      status: 'empty',
+      bundles: new Map(),
+    }),
+  };
+}
+
+describe('fromSnapshot', () => {
+  it('builds tabs + prefs Map + activeTabId, assigning new ids', () => {
+    const deps = makeDeps(() => 0);
+    const snap: ReplayTabsSnapshot = {
+      version: 1, savedAt: 0, activeIndex: 1,
+      tabs: [
+        { selection: { code: '005930', fromDate: '20260512', toDate: '20260512', timeframe: '1m' }, prefs: { volumeProfileMode: 'per-day' } },
+        { selection: null, prefs: {} },
+      ],
+    };
+    const out = fromSnapshot(snap, deps);
+    expect(out.tabs).toHaveLength(2);
+    // New ids assigned (caller cannot rely on persisted id).
+    expect(out.tabs[0].id).not.toBe('');
+    expect(out.tabs[1].id).not.toBe('');
+    expect(out.tabs[0].id).not.toBe(out.tabs[1].id);
+    // Per-tab prefs threaded into the Map under each new id.
+    expect(out.prefs.get(out.tabs[0].id)!.volumeProfileMode).toBe('per-day');
+    expect(out.prefs.get(out.tabs[1].id)!.volumeProfileMode).toBe('range');
+    // status is empty, bundles fresh, cursorMs null (not persisted).
+    expect(out.tabs[0].status).toBe('empty');
+    expect(out.tabs[0].cursorMs).toBeNull();
+    expect(out.tabs[0].bundles.size).toBe(0);
+    // activeTabId points at the snapshot's activeIndex.
+    expect(out.activeTabId).toBe(out.tabs[1].id);
+  });
+
+  it('seeds a single fresh tab when snapshot.tabs is empty', () => {
+    const deps = makeDeps(() => 99);
+    const out = fromSnapshot(
+      { version: 1, savedAt: 0, activeIndex: 0, tabs: [] },
+      deps,
+    );
+    expect(out.tabs).toHaveLength(1);
+    expect(out.tabs[0].selection).toBeNull();
+    expect(out.prefs.size).toBe(0);
+    expect(out.activeTabId).toBe(out.tabs[0].id);
   });
 });
