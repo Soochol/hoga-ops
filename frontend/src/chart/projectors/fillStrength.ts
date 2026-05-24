@@ -1,4 +1,11 @@
-import { HistogramSeries, LineSeries, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
+import {
+  HistogramSeries,
+  LineSeries,
+  type LineData,
+  type Time,
+  type UTCTimestamp,
+  type WhitespaceData,
+} from 'lightweight-charts';
 import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { RangeBundle } from '../../api/types';
@@ -10,7 +17,10 @@ import { addZeroBaselineGuide } from '../util/zeroBaseline';
 const TOKEN_SPEC = {
   buy: ['--price-up', '#DC2626'],          // 체결 매수 (KRX 빨강)
   sell: ['--price-down', '#2563EB'],       // 체결 매도 (KRX 파랑)
-  cumulative: ['--fg', '#E5E7EB'],         // 체결강도 누적 — neutral (derived signal)
+  // 체결강도 누적 — derived signal. --fg-dim (mid gray) is dark enough to
+  // read as "neutral derived" against the chart bg without colliding with
+  // the Zero Baseline Guide's --fg-dimmer (which is darker still).
+  cumulative: ['--fg-dim', '#94A3B8'],
   cumulativeBaseline: ['--fg-dimmer', '#64748B'], // 0-baseline guide
 } as const;
 
@@ -50,7 +60,7 @@ export function projectSell(bundle: RangeBundle, axis: VirtualAxis): any[] {
  * bucketed continuous-trade series — the **Cumulative Net Fill** indicator
  * (CONTEXT.md "Cumulative Net Fill (체결강도 누적)").
  *
- * Two independent predicates:
+ * Two independent predicates gate the per-point work:
  *   - in-session (segment[i].session_open_ms ≤ p.t ≤ session_close_ms):
  *     gates whether the point contributes to the running sum. Pre-open and
  *     after-hours points are skipped.
@@ -61,25 +71,61 @@ export function projectSell(bundle: RangeBundle, axis: VirtualAxis): any[] {
  * starting from the correct 09:00-anchored baseline rather than re-zeroing
  * at the viewport edge.
  *
- * Resets to 0 at each new segment boundary (per-Stock-Date semantics).
+ * Per-Stock-Date semantics: runningSum resets to 0 at each segment start.
+ * Two additional emissions per segment make the reset *visible* on the
+ * rendered line:
+ *
+ *   - **Whitespace break** at `segOpenVirtual − 1` for non-first segments:
+ *     a `WhitespaceData` point (time only, no value) tells lightweight-
+ *     charts to break the line between segments. Without it the prior
+ *     day's last cumulative value would draw a diagonal straight into the
+ *     new day's first emitted value — visually identical to "the new day
+ *     continues from yesterday's total".
+ *
+ *   - **Zero anchor** at `segOpenVirtual` when (a) session_open is in
+ *     viewport and (b) no actual fill point lands exactly at session_open:
+ *     a `{ time: segOpenVirtual, value: 0 }` point makes each day's line
+ *     visibly *start from zero* even when the first fill bucket is several
+ *     minutes into the session. When the first fill happens at session
+ *     open (e.g. opening-cross-derived bucket), the anchor is suppressed
+ *     to avoid timestamp collision; the actual point's value carries the
+ *     first bucket's net delta. When session_open is out of viewport
+ *     (zoomed-in mid-session), the anchor is suppressed and the line
+ *     resumes from the correct running sum at the first in-viewport point.
  */
 export function projectCumulativeNetFill(
   bundle: RangeBundle,
   axis: VirtualAxis,
-): LineData<Time>[] {
-  const out: LineData<Time>[] = [];
-  for (const seg of bundle.segments) {
+): (LineData<Time> | WhitespaceData<Time>)[] {
+  const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
+  bundle.segments.forEach((seg, segIdx) => {
     let runningSum = 0;
+    let firstEmittedInSeg = true;
     for (const p of bundle.fill_strength.points) {
       if (p.t < seg.session_open_ms || p.t > seg.session_close_ms) continue;
       runningSum += p.buy_qty - p.sell_qty;
       if (!axis.contains(p.t)) continue;
+
+      if (firstEmittedInSeg) {
+        const segOpenVirtual = (axis.toVirtual(seg.session_open_ms) / 1000) as UTCTimestamp;
+        const thisVirtual = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+        if (segIdx > 0) {
+          // Break the cumulative line so the prior day's last value doesn't
+          // visually continue into this day. Whitespace point: time only.
+          out.push({ time: ((segOpenVirtual as number) - 1) as UTCTimestamp });
+        }
+        if (axis.contains(seg.session_open_ms) && (segOpenVirtual as number) < (thisVirtual as number)) {
+          out.push({ time: segOpenVirtual, value: 0 });
+        }
+        firstEmittedInSeg = false;
+      }
+
       out.push({
         time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
         value: runningSum,
       });
     }
-  }
+  });
   return out;
 }
 

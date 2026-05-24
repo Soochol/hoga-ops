@@ -101,13 +101,35 @@ describe('projectCumulativeNetFill — single-day', () => {
       },
     };
     const out = projectCumulativeNetFill(bundle, singleDayAxis);
-    expect(out).toHaveLength(1); // only the in-session, in-viewport point emits
-    expect(out[0].value).toBe(70); // pre-open's +999 must not show up
+    // First in-session point lands exactly at session_open → zero anchor
+    // suppressed (would collide with this point's timestamp), so only the
+    // actual emit appears.
+    expect(out).toHaveLength(1);
+    const p0 = out[0] as { value: number };
+    expect(p0.value).toBe(70); // pre-open's +999 must not show up
+  });
+
+  it('inserts a zero anchor at session_open when first in-viewport point lands later', () => {
+    const bundle: any = {
+      segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
+      fill_strength: {
+        points: [
+          // First fill 1 minute into the session — no opening-cross point.
+          { t: day1Open + 60_000, buy_qty: 100, sell_qty: 30 }, // +70 → 70
+        ],
+      },
+    };
+    const out = projectCumulativeNetFill(bundle, singleDayAxis);
+    expect(out).toHaveLength(2);
+    // Anchor: line visibly starts from 0 at session open.
+    expect(out[0]).toEqual({ time: 0, value: 0 });
+    // First actual point carries the bucket's net.
+    expect(out[1]).toEqual({ time: 60, value: 70 });
   });
 });
 
 describe('projectCumulativeNetFill — multi-day', () => {
-  it('resets the running sum at each segment boundary', () => {
+  it('resets per segment and inserts a line break between segments', () => {
     const axis = createVirtualAxis([
       { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
       { date: '20260519', sessionOpenMs: day2Open, sessionCloseMs: day2Open + sessionDurationMs },
@@ -119,19 +141,33 @@ describe('projectCumulativeNetFill — multi-day', () => {
       ],
       fill_strength: {
         points: [
-          { t: day1Open, buy_qty: 100, sell_qty: 30 },         // day1: +70 → 70
-          { t: day1Open + 1000, buy_qty: 50, sell_qty: 200 },  // day1: -150 → -80
-          { t: day2Open, buy_qty: 40, sell_qty: 10 },          // day2 reset: +30 → 30
-          { t: day2Open + 1000, buy_qty: 100, sell_qty: 100 }, // day2: 0 → 30
+          { t: day1Open, buy_qty: 100, sell_qty: 30 },         // day1 open: +70 → 70
+          { t: day1Open + 1000, buy_qty: 50, sell_qty: 200 },  // day1 +1s: -150 → -80
+          { t: day2Open, buy_qty: 40, sell_qty: 10 },          // day2 open RESET: +30 → 30
+          { t: day2Open + 1000, buy_qty: 100, sell_qty: 100 }, // day2 +1s: 0 → 30
         ],
       },
     };
     const out = projectCumulativeNetFill(bundle, axis);
-    expect(out).toHaveLength(4);
-    expect(out[0].value).toBe(70);
-    expect(out[1].value).toBe(-80);
-    expect(out[2].value).toBe(30);  // RESET — day 2 starts from 0
-    expect(out[3].value).toBe(30);
+    // 2 day1 points + 1 whitespace break + 2 day2 points = 5. Both segments'
+    // first points coincide with session_open, so zero-anchor is suppressed
+    // on each.
+    expect(out).toHaveLength(5);
+
+    // Day 1: actual emits, no anchor (first point at session_open).
+    expect(out[0]).toMatchObject({ value: 70 });
+    expect(out[1]).toMatchObject({ value: -80 });
+
+    // Line break (whitespace point — `time` only, no `value`) sits between
+    // the two segments so the renderer doesn't draw a diagonal from day1's
+    // last value into day2's first value.
+    const breakPoint = out[2];
+    expect('value' in breakPoint).toBe(false);
+    expect(typeof (breakPoint as { time: number }).time).toBe('number');
+
+    // Day 2: running sum reset to 0, then first bucket's +30, then +0.
+    expect(out[3]).toMatchObject({ value: 30 });
+    expect(out[4]).toMatchObject({ value: 30 });
   });
 });
 
@@ -155,10 +191,14 @@ describe('projectCumulativeNetFill — viewport invariant', () => {
       },
     };
     const out = projectCumulativeNetFill(bundle, zoomedAxis);
+    // session_open is out of viewport, so the zero-anchor is suppressed —
+    // the line correctly resumes from the running sum at the first
+    // in-viewport point rather than visually re-zeroing at the edge.
     expect(out).toHaveLength(1);
+    const p0 = out[0] as { value: number };
     // The running sum at the emitted point reflects the FULL pre-viewport
     // history (40 + 10 = 50), not a viewport-edge reset (would be 10).
-    expect(out[0].value).toBe(50);
+    expect(p0.value).toBe(50);
   });
 });
 
