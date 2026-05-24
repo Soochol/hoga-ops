@@ -6,6 +6,7 @@ import StockCombobox from './StockCombobox';
 import DateRangePicker from './DateRangePicker';
 import TimeframeSelector from './TimeframeSelector';
 import SettingsModal from './SettingsModal';
+import DrawingMenu from './DrawingMenu';
 import type { Timeframe } from '../api/types';
 
 export default function Toolbar() {
@@ -77,6 +78,7 @@ export default function Toolbar() {
       >
         ⚙
       </button>
+      <DrawingMenu />
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <span className="flex-1" />
       <button
