@@ -28,7 +28,7 @@ const DEFAULT_DEBOUNCE_MS = 250;
  *  ```
  *
  *  Silent on quota / SSR / serialization throw — matches the previous
- *  `savePersisted` policy in `tabsPersistence.ts` / `replayLayout.ts`. */
+ *  per-store save policy in `tabsPersistence.ts` / `replayLayout.ts`. */
 export function attachPersistence<TState>(
   store: SubscribableStore<TState>,
   options: PersistenceOptions<TState>,

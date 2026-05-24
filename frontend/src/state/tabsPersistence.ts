@@ -163,15 +163,6 @@ export function loadPersisted(): ReplayTabsSnapshot | null {
   return { version: 1, savedAt, activeIndex, tabs };
 }
 
-export function savePersisted(snapshot: ReplayTabsSnapshot): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  } catch {
-    /* privacy mode / quota — silently ignore (matches replayLayout pattern). */
-  }
-}
-
 /** Hydrate a stored snapshot into live store shape. Returns the three slots
  *  (`tabs`, `prefs`, `activeTabId`) the caller must atomically `set()` to
  *  keep them consistent — see spec §"prefs Map 시드".

@@ -94,8 +94,14 @@ export const useReplayLayoutStore = create<ReplayLayoutState>((set) => ({
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   resetSidebar: () =>
     set({ sidebarPx: clampPx(readSidebarTokenPx()), sidebarCollapsed: false }),
-  __resetForTests: () =>
-    set({ sidebarPx: clampPx(readSidebarTokenPx()), sidebarCollapsed: false }),
+  __resetForTests: () => {
+    set({ sidebarPx: clampPx(readSidebarTokenPx()), sidebarCollapsed: false });
+    // Drop any pending debounced write the subscriber scheduled — tests should
+    // see a deterministic localStorage state, not a 250ms-later one.
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.removeItem(STORAGE_KEY); } catch { /* SSR / quota */ }
+    }
+  },
 }));
 
 /** Debounced persistence + HMR dispose via the shared helper. */
