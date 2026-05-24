@@ -3,6 +3,23 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SettingsModal from './SettingsModal';
 import { useTabsStore } from '../state/tabs';
 
+describe('SettingsModal — category filtering', () => {
+  beforeEach(() => {
+    useTabsStore.getState().reset();
+    useTabsStore.setState((s) => ({ ...s, prefs: new Map() }));
+  });
+
+  it('차트 category does NOT render indicator-scoped toggles', () => {
+    render(<SettingsModal onClose={() => {}} />);
+    // Default category = 'chart'. fillStrengthCumulative is category='indicators',
+    // so its toggle must not appear here.
+    expect(screen.queryByTestId('settings-toggle-fillStrengthCumulative')).toBeNull();
+    // Pre-existing chart-scoped toggles still appear.
+    expect(screen.getByTestId('settings-toggle-auctionWindowMask')).toBeTruthy();
+    expect(screen.getByTestId('settings-toggle-ratioOutlierFilterEnabled')).toBeTruthy();
+  });
+});
+
 describe('SettingsModal', () => {
   beforeEach(() => {
     useTabsStore.getState().reset();
