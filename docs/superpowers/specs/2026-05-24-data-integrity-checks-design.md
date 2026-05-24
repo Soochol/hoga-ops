@@ -90,6 +90,8 @@ def check(meta: dict) -> list[Violation]:
     return [v for inv in INVARIANTS if (v := inv.check(meta)) is not None]
 ```
 
+**시그니처 의도적 좁힘**: `Callable[[dict], Violation | None]`는 MVP가 meta-level만 다루기 때문. series-level invariants (candles 단조성, snapshot 갭) 추가 시 새 시그니처 (`Callable[[StockDateArtifacts], list[Violation]]` 등)를 도입하고 카탈로그를 type별로 분할할 가능성 — 본 PR은 그 자리만 비워 둠 (§9 follow-up). 모든 invariant는 missing key를 `.get(key, default)` 패턴으로 흡수 → 레거시 meta는 자연스레 통과(통과 = 위반 없음, error 아님).
+
 ### 4.3 DiskState 확장
 
 ```python
@@ -243,6 +245,12 @@ def validate(
   - `calendar._disk_state_to_status`: `"invalid"` 매핑 추가. 캘린더 셀 색 결정은 프론트엔드 디자인 영역(`DESIGN.md` 토큰 참조) — 본 spec은 status 문자열만 노출.
 - 두 소비자 모두 본 PR 범위에 포함 (도메인 일관성).
 
+### 7.1 성능
+
+- 5개 invariant는 모두 산술 비교(`<`, `>=`, 미만/이상 검사)만 — 1만 회 평가도 1ms 미만.
+- `/api/calendar`는 한 달치 셀 × 종목별로 `classify_from_meta` 호출 — 본 spec은 그래도 매번 live 평가 채택. 사유: archival 필드 캐시는 카탈로그가 업데이트되면 stale 됨(self-healing 원칙 위배).
+- 측정 결과 calendar 응답 시간이 SLO를 초과하면 그때 archival 필드(`meta["invariant_violations"]`) 우선 신뢰 + 부재/version mismatch 시만 재평가로 전환 (cache invalidation은 catalog hash 비교로). 미리 최적화 X.
+
 ## 8. 작업 순서 (구현 plan의 시드)
 
 1. `hoga/api/invariants.py` 신규 + 카탈로그 5개 + 단위 테스트
@@ -259,7 +267,7 @@ def validate(
 
 | 항목 | 다음 단계 |
 |---|---|
-| 시계열 invariants | 별 PR — candles 단조성, snapshot 갭, cum_vol 일관성 등. `Invariant` 타입 그대로 재사용 가능. |
+| 시계열 invariants | 별 PR — candles 단조성, snapshot 갭, cum_vol 일관성 등. `Invariant.check` 시그니처를 `Callable[[StockDateArtifacts], list[Violation]]`로 확장하고 카탈로그를 `META_INVARIANTS` / `SERIES_INVARIANTS`로 분리. 본 PR은 그 확장 자리를 의도적으로 비워 둠. |
 | `INVALID` 만난 eligibility의 재캡처 정책 | 본 PR은 "fresh capture 진행"으로 시작. 사용자 피드백 받아 force-prompt UX 등 결정. |
 | 프론트엔드 `excluded_dates`/`data_warnings` 표시 | 차트 위에 배지/툴팁. 별 spec. |
 | Property-based 테스트 | Hypothesis 도입 시 추가. 카탈로그 10개 넘어가면 가치 큼. |
