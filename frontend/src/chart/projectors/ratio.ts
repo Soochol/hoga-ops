@@ -1,4 +1,11 @@
-import { BaselineSeries } from 'lightweight-charts';
+import {
+  BaselineSeries,
+  type BaselineData,
+  type LineWidth,
+  type PriceLineOptions,
+  type Time,
+  type UTCTimestamp,
+} from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { quoteImbalance } from '../../util/imbalance';
@@ -42,7 +49,7 @@ export function projectRatio(
   bundle: RangeBundle,
   axis: VirtualAxis,
   auctionWindowMask: boolean,
-): any[] {
+): BaselineData<Time>[] {
   // Backend (build_quote_ratio_slice) now buckets on linear ms-from-midnight
   // and guarantees strictly-ascending unique timestamps per ADR-0010. If
   // setData ever throws "asc ordered by time" again, the regression is on
@@ -51,7 +58,7 @@ export function projectRatio(
   return bundle.quote_ratio.points
     .filter((p) => axis.contains(p.t))
     .map((p) => ({
-      time: (axis.toVirtual(p.t) / 1000) as any,
+      time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
       // CONTEXT.md "Auction Window" — during 15:20–15:30 the bid/ask ratio is
       // dominated by one-sided accumulation. `isAuctionMaskActive` owns the
       // rule (per-tab toggle + axis threshold).
@@ -89,7 +96,7 @@ export const RATIO_SPEC: PaneSpec<boolean> = {
         // that dominate the autoscale, hairlines disappear into the baseline.
         // A 3px stroke survives both the small-magnitude near-baseline runs
         // and the cross-day extreme spikes that compress the visible range.
-        lineWidth: 3 as any,
+        lineWidth: 3 satisfies LineWidth,
         // Suppress the library-default horizontal line + right-axis chip at the
         // latest value. Analysts read the latest ratio via crosshair.
         priceLineVisible: false,
@@ -108,7 +115,7 @@ export const RATIO_SPEC: PaneSpec<boolean> = {
           lineStyle: 1,
           axisLabelVisible: false,
           title: '',
-        } as any);
+        } as PriceLineOptions);
       },
     },
   ],

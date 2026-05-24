@@ -1,4 +1,4 @@
-import { LineSeries } from 'lightweight-charts';
+import { LineSeries, type LineData, type UTCTimestamp, type Time } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { isAuctionMaskActive } from '../../util/auctionMask';
@@ -26,11 +26,11 @@ export function projectBid(
   bundle: RangeBundle,
   axis: VirtualAxis,
   auctionWindowMask: boolean,
-): any[] {
+): LineData<Time>[] {
   return bundle.quote_ratio.points
     .filter((p) => axis.contains(p.t))
     .map((p) => ({
-      time: (axis.toVirtual(p.t) / 1000) as any,
+      time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
       value: isAuctionMaskActive(auctionWindowMask, axis, p.t) ? 0 : p.bid_total,
     }));
 }
@@ -39,11 +39,11 @@ export function projectAsk(
   bundle: RangeBundle,
   axis: VirtualAxis,
   auctionWindowMask: boolean,
-): any[] {
+): LineData<Time>[] {
   return bundle.quote_ratio.points
     .filter((p) => axis.contains(p.t))
     .map((p) => ({
-      time: (axis.toVirtual(p.t) / 1000) as any,
+      time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
       value: isAuctionMaskActive(auctionWindowMask, axis, p.t) ? 0 : p.ask_total,
     }));
 }
