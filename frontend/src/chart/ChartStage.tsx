@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import {
   createChart,
   TickMarkType,
@@ -8,6 +8,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import type { PaneSeriesMap } from './drawing/chartCoordinates';
+import type { PaneId } from './drawing/types';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
@@ -27,8 +28,6 @@ import DayBoundaryOverlay from './DayBoundaryOverlay';
 import AuctionWindowOverlay from './AuctionWindowOverlay';
 import DrawingOverlay from './DrawingOverlay';
 import { useDrawingsStore } from '../state/drawings';
-
-const EMPTY_PANE_SERIES: PaneSeriesMap = new Map();
 
 const CHART_TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -83,6 +82,28 @@ function pad(n: number): string {
 export default function ChartStage({ bundle, axis }: ChartStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
+
+  const [paneSeries, setPaneSeries] = useState<Map<PaneId, ISeriesApi<any>>>(
+    () => new Map(),
+  );
+
+  const registerPaneSeries = useCallback((paneId: PaneId, series: ISeriesApi<any>) => {
+    setPaneSeries((prev) => {
+      const next = new Map(prev);
+      next.set(paneId, series);
+      return next;
+    });
+  }, []);
+
+  const unregisterPaneSeries = useCallback((paneId: PaneId) => {
+    setPaneSeries((prev) => {
+      if (!prev.has(paneId)) return prev;
+      const next = new Map(prev);
+      next.delete(paneId);
+      return next;
+    });
+  }, []);
+
   // Per-pane prefs subscriptions live in each pane via useActivePrefs —
   // no ChartStage-level prefs subscription is needed. Each pane reads only
   // the slice it cares about, so flipping volumeProfileMode doesn't
@@ -357,46 +378,6 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
     return () => container.removeEventListener('wheel', onWheel);
   }, [chart, bundle]);
 
-  // Task 5 will wire candleSeries into the new pane-series registry;
-  // retained here so the Task-5 diff is a minimal addition rather than a
-  // resurrection. Lint may flag this as unused — intentional.
-  const [candleSeries, setCandleSeries] = useState<ISeriesApi<'Candlestick'> | null>(null);
-  useEffect(() => {
-    if (!chart) {
-      setCandleSeries(null);
-      return;
-    }
-    // Poll once per RAF until pane 0's first Candlestick series exists.
-    // Bounded by the bundle effect — once the bundle is set, the candle
-    // pane mounts within a few frames.
-    let raf = 0;
-    let cancelled = false;
-    const find = () => {
-      if (cancelled) return;
-      const panes = chart.panes();
-      const pane0 = panes[0];
-      if (!pane0) {
-        raf = requestAnimationFrame(find);
-        return;
-      }
-      // chart.panes()[0].getSeries() returns ISeriesApi<SeriesType>[] in v5.
-      const series = pane0.getSeries();
-      const candle = series.find((s) => s.seriesType() === 'Candlestick') as
-        | ISeriesApi<'Candlestick'>
-        | undefined;
-      if (candle) {
-        setCandleSeries(candle);
-      } else {
-        raf = requestAnimationFrame(find);
-      }
-    };
-    raf = requestAnimationFrame(find);
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(raf);
-    };
-  }, [chart, bundle]);
-
   return (
     <div className="relative h-full min-h-0 bg-bg-card overflow-hidden">
       <div ref={containerRef} className="absolute inset-0" />
@@ -429,6 +410,8 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
                 axis={axis}
                 paneIndex={paneIndex}
                 spec={spec}
+                onPrimarySeriesReady={(s) => registerPaneSeries(spec.name as PaneId, s)}
+                onPrimarySeriesGone={() => unregisterPaneSeries(spec.name as PaneId)}
               />
             </div>
           ))}
@@ -460,9 +443,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
               the RatioPane's zeroing during 15:20–15:30 KST is masking,
               not real "no pressure" data. */}
           <AuctionWindowOverlay chart={chart} axis={axis} />
-          {/* Task 5 populates this map; for now the overlay falls back to no-series
-              behaviour identical to the empty-priceSeries state in main. */}
-          <DrawingOverlay chart={chart} axis={axis} paneSeries={EMPTY_PANE_SERIES} />
+          <DrawingOverlay chart={chart} axis={axis} paneSeries={paneSeries} />
         </>
       )}
     </div>

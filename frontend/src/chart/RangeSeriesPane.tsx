@@ -40,6 +40,13 @@ type Props<Ctx> = {
   axis: VirtualAxis;
   paneIndex: number;
   spec: PaneSpec<Ctx>;
+  /** Fired after the primary series (spec.series[0]) is added to the chart.
+   *  ChartStage uses this to populate its PaneId→ISeriesApi registry that
+   *  DrawingOverlay consumes for pane-aware coordinate conversion. */
+  onPrimarySeriesReady?: (series: ISeriesApi<any>) => void;
+  /** Fired right before the primary series is removed from the chart
+   *  (component unmount or spec change). */
+  onPrimarySeriesGone?: () => void;
 };
 
 /**
@@ -55,6 +62,8 @@ export default function RangeSeriesPane<Ctx>({
   axis,
   paneIndex,
   spec,
+  onPrimarySeriesReady,
+  onPrimarySeriesGone,
 }: Props<Ctx>) {
   // Hook position is stable: PaneSpec is a module-level constant per
   // caller (spec.useContext presence never flips between renders), so
@@ -75,7 +84,9 @@ export default function RangeSeriesPane<Ctx>({
       return series;
     });
     seriesRef.current = seriesList;
+    if (seriesList.length > 0) onPrimarySeriesReady?.(seriesList[0]);
     return () => {
+      if (seriesList.length > 0) onPrimarySeriesGone?.();
       // Guard: when a sibling pane throws and ChartErrorBoundary unmounts
       // ChartStage, the parent's chart.remove() may run before this
       // cleanup, leaving the series handle dangling. lightweight-charts
@@ -91,6 +102,10 @@ export default function RangeSeriesPane<Ctx>({
       }
       seriesRef.current = [];
     };
+    // onPrimarySeriesReady / onPrimarySeriesGone identities are stable on
+    // the parent (ChartStage uses `useCallback`); intentionally excluded
+    // from deps so the effect doesn't churn series on callback re-creation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chart, paneIndex, spec]);
 
   // Data effect: push new projected data into existing series whenever
