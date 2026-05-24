@@ -52,6 +52,55 @@ function drawHaloThenMain(
   c.restore();
 }
 
+const BADGE_FONT = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+const BADGE_PAD_X = 4;
+const BADGE_PAD_Y = 2;
+const BADGE_INSET_RIGHT = 8;
+
+/** W3C relative luminance of an `#RRGGBB` colour, range [0, 1]. */
+function luminance(hex: string): number {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return 0.5;
+  const n = parseInt(m[1], 16);
+  const r = ((n >> 16) & 0xff) / 255;
+  const g = ((n >> 8) & 0xff) / 255;
+  const b = (n & 0xff) / 255;
+  const lin = (v: number) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function drawPriceBadge(
+  c: CanvasRenderingContext2D,
+  canvasWidth: number,
+  y: number,
+  price: number,
+  bgColor: string,
+  selected: boolean,
+) {
+  const text = price.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
+  c.save();
+  c.font = BADGE_FONT;
+  c.textBaseline = 'middle';
+  c.textAlign = 'left';
+  const textWidth = c.measureText(text).width;
+  const w = textWidth + BADGE_PAD_X * 2;
+  const h = 11 + BADGE_PAD_Y * 2;
+  const x = canvasWidth - BADGE_INSET_RIGHT - w;
+  const top = y - h / 2;
+  c.fillStyle = bgColor;
+  c.fillRect(x, top, w, h);
+  if (selected) {
+    c.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.rect(x + 0.5, top + 0.5, w - 1, h - 1);
+    c.stroke();
+  }
+  c.fillStyle = luminance(bgColor) < 0.5 ? '#FFFFFF' : '#000000';
+  c.fillText(text, x + BADGE_PAD_X, y);
+  c.restore();
+}
+
 function renderHline(c: CanvasRenderingContext2D, ctx: ProjectCtx, h: Hline, selected: boolean) {
   const y = priceToY(ctx, h.price);
   if (y == null) return;
@@ -61,6 +110,7 @@ function renderHline(c: CanvasRenderingContext2D, ctx: ProjectCtx, h: Hline, sel
     c.lineTo(ctx.width, y);
     c.stroke();
   });
+  drawPriceBadge(c, ctx.width, y, h.price, h.color, selected);
 }
 
 function renderTrendline(
