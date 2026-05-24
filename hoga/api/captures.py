@@ -178,12 +178,16 @@ def _require_client_factory() -> Callable[[], object]:
 
 def _record_no_upstream_data(data_dir: Path, code: str, date: str) -> None:
     """Write the .no_upstream_data sentinel and remove zero-byte
-    pre-collect artifacts so the directory is in canonical form for
+    pre-collect artifacts so the raw_dir is in canonical form for
     check_disk_state (see ADR-0021).
 
-    Invariant after this call: raw_dir contains exactly one file
-    (.no_upstream_data) and parquet_dir does not exist. force_retry
-    deletes the sentinel before re-running collect_stock_date.
+    Cleans up `info.tsv`, `chart.tsv`, `_progress.json` from raw_dir
+    (any of which may have been touched before the empty-info detection
+    fired) and writes the sentinel. Does NOT touch parquet_dir — if a
+    stale meta.json from a prior successful capture exists, it is
+    shadowed by check_disk_state's sentinel-first ordering, not deleted
+    here. force_retry deletes the sentinel before re-running
+    collect_stock_date.
     """
     raw_dir = data_dir / "raw" / date / code
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -467,6 +471,13 @@ async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
     """Run the collector then the parser. Cookie-missing/expired rejection
     happens via the cookie-pause path in the worker loop. Task 11's
     ``_run_capture_and_parse`` wrapper provides 429 backoff around this.
+
+    ``UpstreamNoDataError`` (collector raises on empty info.php — ADR-0021)
+    is caught here and converted to a normal ``skipped`` return: writes the
+    ``.no_upstream_data`` sentinel via ``_record_no_upstream_data``, sets
+    ``state.phase = "skipped"`` and ``state.skip_reason = "no_upstream_data"``,
+    and returns. The outer worker loop's generic ``except Exception`` never
+    sees this, so the item is not classified as ``failed``.
     """
     if state.cancel_token is None:
         state.cancel_token = CancelToken()
@@ -536,10 +547,13 @@ async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
 async def _run_item(state: QueueItemState) -> None:
     """Full pipeline: deciding → (skipped | capturing → parsing → done).
 
-    Disk-state branches (see spec §5.2 + §11 Q16):
+    Disk-state branches (see spec §5.2 + §11 Q16, ADR-0021 for NO_UPSTREAM_DATA):
     - COMPLETE → skipped/already_complete
+    - NO_UPSTREAM_DATA + not force_retry → skipped/no_upstream_data
+    - NO_UPSTREAM_DATA + force_retry → sentinel deleted, fresh capture (resume=False)
     - SOURCE_PARTIAL + not force_retry → skipped/source_partial
     - SOURCE_PARTIAL + force_retry → fresh capture (resume=False)
+    - INVALID → fresh capture (resume=False)
     - CLIENT_INCOMPLETE → resume=True (continue from existing pages)
     - NONE → fresh capture (resume=False)
     """

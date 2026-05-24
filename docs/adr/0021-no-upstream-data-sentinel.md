@@ -1,6 +1,6 @@
 # 0021 — Upstream No-Data: sentinel 파일 + DiskState 확장
 
-**Status:** proposed (2026-05-24) — pending implementation of `docs/superpowers/specs/2026-05-24-no-upstream-data-design.md`
+**Status:** accepted (2026-05-24) — implemented per `docs/superpowers/specs/2026-05-24-no-upstream-data-design.md`
 
 **Related:**
 - ADR-0007 — disk_state 모듈 추출 (단일 분류 책임). 본 ADR이 그 분류기에 새 상태 한 값을 더한다.
