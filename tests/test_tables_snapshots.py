@@ -68,6 +68,28 @@ def test_write_parquet_roundtrip(tmp_path: Path) -> None:
     assert tbl.column("ask_p1").to_pylist() == [25700, 25700]
 
 
+def test_read_parquet_inverts_write_parquet(tmp_path: Path) -> None:
+    """read_parquet must reassemble the exact Orderbook instances write_parquet
+    persisted — verifies the flat-schema round trip is closed at the module
+    boundary so callers (like cli._run_series_for) don't reimplement it."""
+    from hoga.tables.snapshots import read_parquet
+
+    ob1 = PARSERS[2](_ob_parts(ts_ms=90000435, seq=847))
+    ob2 = PARSERS[2](_ob_parts(ts_ms=90001000, seq=848))
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([ob2, ob1], out)
+
+    rows = read_parquet(out)
+    assert len(rows) == 2
+    # Writer sorts by ts_ms — verify ordering preserved on read.
+    assert [o.ts_ms for o in rows] == [90000435, 90001000]
+    # Tuple fields must round-trip back to tuples (not lists).
+    assert isinstance(rows[0].ask_p, tuple)
+    assert len(rows[0].ask_p) == 10
+    # Full Orderbook equality: read result must equal original (sorted) input.
+    assert rows == [ob1, ob2]
+
+
 def test_query_at_returns_api_model_for_latest_before(tmp_path: Path) -> None:
     obs = [
         PARSERS[2](_ob_parts(ts_ms=t, seq=i))

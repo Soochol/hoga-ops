@@ -114,6 +114,35 @@ def write_parquet(snapshots: Iterable[Orderbook], path: Path) -> None:
     pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
 
 
+def read_parquet(path: Path) -> list[Orderbook]:
+    """Symmetric inverse of :func:`write_parquet` — reassembles ``Orderbook``
+    tuple fields from the 60 flattened parquet columns.
+
+    Lives here (not in callers like ``hoga/cli.py``'s ``_run_series_for``)
+    because reading is the inverse of writing — both must agree on the
+    flat schema (``ORDERBOOK_LEVELS`` × 6 prefixes + 4 totals), and the
+    write_parquet ↔ read_parquet round-trip is the test surface for that
+    schema. Callers staying outside the snapshots module would have to
+    re-derive the schema and silently drift when it changes.
+    """
+    table = pq.read_table(path)
+    rows = table.to_pylist()
+    return [_row_to_orderbook(r) for r in rows]
+
+
+def _row_to_orderbook(r: dict) -> Orderbook:
+    def _tup(prefix: str) -> tuple[int, ...]:
+        return tuple(r[f"{prefix}{i}"] for i in range(1, ORDERBOOK_LEVELS + 1))
+
+    return Orderbook(
+        ts_ms=r["ts_ms"], seq=r["seq"],
+        ask_p=_tup("ask_p"), ask_q=_tup("ask_q"), ask_d=_tup("ask_d"),
+        bid_p=_tup("bid_p"), bid_q=_tup("bid_q"), bid_d=_tup("bid_d"),
+        tot_ask=r["tot_ask"], tot_ask_d=r["tot_ask_d"],
+        tot_bid=r["tot_bid"], tot_bid_d=r["tot_bid_d"],
+    )
+
+
 # === Within-table invariants ===
 
 

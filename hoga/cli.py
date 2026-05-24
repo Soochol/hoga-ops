@@ -132,59 +132,51 @@ def list_stock_dates() -> None:
     console.print(table)
 
 
-def _rebuild_orderbook(r):
-    """snapshots.parquet stores Orderbook tuple fields as 60 flattened scalar
-    columns (ask_p1..ask_p10, ask_q1..ask_q10, etc. — see snapshots._build_schema).
-    Reassemble back into the dataclass shape the series invariants expect."""
-    from hoga.tables.snapshots import ORDERBOOK_LEVELS, Orderbook
-
-    def _tup(prefix):
-        return tuple(r[f"{prefix}{i}"] for i in range(1, ORDERBOOK_LEVELS + 1))
-
-    return Orderbook(
-        ts_ms=r["ts_ms"], seq=r["seq"],
-        ask_p=_tup("ask_p"), ask_q=_tup("ask_q"), ask_d=_tup("ask_d"),
-        bid_p=_tup("bid_p"), bid_q=_tup("bid_q"), bid_d=_tup("bid_d"),
-        tot_ask=r["tot_ask"], tot_ask_d=r["tot_ask_d"],
-        tot_bid=r["tot_bid"], tot_bid_d=r["tot_bid_d"],
-    )
-
-
 def _run_series_for(stock_date_dir, meta):
     """Load parquet artifacts for one Stock-Date dir and run series invariants.
 
     Missing parquet files (path doesn't exist) skip silently and return an
     empty result — that's the legitimate 'nothing to check' path.
 
-    Load errors (read failure, schema drift, dataclass mismatch) print a
-    yellow warning and return None for that artifact — converting a silent
-    false-clean into an explicit 'I couldn't check' signal. The CLI is a
-    diagnostic tool; hiding load failures would be the worst UX choice.
+    Load errors (read failure, schema drift) print a yellow warning and
+    return an empty list for that artifact — converting a silent false-clean
+    into an explicit 'I couldn't check' signal. The CLI is a diagnostic
+    tool; hiding load failures would be the worst UX choice.
     """
     import pyarrow.parquet as _pq
 
     from hoga.api.invariants import StockDateArtifacts, check_series
+    from hoga.tables import snapshots as _snapshots
     from hoga.tables.candles import Candle
     from hoga.tables.trades import Trade
 
-    def _read(path, builder):
+    def _read(path, loader):
+        # Returns None (not []) for missing/unreadable — the series invariants
+        # use None as the "skip, nothing to check" sentinel. An empty list
+        # would falsely look like 'data is loaded but empty' which fires
+        # series.snapshots_no_gaps (has_meaningful_gaps treats <2 datapoints
+        # as suspicious).
         if not path.exists():
             return None
         try:
-            table = _pq.read_table(path)
-            return [builder(row) for row in table.to_pylist()]
+            return loader(path)
         except Exception as exc:  # noqa: BLE001 — diagnostic surface
             console.print(
                 f"[yellow]  warning: could not load {path.name}: {exc}[/yellow]"
             )
             return None
 
+    def _read_dataclass(path, ctor):
+        return [ctor(**row) for row in _pq.read_table(path).to_pylist()]
+
     candles = _read(stock_date_dir / "candles.parquet",
-                    lambda r: Candle(**r))
-    # Orderbook needs explicit reassembly — parquet flattens its tuple fields.
-    snapshots = _read(stock_date_dir / "snapshots.parquet", _rebuild_orderbook)
+                    lambda p: _read_dataclass(p, Candle))
+    # Orderbook flat-schema round-trip lives in the snapshots module so the
+    # write/read pair stays symmetric (ADR-0020 §3c — see snapshots.read_parquet).
+    snapshots = _read(stock_date_dir / "snapshots.parquet",
+                      _snapshots.read_parquet)
     trades = _read(stock_date_dir / "trades.parquet",
-                   lambda r: Trade(**r))
+                   lambda p: _read_dataclass(p, Trade))
     return check_series(StockDateArtifacts(
         meta=meta, candles=candles, snapshots=snapshots, trades=trades,
     ))
