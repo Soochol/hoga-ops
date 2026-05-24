@@ -91,9 +91,9 @@ describe('renderHline price badge', () => {
     expect(x).toBeLessThan(ctx.width);
   });
 
-  it('rounds the badge to an integer on every pane (no decimals)', () => {
-    // User decision 2026-05-25: all panes show integers — accepts that
-    // a ratio drawing at −0.34 displays as "0".
+  it('renders the ratio pane badge with one fraction digit', () => {
+    // User decision 2026-05-25: integers everywhere EXCEPT the ratio
+    // pane, whose −1..1 range collapses to "0" at integer resolution.
     const ctx: ProjectCtx = {
       ...makeProjectCtx(),
       chart: {
@@ -116,7 +116,32 @@ describe('renderHline price badge', () => {
     };
     renderDrawing(c, ctx, h, false);
     const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
-    expect(labels).toContain('0');
+    expect(labels.some((l) => l === '-0.3')).toBe(true);
+  });
+
+  it('rounds non-ratio indicator panes to integer (volume → no decimal)', () => {
+    const ctx: ProjectCtx = {
+      ...makeProjectCtx(),
+      chart: {
+        panes: () => [
+          { getHeight: () => 400 },
+          { getHeight: () => 80 },
+        ],
+      } as unknown as IChartApi,
+      paneSeries: new Map([['volume', {
+        priceToCoordinate: vi.fn(() => 200),
+        coordinateToPrice: vi.fn(),
+      } as any]]),
+      paneId: 'volume',
+    };
+    const c = makeCanvasSpy();
+    const h: Hline = {
+      id: 'h_vol', kind: 'hline', price: 12_345.7,
+      color: '#14B8A6', width: 1.5, paneId: 'volume',
+    };
+    renderDrawing(c, ctx, h, false);
+    const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
+    expect(labels).toContain('12,346');
     expect(labels.every((l) => !l.includes('.'))).toBe(true);
   });
 

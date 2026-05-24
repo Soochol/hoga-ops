@@ -71,12 +71,17 @@ function luminance(hex: string): number {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 }
 
-function formatBadgePrice(price: number): string {
-  // User decision (2026-05-25): all panes show integers, no decimals.
-  // ratio (−1..1) and fill-strength (0..1) values collapse to 0 / ±1
-  // on the hline badge in exchange for label consistency across panes.
-  // The `|| 0` collapses `Math.round(-0.34) === -0` to `+0` so the
-  // label reads "0", not "-0".
+function formatBadgePrice(price: number, paneId: PaneId): string {
+  // User decision (2026-05-25): every pane shows integers — except the
+  // bid/ask ratio pane (호가비), whose −1..1 range is meaningless at
+  // integer resolution. Ratio gets one fraction digit so a hline at
+  // −0.34 reads as "-0.3" instead of collapsing to "0".
+  if (paneId === 'ratio') {
+    return price.toLocaleString('ko-KR', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
+  }
   return (Math.round(price) || 0).toLocaleString('ko-KR');
 }
 
@@ -85,10 +90,11 @@ function drawPriceBadge(
   canvasWidth: number,
   y: number,
   price: number,
+  paneId: PaneId,
   bgColor: string,
   selected: boolean,
 ) {
-  const text = formatBadgePrice(price);
+  const text = formatBadgePrice(price, paneId);
   c.save();
   c.font = BADGE_FONT;
   c.textBaseline = 'middle';
@@ -123,7 +129,7 @@ function renderHline(c: CanvasRenderingContext2D, ctx: ProjectCtx, h: Hline, sel
     c.lineTo(ctx.width, y);
     c.stroke();
   });
-  drawPriceBadge(c, ctx.width, y, h.price, h.color, selected);
+  drawPriceBadge(c, ctx.width, y, h.price, h.paneId, h.color, selected);
 }
 
 function renderTrendline(
