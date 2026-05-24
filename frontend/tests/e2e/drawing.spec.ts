@@ -59,7 +59,7 @@ test.describe('Replay drawing tools', () => {
     await page.screenshot({ path: 'test-results/drawing-hline.png' });
   });
 
-  test('hline persists across reload', async ({ page, context }) => {
+  test('hline persists across reload', async ({ page }) => {
     await page.goto(URL);
     await waitForChart(page);
     await page.getByRole('button', { name: '그리기' }).click();
