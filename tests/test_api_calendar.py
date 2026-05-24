@@ -144,21 +144,31 @@ def test_get_month_map_fail_soft_when_creds_missing(
     _reset_calendar_state: None,
 ) -> None:
     """Calendar UI still renders every weekday; banner reason is set."""
+    import datetime as dt
     monkeypatch.delenv("KRX_ID", raising=False)
     monkeypatch.delenv("KRX_PW", raising=False)
+    # Freeze "now" to a mid-month weekday (Wed 2026-05-13) so that the
+    # weekend-cell assertion below stays deterministic regardless of the
+    # actual calendar date when the suite runs. Without this freeze, a test
+    # run on a weekend would classify "today" as today_locked even though it
+    # is a weekend day, breaking `c.status in ("weekend", "future")`.
+    KST = dt.timezone(dt.timedelta(hours=9))
+    frozen_now = dt.datetime(2026, 5, 13, 12, 0, 0, tzinfo=KST)
+    monkeypatch.setattr(calendar_module, "_now_kst", lambda: frozen_now)
 
     resp = calendar_module.get_month_map(data_dir=tmp_path, code="005930", year=2026, month=5)
     assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
     # May 2026 has 31 days; all are present as cells.
     assert len(resp.cells) == 31
-    import datetime as dt
     weekday_cells = [c for c in resp.cells
                      if dt.date(int(c.date[:4]), int(c.date[4:6]), int(c.date[6:8])).weekday() < 5]
     weekend_cells = [c for c in resp.cells
                      if dt.date(int(c.date[:4]), int(c.date[4:6]), int(c.date[6:8])).weekday() >= 5]
     assert all(c.status in ("none", "future", "today_locked") for c in weekday_cells), \
         "weekdays should not be misclassified as holiday when KRX is unavailable"
-    # Future weekend days show "future" (date > today check happens first in _cell_status_for).
+    # Past and future weekend days show "weekend"/"future"; with now frozen to
+    # a weekday, no weekend cell falls on the frozen "today" so today_locked
+    # never overrides the weekend classification.
     assert all(c.status in ("weekend", "future") for c in weekend_cells)
 
 
