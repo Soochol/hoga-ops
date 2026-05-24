@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,19 @@ from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.models import StockDate
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.tables import snapshots
+
+
+@dataclass(frozen=True, slots=True)
+class _CachedStockDate:
+    """Cache entry pairing a meta.json mtime fingerprint with the built StockDate.
+
+    Keyed in QueryEngine._stock_date_cache by (date, code). Validity is
+    checked by re-stat()ing meta.json on every list_stock_dates call —
+    the filesystem is the source of truth; this struct just avoids the
+    DuckDB + JSON parse work when nothing on disk has changed.
+    """
+    meta_mtime_ns: int
+    value: StockDate
 
 
 class StockDateNotFound(LookupError):
@@ -28,6 +42,9 @@ class QueryEngine:
     def __init__(self, data_dir: Path) -> None:
         self.data_dir = data_dir
         self._conn = duckdb.connect(database=":memory:", read_only=False)
+        # Per-call mtime-validated cache for list_stock_dates. See
+        # _CachedStockDate docstring; keyed by (date, code).
+        self._stock_date_cache: dict[tuple[str, str], _CachedStockDate] = {}
 
     def close(self) -> None:
         self._conn.close()
@@ -60,10 +77,29 @@ class QueryEngine:
                 continue
             date = date_dir.name
             for code_dir in sorted(date_dir.iterdir()):
+                code = code_dir.name
                 meta_path = code_dir / "meta.json"
-                if not meta_path.exists():
+                try:
+                    mtime_ns = meta_path.stat().st_mtime_ns
+                except FileNotFoundError:
+                    # Dir without meta.json — incomplete capture or race
+                    # with deletion; matches the pre-cache behavior of
+                    # silently skipping these entries.
                     continue
-                out.append(self._compute_stock_date(date, code_dir.name, code_dir))
+                key = (date, code)
+                # Single .get() — must not be replaced by `key in cache`
+                # then `cache[key]` (two ops). The spec mandates a single
+                # atomic dict op so a racing prune cannot null the entry
+                # between the check and the read.
+                cached = self._stock_date_cache.get(key)
+                if cached is not None and cached.meta_mtime_ns == mtime_ns:
+                    out.append(cached.value)
+                    continue
+                sd = self._compute_stock_date(date, code, code_dir)
+                self._stock_date_cache[key] = _CachedStockDate(
+                    meta_mtime_ns=mtime_ns, value=sd
+                )
+                out.append(sd)
         return out
 
     def _compute_stock_date(

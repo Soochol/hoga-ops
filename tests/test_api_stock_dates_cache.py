@@ -8,6 +8,7 @@ from __future__ import annotations
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest import mock
 from hoga.api.queries import QueryEngine
 from hoga.parser import parse_stock_date
 
@@ -52,5 +53,34 @@ def test_concurrent_calls_dont_crash(tmp_path: Path) -> None:
         assert len(baseline) == len(_DATES)
         for r in results:
             assert r == baseline
+    finally:
+        engine.close()
+
+
+def test_cache_hit_skips_duckdb(tmp_path: Path) -> None:
+    """Second list_stock_dates call with no FS changes must not touch DuckDB.
+
+    Wraps engine._conn.cursor with a spy and asserts call_count is 0
+    on the second invocation.
+    """
+    engine = _build_engine_with_stock_dates(tmp_path, _DATES[:3])
+    try:
+        # First call: cold — populates cache.
+        first = engine.list_stock_dates()
+        assert len(first) == 3
+
+        # Spy on cursor() for the second call only.
+        # NOTE: DuckDB's C extension makes `_conn.cursor` read-only, so
+        # mock.patch.object(engine._conn, "cursor", ...) raises AttributeError.
+        # We patch one level up: engine._conn (a plain Python attribute) is
+        # freely rebindable, and MagicMock(wraps=...) proxies all real calls
+        # while recording them.
+        with mock.patch.object(engine, "_conn", wraps=engine._conn) as conn_spy:
+            second = engine.list_stock_dates()
+        assert conn_spy.cursor.call_count == 0, (
+            "Cache hit must not allocate a cursor — every cache miss "
+            "calls self.conn which calls _conn.cursor()."
+        )
+        assert second == first
     finally:
         engine.close()
