@@ -68,8 +68,6 @@ def decide_capture(
       - DiskState.COMPLETE        → skip with reason "already_complete"
       - DiskState.SOURCE_PARTIAL  → skip with "source_partial" unless force_retry
                                     (when force_retry, fall through to fresh)
-      - DiskState.INVALID         → proceed with resume=False (don't trust
-                                    corrupt artifacts; fresh capture)
       - DiskState.CLIENT_INCOMPLETE → proceed with resume=True
       - DiskState.NONE            → proceed with resume=False
     """
@@ -78,7 +76,6 @@ def decide_capture(
         return CaptureDecision(skip_reason="already_complete", resume=False)
     if disk == DiskState.SOURCE_PARTIAL and not force_retry:
         return CaptureDecision(skip_reason="source_partial", resume=False)
-    # INVALID and NONE both produce resume=False; only CLIENT_INCOMPLETE resumes.
     resume_flag = (disk == DiskState.CLIENT_INCOMPLETE)
     return CaptureDecision(skip_reason=None, resume=resume_flag)
 
