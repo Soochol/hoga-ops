@@ -2,7 +2,9 @@
 
 **Date**: 2026-05-24
 **Status**: Approved
-**Scope**: `hoga/api/routes.py`, `hoga/api/models.py`, `hoga/tables/brokers.py`, `frontend/src/api/types.ts`, `frontend/src/api/useCursor.ts`, `frontend/src/sidebar/BrokerNetTable.tsx`, `frontend/src/sidebar/CursorSidebar.tsx`
+**Scope**: `hoga/api/routes.py`, `hoga/api/models.py`, `hoga/tables/brokers.py`, `frontend/src/api/types.ts`, `frontend/src/api/brokerSeries.ts` (new), `frontend/src/sidebar/BrokerTrajectoryTable.tsx` (renamed from `BrokerNetTable.tsx`), `frontend/src/sidebar/CursorSidebar.tsx`, `CONTEXT.md` (Cursor Sidebar entry + new Broker Day-Trajectory entry), `docs/adr/0023-broker-card-day-anchored.md` (new — added by the same change set).
+
+**Related decisions**: ADR-0023 (this card's day-anchored shift), ADR-0004 (wire model no-adapter — the second wire model for `BrokerRow` is sanctioned), ADR-0013 (RangeBundle precedent for day-scope queries + react-query), ADR-0022 (sidebar width / collapse — untouched here).
 
 ## Problem
 
@@ -41,13 +43,20 @@ A new endpoint **`GET /api/brokers/series?code=&date=`** returns the entire day'
 # hoga/api/models.py — to add
 class BrokerSeriesPoint(BaseModel):
     ts_ms: int        # Unix epoch ms (already converted by route layer)
-    qty_today: int    # cumulative through this snapshot
+    net: int          # SIGNED: SUM(qty_today * sign(side)) at this snapshot,
+                      # where sign(buy)=+1, sign(sell)=-1. Same convention as
+                      # the legacy BrokerNetTable.computeNet aggregation, so a
+                      # broker that briefly appears on both sides (rare market-
+                      # maker case) shows a single signed trajectory rather
+                      # than two unsigned ones.
 
 class BrokerSeriesEntry(BaseModel):
     broker: str
-    side: Literal["buy", "sell"]   # side of this broker's last observation (effectively single-sided per day)
-    final_net: int                  # signed: +qty_today if buy, -qty_today if sell, at last observation
-    points: list[BrokerSeriesPoint] # ts_ms ascending; only snapshots where broker was in top-5
+    final_net: int                  # signed net at the last observation; sort key for the list
+    dominant_side: Literal["buy", "sell"]   # sign(final_net) as a literal; convenience for the
+                                            # frontend's row coloring (red for buy, blue for sell)
+    points: list[BrokerSeriesPoint] # ts_ms ascending; only snapshots where broker
+                                    # appeared in top-5 buy OR top-5 sell
 
 class BrokerSeriesResponse(BaseModel):
     date: str          # YYYYMMDD KST, echoed
@@ -58,11 +67,29 @@ class BrokerSeriesResponse(BaseModel):
 
 ```python
 def query_day_series(con: duckdb.DuckDBPyConnection, *, path: Path) -> list[BrokerSeriesEntry]:
-    """One DuckDB query producing per-broker series for the whole parquet file.
+    """One DuckDB query producing per-broker signed-net series for the whole parquet file.
     Returns entries sorted by abs(final_net) desc, final_net desc."""
 ```
 
-The query strategy: select `broker, side, ts_ms, qty_today` ordered by `(broker, ts_ms)`, group in Python into entries. For each broker, `side` is the side of its last observation (in practice a broker is one-sided across a day — the data confirms this); `final_net` is `qty_today` of the last observation, signed by that side.
+The query strategy is two DuckDB passes:
+
+```sql
+-- pass 1: per (broker, ts_ms), signed net across both sides at that snapshot
+WITH per_snapshot AS (
+    SELECT broker, ts_ms,
+           SUM(CASE WHEN side='buy' THEN qty_today ELSE -qty_today END) AS net
+    FROM read_parquet(?)
+    GROUP BY broker, ts_ms
+)
+-- pass 2: emit (broker, ts_ms, net) ordered, plus per-broker final_net for sorting
+SELECT broker, ts_ms, net,
+       LAST_VALUE(net) OVER (PARTITION BY broker ORDER BY ts_ms
+                             ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS final_net
+FROM per_snapshot
+ORDER BY broker, ts_ms;
+```
+
+Python aggregates the result rows into one `BrokerSeriesEntry` per broker, then sorts by `abs(final_net)` desc and `final_net` desc, then truncates to top 10 (the only consumer is the sidebar's top-10 list — there is no need to ship the long tail). `dominant_side` is derived from `sign(final_net)`.
 
 **Route handler** (`hoga/api/routes.py`):
 
@@ -92,22 +119,26 @@ Empty days return `BrokerSeriesResponse(date=..., brokers=[])`; no special envel
 
 ### § 2. Frontend data access
 
-A new hook **`useBrokerSeriesForDay()`** is added to `frontend/src/api/useCursor.ts`:
+A new hook **`useBrokerSeriesForDay()`** is added in a new file `frontend/src/api/brokerSeries.ts`, modeled on [range.ts](frontend/src/api/range.ts):
 
 ```ts
-export function useBrokerSeriesForDay(): BrokerSeriesEntry[] | null | undefined {
-  const { tabId, code, date } = useCursor();
-  const key = code && date ? `${tabId}|brs|${code}|${date}` : null;
-  const { data } = useSpot(key, () =>
-    apiGet<BrokerSeriesResponse>(
-      `/api/brokers/series?code=${code}&date=${date}`,
-    ).then((r) => r.brokers),
-  );
-  return data;   // undefined = loading, null = empty/no-data, T = data
+import { useQuery } from '@tanstack/react-query';
+import { apiCall } from './client';
+
+export function useBrokerSeriesForDay(code: string | null, date: string | null) {
+  return useQuery({
+    queryKey: ['brokers/series', code, date],
+    queryFn: () =>
+      apiCall<BrokerSeriesResponse>(`/api/brokers/series?code=${code}&date=${date}`),
+    enabled: code !== null && date !== null,
+    staleTime: Infinity,  // captured Stock-Dates are immutable historical data
+  });
 }
 ```
 
-Cache key intentionally omits `cursorMs` — the series is day-scoped, so moving the cursor within a day reuses the cached response. Crossing day boundaries (which `useCursor` already exposes via the derived `date` field) swaps the cache entry naturally.
+This deliberately does NOT use `useSpot` — that hook ([useSpot.ts:7-20](frontend/src/api/useSpot.ts#L7-L20)) is documented as a cursor-keyed, rapid-scrub debouncer with a per-instance LRU (cap 100). Day-scope reuse matches `useRange`'s react-query pattern, which already encodes the "captured Stock-Dates are immutable historical data" reasoning. Putting `useBrokerSeriesForDay` next to `useRange` (both day-keyed, both react-query, both `staleTime: Infinity`) keeps the two patterns visually clustered in `frontend/src/api/`.
+
+`CursorSidebarConnected` calls `useCursor()` to derive `(code, date)` from the active tab's `cursorMs`, then passes them to `useBrokerSeriesForDay()`. Crossing day boundaries within a multi-day **Stock-Date Range** changes `date` and swaps the query.
 
 The existing `useBrokersAtCursor()` becomes unused by the sidebar after this change and may be deleted (left in place by this spec since no other caller has been audited; cleanup belongs to a follow-up).
 
@@ -120,22 +151,23 @@ The displayed list is **top 10 by `abs(final_net)`** from the response, in the o
 ```ts
 function netAtCursor(entry: BrokerSeriesEntry, cursorMs: number | null): number {
   if (cursorMs == null) return 0;
-  // Binary-search points for the last ts_ms <= cursorMs.
+  // Binary-search entry.points for the last ts_ms <= cursorMs.
   // Returns 0 if the broker has not appeared yet by cursorMs (dim styling).
-  // Otherwise returns qty_today signed by entry.side.
+  // Otherwise returns that point's signed `net` value verbatim — the wire
+  // already carries the sign convention used by computeNet.
 }
 ```
 
-This intentionally differs from the current `computeNet` ([BrokerNetTable.tsx:48-58](frontend/src/sidebar/BrokerNetTable.tsx#L48-L58)), which summed across all entries in a single snapshot. The new computation is per-broker, per-cursor — no cross-broker aggregation.
+This replaces the current `computeNet` ([BrokerNetTable.tsx:48-58](frontend/src/sidebar/BrokerNetTable.tsx#L48-L58)), which summed across all entries in a single cursor-snapshot. The new computation is per-broker, per-cursor — no cross-broker aggregation, because the backend has already done the per-broker signing in `query_day_series`.
 
 ### § 4. Sparkline rendering
 
-Each broker row uses a CSS grid `grid-cols-[60px_1fr_80px]` for `[name | sparkline | net]`. The sparkline cell is rendered as an inline SVG, ~60px wide × 16px tall, with the broker's `side` color from `DESIGN.md`:
+Each broker row uses a CSS grid `grid-cols-[60px_1fr_80px]` for `[name | sparkline | net]`. The sparkline cell is rendered as an inline SVG, ~60px wide × 16px tall, with the broker's `dominant_side` color from `DESIGN.md`:
 
-- side `buy` → `--price-up` (`#DC2626`)
-- side `sell` → `--price-down` (`#2563EB`)
+- dominant `buy` → `--price-up` (`#DC2626`)
+- dominant `sell` → `--price-down` (`#2563EB`)
 
-**Y-axis**: per-row independent, `[0, max(qty_today across points)]`. This is essential — absolute volumes differ ~100× between top-volume brokers (KB증권 type) and mid-pack brokers, so a shared Y axis collapses smaller brokers to a flat line. The sparkline communicates **trajectory shape**; the right-column number carries magnitude.
+**Y-axis**: per-row independent. The domain is `[min(0, min(net)), max(0, max(net))]` so the line stays visible whether the trajectory is purely positive (pure buyer), purely negative (pure seller), or straddles zero (rare mixed-side broker). Per-row independence is essential — absolute volumes differ ~100× between top-volume brokers (KB증권 type) and mid-pack brokers, so a shared Y axis collapses smaller brokers to a flat line. The sparkline communicates **trajectory shape**; the right-column number carries magnitude.
 
 **Time axis**: `[ts_first_observation_of_day, ts_last_observation_of_day]` across **all** brokers in the response — common time domain so every broker's cursor marker aligns at the same screen X. (Per-broker time domains would let cursor markers desync visually.)
 
@@ -152,7 +184,7 @@ A dashed segment connects directly from `(p[i].ts_ms, p[i].qty_today)` to `(p[i+
 
 **Cursor marker**: a vertical `--accent` (`#14B8A6`) 0.6px line with `stroke-dasharray="1,1"`, positioned at `(cursorMs - tsFirst) / (tsLast - tsFirst) * width`. If `cursorMs` is outside `[tsFirst, tsLast]` (e.g., pre-market or post-close), the marker is hidden.
 
-No zero baseline is drawn — sparklines are always non-negative monotone-ish (cumulative `qty_today`) so a zero line carries no information.
+No zero baseline is drawn — sparklines that cross zero (mixed-side brokers) are rare enough that adding a baseline for them adds clutter for the common case (single-sided trajectories). If the user surfaces a need for them later, a thin `--border` 0.5px line at y=0 is a one-line addition.
 
 ### § 5. Component changes
 
@@ -181,11 +213,14 @@ The file remains a sidebar-local concern; no new directory.
 **`frontend/src/sidebar/CursorSidebar.tsx`** — `CursorSidebarConnected` swaps `useBrokersAtCursor()` for `useBrokerSeriesForDay()` + `useCursor()`:
 
 ```tsx
-const series = useBrokerSeriesForDay();
-const cursorMs = useCursor().cursorMs;
+const { code, date, cursorMs } = useCursor();
+const { data, isLoading } = useBrokerSeriesForDay(code, date);
+const series = isLoading ? undefined : (data?.brokers ?? null);
 // ...
 brokers={<BrokerTrajectoryTable series={series} cursorMs={cursorMs} />}
 ```
+
+The undefined/null/value contract on the prop matches the existing `useSpot`-shaped consumers (`OrderbookTable`, `FillTape`): `undefined` = loading, `null` = fetched-empty, value = data. This keeps the sidebar's three cards visually consistent in their loading/empty states even though `BrokerTrajectoryTable`'s data flows from react-query.
 
 ### § 6. Sidebar grid
 
