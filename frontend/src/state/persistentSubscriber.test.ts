@@ -75,3 +75,88 @@ describe('attachPersistence — debounce + write', () => {
     setItemSpy.mockRestore();
   });
 });
+
+describe('attachPersistence — unsubscribe + silent failure', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('unsubscribe cancels a pending write', () => {
+    const store = makeFakeStore({ a: 0 });
+    const unsub = attachPersistence(store, {
+      storageKey: 'test.k',
+      toSnapshot: (s) => s,
+    });
+    store.setState({ a: 1 });
+    unsub();
+    vi.advanceTimersByTime(500);
+    expect(localStorage.getItem('test.k')).toBeNull();
+  });
+
+  it('unsubscribe is idempotent', () => {
+    const store = makeFakeStore({ a: 0 });
+    const unsub = attachPersistence(store, {
+      storageKey: 'test.k',
+      toSnapshot: (s) => s,
+    });
+    expect(() => {
+      unsub();
+      unsub();
+    }).not.toThrow();
+  });
+
+  it('unsubscribe detaches the listener (no further writes)', () => {
+    const store = makeFakeStore({ a: 0 });
+    const unsub = attachPersistence(store, {
+      storageKey: 'test.k',
+      toSnapshot: (s) => s,
+    });
+    unsub();
+    store.setState({ a: 99 });
+    vi.advanceTimersByTime(500);
+    expect(localStorage.getItem('test.k')).toBeNull();
+  });
+
+  it('silently swallows setItem throw (quota / private mode)', () => {
+    const store = makeFakeStore({ a: 0 });
+    const setItemSpy = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new DOMException('quota', 'QuotaExceededError');
+      });
+    attachPersistence(store, { storageKey: 'test.k', toSnapshot: (s) => s });
+    store.setState({ a: 1 });
+    expect(() => vi.advanceTimersByTime(250)).not.toThrow();
+    expect(setItemSpy).toHaveBeenCalled();
+    setItemSpy.mockRestore();
+  });
+
+  it('silently swallows toSnapshot throw', () => {
+    const store = makeFakeStore({ a: 0 });
+    attachPersistence(store, {
+      storageKey: 'test.k',
+      toSnapshot: () => { throw new Error('boom'); },
+    });
+    store.setState({ a: 1 });
+    expect(() => vi.advanceTimersByTime(250)).not.toThrow();
+    expect(localStorage.getItem('test.k')).toBeNull();
+  });
+
+  it('silently no-ops when localStorage is undefined (SSR)', () => {
+    const store = makeFakeStore({ a: 0 });
+    const orig = globalThis.localStorage;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (globalThis as any).localStorage;
+    try {
+      expect(() => {
+        attachPersistence(store, { storageKey: 'test.k', toSnapshot: (s) => s });
+        store.setState({ a: 1 });
+        vi.advanceTimersByTime(250);
+      }).not.toThrow();
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', { value: orig, configurable: true });
+    }
+  });
+});
