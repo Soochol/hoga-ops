@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Drawing } from './types';
 import { loadDrawings, saveDrawings, storageKey } from './persistence';
+import { PANE_SPECS } from '../paneSpecs';
 
 const CODE = '005930';
 
@@ -57,5 +58,54 @@ describe('loadDrawings — error / version handling', () => {
   it('returns [] when items is not an array', () => {
     localStorage.setItem(storageKey(CODE), JSON.stringify({ v: 1, items: 'nope' }));
     expect(loadDrawings(CODE)).toEqual([]);
+  });
+});
+
+describe('loadDrawings — paneId migration', () => {
+  it("backfills paneId='candle' on items missing paneId", () => {
+    const legacy = {
+      v: 1,
+      items: [
+        // No paneId field — pre-Task-1 payload.
+        { id: 'a', kind: 'hline', price: 75000, color: '#14B8A6', width: 1.5 },
+      ],
+    };
+    localStorage.setItem(storageKey(CODE), JSON.stringify(legacy));
+    const loaded = loadDrawings(CODE);
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]).toMatchObject({ id: 'a', kind: 'hline', paneId: 'candle' });
+  });
+
+  it('resolves legacy paneIndex via PANE_SPECS to a paneId', () => {
+    const ratioIdx = PANE_SPECS.findIndex((s) => s.name === 'ratio');
+    expect(ratioIdx).toBeGreaterThanOrEqual(0);
+    const legacy = {
+      v: 1,
+      items: [
+        {
+          id: 'b',
+          kind: 'hline',
+          price: 0.42,
+          color: '#14B8A6',
+          width: 1.5,
+          paneIndex: ratioIdx,
+        },
+      ],
+    };
+    localStorage.setItem(storageKey(CODE), JSON.stringify(legacy));
+    const loaded = loadDrawings(CODE);
+    expect(loaded[0].paneId).toBe('ratio');
+    expect((loaded[0] as Drawing & { paneIndex?: number }).paneIndex).toBeUndefined();
+  });
+
+  it("falls back to paneId='candle' when paneIndex is out of range", () => {
+    const legacy = {
+      v: 1,
+      items: [
+        { id: 'c', kind: 'hline', price: 1, color: '#14B8A6', width: 1.5, paneIndex: 999 },
+      ],
+    };
+    localStorage.setItem(storageKey(CODE), JSON.stringify(legacy));
+    expect(loadDrawings(CODE)[0].paneId).toBe('candle');
   });
 });
