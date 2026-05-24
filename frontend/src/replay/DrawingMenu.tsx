@@ -1,22 +1,13 @@
 // frontend/src/replay/DrawingMenu.tsx
+//
+// Drawing Tool picker. Reads from the central `TOOLS` registry in
+// `chart/drawing/tools.ts` — adding a new tool there automatically
+// adds it to the menu (label + glyph are owned by the spec).
+
 import { useEffect, useRef, useState } from 'react';
 import { useDrawingsStore } from '../state/drawings';
 import type { DrawingTool } from '../chart/drawing/types';
-
-const TOOL_ITEMS: { tool: Exclude<DrawingTool, 'select'>; label: string; glyph: string }[] = [
-  { tool: 'hline', label: '수평선', glyph: '━' },
-  { tool: 'trendline', label: '추세선', glyph: '╱' },
-  { tool: 'pencil', label: '연필', glyph: '✎' },
-  { tool: 'eraser', label: '지우개', glyph: '⌫' },
-];
-
-const TOOL_GLYPH: Record<DrawingTool, string> = {
-  select: '✏',
-  hline: '━',
-  trendline: '╱',
-  pencil: '✎',
-  eraser: '⌫',
-};
+import { TOOLS, DRAWABLE_TOOLS_ORDER } from '../chart/drawing/tools';
 
 export default function DrawingMenu() {
   const [open, setOpen] = useState(false);
@@ -46,6 +37,10 @@ export default function DrawingMenu() {
     setOpen(false);
   };
 
+  // Toolbar button glyph — the active tool's icon (or a default pencil
+  // when in select mode, signalling the button OPENS the drawing menu).
+  const buttonGlyph = activeTool === 'select' ? '✏' : TOOLS[activeTool].glyph;
+
   return (
     <div ref={popoverRef} className="relative">
       <button
@@ -62,7 +57,7 @@ export default function DrawingMenu() {
         }
         data-drawing-menu-button
       >
-        {TOOL_GLYPH[activeTool]}
+        {buttonGlyph}
       </button>
       {open && (
         <div
@@ -70,24 +65,27 @@ export default function DrawingMenu() {
           data-drawing-menu
           className="absolute left-0 top-full mt-1 w-44 bg-bg-card border border-border rounded shadow-lg z-30 py-1"
         >
-          {TOOL_ITEMS.map((item) => (
-            <button
-              key={item.tool}
-              type="button"
-              role="menuitem"
-              data-drawing-tool={item.tool}
-              onClick={() => pick(item.tool)}
-              className={
-                (activeTool === item.tool
-                  ? 'bg-bg-input-hover text-fg'
-                  : 'text-fg-dim hover:text-fg hover:bg-bg-input-hover') +
-                ' w-full text-left px-3 py-1.5 text-sm flex items-center gap-2'
-              }
-            >
-              <span className="font-mono w-4 text-center">{item.glyph}</span>
-              {item.label}
-            </button>
-          ))}
+          {DRAWABLE_TOOLS_ORDER.map((kind) => {
+            const spec = TOOLS[kind];
+            return (
+              <button
+                key={kind}
+                type="button"
+                role="menuitem"
+                data-drawing-tool={kind}
+                onClick={() => pick(kind)}
+                className={
+                  (activeTool === kind
+                    ? 'bg-bg-input-hover text-fg'
+                    : 'text-fg-dim hover:text-fg hover:bg-bg-input-hover') +
+                  ' w-full text-left px-3 py-1.5 text-sm flex items-center gap-2'
+                }
+              >
+                <span className="font-mono w-4 text-center">{spec.glyph}</span>
+                {spec.label}
+              </button>
+            );
+          })}
           <div className="border-t border-border my-1" />
           <button
             type="button"
@@ -95,7 +93,8 @@ export default function DrawingMenu() {
             onClick={() => pick('select')}
             className="w-full text-left px-3 py-1.5 text-sm text-fg-dim hover:text-fg hover:bg-bg-input-hover flex items-center gap-2"
           >
-            <span className="font-mono w-4 text-center">↶</span>선택
+            <span className="font-mono w-4 text-center">{TOOLS.select.glyph}</span>
+            {TOOLS.select.label}
           </button>
           <button
             type="button"
