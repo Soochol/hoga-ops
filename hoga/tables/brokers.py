@@ -8,7 +8,10 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from hoga.api.models import BrokerSeriesEntry, BrokerSeriesPoint
 
 import duckdb
 import pyarrow as pa
