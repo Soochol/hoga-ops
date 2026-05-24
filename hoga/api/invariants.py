@@ -233,7 +233,90 @@ class SeriesInvariant:
     check: Callable[["StockDateArtifacts"], list[Violation]]
 
 
-SERIES_INVARIANTS: tuple[SeriesInvariant, ...] = ()  # populated by Tasks 3-5
+# --- error: candles ts_ms strictly ascending ---
+# Direct root cause of the 5/18/003490 chart crash. The library's setData
+# assertion ("data must be asc ordered by time") fires when this is broken;
+# excluding the Stock-Date upstream prevents that path.
+
+def _series_candles_ts_monotonic(a: "StockDateArtifacts") -> list[Violation]:
+    if a.candles is None:
+        return []
+    out: list[Violation] = []
+    for i in range(1, len(a.candles)):
+        prev = a.candles[i - 1].ts_ms
+        curr = a.candles[i].ts_ms
+        if curr <= prev:
+            out.append(Violation(
+                "series.candles_ts_monotonic",
+                Severity.error,
+                "candles ts_ms must be strictly ascending",
+                {"index": i, "prev_ts_ms": prev, "curr_ts_ms": curr},
+            ))
+    return out
+
+
+# --- warn: snapshots stream gap ---
+# Wraps the existing has_meaningful_gaps predicate so the same signal
+# parser uses for is_partial also flows into the catalog.
+
+def _series_snapshots_no_gaps(a: "StockDateArtifacts") -> list[Violation]:
+    if a.snapshots is None:
+        return []
+    from hoga.api.disk_state import has_meaningful_gaps
+    from hoga.api.timeenc import HogaMs
+    ts_values = [HogaMs(s.ts_ms) for s in a.snapshots]
+    if not has_meaningful_gaps(ts_values):
+        return []
+    return [Violation(
+        "series.snapshots_no_gaps",
+        Severity.warn,
+        "snapshot stream has ≥60s gap inside continuous-trading session",
+        {"datapoint_count": len(a.snapshots)},
+    )]
+
+
+# --- error: cum_vol non-decreasing across continuous-trade rows ---
+# Wraps the trades.find_cum_vol_violations helper (extracted in Task 1)
+# so the same scan that parser's strict TradeValidationError uses also
+# flows into the catalog — but with one Violation per regression instead
+# of first-only.
+
+def _series_cum_vol_monotonic(a: "StockDateArtifacts") -> list[Violation]:
+    if a.trades is None:
+        return []
+    from hoga.tables.trades import find_cum_vol_violations
+    out: list[Violation] = []
+    for v in find_cum_vol_violations(a.trades):
+        out.append(Violation(
+            "series.cum_vol_monotonic",
+            Severity.error,
+            "cum_vol regressed across continuous-trade rows",
+            {"index": v.index, "prev_cum": v.prev_cum,
+             "curr_cum": v.curr_cum, "ts_ms": v.ts_ms},
+        ))
+    return out
+
+
+SERIES_INVARIANTS: tuple[SeriesInvariant, ...] = (
+    SeriesInvariant(
+        id="series.candles_ts_monotonic",
+        severity=Severity.error,
+        description="candles ts_ms strictly ascending — chart axis depends on it",
+        check=_series_candles_ts_monotonic,
+    ),
+    SeriesInvariant(
+        id="series.snapshots_no_gaps",
+        severity=Severity.warn,
+        description="no ≥60s gap in continuous-trading snapshot stream",
+        check=_series_snapshots_no_gaps,
+    ),
+    SeriesInvariant(
+        id="series.cum_vol_monotonic",
+        severity=Severity.error,
+        description="cum_vol non-decreasing across continuous-trade rows",
+        check=_series_cum_vol_monotonic,
+    ),
+)
 
 
 def check_series(artifacts: StockDateArtifacts) -> list[Violation]:
