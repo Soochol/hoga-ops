@@ -5,6 +5,8 @@ import { nanoid } from 'nanoid';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useDrawingsStore } from '../state/drawings';
 import { renderDrawing, type ProjectCtx } from './drawing/render';
+import type { Drawing } from './drawing/types';
+import { PENCIL_MAX_POINTS } from './drawing/types';
 
 type Props = {
   chart: IChartApi;
@@ -73,6 +75,7 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
   }, [chart, axis, priceSeries, drawings, selectedId, activeCode]);
 
   const trendlineDraftRef = useRef<{ a: { realMs: number; price: number }; pointerId: number } | null>(null);
+  const pencilDraftRef = useRef<{ points: { realMs: number; price: number }[]; pointerId: number; lastFrame: number } | null>(null);
 
   const pixelToData = (px: number, py: number) => {
     if (!priceSeries) return null;
@@ -114,7 +117,18 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
       return;
     }
-    // pencil, eraser handled in subsequent tasks
+    if (activeTool === 'pencil') {
+      const data = pixelToData(px, py);
+      if (!data) return;
+      pencilDraftRef.current = {
+        points: [data],
+        pointerId: e.pointerId,
+        lastFrame: 0,
+      };
+      (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+      return;
+    }
+    // eraser handled in subsequent tasks
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -124,6 +138,20 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       // Preview painting: store a transient drawing or stash in a ref + force
       // redraw. Simpler: track in a ref and call a local rerender via state.
       // For v1 we accept that preview only shows on commit — see follow-up.
+      return;
+    }
+    if (activeTool === 'pencil') {
+      const draft = pencilDraftRef.current;
+      if (!draft || draft.pointerId !== e.pointerId) return;
+      const now = performance.now();
+      if (now - draft.lastFrame < 16) return; // RAF-aligned throttle (G11)
+      draft.lastFrame = now;
+      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+      const data = pixelToData(e.clientX - rect.left, e.clientY - rect.top);
+      if (!data) return;
+      if (draft.points.length >= PENCIL_MAX_POINTS) return;
+      draft.points.push(data);
+      return;
     }
   };
 
@@ -146,6 +174,23 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
         color: 'var(--accent, #FFD60A)',
         width: 1.5,
       });
+      return;
+    }
+    if (activeTool === 'pencil') {
+      const draft = pencilDraftRef.current;
+      if (!draft || draft.pointerId !== e.pointerId) return;
+      pencilDraftRef.current = null;
+      (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+      if (draft.points.length < 2) return;
+      const pencil: Drawing = {
+        id: nanoid(8),
+        kind: 'pencil',
+        points: draft.points,
+        color: 'var(--accent, #FFD60A)',
+        width: 1.5,
+      };
+      useDrawingsStore.getState().add(pencil);
+      return;
     }
   };
 
