@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useReplayLayoutStore, SIDEBAR_PX_MIN, SIDEBAR_PX_MAX } from './replayLayout';
 
@@ -51,5 +51,57 @@ describe('useReplayLayoutStore — defaults and clamp', () => {
     expect(s.sidebarPx).toBeGreaterThanOrEqual(SIDEBAR_PX_MIN);
     expect(s.sidebarPx).toBeLessThanOrEqual(SIDEBAR_PX_MAX);
     expect(s.sidebarCollapsed).toBe(false);
+  });
+});
+
+describe('useReplayLayoutStore — localStorage persistence', () => {
+  const KEY = 'replay.layout';
+
+  beforeEach(() => {
+    localStorage.clear();
+    useReplayLayoutStore.getState().__resetForTests();
+  });
+
+  it('writes changes to localStorage under "replay.layout"', () => {
+    useReplayLayoutStore.getState().setSidebarPx(360);
+    useReplayLayoutStore.getState().setSidebarCollapsed(true);
+    const stored = JSON.parse(localStorage.getItem(KEY) ?? 'null');
+    expect(stored).toEqual({ sidebarPx: 360, sidebarCollapsed: true });
+  });
+
+  it('rehydrates from localStorage when present', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ sidebarPx: 400, sidebarCollapsed: true }));
+    // Reset the module cache so the store re-imports and re-reads localStorage.
+    vi.resetModules();
+    const { useReplayLayoutStore: freshStore } = await import('./replayLayout');
+    const s = freshStore.getState();
+    expect(s.sidebarPx).toBe(400);
+    expect(s.sidebarCollapsed).toBe(true);
+  });
+
+  it('falls back to defaults on corrupt JSON', async () => {
+    localStorage.setItem(KEY, '{not json');
+    vi.resetModules();
+    const { useReplayLayoutStore: freshStore, SIDEBAR_PX_MIN, SIDEBAR_PX_MAX } =
+      await import('./replayLayout');
+    const s = freshStore.getState();
+    expect(s.sidebarPx).toBeGreaterThanOrEqual(SIDEBAR_PX_MIN);
+    expect(s.sidebarPx).toBeLessThanOrEqual(SIDEBAR_PX_MAX);
+    expect(s.sidebarCollapsed).toBe(false);
+  });
+
+  it('falls back to defaults when stored sidebarPx is out of range', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ sidebarPx: 50, sidebarCollapsed: false }));
+    vi.resetModules();
+    const { useReplayLayoutStore: freshStore, SIDEBAR_PX_MIN } = await import('./replayLayout');
+    const s = freshStore.getState();
+    expect(s.sidebarPx).toBe(SIDEBAR_PX_MIN); // clamped
+  });
+
+  it('falls back to defaults when stored sidebarCollapsed is wrong type', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ sidebarPx: 360, sidebarCollapsed: 'yes' }));
+    vi.resetModules();
+    const { useReplayLayoutStore: freshStore } = await import('./replayLayout');
+    expect(freshStore.getState().sidebarCollapsed).toBe(false);
   });
 });

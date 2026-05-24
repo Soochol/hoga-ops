@@ -39,6 +39,43 @@ function clampPx(n: number): number {
   return Math.min(SIDEBAR_PX_MAX, Math.max(SIDEBAR_PX_MIN, n));
 }
 
+const STORAGE_KEY = 'replay.layout';
+
+type Persisted = { sidebarPx: number; sidebarCollapsed: boolean };
+
+function loadPersisted(): Persisted {
+  const fallback: Persisted = {
+    sidebarPx: clampPx(readSidebarTokenPx()),
+    sidebarCollapsed: false,
+  };
+  if (typeof localStorage === 'undefined') return fallback;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw === null) return fallback;
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== 'object') return fallback;
+    const obj = parsed as Record<string, unknown>;
+    const px =
+      typeof obj.sidebarPx === 'number' ? clampPx(obj.sidebarPx) : fallback.sidebarPx;
+    const collapsed =
+      typeof obj.sidebarCollapsed === 'boolean'
+        ? obj.sidebarCollapsed
+        : fallback.sidebarCollapsed;
+    return { sidebarPx: px, sidebarCollapsed: collapsed };
+  } catch {
+    return fallback;
+  }
+}
+
+function savePersisted(p: Persisted): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+  } catch {
+    /* privacy mode / quota — silently ignore */
+  }
+}
+
 type ReplayLayoutState = {
   sidebarPx: number;
   sidebarCollapsed: boolean;
@@ -46,24 +83,22 @@ type ReplayLayoutState = {
   setSidebarCollapsed: (v: boolean) => void;
   toggleSidebar: () => void;
   resetSidebar: () => void;
-  /** Test-only: restore initial defaults. Not part of the public API. */
   __resetForTests: () => void;
 };
 
-function initialState(): Pick<ReplayLayoutState, 'sidebarPx' | 'sidebarCollapsed'> {
-  return {
-    sidebarPx: clampPx(readSidebarTokenPx()),
-    sidebarCollapsed: false,
-  };
-}
-
 export const useReplayLayoutStore = create<ReplayLayoutState>((set) => ({
-  ...initialState(),
+  ...loadPersisted(),
   setSidebarPx: (px) => set({ sidebarPx: clampPx(px) }),
   setSidebarCollapsed: (v) => set({ sidebarCollapsed: v }),
-  toggleSidebar: () =>
-    set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   resetSidebar: () =>
     set({ sidebarPx: clampPx(readSidebarTokenPx()), sidebarCollapsed: false }),
-  __resetForTests: () => set(initialState()),
+  __resetForTests: () =>
+    set({ sidebarPx: clampPx(readSidebarTokenPx()), sidebarCollapsed: false }),
 }));
+
+// Persistence subscriber: writes the persisted slice on every change.
+// Registered once at module load; survives HMR via zustand's stable store identity.
+useReplayLayoutStore.subscribe((state) => {
+  savePersisted({ sidebarPx: state.sidebarPx, sidebarCollapsed: state.sidebarCollapsed });
+});
