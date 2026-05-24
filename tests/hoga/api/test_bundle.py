@@ -261,3 +261,116 @@ def test_build_range_bundle_rejects_invalid_bucket_ms():
     mock_engine = MagicMock()
     with pytest.raises(ValueError, match="bucket_ms"):
         build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=42_000)
+
+
+# --- ADR-0020 / Invariants ---
+
+
+def _meta(
+    *,
+    open_ms: int = 90_000_000,
+    close_ms: int = 153_000_000,
+    complete: bool = True,
+    partial: bool = False,
+    pages: int = 100,
+    events: int = 80,
+) -> dict:
+    """Healthy default meta dict; override fields per test."""
+    return {
+        "regular_session_open_ms": open_ms,
+        "regular_session_close_ms": close_ms,
+        "collection_complete": complete,
+        "is_partial": partial,
+        "pages_collected": pages,
+        "total_unique_events": events,
+    }
+
+
+def test_build_range_bundle_skips_invalid_and_surfaces_in_excluded():
+    """Bad Stock-Date (close=0 → INVALID) is dropped from segments
+    and appears under excluded_dates with its violations."""
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import VolumeProfile
+
+    eng = _engine_with_meta_for_dates(["20260520", "20260518", "20260521"])
+    # Per-date meta: 5/18 is broken (close_ms=0), others healthy.
+    metas = {
+        "20260520": _meta(),
+        "20260518": _meta(close_ms=0),
+        "20260521": _meta(),
+    }
+    eng.get_meta.side_effect = lambda date, code: metas[date]
+
+    patches = _patch_slice_builders(bundle_mod) + [
+        patch.object(bundle_mod, "build_volume_profile_range",
+                     return_value=VolumeProfile(bin_count=0, price_min=0,
+                                                price_max=0, bin_width=0, bins=[])),
+    ]
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        rb = build_range_bundle(eng, code="005930",
+                                from_date="20260520", to_date="20260521",
+                                bucket_ms=60_000)
+
+    # Only the 2 healthy dates are in segments.
+    assert [s.date for s in rb.segments] == ["20260520", "20260521"]
+    # The bad date is surfaced.
+    assert len(rb.excluded_dates) == 1
+    assert rb.excluded_dates[0].date == "20260518"
+    fired_ids = {v["invariant_id"] for v in rb.excluded_dates[0].violations}
+    assert "meta.close_after_open" in fired_ids
+    # No warn-severity violations in this fixture.
+    assert rb.data_warnings == []
+
+
+def test_build_range_bundle_surfaces_warn_without_excluding():
+    """Healthy shape but low unique-event ratio → warn only, segment included."""
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import VolumeProfile
+
+    eng = _engine_with_meta_for_dates(["20260520"])
+    # Healthy bounds, but pages=4132 events=1553 → ratio invariant fires (warn).
+    eng.get_meta.return_value = _meta(pages=4132, events=1553)
+
+    patches = _patch_slice_builders(bundle_mod) + [
+        patch.object(bundle_mod, "build_volume_profile_range",
+                     return_value=VolumeProfile(bin_count=0, price_min=0,
+                                                price_max=0, bin_width=0, bins=[])),
+    ]
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        rb = build_range_bundle(eng, code="005930",
+                                from_date="20260520", to_date="20260520",
+                                bucket_ms=60_000)
+
+    assert len(rb.segments) == 1
+    assert rb.excluded_dates == []
+    assert len(rb.data_warnings) == 1
+    assert rb.data_warnings[0].date == "20260520"
+    fired_ids = {v["invariant_id"] for v in rb.data_warnings[0].warnings}
+    assert "collection.unique_events_ratio" in fired_ids
+
+
+def test_build_range_bundle_404_when_all_dates_excluded():
+    """When every Stock-Date is INVALID, raise 404 with excluded detail."""
+    from fastapi import HTTPException
+    from hoga.api.bundle import build_range_bundle
+
+    eng = _engine_with_meta_for_dates(["20260518"])
+    eng.get_meta.return_value = _meta(close_ms=0)
+
+    with pytest.raises(HTTPException) as exc:
+        build_range_bundle(eng, code="003490",
+                           from_date="20260518", to_date="20260518",
+                           bucket_ms=60_000)
+    assert exc.value.status_code == 404
+    detail = exc.value.detail
+    assert isinstance(detail, dict)
+    assert "excluded" in detail
+    assert detail["excluded"][0]["date"] == "20260518"

@@ -18,7 +18,11 @@ from datetime import datetime
 
 from fastapi import HTTPException
 
+from hoga.api.disk_state import DiskState, classify_from_meta
+from hoga.api.invariants import Severity, check as check_invariants
 from hoga.api.models import (
+    DateWarning,
+    ExcludedDate,
     FillStrength,
     FillStrengthPoint,
     QuoteRatio,
@@ -343,6 +347,11 @@ def build_range_bundle(
             f"no captured Stock-Date for code={code} in [{from_date}, {to_date}]",
         )
 
+    # ADR-0020: per-Stock-Date invariant check.
+    # INVALID → skip + surface under excluded_dates.
+    # warn-only → include + surface under data_warnings.
+    excluded: list[ExcludedDate] = []
+    warnings_list: list[DateWarning] = []
     segments: list[RangeSegment] = []
     candles: list[ApiCandle] = []
     ratio_pts: list[QuoteRatioPoint] = []
@@ -351,6 +360,21 @@ def build_range_bundle(
 
     for d in dates:
         meta = engine.get_meta(d, code)
+        state = classify_from_meta(meta)
+
+        if state == DiskState.INVALID:
+            errs = [v.as_dict() for v in check_invariants(meta)
+                    if v.severity == Severity.error]
+            excluded.append(ExcludedDate(date=d, violations=errs))
+            continue
+
+        # Included — collect warn surfacing too. Second check_invariants call
+        # is fine: 5 pure-function comparisons in the hot path are < 1µs.
+        warns = [v.as_dict() for v in check_invariants(meta)
+                 if v.severity == Severity.warn]
+        if warns:
+            warnings_list.append(DateWarning(date=d, warnings=warns))
+
         raw_candles = build_candles_slice(engine, code=code, date=d)
         candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
         qr_d = build_quote_ratio_slice(engine, code=code, date=d, bucket_ms=bucket_ms)
@@ -367,6 +391,14 @@ def build_range_bundle(
         fill_pts.extend(fs_d.points)
         profiles_by_day.append(vp_d)
 
+    if not segments:
+        # All in-range dates failed invariants — reuse the existing 404 branch
+        # with the excluded list in detail so the caller can explain to the user.
+        raise HTTPException(404, {
+            "detail": "all Stock-Dates in range excluded by invariants",
+            "excluded": [e.model_dump() for e in excluded],
+        })
+
     profile_range = build_volume_profile_range(engine, code=code, dates=dates)
 
     return RangeBundle(
@@ -380,4 +412,6 @@ def build_range_bundle(
         fill_strength=FillStrength(bucket_ms=bucket_ms, points=fill_pts),
         volume_profile_range=profile_range,
         volume_profile_by_day=profiles_by_day,
+        excluded_dates=excluded,
+        data_warnings=warnings_list,
     )
