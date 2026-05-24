@@ -10,6 +10,7 @@ import {
   type SnapshotDeps,
 } from './tabsPersistence';
 import { DEFAULT_PREFS, type Tab, type ChartViewPrefs } from './tabs';
+import { CHART_TOGGLES, CHART_NUMERIC_PREFS } from './chartPrefs';
 
 describe('tabsPersistence — module scaffold', () => {
   it('exports STORAGE_KEY = "replay.tabs.v1"', () => {
@@ -185,6 +186,31 @@ describe('mergePrefs', () => {
       [def],
     );
     expect((merged as Record<string, unknown>).someInt).toBe(10);
+  });
+
+  it('fillStrengthCumulative missing → defaults to true', () => {
+    const merged = mergePrefs({}, DEFAULT_PREFS, CHART_TOGGLES.map((t) => t.key), CHART_NUMERIC_PREFS);
+    expect(merged.fillStrengthCumulative).toBe(true);
+  });
+
+  it('fillStrengthCumulative wrong type → falls back to default', () => {
+    const merged = mergePrefs(
+      { fillStrengthCumulative: 'yes' as never },
+      DEFAULT_PREFS,
+      CHART_TOGGLES.map((t) => t.key),
+      CHART_NUMERIC_PREFS,
+    );
+    expect(merged.fillStrengthCumulative).toBe(true);
+  });
+
+  it('fillStrengthCumulative explicit false → preserved', () => {
+    const merged = mergePrefs(
+      { fillStrengthCumulative: false },
+      DEFAULT_PREFS,
+      CHART_TOGGLES.map((t) => t.key),
+      CHART_NUMERIC_PREFS,
+    );
+    expect(merged.fillStrengthCumulative).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useActivePrefs } from './chartPrefs';
+import { useActivePrefs, CHART_TOGGLES } from './chartPrefs';
 import { useTabsStore } from './tabs';
 
 describe('useActivePrefs — scaffold', () => {
@@ -22,6 +22,20 @@ describe('useActivePrefs — scaffold', () => {
       useTabsStore.getState().setVolumeProfileMode(id, 'per-day');
     });
     expect(result.current).toBe('per-day');
+  });
+});
+
+describe('CHART_TOGGLES — category metadata', () => {
+  it('fillStrengthCumulative entry carries category="indicators"', () => {
+    const entry = CHART_TOGGLES.find((t) => t.key === 'fillStrengthCumulative');
+    expect(entry).toBeDefined();
+    expect(entry?.category).toBe('indicators');
+  });
+
+  it('pre-existing toggles have category undefined (default = chart)', () => {
+    const auction = CHART_TOGGLES.find((t) => t.key === 'auctionWindowMask');
+    expect(auction).toBeDefined();
+    expect(auction?.category).toBeUndefined();
   });
 });
 

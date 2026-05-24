@@ -21,9 +21,22 @@ export const CHART_TOGGLES = [
       '한쪽 호가가 임계 배수를 넘으면 그 시점의 호가비를 0 으로 마스킹합니다. (오토스케일을 잡아먹는 스파이크 제거)',
     default: true,
   },
+  {
+    key: 'fillStrengthCumulative',
+    label: '체결강도 — 당일 누적',
+    description:
+      '체결강도 pane에 당일 누적 매수−매도 라인(체결강도 누적)을 표시합니다. 거래일마다 0에서 다시 시작.',
+    default: true,
+    category: 'indicators',
+  },
 ] as const;
 
 export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];
+
+/** UI surface a toggle belongs to. Unset entries default to 'chart' (the
+ *  SettingsModal's "차트" category). New indicator-scoped toggles set
+ *  'indicators' so IndicatorsSection picks them up automatically. */
+export type ChartToggleCategory = 'chart' | 'indicators';
 
 /** Per-MA configuration. Indexed slot in `ChartViewPrefs.movingAverages`
  *  aligns 1:1 with `MA_COLORS` (T1). Period range (2..400) is validated
