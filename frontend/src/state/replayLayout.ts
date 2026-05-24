@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { resolveTokens } from '../util/tokens';
+import { attachPersistence } from './persistentSubscriber';
 
 /**
  * Runtime layout state for /replay's Cursor Sidebar. The design token
@@ -76,15 +77,6 @@ function loadPersisted(): Persisted {
   }
 }
 
-function savePersisted(p: Persisted): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
-  } catch {
-    /* privacy mode / quota — silently ignore */
-  }
-}
-
 type ReplayLayoutState = {
   sidebarPx: number;
   sidebarCollapsed: boolean;
@@ -106,8 +98,12 @@ export const useReplayLayoutStore = create<ReplayLayoutState>((set) => ({
     set({ sidebarPx: clampPx(readSidebarTokenPx()), sidebarCollapsed: false }),
 }));
 
-// Persistence subscriber: writes the persisted slice on every change.
-// Registered once at module load; survives HMR via zustand's stable store identity.
-useReplayLayoutStore.subscribe((state) => {
-  savePersisted({ sidebarPx: state.sidebarPx, sidebarCollapsed: state.sidebarCollapsed });
+/** Debounced persistence + HMR dispose via the shared helper. */
+const unsubscribeLayout = attachPersistence(useReplayLayoutStore, {
+  storageKey: STORAGE_KEY,
+  toSnapshot: (s) => ({ sidebarPx: s.sidebarPx, sidebarCollapsed: s.sidebarCollapsed }),
 });
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(unsubscribeLayout);
+}

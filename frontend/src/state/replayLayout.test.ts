@@ -63,10 +63,17 @@ describe('useReplayLayoutStore — localStorage persistence', () => {
   });
 
   it('writes changes to localStorage under "replay.layout"', () => {
-    useReplayLayoutStore.getState().setSidebarPx(360);
-    useReplayLayoutStore.getState().setSidebarCollapsed(true);
-    const stored = JSON.parse(localStorage.getItem(KEY) ?? 'null');
-    expect(stored).toEqual({ sidebarPx: 360, sidebarCollapsed: true });
+    // attachPersistence debounces writes by 250 ms; advance fake timers to flush.
+    vi.useFakeTimers();
+    try {
+      useReplayLayoutStore.getState().setSidebarPx(360);
+      useReplayLayoutStore.getState().setSidebarCollapsed(true);
+      vi.advanceTimersByTime(250);
+      const stored = JSON.parse(localStorage.getItem(KEY) ?? 'null');
+      expect(stored).toEqual({ sidebarPx: 360, sidebarCollapsed: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rehydrates from localStorage when present', async () => {
