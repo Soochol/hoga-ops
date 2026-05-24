@@ -216,6 +216,11 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       update: (id, patch) => useDrawingsStore.getState().update(id, patch),
       remove: (id) => useDrawingsStore.getState().remove(id),
       setSelected: (id) => useDrawingsStore.getState().setSelected(id),
+      commitAndRevert: (id) => {
+        const s = useDrawingsStore.getState();
+        s.setSelected(id);
+        s.setActiveTool('select');
+      },
     };
   };
 
