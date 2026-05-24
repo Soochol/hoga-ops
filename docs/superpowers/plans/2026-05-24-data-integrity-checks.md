@@ -356,13 +356,18 @@ def _collection_finished(m: dict) -> Violation | None:
     )
 
 
+_MIN_PAGES_FOR_STAGNATION_SIGNAL = 20
+
+
 def _collection_unique_events_ratio(m: dict) -> Violation | None:
+    # Stagnation = many pages with few unique events. Tiny captures (test
+    # fixtures, halts, very short trading days) carry no signal — skip below
+    # the page floor so they don't false-positive.
     pages = m.get("pages_collected", 0)
-    if pages == 0:
-        return None  # different failure mode; don't double-flag
+    if pages < _MIN_PAGES_FOR_STAGNATION_SIGNAL:
+        return None
     events = m.get("total_unique_events", 0)
-    threshold = max(10, pages // 2)
-    if events >= threshold:
+    if events >= pages // 2:
         return None
     return Violation(
         "collection.unique_events_ratio",

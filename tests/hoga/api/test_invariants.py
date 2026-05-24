@@ -139,6 +139,24 @@ def test_unique_events_ratio_passes_when_pages_zero() -> None:
     assert "collection.unique_events_ratio" not in ids
 
 
+def test_unique_events_ratio_skips_tiny_captures() -> None:
+    """Stagnation needs ≥20 pages to be a meaningful signal — fewer pages
+    carry no information regardless of the events count (test fixtures,
+    very short trading days, halts all fall here)."""
+    # pages=1 (e.g. tiny_tsv parser fixture) with any events count → skip.
+    meta = _healthy_meta() | {"pages_collected": 1, "total_unique_events": 9}
+    ids = [v.invariant_id for v in check(meta)]
+    assert "collection.unique_events_ratio" not in ids
+    # pages=19 (just below threshold) also skips.
+    meta = _healthy_meta() | {"pages_collected": 19, "total_unique_events": 1}
+    ids = [v.invariant_id for v in check(meta)]
+    assert "collection.unique_events_ratio" not in ids
+    # pages=20 (at threshold) WITH low ratio fires.
+    meta = _healthy_meta() | {"pages_collected": 20, "total_unique_events": 5}
+    ids = [v.invariant_id for v in check(meta)]
+    assert "collection.unique_events_ratio" in ids
+
+
 # --- Legacy meta absorption ---
 
 def test_legacy_meta_without_optional_keys_does_not_error() -> None:

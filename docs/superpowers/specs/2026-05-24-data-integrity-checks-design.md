@@ -222,7 +222,7 @@ def validate(
 | ID | 검사 | 5/18 케이스 매칭 |
 |---|---|---|
 | `collection.finished` | `collection_complete == True` | ✓ (false) |
-| `collection.unique_events_ratio` | `total_unique_events ≥ max(10, pages_collected // 2)` | ✓ (1553 < 4132/2 = 2066) |
+| `collection.unique_events_ratio` | If `pages_collected ≥ 20`: `total_unique_events ≥ pages_collected // 2`. Fewer pages skip entirely (no statistical signal). | ✓ (1553 < 4132/2 = 2066) |
 
 **5개 모두 5/18 003490 케이스를 잡는다.** 향후 확장을 위해 ID에 `meta.` / `collection.` prefix를 둠 — 나중에 `series.candles_monotonic`, `series.snapshots_gap` 같은 invariant 추가 자리 예약.
 
