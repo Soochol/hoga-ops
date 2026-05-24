@@ -35,7 +35,7 @@ unsorted → desc (▼) → asc (▲) → unsorted → ...
 ```
 
 - 다른 컬럼 헤더를 클릭하면 그 컬럼이 **desc(첫 단계)**로 점프하고, 이전 컬럼은 unsorted로 복귀
-- 단일 컬럼 정렬 (보조 정렬 키는 항상 `date desc`로 안정성 확보)
+- 단일 컬럼 정렬. **다른 키**(예: Volume, State)로 정렬할 때 동률(tie)이 발생하면 보조 정렬 `date desc`로 안정성 확보. Date 컬럼 자체를 정렬할 때는 보조 정렬을 적용하지 않음(자기 자신과의 모순 회피).
 - `unsorted` 상태에서는 **기본 정렬 = `date desc`** (현재 동작과 동일)
 
 ### 영속성
@@ -54,15 +54,15 @@ unsorted → desc (▼) → asc (▲) → unsorted → ...
 | Volume | `total_volume` | desc | number |
 | Pages | `pages_collected` | desc | number |
 | Size | `file_size_bytes` | desc | number |
-| OHLC | `today_close` | desc | number (OHLC는 종가 단일 키) |
+| OHLC | `today_close` | desc | number (OHLC는 **종가 단일 키** — `fmtOHLC`가 종가를 주값으로 표시하는 관행과 일치) |
 
-**State 컬럼의 severity 순서**는 [DiskStateBadge.tsx](../../../frontend/src/inventory/DiskStateBadge.tsx)의 `aggregateDiskState`가 이미 정의한 도메인 순서를 그대로 따른다.
+**State 컬럼의 severity 순서**는 도메인 용어 **Disk State Severity**(CONTEXT.md 참조)를 따른다. [DiskStateBadge.tsx](../../../frontend/src/inventory/DiskStateBadge.tsx)의 `aggregateDiskState`가 이미 묵시적으로 사용하던 순위를 명시적 SSOT로 격상한다.
 
 ```
 invalid > client_incomplete > source_partial > complete
 ```
 
-이 상수는 `STATE_SEVERITY: Record<DiskStateValue, number>`로 `DiskStateBadge.ts`에 export하고, `aggregateDiskState`와 `sortDates` 두 곳이 같은 SSOT를 참조한다.
+`STATE_SEVERITY: Record<DiskStateValue, number>` 상수를 `DiskStateBadge.ts`에 export하고, `aggregateDiskState`와 `sortDates` 두 곳이 같은 객체를 참조한다 — Disk State Severity 순서를 바꾸려면 한 줄만 수정하면 된다.
 
 ## 시각 사양
 
@@ -80,6 +80,7 @@ invalid > client_incomplete > source_partial > complete
 - 아이콘은 텍스트 문자(`▲`/`▼`) 사용 — 헤더가 이미 `font-mono`이므로 일관됨
 - 헤더 셀 전체가 클릭 영역 (`<button type="button">`), 키보드 포커스 가능, `Enter`/`Space`로 토글
 - `aria-sort` 속성으로 스크린리더 지원
+- **OHLC 헤더는** `title="종가 기준 정렬"` tooltip을 추가하여 정렬 키 모호성 해소
 
 ### 우상단 메타 라인
 
