@@ -234,3 +234,30 @@ def test_reset_cache_clears_last_failure_reason(
     assert calendar_module.last_failure_reason() is not None
     calendar_module.reset_cache_for_tests()
     assert calendar_module.last_failure_reason() is None
+
+
+def test_calendar_cell_shows_no_upstream_data_for_sentinel(tmp_path: Path) -> None:
+    """A sentinel directory must surface as CalendarCell.status =
+    'no_upstream_data' on the wire so the frontend can render the '–' marker.
+    captured_at_ms stays None (no capture timestamp — there was nothing to
+    capture)."""
+    from hoga.api.calendar import get_month_map
+
+    raw_dir = tmp_path / "raw" / "20260319" / "003490"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / ".no_upstream_data").touch()
+
+    # Force the trading-day branch deterministically: pretend 20260319 is a
+    # trading day by populating the module cache.
+    from hoga.api.calendar import _month_cache, reset_cache_for_tests
+    reset_cache_for_tests()
+    _month_cache[(2026, 3)] = {f"202603{day:02d}" for day in range(1, 32)}
+
+    try:
+        resp = get_month_map(data_dir=tmp_path, code="003490", year=2026, month=3)
+    finally:
+        reset_cache_for_tests()
+
+    cell = next(c for c in resp.cells if c.date == "20260319")
+    assert cell.status == "no_upstream_data"
+    assert cell.captured_at_ms is None

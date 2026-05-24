@@ -317,6 +317,7 @@ class SymbolMasterInfo(BaseModel):
 CalendarStatus = Literal[
     "complete", "source_partial", "client_incomplete", "invalid", "none",
     "weekend", "holiday", "future", "today_locked",
+    "no_upstream_data",   # ADR-0021
 ]
 
 
