@@ -36,6 +36,7 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     trendlineDraft: { current: null },
     pencilDraft: { current: null },
     dragRef: { current: null },
+    requestRedraw: vi.fn(),
     add: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
@@ -149,6 +150,15 @@ describe('pencilTool throttle', () => {
     // A second move on the same ms should be dropped.
     pencilTool.onPointerMove!(ctx);
     expect(ctx.pencilDraft.current!.points.length).toBe(len1);
+  });
+
+  it('requests a redraw when a point is appended (live preview)', () => {
+    const ctx = makeCtx();
+    pencilTool.onPointerDown!(ctx);
+    (ctx.requestRedraw as ReturnType<typeof vi.fn>).mockClear();
+    // First successful move appends one point and asks for a frame.
+    pencilTool.onPointerMove!(ctx);
+    expect(ctx.requestRedraw).toHaveBeenCalledOnce();
   });
 });
 

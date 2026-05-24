@@ -63,6 +63,11 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
   const pencilDraft = useRef<PencilDraft | null>(null);
   const dragRef = useRef<DragMode | null>(null);
 
+  // Lift the redraw scheduler so the ToolCtx can request frames between
+  // store mutations (live previews paint into the canvas via draft refs,
+  // which are not React state and don't re-trigger the redraw effect).
+  const scheduleRef = useRef<() => void>(() => {});
+
   // ── redraw loop ────────────────────────────────────────────────────────
   useEffect(() => {
     const ts = chart.timeScale();
@@ -71,6 +76,7 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(draw);
     };
+    scheduleRef.current = schedule;
     const draw = () => {
       const canvas = canvasRef.current;
       const container = containerRef.current;
@@ -92,6 +98,27 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       for (const d of drawings) {
         renderDrawing(c, projCtx, d, d.id === selectedId);
       }
+      // Live pencil preview: render the in-flight draft as a transient
+      // Drawing so the freehand line tracks the cursor. We synthesize a
+      // Drawing with a sentinel id ('__draft__') and pass `selected=false`
+      // to skip the selection halo. On pointer-up the tool calls add(),
+      // the store mutation re-runs this effect, and the committed pencil
+      // replaces the draft visually with no flash.
+      const draft = pencilDraft.current;
+      if (draft && draft.points.length >= 2) {
+        renderDrawing(
+          c,
+          projCtx,
+          {
+            id: '__draft__',
+            kind: 'pencil',
+            points: draft.points,
+            color: accentColor,
+            width: 1.5,
+          },
+          false,
+        );
+      }
     };
 
     ts.subscribeVisibleLogicalRangeChange(schedule);
@@ -106,7 +133,7 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       ts.unsubscribeVisibleLogicalRangeChange(schedule);
       ro?.disconnect();
     };
-  }, [chart, axis, priceSeries, drawings, selectedId, activeCode]);
+  }, [chart, axis, priceSeries, drawings, selectedId, activeCode, accentColor]);
 
   // ── keyboard shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
@@ -184,6 +211,7 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       trendlineDraft,
       pencilDraft,
       dragRef,
+      requestRedraw: () => scheduleRef.current(),
       add: (d) => useDrawingsStore.getState().add(d),
       update: (id, patch) => useDrawingsStore.getState().update(id, patch),
       remove: (id) => useDrawingsStore.getState().remove(id),

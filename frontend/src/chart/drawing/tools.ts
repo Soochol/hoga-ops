@@ -105,6 +105,13 @@ export type ToolCtx = {
   pencilDraft: Ref<PencilDraft | null>;
   dragRef: Ref<DragMode | null>;
 
+  /** Trigger a single canvas redraw on the next animation frame. Tools
+   *  call this after mutating a draft ref to surface a live preview
+   *  (pencil during drag, future trendline preview, …) — store
+   *  mutations already trigger redraws via the effect's `drawings` dep,
+   *  but draft refs are not React state and need an explicit hint. */
+  requestRedraw(): void;
+
   // Store actions — surfaced as plain functions so tests inject stubs.
   add(d: Drawing): void;
   update(id: string, patch: Partial<Drawing>): void;
@@ -278,6 +285,9 @@ export const pencilTool: DrawingToolSpec = {
     if (!data) return;
     if (draft.points.length >= PENCIL_MAX_POINTS) return;
     draft.points.push(data);
+    // Live preview: redraw so the in-flight polyline appears under the
+    // cursor. Without this the stroke only materialises on pointer-up.
+    ctx.requestRedraw();
   },
   onPointerUp(ctx) {
     const draft = ctx.pencilDraft.current;
