@@ -59,6 +59,35 @@ describe('useCursor', () => {
     expect(result.current.date).toBeNull();
   });
 
+  it('keeps reference identity stable when unrelated store fields change', () => {
+    // Without useShallow the selector returns a fresh object literal on every
+    // store update, so any pref toggle (settings modal, MA edits) re-renders
+    // every sidebar card subscribed via useCursor. Regression guard: the
+    // returned object must be ===-equal when neither cursor nor selection
+    // changed, even after an unrelated mutation.
+    const id = useTabsStore.getState().tabs[0].id;
+    useTabsStore.getState().setSelection(id, {
+      code: '005930',
+      fromDate: '20260518',
+      toDate: '20260522',
+      timeframe: '1m',
+    });
+    useTabsStore.getState().setCursor(id, Date.UTC(2026, 4, 22, 3, 0, 0));
+
+    const { result, rerender } = renderHook(() => useCursor());
+    const before = result.current;
+    // Trigger a store mutation that does NOT touch tabs/cursor (a no-op
+    // setSelection with the same shape).
+    useTabsStore.getState().setSelection(id, {
+      code: '005930',
+      fromDate: '20260518',
+      toDate: '20260522',
+      timeframe: '1m',
+    });
+    rerender();
+    expect(result.current).toBe(before);
+  });
+
   it('respects the KST calendar boundary (UTC 15:00 of N-1 = KST 00:00 of N)', () => {
     const id = useTabsStore.getState().tabs[0].id;
     useTabsStore.getState().setSelection(id, {

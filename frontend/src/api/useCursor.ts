@@ -5,6 +5,7 @@
 // return empty arrays in low-volume minutes (e.g. mid-session lulls,
 // auction edges), making the 체결 card read as broken when it was just
 // sparse. "Last N before cursor" matches the UI's intent ("체결 흐름").
+import { useShallow } from 'zustand/react/shallow';
 import { useTabsStore } from '../state/tabs';
 import { apiGet } from './client';
 import { useSpot } from './useSpot';
@@ -32,19 +33,25 @@ export function useCursor(): {
   date: string | null;
   cursorMs: number | null;
 } {
-  return useTabsStore((s) => {
-    const tab = s.tabs.find((t) => t.id === s.activeTabId);
-    const cursorMs = tab?.cursorMs ?? null;
-    return {
-      tabId: tab?.id ?? '',
-      code: tab?.selection?.code ?? null,
-      date:
-        cursorMs !== null && Number.isFinite(cursorMs)
-          ? unixMsToKSTDate(cursorMs)
-          : null,
-      cursorMs,
-    };
-  });
+  // useShallow keeps the object literal reference stable when the four
+  // returned fields haven't changed. Without it, every unrelated store
+  // update (settings toggles, MA pref changes, etc.) re-renders every
+  // sidebar card subscribed via useCursor.
+  return useTabsStore(
+    useShallow((s) => {
+      const tab = s.tabs.find((t) => t.id === s.activeTabId);
+      const cursorMs = tab?.cursorMs ?? null;
+      return {
+        tabId: tab?.id ?? '',
+        code: tab?.selection?.code ?? null,
+        date:
+          cursorMs !== null && Number.isFinite(cursorMs)
+            ? unixMsToKSTDate(cursorMs)
+            : null,
+        cursorMs,
+      };
+    }),
+  );
 }
 
 export function useOrderbookAtCursor() {
