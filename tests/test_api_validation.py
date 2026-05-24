@@ -24,7 +24,6 @@ from fastapi.testclient import TestClient
         "/api/orderbook?t=0",
         "/api/trades?t=0",
         "/api/candles",
-        "/api/brokers?t=0",
     ],
 )
 @pytest.mark.parametrize(

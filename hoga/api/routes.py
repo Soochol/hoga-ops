@@ -29,8 +29,6 @@ from hoga.tables import brokers as brokers_tbl
 from hoga.tables import candles as candles_tbl
 from hoga.tables import snapshots as snapshots_tbl
 from hoga.tables import trades as trades_tbl
-from hoga.tables.brokers import BrokersAt
-
 
 def build_router(engine: QueryEngine) -> APIRouter:
     router = APIRouter(prefix="/api")
@@ -106,20 +104,6 @@ def build_router(engine: QueryEngine) -> APIRouter:
             for r in rows
         ]
         return CandlesResponse(candles=rows)
-
-    @router.get("/brokers", response_model=BrokersAt)
-    def brokers(code: Code, date: StockDate, t: int = Query(...)) -> BrokersAt:
-        try:
-            path = engine.parquet_dir(date, code) / "brokers.parquet"
-        except StockDateNotFound as e:
-            raise HTTPException(status_code=404, detail=str(e)) from e
-        raw_t = cursor_to_native(date, t)
-        result = brokers_tbl.query_at(engine.conn, path=path, t_ms=raw_t)
-        if result.ts_ms is not None:
-            result = result.model_copy(
-                update={"ts_ms": hhmmssms_to_unix_ms(date, result.ts_ms)}
-            )
-        return result
 
     @router.get("/brokers/series", response_model=BrokerSeriesResponse)
     def brokers_series(code: Code, date: StockDate) -> BrokerSeriesResponse:

@@ -10,7 +10,7 @@ import { useTabsStore } from '../state/tabs';
 import { apiGet } from './client';
 import { useSpot } from './useSpot';
 import { unixMsToKSTDate } from '../util/time';
-import type { BrokerEntry, OrderbookResponse, Trade } from './types';
+import type { OrderbookResponse, Trade } from './types';
 
 /**
  * Read the active tab's cursorMs (or null when no cursor set), plus the
@@ -61,20 +61,6 @@ export function useOrderbookAtCursor() {
     apiGet<OrderbookResponse>(`/api/orderbook?code=${code}&date=${date}&t=${cursorMs}`).then(
       (r) => r.snapshot,
     ),
-  );
-  // Preserve the (T | null | undefined) shape: undefined = haven't fetched
-  // yet (no cursor / loading), null = fetched but empty, value = data.
-  // Consumers distinguish loading vs no-data via the undefined check.
-  return data;
-}
-
-export function useBrokersAtCursor() {
-  const { tabId, code, date, cursorMs } = useCursor();
-  const key = code && date && Number.isFinite(cursorMs) ? `${tabId}|br|${code}|${date}|${cursorMs}` : null;
-  const { data } = useSpot(key, () =>
-    apiGet<{ ts_ms: number | null; entries: BrokerEntry[] }>(
-      `/api/brokers?code=${code}&date=${date}&t=${cursorMs}`,
-    ).then((r) => r.entries),
   );
   // Preserve the (T | null | undefined) shape: undefined = haven't fetched
   // yet (no cursor / loading), null = fetched but empty, value = data.

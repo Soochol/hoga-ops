@@ -46,19 +46,6 @@ export type OrderbookResponse = {
   snapshot: OrderbookSnapshot | null;
 };
 
-// Mirrors hoga/tables/brokers.py::ApiBrokerEntry verbatim. `broker` is the
-// firm's name; `qty_today` is the cumulative quantity through the cursor
-// moment and `qty_delta` is the increment since the previous broker tick.
-// The Replay Viewer's BrokerNetTable aggregates qty_today by side to
-// render net pressure.
-export type BrokerEntry = {
-  side: 'buy' | 'sell';
-  rank: number;
-  broker: string;
-  qty_today: number;
-  qty_delta: number;
-};
-
 // === Broker Day-Trajectory (ADR-0023) ===
 // Mirrors hoga/api/models.py::BrokerSeriesPoint / BrokerSeriesEntry / BrokerSeriesResponse
 // verbatim per ADR-0004 (wire model no-adapter). `net` is already signed at the

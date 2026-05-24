@@ -120,60 +120,6 @@ def write_parquet(rows: Iterable[BrokerRow], path: Path) -> None:
     pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
 
 
-# === API representation ===
-
-
-class ApiBrokerEntry(BaseModel):
-    side: str  # "buy" | "sell"
-    rank: int
-    broker: str
-    qty_today: int
-    qty_delta: int
-
-
-# BrokersAt: per-query container.
-#
-# Brokers is the only table whose query returns "N rows from a single
-# point in time" — ts_ms is metadata on the result set, not on each row.
-# Other tables either return one row (ApiOrderbookSnapshot) or rows each
-# carrying their own ts_ms (ApiTrade, ApiCandle), so no container is needed.
-class BrokersAt(BaseModel):
-    """Result of `query_at`: ts_ms of the snapshot + all 10 broker entries (or empty)."""
-
-    ts_ms: int | None
-    entries: list[ApiBrokerEntry]
-
-
-# === Query (returns BrokersAt — Pydantic, consistent with other tables) ===
-
-
-def query_at(con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int) -> BrokersAt:
-    """Return the latest broker snapshot at ts_ms <= t_ms.
-
-    If no broker snapshot exists at or before ``t_ms``, returns
-    ``BrokersAt(ts_ms=None, entries=[])``. Otherwise returns a BrokersAt with
-    ``ts_ms`` set to the snapshot's timestamp and ``entries`` holding all 10
-    rows (5 sell + 5 buy) as ApiBrokerEntry objects.
-    """
-    latest = con.execute(
-        "SELECT max(ts_ms) FROM read_parquet(?) WHERE ts_ms <= ?",
-        [str(path), t_ms],
-    ).fetchone()
-    if latest is None or latest[0] is None:
-        return BrokersAt(ts_ms=None, entries=[])
-    ts_ms_value = int(latest[0])
-    rows = con.execute(
-        "SELECT side, rank, broker, qty_today, qty_delta FROM read_parquet(?) "
-        "WHERE ts_ms = ? ORDER BY side, rank",
-        [str(path), ts_ms_value],
-    ).fetchall()
-    entries = [
-        ApiBrokerEntry(side=r[0], rank=r[1], broker=r[2], qty_today=r[3], qty_delta=r[4])
-        for r in rows
-    ]
-    return BrokersAt(ts_ms=ts_ms_value, entries=entries)
-
-
 def query_day_series(
     con: duckdb.DuckDBPyConnection, *, path: Path
 ) -> list["BrokerSeriesEntry"]:

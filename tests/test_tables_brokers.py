@@ -8,10 +8,7 @@ import pyarrow.parquet as pq
 from hoga.tables.brokers import (
     PARQUET_SCHEMA,
     PARSERS,
-    ApiBrokerEntry,
     BrokerRow,
-    BrokersAt,
-    query_at,
     write_parquet,
 )
 
@@ -95,31 +92,6 @@ def test_write_parquet_roundtrip(tmp_path: Path) -> None:
     tbl = pq.read_table(out)
     assert tbl.num_rows == 10
     assert set(tbl.column("side").to_pylist()) == {"sell", "buy"}
-
-
-def test_query_at_returns_brokers_at_with_entries(tmp_path: Path) -> None:
-    earlier = PARSERS[4](_broker_parts(ts_ms=90019919, seq=912))
-    later = PARSERS[4](_broker_parts(ts_ms=90030000, seq=913))
-    out = tmp_path / "brokers.parquet"
-    write_parquet(earlier + later, out)
-    con = duckdb.connect()
-    result = query_at(con, path=out, t_ms=90025000)
-    assert isinstance(result, BrokersAt)
-    assert result.ts_ms == 90019919
-    assert len(result.entries) == 10
-    assert all(isinstance(e, ApiBrokerEntry) for e in result.entries)
-    assert {e.side for e in result.entries} == {"buy", "sell"}
-
-
-def test_query_at_returns_empty_brokers_at_before_any_data(tmp_path: Path) -> None:
-    rows = PARSERS[4](_broker_parts())
-    out = tmp_path / "brokers.parquet"
-    write_parquet(rows, out)
-    con = duckdb.connect()
-    result = query_at(con, path=out, t_ms=80000000)
-    assert isinstance(result, BrokersAt)
-    assert result.ts_ms is None
-    assert result.entries == []
 
 
 from hoga.api.models import BrokerSeriesEntry

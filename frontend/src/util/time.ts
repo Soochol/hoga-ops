@@ -98,7 +98,7 @@ export function unixMsToKSTClock(ms: number): string {
  * Format a Unix-ms timestamp as the YYYYMMDD of the KST calendar day it
  * falls into. Used by the read-path Cursor → Stock-Date resolver:
  * `useCursor` needs the Stock-Date matching the chart's right-edge
- * cursor so spot-data queries (/api/orderbook, /api/brokers, /api/trades)
+ * cursor so spot-data queries (/api/orderbook, /api/trades)
  * pass the API contract's `unix_ms_to_hhmmssms(date, t)` precheck.
  */
 export function unixMsToKSTDate(ms: number): string {

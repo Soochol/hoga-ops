@@ -114,39 +114,6 @@ def test_candle_ts_ms_is_unix(app_client: TestClient) -> None:
     assert any(c["ts_ms"] == expected for c in candles)
 
 
-def test_brokers_at(app_client: TestClient) -> None:
-    r = app_client.get(
-        "/api/brokers",
-        params={
-            "code": "003490",
-            "date": "20260519",
-            "t": hhmmssms_to_unix_ms("20260519", 90020000),
-        },
-    )
-    assert r.status_code == 200
-    payload = r.json()
-    assert payload["ts_ms"] == hhmmssms_to_unix_ms("20260519", 90019919)
-    entries = payload["entries"]
-    assert len(entries) == 10
-    sides = {e["side"] for e in entries}
-    assert sides == {"buy", "sell"}
-
-
-def test_brokers_before_any_data(app_client: TestClient) -> None:
-    r = app_client.get(
-        "/api/brokers",
-        params={
-            "code": "003490",
-            "date": "20260519",
-            "t": hhmmssms_to_unix_ms("20260519", 80000000),
-        },
-    )
-    assert r.status_code == 200
-    payload = r.json()
-    assert payload["ts_ms"] is None
-    assert payload["entries"] == []
-
-
 def test_orderbook_wire_shape(app_client: TestClient) -> None:
     """Wire Model ships ``ask`` / ``bid`` as length-10 arrays of
     ``{price, qty}`` Level objects (ADR-0004). Delta columns
@@ -264,26 +231,5 @@ def test_orderbook_out_of_day_cursor_returns_400(app_client: TestClient) -> None
     )
     assert r.status_code == 400
 
-
-def test_brokers_ts_ms_is_unix(app_client: TestClient) -> None:
-    t_noon = hhmmssms_to_unix_ms("20260519", 120000000)  # 12:00 KST on 2026-05-19
-    r = app_client.get(
-        "/api/brokers",
-        params={"code": "003490", "date": "20260519", "t": t_noon},
-    )
-    assert r.status_code == 200
-    payload = r.json()
-    if payload["ts_ms"] is not None:
-        assert payload["ts_ms"] > 1_700_000_000_000
-
-
-def test_brokers_out_of_day_cursor_returns_400(app_client: TestClient) -> None:
-    # Cursor on 2026-05-20 but date=20260519 → cross-day → 400
-    bad_t = hhmmssms_to_unix_ms("20260520", 120000000)
-    r = app_client.get(
-        "/api/brokers",
-        params={"code": "003490", "date": "20260519", "t": bad_t},
-    )
-    assert r.status_code == 400
 
 
