@@ -2,6 +2,7 @@ import { LineSeries } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
+import { useChartPrefs } from '../ChartPrefsContext';
 import type { PaneSpec } from '../RangeSeriesPane';
 
 const TOKEN_SPEC = {
@@ -17,21 +18,49 @@ const priceFormat = {
   minMove: 1,
 };
 
-export function projectBid(bundle: RangeBundle, axis: VirtualAxis): any[] {
+// CONTEXT.md "Auction Window" — same rationale as RATIO_SPEC: during the
+// 15:20–15:30 closing auction, posted totals are dominated by one-sided
+// accumulation and don't represent continuous-session order book pressure.
+// axis.inClosingAuctionWindow owns the threshold so this stays aligned with
+// the ratio pane automatically.
+export function projectBid(
+  bundle: RangeBundle,
+  axis: VirtualAxis,
+  auctionWindowMask: boolean,
+): any[] {
   return bundle.quote_ratio.points
     .filter((p) => axis.contains(p.t))
-    .map((p) => ({ time: (axis.toVirtual(p.t) / 1000) as any, value: p.bid_total }));
+    .map((p) => ({
+      time: (axis.toVirtual(p.t) / 1000) as any,
+      value:
+        auctionWindowMask && axis.inClosingAuctionWindow(p.t)
+          ? 0
+          : p.bid_total,
+    }));
 }
 
-export function projectAsk(bundle: RangeBundle, axis: VirtualAxis): any[] {
+export function projectAsk(
+  bundle: RangeBundle,
+  axis: VirtualAxis,
+  auctionWindowMask: boolean,
+): any[] {
   return bundle.quote_ratio.points
     .filter((p) => axis.contains(p.t))
-    .map((p) => ({ time: (axis.toVirtual(p.t) / 1000) as any, value: p.ask_total }));
+    .map((p) => ({
+      time: (axis.toVirtual(p.t) / 1000) as any,
+      value:
+        auctionWindowMask && axis.inClosingAuctionWindow(p.t)
+          ? 0
+          : p.ask_total,
+    }));
 }
 
-export const QUOTE_TOTALS_SPEC: PaneSpec = {
+const useQuoteTotalsContext = (): boolean => useChartPrefs().auctionWindowMask;
+
+export const QUOTE_TOTALS_SPEC: PaneSpec<boolean> = {
   name: 'quote-totals',
   stretch: 0.4,
+  useContext: useQuoteTotalsContext,
   series: [
     {
       type: LineSeries,
