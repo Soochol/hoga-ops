@@ -87,6 +87,16 @@ class CaptureCancelled(RuntimeError):
     """Raised by collect_stock_date when its CancelToken is set."""
 
 
+class UpstreamNoDataError(RuntimeError):
+    """Raised when hogaplay returns HTTP 200 with an empty body for
+    info.php — the upstream signal that no data exists for this
+    (code, date). See ADR-0021."""
+    def __init__(self, code: str, date: str) -> None:
+        super().__init__(f"hogaplay returned empty info.php for {code}/{date}")
+        self.code = code
+        self.date = date
+
+
 class CancelToken:
     """Thin asyncio.Event wrapper for cooperative cancellation.
 
@@ -438,10 +448,14 @@ def collect_stock_date(
     raw_dir.mkdir(parents=True, exist_ok=True)
     started_at = now.isoformat()
 
-    # 1. info.php
+    # 1. info.php — hogaplay signals "no data for this (code, date)" via
+    # HTTP 200 + empty body (see ADR-0021). Detect at the collector boundary
+    # before zero-byte artifacts pollute disk.
     info_path = raw_dir / "info.tsv"
     if not (resume and info_path.exists()):
         info_body = client.fetch_info(code, date)
+        if not info_body.strip():
+            raise UpstreamNoDataError(code, date)
         info_path.write_text(info_body, encoding="utf-8")
         if rate_limit_s > 0:
             _time.sleep(rate_limit_s)

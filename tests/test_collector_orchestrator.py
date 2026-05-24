@@ -473,3 +473,25 @@ def test_collect_records_stagnation_abort_in_progress_and_result(
     assert progress["abort_reason"] == "stagnation_abort"
 
 
+def test_collect_raises_when_info_body_empty(tmp_path: Path) -> None:
+    """hogaplay returning HTTP 200 + empty body for info.php is the
+    'upstream has no data for this (code, date)' signal. The collector
+    must raise UpstreamNoDataError immediately instead of writing a
+    zero-byte info.tsv that later crashes the parser."""
+    from hoga.collector.orchestrator import UpstreamNoDataError
+
+    client = FakeClient(info_body="", first_pages={}, chart_body="")
+    with pytest.raises(UpstreamNoDataError) as exc_info:
+        collect_stock_date(
+            client=client,
+            code="003490",
+            date="20260319",
+            data_dir=tmp_path,
+            rate_limit_s=0.0,
+            resume=False,
+        )
+    assert exc_info.value.code == "003490"
+    assert exc_info.value.date == "20260319"
+    # info.tsv must NOT be written when the body is empty.
+    info_path = tmp_path / "raw" / "20260319" / "003490" / "info.tsv"
+    assert not info_path.exists()
