@@ -64,15 +64,16 @@ function Row({
   maxQty: number;
 }) {
   const widthPct = maxQty > 0 ? (qty / maxQty) * 100 : 0;
-  const barClass   = side === 'ask' ? 'bg-tint-price-down' : 'bg-tint-price-up';
-  const priceColor = side === 'ask' ? 'text-price-down'    : 'text-price-up';
-  // Depth bar extends from the left on the qty side; spec §5.1 shows depth
-  // bars rendered behind the qty column.
+  const barBg     = side === 'ask' ? 'var(--bar-ask)' : 'var(--bar-bid)';
+  const priceColor = side === 'ask' ? 'text-price-down' : 'text-price-up';
+  // Depth bar grows from the qty column (right) inward, with a 0.18 → 0
+  // gradient fade. Matches the 2026-05-20 approved mockup
+  // (docs/superpowers/designs/2026-05-20-replay-viewer.html lines 379-384).
   return (
     <div className="relative grid grid-cols-[1fr_1fr] gap-3 px-2.5 py-0.5">
       <span
-        className={`absolute inset-y-0 left-0 ${barClass}`}
-        style={{ width: `${widthPct}%` }}
+        className="absolute inset-y-0 right-0"
+        style={{ width: `${widthPct}%`, background: barBg }}
       />
       <span className={`relative text-right ${priceColor}`}>{price.toLocaleString('ko-KR')}</span>
       <span className="relative text-right text-fg-dim">{qty.toLocaleString('ko-KR')}</span>
