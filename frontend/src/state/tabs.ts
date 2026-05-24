@@ -4,11 +4,12 @@ import type { RangeBundle, Timeframe } from '../api/types';
 import { useToolbarDraftStore } from './toolbarDraft';
 import {
   loadPersisted,
-  savePersisted,
   toSnapshot,
   fromSnapshot,
+  STORAGE_KEY,
   type SnapshotDeps,
 } from './tabsPersistence';
+import { attachPersistence } from './persistentSubscriber';
 
 export type TabSelection = {
   code: string;
@@ -247,30 +248,14 @@ export const useTabsStore = create<Store>((set, get) => ({
   },
 }));
 
-/** Debounced persistence: every store mutation schedules a save 250ms out;
- *  bursts (typing, rapid toggles) coalesce into a single localStorage write.
- *  See spec §"Save 디바운싱" for the rationale. */
-const PERSIST_DEBOUNCE_MS = 250;
-let persistTimer: ReturnType<typeof setTimeout> | null = null;
-
-const unsubscribePersist = useTabsStore.subscribe((state) => {
-  if (persistTimer) clearTimeout(persistTimer);
-  persistTimer = setTimeout(() => {
-    savePersisted(
-      toSnapshot({
-        tabs: state.tabs,
-        activeTabId: state.activeTabId,
-        prefs: state.prefs,
-      }),
-    );
-  }, PERSIST_DEBOUNCE_MS);
+/** Debounced persistence — every store mutation schedules a save 250ms out.
+ *  See spec §"Save 디바운싱" for rationale. */
+const unsubscribePersist = attachPersistence(useTabsStore, {
+  storageKey: STORAGE_KEY,
+  toSnapshot: (s) =>
+    toSnapshot({ tabs: s.tabs, activeTabId: s.activeTabId, prefs: s.prefs }),
 });
 
-// HMR guard: Vite re-evaluates this module on edit, so without dispose the
-// previous subscribe() lingers and listeners accumulate across edits.
 if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    if (persistTimer) clearTimeout(persistTimer);
-    unsubscribePersist();
-  });
+  import.meta.hot.dispose(unsubscribePersist);
 }
