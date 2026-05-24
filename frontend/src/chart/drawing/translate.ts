@@ -52,22 +52,49 @@ function translatePencil(p: Pencil, dMs: number, dPrice: number): Partial<Pencil
   };
 }
 
+/** Every price-bearing vertex of a Drawing (in pane Y-domain units). */
+export function pricesOf(drawing: Drawing): number[] {
+  switch (drawing.kind) {
+    case 'hline':
+      return [drawing.price];
+    case 'trendline':
+      return [drawing.a.price, drawing.b.price];
+    case 'pencil':
+      return drawing.points.map((p) => p.price);
+  }
+}
+
 /**
- * Clamp a target price to the inclusive range bounded by the two
- * "edge prices" of a pane. The pane's price scale may run top-down
- * (top > bottom; standard for prices) or bottom-up (rare); we sort
- * internally so callers can pass either.
+ * Cap a requested body-drag Δprice so that EVERY vertex of `drawing`
+ * stays within the pane's price bounds after translation. The cap is
+ * shape-preserving: the same dPrice is applied to all vertices, so the
+ * trendline's spread / pencil's curvature survive a boundary hit. A
+ * post-translate per-vertex clamp would have collapsed the shape at
+ * the edge — see the v1 grill pass and the body-drag-shear note.
  *
- * Used by selectTool's body-drag branch to keep an Hline / Trendline
- * vertex from leaving the origin pane after a drag. Translation
- * remains a pure (Δprice) math; the caller composes this clamp
- * around the result.
+ * Bounds may be in either order (top > bottom for KRW, bottom > top
+ * on inverted scales); we sort internally.
  */
-export function clampHlinePriceWithinPane(
-  price: number,
+export function clampDPriceForDrawing(
+  drawing: Drawing,
+  dPrice: number,
   bounds: { top: number; bottom: number },
 ): number {
   const lo = Math.min(bounds.top, bounds.bottom);
   const hi = Math.max(bounds.top, bounds.bottom);
-  return Math.max(lo, Math.min(hi, price));
+  const prices = pricesOf(drawing);
+  // Freeze the drag if any vertex is already outside the bounds (e.g. an
+  // autoscale shift while a drag is in flight). The alternative — letting
+  // the clamp snap the drawing back to the edge — would surprise-yank it
+  // out from under the cursor.
+  for (const p of prices) {
+    if (p < lo || p > hi) return 0;
+  }
+  let maxUp = Infinity;     // largest positive dPrice keeping every vertex ≤ hi
+  let maxDown = -Infinity;  // most negative dPrice keeping every vertex ≥ lo
+  for (const p of prices) {
+    maxUp = Math.min(maxUp, hi - p);
+    maxDown = Math.max(maxDown, lo - p);
+  }
+  return Math.max(maxDown, Math.min(maxUp, dPrice));
 }

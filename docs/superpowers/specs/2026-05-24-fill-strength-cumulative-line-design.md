@@ -6,8 +6,8 @@
 
 ## 도메인 / 용어
 
-- **체결강도 / FillStrength**: `bundle.fill_strength.points[]`에 담긴 버킷별 `{ t, buy_qty, sell_qty }` 시계열 (CONTEXT.md "FillStrength" 참고).
-- **당일 누적 매수−매도 (Cumulative Net Fill)**: 거래일 세션 시작부터 매 버킷까지의 `sum(buy_qty − sell_qty)`. 거래일 경계에서 0으로 리셋. 키움/이베스트 HTS의 "체결강도 추이" 와 같은 결의 지표.
+- **FillStrength**: `bundle.fill_strength.points[]`에 담긴 버킷별 `{ t, buy_qty, sell_qty }` 시계열 (이번 spec에서 CONTEXT.md에 신규 term entry 추가됨).
+- **Cumulative Net Fill (체결강도 누적)**: 거래일 세션 시작부터 매 버킷까지의 `sum(buy_qty − sell_qty)`. 거래일 경계(`segments[i].session_open_ms`)에서 0으로 리셋. 키움/이베스트 HTS의 "체결강도 추이" 와 같은 결의 지표. CONTEXT.md에 신규 term entry로 정식화 — "누적 델타" / "체결강도 라인" 같은 비공식 명칭은 Avoid 클로즈로 명시.
 
 ## 결정 사항 (Brainstorming 합의)
 
@@ -43,20 +43,34 @@ LineSeries (priceScaleId: '', lineWidth: 2, color: --fg)
 
 ### 파일별 변경
 
+ADR-0027(`CHART_TOGGLES` 선언형 registry) 패턴에 정합: boolean 토글 추가는 1줄 entry, 타입/기본값/persistence/setter는 자동 derive. 추가로 registry에 `category?: 'chart' | 'indicators'` (default `'chart'`) 옵셔널 필드를 도입해 UI 배치는 entry 메타데이터로 결정 — SettingsModal의 "차트" 루프와 IndicatorsSection의 "보조지표" 루프가 같은 registry를 category 필터링해 소비.
+
 | 파일 | 변경 |
 |---|---|
-| `frontend/src/chart/projectors/fillStrength.ts` | `projectCumulativeDelta` 함수, `FillStrengthPaneContext` 타입, `useFillStrengthContext` 훅, `FILL_STRENGTH_SPEC.series[]`에 3번째 LineSeries 추가 |
-| `frontend/src/state/chartPrefs.ts` | `ChartViewPrefs`에 `fillStrengthCumulative: boolean`, `DEFAULT_PREFS`에 `true` 기본값 |
-| `frontend/src/state/tabs.ts` | `setFillStrengthCumulative(tabId, value)` setter export |
-| `frontend/src/state/tabsPersistence.ts` | `mergePrefs`의 known-key 목록과 validation에 신규 필드 포함 |
-| `frontend/src/replay/settings/IndicatorsSection.tsx` | "보조지표 → Moving Average" 그룹 다음에 "FILL STRENGTH" 서브헤더 + 토글 row 1개 |
-| `CONTEXT.md` | FillStrength 항목 끝에 누적 라인 1-2줄 추가 |
+| `frontend/src/chart/projectors/fillStrength.ts` | `projectCumulativeDelta` 함수, `FillStrengthPaneContext` 타입, `useFillStrengthContext` 훅, `FILL_STRENGTH_SPEC.series[]`에 3번째 LineSeries 추가, TOKEN_SPEC에 `cumulative`/`cumulativeBaseline` 추가 |
+| `frontend/src/state/chartPrefs.ts` | `CHART_TOGGLES`에 entry 1개 추가 (`key: 'fillStrengthCumulative'`, `category: 'indicators'`, `default: true`); 기존 entry는 변경 없음 (category 미지정 → 'chart' default 적용); `ChartToggleDef` 타입에 optional `category` 필드 |
+| `frontend/src/replay/SettingsModal.tsx` | "차트" 카테고리의 `CHART_TOGGLES.map`을 `.filter((t) => (t.category ?? 'chart') === 'chart')` 로 좁힘 — 기존 두 toggle은 그대로 표시, 신규 entry는 제외 |
+| `frontend/src/replay/settings/IndicatorsSection.tsx` | "Moving Average" 그룹 다음에 `CHART_TOGGLES.filter((t) => t.category === 'indicators').map`으로 ToggleRow 렌더 (서브헤더 "FILL STRENGTH" 포함). 향후 indicator-scoped toggle 추가 시 IndicatorsSection 수정 불필요 |
+| `CONTEXT.md` | 신규 term entry: `FillStrength`, `Cumulative Net Fill` (체결강도 누적) |
+
+영향 없는 (registry 패턴이 자동 처리하는) 파일:
+- `frontend/src/state/tabs.ts` — `setToggle(id, key, value)` 제너릭 setter가 이미 존재, 신규 entry 자동 지원.
+- `frontend/src/state/tabsPersistence.ts` — `mergePrefs`의 `chartToggleKeys` 루프가 registry를 SnapshotDeps로 받아 신규 entry 자동 validate.
 
 ### Pane 컨텍스트 / 토글 동작
 
 - `FillStrengthPaneContext = { cumulativeEnabled: boolean }`.
 - `useFillStrengthContext()`는 `useActivePrefs`를 통해 `fillStrengthCumulative`만 selecting (`useShallow` 불필요, primitive boolean).
 - 토글 OFF 시 `projectCumulativeDelta`가 `[]` 반환 → 라인은 사라지지만 series 핸들은 유지. `RangeSeriesPane`의 lifecycle/data effect 분리 invariant ([RangeSeriesPane.tsx:75-79](../../frontend/src/chart/RangeSeriesPane.tsx#L75-L79)) 그대로 따른다. 토글로 series churn 발생 안 함.
+
+### 알고리즘 invariant 명시
+
+`projectCumulativeDelta`는 두 독립 predicate를 분리해 적용한다:
+
+- **In-session predicate** (`session_open_ms <= p.t <= session_close_ms`): 누적합에 포함할지 결정. Pre-open auction trade(09:00 cross의 `side=0`)나 After-Hours Trading 체결은 segment 경계 밖이므로 합산 제외.
+- **In-viewport predicate** (`axis.contains(p.t)`): emit할지 결정. 뷰포트 좌측에 잘린 점도 합산엔 들어가지만 emit은 안 함 — 그래야 viewport 좌측에서 라인이 0이 아닌 올바른 baseline부터 시작.
+
+두 predicate가 분리돼야 (a) "오늘 09:30부터 보기"로 줌인했을 때 라인이 09:00 기준 누적값에서 시작하고, (b) pre-open auction의 `side=0` 한 점이 누적에 들어가 baseline이 튀는 일이 없다.
 
 ### 라인 스타일
 
@@ -177,4 +191,14 @@ FILL STRENGTH
 
 - 기존 패턴: [quoteTotals.ts](../../frontend/src/chart/projectors/quoteTotals.ts) (라인 2개 + invisible 단일 pane), [ratio.ts](../../frontend/src/chart/projectors/ratio.ts) (Baseline + `afterAdd` priceLine).
 - Pane lifecycle 계약: [RangeSeriesPane.tsx](../../frontend/src/chart/RangeSeriesPane.tsx), 디자인 doc `2026-05-23-range-series-pane-design.md`.
+- Pref registry 계약: [ADR-0027](../../docs/adr/0027-chart-numeric-prefs-registry.md), [CHART_TOGGLES](../../frontend/src/state/chartPrefs.ts). 이 spec은 boolean toggle을 registry entry 1줄로 추가하는 elder-sibling 패턴을 따르며, `category` optional 필드를 추가해 동일 registry가 두 UI surface(SettingsModal 차트 / IndicatorsSection 보조지표)를 모두 driving 하도록 deepen.
 - RangeBundle wire model: ADR-0013, CONTEXT.md "RangeBundle" 항목.
+- Mask/overlay 정책: 이 spec은 별도 mask를 도입하지 않는다. 누적 라인은 FillStrength 자체의 "Auction Window는 그대로 통과 / pre-open과 after-hours는 in-session 밖" 정책을 그대로 따라간다 (ADR-0026 패턴과 일관).
+
+## Grill 결과 반영 (2026-05-24)
+
+`/grill-with-docs` 통과 시 발견된 3건을 본 spec과 CONTEXT.md에 반영했다:
+
+1. **ADR-0027 정합** — 기존 spec의 "explicit field + 4-파일 touch" 안을 폐기하고 `CHART_TOGGLES` registry entry 1줄로 대체. 신규 setter / persistence 분기 코드 0줄.
+2. **UI 배치 충돌 해소** — 사용자 결정(보조지표 카테고리)과 registry auto-render(차트 카테고리)의 충돌을 `category: 'chart' | 'indicators'` optional 필드로 해소. SettingsModal/IndicatorsSection 두 루프가 같은 registry를 category 필터로 소비.
+3. **CONTEXT.md term gap 메움** — `FillStrength` 와 `Cumulative Net Fill (체결강도 누적)` 두 entry 신규 추가. 비공식 명칭("누적 델타", "체결강도 라인", "buy-sell cumulative")은 각 Avoid 클로즈로 명시해 향후 코드/테스트/문서에서의 용어 드리프트 차단.

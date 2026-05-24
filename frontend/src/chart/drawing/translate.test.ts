@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Drawing, Hline, Pencil, Trendline } from './types';
-import { clampHlinePriceWithinPane, translateDrawing } from './translate';
+import { clampDPriceForDrawing, pricesOf, translateDrawing } from './translate';
 
 const baseStyle = { color: '#14B8A6', width: 1.5 };
 
@@ -60,22 +60,88 @@ describe('translateDrawing — pencil', () => {
   });
 });
 
-describe('clampHlinePriceWithinPane', () => {
-  it('passes a price inside [paneTopPrice, paneBottomPrice] through unchanged', () => {
-    expect(clampHlinePriceWithinPane(1000, { top: 2000, bottom: 0 })).toBe(1000);
+describe('pricesOf', () => {
+  it('returns [price] for hline', () => {
+    const h: Hline = { id: 'h', kind: 'hline', price: 50, ...baseStyle, paneId: 'candle' };
+    expect(pricesOf(h)).toEqual([50]);
+  });
+  it('returns [a.price, b.price] for trendline', () => {
+    const t: Trendline = {
+      id: 't', kind: 'trendline',
+      a: { realMs: 0, price: 10 }, b: { realMs: 0, price: 90 },
+      ...baseStyle, paneId: 'candle',
+    };
+    expect(pricesOf(t)).toEqual([10, 90]);
+  });
+  it('returns every vertex price for pencil', () => {
+    const p: Pencil = {
+      id: 'p', kind: 'pencil',
+      points: [{ realMs: 0, price: 5 }, { realMs: 1, price: 50 }, { realMs: 2, price: 7 }],
+      ...baseStyle, paneId: 'candle',
+    };
+    expect(pricesOf(p)).toEqual([5, 50, 7]);
+  });
+});
+
+describe('clampDPriceForDrawing', () => {
+  const bounds = { top: 100, bottom: 0 }; // pane spans price ∈ [0, 100]
+
+  it('passes a dPrice through unchanged when every vertex stays inside the pane', () => {
+    const h: Hline = { id: 'h', kind: 'hline', price: 50, ...baseStyle, paneId: 'candle' };
+    expect(clampDPriceForDrawing(h, 10, bounds)).toBe(10);
+    expect(clampDPriceForDrawing(h, -10, bounds)).toBe(-10);
   });
 
-  it('clamps a price above the pane top to the top', () => {
-    expect(clampHlinePriceWithinPane(3000, { top: 2000, bottom: 0 })).toBe(2000);
+  it('caps positive dPrice so no vertex exceeds pane top', () => {
+    const t: Trendline = {
+      id: 't', kind: 'trendline',
+      a: { realMs: 0, price: 90 }, b: { realMs: 0, price: 50 },
+      ...baseStyle, paneId: 'candle',
+    };
+    // a is 10 below top; b is 50 below top. cap = min(10, 50) = 10.
+    expect(clampDPriceForDrawing(t, 50, bounds)).toBe(10);
   });
 
-  it('clamps a price below the pane bottom to the bottom', () => {
-    expect(clampHlinePriceWithinPane(-50, { top: 2000, bottom: 0 })).toBe(0);
+  it('caps negative dPrice so no vertex falls below pane bottom', () => {
+    const t: Trendline = {
+      id: 't', kind: 'trendline',
+      a: { realMs: 0, price: 5 }, b: { realMs: 0, price: 90 },
+      ...baseStyle, paneId: 'candle',
+    };
+    // Lowest vertex (a=5) can drop by 5 before hitting 0. cap = -5.
+    expect(clampDPriceForDrawing(t, -50, bounds)).toBe(-5);
   });
 
-  it('tolerates inverted bounds (Y-axis flipped) by sorting internally', () => {
-    expect(clampHlinePriceWithinPane(1000, { top: 0, bottom: 2000 })).toBe(1000);
-    expect(clampHlinePriceWithinPane(3000, { top: 0, bottom: 2000 })).toBe(2000);
+  it('preserves trendline spread at the boundary (the shape-preservation invariant)', () => {
+    // The whole point of this helper: a trendline whose lower endpoint
+    // touches the floor still moves both endpoints together when the user
+    // tries to drag down further (clamped to 0 dPrice), so the 80-unit
+    // spread between the endpoints survives.
+    const t: Trendline = {
+      id: 't', kind: 'trendline',
+      a: { realMs: 0, price: 10 }, b: { realMs: 0, price: 90 },
+      ...baseStyle, paneId: 'candle',
+    };
+    const cappedDown = clampDPriceForDrawing(t, -100, bounds);
+    const translated = translateDrawing(t, 0, cappedDown) as Partial<Trendline>;
+    const newA = translated.a!.price;
+    const newB = translated.b!.price;
+    // Both endpoints shift by the same capped amount; spread of 80 preserved.
+    expect(newB - newA).toBe(80);
+    // Lower endpoint pinned to the floor.
+    expect(newA).toBe(0);
+  });
+
+  it('tolerates inverted bounds', () => {
+    const h: Hline = { id: 'h', kind: 'hline', price: 50, ...baseStyle, paneId: 'candle' };
+    expect(clampDPriceForDrawing(h, 60, { top: 0, bottom: 100 })).toBe(50);
+  });
+
+  it('freezes the drag (returns 0) when a vertex is already outside the bounds', () => {
+    // Autoscale shift moved the bounds while the user is mid-drag and a
+    // vertex now sits above the new top. We don't yank the drawing.
+    const h: Hline = { id: 'h', kind: 'hline', price: 200, ...baseStyle, paneId: 'candle' };
+    expect(clampDPriceForDrawing(h, 5, bounds)).toBe(0);
   });
 });
 

@@ -31,15 +31,12 @@ import { nanoid } from 'nanoid';
 import {
   type Drawing,
   type DrawingTool,
-  type Hline,
-  type Pencil,
-  type Trendline,
   type PaneId,
   type Point,
   PENCIL_MAX_POINTS,
   HIT_THRESHOLD,
 } from './types';
-import { translateDrawing, clampHlinePriceWithinPane } from './translate';
+import { translateDrawing, clampDPriceForDrawing } from './translate';
 
 /** A per-gesture draft for the trendline tool — first point captured on
  *  pointer-down, committed on pointer-up. */
@@ -238,44 +235,16 @@ export const selectTool: DrawingToolSpec = {
     }
     if (drag.kind === 'body') {
       const dMs = data.realMs - drag.lastRealMs;
-      const dPrice = data.price - drag.lastPrice;
-      const rawPatch = translateDrawing(target, dMs, dPrice);
-
-      // Post-clamp each price-bearing vertex so the drawing cannot leave its
-      // origin pane. priceBoundsForPane returns the prices at the pane's top
-      // and bottom pixels (lightweight-charts' coordinateToPrice on the
-      // registered series).
+      const rawDPrice = data.price - drag.lastPrice;
+      // Shape-preserving cap: compute the largest |dPrice| that keeps every
+      // vertex inside the pane, then translate once. Post-translate per-vertex
+      // clamping would have collapsed a trendline/pencil that touched the
+      // boundary asymmetrically.
       const paneBounds = ctx.priceBoundsForPane(drag.paneId);
-      const patch: Partial<Drawing> = (() => {
-        if (!paneBounds) return rawPatch;
-        if (target.kind === 'hline') {
-          const p = rawPatch as Partial<Hline>;
-          return typeof p.price === 'number'
-            ? { price: clampHlinePriceWithinPane(p.price, paneBounds) }
-            : rawPatch;
-        }
-        if (target.kind === 'trendline') {
-          const p = rawPatch as Partial<Trendline>;
-          if (!p.a || !p.b) return rawPatch;
-          return {
-            a: { ...p.a, price: clampHlinePriceWithinPane(p.a.price, paneBounds) },
-            b: { ...p.b, price: clampHlinePriceWithinPane(p.b.price, paneBounds) },
-          };
-        }
-        if (target.kind === 'pencil') {
-          const p = rawPatch as Partial<Pencil>;
-          if (!p.points) return rawPatch;
-          return {
-            points: p.points.map((pt) => ({
-              ...pt,
-              price: clampHlinePriceWithinPane(pt.price, paneBounds),
-            })),
-          };
-        }
-        return rawPatch;
-      })();
-
-      ctx.update(target.id, patch);
+      const dPrice = paneBounds
+        ? clampDPriceForDrawing(target, rawDPrice, paneBounds)
+        : rawDPrice;
+      ctx.update(target.id, translateDrawing(target, dMs, dPrice));
       drag.lastRealMs = data.realMs;
       drag.lastPrice = data.price;
     }
