@@ -81,6 +81,10 @@ the Cursor falls outside the requested **Stock-Date**.
 _Avoid_: "timestamp" alone (ambiguous with Entity ts_ms and Wire Model
 ts_ms which may differ in encoding), "t param".
 
+**Cursor Sidebar**:
+The right-side panel of the Replay Viewer's Workarea that hosts three Cursor-keyed cards — **10호가** (orderbook snapshot at Cursor), **거래원** (broker net at Cursor), **체결** (recent fills around Cursor). Lives in `frontend/src/sidebar/CursorSidebar.tsx`; the connected variant `CursorSidebarConnected` binds each card to its `useCursor`-family hook. Treated as a single UI object for layout purposes — its width is user-adjustable and the whole panel can be collapsed (per the 2026-05-24 Replay Sidebar Splitter spec). The default width is seeded from the `--sidebar-w` design token; runtime width and collapsed state are owned by `state/replayLayout.ts` (per ADR-0022). The Cursor Sidebar **consumes** **Cursor**; it is not a synonym for Cursor — Cursor is the time-point on the API/UI contract, the Cursor Sidebar is the panel that renders that point's spot data.
+_Avoid_: "sidebar" alone (the codebase has other panels that could be called sidebars — Inventory's left list, Capture's queue), "cursor panel" (loses the multi-card structure), "spot sidebar" (the prior internal name; superseded).
+
 **Capture Frontier**:
 The collector's next-request position for an in-flight **Full Capture** — the `t` value the next `first.php` call will use, equivalently the upper bound of the Data Window range already processed. Internally tracked as HHMMSSmmm (matches hogaplay's `first.php` `time` parameter and the `last_time_ms` field written to `_progress.json`, sourced from `PageStepController.next_t`); surfaced through the capture API as `frontier_ms` in Unix-ms per ADR-0003. Distinct from **Cursor** (which is an API/UI contract concept on the read path).
 _Avoid_: "cursor" (overloaded with the API/UI **Cursor**), "current position", "progress timestamp", "last_time_ms" (the internal HHMMSSmmm field name — don't use on the API surface)

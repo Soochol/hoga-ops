@@ -3,7 +3,14 @@
 **Date**: 2026-05-24
 **Status**: Draft
 **Type**: feature
-**Scope**: `/replay` workarea — vertical splitter between chart and cursor sidebar (10호가 / 거래원 / 체결), plus a collapse/expand toggle for the sidebar as a whole.
+**Scope**: `/replay` workarea — vertical splitter between the chart and the **Cursor Sidebar** (10호가 / 거래원 / 체결), plus a collapse/expand toggle for the **Cursor Sidebar** as a whole.
+
+**Related:**
+- ADR-0022 — `--sidebar-w` token-as-default, `state/replayLayout.ts` as runtime-of-record for Cursor Sidebar width and collapsed state.
+- `CONTEXT.md` — adds `Cursor Sidebar` glossary entry.
+- Precedent splitter implementation: `frontend/src/pages/Capture.tsx:25-108` (migrated to the shared component in this PR).
+
+**Domain note**: the Cursor Sidebar's "collapse" is a *layout* hide (the panel itself is unmounted), not a *value* hide. It is unrelated to the **Auction Mask** (CONTEXT.md), which suppresses misleading-ratio values during the closing Auction Window. The two intents do not interact.
 
 ## Problem
 
@@ -75,7 +82,24 @@ Migrate [Capture.tsx](../../frontend/src/pages/Capture.tsx) to use this componen
 Small zustand slice. Lives alongside [state/tabs.ts](../../frontend/src/state/tabs.ts) and [state/viewport.ts](../../frontend/src/state/viewport.ts).
 
 ```ts
-const SIDEBAR_PX_DEFAULT = 320;   // matches --sidebar-w base intent (16rem @ 20px root = 320px)
+// Read the design-token default at module-init time so density-dial changes
+// (ADR-0011) reseed automatically. Hard-coded fallback for SSR / tests where
+// getComputedStyle is unavailable or returns an empty string.
+function readSidebarTokenPx(): number {
+  if (typeof document === 'undefined') return 320;
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue('--sidebar-w')
+    .trim();
+  // raw is "20rem" or "320px"; resolve to px via a probe element if needed.
+  if (raw.endsWith('px')) return Number.parseFloat(raw);
+  if (raw.endsWith('rem')) {
+    const rootFontPx = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    return Number.parseFloat(raw) * rootFontPx;
+  }
+  return 320;
+}
+
+const SIDEBAR_PX_DEFAULT = readSidebarTokenPx();
 const SIDEBAR_PX_MIN = 240;
 const SIDEBAR_PX_MAX = 520;
 const STORAGE_KEY = 'replay.layout';
@@ -90,9 +114,10 @@ type ReplayLayoutState = Persisted & {
 };
 ```
 
-- On store init, attempt `JSON.parse(localStorage.getItem(STORAGE_KEY))`. Validate types and clamp `sidebarPx` to `[MIN, MAX]`. Any error → defaults.
-- A subscriber persists the full `Persisted` snapshot to localStorage on every change. Wrap in `try/catch` (SSR / privacy mode parity with `forceRetryDefault.ts`).
+- On store init, attempt `JSON.parse(localStorage.getItem(STORAGE_KEY))`. Validate types and clamp `sidebarPx` to `[MIN, MAX]`. Any error → defaults (`SIDEBAR_PX_DEFAULT` from the token, `sidebarCollapsed: false`).
+- **Persistence lives inside the store**, not in component `useEffect`. A `useReplayLayoutStore.subscribe` listener (registered once at module load) writes the full `Persisted` snapshot to localStorage on every state change. Wrap in `try/catch` for SSR / privacy mode (parity with `forceRetryDefault.ts`). This differs from `pages/Capture.tsx`'s component-local pattern because the present store has three independent consumers (Workarea, Toolbar, CollapsedSidebarHandle) and persistence belongs to the store, not to any one of them.
 - Width is **px**, not percent. Sidebar readability has absolute thresholds (font sizes, column counts in OrderbookTable) so px is the natural unit. Capture keeps percent internally; the shared splitter is unit-agnostic.
+- `resetSidebar()` reads the *current* token value via `readSidebarTokenPx()` (not the module-init constant) so future density-mode changes (ADR-0011 backlog) reset to the new token value within a running session.
 
 ### 3. Workarea layout — modify [frontend/src/replay/Workarea.tsx:99-108](../../frontend/src/replay/Workarea.tsx#L99-L108)
 
@@ -248,7 +273,7 @@ New tests (Vitest + RTL):
 
 - `frontend/src/layout/VerticalSplitter.test.tsx`
   - Renders with correct ARIA attributes.
-  - `onMouseDown` followed by `mousemove`/`mouseup` calls `onDrag` with `(clientX, rect)` arguments.
+  - `onMouseDown` followed by `mousemove`/`mouseup` calls `onDrag(clientX)` (parent owns the container-rect mapping).
   - `onDoubleClick` calls `onReset`.
   - Arrow keys call `onNudge` with `('small' | 'large')` magnitude.
   - `tab` reaches the splitter (focusable).
@@ -293,9 +318,14 @@ New tests (Vitest + RTL):
 ## Open questions
 
 None. Decisions captured:
-- Collapse unit: **whole sidebar** (user-confirmed).
+- Collapse unit: **whole Cursor Sidebar** (user-confirmed).
 - Collapsed display: **fully removed + small floating handle** (user-confirmed).
 - Entry points: **Toolbar toggle + floating handle** (both, for discoverability).
-- Width range: **240–520px**, default 320px.
-- Persistence scope: **global** (not per-tab).
+- Width range: **240–520px**, default seeded from `--sidebar-w` token (320px at default density).
+- Persistence scope: **global per-user** (single localStorage entry, not per-tab; layout is workspace preference, not part of the tab's selection).
 - Splitter logic location: **extracted to `frontend/src/layout/VerticalSplitter.tsx`** and migrated Capture in the same PR.
+- Persistence ownership: **inside the store** (not component `useEffect`), because three consumers share the state.
+- Collapsed sidebar: **unmounted** (not CSS-hidden), so spot-data fetching stops while collapsed. React Query cache persists across mounts so re-expand is instant from cache.
+- Token vs runtime: **token is default seed, store is runtime-of-record** — see ADR-0022 for the trade-off and why this does not erode ADR-0012.
+- Domain terminology: **Cursor Sidebar** is the canonical name for the three-card panel — added to `CONTEXT.md` (the spec previously used the lowercase, ad-hoc form).
+- Auction Mask relationship: **none** — collapse is a layout-level hide, Auction Mask is a value-level suppression of misleading ratios. Different categories.
