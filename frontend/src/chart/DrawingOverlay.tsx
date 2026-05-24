@@ -1,5 +1,5 @@
 // frontend/src/chart/DrawingOverlay.tsx
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import { nanoid } from 'nanoid';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -8,6 +8,14 @@ import { renderDrawing, type ProjectCtx } from './drawing/render';
 import type { Drawing } from './drawing/types';
 import { PENCIL_MAX_POINTS, HIT_THRESHOLD } from './drawing/types';
 import { distanceToHline, distanceToPolyline, distanceToSegment } from './drawing/hitTest';
+import { resolveTokens } from '../util/tokens';
+
+// Canvas 2D's strokeStyle does NOT resolve CSS `var(--…)` references — it
+// silently falls back to black. Every other canvas overlay in the repo
+// (VolumeProfileOverlay, DayBoundaryOverlay) uses resolveTokens for this
+// reason. We resolve once at mount and reuse the hex for both creation
+// (drawing.color) and rendering.
+const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
 
 type Props = {
   chart: IChartApi;
@@ -29,6 +37,10 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
     s.activeCode == null ? [] : (s.byCode.get(s.activeCode) ?? []),
   );
   const selectedId = useDrawingsStore((s) => s.selectedId);
+
+  // Resolve --accent once per mount; the tokens module is the single source
+  // of truth (CLAUDE.md "Design System") and the canvas needs a literal hex.
+  const accentColor = useMemo(() => resolveTokens(TOKEN_SPEC).accent, []);
 
   // Single rAF redraw coalescer — same pattern as DayBoundaryOverlay.
   useEffect(() => {
@@ -217,7 +229,7 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
         id: nanoid(8),
         kind: 'hline',
         price: typeof price === 'number' ? price : Number(price),
-        color: 'var(--accent, #FFD60A)',
+        color: accentColor,
         width: 1.5,
       });
       return;
@@ -283,14 +295,8 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       }
       return;
     }
-    if (activeTool === 'trendline') {
-      const draft = trendlineDraftRef.current;
-      if (!draft || draft.pointerId !== e.pointerId) return;
-      // Preview painting: store a transient drawing or stash in a ref + force
-      // redraw. Simpler: track in a ref and call a local rerender via state.
-      // For v1 we accept that preview only shows on commit — see follow-up.
-      return;
-    }
+    // Trendline preview-during-drag is a v1 follow-up — for now the line
+    // appears on commit only. No mousemove branch needed.
     if (activeTool === 'pencil') {
       const draft = pencilDraftRef.current;
       if (!draft || draft.pointerId !== e.pointerId) return;
@@ -329,7 +335,7 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
         kind: 'trendline',
         a: draft.a,
         b: data,
-        color: 'var(--accent, #FFD60A)',
+        color: accentColor,
         width: 1.5,
       });
       return;
@@ -344,7 +350,7 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
         id: nanoid(8),
         kind: 'pencil',
         points: draft.points,
-        color: 'var(--accent, #FFD60A)',
+        color: accentColor,
         width: 1.5,
       };
       useDrawingsStore.getState().add(pencil);
@@ -352,16 +358,58 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
     }
   };
 
-  // Pointer events flow to the chart unless a drawing tool is active OR
-  // there are drawings to interact with in select mode.
-  const captureEvents = activeTool !== 'select' || drawings.length > 0;
+  // Pointer-events gating.
+  //
+  // Naive gate `activeTool !== 'select' || drawings.length > 0` re-broke the
+  // pan-lock fix from Task 1: when ANY drawing existed in select mode the
+  // overlay stole every event from the chart canvas underneath, so pan
+  // gestures never reached lightweight-charts.
+  //
+  // Correct gate:
+  //   - Any drawing tool active → capture everything (auto).
+  //   - Select mode → 'none' by default, toggled to 'auto' only while the
+  //     cursor is over a hit-testable drawing. A global mousemove listener
+  //     runs hit-test against the container's coordinate space and flips
+  //     pointerEvents accordingly. Cost: one binary search through drawings
+  //     per mousemove — fine at user-realistic counts (< 50 drawings).
+  //
+  // While dragging in select mode, we MUST keep 'auto' (otherwise the next
+  // mousemove that lands off-drawing would release pointerEvents mid-drag).
+  // setPointerCapture already pins the pointer to this element; the hover
+  // toggle just suspends until pointerup.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (activeTool !== 'select') {
+      container.style.pointerEvents = 'auto';
+      return;
+    }
+    container.style.pointerEvents = 'none';
+    const onHover = (e: MouseEvent) => {
+      if (dragRef.current) return; // mid-drag — leave pointerEvents alone
+      const rect = container.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const hit =
+        px >= 0 && py >= 0 && px <= rect.width && py <= rect.height
+          ? hitTestAt(px, py)
+          : null;
+      container.style.pointerEvents = hit ? 'auto' : 'none';
+    };
+    window.addEventListener('mousemove', onHover);
+    return () => {
+      window.removeEventListener('mousemove', onHover);
+    };
+    // hitTestAt closes over `drawings` / `priceSeries` — re-bind when those
+    // change so the hover hit-test sees the latest list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTool, drawings, priceSeries, axis]);
 
   return (
     <div
       ref={containerRef}
       data-drawing-overlay
       className="absolute inset-0 z-20"
-      style={{ pointerEvents: captureEvents ? 'auto' : 'none' }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

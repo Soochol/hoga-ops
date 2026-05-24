@@ -41,7 +41,7 @@ function drawHaloThenMain(
   if (selected) {
     c.save();
     c.strokeStyle = d.color;
-    c.globalAlpha = 0.45;
+    c.globalAlpha = 0.3;
     c.lineWidth = d.width * 4;
     body();
     c.restore();
