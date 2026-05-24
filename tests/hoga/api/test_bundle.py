@@ -374,3 +374,41 @@ def test_build_range_bundle_404_when_all_dates_excluded():
     assert isinstance(detail, dict)
     assert "excluded" in detail
     assert detail["excluded"][0]["date"] == "20260518"
+
+
+def test_build_range_bundle_excludes_real_5_18_003490_case():
+    """Regression: the literal production payload that motivated ADR-0020 must
+    not appear in segments. Both signals fire together — collection_complete=False
+    AND close_ms=0 — and an earlier priority-ordering bug let this pass through
+    as CLIENT_INCOMPLETE (which build_range_bundle does NOT skip). After the
+    INVALID > CLIENT_INCOMPLETE flip, the date must be excluded."""
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import VolumeProfile
+
+    eng = _engine_with_meta_for_dates(["20260520", "20260518"])
+    # Healthy 5/20 + the exact 5/18/003490 production shape (close=0 AND
+    # collection_complete=False, stagnation_abort).
+    metas = {
+        "20260520": _meta(),
+        "20260518": _meta(close_ms=0, complete=False),
+    }
+    eng.get_meta.side_effect = lambda date, _code: metas[date]
+
+    patches = _patch_slice_builders(bundle_mod) + [
+        patch.object(bundle_mod, "build_volume_profile_range",
+                     return_value=VolumeProfile(bin_count=0, price_min=0,
+                                                price_max=0, bin_width=0, bins=[])),
+    ]
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        rb = build_range_bundle(eng, code="003490",
+                                from_date="20260518", to_date="20260520",
+                                bucket_ms=60_000)
+
+    # 5/18 must be excluded — virtual axis bug repeats otherwise.
+    assert [s.date for s in rb.segments] == ["20260520"]
+    assert len(rb.excluded_dates) == 1
+    assert rb.excluded_dates[0].date == "20260518"

@@ -106,6 +106,39 @@ def test_disk_state_to_status_maps_invalid() -> None:
     assert _disk_state_to_status(DiskState.INVALID) == "invalid"
 
 
+def test_calendar_cell_constructs_with_invalid_status() -> None:
+    """Pydantic Literal must accept 'invalid' — runtime validation passes.
+
+    Regression: if CalendarStatus omitted 'invalid', CalendarCell(status='invalid')
+    would raise ValidationError and the calendar route would 500 for any code
+    with an INVALID-classified date.
+    """
+    from hoga.api.models import CalendarCell
+    cell = CalendarCell(date="20260518", status="invalid",  # type: ignore[arg-type]
+                        captured_at_ms=None)
+    assert cell.status == "invalid"
+
+
+def test_calendar_route_renders_invalid_cell_e2e(monkeypatch, tmp_path):
+    """End-to-end: a parquet dir with INVALID-shaped meta surfaces as
+    {status: 'invalid'} in the calendar response (no 500)."""
+    pq = tmp_path / "parquet" / "20260518" / "005930"
+    pq.mkdir(parents=True)
+    # collection_complete=True so it passes the CLIENT_INCOMPLETE branch;
+    # close_ms=0 trips meta.close_after_open + meta.close_in_kst_range → INVALID.
+    (pq / "meta.json").write_text(json.dumps({
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 0,
+        "collection_complete": True,
+        "is_partial": False,
+    }))
+    app = _build_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        body = c.get("/api/inventory/calendar?code=005930&year=2026&month=5").json()
+        cell = next(c for c in body["cells"] if c["date"] == "20260518")
+        assert cell["status"] == "invalid"
+
+
 @pytest.fixture(autouse=False)
 def _reset_calendar_state():
     calendar_module.reset_cache_for_tests()

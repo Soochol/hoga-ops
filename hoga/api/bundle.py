@@ -394,12 +394,19 @@ def build_range_bundle(
     if not segments:
         # All in-range dates failed invariants — reuse the existing 404 branch
         # with the excluded list in detail so the caller can explain to the user.
+        # FastAPI wraps the dict body as {"detail": <body>}, so use top-level
+        # keys here rather than nesting a second "detail" inside.
         raise HTTPException(404, {
-            "detail": "all Stock-Dates in range excluded by invariants",
+            "reason": "all Stock-Dates in range excluded by invariants",
             "excluded": [e.model_dump() for e in excluded],
         })
 
-    profile_range = build_volume_profile_range(engine, code=code, dates=dates)
+    # The range-wide volume profile must aggregate only the dates we actually
+    # included — using the unfiltered `dates` would pull trades.parquet for
+    # INVALID Stock-Dates whose data is corrupt or incomplete, contaminating
+    # the range-wide histogram or raising a DuckDB read error.
+    included_dates = [s.date for s in segments]
+    profile_range = build_volume_profile_range(engine, code=code, dates=included_dates)
 
     return RangeBundle(
         code=code,

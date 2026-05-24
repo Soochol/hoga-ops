@@ -34,20 +34,23 @@ def classify_from_meta(meta: dict[str, object]) -> DiskState:
     meta.json twice per row.
 
     Priority (ADR-0020):
-      1. ``collection_complete=False`` → CLIENT_INCOMPLETE (root cause —
-         capture didn't finish, anything else downstream is symptom).
-      2. Any ``error``-severity invariant violation → INVALID.
+      1. Any ``error``-severity invariant violation → INVALID. Broken data
+         shape (e.g. ``close_ms=0``) is the most serious finding and trumps
+         everything: it forces eligibility to fresh-capture instead of
+         resuming a corrupted parquet, and it lets ``build_range_bundle``
+         skip the segment regardless of whether collection completed.
+      2. ``collection_complete=False`` → CLIENT_INCOMPLETE. Shape is fine
+         but capture stopped early — resume from the cursor on next run.
       3. ``warn``-severity violations don't change state (surfaced separately).
-      4. Otherwise fall through to is_partial → SOURCE_PARTIAL / COMPLETE.
+      4. Otherwise fall through to ``is_partial`` → SOURCE_PARTIAL / COMPLETE.
+
+    The 5/18/003490 production case (collection_complete=False AND close_ms=0)
+    must reach INVALID — under the previous CLIENT_INCOMPLETE-first ordering
+    it slipped past build_range_bundle's INVALID filter and re-broke the chart.
 
     Legacy meta (pre-foundation) lacks both completeness fields. Conservative
     default is CLIENT_INCOMPLETE so a subsequent capture run will upgrade it.
     """
-    collection_complete = bool(meta.get("collection_complete", False))
-    is_partial = bool(meta.get("is_partial", True))
-    if not collection_complete:
-        return DiskState.CLIENT_INCOMPLETE
-
     # Local import keeps disk_state importable without invariants
     # (parser/cli also depend on disk_state — keep cycle minimal).
     from hoga.api.invariants import Severity, check
@@ -56,6 +59,11 @@ def classify_from_meta(meta: dict[str, object]) -> DiskState:
     if any(v.severity == Severity.error for v in violations):
         return DiskState.INVALID
 
+    collection_complete = bool(meta.get("collection_complete", False))
+    if not collection_complete:
+        return DiskState.CLIENT_INCOMPLETE
+
+    is_partial = bool(meta.get("is_partial", True))
     return DiskState.SOURCE_PARTIAL if is_partial else DiskState.COMPLETE
 
 

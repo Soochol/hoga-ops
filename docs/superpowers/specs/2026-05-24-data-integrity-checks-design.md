@@ -30,7 +30,7 @@
 | 평가 시점 | **매 호출마다 live 평가** (meta dict가 입력) |
 | 과거 데이터 마이그레이션 | 불필요 — live 평가 덕분에 self-healing |
 | `DiskState` 확장 | 새 상태 `INVALID` 한 개 추가 |
-| Classify 우선순위 | `CLIENT_INCOMPLETE` > `INVALID` > `SOURCE_PARTIAL` / `COMPLETE` |
+| Classify 우선순위 | `INVALID` > `CLIENT_INCOMPLETE` > `SOURCE_PARTIAL` / `COMPLETE` |
 | L1 parser hook | meta.json에 `invariant_violations` 필드 archival 기록 (정상이면 필드 없음) |
 | L4 sweep CLI | `hoga validate [--code C] [--severity error\|warn\|all] [--fix]`, read-only by default |
 | MVP 카탈로그 크기 | 5개 (close_after_open, open_in_kst_range, close_in_kst_range, collection_finished, unique_events_ratio) |
@@ -121,7 +121,7 @@ def classify_from_meta(meta: dict[str, object]) -> DiskState:
     return DiskState.SOURCE_PARTIAL if is_partial else DiskState.COMPLETE
 ```
 
-**우선순위 근거**: `CLIENT_INCOMPLETE`가 `INVALID`보다 먼저 — "캡처가 안 끝나서 close=0이 박힌" 케이스는 invariants 평가까지 안 가도 잡힌다. invariants는 "캡처는 끝났는데 데이터가 이상한" 더 미묘한 케이스 전용.
+**우선순위 근거 (수정됨)**: `INVALID`가 `CLIENT_INCOMPLETE`보다 먼저. 초기 설계에서는 "캡처가 안 끝나서 close=0이 박힌" 케이스를 `CLIENT_INCOMPLETE`로 두려 했지만, 그러면 `build_range_bundle`의 `INVALID` 필터가 이 케이스를 통과시켜 차트 충돌이 그대로 재발한다 (5/18/003490 production 케이스가 정확히 이 모양 — `collection_complete=False AND close_ms=0`). 깨진 모양은 incompleteness보다 더 근본적이므로 우선 라우팅: bundle은 segment에서 제외, eligibility는 resume=False (corrupted parquet 신뢰 안 하고 처음부터 fresh capture).
 
 ### 4.4 Read-path 통합
 
@@ -231,7 +231,7 @@ def validate(
 | 계층 | 위치 | 케이스 |
 |---|---|---|
 | **단위** | `tests/hoga/api/test_invariants.py` (신규) | 5개 invariant × {정상, 위반} = 10 케이스 + `check()`의 정상/위반 집계. meta dict 인라인 fixture, 외부 의존 0. |
-| **DiskState 통합** | `tests/hoga/api/test_disk_state.py`에 추가 | `INVALID` 새 분기 진입 + 우선순위 (`CLIENT_INCOMPLETE` > `INVALID`) + warn이 DiskState에 영향 없음 |
+| **DiskState 통합** | `tests/hoga/api/test_disk_state.py`에 추가 | `INVALID` 새 분기 진입 + 우선순위 (`INVALID` > `CLIENT_INCOMPLETE`) + warn이 DiskState에 영향 없음 |
 | **Bundle E2E** | `tests/test_api_range.py`에 추가 | 깨진 meta 1 + 정상 meta 2 fixture → bundle에서 깨진 게 제외되고 `excluded_dates` surfacing. warn-only fixture → 포함되되 `data_warnings` 채워짐. 전부 invalid → 404. |
 | **CLI** | `tests/test_cli.py`에 추가 | `hoga validate` 호출 → 깨진 dir 보고. `--fix` 멱등성. `--code` 필터. |
 | **Regression** | 위 모든 계층에 5/18 003490 실제 meta dict를 fixture로 박음 | 미래에 누가 카탈로그를 만지더라도 이 케이스가 깨지면 CI 즉시 실패 |

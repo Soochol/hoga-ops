@@ -19,6 +19,8 @@
 
 3. **DiskState 확장이지 새 분류 시스템이 아니다.** `INVALID` 한 값 추가, `classify_from_meta`에 한 분기 추가. eligibility/calendar 등 기존 DiskState 소비자가 자동으로 새 상태를 인식하게 됨. ADR-0007의 single-source-of-truth 원칙 유지.
 
+3a. **Classify 우선순위는 `INVALID` > `CLIENT_INCOMPLETE`.** 초안에서는 "캡처 미완료가 더 근본"이라는 직관으로 `CLIENT_INCOMPLETE`를 먼저 두려 했으나, 그러면 5/18/003490 production 케이스(`collection_complete=False AND close_ms=0`)가 `CLIENT_INCOMPLETE`로 라우팅되고 `build_range_bundle`의 `INVALID` 필터를 통과하면서 차트 충돌이 동일하게 재발한다. 깨진 모양은 incompleteness보다 더 위험한 신호이므로 우선 분기: bundle은 제외, eligibility는 resume=False (corrupted parquet를 신뢰하지 않고 처음부터 fresh capture).
+
 4. **매 호출 live 평가 (vs cached archival 우선).** 카탈로그가 업데이트되면 archival 필드는 stale — self-healing 원칙. L1 parser hook이 `meta.json`에 `invariant_violations` 필드를 박지만 이는 archival/추적용일 뿐이고, 어떤 read-path도 그 필드를 우선 신뢰하지 않는다. 측정 결과 calendar 등에서 성능 문제 발견 시 그때 catalog-hash 기반 캐싱 도입 (premature optimization 회피).
 
 5. **error 자동 제외 + 응답 메타 기록, warn 포함하되 surfacing.** 두 단계 severity로 분리. error는 데이터 형태 자체가 깨진 경우 (예: `close < open`) → segment 조립 불가. warn은 데이터 모양은 맞지만 신뢰도 낮음 (예: `collection_complete=false`) → 포함하되 사용자에게 경고. UI는 `RangeBundle.excluded_dates` / `data_warnings`로 두 신호를 모두 받음.

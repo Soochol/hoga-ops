@@ -186,12 +186,29 @@ def test_classify_returns_invalid_when_meta_has_error_violation() -> None:
     assert classify_from_meta(meta) == DiskState.INVALID
 
 
-def test_classify_prefers_client_incomplete_over_invalid() -> None:
-    """If both apply, CLIENT_INCOMPLETE wins (capture didn't finish — root cause)."""
+def test_classify_prefers_invalid_over_client_incomplete() -> None:
+    """If both apply, INVALID wins — broken data shape is more serious than
+    mere incompleteness. The real 5/18/003490 case (collection_complete=False
+    AND close_ms=0) must classify INVALID, not CLIENT_INCOMPLETE — otherwise
+    build_range_bundle's INVALID filter misses it and the chart still crashes.
+    Eligibility also routes INVALID to fresh-capture (resume=False), which is
+    the correct recovery for upstream-corrupted artifacts."""
     meta = {
         "regular_session_open_ms": 90_000_000,
-        "regular_session_close_ms": 0,    # would be error
-        "collection_complete": False,      # CLIENT_INCOMPLETE
+        "regular_session_close_ms": 0,    # error: close_after_open + close_in_kst_range
+        "collection_complete": False,      # would be CLIENT_INCOMPLETE under old priority
+        "is_partial": True,
+    }
+    assert classify_from_meta(meta) == DiskState.INVALID
+
+
+def test_classify_client_incomplete_when_only_completeness_bit_false() -> None:
+    """Healthy bounds but capture aborted early → CLIENT_INCOMPLETE (resume
+    path). This is the case the original priority was protecting."""
+    meta = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": False,
         "is_partial": True,
     }
     assert classify_from_meta(meta) == DiskState.CLIENT_INCOMPLETE

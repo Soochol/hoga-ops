@@ -60,3 +60,9 @@ npm run dev                   # serves http://localhost:5173
 
 A fresh worktree starts with empty `node_modules`; if `vite: not found` appears, run
 `npm install` once. Do not add `--host` unless you intentionally want LAN exposure.
+
+**VS Code task runner** — `.vscode/tasks.json` exposes three labels: `Backend: dev (hot
+reload)`, `Frontend: dev (HMR)`, and the compound `Dev: backend + frontend` (parallel).
+Run via `Tasks: Run Task` (⇧⌘P) or the Task Runner side panel; each task gets a dedicated
+terminal in the `dev` group, and the background `problemMatcher`s settle once uvicorn
+prints `Application startup complete.` and Vite prints `ready in`.
