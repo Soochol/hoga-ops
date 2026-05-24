@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTabsStore } from '../state/tabs';
 import { useToolbarDraftStore } from '../state/toolbarDraft';
+import { useReplayLayoutStore } from '../state/replayLayout';
 import StockCombobox from './StockCombobox';
 import DateRangePicker from './DateRangePicker';
 import TimeframeSelector from './TimeframeSelector';
@@ -51,6 +52,9 @@ export default function Toolbar() {
   const ready = !!(draft.code && draft.from && draft.to && draft.timeframe);
   const loaded = active.status === 'loaded';
 
+  const sidebarCollapsed = useReplayLayoutStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = () => useReplayLayoutStore.getState().toggleSidebar();
+
   const onLoad = () => {
     if (!ready) return;
     const dFrom = new Date(
@@ -92,6 +96,17 @@ export default function Toolbar() {
       </button>
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <span className="flex-1" />
+      <button
+        type="button"
+        onClick={toggleSidebar}
+        aria-label={sidebarCollapsed ? '사이드바 보이기' : '사이드바 숨기기'}
+        aria-expanded={!sidebarCollapsed}
+        aria-controls="replay-sidebar"
+        title={sidebarCollapsed ? '사이드바 보이기' : '사이드바 숨기기'}
+        className="px-3 py-1.5 text-sm bg-bg-card text-fg-dim hover:text-fg border border-border rounded font-mono"
+      >
+        {sidebarCollapsed ? '◀' : '▶'}
+      </button>
       {rangeError && <span className="text-error text-sm ml-2">{rangeError}</span>}
       <button
         disabled={!ready}

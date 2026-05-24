@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import Toolbar from './Toolbar';
 import { useTabsStore } from '../state/tabs';
 import { useToolbarDraftStore } from '../state/toolbarDraft';
+import { useReplayLayoutStore } from '../state/replayLayout';
 
 function makeClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -81,5 +82,36 @@ describe('Toolbar — Timeframe + 90-day validation', () => {
     expect(screen.getByText(/최대 90일/)).toBeInTheDocument();
     const sel = useTabsStore.getState().tabs.find((t) => t.id === id)!.selection;
     expect(sel).toBeNull();
+  });
+});
+
+describe('Toolbar — sidebar toggle', () => {
+  beforeEach(() => {
+    useReplayLayoutStore.getState().__resetForTests();
+    useTabsStore.getState().reset?.();
+  });
+
+  it('shows the hide label and aria-expanded=true when sidebar is visible', () => {
+    renderToolbar();
+    const btn = screen.getByRole('button', { name: '사이드바 숨기기' });
+    expect(btn).toHaveAttribute('aria-expanded', 'true');
+    expect(btn).toHaveAttribute('aria-controls', 'replay-sidebar');
+  });
+
+  it('shows the show label and aria-expanded=false when sidebar is collapsed', () => {
+    useReplayLayoutStore.getState().setSidebarCollapsed(true);
+    renderToolbar();
+    const btn = screen.getByRole('button', { name: '사이드바 보이기' });
+    expect(btn).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('clicking the toggle flips the store', () => {
+    renderToolbar();
+    const btn = screen.getByRole('button', { name: '사이드바 숨기기' });
+    fireEvent.click(btn);
+    expect(useReplayLayoutStore.getState().sidebarCollapsed).toBe(true);
+    // After collapse, the same button rerenders with the new label
+    fireEvent.click(screen.getByRole('button', { name: '사이드바 보이기' }));
+    expect(useReplayLayoutStore.getState().sidebarCollapsed).toBe(false);
   });
 });
