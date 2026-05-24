@@ -297,8 +297,14 @@ class Invariant:
 # 04:00 = 40_000_000, 12:00 = 120_000_000, 18:00 = 180_000_000
 
 def _meta_close_after_open(m: dict) -> Violation | None:
-    open_ms = m.get("regular_session_open_ms", 0)
-    close_ms = m.get("regular_session_close_ms", 0)
+    # Key-presence semantics: skip when either bound is absent (legacy meta
+    # has nothing to compare). Fire only when both are present and the relation
+    # is wrong (e.g. upstream stagnation that returned close_ms=0 for a real
+    # session — explicit 0 vs missing key are different signals).
+    if "regular_session_open_ms" not in m or "regular_session_close_ms" not in m:
+        return None
+    open_ms = m["regular_session_open_ms"]
+    close_ms = m["regular_session_close_ms"]
     if close_ms > open_ms:
         return None
     return Violation(
@@ -310,7 +316,9 @@ def _meta_close_after_open(m: dict) -> Violation | None:
 
 
 def _meta_open_in_kst_range(m: dict) -> Violation | None:
-    open_ms = m.get("regular_session_open_ms", 0)
+    if "regular_session_open_ms" not in m:
+        return None
+    open_ms = m["regular_session_open_ms"]
     if 40_000_000 <= open_ms <= 120_000_000:
         return None
     return Violation(
@@ -322,7 +330,9 @@ def _meta_open_in_kst_range(m: dict) -> Violation | None:
 
 
 def _meta_close_in_kst_range(m: dict) -> Violation | None:
-    close_ms = m.get("regular_session_close_ms", 0)
+    if "regular_session_close_ms" not in m:
+        return None
+    close_ms = m["regular_session_close_ms"]
     if 120_000_000 <= close_ms <= 180_000_000:
         return None
     return Violation(

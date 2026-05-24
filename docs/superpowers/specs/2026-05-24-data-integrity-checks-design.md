@@ -90,7 +90,9 @@ def check(meta: dict) -> list[Violation]:
     return [v for inv in INVARIANTS if (v := inv.check(meta)) is not None]
 ```
 
-**시그니처 의도적 좁힘**: `Callable[[dict], Violation | None]`는 MVP가 meta-level만 다루기 때문. series-level invariants (candles 단조성, snapshot 갭) 추가 시 새 시그니처 (`Callable[[StockDateArtifacts], list[Violation]]` 등)를 도입하고 카탈로그를 type별로 분할할 가능성 — 본 PR은 그 자리만 비워 둠 (§9 follow-up). 모든 invariant는 missing key를 `.get(key, default)` 패턴으로 흡수 → 레거시 meta는 자연스레 통과(통과 = 위반 없음, error 아님).
+**시그니처 의도적 좁힘**: `Callable[[dict], Violation | None]`는 MVP가 meta-level만 다루기 때문. series-level invariants (candles 단조성, snapshot 갭) 추가 시 새 시그니처 (`Callable[[StockDateArtifacts], list[Violation]]` 등)를 도입하고 카탈로그를 type별로 분할할 가능성 — 본 PR은 그 자리만 비워 둠 (§9 follow-up).
+
+**Key-presence semantics**: 각 invariant는 자신이 검사하는 key가 meta dict에 **존재할 때만** 평가한다 (`if key not in m: return None`). 키 부재는 "검증할 게 없음" = skip이고, 키가 명시적으로 박혀 있는데 값이 잘못된 경우만 fire한다 (예: 5/18 case는 upstream이 명시적으로 `regular_session_close_ms: 0`을 박았으므로 fire). `.get(key, 0)` 식 fallback은 사용하지 않는다 — 그러면 키 부재와 "값=0" 두 케이스가 합쳐져서 레거시 meta까지 INVALID로 잘못 분류된다.
 
 ### 4.3 DiskState 확장
 

@@ -156,6 +156,29 @@ def test_legacy_meta_without_optional_keys_does_not_error() -> None:
     assert "collection.unique_events_ratio" not in ids
 
 
+def test_meta_without_session_keys_does_not_fire_kst_range_invariants() -> None:
+    """Key-presence semantics: missing key → invariant skips (legacy meta is silent).
+
+    Old test fixtures across the codebase write meta.json with only
+    {collection_complete, is_partial} and no session bounds. Those must
+    classify based on collection_complete alone — the range invariants
+    must not fire (otherwise classify_from_meta returns INVALID and breaks
+    every consumer's test fixture).
+    """
+    minimal = {"collection_complete": True, "is_partial": False}
+    violations = check(minimal)
+    ids = {v.invariant_id for v in violations}
+    # Range invariants have no key to check — they must not fire.
+    assert "meta.open_in_kst_range" not in ids
+    assert "meta.close_in_kst_range" not in ids
+    # close_after_open also needs both keys present — must not fire.
+    assert "meta.close_after_open" not in ids
+    # collection_complete is True → collection.finished does not fire either.
+    assert "collection.finished" not in ids
+    # The minimal meta is fully clean.
+    assert violations == []
+
+
 # --- Regression fixture: real 5/18 003490 meta on disk ---
 
 def test_real_20260518_003490_fires_expected_invariants() -> None:
