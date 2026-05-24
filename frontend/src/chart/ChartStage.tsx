@@ -21,6 +21,7 @@ import { PANE_SPECS, PANE_STRETCH } from './paneSpecs';
 import { MOVING_AVERAGE_SPEC } from './projectors/movingAverage';
 import VolumeProfileOverlay from './VolumeProfileOverlay';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
+import AuctionWindowOverlay from './AuctionWindowOverlay';
 import { ChartPrefsProvider } from './ChartPrefsContext';
 
 const CHART_TOKEN_SPEC = {
@@ -334,6 +335,11 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
             chart crosshair interaction.
           */}
           <DayBoundaryOverlay chart={chart} axis={axis} />
+          {/* Closing Auction Window shading (B1). Visible only when the
+              auctionWindowMask toggle is on, giving analysts a cue that
+              the RatioPane's zeroing during 15:20–15:30 KST is masking,
+              not real "no pressure" data. */}
+          <AuctionWindowOverlay chart={chart} axis={axis} />
         </ChartPrefsProvider>
       )}
     </div>

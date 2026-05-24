@@ -65,6 +65,11 @@
   --tint-error:      rgba(244, 63, 94, 0.10);
   --tint-price-up:   rgba(220, 38, 38, 0.10);  /* DC2626 @ 10% */
   --tint-price-down: rgba(37, 99, 235, 0.10);  /* 2563EB @ 10% */
+  /* Closing Auction Window shading. Drawn behind chart panes by
+     AuctionWindowOverlay so analysts can distinguish a "flat 0" tick
+     from a "masked to 0" tick on RatioPane. Kept very subtle so it
+     doesn't compete with actual data series. */
+  --tint-auction-window: rgba(245, 158, 11, 0.08);  /* warn @ 8% */
 
   /* BEGIN AUTO-GENERATED (size + radius + layout) — regenerate via npm run gen:tokens */
   /* ───── Typography sizes (rem-based) ───── */

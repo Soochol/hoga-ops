@@ -27,6 +27,10 @@ vi.mock('lightweight-charts', async () => {
         setVisibleLogicalRange: vi.fn(),
         applyOptions: vi.fn(),
         options: vi.fn().mockReturnValue({ barSpacing: 6 }),
+        // AuctionWindowOverlay / DayBoundaryOverlay both call timeToCoordinate
+        // during render. Return null so the overlays render an empty band set
+        // — they're not under test here.
+        timeToCoordinate: vi.fn().mockReturnValue(null),
       };
       const chart = {
         timeScale: vi.fn().mockReturnValue(ts),
@@ -107,6 +111,17 @@ describe('ChartStage — fitContent + zoom clamps (17b)', () => {
     expect(lastCreated.ts.subscribeVisibleLogicalRangeChange).toHaveBeenCalled();
   });
 
+  // ChartStage and the overlay components (DayBoundaryOverlay,
+  // AuctionWindowOverlay) all subscribe to visible-logical-range changes.
+  // React effect order is children-first, so mock.calls[0] is an overlay's
+  // schedule callback. Fire every handler so the clamp logic in ChartStage's
+  // own subscription runs regardless of ordering.
+  const fireAllRangeHandlers = (range: { from: number; to: number }) => {
+    for (const call of lastCreated.ts.subscribeVisibleLogicalRangeChange.mock.calls) {
+      call[0](range);
+    }
+  };
+
   it('clamps logical range when len > totalBars (zoom-out cap)', () => {
     const totalBars = 50;
     render(
@@ -117,8 +132,7 @@ describe('ChartStage — fitContent + zoom clamps (17b)', () => {
         ])}
       />,
     );
-    const handler = lastCreated.ts.subscribeVisibleLogicalRangeChange.mock.calls[0][0];
-    handler({ from: -10, to: 100 }); // len = 110 > 50
+    fireAllRangeHandlers({ from: -10, to: 100 }); // len = 110 > 50
     expect(lastCreated.ts.setVisibleLogicalRange).toHaveBeenCalledWith({ from: 0, to: totalBars });
   });
 
@@ -134,8 +148,7 @@ describe('ChartStage — fitContent + zoom clamps (17b)', () => {
     );
     // Override the options mock so barSpacing reports >50 for this assertion.
     lastCreated.ts.options.mockReturnValue({ barSpacing: 80 });
-    const handler = lastCreated.ts.subscribeVisibleLogicalRangeChange.mock.calls[0][0];
-    handler({ from: 10, to: 20 }); // len = 10 ≤ 100, falls through to bs check
+    fireAllRangeHandlers({ from: 10, to: 20 }); // len = 10 ≤ 100, falls through to bs check
     expect(lastCreated.ts.applyOptions).toHaveBeenCalledWith({ barSpacing: 50 });
   });
 });
