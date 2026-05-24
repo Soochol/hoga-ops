@@ -68,7 +68,7 @@ class QueryEngine:
                 # snapshots.ts_ms is stored as HHMMSSmmm (per existing tests
                 # asserting e.g. ts_ms == 90010435). Convert to Unix ms here.
                 bounds = (
-                    snapshots.query_time_bounds(self._conn, path=snap_path)
+                    snapshots.query_time_bounds(self.conn, path=snap_path)
                     if snap_path.exists()
                     else None
                 )
@@ -84,7 +84,7 @@ class QueryEngine:
                 # Price range + total volume from candles.parquet.
                 candles_path = code_dir / "candles.parquet"
                 if candles_path.exists():
-                    row = self._conn.execute(
+                    row = self.conn.execute(
                         "SELECT MIN(low), MAX(high), "
                         "COALESCE(SUM(CAST(vol_a AS BIGINT) + CAST(vol_b AS BIGINT)), 0) "
                         "FROM read_parquet(?)",
