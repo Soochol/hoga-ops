@@ -4,7 +4,7 @@ import type { IChartApi } from 'lightweight-charts';
 import type { RangeBundle, VolumeProfile, VolumeProfileBin } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
-import { useChartPrefs } from './ChartPrefsContext';
+import { useActivePrefs } from '../state/chartPrefs';
 
 const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
 
@@ -54,7 +54,7 @@ export default function VolumeProfileOverlay({
   valueAreaFrac = 0.7,
   paneIndex,
 }: Props) {
-  const { volumeProfileMode: mode } = useChartPrefs();
+  const mode = useActivePrefs((p) => p.volumeProfileMode);
   const ref = useRef<HTMLCanvasElement>(null);
   // Resolve target pane element (portal the canvas into the specific pane's
   // DOM via chart.panes()[paneIndex].getHTMLElement() so the overlay aligns
