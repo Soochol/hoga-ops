@@ -169,3 +169,67 @@ def query_at(con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int) -> Broker
         for r in rows
     ]
     return BrokersAt(ts_ms=ts_ms_value, entries=entries)
+
+
+def query_day_series(
+    con: duckdb.DuckDBPyConnection, *, path: Path
+) -> list["BrokerSeriesEntry"]:
+    """Per-broker signed-net trajectories for the whole parquet file.
+
+    Aggregates qty_today * sign(side) per (broker, ts_ms) so a broker on
+    both sides at the same snapshot collapses to one signed value, then
+    groups in Python into one BrokerSeriesEntry per broker. Returns at most
+    10 entries sorted by abs(final_net) desc, final_net desc.
+
+    `points` contains only observed snapshots — no synthetic forward-fill
+    for gaps when the broker fell out of both top-5 lists (the frontend
+    renders such gaps with a dashed line; see ADR-0023).
+    """
+    from hoga.api.models import BrokerSeriesEntry, BrokerSeriesPoint  # local: avoid cycle
+
+    rows = con.execute(
+        """
+        WITH per_snapshot AS (
+            SELECT
+                broker,
+                ts_ms,
+                SUM(CASE WHEN side = 'buy' THEN qty_today ELSE -qty_today END) AS net
+            FROM read_parquet(?)
+            GROUP BY broker, ts_ms
+        )
+        SELECT
+            broker,
+            ts_ms,
+            net,
+            LAST_VALUE(net) OVER (
+                PARTITION BY broker
+                ORDER BY ts_ms
+                ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+            ) AS final_net
+        FROM per_snapshot
+        ORDER BY broker, ts_ms
+        """,
+        [str(path)],
+    ).fetchall()
+
+    if not rows:
+        return []
+
+    # Group rows by broker (rows are already broker-major then ts-ascending).
+    by_broker: dict[str, tuple[int, list[BrokerSeriesPoint]]] = {}
+    for broker, ts_ms, net, final_net in rows:
+        if broker not in by_broker:
+            by_broker[broker] = (int(final_net), [])
+        by_broker[broker][1].append(BrokerSeriesPoint(ts_ms=int(ts_ms), net=int(net)))
+
+    entries = [
+        BrokerSeriesEntry(
+            broker=broker,
+            final_net=final_net,
+            dominant_side="buy" if final_net >= 0 else "sell",
+            points=points,
+        )
+        for broker, (final_net, points) in by_broker.items()
+    ]
+    entries.sort(key=lambda e: (-abs(e.final_net), -e.final_net))
+    return entries[:10]
