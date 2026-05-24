@@ -18,7 +18,7 @@ import type { IChartApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useDrawingsStore } from '../state/drawings';
 import { renderDrawing, type ProjectCtx } from './drawing/render';
-import type { Drawing } from './drawing/types';
+import type { Drawing, PaneId } from './drawing/types';
 import { HIT_THRESHOLD } from './drawing/types';
 import { distanceToHline, distanceToPolyline, distanceToSegment } from './drawing/hitTest';
 import {
@@ -188,11 +188,17 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
   // Coordinate helpers — thin closures over the chartCoordinates module so
   // the rest of the file (and the ToolCtx exposed to tools) doesn't have to
   // thread chart/axis/paneSeries through every call site.
-  // Task 8 will dispatch on the real cursor pane; for now hard-code 'candle'.
-  const pixelToData = (px: number, py: number) =>
+  // Task 8 will replace these candle-fixed paths with real pane dispatch;
+  // for now we expose the new paneId-aware signatures verbatim so Task 6's
+  // ToolCtx still type-checks, and ignore the paneId in the candle fallback.
+  const pixelToData = (px: number, py: number, _paneId: PaneId) =>
     projPixelToData(chart, axis, paneSeries, 'candle', px, py);
   const realMsToCanvasX = (realMs: number) => projRealMsToCanvasX(chart, axis, realMs);
-  const priceToCanvasY = (price: number) => projPriceToCanvasY(paneSeries, 'candle', price);
+  const priceToCanvasY = (price: number, _paneId: PaneId) =>
+    projPriceToCanvasY(paneSeries, 'candle', price);
+  // Task 8 will replace these with real cursor-pane resolution.
+  const paneIdAtY = (_py: number): PaneId => 'candle';
+  const clampYToPane = (_paneId: PaneId, py: number) => py;
 
   const hitTestAt = (px: number, py: number): Drawing | null => {
     // Mirror the render-side clip: a cursor outside pane 0 (e.g. over the
@@ -203,13 +209,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
     for (let i = drawings.length - 1; i >= 0; i--) {
       const d = drawings[i];
       if (d.kind === 'hline') {
-        const y = priceToCanvasY(d.price);
+        const y = priceToCanvasY(d.price, d.paneId);
         if (y != null && distanceToHline({ x: px, y: py }, y) <= HIT_THRESHOLD.hline) return d;
       } else if (d.kind === 'trendline') {
         const xa = realMsToCanvasX(d.a.realMs);
-        const ya = priceToCanvasY(d.a.price);
+        const ya = priceToCanvasY(d.a.price, d.paneId);
         const xb = realMsToCanvasX(d.b.realMs);
-        const yb = priceToCanvasY(d.b.price);
+        const yb = priceToCanvasY(d.b.price, d.paneId);
         if (xa != null && ya != null && xb != null && yb != null &&
             distanceToSegment({ x: px, y: py }, { x: xa, y: ya }, { x: xb, y: yb }) <= HIT_THRESHOLD.trendlineBody) {
           return d;
@@ -218,7 +224,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
         const poly: { x: number; y: number }[] = [];
         for (const pt of d.points) {
           const x = realMsToCanvasX(pt.realMs);
-          const y = priceToCanvasY(pt.price);
+          const y = priceToCanvasY(pt.price, d.paneId);
           if (x != null && y != null) poly.push({ x, y });
         }
         if (distanceToPolyline({ x: px, y: py }, poly) <= HIT_THRESHOLD.pencil) return d;
@@ -241,6 +247,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
       realMsToCanvasX,
       priceToCanvasY,
       hitTestAt,
+      paneIdAtY,
+      clampYToPane,
       drawings,
       selectedId,
       accentColor,
