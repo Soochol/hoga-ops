@@ -426,3 +426,27 @@ class RangeBundle(BaseModel):
     volume_profile_by_day: list[VolumeProfile]
     excluded_dates: list[ExcludedDate] = []
     data_warnings: list[DateWarning] = []
+
+
+# === Broker Day-Trajectory (ADR-0023) ===
+# Day-scope series shipped by GET /api/brokers/series. The point's `net` is
+# already signed by side at the producer (buy = +, sell = −) so the frontend
+# does not re-aggregate; matches the legacy BrokerNetTable.computeNet sign
+# convention. dominant_side mirrors sign(final_net) as a Literal so the
+# frontend can color the row without recomputing.
+
+class BrokerSeriesPoint(BaseModel):
+    ts_ms: int
+    net: int
+
+
+class BrokerSeriesEntry(BaseModel):
+    broker: str
+    final_net: int
+    dominant_side: Literal["buy", "sell"]
+    points: list[BrokerSeriesPoint]
+
+
+class BrokerSeriesResponse(BaseModel):
+    date: str
+    brokers: list[BrokerSeriesEntry]
