@@ -134,7 +134,12 @@ useEffect(() => {
   const container = containerRef.current;
   if (!chart || !container) return;
   const ts = chart.timeScale();
-  const maxTo = bundle ? bundle.candles.length - 1 : Number.POSITIVE_INFINITY;
+  // `candles.length === 0` would yield maxTo=-1 and clamp every wheel event
+  // to a degenerate range — guard against the brief empty-bundle window.
+  const maxTo =
+    bundle && bundle.candles.length > 0
+      ? bundle.candles.length - 1
+      : Number.POSITIVE_INFINITY;
 
   const onWheel = (e: WheelEvent) => {
     const range = ts.getVisibleLogicalRange();
@@ -165,6 +170,10 @@ Re-attaching the listener when `bundle` changes is cheap (one `addEventListener`
 - `barSpacing > 50` zoom-in cap at [ChartStage.tsx:296-304](frontend/src/chart/ChartStage.tsx#L296-L304): unaffected. Our wall only constrains `to` rightward; bar-width caps still trigger through `subscribeVisibleLogicalRangeChange`.
 - `minBarSpacing` zoom-out floor at [ChartStage.tsx:278](frontend/src/chart/ChartStage.tsx#L278): unaffected. The bar-width floor and the data-position wall constrain orthogonal quantities; they can compose.
 - Initial `fitContent()` + `rightOffset = 15`: unaffected. Initial state has `to ≈ lastBarIndex + 15`. The wall is silent until the first ctrl-out or shift-pan-right, at which point `to` snaps to `lastBarIndex`.
+
+### Cursor side-effect at the wall
+
+When the first ctrl/shift event snaps `to` from `lastBarIndex + 15` to `lastBarIndex`, the viewport publisher republishes the new right edge and PriceStrip writes it to the active **Replay Tab**'s `cursorMs` — _only if no hover-driven crosshair update is active_. In practice the user is almost always hovering the chart while turning the wheel, so the crosshair handler at [ChartStage.tsx:203-212](frontend/src/chart/ChartStage.tsx#L203-L212) owns Cursor and the snap is invisible to the **Cursor Sidebar**. The no-hover case (e.g., user clicks elsewhere then triggers wheel from a hotkey/macro) would jump Cursor backward by ~15 bar buckets — acceptable and consistent with how PriceStrip already handles right-edge changes.
 
 ### What about plain wheel and shift-pan-left?
 
