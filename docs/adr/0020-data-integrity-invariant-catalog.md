@@ -1,6 +1,6 @@
 # 0020 — Data Integrity Checks: 선언적 Invariant 카탈로그 + DiskState 확장
 
-**Status:** proposed (2026-05-24) — pending implementation of `docs/superpowers/specs/2026-05-24-data-integrity-checks-design.md`
+**Status:** accepted (2026-05-24) — implemented per `docs/superpowers/specs/2026-05-24-data-integrity-checks-design.md`
 
 **Related:**
 - ADR-0007 — disk_state 모듈 추출 (단일 분류 책임). 본 ADR이 그 분류기의 *입력 단계*로 invariants를 더한다.

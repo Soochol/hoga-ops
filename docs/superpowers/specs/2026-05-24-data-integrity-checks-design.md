@@ -1,6 +1,6 @@
 # Data Integrity Checks — 선언적 invariant 카탈로그
 
-**Status:** draft (2026-05-24)
+**Status:** implemented (2026-05-24)
 
 ## 1. Goal
 
