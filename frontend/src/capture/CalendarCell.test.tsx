@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { CalendarCell } from './CalendarCell';
 import type { CalendarStatus } from '../api/types';
 
@@ -83,5 +83,27 @@ describe('CalendarCell', () => {
     expect(container.querySelector('button')!.getAttribute('title')).toMatch(/18:00/);
     rerender(<CalendarCell {...baseProps} status="source_partial" />);
     expect(container.querySelector('button')!.getAttribute('title')).toMatch(/partial/i);
+  });
+});
+
+describe('CalendarCell (no_upstream_data)', () => {
+  it("renders the '–' marker", () => {
+    render(<CalendarCell date="20260319" status="no_upstream_data" />);
+    expect(screen.getByText('–')).toBeTruthy();
+  });
+
+  it("is clickable (not disabled)", () => {
+    const onClick = vi.fn();
+    render(<CalendarCell date="20260319" status="no_upstream_data" onClick={onClick} />);
+    const btn = screen.getByTestId('calendar-cell-20260319');
+    expect((btn as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(onClick).toHaveBeenCalledWith('20260319');
+  });
+
+  it("shows the 'no upstream data (force to retry)' tooltip", () => {
+    render(<CalendarCell date="20260319" status="no_upstream_data" />);
+    const btn = screen.getByTestId('calendar-cell-20260319');
+    expect(btn.getAttribute('title')).toBe('20260319 · no upstream data (force to retry)');
   });
 });

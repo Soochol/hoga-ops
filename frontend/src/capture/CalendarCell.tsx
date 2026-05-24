@@ -10,6 +10,7 @@ const STATUS_BADGE_COLOR: Partial<Record<CalendarStatus, string>> = {
   complete: 'var(--success)',
   source_partial: 'var(--warn)',
   client_incomplete: 'var(--error)',
+  no_upstream_data: 'var(--fg-dimmer)',   // ADR-0021 — gray, signals absence
 };
 
 export interface CalendarCellProps {
@@ -32,6 +33,7 @@ function tooltipFor(status: CalendarStatus, date: string): string {
     case 'complete': return `${date} · captured (complete)`;
     case 'source_partial': return `${date} · captured (source partial — data gaps)`;
     case 'client_incomplete': return `${date} · partial pages on disk (resume on capture)`;
+    case 'no_upstream_data': return `${date} · no upstream data (force to retry)`;
     case 'none': default: return date;
   }
 }
@@ -45,6 +47,7 @@ export function CalendarCell({ date, status, selected = false, inRange = false, 
   const baseColor: string =
     status === 'weekend' || status === 'holiday' || status === 'future' ? 'var(--fg-dimmer)'
     : status === 'today_locked' ? 'var(--fg-dim)'
+    : status === 'no_upstream_data' ? 'var(--fg-dim)'
     : 'var(--fg)';
 
   let background: string = 'transparent';
