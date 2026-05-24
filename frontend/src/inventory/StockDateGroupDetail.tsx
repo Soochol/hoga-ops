@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { StockDate } from '../api/types';
 import { useTabsStore } from '../state/tabs';
 import { useStockDateGroups } from './useStockDateGroups';
 import { fmtDate, fmtTime, fmtSize, fmtOHLC, fmtVolume } from './format';
 import { DiskStateBadge } from './DiskStateBadge';
+import { sortDates, nextSortState, type SortKey, type SortState } from './sortDates';
 
 type Props = {
   rows: StockDate[];
@@ -18,6 +19,12 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
     if (selectedCode === null) return null;
     return groups.find(g => g.code === selectedCode) ?? groups[0] ?? null;
   }, [groups, selectedCode]);
+
+  const [sort, setSort] = useState<SortState>(null);
+  const sortedDates = useMemo(
+    () => (group ? sortDates(group.dates, sort) : []),
+    [group, sort],
+  );
 
   if (group === null) {
     return (
@@ -40,6 +47,8 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
     navigate('/replay');
   };
 
+  const onSort = (column: SortKey) => setSort(prev => nextSortState(prev, column));
+
   return (
     <section className="bg-bg-card border rounded-lg flex flex-col min-h-0 overflow-hidden">
       <header className="px-4 py-3 border-b flex items-baseline justify-between">
@@ -55,17 +64,17 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
         <table className="w-full border-collapse font-mono text-sm tabular-nums">
           <thead className="bg-bg-subtle sticky top-0">
             <tr>
-              <Th>State</Th>
-              <Th>Date</Th>
-              <Th>Captured</Th>
-              <Th right>Volume</Th>
-              <Th right>Pages</Th>
-              <Th right>Size</Th>
-              <Th right>OHLC</Th>
+              <SortableTh column="state"    sort={sort} onSort={onSort}>State</SortableTh>
+              <SortableTh column="date"     sort={sort} onSort={onSort}>Date</SortableTh>
+              <SortableTh column="captured" sort={sort} onSort={onSort}>Captured</SortableTh>
+              <SortableTh column="volume"   sort={sort} onSort={onSort} right>Volume</SortableTh>
+              <SortableTh column="pages"    sort={sort} onSort={onSort} right>Pages</SortableTh>
+              <SortableTh column="size"     sort={sort} onSort={onSort} right>Size</SortableTh>
+              <SortableTh column="ohlc"     sort={sort} onSort={onSort} right title="종가 기준 정렬">OHLC</SortableTh>
             </tr>
           </thead>
           <tbody>
-            {group.dates.map((r) => (
+            {sortedDates.map((r) => (
               <tr
                 key={`${r.code}-${r.date}`}
                 onClick={() => onRowClick(r)}
@@ -87,14 +96,43 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
   );
 }
 
-function Th({ children, right }: { children: React.ReactNode; right?: boolean }) {
+type SortableThProps = {
+  column: SortKey;
+  sort: SortState;
+  onSort: (column: SortKey) => void;
+  right?: boolean;
+  title?: string;
+  children: React.ReactNode;
+};
+
+function SortableTh({ column, sort, onSort, right, title, children }: SortableThProps) {
+  const active = sort?.key === column;
+  const dir = active ? sort.dir : null;
+  const ariaSort = dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none';
+  const indicator = dir === 'desc' ? '▼' : dir === 'asc' ? '▲' : '▾';
+  const indicatorClass = active ? 'text-accent opacity-100' : 'opacity-0 group-hover:opacity-30';
+  const labelClass = active ? 'text-fg' : 'text-fg-dimmer';
+
   return (
     <th
-      className={`px-3 py-2 border-b text-xs uppercase tracking-wider font-semibold text-fg-dimmer ${
+      aria-sort={ariaSort}
+      className={`px-3 py-2 border-b text-xs uppercase tracking-wider font-semibold ${
         right ? 'text-right' : 'text-left'
       }`}
     >
-      {children}
+      <button
+        type="button"
+        title={title}
+        onClick={() => onSort(column)}
+        className={`group inline-flex items-center gap-1 select-none ${labelClass} ${
+          right ? 'flex-row-reverse' : 'flex-row'
+        }`}
+      >
+        <span>{children}</span>
+        <span className={`font-mono ${indicatorClass}`} aria-hidden="true">
+          {indicator}
+        </span>
+      </button>
     </th>
   );
 }

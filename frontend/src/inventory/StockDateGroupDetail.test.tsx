@@ -78,3 +78,96 @@ describe('StockDateGroupDetail', () => {
     });
   });
 });
+
+// 컬럼별로 값이 분명히 다른 행 셋
+const sortableRows: StockDate[] = [
+  { ...row('005930', '삼성전자', '20260522'), total_volume: 30, today_close: 72_000, captured_at: 3_000 },
+  { ...row('005930', '삼성전자', '20260521'), total_volume: 10, today_close: 70_000, captured_at: 1_000 },
+  { ...row('005930', '삼성전자', '20260520'), total_volume: 20, today_close: 71_000, captured_at: 2_000 },
+];
+
+describe('StockDateGroupDetail column sorting', () => {
+  beforeEach(() => {
+    navigateMock.mockReset();
+    useTabsStore.setState({ tabs: [] });
+  });
+
+  function getDateOrder(): string[] {
+    return screen.getAllByText(/2026-05-\d{2}/).map(el => el.textContent ?? '');
+  }
+
+  it('default order is date desc (unchanged from current behavior)', () => {
+    renderWithRouter(<StockDateGroupDetail rows={sortableRows} selectedCode="005930" />);
+    expect(getDateOrder()).toEqual(['2026-05-22', '2026-05-21', '2026-05-20']);
+  });
+
+  it('clicking Volume header sorts by volume desc, then asc, then back to default', () => {
+    renderWithRouter(<StockDateGroupDetail rows={sortableRows} selectedCode="005930" />);
+    const volumeHeader = screen.getByRole('button', { name: /volume/i });
+
+    fireEvent.click(volumeHeader); // desc → volume 30/20/10 → dates 22/20/21
+    expect(getDateOrder()).toEqual(['2026-05-22', '2026-05-20', '2026-05-21']);
+
+    fireEvent.click(volumeHeader); // asc → volume 10/20/30 → dates 21/20/22
+    expect(getDateOrder()).toEqual(['2026-05-21', '2026-05-20', '2026-05-22']);
+
+    fireEvent.click(volumeHeader); // unsorted → default date desc
+    expect(getDateOrder()).toEqual(['2026-05-22', '2026-05-21', '2026-05-20']);
+  });
+
+  it('clicking a different header jumps to that column desc', () => {
+    renderWithRouter(<StockDateGroupDetail rows={sortableRows} selectedCode="005930" />);
+    fireEvent.click(screen.getByRole('button', { name: /volume/i })); // volume desc
+    fireEvent.click(screen.getByRole('button', { name: /ohlc/i }));   // ohlc desc
+    // today_close desc: 72_000(22), 71_000(20), 70_000(21)
+    expect(getDateOrder()).toEqual(['2026-05-22', '2026-05-20', '2026-05-21']);
+  });
+
+  it('aria-sort attribute reflects current sort state', () => {
+    renderWithRouter(<StockDateGroupDetail rows={sortableRows} selectedCode="005930" />);
+    const volumeHeader = screen.getByRole('button', { name: /volume/i });
+    const th = volumeHeader.closest('th')!;
+
+    expect(th.getAttribute('aria-sort')).toBe('none');
+    fireEvent.click(volumeHeader);
+    expect(th.getAttribute('aria-sort')).toBe('descending');
+    fireEvent.click(volumeHeader);
+    expect(th.getAttribute('aria-sort')).toBe('ascending');
+    fireEvent.click(volumeHeader);
+    expect(th.getAttribute('aria-sort')).toBe('none');
+  });
+
+  it('preserves sort state across selectedCode changes (session-lifetime)', () => {
+    const twoCodeRows: StockDate[] = [
+      ...sortableRows,
+      { ...row('000660', 'SK하이닉스', '20260522'), total_volume: 5, today_close: 100_000, captured_at: 4_000 },
+      { ...row('000660', 'SK하이닉스', '20260521'), total_volume: 50, today_close: 99_000, captured_at: 5_000 },
+    ];
+    const { rerender } = renderWithRouter(
+      <StockDateGroupDetail rows={twoCodeRows} selectedCode="005930" />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /volume/i })); // volume desc on 005930
+    expect(getDateOrder()).toEqual(['2026-05-22', '2026-05-20', '2026-05-21']);
+
+    // Swap selected code — same component instance, prop change only
+    rerender(
+      <MemoryRouter>
+        <StockDateGroupDetail rows={twoCodeRows} selectedCode="000660" />
+      </MemoryRouter>,
+    );
+    // 000660 has 2 rows with vol 5(22) and 50(21); volume desc -> 50 first -> date 21 first
+    expect(getDateOrder()).toEqual(['2026-05-21', '2026-05-22']);
+  });
+
+  it('header click does not trigger row click (no navigation)', () => {
+    renderWithRouter(<StockDateGroupDetail rows={sortableRows} selectedCode="005930" />);
+    fireEvent.click(screen.getByRole('button', { name: /volume/i }));
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('OHLC header has tooltip explaining it sorts by close', () => {
+    renderWithRouter(<StockDateGroupDetail rows={sortableRows} selectedCode="005930" />);
+    const ohlcHeader = screen.getByRole('button', { name: /ohlc/i });
+    expect(ohlcHeader.getAttribute('title')).toMatch(/종가/);
+  });
+});
