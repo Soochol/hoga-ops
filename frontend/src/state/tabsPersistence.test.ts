@@ -75,3 +75,70 @@ describe('toSnapshot', () => {
     expect(snap.activeIndex).toBe(0);
   });
 });
+
+import { validateSelection, mergePrefs } from './tabsPersistence';
+
+describe('validateSelection', () => {
+  it('returns the value when all fields valid', () => {
+    const sel = { code: '005930', fromDate: '20260512', toDate: '20260520', timeframe: '1m' };
+    expect(validateSelection(sel)).toEqual(sel);
+  });
+  it('returns null for null input', () => {
+    expect(validateSelection(null)).toBeNull();
+  });
+  it('returns null when code is not 6 digits', () => {
+    expect(validateSelection({ code: '5930', fromDate: '20260512', toDate: '20260512', timeframe: '1m' })).toBeNull();
+  });
+  it('returns null when date is not 8 digits', () => {
+    expect(validateSelection({ code: '005930', fromDate: '2026-05-12', toDate: '20260512', timeframe: '1m' })).toBeNull();
+  });
+  it('returns null when timeframe is not in TIMEFRAME_LABELS', () => {
+    expect(validateSelection({ code: '005930', fromDate: '20260512', toDate: '20260512', timeframe: '99m' })).toBeNull();
+  });
+  it('returns null for non-object input', () => {
+    expect(validateSelection('whatever' as unknown)).toBeNull();
+    expect(validateSelection(undefined as unknown)).toBeNull();
+  });
+});
+
+describe('mergePrefs', () => {
+  it('returns defaults when given an empty object', () => {
+    expect(mergePrefs({}, defaultPrefs)).toEqual(defaultPrefs);
+  });
+  it('overrides known scalar keys', () => {
+    const merged = mergePrefs({ volumeProfileMode: 'per-day', auctionWindowMask: false }, defaultPrefs);
+    expect(merged.volumeProfileMode).toBe('per-day');
+    expect(merged.auctionWindowMask).toBe(false);
+  });
+  it('ignores unknown volumeProfileMode value', () => {
+    const merged = mergePrefs({ volumeProfileMode: 'galaxy' as never }, defaultPrefs);
+    expect(merged.volumeProfileMode).toBe('range');
+  });
+  it('ignores non-boolean auctionWindowMask', () => {
+    const merged = mergePrefs({ auctionWindowMask: 'yes' as never }, defaultPrefs);
+    expect(merged.auctionWindowMask).toBe(true);
+  });
+  it('replaces movingAverages wholesale when length differs from default', () => {
+    const merged = mergePrefs(
+      { movingAverages: [{ period: 7, enabled: true }] as never },
+      defaultPrefs,
+    );
+    expect(merged.movingAverages).toEqual(defaultPrefs.movingAverages);
+  });
+  it('replaces movingAverages wholesale when an element is malformed', () => {
+    const broken = defaultPrefs.movingAverages.map((m, i) =>
+      i === 0 ? ({ period: 'x', enabled: true } as never) : m,
+    );
+    const merged = mergePrefs({ movingAverages: broken }, defaultPrefs);
+    expect(merged.movingAverages).toEqual(defaultPrefs.movingAverages);
+  });
+  it('accepts a fully-shaped movingAverages array', () => {
+    const custom = defaultPrefs.movingAverages.map((m) => ({ ...m, enabled: false }));
+    const merged = mergePrefs({ movingAverages: custom }, defaultPrefs);
+    expect(merged.movingAverages).toEqual(custom);
+  });
+  it('drops unknown keys silently', () => {
+    const merged = mergePrefs({ futureKey: 42 } as never, defaultPrefs);
+    expect((merged as Record<string, unknown>).futureKey).toBeUndefined();
+  });
+});
