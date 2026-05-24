@@ -5,6 +5,7 @@ in-memory cache state and cursor() call counts can be observed.
 """
 from __future__ import annotations
 
+import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -82,5 +83,41 @@ def test_cache_hit_skips_duckdb(tmp_path: Path) -> None:
             "calls self.conn which calls _conn.cursor()."
         )
         assert second == first
+    finally:
+        engine.close()
+
+
+def test_mtime_change_triggers_recompute(tmp_path: Path) -> None:
+    """When meta.json's mtime advances, the cached row must be recomputed."""
+    engine = _build_engine_with_stock_dates(tmp_path, _DATES[:2])
+    try:
+        first = engine.list_stock_dates()
+        assert len(first) == 2
+
+        # Bump mtime on one of the meta.json files by 5 seconds.
+        meta_path = engine.data_dir / "parquet" / _DATES[0] / "003490" / "meta.json"
+        original = meta_path.stat()
+        new_ns = original.st_mtime_ns + 5_000_000_000
+        os.utime(meta_path, ns=(new_ns, new_ns))
+
+        # Spy on connection cursor() calls for the second call (using the
+        # patch-whole-_conn pattern established in test_cache_hit_skips_duckdb,
+        # because DuckDB's C extension makes _conn.cursor read-only).
+        with mock.patch.object(
+            engine, "_conn", wraps=engine._conn
+        ) as conn_spy:
+            second = engine.list_stock_dates()
+        # The changed entry recomputes (>=1 cursor call); the unchanged
+        # entry stays cached (0 additional cursor calls). Conservative
+        # lower bound: at least 1, strictly less than the cold-call count.
+        assert conn_spy.cursor.call_count >= 1
+        # Selective-invalidation checks (stronger than `second == first`):
+        # queries.py lines 158-160 compute captured_at as max(st_mtime)
+        # over ALL files in code_dir — including meta.json itself — so
+        # bumping meta.json's mtime by 5 s legitimately shifts captured_at
+        # by 5000 ms for the recomputed entry.  The un-bumped entry must
+        # be byte-identical (cache hit, no recompute).
+        assert second[0].captured_at == first[0].captured_at + 5000
+        assert second[1] == first[1]
     finally:
         engine.close()
