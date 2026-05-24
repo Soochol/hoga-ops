@@ -865,3 +865,44 @@ def test_reset_state_for_tests_deletes_manifest(monkeypatch, tmp_path):
     )
     captures.reset_state_for_tests()
     assert not (tmp_path / ".queue.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# Task 5: UpstreamNoDataError → skipped/no_upstream_data  ADR-0021
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_worker_handles_empty_info_as_skipped_no_upstream_data(monkeypatch, tmp_path):
+    """ADR-0021: collect_stock_date raises UpstreamNoDataError → worker writes
+    sentinel, cleans stale artifacts, terminates as skipped/no_upstream_data."""
+    from hoga.collector.orchestrator import UpstreamNoDataError
+
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
+    monkeypatch.setattr(captures, "_client_factory", lambda: object())
+    monkeypatch.setattr(
+        "hoga.api.eligibility.check_disk_state",
+        lambda *_a, **_k: Classification(state=DiskState.NONE),
+    )
+
+    # Pre-create stale artifacts to verify the cleanup branch is exercised.
+    raw_dir = tmp_path / "raw" / "20260319" / "003490"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    (raw_dir / "info.tsv").write_text("stale", encoding="utf-8")
+    (raw_dir / "chart.tsv").write_text("stale", encoding="utf-8")
+    (raw_dir / "_progress.json").write_text("{}", encoding="utf-8")
+
+    def _stub_collect(**kwargs):
+        raise UpstreamNoDataError(code="003490", date="20260319")
+
+    monkeypatch.setattr(captures, "collect_stock_date", _stub_collect)
+
+    state = _make_item("x-1", code="003490", date="20260319")
+    await captures._run_item(state)
+
+    assert state.phase == "skipped"
+    assert state.skip_reason == "no_upstream_data"
+    assert (raw_dir / ".no_upstream_data").exists()
+    assert not (raw_dir / "info.tsv").exists()
+    assert not (raw_dir / "chart.tsv").exists()
+    assert not (raw_dir / "_progress.json").exists()

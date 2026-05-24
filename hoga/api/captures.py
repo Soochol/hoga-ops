@@ -48,6 +48,7 @@ from hoga.collector.orchestrator import (
     CaptureCancelled,
     ProgressEvent,
     TodayTooEarlyRefused,
+    UpstreamNoDataError,
     collect_stock_date,
 )
 from hoga.config import CookieMissingError
@@ -173,6 +174,22 @@ def _require_data_dir() -> Path:
 def _require_client_factory() -> Callable[[], object]:
     assert _client_factory is not None, "captures._client_factory not initialized; call build_router() or set in test fixture"
     return _client_factory
+
+
+def _record_no_upstream_data(data_dir: Path, code: str, date: str) -> None:
+    """Write the .no_upstream_data sentinel and remove zero-byte
+    pre-collect artifacts so the directory is in canonical form for
+    check_disk_state (see ADR-0021).
+
+    Invariant after this call: raw_dir contains exactly one file
+    (.no_upstream_data) and parquet_dir does not exist. force_retry
+    deletes the sentinel before re-running collect_stock_date.
+    """
+    raw_dir = data_dir / "raw" / date / code
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    for stale in ("info.tsv", "chart.tsv", "_progress.json"):
+        (raw_dir / stale).unlink(missing_ok=True)
+    (raw_dir / ".no_upstream_data").touch()
 
 
 def reset_state_for_tests() -> None:
@@ -461,21 +478,34 @@ async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
     await _publish_phase(state)
 
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(
-        None,
-        lambda: collect_stock_date(
-            client=client,
-            code=state.code,
-            date=state.date,
-            data_dir=data_dir,
-            # Production rate from ADR-0017. HOGA_ENABLE_TEST_ENDPOINTS=1 skips the sleep
-            # entirely for tests; otherwise we use the same default as collect_stock_date.
-            rate_limit_s=0.0 if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1" else DEFAULT_RATE_LIMIT_S,
-            resume=resume,
-            on_progress=_make_progress_callback(state),
-            cancel_token=state.cancel_token,
-        ),
-    )
+    try:
+        result = await loop.run_in_executor(
+            None,
+            lambda: collect_stock_date(
+                client=client,
+                code=state.code,
+                date=state.date,
+                data_dir=data_dir,
+                # Production rate from ADR-0017. HOGA_ENABLE_TEST_ENDPOINTS=1 skips the sleep
+                # entirely for tests; otherwise we use the same default as collect_stock_date.
+                rate_limit_s=0.0 if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1" else DEFAULT_RATE_LIMIT_S,
+                resume=resume,
+                on_progress=_make_progress_callback(state),
+                cancel_token=state.cancel_token,
+            ),
+        )
+    except UpstreamNoDataError:
+        # ADR-0021: convert empty-info signal into a normal skipped return.
+        # Outer worker loop's generic except handler never sees this, so
+        # state.phase does not flip to 'failed'.
+        _record_no_upstream_data(data_dir, state.code, state.date)
+        state.phase = "skipped"
+        state.skip_reason = "no_upstream_data"
+        state.estimate_pct = 100
+        progress = state.to_progress()
+        if progress is not None:
+            _publish_event(CaptureProgressEvent(**state.event_header(), progress=progress))
+        return
 
     state.phase = "parsing"
     await _publish_phase(state)
