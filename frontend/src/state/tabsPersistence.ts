@@ -24,3 +24,27 @@ export type SnapshotDeps = {
   defaultPrefs: ChartViewPrefs;
   freshTab: () => Tab;
 };
+
+export type ToSnapshotInput = {
+  tabs: readonly Tab[];
+  activeTabId: string;
+  prefs: ReadonlyMap<string, ChartViewPrefs>;
+  defaultPrefs: ChartViewPrefs;
+};
+
+/** Pure projection: live store state → durable snapshot.
+ *  Excludes bundles / cursorMs / status / id — see spec table. */
+export function toSnapshot(input: ToSnapshotInput): ReplayTabsSnapshot {
+  const { tabs, activeTabId, prefs, defaultPrefs } = input;
+  const foundIdx = tabs.findIndex((t) => t.id === activeTabId);
+  const activeIndex = foundIdx >= 0 ? foundIdx : 0;
+  return {
+    version: 1,
+    savedAt: Date.now(),
+    activeIndex,
+    tabs: tabs.map((t) => ({
+      selection: t.selection,
+      prefs: prefs.get(t.id) ?? defaultPrefs,
+    })),
+  };
+}
