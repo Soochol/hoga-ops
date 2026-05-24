@@ -45,7 +45,10 @@ class Invariant:
 
 
 # --- error: data shape itself is broken ---
-# Values are milliseconds since midnight: 04:00 = 14_400_000, 12:00 = 43_200_000, 18:00 = 64_800_000
+# HHMMSSmmm encoding (HH*10_000_000 + MM*100_000 + SS*1000 + ms):
+#   04:00 = 40_000_000, 12:00 = 120_000_000, 18:00 = 180_000_000.
+# Production session_open_ms / close_ms use this encoding —
+# cross-reference hoga/api/disk_state.py:_SESSION_OPEN_MS = HogaMs(90000000)  # 09:00:00.000.
 
 def _meta_close_after_open(m: dict) -> Violation | None:
     open_ms = m.get("regular_session_open_ms", 0)
@@ -62,7 +65,7 @@ def _meta_close_after_open(m: dict) -> Violation | None:
 
 def _meta_open_in_kst_range(m: dict) -> Violation | None:
     open_ms = m.get("regular_session_open_ms", 0)
-    if 14_400_000 <= open_ms <= 43_200_000:
+    if 40_000_000 <= open_ms <= 120_000_000:
         return None
     return Violation(
         "meta.open_in_kst_range",
@@ -74,7 +77,7 @@ def _meta_open_in_kst_range(m: dict) -> Violation | None:
 
 def _meta_close_in_kst_range(m: dict) -> Violation | None:
     close_ms = m.get("regular_session_close_ms", 0)
-    if 43_200_000 <= close_ms <= 64_800_000:
+    if 120_000_000 <= close_ms <= 180_000_000:
         return None
     return Violation(
         "meta.close_in_kst_range",
@@ -123,13 +126,13 @@ INVARIANTS: tuple[Invariant, ...] = (
     Invariant(
         id="meta.open_in_kst_range",
         severity=Severity.error,
-        description="open_ms within 04:00-12:00 KST (HHMMSS-ms encoding)",
+        description="open_ms within 04:00-12:00 KST (HHMMSSmmm encoding)",
         check=_meta_open_in_kst_range,
     ),
     Invariant(
         id="meta.close_in_kst_range",
         severity=Severity.error,
-        description="close_ms within 12:00-18:00 KST (HHMMSS-ms encoding)",
+        description="close_ms within 12:00-18:00 KST (HHMMSSmmm encoding)",
         check=_meta_close_in_kst_range,
     ),
     Invariant(

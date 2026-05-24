@@ -68,10 +68,13 @@ from hoga.api.invariants import (
 )
 
 
-# Field-encoding sanity references (HHMMSS-ms):
+# Field-encoding sanity references (HHMMSSmmm = HH*10_000_000 + MM*100_000 + SS*1000 + ms):
+# 04:00:00.000 = 40_000_000 (open range floor)
 # 09:00:00.000 = 90_000_000 (within open range 04:00-12:00)
-# 15:30:00.000 = 153_000_000 (within close range 12:00-18:00)
+# 12:00:00.000 = 120_000_000 (open range ceiling, close range floor)
 # 12:30:00.000 = 123_000_000 (half-day close, within close range)
+# 15:30:00.000 = 153_000_000 (within close range 12:00-18:00)
+# 18:00:00.000 = 180_000_000 (close range ceiling)
 
 
 def _healthy_meta() -> dict:
@@ -133,14 +136,14 @@ def test_close_after_open_fires_when_close_le_open() -> None:
 
 def test_open_in_kst_range_fires_when_open_too_early() -> None:
     # 03:59:59.999 < 04:00:00.000 floor
-    meta = _healthy_meta() | {"regular_session_open_ms": 14_399_999}
+    meta = _healthy_meta() | {"regular_session_open_ms": 39_999_999}  # just before 04:00:00
     ids = [v.invariant_id for v in check(meta)]
     assert "meta.open_in_kst_range" in ids
 
 
 def test_open_in_kst_range_fires_when_open_too_late() -> None:
     # 12:00:00.001 > 12:00:00.000 ceiling
-    meta = _healthy_meta() | {"regular_session_open_ms": 43_200_001}
+    meta = _healthy_meta() | {"regular_session_open_ms": 120_000_001}  # just after 12:00:00
     ids = [v.invariant_id for v in check(meta)]
     assert "meta.open_in_kst_range" in ids
 
@@ -155,7 +158,7 @@ def test_close_in_kst_range_fires_when_close_zero() -> None:
 
 
 def test_close_in_kst_range_accepts_half_day_close() -> None:
-    # 12:30 KST half-day close — 123_000_000 is within [43_200_000, 64_800_000]
+    # 12:30 KST half-day close — 123_000_000 is within [120_000_000, 180_000_000]
     meta = _healthy_meta() | {"regular_session_close_ms": 123_000_000}
     ids = [v.invariant_id for v in check(meta)]
     assert "meta.close_in_kst_range" not in ids
@@ -290,7 +293,8 @@ class Invariant:
 
 
 # --- error: data shape itself is broken ---
-# HHMMSS-ms encoding: 04:00 = 14_400_000, 12:00 = 43_200_000, 18:00 = 64_800_000
+# HHMMSSmmm encoding (HH*10_000_000 + MM*100_000 + SS*1000 + ms):
+# 04:00 = 40_000_000, 12:00 = 120_000_000, 18:00 = 180_000_000
 
 def _meta_close_after_open(m: dict) -> Violation | None:
     open_ms = m.get("regular_session_open_ms", 0)
@@ -307,7 +311,7 @@ def _meta_close_after_open(m: dict) -> Violation | None:
 
 def _meta_open_in_kst_range(m: dict) -> Violation | None:
     open_ms = m.get("regular_session_open_ms", 0)
-    if 14_400_000 <= open_ms <= 43_200_000:
+    if 40_000_000 <= open_ms <= 120_000_000:
         return None
     return Violation(
         "meta.open_in_kst_range",
@@ -319,7 +323,7 @@ def _meta_open_in_kst_range(m: dict) -> Violation | None:
 
 def _meta_close_in_kst_range(m: dict) -> Violation | None:
     close_ms = m.get("regular_session_close_ms", 0)
-    if 43_200_000 <= close_ms <= 64_800_000:
+    if 120_000_000 <= close_ms <= 180_000_000:
         return None
     return Violation(
         "meta.close_in_kst_range",
