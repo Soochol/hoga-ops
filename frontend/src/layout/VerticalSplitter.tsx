@@ -108,11 +108,11 @@ export default function VerticalSplitter({
       onDoubleClick={onReset}
       onKeyDown={onKeyDown}
       title="드래그하여 크기 조정 · 더블클릭으로 초기화"
-      className="cursor-col-resize flex items-stretch justify-center bg-transparent select-none focus:outline-none"
+      className="group cursor-col-resize flex items-stretch justify-center bg-transparent select-none focus:outline-none"
     >
       <div
         aria-hidden
-        className="w-[2px] rounded-[1px] bg-[var(--border)] transition-[background-color,width] duration-150 hover:w-1 hover:bg-[var(--accent)]"
+        className="w-[2px] rounded-[1px] bg-[var(--border)] transition-[background-color,width] duration-150 hover:w-1 hover:bg-[var(--accent)] group-focus-visible:w-1 group-focus-visible:bg-[var(--accent)]"
       />
     </div>
   );

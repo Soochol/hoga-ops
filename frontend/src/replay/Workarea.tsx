@@ -126,7 +126,7 @@ export default function Workarea({ tab }: { tab: Tab }) {
         ref={containerRef}
         data-testid="workarea-grid"
         style={{ gridTemplateColumns }}
-        className="grid gap-2 p-2 flex-1 min-h-0 relative"
+        className="grid gap-0 p-2 flex-1 min-h-0 relative"
       >
         <ChartErrorBoundary>
           <ChartStage

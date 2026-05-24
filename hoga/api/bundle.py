@@ -302,9 +302,6 @@ def build_fill_strength_slice(
     )
 
 
-MAX_RANGE_DAYS = 90
-
-
 def build_range_bundle(
     engine: QueryEngine,
     *,
@@ -315,7 +312,7 @@ def build_range_bundle(
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
-    Validates ``bucket_ms``, ``from_date <= to_date``, and span <= 90 days.
+    Validates ``bucket_ms`` and ``from_date <= to_date``.
     Returns HTTP 404 if no Stock-Date in range has captured data.
 
     Loops over captured Stock-Dates calling each per-slice builder directly.
@@ -334,8 +331,6 @@ def build_range_bundle(
         raise HTTPException(400, f"Invalid YYYYMMDD date: {e}") from e
     if d_to < d_from:
         raise HTTPException(400, "from > to")
-    if (d_to - d_from).days > MAX_RANGE_DAYS:
-        raise HTTPException(400, f"range exceeds {MAX_RANGE_DAYS} days")
 
     dates = engine.list_stock_dates_in_range(
         code=code, from_date=from_date, to_date=to_date,

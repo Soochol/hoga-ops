@@ -21,7 +21,7 @@ function renderToolbar() {
   });
 }
 
-describe('Toolbar — Timeframe + 90-day validation', () => {
+describe('Toolbar — Timeframe + Load', () => {
   beforeEach(() => {
     // Stub network for child queries (StockCombobox / DateRangePicker).
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
@@ -72,16 +72,16 @@ describe('Toolbar — Timeframe + 90-day validation', () => {
     expect(useToolbarDraftStore.getState().getDraft(id).timeframe).toBe('5m');
   });
 
-  it('shows inline error when range > 90 days and does NOT commit selection', () => {
+  it('commits selection for ranges longer than 90 days (no client-side cap)', () => {
     const id = useTabsStore.getState().tabs[0].id;
     useToolbarDraftStore.getState().setDraft(id, {
       code: '005930', from: '20260101', to: '20260501', timeframe: '1m',
     });
     renderToolbar();
     fireEvent.click(screen.getByRole('button', { name: /불러오기|Reload/ }));
-    expect(screen.getByText(/최대 90일/)).toBeInTheDocument();
     const sel = useTabsStore.getState().tabs.find((t) => t.id === id)!.selection;
-    expect(sel).toBeNull();
+    expect(sel?.fromDate).toBe('20260101');
+    expect(sel?.toDate).toBe('20260501');
   });
 });
 

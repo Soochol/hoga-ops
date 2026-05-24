@@ -11,7 +11,6 @@ import type { Timeframe } from '../api/types';
 export default function Toolbar() {
   const active = useTabsStore((s) => s.tabs.find((t) => t.id === s.activeTabId)!);
   const draft = useToolbarDraftStore((s) => s.getDraft(active.id));
-  const [rangeError, setRangeError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Sync draft from the store-committed selection when the user switches tabs.
@@ -57,22 +56,6 @@ export default function Toolbar() {
 
   const onLoad = () => {
     if (!ready) return;
-    const dFrom = new Date(
-      Number(draft.from!.slice(0, 4)),
-      Number(draft.from!.slice(4, 6)) - 1,
-      Number(draft.from!.slice(6, 8)),
-    );
-    const dTo = new Date(
-      Number(draft.to!.slice(0, 4)),
-      Number(draft.to!.slice(4, 6)) - 1,
-      Number(draft.to!.slice(6, 8)),
-    );
-    const days = Math.round((dTo.getTime() - dFrom.getTime()) / 86_400_000);
-    if (days > 90) {
-      setRangeError('최대 90일까지 조회 가능합니다');
-      return;
-    }
-    setRangeError(null);
     useTabsStore.getState().setSelection(active.id, {
       code: draft.code!,
       fromDate: draft.from!,
@@ -107,7 +90,6 @@ export default function Toolbar() {
       >
         {sidebarCollapsed ? '◀' : '▶'}
       </button>
-      {rangeError && <span className="text-error text-sm ml-2">{rangeError}</span>}
       <button
         disabled={!ready}
         onClick={onLoad}
