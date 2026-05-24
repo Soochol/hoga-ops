@@ -30,6 +30,7 @@ export default {
         'accent-shade': 'var(--accent-shade)',
         success: 'var(--success)',
         error:   'var(--error)',
+        warn:    'var(--warn)',
         'price-up':   'var(--price-up)',
         'price-down': 'var(--price-down)',
         grid: 'var(--grid)',

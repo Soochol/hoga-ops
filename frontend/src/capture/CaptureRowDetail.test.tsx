@@ -31,6 +31,50 @@ describe('CaptureRowDetail', () => {
   });
 });
 
+describe('CaptureRowDetail abort_reason', () => {
+  const finishedBase: QueueItem = {
+    ...base,
+    phase: 'done',
+    result: {
+      pages_written: 42,
+      unique_events: 100,
+      raw_dir: '/data/raw/20260518/005930',
+      parsed: true,
+      abort_reason: null,
+    },
+  };
+
+  it('omits the abort_reason row when result.abort_reason is null', () => {
+    render(<CaptureRowDetail item={finishedBase} />);
+    expect(screen.queryByText(/abort_reason/i)).toBeNull();
+  });
+
+  it('shows a Korean hint when result.abort_reason is stagnation_abort', () => {
+    render(
+      <CaptureRowDetail
+        item={{
+          ...finishedBase,
+          result: { ...finishedBase.result!, abort_reason: 'stagnation_abort' },
+        }}
+      />,
+    );
+    expect(screen.getByText(/abort_reason/i)).toBeTruthy();
+    expect(screen.getByText(/hogaplay 응답 동결로 캡처가 중단/)).toBeTruthy();
+  });
+
+  it('falls back to the raw reason for unknown abort_reason strings', () => {
+    render(
+      <CaptureRowDetail
+        item={{
+          ...finishedBase,
+          result: { ...finishedBase.result!, abort_reason: 'unknown_future_reason' },
+        }}
+      />,
+    );
+    expect(screen.getByText('unknown_future_reason')).toBeTruthy();
+  });
+});
+
 describe('CaptureRowDetail UpstreamCode map-driven copy', () => {
   it('shows captureFinishedHints copy when error.code is an UpstreamCode (cookie_expired)', () => {
     render(

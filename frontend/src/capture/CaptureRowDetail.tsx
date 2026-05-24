@@ -59,8 +59,25 @@ export function CaptureRowDetail({ item }: { item: QueueItem }) {
             pages_written={item.result.pages_written} unique_events={item.result.unique_events}
             {item.result.parsed ? ' parsed' : ''}
           </span>
+          {item.result.abort_reason !== null && (
+            <>
+              <span className="text-warn">abort_reason</span>
+              <span className="text-warn">
+                {abortReasonHint(item.result.abort_reason)}
+              </span>
+            </>
+          )}
         </>
       )}
     </div>
   );
+}
+
+function abortReasonHint(reason: string): string {
+  // Hogaplay's response froze mid-stream; the captured parquet covers only
+  // the data up to the freeze. Operator should retry the date.
+  if (reason === 'stagnation_abort') {
+    return 'hogaplay 응답 동결로 캡처가 중단되었습니다. 재시도하세요.';
+  }
+  return reason;
 }
