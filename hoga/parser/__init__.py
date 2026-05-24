@@ -145,14 +145,23 @@ def parse_stock_date(
         snapshots_list=snapshots_list,
     )
 
-    # ADR-0020 archival hook — record the violations list at write time for
-    # diagnostics. Read-paths re-evaluate live from the same catalog, so this
-    # field is not load-bearing; absent when there are no violations to record
-    # (healthy meta stays clean).
-    from hoga.api.invariants import check as _check_invariants
-    _violations = _check_invariants(meta)
-    if _violations:
-        meta["invariant_violations"] = [v.as_dict() for v in _violations]
+    # ADR-0020 archival hook — record violations at write time. Meta-level
+    # violations are also re-evaluated live by read-paths (self-healing).
+    # Series-level violations are archival-only (ADR-0020 §3c) — read-paths
+    # trust this field rather than re-loading parquet on every request.
+    from hoga.api.invariants import (
+        StockDateArtifacts,
+        check as _check_meta,
+        check_series as _check_series,
+    )
+    _all_violations = _check_meta(meta) + _check_series(StockDateArtifacts(
+        meta=meta,
+        candles=candles_list,
+        snapshots=snapshots_list,
+        trades=trades_list,
+    ))
+    if _all_violations:
+        meta["invariant_violations"] = [v.as_dict() for v in _all_violations]
 
     (out_dir / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"

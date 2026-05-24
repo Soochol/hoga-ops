@@ -66,14 +66,41 @@ def test_meta_is_partial_field_present(tmp_path: Path) -> None:
 # --- ADR-0020: archival hook ---
 
 
-def test_meta_omits_invariant_violations_field_when_healthy(tmp_path: Path) -> None:
-    """Healthy capture (tiny_tsv has open=90M, close=153M, finished=True)
-    should NOT carry an invariant_violations key — clean meta stays clean."""
+def test_meta_omits_meta_level_violations_when_healthy(tmp_path: Path) -> None:
+    """Healthy meta (tiny_tsv: open=90M, close=153M, finished=True) does not
+    fire any meta-level invariants. (The tiny_tsv fixture is intentionally
+    minimal — 2 snapshots, hand-built candles — so series-level invariants
+    can still fire against it; that path is covered by the parser archival
+    test below. Here we lock the meta-level surface.)"""
     _stage_raw(tmp_path, "tiny_tsv", "005930", "20260520", finished=True)
     parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
     meta_path = tmp_path / "parquet" / "20260520" / "005930" / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    assert "invariant_violations" not in meta
+    meta_level_ids = {
+        v["invariant_id"] for v in meta.get("invariant_violations", [])
+        if v["invariant_id"].startswith("meta.") or v["invariant_id"].startswith("collection.")
+    }
+    assert meta_level_ids == set()
+
+
+def test_meta_archives_series_violations_for_tiny_tsv_fixture(tmp_path: Path) -> None:
+    """Series-level invariants surface in the archival even when meta is clean.
+
+    tiny_tsv has hand-built candles whose ts_ms aren't sorted and only 2
+    snapshots — both legit series invariant breaches. Locks the integration
+    between parser write-time and SERIES_INVARIANTS for this PR.
+    """
+    _stage_raw(tmp_path, "tiny_tsv", "005930", "20260520", finished=True)
+    parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
+    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    series_ids = {
+        v["invariant_id"] for v in meta.get("invariant_violations", [])
+        if v["invariant_id"].startswith("series.")
+    }
+    # tiny_tsv fixture trips at least one of the series invariants.
+    assert len(series_ids) >= 1
+    assert all(_id.startswith("series.") for _id in series_ids)
 
 
 def test_meta_records_invariant_violations_when_incomplete(tmp_path: Path) -> None:

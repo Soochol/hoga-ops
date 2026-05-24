@@ -246,10 +246,12 @@ def test_meta_invariants_alias_exists_for_backward_compat() -> None:
     assert len(META_INVARIANTS) == 5  # unchanged catalog
 
 
-def test_series_invariants_catalog_exists_initially_empty() -> None:
-    """Scaffolding present; rules added in subsequent tasks."""
+def test_series_invariants_catalog_exists_and_is_populated() -> None:
+    """Scaffolding present and registered rules (3 series invariants land in
+    Tasks 3-5 of the series-level invariants plan)."""
     from hoga.api.invariants import SERIES_INVARIANTS
-    assert SERIES_INVARIANTS == ()
+    assert len(SERIES_INVARIANTS) >= 1
+    assert all(hasattr(inv, "id") for inv in SERIES_INVARIANTS)
 
 
 def test_stock_date_artifacts_accepts_optional_fields() -> None:
