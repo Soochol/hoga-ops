@@ -1,28 +1,28 @@
 // frontend/src/chart/drawing/render.ts
-import type { IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts';
+import type { IChartApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import type { Drawing, Hline, Pencil, Trendline } from './types';
+import {
+  type PriceSeries,
+  priceToCanvasY,
+  realMsToCanvasX,
+} from './chartCoordinates';
 
 export type ProjectCtx = {
   chart: IChartApi;
   axis: VirtualAxis;
   /** Any series on pane 0 with a real price scale — typically the candle series. */
-  priceSeries: ISeriesApi<'Candlestick'> | ISeriesApi<'Line'> | ISeriesApi<'Area'> | null;
+  priceSeries: PriceSeries;
   width: number;
   height: number;
 };
 
 function realMsToX(ctx: ProjectCtx, realMs: number): number | null {
-  if (!ctx.axis.contains(realMs)) return null;
-  const virtualMs = ctx.axis.toVirtual(realMs);
-  const x = ctx.chart.timeScale().timeToCoordinate((virtualMs / 1000) as UTCTimestamp);
-  return x == null ? null : x;
+  return realMsToCanvasX(ctx.chart, ctx.axis, realMs);
 }
 
 function priceToY(ctx: ProjectCtx, price: number): number | null {
-  if (!ctx.priceSeries) return null;
-  const y = ctx.priceSeries.priceToCoordinate(price);
-  return y == null ? null : y;
+  return priceToCanvasY(ctx.priceSeries, price);
 }
 
 function setStroke(c: CanvasRenderingContext2D, d: Drawing, selected: boolean) {

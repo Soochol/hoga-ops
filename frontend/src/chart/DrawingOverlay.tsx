@@ -14,11 +14,11 @@
 // not touch this file.
 
 import { useEffect, useMemo, useRef } from 'react';
-import type { IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useDrawingsStore } from '../state/drawings';
 import { renderDrawing, type ProjectCtx } from './drawing/render';
-import type { Drawing, Point } from './drawing/types';
+import type { Drawing } from './drawing/types';
 import { HIT_THRESHOLD } from './drawing/types';
 import { distanceToHline, distanceToPolyline, distanceToSegment } from './drawing/hitTest';
 import {
@@ -28,6 +28,11 @@ import {
   type ToolCtx,
   type TrendlineDraft,
 } from './drawing/tools';
+import {
+  pixelToData as projPixelToData,
+  priceToCanvasY as projPriceToCanvasY,
+  realMsToCanvasX as projRealMsToCanvasX,
+} from './drawing/chartCoordinates';
 import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
@@ -123,30 +128,13 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // ── coordinate + hit-test helpers (closed-over by buildCtx) ────────────
-  const pixelToData = (px: number, py: number): Point | null => {
-    if (!priceSeries) return null;
-    const timeSec = chart.timeScale().coordinateToTime(px);
-    if (timeSec == null) return null;
-    const virtualMs = (timeSec as number) * 1000;
-    const realMs = axis.toReal(virtualMs);
-    const price = priceSeries.coordinateToPrice(py);
-    if (price == null) return null;
-    return { realMs, price: Number(price) };
-  };
-
-  const realMsToCanvasX = (realMs: number): number | null => {
-    if (!axis.contains(realMs)) return null;
-    const virtualMs = axis.toVirtual(realMs);
-    const x = chart.timeScale().timeToCoordinate((virtualMs / 1000) as UTCTimestamp);
-    return x == null ? null : (x as number);
-  };
-
-  const priceToCanvasY = (price: number): number | null => {
-    if (!priceSeries) return null;
-    const y = priceSeries.priceToCoordinate(price);
-    return y == null ? null : Number(y);
-  };
+  // Coordinate helpers — thin closures over the chartCoordinates module so
+  // the rest of the file (and the ToolCtx exposed to tools) doesn't have to
+  // thread chart/axis/priceSeries through every call site.
+  const pixelToData = (px: number, py: number) =>
+    projPixelToData(chart, axis, priceSeries, px, py);
+  const realMsToCanvasX = (realMs: number) => projRealMsToCanvasX(chart, axis, realMs);
+  const priceToCanvasY = (price: number) => projPriceToCanvasY(priceSeries, price);
 
   const hitTestAt = (px: number, py: number): Drawing | null => {
     for (let i = drawings.length - 1; i >= 0; i--) {
