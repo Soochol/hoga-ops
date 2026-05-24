@@ -122,7 +122,10 @@ describe('ChartStage — fitContent + zoom clamps (17b)', () => {
     }
   };
 
-  it('clamps logical range when len > totalBars (zoom-out cap)', () => {
+  it('applies minBarSpacing on mount to cap zoom-out at "all bars fit"', () => {
+    // Spec 2026-05-24 / Task 1: the prior logical-range clamp locked pan
+    // when fully zoomed out. We now bound zoom-out via timeScale.minBarSpacing
+    // instead — recomputed from container width on resize.
     const totalBars = 50;
     render(
       <ChartStage
@@ -132,8 +135,12 @@ describe('ChartStage — fitContent + zoom clamps (17b)', () => {
         ])}
       />,
     );
-    fireAllRangeHandlers({ from: -10, to: 100 }); // len = 110 > 50
-    expect(lastCreated.ts.setVisibleLogicalRange).toHaveBeenCalledWith({ from: 0, to: totalBars });
+    // jsdom containers have clientWidth = 0; the floor short-circuits to 0.5.
+    expect(lastCreated.ts.applyOptions).toHaveBeenCalledWith({ minBarSpacing: 0.5 });
+    // And the broken clamp must NOT be wired anymore: a wide range should not
+    // trigger setVisibleLogicalRange.
+    fireAllRangeHandlers({ from: -10, to: 100 });
+    expect(lastCreated.ts.setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
   it('clamps barSpacing to 50 when above the cap (zoom-in cap)', () => {
