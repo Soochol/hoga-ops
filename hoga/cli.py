@@ -132,15 +132,39 @@ def list_stock_dates() -> None:
     console.print(table)
 
 
+def _rebuild_orderbook(r):
+    """snapshots.parquet stores Orderbook tuple fields as 60 flattened scalar
+    columns (ask_p1..ask_p10, ask_q1..ask_q10, etc. — see snapshots._build_schema).
+    Reassemble back into the dataclass shape the series invariants expect."""
+    from hoga.tables.snapshots import ORDERBOOK_LEVELS, Orderbook
+
+    def _tup(prefix):
+        return tuple(r[f"{prefix}{i}"] for i in range(1, ORDERBOOK_LEVELS + 1))
+
+    return Orderbook(
+        ts_ms=r["ts_ms"], seq=r["seq"],
+        ask_p=_tup("ask_p"), ask_q=_tup("ask_q"), ask_d=_tup("ask_d"),
+        bid_p=_tup("bid_p"), bid_q=_tup("bid_q"), bid_d=_tup("bid_d"),
+        tot_ask=r["tot_ask"], tot_ask_d=r["tot_ask_d"],
+        tot_bid=r["tot_bid"], tot_bid_d=r["tot_bid_d"],
+    )
+
+
 def _run_series_for(stock_date_dir, meta):
     """Load parquet artifacts for one Stock-Date dir and run series invariants.
-    Returns a Violation list; missing parquet files (or load errors) are
-    skipped silently so the CLI degrades gracefully — diagnostics beats crashing."""
+
+    Missing parquet files (path doesn't exist) skip silently and return an
+    empty result — that's the legitimate 'nothing to check' path.
+
+    Load errors (read failure, schema drift, dataclass mismatch) print a
+    yellow warning and return None for that artifact — converting a silent
+    false-clean into an explicit 'I couldn't check' signal. The CLI is a
+    diagnostic tool; hiding load failures would be the worst UX choice.
+    """
     import pyarrow.parquet as _pq
 
     from hoga.api.invariants import StockDateArtifacts, check_series
     from hoga.tables.candles import Candle
-    from hoga.tables.snapshots import Orderbook
     from hoga.tables.trades import Trade
 
     def _read(path, builder):
@@ -149,16 +173,16 @@ def _run_series_for(stock_date_dir, meta):
         try:
             table = _pq.read_table(path)
             return [builder(row) for row in table.to_pylist()]
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 — diagnostic surface
+            console.print(
+                f"[yellow]  warning: could not load {path.name}: {exc}[/yellow]"
+            )
             return None
 
-    # Orderbook fields are tuples in the dataclass but lists in parquet —
-    # the kwargs constructor accepts both (Python tuple/list interop), but
-    # if the parquet schema drifts, the try/except in _read silences it.
     candles = _read(stock_date_dir / "candles.parquet",
                     lambda r: Candle(**r))
-    snapshots = _read(stock_date_dir / "snapshots.parquet",
-                      lambda r: Orderbook(**r))
+    # Orderbook needs explicit reassembly — parquet flattens its tuple fields.
+    snapshots = _read(stock_date_dir / "snapshots.parquet", _rebuild_orderbook)
     trades = _read(stock_date_dir / "trades.parquet",
                    lambda r: Trade(**r))
     return check_series(StockDateArtifacts(
@@ -214,20 +238,19 @@ def validate(
             if not meta_p.exists():
                 continue
             meta = _json.loads(meta_p.read_text(encoding="utf-8"))
-            violations = _check(meta)
+            # Compute the full (severity-unfiltered) set ONCE — `violations`
+            # is the display slice (severity-filtered); `full` is the archival
+            # source. Without the cache, --deep --fix would load parquet twice
+            # for every Stock-Date with violations.
+            full = _check(meta)
             if deep:
-                violations = violations + _run_series_for(code_dir, meta)
-            if severity != "all":
-                violations = [v for v in violations if v.severity.value == severity]
+                full = full + _run_series_for(code_dir, meta)
+            violations = (full if severity == "all"
+                          else [v for v in full if v.severity.value == severity])
             if not violations:
                 continue
             rows.append((date_dir.name, code_dir.name, violations))
             if fix:
-                # Always recompute the FULL set (both meta + series if deep)
-                # for the archival field — severity-agnostic.
-                full = _check(meta)
-                if deep:
-                    full = full + _run_series_for(code_dir, meta)
                 meta["invariant_violations"] = [v.as_dict() for v in full]
                 meta_p.write_text(_json.dumps(meta, ensure_ascii=False, indent=2),
                                   encoding="utf-8")

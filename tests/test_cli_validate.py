@@ -136,6 +136,70 @@ def test_validate_deep_runs_series_invariants(tmp_path, monkeypatch):
     assert "series.candles_ts_monotonic" in result_deep.stdout
 
 
+def _seed_with_snapshots(data_dir, date, code, meta, snap_ts_list):
+    """Seed parquet with meta.json + snapshots.parquet using the production
+    flattened schema (ask_p1..p10, bid_p1..p10, ...). Required because the
+    Orderbook dataclass takes tuples but parquet stores 60 scalar columns."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from hoga.tables.snapshots import PARQUET_SCHEMA
+
+    d = data_dir / "parquet" / date / code
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+    n = len(snap_ts_list)
+    cols = {"ts_ms": pa.array(snap_ts_list, type=pa.int64()),
+            "seq": pa.array(list(range(1, n + 1)), type=pa.int32())}
+    for prefix in ("ask_p", "ask_q", "ask_d", "bid_p", "bid_q", "bid_d"):
+        for i in range(1, 11):
+            cols[f"{prefix}{i}"] = pa.array([0] * n, type=pa.int32())
+    for total in ("tot_ask", "tot_ask_d", "tot_bid", "tot_bid_d"):
+        cols[total] = pa.array([0] * n, type=pa.int32())
+    pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), d / "snapshots.parquet")
+
+
+def test_validate_deep_fires_snapshots_no_gaps_through_real_parquet(tmp_path, monkeypatch):
+    """Regression: snapshots.parquet uses flattened columns (ask_p1..p10
+    etc.). An earlier _run_series_for built Orderbook(**r) which raised
+    TypeError on every parquet row — the bare except in _read swallowed it,
+    making series.snapshots_no_gaps a dead invariant for --deep.
+
+    This test seeds an actual snapshots.parquet with a >60s in-session gap
+    and verifies the violation surfaces through the CLI."""
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    # Two snapshots, 130s apart inside the continuous session window.
+    # has_meaningful_gaps fires on any ≥60s gap.
+    _seed_with_snapshots(
+        tmp_path, "20260520", "005930", _healthy(),
+        snap_ts_list=[90_000_000, 90_130_000],
+    )
+
+    result = CliRunner().invoke(app, ["validate", "--deep", "--severity", "warn"])
+    assert result.exit_code == 0, result.stdout
+    assert "series.snapshots_no_gaps" in result.stdout
+
+
+def test_validate_deep_unreadable_parquet_emits_warning(tmp_path, monkeypatch):
+    """When a parquet file exists but can't be loaded (corrupt / schema drift),
+    the CLI must surface a yellow warning — not silently treat the data as
+    clean. Diagnostic tool must distinguish 'no violations' from 'I couldn't
+    check'."""
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    d = tmp_path / "parquet" / "20260520" / "005930"
+    d.mkdir(parents=True)
+    (d / "meta.json").write_text(json.dumps(_healthy()), encoding="utf-8")
+    # Write garbage to snapshots.parquet — pyarrow will fail to read it.
+    (d / "snapshots.parquet").write_bytes(b"not a valid parquet file")
+
+    result = CliRunner().invoke(app, ["validate", "--deep", "--severity", "all"])
+    assert result.exit_code == 0
+    # The warning surfaces in stdout (via console.print) — rich colors may be
+    # absent in test runner but the substring is present.
+    assert "warning:" in result.stdout
+    assert "snapshots.parquet" in result.stdout
+
+
 def test_validate_deep_fix_writes_combined_archival(tmp_path, monkeypatch):
     """--deep --fix archives both meta and series violations."""
     monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
