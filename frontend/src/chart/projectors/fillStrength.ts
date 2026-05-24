@@ -62,7 +62,7 @@ export function projectSell(bundle: RangeBundle, axis: VirtualAxis): any[] {
  *
  * Resets to 0 at each new segment boundary (per-Stock-Date semantics).
  */
-export function projectCumulativeDelta(
+export function projectCumulativeNetFill(
   bundle: RangeBundle,
   axis: VirtualAxis,
 ): LineData<Time>[] {
@@ -125,7 +125,7 @@ export const FILL_STRENGTH_SPEC = {
         priceFormat: cumulativePriceFormat,
       },
       data: (bundle, axis, ctx) =>
-        ctx.cumulativeEnabled ? projectCumulativeDelta(bundle, axis) : [],
+        ctx.cumulativeEnabled ? projectCumulativeNetFill(bundle, axis) : [],
       afterAdd: (series) => {
         series.createPriceLine({
           price: 0,

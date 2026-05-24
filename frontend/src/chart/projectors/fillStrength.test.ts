@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectBuy, projectSell, projectCumulativeDelta } from './fillStrength';
+import { projectBuy, projectSell, projectCumulativeNetFill } from './fillStrength';
 import { createVirtualAxis } from '../../util/virtualAxis';
 
 const sessionOpenMs = 1_779_062_400_000;
@@ -58,7 +58,7 @@ const day1Open = 1_779_062_400_000;
 const day2Open = day1Open + 24 * 3_600_000; // +1 day
 const sessionDurationMs = 23_400_000; // 6h30m
 
-describe('projectCumulativeDelta — single-day', () => {
+describe('projectCumulativeNetFill — single-day', () => {
   const singleDayAxis = createVirtualAxis([
     { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
   ]);
@@ -74,7 +74,7 @@ describe('projectCumulativeDelta — single-day', () => {
         ],
       },
     };
-    expect(projectCumulativeDelta(bundle, singleDayAxis)).toEqual([
+    expect(projectCumulativeNetFill(bundle, singleDayAxis)).toEqual([
       { time: 0, value: 70 },
       { time: 1, value: 10 },
       { time: 2, value: 10 },
@@ -86,7 +86,7 @@ describe('projectCumulativeDelta — single-day', () => {
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: { points: [] },
     };
-    expect(projectCumulativeDelta(bundle, singleDayAxis)).toEqual([]);
+    expect(projectCumulativeNetFill(bundle, singleDayAxis)).toEqual([]);
   });
 
   it('excludes pre-open and after-session points from the running sum', () => {
@@ -100,13 +100,13 @@ describe('projectCumulativeDelta — single-day', () => {
         ],
       },
     };
-    const out = projectCumulativeDelta(bundle, singleDayAxis);
+    const out = projectCumulativeNetFill(bundle, singleDayAxis);
     expect(out).toHaveLength(1); // only the in-session, in-viewport point emits
     expect(out[0].value).toBe(70); // pre-open's +999 must not show up
   });
 });
 
-describe('projectCumulativeDelta — multi-day', () => {
+describe('projectCumulativeNetFill — multi-day', () => {
   it('resets the running sum at each segment boundary', () => {
     const axis = createVirtualAxis([
       { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
@@ -126,7 +126,7 @@ describe('projectCumulativeDelta — multi-day', () => {
         ],
       },
     };
-    const out = projectCumulativeDelta(bundle, axis);
+    const out = projectCumulativeNetFill(bundle, axis);
     expect(out).toHaveLength(4);
     expect(out[0].value).toBe(70);
     expect(out[1].value).toBe(-80);
@@ -135,7 +135,7 @@ describe('projectCumulativeDelta — multi-day', () => {
   });
 });
 
-describe('projectCumulativeDelta — viewport invariant', () => {
+describe('projectCumulativeNetFill — viewport invariant', () => {
   it('includes out-of-viewport points in the sum but does NOT emit them', () => {
     // Axis covers only the second half of day 1 (zoomed in).
     const halfDay = sessionDurationMs / 2;
@@ -154,7 +154,7 @@ describe('projectCumulativeDelta — viewport invariant', () => {
         ],
       },
     };
-    const out = projectCumulativeDelta(bundle, zoomedAxis);
+    const out = projectCumulativeNetFill(bundle, zoomedAxis);
     expect(out).toHaveLength(1);
     // The running sum at the emitted point reflects the FULL pre-viewport
     // history (40 + 10 = 50), not a viewport-edge reset (would be 10).
