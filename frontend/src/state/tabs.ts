@@ -40,6 +40,8 @@ import {
   CHART_TOGGLES,
   DEFAULT_PREFS,
   MA_SLOT_COUNT,
+  RATIO_OUTLIER_THRESHOLD_MAX,
+  RATIO_OUTLIER_THRESHOLD_MIN,
   registerTabsStore,
   type ChartToggleKey,
   type ChartViewPrefs,
@@ -73,6 +75,9 @@ type Store = {
   setVolumeProfileMode: (id: string, mode: ChartViewPrefs['volumeProfileMode']) => void;
   /** Generic setter for any boolean toggle in `CHART_TOGGLES`. */
   setToggle: (id: string, key: ChartToggleKey, value: boolean) => void;
+  /** Set the ratio outlier filter threshold (chart-label units). Out-of-range
+   *  values are clamped to [RATIO_OUTLIER_THRESHOLD_MIN, _MAX]. */
+  setRatioOutlierThreshold: (id: string, threshold: number) => void;
   /** Patch one slot of `movingAverages`. Out-of-range `index` is a no-op.
    *  Period validation is intentionally NOT done here — the UI layer (T5)
    *  owns range checks so that downstream callers can apply identical
@@ -174,6 +179,23 @@ export const useTabsStore = create<Store>((set, get) => ({
     set((s) => {
       const next = new Map(s.prefs);
       next.set(id, { ...DEFAULT_PREFS, ...next.get(id), [key]: value });
+      return { prefs: next };
+    }),
+  setRatioOutlierThreshold: (id, threshold) =>
+    set((s) => {
+      // Clamp at the store boundary so localStorage round-trips can't smuggle
+      // bad values back in via setter calls. UI input also enforces this range
+      // but defense-in-depth keeps the projector's invariants intact.
+      const safe = Math.min(
+        RATIO_OUTLIER_THRESHOLD_MAX,
+        Math.max(RATIO_OUTLIER_THRESHOLD_MIN, Math.floor(threshold)),
+      );
+      const next = new Map(s.prefs);
+      next.set(id, {
+        ...DEFAULT_PREFS,
+        ...next.get(id),
+        ratioOutlierThreshold: safe,
+      });
       return { prefs: next };
     }),
   setMovingAverage: (id, index, patch) =>

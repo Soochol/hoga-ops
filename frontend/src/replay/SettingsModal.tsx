@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
 import { CHART_TOGGLES, useTabsStore, type ChartToggleKey } from '../state/tabs';
+import {
+  RATIO_OUTLIER_THRESHOLD_MAX,
+  RATIO_OUTLIER_THRESHOLD_MIN,
+} from '../state/chartPrefs';
 import IndicatorsSection from './settings/IndicatorsSection';
 
 type Props = {
@@ -47,6 +51,82 @@ function ToggleRow({
           }
         />
       </button>
+    </div>
+  );
+}
+
+/** Numeric input row for the per-tab `ratioOutlierThreshold` preference.
+ *  Pairs visually with the `ratioOutlierFilterEnabled` toggle (auto-rendered
+ *  via CHART_TOGGLES above this row): dims and disables when the toggle is
+ *  off so users can see what the value would be without losing it.
+ *  Draft-string editing pattern mirrors MovingAverageRow — commit on blur or
+ *  Enter, revert invalid input. */
+function RatioOutlierThresholdRow() {
+  const activeTabId = useTabsStore((s) => s.activeTabId);
+  const enabled = useTabsStore(
+    (s) => s.getPrefs(activeTabId).ratioOutlierFilterEnabled,
+  );
+  const threshold = useTabsStore(
+    (s) => s.getPrefs(activeTabId).ratioOutlierThreshold,
+  );
+  const setThreshold = useTabsStore((s) => s.setRatioOutlierThreshold);
+  const [inputValue, setInputValue] = useState<string>(String(threshold));
+
+  useEffect(() => {
+    setInputValue(String(threshold));
+  }, [threshold]);
+
+  const commit = () => {
+    const trimmed = inputValue.trim();
+    const n = Number(trimmed);
+    if (
+      trimmed !== ''
+      && Number.isFinite(n)
+      && Number.isInteger(n)
+      && n >= RATIO_OUTLIER_THRESHOLD_MIN
+      && n <= RATIO_OUTLIER_THRESHOLD_MAX
+      && n !== threshold
+    ) {
+      setThreshold(activeTabId, n);
+    } else {
+      setInputValue(String(threshold));
+    }
+  };
+
+  return (
+    <div
+      className={
+        enabled
+          ? 'flex items-center justify-between py-2'
+          : 'flex items-center justify-between py-2 opacity-50'
+      }
+    >
+      <div className="flex-1 pr-4">
+        <div className="text-fg text-sm">호가비 극단값 임계 배수</div>
+        <div className="text-fg-dim text-xs mt-0.5">
+          한쪽 호가가 다른 쪽의 이 배수 이상이면 0 으로 마스킹합니다. ({RATIO_OUTLIER_THRESHOLD_MIN}–
+          {RATIO_OUTLIER_THRESHOLD_MAX.toLocaleString()})
+        </div>
+      </div>
+      <input
+        type="number"
+        min={RATIO_OUTLIER_THRESHOLD_MIN}
+        max={RATIO_OUTLIER_THRESHOLD_MAX}
+        step={1}
+        disabled={!enabled}
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        aria-label="호가비 극단값 임계 배수"
+        data-testid="settings-ratio-outlier-threshold"
+        className="w-[72px] text-right text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1 tabular-nums disabled:cursor-not-allowed"
+      />
     </div>
   );
 }
@@ -188,6 +268,7 @@ export default function SettingsModal({ onClose }: Props) {
                     />
                   );
                 })}
+                <RatioOutlierThresholdRow />
                 <VolumeProfileModeRow />
               </>
             )}

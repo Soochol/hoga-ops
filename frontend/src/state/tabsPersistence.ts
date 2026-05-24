@@ -1,4 +1,8 @@
 import type { Tab, TabSelection, ChartViewPrefs, ChartToggleKey } from './tabs';
+import {
+  RATIO_OUTLIER_THRESHOLD_MAX,
+  RATIO_OUTLIER_THRESHOLD_MIN,
+} from './chartPrefs';
 import { TIMEFRAME_LABELS, type Timeframe } from '../api/types';
 
 /** Versioned storage key. Schema-breaking changes bump the suffix and let
@@ -104,6 +108,17 @@ export function mergePrefs(
   if (typeof p.volumeProfileMode === 'string'
       && VOLUME_PROFILE_MODES.has(p.volumeProfileMode as VolumeProfileMode)) {
     out.volumeProfileMode = p.volumeProfileMode as VolumeProfileMode;
+  }
+  // Validate the numeric outlier threshold. Falls back to default for any
+  // non-finite or out-of-range value rather than clamping silently — keeps
+  // localStorage corruption from masquerading as user intent.
+  if (
+    typeof p.ratioOutlierThreshold === 'number'
+    && Number.isFinite(p.ratioOutlierThreshold)
+    && p.ratioOutlierThreshold >= RATIO_OUTLIER_THRESHOLD_MIN
+    && p.ratioOutlierThreshold <= RATIO_OUTLIER_THRESHOLD_MAX
+  ) {
+    out.ratioOutlierThreshold = Math.floor(p.ratioOutlierThreshold);
   }
   for (const key of toggleKeys) {
     if (typeof p[key] === 'boolean') {

@@ -45,10 +45,16 @@ const priceFormat = {
   minMove: 0.01,
 };
 
+export type RatioPaneContext = {
+  auctionWindowMask: boolean;
+  outlierFilterEnabled: boolean;
+  outlierThreshold: number;
+};
+
 export function projectRatio(
   bundle: RangeBundle,
   axis: VirtualAxis,
-  auctionWindowMask: boolean,
+  ctx: RatioPaneContext,
 ): BaselineData<Time>[] {
   // Backend (build_quote_ratio_slice) now buckets on linear ms-from-midnight
   // and guarantees strictly-ascending unique timestamps per ADR-0010. If
@@ -57,20 +63,40 @@ export function projectRatio(
   // as a defense-in-depth wrapper.
   return bundle.quote_ratio.points
     .filter((p) => axis.contains(p.t))
-    .map((p) => ({
-      time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
-      // CONTEXT.md "Auction Window" — during 15:20–15:30 the bid/ask ratio is
-      // dominated by one-sided accumulation. `isAuctionMaskActive` owns the
-      // rule (per-tab toggle + axis threshold).
-      value: isAuctionMaskActive(auctionWindowMask, axis, p.t)
-        ? 0
-        : quoteImbalance(p.bid_total, p.ask_total),
-    }));
+    .map((p) => {
+      const raw = quoteImbalance(p.bid_total, p.ask_total);
+      // Outlier clamp: priceFormat above renders `1 + |raw|`, so the chart
+      // label crosses `outlierThreshold` once ask/bid (or bid/ask) reaches
+      // that multiple. Such spikes dominate the autoscale and flatten the
+      // meaningful signal — mask to 0 alongside the auction-window mask.
+      // Threshold + enable flag are per-tab prefs (ChartViewPrefs).
+      const isExtreme =
+        ctx.outlierFilterEnabled && 1 + Math.abs(raw) >= ctx.outlierThreshold;
+      return {
+        time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
+        // CONTEXT.md "Auction Window" — during 15:20–15:30 the bid/ask ratio is
+        // dominated by one-sided accumulation. `isAuctionMaskActive` owns the
+        // rule (per-tab toggle + axis threshold).
+        value:
+          isAuctionMaskActive(ctx.auctionWindowMask, axis, p.t) || isExtreme
+            ? 0
+            : raw,
+      };
+    });
 }
 
-const useRatioContext = (): boolean => useActivePrefs((p) => p.auctionWindowMask);
+// Per-field selectors keep this pane from re-rendering when an unrelated pref
+// (e.g. volumeProfileMode) changes. The returned object identity changes only
+// when one of the three fields changes, which is what PaneSpec.useContext
+// consumers depend on for memoization downstream.
+const useRatioContext = (): RatioPaneContext => {
+  const auctionWindowMask = useActivePrefs((p) => p.auctionWindowMask);
+  const outlierFilterEnabled = useActivePrefs((p) => p.ratioOutlierFilterEnabled);
+  const outlierThreshold = useActivePrefs((p) => p.ratioOutlierThreshold);
+  return { auctionWindowMask, outlierFilterEnabled, outlierThreshold };
+};
 
-export const RATIO_SPEC: PaneSpec<boolean> = {
+export const RATIO_SPEC: PaneSpec<RatioPaneContext> = {
   name: 'ratio',
   stretch: 0.4,
   useContext: useRatioContext,

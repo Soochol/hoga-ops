@@ -79,7 +79,7 @@ function drawPriceBadge(
   bgColor: string,
   selected: boolean,
 ) {
-  const text = price.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
+  const text = Math.round(price).toLocaleString('ko-KR');
   c.save();
   c.font = BADGE_FONT;
   c.textBaseline = 'middle';

@@ -1,11 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { projectRatio } from './ratio';
+import { projectRatio, type RatioPaneContext } from './ratio';
 import { createVirtualAxis } from '../../util/virtualAxis';
 
 const sessionOpenMs = 1_779_062_400_000;
 const axis = createVirtualAxis([
   { date: '20260518', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000 },
 ]);
+
+const baseCtx: RatioPaneContext = {
+  auctionWindowMask: false,
+  outlierFilterEnabled: false,
+  outlierThreshold: 100,
+};
 
 describe('projectRatio', () => {
   it('emits {time, value} using quoteImbalance from bid_total / ask_total', () => {
@@ -17,7 +23,7 @@ describe('projectRatio', () => {
         ],
       },
     };
-    const data = projectRatio(bundle, axis, false);
+    const data = projectRatio(bundle, axis, baseCtx);
     expect(data[0].time).toBe(0);
     expect(data[0].value).toBe(0);
     expect(data[1].value).toBeCloseTo(1.0, 5);
@@ -32,7 +38,7 @@ describe('projectRatio', () => {
         ],
       },
     };
-    expect(projectRatio(bundle, axis, false)).toHaveLength(1);
+    expect(projectRatio(bundle, axis, baseCtx)).toHaveLength(1);
   });
 
   it('masks closing-auction-window values to 0 when auctionWindowMask=true', () => {
@@ -45,12 +51,48 @@ describe('projectRatio', () => {
         ],
       },
     };
-    const unmasked = projectRatio(bundle, axis, false);
-    const masked = projectRatio(bundle, axis, true);
+    const unmasked = projectRatio(bundle, axis, baseCtx);
+    const masked = projectRatio(bundle, axis, { ...baseCtx, auctionWindowMask: true });
     // Outside the window, masked and unmasked agree
     expect(masked[0].value).toBe(unmasked[0].value);
     // Inside the window, masked is forced to 0
     expect(masked[1].value).toBe(0);
     expect(unmasked[1].value).not.toBe(0);
+  });
+
+  it('masks outlier points to 0 when outlierFilterEnabled=true and label >= threshold', () => {
+    const bundle: any = {
+      quote_ratio: {
+        points: [
+          { t: sessionOpenMs, bid_total: 100, ask_total: 9900 }, // label=99 (raw 98)
+          { t: sessionOpenMs + 1000, bid_total: 100, ask_total: 10000 }, // label=100 (raw 99)
+          { t: sessionOpenMs + 2000, bid_total: 100, ask_total: 20000 }, // label=200 (raw 199)
+        ],
+      },
+    };
+    const ctx: RatioPaneContext = {
+      auctionWindowMask: false,
+      outlierFilterEnabled: true,
+      outlierThreshold: 100,
+    };
+    const data = projectRatio(bundle, axis, ctx);
+    // Below threshold → kept
+    expect(data[0].value).toBeCloseTo(98, 5);
+    // At threshold (>=) → masked
+    expect(data[1].value).toBe(0);
+    // Above threshold → masked
+    expect(data[2].value).toBe(0);
+  });
+
+  it('does not mask outliers when outlierFilterEnabled=false', () => {
+    const bundle: any = {
+      quote_ratio: {
+        points: [
+          { t: sessionOpenMs, bid_total: 100, ask_total: 20000 }, // label=200
+        ],
+      },
+    };
+    const data = projectRatio(bundle, axis, baseCtx);
+    expect(data[0].value).toBeCloseTo(199, 5);
   });
 });

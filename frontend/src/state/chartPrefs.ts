@@ -14,6 +14,13 @@ export const CHART_TOGGLES = [
     description: '15:20–15:30 KST 동시호가 구간의 호가비를 0 으로 처리합니다.',
     default: true,
   },
+  {
+    key: 'ratioOutlierFilterEnabled',
+    label: '호가비 극단값 필터',
+    description:
+      '한쪽 호가가 임계 배수를 넘으면 그 시점의 호가비를 0 으로 마스킹합니다. (오토스케일을 잡아먹는 스파이크 제거)',
+    default: true,
+  },
 ] as const;
 
 export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];
@@ -65,9 +72,21 @@ export const DEFAULT_MOVING_AVERAGES: readonly MAConfig[] = Object.freeze([
  *  on the store for parity with `Tab.bundles` (CQ1). Boolean fields come
  *  from `CHART_TOGGLES`; non-boolean prefs (e.g. `volumeProfileMode`,
  *  `movingAverages`) sit alongside as explicit fields. */
+/** Inclusive bounds for `ratioOutlierThreshold`. Threshold is expressed in
+ *  chart-label units (i.e. max(ask/bid, bid/ask)); 2 is the smallest value
+ *  that still admits any data (ratio < 2x is "balanced enough"), 10000 is a
+ *  generous ceiling that effectively disables the filter. UI input enforces
+ *  this range; `mergePrefs` validates it on hydrate. */
+export const RATIO_OUTLIER_THRESHOLD_MIN = 2;
+export const RATIO_OUTLIER_THRESHOLD_MAX = 10_000;
+export const RATIO_OUTLIER_THRESHOLD_DEFAULT = 100;
+
 export type ChartViewPrefs = {
   volumeProfileMode: 'range' | 'per-day';
   movingAverages: MAConfig[];
+  /** Mask points whose chart-label value (1 + |raw imbalance|) is >= this
+   *  threshold to 0. Only consulted when `ratioOutlierFilterEnabled` is true. */
+  ratioOutlierThreshold: number;
 } & { [K in ChartToggleKey]: boolean };
 
 const TOGGLE_DEFAULTS = Object.fromEntries(
@@ -77,6 +96,7 @@ const TOGGLE_DEFAULTS = Object.fromEntries(
 export const DEFAULT_PREFS: ChartViewPrefs = {
   volumeProfileMode: 'range',
   movingAverages: DEFAULT_MOVING_AVERAGES.map((c) => ({ ...c })),
+  ratioOutlierThreshold: RATIO_OUTLIER_THRESHOLD_DEFAULT,
   ...TOGGLE_DEFAULTS,
 };
 
