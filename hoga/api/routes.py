@@ -5,6 +5,8 @@ This file is the thin glue layer.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Query
 
 from hoga.api.bundle import build_range_bundle
@@ -30,6 +32,21 @@ from hoga.tables import candles as candles_tbl
 from hoga.tables import snapshots as snapshots_tbl
 from hoga.tables import trades as trades_tbl
 
+
+def _parquet_path(
+    engine: QueryEngine, date: str, code: str, filename: str
+) -> Path:
+    """Resolve a parquet file path inside a captured Stock-Date dir.
+
+    Raises HTTP 404 if the Stock-Date isn't captured. Centralises the
+    try/except pattern repeated across every per-Stock-Date handler.
+    """
+    try:
+        return engine.parquet_dir(date, code) / filename
+    except StockDateNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
 def build_router(engine: QueryEngine) -> APIRouter:
     router = APIRouter(prefix="/api")
 
@@ -47,10 +64,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
 
     @router.get("/orderbook", response_model=OrderbookResponse)
     def orderbook(code: Code, date: StockDate, t: int = Query(...)) -> OrderbookResponse:
-        try:
-            path = engine.parquet_dir(date, code) / "snapshots.parquet"
-        except StockDateNotFound as e:
-            raise HTTPException(status_code=404, detail=str(e)) from e
+        path = _parquet_path(engine, date, code, "snapshots.parquet")
         raw_t = cursor_to_native(date, t)
         snap = snapshots_tbl.query_at(engine.conn, path=path, t_ms=raw_t)
         if snap is None:
@@ -71,10 +85,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         to_ms: int | None = Query(None, alias="to"),
         limit: int = 50,
     ) -> TradesResponse:
-        try:
-            path = engine.parquet_dir(date, code) / "trades.parquet"
-        except StockDateNotFound as e:
-            raise HTTPException(status_code=404, detail=str(e)) from e
+        path = _parquet_path(engine, date, code, "trades.parquet")
         if from_ms is not None and to_ms is not None:
             rows = trades_tbl.query_range(
                 engine.conn,
@@ -94,10 +105,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
 
     @router.get("/candles", response_model=CandlesResponse)
     def candles(code: Code, date: StockDate) -> CandlesResponse:
-        try:
-            path = engine.parquet_dir(date, code) / "candles.parquet"
-        except StockDateNotFound as e:
-            raise HTTPException(status_code=404, detail=str(e)) from e
+        path = _parquet_path(engine, date, code, "candles.parquet")
         rows = candles_tbl.query_all(engine.conn, path=path)
         rows = [
             r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
@@ -107,10 +115,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
 
     @router.get("/brokers/series", response_model=BrokerSeriesResponse)
     def brokers_series(code: Code, date: StockDate) -> BrokerSeriesResponse:
-        try:
-            path = engine.parquet_dir(date, code) / "brokers.parquet"
-        except StockDateNotFound as e:
-            raise HTTPException(status_code=404, detail=str(e)) from e
+        path = _parquet_path(engine, date, code, "brokers.parquet")
         raw_entries = brokers_tbl.query_day_series(engine.conn, path=path)
         # Convert each point's ts_ms from HH:MM:SS.ms-encoded to Unix ms,
         # mirroring the /api/brokers and /api/candles handlers.
