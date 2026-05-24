@@ -209,6 +209,37 @@ describe('createVirtualAxis — inClosingAuctionWindow', () => {
   it('false for empty axis', () => {
     expect(createVirtualAxis([]).inClosingAuctionWindow(DAY1_OPEN + AUCTION_OFFSET)).toBe(false);
   });
+
+  // KRX half-day sessions (year-end, lunar new year eve, etc.) close at
+  // 12:30 KST — sessionLen = 3h30m. Anchoring the auction window to
+  // sessionOpenMs + 6h20m would put the band PAST sessionCloseMs and the
+  // predicate would never return true. The fix anchors to
+  // sessionCloseMs - 10min so half-days work the same as full days.
+  describe('half-day session (12:30 KST close)', () => {
+    const HALF_DAY_LEN_MS = 3.5 * 60 * 60 * 1000;
+    const HALF_OPEN = 1779062400000;          // 09:00 KST
+    const HALF_CLOSE = HALF_OPEN + HALF_DAY_LEN_MS; // 12:30 KST
+    const HALF_AUCTION_START = HALF_CLOSE - 10 * 60 * 1000; // 12:20 KST
+    const axis = createVirtualAxis([
+      { date: '20261231', sessionOpenMs: HALF_OPEN, sessionCloseMs: HALF_CLOSE },
+    ]);
+
+    it('true inside the last 10 minutes of a 12:30 KST close', () => {
+      expect(axis.inClosingAuctionWindow(HALF_AUCTION_START)).toBe(true);
+      expect(axis.inClosingAuctionWindow(HALF_AUCTION_START + 60_000)).toBe(true);
+      expect(axis.inClosingAuctionWindow(HALF_CLOSE)).toBe(true);
+    });
+
+    it('false during continuous trading before the auction band', () => {
+      expect(axis.inClosingAuctionWindow(HALF_OPEN)).toBe(false);
+      expect(axis.inClosingAuctionWindow(HALF_OPEN + 60_000)).toBe(false);
+      expect(axis.inClosingAuctionWindow(HALF_AUCTION_START - 1)).toBe(false);
+    });
+
+    it('false past the half-day close', () => {
+      expect(axis.inClosingAuctionWindow(HALF_CLOSE + 1)).toBe(false);
+    });
+  });
 });
 
 describe('createVirtualAxis — findByReal', () => {

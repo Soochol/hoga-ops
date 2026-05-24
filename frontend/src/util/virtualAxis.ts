@@ -85,12 +85,16 @@ export type VirtualAxis = Readonly<{
 }>;
 
 /**
- * KRX closing Auction Window starts at sessionOpenMs + 6h 20m (= 15:20 KST,
- * because the Regular Session opens at 09:00 KST). Kept module-private so the
- * predicate `inClosingAuctionWindow` is the only public touch-point — callers
- * never reconstruct the threshold themselves.
+ * KRX closing Auction Window spans the last 10 minutes of the Regular
+ * Session. Anchoring the window to `sessionCloseMs` (rather than to
+ * `sessionOpenMs` with a fixed offset) keeps the predicate correct on
+ * KRX half-day sessions — year-end, lunar-new-year-eve, etc., when the
+ * session closes at 12:30 KST. The backend ships session bounds per
+ * Stock-Date (hoga/parser/__init__.py parses regular_session_close_ms
+ * from each TSV), so this constant only needs to encode the auction
+ * duration, not the wall-clock time of day.
  */
-const AUCTION_WINDOW_OFFSET_MS = (6 * 3600 + 20 * 60) * 1000;
+const AUCTION_WINDOW_LENGTH_MS = 10 * 60 * 1000;
 
 /**
  * Construct a `VirtualAxis` from raw session open/close pairs. The input is
@@ -232,7 +236,7 @@ export function createVirtualAxis(
     // Re-check upper bound so pre-axis collapsing in findByReal (which returns
     // the prior segment for realMs in a gap) doesn't leak into a `true`.
     if (realMs > seg.sessionCloseMs) return false;
-    return realMs >= seg.sessionOpenMs + AUCTION_WINDOW_OFFSET_MS;
+    return realMs >= seg.sessionCloseMs - AUCTION_WINDOW_LENGTH_MS;
   }
 
   return Object.freeze({
