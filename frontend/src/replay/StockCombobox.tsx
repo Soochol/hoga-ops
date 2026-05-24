@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStockDates } from '../api/stock-dates';
+import { groupStockDatesByCode } from '../inventory/groupByCode';
 
 export default function StockCombobox({
   value,
@@ -9,14 +10,13 @@ export default function StockCombobox({
   onChange: (code: string) => void;
 }) {
   const { data: inventory = [] } = useStockDates();
+  // StockCombobox 정책: 그룹 정렬은 dates 수 desc, 동수면 code asc.
+  // (Inventory 페이지는 최근 캡처일 desc — 같은 grouping core 위에 다른 policy)
   const stocks = useMemo(() => {
-    const m = new Map<string, { code: string; name: string; dates: number }>();
-    for (const r of inventory) {
-      const e = m.get(r.code) ?? { code: r.code, name: r.name, dates: 0 };
-      e.dates += 1;
-      m.set(r.code, e);
-    }
-    return [...m.values()].sort((a, b) => b.dates - a.dates || a.code.localeCompare(b.code));
+    const groups = groupStockDatesByCode(inventory);
+    return groups.sort(
+      (a, b) => b.dates.length - a.dates.length || a.code.localeCompare(b.code),
+    );
   }, [inventory]);
 
   const [open, setOpen] = useState(false);
@@ -87,7 +87,7 @@ export default function StockCombobox({
               >
                 <span className="font-mono text-xs text-accent w-14">{s.code}</span>
                 <span className="flex-1 text-sm">{s.name}</span>
-                <span className="font-mono text-xs text-fg-dim">{s.dates} dates</span>
+                <span className="font-mono text-xs text-fg-dim">{s.dates.length} dates</span>
               </div>
             ))}
           </div>
