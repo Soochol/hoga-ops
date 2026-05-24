@@ -72,12 +72,12 @@
   --tint-auction-window: rgba(245, 158, 11, 0.08);  /* warn @ 8% */
 
   /* Depth bar fills for OrderbookTable. Distinct from --tint-price-up/down
-     (chip backgrounds @ 10% flat) because depth bars need stronger peak
-     visibility and a directional fade per the 2026-05-20 approved mockup
-     (docs/superpowers/designs/2026-05-20-replay-viewer.html lines 379-384).
-     Anchored from the qty column inward — bar grows toward the price side. */
-  --bar-ask: linear-gradient(to left, rgba(37, 99, 235, 0.18), rgba(37, 99, 235, 0));   /* 2563EB @ 0.18 → 0 */
-  --bar-bid: linear-gradient(to left, rgba(220, 38, 38, 0.18), rgba(220, 38, 38, 0));   /* DC2626 @ 0.18 → 0 */
+     (chip backgrounds @ 10% flat); depth bars need higher contrast against
+     the card background so they read at small widths. Flat fill (no
+     gradient) per user preference 2026-05-24. Anchored from the qty
+     column inward — bar grows toward the price side. */
+  --bar-ask: rgba(37, 99, 235, 0.28);   /* 2563EB @ 28% */
+  --bar-bid: rgba(220, 38, 38, 0.28);   /* DC2626 @ 28% */
 
   /* BEGIN AUTO-GENERATED (size + radius + layout) — regenerate via npm run gen:tokens */
   /* ───── Typography sizes (rem-based) ───── */
