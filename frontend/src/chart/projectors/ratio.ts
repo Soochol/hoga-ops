@@ -2,7 +2,6 @@ import {
   BaselineSeries,
   type BaselineData,
   type LineWidth,
-  type PriceLineOptions,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
@@ -14,6 +13,7 @@ import { resolveTokens } from '../../util/tokens';
 import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
+import { addZeroBaselineGuide } from '../util/zeroBaseline';
 
 const TOKEN_SPEC = {
   // KRX 컨벤션: 매수=상승=빨강, 매도=하락=파랑. RatioPane은 price-direction
@@ -140,14 +140,7 @@ export const RATIO_SPEC = {
         // 0-baseline reference line. Drawn explicitly because BaselineSeries
         // switches color at baseValue but does not paint a visible line there.
         // Color is --fg-dimmer (neutral) so it reads as a reference, not data.
-        series.createPriceLine({
-          price: 0,
-          color: baseline,
-          lineWidth: 1,
-          lineStyle: 1,
-          axisLabelVisible: false,
-          title: '',
-        } as PriceLineOptions);
+        addZeroBaselineGuide(series, baseline);
       },
     },
   ],

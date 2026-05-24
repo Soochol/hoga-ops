@@ -5,6 +5,7 @@ import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import type { PaneSpec } from '../RangeSeriesPane';
+import { addZeroBaselineGuide } from '../util/zeroBaseline';
 
 const TOKEN_SPEC = {
   buy: ['--price-up', '#DC2626'],          // 체결 매수 (KRX 빨강)
@@ -126,16 +127,7 @@ export const FILL_STRENGTH_SPEC = {
       },
       data: (bundle, axis, ctx) =>
         ctx.cumulativeEnabled ? projectCumulativeNetFill(bundle, axis) : [],
-      afterAdd: (series) => {
-        series.createPriceLine({
-          price: 0,
-          color: cumulativeBaseline,
-          lineWidth: 1,
-          lineStyle: 1,         // dotted
-          axisLabelVisible: false,
-          title: '',
-        });
-      },
+      afterAdd: (series) => addZeroBaselineGuide(series, cumulativeBaseline),
     },
   ],
 } satisfies PaneSpec<FillStrengthPaneContext>;
