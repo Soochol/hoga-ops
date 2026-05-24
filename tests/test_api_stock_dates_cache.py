@@ -8,10 +8,6 @@ from __future__ import annotations
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from unittest import mock
-
-import pytest
-
 from hoga.api.queries import QueryEngine
 from hoga.parser import parse_stock_date
 
