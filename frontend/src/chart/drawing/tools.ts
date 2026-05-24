@@ -259,14 +259,16 @@ export const trendlineTool: DrawingToolSpec = {
     if (!data) return;
     // Reject zero-length trendlines (click without drag).
     if (data.realMs === draft.a.realMs && data.price === draft.a.price) return;
+    const id = nanoid(8);
     ctx.add({
-      id: nanoid(8),
+      id,
       kind: 'trendline',
       a: draft.a,
       b: data,
       color: ctx.accentColor,
       width: DRAWING_WIDTH,
     });
+    ctx.commitAndRevert(id);
   },
 };
 
@@ -302,13 +304,15 @@ export const pencilTool: DrawingToolSpec = {
     ctx.pencilDraft.current = null;
     ctx.releasePointer();
     if (draft.points.length < 2) return;
+    const id = nanoid(8);
     ctx.add({
-      id: nanoid(8),
+      id,
       kind: 'pencil',
       points: draft.points,
       color: ctx.accentColor,
       width: DRAWING_WIDTH,
     });
+    ctx.commitAndRevert(id);
   },
 };
 

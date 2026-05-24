@@ -131,6 +131,29 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
     trendlineTool.onPointerUp!(ctx);
     expect(ctx.add).not.toHaveBeenCalled();
   });
+
+  it('calls commitAndRevert with the new trendline id on pointer-up', () => {
+    const a: Point = { realMs: 1_000, price: 100 };
+    const b: Point = { realMs: 2_000, price: 200 };
+    const downCtx = makeCtx({ pixelToData: vi.fn(() => a) });
+    trendlineTool.onPointerDown!(downCtx);
+    const upCtx = makeCtx({
+      pixelToData: vi.fn(() => b),
+      trendlineDraft: downCtx.trendlineDraft,
+    });
+    trendlineTool.onPointerUp!(upCtx);
+    expect(upCtx.commitAndRevert).toHaveBeenCalledOnce();
+    const addedId = ((upCtx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
+    expect(upCtx.commitAndRevert).toHaveBeenCalledWith(addedId);
+  });
+
+  it('does NOT call commitAndRevert when the trendline is zero-length (rejected)', () => {
+    const p: Point = { realMs: 1_000, price: 100 };
+    const ctx = makeCtx({ pixelToData: vi.fn(() => p) });
+    trendlineTool.onPointerDown!(ctx);
+    trendlineTool.onPointerUp!(ctx);
+    expect(ctx.commitAndRevert).not.toHaveBeenCalled();
+  });
 });
 
 describe('eraserTool', () => {
@@ -145,6 +168,33 @@ describe('eraserTool', () => {
     const ctx = makeCtx({ hitTestAt: vi.fn(() => null) });
     eraserTool.onPointerDown!(ctx);
     expect(ctx.remove).not.toHaveBeenCalled();
+  });
+
+  it('never calls commitAndRevert (continuous-erase flow)', () => {
+    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5 };
+    const ctx = makeCtx({ hitTestAt: vi.fn(() => target) });
+    eraserTool.onPointerDown!(ctx);
+    expect(ctx.commitAndRevert).not.toHaveBeenCalled();
+  });
+});
+
+describe('pencilTool commit', () => {
+  it('calls commitAndRevert with the new pencil id on pointer-up', () => {
+    const ctx = makeCtx();
+    pencilTool.onPointerDown!(ctx);
+    // Manually seed a second point so the >=2 commit guard passes.
+    ctx.pencilDraft.current!.points.push({ realMs: 1_700_000_000_001, price: 70_010 });
+    pencilTool.onPointerUp!(ctx);
+    expect(ctx.commitAndRevert).toHaveBeenCalledOnce();
+    const addedId = ((ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
+    expect(ctx.commitAndRevert).toHaveBeenCalledWith(addedId);
+  });
+
+  it('does NOT call commitAndRevert when the pencil has fewer than 2 points', () => {
+    const ctx = makeCtx();
+    pencilTool.onPointerDown!(ctx);
+    pencilTool.onPointerUp!(ctx); // only 1 point in draft
+    expect(ctx.commitAndRevert).not.toHaveBeenCalled();
   });
 });
 
