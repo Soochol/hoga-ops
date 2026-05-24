@@ -41,6 +41,13 @@ class StockDate(BaseModel):
     today_close: int
     collection_complete: bool
     is_partial: bool
+    # ADR-0020: the primary state string. Use this in new code; the two
+    # boolean bits above remain for backward compatibility but cannot
+    # represent INVALID (they collapse it to {complete=True, partial=False},
+    # which makes the corrupted Stock-Date invisible to UIs that only read
+    # the booleans). Values: "complete", "source_partial", "client_incomplete",
+    # "invalid". DiskState.NONE never appears here (no meta.json means no row).
+    disk_state: str = "complete"
 
 
 class OrderbookResponse(BaseModel):

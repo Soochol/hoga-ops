@@ -141,6 +141,9 @@ class QueryEngine:
                         is_partial=_state in (
                             DiskState.SOURCE_PARTIAL, DiskState.CLIENT_INCOMPLETE,
                         ),
+                        # ADR-0020: surface the full enum so consumers can
+                        # see INVALID — the boolean pair above flattens it.
+                        disk_state=_state.value,
                     )
                 )
         return out

@@ -68,3 +68,41 @@ def test_stock_date_legacy_meta_defaults_to_safe_values(tmp_path: Path) -> None:
         eng.close()
     assert rows[0].collection_complete is False
     assert rows[0].is_partial is True
+
+
+def test_stock_date_exposes_disk_state_invalid_for_broken_meta(tmp_path: Path) -> None:
+    """ADR-0020: INVALID Stock-Dates must appear on the inventory wire.
+
+    Regression: before adding `disk_state` field, INVALID flattened to
+    {collection_complete=True, is_partial=False} via the boolean pair —
+    indistinguishable from COMPLETE for any consumer reading only those
+    bits. A corrupted Stock-Date stayed invisible in the inventory while
+    being excluded from the range bundle, producing inconsistent UX.
+    """
+    _write_full_stock_date(
+        tmp_path, "003490", "20260518",
+        collection_complete=True, is_partial=False,
+        # 5/18/003490 production shape — close_ms=0 trips error invariants.
+        regular_session_close_ms=0,
+    )
+    eng = QueryEngine(tmp_path)
+    try:
+        rows = eng.list_stock_dates()
+    finally:
+        eng.close()
+    assert len(rows) == 1
+    assert rows[0].disk_state == "invalid"
+
+
+def test_stock_date_exposes_disk_state_complete_for_healthy_meta(tmp_path: Path) -> None:
+    """Healthy Stock-Date → disk_state == 'complete'."""
+    _write_full_stock_date(
+        tmp_path, "005930", "20260520",
+        collection_complete=True, is_partial=False,
+    )
+    eng = QueryEngine(tmp_path)
+    try:
+        rows = eng.list_stock_dates()
+    finally:
+        eng.close()
+    assert rows[0].disk_state == "complete"
