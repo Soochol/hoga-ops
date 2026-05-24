@@ -52,6 +52,9 @@ def create_app(data_dir: Path) -> FastAPI:
         observer.start()
         # bus + loop for thread-safe publishes from the watchdog thread.
         set_captures_bus(bus, asyncio.get_running_loop())
+        # Restore the persisted queue manifest BEFORE starting workers, so
+        # workers pick restored items up on their first pass (ADR-0019).
+        _captures_module._restore_queue_from_manifest(data_dir)
         # Start the Plan B worker pool. Sits alongside the legacy _latest
         # shutdown hook until Task 13 retires the singleton path.
         _captures_module._workers = _captures_module.start_workers()
