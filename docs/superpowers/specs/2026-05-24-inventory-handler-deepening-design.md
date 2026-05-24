@@ -74,12 +74,17 @@ If `meta.json` is deleted but the dir survives (manual cleanup, partial re-captu
 Split `_InventoryHandler._maybe_emit` into:
 
 ```python
+from typing import Literal
+
+WatchdogKind = Literal["created", "modified", "deleted"]
+
+
 def classify_inventory_event(
     src_path: str,
     parquet_root: Path,
     *,
     is_directory: bool,
-    kind: str,  # "created" | "modified" | "deleted"
+    kind: WatchdogKind,
 ) -> dict | None:
     """Decide whether a watchdog event should produce an inventory_* SSE event,
     and build the payload if so.
@@ -127,7 +132,7 @@ class _InventoryHandler(FileSystemEventHandler):
         self.root = parquet_root
         self.loop = loop
 
-    def _dispatch(self, src_path: str, *, is_directory: bool, kind: str) -> None:
+    def _dispatch(self, src_path: str, *, is_directory: bool, kind: WatchdogKind) -> None:
         if self.loop is None:
             return
         payload = classify_inventory_event(
@@ -188,13 +193,14 @@ New file `tests/test_api_sse_inventory.py` (sibling of the existing `tests/test_
 
 **`_Bus` tests:**
 
-- `test_bus_subscribe_returns_queue_with_maxsize_64`
 - `test_bus_publish_fans_to_all_subscribers`
 - `test_bus_unsubscribe_stops_delivery`
 - `test_bus_unsubscribe_idempotent`
-- `test_bus_publish_drops_with_warning_when_queue_full` (uses `caplog`)
+- `test_bus_publish_drops_with_warning_when_queue_full` (uses `caplog`; covers the maxsize behavior end-to-end without asserting on the constant directly)
 
 **`_InventoryHandler` thin-adapter test** (no inotify, just synthetic watchdog events): construct a handler with a real loop reference, feed it a fake `FileCreatedEvent` whose `src_path` and `is_directory` are set, assert `bus.publish` was called with the expected payload.
+
+**Path construction in test data:** parameterized inputs must build `src_path` from a real `Path` (e.g., `str(parquet_root / "20260524" / "003490" / "meta.json")`), not by string-concatenating with `/`. Watchdog emits paths in the OS-native separator; the production filter survives mixed separators because `Path.relative_to` normalizes, and the tests should exercise that same normalization rather than hard-coding POSIX slashes.
 
 ### Backwards compatibility
 
