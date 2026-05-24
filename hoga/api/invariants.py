@@ -178,6 +178,11 @@ INVARIANTS: tuple[Invariant, ...] = (
     ),
 )
 
+# Backward-compat alias — ADR-0020 §3c renamed INVARIANTS to META_INVARIANTS
+# to make room for the series catalog. External imports of INVARIANTS keep
+# working; new code should use META_INVARIANTS for clarity.
+META_INVARIANTS: tuple[Invariant, ...] = INVARIANTS
+
 
 def check(meta: dict) -> list[Violation]:
     """Run every invariant against ``meta``. Returns the violations list
@@ -185,3 +190,57 @@ def check(meta: dict) -> list[Violation]:
     order — callers that care about presentation order should not re-sort.
     """
     return [v for inv in INVARIANTS if (v := inv.check(meta)) is not None]
+
+
+# === Series-level invariants (ADR-0020 §3c) ==============================
+# Series invariants run over loaded parquet artifacts, not just meta dict.
+# They are evaluated at parser write-time and archived in meta.json's
+# invariant_violations field — read-paths do NOT live-evaluate them
+# (parquet I/O cost would break per-request SLO). See spec §4.6.
+
+
+if TYPE_CHECKING:
+    # Heavy domain imports only when type-checking; avoids forcing every
+    # consumer of hoga.api.invariants to also pull in pyarrow / tables.
+    from hoga.tables.candles import Candle
+    from hoga.tables.snapshots import Orderbook
+    from hoga.tables.trades import Trade
+
+
+@dataclass(frozen=True)
+class StockDateArtifacts:
+    """Series-level invariant input. Callers load disk once and pass.
+
+    Fields are Optional so partial loading is supported:
+      - parser archival passes all four (already in memory at meta write)
+      - hoga validate --deep loads all four from parquet
+      - future per-table checks can pass just one
+    """
+    meta: Mapping[str, Any]
+    candles: "list[Candle] | None" = None
+    snapshots: "list[Orderbook] | None" = None
+    trades: "list[Trade] | None" = None
+
+
+@dataclass(frozen=True)
+class SeriesInvariant:
+    """Series invariant returns a list (not a single Violation) so one
+    invariant can flag multiple violations across the series (e.g.,
+    every cum_vol regression in trades.parquet)."""
+    id: str
+    severity: Severity
+    description: str
+    check: Callable[["StockDateArtifacts"], list[Violation]]
+
+
+SERIES_INVARIANTS: tuple[SeriesInvariant, ...] = ()  # populated by Tasks 3-5
+
+
+def check_series(artifacts: StockDateArtifacts) -> list[Violation]:
+    """Run every series invariant against the loaded artifacts. Returns
+    a flat violation list across all invariants. Empty when integral
+    (or when ``SERIES_INVARIANTS`` is empty)."""
+    out: list[Violation] = []
+    for inv in SERIES_INVARIANTS:
+        out.extend(inv.check(artifacts))
+    return out

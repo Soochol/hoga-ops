@@ -237,3 +237,34 @@ def test_real_20260520_005930_healthy_meta_fires_nothing() -> None:
         "total_unique_events": 180,
     }
     assert check(healthy) == []
+
+
+def test_meta_invariants_alias_exists_for_backward_compat() -> None:
+    """ADR-0020 §3c: INVARIANTS stays as alias for META_INVARIANTS."""
+    from hoga.api.invariants import INVARIANTS, META_INVARIANTS
+    assert INVARIANTS is META_INVARIANTS
+    assert len(META_INVARIANTS) == 5  # unchanged catalog
+
+
+def test_series_invariants_catalog_exists_initially_empty() -> None:
+    """Scaffolding present; rules added in subsequent tasks."""
+    from hoga.api.invariants import SERIES_INVARIANTS
+    assert SERIES_INVARIANTS == ()
+
+
+def test_stock_date_artifacts_accepts_optional_fields() -> None:
+    """Partial loading: any of candles/snapshots/trades may be None."""
+    from hoga.api.invariants import StockDateArtifacts
+    a = StockDateArtifacts(meta={})
+    assert a.meta == {}
+    assert a.candles is None
+    assert a.snapshots is None
+    assert a.trades is None
+
+    b = StockDateArtifacts(meta={"k": 1}, candles=[])
+    assert b.candles == []
+
+
+def test_check_series_returns_empty_when_catalog_empty() -> None:
+    from hoga.api.invariants import StockDateArtifacts, check_series
+    assert check_series(StockDateArtifacts(meta={})) == []
