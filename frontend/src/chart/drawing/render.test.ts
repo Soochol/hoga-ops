@@ -89,6 +89,29 @@ describe('renderHline price badge', () => {
     expect(x).toBeLessThan(ctx.width);
   });
 
+  it('preserves fractional precision on non-candle panes (ratio)', () => {
+    // Ratio pane lives in −1..1; rounding to KRW integer would collapse
+    // −0.34 to 0 and read as misleading "no imbalance". See render.ts
+    // formatBadgePrice — candle branch rounds, indicator branch keeps
+    // up to 4 fraction digits.
+    const ctx: ProjectCtx = {
+      ...makeProjectCtx(),
+      paneSeries: new Map([['ratio', {
+        priceToCoordinate: vi.fn(() => 200),
+        coordinateToPrice: vi.fn(),
+      } as any]]),
+    };
+    const c = makeCanvasSpy();
+    const h: Hline = {
+      id: 'h_ratio', kind: 'hline', price: -0.34,
+      color: '#14B8A6', width: 1.5, paneId: 'ratio',
+    };
+    renderDrawing(c, ctx, h, false);
+    const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
+    expect(labels.some((l) => l.includes('0.34'))).toBe(true);
+    expect(labels).not.toContain('0');
+  });
+
   it('does not paint a badge when the price scale is unavailable (y == null)', () => {
     const c = makeCanvasSpy();
     const ctx: ProjectCtx = {
