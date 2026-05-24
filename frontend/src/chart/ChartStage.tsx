@@ -166,11 +166,10 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
         },
       },
       rightPriceScale: { borderColor: tokens.border },
-      // We own wheel interactions via a custom listener (Task 2 of the
-      // replay-mouse-interactions plan). Disable the library's built-in
-      // mouse-anchored zoom so the two paths can't fight over the visible
-      // range. `pinch`, `axisPressedMouseMove`, `axisDoubleClickReset` stay
-      // at defaults — only the wheel is reclaimed.
+      // We own wheel interactions via a custom listener below. Disable the
+      // library's built-in mouse-anchored zoom so the two paths can't fight
+      // over the visible range. `pinch`, `axisPressedMouseMove`,
+      // `axisDoubleClickReset` stay at defaults — only the wheel is reclaimed.
       handleScale: { mouseWheel: false },
       autoSize: true,
     });
