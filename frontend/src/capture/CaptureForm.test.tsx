@@ -128,6 +128,12 @@ describe('CaptureForm', () => {
     expect(screen.queryByLabelText(/Force re-capture/i)).toBeNull();
   });
 
+  it('Legend lists the new "no upstream data" entry', () => {
+    const { qc } = setup({});
+    render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
+    expect(screen.getByText(/– no upstream data/)).toBeTruthy();
+  });
+
   it('shows today_too_early error inline when backend rejects', async () => {
     const { qc, fetchMock } = setup({ detail: { code: 'today_too_early', message: 'pre-18' } });
     fetchMock.mockImplementation(async (url: RequestInfo | URL) => {

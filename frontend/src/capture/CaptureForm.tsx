@@ -104,7 +104,7 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
       )}
 
       <div className="mt-3 text-xs text-fg-dim">
-        Legend: ✓ complete · ⚠ partial · ✕ broken · 🔒 today &lt; 18:00 KST
+        Legend: ✓ complete · ⚠ partial · ✕ broken · – no upstream data · 🔒 today &lt; 18:00 KST
       </div>
     </div>
   );
