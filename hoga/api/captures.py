@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import logging
 import os
 import time
 from collections.abc import Callable
@@ -17,7 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from hoga.api.calendar import KrxUnavailableError
-from hoga.api.captures_persistence import manifest_path, save_manifest
+from hoga.api.captures_persistence import load_manifest, manifest_path, save_manifest
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
 from hoga.api.error_codes import CaptureErrorCode, UpstreamCode
 from hoga.api.models import (
@@ -241,6 +242,40 @@ def _persist_queue_locked() -> None:
         for s in (*_active.values(), *_queue)
     ]
     save_manifest(_data_dir, QueueManifest(paused=_queue_paused, items=items))
+
+
+def _restore_queue_from_manifest(data_dir: Path) -> None:
+    """Read ``<data_dir>/.queue.json`` and push items into ``_queue``.
+
+    Called once at lifespan startup BEFORE ``start_workers()``. All restored
+    items get ``phase="queued"`` regardless of what the manifest says — the
+    worker's deciding step then routes via ``decide_capture`` based on disk
+    state (CLIENT_INCOMPLETE → resume=True, NONE → fresh, COMPLETE → skipped).
+
+    Active-before-queued ordering is preserved by ``_persist_queue_locked``
+    (active items are written first); restoring in document order means
+    previously-in-flight items get picked up before strictly-queued ones.
+    """
+    global _queue_paused  # noqa: PLW0603 — startup-only module write
+    manifest = load_manifest(data_dir)
+    if manifest is None:
+        return
+    _queue_paused = manifest.paused
+    for item in manifest.items:
+        state = QueueItemState(
+            item_id=item.item_id,
+            code=item.code,
+            date=item.date,
+            force_retry=item.force_retry,
+            enqueued_at_ms=item.enqueued_at_ms,
+            pause_origin=item.pause_origin,
+            phase="queued",
+        )
+        _queue.append(state)
+    logging.getLogger(__name__).info(
+        "restored queue manifest: %d items, paused=%s",
+        len(manifest.items), manifest.paused,
+    )
 
 
 def set_bus(bus: Any, loop: asyncio.AbstractEventLoop | None = None) -> None:
