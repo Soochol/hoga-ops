@@ -320,7 +320,7 @@ def test_build_range_bundle_skips_invalid_and_surfaces_in_excluded():
     # The bad date is surfaced.
     assert len(rb.excluded_dates) == 1
     assert rb.excluded_dates[0].date == "20260518"
-    fired_ids = {v["invariant_id"] for v in rb.excluded_dates[0].violations}
+    fired_ids = {v.invariant_id for v in rb.excluded_dates[0].violations}
     assert "meta.close_after_open" in fired_ids
     # No warn-severity violations in this fixture.
     assert rb.data_warnings == []
@@ -353,7 +353,7 @@ def test_build_range_bundle_surfaces_warn_without_excluding():
     assert rb.excluded_dates == []
     assert len(rb.data_warnings) == 1
     assert rb.data_warnings[0].date == "20260520"
-    fired_ids = {v["invariant_id"] for v in rb.data_warnings[0].warnings}
+    fired_ids = {v.invariant_id for v in rb.data_warnings[0].warnings}
     assert "collection.unique_events_ratio" in fired_ids
 
 

@@ -13,7 +13,10 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from hoga.api.models import ViolationModel
 
 
 class Severity(str, Enum):
@@ -35,6 +38,17 @@ class Violation:
             "message": self.message,
             "ctx": self.ctx,
         }
+
+    def to_model(self) -> "ViolationModel":
+        """Convert to the Pydantic wire mirror. Keeps the dataclass free
+        of Pydantic dep while giving callers a typed wire boundary."""
+        from hoga.api.models import ViolationModel
+        return ViolationModel(
+            invariant_id=self.invariant_id,
+            severity=self.severity.value,
+            message=self.message,
+            ctx=self.ctx,
+        )
 
 
 @dataclass(frozen=True)

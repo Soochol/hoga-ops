@@ -363,13 +363,13 @@ def build_range_bundle(
 
         if c.state == DiskState.INVALID:
             excluded.append(ExcludedDate(
-                date=d, violations=[v.as_dict() for v in c.errors],
+                date=d, violations=[v.to_model() for v in c.errors],
             ))
             continue
 
         if c.warnings:
             warnings_list.append(DateWarning(
-                date=d, warnings=[v.as_dict() for v in c.warnings],
+                date=d, warnings=[v.to_model() for v in c.warnings],
             ))
 
         raw_candles = build_candles_slice(engine, code=code, date=d)

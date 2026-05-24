@@ -364,12 +364,30 @@ class RangeSegment(BaseModel):
     session_close_ms: int
 
 
+class ViolationModel(BaseModel):
+    """Wire-shape mirror of :class:`hoga.api.invariants.Violation` (ADR-0020).
+
+    The invariants module deliberately stays free of the Pydantic dep — its
+    ``Violation`` is a plain ``@dataclass(frozen=True)``. This model is the
+    serialization surface for it; the dataclass exposes ``to_model()`` to
+    cross the boundary. Having a typed wire model (rather than ``list[dict]``)
+    means downstream contracts catch breaking field changes at type-check
+    time, and the OpenAPI schema documents the shape.
+    """
+    invariant_id: str
+    severity: str    # 'error' | 'warn' — kept as str so non-Python clients
+                     # don't need the enum definition; Severity in the Python
+                     # domain enforces the closed set.
+    message: str
+    ctx: dict
+
+
 class ExcludedDate(BaseModel):
     """A Stock-Date that build_range_bundle skipped due to error-severity
     invariant violations (ADR-0020). Surfaced so the UI can explain the gap.
     """
     date: str
-    violations: list[dict]   # each: {invariant_id, severity, message, ctx}
+    violations: list[ViolationModel]
 
 
 class DateWarning(BaseModel):
@@ -377,7 +395,7 @@ class DateWarning(BaseModel):
     invariants. The UI should mark the segment but render its data (ADR-0020).
     """
     date: str
-    warnings: list[dict]
+    warnings: list[ViolationModel]
 
 
 class RangeBundle(BaseModel):
