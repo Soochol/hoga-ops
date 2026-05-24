@@ -44,6 +44,13 @@ uv run uvicorn hoga.api.app:default_app \
 scopes the watcher to the backend package so editing `frontend/` or `docs/` doesn't bounce
 the API. Verify with `curl -s http://127.0.0.1:8000/api/events`.
 
+Both entry points (`hoga serve` and direct uvicorn) auto-load `.env` from the repo root —
+`default_app()` calls `load_env()` so the discovery is a property of the app, not the CLI.
+Set `KRX_ID` / `KRX_PW` (and optionally `HOGAPLAY_COOKIE`) per `.env.example`. Symptom of
+missing KRX creds: `POST /api/captures/items` with a date range returns
+HTTP 503 `krx_credentials_missing`, while symbol endpoints keep responding from the disk
+cache at `~/.local/share/hoga-ops/symbol-master.json` and mask the real cause.
+
 **Frontend** — Vite's HMR is on by default:
 
 ```bash
