@@ -7,6 +7,7 @@ network. The pure function and _Bus are unit-testable without fixtures.
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -123,3 +124,68 @@ async def test_inventory_handler_short_circuits_when_loop_none(
     handler.on_created(FileCreatedEvent(str(meta_path)))
 
     bus.publish.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bus_publish_fans_to_all_subscribers() -> None:
+    bus = _Bus()
+    q1 = bus.subscribe()
+    q2 = bus.subscribe()
+
+    bus.publish({"type": "heartbeat"})
+
+    assert q1.get_nowait() == {"type": "heartbeat"}
+    assert q2.get_nowait() == {"type": "heartbeat"}
+
+
+@pytest.mark.asyncio
+async def test_bus_unsubscribe_stops_delivery() -> None:
+    bus = _Bus()
+    q1 = bus.subscribe()
+    q2 = bus.subscribe()
+    bus.unsubscribe(q1)
+
+    bus.publish({"type": "heartbeat"})
+
+    # q1 was unsubscribed — its queue must stay empty.
+    with pytest.raises(asyncio.QueueEmpty):
+        q1.get_nowait()
+    # q2 still subscribed — receives the event.
+    assert q2.get_nowait() == {"type": "heartbeat"}
+
+
+@pytest.mark.asyncio
+async def test_bus_unsubscribe_idempotent() -> None:
+    """Calling unsubscribe twice on the same queue must not raise.
+
+    _Bus uses set.discard internally, which is the no-raise contract
+    the caller relies on (the SSE stream's finally-block always calls
+    unsubscribe, even if the client disconnected before subscribe
+    completed in some error paths).
+    """
+    bus = _Bus()
+    q = bus.subscribe()
+    bus.unsubscribe(q)
+    bus.unsubscribe(q)  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_bus_publish_drops_with_warning_when_queue_full(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When a subscriber's queue is full, publish logs a warning and
+    does NOT raise. This protects fast publishers from one slow client."""
+    bus = _Bus()
+    q = bus.subscribe()
+    # Saturate the queue (maxsize=64 per the bus implementation) so the
+    # next publish hits QueueFull. Use put_nowait to avoid await yield
+    # semantics affecting the test.
+    while not q.full():
+        q.put_nowait({"type": "filler"})
+
+    with caplog.at_level(logging.WARNING, logger="hoga.api.sse"):
+        bus.publish({"type": "heartbeat"})
+
+    assert any(
+        "SSE queue full" in rec.message for rec in caplog.records
+    ), f"expected QueueFull warning in caplog records: {[r.message for r in caplog.records]}"
