@@ -176,11 +176,14 @@ def test_decide_capture_no_sentinel_no_change_in_existing_paths(tmp_path: Path) 
 
 
 def test_skip_reason_wire_type_includes_no_upstream_data() -> None:
-    """models.py SkipReason and eligibility.py SkipReason must agree —
-    the worker writes the eligibility value into state.skip_reason which
-    pydantic then serialises through the models.py Literal."""
+    """models.py SkipReason and eligibility.py SkipReason must agree on the
+    full value set — the worker writes the eligibility value into
+    state.skip_reason which pydantic then serialises through the models.py
+    Literal. Set equality catches the full class of divergence (e.g., a
+    future PR adds a value to one module but forgets the other), which a
+    presence check would silently miss."""
     from hoga.api import eligibility as elig_module
     from hoga.api import models as models_module
     from typing import get_args
+    assert set(get_args(elig_module.SkipReason)) == set(get_args(models_module.SkipReason))
     assert "no_upstream_data" in get_args(elig_module.SkipReason)
-    assert "no_upstream_data" in get_args(models_module.SkipReason)
