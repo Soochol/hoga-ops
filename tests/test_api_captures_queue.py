@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from hoga.api import captures
 from hoga.api.captures import QueueItemState
+from hoga.api.captures_fake import FakeHogaplayClient
+from hoga.api.captures_persistence import manifest_path
 from hoga.api.disk_state import DiskState
 
 
@@ -778,10 +783,6 @@ async def test_cancel_during_429_backoff_aborts_immediately(monkeypatch, tmp_pat
 # -----------------------------------------------------------------------------
 # Queue manifest persistence — Task 4
 # -----------------------------------------------------------------------------
-import json
-
-from hoga.api.captures_persistence import manifest_path
-from hoga.api.captures_fake import FakeHogaplayClient
 
 
 def _read_manifest_json(data_dir):
@@ -793,9 +794,6 @@ def _read_manifest_json(data_dir):
 
 def test_enqueue_writes_manifest(monkeypatch, tmp_path):
     """Enqueueing items via the route should persist them to .queue.json."""
-    from fastapi.testclient import TestClient
-    from fastapi import FastAPI
-
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr(captures, "_client_factory", FakeHogaplayClient)
     app = FastAPI()
@@ -818,9 +816,6 @@ def test_enqueue_writes_manifest(monkeypatch, tmp_path):
 
 def test_cancel_queued_item_updates_manifest(monkeypatch, tmp_path):
     """Cancelling a queued item should remove it from the manifest."""
-    from fastapi.testclient import TestClient
-    from fastapi import FastAPI
-
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr(captures, "_client_factory", FakeHogaplayClient)
     app = FastAPI()
@@ -839,9 +834,6 @@ def test_cancel_queued_item_updates_manifest(monkeypatch, tmp_path):
 
 
 def test_cancel_all_clears_manifest(monkeypatch, tmp_path):
-    from fastapi.testclient import TestClient
-    from fastapi import FastAPI
-
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr(captures, "_client_factory", FakeHogaplayClient)
     app = FastAPI()

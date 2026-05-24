@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from hoga.api.calendar import KrxUnavailableError
+from hoga.api.captures_persistence import manifest_path, save_manifest
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
 from hoga.api.error_codes import CaptureErrorCode, UpstreamCode
 from hoga.api.models import (
@@ -32,6 +33,9 @@ from hoga.api.models import (
     EnqueueDedupedRow,
     EnqueueRequest,
     EnqueueResponse,
+    QueueManifest,
+    QueueManifestItem,
+    QueueSnapshot,
 )
 from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
@@ -185,7 +189,6 @@ def reset_state_for_tests() -> None:
     # construct one lazily in start_workers().
     _wakeup = None
     if _data_dir is not None:
-        from hoga.api.captures_persistence import manifest_path
         manifest_path(_data_dir).unlink(missing_ok=True)
 
 
@@ -226,8 +229,6 @@ def _persist_queue_locked() -> None:
     """
     if _data_dir is None:
         return  # test fixture without data_dir wired
-    from hoga.api.captures_persistence import save_manifest
-    from hoga.api.models import QueueManifest, QueueManifestItem
     items = [
         QueueManifestItem(
             item_id=s.item_id,
@@ -314,13 +315,6 @@ def _make_progress_callback(state: QueueItemState):
             return
         _loop.call_soon_threadsafe(_apply_progress, state, evt)
     return _on_progress
-
-
-
-
-from hoga.api.models import QueueSnapshot  # noqa: E402 — placed near consumers to mirror the existing late-import style
-
-
 def get_queue_snapshot() -> QueueSnapshot:
     """Build the wire-side snapshot of queue/active/done. Read-only."""
     return QueueSnapshot(
