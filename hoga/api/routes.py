@@ -63,9 +63,28 @@ def build_router(engine: QueryEngine) -> APIRouter:
         return Meta(**{k: m[k] for k in Meta.model_fields})
 
     @router.get("/orderbook", response_model=OrderbookResponse)
-    def orderbook(code: Code, date: StockDate, t: int = Query(...)) -> OrderbookResponse:
+    def orderbook(
+        code: Code,
+        date: StockDate,
+        t: int = Query(...),
+        bucket_ms: int | None = Query(None),
+    ) -> OrderbookResponse:
+        # bucket_ms aligns the sidebar's 10호가 view with the candle-close
+        # convention used by QuoteTotalsPane (and downsample_candles): for a
+        # cursor sitting on candle T's start (= bucket_start), return the last
+        # snapshot inside [t, t + bucket_ms) — the same snapshot the indicator
+        # labels at t. Without bucket_ms the legacy "latest ≤ t" semantics
+        # apply, so the parameter is backward-compatible.
         path = _parquet_path(engine, date, code, "snapshots.parquet")
-        raw_t = cursor_to_native(date, t)
+        if bucket_ms is not None:
+            try:
+                validate_bucket_ms(bucket_ms)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e)) from e
+            cutoff_unix = t + bucket_ms - 1
+        else:
+            cutoff_unix = t
+        raw_t = cursor_to_native(date, cutoff_unix)
         snap = snapshots_tbl.query_at(engine.conn, path=path, t_ms=raw_t)
         if snap is None:
             first_ts = snapshots_tbl.query_first_ts(engine.conn, path=path)

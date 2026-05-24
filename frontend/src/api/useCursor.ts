@@ -10,7 +10,7 @@ import { useTabsStore } from '../state/tabs';
 import { apiGet } from './client';
 import { useSpot } from './useSpot';
 import { unixMsToKSTDate } from '../util/time';
-import type { OrderbookResponse, Trade } from './types';
+import { TIMEFRAME_TO_MS, type OrderbookResponse, type Timeframe, type Trade } from './types';
 
 /**
  * Read the active tab's cursorMs (or null when no cursor set), plus the
@@ -32,8 +32,9 @@ export function useCursor(): {
   code: string | null;
   date: string | null;
   cursorMs: number | null;
+  timeframe: Timeframe | null;
 } {
-  // useShallow keeps the object literal reference stable when the four
+  // useShallow keeps the object literal reference stable when the five
   // returned fields haven't changed. Without it, every unrelated store
   // update (settings toggles, MA pref changes, etc.) re-renders every
   // sidebar card subscribed via useCursor.
@@ -49,18 +50,37 @@ export function useCursor(): {
             ? unixMsToKSTDate(cursorMs)
             : null,
         cursorMs,
+        timeframe: tab?.selection?.timeframe ?? null,
       };
     }),
   );
 }
 
 export function useOrderbookAtCursor() {
-  const { tabId, code, date, cursorMs } = useCursor();
-  const key = code && date && Number.isFinite(cursorMs) ? `${tabId}|ob|${code}|${date}|${cursorMs}` : null;
+  const { tabId, code, date, cursorMs, timeframe } = useCursor();
+  // Align the sidebar 10호가 view with the QuoteTotalsPane indicator's
+  // candle-close convention: passing `bucket_ms` tells the API to return the
+  // LAST snapshot inside [t, t+bucket_ms) — the same snapshot the indicator
+  // labels at the candle's bucket_start. Without this both views read the
+  // same snapshots.parquet but disagreed by one candle (the indicator's
+  // bucket-close vs query_at's "≤ t" = prior bucket's tail).
+  // cursorMs is bucket-aligned by the chart's crosshair handler, but we
+  // floor it defensively for the PriceStrip right-edge fallback path which
+  // may write a mid-bucket ms. All ALLOWED_TIMEFRAME_MS values divide 1h,
+  // so raw-unix flooring agrees with KST-relative bucketing.
+  const bucketMs = timeframe !== null ? TIMEFRAME_TO_MS[timeframe] : null;
+  const alignedT =
+    cursorMs !== null && bucketMs !== null
+      ? Math.floor(cursorMs / bucketMs) * bucketMs
+      : cursorMs;
+  const key =
+    code && date && Number.isFinite(alignedT) && bucketMs !== null
+      ? `${tabId}|ob|${code}|${date}|${alignedT}|${bucketMs}`
+      : null;
   const { data } = useSpot(key, () =>
-    apiGet<OrderbookResponse>(`/api/orderbook?code=${code}&date=${date}&t=${cursorMs}`).then(
-      (r) => r.snapshot,
-    ),
+    apiGet<OrderbookResponse>(
+      `/api/orderbook?code=${code}&date=${date}&t=${alignedT}&bucket_ms=${bucketMs}`,
+    ).then((r) => r.snapshot),
   );
   // Preserve the (T | null | undefined) shape: undefined = haven't fetched
   // yet (no cursor / loading), null = fetched but empty, value = data.

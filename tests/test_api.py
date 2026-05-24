@@ -232,4 +232,51 @@ def test_orderbook_out_of_day_cursor_returns_400(app_client: TestClient) -> None
     assert r.status_code == 400
 
 
+def test_orderbook_bucket_ms_returns_bucket_close(app_client: TestClient) -> None:
+    # Cursor on the bucket start (09:00:00). With bucket_ms=180000 (3m) the
+    # API should return the LATEST snapshot in [09:00:00, 09:03:00) — matching
+    # the candle-close convention used by QuoteTotalsPane. The legacy "≤ t"
+    # mode would return the prior bucket's tail snapshot at 08:59:59.530.
+    t_bucket_start = hhmmssms_to_unix_ms("20260519", 90000000)
+    r = app_client.get(
+        "/api/orderbook",
+        params={
+            "code": "003490",
+            "date": "20260519",
+            "t": t_bucket_start,
+            "bucket_ms": 180_000,
+        },
+    )
+    assert r.status_code == 200
+    snap = r.json()["snapshot"]
+    assert snap is not None
+    assert snap["ts_ms"] == hhmmssms_to_unix_ms("20260519", 90010435)
+
+
+def test_orderbook_without_bucket_ms_returns_prior_close(
+    app_client: TestClient,
+) -> None:
+    # Same cursor as above but no bucket_ms — legacy "≤ t" mode returns the
+    # prior bucket's tail. Pairs with the test above to demonstrate the
+    # 1-candle shift the bucket_ms parameter resolves.
+    t_bucket_start = hhmmssms_to_unix_ms("20260519", 90000000)
+    r = app_client.get(
+        "/api/orderbook",
+        params={"code": "003490", "date": "20260519", "t": t_bucket_start},
+    )
+    assert r.status_code == 200
+    snap = r.json()["snapshot"]
+    assert snap is not None
+    assert snap["ts_ms"] == hhmmssms_to_unix_ms("20260519", 85959530)
+
+
+def test_orderbook_invalid_bucket_ms_returns_400(app_client: TestClient) -> None:
+    t = hhmmssms_to_unix_ms("20260519", 90000000)
+    r = app_client.get(
+        "/api/orderbook",
+        params={"code": "003490", "date": "20260519", "t": t, "bucket_ms": 12345},
+    )
+    assert r.status_code == 400
+
+
 
