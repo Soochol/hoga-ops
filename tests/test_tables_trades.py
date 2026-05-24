@@ -178,3 +178,51 @@ def test_validate_tie_breaks_by_seq_on_identical_ts_ms() -> None:
     row_earlier_seq = replace(base, ts_ms=90008000, seq=199, cum_vol=22301662)
     # Input order is (later_seq, earlier_seq) — would fail without tie-break.
     validate([row_later_seq, row_earlier_seq])  # should not raise
+
+
+def test_find_cum_vol_violations_returns_empty_for_clean_data() -> None:
+    from hoga.tables.trades import find_cum_vol_violations, Trade
+    trades = [
+        Trade(ts_ms=90_001_000, seq=10, price=100, change_pct=0.0, qty=5,
+              side=1, cum_vol=5, cum_trades=1, low_so_far=100, high_so_far=100,
+              net_pressure=0, unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0),
+        Trade(ts_ms=90_002_000, seq=11, price=101, change_pct=1.0, qty=3,
+              side=1, cum_vol=8, cum_trades=2, low_so_far=100, high_so_far=101,
+              net_pressure=0, unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0),
+    ]
+    assert find_cum_vol_violations(trades) == []
+
+
+def test_find_cum_vol_violations_reports_each_regression() -> None:
+    """Returns one entry per regression — not just first."""
+    from hoga.tables.trades import find_cum_vol_violations, Trade
+    trades = [
+        Trade(ts_ms=90_001_000, seq=10, price=100, change_pct=0.0, qty=5,
+              side=1, cum_vol=10, cum_trades=1, low_so_far=100, high_so_far=100,
+              net_pressure=0, unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0),
+        Trade(ts_ms=90_002_000, seq=11, price=99, change_pct=-1.0, qty=2,
+              side=-1, cum_vol=8, cum_trades=2, low_so_far=99, high_so_far=100,
+              net_pressure=0, unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0),
+        Trade(ts_ms=90_003_000, seq=12, price=99, change_pct=-1.0, qty=2,
+              side=-1, cum_vol=5, cum_trades=3, low_so_far=99, high_so_far=100,
+              net_pressure=0, unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0),
+    ]
+    violations = find_cum_vol_violations(trades)
+    assert len(violations) == 2
+    assert violations[0].prev_cum == 10 and violations[0].curr_cum == 8
+    assert violations[0].ts_ms == 90_002_000
+    assert violations[1].prev_cum == 8 and violations[1].curr_cum == 5
+
+
+def test_find_cum_vol_violations_excludes_auction_cross_rows() -> None:
+    """side=0 rows carry cum_vol=0 and must be excluded from the check."""
+    from hoga.tables.trades import find_cum_vol_violations, Trade
+    trades = [
+        Trade(ts_ms=90_000_000, seq=1, price=100, change_pct=0.0, qty=10,
+              side=0, cum_vol=0, cum_trades=0, low_so_far=100, high_so_far=100,
+              net_pressure=0, unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0),
+        Trade(ts_ms=90_001_000, seq=2, price=100, change_pct=0.0, qty=5,
+              side=1, cum_vol=15, cum_trades=1, low_so_far=100, high_so_far=100,
+              net_pressure=0, unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0),
+    ]
+    assert find_cum_vol_violations(trades) == []

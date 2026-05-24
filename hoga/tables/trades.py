@@ -157,6 +157,51 @@ class TradeValidationError(ValueError):
     """A trades-table invariant was violated (e.g. cum_vol regressed)."""
 
 
+@dataclass(frozen=True)
+class CumVolViolation:
+    """One cum_vol regression found by ``find_cum_vol_violations``.
+
+    index    -- position in the sorted continuous-trade list
+    prev_cum -- preceding row's cum_vol
+    curr_cum -- offending row's cum_vol (curr_cum < prev_cum)
+    ts_ms    -- offending row's ts_ms (for diagnostic context)
+    """
+    index: int
+    prev_cum: int
+    curr_cum: int
+    ts_ms: int
+
+
+def find_cum_vol_violations(trades: list[Trade]) -> list[CumVolViolation]:
+    """Pure: returns every cum_vol regression in continuous-trade rows
+    (``side != 0``), sorted by ``(ts_ms, seq)``. Auction Cross rows
+    (``side == 0``) carry ``cum_vol = 0`` and are excluded — their volume
+    folds into the next continuous trade.
+
+    Used by:
+      - :func:`validate` (strict mode raises on first violation)
+      - ``hoga.api.invariants.SERIES_INVARIANTS``'s ``series.cum_vol_monotonic``
+        (returns full list for the wire / archival).
+    """
+    # Tie-break by seq for same-ms rows: ts_ms has ms precision, but seq is
+    # strictly increasing per CONTEXT.md and reflects actual trade order. Without
+    # the secondary key, sort stability hands order to dedup-insertion order,
+    # which can re-order same-ms trades and falsely flag cum_vol regressions.
+    sorted_trades = sorted(
+        (t for t in trades if t.side != 0),
+        key=lambda t: (t.ts_ms, t.seq),
+    )
+    out: list[CumVolViolation] = []
+    prev = -1
+    for i, t in enumerate(sorted_trades):
+        if t.cum_vol < prev:
+            out.append(CumVolViolation(
+                index=i, prev_cum=prev, curr_cum=t.cum_vol, ts_ms=t.ts_ms,
+            ))
+        prev = t.cum_vol
+    return out
+
+
 def validate(trades: list[Trade], *, lenient: bool = False) -> None:
     """Check trades-table invariants.
 
@@ -168,22 +213,17 @@ def validate(trades: list[Trade], *, lenient: bool = False) -> None:
     In strict mode (default) raises ``TradeValidationError`` on first violation.
     In lenient mode skips violations silently (caller is responsible for noting
     the data may be imperfect).
+
+    Delegates the actual scan to :func:`find_cum_vol_violations` so the same
+    logic feeds the series-level invariants catalog without duplication.
     """
-    # Tie-break by seq for same-ms rows: ts_ms has ms precision, but seq is
-    # strictly increasing per CONTEXT.md and reflects actual trade order. Without
-    # the secondary key, sort stability hands order to dedup-insertion order,
-    # which can re-order same-ms trades and falsely flag cum_vol regressions.
-    sorted_trades = sorted(
-        (t for t in trades if t.side != 0),
-        key=lambda t: (t.ts_ms, t.seq),
-    )
-    prev = -1
-    for t in sorted_trades:
-        if t.cum_vol < prev:
-            if lenient:
-                continue
-            raise TradeValidationError(f"cum_vol decreased at seq={t.seq}: {prev} -> {t.cum_vol}")
-        prev = t.cum_vol
+    violations = find_cum_vol_violations(trades)
+    if violations and not lenient:
+        first = violations[0]
+        raise TradeValidationError(
+            f"cum_vol decreased at ts_ms={first.ts_ms}: "
+            f"{first.prev_cum} -> {first.curr_cum}"
+        )
 
 
 # === API representation (wire format for clients; excludes forensic fields) ===
