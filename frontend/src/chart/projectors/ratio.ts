@@ -11,6 +11,7 @@ import { type VirtualAxis } from '../../util/virtualAxis';
 import { quoteImbalance } from '../../util/imbalance';
 import { isAuctionMaskActive } from '../../util/auctionMask';
 import { resolveTokens } from '../../util/tokens';
+import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 
@@ -85,16 +86,21 @@ export function projectRatio(
     });
 }
 
-// Per-field selectors keep this pane from re-rendering when an unrelated pref
-// (e.g. volumeProfileMode) changes. The returned object identity changes only
-// when one of the three fields changes, which is what PaneSpec.useContext
-// consumers depend on for memoization downstream.
-const useRatioContext = (): RatioPaneContext => {
-  const auctionWindowMask = useActivePrefs((p) => p.auctionWindowMask);
-  const outlierFilterEnabled = useActivePrefs((p) => p.ratioOutlierFilterEnabled);
-  const outlierThreshold = useActivePrefs((p) => p.ratioOutlierThreshold);
-  return { auctionWindowMask, outlierFilterEnabled, outlierThreshold };
-};
+// Single selector + useShallow so the returned object reference is stable
+// when none of the three fields change. Without useShallow, every call to
+// this hook returns a fresh object literal — and RangeSeriesPane's data
+// effect (`useEffect(..., [bundle, axis, ctx, spec])`) re-runs every
+// render, whose setData triggers chart range subscribers that round-trip
+// into React state, producing "Maximum update depth exceeded". Same
+// pattern as useCursor.ts.
+const useRatioContext = (): RatioPaneContext =>
+  useActivePrefs(
+    useShallow((p) => ({
+      auctionWindowMask: p.auctionWindowMask,
+      outlierFilterEnabled: p.ratioOutlierFilterEnabled,
+      outlierThreshold: p.ratioOutlierThreshold,
+    })),
+  );
 
 export const RATIO_SPEC: PaneSpec<RatioPaneContext> = {
   name: 'ratio',
