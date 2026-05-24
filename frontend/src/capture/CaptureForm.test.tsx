@@ -101,7 +101,7 @@ describe('CaptureForm', () => {
     expect(body.force_retry).toBe(false);
   });
 
-  it('form resets after a successful Start', async () => {
+  it('preserves symbol and date range after a successful Start', async () => {
     const { qc } = setup();
     render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
@@ -112,7 +112,13 @@ describe('CaptureForm', () => {
     fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
     fireEvent.click(screen.getByRole('button', { name: /Start/i }));
     await new Promise((r) => setTimeout(r, 60));
-    expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toBe('');
+    // SymbolSearch puts "name code" in the input when a SymbolHit is selected
+    // (SymbolSearch.tsx:75). Match a substring so we don't couple to the format.
+    expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toContain('삼성전자');
+    // valid = symbol && range.end — both surviving means Start is still enabled.
+    expect(screen.getByRole('button', { name: /Start/i })).not.toBeDisabled();
+    expect(screen.getByTestId('calendar-cell-20260518').getAttribute('style')).toContain('var(--accent)');
+    expect(screen.getByTestId('calendar-cell-20260520').getAttribute('style')).toContain('var(--accent)');
   });
 
   it('does not render the per-capture Force re-capture checkbox (moved to Settings)', async () => {

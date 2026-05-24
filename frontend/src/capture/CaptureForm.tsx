@@ -37,10 +37,6 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
         force_retry: loadForceRetryDefault(),
       },
       {
-        onSuccess: () => {
-          setSymbol(null);
-          setRange(null);
-        },
         onError: (err: unknown) => {
           const apiErr = err as ApiError;
           const code = apiErr.code;
