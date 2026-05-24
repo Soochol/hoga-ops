@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 from hoga.api import captures
+from hoga.api.app import create_app
 from hoga.api.captures_fake import FakeHogaplayClient
 
 
@@ -74,9 +76,6 @@ async def test_restore_after_simulated_restart_drains_queue(tmp_path: Path):
 def test_lifespan_restores_manifest_at_startup(tmp_path, monkeypatch):
     """Create a FastAPI app with a pre-seeded manifest, start the lifespan,
     and confirm the queue is populated before any HTTP request fires."""
-    from fastapi.testclient import TestClient
-    from hoga.api.app import create_app
-
     (tmp_path / ".queue.json").write_text(json.dumps({
         "schema_version": 1,
         "paused": False,
