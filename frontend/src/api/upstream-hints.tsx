@@ -39,6 +39,9 @@ export const symbolSearchHints: Record<UpstreamCode, ReactNode> = {
       <strong>설정 → Symbol Master → Update Now</strong>를 누르거나, 6자리 코드를 직접 입력해 진행할 수 있습니다.
     </>
   ),
+  disk_write_failed: (
+    <>디스크 쓰기에 실패했습니다 — 저장 공간 또는 권한을 확인하세요.</>
+  ),
 };
 
 /** Banner above the calendar grid (informational; data still renders). */
@@ -60,6 +63,7 @@ export const calendarHints: Record<UpstreamCode, ReactNode> = {
       종목 목록이 아직 다운로드되지 않았습니다 — 휴일 표시는 정상이지만 종목 검색 기능을 사용하려면 설정에서 Update하세요.
     </>
   ),
+  disk_write_failed: <>디스크 쓰기 오류 — 저장 공간 또는 권한을 확인하세요.</>,
 };
 
 /** Inline error in the range-capture form when enqueue returns HTTP 503. */
@@ -81,6 +85,7 @@ export const enqueueErrorHints: Record<UpstreamCode, ReactNode> = {
       범위 캡처 시작에는 종목 목록이 필요합니다 — 설정에서 Update Symbol Master 후 재시도하세요.
     </>
   ),
+  disk_write_failed: <>캡처 시작 실패 — 디스크 쓰기 오류. 저장 공간 또는 권한을 확인하세요.</>,
 };
 
 /** Per-item failure display from the capture_finished SSE event. */
@@ -93,6 +98,7 @@ export const captureFinishedHints: Record<UpstreamCode, ReactNode> = {
   symbol_master_not_initialized: (
     <>캡처 실패 — Symbol Master 미초기화. 설정에서 Update.</>
   ),
+  disk_write_failed: <>캡처 실패 — 디스크 쓰기 오류. 저장 공간 또는 권한을 확인하세요.</>,
 };
 
 /** Settings page → Symbol Master section. Longer-form copy than inline hints. */
@@ -121,5 +127,8 @@ export const symbolMasterSettingsHints: Record<UpstreamCode, ReactNode> = {
     <>
       종목 목록이 아직 다운로드되지 않았습니다 — 아래 <strong>Update Now</strong> 버튼을 누르면 ~30~120초가 소요됩니다.
     </>
+  ),
+  disk_write_failed: (
+    <>디스크 쓰기에 실패했습니다 — 저장 공간 또는 권한을 확인하세요. 디스크 파일이 손상되었을 수 있습니다.</>
   ),
 };
