@@ -128,28 +128,63 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> Classification:
 
 
 _SESSION_OPEN_MS: HogaMs = HogaMs(90000000)        # 09:00:00.000
-_CHART_FINAL_TIME_MS: HogaMs = HogaMs(153100000)   # 15:31:00.000 — collector terminus
 _GAP_THRESHOLD_MS = 60_000                         # 1 minute (a duration, not a HogaMs)
 _MIN_DATAPOINTS_FOR_GAP_ANALYSIS = 2               # need ≥2 to compute consecutive deltas
+_AUCTION_WINDOW_DURATION_MS = 10 * 60 * 1000       # closing Auction Window: last 10 min of Regular Session
 
 
-def has_meaningful_gaps(ts_ms_values: Iterable[HogaMs]) -> bool:
+def _hhmmssms_to_intra_ms(t: HogaMs) -> int:
+    """Decode HHMMSSmmm packed-decimal to linear ms-from-midnight.
+
+    Mirrors the SQL helper ``hhmmssms_to_intra_ms_sql`` (timeenc.py). HogaMs
+    arithmetic is NON-LINEAR — subtracting two raw values across a minute
+    boundary inflates the apparent gap by ~40s, across an hour boundary by
+    ~40min. This decode MUST happen before any duration math.
+    """
+    h = t // 10_000_000
+    m = (t // 100_000) % 100
+    s = (t // 1000) % 100
+    ms = t % 1000
+    return (h * 3600 + m * 60 + s) * 1000 + ms
+
+
+def has_meaningful_gaps(
+    ts_ms_values: Iterable[HogaMs],
+    *,
+    session_close_ms: HogaMs,
+) -> bool:
     """True if any consecutive pair within continuous-trading hours has a gap
     ≥ 1 minute. Pure function — no I/O.
 
+    Operates on linear ms-from-midnight: HogaMs subtraction is unsafe across
+    minute/hour boundaries (timeenc.py:54). The dominant prod false-positive
+    before this fix was hour-boundary inflation (every multi-hour stream
+    classified SOURCE_PARTIAL regardless of real density).
+
+    The analysis window is ``[09:00, session_close - 10min)`` — i.e. continuous
+    trading only. Snapshots inside the closing Auction Window (last 10 min of
+    the Regular Session) are excluded: no continuous matching happens there,
+    so absence of snapshot churn is normal market behavior, not a data gap.
+    ``session_close_ms`` is per-Stock-Date (Half-Day-safe: a 12:30 close
+    correctly bounds the analysis at 12:20).
+
     Args:
       ts_ms_values: snapshot timestamps as HogaMs (HHMMSSmmm encoding).
-        Pre-session and post-close events are filtered out before gap analysis,
-        so passing the full snapshot stream is safe and intended. Callers
-        responsible for the HogaMs cast — typically a parser-side helper that
-        extracts from `Orderbook` entities.
+        Pre-session, Auction-Window, and post-close events are filtered out
+        before gap analysis, so passing the full snapshot stream is safe.
+      session_close_ms: this Stock-Date's ``regular_session_close_ms`` from
+        meta (HogaMs / HHMMSSmmm). Required: a hardcoded default would re-
+        introduce the Half-Day footgun.
 
     Returns:
       True if a gap is detected OR input has fewer than 2 in-session datapoints
       (too sparse to prove completeness — conservative default).
     """
+    open_linear = _hhmmssms_to_intra_ms(_SESSION_OPEN_MS)
+    auction_start_linear = _hhmmssms_to_intra_ms(session_close_ms) - _AUCTION_WINDOW_DURATION_MS
     in_session = sorted(
-        t for t in ts_ms_values if _SESSION_OPEN_MS <= t <= _CHART_FINAL_TIME_MS
+        intra for t in ts_ms_values
+        if open_linear <= (intra := _hhmmssms_to_intra_ms(t)) < auction_start_linear
     )
     if len(in_session) < _MIN_DATAPOINTS_FOR_GAP_ANALYSIS:
         return True

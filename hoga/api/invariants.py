@@ -262,10 +262,15 @@ def _series_candles_ts_monotonic(a: "StockDateArtifacts") -> list[Violation]:
 def _series_snapshots_no_gaps(a: "StockDateArtifacts") -> list[Violation]:
     if a.snapshots is None:
         return []
+    close_ms = a.meta.get("regular_session_close_ms")
+    if not isinstance(close_ms, int):
+        # meta lacks the bound (legacy / malformed) — gap analysis requires it
+        # to compute the Auction Window cutoff; skip rather than guess a default.
+        return []
     from hoga.api.disk_state import has_meaningful_gaps
     from hoga.api.timeenc import HogaMs
     ts_values = [HogaMs(s.ts_ms) for s in a.snapshots]
-    if not has_meaningful_gaps(ts_values):
+    if not has_meaningful_gaps(ts_values, session_close_ms=HogaMs(close_ms)):
         return []
     return [Violation(
         "series.snapshots_no_gaps",

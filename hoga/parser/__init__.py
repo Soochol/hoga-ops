@@ -282,7 +282,10 @@ def _build_meta(
     # Encoding seam: Orderbook.ts_ms is HHMMSSmmm (entity native); cast to
     # HogaMs at this single extraction point so future entity changes break
     # here loudly rather than silently producing wrong is_partial values.
-    is_partial = has_meaningful_gaps(_snapshot_ts_hhmmssms(snapshots_list))
+    is_partial = has_meaningful_gaps(
+        _snapshot_ts_hhmmssms(snapshots_list),
+        session_close_ms=HogaMs(info.regular_session_close_ms),
+    )
 
     return {
         "code": info.code,

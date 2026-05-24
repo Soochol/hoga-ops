@@ -133,19 +133,23 @@ def test_malformed_meta_json_returns_client_incomplete(tmp_path: Path) -> None:
     assert check_disk_state(tmp_path, "005930", "20260520").state == DiskState.CLIENT_INCOMPLETE
 
 
-# CHART_FINAL_TIME_MS = 153100000 (15:31:00.000 in HHMMSSmmm)
-# Regular session open ≈ 90000000 (09:00:00.000)
+# HogaMs is HHMMSSmmm packed-decimal (non-linear — see timeenc.py:54).
+# Regular session open = 90000000 (09:00:00.000), close = 153000000 (15:30:00.000).
+# Closing Auction Window spans the last 10 minutes (15:20–15:30 on a regular day).
+_REGULAR_CLOSE = HogaMs(153000000)
 
 
 def test_no_gaps_when_snapshots_dense() -> None:
     # One snapshot per second from 09:00:00 to 09:00:30 — no gap exceeds 1s.
     ts = [HogaMs(90000000 + i * 1000) for i in range(31)]
-    assert has_meaningful_gaps(ts) is False
+    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is False
 
 
 def test_gap_detected_when_60s_empty() -> None:
     # 09:00:00 then jump to 09:01:30 (90 seconds later) — gap exceeds threshold.
-    assert has_meaningful_gaps([HogaMs(90000000), HogaMs(90130000)]) is True
+    assert has_meaningful_gaps(
+        [HogaMs(90000000), HogaMs(90130000)], session_close_ms=_REGULAR_CLOSE,
+    ) is True
 
 
 def test_gap_outside_continuous_session_ignored() -> None:
@@ -154,17 +158,49 @@ def test_gap_outside_continuous_session_ignored() -> None:
     the pre-session sample at 08:40 is filtered out before gap analysis."""
     ts = [HogaMs(84000000), HogaMs(90000000), HogaMs(90001000), HogaMs(90002000)]
     # in_session = [90000000, 90001000, 90002000] — three points, 1s apart, no 60s gap.
-    assert has_meaningful_gaps(ts) is False
+    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is False
 
 
 def test_empty_list_returns_true() -> None:
     """Empty input → True (conservative: caller can't prove completeness)."""
-    assert has_meaningful_gaps([]) is True
+    assert has_meaningful_gaps([], session_close_ms=_REGULAR_CLOSE) is True
 
 
 def test_single_in_session_event_returns_true() -> None:
     """One in-session datapoint isn't enough to compute gap presence; conservative True."""
-    assert has_meaningful_gaps([HogaMs(90000000)]) is True
+    assert has_meaningful_gaps([HogaMs(90000000)], session_close_ms=_REGULAR_CLOSE) is True
+
+
+def test_gap_across_minute_boundary_is_real_duration() -> None:
+    """Regression: HHMMSSmmm is non-linear (timeenc.py:54). A real 30-second
+    pause spanning 09:00:45 → 09:01:15 must NOT be flagged. Raw HogaMs
+    subtraction gives 70,000 (looks like 70 sec) but real elapsed is 30 sec."""
+    ts = [HogaMs(90045000), HogaMs(90115000)]
+    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is False
+
+
+def test_gap_across_hour_boundary_is_real_duration() -> None:
+    """Hour boundary is the worst encoding-bug case: 09:59:45 → 10:00:15 is
+    30 sec real, but raw subtraction gives 4,000,030 ms — would falsely flag
+    every multi-hour stream as partial. This is the dominant prod false-positive."""
+    ts = [HogaMs(95945000), HogaMs(100015000)]
+    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is False
+
+
+def test_real_gap_above_threshold_still_detected() -> None:
+    """Sanity: real 90-second pause within the hour is still True after the fix."""
+    ts = [HogaMs(100000000), HogaMs(100130000)]  # 10:00:00 → 10:01:30
+    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is True
+
+
+def test_auction_window_snapshots_excluded_from_gap_analysis() -> None:
+    """Snapshots inside the closing Auction Window (last 10 min of Regular
+    Session) are excluded: no continuous matching happens there, so absence
+    of churn is normal market behavior, not a data gap. With ONLY Auction-
+    Window snapshots → empty in-session set → conservative True."""
+    # 10 dense snapshots at 15:25:00..15:25:09 (inside the 15:20–15:30 window).
+    ts = [HogaMs(152500000 + i * 1000) for i in range(10)]
+    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is True
 
 
 # --- ADR-0020 / Invariants ---

@@ -105,11 +105,16 @@ def test_candles_ts_monotonic_reports_every_regression() -> None:
 
 
 # === series.snapshots_no_gaps (warn) ===
+# has_meaningful_gaps needs regular_session_close_ms to bound the Auction Window
+# cutoff (Half-Day-safe), so the invariant pulls it from meta. Fixtures here
+# pass a normal-day close (153000000 HHMMSSmmm = 15:30:00).
+_REGULAR_CLOSE_META = {"regular_session_close_ms": 153_000_000}
+
 
 def test_snapshots_no_gaps_passes_for_dense_stream() -> None:
     """One snapshot per second from 09:00:00 to 09:00:30 — no gap."""
     snaps = [_stub_orderbook(90_000_000 + i * 1000) for i in range(31)]
-    arts = StockDateArtifacts(meta={}, snapshots=snaps)
+    arts = StockDateArtifacts(meta=_REGULAR_CLOSE_META, snapshots=snaps)
     fired = [v for v in check_series(arts)
              if v.invariant_id == "series.snapshots_no_gaps"]
     assert fired == []
@@ -121,7 +126,7 @@ def test_snapshots_no_gaps_fires_when_session_gap_present() -> None:
         _stub_orderbook(90_000_000),
         _stub_orderbook(90_130_000),  # 130s later — within session, big gap
     ]
-    arts = StockDateArtifacts(meta={}, snapshots=snaps)
+    arts = StockDateArtifacts(meta=_REGULAR_CLOSE_META, snapshots=snaps)
     fired = [v for v in check_series(arts)
              if v.invariant_id == "series.snapshots_no_gaps"]
     assert len(fired) == 1
@@ -129,7 +134,18 @@ def test_snapshots_no_gaps_fires_when_session_gap_present() -> None:
 
 
 def test_snapshots_no_gaps_skips_when_snapshots_none() -> None:
-    arts = StockDateArtifacts(meta={}, snapshots=None)
+    arts = StockDateArtifacts(meta=_REGULAR_CLOSE_META, snapshots=None)
+    fired = [v for v in check_series(arts)
+             if v.invariant_id == "series.snapshots_no_gaps"]
+    assert fired == []
+
+
+def test_snapshots_no_gaps_skips_when_meta_lacks_session_close() -> None:
+    """Legacy / malformed meta without regular_session_close_ms → skip silently
+    rather than guess a default (which would re-introduce the Half-Day footgun
+    that motivated making the parameter required on has_meaningful_gaps)."""
+    snaps = [_stub_orderbook(90_000_000), _stub_orderbook(90_130_000)]
+    arts = StockDateArtifacts(meta={}, snapshots=snaps)
     fired = [v for v in check_series(arts)
              if v.invariant_id == "series.snapshots_no_gaps"]
     assert fired == []
