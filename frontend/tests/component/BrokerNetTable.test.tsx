@@ -14,7 +14,7 @@ describe('BrokerNetTable', () => {
     expect(screen.getByText('거래원 정보 없음')).toBeInTheDocument();
   });
 
-  it('aggregates buy minus sell per broker using qty_today, sorts net DESC, caps at 10', () => {
+  it('aggregates buy minus sell per broker using qty_today, sorts by |net| DESC, caps at 10', () => {
     // Mirrors the wire shape returned by /api/brokers — see hoga/tables/brokers.py::ApiBrokerEntry.
     // Fields: side, rank, broker (name), qty_today (cumulative), qty_delta (last-tick increment).
     const brokers: BrokerEntry[] = [
@@ -24,9 +24,10 @@ describe('BrokerNetTable', () => {
       { broker: '미래에셋', side: 'sell', rank: 1, qty_today: 800, qty_delta: 20 }, // net -800
     ];
     render(<BrokerNetTable brokers={brokers} />);
-    expect(screen.getByText('+700')).toBeInTheDocument();
-    expect(screen.getByText('+500')).toBeInTheDocument();
-    expect(screen.getByText('-800')).toBeInTheDocument();
+    // Order should be by absolute magnitude: |−800| > |+700| > |+500|.
+    const rendered = screen.getAllByText(/^[+-]?\d/);
+    const netTexts = rendered.map((el) => el.textContent);
+    expect(netTexts).toEqual(['-800', '+700', '+500']);
   });
 
   it('truncates broker names longer than 4 characters', () => {

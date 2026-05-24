@@ -52,6 +52,6 @@ function computeNet(entries: BrokerEntry[]): { broker: string; net: number }[] {
   }
   return [...map.entries()]
     .map(([broker, net]) => ({ broker, net }))
-    .sort((a, b) => b.net - a.net)
+    .sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
     .slice(0, 10);
 }
