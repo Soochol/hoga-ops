@@ -72,9 +72,9 @@ def test_api_range_400_on_from_gt_to(app_client: TestClient) -> None:
     assert r.status_code == 400
 
 
-def test_api_range_400_on_range_over_30_days(app_client: TestClient) -> None:
+def test_api_range_400_on_range_over_90_days(app_client: TestClient) -> None:
     r = app_client.get(
-        "/api/range?code=005930&from=20260101&to=20260201&bucket_ms=60000"
+        "/api/range?code=005930&from=20260101&to=20260501&bucket_ms=60000"
     )
     assert r.status_code == 400
 

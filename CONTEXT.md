@@ -90,7 +90,7 @@ The pydantic model returned by API endpoints — the shape clients see. Strips f
 _Avoid_: "API model" alone (ambiguous with response containers like `OrderbookResponse`), "DTO"
 
 **Stock-Date Range**:
-A `(Code, fromDate, toDate)` tuple bounding N consecutive **Stock-Date**s (`fromDate <= toDate`, both YYYYMMDD KST). `fromDate == toDate` is the degenerate single-Stock-Date case; otherwise multiple. The unit the Replay Viewer's `DateRangePicker` produces and the `Workarea` consumes. Distinct from the **Data Window**'s intra-day range (08:40–16:00 of one **Stock-Date**) and from the collector's loop range / scrubber range surfaced via **Capture Frontier**. Maximum span enforced server-side (currently 30 days).
+A `(Code, fromDate, toDate)` tuple bounding N consecutive **Stock-Date**s (`fromDate <= toDate`, both YYYYMMDD KST). `fromDate == toDate` is the degenerate single-Stock-Date case; otherwise multiple. The unit the Replay Viewer's `DateRangePicker` produces and the `Workarea` consumes. Distinct from the **Data Window**'s intra-day range (08:40–16:00 of one **Stock-Date**) and from the collector's loop range / scrubber range surfaced via **Capture Frontier**. Maximum span enforced server-side (currently 90 days).
 _Avoid_: "date range" (collides with Data Window range and capture loop range — both pre-existing), "range" alone (ambiguous across three meanings now), "selection" alone (what is being selected is unclear — use the compound).
 
 **RangeBundle**:

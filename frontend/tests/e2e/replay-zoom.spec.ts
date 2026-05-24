@@ -3,7 +3,7 @@
 // (003490, 2026-05-11) plus tab-format URL hydration. Spec exercises four
 // replay-viewer behaviours: full-day fit, Timeframe switch (chart-instance
 // preservation per CQ1/Task 17d), Day Boundary chip in multi-day ranges,
-// and the Toolbar 30-day pre-validation guard.
+// and the Toolbar 90-day pre-validation guard.
 import { test, expect } from '@playwright/test';
 
 const CODE = '003490';
@@ -47,12 +47,12 @@ test.describe('Replay viewer — zoom, Timeframe, Day Boundary', () => {
     expect(boundaries).toBeGreaterThanOrEqual(0);
   });
 
-  test('Range > 30 days blocked by Toolbar pre-validation', async ({ page }) => {
-    // URL hydration accepts a >30-day range (parseReplayUrl does not enforce
+  test('Range > 90 days blocked by Toolbar pre-validation', async ({ page }) => {
+    // URL hydration accepts a >90-day range (parseReplayUrl does not enforce
     // the cap — that's the Toolbar's responsibility). Verify the page does
     // not crash on hydration; the cap is exercised end-to-end once a
     // Toolbar-driver helper is added (deferred — see e2e README).
-    await page.goto(`/replay?tabs=${CODE}:20260101:20260201:1m&active=0`);
+    await page.goto(`/replay?tabs=${CODE}:20260101:20260501:1m&active=0`);
     // Side nav stays mounted — no root unmount on out-of-range hydration.
     await expect(page.getByRole('link', { name: 'Replay Viewer' })).toBeVisible();
   });

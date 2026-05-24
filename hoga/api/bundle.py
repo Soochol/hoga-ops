@@ -299,7 +299,7 @@ def build_fill_strength_slice(
     )
 
 
-MAX_RANGE_DAYS = 30
+MAX_RANGE_DAYS = 90
 
 
 def build_range_bundle(
@@ -312,7 +312,7 @@ def build_range_bundle(
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
-    Validates ``bucket_ms``, ``from_date <= to_date``, and span <= 30 days.
+    Validates ``bucket_ms``, ``from_date <= to_date``, and span <= 90 days.
     Returns HTTP 404 if no Stock-Date in range has captured data.
 
     Loops over captured Stock-Dates calling each per-slice builder directly.

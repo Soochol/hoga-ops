@@ -64,8 +64,8 @@ export default function Toolbar() {
       Number(draft.to!.slice(6, 8)),
     );
     const days = Math.round((dTo.getTime() - dFrom.getTime()) / 86_400_000);
-    if (days > 30) {
-      setRangeError('최대 30일까지 조회 가능합니다');
+    if (days > 90) {
+      setRangeError('최대 90일까지 조회 가능합니다');
       return;
     }
     setRangeError(null);

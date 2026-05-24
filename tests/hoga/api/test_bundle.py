@@ -149,7 +149,7 @@ def test_build_volume_profile_range_no_trades_returns_empty():
 
 
 # ---------------------------------------------------------------------------
-# build_range_bundle (ADR-0013/0014): 30-day cap, partial-inventory, segments
+# build_range_bundle (ADR-0013/0014): 90-day cap, partial-inventory, segments
 # ---------------------------------------------------------------------------
 
 def _patch_slice_builders(bundle_mod, bucket_ms: int = 60_000):
@@ -233,15 +233,15 @@ def test_build_range_bundle_rejects_from_gt_to():
     assert exc.value.status_code == 400
 
 
-def test_build_range_bundle_rejects_range_over_30_days():
+def test_build_range_bundle_rejects_range_over_90_days():
     from fastapi import HTTPException
     from hoga.api.bundle import build_range_bundle
 
     mock_engine = MagicMock()
     with pytest.raises(HTTPException) as exc:
-        build_range_bundle(mock_engine, code="005930", from_date="20260101", to_date="20260201", bucket_ms=60_000)
+        build_range_bundle(mock_engine, code="005930", from_date="20260101", to_date="20260501", bucket_ms=60_000)
     assert exc.value.status_code == 400
-    assert "30 days" in str(exc.value.detail)
+    assert "90 days" in str(exc.value.detail)
 
 
 def test_build_range_bundle_raises_404_on_empty_inventory():
