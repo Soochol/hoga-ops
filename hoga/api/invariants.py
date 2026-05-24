@@ -10,9 +10,10 @@ See docs/superpowers/specs/2026-05-24-data-integrity-checks-design.md §4.
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 
 class Severity(str, Enum):
@@ -50,7 +51,7 @@ class Invariant:
 # Production session_open_ms / close_ms use this encoding —
 # cross-reference hoga/api/disk_state.py:_SESSION_OPEN_MS = HogaMs(90000000)  # 09:00:00.000.
 
-def _meta_close_after_open(m: dict) -> Violation | None:
+def _meta_close_after_open(m: Mapping[str, Any]) -> Violation | None:
     # Skip when either bound is absent — legacy/partial meta has nothing
     # to compare. Fire only when both are present and the relation is wrong
     # (e.g. upstream stagnation that returned close_ms=0 for a real session).
@@ -68,7 +69,7 @@ def _meta_close_after_open(m: dict) -> Violation | None:
     )
 
 
-def _meta_open_in_kst_range(m: dict) -> Violation | None:
+def _meta_open_in_kst_range(m: Mapping[str, Any]) -> Violation | None:
     if "regular_session_open_ms" not in m:
         return None
     open_ms = m["regular_session_open_ms"]
@@ -82,7 +83,7 @@ def _meta_open_in_kst_range(m: dict) -> Violation | None:
     )
 
 
-def _meta_close_in_kst_range(m: dict) -> Violation | None:
+def _meta_close_in_kst_range(m: Mapping[str, Any]) -> Violation | None:
     if "regular_session_close_ms" not in m:
         return None
     close_ms = m["regular_session_close_ms"]
@@ -98,7 +99,7 @@ def _meta_close_in_kst_range(m: dict) -> Violation | None:
 
 # --- warn: shape plausible, trust low ---
 
-def _collection_finished(m: dict) -> Violation | None:
+def _collection_finished(m: Mapping[str, Any]) -> Violation | None:
     if m.get("collection_complete", False):
         return None
     return Violation(
@@ -112,7 +113,7 @@ def _collection_finished(m: dict) -> Violation | None:
 _MIN_PAGES_FOR_STAGNATION_SIGNAL = 20
 
 
-def _collection_unique_events_ratio(m: dict) -> Violation | None:
+def _collection_unique_events_ratio(m: Mapping[str, Any]) -> Violation | None:
     # Stagnation is "many pages, few unique events" — needs enough pages
     # for the ratio to mean anything. Tiny captures (test fixtures, very
     # short trading days, halts) carry no stagnation signal and must skip.

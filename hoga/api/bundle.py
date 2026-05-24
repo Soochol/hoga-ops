@@ -19,7 +19,6 @@ from datetime import datetime
 from fastapi import HTTPException
 
 from hoga.api.disk_state import DiskState, classify_from_meta
-from hoga.api.invariants import Severity, check as check_invariants
 from hoga.api.models import (
     DateWarning,
     ExcludedDate,
@@ -360,20 +359,18 @@ def build_range_bundle(
 
     for d in dates:
         meta = engine.get_meta(d, code)
-        state = classify_from_meta(meta)
+        c = classify_from_meta(meta)   # state + violations in one pass
 
-        if state == DiskState.INVALID:
-            errs = [v.as_dict() for v in check_invariants(meta)
-                    if v.severity == Severity.error]
-            excluded.append(ExcludedDate(date=d, violations=errs))
+        if c.state == DiskState.INVALID:
+            excluded.append(ExcludedDate(
+                date=d, violations=[v.as_dict() for v in c.errors],
+            ))
             continue
 
-        # Included — collect warn surfacing too. Second check_invariants call
-        # is fine: 5 pure-function comparisons in the hot path are < 1µs.
-        warns = [v.as_dict() for v in check_invariants(meta)
-                 if v.severity == Severity.warn]
-        if warns:
-            warnings_list.append(DateWarning(date=d, warnings=warns))
+        if c.warnings:
+            warnings_list.append(DateWarning(
+                date=d, warnings=[v.as_dict() for v in c.warnings],
+            ))
 
         raw_candles = build_candles_slice(engine, code=code, date=d)
         candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)

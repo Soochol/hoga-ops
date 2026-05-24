@@ -359,7 +359,7 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
             for code_dir in date_dir.iterdir():
                 if not code_dir.is_dir():
                     continue
-                st = check_disk_state(data_dir, code_dir.name, date_dir.name)
+                st = check_disk_state(data_dir, code_dir.name, date_dir.name).state
                 bucket = breakdowns.setdefault(
                     code_dir.name,
                     {"complete": 0, "source_partial": 0, "client_incomplete": 0},
@@ -381,7 +381,7 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
                 # Skip if parquet covered this (code, date) — already counted.
                 if (parquet_root / date_dir.name / code_dir.name).exists():
                     continue
-                st = check_disk_state(data_dir, code_dir.name, date_dir.name)
+                st = check_disk_state(data_dir, code_dir.name, date_dir.name).state
                 if st == DiskState.CLIENT_INCOMPLETE:
                     bucket = breakdowns.setdefault(
                         code_dir.name,

@@ -21,6 +21,8 @@
 
 3a. **Classify 우선순위는 `INVALID` > `CLIENT_INCOMPLETE`.** 초안에서는 "캡처 미완료가 더 근본"이라는 직관으로 `CLIENT_INCOMPLETE`를 먼저 두려 했으나, 그러면 5/18/003490 production 케이스(`collection_complete=False AND close_ms=0`)가 `CLIENT_INCOMPLETE`로 라우팅되고 `build_range_bundle`의 `INVALID` 필터를 통과하면서 차트 충돌이 동일하게 재발한다. 깨진 모양은 incompleteness보다 더 위험한 신호이므로 우선 분기: bundle은 제외, eligibility는 resume=False (corrupted parquet를 신뢰하지 않고 처음부터 fresh capture).
 
+3b. **`classify_from_meta`는 `Classification(state, violations)`를 반환한다.** 초기 시그니처 `-> DiskState`는 shallow였다 — 호출처가 INVALID를 발견하면 `check(meta)`를 두 번 더 돌려 violations를 복원해야 했고, severity 비교 인라인이 4계층에 흩어졌다. `Classification` 데이터클래스는 같은 호출 한 번에 state + violations를 함께 반환하고, `.errors` / `.warnings` property로 severity partition을 한 곳에 보관한다. routing-only caller(eligibility, calendar, queries)는 `.state` 한 단어만 추가, surfacing caller(`build_range_bundle`)는 중복 호출 제거 + 인라인 severity 비교 5줄 절감. ADR-0007의 "한 도메인 분류는 한 모듈에서" 원칙이 한 단계 더 깊어진 형태.
+
 4. **매 호출 live 평가 (vs cached archival 우선).** 카탈로그가 업데이트되면 archival 필드는 stale — self-healing 원칙. L1 parser hook이 `meta.json`에 `invariant_violations` 필드를 박지만 이는 archival/추적용일 뿐이고, 어떤 read-path도 그 필드를 우선 신뢰하지 않는다. 측정 결과 calendar 등에서 성능 문제 발견 시 그때 catalog-hash 기반 캐싱 도입 (premature optimization 회피).
 
 5. **error 자동 제외 + 응답 메타 기록, warn 포함하되 surfacing.** 두 단계 severity로 분리. error는 데이터 형태 자체가 깨진 경우 (예: `close < open`) → segment 조립 불가. warn은 데이터 모양은 맞지만 신뢰도 낮음 (예: `collection_complete=false`) → 포함하되 사용자에게 경고. UI는 `RangeBundle.excluded_dates` / `data_warnings`로 두 신호를 모두 받음.

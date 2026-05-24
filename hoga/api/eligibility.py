@@ -73,7 +73,7 @@ def decide_capture(
       - DiskState.CLIENT_INCOMPLETE → proceed with resume=True
       - DiskState.NONE            → proceed with resume=False
     """
-    disk = check_disk_state(data_dir, code, date)
+    disk = check_disk_state(data_dir, code, date).state
     if disk == DiskState.COMPLETE:
         return CaptureDecision(skip_reason="already_complete", resume=False)
     if disk == DiskState.SOURCE_PARTIAL and not force_retry:

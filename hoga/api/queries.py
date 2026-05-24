@@ -63,7 +63,7 @@ class QueryEngine:
                 if not (code_dir / "meta.json").exists():
                     continue
                 meta = json.loads((code_dir / "meta.json").read_text(encoding="utf-8"))
-                _state = classify_from_meta(meta)
+                _state = classify_from_meta(meta).state
                 snap_path = code_dir / "snapshots.parquet"
                 # snapshots.ts_ms is stored as HHMMSSmmm (per existing tests
                 # asserting e.g. ts_ms == 90010435). Convert to Unix ms here.

@@ -118,7 +118,7 @@ def test_decide_capture_invalid_proceeds_as_fresh(tmp_path: Path) -> None:
 
     # Sanity: precondition holds (classify is INVALID)
     from hoga.api.disk_state import check_disk_state
-    assert check_disk_state(tmp_path, "003490", "20260518") == DiskState.INVALID
+    assert check_disk_state(tmp_path, "003490", "20260518").state == DiskState.INVALID
 
     # Proceeds (no skip), resume=False (fresh capture, don't trust corrupt artifacts)
     assert decision.skip_reason is None

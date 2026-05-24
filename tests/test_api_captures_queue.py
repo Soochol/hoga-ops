@@ -13,7 +13,7 @@ from hoga.api import captures
 from hoga.api.captures import QueueItemState
 from hoga.api.captures_fake import FakeHogaplayClient
 from hoga.api.captures_persistence import manifest_path
-from hoga.api.disk_state import DiskState
+from hoga.api.disk_state import Classification, DiskState
 
 
 @pytest.fixture(autouse=True)
@@ -119,7 +119,7 @@ async def test_deciding_skips_complete(monkeypatch, tmp_path):
     """When disk_state.check_disk_state returns COMPLETE, item is skipped."""
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
-                        lambda *_a, **_k: DiskState.COMPLETE)
+                        lambda *_a, **_k: Classification(state=DiskState.COMPLETE))
 
     captures._queue.append(_make_item("x-1"))
     workers = captures.start_workers(n=1)
@@ -136,7 +136,7 @@ async def test_deciding_skips_complete(monkeypatch, tmp_path):
 async def test_deciding_skips_source_partial(monkeypatch, tmp_path):
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
-                        lambda *_a, **_k: DiskState.SOURCE_PARTIAL)
+                        lambda *_a, **_k: Classification(state=DiskState.SOURCE_PARTIAL))
 
     captures._queue.append(_make_item("x-1"))  # force_retry=False
     workers = captures.start_workers(n=1)
@@ -153,7 +153,7 @@ async def test_deciding_resumes_client_incomplete(monkeypatch, tmp_path):
     """CLIENT_INCOMPLETE forces resume=True in the collector call."""
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
-                        lambda *_a, **_k: DiskState.CLIENT_INCOMPLETE)
+                        lambda *_a, **_k: Classification(state=DiskState.CLIENT_INCOMPLETE))
 
     captured = {}
     async def _stub_capture(state, resume):
@@ -174,7 +174,7 @@ async def test_force_retry_overrides_source_partial_skip(monkeypatch, tmp_path):
     """SOURCE_PARTIAL + force_retry=True → falls through to fresh capture."""
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
-                        lambda *_a, **_k: DiskState.SOURCE_PARTIAL)
+                        lambda *_a, **_k: Classification(state=DiskState.SOURCE_PARTIAL))
 
     captured = {}
     async def _stub_capture(state, resume):
@@ -200,7 +200,7 @@ async def test_worker_defers_when_inflight_collision(monkeypatch, tmp_path):
     _inflight_paths, the second worker requeues it instead of double-running."""
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
-                        lambda *_a, **_k: DiskState.NONE)
+                        lambda *_a, **_k: Classification(state=DiskState.NONE))
 
     start_order: list[str] = []
     finish_order: list[str] = []
@@ -387,7 +387,7 @@ def test_cancel_queued_item_removes_and_marks_cancelled(monkeypatch, tmp_path):
     """Item not yet active → POST /cancel drops it from queue, marks cancelled."""
     app = _build_test_app(monkeypatch, tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
-                        lambda *_a, **_k: DiskState.NONE)
+                        lambda *_a, **_k: Classification(state=DiskState.NONE))
     # Patch _run_capture_and_parse to block so items stay queued/active.
     sem = asyncio.Event()
 
@@ -431,7 +431,7 @@ def test_cancel_queued_item_removes_and_marks_cancelled(monkeypatch, tmp_path):
 def test_cancel_terminal_item_returns_409(monkeypatch, tmp_path):
     app = _build_test_app(monkeypatch, tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
-                        lambda *_a, **_k: DiskState.COMPLETE)
+                        lambda *_a, **_k: Classification(state=DiskState.COMPLETE))
     with TestClient(app) as c:
         r = c.post("/api/captures/items", json={
             "code": "005930", "dates": ["20260518"], "force_retry": False,
@@ -451,7 +451,7 @@ def test_cancel_terminal_item_returns_409(monkeypatch, tmp_path):
 def test_cancel_all_drains_queue(monkeypatch, tmp_path):
     app = _build_test_app(monkeypatch, tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
-                        lambda *_a, **_k: DiskState.NONE)
+                        lambda *_a, **_k: Classification(state=DiskState.NONE))
     sem = asyncio.Event()
 
     async def _block(state, resume):
@@ -617,7 +617,7 @@ async def test_429_backoff_then_success(monkeypatch, tmp_path):
 
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
-                        lambda *_a, **_k: DiskState.NONE)
+                        lambda *_a, **_k: Classification(state=DiskState.NONE))
     # Zero the backoff so the test doesn't actually wait 5+10+30s.
     monkeypatch.setattr(captures, "_BACKOFF_DELAYS", (0.0, 0.0, 0.0))
 
@@ -676,7 +676,7 @@ async def test_429_backoff_exhausted_marks_failed(monkeypatch, tmp_path):
 
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
-                        lambda *_a, **_k: DiskState.NONE)
+                        lambda *_a, **_k: Classification(state=DiskState.NONE))
     monkeypatch.setattr(captures, "_BACKOFF_DELAYS", (0.0, 0.0, 0.0))
 
     async def _always_429(state, resume):
@@ -705,7 +705,7 @@ def test_dismiss_done_clears_terminals_only(monkeypatch, tmp_path):
     monkeypatch.setattr("hoga.api.calendar.trading_days_in_range",
                         lambda s, e: ["20260518", "20260519"])
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
-                        lambda *_a, **_k: DiskState.COMPLETE)
+                        lambda *_a, **_k: Classification(state=DiskState.COMPLETE))
     with TestClient(app) as c:
         c.post("/api/captures/items", json={
             "code": "005930", "start_date": "20260518", "end_date": "20260519",
@@ -754,7 +754,7 @@ async def test_cancel_during_429_backoff_aborts_immediately(monkeypatch, tmp_pat
 
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
-                        lambda *_a, **_k: DiskState.NONE)
+                        lambda *_a, **_k: Classification(state=DiskState.NONE))
     # One backoff slot, long enough that we definitely cancel during it.
     monkeypatch.setattr(captures, "_BACKOFF_DELAYS", (5.0,))
 

@@ -24,14 +24,14 @@ def test_disk_state_enum_has_five_members() -> None:
 
 
 def test_none_when_no_directory_exists(tmp_path: Path) -> None:
-    assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.NONE
+    assert check_disk_state(tmp_path, "005930", "20260520").state == DiskState.NONE
 
 
 def test_client_incomplete_when_only_raw_exists(tmp_path: Path) -> None:
     raw_dir = tmp_path / "raw" / "20260520" / "005930"
     raw_dir.mkdir(parents=True)
     (raw_dir / "first_001.tsv").write_text("dummy\n", encoding="utf-8")
-    assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.CLIENT_INCOMPLETE
+    assert check_disk_state(tmp_path, "005930", "20260520").state == DiskState.CLIENT_INCOMPLETE
 
 
 def test_client_incomplete_only_if_first_pages_exist(tmp_path: Path) -> None:
@@ -40,7 +40,7 @@ def test_client_incomplete_only_if_first_pages_exist(tmp_path: Path) -> None:
     raw_dir.mkdir(parents=True)
     (raw_dir / "info.tsv").write_text("info\n", encoding="utf-8")
     # No first_*.tsv files yet — collector died before storing any page.
-    assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.NONE
+    assert check_disk_state(tmp_path, "005930", "20260520").state == DiskState.NONE
 
 
 def _write_meta(tmp_path: Path, code: str, date: str, **fields: object) -> None:
@@ -68,24 +68,24 @@ def _write_meta(tmp_path: Path, code: str, date: str, **fields: object) -> None:
 
 def test_complete_when_meta_says_complete_and_not_partial(tmp_path: Path) -> None:
     _write_meta(tmp_path, "005930", "20260520", collection_complete=True, is_partial=False)
-    assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.COMPLETE
+    assert check_disk_state(tmp_path, "005930", "20260520").state == DiskState.COMPLETE
 
 
 def test_source_partial_when_meta_says_complete_but_partial(tmp_path: Path) -> None:
     _write_meta(tmp_path, "005930", "20260520", collection_complete=True, is_partial=True)
-    assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.SOURCE_PARTIAL
+    assert check_disk_state(tmp_path, "005930", "20260520").state == DiskState.SOURCE_PARTIAL
 
 
 def test_client_incomplete_when_meta_says_not_complete(tmp_path: Path) -> None:
     _write_meta(tmp_path, "005930", "20260520", collection_complete=False, is_partial=True)
-    assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.CLIENT_INCOMPLETE
+    assert check_disk_state(tmp_path, "005930", "20260520").state == DiskState.CLIENT_INCOMPLETE
 
 
 def test_legacy_meta_without_bits_defaults_to_client_incomplete(tmp_path: Path) -> None:
     """Pre-foundation meta.json has no completeness fields. Conservative default:
     treat as client_incomplete so the worker tries to resume and upgrade the meta."""
     _write_meta(tmp_path, "005930", "20260520")  # neither field
-    assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.CLIENT_INCOMPLETE
+    assert check_disk_state(tmp_path, "005930", "20260520").state == DiskState.CLIENT_INCOMPLETE
 
 
 def test_classify_from_meta_complete() -> None:
@@ -95,7 +95,7 @@ def test_classify_from_meta_complete() -> None:
         "collection_complete": True,
         "is_partial": False,
     }
-    assert classify_from_meta(meta) == DiskState.COMPLETE
+    assert classify_from_meta(meta).state == DiskState.COMPLETE
 
 
 def test_classify_from_meta_source_partial() -> None:
@@ -105,7 +105,7 @@ def test_classify_from_meta_source_partial() -> None:
         "collection_complete": True,
         "is_partial": True,
     }
-    assert classify_from_meta(meta) == DiskState.SOURCE_PARTIAL
+    assert classify_from_meta(meta).state == DiskState.SOURCE_PARTIAL
 
 
 def test_classify_from_meta_client_incomplete_when_not_complete() -> None:
@@ -114,15 +114,15 @@ def test_classify_from_meta_client_incomplete_when_not_complete() -> None:
     # callers rely on.
     assert classify_from_meta(
         {"collection_complete": False, "is_partial": False},
-    ) == DiskState.CLIENT_INCOMPLETE
+    ).state == DiskState.CLIENT_INCOMPLETE
     assert classify_from_meta(
         {"collection_complete": False, "is_partial": True},
-    ) == DiskState.CLIENT_INCOMPLETE
+    ).state == DiskState.CLIENT_INCOMPLETE
 
 
 def test_classify_from_meta_legacy_empty_dict() -> None:
     """Pre-foundation meta with neither field → CLIENT_INCOMPLETE (conservative)."""
-    assert classify_from_meta({}) == DiskState.CLIENT_INCOMPLETE
+    assert classify_from_meta({}).state == DiskState.CLIENT_INCOMPLETE
 
 
 def test_malformed_meta_json_returns_client_incomplete(tmp_path: Path) -> None:
@@ -130,7 +130,7 @@ def test_malformed_meta_json_returns_client_incomplete(tmp_path: Path) -> None:
     parquet_dir = tmp_path / "parquet" / "20260520" / "005930"
     parquet_dir.mkdir(parents=True)
     (parquet_dir / "meta.json").write_text("{not valid json", encoding="utf-8")
-    assert check_disk_state(tmp_path, "005930", "20260520") == DiskState.CLIENT_INCOMPLETE
+    assert check_disk_state(tmp_path, "005930", "20260520").state == DiskState.CLIENT_INCOMPLETE
 
 
 # CHART_FINAL_TIME_MS = 153100000 (15:31:00.000 in HHMMSSmmm)
@@ -175,6 +175,53 @@ def test_disk_state_enum_includes_invalid() -> None:
     assert len(set(DiskState)) == 5
 
 
+def test_classification_carries_violations_so_callers_avoid_redoing_work() -> None:
+    """Deepening regression: classify_from_meta must return both the state
+    and the violations that drove it, so downstream surfacing callers
+    (build_range_bundle) don't re-run hoga.api.invariants.check() to recover
+    them. The .errors / .warnings property helpers must partition by severity."""
+    from hoga.api.disk_state import Classification
+    from hoga.api.invariants import Severity
+
+    # Healthy bounds, complete, but low unique-event ratio → warn only.
+    c = classify_from_meta({
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": True,
+        "is_partial": False,
+        "pages_collected": 4132,
+        "total_unique_events": 1553,
+    })
+    assert isinstance(c, Classification)
+    assert c.state == DiskState.COMPLETE
+    assert c.errors == []                                              # no error
+    assert {v.invariant_id for v in c.warnings} == {                   # warn surfaced
+        "collection.unique_events_ratio",
+    }
+
+    # Broken bounds → INVALID + the error violation carried through.
+    c2 = classify_from_meta({
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 0,
+        "collection_complete": True,
+        "is_partial": False,
+    })
+    assert c2.state == DiskState.INVALID
+    error_ids = {v.invariant_id for v in c2.errors}
+    assert "meta.close_after_open" in error_ids
+    assert all(v.severity == Severity.error for v in c2.errors)
+
+
+def test_check_disk_state_empty_path_returns_no_violations() -> None:
+    """Classification.violations is empty for NONE / raw-only CLIENT_INCOMPLETE
+    paths — those branches don't have a meta dict to evaluate."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        c = check_disk_state(Path(td), "005930", "20260520")
+    assert c.state == DiskState.NONE
+    assert c.violations == []
+
+
 def test_classify_returns_invalid_when_meta_has_error_violation() -> None:
     """A complete, non-partial capture that fails an error invariant → INVALID."""
     meta = {
@@ -183,7 +230,7 @@ def test_classify_returns_invalid_when_meta_has_error_violation() -> None:
         "collection_complete": True,       # gets past CLIENT_INCOMPLETE branch
         "is_partial": False,
     }
-    assert classify_from_meta(meta) == DiskState.INVALID
+    assert classify_from_meta(meta).state == DiskState.INVALID
 
 
 def test_classify_prefers_invalid_over_client_incomplete() -> None:
@@ -199,7 +246,7 @@ def test_classify_prefers_invalid_over_client_incomplete() -> None:
         "collection_complete": False,      # would be CLIENT_INCOMPLETE under old priority
         "is_partial": True,
     }
-    assert classify_from_meta(meta) == DiskState.INVALID
+    assert classify_from_meta(meta).state == DiskState.INVALID
 
 
 def test_classify_client_incomplete_when_only_completeness_bit_false() -> None:
@@ -211,7 +258,7 @@ def test_classify_client_incomplete_when_only_completeness_bit_false() -> None:
         "collection_complete": False,
         "is_partial": True,
     }
-    assert classify_from_meta(meta) == DiskState.CLIENT_INCOMPLETE
+    assert classify_from_meta(meta).state == DiskState.CLIENT_INCOMPLETE
 
 
 def test_classify_warn_only_does_not_promote_to_invalid() -> None:
@@ -225,4 +272,4 @@ def test_classify_warn_only_does_not_promote_to_invalid() -> None:
         "total_unique_events": 30,         # warn: unique_events_ratio
     }
     # warn-only → still COMPLETE
-    assert classify_from_meta(meta) == DiskState.COMPLETE
+    assert classify_from_meta(meta).state == DiskState.COMPLETE

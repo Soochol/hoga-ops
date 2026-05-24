@@ -171,7 +171,7 @@ def _cell_status_for(date_str: str, now: dt.datetime, trading_days: set[str],
         return "today_locked"
     if date_str not in trading_days:
         return "weekend" if d.weekday() >= 5 else "holiday"
-    return _disk_state_to_status(check_disk_state(data_dir, code, date_str))
+    return _disk_state_to_status(check_disk_state(data_dir, code, date_str).state)
 
 
 def get_month_map(*, data_dir: Path, code: str, year: int, month: int) -> CalendarResponse:
