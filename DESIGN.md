@@ -139,7 +139,7 @@ The design system has a **single density dial** at `:root font-size`.
 - **App shell:**
   - Top-level: `grid-template-columns: 210px 1fr` (nav + main).
   - Main: `grid-template-rows: 40px 60px 52px 1fr` (tabs + toolbar + price strip + workarea) for Replay Viewer; stub pages have only the workarea row.
-- **Replay Viewer workarea:** `grid-template-columns: 1fr 320px` (chart + sidebar).
+- **Replay Viewer workarea:** `grid-template-columns: 1fr 12px <sidebarPx>` (chart + splitter + Cursor Sidebar). `--sidebar-w` seeds the default `sidebarPx`; runtime width and the collapsed flag are owned by `frontend/src/state/replayLayout.ts` and persisted to `localStorage['replay.layout']`. When collapsed, the grid collapses to `1fr` and a floating right-edge handle plus a Toolbar toggle let the user re-expand. Double-click on the splitter reads the *current* token value via `getComputedStyle`, so future density-mode changes reseed automatically. Trade-off captured in ADR-0022.
 - **Chart stage:** `grid-template-rows: 1fr 0.5fr 1fr 0.6fr` (candles+vol / ratio / intensity / fill).
 - **Max content width:** No cap. App fills the viewport (desktop-only).
 - **Border radius:**
