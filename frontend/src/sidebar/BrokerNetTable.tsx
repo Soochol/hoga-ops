@@ -39,10 +39,11 @@ function trunc(name: string): string {
 
 /**
  * Aggregate cumulative `qty_today` per broker, signed by side (buy +, sell −),
- * sort by absolute net activity, and keep the top 10. `qty_today` (the
- * cumulative position through the cursor moment) is the right magnitude for
- * "net pressure" — `qty_delta` would show only the most recent tick's
- * movement, which jitters as new ticks arrive.
+ * sort by signed net descending so net buyers stack on top and net sellers
+ * on the bottom, and keep the top 10. `qty_today` (the cumulative position
+ * through the cursor moment) is the right magnitude for "net pressure" —
+ * `qty_delta` would show only the most recent tick's movement, which
+ * jitters as new ticks arrive.
  */
 function computeNet(entries: BrokerEntry[]): { broker: string; net: number }[] {
   const map = new Map<string, number>();
@@ -52,6 +53,6 @@ function computeNet(entries: BrokerEntry[]): { broker: string; net: number }[] {
   }
   return [...map.entries()]
     .map(([broker, net]) => ({ broker, net }))
-    .sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
+    .sort((a, b) => b.net - a.net)
     .slice(0, 10);
 }
