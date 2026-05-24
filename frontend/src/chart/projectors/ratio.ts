@@ -2,6 +2,7 @@ import { BaselineSeries } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { quoteImbalance } from '../../util/imbalance';
+import { isAuctionMaskActive } from '../../util/auctionMask';
 import { resolveTokens } from '../../util/tokens';
 import { useChartPrefs } from '../ChartPrefsContext';
 import type { PaneSpec } from '../RangeSeriesPane';
@@ -51,14 +52,12 @@ export function projectRatio(
     .filter((p) => axis.contains(p.t))
     .map((p) => ({
       time: (axis.toVirtual(p.t) / 1000) as any,
-      // CONTEXT.md "Auction Window" — during 15:20–15:30 the bid/ask
-      // ratio is dominated by one-sided accumulation and reads as
-      // misleading extremes. Per-tab `auctionWindowMask` gates the
-      // zeroing; axis.inClosingAuctionWindow owns the threshold.
-      value:
-        auctionWindowMask && axis.inClosingAuctionWindow(p.t)
-          ? 0
-          : quoteImbalance(p.bid_total, p.ask_total),
+      // CONTEXT.md "Auction Window" — during 15:20–15:30 the bid/ask ratio is
+      // dominated by one-sided accumulation. `isAuctionMaskActive` owns the
+      // rule (per-tab toggle + axis threshold).
+      value: isAuctionMaskActive(auctionWindowMask, axis, p.t)
+        ? 0
+        : quoteImbalance(p.bid_total, p.ask_total),
     }));
 }
 
