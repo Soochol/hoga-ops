@@ -142,3 +142,96 @@ describe('mergePrefs', () => {
     expect((merged as Record<string, unknown>).futureKey).toBeUndefined();
   });
 });
+
+import { loadPersisted } from './tabsPersistence';
+import type { ReplayTabsSnapshot } from './tabsPersistence';
+
+describe('loadPersisted', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('returns null when the key is absent', () => {
+    expect(loadPersisted()).toBeNull();
+  });
+
+  it('returns null when JSON is corrupt', () => {
+    localStorage.setItem('replay.tabs.v1', '{not json');
+    expect(loadPersisted()).toBeNull();
+  });
+
+  it('returns null when version is missing or wrong', () => {
+    localStorage.setItem('replay.tabs.v1', JSON.stringify({ version: 2, tabs: [], activeIndex: 0 }));
+    expect(loadPersisted()).toBeNull();
+    localStorage.setItem('replay.tabs.v1', JSON.stringify({ tabs: [], activeIndex: 0 }));
+    expect(loadPersisted()).toBeNull();
+  });
+
+  it('returns null when tabs is not an array', () => {
+    localStorage.setItem('replay.tabs.v1', JSON.stringify({ version: 1, tabs: 'nope', activeIndex: 0 }));
+    expect(loadPersisted()).toBeNull();
+  });
+
+  it('returns the snapshot on a valid payload, preserving tabs verbatim', () => {
+    const payload: ReplayTabsSnapshot = {
+      version: 1,
+      savedAt: 1_700_000_000_000,
+      activeIndex: 0,
+      tabs: [
+        {
+          selection: { code: '005930', fromDate: '20260512', toDate: '20260520', timeframe: '5m' },
+          prefs: { volumeProfileMode: 'per-day' },
+        },
+      ],
+    };
+    localStorage.setItem('replay.tabs.v1', JSON.stringify(payload));
+    const out = loadPersisted();
+    expect(out).not.toBeNull();
+    expect(out!.tabs).toHaveLength(1);
+    expect(out!.tabs[0].selection?.code).toBe('005930');
+    expect(out!.tabs[0].prefs.volumeProfileMode).toBe('per-day');
+  });
+
+  it('coerces invalid selection to null (preserves tab + its prefs)', () => {
+    const payload = {
+      version: 1, savedAt: 0, activeIndex: 0,
+      tabs: [
+        {
+          selection: { code: 'BAD', fromDate: '20260512', toDate: '20260512', timeframe: '1m' },
+          prefs: { volumeProfileMode: 'per-day' },
+        },
+      ],
+    };
+    localStorage.setItem('replay.tabs.v1', JSON.stringify(payload));
+    const out = loadPersisted();
+    expect(out!.tabs[0].selection).toBeNull();
+    expect(out!.tabs[0].prefs.volumeProfileMode).toBe('per-day');
+  });
+
+  it('returns null when localStorage is unavailable', () => {
+    const orig = globalThis.localStorage;
+    // @ts-expect-error — simulating SSR/private mode
+    delete (globalThis as Record<string, unknown>).localStorage;
+    try {
+      expect(loadPersisted()).toBeNull();
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', { value: orig, configurable: true });
+    }
+  });
+
+  it('clamps activeIndex into [0, tabs.length-1]', () => {
+    const payload = {
+      version: 1, savedAt: 0, activeIndex: 99,
+      tabs: [{ selection: null, prefs: {} }, { selection: null, prefs: {} }],
+    };
+    localStorage.setItem('replay.tabs.v1', JSON.stringify(payload));
+    const out = loadPersisted();
+    expect(out!.activeIndex).toBe(0);
+  });
+
+  it('accepts an empty tabs array (caller seeds fallback)', () => {
+    const payload = { version: 1, savedAt: 0, activeIndex: 0, tabs: [] };
+    localStorage.setItem('replay.tabs.v1', JSON.stringify(payload));
+    const out = loadPersisted();
+    expect(out!.tabs).toHaveLength(0);
+    expect(out!.activeIndex).toBe(0);
+  });
+});

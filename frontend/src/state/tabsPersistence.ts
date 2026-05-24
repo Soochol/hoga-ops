@@ -108,3 +108,46 @@ export function mergePrefs(
   }
   return out;
 }
+
+/** Reads + validates the v1 payload. Returns `null` when absent, corrupt, or
+ *  version-mismatched. Entry-level salvage (invalid selection → null,
+ *  malformed prefs → default-merged) happens here; the caller is responsible
+ *  for the "empty tabs → seed a fresh tab" fallback because it needs runtime
+ *  deps (`nanoid`) that this pure module avoids. */
+export function loadPersisted(): ReplayTabsSnapshot | null {
+  if (typeof localStorage === 'undefined') return null;
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+  if (raw === null) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== 'object') return null;
+  const p = parsed as Record<string, unknown>;
+  if (p.version !== 1) return null;
+  if (!Array.isArray(p.tabs)) return null;
+  const tabs: PersistedTab[] = p.tabs.map((entry) => {
+    const e = (entry && typeof entry === 'object' ? entry : {}) as Record<string, unknown>;
+    return {
+      selection: validateSelection(e.selection),
+      // mergePrefs runs at hydrate time; here we just keep the raw partial.
+      prefs: (e.prefs && typeof e.prefs === 'object'
+        ? (e.prefs as Partial<ChartViewPrefs>)
+        : {}),
+    };
+  });
+  const activeIndexRaw = typeof p.activeIndex === 'number' ? p.activeIndex : 0;
+  const activeIndex =
+    tabs.length === 0 || activeIndexRaw < 0 || activeIndexRaw >= tabs.length
+      ? 0
+      : Math.floor(activeIndexRaw);
+  const savedAt = typeof p.savedAt === 'number' ? p.savedAt : 0;
+  return { version: 1, savedAt, activeIndex, tabs };
+}
