@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
-from pydantic import BaseModel
 
 BrokerSide = Literal["buy", "sell"]
 TOP_N = 5
