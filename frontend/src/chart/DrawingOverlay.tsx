@@ -95,6 +95,15 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       if (!c) return;
       c.setTransform(dpr, 0, 0, dpr, 0, 0);
       c.clearRect(0, 0, w, h);
+      // Clip every drawing render to pane 0 (the candle pane) so
+      // extrapolated y from `priceToCoordinate` — which lightweight-charts
+      // returns when a stored price falls outside the visible price range —
+      // cannot bleed into sibling indicator panes below the candle.
+      const paneHeight = chart.panes()[0]?.getHeight() ?? h;
+      c.save();
+      c.beginPath();
+      c.rect(0, 0, w, paneHeight);
+      c.clip();
       const projCtx: ProjectCtx = { chart, axis, priceSeries, width: w, height: h };
       for (const d of drawings) {
         renderDrawing(c, projCtx, d, d.id === selectedId);
@@ -120,6 +129,7 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
           false,
         );
       }
+      c.restore();
     };
 
     ts.subscribeVisibleLogicalRangeChange(schedule);
@@ -180,6 +190,11 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
   const priceToCanvasY = (price: number) => projPriceToCanvasY(priceSeries, price);
 
   const hitTestAt = (px: number, py: number): Drawing | null => {
+    // Mirror the render-side clip: a cursor outside pane 0 (e.g. over the
+    // volume / ratio sub-pane) must not hit drawings whose extrapolated y
+    // happens to land near it.
+    const paneHeight = chart.panes()[0]?.getHeight();
+    if (paneHeight != null && (py < 0 || py > paneHeight)) return null;
     for (let i = drawings.length - 1; i >= 0; i--) {
       const d = drawings[i];
       if (d.kind === 'hline') {
