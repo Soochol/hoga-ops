@@ -49,12 +49,20 @@ class _NaturalTermFakeClient:
 
 
 def test_collect_then_parse_then_query_marks_complete(tmp_path: Path) -> None:
+    # initial_step_ms=40_000_000: after 3 captured pages we land past
+    # DATA_WINDOW_END_MS within a handful of empty drains so the loop
+    # terminates via EMPTY_STREAK (StopReason). With the default 60_000 step
+    # the synthetic fake would stay flat long enough to trip the stagnation
+    # guard (200 stagnant pages) before reaching the window end, which now
+    # correctly classifies the result as abort_reason="stagnation_abort"
+    # rather than a clean completion — see hoga/collector/page_step.py.
     collect_stock_date(
         client=_NaturalTermFakeClient(),
         code="005930",
         date="20260520",
         data_dir=tmp_path,
         rate_limit_s=0.0,
+        initial_step_ms=40_000_000,
     )
     parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
     eng = QueryEngine(tmp_path)
