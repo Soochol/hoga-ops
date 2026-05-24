@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
-import { CHART_TOGGLES, useTabsStore, type ChartToggleKey } from '../state/tabs';
 import {
-  RATIO_OUTLIER_THRESHOLD_MAX,
-  RATIO_OUTLIER_THRESHOLD_MIN,
-} from '../state/chartPrefs';
+  CHART_NUMERIC_PREFS,
+  CHART_TOGGLES,
+  useTabsStore,
+  type ChartToggleKey,
+  type NumericPrefDef,
+  type NumericPrefKey,
+} from '../state/tabs';
 import IndicatorsSection from './settings/IndicatorsSection';
 
 type Props = {
@@ -55,26 +58,28 @@ function ToggleRow({
   );
 }
 
-/** Numeric input row for the per-tab `ratioOutlierThreshold` preference.
- *  Pairs visually with the `ratioOutlierFilterEnabled` toggle (auto-rendered
- *  via CHART_TOGGLES above this row): dims and disables when the toggle is
- *  off so users can see what the value would be without losing it.
- *  Draft-string editing pattern mirrors MovingAverageRow — commit on blur or
- *  Enter, revert invalid input. */
-function RatioOutlierThresholdRow() {
+/** Generic integer-input row driven by one `NumericPrefDef` entry. Mirrors
+ *  the toggle-row auto-rendering pattern: SettingsModal iterates
+ *  `CHART_NUMERIC_PREFS` and renders one of these per entry — no per-pref
+ *  JSX. Draft-string editing follows `MovingAverageRow` (commit on blur or
+ *  Enter, revert invalid input). When `def.enabledBy` is set, the row is
+ *  dimmed and disabled while that toggle is off, but the value is preserved
+ *  so re-enabling restores it without re-entry. */
+function NumericPrefRow({ def }: { def: NumericPrefDef }) {
   const activeTabId = useTabsStore((s) => s.activeTabId);
-  const enabled = useTabsStore(
-    (s) => s.getPrefs(activeTabId).ratioOutlierFilterEnabled,
+  // NumericPrefDef.key is structurally `string` but originates from
+  // CHART_NUMERIC_PREFS — the cast narrows it to NumericPrefKey so the index
+  // lookup hits the mapped-type branch of ChartViewPrefs.
+  const value = useTabsStore((s) => s.getPrefs(activeTabId)[def.key as NumericPrefKey]);
+  const gateEnabled = useTabsStore((s) =>
+    def.enabledBy === undefined ? true : s.getPrefs(activeTabId)[def.enabledBy],
   );
-  const threshold = useTabsStore(
-    (s) => s.getPrefs(activeTabId).ratioOutlierThreshold,
-  );
-  const setThreshold = useTabsStore((s) => s.setRatioOutlierThreshold);
-  const [inputValue, setInputValue] = useState<string>(String(threshold));
+  const setNumericPref = useTabsStore((s) => s.setNumericPref);
+  const [inputValue, setInputValue] = useState<string>(String(value));
 
   useEffect(() => {
-    setInputValue(String(threshold));
-  }, [threshold]);
+    setInputValue(String(value));
+  }, [value]);
 
   const commit = () => {
     const trimmed = inputValue.trim();
@@ -83,37 +88,39 @@ function RatioOutlierThresholdRow() {
       trimmed !== ''
       && Number.isFinite(n)
       && Number.isInteger(n)
-      && n >= RATIO_OUTLIER_THRESHOLD_MIN
-      && n <= RATIO_OUTLIER_THRESHOLD_MAX
-      && n !== threshold
+      && n >= def.min
+      && n <= def.max
+      && n !== value
     ) {
-      setThreshold(activeTabId, n);
+      // Cast is safe: NumericPrefDef.key originates from CHART_NUMERIC_PREFS,
+      // whose union narrows to NumericPrefKey at the registry seam. The
+      // structural typedef can't carry the literal union forward.
+      setNumericPref(activeTabId, def.key as NumericPrefKey, n);
     } else {
-      setInputValue(String(threshold));
+      setInputValue(String(value));
     }
   };
 
   return (
     <div
       className={
-        enabled
+        gateEnabled
           ? 'flex items-center justify-between py-2'
           : 'flex items-center justify-between py-2 opacity-50'
       }
     >
       <div className="flex-1 pr-4">
-        <div className="text-fg text-sm">호가비 극단값 임계 배수</div>
+        <div className="text-fg text-sm">{def.label}</div>
         <div className="text-fg-dim text-xs mt-0.5">
-          한쪽 호가가 다른 쪽의 이 배수 이상이면 0 으로 마스킹합니다. ({RATIO_OUTLIER_THRESHOLD_MIN}–
-          {RATIO_OUTLIER_THRESHOLD_MAX.toLocaleString()})
+          {def.description} ({def.min.toLocaleString()}–{def.max.toLocaleString()})
         </div>
       </div>
       <input
         type="number"
-        min={RATIO_OUTLIER_THRESHOLD_MIN}
-        max={RATIO_OUTLIER_THRESHOLD_MAX}
+        min={def.min}
+        max={def.max}
         step={1}
-        disabled={!enabled}
+        disabled={!gateEnabled}
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onBlur={commit}
@@ -123,8 +130,8 @@ function RatioOutlierThresholdRow() {
             commit();
           }
         }}
-        aria-label="호가비 극단값 임계 배수"
-        data-testid="settings-ratio-outlier-threshold"
+        aria-label={def.label}
+        data-testid={`settings-numeric-${def.key}`}
         className="w-[72px] text-right text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1 tabular-nums disabled:cursor-not-allowed"
       />
     </div>
@@ -268,7 +275,9 @@ export default function SettingsModal({ onClose }: Props) {
                     />
                   );
                 })}
-                <RatioOutlierThresholdRow />
+                {CHART_NUMERIC_PREFS.map((def) => (
+                  <NumericPrefRow key={def.key} def={def} />
+                ))}
                 <VolumeProfileModeRow />
               </>
             )}

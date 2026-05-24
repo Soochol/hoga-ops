@@ -68,36 +68,76 @@ export const DEFAULT_MOVING_AVERAGES: readonly MAConfig[] = Object.freeze([
   { period: 120, enabled: true },
 ]);
 
+/**
+ * Declarative registry of integer numeric prefs surfaced in the Settings
+ * modal. Sister of `CHART_TOGGLES`: adding a pref = one entry here, and
+ * (a) the `ChartViewPrefs` type field, (b) `DEFAULT_PREFS` value, (c) the
+ * generic store setter (`setNumericPref` in tabs.ts), (d) `mergePrefs`
+ * validation in tabsPersistence.ts, and (e) the `NumericPrefRow` render
+ * in SettingsModal.tsx all derive from this list — no per-pref code in
+ * any of those modules.
+ *
+ * `enabledBy` (optional): when set, the SettingsModal dims and disables
+ * the row when the named toggle is off — the value is preserved, the
+ * pref is just inert. The projector that reads the pref is responsible
+ * for honoring the same toggle (the pref alone is not load-bearing).
+ */
+export type NumericPrefDef = {
+  readonly key: string;
+  readonly label: string;
+  readonly description: string;
+  readonly default: number;
+  /** Inclusive lower bound. UI enforces; `mergePrefs` validates. */
+  readonly min: number;
+  /** Inclusive upper bound. */
+  readonly max: number;
+  /** Optional companion toggle that gates this pref's UI affordance. */
+  readonly enabledBy?: ChartToggleKey;
+};
+
+export const CHART_NUMERIC_PREFS = [
+  {
+    key: 'ratioOutlierThreshold',
+    label: '호가비 극단값 임계 배수',
+    description:
+      '한쪽 호가가 다른 쪽의 이 배수 이상이면 그 시점의 호가비를 0 으로 마스킹합니다. (차트 Y축 라벨 단위)',
+    default: 100,
+    // Threshold is expressed in chart-label units (i.e. max(ask/bid, bid/ask)):
+    // 2 is the smallest value that admits any data (ratio < 2x is "balanced
+    // enough"); 10000 is a generous ceiling that effectively disables the
+    // filter without removing the seam entirely.
+    min: 2,
+    max: 10_000,
+    enabledBy: 'ratioOutlierFilterEnabled',
+  },
+] as const satisfies readonly NumericPrefDef[];
+
+export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];
+
 /** Per-tab chart view preferences. Stored in a `Map<tabId, ChartViewPrefs>`
  *  on the store for parity with `Tab.bundles` (CQ1). Boolean fields come
- *  from `CHART_TOGGLES`; non-boolean prefs (e.g. `volumeProfileMode`,
+ *  from `CHART_TOGGLES`; integer numeric fields come from
+ *  `CHART_NUMERIC_PREFS`; structural prefs (e.g. `volumeProfileMode`,
  *  `movingAverages`) sit alongside as explicit fields. */
-/** Inclusive bounds for `ratioOutlierThreshold`. Threshold is expressed in
- *  chart-label units (i.e. max(ask/bid, bid/ask)); 2 is the smallest value
- *  that still admits any data (ratio < 2x is "balanced enough"), 10000 is a
- *  generous ceiling that effectively disables the filter. UI input enforces
- *  this range; `mergePrefs` validates it on hydrate. */
-export const RATIO_OUTLIER_THRESHOLD_MIN = 2;
-export const RATIO_OUTLIER_THRESHOLD_MAX = 10_000;
-export const RATIO_OUTLIER_THRESHOLD_DEFAULT = 100;
-
 export type ChartViewPrefs = {
   volumeProfileMode: 'range' | 'per-day';
   movingAverages: MAConfig[];
-  /** Mask points whose chart-label value (1 + |raw imbalance|) is >= this
-   *  threshold to 0. Only consulted when `ratioOutlierFilterEnabled` is true. */
-  ratioOutlierThreshold: number;
-} & { [K in ChartToggleKey]: boolean };
+} & { [K in ChartToggleKey]: boolean }
+  & { [K in NumericPrefKey]: number };
 
 const TOGGLE_DEFAULTS = Object.fromEntries(
   CHART_TOGGLES.map((t) => [t.key, t.default]),
 ) as { [K in ChartToggleKey]: boolean };
 
+const NUMERIC_DEFAULTS = Object.fromEntries(
+  CHART_NUMERIC_PREFS.map((p) => [p.key, p.default]),
+) as { [K in NumericPrefKey]: number };
+
 export const DEFAULT_PREFS: ChartViewPrefs = {
   volumeProfileMode: 'range',
   movingAverages: DEFAULT_MOVING_AVERAGES.map((c) => ({ ...c })),
-  ratioOutlierThreshold: RATIO_OUTLIER_THRESHOLD_DEFAULT,
   ...TOGGLE_DEFAULTS,
+  ...NUMERIC_DEFAULTS,
 };
 
 /**

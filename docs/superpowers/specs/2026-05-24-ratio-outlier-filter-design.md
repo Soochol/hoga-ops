@@ -44,11 +44,25 @@ RatioPane render →   useActivePrefs(p => p.ratioOutlierFilterEnabled)
 
 | 파일 | 역할 |
 |---|---|
-| `frontend/src/state/chartPrefs.ts` | `CHART_TOGGLES`에 새 toggle 엔트리, `ChartViewPrefs`에 numeric 필드, 범위 상수 (`RATIO_OUTLIER_THRESHOLD_MIN/MAX/DEFAULT`) |
-| `frontend/src/state/tabs.ts` | `setRatioOutlierThreshold` setter (스토어 boundary에서 clamp) |
-| `frontend/src/state/tabsPersistence.ts` | `mergePrefs`에서 범위·타입 검증; 잘못된 값은 default로 fallback |
-| `frontend/src/replay/SettingsModal.tsx` | `RatioOutlierThresholdRow` 컴포넌트 (draft state + commit on blur/Enter, `MovingAverageRow` 패턴 차용) |
+| `frontend/src/state/chartPrefs.ts` | `CHART_TOGGLES`에 새 toggle 엔트리; `CHART_NUMERIC_PREFS` registry 신설 (numeric pref 단일 진입점); `ChartViewPrefs`가 toggle/numeric 두 mapped type을 합성 |
+| `frontend/src/state/tabs.ts` | generic `setNumericPref(id, key, value)` setter — registry에서 def 룩업 후 clamp/floor (단일 numeric pref 별 setter 없음) |
+| `frontend/src/state/tabsPersistence.ts` | `mergePrefs`가 `CHART_NUMERIC_PREFS`를 iterate해서 자동 검증; SnapshotDeps에 `numericPrefDefs` 주입 (`chartToggleKeys`와 대칭) |
+| `frontend/src/replay/SettingsModal.tsx` | generic `NumericPrefRow` 컴포넌트가 `CHART_NUMERIC_PREFS`를 iterate; `enabledBy` 필드가 있으면 컴패니언 토글 off 시 dim+disabled |
 | `frontend/src/chart/projectors/ratio.ts` | `RatioPaneContext` 타입 도입, `useRatioContext`가 3개 필드 selector로 구독, `projectRatio`가 ctx 객체 받음 |
+
+### 4.0 Registry 패턴 — 이번 PR의 deepening
+
+`CHART_TOGGLES`(boolean) 옆에 평행 sister registry `CHART_NUMERIC_PREFS`(integer numeric)를 추가하여, 새 numeric pref 추가 비용을 **5곳 편집 → 1곳 등록**으로 압축. registry entry 한 줄에 `{ key, label, description, default, min, max, enabledBy? }` 다섯 필드만 채우면:
+
+- `ChartViewPrefs` 타입 필드 — mapped type `{ [K in NumericPrefKey]: number }`로 자동 derive
+- `DEFAULT_PREFS` 값 — `Object.fromEntries(CHART_NUMERIC_PREFS...)` spread로 자동 합성
+- 스토어 setter — generic `setNumericPref(id, key, value)`가 registry def 룩업하여 clamp
+- localStorage validation — `mergePrefs`의 `for (const def of numericPrefDefs)` 루프가 자동 처리
+- Settings modal row — `CHART_NUMERIC_PREFS.map(def => <NumericPrefRow def={def} />)` 자동 렌더
+
+이 deepening은 ADR-0026의 보강이 아니라 ADR-0027 (별도 작성됨)으로 기록 — "왜 numeric pref도 registry 패턴인가"는 `CHART_TOGGLES`의 디자인 결정과 독립적 trade-off.
+
+`MovingAverages[]`(per-slot config 배열)와 `volumeProfileMode: enum` 같은 비-scalar 구조는 의도적으로 registry에서 제외 — 각자의 shape가 generic 처리되지 않음. scalar integer만 registry로 일반화.
 
 ### 4.1 타입 변경 (Breaking — 단일 PR 내 자체 처리)
 

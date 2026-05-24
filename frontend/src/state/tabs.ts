@@ -24,6 +24,7 @@ export type TabStatus = 'empty' | 'loading' | 'loaded' | 'error';
 // during the migration window. Direct imports from './chartPrefs' are
 // encouraged for new code.
 export {
+  CHART_NUMERIC_PREFS,
   CHART_TOGGLES,
   DEFAULT_MOVING_AVERAGES,
   DEFAULT_PREFS,
@@ -34,20 +35,29 @@ export type {
   ChartViewPrefs,
   MAConfig,
   MAIndex,
+  NumericPrefDef,
+  NumericPrefKey,
 } from './chartPrefs';
 
 import {
+  CHART_NUMERIC_PREFS,
   CHART_TOGGLES,
   DEFAULT_PREFS,
   MA_SLOT_COUNT,
-  RATIO_OUTLIER_THRESHOLD_MAX,
-  RATIO_OUTLIER_THRESHOLD_MIN,
   registerTabsStore,
   type ChartToggleKey,
   type ChartViewPrefs,
   type MAConfig,
   type MAIndex,
+  type NumericPrefDef,
+  type NumericPrefKey,
 } from './chartPrefs';
+
+/** Lookup table for numeric pref defs by key — O(1) clamp on every setter call.
+ *  Built once at module load from the frozen registry. */
+const NUMERIC_PREF_DEFS_BY_KEY = new Map<NumericPrefKey, NumericPrefDef>(
+  CHART_NUMERIC_PREFS.map((d) => [d.key, d]),
+);
 
 export type Tab = {
   id: string;
@@ -75,9 +85,13 @@ type Store = {
   setVolumeProfileMode: (id: string, mode: ChartViewPrefs['volumeProfileMode']) => void;
   /** Generic setter for any boolean toggle in `CHART_TOGGLES`. */
   setToggle: (id: string, key: ChartToggleKey, value: boolean) => void;
-  /** Set the ratio outlier filter threshold (chart-label units). Out-of-range
-   *  values are clamped to [RATIO_OUTLIER_THRESHOLD_MIN, _MAX]. */
-  setRatioOutlierThreshold: (id: string, threshold: number) => void;
+  /** Generic setter for any integer numeric pref in `CHART_NUMERIC_PREFS`.
+   *  Out-of-range or non-finite values are clamped to the registered
+   *  `[min, max]` band and floored to integer (defense-in-depth — UI input
+   *  also enforces these). Unknown `key` is a no-op (guarded by the key
+   *  union type at compile time; the runtime lookup is a tripwire for
+   *  any non-TypeScript caller). */
+  setNumericPref: (id: string, key: NumericPrefKey, value: number) => void;
   /** Patch one slot of `movingAverages`. Out-of-range `index` is a no-op.
    *  Period validation is intentionally NOT done here — the UI layer (T5)
    *  owns range checks so that downstream callers can apply identical
@@ -109,6 +123,7 @@ function seedInitialState(): {
     defaultPrefs: DEFAULT_PREFS,
     freshTab: fresh,
     chartToggleKeys: CHART_TOGGLES.map((t) => t.key),
+    numericPrefDefs: CHART_NUMERIC_PREFS,
   };
   const snap = loadPersisted();
   if (snap === null) {
@@ -181,20 +196,23 @@ export const useTabsStore = create<Store>((set, get) => ({
       next.set(id, { ...DEFAULT_PREFS, ...next.get(id), [key]: value });
       return { prefs: next };
     }),
-  setRatioOutlierThreshold: (id, threshold) =>
+  setNumericPref: (id, key, value) =>
     set((s) => {
+      const def = NUMERIC_PREF_DEFS_BY_KEY.get(key);
+      if (def === undefined) return {};
       // Clamp at the store boundary so localStorage round-trips can't smuggle
-      // bad values back in via setter calls. UI input also enforces this range
-      // but defense-in-depth keeps the projector's invariants intact.
+      // bad values back in via setter calls. UI input also enforces the range
+      // but defense-in-depth keeps projector invariants intact. NaN/Infinity
+      // are excluded by the Math.floor + clamp chain.
       const safe = Math.min(
-        RATIO_OUTLIER_THRESHOLD_MAX,
-        Math.max(RATIO_OUTLIER_THRESHOLD_MIN, Math.floor(threshold)),
+        def.max,
+        Math.max(def.min, Math.floor(Number.isFinite(value) ? value : def.default)),
       );
       const next = new Map(s.prefs);
       next.set(id, {
         ...DEFAULT_PREFS,
         ...next.get(id),
-        ratioOutlierThreshold: safe,
+        [key]: safe,
       });
       return { prefs: next };
     }),

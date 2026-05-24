@@ -100,23 +100,24 @@ describe('validateSelection', () => {
 
 describe('mergePrefs', () => {
   it('returns defaults when given an empty object', () => {
-    expect(mergePrefs({}, DEFAULT_PREFS, ['auctionWindowMask'])).toEqual(DEFAULT_PREFS);
+    expect(mergePrefs({}, DEFAULT_PREFS, ['auctionWindowMask'], [])).toEqual(DEFAULT_PREFS);
   });
   it('overrides known scalar keys', () => {
     const merged = mergePrefs(
       { volumeProfileMode: 'per-day', auctionWindowMask: false },
       DEFAULT_PREFS,
       ['auctionWindowMask'],
+      [],
     );
     expect(merged.volumeProfileMode).toBe('per-day');
     expect(merged.auctionWindowMask).toBe(false);
   });
   it('ignores unknown volumeProfileMode value', () => {
-    const merged = mergePrefs({ volumeProfileMode: 'galaxy' as never }, DEFAULT_PREFS, ['auctionWindowMask']);
+    const merged = mergePrefs({ volumeProfileMode: 'galaxy' as never }, DEFAULT_PREFS, ['auctionWindowMask'], []);
     expect(merged.volumeProfileMode).toBe('range');
   });
   it('ignores non-boolean auctionWindowMask', () => {
-    const merged = mergePrefs({ auctionWindowMask: 'yes' as never }, DEFAULT_PREFS, ['auctionWindowMask']);
+    const merged = mergePrefs({ auctionWindowMask: 'yes' as never }, DEFAULT_PREFS, ['auctionWindowMask'], []);
     expect(merged.auctionWindowMask).toBe(true);
   });
   it('replaces movingAverages wholesale when length differs from default', () => {
@@ -124,6 +125,7 @@ describe('mergePrefs', () => {
       { movingAverages: [{ period: 7, enabled: true }] as never },
       DEFAULT_PREFS,
       ['auctionWindowMask'],
+      [],
     );
     expect(merged.movingAverages).toEqual(DEFAULT_PREFS.movingAverages);
   });
@@ -131,16 +133,16 @@ describe('mergePrefs', () => {
     const broken = DEFAULT_PREFS.movingAverages.map((m, i) =>
       i === 0 ? ({ period: 'x', enabled: true } as never) : m,
     );
-    const merged = mergePrefs({ movingAverages: broken }, DEFAULT_PREFS, ['auctionWindowMask']);
+    const merged = mergePrefs({ movingAverages: broken }, DEFAULT_PREFS, ['auctionWindowMask'], []);
     expect(merged.movingAverages).toEqual(DEFAULT_PREFS.movingAverages);
   });
   it('accepts a fully-shaped movingAverages array', () => {
     const custom = DEFAULT_PREFS.movingAverages.map((m) => ({ ...m, enabled: false }));
-    const merged = mergePrefs({ movingAverages: custom }, DEFAULT_PREFS, ['auctionWindowMask']);
+    const merged = mergePrefs({ movingAverages: custom }, DEFAULT_PREFS, ['auctionWindowMask'], []);
     expect(merged.movingAverages).toEqual(custom);
   });
   it('drops unknown keys silently', () => {
-    const merged = mergePrefs({ futureKey: 42 } as never, DEFAULT_PREFS, ['auctionWindowMask']);
+    const merged = mergePrefs({ futureKey: 42 } as never, DEFAULT_PREFS, ['auctionWindowMask'], []);
     expect((merged as Record<string, unknown>).futureKey).toBeUndefined();
   });
   it('merges arbitrary boolean toggles via injected registry', () => {
@@ -149,9 +151,40 @@ describe('mergePrefs', () => {
       { auctionWindowMask: false, futureToggle: true } as never,
       DEFAULT_PREFS,
       ['auctionWindowMask', 'futureToggle' as never],
+      [],
     );
     expect(merged.auctionWindowMask).toBe(false);
     expect((merged as Record<string, unknown>).futureToggle).toBe(true);
+  });
+  it('validates numeric prefs via injected registry — in-range accepted', () => {
+    const def = { key: 'someInt', label: 'x', description: 'x', default: 10, min: 1, max: 100 };
+    const merged = mergePrefs(
+      { someInt: 42 } as never,
+      { ...DEFAULT_PREFS, someInt: 10 } as never,
+      [],
+      [def],
+    );
+    expect((merged as Record<string, unknown>).someInt).toBe(42);
+  });
+  it('validates numeric prefs via injected registry — out-of-range falls back to default', () => {
+    const def = { key: 'someInt', label: 'x', description: 'x', default: 10, min: 1, max: 100 };
+    const merged = mergePrefs(
+      { someInt: 999 } as never,
+      { ...DEFAULT_PREFS, someInt: 10 } as never,
+      [],
+      [def],
+    );
+    expect((merged as Record<string, unknown>).someInt).toBe(10);
+  });
+  it('validates numeric prefs via injected registry — non-finite falls back to default', () => {
+    const def = { key: 'someInt', label: 'x', description: 'x', default: 10, min: 1, max: 100 };
+    const merged = mergePrefs(
+      { someInt: NaN } as never,
+      { ...DEFAULT_PREFS, someInt: 10 } as never,
+      [],
+      [def],
+    );
+    expect((merged as Record<string, unknown>).someInt).toBe(10);
   });
 });
 
@@ -257,6 +290,7 @@ function makeDeps(seq: () => number): SnapshotDeps {
       bundles: new Map(),
     }),
     chartToggleKeys: ['auctionWindowMask'],
+    numericPrefDefs: [],
   };
 }
 

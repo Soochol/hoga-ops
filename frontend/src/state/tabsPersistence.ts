@@ -1,8 +1,10 @@
-import type { Tab, TabSelection, ChartViewPrefs, ChartToggleKey } from './tabs';
-import {
-  RATIO_OUTLIER_THRESHOLD_MAX,
-  RATIO_OUTLIER_THRESHOLD_MIN,
-} from './chartPrefs';
+import type {
+  Tab,
+  TabSelection,
+  ChartViewPrefs,
+  ChartToggleKey,
+  NumericPrefDef,
+} from './tabs';
 import { TIMEFRAME_LABELS, type Timeframe } from '../api/types';
 
 /** Versioned storage key. Schema-breaking changes bump the suffix and let
@@ -32,6 +34,11 @@ export type SnapshotDeps = {
    *  Drives `mergePrefs` so a new toggle in `tabs.ts` round-trips
    *  through persistence without editing this module. */
   chartToggleKeys: ReadonlyArray<ChartToggleKey>;
+  /** Registry of numeric pref defs (derived from `CHART_NUMERIC_PREFS`).
+   *  Drives `mergePrefs`' integer range validation so a new numeric pref
+   *  in `tabs.ts` round-trips through persistence without editing this
+   *  module. */
+  numericPrefDefs: ReadonlyArray<NumericPrefDef>;
 };
 
 export type ToSnapshotInput = {
@@ -92,13 +99,15 @@ function isValidMA(m: unknown): m is { period: number; enabled: boolean } {
 
 /** Merge a `Partial<ChartViewPrefs>` over `defaults`. Unknown keys ignored;
  *  malformed values fall back to the default for that key. Boolean toggles
- *  are validated against the injected `toggleKeys` registry — so adding a
- *  new entry to `CHART_TOGGLES` in `tabs.ts` Just Works without editing
+ *  and integer numeric prefs are validated against the injected `toggleKeys`
+ *  / `numericPrefDefs` registries — so adding a new entry to `CHART_TOGGLES`
+ *  or `CHART_NUMERIC_PREFS` in `chartPrefs.ts` Just Works without editing
  *  this module. */
 export function mergePrefs(
   partial: Partial<ChartViewPrefs> | undefined,
   defaults: ChartViewPrefs,
   toggleKeys: ReadonlyArray<ChartToggleKey>,
+  numericPrefDefs: ReadonlyArray<NumericPrefDef>,
 ): ChartViewPrefs {
   const p = (partial ?? {}) as Record<string, unknown>;
   const out: ChartViewPrefs = {
@@ -109,20 +118,24 @@ export function mergePrefs(
       && VOLUME_PROFILE_MODES.has(p.volumeProfileMode as VolumeProfileMode)) {
     out.volumeProfileMode = p.volumeProfileMode as VolumeProfileMode;
   }
-  // Validate the numeric outlier threshold. Falls back to default for any
-  // non-finite or out-of-range value rather than clamping silently — keeps
-  // localStorage corruption from masquerading as user intent.
-  if (
-    typeof p.ratioOutlierThreshold === 'number'
-    && Number.isFinite(p.ratioOutlierThreshold)
-    && p.ratioOutlierThreshold >= RATIO_OUTLIER_THRESHOLD_MIN
-    && p.ratioOutlierThreshold <= RATIO_OUTLIER_THRESHOLD_MAX
-  ) {
-    out.ratioOutlierThreshold = Math.floor(p.ratioOutlierThreshold);
-  }
   for (const key of toggleKeys) {
     if (typeof p[key] === 'boolean') {
       out[key] = p[key] as boolean;
+    }
+  }
+  // Validate numeric prefs against their registered [min, max]. Falls back
+  // to default for any non-finite or out-of-range value rather than clamping
+  // silently — keeps localStorage corruption from masquerading as user intent
+  // (a clamped extreme value can be indistinguishable from a deliberate one).
+  for (const def of numericPrefDefs) {
+    const raw = p[def.key];
+    if (
+      typeof raw === 'number'
+      && Number.isFinite(raw)
+      && raw >= def.min
+      && raw <= def.max
+    ) {
+      (out as Record<string, unknown>)[def.key] = Math.floor(raw);
     }
   }
   if (
@@ -200,7 +213,10 @@ export function fromSnapshot(
     // Carry the persisted selection (already validated by loadPersisted).
     t.selection = persisted.selection;
     tabs.push(t);
-    prefs.set(t.id, mergePrefs(persisted.prefs, deps.defaultPrefs, deps.chartToggleKeys));
+    prefs.set(
+      t.id,
+      mergePrefs(persisted.prefs, deps.defaultPrefs, deps.chartToggleKeys, deps.numericPrefDefs),
+    );
   }
   const idx = Math.min(Math.max(0, snapshot.activeIndex), tabs.length - 1);
   return { tabs, prefs, activeTabId: tabs[idx].id };
