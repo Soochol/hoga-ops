@@ -6,7 +6,8 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { useDrawingsStore } from '../state/drawings';
 import { renderDrawing, type ProjectCtx } from './drawing/render';
 import type { Drawing } from './drawing/types';
-import { PENCIL_MAX_POINTS } from './drawing/types';
+import { PENCIL_MAX_POINTS, HIT_THRESHOLD } from './drawing/types';
+import { distanceToHline, distanceToPolyline, distanceToSegment } from './drawing/hitTest';
 
 type Props = {
   chart: IChartApi;
@@ -88,6 +89,50 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
     return { realMs, price: Number(price) };
   };
 
+  const realMsToCanvasX = (realMs: number): number | null => {
+    if (!axis.contains(realMs)) return null;
+    const virtualMs = axis.toVirtual(realMs);
+    const x = chart.timeScale().timeToCoordinate((virtualMs / 1000) as import('lightweight-charts').UTCTimestamp);
+    return x == null ? null : (x as number);
+  };
+
+  const hitTestAt = (px: number, py: number): Drawing | null => {
+    // Walk in reverse so newer drawings (drawn last → on top) are tested first.
+    for (let i = drawings.length - 1; i >= 0; i--) {
+      const d = drawings[i];
+      if (d.kind === 'hline') {
+        const y = priceSeries?.priceToCoordinate(d.price);
+        if (y != null && distanceToHline({ x: px, y: py }, y) <= HIT_THRESHOLD.hline) {
+          return d;
+        }
+      } else if (d.kind === 'trendline') {
+        const xa = realMsToCanvasX(d.a.realMs);
+        const ya = priceSeries?.priceToCoordinate(d.a.price);
+        const xb = realMsToCanvasX(d.b.realMs);
+        const yb = priceSeries?.priceToCoordinate(d.b.price);
+        if (xa != null && ya != null && xb != null && yb != null) {
+          if (
+            distanceToSegment({ x: px, y: py }, { x: xa, y: ya }, { x: xb, y: yb }) <=
+            HIT_THRESHOLD.trendlineBody
+          ) {
+            return d;
+          }
+        }
+      } else if (d.kind === 'pencil') {
+        const poly: { x: number; y: number }[] = [];
+        for (const pt of d.points) {
+          const x = realMsToCanvasX(pt.realMs);
+          const y = priceSeries?.priceToCoordinate(pt.price);
+          if (x != null && y != null) poly.push({ x, y: Number(y) });
+        }
+        if (distanceToPolyline({ x: px, y: py }, poly) <= HIT_THRESHOLD.pencil) {
+          return d;
+        }
+      }
+    }
+    return null;
+  };
+
   // Pointer handler dispatch keyed by activeTool. We attach onPointerDown
   // on the container; tools that need drag track it via setPointerCapture.
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -128,7 +173,11 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
       return;
     }
-    // eraser handled in subsequent tasks
+    if (activeTool === 'eraser') {
+      const hit = hitTestAt(px, py);
+      if (hit) useDrawingsStore.getState().remove(hit.id);
+      return;
+    }
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
