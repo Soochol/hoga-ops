@@ -51,3 +51,23 @@ function translatePencil(p: Pencil, dMs: number, dPrice: number): Partial<Pencil
     })),
   };
 }
+
+/**
+ * Clamp a target price to the inclusive range bounded by the two
+ * "edge prices" of a pane. The pane's price scale may run top-down
+ * (top > bottom; standard for prices) or bottom-up (rare); we sort
+ * internally so callers can pass either.
+ *
+ * Used by selectTool's body-drag branch to keep an Hline / Trendline
+ * vertex from leaving the origin pane after a drag. Translation
+ * remains a pure (Δprice) math; the caller composes this clamp
+ * around the result.
+ */
+export function clampHlinePriceWithinPane(
+  price: number,
+  bounds: { top: number; bottom: number },
+): number {
+  const lo = Math.min(bounds.top, bounds.bottom);
+  const hi = Math.max(bounds.top, bounds.bottom);
+  return Math.max(lo, Math.min(hi, price));
+}

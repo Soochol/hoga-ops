@@ -199,6 +199,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
   // Task 8 will replace these with real cursor-pane resolution.
   const paneIdAtY = (_py: number): PaneId => 'candle';
   const clampYToPane = (_paneId: PaneId, py: number) => py;
+  // Task 8 will implement with real coordinate lookup.
+  const priceBoundsForPane = (_paneId: PaneId) => null;
 
   const hitTestAt = (px: number, py: number): Drawing | null => {
     // Mirror the render-side clip: a cursor outside pane 0 (e.g. over the
@@ -249,6 +251,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
       hitTestAt,
       paneIdAtY,
       clampYToPane,
+      priceBoundsForPane,
       drawings,
       selectedId,
       accentColor,

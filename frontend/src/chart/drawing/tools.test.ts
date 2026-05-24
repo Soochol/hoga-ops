@@ -34,6 +34,7 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     hitTestAt: vi.fn(() => null),
     paneIdAtY: vi.fn(() => 'candle' as const),
     clampYToPane: vi.fn((_id, py) => py),
+    priceBoundsForPane: vi.fn(() => ({ top: 100_000, bottom: 0 })),
     drawings: [],
     selectedId: null,
     accentColor: '#14B8A6',

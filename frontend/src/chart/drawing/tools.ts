@@ -31,12 +31,15 @@ import { nanoid } from 'nanoid';
 import {
   type Drawing,
   type DrawingTool,
+  type Hline,
+  type Pencil,
+  type Trendline,
   type PaneId,
   type Point,
   PENCIL_MAX_POINTS,
   HIT_THRESHOLD,
 } from './types';
-import { translateDrawing } from './translate';
+import { translateDrawing, clampHlinePriceWithinPane } from './translate';
 
 /** A per-gesture draft for the trendline tool — first point captured on
  *  pointer-down, committed on pointer-up. */
@@ -103,6 +106,10 @@ export type ToolCtx = {
   paneIdAtY(py: number): PaneId;
   /** Clamp a pixel Y to the vertical span of the given pane. */
   clampYToPane(paneId: PaneId, py: number): number;
+  /** Domain price values at the top and bottom of `paneId`'s pane, derived
+   *  from the registered series' coordinateToPrice at the pane's top/bottom
+   *  pixels. Returns null if the pane or its series isn't mounted. */
+  priceBoundsForPane(paneId: PaneId): { top: number; bottom: number } | null;
 
   /** The current Drawing list for the active Code. */
   drawings: readonly Drawing[];
@@ -232,7 +239,43 @@ export const selectTool: DrawingToolSpec = {
     if (drag.kind === 'body') {
       const dMs = data.realMs - drag.lastRealMs;
       const dPrice = data.price - drag.lastPrice;
-      ctx.update(target.id, translateDrawing(target, dMs, dPrice));
+      const rawPatch = translateDrawing(target, dMs, dPrice);
+
+      // Post-clamp each price-bearing vertex so the drawing cannot leave its
+      // origin pane. priceBoundsForPane returns the prices at the pane's top
+      // and bottom pixels (lightweight-charts' coordinateToPrice on the
+      // registered series).
+      const paneBounds = ctx.priceBoundsForPane(drag.paneId);
+      const patch: Partial<Drawing> = (() => {
+        if (!paneBounds) return rawPatch;
+        if (target.kind === 'hline') {
+          const p = rawPatch as Partial<Hline>;
+          return typeof p.price === 'number'
+            ? { price: clampHlinePriceWithinPane(p.price, paneBounds) }
+            : rawPatch;
+        }
+        if (target.kind === 'trendline') {
+          const p = rawPatch as Partial<Trendline>;
+          if (!p.a || !p.b) return rawPatch;
+          return {
+            a: { ...p.a, price: clampHlinePriceWithinPane(p.a.price, paneBounds) },
+            b: { ...p.b, price: clampHlinePriceWithinPane(p.b.price, paneBounds) },
+          };
+        }
+        if (target.kind === 'pencil') {
+          const p = rawPatch as Partial<Pencil>;
+          if (!p.points) return rawPatch;
+          return {
+            points: p.points.map((pt) => ({
+              ...pt,
+              price: clampHlinePriceWithinPane(pt.price, paneBounds),
+            })),
+          };
+        }
+        return rawPatch;
+      })();
+
+      ctx.update(target.id, patch);
       drag.lastRealMs = data.realMs;
       drag.lastPrice = data.price;
     }

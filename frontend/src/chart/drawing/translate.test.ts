@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Drawing, Hline, Pencil, Trendline } from './types';
-import { translateDrawing } from './translate';
+import { clampHlinePriceWithinPane, translateDrawing } from './translate';
 
 const baseStyle = { color: '#14B8A6', width: 1.5 };
 
@@ -57,6 +57,25 @@ describe('translateDrawing — pencil', () => {
     const p: Pencil = { id: 'p1', kind: 'pencil', points: [], ...baseStyle, paneId: 'candle' };
     const result = translateDrawing(p, 100, 10) as Partial<Pencil>;
     expect(result.points).toEqual([]);
+  });
+});
+
+describe('clampHlinePriceWithinPane', () => {
+  it('passes a price inside [paneTopPrice, paneBottomPrice] through unchanged', () => {
+    expect(clampHlinePriceWithinPane(1000, { top: 2000, bottom: 0 })).toBe(1000);
+  });
+
+  it('clamps a price above the pane top to the top', () => {
+    expect(clampHlinePriceWithinPane(3000, { top: 2000, bottom: 0 })).toBe(2000);
+  });
+
+  it('clamps a price below the pane bottom to the bottom', () => {
+    expect(clampHlinePriceWithinPane(-50, { top: 2000, bottom: 0 })).toBe(0);
+  });
+
+  it('tolerates inverted bounds (Y-axis flipped) by sorting internally', () => {
+    expect(clampHlinePriceWithinPane(1000, { top: 0, bottom: 2000 })).toBe(1000);
+    expect(clampHlinePriceWithinPane(3000, { top: 0, bottom: 2000 })).toBe(2000);
   });
 });
 
