@@ -2,7 +2,7 @@ import { LineSeries } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
-import { useChartPrefs } from '../ChartPrefsContext';
+import { useActivePrefs } from '../../state/chartPrefs';
 import { MA_SLOT_COUNT, type MAConfig, type MAIndex } from '../../state/tabs';
 import type { PaneSpec, SeriesSpec } from '../RangeSeriesPane';
 
@@ -63,7 +63,7 @@ export type MAContext = readonly MAConfig[];
  * teardown — the previous "identity must stay stable across
  * setMovingAverage" contract is no longer load-bearing.
  */
-const useMAContext = (): MAContext => useChartPrefs().movingAverages;
+const useMAContext = (): MAContext => useActivePrefs((p) => p.movingAverages);
 
 function makeSeries(index: MAIndex): SeriesSpec<MAContext> {
   return {

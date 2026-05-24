@@ -3,7 +3,7 @@ import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { isAuctionMaskActive } from '../../util/auctionMask';
 import { resolveTokens } from '../../util/tokens';
-import { useChartPrefs } from '../ChartPrefsContext';
+import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 
 const TOKEN_SPEC = {
@@ -48,7 +48,7 @@ export function projectAsk(
     }));
 }
 
-const useQuoteTotalsContext = (): boolean => useChartPrefs().auctionWindowMask;
+const useQuoteTotalsContext = (): boolean => useActivePrefs((p) => p.auctionWindowMask);
 
 export const QUOTE_TOTALS_SPEC: PaneSpec<boolean> = {
   name: 'quote-totals',

@@ -11,7 +11,7 @@ import { type VirtualAxis } from '../../util/virtualAxis';
 import { quoteImbalance } from '../../util/imbalance';
 import { isAuctionMaskActive } from '../../util/auctionMask';
 import { resolveTokens } from '../../util/tokens';
-import { useChartPrefs } from '../ChartPrefsContext';
+import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 
 const TOKEN_SPEC = {
@@ -68,7 +68,7 @@ export function projectRatio(
     }));
 }
 
-const useRatioContext = (): boolean => useChartPrefs().auctionWindowMask;
+const useRatioContext = (): boolean => useActivePrefs((p) => p.auctionWindowMask);
 
 export const RATIO_SPEC: PaneSpec<boolean> = {
   name: 'ratio',
