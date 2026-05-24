@@ -278,7 +278,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
   }, [chart, bundle]);
 
   return (
-    <div className="relative h-full min-h-0 bg-bg-card">
+    <div className="relative h-full min-h-0 bg-bg-card overflow-hidden">
       <div ref={containerRef} className="absolute inset-0" />
       {chart && bundle && (
         <ChartPrefsProvider value={prefs}>
