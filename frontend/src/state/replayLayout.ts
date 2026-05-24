@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { resolveTokens } from '../util/tokens';
 
 /**
  * Runtime layout state for /replay's Cursor Sidebar. The design token
@@ -16,18 +17,26 @@ export const SIDEBAR_PX_MIN = 240;
 export const SIDEBAR_PX_MAX = 520;
 
 const SIDEBAR_PX_FALLBACK = 320; // matches --sidebar-w base intent at default density
+const SIDEBAR_TOKEN_FALLBACK = '20rem'; // matches tokens.css default density
 
 export function readSidebarTokenPx(): number {
-  if (typeof document === 'undefined') return SIDEBAR_PX_FALLBACK;
-  const root = document.documentElement;
-  const raw = getComputedStyle(root).getPropertyValue('--sidebar-w').trim();
-  if (raw.endsWith('px')) {
-    const n = Number.parseFloat(raw);
-    return Number.isFinite(n) ? n : SIDEBAR_PX_FALLBACK;
+  // util/tokens.resolveTokens owns the "getComputedStyle + trim + fallback"
+  // contract for all design-token reads (chart canvas resolvers, etc.).
+  // Routing through it keeps the SSR / empty-string fallback in one place.
+  // This function's own responsibility is the px / rem unit parsing.
+  const { sidebarW } = resolveTokens({
+    sidebarW: ['--sidebar-w', SIDEBAR_TOKEN_FALLBACK],
+  });
+  if (sidebarW.endsWith('px')) {
+    const n = Number.parseFloat(sidebarW);
+    return Number.isFinite(n) && n > 0 ? n : SIDEBAR_PX_FALLBACK;
   }
-  if (raw.endsWith('rem')) {
-    const rem = Number.parseFloat(raw);
-    const rootFontPx = Number.parseFloat(getComputedStyle(root).fontSize);
+  if (sidebarW.endsWith('rem')) {
+    const rem = Number.parseFloat(sidebarW);
+    const rootFontPx =
+      typeof document !== 'undefined'
+        ? Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+        : 16;
     const px = rem * rootFontPx;
     return Number.isFinite(px) && px > 0 ? px : SIDEBAR_PX_FALLBACK;
   }
