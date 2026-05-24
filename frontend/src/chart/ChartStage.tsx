@@ -357,6 +357,9 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
     return () => container.removeEventListener('wheel', onWheel);
   }, [chart, bundle]);
 
+  // Task 5 will wire candleSeries into the new pane-series registry;
+  // retained here so the Task-5 diff is a minimal addition rather than a
+  // resurrection. Lint may flag this as unused — intentional.
   const [candleSeries, setCandleSeries] = useState<ISeriesApi<'Candlestick'> | null>(null);
   useEffect(() => {
     if (!chart) {

@@ -104,7 +104,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
       c.beginPath();
       c.rect(0, 0, w, paneHeight);
       c.clip();
-      const projCtx: ProjectCtx = { chart, axis, paneSeries, paneId: 'candle', width: w, height: h };
+      const projCtx: ProjectCtx = {
+        chart, axis, paneSeries, paneId: 'candle', // Task 8 will dispatch by drawing's paneId
+        width: w, height: h,
+      };
       for (const d of drawings) {
         renderDrawing(c, projCtx, d, d.id === selectedId);
       }
@@ -125,7 +128,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
             points: draft.points,
             color: accentColor,
             width: 1.5,
-            paneId: 'candle',
+            paneId: 'candle', // Task 8: bind to creation pane
           },
           false,
         );
