@@ -10,8 +10,6 @@ import datetime as dt
 import json
 from pathlib import Path
 
-import pytest
-
 from hoga.api import eligibility
 from hoga.api.eligibility import CaptureDecision
 
