@@ -70,8 +70,13 @@ class QueryEngine:
     def list_stock_dates(self) -> list[StockDate]:
         base = self.data_dir / "parquet"
         if not base.exists():
+            # Disk gone entirely — drop the whole cache rather than
+            # quietly hoarding stale entries until the next call sees
+            # the same empty result.
+            self._stock_date_cache.clear()
             return []
         out: list[StockDate] = []
+        seen_keys: set[tuple[str, str]] = set()
         for date_dir in sorted(base.iterdir()):
             if not date_dir.is_dir():
                 continue
@@ -87,6 +92,7 @@ class QueryEngine:
                     # silently skipping these entries.
                     continue
                 key = (date, code)
+                seen_keys.add(key)
                 # Single .get() — must not be replaced by `key in cache`
                 # then `cache[key]` (two ops). The spec mandates a single
                 # atomic dict op so a racing prune cannot null the entry
@@ -100,6 +106,12 @@ class QueryEngine:
                     meta_mtime_ns=mtime_ns, value=sd
                 )
                 out.append(sd)
+        # Snapshot iteration via list() — safe against concurrent inserts
+        # from another threadpool worker. del on a missing key would raise,
+        # so check membership of seen_keys (the set we just built).
+        for k in list(self._stock_date_cache.keys()):
+            if k not in seen_keys:
+                del self._stock_date_cache[k]
         return out
 
     def _compute_stock_date(

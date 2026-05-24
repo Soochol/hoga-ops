@@ -121,3 +121,25 @@ def test_mtime_change_triggers_recompute(tmp_path: Path) -> None:
         assert second[1] == first[1]
     finally:
         engine.close()
+
+
+def test_disappeared_dir_pruned_from_cache(tmp_path: Path) -> None:
+    """When a Stock-Date dir is deleted, its cache entry must be evicted."""
+    engine = _build_engine_with_stock_dates(tmp_path, _DATES[:2])
+    try:
+        first = engine.list_stock_dates()
+        assert len(first) == 2
+        assert len(engine._stock_date_cache) == 2
+
+        # Delete one Stock-Date dir entirely.
+        victim = engine.data_dir / "parquet" / _DATES[0] / "003490"
+        shutil.rmtree(victim)
+        # Also remove the empty date_dir so iterdir doesn't visit it.
+        victim.parent.rmdir()
+
+        second = engine.list_stock_dates()
+        assert len(second) == 1
+        assert len(engine._stock_date_cache) == 1
+        assert (_DATES[0], "003490") not in engine._stock_date_cache
+    finally:
+        engine.close()
