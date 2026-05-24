@@ -13,9 +13,10 @@ from hoga.api.disk_state import (
 from hoga.api.timeenc import HogaMs
 
 
-def test_disk_state_enum_has_five_members() -> None:
+def test_disk_state_enum_has_six_members() -> None:
     assert set(DiskState) == {
         DiskState.NONE,
+        DiskState.NO_UPSTREAM_DATA,
         DiskState.CLIENT_INCOMPLETE,
         DiskState.SOURCE_PARTIAL,
         DiskState.INVALID,
@@ -206,9 +207,9 @@ def test_auction_window_snapshots_excluded_from_gap_analysis() -> None:
 # --- ADR-0020 / Invariants ---
 
 def test_disk_state_enum_includes_invalid() -> None:
-    """INVALID is the fifth member, added by ADR-0020."""
+    """INVALID was the fifth member, added by ADR-0020. ADR-0021 adds NO_UPSTREAM_DATA (sixth)."""
     assert DiskState.INVALID in set(DiskState)
-    assert len(set(DiskState)) == 5
+    assert len(set(DiskState)) == 6
 
 
 def test_classification_carries_violations_so_callers_avoid_redoing_work() -> None:
@@ -309,3 +310,36 @@ def test_classify_warn_only_does_not_promote_to_invalid() -> None:
     }
     # warn-only → still COMPLETE
     assert classify_from_meta(meta).state == DiskState.COMPLETE
+
+
+def test_check_disk_state_returns_no_upstream_data_for_sentinel(tmp_path: Path) -> None:
+    """A .no_upstream_data sentinel alone in raw_dir classifies as
+    DiskState.NO_UPSTREAM_DATA (ADR-0021 sentinel-first ordering)."""
+    from hoga.api.disk_state import DiskState, check_disk_state
+
+    raw_dir = tmp_path / "raw" / "20260319" / "003490"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / ".no_upstream_data").touch()
+
+    result = check_disk_state(tmp_path, "003490", "20260319")
+    assert result.state == DiskState.NO_UPSTREAM_DATA
+    assert result.violations == []
+
+
+def test_check_disk_state_sentinel_takes_precedence_over_stray_parquet(tmp_path: Path) -> None:
+    """If a stale parquet/meta.json exists alongside the sentinel (invariant
+    violation that the implementation must still survive gracefully), the
+    sentinel wins. Sentinel-first ordering protects the UI from showing
+    `complete` for a (code, date) the user explicitly knows is empty."""
+    from hoga.api.disk_state import DiskState, check_disk_state
+
+    raw_dir = tmp_path / "raw" / "20260319" / "003490"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / ".no_upstream_data").touch()
+
+    parquet_dir = tmp_path / "parquet" / "20260319" / "003490"
+    parquet_dir.mkdir(parents=True)
+    (parquet_dir / "meta.json").write_text("{}", encoding="utf-8")
+
+    result = check_disk_state(tmp_path, "003490", "20260319")
+    assert result.state == DiskState.NO_UPSTREAM_DATA

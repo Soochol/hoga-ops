@@ -20,6 +20,7 @@ from hoga.api.timeenc import HogaMs
 
 class DiskState(Enum):
     NONE = "none"
+    NO_UPSTREAM_DATA = "no_upstream_data"   # ADR-0021
     CLIENT_INCOMPLETE = "client_incomplete"
     SOURCE_PARTIAL = "source_partial"
     INVALID = "invalid"          # ADR-0020: domain invariant violated
@@ -97,17 +98,22 @@ def classify_from_meta(meta: Mapping[str, object]) -> Classification:
 def check_disk_state(data_dir: Path, code: str, date: str) -> Classification:
     """Classify the on-disk state for ``(code, date)`` under ``data_dir``.
 
-    Returns the same :class:`Classification` shape as :func:`classify_from_meta`,
-    with ``violations`` empty for the no-meta paths (NONE / raw-only
-    CLIENT_INCOMPLETE) — there's nothing to evaluate.
-
-    Resolution order:
+    Resolution order (ADR-0021 + ADR-0020 + ADR-0007):
+      0. ``raw/{date}/{code}/.no_upstream_data`` sentinel exists →
+         ``NO_UPSTREAM_DATA``. Sentinel-first ordering protects against
+         stale parquet artifacts left from a prior capture; by invariant
+         (ADR-0021) the sentinel sits alone, but the ordering makes the
+         contract robust to bugs that violate it.
       1. ``data/parquet/{date}/{code}/meta.json`` exists → delegate to
          :func:`classify_from_meta`. Truncated / unreadable JSON →
          ``CLIENT_INCOMPLETE`` (no violations).
       2. ``data/raw/{date}/{code}/`` has any TSV files → ``CLIENT_INCOMPLETE``.
       3. Otherwise → ``NONE``.
     """
+    raw_dir = data_dir / "raw" / date / code
+    if (raw_dir / ".no_upstream_data").exists():
+        return Classification(state=DiskState.NO_UPSTREAM_DATA)
+
     parquet_dir = data_dir / "parquet" / date / code
     meta_path = parquet_dir / "meta.json"
     if meta_path.exists():
@@ -120,7 +126,6 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> Classification:
             return Classification(state=DiskState.CLIENT_INCOMPLETE)
         return classify_from_meta(meta)
 
-    raw_dir = data_dir / "raw" / date / code
     if raw_dir.exists() and any(raw_dir.glob("first_*.tsv")):
         return Classification(state=DiskState.CLIENT_INCOMPLETE)
 
