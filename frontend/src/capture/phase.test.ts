@@ -112,3 +112,17 @@ describe('phaseToCalendarStatus', () => {
     expect(phaseToCalendarStatus('parsing', null)).toBeNull();
   });
 });
+
+describe('phaseToCalendarStatus (no_upstream_data)', () => {
+  it('maps skipped + no_upstream_data to no_upstream_data calendar status', () => {
+    expect(phaseToCalendarStatus('skipped', 'no_upstream_data')).toBe('no_upstream_data');
+  });
+
+  it('regression: skipped + source_partial still maps to source_partial', () => {
+    expect(phaseToCalendarStatus('skipped', 'source_partial')).toBe('source_partial');
+  });
+
+  it('regression: skipped + already_complete still maps to complete', () => {
+    expect(phaseToCalendarStatus('skipped', 'already_complete')).toBe('complete');
+  });
+});

@@ -63,7 +63,11 @@ export function phaseToCalendarStatus(
   skipReason: SkipReason | null,
 ): CalendarStatus | null {
   if (phase === 'done') return 'complete';
-  if (phase === 'skipped') return skipReason === 'source_partial' ? 'source_partial' : 'complete';
+  if (phase === 'skipped') {
+    if (skipReason === 'source_partial') return 'source_partial';
+    if (skipReason === 'no_upstream_data') return 'no_upstream_data';   // ADR-0021
+    return 'complete';
+  }
   if (phase === 'failed' || phase === 'cancelled') return 'client_incomplete';
   return null;
 }
