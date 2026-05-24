@@ -773,3 +773,103 @@ async def test_cancel_during_429_backoff_aborts_immediately(monkeypatch, tmp_pat
     snap = captures.get_queue_snapshot()
     assert len(snap.done) == 1
     assert snap.done[0].phase == "cancelled"
+
+
+# -----------------------------------------------------------------------------
+# Queue manifest persistence — Task 4
+# -----------------------------------------------------------------------------
+import json
+
+from hoga.api.captures_persistence import manifest_path
+from hoga.api.captures_fake import FakeHogaplayClient
+
+
+def _read_manifest_json(data_dir):
+    p = manifest_path(data_dir)
+    if not p.exists():
+        return None
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def test_enqueue_writes_manifest(monkeypatch, tmp_path):
+    """Enqueueing items via the route should persist them to .queue.json."""
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
+    monkeypatch.setattr(captures, "_client_factory", FakeHogaplayClient)
+    app = FastAPI()
+    app.include_router(captures.build_router(
+        data_dir=tmp_path, client_factory=FakeHogaplayClient,
+    ))
+    client = TestClient(app)
+    resp = client.post("/api/captures/items", json={
+        "code": "005930", "dates": ["20260520"], "force_retry": False,
+    })
+    assert resp.status_code == 201
+    data = _read_manifest_json(tmp_path)
+    assert data is not None
+    assert data["schema_version"] == 1
+    assert data["paused"] is False
+    assert len(data["items"]) == 1
+    assert data["items"][0]["code"] == "005930"
+    assert data["items"][0]["date"] == "20260520"
+
+
+def test_cancel_queued_item_updates_manifest(monkeypatch, tmp_path):
+    """Cancelling a queued item should remove it from the manifest."""
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
+    monkeypatch.setattr(captures, "_client_factory", FakeHogaplayClient)
+    app = FastAPI()
+    app.include_router(captures.build_router(
+        data_dir=tmp_path, client_factory=FakeHogaplayClient,
+    ))
+    client = TestClient(app)
+    resp = client.post("/api/captures/items", json={
+        "code": "005930", "dates": ["20260520"], "force_retry": False,
+    })
+    item_id = resp.json()["enqueued"][0]["item_id"]
+    client.post(f"/api/captures/items/{item_id}/cancel")
+    data = _read_manifest_json(tmp_path)
+    assert data is not None
+    assert data["items"] == []  # cancelled item went to _done, which is not persisted
+
+
+def test_cancel_all_clears_manifest(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
+    monkeypatch.setattr(captures, "_client_factory", FakeHogaplayClient)
+    app = FastAPI()
+    app.include_router(captures.build_router(
+        data_dir=tmp_path, client_factory=FakeHogaplayClient,
+    ))
+    client = TestClient(app)
+    client.post("/api/captures/items", json={
+        "code": "005930", "dates": ["20260520", "20260519"], "force_retry": False,
+    })
+    client.post("/api/captures/cancel-all")
+    data = _read_manifest_json(tmp_path)
+    assert data is not None
+    assert data["items"] == []
+
+
+def test_persist_no_op_when_data_dir_unset(monkeypatch, tmp_path):
+    """When _data_dir is None (test mode without router build), the helper
+    must not crash."""
+    monkeypatch.setattr(captures, "_data_dir", None)
+    captures._persist_queue_locked()  # type: ignore[attr-defined]
+
+
+def test_reset_state_for_tests_deletes_manifest(monkeypatch, tmp_path):
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
+    (tmp_path / ".queue.json").write_text(
+        '{"schema_version": 1, "paused": false, "items": []}',
+        encoding="utf-8",
+    )
+    captures.reset_state_for_tests()
+    assert not (tmp_path / ".queue.json").exists()

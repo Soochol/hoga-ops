@@ -171,7 +171,8 @@ def _require_client_factory() -> Callable[[], object]:
 
 
 def reset_state_for_tests() -> None:
-    """For pytest fixtures only — clears all module singletons."""
+    """For pytest fixtures only — clears all module singletons + the
+    on-disk manifest (so per-test state never leaks)."""
     global _queue_paused, _wakeup  # noqa: PLW0603 — intentional test-only reset of module singletons
     _queue.clear()
     _active.clear()
@@ -183,6 +184,9 @@ def reset_state_for_tests() -> None:
     # next test gets "bound to a different event loop" errors. Workers
     # construct one lazily in start_workers().
     _wakeup = None
+    if _data_dir is not None:
+        from hoga.api.captures_persistence import manifest_path
+        manifest_path(_data_dir).unlink(missing_ok=True)
 
 
 def cancel_all_on_shutdown() -> None:
@@ -204,6 +208,38 @@ def cancel_all_on_shutdown() -> None:
 # existing watchdog handler in sse.py:57 uses loop.call_soon_threadsafe.
 _bus: Any = None
 _loop: asyncio.AbstractEventLoop | None = None
+
+
+# --- Queue manifest persistence (ADR-0019) --------------------------------
+
+def _persist_queue_locked() -> None:
+    """Snapshot _active + _queue + _queue_paused to the on-disk manifest.
+
+    INVARIANT: caller holds ``_lock``. Called from every mutation site that
+    touches _queue or _active. _done is intentionally excluded (volatile —
+    cleared by DELETE /done; see ADR-0019).
+
+    Active-before-queued ordering matters: items that were running in the
+    previous session get restored first into _queue, so workers pick them
+    up before strictly-queued items. This preserves the "resume in-flight
+    first" UX (see spec §4.5 Ordering invariant).
+    """
+    if _data_dir is None:
+        return  # test fixture without data_dir wired
+    from hoga.api.captures_persistence import save_manifest
+    from hoga.api.models import QueueManifest, QueueManifestItem
+    items = [
+        QueueManifestItem(
+            item_id=s.item_id,
+            code=s.code,
+            date=s.date,
+            force_retry=s.force_retry,
+            enqueued_at_ms=s.enqueued_at_ms,
+            pause_origin=s.pause_origin,
+        )
+        for s in (*_active.values(), *_queue)
+    ]
+    save_manifest(_data_dir, QueueManifest(paused=_queue_paused, items=items))
 
 
 def set_bus(bus: Any, loop: asyncio.AbstractEventLoop | None = None) -> None:
@@ -437,6 +473,7 @@ async def _finalize_item(state: QueueItemState) -> None:
         _active.pop(state.item_id, None)
         _inflight_paths.discard((state.code, state.date))
         _done.append(state)
+        _persist_queue_locked()  # ADR-0019 — item left _active
         # Drain detection — also check we're not paused (drained only fires
         # when the queue has naturally bottomed out).
         drained_event: CaptureQueueDrainedEvent | None = None
@@ -479,6 +516,7 @@ async def _handle_cookie_expired(state: QueueItemState) -> None:
             other.pause_origin = True
             if other.cancel_token is not None:
                 other.cancel_token.cancel()
+        _persist_queue_locked()  # ADR-0019 — paused flag flipped
     _publish_event(CaptureQueuePausedEvent(
         reason="cookie_expired",
         message="Cookie expired — pool paused. Refresh .cookie and POST /api/captures/queue/resume.",
@@ -500,6 +538,7 @@ async def resume_queue() -> None:
             _queue.appendleft(s)
         # Remove them from _done.
         _done[:] = [s for s in _done if s not in to_reenqueue]
+        _persist_queue_locked()  # ADR-0019 — queue + paused both changed
         if _wakeup is not None and _queue:
             _wakeup.set()
     _publish_event(CaptureQueueResumedEvent(reason="user_resume"))
@@ -527,6 +566,7 @@ async def cancel_all() -> dict:
                 if s.pause_origin:
                     s.pause_origin = False
             _queue_paused = False
+        _persist_queue_locked()  # ADR-0019
         if _wakeup is not None:
             _wakeup.set()
     for s in drained:
@@ -568,6 +608,7 @@ async def _worker_loop() -> None:
                     _inflight_paths.add((state.code, state.date))
                     state.phase = "deciding"
                     _active[state.item_id] = state
+                    _persist_queue_locked()  # ADR-0019 — queued→active transition
                     wait = None
         if wait is not None:
             await wait
@@ -759,6 +800,7 @@ def build_router(
                 enqueued.append(state)
             if enqueued and _wakeup is not None:
                 _wakeup.set()
+            _persist_queue_locked()  # ADR-0019 — still inside async with _lock
 
         # 4. Emit queued event (skipped when nothing landed).
         if enqueued:
@@ -778,6 +820,7 @@ def build_router(
                     del _queue[i]
                     s.phase = "cancelled"
                     _done.append(s)
+                    _persist_queue_locked()  # ADR-0019
                     if _wakeup is not None:
                         _wakeup.set()
                     _publish_event(CaptureFinishedEvent(
