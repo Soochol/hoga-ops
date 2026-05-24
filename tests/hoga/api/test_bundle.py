@@ -301,7 +301,7 @@ def test_build_range_bundle_skips_invalid_and_surfaces_in_excluded():
         "20260518": _meta(close_ms=0),
         "20260521": _meta(),
     }
-    eng.get_meta.side_effect = lambda date, code: metas[date]
+    eng.get_meta.side_effect = lambda date, _code: metas[date]
 
     patches = _patch_slice_builders(bundle_mod) + [
         patch.object(bundle_mod, "build_volume_profile_range",
