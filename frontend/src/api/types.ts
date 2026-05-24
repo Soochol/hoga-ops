@@ -97,6 +97,10 @@ export interface CaptureResult {
   unique_events: number;
   raw_dir: string;
   parsed: boolean;
+  /** "stagnation_abort" when the collector's stagnation guard tripped (hogaplay
+   *  response freeze). Null on normal completion. Frontend should flag the row
+   *  as partial-data when present, not render as a clean "done". */
+  abort_reason: string | null;
 }
 
 /** Mirrors hoga/api/error_codes.py::CaptureErrorCode verbatim — captures-domain

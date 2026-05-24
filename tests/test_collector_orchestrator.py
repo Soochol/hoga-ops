@@ -370,3 +370,51 @@ def test_collect_doubles_rate_for_THROTTLE_BACKOFF_HOLD_PAGES_after_429(
     normal_after = sleeps.count(0.05)
     assert doubled >= 10, f"expected ≥10 doubled-rate sleeps after throttle, got {doubled} (all sleeps: {sleeps})"
     assert normal_after >= 1, f"expected return to normal rate after 10 pages, got {normal_after}"
+
+
+def test_collect_records_stagnation_abort_in_progress_and_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the page step loop exits via the stagnation guard, _progress.json
+    must record finished=False with abort_reason="stagnation_abort" so the
+    parser classifies the parquet as CLIENT_INCOMPLETE, and CollectResult
+    surfaces the same reason to the API layer for SSE/UI propagation.
+
+    Without this contract the stagnation guard would silently drop the user
+    into a "looks complete but is partial" data state — the exact failure
+    the guard was added to detect.
+    """
+    from hoga.collector.page_step import StopReason
+    from hoga.collector import orchestrator as orch
+
+    # Patch _page_step_loop to skip the real pagination and force a STAGNATION
+    # exit. This isolates orchestrator's stop_reason handling from the page
+    # step state machine (covered in test_page_step.py).
+    def fake_loop(raw_dir, client, code, date, started_at, rate_limit_s,  # noqa: ARG001
+                  seen_seqs, page_idx, t, **_kwargs):
+        # Simulate one captured page so the parser-state classification has
+        # something to look at.
+        (raw_dir / "first_00001.tsv").write_text("", encoding="utf-8")
+        return seen_seqs, page_idx + 1, t, StopReason.STAGNATION
+
+    monkeypatch.setattr(orch, "_page_step_loop", fake_loop)
+
+    fake = FakeClient(
+        info_body="info\n",
+        first_pages={},
+        chart_body="chart\n",
+    )
+    result = collect_stock_date(
+        client=fake, code="003490", date="20260519",
+        data_dir=tmp_path, rate_limit_s=0.0,
+    )
+
+    assert result.abort_reason == "stagnation_abort"
+
+    progress = json.loads(
+        (tmp_path / "raw" / "20260519" / "003490" / "_progress.json").read_text("utf-8")
+    )
+    assert progress["finished"] is False
+    assert progress["abort_reason"] == "stagnation_abort"
+
+

@@ -393,6 +393,7 @@ async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
         unique_events=result.unique_events,
         raw_dir=str(result.raw_dir),
         parsed=True,
+        abort_reason=result.abort_reason,
     )
     state.phase = "done"
     # Spec §5.5: estimate_pct is clipped to 0..98 during capture; 100 is reserved

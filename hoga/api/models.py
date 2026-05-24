@@ -130,6 +130,10 @@ class CaptureResult(BaseModel):
     unique_events: int
     raw_dir: str  # absolute path as string
     parsed: bool  # True when capture_only=false and parse succeeded
+    # "stagnation_abort" when the page step loop exited via the stagnation
+    # guard; None on normal completion. Surfaces to the frontend so the
+    # capture row can flag partial data instead of rendering as done.
+    abort_reason: str | None = None
 
 
 class CaptureError(BaseModel):

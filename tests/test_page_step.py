@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from hoga.collector.page_step import PageStepController
+from hoga.collector.page_step import PageStepController, StopReason
 
 
 def _make(
@@ -112,10 +112,12 @@ def test_termination_when_past_window_and_empty_streak_met() -> None:
     # max_t large enough to avoid cap-hit. Empty advance: t 180→200, empty=1.
     d1 = c.observe(max_event_time=999, new_seqs=0)
     assert d1.should_stop is False
+    assert d1.stop_reason is None
     assert c.next_t == 200
-    # Second empty: t 200→220, empty=2, t>=end → stop.
+    # Second empty: t 200→220, empty=2, t>=end → stop with EMPTY_STREAK reason.
     d2 = c.observe(max_event_time=999, new_seqs=0)
     assert d2.should_stop is True
+    assert d2.stop_reason is StopReason.EMPTY_STREAK
     assert d2.progress_t == 200  # OLD t
 
 
@@ -177,6 +179,9 @@ def test_stagnation_guard_forces_stop_when_max_frozen_and_no_new_seqs() -> None:
     assert decisions[-1].should_stop
     # 5 stagnant calls after the baseline → 6 total (baseline + 5)
     assert len(decisions) == 6
+    # Stagnation must be distinguishable from the normal EMPTY_STREAK end so
+    # callers can record finished=False, abort_reason="stagnation_abort".
+    assert decisions[-1].stop_reason is StopReason.STAGNATION
 
 
 def test_stagnation_guard_resets_when_max_advances() -> None:
@@ -203,3 +208,4 @@ def test_stagnation_guard_resets_when_max_advances() -> None:
     assert not d1.should_stop  # 1 stagnant
     assert not d2.should_stop  # 2 stagnant
     assert d3.should_stop      # 3 stagnant → stop
+    assert d3.stop_reason is StopReason.STAGNATION

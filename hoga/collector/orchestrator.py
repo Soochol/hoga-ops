@@ -19,6 +19,7 @@ from hoga.collector.page_step import (
     DEFAULT_PAGE_STEP_MS,
     MIN_PAGE_STEP_MS,
     PageStepController,
+    StopReason,
 )
 
 # Time constants — HogaMs (HHMMSSmmm) per ADR-0003. The type alias makes
@@ -110,6 +111,12 @@ class CollectResult:
     raw_dir: Path
     pages_written: int
     unique_events: int
+    # None on normal completion; "stagnation_abort" when the page step loop
+    # exited via the stagnation guard (hogaplay response freeze). Callers
+    # downstream (parser, captures.py SSE emitter) MUST surface this to
+    # operators — silently treating partial data as complete is the failure
+    # the guard was added to prevent.
+    abort_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -199,6 +206,7 @@ def _write_progress(
     started_at: str,
     finished_at: str | None,
     finished: bool = False,
+    abort_reason: str | None = None,
 ) -> None:
     path.write_text(
         json.dumps(
@@ -209,6 +217,7 @@ def _write_progress(
                 "started_at": started_at,
                 "finished_at": finished_at,
                 "finished": finished,
+                "abort_reason": abort_reason,
             },
             indent=2,
         ),
@@ -270,8 +279,8 @@ def _page_step_loop(
     on_progress: Callable[[ProgressEvent], None] | None = None,
     cancel_token: CancelToken | None = None,
     initial_step_ms: int = DEFAULT_PAGE_STEP_MS,
-) -> tuple[set[int], int, int]:
-    """Run the Page Step pagination loop; return (seen_seqs, page_idx, final_t).
+) -> tuple[set[int], int, int, StopReason | None]:
+    """Run the Page Step pagination loop; return (seen_seqs, page_idx, final_t, stop_reason).
 
     When env var HOGA_PROFILE=1, also writes one JSONL line per iteration
     to raw_dir/_profile.jsonl for post-hoc throughput analysis.
@@ -359,14 +368,12 @@ def _page_step_loop(
             last_emitted_t = decision.progress_t
             last_emitted_pages = page_idx
         if decision.should_stop:
-            break
+            return seen_seqs, page_idx, controller.next_t, decision.stop_reason
         effective_rate = (rate_limit_s * THROTTLE_BACKOFF_FACTOR) if backoff_remaining > 0 else rate_limit_s
         if backoff_remaining > 0:
             backoff_remaining -= 1
         if effective_rate > 0:
             _time.sleep(effective_rate)
-
-    return seen_seqs, page_idx, controller.next_t
 
 
 def collect_stock_date(
@@ -419,7 +426,7 @@ def collect_stock_date(
         page_idx = 0
         t = DATA_WINDOW_START_MS
 
-    seen_seqs, page_idx, t = _page_step_loop(
+    seen_seqs, page_idx, t, stop_reason = _page_step_loop(
         raw_dir, client, code, date, started_at, rate_limit_s, seen_seqs, page_idx, t,
         on_progress=on_progress,
         cancel_token=cancel_token,
@@ -432,6 +439,11 @@ def collect_stock_date(
     chart_body = client.fetch_chart(code, date, CHART_FINAL_TIME_MS)
     (raw_dir / "chart.tsv").write_text(chart_body, encoding="utf-8")
 
+    # Stagnation abort writes finished=False so the parser's
+    # ``collection_complete`` flag stays False and the resulting parquet is
+    # classified CLIENT_INCOMPLETE rather than COMPLETE.
+    is_stagnation = stop_reason is StopReason.STAGNATION
+    abort_reason = stop_reason.value if is_stagnation else None
     finished_at = _now_kst().isoformat()
     _write_progress(
         raw_dir / "_progress.json",
@@ -440,7 +452,13 @@ def collect_stock_date(
         seq_count=len(seen_seqs),
         started_at=started_at,
         finished_at=finished_at,
-        finished=True,
+        finished=not is_stagnation,
+        abort_reason=abort_reason,
     )
 
-    return CollectResult(raw_dir=raw_dir, pages_written=page_idx, unique_events=len(seen_seqs))
+    return CollectResult(
+        raw_dir=raw_dir,
+        pages_written=page_idx,
+        unique_events=len(seen_seqs),
+        abort_reason=abort_reason,
+    )

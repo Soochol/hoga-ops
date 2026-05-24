@@ -11,6 +11,7 @@ no new global_seq.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 DEFAULT_PAGE_STEP_MS = 60000
 MIN_PAGE_STEP_MS = 1000
@@ -20,12 +21,32 @@ TERMINATION_EMPTY_PAGES = 3
 MAX_STAGNANT_PAGES = 200
 
 
+class StopReason(str, Enum):
+    """Why the page step loop terminated.
+
+    EMPTY_STREAK is the normal end (t past Data Window end + N consecutive empty
+    pages). STAGNATION is the abnormal abort path — hogaplay froze its response
+    (max_event_time held flat for MAX_STAGNANT_PAGES pages). Callers MUST
+    distinguish these so a stagnation abort is recorded as
+    ``finished=False, abort_reason="stagnation_abort"`` in _progress.json,
+    preventing the parser from reading partial data as complete.
+    """
+
+    EMPTY_STREAK = "empty_streak"
+    STAGNATION = "stagnation_abort"
+
+
 @dataclass(frozen=True)
 class StepDecision:
-    """Caller persists ``progress_t`` and stops if ``should_stop``."""
+    """Caller persists ``progress_t`` and stops if ``should_stop``.
+
+    ``stop_reason`` is set iff ``should_stop`` is True. None while the loop
+    continues.
+    """
 
     progress_t: int  # value to write to the progress file as last_time_ms
     should_stop: bool
+    stop_reason: StopReason | None = None
 
 
 class PageStepController:
@@ -101,7 +122,11 @@ class PageStepController:
             self._empty_in_a_row = 0
             # NEW: even in cap-hit branch, stagnation guard can fire
             if self._stagnant_pages >= self._max_stagnant:
-                return StepDecision(progress_t=self._t, should_stop=True)
+                return StepDecision(
+                    progress_t=self._t,
+                    should_stop=True,
+                    stop_reason=StopReason.STAGNATION,
+                )
             # Cap-hit progress write uses the NEW (advanced) t.
             return StepDecision(progress_t=self._t, should_stop=False)
 
@@ -114,8 +139,21 @@ class PageStepController:
                 self._step_ms = min(self._step_ms * 2, self._initial_step_ms)
         progress_t = self._t  # write current t before advancing
         self._t += self._step_ms
-        should_stop = (
+        # Stagnation takes precedence over empty-streak so partial-data captures
+        # don't get reported as normal completion.
+        if self._stagnant_pages >= self._max_stagnant:
+            return StepDecision(
+                progress_t=progress_t,
+                should_stop=True,
+                stop_reason=StopReason.STAGNATION,
+            )
+        if (
             self._t >= self._data_window_end_ms
             and self._empty_in_a_row >= self._termination_empty_pages
-        ) or self._stagnant_pages >= self._max_stagnant
-        return StepDecision(progress_t=progress_t, should_stop=should_stop)
+        ):
+            return StepDecision(
+                progress_t=progress_t,
+                should_stop=True,
+                stop_reason=StopReason.EMPTY_STREAK,
+            )
+        return StepDecision(progress_t=progress_t, should_stop=False)

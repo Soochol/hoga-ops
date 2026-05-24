@@ -66,17 +66,24 @@ class _FakeClientNeverEnds:
 
 
 def test_progress_json_has_finished_true_on_natural_termination(tmp_path: Path) -> None:
-    collect_stock_date(
+    # initial_step_ms=40_000_000: after 3 captured pages we land past
+    # DATA_WINDOW_END_MS (160_000_000) within a handful of empty drains, so the
+    # loop terminates via EMPTY_STREAK before the stagnation guard
+    # (MAX_STAGNANT_PAGES=200) can fire — the path this test cares about.
+    result = collect_stock_date(
         client=_FakeClientNaturalTerm(),
         code="005930",
         date="20260520",
         data_dir=tmp_path,
         rate_limit_s=0.0,
+        initial_step_ms=40_000_000,
     )
     progress = json.loads(
         (tmp_path / "raw" / "20260520" / "005930" / "_progress.json").read_text(encoding="utf-8")
     )
     assert progress["finished"] is True
+    assert progress["abort_reason"] is None
+    assert result.abort_reason is None
 
 
 def test_progress_json_finished_false_on_cancel(tmp_path: Path) -> None:
