@@ -219,16 +219,27 @@ _loop: asyncio.AbstractEventLoop | None = None
 def _items_in_restore_order() -> Iterator[QueueItemState]:
     """Yield queue items in the order they should be restored after a crash.
 
-    Active items first, then queued items. The invariant (spec §4.5,
-    ADR-0019 §5): on restart, items that were previously running get
-    re-queued before strictly-queued ones, so they pick up resume=True
-    via decide_capture sooner and the user sees in-flight work continue
-    fastest. Naming the iterator concentrates this ordering decision in
+    Active items first, then queued items, then pause_origin-cancelled
+    items from _done. The invariant (spec §4.5, ADR-0019 §5): on restart,
+    items that were previously running get re-queued before strictly-queued
+    ones, so they pick up resume=True via decide_capture sooner.
+
+    pause_origin items in _done are the cookie-pause recovery list — they
+    must survive restart so the user's eventual ``POST /queue/resume`` can
+    re-enqueue them. The "_done is volatile" rule (ADR-0019 §3 decision #6)
+    has this narrow carve-out; without it, a crash between cookie-expire
+    and resume would silently drop the paused work. ADR-0019 §"Consequences"
+    documents the gap this closes.
+
+    Naming the iterator concentrates the ordering + selection decision in
     one place — both _persist_queue_locked (write side) and
     _restore_queue_from_manifest (read side) rely on it implicitly.
     """
     yield from _active.values()
     yield from _queue
+    for s in _done:
+        if s.pause_origin and s.phase == "cancelled":
+            yield s
 
 
 def _persist_queue_locked() -> None:
@@ -256,16 +267,24 @@ def _persist_queue_locked() -> None:
 
 
 def _restore_queue_from_manifest(data_dir: Path) -> None:
-    """Read ``<data_dir>/.queue.json`` and push items into ``_queue``.
+    """Read ``<data_dir>/.queue.json`` and rehydrate ``_queue`` + ``_done``.
 
-    Called once at lifespan startup BEFORE ``start_workers()``. All restored
-    items get ``phase="queued"`` regardless of what the manifest says — the
-    worker's deciding step then routes via ``decide_capture`` based on disk
-    state (CLIENT_INCOMPLETE → resume=True, NONE → fresh, COMPLETE → skipped).
+    Called once at lifespan startup BEFORE ``start_workers()``.
 
-    Active-before-queued ordering is preserved by ``_persist_queue_locked``
-    (active items are written first); restoring in document order means
-    previously-in-flight items get picked up before strictly-queued ones.
+    Routing rule (ADR-0019):
+    - ``pause_origin=True`` items → ``_done`` with ``phase="cancelled"``,
+      matching the in-process post-cookie-pause shape so the user's eventual
+      ``POST /queue/resume`` finds them via ``resume_queue``.
+    - Everything else → ``_queue`` with ``phase="queued"``; the worker's
+      deciding step then routes via ``decide_capture`` based on disk state
+      (CLIENT_INCOMPLETE → resume=True, NONE → fresh, COMPLETE → skipped).
+
+    Crash-timing irrelevance: ``_handle_cookie_expired`` marks active items
+    with ``pause_origin=True`` and signals cancel. Whether the worker has
+    observed the cancel yet (item still in ``_active``) or already finalized
+    (item in ``_done``), the persisted manifest carries ``pause_origin=True``
+    on the same Stock-Date — both crash points restore to the same recovered
+    shape.
     """
     global _queue_paused  # noqa: PLW0603 — startup-only module write
     manifest = load_manifest(data_dir)
@@ -280,9 +299,12 @@ def _restore_queue_from_manifest(data_dir: Path) -> None:
             force_retry=item.force_retry,
             enqueued_at_ms=item.enqueued_at_ms,
             pause_origin=item.pause_origin,
-            phase="queued",
+            phase="cancelled" if item.pause_origin else "queued",
         )
-        _queue.append(state)
+        if item.pause_origin:
+            _done.append(state)
+        else:
+            _queue.append(state)
     logging.getLogger(__name__).info(
         "restored queue manifest: %d items, paused=%s",
         len(manifest.items), manifest.paused,
