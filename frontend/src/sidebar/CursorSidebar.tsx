@@ -53,7 +53,7 @@ export default function CursorSidebar({ orderbook, brokers, fills }: Props) {
   return (
     <aside
       id="replay-sidebar"
-      className="grid grid-rows-[2fr_1.4fr_1fr] gap-2 p-2 bg-bg h-full min-h-0"
+      className="grid grid-rows-[minmax(624px,2fr)_1.4fr_1fr] gap-2 p-2 bg-bg h-full min-h-0"
     >
       <SidebarCard label="10호가" testId="card-orderbook">
         {orderbook ?? <Placeholder />}
