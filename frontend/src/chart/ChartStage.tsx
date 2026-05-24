@@ -248,33 +248,52 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
     };
   }, [chart, bundle]);
 
-  // Initial fit-to-data + zoom clamps. Fires when the chart becomes ready and
-  // a bundle is available. Without `fitContent`, lightweight-charts leaves
-  // the visible range at its default barSpacing, which over-zooms on small
-  // ranges and under-zooms on multi-day ranges.
-  // Clamp invariants:
-  //   - Logical range can never exceed total bar count (no infinite zoom-out).
-  //   - barSpacing capped at 50 (no extreme zoom-in past one bar per ~50 px).
-  // See spec §6.6(a) "Zoom Density" / replay-zoom-density plan Task 17b.
+  // Initial fit-to-data + zoom-out floor. We use `timeScale.minBarSpacing`
+  // (recomputed on resize) instead of a logical-range clamp because the
+  // logical-range clamp made pan impossible when fully zoomed out: any
+  // leftward drag pushed `range.from` negative, length grew past totalBars,
+  // and the handler snapped the range back every frame. The barSpacing
+  // approach lets pan past the data window remain free while still bounding
+  // zoom-out to "all bars fit".
   useEffect(() => {
     if (!chart || !bundle) return;
     const ts = chart.timeScale();
-    ts.fitContent();
+    const container = containerRef.current;
     const totalBars = bundle.candles.length;
+
+    const computeMinBarSpacing = (): number => {
+      const width = container?.clientWidth ?? 0;
+      if (width <= 0 || totalBars <= 0) return 0.5;
+      return Math.max(0.5, width / totalBars);
+    };
+
+    ts.applyOptions({ minBarSpacing: computeMinBarSpacing() });
+    ts.fitContent();
+
+    // Keep the floor in sync with container width changes.
+    const ro =
+      container && typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            ts.applyOptions({ minBarSpacing: computeMinBarSpacing() });
+          })
+        : null;
+    if (ro && container) ro.observe(container);
+
+    // Retain the existing zoom-in cap (barSpacing > 50): one bar/50px is
+    // already absurdly zoomed-in; without it the user can vanish all but a
+    // sliver of data on the right edge.
     const handler = (range: { from: number; to: number } | null) => {
       if (!range) return;
-      const len = range.to - range.from;
-      if (len > totalBars) {
-        ts.setVisibleLogicalRange({ from: 0, to: totalBars });
-        return;
-      }
       const bs = ts.options().barSpacing;
       if (typeof bs === 'number' && bs > 50) {
         ts.applyOptions({ barSpacing: 50 });
       }
     };
     ts.subscribeVisibleLogicalRangeChange(handler);
-    return () => ts.unsubscribeVisibleLogicalRangeChange(handler);
+    return () => {
+      ts.unsubscribeVisibleLogicalRangeChange(handler);
+      ro?.disconnect();
+    };
   }, [chart, bundle]);
 
   return (
