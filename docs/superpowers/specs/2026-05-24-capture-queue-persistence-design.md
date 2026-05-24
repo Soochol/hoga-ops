@@ -22,14 +22,28 @@
 
 | 항목 | 결정 |
 |---|---|
-| 영속 포맷 | JSON, `<data_dir>/.queue.json` (dotfile) |
-| 원자성 | `.queue.json.tmp` → `os.replace()` (POSIX atomic rename) |
+| 영속 포맷 | JSON, `<data_dir>/.queue.json` (dotfile). 위치 근거는 [§3.1](#31-위치-asymmetry-vs-adr-0015). |
+| 원자성 | 공유 헬퍼 `hoga/api/_atomic_write.py::atomic_write_json` (tempfile + flush + fsync + os.replace) |
+| 스키마 필드 | `schema_version: int = 1` (ADR-0015 convention) |
 | Write 빈도 | 큐 mutation마다 동기 write (lock 안에서) |
+| Write 실패 | `OSError` catch → WARN 로그 → propagate 안 함. 인메모리 상태가 런타임 진실의 원천. |
 | 복원 시 phase | 전부 `"queued"`로 재시작. `decide_capture`가 디스크 보고 resume/skip/fresh 알아서 라우팅. |
 | 재시작 동작 | **자동 재개** — 워커가 부팅 후 큐를 보고 즉시 처리 |
 | Done 복원 | 안 함 |
-| 손상 매니페스트 | 백업(`.queue.json.corrupt-<ts>`) + 빈 큐로 시작 + WARN 로그 |
+| 손상 매니페스트 | 백업(`.queue.json.corrupt-<ts>-<reason>`) + 빈 큐로 시작 + WARN 로그 |
 | 새 SSE 이벤트 | 불필요. 기존 `capture_phase` / `capture_progress` 이벤트가 복원된 아이템에도 그대로 흐름 |
+| SSE disconnect 핸들러 | [frontend/src/api/sse.ts:80-82](frontend/src/api/sse.ts#L80-L82) 확장 — `CAPTURE_QUEUE_QUERY_KEY` + `CALENDAR_QUERY_KEY` 도 invalidate. 자동 재개 UX 완성 필수. |
+| ADR | ADR-0019 (queue manifest persistence) — 위치 비대칭 + auto-resume + don't-persist-done 근거 보존 |
+
+### 3.1 위치 asymmetry vs ADR-0015
+
+ADR-0015는 Symbol Master를 `~/.local/share/hoga-ops/symbol-master.json`(XDG)에 두기로 결정했다 — "worktree를 넘어서는 글로벌 KRX 메타데이터"라는 이유. 본 spec은 **반대로 `<data_dir>/.queue.json`을 선택**한다:
+
+- 큐 아이템은 (Code, Stock-Date) 짝을 가리키고, 그 짝의 raw 페이지(`first_NNN.tsv`)는 **data_dir에 있다**. 매니페스트가 가리키는 디스크 상태와 매니페스트 자체가 같은 디렉토리에 있어야 일관됨.
+- 두 worktree가 서로 다른 data_dir을 쓰면 각자의 큐가 있어야 한다 — 글로벌 위치는 잘못된 공유를 만듦.
+- `git clean -fdx`나 data_dir 통째 삭제 시 큐도 함께 사라지는 게 **올바른 동작** (의존하는 raw 페이지도 함께 사라지므로).
+
+ADR-0019에 이 asymmetry를 명시한다.
 
 ## 4. 아키텍처
 
@@ -38,11 +52,18 @@
 ```
 hoga/api/
   captures.py                  ← 기존, _persist_queue_locked() 추가
-  captures_persistence.py      ← 신규
+  captures_persistence.py      ← 신규, save/load/quarantine
+  _atomic_write.py             ← 신규, atomic_write_json() 공유 헬퍼
+  symbols.py                   ← 기존, _write_to_disk가 _atomic_write 사용하도록 마이그레이션
   models.py                    ← 기존, QueueManifest, QueueManifestItem 추가
 ```
 
-`captures_persistence.py`는 captures.py를 import하지 않는다. 양방향 dependency를 피하기 위해 captures.py가 persistence를 import하고 호출. persistence 모듈은 순수 I/O — pydantic 모델만 받고 dict/JSON으로 직렬화.
+**Dependency 방향:**
+- `captures_persistence.py` → `_atomic_write.py`, `models.QueueManifest`
+- `captures.py` → `captures_persistence.py` (단방향, 양방향 import 회피)
+- `symbols.py` → `_atomic_write.py` (마이그레이션 — 기존 인라인 코드 대체)
+
+`_atomic_write.py`는 ADR-0015 footer가 명시적으로 예고한 추출 — 두 번째 persistence 타깃이 등장한 시점이므로 "two-adapters rule"에 따라 추출한다.
 
 ### 4.2 Wire 모델 ([hoga/api/models.py](hoga/api/models.py))
 
@@ -56,7 +77,7 @@ class QueueManifestItem(BaseModel):
     pause_origin: bool
 
 class QueueManifest(BaseModel):
-    version: int = 1
+    schema_version: int = 1
     paused: bool
     items: list[QueueManifestItem]
 ```
@@ -71,50 +92,102 @@ class QueueManifest(BaseModel):
 | `result`, `error`, `skip_reason` | terminal 상태. done에만 들어가는데 done은 영속화 안 함 |
 | `cancel_token` | 런타임 객체. asyncio.Event 포함, 직렬화 불가 |
 
-### 4.3 Persistence 모듈
+### 4.3 공유 atomic-write 헬퍼
 
-[hoga/api/captures_persistence.py](hoga/api/captures_persistence.py):
+[hoga/api/_atomic_write.py](hoga/api/_atomic_write.py) (신규):
+
+```python
+"""Atomic JSON write. Extracted per ADR-0015 footer + ADR-0019."""
+import json
+import os
+import tempfile
+from pathlib import Path
+from typing import Any
+
+def atomic_write_json(path: Path, payload: Any, *, indent: int = 2) -> None:
+    """Write `payload` as JSON to `path` atomically.
+
+    Pattern: tempfile in target's parent dir → flush + fsync → os.replace.
+    Raises OSError on disk-write failure; callers decide whether to propagate.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=path.name + ".",
+        suffix=".tmp",
+        delete=False,
+    ) as tmp:
+        json.dump(payload, tmp, ensure_ascii=False, indent=indent)
+        tmp.flush()
+        os.fsync(tmp.fileno())
+        tmp_path = Path(tmp.name)
+    os.replace(tmp_path, path)
+```
+
+[hoga/api/symbols.py](hoga/api/symbols.py)의 `_write_to_disk`도 이 헬퍼를 사용하도록 마이그레이션 — payload dict 구성은 그대로, atomic 부분만 위임. 회귀 위험 낮음 (동일 코드 패턴).
+
+### 4.4 Persistence 모듈
+
+[hoga/api/captures_persistence.py](hoga/api/captures_persistence.py) (신규):
 
 ```python
 from pathlib import Path
+import logging
+from pydantic import ValidationError
 from hoga.api.models import QueueManifest
+from hoga.api._atomic_write import atomic_write_json
+from hoga.collector.orchestrator import now_kst
 
+logger = logging.getLogger(__name__)
 MANIFEST_FILENAME = ".queue.json"
-_MANIFEST_VERSION = 1
+_SCHEMA_VERSION = 1
 
 def manifest_path(data_dir: Path) -> Path:
     return data_dir / MANIFEST_FILENAME
 
 def save_manifest(data_dir: Path, manifest: QueueManifest) -> None:
-    """Atomic write. Caller must hold any relevant locks."""
-    target = manifest_path(data_dir)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
-    os.replace(tmp, target)
+    """Atomic write. Caller holds _lock. OSError is caught + logged here so
+    that disk failures don't break in-memory queue operations.
+    """
+    try:
+        atomic_write_json(manifest_path(data_dir), manifest.model_dump(mode="json"))
+    except OSError as e:
+        logger.warning(
+            "queue manifest write failed (%s); in-memory queue continues, "
+            "restart recovery may lose state", e,
+        )
 
 def load_manifest(data_dir: Path) -> QueueManifest | None:
-    """Return None if file missing. Quarantine + return None on corrupt."""
+    """None if missing. Quarantine + None on corrupt or version mismatch."""
     target = manifest_path(data_dir)
     if not target.exists():
         return None
-    raw = target.read_text(encoding="utf-8")
     try:
+        raw = target.read_text(encoding="utf-8")
         manifest = QueueManifest.model_validate_json(raw)
-        if manifest.version != _MANIFEST_VERSION:
-            _quarantine(target, reason=f"version_mismatch_{manifest.version}")
-            return None
-        return manifest
-    except (ValueError, ValidationError):
-        _quarantine(target, reason="parse_error")
+    except (OSError, ValueError, ValidationError) as e:
+        _quarantine(target, reason=f"parse_error:{type(e).__name__}")
         return None
+    if manifest.schema_version != _SCHEMA_VERSION:
+        _quarantine(target, reason=f"version_mismatch_{manifest.schema_version}")
+        return None
+    return manifest
 
 def _quarantine(path: Path, *, reason: str) -> None:
-    ts = datetime.now(KST).strftime("%Y%m%dT%H%M%S")
-    path.rename(path.with_name(f"{path.name}.corrupt-{ts}-{reason}"))
-    logger.warning("queue manifest quarantined: %s (%s)", path, reason)
+    ts = now_kst().strftime("%Y%m%dT%H%M%S")
+    backup = path.with_name(f"{path.name}.corrupt-{ts}-{reason}")
+    try:
+        path.rename(backup)
+        logger.warning("queue manifest quarantined: %s → %s", path, backup.name)
+    except OSError as e:
+        logger.warning("queue manifest quarantine rename failed: %s", e)
 ```
 
-### 4.4 captures.py 통합
+**중요:** `save_manifest`가 OSError를 자체 흡수하므로 `_persist_queue_locked` 호출부는 try/except를 둘 필요 없음. 큐 mutation이 disk failure로 인해 실패하지 않는다.
+
+### 4.5 captures.py 통합
 
 새 헬퍼 — **lock 보유 중에 호출**:
 
@@ -158,7 +231,24 @@ Write hook 지점 (모두 `_lock` 보유 중):
 
 **`cancel_item` active case는?** `cancel_token.cancel()`만 시그널 — 워커가 실제로 cancel을 관찰하면 `_finalize_item`에서 매니페스트 갱신됨. 별도 write 불필요.
 
-### 4.5 Startup 복원 ([hoga/api/app.py](hoga/api/app.py) lifespan)
+또한 [hoga/api/captures.py:173-185](hoga/api/captures.py#L173-L185)의 `reset_state_for_tests`를 확장 — 매니페스트 파일도 삭제:
+
+```python
+def reset_state_for_tests() -> None:
+    global _queue_paused, _wakeup
+    _queue.clear()
+    _active.clear()
+    _done.clear()
+    _inflight_paths.clear()
+    _queue_paused = False
+    _wakeup = None
+    if _data_dir is not None:
+        manifest_path(_data_dir).unlink(missing_ok=True)
+```
+
+이 없이는 pytest fixture가 worktree의 실제 매니페스트 파일을 건드릴 위험 — 또는 직전 테스트의 매니페스트가 다음 테스트로 새는 leak.
+
+### 4.6 Startup 복원 ([hoga/api/app.py](hoga/api/app.py) lifespan)
 
 ```python
 @asynccontextmanager
@@ -317,9 +407,14 @@ atomic rename 덕분에 `.queue.json`은 항상 직전 일관된 상태 or 새 �
 
 ## 11. 구현 순서 힌트 (Plan에서 정밀화)
 
-1. `QueueManifest`, `QueueManifestItem` Wire 모델 추가
-2. `captures_persistence.py` + 단위 테스트 (save/load/quarantine)
-3. `captures._persist_queue_locked()` 헬퍼 + 매 write hook에 호출 삽입 + 기존 테스트 확장
-4. `_restore_queue_from_manifest` + 단위 + 통합 테스트
-5. `app.py` lifespan에서 `start_workers` 전에 복원 호출
-6. Adversarial 수동 검증 + 문서화
+1. **`_atomic_write.py` 추출** + symbols.py 마이그레이션 + 회귀 테스트 (ADR-0015 footer가 예고한 추출)
+2. `QueueManifest`, `QueueManifestItem` Wire 모델 추가
+3. `captures_persistence.py` + 단위 테스트 (save/load/quarantine)
+4. `captures._persist_queue_locked()` 헬퍼 + 매 write hook에 호출 삽입 + `reset_state_for_tests` 확장 + 기존 테스트 확장
+5. `_restore_queue_from_manifest` + 단위 + 통합 테스트
+6. `app.py` lifespan에서 `start_workers` 전에 복원 호출
+7. **Frontend SSE disconnect 핸들러 확장**: [frontend/src/api/sse.ts:80-82](frontend/src/api/sse.ts#L80-L82)에 `CAPTURE_QUEUE_QUERY_KEY` + `CALENDAR_QUERY_KEY` invalidate 추가. 단위 테스트로 disconnect → 두 query key가 invalidate되는지 검증.
+8. ADR-0019 작성 (위치 비대칭, auto-resume, don't-persist-done 근거)
+9. Adversarial 수동 검증 + 문서화
+
+각 단계는 이전 단계 위에 cleanly 빌드 — Plan은 각 단계를 별도 sub-task로 break down하고 TDD 사이클 부여.
