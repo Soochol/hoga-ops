@@ -9,8 +9,11 @@ import type { OrderbookSnapshot } from '../../src/api/types';
 vi.mock('../../src/api/useCursor', () => ({
   useCursor: vi.fn(() => ({ tabId: '', code: null, date: null, cursorMs: null })),
   useOrderbookAtCursor: vi.fn(() => undefined),
-  useBrokersAtCursor: vi.fn(() => undefined),
   useTradesAroundCursor: vi.fn(() => undefined),
+}));
+
+vi.mock('../../src/api/brokerSeries', () => ({
+  useBrokerSeriesForDay: vi.fn(() => ({ data: null, isLoading: false })),
 }));
 
 describe('CursorSidebar', () => {
