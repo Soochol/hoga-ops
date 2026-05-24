@@ -461,8 +461,12 @@ Recording the choices made during brainstorming so future readers can
 trace the rationale without re-litigating the design:
 
 1. **Persistence = sentinel file** (vs meta.json flag or central ledger).
-   Self-describing directory; minimal `disk_state` change; aligned with
-   ADR-0020's archival-hook pattern.
+   Self-describing directory; minimal `disk_state` change; follows the
+   ADR-0020 DiskState-extension pattern (one new enum value + one new
+   classify branch, no new module). Distinct from ADR-0020's archival-hook
+   mechanism (`meta.json::invariant_violations`) which evaluates rules
+   against captured data — NO_UPSTREAM_DATA is the *absence* of
+   captured data, so the sentinel sits in raw_dir, not parquet_dir.
 2. **`force_retry` bypasses sentinel** (vs sentinel-is-permanent or TTL).
    Consistent with how `source_partial` is bypassed; lets users handle
    late-arriving upstream data without manual file deletion.
@@ -479,6 +483,12 @@ trace the rationale without re-litigating the design:
 ## References
 
 - Trigger case: `003490/20260319` (대한항공, captured 2026-05-24).
+- ADR-0021 — Upstream No-Data: sentinel + DiskState 확장 (본 spec이 근거를 보존하는 ADR).
+- ADR-0007 — disk_state 모듈 추출 (단일 분류 책임). 본 spec의 NO_UPSTREAM_DATA 추가가 그 모듈의 한 값 확장.
+- ADR-0009 — UpstreamCode 별도 enum. 본 spec의 NO_UPSTREAM_DATA는 UpstreamCode와 별개 축 (HTTP 에러 vs 정상 응답의 빈 본문).
+- ADR-0019 — Capture Queue manifest persistence. `_done` 휘발성이 마이그레이션 불필요 결론을 뒷받침.
+- ADR-0020 — DiskState 확장 패턴의 선례 (INVALID 추가). 동일 패턴을 한 번 더 적용.
+- CONTEXT.md → "**Upstream No-Data**" 용어 정의.
 - Related code: [hoga/collector/orchestrator.py:441-447](../../../hoga/collector/orchestrator.py#L441-L447),
   [hoga/api/captures.py:449](../../../hoga/api/captures.py#L449),
   [hoga/api/disk_state.py:97-127](../../../hoga/api/disk_state.py#L97-L127),
