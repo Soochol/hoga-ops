@@ -10,6 +10,7 @@ import {
   paneIdToIndex,
   paneIdAtY,
   clampYToPane,
+  paneTopY,
 } from './chartCoordinates';
 import { PANE_SPECS } from '../paneSpecs';
 
@@ -82,5 +83,25 @@ describe('clampYToPane', () => {
 
   it('passes a py exactly at pane top through', () => {
     expect(clampYToPane(chart, 'volume', 400)).toBe(400);
+  });
+});
+
+describe('paneTopY', () => {
+  // The bug this helper fixes: lightweight-charts v5 reports
+  // priceToCoordinate / coordinateToPrice in pane-local Y. Without adding
+  // paneTopY, drawings on indicator panes used the candle pane's Y space
+  // and rendered in the wrong area.
+  const heights = [400, 80, 80, 80, 80];
+  const chart = chartWithHeights(heights);
+
+  it('returns 0 for the candle pane (no offset, the original single-pane path)', () => {
+    expect(paneTopY(chart, 'candle')).toBe(0);
+  });
+
+  it('returns the cumulative height above each indicator pane', () => {
+    expect(paneTopY(chart, 'volume')).toBe(400);
+    expect(paneTopY(chart, 'ratio')).toBe(480);
+    expect(paneTopY(chart, 'quote-totals')).toBe(560);
+    expect(paneTopY(chart, 'fill-strength')).toBe(640);
   });
 });

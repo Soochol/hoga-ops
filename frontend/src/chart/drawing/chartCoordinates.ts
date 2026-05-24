@@ -52,24 +52,52 @@ export function realMsToCanvasX(
 }
 
 /**
- * Price → canvas Y for the pane identified by `paneId`. Returns null when
- * that pane's primary series isn't registered (e.g. pane removed from
- * PANE_SPECS) or the price falls outside the series' visible price range.
+ * Sum of pane heights above `paneId`. For the candle pane (index 0) this
+ * is 0, so the helper is a no-op on the original single-pane path that
+ * shipped before the indicator-pane feature.
+ *
+ * Why this exists: lightweight-charts v5's `series.priceToCoordinate` and
+ * `coordinateToPrice` operate in **pane-local Y** (origin at the pane's
+ * top, not the chart's top). Drawing renders into a chart-global canvas
+ * — we must add the pane offset to land the pixel in the right place,
+ * and subtract it before feeding a chart-global Y back to the series.
+ */
+export function paneTopY(chart: IChartApi, paneId: PaneId): number {
+  const panes = chart.panes();
+  const idx = paneIdToIndex(paneId);
+  let top = 0;
+  for (let i = 0; i < idx && i < panes.length; i++) top += panes[i].getHeight();
+  return top;
+}
+
+/**
+ * Price → chart-global canvas Y for the pane identified by `paneId`.
+ * The series' pane-local Y is shifted by `paneTopY(paneId)` so the
+ * caller can draw the result directly onto the overlay canvas without
+ * knowing which pane it belongs to.
+ *
+ * Returns null when that pane's primary series isn't registered or the
+ * price falls outside the series' visible price range.
  */
 export function priceToCanvasY(
+  chart: IChartApi,
   paneSeries: PaneSeriesMap,
   paneId: PaneId,
   price: number,
 ): number | null {
   const series = paneSeries.get(paneId);
   if (!series) return null;
-  const y = series.priceToCoordinate(price);
-  return y == null ? null : Number(y);
+  const yLocal = series.priceToCoordinate(price);
+  if (yLocal == null) return null;
+  return Number(yLocal) + paneTopY(chart, paneId);
 }
 
 /**
- * Pixel (px, py) → domain Point (realMs, price) for the pane identified
- * by `paneId`. Returns null when the time or price axis cannot resolve.
+ * Chart-global pixel (px, py) → domain Point (realMs, price) for the
+ * pane identified by `paneId`. Subtracts the pane offset before calling
+ * `series.coordinateToPrice` because that API expects pane-local Y.
+ *
+ * Returns null when the time or price axis cannot resolve.
  */
 export function pixelToData(
   chart: IChartApi,
@@ -85,7 +113,8 @@ export function pixelToData(
   if (timeSec == null) return null;
   const virtualMs = (timeSec as number) * 1000;
   const realMs = axis.toReal(virtualMs);
-  const price = series.coordinateToPrice(py);
+  const yLocal = py - paneTopY(chart, paneId);
+  const price = series.coordinateToPrice(yLocal);
   if (price == null) return null;
   return { realMs, price: Number(price) };
 }

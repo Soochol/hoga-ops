@@ -41,14 +41,16 @@ function makeCanvasSpy() {
   };
 }
 
-/** A ProjectCtx whose priceSeries always projects price → y=200. */
+/** A ProjectCtx whose priceSeries always projects price → y=200.
+ *  The chart stub returns a single candle pane (idx 0), so paneTopY
+ *  is 0 and priceToCanvasY's pane-offset compensation is a no-op. */
 function makeProjectCtx(): ProjectCtx {
   const priceSeries = {
     priceToCoordinate: vi.fn(() => 200),
     coordinateToPrice: vi.fn(),
   } as any;
   return {
-    chart: {} as IChartApi,
+    chart: { panes: () => [{ getHeight: () => 400 }] } as unknown as IChartApi,
     axis: {} as ProjectCtx['axis'],
     paneSeries: new Map([['candle', priceSeries]]),
     paneId: 'candle',
@@ -94,8 +96,19 @@ describe('renderHline price badge', () => {
     // −0.34 to 0 and read as misleading "no imbalance". See render.ts
     // formatBadgePrice — candle branch rounds, indicator branch keeps
     // up to 4 fraction digits.
+    // Chart stub now has 3 panes — pane 0 (candle 400px), pane 1 (volume 80px),
+    // pane 2 (ratio 80px). paneTopY('ratio') = 480; the test's
+    // priceToCoordinate returns pane-local 200 which lands at chart-global
+    // y = 680 (outside the panes but the test only cares about the badge text).
     const ctx: ProjectCtx = {
       ...makeProjectCtx(),
+      chart: {
+        panes: () => [
+          { getHeight: () => 400 },
+          { getHeight: () => 80 },
+          { getHeight: () => 80 },
+        ],
+      } as unknown as IChartApi,
       paneSeries: new Map([['ratio', {
         priceToCoordinate: vi.fn(() => 200),
         coordinateToPrice: vi.fn(),

@@ -22,7 +22,7 @@ function realMsToX(ctx: ProjectCtx, realMs: number): number | null {
 }
 
 function priceToY(ctx: ProjectCtx, price: number): number | null {
-  return priceToCanvasY(ctx.paneSeries, ctx.paneId, price);
+  return priceToCanvasY(ctx.chart, ctx.paneSeries, ctx.paneId, price);
 }
 
 function setStroke(c: CanvasRenderingContext2D, d: Drawing, selected: boolean) {

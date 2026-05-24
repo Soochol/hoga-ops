@@ -185,7 +185,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
     projPixelToData(chart, axis, paneSeries, paneId, px, py);
   const realMsToCanvasX = (realMs: number) => projRealMsToCanvasX(chart, axis, realMs);
   const priceToCanvasY = (price: number, paneId: PaneId) =>
-    projPriceToCanvasY(paneSeries, paneId, price);
+    projPriceToCanvasY(chart, paneSeries, paneId, price);
   const paneIdAtY = (py: number) => projPaneIdAtY(chart, py);
   const clampYToPane = (paneId: PaneId, py: number) =>
     projClampYToPane(chart, paneId, py);
@@ -196,11 +196,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
     const idx = paneIdToIndex(paneId);
     const panes = chart.panes();
     if (idx >= panes.length) return null;
-    let top = 0;
-    for (let i = 0; i < idx; i++) top += panes[i].getHeight();
-    const bottom = top + panes[idx].getHeight();
-    const topPrice = series.coordinateToPrice(top);
-    const bottomPrice = series.coordinateToPrice(bottom);
+    // coordinateToPrice expects pane-local Y; the pane's top in its own
+    // local frame is 0, the bottom is its height.
+    const paneH = panes[idx].getHeight();
+    const topPrice = series.coordinateToPrice(0);
+    const bottomPrice = series.coordinateToPrice(paneH);
     if (topPrice == null || bottomPrice == null) return null;
     return { top: Number(topPrice), bottom: Number(bottomPrice) };
   };
