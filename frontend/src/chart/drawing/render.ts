@@ -73,12 +73,11 @@ function luminance(hex: string): number {
 
 function formatBadgePrice(price: number): string {
   // User decision (2026-05-25): all panes show integers, no decimals.
-  // The earlier "preserve fractional precision on non-candle panes" path
-  // was reverted — user accepts that ratio (−1..1) and fill-strength (0..1)
-  // values collapse to 0 / ±1 on the hline badge in exchange for label
-  // consistency across panes. ADR-0025's ko-KR locale formatter applies
-  // uniformly.
-  return Math.round(price).toLocaleString('ko-KR');
+  // ratio (−1..1) and fill-strength (0..1) values collapse to 0 / ±1
+  // on the hline badge in exchange for label consistency across panes.
+  // The `|| 0` collapses `Math.round(-0.34) === -0` to `+0` so the
+  // label reads "0", not "-0".
+  return (Math.round(price) || 0).toLocaleString('ko-KR');
 }
 
 function drawPriceBadge(
