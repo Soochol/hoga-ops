@@ -20,7 +20,6 @@ class DiskState(Enum):
     NONE = "none"
     CLIENT_INCOMPLETE = "client_incomplete"
     SOURCE_PARTIAL = "source_partial"
-    INVALID = "invalid"          # ADR-0020: domain invariant violated
     COMPLETE = "complete"
 
 
@@ -33,13 +32,6 @@ def classify_from_meta(meta: dict[str, object]) -> DiskState:
     iterating Stock-Date directories) — sharing the helper avoids reading
     meta.json twice per row.
 
-    Priority (ADR-0020):
-      1. ``collection_complete=False`` → CLIENT_INCOMPLETE (root cause —
-         capture didn't finish, anything else downstream is symptom).
-      2. Any ``error``-severity invariant violation → INVALID.
-      3. ``warn``-severity violations don't change state (surfaced separately).
-      4. Otherwise fall through to is_partial → SOURCE_PARTIAL / COMPLETE.
-
     Legacy meta (pre-foundation) lacks both completeness fields. Conservative
     default is CLIENT_INCOMPLETE so a subsequent capture run will upgrade it.
     """
@@ -47,15 +39,6 @@ def classify_from_meta(meta: dict[str, object]) -> DiskState:
     is_partial = bool(meta.get("is_partial", True))
     if not collection_complete:
         return DiskState.CLIENT_INCOMPLETE
-
-    # Local import keeps disk_state importable without invariants
-    # (parser/cli also depend on disk_state — keep cycle minimal).
-    from hoga.api.invariants import Severity, check
-
-    violations = check(meta)
-    if any(v.severity == Severity.error for v in violations):
-        return DiskState.INVALID
-
     return DiskState.SOURCE_PARTIAL if is_partial else DiskState.COMPLETE
 
 
