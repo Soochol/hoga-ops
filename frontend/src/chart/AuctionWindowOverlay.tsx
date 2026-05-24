@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
-import { useChartPrefs } from './ChartPrefsContext';
+import { useActivePrefs } from '../state/chartPrefs';
 
 type Props = {
   chart: IChartApi;
@@ -24,7 +24,7 @@ const AUCTION_WINDOW_LENGTH_MS = 10 * 60 * 1000;
 export default function AuctionWindowOverlay({ chart, axis }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
-  const prefs = useChartPrefs();
+  const auctionWindowMask = useActivePrefs((p) => p.auctionWindowMask);
 
   useEffect(() => {
     const ts = chart.timeScale();
@@ -45,7 +45,7 @@ export default function AuctionWindowOverlay({ chart, axis }: Props) {
     };
   }, [chart]);
 
-  if (!prefs.auctionWindowMask) return null;
+  if (!auctionWindowMask) return null;
   if (axis.segments.length === 0) return null;
 
   const ts = chart.timeScale();
