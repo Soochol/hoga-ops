@@ -15,6 +15,7 @@ import {
   CHART_LAYOUT_OPTIONS,
   CHART_TIMESCALE_OPTIONS,
 } from '../util/chartScale';
+import { computeWheelOutcome } from '../util/wheelInteractions';
 import { useViewportStore } from '../state/viewport';
 import { useTabsStore } from '../state/tabs';
 import RangeSeriesPane from './RangeSeriesPane';
@@ -165,6 +166,12 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
         },
       },
       rightPriceScale: { borderColor: tokens.border },
+      // We own wheel interactions via a custom listener (Task 2 of the
+      // replay-mouse-interactions plan). Disable the library's built-in
+      // mouse-anchored zoom so the two paths can't fight over the visible
+      // range. `pinch`, `axisPressedMouseMove`, `axisDoubleClickReset` stay
+      // at defaults — only the wheel is reclaimed.
+      handleScale: { mouseWheel: false },
       autoSize: true,
     });
     setChart(c);
@@ -303,6 +310,42 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
       ro?.disconnect();
     };
   }, [chart, bundle]);
+
+  // Custom wheel handler — replaces the library's mouse-anchored default
+  // with three modifier-aware behaviors:
+  //   wheel              → zoom, right-edge anchored (latest visible candle)
+  //   Shift + wheel      → pan time axis (no zoom)
+  //   Ctrl/Cmd + wheel   → zoom, mouse-position anchored
+  // The library's own wheel handler is disabled in createChart options.
+  // Branch math lives in `util/wheelInteractions.ts` so it's testable
+  // without a chart. Existing clamps (`barSpacing > 50` cap,
+  // `minBarSpacing` floor) still apply because they run off the
+  // `subscribeVisibleLogicalRangeChange` callback regardless of who
+  // changed the range.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!chart || !container) return;
+    const ts = chart.timeScale();
+
+    const onWheel = (e: WheelEvent) => {
+      const range = ts.getVisibleLogicalRange();
+      if (!range) return;
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const outcome = computeWheelOutcome({
+        range,
+        deltaY: e.deltaY,
+        shiftKey: e.shiftKey,
+        ctrlOrMetaKey: e.ctrlKey || e.metaKey,
+        mouseX: e.clientX - rect.left,
+        coordinateToLogical: (x) => ts.coordinateToLogical(x),
+      });
+      if (outcome) ts.setVisibleLogicalRange(outcome);
+    };
+
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => container.removeEventListener('wheel', onWheel);
+  }, [chart]);
 
   const [candleSeries, setCandleSeries] = useState<ISeriesApi<'Candlestick'> | null>(null);
   useEffect(() => {
