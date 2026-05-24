@@ -30,6 +30,7 @@
  */
 
 import { buildSegments, type Segment } from './time';
+import { isClosingAuction, isRegularSession } from './sessionTime';
 
 export type DayBoundary = Readonly<{
   /** YYYYMMDD KST trading date of the segment that opens at this boundary. */
@@ -83,18 +84,6 @@ export type VirtualAxis = Readonly<{
    */
   inClosingAuctionWindow(realMs: number): boolean;
 }>;
-
-/**
- * KRX closing Auction Window spans the last 10 minutes of the Regular
- * Session. Anchoring the window to `sessionCloseMs` (rather than to
- * `sessionOpenMs` with a fixed offset) keeps the predicate correct on
- * KRX half-day sessions — year-end, lunar-new-year-eve, etc., when the
- * session closes at 12:30 KST. The backend ships session bounds per
- * Stock-Date (hoga/parser/__init__.py parses regular_session_close_ms
- * from each TSV), so this constant only needs to encode the auction
- * duration, not the wall-clock time of day.
- */
-const AUCTION_WINDOW_LENGTH_MS = 10 * 60 * 1000;
 
 /**
  * Construct a `VirtualAxis` from raw session open/close pairs. The input is
@@ -208,10 +197,9 @@ export function createVirtualAxis(
   }
 
   function contains(realMs: number): boolean {
-    for (const seg of segments) {
-      if (realMs >= seg.sessionOpenMs && realMs <= seg.sessionCloseMs) return true;
-    }
-    return false;
+    // Delegates to the single domain source. Kept here for backward
+    // compatibility with the many projectors that already call axis.contains.
+    return isRegularSession(segments, realMs);
   }
 
   function isInGap(realMs: number): boolean {
@@ -230,13 +218,10 @@ export function createVirtualAxis(
   }
 
   function inClosingAuctionWindow(realMs: number): boolean {
-    const idx = findByReal(realMs);
-    if (idx < 0) return false;
-    const seg = segments[idx];
-    // Re-check upper bound so pre-axis collapsing in findByReal (which returns
-    // the prior segment for realMs in a gap) doesn't leak into a `true`.
-    if (realMs > seg.sessionCloseMs) return false;
-    return realMs >= seg.sessionCloseMs - AUCTION_WINDOW_LENGTH_MS;
+    // Delegates to the single domain source. The legacy local logic is
+    // gone; sessionTime.isClosingAuction handles half-day sessions (anchors
+    // to sessionCloseMs - 10min) and pre-axis / gap rejection in one place.
+    return isClosingAuction(segments, realMs);
   }
 
   return Object.freeze({
