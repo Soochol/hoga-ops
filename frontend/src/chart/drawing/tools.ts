@@ -35,6 +35,7 @@ import {
   PENCIL_MAX_POINTS,
   HIT_THRESHOLD,
 } from './types';
+import { translateDrawing } from './translate';
 
 /** A per-gesture draft for the trendline tool — first point captured on
  *  pointer-down, committed on pointer-up. */
@@ -190,21 +191,7 @@ export const selectTool: DrawingToolSpec = {
     if (drag.kind === 'body') {
       const dMs = data.realMs - drag.lastRealMs;
       const dPrice = data.price - drag.lastPrice;
-      if (target.kind === 'hline') {
-        ctx.update(target.id, { price: target.price + dPrice } as Partial<Drawing>);
-      } else if (target.kind === 'trendline') {
-        ctx.update(target.id, {
-          a: { realMs: target.a.realMs + dMs, price: target.a.price + dPrice },
-          b: { realMs: target.b.realMs + dMs, price: target.b.price + dPrice },
-        } as Partial<Drawing>);
-      } else if (target.kind === 'pencil') {
-        ctx.update(target.id, {
-          points: target.points.map((p) => ({
-            realMs: p.realMs + dMs,
-            price: p.price + dPrice,
-          })),
-        } as Partial<Drawing>);
-      }
+      ctx.update(target.id, translateDrawing(target, dMs, dPrice));
       drag.lastRealMs = data.realMs;
       drag.lastPrice = data.price;
     }
