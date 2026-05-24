@@ -14,7 +14,7 @@
 
 `GET /api/stock-dates` powers three pages — Inventory, Capture (date range picker), and Replay (stock combobox) — by listing every captured Stock-Date in the parquet store with derived stats (price range, total volume, captured-at, completeness bits).
 
-Two issues, observed on 2026-05-24 in a worktree with 251 stock-date directories (95 dates × ~2.6 codes avg, 607 MB parquet):
+Two issues, observed on 2026-05-24 in a worktree with 251 Stock-Date directories (95 dates × ~2.6 codes avg, 607 MB parquet):
 
 1. **Cold-start latency.** First call after server start takes >5 seconds (curl timeout); warm calls (OS page cache hot) take ~500 ms. Profiling not done, but the dominant cost is structurally clear: [list_stock_dates](../../hoga/api/queries.py#L53-L149) iterates every `(date, code)` directory and per directory: parses `meta.json`, runs `query_time_bounds` on `snapshots.parquet`, and runs a `SELECT MIN(low), MAX(high), SUM(vol_a+vol_b) FROM read_parquet(candles.parquet)` — 251 × parquet reads, all in one synchronous sweep.
 
@@ -60,10 +60,10 @@ The cache is **self-validating via per-call stat()**. No watchdog hook, no inval
 For each `(date, code)` directory encountered in the iteration:
 
 1. `stat(meta.json)` → if the file is missing, `continue` (matches current behavior: incomplete captures don't appear).
-2. If `(date, code)` is in the cache *and* the cached `meta_mtime_ns` equals the stat result, append the cached `StockDate` and continue.
+2. Look up the cache with a **single `cache.get((date, code))` call** holding the returned reference locally — the lookup must be one dict op, not `if k in cache: x = cache[k]` (two ops). If the returned entry is non-`None` and its `meta_mtime_ns` matches the stat result, append the cached `StockDate` and continue.
 3. Otherwise, run the existing compute path (parse `meta.json`, query `snapshots.parquet` for bounds, query `candles.parquet` for price/volume aggregates, compute `captured_at` and `file_size_bytes` from the dir's files), then store the result in the cache with the fresh mtime, and append it.
 
-After the iteration, prune cache entries whose `(date, code)` no longer exists on disk (dir was deleted between calls). This keeps the cache from leaking memory when stock-dates are removed.
+After the iteration, prune cache entries whose `(date, code)` no longer exists on disk (dir was deleted between calls). This keeps the cache from leaking memory when Stock-Dates are removed.
 
 ### Cursor isolation
 
@@ -109,7 +109,7 @@ Three new test scenarios in `tests/test_api_stock_dates.py` (or a sibling `test_
 
 One new test in `tests/test_api.py` (or sibling concurrent test file):
 
-4. **Concurrent calls don't crash.** Spawn 30 `list_stock_dates` calls in a `ThreadPoolExecutor` against a populated fixture. Assert all return identical results and no exception. This is the regression test for the cursor isolation fix.
+4. **Concurrent calls don't crash.** Spawn 30 `list_stock_dates` calls in a `ThreadPoolExecutor` against a fixture with **≥10 Stock-Dates** (small fixtures don't exercise cursor contention — the DuckDB calls must actually overlap). Assert all 30 results are identical and no exception is raised. This is the regression test for the cursor isolation fix.
 
 Existing tests in [tests/test_api_stock_dates.py](../../tests/test_api_stock_dates.py), [tests/test_api_stock_dates_completeness.py](../../tests/test_api_stock_dates_completeness.py), [tests/test_api.py](../../tests/test_api.py) must continue to pass without modification — the function's external contract (input, output shape, ordering) is unchanged.
 
@@ -129,10 +129,11 @@ Estimated scope: `hoga/api/captures.py` (event payload), `hoga/api/queries.py` (
 
 ### Inventory materialization
 
-If the corpus grows beyond ~5,000 stock-date dirs, even `O(n_dirs × stat)` becomes noticeable (~100 ms+ on every call). At that point, write an `inventory.parquet` at the `data_dir/parquet/` root, updated incrementally by the capture worker on completion. `list_stock_dates` becomes a single `SELECT * FROM read_parquet(inventory.parquet)`. Out of scope at current scale.
+If the corpus grows beyond ~5,000 Stock-Date dirs, even `O(n_dirs × stat)` becomes noticeable (~100 ms+ on every call). At that point, write an `inventory.parquet` at the `data_dir/parquet/` root, updated incrementally by the capture worker on completion. `list_stock_dates` becomes a single `SELECT * FROM read_parquet(inventory.parquet)`. Out of scope at current scale.
 
 ## Risks
 
 - **mtime resolution edge case.** On extremely fast back-to-back rewrites of the same `meta.json` (sub-microsecond), `st_mtime_ns` could theoretically be unchanged. Not a realistic scenario for capture workflows (which involve network I/O), and existing tests don't exercise it.
 - **Prune phase O(n) per call.** Iterating `list(cache.keys())` walks the entire cache on every call. At 251 entries, negligible. At 50,000+ entries, reconsider.
 - **Cache survives across server restarts only via OS page cache.** First call after `--reload` triggers full cold cost. This is unchanged from today and out of scope.
+- **`meta.json` non-atomic write race.** If `meta.json` is rewritten non-atomically and our `stat` lands mid-write, we cache a row computed from partial content; subsequent stats see a newer mtime and self-correct on the next call. This race is **pre-existing** — the current code already reads `meta.json` without a write-time lock. This spec does not enlarge the race surface and does not attempt to close it (atomic-rename writes in the capture worker would be the proper fix, out of scope here).
