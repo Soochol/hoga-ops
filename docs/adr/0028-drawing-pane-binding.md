@@ -43,8 +43,22 @@ it to the persistence layer too.
 
 `PaneSpec.name` becomes a versioned identifier: **renaming an existing
 name is a breaking change** that strands users' saved drawings. New
-panes append new names. A top-of-file comment in `paneSpecs.ts` records
-this invariant; code reviewers enforce it.
+panes append new names.
+
+The invariant is **type-enforced** as of the follow-up to this ADR.
+`paneSpecs.ts` declares `BoundPaneSpec<Ctx> = PaneSpec<Ctx> & { name:
+PaneId }` and types `PANE_SPECS: BoundPaneSpec[]`. Each spec file
+defines its `name` with `as const` so the literal type survives, then
+ends with `satisfies PaneSpec`. The result: renaming a spec's name to
+a string outside the `PaneId` union fails to compile at the
+`PANE_SPECS` array element. The top-of-file comment in `paneSpecs.ts`
+remains as the human-facing reminder, but no longer carries the
+enforcement weight alone.
+
+`MOVING_AVERAGE_SPEC` (a candle-pane overlay rendered via its own
+`<RangeSeriesPane paneIndex={0}>`) is intentionally not in
+`PANE_SPECS` and is typed as plain `PaneSpec`, so its `name:
+'moving-average'` does not need to live in `PaneId`.
 
 ## Consequences
 

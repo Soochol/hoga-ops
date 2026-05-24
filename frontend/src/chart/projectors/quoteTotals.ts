@@ -50,8 +50,8 @@ export function projectAsk(
 
 const useQuoteTotalsContext = (): boolean => useActivePrefs((p) => p.auctionWindowMask);
 
-export const QUOTE_TOTALS_SPEC: PaneSpec<boolean> = {
-  name: 'quote-totals',
+export const QUOTE_TOTALS_SPEC = {
+  name: 'quote-totals' as const,
   stretch: 0.4,
   useContext: useQuoteTotalsContext,
   series: [
@@ -66,4 +66,4 @@ export const QUOTE_TOTALS_SPEC: PaneSpec<boolean> = {
       data: projectAsk,
     },
   ],
-};
+} satisfies PaneSpec<boolean>;

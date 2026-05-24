@@ -34,11 +34,11 @@ export function projectSell(bundle: RangeBundle, axis: VirtualAxis): any[] {
     .map((p) => ({ time: (axis.toVirtual(p.t) / 1000) as any, value: -p.sell_qty }));
 }
 
-export const FILL_STRENGTH_SPEC: PaneSpec = {
-  name: 'fill-strength',
+export const FILL_STRENGTH_SPEC = {
+  name: 'fill-strength' as const,
   stretch: 0.4,
   series: [
     { type: HistogramSeries, options: { color: buy, ...histOpts }, data: projectBuy },
     { type: HistogramSeries, options: { color: sell, ...histOpts }, data: projectSell },
   ],
-};
+} satisfies PaneSpec;

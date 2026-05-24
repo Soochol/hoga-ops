@@ -12,7 +12,6 @@ import {
   clampYToPane,
 } from './chartCoordinates';
 import { PANE_SPECS } from '../paneSpecs';
-import type { PaneId } from './types';
 
 /** Build a stub IChartApi whose panes() returns objects with the given
  *  heights, in PANE_SPECS order. */
@@ -25,7 +24,7 @@ function chartWithHeights(heights: number[]): IChartApi {
 describe('paneIdToIndex', () => {
   it('resolves every PaneId literal back to its PANE_SPECS index', () => {
     for (let i = 0; i < PANE_SPECS.length; i++) {
-      const id = PANE_SPECS[i].name as PaneId;
+      const id = PANE_SPECS[i].name;
       expect(paneIdToIndex(id)).toBe(i);
     }
   });

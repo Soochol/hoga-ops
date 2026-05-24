@@ -21,7 +21,7 @@ export type PaneSeriesMap = ReadonlyMap<PaneId, ISeriesApi<any>>;
  *  static cache is safe. */
 const PANE_ID_TO_INDEX: ReadonlyMap<PaneId, number> = (() => {
   const m = new Map<PaneId, number>();
-  PANE_SPECS.forEach((spec, idx) => m.set(spec.name as PaneId, idx));
+  PANE_SPECS.forEach((spec, idx) => m.set(spec.name, idx));
   return m;
 })();
 
@@ -98,18 +98,17 @@ export function pixelToData(
 export function paneIdAtY(chart: IChartApi, py: number): PaneId {
   const panes = chart.panes();
   if (panes.length === 0 || py < 0) {
-    return (PANE_SPECS[0].name as PaneId);
+    return PANE_SPECS[0].name;
   }
   let cursor = 0;
   for (let i = 0; i < panes.length; i++) {
     const h = panes[i].getHeight();
     if (py >= cursor && py < cursor + h) {
-      return (PANE_SPECS[i]?.name as PaneId) ?? (PANE_SPECS[0].name as PaneId);
+      return PANE_SPECS[i]?.name ?? PANE_SPECS[0].name;
     }
     cursor += h;
   }
-  return (PANE_SPECS[panes.length - 1]?.name as PaneId)
-    ?? (PANE_SPECS[0].name as PaneId);
+  return PANE_SPECS[panes.length - 1]?.name ?? PANE_SPECS[0].name;
 }
 
 /**

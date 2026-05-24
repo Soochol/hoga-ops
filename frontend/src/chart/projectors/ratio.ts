@@ -102,8 +102,8 @@ const useRatioContext = (): RatioPaneContext =>
     })),
   );
 
-export const RATIO_SPEC: PaneSpec<RatioPaneContext> = {
-  name: 'ratio',
+export const RATIO_SPEC = {
+  name: 'ratio' as const,
   stretch: 0.4,
   useContext: useRatioContext,
   series: [
@@ -151,4 +151,4 @@ export const RATIO_SPEC: PaneSpec<RatioPaneContext> = {
       },
     },
   ],
-};
+} satisfies PaneSpec<RatioPaneContext>;

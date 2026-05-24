@@ -27,8 +27,8 @@ export function projectVolume(bundle: RangeBundle, axis: VirtualAxis): any[] {
     }));
 }
 
-export const VOLUME_SPEC: PaneSpec = {
-  name: 'volume',
+export const VOLUME_SPEC = {
+  name: 'volume' as const,
   stretch: 0.3,
   series: [
     {
@@ -42,4 +42,4 @@ export const VOLUME_SPEC: PaneSpec = {
       data: projectVolume,
     },
   ],
-};
+} satisfies PaneSpec;

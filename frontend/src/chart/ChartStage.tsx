@@ -409,8 +409,8 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
                 axis={axis}
                 paneIndex={paneIndex}
                 spec={spec}
-                onPrimarySeriesReady={(s) => registerPaneSeries(spec.name as PaneId, s)}
-                onPrimarySeriesGone={() => unregisterPaneSeries(spec.name as PaneId)}
+                onPrimarySeriesReady={(s) => registerPaneSeries(spec.name, s)}
+                onPrimarySeriesGone={() => unregisterPaneSeries(spec.name)}
               />
             </div>
           ))}

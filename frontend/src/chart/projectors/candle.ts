@@ -37,8 +37,8 @@ export function projectCandle(bundle: RangeBundle, axis: VirtualAxis): any[] {
     });
 }
 
-export const CANDLE_SPEC: PaneSpec = {
-  name: 'candle',
+export const CANDLE_SPEC = {
+  name: 'candle' as const,
   stretch: 1.4,
   series: [
     {
@@ -56,4 +56,4 @@ export const CANDLE_SPEC: PaneSpec = {
       data: projectCandle,
     },
   ],
-};
+} satisfies PaneSpec;

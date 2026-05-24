@@ -24,7 +24,7 @@ function resolvePaneId(item: LegacyItem): PaneId {
     typeof item.paneIndex === 'number' &&
     PANE_SPECS[item.paneIndex] != null
   ) {
-    return PANE_SPECS[item.paneIndex].name as PaneId;
+    return PANE_SPECS[item.paneIndex].name;
   }
   return 'candle';
 }
