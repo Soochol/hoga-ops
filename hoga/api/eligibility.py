@@ -39,7 +39,7 @@ from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.collector.orchestrator import is_today_too_early
 
 
-SkipReason = Literal["already_complete", "source_partial"]
+SkipReason = Literal["already_complete", "source_partial", "no_upstream_data"]
 
 
 @dataclass(frozen=True)
@@ -64,18 +64,28 @@ def decide_capture(
 ) -> CaptureDecision:
     """Worker deciding-phase decision.
 
-    Branches:
-      - DiskState.COMPLETE        → skip with reason "already_complete"
-      - DiskState.SOURCE_PARTIAL  → skip with "source_partial" unless force_retry
-                                    (when force_retry, fall through to fresh)
-      - DiskState.INVALID         → proceed with resume=False (don't trust
-                                    corrupt artifacts; fresh capture)
+    Branches (ADR-0021 + ADR-0007):
+      - DiskState.COMPLETE         → skip with reason "already_complete"
+      - DiskState.NO_UPSTREAM_DATA + not force_retry → skip "no_upstream_data"
+      - DiskState.NO_UPSTREAM_DATA + force_retry     → delete sentinel,
+                                                       proceed resume=False
+      - DiskState.SOURCE_PARTIAL   → skip with "source_partial" unless
+                                     force_retry (then fall through to fresh)
+      - DiskState.INVALID          → proceed with resume=False (don't trust
+                                     corrupt artifacts; fresh capture)
       - DiskState.CLIENT_INCOMPLETE → proceed with resume=True
-      - DiskState.NONE            → proceed with resume=False
+      - DiskState.NONE             → proceed with resume=False
     """
     disk = check_disk_state(data_dir, code, date).state
     if disk == DiskState.COMPLETE:
         return CaptureDecision(skip_reason="already_complete", resume=False)
+    if disk == DiskState.NO_UPSTREAM_DATA:
+        if not force_retry:
+            return CaptureDecision(skip_reason="no_upstream_data", resume=False)
+        # force_retry: clear the sentinel so collect_stock_date runs fresh.
+        # If hogaplay still returns empty, the worker re-creates the sentinel.
+        (data_dir / "raw" / date / code / ".no_upstream_data").unlink(missing_ok=True)
+        return CaptureDecision(skip_reason=None, resume=False)
     if disk == DiskState.SOURCE_PARTIAL and not force_retry:
         return CaptureDecision(skip_reason="source_partial", resume=False)
     # INVALID and NONE both produce resume=False; only CLIENT_INCOMPLETE resumes.

@@ -119,7 +119,7 @@ CapturePhase = Literal[
     "queued", "deciding", "capturing", "parsing",
     "done", "failed", "cancelled", "skipped",
 ]
-SkipReason = Literal["already_complete", "source_partial"]
+SkipReason = Literal["already_complete", "source_partial", "no_upstream_data"]
 
 
 class CaptureProgress(BaseModel):

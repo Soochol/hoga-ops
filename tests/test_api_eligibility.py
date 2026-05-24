@@ -123,3 +123,64 @@ def test_decide_capture_invalid_proceeds_as_fresh(tmp_path: Path) -> None:
     # Proceeds (no skip), resume=False (fresh capture, don't trust corrupt artifacts)
     assert decision.skip_reason is None
     assert decision.resume is False
+
+
+def test_decide_capture_no_upstream_data_without_force_retry_skips(tmp_path: Path) -> None:
+    """A sentinel-only directory + force_retry=False → skip with reason
+    no_upstream_data. The sentinel must remain on disk (we are not
+    cleaning up; we are skipping)."""
+    from hoga.api.eligibility import decide_capture
+
+    raw_dir = tmp_path / "raw" / "20260319" / "003490"
+    raw_dir.mkdir(parents=True)
+    sentinel = raw_dir / ".no_upstream_data"
+    sentinel.touch()
+
+    decision = decide_capture(
+        data_dir=tmp_path, code="003490", date="20260319", force_retry=False
+    )
+    assert decision.skip_reason == "no_upstream_data"
+    assert decision.resume is False
+    assert sentinel.exists()  # NOT deleted on plain skip
+
+
+def test_decide_capture_no_upstream_data_with_force_retry_deletes_sentinel(tmp_path: Path) -> None:
+    """force_retry=True bypasses the sentinel: the sentinel file is deleted
+    and the decision proceeds with resume=False so collect_stock_date runs
+    fresh. Mirrors the SOURCE_PARTIAL+force_retry path (consistent UX:
+    force_retry ignores every cache)."""
+    from hoga.api.eligibility import decide_capture
+
+    raw_dir = tmp_path / "raw" / "20260319" / "003490"
+    raw_dir.mkdir(parents=True)
+    sentinel = raw_dir / ".no_upstream_data"
+    sentinel.touch()
+
+    decision = decide_capture(
+        data_dir=tmp_path, code="003490", date="20260319", force_retry=True
+    )
+    assert decision.skip_reason is None
+    assert decision.resume is False
+    assert not sentinel.exists()  # deleted by decide_capture
+
+
+def test_decide_capture_no_sentinel_no_change_in_existing_paths(tmp_path: Path) -> None:
+    """A fresh (NONE) Stock-Date is unaffected by the new branches."""
+    from hoga.api.eligibility import decide_capture
+
+    decision = decide_capture(
+        data_dir=tmp_path, code="003490", date="20260319", force_retry=False
+    )
+    assert decision.skip_reason is None
+    assert decision.resume is False
+
+
+def test_skip_reason_wire_type_includes_no_upstream_data() -> None:
+    """models.py SkipReason and eligibility.py SkipReason must agree —
+    the worker writes the eligibility value into state.skip_reason which
+    pydantic then serialises through the models.py Literal."""
+    from hoga.api import eligibility as elig_module
+    from hoga.api import models as models_module
+    from typing import get_args
+    assert "no_upstream_data" in get_args(elig_module.SkipReason)
+    assert "no_upstream_data" in get_args(models_module.SkipReason)
