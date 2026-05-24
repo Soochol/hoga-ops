@@ -102,6 +102,8 @@ Rejected: 인메모리 phase 상태(`pages_done`, `started_at_ms`, `frontier` �
 
 - **Frontend SSE disconnect 확장의 범위.** 본 ADR 작업으로 disconnect 시 `STOCK_DATES_QUERY_KEY` + `CAPTURE_QUEUE_QUERY_KEY` + `CALENDAR_QUERY_KEY` 셋이 invalidate된다. 이는 capture-ui spec §10의 미해결 TODO("we will extend it to also invalidate ['capture', 'latest']")를 의도와 다른 방식으로(latest는 이미 retired됨) 해결.
 
+- **Pause-cancel-then-crash 시 pause_origin 아이템은 자동 재개되지 않는다 (post-landing 발견, 2026-05-24 final review).** Cookie 만료 시 `_handle_cookie_expired`가 active 아이템 B/C에 `pause_origin=True`로 cancel 시그널을 보낸다. 워커가 cancel을 관찰하면 `_finalize_item`이 B/C를 `_done`으로 옮긴다. 매니페스트는 `_done`을 영속화하지 않으므로 (decision #6), 이 시점에 크래시가 나면 B/C는 디스크에서 사라진다. 재부팅 시 `_queue_paused=True`는 복원되지만 `_done`이 비어 있어 `resume_queue`가 재큐할 대상이 없다. 영향: 사용자가 cookie를 갱신 + resume을 눌러도 B/C는 큐에 다시 나타나지 않음. 복구 경로는 존재함 — raw 페이지가 디스크에 살아있으므로 수동으로 (Code, Stock-Date)를 재 enqueue하면 `decide_capture`가 `CLIENT_INCOMPLETE → resume=True`로 라우팅한다. 자동 재개 UX guarantee의 알려진 gap. Fix 옵션 두 가지: (a) `_done`에서 `pause_origin=True`인 아이템만 매니페스트에 영속화, (b) pause-cancelled 아이템을 `_done` 대신 `_queue`에 `phase="cancelled"` + `pause_origin=True`로 보관. Follow-up ADR로 결정.
+
 ## When to revisit
 
 - Capture history view (§11 spec follow-up)가 구현될 때 — done 리스트를 영속화할 필요가 생기면 큐 매니페스트도 같은 store(SQLite)로 마이그레이션을 고려.
