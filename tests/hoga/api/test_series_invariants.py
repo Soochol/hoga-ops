@@ -169,3 +169,25 @@ def test_cum_vol_monotonic_skips_when_trades_none() -> None:
     fired = [v for v in check_series(arts)
              if v.invariant_id == "series.cum_vol_monotonic"]
     assert fired == []
+
+
+# === Regression: 5/18/003490 lightweight-charts crash pattern ===
+
+def test_check_series_5_18_003490_candle_regression_pattern() -> None:
+    """Lock the literal time values from the lightweight-charts stack trace
+    that motivated ADR-0020 + the series catalog.
+
+    Production error message: "Assertion failed: data must be asc ordered by
+    time, index=1055, time=599428, prev time=631826". Those values are in
+    seconds (UTCTimestamp); ×1000 gives the ms values that the candles
+    invariant scans. Future catalog edits dropping this property break CI."""
+    arts = StockDateArtifacts(meta={}, candles=[
+        _candle(631_826_000),   # the previous candle's ts_ms
+        _candle(599_428_000),   # the regression that crashed setData
+    ])
+    fired = [v for v in check_series(arts)
+             if v.invariant_id == "series.candles_ts_monotonic"]
+    assert len(fired) == 1
+    assert fired[0].severity == Severity.error
+    assert fired[0].ctx["prev_ts_ms"] == 631_826_000
+    assert fired[0].ctx["curr_ts_ms"] == 599_428_000
