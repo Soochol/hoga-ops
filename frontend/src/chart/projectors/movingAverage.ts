@@ -81,12 +81,16 @@ function makeSeries(index: MAIndex): SeriesSpec<MAContext> {
     data: (bundle: RangeBundle, axis: VirtualAxis, ctx: MAContext) => {
       const cfg = ctx[index];
       if (!cfg || !cfg.enabled) return [];
-      const closes = bundle.candles.map((c) => c.close);
+      // Filter pre-open auction candles before computing the SMA so the
+      // first `period` regular-session values aren't averaged with
+      // 8:30–9:00 KST auction closes — matches what volume/ratio/
+      // quoteTotals/fillStrength projectors do.
+      const inSession = bundle.candles.filter((c) => axis.contains(c.ts_ms));
+      const closes = inSession.map((c) => c.close);
       const sma = computeSMA(closes, cfg.period);
       const out: any[] = [];
-      for (let j = 0; j < bundle.candles.length; j++) {
-        const c = bundle.candles[j];
-        if (!axis.contains(c.ts_ms)) continue;
+      for (let j = 0; j < inSession.length; j++) {
+        const c = inSession[j];
         const time = (axis.toVirtual(c.ts_ms) / 1000) as any;
         const v = sma[j];
         if (v === null) {
