@@ -23,6 +23,7 @@ import { HIT_THRESHOLD } from './drawing/types';
 import { distanceToHline, distanceToPolyline, distanceToSegment } from './drawing/hitTest';
 import {
   TOOLS,
+  matchShortcut,
   type DragMode,
   type PencilDraft,
   type ToolCtx,
@@ -136,10 +137,23 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
   }, [chart, axis, priceSeries, drawings, selectedId, activeCode, accentColor]);
 
   // ── keyboard shortcuts ─────────────────────────────────────────────────
+  // All keyboard shortcuts (tool switch via Alt+letter, Esc revert,
+  // Delete/Backspace remove) are suppressed while a pointer gesture is
+  // in flight — switching activeTool mid-drag would route the upcoming
+  // pointer-up to a different spec, stranding the draft refs.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      // Active-gesture guard — see ADR-0024 sibling note in the spec.
+      if (dragRef.current || trendlineDraft.current || pencilDraft.current) return;
+
+      const shortcutKind = matchShortcut(e);
+      if (shortcutKind) {
+        useDrawingsStore.getState().setActiveTool(shortcutKind);
+        e.preventDefault();
+        return;
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const id = useDrawingsStore.getState().selectedId;
         if (id) {
