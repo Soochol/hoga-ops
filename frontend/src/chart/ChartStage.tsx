@@ -3,6 +3,7 @@ import {
   createChart,
   TickMarkType,
   type IChartApi,
+  type ISeriesApi,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
@@ -22,7 +23,9 @@ import { MOVING_AVERAGE_SPEC } from './projectors/movingAverage';
 import VolumeProfileOverlay from './VolumeProfileOverlay';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
 import AuctionWindowOverlay from './AuctionWindowOverlay';
+import DrawingOverlay from './DrawingOverlay';
 import { ChartPrefsProvider } from './ChartPrefsContext';
+import { useDrawingsStore } from '../state/drawings';
 
 const CHART_TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -91,6 +94,14 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
   useEffect(() => {
     axisRef.current = axis;
   }, [axis]);
+
+  const activeCode = useTabsStore((s) => {
+    const tab = s.tabs.find((t) => t.id === s.activeTabId);
+    return tab?.selection?.code ?? null;
+  });
+  useEffect(() => {
+    useDrawingsStore.getState().setActiveCode(activeCode);
+  }, [activeCode]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -296,6 +307,43 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
     };
   }, [chart, bundle]);
 
+  const [candleSeries, setCandleSeries] = useState<ISeriesApi<'Candlestick'> | null>(null);
+  useEffect(() => {
+    if (!chart) {
+      setCandleSeries(null);
+      return;
+    }
+    // Poll once per RAF until pane 0's first Candlestick series exists.
+    // Bounded by the bundle effect — once the bundle is set, the candle
+    // pane mounts within a few frames.
+    let raf = 0;
+    let cancelled = false;
+    const find = () => {
+      if (cancelled) return;
+      const panes = chart.panes();
+      const pane0 = panes[0];
+      if (!pane0) {
+        raf = requestAnimationFrame(find);
+        return;
+      }
+      // chart.panes()[0].getSeries() returns ISeriesApi<SeriesType>[] in v5.
+      const series = pane0.getSeries();
+      const candle = series.find((s) => s.seriesType() === 'Candlestick') as
+        | ISeriesApi<'Candlestick'>
+        | undefined;
+      if (candle) {
+        setCandleSeries(candle);
+      } else {
+        raf = requestAnimationFrame(find);
+      }
+    };
+    raf = requestAnimationFrame(find);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [chart, bundle]);
+
   return (
     <div className="relative h-full min-h-0 bg-bg-card overflow-hidden">
       <div ref={containerRef} className="absolute inset-0" />
@@ -359,6 +407,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
               the RatioPane's zeroing during 15:20–15:30 KST is masking,
               not real "no pressure" data. */}
           <AuctionWindowOverlay chart={chart} axis={axis} />
+          <DrawingOverlay chart={chart} axis={axis} priceSeries={candleSeries} />
         </ChartPrefsProvider>
       )}
     </div>
