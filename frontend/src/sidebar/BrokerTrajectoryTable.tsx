@@ -47,7 +47,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs }: Props) {
 
   const rows = series.slice(0, 10);
   return (
-    <div className="font-mono text-sm tabular-nums divide-y divide-grid">
+    <div className="font-mono text-sm tabular-nums divide-y divide-border-strong">
       {rows.map((entry) => {
         const net = netAtCursor(entry, cursorMs);
         return (
