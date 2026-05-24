@@ -31,6 +31,7 @@ import { nanoid } from 'nanoid';
 import {
   type Drawing,
   type DrawingTool,
+  type PaneId,
   type Point,
   PENCIL_MAX_POINTS,
   HIT_THRESHOLD,
@@ -39,7 +40,7 @@ import { translateDrawing } from './translate';
 
 /** A per-gesture draft for the trendline tool — first point captured on
  *  pointer-down, committed on pointer-up. */
-export type TrendlineDraft = { a: Point; pointerId: number };
+export type TrendlineDraft = { a: Point; pointerId: number; paneId: PaneId };
 
 /** A per-gesture draft for the pencil tool. `lastFrame` carries the
  *  performance.now() of the last appended point so the move handler can
@@ -48,13 +49,21 @@ export type PencilDraft = {
   points: Point[];
   pointerId: number;
   lastFrame: number;
+  paneId: PaneId;
 };
 
 /** Active drag in select mode. `body` translates the whole drawing;
  *  `handle` moves one endpoint of a trendline only. */
 export type DragMode =
-  | { kind: 'body'; id: string; lastRealMs: number; lastPrice: number; pointerId: number }
-  | { kind: 'handle'; id: string; endpoint: 'a' | 'b'; pointerId: number };
+  | {
+      kind: 'body';
+      id: string;
+      lastRealMs: number;
+      lastPrice: number;
+      pointerId: number;
+      paneId: PaneId;
+    }
+  | { kind: 'handle'; id: string; endpoint: 'a' | 'b'; pointerId: number; paneId: PaneId };
 
 /** A React-style ref bucket. Spec'd as the minimal shape the tools
  *  mutate, so tests can pass plain `{ current: null }` objects. */
@@ -80,17 +89,20 @@ export type ToolCtx = {
   capturePointer(): void;
   releasePointer(): void;
 
-  /** Convert (px, py) → (realMs, price). Returns null if either axis can't
-   *  resolve the coordinate (e.g. price series not mounted yet). */
-  pixelToData(px: number, py: number): Point | null;
+  /** Convert (px, py) → (realMs, price) using `paneId`'s price scale. */
+  pixelToData(px: number, py: number, paneId: PaneId): Point | null;
   /** Convert a stored realMs to a canvas X. Returns null when the realMs
    *  falls outside every Virtual Axis segment. */
   realMsToCanvasX(realMs: number): number | null;
-  /** Convert a stored price to a canvas Y. Returns null when no price
-   *  series is available. */
-  priceToCanvasY(price: number): number | null;
+  /** Convert a stored price to a canvas Y using `paneId`'s price scale. */
+  priceToCanvasY(price: number, paneId: PaneId): number | null;
   /** Hit-test all drawings (reverse / topmost-first). */
   hitTestAt(px: number, py: number): Drawing | null;
+
+  /** PaneId of the pane the cursor is currently in. */
+  paneIdAtY(py: number): PaneId;
+  /** Clamp a pixel Y to the vertical span of the given pane. */
+  clampYToPane(paneId: PaneId, py: number): number;
 
   /** The current Drawing list for the active Code. */
   drawings: readonly Drawing[];
@@ -157,22 +169,33 @@ export const selectTool: DrawingToolSpec = {
   cursor: 'default',
   shortcut: { alt: true, key: 'v' },
   onPointerDown(ctx) {
-    // Trendline handle hit-test first (only if a trendline is selected).
     const selected = ctx.selectedId
       ? ctx.drawings.find((d) => d.id === ctx.selectedId)
       : null;
     if (selected && selected.kind === 'trendline') {
       const xa = ctx.realMsToCanvasX(selected.a.realMs);
-      const ya = ctx.priceToCanvasY(selected.a.price);
+      const ya = ctx.priceToCanvasY(selected.a.price, selected.paneId);
       const xb = ctx.realMsToCanvasX(selected.b.realMs);
-      const yb = ctx.priceToCanvasY(selected.b.price);
+      const yb = ctx.priceToCanvasY(selected.b.price, selected.paneId);
       if (xa != null && ya != null && Math.hypot(ctx.px - xa, ctx.py - ya) <= HIT_THRESHOLD.trendlineHandle) {
-        ctx.dragRef.current = { kind: 'handle', id: selected.id, endpoint: 'a', pointerId: ctx.pointerId };
+        ctx.dragRef.current = {
+          kind: 'handle',
+          id: selected.id,
+          endpoint: 'a',
+          pointerId: ctx.pointerId,
+          paneId: selected.paneId,
+        };
         ctx.capturePointer();
         return;
       }
       if (xb != null && yb != null && Math.hypot(ctx.px - xb, ctx.py - yb) <= HIT_THRESHOLD.trendlineHandle) {
-        ctx.dragRef.current = { kind: 'handle', id: selected.id, endpoint: 'b', pointerId: ctx.pointerId };
+        ctx.dragRef.current = {
+          kind: 'handle',
+          id: selected.id,
+          endpoint: 'b',
+          pointerId: ctx.pointerId,
+          paneId: selected.paneId,
+        };
         ctx.capturePointer();
         return;
       }
@@ -180,7 +203,7 @@ export const selectTool: DrawingToolSpec = {
     const hit = ctx.hitTestAt(ctx.px, ctx.py);
     ctx.setSelected(hit?.id ?? null);
     if (hit) {
-      const data = ctx.pixelToData(ctx.px, ctx.py);
+      const data = ctx.pixelToData(ctx.px, ctx.py, hit.paneId);
       if (!data) return;
       ctx.dragRef.current = {
         kind: 'body',
@@ -188,6 +211,7 @@ export const selectTool: DrawingToolSpec = {
         lastRealMs: data.realMs,
         lastPrice: data.price,
         pointerId: ctx.pointerId,
+        paneId: hit.paneId,
       };
       ctx.capturePointer();
     }
@@ -195,7 +219,8 @@ export const selectTool: DrawingToolSpec = {
   onPointerMove(ctx) {
     const drag = ctx.dragRef.current;
     if (!drag || drag.pointerId !== ctx.pointerId) return;
-    const data = ctx.pixelToData(ctx.px, ctx.py);
+    const clampedY = ctx.clampYToPane(drag.paneId, ctx.py);
+    const data = ctx.pixelToData(ctx.px, clampedY, drag.paneId);
     if (!data) return;
     const target = ctx.drawings.find((d) => d.id === drag.id);
     if (!target) return;
@@ -228,7 +253,8 @@ export const hlineTool: DrawingToolSpec = {
   cursor: 'crosshair',
   shortcut: { alt: true, key: 'h' },
   onPointerDown(ctx) {
-    const data = ctx.pixelToData(ctx.px, ctx.py);
+    const paneId = ctx.paneIdAtY(ctx.py);
+    const data = ctx.pixelToData(ctx.px, ctx.py, paneId);
     if (!data) return;
     const id = nanoid(8);
     ctx.add({
@@ -237,7 +263,7 @@ export const hlineTool: DrawingToolSpec = {
       price: data.price,
       color: ctx.accentColor,
       width: DRAWING_WIDTH,
-      paneId: 'candle',
+      paneId,
     });
     ctx.commitAndRevert(id);
   },
@@ -251,16 +277,17 @@ export const trendlineTool: DrawingToolSpec = {
   cursor: 'crosshair',
   shortcut: { alt: true, key: 't' },
   onPointerDown(ctx) {
-    const data = ctx.pixelToData(ctx.px, ctx.py);
+    const paneId = ctx.paneIdAtY(ctx.py);
+    const data = ctx.pixelToData(ctx.px, ctx.py, paneId);
     if (!data) return;
-    ctx.trendlineDraft.current = { a: data, pointerId: ctx.pointerId };
+    ctx.trendlineDraft.current = { a: data, pointerId: ctx.pointerId, paneId };
     ctx.capturePointer();
   },
-  // No onPointerMove — preview-during-drag is a v1 follow-up.
   onPointerUp(ctx) {
     const draft = ctx.trendlineDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
-    const data = ctx.pixelToData(ctx.px, ctx.py);
+    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
+    const data = ctx.pixelToData(ctx.px, clampedY, draft.paneId);
     ctx.trendlineDraft.current = null;
     ctx.releasePointer();
     if (!data) return;
@@ -274,7 +301,7 @@ export const trendlineTool: DrawingToolSpec = {
       b: data,
       color: ctx.accentColor,
       width: DRAWING_WIDTH,
-      paneId: 'candle',
+      paneId: draft.paneId,
     });
     ctx.commitAndRevert(id);
   },
@@ -288,9 +315,15 @@ export const pencilTool: DrawingToolSpec = {
   cursor: 'crosshair',
   shortcut: { alt: true, key: 'p' },
   onPointerDown(ctx) {
-    const data = ctx.pixelToData(ctx.px, ctx.py);
+    const paneId = ctx.paneIdAtY(ctx.py);
+    const data = ctx.pixelToData(ctx.px, ctx.py, paneId);
     if (!data) return;
-    ctx.pencilDraft.current = { points: [data], pointerId: ctx.pointerId, lastFrame: 0 };
+    ctx.pencilDraft.current = {
+      points: [data],
+      pointerId: ctx.pointerId,
+      lastFrame: 0,
+      paneId,
+    };
     ctx.capturePointer();
   },
   onPointerMove(ctx) {
@@ -299,7 +332,8 @@ export const pencilTool: DrawingToolSpec = {
     const now = performance.now();
     if (now - draft.lastFrame < 16) return; // RAF-aligned throttle (spec G11)
     draft.lastFrame = now;
-    const data = ctx.pixelToData(ctx.px, ctx.py);
+    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
+    const data = ctx.pixelToData(ctx.px, clampedY, draft.paneId);
     if (!data) return;
     if (draft.points.length >= PENCIL_MAX_POINTS) return;
     draft.points.push(data);
@@ -320,7 +354,7 @@ export const pencilTool: DrawingToolSpec = {
       points: draft.points,
       color: ctx.accentColor,
       width: DRAWING_WIDTH,
-      paneId: 'candle',
+      paneId: draft.paneId,
     });
     ctx.commitAndRevert(id);
   },

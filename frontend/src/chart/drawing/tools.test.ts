@@ -32,6 +32,8 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     realMsToCanvasX: vi.fn(() => 100),
     priceToCanvasY: vi.fn(() => 200),
     hitTestAt: vi.fn(() => null),
+    paneIdAtY: vi.fn(() => 'candle' as const),
+    clampYToPane: vi.fn((_id, py) => py),
     drawings: [],
     selectedId: null,
     accentColor: '#14B8A6',
@@ -102,7 +104,7 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
     const ctx = makeCtx({ pixelToData: vi.fn(() => a) });
     trendlineTool.onPointerDown!(ctx);
     expect(ctx.capturePointer).toHaveBeenCalledOnce();
-    expect(ctx.trendlineDraft.current).toEqual({ a, pointerId: 1 });
+    expect(ctx.trendlineDraft.current).toEqual({ a, pointerId: 1, paneId: 'candle' });
 
     // Simulate move to a different (px, py) — onPointerMove is undefined for v1.
     expect(trendlineTool.onPointerMove).toBeUndefined();
@@ -289,5 +291,67 @@ describe('matchShortcut', () => {
 
   it('returns null for unbound keys', () => {
     expect(matchShortcut(key({ key: 'q', altKey: true }))).toBeNull();
+  });
+});
+
+describe('pane stamping', () => {
+  it('hlineTool stamps the paneId resolved from cursor Y', () => {
+    const ctx = makeCtx({
+      paneIdAtY: vi.fn(() => 'ratio' as const),
+    });
+    hlineTool.onPointerDown!(ctx);
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    expect(added.paneId).toBe('ratio');
+  });
+
+  it('trendlineTool stamps the paneId of pointer-down on the new drawing', () => {
+    const ctx = makeCtx({
+      paneIdAtY: vi.fn(() => 'volume' as const),
+      pixelToData: vi.fn(() => ({ realMs: 1_700_000_000_000, price: 1000 })),
+    });
+    trendlineTool.onPointerDown!(ctx);
+    // Move pixelToData's mock to return a different point so the
+    // zero-length guard doesn't fire.
+    (ctx.pixelToData as ReturnType<typeof vi.fn>).mockReturnValue({
+      realMs: 1_700_000_001_000,
+      price: 2000,
+    });
+    trendlineTool.onPointerUp!(ctx);
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    expect(added.paneId).toBe('volume');
+  });
+
+  it('pencilTool stamps the paneId of pointer-down on the new drawing', () => {
+    const ctx = makeCtx({
+      paneIdAtY: vi.fn(() => 'fill-strength' as const),
+    });
+    pencilTool.onPointerDown!(ctx);
+    // Force the move-throttle to pass by mutating lastFrame, then move once.
+    if (ctx.pencilDraft.current) ctx.pencilDraft.current.lastFrame = 0;
+    (ctx.pixelToData as ReturnType<typeof vi.fn>).mockReturnValue({
+      realMs: 1_700_000_001_000,
+      price: 0.5,
+    });
+    pencilTool.onPointerMove!(ctx);
+    pencilTool.onPointerUp!(ctx);
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    expect(added.paneId).toBe('fill-strength');
+  });
+});
+
+describe('cross-pane drag clamp', () => {
+  it('trendline drag clamps Y to the start pane before resolving b.price', () => {
+    const ctx = makeCtx({
+      paneIdAtY: vi.fn(() => 'volume' as const),
+      clampYToPane: vi.fn((_id, _py) => 470),
+      pixelToData: vi.fn((_px, py, paneId) => ({
+        realMs: 1_700_000_000_000,
+        price: paneId === 'volume' && py === 470 ? 100 : -999,
+      })),
+    });
+    trendlineTool.onPointerDown!(ctx);
+    ctx.py = 9999;
+    trendlineTool.onPointerUp!(ctx);
+    expect(ctx.clampYToPane).toHaveBeenCalledWith('volume', 9999);
   });
 });
