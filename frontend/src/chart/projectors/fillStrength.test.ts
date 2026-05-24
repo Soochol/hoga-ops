@@ -161,3 +161,37 @@ describe('projectCumulativeDelta — viewport invariant', () => {
     expect(out[0].value).toBe(50);
   });
 });
+
+import { FILL_STRENGTH_SPEC } from './fillStrength';
+import { LineSeries, HistogramSeries } from 'lightweight-charts';
+
+describe('FILL_STRENGTH_SPEC shape', () => {
+  it('has three series: two histograms then one cumulative line', () => {
+    expect(FILL_STRENGTH_SPEC.series).toHaveLength(3);
+    expect(FILL_STRENGTH_SPEC.series[0].type).toBe(HistogramSeries);
+    expect(FILL_STRENGTH_SPEC.series[1].type).toBe(HistogramSeries);
+    expect(FILL_STRENGTH_SPEC.series[2].type).toBe(LineSeries);
+  });
+
+  it('cumulative series uses invisible overlay scale (priceScaleId: "")', () => {
+    const cum = FILL_STRENGTH_SPEC.series[2];
+    expect(cum.options.priceScaleId).toBe('');
+  });
+
+  it('cumulative series projector returns [] when cumulativeEnabled is false', () => {
+    const bundle: any = {
+      segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
+      fill_strength: {
+        points: [{ t: day1Open, buy_qty: 100, sell_qty: 30 }],
+      },
+    };
+    const axis = createVirtualAxis([
+      { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
+    ]);
+    const cum = FILL_STRENGTH_SPEC.series[2];
+    // ON → one point
+    expect(cum.data(bundle, axis, { cumulativeEnabled: true })).toHaveLength(1);
+    // OFF → []
+    expect(cum.data(bundle, axis, { cumulativeEnabled: false })).toEqual([]);
+  });
+});
