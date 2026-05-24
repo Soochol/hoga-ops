@@ -1,26 +1,22 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { STORAGE_KEY } from './tabsPersistence';
+import {
+  STORAGE_KEY,
+  toSnapshot,
+  validateSelection,
+  mergePrefs,
+  loadPersisted,
+  savePersisted,
+  fromSnapshot,
+  type ReplayTabsSnapshot,
+  type SnapshotDeps,
+} from './tabsPersistence';
+import { DEFAULT_PREFS, type Tab, type ChartViewPrefs } from './tabs';
 
 describe('tabsPersistence — module scaffold', () => {
   it('exports STORAGE_KEY = "replay.tabs.v1"', () => {
     expect(STORAGE_KEY).toBe('replay.tabs.v1');
   });
 });
-
-import { toSnapshot } from './tabsPersistence';
-import type { Tab, ChartViewPrefs } from './tabs';
-
-const defaultPrefs: ChartViewPrefs = {
-  volumeProfileMode: 'range',
-  movingAverages: [
-    { period: 5, enabled: true },
-    { period: 10, enabled: true },
-    { period: 20, enabled: true },
-    { period: 60, enabled: true },
-    { period: 120, enabled: true },
-  ],
-  auctionWindowMask: true,
-};
 
 describe('toSnapshot', () => {
   it('serializes selection + prefs, excludes bundles/cursorMs/status/id', () => {
@@ -39,13 +35,12 @@ describe('toSnapshot', () => {
       bundles: new Map(),
     };
     const prefs = new Map<string, ChartViewPrefs>([
-      ['tab-id-1', { ...defaultPrefs, volumeProfileMode: 'per-day' }],
+      ['tab-id-1', { ...DEFAULT_PREFS, volumeProfileMode: 'per-day' }],
     ]);
     const snap = toSnapshot({
       tabs: [tab1, tab2],
       activeTabId: 'tab-id-2',
       prefs,
-      defaultPrefs,
     });
     expect(snap.version).toBe(1);
     expect(typeof snap.savedAt).toBe('number');
@@ -56,8 +51,8 @@ describe('toSnapshot', () => {
     });
     expect(snap.tabs[0].prefs.volumeProfileMode).toBe('per-day');
     expect(snap.tabs[1].selection).toBeNull();
-    // Tabs without entries in `prefs` fall back to defaults.
-    expect(snap.tabs[1].prefs.volumeProfileMode).toBe('range');
+    // Untouched tabs serialize as empty prefs (forward-compat with default changes).
+    expect(snap.tabs[1].prefs).toEqual({});
     // No bundles/cursorMs/status/id leakage.
     expect(JSON.stringify(snap)).not.toContain('cursorMs');
     expect(JSON.stringify(snap)).not.toContain('bundles');
@@ -70,13 +65,16 @@ describe('toSnapshot', () => {
       tabs: [tab],
       activeTabId: 'nonexistent',
       prefs: new Map(),
-      defaultPrefs,
     });
     expect(snap.activeIndex).toBe(0);
   });
-});
 
-import { validateSelection, mergePrefs } from './tabsPersistence';
+  it('serializes empty prefs for tabs with no entry in the prefs Map', () => {
+    const tab: Tab = { id: 'x', selection: null, cursorMs: null, status: 'empty', bundles: new Map() };
+    const snap = toSnapshot({ tabs: [tab], activeTabId: 'x', prefs: new Map() });
+    expect(snap.tabs[0].prefs).toEqual({});
+  });
+});
 
 describe('validateSelection', () => {
   it('returns the value when all fields valid', () => {
@@ -103,48 +101,60 @@ describe('validateSelection', () => {
 
 describe('mergePrefs', () => {
   it('returns defaults when given an empty object', () => {
-    expect(mergePrefs({}, defaultPrefs)).toEqual(defaultPrefs);
+    expect(mergePrefs({}, DEFAULT_PREFS, ['auctionWindowMask'])).toEqual(DEFAULT_PREFS);
   });
   it('overrides known scalar keys', () => {
-    const merged = mergePrefs({ volumeProfileMode: 'per-day', auctionWindowMask: false }, defaultPrefs);
+    const merged = mergePrefs(
+      { volumeProfileMode: 'per-day', auctionWindowMask: false },
+      DEFAULT_PREFS,
+      ['auctionWindowMask'],
+    );
     expect(merged.volumeProfileMode).toBe('per-day');
     expect(merged.auctionWindowMask).toBe(false);
   });
   it('ignores unknown volumeProfileMode value', () => {
-    const merged = mergePrefs({ volumeProfileMode: 'galaxy' as never }, defaultPrefs);
+    const merged = mergePrefs({ volumeProfileMode: 'galaxy' as never }, DEFAULT_PREFS, ['auctionWindowMask']);
     expect(merged.volumeProfileMode).toBe('range');
   });
   it('ignores non-boolean auctionWindowMask', () => {
-    const merged = mergePrefs({ auctionWindowMask: 'yes' as never }, defaultPrefs);
+    const merged = mergePrefs({ auctionWindowMask: 'yes' as never }, DEFAULT_PREFS, ['auctionWindowMask']);
     expect(merged.auctionWindowMask).toBe(true);
   });
   it('replaces movingAverages wholesale when length differs from default', () => {
     const merged = mergePrefs(
       { movingAverages: [{ period: 7, enabled: true }] as never },
-      defaultPrefs,
+      DEFAULT_PREFS,
+      ['auctionWindowMask'],
     );
-    expect(merged.movingAverages).toEqual(defaultPrefs.movingAverages);
+    expect(merged.movingAverages).toEqual(DEFAULT_PREFS.movingAverages);
   });
   it('replaces movingAverages wholesale when an element is malformed', () => {
-    const broken = defaultPrefs.movingAverages.map((m, i) =>
+    const broken = DEFAULT_PREFS.movingAverages.map((m, i) =>
       i === 0 ? ({ period: 'x', enabled: true } as never) : m,
     );
-    const merged = mergePrefs({ movingAverages: broken }, defaultPrefs);
-    expect(merged.movingAverages).toEqual(defaultPrefs.movingAverages);
+    const merged = mergePrefs({ movingAverages: broken }, DEFAULT_PREFS, ['auctionWindowMask']);
+    expect(merged.movingAverages).toEqual(DEFAULT_PREFS.movingAverages);
   });
   it('accepts a fully-shaped movingAverages array', () => {
-    const custom = defaultPrefs.movingAverages.map((m) => ({ ...m, enabled: false }));
-    const merged = mergePrefs({ movingAverages: custom }, defaultPrefs);
+    const custom = DEFAULT_PREFS.movingAverages.map((m) => ({ ...m, enabled: false }));
+    const merged = mergePrefs({ movingAverages: custom }, DEFAULT_PREFS, ['auctionWindowMask']);
     expect(merged.movingAverages).toEqual(custom);
   });
   it('drops unknown keys silently', () => {
-    const merged = mergePrefs({ futureKey: 42 } as never, defaultPrefs);
+    const merged = mergePrefs({ futureKey: 42 } as never, DEFAULT_PREFS, ['auctionWindowMask']);
     expect((merged as Record<string, unknown>).futureKey).toBeUndefined();
   });
+  it('merges arbitrary boolean toggles via injected registry', () => {
+    // Simulate a future toggle by casting; the test proves the loop, not the type.
+    const merged = mergePrefs(
+      { auctionWindowMask: false, futureToggle: true } as never,
+      DEFAULT_PREFS,
+      ['auctionWindowMask', 'futureToggle' as never],
+    );
+    expect(merged.auctionWindowMask).toBe(false);
+    expect((merged as Record<string, unknown>).futureToggle).toBe(true);
+  });
 });
-
-import { loadPersisted } from './tabsPersistence';
-import type { ReplayTabsSnapshot } from './tabsPersistence';
 
 describe('loadPersisted', () => {
   beforeEach(() => localStorage.clear());
@@ -236,8 +246,6 @@ describe('loadPersisted', () => {
   });
 });
 
-import { savePersisted } from './tabsPersistence';
-
 describe('savePersisted', () => {
   beforeEach(() => localStorage.clear());
 
@@ -278,13 +286,10 @@ describe('savePersisted', () => {
   });
 });
 
-import { fromSnapshot } from './tabsPersistence';
-import type { SnapshotDeps } from './tabsPersistence';
-
 function makeDeps(seq: () => number): SnapshotDeps {
   let n = seq();
   return {
-    defaultPrefs,
+    defaultPrefs: DEFAULT_PREFS,
     freshTab: () => ({
       id: `fresh-${++n}`,
       selection: null,
@@ -292,6 +297,7 @@ function makeDeps(seq: () => number): SnapshotDeps {
       status: 'empty',
       bundles: new Map(),
     }),
+    chartToggleKeys: ['auctionWindowMask'],
   };
 }
 
@@ -332,5 +338,16 @@ describe('fromSnapshot', () => {
     expect(out.tabs[0].selection).toBeNull();
     expect(out.prefs.size).toBe(0);
     expect(out.activeTabId).toBe(out.tabs[0].id);
+  });
+
+  it('hydrates prefs for a tab whose persisted selection was nulled', () => {
+    const deps = makeDeps(() => 0);
+    const snap: ReplayTabsSnapshot = {
+      version: 1, savedAt: 0, activeIndex: 0,
+      tabs: [{ selection: null, prefs: { volumeProfileMode: 'per-day' } }],
+    };
+    const out = fromSnapshot(snap, deps);
+    expect(out.tabs[0].selection).toBeNull();
+    expect(out.prefs.get(out.tabs[0].id)!.volumeProfileMode).toBe('per-day');
   });
 });

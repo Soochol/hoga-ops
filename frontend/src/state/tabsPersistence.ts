@@ -1,4 +1,4 @@
-import type { Tab, TabSelection, ChartViewPrefs } from './tabs';
+import type { Tab, TabSelection, ChartViewPrefs, ChartToggleKey } from './tabs';
 import { TIMEFRAME_LABELS, type Timeframe } from '../api/types';
 
 /** Versioned storage key. Schema-breaking changes bump the suffix and let
@@ -24,19 +24,22 @@ export type ReplayTabsSnapshot = {
 export type SnapshotDeps = {
   defaultPrefs: ChartViewPrefs;
   freshTab: () => Tab;
+  /** Registry of boolean toggle keys (e.g. derived from `CHART_TOGGLES`).
+   *  Drives `mergePrefs` so a new toggle in `tabs.ts` round-trips
+   *  through persistence without editing this module. */
+  chartToggleKeys: ReadonlyArray<ChartToggleKey>;
 };
 
 export type ToSnapshotInput = {
   tabs: readonly Tab[];
   activeTabId: string;
   prefs: ReadonlyMap<string, ChartViewPrefs>;
-  defaultPrefs: ChartViewPrefs;
 };
 
 /** Pure projection: live store state → durable snapshot.
  *  Excludes bundles / cursorMs / status / id — see spec table. */
 export function toSnapshot(input: ToSnapshotInput): ReplayTabsSnapshot {
-  const { tabs, activeTabId, prefs, defaultPrefs } = input;
+  const { tabs, activeTabId, prefs } = input;
   const foundIdx = tabs.findIndex((t) => t.id === activeTabId);
   const activeIndex = foundIdx >= 0 ? foundIdx : 0;
   return {
@@ -45,7 +48,9 @@ export function toSnapshot(input: ToSnapshotInput): ReplayTabsSnapshot {
     activeIndex,
     tabs: tabs.map((t) => ({
       selection: t.selection,
-      prefs: prefs.get(t.id) ?? defaultPrefs,
+      // Untouched tabs round-trip as `{}` so a future default change is not
+      // silently overridden by a baked-in old default at load time.
+      prefs: prefs.get(t.id) ?? {},
     })),
   };
 }
@@ -72,7 +77,8 @@ export function validateSelection(value: unknown): TabSelection | null {
   };
 }
 
-const VOLUME_PROFILE_MODES = new Set(['range', 'per-day'] as const);
+type VolumeProfileMode = ChartViewPrefs['volumeProfileMode'];
+const VOLUME_PROFILE_MODES = new Set<VolumeProfileMode>(['range', 'per-day']);
 
 function isValidMA(m: unknown): m is { period: number; enabled: boolean } {
   if (m === null || typeof m !== 'object') return false;
@@ -81,23 +87,28 @@ function isValidMA(m: unknown): m is { period: number; enabled: boolean } {
 }
 
 /** Merge a `Partial<ChartViewPrefs>` over `defaults`. Unknown keys ignored;
- *  malformed values fall back to the default for that key. */
+ *  malformed values fall back to the default for that key. Boolean toggles
+ *  are validated against the injected `toggleKeys` registry — so adding a
+ *  new entry to `CHART_TOGGLES` in `tabs.ts` Just Works without editing
+ *  this module. */
 export function mergePrefs(
   partial: Partial<ChartViewPrefs> | undefined,
   defaults: ChartViewPrefs,
+  toggleKeys: ReadonlyArray<ChartToggleKey>,
 ): ChartViewPrefs {
   const p = (partial ?? {}) as Record<string, unknown>;
   const out: ChartViewPrefs = {
-    volumeProfileMode: defaults.volumeProfileMode,
+    ...defaults,
     movingAverages: defaults.movingAverages.map((m) => ({ ...m })),
-    auctionWindowMask: defaults.auctionWindowMask,
   };
   if (typeof p.volumeProfileMode === 'string'
-      && VOLUME_PROFILE_MODES.has(p.volumeProfileMode as 'range' | 'per-day')) {
-    out.volumeProfileMode = p.volumeProfileMode as 'range' | 'per-day';
+      && VOLUME_PROFILE_MODES.has(p.volumeProfileMode as VolumeProfileMode)) {
+    out.volumeProfileMode = p.volumeProfileMode as VolumeProfileMode;
   }
-  if (typeof p.auctionWindowMask === 'boolean') {
-    out.auctionWindowMask = p.auctionWindowMask;
+  for (const key of toggleKeys) {
+    if (typeof p[key] === 'boolean') {
+      out[key] = p[key] as boolean;
+    }
   }
   if (
     Array.isArray(p.movingAverages)
@@ -110,10 +121,10 @@ export function mergePrefs(
 }
 
 /** Reads + validates the v1 payload. Returns `null` when absent, corrupt, or
- *  version-mismatched. Entry-level salvage (invalid selection → null,
- *  malformed prefs → default-merged) happens here; the caller is responsible
- *  for the "empty tabs → seed a fresh tab" fallback because it needs runtime
- *  deps (`nanoid`) that this pure module avoids. */
+ *  version-mismatched. Selection-level salvage (invalid selection → null,
+ *  keeping the entry) happens here; prefs validation is deferred to
+ *  `mergePrefs` (called from `fromSnapshot`). The caller is responsible
+ *  for the "empty tabs → seed a fresh tab" fallback. */
 export function loadPersisted(): ReplayTabsSnapshot | null {
   if (typeof localStorage === 'undefined') return null;
   let raw: string | null = null;
@@ -183,7 +194,7 @@ export function fromSnapshot(
     // Carry the persisted selection (already validated by loadPersisted).
     t.selection = persisted.selection;
     tabs.push(t);
-    prefs.set(t.id, mergePrefs(persisted.prefs, deps.defaultPrefs));
+    prefs.set(t.id, mergePrefs(persisted.prefs, deps.defaultPrefs, deps.chartToggleKeys));
   }
   const idx = Math.min(Math.max(0, snapshot.activeIndex), tabs.length - 1);
   return { tabs, prefs, activeTabId: tabs[idx].id };
