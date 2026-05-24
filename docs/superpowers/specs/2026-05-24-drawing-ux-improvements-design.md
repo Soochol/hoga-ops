@@ -161,6 +161,19 @@ Pressing the shortcut for the *already-active* tool is a no-op (already
 the case for `setActiveTool` because the store setter just writes the
 same value).
 
+### Active-gesture guard
+
+Tool-switch shortcuts are ignored while a drawing gesture is in flight.
+Concretely: if `dragRef.current`, `trendlineDraft.current`, or
+`pencilDraft.current` is non-null, the handler bails out before
+dispatching. Without this guard, switching `activeTool` mid-gesture
+would route the upcoming `pointer-up` to a different tool spec, leaving
+the original draft refs un-cleared (a zombie state that would require
+`Esc` to recover). The same guard applies to `Esc`: it still clears
+selection / reverts to `select`, but only when no gesture is active —
+during a gesture, `Esc` is currently undefined and stays that way for
+this iteration.
+
 ### macOS Option-key consideration
 
 On macOS, `Option+letter` typically inserts a special character into
