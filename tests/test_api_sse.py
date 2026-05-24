@@ -1,4 +1,4 @@
-"""SSE inventory_added event fires when a new Stock-Date directory appears.
+"""SSE inventory_added event fires when a Stock-Date's meta.json appears.
 
 A real uvicorn server is used because ``httpx.ASGITransport`` buffers the
 full response body before returning headers, which is incompatible with the
@@ -46,12 +46,18 @@ async def test_sse_inventory_added(tmp_path):
         ) as client:
             async with client.stream("GET", "/api/events") as r:
 
-                async def make_dir():
+                async def make_meta_json():
                     # Give watchdog inotify warmup a beat after server start.
                     await asyncio.sleep(0.5)
-                    (data_dir / "parquet" / "20260521" / "207940").mkdir(parents=True)
+                    code_dir = data_dir / "parquet" / "20260521" / "207940"
+                    code_dir.mkdir(parents=True)
+                    # Per the _InventoryHandler design: dir-create no longer
+                    # fires inventory_added. The event fires when meta.json
+                    # appears, since that is when list_stock_dates first
+                    # sees the row.
+                    (code_dir / "meta.json").write_text("{}", encoding="utf-8")
 
-                asyncio.create_task(make_dir())
+                asyncio.create_task(make_meta_json())
                 saw_inventory_added = False
                 async for raw in r.aiter_lines():
                     if raw.startswith("event: inventory_added"):

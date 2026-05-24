@@ -86,33 +86,42 @@ class _Bus:
 
 
 class _InventoryHandler(FileSystemEventHandler):
-    def __init__(self, bus: _Bus, parquet_root: Path, loop: asyncio.AbstractEventLoop | None) -> None:
+    def __init__(
+        self,
+        bus: _Bus,
+        parquet_root: Path,
+        loop: asyncio.AbstractEventLoop | None,
+    ) -> None:
         self.bus = bus
         self.root = parquet_root
         self.loop = loop
 
-    def _maybe_emit(self, path: str, kind: str) -> None:
+    def _dispatch(
+        self, src_path: str, *, is_directory: bool, kind: WatchdogKind,
+    ) -> None:
         if self.loop is None:
             return
-        p = Path(path)
-        try:
-            rel = p.relative_to(self.root)
-        except ValueError:
+        payload = classify_inventory_event(
+            src_path, self.root, is_directory=is_directory, kind=kind,
+        )
+        if payload is None:
             return
-        parts = rel.parts
-        if len(parts) != 2:
-            return
-        date, code = parts
-        evt = {"type": kind, "code": code, "date": date}
-        self.loop.call_soon_threadsafe(self.bus.publish, evt)
+        self.loop.call_soon_threadsafe(self.bus.publish, payload)
 
     def on_created(self, event):
-        if event.is_directory:
-            self._maybe_emit(event.src_path, "inventory_added")
+        self._dispatch(
+            str(event.src_path), is_directory=event.is_directory, kind="created",
+        )
+
+    def on_modified(self, event):
+        self._dispatch(
+            str(event.src_path), is_directory=event.is_directory, kind="modified",
+        )
 
     def on_deleted(self, event):
-        if event.is_directory:
-            self._maybe_emit(event.src_path, "inventory_removed")
+        self._dispatch(
+            str(event.src_path), is_directory=event.is_directory, kind="deleted",
+        )
 
 
 def build_sse(parquet_root: Path) -> tuple[APIRouter, _Bus, Observer]:

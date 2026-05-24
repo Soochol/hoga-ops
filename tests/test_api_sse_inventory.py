@@ -82,3 +82,49 @@ def test_classify_inventory_event_rejects_path_outside_root(
         str(outside), parquet_root, is_directory=False, kind="created",
     )
     assert result is None
+
+
+import asyncio
+from unittest.mock import MagicMock
+
+from watchdog.events import FileCreatedEvent
+
+from hoga.api.sse import _Bus, _InventoryHandler
+
+
+@pytest.mark.asyncio
+async def test_inventory_handler_dispatches_meta_create_to_bus(
+    parquet_root: Path,
+) -> None:
+    """A meta.json file_created event reaches bus.publish with the right payload."""
+    bus = _Bus()
+    loop = asyncio.get_running_loop()
+    handler = _InventoryHandler(bus, parquet_root, loop=loop)
+    # Spy on the bus
+    bus.publish = MagicMock(wraps=bus.publish)  # type: ignore[method-assign]
+
+    meta_path = parquet_root / "20260524" / "003490" / "meta.json"
+    handler.on_created(FileCreatedEvent(str(meta_path)))
+
+    # _dispatch hops to the event loop via call_soon_threadsafe — yield
+    # once so the scheduled publish runs.
+    await asyncio.sleep(0)
+
+    bus.publish.assert_called_once_with(
+        {"type": "inventory_added", "code": "003490", "date": "20260524"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_inventory_handler_short_circuits_when_loop_none(
+    parquet_root: Path,
+) -> None:
+    """Pre-startup events (loop=None) are silently dropped."""
+    bus = _Bus()
+    handler = _InventoryHandler(bus, parquet_root, loop=None)
+    bus.publish = MagicMock(wraps=bus.publish)  # type: ignore[method-assign]
+
+    meta_path = parquet_root / "20260524" / "003490" / "meta.json"
+    handler.on_created(FileCreatedEvent(str(meta_path)))
+
+    bus.publish.assert_not_called()
