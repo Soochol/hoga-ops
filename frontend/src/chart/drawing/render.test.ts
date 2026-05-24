@@ -43,12 +43,15 @@ function makeCanvasSpy() {
 
 /** A ProjectCtx whose priceSeries always projects price → y=200. */
 function makeProjectCtx(): ProjectCtx {
+  const priceSeries = {
+    priceToCoordinate: vi.fn(() => 200),
+    coordinateToPrice: vi.fn(),
+  } as any;
   return {
     chart: {} as IChartApi,
     axis: {} as ProjectCtx['axis'],
-    priceSeries: {
-      priceToCoordinate: vi.fn(() => 200),
-    } as unknown as ProjectCtx['priceSeries'],
+    paneSeries: new Map([['candle', priceSeries]]),
+    paneId: 'candle',
     width: 800,
     height: 400,
   };
@@ -90,9 +93,10 @@ describe('renderHline price badge', () => {
     const c = makeCanvasSpy();
     const ctx: ProjectCtx = {
       ...makeProjectCtx(),
-      priceSeries: {
+      paneSeries: new Map([['candle', {
         priceToCoordinate: vi.fn(() => null),
-      } as unknown as ProjectCtx['priceSeries'],
+        coordinateToPrice: vi.fn(),
+      } as any]]),
     };
     const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, paneId: 'candle' };
     renderDrawing(c, ctx, h, false);

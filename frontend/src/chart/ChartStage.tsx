@@ -7,6 +7,7 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
+import type { PaneSeriesMap } from './drawing/chartCoordinates';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
@@ -26,6 +27,8 @@ import DayBoundaryOverlay from './DayBoundaryOverlay';
 import AuctionWindowOverlay from './AuctionWindowOverlay';
 import DrawingOverlay from './DrawingOverlay';
 import { useDrawingsStore } from '../state/drawings';
+
+const EMPTY_PANE_SERIES: PaneSeriesMap = new Map();
 
 const CHART_TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -446,7 +449,9 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
               the RatioPane's zeroing during 15:20–15:30 KST is masking,
               not real "no pressure" data. */}
           <AuctionWindowOverlay chart={chart} axis={axis} />
-          <DrawingOverlay chart={chart} axis={axis} priceSeries={candleSeries} />
+          {/* Task 5 populates this map; for now the overlay falls back to no-series
+              behaviour identical to the empty-priceSeries state in main. */}
+          <DrawingOverlay chart={chart} axis={axis} paneSeries={EMPTY_PANE_SERIES} />
         </>
       )}
     </div>

@@ -14,7 +14,7 @@
 // not touch this file.
 
 import { useEffect, useMemo, useRef } from 'react';
-import type { IChartApi, ISeriesApi } from 'lightweight-charts';
+import type { IChartApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useDrawingsStore } from '../state/drawings';
 import { renderDrawing, type ProjectCtx } from './drawing/render';
@@ -33,6 +33,7 @@ import {
   pixelToData as projPixelToData,
   priceToCanvasY as projPriceToCanvasY,
   realMsToCanvasX as projRealMsToCanvasX,
+  type PaneSeriesMap,
 } from './drawing/chartCoordinates';
 import { resolveTokens } from '../util/tokens';
 
@@ -41,11 +42,10 @@ const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
 type Props = {
   chart: IChartApi;
   axis: VirtualAxis;
-  /** Pane 0 candle series. ChartStage discovers it after the candle pane mounts. */
-  priceSeries: ISeriesApi<'Candlestick'> | null;
+  paneSeries: PaneSeriesMap;
 };
 
-export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
+export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -104,7 +104,7 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       c.beginPath();
       c.rect(0, 0, w, paneHeight);
       c.clip();
-      const projCtx: ProjectCtx = { chart, axis, priceSeries, width: w, height: h };
+      const projCtx: ProjectCtx = { chart, axis, paneSeries, paneId: 'candle', width: w, height: h };
       for (const d of drawings) {
         renderDrawing(c, projCtx, d, d.id === selectedId);
       }
@@ -145,7 +145,7 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       ts.unsubscribeVisibleLogicalRangeChange(schedule);
       ro?.disconnect();
     };
-  }, [chart, axis, priceSeries, drawings, selectedId, activeCode, accentColor]);
+  }, [chart, axis, paneSeries, drawings, selectedId, activeCode, accentColor]);
 
   // ── keyboard shortcuts ─────────────────────────────────────────────────
   // All keyboard shortcuts (tool switch via Alt+letter, Esc revert,
@@ -184,11 +184,12 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
 
   // Coordinate helpers — thin closures over the chartCoordinates module so
   // the rest of the file (and the ToolCtx exposed to tools) doesn't have to
-  // thread chart/axis/priceSeries through every call site.
+  // thread chart/axis/paneSeries through every call site.
+  // Task 8 will dispatch on the real cursor pane; for now hard-code 'candle'.
   const pixelToData = (px: number, py: number) =>
-    projPixelToData(chart, axis, priceSeries, px, py);
+    projPixelToData(chart, axis, paneSeries, 'candle', px, py);
   const realMsToCanvasX = (realMs: number) => projRealMsToCanvasX(chart, axis, realMs);
-  const priceToCanvasY = (price: number) => projPriceToCanvasY(priceSeries, price);
+  const priceToCanvasY = (price: number) => projPriceToCanvasY(paneSeries, 'candle', price);
 
   const hitTestAt = (px: number, py: number): Drawing | null => {
     // Mirror the render-side clip: a cursor outside pane 0 (e.g. over the
@@ -294,9 +295,9 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
     return () => {
       window.removeEventListener('mousemove', onHover);
     };
-    // hitTestAt closes over `drawings` / `priceSeries`; re-bind on change.
+    // hitTestAt closes over `drawings` / `paneSeries`; re-bind on change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTool, drawings, priceSeries, axis]);
+  }, [activeTool, drawings, paneSeries, axis]);
 
   return (
     <div

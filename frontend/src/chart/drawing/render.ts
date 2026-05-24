@@ -1,9 +1,9 @@
 // frontend/src/chart/drawing/render.ts
 import type { IChartApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../../util/virtualAxis';
-import type { Drawing, Hline, Pencil, Trendline } from './types';
+import type { Drawing, Hline, Pencil, Trendline, PaneId } from './types';
 import {
-  type PriceSeries,
+  type PaneSeriesMap,
   priceToCanvasY,
   realMsToCanvasX,
 } from './chartCoordinates';
@@ -11,8 +11,8 @@ import {
 export type ProjectCtx = {
   chart: IChartApi;
   axis: VirtualAxis;
-  /** Any series on pane 0 with a real price scale — typically the candle series. */
-  priceSeries: PriceSeries;
+  paneSeries: PaneSeriesMap;
+  paneId: PaneId;
   width: number;
   height: number;
 };
@@ -22,7 +22,7 @@ function realMsToX(ctx: ProjectCtx, realMs: number): number | null {
 }
 
 function priceToY(ctx: ProjectCtx, price: number): number | null {
-  return priceToCanvasY(ctx.priceSeries, price);
+  return priceToCanvasY(ctx.paneSeries, ctx.paneId, price);
 }
 
 function setStroke(c: CanvasRenderingContext2D, d: Drawing, selected: boolean) {
