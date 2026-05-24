@@ -75,8 +75,32 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
     };
   }, [chart, axis, priceSeries, drawings, selectedId, activeCode]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      // Don't steal keys from form controls.
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const id = useDrawingsStore.getState().selectedId;
+        if (id) {
+          useDrawingsStore.getState().remove(id);
+          e.preventDefault();
+        }
+      } else if (e.key === 'Escape') {
+        useDrawingsStore.getState().setSelected(null);
+        useDrawingsStore.getState().setActiveTool('select');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const trendlineDraftRef = useRef<{ a: { realMs: number; price: number }; pointerId: number } | null>(null);
   const pencilDraftRef = useRef<{ points: { realMs: number; price: number }[]; pointerId: number; lastFrame: number } | null>(null);
+  type DragMode =
+    | { kind: 'body'; id: string; lastRealMs: number; lastPrice: number; pointerId: number }
+    | { kind: 'handle'; id: string; endpoint: 'a' | 'b'; pointerId: number };
+  const dragRef = useRef<DragMode | null>(null);
 
   const pixelToData = (px: number, py: number) => {
     if (!priceSeries) return null;
@@ -136,11 +160,55 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
   // Pointer handler dispatch keyed by activeTool. We attach onPointerDown
   // on the container; tools that need drag track it via setPointerCapture.
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (activeTool === 'select') return; // select-mode handler lands in Task 12
-    if (!priceSeries) return;
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
+
+    if (activeTool === 'select') {
+      // Handle hit-test takes precedence for trendlines.
+      const selected = selectedId
+        ? drawings.find((d) => d.id === selectedId)
+        : null;
+      if (selected && selected.kind === 'trendline') {
+        const xa = realMsToCanvasX(selected.a.realMs);
+        const ya = priceSeries?.priceToCoordinate(selected.a.price);
+        const xb = realMsToCanvasX(selected.b.realMs);
+        const yb = priceSeries?.priceToCoordinate(selected.b.price);
+        if (
+          xa != null && ya != null &&
+          Math.hypot(px - xa, py - Number(ya)) <= HIT_THRESHOLD.trendlineHandle
+        ) {
+          dragRef.current = { kind: 'handle', id: selected.id, endpoint: 'a', pointerId: e.pointerId };
+          (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+          return;
+        }
+        if (
+          xb != null && yb != null &&
+          Math.hypot(px - xb, py - Number(yb)) <= HIT_THRESHOLD.trendlineHandle
+        ) {
+          dragRef.current = { kind: 'handle', id: selected.id, endpoint: 'b', pointerId: e.pointerId };
+          (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+          return;
+        }
+      }
+      const hit = hitTestAt(px, py);
+      useDrawingsStore.getState().setSelected(hit?.id ?? null);
+      if (hit) {
+        const data = pixelToData(px, py);
+        if (!data) return;
+        dragRef.current = {
+          kind: 'body',
+          id: hit.id,
+          lastRealMs: data.realMs,
+          lastPrice: data.price,
+          pointerId: e.pointerId,
+        };
+        (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+      }
+      return;
+    }
+
+    if (!priceSeries) return;
 
     if (activeTool === 'hline') {
       const price = priceSeries.coordinateToPrice(py);
@@ -181,6 +249,40 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activeTool === 'select') {
+      const drag = dragRef.current;
+      if (!drag || drag.pointerId !== e.pointerId) return;
+      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+      const data = pixelToData(e.clientX - rect.left, e.clientY - rect.top);
+      if (!data) return;
+      const target = drawings.find((d) => d.id === drag.id);
+      if (!target) return;
+      if (drag.kind === 'handle' && target.kind === 'trendline') {
+        const patch = drag.endpoint === 'a' ? { a: data } : { b: data };
+        useDrawingsStore.getState().update(target.id, patch as Partial<Drawing>);
+      } else if (drag.kind === 'body') {
+        const dMs = data.realMs - drag.lastRealMs;
+        const dPrice = data.price - drag.lastPrice;
+        if (target.kind === 'hline') {
+          useDrawingsStore.getState().update(target.id, { price: target.price + dPrice } as Partial<Drawing>);
+        } else if (target.kind === 'trendline') {
+          useDrawingsStore.getState().update(target.id, {
+            a: { realMs: target.a.realMs + dMs, price: target.a.price + dPrice },
+            b: { realMs: target.b.realMs + dMs, price: target.b.price + dPrice },
+          } as Partial<Drawing>);
+        } else if (target.kind === 'pencil') {
+          useDrawingsStore.getState().update(target.id, {
+            points: target.points.map((p) => ({
+              realMs: p.realMs + dMs,
+              price: p.price + dPrice,
+            })),
+          } as Partial<Drawing>);
+        }
+        drag.lastRealMs = data.realMs;
+        drag.lastPrice = data.price;
+      }
+      return;
+    }
     if (activeTool === 'trendline') {
       const draft = trendlineDraftRef.current;
       if (!draft || draft.pointerId !== e.pointerId) return;
@@ -205,6 +307,13 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activeTool === 'select') {
+      const drag = dragRef.current;
+      if (!drag || drag.pointerId !== e.pointerId) return;
+      dragRef.current = null;
+      (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+      return;
+    }
     if (activeTool === 'trendline') {
       const draft = trendlineDraftRef.current;
       if (!draft || draft.pointerId !== e.pointerId) return;
