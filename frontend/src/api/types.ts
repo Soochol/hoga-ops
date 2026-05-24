@@ -59,6 +59,28 @@ export type BrokerEntry = {
   qty_delta: number;
 };
 
+// === Broker Day-Trajectory (ADR-0023) ===
+// Mirrors hoga/api/models.py::BrokerSeriesPoint / BrokerSeriesEntry / BrokerSeriesResponse
+// verbatim per ADR-0004 (wire model no-adapter). `net` is already signed at the
+// producer (buy = +, sell = −) — no client-side re-aggregation.
+
+export type BrokerSeriesPoint = {
+  ts_ms: number;   // Unix epoch ms per ADR-0003
+  net: number;     // signed: SUM(qty_today * sign(side)) at this snapshot
+};
+
+export type BrokerSeriesEntry = {
+  broker: string;
+  final_net: number;
+  dominant_side: 'buy' | 'sell';
+  points: BrokerSeriesPoint[];   // ts_ms ascending; observed snapshots only
+};
+
+export type BrokerSeriesResponse = {
+  date: string;                   // YYYYMMDD KST, echoed
+  brokers: BrokerSeriesEntry[];   // sorted by abs(final_net) desc, ≤ 10 entries
+};
+
 // Mirrors hoga/tables/trades.py::ApiTrade. `side` is -1 / 0 / +1 by convention
 // (sell / auction-cross / buy) but typed as number — the backend does not
 // enforce the literal, and a runtime guard would be more honest than a TS
