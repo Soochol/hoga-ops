@@ -1,9 +1,8 @@
 import { render } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AuctionWindowOverlay from '../../src/chart/AuctionWindowOverlay';
 import { createVirtualAxis } from '../../src/util/virtualAxis';
-import { ChartPrefsContext } from '../../src/chart/ChartPrefsContext';
-import { DEFAULT_PREFS } from '../../src/state/tabs';
+import { useTabsStore } from '../../src/state/tabs';
 
 // KST 09:00 — 15:30. Full-day session length = 6h30m.
 const DAY1_OPEN = 1_779_062_400_000;
@@ -22,35 +21,42 @@ const axis = createVirtualAxis([
   { date: '20260518', sessionOpenMs: DAY1_OPEN, sessionCloseMs: DAY1_CLOSE },
 ]);
 
-const enabledPrefs = { ...DEFAULT_PREFS, auctionWindowMask: true };
-const disabledPrefs = { ...DEFAULT_PREFS, auctionWindowMask: false };
+// Component now reads prefs via useActivePrefs from the active tab in
+// useTabsStore — drive the toggle on the store directly instead of
+// wrapping with a context provider.
+function setAuctionMask(enabled: boolean): void {
+  const id = useTabsStore.getState().activeTabId;
+  useTabsStore.getState().setToggle(id, 'auctionWindowMask', enabled);
+}
 
 describe('AuctionWindowOverlay', () => {
+  beforeEach(() => {
+    useTabsStore.getState().reset();
+    useTabsStore.setState((s) => ({ ...s, prefs: new Map() }));
+  });
+
   it('renders one shaded band per segment when auctionWindowMask is on', () => {
+    setAuctionMask(true);
     const { container } = render(
-      <ChartPrefsContext.Provider value={enabledPrefs}>
-        <AuctionWindowOverlay chart={makeMockChart()} axis={axis} />
-      </ChartPrefsContext.Provider>,
+      <AuctionWindowOverlay chart={makeMockChart()} axis={axis} />,
     );
     expect(container.querySelectorAll('[data-auction-band]')).toHaveLength(1);
     expect(container.querySelector('[data-auction-band="20260518"]')).not.toBeNull();
   });
 
   it('renders nothing when auctionWindowMask is off', () => {
+    setAuctionMask(false);
     const { container } = render(
-      <ChartPrefsContext.Provider value={disabledPrefs}>
-        <AuctionWindowOverlay chart={makeMockChart()} axis={axis} />
-      </ChartPrefsContext.Provider>,
+      <AuctionWindowOverlay chart={makeMockChart()} axis={axis} />,
     );
     expect(container.querySelector('[data-auction-band]')).toBeNull();
   });
 
   it('renders nothing on an empty axis', () => {
+    setAuctionMask(true);
     const empty = createVirtualAxis([]);
     const { container } = render(
-      <ChartPrefsContext.Provider value={enabledPrefs}>
-        <AuctionWindowOverlay chart={makeMockChart()} axis={empty} />
-      </ChartPrefsContext.Provider>,
+      <AuctionWindowOverlay chart={makeMockChart()} axis={empty} />,
     );
     expect(container.querySelector('[data-auction-band]')).toBeNull();
   });

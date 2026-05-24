@@ -6,11 +6,14 @@ network. The pure function and _Bus are unit-testable without fixtures.
 """
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+from watchdog.events import FileCreatedEvent
 
-from hoga.api.sse import WatchdogKind, classify_inventory_event
+from hoga.api.sse import WatchdogKind, _Bus, _InventoryHandler, classify_inventory_event
 
 
 @pytest.fixture
@@ -82,14 +85,6 @@ def test_classify_inventory_event_rejects_path_outside_root(
         str(outside), parquet_root, is_directory=False, kind="created",
     )
     assert result is None
-
-
-import asyncio
-from unittest.mock import MagicMock
-
-from watchdog.events import FileCreatedEvent
-
-from hoga.api.sse import _Bus, _InventoryHandler
 
 
 @pytest.mark.asyncio

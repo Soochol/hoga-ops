@@ -24,7 +24,6 @@ import VolumeProfileOverlay from './VolumeProfileOverlay';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
 import AuctionWindowOverlay from './AuctionWindowOverlay';
 import DrawingOverlay from './DrawingOverlay';
-import { ChartPrefsProvider } from './ChartPrefsContext';
 import { useDrawingsStore } from '../state/drawings';
 
 const CHART_TOKEN_SPEC = {
@@ -80,12 +79,10 @@ function pad(n: number): string {
 export default function ChartStage({ bundle, axis }: ChartStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
-  // Single per-tab ChartViewPrefs subscription. Distributed to descendant
-  // panes via ChartPrefsProvider so each pane reads through useChartPrefs()
-  // without re-subscribing to the store. Toggling any pref in the Settings
-  // modal re-renders ChartStage and propagates fresh prefs down the tree.
-  const activeTabId = useTabsStore((s) => s.activeTabId);
-  const prefs = useTabsStore((s) => s.getPrefs(activeTabId));
+  // Per-pane prefs subscriptions live in each pane via useActivePrefs —
+  // no ChartStage-level prefs subscription is needed. Each pane reads only
+  // the slice it cares about, so flipping volumeProfileMode doesn't
+  // re-render RatioPane and vice versa.
   // Keep the latest axis visible to the once-mounted subscribeVisibleTimeRange
   // handler. lightweight-charts emits times on our VIRTUAL axis (Task 6.1);
   // viewport consumers need REAL Unix-ms, so the handler reads this ref and
@@ -348,7 +345,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
     <div className="relative h-full min-h-0 bg-bg-card overflow-hidden">
       <div ref={containerRef} className="absolute inset-0" />
       {chart && bundle && (
-        <ChartPrefsProvider value={prefs}>
+        <>
           {/*
             Series-only panes return null after registering their series on
             the chart. The wrapping `data-pane` divs are `hidden` so they
@@ -408,7 +405,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
               not real "no pressure" data. */}
           <AuctionWindowOverlay chart={chart} axis={axis} />
           <DrawingOverlay chart={chart} axis={axis} priceSeries={candleSeries} />
-        </ChartPrefsProvider>
+        </>
       )}
     </div>
   );

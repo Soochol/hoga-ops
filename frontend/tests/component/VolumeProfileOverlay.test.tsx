@@ -1,9 +1,8 @@
 import { render } from '@testing-library/react';
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import VolumeProfileOverlay from '../../src/chart/VolumeProfileOverlay';
-import { ChartPrefsProvider } from '../../src/chart/ChartPrefsContext';
 import { createVirtualAxis } from '../../src/util/virtualAxis';
-import { DEFAULT_PREFS } from '../../src/state/tabs';
+import { useTabsStore } from '../../src/state/tabs';
 
 beforeAll(() => {
   // jsdom canvas + ResizeObserver stubs.
@@ -31,7 +30,16 @@ const makeMockChart = () => {
 };
 
 describe('VolumeProfileOverlay', () => {
+  beforeEach(() => {
+    useTabsStore.getState().reset();
+    useTabsStore.setState((s) => ({ ...s, prefs: new Map() }));
+  });
+
   it('renders a canvas', () => {
+    // Drive volumeProfileMode through the active tab on the store —
+    // VolumeProfileOverlay now reads via useActivePrefs.
+    const id = useTabsStore.getState().activeTabId;
+    useTabsStore.getState().setVolumeProfileMode(id, 'per-day');
     const { chart } = makeMockChart();
     const bundle: any = {
       volume_profile: {
@@ -48,15 +56,13 @@ describe('VolumeProfileOverlay', () => {
       },
     };
     const { container } = render(
-      <ChartPrefsProvider value={{ ...DEFAULT_PREFS, volumeProfileMode: 'per-day' }}>
-        <VolumeProfileOverlay
-          chart={chart}
-          bundle={bundle}
-          axis={createVirtualAxis([
-            { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 100 },
-          ])}
-        />
-      </ChartPrefsProvider>,
+      <VolumeProfileOverlay
+        chart={chart}
+        bundle={bundle}
+        axis={createVirtualAxis([
+          { date: '20260518', sessionOpenMs: 0, sessionCloseMs: 100 },
+        ])}
+      />,
     );
     expect(container.querySelector('canvas')).toBeInTheDocument();
   });
