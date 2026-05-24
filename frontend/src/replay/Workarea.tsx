@@ -6,6 +6,7 @@ import ChartStage from '../chart/ChartStage';
 import ChartErrorBoundary from '../chart/ChartErrorBoundary';
 import { CursorSidebarConnected } from '../sidebar/CursorSidebar';
 import RangeAdjustmentNotice from './RangeAdjustmentNotice';
+import InvariantOutcomesBanner from './InvariantOutcomesBanner';
 
 /**
  * Workarea — wires `useRange` to `ChartStage` + `CursorSidebarConnected`
@@ -87,6 +88,12 @@ export default function Workarea({ tab }: { tab: Tab }) {
           actualLast={bundle!.segments[bundle!.segments.length - 1].date}
           onAdjust={onAdjust}
           onDismiss={() => setNoticeDismissed(true)}
+        />
+      )}
+      {bundle && (
+        <InvariantOutcomesBanner
+          excluded={bundle.excluded_dates ?? []}
+          warnings={bundle.data_warnings ?? []}
         />
       )}
       <div className="grid grid-cols-[1fr_var(--sidebar-w)] gap-2 p-2 flex-1 min-h-0">

@@ -293,6 +293,24 @@ export const TIMEFRAME_TO_MS: Record<Timeframe, number> = {
 
 export const TIMEFRAME_LABELS: ReadonlyArray<Timeframe> = ['1m', '3m', '5m', '10m', '15m', '30m'];
 
+/** ADR-0020: per-Stock-Date invariant outcome surfaced on the wire. */
+export type ViolationWire = {
+  invariant_id: string;
+  severity: 'error' | 'warn';
+  message: string;
+  ctx: Record<string, unknown>;
+};
+
+export type ExcludedDate = {
+  date: string;             // YYYYMMDD KST
+  violations: ViolationWire[];
+};
+
+export type DateWarning = {
+  date: string;
+  warnings: ViolationWire[];
+};
+
 export type RangeBundle = {
   code: string;
   from_date: string;
@@ -304,4 +322,10 @@ export type RangeBundle = {
   fill_strength: FillStrength;
   volume_profile_range: VolumeProfile;
   volume_profile_by_day: VolumeProfile[];
+  /** ADR-0020: Stock-Dates dropped from segments due to error-severity
+   * invariant violations. Default empty list on healthy bundles. */
+  excluded_dates?: ExcludedDate[];
+  /** ADR-0020: Stock-Dates kept in segments but with warn-severity
+   * invariant violations attached. */
+  data_warnings?: DateWarning[];
 };
