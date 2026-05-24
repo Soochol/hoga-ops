@@ -2,6 +2,13 @@ import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import type { RangeBundle, Timeframe } from '../api/types';
 import { useToolbarDraftStore } from './toolbarDraft';
+import {
+  loadPersisted,
+  savePersisted,
+  toSnapshot,
+  fromSnapshot,
+  type SnapshotDeps,
+} from './tabsPersistence';
 
 export type TabSelection = {
   code: string;
@@ -137,12 +144,34 @@ const fresh = (): Tab => ({
 
 export const TABS_SOFT_CAP = 8;
 
-const initial = fresh();
+/** Build the initial store slots by hydrating from localStorage when a valid
+ *  v1 snapshot exists, otherwise falling back to a single fresh tab.
+ *  Returning the three slots together keeps `tabs`, `activeTabId`, `prefs`
+ *  consistent at construction time (spec §"prefs Map 시드"). */
+function seedInitialState(): {
+  tabs: Tab[];
+  activeTabId: string;
+  prefs: Map<string, ChartViewPrefs>;
+} {
+  const snapshotDeps: SnapshotDeps = {
+    defaultPrefs: DEFAULT_PREFS,
+    freshTab: fresh,
+    chartToggleKeys: CHART_TOGGLES.map((t) => t.key),
+  };
+  const snap = loadPersisted();
+  if (snap === null) {
+    const t = fresh();
+    return { tabs: [t], activeTabId: t.id, prefs: new Map() };
+  }
+  return fromSnapshot(snap, snapshotDeps);
+}
+
+const seeded = seedInitialState();
 
 export const useTabsStore = create<Store>((set, get) => ({
-  tabs: [initial],
-  activeTabId: initial.id,
-  prefs: new Map(),
+  tabs: seeded.tabs,
+  activeTabId: seeded.activeTabId,
+  prefs: seeded.prefs,
   newTab: (opts) => {
     let { tabs } = get();
     if (tabs.length >= TABS_SOFT_CAP) {
@@ -217,3 +246,31 @@ export const useTabsStore = create<Store>((set, get) => ({
     set({ tabs: [t], activeTabId: t.id, prefs: new Map() });
   },
 }));
+
+/** Debounced persistence: every store mutation schedules a save 250ms out;
+ *  bursts (typing, rapid toggles) coalesce into a single localStorage write.
+ *  See spec §"Save 디바운싱" for the rationale. */
+const PERSIST_DEBOUNCE_MS = 250;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+const unsubscribePersist = useTabsStore.subscribe((state) => {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    savePersisted(
+      toSnapshot({
+        tabs: state.tabs,
+        activeTabId: state.activeTabId,
+        prefs: state.prefs,
+      }),
+    );
+  }, PERSIST_DEBOUNCE_MS);
+});
+
+// HMR guard: Vite re-evaluates this module on edit, so without dispose the
+// previous subscribe() lingers and listeners accumulate across edits.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (persistTimer) clearTimeout(persistTimer);
+    unsubscribePersist();
+  });
+}
