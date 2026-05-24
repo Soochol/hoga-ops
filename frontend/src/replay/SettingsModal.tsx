@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  categoryOf,
   CHART_NUMERIC_PREFS,
   CHART_TOGGLES,
   useTabsStore,
@@ -221,7 +222,7 @@ export default function SettingsModal({ onClose }: Props) {
                 <h3 className="text-fg text-base font-medium pb-2 mb-2 border-b border-border">
                   차트
                 </h3>
-                {CHART_TOGGLES.filter((t) => (t.category ?? 'chart') === 'chart').map((toggle) => {
+                {CHART_TOGGLES.filter((t) => categoryOf(t) === 'chart').map((toggle) => {
                   const key: ChartToggleKey = toggle.key;
                   return (
                     <ToggleRow

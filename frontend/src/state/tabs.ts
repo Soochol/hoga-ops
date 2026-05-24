@@ -29,6 +29,7 @@ export {
   DEFAULT_MOVING_AVERAGES,
   DEFAULT_PREFS,
   MA_SLOT_COUNT,
+  categoryOf,
 } from './chartPrefs';
 export type {
   ChartToggleKey,

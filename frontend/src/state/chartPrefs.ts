@@ -38,6 +38,19 @@ export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];
  *  'indicators' so IndicatorsSection picks them up automatically. */
 export type ChartToggleCategory = 'chart' | 'indicators';
 
+/** Resolve a CHART_TOGGLES entry's category, defaulting to 'chart' when
+ *  the field is absent. Direct `t.category` access on the registry union
+ *  fails to compile on entries that omit the field — `as const` narrows
+ *  each literal shape to exclude absent properties. The `'category' in t`
+ *  predicate narrows the union so the access becomes safe. Consumers
+ *  (SettingsModal, IndicatorsSection) call this instead of inlining the
+ *  predicate so the narrowing trick lives in one place. */
+export function categoryOf(
+  t: (typeof CHART_TOGGLES)[number],
+): ChartToggleCategory {
+  return 'category' in t ? t.category : 'chart';
+}
+
 /** Per-MA configuration. Indexed slot in `ChartViewPrefs.movingAverages`
  *  aligns 1:1 with `MA_COLORS` (T1). Period range (2..400) is validated
  *  at the UI layer (T5), not in the store. */

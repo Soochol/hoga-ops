@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useActivePrefs, CHART_TOGGLES } from './chartPrefs';
+import { useActivePrefs, CHART_TOGGLES, categoryOf } from './chartPrefs';
 import { useTabsStore } from './tabs';
 
 describe('useActivePrefs — scaffold', () => {
@@ -26,16 +26,20 @@ describe('useActivePrefs — scaffold', () => {
 });
 
 describe('CHART_TOGGLES — category metadata', () => {
-  it('fillStrengthCumulative entry carries category="indicators"', () => {
+  it('fillStrengthCumulative entry resolves to category="indicators"', () => {
     const entry = CHART_TOGGLES.find((t) => t.key === 'fillStrengthCumulative');
     expect(entry).toBeDefined();
-    expect(entry?.category).toBe('indicators');
+    expect(categoryOf(entry!)).toBe('indicators');
   });
 
-  it('pre-existing toggles have category undefined (default = chart)', () => {
+  it('pre-existing toggles default to category="chart" (category field absent)', () => {
     const auction = CHART_TOGGLES.find((t) => t.key === 'auctionWindowMask');
     expect(auction).toBeDefined();
-    expect(auction?.category).toBeUndefined();
+    expect(categoryOf(auction!)).toBe('chart');
+    // Verify the field is genuinely absent at runtime (not silently undefined
+    // because of some shape drift) — the helper's default branch is what
+    // produces the 'chart' result above.
+    expect('category' in auction!).toBe(false);
   });
 });
 
