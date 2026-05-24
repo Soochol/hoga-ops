@@ -4,8 +4,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from hoga.api._atomic_write import atomic_write_json
 
 
