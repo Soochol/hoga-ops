@@ -108,11 +108,18 @@ class _InventoryHandler(FileSystemEventHandler):
             return
         self.loop.call_soon_threadsafe(self.bus.publish, payload)
 
+    # str() narrows watchdog's str | bytes union (observer is scheduled
+    # on a str path, so inotify always emits str — the cast satisfies
+    # Pyright without changing runtime behavior; don't drop as dead code).
     def on_created(self, event):
         self._dispatch(
             str(event.src_path), is_directory=event.is_directory, kind="created",
         )
 
+    # Linux inotify fires both on_created AND on_modified for a single
+    # meta.json write, producing two inventory_added events with identical
+    # payload. TanStack Query coalesces same-tick invalidations, so the
+    # frontend refetch fires once — no debouncing here is intentional.
     def on_modified(self, event):
         self._dispatch(
             str(event.src_path), is_directory=event.is_directory, kind="modified",
