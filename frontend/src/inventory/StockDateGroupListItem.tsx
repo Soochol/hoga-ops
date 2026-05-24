@@ -1,5 +1,6 @@
 import { fmtSize } from './format';
 import type { StockDateGroup } from './types';
+import { aggregateDiskState, DiskStateDot } from './DiskStateBadge';
 
 type Props = {
   group: StockDateGroup;
@@ -10,6 +11,7 @@ type Props = {
 export function StockDateGroupListItem({ group, active, onClick }: Props) {
   const n = group.dates.length;
   const last = lastCapturedShort(group.lastCapturedAt);
+  const aggState = aggregateDiskState(group.dates.map((d) => d.disk_state));
   return (
     <div
       onClick={() => onClick(group.code)}
@@ -19,7 +21,8 @@ export function StockDateGroupListItem({ group, active, onClick }: Props) {
       ].join(' ')}
     >
       <div className="flex justify-between items-baseline">
-        <span>
+        <span className="flex items-center gap-1.5">
+          <DiskStateDot state={aggState} />
           <span className="text-accent font-mono">{group.code}</span>{' '}
           <span className="text-fg">{group.name}</span>
         </span>

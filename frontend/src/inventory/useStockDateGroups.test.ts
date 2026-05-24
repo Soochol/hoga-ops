@@ -11,6 +11,7 @@ const row = (code: string, name: string, date: string, capturedAt: number, sizeB
   captured_at: capturedAt,
   total_volume: 0, pages_collected: 0, file_size_bytes: sizeBytes,
   today_open: 0, today_high: 0, today_low: 0, today_close: 0,
+  disk_state: 'complete',
 });
 
 describe('useStockDateGroups', () => {

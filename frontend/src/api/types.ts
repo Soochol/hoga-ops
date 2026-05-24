@@ -1,5 +1,9 @@
 // Mirrors hoga/api/models.py — keep in sync by hand.
 
+/** Per ADR-0020 — backend `DiskState` values surfaced as a string.
+ *  `none`은 inventory에 등장하지 않는다 (meta.json 없으면 행 자체가 없음). */
+export type DiskStateValue = 'complete' | 'source_partial' | 'client_incomplete' | 'invalid';
+
 export type StockDate = {
   date: string; code: string; name: string;
   regular_session_open_ms: number; regular_session_close_ms: number;
@@ -7,6 +11,7 @@ export type StockDate = {
   price_min: number; price_max: number; captured_at: number;
   total_volume: number; pages_collected: number; file_size_bytes: number;
   today_open: number; today_high: number; today_low: number; today_close: number;
+  disk_state: DiskStateValue;
 };
 
 export type Candle = { ts_ms: number; open: number; close: number; high: number; low: number; vol_a: number; vol_b: number };

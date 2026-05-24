@@ -19,6 +19,7 @@ const row = (code: string, name: string, date: string): StockDate => ({
   captured_at: 1000,
   total_volume: 52_100_000, pages_collected: 1240, file_size_bytes: 13_200_000,
   today_open: 70_000, today_high: 73_000, today_low: 69_000, today_close: 72_400,
+  disk_state: 'complete',
 });
 
 const rows: StockDate[] = [

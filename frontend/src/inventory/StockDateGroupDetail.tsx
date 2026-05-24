@@ -4,6 +4,7 @@ import type { StockDate } from '../api/types';
 import { useTabsStore } from '../state/tabs';
 import { useStockDateGroups } from './useStockDateGroups';
 import { fmtDate, fmtTime, fmtSize, fmtOHLC, fmtVolume } from './format';
+import { DiskStateBadge } from './DiskStateBadge';
 
 type Props = {
   rows: StockDate[];
@@ -54,6 +55,7 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
         <table className="w-full border-collapse font-mono text-sm tabular-nums">
           <thead className="bg-bg-subtle sticky top-0">
             <tr>
+              <Th>State</Th>
               <Th>Date</Th>
               <Th>Captured</Th>
               <Th right>Volume</Th>
@@ -69,6 +71,7 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
                 onClick={() => onRowClick(r)}
                 className="border-b hover:bg-bg-input-hover cursor-pointer"
               >
+                <td className="px-3 py-1.5 text-center"><DiskStateBadge state={r.disk_state} /></td>
                 <td className="px-3 py-1.5">{fmtDate(r.date)}</td>
                 <td className="px-3 py-1.5 text-fg-dim">{fmtTime(r.captured_at)}</td>
                 <td className="px-3 py-1.5 text-right">{r.total_volume.toLocaleString('ko-KR')}</td>
