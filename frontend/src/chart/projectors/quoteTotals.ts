@@ -1,6 +1,7 @@
 import { LineSeries } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
+import { isAuctionMaskActive } from '../../util/auctionMask';
 import { resolveTokens } from '../../util/tokens';
 import { useChartPrefs } from '../ChartPrefsContext';
 import type { PaneSpec } from '../RangeSeriesPane';
@@ -18,11 +19,9 @@ const priceFormat = {
   minMove: 1,
 };
 
-// CONTEXT.md "Auction Window" — same rationale as RATIO_SPEC: during the
-// 15:20–15:30 closing auction, posted totals are dominated by one-sided
-// accumulation and don't represent continuous-session order book pressure.
-// axis.inClosingAuctionWindow owns the threshold so this stays aligned with
-// the ratio pane automatically.
+// CONTEXT.md "Auction Window" — posted totals are dominated by one-sided
+// accumulation during 15:20–15:30. `isAuctionMaskActive` owns the rule
+// (per-tab toggle + axis threshold), matching the RatioPane treatment.
 export function projectBid(
   bundle: RangeBundle,
   axis: VirtualAxis,
@@ -32,10 +31,7 @@ export function projectBid(
     .filter((p) => axis.contains(p.t))
     .map((p) => ({
       time: (axis.toVirtual(p.t) / 1000) as any,
-      value:
-        auctionWindowMask && axis.inClosingAuctionWindow(p.t)
-          ? 0
-          : p.bid_total,
+      value: isAuctionMaskActive(auctionWindowMask, axis, p.t) ? 0 : p.bid_total,
     }));
 }
 
@@ -48,10 +44,7 @@ export function projectAsk(
     .filter((p) => axis.contains(p.t))
     .map((p) => ({
       time: (axis.toVirtual(p.t) / 1000) as any,
-      value:
-        auctionWindowMask && axis.inClosingAuctionWindow(p.t)
-          ? 0
-          : p.ask_total,
+      value: isAuctionMaskActive(auctionWindowMask, axis, p.t) ? 0 : p.ask_total,
     }));
 }
 
