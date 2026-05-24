@@ -7,10 +7,15 @@
  *  - `ctrlOrMetaKey` → zoom anchored at the mouse coordinate.
  *  - default → zoom anchored at `range.to` (rightmost visible candle).
  *
+ * Right wall: ctrl and shift branches clamp when rightward motion would
+ * push `to` past `maxTo` (typically the last candle's logical index).
+ * Plain wheel is unaffected because it never increases `to`.
+ *
  * No DOM, no chart library — separated so the branching logic is
  * unit-testable without mounting a chart.
  *
- * See: `docs/superpowers/specs/2026-05-24-replay-mouse-interactions-design.md`
+ * See: `docs/superpowers/specs/2026-05-24-replay-mouse-interactions-design.md`,
+ *      `docs/superpowers/specs/2026-05-24-replay-wheel-right-wall-design.md`
  */
 
 export interface WheelInput {
@@ -22,6 +27,13 @@ export interface WheelInput {
   mouseX: number;
   /** Chart `timeScale.coordinateToLogical(x)` callback (may return null). */
   coordinateToLogical: (x: number) => number | null;
+  /**
+   * Upper bound for the result's `to`. Typically `bundle.candles.length - 1`
+   * — the logical index of the last candle in the active RangeBundle.
+   * Pass `Number.POSITIVE_INFINITY` to disable the wall (e.g., before data
+   * loads).
+   */
+  maxTo: number;
 }
 
 export type WheelOutcome = { from: number; to: number } | null;
@@ -35,7 +47,14 @@ export function computeWheelOutcome(i: WheelInput): WheelOutcome {
     const dir = Math.sign(i.deltaY);
     if (dir === 0) return null;
     const step = span * 0.1 * dir;
-    return { from: from + step, to: to + step };
+    const newFrom = from + step;
+    const newTo = to + step;
+    // Right wall: panning right past the last candle stops translating —
+    // pin `to` at maxTo, preserve span.
+    if (step > 0 && newTo > i.maxTo) {
+      return { from: i.maxTo - span, to: i.maxTo };
+    }
+    return { from: newFrom, to: newTo };
   }
 
   // deltaY > 0 (wheel down) → factor > 1 → zoom OUT.
@@ -44,10 +63,17 @@ export function computeWheelOutcome(i: WheelInput): WheelOutcome {
 
   if (i.ctrlOrMetaKey) {
     const anchor = i.coordinateToLogical(i.mouseX) ?? to;
-    return {
-      from: anchor - (anchor - from) * factor,
-      to: anchor + (to - anchor) * factor,
-    };
+    const newFrom = anchor - (anchor - from) * factor;
+    const newTo = anchor + (to - anchor) * factor;
+    // Right wall: zoom-out that pushes `to` past the last candle clamps `to`
+    // to maxTo and keeps the computed `from`. The anchor effectively migrates
+    // to the right edge for this and subsequent zoom-out ticks. Direction
+    // gate (`newTo > to`) ensures zoom-IN doesn't clamp even when `to` is
+    // already past maxTo (initial state with rightOffset).
+    if (newTo > to && newTo > i.maxTo) {
+      return { from: newFrom, to: i.maxTo };
+    }
+    return { from: newFrom, to: newTo };
   }
 
   // Default: right-edge-anchored zoom — `to` stays fixed.
