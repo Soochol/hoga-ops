@@ -99,13 +99,6 @@ from hoga.api import calendar as calendar_module
 from hoga.api.error_codes import UpstreamCode
 
 
-def test_disk_state_to_status_maps_invalid() -> None:
-    """ADR-0020: DiskState.INVALID maps to 'invalid' string on the wire."""
-    from hoga.api.calendar import _disk_state_to_status
-    from hoga.api.disk_state import DiskState
-    assert _disk_state_to_status(DiskState.INVALID) == "invalid"
-
-
 @pytest.fixture(autouse=False)
 def _reset_calendar_state():
     calendar_module.reset_cache_for_tests()

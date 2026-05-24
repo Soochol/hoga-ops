@@ -140,7 +140,6 @@ def _disk_state_to_status(st: DiskState) -> str:
         DiskState.COMPLETE: "complete",
         DiskState.SOURCE_PARTIAL: "source_partial",
         DiskState.CLIENT_INCOMPLETE: "client_incomplete",
-        DiskState.INVALID: "invalid",   # ADR-0020
         DiskState.NONE: "none",
     }[st]
 
