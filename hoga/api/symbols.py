@@ -14,7 +14,6 @@ import asyncio
 import json
 import logging
 import os
-import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -25,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Query
 
+from hoga.api._atomic_write import atomic_write_json
 from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import SymbolHit, SymbolMasterInfo, SymbolsAllResponse
@@ -253,11 +253,11 @@ def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
 def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> None:
     """Atomically persist the catalog. Creates parent dir if needed.
 
-    Atomicity: temp file in target's parent + os.replace. captured_breakdown
-    fields are stripped — disk file holds KRX-side data only (breakdown is a
-    runtime view of data_dir).
+    Delegates to hoga.api._atomic_write.atomic_write_json (extracted per
+    ADR-0015 footer + ADR-0019). captured_breakdown fields are stripped —
+    disk file holds KRX-side data only (breakdown is a runtime view of
+    data_dir).
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema_version": SCHEMA_VERSION,
         "fetched_at_ms": fetched_at_ms,
@@ -267,19 +267,7 @@ def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> 
             for e in entries
         ],
     }
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=path.name + ".",
-        suffix=".tmp",
-        delete=False,
-    ) as tmp:
-        json.dump(payload, tmp, ensure_ascii=False, indent=2)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp_path = Path(tmp.name)
-    os.replace(tmp_path, path)
+    atomic_write_json(path, payload)
 
 
 def _ensure_krx_credentials() -> None:
