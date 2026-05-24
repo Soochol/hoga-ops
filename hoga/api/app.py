@@ -24,6 +24,7 @@ from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
+from hoga.env import load_env
 
 
 def create_app(data_dir: Path) -> FastAPI:
@@ -109,7 +110,13 @@ def default_app() -> FastAPI:
     XDG_DATA_HOME/hoga-ops/data → ~/.local/share/hoga-ops/data).
     Captures from any branch / worktree share the same store, so heavy
     raw-TSV downloads aren't duplicated.
+
+    Also loads .env so ``uvicorn --reload`` (which bypasses
+    ``hoga.cli.serve``) still picks up KRX_ID / KRX_PW. The CLI entry
+    point calls ``load_env()`` too; the discovery cache makes the
+    second call a no-op.
     """
+    load_env()
     data_dir = resolve_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
     return create_app(data_dir)
