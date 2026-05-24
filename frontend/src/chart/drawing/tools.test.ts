@@ -14,6 +14,7 @@ import {
   pencilTool,
   selectTool,
   trendlineTool,
+  matchShortcut,
   type ToolCtx,
 } from './tools';
 import type { Drawing, Point } from './types';
@@ -235,5 +236,58 @@ describe('selectTool', () => {
     expect(ctx.setSelected).toHaveBeenCalledWith('h1');
     expect(ctx.dragRef.current?.kind).toBe('body');
     expect(ctx.capturePointer).toHaveBeenCalledOnce();
+  });
+});
+
+describe('matchShortcut', () => {
+  function key(opts: Partial<KeyboardEvent>): KeyboardEvent {
+    return {
+      key: 'h',
+      altKey: true,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      ...opts,
+    } as KeyboardEvent;
+  }
+
+  it('matches Alt+H → hline', () => {
+    expect(matchShortcut(key({ key: 'h', altKey: true }))).toBe('hline');
+  });
+
+  it('matches Alt+T → trendline', () => {
+    expect(matchShortcut(key({ key: 't', altKey: true }))).toBe('trendline');
+  });
+
+  it('matches Alt+P → pencil', () => {
+    expect(matchShortcut(key({ key: 'p', altKey: true }))).toBe('pencil');
+  });
+
+  it('matches Alt+E → eraser', () => {
+    expect(matchShortcut(key({ key: 'e', altKey: true }))).toBe('eraser');
+  });
+
+  it('matches Alt+V → select', () => {
+    expect(matchShortcut(key({ key: 'v', altKey: true }))).toBe('select');
+  });
+
+  it('is case-insensitive (Alt+Shift+H still matches)', () => {
+    expect(matchShortcut(key({ key: 'H', altKey: true, shiftKey: true }))).toBe('hline');
+  });
+
+  it('returns null without Alt modifier', () => {
+    expect(matchShortcut(key({ key: 'h', altKey: false }))).toBeNull();
+  });
+
+  it('returns null with Ctrl modifier (avoid clobbering browser shortcuts)', () => {
+    expect(matchShortcut(key({ key: 'h', altKey: true, ctrlKey: true }))).toBeNull();
+  });
+
+  it('returns null with Meta modifier', () => {
+    expect(matchShortcut(key({ key: 'h', altKey: true, metaKey: true }))).toBeNull();
+  });
+
+  it('returns null for unbound keys', () => {
+    expect(matchShortcut(key({ key: 'q', altKey: true }))).toBeNull();
   });
 });

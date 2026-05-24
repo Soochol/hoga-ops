@@ -134,6 +134,9 @@ export interface DrawingToolSpec {
    *  overlay's pointer-events gating already differentiates), kept on
    *  the spec for future styling. */
   cursor: string;
+  /** Optional keyboard shortcut (Alt + key). DrawingOverlay's keydown
+   *  effect iterates TOOLS to dispatch. `key` is lowercase ASCII. */
+  shortcut?: { alt: true; key: string };
   onPointerDown?(ctx: ToolCtx): void;
   onPointerMove?(ctx: ToolCtx): void;
   onPointerUp?(ctx: ToolCtx): void;
@@ -152,6 +155,7 @@ export const selectTool: DrawingToolSpec = {
   label: '선택',
   glyph: '↶',
   cursor: 'default',
+  shortcut: { alt: true, key: 'v' },
   onPointerDown(ctx) {
     // Trendline handle hit-test first (only if a trendline is selected).
     const selected = ctx.selectedId
@@ -222,6 +226,7 @@ export const hlineTool: DrawingToolSpec = {
   label: '수평선',
   glyph: '━',
   cursor: 'crosshair',
+  shortcut: { alt: true, key: 'h' },
   onPointerDown(ctx) {
     const data = ctx.pixelToData(ctx.px, ctx.py);
     if (!data) return;
@@ -243,6 +248,7 @@ export const trendlineTool: DrawingToolSpec = {
   label: '추세선',
   glyph: '╱',
   cursor: 'crosshair',
+  shortcut: { alt: true, key: 't' },
   onPointerDown(ctx) {
     const data = ctx.pixelToData(ctx.px, ctx.py);
     if (!data) return;
@@ -278,6 +284,7 @@ export const pencilTool: DrawingToolSpec = {
   label: '연필',
   glyph: '✎',
   cursor: 'crosshair',
+  shortcut: { alt: true, key: 'p' },
   onPointerDown(ctx) {
     const data = ctx.pixelToData(ctx.px, ctx.py);
     if (!data) return;
@@ -322,6 +329,7 @@ export const eraserTool: DrawingToolSpec = {
   label: '지우개',
   glyph: '⌫',
   cursor: 'not-allowed',
+  shortcut: { alt: true, key: 'e' },
   onPointerDown(ctx) {
     const hit = ctx.hitTestAt(ctx.px, ctx.py);
     if (hit) ctx.remove(hit.id);
@@ -347,3 +355,22 @@ export const DRAWABLE_TOOLS_ORDER: readonly DrawingTool[] = [
   'pencil',
   'eraser',
 ];
+
+/**
+ * Match a keyboard event against the `shortcut` field of every tool in
+ * the registry. Returns the tool kind to activate, or null if no spec
+ * matches or a non-Alt modifier is also held (Ctrl/Meta combos are
+ * reserved for the browser/OS — we don't want to clobber Ctrl+H "history"
+ * or Cmd+T "new tab"). Shift is allowed because the user may have
+ * Caps-Lock on or hold Shift incidentally; key matching is
+ * case-insensitive.
+ */
+export function matchShortcut(e: KeyboardEvent): DrawingTool | null {
+  if (!e.altKey) return null;
+  if (e.ctrlKey || e.metaKey) return null;
+  const k = e.key.toLowerCase();
+  for (const spec of Object.values(TOOLS)) {
+    if (spec.shortcut && spec.shortcut.key === k) return spec.kind;
+  }
+  return null;
+}
