@@ -48,7 +48,10 @@ export function CursorSidebarConnected({ axis }: { axis: VirtualAxis }) {
 
 export default function CursorSidebar({ orderbook, brokers, fills }: Props) {
   return (
-    <aside className="grid grid-rows-[2fr_1fr_1fr] gap-2 p-2 bg-bg w-sidebar h-full min-h-0">
+    <aside
+      id="replay-sidebar"
+      className="grid grid-rows-[2fr_1fr_1fr] gap-2 p-2 bg-bg h-full min-h-0"
+    >
       <SidebarCard label="10호가" testId="card-orderbook">
         {orderbook ?? <Placeholder />}
       </SidebarCard>

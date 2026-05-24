@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTabsStore, type Tab } from '../state/tabs';
 import { useRange } from '../api/range';
 import { createVirtualAxis } from '../util/virtualAxis';
@@ -7,6 +7,9 @@ import ChartErrorBoundary from '../chart/ChartErrorBoundary';
 import { CursorSidebarConnected } from '../sidebar/CursorSidebar';
 import RangeAdjustmentNotice from './RangeAdjustmentNotice';
 import InvariantOutcomesBanner from './InvariantOutcomesBanner';
+import VerticalSplitter from '../layout/VerticalSplitter';
+import { useReplayLayoutStore, SIDEBAR_PX_MIN, SIDEBAR_PX_MAX } from '../state/replayLayout';
+import CollapsedSidebarHandle from './CollapsedSidebarHandle';
 
 /**
  * Workarea — wires `useRange` to `ChartStage` + `CursorSidebarConnected`
@@ -51,6 +54,10 @@ export default function Workarea({ tab }: { tab: Tab }) {
     }
   }, [tab.id, tab.selection, isLoading, isError, error, bundle]);
 
+  const sidebarPx = useReplayLayoutStore((s) => s.sidebarPx);
+  const collapsed = useReplayLayoutStore((s) => s.sidebarCollapsed);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   if (isError) {
     return (
       <div className="grid place-items-center h-full text-error">
@@ -78,6 +85,25 @@ export default function Workarea({ tab }: { tab: Tab }) {
     setNoticeDismissed(false);
   };
 
+  const gridTemplateColumns = collapsed ? '1fr' : `1fr 12px ${sidebarPx}px`;
+
+  const onSplitterDrag = (clientX: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    // chart=1fr, splitter=12px, sidebar=<sidebarPx>px.
+    // Sidebar's left edge = rect.right - sidebarPx.
+    // We want sidebar.left = clientX + 6 (center of 12px splitter).
+    const next = rect.right - clientX - 6;
+    useReplayLayoutStore.getState().setSidebarPx(next);
+  };
+
+  const onSplitterNudge = (dir: -1 | 1, mag: 'small' | 'large') => {
+    const step = mag === 'small' ? 8 : 40;
+    // Convention: ArrowRight (dir=+1) shrinks the sidebar (chart grows).
+    const next = useReplayLayoutStore.getState().sidebarPx - dir * step;
+    useReplayLayoutStore.getState().setSidebarPx(next);
+  };
+
   return (
     <div className="flex flex-col h-full min-h-0 bg-bg">
       {showNotice && (
@@ -96,7 +122,12 @@ export default function Workarea({ tab }: { tab: Tab }) {
           warnings={bundle.data_warnings ?? []}
         />
       )}
-      <div className="grid grid-cols-[1fr_var(--sidebar-w)] gap-2 p-2 flex-1 min-h-0">
+      <div
+        ref={containerRef}
+        data-testid="workarea-grid"
+        style={{ gridTemplateColumns }}
+        className="grid gap-2 p-2 flex-1 min-h-0 relative"
+      >
         <ChartErrorBoundary>
           <ChartStage
             key={`${code}:${fromDate}:${toDate}`}
@@ -104,7 +135,21 @@ export default function Workarea({ tab }: { tab: Tab }) {
             axis={axis}
           />
         </ChartErrorBoundary>
-        <CursorSidebarConnected axis={axis} />
+        {!collapsed && (
+          <>
+            <VerticalSplitter
+              ariaLabel={`사이드바 폭 조정 (현재 ${Math.round(sidebarPx)}px)`}
+              ariaValueNow={Math.round(sidebarPx)}
+              ariaValueMin={SIDEBAR_PX_MIN}
+              ariaValueMax={SIDEBAR_PX_MAX}
+              onDrag={onSplitterDrag}
+              onReset={() => useReplayLayoutStore.getState().resetSidebar()}
+              onNudge={onSplitterNudge}
+            />
+            <CursorSidebarConnected axis={axis} />
+          </>
+        )}
+        {collapsed && <CollapsedSidebarHandle />}
       </div>
     </div>
   );
