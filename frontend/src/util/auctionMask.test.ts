@@ -1,13 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { isAuctionMaskActive } from './auctionMask';
-
-describe('isAuctionMaskActive — scaffold', () => {
-  it('exports as a function', () => {
-    expect(typeof isAuctionMaskActive).toBe('function');
-  });
-});
-
-import { vi } from 'vitest';
 
 type AxisLike = { inClosingAuctionWindow: (t: number) => boolean };
 
