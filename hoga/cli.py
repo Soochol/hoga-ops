@@ -132,6 +132,40 @@ def list_stock_dates() -> None:
     console.print(table)
 
 
+def _run_series_for(stock_date_dir, meta):
+    """Load parquet artifacts for one Stock-Date dir and run series invariants.
+    Returns a Violation list; missing parquet files (or load errors) are
+    skipped silently so the CLI degrades gracefully — diagnostics beats crashing."""
+    import pyarrow.parquet as _pq
+
+    from hoga.api.invariants import StockDateArtifacts, check_series
+    from hoga.tables.candles import Candle
+    from hoga.tables.snapshots import Orderbook
+    from hoga.tables.trades import Trade
+
+    def _read(path, builder):
+        if not path.exists():
+            return None
+        try:
+            table = _pq.read_table(path)
+            return [builder(row) for row in table.to_pylist()]
+        except Exception:
+            return None
+
+    # Orderbook fields are tuples in the dataclass but lists in parquet —
+    # the kwargs constructor accepts both (Python tuple/list interop), but
+    # if the parquet schema drifts, the try/except in _read silences it.
+    candles = _read(stock_date_dir / "candles.parquet",
+                    lambda r: Candle(**r))
+    snapshots = _read(stock_date_dir / "snapshots.parquet",
+                      lambda r: Orderbook(**r))
+    trades = _read(stock_date_dir / "trades.parquet",
+                   lambda r: Trade(**r))
+    return check_series(StockDateArtifacts(
+        meta=meta, candles=candles, snapshots=snapshots, trades=trades,
+    ))
+
+
 @app.command()
 def validate(
     code: str | None = typer.Option(None, "--code", help="Limit to a single Code (e.g. 005930)."),
@@ -139,6 +173,8 @@ def validate(
                                  help="Filter: 'error', 'warn', or 'all'."),
     fix: bool = typer.Option(False, "--fix",
                              help="Rewrite invariant_violations archival field (data untouched)."),
+    deep: bool = typer.Option(False, "--deep",
+                              help="Also run series invariants (loads candles/snapshots/trades parquet)."),
 ) -> None:
     """Sweep all parquet Stock-Dates and report invariant violations.
 
@@ -179,15 +215,19 @@ def validate(
                 continue
             meta = _json.loads(meta_p.read_text(encoding="utf-8"))
             violations = _check(meta)
+            if deep:
+                violations = violations + _run_series_for(code_dir, meta)
             if severity != "all":
                 violations = [v for v in violations if v.severity.value == severity]
             if not violations:
                 continue
             rows.append((date_dir.name, code_dir.name, violations))
             if fix:
-                # Always recompute the FULL set for the archival field,
-                # not the filtered subset (the field is severity-agnostic).
+                # Always recompute the FULL set (both meta + series if deep)
+                # for the archival field — severity-agnostic.
                 full = _check(meta)
+                if deep:
+                    full = full + _run_series_for(code_dir, meta)
                 meta["invariant_violations"] = [v.as_dict() for v in full]
                 meta_p.write_text(_json.dumps(meta, ensure_ascii=False, indent=2),
                                   encoding="utf-8")

@@ -95,3 +95,64 @@ def test_validate_fix_is_idempotent(tmp_path, monkeypatch):
     CliRunner().invoke(app, ["validate", "--fix"])
     snap2 = (tmp_path / "parquet" / "20260518" / "003490" / "meta.json").read_text()
     assert snap1 == snap2
+
+
+def _seed_with_candles(data_dir, date, code, meta, candle_ts_list):
+    """Seed parquet with meta.json + candles.parquet (no snapshots/trades)."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    d = data_dir / "parquet" / date / code
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    pq.write_table(
+        pa.table({
+            "ts_ms": pa.array(candle_ts_list, type=pa.int64()),
+            "open_": pa.array([100] * len(candle_ts_list), type=pa.int64()),
+            "close_": pa.array([100] * len(candle_ts_list), type=pa.int64()),
+            "high": pa.array([100] * len(candle_ts_list), type=pa.int64()),
+            "low": pa.array([100] * len(candle_ts_list), type=pa.int64()),
+            "vol_a": pa.array([0] * len(candle_ts_list), type=pa.int64()),
+            "vol_b": pa.array([0] * len(candle_ts_list), type=pa.int64()),
+        }),
+        d / "candles.parquet",
+    )
+
+
+def test_validate_deep_runs_series_invariants(tmp_path, monkeypatch):
+    """--deep loads candles.parquet and reports series violations."""
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    # Healthy meta but ts_ms regression in candles.
+    _seed_with_candles(
+        tmp_path, "20260520", "005930", _healthy(),
+        candle_ts_list=[90_002_000, 90_001_000],  # regression
+    )
+
+    result_shallow = CliRunner().invoke(app, ["validate", "--severity", "all"])
+    # Without --deep, only meta-level checks run → clean for healthy meta.
+    assert "series.candles_ts_monotonic" not in result_shallow.stdout
+
+    result_deep = CliRunner().invoke(app, ["validate", "--deep", "--severity", "all"])
+    assert result_deep.exit_code == 0
+    assert "series.candles_ts_monotonic" in result_deep.stdout
+
+
+def test_validate_deep_fix_writes_combined_archival(tmp_path, monkeypatch):
+    """--deep --fix archives both meta and series violations."""
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+    # Broken meta close + bad candles → both meta and series violations.
+    bad_meta = _healthy() | {"regular_session_close_ms": 0}
+    _seed_with_candles(
+        tmp_path, "20260518", "003490", bad_meta,
+        candle_ts_list=[90_002_000, 90_001_000],
+    )
+
+    result = CliRunner().invoke(app, ["validate", "--deep", "--fix"])
+    assert result.exit_code == 0
+
+    after = json.loads(
+        (tmp_path / "parquet" / "20260518" / "003490" / "meta.json").read_text()
+    )
+    assert "invariant_violations" in after
+    ids = {v["invariant_id"] for v in after["invariant_violations"]}
+    assert "meta.close_after_open" in ids
+    assert "series.candles_ts_monotonic" in ids
