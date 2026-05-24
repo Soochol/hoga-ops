@@ -13,8 +13,16 @@ function useUrlSync() {
     if (hydrated.current) return;
     hydrated.current = true;
     const parsed = parseReplayUrl(window.location.search);
-    if (parsed.tabs.length === 0) return;
-    // Hydrate tabs from URL: replace the single default empty tab.
+    if (parsed.tabs.length === 0) {
+      // No URL params → keep the store as-is. The store was already seeded
+      // at module-load time from localStorage (see state/tabs.ts), or with a
+      // single fresh tab if no snapshot existed. The debounced persist
+      // subscriber will keep localStorage in sync from here.
+      return;
+    }
+    // URL hydration wins over localStorage. After reset() + setSelection(),
+    // the persist subscriber will overwrite localStorage with the URL state
+    // (intentional one-way URL → localStorage sync — see spec §"Hydration 방향").
     const store = useTabsStore.getState();
     store.reset();
     const firstId = useTabsStore.getState().tabs[0].id;
