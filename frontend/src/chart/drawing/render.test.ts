@@ -76,11 +76,11 @@ describe('renderHline price badge', () => {
     const ctx = makeProjectCtx();
     const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5 };
     renderDrawing(c, ctx, h, false);
-    const fillRectCalls = (c.fillRect as ReturnType<typeof vi.fn>).mock.calls;
-    expect(fillRectCalls.length).toBeGreaterThan(0);
-    // Take the last fillRect call (the badge background) and assert its x is
-    // close to the right edge.
-    const [x] = fillRectCalls[fillRectCalls.length - 1] as [number, number, number, number];
+    const roundRectCalls = (c.roundRect as ReturnType<typeof vi.fn>).mock.calls;
+    expect(roundRectCalls.length).toBeGreaterThan(0);
+    // The badge background roundRect (first such call when unselected).
+    // Args: (x, y, w, h, radius). Assert x is near the right edge.
+    const [x] = roundRectCalls[0] as [number, number, number, number, number];
     expect(x).toBeGreaterThan(ctx.width - 100);
     expect(x).toBeLessThan(ctx.width);
   });

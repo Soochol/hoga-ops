@@ -145,7 +145,9 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-      // Active-gesture guard — see ADR-0024 sibling note in the spec.
+      // Active-gesture guard: a tool-switch mid-drag would route the upcoming
+      // pointer-up to a different tool spec and strand draft refs in a zombie
+      // state. Spec §C "Active-gesture guard".
       if (dragRef.current || trendlineDraft.current || pencilDraft.current) return;
 
       const shortcutKind = matchShortcut(e);

@@ -52,10 +52,12 @@ function drawHaloThenMain(
   c.restore();
 }
 
-const BADGE_FONT = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+const BADGE_FONT_PX = 11;
+const BADGE_FONT = `${BADGE_FONT_PX}px ui-monospace, SFMono-Regular, Menlo, monospace`;
 const BADGE_PAD_X = 4;
 const BADGE_PAD_Y = 2;
 const BADGE_INSET_RIGHT = 8;
+const BADGE_RADIUS = 2;
 
 /** W3C relative luminance of an `#RRGGBB` colour, range [0, 1]. */
 function luminance(hex: string): number {
@@ -84,16 +86,18 @@ function drawPriceBadge(
   c.textAlign = 'left';
   const textWidth = c.measureText(text).width;
   const w = textWidth + BADGE_PAD_X * 2;
-  const h = 11 + BADGE_PAD_Y * 2;
+  const h = BADGE_FONT_PX + BADGE_PAD_Y * 2;
   const x = canvasWidth - BADGE_INSET_RIGHT - w;
   const top = y - h / 2;
   c.fillStyle = bgColor;
-  c.fillRect(x, top, w, h);
+  c.beginPath();
+  c.roundRect(x, top, w, h, BADGE_RADIUS);
+  c.fill();
   if (selected) {
     c.strokeStyle = 'rgba(255, 255, 255, 0.4)';
     c.lineWidth = 1;
     c.beginPath();
-    c.rect(x + 0.5, top + 0.5, w - 1, h - 1);
+    c.roundRect(x + 0.5, top + 0.5, w - 1, h - 1, BADGE_RADIUS);
     c.stroke();
   }
   c.fillStyle = luminance(bgColor) < 0.5 ? '#FFFFFF' : '#000000';
