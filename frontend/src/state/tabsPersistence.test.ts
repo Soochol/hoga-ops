@@ -235,3 +235,45 @@ describe('loadPersisted', () => {
     expect(out!.activeIndex).toBe(0);
   });
 });
+
+import { savePersisted } from './tabsPersistence';
+
+describe('savePersisted', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('writes a JSON payload under STORAGE_KEY', () => {
+    const snap: ReplayTabsSnapshot = {
+      version: 1, savedAt: 123, activeIndex: 0,
+      tabs: [{ selection: null, prefs: { volumeProfileMode: 'per-day' } }],
+    };
+    savePersisted(snap);
+    const raw = localStorage.getItem('replay.tabs.v1');
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw!).tabs[0].prefs.volumeProfileMode).toBe('per-day');
+  });
+
+  it('silently no-ops when localStorage.setItem throws (quota / private mode)', () => {
+    const orig = localStorage.setItem.bind(localStorage);
+    localStorage.setItem = () => { throw new DOMException('quota', 'QuotaExceededError'); };
+    try {
+      expect(() =>
+        savePersisted({ version: 1, savedAt: 0, activeIndex: 0, tabs: [] }),
+      ).not.toThrow();
+    } finally {
+      localStorage.setItem = orig;
+    }
+  });
+
+  it('silently no-ops when localStorage is undefined', () => {
+    const orig = globalThis.localStorage;
+    // @ts-expect-error — simulating SSR
+    delete (globalThis as Record<string, unknown>).localStorage;
+    try {
+      expect(() =>
+        savePersisted({ version: 1, savedAt: 0, activeIndex: 0, tabs: [] }),
+      ).not.toThrow();
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', { value: orig, configurable: true });
+    }
+  });
+});

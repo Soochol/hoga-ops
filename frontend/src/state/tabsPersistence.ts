@@ -151,3 +151,12 @@ export function loadPersisted(): ReplayTabsSnapshot | null {
   const savedAt = typeof p.savedAt === 'number' ? p.savedAt : 0;
   return { version: 1, savedAt, activeIndex, tabs };
 }
+
+export function savePersisted(snapshot: ReplayTabsSnapshot): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    /* privacy mode / quota — silently ignore (matches replayLayout pattern). */
+  }
+}
