@@ -9,33 +9,34 @@ describe('IndicatorsSection', () => {
     useTabsStore.setState((s) => ({ ...s, prefs: new Map() }));
   });
 
-  it('renders 5 MA rows with default labels and checkboxes', () => {
+  it('renders 5 MA rows with default labels and enabled switches', () => {
     render(<IndicatorsSection />);
     expect(screen.getByText('MA 5')).toBeTruthy();
     expect(screen.getByText('MA 10')).toBeTruthy();
     expect(screen.getByText('MA 20')).toBeTruthy();
     expect(screen.getByText('MA 60')).toBeTruthy();
     expect(screen.getByText('MA 120')).toBeTruthy();
-    const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(5);
-    checkboxes.forEach((cb) => {
-      expect((cb as HTMLInputElement).checked).toBe(true);
+    const switches = screen.getAllByRole('switch');
+    // 5 MA switches + 1 fillStrengthCumulative toggle (default on).
+    expect(switches).toHaveLength(6);
+    switches.forEach((sw) => {
+      expect(sw.getAttribute('aria-checked')).toBe('true');
     });
   });
 
-  it('clicking checkbox at index 1 disables that slot in the store', () => {
+  it('clicking switch at index 1 disables that slot in the store', () => {
     render(<IndicatorsSection />);
-    const checkboxes = screen.getAllByRole('checkbox');
-    fireEvent.click(checkboxes[1]);
+    const switches = screen.getAllByRole('switch');
+    fireEvent.click(switches[1]);
     const activeId = useTabsStore.getState().activeTabId;
     const updated = useTabsStore.getState().getPrefs(activeId);
     expect(updated.movingAverages[1].enabled).toBe(false);
     // Other slots remain unchanged.
     expect(updated.movingAverages[0].enabled).toBe(true);
     expect(updated.movingAverages[2].enabled).toBe(true);
-    // Re-query — the checkbox should now reflect unchecked state.
-    const checkboxesAfter = screen.getAllByRole('checkbox');
-    expect((checkboxesAfter[1] as HTMLInputElement).checked).toBe(false);
+    // Re-query — the switch should now reflect off state.
+    const switchesAfter = screen.getAllByRole('switch');
+    expect(switchesAfter[1].getAttribute('aria-checked')).toBe('false');
   });
 
   it('changing period input on row 2 to 30 and blurring commits to store', () => {
@@ -83,5 +84,27 @@ describe('IndicatorsSection', () => {
       const dot = screen.getByTestId(`ma-color-dot-${i}`);
       expect(dot.getAttribute('style')).toContain(`--ma-${i + 1}`);
     }
+  });
+
+  it('renders the FILL STRENGTH subheader and the cumulative toggle (default on)', () => {
+    render(<IndicatorsSection />);
+    expect(screen.getByText('Fill Strength')).toBeTruthy();
+    const toggle = screen.getByTestId('settings-toggle-fillStrengthCumulative');
+    expect(toggle).toBeTruthy();
+    const sw = toggle.querySelector('[role="switch"]');
+    expect(sw?.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('clicking the fillStrengthCumulative toggle flips the store pref', () => {
+    render(<IndicatorsSection />);
+    const activeId = useTabsStore.getState().activeTabId;
+    expect(useTabsStore.getState().getPrefs(activeId).fillStrengthCumulative).toBe(true);
+
+    const sw = screen
+      .getByTestId('settings-toggle-fillStrengthCumulative')
+      .querySelector('[role="switch"]') as HTMLElement;
+    fireEvent.click(sw);
+
+    expect(useTabsStore.getState().getPrefs(activeId).fillStrengthCumulative).toBe(false);
   });
 });

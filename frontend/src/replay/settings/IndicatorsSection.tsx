@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useTabsStore, type MAConfig, type MAIndex } from '../../state/tabs';
+import { useTabsStore, type MAConfig, type MAIndex, CHART_TOGGLES, categoryOf } from '../../state/tabs';
+import ToggleRow from './ToggleRow';
 
 /** One row in the Moving Average list: checkbox + label + period input +
  *  color dot. The period input keeps its own draft string so partial edits
@@ -43,14 +44,27 @@ function MovingAverageRow({
 
   const label = `MA ${config.period}`;
   return (
-    <div className="grid grid-cols-[24px_1fr_72px_16px] items-center gap-3 py-1.5">
-      <input
-        type="checkbox"
-        className="h-[14px] w-[14px]"
-        checked={config.enabled}
-        onChange={() => onChange({ enabled: !config.enabled })}
+    <div className="grid grid-cols-[36px_1fr_72px_16px] items-center gap-3 py-1.5">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={config.enabled}
         aria-label={label}
-      />
+        onClick={() => onChange({ enabled: !config.enabled })}
+        className={
+          config.enabled
+            ? 'relative inline-flex h-5 w-9 items-center rounded-full bg-accent transition-colors'
+            : 'relative inline-flex h-5 w-9 items-center rounded-full bg-bg-input-hover transition-colors'
+        }
+      >
+        <span
+          className={
+            config.enabled
+              ? 'inline-block h-4 w-4 transform rounded-full bg-accent-fg translate-x-[18px] transition-transform'
+              : 'inline-block h-4 w-4 transform rounded-full bg-fg-dim translate-x-[2px] transition-transform'
+          }
+        />
+      </button>
       <div className="text-sm text-fg tabular-nums">{label}</div>
       <input
         type="number"
@@ -85,14 +99,18 @@ function MovingAverageRow({
 }
 
 /**
- * "보조지표" category content for the Settings modal. Currently surfaces
- * the 5 Moving Average slots; future indicator groups (RSI, MACD, …) will
- * sit underneath the same heading with their own small uppercase tag.
+ * "보조지표" category content for the Settings modal. Hosts the 5 Moving
+ * Average slots and any toggles whose CHART_TOGGLES entry sets
+ * `category: 'indicators'`. New indicator-scoped toggles appear here
+ * automatically when added to the registry — no edits below required.
  */
 export default function IndicatorsSection() {
   const activeTabId = useTabsStore((s) => s.activeTabId);
   const prefs = useTabsStore((s) => s.getPrefs(activeTabId));
   const setMovingAverage = useTabsStore((s) => s.setMovingAverage);
+  const setToggle = useTabsStore((s) => s.setToggle);
+
+  const indicatorToggles = CHART_TOGGLES.filter((t) => categoryOf(t) === 'indicators');
 
   return (
     <>
@@ -115,6 +133,26 @@ export default function IndicatorsSection() {
           );
         })}
       </div>
+      {indicatorToggles.length > 0 && (
+        <>
+          <div className="text-fg-dim text-[11px] uppercase tracking-wider mb-2 mt-4">
+            Fill Strength
+          </div>
+          {indicatorToggles.map((toggle) => {
+            const key = toggle.key;
+            return (
+              <ToggleRow
+                key={key}
+                label={toggle.label}
+                description={toggle.description}
+                checked={prefs[key]}
+                onToggle={() => setToggle(activeTabId, key, !prefs[key])}
+                testId={`settings-toggle-${key}`}
+              />
+            );
+          })}
+        </>
+      )}
     </>
   );
 }
