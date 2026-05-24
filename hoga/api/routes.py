@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from hoga.api.bundle import build_range_bundle
 from hoga.api.cursor import cursor_to_native
 from hoga.api.models import (
+    BrokerSeriesResponse,
     CandlesResponse,
     Meta,
     OrderbookResponse,
@@ -119,6 +120,30 @@ def build_router(engine: QueryEngine) -> APIRouter:
                 update={"ts_ms": hhmmssms_to_unix_ms(date, result.ts_ms)}
             )
         return result
+
+    @router.get("/brokers/series", response_model=BrokerSeriesResponse)
+    def brokers_series(code: Code, date: StockDate) -> BrokerSeriesResponse:
+        try:
+            path = engine.parquet_dir(date, code) / "brokers.parquet"
+        except StockDateNotFound as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        raw_entries = brokers_tbl.query_day_series(engine.conn, path=path)
+        # Convert each point's ts_ms from HH:MM:SS.ms-encoded to Unix ms,
+        # mirroring the /api/brokers and /api/candles handlers.
+        entries = [
+            e.model_copy(
+                update={
+                    "points": [
+                        p.model_copy(
+                            update={"ts_ms": hhmmssms_to_unix_ms(date, p.ts_ms)}
+                        )
+                        for p in e.points
+                    ],
+                }
+            )
+            for e in raw_entries
+        ]
+        return BrokerSeriesResponse(date=date, brokers=entries)
 
     @router.get("/range", response_model=RangeBundle)
     def api_range(
