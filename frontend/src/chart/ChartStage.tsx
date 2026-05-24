@@ -328,6 +328,13 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
     const container = containerRef.current;
     if (!chart || !container) return;
     const ts = chart.timeScale();
+    // `candles.length === 0` would yield maxTo=-1 and clamp every wheel
+    // event to a degenerate range — guard against the brief empty-bundle
+    // window before data loads.
+    const maxTo =
+      bundle && bundle.candles.length > 0
+        ? bundle.candles.length - 1
+        : Number.POSITIVE_INFINITY;
 
     const onWheel = (e: WheelEvent) => {
       const range = ts.getVisibleLogicalRange();
@@ -341,13 +348,14 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
         ctrlOrMetaKey: e.ctrlKey || e.metaKey,
         mouseX: e.clientX - rect.left,
         coordinateToLogical: (x) => ts.coordinateToLogical(x),
+        maxTo,
       });
       if (outcome) ts.setVisibleLogicalRange(outcome);
     };
 
     container.addEventListener('wheel', onWheel, { passive: false });
     return () => container.removeEventListener('wheel', onWheel);
-  }, [chart]);
+  }, [chart, bundle]);
 
   const [candleSeries, setCandleSeries] = useState<ISeriesApi<'Candlestick'> | null>(null);
   useEffect(() => {
