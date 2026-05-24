@@ -8,6 +8,17 @@ const PRESENTATION: Record<DiskStateValue, { marker: string; color: string; labe
   invalid:           { marker: '!', color: 'var(--error)',   label: 'invalid — domain invariant violated' },
 };
 
+/**
+ * Disk State Severity — 도메인 SSOT (CONTEXT.md 참조).
+ * 높은 숫자 = 더 심각한 상태. aggregateDiskState와 inventory 컬럼 정렬이 공유.
+ */
+export const STATE_SEVERITY: Record<DiskStateValue, number> = {
+  complete: 0,
+  source_partial: 1,
+  client_incomplete: 2,
+  invalid: 3,
+};
+
 export function DiskStateBadge({ state }: { state: DiskStateValue }) {
   const p = PRESENTATION[state];
   return (
@@ -22,12 +33,13 @@ export function DiskStateBadge({ state }: { state: DiskStateValue }) {
   );
 }
 
-/** 그룹 전체의 집계 상태 — 하나라도 비-complete가 있으면 그 중 가장 심한 단계를 반환. */
+/** 그룹 전체의 집계 상태 — 가장 심한 단계 반환. STATE_SEVERITY를 SSOT로 참조. */
 export function aggregateDiskState(states: DiskStateValue[]): DiskStateValue {
-  if (states.some((s) => s === 'invalid')) return 'invalid';
-  if (states.some((s) => s === 'client_incomplete')) return 'client_incomplete';
-  if (states.some((s) => s === 'source_partial')) return 'source_partial';
-  return 'complete';
+  let worst: DiskStateValue = 'complete';
+  for (const s of states) {
+    if (STATE_SEVERITY[s] > STATE_SEVERITY[worst]) worst = s;
+  }
+  return worst;
 }
 
 /** 좌측 리스트용 작은 점. complete면 렌더 안 함(노이즈 방지). */
