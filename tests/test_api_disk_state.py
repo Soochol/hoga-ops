@@ -13,11 +13,12 @@ from hoga.api.disk_state import (
 from hoga.api.timeenc import HogaMs
 
 
-def test_disk_state_enum_has_four_members() -> None:
+def test_disk_state_enum_has_five_members() -> None:
     assert set(DiskState) == {
         DiskState.NONE,
         DiskState.CLIENT_INCOMPLETE,
         DiskState.SOURCE_PARTIAL,
+        DiskState.INVALID,
         DiskState.COMPLETE,
     }
 
@@ -88,12 +89,22 @@ def test_legacy_meta_without_bits_defaults_to_client_incomplete(tmp_path: Path) 
 
 
 def test_classify_from_meta_complete() -> None:
-    meta = {"collection_complete": True, "is_partial": False}
+    meta = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": True,
+        "is_partial": False,
+    }
     assert classify_from_meta(meta) == DiskState.COMPLETE
 
 
 def test_classify_from_meta_source_partial() -> None:
-    meta = {"collection_complete": True, "is_partial": True}
+    meta = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": True,
+        "is_partial": True,
+    }
     assert classify_from_meta(meta) == DiskState.SOURCE_PARTIAL
 
 
@@ -154,3 +165,47 @@ def test_empty_list_returns_true() -> None:
 def test_single_in_session_event_returns_true() -> None:
     """One in-session datapoint isn't enough to compute gap presence; conservative True."""
     assert has_meaningful_gaps([HogaMs(90000000)]) is True
+
+
+# --- ADR-0020 / Invariants ---
+
+def test_disk_state_enum_includes_invalid() -> None:
+    """INVALID is the fifth member, added by ADR-0020."""
+    assert DiskState.INVALID in set(DiskState)
+    assert len(set(DiskState)) == 5
+
+
+def test_classify_returns_invalid_when_meta_has_error_violation() -> None:
+    """A complete, non-partial capture that fails an error invariant → INVALID."""
+    meta = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 0,    # error: close_after_open
+        "collection_complete": True,       # gets past CLIENT_INCOMPLETE branch
+        "is_partial": False,
+    }
+    assert classify_from_meta(meta) == DiskState.INVALID
+
+
+def test_classify_prefers_client_incomplete_over_invalid() -> None:
+    """If both apply, CLIENT_INCOMPLETE wins (capture didn't finish — root cause)."""
+    meta = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 0,    # would be error
+        "collection_complete": False,      # CLIENT_INCOMPLETE
+        "is_partial": True,
+    }
+    assert classify_from_meta(meta) == DiskState.CLIENT_INCOMPLETE
+
+
+def test_classify_warn_only_does_not_promote_to_invalid() -> None:
+    """warn-severity violations don't change DiskState (surfaced separately)."""
+    meta = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": True,
+        "is_partial": False,
+        "pages_collected": 100,
+        "total_unique_events": 30,         # warn: unique_events_ratio
+    }
+    # warn-only → still COMPLETE
+    assert classify_from_meta(meta) == DiskState.COMPLETE
