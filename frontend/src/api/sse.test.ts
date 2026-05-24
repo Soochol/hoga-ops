@@ -1,5 +1,8 @@
-import { describe, expect, it, beforeEach } from 'vitest';
-import { __resetForTests, subscribeToCaptureEvents } from './sse';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { renderHook } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
+import { __resetForTests, subscribeToCaptureEvents, useEventStream } from './sse';
 import type { SSEEvent } from './types';
 
 // Helper that mounts a fake EventSource so addEventListener traps capture events.
@@ -64,5 +67,39 @@ describe('subscribeToCaptureEvents', () => {
     const src = _fakeInstances[0];
     src.fire('inventory_added', { code: '005930', date: '20260520' });
     expect(events).toHaveLength(0);
+  });
+});
+
+describe('useEventStream disconnect handler', () => {
+  it('invalidates capture queue + calendar + stock dates on disconnect', async () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: qc }, children);
+
+    renderHook(() => useEventStream(), { wrapper });
+    // Let open()'s async apiUrl() resolve and _fakeInstances[0] to be populated.
+    await new Promise((r) => setTimeout(r, 0));
+
+    const src = _fakeInstances[0];
+    // sse.ts registers: src.addEventListener('error', () => emit({ type: 'disconnected' }))
+    // FakeEventSource.fire() passes a MessageEvent; the handler ignores the arg.
+    src.fire('error', null);
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    const calls = spy.mock.calls.map((c) => c[0]);
+    // stock-dates invalidation
+    expect(
+      calls.some((c: any) => Array.isArray(c?.queryKey) && c.queryKey[0] === 'stock-dates'),
+    ).toBe(true);
+    // capture queue invalidation
+    expect(
+      calls.some(
+        (c: any) => Array.isArray(c?.queryKey) && c.queryKey.join(',') === 'capture,queue',
+      ),
+    ).toBe(true);
+    // calendar invalidation via predicate
+    expect(calls.some((c: any) => typeof c?.predicate === 'function')).toBe(true);
   });
 });

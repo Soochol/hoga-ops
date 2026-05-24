@@ -78,7 +78,15 @@ export function useEventStream() {
       if (e.type === 'inventory_added' || e.type === 'inventory_removed') {
         qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
       } else if (e.type === 'disconnected') {
+        // Server restart recovery: the backend restores the queue from
+        // <data_dir>/.queue.json on lifespan startup (ADR-0019). When SSE
+        // reconnects, refetch the queue + calendar + stock dates so the
+        // UI reflects whatever the restored server is now doing.
         qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
+        qc.invalidateQueries({ queryKey: ['capture', 'queue'] });
+        qc.invalidateQueries({
+          predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'calendar',
+        });
       }
     };
     _subscribers.add(handler);
