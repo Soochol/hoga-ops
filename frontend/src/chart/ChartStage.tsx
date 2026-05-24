@@ -7,7 +7,6 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
-import type { PaneSeriesMap } from './drawing/chartCoordinates';
 import type { PaneId } from './drawing/types';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
