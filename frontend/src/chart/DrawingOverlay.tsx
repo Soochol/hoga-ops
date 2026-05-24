@@ -72,6 +72,19 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
     };
   }, [chart, axis, priceSeries, drawings, selectedId, activeCode]);
 
+  const trendlineDraftRef = useRef<{ a: { realMs: number; price: number }; pointerId: number } | null>(null);
+
+  const pixelToData = (px: number, py: number) => {
+    if (!priceSeries) return null;
+    const timeSec = chart.timeScale().coordinateToTime(px);
+    if (timeSec == null) return null;
+    const virtualMs = (timeSec as number) * 1000;
+    const realMs = axis.toReal(virtualMs);
+    const price = priceSeries.coordinateToPrice(py);
+    if (price == null) return null;
+    return { realMs, price: Number(price) };
+  };
+
   // Pointer handler dispatch keyed by activeTool. We attach onPointerDown
   // on the container; tools that need drag track it via setPointerCapture.
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -93,8 +106,47 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       });
       return;
     }
-    // trendline, pencil, eraser handled in subsequent tasks
-    void px;
+
+    if (activeTool === 'trendline') {
+      const data = pixelToData(px, py);
+      if (!data) return;
+      trendlineDraftRef.current = { a: data, pointerId: e.pointerId };
+      (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+      return;
+    }
+    // pencil, eraser handled in subsequent tasks
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activeTool === 'trendline') {
+      const draft = trendlineDraftRef.current;
+      if (!draft || draft.pointerId !== e.pointerId) return;
+      // Preview painting: store a transient drawing or stash in a ref + force
+      // redraw. Simpler: track in a ref and call a local rerender via state.
+      // For v1 we accept that preview only shows on commit — see follow-up.
+    }
+  };
+
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activeTool === 'trendline') {
+      const draft = trendlineDraftRef.current;
+      if (!draft || draft.pointerId !== e.pointerId) return;
+      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+      const data = pixelToData(e.clientX - rect.left, e.clientY - rect.top);
+      trendlineDraftRef.current = null;
+      (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+      if (!data) return;
+      // Reject zero-length trendlines (click without drag).
+      if (data.realMs === draft.a.realMs && data.price === draft.a.price) return;
+      useDrawingsStore.getState().add({
+        id: nanoid(8),
+        kind: 'trendline',
+        a: draft.a,
+        b: data,
+        color: 'var(--accent, #FFD60A)',
+        width: 1.5,
+      });
+    }
   };
 
   // Pointer events flow to the chart unless a drawing tool is active OR
@@ -108,6 +160,8 @@ export default function DrawingOverlay({ chart, axis, priceSeries }: Props) {
       className="absolute inset-0 z-20"
       style={{ pointerEvents: captureEvents ? 'auto' : 'none' }}
       onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
     >
       <canvas ref={canvasRef} className="absolute inset-0" />
     </div>
