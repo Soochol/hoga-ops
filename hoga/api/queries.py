@@ -107,11 +107,12 @@ class QueryEngine:
                 )
                 out.append(sd)
         # Snapshot iteration via list() — safe against concurrent inserts
-        # from another threadpool worker. del on a missing key would raise,
-        # so check membership of seen_keys (the set we just built).
+        # from another threadpool worker. pop(..., None) instead of del
+        # because a concurrent pruner may have already removed the same
+        # vanished key.
         for k in list(self._stock_date_cache.keys()):
             if k not in seen_keys:
-                del self._stock_date_cache[k]
+                self._stock_date_cache.pop(k, None)
         return out
 
     def _compute_stock_date(
