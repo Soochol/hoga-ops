@@ -87,7 +87,7 @@ export type CapturePhase =
   | 'cancelled'
   | 'skipped';
 
-export type SkipReason = 'already_complete' | 'source_partial';
+export type SkipReason = 'already_complete' | 'source_partial' | 'no_upstream_data';
 
 export interface CaptureProgress {
   pages_done: number;
@@ -231,7 +231,8 @@ export type CalendarStatus =
   | 'weekend'
   | 'holiday'
   | 'future'
-  | 'today_locked';
+  | 'today_locked'
+  | 'no_upstream_data';
 
 /** Mirrors hoga/api/models.py::CalendarCell. */
 export interface CalendarCell {
