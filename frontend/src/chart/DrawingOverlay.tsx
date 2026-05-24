@@ -1,17 +1,8 @@
 // frontend/src/chart/DrawingOverlay.tsx
 //
-// The Drawing Overlay (CONTEXT.md) — a canvas layer above the chart's
-// own canvas that renders all Drawings for the active Code and forwards
-// pointer events to the active Drawing Tool Spec (see `./drawing/tools.ts`).
-//
-// Responsibilities owned here:
-//   - DPR-scaled canvas, single rAF redraw coalescer
-//   - Building a ToolCtx per pointer event and delegating to TOOLS[activeTool]
-//   - Dynamic pointer-events gating in select mode (hover hit-test toggle)
-//   - Keyboard shortcuts (Delete/Backspace, Escape)
-//
-// Per-tool behaviour lives in `./drawing/tools.ts` — adding a tool does
-// not touch this file.
+// Pane-aware Drawing Overlay. See:
+//   - docs/superpowers/specs/2026-05-24-drawing-on-indicator-panes-design.md
+//   - docs/adr/0028-drawing-pane-binding.md
 
 import { useEffect, useMemo, useRef } from 'react';
 import type { IChartApi } from 'lightweight-charts';
@@ -33,6 +24,9 @@ import {
   pixelToData as projPixelToData,
   priceToCanvasY as projPriceToCanvasY,
   realMsToCanvasX as projRealMsToCanvasX,
+  paneIdToIndex,
+  paneIdAtY as projPaneIdAtY,
+  clampYToPane as projClampYToPane,
   type PaneSeriesMap,
 } from './drawing/chartCoordinates';
 import { resolveTokens } from '../util/tokens';
@@ -56,17 +50,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
   );
   const selectedId = useDrawingsStore((s) => s.selectedId);
 
-  // Canvas 2D's strokeStyle does NOT resolve CSS var(--…); resolve to hex once.
   const accentColor = useMemo(() => resolveTokens(TOKEN_SPEC).accent, []);
 
-  // Per-gesture draft refs — owned here, mutated by tool specs through ToolCtx.
   const trendlineDraft = useRef<TrendlineDraft | null>(null);
   const pencilDraft = useRef<PencilDraft | null>(null);
   const dragRef = useRef<DragMode | null>(null);
-
-  // Lift the redraw scheduler so the ToolCtx can request frames between
-  // store mutations (live previews paint into the canvas via draft refs,
-  // which are not React state and don't re-trigger the redraw effect).
   const scheduleRef = useRef<() => void>(() => {});
 
   // ── redraw loop ────────────────────────────────────────────────────────
@@ -95,45 +83,59 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
       if (!c) return;
       c.setTransform(dpr, 0, 0, dpr, 0, 0);
       c.clearRect(0, 0, w, h);
-      // Clip every drawing render to pane 0 (the candle pane) so
-      // extrapolated y from `priceToCoordinate` — which lightweight-charts
-      // returns when a stored price falls outside the visible price range —
-      // cannot bleed into sibling indicator panes below the candle.
-      const paneHeight = chart.panes()[0]?.getHeight() ?? h;
-      c.save();
-      c.beginPath();
-      c.rect(0, 0, w, paneHeight);
-      c.clip();
-      const projCtx: ProjectCtx = {
-        chart, axis, paneSeries, paneId: 'candle', // Task 8 will dispatch by drawing's paneId
-        width: w, height: h,
-      };
-      for (const d of drawings) {
-        renderDrawing(c, projCtx, d, d.id === selectedId);
+
+      const panes = chart.panes();
+      const paneTops: number[] = [];
+      {
+        let acc = 0;
+        for (const p of panes) {
+          paneTops.push(acc);
+          acc += p.getHeight();
+        }
       }
-      // Live pencil preview: render the in-flight draft as a transient
-      // Drawing so the freehand line tracks the cursor. We synthesize a
-      // Drawing with a sentinel id ('__draft__') and pass `selected=false`
-      // to skip the selection halo. On pointer-up the tool calls add(),
-      // the store mutation re-runs this effect, and the committed pencil
-      // replaces the draft visually with no flash.
+
+      const clipAndRender = (paneId: PaneId, body: (ctx: ProjectCtx) => void) => {
+        const idx = paneIdToIndex(paneId);
+        if (idx >= panes.length) return;
+        const top = paneTops[idx];
+        const paneH = panes[idx].getHeight();
+        c.save();
+        c.beginPath();
+        c.rect(0, top, w, paneH);
+        c.clip();
+        const projCtx: ProjectCtx = {
+          chart, axis, paneSeries, paneId, width: w, height: h,
+        };
+        body(projCtx);
+        c.restore();
+      };
+
+      for (const d of drawings) {
+        if (!paneSeries.has(d.paneId)) continue;  // pane absent → silent skip
+        clipAndRender(d.paneId, (projCtx) => {
+          renderDrawing(c, projCtx, d, d.id === selectedId);
+        });
+      }
+
+      // Live pencil draft preview — clipped to its origin pane.
       const draft = pencilDraft.current;
       if (draft && draft.points.length >= 2) {
-        renderDrawing(
-          c,
-          projCtx,
-          {
-            id: '__draft__',
-            kind: 'pencil',
-            points: draft.points,
-            color: accentColor,
-            width: 1.5,
-            paneId: 'candle', // Task 8: bind to creation pane
-          },
-          false,
-        );
+        clipAndRender(draft.paneId, (projCtx) => {
+          renderDrawing(
+            c,
+            projCtx,
+            {
+              id: '__draft__',
+              kind: 'pencil',
+              points: draft.points,
+              color: accentColor,
+              width: 1.5,
+              paneId: draft.paneId,
+            },
+            false,
+          );
+        });
       }
-      c.restore();
     };
 
     ts.subscribeVisibleLogicalRangeChange(schedule);
@@ -151,17 +153,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
   }, [chart, axis, paneSeries, drawings, selectedId, activeCode, accentColor]);
 
   // ── keyboard shortcuts ─────────────────────────────────────────────────
-  // All keyboard shortcuts (tool switch via Alt+letter, Esc revert,
-  // Delete/Backspace remove) are suppressed while a pointer gesture is
-  // in flight — switching activeTool mid-drag would route the upcoming
-  // pointer-up to a different spec, stranding the draft refs.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-      // Active-gesture guard: a tool-switch mid-drag would route the upcoming
-      // pointer-up to a different tool spec and strand draft refs in a zombie
-      // state. Spec §C "Active-gesture guard".
       if (dragRef.current || trendlineDraft.current || pencilDraft.current) return;
 
       const shortcutKind = matchShortcut(e);
@@ -185,31 +180,36 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Coordinate helpers — thin closures over the chartCoordinates module so
-  // the rest of the file (and the ToolCtx exposed to tools) doesn't have to
-  // thread chart/axis/paneSeries through every call site.
-  // Task 8 will replace these candle-fixed paths with real pane dispatch;
-  // for now we expose the new paneId-aware signatures verbatim so Task 6's
-  // ToolCtx still type-checks, and ignore the paneId in the candle fallback.
-  const pixelToData = (px: number, py: number, _paneId: PaneId) =>
-    projPixelToData(chart, axis, paneSeries, 'candle', px, py);
+  // Coordinate helpers — pane-aware closures.
+  const pixelToData = (px: number, py: number, paneId: PaneId) =>
+    projPixelToData(chart, axis, paneSeries, paneId, px, py);
   const realMsToCanvasX = (realMs: number) => projRealMsToCanvasX(chart, axis, realMs);
-  const priceToCanvasY = (price: number, _paneId: PaneId) =>
-    projPriceToCanvasY(paneSeries, 'candle', price);
-  // Task 8 will replace these with real cursor-pane resolution.
-  const paneIdAtY = (_py: number): PaneId => 'candle';
-  const clampYToPane = (_paneId: PaneId, py: number) => py;
-  // Task 8 will implement with real coordinate lookup.
-  const priceBoundsForPane = (_paneId: PaneId) => null;
+  const priceToCanvasY = (price: number, paneId: PaneId) =>
+    projPriceToCanvasY(paneSeries, paneId, price);
+  const paneIdAtY = (py: number) => projPaneIdAtY(chart, py);
+  const clampYToPane = (paneId: PaneId, py: number) =>
+    projClampYToPane(chart, paneId, py);
+
+  const priceBoundsForPane = (paneId: PaneId) => {
+    const series = paneSeries.get(paneId);
+    if (!series) return null;
+    const idx = paneIdToIndex(paneId);
+    const panes = chart.panes();
+    if (idx >= panes.length) return null;
+    let top = 0;
+    for (let i = 0; i < idx; i++) top += panes[i].getHeight();
+    const bottom = top + panes[idx].getHeight();
+    const topPrice = series.coordinateToPrice(top);
+    const bottomPrice = series.coordinateToPrice(bottom);
+    if (topPrice == null || bottomPrice == null) return null;
+    return { top: Number(topPrice), bottom: Number(bottomPrice) };
+  };
 
   const hitTestAt = (px: number, py: number): Drawing | null => {
-    // Mirror the render-side clip: a cursor outside pane 0 (e.g. over the
-    // volume / ratio sub-pane) must not hit drawings whose extrapolated y
-    // happens to land near it.
-    const paneHeight = chart.panes()[0]?.getHeight();
-    if (paneHeight != null && (py < 0 || py > paneHeight)) return null;
+    const cursorPaneId = projPaneIdAtY(chart, py);
     for (let i = drawings.length - 1; i >= 0; i--) {
       const d = drawings[i];
+      if (d.paneId !== cursorPaneId) continue;
       if (d.kind === 'hline') {
         const y = priceToCanvasY(d.price, d.paneId);
         if (y != null && distanceToHline({ x: px, y: py }, y) <= HIT_THRESHOLD.hline) return d;
@@ -235,7 +235,6 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
     return null;
   };
 
-  // ── pointer dispatch — delegates to the active tool spec ───────────────
   const buildCtx = (e: React.PointerEvent<HTMLDivElement>): ToolCtx => {
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
     const target = e.currentTarget as HTMLDivElement;
@@ -282,10 +281,6 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
   };
 
   // ── pointer-events gating ──────────────────────────────────────────────
-  // Select mode → 'none' by default (chart pans freely), toggled to 'auto'
-  // only while the cursor is over a hit-testable drawing. Mid-drag the
-  // toggle suspends so setPointerCapture isn't released. See spec G11
-  // commentary.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -309,7 +304,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
     return () => {
       window.removeEventListener('mousemove', onHover);
     };
-    // hitTestAt closes over `drawings` / `paneSeries`; re-bind on change.
+    // hitTestAt closes over drawings / paneSeries; re-bind on change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTool, drawings, paneSeries, axis]);
 
