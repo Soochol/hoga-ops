@@ -33,13 +33,9 @@ import datetime as dt
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
-
 from hoga.api.disk_state import DiskState, check_disk_state
+from hoga.api.models import SkipReason
 from hoga.collector.orchestrator import is_today_too_early
-
-
-SkipReason = Literal["already_complete", "source_partial", "no_upstream_data"]
 
 
 @dataclass(frozen=True)

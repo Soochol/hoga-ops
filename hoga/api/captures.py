@@ -24,6 +24,7 @@ from hoga.api.error_codes import CaptureErrorCode, UpstreamCode
 from hoga.api.models import (
     CaptureError,
     CaptureFinishedEvent,
+    CapturePhase,
     CapturePhaseEvent,
     CaptureProgress,
     CaptureProgressEvent,
@@ -37,6 +38,7 @@ from hoga.api.models import (
     QueueManifest,
     QueueManifestItem,
     QueueSnapshot,
+    SkipReason,
 )
 from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
@@ -91,7 +93,7 @@ class QueueItemState:
     date: str
     force_retry: bool
     enqueued_at_ms: int
-    phase: str = "queued"
+    phase: CapturePhase = "queued"
     pause_origin: bool = False
     started_at_ms: int | None = None
     pages_done: int = 0
@@ -101,7 +103,7 @@ class QueueItemState:
     estimate_pct: int = 0
     result: CaptureResult | None = None
     error: CaptureError | None = None
-    skip_reason: str | None = None
+    skip_reason: SkipReason | None = None
     cancel_token: Any = None
 
     def to_progress(self) -> CaptureProgress | None:
@@ -129,7 +131,7 @@ class QueueItemState:
             item_id=self.item_id,
             code=self.code,
             date=self.date,
-            phase=self.phase,                # type: ignore[arg-type]
+            phase=self.phase,
             force_retry=self.force_retry,
             pause_origin=self.pause_origin,
             enqueued_at_ms=self.enqueued_at_ms,
@@ -137,7 +139,7 @@ class QueueItemState:
             progress=self.to_progress(),
             result=self.result,
             error=self.error,
-            skip_reason=self.skip_reason,    # type: ignore[arg-type]
+            skip_reason=self.skip_reason,
         )
 
     @property
@@ -599,7 +601,7 @@ async def _finalize_item(state: QueueItemState) -> None:
         **state.event_header(),
         result=state.result,
         error=state.error,
-        skip_reason=state.skip_reason,  # type: ignore[arg-type]
+        skip_reason=state.skip_reason,
     ))
 
 
