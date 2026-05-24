@@ -50,19 +50,19 @@
 
 ```tsx
 <div className="p-md h-full grid gap-md" style={{ gridTemplateColumns: '320px 1fr' }}>
-  <StockGroupList … />
-  <StockGroupDetail … />
+  <StockDateGroupList … />
+  <StockDateGroupDetail … />
 </div>
 ```
 
 좌·우 카드 각자 `overflow-y-auto`. 페이지 자체는 스크롤하지 않는다.
 
-## New Domain Concept — `StockGroup`
+## New Domain Concept — `StockDateGroup`
 
 ```ts
 // frontend/src/inventory/types.ts
-export type StockGroup = {
-  code: string;               // 그룹 키
+export type StockDateGroup = {
+  code: string;               // 그룹 키 (Code = 6-digit KRX ticker)
   name: string;               // 종목명
   dates: StockDate[];         // date desc 정렬된 자식 행
   lastCapturedAt: number;     // max(captured_at) — 좌측 정렬 키
@@ -71,44 +71,44 @@ export type StockGroup = {
 };
 ```
 
-`StockGroup`은 `StockDate[]`를 종목 단위로 압축한 단일 레벨 트리의 루트다. 자식은 `StockDate`(기존 타입) 그대로.
+`StockDateGroup`은 `StockDate[]`를 `Code` 단위로 압축한 단일 레벨 트리의 루트다. 자식은 `StockDate`(기존 타입) 그대로. 이름은 CONTEXT.md의 canonical `Stock-Date` 위에 compound로 얹는다 — bare "Stock"은 _Avoid_, 무엇이 그룹화되는지 명시한 compound 형태(`StockDateGroup`)를 따른다.
 
 ## Module Layout
 
 ```
 frontend/src/pages/Inventory.tsx        # 얇은 페이지 컨테이너
 frontend/src/inventory/
-  ├── types.ts                          # StockGroup
-  ├── useStockGroups.ts                 # StockDate[] → StockGroup[] (그룹화·정렬·필터)
-  ├── StockGroupList.tsx                # 좌측: 검색창 + 종목 리스트
-  ├── StockGroupListItem.tsx            # 좌측 항목 (2줄)
-  └── StockGroupDetail.tsx              # 우측: 헤더 + 날짜 테이블
+  ├── types.ts                          # StockDateGroup
+  ├── useStockDateGroups.ts             # StockDate[] → StockDateGroup[] (그룹화·정렬·필터)
+  ├── StockDateGroupList.tsx            # 좌측: 검색창 + 종목 리스트
+  ├── StockDateGroupListItem.tsx        # 좌측 항목 (2줄)
+  └── StockDateGroupDetail.tsx          # 우측: 헤더 + 날짜 테이블
 ```
 
 각 모듈의 책임:
 
-- `useStockGroups(rows, search)` — 순수 함수형 hook. 그룹화·집계·정렬·검색 필터를 `useMemo`로 1회 계산. 테스트 용이.
-- `StockGroupList` — 검색 입력 상태와 active 항목 강조 담당. 외부에 `selectedCode`/`onSelect` 노출.
-- `StockGroupListItem` — 시각 표현만. props로 group + active 받음.
-- `StockGroupDetail` — `selectedCode`로 그룹을 찾아 헤더 + 날짜 테이블 렌더링. 행 클릭 시 기존 `useTabsStore.newTab()` + `navigate('/replay')` 흐름 재사용.
+- `useStockDateGroups(rows, search)` — 순수 함수형 hook. 그룹화·집계·정렬·검색 필터를 `useMemo`로 1회 계산. 테스트 용이.
+- `StockDateGroupList` — 검색 입력 상태와 active 항목 강조 담당. 외부에 `selectedCode`/`onSelect` 노출.
+- `StockDateGroupListItem` — 시각 표현만. props로 group + active 받음.
+- `StockDateGroupDetail` — `selectedCode`로 그룹을 찾아 헤더 + 날짜 테이블 렌더링. 행 클릭 시 기존 `useTabsStore.newTab()` + `navigate('/replay')` 흐름 재사용.
 
 ## Data Flow
 
 ```
 useStockDates() ── StockDate[] ──┐
-                                 ├─► useStockGroups(rows, search) ─► StockGroup[]
+                                 ├─► useStockDateGroups(rows, search) ─► StockDateGroup[]
 search input (useState) ─────────┘                                  │
                                                                     ▼
-                  ┌─── StockGroupList ──► StockGroupListItem
+                  ┌─── StockDateGroupList ──► StockDateGroupListItem
                   │                       (onSelect(code))
                   ▼
             selectedCode (useState<string | null>)
                   │
                   ▼
-            StockGroupDetail (해당 그룹의 dates 테이블)
+            StockDateGroupDetail (해당 그룹의 dates 테이블)
 ```
 
-## `useStockGroups` 동작
+## `useStockDateGroups` 동작
 
 1. **그룹화**: `code`를 키로 `Map<string, StockDate[]>` 누적.
 2. **자식 정렬**: 각 그룹의 `dates`를 `date desc`로 정렬.
@@ -136,7 +136,7 @@ search input (useState) ─────────┘                          
 
 ## Initial Selection
 
-- 마운트 시 `selectedCode === null`. `useEffect`로 `rows.length > 0 && selectedCode === null`이면 정렬 첫 그룹(`groups[0].code`)을 세팅.
+- 마운트 시 `selectedCode === null`. `useEffect`로 `rows.length > 0 && selectedCode === null`이면 **unfiltered 정렬 첫 그룹**(검색 무시 — 마운트 직후 빈 검색어와 동치이지만, 향후 URL 쿼리에서 초기 검색어를 받는 변경이 들어와도 안전하도록 명시적으로 unfiltered groups를 사용)을 세팅.
 - 우측 패널은 `selectedCode`를 **전체 `rows`에서 그룹을 다시 만들어** 조회한다(필터된 `groups`가 아님). 따라서 검색으로 좌측에서 사라져도 우측은 그대로 유지된다.
 - 검색·데이터 변경 후에도 `selectedCode`가 전체 데이터에 여전히 없으면(예: 다른 곳에서 캡처가 삭제됨) `groups[0].code`로 fallback.
 
@@ -177,7 +177,7 @@ search input (useState) ─────────┘                          
 
 - 라우트 `/inventory` 동일.
 - `useStockDates()` API 변경 없음. 백엔드 무수정.
-- `useTabsStore` 변경 없음.
+- `useTabsStore` 변경 없음. Tab cap(DESIGN.md "Soft cap: 8 tabs") 처리는 기존 store에 위임 — inventory 측에서 별도 분기 없음.
 - DESIGN.md 추가 토큰 불필요 — 기존 토큰만 사용.
 - 기존 `Inventory.tsx`의 `fmtDate / fmtTime / fmtSize / fmtOHLC` 유틸은 `inventory/format.ts`로 옮겨 두 컴포넌트가 공유.
 
@@ -185,9 +185,9 @@ search input (useState) ─────────┘                          
 
 | 레벨 | 파일 | 검증 |
 |---|---|---|
-| 단위 | `frontend/src/inventory/useStockGroups.test.ts` | 그룹화, lastCapturedAt 집계, totalSizeBytes 합, 부모/자식 정렬, 검색 필터(한글·코드·대소문자·trim) |
-| 컴포넌트 | `frontend/src/inventory/StockGroupList.test.tsx` | 검색 입력 시 필터링, 항목 클릭 시 `onSelect` 호출, active 항목 클래스, 빈 결과 메시지 |
-| 컴포넌트 | `frontend/src/inventory/StockGroupDetail.test.tsx` | 선택 변경 시 재렌더, 행 클릭 시 `useTabsStore.newTab` + `navigate` 호출 (mock) |
+| 단위 | `frontend/src/inventory/useStockDateGroups.test.ts` | 그룹화, lastCapturedAt 집계, totalSizeBytes 합, 부모/자식 정렬, 검색 필터(한글·코드·대소문자·trim) |
+| 컴포넌트 | `frontend/src/inventory/StockDateGroupList.test.tsx` | 검색 입력 시 필터링, 항목 클릭 시 `onSelect` 호출, active 항목 클래스, 빈 결과 메시지 |
+| 컴포넌트 | `frontend/src/inventory/StockDateGroupDetail.test.tsx` | 선택 변경 시 재렌더, 행 클릭 시 `useTabsStore.newTab` + `navigate` 호출 (mock) |
 | E2E (smoke) | `frontend/tests/e2e/inventory-tree.spec.ts` | "삼" 입력 → 좌측 필터 → 항목 클릭 → 우측 테이블 표시 → 행 클릭 → `/replay` 이동 |
 
 ## Out of Scope (Future)
@@ -198,6 +198,7 @@ search input (useState) ─────────┘                          
 - 컬럼별 정렬 (현재 v1에서는 우측 헤더 비-인터랙티브).
 - 키보드 네비게이션 (↑/↓로 종목 이동, Enter로 우측 첫 행 열기).
 - 다중 선택, 다중 탭 동시 열기.
+- **Grouping 로직 공유** — `StockCombobox.tsx:13-20`이 이미 `Map<code, {code, name, dates}>` 형태의 동일 그룹화를 수행 중. 본 spec의 `useStockDateGroups`는 더 풍부한 집계(`lastCapturedAt`, `totalSizeBytes`)와 검색 필터를 포함하므로 별 hook으로 출발하되, `/improve-codebase-architecture` 단계에서 공통 코어 추출 가능성을 평가한다.
 
 ## Decisions Log
 
