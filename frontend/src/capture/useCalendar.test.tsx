@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { reconcileCalendar, applyCellPatch, type EnrichedCell } from './useCalendar';
+import { reconcileCalendar, applyCellPatch, markerFor, type EnrichedCell } from './useCalendar';
 
 beforeEach(() => { vi.restoreAllMocks(); });
 
@@ -43,6 +43,13 @@ describe('reconcileCalendar (Q21)', () => {
     const incoming = { cells: [baseCell('20260519')], as_of_ms: 2 };
     const merged = reconcileCalendar(prior, incoming);
     expect(merged.cells.map((c) => c.date)).toEqual(['20260519']);
+  });
+});
+
+describe('markerFor (no_upstream_data)', () => {
+  it("returns '–' for no_upstream_data — distinct from '✕' broken", () => {
+    expect(markerFor('no_upstream_data')).toBe('–');
+    expect(markerFor('client_incomplete')).toBe('✕');  // regression guard
   });
 });
 

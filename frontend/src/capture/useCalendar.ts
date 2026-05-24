@@ -77,10 +77,11 @@ export function useCalendar(code: string | null, year: number, month: number) {
 }
 
 /** Status → calendar marker glyph convention (used by tests + CalendarCell). */
-export function markerFor(status: CalendarStatus): '✓' | '⚠' | '✕' | '🔒' | null {
+export function markerFor(status: CalendarStatus): '✓' | '⚠' | '✕' | '🔒' | '–' | null {
   if (status === 'complete') return '✓';
   if (status === 'source_partial') return '⚠';
   if (status === 'client_incomplete') return '✕';
   if (status === 'today_locked') return '🔒';
+  if (status === 'no_upstream_data') return '–';   // ADR-0021
   return null;
 }
