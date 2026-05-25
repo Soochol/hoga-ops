@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { IChartApi } from 'lightweight-charts';
-import { renderDrawing, type ProjectCtx } from './render';
+import { renderDrawing, type ProjectCtx, dashPattern } from './render';
 import type { Hline } from './types';
 
 /** Build a context with all the canvas methods we touch spied. */
@@ -26,6 +26,7 @@ function makeCanvasSpy() {
     measureText: vi.fn(() => ({ width: 40 })),
     clearRect: vi.fn(),
     setTransform: vi.fn(),
+    setLineDash: vi.fn(),
     strokeStyle: '',
     fillStyle: '',
     lineWidth: 0,
@@ -38,6 +39,7 @@ function makeCanvasSpy() {
   } as unknown as CanvasRenderingContext2D & {
     fillText: ReturnType<typeof vi.fn>;
     fillRect: ReturnType<typeof vi.fn>;
+    setLineDash: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -69,6 +71,7 @@ describe('renderHline price badge', () => {
       price: 74_500,
       color: '#14B8A6',
       width: 1.5,
+      lineStyle: 'solid',
       paneId: 'candle',
     };
     renderDrawing(c, ctx, h, false);
@@ -80,7 +83,7 @@ describe('renderHline price badge', () => {
   it('positions the badge near the right edge (within 100px inset)', () => {
     const c = makeCanvasSpy();
     const ctx = makeProjectCtx();
-    const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, paneId: 'candle' };
+    const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle' };
     renderDrawing(c, ctx, h, false);
     const roundRectCalls = (c.roundRect as ReturnType<typeof vi.fn>).mock.calls;
     expect(roundRectCalls.length).toBeGreaterThan(0);
@@ -112,7 +115,7 @@ describe('renderHline price badge', () => {
     const c = makeCanvasSpy();
     const h: Hline = {
       id: 'h_ratio', kind: 'hline', price: -0.34,
-      color: '#14B8A6', width: 1.5, paneId: 'ratio',
+      color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'ratio',
     };
     renderDrawing(c, ctx, h, false);
     const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
@@ -137,7 +140,7 @@ describe('renderHline price badge', () => {
     const c = makeCanvasSpy();
     const h: Hline = {
       id: 'h_vol', kind: 'hline', price: 12_345.7,
-      color: '#14B8A6', width: 1.5, paneId: 'volume',
+      color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'volume',
     };
     renderDrawing(c, ctx, h, false);
     const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
@@ -154,8 +157,64 @@ describe('renderHline price badge', () => {
         coordinateToPrice: vi.fn(),
       } as any]]),
     };
-    const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, paneId: 'candle' };
+    const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle' };
     renderDrawing(c, ctx, h, false);
     expect((c.fillText as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+  });
+});
+
+describe('dashPattern', () => {
+  it('returns [] for solid', () => {
+    expect(dashPattern('solid', 2)).toEqual([]);
+  });
+  it('scales dashed with width', () => {
+    expect(dashPattern('dashed', 2)).toEqual([6, 4]);
+    expect(dashPattern('dashed', 3)).toEqual([9, 6]);
+  });
+  it('returns [0, width*2.5] for dotted (round-cap dots)', () => {
+    expect(dashPattern('dotted', 2)).toEqual([0, 5]);
+  });
+});
+
+describe('renderHline lineStyle + lineCap', () => {
+  it('applies dashPattern + lineCap from lineStyle', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeProjectCtx();
+    const h: Hline = {
+      id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 2, lineStyle: 'dotted', paneId: 'candle',
+    };
+    renderDrawing(c, ctx, h, false);
+    const setLineDashCalls = (c.setLineDash as ReturnType<typeof vi.fn>).mock.calls;
+    expect(setLineDashCalls.length).toBeGreaterThan(0);
+    // The last call should be from setStroke in drawHaloThenMain (for the main stroke, not the halo).
+    const lastCall = setLineDashCalls[setLineDashCalls.length - 1] as [number[]];
+    expect(lastCall[0]).toEqual([0, 5]);
+    expect(c.lineCap).toBe('round');
+  });
+  it('applies solid dashPattern (empty array)', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeProjectCtx();
+    const h: Hline = {
+      id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+    };
+    renderDrawing(c, ctx, h, false);
+    const setLineDashCalls = (c.setLineDash as ReturnType<typeof vi.fn>).mock.calls;
+    expect(setLineDashCalls.length).toBeGreaterThan(0);
+    const lastCall = setLineDashCalls[setLineDashCalls.length - 1] as [number[]];
+    expect(lastCall[0]).toEqual([]);
+    expect(c.lineCap).toBe('butt');
+  });
+  it('applies dashed dashPattern and butt lineCap', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeProjectCtx();
+    const h: Hline = {
+      id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 3, lineStyle: 'dashed', paneId: 'candle',
+    };
+    renderDrawing(c, ctx, h, false);
+    const setLineDashCalls = (c.setLineDash as ReturnType<typeof vi.fn>).mock.calls;
+    expect(setLineDashCalls.length).toBeGreaterThan(0);
+    const lastCall = setLineDashCalls[setLineDashCalls.length - 1] as [number[]];
+    expect(lastCall[0]).toEqual([9, 6]);
+    expect(c.lineCap).toBe('butt');
   });
 });

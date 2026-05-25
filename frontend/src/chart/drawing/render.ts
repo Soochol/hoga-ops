@@ -1,7 +1,7 @@
 // frontend/src/chart/drawing/render.ts
 import type { IChartApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../../util/virtualAxis';
-import type { Drawing, Hline, Pencil, Trendline, PaneId } from './types';
+import type { Drawing, Hline, Pencil, Trendline, PaneId, LineStyle } from './types';
 import {
   type PaneSeriesMap,
   priceToCanvasY,
@@ -25,11 +25,20 @@ function priceToY(ctx: ProjectCtx, price: number): number | null {
   return priceToCanvasY(ctx.chart, ctx.paneSeries, ctx.paneId, price);
 }
 
+export function dashPattern(style: LineStyle, width: number): number[] {
+  switch (style) {
+    case 'solid':  return [];
+    case 'dashed': return [width * 3, width * 2];
+    case 'dotted': return [0, width * 2.5];
+  }
+}
+
 function setStroke(c: CanvasRenderingContext2D, d: Drawing, selected: boolean) {
   c.strokeStyle = d.color;
   c.lineWidth = selected ? d.width * 2 : d.width;
-  c.lineCap = 'round';
+  c.lineCap = d.lineStyle === 'dotted' ? 'round' : 'butt';
   c.lineJoin = 'round';
+  c.setLineDash(dashPattern(d.lineStyle, d.width));
 }
 
 function drawHaloThenMain(
@@ -43,6 +52,9 @@ function drawHaloThenMain(
     c.strokeStyle = d.color;
     c.globalAlpha = 0.3;
     c.lineWidth = d.width * 4;
+    c.lineCap = d.lineStyle === 'dotted' ? 'round' : 'butt';
+    c.lineJoin = 'round';
+    c.setLineDash(dashPattern(d.lineStyle, d.width));
     body();
     c.restore();
   }
