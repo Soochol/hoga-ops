@@ -2,9 +2,10 @@
 //
 // Chart Coordinates — pixel ↔ (realMs, price) conversions for the Drawing
 // Overlay. Every Y-conversion is pane-aware: the caller supplies a paneId
-// that identifies which pane's price scale to use. The Y returned by
-// lightweight-charts already includes the pane's vertical offset, so the
-// canvas Y can be used verbatim.
+// that identifies which pane's price scale to use. lightweight-charts v5
+// returns pane-LOCAL Y from `series.priceToCoordinate` / `coordinateToPrice`
+// (origin at the pane's top, not the chart's top), so `priceToCanvasY` adds
+// `paneTopY(paneId)` and `canvasYToPrice` subtracts it before round-trip.
 //
 // PaneSeriesMap is owned by ChartStage; each RangeSeriesPane registers
 // its first (primary) series on mount and clears it on unmount.

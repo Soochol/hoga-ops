@@ -237,7 +237,7 @@ def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
                 name=e["name"],
                 market=e["market"],
                 captured_count=0,
-                captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0},
+                captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
             )
             for e in raw_entries
         ]
@@ -335,7 +335,7 @@ async def _fetch_from_pykrx() -> list[SymbolHit]:
             name=n,
             market=m,  # type: ignore[arg-type]
             captured_count=0,
-            captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0},
+            captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
         )
         for c, n, m in rows
     ]
@@ -362,7 +362,7 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
                 st = check_disk_state(data_dir, code_dir.name, date_dir.name).state
                 bucket = breakdowns.setdefault(
                     code_dir.name,
-                    {"complete": 0, "source_partial": 0, "client_incomplete": 0},
+                    {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
                 )
                 if st == DiskState.COMPLETE:
                     bucket["complete"] += 1
@@ -370,6 +370,8 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
                     bucket["source_partial"] += 1
                 elif st == DiskState.CLIENT_INCOMPLETE:
                     bucket["client_incomplete"] += 1
+                elif st == DiskState.INVALID:
+                    bucket["invalid"] += 1
     raw_root = data_dir / "raw"
     if raw_root.exists():
         for date_dir in raw_root.iterdir():
@@ -385,7 +387,7 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
                 if st == DiskState.CLIENT_INCOMPLETE:
                     bucket = breakdowns.setdefault(
                         code_dir.name,
-                        {"complete": 0, "source_partial": 0, "client_incomplete": 0},
+                        {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
                     )
                     bucket["client_incomplete"] += 1
     return breakdowns
@@ -412,7 +414,7 @@ def load_disk_state(*, path: Path, data_dir: Path) -> None:
         return
     entries, fetched_at_ms = result
     breakdowns = _build_all_captured_breakdowns(data_dir)
-    empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0}
+    empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0}
     for h in entries:
         breakdown = breakdowns.get(h.code, empty)
         h.captured_count = breakdown["complete"]
@@ -543,7 +545,7 @@ async def _do_refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
         breakdowns = await loop.run_in_executor(
             None, _build_all_captured_breakdowns, data_dir
         )
-        empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0}
+        empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0}
         for h in entries:
             breakdown = breakdowns.get(h.code, empty)
             h.captured_count = breakdown["complete"]

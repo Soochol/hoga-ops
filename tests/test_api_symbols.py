@@ -130,9 +130,15 @@ def test_captured_breakdown_classifies_states(monkeypatch, tmp_path):
     )  # source_partial
     (tmp_path / "raw" / "20260520" / "005930").mkdir(parents=True)
     (tmp_path / "raw" / "20260520" / "005930" / "first_0001.tsv").write_text("")  # client_incomplete
+    (tmp_path / "parquet" / "20260521" / "005930").mkdir(parents=True)
+    (tmp_path / "parquet" / "20260521" / "005930" / "meta.json").write_text(
+        json.dumps({"collection_complete": True, "is_partial": False, "regular_session_close_ms": 0})
+    )  # invalid (close_ms=0 trips error-severity invariant per ADR-0020)
 
     breakdowns = symbols._build_all_captured_breakdowns(tmp_path)
-    assert breakdowns["005930"] == {"complete": 1, "source_partial": 1, "client_incomplete": 1}
+    assert breakdowns["005930"] == {
+        "complete": 1, "source_partial": 1, "client_incomplete": 1, "invalid": 1,
+    }
 
 
 def test_symbols_all_response_accepts_reason() -> None:

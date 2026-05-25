@@ -296,7 +296,7 @@ class SymbolHit(BaseModel):
     name: str
     market: Literal["KOSPI", "KOSDAQ"]
     captured_count: int                 # complete only — headline number (spec §11 Q18)
-    captured_breakdown: dict[str, int]  # {"complete": N, "source_partial": M, "client_incomplete": K}
+    captured_breakdown: dict[str, int]  # {"complete": N, "source_partial": M, "client_incomplete": K, "invalid": J}
 
 
 class SymbolsAllResponse(BaseModel):
