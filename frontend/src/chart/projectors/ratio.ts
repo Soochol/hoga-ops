@@ -4,16 +4,17 @@ import {
   type LineWidth,
   type Time,
   type UTCTimestamp,
+  type WhitespaceData,
 } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { quoteImbalance } from '../../util/imbalance';
-import { isAuctionMaskActive } from '../../util/auctionMask';
 import { resolveTokens } from '../../util/tokens';
 import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
+import { makeAuctionMaskGap } from '../util/auctionMaskGap';
 
 const TOKEN_SPEC = {
   // KRX 컨벤션: 매수=상승=빨강, 매도=하락=파랑. RatioPane은 price-direction
@@ -56,34 +57,29 @@ export function projectRatio(
   bundle: RangeBundle,
   axis: VirtualAxis,
   ctx: RatioPaneContext,
-): BaselineData<Time>[] {
-  // Backend (build_quote_ratio_slice) now buckets on linear ms-from-midnight
-  // and guarantees strictly-ascending unique timestamps per ADR-0010. If
-  // setData ever throws "asc ordered by time" again, the regression is on
-  // the backend side; sortAndDedupeByTime in util/time.ts is still available
-  // as a defense-in-depth wrapper.
-  return bundle.quote_ratio.points
-    .filter((p) => axis.contains(p.t))
-    .map((p) => {
-      const raw = quoteImbalance(p.bid_total, p.ask_total);
-      // Outlier clamp: priceFormat above renders `1 + |raw|`, so the chart
-      // label crosses `outlierThreshold` once ask/bid (or bid/ask) reaches
-      // that multiple. Such spikes dominate the autoscale and flatten the
-      // meaningful signal — mask to 0 alongside the auction-window mask.
-      // Threshold + enable flag are per-tab prefs (ChartViewPrefs).
-      const isExtreme =
-        ctx.outlierFilterEnabled && 1 + Math.abs(raw) >= ctx.outlierThreshold;
-      return {
-        time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
-        // CONTEXT.md "Auction Window" — during 15:20–15:30 the bid/ask ratio is
-        // dominated by one-sided accumulation. `isAuctionMaskActive` owns the
-        // rule (per-tab toggle + axis threshold).
-        value:
-          isAuctionMaskActive(ctx.auctionWindowMask, axis, p.t) || isExtreme
-            ? 0
-            : raw,
-      };
+): (BaselineData<Time> | WhitespaceData<Time>)[] {
+  const gap = makeAuctionMaskGap(axis, ctx.auctionWindowMask);
+  const out: (BaselineData<Time> | WhitespaceData<Time>)[] = [];
+  for (const p of bundle.quote_ratio.points) {
+    if (!axis.contains(p.t)) continue;
+    const br = gap.breakBefore(p.t);
+    if (br) out.push(br);
+    if (gap.isHidden(p.t)) continue;
+    const raw = quoteImbalance(p.bid_total, p.ask_total);
+    // Outlier clamp: priceFormat above renders `1 + |raw|`, so the chart
+    // label crosses `outlierThreshold` once ask/bid (or bid/ask) reaches
+    // that multiple. Such spikes dominate the autoscale and flatten the
+    // meaningful signal — mask to 0 (ADR-0026). Auction-window hiding
+    // (ADR-0029) is handled above; outliers still use value-0 because
+    // they are scattered, not bounded, and need pointwise treatment.
+    const isExtreme =
+      ctx.outlierFilterEnabled && 1 + Math.abs(raw) >= ctx.outlierThreshold;
+    out.push({
+      time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
+      value: isExtreme ? 0 : raw,
     });
+  }
+  return out;
 }
 
 // Single selector + useShallow so the returned object reference is stable

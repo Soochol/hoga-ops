@@ -41,23 +41,50 @@ describe('projectRatio', () => {
     expect(projectRatio(bundle, axis, baseCtx)).toHaveLength(1);
   });
 
-  it('masks closing-auction-window values to 0 when auctionWindowMask=true', () => {
+  it('drops closing-auction-window points and inserts a WhitespaceData break when auctionWindowMask=true', () => {
     const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
     const bundle: any = {
       quote_ratio: {
         points: [
-          { t: sessionOpenMs, bid_total: 100, ask_total: 200 },              // outside → imbalance kept
-          { t: auctionStartMs + 60_000, bid_total: 100, ask_total: 1000 },   // inside auction window
+          { t: sessionOpenMs, bid_total: 100, ask_total: 200 },              // outside → kept
+          { t: auctionStartMs + 60_000, bid_total: 100, ask_total: 1000 },   // inside → hidden
+          { t: auctionStartMs + 120_000, bid_total: 100, ask_total: 1000 },  // inside → hidden
+        ],
+      },
+    };
+    const masked = projectRatio(bundle, axis, { ...baseCtx, auctionWindowMask: true });
+
+    // Outside-window point + one whitespace at the boundary = 2 entries.
+    // Both in-auction points are absent.
+    expect(masked).toHaveLength(2);
+
+    // First entry: the kept pre-auction point with real value.
+    const first = masked[0] as { time: number; value: number };
+    expect(first.time).toBe(0);
+    expect(first.value).toBeCloseTo(1.0, 5);
+
+    // Second entry: a WhitespaceData (no `value` field) at virtual time
+    // 1ms before the first in-auction point. The first in-auction point's
+    // virtual seconds is (auctionStartMs + 60_000 - sessionOpenMs) / 1000.
+    const expectedBreakTime = (auctionStartMs + 60_000 - sessionOpenMs - 1) / 1000;
+    const ws = masked[1] as { time: number; value?: number };
+    expect(ws.time).toBe(expectedBreakTime);
+    expect(ws.value).toBeUndefined();
+  });
+
+  it('keeps auction-window points when auctionWindowMask=false', () => {
+    const auctionStartMs = sessionOpenMs + 22_800_000;
+    const bundle: any = {
+      quote_ratio: {
+        points: [
+          { t: auctionStartMs + 60_000, bid_total: 100, ask_total: 1000 },
         ],
       },
     };
     const unmasked = projectRatio(bundle, axis, baseCtx);
-    const masked = projectRatio(bundle, axis, { ...baseCtx, auctionWindowMask: true });
-    // Outside the window, masked and unmasked agree
-    expect(masked[0].value).toBe(unmasked[0].value);
-    // Inside the window, masked is forced to 0
-    expect(masked[1].value).toBe(0);
-    expect(unmasked[1].value).not.toBe(0);
+    expect(unmasked).toHaveLength(1);
+    const p = unmasked[0] as { value: number };
+    expect(p.value).not.toBe(0);
   });
 
   it('masks outlier points to 0 when outlierFilterEnabled=true and label >= threshold', () => {
