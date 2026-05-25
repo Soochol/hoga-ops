@@ -186,6 +186,17 @@ export default function DrawingPropertyPanel() {
           })}
         </div>
       )}
+
+      <div className="w-px h-4 bg-border mx-0.5" />
+      <button
+        type="button"
+        data-testid="drawing-delete"
+        aria-label="삭제"
+        onClick={() => useDrawingsStore.getState().remove(id)}
+        className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-bg-input-hover text-[#F43F5E]"
+      >
+        🗑
+      </button>
     </div>
   );
 }

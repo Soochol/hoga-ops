@@ -153,3 +153,20 @@ describe('DrawingPropertyPanel — line style', () => {
     expect(useDrawingsStore.getState().defaults.lineStyle).toBe('dashed');
   });
 });
+
+describe('DrawingPropertyPanel — delete', () => {
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+    useDrawingsStore.getState().setActiveCode('005930');
+    useDrawingsStore.getState().add(HLINE);
+    useDrawingsStore.getState().setSelected('h1');
+  });
+
+  it('clicking delete removes the drawing and hides the panel', () => {
+    const { container } = render(<DrawingPropertyPanel />);
+    fireEvent.click(screen.getByTestId('drawing-delete'));
+    expect(useDrawingsStore.getState().byCode.get('005930')).toEqual([]);
+    expect(useDrawingsStore.getState().selectedId).toBeNull();
+    expect(container.querySelector('[data-drawing-property-panel]')).toBeNull();
+  });
+});
