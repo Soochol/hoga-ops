@@ -38,6 +38,45 @@ describe('DrawingPropertyPanel — visibility gate', () => {
   });
 });
 
+describe('DrawingPropertyPanel — thickness', () => {
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+    useDrawingsStore.getState().setActiveCode('005930');
+    useDrawingsStore.getState().add(HLINE);
+    useDrawingsStore.getState().setSelected('h1');
+  });
+
+  it('thickness trigger shows current width', () => {
+    render(<DrawingPropertyPanel />);
+    expect(screen.getByTestId('drawing-thickness-trigger').textContent).toContain('2px');
+  });
+
+  it('clicking the thickness trigger opens a 5-item list', () => {
+    render(<DrawingPropertyPanel />);
+    fireEvent.click(screen.getByTestId('drawing-thickness-trigger'));
+    const items = screen.getAllByTestId(/^drawing-thickness-item-/);
+    expect(items).toHaveLength(STROKE_WIDTHS.length);
+  });
+
+  it('clicking an item updates drawing.width and defaults.width', () => {
+    render(<DrawingPropertyPanel />);
+    fireEvent.click(screen.getByTestId('drawing-thickness-trigger'));
+    fireEvent.click(screen.getByTestId('drawing-thickness-item-4'));
+    const drawn = useDrawingsStore.getState().byCode.get('005930')!.find((d) => d.id === 'h1')!;
+    expect(drawn.width).toBe(4);
+    expect(useDrawingsStore.getState().defaults.width).toBe(4);
+  });
+
+  it('only one popover open at a time — opening thickness closes color', () => {
+    render(<DrawingPropertyPanel />);
+    fireEvent.click(screen.getByTestId('drawing-color-trigger'));
+    expect(screen.getAllByTestId(/^drawing-color-swatch-/)).toHaveLength(16);
+    fireEvent.click(screen.getByTestId('drawing-thickness-trigger'));
+    expect(screen.queryAllByTestId(/^drawing-color-swatch-/)).toHaveLength(0);
+    expect(screen.getAllByTestId(/^drawing-thickness-item-/)).toHaveLength(5);
+  });
+});
+
 describe('DrawingPropertyPanel — color', () => {
   beforeEach(() => {
     useDrawingsStore.getState().__resetForTests();

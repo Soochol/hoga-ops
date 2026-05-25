@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useDrawingsStore } from '../state/drawings';
-import { COLOR_PALETTE } from './drawing/types';
+import { COLOR_PALETTE, STROKE_WIDTHS } from './drawing/types';
 
 type OpenPopover = 'color' | 'thickness' | 'lineStyle' | null;
 
@@ -45,6 +45,11 @@ export default function DrawingPropertyPanel() {
 
   const pickColor = (color: string) => {
     useDrawingsStore.getState().update(id, { color });
+    setOpenPopover(null);
+  };
+
+  const pickWidth = (width: number) => {
+    useDrawingsStore.getState().update(id, { width });
     setOpenPopover(null);
   };
 
@@ -91,6 +96,40 @@ export default function DrawingPropertyPanel() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        data-testid="drawing-thickness-trigger"
+        aria-label="두께"
+        onClick={() => setOpenPopover(openPopover === 'thickness' ? null : 'thickness')}
+        className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-bg-input-hover text-xs"
+      >
+        <span className="inline-block w-4 border-t border-fg" style={{ borderTopWidth: drawing.width }} />
+        <span className="tabular-nums">{drawing.width}px</span>
+      </button>
+
+      {openPopover === 'thickness' && (
+        <div className="absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md p-1 shadow-xl min-w-[7rem]">
+          {STROKE_WIDTHS.map((w) => {
+            const isSelected = w === drawing.width;
+            return (
+              <button
+                key={w}
+                type="button"
+                data-testid={`drawing-thickness-item-${w}`}
+                onClick={() => pickWidth(w)}
+                className={
+                  'w-full px-2 py-1 flex items-center gap-2 rounded text-xs ' +
+                  (isSelected ? 'bg-bg-input-hover text-accent' : 'text-fg hover:bg-bg-input-hover')
+                }
+              >
+                <span className="inline-block w-6 border-t border-current" style={{ borderTopWidth: w }} />
+                <span className="tabular-nums">{w}px</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
