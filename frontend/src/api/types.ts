@@ -273,7 +273,7 @@ export interface EnqueueRequest {
 export interface EnqueueDedupedRow {
   code: string;
   date: string;
-  reason: 'already_in_queue' | 'already_running';
+  reason: 'already_in_queue' | 'already_running' | 'already_complete' | 'already_skipped';
 }
 
 /** Mirrors hoga/api/models.py::EnqueueResponse. */
