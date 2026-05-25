@@ -36,10 +36,12 @@ export type PaneId =
 
 interface DrawingBase {
   id: DrawingId;
-  /** Stroke color. v1 always references the accent token via util/tokens. */
+  /** Stroke color as hex string. */
   color: string;
-  /** Stroke width in CSS pixels. v1 fixed to 1.5. */
+  /** Stroke width in CSS pixels. */
   width: number;
+  /** Line style (solid, dashed, or dotted). */
+  lineStyle: LineStyle;
   /** Pane this drawing belongs to. Required. See ADR-0028. */
   paneId: PaneId;
 }
@@ -74,3 +76,35 @@ export const HIT_THRESHOLD = {
   trendlineHandle: 6,
   pencil: 8,
 } as const;
+
+export type LineStyle = 'solid' | 'dashed' | 'dotted';
+
+export const STROKE_WIDTHS = [1, 2, 3, 4, 5] as const;
+export const LINE_STYLES = ['solid', 'dashed', 'dotted'] as const;
+
+/**
+ * Sixteen-colour palette for user-authored Drawings. A fourth "user
+ * annotation layer" category alongside DESIGN.md's three system / status /
+ * market-direction categories — distinct because annotations are user
+ * content, not system chrome. See ADR-0032.
+ */
+export const COLOR_PALETTE = [
+  '#14B8A6', '#10B981', '#F43F5E', '#F59E0B',
+  '#EF4444', '#F97316', '#EAB308', '#84CC16',
+  '#06B6D4', '#3B82F6', '#8B5CF6', '#EC4899',
+  '#FFFFFF', '#9CA3AF', '#4B5563', '#1F2937',
+] as const;
+
+export type DrawingDefaults = {
+  color: string;
+  width: number;
+  lineStyle: LineStyle;
+};
+
+/** Seed used when no persisted defaults exist. Teal accent, integer-step
+ *  2 px, solid. */
+export const INITIAL_DEFAULTS: DrawingDefaults = {
+  color: '#14B8A6',
+  width: 2,
+  lineStyle: 'solid',
+};
