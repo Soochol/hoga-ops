@@ -105,6 +105,7 @@ class QueueItemState:
     error: CaptureError | None = None
     skip_reason: SkipReason | None = None
     cancel_token: Any = None
+    attempt: int = 1
 
     def to_progress(self) -> CaptureProgress | None:
         if self.pages_done == 0:
@@ -140,6 +141,7 @@ class QueueItemState:
             result=self.result,
             error=self.error,
             skip_reason=self.skip_reason,
+            attempt=self.attempt,
         )
 
     @property
@@ -283,6 +285,7 @@ def _persist_queue_locked() -> None:
             force_retry=s.force_retry,
             enqueued_at_ms=s.enqueued_at_ms,
             pause_origin=s.pause_origin,
+            attempt=s.attempt,
         )
         for s in _items_in_restore_order()
     ]
@@ -323,6 +326,7 @@ def _restore_queue_from_manifest(data_dir: Path) -> None:
             enqueued_at_ms=item.enqueued_at_ms,
             pause_origin=item.pause_origin,
             phase="cancelled" if item.pause_origin else "queued",
+            attempt=item.attempt,
         )
         if item.pause_origin:
             _done.append(state)

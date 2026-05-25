@@ -164,6 +164,7 @@ class QueueItem(BaseModel):
     result: CaptureResult | None = None
     error: CaptureError | None = None
     skip_reason: SkipReason | None = None
+    attempt: int = 1  # 1 = first try; Retry-enqueued items carry prior + 1 (ADR-0031)
 
 
 
@@ -253,6 +254,7 @@ class QueueManifestItem(BaseModel):
     force_retry: bool
     enqueued_at_ms: int
     pause_origin: bool
+    attempt: int = 1  # ADR-0031: additive, schema_version unchanged
 
 
 class QueueManifest(BaseModel):
