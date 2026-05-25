@@ -841,6 +841,30 @@ def _make_item_id(code: str, date: str) -> str:
     return f"{stamp}-{code}-{date}"
 
 
+def _publish_queue_mutations(
+    *,
+    dismissed_ids: list[str] | None = None,
+    enqueued: list["QueueItemState"] | None = None,
+) -> None:
+    """Emit the standard SSE sequence for a queue mutation: ``CaptureDismissedEvent``
+    first (so frontends remove the old rows), then ``CaptureQueuedEvent`` (so they
+    add the new ones). Either argument may be omitted or empty — empty events are
+    skipped.
+
+    All three mutation sites that move rows out of ``_done`` and/or surface fresh
+    rows in ``_queue`` route through here: explicit Retry (ADR-0031), implicit
+    Retry via ``addItems`` (ADR-0033), and ``dismissDone`` (dismissal only).
+    Concentrating the "dismissed-before-queued" ordering invariant here means
+    new mutation sites can't accidentally reverse it.
+
+    Caller MUST have released ``_lock`` first — the helper publishes synchronously.
+    """
+    if dismissed_ids:
+        _publish_event(CaptureDismissedEvent(item_ids=dismissed_ids))
+    if enqueued:
+        _publish_event(CaptureQueuedEvent(items=[s.to_wire() for s in enqueued]))
+
+
 @dataclass
 class _RetryResult:
     """Internal Retry outcome — what the HTTP handler turns into RetryResponse.
@@ -919,12 +943,7 @@ async def _retry_items(item_ids: list[str]) -> _RetryResult:
             _wakeup.set()
         _persist_queue_locked()
 
-    # Publish events outside the lock — dismissed first so the UI removes
-    # the old rows before the new ones land.
-    if dismissed:
-        _publish_event(CaptureDismissedEvent(item_ids=dismissed))
-    if enqueued:
-        _publish_event(CaptureQueuedEvent(items=[s.to_wire() for s in enqueued]))
+    _publish_queue_mutations(dismissed_ids=dismissed, enqueued=enqueued)
 
     return _RetryResult(enqueued=enqueued, skipped=skipped, dismissed_item_ids=dismissed)
 
@@ -1080,12 +1099,8 @@ def build_router(
                 _wakeup.set()
             _persist_queue_locked()  # ADR-0019 — still inside async with _lock
 
-        # 4. Emit dismissed event FIRST (so frontend removes old rows before new rows appear),
-        #    then queued event.
-        if done_dismissed_ids:
-            _publish_event(CaptureDismissedEvent(item_ids=done_dismissed_ids))
-        if enqueued:
-            _publish_event(CaptureQueuedEvent(items=[s.to_wire() for s in enqueued]))
+        # 4. Emit dismissed-then-queued via the shared helper (ordering invariant).
+        _publish_queue_mutations(dismissed_ids=done_dismissed_ids, enqueued=enqueued)
 
         return EnqueueResponse(
             enqueued=[s.to_wire() for s in enqueued],
@@ -1152,7 +1167,6 @@ def build_router(
         async with _lock:
             ids = [s.item_id for s in _done]
             _done.clear()
-        if ids:
-            _publish_event(CaptureDismissedEvent(item_ids=ids))
+        _publish_queue_mutations(dismissed_ids=ids)
 
     return router
