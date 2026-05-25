@@ -46,12 +46,14 @@ For each candidate `(code, date)` pair in an `addItems` request, dedupe is check
    |---|---|---|
    | `failed`    | auto re-enqueue (attempt+1) | auto re-enqueue (attempt+1) |
    | `cancelled` | auto re-enqueue (attempt+1) | auto re-enqueue (attempt+1) |
-   | `done`      | **`already_complete`**      | auto re-enqueue (attempt+1) |
+   | `done`      | **`already_complete`** (always) | **`already_complete`** (always) |
    | `skipped`   | **`already_skipped`**       | auto re-enqueue (attempt+1) |
 
 4. **Otherwise** — fresh `QueueItemState` with `attempt=1`, exactly as today.
 
-**Unifying principle.** `force_retry=false` is the *gap-fill* mode: completed work (`done` / `skipped`) is preserved as a courtesy. `force_retry=true` is the *overwrite* mode: every terminal state is re-attempted. `failed` and `cancelled` are auto re-enqueued in both modes because their prior attempt produced nothing worth preserving.
+**Unifying principle.** `force_retry=false` is the *gap-fill* mode: completed work (`done` / `skipped`) is preserved. `force_retry=true` extends to `skipped` (where it has meaningful effect on `no_upstream_data` / `source_partial` via [decide_capture](../../../hoga/api/eligibility.py#L54)). `failed` and `cancelled` are auto re-enqueued in both modes because their prior attempt produced nothing worth preserving.
+
+**Why `done` is `always_dedupe`.** [decide_capture](../../../hoga/api/eligibility.py#L76-L77) treats `DiskState.COMPLETE` as `skip_reason="already_complete"` regardless of `force_retry`. The current `force_retry` semantic (per CONTEXT.md `No Upstream Data`) only governs sentinel + SOURCE_PARTIAL artifact deletion, not COMPLETE data overwrite. If we auto re-enqueued `done` items on `force_retry=true`, the worker would immediately mark them skipped — wasted SSE traffic with no actual re-capture. Honest re-capture of completed data is a separate feature requiring `decide_capture` semantics extension (out of scope; would be a new ADR).
 
 **Auto re-enqueue mechanics** (per matched `_done` item):
 
@@ -102,7 +104,11 @@ Nothing else on the wire changes. `EnqueueResponse.enqueued` now also carries au
 
 3. **Within-request duplicate (code, date).** Existing `seen_in_request` guard remains. Two same-pair entries in one request → first auto-retries (or freshly enqueues), second is deduped as `already_in_queue`.
 
-4. **`pause_origin` carve-out (ADR-0019).** `_done` items with `pause_origin=True` and `phase="cancelled"` are the cookie-pause recovery list — `resume_queue` re-enqueues them on user resume. If `addItems` auto-dismisses one of these, the recovery mechanism silently breaks. Defense: in the dedupe loop, skip `_done` entries with `pause_origin=True` — let the new row enqueue normally (a temporary duplicate is acceptable; the original will be cleaned up by `resume_queue`).
+4. **`pause_origin` items.** `_done` items with `pause_origin=True` always have `phase="cancelled"` (ADR-0019 §"Resolution"). They are auto re-enqueued by the cancelled rule — no special carve-out needed. After auto re-enqueue:
+   - The new row is in `_queue` with `attempt+1` (and a fresh `pause_origin=False`).
+   - The old row is gone from `_done`.
+   - `resume_queue` still finds and re-enqueues any *other* `pause_origin` items not touched by this `addItems` request.
+   - If the queue is currently `_queue_paused=True` (cookie expired pending), the new row sits in `_queue` until the user clicks Resume — same as any other enqueued item in pause state.
 
 5. **In-loop `_done` mutation.** Calling `del _done[idx]` while iterating breaks indices. Implementation: collect indices/states to remove during the loop, then delete after the loop in reverse-index order (or use `_done[:] = [s for s in _done if s not in dismissed_set]`). The exact mechanic is an implementation choice for the plan.
 
@@ -117,30 +123,21 @@ Nothing else on the wire changes. `EnqueueResponse.enqueued` now also carries au
 **Backend** ([tests/test_api_captures_queue.py](../../../tests/test_api_captures_queue.py)):
 
 - `test_enqueue_dedupes_against_done_complete_with_force_false` — `done`-phase row + `force_retry=false` → `already_complete`; no `_done` mutation.
-- `test_enqueue_re_enqueues_done_complete_with_force_true_attempt_increments` — `done`-phase row + `force_retry=true` → old removed, new in `_queue` with `attempt=2`.
+- `test_enqueue_dedupes_against_done_complete_with_force_true` — `done`-phase row + `force_retry=true` → still `already_complete`; no `_done` mutation. Locks in the "force_retry doesn't extend to COMPLETE" invariant.
 - `test_enqueue_re_enqueues_failed_done_regardless_of_force_attempt_increments` — `failed` row, both `force_retry` values → auto re-enqueue.
 - `test_enqueue_re_enqueues_cancelled_done_regardless_of_force` — `cancelled` row, both `force_retry` values → auto re-enqueue.
 - `test_enqueue_dedupes_against_skipped_with_force_false` — `skipped` row + `force_retry=false` → `already_skipped`.
 - `test_enqueue_re_enqueues_skipped_with_force_true` — `skipped` row + `force_retry=true` → auto re-enqueue.
 - `test_enqueue_publishes_capture_dismissed_event_for_auto_reenqueued_items` — single event listing every old `item_id`, published before `CaptureQueuedEvent`.
-- `test_enqueue_preserves_pause_origin_cancelled_skips_auto_dismiss` — `pause_origin=True` + `phase=cancelled` in `_done` is NOT auto-dismissed (carve-out).
+- `test_enqueue_re_enqueues_pause_origin_cancelled_via_cancelled_rule` — `pause_origin=True` + `phase=cancelled` in `_done` → auto re-enqueued (cancelled rule applies; no special carve-out).
 - `test_enqueue_uses_request_force_retry_not_old_item_force_retry` — old had `force_retry=true`, request has `force_retry=false` → new state's `force_retry == false`.
 - `test_enqueue_response_includes_auto_reenqueued_items_in_enqueued_list` — response body's `enqueued` array contains both fresh items and auto-retried items (with `attempt > 1`).
 
 **Frontend** — no behavior tests needed. The wire-type expansion is mechanical; the existing `capture_dismissed` SSE handler (Task 7 of the retry-bulk plan) handles row removal. Optional sanity check: add `already_complete` / `already_skipped` to any existing `EnqueueDedupedRow.reason` tests for fixture completeness.
 
-## Decision rationale (for ADR consideration)
+## Decision rationale
 
-This change *could* warrant an ADR because:
-
-1. **Hard to reverse** — changes the wire contract (`reason` Literal grows by 2; new auto re-enqueue path).
-2. **Surprising without context** — future readers will wonder why `addItems` looks like a hybrid of "new enqueue" and "retry."
-3. **Result of a real trade-off** — alternatives were considered:
-   - **Frontend-only confirmation dialog** (rejected: doesn't fix backend duplicates if user clicks Confirm).
-   - **Always dedupe `_done` regardless of phase** (rejected: blocks the "I changed my mind after cancelling" flow and the explicit `force_retry=true` re-capture flow).
-   - **Always dedupe with reason, never auto-retry** (rejected: forces the user to a 2-step flow — dismissDone + addItems — for the most common case of "I want my failed items to retry").
-
-Recommend **ADR-0033** (or whatever the next number is) to record the per-phase decision table and the "gap-fill vs overwrite" framing. The Plan will create the ADR alongside the implementation commit.
+Recorded in [ADR-0033](../../adr/0033-addItems-phase-aware-done-dedupe.md). Per-phase decision table + four rejected alternatives (confirm dialog, always-dedupe, always-auto-retry, force_retry semantics extension).
 
 ## Open Questions
 
