@@ -23,7 +23,7 @@ describe('projectRatio', () => {
         ],
       },
     };
-    const data = projectRatio(bundle, axis, baseCtx);
+    const data = projectRatio(bundle, axis, baseCtx) as { time: number; value: number }[];
     expect(data[0].time).toBe(0);
     expect(data[0].value).toBe(0);
     expect(data[1].value).toBeCloseTo(1.0, 5);
@@ -102,7 +102,7 @@ describe('projectRatio', () => {
       outlierFilterEnabled: true,
       outlierThreshold: 100,
     };
-    const data = projectRatio(bundle, axis, ctx);
+    const data = projectRatio(bundle, axis, ctx) as { time: number; value: number }[];
     // Below threshold → kept
     expect(data[0].value).toBeCloseTo(98, 5);
     // At threshold (>=) → masked
@@ -119,7 +119,7 @@ describe('projectRatio', () => {
         ],
       },
     };
-    const data = projectRatio(bundle, axis, baseCtx);
+    const data = projectRatio(bundle, axis, baseCtx) as { time: number; value: number }[];
     expect(data[0].value).toBeCloseTo(199, 5);
   });
 });
