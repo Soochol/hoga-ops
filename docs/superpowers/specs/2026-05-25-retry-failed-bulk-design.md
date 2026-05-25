@@ -11,6 +11,12 @@ Capturing 100 items with the current queue ([CaptureQueue.tsx](../../../frontend
 1. **No bulk retry.** The ↻ button is per-row only. Recovering 10 failures means 10 clicks scattered across the list.
 2. **Duplicate rows on retry.** `addItems` enqueues a new `QueueItem` with a fresh `item_id`; the old `failed` row stays in the `done` bucket. The same (code, date) now appears twice — a new `capturing` row at the top, an old `failed` row at the bottom. Visually confusing at 100 items.
 
+## Terminology
+
+This spec introduces **Retry** as a domain term: re-enqueuing a previously-failed Queue Item with an incremented attempt counter. **Retry** is distinct from **force_retry** (a flag controlling whether sentinels / partial raw artifacts are deleted before capture — see `No Upstream Data` in CONTEXT.md). The two compose: a force-retried item that fails can be Retried, and the new attempt preserves `force_retry=true`.
+
+CONTEXT.md is updated alongside this spec.
+
 ## Goals
 
 - One click retries every failed item.
@@ -23,18 +29,21 @@ Capturing 100 items with the current queue ([CaptureQueue.tsx](../../../frontend
 - Filtering the queue list (All / Active / Failed). Header counter + bulk button are enough for the 100-item case.
 - Retry policies (backoff, max attempts, scheduled retry). User decides when to retry; no cap.
 - Migrating existing UI surfaces for `cancelled` or `skipped` rows.
+- **Retrying `skipped` items.** A `no_upstream_data` skip will repeat without `force_retry=true`, which is a separate UX (per-row force-retry toggle, not bulk). Bulk Retry is failed-only.
+- **Deduping `addItems` against `_done`.** If a user re-issues a date range that overlaps with a `failed` row currently in `_done`, the duplicate problem returns. Retry is the sanctioned recovery path for failed items; `addItems` remains for new enqueues. A future change to also dedupe `addItems` against failed `_done` rows is possible but out of scope.
+- **Migrating `dismissDone` to the new `capture_dismissed` event.** Worth doing for code-path symmetry but not required for this feature.
 
 ## Design
 
 ### New backend endpoint: `POST /api/captures/items/retry`
 
-Single entry point for both per-row ↻ and header "Retry Failed". Distinct from `POST /api/captures/items` so dedupe rules and attempt arithmetic stay in one place.
+Single entry point for both per-row ↻ and header "Retry Failed". Distinct from `POST /api/captures/items` so dedupe rules and attempt arithmetic stay in one place. The rationale for splitting (vs adding a `mode` flag to `/items`) is recorded in [ADR-0031](../../adr/0031-capture-retry-endpoint-split.md).
 
 **Request:**
 
 ```python
 class RetryRequest(BaseModel):
-    item_ids: list[str]   # 1..500 item_ids from the done bucket
+    item_ids: list[str]   # item_ids from the done bucket; no explicit cap (matches /items)
 ```
 
 **Response:**
@@ -77,7 +86,7 @@ class CaptureDismissedEvent(BaseModel):
     item_ids: list[str]
 ```
 
-Tells the frontend to drop these item_ids from any bucket (almost always `done`). The existing `dismissDone` flow should publish this event too — currently it relies on the client-side `invalidateQueries` backstop in [useCaptureQueue.ts:96-99](../../../frontend/src/capture/useCaptureQueue.ts#L96-L99). Migrating it to the same event makes done-removal a single code path.
+Tells the frontend to drop these item_ids from any bucket (almost always `done`). Emitted only by the new Retry flow in this spec. The existing `dismissDone` flow keeps its `invalidateQueries` backstop ([useCaptureQueue.ts:96-99](../../../frontend/src/capture/useCaptureQueue.ts#L96-L99)) — folding it onto the same event is a follow-up, not part of this work.
 
 ### Data model: `QueueItem.attempt`
 
@@ -90,7 +99,9 @@ attempt: int = 1   # 1 = first try; retry-enqueued items carry prior + 1
 Default of `1` covers:
 
 - Items created by `addItems` (the existing path doesn't pass an explicit `attempt`).
-- Persisted queue snapshots ([ADR-0019](../../adr/)) loaded after this change — missing field defaults to 1.
+- Persisted queue snapshots ([ADR-0019](../../adr/0019-capture-queue-manifest-persistence.md)) loaded after this change — missing field defaults to 1.
+
+**Manifest schema_version stays at `1`.** ADR-0019 reserves a quarantine path for true schema breaks; a pure-additive field with a safe default is backward compatible by construction. Old manifest → load → pydantic defaults `attempt=1` → save with the new field. No migration code, no version bump.
 
 Frontend [types.ts:156](../../../frontend/src/api/types.ts#L156) mirrors the new field. No migration script needed.
 
