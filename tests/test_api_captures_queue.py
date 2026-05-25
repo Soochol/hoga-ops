@@ -14,6 +14,7 @@ from hoga.api.captures import QueueItemState
 from hoga.api.captures_fake import FakeHogaplayClient
 from hoga.api.captures_persistence import manifest_path
 from hoga.api.disk_state import Classification, DiskState
+from hoga.api.models import RetrySkippedRow
 
 
 @pytest.fixture(autouse=True)
@@ -955,7 +956,7 @@ async def test_retry_items_skips_not_found(monkeypatch, tmp_path):
     monkeypatch.setattr(captures, "_data_dir", tmp_path, raising=False)
     result = await captures._retry_items(["does-not-exist"])
     assert result.enqueued == []
-    assert result.skipped == [{"item_id": "does-not-exist", "reason": "not_found"}]
+    assert result.skipped == [RetrySkippedRow(item_id="does-not-exist", reason="not_found")]
     assert result.dismissed_item_ids == []
 
 
@@ -969,7 +970,7 @@ async def test_retry_items_skips_not_failed(monkeypatch, tmp_path):
     result = await captures._retry_items(["done-1"])
 
     assert result.enqueued == []
-    assert result.skipped == [{"item_id": "done-1", "reason": "not_failed"}]
+    assert result.skipped == [RetrySkippedRow(item_id="done-1", reason="not_failed")]
     # Done item remains in _done untouched.
     assert any(s.item_id == "done-1" for s in captures._done)
 
@@ -986,7 +987,7 @@ async def test_retry_items_skips_already_in_queue(monkeypatch, tmp_path):
     result = await captures._retry_items(["old-2"])
 
     assert result.enqueued == []
-    assert result.skipped == [{"item_id": "old-2", "reason": "already_in_queue"}]
+    assert result.skipped == [RetrySkippedRow(item_id="old-2", reason="already_in_queue")]
     # Failed item is NOT removed when skipped.
     assert any(s.item_id == "old-2" for s in captures._done)
 
@@ -1003,7 +1004,7 @@ async def test_retry_items_skips_already_running(monkeypatch, tmp_path):
     result = await captures._retry_items(["old-3"])
 
     assert result.enqueued == []
-    assert result.skipped == [{"item_id": "old-3", "reason": "already_running"}]
+    assert result.skipped == [RetrySkippedRow(item_id="old-3", reason="already_running")]
 
 
 async def test_retry_items_bulk_mixed_outcomes(monkeypatch, tmp_path):
@@ -1020,7 +1021,7 @@ async def test_retry_items_bulk_mixed_outcomes(monkeypatch, tmp_path):
 
     assert len(result.enqueued) == 1
     assert result.enqueued[0].code == "005930"
-    skip_reasons = {row["item_id"]: row["reason"] for row in result.skipped}
+    skip_reasons = {row.item_id: row.reason for row in result.skipped}
     assert skip_reasons == {"missing": "not_found", "d1": "not_failed"}
     assert result.dismissed_item_ids == ["f1"]
 
@@ -1036,7 +1037,7 @@ async def test_retry_items_dedupes_duplicates_within_batch(monkeypatch, tmp_path
     result = await captures._retry_items(["dup", "dup"])
 
     assert len(result.enqueued) == 1
-    assert result.skipped == [{"item_id": "dup", "reason": "not_found"}]
+    assert result.skipped == [RetrySkippedRow(item_id="dup", reason="not_found")]
 
 
 async def test_retry_items_persists_manifest_after_mutation(monkeypatch, tmp_path):

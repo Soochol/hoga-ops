@@ -843,9 +843,14 @@ def _make_item_id(code: str, date: str) -> str:
 
 @dataclass
 class _RetryResult:
-    """Internal Retry outcome — what the HTTP handler turns into RetryResponse."""
+    """Internal Retry outcome — what the HTTP handler turns into RetryResponse.
+
+    `skipped` is already-typed `RetrySkippedRow`s (not raw dicts) so the route
+    handler is a one-line pass-through and a future skip-reason rename is caught
+    at type-check time, not at request time.
+    """
     enqueued: list[QueueItemState]
-    skipped: list[dict]                     # [{"item_id": str, "reason": str}]
+    skipped: list[RetrySkippedRow]
     dismissed_item_ids: list[str]           # original ids removed from _done
 
 
@@ -865,7 +870,7 @@ async def _retry_items(item_ids: list[str]) -> _RetryResult:
     from ``_done``; the second sees ``not_found``.
     """
     enqueued: list[QueueItemState] = []
-    skipped: list[dict] = []
+    skipped: list[RetrySkippedRow] = []
     dismissed: list[str] = []
     enqueued_at_ms = int(time.time() * 1000)
 
@@ -882,19 +887,19 @@ async def _retry_items(item_ids: list[str]) -> _RetryResult:
                     target_idx = i
                     break
             if target is None:
-                skipped.append({"item_id": item_id, "reason": "not_found"})
+                skipped.append(RetrySkippedRow(item_id=item_id, reason="not_found"))
                 continue
             # 2. Phase guard.
             if target.phase != "failed":
-                skipped.append({"item_id": item_id, "reason": "not_failed"})
+                skipped.append(RetrySkippedRow(item_id=item_id, reason="not_failed"))
                 continue
             # 3. Dedupe.
             pair = (target.code, target.date)
             if pair in active_pairs or pair in _inflight_paths:
-                skipped.append({"item_id": item_id, "reason": "already_running"})
+                skipped.append(RetrySkippedRow(item_id=item_id, reason="already_running"))
                 continue
             if pair in queue_pairs:
-                skipped.append({"item_id": item_id, "reason": "already_in_queue"})
+                skipped.append(RetrySkippedRow(item_id=item_id, reason="already_in_queue"))
                 continue
             # 4. Apply: remove old, enqueue new.
             del _done[target_idx]
@@ -1048,7 +1053,7 @@ def build_router(
         result = await _retry_items(req.item_ids)
         return RetryResponse(
             enqueued=[s.to_wire() for s in result.enqueued],
-            skipped=[RetrySkippedRow(**row) for row in result.skipped],
+            skipped=result.skipped,
         )
 
     @router.post("/items/{item_id}/cancel", status_code=202)
