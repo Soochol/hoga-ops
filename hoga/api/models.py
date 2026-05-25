@@ -292,7 +292,12 @@ class EnqueueRequest(BaseModel):
 class EnqueueDedupedRow(BaseModel):
     code: str
     date: str
-    reason: Literal["already_in_queue", "already_running"]
+    reason: Literal[
+        "already_in_queue",
+        "already_running",
+        "already_complete",  # ADR-0033 — addItems collided with _done(phase=done)
+        "already_skipped",   # ADR-0033 — addItems collided with _done(phase=skipped, no force_retry)
+    ]
 
 
 class EnqueueResponse(BaseModel):

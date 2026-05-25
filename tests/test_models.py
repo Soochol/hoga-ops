@@ -104,3 +104,23 @@ def test_retry_response_shape():
     )
     assert resp.enqueued[0].attempt == 2
     assert resp.skipped[0].reason == "not_found"
+
+
+def test_enqueue_deduped_row_accepts_already_complete():
+    from hoga.api.models import EnqueueDedupedRow
+    row = EnqueueDedupedRow(code="005930", date="20260520", reason="already_complete")
+    assert row.reason == "already_complete"
+
+
+def test_enqueue_deduped_row_accepts_already_skipped():
+    from hoga.api.models import EnqueueDedupedRow
+    row = EnqueueDedupedRow(code="005930", date="20260520", reason="already_skipped")
+    assert row.reason == "already_skipped"
+
+
+def test_enqueue_deduped_row_rejects_unknown_reason():
+    import pytest
+    from pydantic import ValidationError
+    from hoga.api.models import EnqueueDedupedRow
+    with pytest.raises(ValidationError):
+        EnqueueDedupedRow(code="005930", date="20260520", reason="bogus_reason")
