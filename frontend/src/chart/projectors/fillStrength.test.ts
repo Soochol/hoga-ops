@@ -305,11 +305,20 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
     // identical because the anchor at that slot is also transparent zero;
     // runningSum continues to accumulate regardless of emission.
     expect(out).toHaveLength(11);
-    expect(out[0]).toEqual({ time: 0, value: 70 });
+    // out[0] is the last pre-auction emission (only pre-auction point in
+    // this bundle); its color is patched transparent so the outgoing
+    // segment into the synthesized 15:20 anchor is invisible. The value
+    // is preserved (it's still the data sample, just with a hidden
+    // outgoing connector).
+    expect(out[0]).toMatchObject({ time: 0, value: 70, color: 'rgba(0,0,0,0)' });
 
-    // Every entry after the first kept point should be transparent-color.
-    for (let i = 1; i < out.length; i++) {
+    // Every entry is transparent-color: out[0] via the last-pre-auction
+    // outgoing patch, out[1..] via the synthesis transparency.
+    for (let i = 0; i < out.length; i++) {
       expect((out[i] as { color?: string }).color).toBe('rgba(0,0,0,0)');
+    }
+    // Every synthesized anchor carries value=0; only out[0] is value-bearing.
+    for (let i = 1; i < out.length; i++) {
       expect((out[i] as { value?: number }).value).toBe(0);
     }
 
@@ -350,6 +359,37 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
     expect(out[1]).toMatchObject({ value: -30 });
   });
 
+  it('paints the last pre-auction emission transparent so the line doesn’t bend into the 15:20 zero anchor', () => {
+    // Regression for: with mask=true and pre-auction emissions present,
+    // the gray cumulative line visibly sloped from the last pre-auction
+    // value to the synthesized value=0 anchor at 15:20. The fix patches
+    // the last pre-auction entry's `color` to transparent so its OUTGOING
+    // segment (the 15:19→15:20 connector) is invisible. The point itself
+    // retains its value — only the rendered connector is hidden.
+    const preAuctionMs = day1Open + 22_740_000; // 15:19
+    const bundle: any = {
+      bucket_ms: 60_000,
+      segments: [
+        { date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs },
+      ],
+      fill_strength: {
+        points: [
+          { t: day1Open, buy_qty: 100, sell_qty: 0 },        // +100 → 100
+          { t: preAuctionMs, buy_qty: 0, sell_qty: 250 },    // -250 → -150 (last pre-auction)
+        ],
+      },
+    };
+    const out = projectCumulativeNetFill(bundle, singleDayAxis, true);
+
+    // Find the last pre-auction value-bearing point (cumulative=-150 at 15:19).
+    const preAuctionEntries = out.filter(
+      (p) => 'value' in p && (p as { value: number }).value !== 0,
+    ) as { time: number; value: number; color?: string }[];
+    const last = preAuctionEntries.at(-1)!;
+    expect(last.value).toBe(-150);
+    expect(last.color).toBe('rgba(0,0,0,0)');
+  });
+
   it('runningSum continues to accumulate through hidden in-window points', () => {
     // Defensive invariant: even though FillStrength normally has no in-window
     // points (Auction Cross rows are filtered out backend-side), if any did
@@ -373,14 +413,16 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
       },
     };
     const out = projectCumulativeNetFill(bundle, extendedAxis, true);
-    // The last non-transparent (default-color) value-bearing point should
-    // carry the full accumulated running sum. Synthesized anchors are all
-    // transparent (value=0), so filter to entries WITHOUT the transparent
-    // color marker.
-    const lastReal = out
-      .filter((p) => 'value' in p && (p as { color?: string }).color !== 'rgba(0,0,0,0)')
-      .at(-1) as { value: number };
-    expect(lastReal.value).toBe(20); // 70 - 100 + 50 = 20
+    // The last value-bearing emission should carry the full accumulated
+    // running sum. Synthesized anchors are all value=0 (and transparent),
+    // and the last pre-auction emission has its color patched transparent
+    // to hide its outgoing connector into the auction window — but its
+    // VALUE is preserved. Filter by `value !== 0` to find the value-bearing
+    // emissions regardless of color override.
+    const valueBearing = out.filter(
+      (p) => 'value' in p && (p as { value: number }).value !== 0,
+    ) as { value: number }[];
+    expect(valueBearing.at(-1)?.value).toBe(20); // 70 - 100 + 50 = 20
   });
 });
 

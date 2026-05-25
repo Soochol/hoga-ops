@@ -141,6 +141,11 @@ export function projectCumulativeNetFill(
   bundle.segments.forEach((seg, segIdx) => {
     let runningSum = 0;
     let firstEmittedInSeg = true;
+    // Index into `out` of the most recent non-hidden emission for this
+    // segment. Used after the source-points loop to paint its outgoing
+    // segment transparent so the line doesn't visibly slope into the
+    // value=0 auction anchor at 15:20.
+    let lastPreAuctionIdx = -1;
     for (const p of bundle.fill_strength.points) {
       if (p.t < seg.session_open_ms || p.t > seg.session_close_ms) continue;
       runningSum += p.buy_qty - p.sell_qty;
@@ -182,6 +187,22 @@ export function projectCumulativeNetFill(
       }
 
       out.push({ time: thisVirtual, value: runningSum });
+      lastPreAuctionIdx = out.length - 1;
+    }
+
+    // Paint the last pre-auction emission's outgoing segment transparent.
+    // lightweight-charts uses each point's `color` for its OUTGOING segment,
+    // so without this patch the connector from (e.g.) 15:19's gray cumulative
+    // value to the value=0 synthesized anchor at 15:20 stays visible — the
+    // line bends toward zero at the auction boundary instead of disappearing
+    // cleanly. Skipped when there's no pre-auction emission to attach to
+    // (viewport starts inside the auction window): the synthesized anchors
+    // alone cover the visible region.
+    if (auctionWindowMask && lastPreAuctionIdx >= 0) {
+      out[lastPreAuctionIdx] = {
+        ...(out[lastPreAuctionIdx] as LineData<Time>),
+        ...LINE_HIDDEN_COLOR,
+      };
     }
 
     // Synthesize transparent-color anchors across the auction window even
