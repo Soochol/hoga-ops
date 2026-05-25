@@ -17,7 +17,7 @@ import {
   matchShortcut,
   type ToolCtx,
 } from './tools';
-import type { Drawing, DrawingDefaults, Point } from './types';
+import type { Drawing, Point } from './types';
 
 function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
   const defaultPoint: Point = { realMs: 1_700_000_000_000, price: 70_000 };
@@ -189,7 +189,7 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
 
 describe('eraserTool', () => {
   it('removes the drawing under the cursor', () => {
-    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, paneId: 'candle' };
+    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle' };
     const ctx = makeCtx({ hitTestAt: vi.fn(() => target) });
     eraserTool.onPointerDown!(ctx);
     expect(ctx.remove).toHaveBeenCalledWith('h1');
@@ -202,7 +202,7 @@ describe('eraserTool', () => {
   });
 
   it('never calls revertToSelectMode (continuous-erase flow)', () => {
-    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, paneId: 'candle' };
+    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle' };
     const ctx = makeCtx({ hitTestAt: vi.fn(() => target) });
     eraserTool.onPointerDown!(ctx);
     expect(ctx.revertToSelectMode).not.toHaveBeenCalled();
@@ -271,7 +271,7 @@ describe('selectTool', () => {
   });
 
   it('sets selection and initiates body drag on hit', () => {
-    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, paneId: 'candle' };
+    const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle' };
     const ctx = makeCtx({ hitTestAt: vi.fn(() => target) });
     selectTool.onPointerDown!(ctx);
     expect(ctx.setSelected).toHaveBeenCalledWith('h1');
