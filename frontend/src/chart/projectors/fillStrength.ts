@@ -147,10 +147,14 @@ export function projectCumulativeNetFill(
       if (!axis.contains(p.t)) continue;
       const thisVirtual = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
 
-      if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
-        out.push({ time: thisVirtual, value: 0, ...LINE_HIDDEN_COLOR });
-        continue;
-      }
+      // In-window source points are intentionally NOT emitted here: the
+      // per-bucket transparent anchor synthesis below covers the same slot,
+      // and emitting both would push two entries at identical virtual
+      // seconds (backend bucket_ms grid aligns source points with anchor
+      // slots), which lightweight-charts rejects with "data must be asc
+      // ordered by time". `runningSum` has already accumulated above, so
+      // the "hide is rendering, not data" invariant from ADR-0029 holds.
+      if (isAuctionHidden(axis, auctionWindowMask, p.t)) continue;
 
       if (firstEmittedInSeg) {
         const segOpenVirtual = (axis.toVirtual(seg.session_open_ms) / 1000) as UTCTimestamp;

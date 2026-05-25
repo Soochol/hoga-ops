@@ -297,12 +297,14 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
 
     // Breakdown:
     //  1 kept point at session_open
-    //  + 1 transparent point from the in-window source point
     //  + 10 synthesized transparent anchors (auction_start..session_close-1bucket
     //    at 1-min intervals = 15:20..15:29 = 10 anchors)
-    // = 12 entries total. Without the synthesis, the cumulative line would
-    // draw a diagonal across the auction band into the next day's first value.
-    expect(out).toHaveLength(12);
+    // = 11 entries total. The in-window source point at 15:21 is intentionally
+    // dropped: its bucket-aligned timestamp collides with the synthesized 15:21
+    // anchor, and `setData` requires strictly ascending unique times. Visually
+    // identical because the anchor at that slot is also transparent zero;
+    // runningSum continues to accumulate regardless of emission.
+    expect(out).toHaveLength(11);
     expect(out[0]).toEqual({ time: 0, value: 70 });
 
     // Every entry after the first kept point should be transparent-color.
@@ -311,12 +313,17 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
       expect((out[i] as { value?: number }).value).toBe(0);
     }
 
-    // Times: index 1 = the source-derived in-window point at 15:21, then
-    // synthesized anchors 15:20, 15:21, ..., 15:29 (the synthesis runs after
-    // the source-points loop so the in-window source's 15:21 entry comes
-    // first, then the synthesized 15:20 anchor). setData accepts non-strict-
-    // ascending if we sort downstream; lightweight-charts does sort the
-    // input for `setData`. Verify each time is within the auction window.
+    // Strict-ascending invariant: the projector output is fed directly to
+    // `series.setData()`, which rejects duplicate or out-of-order times with
+    // "Assertion failed: data must be asc ordered by time". Without this
+    // assertion the bug that prompted dropping in-window emissions could
+    // regress silently — the test would still pass on length and colors.
+    for (let i = 1; i < out.length; i++) {
+      const prev = (out[i - 1] as { time: number }).time;
+      const cur = (out[i] as { time: number }).time;
+      expect(cur).toBeGreaterThan(prev);
+    }
+
     const auctionStartT = (auctionStartMs - day1Open) / 1000;
     const auctionEndT = auctionStartT + 600;
     for (let i = 1; i < out.length; i++) {
@@ -415,11 +422,12 @@ describe('FILL_STRENGTH_SPEC — auctionWindowMask threading', () => {
     // cumulativeEnabled=false → always empty regardless of mask
     expect(cum.data(bundle, axis, { cumulativeEnabled: false, auctionWindowMask: true })).toEqual([]);
     expect(cum.data(bundle, axis, { cumulativeEnabled: false, auctionWindowMask: false })).toEqual([]);
-    // mask=true → the single in-auction source point becomes transparent AND
-    // 10 synthesized transparent anchors fill the rest of the auction window
+    // mask=true → the single in-auction source point is dropped (its bucket-
+    // aligned timestamp would collide with one of the synthesized anchors),
+    // and 10 synthesized transparent anchors fill the auction window
     // (1-min buckets from 15:20..15:29). Every entry is transparent-color.
     const masked = cum.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: true });
-    expect(masked).toHaveLength(11);
+    expect(masked).toHaveLength(10);
     for (const p of masked) {
       expect((p as any).color).toBe('rgba(0,0,0,0)');
       expect((p as { value?: number }).value).toBe(0);
