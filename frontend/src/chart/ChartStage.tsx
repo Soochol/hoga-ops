@@ -7,7 +7,8 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
-import type { PaneId } from './drawing/types';
+import type { PaneId, Drawing } from './drawing/types';
+import { priceToCanvasY, realMsToCanvasX } from './drawing/chartCoordinates';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
@@ -75,6 +76,11 @@ export type ChartStageProps = {
  * PriceStrip can read viewport state without prop-drilling (Task 6.5).
  */
 
+const PANEL_Y_OFFSET = -38;
+const PANEL_X_OFFSET_HLINE = 14;
+const PANEL_X_OFFSET_PENCIL = 0;
+const PANEL_X_OFFSET_TRENDLINE = -8;
+
 function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
@@ -103,6 +109,41 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
       return next;
     });
   }, []);
+
+  const computeAnchor = useCallback((d: Drawing) => {
+    if (!chart || !axis || !paneSeries) return null;
+
+    if (d.kind === 'hline') {
+      const y = priceToCanvasY(chart, paneSeries, d.paneId, d.price);
+      if (y == null) return null;
+      return { x: PANEL_X_OFFSET_HLINE, y: y + PANEL_Y_OFFSET };
+    }
+
+    if (d.kind === 'trendline') {
+      const xa = realMsToCanvasX(chart, axis, d.a.realMs);
+      const xb = realMsToCanvasX(chart, axis, d.b.realMs);
+      const ya = priceToCanvasY(chart, paneSeries, d.paneId, d.a.price);
+      const yb = priceToCanvasY(chart, paneSeries, d.paneId, d.b.price);
+      if (xa == null || xb == null || ya == null || yb == null) return null;
+      return {
+        x: (xa + xb) / 2 + PANEL_X_OFFSET_TRENDLINE,
+        y: (ya + yb) / 2 + PANEL_Y_OFFSET,
+      };
+    }
+
+    // pencil
+    let minX = Infinity, minY = Infinity;
+    for (const p of d.points) {
+      const x = realMsToCanvasX(chart, axis, p.realMs);
+      const y = priceToCanvasY(chart, paneSeries, d.paneId, p.price);
+      if (x != null && y != null) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+      }
+    }
+    if (!isFinite(minX) || !isFinite(minY)) return null;
+    return { x: minX + PANEL_X_OFFSET_PENCIL, y: minY + PANEL_Y_OFFSET };
+  }, [chart, axis, paneSeries]);
 
   // Per-pane prefs subscriptions live in each pane via useActivePrefs —
   // no ChartStage-level prefs subscription is needed. Each pane reads only
@@ -444,7 +485,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
               not real "no pressure" data. */}
           <AuctionWindowOverlay chart={chart} axis={axis} />
           <DrawingOverlay chart={chart} axis={axis} paneSeries={paneSeries} />
-          <DrawingPropertyPanel />
+          <DrawingPropertyPanel computeAnchor={computeAnchor} />
         </>
       )}
     </div>

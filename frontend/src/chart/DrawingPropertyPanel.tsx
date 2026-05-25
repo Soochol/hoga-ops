@@ -6,7 +6,14 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useDrawingsStore } from '../state/drawings';
-import { COLOR_PALETTE, STROKE_WIDTHS, LINE_STYLES, type LineStyle } from './drawing/types';
+import { COLOR_PALETTE, STROKE_WIDTHS, LINE_STYLES, type LineStyle, type Drawing } from './drawing/types';
+
+export type DrawingAnchor = { x: number; y: number };
+export type ComputeAnchorFn = (d: Drawing) => DrawingAnchor | null;
+
+type Props = {
+  computeAnchor?: ComputeAnchorFn;
+};
 
 const LINE_STYLE_LABELS: Record<LineStyle, string> = {
   solid: '실선',
@@ -19,7 +26,9 @@ const previewBorderStyle = (style: LineStyle): 'solid' | 'dashed' | 'dotted' =>
 
 type OpenPopover = 'color' | 'thickness' | 'lineStyle' | null;
 
-export default function DrawingPropertyPanel() {
+const INITIAL_POSITION = { x: 14, y: 20 };
+
+export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const drawing = useDrawingsStore((s) => {
@@ -30,7 +39,6 @@ export default function DrawingPropertyPanel() {
   const [openPopover, setOpenPopover] = useState<OpenPopover>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const INITIAL_POSITION = { x: 14, y: 20 };
   const [position, setPosition] = useState<{ x: number; y: number }>(INITIAL_POSITION);
   const dragRef = useRef<{
     startMouseX: number;
@@ -58,6 +66,15 @@ export default function DrawingPropertyPanel() {
       window.removeEventListener('mouseup', onUp);
     };
   }, []);
+
+  // Re-anchor when selection identity changes
+  useEffect(() => {
+    if (drawing == null) return;
+    const anchor = computeAnchor?.(drawing) ?? null;
+    setPosition(anchor ?? INITIAL_POSITION);
+  // Re-anchor only on selection identity change, not on every drawing edit
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawing?.id]);
 
   useEffect(() => {
     if (openPopover == null) return;

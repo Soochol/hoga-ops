@@ -1,5 +1,5 @@
 import { render, fireEvent, screen } from '@testing-library/react';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import DrawingPropertyPanel from './DrawingPropertyPanel';
 import { useDrawingsStore } from '../state/drawings';
 import type { Drawing } from './drawing/types';
@@ -192,5 +192,33 @@ describe('DrawingPropertyPanel — drag', () => {
 
     expect(parseFloat(panel.style.left)).toBeCloseTo(startLeft + 50);
     expect(parseFloat(panel.style.top)).toBeCloseTo(startTop + 30);
+  });
+});
+
+describe('DrawingPropertyPanel — initial position per selection', () => {
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+    useDrawingsStore.getState().setActiveCode('005930');
+  });
+
+  it('calls computeAnchor(drawing) when selectedId changes and applies its result', () => {
+    const computeAnchor = vi.fn().mockReturnValue({ x: 120, y: 80 });
+    useDrawingsStore.getState().add(HLINE);
+    useDrawingsStore.getState().setSelected('h1');
+    render(<DrawingPropertyPanel computeAnchor={computeAnchor} />);
+    const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
+    expect(computeAnchor).toHaveBeenCalledWith(HLINE);
+    expect(panel.style.left).toBe('120px');
+    expect(panel.style.top).toBe('80px');
+  });
+
+  it('null anchor (off-axis) falls back to INITIAL_POSITION', () => {
+    const computeAnchor = vi.fn().mockReturnValue(null);
+    useDrawingsStore.getState().add(HLINE);
+    useDrawingsStore.getState().setSelected('h1');
+    render(<DrawingPropertyPanel computeAnchor={computeAnchor} />);
+    const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
+    expect(panel.style.left).toBe('14px');
+    expect(panel.style.top).toBe('20px');
   });
 });
