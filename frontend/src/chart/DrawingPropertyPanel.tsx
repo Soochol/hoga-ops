@@ -30,6 +30,35 @@ export default function DrawingPropertyPanel() {
   const [openPopover, setOpenPopover] = useState<OpenPopover>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
+  const INITIAL_POSITION = { x: 14, y: 20 };
+  const [position, setPosition] = useState<{ x: number; y: number }>(INITIAL_POSITION);
+  const dragRef = useRef<{
+    startMouseX: number;
+    startMouseY: number;
+    startPanelX: number;
+    startPanelY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      setPosition({
+        x: d.startPanelX + (e.clientX - d.startMouseX),
+        y: d.startPanelY + (e.clientY - d.startMouseY),
+      });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
   useEffect(() => {
     if (openPopover == null) return;
     const onMouseDown = (e: MouseEvent) => {
@@ -67,13 +96,31 @@ export default function DrawingPropertyPanel() {
     setOpenPopover(null);
   };
 
+  const startDrag = (e: React.MouseEvent) => {
+    dragRef.current = {
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startPanelX: position.x,
+      startPanelY: position.y,
+    };
+  };
+
   return (
     <div
       ref={rootRef}
       data-drawing-property-panel
+      data-testid="drawing-property-panel"
       className="absolute z-30 inline-flex items-center gap-0.5 bg-bg-card border border-border rounded-lg p-1 shadow-lg"
-      style={{ top: 20, left: 14 }}
+      style={{ top: position.y, left: position.x }}
     >
+      <span
+        data-testid="drawing-panel-grip"
+        onMouseDown={startDrag}
+        className="px-1 h-7 inline-flex items-center text-fg-dim cursor-grab select-none"
+      >
+        ⋮⋮
+      </span>
+
       <button
         type="button"
         data-testid="drawing-color-trigger"

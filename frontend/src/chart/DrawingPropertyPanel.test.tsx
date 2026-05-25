@@ -170,3 +170,27 @@ describe('DrawingPropertyPanel — delete', () => {
     expect(container.querySelector('[data-drawing-property-panel]')).toBeNull();
   });
 });
+
+describe('DrawingPropertyPanel — drag', () => {
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+    useDrawingsStore.getState().setActiveCode('005930');
+    useDrawingsStore.getState().add(HLINE);
+    useDrawingsStore.getState().setSelected('h1');
+  });
+
+  it('dragging the grip translates the panel', () => {
+    render(<DrawingPropertyPanel />);
+    const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
+    const grip = screen.getByTestId('drawing-panel-grip');
+    const startLeft = parseFloat(panel.style.left);
+    const startTop = parseFloat(panel.style.top);
+
+    fireEvent.mouseDown(grip, { clientX: 100, clientY: 100 });
+    fireEvent.mouseMove(window, { clientX: 150, clientY: 130 });
+    fireEvent.mouseUp(window);
+
+    expect(parseFloat(panel.style.left)).toBeCloseTo(startLeft + 50);
+    expect(parseFloat(panel.style.top)).toBeCloseTo(startTop + 30);
+  });
+});
