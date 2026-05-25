@@ -29,7 +29,7 @@ describe('SettingsModal', () => {
   it('renders dialog with the auction-window toggle defaulting to ON', () => {
     render(<SettingsModal onClose={vi.fn()} />);
     expect(screen.getByRole('dialog', { name: '설정' })).toBeTruthy();
-    const sw = screen.getByRole('switch', { name: '호가비 동시호가 마스킹' });
+    const sw = screen.getByRole('switch', { name: '동시호가 구간 지표 숨김' });
     expect(sw.getAttribute('aria-checked')).toBe('true');
   });
 
@@ -45,7 +45,7 @@ describe('SettingsModal', () => {
     render(<SettingsModal onClose={onClose} />);
     fireEvent.click(screen.getByRole('dialog'));
     expect(onClose).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('switch', { name: '호가비 동시호가 마스킹' }));
+    fireEvent.click(screen.getByRole('switch', { name: '동시호가 구간 지표 숨김' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -65,10 +65,10 @@ describe('SettingsModal', () => {
 
   it('toggle click flips the per-tab flag in the store', () => {
     render(<SettingsModal onClose={vi.fn()} />);
-    const sw = screen.getByRole('switch', { name: '호가비 동시호가 마스킹' });
+    const sw = screen.getByRole('switch', { name: '동시호가 구간 지표 숨김' });
     expect(sw.getAttribute('aria-checked')).toBe('true');
     fireEvent.click(sw);
-    const swAfter = screen.getByRole('switch', { name: '호가비 동시호가 마스킹' });
+    const swAfter = screen.getByRole('switch', { name: '동시호가 구간 지표 숨김' });
     expect(swAfter.getAttribute('aria-checked')).toBe('false');
     const activeId = useTabsStore.getState().activeTabId;
     expect(useTabsStore.getState().getPrefs(activeId).auctionWindowMask).toBe(false);
@@ -80,7 +80,7 @@ describe('SettingsModal', () => {
     expect(chartBtn.getAttribute('aria-pressed')).toBe('true');
     const indicatorsBtn = screen.getByRole('button', { name: '보조지표' });
     expect(indicatorsBtn.getAttribute('aria-pressed')).toBe('false');
-    expect(screen.getByRole('switch', { name: '호가비 동시호가 마스킹' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: '동시호가 구간 지표 숨김' })).toBeTruthy();
   });
 
   it('clicking 보조지표 switches content to IndicatorsSection (MA rows)', () => {
@@ -90,7 +90,7 @@ describe('SettingsModal', () => {
     expect(screen.getByText('MA 5')).toBeTruthy();
     expect(screen.getByText('MA 120')).toBeTruthy();
     // Chart toggle is no longer in the DOM.
-    expect(screen.queryByRole('switch', { name: '호가비 동시호가 마스킹' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: '동시호가 구간 지표 숨김' })).toBeNull();
   });
 
   it('Volume Profile segment reflects current prefs.volumeProfileMode via aria-pressed', () => {

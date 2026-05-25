@@ -10,8 +10,8 @@
 export const CHART_TOGGLES = [
   {
     key: 'auctionWindowMask',
-    label: '호가비 동시호가 마스킹',
-    description: '15:20–15:30 KST 동시호가 구간의 호가비를 0 으로 처리합니다.',
+    label: '동시호가 구간 지표 숨김',
+    description: '15:20–15:30 KST 동시호가 구간에서 호가비·호가총합·체결강도를 표시하지 않습니다. (캔들/거래량 제외)',
     default: true,
   },
   {
