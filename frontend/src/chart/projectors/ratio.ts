@@ -4,7 +4,6 @@ import {
   type LineWidth,
   type Time,
   type UTCTimestamp,
-  type WhitespaceData,
 } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
@@ -52,23 +51,36 @@ export type RatioPaneContext = {
   outlierThreshold: number;
 };
 
+// Per-point transparent colors used by the in-auction hide (ADR-0029).
+// BaselineSeries renders both the line and the gradient fill — each needs
+// its per-point override or the auction-window plateau remains visible.
+const AUCTION_HIDDEN_COLORS = {
+  topLineColor: 'rgba(0,0,0,0)',
+  topFillColor1: 'rgba(0,0,0,0)',
+  topFillColor2: 'rgba(0,0,0,0)',
+  bottomLineColor: 'rgba(0,0,0,0)',
+  bottomFillColor1: 'rgba(0,0,0,0)',
+  bottomFillColor2: 'rgba(0,0,0,0)',
+} as const;
+
 export function projectRatio(
   bundle: RangeBundle,
   axis: VirtualAxis,
   ctx: RatioPaneContext,
-): (BaselineData<Time> | WhitespaceData<Time>)[] {
-  const out: (BaselineData<Time> | WhitespaceData<Time>)[] = [];
+): BaselineData<Time>[] {
+  const out: BaselineData<Time>[] = [];
   for (const p of bundle.quote_ratio.points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
-    // Auction-window hide (ADR-0029): emit WhitespaceData (no value) so the
-    // line breaks AND the time scale's bar-index density is preserved — the
-    // AuctionWindowOverlay band relies on each in-window minute having a
-    // mappable timeToCoordinate, and dropping points would shrink the chart's
-    // visible range past the auction band. Skipping the outlier check is
+    // Auction-window hide (ADR-0029): keep the point on the time axis but
+    // paint its outgoing line + gradient with transparent colors. We can't
+    // use WhitespaceData here — lightweight-charts v5 LineSeries / BaselineSeries
+    // silently interpolates across whitespace, so the day-1 close → day-2 open
+    // line still draws through the band. Per-point transparent color is the
+    // documented escape hatch for visible gaps. Skipping the outlier check is
     // intentional: a hidden point has no value to clamp.
     if (ctx.auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
-      out.push({ time });
+      out.push({ time, value: 0, ...AUCTION_HIDDEN_COLORS });
       continue;
     }
     const raw = quoteImbalance(p.bid_total, p.ask_total);

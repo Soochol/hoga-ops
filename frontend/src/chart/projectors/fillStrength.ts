@@ -122,13 +122,14 @@ export function projectSell(
  *     resumes from the correct running sum at the first in-viewport point.
  *
  * Closing Auction Window (ADR-0029): when `auctionWindowMask` is true,
- * in-window points are emitted as `WhitespaceData` (no value) — the line
- * breaks naturally at the first whitespace AND the time scale keeps a
- * mappable bar position at each in-window minute (load-bearing for the
- * AuctionWindowOverlay band's `timeToCoordinate` lookups). `runningSum`
- * continues to accumulate across hidden points (the "hide is rendering,
- * not data" invariant) — in practice no in-window points exist because
- * the backend filters them, but the invariant stays clean.
+ * in-window points keep their time slot but their outgoing line segment is
+ * painted with transparent `color` so the auction band shows no line.
+ * WhitespaceData was tried and discarded — LineSeries v5 silently
+ * interpolates across whitespace, so day-1 close would still draw a
+ * diagonal into day-2's first cumulative point. `runningSum` continues to
+ * accumulate (the "hide is rendering, not data" invariant) — in practice
+ * no in-window points exist because the backend filters them, but the
+ * invariant stays clean.
  */
 export function projectCumulativeNetFill(
   bundle: RangeBundle,
@@ -146,7 +147,7 @@ export function projectCumulativeNetFill(
       const thisVirtual = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
 
       if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
-        out.push({ time: thisVirtual });
+        out.push({ time: thisVirtual, value: 0, color: 'rgba(0,0,0,0)' });
         continue;
       }
 
@@ -155,9 +156,21 @@ export function projectCumulativeNetFill(
         if (segIdx > 0) {
           // Break the cumulative line so the prior day's last value doesn't
           // visually continue into this day. Whitespace point: time only.
+          // Day-boundary breaks work because we follow up with a value=0
+          // anchor at segOpenVirtual — lightweight-charts v5 does NOT
+          // break LineSeries at WhitespaceData on its own, so the visible
+          // "break" you see at day boundaries is actually the line ramping
+          // from prior cumulative down to 0. See ADR-0029.
           out.push({ time: ((segOpenVirtual as number) - 1) as UTCTimestamp });
         }
-        if (axis.contains(seg.session_open_ms) && (segOpenVirtual as number) < (thisVirtual as number)) {
+        // Suppress the zero anchor when the first visible point falls inside
+        // the closing Auction Window: a 6h flat-zero pre-auction baseline
+        // before the first cumulative reading is more misleading than useful.
+        if (
+          axis.contains(seg.session_open_ms) &&
+          (segOpenVirtual as number) < (thisVirtual as number) &&
+          !axis.inClosingAuctionWindow(p.t)
+        ) {
           out.push({ time: segOpenVirtual, value: 0 });
         }
         firstEmittedInSeg = false;

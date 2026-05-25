@@ -41,37 +41,38 @@ describe('projectRatio', () => {
     expect(projectRatio(bundle, axis, baseCtx)).toHaveLength(1);
   });
 
-  it('emits in-auction points as WhitespaceData (line breaks; time scale preserved) when auctionWindowMask=true', () => {
+  it('emits in-auction points with transparent per-point colors when auctionWindowMask=true', () => {
     const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
     const bundle: any = {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 100, ask_total: 200 },              // outside → kept
-          { t: auctionStartMs + 60_000, bid_total: 100, ask_total: 1000 },   // inside → whitespace
-          { t: auctionStartMs + 120_000, bid_total: 100, ask_total: 1000 },  // inside → whitespace
+          { t: auctionStartMs + 60_000, bid_total: 100, ask_total: 1000 },   // inside → transparent
+          { t: auctionStartMs + 120_000, bid_total: 100, ask_total: 1000 },  // inside → transparent
         ],
       },
     };
     const masked = projectRatio(bundle, axis, { ...baseCtx, auctionWindowMask: true });
 
-    // 1 kept data point + 2 in-auction whitespaces = 3 entries.
-    // Whitespace at each in-auction time preserves the chart's bar-index
-    // density so AuctionWindowOverlay can compute timeToCoordinate for the
-    // full auction band (ADR-0029).
+    // 1 kept data point + 2 in-auction transparent points = 3 entries.
+    // The points stay on the time axis so the AuctionWindowOverlay can
+    // compute timeToCoordinate for the full band, but the per-point
+    // transparent line/fill colors make the segment invisible (ADR-0029).
     expect(masked).toHaveLength(3);
 
-    // First entry: kept pre-auction data point.
     const first = masked[0] as { time: number; value: number };
     expect(first.time).toBe(0);
     expect(first.value).toBeCloseTo(1.0, 5);
+    expect((first as any).topLineColor).toBeUndefined(); // default style
 
-    // Second + third entries: WhitespaceData at exactly the in-auction times.
-    const ws1 = masked[1] as { time: number; value?: number };
-    const ws2 = masked[2] as { time: number; value?: number };
-    expect(ws1.time).toBe((auctionStartMs + 60_000 - sessionOpenMs) / 1000);
-    expect(ws1.value).toBeUndefined();
-    expect(ws2.time).toBe((auctionStartMs + 120_000 - sessionOpenMs) / 1000);
-    expect(ws2.value).toBeUndefined();
+    // In-auction entries: value present but rendered invisible via colors.
+    const hidden1 = masked[1] as any;
+    const hidden2 = masked[2] as any;
+    expect(hidden1.time).toBe((auctionStartMs + 60_000 - sessionOpenMs) / 1000);
+    expect(hidden1.value).toBe(0);
+    expect(hidden1.topLineColor).toBe('rgba(0,0,0,0)');
+    expect(hidden1.bottomLineColor).toBe('rgba(0,0,0,0)');
+    expect(hidden2.topLineColor).toBe('rgba(0,0,0,0)');
   });
 
   it('keeps auction-window points when auctionWindowMask=false', () => {

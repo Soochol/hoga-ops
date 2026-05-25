@@ -282,24 +282,26 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
   ]);
   const auctionStartMs = day1Open + 22_800_000;
 
-  it('emits in-window cumulative points as WhitespaceData (line breaks; time scale preserved) when mask=true', () => {
+  it('emits in-window cumulative points with transparent per-point color when mask=true', () => {
     const bundle: any = {
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
         points: [
           { t: day1Open, buy_qty: 100, sell_qty: 30 },                  // +70 → 70 (kept)
-          { t: auctionStartMs + 60_000, buy_qty: 0, sell_qty: 100 },    // inside → whitespace (runningSum still accumulates)
+          { t: auctionStartMs + 60_000, buy_qty: 0, sell_qty: 100 },    // inside → transparent (runningSum still accumulates)
         ],
       },
     };
     const out = projectCumulativeNetFill(bundle, singleDayAxis, true);
 
-    // 1 kept data point + 1 in-auction whitespace (at the in-auction time).
+    // 1 kept data point + 1 in-auction transparent point.
     expect(out).toHaveLength(2);
     expect(out[0]).toEqual({ time: 0, value: 70 });
-    const ws = out[1] as { time: number; value?: number };
-    expect(ws.time).toBe((auctionStartMs + 60_000 - day1Open) / 1000);
-    expect(ws.value).toBeUndefined();
+    expect(out[1]).toEqual({
+      time: (auctionStartMs + 60_000 - day1Open) / 1000,
+      value: 0,
+      color: 'rgba(0,0,0,0)',
+    });
   });
 
   it('keeps in-window cumulative emission when mask=false', () => {
@@ -383,13 +385,17 @@ describe('FILL_STRENGTH_SPEC — auctionWindowMask threading', () => {
     // cumulativeEnabled=false → always empty regardless of mask
     expect(cum.data(bundle, axis, { cumulativeEnabled: false, auctionWindowMask: true })).toEqual([]);
     expect(cum.data(bundle, axis, { cumulativeEnabled: false, auctionWindowMask: false })).toEqual([]);
-    // mask=true → the single in-auction point becomes whitespace.
+    // mask=true → the single in-auction point becomes a transparent-color point.
     const masked = cum.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: true });
     expect(masked).toHaveLength(1);
-    expect((masked[0] as { value?: number }).value).toBeUndefined();
-    // mask=false → in-auction point is kept; zero-anchor also fires
-    // (segment_open < this_virtual). 1 anchor + 1 data point = 2 entries.
+    expect((masked[0] as any).color).toBe('rgba(0,0,0,0)');
+    expect((masked[0] as { value?: number }).value).toBe(0);
+    // mask=false → in-auction point is kept as real value. Zero-anchor is
+    // suppressed because the first visible point lands inside the auction
+    // window (a 6h flat-zero baseline before the only cumulative reading
+    // would be misleading). 1 data point only.
     const unmasked = cum.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: false });
-    expect(unmasked).toHaveLength(2);
+    expect(unmasked).toHaveLength(1);
+    expect((unmasked[0] as { value: number }).value).toBe(0); // 99 buy − 99 sell
   });
 });

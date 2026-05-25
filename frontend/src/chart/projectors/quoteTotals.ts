@@ -3,7 +3,6 @@ import {
   type LineData,
   type UTCTimestamp,
   type Time,
-  type WhitespaceData,
 } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
@@ -24,22 +23,24 @@ const priceFormat = {
   minMove: 1,
 };
 
-// Closing Auction Window hide (ADR-0029): in-window points are emitted as
-// WhitespaceData (no value) so the line breaks cleanly AND the time scale
-// keeps a mappable bar position at each in-window minute. Dropping the
-// points entirely would shrink the chart's visible range past the auction
-// band, hiding the AuctionWindowOverlay highlight band as a side effect.
+// Closing Auction Window hide (ADR-0029): in-window points keep their time
+// slot on the axis but paint their outgoing line segment with transparent
+// color so the auction band shows no line AND no day-1-close → day-2-open
+// diagonal. WhitespaceData was tried first and discarded — lightweight-charts
+// v5 LineSeries silently interpolates across whitespace.
+const TRANSPARENT = 'rgba(0,0,0,0)';
+
 export function projectBid(
   bundle: RangeBundle,
   axis: VirtualAxis,
   auctionWindowMask: boolean,
-): (LineData<Time> | WhitespaceData<Time>)[] {
-  const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
+): LineData<Time>[] {
+  const out: LineData<Time>[] = [];
   for (const p of bundle.quote_ratio.points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
     if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
-      out.push({ time });
+      out.push({ time, value: 0, color: TRANSPARENT });
       continue;
     }
     out.push({ time, value: p.bid_total });
@@ -51,13 +52,13 @@ export function projectAsk(
   bundle: RangeBundle,
   axis: VirtualAxis,
   auctionWindowMask: boolean,
-): (LineData<Time> | WhitespaceData<Time>)[] {
-  const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
+): LineData<Time>[] {
+  const out: LineData<Time>[] = [];
   for (const p of bundle.quote_ratio.points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
     if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
-      out.push({ time });
+      out.push({ time, value: 0, color: TRANSPARENT });
       continue;
     }
     out.push({ time, value: p.ask_total });
