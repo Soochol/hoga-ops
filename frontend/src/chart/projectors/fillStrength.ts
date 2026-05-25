@@ -111,6 +111,15 @@ export function projectSell(
  *     first bucket's net delta. When session_open is out of viewport
  *     (zoomed-in mid-session), the anchor is suppressed and the line
  *     resumes from the correct running sum at the first in-viewport point.
+ *
+ * Closing Auction Window (ADR-0029): when `auctionWindowMask` is true,
+ * in-window points are dropped from the emitted series and a single
+ * `WhitespaceData` boundary is inserted at the first transition into
+ * the window so the line breaks cleanly at 15:20 instead of interpolating
+ * across the empty band. `runningSum` continues to accumulate across
+ * hidden points (the "hide is rendering, not data" invariant) — in
+ * practice no in-window points exist because the backend filters them,
+ * but the invariant stays clean for any future data-shape change.
  */
 export function projectCumulativeNetFill(
   bundle: RangeBundle,
@@ -142,6 +151,12 @@ export function projectCumulativeNetFill(
           // visually continue into this day. Whitespace point: time only.
           out.push({ time: ((segOpenVirtual as number) - 1) as UTCTimestamp });
         }
+        // Suppress the zero anchor when the first visible point falls inside
+        // the closing Auction Window: drawing a flat-zero baseline across the
+        // ~6h pre-auction span before the first cumulative reading is more
+        // misleading than helpful. Applies regardless of `auctionWindowMask`
+        // — the visual claim "the day started at zero and stayed flat" only
+        // makes sense when at least one continuous-trading bucket is in view.
         if (
           axis.contains(seg.session_open_ms) &&
           (segOpenVirtual as number) < (thisVirtual as number) &&
