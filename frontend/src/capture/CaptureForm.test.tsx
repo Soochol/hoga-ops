@@ -18,7 +18,7 @@ function W(qc: QueryClient) {
 
 const SYMBOLS = {
   symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI', captured_count: 0,
-              captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 } }],
+              captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } }],
   status: 'fresh' as const, fetched_at_ms: 1,
 };
 const CALENDAR = { cells: [], as_of_ms: 1 };

@@ -94,7 +94,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
       name: '—',
       market: 'KOSPI',
       captured_count: 0,
-      captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 },
+      captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
     });
     return true;
   };
@@ -184,7 +184,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
 }
 
 function SymbolRow({ hit, highlighted, onClick }: { hit: SymbolHit; highlighted: boolean; onClick: () => void }) {
-  const breakdown = `Complete ${hit.captured_breakdown.complete} · Partial ${hit.captured_breakdown.source_partial} · Incomplete ${hit.captured_breakdown.client_incomplete}`;
+  const breakdown = `Complete ${hit.captured_breakdown.complete} · Partial ${hit.captured_breakdown.source_partial} · Incomplete ${hit.captured_breakdown.client_incomplete} · Invalid ${hit.captured_breakdown.invalid}`;
   const countText = hit.captured_count > 0 ? `${hit.captured_count} complete` : 'no complete data';
   return (
     <div

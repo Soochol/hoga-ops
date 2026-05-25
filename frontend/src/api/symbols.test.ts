@@ -22,7 +22,7 @@ describe('symbols api', () => {
           name: '삼성전자',
           market: 'KOSPI',
           captured_count: 0,
-          captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 },
+          captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
         },
       ],
       status: 'fresh',
@@ -40,7 +40,7 @@ describe('symbols api', () => {
         name: '삼성전자',
         market: 'KOSPI',
         captured_count: 14,
-        captured_breakdown: { complete: 14, source_partial: 0, client_incomplete: 0 },
+        captured_breakdown: { complete: 14, source_partial: 0, client_incomplete: 0, invalid: 0 },
       },
     ]);
     const hits = await searchSymbols('삼성', 5);

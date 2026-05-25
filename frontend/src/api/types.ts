@@ -211,6 +211,7 @@ export interface SymbolHit {
     complete: number;
     source_partial: number;
     client_incomplete: number;
+    invalid: number;
   };
 }
 

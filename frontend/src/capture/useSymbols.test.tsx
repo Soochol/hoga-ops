@@ -15,11 +15,11 @@ beforeEach(() => { vi.restoreAllMocks(); });
 
 const HITS: SymbolHit[] = [
   { code: '005930', name: '삼성전자', market: 'KOSPI', captured_count: 3,
-    captured_breakdown: { complete: 3, source_partial: 0, client_incomplete: 0 } },
+    captured_breakdown: { complete: 3, source_partial: 0, client_incomplete: 0, invalid: 0 } },
   { code: '005935', name: '삼성전자우', market: 'KOSPI', captured_count: 0,
-    captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 } },
+    captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } },
   { code: '000660', name: 'SK하이닉스', market: 'KOSPI', captured_count: 0,
-    captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 } },
+    captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } },
 ];
 
 describe('filterSymbols', () => {
@@ -35,7 +35,7 @@ describe('filterSymbols', () => {
   it('prefix matches sort before substring matches', () => {
     const extra: SymbolHit[] = [
       { code: '111111', name: '미래에셋삼성', market: 'KOSPI', captured_count: 0,
-        captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 } },
+        captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } },
       ...HITS,
     ];
     const out = filterSymbols(extra, '삼성', 10);

@@ -12,9 +12,9 @@ function W({ children, qc }: { children: ReactNode; qc: QueryClient }) {
 const DEFAULT_ENVELOPE: SymbolsAllResponse = {
   symbols: [
     { code: '005930', name: '삼성전자', market: 'KOSPI', captured_count: 14,
-      captured_breakdown: { complete: 14, source_partial: 3, client_incomplete: 2 } },
+      captured_breakdown: { complete: 14, source_partial: 3, client_incomplete: 2, invalid: 0 } },
     { code: '005935', name: '삼성전자우', market: 'KOSPI', captured_count: 0,
-      captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 } },
+      captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } },
   ],
   status: 'fresh',
   fetched_at_ms: 1,
@@ -178,7 +178,7 @@ describe('SymbolSearch reason-aware empty state', () => {
   it('does NOT show Refresh button when status is fresh', () => {
     render(wrapWithData(
       <SymbolSearch value={null} onChange={() => {}} />,
-      { symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI', captured_count: 0, captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 } }],
+      { symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI', captured_count: 0, captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } }],
         status: 'fresh', fetched_at_ms: 0 },
     ));
     expect(screen.queryByRole('button', { name: /refresh/i })).toBeNull();
@@ -213,7 +213,7 @@ describe('SymbolSearch — empty-result staleness nudge', () => {
             name: '삼성전자',
             market: 'KOSPI',
             captured_count: 0,
-            captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 },
+            captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
           },
         ],
         status: 'fresh',
@@ -240,7 +240,7 @@ describe('SymbolSearch — empty-result staleness nudge', () => {
             name: '삼성전자',
             market: 'KOSPI',
             captured_count: 0,
-            captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0 },
+            captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
           },
         ],
         status: 'fresh',
