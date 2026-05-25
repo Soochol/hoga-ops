@@ -1,10 +1,30 @@
 import { useMemo, useRef, useState } from 'react';
+import { useMutationState } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useCaptureQueue } from './useCaptureQueue';
+import { ADD_ITEMS_MUTATION_KEY, useCaptureQueue } from './useCaptureQueue';
 import { useSymbols } from './useSymbols';
 import { CaptureQueueRow } from './CaptureQueueRow';
 import { GROUP_ORDER, getPhase } from './phase';
-import type { QueueItem, QueueSnapshot } from '../api/types';
+import type { EnqueueDedupedRow, EnqueueResponse, QueueItem, QueueSnapshot } from '../api/types';
+
+/** Human label per dedupe reason — order here is the display order in the banner. */
+const DEDUPE_REASON_LABEL: Record<EnqueueDedupedRow['reason'], string> = {
+  already_running: 'already running',
+  already_in_queue: 'already in queue',
+  already_complete: 'already complete',
+  already_skipped: 'already skipped',
+};
+
+export function summarizeDedupeReasons(rows: EnqueueDedupedRow[]): string {
+  const counts: Partial<Record<EnqueueDedupedRow['reason'], number>> = {};
+  for (const row of rows) {
+    counts[row.reason] = (counts[row.reason] ?? 0) + 1;
+  }
+  return (Object.entries(DEDUPE_REASON_LABEL) as Array<[EnqueueDedupedRow['reason'], string]>)
+    .filter(([reason]) => (counts[reason] ?? 0) > 0)
+    .map(([reason, label]) => `${counts[reason]} ${label}`)
+    .join(' · ');
+}
 
 export interface HeaderSummary {
   done: number;
@@ -40,6 +60,27 @@ export function CaptureQueue() {
 
   const [cancelAllArmed, setCancelAllArmed] = useState(false);
   const cancelAllTimerRef = useRef<number | null>(null);
+
+  // Dedupe banner: subscribe to the latest CaptureForm-issued addItems response via the
+  // shared mutationKey. We can't read `addItems.data` directly because CaptureForm holds
+  // its own useMutation instance (sibling component, separate React Query state).
+  const addItemsSubmissions = useMutationState<{
+    data: EnqueueResponse | undefined;
+    submittedAt: number;
+  }>({
+    filters: { mutationKey: ADD_ITEMS_MUTATION_KEY },
+    select: (m) => ({
+      data: m.state.data as EnqueueResponse | undefined,
+      submittedAt: m.state.submittedAt,
+    }),
+  });
+  const lastAddItems = addItemsSubmissions[addItemsSubmissions.length - 1];
+  const lastDedupedRows = lastAddItems?.data?.deduped ?? [];
+  const [dismissedSubmittedAt, setDismissedSubmittedAt] = useState<number>(0);
+  const showDedupedBanner =
+    lastDedupedRows.length > 0
+    && lastAddItems !== undefined
+    && lastAddItems.submittedAt !== dismissedSubmittedAt;
 
   // Hook called unconditionally — when queue is undefined, treat as empty.
   const allRows: QueueItem[] = useMemo(() => {
@@ -130,6 +171,24 @@ export function CaptureQueue() {
         <div style={{ width: `${summary.total > 0 ? (summary.done / summary.total) * 100 : 0}%` }}
           className="absolute left-0 top-0 bottom-0 bg-accent rounded-sm" />
       </div>
+
+      {showDedupedBanner && lastAddItems !== undefined && (
+        <div
+          data-testid="deduped-banner"
+          role="status"
+          className="py-sm px-3 flex items-center gap-3 font-medium text-sm font-mono rounded-md border border-[--accent]"
+          style={{ background: 'rgba(20,184,166,0.10)', color: 'var(--accent)' }}
+        >
+          <span aria-hidden>ⓘ</span>
+          <span className="flex-1">{summarizeDedupeReasons(lastDedupedRows)}</span>
+          <button
+            type="button"
+            aria-label="Dismiss dedupe notice"
+            onClick={() => setDismissedSubmittedAt(lastAddItems.submittedAt)}
+            style={ghostButton()}
+          >Dismiss</button>
+        </div>
+      )}
 
       {queue.paused && (
         <div role="alert" className="py-sm px-3 flex items-center gap-3 font-medium text-sm font-mono rounded-md border border-[--warn]"

@@ -192,3 +192,77 @@ describe('CaptureQueue Retry Failed (ADR-0031)', () => {
     expect(calls).not.toContain('items');
   });
 });
+
+describe('CaptureQueue dedupe banner', () => {
+  it('summarizeDedupeReasons groups counts in display order', async () => {
+    const { summarizeDedupeReasons } = await import('./CaptureQueue');
+    expect(summarizeDedupeReasons([
+      { code: '005930', date: '20260518', reason: 'already_complete' },
+      { code: '005930', date: '20260519', reason: 'already_complete' },
+      { code: '005930', date: '20260520', reason: 'already_running' },
+    ])).toBe('1 already running · 2 already complete');
+  });
+
+  it('summarizeDedupeReasons omits reasons with zero count', async () => {
+    const { summarizeDedupeReasons } = await import('./CaptureQueue');
+    expect(summarizeDedupeReasons([
+      { code: '005930', date: '20260518', reason: 'already_skipped' },
+    ])).toBe('1 already skipped');
+  });
+
+  it('renders banner when an addItems mutation in the shared cache has deduped rows', async () => {
+    const { ADD_ITEMS_MUTATION_KEY } = await import('./useCaptureQueue');
+    const qc = setup();
+    // Simulate a CaptureForm-issued addItems mutation by pushing into the cache.
+    qc.getMutationCache().build(qc, {
+      mutationKey: ADD_ITEMS_MUTATION_KEY,
+      mutationFn: async () => ({}),
+    }).setOptions({ mutationKey: ADD_ITEMS_MUTATION_KEY });
+    const m = qc.getMutationCache().build(qc, {
+      mutationKey: ADD_ITEMS_MUTATION_KEY,
+      mutationFn: async () => ({
+        enqueued: [], deduped: [
+          { code: '005930', date: '20260518', reason: 'already_complete' },
+          { code: '005930', date: '20260519', reason: 'already_running' },
+        ],
+      }),
+    });
+    await m.execute({ code: '005930', dates: ['20260518', '20260519'], force_retry: false });
+
+    render(<CaptureQueue />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+
+    const banner = screen.getByTestId('deduped-banner');
+    expect(banner).toBeTruthy();
+    expect(banner.textContent).toContain('1 already running');
+    expect(banner.textContent).toContain('1 already complete');
+  });
+
+  it('does not render banner when deduped is empty', async () => {
+    const qc = setup();
+    render(<CaptureQueue />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByTestId('deduped-banner')).toBeNull();
+  });
+
+  it('Dismiss button hides the banner', async () => {
+    const { ADD_ITEMS_MUTATION_KEY } = await import('./useCaptureQueue');
+    const qc = setup();
+    const m = qc.getMutationCache().build(qc, {
+      mutationKey: ADD_ITEMS_MUTATION_KEY,
+      mutationFn: async () => ({
+        enqueued: [], deduped: [
+          { code: '005930', date: '20260518', reason: 'already_complete' },
+        ],
+      }),
+    });
+    await m.execute({ code: '005930', dates: ['20260518'], force_retry: false });
+
+    render(<CaptureQueue />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByTestId('deduped-banner')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Dismiss dedupe notice/i }));
+    expect(screen.queryByTestId('deduped-banner')).toBeNull();
+  });
+});

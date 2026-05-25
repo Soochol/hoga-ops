@@ -14,6 +14,11 @@ import type { QueueItem, QueueSnapshot, SSEEvent } from '../api/types';
 
 export const CAPTURE_QUEUE_QUERY_KEY = ['capture', 'queue'] as const;
 
+/** Shared mutationKey so cross-component consumers (CaptureQueue's dedupe banner
+ *  reads what CaptureForm submitted) can subscribe via React Query's
+ *  `useMutationState`. */
+export const ADD_ITEMS_MUTATION_KEY = ['captures', 'addItems'] as const;
+
 /** Pure helper: replace the QueueItem matching `item_id` across active/queued/done
  *  with a shallow merge of `patch`. Returns the prior snapshot reference unchanged
  *  if no item matches (so React Query's reference equality short-circuits re-renders). */
@@ -100,6 +105,7 @@ export function useCaptureQueue() {
   }, [qc]);
 
   const addItemsM = useMutation({
+    mutationKey: ADD_ITEMS_MUTATION_KEY,
     mutationFn: addItems,
     // Invalidate rather than setQueryData — see spec §4.3 race rationale.
     onSettled: () => qc.invalidateQueries({ queryKey: CAPTURE_QUEUE_QUERY_KEY }),
