@@ -6,6 +6,7 @@ import {
   cancelAll,
   resumeQueue,
   dismissDone,
+  retryItems,
 } from './captures';
 import { apiUrl, __resetConfigForTests } from './client';
 
@@ -72,6 +73,26 @@ describe('captures queue api', () => {
     const f = mockFetch({}, false, 409);
     await cancelItem('item-xyz');
     expect(f.mock.calls[0][0]).toContain('/items/item-xyz/cancel');
+  });
+
+  it('retryItems POSTs item_ids to /api/captures/items/retry and returns the body', async () => {
+    const body = {
+      enqueued: [{
+        item_id: 'new-1', code: '005930', date: '20260520', phase: 'queued',
+        force_retry: false, pause_origin: false, enqueued_at_ms: 1,
+        started_at_ms: null, progress: null, result: null, error: null,
+        skip_reason: null, attempt: 2,
+      }],
+      skipped: [],
+    };
+    const f = mockFetch(body, true, 201);
+    const result = await retryItems({ item_ids: ['old-1'] });
+    expect(result).toEqual(body);
+    expect(f).toHaveBeenCalledTimes(1);
+    const [url, init] = f.mock.calls[0];
+    expect(String(url)).toContain('/api/captures/items/retry');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({ item_ids: ['old-1'] });
   });
 
   it('cancelAll, resumeQueue, dismissDone hit their routes', async () => {

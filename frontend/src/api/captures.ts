@@ -1,5 +1,12 @@
 import { apiAction, apiCall, type ApiError } from './client';
-import type { CaptureErrorCode, EnqueueRequest, EnqueueResponse, QueueSnapshot } from './types';
+import type {
+  CaptureErrorCode,
+  EnqueueRequest,
+  EnqueueResponse,
+  QueueSnapshot,
+  RetryRequest,
+  RetryResponse,
+} from './types';
 
 /** Narrowed ApiError for captures-router calls — `code` is a member of
  *  CaptureErrorCode (mirrors hoga/api/error_codes.py). Consumers wanting
@@ -40,4 +47,12 @@ export function resumeQueue(): Promise<void> {
 
 export function dismissDone(): Promise<void> {
   return apiAction('/api/captures/done', { method: 'DELETE' });
+}
+
+export function retryItems(req: RetryRequest): Promise<RetryResponse> {
+  return apiCall<RetryResponse>('/api/captures/items/retry', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
 }
