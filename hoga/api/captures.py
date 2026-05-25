@@ -22,6 +22,7 @@ from hoga.api.captures_persistence import load_manifest, manifest_path, save_man
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
 from hoga.api.error_codes import CaptureErrorCode, UpstreamCode
 from hoga.api.models import (
+    CaptureDismissedEvent,
     CaptureError,
     CaptureFinishedEvent,
     CapturePhase,
@@ -38,6 +39,9 @@ from hoga.api.models import (
     QueueManifest,
     QueueManifestItem,
     QueueSnapshot,
+    RetryRequest,
+    RetryResponse,
+    RetrySkippedRow,
     SkipReason,
 )
 from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
@@ -912,7 +916,6 @@ async def _retry_items(item_ids: list[str]) -> _RetryResult:
 
     # Publish events outside the lock — dismissed first so the UI removes
     # the old rows before the new ones land.
-    from hoga.api.models import CaptureDismissedEvent  # local import to keep top tidy
     if dismissed:
         _publish_event(CaptureDismissedEvent(item_ids=dismissed))
     if enqueued:
@@ -1032,6 +1035,20 @@ def build_router(
         return EnqueueResponse(
             enqueued=[s.to_wire() for s in enqueued],
             deduped=deduped_rows,
+        )
+
+    @router.post("/items/retry", status_code=201)
+    async def retry_items_route(req: RetryRequest) -> RetryResponse:
+        """Retry one or more failed queue items (ADR-0031).
+
+        Each item_id must reference a _done entry whose phase == "failed".
+        Other states (`not_found`, `not_failed`, `already_in_queue`,
+        `already_running`) return diagnostic rows in `skipped`.
+        """
+        result = await _retry_items(req.item_ids)
+        return RetryResponse(
+            enqueued=[s.to_wire() for s in result.enqueued],
+            skipped=[RetrySkippedRow(**row) for row in result.skipped],
         )
 
     @router.post("/items/{item_id}/cancel", status_code=202)

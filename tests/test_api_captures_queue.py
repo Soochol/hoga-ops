@@ -1055,3 +1055,49 @@ async def test_retry_items_persists_manifest_after_mutation(monkeypatch, tmp_pat
     # The new (retry-enqueued) item should be in the manifest's items list,
     # with attempt=2.
     assert any(it["attempt"] == 2 for it in data["items"])
+
+
+def test_retry_route_returns_201_and_response_shape(monkeypatch, tmp_path):
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        # Seed: a failed item in _done.
+        failed = _make_item("r-1", code="005930", date="20260520")
+        failed.phase = "failed"
+        captures._done.append(failed)
+
+        r = c.post("/api/captures/items/retry", json={"item_ids": ["r-1"]})
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert len(body["enqueued"]) == 1
+        assert body["enqueued"][0]["code"] == "005930"
+        assert body["enqueued"][0]["date"] == "20260520"
+        assert body["enqueued"][0]["attempt"] == 2
+        assert body["skipped"] == []
+
+
+def test_retry_route_400_on_empty_item_ids(monkeypatch, tmp_path):
+    """RetryRequest declares min_length=1 — FastAPI returns 422."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items/retry", json={"item_ids": []})
+        assert r.status_code == 422
+
+
+def test_retry_route_returns_skipped_reasons(monkeypatch, tmp_path):
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        completed = _make_item("d-1", code="005930", date="20260520")
+        completed.phase = "done"
+        captures._done.append(completed)
+
+        r = c.post("/api/captures/items/retry", json={
+            "item_ids": ["missing-x", "d-1"],
+        })
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["enqueued"] == []
+        reasons = {row["item_id"]: row["reason"] for row in body["skipped"]}
+        assert reasons == {"missing-x": "not_found", "d-1": "not_failed"}
