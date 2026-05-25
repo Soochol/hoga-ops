@@ -115,7 +115,14 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
       data-drawing-property-panel
       data-testid="drawing-property-panel"
       className="absolute z-30 inline-flex items-center gap-0.5 bg-bg-card border border-border rounded-lg p-1 shadow-lg"
-      style={{ top: position.y, left: position.x }}
+      style={{
+        top: position.y,
+        left: position.x,
+        // hline panels are anchored to the chart's horizontal centre; this
+        // translate makes the visual centre land on `position.x` rather
+        // than the panel's left edge. trendline / pencil keep left-anchor.
+        transform: drawing.kind === 'hline' ? 'translateX(-50%)' : undefined,
+      }}
     >
       <span
         data-testid="drawing-panel-grip"

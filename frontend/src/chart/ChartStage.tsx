@@ -77,7 +77,9 @@ export type ChartStageProps = {
  */
 
 const PANEL_Y_OFFSET = -38;
-const PANEL_X_OFFSET_HLINE = 14;
+// hline panels return their CONTAINER-CENTER X. The panel renders with
+// `transform: translateX(-50%)` for hline kind so the visual centre lands
+// on this X. trendline / pencil keep their existing left-aligned offsets.
 const PANEL_X_OFFSET_PENCIL = 0;
 const PANEL_X_OFFSET_TRENDLINE = -8;
 
@@ -110,13 +112,16 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
     });
   }, []);
 
-  const computeAnchor = useCallback((d: Drawing) => {
+  const computeAnchor = useCallback((d: Drawing): { x: number; y: number } | null => {
     if (!chart || !axis || !paneSeries) return null;
 
     if (d.kind === 'hline') {
       const y = priceToCanvasY(chart, paneSeries, d.paneId, d.price);
       if (y == null) return null;
-      return { x: PANEL_X_OFFSET_HLINE, y: y + PANEL_Y_OFFSET };
+      // Return container-centre X. Panel applies translateX(-50%) for
+      // hline kind so the visual centre lands here.
+      const containerWidth = containerRef.current?.clientWidth ?? 0;
+      return { x: containerWidth / 2, y: y + PANEL_Y_OFFSET };
     }
 
     if (d.kind === 'trendline') {
