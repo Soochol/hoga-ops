@@ -1,13 +1,15 @@
 // frontend/src/state/drawings.test.ts
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Drawing } from '../chart/drawing/types';
+import { INITIAL_DEFAULTS } from '../chart/drawing/types';
+import { DEFAULTS_KEY } from '../chart/drawing/persistence';
 import { useDrawingsStore } from './drawings';
 
 const A = '005930';
 const B = '003490';
 
 function mkHline(id: string, price: number): Drawing {
-  return { id, kind: 'hline', price, color: '#FFD60A', width: 1.5, paneId: 'candle' };
+  return { id, kind: 'hline', price, color: '#FFD60A', width: 1.5, lineStyle: 'solid', paneId: 'candle' };
 }
 
 beforeEach(() => {
@@ -97,5 +99,48 @@ describe('useDrawingsStore — persistence integration', () => {
     const raw = localStorage.getItem('replay.drawings.v1.005930');
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw as string)).toEqual({ v: 1, items: [mkHline('h1', 100)] });
+  });
+});
+
+describe('useDrawingsStore — defaults', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useDrawingsStore.getState().__resetForTests();
+  });
+
+  it('exposes INITIAL_DEFAULTS when no persisted defaults exist', () => {
+    expect(useDrawingsStore.getState().defaults).toEqual(INITIAL_DEFAULTS);
+  });
+
+  it('setDefaults patches and persists', () => {
+    useDrawingsStore.getState().setDefaults({ color: '#F43F5E' });
+    expect(useDrawingsStore.getState().defaults.color).toBe('#F43F5E');
+    useDrawingsStore.getState().flushPending();
+    const raw = JSON.parse(localStorage.getItem(DEFAULTS_KEY)!);
+    expect(raw.value.color).toBe('#F43F5E');
+  });
+
+  it('update(id, patch) syncs color/width/lineStyle into defaults', () => {
+    const s = useDrawingsStore.getState();
+    s.setActiveCode('005930');
+    const d: Drawing = {
+      id: 'a', kind: 'hline', price: 1000,
+      color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+    };
+    s.add(d);
+    s.update('a', { color: '#10B981', width: 3, lineStyle: 'dashed' });
+    expect(useDrawingsStore.getState().defaults).toEqual({
+      color: '#10B981', width: 3, lineStyle: 'dashed',
+    });
+  });
+
+  it('update with no style fields does not touch defaults', () => {
+    const s = useDrawingsStore.getState();
+    s.setActiveCode('005930');
+    s.add({ id: 'a', kind: 'hline', price: 1000,
+            color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle' });
+    const before = { ...useDrawingsStore.getState().defaults };
+    s.update('a', { price: 1500 });
+    expect(useDrawingsStore.getState().defaults).toEqual(before);
   });
 });

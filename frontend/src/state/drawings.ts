@@ -1,7 +1,11 @@
 // frontend/src/state/drawings.ts
 import { create } from 'zustand';
-import type { Drawing, DrawingId, DrawingTool } from '../chart/drawing/types';
-import { loadDrawings, saveDrawings } from '../chart/drawing/persistence';
+import type { Drawing, DrawingId, DrawingTool, DrawingDefaults } from '../chart/drawing/types';
+import { INITIAL_DEFAULTS } from '../chart/drawing/types';
+import {
+  loadDrawings, saveDrawings,
+  loadDefaults, saveDefaults,
+} from '../chart/drawing/persistence';
 
 const PERSIST_DEBOUNCE_MS = 250;
 
@@ -11,6 +15,7 @@ type State = {
   activeCode: string | null;
   activeTool: DrawingTool;
   selectedId: DrawingId | null;
+  defaults: DrawingDefaults;
 };
 
 type Actions = {
@@ -22,12 +27,14 @@ type Actions = {
   update(id: DrawingId, patch: Partial<Drawing>): void;
   remove(id: DrawingId): void;
   clearAll(): void;
+  setDefaults(patch: Partial<DrawingDefaults>): void;
   flushPending(): void;
   __resetForTests(): void;
 };
 
 let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingCode: string | null = null;
+let defaultsTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useDrawingsStore = create<State & Actions>((set, get) => {
   const queuePersist = (code: string | null) => {
@@ -42,12 +49,21 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
     }, PERSIST_DEBOUNCE_MS);
   };
 
+  const queuePersistDefaults = () => {
+    if (defaultsTimer != null) clearTimeout(defaultsTimer);
+    defaultsTimer = setTimeout(() => {
+      saveDefaults(get().defaults);
+      defaultsTimer = null;
+    }, PERSIST_DEBOUNCE_MS);
+  };
+
   return {
     byCode: new Map(),
     loadedCodes: new Set(),
     activeCode: null,
     activeTool: 'select',
     selectedId: null,
+    defaults: loadDefaults(),
 
     setActiveCode(code) {
       if (code === get().activeCode) return;
@@ -92,6 +108,18 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       byCode.set(code, next);
       set({ byCode });
       queuePersist(code);
+
+      // Drawing Defaults sync — only style fields propagate.
+      const stylePatch: Partial<DrawingDefaults> = {};
+      if ('color' in patch && typeof patch.color === 'string') stylePatch.color = patch.color;
+      if ('width' in patch && typeof patch.width === 'number') stylePatch.width = patch.width;
+      if ('lineStyle' in patch && patch.lineStyle != null) stylePatch.lineStyle = patch.lineStyle;
+      if (Object.keys(stylePatch).length > 0) get().setDefaults(stylePatch);
+    },
+
+    setDefaults(patch) {
+      set({ defaults: { ...get().defaults, ...patch } });
+      queuePersistDefaults();
     },
 
     remove(id) {
@@ -120,16 +148,26 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
         pendingTimer = null;
       }
       const code = pendingCode;
-      if (code == null) return;
-      const items = get().byCode.get(code) ?? [];
-      saveDrawings(code, items);
       pendingCode = null;
+      if (code != null) {
+        const items = get().byCode.get(code) ?? [];
+        saveDrawings(code, items);
+      }
+      if (defaultsTimer != null) {
+        clearTimeout(defaultsTimer);
+        defaultsTimer = null;
+        saveDefaults(get().defaults);
+      }
     },
 
     __resetForTests() {
       if (pendingTimer != null) {
         clearTimeout(pendingTimer);
         pendingTimer = null;
+      }
+      if (defaultsTimer != null) {
+        clearTimeout(defaultsTimer);
+        defaultsTimer = null;
       }
       pendingCode = null;
       set({
@@ -138,6 +176,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
         activeCode: null,
         activeTool: 'select',
         selectedId: null,
+        defaults: INITIAL_DEFAULTS,
       });
     },
   };
