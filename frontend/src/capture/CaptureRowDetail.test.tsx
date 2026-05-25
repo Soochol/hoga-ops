@@ -11,6 +11,7 @@ const base: QueueItem = {
   result: null,
   error: null,
   skip_reason: null,
+  attempt: 1,
 };
 
 describe('CaptureRowDetail', () => {

@@ -48,6 +48,12 @@ export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: Capture
               className="ml-1.5 text-badge rounded-md px-[0.15rem] border border-[var(--warn)] text-[var(--warn)]"
             >⚠ force</span>
           )}
+          {item.attempt > 1 && (
+            <span
+              title={`Attempt ${item.attempt}`}
+              className="ml-1.5 text-badge rounded-md px-[0.15rem] border border-[var(--fg-dim)] text-fg-dim"
+            >×{item.attempt}</span>
+          )}
         </span>
         <span style={{ background: descriptor.chipColor }} className="py-[0.1rem] px-xs rounded-md text-fg-dim">
           {item.phase}

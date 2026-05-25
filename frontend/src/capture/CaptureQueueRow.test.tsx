@@ -8,6 +8,7 @@ const base: QueueItem = {
   phase: 'queued', force_retry: false, pause_origin: false,
   enqueued_at_ms: 1, started_at_ms: null,
   progress: null, result: null, error: null, skip_reason: null,
+  attempt: 1,
 };
 
 describe('CaptureQueueRow', () => {
@@ -63,5 +64,29 @@ describe('CaptureQueueRow', () => {
     expect(row.getAttribute('aria-expanded')).toBe('true');
     fireEvent.keyDown(row, { key: ' ' });
     expect(row.getAttribute('aria-expanded')).toBe('false');
+  });
+});
+
+describe('CaptureQueueRow attempt badge (ADR-0031)', () => {
+  it('hides the attempt badge when attempt === 1', () => {
+    render(<CaptureQueueRow item={{ ...base, attempt: 1 }} symbolName="삼성전자"
+                           onCancel={() => {}} onRetry={() => {}} />);
+    expect(screen.queryByTitle(/Attempt/i)).toBeNull();
+  });
+
+  it('renders ×N badge when attempt > 1', () => {
+    render(<CaptureQueueRow item={{ ...base, attempt: 3 }} symbolName="삼성전자"
+                           onCancel={() => {}} onRetry={() => {}} />);
+    const badge = screen.getByTitle(/Attempt 3/i);
+    expect(badge).toBeTruthy();
+    expect(badge.textContent).toBe('×3');
+  });
+
+  it('renders both ⚠ force and ×N badges together when both apply', () => {
+    render(<CaptureQueueRow item={{ ...base, force_retry: true, attempt: 2 }}
+                           symbolName="삼성전자"
+                           onCancel={() => {}} onRetry={() => {}} />);
+    expect(screen.getByTitle(/force re-capture/i)).toBeTruthy();
+    expect(screen.getByTitle(/Attempt 2/i)).toBeTruthy();
   });
 });

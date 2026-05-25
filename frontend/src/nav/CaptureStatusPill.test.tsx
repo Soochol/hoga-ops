@@ -32,6 +32,7 @@ const item = (id: string, phase: 'queued' | 'capturing' = 'queued') => ({
   item_id: id, code: '005930', date: '20260518', phase,
   force_retry: false, pause_origin: false, enqueued_at_ms: 1, started_at_ms: null,
   progress: null, result: null, error: null, skip_reason: null,
+  attempt: 1,
 });
 
 describe('CaptureStatusPill', () => {

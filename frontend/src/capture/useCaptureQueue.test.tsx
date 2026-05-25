@@ -36,6 +36,7 @@ const QUEUED_ITEM: QueueItem = {
   phase: 'queued', force_retry: false, pause_origin: false,
   enqueued_at_ms: 1, started_at_ms: null,
   progress: null, result: null, error: null, skip_reason: null,
+  attempt: 1,
 };
 
 beforeEach(() => {
