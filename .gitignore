@@ -13,3 +13,4 @@ node_modules/
 .superpowers/
 .playwright-mcp/
 .env
+prompt.txt
