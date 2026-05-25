@@ -1,0 +1,155 @@
+# Drawing commit clears selection
+
+**Date:** 2026-05-25
+**Scope:** Replay viewer — drawing tools post-commit behaviour
+**Author:** Brainstorm session with user (blessp@naver.com)
+
+## Problem
+
+When a user draws a new hline, trendline, or pencil stroke on the replay
+chart, two things happen on commit:
+
+1. The active tool reverts to `select` (intended — single-use tools).
+2. The newly created drawing becomes the selected drawing — so it renders
+   with the halo + 2× width selection emphasis.
+
+The user reports (2) as inconsistent: the toolbar now indicates "select
+mode," yet a drawing the user did not click is rendered as if it were the
+focused selection. The intuition "select mode = nothing selected" is
+violated.
+
+This is a Figma/Illustrator-style convenience (the just-created shape is
+pre-selected so it can be immediately moved or deleted), but on a charting
+overlay where hlines and trendlines are usually drawn and left alone, the
+emphasis reads as visual noise rather than a useful affordance.
+
+User has accepted the trade-off: deleting a just-drawn shape now requires
+click → Backspace (two steps) instead of Backspace alone.
+
+## Goal
+
+After a drawing is committed, `selectedId` is `null` so the drawing renders
+in its normal (non-emphasised) style. The active tool still reverts to
+`select` as today.
+
+## Non-goals
+
+- No change to keyboard ESC behaviour (already clears both selection and tool).
+- No change to selection emphasis itself (the halo + 2× width still applies
+  when the user explicitly clicks a drawing).
+- No change to drawing persistence, hit-testing, or pane binding.
+- No change to the toolbar button styling — the button already returns to
+  its non-active style when `activeTool === 'select'`.
+
+## Design
+
+### Rename and simplify `commitAndRevert`
+
+Current contract — [DrawingOverlay.tsx:265-269](../../../frontend/src/chart/DrawingOverlay.tsx#L265-L269):
+
+```ts
+commitAndRevert: (id) => {
+  const s = useDrawingsStore.getState();
+  s.setSelected(id);
+  s.setActiveTool('select');
+},
+```
+
+New contract:
+
+```ts
+revertToSelectMode: () => {
+  const s = useDrawingsStore.getState();
+  s.setSelected(null);
+  s.setActiveTool('select');
+},
+```
+
+The `id` parameter becomes unused, so the signature drops it. The name
+`revertToSelectMode` better reflects what the function now does — there's
+no longer a "commit" step (the `ctx.add` call earlier in each tool is the
+commit; this function is purely about returning to neutral state).
+
+### Update the `ToolCtx` type
+
+In [tools.ts:140](../../../frontend/src/chart/drawing/tools.ts#L140):
+
+```ts
+// Before
+commitAndRevert(id: string): void;
+
+// After
+revertToSelectMode(): void;
+```
+
+### Update the three call sites
+
+In [tools.ts](../../../frontend/src/chart/drawing/tools.ts):
+
+- Line 280 (hline): `ctx.commitAndRevert(id)` → `ctx.revertToSelectMode()`
+- Line 318 (trendline): same change
+- Line 371 (pencil): same change
+
+The local `id` variable becomes unused — we still need it for `ctx.add({ id, ... })`
+since drawings need ids, just not for the post-commit call.
+
+### Optional follow-up (out of scope for this change)
+
+The keyboard ESC handler at
+[DrawingOverlay.tsx:174-177](../../../frontend/src/chart/DrawingOverlay.tsx#L174-L177)
+does exactly the same thing as the new `revertToSelectMode`. A later
+cleanup could call the shared helper instead of duplicating the two
+`setX` calls. Not included here to keep the diff minimal and
+review-friendly.
+
+## Implementation outline
+
+1. Rename `commitAndRevert` → `revertToSelectMode` on `ToolCtx`
+   ([tools.ts:140](../../../frontend/src/chart/drawing/tools.ts#L140)).
+2. Change body and signature in
+   [DrawingOverlay.tsx:265-269](../../../frontend/src/chart/DrawingOverlay.tsx#L265-L269)
+   per Design section.
+3. Update three call sites in
+   [tools.ts](../../../frontend/src/chart/drawing/tools.ts) (lines 280, 318, 371).
+4. Run typecheck + tests; fix any test that asserts `selectedId === <new id>`
+   right after a commit — change the expectation to `selectedId === null`.
+
+## Testing
+
+### Unit / integration
+
+- Grep for `commitAndRevert` across `frontend/`: only the four locations
+  above plus possibly test files. Test files referencing the old name need
+  rename; tests asserting post-commit `selectedId` need to expect `null`.
+- `drawings.test.ts`, `Workarea.test.tsx`, and any drawing-tool unit tests
+  are the likely candidates; verify and update.
+
+### Manual QA (in `/replay`)
+
+1. Pick the hline tool → click in a pane → verify:
+   - Toolbar drawing button returns to the un-highlighted (select) state.
+   - The new horizontal line renders **without** halo or thickened stroke.
+2. Click the new hline once → verify it now shows halo + thickened stroke
+   (selection emphasis still works on explicit click).
+3. With it selected, press Backspace → verify it is deleted.
+4. Repeat (1) for trendline (drag) and pencil (drag).
+5. With nothing selected, press ESC → verify no error and no state change
+   (ESC already handles null-selected case).
+
+## Risks
+
+- **Test churn:** Any test that asserted "new drawing is auto-selected" will
+  fail. These need a one-line expectation update — low risk, easy to spot.
+- **Workflow regression:** The "draw → Backspace to undo" shortcut is lost.
+  User explicitly accepted this trade-off during brainstorm. Users who want
+  to undo a just-drawn shape now need click → Backspace, or in the future
+  we could add a real undo stack (out of scope).
+
+## Decision log
+
+- **Why not keep `commitAndRevert` and just pass `null`?** The function's
+  whole purpose changes — it no longer "commits and reverts," it just
+  reverts. Renaming makes the call sites read correctly. The `id` parameter
+  becoming dead weight is the clearest signal that the rename is right.
+- **Why not refactor ESC handler to use the new helper?** Out of scope.
+  Worth doing, but mixing it into this change would dilute the review.
