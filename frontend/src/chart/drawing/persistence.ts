@@ -1,5 +1,5 @@
 // frontend/src/chart/drawing/persistence.ts
-import type { Drawing, PaneId } from './types';
+import type { Drawing, LineStyle, PaneId } from './types';
 import { PANE_SPECS } from '../paneSpecs';
 
 const PREFIX = 'replay.drawings.v1.';
@@ -11,11 +11,12 @@ export function storageKey(code: string): string {
 
 type Wrapper = { v: number; items: unknown };
 
-/** Legacy in-memory shape — readers tolerate items missing paneId or
- *  carrying the never-shipped numeric paneIndex from dev branches. */
-type LegacyItem = Omit<Drawing, 'paneId'> & {
+/** Legacy in-memory shape — readers tolerate items missing paneId or lineStyle,
+ *  and carrying the never-shipped numeric paneIndex from dev branches. */
+type LegacyItem = Omit<Drawing, 'paneId' | 'lineStyle'> & {
   paneId?: PaneId;
   paneIndex?: number;
+  lineStyle?: LineStyle;
 };
 
 function resolvePaneId(item: LegacyItem): PaneId {
@@ -48,7 +49,8 @@ export function loadDrawings(code: string): Drawing[] {
   return (parsed.items as LegacyItem[]).map((item) => {
     const { paneIndex: _ignored, ...rest } = item;
     void _ignored;
-    return { ...rest, paneId: resolvePaneId(item) } as Drawing;
+    const lineStyle = (item as { lineStyle?: LineStyle }).lineStyle ?? 'solid';
+    return { ...rest, paneId: resolvePaneId(item), lineStyle } as Drawing;
   });
 }
 

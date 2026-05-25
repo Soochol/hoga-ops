@@ -24,7 +24,7 @@ describe('saveDrawings / loadDrawings round-trip', () => {
 
   it('persists and recovers a heterogeneous drawing list', () => {
     const items: Drawing[] = [
-      { id: 'a', kind: 'hline', price: 75000, color: '#FFD60A', width: 1.5, paneId: 'candle' },
+      { id: 'a', kind: 'hline', price: 75000, color: '#FFD60A', width: 1.5, paneId: 'candle', lineStyle: 'solid' },
       {
         id: 'b',
         kind: 'trendline',
@@ -33,6 +33,7 @@ describe('saveDrawings / loadDrawings round-trip', () => {
         color: '#FFD60A',
         width: 1.5,
         paneId: 'candle',
+        lineStyle: 'solid',
       },
     ];
     saveDrawings(CODE, items);
@@ -107,5 +108,21 @@ describe('loadDrawings — paneId migration', () => {
     };
     localStorage.setItem(storageKey(CODE), JSON.stringify(legacy));
     expect(loadDrawings(CODE)[0].paneId).toBe('candle');
+  });
+});
+
+describe('loadDrawings — lineStyle hydration', () => {
+  it('defaults lineStyle to "solid" for legacy items missing the field', () => {
+    const legacy = {
+      v: 1,
+      items: [
+        { id: 'a', kind: 'hline', price: 1000, color: '#14B8A6', width: 1.5, paneId: 'candle' },
+      ],
+    };
+    localStorage.setItem(storageKey(CODE), JSON.stringify(legacy));
+    const loaded = loadDrawings(CODE);
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].lineStyle).toBe('solid');
+    expect(loaded[0].width).toBe(1.5); // preserved as-is
   });
 });
