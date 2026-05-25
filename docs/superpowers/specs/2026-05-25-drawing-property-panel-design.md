@@ -210,9 +210,14 @@ select mode* — is preserved as-is.
 
 **New file:** `frontend/src/chart/DrawingPropertyPanel.tsx` (~250 lines)
 
-Mounted by `ChartStage` as a sibling of `DrawingOverlay`. Renders only
-when `selectedId != null`. Reads the selected drawing from the store
-and writes back via `update(id, patch)`.
+Mounted by `ChartStage` as a sibling of `DrawingOverlay`. **Renders
+only when `activeTool === 'select' && selectedId != null`** — the
+two-clause gate matters: if the user has a drawing selected and then
+switches to a drawing tool (e.g. hline) to draw a new shape, the
+panel for the previously-selected drawing must disappear, otherwise
+the user would see a property panel for an unrelated drawing while
+they draft a new one. Reads the selected drawing from the store and
+writes back via `update(id, patch)`.
 
 Structure:
 
@@ -271,9 +276,9 @@ window `mousedown` listener checks `popoverRef.current.contains`,
 - Line-style list: row matching `drawing.lineStyle` is highlighted
   the same way.
 
-### ADR-0031 — Drawing Property Panel (supersedes ADR-0030)
+### ADR-0032 — Drawing Property Panel (supersedes ADR-0030)
 
-New file: `docs/adr/0031-drawing-property-panel.md`.
+New file: `docs/adr/0032-drawing-property-panel.md`.
 
 Outline:
 - **Status**: accepted (2026-05-25)
@@ -301,7 +306,7 @@ Outline:
 - `CONTEXT.md` gets a new glossary entry **Drawing Property Panel**
   (definition, dependencies, lifecycle bullet).
 - `CONTEXT.md`'s existing **Drawing Tool** entry's post-commit
-  description is rewritten to point at ADR-0031.
+  description is rewritten to point at ADR-0032.
 - `DESIGN.md` gets a one-paragraph addition under the colour discipline
   section: "user-annotation layer" is a fourth category, distinct from
   UI / status / market direction — the sixteen-colour drawing palette
@@ -323,6 +328,7 @@ Outline:
 | Escape (popover open) | Popover closes; selection retained |
 | Escape (no popover) | `setSelected(null) + setActiveTool('select')`; panel disappears |
 | Switch stock code | Selection cleared, panel position reset |
+| Switch to a drawing tool (any non-select) | Panel hides immediately (gated by `activeTool === 'select'`); selection state itself is untouched |
 
 ## Testing
 
