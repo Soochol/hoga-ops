@@ -231,6 +231,16 @@ class CaptureQueueDrainedEvent(BaseModel):
     total_skipped: int
 
 
+class CaptureDismissedEvent(BaseModel):
+    """Tells the frontend to drop these item_ids from any bucket. Emitted by
+    the Retry flow when the old failed row is removed from `_done` before
+    the new attempt is enqueued. See ADR-0031.
+    """
+
+    type: Literal["capture_dismissed"] = "capture_dismissed"
+    item_ids: list[str]
+
+
 class QueueSnapshot(BaseModel):
     """Wire model for the full queue/worker state at one moment in time."""
 
@@ -288,6 +298,29 @@ class EnqueueDedupedRow(BaseModel):
 class EnqueueResponse(BaseModel):
     enqueued: list[QueueItem]
     deduped: list[EnqueueDedupedRow]
+
+
+# --- POST /api/captures/items/retry request/response (ADR-0031) ------------
+
+
+class RetryRequest(BaseModel):
+    """Bulk Retry payload. Single-row ↻ sends a one-element list."""
+
+    item_ids: list[str] = Field(min_length=1)
+
+
+class RetrySkippedRow(BaseModel):
+    """One item_id that did not produce a Retry enqueue and why."""
+
+    item_id: str
+    reason: Literal["not_found", "not_failed", "already_in_queue", "already_running"]
+
+
+class RetryResponse(BaseModel):
+    """Mirrors EnqueueResponse shape (enqueued + diagnostic list)."""
+
+    enqueued: list[QueueItem]
+    skipped: list[RetrySkippedRow]
 
 
 # --- Sibling-endpoint wire models (Tasks 16–17) -----------------------------

@@ -56,3 +56,51 @@ def test_queue_manifest_item_attempt_defaults_to_1():
     )
     item = QueueManifestItem.model_validate_json(legacy_json)
     assert item.attempt == 1
+
+
+def test_capture_dismissed_event_carries_item_ids():
+    from hoga.api.models import CaptureDismissedEvent
+    e = CaptureDismissedEvent(item_ids=["a", "b"])
+    assert e.type == "capture_dismissed"
+    assert e.item_ids == ["a", "b"]
+
+
+def test_retry_request_accepts_item_ids_list():
+    from hoga.api.models import RetryRequest
+    req = RetryRequest(item_ids=["x", "y"])
+    assert req.item_ids == ["x", "y"]
+
+
+def test_retry_request_rejects_empty_item_ids():
+    """Per ADR-0031: empty retry call is a usage error, not a no-op."""
+    import pytest
+    from pydantic import ValidationError
+    from hoga.api.models import RetryRequest
+    with pytest.raises(ValidationError):
+        RetryRequest(item_ids=[])
+
+
+def test_retry_skipped_row_reasons_are_constrained():
+    """Reason field is a Literal of the 4 documented skip reasons."""
+    import pytest
+    from pydantic import ValidationError
+    from hoga.api.models import RetrySkippedRow
+    for reason in ("not_found", "not_failed", "already_in_queue", "already_running"):
+        RetrySkippedRow(item_id="x", reason=reason)
+    with pytest.raises(ValidationError):
+        RetrySkippedRow(item_id="x", reason="something_else")
+
+
+def test_retry_response_shape():
+    from hoga.api.models import QueueItem, RetryResponse, RetrySkippedRow
+    item = QueueItem(
+        item_id="new", code="005930", date="20260520",
+        phase="queued", force_retry=False, pause_origin=False,
+        enqueued_at_ms=1, attempt=2,
+    )
+    resp = RetryResponse(
+        enqueued=[item],
+        skipped=[RetrySkippedRow(item_id="old", reason="not_found")],
+    )
+    assert resp.enqueued[0].attempt == 2
+    assert resp.skipped[0].reason == "not_found"
