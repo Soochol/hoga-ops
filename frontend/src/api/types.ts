@@ -166,6 +166,7 @@ export interface QueueItem {
   result: CaptureResult | null;
   error: CaptureError | null;
   skip_reason: SkipReason | null;
+  attempt: number;
 }
 
 /** Common header on every per-item SSE event (capture_progress / capture_phase /
@@ -189,6 +190,7 @@ export type SSEEvent =
       skip_reason: SkipReason | null;
     })
   | { type: 'capture_queued'; items: QueueItem[] }
+  | { type: 'capture_dismissed'; item_ids: string[] }
   | { type: 'capture_queue_paused'; reason: 'cookie_expired'; message: string }
   | { type: 'capture_queue_resumed'; reason: 'user_resume' | 'cancel_all' }
   | {
@@ -278,6 +280,22 @@ export interface EnqueueDedupedRow {
 export interface EnqueueResponse {
   enqueued: QueueItem[];
   deduped: EnqueueDedupedRow[];
+}
+
+/** Mirrors hoga/api/models.py::RetryRequest. */
+export interface RetryRequest {
+  item_ids: string[];   // non-empty per backend validator
+}
+
+export interface RetrySkippedRow {
+  item_id: string;
+  reason: 'not_found' | 'not_failed' | 'already_in_queue' | 'already_running';
+}
+
+/** Mirrors hoga/api/models.py::RetryResponse. */
+export interface RetryResponse {
+  enqueued: QueueItem[];
+  skipped: RetrySkippedRow[];
 }
 
 /** Mirrors hoga/api/models.py::QueueSnapshot. */
