@@ -1,10 +1,16 @@
-import { LineSeries, type LineData, type UTCTimestamp, type Time } from 'lightweight-charts';
+import {
+  LineSeries,
+  type LineData,
+  type UTCTimestamp,
+  type Time,
+  type WhitespaceData,
+} from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
-import { isAuctionMaskActive } from '../../util/auctionMask';
 import { resolveTokens } from '../../util/tokens';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
+import { makeAuctionMaskGap } from '../util/auctionMaskGap';
 
 const TOKEN_SPEC = {
   bid: ['--price-up', '#DC2626'],   // 매수 호가 총합 (KRX 빨강)
@@ -19,33 +25,47 @@ const priceFormat = {
   minMove: 1,
 };
 
-// CONTEXT.md "Auction Window" — posted totals are dominated by one-sided
-// accumulation during 15:20–15:30. `isAuctionMaskActive` owns the rule
-// (per-tab toggle + axis threshold), matching the RatioPane treatment.
+// Closing Auction Window hiding (ADR-0029): in-window points are dropped
+// and a WhitespaceData break is inserted at the boundary so the line
+// terminates cleanly at 15:20 instead of plateauing at 0.
 export function projectBid(
   bundle: RangeBundle,
   axis: VirtualAxis,
   auctionWindowMask: boolean,
-): LineData<Time>[] {
-  return bundle.quote_ratio.points
-    .filter((p) => axis.contains(p.t))
-    .map((p) => ({
+): (LineData<Time> | WhitespaceData<Time>)[] {
+  const gap = makeAuctionMaskGap(axis, auctionWindowMask);
+  const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
+  for (const p of bundle.quote_ratio.points) {
+    if (!axis.contains(p.t)) continue;
+    const br = gap.breakBefore(p.t);
+    if (br) out.push(br);
+    if (gap.isHidden(p.t)) continue;
+    out.push({
       time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
-      value: isAuctionMaskActive(auctionWindowMask, axis, p.t) ? 0 : p.bid_total,
-    }));
+      value: p.bid_total,
+    });
+  }
+  return out;
 }
 
 export function projectAsk(
   bundle: RangeBundle,
   axis: VirtualAxis,
   auctionWindowMask: boolean,
-): LineData<Time>[] {
-  return bundle.quote_ratio.points
-    .filter((p) => axis.contains(p.t))
-    .map((p) => ({
+): (LineData<Time> | WhitespaceData<Time>)[] {
+  const gap = makeAuctionMaskGap(axis, auctionWindowMask);
+  const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
+  for (const p of bundle.quote_ratio.points) {
+    if (!axis.contains(p.t)) continue;
+    const br = gap.breakBefore(p.t);
+    if (br) out.push(br);
+    if (gap.isHidden(p.t)) continue;
+    out.push({
       time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
-      value: isAuctionMaskActive(auctionWindowMask, axis, p.t) ? 0 : p.ask_total,
-    }));
+      value: p.ask_total,
+    });
+  }
+  return out;
 }
 
 const useQuoteTotalsContext = (): boolean => useActivePrefs((p) => p.auctionWindowMask);

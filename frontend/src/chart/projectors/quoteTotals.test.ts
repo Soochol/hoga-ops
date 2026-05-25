@@ -54,26 +54,38 @@ describe('projectAsk', () => {
   });
 });
 
-describe('closing-auction-window mask', () => {
-  it('forces bid_total/ask_total to 0 inside the window when auctionWindowMask=true', () => {
+describe('closing-auction-window hide', () => {
+  it('drops in-window bid/ask points and inserts a WhitespaceData break per series when auctionWindowMask=true', () => {
     const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
     const bundle: any = {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 100, ask_total: 200 },              // outside → kept
-          { t: auctionStartMs + 60_000, bid_total: 500, ask_total: 900 },    // inside → zeroed
+          { t: auctionStartMs + 60_000, bid_total: 500, ask_total: 900 },    // inside → hidden
+          { t: auctionStartMs + 120_000, bid_total: 600, ask_total: 1000 },  // inside → hidden
         ],
       },
     };
-    const bidsMasked = projectBid(bundle, axis, true);
-    const asksMasked = projectAsk(bundle, axis, true);
-    expect(bidsMasked[0].value).toBe(100);
-    expect(asksMasked[0].value).toBe(200);
-    expect(bidsMasked[1].value).toBe(0);
-    expect(asksMasked[1].value).toBe(0);
+    const bids = projectBid(bundle, axis, true);
+    const asks = projectAsk(bundle, axis, true);
+
+    // Each series: 1 kept point + 1 whitespace boundary = 2 entries.
+    expect(bids).toHaveLength(2);
+    expect(asks).toHaveLength(2);
+
+    expect(bids[0]).toEqual({ time: 0, value: 100 });
+    expect(asks[0]).toEqual({ time: 0, value: 200 });
+
+    const expectedBreakTime = (auctionStartMs + 60_000 - sessionOpenMs - 1) / 1000;
+    const bidWs = bids[1] as { time: number; value?: number };
+    const askWs = asks[1] as { time: number; value?: number };
+    expect(bidWs.time).toBe(expectedBreakTime);
+    expect(bidWs.value).toBeUndefined();
+    expect(askWs.time).toBe(expectedBreakTime);
+    expect(askWs.value).toBeUndefined();
   });
 
-  it('keeps raw totals inside the window when auctionWindowMask=false', () => {
+  it('keeps in-window points when auctionWindowMask=false', () => {
     const auctionStartMs = sessionOpenMs + 22_800_000;
     const bundle: any = {
       quote_ratio: {
@@ -82,7 +94,11 @@ describe('closing-auction-window mask', () => {
         ],
       },
     };
-    expect(projectBid(bundle, axis, false)[0].value).toBe(500);
-    expect(projectAsk(bundle, axis, false)[0].value).toBe(900);
+    expect(projectBid(bundle, axis, false)).toEqual([
+      { time: (auctionStartMs + 60_000 - sessionOpenMs) / 1000, value: 500 },
+    ]);
+    expect(projectAsk(bundle, axis, false)).toEqual([
+      { time: (auctionStartMs + 60_000 - sessionOpenMs) / 1000, value: 900 },
+    ]);
   });
 });

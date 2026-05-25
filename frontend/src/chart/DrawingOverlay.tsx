@@ -33,6 +33,29 @@ import { resolveTokens } from '../util/tokens';
 
 const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
 
+/**
+ * Pure predicate for the empty-click deselect flow. Returns true iff the
+ * click landed inside the overlay's bounding rect AND did not hit any
+ * Drawing. Extracted so the listener body stays small and the rule is
+ * unit-testable without the `IChartApi` / `VirtualAxis` / `paneSeries`
+ * scaffolding the full component needs. See ADR-0030 (companion decision).
+ */
+function shouldDeselectOnClick(
+  click: { x: number; y: number },
+  rect: { width: number; height: number },
+  hasHit: boolean,
+): boolean {
+  const inside =
+    click.x >= 0 &&
+    click.y >= 0 &&
+    click.x <= rect.width &&
+    click.y <= rect.height;
+  return inside && !hasHit;
+}
+
+/** Test-only export of internals. Do not import in production code. */
+export const __test__ = { shouldDeselectOnClick };
+
 type Props = {
   chart: IChartApi;
   axis: VirtualAxis;
@@ -312,6 +335,31 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
     // hitTestAt closes over drawings / paneSeries; re-bind on change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTool, drawings, paneSeries, axis]);
+
+  // ── empty-click deselect ───────────────────────────────────────────────
+  // When something is selected and the user clicks empty chart space,
+  // clear the selection. Runs in parallel with chart pan/zoom — never
+  // calls preventDefault or stopPropagation. Mounted only while there's
+  // something to deselect, so the global listener is short-lived.
+  // See ADR-0030 (companion decision).
+  useEffect(() => {
+    if (activeTool !== 'select' || selectedId == null) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const onWindowMouseDown = (e: MouseEvent) => {
+      if (dragRef.current) return;
+      const rect = container.getBoundingClientRect();
+      const click = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const hasHit = !!hitTestAt(click.x, click.y);
+      if (shouldDeselectOnClick(click, rect, hasHit)) {
+        useDrawingsStore.getState().setSelected(null);
+      }
+    };
+    window.addEventListener('mousedown', onWindowMouseDown);
+    return () => window.removeEventListener('mousedown', onWindowMouseDown);
+    // hitTestAt closes over drawings / paneSeries / axis — re-bind on change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTool, selectedId, drawings, paneSeries, axis]);
 
   return (
     <div

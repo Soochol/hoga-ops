@@ -32,6 +32,12 @@ After a drawing is committed, `selectedId` is `null` so the drawing renders
 in its normal (non-emphasised) style. The active tool still reverts to
 `select` as today.
 
+**Goal 2 (added 2026-05-25 after first round of dogfooding):** In `select`
+mode, clicking on empty chart space (any pixel that isn't on a Drawing)
+clears the current selection. The chart's own pan/zoom behaviour for that
+click must be preserved — the deselection runs in parallel with, not
+instead of, the chart's pointer handling.
+
 ## Non-goals
 
 - No change to keyboard ESC behaviour (already clears both selection and tool).
@@ -92,6 +98,48 @@ In [tools.ts](../../../frontend/src/chart/drawing/tools.ts):
 
 The local `id` variable becomes unused — we still need it for `ctx.add({ id, ... })`
 since drawings need ids, just not for the post-commit call.
+
+### Empty-click deselect (Goal 2)
+
+Current behaviour: in `select` mode, the **Drawing Overlay** sets
+`pointerEvents = 'none'` and uses a window-level `mousemove` listener to
+flip it to `'auto'` only when the cursor is over a hit-testable Drawing
+(see [DrawingOverlay.tsx:288-314](../../../frontend/src/chart/DrawingOverlay.tsx#L288-L314)).
+A click on empty chart space therefore never reaches `selectTool.onPointerDown`
+— the event passes straight through to lightweight-charts for pan/zoom —
+which is why a previously-selected Drawing stays selected when the user
+clicks elsewhere.
+
+Add a sibling window-level `mousedown` listener, mounted whenever
+`activeTool === 'select' && selectedId != null`, that hit-tests the click
+position against the same `hitTestAt`:
+
+```ts
+const onWindowMouseDown = (e: MouseEvent) => {
+  if (dragRef.current) return;
+  const rect = container.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+  const insideOverlay =
+    px >= 0 && py >= 0 && px <= rect.width && py <= rect.height;
+  if (!insideOverlay) return;             // clicks outside chart: ignore
+  if (hitTestAt(px, py)) return;          // hit a drawing → selectTool handles it
+  useDrawingsStore.getState().setSelected(null);
+};
+```
+
+The handler must NOT `preventDefault` or `stopPropagation` — chart pan
+remains driven by lightweight-charts' own pointer pipeline on the
+underlying canvas. The handler only runs when there is something to
+deselect (cheap mount/unmount when `selectedId` flips between `null` and
+non-null) so the global listener is not a long-lived listener on a quiet
+page.
+
+This pairs with the existing `onHover` effect, but the two cannot trivially
+merge — `mousemove` toggles `pointerEvents`, `mousedown` toggles
+`selectedId`. They share `hitTestAt` and the inside-overlay guard; the
+implementation can extract those into a small helper if it keeps the
+gating effect readable.
 
 ### Unify the `Escape` keyboard handler
 

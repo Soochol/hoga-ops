@@ -264,6 +264,120 @@ EOF
 
 ---
 
+## Task A (added 2026-05-25 after dogfooding): Empty-click deselects in `select` mode
+
+**Files:**
+- Modify: `frontend/src/chart/DrawingOverlay.tsx`
+- Modify: `frontend/src/chart/DrawingOverlay.test.tsx` if it exists; otherwise add a focused test for the new behaviour.
+
+**Background:** the existing pointer-events gating effect at
+`DrawingOverlay.tsx:288-314` leaves the overlay transparent (`pointerEvents=none`)
+in `select` mode unless the cursor is hovering a Drawing. A click on empty
+chart space therefore never reaches `selectTool.onPointerDown` — the event
+passes straight to lightweight-charts for chart pan. As a result, an
+already-selected Drawing stays selected after the user clicks elsewhere.
+
+The fix adds a sibling window-level `mousedown` listener that runs only
+when `activeTool === 'select' && selectedId != null`. The listener
+hit-tests at the click position and calls
+`useDrawingsStore.getState().setSelected(null)` on a miss inside the
+overlay's bounding rect. It must NOT `preventDefault` or
+`stopPropagation` so lightweight-charts can still pan/zoom.
+
+- [ ] **Step 1: Add a focused test (failing)**
+
+If `frontend/src/chart/DrawingOverlay.test.tsx` does not exist, create a
+new test file scoped to the deselect behaviour. The test mounts the
+overlay (or simulates the store transitions) and verifies that an empty-
+click in `select` mode while `selectedId != null` flips `selectedId` back
+to `null`.
+
+If the integration setup is hard (the overlay needs `IChartApi`,
+`VirtualAxis`, `paneSeries`), prefer a focused unit test against the
+listener's intent: extract the hit-test-and-deselect predicate into a
+pure helper called `shouldDeselectOnClick(click, hitTestAt, rect)` (or
+similar). Test the helper with the in-overlay-hit, in-overlay-miss, and
+out-of-overlay cases.
+
+Whichever path the implementer picks, the test must fail today and pass
+after Step 2.
+
+- [ ] **Step 2: Implement the listener**
+
+In `frontend/src/chart/DrawingOverlay.tsx`, add a new `useEffect` parallel
+to the pointer-events gating effect at lines 288-314. The new effect mounts
+only when `activeTool === 'select' && selectedId != null` (read
+`selectedId` via the existing `useDrawingsStore` selector at line 51):
+
+```ts
+// Empty-click deselect: when something is selected and the user clicks
+// on empty chart space, clear the selection. Runs in parallel with the
+// chart's pan/zoom pipeline — never calls preventDefault.
+// See ADR-0030 (companion decision).
+useEffect(() => {
+  if (activeTool !== 'select' || selectedId == null) return;
+  const container = containerRef.current;
+  if (!container) return;
+  const onWindowMouseDown = (e: MouseEvent) => {
+    if (dragRef.current) return;
+    const rect = container.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const insideOverlay =
+      px >= 0 && py >= 0 && px <= rect.width && py <= rect.height;
+    if (!insideOverlay) return;
+    if (hitTestAt(px, py)) return;
+    useDrawingsStore.getState().setSelected(null);
+  };
+  window.addEventListener('mousedown', onWindowMouseDown);
+  return () => window.removeEventListener('mousedown', onWindowMouseDown);
+  // hitTestAt closes over drawings / paneSeries — re-bind when they change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [activeTool, selectedId, drawings, paneSeries, axis]);
+```
+
+The effect mounts the listener only while there's something to deselect,
+so the global handler is short-lived. Cleanup unmounts as soon as
+`selectedId` flips back to `null`.
+
+- [ ] **Step 3: Run typecheck + tests**
+
+```bash
+npx tsc -b --noEmit          # from frontend/
+npx vitest run --reporter=dot
+```
+
+Expected: all pass, including the new test from Step 1.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add frontend/src/chart/DrawingOverlay.tsx \
+        frontend/src/chart/DrawingOverlay.test.tsx \
+        docs/superpowers/specs/2026-05-25-drawing-commit-clears-selection-design.md \
+        docs/superpowers/plans/2026-05-25-drawing-commit-clears-selection.md \
+        docs/adr/0030-drawing-commit-clears-selection.md \
+        CONTEXT.md
+git commit -m "$(cat <<'EOF'
+feat(replay): empty-click deselects in select mode
+
+Adds a window-level mousedown listener parallel to the pointer-events
+gating effect. Mounted only when activeTool=='select' && selectedId!=null.
+On a click that lands inside the overlay's bbox but doesn't hit-test to
+any Drawing, clears selection. Does not preventDefault — lightweight-
+charts pan/zoom on the empty-space click is preserved.
+
+Companion to ADR-0030: same "selection emphasis = explicit user signal"
+principle, applied to the inverse (don't leave a stale halo lingering
+when the user moves on).
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+---
+
 ## Task 3: Manual QA on `/replay`
 
 This is a behaviour change. Code-level tests cover the wiring contract; visual emphasis and keyboard regressions need eyes on the page.
@@ -307,6 +421,15 @@ This is a behaviour change. Code-level tests cover the wiring contract; visual e
 3. Click one of the hlines → it disappears.
 4. **Verify:** eraser stays active (toolbar still shows ⌫, not ✏). Click another hline → it disappears. The continuous-erase flow is preserved.
 5. Press Escape to return to select mode.
+
+- [ ] **Step 5.5: Empty-click deselect (Task A)**
+
+1. Draw an hline in the candle pane.
+2. Click the hline → halo appears.
+3. Click on empty chart space (a pixel that isn't on any Drawing).
+4. **Verify:** halo disappears, line is back to thin. The chart's pan/zoom on that click still feels normal (no swallowed gesture).
+5. Click the hline again → halo returns.
+6. Click outside the chart entirely (e.g. on the toolbar) → selection should NOT change (the listener bails on out-of-overlay clicks).
 
 - [ ] **Step 6: Escape — still works in both directions**
 

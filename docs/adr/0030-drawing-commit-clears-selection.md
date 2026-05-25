@@ -33,6 +33,12 @@ The fast-path "draw → Backspace to undo a misdraw" workflow is lost — undoin
 
 Pre-change, the `Escape` keyboard handler ran `setSelected(null) + setActiveTool('select')` — identical semantics to the new `revertToSelectMode()`. Routing both call sites through one helper prevents a future change to "return to neutral" from updating one path and silently diverging from the other.
 
+## Companion decision: empty-click deselects (added 2026-05-25)
+
+The same "selection emphasis = explicit user signal" principle implies the inverse: in `select` mode, a click on empty chart space (any pixel that does not hit-test to a Drawing) should clear `selectedId`. Without this, a user can leave a stale selection lingering on the chart for the rest of the session simply by not clicking the selected shape again — re-introducing the visual noise this ADR was meant to eliminate, just on the other side of the workflow.
+
+Implementation: a window-level `mousedown` listener parallel to the existing window-level `mousemove` listener that drives pointer-events gating. Mounted only when `activeTool === 'select' && selectedId != null` so it costs nothing on a quiet page. Does not `preventDefault` — chart pan/zoom on the empty-space click is preserved.
+
 ## Consequences
 
 - `ToolCtx.commitAndRevert(id)` → `revertToSelectMode()`. Three call sites in `frontend/src/chart/drawing/tools.ts` (hline / trendline / pencil) drop the `id` argument.
