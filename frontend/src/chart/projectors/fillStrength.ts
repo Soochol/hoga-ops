@@ -13,6 +13,7 @@ import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
+import { makeAuctionMaskGap } from '../util/auctionMaskGap';
 
 const TOKEN_SPEC = {
   buy: ['--price-up', '#DC2626'],          // 체결 매수 (KRX 빨강)
@@ -43,16 +44,34 @@ const cumulativePriceFormat = {
   minMove: 1,
 };
 
-export function projectBuy(bundle: RangeBundle, axis: VirtualAxis): any[] {
-  return bundle.fill_strength.points
-    .filter((p) => axis.contains(p.t))
-    .map((p) => ({ time: (axis.toVirtual(p.t) / 1000) as any, value: p.buy_qty }));
+export function projectBuy(
+  bundle: RangeBundle,
+  axis: VirtualAxis,
+  auctionWindowMask: boolean,
+): any[] {
+  const gap = makeAuctionMaskGap(axis, auctionWindowMask);
+  const out: any[] = [];
+  for (const p of bundle.fill_strength.points) {
+    if (!axis.contains(p.t)) continue;
+    if (gap.isHidden(p.t)) continue;
+    out.push({ time: (axis.toVirtual(p.t) / 1000) as any, value: p.buy_qty });
+  }
+  return out;
 }
 
-export function projectSell(bundle: RangeBundle, axis: VirtualAxis): any[] {
-  return bundle.fill_strength.points
-    .filter((p) => axis.contains(p.t))
-    .map((p) => ({ time: (axis.toVirtual(p.t) / 1000) as any, value: -p.sell_qty }));
+export function projectSell(
+  bundle: RangeBundle,
+  axis: VirtualAxis,
+  auctionWindowMask: boolean,
+): any[] {
+  const gap = makeAuctionMaskGap(axis, auctionWindowMask);
+  const out: any[] = [];
+  for (const p of bundle.fill_strength.points) {
+    if (!axis.contains(p.t)) continue;
+    if (gap.isHidden(p.t)) continue;
+    out.push({ time: (axis.toVirtual(p.t) / 1000) as any, value: -p.sell_qty });
+  }
+  return out;
 }
 
 /**
@@ -96,15 +115,24 @@ export function projectSell(bundle: RangeBundle, axis: VirtualAxis): any[] {
 export function projectCumulativeNetFill(
   bundle: RangeBundle,
   axis: VirtualAxis,
+  auctionWindowMask: boolean,
 ): (LineData<Time> | WhitespaceData<Time>)[] {
   const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
   bundle.segments.forEach((seg, segIdx) => {
+    const gap = makeAuctionMaskGap(axis, auctionWindowMask);
     let runningSum = 0;
     let firstEmittedInSeg = true;
     for (const p of bundle.fill_strength.points) {
       if (p.t < seg.session_open_ms || p.t > seg.session_close_ms) continue;
       runningSum += p.buy_qty - p.sell_qty;
       if (!axis.contains(p.t)) continue;
+
+      // Auction-window boundary: emit whitespace BEFORE the day-boundary
+      // handling so the auction break and the optional zero-anchor coexist
+      // at distinct timestamps.
+      const auctionBr = gap.breakBefore(p.t);
+      if (auctionBr) out.push(auctionBr);
+      if (gap.isHidden(p.t)) continue;
 
       if (firstEmittedInSeg) {
         const segOpenVirtual = (axis.toVirtual(seg.session_open_ms) / 1000) as UTCTimestamp;
@@ -114,7 +142,11 @@ export function projectCumulativeNetFill(
           // visually continue into this day. Whitespace point: time only.
           out.push({ time: ((segOpenVirtual as number) - 1) as UTCTimestamp });
         }
-        if (axis.contains(seg.session_open_ms) && (segOpenVirtual as number) < (thisVirtual as number)) {
+        if (
+          axis.contains(seg.session_open_ms) &&
+          (segOpenVirtual as number) < (thisVirtual as number) &&
+          !axis.inClosingAuctionWindow(p.t)
+        ) {
           out.push({ time: segOpenVirtual, value: 0 });
         }
         firstEmittedInSeg = false;
@@ -131,6 +163,7 @@ export function projectCumulativeNetFill(
 
 export type FillStrengthPaneContext = {
   cumulativeEnabled: boolean;
+  auctionWindowMask: boolean;
 };
 
 // Single primitive selector; useShallow ensures the object literal reference
@@ -142,6 +175,7 @@ const useFillStrengthContext = (): FillStrengthPaneContext =>
   useActivePrefs(
     useShallow((p): FillStrengthPaneContext => ({
       cumulativeEnabled: p.fillStrengthCumulative,
+      auctionWindowMask: p.auctionWindowMask,
     })),
   );
 
@@ -153,12 +187,12 @@ export const FILL_STRENGTH_SPEC = {
     {
       type: HistogramSeries,
       options: { color: buy, ...histOpts },
-      data: (bundle, axis) => projectBuy(bundle, axis),
+      data: (bundle, axis, ctx) => projectBuy(bundle, axis, ctx.auctionWindowMask),
     },
     {
       type: HistogramSeries,
       options: { color: sell, ...histOpts },
-      data: (bundle, axis) => projectSell(bundle, axis),
+      data: (bundle, axis, ctx) => projectSell(bundle, axis, ctx.auctionWindowMask),
     },
     {
       type: LineSeries,
@@ -172,7 +206,7 @@ export const FILL_STRENGTH_SPEC = {
         priceFormat: cumulativePriceFormat,
       },
       data: (bundle, axis, ctx) =>
-        ctx.cumulativeEnabled ? projectCumulativeNetFill(bundle, axis) : [],
+        ctx.cumulativeEnabled ? projectCumulativeNetFill(bundle, axis, ctx.auctionWindowMask) : [],
       afterAdd: (series) => addZeroBaselineGuide(series, cumulativeBaseline),
     },
   ],
