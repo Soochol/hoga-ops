@@ -6,7 +6,16 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useDrawingsStore } from '../state/drawings';
-import { COLOR_PALETTE, STROKE_WIDTHS } from './drawing/types';
+import { COLOR_PALETTE, STROKE_WIDTHS, LINE_STYLES, type LineStyle } from './drawing/types';
+
+const LINE_STYLE_LABELS: Record<LineStyle, string> = {
+  solid: '실선',
+  dashed: '대시',
+  dotted: '도트',
+};
+
+const previewBorderStyle = (style: LineStyle): 'solid' | 'dashed' | 'dotted' =>
+  style === 'solid' ? 'solid' : style === 'dashed' ? 'dashed' : 'dotted';
 
 type OpenPopover = 'color' | 'thickness' | 'lineStyle' | null;
 
@@ -50,6 +59,11 @@ export default function DrawingPropertyPanel() {
 
   const pickWidth = (width: number) => {
     useDrawingsStore.getState().update(id, { width });
+    setOpenPopover(null);
+  };
+
+  const pickLineStyle = (lineStyle: LineStyle) => {
+    useDrawingsStore.getState().update(id, { lineStyle });
     setOpenPopover(null);
   };
 
@@ -127,6 +141,46 @@ export default function DrawingPropertyPanel() {
               >
                 <span className="inline-block w-6 border-t border-current" style={{ borderTopWidth: w }} />
                 <span className="tabular-nums">{w}px</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <button
+        type="button"
+        data-testid="drawing-line-style-trigger"
+        data-current-style={drawing.lineStyle}
+        aria-label="선 스타일"
+        onClick={() => setOpenPopover(openPopover === 'lineStyle' ? null : 'lineStyle')}
+        className="h-7 px-2 inline-flex items-center rounded hover:bg-bg-input-hover"
+      >
+        <span
+          className="inline-block w-4 border-t border-fg"
+          style={{ borderTopStyle: previewBorderStyle(drawing.lineStyle), borderTopWidth: 1.5 }}
+        />
+      </button>
+
+      {openPopover === 'lineStyle' && (
+        <div className="absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md p-1 shadow-xl min-w-[7rem]">
+          {LINE_STYLES.map((style) => {
+            const isSelected = style === drawing.lineStyle;
+            return (
+              <button
+                key={style}
+                type="button"
+                data-testid={`drawing-line-style-item-${style}`}
+                onClick={() => pickLineStyle(style)}
+                className={
+                  'w-full px-2 py-1 flex items-center gap-2 rounded text-xs ' +
+                  (isSelected ? 'bg-bg-input-hover text-accent' : 'text-fg hover:bg-bg-input-hover')
+                }
+              >
+                <span
+                  className="inline-block w-6 border-t border-current"
+                  style={{ borderTopStyle: previewBorderStyle(style), borderTopWidth: 1.5 }}
+                />
+                {LINE_STYLE_LABELS[style]}
               </button>
             );
           })}

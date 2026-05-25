@@ -122,3 +122,34 @@ describe('DrawingPropertyPanel — color', () => {
     expect(screen.queryAllByTestId(/^drawing-color-swatch-/)).toHaveLength(0);
   });
 });
+
+describe('DrawingPropertyPanel — line style', () => {
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+    useDrawingsStore.getState().setActiveCode('005930');
+    useDrawingsStore.getState().add(HLINE);
+    useDrawingsStore.getState().setSelected('h1');
+  });
+
+  it('line-style trigger renders a preview of current style', () => {
+    render(<DrawingPropertyPanel />);
+    const trigger = screen.getByTestId('drawing-line-style-trigger');
+    expect(trigger.getAttribute('data-current-style')).toBe('solid');
+  });
+
+  it('clicking the trigger opens a 3-item popover', () => {
+    render(<DrawingPropertyPanel />);
+    fireEvent.click(screen.getByTestId('drawing-line-style-trigger'));
+    const items = screen.getAllByTestId(/^drawing-line-style-item-/);
+    expect(items).toHaveLength(LINE_STYLES.length);
+  });
+
+  it('selecting "dashed" updates drawing and defaults', () => {
+    render(<DrawingPropertyPanel />);
+    fireEvent.click(screen.getByTestId('drawing-line-style-trigger'));
+    fireEvent.click(screen.getByTestId('drawing-line-style-item-dashed'));
+    const drawn = useDrawingsStore.getState().byCode.get('005930')!.find((d) => d.id === 'h1')!;
+    expect(drawn.lineStyle).toBe('dashed');
+    expect(useDrawingsStore.getState().defaults.lineStyle).toBe('dashed');
+  });
+});
