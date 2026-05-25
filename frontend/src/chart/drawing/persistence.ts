@@ -1,6 +1,7 @@
 // frontend/src/chart/drawing/persistence.ts
-import type { Drawing, LineStyle, PaneId } from './types';
+import type { Drawing, LineStyle, PaneId, DrawingDefaults } from './types';
 import { PANE_SPECS } from '../paneSpecs';
+import { INITIAL_DEFAULTS } from './types';
 
 const PREFIX = 'replay.drawings.v1.';
 const VERSION = 1;
@@ -61,5 +62,38 @@ export function saveDrawings(code: string, items: Drawing[]): void {
   } catch {
     // Quota exceeded or storage unavailable — ignore. Drawings remain in
     // memory; user simply loses them on reload.
+  }
+}
+
+export const DEFAULTS_KEY = 'replay.drawingDefaults.v1';
+const DEFAULTS_VERSION = 1;
+
+type DefaultsWrapper = { v: number; value: DrawingDefaults };
+
+export function loadDefaults(): DrawingDefaults {
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(DEFAULTS_KEY);
+  } catch {
+    return INITIAL_DEFAULTS;
+  }
+  if (raw == null) return INITIAL_DEFAULTS;
+  let parsed: DefaultsWrapper;
+  try {
+    parsed = JSON.parse(raw) as DefaultsWrapper;
+  } catch {
+    return INITIAL_DEFAULTS;
+  }
+  if (parsed == null || parsed.v !== DEFAULTS_VERSION) return INITIAL_DEFAULTS;
+  return { ...INITIAL_DEFAULTS, ...parsed.value };
+}
+
+export function saveDefaults(d: DrawingDefaults): void {
+  const wrapper: DefaultsWrapper = { v: DEFAULTS_VERSION, value: d };
+  try {
+    localStorage.setItem(DEFAULTS_KEY, JSON.stringify(wrapper));
+  } catch {
+    // Quota / storage unavailable — defaults stay in-memory; user simply
+    // loses the cross-session sticky-ness on next reload.
   }
 }

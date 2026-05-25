@@ -1,8 +1,9 @@
 // frontend/src/chart/drawing/persistence.test.ts
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Drawing } from './types';
-import { loadDrawings, saveDrawings, storageKey } from './persistence';
+import { loadDrawings, saveDrawings, storageKey, loadDefaults, saveDefaults, DEFAULTS_KEY } from './persistence';
 import { PANE_SPECS } from '../paneSpecs';
+import { INITIAL_DEFAULTS } from './types';
 
 const CODE = '005930';
 
@@ -124,5 +125,29 @@ describe('loadDrawings — lineStyle hydration', () => {
     expect(loaded).toHaveLength(1);
     expect(loaded[0].lineStyle).toBe('solid');
     expect(loaded[0].width).toBe(1.5); // preserved as-is
+  });
+});
+
+describe('drawing defaults persistence', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('returns INITIAL_DEFAULTS when no key present', () => {
+    expect(loadDefaults()).toEqual(INITIAL_DEFAULTS);
+  });
+
+  it('round-trips a written value', () => {
+    const written = { color: '#F43F5E', width: 4, lineStyle: 'dashed' as const };
+    saveDefaults(written);
+    expect(loadDefaults()).toEqual(written);
+  });
+
+  it('returns INITIAL_DEFAULTS on JSON corruption', () => {
+    localStorage.setItem(DEFAULTS_KEY, '{not valid json');
+    expect(loadDefaults()).toEqual(INITIAL_DEFAULTS);
+  });
+
+  it('returns INITIAL_DEFAULTS when wrapper version mismatches', () => {
+    localStorage.setItem(DEFAULTS_KEY, JSON.stringify({ v: 99, value: { color: '#000' } }));
+    expect(loadDefaults()).toEqual(INITIAL_DEFAULTS);
   });
 });
