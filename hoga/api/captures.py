@@ -837,6 +837,90 @@ def _make_item_id(code: str, date: str) -> str:
     return f"{stamp}-{code}-{date}"
 
 
+@dataclass
+class _RetryResult:
+    """Internal Retry outcome — what the HTTP handler turns into RetryResponse."""
+    enqueued: list[QueueItemState]
+    skipped: list[dict]                     # [{"item_id": str, "reason": str}]
+    dismissed_item_ids: list[str]           # original ids removed from _done
+
+
+async def _retry_items(item_ids: list[str]) -> _RetryResult:
+    """Core Retry logic (ADR-0031). Caller holds no lock; we acquire ``_lock``
+    inside and publish events after release.
+
+    For each item_id (preserving input order):
+    - Look up in ``_done``. Missing → skip ``not_found``.
+    - Phase must be ``failed`` → otherwise skip ``not_failed``.
+    - Apply (code, date) dedupe against ``_queue ∪ _active ∪ _inflight_paths``.
+      Hit → skip ``already_running`` / ``already_in_queue``.
+    - Remove from ``_done``; enqueue a new ``QueueItemState`` with
+      ``attempt = prior + 1`` and the same ``force_retry``.
+
+    Duplicate item_ids in the same batch: the first attempt removes the row
+    from ``_done``; the second sees ``not_found``.
+    """
+    enqueued: list[QueueItemState] = []
+    skipped: list[dict] = []
+    dismissed: list[str] = []
+    enqueued_at_ms = int(time.time() * 1000)
+
+    async with _lock:
+        active_pairs = {(s.code, s.date) for s in _active.values()}
+        queue_pairs: set[tuple[str, str]] = {(s.code, s.date) for s in _queue}
+        for item_id in item_ids:
+            # 1. Find in _done.
+            target: QueueItemState | None = None
+            target_idx = -1
+            for i, s in enumerate(_done):
+                if s.item_id == item_id:
+                    target = s
+                    target_idx = i
+                    break
+            if target is None:
+                skipped.append({"item_id": item_id, "reason": "not_found"})
+                continue
+            # 2. Phase guard.
+            if target.phase != "failed":
+                skipped.append({"item_id": item_id, "reason": "not_failed"})
+                continue
+            # 3. Dedupe.
+            pair = (target.code, target.date)
+            if pair in active_pairs or pair in _inflight_paths:
+                skipped.append({"item_id": item_id, "reason": "already_running"})
+                continue
+            if pair in queue_pairs:
+                skipped.append({"item_id": item_id, "reason": "already_in_queue"})
+                continue
+            # 4. Apply: remove old, enqueue new.
+            del _done[target_idx]
+            dismissed.append(target.item_id)
+            new_state = QueueItemState(
+                item_id=_make_item_id(target.code, target.date),
+                code=target.code,
+                date=target.date,
+                force_retry=target.force_retry,
+                enqueued_at_ms=enqueued_at_ms,
+                attempt=target.attempt + 1,
+            )
+            _queue.append(new_state)
+            enqueued.append(new_state)
+            queue_pairs.add(pair)   # so a second id targeting same (code, date) is deduped
+        if enqueued and _wakeup is not None:
+            _wakeup.set()
+        _persist_queue_locked()
+
+    # Publish events outside the lock — dismissed first so the UI removes
+    # the old rows before the new ones land.
+    from hoga.api.models import CaptureDismissedEvent  # local import to keep top tidy
+    if dismissed:
+        _publish_event(CaptureDismissedEvent(item_ids=dismissed))
+    if enqueued:
+        _publish_event(CaptureQueuedEvent(items=[s.to_wire() for s in enqueued]))
+
+    return _RetryResult(enqueued=enqueued, skipped=skipped, dismissed_item_ids=dismissed)
+
+
 def build_router(
     *,
     data_dir: Path,

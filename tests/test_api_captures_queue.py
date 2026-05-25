@@ -906,3 +906,152 @@ async def test_worker_handles_empty_info_as_skipped_no_upstream_data(monkeypatch
     assert not (raw_dir / "info.tsv").exists()
     assert not (raw_dir / "chart.tsv").exists()
     assert not (raw_dir / "_progress.json").exists()
+
+
+# --- Retry endpoint core logic (ADR-0031) ----------------------------------
+
+
+async def test_retry_items_moves_failed_done_item_to_queue_with_incremented_attempt(
+    monkeypatch, tmp_path,
+):
+    """Happy path: a single failed item_id is removed from _done and a new
+    QueueItemState appears in _queue with attempt=prior+1 and the same
+    force_retry flag."""
+    monkeypatch.setattr(captures, "_data_dir", tmp_path, raising=False)
+    # Seed _done with a failed item.
+    failed = _make_item("old-1", code="005930", date="20260520")
+    failed.phase = "failed"
+    failed.attempt = 1
+    captures._done.append(failed)
+
+    result = await captures._retry_items(["old-1"])
+
+    assert result.enqueued[0].attempt == 2
+    assert result.enqueued[0].force_retry is False
+    assert result.enqueued[0].item_id != "old-1"   # new id
+    assert result.skipped == []
+    assert len(captures._queue) == 1
+    assert captures._queue[0].code == "005930"
+    assert captures._queue[0].attempt == 2
+    assert all(s.item_id != "old-1" for s in captures._done)
+    assert result.dismissed_item_ids == ["old-1"]
+
+
+async def test_retry_items_preserves_force_retry_flag(monkeypatch, tmp_path):
+    monkeypatch.setattr(captures, "_data_dir", tmp_path, raising=False)
+    failed = _make_item("old-fr", code="005930", date="20260520")
+    failed.phase = "failed"
+    failed.force_retry = True
+    failed.attempt = 2
+    captures._done.append(failed)
+
+    result = await captures._retry_items(["old-fr"])
+
+    assert result.enqueued[0].force_retry is True
+    assert result.enqueued[0].attempt == 3
+
+
+async def test_retry_items_skips_not_found(monkeypatch, tmp_path):
+    monkeypatch.setattr(captures, "_data_dir", tmp_path, raising=False)
+    result = await captures._retry_items(["does-not-exist"])
+    assert result.enqueued == []
+    assert result.skipped == [{"item_id": "does-not-exist", "reason": "not_found"}]
+    assert result.dismissed_item_ids == []
+
+
+async def test_retry_items_skips_not_failed(monkeypatch, tmp_path):
+    """A done-phase item should not be retryable — only `failed`."""
+    monkeypatch.setattr(captures, "_data_dir", tmp_path, raising=False)
+    completed = _make_item("done-1", code="005930", date="20260520")
+    completed.phase = "done"
+    captures._done.append(completed)
+
+    result = await captures._retry_items(["done-1"])
+
+    assert result.enqueued == []
+    assert result.skipped == [{"item_id": "done-1", "reason": "not_failed"}]
+    # Done item remains in _done untouched.
+    assert any(s.item_id == "done-1" for s in captures._done)
+
+
+async def test_retry_items_skips_already_in_queue(monkeypatch, tmp_path):
+    """(code, date) already in _queue → skipped as already_in_queue."""
+    monkeypatch.setattr(captures, "_data_dir", tmp_path, raising=False)
+    failed = _make_item("old-2", code="005930", date="20260520")
+    failed.phase = "failed"
+    captures._done.append(failed)
+    # Same (code, date) already in queue from a manual addItems.
+    captures._queue.append(_make_item("q-1", code="005930", date="20260520"))
+
+    result = await captures._retry_items(["old-2"])
+
+    assert result.enqueued == []
+    assert result.skipped == [{"item_id": "old-2", "reason": "already_in_queue"}]
+    # Failed item is NOT removed when skipped.
+    assert any(s.item_id == "old-2" for s in captures._done)
+
+
+async def test_retry_items_skips_already_running(monkeypatch, tmp_path):
+    monkeypatch.setattr(captures, "_data_dir", tmp_path, raising=False)
+    failed = _make_item("old-3", code="005930", date="20260520")
+    failed.phase = "failed"
+    captures._done.append(failed)
+    active = _make_item("a-1", code="005930", date="20260520")
+    active.phase = "capturing"
+    captures._active["a-1"] = active
+
+    result = await captures._retry_items(["old-3"])
+
+    assert result.enqueued == []
+    assert result.skipped == [{"item_id": "old-3", "reason": "already_running"}]
+
+
+async def test_retry_items_bulk_mixed_outcomes(monkeypatch, tmp_path):
+    """Three item_ids: one valid failed, one not_found, one not_failed.
+    The valid one retries, the other two get distinct skip reasons."""
+    monkeypatch.setattr(captures, "_data_dir", tmp_path, raising=False)
+    f1 = _make_item("f1", code="005930", date="20260520")
+    f1.phase = "failed"
+    f2 = _make_item("d1", code="000660", date="20260521")
+    f2.phase = "done"
+    captures._done.extend([f1, f2])
+
+    result = await captures._retry_items(["f1", "missing", "d1"])
+
+    assert len(result.enqueued) == 1
+    assert result.enqueued[0].code == "005930"
+    skip_reasons = {row["item_id"]: row["reason"] for row in result.skipped}
+    assert skip_reasons == {"missing": "not_found", "d1": "not_failed"}
+    assert result.dismissed_item_ids == ["f1"]
+
+
+async def test_retry_items_dedupes_duplicates_within_batch(monkeypatch, tmp_path):
+    """Same item_id passed twice → first retries, second sees not_found
+    (already removed from _done)."""
+    monkeypatch.setattr(captures, "_data_dir", tmp_path, raising=False)
+    failed = _make_item("dup", code="005930", date="20260520")
+    failed.phase = "failed"
+    captures._done.append(failed)
+
+    result = await captures._retry_items(["dup", "dup"])
+
+    assert len(result.enqueued) == 1
+    assert result.skipped == [{"item_id": "dup", "reason": "not_found"}]
+
+
+async def test_retry_items_persists_manifest_after_mutation(monkeypatch, tmp_path):
+    """Sanity-check ADR-0019: a successful Retry persists the manifest."""
+    monkeypatch.setattr(captures, "_data_dir", tmp_path, raising=False)
+    failed = _make_item("p1", code="005930", date="20260520")
+    failed.phase = "failed"
+    captures._done.append(failed)
+
+    await captures._retry_items(["p1"])
+
+    from hoga.api.captures_persistence import manifest_path
+    path = manifest_path(tmp_path)
+    assert path.exists()
+    data = json.loads(path.read_text())
+    # The new (retry-enqueued) item should be in the manifest's items list,
+    # with attempt=2.
+    assert any(it["attempt"] == 2 for it in data["items"])
