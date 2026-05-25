@@ -13,6 +13,7 @@ import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
+import { isAuctionHidden, LINE_HIDDEN_COLOR } from '../util/auctionHide';
 
 const TOKEN_SPEC = {
   buy: ['--price-up', '#DC2626'],          // 체결 매수 (KRX 빨강)
@@ -43,10 +44,10 @@ const cumulativePriceFormat = {
   minMove: 1,
 };
 
-// Auction-window hide (ADR-0029): emit WhitespaceData for in-window points.
-// Histograms render nothing for WhitespaceData (no bar drawn), so this matches
-// the prior "skip" semantics visually while keeping the time scale's bar-index
-// density intact for the AuctionWindowOverlay band.
+// Auction-window hide (ADR-0029, util/auctionHide.ts). Histograms accept
+// WhitespaceData and render nothing for it — unlike LineSeries / BaselineSeries
+// the histogram actually skips the bar at a whitespace, so we don't need the
+// per-point transparent-color trick that the line/baseline projectors use.
 export function projectBuy(
   bundle: RangeBundle,
   axis: VirtualAxis,
@@ -56,7 +57,7 @@ export function projectBuy(
   for (const p of bundle.fill_strength.points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as any;
-    if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
+    if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
       out.push({ time });
       continue;
     }
@@ -74,7 +75,7 @@ export function projectSell(
   for (const p of bundle.fill_strength.points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as any;
-    if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
+    if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
       out.push({ time });
       continue;
     }
@@ -146,8 +147,8 @@ export function projectCumulativeNetFill(
       if (!axis.contains(p.t)) continue;
       const thisVirtual = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
 
-      if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
-        out.push({ time: thisVirtual, value: 0, color: 'rgba(0,0,0,0)' });
+      if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
+        out.push({ time: thisVirtual, value: 0, ...LINE_HIDDEN_COLOR });
         continue;
       }
 

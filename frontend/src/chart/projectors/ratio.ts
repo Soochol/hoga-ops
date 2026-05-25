@@ -13,6 +13,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
+import { isAuctionHidden, BASELINE_HIDDEN_COLORS } from '../util/auctionHide';
 
 const TOKEN_SPEC = {
   // KRX 컨벤션: 매수=상승=빨강, 매도=하락=파랑. RatioPane은 price-direction
@@ -51,18 +52,6 @@ export type RatioPaneContext = {
   outlierThreshold: number;
 };
 
-// Per-point transparent colors used by the in-auction hide (ADR-0029).
-// BaselineSeries renders both the line and the gradient fill — each needs
-// its per-point override or the auction-window plateau remains visible.
-const AUCTION_HIDDEN_COLORS = {
-  topLineColor: 'rgba(0,0,0,0)',
-  topFillColor1: 'rgba(0,0,0,0)',
-  topFillColor2: 'rgba(0,0,0,0)',
-  bottomLineColor: 'rgba(0,0,0,0)',
-  bottomFillColor1: 'rgba(0,0,0,0)',
-  bottomFillColor2: 'rgba(0,0,0,0)',
-} as const;
-
 export function projectRatio(
   bundle: RangeBundle,
   axis: VirtualAxis,
@@ -72,15 +61,10 @@ export function projectRatio(
   for (const p of bundle.quote_ratio.points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
-    // Auction-window hide (ADR-0029): keep the point on the time axis but
-    // paint its outgoing line + gradient with transparent colors. We can't
-    // use WhitespaceData here — lightweight-charts v5 LineSeries / BaselineSeries
-    // silently interpolates across whitespace, so the day-1 close → day-2 open
-    // line still draws through the band. Per-point transparent color is the
-    // documented escape hatch for visible gaps. Skipping the outlier check is
-    // intentional: a hidden point has no value to clamp.
-    if (ctx.auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
-      out.push({ time, value: 0, ...AUCTION_HIDDEN_COLORS });
+    // Auction-window hide (ADR-0029, util/auctionHide.ts). Skipping the
+    // outlier check is intentional: a hidden point has no value to clamp.
+    if (isAuctionHidden(axis, ctx.auctionWindowMask, p.t)) {
+      out.push({ time, value: 0, ...BASELINE_HIDDEN_COLORS });
       continue;
     }
     const raw = quoteImbalance(p.bid_total, p.ask_total);

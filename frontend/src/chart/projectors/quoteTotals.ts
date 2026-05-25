@@ -9,6 +9,7 @@ import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
+import { isAuctionHidden, LINE_HIDDEN_COLOR } from '../util/auctionHide';
 
 const TOKEN_SPEC = {
   bid: ['--price-up', '#DC2626'],   // 매수 호가 총합 (KRX 빨강)
@@ -23,13 +24,6 @@ const priceFormat = {
   minMove: 1,
 };
 
-// Closing Auction Window hide (ADR-0029): in-window points keep their time
-// slot on the axis but paint their outgoing line segment with transparent
-// color so the auction band shows no line AND no day-1-close → day-2-open
-// diagonal. WhitespaceData was tried first and discarded — lightweight-charts
-// v5 LineSeries silently interpolates across whitespace.
-const TRANSPARENT = 'rgba(0,0,0,0)';
-
 export function projectBid(
   bundle: RangeBundle,
   axis: VirtualAxis,
@@ -39,8 +33,9 @@ export function projectBid(
   for (const p of bundle.quote_ratio.points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
-    if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
-      out.push({ time, value: 0, color: TRANSPARENT });
+    // Auction-window hide (ADR-0029, util/auctionHide.ts).
+    if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
+      out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
       continue;
     }
     out.push({ time, value: p.bid_total });
@@ -57,8 +52,8 @@ export function projectAsk(
   for (const p of bundle.quote_ratio.points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
-    if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
-      out.push({ time, value: 0, color: TRANSPARENT });
+    if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
+      out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
       continue;
     }
     out.push({ time, value: p.ask_total });
