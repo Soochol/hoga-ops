@@ -53,20 +53,18 @@ describe('makeAuctionMaskGap — enabled', () => {
   });
 
   it('re-arms after leaving the auction window (defensive)', () => {
-    // Synthetic axis that toggles in/out/in for the same iteration.
-    const inAuction = (t: number) => t >= 5000 && t <= 6000;
+    // Axis predicate with TWO closing-auction windows in the same iteration.
+    // Exercises the internal `if (!inside) wasInAuction = false;` branch:
+    // after leaving the first window, the flag clears, and re-entering the
+    // second window triggers another break on the SAME gap instance — no
+    // reset() call needed.
+    const inAuction = (t: number) => (t >= 5000 && t <= 6000) || t >= 9000;
     const gap = makeAuctionMaskGap(fakeAxis(inAuction), true);
     expect(gap.breakBefore(5000)).toEqual({ time: 4.999 }); // entry 1
-    expect(gap.breakBefore(6000)).toBeNull(); // still in
-    expect(gap.breakBefore(7000)).toBeNull(); // left
-    expect(gap.breakBefore(8000)).toBeNull(); // still out
-    // A re-entry inside the same iterator (rare) should break again.
-    const inAuction2 = (t: number) => t >= 9000;
-    const gap2 = makeAuctionMaskGap(fakeAxis(inAuction2), true);
-    // Mirror: enter, leave, enter again on a different instance proves
-    // reset() works; here we use reset() directly.
-    gap.reset();
-    expect(gap2.breakBefore(9000)).toEqual({ time: 8.999 });
+    expect(gap.breakBefore(6000)).toBeNull();              // still in window 1
+    expect(gap.breakBefore(7000)).toBeNull();              // left — flag auto-clears
+    expect(gap.breakBefore(8000)).toBeNull();              // still out
+    expect(gap.breakBefore(9000)).toEqual({ time: 8.999 }); // entry 2 — break re-emitted
   });
 
   it('reset() clears the "already broke" flag without affecting predicate', () => {
