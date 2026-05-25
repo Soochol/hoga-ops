@@ -48,6 +48,10 @@ Implementation: a window-level `mousedown` listener parallel to the existing win
 - No change to `Drawing` persistence, hit-test, pane binding, or store schema. `eraser` semantics unchanged.
 - Future "real undo stack" work is mentioned but not scoped here.
 
+## Follow-up deepening (deferred)
+
+The `revertToSelectMode` closure currently lives inside `DrawingOverlay.tsx` and is shared by the post-commit revert path and the `Escape` keyboard handler — two call sites. The next natural deepening, identified by `/improve-codebase-architecture` after this change landed, is to lift it one level up into `useDrawingsStore` as a named action: `useDrawingsStore.getState().revertToSelectMode()`. That puts the "return to neutral" intent in the store's own interface, so future amendments (e.g. also clearing a pencil draft, also resetting the accent override) land in one place instead of being scattered across the overlay. Not done now because (a) it would be a one-liner that doesn't pay rent today with only two call sites, and (b) the larger KIND_SPECS refactor (spec at `docs/superpowers/specs/2026-05-24-drawing-kind-spec-design.md`) may shift where the call sites live. Revisit after KIND_SPECS ships.
+
 ## Alternatives considered
 
 - **Keep current behaviour (Figma pattern).** Rejected: violates user mental model, dilutes selection-emphasis signal, optimises for the rare workflow.
