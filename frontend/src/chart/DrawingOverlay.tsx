@@ -4,7 +4,7 @@
 //   - docs/superpowers/specs/2026-05-24-drawing-on-indicator-panes-design.md
 //   - docs/adr/0028-drawing-pane-binding.md
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { IChartApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useDrawingsStore } from '../state/drawings';
@@ -29,9 +29,6 @@ import {
   clampYToPane as projClampYToPane,
   type PaneSeriesMap,
 } from './drawing/chartCoordinates';
-import { resolveTokens } from '../util/tokens';
-
-const TOKEN_SPEC = { accent: ['--accent', '#14B8A6'] } as const;
 
 /**
  * Pure predicate for the empty-click deselect flow. Returns true iff the
@@ -72,23 +69,20 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
     s.activeCode == null ? [] : (s.byCode.get(s.activeCode) ?? []),
   );
   const selectedId = useDrawingsStore((s) => s.selectedId);
-
-  const accentColor = useMemo(() => resolveTokens(TOKEN_SPEC).accent, []);
+  const defaults = useDrawingsStore((s) => s.defaults);
 
   const trendlineDraft = useRef<TrendlineDraft | null>(null);
   const pencilDraft = useRef<PencilDraft | null>(null);
   const dragRef = useRef<DragMode | null>(null);
   const scheduleRef = useRef<() => void>(() => {});
 
-  // Shared "return to neutral" path. Routed to from:
-  //   - ToolCtx.revertToSelectMode (called by hline/trendline/pencil after commit)
-  //   - Escape keypress handler
-  // See ADR-0030 for why a just-committed shape is no longer auto-selected.
-  const revertToSelectMode = () => {
-    const store = useDrawingsStore.getState();
-    store.setSelected(null);
-    store.setActiveTool('select');
-  };
+  // Post-commit revert: tool calls this after adding a drawing.
+  // Sets the new drawing as selected and returns to select mode so the user
+  // can immediately inspect or move it. See ADR-0032.
+  const revertToSelectMode = useCallback((newId: string) => {
+    useDrawingsStore.getState().setActiveTool('select');
+    useDrawingsStore.getState().setSelected(newId);
+  }, []);
 
   // ── redraw loop ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -161,8 +155,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
               id: '__draft__',
               kind: 'pencil',
               points: draft.points,
-              color: accentColor,
-              width: 1.5,
+              color: defaults.color,
+              width: defaults.width,
               paneId: draft.paneId,
             },
             false,
@@ -183,7 +177,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
       ts.unsubscribeVisibleLogicalRangeChange(schedule);
       ro?.disconnect();
     };
-  }, [chart, axis, paneSeries, drawings, selectedId, activeCode, accentColor]);
+  }, [chart, axis, paneSeries, drawings, selectedId, activeCode, defaults]);
 
   // ── keyboard shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
@@ -205,7 +199,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
           e.preventDefault();
         }
       } else if (e.key === 'Escape') {
-        revertToSelectMode();
+        useDrawingsStore.getState().setSelected(null);
+        useDrawingsStore.getState().setActiveTool('select');
+        trendlineDraft.current = null;
+        pencilDraft.current = null;
       }
     };
     window.addEventListener('keydown', onKey);
@@ -285,7 +282,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
       priceBoundsForPane,
       drawings,
       selectedId,
-      accentColor,
+      defaults,
       trendlineDraft,
       pencilDraft,
       dragRef,
