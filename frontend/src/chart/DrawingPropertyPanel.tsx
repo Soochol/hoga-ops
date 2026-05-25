@@ -4,8 +4,9 @@
 // edit the selected Drawing's color, stroke width, and line style, and
 // delete it. See CONTEXT.md "Drawing Property Panel" and ADR-0032.
 
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { useDrawingsStore } from '../state/drawings';
+import { useDismissablePopover } from '../util/useDismissablePopover';
 import { COLOR_PALETTE, STROKE_WIDTHS, LINE_STYLES, type LineStyle, type Drawing } from './drawing/types';
 
 export type DrawingAnchor = { x: number; y: number };
@@ -76,22 +77,8 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawing?.id]);
 
-  useEffect(() => {
-    if (openPopover == null) return;
-    const onMouseDown = (e: MouseEvent) => {
-      if (rootRef.current?.contains(e.target as Node)) return;
-      setOpenPopover(null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpenPopover(null);
-    };
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [openPopover]);
+  const closePopover = useCallback(() => setOpenPopover(null), []);
+  useDismissablePopover(openPopover != null, rootRef, closePopover);
 
   // Visibility gate — both clauses required.
   if (activeTool !== 'select' || selectedId == null || drawing == null) return null;

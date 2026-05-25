@@ -4,8 +4,9 @@
 // `chart/drawing/tools.ts` — adding a new tool there automatically
 // adds it to the menu (label + glyph are owned by the spec).
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useDrawingsStore } from '../state/drawings';
+import { useDismissablePopover } from '../util/useDismissablePopover';
 import type { DrawingTool } from '../chart/drawing/types';
 import { TOOLS, DRAWABLE_TOOLS_ORDER } from '../chart/drawing/tools';
 
@@ -14,23 +15,8 @@ export default function DrawingMenu() {
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (!popoverRef.current) return;
-      if (popoverRef.current.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', onDocClick);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDocClick);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  const close = useCallback(() => setOpen(false), []);
+  useDismissablePopover(open, popoverRef, close);
 
   const pick = (tool: DrawingTool) => {
     useDrawingsStore.getState().setActiveTool(tool);
