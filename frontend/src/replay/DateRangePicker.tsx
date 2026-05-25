@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/style.css';
 import { useStockDates } from '../api/stock-dates';
+import { useDismissablePopover } from '../util/useDismissablePopover';
 
 export default function DateRangePicker({
   code,
@@ -35,14 +36,8 @@ export default function DateRangePicker({
 
   const [openWhich, setOpenWhich] = useState<'from' | 'to' | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpenWhich(null);
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, []);
+  const close = useCallback(() => setOpenWhich(null), []);
+  useDismissablePopover(openWhich != null, ref, close);
 
   return (
     <div ref={ref} className="flex items-center gap-1.5 relative">

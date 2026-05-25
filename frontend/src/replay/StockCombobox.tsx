@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useStockDates } from '../api/stock-dates';
 import { groupStockDatesByCode } from '../inventory/groupByCode';
+import { useDismissablePopover } from '../util/useDismissablePopover';
 
 export default function StockCombobox({
   value,
@@ -32,13 +33,8 @@ export default function StockCombobox({
       .sort((a, b) => Number(b.code.startsWith(f)) - Number(a.code.startsWith(f)));
   }, [stocks, q]);
 
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, []);
+  const close = useCallback(() => setOpen(false), []);
+  useDismissablePopover(open, ref, close);
 
   const selected = stocks.find((s) => s.code === value);
 
