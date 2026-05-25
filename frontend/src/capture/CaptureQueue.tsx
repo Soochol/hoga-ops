@@ -30,7 +30,7 @@ export function computeHeaderSummary(snap: QueueSnapshot): HeaderSummary {
 const VIRTUALIZE_THRESHOLD = 200;
 
 export function CaptureQueue() {
-  const { queue, cancelItem, cancelAll, dismissDone, addItems, resumeQueue } = useCaptureQueue();
+  const { queue, cancelItem, cancelAll, dismissDone, resumeQueue, retryItems } = useCaptureQueue();
   const { data: symbolsResp } = useSymbols();
   const nameByCode = useMemo(() => {
     const m = new Map<string, string>();
@@ -89,11 +89,7 @@ export function CaptureQueue() {
   const summary = computeHeaderSummary(queue);
 
   const onRetry = (item: QueueItem) => {
-    addItems.mutate({
-      code: item.code,
-      dates: [item.date],
-      force_retry: item.force_retry,
-    });
+    retryItems.mutate({ item_ids: [item.item_id] });
   };
 
   const shouldVirtualize = allRows.length > VIRTUALIZE_THRESHOLD;
@@ -112,6 +108,17 @@ export function CaptureQueue() {
             : ghostButton()
           }
         >{cancelAllArmed ? 'Click again to confirm' : 'Cancel All'}</button>
+        <button
+          type="button"
+          disabled={summary.failed === 0}
+          onClick={() => {
+            const ids = queue.done
+              .filter((i) => i.phase === 'failed')
+              .map((i) => i.item_id);
+            if (ids.length > 0) retryItems.mutate({ item_ids: ids });
+          }}
+          style={summary.failed === 0 ? ghostButtonDisabled() : ghostButton()}
+        >Retry Failed</button>
         <button
           type="button"
           onClick={() => dismissDone.mutate()}
@@ -188,6 +195,10 @@ function VirtualList({
       </div>
     </div>
   );
+}
+
+function ghostButtonDisabled(): React.CSSProperties {
+  return { ...ghostButton(), opacity: 0.5, cursor: 'not-allowed' };
 }
 
 function ghostButton(borderColor = 'var(--border-strong)', fgColor = 'var(--fg-dim)'): React.CSSProperties {

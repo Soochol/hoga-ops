@@ -125,3 +125,70 @@ describe('CaptureQueue', () => {
     expect(screen.getByText(/Cookie expired/i)).toBeTruthy();
   });
 });
+
+describe('CaptureQueue Retry Failed (ADR-0031)', () => {
+  it('renders Retry Failed button disabled when failed count is 0', async () => {
+    const snap = { ...SNAPSHOT(), done: [item('d1', 'done')] };  // 0 failed
+    const qc = setup(snap);
+    render(<CaptureQueue />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    const btn = screen.getByRole('button', { name: /Retry Failed/i });
+    expect(btn.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('Retry Failed enabled when failed > 0, POSTs all failed item_ids', async () => {
+    let postedBody: any = null;
+    const failed1 = { ...item('f1', 'failed'), date: '20260518' };
+    const failed2 = { ...item('f2', 'failed'), date: '20260519' };
+    const snap: QueueSnapshot = {
+      active: [], queued: [], done: [failed1, failed2],
+      paused: false, max_concurrent: 3,
+    };
+    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url, init) => {
+      const s = String(url);
+      if (s.includes('/queue')) return { ok: true, status: 200, json: async () => snap } as Response;
+      if (s.includes('/items/retry')) {
+        postedBody = JSON.parse(String(init?.body));
+        return { ok: true, status: 201, json: async () => ({ enqueued: [], skipped: [] }) } as Response;
+      }
+      if (s.includes('/symbols/all')) return { ok: true, status: 200, json: async () => ({ symbols: [], status: 'fresh', fetched_at_ms: 1 }) } as Response;
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<CaptureQueue />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+
+    const btn = screen.getByRole('button', { name: /Retry Failed/i });
+    expect(btn.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(btn);
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(postedBody).toEqual({ item_ids: ['f1', 'f2'] });
+  });
+
+  it('per-row ↻ click routes through retryItems mutation (not addItems)', async () => {
+    const calls: string[] = [];
+    const failed = { ...item('f1', 'failed'), date: '20260518' };
+    const snap: QueueSnapshot = {
+      active: [], queued: [], done: [failed],
+      paused: false, max_concurrent: 3,
+    };
+    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url) => {
+      const s = String(url);
+      if (s.includes('/items/retry')) { calls.push('retry'); return { ok: true, status: 201, json: async () => ({ enqueued: [], skipped: [] }) } as Response; }
+      if (s.includes('/items')) { calls.push('items'); return { ok: true, status: 201, json: async () => ({ enqueued: [], deduped: [] }) } as Response; }
+      if (s.includes('/queue')) return { ok: true, status: 200, json: async () => snap } as Response;
+      if (s.includes('/symbols/all')) return { ok: true, status: 200, json: async () => ({ symbols: [], status: 'fresh', fetched_at_ms: 1 }) } as Response;
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<CaptureQueue />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(calls).toContain('retry');
+    expect(calls).not.toContain('items');
+  });
+});
