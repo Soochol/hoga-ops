@@ -93,26 +93,57 @@ In [tools.ts](../../../frontend/src/chart/drawing/tools.ts):
 The local `id` variable becomes unused — we still need it for `ctx.add({ id, ... })`
 since drawings need ids, just not for the post-commit call.
 
-### Optional follow-up (out of scope for this change)
+### Unify the `Escape` keyboard handler
 
 The keyboard ESC handler at
 [DrawingOverlay.tsx:174-177](../../../frontend/src/chart/DrawingOverlay.tsx#L174-L177)
-does exactly the same thing as the new `revertToSelectMode`. A later
-cleanup could call the shared helper instead of duplicating the two
-`setX` calls. Not included here to keep the diff minimal and
-review-friendly.
+already does `setSelected(null) + setActiveTool('select')` — semantically
+identical to the new `revertToSelectMode`. Keeping two copies invites a
+future change to "return to neutral" that updates one path and silently
+diverges from the other.
+
+Extract a single helper at module scope (or as a closure shared by both
+the `ToolCtx` builder and the keydown handler):
+
+```ts
+const revertToSelectMode = () => {
+  const s = useDrawingsStore.getState();
+  s.setSelected(null);
+  s.setActiveTool('select');
+};
+```
+
+Both `ToolCtx.revertToSelectMode` and the `Escape` branch call this single
+function. ADR-0030 records the "one canonical return-to-neutral path"
+intent.
 
 ## Implementation outline
 
 1. Rename `commitAndRevert` → `revertToSelectMode` on `ToolCtx`
    ([tools.ts:140](../../../frontend/src/chart/drawing/tools.ts#L140)).
-2. Change body and signature in
-   [DrawingOverlay.tsx:265-269](../../../frontend/src/chart/DrawingOverlay.tsx#L265-L269)
-   per Design section.
+2. Define the shared `revertToSelectMode` helper in
+   `DrawingOverlay.tsx` (replaces the old `commitAndRevert` body at
+   [DrawingOverlay.tsx:265-269](../../../frontend/src/chart/DrawingOverlay.tsx#L265-L269)).
+   Reuse it from the `ToolCtx` builder and from the `Escape` branch of the
+   keydown handler at
+   [DrawingOverlay.tsx:174-177](../../../frontend/src/chart/DrawingOverlay.tsx#L174-L177).
 3. Update three call sites in
-   [tools.ts](../../../frontend/src/chart/drawing/tools.ts) (lines 280, 318, 371).
-4. Run typecheck + tests; fix any test that asserts `selectedId === <new id>`
-   right after a commit — change the expectation to `selectedId === null`.
+   [tools.ts](../../../frontend/src/chart/drawing/tools.ts) (lines 280, 318, 371):
+   `ctx.commitAndRevert(id)` → `ctx.revertToSelectMode()`.
+4. Update `tools.test.ts`:
+   - 12 references to `commitAndRevert` (rename to `revertToSelectMode`).
+   - Replace `.toHaveBeenCalledWith(addedId)` assertions (lines 97, 151, 194)
+     with plain `.toHaveBeenCalledOnce()` — the new helper takes no id.
+   - "never calls commitAndRevert" assertions on eraser / zero-length /
+     too-short-pencil (lines 159, 181, 201) keep the same shape, only the
+     mocked property name changes.
+5. Update domain docs:
+   - `CONTEXT.md` Drawing Tool entry: post-commit state and `commitAndRevert`
+     → `revertToSelectMode` rename, link to ADR-0030.
+   - Add `docs/adr/0030-drawing-commit-clears-selection.md` (records the
+     trade-off against the Figma pattern).
+6. Run `npm run typecheck` + `npm test` in `frontend/`. Manual QA per the
+   scenarios below.
 
 ## Testing
 
