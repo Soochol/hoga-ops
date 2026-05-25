@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  addItems, getQueue, cancelItem, cancelAll, resumeQueue, dismissDone,
+  addItems, getQueue, cancelItem, cancelAll, resumeQueue, dismissDone, retryItems,
 } from '../api/captures';
 import { subscribeToCaptureEvents } from '../api/sse';
 import {
@@ -68,6 +68,25 @@ export function useCaptureQueue() {
             prev ? applyCellPatch(prev, e.date, { status }, Date.now()) : prev,
           );
         }
+      } else if (e.type === 'capture_dismissed') {
+        qc.setQueryData<QueueSnapshot>(CAPTURE_QUEUE_QUERY_KEY, (prev) => {
+          if (!prev) return prev;
+          const ids = new Set(e.item_ids);
+          // Array.prototype.filter ALWAYS returns a new array, which would
+          // defeat React Query's reference-equality short-circuit. Only build
+          // a new array for buckets that actually had a matching id.
+          const filterIfNeeded = (list: QueueItem[]): QueueItem[] => {
+            const hasMatch = list.some((i) => ids.has(i.item_id));
+            return hasMatch ? list.filter((i) => !ids.has(i.item_id)) : list;
+          };
+          const active = filterIfNeeded(prev.active);
+          const queued = filterIfNeeded(prev.queued);
+          const done = filterIfNeeded(prev.done);
+          if (active === prev.active && queued === prev.queued && done === prev.done) {
+            return prev;
+          }
+          return { ...prev, active, queued, done };
+        });
       } else if (
         e.type === 'capture_queued' ||
         e.type === 'capture_queue_paused' ||
@@ -101,6 +120,10 @@ export function useCaptureQueue() {
     mutationFn: resumeQueue,
     onSettled: () => qc.invalidateQueries({ queryKey: CAPTURE_QUEUE_QUERY_KEY }),
   });
+  const retryItemsM = useMutation({
+    mutationFn: retryItems,
+    onSettled: () => qc.invalidateQueries({ queryKey: CAPTURE_QUEUE_QUERY_KEY }),
+  });
 
   return {
     queue: queue.data,
@@ -110,5 +133,6 @@ export function useCaptureQueue() {
     cancelAll: cancelAllM,
     dismissDone: dismissDoneM,
     resumeQueue: resumeQueueM,
+    retryItems: retryItemsM,
   };
 }

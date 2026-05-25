@@ -113,3 +113,76 @@ describe('useCaptureQueue SSE multiplex', () => {
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(before + 3));
   });
 });
+
+describe('useCaptureQueue capture_dismissed handling', () => {
+  const failedSnap = (): QueueSnapshot => ({
+    active: [],
+    queued: [],
+    done: [
+      {
+        item_id: 'f1', code: '005930', date: '20260520', phase: 'failed',
+        force_retry: false, pause_origin: false, enqueued_at_ms: 1,
+        started_at_ms: null, progress: null, result: null, error: null,
+        skip_reason: null, attempt: 1,
+      },
+      {
+        item_id: 'f2', code: '005930', date: '20260521', phase: 'failed',
+        force_retry: false, pause_origin: false, enqueued_at_ms: 1,
+        started_at_ms: null, progress: null, result: null, error: null,
+        skip_reason: null, attempt: 1,
+      },
+    ],
+    paused: false, max_concurrent: 3,
+  });
+
+  it('removes item_ids from active/queued/done buckets when capture_dismissed arrives', async () => {
+    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url) => {
+      if (String(url).includes('/queue')) {
+        return { ok: true, status: 200, json: async () => failedSnap() } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useCaptureQueue(), { wrapper: makeWrapper(qc) });
+
+    await waitFor(() => expect(result.current.queue).toBeDefined());
+    expect(result.current.queue?.done.length).toBe(2);
+
+    fireSse({ type: 'capture_dismissed', item_ids: ['f1'] });
+
+    await waitFor(() => expect(result.current.queue?.done.length).toBe(1));
+    expect(result.current.queue?.done[0].item_id).toBe('f2');
+  });
+});
+
+describe('useCaptureQueue retryItems mutation', () => {
+  it('exposes retryItems mutation that posts to /items/retry', async () => {
+    let postedBody: unknown = null;
+    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url, init) => {
+      const s = String(url);
+      if (s.includes('/items/retry')) {
+        postedBody = JSON.parse(String(init?.body));
+        return {
+          ok: true, status: 201,
+          json: async () => ({ enqueued: [], skipped: [] }),
+        } as Response;
+      }
+      if (s.includes('/queue')) {
+        return {
+          ok: true, status: 200,
+          json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const { result } = renderHook(() => useCaptureQueue(), { wrapper: makeWrapper(qc) });
+
+    await waitFor(() => expect(result.current.queue).toBeDefined());
+    act(() => { result.current.retryItems.mutate({ item_ids: ['f1', 'f2'] }); });
+
+    await waitFor(() => expect(postedBody).toEqual({ item_ids: ['f1', 'f2'] }));
+  });
+});
