@@ -157,6 +157,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
               points: draft.points,
               color: defaults.color,
               width: defaults.width,
+              lineStyle: defaults.lineStyle,
               paneId: draft.paneId,
             },
             false,
