@@ -26,6 +26,7 @@ import VolumeProfileOverlay from './VolumeProfileOverlay';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
 import AuctionWindowOverlay from './AuctionWindowOverlay';
 import DrawingOverlay from './DrawingOverlay';
+import DrawingPropertyPanel from './DrawingPropertyPanel';
 import { useDrawingsStore } from '../state/drawings';
 
 const CHART_TOKEN_SPEC = {
@@ -443,6 +444,7 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
               not real "no pressure" data. */}
           <AuctionWindowOverlay chart={chart} axis={axis} />
           <DrawingOverlay chart={chart} axis={axis} paneSeries={paneSeries} />
+          <DrawingPropertyPanel />
         </>
       )}
     </div>
