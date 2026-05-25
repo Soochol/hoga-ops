@@ -26,7 +26,7 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     py: 200,
     pointerId: 1,
     capturePointer: vi.fn(),
-    commitAndRevert: vi.fn(),
+    revertToSelectMode: vi.fn(),
     releasePointer: vi.fn(),
     pixelToData: vi.fn(() => defaultPoint),
     realMsToCanvasX: vi.fn(() => 100),
@@ -89,12 +89,10 @@ describe('hlineTool.onPointerDown', () => {
     expect(ctx.add).not.toHaveBeenCalled();
   });
 
-  it('calls commitAndRevert with the new id after add', () => {
+  it('calls revertToSelectMode after add', () => {
     const ctx = makeCtx();
     hlineTool.onPointerDown!(ctx);
-    expect(ctx.commitAndRevert).toHaveBeenCalledOnce();
-    const addedId = ((ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
-    expect(ctx.commitAndRevert).toHaveBeenCalledWith(addedId);
+    expect(ctx.revertToSelectMode).toHaveBeenCalledOnce();
   });
 });
 
@@ -136,7 +134,7 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
     expect(ctx.add).not.toHaveBeenCalled();
   });
 
-  it('calls commitAndRevert with the new trendline id on pointer-up', () => {
+  it('calls revertToSelectMode on pointer-up commit', () => {
     const a: Point = { realMs: 1_000, price: 100 };
     const b: Point = { realMs: 2_000, price: 200 };
     const downCtx = makeCtx({ pixelToData: vi.fn(() => a) });
@@ -146,17 +144,15 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
       trendlineDraft: downCtx.trendlineDraft,
     });
     trendlineTool.onPointerUp!(upCtx);
-    expect(upCtx.commitAndRevert).toHaveBeenCalledOnce();
-    const addedId = ((upCtx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
-    expect(upCtx.commitAndRevert).toHaveBeenCalledWith(addedId);
+    expect(upCtx.revertToSelectMode).toHaveBeenCalledOnce();
   });
 
-  it('does NOT call commitAndRevert when the trendline is zero-length (rejected)', () => {
+  it('does NOT call revertToSelectMode when the trendline is zero-length (rejected)', () => {
     const p: Point = { realMs: 1_000, price: 100 };
     const ctx = makeCtx({ pixelToData: vi.fn(() => p) });
     trendlineTool.onPointerDown!(ctx);
     trendlineTool.onPointerUp!(ctx);
-    expect(ctx.commitAndRevert).not.toHaveBeenCalled();
+    expect(ctx.revertToSelectMode).not.toHaveBeenCalled();
   });
 });
 
@@ -174,31 +170,28 @@ describe('eraserTool', () => {
     expect(ctx.remove).not.toHaveBeenCalled();
   });
 
-  it('never calls commitAndRevert (continuous-erase flow)', () => {
+  it('never calls revertToSelectMode (continuous-erase flow)', () => {
     const target: Drawing = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, paneId: 'candle' };
     const ctx = makeCtx({ hitTestAt: vi.fn(() => target) });
     eraserTool.onPointerDown!(ctx);
-    expect(ctx.commitAndRevert).not.toHaveBeenCalled();
+    expect(ctx.revertToSelectMode).not.toHaveBeenCalled();
   });
 });
 
 describe('pencilTool commit', () => {
-  it('calls commitAndRevert with the new pencil id on pointer-up', () => {
+  it('calls revertToSelectMode on pointer-up commit', () => {
     const ctx = makeCtx();
     pencilTool.onPointerDown!(ctx);
-    // Manually seed a second point so the >=2 commit guard passes.
     ctx.pencilDraft.current!.points.push({ realMs: 1_700_000_000_001, price: 70_010 });
     pencilTool.onPointerUp!(ctx);
-    expect(ctx.commitAndRevert).toHaveBeenCalledOnce();
-    const addedId = ((ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
-    expect(ctx.commitAndRevert).toHaveBeenCalledWith(addedId);
+    expect(ctx.revertToSelectMode).toHaveBeenCalledOnce();
   });
 
-  it('does NOT call commitAndRevert when the pencil has fewer than 2 points', () => {
+  it('does NOT call revertToSelectMode when the pencil has fewer than 2 points', () => {
     const ctx = makeCtx();
     pencilTool.onPointerDown!(ctx);
     pencilTool.onPointerUp!(ctx); // only 1 point in draft
-    expect(ctx.commitAndRevert).not.toHaveBeenCalled();
+    expect(ctx.revertToSelectMode).not.toHaveBeenCalled();
   });
 });
 

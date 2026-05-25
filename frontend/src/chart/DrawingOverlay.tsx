@@ -57,6 +57,16 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
   const dragRef = useRef<DragMode | null>(null);
   const scheduleRef = useRef<() => void>(() => {});
 
+  // Shared "return to neutral" path. Routed to from:
+  //   - ToolCtx.revertToSelectMode (called by hline/trendline/pencil after commit)
+  //   - Escape keypress handler
+  // See ADR-0030 for why a just-committed shape is no longer auto-selected.
+  const revertToSelectMode = () => {
+    const store = useDrawingsStore.getState();
+    store.setSelected(null);
+    store.setActiveTool('select');
+  };
+
   // ── redraw loop ────────────────────────────────────────────────────────
   useEffect(() => {
     const ts = chart.timeScale();
@@ -172,8 +182,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
           e.preventDefault();
         }
       } else if (e.key === 'Escape') {
-        useDrawingsStore.getState().setSelected(null);
-        useDrawingsStore.getState().setActiveTool('select');
+        revertToSelectMode();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -262,11 +271,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
       update: (id, patch) => useDrawingsStore.getState().update(id, patch),
       remove: (id) => useDrawingsStore.getState().remove(id),
       setSelected: (id) => useDrawingsStore.getState().setSelected(id),
-      commitAndRevert: (id) => {
-        const s = useDrawingsStore.getState();
-        s.setSelected(id);
-        s.setActiveTool('select');
-      },
+      revertToSelectMode,
     };
   };
 

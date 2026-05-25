@@ -133,11 +133,13 @@ export type ToolCtx = {
   update(id: string, patch: Partial<Drawing>): void;
   remove(id: string): void;
   setSelected(id: string | null): void;
-  /** Helper that selects the just-committed drawing and reverts the active
-   *  tool to `select`. Called by tools that auto-revert after commit
-   *  (hline, trendline, pencil). The overlay's buildCtx wires this to
-   *  `setSelected(id)` + `setActiveTool('select')` on the store. */
-  commitAndRevert(id: string): void;
+  /** Helper that returns the overlay to neutral state: clears `selectedId`
+   *  and switches the active tool back to `select`. Called by tools that
+   *  auto-revert after commit (hline, trendline, pencil). The overlay's
+   *  buildCtx wires this to a shared closure that the `Escape` keyboard
+   *  handler also calls — one canonical "return to neutral" path. See
+   *  ADR-0030. */
+  revertToSelectMode(): void;
 };
 
 export interface DrawingToolSpec {
@@ -277,7 +279,7 @@ export const hlineTool: DrawingToolSpec = {
       width: DRAWING_WIDTH,
       paneId,
     });
-    ctx.commitAndRevert(id);
+    ctx.revertToSelectMode();
   },
 };
 
@@ -315,7 +317,7 @@ export const trendlineTool: DrawingToolSpec = {
       width: DRAWING_WIDTH,
       paneId: draft.paneId,
     });
-    ctx.commitAndRevert(id);
+    ctx.revertToSelectMode();
   },
 };
 
@@ -368,7 +370,7 @@ export const pencilTool: DrawingToolSpec = {
       width: DRAWING_WIDTH,
       paneId: draft.paneId,
     });
-    ctx.commitAndRevert(id);
+    ctx.revertToSelectMode();
   },
 };
 
