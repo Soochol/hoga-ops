@@ -999,17 +999,26 @@ def build_router(
                 "dates": too_early,
             })
 
-        # 3. Q15 Layer 1 dedupe: against queue ∪ active ∪ inflight ∪ within-request.
+        # 3. Q15 Layer 1 dedupe: against queue ∪ active ∪ inflight ∪ within-request,
+        #    PLUS phase-aware dedupe against _done (ADR-0033).
         enqueued: list[QueueItemState] = []
         deduped_rows: list[EnqueueDedupedRow] = []
+        done_dismissed_ids: list[str] = []
         enqueued_at_ms = int(time.time() * 1000)
         async with _lock:
             active_pairs = {(s.code, s.date) for s in _active.values()}
             queue_pairs = {(s.code, s.date) for s in _queue}
             existing_pairs = set(_inflight_paths) | queue_pairs | active_pairs
+            # ADR-0033: phase-aware _done lookup.
+            done_index: dict[tuple[str, str], tuple[int, QueueItemState]] = {
+                (s.code, s.date): (i, s) for i, s in enumerate(_done)
+            }
+            done_indices_to_remove: set[int] = set()
             seen_in_request: set[tuple[str, str]] = set()
+
             for date in candidate_dates:
                 pair = (req.code, date)
+                # Step 3a: existing dedupe (queue/active/inflight + within-request).
                 if pair in existing_pairs or pair in seen_in_request:
                     reason = (
                         "already_running" if pair in active_pairs
@@ -1019,6 +1028,39 @@ def build_router(
                         code=req.code, date=date, reason=reason,
                     ))
                     continue
+
+                # Step 3b: ADR-0033 _done dedupe — branch by phase + force_retry.
+                if pair in done_index:
+                    idx, old = done_index[pair]
+                    if (old.phase in ("failed", "cancelled")
+                            or (old.phase == "skipped" and req.force_retry)):
+                        # Auto re-enqueue: remove old, enqueue new with attempt+1.
+                        done_indices_to_remove.add(idx)
+                        done_dismissed_ids.append(old.item_id)
+                        del done_index[pair]  # within-batch second hit will fall to seen_in_request.
+                        seen_in_request.add(pair)
+                        new_state = QueueItemState(
+                            item_id=_make_item_id(req.code, date),
+                            code=req.code,
+                            date=date,
+                            force_retry=req.force_retry,
+                            enqueued_at_ms=enqueued_at_ms,
+                            attempt=old.attempt + 1,
+                        )
+                        _queue.append(new_state)
+                        enqueued.append(new_state)
+                        continue
+                    # Dedupe as already_complete / already_skipped.
+                    reason = (
+                        "already_complete" if old.phase == "done"
+                        else "already_skipped"  # phase == "skipped" and not force_retry
+                    )
+                    deduped_rows.append(EnqueueDedupedRow(
+                        code=req.code, date=date, reason=reason,
+                    ))
+                    continue
+
+                # Step 3c: fresh enqueue.
                 seen_in_request.add(pair)
                 state = QueueItemState(
                     item_id=_make_item_id(req.code, date),
@@ -1029,11 +1071,19 @@ def build_router(
                 )
                 _queue.append(state)
                 enqueued.append(state)
+
+            # Apply queued _done removals (reverse-sorted to preserve indices).
+            for idx in sorted(done_indices_to_remove, reverse=True):
+                del _done[idx]
+
             if enqueued and _wakeup is not None:
                 _wakeup.set()
             _persist_queue_locked()  # ADR-0019 — still inside async with _lock
 
-        # 4. Emit queued event (skipped when nothing landed).
+        # 4. Emit dismissed event FIRST (so frontend removes old rows before new rows appear),
+        #    then queued event.
+        if done_dismissed_ids:
+            _publish_event(CaptureDismissedEvent(item_ids=done_dismissed_ids))
         if enqueued:
             _publish_event(CaptureQueuedEvent(items=[s.to_wire() for s in enqueued]))
 

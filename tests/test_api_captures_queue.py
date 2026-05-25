@@ -14,7 +14,7 @@ from hoga.api.captures import QueueItemState
 from hoga.api.captures_fake import FakeHogaplayClient
 from hoga.api.captures_persistence import manifest_path
 from hoga.api.disk_state import Classification, DiskState
-from hoga.api.models import RetrySkippedRow
+from hoga.api.models import CapturePhase, RetrySkippedRow
 
 
 @pytest.fixture(autouse=True)
@@ -1145,3 +1145,236 @@ def test_retry_route_returns_skipped_reasons(monkeypatch, tmp_path):
         assert body["enqueued"] == []
         reasons = {row["item_id"]: row["reason"] for row in body["skipped"]}
         assert reasons == {"missing-x": "not_found", "d-1": "not_failed"}
+
+
+# --- ADR-0033: addItems phase-aware _done dedupe -----------------------------
+
+
+def _post_items(c, code: str, dates: list[str], force_retry: bool = False):
+    """Convenience: POST /api/captures/items with explicit dates list."""
+    return c.post("/api/captures/items", json={
+        "code": code, "dates": dates, "force_retry": force_retry,
+    })
+
+
+def _seed_done_item(*, item_id: str, code: str, date: str, phase: CapturePhase,
+                    attempt: int = 1, force_retry: bool = False,
+                    pause_origin: bool = False):
+    s = _make_item(item_id, code=code, date=date)
+    s.phase = phase
+    s.attempt = attempt
+    s.force_retry = force_retry
+    s.pause_origin = pause_origin
+    captures._done.append(s)
+    return s
+
+
+def test_enqueue_dedupes_against_done_complete_with_force_false(monkeypatch, tmp_path):
+    """done-phase _done item + force_retry=false → deduped as already_complete; _done untouched."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        old = _seed_done_item(item_id="old-d", code="005930", date="20260520", phase="done")
+
+        r = _post_items(c, "005930", ["20260520"], force_retry=False)
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["enqueued"] == []
+        assert body["deduped"] == [{
+            "code": "005930", "date": "20260520", "reason": "already_complete",
+        }]
+        # _done untouched.
+        assert any(s.item_id == "old-d" for s in captures._done)
+        assert len(captures._queue) == 0
+
+
+def test_enqueue_dedupes_against_done_complete_with_force_true(monkeypatch, tmp_path):
+    """done-phase + force_retry=true STILL dedupes as already_complete (ADR-0033 invariant)."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        _seed_done_item(item_id="old-d", code="005930", date="20260520", phase="done")
+
+        r = _post_items(c, "005930", ["20260520"], force_retry=True)
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["enqueued"] == []
+        assert body["deduped"][0]["reason"] == "already_complete"
+        # _done untouched.
+        assert any(s.item_id == "old-d" for s in captures._done)
+        assert len(captures._queue) == 0
+
+
+def test_enqueue_re_enqueues_failed_done_regardless_of_force_attempt_increments(
+    monkeypatch, tmp_path,
+):
+    """failed-phase _done → auto re-enqueue with attempt+1 for force_retry=false."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        _seed_done_item(item_id="old-f", code="005930", date="20260520",
+                        phase="failed", attempt=2)
+
+        r = _post_items(c, "005930", ["20260520"], force_retry=False)
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert len(body["enqueued"]) == 1
+        assert body["enqueued"][0]["attempt"] == 3
+        assert body["enqueued"][0]["item_id"] != "old-f"
+        assert body["deduped"] == []
+        # Old failed row removed; new row in _queue.
+        assert all(s.item_id != "old-f" for s in captures._done)
+        assert len(captures._queue) == 1
+        assert captures._queue[0].attempt == 3
+
+
+def test_enqueue_re_enqueues_failed_done_with_force_true(monkeypatch, tmp_path):
+    """failed + force_retry=true also auto re-enqueues (same rule)."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        _seed_done_item(item_id="old-ff", code="005930", date="20260520",
+                        phase="failed", attempt=1)
+
+        r = _post_items(c, "005930", ["20260520"], force_retry=True)
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert len(body["enqueued"]) == 1
+        assert body["enqueued"][0]["attempt"] == 2
+        assert body["enqueued"][0]["force_retry"] is True
+
+
+def test_enqueue_re_enqueues_cancelled_done_regardless_of_force(monkeypatch, tmp_path):
+    """cancelled-phase _done → auto re-enqueue regardless of force_retry."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        _seed_done_item(item_id="old-c", code="005930", date="20260520",
+                        phase="cancelled", attempt=1)
+
+        r = _post_items(c, "005930", ["20260520"], force_retry=False)
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert len(body["enqueued"]) == 1
+        assert body["enqueued"][0]["attempt"] == 2
+        assert body["deduped"] == []
+        assert all(s.item_id != "old-c" for s in captures._done)
+
+
+def test_enqueue_dedupes_against_skipped_with_force_false(monkeypatch, tmp_path):
+    """skipped + force_retry=false → already_skipped; _done untouched."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        _seed_done_item(item_id="old-s", code="005930", date="20260520",
+                        phase="skipped", attempt=1)
+
+        r = _post_items(c, "005930", ["20260520"], force_retry=False)
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["enqueued"] == []
+        assert body["deduped"][0]["reason"] == "already_skipped"
+        assert any(s.item_id == "old-s" for s in captures._done)
+
+
+def test_enqueue_re_enqueues_skipped_with_force_true(monkeypatch, tmp_path):
+    """skipped + force_retry=true → auto re-enqueue (sentinel will be deleted by worker)."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        _seed_done_item(item_id="old-sk", code="005930", date="20260520",
+                        phase="skipped", attempt=1)
+
+        r = _post_items(c, "005930", ["20260520"], force_retry=True)
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert len(body["enqueued"]) == 1
+        assert body["enqueued"][0]["attempt"] == 2
+        assert body["enqueued"][0]["force_retry"] is True
+        assert all(s.item_id != "old-sk" for s in captures._done)
+
+
+def test_enqueue_publishes_capture_dismissed_event_for_auto_reenqueued_items(
+    monkeypatch, tmp_path,
+):
+    """One CaptureDismissedEvent listing every old item_id, published before CaptureQueuedEvent."""
+    from hoga.api.models import CaptureDismissedEvent, CaptureQueuedEvent
+    _no_workers(monkeypatch)
+    published: list = []
+    monkeypatch.setattr(captures, "_publish_event", lambda e: published.append(e))
+
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        _seed_done_item(item_id="f1", code="005930", date="20260520", phase="failed")
+        _seed_done_item(item_id="c1", code="005930", date="20260521", phase="cancelled")
+
+        r = _post_items(c, "005930", ["20260520", "20260521"], force_retry=False)
+        assert r.status_code == 201, r.text
+
+    dismissed = [e for e in published if isinstance(e, CaptureDismissedEvent)]
+    queued = [e for e in published if isinstance(e, CaptureQueuedEvent)]
+    assert len(dismissed) == 1
+    assert sorted(dismissed[0].item_ids) == ["c1", "f1"]
+    assert len(queued) == 1
+    # Order: dismissed event must come before queued event in publish stream.
+    dismissed_pos = published.index(dismissed[0])
+    queued_pos = published.index(queued[0])
+    assert dismissed_pos < queued_pos
+
+
+def test_enqueue_re_enqueues_pause_origin_cancelled_via_cancelled_rule(
+    monkeypatch, tmp_path,
+):
+    """pause_origin=True + phase=cancelled is just a cancelled item — auto re-enqueued like any other."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        _seed_done_item(item_id="po-1", code="005930", date="20260520",
+                        phase="cancelled", pause_origin=True, attempt=1)
+
+        r = _post_items(c, "005930", ["20260520"], force_retry=False)
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert len(body["enqueued"]) == 1
+        assert body["enqueued"][0]["attempt"] == 2
+        # New item starts with fresh pause_origin (default False) regardless of old.
+        assert body["enqueued"][0]["pause_origin"] is False
+        # Old pause_origin item removed from _done.
+        assert all(s.item_id != "po-1" for s in captures._done)
+
+
+def test_enqueue_uses_request_force_retry_not_old_item_force_retry(
+    monkeypatch, tmp_path,
+):
+    """Old item had force_retry=True, request has force_retry=False → new force_retry == False."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        _seed_done_item(item_id="old-fr", code="005930", date="20260520",
+                        phase="failed", force_retry=True, attempt=1)
+
+        r = _post_items(c, "005930", ["20260520"], force_retry=False)
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["enqueued"][0]["force_retry"] is False  # request wins
+
+
+def test_enqueue_response_includes_auto_reenqueued_items_in_enqueued_list(
+    monkeypatch, tmp_path,
+):
+    """Response body's `enqueued` array contains BOTH fresh items (attempt=1) and auto-retried items (attempt>1)."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        _seed_done_item(item_id="ret-1", code="005930", date="20260520",
+                        phase="failed", attempt=1)
+        # 20260521 is fresh (no _done entry)
+
+        r = _post_items(c, "005930", ["20260520", "20260521"], force_retry=False)
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert len(body["enqueued"]) == 2
+        by_date = {it["date"]: it for it in body["enqueued"]}
+        assert by_date["20260520"]["attempt"] == 2  # auto-retried
+        assert by_date["20260521"]["attempt"] == 1  # fresh
+        assert body["deduped"] == []
