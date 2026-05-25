@@ -237,21 +237,28 @@ describe('FILL_STRENGTH_SPEC shape', () => {
 });
 
 describe('projectBuy/projectSell — closing-auction hide', () => {
-  it('drops in-window buy/sell points when auctionWindowMask=true (no whitespace; histograms have no continuity)', () => {
+  it('emits in-window buy/sell points as WhitespaceData when auctionWindowMask=true (Histogram skips bars for whitespace; time scale density preserved)', () => {
     const auctionStartMs = day1Open + 22_800_000; // 15:20 KST
     const bundle: any = {
       fill_strength: {
         points: [
           { t: day1Open, buy_qty: 50, sell_qty: 30 },                  // outside → kept
-          { t: auctionStartMs + 60_000, buy_qty: 70, sell_qty: 70 },   // inside → hidden
+          { t: auctionStartMs + 60_000, buy_qty: 70, sell_qty: 70 },   // inside → whitespace
         ],
       },
     };
     const axisLocal = createVirtualAxis([
       { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
     ]);
-    expect(projectBuy(bundle, axisLocal, true)).toEqual([{ time: 0, value: 50 }]);
-    expect(projectSell(bundle, axisLocal, true)).toEqual([{ time: 0, value: -30 }]);
+    const inAuctionT = (auctionStartMs + 60_000 - day1Open) / 1000;
+    expect(projectBuy(bundle, axisLocal, true)).toEqual([
+      { time: 0, value: 50 },
+      { time: inAuctionT },
+    ]);
+    expect(projectSell(bundle, axisLocal, true)).toEqual([
+      { time: 0, value: -30 },
+      { time: inAuctionT },
+    ]);
   });
 
   it('keeps in-window buy/sell points when auctionWindowMask=false', () => {
@@ -275,25 +282,23 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
   ]);
   const auctionStartMs = day1Open + 22_800_000;
 
-  it('skips emission inside the window AND inserts a boundary WhitespaceData when mask=true', () => {
+  it('emits in-window cumulative points as WhitespaceData (line breaks; time scale preserved) when mask=true', () => {
     const bundle: any = {
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
         points: [
           { t: day1Open, buy_qty: 100, sell_qty: 30 },                  // +70 → 70 (kept)
-          { t: auctionStartMs + 60_000, buy_qty: 0, sell_qty: 100 },    // inside → hidden (but runningSum accumulates)
+          { t: auctionStartMs + 60_000, buy_qty: 0, sell_qty: 100 },    // inside → whitespace (runningSum still accumulates)
         ],
       },
     };
     const out = projectCumulativeNetFill(bundle, singleDayAxis, true);
 
-    // First emitted point keeps its value; the in-auction point is gone
-    // but a whitespace boundary appears between them.
+    // 1 kept data point + 1 in-auction whitespace (at the in-auction time).
     expect(out).toHaveLength(2);
     expect(out[0]).toEqual({ time: 0, value: 70 });
     const ws = out[1] as { time: number; value?: number };
-    const expectedBreakTime = (auctionStartMs + 60_000 - day1Open - 1) / 1000;
-    expect(ws.time).toBe(expectedBreakTime);
+    expect(ws.time).toBe((auctionStartMs + 60_000 - day1Open) / 1000);
     expect(ws.value).toBeUndefined();
   });
 
@@ -352,16 +357,25 @@ describe('FILL_STRENGTH_SPEC — auctionWindowMask threading', () => {
     },
   };
 
-  it('buy histogram series data() honors ctx.auctionWindowMask', () => {
+  it('buy histogram series data() emits whitespace for in-auction when ctx.auctionWindowMask=true', () => {
     const buy = FILL_STRENGTH_SPEC.series[0];
-    expect(buy.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: true })).toEqual([]);
-    expect(buy.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: false })).toHaveLength(1);
+    const masked = buy.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: true });
+    expect(masked).toHaveLength(1);
+    expect((masked[0] as { value?: number }).value).toBeUndefined(); // whitespace
+    // mask=false → 1 real bar
+    const unmasked = buy.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: false });
+    expect(unmasked).toHaveLength(1);
+    expect((unmasked[0] as { value: number }).value).toBe(99);
   });
 
-  it('sell histogram series data() honors ctx.auctionWindowMask', () => {
+  it('sell histogram series data() emits whitespace for in-auction when ctx.auctionWindowMask=true', () => {
     const sell = FILL_STRENGTH_SPEC.series[1];
-    expect(sell.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: true })).toEqual([]);
-    expect(sell.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: false })).toHaveLength(1);
+    const masked = sell.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: true });
+    expect(masked).toHaveLength(1);
+    expect((masked[0] as { value?: number }).value).toBeUndefined();
+    const unmasked = sell.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: false });
+    expect(unmasked).toHaveLength(1);
+    expect((unmasked[0] as { value: number }).value).toBe(-99);
   });
 
   it('cumulative series data() honors ctx.auctionWindowMask in addition to ctx.cumulativeEnabled', () => {
@@ -369,13 +383,13 @@ describe('FILL_STRENGTH_SPEC — auctionWindowMask threading', () => {
     // cumulativeEnabled=false → always empty regardless of mask
     expect(cum.data(bundle, axis, { cumulativeEnabled: false, auctionWindowMask: true })).toEqual([]);
     expect(cum.data(bundle, axis, { cumulativeEnabled: false, auctionWindowMask: false })).toEqual([]);
-    // cumulativeEnabled=true + mask=true → emission suppressed for the in-auction point;
-    // since it's the ONLY point and it lands inside the window, output is just the boundary
-    // whitespace (1 element with no value).
+    // mask=true → the single in-auction point becomes whitespace.
     const masked = cum.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: true });
     expect(masked).toHaveLength(1);
     expect((masked[0] as { value?: number }).value).toBeUndefined();
-    // cumulativeEnabled=true + mask=false → 1 cumulative point (the in-auction value).
-    expect(cum.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: false })).toHaveLength(1);
+    // mask=false → in-auction point is kept; zero-anchor also fires
+    // (segment_open < this_virtual). 1 anchor + 1 data point = 2 entries.
+    const unmasked = cum.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: false });
+    expect(unmasked).toHaveLength(2);
   });
 });

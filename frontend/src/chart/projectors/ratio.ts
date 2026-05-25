@@ -14,7 +14,6 @@ import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
-import { makeAuctionMaskGap } from '../util/auctionMaskGap';
 
 const TOKEN_SPEC = {
   // KRX 컨벤션: 매수=상승=빨강, 매도=하락=파랑. RatioPane은 price-direction
@@ -58,26 +57,27 @@ export function projectRatio(
   axis: VirtualAxis,
   ctx: RatioPaneContext,
 ): (BaselineData<Time> | WhitespaceData<Time>)[] {
-  const gap = makeAuctionMaskGap(axis, ctx.auctionWindowMask);
   const out: (BaselineData<Time> | WhitespaceData<Time>)[] = [];
   for (const p of bundle.quote_ratio.points) {
     if (!axis.contains(p.t)) continue;
-    const br = gap.breakBefore(p.t);
-    if (br) out.push(br);
-    if (gap.isHidden(p.t)) continue;
+    const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+    // Auction-window hide (ADR-0029): emit WhitespaceData (no value) so the
+    // line breaks AND the time scale's bar-index density is preserved — the
+    // AuctionWindowOverlay band relies on each in-window minute having a
+    // mappable timeToCoordinate, and dropping points would shrink the chart's
+    // visible range past the auction band. Skipping the outlier check is
+    // intentional: a hidden point has no value to clamp.
+    if (ctx.auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
+      out.push({ time });
+      continue;
+    }
     const raw = quoteImbalance(p.bid_total, p.ask_total);
-    // Outlier clamp: priceFormat above renders `1 + |raw|`, so the chart
-    // label crosses `outlierThreshold` once ask/bid (or bid/ask) reaches
-    // that multiple. Such spikes dominate the autoscale and flatten the
-    // meaningful signal — mask to 0 (ADR-0026). Auction-window hiding
-    // (ADR-0029) is handled above; outliers still use value-0 because
-    // they are scattered, not bounded, and need pointwise treatment.
+    // Outlier clamp (ADR-0026): mask the value to 0 when the chart-label
+    // magnitude crosses the user threshold. The point stays on the time
+    // axis at value=0 — outliers are scattered and have no natural break.
     const isExtreme =
       ctx.outlierFilterEnabled && 1 + Math.abs(raw) >= ctx.outlierThreshold;
-    out.push({
-      time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
-      value: isExtreme ? 0 : raw,
-    });
+    out.push({ time, value: isExtreme ? 0 : raw });
   }
   return out;
 }

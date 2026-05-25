@@ -55,34 +55,40 @@ describe('projectAsk', () => {
 });
 
 describe('closing-auction-window hide', () => {
-  it('drops in-window bid/ask points and inserts a WhitespaceData break per series when auctionWindowMask=true', () => {
+  it('emits in-window bid/ask points as WhitespaceData per series when auctionWindowMask=true', () => {
     const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
     const bundle: any = {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 100, ask_total: 200 },              // outside → kept
-          { t: auctionStartMs + 60_000, bid_total: 500, ask_total: 900 },    // inside → hidden
-          { t: auctionStartMs + 120_000, bid_total: 600, ask_total: 1000 },  // inside → hidden
+          { t: auctionStartMs + 60_000, bid_total: 500, ask_total: 900 },    // inside → whitespace
+          { t: auctionStartMs + 120_000, bid_total: 600, ask_total: 1000 },  // inside → whitespace
         ],
       },
     };
     const bids = projectBid(bundle, axis, true);
     const asks = projectAsk(bundle, axis, true);
 
-    // Each series: 1 kept point + 1 whitespace boundary = 2 entries.
-    expect(bids).toHaveLength(2);
-    expect(asks).toHaveLength(2);
+    // Each series: 1 kept data point + 2 in-auction whitespaces = 3 entries.
+    // Whitespace at each in-auction minute preserves time-scale density
+    // for AuctionWindowOverlay's timeToCoordinate lookups (ADR-0029).
+    expect(bids).toHaveLength(3);
+    expect(asks).toHaveLength(3);
 
     expect(bids[0]).toEqual({ time: 0, value: 100 });
     expect(asks[0]).toEqual({ time: 0, value: 200 });
 
-    const expectedBreakTime = (auctionStartMs + 60_000 - sessionOpenMs - 1) / 1000;
-    const bidWs = bids[1] as { time: number; value?: number };
-    const askWs = asks[1] as { time: number; value?: number };
-    expect(bidWs.time).toBe(expectedBreakTime);
-    expect(bidWs.value).toBeUndefined();
-    expect(askWs.time).toBe(expectedBreakTime);
-    expect(askWs.value).toBeUndefined();
+    const t1 = (auctionStartMs + 60_000 - sessionOpenMs) / 1000;
+    const t2 = (auctionStartMs + 120_000 - sessionOpenMs) / 1000;
+    const bidWs1 = bids[1] as { time: number; value?: number };
+    const askWs1 = asks[1] as { time: number; value?: number };
+    expect(bidWs1.time).toBe(t1);
+    expect(bidWs1.value).toBeUndefined();
+    expect(askWs1.time).toBe(t1);
+    expect(askWs1.value).toBeUndefined();
+    const bidWs2 = bids[2] as { time: number; value?: number };
+    expect(bidWs2.time).toBe(t2);
+    expect(bidWs2.value).toBeUndefined();
   });
 
   it('keeps in-window points when auctionWindowMask=false', () => {

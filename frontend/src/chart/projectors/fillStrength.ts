@@ -13,7 +13,6 @@ import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
-import { makeAuctionMaskGap } from '../util/auctionMaskGap';
 
 const TOKEN_SPEC = {
   buy: ['--price-up', '#DC2626'],          // 체결 매수 (KRX 빨강)
@@ -44,17 +43,24 @@ const cumulativePriceFormat = {
   minMove: 1,
 };
 
+// Auction-window hide (ADR-0029): emit WhitespaceData for in-window points.
+// Histograms render nothing for WhitespaceData (no bar drawn), so this matches
+// the prior "skip" semantics visually while keeping the time scale's bar-index
+// density intact for the AuctionWindowOverlay band.
 export function projectBuy(
   bundle: RangeBundle,
   axis: VirtualAxis,
   auctionWindowMask: boolean,
 ): any[] {
-  const gap = makeAuctionMaskGap(axis, auctionWindowMask);
   const out: any[] = [];
   for (const p of bundle.fill_strength.points) {
     if (!axis.contains(p.t)) continue;
-    if (gap.isHidden(p.t)) continue;
-    out.push({ time: (axis.toVirtual(p.t) / 1000) as any, value: p.buy_qty });
+    const time = (axis.toVirtual(p.t) / 1000) as any;
+    if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
+      out.push({ time });
+      continue;
+    }
+    out.push({ time, value: p.buy_qty });
   }
   return out;
 }
@@ -64,12 +70,15 @@ export function projectSell(
   axis: VirtualAxis,
   auctionWindowMask: boolean,
 ): any[] {
-  const gap = makeAuctionMaskGap(axis, auctionWindowMask);
   const out: any[] = [];
   for (const p of bundle.fill_strength.points) {
     if (!axis.contains(p.t)) continue;
-    if (gap.isHidden(p.t)) continue;
-    out.push({ time: (axis.toVirtual(p.t) / 1000) as any, value: -p.sell_qty });
+    const time = (axis.toVirtual(p.t) / 1000) as any;
+    if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
+      out.push({ time });
+      continue;
+    }
+    out.push({ time, value: -p.sell_qty });
   }
   return out;
 }
@@ -113,13 +122,13 @@ export function projectSell(
  *     resumes from the correct running sum at the first in-viewport point.
  *
  * Closing Auction Window (ADR-0029): when `auctionWindowMask` is true,
- * in-window points are dropped from the emitted series and a single
- * `WhitespaceData` boundary is inserted at the first transition into
- * the window so the line breaks cleanly at 15:20 instead of interpolating
- * across the empty band. `runningSum` continues to accumulate across
- * hidden points (the "hide is rendering, not data" invariant) — in
- * practice no in-window points exist because the backend filters them,
- * but the invariant stays clean for any future data-shape change.
+ * in-window points are emitted as `WhitespaceData` (no value) — the line
+ * breaks naturally at the first whitespace AND the time scale keeps a
+ * mappable bar position at each in-window minute (load-bearing for the
+ * AuctionWindowOverlay band's `timeToCoordinate` lookups). `runningSum`
+ * continues to accumulate across hidden points (the "hide is rendering,
+ * not data" invariant) — in practice no in-window points exist because
+ * the backend filters them, but the invariant stays clean.
  */
 export function projectCumulativeNetFill(
   bundle: RangeBundle,
@@ -128,49 +137,33 @@ export function projectCumulativeNetFill(
 ): (LineData<Time> | WhitespaceData<Time>)[] {
   const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
   bundle.segments.forEach((seg, segIdx) => {
-    const gap = makeAuctionMaskGap(axis, auctionWindowMask);
     let runningSum = 0;
     let firstEmittedInSeg = true;
     for (const p of bundle.fill_strength.points) {
       if (p.t < seg.session_open_ms || p.t > seg.session_close_ms) continue;
       runningSum += p.buy_qty - p.sell_qty;
       if (!axis.contains(p.t)) continue;
+      const thisVirtual = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
 
-      // Auction-window boundary: emit whitespace BEFORE the day-boundary
-      // handling so the auction break and the optional zero-anchor coexist
-      // at distinct timestamps.
-      const auctionBr = gap.breakBefore(p.t);
-      if (auctionBr) out.push(auctionBr);
-      if (gap.isHidden(p.t)) continue;
+      if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
+        out.push({ time: thisVirtual });
+        continue;
+      }
 
       if (firstEmittedInSeg) {
         const segOpenVirtual = (axis.toVirtual(seg.session_open_ms) / 1000) as UTCTimestamp;
-        const thisVirtual = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
         if (segIdx > 0) {
           // Break the cumulative line so the prior day's last value doesn't
           // visually continue into this day. Whitespace point: time only.
           out.push({ time: ((segOpenVirtual as number) - 1) as UTCTimestamp });
         }
-        // Suppress the zero anchor when the first visible point falls inside
-        // the closing Auction Window: drawing a flat-zero baseline across the
-        // ~6h pre-auction span before the first cumulative reading is more
-        // misleading than helpful. Applies regardless of `auctionWindowMask`
-        // — the visual claim "the day started at zero and stayed flat" only
-        // makes sense when at least one continuous-trading bucket is in view.
-        if (
-          axis.contains(seg.session_open_ms) &&
-          (segOpenVirtual as number) < (thisVirtual as number) &&
-          !axis.inClosingAuctionWindow(p.t)
-        ) {
+        if (axis.contains(seg.session_open_ms) && (segOpenVirtual as number) < (thisVirtual as number)) {
           out.push({ time: segOpenVirtual, value: 0 });
         }
         firstEmittedInSeg = false;
       }
 
-      out.push({
-        time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
-        value: runningSum,
-      });
+      out.push({ time: thisVirtual, value: runningSum });
     }
   });
   return out;

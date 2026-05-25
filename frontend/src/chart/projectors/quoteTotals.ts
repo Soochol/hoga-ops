@@ -10,7 +10,6 @@ import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
-import { makeAuctionMaskGap } from '../util/auctionMaskGap';
 
 const TOKEN_SPEC = {
   bid: ['--price-up', '#DC2626'],   // 매수 호가 총합 (KRX 빨강)
@@ -25,25 +24,25 @@ const priceFormat = {
   minMove: 1,
 };
 
-// Closing Auction Window hiding (ADR-0029): in-window points are dropped
-// and a WhitespaceData break is inserted at the boundary so the line
-// terminates cleanly at 15:20 instead of plateauing at 0.
+// Closing Auction Window hide (ADR-0029): in-window points are emitted as
+// WhitespaceData (no value) so the line breaks cleanly AND the time scale
+// keeps a mappable bar position at each in-window minute. Dropping the
+// points entirely would shrink the chart's visible range past the auction
+// band, hiding the AuctionWindowOverlay highlight band as a side effect.
 export function projectBid(
   bundle: RangeBundle,
   axis: VirtualAxis,
   auctionWindowMask: boolean,
 ): (LineData<Time> | WhitespaceData<Time>)[] {
-  const gap = makeAuctionMaskGap(axis, auctionWindowMask);
   const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
   for (const p of bundle.quote_ratio.points) {
     if (!axis.contains(p.t)) continue;
-    const br = gap.breakBefore(p.t);
-    if (br) out.push(br);
-    if (gap.isHidden(p.t)) continue;
-    out.push({
-      time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
-      value: p.bid_total,
-    });
+    const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+    if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
+      out.push({ time });
+      continue;
+    }
+    out.push({ time, value: p.bid_total });
   }
   return out;
 }
@@ -53,17 +52,15 @@ export function projectAsk(
   axis: VirtualAxis,
   auctionWindowMask: boolean,
 ): (LineData<Time> | WhitespaceData<Time>)[] {
-  const gap = makeAuctionMaskGap(axis, auctionWindowMask);
   const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
   for (const p of bundle.quote_ratio.points) {
     if (!axis.contains(p.t)) continue;
-    const br = gap.breakBefore(p.t);
-    if (br) out.push(br);
-    if (gap.isHidden(p.t)) continue;
-    out.push({
-      time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
-      value: p.ask_total,
-    });
+    const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+    if (auctionWindowMask && axis.inClosingAuctionWindow(p.t)) {
+      out.push({ time });
+      continue;
+    }
+    out.push({ time, value: p.ask_total });
   }
   return out;
 }

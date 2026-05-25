@@ -4,7 +4,7 @@
 
 ## Decision
 
-When the per-tab `auctionWindowMask` toggle is on (default), chart-pane projectors for indicators **derived from order book or trade data** — RatioPane (호가비), QuoteTotalsPane, and FillStrength (both histograms and Cumulative Net Fill) — **drop data points entirely during the closing Auction Window** (15:20–15:30 KST on full-day sessions; last 10 minutes on half-day sessions) and **insert a `WhitespaceData` boundary marker** so continuous-line series break cleanly at 15:20 instead of rendering an interpolation across the gap.
+When the per-tab `auctionWindowMask` toggle is on (default), chart-pane projectors for indicators **derived from order book or trade data** — RatioPane (호가비), QuoteTotalsPane, and FillStrength (both histograms and Cumulative Net Fill) — **emit each in-window data point as `WhitespaceData`** (no `value` field) during the closing Auction Window (15:20–15:30 KST on full-day sessions; last 10 minutes on half-day sessions). Line/baseline series break naturally at the first whitespace and remain blank through the window; histograms render no bar where a whitespace point lives.
 
 CandlePane and VolumePane are deliberately excluded — their data during the Auction Window is structurally meaningful (price formation, total transacted volume) and hiding them would create disorienting holes in the price/volume history.
 
@@ -25,7 +25,9 @@ Two problems surfaced from actual use:
 
 The unified treatment — all chart panes other than Candle/Volume hide together at 15:20 — communicates "this 10-minute slice is auction-formed, treat as discontinuous" with a single visual rule.
 
-**Why this isn't a re-litigation of ADR-0026.** ADR-0026's rejection of "drop the point" was a pure-drop: no boundary marker, leaving lightweight-charts to interpolate across the gap. That genuinely produces phantom-break artifacts at the start and end of the hidden window. This decision mitigates the artifact by inserting an explicit `WhitespaceData` at the auction-start virtual time (1ms before the first dropped point), which the library treats as a deterministic line break. The Outlier Mask doesn't get the same treatment because outlier points are scattered throughout the timeline rather than clustered in a known-boundaries window — there's no natural place to put a single boundary marker, and a per-outlier whitespace would shred the line.
+**Why this isn't a re-litigation of ADR-0026.** ADR-0026's rejection of "drop the point" was a pure-drop: leave the in-window data out of the wire entirely. That breaks **two** things at once — the line interpolates across the gap (the phantom-break artifact ADR-0026 names) AND lightweight-charts' bar-index time scale shrinks to fit the surviving data, which silently hides `AuctionWindowOverlay` (its `timeToCoordinate(auctionStart)` / `timeToCoordinate(sessionClose)` return null past the data range). The fix-in-this-ADR keeps every in-window minute on the wire as `WhitespaceData` — the line breaks at the first whitespace (no interpolation), and every in-window timestamp remains a valid bar position so the overlay band renders at full width. The Outlier Mask doesn't get this treatment because outlier points are scattered throughout the timeline rather than clustered in a known-boundaries window — a per-outlier whitespace would shred the line.
+
+The initial implementation used a single boundary `WhitespaceData` at 1ms before the first dropped point (with the in-window points themselves filtered out). That broke the line cleanly in unit tests but failed in the browser: with the in-window minutes absent from the data, `chart.timeScale().timeToCoordinate(...)` returned null for the auction band's corners, so `AuctionWindowOverlay` rendered as zero children. Replacing "drop + one boundary" with "every in-window point becomes whitespace" was the smaller change that restored the overlay, and it deleted the `auctionMaskGap.ts` state-machine helper along with it.
 
 ## Why CandlePane and VolumePane are excluded
 
@@ -37,8 +39,7 @@ The carve-out rule is mechanical: **a pane is hidden during the Auction Window i
 
 ## Consequences
 
-- `chart/projectors/ratio.ts`, `quoteTotals.ts`, and `fillStrength.ts` filter out in-auction points and push a `WhitespaceData` at the boundary.
-- A shared helper `chart/util/auctionMaskGap.ts` encapsulates the "first transition into the window → emit one whitespace" state machine, consumed by the three continuous-line projectors (ratio baseline, two quote-totals lines, cumulative net fill). Histograms (fillStrength buy/sell, volume — though volume is excluded by the carve-out) need only the predicate, not the gap helper.
+- `chart/projectors/ratio.ts`, `quoteTotals.ts`, and `fillStrength.ts` each contain the same inline 2-line check `if (mask && axis.inClosingAuctionWindow(p.t)) { out.push({ time }); continue; }` before emitting a value-bearing data point. No shared helper module: the abstraction's contract would be longer than the inline check.
 - `FillStrengthPaneContext` gains `auctionWindowMask: boolean`. RatioPaneContext already carries it. QuoteTotalsPane's `useContext` switches from a bare boolean to the same toggle (no shape change).
 - Cumulative Net Fill: `runningSum` continues to accumulate through the window (defensive — there are no in-window points in practice, but the invariant "hide is a rendering decision, not a data decision" stays clean). Emission is suppressed.
 - The `auctionWindowMask` toggle's label/description in `state/chartPrefs.ts` is updated to "동시호가 구간 지표 숨김" / "15:20–15:30 KST 동시호가 구간에서 호가비·호가총합·체결강도를 표시하지 않습니다. (캔들/거래량 제외)".
@@ -57,4 +58,8 @@ The carve-out rule is mechanical: **a pane is hidden during the Auction Window i
 
 **Backend filter (omit in-auction points from `quote_ratio.points` and `fill_strength.points`).** Rejected. Loses raw data for users who want to flip the toggle off, couples the wire to a presentation rule, and ADR-0013's "RangeBundle is the single read-path Wire Model" intent prefers presentation rules at the projector layer.
 
-**Drop the point without inserting a boundary `WhitespaceData`.** Rejected — this is the exact failure mode ADR-0026 cited. lightweight-charts interpolates a straight line between the last pre-window point and the first post-window (or next-day) point, producing a "phantom break" that crosses the empty band diagonally. The boundary whitespace converts that into a clean visual gap.
+**Drop the point without inserting a boundary `WhitespaceData`.** Rejected — this is the exact failure mode ADR-0026 cited. lightweight-charts interpolates a straight line between the last pre-window point and the first post-window (or next-day) point, producing a "phantom break" that crosses the empty band diagonally.
+
+**Drop in-window points and insert a single boundary `WhitespaceData`.** Tried during the first implementation pass, then reverted. Cleanly breaks the line in isolation, but the time scale shrinks past the missing data and `AuctionWindowOverlay`'s `timeToCoordinate(auctionStart)` / `timeToCoordinate(sessionClose)` return null, hiding the highlight band entirely. The current decision (whitespace at every in-window minute) keeps each minute as a valid bar position so the overlay renders at full width.
+
+**Push a trailing whitespace at `session_close_ms` per segment to extend the visible range.** Rejected. Extends the range, but `timeToCoordinate(auctionStart)` still returns null because no data point lives at that intermediate timestamp (lightweight-charts maps bar indices, not arbitrary times). Would need dense intermediate anchors anyway — the per-minute-whitespace approach already provides them naturally.

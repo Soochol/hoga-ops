@@ -41,35 +41,37 @@ describe('projectRatio', () => {
     expect(projectRatio(bundle, axis, baseCtx)).toHaveLength(1);
   });
 
-  it('drops closing-auction-window points and inserts a WhitespaceData break when auctionWindowMask=true', () => {
+  it('emits in-auction points as WhitespaceData (line breaks; time scale preserved) when auctionWindowMask=true', () => {
     const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
     const bundle: any = {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 100, ask_total: 200 },              // outside → kept
-          { t: auctionStartMs + 60_000, bid_total: 100, ask_total: 1000 },   // inside → hidden
-          { t: auctionStartMs + 120_000, bid_total: 100, ask_total: 1000 },  // inside → hidden
+          { t: auctionStartMs + 60_000, bid_total: 100, ask_total: 1000 },   // inside → whitespace
+          { t: auctionStartMs + 120_000, bid_total: 100, ask_total: 1000 },  // inside → whitespace
         ],
       },
     };
     const masked = projectRatio(bundle, axis, { ...baseCtx, auctionWindowMask: true });
 
-    // Outside-window point + one whitespace at the boundary = 2 entries.
-    // Both in-auction points are absent.
-    expect(masked).toHaveLength(2);
+    // 1 kept data point + 2 in-auction whitespaces = 3 entries.
+    // Whitespace at each in-auction time preserves the chart's bar-index
+    // density so AuctionWindowOverlay can compute timeToCoordinate for the
+    // full auction band (ADR-0029).
+    expect(masked).toHaveLength(3);
 
-    // First entry: the kept pre-auction point with real value.
+    // First entry: kept pre-auction data point.
     const first = masked[0] as { time: number; value: number };
     expect(first.time).toBe(0);
     expect(first.value).toBeCloseTo(1.0, 5);
 
-    // Second entry: a WhitespaceData (no `value` field) at virtual time
-    // 1ms before the first in-auction point. The first in-auction point's
-    // virtual seconds is (auctionStartMs + 60_000 - sessionOpenMs) / 1000.
-    const expectedBreakTime = (auctionStartMs + 60_000 - sessionOpenMs - 1) / 1000;
-    const ws = masked[1] as { time: number; value?: number };
-    expect(ws.time).toBe(expectedBreakTime);
-    expect(ws.value).toBeUndefined();
+    // Second + third entries: WhitespaceData at exactly the in-auction times.
+    const ws1 = masked[1] as { time: number; value?: number };
+    const ws2 = masked[2] as { time: number; value?: number };
+    expect(ws1.time).toBe((auctionStartMs + 60_000 - sessionOpenMs) / 1000);
+    expect(ws1.value).toBeUndefined();
+    expect(ws2.time).toBe((auctionStartMs + 120_000 - sessionOpenMs) / 1000);
+    expect(ws2.value).toBeUndefined();
   });
 
   it('keeps auction-window points when auctionWindowMask=false', () => {
