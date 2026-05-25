@@ -30,6 +30,7 @@
 import { nanoid } from 'nanoid';
 import {
   type Drawing,
+  type DrawingDefaults,
   type DrawingTool,
   type PaneId,
   type Point,
@@ -112,8 +113,9 @@ export type ToolCtx = {
   drawings: readonly Drawing[];
   /** Currently selected drawing id, if any. */
   selectedId: string | null;
-  /** Resolved accent hex (canvas-safe — no CSS `var(--…)`). */
-  accentColor: string;
+  /** The user's sticky drawing defaults. Tool constructors read these
+   *  to seed color / width / lineStyle on new Drawings. See ADR-0032. */
+  defaults: DrawingDefaults;
 
   /** Per-gesture draft refs. The overlay owns them as React refs; tools
    *  read and mutate `.current` directly. */
@@ -133,13 +135,10 @@ export type ToolCtx = {
   update(id: string, patch: Partial<Drawing>): void;
   remove(id: string): void;
   setSelected(id: string | null): void;
-  /** Helper that returns the overlay to neutral state: clears `selectedId`
-   *  and switches the active tool back to `select`. Called by tools that
-   *  auto-revert after commit (hline, trendline, pencil). The overlay's
-   *  buildCtx wires this to a shared closure that the `Escape` keyboard
-   *  handler also calls — one canonical "return to neutral" path. See
-   *  ADR-0030. */
-  revertToSelectMode(): void;
+  /** Returns the overlay to select mode with the just-added drawing selected,
+   *  so the property panel attaches to the new shape. See ADR-0032 (supersedes
+   *  ADR-0030's "clears selection" semantic). */
+  revertToSelectMode(newId: string): void;
 };
 
 export interface DrawingToolSpec {
@@ -159,8 +158,6 @@ export interface DrawingToolSpec {
   onPointerMove?(ctx: ToolCtx): void;
   onPointerUp?(ctx: ToolCtx): void;
 }
-
-const DRAWING_WIDTH = 1.5;
 
 // ─── select ────────────────────────────────────────────────────────────────
 //
@@ -275,11 +272,12 @@ export const hlineTool: DrawingToolSpec = {
       id,
       kind: 'hline',
       price: data.price,
-      color: ctx.accentColor,
-      width: DRAWING_WIDTH,
+      color: ctx.defaults.color,
+      width: ctx.defaults.width,
+      lineStyle: ctx.defaults.lineStyle,
       paneId,
     });
-    ctx.revertToSelectMode();
+    ctx.revertToSelectMode(id);
   },
 };
 
@@ -313,11 +311,12 @@ export const trendlineTool: DrawingToolSpec = {
       kind: 'trendline',
       a: draft.a,
       b: data,
-      color: ctx.accentColor,
-      width: DRAWING_WIDTH,
+      color: ctx.defaults.color,
+      width: ctx.defaults.width,
+      lineStyle: ctx.defaults.lineStyle,
       paneId: draft.paneId,
     });
-    ctx.revertToSelectMode();
+    ctx.revertToSelectMode(id);
   },
 };
 
@@ -366,11 +365,12 @@ export const pencilTool: DrawingToolSpec = {
       id,
       kind: 'pencil',
       points: draft.points,
-      color: ctx.accentColor,
-      width: DRAWING_WIDTH,
+      color: ctx.defaults.color,
+      width: ctx.defaults.width,
+      lineStyle: ctx.defaults.lineStyle,
       paneId: draft.paneId,
     });
-    ctx.revertToSelectMode();
+    ctx.revertToSelectMode(id);
   },
 };
 

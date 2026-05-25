@@ -17,7 +17,7 @@ import {
   matchShortcut,
   type ToolCtx,
 } from './tools';
-import type { Drawing, Point } from './types';
+import type { Drawing, DrawingDefaults, Point } from './types';
 
 function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
   const defaultPoint: Point = { realMs: 1_700_000_000_000, price: 70_000 };
@@ -37,7 +37,7 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     priceBoundsForPane: vi.fn(() => ({ top: 100_000, bottom: 0 })),
     drawings: [],
     selectedId: null,
-    accentColor: '#14B8A6',
+    defaults: { color: '#14B8A6', width: 2, lineStyle: 'solid' as const },
     trendlineDraft: { current: null },
     pencilDraft: { current: null },
     dragRef: { current: null },
@@ -89,10 +89,22 @@ describe('hlineTool.onPointerDown', () => {
     expect(ctx.add).not.toHaveBeenCalled();
   });
 
-  it('calls revertToSelectMode after add', () => {
+  it('calls revertToSelectMode with the new drawing id after add', () => {
     const ctx = makeCtx();
     hlineTool.onPointerDown!(ctx);
     expect(ctx.revertToSelectMode).toHaveBeenCalledOnce();
+    const addedId = ((ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
+    expect(ctx.revertToSelectMode).toHaveBeenCalledWith(addedId);
+  });
+
+  it('new hline inherits color/width/lineStyle from ctx.defaults', () => {
+    const ctx = makeCtx();
+    ctx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed' };
+    hlineTool.onPointerDown!(ctx);
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    expect(added.color).toBe('#F43F5E');
+    expect(added.width).toBe(3);
+    expect(added.lineStyle).toBe('dashed');
   });
 });
 
@@ -134,7 +146,7 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
     expect(ctx.add).not.toHaveBeenCalled();
   });
 
-  it('calls revertToSelectMode on pointer-up commit', () => {
+  it('calls revertToSelectMode with the new drawing id on pointer-up commit', () => {
     const a: Point = { realMs: 1_000, price: 100 };
     const b: Point = { realMs: 2_000, price: 200 };
     const downCtx = makeCtx({ pixelToData: vi.fn(() => a) });
@@ -145,6 +157,25 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
     });
     trendlineTool.onPointerUp!(upCtx);
     expect(upCtx.revertToSelectMode).toHaveBeenCalledOnce();
+    const addedId = ((upCtx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
+    expect(upCtx.revertToSelectMode).toHaveBeenCalledWith(addedId);
+  });
+
+  it('new trendline inherits color/width/lineStyle from ctx.defaults', () => {
+    const a: Point = { realMs: 1_000, price: 100 };
+    const b: Point = { realMs: 2_000, price: 200 };
+    const downCtx = makeCtx({ pixelToData: vi.fn(() => a) });
+    trendlineTool.onPointerDown!(downCtx);
+    const upCtx = makeCtx({
+      pixelToData: vi.fn(() => b),
+      trendlineDraft: downCtx.trendlineDraft,
+    });
+    upCtx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed' };
+    trendlineTool.onPointerUp!(upCtx);
+    const added = (upCtx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    expect(added.color).toBe('#F43F5E');
+    expect(added.width).toBe(3);
+    expect(added.lineStyle).toBe('dashed');
   });
 
   it('does NOT call revertToSelectMode when the trendline is zero-length (rejected)', () => {
@@ -179,12 +210,26 @@ describe('eraserTool', () => {
 });
 
 describe('pencilTool commit', () => {
-  it('calls revertToSelectMode on pointer-up commit', () => {
+  it('calls revertToSelectMode with the new drawing id on pointer-up commit', () => {
     const ctx = makeCtx();
     pencilTool.onPointerDown!(ctx);
     ctx.pencilDraft.current!.points.push({ realMs: 1_700_000_000_001, price: 70_010 });
     pencilTool.onPointerUp!(ctx);
     expect(ctx.revertToSelectMode).toHaveBeenCalledOnce();
+    const addedId = ((ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
+    expect(ctx.revertToSelectMode).toHaveBeenCalledWith(addedId);
+  });
+
+  it('new pencil inherits color/width/lineStyle from ctx.defaults', () => {
+    const ctx = makeCtx();
+    ctx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed' };
+    pencilTool.onPointerDown!(ctx);
+    ctx.pencilDraft.current!.points.push({ realMs: 1_700_000_000_001, price: 70_010 });
+    pencilTool.onPointerUp!(ctx);
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    expect(added.color).toBe('#F43F5E');
+    expect(added.width).toBe(3);
+    expect(added.lineStyle).toBe('dashed');
   });
 
   it('does NOT call revertToSelectMode when the pencil has fewer than 2 points', () => {
