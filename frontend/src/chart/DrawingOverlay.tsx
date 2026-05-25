@@ -33,15 +33,25 @@ import {
 /**
  * Pure predicate for the empty-click deselect flow. Returns true iff the
  * click landed inside the overlay's bounding rect AND did not hit any
- * Drawing. Extracted so the listener body stays small and the rule is
- * unit-testable without the `IChartApi` / `VirtualAxis` / `paneSeries`
- * scaffolding the full component needs. See ADR-0030 (companion decision).
+ * Drawing AND did not originate from the Drawing Property Panel.
+ *
+ * The property-panel guard is load-bearing: the panel renders over the
+ * chart (its pixels fall inside the overlay's rect by construction), and
+ * its `mousedown` events bubble up to the window listener. Without the
+ * guard, the user's own mousedown on a panel control (color / thickness /
+ * lineStyle trigger) clears `selectedId` before the trigger's onClick
+ * fires, unmounting the panel and silently dropping the edit. The delete
+ * button worked anyway because it captures `id` in a closure that
+ * survives selectedId going null, masking the bug. See ADR-0030 (the
+ * deselect rule) and ADR-0032 (the panel that demands this exception).
  */
 function shouldDeselectOnClick(
   click: { x: number; y: number },
   rect: { width: number; height: number },
   hasHit: boolean,
+  isOnPropertyPanel: boolean,
 ): boolean {
+  if (isOnPropertyPanel) return false;
   const inside =
     click.x >= 0 &&
     click.y >= 0 &&
@@ -346,10 +356,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
     if (!container) return;
     const onWindowMouseDown = (e: MouseEvent) => {
       if (dragRef.current) return;
+      const isOnPropertyPanel =
+        e.target instanceof Node &&
+        !!document.querySelector('[data-drawing-property-panel]')?.contains(e.target);
       const rect = container.getBoundingClientRect();
       const click = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       const hasHit = !!hitTestAt(click.x, click.y);
-      if (shouldDeselectOnClick(click, rect, hasHit)) {
+      if (shouldDeselectOnClick(click, rect, hasHit, isOnPropertyPanel)) {
         useDrawingsStore.getState().setSelected(null);
       }
     };
