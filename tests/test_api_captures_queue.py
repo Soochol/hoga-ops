@@ -724,6 +724,49 @@ def test_dismiss_done_clears_terminals_only(monkeypatch, tmp_path):
         assert snap["done"] == []
 
 
+def test_dismiss_done_publishes_capture_dismissed_event(monkeypatch, tmp_path):
+    """dismissDone emits CaptureDismissedEvent so the frontend SSE handler can
+    drop done rows on the same code path as the Retry flow. Empty _done is a
+    no-op (no event published)."""
+    from hoga.api.models import CaptureDismissedEvent
+    monkeypatch.setattr(captures, "_data_dir", tmp_path, raising=False)
+    published: list = []
+    monkeypatch.setattr(captures, "_publish_event", lambda e: published.append(e))
+
+    # Seed _done with two terminal items.
+    a = _make_item("a", code="005930", date="20260520")
+    a.phase = "done"
+    b = _make_item("b", code="005930", date="20260521")
+    b.phase = "failed"
+    captures._done.extend([a, b])
+
+    app = _build_test_app(monkeypatch, tmp_path)
+    _no_workers(monkeypatch)
+    with TestClient(app) as c:
+        r = c.delete("/api/captures/done")
+        assert r.status_code == 204
+
+    dismissed = [e for e in published if isinstance(e, CaptureDismissedEvent)]
+    assert len(dismissed) == 1
+    assert sorted(dismissed[0].item_ids) == ["a", "b"]
+
+
+def test_dismiss_done_empty_publishes_no_event(monkeypatch, tmp_path):
+    """No items in _done → no CaptureDismissedEvent published."""
+    from hoga.api.models import CaptureDismissedEvent
+    monkeypatch.setattr(captures, "_data_dir", tmp_path, raising=False)
+    published: list = []
+    monkeypatch.setattr(captures, "_publish_event", lambda e: published.append(e))
+
+    app = _build_test_app(monkeypatch, tmp_path)
+    _no_workers(monkeypatch)
+    with TestClient(app) as c:
+        r = c.delete("/api/captures/done")
+        assert r.status_code == 204
+
+    assert not any(isinstance(e, CaptureDismissedEvent) for e in published)
+
+
 def test_enqueue_range_returns_503_when_krx_creds_missing(monkeypatch, tmp_path):
     """When KRX creds are missing, range-based enqueue returns 503 with code."""
     monkeypatch.delenv("KRX_ID", raising=False)
@@ -1077,7 +1120,7 @@ def test_retry_route_returns_201_and_response_shape(monkeypatch, tmp_path):
         assert body["skipped"] == []
 
 
-def test_retry_route_400_on_empty_item_ids(monkeypatch, tmp_path):
+def test_retry_route_422_on_empty_item_ids(monkeypatch, tmp_path):
     """RetryRequest declares min_length=1 — FastAPI returns 422."""
     _no_workers(monkeypatch)
     app = _build_test_app(monkeypatch, tmp_path)

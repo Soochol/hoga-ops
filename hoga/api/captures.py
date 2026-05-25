@@ -1100,6 +1100,9 @@ def build_router(
     @router.delete("/done", status_code=204)
     async def dismiss_done() -> None:
         async with _lock:
+            ids = [s.item_id for s in _done]
             _done.clear()
+        if ids:
+            _publish_event(CaptureDismissedEvent(item_ids=ids))
 
     return router
