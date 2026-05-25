@@ -7,7 +7,7 @@ export interface CaptureQueueRowProps {
   item: QueueItem;
   symbolName: string;
   onCancel: (itemId: string) => void;
-  /** Re-enqueue with same params; CaptureQueue passes the addItems mutation here. */
+  /** Retry the failed item; CaptureQueue routes this through the retryItems mutation (ADR-0031). */
   onRetry: (item: QueueItem) => void;
 }
 
