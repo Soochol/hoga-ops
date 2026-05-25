@@ -282,30 +282,53 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
   ]);
   const auctionStartMs = day1Open + 22_800_000;
 
-  it('emits in-window cumulative points with transparent per-point color when mask=true', () => {
+  it('emits in-window cumulative points with transparent color AND synthesizes per-bucket auction anchors when mask=true', () => {
     const bundle: any = {
+      bucket_ms: 60_000,
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
         points: [
           { t: day1Open, buy_qty: 100, sell_qty: 30 },                  // +70 → 70 (kept)
-          { t: auctionStartMs + 60_000, buy_qty: 0, sell_qty: 100 },    // inside → transparent (runningSum still accumulates)
+          { t: auctionStartMs + 60_000, buy_qty: 0, sell_qty: 100 },    // inside → transparent (rare; backend usually filters)
         ],
       },
     };
     const out = projectCumulativeNetFill(bundle, singleDayAxis, true);
 
-    // 1 kept data point + 1 in-auction transparent point.
-    expect(out).toHaveLength(2);
+    // Breakdown:
+    //  1 kept point at session_open
+    //  + 1 transparent point from the in-window source point
+    //  + 10 synthesized transparent anchors (auction_start..session_close-1bucket
+    //    at 1-min intervals = 15:20..15:29 = 10 anchors)
+    // = 12 entries total. Without the synthesis, the cumulative line would
+    // draw a diagonal across the auction band into the next day's first value.
+    expect(out).toHaveLength(12);
     expect(out[0]).toEqual({ time: 0, value: 70 });
-    expect(out[1]).toEqual({
-      time: (auctionStartMs + 60_000 - day1Open) / 1000,
-      value: 0,
-      color: 'rgba(0,0,0,0)',
-    });
+
+    // Every entry after the first kept point should be transparent-color.
+    for (let i = 1; i < out.length; i++) {
+      expect((out[i] as { color?: string }).color).toBe('rgba(0,0,0,0)');
+      expect((out[i] as { value?: number }).value).toBe(0);
+    }
+
+    // Times: index 1 = the source-derived in-window point at 15:21, then
+    // synthesized anchors 15:20, 15:21, ..., 15:29 (the synthesis runs after
+    // the source-points loop so the in-window source's 15:21 entry comes
+    // first, then the synthesized 15:20 anchor). setData accepts non-strict-
+    // ascending if we sort downstream; lightweight-charts does sort the
+    // input for `setData`. Verify each time is within the auction window.
+    const auctionStartT = (auctionStartMs - day1Open) / 1000;
+    const auctionEndT = auctionStartT + 600;
+    for (let i = 1; i < out.length; i++) {
+      const t = (out[i] as { time: number }).time;
+      expect(t).toBeGreaterThanOrEqual(auctionStartT);
+      expect(t).toBeLessThan(auctionEndT);
+    }
   });
 
-  it('keeps in-window cumulative emission when mask=false', () => {
+  it('keeps in-window cumulative emission and does NOT synthesize anchors when mask=false', () => {
     const bundle: any = {
+      bucket_ms: 60_000,
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
         points: [
@@ -332,6 +355,7 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
       { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: extendedClose },
     ]);
     const bundle: any = {
+      bucket_ms: 60_000,
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: extendedClose }],
       fill_strength: {
         points: [
@@ -342,9 +366,14 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
       },
     };
     const out = projectCumulativeNetFill(bundle, extendedAxis, true);
-    // Find the last non-whitespace point.
-    const last = out.filter((p) => 'value' in p).at(-1) as { value: number };
-    expect(last.value).toBe(20); // 70 - 100 + 50 = 20
+    // The last non-transparent (default-color) value-bearing point should
+    // carry the full accumulated running sum. Synthesized anchors are all
+    // transparent (value=0), so filter to entries WITHOUT the transparent
+    // color marker.
+    const lastReal = out
+      .filter((p) => 'value' in p && (p as { color?: string }).color !== 'rgba(0,0,0,0)')
+      .at(-1) as { value: number };
+    expect(lastReal.value).toBe(20); // 70 - 100 + 50 = 20
   });
 });
 
@@ -353,6 +382,7 @@ describe('FILL_STRENGTH_SPEC — auctionWindowMask threading', () => {
     { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
   ]);
   const bundle: any = {
+    bucket_ms: 60_000,
     segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
     fill_strength: {
       points: [{ t: day1Open + 22_800_000 + 60_000, buy_qty: 99, sell_qty: 99 }], // in-auction
@@ -385,11 +415,15 @@ describe('FILL_STRENGTH_SPEC — auctionWindowMask threading', () => {
     // cumulativeEnabled=false → always empty regardless of mask
     expect(cum.data(bundle, axis, { cumulativeEnabled: false, auctionWindowMask: true })).toEqual([]);
     expect(cum.data(bundle, axis, { cumulativeEnabled: false, auctionWindowMask: false })).toEqual([]);
-    // mask=true → the single in-auction point becomes a transparent-color point.
+    // mask=true → the single in-auction source point becomes transparent AND
+    // 10 synthesized transparent anchors fill the rest of the auction window
+    // (1-min buckets from 15:20..15:29). Every entry is transparent-color.
     const masked = cum.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: true });
-    expect(masked).toHaveLength(1);
-    expect((masked[0] as any).color).toBe('rgba(0,0,0,0)');
-    expect((masked[0] as { value?: number }).value).toBe(0);
+    expect(masked).toHaveLength(11);
+    for (const p of masked) {
+      expect((p as any).color).toBe('rgba(0,0,0,0)');
+      expect((p as { value?: number }).value).toBe(0);
+    }
     // mask=false → in-auction point is kept as real value. Zero-anchor is
     // suppressed because the first visible point lands inside the auction
     // window (a 6h flat-zero baseline before the only cumulative reading

@@ -179,6 +179,29 @@ export function projectCumulativeNetFill(
 
       out.push({ time: thisVirtual, value: runningSum });
     }
+
+    // Synthesize transparent-color anchors across the auction window even
+    // though `fill_strength.points` carries none (backend filters Auction Cross
+    // rows). Without anchors the cumulative line would draw a direct segment
+    // from this segment's last cumulative value to the next segment's first —
+    // the exact diagonal-across-the-band bug ADR-0029 documents for the
+    // line/baseline projectors. Same fix shape (transparent per-point color
+    // at every in-window bar) applied here at bucket resolution.
+    if (auctionWindowMask) {
+      const auctionStart = seg.session_close_ms - 10 * 60 * 1000;
+      // Stop strictly before session_close — the next segment's day-boundary
+      // whitespace lands at `segOpenVirtual - 1` which converts back to the
+      // current segment's session_close virtual second, so emitting an anchor
+      // at session_close would collide (setData requires strictly ascending
+      // unique times). The 15:29 anchor is sufficient: its outgoing segment
+      // (transparent) covers the gap into the next-day whitespace + zero
+      // anchor.
+      for (let t = auctionStart; t < seg.session_close_ms; t += bundle.bucket_ms) {
+        if (!axis.contains(t)) continue;
+        const time = (axis.toVirtual(t) / 1000) as UTCTimestamp;
+        out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
+      }
+    }
   });
   return out;
 }
