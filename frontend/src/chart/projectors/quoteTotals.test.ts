@@ -33,7 +33,7 @@ describe('projectBid', () => {
       },
     };
     expect(projectBid(bundle, axis, false)).toHaveLength(1);
-    expect(projectBid(bundle, axis, false)[0].value).toBe(100);
+    expect((projectBid(bundle, axis, false) as { time: number; value: number }[])[0].value).toBe(100);
   });
 });
 
