@@ -24,7 +24,7 @@ Replace the meaning of the existing `auctionWindowMask` toggle: **hide data poin
   - histograms (buy/sell): exclude auction-window points (no break needed)
   - cumulative line: exclude emission inside auction window but **continue accumulating** `runningSum`; break line at boundary
 - `state/chartPrefs.ts` — update `auctionWindowMask` toggle label/description
-- New helper `chart/util/auctionBreak.ts` — encapsulates the "emit a whitespace at the boundary" state machine shared by the three line series
+- New helper `chart/util/auctionMaskGap.ts` — encapsulates the "emit a whitespace at the boundary" state machine shared by the three line series
 - Tests updated/added for each touched module
 
 ### Out of scope
@@ -69,7 +69,7 @@ The single source of truth for "is this time inside the closing auction window?"
 
 This means half-day sessions are handled correctly without per-projector code (the predicate already anchors to `sessionCloseMs - 10min`).
 
-### Helper module — `chart/util/auctionBreak.ts` (new)
+### Helper module — `chart/util/auctionMaskGap.ts` (new)
 
 The three line series (ratio, quoteTotals bid, quoteTotals ask, fillStrength cumulative) all need the same control flow:
 
@@ -88,7 +88,7 @@ export type AuctionGap = {
   reset(): void;
 };
 
-export function makeAuctionGap(
+export function makeAuctionMaskGap(
   axis: Pick<VirtualAxis, 'inClosingAuctionWindow' | 'toVirtual'>,
   enabled: boolean,
 ): AuctionGap;
@@ -103,7 +103,7 @@ When `enabled === false`, both methods return `null` / `false` so projectors can
 **ratio.ts** — `projectRatio()`:
 
 ```ts
-const gap = makeAuctionGap(axis, ctx.auctionWindowMask);
+const gap = makeAuctionMaskGap(axis, ctx.auctionWindowMask);
 const out: (BaselineData<Time> | WhitespaceData<Time>)[] = [];
 for (const p of bundle.quote_ratio.points) {
   if (!axis.contains(p.t)) continue;
@@ -122,7 +122,7 @@ return out;
 
 The outlier filter (`ratioOutlierFilterEnabled`) keeps its "mask to 0" semantics — that toggle is independent and serves a different purpose (clamping autoscale-dominating spikes). Only the auction-window logic changes.
 
-**quoteTotals.ts** — `projectBid()` and `projectAsk()`: same shape, two parallel passes. Could share a single iterator that emits both arrays but the duplication is small — keep the existing two-function structure with `makeAuctionGap` called per pass (two independent state machines, one per series).
+**quoteTotals.ts** — `projectBid()` and `projectAsk()`: same shape, two parallel passes. Could share a single iterator that emits both arrays but the duplication is small — keep the existing two-function structure with `makeAuctionMaskGap` called per pass (two independent state machines, one per series).
 
 **fillStrength.ts**:
 
@@ -134,7 +134,7 @@ The outlier filter (`ratioOutlierFilterEnabled`) keeps its "mask to 0" semantics
 
 ### Tests
 
-- `chart/util/auctionBreak.test.ts` (new) — state machine: enabled/disabled, entry break, no double-break, reset behaviour.
+- `chart/util/auctionMaskGap.test.ts` (new) — state machine: enabled/disabled, entry break, no double-break, reset behaviour.
 - `chart/projectors/ratio.test.ts` — replace existing "values 0 during auction" assertion with "points absent + whitespace at boundary"; keep outlier-filter-emits-0 assertion intact.
 - `chart/projectors/quoteTotals.test.ts` — same shape as ratio.
 - `chart/projectors/fillStrength.test.ts` — new test cases: histograms exclude auction points; cumulative line skips emission inside auction; cumulative `runningSum` continues to accumulate auction-window deltas — asserted directly by calling `projectCumulativeNetFill` with a synthetic bundle whose session_close_ms is artificially extended past 15:30, then checking that the first emitted post-15:30 point reflects the in-auction deltas; whitespace appears at boundary.
@@ -147,7 +147,14 @@ The outlier filter (`ratioOutlierFilterEnabled`) keeps its "mask to 0" semantics
 
 ## Open questions
 
-None — all scope and behaviour decisions confirmed during brainstorming.
+None — all scope and behaviour decisions confirmed during brainstorming and grilling.
+
+## Related decisions
+
+- **ADR-0029** (this change) — Auction Mask hides chart-pane indicators (replaces mask-to-0). Captures the reversal of ADR-0026's "same choice the Auction Mask made" note and explains why phantom-break concerns from ADR-0026 don't apply when an explicit `WhitespaceData` boundary marker is inserted.
+- **ADR-0018** — CandlePane muting is not Auction Mask. Confirms candle/volume carve-out is intentional and pre-existing.
+- **ADR-0026** — Ratio Outlier Mask remains value-0; only the Auction Mask switches to drop-and-break.
+- **CONTEXT.md** entries updated in lock-step: Auction Window, Auction Mask, 호가비, Outlier Mask, FillStrength, Cumulative Net Fill.
 
 ## Risks
 
