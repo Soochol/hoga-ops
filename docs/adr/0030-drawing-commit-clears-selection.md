@@ -1,6 +1,6 @@
 # 0030 — Drawing commit clears selection (diverges from Figma pattern)
 
-**Status:** accepted (2026-05-25)
+**Status:** superseded in part by [ADR-0032](0032-drawing-property-panel.md) (2026-05-25) — the post-commit "clears selection" decision is reversed; the empty-click-deselects companion in this ADR is preserved.
 
 ## Decision
 
@@ -57,3 +57,9 @@ The `revertToSelectMode` closure currently lives inside `DrawingOverlay.tsx` and
 - **Keep current behaviour (Figma pattern).** Rejected: violates user mental model, dilutes selection-emphasis signal, optimises for the rare workflow.
 - **Half-measure: skip the halo but keep `selectedId`.** Rejected: split-brain state where the store says "selected" but render disagrees; would silently break any future code that observes `selectedId` to drive non-visual behaviour (sidebar property panel, keyboard-shortcut targeting, etc.).
 - **Defer to a real undo stack.** Worth doing eventually, but the misdraw-recovery cost of the current change is small (one extra click) while the visual-inconsistency cost of the pre-change behaviour was a recurring user complaint. Decoupled scope.
+
+## Update — superseded in part (2026-05-25)
+
+The post-commit "clears selection" decision in this ADR is superseded by [ADR-0032](0032-drawing-property-panel.md). ADR-0030's premise — that a halo on a non-clicked shape reads as visual noise — depended on there being no DOM affordance pointing at the freshly-drawn shape. Once the Drawing Property Panel exists, the halo becomes the visual anchor for the panel and the noise concern is resolved. See ADR-0032 for the full rationale.
+
+The empty-click-deselects clause introduced at the bottom of this ADR is **preserved** — it solves the orthogonal problem of stale selection lingering and is unaffected by the panel feature.
