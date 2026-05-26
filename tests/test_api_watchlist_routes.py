@@ -120,3 +120,41 @@ async def test_delete_removes_entry(tmp_path: Path):
     r = client.delete("/api/watchlist/003490")
     assert r.status_code == 204
     assert watchlist.load_watchlist(tmp_path) == []
+
+
+def test_catchup_one_not_in_watchlist_returns_404(tmp_path: Path):
+    fake_now = dt.datetime(2026, 5, 27, 19, 0, tzinfo=KST)
+    with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now):
+        client = TestClient(_app(tmp_path))
+        r = client.post("/api/watchlist/003490/catchup")
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "not_in_watchlist"
+
+
+@pytest.mark.asyncio
+async def test_catchup_one_returns_enqueue_response(tmp_path: Path):
+    from unittest.mock import AsyncMock
+
+    from hoga.api import watchlist
+    from hoga.api.models import EnqueueResponse, QueueItem
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    fake_now = dt.datetime(2026, 5, 27, 19, 0, tzinfo=KST)
+    fake_resp = EnqueueResponse(
+        enqueued=[QueueItem(
+            item_id="003490-20260526", code="003490", date="20260526",
+            phase="queued", force_retry=False, pause_origin=False,
+            enqueued_at_ms=0, attempt=1,
+        )],
+        deduped=[],
+    )
+    with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
+         patch("hoga.api.watchlist_routes.catchup_one_entry",
+               new_callable=AsyncMock, return_value=fake_resp):
+        client = TestClient(_app(tmp_path))
+        r = client.post("/api/watchlist/003490/catchup")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["enqueued"]) == 1
+    assert body["enqueued"][0]["code"] == "003490"
+    assert body["deduped"] == []

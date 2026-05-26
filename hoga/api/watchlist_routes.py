@@ -11,11 +11,12 @@ from fastapi import APIRouter, HTTPException
 
 from hoga.api import symbols
 from hoga.api.models import (
+    EnqueueResponse,
     WatchlistAddRequest,
     WatchlistEntry,
     WatchlistResponse,
 )
-from hoga.api.scheduler import seconds_until_next_18_kst
+from hoga.api.scheduler import catchup_one_entry, seconds_until_next_18_kst
 from hoga.api.watchlist import (
     AlreadyInWatchlistError,
     NotInWatchlistError,
@@ -76,5 +77,22 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "code": "not_in_watchlist",
                 "message": f"Code {code} is not in the Watchlist.",
             }) from e
+
+    @router.post("/{code}/catchup", response_model=EnqueueResponse)
+    async def catchup_one(code: str) -> EnqueueResponse:
+        if not code.isdigit() or len(code) != 6:
+            raise HTTPException(status_code=400, detail={
+                "code": "invalid_code", "message": "Code must be 6 digits.",
+            })
+        entries = load_watchlist(data_dir)
+        match = next((e for e in entries if e.code == code), None)
+        if match is None:
+            raise HTTPException(status_code=404, detail={
+                "code": "not_in_watchlist",
+                "message": f"Code {code} is not in the Watchlist.",
+            })
+        return await catchup_one_entry(
+            match, data_dir=data_dir, now=now_kst(),
+        )
 
     return router
