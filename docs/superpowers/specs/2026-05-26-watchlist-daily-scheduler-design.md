@@ -341,29 +341,48 @@ tabs. Single panel — no sub-routes.
 
 ### `WatchlistPanel.tsx`
 
-Layout (vertical):
+Layout (vertical, per Variant 3 mockup confirmed 2026-05-26):
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Watchlist                                          │
-│  Next auto-run: 오늘 18:00  (3시간 12분 남음)        │
-├─────────────────────────────────────────────────────┤
-│  [ 종목명 또는 코드 검색…             ] [+ 추가]    │
-├─────────────────────────────────────────────────────┤
-│  003490  대한항공      등록 05/26  마지막 05/24  🗑 │
-│  005930  삼성전자      등록 05/20  마지막 05/24  🗑 │
-│  ...                                                │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Watchlist                                       3종목   │  ← count badge
+│  다음 자동 수집까지  03:12:47  (오늘 KST 18:00 · 거래일)  │
+├──────────────────────────────────────────────────────────┤
+│  ✓ 대한항공 (003490) 추가됨. 내일 18:00부터 자동 수집…    │  ← success banner
+├──────────────────────────────────────────────────────────┤
+│  [ 종목명 또는 6자리 코드 검색…             ] [+ 추가]   │  ← SymbolSearch
+├──────────────────────────────────────────────────────────┤
+│  Code   종목명         등록      마지막 성공            │  ← column header
+│  003490  대한항공       05/20     05/24             🗑  │  ← teal tint if
+│  005930  삼성전자       05/18     05/24             🗑  │     just-added
+│  ...                                                     │
+└──────────────────────────────────────────────────────────┘
 ```
 
-- Search input reuses the existing `SymbolSearch` component (the same one
-  Inventory uses to add Codes).
-- Countdown re-derives each second from `next_run_at_ms`; no extra polls.
-- "마지막 05/24" cell is dimmed if `last_success_date` is null ("아직
-  없음").
-- Add (`POST`) and delete (`DELETE`) refetch the list via the existing
-  query-cache pattern (`@tanstack/react-query`).
-- Toasts use the existing toast/banner system from the Capture UI.
+- **Search input reuses `frontend/src/capture/SymbolSearch.tsx`** —
+  the same `{value, onChange}` interface Inventory and Capture use.
+  No new autocomplete code is written; the component handles the
+  symbol-master query, the dropdown UI, and the keyboard navigation.
+- **Header `N종목` badge** — `bg-input` chip with mono-tabular count.
+- **Countdown** re-derives each second from `next_run_at_ms`; no extra
+  polls. Wrapped in a teal-tinted chip (`--selection-tint`).
+- **Sublabel after countdown** distinguishes three states: "(오늘 KST
+  18:00 · 거래일)" on weekdays, "(오늘 KST 18:00 · 추가된 종목 없음)"
+  on empty, and "(내일 KST 18:00 · 비거래일)" on weekends/holidays.
+- **Success banner** (`addM.isSuccess`) shows "✓ {name} ({code}) 추가됨.
+  내일 18:00부터 자동 수집됩니다." using the `--success` tint pattern
+  (alpha-tinted background, success-colored text). Auto-dismisses after
+  5 seconds via `setTimeout`.
+- **Just-added row highlight** — the `WatchlistPanel` tracks the most
+  recently added Code in local state for 5 seconds and applies a
+  `--selection-tint` background to its row. Same 5-second timer as the
+  banner — both clear together.
+- **Empty `last_success_date`** cell renders "아직 없음" in
+  `--fg-dimmer` italic instead of a date.
+- **Error banner** (`addM.error` / `removeM.error`) uses the
+  `--error` tint pattern. Persists until the next successful mutation.
+- Add (`POST`) and delete (`DELETE`) invalidate the `['watchlist']`
+  query so the next refetch reflects state.
 
 ### Empty state
 

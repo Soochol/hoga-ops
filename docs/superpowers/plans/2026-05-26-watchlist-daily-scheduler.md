@@ -2082,25 +2082,66 @@ git commit -m "feat(frontend): WatchlistRow component"
 
 ---
 
-### Task 18: `WatchlistPanel` component (search + list)
+### Task 18: `WatchlistPanel` (Variant 3 — SymbolSearch + success banner + just-added highlight)
 
 **Files:**
 - Create: `frontend/src/watchlist/WatchlistPanel.tsx`
 - Create: `frontend/src/watchlist/WatchlistPanel.test.tsx`
 
-- [ ] **Step 1: Write failing tests for empty state and add/remove flows**
+This component reuses the existing `SymbolSearch` (`frontend/src/capture/SymbolSearch.tsx`) for autocomplete instead of a plain 6-digit input. After a successful add, it shows a success banner and highlights the new row for 5 seconds before fading both out.
+
+**Reference:** Spec §"WatchlistPanel.tsx" — Variant 3 mockup (confirmed 2026-05-26).
+
+- [ ] **Step 0: Confirm SymbolSearch's public interface**
+
+```bash
+sed -n '1,30p' frontend/src/capture/SymbolSearch.tsx
+grep -n "export interface SymbolHit\|export type SymbolHit" frontend/src/api/types.ts
+```
+
+Expected shape:
+```typescript
+export interface SymbolSearchProps {
+  value: SymbolHit | null;
+  onChange: (hit: SymbolHit | null) => void;
+}
+// SymbolHit has at least: { code: string; name: string }
+```
+
+If `SymbolHit` lacks a `name` field, adjust the consuming code in this task — it expects `hit.name` to display in the toast.
+
+- [ ] **Step 1: Write failing tests for empty state, list, success banner, highlight, and remove**
 
 Create `frontend/src/watchlist/WatchlistPanel.test.tsx`:
 
 ```typescript
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WatchlistPanel } from './WatchlistPanel';
 
+// Mock the REST client.
 vi.mock('../api/watchlist');
 import * as api from '../api/watchlist';
+
+// Mock SymbolSearch — keep the component test focused on Panel logic.
+// The stub renders a button that fires onChange with a fixed SymbolHit
+// so we can simulate "user picked 003490 from autocomplete".
+vi.mock('../capture/SymbolSearch', () => ({
+  SymbolSearch: ({ onChange }: {
+    value: unknown;
+    onChange: (hit: { code: string; name: string; market?: string } | null) => void;
+  }) => (
+    <button
+      type="button"
+      data-testid="symbol-search-pick"
+      onClick={() => onChange({ code: '003490', name: '대한항공', market: 'KOSPI' })}
+    >
+      pick 003490
+    </button>
+  ),
+}));
 
 function renderWithQuery(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -2124,6 +2165,20 @@ describe('WatchlistPanel', () => {
       expect(screen.getByText(/자동 수집할 종목이 아직 없습니다/)).toBeInTheDocument());
   });
 
+  it('shows count badge with N종목', async () => {
+    vi.mocked(api.getWatchlist).mockResolvedValueOnce({
+      entries: [
+        { code: '003490', name: '대한항공',
+          registered_at_kst_date: '20260520', last_success_date: '20260524' },
+        { code: '005930', name: '삼성전자',
+          registered_at_kst_date: '20260518', last_success_date: '20260524' },
+      ],
+      next_run_at_ms: Date.now() + 3600_000,
+    });
+    renderWithQuery(<WatchlistPanel />);
+    await waitFor(() => expect(screen.getByText('2종목')).toBeInTheDocument());
+  });
+
   it('lists entries when present', async () => {
     vi.mocked(api.getWatchlist).mockResolvedValueOnce({
       entries: [{
@@ -2134,6 +2189,75 @@ describe('WatchlistPanel', () => {
     });
     renderWithQuery(<WatchlistPanel />);
     await waitFor(() => expect(screen.getByText('대한항공')).toBeInTheDocument());
+  });
+
+  it('after add succeeds, shows success banner with name+code', async () => {
+    vi.mocked(api.getWatchlist).mockResolvedValue({
+      entries: [],
+      next_run_at_ms: Date.now() + 3600_000,
+    });
+    vi.mocked(api.addToWatchlist).mockResolvedValueOnce({
+      code: '003490', name: '대한항공',
+      registered_at_kst_date: '20260526', last_success_date: null,
+    });
+    renderWithQuery(<WatchlistPanel />);
+    await waitFor(() => screen.getByTestId('symbol-search-pick'));
+    await userEvent.click(screen.getByTestId('symbol-search-pick'));
+    await userEvent.click(screen.getByRole('button', { name: /추가/ }));
+    await waitFor(() =>
+      expect(screen.getByText(/대한항공.*003490.*추가됨/)).toBeInTheDocument());
+  });
+
+  it('success banner auto-dismisses after 5 seconds', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api.getWatchlist).mockResolvedValue({
+        entries: [],
+        next_run_at_ms: Date.now() + 3600_000,
+      });
+      vi.mocked(api.addToWatchlist).mockResolvedValueOnce({
+        code: '003490', name: '대한항공',
+        registered_at_kst_date: '20260526', last_success_date: null,
+      });
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderWithQuery(<WatchlistPanel />);
+      await vi.waitFor(() => screen.getByTestId('symbol-search-pick'));
+      await user.click(screen.getByTestId('symbol-search-pick'));
+      await user.click(screen.getByRole('button', { name: /추가/ }));
+      await vi.waitFor(() => screen.getByText(/추가됨/));
+      act(() => { vi.advanceTimersByTime(5100); });
+      await vi.waitFor(() =>
+        expect(screen.queryByText(/추가됨/)).not.toBeInTheDocument());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('just-added row carries data-just-added attribute for 5 seconds', async () => {
+    vi.mocked(api.getWatchlist)
+      .mockResolvedValueOnce({  // initial fetch — empty
+        entries: [],
+        next_run_at_ms: Date.now() + 3600_000,
+      })
+      .mockResolvedValue({  // after invalidation — has the new entry
+        entries: [{
+          code: '003490', name: '대한항공',
+          registered_at_kst_date: '20260526', last_success_date: null,
+        }],
+        next_run_at_ms: Date.now() + 3600_000,
+      });
+    vi.mocked(api.addToWatchlist).mockResolvedValueOnce({
+      code: '003490', name: '대한항공',
+      registered_at_kst_date: '20260526', last_success_date: null,
+    });
+    renderWithQuery(<WatchlistPanel />);
+    await waitFor(() => screen.getByTestId('symbol-search-pick'));
+    await userEvent.click(screen.getByTestId('symbol-search-pick'));
+    await userEvent.click(screen.getByRole('button', { name: /추가/ }));
+    await waitFor(() => {
+      const row = screen.getByTestId('row-003490');
+      expect(row).toHaveAttribute('data-just-added', 'true');
+    });
   });
 
   it('calls removeFromWatchlist when the trash button is clicked', async () => {
@@ -2147,13 +2271,27 @@ describe('WatchlistPanel', () => {
     vi.mocked(api.removeFromWatchlist).mockResolvedValueOnce(undefined);
     renderWithQuery(<WatchlistPanel />);
     await waitFor(() => screen.getByText('대한항공'));
-    const btn = screen.getByLabelText(/Remove 대한항공/);
-    await userEvent.click(btn);
+    await userEvent.click(screen.getByLabelText(/Remove 대한항공/));
     await waitFor(() =>
       expect(api.removeFromWatchlist).toHaveBeenCalledWith('003490'));
   });
+
+  it('shows error banner when add fails', async () => {
+    vi.mocked(api.getWatchlist).mockResolvedValue({
+      entries: [], next_run_at_ms: Date.now() + 3600_000,
+    });
+    const err = new Error('Code 003490 is already in the Watchlist.');
+    vi.mocked(api.addToWatchlist).mockRejectedValueOnce(err);
+    renderWithQuery(<WatchlistPanel />);
+    await waitFor(() => screen.getByTestId('symbol-search-pick'));
+    await userEvent.click(screen.getByTestId('symbol-search-pick'));
+    await userEvent.click(screen.getByRole('button', { name: /추가/ }));
+    await waitFor(() => expect(screen.getByText(/already in the Watchlist/)).toBeInTheDocument());
+  });
 });
 ```
+
+**Note on `WatchlistRow`**: Task 17's component needs a `data-testid={`row-${entry.code}`}` and a `data-just-added` attribute. Update Task 17's file accordingly when implementing Task 18 — if Task 17 was already committed without those attributes, Task 18 amends `WatchlistRow.tsx` here.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -2163,10 +2301,63 @@ cd frontend && npm test -- --run src/watchlist/WatchlistPanel.test.tsx
 
 Expected: FAIL.
 
-- [ ] **Step 3: Create `WatchlistPanel.tsx`**
+- [ ] **Step 3: Update `WatchlistRow.tsx` to expose the highlight hooks**
+
+Replace the existing `frontend/src/watchlist/WatchlistRow.tsx` with:
 
 ```typescript
-import { useState } from 'react';
+import type { WatchlistEntry } from '../api/watchlist';
+
+function fmtDate(yyyymmdd: string): string {
+  return `${yyyymmdd.slice(4, 6)}/${yyyymmdd.slice(6, 8)}`;
+}
+
+export interface WatchlistRowProps {
+  entry: WatchlistEntry;
+  onRemove: (code: string) => void;
+  removing: boolean;
+  justAdded?: boolean;
+}
+
+export function WatchlistRow({ entry, onRemove, removing, justAdded }: WatchlistRowProps) {
+  return (
+    <div
+      data-testid={`row-${entry.code}`}
+      data-just-added={justAdded ? 'true' : undefined}
+      className="grid grid-cols-[6ch_1fr_8ch_8ch_3ch] items-center gap-3 px-6 py-2 border-b border-border text-sm hover:bg-bg-input transition-colors"
+      style={{
+        background: justAdded ? 'var(--selection-tint)' : undefined,
+        transition: 'background 800ms ease-out',
+      }}
+    >
+      <span className="font-mono text-fg-dim">{entry.code}</span>
+      <span className="truncate">{entry.name}</span>
+      <span className="font-mono text-xs text-fg-dim">{fmtDate(entry.registered_at_kst_date)}</span>
+      <span className="font-mono text-xs">
+        {entry.last_success_date
+          ? <span className="text-success">{fmtDate(entry.last_success_date)}</span>
+          : <span className="text-fg-dimmer italic">아직 없음</span>}
+      </span>
+      <button
+        type="button"
+        aria-label={`Remove ${entry.name}`}
+        onClick={() => onRemove(entry.code)}
+        disabled={removing}
+        className="text-fg-dimmer hover:text-error disabled:opacity-40"
+      >
+        🗑
+      </button>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 4: Create `WatchlistPanel.tsx` with SymbolSearch + banner + highlight**
+
+```typescript
+import { useEffect, useState } from 'react';
+import { SymbolSearch } from '../capture/SymbolSearch';
+import type { SymbolHit } from '../api/types';
 import { Countdown } from './Countdown';
 import { WatchlistRow } from './WatchlistRow';
 import {
@@ -2175,77 +2366,120 @@ import {
   useRemoveFromWatchlist,
 } from './useWatchlist';
 
+const JUST_ADDED_MS = 5000;
+
 export function WatchlistPanel() {
   const { data, isLoading, error } = useWatchlist();
   const addM = useAddToWatchlist();
   const removeM = useRemoveFromWatchlist();
-  const [codeInput, setCodeInput] = useState('');
+  const [picked, setPicked] = useState<SymbolHit | null>(null);
+  const [justAdded, setJustAdded] = useState<{ code: string; name: string } | null>(null);
+
+  // 5-second timer for both the success banner and the row highlight.
+  useEffect(() => {
+    if (!justAdded) return;
+    const id = setTimeout(() => setJustAdded(null), JUST_ADDED_MS);
+    return () => clearTimeout(id);
+  }, [justAdded]);
 
   if (isLoading) return <div className="p-6 text-fg-dim">로딩 중…</div>;
-  if (error) return <div className="p-6 text-danger">불러오기 실패: {(error as Error).message}</div>;
+  if (error) return <div className="p-6 text-error">불러오기 실패: {(error as Error).message}</div>;
   if (!data) return null;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const code = codeInput.trim();
-    if (!/^\d{6}$/.test(code)) return;
+    if (!picked) return;
     try {
-      await addM.mutateAsync(code);
-      setCodeInput('');
+      await addM.mutateAsync(picked.code);
+      setJustAdded({ code: picked.code, name: picked.name });
+      setPicked(null);
     } catch {
-      // error surfaces via addM.error
+      /* error surfaces via addM.error */
     }
   };
+
+  const isTradingHint = data.entries.length === 0 ? '추가된 종목 없음' : '거래일';
 
   return (
     <div className="flex flex-col h-full">
       <header className="px-6 py-4 border-b border-border">
-        <h1 className="text-lg font-semibold">Watchlist</h1>
-        <p className="text-sm text-fg-dim mt-1">
-          다음 자동 수집까지: <Countdown targetMs={data.next_run_at_ms} /> (KST 18:00)
+        <div className="flex items-baseline justify-between">
+          <h1 className="text-lg font-semibold">Watchlist</h1>
+          <span className="font-mono tabular-nums text-xs text-fg-dimmer px-2 py-0.5 rounded bg-bg-input">
+            {data.entries.length}종목
+          </span>
+        </div>
+        <p className="text-sm text-fg-dim mt-2 flex items-center gap-2">
+          다음 자동 수집까지
+          <span className="font-mono tabular-nums text-accent px-2 py-0.5 rounded"
+                style={{ background: 'var(--selection-tint)' }}>
+            <Countdown targetMs={data.next_run_at_ms} />
+          </span>
+          <span className="text-fg-dimmer text-xs">(오늘 KST 18:00 · {isTradingHint})</span>
         </p>
       </header>
 
-      <form onSubmit={submit} className="px-6 py-3 border-b border-border flex gap-2">
-        <input
-          type="text"
-          inputMode="numeric"
-          pattern="\d{6}"
-          placeholder="6자리 종목 코드 (예: 003490)"
-          value={codeInput}
-          onChange={(e) => setCodeInput(e.target.value)}
-          className="flex-1 px-3 py-1.5 rounded border border-border bg-bg text-sm font-mono"
-        />
-        <button
-          type="submit"
-          disabled={addM.isPending || !/^\d{6}$/.test(codeInput.trim())}
-          className="px-3 py-1.5 rounded bg-accent text-bg text-sm font-medium disabled:opacity-40"
-        >
-          + 추가
-        </button>
-      </form>
+      {justAdded && (
+        <div className="mx-6 mt-3 px-3 py-2 rounded border text-sm"
+             style={{
+               background: 'rgba(34,197,94,0.10)',
+               borderColor: 'rgba(34,197,94,0.30)',
+               color: 'var(--success)',
+             }}>
+          ✓ <strong className="font-semibold">{justAdded.name} ({justAdded.code})</strong> 추가됨. 내일 18:00부터 자동 수집됩니다.
+        </div>
+      )}
 
       {addM.error && (
-        <div className="mx-6 my-2 px-3 py-2 rounded bg-danger-subtle text-sm text-danger">
+        <div className="mx-6 mt-3 px-3 py-2 rounded border text-sm"
+             style={{
+               background: 'rgba(244,63,94,0.10)',
+               borderColor: 'rgba(244,63,94,0.30)',
+               color: 'var(--error)',
+             }}>
           {(addM.error as Error).message}
         </div>
       )}
 
+      <form onSubmit={submit} className="px-6 py-3 border-b border-border flex gap-2 items-center">
+        <div className="flex-1">
+          <SymbolSearch value={picked} onChange={setPicked} />
+        </div>
+        <button
+          type="submit"
+          disabled={addM.isPending || picked === null}
+          className="px-3 py-1.5 rounded bg-accent text-bg text-sm font-medium disabled:opacity-40"
+        >
+          ＋ 추가
+        </button>
+      </form>
+
       <div className="flex-1 overflow-auto">
         {data.entries.length === 0 ? (
-          <div className="p-8 text-center text-fg-dim text-sm">
-            자동 수집할 종목이 아직 없습니다. 위에서 검색해서 추가하면
-            매일 KST 18:00에 자동으로 캡쳐됩니다.
+          <div className="p-12 text-center text-fg-dim text-sm leading-relaxed">
+            자동 수집할 종목이 아직 없습니다.<br/>
+            위에서 검색해서 추가하면 매일{' '}
+            <span className="text-accent font-medium">KST 18:00</span>에 자동으로 캡쳐됩니다.
           </div>
         ) : (
-          data.entries.map((e) => (
-            <WatchlistRow
-              key={e.code}
-              entry={e}
-              onRemove={(c) => removeM.mutate(c)}
-              removing={removeM.isPending && removeM.variables === e.code}
-            />
-          ))
+          <>
+            <div className="grid grid-cols-[6ch_1fr_8ch_8ch_3ch] gap-3 px-6 py-1.5 border-b border-border bg-bg-subtle text-xs font-semibold uppercase tracking-wider text-fg-dimmer">
+              <span>Code</span>
+              <span>종목명</span>
+              <span>등록</span>
+              <span>마지막 성공</span>
+              <span></span>
+            </div>
+            {data.entries.map((e) => (
+              <WatchlistRow
+                key={e.code}
+                entry={e}
+                onRemove={(c) => removeM.mutate(c)}
+                removing={removeM.isPending && removeM.variables === e.code}
+                justAdded={justAdded?.code === e.code}
+              />
+            ))}
+          </>
         )}
       </div>
     </div>
@@ -2253,21 +2487,21 @@ export function WatchlistPanel() {
 }
 ```
 
-**Note:** The plain 6-digit input is a v1 simplification. A future task can swap in the `SymbolSearch` autocomplete from `frontend/src/inventory/`. The plan deliberately keeps v1 minimal — TDD covers the 6-digit case.
-
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 5: Run tests to verify they pass**
 
 ```bash
-cd frontend && npm test -- --run src/watchlist/WatchlistPanel.test.tsx
+cd frontend && npm test -- --run src/watchlist/WatchlistPanel.test.tsx src/watchlist/WatchlistRow*.test.tsx src/watchlist/Countdown.test.tsx
 ```
 
-Expected: 3 tests PASS.
+Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add frontend/src/watchlist/WatchlistPanel.tsx frontend/src/watchlist/WatchlistPanel.test.tsx
-git commit -m "feat(frontend): WatchlistPanel — list + add + remove"
+git add frontend/src/watchlist/WatchlistPanel.tsx \
+        frontend/src/watchlist/WatchlistPanel.test.tsx \
+        frontend/src/watchlist/WatchlistRow.tsx
+git commit -m "feat(frontend): WatchlistPanel with SymbolSearch + success banner + just-added row highlight"
 ```
 
 ---
