@@ -3,6 +3,7 @@ import { useCaptureQueue } from '../capture/useCaptureQueue';
 import type { ApiError } from '../api/client';
 import type { EnqueueResponse, UpstreamCode } from '../api/types';
 import { enqueueErrorHints } from '../api/upstream-hints';
+import { useInventoryRecaptureOrigins } from './useInventoryRecaptureOrigins';
 import type { ReactNode } from 'react';
 
 export type RecaptureStatus =
@@ -35,6 +36,7 @@ export function useInventoryRecapture() {
           dates,
           force_retry: true,
         });
+        useInventoryRecaptureOrigins.getState().add(resp.enqueued.map((i) => i.item_id));
         setStatus({
           kind: 'success',
           enqueued: resp.enqueued.length,

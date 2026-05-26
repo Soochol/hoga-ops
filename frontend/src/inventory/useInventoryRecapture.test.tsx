@@ -3,6 +3,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useInventoryRecapture } from './useInventoryRecapture';
+import { useInventoryRecaptureOrigins } from './useInventoryRecaptureOrigins';
 
 // SSE stub — useCaptureQueue subscribes on mount; jsdom has no EventSource.
 vi.mock('../api/sse', () => ({
@@ -30,7 +31,10 @@ function setupFetch(addItemsResp: unknown = { enqueued: [{}], deduped: [] }, sta
   });
 }
 
-beforeEach(() => { vi.restoreAllMocks(); });
+beforeEach(() => {
+  vi.restoreAllMocks();
+  useInventoryRecaptureOrigins.getState().clear();
+});
 afterEach(() => { vi.useRealTimers(); });
 
 describe('useInventoryRecapture', () => {
@@ -96,5 +100,33 @@ describe('useInventoryRecapture', () => {
 
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(result.current.status?.kind).toBe('error');
+  });
+
+  it('pushes enqueued item_ids into the origins store on success', async () => {
+    setupFetch({
+      enqueued: [{ item_id: 'item-a' }, { item_id: 'item-b' }],
+      deduped: [],
+    });
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = renderHook(() => useInventoryRecapture(), { wrapper: wrapper(qc) });
+
+    await act(async () => { await result.current.recapture('005930', ['20260520']); });
+
+    const ids = useInventoryRecaptureOrigins.getState().ids;
+    expect(ids.has('item-a')).toBe(true);
+    expect(ids.has('item-b')).toBe(true);
+  });
+
+  it('does not push to origins store on error', async () => {
+    setupFetch({ detail: { code: 'krx_credentials_missing', message: 'no creds' } }, 503);
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = renderHook(() => useInventoryRecapture(), { wrapper: wrapper(qc) });
+
+    await act(async () => {
+      try { await result.current.recapture('005930', ['20260520']); }
+      catch { /* status reflects the error; we read the store */ }
+    });
+
+    expect(useInventoryRecaptureOrigins.getState().ids.size).toBe(0);
   });
 });
