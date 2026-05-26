@@ -224,3 +224,40 @@ def test_validate_deep_fix_writes_combined_archival(tmp_path, monkeypatch):
     ids = {v["invariant_id"] for v in after["invariant_violations"]}
     assert "meta.close_after_open" in ids
     assert "series.candles_ts_monotonic" in ids
+
+
+def test_validate_fix_clears_stale_archival_when_now_clean(tmp_path, monkeypatch):
+    """--fix must reconcile both directions — also CLEAR stale archival
+    entries when the underlying invariants no longer fire. Regression for the
+    skip-when-display-empty short-circuit: when the candles_ts_monotonic fix
+    landed (false-positive removal), running --fix on the corpus rewrote only
+    files with at least one remaining display violation; files whose entire
+    archival list became empty kept the stale entries forever, because the
+    fix-write block sat below the ``if not violations: continue`` guard."""
+    monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
+
+    # Seed a meta.json that's healthy NOW but carries a stale archival entry
+    # from a prior (broken / loosened) invariant pass. With the bug, --fix
+    # finds no current violations and skips the file, leaving the lie.
+    d = tmp_path / "parquet" / "20260520" / "005930"
+    d.mkdir(parents=True)
+    seeded = _healthy() | {
+        "invariant_violations": [
+            {
+                "invariant_id": "series.candles_ts_monotonic",
+                "severity": "error",
+                "message": "candles ts_ms must be strictly ascending",
+                "ctx": {"index": 1, "prev_ts_ms": 90_002_000, "curr_ts_ms": 90_001_000},
+            },
+        ],
+    }
+    (d / "meta.json").write_text(json.dumps(seeded), encoding="utf-8")
+
+    result = CliRunner().invoke(app, ["validate", "--deep", "--fix", "--severity", "all"])
+    assert result.exit_code == 0, result.stdout
+
+    after = json.loads((d / "meta.json").read_text())
+    # Stale field removed entirely (preferred over leaving an empty list).
+    assert "invariant_violations" not in after
+    # User-visible signal that --fix did real work even when display is clean.
+    assert "cleared stale" in result.stdout

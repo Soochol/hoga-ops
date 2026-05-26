@@ -218,6 +218,7 @@ def validate(
         return
 
     rows: list[tuple[str, str, list]] = []
+    fix_count = 0
     for date_dir in sorted(parquet_root.iterdir()):
         if not date_dir.is_dir():
             continue
@@ -239,15 +240,34 @@ def validate(
                 full = full + _run_series_for(code_dir, meta)
             violations = (full if severity == "all"
                           else [v for v in full if v.severity.value == severity])
+            # --fix reconciles archival_violations both directions: writes new
+            # entries AND clears stale ones (e.g. when an invariant tightens
+            # OR loosens). The previous "skip when display-empty" branch
+            # short-circuited BEFORE the fix block, so files whose computed
+            # set dropped to empty (catalog loosening case) kept their stale
+            # archival list forever. Concrete loss: when the
+            # series.candles_ts_monotonic false-positive fix landed, --fix
+            # cleared only 66/805 affected files; the other 739 had only the
+            # stale candles entries (nothing else to display), so they were
+            # silently skipped.
+            if fix:
+                stored = meta.get("invariant_violations") or []
+                computed = [v.as_dict() for v in full]
+                if stored != computed:
+                    if computed:
+                        meta["invariant_violations"] = computed
+                    else:
+                        meta.pop("invariant_violations", None)
+                    meta_p.write_text(_json.dumps(meta, ensure_ascii=False, indent=2),
+                                      encoding="utf-8")
+                    fix_count += 1
             if not violations:
                 continue
             rows.append((date_dir.name, code_dir.name, violations))
-            if fix:
-                meta["invariant_violations"] = [v.as_dict() for v in full]
-                meta_p.write_text(_json.dumps(meta, ensure_ascii=False, indent=2),
-                                  encoding="utf-8")
 
     if not rows:
+        if fix and fix_count:
+            console.print(f"[blue]--fix: cleared stale invariant_violations on {fix_count} files.[/blue]")
         console.print("[green]All Stock-Dates are clean for the requested severity.[/green]")
         return
 
@@ -257,4 +277,4 @@ def validate(
             console.print(f"  [{v.severity.value}] {v.invariant_id}: {v.message}  ctx={v.ctx}")
 
     if fix:
-        console.print(f"\n[blue]--fix: rewrote invariant_violations on {len(rows)} files.[/blue]")
+        console.print(f"\n[blue]--fix: rewrote invariant_violations on {fix_count} files.[/blue]")
