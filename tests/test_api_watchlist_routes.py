@@ -158,3 +158,78 @@ async def test_catchup_one_returns_enqueue_response(tmp_path: Path):
     assert len(body["enqueued"]) == 1
     assert body["enqueued"][0]["code"] == "003490"
     assert body["deduped"] == []
+
+
+@pytest.mark.asyncio
+async def test_catchup_all_aggregates_results(tmp_path: Path):
+    from hoga.api import watchlist
+    from hoga.api.models import EnqueueResponse, QueueItem
+    from unittest.mock import AsyncMock
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    await watchlist.add_entry(tmp_path, code="005930", name="삼성전자",
+                              today_kst_date="20260520")
+    fake_now = dt.datetime(2026, 5, 27, 19, 0, tzinfo=KST)
+
+    def fake_helper(entry, *, data_dir, now):
+        if entry.code == "003490":
+            return EnqueueResponse(
+                enqueued=[QueueItem(
+                    item_id="003490-20260526", code="003490", date="20260526",
+                    phase="queued", force_retry=False, pause_origin=False,
+                    enqueued_at_ms=0,
+                )],
+                deduped=[],
+            )
+        return EnqueueResponse(enqueued=[], deduped=[])
+
+    with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
+         patch("hoga.api.watchlist_routes.catchup_one_entry",
+               new_callable=AsyncMock, side_effect=fake_helper):
+        client = TestClient(_app(tmp_path))
+        r = client.post("/api/watchlist/catchup")
+    assert r.status_code == 200
+    body = r.json()
+    results = {row["code"]: row for row in body["results"]}
+    assert results["003490"]["enqueued_count"] == 1
+    assert results["003490"]["deduped_count"] == 0
+    assert results["003490"]["error"] is None
+    assert results["005930"]["enqueued_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_catchup_all_per_entry_failure_does_not_abort(tmp_path: Path):
+    from hoga.api import watchlist
+    from hoga.api.models import EnqueueResponse
+    from unittest.mock import AsyncMock
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    await watchlist.add_entry(tmp_path, code="005930", name="삼성전자",
+                              today_kst_date="20260520")
+    fake_now = dt.datetime(2026, 5, 27, 19, 0, tzinfo=KST)
+
+    def fake_helper(entry, *, data_dir, now):
+        if entry.code == "003490":
+            raise RuntimeError("krx_credentials_missing")
+        return EnqueueResponse(enqueued=[], deduped=[])
+
+    with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
+         patch("hoga.api.watchlist_routes.catchup_one_entry",
+               new_callable=AsyncMock, side_effect=fake_helper):
+        client = TestClient(_app(tmp_path))
+        r = client.post("/api/watchlist/catchup")
+    assert r.status_code == 200
+    body = r.json()
+    results = {row["code"]: row for row in body["results"]}
+    assert results["003490"]["error"] is not None
+    assert "krx_credentials_missing" in results["003490"]["error"]
+    assert results["005930"]["error"] is None
+
+
+def test_catchup_all_empty_watchlist_returns_empty_results(tmp_path: Path):
+    fake_now = dt.datetime(2026, 5, 27, 19, 0, tzinfo=KST)
+    with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now):
+        client = TestClient(_app(tmp_path))
+        r = client.post("/api/watchlist/catchup")
+    assert r.status_code == 200
+    assert r.json()["results"] == []

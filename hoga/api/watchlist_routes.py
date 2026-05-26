@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException
 from hoga.api import symbols
 from hoga.api.models import (
     EnqueueResponse,
+    ManualCatchupAllEntryResult,
+    ManualCatchupAllResponse,
     WatchlistAddRequest,
     WatchlistEntry,
     WatchlistResponse,
@@ -63,6 +65,29 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "message": f"Code {req.code} is already in the Watchlist.",
             }) from e
         return entry
+
+    @router.post("/catchup", response_model=ManualCatchupAllResponse)
+    async def catchup_all() -> ManualCatchupAllResponse:
+        now = now_kst()
+        results: list[ManualCatchupAllEntryResult] = []
+        for entry in load_watchlist(data_dir):
+            try:
+                resp = await catchup_one_entry(
+                    entry, data_dir=data_dir, now=now,
+                )
+                results.append(ManualCatchupAllEntryResult(
+                    code=entry.code, name=entry.name,
+                    enqueued_count=len(resp.enqueued),
+                    deduped_count=len(resp.deduped),
+                    error=None,
+                ))
+            except Exception as e:  # noqa: BLE001 — one bad entry mustn't kill the run
+                results.append(ManualCatchupAllEntryResult(
+                    code=entry.code, name=entry.name,
+                    enqueued_count=0, deduped_count=0,
+                    error=str(e) or e.__class__.__name__,
+                ))
+        return ManualCatchupAllResponse(results=results)
 
     @router.delete("/{code}", status_code=204)
     async def remove_from_watchlist(code: str) -> None:
