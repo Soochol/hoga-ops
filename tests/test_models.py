@@ -124,3 +124,47 @@ def test_enqueue_deduped_row_rejects_unknown_reason():
     from hoga.api.models import EnqueueDedupedRow
     with pytest.raises(ValidationError):
         EnqueueDedupedRow(code="005930", date="20260520", reason="bogus_reason")
+
+
+def test_watchlist_entry_validates_code_format():
+    from hoga.api.models import WatchlistEntry
+    import pytest
+    from pydantic import ValidationError
+    # Valid
+    WatchlistEntry(
+        code="003490",
+        name="대한항공",
+        registered_at_kst_date="20260526",
+        last_success_date=None,
+    )
+    # Bad code (5 digits)
+    with pytest.raises(ValidationError):
+        WatchlistEntry(
+            code="00349",
+            name="대한항공",
+            registered_at_kst_date="20260526",
+            last_success_date=None,
+        )
+    # Bad date format
+    with pytest.raises(ValidationError):
+        WatchlistEntry(
+            code="003490",
+            name="대한항공",
+            registered_at_kst_date="2026-05-26",  # has hyphens
+            last_success_date=None,
+        )
+
+
+def test_watchlist_response_carries_next_run_ms():
+    from hoga.api.models import WatchlistResponse
+    resp = WatchlistResponse(entries=[], next_run_at_ms=1716714000000)
+    assert resp.next_run_at_ms == 1716714000000
+
+
+def test_watchlist_add_request_validates_code():
+    from hoga.api.models import WatchlistAddRequest
+    import pytest
+    from pydantic import ValidationError
+    WatchlistAddRequest(code="003490")
+    with pytest.raises(ValidationError):
+        WatchlistAddRequest(code="ABCDEF")

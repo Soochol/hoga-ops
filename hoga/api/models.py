@@ -500,3 +500,24 @@ class BrokerSeriesEntry(BaseModel):
 class BrokerSeriesResponse(BaseModel):
     date: str
     brokers: list[BrokerSeriesEntry]
+
+
+# --- Watchlist (see spec 2026-05-26 and ADR-0034) --------------------------
+
+
+class WatchlistEntry(BaseModel):
+    """One Code in the Watchlist. See CONTEXT.md WatchlistEntry."""
+
+    code: str = Field(pattern=r"^\d{6}$")
+    name: str
+    registered_at_kst_date: str = Field(pattern=r"^\d{8}$")
+    last_success_date: str | None = Field(default=None, pattern=r"^\d{8}$")
+
+
+class WatchlistResponse(BaseModel):
+    entries: list[WatchlistEntry]
+    next_run_at_ms: int  # Unix-ms of next KST 18:00 boundary (ADR-0003)
+
+
+class WatchlistAddRequest(BaseModel):
+    code: str = Field(pattern=r"^\d{6}$")
