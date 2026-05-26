@@ -76,15 +76,21 @@ async def add_entry(
     name: str,
     today_kst_date: str,
 ) -> WatchlistEntry:
+    # Local import: disk_state -> watchlist would cycle if at module top.
+    from hoga.api.disk_state import latest_complete_date
     async with _lock:
         entries = load_watchlist(data_dir)
         if any(e.code == code for e in entries):
             raise AlreadyInWatchlistError(code)
+        # Seed from disk: if the Code already has captured data, the marker
+        # reflects the latest existing Stock-Date instead of starting null.
+        # See CONTEXT.md ("last_success_date") — the marker tracks "latest
+        # COMPLETE on disk", not "latest done since registration".
         entry = WatchlistEntry(
             code=code,
             name=name,
             registered_at_kst_date=today_kst_date,
-            last_success_date=None,
+            last_success_date=latest_complete_date(data_dir, code),
         )
         save_watchlist(data_dir, entries=[*entries, entry])
         return entry

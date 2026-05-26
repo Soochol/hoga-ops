@@ -248,6 +248,38 @@ The pre-trim avoids the `today_too_early` 400 entirely so a multi-day
 catch-up that happens to include today before 18:00 still enqueues the
 prior days successfully.
 
+#### Disk reconcile pre-pass
+
+Before the per-entry backfill loop above, `_catchup_run` walks every
+**WatchlistEntry** and advances its `last_success_date` to whatever the
+disk shows:
+
+```
+for entry in load_watchlist(data_dir):
+    latest = disk_state.latest_complete_date(data_dir, entry.code)
+    if latest is not None and (
+        entry.last_success_date is None or latest > entry.last_success_date
+    ):
+        await bump_last_success(data_dir, code=entry.code, date=latest)
+```
+
+`disk_state.latest_complete_date(data_dir, code)` walks
+`<data_dir>/parquet/<YYYYMMDD>/<code>/` and returns the lexicographically
+largest YYYYMMDD whose `check_disk_state` classification is
+`DiskState.COMPLETE` (or `None` if no Stock-Date for the Code reached
+COMPLETE). The same helper is also called from `watchlist.add_entry` to
+seed `last_success_date` at registration time — single source of truth.
+
+This pre-pass auto-heals entries that were registered while existing
+capture data already lived on disk: the original bug had
+`last_success_date` advanced only by `captures._finalize_item` on
+post-registration `phase = done` events, so a Code like 098460 with 30+
+days of complete parquet on disk before registration showed "마지막 성공:
+아직 없음" in the UI indefinitely. `bump_last_success` is monotonic, so
+the reconcile is idempotent on already-fresh markers and cannot regress
+an entry whose disk-latest is older than its current marker (rare but
+possible after a manual parquet rewrite).
+
 ### `_daily_loop(data_dir)`
 
 ```

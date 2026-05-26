@@ -343,3 +343,83 @@ def test_check_disk_state_sentinel_takes_precedence_over_stray_parquet(tmp_path:
 
     result = check_disk_state(tmp_path, "003490", "20260319")
     assert result.state == DiskState.NO_UPSTREAM_DATA
+
+
+# --- latest_complete_date: Watchlist disk-reconcile helper ---
+
+def test_latest_complete_date_returns_none_when_no_data(tmp_path: Path) -> None:
+    """No parquet root → None (the "Code was never captured" case)."""
+    from hoga.api.disk_state import latest_complete_date
+    assert latest_complete_date(tmp_path, "098460") is None
+
+
+def test_latest_complete_date_returns_none_when_parquet_empty(tmp_path: Path) -> None:
+    """Parquet root exists but holds no Stock-Dates for this Code → None."""
+    from hoga.api.disk_state import latest_complete_date
+    (tmp_path / "parquet").mkdir()
+    assert latest_complete_date(tmp_path, "098460") is None
+
+
+def test_latest_complete_date_finds_max_complete(tmp_path: Path, monkeypatch) -> None:
+    """Picks the lexicographically largest YYYYMMDD that is COMPLETE for the
+    matching Code; ignores other codes' directories."""
+    from hoga.api import disk_state
+    (tmp_path / "parquet" / "20260301" / "098460").mkdir(parents=True)
+    (tmp_path / "parquet" / "20260315" / "098460").mkdir(parents=True)
+    (tmp_path / "parquet" / "20260310" / "098460").mkdir(parents=True)
+    # Different code — must not influence the result.
+    (tmp_path / "parquet" / "20260320" / "005930").mkdir(parents=True)
+
+    def fake_check(_dir, code, date):
+        return disk_state.Classification(state=disk_state.DiskState.COMPLETE)
+    monkeypatch.setattr(disk_state, "check_disk_state", fake_check)
+
+    assert disk_state.latest_complete_date(tmp_path, "098460") == "20260315"
+    assert disk_state.latest_complete_date(tmp_path, "999999") is None
+
+
+def test_latest_complete_date_skips_non_complete(tmp_path: Path, monkeypatch) -> None:
+    """SOURCE_PARTIAL / CLIENT_INCOMPLETE / INVALID Stock-Dates are skipped —
+    only COMPLETE counts as "마지막 성공"."""
+    from hoga.api import disk_state
+    (tmp_path / "parquet" / "20260301" / "098460").mkdir(parents=True)
+    (tmp_path / "parquet" / "20260315" / "098460").mkdir(parents=True)
+
+    def fake_check(_dir, code, date):
+        if date == "20260301":
+            return disk_state.Classification(state=disk_state.DiskState.COMPLETE)
+        return disk_state.Classification(state=disk_state.DiskState.INVALID)
+    monkeypatch.setattr(disk_state, "check_disk_state", fake_check)
+
+    assert disk_state.latest_complete_date(tmp_path, "098460") == "20260301"
+
+
+def test_latest_complete_date_integration_with_real_meta(tmp_path: Path) -> None:
+    """End-to-end: real check_disk_state on real meta.json files. Confirms
+    the helper's predicate matches the production COMPLETE definition."""
+    from hoga.api.disk_state import latest_complete_date
+
+    def write_complete(date: str, code: str) -> None:
+        d = tmp_path / "parquet" / date / code
+        d.mkdir(parents=True)
+        (d / "meta.json").write_text(json.dumps({
+            "regular_session_open_ms": 90000000,
+            "regular_session_close_ms": 153000000,
+            "collection_complete": True,
+            "is_partial": False,
+        }), encoding="utf-8")
+
+    def write_partial(date: str, code: str) -> None:
+        d = tmp_path / "parquet" / date / code
+        d.mkdir(parents=True)
+        (d / "meta.json").write_text(json.dumps({
+            "regular_session_open_ms": 90000000,
+            "regular_session_close_ms": 153000000,
+            "collection_complete": True,
+            "is_partial": True,    # SOURCE_PARTIAL — must not count
+        }), encoding="utf-8")
+
+    write_complete("20260520", "098460")
+    write_complete("20260522", "098460")
+    write_partial("20260524", "098460")     # latest by date, but partial
+    assert latest_complete_date(tmp_path, "098460") == "20260522"

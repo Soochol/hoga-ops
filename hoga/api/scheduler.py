@@ -17,9 +17,10 @@ from pathlib import Path
 
 from hoga.api.calendar import trading_days_in_range
 from hoga.api.captures import enqueue_items_core
+from hoga.api.disk_state import latest_complete_date
 from hoga.api.eligibility import find_ineligible_dates
 from hoga.api.models import EnqueueRequest
-from hoga.api.watchlist import load_watchlist
+from hoga.api.watchlist import bump_last_success, load_watchlist
 from hoga.collector.orchestrator import now_kst
 
 log = logging.getLogger(__name__)
@@ -71,9 +72,27 @@ async def _catchup_run(data_dir: Path) -> None:
     registered_at) marker up to today. Pre-trims Q14-ineligible dates so
     a multi-day catch-up that includes today before 18:00 still enqueues
     the prior days successfully (see ADR-0034 carve-out).
+
+    Disk reconcile pre-pass: before the backfill, advance each entry's
+    ``last_success_date`` to whatever the disk shows. This auto-heals
+    entries that were registered while existing capture data already
+    lived on disk (the original bug: ``_finalize_item`` only bumps the
+    marker on post-registration ``phase = done`` events, so old data
+    stayed invisible to the UI). ``bump_last_success`` is monotonic, so
+    the reconcile pass is idempotent on already-fresh markers.
     """
     now = now_kst()
     today = now.strftime("%Y%m%d")
+    # Phase 1: reconcile markers from disk. Real call on a tmp_path without
+    # parquet/ returns None and is a no-op — existing scheduler tests stay green.
+    for entry in load_watchlist(data_dir):
+        latest = latest_complete_date(data_dir, entry.code)
+        if latest is not None and (
+            entry.last_success_date is None or latest > entry.last_success_date
+        ):
+            await bump_last_success(data_dir, code=entry.code, date=latest)
+
+    # Phase 2: backfill — re-load after reconcile so we see the new markers.
     for entry in load_watchlist(data_dir):
         floor = entry.last_success_date or entry.registered_at_kst_date
         start = _next_kst_day(floor)

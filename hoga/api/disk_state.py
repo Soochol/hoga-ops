@@ -95,6 +95,40 @@ def classify_from_meta(meta: Mapping[str, object]) -> Classification:
     return Classification(state=state, violations=violations)
 
 
+def latest_complete_date(data_dir: Path, code: str) -> str | None:
+    """Return the latest YYYYMMDD Stock-Date for ``code`` whose parquet
+    artifact is COMPLETE on disk, or ``None`` if no Stock-Date for the
+    code has reached the COMPLETE state.
+
+    Walks ``<data_dir>/parquet/<YYYYMMDD>/<code>/`` — the canonical
+    layout — and consults :func:`check_disk_state` for each candidate.
+    O(date_dirs) stat calls; for a typical user (<300 captured dates
+    total across all symbols) this is sub-millisecond.
+
+    Backs Watchlist's disk-reconcile flow: ``add_entry`` seeds
+    ``last_success_date`` from this helper when registering a Code, and
+    ``_catchup_run`` advances stale markers to match the disk on every
+    server start. Source-of-truth: COMPLETE only (SOURCE_PARTIAL and
+    CLIENT_INCOMPLETE are in-flight from the user's POV).
+    """
+    parquet_root = data_dir / "parquet"
+    if not parquet_root.exists():
+        return None
+    latest: str | None = None
+    for date_dir in parquet_root.iterdir():
+        if not date_dir.is_dir():
+            continue
+        date = date_dir.name
+        # Cheap pre-check before the more expensive disk_state inspection.
+        if not (date_dir / code).is_dir():
+            continue
+        if check_disk_state(data_dir, code, date).state != DiskState.COMPLETE:
+            continue
+        if latest is None or date > latest:
+            latest = date
+    return latest
+
+
 def check_disk_state(data_dir: Path, code: str, date: str) -> Classification:
     """Classify the on-disk state for ``(code, date)`` under ``data_dir``.
 

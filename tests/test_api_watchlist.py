@@ -134,3 +134,34 @@ async def test_concurrent_bumps_serialize(tmp_path: Path):
     wl = load_watchlist(tmp_path)
     by_code = {e.code: e.last_success_date for e in wl}
     assert by_code == {"003490": "20260527", "005930": "20260527"}
+
+
+@pytest.mark.asyncio
+async def test_add_entry_seeds_last_success_from_disk(tmp_path: Path, monkeypatch):
+    """When the Code already has complete captures on disk, add_entry
+    initializes last_success_date with the latest of them. Fixes the
+    "마지막 성공: 아직 없음" UX for Codes registered after data already
+    landed (e.g., 098460 with 30+ trading days on disk)."""
+    from hoga.api import disk_state, watchlist
+    monkeypatch.setattr(
+        disk_state, "latest_complete_date",
+        lambda _dir, code: "20260524" if code == "003490" else None,
+    )
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260526")
+    [entry] = watchlist.load_watchlist(tmp_path)
+    assert entry.last_success_date == "20260524"
+
+
+@pytest.mark.asyncio
+async def test_add_entry_no_disk_data_leaves_marker_null(tmp_path: Path, monkeypatch):
+    """No prior captures → marker stays null, preserves "first capture"
+    catch-up behavior driven by registered_at_kst_date."""
+    from hoga.api import disk_state, watchlist
+    monkeypatch.setattr(
+        disk_state, "latest_complete_date", lambda _dir, _code: None,
+    )
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260526")
+    [entry] = watchlist.load_watchlist(tmp_path)
+    assert entry.last_success_date is None

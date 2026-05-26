@@ -199,6 +199,90 @@ async def test_catchup_skips_entry_with_empty_range(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_catchup_reconciles_marker_from_disk(tmp_path: Path):
+    """Existing entries whose data was on disk before registration get
+    their last_success_date advanced to match the disk on startup —
+    fixes the original "마지막 성공: 아직 없음" bug for code 098460 etc.
+
+    Forces the bug scenario by saving an entry with last_success_date=None
+    even though the disk has data through 20260524, then runs _catchup_run
+    and asserts the marker advanced.
+    """
+    from hoga.api import scheduler, watchlist
+    from hoga.api.models import EnqueueResponse, WatchlistEntry
+    # Stage: user registered 098460 when its marker was None (old-bug scenario).
+    forced = [WatchlistEntry(
+        code="098460", name="고영",
+        registered_at_kst_date="20260527",
+        last_success_date=None,
+    )]
+    watchlist.save_watchlist(tmp_path, entries=forced)
+
+    fake_now = dt.datetime(2026, 5, 27, 19, 0, 0, tzinfo=KST)
+    with patch("hoga.api.scheduler.latest_complete_date",
+               return_value="20260524"), \
+         patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
+         patch("hoga.api.scheduler.trading_days_in_range", return_value=[]), \
+         patch("hoga.api.scheduler.find_ineligible_dates", return_value=[]), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock,
+               return_value=EnqueueResponse(enqueued=[], deduped=[])):
+        await scheduler._catchup_run(tmp_path)
+
+    [entry] = watchlist.load_watchlist(tmp_path)
+    assert entry.last_success_date == "20260524"
+
+
+@pytest.mark.asyncio
+async def test_catchup_reconcile_is_noop_when_disk_has_nothing(tmp_path: Path):
+    """Empty parquet root (typical fresh tmp_path) → reconcile bumps
+    nothing, preserves null markers and existing catch-up behavior."""
+    from hoga.api import scheduler, watchlist
+    from hoga.api.models import EnqueueResponse
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)
+    # Note: NOT patching latest_complete_date — real call must return None
+    # because tmp_path/parquet doesn't exist.
+    with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
+         patch("hoga.api.scheduler.trading_days_in_range",
+               return_value=["20260521"]), \
+         patch("hoga.api.scheduler.find_ineligible_dates", return_value=[]), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock,
+               return_value=EnqueueResponse(enqueued=[], deduped=[])):
+        await scheduler._catchup_run(tmp_path)
+
+    [entry] = watchlist.load_watchlist(tmp_path)
+    assert entry.last_success_date is None
+
+
+@pytest.mark.asyncio
+async def test_catchup_reconcile_does_not_regress_marker(tmp_path: Path):
+    """If the disk's latest COMPLETE is older than the entry's current
+    marker, reconcile must not regress (bump_last_success is monotonic)."""
+    from hoga.api import scheduler, watchlist
+    from hoga.api.models import EnqueueResponse
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    await watchlist.bump_last_success(tmp_path, code="003490", date="20260525")
+    fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)
+
+    with patch("hoga.api.scheduler.latest_complete_date",
+               return_value="20260522"), \
+         patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
+         patch("hoga.api.scheduler.trading_days_in_range", return_value=[]), \
+         patch("hoga.api.scheduler.find_ineligible_dates", return_value=[]), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock,
+               return_value=EnqueueResponse(enqueued=[], deduped=[])):
+        await scheduler._catchup_run(tmp_path)
+
+    [entry] = watchlist.load_watchlist(tmp_path)
+    assert entry.last_success_date == "20260525"  # not regressed to 20260522
+
+
+@pytest.mark.asyncio
 async def test_start_scheduler_spawns_catchup_and_daily_loop(tmp_path: Path):
     import asyncio
     from hoga.api import scheduler
