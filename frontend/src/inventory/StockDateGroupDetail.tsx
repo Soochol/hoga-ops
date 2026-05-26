@@ -52,7 +52,8 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
   }
 
   const totalVolume = group.dates.reduce((s, d) => s + d.total_volume, 0);
-  const recapturableCount = sortedDates.filter((r) => isRecapturable(r.disk_state)).length;
+  const recapturableDates = sortedDates.filter((r) => isRecapturable(r.disk_state)).map((r) => r.date);
+  const recapturableCount = recapturableDates.length;
 
   const onRowClick = (r: StockDate) => {
     const tabId = useTabsStore.getState().newTab();
@@ -68,11 +69,7 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
   const onSort = (column: SortKey) => setSort((prev) => nextSortState(prev, column));
 
   const handleRecaptureRow = (date: string) => recapture(group.code, [date]);
-  const handleRecaptureAll = () =>
-    recapture(
-      group.code,
-      sortedDates.filter((r) => isRecapturable(r.disk_state)).map((r) => r.date),
-    );
+  const handleRecaptureAll = () => recapture(group.code, recapturableDates);
 
   return (
     <section className="bg-bg-card border rounded-lg flex flex-col min-h-0 overflow-hidden">
