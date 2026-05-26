@@ -5,6 +5,7 @@ import App from './App';
 import ReplayViewer from './pages/ReplayViewer';
 import Inventory from './pages/Inventory';
 import Capture from './pages/Capture';
+import Watchlist from './pages/Watchlist';
 import Settings from './pages/Settings';
 import './styles/global.css';
 
@@ -19,6 +20,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="replay" element={<ReplayViewer />} />
           <Route path="inventory" element={<Inventory />} />
           <Route path="capture" element={<Capture />} />
+          <Route path="watchlist" element={<Watchlist />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>

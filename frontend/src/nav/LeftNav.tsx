@@ -17,6 +17,7 @@ export default function LeftNav() {
         <NavItem to="/replay" label="Replay Viewer" />
         <NavItem to="/inventory" label="Inventory" />
         <NavItem to="/capture" label="Capture" />
+        <NavItem to="/watchlist" label="Watchlist" />
       </Section>
       <div className="flex-1" />
       <CaptureStatusPill />
