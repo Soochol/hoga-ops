@@ -19,7 +19,7 @@ from hoga.api.calendar import trading_days_in_range
 from hoga.api.captures import enqueue_items_core
 from hoga.api.disk_state import latest_complete_date
 from hoga.api.eligibility import find_ineligible_dates
-from hoga.api.models import EnqueueRequest
+from hoga.api.models import EnqueueRequest, EnqueueResponse, WatchlistEntry
 from hoga.api.watchlist import bump_last_success, load_watchlist
 from hoga.collector.orchestrator import now_kst
 
@@ -67,57 +67,69 @@ def _next_kst_day(yyyymmdd: str) -> str:
     return (d + dt.timedelta(days=1)).strftime("%Y%m%d")
 
 
-async def _catchup_run(data_dir: Path) -> None:
-    """Backfill every Watchlist entry from its (last_success or
-    registered_at) marker up to today. Pre-trims Q14-ineligible dates so
-    a multi-day catch-up that includes today before 18:00 still enqueues
-    the prior days successfully (see ADR-0034 carve-out).
+async def catchup_one_entry(
+    entry: WatchlistEntry,
+    *,
+    data_dir: Path,
+    now: dt.datetime,
+) -> EnqueueResponse:
+    """Backfill one Watchlist entry. Used by:
+    - _catchup_run (startup)
+    - POST /api/watchlist/{code}/catchup (per-row)
+    - POST /api/watchlist/catchup (run-all)
 
-    Disk reconcile pre-pass: before the backfill, advance each entry's
-    ``last_success_date`` to whatever the disk shows. This auto-heals
-    entries that were registered while existing capture data already
-    lived on disk (the original bug: ``_finalize_item`` only bumps the
-    marker on post-registration ``phase = done`` events, so old data
-    stayed invisible to the UI). ``bump_last_success`` is monotonic, so
-    the reconcile pass is idempotent on already-fresh markers.
+    Reconciles last_success_date with the disk first (idempotent), then
+    enqueues the trading-day gap up to today (Q14-trimmed). Returns
+    EnqueueResponse(enqueued=[], deduped=[]) on no-gap, KrxUnavailable,
+    or fully-Q14-trimmed cases.
+    """
+    today = now.strftime("%Y%m%d")
+
+    # Step 1: reconcile last_success_date from disk.
+    latest = latest_complete_date(data_dir, entry.code)
+    if latest is not None and (
+        entry.last_success_date is None or latest > entry.last_success_date
+    ):
+        await bump_last_success(data_dir, code=entry.code, date=latest)
+        floor = latest
+    else:
+        floor = entry.last_success_date or entry.registered_at_kst_date
+
+    # Step 2: compute candidate dates.
+    start = _next_kst_day(floor)
+    if start > today:
+        return EnqueueResponse(enqueued=[], deduped=[])
+    try:
+        candidates = trading_days_in_range(start, today)
+    except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
+        log.warning("catch-up: trading-day list unavailable for %s", entry.code)
+        return EnqueueResponse(enqueued=[], deduped=[])
+
+    # Step 3: Q14 pre-trim.
+    too_early = set(find_ineligible_dates(candidate_dates=candidates, now=now))
+    candidates = [d for d in candidates if d not in too_early]
+    if not candidates:
+        return EnqueueResponse(enqueued=[], deduped=[])
+
+    # Step 4: enqueue.
+    return await enqueue_items_core(
+        EnqueueRequest(code=entry.code, dates=candidates),
+        data_dir=data_dir,
+        now=now,
+    )
+
+
+async def _catchup_run(data_dir: Path) -> None:
+    """Backfill every Watchlist entry on startup. Each entry is handled
+    by catchup_one_entry; per-entry exceptions are logged. The startup
+    sweep never aborts because one entry failed.
     """
     now = now_kst()
-    today = now.strftime("%Y%m%d")
-    # Phase 1: reconcile markers from disk. Real call on a tmp_path without
-    # parquet/ returns None and is a no-op — existing scheduler tests stay green.
     for entry in load_watchlist(data_dir):
-        latest = latest_complete_date(data_dir, entry.code)
-        if latest is not None and (
-            entry.last_success_date is None or latest > entry.last_success_date
-        ):
-            await bump_last_success(data_dir, code=entry.code, date=latest)
-
-    # Phase 2: backfill — re-load after reconcile so we see the new markers.
-    for entry in load_watchlist(data_dir):
-        floor = entry.last_success_date or entry.registered_at_kst_date
-        start = _next_kst_day(floor)
-        if start > today:
-            continue
         try:
-            candidates = trading_days_in_range(start, today)
-        except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
-            log.warning("catch-up: trading-day list unavailable for %s",
-                        entry.code)
-            continue
-        too_early = set(find_ineligible_dates(
-            candidate_dates=candidates, now=now,
-        ))
-        candidates = [d for d in candidates if d not in too_early]
-        if not candidates:
-            continue
-        try:
-            await enqueue_items_core(
-                EnqueueRequest(code=entry.code, dates=candidates),
-                data_dir=data_dir,
-                now=now,
-            )
+            await catchup_one_entry(entry, data_dir=data_dir, now=now)
         except Exception:  # noqa: BLE001
-            log.exception("catch-up enqueue failed for %s", entry.code)
+            log.exception("catch-up failed for %s", entry.code)
 
 
 async def _daily_loop(data_dir: Path) -> None:

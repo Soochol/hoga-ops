@@ -308,3 +308,114 @@ async def test_start_scheduler_spawns_catchup_and_daily_loop(tmp_path: Path):
         for t in tasks:
             with pytest.raises((asyncio.CancelledError, BaseException)):
                 await t
+
+
+@pytest.mark.asyncio
+async def test_catchup_one_entry_returns_empty_when_no_gap(tmp_path: Path):
+    """When last_success >= today, returns empty EnqueueResponse without calling enqueue."""
+    from hoga.api import scheduler
+    from hoga.api.models import EnqueueResponse, WatchlistEntry
+    entry = WatchlistEntry(
+        code="003490", name="대한항공",
+        registered_at_kst_date="20260526",
+        last_success_date="20260526",
+    )
+    fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)
+    with patch("hoga.api.scheduler.latest_complete_date", return_value=None), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock) as enq:
+        result = await scheduler.catchup_one_entry(
+            entry, data_dir=tmp_path, now=fake_now,
+        )
+    assert isinstance(result, EnqueueResponse)
+    assert result.enqueued == [] and result.deduped == []
+    assert enq.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_catchup_one_entry_reconciles_then_backfills(tmp_path: Path):
+    """If disk has newer COMPLETE date, marker advances first, then backfill uses new floor."""
+    from hoga.api import scheduler, watchlist
+    from hoga.api.models import EnqueueResponse, WatchlistEntry
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    # Persisted entry has last_success_date=None (but add_entry might have seeded it
+    # from the disk-reconcile flow; for this test we pass the entry with None
+    # directly).
+    entry = WatchlistEntry(
+        code="003490", name="대한항공",
+        registered_at_kst_date="20260520",
+        last_success_date=None,
+    )
+    fake_now = dt.datetime(2026, 5, 27, 19, 0, 0, tzinfo=KST)
+    with patch("hoga.api.scheduler.latest_complete_date",
+               return_value="20260524"), \
+         patch("hoga.api.scheduler.trading_days_in_range",
+               return_value=["20260525", "20260526", "20260527"]), \
+         patch("hoga.api.scheduler.find_ineligible_dates", return_value=[]), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock,
+               return_value=EnqueueResponse(enqueued=[], deduped=[])) as enq:
+        result = await scheduler.catchup_one_entry(
+            entry, data_dir=tmp_path, now=fake_now,
+        )
+    # bump_last_success was called with date=20260524
+    entries = watchlist.load_watchlist(tmp_path)
+    assert entries[0].last_success_date == "20260524"
+    # trading_days_in_range called from next_day(20260524) = 20260525.
+    enq.assert_awaited_once()
+    call_req = enq.await_args.kwargs.get("req") or enq.await_args.args[0]
+    assert call_req.dates == ["20260525", "20260526", "20260527"]
+    assert isinstance(result, EnqueueResponse)
+
+
+@pytest.mark.asyncio
+async def test_catchup_one_entry_q14_trim(tmp_path: Path):
+    """Today is pre-trimmed via find_ineligible_dates."""
+    from hoga.api import scheduler
+    from hoga.api.models import EnqueueResponse, WatchlistEntry
+    entry = WatchlistEntry(
+        code="003490", name="대한항공",
+        registered_at_kst_date="20260520",
+        last_success_date="20260524",
+    )
+    fake_now = dt.datetime(2026, 5, 27, 10, 0, 0, tzinfo=KST)  # before 18
+    with patch("hoga.api.scheduler.latest_complete_date", return_value=None), \
+         patch("hoga.api.scheduler.trading_days_in_range",
+               return_value=["20260525", "20260526", "20260527"]), \
+         patch("hoga.api.scheduler.find_ineligible_dates",
+               return_value=["20260527"]), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock,
+               return_value=EnqueueResponse(enqueued=[], deduped=[])) as enq:
+        await scheduler.catchup_one_entry(
+            entry, data_dir=tmp_path, now=fake_now,
+        )
+    call_req = enq.await_args.kwargs.get("req") or enq.await_args.args[0]
+    assert call_req.dates == ["20260525", "20260526"]
+
+
+@pytest.mark.asyncio
+async def test_catchup_one_entry_returns_empty_on_krx_unavailable(tmp_path: Path):
+    """KrxUnavailableError → empty response, no enqueue."""
+    from hoga.api import scheduler
+    from hoga.api.calendar import KrxUnavailableError
+    from hoga.api.error_codes import UpstreamCode
+    from hoga.api.models import WatchlistEntry
+    entry = WatchlistEntry(
+        code="003490", name="대한항공",
+        registered_at_kst_date="20260520",
+        last_success_date=None,
+    )
+    fake_now = dt.datetime(2026, 5, 27, 19, 0, 0, tzinfo=KST)
+    def boom(*args, **kwargs):
+        raise KrxUnavailableError(UpstreamCode.KRX_CREDENTIALS_MISSING)
+    with patch("hoga.api.scheduler.latest_complete_date", return_value=None), \
+         patch("hoga.api.scheduler.trading_days_in_range", side_effect=boom), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock) as enq:
+        result = await scheduler.catchup_one_entry(
+            entry, data_dir=tmp_path, now=fake_now,
+        )
+    assert result.enqueued == [] and result.deduped == []
+    assert enq.await_count == 0
