@@ -1122,6 +1122,7 @@ async def test_start_scheduler_spawns_catchup_and_daily_loop(tmp_path: Path):
 
     async def fake_catchup(data_dir):
         catchup_called.set()
+        await asyncio.sleep(3600)  # stay pending so cancel actually has work to do
 
     async def fake_daily_loop(data_dir):
         daily_loop_entered.set()
