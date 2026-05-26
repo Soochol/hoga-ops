@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { aggregateDiskState, isRecapturable, STATE_SEVERITY } from './DiskStateBadge';
+import {
+  aggregateDiskState,
+  isRecapturable,
+  RECAPTURABLE_DISK_STATES,
+  STATE_SEVERITY,
+} from './DiskStateBadge';
 
 describe('STATE_SEVERITY', () => {
   it('orders states from worst (highest rank) to best (lowest)', () => {
@@ -39,5 +44,23 @@ describe('isRecapturable', () => {
   });
   it('returns true for invalid', () => {
     expect(isRecapturable('invalid')).toBe(true);
+  });
+});
+
+describe('RECAPTURABLE_DISK_STATES', () => {
+  it('excludes complete', () => {
+    expect(RECAPTURABLE_DISK_STATES).not.toContain('complete');
+  });
+  it('includes source_partial, client_incomplete, invalid', () => {
+    expect(RECAPTURABLE_DISK_STATES).toEqual(
+      expect.arrayContaining(['source_partial', 'client_incomplete', 'invalid']),
+    );
+    expect(RECAPTURABLE_DISK_STATES).toHaveLength(3);
+  });
+  it('is the source of truth — isRecapturable derives from it', () => {
+    for (const s of RECAPTURABLE_DISK_STATES) {
+      expect(isRecapturable(s)).toBe(true);
+    }
+    expect(isRecapturable('complete')).toBe(false);
   });
 });

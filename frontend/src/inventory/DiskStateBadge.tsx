@@ -19,13 +19,22 @@ export const STATE_SEVERITY: Record<DiskStateValue, number> = {
   invalid: 3,
 };
 
-/** A captured Stock-Date is recapturable when its DiskState is anything other
- *  than complete. Surfaced as the checkbox-eligibility gate in the Inventory
- *  detail table. Backend policy (eligibility.py:76-77) skips COMPLETE even
- *  with force_retry=true, so allowing complete rows here would only produce
- *  SSE noise (per ADR-0035). */
+/** The non-complete DiskStates a user can re-capture. Order is presentational
+ *  (used to build tooltips like "source partial · client incomplete · invalid").
+ *  Single source of truth: both `isRecapturable` and `RecaptureActionBar`'s
+ *  tooltip flow from this list. Adding a new non-complete DiskStateValue means
+ *  adding it here once. */
+export const RECAPTURABLE_DISK_STATES: readonly DiskStateValue[] = [
+  'source_partial',
+  'client_incomplete',
+  'invalid',
+];
+
+/** A captured Stock-Date is recapturable when its DiskState appears in
+ *  RECAPTURABLE_DISK_STATES (everything except complete). Backend policy
+ *  (eligibility.py:76-77) skips COMPLETE even with force_retry=true. */
 export function isRecapturable(state: DiskStateValue): boolean {
-  return state !== 'complete';
+  return (RECAPTURABLE_DISK_STATES as readonly DiskStateValue[]).includes(state);
 }
 
 export function DiskStateBadge({ state }: { state: DiskStateValue }) {
