@@ -48,3 +48,32 @@ describe('watchlist api client', () => {
     );
   });
 });
+
+import {
+  catchupNow,
+  catchupAll,
+  type EnqueueResponse,
+  type ManualCatchupAllResponse,
+} from './watchlist';
+
+describe('watchlist manual catch-up', () => {
+  it('catchupNow POSTs to /api/watchlist/{code}/catchup', async () => {
+    const fake: EnqueueResponse = { enqueued: [], deduped: [] };
+    vi.mocked(apiCall).mockResolvedValueOnce(fake);
+    const r = await catchupNow('003490');
+    const [path, init] = vi.mocked(apiCall).mock.calls[0];
+    expect(path).toBe('/api/watchlist/003490/catchup');
+    expect(init?.method).toBe('POST');
+    expect(r).toEqual(fake);
+  });
+
+  it('catchupAll POSTs to /api/watchlist/catchup', async () => {
+    const fake: ManualCatchupAllResponse = { results: [] };
+    vi.mocked(apiCall).mockResolvedValueOnce(fake);
+    const r = await catchupAll();
+    const [path, init] = vi.mocked(apiCall).mock.calls[0];
+    expect(path).toBe('/api/watchlist/catchup');
+    expect(init?.method).toBe('POST');
+    expect(r).toEqual(fake);
+  });
+});
