@@ -1188,21 +1188,35 @@ def test_enqueue_dedupes_against_done_complete_with_force_false(monkeypatch, tmp
         assert len(captures._queue) == 0
 
 
-def test_enqueue_dedupes_against_done_complete_with_force_true(monkeypatch, tmp_path):
-    """done-phase + force_retry=true STILL dedupes as already_complete (ADR-0033 invariant)."""
+def test_enqueue_re_enqueues_done_with_force_true_per_adr_0035(monkeypatch, tmp_path):
+    """done-phase + force_retry=true → auto re-enqueue (ADR-0035 extension).
+
+    The inventory re-capture UI relies on this branch: a _done row of
+    phase=done whose on-disk state is non-complete must be re-queueable
+    via force_retry. decide_capture remains the gate for the COMPLETE
+    case (see test_decide_capture_complete_skips_with_already_complete_reason
+    in test_api_eligibility.py).
+    """
     _no_workers(monkeypatch)
     app = _build_test_app(monkeypatch, tmp_path)
     with TestClient(app) as c:
-        _seed_done_item(item_id="old-d", code="005930", date="20260520", phase="done")
+        _seed_done_item(item_id="old-d", code="005930", date="20260520",
+                        phase="done", attempt=1, force_retry=False)
 
         r = _post_items(c, "005930", ["20260520"], force_retry=True)
         assert r.status_code == 201, r.text
         body = r.json()
-        assert body["enqueued"] == []
-        assert body["deduped"][0]["reason"] == "already_complete"
-        # _done untouched.
-        assert any(s.item_id == "old-d" for s in captures._done)
-        assert len(captures._queue) == 0
+        assert len(body["enqueued"]) == 1
+        new = body["enqueued"][0]
+        assert new["attempt"] == 2
+        assert new["force_retry"] is True
+        assert new["item_id"] != "old-d"
+        assert body["deduped"] == []
+        # Old done row removed; new row in _queue.
+        assert all(s.item_id != "old-d" for s in captures._done)
+        assert len(captures._queue) == 1
+        assert captures._queue[0].attempt == 2
+        assert captures._queue[0].force_retry is True
 
 
 def test_enqueue_re_enqueues_failed_done_regardless_of_force_attempt_increments(

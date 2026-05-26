@@ -1109,11 +1109,15 @@ async def enqueue_items_core(
                 ))
                 continue
 
-            # Step 3b: ADR-0033 _done dedupe — branch by phase + force_retry.
+            # Step 3b: ADR-0033 + ADR-0035 _done dedupe — branch by phase + force_retry.
+            # done + force_retry → re-enqueue; decide_capture still skips COMPLETE
+            # disk state at worker time (eligibility.py), so accidental complete
+            # overwrites stay impossible — see ADR-0035 Rationale.
             if pair in done_index:
                 idx, old = done_index[pair]
                 if (old.phase in ("failed", "cancelled")
-                        or (old.phase == "skipped" and req.force_retry)):
+                        or (old.phase == "skipped" and req.force_retry)
+                        or (old.phase == "done" and req.force_retry)):
                     # Auto re-enqueue: remove old, enqueue new with attempt+1.
                     done_indices_to_remove.add(idx)
                     done_dismissed_ids.append(old.item_id)

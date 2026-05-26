@@ -35,6 +35,20 @@ def test_decide_capture_complete_skips_with_already_complete_reason(tmp_path: Pa
     assert decision == CaptureDecision(skip_reason="already_complete", resume=False)
 
 
+def test_decide_capture_complete_skips_even_with_force_retry_per_adr_0035(tmp_path: Path) -> None:
+    """ADR-0035 relaxes the enqueue dedupe to let done+force_retry through.
+    decide_capture must remain the last gate against accidental overwrite of
+    a COMPLETE Stock-Date — without this gate, the relaxed enqueue branch
+    would destroy good data.
+    """
+    _write_meta(tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
+                collection_complete=True, is_partial=False)
+    decision = eligibility.decide_capture(
+        data_dir=tmp_path, code="005930", date="20260518", force_retry=True,
+    )
+    assert decision == CaptureDecision(skip_reason="already_complete", resume=False)
+
+
 def test_decide_capture_source_partial_skips_when_not_force_retry(tmp_path: Path) -> None:
     _write_meta(tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
                 collection_complete=True, is_partial=True)
