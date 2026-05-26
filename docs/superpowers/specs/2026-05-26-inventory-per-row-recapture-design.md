@@ -172,11 +172,15 @@ Current ghost link → accent-tinted ghost button. Pattern:
 
 ```ts
 function recapturableTooltip(): string {
-  return RECAPTURABLE_DISK_STATES.map(s => PRESENTATION_LABEL[s]).join(' · ');
+  // Short labels: derive from the DiskStateValue string itself.
+  // "source_partial" → "source partial", etc. The PRESENTATION labels in
+  // DiskStateBadge.tsx are verbose ("source partial — data gaps") — fine
+  // for badges with hover, too long for a button tooltip listing all three.
+  return RECAPTURABLE_DISK_STATES.map(s => s.replace(/_/g, ' ')).join(' · ');
 }
 ```
 
-`PRESENTATION_LABEL` exports the human-readable string per state from `DiskStateBadge.tsx` (extract from the existing `PRESENTATION` mapping's `label` field, or add a small re-export).
+No new label data needed; the union-string-derived labels are exactly the short form a glanceable tooltip wants.
 
 ### `RecaptureActionBar` simplification
 
@@ -258,11 +262,11 @@ const isFromInventory = useInventoryRecaptureOrigins((s) => s.ids.has(item.item_
   <span
     title="Triggered from inventory re-capture"
     className="ml-1.5 text-badge rounded-md px-[0.15rem] border border-[var(--fg-dim)] text-fg-dim"
-  >📦 inventory</span>
+  >inventory</span>
 )}
 ```
 
-Tone: informational, not warning. Matches the `×N` attempt badge's visual weight.
+Tone: informational, not warning. No emoji — visual weight matches the existing `×N` and `⚠ force` badges that ship plain text labels.
 
 ## Data flow
 
@@ -306,7 +310,7 @@ SSE capture_finished
 
 - **CaptureForm submit collides with an in-flight inventory re-capture.** Same `(code, date)` is in `queue.active`. CaptureForm gets `deduped: 'already_running'`. No change for this spec.
 
-- **`useCaptureQueue()` is now consumed by two distant components** (`CaptureQueue` and `StockDateGroupDetail`). React Query dedupes the underlying query, but the SSE subscriber in `useCaptureQueue`'s `useEffect` would now fire twice. Verify at implementation time: if double-subscription occurs, move the subscriber up the component tree (e.g., to `App.tsx` or a context provider) and have hook consumers read cache only. Documented as a watch-out, not a blocker — single-user local tool, two subscribers is benign for correctness, just wastes a connection.
+- **`useCaptureQueue()` is now consumed by two distant components** (`CaptureQueue` and `StockDateGroupDetail`). Not a concern: [api/sse.ts:7-10, 99-119](../../../frontend/src/api/sse.ts#L7-L10) uses a module-level singleton `EventSource` with a `Set<handler>` — adding a second subscriber just appends to the set, no new connection. Handler bodies use idempotent `qc.setQueryData` / `qc.invalidateQueries`, so duplicate invocations are also safe. No subscriber-tree migration needed.
 
 ## Testing
 
@@ -331,7 +335,7 @@ SSE capture_finished
   - Bulk button tooltip equals `RECAPTURABLE_DISK_STATES` joined with the presentation labels.
   - `recapturableCount === 0 && status === null` → renders null.
 - `CaptureQueueRow.test.tsx`:
-  - When `item_id` is in the origins store, `from inventory` badge is rendered.
+  - When `item_id` is in the origins store, `inventory` badge is rendered.
   - When `item_id` is not in the store, no badge.
 
 ### Integration (manual smoke)
@@ -340,7 +344,7 @@ SSE capture_finished
 2. Confirm:
    - Icon immediately becomes a spinning ↻ (or `aria-disabled`).
    - Header inline message `Queued 1 capture` appears under the bulk button.
-3. Navigate to `/capture`. The corresponding queue row shows `from inventory` badge.
+3. Navigate to `/capture`. The corresponding queue row shows `inventory` badge.
 4. Wait for `capture_finished`. Inventory row's icon stops spinning; if disk_state is now `complete`, row no longer has an icon (or the row is gone, depending on SSE behavior).
 5. Reload `/inventory`. The `from inventory` badge on `/capture` is gone (acceptable). The queue row itself persists.
 
