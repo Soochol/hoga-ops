@@ -16,7 +16,13 @@ from hoga.api.models import (
     WatchlistResponse,
 )
 from hoga.api.scheduler import seconds_until_next_18_kst
-from hoga.api.watchlist import AlreadyInWatchlistError, add_entry, load_watchlist
+from hoga.api.watchlist import (
+    AlreadyInWatchlistError,
+    NotInWatchlistError,
+    add_entry,
+    load_watchlist,
+    remove_entry,
+)
 from hoga.collector.orchestrator import now_kst
 
 
@@ -57,5 +63,19 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "message": f"Code {req.code} is already in the Watchlist.",
             }) from e
         return entry
+
+    @router.delete("/{code}", status_code=204)
+    async def remove_from_watchlist(code: str) -> None:
+        if not code.isdigit() or len(code) != 6:
+            raise HTTPException(status_code=400, detail={
+                "code": "invalid_code", "message": "Code must be 6 digits.",
+            })
+        try:
+            await remove_entry(data_dir, code=code)
+        except NotInWatchlistError as e:
+            raise HTTPException(status_code=404, detail={
+                "code": "not_in_watchlist",
+                "message": f"Code {code} is not in the Watchlist.",
+            }) from e
 
     return router

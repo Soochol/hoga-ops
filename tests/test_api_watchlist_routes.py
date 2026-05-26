@@ -102,3 +102,21 @@ def test_post_duplicate_returns_409(tmp_path: Path):
         r = client.post("/api/watchlist", json={"code": "003490"})
     assert r.status_code == 409
     assert r.json()["detail"]["code"] == "already_in_watchlist"
+
+
+def test_delete_missing_returns_404(tmp_path: Path):
+    client = TestClient(_app(tmp_path))
+    r = client.delete("/api/watchlist/003490")
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "not_in_watchlist"
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_entry(tmp_path: Path):
+    from hoga.api import watchlist
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260526")
+    client = TestClient(_app(tmp_path))
+    r = client.delete("/api/watchlist/003490")
+    assert r.status_code == 204
+    assert watchlist.load_watchlist(tmp_path).entries == []
