@@ -100,11 +100,20 @@ _Avoid_: "job queue" (overloaded with background-task semantics from web framewo
 **Retry**:
 Re-enqueuing a terminal **Capture Queue** item with `attempt = prior + 1`. Two paths trigger it:
 1. **Explicit Retry** — `POST /api/captures/items/retry` with one or more `item_id`s. `failed`-only by policy (per ADR-0031); the per-row ↻ button and header "Retry Failed" both use this path. Preserves the old item's `force_retry` flag.
-2. **Implicit Retry** — `POST /api/captures/items` (the normal enqueue path) when a request's `(code, date)` collides with a `_done` item of phase `failed` / `cancelled`, OR phase `skipped` with `force_retry=true`. The backend auto-dismisses the old `_done` row and enqueues a new attempt. Uses the *request*'s `force_retry` (not the old item's). See ADR-0033.
+2. **Implicit Retry** — `POST /api/captures/items` (the normal enqueue path) when a request's `(code, date)` collides with a `_done` item. The backend auto-dismisses the old `_done` row and enqueues a new attempt (uses the *request*'s `force_retry`, not the old item's). Dedupe table by `old.phase` × `req.force_retry`:
+
+   | `old.phase` | `force_retry=false` | `force_retry=true` |
+   |---|---|---|
+   | `failed`    | auto re-enqueue | auto re-enqueue |
+   | `cancelled` | auto re-enqueue | auto re-enqueue |
+   | `skipped`   | dedupe `already_skipped` | auto re-enqueue |
+   | `done`      | dedupe `already_complete` | auto re-enqueue (ADR-0035) |
+
+   See ADR-0033 + ADR-0035. The `done + force_retry` branch is what makes inventory re-capture work — `decide_capture` still gates `COMPLETE` disk state at worker time, so this branch is safe for non-complete disk states (which is what inventory surfaces) and harmless for complete (skipped at worker).
 
 Either path: backend removes the old `_done` entry, publishes `CaptureDismissedEvent` (so the frontend hides the old row), then publishes `CaptureQueuedEvent` for the new attempt. The `×N` attempt badge on the queue row counts every Retry regardless of trigger.
 
-Distinct from **force_retry**: Retry is the *operation* of giving an item another try; `force_retry` is a *boolean flag* on each item that controls whether sentinels / partial raw artifacts are deleted before capture (see `No Upstream Data`). The two compose. `done` items in `_done` are never auto-Retried — `decide_capture` would mark them skipped immediately because COMPLETE state is not bypassable via `force_retry` today.
+Distinct from **force_retry**: Retry is the *operation* of giving an item another try; `force_retry` is a *boolean flag* on each item that controls whether sentinels / partial raw artifacts are deleted before capture (see `No Upstream Data`). The two compose. `done`-phase items whose disk-state is `COMPLETE` are never effectively re-captured even with `force_retry=true` — `decide_capture` skips them as `already_complete` (per ADR-0035).
 _Avoid_: "re-enqueue" (loses the attempt-counting semantics), "rerun" (ambiguous with replay / backtest reruns).
 
 **Watchlist**:

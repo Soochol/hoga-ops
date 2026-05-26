@@ -18,13 +18,15 @@ This is friction the inventory's own context could eliminate. The user already s
 
 ## Terminology
 
-This spec does not introduce a new domain term. It composes three established compounds:
+This spec does not coin a new domain term. It composes existing ones:
 
-- **Abnormal Stock-Date** (introduced here, descriptive only) — a **Stock-Date** whose **DiskStateValue** is anything other than `complete`. Always derived, never persisted. Used in code as a one-line helper (`isAbnormal(state)`); never appears in API contracts. We deliberately avoid coining "AbnormalState" as a domain noun because the criterion is "not complete," not a positive identity — see CONTEXT.md guidance against negative-identity domain terms.
-- **Retry** — the operation defined in [docs/superpowers/specs/2026-05-25-retry-failed-bulk-design.md](2026-05-25-retry-failed-bulk-design.md). Inventory re-capture is *not* a Retry. Retry operates on `_done`-bucket queue items via `POST /api/captures/items/retry`. Inventory re-capture operates on Stock-Dates on disk via the **Implicit Retry** path of `POST /api/captures/items` (ADR-0033). The two are siblings — different sources of truth (queue history vs. on-disk artifacts), one shared destination (a fresh queue item).
-- **force_retry** — per CONTEXT.md, the flag that controls whether sentinels / partial raw artifacts are deleted before capture. This spec always sends `force_retry=true` from inventory; rationale below.
+- **Retry** — per CONTEXT.md, the operation of re-enqueuing a terminal Capture Queue item. Two paths exist: **Explicit Retry** (`/items/retry`, failed-only per ADR-0031) and **Implicit Retry** (`/items` with `(code, date)` collision against `_done`, per ADR-0033 extended by ADR-0035). Inventory re-capture is **a new UI trigger for the Implicit Retry path** — specifically the `done + force_retry=true` branch that ADR-0035 introduces. Same SSE events, same attempt arithmetic, same backend code path.
+- **force_retry** — per CONTEXT.md, the flag controlling whether sentinels / partial raw artifacts are deleted before capture. This spec always sends `force_retry=true` from inventory; rationale below.
+- "**Re-capture**" (UI verb only, not a domain noun) — the user-facing label for triggering Implicit Retry from inventory. We use "Re-capture" not "Retry" because the user's mental model is "the Stock-Date on disk is wrong, do it again." "Retry" reads as a queue-history operation; "Re-capture" reads as a disk-state operation. The verb is consistent with **Full Capture** (the unit of work being repeated). _Avoid_'d alternatives: "Recover" (sounds like a backup restore), "Refresh" (overloaded with cache refresh), "Re-run" (CONTEXT.md _Avoid_).
 
-CONTEXT.md needs no update — all terms already exist.
+The criterion "not complete" is a derived predicate, not a domain noun — implemented as `isRecapturable(state: DiskStateValue): boolean` co-located with `STATE_SEVERITY` in `DiskStateBadge.tsx` (per CONTEXT.md `Disk State Severity`, that file is the SSOT for DiskState-keyed predicates).
+
+CONTEXT.md `Retry` entry is updated to reflect the ADR-0035 extension.
 
 ## Goals
 
@@ -38,54 +40,68 @@ CONTEXT.md needs no update — all terms already exist.
 - **Cross-Code bulk re-capture** from the left **StockDateGroupList** (e.g., "re-capture every abnormal row across every Code I've ever captured"). Separate spec; left-list selection model would be its own design.
 - **Exposing a `force_retry` toggle** in the inventory action UI. Always-true is the only useful value here: `source_partial` *requires* it, and it is a no-op for `client_incomplete` (resume-mode capture deletes nothing) and `invalid` (fresh capture deletes the corrupt artifacts regardless of the flag's value, per `decide_capture`).
 - **Re-capturing `complete` rows.** Backend policy disallows it today (per CONTEXT.md `Disk State Severity` and [eligibility.py:76-77](../../../hoga/api/eligibility.py#L76-L77)). If that policy ever changes, the UI change is "drop the abnormal-only filter" — one line.
-- **New backend endpoints.** `POST /api/captures/items` with `dates: list[str]` and `force_retry: true` plus the ADR-0033 Implicit Retry path already does exactly what we need. Adding a new endpoint would duplicate dedupe/attempt logic.
+- **New backend endpoints.** `POST /api/captures/items` with `dates: list[str]` and `force_retry: true` plus the ADR-0033 + ADR-0035 Implicit Retry path does exactly what we need. Adding a new endpoint would duplicate dedupe/attempt logic.
 - **Persisting selection across navigation.** Selection is ephemeral component state. Closing the detail panel, switching Codes, or reloading the page clears it.
 
 ## Design
 
 ### Backend
 
-**No changes.** The flow uses existing primitives:
+**Single-line change implementing ADR-0035.** In [captures.py:1115-1116](../../../hoga/api/captures.py#L1115-L1116)'s step 3b dedupe condition, add a fourth clause:
+
+```python
+if (old.phase in ("failed", "cancelled")
+        or (old.phase == "skipped" and req.force_retry)
+        or (old.phase == "done" and req.force_retry)):  # ADR-0035
+    # auto re-enqueue (attempt+1)
+```
+
+Without this change, the entire feature is silently dead: every `_done` row produced by a `done`-phase capture (which is how non-complete disk states are produced in the first place — see ADR-0035 Rationale) is dedupe'd as `already_complete`, blocking re-capture in the most common case (server hot, captures still in `_done` from this session).
+
+Safety: the worker's `decide_capture` continues to gate `disk_state == COMPLETE + force_retry=True → skipped/already_complete` ([eligibility.py:76-77](../../../hoga/api/eligibility.py#L76-L77)). ADR-0035 documents this gate as the new last line of defense against accidental complete-overwrite; a regression test pinned to that file is part of this work.
+
+Flow with the patch:
 
 1. `POST /api/captures/items` with `{ code, dates, force_retry: true }`.
-2. Each `(code, date)` collides with a `_done` row (the inventory artifact came from a prior `done` capture, otherwise no `meta.json`, otherwise no inventory row — see [api/types.ts:5](../../../frontend/src/api/types.ts#L5) comment on `DiskStateValue`).
-3. ADR-0033 Implicit Retry branches on the existing `_done` row's `phase`:
-   - `phase == 'done'` with `disk_state ∈ {source_partial, client_incomplete, invalid}` → backend dismisses the old `_done` row, enqueues a fresh attempt using the *request*'s `force_retry=true`. (See [captures.py:1112-1149](../../../hoga/api/captures.py#L1112-L1149).)
-   - `phase == 'skipped'` with `skip_reason='source_partial'` and `force_retry=true` → same flow.
-   - `phase == 'done'` with `disk_state == 'complete'` → deduped as `already_complete`. The frontend prevents this case by not surfacing checkboxes on `complete` rows, but the backend's defense-in-depth check still applies if a race lets a stale selection through.
-4. SSE `capture_dismissed` removes the old `_done` row from any open queue view; SSE `capture_queued` adds the new attempt; eventually SSE `capture_finished` plus the existing `inventory_added` / `inventory_removed` events refresh `useStockDates` consumers.
+2. Each `(code, date)` collides with a `_done` row of `phase=done` (the inventory artifact came from a prior `done` capture — otherwise no `meta.json`, otherwise no inventory row, see [api/types.ts:5](../../../frontend/src/api/types.ts#L5)) **or** a `_done` row of `phase=skipped` with `skip_reason=source_partial` (the SOURCE_PARTIAL `decide_capture` skip).
+3. ADR-0033 + ADR-0035 branches all auto re-enqueue under `force_retry=true`.
+4. New queue item reaches worker → `decide_capture` re-reads disk:
+   - `disk_state ∈ {source_partial, client_incomplete, invalid}` → proceed (fresh or resume per `decide_capture` semantics).
+   - `disk_state == complete` → `skipped/already_complete`. The frontend filters this case out (no checkbox on complete rows), so it should not happen except in a race; if it does, one SSE cycle of noise then `skipped` — no data loss.
+5. SSE `capture_dismissed` removes the old `_done` row from any open queue view; SSE `capture_queued` adds the new attempt; eventually SSE `capture_finished` plus the existing `inventory_added` / `inventory_removed` events refresh `useStockDates` consumers.
 
 The inventory page already subscribes to inventory SSE events: [api/sse.ts:78-79](../../../frontend/src/api/sse.ts#L78-L79) invalidates `STOCK_DATES_QUERY_KEY` on `inventory_added` / `inventory_removed`. No new subscriber is needed; the existing one re-fetches when rows arrive/depart.
 
 ### Frontend changes
 
-#### New helper: `inventory/abnormal.ts`
+#### New predicate in `inventory/DiskStateBadge.tsx`
+
+Co-locate with `STATE_SEVERITY` and `aggregateDiskState` per the CONTEXT.md `Disk State Severity` SSOT convention — that file is the single place for DiskState-keyed predicates. No new file.
 
 ```ts
-import type { DiskStateValue } from '../api/types';
-
-/** A Stock-Date is "abnormal" when its DiskState is anything other than complete.
- *  Used to gate inventory re-capture UI: only abnormal rows get a checkbox, and
- *  the bulk action operates only on these rows. Backend policy ([eligibility.py])
- *  disallows force_retry on COMPLETE, so the criterion is "not complete." */
-export function isAbnormal(state: DiskStateValue): boolean {
+/** A captured Stock-Date is recapturable when its DiskState is anything other
+ *  than complete. Surfaced as the checkbox-eligibility gate in the Inventory
+ *  detail table. Backend policy ([eligibility.py:76-77]) skips COMPLETE even
+ *  with force_retry=true, so allowing complete rows here would only produce
+ *  SSE noise (per ADR-0035). Naming: "recapturable" describes the action this
+ *  predicate gates; we avoid coining a noun "abnormal" because the criterion
+ *  is "not complete," a derived predicate rather than a domain identity. */
+export function isRecapturable(state: DiskStateValue): boolean {
   return state !== 'complete';
 }
 ```
 
-Tiny module with a clear domain hook. Keeps the predicate testable and lets consumers (the detail table, the action bar, possibly future cross-Code work) share one source of truth.
-
 #### New component: `inventory/RecaptureActionBar.tsx`
 
-A small presentation component that takes `{ abnormalCount, selectedCount, onRecaptureSelected, onRecaptureAll, onClearSelection, status }` and renders one of three states:
+A small presentation component that takes `{ recapturableCount, selectedCount, onRecaptureSelected, onRecaptureAll, onClearSelection, status, isPending }` and renders one of three states:
 
 | Precondition | Rendered |
 |---|---|
-| `abnormalCount === 0` | nothing (caller renders the default header metadata) |
-| `selectedCount === 0 && abnormalCount > 0` | `Re-capture all abnormal ({abnormalCount})` ghost button |
+| `recapturableCount === 0` | nothing (caller renders the default header metadata) |
+| `selectedCount === 0 && recapturableCount > 0` | `Re-capture all incomplete ({recapturableCount})` ghost button (tooltip: `source partial · client incomplete · invalid`) |
 | `selectedCount > 0` | `{K} selected · [▶ Re-capture] [Clear]` |
 
-The `status` slot renders an inline `Queued N capture(s) (M skipped)` success message or an `error` message under the bar; the parent owns the message lifecycle.
+The primary action is disabled while `isPending` to prevent double-submit. The `status` slot renders an inline `Queued N capture(s) (M skipped)` success message or an `error` message under the bar; the parent owns the message lifecycle.
 
 Visual style follows DESIGN.md tokens — `var(--accent)` for the primary action, `var(--fg-dim)` for the selection counter, `var(--error)` for failure. No new design tokens.
 
@@ -94,7 +110,7 @@ Visual style follows DESIGN.md tokens — `var(--accent)` for the primary action
 Wraps `useCaptureQueue().addItems` to:
 
 - Hold a small `status` state: `null | { kind: 'success', enqueued: number, skipped: number } | { kind: 'error', message: string }`.
-- Auto-clear `status` 4 seconds after a success (timer reset on subsequent submits). On unmount, clear the timer.
+- Auto-clear **success** status 4 seconds after it sets (timer reset on subsequent submits). On unmount, clear the timer. **Error** status persists until the next submit (or component unmount) — errors should not vanish under the user's gaze.
 - Provide `recapture(code, dates)` that calls `addItems.mutate({ code, dates, force_retry: true }, { onSuccess, onError })`.
 - Map `EnqueueResponse.deduped` into the `skipped` count for the success message. The reasons (`already_in_queue` / `already_running` / `already_complete` / `already_skipped`) are not surfaced individually — a single "skipped" count is enough at the inventory grain.
 - Map upstream-hint errors (the `enqueueErrorHints` already used by **CaptureForm**) into the same `inlineError` surface used elsewhere so the inventory error UI matches captures.
@@ -114,14 +130,14 @@ Three additions, each scoped to one block:
 
 1. **Selection state.** `const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set())`. A `useEffect` on `selectedCode` clears the set. Selection survives sort changes (date keys are stable). On every render, the set is pruned for keys no longer present in `sortedDates.filter(isAbnormal)` — this handles the SSE-driven case where a previously-abnormal row becomes `complete` mid-selection.
 
-2. **Checkbox column.** Add a leading `th` and `td`. The `td` for `complete` rows is an empty cell (no checkbox), preserving column alignment. The checkbox `onChange` toggles the date in the set; `e.stopPropagation()` keeps the existing row-click → /replay navigation intact.
+2. **Checkbox column.** Add a leading `th` and `td`. The `td` for `complete` rows is an empty cell (no checkbox via `isRecapturable(row.disk_state)`), preserving column alignment. The checkbox `onChange` toggles the date in the set; `e.stopPropagation()` keeps the existing row-click → /replay navigation intact.
 
 3. **Header action bar.** Render `<RecaptureActionBar … />` in the existing header `<div>`, replacing the dates/vol/size metadata when selection is active and rendering alongside it otherwise. The metadata line is informational; the bar is action-oriented. Both compose in the same header without a layout overhaul.
 
 A new `useInventoryRecapture()` invocation in the component wires the bar's callbacks:
 
 - `onRecaptureSelected` → `recapture(group.code, [...selectedDates])`
-- `onRecaptureAll` → `recapture(group.code, group.dates.filter(d => isAbnormal(d.disk_state)).map(d => d.date))`
+- `onRecaptureAll` → `recapture(group.code, group.dates.filter(d => isRecapturable(d.disk_state)).map(d => d.date))`
 - `onClearSelection` → `setSelectedDates(new Set())`
 
 After a successful submit, the component clears the selection (`setSelectedDates(new Set())`). The status message stays for 4 seconds via the hook.
@@ -178,27 +194,35 @@ Always-true is the only value that recovers `source_partial` and is a no-op ever
 
 ### Unit
 
-- `abnormal.test.ts` — `isAbnormal` returns `false` for `complete`, `true` for the other three.
+- `DiskStateBadge.test.tsx` (extension) — `isRecapturable` returns `false` for `complete`, `true` for the other three.
 - `useInventoryRecapture.test.tsx` —
   - On success with `deduped: []`, status becomes `{ kind: 'success', enqueued: N, skipped: 0 }`.
   - On success with `deduped: [...]`, status carries the correct `skipped` count.
   - On `enqueueErrorHints`-mapped API error, status is `{ kind: 'error', message: <hint> }`.
   - On generic error, status carries the error's `.message`.
-  - Status auto-clears 4s after a success (use `vi.useFakeTimers`).
-  - Timer is cancelled on unmount.
+  - Success status auto-clears 4s after it sets (use `vi.useFakeTimers`).
+  - Error status persists until the next submit (does not auto-clear).
+  - Success timer is cancelled on unmount.
 
 ### Component
 
 - `StockDateGroupDetail.test.tsx` extensions —
   - `complete` rows render no checkbox (assert by querying with the row's date as label).
   - Clicking a checkbox does not navigate (assert `useNavigate` mock not called).
-  - With no selection and ≥1 abnormal row, header shows `Re-capture all abnormal ({N})`.
+  - With no selection and ≥1 recapturable row, header shows `Re-capture all incomplete ({N})`.
   - With ≥1 selection, header shows `{K} selected · ▶ Re-capture · Clear`.
-  - Clicking `Re-capture all abnormal` calls `addItems` with `dates` equal to all abnormal dates in this group.
-  - Clicking `Re-capture` with 2 selected dates calls `addItems` with those 2 dates.
+  - Clicking `Re-capture all incomplete` calls `addItems` with `dates` equal to all recapturable dates in this group + `force_retry: true`.
+  - Clicking `Re-capture` with 2 selected dates calls `addItems` with those 2 dates + `force_retry: true`.
   - After a successful submit, selection is cleared.
   - Changing `selectedCode` clears the selection.
   - When `disk_state` for a selected row flips to `complete` (simulate via prop change), the date is pruned from selection on next render.
+  - Primary action button is disabled while mutation is pending.
+
+### Backend ([hoga/api/captures.py](../../../hoga/api/captures.py), [hoga/api/eligibility.py](../../../hoga/api/eligibility.py))
+
+- `addItems` with `force_retry=true` against a `_done` row of `phase=done` → response has 1 `enqueued` (attempt = prior + 1), 0 `deduped`. The old `_done` row is removed (assert via subsequent `getQueue` call).
+- `addItems` with `force_retry=false` against a `_done` row of `phase=done` → response has 0 `enqueued`, 1 `deduped` with reason `already_complete` (regression pin on ADR-0033's protection).
+- `addItems` with `force_retry=true` against a `_done` row of `phase=done` whose disk-state is `COMPLETE` → new queue item enters the worker, `decide_capture` returns `skipped/already_complete`, item lands in `_done` with `phase=skipped`. No data destruction (regression pin on the [eligibility.py:76-77](../../../hoga/api/eligibility.py#L76-L77) gate that ADR-0035 depends on).
 
 - `RecaptureActionBar.test.tsx` — render branches for each of the three precondition cases; status slot renders success and error variants with correct token colors.
 
