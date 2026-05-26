@@ -46,6 +46,7 @@ from hoga.api.models import (
     SkipReason,
     ViolationModel,
 )
+from hoga.api import watchlist
 from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
 from hoga.collector.orchestrator import (
@@ -665,6 +666,18 @@ async def _finalize_item(state: QueueItemState) -> None:
         skip_reason=state.skip_reason,
         warnings=state.warnings,
     ))
+    # ADR-0034: Watchlist's last_success_date marker advances on successful
+    # captures regardless of whether the capture was ad-hoc or scheduled.
+    if state.phase == "done":
+        try:
+            await watchlist.bump_last_success(
+                _require_data_dir(), code=state.code, date=state.date,
+            )
+        except Exception:  # noqa: BLE001 — never let watchlist break the queue
+            logging.getLogger(__name__).exception(
+                "watchlist bump_last_success failed for %s/%s",
+                state.code, state.date,
+            )
 
 
 async def _handle_cookie_expired(state: QueueItemState) -> None:

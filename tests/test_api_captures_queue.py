@@ -1483,3 +1483,47 @@ def test_enqueue_items_core_is_module_level_and_callable():
         "enqueue_items_core must be module-level for ADR-0034"
     import asyncio
     assert asyncio.iscoroutinefunction(caps.enqueue_items_core)
+
+
+@pytest.mark.asyncio
+async def test_finalize_item_done_bumps_watchlist_last_success(tmp_path):
+    """The _finalize_item hook must call watchlist.bump_last_success
+    when phase is 'done', and never otherwise."""
+    from unittest.mock import patch, AsyncMock
+    from hoga.api import captures, watchlist
+    captures.reset_state_for_tests()
+    captures._data_dir = tmp_path
+    # Register the Code in the Watchlist so the bump has somewhere to land.
+    await watchlist.add_entry(tmp_path, code="005930", name="삼성전자",
+                              today_kst_date="20260526")
+
+    state = captures.QueueItemState(
+        item_id="x", code="005930", date="20260526",
+        force_retry=False, enqueued_at_ms=0, attempt=1,
+    )
+    state.phase = "done"
+
+    with patch("hoga.api.captures.watchlist.bump_last_success",
+               new_callable=AsyncMock) as bump:
+        await captures._finalize_item(state)
+
+    bump.assert_awaited_once_with(tmp_path, code="005930", date="20260526")
+
+
+@pytest.mark.asyncio
+async def test_finalize_item_failed_does_not_bump(tmp_path):
+    from unittest.mock import patch, AsyncMock
+    from hoga.api import captures
+    captures.reset_state_for_tests()
+    captures._data_dir = tmp_path
+    state = captures.QueueItemState(
+        item_id="x", code="005930", date="20260526",
+        force_retry=False, enqueued_at_ms=0, attempt=1,
+    )
+    state.phase = "failed"
+
+    with patch("hoga.api.captures.watchlist.bump_last_success",
+               new_callable=AsyncMock) as bump:
+        await captures._finalize_item(state)
+
+    bump.assert_not_awaited()
