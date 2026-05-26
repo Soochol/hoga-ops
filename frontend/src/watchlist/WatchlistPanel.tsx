@@ -12,6 +12,11 @@ import {
   useCatchupOne,
   useCatchupAll,
 } from './useWatchlist';
+import {
+  formatCaughtUpOneMessage,
+  summarizeCaughtUpAll,
+  formatCaughtUpAllHeader,
+} from './banners';
 
 const JUST_ADDED_MS = 5000;
 
@@ -139,23 +144,12 @@ export function WatchlistPanel() {
                : { background: 'rgba(34,197,94,0.10)',
                    borderColor: 'rgba(34,197,94,0.30)',
                    color: 'var(--success)' }}>
-          {recentAction.error
-            ? `${recentAction.name} (${recentAction.code}) 수집 실패: ${recentAction.error}`
-            : recentAction.enqueued === 0 && recentAction.deduped === 0
-              ? `${recentAction.name} (${recentAction.code}) 수집할 거래일 없음`
-              : recentAction.enqueued === 0
-                ? `✓ ${recentAction.name} (${recentAction.code}) 이미 모두 수집됨 (${recentAction.deduped}건)`
-                : recentAction.deduped > 0
-                  ? `✓ ${recentAction.name} (${recentAction.code}) 수집 대기 중 — ${recentAction.enqueued}건 추가, ${recentAction.deduped}건 이미 완료`
-                  : `✓ ${recentAction.name} (${recentAction.code}) 수집 대기 중 — ${recentAction.enqueued}건 추가`}
+          {formatCaughtUpOneMessage(recentAction)}
         </div>
       )}
 
       {recentAction?.kind === 'caught_up_all' && (() => {
-        const total = recentAction.summary;
-        const enqueuedTotal = total.reduce((s, r) => s + r.enqueued_count, 0);
-        const dedupedTotal = total.reduce((s, r) => s + r.deduped_count, 0);
-        const failed = total.filter((r) => r.error != null);
+        const summary = summarizeCaughtUpAll(recentAction.summary);
         return (
           <div className="mx-6 mt-3 px-3 py-2 rounded border text-sm"
                style={{
@@ -163,13 +157,10 @@ export function WatchlistPanel() {
                  borderColor: 'rgba(34,197,94,0.30)',
                  color: 'var(--success)',
                }}>
-            <div>
-              ✓ 전체 catch-up: {total.length}종목, {enqueuedTotal}건 추가, {dedupedTotal}건 이미 완료
-              {failed.length > 0 ? `, ${failed.length}종목 실패` : ''}
-            </div>
-            {failed.length > 0 && (
+            <div>{formatCaughtUpAllHeader(summary)}</div>
+            {summary.failed.length > 0 && (
               <ul className="mt-1 text-xs text-error">
-                {failed.map((r) => (
+                {summary.failed.map((r) => (
                   <li key={r.code}>{r.code} ({r.name}): {r.error}</li>
                 ))}
               </ul>
