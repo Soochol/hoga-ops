@@ -19,9 +19,11 @@ from hoga.api.captures import cancel_all_on_shutdown
 from hoga.api.captures import set_bus as set_captures_bus
 from hoga.api.queries import QueryEngine
 from hoga.api.routes import build_router
+from hoga.api.scheduler import start_scheduler
 from hoga.api.sse import build_sse
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
+from hoga.api.watchlist_routes import build_router as build_watchlist_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
@@ -54,6 +56,12 @@ def create_app(data_dir: Path) -> FastAPI:
         set_captures_bus(bus, asyncio.get_running_loop())
         # Single entry point bundles restore-before-spawn invariant (ADR-0019).
         _captures_module._workers = _captures_module.start_capture_pool(data_dir)
+        # ADR-0034: Watchlist scheduler runs alongside the capture pool
+        # in the same uvicorn process. Tasks are cancelled in `finally`.
+        # Initialize defensively so the `finally` block is safe even if
+        # `start_scheduler` raises.
+        _scheduler_tasks: list = []
+        _scheduler_tasks = start_scheduler(data_dir)
         # Tier 1 of the pykrx 3-tier cache policy: load Symbol Master from disk
         # at boot so GET /api/symbols/all is immediately warm without a network call.
         _symbols_module.load_disk_state(
@@ -62,6 +70,16 @@ def create_app(data_dir: Path) -> FastAPI:
         try:
             yield
         finally:
+            # Cancel scheduler tasks BEFORE stopping the worker pool: the
+            # scheduler enqueues to the workers, so kill the trigger first
+            # and then let the workers drain.
+            for t in _scheduler_tasks:
+                t.cancel()
+            for t in _scheduler_tasks:
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
             # Stop the worker pool first so in-flight items observe cancellation
             # while bus + observer are still live (they emit terminal events).
             await _captures_module.stop_workers(_captures_module._workers)
@@ -96,6 +114,7 @@ def create_app(data_dir: Path) -> FastAPI:
         build_symbols_router(path=resolve_symbol_master_path(), data_dir=data_dir)
     )
     app.include_router(build_calendar_router(data_dir=data_dir))
+    app.include_router(build_watchlist_router(data_dir=data_dir))
     if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
         app.include_router(build_test_router(data_dir))
     app.state.engine = engine
