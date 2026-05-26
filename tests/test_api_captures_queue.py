@@ -1473,3 +1473,13 @@ def test_enqueue_response_includes_auto_reenqueued_items_in_enqueued_list(
         assert by_date["20260520"]["attempt"] == 2  # auto-retried
         assert by_date["20260521"]["attempt"] == 1  # fresh
         assert body["deduped"] == []
+
+
+def test_enqueue_items_core_is_module_level_and_callable():
+    """ADR-0034: scheduler.py must be able to import enqueue_items_core
+    without going through the router."""
+    from hoga.api import captures as caps
+    assert hasattr(caps, "enqueue_items_core"), \
+        "enqueue_items_core must be module-level for ADR-0034"
+    import asyncio
+    assert asyncio.iscoroutinefunction(caps.enqueue_items_core)
