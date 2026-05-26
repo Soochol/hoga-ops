@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CaptureRowDetail } from './CaptureRowDetail';
 import { getPhase } from './phase';
+import { useInventoryRecaptureOrigins } from '../inventory/useInventoryRecaptureOrigins';
 import type { QueueItem } from '../api/types';
 
 export interface CaptureQueueRowProps {
@@ -13,6 +14,7 @@ export interface CaptureQueueRowProps {
 
 export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: CaptureQueueRowProps) {
   const [expanded, setExpanded] = useState(false);
+  const isFromInventory = useInventoryRecaptureOrigins((s) => s.ids.has(item.item_id));
   const descriptor = getPhase(item.phase);
   const showCancel = !descriptor.terminal;
   const showRetry = item.phase === 'failed';
@@ -53,6 +55,12 @@ export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: Capture
               title={`Attempt ${item.attempt}`}
               className="ml-1.5 text-badge rounded-md px-[0.15rem] border border-[var(--fg-dim)] text-fg-dim"
             >×{item.attempt}</span>
+          )}
+          {isFromInventory && (
+            <span
+              title="Triggered from inventory re-capture"
+              className="ml-1.5 text-badge rounded-md px-[0.15rem] border border-[var(--fg-dim)] text-fg-dim"
+            >inventory</span>
           )}
         </span>
         <span style={{ background: descriptor.chipColor }} className="py-[0.1rem] px-xs rounded-md text-fg-dim">

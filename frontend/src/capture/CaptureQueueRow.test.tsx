@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CaptureQueueRow } from './CaptureQueueRow';
+import { useInventoryRecaptureOrigins } from '../inventory/useInventoryRecaptureOrigins';
 import type { QueueItem } from '../api/types';
 
 const base: QueueItem = {
@@ -88,5 +89,55 @@ describe('CaptureQueueRow attempt badge (ADR-0031)', () => {
                            onCancel={() => {}} onRetry={() => {}} />);
     expect(screen.getByTitle(/force re-capture/i)).toBeTruthy();
     expect(screen.getByTitle(/Attempt 2/i)).toBeTruthy();
+  });
+});
+
+const baseItem: QueueItem = {
+  item_id: 'item-1',
+  code: '005930',
+  date: '20260520',
+  phase: 'queued',
+  force_retry: false,
+  pause_origin: false,
+  enqueued_at_ms: 0,
+  started_at_ms: null,
+  progress: null,
+  result: null,
+  error: null,
+  skip_reason: null,
+  attempt: 1,
+};
+
+beforeEach(() => {
+  useInventoryRecaptureOrigins.getState().clear();
+});
+
+afterEach(() => { vi.restoreAllMocks(); });
+
+describe('CaptureQueueRow — inventory badge', () => {
+  it('renders the "inventory" badge when item_id is in the origins store', () => {
+    useInventoryRecaptureOrigins.getState().add(['item-1']);
+    render(
+      <CaptureQueueRow
+        item={baseItem}
+        symbolName="삼성전자"
+        onCancel={() => {}}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.getByTitle(/Triggered from inventory re-capture/i)).toBeTruthy();
+    expect(screen.getByText('inventory')).toBeTruthy();
+  });
+
+  it('does not render the badge when item_id is NOT in the store', () => {
+    render(
+      <CaptureQueueRow
+        item={baseItem}
+        symbolName="삼성전자"
+        onCancel={() => {}}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.queryByText('inventory')).toBeNull();
   });
 });
