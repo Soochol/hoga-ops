@@ -66,3 +66,71 @@ def save_watchlist(data_dir: Path, *, entries: list[WatchlistEntry]) -> None:
         "entries": [e.model_dump() for e in entries],
     }
     atomic_write_json(_path(data_dir), payload)
+
+
+class AlreadyInWatchlistError(Exception):
+    """Raised by add_entry when the Code is already present."""
+
+
+class NotInWatchlistError(Exception):
+    """Raised by remove_entry when the Code is absent."""
+
+
+async def add_entry(
+    data_dir: Path,
+    *,
+    code: str,
+    name: str,
+    today_kst_date: str,
+) -> WatchlistEntry:
+    async with _lock:
+        wl = load_watchlist(data_dir)
+        if any(e.code == code for e in wl.entries):
+            raise AlreadyInWatchlistError(code)
+        entry = WatchlistEntry(
+            code=code,
+            name=name,
+            registered_at_kst_date=today_kst_date,
+            last_success_date=None,
+        )
+        save_watchlist(data_dir, entries=[*wl.entries, entry])
+        return entry
+
+
+async def remove_entry(data_dir: Path, *, code: str) -> None:
+    async with _lock:
+        wl = load_watchlist(data_dir)
+        if not any(e.code == code for e in wl.entries):
+            raise NotInWatchlistError(code)
+        save_watchlist(
+            data_dir,
+            entries=[e for e in wl.entries if e.code != code],
+        )
+
+
+async def bump_last_success(
+    data_dir: Path,
+    *,
+    code: str,
+    date: str,
+) -> None:
+    """Advance ``last_success_date`` for ``code`` if ``date`` is newer.
+
+    Silent no-op when ``code`` is not in the Watchlist (capture was ad-hoc)
+    or when ``date`` is not newer than the existing marker (out-of-order
+    completions cannot regress).
+    """
+    async with _lock:
+        wl = load_watchlist(data_dir)
+        new_entries: list[WatchlistEntry] = []
+        changed = False
+        for e in wl.entries:
+            if e.code == code and (
+                e.last_success_date is None or date > e.last_success_date
+            ):
+                new_entries.append(e.model_copy(update={"last_success_date": date}))
+                changed = True
+            else:
+                new_entries.append(e)
+        if changed:
+            save_watchlist(data_dir, entries=new_entries)
