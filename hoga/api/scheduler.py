@@ -10,6 +10,7 @@ enqueues. Direct manipulation of ``captures._queue`` / ``_active`` /
 """
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import logging
 from pathlib import Path
@@ -100,3 +101,29 @@ async def _catchup_run(data_dir: Path) -> None:
             )
         except Exception:  # noqa: BLE001
             log.exception("catch-up enqueue failed for %s", entry.code)
+
+
+async def _daily_loop(data_dir: Path) -> None:
+    """Perpetual: sleep to next KST 18:00, run _daily_run, repeat.
+
+    Never lets a single failure kill the loop — see ADR-0034 for the
+    "scheduler is a queue client" framing. The Capture Queue's own
+    pause/resume semantics handle the heavyweight failures; this loop
+    only ensures the *trigger* stays alive.
+    """
+    while True:
+        await asyncio.sleep(seconds_until_next_18_kst(now_kst()))
+        try:
+            await _daily_run(data_dir)
+        except Exception:  # noqa: BLE001
+            log.exception("daily run crashed; loop continues")
+
+
+def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
+    """Spawn the catch-up (one-shot) and daily-loop tasks. Returns the
+    handles so the FastAPI lifespan can cancel them on shutdown.
+    """
+    return [
+        asyncio.create_task(_catchup_run(data_dir), name="watchlist-catchup"),
+        asyncio.create_task(_daily_loop(data_dir), name="watchlist-daily-loop"),
+    ]

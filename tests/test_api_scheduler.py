@@ -196,3 +196,31 @@ async def test_catchup_skips_entry_with_empty_range(tmp_path: Path):
         await scheduler._catchup_run(tmp_path)
     # Gap is [next_day(20260526)=20260527 .. 20260526] which is empty.
     assert enq.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_start_scheduler_spawns_catchup_and_daily_loop(tmp_path: Path):
+    import asyncio
+    from hoga.api import scheduler
+
+    catchup_called = asyncio.Event()
+    daily_loop_entered = asyncio.Event()
+
+    async def fake_catchup(data_dir):
+        catchup_called.set()
+        await asyncio.sleep(3600)  # stay alive so cancel() raises
+
+    async def fake_daily_loop(data_dir):
+        daily_loop_entered.set()
+        await asyncio.sleep(3600)  # never fire in this test
+
+    with patch("hoga.api.scheduler._catchup_run", side_effect=fake_catchup), \
+         patch("hoga.api.scheduler._daily_loop", side_effect=fake_daily_loop):
+        tasks = scheduler.start_scheduler(tmp_path)
+        await asyncio.wait_for(catchup_called.wait(), timeout=1.0)
+        await asyncio.wait_for(daily_loop_entered.wait(), timeout=1.0)
+        for t in tasks:
+            t.cancel()
+        for t in tasks:
+            with pytest.raises((asyncio.CancelledError, BaseException)):
+                await t
