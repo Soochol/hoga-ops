@@ -124,7 +124,7 @@ def test_validate_deep_runs_series_invariants(tmp_path, monkeypatch):
     # Healthy meta but ts_ms regression in candles.
     _seed_with_candles(
         tmp_path, "20260520", "005930", _healthy(),
-        candle_ts_list=[90_002_000, 90_001_000],  # regression
+        candle_ts_list=[90_001_000, 90_001_000],  # duplicate ts_ms
     )
 
     result_shallow = CliRunner().invoke(app, ["validate", "--severity", "all"])
@@ -207,7 +207,11 @@ def test_validate_deep_fix_writes_combined_archival(tmp_path, monkeypatch):
     bad_meta = _healthy() | {"regular_session_close_ms": 0}
     _seed_with_candles(
         tmp_path, "20260518", "003490", bad_meta,
-        candle_ts_list=[90_002_000, 90_001_000],
+        # Duplicate ts_ms is the only post-sort failure mode that survives
+        # candles.write_parquet's canonical ASC sort — this is what actually
+        # breaks the chart library. Raw-order regressions get silently fixed
+        # by the sort, so they aren't valid invariant inputs anymore.
+        candle_ts_list=[90_001_000, 90_001_000],
     )
 
     result = CliRunner().invoke(app, ["validate", "--deep", "--fix"])

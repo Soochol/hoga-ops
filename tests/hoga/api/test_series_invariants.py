@@ -75,14 +75,19 @@ def test_candles_ts_monotonic_fires_on_equal_timestamps() -> None:
     assert fired[0].ctx["curr_ts_ms"] == 90_001_000
 
 
-def test_candles_ts_monotonic_fires_on_regression() -> None:
+def test_candles_ts_monotonic_passes_for_hogaplay_descending_input() -> None:
+    """Real-world case: hogaplay's chart.tsv arrives newest-first (descending).
+    candles.write_parquet sorts ASC before persisting, so the chart library
+    only ever sees sorted data. The invariant must check the canonical order,
+    not the raw parse order — otherwise it fires on every healthy capture.
+    Regression for the 489790/20260224 archival false-positive (377 spurious
+    violations recorded in meta.json, excluding the date from range queries)."""
     arts = StockDateArtifacts(meta={}, candles=[
-        _candle(90_002_000), _candle(90_001_000),
+        _candle(90_003_000), _candle(90_002_000), _candle(90_001_000),
     ])
     fired = [v for v in check_series(arts)
              if v.invariant_id == "series.candles_ts_monotonic"]
-    assert len(fired) == 1
-    assert fired[0].ctx["curr_ts_ms"] < fired[0].ctx["prev_ts_ms"]
+    assert fired == []
 
 
 def test_candles_ts_monotonic_skips_when_candles_none() -> None:
@@ -93,15 +98,21 @@ def test_candles_ts_monotonic_skips_when_candles_none() -> None:
     assert fired == []
 
 
-def test_candles_ts_monotonic_reports_every_regression() -> None:
-    """Multiple bad pairs → one violation per pair (not just first)."""
+def test_candles_ts_monotonic_reports_each_duplicate_pair() -> None:
+    """Post-sort, the only way to fail strict-ascending is duplicate ts_ms —
+    one violation per duplicate pair, regardless of raw input order. The
+    write_parquet sort puts adjacent dupes next to each other."""
     arts = StockDateArtifacts(meta={}, candles=[
-        _candle(90_001_000), _candle(90_000_000),  # regression 1
-        _candle(90_002_000), _candle(90_001_500),  # regression 2
+        # Two distinct duplicate clusters; raw order is intentionally mixed
+        # so the sort-first behavior is exercised, not just trivially passed.
+        _candle(90_002_000), _candle(90_001_000), _candle(90_002_000),
+        _candle(90_003_000), _candle(90_003_000),
     ])
     fired = [v for v in check_series(arts)
              if v.invariant_id == "series.candles_ts_monotonic"]
     assert len(fired) == 2
+    # Both violations report duplicate timestamps (curr == prev).
+    assert all(v.ctx["prev_ts_ms"] == v.ctx["curr_ts_ms"] for v in fired)
 
 
 # === series.snapshots_no_gaps (warn) ===
@@ -194,16 +205,23 @@ def test_check_series_5_18_003490_candle_regression_pattern() -> None:
     that motivated ADR-0020 + the series catalog.
 
     Production error message: "Assertion failed: data must be asc ordered by
-    time, index=1055, time=599428, prev time=631826". Those values are in
-    seconds (UTCTimestamp); ×1000 gives the ms values that the candles
-    invariant scans. Future catalog edits dropping this property break CI."""
+    time, index=1055, time=599428, prev time=631826". The library only sees
+    the canonicalized parquet (sorted ASC by ``candles.write_parquet``), so a
+    raw-input reordering would silently be fixed by the sort. The remaining
+    way to trip the library is duplicate ts_ms: after ASC sort, equal-time
+    rows land adjacent and the next row violates strict ordering. This test
+    locks that contract with the original crash's literal time values."""
     arts = StockDateArtifacts(meta={}, candles=[
-        _candle(631_826_000),   # the previous candle's ts_ms
-        _candle(599_428_000),   # the regression that crashed setData
+        _candle(631_826_000),
+        _candle(599_428_000),
+        # Two candles share the original "curr" timestamp — after sort,
+        # they collide and trigger the same chart-library assertion that
+        # ADR-0020 was added to prevent.
+        _candle(599_428_000),
     ])
     fired = [v for v in check_series(arts)
              if v.invariant_id == "series.candles_ts_monotonic"]
     assert len(fired) == 1
     assert fired[0].severity == Severity.error
-    assert fired[0].ctx["prev_ts_ms"] == 631_826_000
+    assert fired[0].ctx["prev_ts_ms"] == 599_428_000
     assert fired[0].ctx["curr_ts_ms"] == 599_428_000

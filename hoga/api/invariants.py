@@ -233,18 +233,29 @@ class SeriesInvariant:
     check: Callable[["StockDateArtifacts"], list[Violation]]
 
 
-# --- error: candles ts_ms strictly ascending ---
+# --- error: candles ts_ms strictly ascending (post-sort = no duplicates) ---
 # Direct root cause of the 5/18/003490 chart crash. The library's setData
 # assertion ("data must be asc ordered by time") fires when this is broken;
 # excluding the Stock-Date upstream prevents that path.
+#
+# Sort defensively before checking: hogaplay's chart.tsv arrives in DESCENDING
+# order (newest-first convention) and ``candles.write_parquet`` sorts ASC
+# before persisting. Read-paths and the chart library only ever see the sorted
+# parquet, so a raw-order strict-ascending check fires false positives on
+# every healthy capture (hundreds per Stock-Date). The contract that actually
+# matters is the on-disk one: after the canonical sort, strict ordering can
+# only fail if duplicate ts_ms survives — which is exactly the case that
+# breaks the chart library. Same defensive pattern as
+# ``find_cum_vol_violations`` (tie-break sort there, full sort here).
 
 def _series_candles_ts_monotonic(a: "StockDateArtifacts") -> list[Violation]:
     if a.candles is None:
         return []
+    rows = sorted(a.candles, key=lambda c: c.ts_ms)
     out: list[Violation] = []
-    for i in range(1, len(a.candles)):
-        prev = a.candles[i - 1].ts_ms
-        curr = a.candles[i].ts_ms
+    for i in range(1, len(rows)):
+        prev = rows[i - 1].ts_ms
+        curr = rows[i].ts_ms
         if curr <= prev:
             out.append(Violation(
                 "series.candles_ts_monotonic",
