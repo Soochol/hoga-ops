@@ -521,3 +521,26 @@ class WatchlistResponse(BaseModel):
 
 class WatchlistAddRequest(BaseModel):
     code: str = Field(pattern=r"^\d{6}$")
+
+
+# --- Watchlist manual catch-up (see spec 2026-05-27) -----------------------
+
+
+class ManualCatchupAllEntryResult(BaseModel):
+    """One row in the ManualCatchupAllResponse.results list.
+
+    ``error`` is a short string (KRX upstream code like
+    ``krx_credentials_missing``, or an exception message) for the panel
+    to surface in the banner's per-entry failure list. ``None`` when the
+    entry succeeded.
+    """
+    code: str = Field(pattern=r"^\d{6}$")
+    name: str
+    enqueued_count: int
+    deduped_count: int
+    error: str | None = None
+
+
+class ManualCatchupAllResponse(BaseModel):
+    """Response shape for POST /api/watchlist/catchup."""
+    results: list[ManualCatchupAllEntryResult]

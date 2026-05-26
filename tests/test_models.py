@@ -168,3 +168,38 @@ def test_watchlist_add_request_validates_code():
     WatchlistAddRequest(code="003490")
     with pytest.raises(ValidationError):
         WatchlistAddRequest(code="ABCDEF")
+
+
+def test_manual_catchup_all_entry_result_fields():
+    from hoga.api.models import ManualCatchupAllEntryResult
+    r = ManualCatchupAllEntryResult(
+        code="003490", name="대한항공",
+        enqueued_count=3, deduped_count=2, error=None,
+    )
+    assert r.code == "003490"
+    assert r.enqueued_count == 3
+    assert r.deduped_count == 2
+    assert r.error is None
+
+
+def test_manual_catchup_all_entry_result_with_error():
+    from hoga.api.models import ManualCatchupAllEntryResult
+    r = ManualCatchupAllEntryResult(
+        code="003490", name="대한항공",
+        enqueued_count=0, deduped_count=0,
+        error="krx_credentials_missing",
+    )
+    assert r.error == "krx_credentials_missing"
+
+
+def test_manual_catchup_all_response_aggregates():
+    from hoga.api.models import (
+        ManualCatchupAllResponse, ManualCatchupAllEntryResult,
+    )
+    resp = ManualCatchupAllResponse(results=[
+        ManualCatchupAllEntryResult(code="003490", name="대한항공",
+                                     enqueued_count=3, deduped_count=2),
+        ManualCatchupAllEntryResult(code="005930", name="삼성전자",
+                                     enqueued_count=0, deduped_count=5),
+    ])
+    assert len(resp.results) == 2
