@@ -7,8 +7,8 @@ import { fmtDate, fmtTime, fmtSize, fmtOHLC, fmtVolume } from './format';
 import { DiskStateBadge, isRecapturable } from './DiskStateBadge';
 import { sortDates, nextSortState, type SortKey, type SortState } from './sortDates';
 import { useInventoryRecapture } from './useInventoryRecapture';
-import { useRecaptureSelection } from './useRecaptureSelection';
 import { RecaptureActionBar } from './RecaptureActionBar';
+import { useCaptureQueue } from '../capture/useCaptureQueue';
 
 type Props = {
   rows: StockDate[];
@@ -20,7 +20,7 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
   const groups = useStockDateGroups(rows, '');
   const group = useMemo(() => {
     if (selectedCode === null) return null;
-    return groups.find(g => g.code === selectedCode) ?? groups[0] ?? null;
+    return groups.find((g) => g.code === selectedCode) ?? groups[0] ?? null;
   }, [groups, selectedCode]);
 
   const [sort, setSort] = useState<SortState>(null);
@@ -29,10 +29,19 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
     [group, sort],
   );
 
-  const { selectedDates, recapturableDates, toggleSelection, clearSelection } =
-    useRecaptureSelection(sortedDates, selectedCode);
-
   const { recapture, status, isPending } = useInventoryRecapture();
+  const { queue } = useCaptureQueue();
+
+  // In-flight set: any (code, date) currently in queue.active ∪ queue.queued.
+  // SSE updates from capture_queued / capture_progress / capture_finished
+  // invalidate the queue cache (see useCaptureQueue), so this Set tracks live.
+  const inFlightSet = useMemo(() => {
+    const s = new Set<string>();
+    if (!queue) return s;
+    for (const i of queue.active) s.add(`${i.code}|${i.date}`);
+    for (const i of queue.queued) s.add(`${i.code}|${i.date}`);
+    return s;
+  }, [queue]);
 
   if (group === null) {
     return (
@@ -43,7 +52,7 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
   }
 
   const totalVolume = group.dates.reduce((s, d) => s + d.total_volume, 0);
-  const recapturableCount = recapturableDates.size;
+  const recapturableCount = sortedDates.filter((r) => isRecapturable(r.disk_state)).length;
 
   const onRowClick = (r: StockDate) => {
     const tabId = useTabsStore.getState().newTab();
@@ -56,15 +65,14 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
     navigate('/replay');
   };
 
-  const onSort = (column: SortKey) => setSort(prev => nextSortState(prev, column));
+  const onSort = (column: SortKey) => setSort((prev) => nextSortState(prev, column));
 
-  const handleRecaptureSelected = async () => {
-    await recapture(group.code, [...selectedDates]);
-    clearSelection();
-  };
-  const handleRecaptureAll = async () => {
-    await recapture(group.code, [...recapturableDates]);
-  };
+  const handleRecaptureRow = (date: string) => recapture(group.code, [date]);
+  const handleRecaptureAll = () =>
+    recapture(
+      group.code,
+      sortedDates.filter((r) => isRecapturable(r.disk_state)).map((r) => r.date),
+    );
 
   return (
     <section className="bg-bg-card border rounded-lg flex flex-col min-h-0 overflow-hidden">
@@ -79,10 +87,7 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
           </span>
           <RecaptureActionBar
             recapturableCount={recapturableCount}
-            selectedCount={selectedDates.size}
-            onRecaptureSelected={handleRecaptureSelected}
             onRecaptureAll={handleRecaptureAll}
-            onClearSelection={clearSelection}
             status={status}
             isPending={isPending}
           />
@@ -92,7 +97,7 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
         <table className="w-full border-collapse font-mono text-sm tabular-nums">
           <thead className="bg-bg-subtle sticky top-0">
             <tr>
-              <th className="px-2 py-2 border-b w-8" aria-label="select" />
+              <th className="px-2 py-2 border-b w-8" aria-label="re-capture" />
               <SortableTh column="state"    sort={sort} onSort={onSort}>State</SortableTh>
               <SortableTh column="date"     sort={sort} onSort={onSort}>Date</SortableTh>
               <SortableTh column="captured" sort={sort} onSort={onSort}>Captured</SortableTh>
@@ -105,19 +110,21 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
           <tbody>
             {sortedDates.map((r) => {
               const recap = isRecapturable(r.disk_state);
+              const inFlight = inFlightSet.has(`${r.code}|${r.date}`);
               return (
                 <tr
                   key={`${r.code}-${r.date}`}
                   onClick={() => onRowClick(r)}
                   className="border-b hover:bg-bg-input-hover cursor-pointer"
                 >
-                  <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                  <td
+                    className="px-2 py-1.5 text-center"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {recap ? (
-                      <input
-                        type="checkbox"
-                        aria-label={`select ${r.date}`}
-                        checked={selectedDates.has(r.date)}
-                        onChange={() => toggleSelection(r.date)}
+                      <RowRecaptureButton
+                        isInFlight={inFlight}
+                        onClick={() => handleRecaptureRow(r.date)}
                       />
                     ) : null}
                   </td>
@@ -135,6 +142,31 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
         </table>
       </div>
     </section>
+  );
+}
+
+function RowRecaptureButton({
+  isInFlight,
+  onClick,
+}: {
+  isInFlight: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={isInFlight ? 'Re-capturing…' : 'Re-capture this Stock-Date'}
+      disabled={isInFlight}
+      onClick={onClick}
+      className={[
+        'bg-transparent border-none p-0 text-sm',
+        isInFlight
+          ? 'text-fg-dim animate-spin cursor-not-allowed'
+          : 'text-accent hover:text-fg cursor-pointer',
+      ].join(' ')}
+    >
+      ↻
+    </button>
   );
 }
 

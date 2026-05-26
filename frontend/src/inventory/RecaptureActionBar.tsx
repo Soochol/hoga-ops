@@ -1,70 +1,44 @@
 import type { RecaptureStatus } from './useInventoryRecapture';
+import { RECAPTURABLE_DISK_STATES } from './DiskStateBadge';
 
 export type { RecaptureStatus };
 
 type Props = {
   recapturableCount: number;
-  selectedCount: number;
-  onRecaptureSelected: () => void;
   onRecaptureAll: () => void;
-  onClearSelection: () => void;
   status: RecaptureStatus | null;
   isPending: boolean;
 };
 
+/** Short tooltip derived from the DiskStateValue strings themselves —
+ *  "source partial · client incomplete · invalid". Per the spec, this avoids
+ *  the verbose PRESENTATION labels (which include em-dash explanations) and
+ *  the hardcoded-string footgun. */
+function recapturableTooltip(): string {
+  return RECAPTURABLE_DISK_STATES.map((s) => s.replace(/_/g, ' ')).join(' · ');
+}
+
 export function RecaptureActionBar({
   recapturableCount,
-  selectedCount,
-  onRecaptureSelected,
   onRecaptureAll,
-  onClearSelection,
   status,
   isPending,
 }: Props) {
   if (recapturableCount === 0 && status === null) return null;
 
-  const inSelectionMode = selectedCount > 0;
-
   return (
     <div className="flex flex-col gap-1 text-xs">
-      <div className="flex items-center gap-3">
-        {inSelectionMode ? (
-          <>
-            <span className="text-fg-dim font-mono tabular-nums">
-              {selectedCount} selected
-            </span>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={onRecaptureSelected}
-              style={{
-                background: isPending ? 'var(--bg-input)' : 'var(--accent)',
-                color: isPending ? 'var(--fg-dimmer)' : 'var(--bg)',
-              }}
-              className="border-none rounded-md px-2.5 py-1 font-semibold cursor-pointer disabled:cursor-not-allowed"
-            >
-              ▶ Re-capture
-            </button>
-            <button
-              type="button"
-              onClick={onClearSelection}
-              className="text-fg-dim hover:text-fg cursor-pointer bg-transparent border-none"
-            >
-              Clear
-            </button>
-          </>
-        ) : recapturableCount > 0 ? (
-          <button
-            type="button"
-            disabled={isPending}
-            title="source partial · client incomplete · invalid"
-            onClick={onRecaptureAll}
-            className="text-fg-dim hover:text-fg cursor-pointer bg-transparent border-none disabled:cursor-not-allowed"
-          >
-            Re-capture all incomplete ({recapturableCount})
-          </button>
-        ) : null}
-      </div>
+      {recapturableCount > 0 && (
+        <button
+          type="button"
+          disabled={isPending}
+          title={recapturableTooltip()}
+          onClick={onRecaptureAll}
+          className="rounded-md px-2.5 py-1 font-semibold cursor-pointer disabled:cursor-not-allowed border bg-bg-input border-accent text-accent hover:bg-accent hover:text-bg"
+        >
+          ↻ Re-capture all incomplete ({recapturableCount})
+        </button>
+      )}
       {status?.kind === 'success' && (
         <div className="text-fg-dim font-mono tabular-nums">
           Queued {status.enqueued} capture{status.enqueued === 1 ? '' : 's'}
