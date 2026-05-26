@@ -7,11 +7,16 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
-from hoga.api.models import WatchlistResponse
+from hoga.api import symbols
+from hoga.api.models import (
+    WatchlistAddRequest,
+    WatchlistEntry,
+    WatchlistResponse,
+)
 from hoga.api.scheduler import seconds_until_next_18_kst
-from hoga.api.watchlist import load_watchlist
+from hoga.api.watchlist import AlreadyInWatchlistError, add_entry, load_watchlist
 from hoga.collector.orchestrator import now_kst
 
 
@@ -31,5 +36,26 @@ def build_router(*, data_dir: Path) -> APIRouter:
             entries=wl.entries,
             next_run_at_ms=_next_run_at_ms(now_kst()),
         )
+
+    @router.post("", status_code=201, response_model=WatchlistEntry)
+    async def add_to_watchlist(req: WatchlistAddRequest) -> WatchlistEntry:
+        hits = symbols.search(req.code, limit=1)
+        match = next((h for h in hits if h.code == req.code), None)
+        if match is None:
+            raise HTTPException(status_code=400, detail={
+                "code": "unknown_code",
+                "message": f"Code {req.code} is not in the symbol master.",
+            })
+        today = now_kst().strftime("%Y%m%d")
+        try:
+            entry = await add_entry(
+                data_dir, code=req.code, name=match.name, today_kst_date=today,
+            )
+        except AlreadyInWatchlistError as e:
+            raise HTTPException(status_code=409, detail={
+                "code": "already_in_watchlist",
+                "message": f"Code {req.code} is already in the Watchlist.",
+            }) from e
+        return entry
 
     return router
