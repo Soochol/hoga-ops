@@ -1,4 +1,4 @@
-import type { CaptureError, QueueItem, UpstreamCode } from '../api/types';
+import type { CaptureError, QueueItem, UpstreamCode, ViolationWire } from '../api/types';
 import { captureFinishedHints } from '../api/upstream-hints';
 
 function ErrorBlock({ error }: { error: CaptureError }) {
@@ -69,8 +69,38 @@ export function CaptureRowDetail({ item }: { item: QueueItem }) {
           )}
         </>
       )}
+      {item.warnings != null && item.warnings.length > 0 && (
+        <>
+          <span className="text-warn">warnings</span>
+          <span className="text-warn">
+            <WarningsBlock warnings={item.warnings} />
+          </span>
+        </>
+      )}
     </div>
   );
+}
+
+function WarningsBlock({ warnings }: { warnings: ViolationWire[] }) {
+  return (
+    <ul className="list-none p-0 m-0">
+      {warnings.map((w, i) => (
+        <li key={`${w.invariant_id}:${i}`}>
+          {warningHint(w)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function warningHint(w: ViolationWire): string {
+  // Surface the invariant_id so operators can correlate with archived
+  // meta.json. Severity is implied by the warn-tinted block; we leave it
+  // out of the line to avoid noise.
+  if (w.invariant_id === 'series.cum_vol_monotonic') {
+    return `누적 거래량이 한 차례 역행했습니다(업스트림 보정). 데이터는 그대로 저장됨. (${w.message})`;
+  }
+  return `${w.invariant_id}: ${w.message}`;
 }
 
 function abortReasonHint(reason: string): string {

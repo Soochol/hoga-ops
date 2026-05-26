@@ -165,6 +165,12 @@ class QueueItem(BaseModel):
     error: CaptureError | None = None
     skip_reason: SkipReason | None = None
     attempt: int = 1  # 1 = first try; Retry-enqueued items carry prior + 1 (ADR-0031)
+    # ADR-0020 invariant violations surfaced inline. Populated when strict-mode
+    # parse rejected the data but lenient-mode retry succeeded (currently:
+    # upstream cum_vol/orderbook anomalies). phase stays 'done'; the UI renders
+    # a non-fatal warning badge. None when no warnings; empty list is reserved
+    # so the field type stays stable across mirror.
+    warnings: list[ViolationModel] | None = None
 
 
 
@@ -202,6 +208,10 @@ class CaptureFinishedEvent(_CaptureEventBase):
     result: CaptureResult | None = None
     error: CaptureError | None = None
     skip_reason: SkipReason | None = None  # set when phase == "skipped"
+    # Mirrors QueueItem.warnings — same ADR-0020 invariant outcomes, exposed on
+    # the SSE terminal event so subscribers don't need a follow-up snapshot poll
+    # to discover that a 'done' capture carries warnings.
+    warnings: list[ViolationModel] | None = None
 
 
 # --- Queue-level SSE events (Plan B) ----------------------------------------

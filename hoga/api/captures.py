@@ -43,6 +43,7 @@ from hoga.api.models import (
     RetryResponse,
     RetrySkippedRow,
     SkipReason,
+    ViolationModel,
 )
 from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
@@ -59,6 +60,8 @@ from hoga.collector.orchestrator import (
 )
 from hoga.config import CookieMissingError
 from hoga.parser import parse_stock_date
+from hoga.tables.snapshots import SnapshotValidationError
+from hoga.tables.trades import TradeValidationError
 
 # Fail fast if someone runs uvicorn multi-worker — see spec §4.4.
 # The _latest singleton and asyncio.Lock are per-process; multi-worker would
@@ -67,6 +70,32 @@ if int(os.environ.get("WEB_CONCURRENCY", "1")) > 1:
     raise RuntimeError(
         "hoga-ops captures require a single uvicorn worker. "
         "Found WEB_CONCURRENCY > 1. Use `hoga serve` or pass --workers 1."
+    )
+
+
+def _validation_error_to_warning(exc: BaseException) -> ViolationModel:
+    """Build a wire warning from the strict-mode validation error that
+    triggered the lenient fallback. Carrying the exception message verbatim
+    keeps the surfaced detail (e.g. ``cum_vol decreased at ts_ms=...``)
+    identical to what the operator saw in the old `failed` row, so they can
+    correlate with any previously captured logs / screenshots.
+
+    Scoped intentionally: meta.json carries every archival-only invariant
+    (e.g. ``series.candles_ts_monotonic``) regardless of strict outcome, so
+    reading the whole list would leak warnings unrelated to this capture's
+    fallback. The exception identifies the single invariant the strict path
+    objected to — that is the truthful, minimal warning to surface.
+    """
+    invariant_id = (
+        "series.cum_vol_monotonic" if isinstance(exc, TradeValidationError)
+        else "series.snapshots_ladder_ordered" if isinstance(exc, SnapshotValidationError)
+        else "series.unknown"
+    )
+    return ViolationModel(
+        invariant_id=invariant_id,
+        severity="warn",  # captures-UI semantics: parse completed via fallback
+        message=str(exc),
+        ctx={},
     )
 
 
@@ -110,6 +139,10 @@ class QueueItemState:
     skip_reason: SkipReason | None = None
     cancel_token: Any = None
     attempt: int = 1
+    # Populated when the strict-mode parse raised TradeValidationError /
+    # SnapshotValidationError and the lenient-mode retry recorded violations
+    # in meta.json. Stays None on clean parses so the wire payload omits it.
+    warnings: list[ViolationModel] | None = None
 
     def to_progress(self) -> CaptureProgress | None:
         if self.pages_done == 0:
@@ -146,6 +179,7 @@ class QueueItemState:
             error=self.error,
             skip_reason=self.skip_reason,
             attempt=self.attempt,
+            warnings=self.warnings,
         )
 
     @property
@@ -530,12 +564,30 @@ async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
 
     state.phase = "parsing"
     await _publish_phase(state)
-    await loop.run_in_executor(
-        None,
-        lambda: parse_stock_date(
-            code=state.code, date=state.date, data_dir=data_dir, lenient=False,
-        ),
-    )
+    # ADR-0020 strict-first/lenient-fallback: strict mode is the canary that
+    # catches parser-side bugs (page sort, dedup, tie-break — see 65c0a2f).
+    # But upstream hogaplay occasionally emits a single cum_vol rebase or
+    # out-of-ladder orderbook snapshot, and rejecting a 10-minute capture over
+    # one anomaly is the wrong trade. On a known invariant failure we retry
+    # with lenient=True, then surface the violations from meta.json as
+    # warnings (phase stays 'done'). Other parser failures (file I/O, schema
+    # drift, unknown event types) still propagate to the worker loop's
+    # exception handler and flip phase to 'failed' as before.
+    try:
+        await loop.run_in_executor(
+            None,
+            lambda: parse_stock_date(
+                code=state.code, date=state.date, data_dir=data_dir, lenient=False,
+            ),
+        )
+    except (TradeValidationError, SnapshotValidationError) as exc:
+        await loop.run_in_executor(
+            None,
+            lambda: parse_stock_date(
+                code=state.code, date=state.date, data_dir=data_dir, lenient=True,
+            ),
+        )
+        state.warnings = [_validation_error_to_warning(exc)]
 
     state.result = CaptureResult(
         pages_written=result.pages_written,
@@ -610,6 +662,7 @@ async def _finalize_item(state: QueueItemState) -> None:
         result=state.result,
         error=state.error,
         skip_reason=state.skip_reason,
+        warnings=state.warnings,
     ))
 
 

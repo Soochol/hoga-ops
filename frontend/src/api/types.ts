@@ -167,6 +167,10 @@ export interface QueueItem {
   error: CaptureError | null;
   skip_reason: SkipReason | null;
   attempt: number;
+  /** ADR-0020 invariant violations attached when a strict-mode parse failure
+   *  was absorbed by a lenient-mode retry (currently: upstream cum_vol /
+   *  orderbook anomalies). phase stays 'done'; UI renders a warning badge. */
+  warnings?: ViolationWire[] | null;
 }
 
 /** Common header on every per-item SSE event (capture_progress / capture_phase /
@@ -188,6 +192,7 @@ export type SSEEvent =
       result: CaptureResult | null;
       error: CaptureError | null;
       skip_reason: SkipReason | null;
+      warnings?: ViolationWire[] | null;
     })
   | { type: 'capture_queued'; items: QueueItem[] }
   | { type: 'capture_dismissed'; item_ids: string[] }

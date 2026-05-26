@@ -1359,6 +1359,101 @@ def test_enqueue_uses_request_force_retry_not_old_item_force_retry(
         assert body["enqueued"][0]["force_retry"] is False  # request wins
 
 
+# --- ADR-0020 strict-first/lenient-fallback parse path ---------------------
+
+
+@pytest.mark.asyncio
+async def test_parse_trade_validation_error_retries_lenient_and_surfaces_warnings(
+    monkeypatch, tmp_path,
+):
+    """Reproduces the 489790/20260224 cum_vol-rebase scenario: strict parse
+    raises TradeValidationError, the wrapper retries with lenient=True, and the
+    item finalizes as 'done' with the meta.json invariants attached to
+    state.warnings (visible on the SSE finished event and snapshot)."""
+    from pathlib import Path
+
+    from hoga.collector.orchestrator import CollectResult
+    from hoga.tables.trades import TradeValidationError
+
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
+    monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
+                        lambda *_a, **_k: Classification(state=DiskState.NONE))
+
+    # Stub the collector so we don't actually fetch anything.
+    monkeypatch.setattr(captures, "_require_client_factory", lambda: (lambda: object()))
+    def _fake_collect(**_kw) -> CollectResult:
+        return CollectResult(raw_dir=Path(tmp_path), pages_written=1384,
+                              unique_events=129067, abort_reason=None)
+    monkeypatch.setattr(captures, "collect_stock_date", _fake_collect)
+
+    call_modes: list[bool] = []
+    def _fake_parse(*, code, date, data_dir, lenient):
+        call_modes.append(lenient)
+        if not lenient:
+            raise TradeValidationError(
+                "cum_vol decreased at ts_ms=95421384: 3086391 -> 3085866"
+            )
+        # Lenient succeeds — caller will read meta.json next.
+        return Path(data_dir) / "parquet" / date / code
+    monkeypatch.setattr(captures, "parse_stock_date", _fake_parse)
+
+    captures._queue.append(_make_item("anomaly-1", code="489790", date="20260224"))
+    workers = captures.start_workers(n=1)
+    await asyncio.wait_for(captures.wait_drained(), timeout=2.0)
+    await captures.stop_workers(workers)
+
+    # Both attempts happened, in the right order (strict first, then lenient).
+    assert call_modes == [False, True]
+
+    snap = captures.get_queue_snapshot()
+    assert len(snap.done) == 1
+    item = snap.done[0]
+    assert item.phase == "done"
+    assert item.error is None
+    assert item.warnings is not None
+    assert len(item.warnings) == 1
+    # Synthesized from the strict-mode TradeValidationError, not pulled from
+    # meta.json — so unrelated archival-only invariants don't bleed in.
+    assert item.warnings[0].invariant_id == "series.cum_vol_monotonic"
+    assert item.warnings[0].severity == "warn"
+    assert "cum_vol decreased at ts_ms=95421384" in item.warnings[0].message
+
+
+@pytest.mark.asyncio
+async def test_parse_clean_capture_leaves_warnings_unset(monkeypatch, tmp_path):
+    """Inverse case: strict parse succeeds, warnings stays None."""
+    from pathlib import Path
+
+    from hoga.collector.orchestrator import CollectResult
+
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
+    monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
+                        lambda *_a, **_k: Classification(state=DiskState.NONE))
+    monkeypatch.setattr(captures, "_require_client_factory", lambda: (lambda: object()))
+    monkeypatch.setattr(captures, "collect_stock_date",
+                        lambda **_kw: CollectResult(raw_dir=Path(tmp_path),
+                                                     pages_written=10,
+                                                     unique_events=100,
+                                                     abort_reason=None))
+    monkeypatch.setattr(captures, "parse_stock_date",
+                        lambda **_kw: Path(tmp_path))
+
+    # If the warning synthesizer is called, this test fails loudly — the
+    # strict path must skip the lenient retry entirely.
+    def _boom(*_a, **_k):
+        raise AssertionError("_validation_error_to_warning called on clean capture")
+    monkeypatch.setattr(captures, "_validation_error_to_warning", _boom)
+
+    captures._queue.append(_make_item("clean-1"))
+    workers = captures.start_workers(n=1)
+    await asyncio.wait_for(captures.wait_drained(), timeout=2.0)
+    await captures.stop_workers(workers)
+
+    snap = captures.get_queue_snapshot()
+    assert snap.done[0].phase == "done"
+    assert snap.done[0].warnings is None
+
+
 def test_enqueue_response_includes_auto_reenqueued_items_in_enqueued_list(
     monkeypatch, tmp_path,
 ):

@@ -76,6 +76,66 @@ describe('CaptureRowDetail abort_reason', () => {
   });
 });
 
+describe('CaptureRowDetail warnings (ADR-0020 lenient-fallback)', () => {
+  const doneBase: QueueItem = {
+    ...base,
+    phase: 'done',
+    result: {
+      pages_written: 1384,
+      unique_events: 129067,
+      raw_dir: '/data/raw/20260224/489790',
+      parsed: true,
+      abort_reason: null,
+    },
+  };
+
+  it('omits the warnings section when item.warnings is null or empty', () => {
+    render(<CaptureRowDetail item={doneBase} />);
+    expect(screen.queryByText(/warnings/i)).toBeNull();
+    render(<CaptureRowDetail item={{ ...doneBase, warnings: [] }} />);
+    expect(screen.queryByText(/warnings/i)).toBeNull();
+  });
+
+  it('shows a Korean hint for series.cum_vol_monotonic violations', () => {
+    render(
+      <CaptureRowDetail
+        item={{
+          ...doneBase,
+          warnings: [
+            {
+              invariant_id: 'series.cum_vol_monotonic',
+              severity: 'warn',
+              message: 'cum_vol regressed across continuous-trade rows',
+              ctx: { ts_ms: 95421384, prev: 3086391, curr: 3085866 },
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText(/warnings/i)).toBeTruthy();
+    expect(screen.getByText(/누적 거래량이 한 차례 역행/)).toBeTruthy();
+  });
+
+  it('falls back to invariant_id + message for unknown invariants', () => {
+    render(
+      <CaptureRowDetail
+        item={{
+          ...doneBase,
+          warnings: [
+            {
+              invariant_id: 'series.future_invariant',
+              severity: 'warn',
+              message: 'something unusual',
+              ctx: {},
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText('series.future_invariant: something unusual')).toBeTruthy();
+  });
+});
+
 describe('CaptureRowDetail UpstreamCode map-driven copy', () => {
   it('shows captureFinishedHints copy when error.code is an UpstreamCode (cookie_expired)', () => {
     render(
