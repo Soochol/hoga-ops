@@ -107,6 +107,22 @@ Either path: backend removes the old `_done` entry, publishes `CaptureDismissedE
 Distinct from **force_retry**: Retry is the *operation* of giving an item another try; `force_retry` is a *boolean flag* on each item that controls whether sentinels / partial raw artifacts are deleted before capture (see `No Upstream Data`). The two compose. `done` items in `_done` are never auto-Retried — `decide_capture` would mark them skipped immediately because COMPLETE state is not bypassable via `force_retry` today.
 _Avoid_: "re-enqueue" (loses the attempt-counting semantics), "rerun" (ambiguous with replay / backtest reruns).
 
+**Watchlist**:
+The single set of **Code**s the user has marked for unattended daily capture. There is one Watchlist per `<data_dir>`; no per-user multiplexing because hoga-ops is a single-user local tool. Persisted to `<data_dir>/watchlist.json` as an insertion-ordered list of **WatchlistEntry** records. Mutated only via the `POST /api/watchlist` / `DELETE /api/watchlist/{code}` endpoints and the **Daily Scheduler**'s `bump_last_success` hook. A Code's presence in the Watchlist is independent of any individual **Capture Queue** state — removing a Code from the Watchlist does not cancel queued or active jobs for it.
+_Avoid_: "subscription" (ambiguous with SSE topics), "auto-list", "follow list", "starred" (no UI star metaphor — the verb is "add to Watchlist").
+
+**WatchlistEntry**:
+One row of the **Watchlist**: `{code, name, registered_at_kst_date, last_success_date}`. `name` is captured at registration time from the symbol-master cache so the UI does not re-resolve it on every render. `registered_at_kst_date` is a YYYYMMDD KST-date stamp used as the floor for **Catch-up Run** when `last_success_date` is null — past history before registration is never backfilled. `last_success_date` is the most recent YYYYMMDD for which the Code reached `phase = done` in the **Capture Queue** (null until the first success). The hook only advances the marker forward, so out-of-order completions cannot regress it.
+_Avoid_: "watch item", "subscribed code".
+
+**Daily Scheduler**:
+The asyncio task that sleeps until the next KST 18:00, then enqueues `(entry.code, today_kst)` for every **WatchlistEntry**, then sleeps another 24 h. Runs in the same uvicorn process as the **Capture Queue** workers — wired into the FastAPI lifespan beside `start_capture_pool`. Skips non-trading days via `calendar.trading_days_in_range`. The Scheduler is a *client* of the **Capture Queue**: it always goes through `enqueue_items_core`, never touches `_queue` / `_active` / `_done` directly, so ADR-0033 dedupe, ADR-0019 manifest persistence, ADR-0031 retry policy, and cookie-expired auto-pause are all inherited automatically (see ADR-0034). The 18:00 `today_too_early` rule (Q14) is the one piece the Scheduler must consult separately (via `find_ineligible_dates`) before calling `enqueue_items_core`, because `enqueue_items_core` *rejects* the whole request on Q14 rather than trimming it.
+_Avoid_: "cron" (no system cron is involved), "watcher" (overloaded with file-system watchers and uvicorn `--reload-dir`), "auto-capture" (ambiguous with retry-on-failure auto-capture).
+
+**Catch-up Run**:
+The one-shot async task that fires at server startup, immediately after the **Daily Scheduler**'s loop task is spawned. For each **WatchlistEntry** it computes the trading-day range `[next_kst_day(last_success_date or registered_at_kst_date), today_kst]`, pre-trims today through `find_ineligible_dates`, and enqueues the result via `enqueue_items_core`. Errors are per-entry and logged (KRX list unavailable, credentials missing, etc.) — Catch-up never aborts the rest of the Watchlist when one entry fails. Catch-up runs exactly once per server startup; there is no manual re-trigger endpoint in v1.
+_Avoid_: "backfill" (overloaded with parquet rewrite operations), "catch-up sync", "startup capture".
+
 **Wire Model**:
 The pydantic model returned by API endpoints — the shape clients see. Strips forensic fields (and any other internal-only data). Each table module pairs an **Entity** with its Wire Model: `Trade`↔`ApiTrade`, `Orderbook`↔`ApiOrderbookSnapshot`, `BrokerRow`↔`ApiBrokerEntry`, `Candle`↔`ApiCandle`. Query helpers (`query_at`, `query_up_to`, etc.) return Wire Models directly — there is no intermediate dict materialization.
 _Avoid_: "API model" alone (ambiguous with response containers like `OrderbookResponse`), "DTO"

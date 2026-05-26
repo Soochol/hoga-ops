@@ -78,16 +78,35 @@ uvicorn process
 ```
 
 The crucial property: **the Scheduler is a client of the Capture Queue,
-not a peer**. It calls `enqueue_items(EnqueueRequest(...))` exactly as the
-REST handler would, so it inherits for free:
+not a peer**. It calls the same enqueue routine the REST handler does, so
+it inherits for free:
 
 - ADR-0033 phase-aware `_done` dedupe
-- Q14 `today_too_early` guard
 - ADR-0019 queue manifest persistence
 - ADR-0031 explicit / implicit retry policy
 - cookie-expired auto-pause
 
-No new code paths into the queue.
+The 18:00 `today_too_early` guard (Q14) is the one piece the Scheduler
+*cannot* inherit blindly — `enqueue_items` raises HTTP 400 on it,
+rejecting the whole request, which would abort a multi-day catch-up when
+today happens to be too early. The Scheduler instead calls
+`eligibility.find_ineligible_dates` directly to pre-trim today before
+enqueue (see "Refactor required" below).
+
+### Refactor required: extract `enqueue_items_core`
+
+`enqueue_items` today lives as an inner function inside
+`captures.build_router` (hoga/api/captures.py:970), so it cannot be
+imported. The fix is mechanical:
+
+- Move the body into a module-level `async def enqueue_items_core(req:
+  EnqueueRequest, *, data_dir: Path, now: datetime) -> EnqueueResponse`.
+- Leave the route handler as a 3-line wrapper that injects `data_dir`
+  and `now=_now_kst()`.
+- All existing tests continue to drive the route; new tests drive
+  `enqueue_items_core` directly.
+
+This refactor is part of the implementation plan, not a separate ticket.
 
 ## File Layout
 
@@ -195,31 +214,39 @@ Request: `{"code": "003490"}`
 ### `_catchup_run(data_dir)`
 
 ```
+now = now_kst()
+today = now.strftime("%Y%m%d")
 for entry in load_watchlist(data_dir).entries:
     start = next_kst_day(entry.last_success_date
                          or entry.registered_at_kst_date)
-    if start > today_kst:
+    if start > today:
         continue
     try:
-        candidate_dates = trading_days_in_range(start, today_kst)
+        candidate_dates = trading_days_in_range(start, today)
     except KrxUnavailableError:
-        log.warning("catch-up skipped for {code}: KRX unavailable")
+        log.warning("catch-up skipped for %s: KRX unavailable", entry.code)
         continue
+    # Pre-trim today if it would fail Q14 — see find_ineligible_dates.
+    too_early = set(find_ineligible_dates(
+        candidate_dates=candidate_dates, now=now,
+    ))
+    candidate_dates = [d for d in candidate_dates if d not in too_early]
     if not candidate_dates:
         continue
     try:
-        await enqueue_items(EnqueueRequest(
-            code=entry.code,
-            dates=candidate_dates,
-        ))
+        await enqueue_items_core(
+            EnqueueRequest(code=entry.code, dates=candidate_dates),
+            data_dir=data_dir,
+            now=now,
+        )
     except HTTPException as e:
-        # today_too_early or krx_credentials_missing — log & continue.
-        log.info("catch-up for {code}: {e.detail}")
+        # Only expected here is krx_credentials_missing (Q14 already trimmed).
+        log.warning("catch-up for %s: %s", entry.code, e.detail)
 ```
 
-`today_too_early` is expected when the user's last_success was yesterday
-and today is < 18:00 KST — Q14 will trim today out of the list. The
-Scheduler treats that as success, not an error.
+The pre-trim avoids the `today_too_early` 400 entirely so a multi-day
+catch-up that happens to include today before 18:00 still enqueues the
+prior days successfully.
 
 ### `_daily_loop(data_dir)`
 
@@ -236,14 +263,19 @@ while True:
 ### `_daily_run(data_dir)`
 
 ```
-today = today_kst_yyyymmdd()
-trading_days = trading_days_for_today_month(today)
-if today not in trading_days:
+now = now_kst()
+today = now.strftime("%Y%m%d")
+trading_days = trading_days_in_range(today, today)
+if not trading_days:  # weekend / holiday
     log.info("daily run: %s is not a trading day, skipping", today)
     return
 for entry in load_watchlist(data_dir).entries:
     try:
-        await enqueue_items(EnqueueRequest(code=entry.code, dates=[today]))
+        await enqueue_items_core(
+            EnqueueRequest(code=entry.code, dates=[today]),
+            data_dir=data_dir,
+            now=now,
+        )
     except HTTPException as e:
         log.warning("daily enqueue for %s/%s: %s", entry.code, today, e.detail)
 ```
@@ -251,14 +283,17 @@ for entry in load_watchlist(data_dir).entries:
 ### KST time helpers
 
 ```python
-def seconds_until_next_18_kst(now_kst: datetime) -> float:
-    today_18 = now_kst.replace(hour=18, minute=0, second=0, microsecond=0)
-    target = today_18 if now_kst < today_18 else today_18 + timedelta(days=1)
-    return (target - now_kst).total_seconds()
+from hoga.collector.orchestrator import now_kst  # canonical Clock owner
+
+def seconds_until_next_18_kst(n: datetime) -> float:
+    today_18 = n.replace(hour=18, minute=0, second=0, microsecond=0)
+    target = today_18 if n < today_18 else today_18 + timedelta(days=1)
+    return (target - n).total_seconds()
 ```
 
-`_now_kst()` already exists in `captures.py` and is reused (do not
-duplicate).
+`hoga.collector.orchestrator.now_kst` is the canonical Clock owner;
+`captures.py` already re-imports it, and the Scheduler does the same.
+No new time helper module is introduced.
 
 ## last_success_date Update Hook
 
@@ -272,6 +307,8 @@ if state.phase == "done":
 
 `watchlist.bump_last_success`:
 
+- Acquires the module-scope `_watchlist_lock: asyncio.Lock` to serialize
+  concurrent updates (two watched Codes can complete in the same tick).
 - Loads the file.
 - Returns silently if the Code is not in the Watchlist (capture was ad
   hoc).
@@ -280,7 +317,20 @@ if state.phase == "done":
   marker).
 - Otherwise updates the field and atomically rewrites the file.
 
-This is the only write to `watchlist.json` outside the API surface.
+This is the only write to `watchlist.json` outside the API surface. The
+API mutations (`POST` / `DELETE`) acquire the same lock.
+
+### Corrupted `watchlist.json` recovery
+
+`load_watchlist` wraps parsing in try/except. On any parse failure
+(invalid JSON, Pydantic validation, missing required field) it:
+
+1. Renames the bad file to `watchlist.json.corrupt-YYYYMMDDTHHMMSS`.
+2. Logs `warning` with the path of the backup.
+3. Returns an empty Watchlist.
+
+A subsequent `POST` writes a fresh valid file. The user retains the
+backup if they want to recover by hand.
 
 ## Frontend
 
@@ -379,10 +429,14 @@ User-visible errors are confined to the explicit Watchlist API surface.
 
 None — all the dimensions surfaced during brainstorming have a decision.
 
-## ADR Consideration
+## ADRs
 
-This design adds three new domain terms but does not contradict any
-existing ADR. After implementation, it likely warrants a new ADR
-documenting the "Scheduler is a queue client, not a peer" invariant so
-future contributors do not introduce a parallel enqueue path. The ADR
-will be written during implementation, not as part of this design.
+Two ADRs land alongside this spec (see `docs/adr/`):
+
+- **ADR-0034** — Scheduler-as-queue-client invariant. Documents why the
+  Scheduler is forbidden from touching `_queue` / `_active` / `_done`
+  directly and must always go through `enqueue_items_core`, including the
+  one carve-out (`find_ineligible_dates` pre-trim for Q14).
+- The `enqueue_items_core` extraction is mechanical and does not need
+  its own ADR — it's a structural refactor whose only purpose is to make
+  ADR-0034 enforceable.
