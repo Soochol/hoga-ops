@@ -1,8 +1,6 @@
-import type { ReactNode } from 'react';
+import type { RecaptureStatus } from './useInventoryRecapture';
 
-export type RecaptureStatus =
-  | { kind: 'success'; enqueued: number; skipped: number }
-  | { kind: 'error'; message: ReactNode };
+export type { RecaptureStatus };
 
 type Props = {
   recapturableCount: number;
