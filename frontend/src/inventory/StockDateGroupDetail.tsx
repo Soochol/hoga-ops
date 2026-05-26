@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { StockDate } from '../api/types';
 import { useTabsStore } from '../state/tabs';
 import { useStockDateGroups } from './useStockDateGroups';
 import { fmtDate, fmtTime, fmtSize, fmtOHLC, fmtVolume } from './format';
-import { DiskStateBadge } from './DiskStateBadge';
+import { DiskStateBadge, isRecapturable } from './DiskStateBadge';
 import { sortDates, nextSortState, type SortKey, type SortState } from './sortDates';
+import { useInventoryRecapture } from './useInventoryRecapture';
+import { RecaptureActionBar } from './RecaptureActionBar';
 
 type Props = {
   rows: StockDate[];
@@ -26,6 +28,30 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
     [group, sort],
   );
 
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
+  // Reset selection when the active Code changes (selection is per-group).
+  useEffect(() => { setSelectedDates(new Set()); }, [selectedCode]);
+
+  // Prune selection entries whose row no longer satisfies isRecapturable
+  // (SSE may have flipped a row to 'complete' or removed it entirely).
+  const recapturableDateSet = useMemo(
+    () => new Set(sortedDates.filter(r => isRecapturable(r.disk_state)).map(r => r.date)),
+    [sortedDates],
+  );
+  useEffect(() => {
+    setSelectedDates(prev => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const d of prev) {
+        if (recapturableDateSet.has(d)) next.add(d);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [recapturableDateSet]);
+
+  const { recapture, status, isPending } = useInventoryRecapture();
+
   if (group === null) {
     return (
       <section className="bg-bg-card border rounded-lg p-md text-fg-dim">
@@ -35,6 +61,7 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
   }
 
   const totalVolume = group.dates.reduce((s, d) => s + d.total_volume, 0);
+  const recapturableCount = recapturableDateSet.size;
 
   const onRowClick = (r: StockDate) => {
     const tabId = useTabsStore.getState().newTab();
@@ -49,21 +76,51 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
 
   const onSort = (column: SortKey) => setSort(prev => nextSortState(prev, column));
 
+  const toggleSelection = (date: string) => {
+    setSelectedDates(prev => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  };
+
+  const handleRecaptureSelected = async () => {
+    await recapture(group.code, [...selectedDates]);
+    setSelectedDates(new Set());
+  };
+  const handleRecaptureAll = async () => {
+    await recapture(group.code, [...recapturableDateSet]);
+  };
+  const handleClearSelection = () => setSelectedDates(new Set());
+
   return (
     <section className="bg-bg-card border rounded-lg flex flex-col min-h-0 overflow-hidden">
-      <header className="px-4 py-3 border-b flex items-baseline justify-between">
-        <h2 className="text-md font-semibold">
+      <header className="px-4 py-3 border-b flex items-baseline justify-between gap-4">
+        <h2 className="text-md font-semibold shrink-0">
           <span className="text-accent font-mono">{group.code}</span>{' '}
           <span className="text-fg">{group.name}</span>
         </h2>
-        <span className="text-xs text-fg-dim font-mono tabular-nums">
-          {group.dates.length} dates · {fmtVolume(totalVolume)} vol · {fmtSize(group.totalSizeBytes)}
-        </span>
+        <div className="flex flex-col items-end gap-1 min-w-0">
+          <span className="text-xs text-fg-dim font-mono tabular-nums">
+            {group.dates.length} dates · {fmtVolume(totalVolume)} vol · {fmtSize(group.totalSizeBytes)}
+          </span>
+          <RecaptureActionBar
+            recapturableCount={recapturableCount}
+            selectedCount={selectedDates.size}
+            onRecaptureSelected={handleRecaptureSelected}
+            onRecaptureAll={handleRecaptureAll}
+            onClearSelection={handleClearSelection}
+            status={status}
+            isPending={isPending}
+          />
+        </div>
       </header>
       <div className="flex-1 overflow-y-auto">
         <table className="w-full border-collapse font-mono text-sm tabular-nums">
           <thead className="bg-bg-subtle sticky top-0">
             <tr>
+              <th className="px-2 py-2 border-b w-8" aria-label="select" />
               <SortableTh column="state"    sort={sort} onSort={onSort}>State</SortableTh>
               <SortableTh column="date"     sort={sort} onSort={onSort}>Date</SortableTh>
               <SortableTh column="captured" sort={sort} onSort={onSort}>Captured</SortableTh>
@@ -74,21 +131,34 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
             </tr>
           </thead>
           <tbody>
-            {sortedDates.map((r) => (
-              <tr
-                key={`${r.code}-${r.date}`}
-                onClick={() => onRowClick(r)}
-                className="border-b hover:bg-bg-input-hover cursor-pointer"
-              >
-                <td className="px-3 py-1.5 text-center"><DiskStateBadge state={r.disk_state} /></td>
-                <td className="px-3 py-1.5">{fmtDate(r.date)}</td>
-                <td className="px-3 py-1.5 text-fg-dim">{fmtTime(r.captured_at)}</td>
-                <td className="px-3 py-1.5 text-right">{r.total_volume.toLocaleString('ko-KR')}</td>
-                <td className="px-3 py-1.5 text-right text-fg-dim">{r.pages_collected}</td>
-                <td className="px-3 py-1.5 text-right text-fg-dim">{fmtSize(r.file_size_bytes)}</td>
-                <td className="px-3 py-1.5 text-right">{fmtOHLC(r.today_open, r.today_close)}</td>
-              </tr>
-            ))}
+            {sortedDates.map((r) => {
+              const recap = isRecapturable(r.disk_state);
+              return (
+                <tr
+                  key={`${r.code}-${r.date}`}
+                  onClick={() => onRowClick(r)}
+                  className="border-b hover:bg-bg-input-hover cursor-pointer"
+                >
+                  <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                    {recap ? (
+                      <input
+                        type="checkbox"
+                        aria-label={`select ${r.date}`}
+                        checked={selectedDates.has(r.date)}
+                        onChange={() => toggleSelection(r.date)}
+                      />
+                    ) : null}
+                  </td>
+                  <td className="px-3 py-1.5 text-center"><DiskStateBadge state={r.disk_state} /></td>
+                  <td className="px-3 py-1.5">{fmtDate(r.date)}</td>
+                  <td className="px-3 py-1.5 text-fg-dim">{fmtTime(r.captured_at)}</td>
+                  <td className="px-3 py-1.5 text-right">{r.total_volume.toLocaleString('ko-KR')}</td>
+                  <td className="px-3 py-1.5 text-right text-fg-dim">{r.pages_collected}</td>
+                  <td className="px-3 py-1.5 text-right text-fg-dim">{fmtSize(r.file_size_bytes)}</td>
+                  <td className="px-3 py-1.5 text-right">{fmtOHLC(r.today_open, r.today_close)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
