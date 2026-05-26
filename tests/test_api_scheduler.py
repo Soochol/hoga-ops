@@ -106,3 +106,93 @@ async def test_daily_run_per_entry_failure_does_not_abort_loop(tmp_path: Path):
         await scheduler._daily_run(tmp_path)
 
     assert enq.await_count == 2  # Both attempted despite the first failing.
+
+
+@pytest.mark.asyncio
+async def test_catchup_enqueues_gap_since_last_success(tmp_path: Path):
+    from hoga.api import scheduler, watchlist
+    from hoga.api.models import EnqueueResponse
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    await watchlist.bump_last_success(tmp_path, code="003490", date="20260522")
+    fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)  # after 18
+
+    with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
+         patch("hoga.api.scheduler.trading_days_in_range",
+               return_value=["20260525", "20260526"]), \
+         patch("hoga.api.scheduler.find_ineligible_dates", return_value=[]), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock,
+               return_value=EnqueueResponse(enqueued=[], deduped=[])) as enq:
+        await scheduler._catchup_run(tmp_path)
+
+    assert enq.await_count == 1
+    call_req = enq.await_args.kwargs["req"] if "req" in enq.await_args.kwargs else enq.await_args.args[0]
+    assert call_req.code == "003490"
+    assert call_req.dates == ["20260525", "20260526"]
+
+
+@pytest.mark.asyncio
+async def test_catchup_pretrims_today_when_too_early(tmp_path: Path):
+    """When now < 18:00, today must be removed before calling core."""
+    from hoga.api import scheduler, watchlist
+    from hoga.api.models import EnqueueResponse
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    await watchlist.bump_last_success(tmp_path, code="003490", date="20260522")
+    fake_now = dt.datetime(2026, 5, 26, 10, 0, 0, tzinfo=KST)  # before 18
+
+    with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
+         patch("hoga.api.scheduler.trading_days_in_range",
+               return_value=["20260525", "20260526"]), \
+         patch("hoga.api.scheduler.find_ineligible_dates",
+               return_value=["20260526"]), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock,
+               return_value=EnqueueResponse(enqueued=[], deduped=[])) as enq:
+        await scheduler._catchup_run(tmp_path)
+
+    call_req = enq.await_args.kwargs["req"] if "req" in enq.await_args.kwargs else enq.await_args.args[0]
+    assert call_req.dates == ["20260525"]
+
+
+@pytest.mark.asyncio
+async def test_catchup_uses_registered_at_when_no_last_success(tmp_path: Path):
+    from hoga.api import scheduler, watchlist
+    from hoga.api.models import EnqueueResponse
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)
+
+    with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
+         patch("hoga.api.scheduler.trading_days_in_range",
+               return_value=["20260521", "20260522"]) as trading, \
+         patch("hoga.api.scheduler.find_ineligible_dates", return_value=[]), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock,
+               return_value=EnqueueResponse(enqueued=[], deduped=[])) as enq:
+        await scheduler._catchup_run(tmp_path)
+
+    # next_kst_day(20260520) = 20260521
+    trading.assert_called_with("20260521", "20260526")
+    assert enq.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_catchup_skips_entry_with_empty_range(tmp_path: Path):
+    """If last_success >= today, the gap is empty — no enqueue."""
+    from hoga.api import scheduler, watchlist
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260526")
+    await watchlist.bump_last_success(tmp_path, code="003490", date="20260526")
+    fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)
+
+    with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
+         patch("hoga.api.scheduler.trading_days_in_range",
+               return_value=["20260526"]), \
+         patch("hoga.api.scheduler.find_ineligible_dates", return_value=[]), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock) as enq:
+        await scheduler._catchup_run(tmp_path)
+    # Gap is [next_day(20260526)=20260527 .. 20260526] which is empty.
+    assert enq.await_count == 0

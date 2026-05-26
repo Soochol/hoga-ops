@@ -16,6 +16,7 @@ from pathlib import Path
 
 from hoga.api.calendar import trading_days_in_range
 from hoga.api.captures import enqueue_items_core
+from hoga.api.eligibility import find_ineligible_dates
 from hoga.api.models import EnqueueRequest
 from hoga.api.watchlist import load_watchlist
 from hoga.collector.orchestrator import now_kst
@@ -58,3 +59,44 @@ async def _daily_run(data_dir: Path) -> None:
             )
         except Exception:  # noqa: BLE001 — one bad entry mustn't kill the run
             log.exception("daily enqueue failed for %s/%s", entry.code, today)
+
+
+def _next_kst_day(yyyymmdd: str) -> str:
+    d = dt.date(int(yyyymmdd[0:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]))
+    return (d + dt.timedelta(days=1)).strftime("%Y%m%d")
+
+
+async def _catchup_run(data_dir: Path) -> None:
+    """Backfill every Watchlist entry from its (last_success or
+    registered_at) marker up to today. Pre-trims Q14-ineligible dates so
+    a multi-day catch-up that includes today before 18:00 still enqueues
+    the prior days successfully (see ADR-0034 carve-out).
+    """
+    now = now_kst()
+    today = now.strftime("%Y%m%d")
+    wl = load_watchlist(data_dir)
+    for entry in wl.entries:
+        floor = entry.last_success_date or entry.registered_at_kst_date
+        start = _next_kst_day(floor)
+        if start > today:
+            continue
+        try:
+            candidates = trading_days_in_range(start, today)
+        except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
+            log.warning("catch-up: trading-day list unavailable for %s",
+                        entry.code)
+            continue
+        too_early = set(find_ineligible_dates(
+            candidate_dates=candidates, now=now,
+        ))
+        candidates = [d for d in candidates if d not in too_early]
+        if not candidates:
+            continue
+        try:
+            await enqueue_items_core(
+                EnqueueRequest(code=entry.code, dates=candidates),
+                data_dir=data_dir,
+                now=now,
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("catch-up enqueue failed for %s", entry.code)
