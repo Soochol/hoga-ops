@@ -119,4 +119,4 @@ async def test_delete_removes_entry(tmp_path: Path):
     client = TestClient(_app(tmp_path))
     r = client.delete("/api/watchlist/003490")
     assert r.status_code == 204
-    assert watchlist.load_watchlist(tmp_path).entries == []
+    assert watchlist.load_watchlist(tmp_path) == []

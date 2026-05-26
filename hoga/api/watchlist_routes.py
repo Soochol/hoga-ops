@@ -37,9 +37,8 @@ def build_router(*, data_dir: Path) -> APIRouter:
 
     @router.get("", response_model=WatchlistResponse)
     async def get_watchlist() -> WatchlistResponse:
-        wl = load_watchlist(data_dir)
         return WatchlistResponse(
-            entries=wl.entries,
+            entries=load_watchlist(data_dir),
             next_run_at_ms=_next_run_at_ms(now_kst()),
         )
 

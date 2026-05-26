@@ -14,7 +14,6 @@ import asyncio
 import datetime as dt
 import json
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 
 from hoga.api._atomic_write import atomic_write_json
@@ -27,26 +26,20 @@ log = logging.getLogger(__name__)
 _lock = asyncio.Lock()
 
 
-@dataclass(frozen=True)
-class Watchlist:
-    """In-memory snapshot. Order preserved = display order."""
-    entries: list[WatchlistEntry]
-
-
 def _path(data_dir: Path) -> Path:
     return data_dir / "watchlist.json"
 
 
-def load_watchlist(data_dir: Path) -> Watchlist:
+def load_watchlist(data_dir: Path) -> list[WatchlistEntry]:
     """Read watchlist.json. Missing file → empty. Corrupt file → backup +
-    empty + warning log."""
+    empty + warning log. Order preserved = display order."""
     p = _path(data_dir)
     if not p.exists():
-        return Watchlist(entries=[])
+        return []
     try:
         raw = json.loads(p.read_text(encoding="utf-8"))
         entries = [WatchlistEntry.model_validate(e) for e in raw.get("entries", [])]
-        return Watchlist(entries=entries)
+        return entries
     except Exception as e:  # noqa: BLE001 — any parse/validation failure
         stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S")
         backup = p.with_name(f"watchlist.json.corrupt-{stamp}")
@@ -56,7 +49,7 @@ def load_watchlist(data_dir: Path) -> Watchlist:
             log.exception("could not back up corrupt watchlist.json")
         log.warning("watchlist.json was corrupt (%s); backed up to %s",
                     e, backup)
-        return Watchlist(entries=[])
+        return []
 
 
 def save_watchlist(data_dir: Path, *, entries: list[WatchlistEntry]) -> None:
@@ -84,8 +77,8 @@ async def add_entry(
     today_kst_date: str,
 ) -> WatchlistEntry:
     async with _lock:
-        wl = load_watchlist(data_dir)
-        if any(e.code == code for e in wl.entries):
+        entries = load_watchlist(data_dir)
+        if any(e.code == code for e in entries):
             raise AlreadyInWatchlistError(code)
         entry = WatchlistEntry(
             code=code,
@@ -93,18 +86,18 @@ async def add_entry(
             registered_at_kst_date=today_kst_date,
             last_success_date=None,
         )
-        save_watchlist(data_dir, entries=[*wl.entries, entry])
+        save_watchlist(data_dir, entries=[*entries, entry])
         return entry
 
 
 async def remove_entry(data_dir: Path, *, code: str) -> None:
     async with _lock:
-        wl = load_watchlist(data_dir)
-        if not any(e.code == code for e in wl.entries):
+        entries = load_watchlist(data_dir)
+        if not any(e.code == code for e in entries):
             raise NotInWatchlistError(code)
         save_watchlist(
             data_dir,
-            entries=[e for e in wl.entries if e.code != code],
+            entries=[e for e in entries if e.code != code],
         )
 
 
@@ -121,10 +114,10 @@ async def bump_last_success(
     completions cannot regress).
     """
     async with _lock:
-        wl = load_watchlist(data_dir)
+        entries = load_watchlist(data_dir)
         new_entries: list[WatchlistEntry] = []
         changed = False
-        for e in wl.entries:
+        for e in entries:
             if e.code == code and (
                 e.last_success_date is None or date > e.last_success_date
             ):

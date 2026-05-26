@@ -50,8 +50,7 @@ async def _daily_run(data_dir: Path) -> None:
     if today not in trading:
         log.info("daily run: %s is not a trading day, skipping", today)
         return
-    wl = load_watchlist(data_dir)
-    for entry in wl.entries:
+    for entry in load_watchlist(data_dir):
         try:
             await enqueue_items_core(
                 EnqueueRequest(code=entry.code, dates=[today]),
@@ -75,8 +74,7 @@ async def _catchup_run(data_dir: Path) -> None:
     """
     now = now_kst()
     today = now.strftime("%Y%m%d")
-    wl = load_watchlist(data_dir)
-    for entry in wl.entries:
+    for entry in load_watchlist(data_dir):
         floor = entry.last_success_date or entry.registered_at_kst_date
         start = _next_kst_day(floor)
         if start > today:
