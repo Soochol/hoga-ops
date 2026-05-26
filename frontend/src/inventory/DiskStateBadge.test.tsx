@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aggregateDiskState, STATE_SEVERITY } from './DiskStateBadge';
+import { aggregateDiskState, isRecapturable, STATE_SEVERITY } from './DiskStateBadge';
 
 describe('STATE_SEVERITY', () => {
   it('orders states from worst (highest rank) to best (lowest)', () => {
@@ -24,5 +24,20 @@ describe('aggregateDiskState', () => {
   });
   it('returns complete for empty input', () => {
     expect(aggregateDiskState([])).toBe('complete');
+  });
+});
+
+describe('isRecapturable', () => {
+  it('returns false for complete', () => {
+    expect(isRecapturable('complete')).toBe(false);
+  });
+  it('returns true for source_partial', () => {
+    expect(isRecapturable('source_partial')).toBe(true);
+  });
+  it('returns true for client_incomplete', () => {
+    expect(isRecapturable('client_incomplete')).toBe(true);
+  });
+  it('returns true for invalid', () => {
+    expect(isRecapturable('invalid')).toBe(true);
   });
 });

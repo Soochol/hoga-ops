@@ -19,6 +19,15 @@ export const STATE_SEVERITY: Record<DiskStateValue, number> = {
   invalid: 3,
 };
 
+/** A captured Stock-Date is recapturable when its DiskState is anything other
+ *  than complete. Surfaced as the checkbox-eligibility gate in the Inventory
+ *  detail table. Backend policy (eligibility.py:76-77) skips COMPLETE even
+ *  with force_retry=true, so allowing complete rows here would only produce
+ *  SSE noise (per ADR-0035). */
+export function isRecapturable(state: DiskStateValue): boolean {
+  return state !== 'complete';
+}
+
 export function DiskStateBadge({ state }: { state: DiskStateValue }) {
   const p = PRESENTATION[state];
   return (
