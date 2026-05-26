@@ -43,12 +43,36 @@ The semantics are identical across triggers: disk-state reconcile of `last_succe
 
 ### Refactor: extract `catchup_one_entry`
 
-The current `_catchup_run` in `hoga/api/scheduler.py` interleaves two concerns:
+The current `_catchup_run` in `hoga/api/scheduler.py` runs in two phases over the whole Watchlist: phase 1 reconciles every entry's `last_success_date` against the disk, phase 2 re-loads the list and per-entry computes dates + enqueues. The two-phase shape was a side effect of needing to bulk-reconcile before any backfill could read fresh markers.
 
-1. Iterating `load_watchlist(data_dir)`.
-2. Per-entry: disk reconcile, date math, Q14 trim, enqueue.
+The new design collapses both phases *into one helper* keyed on a single entry. Because `bump_last_success` is idempotent and monotonic, running reconcile inside the per-entry helper is equivalent in behavior to bulk-then-loop:
 
-Extract concern 2 into a module-level coroutine so both the route handlers and the existing `_catchup_run` call into the same code path:
+```python
+async def catchup_one_entry(
+    entry: WatchlistEntry,
+    *,
+    data_dir: Path,
+    now: dt.datetime,
+) -> EnqueueResponse:
+    """Backfill one Watchlist entry. Used by:
+    - _catchup_run (startup, all entries)
+    - POST /api/watchlist/{code}/catchup (per-row)
+    - POST /api/watchlist/catchup (all entries, manual)
+
+    Behavior matches the prior _catchup_run loop body verbatim:
+    1. Disk-state reconcile of last_success_date (call bump_last_success
+       if latest_complete_date is newer than the entry's current marker).
+       The local `floor` variable captures the post-reconcile value so we
+       don't re-read the watchlist.
+    2. Compute candidates = trading_days_in_range(next_kst_day(floor), today).
+       On empty range or KrxUnavailableError, return an empty response.
+    3. Q14 pre-trim via find_ineligible_dates(candidate_dates=..., now=now).
+    4. Return EnqueueResponse from enqueue_items_core, or an empty
+       EnqueueResponse(enqueued=[], deduped=[]) when there is no work.
+    """
+```
+
+The empty-result case (no candidate dates, Q14 trims everything, or KRX unavailable) returns a *concrete* `EnqueueResponse(enqueued=[], deduped=[])` rather than `None` — callers can always serialize the result without a null check, and the all-rows endpoint sums `enqueued_count` / `deduped_count` cleanly.
 
 ```python
 async def catchup_one_entry(
@@ -83,6 +107,8 @@ async def _catchup_run(data_dir: Path) -> None:
         except Exception:
             log.exception("catch-up failed for %s", entry.code)
 ```
+
+The two-phase shape collapses into a single loop. The previous "reconcile-all then backfill-all" structure existed because the two passes ran over `load_watchlist(data_dir)` separately; the per-entry helper folds both into the same iteration without any change in observable behavior.
 
 The route handlers wrap the same call with their own error mapping.
 
@@ -181,6 +207,16 @@ For `caught_up_all` with a non-empty `failed` list, the banner expands a small l
 ### react-query
 
 Both mutations call `invalidateQueries({queryKey: ['watchlist']})` on success — the watchlist GET response carries `entries[*].last_success_date`, which advances as the Capture Queue lands its completions. The user sees the "마지막 성공" cell update naturally as the queue drains.
+
+### Concurrency policy
+
+Per-row mutations are serialized: while *any* mutation is in flight (a per-row ↻ or the header `↻ 지금 전체 수집`), every ↻ button on the page is `disabled`. A single mutation in flight is enough to disable all triggers; the user cannot stack catch-ups. This keeps the panel's `recentAction` state coherent (only one banner candidate at a time) and avoids race surprises if two per-row calls land in different orders than they were triggered.
+
+In react-query terms: the Panel reads `useIsMutating({ mutationKey: ['watchlist'] })` (or equivalent — see implementation) and disables both row-level and header ↻ buttons when the count is non-zero.
+
+### Test-attribute compatibility
+
+The existing `data-just-added="true"` attribute on rows stays — it now serves the union `RecentAction` state instead of just the `added` case. Renaming to `data-recent-action` would force every existing panel test to update without a behavioral benefit, so the original name persists as a load-bearing test seam even though its literal meaning narrowed.
 
 ## Error handling
 

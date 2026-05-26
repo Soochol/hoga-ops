@@ -129,7 +129,12 @@ The asyncio task that sleeps until the next KST 18:00, then enqueues `(entry.cod
 _Avoid_: "cron" (no system cron is involved), "watcher" (overloaded with file-system watchers and uvicorn `--reload-dir`), "auto-capture" (ambiguous with retry-on-failure auto-capture).
 
 **Catch-up Run**:
-The one-shot async task that fires at server startup, immediately after the **Daily Scheduler**'s loop task is spawned. Two-phase: (1) a disk reconcile pre-pass that advances each entry's `last_success_date` to the latest COMPLETE Stock-Date on disk via `disk_state.latest_complete_date` (idempotent thanks to `bump_last_success`'s monotonic guard — auto-heals legacy entries registered before the disk-seed flow existed); (2) the backfill, which computes the trading-day range `[next_kst_day(last_success_date or registered_at_kst_date), today_kst]` for each **WatchlistEntry**, pre-trims today through `find_ineligible_dates`, and enqueues the result via `enqueue_items_core`. Errors are per-entry and logged (KRX list unavailable, credentials missing, etc.) — Catch-up never aborts the rest of the Watchlist when one entry fails. Catch-up runs exactly once per server startup; there is no manual re-trigger endpoint in v1.
+The per-entry "advance the marker, then enqueue the gap" routine — embodied by `scheduler.catchup_one_entry(entry, *, data_dir, now)`. For a single **WatchlistEntry**: (1) disk reconcile via `disk_state.latest_complete_date` to advance `last_success_date` to the latest COMPLETE Stock-Date on disk (idempotent thanks to `bump_last_success`'s monotonic guard — auto-heals legacy entries registered before the disk-seed flow existed); (2) compute `[next_kst_day(last_success_date or registered_at_kst_date), today_kst]`, pre-trim today through `find_ineligible_dates`, and enqueue via `enqueue_items_core`. Returns the resulting `EnqueueResponse` (empty when there's no gap or Q14 trimmed everything). Three trigger surfaces — all call the same helper:
+- **Startup** — `_catchup_run` iterates the Watchlist once on server boot.
+- **Per-row manual** — `POST /api/watchlist/{code}/catchup` for one entry the user clicked `↻` on.
+- **All-rows manual** — `POST /api/watchlist/catchup` for the header `↻ 지금 전체 수집` button (returns a per-entry summary so the banner can show counts and any failures).
+
+Errors are per-entry and logged (KRX list unavailable, credentials missing, exception in the helper); none of the three triggers aborts the rest of the Watchlist when one entry fails.
 _Avoid_: "backfill" (overloaded with parquet rewrite operations), "catch-up sync", "startup capture".
 
 **Wire Model**:
