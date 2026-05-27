@@ -233,3 +233,46 @@ class KisClient:
             total_bid_qty=int(out1["total_bidp_rsqn"]),
             t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
         )
+
+    # ------------------------------------------------------------------
+    # Task 2.2: fetch_trades (FHPST01060000, inquire-time-itemconclusion)
+    # ------------------------------------------------------------------
+
+    async def fetch_trades(self, code: str) -> list[KisTrade]:
+        """Fetch per-trade history via inquire-time-itemconclusion (FHPST01060000).
+
+        Uses Lee-Ready side classification. Auction window trades get side=2.
+        """
+        body = await self._get(
+            path="/uapi/domestic-stock/v1/quotations/inquire-time-itemconclusion",
+            tr_id="FHPST01060000",
+            params={
+                "fid_cond_mrkt_div_code": "J",
+                "fid_input_iscd": code,
+                "fid_input_hour_1": "153000",
+            },
+        )
+        today_kst = datetime.now(KIS_KST).date()
+        trades: list[KisTrade] = []
+        for row in body["output2"]:
+            hhmmss = row["stck_cntg_hour"]
+            hh = int(hhmmss[:2])
+            mm = int(hhmmss[2:4])
+            ss = int(hhmmss[4:6])
+            dt = datetime(
+                today_kst.year, today_kst.month, today_kst.day,
+                hh, mm, ss, tzinfo=KIS_KST
+            )
+            t_ms = int(dt.timestamp() * 1000)
+            prpr = int(row["stck_prpr"])
+            askp = int(row.get("askp", "0") or "0")
+            bidp = int(row.get("bidp", "0") or "0")
+            side, side_source = classify_side(t_ms, prpr, askp, bidp)
+            trades.append(KisTrade(
+                price=prpr,
+                qty=int(row["cnqn"]),
+                side=side,
+                side_source=side_source,
+                t_ms=t_ms,
+            ))
+        return trades
