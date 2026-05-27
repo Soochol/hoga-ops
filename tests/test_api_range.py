@@ -72,8 +72,10 @@ def test_api_range_400_on_from_gt_to(app_client: TestClient) -> None:
     assert r.status_code == 400
 
 
-def test_api_range_404_on_empty_inventory(app_client: TestClient) -> None:
-    # Patch engine inventory lookup to return empty → build_range_bundle raises 404.
+def test_api_range_empty_inventory_returns_empty_bundle(app_client: TestClient) -> None:
+    # Spec 2026-05-27 §4.3: empty range returns 200 + empty bundle so /live's
+    # lazy-fetch doesn't have to special-case 404 handling. Today's data is
+    # fetched separately via SSE.
     with patch(
         "hoga.api.queries.QueryEngine.list_stock_dates_in_range",
         return_value=[],
@@ -81,7 +83,17 @@ def test_api_range_404_on_empty_inventory(app_client: TestClient) -> None:
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000"
         )
-    assert r.status_code == 404
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["segments"] == []
+    assert body["candles"] == []
+    assert body["quote_ratio"]["points"] == []
+    assert body["fill_strength"]["points"] == []
+    assert body["excluded_dates"] == []
+    assert body["code"] == "005930"
+    assert body["from_date"] == "20260512"
+    assert body["to_date"] == "20260512"
+    assert body["bucket_ms"] == 60000
 
 
 # --- ADR-0020: invariant outcomes surfaced on the wire ---
@@ -175,9 +187,10 @@ def test_api_range_surfaces_data_warnings_on_wire(app_client: TestClient) -> Non
     assert "collection.unique_events_ratio" in fired_ids
 
 
-def test_api_range_404_with_excluded_detail_when_all_invalid(app_client: TestClient) -> None:
-    """E2E: when every Stock-Date is INVALID, the existing 404 branch is reused
-    and the detail carries the excluded list for diagnostics."""
+def test_api_range_all_invalid_returns_empty_bundle_with_excluded(app_client: TestClient) -> None:
+    """Spec 2026-05-27 §4.3: when every Stock-Date is INVALID, return 200 with
+    an empty bundle whose excluded_dates carries the gated dates — the frontend
+    renders DataWarning UX from that list."""
     with patch(
         "hoga.api.queries.QueryEngine.list_stock_dates_in_range",
         return_value=["20260518"],
@@ -189,11 +202,11 @@ def test_api_range_404_with_excluded_detail_when_all_invalid(app_client: TestCli
             "/api/range?code=003490&from=20260518&to=20260518&bucket_ms=60000"
         )
 
-    assert r.status_code == 404
-    detail = r.json()["detail"]
-    assert isinstance(detail, dict)
-    assert "excluded" in detail
-    assert detail["excluded"][0]["date"] == "20260518"
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["segments"] == []
+    assert len(body["excluded_dates"]) == 1
+    assert body["excluded_dates"][0]["date"] == "20260518"
 
 
 def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:

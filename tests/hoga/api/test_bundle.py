@@ -233,15 +233,24 @@ def test_build_range_bundle_rejects_from_gt_to():
     assert exc.value.status_code == 400
 
 
-def test_build_range_bundle_raises_404_on_empty_inventory():
-    from fastapi import HTTPException
+def test_build_range_bundle_returns_empty_on_empty_inventory():
+    """Spec 2026-05-27 §4.3: no captured Stock-Date → empty bundle (not 404)."""
     from hoga.api.bundle import build_range_bundle
 
     mock_engine = MagicMock()
     mock_engine.list_stock_dates_in_range.return_value = []
-    with pytest.raises(HTTPException) as exc:
-        build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260520", bucket_ms=60_000)
-    assert exc.value.status_code == 404
+    rb = build_range_bundle(
+        mock_engine, code="005930", from_date="20260512", to_date="20260520", bucket_ms=60_000
+    )
+    assert rb.segments == []
+    assert rb.candles == []
+    assert rb.quote_ratio.points == []
+    assert rb.fill_strength.points == []
+    assert rb.excluded_dates == []
+    assert rb.code == "005930"
+    assert rb.from_date == "20260512"
+    assert rb.to_date == "20260520"
+    assert rb.bucket_ms == 60_000
 
 
 def test_build_range_bundle_rejects_invalid_bucket_ms():
@@ -346,23 +355,20 @@ def test_build_range_bundle_surfaces_warn_without_excluding():
     assert "collection.unique_events_ratio" in fired_ids
 
 
-def test_build_range_bundle_404_when_all_dates_excluded():
-    """When every Stock-Date is INVALID, raise 404 with excluded detail."""
-    from fastapi import HTTPException
+def test_build_range_bundle_empty_when_all_dates_excluded():
+    """Spec 2026-05-27 §4.3: every Stock-Date INVALID → return empty bundle
+    with excluded_dates populated (not 404)."""
     from hoga.api.bundle import build_range_bundle
 
     eng = _engine_with_meta_for_dates(["20260518"])
     eng.get_meta.return_value = _meta(close_ms=0)
 
-    with pytest.raises(HTTPException) as exc:
-        build_range_bundle(eng, code="003490",
-                           from_date="20260518", to_date="20260518",
-                           bucket_ms=60_000)
-    assert exc.value.status_code == 404
-    detail = exc.value.detail
-    assert isinstance(detail, dict)
-    assert "excluded" in detail
-    assert detail["excluded"][0]["date"] == "20260518"
+    rb = build_range_bundle(
+        eng, code="003490", from_date="20260518", to_date="20260518", bucket_ms=60_000
+    )
+    assert rb.segments == []
+    assert len(rb.excluded_dates) == 1
+    assert rb.excluded_dates[0].date == "20260518"
 
 
 def test_build_range_bundle_excludes_real_5_18_003490_case():

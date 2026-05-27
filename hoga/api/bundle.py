@@ -328,6 +328,34 @@ def _resolve_source(engine: QueryEngine, date: str, code: str, pref: str) -> str
     return pref
 
 
+def _empty_range_bundle(
+    code: str,
+    from_date: str,
+    to_date: str,
+    bucket_ms: int,
+    *,
+    excluded: list[ExcludedDate],
+) -> RangeBundle:
+    """Empty RangeBundle for the no-captured-data and all-INVALID branches
+    (spec 2026-05-27 §4.3). Mirrors the success-path shape with empty series
+    arrays; excluded_dates carries any invariant-gated dates so frontend can
+    surface DataWarning UX."""
+    return RangeBundle(
+        code=code,
+        from_date=from_date,
+        to_date=to_date,
+        bucket_ms=bucket_ms,
+        segments=[],
+        candles=[],
+        quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=[]),
+        fill_strength=FillStrength(bucket_ms=bucket_ms, points=[]),
+        volume_profile_range=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
+        volume_profile_by_day=[],
+        excluded_dates=excluded,
+        data_warnings=[],
+    )
+
+
 def build_range_bundle(
     engine: QueryEngine,
     *,
@@ -364,10 +392,10 @@ def build_range_bundle(
         source_pref=source_pref,
     )
     if not dates:
-        raise HTTPException(
-            404,
-            f"no captured Stock-Date for code={code} in [{from_date}, {to_date}]",
-        )
+        # Spec 2026-05-27 §4.3: empty range is a normal case for /live's
+        # lazy-fetch. Surface as an empty bundle so the frontend can stitch
+        # today's SSE buffer in without 404 round-trips.
+        return _empty_range_bundle(code, from_date, to_date, bucket_ms, excluded=[])
 
     # ADR-0020: per-Stock-Date invariant check.
     # INVALID → skip + surface under excluded_dates.
@@ -417,14 +445,10 @@ def build_range_bundle(
         profiles_by_day.append(vp_d)
 
     if not segments:
-        # All in-range dates failed invariants — reuse the existing 404 branch
-        # with the excluded list in detail so the caller can explain to the user.
-        # FastAPI wraps the dict body as {"detail": <body>}, so use top-level
-        # keys here rather than nesting a second "detail" inside.
-        raise HTTPException(404, {
-            "reason": "all Stock-Dates in range excluded by invariants",
-            "excluded": [e.model_dump() for e in excluded],
-        })
+        # Spec 2026-05-27 §4.3: every in-range date is INVALID → return an
+        # empty bundle with excluded_dates populated, so frontend can render
+        # DataWarning UX without 404 round-trips.
+        return _empty_range_bundle(code, from_date, to_date, bucket_ms, excluded=excluded)
 
     # The range-wide volume profile must aggregate only the dates we actually
     # included — using the unfiltered `dates` would pull trades.parquet for
