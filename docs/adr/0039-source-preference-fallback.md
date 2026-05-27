@@ -26,7 +26,21 @@ sourcePreference: "hogaplay" | "kis_live"
 
 즉 차트가 비어 보이는 경우는 **두 source 모두 없을 때만**. 사용자가 토글을 잘못 만지더라도 데이터가 사라지지 않는다.
 
-`/live` 페이지의 **라이브 SSE 데이터**(오늘 자)는 본 토글을 무시한다 — 오늘 자는 정의상 `kis_live`만 존재. `/live`의 **과거 lazy fetch** 데이터(어제 이전)는 본 토글을 따르며, 위의 preference + fallback 의미론을 그대로 적용한다. 즉 토글은 "모든 차트 공통"이라는 사용자 mental model을 유지하되, 오늘 자 라이브 데이터에만 제약이 있다.
+`/live` 페이지도 본 토글을 따른다. 다만 "오늘 자"는 시간에 따라 데이터 가용성이 변하므로 **`list_existing_sources(code, date)`** 결과에 추가 항목이 들어간다:
+
+```
+"오늘 자" sources_available 판정 (`/live`에 한정):
+  - promoted Parquet에 kis_live/ 가 있다 → 'kis_live' 가용 (18:00 promote 후)
+  - promoted Parquet에 hogaplay/ 가 있다 → 'hogaplay' 가용 (사용자가 캡쳐 실행 후)
+  - 위 둘 다 없고 라이브 SSE buffer에 데이터가 있다 → 'kis_live' 가용 (latency 0 source)
+```
+
+`/replay` 페이지의 sources_available은 위 셋째 줄이 없는 부분집합 — promoted Parquet만 본다. 동일 토글, 동일 fallback 의미론, source 가용성 판정에 SSE buffer를 더하느냐 마느냐의 차이뿐.
+
+함의:
+- 장 중 09:00~16:00: 토글이 `hogaplay`이고 오늘 자 hogaplay 캡쳐가 없으면 → fallback to `kis_live` (라이브 SSE buffer). 사용자는 KIS 실시간 데이터를 본다.
+- 18:00 promote 후: 토글이 `kis_live`이면 promoted kis_live Parquet 사용. 토글이 `hogaplay`이고 사용자가 hogaplay 캡쳐를 실행했으면 그 데이터 사용. 둘 다 없는 시나리오는 없음 (kis_live는 자동 promote됨).
+- 토글이 가리키는 source의 데이터가 부분적이어도(예: 09:00~12:00만 hogaplay) 그 source의 데이터만 표시. 가용한 시간대 밖은 빈 차트 — ADR-0039의 "source 선택은 stock-date 단위, 시간대 내 source mixing 없음" 정신 유지.
 
 ## Why
 

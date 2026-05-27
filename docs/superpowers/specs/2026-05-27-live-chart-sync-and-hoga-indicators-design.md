@@ -70,9 +70,15 @@ LiveWorkarea
 1. **과거 RangeBundle** — 기존 `/api/range` 엔드포인트 그대로 호출. backend가 ADR-0013대로 bucket된 series를 반환. `sourcePreference` 토글이 `source_pref` 쿼리 파라미터로 전달됨 (ADR-0039).
 2. **라이브 RangeBundle** — 오늘 자 SSE buffer + `/api/live/series` hydrate 결과를 **frontend에서** RangeBundle 모양으로 빌드 (신규 모듈 `frontend/src/live/buildLiveBundle.ts`). SSE는 raw event를 push하므로 매 push마다 frontend가 현재 timeframe의 bucket_ms로 재집계.
 
-머지는 stock-date(=segment) 단위로 한다: 과거 RangeBundle의 segments + 라이브 RangeBundle의 today segment를 시간순 concat. projector는 머지된 RangeBundle 하나만 받는다.
+머지는 stock-date(=segment) 단위로 한다: 과거 RangeBundle의 segments + 오늘 자 segment를 시간순 concat. projector는 머지된 RangeBundle 하나만 받는다.
 
-**Today / Historical 경계 invariant** — `/api/range`는 promoted Parquet만 읽으므로 오늘 자는 18:00 promote 전엔 존재하지 않는다. 일관성을 위해 `/live`는 `/api/range`를 호출할 때 항상 `to_date = today - 1day`로 제한한다. 오늘 자는 항상 라이브 SSE에서만 온다. (이는 ADR-0038의 "/replay에서 오늘 날짜는 16:00~18:00 사이엔 못 본다 — 그 시간엔 /live에서 본다"와 정합.)
+**오늘 자 segment 해소 규칙** (ADR-0039의 데이터 가용성 기반 fallback을 따름):
+1. `/api/range?from=earliest_visible&to=today&source_pref=<toggle>`를 호출. backend는 ADR-0039 fallback대로 promoted Parquet 기준 segment를 반환.
+2. 응답 segments에 today가 포함되어 있으면 → 그것을 today segment로 사용. 라이브 SSE buffer는 무시한다 (토글이 가리키는 promoted source가 이미 디스크에 있음).
+3. 응답 segments에 today가 없는데 라이브 SSE buffer에 데이터가 있으면 → frontend가 SSE buffer로 today segment를 빌드해서 append. 이 segment의 `source`는 `'kis_live'`로 태깅 (사용자가 hogaplay 토글이라도 fallback으로 KIS 라이브를 보고 있음을 표시).
+4. 둘 다 없으면 → today segment 없음. 차트의 오늘 자 구간은 자연스럽게 비어 있음 (ADR-0039의 excluded_dates / DataWarning과 동일 UX).
+
+이렇게 하면 `/live`는 모든 시간대에서 sourcePreference 토글을 따르며, 라이브 SSE는 "kis_live의 latency 0 source"로 fallback chain의 일부로 작동한다.
 
 **VirtualAxis** — 머지된 segments에서 `createVirtualAxis(segments)`로 VirtualAxis 인스턴스를 만들어 `RangeSeriesPane`에 전달한다. `/replay`의 projector들이 모두 `axis.toVirtual()`를 호출하므로 필수. 라이브 today segment의 `session_close_ms`는 plan에서 결정 (default = 정규 15:30 KST; KRX Half-Day Session 감지는 별도 작업으로 보류).
 
@@ -107,9 +113,11 @@ LiveWorkarea
 
 #### 4.2 데이터 소스
 
-**데이터 소스 (모든 timeframe·모든 지표 공통, ADR-0039):**
-- 오늘 자 라이브 데이터: KIS SSE / `/api/live/series` — source 토글 무관 (오늘 자는 정의상 `kis_live`만 존재).
-- 과거 lazy fetch 데이터: `useSourcePreferenceStore`의 `sourcePreference` 토글을 따른다 (Settings의 "기본 데이터 소스" 옵션 — `'hogaplay'` 우선 vs `'kis_live'` 우선). 토글에 따라 `<data_dir>/parquet/{date}/{code}/{source}/`에서 promoted Parquet을 읽고, 선택된 source가 그 stock-date에 없으면 ADR-0039의 fallback 의미론대로 다른 source로 폴백.
+**데이터 소스 (모든 timeframe·모든 지표·모든 시간대 공통, ADR-0039):**
+- `sourcePreference` 토글(Settings "기본 데이터 소스") 하나가 모든 segment의 source 선택을 결정. /live와 /replay가 같은 store 구독.
+- 어제 이전 stock-date: promoted Parquet에서 토글의 우선 source 또는 fallback.
+- 오늘 자: Section 2의 "오늘 자 segment 해소 규칙"대로 promoted → 라이브 SSE buffer → 빈 차트 순서.
+- 둘 다 가용한 stock-date에서 토글 전환 → React Query 캐시 키에 `source_pref` 포함되므로 refetch + 차트 재렌더.
 
 **캔들 (모든 timeframe):**
 - 분봉(`1m`–`30m`): 오늘 = KIS 1m + 클라이언트 분봉 집계 (기존 그대로). 과거 = 위의 source 토글에 따른 promoted capture에서 derive.
@@ -131,6 +139,7 @@ GET /api/range?code=<code>&from=<YYYYMMDD>&to=<YYYYMMDD>&bucket_ms=<ms>&source_p
 - `bucket_ms`는 현재 timeframe의 ms (`TIMEFRAME_TO_MS[timeframe]`).
 - 캡쳐가 없는 stock-date는 `excluded_dates`에 담겨 돌아온다 (ADR-0013). frontend는 그 구간을 자연스럽게 비운다.
 - 분봉 timeframe에서만 호출 (D/W/M에서는 호출 안 함 — 기존 정책 유지).
+- **`no captured Stock-Date` 에러 처리** ([hoga/api/bundle.py:369](../../hoga/api/bundle.py#L369)): 현재 `/api/range`는 요청 구간에 promoted 데이터가 하나도 없으면 404를 던진다. `/live`의 today-only 시나리오(promoted 데이터가 아직 없는 정상 상태)에서 이 에러는 정상 케이스이므로 frontend가 swallow하고 Section 2의 "오늘 자 segment 해소 규칙" 단계 3 또는 4로 진행. plan에서 결정: frontend swallow vs backend가 빈 RangeBundle 반환하도록 정정.
 
 #### 4.4 머지 정책
 
