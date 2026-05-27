@@ -48,6 +48,11 @@ class StockDate(BaseModel):
     # the booleans). Values: "complete", "source_partial", "client_incomplete",
     # "invalid". DiskState.NONE never appears here (no meta.json means no row).
     disk_state: str = "complete"
+    full_capture_count: int | None = None
+    """Number of successful Full Captures for this Stock-Date (initial + Retry-driven
+    overwrites of meta.json). Null on legacy meta files written before this counter
+    was introduced. See CONTEXT.md "Full Capture Count" and ADR-0031 for the
+    distinction from QueueItem.attempt."""
 
 
 class OrderbookResponse(BaseModel):
