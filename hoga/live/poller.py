@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from .kis_client import KIS_KST, KisApiError, KisClient, KisRateLimitError
-from .kis_models import KisOrderbook
+from .kis_models import KisBrokers, KisOrderbook, KisTrade
 from .snapshot import LiveSnapshot, SnapshotKind
 from .writer import LiveWriter
 
@@ -94,7 +94,9 @@ class LivePoller:
         codes = list(self._cfg.codes_fn())
         return sorted(codes, key=lambda c: self._last_success_cycle.get(c, -1))
 
-    async def _fetch_with_backoff(self, code: str, phase: str) -> tuple[KisOrderbook, list, object] | None:
+    async def _fetch_with_backoff(
+        self, code: str, phase: str
+    ) -> tuple[KisOrderbook, list[KisTrade], KisBrokers] | None:
         """Fetch ob+trades+brokers with retry on EGW00201 (Audit-4).
 
         Returns None after exhausting retries.
