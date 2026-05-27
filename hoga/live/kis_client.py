@@ -180,7 +180,17 @@ class KisClient:
         self._cache_path.chmod(0o600)
 
     async def _get(self, path: str, tr_id: str, params: dict[str, Any]) -> dict:
-        """Authenticated GET to KIS API. Unwraps and validates rt_cd."""
+        """Authenticated GET to KIS API. Unwraps and validates rt_cd.
+
+        Normalizes upstream HTTP errors into domain exceptions so callers
+        don't have to know about httpx — `_get`'s contract is "either
+        return a validated body or raise a typed KisXxxError". Without
+        this normalization a transient KIS 500 (common per-code) bubbles
+        up as httpx.HTTPStatusError and forces the poller to log a
+        full traceback at `unexpected_error` level, drowning real bugs
+        in noise. Found by /qa: KIS regularly returns 500 for codes
+        outside the regular session window — expected, not a defect.
+        """
         token = await self.get_access_token()
         headers = {
             "authorization": f"Bearer {token}",
@@ -189,8 +199,16 @@ class KisClient:
             "tr_id": tr_id,
             "custtype": "P",
         }
-        resp = await self._client.get(path, params=params, headers=headers)
-        resp.raise_for_status()
+        try:
+            resp = await self._client.get(path, params=params, headers=headers)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            # 4xx/5xx from KIS — surface as KisApiError so the poller can
+            # log it once at WARN/INFO without a full traceback.
+            raise KisApiError(
+                msg_cd=f"HTTP_{e.response.status_code}",
+                msg1=e.response.text[:200],
+            ) from e
         return self._unwrap(resp.json())
 
     def _unwrap(self, body: dict) -> dict:
