@@ -83,24 +83,35 @@ export function LiveChartRoot({ code, timeframe }: Props) {
     axisRef.current = axis;
   }, [axis]);
 
-  // First-bundle fitContent: when segments first arrive, fit the visible
-  // range to the seeded INITIAL_HISTORICAL_DAYS window. Subsequent bundle
-  // growth (chunked extension on scroll) is intentionally NOT auto-fit —
-  // that would snap the user back from wherever they scrolled to.
+  // Auto-fitContent on segment-count growth.
   //
-  // Reset the ref on (code, timeframe) change so switching tickers or
-  // timeframes also re-fits — otherwise the new bundle would land in the
-  // series but the viewport would stay on the old (code, timeframe)'s
-  // visible range, hiding the just-fetched data.
-  const didInitialFitRef = useRef(false);
+  // The mount sequence delivers data in stages: useLiveCandles resolves first
+  // (today only → segments=1), then /api/range arrives (past + today → segments=21).
+  // A single first-arrival fit ref would lock the viewport to "today only"
+  // because the fit fired before past.data landed. Instead, refit every time
+  // segments.length INCREASES — SSE updates that only mutate candles inside
+  // existing segments don't grow the count, so they don't snap the viewport.
+  //
+  // Once the user explicitly scrolls past the leftmost candle (which sets
+  // historicalFromDate via extendHistoricalRange), stop auto-fitting so
+  // chunked extensions land without resetting the user's scroll position.
+  //
+  // Switching code or timeframe resets historicalFromDate to null (livePage
+  // store action) AND resets the segment-count ref so the next bundle's
+  // first-stable state re-fits.
+  const prevSegmentCountRef = useRef(0);
   useEffect(() => {
-    didInitialFitRef.current = false;
+    prevSegmentCountRef.current = 0;
   }, [code, timeframe]);
   useEffect(() => {
-    if (!chart || !bundle || bundle.segments.length === 0) return;
-    if (didInitialFitRef.current) return;
+    if (!chart || !bundle) return;
+    const prev = prevSegmentCountRef.current;
+    const next = bundle.segments.length;
+    prevSegmentCountRef.current = next;
+    if (next <= prev) return;
+    if (next === 0) return;
+    if (useLivePageStore.getState().historicalFromDate !== null) return;
     chart.timeScale().fitContent();
-    didInitialFitRef.current = true;
   }, [chart, bundle]);
 
   useEffect(() => {
