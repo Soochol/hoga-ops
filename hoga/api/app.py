@@ -28,6 +28,8 @@ from hoga.api.watchlist_routes import build_router as build_watchlist_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
+from hoga.live.api import build_router as build_live_router
+from hoga.live.lifecycle import get_status as live_get_status
 from hoga.live.migrate import migrate_to_v2_layout
 
 log = logging.getLogger(__name__)
@@ -125,6 +127,7 @@ def create_app(data_dir: Path) -> FastAPI:
     )
     app.include_router(build_calendar_router(data_dir=data_dir))
     app.include_router(build_watchlist_router(data_dir=data_dir))
+    app.include_router(build_live_router(get_status=live_get_status))
     if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
         app.include_router(build_test_router(data_dir))
     app.state.engine = engine
