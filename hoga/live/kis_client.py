@@ -366,3 +366,41 @@ class KisClient:
                 volume=volume,
             ))
         return candles
+
+    # ------------------------------------------------------------------
+    # Task 2.5: fetch_overtime_orderbook (FHPST02300400)
+    # ------------------------------------------------------------------
+
+    async def fetch_overtime_orderbook(self, code: str) -> KisOrderbook:
+        """Fetch 10-level after-hours orderbook for *code* (FHPST02300400)."""
+        body = await self._get(
+            path="/uapi/domestic-stock/v1/quotations/inquire-overtime-asking-price",
+            tr_id="FHPST02300400",
+            params={
+                "fid_cond_mrkt_div_code": "J",
+                "fid_input_iscd": code,
+            },
+        )
+        out = body["output"]  # single dict (not a list)
+        asks = [
+            OrderbookLevel(
+                price=int(out[f"ovtm_untp_askp{i}"]),
+                qty=int(out[f"ovtm_untp_askp_rsqn{i}"]),
+            )
+            for i in range(1, 11)
+        ]
+        bids = [
+            OrderbookLevel(
+                price=int(out[f"ovtm_untp_bidp{i}"]),
+                qty=int(out[f"ovtm_untp_bidp_rsqn{i}"]),
+            )
+            for i in range(1, 11)
+        ]
+        return KisOrderbook(
+            code=code,
+            asks=asks,
+            bids=bids,
+            total_ask_qty=int(out["ovtm_total_askp_rsqn"]),
+            total_bid_qty=int(out["ovtm_total_bidp_rsqn"]),
+            t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
+        )
