@@ -99,7 +99,7 @@ class CaptureTimingCollector:
 | `disk_write` | TSV/parquet write |
 | `rate_limit` | 페이지당 `time.sleep(rate_limit_s)` 누적. **ADR-0017의 throttle auto-backoff 더블링은 이 phase에 흡수됨** — 더블링되는 게 `rate_limit_s` 자체이므로 |
 | `backoff` | `_run_capture_and_parse`의 **상위 레벨 retry sleep**(5/10/30s 등) 누적. ADR-0017의 rate_limit 더블링과 구별 |
-| `cookie_pause` | cookie 만료 pool 일시정지 |
+| `cookie_pause` | **현재 구조에서는 항상 0ms**. `CookieExpiredError`는 worker thread에서 raise되어 item을 즉시 `failed` 상태로 만들고 그 시점에 `_handle_cookie_expired`가 큐 자체를 paused로 전환한다 — 실패한 item이 직접 sleep하지 않으므로 wrap할 sleep이 없다. `record_error("cookie_expired")` 만 exception handler에서 호출. phase enum은 향후 큐-pause 시간을 item에 attribution 하는 재설계 여지로 예약 |
 | `other` | 위 어디에도 안 잡힌 잔여 (sanity check용) |
 
 **불변식:** `total_ms ≥ sum(phase_totals_ms.values())`. 차이는 `unaccounted_ms`로 summary에 노출. 5% 이상이면 측정 누락 신호.
@@ -121,7 +121,7 @@ class CaptureTimingCollector:
 | `hoga/api/captures.py` 의 `parse_stock_date` executor 호출 (~L595, page loop 종료 후) | `with collector.phase("parse"):` | `parse` |
 | `time.sleep(rate_limit_s)` | `with collector.phase("rate_limit"):` | `rate_limit` |
 | `hoga/api/captures.py` 상위 레벨 429 retry (~L518; 5/10/30s sleep) | `with collector.phase("backoff"):` + `record_error("429")` | `backoff` |
-| `hoga/api/captures.py` cookie expired (~L710) | `with collector.phase("cookie_pause"):` + `record_error("cookie_expired")` | `cookie_pause` |
+| `hoga/api/captures.py` `except CookieExpiredError` 핸들러 | `collector.record_error("cookie_expired")` (sleep wrap 없음 — 위 표 참조) | `cookie_pause` (error만, 시간은 0) |
 
 ### 3.3 Collector lifecycle
 
