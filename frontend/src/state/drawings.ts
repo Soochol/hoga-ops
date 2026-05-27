@@ -32,21 +32,24 @@ type Actions = {
   __resetForTests(): void;
 };
 
-let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingCode: string | null = null;
+// Per-code timer map: a single shared timer would cancel an in-flight save
+// for code A the moment the user switches to code B and edits within the
+// debounce window — A's mutation never reaches localStorage and is silently
+// lost on reload. Map<code, Timer> isolates the cancel surface to "same
+// code re-arms the debounce; different codes coexist".
+const pendingTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 let defaultsTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useDrawingsStore = create<State & Actions>((set, get) => {
   const queuePersist = (code: string | null) => {
     if (code == null) return;
-    pendingCode = code;
-    if (pendingTimer != null) clearTimeout(pendingTimer);
-    pendingTimer = setTimeout(() => {
+    const existing = pendingTimers.get(code);
+    if (existing != null) clearTimeout(existing);
+    pendingTimers.set(code, setTimeout(() => {
       const items = get().byCode.get(code) ?? [];
       saveDrawings(code, items);
-      pendingTimer = null;
-      pendingCode = null;
-    }, PERSIST_DEBOUNCE_MS);
+      pendingTimers.delete(code);
+    }, PERSIST_DEBOUNCE_MS));
   };
 
   const queuePersistDefaults = () => {
@@ -143,16 +146,13 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
     },
 
     flushPending() {
-      if (pendingTimer != null) {
-        clearTimeout(pendingTimer);
-        pendingTimer = null;
-      }
-      const code = pendingCode;
-      pendingCode = null;
-      if (code != null) {
+      // Flush ALL pending codes, not just the most recent one — see queuePersist.
+      for (const [code, timer] of pendingTimers) {
+        clearTimeout(timer);
         const items = get().byCode.get(code) ?? [];
         saveDrawings(code, items);
       }
+      pendingTimers.clear();
       if (defaultsTimer != null) {
         clearTimeout(defaultsTimer);
         defaultsTimer = null;
@@ -161,15 +161,12 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
     },
 
     __resetForTests() {
-      if (pendingTimer != null) {
-        clearTimeout(pendingTimer);
-        pendingTimer = null;
-      }
+      for (const timer of pendingTimers.values()) clearTimeout(timer);
+      pendingTimers.clear();
       if (defaultsTimer != null) {
         clearTimeout(defaultsTimer);
         defaultsTimer = null;
       }
-      pendingCode = null;
       set({
         byCode: new Map(),
         loadedCodes: new Set(),

@@ -100,6 +100,23 @@ describe('useDrawingsStore — persistence integration', () => {
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw as string)).toEqual({ v: 1, items: [mkHline('h1', 100)] });
   });
+
+  // /review audit: per-code debounce isolation. Editing A then switching to
+  // B and editing within the debounce window must NOT lose A's edit.
+  // Pre-fix, a single shared timer was cancelled by B's edit → A never
+  // reached saveDrawings → on reload A's edit was silently lost.
+  it('flushPending writes ALL pending codes, not just the most recent', () => {
+    useDrawingsStore.getState().setActiveCode(A);
+    useDrawingsStore.getState().add(mkHline('a1', 111));
+    // Switch to B and edit while A's debounce timer is still armed.
+    useDrawingsStore.getState().setActiveCode(B);
+    useDrawingsStore.getState().add(mkHline('b1', 222));
+    useDrawingsStore.getState().flushPending();
+    expect(JSON.parse(localStorage.getItem('replay.drawings.v1.005930') as string))
+      .toEqual({ v: 1, items: [mkHline('a1', 111)] });
+    expect(JSON.parse(localStorage.getItem('replay.drawings.v1.003490') as string))
+      .toEqual({ v: 1, items: [mkHline('b1', 222)] });
+  });
 });
 
 describe('useDrawingsStore — defaults', () => {
