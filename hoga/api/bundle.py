@@ -166,6 +166,9 @@ def build_volume_profile_slice(
         row = engine.conn.execute(
             "SELECT MIN(low), MAX(high) FROM read_parquet(?)", [candles_path],
         ).fetchone()
+        if row is None or row[0] is None or row[1] is None:
+            # Empty candles table — return a degenerate single-bin profile.
+            return VolumeProfile(bin_count=1, price_min=0, price_max=0, bin_width=0, bins=[])
         price_min = int(row[0])
         price_max = int(row[1])
     bin_width = (price_max - price_min) / vp_bins
