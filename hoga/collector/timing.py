@@ -4,10 +4,20 @@ See docs/superpowers/specs/2026-05-27-capture-timing-instrumentation-design.md
 """
 from __future__ import annotations
 
+import datetime as _dt
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Callable, Iterator, Literal
+from zoneinfo import ZoneInfo
+
+from hoga.api.models import (
+    TimingEnv,
+    TimingPageDetail,
+    TimingPhaseTotals,
+    TimingReport,
+    TimingSummary,
+)
 
 PhaseName = Literal[
     "http_fetch",
@@ -28,6 +38,12 @@ _PHASES: tuple[PhaseName, ...] = (
     "cookie_pause",
     "other",
 )
+
+_KST = ZoneInfo("Asia/Seoul")
+
+
+def _now_kst_iso() -> str:
+    return _dt.datetime.now(_KST).isoformat(timespec="seconds")
 
 
 @dataclass
@@ -65,6 +81,7 @@ class CaptureTimingCollector:
         self.pages: list[PageTiming] = []
         self.error_counts: dict[str, int] = {}
         self.event_count: int = 0
+        self._started_at_kst = _now_kst_iso()
 
     @contextmanager
     def phase(self, name: PhaseName) -> Iterator[None]:
@@ -103,3 +120,53 @@ class CaptureTimingCollector:
         self.error_counts[kind] = self.error_counts.get(kind, 0) + 1
         if self.pages:
             self.pages[-1].errors.append(kind)
+
+    def summary(self, *, env: TimingEnv, ended_at_kst: str | None = None) -> TimingSummary:
+        total_ms = (self._clock() - self._started) * 1000.0
+        phase_sum = sum(self.phase_totals_ms.values())
+        unaccounted = max(0.0, total_ms - phase_sum)
+
+        denom = total_ms if total_ms > 0 else 1.0
+        phase_percentages = {
+            phase: (self.phase_totals_ms[phase] / denom) * 100.0
+            for phase in _PHASES
+        }
+
+        return TimingSummary(
+            code=self.code,
+            date=self.date,
+            started_at_kst=self._started_at_kst,
+            ended_at_kst=ended_at_kst or _now_kst_iso(),
+            total_ms=total_ms,
+            phase_totals_ms=TimingPhaseTotals(
+                http_fetch_ms=self.phase_totals_ms["http_fetch"],
+                parse_ms=self.phase_totals_ms["parse"],
+                disk_write_ms=self.phase_totals_ms["disk_write"],
+                rate_limit_ms=self.phase_totals_ms["rate_limit"],
+                backoff_ms=self.phase_totals_ms["backoff"],
+                cookie_pause_ms=self.phase_totals_ms["cookie_pause"],
+                other_ms=self.phase_totals_ms["other"],
+            ),
+            phase_percentages=phase_percentages,
+            unaccounted_ms=unaccounted,
+            page_count=len(self.pages),
+            event_count=self.event_count,
+            error_counts=dict(self.error_counts),
+            env=env,
+        )
+
+    def to_report(self, *, env: TimingEnv, ended_at_kst: str | None = None) -> TimingReport:
+        return TimingReport(
+            summary=self.summary(env=env, ended_at_kst=ended_at_kst),
+            pages=[
+                TimingPageDetail(
+                    idx=p.idx,
+                    http_ms=p.http_ms,
+                    parse_ms=p.parse_ms,
+                    write_ms=p.write_ms,
+                    events=p.events,
+                    errors=list(p.errors),
+                )
+                for p in self.pages
+            ],
+        )
