@@ -1,7 +1,9 @@
 import type { StockDate } from '../api/types';
 import { STATE_SEVERITY } from './DiskStateBadge';
 
-export type SortKey = 'state' | 'date' | 'captured' | 'volume' | 'pages' | 'size' | 'ohlc';
+export type SortKey =
+  | 'state' | 'date' | 'captured' | 'volume' | 'pages' | 'size' | 'ohlc'
+  | 'fullCaptureCount';
 export type SortDir = 'asc' | 'desc';
 /** null = unsorted = 기본 date desc (useStockDateGroups가 이미 적용한 순서). */
 export type SortState = { key: SortKey; dir: SortDir } | null;
@@ -17,6 +19,9 @@ function keyOf(row: StockDate, key: SortKey): Comparable {
     case 'pages':    return row.pages_collected;
     case 'size':     return row.file_size_bytes;
     case 'ohlc':     return row.today_close;
+    case 'fullCaptureCount':
+      // Handled by the null-last branch in sortDates(); unreachable here.
+      throw new Error('fullCaptureCount handled separately');
   }
 }
 
@@ -36,6 +41,17 @@ export function sortDates(dates: StockDate[], sort: SortState): StockDate[] {
   const copy = [...dates];
   const mult = sort.dir === 'asc' ? 1 : -1;
   copy.sort((a, b) => {
+    // Null-last special case: fullCaptureCount nulls always go to the end.
+    if (sort.key === 'fullCaptureCount') {
+      const av = a.full_capture_count;
+      const bv = b.full_capture_count;
+      if (av === null && bv === null) return compare(b.date, a.date);
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      const cmp = compare(av, bv);
+      if (cmp !== 0) return cmp * mult;
+      return compare(b.date, a.date);
+    }
     const cmp = compare(keyOf(a, sort.key), keyOf(b, sort.key));
     if (cmp !== 0) return cmp * mult;
     if (sort.key === 'date') return 0;

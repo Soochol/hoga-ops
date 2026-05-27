@@ -24,6 +24,7 @@ const row = (
   today_low: 69_000,
   today_close: 70_500,
   disk_state: 'complete',
+  full_capture_count: null,
   ...overrides,
 });
 
@@ -120,5 +121,29 @@ describe('nextSortState', () => {
     expect(nextSortState({ key: 'volume', dir: 'asc' }, 'state')).toEqual({ key: 'state', dir: 'desc' });
     expect(nextSortState({ key: 'volume', dir: 'desc' }, 'date')).toEqual({ key: 'date', dir: 'desc' });
     expect(nextSortState(null, 'ohlc')).toEqual({ key: 'ohlc', dir: 'desc' });
+  });
+});
+
+describe('sortDates fullCaptureCount', () => {
+  const rows: StockDate[] = [
+    row('20260520', { full_capture_count: 3 }),
+    row('20260521', { full_capture_count: null }),
+    row('20260522', { full_capture_count: 1 }),
+  ];
+
+  it('sorts by fullCaptureCount desc, putting nulls last', () => {
+    const out = sortDates(rows, { key: 'fullCaptureCount', dir: 'desc' });
+    expect(out.map(r => r.full_capture_count)).toEqual([3, 1, null]);
+  });
+
+  it('sorts by fullCaptureCount asc, still keeping nulls last', () => {
+    const out = sortDates(rows, { key: 'fullCaptureCount', dir: 'asc' });
+    expect(out.map(r => r.full_capture_count)).toEqual([1, 3, null]);
+  });
+});
+
+describe('nextSortState includes fullCaptureCount', () => {
+  it('null + click(fullCaptureCount) goes to desc', () => {
+    expect(nextSortState(null, 'fullCaptureCount')).toEqual({ key: 'fullCaptureCount', dir: 'desc' });
   });
 });
