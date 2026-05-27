@@ -111,19 +111,23 @@ full_capture_count: number | null;
 
 State 컬럼 바로 우측.
 
-### 4.2 렌더 규칙
+### 4.2 렌더 규칙 (uniform `×N` 뱃지)
 
 | full_capture_count | 셀 내용 |
 |---|---|
 | `null` (legacy) | `—` (text-fg-dimmer) |
-| `1` | 빈 셀 |
-| `≥ 2` | `×{N}` (text-fg-dim font-mono tabular-nums) |
+| `1` | `×1` (text-fg-dimmer + border-fg-dimmer — 차분한 톤) |
+| `≥ 2` | `×N` (text-fg-dim + border-fg-dim — 표준 뱃지) |
+
+뱃지는 [CaptureQueueRow.tsx:53-58](frontend/src/capture/CaptureQueueRow.tsx#L53-L58)의 `attempt` `×N` 칩과
+동일 형태(border + text-badge + rounded-md + tabular-nums). 컬럼 시각 문법이
+한 가지(`×N`)로 통일되어 null 외에는 모두 같은 어휘를 사용.
 
 ### 4.3 헤더
 
-- 표시 라벨: `×N`
+- 표시 라벨: `Captures`
 - `title` 툴팁: `Full Capture 누적 횟수`
-- `aria-sort` 활성 가능 (정렬 가능 컬럼).
+- 정렬: 우정렬 (다른 숫자 컬럼들과 일치, `SortableTh right` prop).
 
 ### 4.4 정렬
 

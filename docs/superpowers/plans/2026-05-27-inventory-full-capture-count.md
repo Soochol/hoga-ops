@@ -6,7 +6,7 @@ scope: both
 
 **Goal:** Add a `full_capture_count` counter persisted in meta.json (incremented on each successful capture) and surface it as a `×N` column in the `/inventory` detail table, next to the State column.
 
-**Architecture:** The parser performs a read-modify-write on `meta.json` at write time to increment the counter (existing serial dedup in the capture queue makes this race-safe). The counter ships through the existing `StockDate` wire model (additive optional field, ADR-0004 mirror discipline) and the frontend renders `null → "—"`, `1 → blank`, `≥2 → "×N"`. No backfill — legacy Stock-Dates show `—` until they are Retry'd.
+**Architecture:** The parser performs a read-modify-write on `meta.json` at write time to increment the counter. Race-safety relies on the capture queue's in-process inflight set (`_inflight_paths` guarded by `_lock` at [hoga/api/captures.py:199](hoga/api/captures.py#L199) + worker check at `:820-826`) — **single-process precondition only**, as documented at captures.py:69. Multi-worker uvicorn would lose the dedup; this plan assumes the current single-worker deployment. The counter ships through the existing `StockDate` wire model (additive optional field, ADR-0004 mirror discipline) and the frontend renders `null → "—"`, `≥1 → "×N"` (including `×1` rendered faintly) as a bordered chip matching the existing `attempt` badge at [CaptureQueueRow.tsx:53](frontend/src/capture/CaptureQueueRow.tsx#L53). No backfill — legacy Stock-Dates show `—` until they are Retry'd.
 
 **Tech Stack:** Python 3.11+ (Pydantic v2, pytest), TypeScript (React + Vite + Vitest + React Testing Library), Tailwind design tokens.
 
@@ -220,19 +220,27 @@ Insert the counter logic *before* the `write_text` call (after the violations bl
         meta["invariant_violations"] = [v.as_dict() for v in _all_violations]
 
     # Full Capture Count (CONTEXT.md): read prior meta and increment.
-    # Race-safe because the capture queue dedups same-(code,date) jobs
-    # (see hoga/api/captures.py::_dedup_against_in_flight) — sequential
-    # write guarantees no lost update under expected operating conditions.
+    # Race-safe under the single-process precondition documented at
+    # hoga/api/captures.py:69 — the capture queue's `_inflight_paths`
+    # set (guarded by `_lock`) serializes same-(code,date) jobs within
+    # one worker process. Multi-worker uvicorn would lose this guarantee.
     prior_path = out_dir / "meta.json"
     prior_count = 0
     if prior_path.exists():
         try:
             prior_meta = json.loads(prior_path.read_text(encoding="utf-8"))
             prior_value = prior_meta.get("full_capture_count")
-            if isinstance(prior_value, int) and prior_value > 0:
+            if isinstance(prior_value, int) and prior_value >= 1:
                 prior_count = prior_value
-        except (OSError, json.JSONDecodeError):
-            # Corrupt prior meta is treated as legacy/absent — start at 1.
+        except (OSError, json.JSONDecodeError) as exc:
+            # Don't silently reset a counter that may have been at 47.
+            # Surface the corruption (logger or stderr) so an operator
+            # can investigate; treat as legacy=0 only after warning.
+            import logging
+            logging.getLogger("hoga.parser").warning(
+                "corrupt prior meta.json at %s — resetting full_capture_count: %s",
+                prior_path, exc,
+            )
             prior_count = 0
     meta["full_capture_count"] = prior_count + 1
 
@@ -454,6 +462,8 @@ const row = (code: string, name: string, date: string,
 Append to `frontend/src/inventory/StockDateGroupDetail.test.tsx`:
 
 ```tsx
+import { within } from '@testing-library/react';
+
 describe('StockDateGroupDetail full_capture_count column', () => {
   beforeEach(() => { setupFetch(); });
   afterEach(() => { vi.restoreAllMocks(); });
@@ -461,23 +471,30 @@ describe('StockDateGroupDetail full_capture_count column', () => {
   it('renders "—" when full_capture_count is null', async () => {
     const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: null };
     renderDetail([r], '005930', new QueryClient());
-    await waitFor(() => expect(screen.getByText('20260522'.slice(0, 4))).toBeTruthy());
-    // The cell next to State (and before Date) should contain an em-dash.
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    const rowEl = await screen.findByText('2026-05-22');
+    const tr = rowEl.closest('tr');
+    expect(tr).not.toBeNull();
+    // Scope to the row's count cell (by its data-testid).
+    const cell = within(tr!).getByTestId('full-capture-count-cell');
+    expect(cell.textContent).toBe('—');
   });
 
-  it('renders empty cell when full_capture_count is 1', async () => {
+  it('renders faint "×1" when full_capture_count is 1', async () => {
     const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: 1 };
     renderDetail([r], '005930', new QueryClient());
-    await waitFor(() => expect(screen.getByText('20260522'.slice(0, 4))).toBeTruthy());
-    // No "×1" text should appear, no em-dash for THIS cell (other cells may have dashes).
-    expect(screen.queryByText('×1')).toBeNull();
+    const rowEl = await screen.findByText('2026-05-22');
+    const tr = rowEl.closest('tr')!;
+    const cell = within(tr).getByTestId('full-capture-count-cell');
+    expect(cell.textContent).toBe('×1');
   });
 
   it('renders "×3" when full_capture_count is 3', async () => {
     const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: 3 };
     renderDetail([r], '005930', new QueryClient());
-    await waitFor(() => expect(screen.getByText('×3')).toBeTruthy());
+    const rowEl = await screen.findByText('2026-05-22');
+    const tr = rowEl.closest('tr')!;
+    const cell = within(tr).getByTestId('full-capture-count-cell');
+    expect(cell.textContent).toBe('×3');
   });
 });
 ```
@@ -489,14 +506,14 @@ Expected: FAIL on the new 3 tests (no `×3` text rendered, etc.).
 
 - [ ] **Step 4: Add the new column to the header**
 
-Edit `frontend/src/inventory/StockDateGroupDetail.tsx`. Find the `<thead>` block (around line 114–125):
+Edit `frontend/src/inventory/StockDateGroupDetail.tsx`. Find the `<thead>` block (around line 114–125). Add a `right`-aligned sortable th between State and Date, with the label `Captures`:
 
 ```tsx
           <thead className="bg-bg-subtle sticky top-0">
             <tr>
               <th className="px-2 py-2 border-b w-8" aria-label="re-capture" />
               <SortableTh column="state"    sort={sort} onSort={onSort}>State</SortableTh>
-              <SortableTh column="fullCaptureCount" sort={sort} onSort={onSort} title="Full Capture 누적 횟수">×N</SortableTh>
+              <SortableTh column="fullCaptureCount" sort={sort} onSort={onSort} right title="Full Capture 누적 횟수">Captures</SortableTh>
               <SortableTh column="date"     sort={sort} onSort={onSort}>Date</SortableTh>
               <SortableTh column="captured" sort={sort} onSort={onSort}>Captured</SortableTh>
               <SortableTh column="volume"   sort={sort} onSort={onSort} right>Volume</SortableTh>
@@ -509,21 +526,32 @@ Edit `frontend/src/inventory/StockDateGroupDetail.tsx`. Find the `<thead>` block
 
 - [ ] **Step 5: Add the body cell**
 
-In the same file, find the `<tr>` body (around line 132–155). After the State `<td>` and before the Date `<td>`, insert:
+In the same file, find the `<tr>` body (around line 132–155). After the State `<td>` and before the Date `<td>`, insert a right-aligned cell:
 
 ```tsx
-                  <td className="px-3 py-1.5 text-center font-mono tabular-nums">
-                    {renderFullCaptureCount(r.full_capture_count)}
+                  <td
+                    data-testid="full-capture-count-cell"
+                    className="px-3 py-1.5 text-right"
+                  >
+                    <FullCaptureCountBadge n={r.full_capture_count} />
                   </td>
 ```
 
-Then add the helper at the bottom of the file (next to the `RowRecaptureButton` helper):
+Then add the badge component at the bottom of the file (next to the `RowRecaptureButton` helper). It mirrors the existing `×N` chip from [CaptureQueueRow.tsx:53-58](frontend/src/capture/CaptureQueueRow.tsx#L53-L58):
 
 ```tsx
-function renderFullCaptureCount(n: number | null): React.ReactNode {
-  if (n === null) return <span className="text-fg-dimmer">—</span>;
-  if (n <= 1) return null;
-  return <span className="text-fg-dim" title={`Full Capture ${n}회`}>×{n}</span>;
+function FullCaptureCountBadge({ n }: { n: number | null }) {
+  if (n === null) {
+    return <span className="text-fg-dimmer">—</span>;
+  }
+  // n=1 renders faintly so the column has one visual grammar (always ×N when known).
+  const tone = n >= 2 ? 'text-fg-dim border-[var(--fg-dim)]' : 'text-fg-dimmer border-[var(--fg-dimmer)]';
+  return (
+    <span
+      title={`Full Capture 누적 ${n}회`}
+      className={`text-badge rounded-md px-[0.15rem] border ${tone} font-mono tabular-nums`}
+    >×{n}</span>
+  );
 }
 ```
 
@@ -637,6 +665,64 @@ Both must pass before proceeding to step 7 (architecture improvements).
 - Left card aggregation (sum of `full_capture_count` per code): not in this plan.
 - Capture timeline (when each Full Capture happened): not in this plan.
 - ADR: explicitly not created (single additive field, rationale in spec + glossary).
+
+---
+
+## Deferred review notes
+
+Suggestions/Nits from the plan-eng-review + plan-design-review that were *not*
+applied inline. Captured here so they don't get lost during execution and can
+be revisited if the corresponding code path drifts.
+
+### From plan-eng-review
+
+- **S1**: Add a one-line comment in the "legacy meta" parser test explaining
+  that `_build_meta` rebuilds meta from scratch, so the planted legacy keys
+  don't leak forward.
+- **S4**: Theoretical same-second `mtime_ns` collision on filesystems with
+  coarse mtime resolution could fool the queries.py cache. Not a concern on
+  Linux ext4 (ns resolution). Skip unless we deploy to such a filesystem.
+- **S5**: Integration test that enqueues the same `(code, date)` twice via
+  `/api/captures/items` and asserts the counter goes 1→2. Would lock in the
+  architectural assumption.
+- **S6**: The throwing `case 'fullCaptureCount':` in `keyOf()` is dead-code
+  defense. Could be removed once the null-last branch is well-tested.
+- **S7**: Touchlist undercounts fixture-sync files. Task 7 handles it but the
+  diff size will be ~5 more files than the header suggests.
+- **N1**: ADR-0004 docstring should be glanced at to confirm it covers TS
+  type mirroring.
+- **N2**: After multi-process is/isn't resolved, decide on `atomic_write_json`.
+- **N3**: Move `FullCaptureCountBadge` and the render helpers into `format.ts`
+  for symmetry with `fmtVolume` etc.
+- **N4**: `title` strings mix English domain term + Korean particle. Consistent
+  with the rest of the codebase but worth a future i18n pass.
+- **N5**: Manual smoke test requires real KRX captures. A dev-only counter
+  override would speed up visual QA.
+- **N6**: Comment in parser code already updated to reference the real symbol
+  per B1 fix.
+
+### From plan-design-review
+
+- **S1**: Column placement (between State and Date) was user-chosen. Reviewer
+  noted that "Date → State" is a strongly-coupled scan pair and the new column
+  inserts between them. Alternatives: far right after OHLC, or right after
+  Captured. Leave the user's choice unless they revisit.
+- **S4**: Screen reader will announce "Captures column, sortable" — acceptable
+  but a Korean `aria-label` would be friendlier. Defer to future a11y pass.
+- **S5**: Narrow viewport behavior unspecified. The table is already 9 columns
+  wide; adding a 10th column will likely trigger horizontal scroll on the
+  right-pane card. Verify during Task 8 smoke test.
+- **N1**: `FullCaptureCountBadge` as a colocated component matches the
+  `DiskStateBadge` pattern — minor cohesion win. Applied inline (N1 partially
+  done — name is `FullCaptureCountBadge` now).
+- **N2**: Title string consistency (`Full Capture 누적 N회` vs `Full Capture
+  누적 횟수`) — applied inline (both use 누적).
+- **N3**: Color tokens — applied inline (chip uses both `text-fg-dim` and
+  `border-[var(--fg-dim)]` per design B1 fix).
+- **N4**: First-click sort direction `desc` is correct for a "most retried
+  first" intent. No action.
+- **N5**: `data-testid` on cell — applied inline (added
+  `data-testid="full-capture-count-cell"` per eng B3 fix).
 
 ---
 
