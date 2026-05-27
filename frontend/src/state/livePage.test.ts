@@ -26,8 +26,9 @@ describe('livePage store', () => {
 
   it('setCandleTimeframe rejects unknown values', () => {
     const before = useLivePageStore.getState().candleTimeframe;
-    // @ts-expect-error — runtime guard test
-    useLivePageStore.getState().setCandleTimeframe('bogus');
+    // Cast bypasses the Literal type guard; runtime check inside
+    // setCandleTimeframe should still reject the unknown value.
+    useLivePageStore.getState().setCandleTimeframe('bogus' as never);
     expect(useLivePageStore.getState().candleTimeframe).toBe(before);
   });
 
