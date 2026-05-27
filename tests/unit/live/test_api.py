@@ -1,4 +1,4 @@
-"""Stage 7-α — /api/live router."""
+"""Stage 7-α / 7-β — /api/live router."""
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -64,3 +64,70 @@ def test_live_router_registered_on_full_app(tmp_path) -> None:
         r = c.get("/api/live/status")
         assert r.status_code == 200
         assert r.json()["running"] is False
+
+
+def test_get_live_snapshot_returns_404_when_no_data(tmp_path) -> None:
+    """No publish yet → 404."""
+    from hoga.api.app import create_app
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    app = create_app(tmp_path)
+    with TestClient(app) as c:
+        r = c.get("/api/live/snapshot?code=005930")
+        assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_live_snapshot_returns_buffered_latest(tmp_path) -> None:
+    """After publish, GET /snapshot returns the latest entry."""
+    from hoga.api.app import create_app
+    from hoga.live import lifecycle
+    from hoga.live.snapshot import LiveSnapshot, SnapshotKind
+
+    lifecycle.reset_for_tests()
+    buf = lifecycle.get_buffer()
+    await buf.publish("005930", [
+        LiveSnapshot(t_ms=12345, kind=SnapshotKind.OB, payload={"total_bid_qty": 1000}),
+        LiveSnapshot(t_ms=12345, kind=SnapshotKind.TRADE, payload={"trades": [{"price": 100}]}),
+        LiveSnapshot(t_ms=12345, kind=SnapshotKind.BROKER, payload={"buy_top": []}),
+    ])
+
+    app = create_app(tmp_path)
+    with TestClient(app) as c:
+        r = c.get("/api/live/snapshot?code=005930")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["code"] == "005930"
+        assert body["t_ms"] == 12345
+        assert body["orderbook"]["total_bid_qty"] == 1000
+        assert body["recent_trades"] == [{"price": 100}]
+
+
+@pytest.mark.asyncio
+async def test_get_live_series_returns_buffered_arrays(tmp_path) -> None:
+    from hoga.api.app import create_app
+    from hoga.live import lifecycle
+    from hoga.live.snapshot import LiveSnapshot, SnapshotKind
+
+    lifecycle.reset_for_tests()
+    buf = lifecycle.get_buffer()
+    for tick in range(3):
+        t = (tick + 1) * 10_000
+        await buf.publish("005930", [
+            LiveSnapshot(t_ms=t, kind=SnapshotKind.OB, payload={"total_bid_qty": 100 + tick}),
+            LiveSnapshot(t_ms=t, kind=SnapshotKind.TRADE, payload={"trades": []}),
+            LiveSnapshot(t_ms=t, kind=SnapshotKind.BROKER, payload={"buy_top": []}),
+        ])
+
+    app = create_app(tmp_path)
+    with TestClient(app) as c:
+        r = c.get("/api/live/series?code=005930&date=20260527")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["code"] == "005930"
+        assert body["date"] == "20260527"
+        assert body["is_open"] is True  # session_close_ms None while live
+        assert body["session_close_ms"] is None
+        assert len(body["snapshots"]) == 3
+        assert body["snapshots"][0]["total_bid_qty"] == 100
