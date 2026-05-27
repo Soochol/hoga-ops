@@ -110,7 +110,8 @@ export function subscribeToCaptureEvents(handler: (e: SSEEvent) => void): () => 
       e.type === 'capture_queued' ||
       e.type === 'capture_queue_paused' ||
       e.type === 'capture_queue_resumed' ||
-      e.type === 'capture_queue_drained'
+      e.type === 'capture_queue_drained' ||
+      e.type === 'capture_timing'
     ) {
       handler(e);
     }
