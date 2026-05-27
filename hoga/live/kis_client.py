@@ -58,7 +58,7 @@ class KisClient:
         credentials: KisCredentials,
         token_cache_path: Path,
         *,
-        _transport: Optional[httpx.BaseTransport] = None,
+        _transport: Optional[httpx.AsyncBaseTransport] = None,
     ):
         self._creds = credentials
         self._cache_path = token_cache_path
@@ -120,12 +120,14 @@ class KisClient:
                 f"token issue failed: HTTP {resp.status_code} {resp.text[:200]}"
             )
         body = resp.json()
-        self._token = body["access_token"]
+        token: str = body["access_token"]
         expires_in = int(body.get("expires_in", 86400))
-        self._token_expires_at = datetime.now(KIS_KST) + timedelta(seconds=expires_in)
+        expires_at = datetime.now(KIS_KST) + timedelta(seconds=expires_in)
+        self._token = token
+        self._token_expires_at = expires_at
         self._last_issued_monotonic_ms = now_ms
-        self._write_cache(self._token, self._token_expires_at)
-        return self._token
+        self._write_cache(token, expires_at)
+        return token
 
     def _read_cache(self) -> Optional[tuple[str, datetime]]:
         if not self._cache_path.exists():
