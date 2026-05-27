@@ -16,6 +16,7 @@ dependencies = [
     "sse-starlette>=3.4.4",
     "watchdog>=6.0.0",
     "pykrx>=1.2.8",
+    "polars>=1.41.0",
 ]
 
 [project.optional-dependencies]
