@@ -83,35 +83,42 @@ export function LiveChartRoot({ code, timeframe }: Props) {
     axisRef.current = axis;
   }, [axis]);
 
-  // Auto-fitContent on segment-count growth.
+  // Viewport policy: trading-chart standard. Initial paint shows the
+  // most recent INITIAL_VISIBLE_BARS candles (so today and recent past are
+  // legible at native scale); series carries the full INITIAL_HISTORICAL_DAYS
+  // window in memory. User drags left to reveal more past — and when they
+  // drag past the leftmost loaded bar, the chunked-extension fetch fires
+  // (see lazy-fetch trigger below).
   //
-  // The mount sequence delivers data in stages: useLiveCandles resolves first
-  // (today only → segments=1), then /api/range arrives (past + today → segments=21).
-  // A single first-arrival fit ref would lock the viewport to "today only"
-  // because the fit fired before past.data landed. Instead, refit every time
-  // segments.length INCREASES — SSE updates that only mutate candles inside
-  // existing segments don't grow the count, so they don't snap the viewport.
+  // Without this, fitContent on a 20-day seed compresses today (≈30 1m
+  // candles) into ~0.7% of the viewport — visually invisible. The whole
+  // point of having today at all is to be the focus on first paint.
   //
-  // Once the user explicitly scrolls past the leftmost candle (which sets
-  // historicalFromDate via extendHistoricalRange), stop auto-fitting so
-  // chunked extensions land without resetting the user's scroll position.
-  //
-  // Switching code or timeframe resets historicalFromDate to null (livePage
-  // store action) AND resets the segment-count ref so the next bundle's
-  // first-stable state re-fits.
-  const prevSegmentCountRef = useRef(0);
+  // Re-set the visible range only when (code, timeframe) changes — NOT on
+  // every bundle update. SSE pushes inside today's segment must not snap
+  // the user's scroll. The user-extended condition (historicalFromDate !=
+  // null) also short-circuits — chunked extension lands silently.
+  const didInitialViewRef = useRef(false);
   useEffect(() => {
-    prevSegmentCountRef.current = 0;
+    didInitialViewRef.current = false;
   }, [code, timeframe]);
   useEffect(() => {
-    if (!chart || !bundle) return;
-    const prev = prevSegmentCountRef.current;
-    const next = bundle.segments.length;
-    prevSegmentCountRef.current = next;
-    if (next <= prev) return;
-    if (next === 0) return;
+    if (!chart || !bundle || bundle.candles.length === 0) return;
+    if (didInitialViewRef.current) return;
     if (useLivePageStore.getState().historicalFromDate !== null) return;
-    chart.timeScale().fitContent();
+    const ts = chart.timeScale();
+    const totalBars = bundle.candles.length;
+    // 300 bars ≈ 5h at 1m, ~1 trading day at 5m, ~10 days at 30m — a
+    // sweet spot across timeframes for "recent context, easy to drag back".
+    const target = 300;
+    const from = Math.max(0, totalBars - target);
+    const to = totalBars + 5; // 5-bar right padding (matches lightweight-charts default feel)
+    try {
+      ts.setVisibleLogicalRange({ from, to });
+      didInitialViewRef.current = true;
+    } catch {
+      // chart torn down between effect runs
+    }
   }, [chart, bundle]);
 
   useEffect(() => {
