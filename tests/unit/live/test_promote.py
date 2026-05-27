@@ -173,3 +173,30 @@ async def test_promote_pending_skips_archive_directory(tmp_path: Path) -> None:
     # Archive must remain untouched and no parquet generated from it
     assert archive_jsonl.exists()
     assert not (tmp_path / "parquet" / "20260101" / "001234").exists()
+
+
+@pytest.mark.asyncio
+async def test_archive_cleanup_removes_files_older_than_7d(tmp_path: Path) -> None:
+    from hoga.live.promote import cleanup_archive
+
+    old_path = tmp_path / "live" / "_archive" / "20260101" / "005930.jsonl"
+    old_path.parent.mkdir(parents=True)
+    old_path.write_text("old")
+    eight_days_ago = time.time() - 8 * 86400
+    os.utime(old_path, (eight_days_ago, eight_days_ago))
+
+    recent_path = tmp_path / "live" / "_archive" / "20260520" / "000660.jsonl"
+    recent_path.parent.mkdir(parents=True)
+    recent_path.write_text("recent")
+
+    await cleanup_archive(tmp_path, retention_days=7)
+
+    assert not old_path.exists()
+    assert recent_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_archive_noop_when_dir_missing(tmp_path: Path) -> None:
+    from hoga.live.promote import cleanup_archive
+    # Should not raise
+    await cleanup_archive(tmp_path)
