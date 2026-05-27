@@ -1,19 +1,23 @@
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router';
 import { useLivePageStore } from '../state/livePage';
+import { useLiveStatus } from '../api/liveStatus';
+import { useLiveBannerState } from './useLiveBannerState';
 import { LiveHeader } from './LiveHeader';
 import { LiveStatusBar } from './LiveStatusBar';
 import { LiveToolbar } from './LiveToolbar';
 import { LiveWorkarea } from './LiveWorkarea';
+import { LiveStateBanner } from './LiveStateBanner';
 
 /**
- * /live page — KIS-based real-time indicator chart (Stage 9-α shell).
+ * /live page — KIS-based real-time indicator chart.
  *
- * Four-row grid mirroring /replay's PriceStrip pattern:
+ * Five-row grid (Stage 9-β adds LiveStateBanner as auto-sized row 2):
  *   1. LiveHeader      (var(--h-live-header))  — title + ⭐ toggle
- *   2. LiveStatusBar   (var(--h-pricestrip))   — code/price/source/timeframe
- *   3. LiveToolbar     (var(--h-toolbar))      — timeframe selector
- *   4. LiveWorkarea    (1fr)                   — chart + sidebar (filled by 9-γ + 11)
+ *   2. LiveStateBanner (auto)                  — empty/error state matrix
+ *   3. LiveStatusBar   (var(--h-pricestrip))   — code/price/source/timeframe + cycle_lag pill
+ *   4. LiveToolbar     (var(--h-toolbar))      — timeframe selector
+ *   5. LiveWorkarea    (1fr)                   — chart + sidebar (filled by 9-γ + 11)
  *
  * Active code resolution (Addendum H-extra, 9.2):
  *   1. ?code= query param wins
@@ -34,20 +38,25 @@ export function LivePage() {
     }
   }, [queryCode, storedCode, setActiveCode]);
 
+  const { data: status } = useLiveStatus();
+  const banner = useLiveBannerState(status);
+
   const activeCode = queryCode ?? storedCode;
+  const watchlistEmpty = banner.primary === 'watchlist_empty';
 
   return (
     <div
       className="h-full grid"
       style={{
         gridTemplateRows:
-          'var(--h-live-header) var(--h-pricestrip) var(--h-toolbar) 1fr',
+          'var(--h-live-header) auto var(--h-pricestrip) var(--h-toolbar) 1fr',
       }}
     >
       <LiveHeader />
-      <LiveStatusBar activeCode={activeCode} />
+      <LiveStateBanner primary={banner.primary} stack={banner.stack} />
+      <LiveStatusBar activeCode={activeCode} cycleLagMs={status?.cycle_lag_ms ?? 0} />
       <LiveToolbar />
-      <LiveWorkarea activeCode={activeCode} />
+      <LiveWorkarea activeCode={activeCode} watchlistEmpty={watchlistEmpty} />
     </div>
   );
 }

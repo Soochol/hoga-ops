@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LivePage } from './LivePage';
 import { useLivePageStore } from '../state/livePage';
+import * as liveStatus from '../api/liveStatus';
 
 function renderWithRouter(initial = '/live') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -26,6 +27,22 @@ describe('LivePage shell', () => {
       candleTimeframe: '1m',
       watchlistPanelOpen: false,
     });
+    vi.spyOn(liveStatus, 'useLiveStatus').mockReturnValue({
+      data: {
+        running: true,
+        started_at_ms: 1,
+        last_tick_ms: 1,
+        cycle_lag_ms: 100,
+        watchlist_count: 1,
+        kis_calls_today: 0,
+        kis_rate_limit_remaining: null,
+      },
+      isLoading: false,
+    } as unknown as ReturnType<typeof liveStatus.useLiveStatus>);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('renders the four rows of the grid', () => {
