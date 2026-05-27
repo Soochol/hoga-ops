@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 
 import { apiCall } from './client';
 import { TIMEFRAME_TO_MS, type RangeBundle, type Timeframe } from './types';
@@ -45,5 +45,12 @@ export function useRange(
       ),
     enabled,
     staleTime: Infinity,
+    // Keep the previous response visible during a refetch with a new query
+    // key (e.g., /live extending historicalFromDate to fetch one more
+    // chunk). Without this, `data` flips to undefined while the new query
+    // is in flight, which on /live makes the bundle shrink to today-only
+    // for a frame and the chart visibly collapses to ~2 candles before
+    // re-expanding when the response lands.
+    placeholderData: keepPreviousData,
   });
 }
