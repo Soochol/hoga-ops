@@ -20,7 +20,7 @@ from hoga.api.captures import enqueue_items_core
 from hoga.api.disk_state import latest_complete_date
 from hoga.api.eligibility import find_ineligible_dates
 from hoga.api.models import EnqueueRequest, EnqueueResponse, WatchlistEntry
-from hoga.api.watchlist import bump_last_success, load_watchlist
+from hoga.api.watchlist import load_watchlist, set_last_success
 from hoga.collector.orchestrator import now_kst
 
 log = logging.getLogger(__name__)
@@ -85,15 +85,22 @@ async def catchup_one_entry(
     """
     today = now.strftime("%Y%m%d")
 
-    # Step 1: reconcile last_success_date from disk.
+    # Step 1: reconcile last_success_date with disk truth (bidirectional).
+    # The disk classifier (DiskState.COMPLETE on meta.json) is authoritative;
+    # the marker is a cache. Sync in *either* direction:
+    #   - latest > marker  → advance (normal catch-up after offline period)
+    #   - latest < marker  → regress (marker was stale, e.g. a previous
+    #                        finalize bumped past actual COMPLETE because
+    #                        of an abort_reason that wasn't yet gated on
+    #                        disk_state — see captures._finalize_item)
+    #   - latest is None and marker is set → reset to None (parquet wiped)
+    # The finalize-side path uses bump_last_success (advance-only) for
+    # race safety; reconcile uses set_last_success because it must be able
+    # to repair stale-too-high markers.
     latest = latest_complete_date(data_dir, entry.code)
-    if latest is not None and (
-        entry.last_success_date is None or latest > entry.last_success_date
-    ):
-        await bump_last_success(data_dir, code=entry.code, date=latest)
-        floor = latest
-    else:
-        floor = entry.last_success_date or entry.registered_at_kst_date
+    if latest != entry.last_success_date:
+        await set_last_success(data_dir, code=entry.code, date=latest)
+    floor = latest or entry.registered_at_kst_date
 
     # Step 2: compute candidate dates.
     start = _next_kst_day(floor)

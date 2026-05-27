@@ -258,9 +258,15 @@ async def test_catchup_reconcile_is_noop_when_disk_has_nothing(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_catchup_reconcile_does_not_regress_marker(tmp_path: Path):
+async def test_catchup_reconcile_regresses_stale_marker_to_disk_truth(tmp_path: Path):
     """If the disk's latest COMPLETE is older than the entry's current
-    marker, reconcile must not regress (bump_last_success is monotonic)."""
+    marker, reconcile MUST regress to disk truth. The original "monotonic"
+    contract treated phase="done" as proof of COMPLETE, which is false for
+    abort_reason=stagnation_abort and lenient-fallback INVALID cases — those
+    paths bump the marker past the actual latest COMPLETE on disk and leave
+    /watchlist and /capture in disagreement. The fix gates the finalize-side
+    bump on disk_state (captures._finalize_item) and makes reconcile the
+    repair path for any stale-too-high markers left from before the gate."""
     from hoga.api import scheduler, watchlist
     from hoga.api.models import EnqueueResponse
     await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
@@ -279,7 +285,7 @@ async def test_catchup_reconcile_does_not_regress_marker(tmp_path: Path):
         await scheduler._catchup_run(tmp_path)
 
     [entry] = watchlist.load_watchlist(tmp_path)
-    assert entry.last_success_date == "20260525"  # not regressed to 20260522
+    assert entry.last_success_date == "20260522"  # regressed to disk truth
 
 
 @pytest.mark.asyncio

@@ -668,11 +668,22 @@ async def _finalize_item(state: QueueItemState) -> None:
     ))
     # ADR-0034: Watchlist's last_success_date marker advances on successful
     # captures regardless of whether the capture was ad-hoc or scheduled.
+    # Gate on the on-disk classification (same predicate the /capture calendar
+    # uses) rather than ``state.phase``: phase="done" means "worker returned
+    # without exception" and is reachable with abort_reason set (e.g.
+    # stagnation_abort) or with lenient-fallback invariant violations,
+    # neither of which produce a COMPLETE Stock-Date on disk. Reading the
+    # disk state here ensures the marker can never disagree with the
+    # calendar UI by construction.
     if state.phase == "done":
         try:
-            await watchlist.bump_last_success(
-                _require_data_dir(), code=state.code, date=state.date,
-            )
+            from hoga.api.disk_state import DiskState, check_disk_state
+            data_dir = _require_data_dir()
+            if (check_disk_state(data_dir, state.code, state.date).state
+                    == DiskState.COMPLETE):
+                await watchlist.bump_last_success(
+                    data_dir, code=state.code, date=state.date,
+                )
         except Exception:  # noqa: BLE001 — never let watchlist break the queue
             logging.getLogger(__name__).exception(
                 "watchlist bump_last_success failed for %s/%s",

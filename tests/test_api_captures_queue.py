@@ -1502,7 +1502,9 @@ def test_enqueue_items_core_is_module_level_and_callable():
 @pytest.mark.asyncio
 async def test_finalize_item_done_bumps_watchlist_last_success(tmp_path):
     """The _finalize_item hook must call watchlist.bump_last_success
-    when phase is 'done', and never otherwise."""
+    when phase is 'done' AND the on-disk classification is COMPLETE.
+    Gating on disk_state (not just phase) is what keeps /watchlist in
+    agreement with /capture — see test_api_watchlist_marker_sync."""
     from unittest.mock import patch, AsyncMock
     from hoga.api import captures, watchlist
     captures.reset_state_for_tests()
@@ -1510,6 +1512,15 @@ async def test_finalize_item_done_bumps_watchlist_last_success(tmp_path):
     # Register the Code in the Watchlist so the bump has somewhere to land.
     await watchlist.add_entry(tmp_path, code="005930", name="삼성전자",
                               today_kst_date="20260526")
+    # Disk fixture: a COMPLETE Stock-Date so the gate lets the bump through.
+    meta = tmp_path / "parquet" / "20260526" / "005930" / "meta.json"
+    meta.parent.mkdir(parents=True, exist_ok=True)
+    meta.write_text(json.dumps({
+        "collection_complete": True,
+        "is_partial": False,
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_100_000,
+    }))
 
     state = captures.QueueItemState(
         item_id="x", code="005930", date="20260526",

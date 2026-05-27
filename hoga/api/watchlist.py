@@ -118,6 +118,10 @@ async def bump_last_success(
     Silent no-op when ``code`` is not in the Watchlist (capture was ad-hoc)
     or when ``date`` is not newer than the existing marker (out-of-order
     completions cannot regress).
+
+    Race-safe advance only. For reconcile-from-disk (which may need to
+    *regress* a stale marker when disk truth is older), use
+    :func:`set_last_success`.
     """
     async with _lock:
         entries = load_watchlist(data_dir)
@@ -127,6 +131,42 @@ async def bump_last_success(
             if e.code == code and (
                 e.last_success_date is None or date > e.last_success_date
             ):
+                new_entries.append(e.model_copy(update={"last_success_date": date}))
+                changed = True
+            else:
+                new_entries.append(e)
+        if changed:
+            save_watchlist(data_dir, entries=new_entries)
+
+
+async def set_last_success(
+    data_dir: Path,
+    *,
+    code: str,
+    date: str | None,
+) -> None:
+    """Force ``last_success_date`` to ``date`` exactly (either direction).
+
+    Used by the catch-up reconciler when the authoritative on-disk
+    ``latest_complete_date`` disagrees with the cached marker — including
+    the case where disk truth is *older* (e.g. a previous bump treated an
+    ``abort_reason=stagnation_abort`` finalize as success and advanced the
+    marker past the actual latest COMPLETE).
+
+    Race-safety: shares ``_lock`` with :func:`bump_last_success` and
+    :func:`add_entry`, so concurrent finalize-side advance and reconcile
+    cannot interleave a half-applied state. The semantic difference from
+    ``bump_last_success`` is intent (forced sync to disk truth), not lock
+    discipline.
+
+    Silent no-op when ``code`` is not in the Watchlist.
+    """
+    async with _lock:
+        entries = load_watchlist(data_dir)
+        new_entries: list[WatchlistEntry] = []
+        changed = False
+        for e in entries:
+            if e.code == code and e.last_success_date != date:
                 new_entries.append(e.model_copy(update={"last_success_date": date}))
                 changed = True
             else:
