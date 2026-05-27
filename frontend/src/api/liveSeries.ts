@@ -81,7 +81,9 @@ export function useLiveSeries(code: string) {
     };
   }, [code]);
 
-  // tick is intentionally used in the useMemo dependency
+  // `tick` is intentionally passed to readKind so that React re-reads the
+  // buffer on every SSE push — bump state forces a re-render, readKind then
+  // sees the updated buffer contents.
   return {
     initial: initial.data,
     isLoading: initial.isLoading,
