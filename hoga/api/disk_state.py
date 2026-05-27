@@ -149,6 +149,27 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> Classification:
         return Classification(state=DiskState.NO_UPSTREAM_DATA)
 
     parquet_dir = data_dir / "parquet" / date / code
+    # Source-aware lookup (ADR-0037): prefer per-source meta.json under
+    # parquet/{date}/{code}/{source}/meta.json. We aggregate across sources
+    # via the same priority used by aggregate_disk_state.
+    per_source = classify_stock_date(parquet_dir)
+    if per_source:
+        aggregated = aggregate_disk_state(per_source)
+        # Need violations too — surface them from the winning source.
+        winning_source = next(
+            (src for src in ("hogaplay", "kis_live") if per_source.get(src) == aggregated),
+            None,
+        )
+        if winning_source:
+            winning_meta_path = parquet_dir / winning_source / "meta.json"
+            try:
+                winning_meta = json.loads(winning_meta_path.read_text(encoding="utf-8"))
+                return classify_from_meta(winning_meta)
+            except (ValueError, OSError):
+                return Classification(state=DiskState.CLIENT_INCOMPLETE)
+        return Classification(state=aggregated)
+
+    # Legacy flat-layout fallback (pre-migration / never-migrated test fixtures).
     meta_path = parquet_dir / "meta.json"
     if meta_path.exists():
         try:
