@@ -88,13 +88,11 @@ export function useLiveBundle(
   const kisCandles = useMemo<Candle[]>(() => {
     const raw = pastCandlesQuery.data?.candles ?? [];
     if (raw.length === 0) return [];
-    const base = raw.map(kisBarToCandle);
-    if (!isMinute) return base;
-    const bucket = bucketSeconds(timeframe);
-    if (bucket === null || timeframe === '1m') return base;
-    // aggregateCandles operates on the KIS bar shape — adapt.
-    const aggregatedRaw = aggregateCandles(raw, bucket);
-    return aggregatedRaw.map(kisBarToCandle);
+    const bucket = isMinute ? bucketSeconds(timeframe) : null;
+    // Skip aggregation for 1m (bucket === 60) and non-minute timeframes —
+    // the raw KIS bars are already 1m, so aggregating would be a no-op pass.
+    const bars = bucket !== null && timeframe !== '1m' ? aggregateCandles(raw, bucket) : raw;
+    return bars.map(kisBarToCandle);
   }, [pastCandlesQuery.data, isMinute, timeframe]);
 
   const bundle = useMemo<RangeBundle | null>(() => {
