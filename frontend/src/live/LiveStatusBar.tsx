@@ -12,9 +12,8 @@ export function LiveStatusBar({ activeCode, cycleLagMs }: Props) {
   const severity = cycleLagSeverity(cycleLagMs);
   const pill = cycleLagPillColor(severity);
 
-  const { data: candleData } = useLiveCandles(activeCode ?? '', timeframe);
-  const latestCandles = candleData?.candles ?? [];
-  const lastCandle = latestCandles.length > 0 ? latestCandles[latestCandles.length - 1] : null;
+  const { candles } = useLiveCandles(activeCode ?? '', timeframe);
+  const lastCandle = candles.length > 0 ? candles[candles.length - 1] : null;
   const currentPrice = lastCandle?.close ?? null;
 
   return (

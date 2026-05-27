@@ -1,5 +1,12 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
+import {
+  baseFor,
+  bucketSeconds,
+  type LiveTimeframe,
+} from '../state/livePage';
+import { aggregateCandles } from '../live/aggregateCandles';
 
 export interface LiveCandle {
   t_ms: number;
@@ -20,20 +27,39 @@ export interface LiveCandlesResponse {
 /**
  * useLiveCandles — KIS candle proxy (backed by /api/live/candles).
  *
- * The backend caches per (code, timeframe) for 60 seconds. We additionally
- * set React Query's staleTime to 30s so most renders are instant. For
- * minute timeframes Stage 11+ can add a refetch interval; for now manual
- * invalidation is enough.
+ * Strategy: the server only exposes the base timeframes ('1m', 'D', 'W', 'M').
+ * Aggregated minute frames (3m–30m) are computed here from the 1m response,
+ * so a single (code, '1m') query feeds every minute view and React Query
+ * keeps the network footprint to one request per code. Daily/weekly/monthly
+ * pass through unchanged.
+ *
+ * The backend caches per (code, base) for 60 seconds; our staleTime mirrors
+ * that. Minute frames refetch every 60s so new bars appear without manual
+ * invalidation; D/W/M are session-scoped and don't auto-refetch.
  */
-export function useLiveCandles(code: string, timeframe: string) {
-  return useQuery({
-    queryKey: ['live', 'candles', code, timeframe],
+export function useLiveCandles(code: string, timeframe: LiveTimeframe) {
+  const base = baseFor(timeframe);
+  const query = useQuery({
+    queryKey: ['live', 'candles', code, base],
     queryFn: () =>
       apiCall<LiveCandlesResponse>(
-        `/api/live/candles?code=${encodeURIComponent(code)}&timeframe=${encodeURIComponent(timeframe)}`,
+        `/api/live/candles?code=${encodeURIComponent(code)}&timeframe=${encodeURIComponent(base)}`,
       ),
     enabled: !!code,
     staleTime: 30_000,
-    refetchInterval: timeframe.endsWith('m') ? 60_000 : false,
+    refetchInterval: base === '1m' ? 60_000 : false,
   });
+
+  const candles = useMemo<LiveCandle[]>(() => {
+    const raw = query.data?.candles;
+    if (!raw || raw.length === 0) return [];
+    // KIS responses are DESC by t_ms. Aggregation + chart rendering both
+    // assume ASC; sort once here and feed all consumers from the same view.
+    const sorted = [...raw].sort((a, b) => a.t_ms - b.t_ms);
+    const bucket = bucketSeconds(timeframe);
+    if (bucket === null || timeframe === '1m') return sorted;
+    return aggregateCandles(sorted, bucket);
+  }, [query.data, timeframe]);
+
+  return { ...query, candles };
 }

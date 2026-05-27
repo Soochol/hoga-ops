@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveStatusBar } from './LiveStatusBar';
 
 vi.mock('../api/liveCandles', () => ({
-  useLiveCandles: vi.fn(() => ({ data: undefined, isLoading: true })),
+  useLiveCandles: vi.fn(() => ({ data: undefined, isLoading: true, candles: [] })),
 }));
 
 describe('LiveStatusBar', () => {
@@ -49,13 +49,16 @@ describe('LiveStatusBar', () => {
       data: {
         code: '005930',
         timeframe: '1m',
-        candles: [
-          { t_ms: 1000, open: 70000, high: 71000, low: 69000, close: 70500, volume: 1000 },
-          { t_ms: 2000, open: 70500, high: 72000, low: 70000, close: 71200, volume: 1500 },
-        ],
+        candles: [],
         cached: false,
       },
       isLoading: false,
+      // LiveStatusBar reads from the aggregated top-level `candles` field,
+      // not data.candles — mirror the real hook's return shape.
+      candles: [
+        { t_ms: 1000, open: 70000, high: 71000, low: 69000, close: 70500, volume: 1000 },
+        { t_ms: 2000, open: 70500, high: 72000, low: 70000, close: 71200, volume: 1500 },
+      ],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(

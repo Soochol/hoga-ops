@@ -1,9 +1,36 @@
 import { create } from 'zustand';
 
-/** Timeframes the live page supports. D/W are intra-stage placeholders —
- * Addendum 9.4 specifies indicator panes render empty for D/W. */
-export const LIVE_TIMEFRAMES = ['1m', '3m', '5m', '10m', '15m', '30m', 'D', 'W'] as const;
+/** Timeframes the live page supports.
+ *
+ * Backend (KIS) exposes only the base set directly: '1m', 'D', 'W', 'M'.
+ * Aggregated minute frames (3m–30m) are computed client-side from the 1m
+ * series; see ``aggregateCandles``. Daily/weekly/monthly frames render
+ * the indicator pane empty (Addendum 9.4 — hoga indicators are intraday only). */
+export const LIVE_TIMEFRAMES = ['1m', '3m', '5m', '10m', '15m', '30m', 'D', 'W', 'M'] as const;
 export type LiveTimeframe = (typeof LIVE_TIMEFRAMES)[number];
+
+/** Server-side base timeframes (no client aggregation). */
+export const BASE_TIMEFRAMES = ['1m', 'D', 'W', 'M'] as const;
+export type BaseTimeframe = (typeof BASE_TIMEFRAMES)[number];
+
+/** Map a display timeframe to the base timeframe to fetch from the server.
+ * Minute frames all source from '1m'; D/W/M pass through. */
+export function baseFor(tf: LiveTimeframe): BaseTimeframe {
+  if (tf === 'D' || tf === 'W' || tf === 'M') return tf;
+  return '1m';
+}
+
+/** Bucket size in seconds for a minute display timeframe, or null for D/W/M
+ * (calendar buckets — handled by the server). */
+export function bucketSeconds(tf: LiveTimeframe): number | null {
+  if (tf === '1m') return 60;
+  if (tf === '3m') return 180;
+  if (tf === '5m') return 300;
+  if (tf === '10m') return 600;
+  if (tf === '15m') return 900;
+  if (tf === '30m') return 1800;
+  return null;
+}
 
 const STORAGE_KEY = 'live.page.v1';
 
