@@ -175,9 +175,16 @@ def parse_stock_date(
         try:
             prior_meta = json.loads(prior_path.read_text(encoding="utf-8"))
             prior_value = prior_meta.get("full_capture_count")
-            if isinstance(prior_value, int) and prior_value >= 1:
+            # Reject bool: True/False would silently pass isinstance(_, int).
+            if (
+                isinstance(prior_value, int)
+                and not isinstance(prior_value, bool)
+                and prior_value >= 1
+            ):
                 prior_count = prior_value
-        except (OSError, json.JSONDecodeError) as exc:
+        # ValueError subsumes json.JSONDecodeError AND UnicodeDecodeError
+        # (raised by read_text on non-UTF-8 bytes). OSError covers I/O failures.
+        except (OSError, ValueError) as exc:
             # Don't silently reset a counter that may have been at 47.
             # Surface the corruption so an operator can investigate;
             # treat as legacy=0 only after warning.

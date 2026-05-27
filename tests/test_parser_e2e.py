@@ -122,3 +122,40 @@ def test_parser_increments_full_capture_count_from_legacy_meta(staged_raw: Path)
     parse_stock_date(code="003490", date="20260519", data_dir=staged_raw / "data")
     meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
     assert meta["full_capture_count"] == 1
+
+
+def test_parser_handles_corrupt_prior_meta(
+    staged_raw: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Non-UTF-8 bytes in prior meta.json → warning, prior_count=0, new count=1.
+
+    Guards against UnicodeDecodeError (a ValueError subclass) escaping the
+    except clause. See finding from pre-landing adversarial review.
+    """
+    import logging
+    out_dir = staged_raw / "data" / "parquet" / "20260519" / "003490"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "meta.json").write_bytes(b"\x80invalid not utf-8")
+    with caplog.at_level(logging.WARNING, logger="hoga.parser"):
+        parse_stock_date(code="003490", date="20260519", data_dir=staged_raw / "data")
+    meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["full_capture_count"] == 1
+    assert any("corrupt prior meta.json" in rec.message for rec in caplog.records)
+
+
+def test_parser_rejects_bool_prior_full_capture_count(staged_raw: Path) -> None:
+    """meta.json with `"full_capture_count": true` (a bool) → treated as legacy.
+
+    bool is a subclass of int in Python, so `isinstance(True, int)` is True.
+    The guard must explicitly exclude bool to avoid silent off-by-one drift.
+    """
+    out_dir = staged_raw / "data" / "parquet" / "20260519" / "003490"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "meta.json").write_text(
+        json.dumps({"full_capture_count": True}), encoding="utf-8"
+    )
+    parse_stock_date(code="003490", date="20260519", data_dir=staged_raw / "data")
+    meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
+    # Without the bool-reject guard, prior_count would absorb True (== 1)
+    # and this would be 2 instead of 1.
+    assert meta["full_capture_count"] == 1
