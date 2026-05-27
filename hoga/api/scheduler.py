@@ -41,6 +41,14 @@ async def _daily_run(data_dir: Path) -> None:
     """Enqueue ``(code, today_kst)`` for every Watchlist entry on a
     trading day. Per-entry exceptions are logged; the loop continues.
     """
+    # Stage 8: Promote pending Live Capture JSONLs before hogaplay enqueue (ADR-0038).
+    from hoga.live.promote import cleanup_archive, promote_pending
+    try:
+        await promote_pending(data_dir)
+        await cleanup_archive(data_dir)
+    except Exception:  # noqa: BLE001 — one source of failure mustn't block the other
+        log.exception("daily run: live promotion failed; continuing to hogaplay enqueue")
+
     now = now_kst()
     today = now.strftime("%Y%m%d")
     try:
