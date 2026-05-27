@@ -610,3 +610,17 @@ class TimingSummary(BaseModel):
 class TimingReport(BaseModel):
     summary: TimingSummary
     pages: list[TimingPageDetail]
+
+
+class CaptureTimingEvent(BaseModel):
+    """SSE summary event for one completed (or failed) capture's timing.
+
+    Carries only the summary — full per-page detail is written to the
+    timing JSON on disk (see ``write_timing_report``) so we don't push
+    page-level payload over the SSE channel.
+
+    ``id`` (``${code}:${date}``) is the frontend dedup key.
+    """
+    type: Literal["capture_timing"] = "capture_timing"
+    id: str
+    summary: TimingSummary

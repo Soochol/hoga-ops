@@ -18,6 +18,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+import hoga
 from hoga.api.calendar import KrxUnavailableError
 from hoga.api.captures_persistence import load_manifest, manifest_path, save_manifest
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
@@ -34,6 +35,7 @@ from hoga.api.models import (
     CaptureQueuePausedEvent,
     CaptureQueueResumedEvent,
     CaptureResult,
+    CaptureTimingEvent,
     EnqueueDedupedRow,
     EnqueueRequest,
     EnqueueResponse,
@@ -44,15 +46,18 @@ from hoga.api.models import (
     RetryResponse,
     RetrySkippedRow,
     SkipReason,
+    TimingEnv,
     ViolationModel,
 )
 from hoga.api import watchlist
 from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
 from hoga.collector.timing import CaptureTimingCollector
+from hoga.collector.timing_writer import write_timing_report
 from hoga.collector.orchestrator import (
     CHART_FINAL_TIME_MS,
     DATA_WINDOW_START_MS,
+    DEFAULT_PAGE_STEP_MS,
     DEFAULT_RATE_LIMIT_S,
     CancelToken,
     CaptureCancelled,
@@ -61,6 +66,7 @@ from hoga.collector.orchestrator import (
     UpstreamNoDataError,
     collect_stock_date,
 )
+from hoga.util.git_sha import get_git_sha
 from hoga.config import CookieMissingError
 from hoga.parser import parse_stock_date
 from hoga.tables.snapshots import SnapshotValidationError
@@ -674,6 +680,11 @@ async def _run_item(state: QueueItemState) -> None:
     collector: CaptureTimingCollector | None = (
         CaptureTimingCollector(state.code, state.date) if _timing_enabled() else None
     )
+    # TODO(timing): plumb effective rate, see plan §13 step 4.
+    # _run_capture_inner does not currently surface the rate it passed to
+    # collect_stock_date back to this scope; recording the module default
+    # is accurate for the common case (no environment-driven override).
+    effective_rate_s: float = DEFAULT_RATE_LIMIT_S
     data_dir = _require_data_dir()
     decision = decide_capture(
         data_dir=data_dir,
@@ -686,16 +697,49 @@ async def _run_item(state: QueueItemState) -> None:
         state.skip_reason = decision.skip_reason
         return
     try:
-        await _run_capture_and_parse(state, resume=decision.resume, collector=collector)
-    except CookieExpiredError:
-        # Record before re-raising so the error lands in the collector's
-        # ``error_counts`` / page errors. The worker loop's existing
-        # ``_handle_cookie_expired(state)`` handler then pauses the queue.
-        # No ``cookie_pause`` phase wrap here: the failing item is terminal
-        # and never sleeps awaiting a resume (see plan-review eng B2).
+        try:
+            await _run_capture_and_parse(state, resume=decision.resume, collector=collector)
+        except CookieExpiredError:
+            # Record before re-raising so the error lands in the collector's
+            # ``error_counts`` / page errors. The worker loop's existing
+            # ``_handle_cookie_expired(state)`` handler then pauses the queue.
+            # No ``cookie_pause`` phase wrap here: the failing item is terminal
+            # and never sleeps awaiting a resume (see plan-review eng B2).
+            if collector is not None:
+                collector.record_error("cookie_expired")
+            raise
+    finally:
+        # Best-effort timing emit. Runs on success, failure, AND cancellation
+        # — the finally guarantees we always persist what we measured. Any
+        # exception in this block is swallowed and logged so a timing-writer
+        # bug can never break the capture pipeline itself.
         if collector is not None:
-            collector.record_error("cookie_expired")
-        raise
+            try:
+                env = TimingEnv(
+                    rate_limit_s=effective_rate_s,
+                    max_concurrent=_max_concurrent,
+                    page_step_ms_initial=DEFAULT_PAGE_STEP_MS,
+                    hoga_version=hoga.__version__,
+                    git_sha=get_git_sha(),
+                )
+                report = collector.to_report(env=env)
+                # JSON first so any consumer reacting to the SSE event can
+                # immediately open the file and see a complete report.
+                write_timing_report(_require_data_dir(), report)
+                # Then SSE summary (no per-page detail on the wire).
+                _publish_event(
+                    CaptureTimingEvent(
+                        id=f"{state.code}:{state.date}",
+                        summary=report.summary,
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 — never break the capture pipeline
+                logging.getLogger(__name__).warning(
+                    "capture_timing emit failed for %s/%s: %r",
+                    state.code,
+                    state.date,
+                    exc,
+                )
 
 
 async def _finalize_item(state: QueueItemState) -> None:
