@@ -1,5 +1,6 @@
 import { useLivePageStore } from '../state/livePage';
 import { LiveCandlePane } from './LiveCandlePane';
+import { LiveVolumePane } from './LiveVolumePane';
 import { LiveIndicatorPane } from './LiveIndicatorPane';
 import { LiveEmptyState } from './LiveEmptyState';
 import { LiveSidebar } from './LiveSidebar';
@@ -54,14 +55,15 @@ export function LiveWorkarea({ activeCode, watchlistEmpty }: Props) {
           minWidth: 0,
           minHeight: 0,
           overflow: 'hidden',
-          // minmax(0, 1fr) prevents the row track from being pushed by the
-          // chart canvas's intrinsic size — without the explicit 0 min,
-          // CSS Grid defaults to `min-content` and lightweight-charts'
-          // height-grows-with-data behavior expands the row to >600k px.
-          gridTemplateRows: 'minmax(0, 1fr) minmax(0, 1fr)',
+          // Three rows: candle (3fr) | volume (1fr) | hoga indicators (2fr).
+          // minmax(0, ...) on each track prevents lightweight-charts'
+          // canvas-grows-with-data feedback loop from blowing the row open
+          // to >600k px (the bug we fixed in 67c527a).
+          gridTemplateRows: 'minmax(0, 3fr) minmax(0, 1fr) minmax(0, 2fr)',
         }}
       >
         <LiveCandlePane code={activeCode} timeframe={timeframe} />
+        <LiveVolumePane code={activeCode} timeframe={timeframe} />
         <LiveIndicatorPane code={activeCode} timeframe={timeframe} />
       </div>
       <div

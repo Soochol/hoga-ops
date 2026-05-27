@@ -13,7 +13,7 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 }
 
 vi.mock('../api/liveCandles', () => ({
-  useLiveCandles: () => ({ data: undefined, isLoading: false }),
+  useLiveCandles: () => ({ data: undefined, isLoading: false, candles: [] }),
 }));
 
 // lightweight-charts v5 uses addSeries(SeriesDefinition, options) instead of
@@ -55,15 +55,15 @@ describe('LiveCandlePane', () => {
     expect(screen.getByTestId('live-candle-pane')).toBeInTheDocument();
   });
 
-  it('creates exactly one candlestick and one histogram series on mount', async () => {
-    const { CandlestickSeries, HistogramSeries } = await import('lightweight-charts');
+  it('creates exactly one candlestick series on mount', async () => {
+    const { CandlestickSeries } = await import('lightweight-charts');
     render(<LiveCandlePane code={null} timeframe="1m" />);
     // useEffect runs after render — flush microtasks
     await Promise.resolve();
-    // v5 API: addSeries called twice total (candle + volume)
-    expect(mockChart.addSeries).toHaveBeenCalledTimes(2);
+    // Volume moved to LiveVolumePane (2026-05-27 split). Candle pane now
+    // creates a single CandlestickSeries.
+    expect(mockChart.addSeries).toHaveBeenCalledTimes(1);
     expect(mockChart.addSeries).toHaveBeenCalledWith(CandlestickSeries, expect.any(Object));
-    expect(mockChart.addSeries).toHaveBeenCalledWith(HistogramSeries, expect.any(Object));
   });
 
   it('calls remove on unmount', async () => {

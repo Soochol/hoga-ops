@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import {
   createChart,
-  CandlestickSeries,
+  HistogramSeries,
   type IChartApi,
   type ISeriesApi,
   type UTCTimestamp,
@@ -29,16 +29,17 @@ interface Props {
   timeframe: LiveTimeframe;
 }
 
-export function LiveCandlePane({ code, timeframe }: Props) {
+/** Volume histogram split out of LiveCandlePane (user feedback 2026-05-27).
+ *
+ * Same data source (useLiveCandles) and same x-axis as the candle pane,
+ * but rendered in its own chart so the price/volume aspect ratios are
+ * independent. Bar color follows candle direction (close >= open → up). */
+export function LiveVolumePane({ code, timeframe }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  // Tracks the (code, timeframe) signature applied to the chart. When this
-  // changes we re-run fitContent — otherwise the user's manual zoom is
-  // preserved across the 60s refetch cycle.
+  const volumeRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const lastFitKeyRef = useRef<string>('');
 
-  // Mount chart once.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -53,13 +54,8 @@ export function LiveCandlePane({ code, timeframe }: Props) {
       crosshair: CHART_CROSSHAIR_OPTIONS,
     });
     chartRef.current = chart;
-    candleSeriesRef.current = chart.addSeries(CandlestickSeries, {
-      upColor: tokens.priceUp,
-      downColor: tokens.priceDown,
-      borderUpColor: tokens.priceUp,
-      borderDownColor: tokens.priceDown,
-      wickUpColor: tokens.priceUp,
-      wickDownColor: tokens.priceDown,
+    volumeRef.current = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: 'volume' },
     });
 
     const ro = new ResizeObserver(() => {
@@ -73,36 +69,31 @@ export function LiveCandlePane({ code, timeframe }: Props) {
       ro.disconnect();
       chart.remove();
       chartRef.current = null;
-      candleSeriesRef.current = null;
+      volumeRef.current = null;
     };
   }, []);
 
-  // Aggregate happens inside useLiveCandles; we get display-timeframe candles.
   const { candles } = useLiveCandles(code ?? '', timeframe);
 
   useEffect(() => {
-    const series = candleSeriesRef.current;
+    const series = volumeRef.current;
     const chart = chartRef.current;
     if (!series || !chart) return;
+    const tokens = resolveTokens(TOKEN_SPEC);
     const seen = new Set<number>();
-    const rows: Array<{
-      time: UTCTimestamp; open: number; high: number; low: number; close: number;
-    }> = [];
+    const rows: Array<{ time: UTCTimestamp; value: number; color: string }> = [];
     for (const c of candles) {
       const time = Math.floor(c.t_ms / 1000);
       if (seen.has(time)) continue;
       seen.add(time);
+      const up = c.close >= c.open;
       rows.push({
         time: time as UTCTimestamp,
-        open: c.open, high: c.high, low: c.low, close: c.close,
+        value: c.volume,
+        color: up ? tokens.priceUp : tokens.priceDown,
       });
     }
     series.setData(rows);
-    // lightweight-charts does NOT auto-fit on setData; without this the
-    // visible range stays at its default (~1-2 bars wide) and 30 candles
-    // appear as a single sliver at the right edge. We refit only when
-    // the (code, timeframe) signature changes — that way the user's
-    // manual zoom survives the 60s refetch cycle.
     const fitKey = `${code ?? ''}|${timeframe}`;
     if (rows.length > 0 && fitKey !== lastFitKeyRef.current) {
       chart.timeScale().fitContent();
@@ -114,13 +105,11 @@ export function LiveCandlePane({ code, timeframe }: Props) {
 
   return (
     <div
-      data-testid="live-candle-pane"
+      data-testid="live-volume-pane"
       ref={containerRef}
       style={{
         width: '100%',
         height: '100%',
-        // No minHeight — the parent grid row controls height via minmax(0, 1fr).
-        // A minHeight here would push the grid track past the workarea bounds.
         background: 'var(--bg-card)',
         borderBottom: '1px solid var(--border)',
       }}

@@ -43,7 +43,7 @@ vi.mock('lightweight-charts', async () => {
 // useLiveCandles and useLiveSeries use EventSource / fetch which are not
 // available in jsdom. Mock both hooks so LivePage tests stay unit-level.
 vi.mock('../api/liveCandles', () => ({
-  useLiveCandles: () => ({ data: undefined, isLoading: false }),
+  useLiveCandles: () => ({ data: undefined, isLoading: false, candles: [] }),
 }));
 
 vi.mock('../api/liveSeries', () => ({

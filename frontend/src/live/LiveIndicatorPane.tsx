@@ -40,13 +40,15 @@ const TOKEN_SPEC = {
   accent: ['--accent', '#14B8A6'],
 } as const;
 
+import type { LiveTimeframe } from '../state/livePage';
+
 interface Props {
   code: string | null;
-  timeframe: string;
+  timeframe: LiveTimeframe;
 }
 
-function isDailyOrWeekly(tf: string): boolean {
-  return tf === 'D' || tf === 'W';
+function isCalendarTimeframe(tf: LiveTimeframe): boolean {
+  return tf === 'D' || tf === 'W' || tf === 'M';
 }
 
 /** Project a Live Snapshot's t_ms (Unix ms) onto lightweight-charts UTCTimestamp (seconds). */
@@ -67,6 +69,8 @@ export function LiveIndicatorPane({ code, timeframe }: Props) {
   const ratioRef = useRef<ISeriesApi<'Line'> | null>(null);
   const buyQtyRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const sellQtyRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  // Same fit-once-per-(code,timeframe) discipline as LiveCandlePane.
+  const lastFitKeyRef = useRef<string>('');
 
   useEffect(() => {
     const el = containerRef.current;
@@ -113,7 +117,7 @@ export function LiveIndicatorPane({ code, timeframe }: Props) {
   const { ob, trade } = useLiveSeries(code ?? '');
 
   // D/W: per Addendum 9.4, panes mount with empty series.
-  const dwDisabled = isDailyOrWeekly(timeframe);
+  const dwDisabled = isCalendarTimeframe(timeframe);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -181,8 +185,19 @@ export function LiveIndicatorPane({ code, timeframe }: Props) {
     buyS.setData(buy);
     sellS.setData(sell);
 
-    chart.timeScale().scrollToRealTime();
-  }, [ob, trade, code, dwDisabled]);
+    // Same logic as LiveCandlePane: fit on (code, timeframe) change so the
+    // 47-point series doesn't collapse into a 1-pixel sliver, but preserve
+    // the user's manual zoom across the polling cycle. Use the longer of
+    // the two series as the fit-eligibility signal.
+    const fitKey = `${code ?? ''}|${timeframe}`;
+    const hasData = asks.length > 0 || buy.length > 0;
+    if (hasData && fitKey !== lastFitKeyRef.current) {
+      chart.timeScale().fitContent();
+      lastFitKeyRef.current = fitKey;
+    } else {
+      chart.timeScale().scrollToRealTime();
+    }
+  }, [ob, trade, code, timeframe, dwDisabled]);
 
   return (
     <div
