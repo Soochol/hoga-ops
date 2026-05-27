@@ -228,3 +228,23 @@ async def test_after_hours_calls_overtime_fetchers(tmp_path: Path, monkeypatch) 
     lines = (tmp_path / "live" / "20260527" / "005930.jsonl").read_text().splitlines()
     payloads = [json.loads(line)["payload"] for line in lines]
     assert all(p["phase"] == "after_hours_closing" for p in payloads)
+
+
+@pytest.mark.asyncio
+async def test_run_forever_until_cancel(tmp_path: Path, monkeypatch) -> None:
+    regular_ms = int(datetime(2026, 5, 27, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    monkeypatch.setattr("hoga.live.poller._now_ms", lambda: regular_ms)
+    kis = _mk_kis()
+    writer = LiveWriter(tmp_path / "live")
+    poller = LivePoller(kis, writer, LivePollerConfig(
+        codes_fn=lambda: ["005930"], date_fn=lambda: "20260527",
+        cycle_seconds=0.01,
+    ))
+    task = asyncio.create_task(poller.run_forever())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    lines = (tmp_path / "live" / "20260527" / "005930.jsonl").read_text().splitlines()
+    assert len(lines) >= 3  # at least one full cycle
