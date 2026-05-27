@@ -276,3 +276,28 @@ class KisClient:
                 t_ms=t_ms,
             ))
         return trades
+
+    # ------------------------------------------------------------------
+    # Task 2.3: fetch_brokers (FHKST01010600)
+    # ------------------------------------------------------------------
+
+    async def fetch_brokers(self, code: str) -> KisBrokers:
+        """Fetch top-5 buy/sell broker breakdown for *code*."""
+        body = await self._get(
+            path="/uapi/domestic-stock/v1/quotations/inquire-member",
+            tr_id="FHKST01010600",
+            params={
+                "fid_cond_mrkt_div_code": "J",
+                "fid_input_iscd": code,
+            },
+        )
+        out = body["output"][0]  # KIS returns a 1-element list (Audit-3)
+        buy_top = [
+            KisBrokerEntry(name=out[f"shnu_mbcr_name{i}"], qty=int(out[f"total_shnu_qty{i}"]))
+            for i in range(1, 6)
+        ]
+        sell_top = [
+            KisBrokerEntry(name=out[f"seln_mbcr_name{i}"], qty=int(out[f"total_seln_qty{i}"]))
+            for i in range(1, 6)
+        ]
+        return KisBrokers(code=code, buy_top=buy_top, sell_top=sell_top)
