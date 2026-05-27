@@ -138,3 +138,84 @@ def reset_for_tests() -> None:
     _state = _State()
     _buffer = LiveBuffer()
     _kis_client = None
+
+
+async def start_live_poller(*, data_dir: Path) -> bool:
+    """Start the Live Capture poller singleton.
+
+    Returns True if started successfully, False if preconditions weren't met
+    (missing KIS creds, empty watchlist). Subsequent calls to get_status()
+    will reflect the running state.
+
+    Idempotent: calling when already running stops the current task and
+    starts a fresh one (use case: watchlist changed and we want to pick
+    up new codes immediately — Stage 8 doesn't auto-restart on change yet,
+    that's a future enhancement).
+    """
+    import os
+    from datetime import datetime, timedelta, timezone
+
+    from hoga.api.watchlist import load_watchlist
+
+    from .buffer import LiveBuffer
+    from .kis_client import KisClient, KisCredentials
+    from .poller import LivePoller, LivePollerConfig
+    from .writer import LiveWriter
+
+    app_key = os.environ.get("KIS_APP_KEY")
+    app_secret = os.environ.get("KIS_APP_SECRET")
+    if not app_key or not app_secret:
+        return False
+
+    entries = load_watchlist(data_dir)
+    codes = [e.code for e in entries]
+    if not codes:
+        return False
+
+    # If already running, stop first.
+    await stop_live_poller()
+
+    # Build the real singletons.
+    kis = KisClient(
+        credentials=KisCredentials(app_key=app_key, app_secret=app_secret, env="real"),
+        token_cache_path=data_dir / ".local" / "kis-token.json",
+    )
+    writer = LiveWriter(data_dir / "live")
+    set_kis_client(kis)
+
+    def _today_kst() -> str:
+        return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
+
+    cfg = LivePollerConfig(codes_fn=lambda: codes, date_fn=_today_kst)
+    poller = LivePoller(kis, writer, cfg, buffer=_buffer)
+
+    # Wire into global state
+    global _state
+    _state = _State(
+        started_at_ms=_now_ms(),
+        watchlist_codes=tuple(codes),
+        poller_task=asyncio.create_task(poller.run_forever(), name="live-poller"),
+        poller_obj=poller,
+    )
+    return True
+
+
+async def stop_live_poller() -> None:
+    """Stop the running poller. No-op if already stopped."""
+    global _state, _kis_client
+    if _state.poller_task is not None:
+        _state.poller_task.cancel()
+        try:
+            await _state.poller_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            pass  # don't let a buggy poller block shutdown
+    # Close the KIS client cleanly
+    if _kis_client is not None:
+        try:
+            await _kis_client.aclose()
+        except Exception:  # noqa: BLE001
+            pass
+    _state = _State()
+    _kis_client = None
