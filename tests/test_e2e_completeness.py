@@ -16,11 +16,16 @@ class _NaturalTermFakeClient:
 
     def fetch_info(self, code: str, date: str) -> str:
         # info.tsv shape required by parser: code, name, then 17+ tab-separated fields.
-        # Minimum that parses successfully — pad with zeros.
+        # parts[4]=regular_session_open_ms, parts[5]=regular_session_close_ms
+        # (HHMMSSmmm encoding). Must fall in the meta.{open,close}_in_kst_range
+        # invariant bands (04:00-12:00 / 12:00-18:00 KST) and
+        # meta.close_after_open — otherwise classify_from_meta returns INVALID
+        # before the test ever reaches the completeness assertion.
         del code, date
-        return (
-            "005930\t삼성전자\t" + "\t".join(["0"] * 20) + "\n"
-        )
+        fields = ["0"] * 20
+        fields[2] = "90000000"   # 09:00:00.000 KST → parts[4]
+        fields[3] = "153000000"  # 15:30:00.000 KST → parts[5]
+        return "005930\t삼성전자\t" + "\t".join(fields) + "\n"
 
     def fetch_first(self, code: str, date: str, time_ms: int) -> str:
         del code, date, time_ms
