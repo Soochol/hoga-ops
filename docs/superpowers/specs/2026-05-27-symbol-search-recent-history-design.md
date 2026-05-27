@@ -1,74 +1,89 @@
-# Symbol Search — Recent History Dropdown
+# SymbolSearch — Recent Codes Dropdown
 
 **Date**: 2026-05-27
 **Surface**: `/capture` page → `SymbolSearch` component
-**Status**: Design approved, ready for implementation plan
+**Status**: Design approved + grilled against CONTEXT.md (2026-05-27), ready for plan
+
+## Glossary alignment (grilled)
+
+This spec uses the canonical terms from `CONTEXT.md`:
+
+- **Code** — the 6-digit KRX ticker (per the glossary's _Avoid_ rule against
+  bare "symbol"). The thing this feature persists is a list of recently
+  picked Codes, not "symbols".
+- **Symbol Master** — the (Code, name, market) catalog. `SymbolSearch`,
+  `useSymbols`, `SymbolHit`, `SymbolsAllResponse` are sanctioned class-name
+  compounds and remain unchanged.
+- **Recent Codes** — the new feature's working name (file/module:
+  `recentCodes.ts` / `useRecentCodes.ts`). Not a new sanctioned compound:
+  it's an internal implementation detail composed of the existing
+  glossary terms. Does NOT require a CONTEXT.md entry.
 
 ## Problem
 
-On the `/capture` page, when a user clicks the symbol search input with no
-text, the dropdown stays closed. To re-capture a symbol they recently looked
-at, they must retype the name or remember the 6-digit code. Users who cycle
-through a small set of symbols (e.g. tracking a watchlist's worth of stocks
-across different date ranges) re-type the same names repeatedly.
+On the `/capture` page, when a user clicks the `SymbolSearch` input, the
+dropdown does not surface previously picked Codes. To re-capture a Code
+they recently worked with, they must retype the name or remember the 6
+digits. Users who cycle through a small set of Codes (e.g. a watchlist's
+worth across different date ranges) re-type the same names repeatedly.
 
 ## Goal
 
-When the input is focused and empty, show up to 10 recently selected symbols
-so the user can re-pick them with one click (or arrow-key + Enter).
+When the user clicks (focuses) the `SymbolSearch` input and is **not
+actively typing a new query**, surface up to 10 recently confirmed Codes
+so they can re-pick one with a click or arrow-key + Enter.
 
 ## Out of Scope
 
-- Server-side history syncing across browsers / accounts. localStorage is
-  sufficient — capture is a per-machine workflow, and the existing project
-  pattern (`forceRetryDefault.ts`) uses localStorage for capture-form prefs.
-- Cross-feature history (e.g. sharing the list with Watchlist or Inventory
-  symbol pickers). If demand emerges later, the storage module can be
-  promoted; the hook contract is already feature-agnostic.
-- Pinning, grouping, search-within-history, or fuzzy matching against
-  history items. YAGNI for current capacity (10 items).
+- Server-side history sync. localStorage is sufficient — capture is a
+  per-machine workflow; existing capture-form prefs (`forceRetryDefault`)
+  already use localStorage.
+- Cross-feature reuse (Watchlist, Inventory pickers). The hook is
+  feature-agnostic in shape but only wired into `SymbolSearch` for now.
+- Pinning, grouping, search-within-history, fuzzy matching of history.
+  YAGNI at n=10.
 
 ## What Gets Saved
 
-**Trigger**: only confirmed selections — every call to the internal
-`select(hit)` function in `SymbolSearch.tsx`. This includes:
+**Trigger**: every call to the internal `select(hit)` function in
+`SymbolSearch.tsx`. This includes:
 
 - Clicking a dropdown row
 - Pressing Enter on a highlighted dropdown row
-- `promoteUnverifiedCode()` accepting a 6-digit code when the symbol cache
-  is unavailable (the placeholder `SymbolHit` with `name='—'` is saved as
-  well — on the next visit, if the cache recovers, the row will render with
-  the real name automatically since we only store the code/name/market as a
-  fallback and re-resolve from `useSymbols()` cache on render).
+- `promoteUnverifiedCode()` accepting a 6-digit Code when the Symbol
+  Master cache is `unavailable` (the placeholder `SymbolHit` with
+  `name='—'` is saved; on a later visit, when the cache recovers, the
+  fallback name disappears because the resolved cache value wins).
 
 **Not saved**: raw typed queries, unsubmitted highlights, captures that
-fail to start. The word "종목" (symbol/stock) implies a committed entity,
-not a query string.
+fail to start.
 
 ## Architecture
 
 ```
 frontend/src/capture/
-├── symbolHistory.ts          (new) localStorage I/O + LRU, pure functions
-├── symbolHistory.test.ts     (new) JSON round-trip, LRU, corruption guards
-├── useSymbolHistory.ts       (new) useSyncExternalStore + cache join
-├── useSymbolHistory.test.tsx (new)
-├── SymbolSearch.tsx          (modified) history branch in dropdown
-└── SymbolSearch.test.tsx     (modified) new branch tests
+├── recentCodes.ts          (new) localStorage I/O + LRU, pure functions
+├── recentCodes.test.ts     (new) JSON round-trip, LRU, corruption guards
+├── useRecentCodes.ts       (new) useSyncExternalStore + cache join
+├── useRecentCodes.test.tsx (new)
+├── SymbolSearch.tsx        (modified) Recent Codes branch + isTyping state
+└── SymbolSearch.test.tsx   (modified) new branch tests
 ```
 
-### Storage layer (`symbolHistory.ts`)
+### Storage layer (`recentCodes.ts`)
 
-- **Key**: `hoga.capture.symbolHistory.v1`. Version lives in the key so
-  future schema changes don't have to migrate v1 — they read v2 and
-  optionally clean up v1 (matching `tabsPersistence.ts` convention).
+- **Key**: `capture.recent_codes.v1`. Matches existing capture-feature key
+  convention (`capture.force_retry_default`, `capture.leftPct`); no `hoga.`
+  prefix (none of the existing keys use one). Version lives in the key so
+  future schema changes don't have to migrate v1 (`tabsPersistence.ts`
+  convention).
 - **Shape**:
   ```ts
   type StoredEntry = {
     code: string;             // 6-digit
-    name: string;             // fallback if cache miss
+    name: string;             // fallback if Symbol Master cache miss
     market: 'KOSPI' | 'KOSDAQ';
-    ts: number;               // ms epoch, used for LRU + future "X일 전" UI
+    ts: number;               // ms epoch, LRU sort key
   };
   type StoredV1 = StoredEntry[];  // newest first, max 10
   ```
@@ -80,60 +95,92 @@ frontend/src/capture/
   function clearAll(): void;
   ```
 - **Guards**: `try/catch` around every `localStorage` call. Corrupt JSON
-  (`JSON.parse` throw or Zod-style shape mismatch) → delete the key and
-  return `[]`. localStorage unavailable (SSR, private mode quota) → in-memory
-  fallback module-scoped variable; session-only but never throws.
-- **LRU**: re-add of an existing code moves it to position 0 and refreshes
-  `ts`. Length cap at 10 by slicing the tail. Uses `util/lru.ts` if its
-  API fits; otherwise an inline `Array.filter` + `unshift` is fine for n=10.
+  → delete the key, return `[]`. localStorage unavailable (SSR, quota) →
+  module-scoped in-memory fallback, session-only, never throws.
+- **LRU**: re-add of an existing Code moves it to position 0 and refreshes
+  `ts`. Length cap at 10 by slicing the tail. `util/lru.ts` is available
+  but for n=10 an inline `Array.filter` + `unshift` is shorter — pick
+  inline.
 
-### Hook layer (`useSymbolHistory.ts`)
+### Hook layer (`useRecentCodes.ts`)
+
+Returns a **discriminated union** instead of a fabricated `SymbolHit[]`,
+because "Code is in cache" and "Code is a stale fallback" are different
+semantic states with different render contracts:
 
 ```ts
-function useSymbolHistory(): {
-  recent: SymbolHit[];        // live-joined with useSymbols cache
+type RecentCodeRow =
+  | { kind: 'resolved'; hit: SymbolHit }
+  | { kind: 'fallback'; code: string; name: string; market: 'KOSPI' | 'KOSDAQ' };
+
+function useRecentCodes(): {
+  recent: RecentCodeRow[];
   add(hit: SymbolHit): void;
   remove(code: string): void;
   clearAll(): void;
 };
 ```
 
-- Subscribes to localStorage via `useSyncExternalStore`. The subscriber
-  listens for `storage` events (cross-tab) and a module-local event
-  emitter (same-tab writes don't fire `storage` natively).
-- On every snapshot, joins stored codes against `useSymbols()` data.
+- Subscribes to localStorage via `useSyncExternalStore`. Subscribers fire
+  on (a) browser `storage` events (cross-tab) and (b) a module-local
+  event emitter (same-tab writes do not fire `storage`).
+- On every snapshot, joins stored Codes against `useSymbols()` data.
   `SymbolsData.symbols` is a `SymbolHit[]` array, so the hook builds a
-  `Map<code, SymbolHit>` once per data change via `useMemo` and looks up
-  each stored code in O(1).
-  - **Cache hit**: returns the live `SymbolHit` (current `captured_count`,
-    breakdown, market — all fresh).
-  - **Cache miss**: returns a fallback `SymbolHit` using the stored
-    `name`/`market` and `captured_count=0`, `breakdown` all zeros. UI
-    renders `captured_count=0` as "no complete data" already — no special
-    casing needed in the row component.
-- The shape of the returned `SymbolHit[]` is identical to
-  `useSymbolSearch`'s return, so `SymbolSearch.tsx` can render them
-  through the same `SymbolRow` component.
+  `Map<code, SymbolHit>` once per data change via `useMemo` and looks
+  up each stored Code in O(1).
+- **Cache hit** → `{ kind: 'resolved', hit }` where `hit.captured_count`
+  reflects the current `useSymbols` cache state.
+- **Cache miss** → `{ kind: 'fallback', code, name, market }` carrying
+  what was stored at selection time. No fake `captured_count`; the row
+  renderer shows `—` so the user sees "unknown" instead of a misleading
+  "no complete data".
+
+**Freshness contract** (corrected from prior wording): `useSymbols` has
+`staleTime: ONE_DAY_MS` (per `useSymbols.ts:14`). A `captured_count`
+shown in a resolved Recent Codes row is **as fresh as the Symbol Master
+cache**, no more and no less — identical to what the main search
+dropdown shows for the same Code. Refresh of the Symbol Master via the
+SymbolSearch `Refresh` button or Settings updates both surfaces in
+lockstep.
 
 ### Component changes (`SymbolSearch.tsx`)
 
-**New visibility predicate** (additive — does not change existing
-`dropdownVisible`):
+**New `isTyping` state** — distinguishes "user is composing a query"
+from "user has the input focused but isn't typing":
 
 ```ts
-const historyVisible =
-  open
-  && query.length === 0
-  && recent.length > 0
-  && cacheStatus !== 'unavailable';
+const [isTyping, setIsTyping] = useState(false);
 ```
 
-`historyVisible` and `dropdownVisible` are mutually exclusive by
-construction (query length condition).
+- `onFocus` → `setIsTyping(false)`
+- `onChange` (every keystroke) → `setIsTyping(true); setOpen(true)`
+- `Escape` → existing close behavior + `setIsTyping(false)`
+- `select(hit)` → existing close behavior + `setIsTyping(false)`
 
-**`select()` hook** — call `addToHistory(hit)` from the existing `select`
-function. The `promoteUnverifiedCode` path already routes through
-`select()`, so unverified-code commits are captured automatically.
+This is the load-bearing decision behind "click to see history" when the
+input already holds a confirmed value: `CaptureForm` does not call
+`setSymbol(null)` after Start, so the input keeps the prior selection's
+text. With `isTyping`, focus reverts to history mode without forcing a
+form reset.
+
+**Visibility predicates** (mutually exclusive by construction):
+
+```ts
+const searchVisible =
+  open && isTyping && query.length >= 1 && cacheStatus !== 'unavailable';
+
+const historyVisible =
+  open && !isTyping && recent.length > 0 && cacheStatus !== 'unavailable';
+```
+
+Both predicates require `open`. When the user lands focus on an input
+that already shows `"<name> <code>"`, `isTyping === false` → history.
+When they start typing, `isTyping → true` and `query.length >= 1` →
+search results. The dropdown can never show both simultaneously.
+
+**`select()` hook** — call `add(hit)` from inside `select`. The
+`promoteUnverifiedCode` path already routes through `select()`, so
+unverified-Code commits are captured automatically.
 
 **Dropdown structure** when `historyVisible`:
 
@@ -141,107 +188,119 @@ function. The `promoteUnverifiedCode` path already routes through
 ┌────────────────────────────────────────────────────┐
 │ 최근 검색                              전체 지우기  │  ← text-xs fg-dim
 ├────────────────────────────────────────────────────┤
-│ <SymbolRow ... />  [×]                             │
-│ <SymbolRow ... />  [×]                             │
-│ <SymbolRow ... />  [×]                             │
+│ <RecentRow row=... />                          [×] │
+│ <RecentRow row=... />                          [×] │
+│ <RecentRow row=... />                          [×] │
 └────────────────────────────────────────────────────┘
 ```
 
-- Header: `<div>` with "최근 검색" label and "전체 지우기" text button.
-  `text-xs text-fg-dim border-b border-border px-sm py-xs`. Per
-  `DESIGN.md`, all colors/spacing come from tokens.
-- Row: reuse `SymbolRow` exactly as-is for visual consistency with
-  search results. Wrap it in a flex container that also holds a `×`
-  remove button visible on hover/focus (per-row).
+- Header: "최근 검색" label + "전체 지우기" text button. Tokens only
+  (`DESIGN.md` compliance): `text-xs text-fg-dim border-b border-border
+  px-sm py-xs`.
+- `RecentRow`: small wrapper component near `SymbolRow` in
+  `SymbolSearch.tsx`. Renders the same 4-column grid as `SymbolRow`
+  (`name | code | market | count`) for visual consistency. Branch on
+  `row.kind`:
+  - `'resolved'` → reuse `SymbolRow` exactly as today (same count text,
+    same tooltip).
+  - `'fallback'` → render name/code/market the same way, but the count
+    column shows `—` (em-dash) in `text-fg-dimmer`. No tooltip.
 - `×` button: `onMouseDown={(e) => { e.preventDefault();
-  e.stopPropagation(); remove(hit.code); }}`. The `preventDefault` keeps
-  input focus; `stopPropagation` prevents the row's `onClick` from
-  firing.
+  e.stopPropagation(); remove(code); }}`. `preventDefault` keeps input
+  focus; `stopPropagation` prevents the row's `onClick` from firing.
 - "전체 지우기": `onMouseDown` with `preventDefault` + `clearAll()`.
-  After clear, `recent.length === 0` → dropdown auto-closes via the
-  visibility predicate.
+  After clear, `recent.length === 0` → dropdown closes via predicate.
 
-**Keyboard**:
+**Keyboard** (extends existing handler):
 
-- `ArrowDown` / `ArrowUp`: reuse existing `highlight` state. The keydown
-  handler currently branches on `dropdownVisible`; extend it to also
-  branch on `historyVisible`. Both branches operate on the same
-  `highlight` index against whichever list is rendered.
-- `Enter`: highlighted history row → `select(recent[highlight])`. Reuses
-  the existing Enter branch by computing the active list once at the
-  top of `onKeyDown`.
-- `Delete`: when `historyVisible`, remove the highlighted entry without
-  closing the dropdown. Clamp `highlight` so it stays valid after the
-  splice.
-- `Escape`: closes dropdown (existing behavior).
+- The keydown handler computes an `activeList` at the top:
+  `historyVisible ? recent : (searchVisible ? hits : null)`.
+- `ArrowDown` / `ArrowUp`: reuse `highlight`, clamped to `activeList.length`.
+- `Enter`: if `activeList === recent` and a row is highlighted →
+  `select(toSymbolHit(recent[highlight]))` where `toSymbolHit` returns
+  `row.hit` for resolved rows and constructs a `SymbolHit` with
+  `captured_count: 0, breakdown: zeros` ONLY for fallback rows (this is
+  the existing behavior of `promoteUnverifiedCode` — the form proceeds
+  with what we know).
+- `Delete` when `historyVisible`: remove the highlighted row without
+  closing the dropdown. Clamp `highlight`. Verified no conflict —
+  capture-page files have no other `Delete` handlers.
+- `Escape`: existing close behavior + reset `isTyping`.
 
-**Empty state**: when `recent.length === 0`, the predicate is false →
-no dropdown renders. No "you have no history yet" message — keeps the
-empty-focus state visually quiet, matching current behavior.
+**Empty state**: `recent.length === 0` → dropdown does not render. No
+"no history yet" placeholder.
 
-**Unavailable cache**: the existing hint UI ("종목 목록 미가용 — 6자리
-코드 입력...") wins. History is hidden in this mode so the user isn't
-distracted from the fallback workflow.
+**Unavailable cache**: existing hint UI ("종목 목록 미가용 — 6자리
+코드 입력...") wins; history is hidden so the fallback flow is not
+diluted. (The user is in a degraded path; surfacing history would imply
+they can use it normally.)
 
 ## Edge Cases
 
 | Case | Behavior |
 |---|---|
-| localStorage throws (SSR, quota) | In-memory fallback; session-only. Never throws to caller. |
+| localStorage throws (SSR, quota) | In-memory fallback; session-only, never throws. |
 | Corrupt JSON in storage | Delete key, return `[]`. Logged once. |
-| Stored code missing from cache | Fallback `SymbolHit` from stored name/market; `captured_count=0`. |
-| Same code re-selected | LRU: move to position 0, refresh `ts`. No duplicates. |
-| Multi-tab race on write | Last writer wins. Acceptable: capture frequency is low. |
-| Form reset (after Start) clears `value` | History dropdown shows automatically — user's just-captured symbol sits at row 0 for quick re-pick. |
-| 6-digit unverified code committed | Saved with `name='—'`, `market='KOSPI'` (default from `promoteUnverifiedCode`). Heals on next render once cache is back. |
+| Stored Code missing from Symbol Master cache | `{ kind: 'fallback', ... }`; count column shows `—`. |
+| Same Code re-selected | LRU: move to position 0, refresh `ts`. No duplicates. |
+| Multi-tab race on write | Last writer wins. Acceptable — capture frequency is low. |
+| `CaptureForm` retains symbol after Start | History reachable via `isTyping=false` on next focus — no form change needed. |
+| 6-digit unverified Code committed via `promoteUnverifiedCode` | Saved with stored `name='—'`, `market='KOSPI'`. Heals on next render once the Symbol Master cache resolves the real name. |
+| User clicks input while typing already in progress | `isTyping` already `true` → search results remain; clicking the input doesn't reset typing state (only `Escape` or `select` does). |
 
 ## Test Strategy (TDD order)
 
-### Layer 1 — `symbolHistory.test.ts` (pure)
+### Layer 1 — `recentCodes.test.ts` (pure)
 
-- empty state → `add()` → array of length 1
-- `add()` same code twice → length 1, moved to position 0, `ts` refreshed
-- `add()` 11 distinct codes → length 10, oldest dropped
-- `remove(code)` → entry gone, others unchanged
+- empty state → `add()` → length 1
+- `add()` same Code twice → length 1, position 0, `ts` refreshed
+- `add()` 11 distinct Codes → length 10, oldest dropped
+- `remove(code)` → entry gone, others unchanged, ordering preserved
 - `clearAll()` → empty array, key cleared
 - corrupt JSON in storage → returns `[]`, key cleared on next read
-- localStorage throws on `setItem` → falls back to in-memory; subsequent
-  `read()` reflects the in-memory state
+- localStorage `setItem` throws → falls back to in-memory; later `read()`
+  reflects the in-memory state
 
-### Layer 2 — `useSymbolHistory.test.tsx`
+### Layer 2 — `useRecentCodes.test.tsx`
 
-- with mocked `useSymbols` returning a known cache: stored codes resolve
-  to live `SymbolHit` values
-- cache miss for a stored code → fallback row with name/market from
-  storage, `captured_count=0`
-- `storage` event fires from another tab → component re-renders with
-  new list
-- same-tab `add()` → component re-renders (module event emitter path)
+- with mocked `useSymbols` returning a known catalog: stored Codes
+  resolve to `{ kind: 'resolved', hit }`
+- cache miss for a stored Code → `{ kind: 'fallback', code, name, market }`
+- `storage` event from another tab → component re-renders
+- same-tab `add()` → component re-renders (module emitter path)
+- `useSymbols` data changes (refresh) → resolved rows pick up new
+  `captured_count` without `add`/`remove` being called
 
 ### Layer 3 — `SymbolSearch.test.tsx` (additions)
 
 - empty history + focus → no dropdown
 - has history + focus + empty input → "최근 검색" header + rows render
-- typing 1 character → history hides, search results show (mutual
-  exclusion holds)
-- click history row → `onChange` called with that `SymbolHit`
-- click `×` on a row → row disappears, `onChange` not called
+- has history + focus + input shows a confirmed `value` text →
+  history still renders (`isTyping === false`)
+- typing 1 character → `isTyping → true` → history hides, search results
+  show
+- click history row → `onChange` called with the row's `SymbolHit`
+- click history fallback row → `onChange` called with a constructed
+  placeholder `SymbolHit` (matching `promoteUnverifiedCode` semantics)
+- click `×` on a row → row disappears, `onChange` not called, input
+  retains focus
 - click "전체 지우기" → dropdown closes
-- after `select()`, reset value, focus → that symbol is at row 0 of
-  history
-- `cacheStatus === 'unavailable'` → history hidden, hint UI shown
-- ArrowDown + Enter on history → selects highlighted row
-- Delete key on highlighted history row → removes that row, dropdown
-  stays open with `highlight` clamped
+- after `select()`, the chosen Code is at position 0 of history
+- `cacheStatus === 'unavailable'` → history hidden, existing hint UI
+  visible
+- ArrowDown + Enter on history → selects the highlighted row
+- Delete key on highlighted history row → that row removed, dropdown
+  stays open, `highlight` clamped
 
 ## Non-Goals (explicit)
 
 - No analytics on history usage.
-- No "pin to top" or per-row metadata UI.
-- No de-duplication across casing differences in code (codes are always
-  6-digit numeric — case is not a concern).
+- No pin-to-top, no per-row metadata UI.
+- No de-dup across casing differences in Code (Codes are 6-digit
+  numeric; casing is N/A).
 - No migration from any prior storage key — this is the first version.
 
 ## Open Questions
 
-None. All design decisions resolved during brainstorming.
+None. All design decisions resolved in brainstorming and the 2026-05-27
+grill-with-docs pass.
