@@ -2563,7 +2563,7 @@ uv run pytest tests/unit/live/test_adr_invariants.py -v
 
 1. **Quote (10호가)**: ✓ plan과 완전 일치. `askp1..10`, `bidp1..10`, `askp_rsqn1..10`, `bidp_rsqn1..10`, `total_askp_rsqn`, `total_bidp_rsqn` 모두 확인됨.
 
-2. **Trade (inquire-ccnl)**: ❌ plan이 가정한 `ccld_dvsn` (체결구분 1/5) 필드 **부재**. 실제 응답 필드: `stck_cntg_hour, stck_prpr, cntg_vol, prdy_vrss, prdy_vrss_sign, prdy_ctrt, tday_rltv`. **per-trade side를 직접 못 얻음** — Stage 2.2의 `KisTrade.side` 매핑은 0(unknown) 으로 고정. FillStrength 지표는 본 plan 범위에서 **제외**되고 Phase 2로 이연 (사용자 결정 2026-05-27). Trade는 fixture와 함께 보관되며 promote도 그대로 진행하되 차트 표시는 빈 상태.
+2. **Trade — endpoint 교체**: 처음 가정한 `inquire-ccnl` (FHKST01010300)은 `ccld_dvsn` 같은 명시적 side 필드를 주지 않는다. 공식 샘플 리포를 추가 검토한 결과 `inquire-time-itemconclusion` (TR_ID `FHPST01060000`) 이 더 적합 — 각 체결 row가 `stck_cntg_hour`, `stck_prpr`(체결가), `cnqn`(체결 수량), `askp`(최우선 매도호가), `bidp`(최우선 매수호가) 을 동시 제공한다. **Lee-Ready 알고리즘**으로 side 도출 가능: `stck_prpr >= askp → +1(매수)`, `stck_prpr <= bidp → -1(매도)`, 중간가 → `0`. plan §Task 2.2의 `fetch_trades`는 본 endpoint로 교체. **FillStrength 지표 Phase 2 이연 결정은 철회** — 본 plan 범위 내에서 구현. inquire-ccnl 응답도 함께 fixture로 남아 있어 schema 진화 시 fallback 가능. (사용자가 공식 샘플 리포 참조를 요청, 2026-05-27 후속 검토 결과.)
 
 3. **Broker (inquire-member)**: `output`이 dict가 아니라 **1-element list**. 접근 시 `body["output"][0]` 사용. 실 응답에 plan 가정의 5개 컬럼 외에도 풍부한 필드 존재 (`seln_mbcr_no1..5`, `glob_total_seln_qty`, `glob_total_shnu_qty`, `glob_ntby_qty`, `*_glob_yn_*`, `seln_qty_icdc1..5` 등). 본 plan에서는 plan이 의도한 5개 (`name`, `total_qty`) 만 추출, 나머지는 무시.
 
@@ -2571,12 +2571,14 @@ uv run pytest tests/unit/live/test_adr_invariants.py -v
 
 ### 결과로 변경된 스코프
 
-- LiveIndicatorPane은 본래 4개 series (Quote Totals, 호가비, FillStrength, Broker Day-Trajectory) 였으나 **3개 active + 1개 빈 placeholder pane** 으로 조정. spec §7과 일치 (FillStrength pane은 마운트되어 X축 동기 유지하되 series 빈 배열).
-- Stage 2.2 (`fetch_trades`)는 trades 수집은 하되 side=0 으로 고정.
-- Stage 5 (`promote_one`)의 trades.parquet 스키마는 그대로 (side 컬럼 존재), 모든 row의 side=0.
-- Stage 6/9 (read/frontend): FillStrength 시리즈는 kis_live source 일 때 빈 배열을 반환 (사용자의 "pane은 컨테이너, 데이터 없으면 비움" 정책에 부합).
+- LiveIndicatorPane은 spec §7대로 **3개 active series** (Quote Totals, 호가비, FillStrength) + Live Sidebar의 거래원 카드(Broker Day-Trajectory). FillStrength 이연 결정은 inquire-time-itemconclusion 발견으로 철회.
+- Stage 2.2 (`fetch_trades`)는 endpoint를 `inquire-time-itemconclusion` (FHPST01060000) 으로 교체. 응답의 `output2[*]`를 순회하며 각 row에서 `t_ms = (오늘 KST 자정 + stck_cntg_hour HHMMSS)`, `price = stck_prpr`, `qty = cnqn`, `side = classify_side(prpr, askp, bidp)` 계산. `classify_side`는 `hoga/live/kis_client.py`에 헬퍼 함수로 추가.
+- Stage 5 (`promote_one`)의 trades.parquet 스키마는 plan 그대로 (side 컬럼 `int8`), 실제 값은 -1/0/+1.
+- Stage 6/9 (read/frontend): FillStrength 시리즈는 hogaplay와 kis_live 모두에서 정상 표시. 다만 kis_live는 10s 폴링 간격이 한계 — 두 폴링 사이에 발생한 체결은 inquire-time-itemconclusion 응답이 최근 30건만 주므로 활동성 높은 종목에서 일부 ticks가 누락될 수 있다. 이건 ADR-0038 트레이드오프에 새로운 항목 추가 (해상도 10s ≠ tick-level).
+- 새 task: `tools/capture_kis_fixtures.py`는 7번째 endpoint로 `timeconclusion_005930.json`도 받음 — Stage 1-5의 unit test가 이 fixture를 inquire-ccnl 대신 사용한다.
+- inquire-ccnl 응답 fixture(`trade_005930.json`)는 그대로 보존 — KIS schema가 미래에 inquire-time-itemconclusion에서 ccnl 쪽으로 회귀해도 빠르게 fallback할 수 있게.
 
-이 발견을 위해 Task 1.0이 존재한 것 — plan의 J-extra 의도대로 동작.
+이 발견을 위해 Task 1.0이 존재한 것 — plan의 J-extra 의도대로 동작. 더불어 공식 샘플 리포 (`koreainvestment/open-trading-api`) 의 endpoint 카탈로그를 명시적으로 cross-check한 결과 더 적합한 endpoint 발견 (2026-05-27 검토).
 
 ---
 

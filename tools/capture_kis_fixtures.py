@@ -172,7 +172,17 @@ def main() -> int:
         r.raise_for_status()
         _save(f"candle_d_{args.code}", r.json())
 
-    print(f"\nAll 6 responses saved to {FIXTURES_DIR}/")
+        # 7. 시간대별 체결 (side info candidate, per 공식 샘플 inquire_time_itemconclusion)
+        print(f"[7/7] GET inquire-time-itemconclusion  code={args.code}")
+        r = client.get(
+            "/uapi/domestic-stock/v1/quotations/inquire-time-itemconclusion",
+            headers={**base_headers, "tr_id": "FHPST01060000"},
+            params={**params, "fid_input_hour_1": "153000"},
+        )
+        r.raise_for_status()
+        _save(f"timeconclusion_{args.code}", r.json())
+
+    print(f"\nAll 7 responses saved to {FIXTURES_DIR}/")
     return 0
 
 
