@@ -94,3 +94,31 @@ def test_parser_dedups_global_seq(tmp_path: Path) -> None:
     out_dir = parse_stock_date(code="003490", date="20260519", data_dir=tmp_path / "data")
     trades_tbl = pq.read_table(out_dir / "trades.parquet")
     assert trades_tbl.num_rows == 6, "duplicates by global_seq must be removed"  # noqa: PLR2004
+
+
+def test_parser_writes_full_capture_count_one_on_first_capture(staged_raw: Path) -> None:
+    """First successful Full Capture writes full_capture_count=1."""
+    out_dir = parse_stock_date(
+        code="003490", date="20260519", data_dir=staged_raw / "data",
+    )
+    meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["full_capture_count"] == 1
+
+
+def test_parser_increments_full_capture_count_on_recapture(staged_raw: Path) -> None:
+    """Second successful Full Capture overwrites meta.json with prior + 1."""
+    out_dir = parse_stock_date(code="003490", date="20260519", data_dir=staged_raw / "data")
+    # First call → 1. Re-run the parser; same raw, same out dir → second meta write.
+    parse_stock_date(code="003490", date="20260519", data_dir=staged_raw / "data")
+    meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["full_capture_count"] == 2
+
+
+def test_parser_increments_full_capture_count_from_legacy_meta(staged_raw: Path) -> None:
+    """Legacy meta.json without the field → after Retry, full_capture_count == 1."""
+    out_dir = staged_raw / "data" / "parquet" / "20260519" / "003490"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "meta.json").write_text(json.dumps({"legacy": True}), encoding="utf-8")
+    parse_stock_date(code="003490", date="20260519", data_dir=staged_raw / "data")
+    meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["full_capture_count"] == 1

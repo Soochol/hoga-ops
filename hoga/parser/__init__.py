@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -162,6 +163,30 @@ def parse_stock_date(
     ))
     if _all_violations:
         meta["invariant_violations"] = [v.as_dict() for v in _all_violations]
+
+    # Full Capture Count (CONTEXT.md): read prior meta and increment.
+    # Race-safe under the single-process precondition documented at
+    # hoga/api/captures.py:69 — the capture queue's `_inflight_paths`
+    # set (guarded by `_lock`) serializes same-(code,date) jobs within
+    # one worker process. Multi-worker uvicorn would lose this guarantee.
+    prior_path = out_dir / "meta.json"
+    prior_count = 0
+    if prior_path.exists():
+        try:
+            prior_meta = json.loads(prior_path.read_text(encoding="utf-8"))
+            prior_value = prior_meta.get("full_capture_count")
+            if isinstance(prior_value, int) and prior_value >= 1:
+                prior_count = prior_value
+        except (OSError, json.JSONDecodeError) as exc:
+            # Don't silently reset a counter that may have been at 47.
+            # Surface the corruption so an operator can investigate;
+            # treat as legacy=0 only after warning.
+            logging.getLogger("hoga.parser").warning(
+                "corrupt prior meta.json at %s — resetting full_capture_count: %s",
+                prior_path, exc,
+            )
+            prior_count = 0
+    meta["full_capture_count"] = prior_count + 1
 
     (out_dir / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
