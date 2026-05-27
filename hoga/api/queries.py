@@ -129,7 +129,15 @@ class QueryEngine:
                     continue
                 # _compute_stock_date wants the dir containing the parquet files,
                 # which is the source dir or the flat dir — same as meta_path.parent.
-                sd = self._compute_stock_date(date, code, meta_path.parent)
+                # Wrap in try/except: a parquet with a non-hogaplay schema
+                # (e.g. partially-migrated state) would raise a DuckDB
+                # BinderException; we'd rather skip the row than 500 the whole
+                # inventory endpoint.
+                try:
+                    sd = self._compute_stock_date(date, code, meta_path.parent)
+                except Exception:  # noqa: BLE001
+                    seen_keys.discard(key)
+                    continue
                 self._stock_date_cache[key] = _CachedStockDate(
                     meta_mtime_ns=mtime_ns, value=sd
                 )
@@ -147,19 +155,18 @@ class QueryEngine:
     def _find_winning_meta(code_dir: Path) -> Path | None:
         """Find the meta.json to use for inventory display.
 
-        Priority: hogaplay/ > kis_live/ > any other source subdir > flat layout.
-        Returns None if no meta.json found anywhere.
+        Returns the hogaplay/meta.json if present, else the flat-layout
+        meta.json (pre-migration), else None. kis_live is intentionally
+        EXCLUDED — its snapshots.parquet uses `t_ms` (Unix ms) while
+        the inventory readers assume hogaplay's `ts_ms` (HHMMSSmmm) and
+        the underlying `_compute_stock_date` shape that ApiCandle /
+        snapshot path emit. A kis_live-only Stock-Date is therefore
+        invisible to the Inventory page; users see kis_live data on
+        /live and (via Source Preference) on /replay instead.
         """
-        # Preferred sources in order
-        for source in ("hogaplay", "kis_live"):
-            candidate = code_dir / source / "meta.json"
-            if candidate.exists():
-                return candidate
-        # Any other source subdir
-        for sub in sorted(code_dir.iterdir()):
-            if sub.is_dir() and (sub / "meta.json").exists():
-                return sub / "meta.json"
-        # Flat fallback
+        candidate = code_dir / "hogaplay" / "meta.json"
+        if candidate.exists():
+            return candidate
         flat = code_dir / "meta.json"
         if flat.exists():
             return flat
