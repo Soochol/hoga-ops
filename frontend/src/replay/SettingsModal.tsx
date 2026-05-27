@@ -8,6 +8,7 @@ import {
   type NumericPrefDef,
   type NumericPrefKey,
 } from '../state/tabs';
+import { useSourcePreferenceStore, SOURCE_OPTIONS, type SourcePreference } from '../state/sourcePreference';
 import IndicatorsSection from './settings/IndicatorsSection';
 import ToggleRow from './settings/ToggleRow';
 
@@ -141,6 +142,33 @@ function VolumeProfileModeRow() {
 }
 
 /**
+ * Radio button row for the global Source Preference setting (ADR-0039).
+ * Exported for isolated unit testing.
+ */
+export function SourcePreferenceRadio({ value }: { value: SourcePreference }) {
+  const current = useSourcePreferenceStore((s) => s.sourcePreference);
+  const setPref = useSourcePreferenceStore((s) => s.setSourcePreference);
+  const labelMap: Record<SourcePreference, string> = {
+    hogaplay: 'hogaplay 우선',
+    kis_live: 'kis_live 우선',
+  };
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer' }}>
+      <input
+        type="radio"
+        name="source-preference"
+        value={value}
+        checked={current === value}
+        onChange={() => setPref(value)}
+      />
+      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--fg)' }}>
+        {labelMap[value]}
+      </span>
+    </label>
+  );
+}
+
+/**
  * Centered modal overlay for chart settings. The "차트" category iterates
  * `CHART_TOGGLES` (the declarative registry on the tabs store) so adding a
  * new toggle is one entry in that array — no JSX edits here.
@@ -239,6 +267,23 @@ export default function SettingsModal({ onClose }: Props) {
                   <NumericPrefRow key={def.key} def={def} />
                 ))}
                 <VolumeProfileModeRow />
+                <div style={{ marginTop: 'var(--space-md)' }}>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
+                    기본 데이터 소스 <span style={{ color: 'var(--fg-dimmer)' }}>(모든 차트 공통)</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+                    {SOURCE_OPTIONS.map((opt) => (
+                      <SourcePreferenceRadio key={opt} value={opt} />
+                    ))}
+                  </div>
+                  <div style={{
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--fg-dimmer)',
+                    marginTop: 'var(--space-xs)',
+                  }}>
+                    현재 source는 차트 상단 칩에 표시됩니다.
+                  </div>
+                </div>
               </>
             )}
             {category === 'indicators' && <IndicatorsSection />}
