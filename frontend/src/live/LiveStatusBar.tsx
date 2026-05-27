@@ -1,22 +1,22 @@
 import { useLivePageStore } from '../state/livePage';
 import { cycleLagSeverity, cycleLagPillColor } from './cycleLagPill';
-import { useLiveBundle } from './useLiveBundle';
 import { SourceChip } from '../chart/SourceChip';
-import { todayKstYyyymmdd } from './liveDateTime';
+import type { RangeBundle } from '../api/types';
 
 interface Props {
   activeCode: string | null;
   cycleLagMs: number;
+  /** The Live Candle Backfill bundle, owned by LivePage. ADR-0040 — single
+   * useLiveBundle call site per page. */
+  bundle: RangeBundle | null;
 }
 
-export function LiveStatusBar({ activeCode, cycleLagMs }: Props) {
+export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const severity = cycleLagSeverity(cycleLagMs);
   const pill = cycleLagPillColor(severity);
 
-  // ADR-0040: candle data flows through the single Live Candle Backfill path.
   // ADR-0039: surface the active source through the last segment's tag.
-  const { bundle } = useLiveBundle(activeCode, timeframe, todayKstYyyymmdd());
   const lastCandle = bundle && bundle.candles.length > 0
     ? bundle.candles[bundle.candles.length - 1]
     : null;

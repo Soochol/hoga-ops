@@ -4,15 +4,25 @@ import { LiveEmptyState } from './LiveEmptyState';
 import { LiveSidebar } from './LiveSidebar';
 import { WatchlistPanel } from './WatchlistPanel';
 import InvariantOutcomesBanner from '../replay/InvariantOutcomesBanner';
-import { useLiveBundle } from './useLiveBundle';
-import { todayKstYyyymmdd } from './liveDateTime';
+import type { RangeBundle } from '../api/types';
 
 interface Props {
   activeCode: string | null;
   watchlistEmpty: boolean;
+  /** The Live Candle Backfill bundle, owned by LivePage. ADR-0040 — single
+   * useLiveBundle call site per page. */
+  bundle: RangeBundle | null;
+  clampEngaged: boolean;
+  isPastCandlesLoading: boolean;
 }
 
-export function LiveWorkarea({ activeCode, watchlistEmpty }: Props) {
+export function LiveWorkarea({
+  activeCode,
+  watchlistEmpty,
+  bundle,
+  clampEngaged,
+  isPastCandlesLoading,
+}: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const watchlistOpen = useLivePageStore((s) => s.watchlistPanelOpen);
 
@@ -33,9 +43,6 @@ export function LiveWorkarea({ activeCode, watchlistEmpty }: Props) {
       </div>
     );
   }
-
-  const today = todayKstYyyymmdd();
-  const { bundle, clampEngaged, isPastCandlesLoading } = useLiveBundle(activeCode, timeframe, today);
 
   // Single chart owns all 5 panes; sidebar + optional watchlist stay siblings.
   return (

@@ -31,6 +31,18 @@ vi.mock('../api/liveSeries', () => ({
   }),
 }));
 
+// LivePage now owns the single useLiveBundle call. Mock to avoid TanStack
+// queries hitting real endpoints in the shell test.
+vi.mock('./useLiveBundle', () => ({
+  useLiveBundle: () => ({
+    bundle: null,
+    isLoading: false,
+    error: null,
+    clampEngaged: false,
+    isPastCandlesLoading: false,
+  }),
+}));
+
 function renderWithRouter(initial = '/live') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(

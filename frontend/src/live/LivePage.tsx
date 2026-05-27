@@ -9,6 +9,8 @@ import { LiveToolbar } from './LiveToolbar';
 import { LiveWorkarea } from './LiveWorkarea';
 import { LiveStateBanner } from './LiveStateBanner';
 import { useLiveKeyboard } from './useLiveKeyboard';
+import { useLiveBundle } from './useLiveBundle';
+import { todayKstYyyymmdd } from './liveDateTime';
 
 /**
  * /live page — KIS-based real-time indicator chart.
@@ -50,6 +52,19 @@ export function LivePage() {
   const activeCode = queryCode ?? storedCode;
   const watchlistEmpty = banner.primary === 'watchlist_empty';
 
+  // Single useLiveBundle source for the page: LiveStatusBar (current price +
+  // source chip) and LiveWorkarea (chart + banner + clamp affordances) both
+  // read the same bundle. Calling the hook once here means SSE pushes only
+  // recompute the memoized bundle once per render and the TanStack query key
+  // is derived from a single `today` reference (no KST-midnight drift).
+  const timeframe = useLivePageStore((s) => s.candleTimeframe);
+  const today = todayKstYyyymmdd();
+  const { bundle, clampEngaged, isPastCandlesLoading } = useLiveBundle(
+    activeCode,
+    timeframe,
+    today,
+  );
+
   return (
     <div
       className="h-full grid"
@@ -62,9 +77,19 @@ export function LivePage() {
     >
       <LiveHeader />
       <LiveStateBanner primary={banner.primary} stack={banner.stack} />
-      <LiveStatusBar activeCode={activeCode} cycleLagMs={status?.cycle_lag_ms ?? 0} />
+      <LiveStatusBar
+        activeCode={activeCode}
+        cycleLagMs={status?.cycle_lag_ms ?? 0}
+        bundle={bundle}
+      />
       <LiveToolbar />
-      <LiveWorkarea activeCode={activeCode} watchlistEmpty={watchlistEmpty} />
+      <LiveWorkarea
+        activeCode={activeCode}
+        watchlistEmpty={watchlistEmpty}
+        bundle={bundle}
+        clampEngaged={clampEngaged}
+        isPastCandlesLoading={isPastCandlesLoading}
+      />
     </div>
   );
 }
