@@ -536,7 +536,13 @@ async def _run_capture_and_parse(
             if exc.status_code != 429 or delay is None:
                 raise
             last_exc = exc
-            if await _cancel_aware_sleep(state, delay):
+            if collector is not None:
+                collector.record_error("http_429")
+                with collector.phase("backoff"):
+                    cancelled = await _cancel_aware_sleep(state, delay)
+            else:
+                cancelled = await _cancel_aware_sleep(state, delay)
+            if cancelled:
                 raise CaptureCancelled() from exc
     if last_exc is not None:
         raise last_exc
