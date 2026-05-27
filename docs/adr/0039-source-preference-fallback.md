@@ -26,7 +26,7 @@ sourcePreference: "hogaplay" | "kis_live"
 
 즉 차트가 비어 보이는 경우는 **두 source 모두 없을 때만**. 사용자가 토글을 잘못 만지더라도 데이터가 사라지지 않는다.
 
-`/live` 페이지는 본 토글을 무시한다 (오늘 자는 정의상 `kis_live`만 존재).
+`/live` 페이지의 **라이브 SSE 데이터**(오늘 자)는 본 토글을 무시한다 — 오늘 자는 정의상 `kis_live`만 존재. `/live`의 **과거 lazy fetch** 데이터(어제 이전)는 본 토글을 따르며, 위의 preference + fallback 의미론을 그대로 적용한다. 즉 토글은 "모든 차트 공통"이라는 사용자 mental model을 유지하되, 오늘 자 라이브 데이터에만 제약이 있다.
 
 ## Why
 
