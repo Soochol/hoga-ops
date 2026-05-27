@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import ReplayViewer from './pages/ReplayViewer';
+import { LivePage } from './live/LivePage';
 import Inventory from './pages/Inventory';
 import Capture from './pages/Capture';
 import Watchlist from './pages/Watchlist';
@@ -18,6 +19,7 @@ createRoot(document.getElementById('root')!).render(
         <Route element={<App />}>
           <Route path="/" element={<Navigate to="/replay" replace />} />
           <Route path="replay" element={<ReplayViewer />} />
+          <Route path="live" element={<LivePage />} />
           <Route path="inventory" element={<Inventory />} />
           <Route path="capture" element={<Capture />} />
           <Route path="watchlist" element={<Watchlist />} />
