@@ -167,7 +167,9 @@ export function WatchlistPanel() {
           {allSummary.failed.length > 0 && (
             <ul className="mt-1 text-xs text-error">
               {allSummary.failed.map((r) => (
-                <li key={r.code}>{r.code} ({r.name}): {r.error}</li>
+                <li key={r.code} title={r.error?.message ?? undefined}>
+                  {r.code} ({r.name}): {r.error?.code ?? 'failed'}
+                </li>
               ))}
             </ul>
           )}

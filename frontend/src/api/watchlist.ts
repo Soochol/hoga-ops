@@ -37,12 +37,20 @@ export function removeFromWatchlist(code: string): Promise<void> {
 // /api/watchlist/{code}/catchup. Re-exported above for ergonomic imports
 // from this module.
 
+/** Structured error envelope — mirrors hoga/api/models.py::ManualCatchupError.
+ *  `code` is stable (e.g. `krx_credentials_missing`, `catchup_failed`); the
+ *  panel can branch on it instead of regex-matching exception strings. */
+export interface ManualCatchupError {
+  code: string;
+  message: string;
+}
+
 export interface ManualCatchupAllEntryResult {
   code: string;
   name: string;
   enqueued_count: number;
   deduped_count: number;
-  error: string | null;
+  error: ManualCatchupError | null;
 }
 
 export interface ManualCatchupAllResponse {

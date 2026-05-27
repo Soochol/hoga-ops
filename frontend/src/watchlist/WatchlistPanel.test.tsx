@@ -186,10 +186,17 @@ describe('WatchlistPanel manual catch-up', () => {
       }],
       next_run_at_ms: Date.now() + 3600_000,
     });
+    const enqueuedDefaults = {
+      force_retry: false, pause_origin: false, enqueued_at_ms: 0,
+      started_at_ms: null, progress: null, result: null,
+      error: null, skip_reason: null, attempt: 1,
+    } as const;
     vi.mocked(api.catchupNow).mockResolvedValueOnce({
       enqueued: [
-        { item_id: '003490-20260526', code: '003490', date: '20260526', phase: 'queued' },
-        { item_id: '003490-20260527', code: '003490', date: '20260527', phase: 'queued' },
+        { item_id: '003490-20260526', code: '003490', date: '20260526',
+          phase: 'queued', ...enqueuedDefaults },
+        { item_id: '003490-20260527', code: '003490', date: '20260527',
+          phase: 'queued', ...enqueuedDefaults },
       ],
       deduped: [
         { code: '003490', date: '20260525', reason: 'already_complete' },
@@ -290,7 +297,8 @@ describe('WatchlistPanel manual catch-up', () => {
       results: [
         { code: '003490', name: '대한항공',
           enqueued_count: 0, deduped_count: 0,
-          error: 'krx_credentials_missing' },
+          error: { code: 'krx_credentials_missing',
+                   message: 'KRX trading-day list unavailable.' } },
       ],
     });
     renderWithQuery(<WatchlistPanel />);

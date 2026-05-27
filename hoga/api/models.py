@@ -526,19 +526,32 @@ class WatchlistAddRequest(BaseModel):
 # --- Watchlist manual catch-up (see spec 2026-05-27) -----------------------
 
 
+class ManualCatchupError(BaseModel):
+    """Structured error for one watchlist entry that failed catch-up.
+
+    ``code`` is a stable identifier the frontend can branch on (e.g.
+    ``krx_credentials_missing``, ``catchup_failed``); ``message`` is a
+    human-readable explanation. Raw exception strings are NOT exposed —
+    server-side details (file paths, stack traces, credential hints) go
+    to log.exception only.
+    """
+    code: str
+    message: str
+
+
 class ManualCatchupAllEntryResult(BaseModel):
     """One row in the ManualCatchupAllResponse.results list.
 
-    ``error`` is a short string (KRX upstream code like
-    ``krx_credentials_missing``, or an exception message) for the panel
-    to surface in the banner's per-entry failure list. ``None`` when the
-    entry succeeded.
+    ``error`` is a structured ``{code, message}`` envelope when the entry
+    failed, or ``None`` when it succeeded. The stable ``error.code`` lets
+    the panel branch on known failure modes (e.g.
+    ``krx_credentials_missing``) without parsing exception strings.
     """
     code: str = Field(pattern=r"^\d{6}$")
     name: str
     enqueued_count: int
     deduped_count: int
-    error: str | None = None
+    error: ManualCatchupError | None = None
 
 
 class ManualCatchupAllResponse(BaseModel):

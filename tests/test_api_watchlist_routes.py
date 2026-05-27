@@ -68,12 +68,14 @@ def _fake_hit(code: str = "003490", name: str = "대한항공"):
     )
 
 
-def test_post_unknown_code_returns_400(tmp_path: Path):
-    """Code must be present in symbol-master cache."""
+def test_post_unknown_code_returns_404(tmp_path: Path):
+    """Code must be present in symbol-master cache. 404 because the request
+    is well-formed (Pydantic validated the 6-digit pattern) but the
+    referenced resource does not exist."""
     with patch("hoga.api.watchlist_routes.symbols.search", return_value=[]):
         client = TestClient(_app(tmp_path))
         r = client.post("/api/watchlist", json={"code": "999999"})
-    assert r.status_code == 400
+    assert r.status_code == 404
     assert r.json()["detail"]["code"] == "unknown_code"
 
 
@@ -153,7 +155,7 @@ async def test_catchup_one_returns_enqueue_response(tmp_path: Path):
                new_callable=AsyncMock, return_value=fake_resp):
         client = TestClient(_app(tmp_path))
         r = client.post("/api/watchlist/003490/catchup")
-    assert r.status_code == 200
+    assert r.status_code == 201
     body = r.json()
     assert len(body["enqueued"]) == 1
     assert body["enqueued"][0]["code"] == "003490"
@@ -188,7 +190,7 @@ async def test_catchup_all_aggregates_results(tmp_path: Path):
                new_callable=AsyncMock, side_effect=fake_helper):
         client = TestClient(_app(tmp_path))
         r = client.post("/api/watchlist/catchup")
-    assert r.status_code == 200
+    assert r.status_code == 201
     body = r.json()
     results = {row["code"]: row for row in body["results"]}
     assert results["003490"]["enqueued_count"] == 1
@@ -218,11 +220,15 @@ async def test_catchup_all_per_entry_failure_does_not_abort(tmp_path: Path):
                new_callable=AsyncMock, side_effect=fake_helper):
         client = TestClient(_app(tmp_path))
         r = client.post("/api/watchlist/catchup")
-    assert r.status_code == 200
+    assert r.status_code == 201
     body = r.json()
     results = {row["code"]: row for row in body["results"]}
-    assert results["003490"]["error"] is not None
-    assert "krx_credentials_missing" in results["003490"]["error"]
+    # Generic RuntimeError → stable code 'catchup_failed' (no raw exception
+    # strings leak). The exception detail goes to server log only.
+    assert results["003490"]["error"] == {
+        "code": "catchup_failed",
+        "message": "Catch-up failed; see server log.",
+    }
     assert results["005930"]["error"] is None
 
 
@@ -231,5 +237,5 @@ def test_catchup_all_empty_watchlist_returns_empty_results(tmp_path: Path):
     with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now):
         client = TestClient(_app(tmp_path))
         r = client.post("/api/watchlist/catchup")
-    assert r.status_code == 200
+    assert r.status_code == 201
     assert r.json()["results"] == []
