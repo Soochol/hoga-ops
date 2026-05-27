@@ -331,7 +331,7 @@ KIS_ENV=real            # paper 미지원
 - 기존 Daily Scheduler 정의 갱신 — 18:00에 Promotion 단계가 hogaplay enqueue 앞에 추가됨을 명시
 
 **새 ADR 추가 (적용 완료)**:
-- **ADR-0037** — Source별 서브폴더 layout (`raw/{date}/{code}/{source}/...`); ADR-0006 성장 예산 발동 인정
+- **ADR-0037** — Source별 서브폴더 layout (`parquet/{date}/{code}/{source}/...`); ADR-0006 성장 예산 발동 인정
 - **ADR-0038** — Live Capture는 JSONL append + 18:00 Promotion (hot path에서 직접 Parquet 쓰기 거부)
 - **ADR-0039** — Source Preference는 preference + fallback (strict filter 아님)
 
