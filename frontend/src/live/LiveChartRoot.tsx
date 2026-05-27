@@ -22,7 +22,6 @@ import {
   todayKstYyyymmdd,
   realMsToYyyymmdd,
   subtractDaysKst,
-  INITIAL_HISTORICAL_DAYS,
   PREFETCH_CHUNK_DAYS,
 } from './liveDateTime';
 
@@ -174,18 +173,21 @@ export function LiveChartRoot({ code, timeframe }: Props) {
   }, []);
 
   // Lazy fetch trigger — extend historicalFromDate when user scrolls past the
-  // seeded initial window. Eng review C2/C3: (a) require usable axis with >=1
-  // segment; (b) 150ms trailing debounce so a single pan gesture produces at
-  // most one extension call.
+  // leftmost loaded candle.
   //
-  // Behaviour:
-  //   - The initial useLiveBundle fetch already covers (today - INITIAL_HISTORICAL_DAYS).
-  //     If the user's visible-range origin is still inside that window, nothing
-  //     to do — the cached bundle already covers it.
-  //   - Once the user pans past the seeded boundary, extend historicalFromDate
-  //     to (visibleFromDate - PREFETCH_CHUNK_DAYS) so the next bundle adds one
-  //     more chunk of past. The store's extendHistoricalRange is monotonically
-  //     decreasing, so repeat triggers on the same chunk are no-ops.
+  // The right signal is the visible-range's `from` in virtual seconds:
+  // axis.segments[0].virtualStart is always 0 by construction, so any
+  // r.from * 1000 < 0 means the user has dragged the viewport before the
+  // earliest loaded candle. `axis.toReal()` would clamp the value back to
+  // segments[0].sessionOpenMs (util/virtualAxis.ts:185), so going through
+  // realMs masks the signal — we read the virtual seconds directly.
+  //
+  // Each trigger prepends one PREFETCH_CHUNK_DAYS chunk from the current
+  // earliest segment. The store's extendHistoricalRange is monotonically
+  // decreasing, so repeat triggers from the same drag (during the 150ms
+  // debounce window) coalesce into one fetch. After the new chunk lands,
+  // axis.segments[0] becomes earlier, so the next drag-past triggers
+  // another chunk relative to the new earliest.
   useEffect(() => {
     if (!chart) return;
     const ts = chart.timeScale();
@@ -195,14 +197,10 @@ export function LiveChartRoot({ code, timeframe }: Props) {
       if (axis.segments.length === 0) return;
       const r = range as { from?: Time | null } | null;
       if (!r || r.from == null) return;
-      const sec = r.from as number;
-      const realMs = axis.toReal(sec * 1000);
-      const todayOpen = axis.segments[axis.segments.length - 1].sessionOpenMs;
-      if (realMs >= todayOpen) return;
-      const visibleFromDate = realMsToYyyymmdd(realMs);
-      const initialBoundary = subtractDaysKst(today, INITIAL_HISTORICAL_DAYS);
-      if (visibleFromDate >= initialBoundary) return; // still in seeded window
-      const nextHistoricalFrom = subtractDaysKst(visibleFromDate, PREFETCH_CHUNK_DAYS);
+      const visibleFromVirtualMs = (r.from as number) * 1000;
+      if (visibleFromVirtualMs >= 0) return; // still inside loaded data
+      const currentEarliestDate = realMsToYyyymmdd(axis.segments[0].sessionOpenMs);
+      const nextHistoricalFrom = subtractDaysKst(currentEarliestDate, PREFETCH_CHUNK_DAYS);
       if (timeoutId !== null) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         useLivePageStore.getState().extendHistoricalRange(nextHistoricalFrom);
@@ -213,7 +211,7 @@ export function LiveChartRoot({ code, timeframe }: Props) {
       if (timeoutId !== null) clearTimeout(timeoutId);
       ts.unsubscribeVisibleTimeRangeChange(handler);
     };
-  }, [chart, axis, timeframe, today]);
+  }, [chart, axis, timeframe]);
 
   useEffect(() => {
     if (!chart || !bundle) return;

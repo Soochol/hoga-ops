@@ -111,11 +111,6 @@ const TODAY_OPEN_MS = Date.UTC(2026, 4, 27, 0, 0, 0);
 const TODAY_CLOSE_MS = TODAY_OPEN_MS + 6.5 * 3600 * 1000;
 const YESTERDAY_OPEN_MS = TODAY_OPEN_MS - 86_400_000;
 const YESTERDAY_CLOSE_MS = YESTERDAY_OPEN_MS + 6.5 * 3600 * 1000;
-// 30 days before TODAY — well past the 20-day INITIAL_HISTORICAL_DAYS window
-// so a scroll into this segment crosses the initial boundary and triggers
-// chunked extension.
-const FAR_PAST_OPEN_MS = TODAY_OPEN_MS - 30 * 86_400_000;
-const FAR_PAST_CLOSE_MS = FAR_PAST_OPEN_MS + 6.5 * 3600 * 1000;
 
 const DEFAULT_TODAY_ONLY_BUNDLE = {
   bundle: {
@@ -208,18 +203,19 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     expect(useLivePageStore.getState().historicalFromDate).toBeNull();
   });
 
-  it('fires extendHistoricalRange with chunk-sized offset when visible-range crosses the initial window', () => {
-    // Axis includes a segment 30 days ago — well past the 20-day initial
-    // window. Scrolling there should trigger a chunked extension to
-    // (visibleFromDate - PREFETCH_CHUNK_DAYS).
+  it('fires extendHistoricalRange with one chunk past current earliest when scrolled before loaded data', () => {
+    // Axis with yesterday + today. Dragging the visible range to virtual
+    // seconds < 0 means the user has scrolled past the leftmost loaded
+    // candle — handler should prepend PREFETCH_CHUNK_DAYS more past data
+    // from the current earliest segment.
     vi.mocked(useLiveBundle).mockReturnValue({
       bundle: {
         code: '005930',
-        from_date: '20260427',
+        from_date: '20260526',
         to_date: '20260527',
         bucket_ms: 60_000,
         segments: [
-          { date: '20260427', session_open_ms: FAR_PAST_OPEN_MS, session_close_ms: FAR_PAST_CLOSE_MS, source: 'kis_live' },
+          { date: '20260526', session_open_ms: YESTERDAY_OPEN_MS, session_close_ms: YESTERDAY_CLOSE_MS, source: 'kis_live' },
           { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kis_live' },
         ],
         candles: [],
@@ -237,16 +233,15 @@ describe('LiveChartRoot lazy fetch trigger', () => {
 
     render(<LiveChartRoot code="005930" timeframe="1m" />, { wrapper });
 
-    // Virtual seconds within the far-past segment (virtualStart=0).
-    const fromSec = 1000;
+    // Negative virtual seconds = viewport origin is before the leftmost
+    // loaded candle (axis.segments[0].virtualStart is always 0).
     act(() => {
-      handlers.forEach((h) => h({ from: fromSec, to: fromSec + 600 }));
+      handlers.forEach((h) => h({ from: -3600, to: 600 })); // -1 hour past axis start
       vi.advanceTimersByTime(200);
     });
 
-    // visibleFromDate is 2026-04-27, minus PREFETCH_CHUNK_DAYS=10 → 2026-04-17.
-    const next = useLivePageStore.getState().historicalFromDate;
-    expect(next).toBe('20260417');
+    // currentEarliest = '20260526', minus PREFETCH_CHUNK_DAYS=10 → '20260516'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260516');
   });
 
   it('does NOT fire extendHistoricalRange on D timeframe (lazy fetch off for D/W/M)', () => {
