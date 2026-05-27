@@ -4,6 +4,11 @@ import {
   type ObSnapshot,
   type TradeSnapshot,
 } from './bucketHogaSeries';
+import {
+  realMsToYyyymmdd,
+  regularSessionOpenMs,
+  regularSessionCloseMs,
+} from './liveDateTime';
 
 /** /live never mounts VolumeProfileOverlay; the bundle ships an empty profile
  * that satisfies the RangeBundle type without claiming any data. */
@@ -71,8 +76,40 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
     }
   }
 
+  // Synthesize segments for past dates that KIS has candles for but /api/range
+  // doesn't cover (e.g., hogaplay never captured that date). Without this, the
+  // VirtualAxis built from segments alone wouldn't `contain` those candles and
+  // the candle/volume projectors would filter them out — bug surfaced by
+  // /investigate 2026-05-28 (ADR-0040 intent is KIS candle independence from
+  // hogaplay coverage; we honor it by extending segments, not by skipping the
+  // filter). Today and past-covered dates are already handled above; here we
+  // fill the gap of "past dates with KIS candles but no hoga segment".
+  const knownDates = new Set([
+    ...pastSegments.map((s) => s.date),
+    ...todaySegments.map((s) => s.date),
+  ]);
+  const kisOnlyDates = new Set<string>();
+  for (const c of kisCandles) {
+    const d = realMsToYyyymmdd(c.ts_ms);
+    if (!knownDates.has(d)) kisOnlyDates.add(d);
+  }
+  const kisOnlySegments: RangeSegment[] = Array.from(kisOnlyDates)
+    .sort()
+    .map((d) => ({
+      date: d,
+      session_open_ms: regularSessionOpenMs(d),
+      session_close_ms: regularSessionCloseMs(d),
+      source: 'kis_live',
+    }));
+
   const pastFromDate = pastBundle?.from_date ?? todayDate;
-  const segments = [...pastSegments, ...todaySegments];
+  // Order matters for the VirtualAxis (date-ascending). pastSegments are
+  // already sorted; kisOnlySegments are sorted; todaySegments is the
+  // single today entry which is strictly the latest.
+  const allPastLike = [...pastSegments, ...kisOnlySegments].sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
+  const segments = [...allPastLike, ...todaySegments];
 
   return {
     code,

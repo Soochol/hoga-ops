@@ -194,4 +194,42 @@ describe('buildLiveBundle', () => {
     expect(bundle.excluded_dates).toEqual(past.excluded_dates);
     expect(bundle.candles).toEqual(kis);
   });
+
+  it('synthesizes kis_live segments for past dates that KIS has but /api/range does not', () => {
+    // /api/range only knows 5/20. KIS past-candles covers 5/8 + 5/20 + 5/26.
+    // Without segment synthesis, VirtualAxis built from segments would only
+    // contain 5/20, and projectCandle's axis.contains filter would drop the
+    // 5/8 + 5/26 bars — that's the production bug surfaced by /investigate.
+    const ONE_DAY = 86400_000;
+    const date520 = '20260520';
+    const ms520_open = Date.UTC(2026, 4, 20, 0, 0, 0); // 09:00 KST = 00:00 UTC
+    const past = emptyRangeBundle({
+      segments: [
+        { date: date520, session_open_ms: ms520_open, session_close_ms: ms520_open + 6.5 * 3600_000, source: 'hogaplay' },
+      ],
+    });
+    const ms508_open = ms520_open - 12 * ONE_DAY; // 5/8
+    const ms526_open = ms520_open + 6 * ONE_DAY;  // 5/26
+    const kis = [
+      { ts_ms: ms508_open + 60_000, open: 1, close: 1, high: 1, low: 1, vol_a: 1, vol_b: 0 },
+      { ts_ms: ms520_open + 60_000, open: 2, close: 2, high: 2, low: 2, vol_a: 1, vol_b: 0 },
+      { ts_ms: ms526_open + 60_000, open: 3, close: 3, high: 3, low: 3, vol_a: 1, vol_b: 0 },
+    ];
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: past,
+      sseOb: [],
+      sseTrade: [],
+      kisCandles: kis,
+      bucketMs: 60_000,
+    });
+    const dates = bundle.segments.map((s) => s.date);
+    // 5/8 (KIS-only) + 5/20 (hogaplay) + 5/26 (KIS-only). Ascending order.
+    expect(dates).toEqual(['20260508', '20260520', '20260526']);
+    expect(bundle.segments[0].source).toBe('kis_live');
+    expect(bundle.segments[1].source).toBe('hogaplay');
+    expect(bundle.segments[2].source).toBe('kis_live');
+  });
 });

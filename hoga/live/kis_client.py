@@ -365,6 +365,14 @@ class KisClient:
                 if len(date_str) != 8 or len(hhmmss) != 6:
                     # Defensive: malformed row, skip rather than crash the page.
                     continue
+                if date_str != date_yyyymmdd:
+                    # KIS quirk: queries against a non-trading-day (Sat/Sun/
+                    # holiday) return the PRIOR trading day's bars instead of an
+                    # empty list. Without this guard the caller's per-date loop
+                    # accumulates the same bars under multiple dates, breaking
+                    # lightweight-charts' monotonic-time invariant downstream.
+                    # Discovered via /investigate 2026-05-28 against /live.
+                    continue
                 dt = datetime(
                     int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]),
                     int(hhmmss[:2]), int(hhmmss[2:4]), int(hhmmss[4:6]),

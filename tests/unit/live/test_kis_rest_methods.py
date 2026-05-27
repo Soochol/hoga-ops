@@ -235,6 +235,44 @@ async def test_fetch_past_minute_candles_stops_on_empty_response(tmp_path: Path)
     assert candles == []
 
 
+@pytest.mark.asyncio
+async def test_fetch_past_minute_candles_drops_prior_trading_day_on_non_trading_day(
+    tmp_path: Path,
+) -> None:
+    """KIS quirk: a query for Saturday returns Friday's bars instead of [].
+    fetch_past_minute_candles must drop any row whose stck_bsop_date doesn't
+    match the requested date. Without this filter the caller (the per-date
+    accumulator inside /api/live/past-candles) would collect duplicate bars
+    under multiple dates and downstream chart libraries would crash on
+    non-monotonic time values. Discovered via /investigate 2026-05-28.
+    """
+
+    def make_row(date: str, hh: int, mm: int) -> dict:
+        return {
+            "stck_bsop_date": date,
+            "stck_cntg_hour": f"{hh:02d}{mm:02d}00",
+            "stck_oprc": "40000",
+            "stck_hgpr": "40100",
+            "stck_lwpr": "39900",
+            "stck_prpr": "40050",
+            "cntg_vol": "100",
+        }
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path == "/oauth2/tokenP":
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        # Caller requested 20260509 (Saturday) but KIS returns 20260508 bars.
+        rows = [make_row("20260508", 15, 30 - i) for i in range(5)]
+        return httpx.Response(200, json={"rt_cd": "0", "msg_cd": "", "msg1": "", "output2": rows})
+
+    client = _make_client(handler, tmp_path)
+    try:
+        candles = await client.fetch_past_minute_candles("005930", "20260509")
+    finally:
+        await client.aclose()
+    assert candles == []
+
+
 # ---------------------------------------------------------------------------
 # Task 2.5: fetch_overtime_orderbook (FHPST02300400)
 # ---------------------------------------------------------------------------

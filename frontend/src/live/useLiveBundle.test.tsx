@@ -8,11 +8,11 @@ import { useSourcePreferenceStore } from '../state/sourcePreference';
 
 vi.mock('../api/liveSeries', () => ({
   useLiveSeries: () => ({
-    initial: { session_open_ms: 1748275200000, session_close_ms: 1748298600000 },
+    initial: { session_open_ms: 1779840000000, session_close_ms: 1779863400000 },
     isLoading: false,
     error: null,
     ob: [
-      { t_ms: 1748275260000, total_ask_qty: 100, total_bid_qty: 80, kind: 'ob' },
+      { t_ms: 1779840060000, total_ask_qty: 100, total_bid_qty: 80, kind: 'ob' },
     ],
     trade: [],
     broker: [],
@@ -25,7 +25,7 @@ const livePastCandlesSpy = vi.fn(() => ({
     from: '',
     to: '',
     candles: [
-      { t_ms: 1748275200000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+      { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
     ],
     cached_dates: [],
     fresh_dates: [],
@@ -89,7 +89,7 @@ describe('useLiveBundle', () => {
   it('maps KIS bar shape to wire Candle shape (vol_a = volume, vol_b = 0)', () => {
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
     const c = result.current.bundle!.candles[0];
-    expect(c).toMatchObject({ ts_ms: 1748275200000, open: 70000, vol_a: 1000, vol_b: 0 });
+    expect(c).toMatchObject({ ts_ms: 1779840000000, open: 70000, vol_a: 1000, vol_b: 0 });
     expect(c).not.toHaveProperty('t_ms');
     expect(c).not.toHaveProperty('volume');
   });
