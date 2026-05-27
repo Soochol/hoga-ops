@@ -12,6 +12,10 @@ export type StockDate = {
   total_volume: number; pages_collected: number; file_size_bytes: number;
   today_open: number; today_high: number; today_low: number; today_close: number;
   disk_state: DiskStateValue;
+  /** ADR-0004 mirror of hoga/api/models.py::StockDate.full_capture_count.
+   *  Null on legacy meta.json files written before the counter existed.
+   *  See CONTEXT.md "Full Capture Count". */
+  full_capture_count: number | null;
 };
 
 export type Candle = { ts_ms: number; open: number; close: number; high: number; low: number; vol_a: number; vol_b: number };
