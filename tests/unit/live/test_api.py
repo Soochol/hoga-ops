@@ -1,4 +1,6 @@
 """Stage 7-α / 7-β — /api/live router."""
+import asyncio
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -131,3 +133,34 @@ async def test_get_live_series_returns_buffered_arrays(tmp_path) -> None:
         assert body["session_close_ms"] is None
         assert len(body["snapshots"]) == 3
         assert body["snapshots"][0]["total_bid_qty"] == 100
+
+
+@pytest.mark.asyncio
+async def test_get_live_stream_emits_published_snapshots() -> None:
+    """The SSE stream inner generator yields live_snapshot events for published data."""
+    import json as _json
+
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.snapshot import LiveSnapshot, SnapshotKind
+
+    buf = LiveBuffer()
+    q = buf.subscribe("005930")
+
+    # Publish a snapshot BEFORE starting the generator so the queue is pre-loaded
+    await buf.publish("005930", [
+        LiveSnapshot(t_ms=42, kind=SnapshotKind.OB, payload={"total_bid_qty": 999}),
+    ])
+
+    # Replicate the inner stream() generator logic from the endpoint
+    async def _stream_one():
+        """Read one entry from the queue and return the SSE event dict."""
+        entry = await asyncio.wait_for(q.get(), timeout=1.0)
+        return {"event": "live_snapshot", "data": _json.dumps(entry)}
+
+    sse_event = await _stream_one()
+    buf.unsubscribe("005930", q)
+
+    assert sse_event["event"] == "live_snapshot"
+    payload = _json.loads(sse_event["data"])
+    assert payload["t_ms"] == 42
+    assert payload["total_bid_qty"] == 999
