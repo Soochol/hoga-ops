@@ -2701,12 +2701,31 @@ Stage 9 시작 전 `DESIGN.md`에 다음 token / 규칙 추가 (Design B3, B6, C
 
 I-extra의 매트릭스를 그대로 구현한 `LiveStateBanner.tsx` + `LiveEmptyState.tsx`. 우선순위 로직은 `useLiveStatus` 의 데이터 기반.
 
-### Task 9.4 보강 — X축 동기 D/W 처리 (Design B5)
+### Task 9.4 보강 — X축 동기 D/W 처리 + 빈 데이터 표시 (Design B5 + user clarification 2026-05-27)
 
-LiveCandlePane의 timeframe이 `D` 또는 `W` 일 때:
-- LiveIndicatorPane을 **hide** 또는 "라이브 지표는 분봉에서만 의미가 있어요" 메시지로 replace
-- 사용자가 1m–30m timeframe 으로 돌아오면 자동 복귀
-- 새 test: `test_indicator_pane_hidden_on_daily_timeframe`
+**원칙: 차트 pane은 timeframe 상관없이 항상 존재한다. 데이터가 없으면 series만 비워서 표시 — pane을 hide / replace하지 않는다.**
+
+**일봉(D) / 주봉(W) 일 때**:
+- LiveCandlePane: 캔들 + 거래량 정상 표시
+- LiveIndicatorPane: 3개 sub-pane 모두 **그대로 마운트하되 series 데이터를 빈 배열로 set**. X축은 캔들과 동기 유지(같은 시간 범위), Y축은 default scale, 라인/히스토그램은 아예 그려지지 않음.
+- pane 헤더에 작은 안내 "라이브 지표는 분봉에서 표시됩니다" (DESIGN.md `--fg-dimmer`, dismiss 불가, 정보성).
+- 사용자가 1m–30m으로 돌아오면 즉시 series가 다시 채워짐.
+
+**분봉(1m–30m) 일 때**:
+- LiveCandlePane: 캔들 + 거래량 정상 표시
+- LiveIndicatorPane: 각 sub-pane이 자체적으로 데이터 가용성 판단
+  - 데이터 있음 → 정상 표시
+  - **그 날의 호가 지표 데이터 자체가 없음** (예: 토큰 만료로 폴링 결측, watchlist에 추가 전, 캡처 실패 등) → pane은 그대로 마운트, series는 빈 배열, X축은 캔들과 동일 시간 범위 유지
+  - **일부 구간만 결측** → 결측 구간은 `whitespaceData` (lightweight-charts) 로 line break, 양 옆 데이터는 정상 표시 (기존 `auctionWindowMask` 의 line-break 패턴 재사용)
+
+**새 테스트**:
+- `test_indicator_pane_renders_empty_on_daily_timeframe` — pane DOM은 있지만 series.setData([]) 호출 확인
+- `test_indicator_pane_renders_empty_when_no_data_for_day` — 분봉 + 그 날 데이터 결측 → pane DOM은 있고 X축은 보임
+- `test_indicator_pane_breaks_line_on_data_gap` — 분봉 + 부분 결측 → whitespaceData 삽입 확인
+
+**구현 노트**:
+- `RangeSeriesPane`는 이미 `axis.contains(t)` 필터 + `whitespaceData` 패턴을 사용 (`ChartStage.tsx:268` 참조). 빈 데이터 케이스도 이 패턴 자연 확장 — 모든 t가 axis.contains이지만 `projectXxx(bundle, axis)`가 빈 배열을 반환하면 자동 처리.
+- 일/주봉에서 series가 비더라도 pane 자체의 `paneIndex`, `setStretchFactor`는 유지 — 레이아웃이 흔들리지 않음.
 
 ### Task 9.y 신규 — 키보드 단축키 + a11y (Design B7)
 
