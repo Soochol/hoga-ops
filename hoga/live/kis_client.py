@@ -31,7 +31,9 @@ _BASE_REAL = "https://openapi.koreainvestment.com:9443"
 _REISSUE_COOLDOWN_MS = 60_000  # KIS: 1 issuance per minute
 
 
-def classify_side(t_ms: int, prpr: int, askp: int, bidp: int) -> tuple[int, str]:
+def classify_side(
+    t_ms: int, prpr: int, askp: int, bidp: int
+) -> tuple[Literal[-1, 0, 1, 2], Literal["inferred", "auction"]]:
     """Lee-Ready trade direction inference + auction window guard.
 
     Returns (side, side_source). See Deep Sample Audit §B (Audit-2) and §H (Audit-5).
@@ -313,7 +315,7 @@ class KisClient:
         """
         today_kst = datetime.now(KIS_KST).date()
         if timeframe == "D":
-            path = "/uapi/domestic-stock/v1/quotations/inquire-daily-price"
+            path = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
             tr_id = "FHKST03010100"
             params: dict[str, Any] = {
                 "fid_cond_mrkt_div_code": "J",
@@ -443,8 +445,8 @@ class KisClient:
                 bidp = int(bidp_str)
                 side, side_source = classify_side(t_ms, prpr, askp, bidp)
             else:
-                side = 0
-                side_source = "inferred"
+                side: Literal[-1, 0, 1, 2] = 0
+                side_source: Literal["inferred", "auction"] = "inferred"
             trades.append(KisTrade(
                 price=prpr,
                 qty=int(row["cnqn"]),
