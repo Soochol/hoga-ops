@@ -6,24 +6,12 @@ import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { TIMEFRAME_TO_MS, type Timeframe, type RangeBundle } from '../api/types';
 import { buildLiveBundle } from './buildLiveBundle';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
+import { yesterdayKst, regularSessionOpenMs, regularSessionCloseMs } from './liveDateTime';
 
 const MINUTE_TIMEFRAMES: ReadonlyArray<Timeframe> = ['1m', '3m', '5m', '10m', '15m', '30m'];
 
 function isMinuteTimeframe(tf: LiveTimeframe): tf is Timeframe {
   return (MINUTE_TIMEFRAMES as ReadonlyArray<string>).includes(tf);
-}
-
-/** Yesterday in YYYYMMDD KST given today YYYYMMDD KST. */
-function yesterdayKst(todayYyyymmdd: string): string {
-  const y = parseInt(todayYyyymmdd.slice(0, 4), 10);
-  const m = parseInt(todayYyyymmdd.slice(4, 6), 10);
-  const d = parseInt(todayYyyymmdd.slice(6, 8), 10);
-  const date = new Date(Date.UTC(y, m - 1, d));
-  date.setUTCDate(date.getUTCDate() - 1);
-  const yy = date.getUTCFullYear();
-  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(date.getUTCDate()).padStart(2, '0');
-  return `${yy}${mm}${dd}`;
 }
 
 export interface UseLiveBundleResult {
@@ -93,15 +81,3 @@ export function useLiveBundle(
   };
 }
 
-/** Fallback session bounds for today when /api/live/series hasn't responded
- * yet — 09:00 KST open, 15:30 KST close. */
-function regularSessionOpenMs(yyyymmdd: string): number {
-  const y = parseInt(yyyymmdd.slice(0, 4), 10);
-  const m = parseInt(yyyymmdd.slice(4, 6), 10);
-  const d = parseInt(yyyymmdd.slice(6, 8), 10);
-  return Date.UTC(y, m - 1, d, 0, 0, 0);
-}
-
-function regularSessionCloseMs(yyyymmdd: string): number {
-  return regularSessionOpenMs(yyyymmdd) + 6.5 * 3600 * 1000;
-}

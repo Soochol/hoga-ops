@@ -3,19 +3,11 @@ import { cycleLagSeverity, cycleLagPillColor } from './cycleLagPill';
 import { useLiveCandles } from '../api/liveCandles';
 import { useLiveBundle } from './useLiveBundle';
 import { SourceChip } from '../chart/SourceChip';
+import { todayKstYyyymmdd } from './liveDateTime';
 
 interface Props {
   activeCode: string | null;
   cycleLagMs: number;
-}
-
-function todayKstYyyymmdd(): string {
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 3_600_000);
-  const y = kst.getUTCFullYear();
-  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(kst.getUTCDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
 }
 
 export function LiveStatusBar({ activeCode, cycleLagMs }: Props) {

@@ -11,6 +11,7 @@ import RangeSeriesPane from '../chart/RangeSeriesPane';
 import { PANE_SPECS, PANE_STRETCH } from '../chart/paneSpecs';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { useLiveBundle } from './useLiveBundle';
+import { todayKstYyyymmdd, realMsToYyyymmdd } from './liveDateTime';
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -18,23 +19,6 @@ const TOKEN_SPEC = {
   grid: ['--grid', '#1A1A26'],
   border: ['--border', '#1F1F2A'],
 } as const;
-
-function todayKstYyyymmdd(): string {
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 3_600_000);
-  const y = kst.getUTCFullYear();
-  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(kst.getUTCDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
-}
-
-function realMsToYyyymmdd(realMs: number): string {
-  const kst = new Date(realMs + 9 * 3_600_000);
-  const y = kst.getUTCFullYear();
-  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(kst.getUTCDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
-}
 
 const MINUTE_TIMEFRAMES: ReadonlyArray<LiveTimeframe> = ['1m', '3m', '5m', '10m', '15m', '30m'];
 function isMinuteTimeframe(tf: LiveTimeframe): boolean {

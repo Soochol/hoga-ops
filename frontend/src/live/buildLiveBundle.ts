@@ -49,8 +49,13 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
   // ----- Today segment -----
   const todaySegments: RangeSegment[] = [];
   const todayCandlesRow: Candle[] = [];
-  const todayQuotePoints = pastHasToday ? [] : bucketHogaSeries(sseOb, sseTrade, bucketMs).quoteRatioPoints;
-  const todayFillPoints = pastHasToday ? [] : bucketHogaSeries(sseOb, sseTrade, bucketMs).fillStrengthPoints;
+  // Bucket once; destructure into the two series we feed into the bundle.
+  // When past covers today we skip the call entirely (no sort + walk).
+  const todayBuckets = pastHasToday
+    ? { quoteRatioPoints: [], fillStrengthPoints: [] }
+    : bucketHogaSeries(sseOb, sseTrade, bucketMs);
+  const todayQuotePoints = todayBuckets.quoteRatioPoints;
+  const todayFillPoints = todayBuckets.fillStrengthPoints;
 
   if (!pastHasToday) {
     const hasAnyData =
