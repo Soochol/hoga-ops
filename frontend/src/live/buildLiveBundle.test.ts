@@ -31,7 +31,7 @@ describe('buildLiveBundle', () => {
       pastBundle: null,
       sseOb: [],
       sseTrade: [],
-      todayCandles: [],
+      kisCandles: [],
       bucketMs: 60_000,
     });
     expect(bundle.segments).toEqual([]);
@@ -52,8 +52,8 @@ describe('buildLiveBundle', () => {
       sseTrade: [
         { t_ms: TODAY_OPEN + 60_000, trades: [{ side: 1, qty: 10 }] },
       ],
-      todayCandles: [
-        { t_ms: TODAY_OPEN, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+      kisCandles: [
+        { ts_ms: TODAY_OPEN, open: 70000, close: 70050, high: 70100, low: 69900, vol_a: 1000, vol_b: 0 },
       ],
       bucketMs: 60_000,
     });
@@ -88,7 +88,7 @@ describe('buildLiveBundle', () => {
         { t_ms: TODAY_OPEN, total_ask_qty: 999, total_bid_qty: 999 },
       ],
       sseTrade: [],
-      todayCandles: [],
+      kisCandles: [],
       bucketMs: 60_000,
     });
     expect(bundle.segments.length).toBe(1);
@@ -115,13 +115,13 @@ describe('buildLiveBundle', () => {
       pastBundle: past,
       sseOb: [{ t_ms: TODAY_OPEN, total_ask_qty: 100, total_bid_qty: 80 }],
       sseTrade: [],
-      todayCandles: [
-        { t_ms: TODAY_OPEN, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+      kisCandles: [
+        { ts_ms: TODAY_OPEN, open: 70000, close: 70050, high: 70100, low: 69900, vol_a: 1000, vol_b: 0 },
       ],
       bucketMs: 60_000,
     });
     expect(bundle.segments.map((s) => s.date)).toEqual([yesterday, TODAY]);
-    expect(bundle.candles.map((c) => c.ts_ms)).toEqual([Y_OPEN, TODAY_OPEN]);
+    expect(bundle.candles.map((c) => c.ts_ms)).toEqual([TODAY_OPEN]);
   });
 
   it('past bundle with empty segments (backend empty-no-data response) → treated like null', () => {
@@ -133,9 +133,65 @@ describe('buildLiveBundle', () => {
       pastBundle: past,
       sseOb: [{ t_ms: TODAY_OPEN, total_ask_qty: 100, total_bid_qty: 80 }],
       sseTrade: [],
-      todayCandles: [],
+      kisCandles: [],
       bucketMs: 60_000,
     });
     expect(bundle.segments[0].source).toBe('kis_live');
+  });
+
+  it('pastBundle.candles is ignored; kisCandles is the candle source', () => {
+    const past = emptyRangeBundle({
+      candles: [
+        { ts_ms: TODAY_OPEN - 86400_000, open: 1, close: 2, high: 3, low: 0, vol_a: 99, vol_b: 0 },
+      ],
+    });
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: past,
+      sseOb: [],
+      sseTrade: [],
+      kisCandles: [
+        { ts_ms: TODAY_OPEN, open: 100, close: 100, high: 100, low: 100, vol_a: 5, vol_b: 0 },
+      ],
+      bucketMs: 60_000,
+    });
+    expect(bundle.candles).toEqual([
+      { ts_ms: TODAY_OPEN, open: 100, close: 100, high: 100, low: 100, vol_a: 5, vol_b: 0 },
+    ]);
+  });
+
+  it('5/26-style: pastBundle.excluded_dates passes through alongside KIS candles', () => {
+    const past = emptyRangeBundle({
+      excluded_dates: [
+        {
+          date: '20260526',
+          violations: [
+            {
+              invariant_id: 'meta.close_after_open',
+              severity: 'error',
+              message: 'session close must be strictly greater than open',
+              ctx: { open_ms: 90000000, close_ms: 0 },
+            },
+          ],
+        },
+      ],
+    });
+    const kis = [
+      { ts_ms: Date.UTC(2026, 4, 26, 0, 0, 0), open: 70000, close: 70050, high: 70100, low: 69900, vol_a: 10, vol_b: 0 },
+    ];
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: past,
+      sseOb: [],
+      sseTrade: [],
+      kisCandles: kis,
+      bucketMs: 60_000,
+    });
+    expect(bundle.excluded_dates).toEqual(past.excluded_dates);
+    expect(bundle.candles).toEqual(kis);
   });
 });
