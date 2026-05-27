@@ -611,12 +611,21 @@ async def _run_capture_inner(
     # drift, unknown event types) still propagate to the worker loop's
     # exception handler and flip phase to 'failed' as before.
     try:
-        await loop.run_in_executor(
-            None,
-            lambda: parse_stock_date(
-                code=state.code, date=state.date, data_dir=data_dir, lenient=False,
-            ),
-        )
+        if collector is not None:
+            with collector.phase("parse"):
+                await loop.run_in_executor(
+                    None,
+                    lambda: parse_stock_date(
+                        code=state.code, date=state.date, data_dir=data_dir, lenient=False,
+                    ),
+                )
+        else:
+            await loop.run_in_executor(
+                None,
+                lambda: parse_stock_date(
+                    code=state.code, date=state.date, data_dir=data_dir, lenient=False,
+                ),
+            )
     except (TradeValidationError, SnapshotValidationError) as exc:
         await loop.run_in_executor(
             None,
