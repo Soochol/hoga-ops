@@ -24,13 +24,18 @@
 5. 16:00 KST에 polling 자동 종료. 18:00 Daily Scheduler가 JSONL → Parquet 승격.
 6. 다음 날, 같은 Stock-Date를 `/replay`에서 열면 sourcePreference 설정(`hogaplay 우선` 또는 `kis_live 우선`)에 따라 표시되는 source가 결정된다.
 
-## 3. 도메인 용어 (CONTEXT.md에 추가 예정)
+## 3. 도메인 용어 (CONTEXT.md에 추가됨, 2026-05-27 grill-with-docs 단계에서 적용)
 
 - **Live Capture**: KIS Open API를 통해 watchlist 종목의 시세를 N초 주기로 수집하는 운영 모드 (장 중 09:00–16:00 KST).
-- **Live Snapshot**: 한 (Code, t_ms)에서 측정한 단일 단위. 세 가지 kind — `ob`(10호가), `trade`(체결 단위 묶음), `broker`(거래원 top5×2).
-- **Live Session**: 하루 한 번 Live Capture가 가동되는 운영 단위. 09:00 시작 ~ 16:00 종료, 비영업일에는 가동 안 함.
-- **Source** (= `hogaplay` | `kis_live`): 같은 Stock-Date의 captured artifact가 어느 수집 경로로 만들어졌는지 식별하는 라벨. captures 폴더의 source별 서브폴더 이름이자 `meta.json`의 `source` 필드.
+- **Live Snapshot**: 한 (Code, t_ms)에서 측정한 단일 단위. 세 가지 kind — `ob`(10호가), `trade`(체결 단위 묶음), `broker`(거래원 top5×2). write-path 전용 용어 — Wire Model에는 등장하지 않음.
+- **Live Session**: 하루 한 번 Live Capture가 가동되는 운영 단위. 09:00 시작 ~ 16:00 종료, 비영업일에는 가동 안 함. CONTEXT.md의 bare "session" _Avoid_ 규칙은 유지 — Live Session은 sanctioned compound (Symbol Master 선례).
+- **Source** (= `hogaplay` | `kis_live`): 같은 Stock-Date의 captured artifact가 어느 수집 경로로 만들어졌는지 식별하는 라벨. captures 폴더의 source별 서브폴더 이름이자 `meta.json`의 `source` 필드. bare "source"는 _Avoid_, 항상 "data Source" / "kis_live Source" 등으로 qualify.
 - **Promotion**: Live Capture의 JSONL append-only artifact를 captures 도메인의 Parquet artifact로 변환하는 단계. Daily Scheduler 18:00 fire 시 hogaplay enqueue 직전에 실행.
+- **Source Preference**: ChartViewPrefs의 새 항목으로, RangeBundle read 시 어느 source를 우선할지 결정. preference + fallback 의미론 — ADR-0039 참조.
+
+기존 용어와의 관계:
+- "Full Capture" (hogaplay 단위) ↔ "Live Capture" (kis_live 운영) — *Capture* 접미사를 공유하지만 서로 직교 개념. Full Capture는 Stock-Date의 *artifact*; Live Capture는 *operational mode*.
+- "Snapshot" (orderbook Parquet의 row 단위) ↔ "Live Snapshot" (JSONL의 entry 단위) — 서로 distinct. Live Snapshot은 Promotion 후 collapse되어 orderbook snapshot이 됨.
 
 `Avoid`:
 - "Real-time Capture" — Live Capture가 정식 명칭
@@ -319,12 +324,22 @@ KIS_ENV=real            # paper 미지원
 # 계좌번호는 시세 조회에 불필요하므로 생략
 ```
 
-## 11. CONTEXT.md / ADR 영향
+## 11. CONTEXT.md / ADR 영향 (grill-with-docs 단계에서 적용됨, 2026-05-27)
 
-- **CONTEXT.md**: §3에서 정의한 5개 새 용어(Live Capture, Live Snapshot, Live Session, Source, Promotion) 추가
-- **ADR**: 새 ADR 후보 — "Live Capture write-path: JSONL append + 18:00 promote"
-  (decision rationale: crash-safe, hogaplay 2-stage 패턴과 일관)
-- **기존 ADR**: ADR-0019 (manifest persistence), ADR-0036 (event publish) 영향 없음
+**CONTEXT.md 변경 (적용 완료)**:
+- 6개 새 용어 추가 — Live Capture / Live Snapshot / Live Session / Source / Source Preference / Promotion
+- 기존 Daily Scheduler 정의 갱신 — 18:00에 Promotion 단계가 hogaplay enqueue 앞에 추가됨을 명시
+
+**새 ADR 추가 (적용 완료)**:
+- **ADR-0037** — Source별 서브폴더 layout (`raw/{date}/{code}/{source}/...`); ADR-0006 성장 예산 발동 인정
+- **ADR-0038** — Live Capture는 JSONL append + 18:00 Promotion (hot path에서 직접 Parquet 쓰기 거부)
+- **ADR-0039** — Source Preference는 preference + fallback (strict filter 아님)
+
+**기존 ADR 영향 없음 (확인 완료)**:
+- ADR-0019 (manifest persistence) — Live Capture는 Capture Queue를 사용하지 않으므로 manifest와 무관
+- ADR-0034 (scheduler as queue client) — Promotion 단계는 Scheduler 소유, Capture Queue를 만지지 않으므로 invariant 보존
+- ADR-0036 (no resource caps) — KIS rate limit은 external upstream의 cap 패턴과 일치 (KRX와 동일)
+- ADR-0017 (stagnation guard), ADR-0033 / 0035 (retry semantics) — hogaplay 전용으로 변경 없음
 
 ## 12. 기존 captures 도메인 영향
 
