@@ -94,3 +94,45 @@ async def test_per_code_isolation() -> None:
     b = await buf.get_latest("000660")
     assert a is not None and a["orderbook"] == {"x": 1}
     assert b is not None and b["orderbook"] == {"x": 2}
+
+
+@pytest.mark.asyncio
+async def test_subscribe_receives_published_entries() -> None:
+    """A subscriber gets each entry published for its code."""
+    buf = LiveBuffer()
+    q = buf.subscribe("005930")
+    try:
+        await buf.publish("005930", [
+            _snap(1, SnapshotKind.OB, {"x": 1}),
+            _snap(1, SnapshotKind.TRADE, {"trades": []}),
+            _snap(1, SnapshotKind.BROKER, {}),
+        ])
+        # Three entries received in order
+        for _ in range(3):
+            entry = await asyncio.wait_for(q.get(), timeout=1.0)
+            assert entry["t_ms"] == 1
+    finally:
+        buf.unsubscribe("005930", q)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_filters_by_code() -> None:
+    """Subscriber for 005930 doesn't see 000660 publishes."""
+    buf = LiveBuffer()
+    q = buf.subscribe("005930")
+    try:
+        await buf.publish("000660", [_snap(1, SnapshotKind.OB, {"x": 99})])
+        # No item should arrive — wait_for times out
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(q.get(), timeout=0.05)
+    finally:
+        buf.unsubscribe("005930", q)
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_removes_queue() -> None:
+    buf = LiveBuffer()
+    q = buf.subscribe("005930")
+    buf.unsubscribe("005930", q)
+    # Subsequent publish must not raise (no subscribers left)
+    await buf.publish("005930", [_snap(1, SnapshotKind.OB, {})])

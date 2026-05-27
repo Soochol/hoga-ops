@@ -35,8 +35,30 @@ class LiveBuffer:
         # Keyed by (code, kind.value) → deque[dict]. deque(maxlen=...) handles
         # FIFO drop automatically when the cap is exceeded.
         self._buf: dict[tuple[str, str], deque[dict]] = {}
+        # SSE push: per-code set of subscriber queues.
+        self._subscribers: dict[str, set[asyncio.Queue[dict]]] = {}
+
+    def subscribe(self, code: str) -> asyncio.Queue[dict]:
+        """Subscribe to publishes for `code`. Returns a queue.
+
+        Each entry pushed to the queue is a dict with at minimum
+        ``t_ms`` and ``kind`` keys plus whatever payload fields the
+        snapshot carries.
+        """
+        q: asyncio.Queue[dict] = asyncio.Queue(maxsize=1024)
+        self._subscribers.setdefault(code, set()).add(q)
+        return q
+
+    def unsubscribe(self, code: str, q: asyncio.Queue[dict]) -> None:
+        """Remove a previously subscribed queue. Safe to call if already removed."""
+        subs = self._subscribers.get(code)
+        if subs is not None:
+            subs.discard(q)
+            if not subs:
+                self._subscribers.pop(code, None)
 
     async def publish(self, code: str, snapshots: Iterable[LiveSnapshot]) -> None:
+        entries: list[dict] = []
         async with self._lock:
             for s in snapshots:
                 key = (code, s.kind.value)
@@ -44,9 +66,26 @@ class LiveBuffer:
                 if d is None:
                     d = deque(maxlen=MAX_BUFFER_ENTRIES)
                     self._buf[key] = d
-                # Store payload + t_ms together so readers can match by tick.
-                entry = {"t_ms": s.t_ms, **s.payload}
+                # Store payload + t_ms + kind together so subscribers know
+                # which kind they received. Existing get_latest / get_series
+                # helpers strip the `kind` field when building their responses.
+                entry = {"t_ms": s.t_ms, "kind": s.kind.value, **s.payload}
                 d.append(entry)
+                entries.append(entry)
+
+        # Notify subscribers AFTER releasing the lock so slow consumers don't
+        # block the publisher. Bounded queues drop on overflow.
+        subs = self._subscribers.get(code)
+        if subs:
+            for entry in entries:
+                for q in list(subs):
+                    try:
+                        q.put_nowait(entry)
+                    except asyncio.QueueFull:
+                        # Subscriber is too slow — drop this entry rather than
+                        # blocking. Subscribers can recover via get_series() if
+                        # they need the missing data.
+                        pass
 
     async def get_latest(self, code: str) -> dict | None:
         """Latest snapshot across all three kinds, as a flat response dict.
@@ -102,10 +141,10 @@ def _phase_of(entry: dict | None) -> str:
 
 
 def _strip_meta(entry: dict | None) -> dict | None:
-    """Drop t_ms / phase from a payload-merged entry for the spot response."""
+    """Drop t_ms / phase / kind from a payload-merged entry for the spot response."""
     if entry is None:
         return None
-    return {k: v for k, v in entry.items() if k not in ("t_ms", "phase")}
+    return {k: v for k, v in entry.items() if k not in ("t_ms", "phase", "kind")}
 
 
 def _trades_list(entry: dict | None) -> list[dict]:
