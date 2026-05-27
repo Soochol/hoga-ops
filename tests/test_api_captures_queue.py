@@ -911,6 +911,38 @@ def test_reset_state_for_tests_deletes_manifest(monkeypatch, tmp_path):
     assert not (tmp_path / ".queue.json").exists()
 
 
+def test_publish_event_swallows_serialization_errors(monkeypatch, caplog):
+    """ADR-0036 companion: a buggy event model (e.g., a non-JSON-
+    serializable field) must NOT propagate into the calling task and
+    silently break ALL downstream SSE events. The publish is dropped;
+    the cause goes to log.exception."""
+    import logging
+    from unittest.mock import MagicMock
+
+    # Wire a fake bus + loop so the function reaches the serialize step.
+    fake_loop = MagicMock()
+    fake_bus = MagicMock()
+    monkeypatch.setattr(captures, "_loop", fake_loop)
+    monkeypatch.setattr(captures, "_bus", fake_bus)
+
+    class BrokenEvent:
+        """Quacks like a BaseModel just enough to enter _publish_event.
+        model_dump raises to simulate a serialization bug."""
+        def model_dump(self, *args, **kwargs):
+            raise TypeError("non-serializable field")
+
+    with caplog.at_level(logging.ERROR, logger="hoga.api.captures"):
+        captures._publish_event(BrokenEvent())  # type: ignore[arg-type]
+
+    # Bus must NOT be touched when serialization fails.
+    fake_loop.call_soon_threadsafe.assert_not_called()
+    # Failure cause is surfaced in the log for ops visibility.
+    assert any(
+        "failed to serialize" in record.message
+        for record in caplog.records
+    )
+
+
 @pytest.mark.asyncio
 async def test_attempt_survives_persist_restore_roundtrip(monkeypatch, tmp_path):
     """ADR-0031: the ×N attempt badge is user-visible — it must survive a

@@ -58,7 +58,12 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
   }
 
   const totalVolume = group.dates.reduce((s, d) => s + d.total_volume, 0);
-  const recapturableDates = sortedDates.filter((r) => isRecapturable(r.disk_state)).map((r) => r.date);
+  // Derive from group.dates (stable date-desc) rather than sortedDates so the
+  // POST body's dates[] is deterministic regardless of the user's current sort
+  // column. Backend correctness doesn't care; request logs + snapshot tests do.
+  const recapturableDates = group.dates
+    .filter((r) => isRecapturable(r.disk_state))
+    .map((r) => r.date);
   const recapturableCount = recapturableDates.length;
 
   const onRowClick = (r: StockDate) => {

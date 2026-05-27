@@ -401,11 +401,27 @@ def _publish_event(event: BaseModel) -> None:
         to the event loop via call_soon_threadsafe. Same pattern as the
         watchdog handler in sse.py.
 
+    Serialization errors (e.g., a future event schema with a non-JSON-
+    serializable field) are caught and logged — without this guard the
+    exception would propagate into the route handler / consumer task and
+    silently break ALL downstream SSE events. The UI would freeze
+    visibly; the cause would only surface in stack-trace logs the user
+    might never read. Trade: one missed event is acceptable; a cascading
+    SSE outage is not.
+
     No-op when bus/loop aren't wired (test mode).
     """
     if _bus is None or _loop is None:
         return
-    _loop.call_soon_threadsafe(_bus.publish, event.model_dump(mode="json"))
+    try:
+        payload = event.model_dump(mode="json")
+    except Exception:  # noqa: BLE001 — keep SSE channel alive on serializer bugs
+        logging.getLogger(__name__).exception(
+            "_publish_event: failed to serialize %s; event dropped",
+            type(event).__name__,
+        )
+        return
+    _loop.call_soon_threadsafe(_bus.publish, payload)
 
 
 def _apply_progress(state: QueueItemState, evt: ProgressEvent) -> None:
@@ -720,6 +736,14 @@ async def _handle_cookie_expired(state: QueueItemState) -> None:
 async def resume_queue() -> None:
     """Re-queue pause_origin items from _done to the FRONT (appendleft).
     Clears _queue_paused and wakes workers.
+
+    ``attempt`` is INTENTIONALLY not incremented on resume: pause/resume
+    is one logical capture attempt that was interrupted (cookie expired,
+    operator paused for diagnostics) — not a user-driven retry. The
+    ×N attempt badge in the UI tracks user-initiated retries via
+    ADR-0031, not infrastructure-driven pauses. If a future code path
+    needs "resume counts as +1 attempt" semantics, it must add a
+    separate counter rather than reusing ``attempt``.
     """
     global _queue_paused  # noqa: PLW0603 — module singleton write under _lock
     async with _lock:

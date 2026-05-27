@@ -129,4 +129,33 @@ describe('useInventoryRecapture', () => {
 
     expect(useInventoryRecaptureOrigins.getState().ids.size).toBe(0);
   });
+
+  // /review audit gap: the error branch falls back to `err.message` (or a
+  // hard-coded string) when ApiError has no recognized UpstreamCode. The
+  // existing error tests all use a known code (krx_credentials_missing);
+  // pin the fallback path so an unknown 5xx surfaces SOMETHING to the user.
+  it('shows generic error fallback when ApiError has no recognized upstream code', async () => {
+    vi.useFakeTimers();
+    // 500 with no detail.code → enqueueErrorHints lookup misses → fallback
+    // to err.message (or 'Failed to enqueue re-capture' if message empty).
+    setupFetch({ detail: { message: 'database is on fire' } }, 500);
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = renderHook(() => useInventoryRecapture(), { wrapper: wrapper(qc) });
+
+    await act(async () => {
+      const p = result.current.recapture('005930', ['20260520']).catch(() => {});
+      await vi.advanceTimersByTimeAsync(0);
+      await p;
+    });
+
+    expect(result.current.status?.kind).toBe('error');
+    // The user must see *some* hint of what went wrong — not a blank banner.
+    // Either the ApiError's message bubbles up or the hard-coded fallback.
+    const status = result.current.status;
+    expect(status?.kind).toBe('error');
+    if (status?.kind === 'error') {
+      const msg = String(status.message);
+      expect(msg.length).toBeGreaterThan(0);
+    }
+  });
 });

@@ -83,4 +83,16 @@ describe('useDismissablePopover', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onDismiss).not.toHaveBeenCalled();
   });
+
+  // /review audit gap: the hook's contract docs claim "anchor-internal
+  // mousedown is suppressed so the trigger button can toggle without the
+  // global handler immediately closing what it just opened". Pin that
+  // behavior here — without the suppression, every trigger-click would
+  // both open via the consumer's handler AND immediately fire onDismiss.
+  it('does not dismiss when mousedown lands on the trigger inside the anchor', () => {
+    const onDismiss = vi.fn();
+    const { getByTestId } = render(<Harness isOpen={true} onDismiss={onDismiss} />);
+    fireEvent.mouseDown(getByTestId('inside'));
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
 });
