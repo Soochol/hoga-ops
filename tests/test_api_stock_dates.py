@@ -60,3 +60,44 @@ def test_stock_dates_extended_fields(app_client: TestClient) -> None:
     assert row["today_high"] > 0
     assert row["today_low"] > 0
     assert row["today_close"] > 0
+
+
+def test_stock_date_full_capture_count_passes_through(tmp_path):
+    """meta.json with full_capture_count=5 → StockDate.full_capture_count == 5."""
+    import json
+    from hoga.api.queries import QueryEngine
+    code_dir = tmp_path / "parquet" / "20260519" / "005930"
+    code_dir.mkdir(parents=True)
+    meta = {
+        "code": "005930", "name": "삼성전자",
+        "regular_session_open_ms": 90000000, "regular_session_close_ms": 153000000,
+        "pages_collected": 1, "total_unique_events": 0,
+        "today_open": 70_000, "today_high": 71_000, "today_low": 69_000, "today_close": 70_500,
+        "parser_version": "0", "collection_complete": True, "is_partial": False,
+        "full_capture_count": 5,
+    }
+    (code_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    engine = QueryEngine(data_dir=tmp_path)
+    rows = engine.list_stock_dates()
+    assert len(rows) == 1
+    assert rows[0].full_capture_count == 5
+
+
+def test_stock_date_full_capture_count_null_for_legacy(tmp_path):
+    """meta.json without the field → StockDate.full_capture_count is None."""
+    import json
+    from hoga.api.queries import QueryEngine
+    code_dir = tmp_path / "parquet" / "20260519" / "005930"
+    code_dir.mkdir(parents=True)
+    meta = {
+        "code": "005930", "name": "삼성전자",
+        "regular_session_open_ms": 90000000, "regular_session_close_ms": 153000000,
+        "pages_collected": 1, "total_unique_events": 0,
+        "today_open": 70_000, "today_high": 71_000, "today_low": 69_000, "today_close": 70_500,
+        "parser_version": "0", "collection_complete": True, "is_partial": False,
+    }
+    (code_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    engine = QueryEngine(data_dir=tmp_path)
+    rows = engine.list_stock_dates()
+    assert len(rows) == 1
+    assert rows[0].full_capture_count is None

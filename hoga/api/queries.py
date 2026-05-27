@@ -202,6 +202,7 @@ class QueryEngine:
             is_partial=_state in (
                 DiskState.SOURCE_PARTIAL, DiskState.CLIENT_INCOMPLETE,
             ),
+            full_capture_count=meta.get("full_capture_count"),
             # ADR-0020: surface the full enum so consumers can
             # see INVALID — the boolean pair above flattens it.
             disk_state=_state.value,
