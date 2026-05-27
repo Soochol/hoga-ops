@@ -13,13 +13,42 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 import httpx
+
+from hoga.live.kis_models import (
+    KisBrokerEntry,
+    KisBrokers,
+    KisCandle,
+    KisOrderbook,
+    KisTrade,
+    OrderbookLevel,
+)
 
 KIS_KST = timezone(timedelta(hours=9))
 _BASE_REAL = "https://openapi.koreainvestment.com:9443"
 _REISSUE_COOLDOWN_MS = 60_000  # KIS: 1 issuance per minute
+
+
+def classify_side(t_ms: int, prpr: int, askp: int, bidp: int) -> tuple[int, str]:
+    """Lee-Ready trade direction inference + auction window guard.
+
+    Returns (side, side_source). See Deep Sample Audit §B (Audit-2) and §H (Audit-5).
+    side: -1=sell, 0=mid, 1=buy, 2=auction
+    side_source: "inferred" | "auction"
+    """
+    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
+    h, m = kst.hour, kst.minute
+    in_open_auction = (h == 8 and m >= 50) or (h == 9 and m == 0)
+    in_close_auction = h == 15 and 20 <= m < 30
+    if in_open_auction or in_close_auction:
+        return 2, "auction"
+    if prpr >= askp:
+        return 1, "inferred"
+    if prpr <= bidp:
+        return -1, "inferred"
+    return 0, "inferred"
 
 
 class KisAuthError(RuntimeError):
@@ -147,3 +176,60 @@ class KisClient:
             json.dumps({"access_token": token, "expires_at": expires_at.isoformat()})
         )
         self._cache_path.chmod(0o600)
+
+    async def _get(self, path: str, tr_id: str, params: dict[str, Any]) -> dict:
+        """Authenticated GET to KIS API. Unwraps and validates rt_cd."""
+        token = await self.get_access_token()
+        headers = {
+            "authorization": f"Bearer {token}",
+            "appkey": self._creds.app_key,
+            "appsecret": self._creds.app_secret,
+            "tr_id": tr_id,
+            "custtype": "P",
+        }
+        resp = await self._client.get(path, params=params, headers=headers)
+        resp.raise_for_status()
+        return self._unwrap(resp.json())
+
+    def _unwrap(self, body: dict) -> dict:
+        """Validate rt_cd and raise typed errors. Returns the raw body dict."""
+        rt_cd = body.get("rt_cd", "")
+        msg_cd = body.get("msg_cd", "")
+        msg1 = body.get("msg1", "")
+        if rt_cd != "0":
+            if msg_cd == "EGW00201":
+                raise KisRateLimitError(f"rate limit: {msg1}")
+            raise KisApiError(msg_cd=msg_cd, msg1=msg1)
+        return body
+
+    # ------------------------------------------------------------------
+    # Task 2.1: fetch_orderbook (FHKST01010200)
+    # ------------------------------------------------------------------
+
+    async def fetch_orderbook(self, code: str) -> KisOrderbook:
+        """Fetch 10-level real-time orderbook for *code* (e.g. '005930')."""
+        body = await self._get(
+            path="/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
+            tr_id="FHKST01010200",
+            params={
+                "fid_cond_mrkt_div_code": "J",
+                "fid_input_iscd": code,
+            },
+        )
+        out1 = body["output1"]
+        asks = [
+            OrderbookLevel(price=int(out1[f"askp{i}"]), qty=int(out1[f"askp_rsqn{i}"]))
+            for i in range(1, 11)
+        ]
+        bids = [
+            OrderbookLevel(price=int(out1[f"bidp{i}"]), qty=int(out1[f"bidp_rsqn{i}"]))
+            for i in range(1, 11)
+        ]
+        return KisOrderbook(
+            code=code,
+            asks=asks,
+            bids=bids,
+            total_ask_qty=int(out1["total_askp_rsqn"]),
+            total_bid_qty=int(out1["total_bidp_rsqn"]),
+            t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
+        )
