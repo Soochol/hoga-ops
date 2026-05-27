@@ -404,3 +404,52 @@ class KisClient:
             total_bid_qty=int(out["ovtm_total_bidp_rsqn"]),
             t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
         )
+
+    # ------------------------------------------------------------------
+    # Task 2.6: fetch_overtime_trades (FHPST02310000)
+    # ------------------------------------------------------------------
+
+    async def fetch_overtime_trades(self, code: str) -> list[KisTrade]:
+        """Fetch after-hours per-trade data for *code* (FHPST02310000).
+
+        If askp/bidp not present in response, defaults side=0 / side_source="inferred".
+        """
+        body = await self._get(
+            path="/uapi/domestic-stock/v1/quotations/inquire-time-overtimeconclusion",
+            tr_id="FHPST02310000",
+            params={
+                "fid_cond_mrkt_div_code": "J",
+                "fid_input_iscd": code,
+                "fid_hour_cls_code": "1",
+            },
+        )
+        today_kst = datetime.now(KIS_KST).date()
+        trades: list[KisTrade] = []
+        for row in body["output2"]:
+            hhmmss = row["stck_cntg_hour"]
+            hh = int(hhmmss[:2])
+            mm = int(hhmmss[2:4])
+            ss = int(hhmmss[4:6])
+            dt = datetime(
+                today_kst.year, today_kst.month, today_kst.day,
+                hh, mm, ss, tzinfo=KIS_KST
+            )
+            t_ms = int(dt.timestamp() * 1000)
+            prpr = int(row["stck_prpr"])
+            askp_str = row.get("askp")
+            bidp_str = row.get("bidp")
+            if askp_str and bidp_str:
+                askp = int(askp_str)
+                bidp = int(bidp_str)
+                side, side_source = classify_side(t_ms, prpr, askp, bidp)
+            else:
+                side = 0
+                side_source = "inferred"
+            trades.append(KisTrade(
+                price=prpr,
+                qty=int(row["cnqn"]),
+                side=side,
+                side_source=side_source,
+                t_ms=t_ms,
+            ))
+        return trades
