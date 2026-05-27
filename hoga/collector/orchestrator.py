@@ -279,17 +279,36 @@ def _resume_state(raw_dir: Path) -> tuple[set[int], int, int]:
     return seen, last_idx, last_t
 
 
-def _fetch_and_store_page(
-    raw_dir: Path,
+def _fetch_first_body(
     client: HogaplayClientProto,
+    *,
     code: str,
     date: str,
-    t: int,
+    time_ms: int,
+) -> str:
+    """HTTP-only half of _fetch_and_store_page: fetch one first.php Page body.
+
+    Network errors (HogaplayHTTPError, including throttled 429s) surface to
+    the caller unchanged — _page_step_loop's ADR-0017 backoff machinery
+    depends on observing them here.
+    """
+    return client.fetch_first(code, date, time_ms)
+
+
+def _store_page_body(
+    raw_dir: Path,
+    body: str,
+    *,
     page_idx: int,
     seen_seqs: set[int],
-) -> tuple[str, int, set[int]]:
-    """Fetch one first.php Page, store it if non-empty, return (body, new_page_idx, new_seqs)."""
-    body = client.fetch_first(code, date, t)
+) -> tuple[int, set[int]]:
+    """TSV-write-only half of _fetch_and_store_page.
+
+    Returns (new_page_idx, new_seqs). When body is empty (hogaplay's
+    end-of-window signal), page_idx is unchanged and no file is written —
+    matches the `if body:` guard in the original composite. Mutates
+    seen_seqs in place to match the existing contract.
+    """
     page_seqs = _seqs(body)
     new_seqs = page_seqs - seen_seqs
     if body:
@@ -299,6 +318,28 @@ def _fetch_and_store_page(
         # is cheap insurance even though page_sort_key handles mixed widths).
         (raw_dir / f"first_{page_idx:05d}.tsv").write_text(body, encoding="utf-8")
         seen_seqs.update(page_seqs)
+    return page_idx, new_seqs
+
+
+def _fetch_and_store_page(
+    raw_dir: Path,
+    client: HogaplayClientProto,
+    code: str,
+    date: str,
+    t: int,
+    page_idx: int,
+    seen_seqs: set[int],
+) -> tuple[str, int, set[int]]:
+    """Fetch one first.php Page, store it if non-empty, return (body, new_page_idx, new_seqs).
+
+    Thin composite over _fetch_first_body + _store_page_body. Task 8 wraps
+    the two helpers in distinct timing phases (http_fetch vs disk_write);
+    behavior here is unchanged from the pre-split implementation.
+    """
+    body = _fetch_first_body(client, code=code, date=date, time_ms=t)
+    page_idx, new_seqs = _store_page_body(
+        raw_dir, body, page_idx=page_idx, seen_seqs=seen_seqs
+    )
     return body, page_idx, new_seqs
 
 
