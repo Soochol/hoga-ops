@@ -37,14 +37,28 @@ export function LiveWorkarea({ activeCode, watchlistEmpty }: Props) {
     <div
       data-testid="live-workarea"
       className="h-full flex"
-      style={{ background: 'var(--bg)' }}
+      style={{
+        background: 'var(--bg)',
+        // minHeight: 0 + overflow: hidden close the loop where a chart
+        // canvas's intrinsic size pushes the flex container's height,
+        // which then pushes the parent grid track, which then re-resizes
+        // the chart — runaway up to ~700k px in practice.
+        minHeight: 0,
+        overflow: 'hidden',
+      }}
     >
       <div
         className="grid"
         style={{
           flex: 1,
           minWidth: 0,
-          gridTemplateRows: '1fr 1fr',
+          minHeight: 0,
+          overflow: 'hidden',
+          // minmax(0, 1fr) prevents the row track from being pushed by the
+          // chart canvas's intrinsic size — without the explicit 0 min,
+          // CSS Grid defaults to `min-content` and lightweight-charts'
+          // height-grows-with-data behavior expands the row to >600k px.
+          gridTemplateRows: 'minmax(0, 1fr) minmax(0, 1fr)',
         }}
       >
         <LiveCandlePane code={activeCode} timeframe={timeframe} />

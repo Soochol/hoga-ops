@@ -191,7 +191,7 @@ export function LiveIndicatorPane({ code, timeframe }: Props) {
         position: 'relative',
         width: '100%',
         height: '100%',
-        minHeight: '300px',
+        // No minHeight — parent grid row controls height (see LiveWorkarea).
         background: 'var(--bg-card)',
       }}
     >

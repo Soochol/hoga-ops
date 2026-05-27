@@ -54,8 +54,10 @@ export function LivePage() {
     <div
       className="h-full grid"
       style={{
+        // minmax(0, 1fr) on the workarea row prevents the chart canvas's
+        // intrinsic size from pushing the row past viewport height.
         gridTemplateRows:
-          'var(--h-live-header) auto var(--h-pricestrip) var(--h-toolbar) 1fr',
+          'var(--h-live-header) auto var(--h-pricestrip) var(--h-toolbar) minmax(0, 1fr)',
       }}
     >
       <LiveHeader />

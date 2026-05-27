@@ -118,7 +118,8 @@ export function LiveCandlePane({ code, timeframe }: Props) {
       style={{
         width: '100%',
         height: '100%',
-        minHeight: '300px',
+        // No minHeight — the parent grid row controls height via minmax(0, 1fr).
+        // A minHeight here would push the grid track past the workarea bounds.
         background: 'var(--bg-card)',
         borderBottom: '1px solid var(--border)',
       }}
