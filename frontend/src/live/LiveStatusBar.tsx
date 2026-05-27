@@ -1,6 +1,5 @@
 import { useLivePageStore } from '../state/livePage';
 import { cycleLagSeverity, cycleLagPillColor } from './cycleLagPill';
-import { useLiveCandles } from '../api/liveCandles';
 import { useLiveBundle } from './useLiveBundle';
 import { SourceChip } from '../chart/SourceChip';
 import { todayKstYyyymmdd } from './liveDateTime';
@@ -15,13 +14,13 @@ export function LiveStatusBar({ activeCode, cycleLagMs }: Props) {
   const severity = cycleLagSeverity(cycleLagMs);
   const pill = cycleLagPillColor(severity);
 
-  const { candles } = useLiveCandles(activeCode ?? '', timeframe);
-  const lastCandle = candles.length > 0 ? candles[candles.length - 1] : null;
-  const currentPrice = lastCandle?.close ?? null;
-
+  // ADR-0040: candle data flows through the single Live Candle Backfill path.
   // ADR-0039: surface the active source through the last segment's tag.
-  // /replay shows the same chip in PriceStrip; /live now mirrors that.
   const { bundle } = useLiveBundle(activeCode, timeframe, todayKstYyyymmdd());
+  const lastCandle = bundle && bundle.candles.length > 0
+    ? bundle.candles[bundle.candles.length - 1]
+    : null;
+  const currentPrice = lastCandle?.close ?? null;
   const lastSegmentSource = bundle && bundle.segments.length > 0
     ? bundle.segments[bundle.segments.length - 1].source
     : undefined;
