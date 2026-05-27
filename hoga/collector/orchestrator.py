@@ -418,10 +418,17 @@ def _page_step_loop(
                         f.write(marker + "\n")
                 if collector is not None:
                     collector.record_error(f"http_{e.status_code}")
-                _cancellable_sleep(
-                    max(rate_limit_s * THROTTLE_BACKOFF_FACTOR, 1.0),
-                    cancel_token,
-                )
+                if collector is not None:
+                    with collector.phase("rate_limit"):
+                        _cancellable_sleep(
+                            max(rate_limit_s * THROTTLE_BACKOFF_FACTOR, 1.0),
+                            cancel_token,
+                        )
+                else:
+                    _cancellable_sleep(
+                        max(rate_limit_s * THROTTLE_BACKOFF_FACTOR, 1.0),
+                        cancel_token,
+                    )
                 backoff_remaining = THROTTLE_BACKOFF_HOLD_PAGES
                 iter_idx -= 1
                 # Leave pending_boundary False so the retry stays on the same
@@ -528,12 +535,24 @@ def collect_stock_date(
     # before zero-byte artifacts pollute disk.
     info_path = raw_dir / "info.tsv"
     if not (resume and info_path.exists()):
-        info_body = client.fetch_info(code, date)
+        if collector is not None:
+            with collector.phase("http_fetch"):
+                info_body = client.fetch_info(code, date)
+        else:
+            info_body = client.fetch_info(code, date)
         if not info_body.strip():
             raise UpstreamNoDataError(code, date)
-        info_path.write_text(info_body, encoding="utf-8")
+        if collector is not None:
+            with collector.phase("disk_write"):
+                info_path.write_text(info_body, encoding="utf-8")
+        else:
+            info_path.write_text(info_body, encoding="utf-8")
         if rate_limit_s > 0:
-            _time.sleep(rate_limit_s)
+            if collector is not None:
+                with collector.phase("rate_limit"):
+                    _time.sleep(rate_limit_s)
+            else:
+                _time.sleep(rate_limit_s)
 
     # 2. Page Step loop
     if resume:
@@ -554,8 +573,16 @@ def collect_stock_date(
     # 3. chart.php once
     if cancel_token is not None and cancel_token.cancelled:
         raise CaptureCancelled("capture cancelled before chart fetch")
-    chart_body = client.fetch_chart(code, date, CHART_FINAL_TIME_MS)
-    (raw_dir / "chart.tsv").write_text(chart_body, encoding="utf-8")
+    if collector is not None:
+        with collector.phase("http_fetch"):
+            chart_body = client.fetch_chart(code, date, CHART_FINAL_TIME_MS)
+    else:
+        chart_body = client.fetch_chart(code, date, CHART_FINAL_TIME_MS)
+    if collector is not None:
+        with collector.phase("disk_write"):
+            (raw_dir / "chart.tsv").write_text(chart_body, encoding="utf-8")
+    else:
+        (raw_dir / "chart.tsv").write_text(chart_body, encoding="utf-8")
 
     # Stagnation abort writes finished=False so the parser's
     # ``collection_complete`` flag stays False and the resulting parquet is
