@@ -28,6 +28,7 @@ from hoga.api.watchlist_routes import build_router as build_watchlist_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
+from hoga.live.migrate import migrate_to_v2_layout
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ def create_app(data_dir: Path) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        migrate_to_v2_layout(data_dir)
         observer.start()
         # bus + loop for thread-safe publishes from the watchdog thread.
         set_captures_bus(bus, asyncio.get_running_loop())
