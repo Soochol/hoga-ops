@@ -563,3 +563,50 @@ class ManualCatchupAllEntryResult(BaseModel):
 class ManualCatchupAllResponse(BaseModel):
     """Response shape for POST /api/watchlist/catchup."""
     results: list[ManualCatchupAllEntryResult]
+
+
+class TimingPhaseTotals(BaseModel):
+    http_fetch_ms: float = 0.0
+    parse_ms: float = 0.0
+    disk_write_ms: float = 0.0
+    rate_limit_ms: float = 0.0
+    backoff_ms: float = 0.0
+    cookie_pause_ms: float = 0.0
+    other_ms: float = 0.0
+
+
+class TimingPageDetail(BaseModel):
+    idx: int
+    http_ms: float
+    parse_ms: float
+    write_ms: float
+    events: int
+    errors: list[str]
+
+
+class TimingEnv(BaseModel):
+    rate_limit_s: float
+    max_concurrent: int
+    page_step_ms_initial: int
+    hoga_version: str
+    git_sha: str | None = None
+
+
+class TimingSummary(BaseModel):
+    code: str
+    date: str
+    started_at_kst: str
+    ended_at_kst: str
+    total_ms: float
+    phase_totals_ms: TimingPhaseTotals
+    phase_percentages: dict[str, float]
+    unaccounted_ms: float
+    page_count: int
+    event_count: int
+    error_counts: dict[str, int]
+    env: TimingEnv
+
+
+class TimingReport(BaseModel):
+    summary: TimingSummary
+    pages: list[TimingPageDetail]
