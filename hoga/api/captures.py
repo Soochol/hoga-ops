@@ -49,6 +49,7 @@ from hoga.api.models import (
 from hoga.api import watchlist
 from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
+from hoga.collector.timing import CaptureTimingCollector
 from hoga.collector.orchestrator import (
     CHART_FINAL_TIME_MS,
     DATA_WINDOW_START_MS,
@@ -199,6 +200,13 @@ _done: list[Any] = []                                   # terminal items, cleare
 _inflight_paths: set[tuple[str, str]] = set()           # (code, date) — see spec §11 Q15 Layer 2
 _queue_paused: bool = False
 _max_concurrent: int = int(os.environ.get("HOGA_MAX_CONCURRENT", "3"))
+
+
+def _timing_enabled() -> bool:
+    """Read HOGA_CAPTURE_TIMING at call time. Default ON; only explicit
+    falsy values disable. Empty string is treated as 'unset' (= default ON)."""
+    raw = os.environ.get("HOGA_CAPTURE_TIMING", "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
 _wakeup: asyncio.Event | None = None                    # lazily constructed when the first worker starts
 _workers: list[asyncio.Task] = []                       # populated by app lifespan; stopped on shutdown
 
@@ -503,7 +511,12 @@ async def _cancel_aware_sleep(state: QueueItemState, delay: float) -> bool:
         return False
 
 
-async def _run_capture_and_parse(state: QueueItemState, resume: bool) -> None:
+async def _run_capture_and_parse(
+    state: QueueItemState,
+    *,
+    resume: bool,
+    collector: CaptureTimingCollector | None = None,
+) -> None:
     """Wrap ``_run_capture_inner`` with 429 exponential backoff.
 
     3 retries (5/10/30s) then propagate. Cancellation during the sleep raises
@@ -517,7 +530,7 @@ async def _run_capture_and_parse(state: QueueItemState, resume: bool) -> None:
     last_exc: BaseException | None = None
     for delay in (*_BACKOFF_DELAYS, None):
         try:
-            await _run_capture_inner(state, resume=resume)
+            await _run_capture_inner(state, resume=resume, collector=collector)
             return
         except HogaplayHTTPError as exc:
             if exc.status_code != 429 or delay is None:
@@ -529,7 +542,12 @@ async def _run_capture_and_parse(state: QueueItemState, resume: bool) -> None:
         raise last_exc
 
 
-async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
+async def _run_capture_inner(
+    state: QueueItemState,
+    *,
+    resume: bool,
+    collector: CaptureTimingCollector | None = None,
+) -> None:
     """Run the collector then the parser. Cookie-missing/expired rejection
     happens via the cookie-pause path in the worker loop. Task 11's
     ``_run_capture_and_parse`` wrapper provides 429 backoff around this.
@@ -565,6 +583,7 @@ async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
                 resume=resume,
                 on_progress=_make_progress_callback(state),
                 cancel_token=state.cancel_token,
+                collector=collector,
             ),
         )
     except UpstreamNoDataError:
@@ -637,6 +656,9 @@ async def _run_item(state: QueueItemState) -> None:
     - CLIENT_INCOMPLETE → resume=True (continue from existing pages)
     - NONE → fresh capture (resume=False)
     """
+    collector: CaptureTimingCollector | None = (
+        CaptureTimingCollector(state.code, state.date) if _timing_enabled() else None
+    )
     data_dir = _require_data_dir()
     decision = decide_capture(
         data_dir=data_dir,
@@ -648,7 +670,7 @@ async def _run_item(state: QueueItemState) -> None:
         state.phase = "skipped"
         state.skip_reason = decision.skip_reason
         return
-    await _run_capture_and_parse(state, resume=decision.resume)
+    await _run_capture_and_parse(state, resume=decision.resume, collector=collector)
 
 
 async def _finalize_item(state: QueueItemState) -> None:

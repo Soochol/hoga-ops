@@ -157,7 +157,7 @@ async def test_deciding_resumes_client_incomplete(monkeypatch, tmp_path):
                         lambda *_a, **_k: Classification(state=DiskState.CLIENT_INCOMPLETE))
 
     captured = {}
-    async def _stub_capture(state, resume):
+    async def _stub_capture(state, resume, **_kwargs):
         captured["resume"] = resume
         state.phase = "done"
     monkeypatch.setattr(captures, "_run_capture_and_parse", _stub_capture)
@@ -178,7 +178,7 @@ async def test_force_retry_overrides_source_partial_skip(monkeypatch, tmp_path):
                         lambda *_a, **_k: Classification(state=DiskState.SOURCE_PARTIAL))
 
     captured = {}
-    async def _stub_capture(state, resume):
+    async def _stub_capture(state, resume, **_kwargs):
         captured["resume"] = resume
         state.phase = "done"
     monkeypatch.setattr(captures, "_run_capture_and_parse", _stub_capture)
@@ -207,7 +207,7 @@ async def test_worker_defers_when_inflight_collision(monkeypatch, tmp_path):
     finish_order: list[str] = []
     sem = asyncio.Semaphore(0)
 
-    async def _capture(state, resume):
+    async def _capture(state, resume, **_kwargs):
         start_order.append(state.item_id)
         await sem.acquire()
         state.phase = "done"
@@ -392,7 +392,7 @@ def test_cancel_queued_item_removes_and_marks_cancelled(monkeypatch, tmp_path):
     # Patch _run_capture_and_parse to block so items stay queued/active.
     sem = asyncio.Event()
 
-    async def _block(state, resume):
+    async def _block(state, resume, **_kwargs):
         await sem.wait()
         state.phase = "done"
 
@@ -455,7 +455,7 @@ def test_cancel_all_drains_queue(monkeypatch, tmp_path):
                         lambda *_a, **_k: Classification(state=DiskState.NONE))
     sem = asyncio.Event()
 
-    async def _block(state, resume):
+    async def _block(state, resume, **_kwargs):
         await sem.wait()
         state.phase = "done"
 
@@ -498,7 +498,7 @@ async def test_cookie_expired_pauses_pool(monkeypatch):
     # when _handle_cookie_expired sweeps _active.
     barrier = asyncio.Event()
 
-    async def _runner(state, resume):
+    async def _runner(state, resume, **_kwargs):
         # Ensure cancel_token is set so _handle_cookie_expired can trip it.
         if state.cancel_token is None:
             state.cancel_token = CancelToken()
@@ -624,7 +624,7 @@ async def test_429_backoff_then_success(monkeypatch, tmp_path):
 
     attempts = {"n": 0}
 
-    async def _flaky_inner(state, resume):
+    async def _flaky_inner(state, resume, **_kwargs):
         attempts["n"] += 1
         if attempts["n"] <= 3:
             raise HogaplayHTTPError("429 rate limited", status_code=429)
@@ -680,7 +680,7 @@ async def test_429_backoff_exhausted_marks_failed(monkeypatch, tmp_path):
                         lambda *_a, **_k: Classification(state=DiskState.NONE))
     monkeypatch.setattr(captures, "_BACKOFF_DELAYS", (0.0, 0.0, 0.0))
 
-    async def _always_429(state, resume):
+    async def _always_429(state, resume, **_kwargs):
         raise HogaplayHTTPError("429 rate limited", status_code=429)
     monkeypatch.setattr(captures, "_run_capture_inner", _always_429)
 
@@ -802,7 +802,7 @@ async def test_cancel_during_429_backoff_aborts_immediately(monkeypatch, tmp_pat
     # One backoff slot, long enough that we definitely cancel during it.
     monkeypatch.setattr(captures, "_BACKOFF_DELAYS", (5.0,))
 
-    async def _always_429(state, resume):
+    async def _always_429(state, resume, **_kwargs):
         raise HogaplayHTTPError("429 rate limited", status_code=429)
     monkeypatch.setattr(captures, "_run_capture_inner", _always_429)
 
