@@ -24,11 +24,16 @@ export function realMsToYyyymmdd(realMs: number): string {
 
 /** YYYYMMDD KST for the day before `todayYyyymmdd`. */
 export function yesterdayKst(todayYyyymmdd: string): string {
-  const y = parseInt(todayYyyymmdd.slice(0, 4), 10);
-  const m = parseInt(todayYyyymmdd.slice(4, 6), 10);
-  const d = parseInt(todayYyyymmdd.slice(6, 8), 10);
+  return subtractDaysKst(todayYyyymmdd, 1);
+}
+
+/** YYYYMMDD KST for `n` days before `yyyymmdd`. */
+export function subtractDaysKst(yyyymmdd: string, n: number): string {
+  const y = parseInt(yyyymmdd.slice(0, 4), 10);
+  const m = parseInt(yyyymmdd.slice(4, 6), 10);
+  const d = parseInt(yyyymmdd.slice(6, 8), 10);
   const date = new Date(Date.UTC(y, m - 1, d));
-  date.setUTCDate(date.getUTCDate() - 1);
+  date.setUTCDate(date.getUTCDate() - n);
   const yy = date.getUTCFullYear();
   const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(date.getUTCDate()).padStart(2, '0');
@@ -50,3 +55,12 @@ export function regularSessionOpenMs(yyyymmdd: string): number {
 export function regularSessionCloseMs(yyyymmdd: string): number {
   return regularSessionOpenMs(yyyymmdd) + 6.5 * 3600 * 1000;
 }
+
+/** Days of past data seeded on initial mount so the chart shows usable history
+ * without requiring the user to scroll. ~4 trading weeks of minute bars. */
+export const INITIAL_HISTORICAL_DAYS = 20;
+
+/** Days of additional past data fetched each time the user scrolls past the
+ * currently-loaded window. Smaller than INITIAL so the seed loads quickly and
+ * subsequent extensions stay small. */
+export const PREFETCH_CHUNK_DAYS = 10;

@@ -11,7 +11,13 @@ import RangeSeriesPane from '../chart/RangeSeriesPane';
 import { PANE_SPECS, PANE_STRETCH } from '../chart/paneSpecs';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { useLiveBundle } from './useLiveBundle';
-import { todayKstYyyymmdd, realMsToYyyymmdd } from './liveDateTime';
+import {
+  todayKstYyyymmdd,
+  realMsToYyyymmdd,
+  subtractDaysKst,
+  INITIAL_HISTORICAL_DAYS,
+  PREFETCH_CHUNK_DAYS,
+} from './liveDateTime';
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -82,9 +88,19 @@ export function LiveChartRoot({ code, timeframe }: Props) {
     };
   }, []);
 
-  // Lazy fetch trigger — extend historicalFromDate when user scrolls left.
-  // Eng review C2/C3: (a) require usable axis with >=1 segment; (b) 150ms
-  // trailing debounce so a single pan gesture produces at most one extension call.
+  // Lazy fetch trigger — extend historicalFromDate when user scrolls past the
+  // seeded initial window. Eng review C2/C3: (a) require usable axis with >=1
+  // segment; (b) 150ms trailing debounce so a single pan gesture produces at
+  // most one extension call.
+  //
+  // Behaviour:
+  //   - The initial useLiveBundle fetch already covers (today - INITIAL_HISTORICAL_DAYS).
+  //     If the user's visible-range origin is still inside that window, nothing
+  //     to do — the cached bundle already covers it.
+  //   - Once the user pans past the seeded boundary, extend historicalFromDate
+  //     to (visibleFromDate - PREFETCH_CHUNK_DAYS) so the next bundle adds one
+  //     more chunk of past. The store's extendHistoricalRange is monotonically
+  //     decreasing, so repeat triggers on the same chunk are no-ops.
   useEffect(() => {
     if (!chart) return;
     const ts = chart.timeScale();
@@ -98,10 +114,13 @@ export function LiveChartRoot({ code, timeframe }: Props) {
       const realMs = axis.toReal(sec * 1000);
       const todayOpen = axis.segments[axis.segments.length - 1].sessionOpenMs;
       if (realMs >= todayOpen) return;
-      const date = realMsToYyyymmdd(realMs);
+      const visibleFromDate = realMsToYyyymmdd(realMs);
+      const initialBoundary = subtractDaysKst(today, INITIAL_HISTORICAL_DAYS);
+      if (visibleFromDate >= initialBoundary) return; // still in seeded window
+      const nextHistoricalFrom = subtractDaysKst(visibleFromDate, PREFETCH_CHUNK_DAYS);
       if (timeoutId !== null) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
-        useLivePageStore.getState().extendHistoricalRange(date);
+        useLivePageStore.getState().extendHistoricalRange(nextHistoricalFrom);
       }, 150);
     };
     ts.subscribeVisibleTimeRangeChange(handler);
@@ -109,7 +128,7 @@ export function LiveChartRoot({ code, timeframe }: Props) {
       if (timeoutId !== null) clearTimeout(timeoutId);
       ts.unsubscribeVisibleTimeRangeChange(handler);
     };
-  }, [chart, axis, timeframe]);
+  }, [chart, axis, timeframe, today]);
 
   useEffect(() => {
     if (!chart || !bundle) return;

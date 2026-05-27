@@ -6,7 +6,13 @@ import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { TIMEFRAME_TO_MS, type Timeframe, type RangeBundle } from '../api/types';
 import { buildLiveBundle } from './buildLiveBundle';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
-import { yesterdayKst, regularSessionOpenMs, regularSessionCloseMs } from './liveDateTime';
+import {
+  yesterdayKst,
+  regularSessionOpenMs,
+  regularSessionCloseMs,
+  subtractDaysKst,
+  INITIAL_HISTORICAL_DAYS,
+} from './liveDateTime';
 
 const MINUTE_TIMEFRAMES: ReadonlyArray<Timeframe> = ['1m', '3m', '5m', '10m', '15m', '30m'];
 
@@ -39,14 +45,18 @@ export function useLiveBundle(
   const isMinute = isMinuteTimeframe(timeframe);
   const bucketMs = isMinute ? TIMEFRAME_TO_MS[timeframe] : 60_000;
 
-  // /api/range — only call when we have a historical range AND timeframe is
-  // a minute frame. D/W/M skip past fetch entirely (spec Section 4.2).
+  // /api/range — fetch past data on minute timeframes. On initial mount
+  // (historicalFromDate=null) we seed the range to (today - INITIAL_HISTORICAL_DAYS)
+  // so the user lands on a usable history window without having to scroll first.
+  // Once they scroll further into the past, extendHistoricalRange overrides
+  // this default with the visible-range origin.
   const pastTo = yesterdayKst(todayKstYyyymmdd);
-  const enableRange = !!(code && historicalFromDate && isMinute && historicalFromDate <= pastTo);
+  const pastFrom = historicalFromDate ?? subtractDaysKst(todayKstYyyymmdd, INITIAL_HISTORICAL_DAYS);
+  const enableRange = !!(code && isMinute && pastFrom <= pastTo);
   // enableRange already requires isMinute, so the timeframe cast is safe.
   const past = useRange(
     enableRange ? code : null,
-    enableRange ? historicalFromDate : null,
+    enableRange ? pastFrom : null,
     enableRange ? pastTo : null,
     enableRange ? (timeframe as Timeframe) : null,
   );
