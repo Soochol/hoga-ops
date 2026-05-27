@@ -38,6 +38,10 @@ type Persisted = {
   activeCode: string | null;
   candleTimeframe: LiveTimeframe;
   watchlistPanelOpen: boolean;
+  /** Earliest stock-date the user has scrolled into (YYYYMMDD). null = today
+   * only (no /api/range call needed yet). Resets when activeCode or timeframe
+   * changes. */
+  historicalFromDate: string | null;
 };
 
 type Store = Persisted & {
@@ -45,6 +49,8 @@ type Store = Persisted & {
   setCandleTimeframe: (tf: LiveTimeframe) => void;
   toggleWatchlistPanel: () => void;
   setWatchlistPanelOpen: (open: boolean) => void;
+  extendHistoricalRange: (date: string) => void;
+  resetHistoricalRange: () => void;
   hydrateFromStorage: () => void;
 };
 
@@ -52,6 +58,7 @@ const DEFAULTS: Persisted = {
   activeCode: null,
   candleTimeframe: '1m',
   watchlistPanelOpen: false,
+  historicalFromDate: null,
 };
 
 function persist(state: Persisted): void {
@@ -78,14 +85,26 @@ export const useLivePageStore = create<Store>((set, get) => ({
   ...readStorage(),
 
   setActiveCode: (code) => {
-    set({ activeCode: code });
-    persist({ ...get(), activeCode: code });
+    set({ activeCode: code, historicalFromDate: null });
+    persist({ ...get(), activeCode: code, historicalFromDate: null });
   },
 
   setCandleTimeframe: (tf) => {
     if (!LIVE_TIMEFRAMES.includes(tf)) return;
-    set({ candleTimeframe: tf });
-    persist({ ...get(), candleTimeframe: tf });
+    set({ candleTimeframe: tf, historicalFromDate: null });
+    persist({ ...get(), candleTimeframe: tf, historicalFromDate: null });
+  },
+
+  extendHistoricalRange: (date) => {
+    const cur = get().historicalFromDate;
+    if (cur !== null && cur <= date) return; // already at or before this date
+    set({ historicalFromDate: date });
+    persist({ ...get(), historicalFromDate: date });
+  },
+
+  resetHistoricalRange: () => {
+    set({ historicalFromDate: null });
+    persist({ ...get(), historicalFromDate: null });
   },
 
   toggleWatchlistPanel: () => {
