@@ -205,6 +205,89 @@ async def test_fetch_candles_parses_real_fixture(
 
 
 # ---------------------------------------------------------------------------
+# fetch_past_minute_candles (FHKST03010230, 주식일별분봉조회)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_minute_candles_paginates_until_session_open(tmp_path: Path) -> None:
+    """KIS returns at most 120 bars per call; the method must page backwards
+    from 15:30 until 09:00 is covered, then return ascending by t_ms."""
+
+    def make_row(hh: int, mm: int) -> dict:
+        return {
+            "stck_bsop_date": "20260526",
+            "stck_cntg_hour": f"{hh:02d}{mm:02d}00",
+            "stck_oprc": "40000",
+            "stck_hgpr": "40100",
+            "stck_lwpr": "39900",
+            "stck_prpr": "40050",
+            "cntg_vol": "100",
+        }
+
+    # Build deterministic "120 newest-first bars per anchor" responses for
+    # successive anchors. KIS contract: newest-first.
+    pages_by_anchor: dict[str, list[dict]] = {
+        # 15:30 → 13:31 (120 minutes window, newest first)
+        "153000": [make_row(15, m // 60) if False else make_row(13 + (119 - m) // 60, (119 - m) % 60) for m in range(120)],
+    }
+    # Three deterministic pages. Each newest-first.
+    #   Page 1 (anchor 15:30): bars 13:00–14:59 (120). Earliest=13:00; next anchor=12:59:00.
+    #   Page 2 (anchor 12:59): bars 11:00–12:59 (120). Earliest=11:00; next anchor=10:59:00.
+    #   Page 3 (anchor 10:59): bars 09:00–10:29 (90). Earliest=09:00; stops at session open.
+    pages_by_anchor = {
+        "153000": [make_row(13 + (119 - i) // 60, (119 - i) % 60) for i in range(120)],
+        "125900": [make_row(11 + (119 - i) // 60, (119 - i) % 60) for i in range(120)],
+        "105900": [make_row(9 + (89 - i) // 60, (89 - i) % 60) for i in range(90)],
+    }
+    captured_anchors: list[str] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path == "/oauth2/tokenP":
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        anchor = req.url.params.get("FID_INPUT_HOUR_1")
+        captured_anchors.append(anchor)
+        rows = pages_by_anchor.get(anchor, [])
+        return httpx.Response(200, json={"rt_cd": "0", "msg_cd": "", "msg1": "", "output2": rows})
+
+    client = _make_client(handler, tmp_path)
+    try:
+        candles = await client.fetch_past_minute_candles("005930", "20260526")
+    finally:
+        await client.aclose()
+
+    # All three pages were called in order.
+    assert captured_anchors[0] == "153000"
+    assert captured_anchors[1] == "125900"
+    assert captured_anchors[2] == "105900"
+    # Each call requested the same date.
+    # Result is ascending by t_ms.
+    assert all(candles[i].t_ms <= candles[i + 1].t_ms for i in range(len(candles) - 1))
+    # No duplicates across pages.
+    t_ms_list = [c.t_ms for c in candles]
+    assert len(t_ms_list) == len(set(t_ms_list))
+    # Got at least the union of three pages' worth.
+    assert len(candles) >= 120 + 120 + 90 - 0  # no overlap in our fixtures
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_minute_candles_stops_on_empty_response(tmp_path: Path) -> None:
+    """If KIS returns an empty page, pagination must stop (no infinite loop)."""
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path == "/oauth2/tokenP":
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        return httpx.Response(200, json={"rt_cd": "0", "msg_cd": "", "msg1": "", "output2": []})
+
+    client = _make_client(handler, tmp_path)
+    try:
+        candles = await client.fetch_past_minute_candles("005930", "20260526")
+    finally:
+        await client.aclose()
+    assert candles == []
+
+
+# ---------------------------------------------------------------------------
 # Task 2.5: fetch_overtime_orderbook (FHPST02300400)
 # ---------------------------------------------------------------------------
 

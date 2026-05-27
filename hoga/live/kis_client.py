@@ -394,6 +394,86 @@ class KisClient:
         return candles
 
     # ------------------------------------------------------------------
+    # fetch_past_minute_candles (FHKST03010230, 주식일별분봉조회)
+    # ------------------------------------------------------------------
+
+    async def fetch_past_minute_candles(self, code: str, date_yyyymmdd: str) -> list[KisCandle]:
+        """Fetch 1-minute candles for *code* on *date_yyyymmdd* (KST).
+
+        KIS endpoint `inquire-time-dailychartprice` returns at most 120 rows
+        per call (about 2 hours of 1-minute bars). A full regular-session day
+        (09:00-15:30 KST = 390 minutes) needs ~4 paginated calls — we anchor
+        from 15:30 KST and walk the anchor backwards by the earliest received
+        candle's HHMMSS until we cover 09:00 or stop receiving new bars.
+
+        KIS retains roughly 1 year of historical minute candles per the
+        portal docs (https://apiportal.koreainvestment.com/).
+        """
+        path = "/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice"
+        tr_id = "FHKST03010230"
+        # Walk anchor from 15:30 backwards. Stop when the response is empty
+        # or the earliest received bar is at/before 09:00.
+        anchor_hhmmss = "153000"
+        seen_t_ms: set[int] = set()
+        all_candles: list[KisCandle] = []
+        # Hard cap so a misbehaving KIS response never spirals into infinite
+        # pages. 6 calls × 120 bars = 720 rows, well past one regular session.
+        for _ in range(6):
+            params = {
+                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_INPUT_ISCD": code,
+                "FID_INPUT_HOUR_1": anchor_hhmmss,
+                "FID_INPUT_DATE_1": date_yyyymmdd,
+                "FID_PW_DATA_INCU_YN": "N",
+                "FID_FAKE_TICK_INCU_YN": "",
+            }
+            body = await self._get(path=path, tr_id=tr_id, params=params)
+            rows = body.get("output2") or []
+            page_candles: list[KisCandle] = []
+            for row in rows:
+                date_str = row.get("stck_bsop_date") or ""
+                hhmmss = row.get("stck_cntg_hour") or ""
+                if len(date_str) != 8 or len(hhmmss) != 6:
+                    # Defensive: malformed row, skip rather than crash the page.
+                    continue
+                dt = datetime(
+                    int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]),
+                    int(hhmmss[:2]), int(hhmmss[2:4]), int(hhmmss[4:6]),
+                    tzinfo=KIS_KST,
+                )
+                t_ms = int(dt.timestamp() * 1000)
+                if t_ms in seen_t_ms:
+                    continue
+                seen_t_ms.add(t_ms)
+                page_candles.append(KisCandle(
+                    t_ms=t_ms,
+                    open=int(row["stck_oprc"]),
+                    high=int(row["stck_hgpr"]),
+                    low=int(row["stck_lwpr"]),
+                    close=int(row["stck_prpr"]),
+                    volume=int(row["cntg_vol"]),
+                ))
+            if not page_candles:
+                break
+            all_candles.extend(page_candles)
+            # Next anchor = HHMMSS of the earliest bar minus 1 minute. KIS
+            # responses come newest-first; the earliest bar's hour drives the
+            # next page's anchor.
+            earliest_t_ms = min(c.t_ms for c in page_candles)
+            earliest_dt = datetime.fromtimestamp(earliest_t_ms / 1000, tz=KIS_KST)
+            # If we already covered the session open, stop.
+            if earliest_dt.hour < 9 or (earliest_dt.hour == 9 and earliest_dt.minute == 0):
+                break
+            # Step the anchor back by 1 minute from the earliest bar.
+            next_anchor_dt = earliest_dt - timedelta(minutes=1)
+            anchor_hhmmss = (
+                f"{next_anchor_dt.hour:02d}{next_anchor_dt.minute:02d}{next_anchor_dt.second:02d}"
+            )
+        # Return in ascending order by t_ms — frontend / aggregator expects ASC.
+        all_candles.sort(key=lambda c: c.t_ms)
+        return all_candles
+
+    # ------------------------------------------------------------------
     # Task 2.5: fetch_overtime_orderbook (FHPST02300400)
     # ------------------------------------------------------------------
 
