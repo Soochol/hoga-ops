@@ -301,3 +301,68 @@ class KisClient:
             for i in range(1, 6)
         ]
         return KisBrokers(code=code, buy_top=buy_top, sell_top=sell_top)
+
+    # ------------------------------------------------------------------
+    # Task 2.4: fetch_candles (FHKST03010100 daily, FHKST03010200 intraday)
+    # ------------------------------------------------------------------
+
+    async def fetch_candles(self, code: str, timeframe: str = "D") -> list[KisCandle]:
+        """Fetch OHLCV candles for *code*.
+
+        timeframe: "D" for daily (FHKST03010100), "1m" for 1-minute (FHKST03010200).
+        """
+        today_kst = datetime.now(KIS_KST).date()
+        if timeframe == "D":
+            path = "/uapi/domestic-stock/v1/quotations/inquire-daily-price"
+            tr_id = "FHKST03010100"
+            params: dict[str, Any] = {
+                "fid_cond_mrkt_div_code": "J",
+                "fid_input_iscd": code,
+                "fid_period_div_code": "D",
+                "fid_org_adj_prc": "0",
+                "fid_input_date_1": (today_kst - timedelta(days=90)).strftime("%Y%m%d"),
+                "fid_input_date_2": today_kst.strftime("%Y%m%d"),
+            }
+        else:
+            # intraday (1m)
+            path = "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
+            tr_id = "FHKST03010200"
+            params = {
+                "fid_cond_mrkt_div_code": "J",
+                "fid_input_iscd": code,
+                "fid_input_hour_1": "153000",
+                "fid_pw_data_incu_yn": "Y",
+                "fid_etc_cls_code": "",
+            }
+        body = await self._get(path=path, tr_id=tr_id, params=params)
+        candles: list[KisCandle] = []
+        for row in body["output2"]:
+            if timeframe == "D":
+                # Daily: date string YYYYMMDD, close = stck_clpr
+                date_str = row["stck_bsop_date"]
+                dt = datetime(
+                    int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]),
+                    tzinfo=KIS_KST
+                )
+                close = int(row["stck_clpr"])
+                volume = int(row["acml_vol"])
+            else:
+                # Intraday: date+hour YYYYMMDD + HHMMSS, close = stck_prpr
+                date_str = row["stck_bsop_date"]
+                hhmmss = row["stck_cntg_hour"]
+                dt = datetime(
+                    int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]),
+                    int(hhmmss[:2]), int(hhmmss[2:4]), int(hhmmss[4:6]),
+                    tzinfo=KIS_KST
+                )
+                close = int(row["stck_prpr"])
+                volume = int(row["cntg_vol"])
+            candles.append(KisCandle(
+                t_ms=int(dt.timestamp() * 1000),
+                open=int(row["stck_oprc"]),
+                high=int(row["stck_hgpr"]),
+                low=int(row["stck_lwpr"]),
+                close=close,
+                volume=volume,
+            ))
+        return candles
