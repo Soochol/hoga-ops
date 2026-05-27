@@ -130,6 +130,9 @@ class LivePoller:
             except KisApiError as e:
                 _log.error("live.poller.kis_error code=%s msg_cd=%s", code, e.msg_cd)
                 return None
+            except Exception:  # noqa: BLE001 — one bad cycle must not kill the poller task
+                _log.exception("live.poller.unexpected_error code=%s", code)
+                return None
         _log.error("live.poller.rate_limit_giveup code=%s", code)
         return None
 
