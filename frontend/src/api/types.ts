@@ -209,8 +209,55 @@ export type SSEEvent =
       total_cancelled: number;
       total_skipped: number;
     }
+  | CaptureTimingEvent
   | { type: 'heartbeat' }
   | { type: 'disconnected' };
+
+/** Mirrors hoga/api/models.py::TimingPhaseTotals. All values are milliseconds. */
+export interface TimingPhaseTotalsMs {
+  http_fetch_ms: number;
+  parse_ms: number;
+  disk_write_ms: number;
+  rate_limit_ms: number;
+  backoff_ms: number;
+  cookie_pause_ms: number;
+  other_ms: number;
+}
+
+/** Mirrors hoga/api/models.py::TimingEnv. */
+export interface TimingEnv {
+  rate_limit_s: number;
+  max_concurrent: number;
+  page_step_ms_initial: number;
+  hoga_version: string;
+  git_sha: string | null;
+}
+
+/** Mirrors hoga/api/models.py::TimingSummary. */
+export interface TimingSummary {
+  code: string;
+  date: string;
+  started_at_kst: string;
+  ended_at_kst: string;
+  total_ms: number;
+  phase_totals_ms: TimingPhaseTotalsMs;
+  phase_percentages: Record<string, number>;
+  unaccounted_ms: number;
+  page_count: number;
+  event_count: number;
+  error_counts: Record<string, number>;
+  env: TimingEnv;
+}
+
+/** Mirrors hoga/api/models.py::CaptureTimingEvent. SSE summary event emitted
+ *  when one capture finishes (or fails). `id` is `${code}:${date}` — the
+ *  frontend dedup key. Full per-page detail lives in the timing JSON on
+ *  disk, not on this event. */
+export interface CaptureTimingEvent {
+  type: 'capture_timing';
+  id: string;
+  summary: TimingSummary;
+}
 
 /** Mirrors hoga/api/models.py::SymbolHit. */
 export interface SymbolHit {
