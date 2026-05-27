@@ -6,7 +6,7 @@ interface Props {
   stack: BannerCause[];
 }
 
-const COPY: Record<BannerCause | 'watchlist_empty' | 'kis_credentials_missing', { title: string; severity: 'error' | 'warn' | 'info' }> = {
+const COPY: Record<BannerCause, { title: string; severity: 'error' | 'warn' | 'info' }> = {
   watchlist_empty: { title: '관심종목을 먼저 추가해주세요', severity: 'info' },
   kis_credentials_missing: { title: 'KIS 자격증명이 설정되지 않았습니다', severity: 'error' },
   kis_token_expired: { title: 'KIS 토큰이 만료되었습니다', severity: 'warn' },
@@ -37,7 +37,7 @@ function BannerRow({
   actionTo,
   actionLabel,
 }: {
-  cause: BannerCause | 'watchlist_empty' | 'kis_credentials_missing';
+  cause: BannerCause;
   actionTo?: string;
   actionLabel?: string;
 }) {
