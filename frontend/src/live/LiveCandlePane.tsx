@@ -87,14 +87,24 @@ export function LiveCandlePane({ code, timeframe }: Props) {
     const volumeSeries = volumeSeriesRef.current;
     const chart = chartRef.current;
     if (!candleSeries || !volumeSeries || !chart || !data) return;
-    const candles = data.candles.map((c) => ({
-      time: Math.floor(c.t_ms / 1000) as UTCTimestamp,
-      open: c.open, high: c.high, low: c.low, close: c.close,
-    }));
-    const volumes = data.candles.map((c) => ({
-      time: Math.floor(c.t_ms / 1000) as UTCTimestamp,
-      value: c.volume,
-    }));
+    // KIS endpoints return candles in DESCENDING order (most recent first).
+    // lightweight-charts requires strictly-ascending unique timestamps —
+    // sort + dedup by time before setData or the series throws and
+    // unmounts the entire pane (was the cause of the blank-screen QA bug).
+    const seen = new Set<number>();
+    const sorted = [...data.candles].sort((a, b) => a.t_ms - b.t_ms);
+    const candles: Array<{ time: UTCTimestamp; open: number; high: number; low: number; close: number }> = [];
+    const volumes: Array<{ time: UTCTimestamp; value: number }> = [];
+    for (const c of sorted) {
+      const time = Math.floor(c.t_ms / 1000);
+      if (seen.has(time)) continue;
+      seen.add(time);
+      candles.push({
+        time: time as UTCTimestamp,
+        open: c.open, high: c.high, low: c.low, close: c.close,
+      });
+      volumes.push({ time: time as UTCTimestamp, value: c.volume });
+    }
     candleSeries.setData(candles);
     volumeSeries.setData(volumes);
     // Design B5: keep the chart visually tracking new data.

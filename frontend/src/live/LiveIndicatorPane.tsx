@@ -133,26 +133,41 @@ export function LiveIndicatorPane({ code, timeframe }: Props) {
       return;
     }
 
-    // Quote Totals (from ob snapshots)
-    const asks = ob.map((o) => ({ time: utcSeconds(o.t_ms), value: numOr0(o.total_ask_qty) }));
-    const bids = ob.map((o) => ({ time: utcSeconds(o.t_ms), value: numOr0(o.total_bid_qty) }));
-    askS.setData(asks);
-    bidS.setData(bids);
+    // lightweight-charts requires strictly-ascending unique timestamps.
+    // Buffer snapshots arrive ordered by t_ms via the SSE poller, but the
+    // initial /api/live/series hydrate may carry duplicates at the same
+    // 10s cycle boundary. Sort + dedup by second-resolution UTCTimestamp.
+    const obSorted = [...ob].sort((a, b) => (a.t_ms as number) - (b.t_ms as number));
+    const tradeSorted = [...trade].sort((a, b) => (a.t_ms as number) - (b.t_ms as number));
 
-    // 호가비 = (ask - bid) / (ask + bid), signed
-    const ratios = ob.map((o) => {
+    // Quote Totals (from ob snapshots)
+    const askSeen = new Set<number>();
+    const asks: Array<{ time: UTCTimestamp; value: number }> = [];
+    const bids: Array<{ time: UTCTimestamp; value: number }> = [];
+    const ratios: Array<{ time: UTCTimestamp; value: number }> = [];
+    for (const o of obSorted) {
+      const t = utcSeconds(o.t_ms);
+      if (askSeen.has(t as number)) continue;
+      askSeen.add(t as number);
       const a = numOr0(o.total_ask_qty);
       const b = numOr0(o.total_bid_qty);
+      asks.push({ time: t, value: a });
+      bids.push({ time: t, value: b });
       const denom = a + b || 1;
-      return { time: utcSeconds(o.t_ms), value: (a - b) / denom };
-    });
+      ratios.push({ time: t, value: (a - b) / denom });
+    }
+    askS.setData(asks);
+    bidS.setData(bids);
     ratioS.setData(ratios);
 
     // FillStrength from trade snapshots — sum buy vs sell qty per bucket
+    const tradeSeen = new Set<number>();
     const buy: Array<{ time: UTCTimestamp; value: number }> = [];
     const sell: Array<{ time: UTCTimestamp; value: number }> = [];
-    for (const t of trade) {
+    for (const t of tradeSorted) {
       const time = utcSeconds(t.t_ms);
+      if (tradeSeen.has(time as number)) continue;
+      tradeSeen.add(time as number);
       const trades = (t.trades as Array<{ side: number; qty: number }>) ?? [];
       let buyQty = 0;
       let sellQty = 0;
