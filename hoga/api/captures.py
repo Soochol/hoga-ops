@@ -685,7 +685,17 @@ async def _run_item(state: QueueItemState) -> None:
         state.phase = "skipped"
         state.skip_reason = decision.skip_reason
         return
-    await _run_capture_and_parse(state, resume=decision.resume, collector=collector)
+    try:
+        await _run_capture_and_parse(state, resume=decision.resume, collector=collector)
+    except CookieExpiredError:
+        # Record before re-raising so the error lands in the collector's
+        # ``error_counts`` / page errors. The worker loop's existing
+        # ``_handle_cookie_expired(state)`` handler then pauses the queue.
+        # No ``cookie_pause`` phase wrap here: the failing item is terminal
+        # and never sleeps awaiting a resume (see plan-review eng B2).
+        if collector is not None:
+            collector.record_error("cookie_expired")
+        raise
 
 
 async def _finalize_item(state: QueueItemState) -> None:
