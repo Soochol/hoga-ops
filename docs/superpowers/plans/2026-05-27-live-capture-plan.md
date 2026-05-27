@@ -2582,6 +2582,89 @@ uv run pytest tests/unit/live/test_adr_invariants.py -v
 
 ---
 
+## Deep Sample Audit (2026-05-27, 공식 리포 156개 endpoint 전수 조사 결과)
+
+Task 1.0의 후속 검토로 KIS 공식 sample (`koreainvestment/open-trading-api`)의 `examples_llm/domestic_stock/`, `examples_user/kis_auth.py`, `kis_devlp.yaml`, README를 깊이 audit. 5개 핵심 변경사항을 본 plan에 통합한다.
+
+### Audit-1: After-Hours endpoint 추가 (Apply now)
+
+15:30~16:00 사이 정규장 endpoint(`inquire-time-itemconclusion`)는 closing-price-match 거래를 커버하지 않는다. 공식 sample에 별도 시간외 endpoint 존재:
+
+| 용도 | Endpoint | TR_ID |
+|---|---|---|
+| 시간외 체결 | `/uapi/domestic-stock/v1/quotations/inquire-time-overtimeconclusion` | `FHPST02310000` |
+| 시간외 10호가 | `/uapi/domestic-stock/v1/quotations/inquire-overtime-asking-price` | `FHPST02300400` |
+| 시간외 현재가 | `/uapi/domestic-stock/v1/quotations/inquire-overtime-price` | `FHPST02300000` |
+
+핵심 파라미터: `FID_HOUR_CLS_CODE = "1"`.
+
+**Stage 변경**:
+- Stage 1.x KisClient: `fetch_overtime_orderbook(code)`, `fetch_overtime_trades(code)` 메서드 추가
+- Stage 4 Poller `run_one_cycle`: 현재 시각이 15:30 KST 이후이면 (정규장 종료 후~16:00) overtime endpoints 호출, 그 외에는 regular endpoints. 시간 분기는 KST 비교 단순 if문.
+- LiveSnapshot.payload에 `phase: "regular" | "after_hours_closing"` 필드 추가 — 분석시 구간 구분 가능.
+- spec §10 운영 일정 표에 시간 분기 명시: `09:00–15:30 = regular endpoints` / `15:30–16:00 = overtime endpoints`.
+
+**Out of plan**: 16:00~18:00 시간외 단일가 거래 (별도 endpoint `inquire-time-overtimeconclusion` 파라미터 변경)는 Phase 2.
+
+### Audit-2: Auction Cross 처리 — side enum 확장 (Apply now)
+
+09:00 시가 단일가, 15:30 종가 단일가 시점에는 askp/bidp 정의가 정규장과 다르고 Lee-Ready 분기가 무의미. 또한 단일가는 정의상 체결이 1건만 발생.
+
+**Stage 변경**:
+- Stage 2.2 LiveTrade `side` 타입을 `Literal[-1, 0, 1]`이 아닌 `Literal[-1, 0, 1, 2]`로 확장. 의미:
+  - `+1` = 매수 aggressor (Lee-Ready: prpr ≥ askp)
+  - `-1` = 매도 aggressor (Lee-Ready: prpr ≤ bidp)
+  - `0` = 중간가 체결 (Lee-Ready ambiguous)
+  - `2` = 단일가 체결 (auction cross, Lee-Ready 미적용)
+- `classify_side(t_ms, prpr, askp, bidp)` 헬퍼: t_ms가 KST 08:50:00–09:00:00 또는 15:20:00–15:30:00 윈도우 안이면 `2` 반환 가드.
+- promote.py: 단일가 row는 trades.parquet에 side=2로 저장. FillStrength 집계(Stage 6)는 side∈{-1,+1}만 사용 (side=0/2는 제외).
+
+### Audit-3: 토큰 운영 — 1분 cool-down 가드 + KIS 6h same-token 정책 (Apply now)
+
+KIS REST 토큰은 24h 유효하지만 **1분당 1회 발급 제한** + **6시간 이내 재요청 시 동일 토큰 반환** (공식 sample `kis_auth.py` 주석).
+
+**Stage 변경**:
+- Stage 1.1 KisClient에 `_last_token_issued_at` 트래커. `_issue_token()` 호출 직전 `now - _last_token_issued_at < 60s`면 즉시 raise `KisAuthError("token reissue cooldown")` (재기동 race 보호).
+- 헤더 빌더에 `custtype: "P"` (개인) 기본 포함.
+- spec §10 노트 추가: "6시간 이내 재발급 호출은 KIS가 동일 토큰을 반환 — 새 토큰을 기대하지 말 것".
+
+### Audit-4: EGW00201 specific backoff (Apply now)
+
+공식 sample은 generic `rt_cd != "0"` 핸들링만 제공. EGW00201("초당 거래건수 초과")은 별도 분기 필요.
+
+**Stage 변경**:
+- Stage 1.x `KisRateLimitError`는 이미 정의됨 — `msg_cd == "EGW00201"` 정확 매칭으로 raise.
+- Stage 4 Poller: rate-limited 발생시 **exponential backoff** (1s → 2s → 4s, 최대 30s)로 cycle 내 retry. backoff 카운터는 cycle 끝에 reset.
+- Eng review C6 (rate limit starvation guard)와 이 변경이 합쳐져 starvation도 처리됨 — backoff 후 다음 cycle에서 last_success_cycle 순서로 starve된 종목부터 우선.
+
+### Audit-5: WebSocket 인식 + Lee-Ready 과투자 금지 (Schema design only — Apply now)
+
+공식 sample의 WebSocket 모듈 `H0STCNT0`은 체결 push에 `SELN_CNTG_CSNU` / `SHNU_CNTG_CSNU` (매도/매수 건수) 직접 포함 — Phase 2에서 WS 도입 시 Lee-Ready 불필요.
+
+**Stage 변경 (schema 미리 설계)**:
+- Stage 2.2 LiveTrade에 `side_source: Literal["inferred", "direct", "auction"] = "inferred"` 추가. Phase 1에서는 항상 `"inferred"` (Lee-Ready 결과) 또는 `"auction"` (단일가). Phase 2 WS 도입 시 `"direct"` 추가만 하면 됨, schema 그대로.
+- Stage 4 Lee-Ready 구현은 baseline (단순 prpr vs askp/bidp 비교) 까지만. **인접 tick correction, tick rule fallback 등 학술적 정확도 향상 작업은 금지** (Phase 2에서 WS로 전환되면 sunk cost).
+- spec §13 "Deferred / Out of Plan Scope"에 명시: "Phase 2 WS 도입 시 Lee-Ready 코드 경로는 deprecate 후보 — `side_source="inferred"` 분기가 자연스럽게 obsolete."
+
+### Audit-6: `volume-power` 회귀 가드 (Apply now)
+
+공식 sample에 `volume-power` endpoint(체결강도)가 별도로 존재 — 우리가 Lee-Ready로 도출하려는 FillStrength와 같은 지표를 KIS가 공식 계산값으로 제공.
+
+**Stage 변경**:
+- Stage 13.x 새 task: 우리 FillStrength 계산을 KIS `volume-power` 결과와 cross-check. 차이가 너무 크면 Lee-Ready 분기 점검 (회귀 가드).
+- 단, production wire에는 노출 안 함 — 우리 자체 계산이 single source of truth.
+
+### Audit Out-of-Scope (Phase 2 후보)
+
+- `inquire-vi-status` (변동성완화장치 발동 상태) — Live Sidebar 배지로 가치, Phase 2.
+- `inquire-price` 의 시총·PER·52주 메타 — Live Sidebar 카드 확장, Phase 2.
+- WebSocket `H0STMBC0` (실시간 회원사 변동) — Broker Day-Trajectory 빈도 향상, Phase 2.
+- `inquire-overtime-asking-price` 시간외 단일가 16:00~18:00 — 본 plan은 16:00까지만, Phase 2.
+
+본 audit으로 plan은 최종 형태에 도달. Stage 1.1부터는 본 변경사항을 반영한 KisClient 구현이 시작점.
+
+---
+
 ## Pre-Stage Decisions Added (review 머지)
 
 ### F-extra. Single-worker assertion (Eng B2)

@@ -173,7 +173,7 @@ def main() -> int:
         _save(f"candle_d_{args.code}", r.json())
 
         # 7. 시간대별 체결 (side info candidate, per 공식 샘플 inquire_time_itemconclusion)
-        print(f"[7/7] GET inquire-time-itemconclusion  code={args.code}")
+        print(f"[7/9] GET inquire-time-itemconclusion  code={args.code}")
         r = client.get(
             "/uapi/domestic-stock/v1/quotations/inquire-time-itemconclusion",
             headers={**base_headers, "tr_id": "FHPST01060000"},
@@ -182,7 +182,32 @@ def main() -> int:
         r.raise_for_status()
         _save(f"timeconclusion_{args.code}", r.json())
 
-    print(f"\nAll 7 responses saved to {FIXTURES_DIR}/")
+        # 8. 시간외 체결 (15:30~16:00 closing-price match) — Deep Audit-1
+        print(f"[8/9] GET inquire-time-overtimeconclusion  code={args.code}")
+        r = client.get(
+            "/uapi/domestic-stock/v1/quotations/inquire-time-overtimeconclusion",
+            headers={**base_headers, "tr_id": "FHPST02310000"},
+            params={**params, "fid_hour_cls_code": "1"},
+        )
+        # 시간외 endpoint는 15:30 이후가 아니면 빈 결과 — non-200도 허용
+        if r.status_code == 200:
+            _save(f"overtime_conclusion_{args.code}", r.json())
+        else:
+            print(f"  skipped (HTTP {r.status_code})")
+
+        # 9. 시간외 10호가 — Deep Audit-1
+        print(f"[9/9] GET inquire-overtime-asking-price  code={args.code}")
+        r = client.get(
+            "/uapi/domestic-stock/v1/quotations/inquire-overtime-asking-price",
+            headers={**base_headers, "tr_id": "FHPST02300400"},
+            params=params,
+        )
+        if r.status_code == 200:
+            _save(f"overtime_orderbook_{args.code}", r.json())
+        else:
+            print(f"  skipped (HTTP {r.status_code})")
+
+    print(f"\nAll responses saved to {FIXTURES_DIR}/")
     return 0
 
 
