@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useTabsStore } from '../state/tabs';
 import { useViewportStore } from '../state/viewport';
+import { SourceChip } from '../chart/SourceChip';
 
 /**
  * PriceStrip — viewport-tracked price + delta% header for the active tab.
@@ -25,6 +26,16 @@ export default function PriceStrip() {
     if (active.status !== 'loaded') return [];
     const dates = [...active.bundles.keys()].sort();
     return dates.flatMap((d) => active.bundles.get(d)?.candles ?? []);
+  }, [active.status, active.bundles]);
+
+  // Resolve the last segment's source from the chronologically latest bundle
+  // (ADR-0039). This is what SourceChip surfaces in the strip.
+  const lastSegmentSource = useMemo(() => {
+    if (active.status !== 'loaded') return undefined;
+    const dates = [...active.bundles.keys()].sort();
+    const lastDate = dates.at(-1);
+    if (!lastDate) return undefined;
+    return active.bundles.get(lastDate)?.segments.at(-1)?.source;
   }, [active.status, active.bundles]);
 
   // Update tabs.cursorMs based on right edge (Task 6.5 contract). Wrapped
@@ -76,6 +87,7 @@ export default function PriceStrip() {
           {delta.toFixed(2)}%
         </span>
       )}
+      <SourceChip source={lastSegmentSource} />
     </div>
   );
 }

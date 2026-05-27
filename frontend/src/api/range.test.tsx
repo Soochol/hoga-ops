@@ -77,7 +77,7 @@ describe('useRange', () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({} as RangeBundle);
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_live' });
 
-    const { result } = renderHook(
+    renderHook(
       () => useRange('005930', '20260520', '20260520', '1m'),
       { wrapper: makeWrapper() },
     );

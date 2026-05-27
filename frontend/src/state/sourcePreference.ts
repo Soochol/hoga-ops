@@ -41,7 +41,7 @@ function persist(state: { sourcePreference: SourcePreference }): void {
   }
 }
 
-export const useSourcePreferenceStore = create<Store>((set, get) => ({
+export const useSourcePreferenceStore = create<Store>((set, _get) => ({
   sourcePreference: readStorage()?.sourcePreference ?? 'hogaplay',
 
   setSourcePreference: (value) => {
