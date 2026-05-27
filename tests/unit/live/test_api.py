@@ -38,7 +38,7 @@ def test_get_live_status_returns_running_false_initially() -> None:
 def test_post_live_control_dispatches_action() -> None:
     recorded: list[str] = []
 
-    def fake_control(action: str) -> None:
+    async def fake_control(action: str) -> None:
         recorded.append(action)
 
     app = _make_test_app(control_fn=fake_control)
@@ -48,8 +48,12 @@ def test_post_live_control_dispatches_action() -> None:
         assert recorded == ["stop"]
 
 
+async def _async_noop(action: str) -> None:
+    pass
+
+
 def test_post_live_control_rejects_unknown_action() -> None:
-    app = _make_test_app(control_fn=lambda action: None)
+    app = _make_test_app(control_fn=_async_noop)
     with TestClient(app) as c:
         r = c.post("/api/live/control", json={"action": "nuke"})
         assert r.status_code == 422  # pydantic validation error

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import time
+from collections.abc import Awaitable
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Callable, Literal
 
@@ -31,7 +32,7 @@ class ControlRequest(BaseModel):
 def build_router(
     get_status: Callable[[], LiveStatus],
     get_buffer: Callable[[], LiveBuffer] | None = None,
-    on_control: Callable[[str], None] | None = None,
+    on_control: Callable[[str], Awaitable[None]] | None = None,
     get_kis_client: "Callable[[], KisClient | None] | None" = None,
 ) -> APIRouter:
     """Build the /api/live router.
@@ -53,7 +54,7 @@ def build_router(
     async def _post_control(req: ControlRequest) -> dict[str, str]:
         if on_control is None:
             raise HTTPException(503, "live control not wired (Stage 8)")
-        on_control(req.action)
+        await on_control(req.action)
         return {"action": req.action, "ok": "true"}
 
     @router.get("/snapshot")

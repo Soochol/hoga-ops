@@ -32,6 +32,7 @@ from hoga.live.api import build_router as build_live_router
 from hoga.live.lifecycle import get_buffer as live_get_buffer
 from hoga.live.lifecycle import get_kis_client as live_get_kis_client
 from hoga.live.lifecycle import get_status as live_get_status
+from hoga.live.lifecycle import start_live_poller, stop_live_poller
 from hoga.live.migrate import migrate_to_v2_layout
 
 log = logging.getLogger(__name__)
@@ -57,6 +58,17 @@ def create_app(data_dir: Path) -> FastAPI:
     else:
         client_factory = _real_client_factory
 
+    async def _live_control(action: str) -> None:
+        """Dispatch POST /api/live/control actions to the lifecycle layer."""
+        if action == "start":
+            await start_live_poller(data_dir=data_dir)
+        elif action == "stop":
+            await stop_live_poller()
+        elif action == "pause":
+            # Stage 8: treat pause as stop. Future: true pause (freeze loop
+            # but keep buffer + status alive).
+            await stop_live_poller()
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         migrate_to_v2_layout(data_dir)
@@ -71,6 +83,9 @@ def create_app(data_dir: Path) -> FastAPI:
         # `start_scheduler` raises.
         _scheduler_tasks: list = []
         _scheduler_tasks = start_scheduler(data_dir)
+        # Stage 8: Start the live poller (graceful degradation: no-op if
+        # KIS_APP_KEY/SECRET missing or watchlist is empty).
+        await start_live_poller(data_dir=data_dir)
         # Tier 1 of the pykrx 3-tier cache policy: load Symbol Master from disk
         # at boot so GET /api/symbols/all is immediately warm without a network call.
         _symbols_module.load_disk_state(
@@ -79,6 +94,9 @@ def create_app(data_dir: Path) -> FastAPI:
         try:
             yield
         finally:
+            # Stop the live poller before scheduler to avoid new ticks being
+            # written while the scheduler is shutting down.
+            await stop_live_poller()
             # Cancel scheduler tasks BEFORE stopping the worker pool: the
             # scheduler enqueues to the workers, so kill the trigger first
             # and then let the workers drain.
@@ -133,6 +151,7 @@ def create_app(data_dir: Path) -> FastAPI:
         build_live_router(
             get_status=live_get_status,
             get_buffer=live_get_buffer,
+            on_control=_live_control,
             get_kis_client=live_get_kis_client,
         )
     )

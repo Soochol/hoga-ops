@@ -78,3 +78,40 @@ async def test_stop_live_poller_is_idempotent(tmp_path: Path) -> None:
     await lifecycle.stop_live_poller()
     await lifecycle.stop_live_poller()
     assert lifecycle.get_status().running is False
+
+
+@pytest.mark.asyncio
+async def test_lifespan_starts_and_stops_poller_gracefully(tmp_path: Path, monkeypatch) -> None:
+    """The FastAPI lifespan integrates start_live_poller + stop_live_poller."""
+    import json
+    from fastapi.testclient import TestClient
+
+    from hoga.api.app import create_app
+    from hoga.live import lifecycle, poller as poller_module
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setenv("KIS_APP_KEY", "K")
+    monkeypatch.setenv("KIS_APP_SECRET", "S")
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "version": 1,
+        "entries": [
+            {"code": "005930", "name": "삼성전자",
+             "registered_at_kst_date": "20260101", "last_success_date": None},
+        ],
+    }))
+
+    async def fake_run_forever(self):
+        while True:
+            await asyncio.sleep(60)
+    monkeypatch.setattr(poller_module.LivePoller, "run_forever", fake_run_forever)
+
+    app = create_app(tmp_path)
+    with TestClient(app) as c:
+        r = c.get("/api/live/status")
+        assert r.status_code == 200
+        # With creds + watchlist + fake run_forever, poller should be running
+        assert r.json()["running"] is True
+        assert r.json()["watchlist_count"] == 1
+
+    # After TestClient exits, lifespan finally ran — poller should be stopped
+    assert lifecycle.get_status().running is False
