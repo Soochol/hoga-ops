@@ -43,6 +43,9 @@ async function open() {
     src.addEventListener('capture_queue_drained', (e: MessageEvent) =>
       emit({ type: 'capture_queue_drained', ...JSON.parse(e.data) }),
     );
+    src.addEventListener('capture_timing', (e: MessageEvent) =>
+      emit({ type: 'capture_timing', ...JSON.parse(e.data) }),
+    );
     src.addEventListener('heartbeat', () => {
       _lastHeartbeatMs = Date.now();
       emit({ type: 'heartbeat' });
