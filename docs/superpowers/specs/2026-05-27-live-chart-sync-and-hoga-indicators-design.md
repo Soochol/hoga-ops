@@ -159,10 +159,10 @@ GET /api/range?code=<code>&from=<YYYYMMDD>&to=<YYYYMMDD>&bucket_ms=<ms>&source_p
 - Auction Window(15:20–15:30): ADR-0029대로 whitespace.
 - 데이터 없는 bucket: whitespace (0으로 padding 금지).
 
-**디버깅 후보 (plan에서 검증):**
-- (H1) 백엔드 SSE 페이로드의 필드명이 변경됐는데 frontend가 옛 이름(`total_ask_qty` 등)을 읽어 `numOr0`이 0 fallback. SSE event 1건 캡쳐해서 실제 키 확인.
-- (H2) 현재 코드가 bucket 없이 초 단위 plot이라 분봉 차트에서 미세 잡음으로 보임 — 이번 spec의 bucket 도입으로 자동 해결.
-- (H3) FillStrength의 `side === 1/-1` 매칭이 백엔드 데이터의 실제 enum(예: `'B'`/`'S'`, 또는 0/1)과 다름.
+**디버깅 후보 검증 결과 (plan/Task 7):**
+- (H1) backend `KisOrderbook` exposes `total_ask_qty` / `total_bid_qty` ([hoga/live/kis_client.py:252-253](../../hoga/live/kis_client.py#L252)) — same names frontend already reads. **Not a bug.**
+- (H2) Pre-spec frontend plotted raw second-level events on a minute-bucket chart, producing dense noise. **Fixed by Task 1's `bucketHogaSeries`.**
+- (H3) KIS `classify_side` returns -1 / 0 / 1 / 2 ([hoga/live/kis_client.py:34-40](../../hoga/live/kis_client.py#L34)). `bucketHogaSeries` sums only 1 and -1, matching `/replay`'s FillStrength projector. **Not a bug.**
 
 ## 구현 단계 (Migration Strategy)
 
