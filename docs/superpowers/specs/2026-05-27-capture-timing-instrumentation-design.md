@@ -90,15 +90,15 @@ class CaptureTimingCollector:
     def to_dict(self) -> dict:                   # JSON 파일용 (페이지 detail 포함)
 ```
 
-**Phase 이름 (고정 enum):**
+**Phase 이름 (고정 enum):** 이 7개 label은 CONTEXT.md의 **Timing Phase** 도메인 용어. 이 spec 전반에서 "phase"는 **Timing Phase**를 가리키며, **Capture Queue** 라이프사이클 `phase` (`queued`/`active`/`done`/...) 와 다른 개념임을 유의.
 
 | Phase | 측정 대상 |
 |---|---|
 | `http_fetch` | first.php / chart.php / info.php 요청 왕복 |
 | `parse` | TSV → in-memory rows |
 | `disk_write` | TSV/parquet write |
-| `rate_limit` | `time.sleep(rate_limit_s)` 누적 |
-| `backoff` | 429 처리 sleep 누적 |
+| `rate_limit` | 페이지당 `time.sleep(rate_limit_s)` 누적. **ADR-0017의 throttle auto-backoff 더블링은 이 phase에 흡수됨** — 더블링되는 게 `rate_limit_s` 자체이므로 |
+| `backoff` | `_run_capture_and_parse`의 **상위 레벨 retry sleep**(5/10/30s 등) 누적. ADR-0017의 rate_limit 더블링과 구별 |
 | `cookie_pause` | cookie 만료 pool 일시정지 |
 | `other` | 위 어디에도 안 잡힌 잔여 (sanity check용) |
 
@@ -120,7 +120,7 @@ class CaptureTimingCollector:
 | 페이지 parse 직후 | `with collector.phase("parse"):` | `parse` |
 | `_write_page_tsv` (또는 동등 위치) | `with collector.phase("disk_write"):` | `disk_write` |
 | `time.sleep(rate_limit_s)` | `with collector.phase("rate_limit"):` | `rate_limit` |
-| `hoga/api/captures.py` 429 backoff (~L518) | `with collector.phase("backoff"):` + `record_error("429")` | `backoff` |
+| `hoga/api/captures.py` 상위 레벨 429 retry (~L518; 5/10/30s sleep) | `with collector.phase("backoff"):` + `record_error("429")` | `backoff` |
 | `hoga/api/captures.py` cookie expired (~L710) | `with collector.phase("cookie_pause"):` + `record_error("cookie_expired")` | `cookie_pause` |
 
 ### 3.3 Collector lifecycle
