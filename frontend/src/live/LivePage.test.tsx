@@ -15,37 +15,15 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
-// LiveWorkarea now mounts LiveCandlePane + LiveIndicatorPane (chart panes)
-// when an activeCode is set. Mock lightweight-charts so the chart creation
-// doesn't blow up in jsdom (no canvas, DevicePixelRatio observer, etc.).
-// lightweight-charts v5 uses addSeries(SeriesDefinition, options) API.
-vi.mock('lightweight-charts', async () => {
-  const mockSeriesObj = { setData: vi.fn(), applyOptions: vi.fn() };
-  const mockChart = {
-    addSeries: vi.fn(() => mockSeriesObj),
-    remove: vi.fn(),
-    applyOptions: vi.fn(),
-    timeScale: vi.fn(() => ({
-      applyOptions: vi.fn(),
-      subscribeVisibleTimeRangeChange: vi.fn(),
-      fitContent: vi.fn(),
-      scrollToRealTime: vi.fn(),
-    })),
-    resize: vi.fn(),
-  };
-  const actual = await vi.importActual<any>('lightweight-charts');
-  return {
-    ...actual,
-    createChart: vi.fn(() => mockChart),
-  };
-});
-
-// useLiveCandles and useLiveSeries use EventSource / fetch which are not
-// available in jsdom. Mock both hooks so LivePage tests stay unit-level.
-vi.mock('../api/liveCandles', () => ({
-  useLiveCandles: () => ({ data: undefined, isLoading: false, candles: [] }),
+// LiveWorkarea now mounts LiveChartRoot (single chart, 5 panes) when an
+// activeCode is set. Mock LiveChartRoot so the shell tests stay unit-level
+// and don't have to model lightweight-charts' full v5 series/timeScale API.
+vi.mock('./LiveChartRoot', () => ({
+  LiveChartRoot: () => null,
 }));
 
+// LiveSidebar reads live status via useLiveSeries (EventSource), which isn't
+// available in jsdom. Mock the hook so the shell tests stay unit-level.
 vi.mock('../api/liveSeries', () => ({
   useLiveSeries: () => ({
     initial: undefined, isLoading: false, error: null,
