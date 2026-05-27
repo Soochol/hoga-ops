@@ -115,13 +115,17 @@ State 컬럼 바로 우측.
 
 | full_capture_count | 셀 내용 |
 |---|---|
-| `null` (legacy) | `—` (text-fg-dimmer) |
-| `1` | `×1` (text-fg-dimmer + border-fg-dimmer — 차분한 톤) |
-| `≥ 2` | `×N` (text-fg-dim + border-fg-dim — 표준 뱃지) |
+| `null` (legacy) | `×1` (text-fg-dimmer + border-fg-dimmer — 차분한 톤). 툴팁: `Full Capture 횟수 미기록 (≥1로 간주)`. |
+| `1` | `×1` (text-fg-dimmer + border-fg-dimmer — 차분한 톤). 툴팁: `Full Capture 누적 1회`. |
+| `≥ 2` | `×N` (text-fg-dim + border-fg-dim — 표준 뱃지). 툴팁: `Full Capture 누적 N회`. |
+
+legacy는 시각적으로 `×1`과 동일하다 — 디스크에 meta.json이 존재한다는 사실
+자체가 "≥1회 캡처됨"의 증거이므로 lower-bound로 `1` 표시가 정직. 진짜 1과
+legacy를 구분하고 싶다면 hover 툴팁이 정확한 의미를 알려준다.
 
 뱃지는 [CaptureQueueRow.tsx:53-58](frontend/src/capture/CaptureQueueRow.tsx#L53-L58)의 `attempt` `×N` 칩과
 동일 형태(border + text-badge + rounded-md + tabular-nums). 컬럼 시각 문법이
-한 가지(`×N`)로 통일되어 null 외에는 모두 같은 어휘를 사용.
+한 가지(`×N`)로 완전히 통일.
 
 ### 4.3 헤더
 

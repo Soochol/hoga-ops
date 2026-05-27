@@ -124,21 +124,24 @@ describe('nextSortState', () => {
   });
 });
 
-describe('sortDates fullCaptureCount', () => {
+describe('sortDates fullCaptureCount (null treated as 1)', () => {
   const rows: StockDate[] = [
     row('20260520', { full_capture_count: 3 }),
     row('20260521', { full_capture_count: null }),
     row('20260522', { full_capture_count: 1 }),
   ];
 
-  it('sorts by fullCaptureCount desc, putting nulls last', () => {
+  it('sorts desc by effective count (null counts as 1), date desc tie-break', () => {
     const out = sortDates(rows, { key: 'fullCaptureCount', dir: 'desc' });
-    expect(out.map(r => r.full_capture_count)).toEqual([3, 1, null]);
+    // 3 first; the two ×1s (real 1 + legacy null) tie-break by date desc:
+    // 20260522 (real 1) before 20260521 (null = 1).
+    expect(out.map(r => r.date)).toEqual(['20260520', '20260522', '20260521']);
   });
 
-  it('sorts by fullCaptureCount asc, still keeping nulls last', () => {
+  it('sorts asc by effective count (null counts as 1), date desc tie-break', () => {
     const out = sortDates(rows, { key: 'fullCaptureCount', dir: 'asc' });
-    expect(out.map(r => r.full_capture_count)).toEqual([1, 3, null]);
+    // Both 1s come first (date desc tie-break), then the 3.
+    expect(out.map(r => r.date)).toEqual(['20260522', '20260521', '20260520']);
   });
 });
 

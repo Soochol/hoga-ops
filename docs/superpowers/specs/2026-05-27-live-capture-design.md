@@ -56,11 +56,11 @@ hoga/live/
 
 [Storage]
 <data_dir>/live/{date}/{code}.jsonl                  ← 장 중 임시
-<data_dir>/raw/{date}/{code}/kis_live/orderbook.parquet
+<data_dir>/parquet/{date}/{code}/kis_live/snapshots.parquet
                               /kis_live/trades.parquet
                               /kis_live/brokers.parquet
                               /kis_live/meta.json    ← {source: "kis_live", ...}
-<data_dir>/raw/{date}/{code}/hogaplay/...            ← 기존, 변경 없음
+<data_dir>/parquet/{date}/{code}/hogaplay/...            ← 기존, 변경 없음
 
 [Frontend]
 /live (새 라우트)
@@ -97,15 +97,15 @@ hoga/live/
    ```
    # JSONL이 존재하지만 아직 kis_live Parquet으로 승격되지 않은 모든 (date, code) 쌍 찾기
    for (date, code) in scan_unpromoted_jsonls(<data_dir>/live/):
-     # 멱등 가드: raw/{date}/{code}/kis_live/meta.json 존재시 skip
-     if (raw/{date}/{code}/kis_live/meta.json).exists():
+     # 멱등 가드: parquet/{date}/{code}/kis_live/meta.json 존재시 skip
+     if (parquet/{date}/{code}/kis_live/meta.json).exists():
        continue
      rows = read_jsonl(<data_dir>/live/{date}/{code}.jsonl)
      entities = convert_to_entities(rows)
-     write_parquet(raw/{date}/{code}/kis_live/orderbook.parquet, entities.orderbooks)
-     write_parquet(raw/{date}/{code}/kis_live/trades.parquet,    entities.trades)
-     write_parquet(raw/{date}/{code}/kis_live/brokers.parquet,   entities.brokers)
-     write_meta(raw/{date}/{code}/kis_live/meta.json, source="kis_live", ...)
+     write_parquet(parquet/{date}/{code}/kis_live/snapshots.parquet, entities.orderbooks)
+     write_parquet(parquet/{date}/{code}/kis_live/trades.parquet,    entities.trades)
+     write_parquet(parquet/{date}/{code}/kis_live/brokers.parquet,   entities.brokers)
+     write_meta(parquet/{date}/{code}/kis_live/meta.json, source="kis_live", ...)
      archive(jsonl_path)  # 또는 삭제 — plan에서 결정
    ```
    멱등 보장: meta.json 존재 = 승격 완료. 중복 실행해도 안전.
@@ -397,7 +397,7 @@ KIS_ENV=real            # paper 미지원
 3. Live Sidebar 3카드(10호가/거래원/체결)가 최신 상태를 표시한다.
 4. ⭐ 토글로 Watchlist 패널이 열리고, 종목 클릭시 active code가 전환된다.
 5. 캔들 차트가 호가 지표 차트와 X축 동기화된다.
-6. 18:00에 promote가 실행되어 `<data_dir>/raw/{date}/{code}/kis_live/*.parquet`이 생성된다.
+6. 18:00에 promote가 실행되어 `<data_dir>/parquet/{date}/{code}/kis_live/*.parquet`이 생성된다.
 7. 다음 날 `/replay`에서 같은 Stock-Date를 열면 sourcePreference 토글로 hogaplay/kis_live 사이를 전환할 수 있다.
 8. KIS 토큰 만료시 자동 갱신, 갱신 실패시 UI 배너로 사용자에게 알린다.
 9. 30종목 watchlist에서 cycle_lag_ms가 5초 미만으로 유지된다 (rate limit 안전 마진).

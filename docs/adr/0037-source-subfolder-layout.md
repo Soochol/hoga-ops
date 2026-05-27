@@ -13,23 +13,23 @@
 같은 **Stock-Date**에 둘 이상의 **Source**(`hogaplay`, `kis_live`)가 공존할 수 있게 되면서, captures 디스크 트리에 **source 레벨 디렉토리**를 추가한다:
 
 ```
-<data_dir>/raw/{date}/{code}/{source}/orderbook.parquet
+<data_dir>/parquet/{date}/{code}/{source}/snapshots.parquet
                               {source}/trades.parquet
                               {source}/brokers.parquet
                               {source}/meta.json
 ```
 
-기존 단일 source 가정의 경로 `<data_dir>/raw/{date}/{code}/orderbook.parquet`는 **마이그레이션**된다 — 기존 데이터는 `{source=hogaplay}` 서브디렉토리로 이동.
+기존 단일 source 가정의 경로 `<data_dir>/parquet/{date}/{code}/snapshots.parquet`는 **마이그레이션**된다 — 기존 데이터는 `{source=hogaplay}` 서브디렉토리로 이동.
 
-`.no_upstream_data` sentinel(ADR-0021)도 source별로 분리된다 — `<data_dir>/raw/{date}/{code}/{source}/.no_upstream_data`. 한 source에 데이터가 없다는 사실이 다른 source의 가용성을 부정하지 않기 때문.
+`.no_upstream_data` sentinel(ADR-0021)도 source별로 분리된다 — `<data_dir>/parquet/{date}/{code}/{source}/.no_upstream_data`. 한 source에 데이터가 없다는 사실이 다른 source의 가용성을 부정하지 않기 때문.
 
 ## Why
 
 세 가지 대안을 검토했다.
 
-**A. 파일명 prefix** (`raw/{date}/{code}/orderbook.hogaplay.parquet`)
+**A. 파일명 prefix** (`parquet/{date}/{code}/orderbook.hogaplay.parquet`)
 거부 사유:
-- 전 코드베이스가 `orderbook.parquet`라는 고정 파일명을 `Table.load(...)` / `disk_state.classify_from_meta` / Inventory의 size_bytes 합산 / Invariant 카탈로그 등 여러 곳에서 가정. glob 패턴으로 변경해야 하는데 그 변경 범위가 source 서브폴더 도입보다 크다.
+- 전 코드베이스가 `snapshots.parquet`라는 고정 파일명을 `Table.load(...)` / `disk_state.classify_from_meta` / Inventory의 size_bytes 합산 / Invariant 카탈로그 등 여러 곳에서 가정. glob 패턴으로 변경해야 하는데 그 변경 범위가 source 서브폴더 도입보다 크다.
 - 메타 파일(`meta.json`, `progress.json`, `.no_upstream_data`)에도 동일한 prefix를 강제해야 한다 — sentinel/marker가 여러 source에 따라 분기되는 게 디렉토리 분리보다 추론하기 어렵다.
 - 사용자가 디렉토리를 열어 봤을 때 한눈에 어떤 source가 있는지 보이지 않는다.
 
@@ -57,7 +57,7 @@
 
 ### 마이그레이션
 
-기존 `<data_dir>/raw/{date}/{code}/*.parquet`가 존재하면:
+기존 `<data_dir>/parquet/{date}/{code}/*.parquet`가 존재하면:
 - 자동 일회 마이그레이션 스크립트로 `hogaplay/` 서브디렉토리로 이동.
 - 마이그레이션 끝난 표시는 `<data_dir>/.layout_v2` sentinel.
 - 마이그레이션 미완 상태에서 새 코드 실행시 일시 정지 → 자동 마이그레이션 → 재개.
@@ -74,7 +74,7 @@ ADR-0020의 invariant `check` 함수는 meta dict를 받아서 위반 여부 반
 
 ## Invariant introduced
 
-> `<data_dir>/raw/{date}/{code}/` 직속 자식은 source 디렉토리뿐이다. parquet/json 파일이 직속에 놓이지 않는다.
+> `<data_dir>/parquet/{date}/{code}/` 직속 자식은 source 디렉토리뿐이다. parquet/json 파일이 직속에 놓이지 않는다.
 
 위반 시: legacy 경로 코드와 새 코드가 둘 다 valid한 데이터를 만든다고 착각해서 둘 다 읽는 race가 발생.
 

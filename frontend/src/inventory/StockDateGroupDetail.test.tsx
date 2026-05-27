@@ -199,14 +199,18 @@ describe('StockDateGroupDetail full_capture_count column', () => {
   beforeEach(() => { setupFetch(); });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it('renders "—" when full_capture_count is null', async () => {
+  it('renders faint "×1" when full_capture_count is null (legacy treated as ×1)', async () => {
     const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: null };
     renderDetail([r], '005930', new QueryClient());
     const dateEl = await screen.findByText('2026-05-22');
     const tr = dateEl.closest('tr');
     expect(tr).not.toBeNull();
     const cell = within(tr!).getByTestId('full-capture-count-cell');
-    expect(cell.textContent).toBe('—');
+    expect(cell.textContent).toBe('×1');
+    // Tooltip stays honest about the legacy lower-bound nature.
+    expect(cell.querySelector('span')?.getAttribute('title')).toBe(
+      'Full Capture 횟수 미기록 (≥1로 간주)'
+    );
   });
 
   it('renders faint "×1" when full_capture_count is 1', async () => {

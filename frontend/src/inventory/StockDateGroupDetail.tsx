@@ -195,18 +195,22 @@ function RowRecaptureButton({
 }
 
 function FullCaptureCountBadge({ n }: { n: number | null }) {
-  if (n === null) {
-    return <span className="text-fg-dimmer">—</span>;
-  }
-  // n=1 renders faintly so the column has one visual grammar (always ×N when known).
-  const tone = n >= 2
+  // Legacy (null) is rendered as ×1 — every Stock-Date on disk has been
+  // captured at least once by construction, so a missing counter is a
+  // lower-bound claim, not "unknown". Tooltip stays honest about the
+  // distinction so a curious user can still see which is which.
+  const effective = n ?? 1;
+  const tone = effective >= 2
     ? 'text-fg-dim border-[var(--fg-dim)]'
     : 'text-fg-dimmer border-[var(--fg-dimmer)]';
+  const title = n === null
+    ? 'Full Capture 횟수 미기록 (≥1로 간주)'
+    : `Full Capture 누적 ${n}회`;
   return (
     <span
-      title={`Full Capture 누적 ${n}회`}
+      title={title}
       className={`text-badge rounded-md px-[0.15rem] border ${tone} font-mono tabular-nums`}
-    >×{n}</span>
+    >×{effective}</span>
   );
 }
 
