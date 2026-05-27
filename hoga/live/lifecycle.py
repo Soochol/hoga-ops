@@ -20,6 +20,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from .buffer import LiveBuffer
+from .kis_client import KisClient
 
 
 class LiveStatus(BaseModel):
@@ -49,10 +50,21 @@ class _State:
 
 _state = _State()
 _buffer = LiveBuffer()
+_kis_client: KisClient | None = None
 
 
 def get_buffer() -> LiveBuffer:
     return _buffer
+
+
+def get_kis_client() -> KisClient | None:
+    return _kis_client
+
+
+def set_kis_client(client: KisClient | None) -> None:
+    """Stage 8 hook: inject the KisClient singleton."""
+    global _kis_client
+    _kis_client = client
 
 
 def _now_ms() -> int:
@@ -120,8 +132,9 @@ def _read_poller_attr(name: str) -> int | None:
 
 def reset_for_tests() -> None:
     """Test-only hook. Resets module state without raising."""
-    global _state, _buffer
+    global _state, _buffer, _kis_client
     if _state.poller_task is not None and not _state.poller_task.done():
         _state.poller_task.cancel()
     _state = _State()
     _buffer = LiveBuffer()
+    _kis_client = None

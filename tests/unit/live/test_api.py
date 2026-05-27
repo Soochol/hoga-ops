@@ -164,3 +164,60 @@ async def test_get_live_stream_emits_published_snapshots() -> None:
     payload = _json.loads(sse_event["data"])
     assert payload["t_ms"] == 42
     assert payload["total_bid_qty"] == 999
+
+
+def test_get_live_candles_503_when_kis_not_set(tmp_path) -> None:
+    from hoga.api.app import create_app
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    app = create_app(tmp_path)
+    with TestClient(app) as c:
+        r = c.get("/api/live/candles?code=005930&timeframe=1m")
+        assert r.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_get_live_candles_returns_kis_response(tmp_path) -> None:
+    from hoga.api.app import create_app
+    from hoga.live import lifecycle
+    from hoga.live.kis_models import KisCandle
+
+    lifecycle.reset_for_tests()
+
+    class _FakeKis:
+        async def fetch_candles(self, code: str, *, timeframe: str) -> list[KisCandle]:
+            return [
+                KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=1000),
+            ]
+
+    lifecycle.set_kis_client(_FakeKis())  # type: ignore[arg-type]
+
+    app = create_app(tmp_path)
+    with TestClient(app) as c:
+        r = c.get("/api/live/candles?code=005930&timeframe=1m")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["candles"][0]["open"] == 100
+        assert body["cached"] is False
+
+        # Second call should hit cache
+        r2 = c.get("/api/live/candles?code=005930&timeframe=1m")
+        assert r2.json()["cached"] is True
+
+
+def test_get_live_candles_invalid_timeframe(tmp_path) -> None:
+    from hoga.api.app import create_app
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+
+    class _FakeKis:
+        async def fetch_candles(self, code, *, timeframe):
+            return []
+
+    lifecycle.set_kis_client(_FakeKis())  # type: ignore[arg-type]
+    app = create_app(tmp_path)
+    with TestClient(app) as c:
+        r = c.get("/api/live/candles?code=005930&timeframe=bad")
+        assert r.status_code == 422

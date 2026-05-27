@@ -30,6 +30,7 @@ from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
 from hoga.live.api import build_router as build_live_router
 from hoga.live.lifecycle import get_buffer as live_get_buffer
+from hoga.live.lifecycle import get_kis_client as live_get_kis_client
 from hoga.live.lifecycle import get_status as live_get_status
 from hoga.live.migrate import migrate_to_v2_layout
 
@@ -132,6 +133,7 @@ def create_app(data_dir: Path) -> FastAPI:
         build_live_router(
             get_status=live_get_status,
             get_buffer=live_get_buffer,
+            get_kis_client=live_get_kis_client,
         )
     )
     if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
