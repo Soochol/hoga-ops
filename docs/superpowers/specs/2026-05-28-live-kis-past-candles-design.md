@@ -5,6 +5,7 @@
 **Scope:** both (backend + frontend)
 **Related:** ADR-0013 (RangeBundle single read-path), ADR-0020 (data integrity invariants),
 ADR-0036 (no resource caps for local deployment), ADR-0038 (live JSONL then promote),
+ADR-0039 (source preference + fallback), ADR-0040 (Live Candle Backfill separate cache),
 commit `253d894` (`KisClient.fetch_past_minute_candles`, Step 1).
 
 ---
@@ -307,6 +308,11 @@ export function useLivePastCandles(
 - `useRange`의 `to`는 여전히 `yesterdayKst` (호가 도메인은 past만; today 호가는 SSE).
 - Timeframe aggregation은 `useLiveBundle` 내 `useMemo`에서 처리 (1m → 그대로, 3m+ → `aggregateCandles`).
 - D/W/M timeframe에서는 `useLivePastCandles` disabled (현재 1m 전용 endpoint).
+- **Cap clamping**: 두 endpoint의 backend cap이 다르다 — `/api/range`는 90일 (CONTEXT.md의 **Stock-Date
+  Range** 정의), `/api/live/past-candles`는 60일 (D4). `/live`는 두 endpoint를 동시 호출하므로 `useLiveBundle`
+  레벨에서 `pastFrom`을 `max(historicalFromDate, today - 60일)`로 *frontend clamping*. 효과: backend 정책은 각자
+  자원 모델에 맞게 독립 유지, /replay는 90일 그대로, /live만 60일 안에서 동작. 사용자가 60일 이전을 scroll로 도달하려
+  시도하면 viewport 정책(49e497e)이 자연 한계로 작동.
 
 ### `buildLiveBundle.ts` 재구성
 
@@ -355,6 +361,30 @@ export interface BuildLiveBundleInput {
 | 5/26 시나리오 시뮬 | 동일 | pastBundle.excluded_dates에 20260526, kisCandles에 20260526 bars → 둘 다 표시 |
 | `useLiveBundle` D/W/M 분기 | `useLiveBundle.test.tsx` | useLivePastCandles disabled |
 | Timeframe aggregation 3m | 동일 | aggregateCandles 호출 |
+
+## Why not promoted Parquet integration (Alt B)
+
+KIS dailychartprice 결과를 `<data_dir>/parquet/{date}/{code}/kis_live/candles.parquet`로 작성해 기존 `/api/range`의
+`source_pref=kis_live` fallback (ADR-0039)으로 자동 처리하는 방안도 가능하다. 그 길이 ADR-0013 (RangeBundle single
+read-path) 정신과 더 깊이 정합한다는 사실은 인정한다. 그러나 다음 이유로 *이 spec에서는 거부*했다:
+
+1. **/replay 비-영향 제약.** 본 spec의 brief는 명시적으로 "/replay에는 변화 없음"을 제약으로 설정. Alt B는 source_pref
+   = kis_live 사용자에게 *자동 파급* — 현재 빈 차트가 갑자기 풍부한 KIS candle로 채워짐. 이는 /replay 사용자 경험 변경이며
+   별도 검토/spec 거리.
+2. **Promotion 패턴과의 미묘한 충돌.** ADR-0038은 Promotion을 "18:00 batched + idempotent"로 정의. Alt B의 on-demand
+   KIS dailychartprice fetch는 *non-batched, mid-day*. 한 디렉토리에 두 writer (cold-path Promotion + hot-path
+   on-demand)가 공존하면 idempotency 정책 + concurrent write 보호 필요.
+3. **meta.json / disk_state / invariant 적용 범위.** kis_live/candles.parquet가 도입되면 `DiskState.classify_from_meta`
+   는 이 새 부분-promotion 상태를 인지해야 하고, ADR-0020 invariant 카탈로그에 KIS candle 무결성 invariants
+   (예: `close > 0`, `t_ms` 단조성)를 추가하는 작업이 동반.
+4. **인크리멘털 도달 경로 존재.** Alt A로 출발한 후 follow-up spec에서 "cache namespace를 promoted Parquet으로
+   migrate" 작업으로 자연스럽게 Alt B에 도달 가능. 반대 방향 (Alt B → Alt A)은 의미 없으므로 *큰 결정을 미루는* 선택이
+   안전.
+
+**결과적 트레이드오프 수용**: KIS candle 데이터가 두 곳 (kis-past-candles cache, kis_live promoted parquet — 후자엔
+현재 candles.parquet 자체가 없음)으로 분산되는 외관상 중복. 실제로는 *두 곳이 같은 데이터를 담지 않으므로* 중복 아님
+— Alt A의 cache는 backfill 결과, kis_live promoted Parquet은 snapshots/trades/brokers만. 이 비-중복성을 follow-up
+spec에서 통합할 때 정리.
 
 ## Risks
 
