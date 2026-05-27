@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StockDateGroupDetail } from './StockDateGroupDetail';
@@ -28,6 +28,7 @@ const row = (code: string, name: string, date: string,
   total_volume: 52_100_000, pages_collected: 1240, file_size_bytes: 13_200_000,
   today_open: 70_000, today_high: 73_000, today_low: 69_000, today_close: 72_400,
   disk_state,
+  full_capture_count: null,
 });
 
 const EMPTY_QUEUE: QueueSnapshot = {
@@ -191,5 +192,38 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     renderDetail([row('005930', '삼성전자', '20260520', 'complete')], '005930', qc);
     expect(screen.queryByRole('button', { name: /Re-capture all incomplete/i })).toBeNull();
+  });
+});
+
+describe('StockDateGroupDetail full_capture_count column', () => {
+  beforeEach(() => { setupFetch(); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('renders "—" when full_capture_count is null', async () => {
+    const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: null };
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr');
+    expect(tr).not.toBeNull();
+    const cell = within(tr!).getByTestId('full-capture-count-cell');
+    expect(cell.textContent).toBe('—');
+  });
+
+  it('renders faint "×1" when full_capture_count is 1', async () => {
+    const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: 1 };
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    const cell = within(tr).getByTestId('full-capture-count-cell');
+    expect(cell.textContent).toBe('×1');
+  });
+
+  it('renders "×3" when full_capture_count is 3', async () => {
+    const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: 3 };
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    const cell = within(tr).getByTestId('full-capture-count-cell');
+    expect(cell.textContent).toBe('×3');
   });
 });

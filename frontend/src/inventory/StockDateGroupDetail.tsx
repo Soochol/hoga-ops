@@ -115,6 +115,7 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
             <tr>
               <th className="px-2 py-2 border-b w-8" aria-label="re-capture" />
               <SortableTh column="state"    sort={sort} onSort={onSort}>State</SortableTh>
+              <SortableTh column="fullCaptureCount" sort={sort} onSort={onSort} right title="Full Capture 누적 횟수">Captures</SortableTh>
               <SortableTh column="date"     sort={sort} onSort={onSort}>Date</SortableTh>
               <SortableTh column="captured" sort={sort} onSort={onSort}>Captured</SortableTh>
               <SortableTh column="volume"   sort={sort} onSort={onSort} right>Volume</SortableTh>
@@ -146,6 +147,12 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
                     ) : null}
                   </td>
                   <td className="px-3 py-1.5 text-center"><DiskStateBadge state={r.disk_state} /></td>
+                  <td
+                    data-testid="full-capture-count-cell"
+                    className="px-3 py-1.5 text-right"
+                  >
+                    <FullCaptureCountBadge n={r.full_capture_count} />
+                  </td>
                   <td className="px-3 py-1.5">{fmtDate(r.date)}</td>
                   <td className="px-3 py-1.5 text-fg-dim">{fmtTime(r.captured_at)}</td>
                   <td className="px-3 py-1.5 text-right">{r.total_volume.toLocaleString('ko-KR')}</td>
@@ -184,6 +191,22 @@ function RowRecaptureButton({
     >
       ↻
     </button>
+  );
+}
+
+function FullCaptureCountBadge({ n }: { n: number | null }) {
+  if (n === null) {
+    return <span className="text-fg-dimmer">—</span>;
+  }
+  // n=1 renders faintly so the column has one visual grammar (always ×N when known).
+  const tone = n >= 2
+    ? 'text-fg-dim border-[var(--fg-dim)]'
+    : 'text-fg-dimmer border-[var(--fg-dimmer)]';
+  return (
+    <span
+      title={`Full Capture 누적 ${n}회`}
+      className={`text-badge rounded-md px-[0.15rem] border ${tone} font-mono tabular-nums`}
+    >×{n}</span>
   );
 }
 
