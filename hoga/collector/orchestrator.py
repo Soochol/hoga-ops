@@ -14,6 +14,7 @@ from typing import Protocol
 
 from hoga.api.timeenc import HogaMs
 from hoga.collector.client import HogaplayHTTPError
+from hoga.collector.timing import CaptureTimingCollector
 from hoga.collector.page_step import (
     DATA_WINDOW_END_MS,
     DEFAULT_PAGE_STEP_MS,
@@ -313,6 +314,7 @@ def _page_step_loop(
     t: int,
     on_progress: Callable[[ProgressEvent], None] | None = None,
     cancel_token: CancelToken | None = None,
+    collector: CaptureTimingCollector | None = None,
     initial_step_ms: int = DEFAULT_PAGE_STEP_MS,
 ) -> tuple[set[int], int, int, StopReason | None]:
     """Run the Page Step pagination loop; return (seen_seqs, page_idx, final_t, stop_reason).
@@ -424,6 +426,7 @@ def collect_stock_date(
     resume: bool = False,
     on_progress: Callable[[ProgressEvent], None] | None = None,
     cancel_token: CancelToken | None = None,
+    collector: CaptureTimingCollector | None = None,
     initial_step_ms: int = DEFAULT_PAGE_STEP_MS,
 ) -> CollectResult:
     """Drive the full capture for one Stock-Date.
@@ -472,6 +475,7 @@ def collect_stock_date(
         raw_dir, client, code, date, started_at, rate_limit_s, seen_seqs, page_idx, t,
         on_progress=on_progress,
         cancel_token=cancel_token,
+        collector=collector,
         initial_step_ms=initial_step_ms,
     )
 
