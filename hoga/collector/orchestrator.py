@@ -321,27 +321,6 @@ def _store_page_body(
     return page_idx, new_seqs
 
 
-def _fetch_and_store_page(
-    raw_dir: Path,
-    client: HogaplayClientProto,
-    code: str,
-    date: str,
-    t: int,
-    page_idx: int,
-    seen_seqs: set[int],
-) -> tuple[str, int, set[int]]:
-    """Fetch one first.php Page, store it if non-empty, return (body, new_page_idx, new_seqs).
-
-    Thin composite over _fetch_first_body + _store_page_body. Task 8 wraps
-    the two helpers in distinct timing phases (http_fetch vs disk_write);
-    behavior here is unchanged from the pre-split implementation.
-    """
-    body = _fetch_first_body(client, code=code, date=date, time_ms=t)
-    page_idx, new_seqs = _store_page_body(
-        raw_dir, body, page_idx=page_idx, seen_seqs=seen_seqs
-    )
-    return body, page_idx, new_seqs
-
 
 def _page_step_loop(
     raw_dir: Path,

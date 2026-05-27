@@ -65,22 +65,3 @@ def test_store_page_body_empty_body_does_not_write(tmp_path: Path):
     assert seen == set()
 
 
-def test_fetch_and_store_page_composite_unchanged(tmp_path: Path):
-    """Composite still returns (body, page_idx, new_seqs) and is the public
-    surface that _page_step_loop calls. This pins the external contract so
-    Task 8 can safely wrap timing phases around the two helpers."""
-    from hoga.collector.orchestrator import _fetch_and_store_page
-
-    fake_client = MagicMock()
-    fake_client.fetch_first.return_value = _make_body()
-
-    seen: set[int] = {1000}  # 1000 already seen; only 1001 should be "new"
-    body, page_idx, new_seqs = _fetch_and_store_page(
-        tmp_path, fake_client, "005930", "20250520", 0, 0, seen
-    )
-
-    assert body == _make_body()
-    assert page_idx == 1
-    assert new_seqs == {1001}
-    assert (tmp_path / "first_00001.tsv").read_text(encoding="utf-8") == body
-    assert seen == {1000, 1001}
