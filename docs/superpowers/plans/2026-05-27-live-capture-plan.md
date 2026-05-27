@@ -2550,3 +2550,311 @@ uv run pytest tests/unit/live/test_adr_invariants.py -v
 - 멀티 워치리스트
 - 가격 임계치 알림
 - Inventory per-source row 액션 (재캡쳐 등)
+
+---
+
+# Review Merge Addendum (2026-05-27)
+
+본 섹션은 plan 작성 직후 수행한 두 차례 review(plan-eng-review + plan-design-review)에서 도출된 Blocker / Critical을 stage별로 통합한 결과다. 실행 시 stage 진입 직전에 본 섹션의 해당 항목을 먼저 본문에 패치해 넣어 task 단위로 풀어 쓴다 (다른 stage의 task와 분량 균형 유지). Suggestion / Nit은 본 섹션 말미의 "Deferred review notes"에 누적.
+
+## Pre-Stage Decisions Added (review 머지)
+
+### F-extra. Single-worker assertion (Eng B2)
+
+ADR-0019/0006의 single-uvicorn-worker 가정이 plan 전반(특히 JSONL writer, in-memory ring buffer, SSE bus)에 transitive하게 의존한다. `hoga/live/__init__.py` 모듈 import 시점에 `os.environ.get("UVICORN_WORKERS", "1") == "1"` assert. 위반시 startup-fatal. ADR-0038 본문에 "single-worker invariant" 추가 (Task 13.0).
+
+### G-extra. KST 상수 public 화 (Eng B3)
+
+`hoga/live/kis_client.py`의 `_KST` → public `KST` 로 이름 변경. 또는 `hoga/live/timeutil.py` 모듈로 분리해 다른 live 모듈도 import 가능하게. Task 1.1 코드 스니펫의 `_KST` → `KST` 일괄 교체.
+
+### H-extra. Live page UI shell 기본 구조 (Design B1)
+
+`/live` 페이지는 `/replay`와 같은 4행 grid를 갖는다:
+1. **LiveHeader row** (40px): 페이지 타이틀 + ⭐ 토글 + Settings 진입점
+2. **LiveStatusBar row** (52px): `005930 · 삼성전자` / 현재가 / 등락률 / source 칩 / TimeframeSelector / `LIVE● 09:34:12` / `cycle_lag` pill
+3. **Toolbar row** (60px): TimeframeSelector (D/W는 disabled — Design B5 처리), 종목 search
+4. **workarea row** (1fr): 캔들 차트 + 지표 차트 + LiveSidebar (+ WatchlistPanel 토글시)
+
+기존 `/replay`의 `PriceStrip` 컴포넌트 구조를 mirror — Stage 9.1에 task 추가.
+
+### I-extra. Empty/error state matrix (Design B2)
+
+| 원인 | 표시 위치 | 우선순위 | 액션 링크 |
+|---|---|---|---|
+| watchlist 비어 있음 | 차트 영역 emptystate | 1 | /capture 로 이동 |
+| KIS 자격증명 없음 | 헤더 배너 (red) | 1 | Settings → KIS 설정 |
+| KIS 토큰 만료 | 헤더 배너 (amber) | 2 | "재발급" 버튼 |
+| 장 외 시간 | 헤더 배너 (neutral) | 3 | 안내문만 (액션 없음) |
+| cycle_lag_ms > 10s | LiveStatusBar pill (amber/red) | 4 | (상시 표시) |
+| 특정 종목 데이터 결측 | 해당 차트만 emptystate | 5 | "다른 종목 보기" CTA |
+
+우선순위 1만 동시 노출 차단(상호 배타), 2~5는 stacking 가능. spec §7의 "빈 상태 / 에러 상태"를 본 표로 교체.
+
+### J-extra. KIS 실측 fixture capture task (Eng C1)
+
+Stage 1 시작 전 새 Task 1.0 추가:
+1. 사용자가 제공한 KIS_APP_KEY/SECRET로 5개 엔드포인트에 1회 실 호출
+2. 응답 JSON 5종을 `tests/fixtures/kis_mock/responses/`에 저장
+3. 응답 schema가 plan의 가정과 일치하는지 확인 (특히 field 이름: `askp_rsqn1`, `total_askp_rsqn`, `ccld_dvsn`, `stck_cntg_hour` 등)
+4. 불일치시 plan의 `kis_models.py` 필드 매핑 갱신
+5. fixture는 Stage 1-7 모든 unit test에서 inline dict 대신 `responses/*.json` import해 재사용 (Eng S1 동시 해소)
+
+## Stage 0 Patches
+
+### Task 0.3 변경 — 503 가드 제거 + 가정 명시 (Eng B5)
+
+원래 plan의 "마이그레이션 진행 중 새 요청은 503 응답 + Retry-After"를 **삭제**. 대신:
+
+> Pre-Stage E의 마이그레이션은 항상 빠르다고 가정한다. 즉 `shutil.move`만 호출하며 데이터 copy/parse는 하지 않는다. 1만 (date, code) 폴더 기준 ~5초 미만이 예상 (filesystem rename은 inode 변경뿐). lifespan에서 동기로 실행하며, 그 시간 동안은 FastAPI가 healthy 시그널을 보내지 않는다. Docker/systemd healthcheck는 startup grace period 30s를 두어 마이그레이션 완료를 기다린다.
+
+Task 0.3에 latency 측정 sub-task 추가:
+```python
+def test_migrate_under_5s_for_10k_dirs(tmp_path):
+    # 10000개 (date, code) 더미 폴더 + 4개 placeholder 파일
+    # migrate_to_v2_layout(...) wall-time < 5s
+```
+
+## Stage 1 Patches
+
+### Task 1.0 신규 — KIS 실측 응답 fixture capture (Eng C1)
+
+위 J-extra 참조. CLI script `tools/capture_kis_fixtures.py` 도 함께 만들어 향후 KIS schema 변경 시 재실행 가능하게.
+
+### Task 1.2 보강 — 토큰 mid-cycle 만료 재시도 (Eng C2)
+
+`_unwrap` 메서드에 401 감지 시 토큰 invalidate + 1회 재시도 wrapper:
+
+```python
+async def _request_with_retry(self, method, path, **kwargs):
+    for attempt in range(2):
+        token = await self.get_access_token()
+        kwargs.setdefault("headers", {})["authorization"] = f"Bearer {token}"
+        resp = await self._client.request(method, path, **kwargs)
+        if resp.status_code == 401 and attempt == 0:
+            # invalidate 후 재발급
+            self._token = None
+            self._token_expires_at = None
+            continue
+        return resp
+    return resp
+```
+
+새 test: `test_401_triggers_token_reissue_then_retry`.
+
+## Stage 4 Patches
+
+### Task 4.x 신규 — Rate limit starvation 방지 (Eng C6)
+
+`run_one_cycle`에서 KisRateLimitError 발생 시 현재 cycle은 그대로 진행하되, 다음 cycle 시작 시점에 **이전에 starve된 종목부터 우선** 처리. 구현: per-code "last_success_cycle" 트래커, 새 cycle 시작 시 `sorted(codes, key=last_success_cycle)` 순서로 진행. 새 test: `test_rate_limit_does_not_starve_later_codes`.
+
+### Task 4.y 신규 — 08:50 토큰 사전 갱신 (Eng S7)
+
+Daily Scheduler에 새 작업 추가하거나, Live Poller가 09:00 시작 전 10분(08:50)에 `get_access_token()` 호출. Stage 8.x로 이동.
+
+## Stage 6 Patches
+
+### Task 6.4 변경 — 골든 파일 생성 절차 명시 (Eng B4)
+
+원래 "기존 fixture 사용" 한 줄을 다음으로 확장:
+
+1. **Step A**: Stage 6.3 완료 후, `tests/conftest.py`에 `hogaplay_only_fixture` 새 fixture 작성 — 기존 `tiny_tsv` 003490/20260519 데이터를 마이그레이션 후 hogaplay 서브폴더에 배치.
+2. **Step B**: `python -m tests.tools.regen_golden hogaplay_only` 스크립트 작성 (tests/tools/regen_golden.py). source_pref 무관 결과를 JSON으로 dump.
+3. **Step C**: `range_bundle_hogaplay_only.json` 골든 파일 생성 → diff review → commit. 향후 회귀 발견 시 의도된 변경이면 `regen_golden` 재실행 + commit.
+
+## Stage 7 Patches
+
+### Task 7.x 신규 — In-memory ring buffer 동시성 (Eng B1)
+
+`hoga/live/lifecycle.py`의 모듈-레벨 상태 (`_latest_snapshots`, `_series_ring_buffers`)를 `asyncio.Lock` 으로 보호. Reader는 lock 안에서 list/dict의 **immutable snapshot** (frozen list 또는 tuple) 만들어 반환, 그 후 lock 해제. 새 test: `test_concurrent_reader_during_writer_does_not_raise`.
+
+또한 Eng B2 (single-worker assertion) 는 F-extra 참조.
+
+### Task 7.2–7.6 풀어 쓰기 (Eng S6)
+
+원래 "Stage 7.1과 같은 패턴" 한 줄로 축약된 5개 endpoint를 각각 (a) wire model 정의, (b) handler 시그너처, (c) 1~2개 unit test 코드, (d) commit message 까지 명시. plan-eng-review 의 S6 권고 반영.
+
+## Stage 9 Patches (Design B1, B3, B4, B7, C5, C6)
+
+### Task 9.0 신규 — DESIGN.md 갱신
+
+Stage 9 시작 전 `DESIGN.md`에 다음 token / 규칙 추가 (Design B3, B6, C4):
+
+```css
+/* DESIGN.md tokens */
+--watchlist-panel-w: 17.5rem;   /* 280px @ 1.0× / 350px @ 1.25× */
+--source-hogaplay-bg: var(--bg-card);
+--source-hogaplay-border: var(--fg-dimmer);
+--source-kis-live-bg: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
+--source-kis-live-border: var(--accent);
+```
+
+카피 톤 가이드 한 단락 추가:
+- 도메인 식별자 (`hogaplay`, `kis_live`, `cycle_lag_ms`): 영문 lowercase, code-style
+- 사용자 메시지: 한국어 자연문, 마침표 생략, 액션은 명사형
+- 상태 라벨: 한국어 단어 (예: "장 외", "대기 중")
+
+### Task 9.1 보강 — LivePage shell 구조
+
+원래 placeholder 한 줄을 H-extra의 4행 grid 구조로 확장. PriceStrip-mirror 컴포넌트 `LiveStatusBar.tsx` 새로 작성. 기존 `frontend/src/replay/PriceStrip.tsx` 패턴 참고.
+
+### Task 9.x 신규 — 빈/에러 상태 컴포넌트
+
+I-extra의 매트릭스를 그대로 구현한 `LiveStateBanner.tsx` + `LiveEmptyState.tsx`. 우선순위 로직은 `useLiveStatus` 의 데이터 기반.
+
+### Task 9.4 보강 — X축 동기 D/W 처리 (Design B5)
+
+LiveCandlePane의 timeframe이 `D` 또는 `W` 일 때:
+- LiveIndicatorPane을 **hide** 또는 "라이브 지표는 분봉에서만 의미가 있어요" 메시지로 replace
+- 사용자가 1m–30m timeframe 으로 돌아오면 자동 복귀
+- 새 test: `test_indicator_pane_hidden_on_daily_timeframe`
+
+### Task 9.y 신규 — 키보드 단축키 + a11y (Design B7)
+
+`useLiveKeyboard()` hook: `j`/`k` (종목 prev/next), `w` (watchlist 토글), `Esc` (패널 닫기). ⭐ 토글 버튼에 `aria-expanded`, `aria-controls`. focus 관리.
+
+## Stage 10 Patches
+
+### Task 10.1 보강 — useLiveSeries ring buffer (Eng C5)
+
+```typescript
+const MAX_SNAPSHOTS_PER_KIND = 2520;   // 약 7시간 × 360 cycles/hr
+es.onmessage = (e) => setSnapshots(prev => {
+  const next = [...prev, JSON.parse(e.data)];
+  return next.length > MAX_SNAPSHOTS_PER_KIND ? next.slice(-MAX_SNAPSHOTS_PER_KIND) : next;
+});
+```
+
+또는 `useReducer` + Map<kind, ring> 구조로 fold. test: `test_useLiveSeries_does_not_grow_unbounded`.
+
+### Task 10.3 보강 — 라이브 데이터 도착시 master 범위 확장 (Design B5)
+
+SSE 도착시 lightweight-charts `timeScale.scrollToRealTime()` 또는 visible range 우측 가장자리 확장 트리거. 차트가 정적으로 보이지 않도록.
+
+## Stage 11 Patches
+
+### Task 11.1 보강 — LiveSidebar mode 시각 표시 (Design C1, Eng C7)
+
+`CursorSidebarConnected` wrap 컴포넌트에:
+- 헤더에 `LIVE●` pulse (`--accent` 1.5s breathe)
+- 우상단에 `last_tick` 타임스탬프 ("09:34:12")
+- cursor 인터랙션 (좌우 드래그) **disabled** — 사용자가 차트 호버시에도 cursor 이동 안 함, 항상 latest t_ms
+- cursor 자동 추적임을 명시하는 tooltip
+
+`useCursor` 의 외부 API는 그대로, 내부에서 `mode: 'live' | 'replay'` prop으로 분기.
+
+### Task 11.2 보강 — ⭐ 토글 detail (Design B7)
+
+위치: LiveHeader row 우측, Settings 아이콘 옆. Lucide React 의 `Star` 아이콘 (filled when open, outline when closed). 단축키 `w`. aria-expanded.
+
+### Task 11.3 보강 — 반응형 4열 처리 (Design B4)
+
+`window.innerWidth` 가 1280px 미만일 때:
+- WatchlistPanel 강제 hide + ⭐ 토글 비활성화
+- "/live는 1280px 이상 desktop 환경을 권장합니다" 배너 (한 번 표시 후 dismissable)
+- LiveSidebar는 collapse-mode (icon-only) 로 전환
+
+`useViewportWidth` hook 새로 작성.
+
+## Stage 12 Patches
+
+### Task 12.2 보강 — sourcePreference helper text (Design C3)
+
+```tsx
+<RadioGroup
+  label="기본 데이터 소스 (모든 차트 공통)"
+  description="현재 차트의 source는 PriceStrip 우측 칩에 표시됩니다."
+  ...
+/>
+```
+
+### Task 12.3 보강 — useRange 호출자 일관성 (Eng B6)
+
+새 task: `git grep -nE 'useRange\\(' frontend/src/`로 모든 호출자 식별 → 각각이 sourcePref 변경시 정상 refetch하는지 unit test 추가. 호출자 목록을 plan에 명시 (현재 plan 작성 시점 기준):
+- `frontend/src/replay/Workarea.tsx`
+- `frontend/src/replay/PriceStrip.tsx` (간접)
+- (테스트) `frontend/src/api/range.test.tsx`
+- (테스트) `frontend/src/replay/Workarea.test.tsx`
+
+### Task 12.4 보강 — 해상도 표기 + source 칩 색 (Design B6, C2)
+
+```tsx
+<SourceChip source={seg.source}>
+  {seg.source === 'hogaplay' ? 'hogaplay · tick' : 'kis_live · 10s'}
+</SourceChip>
+```
+
+칩 색은 9.0 task에서 추가한 `--source-*` 토큰 사용.
+
+## Stage 13 Patches
+
+### Task 13.0 신규 — Single-worker invariant test (Eng B2)
+
+`tests/unit/live/test_adr_invariants.py`에 추가:
+
+```python
+def test_live_package_asserts_single_worker(monkeypatch):
+    monkeypatch.setenv("UVICORN_WORKERS", "2")
+    import importlib
+    with pytest.raises(AssertionError, match="single worker"):
+        importlib.reload(__import__("hoga.live"))
+```
+
+### Task 13.1 보강 — Invariant guard transitive 차단 (Eng C8)
+
+forbidden tuple에 `("pyarrow", "polars")` 만 두고, import path가 dot으로 시작하든 끝나든 매치되는 정규식 기반 검사로 변경:
+
+```python
+import re
+FORBIDDEN_RE = re.compile(r"^(pyarrow|polars)(\..*)?$")
+for node in ast.walk(tree):
+    if isinstance(node, ast.Import):
+        for alias in node.names:
+            assert not FORBIDDEN_RE.match(alias.name), ...
+    elif isinstance(node, ast.ImportFrom):
+        assert not FORBIDDEN_RE.match(node.module or ""), ...
+```
+
+또한 `hoga/live/snapshot.py`, `hoga/live/poller.py`, `hoga/live/api.py`, `hoga/live/lifecycle.py` 도 같은 가드 적용 (snapshot은 writer가 import하므로 transitive). writer의 transitive closure 검사도 추가.
+
+## Deferred review notes (Suggestion + Nit)
+
+본 항목들은 plan에 inline 반영 안 됨. Stage 13 종료 후 retrospective 단계에서 살펴봄.
+
+**Eng Suggestions**:
+- S1: Mock KIS server fixture 통합 (Task 1.0과 일부 중복 — 해소됨)
+- S2: Stage 12 dependency 그래프에 명시 (작은 문서 수정)
+- S3: hoga live CLI 구현 방식 (HTTP vs 직접 호출) — plan에선 HTTP 가정
+- S4: 마이그레이션 dry-run mode — Stage 0 변경 후 불필요해진다고 판단
+- S5: archive 정책 idempotence (`*.tmp` atomic rename) — plan 5.1에 후속 추가 가능
+- S6: Stage 7.2-7.6 풀어 쓰기 — 이미 반영됨
+- S7: 08:50 토큰 사전 갱신 — Stage 4.y로 이미 반영됨
+
+**Eng Nits**:
+- N1: `LayoutVersion` enum 단순화 (bool로) — 보수적으로 enum 유지
+- N2: Task 4.1 test 코멘트 정리 — 단순 텍스트 수정 (실행 시 정리)
+- N3: KIS_ENV vs `Literal["real"]` 명명 mismatch — 사용자 메시지로 보완
+- N4: ADR-0037 invariant test — Stage 13.0에 합쳐 처리됨
+- N5: `kis_rate_limit_remaining` field — client-side token bucket의 remaining으로 의미 변경 (Stage 4 구현시 처리)
+
+**Design Suggestions**:
+- S1: 차트 헤더 정보 밀도 — Stage 9.1 LiveStatusBar 설계시 반영
+- S2: WatchlistPanel 검색·정렬 — StockCombobox 패턴 재사용, 후속 spec
+- S3: 라이브 데이터 도착 micro flash (80ms) — Stage 10 후속
+- S4: cycle_lag pill 3-stage 색 (gray/amber/red) — Stage 9 LiveStatusBar
+- S5: 키보드 단축키 j/k/w/s — Stage 9.y 반영됨
+- S6: 모바일/태블릿 정책 — Stage 11.3 반영됨
+
+**Design Nits**:
+- N1: ASCII layout 정렬 — 문서 보정
+- N2: `--text-xs` 토큰명 통일 — Stage 9.0 DESIGN.md 작업시
+- N3: Sidebar 카드 순서 검증 — Stage 11.1
+- N4: 라벨 토큰 통일 — Stage 12.2 helper text 반영시
+
+## Review 평가 종합
+
+| Reviewer | 점수 | 머지 후 예상 |
+|---|---|---|
+| Eng | 3.5 → 4.0 (B1–B6 + C1–C6, C8 머지 후) |
+| Design | 2.5 → 4.0 (B1–B7 + C1–C6 머지 후) |
+
+전체 plan 분량은 약 +700줄 증가. 본 Addendum이 stage 진입 직전 참조 문서 역할.
