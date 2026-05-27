@@ -19,6 +19,8 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from .buffer import LiveBuffer
+
 
 class LiveStatus(BaseModel):
     """Wire model for GET /api/live/status (spec §6)."""
@@ -46,6 +48,11 @@ class _State:
 
 
 _state = _State()
+_buffer = LiveBuffer()
+
+
+def get_buffer() -> LiveBuffer:
+    return _buffer
 
 
 def _now_ms() -> int:
@@ -113,7 +120,8 @@ def _read_poller_attr(name: str) -> int | None:
 
 def reset_for_tests() -> None:
     """Test-only hook. Resets module state without raising."""
-    global _state
+    global _state, _buffer
     if _state.poller_task is not None and not _state.poller_task.done():
         _state.poller_task.cancel()
     _state = _State()
+    _buffer = LiveBuffer()

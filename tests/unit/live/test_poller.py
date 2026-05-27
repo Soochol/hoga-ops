@@ -231,6 +231,39 @@ async def test_after_hours_calls_overtime_fetchers(tmp_path: Path, monkeypatch) 
 
 
 @pytest.mark.asyncio
+async def test_poller_publishes_to_buffer_when_provided(tmp_path: Path) -> None:
+    """When given a LiveBuffer, run_one_cycle publishes after writing."""
+    from hoga.live.buffer import LiveBuffer
+    buf = LiveBuffer()
+    kis = _mk_kis(trades=[KisTrade(t_ms=1, price=100, qty=1, side=1, side_source="inferred")])
+    writer = LiveWriter(tmp_path / "live")
+    poller = LivePoller(
+        kis, writer,
+        LivePollerConfig(codes_fn=lambda: ["005930"], date_fn=lambda: "20260527"),
+        buffer=buf,
+    )
+    await poller.run_one_cycle()
+
+    latest = await buf.get_latest("005930")
+    assert latest is not None
+    assert latest["code"] == "005930"
+    assert latest["orderbook"] is not None
+    assert len(latest["recent_trades"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_poller_without_buffer_still_works(tmp_path: Path) -> None:
+    """Backward compat: cycles work with buffer=None (default)."""
+    kis = _mk_kis()
+    writer = LiveWriter(tmp_path / "live")
+    poller = LivePoller(
+        kis, writer,
+        LivePollerConfig(codes_fn=lambda: ["005930"], date_fn=lambda: "20260527"),
+    )
+    await poller.run_one_cycle()  # no exception
+
+
+@pytest.mark.asyncio
 async def test_run_forever_until_cancel(tmp_path: Path, monkeypatch) -> None:
     regular_ms = int(datetime(2026, 5, 27, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
     monkeypatch.setattr("hoga.live.poller._now_ms", lambda: regular_ms)

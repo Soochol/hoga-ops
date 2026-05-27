@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable
 
+from .buffer import LiveBuffer
 from .kis_client import KIS_KST, KisApiError, KisClient, KisRateLimitError
 from .kis_models import KisBrokers, KisOrderbook, KisTrade
 from .snapshot import LiveSnapshot, SnapshotKind
@@ -58,11 +59,17 @@ class LivePollerConfig:
 
 class LivePoller:
     def __init__(
-        self, kis: KisClient, writer: LiveWriter, cfg: LivePollerConfig
+        self,
+        kis: KisClient,
+        writer: LiveWriter,
+        cfg: LivePollerConfig,
+        *,
+        buffer: LiveBuffer | None = None,
     ):
         self._kis = kis
         self._writer = writer
         self._cfg = cfg
+        self._buffer = buffer
         self._last_cycle_lag_ms = 0
         self._last_tick_ms: int | None = None
         self._kis_calls_today = 0
@@ -156,6 +163,8 @@ class LivePoller:
                 LiveSnapshot(t_ms=ob.t_ms, kind=SnapshotKind.BROKER, payload=brokers_payload),
             ]
             await self._writer.append(date, code, snaps)
+            if self._buffer is not None:
+                await self._buffer.publish(code, snaps)
 
         await self._writer.fsync_all()
         self._last_tick_ms = _now_ms()
