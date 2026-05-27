@@ -131,3 +131,45 @@ async def test_promote_missing_jsonl_is_noop(tmp_path: Path) -> None:
     )
     # No parquet, no meta created
     assert not (tmp_path / "parquet" / "20260527" / "999999").exists()
+
+
+@pytest.mark.asyncio
+async def test_promote_pending_walks_live_root_and_archives(tmp_path: Path) -> None:
+    from hoga.live.promote import promote_pending
+
+    live_root = tmp_path / "live"
+    for code in ("005930", "000660"):
+        jsonl = live_root / "20260527" / f"{code}.jsonl"
+        jsonl.parent.mkdir(parents=True, exist_ok=True)
+        jsonl.write_text(json.dumps({
+            "t_ms": 1, "kind": "ob",
+            "payload": {
+                "asks": [], "bids": [], "code": code, "t_ms": 1,
+                "total_ask_qty": 0, "total_bid_qty": 0, "phase": "regular",
+            },
+        }) + "\n")
+
+    await promote_pending(tmp_path)
+
+    parquet_root = tmp_path / "parquet"
+    for code in ("005930", "000660"):
+        assert (parquet_root / "20260527" / code / "kis_live" / "meta.json").exists()
+        # archive movement
+        assert (live_root / "_archive" / "20260527" / f"{code}.jsonl").exists()
+        assert not (live_root / "20260527" / f"{code}.jsonl").exists()
+
+
+@pytest.mark.asyncio
+async def test_promote_pending_skips_archive_directory(tmp_path: Path) -> None:
+    """The _archive subdir under live_root must NOT be traversed."""
+    from hoga.live.promote import promote_pending
+
+    live_root = tmp_path / "live"
+    archive_jsonl = live_root / "_archive" / "20260101" / "001234.jsonl"
+    archive_jsonl.parent.mkdir(parents=True)
+    archive_jsonl.write_text("ignored")
+
+    await promote_pending(tmp_path)
+    # Archive must remain untouched and no parquet generated from it
+    assert archive_jsonl.exists()
+    assert not (tmp_path / "parquet" / "20260101" / "001234").exists()
