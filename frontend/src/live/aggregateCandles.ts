@@ -1,4 +1,4 @@
-import type { LiveCandle } from '../api/liveCandles';
+import type { LivePastCandle as LiveCandle } from '../api/livePastCandles';
 
 /** OHLCV aggregation of a sorted 1m candle stream into `bucketSeconds`-sized
  * buckets, aligned to the Unix epoch.

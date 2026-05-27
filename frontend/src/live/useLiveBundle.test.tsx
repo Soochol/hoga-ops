@@ -19,16 +19,28 @@ vi.mock('../api/liveSeries', () => ({
   }),
 }));
 
-vi.mock('../api/liveCandles', () => ({
-  useLiveCandles: () => ({
+const livePastCandlesSpy = vi.fn(() => ({
+  data: {
+    code: '005930',
+    from: '',
+    to: '',
     candles: [
       { t_ms: 1748275200000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
     ],
-  }),
+    cached_dates: [],
+    fresh_dates: [],
+    data_warnings: [],
+  },
+  isLoading: false,
+  error: null,
+}));
+vi.mock('../api/livePastCandles', () => ({
+  useLivePastCandles: (...args: unknown[]) => livePastCandlesSpy(...args as []),
 }));
 
+const useRangeSpy = vi.fn(() => ({ data: null, isLoading: false, error: null }));
 vi.mock('../api/range', () => ({
-  useRange: () => ({ data: null, isLoading: false, error: null }),
+  useRange: (...args: unknown[]) => useRangeSpy(...args as []),
 }));
 
 const wrapper = ({ children }: { children: ReactNode }) => {
@@ -38,6 +50,8 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 
 describe('useLiveBundle', () => {
   beforeEach(() => {
+    livePastCandlesSpy.mockClear();
+    useRangeSpy.mockClear();
     useLivePageStore.setState({
       activeCode: '005930',
       candleTimeframe: '1m',
@@ -57,5 +71,20 @@ describe('useLiveBundle', () => {
   it('returns null bundle when code is null', () => {
     const { result } = renderHook(() => useLiveBundle(null, '1m', '20260527'), { wrapper });
     expect(result.current.bundle).toBeNull();
+  });
+
+  it('clamps pastFrom to 59 days before today when historicalFromDate is older', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260227' });
+    renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    expect(livePastCandlesSpy).toHaveBeenCalledWith('005930', '20260329', '20260527');
+    expect(useRangeSpy).toHaveBeenCalledWith('005930', '20260329', '20260526', '1m');
+  });
+
+  it('maps KIS bar shape to wire Candle shape (vol_a = volume, vol_b = 0)', () => {
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    const c = result.current.bundle!.candles[0];
+    expect(c).toMatchObject({ ts_ms: 1748275200000, open: 70000, vol_a: 1000, vol_b: 0 });
+    expect(c).not.toHaveProperty('t_ms');
+    expect(c).not.toHaveProperty('volume');
   });
 });
