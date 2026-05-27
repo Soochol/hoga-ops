@@ -95,7 +95,7 @@ class CaptureTimingCollector:
 | Phase | 측정 대상 |
 |---|---|
 | `http_fetch` | first.php / chart.php / info.php 요청 왕복 |
-| `parse` | TSV → in-memory rows |
+| `parse` | `parse_stock_date` 호출 (page loop 종료 후 TSV 전체 → parquet, 1회) |
 | `disk_write` | TSV/parquet write |
 | `rate_limit` | 페이지당 `time.sleep(rate_limit_s)` 누적. **ADR-0017의 throttle auto-backoff 더블링은 이 phase에 흡수됨** — 더블링되는 게 `rate_limit_s` 자체이므로 |
 | `backoff` | `_run_capture_and_parse`의 **상위 레벨 retry sleep**(5/10/30s 등) 누적. ADR-0017의 rate_limit 더블링과 구별 |
@@ -117,8 +117,8 @@ class CaptureTimingCollector:
 | `hoga/collector/orchestrator.py` `collect_stock_date` 시그니처 | `collector: CaptureTimingCollector \| None = None` 추가 | — |
 | 페이지 루프 진입 | `collector.mark_page_boundary()` | — |
 | `fetch_first(...)` / `fetch_chart(...)` / `fetch_info(...)` | `with collector.phase("http_fetch"):` | `http_fetch` |
-| 페이지 parse 직후 | `with collector.phase("parse"):` | `parse` |
-| `_write_page_tsv` (또는 동등 위치) | `with collector.phase("disk_write"):` | `disk_write` |
+| 페이지 TSV write (`first_NNNNN.tsv`, orchestrator.py:~299) | `with collector.phase("disk_write"):` | `disk_write` |
+| `hoga/api/captures.py` 의 `parse_stock_date` executor 호출 (~L595, page loop 종료 후) | `with collector.phase("parse"):` | `parse` |
 | `time.sleep(rate_limit_s)` | `with collector.phase("rate_limit"):` | `rate_limit` |
 | `hoga/api/captures.py` 상위 레벨 429 retry (~L518; 5/10/30s sleep) | `with collector.phase("backoff"):` + `record_error("429")` | `backoff` |
 | `hoga/api/captures.py` cookie expired (~L710) | `with collector.phase("cookie_pause"):` + `record_error("cookie_expired")` | `cookie_pause` |
