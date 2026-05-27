@@ -322,6 +322,7 @@ export type RangeSegment = {
   date: string;            // YYYYMMDD KST
   session_open_ms: number; // Unix ms
   session_close_ms: number;
+  source?: 'hogaplay' | 'kis_live';  // ADR-0037, ADR-0039; absent in legacy responses
 };
 
 export type Timeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m';
