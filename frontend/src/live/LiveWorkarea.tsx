@@ -39,8 +39,8 @@ export function LiveWorkarea({ activeCode, watchlistEmpty }: Props) {
           minWidth: 0,
         }}
       >
-        <LiveCandlePane timeframe={timeframe} />
-        <LiveIndicatorPane timeframe={timeframe} />
+        <LiveCandlePane code={activeCode} timeframe={timeframe} />
+        <LiveIndicatorPane code={activeCode} timeframe={timeframe} />
       </div>
       <div
         id="live-watchlist-panel"

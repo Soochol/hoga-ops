@@ -26,7 +26,7 @@ describe('LiveSnapshotBuffer', () => {
     const obs = buf.get('ob');
     expect(obs).toHaveLength(MAX_BUFFER_PER_KIND);
     // Earliest 50 dropped — first remaining is index 50.
-    expect((obs[0] as { i: number }).i).toBe(50);
+    expect((obs[0] as unknown as { i: number }).i).toBe(50);
   });
 
   it('ignores entries with unknown kind', () => {
@@ -41,8 +41,8 @@ describe('LiveSnapshotBuffer', () => {
     const buf = new LiveSnapshotBuffer();
     buf.push({ t_ms: 1, kind: 'ob' });
     buf.hydrate({
-      ob: [{ t_ms: 10 }, { t_ms: 20 }],
-      trade: [{ t_ms: 11 }],
+      ob: [{ t_ms: 10, kind: 'ob' }, { t_ms: 20, kind: 'ob' }],
+      trade: [{ t_ms: 11, kind: 'trade' }],
       broker: [],
     });
     expect(buf.get('ob')).toHaveLength(2);

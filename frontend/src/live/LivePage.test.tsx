@@ -29,6 +29,7 @@ vi.mock('lightweight-charts', async () => {
       applyOptions: vi.fn(),
       subscribeVisibleTimeRangeChange: vi.fn(),
       fitContent: vi.fn(),
+      scrollToRealTime: vi.fn(),
     })),
     resize: vi.fn(),
   };
@@ -38,6 +39,19 @@ vi.mock('lightweight-charts', async () => {
     createChart: vi.fn(() => mockChart),
   };
 });
+
+// useLiveCandles and useLiveSeries use EventSource / fetch which are not
+// available in jsdom. Mock both hooks so LivePage tests stay unit-level.
+vi.mock('../api/liveCandles', () => ({
+  useLiveCandles: () => ({ data: undefined, isLoading: false }),
+}));
+
+vi.mock('../api/liveSeries', () => ({
+  useLiveSeries: () => ({
+    initial: undefined, isLoading: false, error: null,
+    ob: [], trade: [], broker: [],
+  }),
+}));
 
 function renderWithRouter(initial = '/live') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

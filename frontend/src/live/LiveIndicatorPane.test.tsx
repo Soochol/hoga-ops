@@ -11,6 +11,13 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
+vi.mock('../api/liveSeries', () => ({
+  useLiveSeries: () => ({
+    initial: undefined, isLoading: false, error: null,
+    ob: [], trade: [], broker: [],
+  }),
+}));
+
 // lightweight-charts v5 uses addSeries(SeriesDefinition, options) not
 // addLineSeries / addHistogramSeries.
 const mockChart = {
@@ -20,6 +27,7 @@ const mockChart = {
   timeScale: vi.fn(() => ({
     applyOptions: vi.fn(),
     subscribeVisibleTimeRangeChange: vi.fn(),
+    scrollToRealTime: vi.fn(),
   })),
   resize: vi.fn(),
 };
@@ -41,7 +49,7 @@ describe('LiveIndicatorPane', () => {
 
   it('mounts with the right number of series for 1m timeframe', async () => {
     const { LineSeries, HistogramSeries } = await import('lightweight-charts');
-    render(<LiveIndicatorPane timeframe="1m" />);
+    render(<LiveIndicatorPane code={null} timeframe="1m" />);
     await Promise.resolve();
     // Quote Totals = 2 lines, 호가비 = 1 line, FillStrength = 2 histograms
     // Total addSeries calls: 5
@@ -56,31 +64,31 @@ describe('LiveIndicatorPane', () => {
   });
 
   it('shows D/W disabled note when timeframe is D', () => {
-    render(<LiveIndicatorPane timeframe="D" />);
+    render(<LiveIndicatorPane code={null} timeframe="D" />);
     expect(screen.getByTestId('indicator-disabled-note')).toBeInTheDocument();
     expect(screen.getByText(/분봉에서 표시/)).toBeInTheDocument();
   });
 
   it('shows D/W disabled note when timeframe is W', () => {
-    render(<LiveIndicatorPane timeframe="W" />);
+    render(<LiveIndicatorPane code={null} timeframe="W" />);
     expect(screen.getByTestId('indicator-disabled-note')).toBeInTheDocument();
   });
 
   it('does not show D/W note for minute timeframes', () => {
-    render(<LiveIndicatorPane timeframe="5m" />);
+    render(<LiveIndicatorPane code={null} timeframe="5m" />);
     expect(screen.queryByTestId('indicator-disabled-note')).toBeNull();
   });
 
   it('still mounts the chart on D timeframe (pane is always mounted)', async () => {
     const { LineSeries } = await import('lightweight-charts');
-    render(<LiveIndicatorPane timeframe="D" />);
+    render(<LiveIndicatorPane code={null} timeframe="D" />);
     await Promise.resolve();
     // Per Addendum 9.4: pane mounts even for D/W; series exist but data empty.
     expect(mockChart.addSeries).toHaveBeenCalledWith(LineSeries, expect.any(Object));
   });
 
   it('calls remove on unmount', async () => {
-    const { unmount } = render(<LiveIndicatorPane timeframe="1m" />);
+    const { unmount } = render(<LiveIndicatorPane code={null} timeframe="1m" />);
     await Promise.resolve();
     unmount();
     expect(mockChart.remove).toHaveBeenCalled();

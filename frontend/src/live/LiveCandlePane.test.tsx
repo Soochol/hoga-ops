@@ -12,6 +12,10 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
+vi.mock('../api/liveCandles', () => ({
+  useLiveCandles: () => ({ data: undefined, isLoading: false }),
+}));
+
 // lightweight-charts v5 uses addSeries(SeriesDefinition, options) instead of
 // addCandlestickSeries / addHistogramSeries. Mock the minimal surface our
 // component uses; we're not testing chart internals here, only that the
@@ -24,6 +28,7 @@ const mockChart = {
     applyOptions: vi.fn(),
     subscribeVisibleTimeRangeChange: vi.fn(),
     fitContent: vi.fn(),
+    scrollToRealTime: vi.fn(),
   })),
   resize: vi.fn(),
 };
@@ -46,13 +51,13 @@ describe('LiveCandlePane', () => {
   });
 
   it('mounts a chart container', () => {
-    render(<LiveCandlePane candles={[]} timeframe="1m" />);
+    render(<LiveCandlePane code={null} timeframe="1m" />);
     expect(screen.getByTestId('live-candle-pane')).toBeInTheDocument();
   });
 
   it('creates exactly one candlestick and one histogram series on mount', async () => {
     const { CandlestickSeries, HistogramSeries } = await import('lightweight-charts');
-    render(<LiveCandlePane candles={[]} timeframe="1m" />);
+    render(<LiveCandlePane code={null} timeframe="1m" />);
     // useEffect runs after render — flush microtasks
     await Promise.resolve();
     // v5 API: addSeries called twice total (candle + volume)
@@ -62,7 +67,7 @@ describe('LiveCandlePane', () => {
   });
 
   it('calls remove on unmount', async () => {
-    const { unmount } = render(<LiveCandlePane candles={[]} timeframe="1m" />);
+    const { unmount } = render(<LiveCandlePane code={null} timeframe="1m" />);
     await Promise.resolve();
     unmount();
     expect(mockChart.remove).toHaveBeenCalled();

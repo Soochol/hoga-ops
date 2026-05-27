@@ -4,6 +4,7 @@ import {
   CandlestickSeries,
   HistogramSeries,
   type IChartApi,
+  type ISeriesApi,
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { resolveTokens } from '../util/tokens';
@@ -12,16 +13,7 @@ import {
   CHART_LAYOUT_OPTIONS,
   CHART_TIMESCALE_OPTIONS,
 } from '../util/chartScale';
-
-/**
- * Live candle + volume chart.
- *
- * Stage 9-γ: candle and volume series are mounted but data arrays may be
- * empty. Real data flows in Stage 10 via `useLiveCandles`.
- *
- * Empty-data policy (Addendum 9.4): the chart container always mounts.
- * `series.setData([])` shows an empty chart, NOT a hidden pane.
- */
+import { useLiveCandles } from '../api/liveCandles';
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -32,53 +24,33 @@ const TOKEN_SPEC = {
   priceDown: ['--price-down', '#2563EB'],
 } as const;
 
-export interface CandleData {
-  time: UTCTimestamp;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-}
-
-export interface VolumeBarData {
-  time: UTCTimestamp;
-  value: number;
-  color?: string;
-}
-
 interface Props {
-  candles?: CandleData[];
-  volumes?: VolumeBarData[];
+  code: string | null;
   timeframe: string;
 }
 
-export function LiveCandlePane({ candles = [], volumes = [], timeframe: _timeframe }: Props) {
+export function LiveCandlePane({ code, timeframe }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
 
+  // Mount chart once.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-
     const tokens = resolveTokens(TOKEN_SPEC);
     const chart = createChart(el, {
       ...CHART_LAYOUT_OPTIONS,
       width: el.clientWidth,
       height: el.clientHeight,
-      layout: {
-        background: { color: tokens.bgCard },
-        textColor: tokens.fg,
-      },
-      grid: {
-        vertLines: { color: tokens.grid },
-        horzLines: { color: tokens.grid },
-      },
+      layout: { background: { color: tokens.bgCard }, textColor: tokens.fg },
+      grid: { vertLines: { color: tokens.grid }, horzLines: { color: tokens.grid } },
       timeScale: CHART_TIMESCALE_OPTIONS,
       crosshair: CHART_CROSSHAIR_OPTIONS,
     });
     chartRef.current = chart;
-
-    const candleSeries = chart.addSeries(CandlestickSeries, {
+    candleSeriesRef.current = chart.addSeries(CandlestickSeries, {
       upColor: tokens.priceUp,
       downColor: tokens.priceDown,
       borderUpColor: tokens.priceUp,
@@ -86,20 +58,11 @@ export function LiveCandlePane({ candles = [], volumes = [], timeframe: _timefra
       wickUpColor: tokens.priceUp,
       wickDownColor: tokens.priceDown,
     });
-    const volumeSeries = chart.addSeries(HistogramSeries, {
+    volumeSeriesRef.current = chart.addSeries(HistogramSeries, {
       priceScaleId: '',
       priceFormat: { type: 'volume' },
     });
-    volumeSeries.applyOptions({
-      // Volume series occupies the bottom ~25% of the candle pane.
-      // lightweight-charts v4 supports `scaleMargins` on price scale.
-    });
 
-    // Initial data load
-    if (candles.length > 0) candleSeries.setData(candles as any);
-    if (volumes.length > 0) volumeSeries.setData(volumes as any);
-
-    // Resize handler — lightweight-charts doesn't auto-resize
     const ro = new ResizeObserver(() => {
       const w = el.clientWidth;
       const h = el.clientHeight;
@@ -111,12 +74,32 @@ export function LiveCandlePane({ candles = [], volumes = [], timeframe: _timefra
       ro.disconnect();
       chart.remove();
       chartRef.current = null;
+      candleSeriesRef.current = null;
+      volumeSeriesRef.current = null;
     };
-    // We intentionally do NOT depend on candles/volumes — data updates
-    // come through a separate ref-based effect to avoid tearing down the
-    // chart on every prop change. Stage 10 will add that effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fetch + push data into series.
+  const { data } = useLiveCandles(code ?? '', timeframe);
+
+  useEffect(() => {
+    const candleSeries = candleSeriesRef.current;
+    const volumeSeries = volumeSeriesRef.current;
+    const chart = chartRef.current;
+    if (!candleSeries || !volumeSeries || !chart || !data) return;
+    const candles = data.candles.map((c) => ({
+      time: Math.floor(c.t_ms / 1000) as UTCTimestamp,
+      open: c.open, high: c.high, low: c.low, close: c.close,
+    }));
+    const volumes = data.candles.map((c) => ({
+      time: Math.floor(c.t_ms / 1000) as UTCTimestamp,
+      value: c.volume,
+    }));
+    candleSeries.setData(candles);
+    volumeSeries.setData(volumes);
+    // Design B5: keep the chart visually tracking new data.
+    chart.timeScale().scrollToRealTime();
+  }, [data]);
 
   return (
     <div
