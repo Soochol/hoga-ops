@@ -1,3 +1,6 @@
+import { useLivePageStore } from '../state/livePage';
+import { LiveCandlePane } from './LiveCandlePane';
+import { LiveIndicatorPane } from './LiveIndicatorPane';
 import { LiveEmptyState } from './LiveEmptyState';
 
 interface Props {
@@ -6,6 +9,8 @@ interface Props {
 }
 
 export function LiveWorkarea({ activeCode, watchlistEmpty }: Props) {
+  const timeframe = useLivePageStore((s) => s.candleTimeframe);
+
   if (watchlistEmpty) {
     return (
       <div data-testid="live-workarea" className="h-full">
@@ -20,15 +25,22 @@ export function LiveWorkarea({ activeCode, watchlistEmpty }: Props) {
       </div>
     );
   }
+
   return (
     <div
       data-testid="live-workarea"
       className="grid h-full"
       style={{ gridTemplateColumns: '1fr var(--sidebar-w)', background: 'var(--bg)' }}
     >
-      <div style={{ padding: 'var(--space-md)', color: 'var(--fg-dim)' }}>
-        <div>캔들 차트 영역 (Stage 9-γ)</div>
-        <div>호가 지표 차트 영역 (Stage 9-γ)</div>
+      <div
+        className="grid"
+        style={{
+          gridTemplateRows: '1fr 1fr',
+          minWidth: 0,
+        }}
+      >
+        <LiveCandlePane timeframe={timeframe} />
+        <LiveIndicatorPane timeframe={timeframe} />
       </div>
       <div
         style={{

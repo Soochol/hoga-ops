@@ -12,12 +12,12 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
-// lightweight-charts pollutes jsdom (canvas, ResizeObserver). Mock the
-// minimal surface our component uses; we're not testing chart internals
-// here, only that the component mounts the right structure.
+// lightweight-charts v5 uses addSeries(SeriesDefinition, options) instead of
+// addCandlestickSeries / addHistogramSeries. Mock the minimal surface our
+// component uses; we're not testing chart internals here, only that the
+// component mounts the right structure.
 const mockChart = {
-  addCandlestickSeries: vi.fn(() => ({ setData: vi.fn(), applyOptions: vi.fn() })),
-  addHistogramSeries: vi.fn(() => ({ setData: vi.fn(), applyOptions: vi.fn() })),
+  addSeries: vi.fn(() => ({ setData: vi.fn(), applyOptions: vi.fn() })),
   remove: vi.fn(),
   applyOptions: vi.fn(),
   timeScale: vi.fn(() => ({
@@ -42,8 +42,7 @@ describe('LiveCandlePane', () => {
     Object.values(mockChart).forEach((fn) => {
       if (typeof fn === 'function' && 'mockClear' in fn) (fn as any).mockClear();
     });
-    mockChart.addCandlestickSeries.mockClear();
-    mockChart.addHistogramSeries.mockClear();
+    mockChart.addSeries.mockClear();
   });
 
   it('mounts a chart container', () => {
@@ -52,11 +51,14 @@ describe('LiveCandlePane', () => {
   });
 
   it('creates exactly one candlestick and one histogram series on mount', async () => {
+    const { CandlestickSeries, HistogramSeries } = await import('lightweight-charts');
     render(<LiveCandlePane candles={[]} timeframe="1m" />);
     // useEffect runs after render — flush microtasks
     await Promise.resolve();
-    expect(mockChart.addCandlestickSeries).toHaveBeenCalledTimes(1);
-    expect(mockChart.addHistogramSeries).toHaveBeenCalledTimes(1);
+    // v5 API: addSeries called twice total (candle + volume)
+    expect(mockChart.addSeries).toHaveBeenCalledTimes(2);
+    expect(mockChart.addSeries).toHaveBeenCalledWith(CandlestickSeries, expect.any(Object));
+    expect(mockChart.addSeries).toHaveBeenCalledWith(HistogramSeries, expect.any(Object));
   });
 
   it('calls remove on unmount', async () => {

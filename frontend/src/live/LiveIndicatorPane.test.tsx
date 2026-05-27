@@ -11,9 +11,10 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
+// lightweight-charts v5 uses addSeries(SeriesDefinition, options) not
+// addLineSeries / addHistogramSeries.
 const mockChart = {
-  addLineSeries: vi.fn(() => ({ setData: vi.fn(), applyOptions: vi.fn() })),
-  addHistogramSeries: vi.fn(() => ({ setData: vi.fn(), applyOptions: vi.fn() })),
+  addSeries: vi.fn(() => ({ setData: vi.fn(), applyOptions: vi.fn() })),
   remove: vi.fn(),
   applyOptions: vi.fn(),
   timeScale: vi.fn(() => ({
@@ -34,17 +35,24 @@ vi.mock('lightweight-charts', async () => {
 describe('LiveIndicatorPane', () => {
   beforeEach(() => {
     cleanup();
-    mockChart.addLineSeries.mockClear();
-    mockChart.addHistogramSeries.mockClear();
+    mockChart.addSeries.mockClear();
     mockChart.remove.mockClear();
   });
 
   it('mounts with the right number of series for 1m timeframe', async () => {
+    const { LineSeries, HistogramSeries } = await import('lightweight-charts');
     render(<LiveIndicatorPane timeframe="1m" />);
     await Promise.resolve();
     // Quote Totals = 2 lines, 호가비 = 1 line, FillStrength = 2 histograms
-    expect(mockChart.addLineSeries).toHaveBeenCalledTimes(3);
-    expect(mockChart.addHistogramSeries).toHaveBeenCalledTimes(2);
+    // Total addSeries calls: 5
+    expect(mockChart.addSeries).toHaveBeenCalledTimes(5);
+    // 3 LineSeries calls
+    const calls = mockChart.addSeries.mock.calls as unknown[][];
+    const lineCalls = calls.filter((args) => args[0] === LineSeries);
+    expect(lineCalls).toHaveLength(3);
+    // 2 HistogramSeries calls
+    const histCalls = calls.filter((args) => args[0] === HistogramSeries);
+    expect(histCalls).toHaveLength(2);
   });
 
   it('shows D/W disabled note when timeframe is D', () => {
@@ -64,10 +72,11 @@ describe('LiveIndicatorPane', () => {
   });
 
   it('still mounts the chart on D timeframe (pane is always mounted)', async () => {
+    const { LineSeries } = await import('lightweight-charts');
     render(<LiveIndicatorPane timeframe="D" />);
     await Promise.resolve();
     // Per Addendum 9.4: pane mounts even for D/W; series exist but data empty.
-    expect(mockChart.addLineSeries).toHaveBeenCalled();
+    expect(mockChart.addSeries).toHaveBeenCalledWith(LineSeries, expect.any(Object));
   });
 
   it('calls remove on unmount', async () => {

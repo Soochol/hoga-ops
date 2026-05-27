@@ -1,5 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { createChart, type IChartApi } from 'lightweight-charts';
+import {
+  createChart,
+  LineSeries,
+  HistogramSeries,
+  type IChartApi,
+} from 'lightweight-charts';
 import { resolveTokens } from '../util/tokens';
 import {
   CHART_CROSSHAIR_OPTIONS,
@@ -62,20 +67,18 @@ export function LiveIndicatorPane({ timeframe }: Props) {
     chartRef.current = chart;
 
     // Quote Totals — two LineSeries on pane 0 (default)
-    chart.addLineSeries({ color: tokens.priceUp, lineWidth: 2 });   // ask_total
-    chart.addLineSeries({ color: tokens.priceDown, lineWidth: 2 }); // bid_total
+    chart.addSeries(LineSeries, { color: tokens.priceUp, lineWidth: 2 });   // ask_total
+    chart.addSeries(LineSeries, { color: tokens.priceDown, lineWidth: 2 }); // bid_total
 
-    // 호가비 — one LineSeries on pane 1
-    // NOTE: lightweight-charts v4 supports panes via `pane` option per series.
-    // If pane index is not supported in the installed version we'd need a
-    // separate chart instance; sticking with a single pane for now keeps the
-    // implementation simple. Stage 9-γ goal is "panes mount with empty
-    // series" — physical pane separation can be a Stage 10 polish item.
-    chart.addLineSeries({ color: tokens.accent, lineWidth: 2 });
+    // 호가비 — one LineSeries
+    // NOTE: lightweight-charts v5 supports multi-pane via `addSeries(..., paneIndex)`.
+    // Physical pane separation is a Stage 10 polish item; for Stage 9-γ all
+    // series live on pane 0. The goal is "panes mount with empty series".
+    chart.addSeries(LineSeries, { color: tokens.accent, lineWidth: 2 });
 
     // FillStrength — two HistogramSeries
-    chart.addHistogramSeries({ color: tokens.priceUp });   // buy_qty
-    chart.addHistogramSeries({ color: tokens.priceDown }); // sell_qty
+    chart.addSeries(HistogramSeries, { color: tokens.priceUp });   // buy_qty
+    chart.addSeries(HistogramSeries, { color: tokens.priceDown }); // sell_qty
 
     const ro = new ResizeObserver(() => {
       const w = el.clientWidth;

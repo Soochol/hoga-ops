@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import {
   createChart,
+  CandlestickSeries,
+  HistogramSeries,
   type IChartApi,
   type UTCTimestamp,
 } from 'lightweight-charts';
@@ -76,7 +78,7 @@ export function LiveCandlePane({ candles = [], volumes = [], timeframe: _timefra
     });
     chartRef.current = chart;
 
-    const candleSeries = chart.addCandlestickSeries({
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: tokens.priceUp,
       downColor: tokens.priceDown,
       borderUpColor: tokens.priceUp,
@@ -84,7 +86,7 @@ export function LiveCandlePane({ candles = [], volumes = [], timeframe: _timefra
       wickUpColor: tokens.priceUp,
       wickDownColor: tokens.priceDown,
     });
-    const volumeSeries = chart.addHistogramSeries({
+    const volumeSeries = chart.addSeries(HistogramSeries, {
       priceScaleId: '',
       priceFormat: { type: 'volume' },
     });

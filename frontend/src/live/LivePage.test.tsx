@@ -6,6 +6,39 @@ import { LivePage } from './LivePage';
 import { useLivePageStore } from '../state/livePage';
 import * as liveStatus from '../api/liveStatus';
 
+// jsdom does not implement ResizeObserver — provide a no-op stub.
+if (typeof window !== 'undefined' && !window.ResizeObserver) {
+  window.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
+// LiveWorkarea now mounts LiveCandlePane + LiveIndicatorPane (chart panes)
+// when an activeCode is set. Mock lightweight-charts so the chart creation
+// doesn't blow up in jsdom (no canvas, DevicePixelRatio observer, etc.).
+// lightweight-charts v5 uses addSeries(SeriesDefinition, options) API.
+vi.mock('lightweight-charts', async () => {
+  const mockSeriesObj = { setData: vi.fn(), applyOptions: vi.fn() };
+  const mockChart = {
+    addSeries: vi.fn(() => mockSeriesObj),
+    remove: vi.fn(),
+    applyOptions: vi.fn(),
+    timeScale: vi.fn(() => ({
+      applyOptions: vi.fn(),
+      subscribeVisibleTimeRangeChange: vi.fn(),
+      fitContent: vi.fn(),
+    })),
+    resize: vi.fn(),
+  };
+  const actual = await vi.importActual<any>('lightweight-charts');
+  return {
+    ...actual,
+    createChart: vi.fn(() => mockChart),
+  };
+});
+
 function renderWithRouter(initial = '/live') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
