@@ -159,6 +159,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         from_date: str = Query(..., alias="from"),
         to_date: str = Query(..., alias="to"),
         bucket_ms: int = Query(...),
+        source_pref: str = Query("hogaplay"),
     ) -> RangeBundle:
         try:
             validate_bucket_ms(bucket_ms)
@@ -170,6 +171,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
             from_date=from_date,
             to_date=to_date,
             bucket_ms=bucket_ms,
+            source_pref=source_pref,
         )
 
     return router

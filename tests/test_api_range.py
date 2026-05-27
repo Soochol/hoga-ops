@@ -6,7 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 
-def _build_range_bundle_stub(*, code, from_date, to_date, bucket_ms):
+def _build_range_bundle_stub(*, code, from_date, to_date, bucket_ms, source_pref="hogaplay"):
     """Return a minimal valid RangeBundle for happy-path tests."""
     from hoga.api.models import (
         FillStrength,
@@ -194,3 +194,48 @@ def test_api_range_404_with_excluded_detail_when_all_invalid(app_client: TestCli
     assert isinstance(detail, dict)
     assert "excluded" in detail
     assert detail["excluded"][0]["date"] == "20260518"
+
+
+def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
+    """source_pref query param is forwarded to build_range_bundle (ADR-0039)."""
+    captured: list[str] = []
+
+    def _stub(engine, *, code, from_date, to_date, bucket_ms, source_pref="hogaplay"):
+        captured.append(source_pref)
+        return _build_range_bundle_stub(
+            code=code,
+            from_date=from_date,
+            to_date=to_date,
+            bucket_ms=bucket_ms,
+            source_pref=source_pref,
+        )
+
+    with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
+        r = app_client.get(
+            "/api/range?code=005930&from=20260512&to=20260512"
+            "&bucket_ms=60000&source_pref=kis_live"
+        )
+    assert r.status_code == 200, r.text
+    assert captured == ["kis_live"]
+
+
+def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> None:
+    """source_pref defaults to 'hogaplay' when not provided (ADR-0039)."""
+    captured: list[str] = []
+
+    def _stub(engine, *, code, from_date, to_date, bucket_ms, source_pref="hogaplay"):
+        captured.append(source_pref)
+        return _build_range_bundle_stub(
+            code=code,
+            from_date=from_date,
+            to_date=to_date,
+            bucket_ms=bucket_ms,
+            source_pref=source_pref,
+        )
+
+    with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
+        r = app_client.get(
+            "/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000"
+        )
+    assert r.status_code == 200, r.text
+    assert captured == ["hogaplay"]
