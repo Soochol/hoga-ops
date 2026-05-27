@@ -43,6 +43,9 @@ export function LiveWorkarea({ activeCode, watchlistEmpty }: Props) {
         <LiveIndicatorPane timeframe={timeframe} />
       </div>
       <div
+        id="live-watchlist-panel"
+        role="complementary"
+        aria-label="Live Sidebar"
         style={{
           borderLeft: '1px solid var(--border)',
           padding: 'var(--space-md)',

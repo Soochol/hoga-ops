@@ -8,6 +8,7 @@ import { LiveStatusBar } from './LiveStatusBar';
 import { LiveToolbar } from './LiveToolbar';
 import { LiveWorkarea } from './LiveWorkarea';
 import { LiveStateBanner } from './LiveStateBanner';
+import { useLiveKeyboard } from './useLiveKeyboard';
 
 /**
  * /live page — KIS-based real-time indicator chart.
@@ -40,6 +41,11 @@ export function LivePage() {
 
   const { data: status } = useLiveStatus();
   const banner = useLiveBannerState(status);
+
+  // Keyboard shortcuts (Addendum 9.y / Design B7).
+  // j/k traversal callbacks will be supplied by Stage 11 when the watchlist
+  // panel is wired up; for now they're no-ops.
+  useLiveKeyboard({});
 
   const activeCode = queryCode ?? storedCode;
   const watchlistEmpty = banner.primary === 'watchlist_empty';
