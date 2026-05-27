@@ -183,22 +183,23 @@ export function LiveChartRoot({ code, timeframe }: Props) {
     };
   }, []);
 
-  // Lazy fetch trigger — extend historicalFromDate when user scrolls past the
-  // leftmost loaded candle.
+  // Lazy fetch trigger — extend historicalFromDate when user scrolls past
+  // the leftmost loaded candle.
   //
-  // The right signal is the visible-range's `from` in virtual seconds:
-  // axis.segments[0].virtualStart is always 0 by construction, so any
-  // r.from * 1000 < 0 means the user has dragged the viewport before the
-  // earliest loaded candle. `axis.toReal()` would clamp the value back to
-  // segments[0].sessionOpenMs (util/virtualAxis.ts:185), so going through
-  // realMs masks the signal — we read the virtual seconds directly.
+  // Why logical range, not time range: subscribeVisibleTimeRangeChange clamps
+  // r.from to the first candle's time (verified by wheel-pan test: from
+  // decreases monotonically toward 0 and STOPS there — never negative). So
+  // a time-API guard can never detect "user dragged past leftmost".
+  // subscribeVisibleLogicalRangeChange emits FRACTIONAL bar indices that
+  // freely go negative past the leftmost bar (-50.3 etc.), which is the
+  // signal we actually need.
   //
   // Each trigger prepends one PREFETCH_CHUNK_DAYS chunk from the current
-  // earliest segment. The store's extendHistoricalRange is monotonically
-  // decreasing, so repeat triggers from the same drag (during the 150ms
-  // debounce window) coalesce into one fetch. After the new chunk lands,
-  // axis.segments[0] becomes earlier, so the next drag-past triggers
-  // another chunk relative to the new earliest.
+  // earliest segment. The 150ms trailing debounce coalesces rapid wheel /
+  // drag events into one fetch; the store's extendHistoricalRange is
+  // monotonically decreasing, so repeated negative ranges in the same chunk
+  // are no-ops. After the new chunk lands, axis.segments[0] becomes earlier,
+  // so the next drag-past triggers another chunk relative to the new earliest.
   useEffect(() => {
     if (!chart) return;
     const ts = chart.timeScale();
@@ -206,10 +207,11 @@ export function LiveChartRoot({ code, timeframe }: Props) {
     const handler = (range: unknown) => {
       if (!isMinuteTimeframe(timeframe)) return;
       if (axis.segments.length === 0) return;
-      const r = range as { from?: Time | null } | null;
+      const r = range as { from?: number | null; to?: number | null } | null;
       if (!r || r.from == null) return;
-      const visibleFromVirtualMs = (r.from as number) * 1000;
-      if (visibleFromVirtualMs >= 0) return; // still inside loaded data
+      // logical.from is a fractional bar index; negative = past the leftmost
+      // loaded bar, which is exactly the lazy-fetch trigger condition.
+      if (r.from >= 0) return;
       const currentEarliestDate = realMsToYyyymmdd(axis.segments[0].sessionOpenMs);
       const nextHistoricalFrom = subtractDaysKst(currentEarliestDate, PREFETCH_CHUNK_DAYS);
       if (timeoutId !== null) clearTimeout(timeoutId);
@@ -217,10 +219,10 @@ export function LiveChartRoot({ code, timeframe }: Props) {
         useLivePageStore.getState().extendHistoricalRange(nextHistoricalFrom);
       }, 150);
     };
-    ts.subscribeVisibleTimeRangeChange(handler);
+    ts.subscribeVisibleLogicalRangeChange(handler);
     return () => {
       if (timeoutId !== null) clearTimeout(timeoutId);
-      ts.unsubscribeVisibleTimeRangeChange(handler);
+      ts.unsubscribeVisibleLogicalRangeChange(handler);
     };
   }, [chart, axis, timeframe]);
 

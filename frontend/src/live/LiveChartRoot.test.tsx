@@ -147,11 +147,9 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     vi.useRealTimers();
   });
 
-  it('does NOT fire extendHistoricalRange when only today is in axis (C2 guard)', () => {
-    // Default useLiveBundle mock returns today-only segments. With the
-    // single-segment axis, axis.toReal(any virtual ms) cannot return a
-    // realMs earlier than today's session_open — the C2 guard should keep
-    // historicalFromDate at null even if the handler fires.
+  it('does NOT fire extendHistoricalRange when logical from is inside loaded data', () => {
+    // logical.from >= 0 means the visible-range origin is inside loaded
+    // bars — no extension needed.
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
@@ -159,14 +157,14 @@ describe('LiveChartRoot lazy fetch trigger', () => {
 
     expect(handlers.length).toBeGreaterThan(0);
     act(() => {
-      handlers.forEach((h) => h({ from: 1000, to: 2000 }));
+      handlers.forEach((h) => h({ from: 10.5, to: 200.5 }));
       vi.advanceTimersByTime(200);
     });
 
     expect(useLivePageStore.getState().historicalFromDate).toBeNull();
   });
 
-  it('does NOT fire extendHistoricalRange when visible-range stays inside the initial window', () => {
+  it('does NOT fire extendHistoricalRange when multi-segment axis is still inside loaded bars', () => {
     // Yesterday (today - 1) is comfortably inside the 20-day initial window,
     // so scrolling there is already covered by the seeded fetch and must NOT
     // trigger an additional extension.
@@ -203,11 +201,12 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     expect(useLivePageStore.getState().historicalFromDate).toBeNull();
   });
 
-  it('fires extendHistoricalRange with one chunk past current earliest when scrolled before loaded data', () => {
-    // Axis with yesterday + today. Dragging the visible range to virtual
-    // seconds < 0 means the user has scrolled past the leftmost loaded
-    // candle — handler should prepend PREFETCH_CHUNK_DAYS more past data
-    // from the current earliest segment.
+  it('fires extendHistoricalRange with one chunk past current earliest when logical from goes negative', () => {
+    // Axis with yesterday + today. lightweight-charts emits negative
+    // logical.from when the visible-range origin is past the leftmost
+    // loaded bar (fractional bar index can go negative beyond the data).
+    // Handler should prepend PREFETCH_CHUNK_DAYS more past data from the
+    // current earliest segment.
     vi.mocked(useLiveBundle).mockReturnValue({
       bundle: {
         code: '005930',
@@ -233,10 +232,9 @@ describe('LiveChartRoot lazy fetch trigger', () => {
 
     render(<LiveChartRoot code="005930" timeframe="1m" />, { wrapper });
 
-    // Negative virtual seconds = viewport origin is before the leftmost
-    // loaded candle (axis.segments[0].virtualStart is always 0).
+    // Negative fractional logical = viewport past leftmost loaded bar.
     act(() => {
-      handlers.forEach((h) => h({ from: -3600, to: 600 })); // -1 hour past axis start
+      handlers.forEach((h) => h({ from: -50.3, to: 100.7 }));
       vi.advanceTimersByTime(200);
     });
 
@@ -297,11 +295,11 @@ function buildChartMockCapturing(handlers: Array<(r: unknown) => void>) {
     })),
     removeSeries: vi.fn(),
     timeScale: vi.fn(() => ({
-      subscribeVisibleTimeRangeChange: (h: (r: unknown) => void) => {
+      subscribeVisibleTimeRangeChange: vi.fn(),
+      unsubscribeVisibleTimeRangeChange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: (h: (r: unknown) => void) => {
         handlers.push(h);
       },
-      unsubscribeVisibleTimeRangeChange: vi.fn(),
-      subscribeVisibleLogicalRangeChange: vi.fn(),
       unsubscribeVisibleLogicalRangeChange: vi.fn(),
       applyOptions: vi.fn(),
       fitContent: vi.fn(),
