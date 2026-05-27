@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { apiCall } from './client';
+import { apiCall, apiUrl } from './client';
 import { LiveSnapshotBuffer, type SnapshotKind } from '../live/liveSnapshotBuffer';
 
 export interface LiveSeriesResponse {
@@ -61,21 +61,29 @@ export function useLiveSeries(code: string) {
     setTick((t) => t + 1);
   }, [initial.data]);
 
-  // Subscribe to SSE.
+  // Subscribe to SSE. The URL must go through apiUrl() so that frontend dev
+  // server (vite, 5173) doesn't intercept it; backend lives on a different
+  // origin in dev (8000) and apiUrl resolves that from config.
   useEffect(() => {
     if (!code) return;
-    const es = new EventSource(`/api/live/stream?code=${encodeURIComponent(code)}`);
-    es.onmessage = (e: MessageEvent) => {
-      try {
-        const entry = JSON.parse(e.data) as { t_ms: number; kind: string };
-        bufferRef.current.push(entry);
-        setTick((t) => t + 1);
-      } catch {
-        // Malformed SSE message — skip silently.
-      }
-    };
+    let es: EventSource | null = null;
+    let cancelled = false;
+    apiUrl(`/api/live/stream?code=${encodeURIComponent(code)}`).then((url: string) => {
+      if (cancelled) return;
+      es = new EventSource(url);
+      es.onmessage = (e: MessageEvent) => {
+        try {
+          const entry = JSON.parse(e.data) as { t_ms: number; kind: string };
+          bufferRef.current.push(entry);
+          setTick((t) => t + 1);
+        } catch {
+          // Malformed SSE message — skip silently.
+        }
+      };
+    });
     return () => {
-      es.close();
+      cancelled = true;
+      es?.close();
       bufferRef.current.clear();
       setTick(0);
     };
