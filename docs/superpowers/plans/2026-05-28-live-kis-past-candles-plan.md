@@ -32,8 +32,12 @@ adr: docs/adr/0040-live-candle-backfill-separate-cache.md
 | `frontend/src/api/liveCandles.test.tsx` | 제거. | Delete |
 | `frontend/src/live/buildLiveBundle.ts` | input schema 변경: `todayCandles` → `kisCandles`. | Modify |
 | `frontend/src/live/buildLiveBundle.test.ts` | input schema 변경 반영 + 5/26 시나리오 추가. | Modify |
-| `frontend/src/live/useLiveBundle.ts` | `useLivePastCandles` 와이어링 + 60일 clamping + timeframe aggregation. | Modify |
+| `frontend/src/live/useLiveBundle.ts` | `useLivePastCandles` 와이어링 + 60일 clamping + timeframe aggregation + `clampEngaged`/`isPastCandlesLoading` exposure. | Modify |
 | `frontend/src/live/useLiveBundle.test.tsx` | 새 와이어링 반영. | Modify |
+| `frontend/src/live/aggregateCandles.ts` | `LiveCandle` import 출처 재배치 (`liveCandles` → `livePastCandles`). | Modify |
+| `frontend/src/live/LiveWorkarea.tsx` | `InvariantOutcomesBanner` 마운트 (5/26 etc. surface). bundle을 lift해 `LiveChartRoot`로 prop 전달. | Modify |
+| `frontend/src/live/LiveChartRoot.tsx` | `bundle`/`clampEngaged`/`isPastCandlesLoading` props 수신 + 두 overlay 추가. | Modify |
+| `frontend/src/live/LiveWorkarea.test.tsx` | banner 마운트 회귀 테스트. | Create |
 
 ---
 
@@ -60,10 +64,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hoga.live.past_candles_cache import (
-    PastCandlesCache,
-    CachedDayResult,
-)
+from hoga.live.past_candles_cache import PastCandlesCache
 
 
 def _bars(t_ms_list: list[int]) -> list[dict]:
@@ -134,10 +135,6 @@ TODAY_TTL_SECONDS = 60.0
 
 # Cache file metadata constant.
 _KIS_TR_ID = "FHKST03010230"
-
-
-class CachedDayResult:
-    """Convenience type — a list of candle dicts."""
 
 
 class PastCandlesCache:
@@ -262,7 +259,15 @@ git commit -m "feat(live): PastCandlesCache disk + memory hybrid"
 - Modify: `hoga/live/api.py` (add new route)
 - Test: `tests/unit/live/test_api.py` (add integration tests)
 
-이 endpoint는 spec §Backend spec의 validation + 일자 처리 루프 + partial failure 처리 + cap을 모두 한 곳에서 책임진다. 캐시 인스턴스는 lifecycle 모듈을 통해 주입되거나 module-level singleton으로 lazy-init한다.
+이 endpoint는 spec §Backend spec의 validation + 일자 처리 루프 + partial failure 처리 + cap을 모두 한 곳에서 책임진다. 캐시 인스턴스는 **`build_router` closure**에 주입되어 라우터 인스턴스 수명과 동기화된다 (module-level singleton 회피 — Eng C5).
+
+- [ ] **Step 2.0: Verify KisClient error class signatures before writing tests**
+
+```bash
+grep -n "class Kis.*Error\|KisRateLimitError\|KisApiError" hoga/live/kis_client.py
+```
+
+기대 출력: `KisApiError(msg_cd=..., msg1=...)` + `KisRateLimitError(RuntimeError)`. `KisRateLimitError`는 단일 positional 문자열 인자 (`RuntimeError` 시그니처) 사용. 다르면 후속 Step의 raise 구문을 그 시그니처에 맞춤.
 
 - [ ] **Step 2.1: Write failing test for 422 on missing params**
 
@@ -292,11 +297,27 @@ class _FakeKisForPast:
 
 
 def _past_app(tmp_path, fake_kis):
-    from hoga.api.app import create_app
+    """Build a minimal FastAPI mounting only the /api/live router.
+
+    Mirrors `_make_test_app` so we DO NOT trigger create_app's scheduler /
+    capture pool / poller / KRX-network side effects. data_dir is `tmp_path`
+    so the past-candles cache writes into the test sandbox.
+    """
+    from fastapi import FastAPI
     from hoga.live import lifecycle
+    from hoga.live.api import build_router
+
     lifecycle.reset_for_tests()
     lifecycle.set_kis_client(fake_kis)  # type: ignore[arg-type]
-    return create_app(tmp_path)
+    app = FastAPI()
+    app.include_router(
+        build_router(
+            get_status=lifecycle.get_status,
+            get_kis_client=lifecycle.get_kis_client,
+            data_dir=tmp_path,
+        )
+    )
+    return app
 
 
 def test_past_candles_rejects_missing_code(tmp_path) -> None:
@@ -362,7 +383,6 @@ from hoga.live.past_candles_cache import PastCandlesCache
 Module-level (after `_CANDLES_TTL_SECONDS`):
 
 ```python
-_PAST_CANDLES_CACHE: PastCandlesCache | None = None
 _PAST_MAX_DAYS = 60
 _CODE_RE = re.compile(r"^\d{6}$")
 _KST = _tz(timedelta(hours=9))
@@ -391,19 +411,9 @@ def _candle_to_dict(c) -> dict:
         "t_ms": c.t_ms, "open": c.open, "high": c.high, "low": c.low,
         "close": c.close, "volume": c.volume,
     }
-
-
-def get_past_candles_cache(data_dir: Path) -> PastCandlesCache:
-    global _PAST_CANDLES_CACHE
-    if _PAST_CANDLES_CACHE is None:
-        _PAST_CANDLES_CACHE = PastCandlesCache(data_dir=data_dir)
-    return _PAST_CANDLES_CACHE
-
-
-def reset_past_candles_cache_for_tests() -> None:
-    global _PAST_CANDLES_CACHE
-    _PAST_CANDLES_CACHE = None
 ```
+
+The cache instance is bound to the router via closure (Eng C5) — no module singleton, no `reset_*_for_tests` needed.
 
 Update `build_router` signature to accept `data_dir: Path`:
 
@@ -418,21 +428,14 @@ def build_router(
 ) -> APIRouter:
 ```
 
-Inside `build_router`, after the existing `/candles` route (which Task 3 will delete), add:
-
-```python
-    @router.get("/past-candles")
-    async def _get_past_candles(code: str, from_: str = "", to: str = "") -> dict:
-        # FastAPI binds query param `from` to the function arg via alias.
-        # We accept `from_` directly here for clarity; route alias defined via
-        # Query(...). For minimal change, redefine using Query alias.
-        raise NotImplementedError  # replaced below
-```
-
-Actually, FastAPI query params can be received as-is with `Query(alias='from')`. Use the explicit form:
+Inside `build_router`, instantiate the cache (closure-scoped) and add the route. After the existing `/candles` route (which Task 3 will delete), add:
 
 ```python
     from fastapi import Query
+
+    cache_instance: PastCandlesCache | None = (
+        PastCandlesCache(data_dir=data_dir) if data_dir is not None else None
+    )
 
     @router.get("/past-candles")
     async def _get_past_candles(
@@ -464,9 +467,9 @@ Actually, FastAPI query params can be received as-is with `Query(alias='from')`.
         kis = get_kis_client()
         if kis is None:
             raise HTTPException(503, "KIS client not initialized")
-        if data_dir is None:
+        if cache_instance is None:
             raise HTTPException(503, "past-candles cache not wired (data_dir missing)")
-        cache = get_past_candles_cache(data_dir)
+        cache = cache_instance
 
         candles_all: list[dict] = []
         cached_dates: list[str] = []
@@ -484,7 +487,16 @@ Actually, FastAPI query params can be received as-is with `Query(alias='from')`.
                     if bars is None:
                         raw = await kis.fetch_past_minute_candles(code, date_s)
                         bars = [_candle_to_dict(c) for c in raw]
-                        cache.store_past(code, date_s, bars)
+                        try:
+                            cache.store_past(code, date_s, bars)
+                        except OSError as e:
+                            # Disk write failure (full disk, permission, etc.):
+                            # serve the bars in-memory but surface as warning.
+                            warnings.append({
+                                "date": date_s,
+                                "reason": "cache_write_failed",
+                                "msg": str(e),
+                            })
                         fresh_dates.append(date_s)
                     else:
                         cached_dates.append(date_s)
@@ -493,7 +505,7 @@ Actually, FastAPI query params can be received as-is with `Query(alias='from')`.
                     if bars is None:
                         raw = await kis.fetch_past_minute_candles(code, date_s)
                         bars = [_candle_to_dict(c) for c in raw]
-                        cache.store_today(code, bars)
+                        cache.store_today(code, bars)  # memory only — no OSError path
                         fresh_dates.append(date_s)
                     else:
                         cached_dates.append(date_s)
@@ -544,8 +556,6 @@ Append to `tests/unit/live/test_api.py`:
 ```python
 @pytest.mark.asyncio
 async def test_past_candles_happy_path_single_date(tmp_path) -> None:
-    from hoga.live.api import reset_past_candles_cache_for_tests
-    reset_past_candles_cache_for_tests()
     fake = _FakeKisForPast()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
@@ -565,8 +575,6 @@ async def test_past_candles_happy_path_single_date(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_past_candles_disk_cache_hit_on_second_call(tmp_path) -> None:
-    from hoga.live.api import reset_past_candles_cache_for_tests
-    reset_past_candles_cache_for_tests()
     fake = _FakeKisForPast()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
@@ -584,8 +592,6 @@ async def test_past_candles_disk_cache_hit_on_second_call(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_past_candles_today_memory_cache(tmp_path) -> None:
-    from hoga.live.api import reset_past_candles_cache_for_tests
-    reset_past_candles_cache_for_tests()
     fake = _FakeKisForPast()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
@@ -602,9 +608,7 @@ async def test_past_candles_today_memory_cache(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_past_candles_partial_failure_kis_api_error(tmp_path) -> None:
-    from hoga.live.api import reset_past_candles_cache_for_tests
     from hoga.live.kis_client import KisApiError
-    reset_past_candles_cache_for_tests()
 
     class _PartialFakeKis:
         async def fetch_past_minute_candles(self, code, date_yyyymmdd):
@@ -627,9 +631,7 @@ async def test_past_candles_partial_failure_kis_api_error(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_past_candles_rate_limit_aborts_remaining(tmp_path) -> None:
-    from hoga.live.api import reset_past_candles_cache_for_tests
     from hoga.live.kis_client import KisRateLimitError
-    reset_past_candles_cache_for_tests()
 
     class _RateLimitedFakeKis:
         def __init__(self):
@@ -652,6 +654,55 @@ async def test_past_candles_rate_limit_aborts_remaining(tmp_path) -> None:
         reasons = [w["reason"] for w in body["data_warnings"]]
         assert "kis_rate_limit" in reasons
         assert "rate_limit_aborted" in reasons
+```
+
+- [ ] **Step 2.5b: Add weekend (empty response) + disk-persistence tests**
+
+Append to `tests/unit/live/test_api.py`:
+
+```python
+@pytest.mark.asyncio
+async def test_past_candles_weekend_empty_response(tmp_path) -> None:
+    """KIS returns [] for non-trading days (weekends, holidays). Endpoint
+    should accept that as a normal zero-candle date — no warning."""
+
+    class _EmptyFakeKis:
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+            return []
+
+    app = _past_app(tmp_path, _EmptyFakeKis())
+    with TestClient(app) as c:
+        # 20260516 (Saturday)
+        r = c.get("/api/live/past-candles?code=005930&from=20260516&to=20260516")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["candles"] == []
+        assert body["data_warnings"] == []
+        assert body["fresh_dates"] == ["20260516"]
+
+
+@pytest.mark.asyncio
+async def test_past_candles_disk_cache_survives_router_rebuild(tmp_path) -> None:
+    """Past disk cache must survive a new router/cache instance — simulating
+    a server restart. Builds two apps against the same tmp_path."""
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+    yesterday = (datetime.datetime.now(kst) - datetime.timedelta(days=1)).strftime("%Y%m%d")
+
+    fake1 = _FakeKisForPast()
+    app1 = _past_app(tmp_path, fake1)
+    with TestClient(app1) as c:
+        c.get(f"/api/live/past-candles?code=005930&from={yesterday}&to={yesterday}")
+        assert fake1.calls == [yesterday]
+
+    # Second router with a *fresh* cache instance (simulating restart). KIS
+    # must not be called again — disk hit only.
+    fake2 = _FakeKisForPast()
+    app2 = _past_app(tmp_path, fake2)
+    with TestClient(app2) as c:
+        r = c.get(f"/api/live/past-candles?code=005930&from={yesterday}&to={yesterday}")
+        assert r.status_code == 200
+        assert fake2.calls == []
+        assert r.json()["cached_dates"] == [yesterday]
 ```
 
 - [ ] **Step 2.6: Run full past-candles tests → expect pass**
@@ -980,8 +1031,23 @@ Add new tests at the bottom of the describe block:
   });
 
   it('5/26-style: pastBundle.excluded_dates passes through alongside KIS candles', () => {
+    // ExcludedDate wire shape per frontend/src/api/types.ts:396-419 —
+    //   { date: string; violations: ViolationWire[] }
+    // where ViolationWire = { invariant_id, severity, message, ctx }
     const past = emptyRangeBundle({
-      excluded_dates: [{ date: '20260526', reason: 'meta.close_after_open', severity: 'error', message: '...' }],
+      excluded_dates: [
+        {
+          date: '20260526',
+          violations: [
+            {
+              invariant_id: 'meta.close_after_open',
+              severity: 'error',
+              message: 'session close must be strictly greater than open',
+              ctx: { open_ms: 90000000, close_ms: 0 },
+            },
+          ],
+        },
+      ],
     });
     const kis = [
       { ts_ms: Date.UTC(2026, 4, 26, 0, 0, 0), open: 70000, close: 70050, high: 70100, low: 69900, vol_a: 10, vol_b: 0 },
@@ -1001,17 +1067,13 @@ Add new tests at the bottom of the describe block:
   });
 ```
 
-Note: `RangeBundle.excluded_dates` field type — confirm shape (string[] vs object[]) before running. If string[], adjust the test to `['20260526']`.
+Before running, verify the exact wire shape:
 
 ```bash
-grep -n "excluded_dates" frontend/src/api/types.ts
+grep -n "ExcludedDate\|excluded_dates\|ViolationWire" frontend/src/api/types.ts
 ```
 
-If `excluded_dates: string[]`, update the test:
-```ts
-excluded_dates: ['20260526'],
-```
-and the assertion accordingly.
+The shape above is taken from `types.ts:396-419`. If it has drifted, adjust the literal to match.
 
 - [ ] **Step 5.2: Run buildLiveBundle tests → expect failure (schema mismatch)**
 
@@ -1150,6 +1212,26 @@ git commit -m "refactor(live): buildLiveBundle uses kisCandles as single candle 
 
 Wires `useLivePastCandles`, applies 60-day clamping at the bundle level (so the two backend caps stay independent), converts KIS bars to wire `Candle` shape (`vol_a = volume, vol_b = 0`), and aggregates 1m bars into the display timeframe.
 
+- [ ] **Step 6.0: Re-home `aggregateCandles`'s `LiveCandle` type dependency**
+
+`frontend/src/live/aggregateCandles.ts` currently `import type { LiveCandle } from '../api/liveCandles'`. Task 8 deletes that file, so aggregateCandles must stop depending on it *before* the deletion compiles. Apply this edit now (in Task 6, ahead of Task 8):
+
+```bash
+grep -n "LiveCandle" frontend/src/live/aggregateCandles.ts
+```
+
+Replace the import line at the top of `aggregateCandles.ts`:
+
+```ts
+// REMOVE
+import type { LiveCandle } from '../api/liveCandles';
+
+// REPLACE WITH
+import type { LivePastCandle as LiveCandle } from '../api/livePastCandles';
+```
+
+The shape is identical (`{t_ms, open, high, low, close, volume}`), so internal code paths in `aggregateCandles.ts` are unchanged. The local rename via `as LiveCandle` keeps existing function signatures stable.
+
 - [ ] **Step 6.1: Update existing test mocks to add `useLivePastCandles`**
 
 In `frontend/src/live/useLiveBundle.test.tsx`, find the `vi.mock(...)` block for `../api/liveCandles` and replace with a `vi.mock('../api/livePastCandles', ...)`.
@@ -1172,31 +1254,104 @@ vi.mock('../api/livePastCandles', () => ({
 }));
 ```
 
-- [ ] **Step 6.2: Add a new test asserting 60-day clamping behavior**
+- [ ] **Step 6.2: Switch mocks from `liveCandles` to `livePastCandles` + add clamping test**
 
-Append to `frontend/src/live/useLiveBundle.test.tsx`:
+Replace the entire `useLiveBundle.test.tsx` with the version below (preserves the two existing tests and adds the clamp + KIS-bar-to-Candle assertions). Date math: `today=20260527`, `today - 60 days = 20260328`, `today - 90 days = 20260227`. (Sanity check the 60-day-prior calc in REPL if uncertain: `Date.UTC(2026,4,27) - 60*86400_000 = Date.UTC(2026,2,28)` → `20260328`.)
 
 ```tsx
-import { useLivePastCandles } from '../api/livePastCandles';
-import { useRange } from '../api/range';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { useLiveBundle } from './useLiveBundle';
+import { useLivePageStore } from '../state/livePage';
+import { useSourcePreferenceStore } from '../state/sourcePreference';
 
-it('clamps pastFrom to 60 days before today', () => {
-  // (Setup as existing tests — render useLiveBundle with a code, 1m timeframe,
-  // and historicalFromDate set to 90 days ago.)
-  const today = '20260527';
-  const ninetyDaysAgo = '20260227';
-  const sixtyDaysAgo = '20260328';
-  // Mock useLivePageStore so historicalFromDate = 90 days ago.
-  // (Use the existing useLivePageStore mock pattern from this file's other tests.)
+vi.mock('../api/liveSeries', () => ({
+  useLiveSeries: () => ({
+    initial: { session_open_ms: 1748275200000, session_close_ms: 1748298600000 },
+    isLoading: false,
+    error: null,
+    ob: [
+      { t_ms: 1748275260000, total_ask_qty: 100, total_bid_qty: 80, kind: 'ob' },
+    ],
+    trade: [],
+    broker: [],
+  }),
+}));
 
-  // Render useLiveBundle(code='005930', timeframe='1m', today=today)
-  // and assert:
-  expect(useLivePastCandles).toHaveBeenCalledWith('005930', sixtyDaysAgo, today);
-  expect(useRange).toHaveBeenCalledWith('005930', sixtyDaysAgo, '20260526', '1m');
+const livePastCandlesSpy = vi.fn(() => ({
+  data: {
+    code: '005930',
+    from: '',
+    to: '',
+    candles: [
+      { t_ms: 1748275200000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+    ],
+    cached_dates: [],
+    fresh_dates: [],
+    data_warnings: [],
+  },
+  isLoading: false,
+  error: null,
+}));
+vi.mock('../api/livePastCandles', () => ({
+  useLivePastCandles: (...args: unknown[]) => livePastCandlesSpy(...args as []),
+}));
+
+const useRangeSpy = vi.fn(() => ({ data: null, isLoading: false, error: null }));
+vi.mock('../api/range', () => ({
+  useRange: (...args: unknown[]) => useRangeSpy(...args as []),
+}));
+
+const wrapper = ({ children }: { children: ReactNode }) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+};
+
+describe('useLiveBundle', () => {
+  beforeEach(() => {
+    livePastCandlesSpy.mockClear();
+    useRangeSpy.mockClear();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: null,
+    });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_live' });
+  });
+
+  it('builds a today-only bundle when historicalFromDate is null', () => {
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    expect(result.current.bundle!.segments.length).toBe(1);
+    expect(result.current.bundle!.segments[0].source).toBe('kis_live');
+    expect(result.current.bundle!.candles.length).toBe(1);
+    expect(result.current.bundle!.quote_ratio.points.length).toBe(1);
+  });
+
+  it('returns null bundle when code is null', () => {
+    const { result } = renderHook(() => useLiveBundle(null, '1m', '20260527'), { wrapper });
+    expect(result.current.bundle).toBeNull();
+  });
+
+  it('clamps pastFrom to 59 days before today when historicalFromDate is older', () => {
+    // 90 days before 20260527 = 20260227. Clamp earliestAllowed = today - 59 = 20260329.
+    useLivePageStore.setState({ historicalFromDate: '20260227' });
+    renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    expect(livePastCandlesSpy).toHaveBeenCalledWith('005930', '20260329', '20260527');
+    // /api/range gets the same clamped pastFrom but pastTo = yesterday = 20260526.
+    expect(useRangeSpy).toHaveBeenCalledWith('005930', '20260329', '20260526', '1m');
+  });
+
+  it('maps KIS bar shape to wire Candle shape (vol_a = volume, vol_b = 0)', () => {
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    const c = result.current.bundle!.candles[0];
+    expect(c).toMatchObject({ ts_ms: 1748275200000, open: 70000, vol_a: 1000, vol_b: 0 });
+    expect(c).not.toHaveProperty('t_ms');
+    expect(c).not.toHaveProperty('volume');
+  });
 });
 ```
-
-(The test author should look at how the existing tests render `useLiveBundle` and follow that same pattern. If the existing test setup uses a different fixture style, adapt.)
 
 - [ ] **Step 6.3: Refactor `useLiveBundle.ts`**
 
@@ -1348,27 +1503,203 @@ git commit -m "refactor(live): wire useLivePastCandles + 60-day clamp in useLive
 
 ---
 
-## Task 7: Frontend — delete `liveCandles.ts` + cleanup
+## Task 7: Frontend — UX affordances for excluded dates + 60-day cap + loading
+
+**Files:**
+- Modify: `frontend/src/live/LiveWorkarea.tsx` — mount `InvariantOutcomesBanner` above the chart so 5/26-style excluded dates surface (Design C1, spec AC#2).
+- Modify: `frontend/src/live/LiveChartRoot.tsx` — show a "최대 60일까지 표시됩니다" chip when the clamp engages (Design C2), and a centered "분봉 불러오는 중..." status note while `pastCandlesQuery.isLoading` is true and bundle is empty (Design C3).
+- Modify: `frontend/src/live/useLiveBundle.ts` — expose `clampEngaged` boolean + `isPastCandlesLoading` so the chart knows when to show the affordances.
+
+Background: the spec promised "5/26 candle 표시, hoga 지표만 비움" (AC#2), but the existing `/live` layout never mounts the banner that surfaces *why* hoga is missing — design review flagged this as a UX regression. The 60-day clamp at the bundle layer is also invisible — drag-pan past day 60 silently does nothing.
+
+- [ ] **Step 7.1: Mount InvariantOutcomesBanner inside LiveWorkarea**
+
+Find the chart container in `LiveWorkarea.tsx`:
+
+```tsx
+<div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+  <LiveChartRoot code={activeCode} timeframe={timeframe} />
+</div>
+```
+
+Refactor so the banner sits above the chart:
+
+```tsx
+import InvariantOutcomesBanner from '../replay/InvariantOutcomesBanner';
+import { useLiveBundle } from './useLiveBundle';
+import { useTodayKstYyyymmdd } from './liveDateTime';  // assuming such helper; if absent reuse the call site's today resolution
+
+// inside LiveWorkarea, after the `if (!activeCode) ...` guard:
+const today = /* same today derivation used by LiveChartRoot — keep both in sync */;
+const { bundle } = useLiveBundle(activeCode, timeframe, today);
+
+// in JSX, replace the chart container with:
+<div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+  {bundle && (
+    <InvariantOutcomesBanner
+      excluded={bundle.excluded_dates ?? []}
+      warnings={bundle.data_warnings ?? []}
+    />
+  )}
+  <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+    <LiveChartRoot code={activeCode} timeframe={timeframe} />
+  </div>
+</div>
+```
+
+Note: This calls `useLiveBundle` in *two places* (LiveWorkarea + LiveChartRoot). TanStack Query dedupes by `queryKey` so the second call hits the cache without firing a request, but the two `useMemo`-derived bundle objects will be reference-distinct. For the banner the reference doesn't matter — only the content. If you want a single source of truth, lift `useLiveBundle` into `LiveWorkarea` and pass `bundle` as a prop to `LiveChartRoot`, deleting LiveChartRoot's local `useLiveBundle` call. **Choose the lift approach** — cleaner and avoids subtle re-mount loops.
+
+`grep -n "useLiveBundle\|const today" frontend/src/live/LiveChartRoot.tsx` to find LiveChartRoot's current call site; remove it and accept `bundle` via props.
+
+- [ ] **Step 7.2: Add a clamp-engaged chip + loading note to LiveChartRoot**
+
+Modify `useLiveBundle.ts` to expose two additional booleans in `UseLiveBundleResult`:
+
+```ts
+export interface UseLiveBundleResult {
+  bundle: RangeBundle | null;
+  isLoading: boolean;
+  error: unknown;
+  clampEngaged: boolean;
+  isPastCandlesLoading: boolean;
+}
+```
+
+Compute and return them:
+
+```ts
+const clampEngaged = historicalFromDate != null && historicalFromDate < earliestAllowed;
+const isPastCandlesLoading = pastCandlesQuery.isLoading;
+return {
+  bundle,
+  isLoading: live.isLoading || past.isLoading || pastCandlesQuery.isLoading,
+  error: live.error ?? past.error ?? pastCandlesQuery.error ?? null,
+  clampEngaged,
+  isPastCandlesLoading,
+};
+```
+
+In `LiveChartRoot.tsx`, accept `bundle`, `clampEngaged`, `isPastCandlesLoading` via props and render two non-intrusive overlays. Reuse the existing `indicator-disabled-note` token block pattern (search `LiveChartRoot.tsx` for `indicator-disabled-note` or similar status chip styling — emulate that for visual consistency, per DESIGN.md tokens):
+
+```tsx
+{isPastCandlesLoading && (!bundle || bundle.candles.length === 0) && (
+  <div style={{
+    position: 'absolute', inset: 0, display: 'flex',
+    alignItems: 'center', justifyContent: 'center',
+    pointerEvents: 'none', color: 'var(--fg-muted)',
+    fontSize: 'var(--font-size-sm)',
+  }}>
+    분봉 불러오는 중…
+  </div>
+)}
+{clampEngaged && (
+  <div style={{
+    position: 'absolute', bottom: 8, left: 8,
+    background: 'var(--bg-elevated)', color: 'var(--fg-muted)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    padding: '2px 6px', fontSize: 'var(--font-size-xs)',
+    pointerEvents: 'none',
+  }}>
+    최대 60일까지 표시됩니다
+  </div>
+)}
+```
+
+If `LiveChartRoot` has a containing positioned wrapper (relative), the absolute overlays anchor correctly; otherwise wrap the chart canvas in a `position: relative` container.
+
+- [ ] **Step 7.3: Write tests for the new affordances**
+
+`frontend/src/live/LiveWorkarea.test.tsx` (create if absent, or extend existing):
+
+```tsx
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { LiveWorkarea } from './LiveWorkarea';
+
+vi.mock('./useLiveBundle', () => ({
+  useLiveBundle: () => ({
+    bundle: {
+      code: '005930',
+      from_date: '20260501',
+      to_date: '20260527',
+      bucket_ms: 60000,
+      segments: [],
+      candles: [],
+      quote_ratio: { bucket_ms: 60000, points: [] },
+      fill_strength: { bucket_ms: 60000, points: [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [],
+      excluded_dates: [{
+        date: '20260526',
+        violations: [{ invariant_id: 'meta.close_after_open', severity: 'error', message: 'x', ctx: {} }],
+      }],
+    },
+    isLoading: false,
+    error: null,
+    clampEngaged: false,
+    isPastCandlesLoading: false,
+  }),
+}));
+vi.mock('./LiveChartRoot', () => ({ LiveChartRoot: () => <div data-testid="chart" /> }));
+vi.mock('./LiveSidebar', () => ({ LiveSidebar: () => <div data-testid="sidebar" /> }));
+
+it('renders InvariantOutcomesBanner with excluded dates when bundle has them', () => {
+  render(<LiveWorkarea activeCode="005930" watchlistEmpty={false} />);
+  // Banner renders date as MM/DD per InvariantOutcomesBanner.fmtMD
+  expect(screen.getByText(/5\/26/)).toBeInTheDocument();
+});
+```
+
+Also add a test in `useLiveBundle.test.tsx`:
+
+```tsx
+it('exposes clampEngaged=true when historicalFromDate older than 60 days', () => {
+  useLivePageStore.setState({ historicalFromDate: '20260227' });
+  const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+  expect(result.current.clampEngaged).toBe(true);
+});
+```
+
+- [ ] **Step 7.4: Run frontend tests + build**
+
+```bash
+cd frontend && npx vitest run src/live/LiveWorkarea.test.tsx src/live/useLiveBundle.test.tsx
+cd frontend && npm run build
+```
+
+Expected: PASS + clean build.
+
+- [ ] **Step 7.5: Commit**
+
+```bash
+git add frontend/src/live/LiveWorkarea.tsx frontend/src/live/LiveChartRoot.tsx frontend/src/live/useLiveBundle.ts frontend/src/live/useLiveBundle.test.tsx frontend/src/live/LiveWorkarea.test.tsx
+git commit -m "feat(live): excluded-dates banner + 60-day cap chip + loading note"
+```
+
+---
+
+## Task 8: Frontend — delete `liveCandles.ts` + cleanup
 
 **Files:**
 - Delete: `frontend/src/api/liveCandles.ts`
 - Delete: `frontend/src/api/liveCandles.test.tsx`
 
-- [ ] **Step 7.1: Search for any remaining imports**
+- [ ] **Step 8.1: Search for any remaining imports**
 
 ```bash
 grep -rn "liveCandles\|useLiveCandles" frontend/src/ --exclude-dir=node_modules
 ```
 
-Expected: only the file itself (which we're about to delete) + possibly some test refs.
+Expected: only the file itself (which we're about to delete). If `aggregateCandles.ts` still appears, Step 6.0 was missed — go back and apply.
 
-- [ ] **Step 7.2: Delete files**
+- [ ] **Step 8.2: Delete files**
 
 ```bash
 git rm frontend/src/api/liveCandles.ts frontend/src/api/liveCandles.test.tsx
 ```
 
-- [ ] **Step 7.3: Run full frontend test suite**
+- [ ] **Step 8.3: Run full frontend test suite**
 
 ```bash
 cd frontend && npx vitest run
@@ -1376,7 +1707,7 @@ cd frontend && npx vitest run
 
 Expected: all tests PASS, no `useLiveCandles` import errors.
 
-- [ ] **Step 7.4: Build to confirm no TS errors**
+- [ ] **Step 8.4: Build to confirm no TS errors**
 
 ```bash
 cd frontend && npm run build
@@ -1384,7 +1715,7 @@ cd frontend && npm run build
 
 Expected: build succeeds.
 
-- [ ] **Step 7.5: Commit**
+- [ ] **Step 8.5: Commit**
 
 ```bash
 git commit -m "refactor(live): remove liveCandles.ts (superseded by livePastCandles)"
@@ -1392,9 +1723,9 @@ git commit -m "refactor(live): remove liveCandles.ts (superseded by livePastCand
 
 ---
 
-## Task 8: Final verification + smoke
+## Task 9: Final verification + smoke
 
-- [ ] **Step 8.1: Full backend test suite**
+- [ ] **Step 9.1: Full backend test suite**
 
 ```bash
 uv run pytest -q
@@ -1402,7 +1733,7 @@ uv run pytest -q
 
 Expected: all tests PASS (741 baseline + new past-candles tests; intraday tests removed).
 
-- [ ] **Step 8.2: Full frontend test suite**
+- [ ] **Step 9.2: Full frontend test suite**
 
 ```bash
 cd frontend && npx vitest run
@@ -1410,7 +1741,7 @@ cd frontend && npx vitest run
 
 Expected: all PASS.
 
-- [ ] **Step 8.3: Frontend build**
+- [ ] **Step 9.3: Frontend build**
 
 ```bash
 cd frontend && npm run build
@@ -1418,7 +1749,7 @@ cd frontend && npm run build
 
 Expected: build succeeds.
 
-- [ ] **Step 8.4: Manual dev-server smoke (per CLAUDE.md)**
+- [ ] **Step 9.4: Manual dev-server smoke (per CLAUDE.md)**
 
 In one terminal:
 ```bash
@@ -1436,6 +1767,41 @@ Browser: open `http://localhost:5173/live`. Pick a watchlist code. Verify:
 - 5/26-style invariant fire date (or any past `excluded_dates` entry): candle is visible; fill_strength is empty for that date.
 - Network panel: `/api/live/past-candles?...` request fires. Refresh page: second request shows `cached_dates` populated for past dates.
 
-- [ ] **Step 8.5: No commit (manual verification only)**
+- [ ] **Step 9.5: No commit (manual verification only)**
 
 If smoke reveals issues, route them through systematic-debugging skill and create fix commits — do not adjust the plan retroactively.
+
+- [ ] **Step 9.6: 5/26 banner verification check**
+
+Confirm `InvariantOutcomesBanner` shows above the chart when the date range crosses a known `excluded_dates` entry (e.g., 5/26 if hogaplay invariant fire still active). If the banner does not appear, follow Task 7 to mount it.
+
+- [ ] **Step 9.7: 60-day cap chip verification check**
+
+Scroll the chart far enough back that `historicalFromDate` would exceed 60 days. Confirm the "최대 60일까지 표시됩니다" chip appears in the lower-left corner.
+
+---
+
+## Deferred review notes
+
+축적된 SUGGESTION + NIT — plan execution 우선순위에는 들어가지 않지만 향후 spec / plan 후속에서 참고.
+
+### From plan-eng-review (general-purpose agent, 2026-05-28)
+
+- **S1 (covered as Step 2.5b)**: Disk cache persistence test across router rebuild — *applied*.
+- **S2 (covered as Step 2.5b)**: 주말 일자 KIS 빈 응답 → candles 0건 + warnings 없음 — *applied*.
+- **S3**: `bars`가 빈 list일 때 disk write 회피 + `fresh_dates` 미기록 — 효율성 개선. 후속에서 다룰 만함. 현재 빈 파일 작성은 idempotency를 해치지 않으니 deferred.
+- **S4**: 60-day clamp UI affordance — *applied via Task 7.2 (clamp chip)*.
+- **S5 (covered as Step 6.2)**: useLiveBundle 60일 clamping 구체 test — *applied*.
+- **S6**: ADR-0040의 "series-level invariants 미카탈로그화 + defensive parse + data_warnings surface" 정책은 plan에 코드 강제로 안 들어갔음. KIS 응답이 invalid OHLC (예: `close < 0`)를 줄 경우 현재 plan은 그대로 cache에 쓴다. 별도 follow-up spec ("KIS series-level defensive parse") 거리.
+- **N1**: Step 2.3 placeholder `raise NotImplementedError` 문장 dead code — *cleaned up*.
+- **N2**: `class CachedDayResult` empty class — *removed*.
+- **N3**: `~/.local/share/hoga-ops/kis-past-candles/...` (spec) vs `data_dir/kis-past-candles/...` (plan) 표기 — `data_dir`은 `resolve_data_dir()`이 `~/.local/share/hoga-ops/data`로 결정. 따라서 plan의 cache 경로는 `~/.local/share/hoga-ops/data/kis-past-candles/<code>/<YYYYMMDD>.json` (data subdir 한 단계 추가됨) — spec 표기가 단순화된 것이라 이해. Plan 표기 유지.
+- **N4**: `_past_app` 스타일 일관성 — *Step 2.1 update에서 _make_test_app 패턴으로 통일*.
+
+### From plan-design-review (general-purpose agent, 2026-05-28)
+
+- **S1**: TanStack refetchInterval 60s이 immutable past 일자에도 적용. 백엔드 disk cache가 흡수하지만 JSON shuttle은 발생. Split-query 패턴(past forever-fresh + today 60s)으로 옮기는 follow-up 거리. 현재 사용량(단일 사용자)에서 비용 무시할 만하니 deferred.
+- **S2 (covered as Step 6.2)**: clamping test 구체화 — *applied*.
+- **S3 (covered as Step 9.6)**: 5/26 banner visibility check — *applied*.
+- **N1 (covered)**: Step 2.3 placeholder 문장 — *removed*.
+- **N2**: spec의 "기존 LiveChartRoot 배지/표시 유지" 문구는 사실관계 부정확 (배지 없었음) — Task 7이 그 배지를 *새로* 도입하므로 spec 문구는 retroactively true가 됨.
