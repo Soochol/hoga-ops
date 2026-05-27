@@ -375,17 +375,37 @@ def _page_step_loop(
     last_emitted_pages = -1
     iter_idx = 0
     backoff_remaining = 0  # countdown of pages held at doubled rate after a 429
+    # Retry-aware page boundary flag (S2): start True so the first iteration
+    # opens PageTiming row 0; set False after the boundary is marked; set
+    # True again only after a SUCCESSFUL store. On a 429 retry path we hit
+    # `continue` with the flag still False — so the retry stays on the same
+    # PageTiming row instead of creating a phantom ~0-event row.
+    pending_boundary = True
     while True:
         if cancel_token is not None and cancel_token.cancelled:
             raise CaptureCancelled(f"capture cancelled at page {page_idx}")
         iter_idx += 1
         t_in = controller.next_t
         step_before = controller.step_ms
+        if collector is not None and pending_boundary:
+            collector.mark_page_boundary()
+            pending_boundary = False
         try:
             http_t0 = _time.perf_counter()
-            body, page_idx, new_seqs = _fetch_and_store_page(
-                raw_dir, client, code, date, t_in, page_idx, seen_seqs
-            )
+            if collector is not None:
+                with collector.phase("http_fetch"):
+                    body = _fetch_first_body(client, code=code, date=date, time_ms=t_in)
+            else:
+                body = _fetch_first_body(client, code=code, date=date, time_ms=t_in)
+            if collector is not None:
+                with collector.phase("disk_write"):
+                    page_idx, new_seqs = _store_page_body(
+                        raw_dir, body, page_idx=page_idx, seen_seqs=seen_seqs
+                    )
+            else:
+                page_idx, new_seqs = _store_page_body(
+                    raw_dir, body, page_idx=page_idx, seen_seqs=seen_seqs
+                )
             http_ms = (_time.perf_counter() - http_t0) * 1000
         except HogaplayHTTPError as e:
             if e.status_code in THROTTLED_STATUSES:
@@ -396,14 +416,21 @@ def _page_step_loop(
                     })
                     with profile_path.open("a", encoding="utf-8") as f:
                         f.write(marker + "\n")
+                if collector is not None:
+                    collector.record_error(f"http_{e.status_code}")
                 _cancellable_sleep(
                     max(rate_limit_s * THROTTLE_BACKOFF_FACTOR, 1.0),
                     cancel_token,
                 )
                 backoff_remaining = THROTTLE_BACKOFF_HOLD_PAGES
                 iter_idx -= 1
+                # Leave pending_boundary False so the retry stays on the same
+                # PageTiming row (S2 retry-aware semantics).
                 continue  # retry same t_in, do not advance controller
             raise
+        if collector is not None:
+            collector.record_event_count(len(new_seqs))
+            pending_boundary = True  # next iteration opens a new PageTiming row
         max_t = _max_event_time(body)
         decision = controller.observe(max_event_time=max_t, new_seqs=len(new_seqs))
         _write_progress(
@@ -454,7 +481,11 @@ def _page_step_loop(
         if backoff_remaining > 0:
             backoff_remaining -= 1
         if effective_rate > 0:
-            _time.sleep(effective_rate)
+            if collector is not None:
+                with collector.phase("rate_limit"):
+                    _time.sleep(effective_rate)
+            else:
+                _time.sleep(effective_rate)
 
 
 def collect_stock_date(
