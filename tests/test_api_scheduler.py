@@ -425,3 +425,68 @@ async def test_catchup_one_entry_returns_empty_on_krx_unavailable(tmp_path: Path
         )
     assert result.enqueued == [] and result.deduped == []
     assert enq.await_count == 0
+
+
+# --- Coverage gaps from /review audit (2026-05-27) -------------------------
+
+
+@pytest.mark.parametrize("inp,expected", [
+    ("20260131", "20260201"),  # month rollover
+    ("20261231", "20270101"),  # year rollover
+    ("20280228", "20280229"),  # leap year (2028 is divisible by 4)
+    ("20290228", "20290301"),  # NON-leap year (2029)
+    ("20260228", "20260301"),  # standard February-end (non-leap)
+])
+def test_next_kst_day_rollovers(inp: str, expected: str):
+    """_next_kst_day boundaries: month, year, leap-day, non-leap February.
+    The catch-up logic uses this to compute start = day after last_success;
+    a rollover bug would produce out-of-bounds dates the trading-day
+    expander would silently filter out."""
+    from hoga.api.scheduler import _next_kst_day
+    assert _next_kst_day(inp) == expected
+
+
+@pytest.mark.asyncio
+async def test_daily_loop_survives_daily_run_crash(tmp_path: Path):
+    """The perpetual loop's 'never let one failure kill the loop' contract
+    (ADR-0034). Drive one iteration with _daily_run raising, then a second
+    iteration with sleep raising CancelledError to exit cleanly. The loop
+    must swallow the crash and proceed to the next sleep."""
+    import asyncio as _asyncio
+    from hoga.api import scheduler
+    iteration = {"n": 0}
+
+    async def fake_sleep(_secs):
+        iteration["n"] += 1
+        if iteration["n"] >= 2:
+            raise _asyncio.CancelledError
+
+    async def boom(_data_dir):
+        raise RuntimeError("simulated crash inside _daily_run")
+
+    with patch("hoga.api.scheduler.asyncio.sleep", side_effect=fake_sleep), \
+         patch("hoga.api.scheduler._daily_run", side_effect=boom) as run_spy:
+        with pytest.raises(_asyncio.CancelledError):
+            await scheduler._daily_loop(tmp_path)
+    # First iteration ran _daily_run (which crashed); the loop did NOT
+    # propagate the crash — it advanced to the second sleep.
+    assert run_spy.await_count == 1
+    assert iteration["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_daily_run_swallows_trading_day_lookup_failure(tmp_path: Path):
+    """If trading_days_in_range raises (KRX unavailable, etc.), _daily_run
+    must log + return; downstream enqueue_items_core must NOT be called.
+    Pins the silent-failure branch at scheduler.py:48 in the diff."""
+    from hoga.api import scheduler, watchlist
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    fake_now = dt.datetime(2026, 5, 27, 18, 0, tzinfo=KST)
+    with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
+         patch("hoga.api.scheduler.trading_days_in_range",
+               side_effect=RuntimeError("KRX down")), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock) as enq:
+        await scheduler._daily_run(tmp_path)
+    assert enq.await_count == 0

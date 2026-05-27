@@ -911,6 +911,40 @@ def test_reset_state_for_tests_deletes_manifest(monkeypatch, tmp_path):
     assert not (tmp_path / ".queue.json").exists()
 
 
+@pytest.mark.asyncio
+async def test_attempt_survives_persist_restore_roundtrip(monkeypatch, tmp_path):
+    """ADR-0031: the ×N attempt badge is user-visible — it must survive a
+    server restart. Persist a state with attempt=5, simulate restart via
+    in-memory wipe + _restore_queue_from_manifest, then assert the
+    restored state still carries attempt=5."""
+    monkeypatch.setattr(captures, "_data_dir", tmp_path)
+    captures._queue.clear()
+    state = captures.QueueItemState(
+        item_id="x-20260526",
+        code="003490",
+        date="20260526",
+        force_retry=True,
+        enqueued_at_ms=1700000000000,
+        attempt=5,
+    )
+    captures._queue.append(state)
+    # _persist_queue_locked enforces the ADR-0019 lock invariant; mirror
+    # the production call sites that hold _lock while calling it.
+    async with captures._lock:
+        captures._persist_queue_locked()  # type: ignore[attr-defined]
+
+    # Simulate restart: wipe in-memory state, restore from disk.
+    captures._queue.clear()
+    captures._restore_queue_from_manifest(tmp_path)  # type: ignore[attr-defined]
+
+    assert len(captures._queue) == 1
+    restored = captures._queue[0]
+    assert restored.attempt == 5
+    assert restored.code == "003490"
+    assert restored.date == "20260526"
+    assert restored.force_retry is True
+
+
 # ---------------------------------------------------------------------------
 # Task 5: UpstreamNoDataError → skipped/no_upstream_data  ADR-0021
 # ---------------------------------------------------------------------------

@@ -308,4 +308,21 @@ describe('WatchlistPanel manual catch-up', () => {
       expect(screen.getByText(/1종목 실패/)).toBeInTheDocument());
     expect(screen.getByText(/krx_credentials_missing/)).toBeInTheDocument();
   });
+
+  // --- Coverage gaps from /review audit (2026-05-27) ---------------------
+
+  it('shows loading indicator while watchlist query is pending', () => {
+    // Never-resolving promise → query stays in `isLoading` indefinitely.
+    vi.mocked(api.getWatchlist).mockReturnValueOnce(new Promise(() => {}));
+    renderWithQuery(<WatchlistPanel />);
+    expect(screen.getByText(/로딩 중/)).toBeInTheDocument();
+  });
+
+  it('shows error UI when getWatchlist rejects', async () => {
+    vi.mocked(api.getWatchlist).mockRejectedValueOnce(new Error('network boom'));
+    renderWithQuery(<WatchlistPanel />);
+    await waitFor(() =>
+      expect(screen.getByText(/불러오기 실패/)).toBeInTheDocument());
+    expect(screen.getByText(/network boom/)).toBeInTheDocument();
+  });
 });

@@ -165,3 +165,72 @@ async def test_add_entry_no_disk_data_leaves_marker_null(tmp_path: Path, monkeyp
                               today_kst_date="20260526")
     [entry] = watchlist.load_watchlist(tmp_path)
     assert entry.last_success_date is None
+
+
+# --- Coverage gaps from /review audit (2026-05-27) -------------------------
+
+
+def test_load_watchlist_propagates_oserror_not_corruption(tmp_path: Path, monkeypatch):
+    """A transient read failure (EIO, permission flip) must NOT be treated
+    as 'corruption' — auto-renaming the file on a read error silently
+    wipes user data. Only JSONDecodeError and ValidationError trigger the
+    backup-and-empty path."""
+    from hoga.api.watchlist import load_watchlist
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "version": 1, "entries": [],
+    }))
+    original_read_text = Path.read_text
+
+    def fail_read(self, *args, **kwargs):
+        if self.name == "watchlist.json":
+            raise OSError("simulated EIO")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_read)
+    with pytest.raises(OSError, match="simulated EIO"):
+        load_watchlist(tmp_path)
+    # The file must NOT have been renamed to .corrupt-*.
+    assert (tmp_path / "watchlist.json").exists()
+    assert not list(tmp_path.glob("watchlist.json.corrupt-*"))
+
+
+@pytest.mark.asyncio
+async def test_lock_prevents_lost_update_on_same_code(tmp_path: Path, monkeypatch):
+    """The existing test_concurrent_bumps_serialize exercises bumps on
+    DIFFERENT codes (mutating distinct list elements, which would succeed
+    even without the lock). This pins the real race: two bumps targeting
+    the SAME code with different dates — without the lock, one would
+    clobber the other's read-modify-write."""
+    from hoga.api import watchlist
+    import asyncio as _asyncio
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    # Drive the two bumps concurrently. The lock must serialize them so
+    # the newer date wins regardless of scheduling order.
+    await _asyncio.gather(
+        watchlist.bump_last_success(tmp_path, code="003490", date="20260527"),
+        watchlist.bump_last_success(tmp_path, code="003490", date="20260526"),
+    )
+    [entry] = watchlist.load_watchlist(tmp_path)
+    assert entry.last_success_date == "20260527"
+
+
+@pytest.mark.asyncio
+async def test_bump_last_success_same_date_is_noop_no_write(tmp_path: Path, monkeypatch):
+    """`date == last_success_date` boundary: the comparison is strict `>`,
+    so equal dates must produce no save_watchlist call (avoid needless
+    atomic-write churn under steady-state catch-up loops)."""
+    from hoga.api import watchlist
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    await watchlist.bump_last_success(tmp_path, code="003490", date="20260527")
+
+    save_calls = 0
+
+    def spy_save(*args, **kwargs):
+        nonlocal save_calls
+        save_calls += 1
+    monkeypatch.setattr(watchlist, "save_watchlist", spy_save)
+
+    await watchlist.bump_last_success(tmp_path, code="003490", date="20260527")
+    assert save_calls == 0

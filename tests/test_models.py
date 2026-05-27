@@ -183,13 +183,21 @@ def test_manual_catchup_all_entry_result_fields():
 
 
 def test_manual_catchup_all_entry_result_with_error():
-    from hoga.api.models import ManualCatchupAllEntryResult
+    """Error envelope mirrors hoga/api/models.py::ManualCatchupError —
+    {code, message} so the frontend can branch on the stable code without
+    parsing exception strings."""
+    from hoga.api.models import ManualCatchupAllEntryResult, ManualCatchupError
     r = ManualCatchupAllEntryResult(
         code="003490", name="대한항공",
         enqueued_count=0, deduped_count=0,
-        error="krx_credentials_missing",
+        error=ManualCatchupError(
+            code="krx_credentials_missing",
+            message="KRX trading-day list unavailable.",
+        ),
     )
-    assert r.error == "krx_credentials_missing"
+    assert r.error is not None
+    assert r.error.code == "krx_credentials_missing"
+    assert "KRX" in r.error.message
 
 
 def test_manual_catchup_all_response_aggregates():

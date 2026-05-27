@@ -16,6 +16,8 @@ import json
 import logging
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from hoga.api._atomic_write import atomic_write_json
 from hoga.api.models import WatchlistEntry
 
@@ -31,8 +33,16 @@ def _path(data_dir: Path) -> Path:
 
 
 def load_watchlist(data_dir: Path) -> list[WatchlistEntry]:
-    """Read watchlist.json. Missing file → empty. Corrupt file → backup +
-    empty + warning log. Order preserved = display order."""
+    """Read watchlist.json. Missing file → empty. **Corrupt** file (invalid
+    JSON or schema-violating entries) → backup + empty + warning log.
+    Order preserved = display order.
+
+    Narrow exception handling: only :class:`json.JSONDecodeError` and
+    :class:`pydantic.ValidationError` are treated as "corruption" worth
+    auto-backing-up. Anything else (OSError on read, programming bugs,
+    etc.) propagates — auto-rename on a transient read failure would
+    silently wipe user data.
+    """
     p = _path(data_dir)
     if not p.exists():
         return []
@@ -40,7 +50,7 @@ def load_watchlist(data_dir: Path) -> list[WatchlistEntry]:
         raw = json.loads(p.read_text(encoding="utf-8"))
         entries = [WatchlistEntry.model_validate(e) for e in raw.get("entries", [])]
         return entries
-    except Exception as e:  # noqa: BLE001 — any parse/validation failure
+    except (json.JSONDecodeError, ValidationError) as e:
         stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S")
         backup = p.with_name(f"watchlist.json.corrupt-{stamp}")
         try:
