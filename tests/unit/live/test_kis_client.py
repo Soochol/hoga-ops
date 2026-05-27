@@ -48,3 +48,56 @@ async def test_issue_token_failure_raises(tmp_path: Path) -> None:
             await client.get_access_token()
     finally:
         await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_token_near_expiry_triggers_reissue(tmp_path: Path) -> None:
+    near_expiry = (datetime.now(KIS_KST) + timedelta(minutes=5)).isoformat()
+    cache = tmp_path / "token.json"
+    cache.write_text(json.dumps({"access_token": "STALE", "expires_at": near_expiry}))
+
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(
+            200,
+            json={"access_token": "FRESH", "expires_in": 86400, "token_type": "Bearer"},
+        )
+    )
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_cache_path=cache,
+        _transport=transport,
+    )
+    try:
+        token = await client.get_access_token()
+        assert token == "FRESH"
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_reissue_cooldown_blocks_second_call_within_60s(tmp_path: Path) -> None:
+    """Audit-3: KIS limits token issuance to 1 per minute."""
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(
+            200,
+            json={"access_token": "TOK", "expires_in": 86400, "token_type": "Bearer"},
+        )
+    )
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_cache_path=tmp_path / "token.json",
+        _transport=transport,
+    )
+    try:
+        # First issue succeeds
+        token = await client.get_access_token()
+        assert token == "TOK"
+        # Simulate immediate cache invalidation + state reset to force a SECOND _issue.
+        # We blank in-memory state and delete disk cache. The cool-down should still kick.
+        client._token = None
+        client._token_expires_at = None
+        (tmp_path / "token.json").unlink()
+        with pytest.raises(KisAuthError, match="cooldown"):
+            await client.get_access_token()
+    finally:
+        await client.aclose()
