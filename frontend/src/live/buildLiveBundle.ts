@@ -1,10 +1,20 @@
-import type { RangeBundle, RangeSegment, Candle } from '../api/types';
+import type { RangeBundle, RangeSegment, Candle, VolumeProfile } from '../api/types';
 import type { LiveCandle } from '../api/liveCandles';
 import {
   bucketHogaSeries,
   type ObSnapshot,
   type TradeSnapshot,
 } from './bucketHogaSeries';
+
+/** /live never mounts VolumeProfileOverlay; the bundle ships an empty profile
+ * that satisfies the RangeBundle type without claiming any data. */
+const EMPTY_VOLUME_PROFILE: VolumeProfile = {
+  bin_count: 0,
+  price_min: 0,
+  price_max: 0,
+  bin_width: 0,
+  bins: [],
+};
 
 export interface BuildLiveBundleInput {
   code: string;
@@ -97,13 +107,7 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
     candles,
     quote_ratio: { bucket_ms: bucketMs, points: quoteRatioPoints },
     fill_strength: { bucket_ms: bucketMs, points: fillStrengthPoints },
-    volume_profile_range: {
-      bin_count: 0,
-      price_min: 0,
-      price_max: 0,
-      bin_width: 0,
-      bins: [],
-    },
+    volume_profile_range: EMPTY_VOLUME_PROFILE,
     volume_profile_by_day: [],
     excluded_dates: pastBundle?.excluded_dates,
     data_warnings: pastBundle?.data_warnings,

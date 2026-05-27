@@ -43,11 +43,12 @@ export function useLiveBundle(
   // a minute frame. D/W/M skip past fetch entirely (spec Section 4.2).
   const pastTo = yesterdayKst(todayKstYyyymmdd);
   const enableRange = !!(code && historicalFromDate && isMinute && historicalFromDate <= pastTo);
+  // enableRange already requires isMinute, so the timeframe cast is safe.
   const past = useRange(
     enableRange ? code : null,
     enableRange ? historicalFromDate : null,
     enableRange ? pastTo : null,
-    enableRange && isMinute ? (timeframe as Timeframe) : null,
+    enableRange ? (timeframe as Timeframe) : null,
   );
 
   const bundle = useMemo<RangeBundle | null>(() => {
