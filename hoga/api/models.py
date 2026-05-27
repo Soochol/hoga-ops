@@ -418,6 +418,7 @@ class RangeSegment(BaseModel):
     date: str
     session_open_ms: int
     session_close_ms: int
+    source: str = "hogaplay"  # ADR-0039: which source subdir this segment came from
 
 
 class ViolationModel(BaseModel):
