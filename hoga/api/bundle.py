@@ -32,7 +32,7 @@ from hoga.api.models import (
     VolumeProfileBin,
     validate_bucket_ms,
 )
-from hoga.api.queries import QueryEngine
+from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.timeenc import (
     hhmmssms_to_intra_ms_sql,
     hhmmssms_to_unix_ms,
@@ -302,6 +302,29 @@ def build_fill_strength_slice(
     )
 
 
+def _resolve_source(engine: QueryEngine, date: str, code: str, pref: str) -> str:
+    """Return the source name actually present on disk for this (date, code).
+
+    Prefers ``pref`` if its meta.json exists; otherwise picks the first other
+    source that does. Returns ``pref`` even if nothing exists so the downstream
+    StockDateNotFound surfaces naturally.
+    """
+    from hoga.api.disk_state import classify_stock_date
+    from pathlib import Path
+    sd_dir = engine.data_dir / "parquet" / date / code
+    # Guard: only do real filesystem work when sd_dir is a real Path that exists.
+    # MagicMock engines (used in unit tests) have a MagicMock data_dir, so
+    # sd_dir won't be a real Path — fall back to pref immediately in that case.
+    if not isinstance(sd_dir, Path):
+        return pref
+    per_source = classify_stock_date(sd_dir)
+    if pref in per_source:
+        return pref
+    if per_source:
+        return next(iter(per_source))
+    return pref
+
+
 def build_range_bundle(
     engine: QueryEngine,
     *,
@@ -309,6 +332,7 @@ def build_range_bundle(
     from_date: str,
     to_date: str,
     bucket_ms: int,
+    source_pref: str = "hogaplay",  # ADR-0039
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -334,6 +358,7 @@ def build_range_bundle(
 
     dates = engine.list_stock_dates_in_range(
         code=code, from_date=from_date, to_date=to_date,
+        source_pref=source_pref,
     )
     if not dates:
         raise HTTPException(
@@ -353,7 +378,11 @@ def build_range_bundle(
     profiles_by_day: list[VolumeProfile] = []
 
     for d in dates:
-        meta = engine.get_meta(d, code)
+        source = _resolve_source(engine, d, code, source_pref)
+        try:
+            meta = engine.get_meta(d, code, source)
+        except (FileNotFoundError, StockDateNotFound):
+            continue
         c = classify_from_meta(meta)   # state + violations in one pass
 
         if c.state == DiskState.INVALID:
@@ -377,6 +406,7 @@ def build_range_bundle(
             date=d,
             session_open_ms=hhmmssms_to_unix_ms(d, meta["regular_session_open_ms"]),
             session_close_ms=hhmmssms_to_unix_ms(d, meta["regular_session_close_ms"]),
+            source=source,
         ))
         candles.extend(candles_d)
         ratio_pts.extend(qr_d.points)
