@@ -7,12 +7,22 @@ import type { QueueItem } from '../api/types';
 export interface CaptureQueueRowProps {
   item: QueueItem;
   symbolName: string;
+  /** Full Capture Count for (item.code, item.date), sourced from
+   *  `useStockDates()` in the parent. Optional so unit tests focused on
+   *  other behavior can omit it (treated as undefined → "—").
+   *  - `undefined` → no meta.json on disk (a brand-new capture, no history)
+   *  - `null` → legacy meta.json without the counter field (treated as ×1)
+   *  - `number` → persisted count (≥1)
+   *  Done rows refresh post-increment via SSE inventory_added invalidation. */
+  fullCaptureCount?: number | null;
   onCancel: (itemId: string) => void;
   /** Retry the failed item; CaptureQueue routes this through the retryItems mutation (ADR-0031). */
   onRetry: (item: QueueItem) => void;
 }
 
-export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: CaptureQueueRowProps) {
+export function CaptureQueueRow({
+  item, symbolName, fullCaptureCount, onCancel, onRetry,
+}: CaptureQueueRowProps) {
   const [expanded, setExpanded] = useState(false);
   const isFromInventory = useInventoryRecaptureOrigins((s) => s.ids.has(item.item_id));
   const descriptor = getPhase(item.phase);
@@ -37,9 +47,12 @@ export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: Capture
         aria-label={`Capture row ${item.code} ${item.date} ${item.phase}. Press Enter to ${expanded ? 'collapse' : 'expand'} details.`}
         onClick={() => setExpanded((v) => !v)}
         onKeyDown={onKeyDown}
-        className="grid grid-cols-[1rem_4.5rem_3rem_1fr_4.5rem_2.5rem_2.5rem_6rem_1.2rem] items-center gap-2 h-capture-row px-sm border-b font-medium text-sm font-mono tabular-nums text-fg cursor-pointer outline-none"
+        className="grid grid-cols-[1rem_2.6rem_4.5rem_3rem_1fr_4.5rem_2.5rem_2.5rem_6rem_1.2rem] items-center gap-2 h-capture-row px-sm border-b font-medium text-sm font-mono tabular-nums text-fg cursor-pointer outline-none"
       >
         <span>{descriptor.icon}</span>
+        <span data-testid="queue-row-full-capture-count">
+          <FullCaptureCountBadge n={fullCaptureCount} />
+        </span>
         <span>{item.date}</span>
         <span>{item.code}</span>
         <span className="font-normal text-sm text-fg-dim">
@@ -98,5 +111,35 @@ export function CaptureQueueRow({ item, symbolName, onCancel, onRetry }: Capture
       </div>
       {expanded && <CaptureRowDetail item={item} />}
     </>
+  );
+}
+
+/** Queue-flavored Full Capture Count badge.
+ *
+ * Differs from the inventory variant on purpose: the queue can hold rows for
+ * (code, date) pairs that have NEVER been captured yet (initial capture in
+ * the `queued` phase), so we need a distinct visual state for "no prior".
+ *
+ * - undefined  → no row in /api/stock-dates  → "—" (first-ever capture attempt)
+ * - null       → legacy meta without counter → ×1 (faint, "≥1로 간주" tooltip)
+ * - 1          → real ×1                     → ×1 (faint)
+ * - ≥2         → real ×N                     → ×N (standard tone)
+ */
+function FullCaptureCountBadge({ n }: { n: number | null | undefined }) {
+  if (n === undefined) {
+    return <span className="text-fg-dimmer">—</span>;
+  }
+  const effective = n ?? 1;
+  const tone = effective >= 2
+    ? 'text-fg-dim border-[var(--fg-dim)]'
+    : 'text-fg-dimmer border-[var(--fg-dimmer)]';
+  const title = n === null
+    ? 'Full Capture 횟수 미기록 (≥1로 간주)'
+    : `Full Capture 누적 ${n}회`;
+  return (
+    <span
+      title={title}
+      className={`text-badge rounded-md px-[0.15rem] border ${tone} font-mono tabular-nums`}
+    >×{effective}</span>
   );
 }

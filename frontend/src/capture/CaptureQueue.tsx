@@ -5,6 +5,7 @@ import { ADD_ITEMS_MUTATION_KEY, useCaptureQueue } from './useCaptureQueue';
 import { useSymbols } from './useSymbols';
 import { CaptureQueueRow } from './CaptureQueueRow';
 import { GROUP_ORDER, getPhase } from './phase';
+import { useStockDates } from '../api/stock-dates';
 import type { EnqueueDedupedRow, EnqueueResponse, QueueItem, QueueSnapshot } from '../api/types';
 
 /** Human label per dedupe reason — order here is the display order in the banner. */
@@ -52,11 +53,22 @@ const VIRTUALIZE_THRESHOLD = 200;
 export function CaptureQueue() {
   const { queue, cancelItem, cancelAll, dismissDone, resumeQueue, retryItems } = useCaptureQueue();
   const { data: symbolsResp } = useSymbols();
+  const { data: stockDates } = useStockDates();
   const nameByCode = useMemo(() => {
     const m = new Map<string, string>();
     (symbolsResp?.symbols ?? []).forEach((s) => m.set(s.code, s.name));
     return m;
   }, [symbolsResp]);
+  // Lookup Full Capture Count by (code, date) for each queue row.
+  // Returns `null` when no prior meta.json exists (a brand-new capture);
+  // returns the persisted counter (incl. legacy null) when meta.json
+  // is present on disk. SSE inventory_added invalidates the underlying
+  // query, so done rows refresh to the post-increment value within ~ms.
+  const fullCaptureCountByKey = useMemo(() => {
+    const m = new Map<string, number | null>();
+    (stockDates ?? []).forEach((sd) => m.set(`${sd.code}|${sd.date}`, sd.full_capture_count));
+    return m;
+  }, [stockDates]);
 
   const [cancelAllArmed, setCancelAllArmed] = useState(false);
   const cancelAllTimerRef = useRef<number | null>(null);
@@ -205,12 +217,19 @@ export function CaptureQueue() {
         className="flex-1 overflow-y-auto border rounded-md"
       >
         {shouldVirtualize
-          ? <VirtualList rows={allRows} nameByCode={nameByCode} onCancel={cancelItem.mutate} onRetry={onRetry} />
+          ? <VirtualList
+              rows={allRows}
+              nameByCode={nameByCode}
+              fullCaptureCountByKey={fullCaptureCountByKey}
+              onCancel={cancelItem.mutate}
+              onRetry={onRetry}
+            />
           : allRows.map((row) => (
               <CaptureQueueRow
                 key={row.item_id}
                 item={row}
                 symbolName={nameByCode.get(row.code) ?? '—'}
+                fullCaptureCount={fullCaptureCountByKey.get(`${row.code}|${row.date}`)}
                 onCancel={cancelItem.mutate}
                 onRetry={onRetry}
               />
@@ -221,10 +240,11 @@ export function CaptureQueue() {
 }
 
 function VirtualList({
-  rows, nameByCode, onCancel, onRetry,
+  rows, nameByCode, fullCaptureCountByKey, onCancel, onRetry,
 }: {
   rows: QueueItem[];
   nameByCode: Map<string, string>;
+  fullCaptureCountByKey: Map<string, number | null>;
   onCancel: (itemId: string) => void;
   onRetry: (item: QueueItem) => void;
 }) {
@@ -245,6 +265,7 @@ function VirtualList({
               <CaptureQueueRow
                 item={row}
                 symbolName={nameByCode.get(row.code) ?? '—'}
+                fullCaptureCount={fullCaptureCountByKey.get(`${row.code}|${row.date}`)}
                 onCancel={onCancel}
                 onRetry={onRetry}
               />

@@ -23,6 +23,7 @@ beforeEach(() => {
     const s = String(url);
     if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => ({ symbols: [], status: 'fresh', fetched_at_ms: 1 }) } as Response;
     if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }) } as Response;
+    if (s.includes('/api/stock-dates')) return { ok: true, status: 200, json: async () => [] } as Response;
     return { ok: true, status: 200, json: async () => ({}) } as Response;
   });
 });

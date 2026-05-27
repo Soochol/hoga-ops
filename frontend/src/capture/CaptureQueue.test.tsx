@@ -37,6 +37,7 @@ function setup(snapshot: QueueSnapshot = SNAPSHOT()) {
     const s = String(url);
     if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => snapshot } as Response;
     if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => ({ symbols: [], status: 'fresh', fetched_at_ms: 1 }) } as Response;
+    if (s.includes('/api/stock-dates')) return { ok: true, status: 200, json: async () => [] } as Response;
     return { ok: true, status: 200, json: async () => ({}) } as Response;
   });
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -80,6 +81,7 @@ describe('CaptureQueue', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
       const s = String(url);
       if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => SNAPSHOT() } as Response;
+      if (s.includes('/api/stock-dates')) return { ok: true, status: 200, json: async () => [] } as Response;
       return { ok: true, status: 202, json: async () => ({}) } as Response;
     });
     render(<CaptureQueue />, { wrapper: W(qc) });
@@ -152,6 +154,7 @@ describe('CaptureQueue Retry Failed (ADR-0031)', () => {
         return { ok: true, status: 201, json: async () => ({ enqueued: [], skipped: [] }) } as Response;
       }
       if (s.includes('/symbols/all')) return { ok: true, status: 200, json: async () => ({ symbols: [], status: 'fresh', fetched_at_ms: 1 }) } as Response;
+      if (s.includes('/api/stock-dates')) return { ok: true, status: 200, json: async () => [] } as Response;
       return { ok: true, status: 200, json: async () => ({}) } as Response;
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -179,6 +182,7 @@ describe('CaptureQueue Retry Failed (ADR-0031)', () => {
       if (s.includes('/items')) { calls.push('items'); return { ok: true, status: 201, json: async () => ({ enqueued: [], deduped: [] }) } as Response; }
       if (s.includes('/queue')) return { ok: true, status: 200, json: async () => snap } as Response;
       if (s.includes('/symbols/all')) return { ok: true, status: 200, json: async () => ({ symbols: [], status: 'fresh', fetched_at_ms: 1 }) } as Response;
+      if (s.includes('/api/stock-dates')) return { ok: true, status: 200, json: async () => [] } as Response;
       return { ok: true, status: 200, json: async () => ({}) } as Response;
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
