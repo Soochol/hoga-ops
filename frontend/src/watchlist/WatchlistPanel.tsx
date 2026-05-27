@@ -16,9 +16,31 @@ import {
   formatCaughtUpOneMessage,
   summarizeCaughtUpAll,
   formatCaughtUpAllHeader,
+  symbolLabel,
 } from './banners';
 
 const JUST_ADDED_MS = 5000;
+
+const BANNER_STYLES = {
+  success: {
+    background: 'rgba(34,197,94,0.10)',
+    borderColor: 'rgba(34,197,94,0.30)',
+    color: 'var(--success)',
+  },
+  error: {
+    background: 'rgba(244,63,94,0.10)',
+    borderColor: 'rgba(244,63,94,0.30)',
+    color: 'var(--error)',
+  },
+} as const;
+
+function Banner({ kind, children }: { kind: 'success' | 'error'; children: React.ReactNode }) {
+  return (
+    <div className="mx-6 mt-3 px-3 py-2 rounded border text-sm" style={BANNER_STYLES[kind]}>
+      {children}
+    </div>
+  );
+}
 
 type RecentAction =
   | { kind: 'added';         code: string; name: string }
@@ -93,6 +115,9 @@ export function WatchlistPanel() {
   };
 
   const isTradingHint = data.entries.length === 0 ? '추가된 종목 없음' : '거래일';
+  const allSummary = recentAction?.kind === 'caught_up_all'
+    ? summarizeCaughtUpAll(recentAction.summary)
+    : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -125,59 +150,32 @@ export function WatchlistPanel() {
       </header>
 
       {recentAction?.kind === 'added' && (
-        <div className="mx-6 mt-3 px-3 py-2 rounded border text-sm"
-             style={{
-               background: 'rgba(34,197,94,0.10)',
-               borderColor: 'rgba(34,197,94,0.30)',
-               color: 'var(--success)',
-             }}>
-          {`✓ ${recentAction.name} (${recentAction.code}) 추가됨. 내일 18:00부터 자동 수집됩니다.`}
-        </div>
+        <Banner kind="success">
+          {`✓ ${symbolLabel(recentAction)} 추가됨. 내일 18:00부터 자동 수집됩니다.`}
+        </Banner>
       )}
 
       {recentAction?.kind === 'caught_up_one' && (
-        <div className="mx-6 mt-3 px-3 py-2 rounded border text-sm"
-             style={recentAction.error
-               ? { background: 'rgba(244,63,94,0.10)',
-                   borderColor: 'rgba(244,63,94,0.30)',
-                   color: 'var(--error)' }
-               : { background: 'rgba(34,197,94,0.10)',
-                   borderColor: 'rgba(34,197,94,0.30)',
-                   color: 'var(--success)' }}>
+        <Banner kind={recentAction.error ? 'error' : 'success'}>
           {formatCaughtUpOneMessage(recentAction)}
-        </div>
+        </Banner>
       )}
 
-      {recentAction?.kind === 'caught_up_all' && (() => {
-        const summary = summarizeCaughtUpAll(recentAction.summary);
-        return (
-          <div className="mx-6 mt-3 px-3 py-2 rounded border text-sm"
-               style={{
-                 background: 'rgba(34,197,94,0.10)',
-                 borderColor: 'rgba(34,197,94,0.30)',
-                 color: 'var(--success)',
-               }}>
-            <div>{formatCaughtUpAllHeader(summary)}</div>
-            {summary.failed.length > 0 && (
-              <ul className="mt-1 text-xs text-error">
-                {summary.failed.map((r) => (
-                  <li key={r.code}>{r.code} ({r.name}): {r.error}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        );
-      })()}
+      {allSummary && (
+        <Banner kind="success">
+          <div>{formatCaughtUpAllHeader(allSummary)}</div>
+          {allSummary.failed.length > 0 && (
+            <ul className="mt-1 text-xs text-error">
+              {allSummary.failed.map((r) => (
+                <li key={r.code}>{r.code} ({r.name}): {r.error}</li>
+              ))}
+            </ul>
+          )}
+        </Banner>
+      )}
 
       {addM.error && (
-        <div className="mx-6 mt-3 px-3 py-2 rounded border text-sm"
-             style={{
-               background: 'rgba(244,63,94,0.10)',
-               borderColor: 'rgba(244,63,94,0.30)',
-               color: 'var(--error)',
-             }}>
-          {(addM.error as Error).message}
-        </div>
+        <Banner kind="error">{(addM.error as Error).message}</Banner>
       )}
 
       <form onSubmit={submit} className="px-6 py-3 border-b border-border flex gap-2 items-center">
