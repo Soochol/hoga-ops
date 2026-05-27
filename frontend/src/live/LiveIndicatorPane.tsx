@@ -49,6 +49,16 @@ function isDailyOrWeekly(tf: string): boolean {
   return tf === 'D' || tf === 'W';
 }
 
+/** Project a Live Snapshot's t_ms (Unix ms) onto lightweight-charts UTCTimestamp (seconds). */
+function utcSeconds(t_ms: unknown): UTCTimestamp {
+  return Math.floor((t_ms as number) / 1000) as UTCTimestamp;
+}
+
+/** Safe numeric coerce — `?? 0` for unknown payload fields. */
+function numOr0(v: unknown): number {
+  return (v as number) ?? 0;
+}
+
 export function LiveIndicatorPane({ code, timeframe }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -124,26 +134,17 @@ export function LiveIndicatorPane({ code, timeframe }: Props) {
     }
 
     // Quote Totals (from ob snapshots)
-    const asks = ob.map((o) => ({
-      time: Math.floor((o.t_ms as number) / 1000) as UTCTimestamp,
-      value: (o.total_ask_qty as number) ?? 0,
-    }));
-    const bids = ob.map((o) => ({
-      time: Math.floor((o.t_ms as number) / 1000) as UTCTimestamp,
-      value: (o.total_bid_qty as number) ?? 0,
-    }));
+    const asks = ob.map((o) => ({ time: utcSeconds(o.t_ms), value: numOr0(o.total_ask_qty) }));
+    const bids = ob.map((o) => ({ time: utcSeconds(o.t_ms), value: numOr0(o.total_bid_qty) }));
     askS.setData(asks);
     bidS.setData(bids);
 
     // 호가비 = (ask - bid) / (ask + bid), signed
     const ratios = ob.map((o) => {
-      const a = (o.total_ask_qty as number) ?? 0;
-      const b = (o.total_bid_qty as number) ?? 0;
+      const a = numOr0(o.total_ask_qty);
+      const b = numOr0(o.total_bid_qty);
       const denom = a + b || 1;
-      return {
-        time: Math.floor((o.t_ms as number) / 1000) as UTCTimestamp,
-        value: (a - b) / denom,
-      };
+      return { time: utcSeconds(o.t_ms), value: (a - b) / denom };
     });
     ratioS.setData(ratios);
 
@@ -151,7 +152,7 @@ export function LiveIndicatorPane({ code, timeframe }: Props) {
     const buy: Array<{ time: UTCTimestamp; value: number }> = [];
     const sell: Array<{ time: UTCTimestamp; value: number }> = [];
     for (const t of trade) {
-      const time = Math.floor((t.t_ms as number) / 1000) as UTCTimestamp;
+      const time = utcSeconds(t.t_ms);
       const trades = (t.trades as Array<{ side: number; qty: number }>) ?? [];
       let buyQty = 0;
       let sellQty = 0;
