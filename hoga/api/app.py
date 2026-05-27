@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -27,6 +28,8 @@ from hoga.api.watchlist_routes import build_router as build_watchlist_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
+
+log = logging.getLogger(__name__)
 
 
 def create_app(data_dir: Path) -> FastAPI:
@@ -78,8 +81,13 @@ def create_app(data_dir: Path) -> FastAPI:
             for t in _scheduler_tasks:
                 try:
                     await t
-                except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                    pass
+                except asyncio.CancelledError:
+                    pass  # expected outcome of cancel() above
+                except Exception:  # noqa: BLE001
+                    # Bugs in scheduler teardown must not block shutdown,
+                    # but they MUST be logged — otherwise a regression in
+                    # bump_last_success/_daily_loop shutdown vanishes.
+                    log.exception("scheduler task crashed during shutdown")
             # Stop the worker pool first so in-flight items observe cancellation
             # while bus + observer are still live (they emit terminal events).
             await _captures_module.stop_workers(_captures_module._workers)

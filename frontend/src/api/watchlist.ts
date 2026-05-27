@@ -1,4 +1,7 @@
 import { apiCall, apiAction } from './client';
+import type { EnqueueResponse } from './types';
+
+export type { EnqueueResponse } from './types';
 
 export interface WatchlistEntry {
   code: string;
@@ -29,27 +32,10 @@ export function removeFromWatchlist(code: string): Promise<void> {
 }
 
 // --- Manual catch-up (spec 2026-05-27) ------------------------------------
-
-/** Minimal QueueItem shape — only the fields the frontend currently reads
- * from EnqueueResponse.enqueued. Mirrors backend hoga/api/models.py:QueueItem.
- * The frontend just counts items for the banner, so a thin shape is fine. */
-export interface EnqueueQueueItem {
-  item_id: string;
-  code: string;
-  date: string;
-  phase: string;
-}
-
-export interface EnqueueDedupedRow {
-  code: string;
-  date: string;
-  reason: string;
-}
-
-export interface EnqueueResponse {
-  enqueued: EnqueueQueueItem[];
-  deduped: EnqueueDedupedRow[];
-}
+// EnqueueResponse / EnqueueDedupedRow / QueueItem live in ./types so the
+// wire shape stays single-source-of-truth for both /api/captures/items and
+// /api/watchlist/{code}/catchup. Re-exported above for ergonomic imports
+// from this module.
 
 export interface ManualCatchupAllEntryResult {
   code: string;

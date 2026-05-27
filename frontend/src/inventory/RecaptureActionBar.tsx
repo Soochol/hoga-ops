@@ -46,7 +46,7 @@ export function RecaptureActionBar({
         </div>
       )}
       {status?.kind === 'error' && (
-        <div role="alert" style={{ color: 'var(--error)' }}>
+        <div role="alert" className="text-error">
           {status.message}
         </div>
       )}

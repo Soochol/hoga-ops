@@ -6,8 +6,14 @@ from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path as PathParam
+
+# 6-digit numeric KRX code — see models.WatchlistEntry.code, which uses the
+# same pattern on the body/response shape. Centralised here so the four
+# routes that take {code} in the path don't each re-implement isdigit/len.
+CodePathParam = Annotated[str, PathParam(pattern=r"^\d{6}$")]
 
 from hoga.api import symbols
 from hoga.api.models import (
@@ -90,11 +96,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
         return ManualCatchupAllResponse(results=results)
 
     @router.delete("/{code}", status_code=204)
-    async def remove_from_watchlist(code: str) -> None:
-        if not code.isdigit() or len(code) != 6:
-            raise HTTPException(status_code=400, detail={
-                "code": "invalid_code", "message": "Code must be 6 digits.",
-            })
+    async def remove_from_watchlist(code: CodePathParam) -> None:
         try:
             await remove_entry(data_dir, code=code)
         except NotInWatchlistError as e:
@@ -104,11 +106,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
             }) from e
 
     @router.post("/{code}/catchup", response_model=EnqueueResponse)
-    async def catchup_one(code: str) -> EnqueueResponse:
-        if not code.isdigit() or len(code) != 6:
-            raise HTTPException(status_code=400, detail={
-                "code": "invalid_code", "message": "Code must be 6 digits.",
-            })
+    async def catchup_one(code: CodePathParam) -> EnqueueResponse:
         entries = load_watchlist(data_dir)
         match = next((e for e in entries if e.code == code), None)
         if match is None:

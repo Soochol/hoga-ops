@@ -31,6 +31,12 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
 
   const { recapture, status, isPending } = useInventoryRecapture();
   const { queue } = useCaptureQueue();
+  // Optimistic guard: the queue snapshot only catches up after the POST
+  // response + SSE round-trip. Between click and snapshot refresh, the
+  // user can rapid-double-click the same row's ↻ and fire two POSTs (both
+  // succeed with force_retry=true). Track the (code,date) of an in-flight
+  // submit locally to disable that row immediately.
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   // In-flight set: any (code, date) currently in queue.active ∪ queue.queued.
   // SSE updates from capture_queued / capture_progress / capture_finished
@@ -68,7 +74,15 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
 
   const onSort = (column: SortKey) => setSort((prev) => nextSortState(prev, column));
 
-  const handleRecaptureRow = (date: string) => recapture(group.code, [date]);
+  const handleRecaptureRow = async (date: string) => {
+    const key = `${group.code}|${date}`;
+    setPendingKey(key);
+    try {
+      await recapture(group.code, [date]);
+    } finally {
+      setPendingKey(null);
+    }
+  };
   const handleRecaptureAll = () => recapture(group.code, recapturableDates);
 
   return (
@@ -107,7 +121,8 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
           <tbody>
             {sortedDates.map((r) => {
               const recap = isRecapturable(r.disk_state);
-              const inFlight = inFlightSet.has(`${r.code}|${r.date}`);
+              const rowKey = `${r.code}|${r.date}`;
+              const inFlight = inFlightSet.has(rowKey) || pendingKey === rowKey;
               return (
                 <tr
                   key={`${r.code}-${r.date}`}
