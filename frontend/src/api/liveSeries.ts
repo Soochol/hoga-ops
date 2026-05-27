@@ -1,0 +1,102 @@
+import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiCall } from './client';
+import { LiveSnapshotBuffer, type SnapshotKind } from '../live/liveSnapshotBuffer';
+
+export interface LiveSeriesResponse {
+  code: string;
+  date: string;
+  session_open_ms: number;
+  session_close_ms: number | null;
+  is_open: boolean;
+  snapshots: Array<Record<string, unknown>>;
+  trades: Array<Record<string, unknown>>;
+  brokers: Array<Record<string, unknown>>;
+}
+
+function todayKstYyyymmdd(): string {
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 3_600_000);
+  const y = kst.getUTCFullYear();
+  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(kst.getUTCDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+}
+
+/**
+ * useLiveSeries — initial REST fetch + SSE subscription for live snapshots.
+ *
+ * - Initial fetch: GET /api/live/series → hydrates the in-memory buffer with
+ *   anything already in the backend's ring buffer (e.g. session-to-date).
+ * - SSE: subscribes to /api/live/stream and appends each event to the buffer.
+ * - Buffer cap: `LiveSnapshotBuffer` caps each kind at MAX_BUFFER_PER_KIND
+ *   (Eng C5) so the page can run all day without unbounded growth.
+ *
+ * Returns parallel arrays per kind plus the initial response metadata so
+ * panes can compute session bounds for chart timeframes.
+ */
+export function useLiveSeries(code: string) {
+  const date = todayKstYyyymmdd();
+  const initial = useQuery({
+    queryKey: ['live', 'series', code, date],
+    queryFn: () =>
+      apiCall<LiveSeriesResponse>(
+        `/api/live/series?code=${encodeURIComponent(code)}&date=${date}`,
+      ),
+    enabled: !!code,
+    staleTime: 60_000,
+  });
+
+  const bufferRef = useRef(new LiveSnapshotBuffer());
+  const [tick, setTick] = useState(0); // bump to re-read buffer
+
+  // Hydrate buffer when initial fetch completes.
+  useEffect(() => {
+    if (!initial.data) return;
+    bufferRef.current.hydrate({
+      ob: initial.data.snapshots as Array<{ t_ms: number; kind: string }>,
+      trade: initial.data.trades as Array<{ t_ms: number; kind: string }>,
+      broker: initial.data.brokers as Array<{ t_ms: number; kind: string }>,
+    });
+    setTick((t) => t + 1);
+  }, [initial.data]);
+
+  // Subscribe to SSE.
+  useEffect(() => {
+    if (!code) return;
+    const es = new EventSource(`/api/live/stream?code=${encodeURIComponent(code)}`);
+    es.onmessage = (e: MessageEvent) => {
+      try {
+        const entry = JSON.parse(e.data) as { t_ms: number; kind: string };
+        bufferRef.current.push(entry);
+        setTick((t) => t + 1);
+      } catch {
+        // Malformed SSE message — skip silently.
+      }
+    };
+    return () => {
+      es.close();
+      bufferRef.current.clear();
+      setTick(0);
+    };
+  }, [code]);
+
+  // tick is intentionally used in the useMemo dependency
+  return {
+    initial: initial.data,
+    isLoading: initial.isLoading,
+    error: initial.error,
+    ob: readKind(bufferRef.current, 'ob', tick),
+    trade: readKind(bufferRef.current, 'trade', tick),
+    broker: readKind(bufferRef.current, 'broker', tick),
+  };
+}
+
+// `tick` is ignored at runtime but referenced so React tracks the dep.
+function readKind(
+  buf: LiveSnapshotBuffer,
+  kind: SnapshotKind,
+  _tick: number,
+): Array<Record<string, unknown>> {
+  return buf.get(kind);
+}
