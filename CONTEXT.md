@@ -26,6 +26,10 @@ _Avoid_: "chunk", "batch", "section" (overloaded — see TSV Section below)
 **Full Capture**:
 The union of all Pages for one Stock-Date, deduplicated. The artifact the collector must produce before the parser runs.
 
+**Full Capture Count**:
+The number of times a **Full Capture** has been successfully written to meta.json for one **Stock-Date**. Persisted as `full_capture_count` in the meta.json file and surfaced on the wire as `StockDate.full_capture_count`. Counts every successful (re-)write — including those reached through one or more **Retry** attempts — but never failed or skipped runs. Initial capture = 1; each subsequent successful Retry = prior + 1; legacy meta files without the field report null (rendered as "—" in inventory). Distinct from `attempt` (ADR-0031), which counts Retry operations within a single capture run and lives only in the **Capture Queue**.
+_Avoid_: "capture count" alone (ambiguous with `attempt`); "retry count" (every count includes the initial capture, not a retry).
+
 **TSV Section**:
 The first field of every row in a Page's TSV (`1` = events that occurred before the requested `time`, `2` = events from the requested `time` onward). A presentation marker dependent on the call's `time` parameter — *not* an intrinsic property of an event. The same event can appear as TSV Section 1 in one Page and TSV Section 2 in another with all other fields identical (verified 2026-05-19). Dropped during parsing.
 _Avoid_: "section" alone (ambiguous with Regular Session, Page)
