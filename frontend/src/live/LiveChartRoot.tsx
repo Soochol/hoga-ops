@@ -17,9 +17,8 @@ import RangeSeriesPane from '../chart/RangeSeriesPane';
 import { PANE_SPECS, PANE_STRETCH } from '../chart/paneSpecs';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
-import { useLiveBundle } from './useLiveBundle';
+import type { RangeBundle } from '../api/types';
 import {
-  todayKstYyyymmdd,
   realMsToYyyymmdd,
   subtractDaysKst,
   PREFETCH_CHUNK_DAYS,
@@ -50,16 +49,16 @@ const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 interface Props {
   code: string | null;
   timeframe: LiveTimeframe;
+  bundle: RangeBundle | null;
+  clampEngaged: boolean;
+  isPastCandlesLoading: boolean;
 }
 
 /** /live's single-chart root. Mounts PANE_SPECS 0-4 inside one createChart
  * instance so timeScale is shared across candle/volume/3-hoga panes. */
-export function LiveChartRoot({ code, timeframe }: Props) {
+export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCandlesLoading }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
-  const today = todayKstYyyymmdd();
-
-  const { bundle } = useLiveBundle(code, timeframe, today);
   // Eng review C1: memoise VirtualAxis on the segments array reference so
   // an SSE push that doesn't change segments doesn't churn the axis identity.
   const axis: VirtualAxis = useMemo(() => {
@@ -306,6 +305,35 @@ export function LiveChartRoot({ code, timeframe }: Props) {
           }}
         >
           라이브 지표는 분봉에서 표시됩니다
+        </div>
+      )}
+      {isPastCandlesLoading && (!bundle || bundle.candles.length === 0) && (
+        <div
+          data-testid="past-candles-loading-note"
+          style={{
+            position: 'absolute', inset: 0, display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            pointerEvents: 'none', color: 'var(--fg-dimmer)',
+            fontSize: 'var(--text-sm)',
+          }}
+        >
+          분봉 불러오는 중…
+        </div>
+      )}
+      {clampEngaged && (
+        <div
+          data-testid="clamp-engaged-chip"
+          style={{
+            position: 'absolute', bottom: 'var(--space-md)', left: 'var(--space-md)',
+            padding: 'var(--space-xs) var(--space-md)',
+            background: 'var(--bg-subtle)', color: 'var(--fg-dimmer)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+            fontSize: 'var(--text-xs)',
+            pointerEvents: 'none',
+          }}
+        >
+          최대 60일까지 표시됩니다
         </div>
       )}
     </div>

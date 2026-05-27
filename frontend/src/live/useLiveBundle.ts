@@ -42,6 +42,8 @@ export interface UseLiveBundleResult {
   bundle: RangeBundle | null;
   isLoading: boolean;
   error: unknown;
+  clampEngaged: boolean;
+  isPastCandlesLoading: boolean;
 }
 
 /** Orchestrate live SSE + KIS past-candles + /api/range hoga indicators into a
@@ -118,9 +120,13 @@ export function useLiveBundle(
     });
   }, [code, todayKstYyyymmdd, isMinute, live.initial, live.ob, live.trade, past.data, kisCandles, bucketMs]);
 
+  const clampEngaged = historicalFromDate != null && historicalFromDate < earliestAllowed;
+
   return {
     bundle,
     isLoading: live.isLoading || past.isLoading || pastCandlesQuery.isLoading,
     error: live.error ?? past.error ?? pastCandlesQuery.error ?? null,
+    clampEngaged,
+    isPastCandlesLoading: pastCandlesQuery.isLoading,
   };
 }

@@ -18,8 +18,8 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 import '../state/tabs';
 import { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
-import { useLiveBundle } from './useLiveBundle';
 import { createChart } from 'lightweight-charts';
+import type { RangeBundle } from '../api/types';
 
 vi.mock('lightweight-charts', async () => {
   const mod = await vi.importActual<typeof import('lightweight-charts')>('lightweight-charts');
@@ -60,26 +60,20 @@ vi.mock('lightweight-charts', async () => {
   };
 });
 
-vi.mock('./useLiveBundle', () => ({
-  useLiveBundle: vi.fn(() => ({
-    bundle: {
-      code: '005930',
-      from_date: '20260527',
-      to_date: '20260527',
-      bucket_ms: 60_000,
-      segments: [
-        { date: '20260527', session_open_ms: 1748275200000, session_close_ms: 1748298600000, source: 'kis_live' },
-      ],
-      candles: [],
-      quote_ratio: { bucket_ms: 60_000, points: [] },
-      fill_strength: { bucket_ms: 60_000, points: [] },
-      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
-      volume_profile_by_day: [],
-    },
-    isLoading: false,
-    error: null,
-  })),
-}));
+const DEFAULT_BUNDLE: RangeBundle = {
+  code: '005930',
+  from_date: '20260527',
+  to_date: '20260527',
+  bucket_ms: 60_000,
+  segments: [
+    { date: '20260527', session_open_ms: 1748275200000, session_close_ms: 1748298600000, source: 'kis_live' },
+  ],
+  candles: [],
+  quote_ratio: { bucket_ms: 60_000, points: [] },
+  fill_strength: { bucket_ms: 60_000, points: [] },
+  volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+  volume_profile_by_day: [],
+};
 
 const wrapper = ({ children }: { children: ReactNode }) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -88,17 +82,44 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 
 describe('LiveChartRoot', () => {
   it('renders root container with chart slot', () => {
-    render(<LiveChartRoot code="005930" timeframe="1m" />, { wrapper });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
     expect(screen.getByTestId('live-chart-root')).toBeTruthy();
   });
 
   it('shows D/W/M hoga indicator empty-state notice on D timeframe', () => {
-    render(<LiveChartRoot code="005930" timeframe="D" />, { wrapper });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
     expect(screen.getByTestId('indicator-disabled-note')).toBeTruthy();
   });
 
   it('hides D/W/M empty-state notice on minute timeframes', () => {
-    render(<LiveChartRoot code="005930" timeframe="1m" />, { wrapper });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
     expect(screen.queryByTestId('indicator-disabled-note')).toBeNull();
   });
 });
@@ -113,35 +134,42 @@ const TODAY_CLOSE_MS = TODAY_OPEN_MS + 6.5 * 3600 * 1000;
 const YESTERDAY_OPEN_MS = TODAY_OPEN_MS - 86_400_000;
 const YESTERDAY_CLOSE_MS = YESTERDAY_OPEN_MS + 6.5 * 3600 * 1000;
 
-const DEFAULT_TODAY_ONLY_BUNDLE = {
-  bundle: {
-    code: '005930',
-    from_date: '20260527',
-    to_date: '20260527',
-    bucket_ms: 60_000,
-    segments: [
-      { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kis_live' as const },
-    ],
-    candles: [],
-    quote_ratio: { bucket_ms: 60_000, points: [] },
-    fill_strength: { bucket_ms: 60_000, points: [] },
-    volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
-    volume_profile_by_day: [],
-  },
-  isLoading: false,
-  error: null,
+const TODAY_ONLY_BUNDLE: RangeBundle = {
+  code: '005930',
+  from_date: '20260527',
+  to_date: '20260527',
+  bucket_ms: 60_000,
+  segments: [
+    { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kis_live' },
+  ],
+  candles: [],
+  quote_ratio: { bucket_ms: 60_000, points: [] },
+  fill_strength: { bucket_ms: 60_000, points: [] },
+  volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+  volume_profile_by_day: [],
+};
+
+const TWO_SEGMENT_BUNDLE: RangeBundle = {
+  code: '005930',
+  from_date: '20260526',
+  to_date: '20260527',
+  bucket_ms: 60_000,
+  segments: [
+    { date: '20260526', session_open_ms: YESTERDAY_OPEN_MS, session_close_ms: YESTERDAY_CLOSE_MS, source: 'kis_live' },
+    { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kis_live' },
+  ],
+  candles: [],
+  quote_ratio: { bucket_ms: 60_000, points: [] },
+  fill_strength: { bucket_ms: 60_000, points: [] },
+  volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+  volume_profile_by_day: [],
 };
 
 describe('LiveChartRoot lazy fetch trigger', () => {
   beforeEach(() => {
     useLivePageStore.setState({ historicalFromDate: null });
     vi.useFakeTimers();
-    // Freeze system time so todayKstYyyymmdd() inside LiveChartRoot returns
-    // '20260527' deterministically — the initial-boundary comparison uses that
-    // value, and the test segments are dated relative to it.
     vi.setSystemTime(TODAY_OPEN_MS);
-    // Reset to today-only default; individual tests override as needed.
-    vi.mocked(useLiveBundle).mockReturnValue(DEFAULT_TODAY_ONLY_BUNDLE as any);
   });
 
   afterEach(() => {
@@ -154,7 +182,16 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
-    render(<LiveChartRoot code="005930" timeframe="1m" />, { wrapper });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TODAY_ONLY_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
 
     expect(handlers.length).toBeGreaterThan(0);
     act(() => {
@@ -169,30 +206,19 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // Yesterday (today - 1) is comfortably inside the 20-day initial window,
     // so scrolling there is already covered by the seeded fetch and must NOT
     // trigger an additional extension.
-    vi.mocked(useLiveBundle).mockReturnValue({
-      bundle: {
-        code: '005930',
-        from_date: '20260526',
-        to_date: '20260527',
-        bucket_ms: 60_000,
-        segments: [
-          { date: '20260526', session_open_ms: YESTERDAY_OPEN_MS, session_close_ms: YESTERDAY_CLOSE_MS, source: 'kis_live' },
-          { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kis_live' },
-        ],
-        candles: [],
-        quote_ratio: { bucket_ms: 60_000, points: [] },
-        fill_strength: { bucket_ms: 60_000, points: [] },
-        volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
-        volume_profile_by_day: [],
-      },
-      isLoading: false,
-      error: null,
-    });
-
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
-    render(<LiveChartRoot code="005930" timeframe="1m" />, { wrapper });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
 
     act(() => {
       handlers.forEach((h) => h({ from: 1000, to: 2000 }));
@@ -208,30 +234,19 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // loaded bar (fractional bar index can go negative beyond the data).
     // Handler should prepend PREFETCH_CHUNK_DAYS more past data from the
     // current earliest segment.
-    vi.mocked(useLiveBundle).mockReturnValue({
-      bundle: {
-        code: '005930',
-        from_date: '20260526',
-        to_date: '20260527',
-        bucket_ms: 60_000,
-        segments: [
-          { date: '20260526', session_open_ms: YESTERDAY_OPEN_MS, session_close_ms: YESTERDAY_CLOSE_MS, source: 'kis_live' },
-          { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kis_live' },
-        ],
-        candles: [],
-        quote_ratio: { bucket_ms: 60_000, points: [] },
-        fill_strength: { bucket_ms: 60_000, points: [] },
-        volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
-        volume_profile_by_day: [],
-      },
-      isLoading: false,
-      error: null,
-    });
-
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
-    render(<LiveChartRoot code="005930" timeframe="1m" />, { wrapper });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
 
     // Negative fractional logical = viewport past leftmost loaded bar.
     act(() => {
@@ -244,30 +259,19 @@ describe('LiveChartRoot lazy fetch trigger', () => {
   });
 
   it('does NOT fire extendHistoricalRange on D timeframe (lazy fetch off for D/W/M)', () => {
-    vi.mocked(useLiveBundle).mockReturnValue({
-      bundle: {
-        code: '005930',
-        from_date: '20260526',
-        to_date: '20260527',
-        bucket_ms: 60_000,
-        segments: [
-          { date: '20260526', session_open_ms: YESTERDAY_OPEN_MS, session_close_ms: YESTERDAY_CLOSE_MS, source: 'kis_live' },
-          { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kis_live' },
-        ],
-        candles: [],
-        quote_ratio: { bucket_ms: 60_000, points: [] },
-        fill_strength: { bucket_ms: 60_000, points: [] },
-        volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
-        volume_profile_by_day: [],
-      },
-      isLoading: false,
-      error: null,
-    });
-
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
-    render(<LiveChartRoot code="005930" timeframe="D" />, { wrapper });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
 
     act(() => {
       handlers.forEach((h) => h({ from: 1000, to: 2000 }));

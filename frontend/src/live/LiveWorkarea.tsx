@@ -3,6 +3,9 @@ import { LiveChartRoot } from './LiveChartRoot';
 import { LiveEmptyState } from './LiveEmptyState';
 import { LiveSidebar } from './LiveSidebar';
 import { WatchlistPanel } from './WatchlistPanel';
+import InvariantOutcomesBanner from '../replay/InvariantOutcomesBanner';
+import { useLiveBundle } from './useLiveBundle';
+import { todayKstYyyymmdd } from './liveDateTime';
 
 interface Props {
   activeCode: string | null;
@@ -31,6 +34,9 @@ export function LiveWorkarea({ activeCode, watchlistEmpty }: Props) {
     );
   }
 
+  const today = todayKstYyyymmdd();
+  const { bundle, clampEngaged, isPastCandlesLoading } = useLiveBundle(activeCode, timeframe, today);
+
   // Single chart owns all 5 panes; sidebar + optional watchlist stay siblings.
   return (
     <div
@@ -45,8 +51,22 @@ export function LiveWorkarea({ activeCode, watchlistEmpty }: Props) {
         overflow: 'hidden',
       }}
     >
-      <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
-        <LiveChartRoot code={activeCode} timeframe={timeframe} />
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {bundle && (
+          <InvariantOutcomesBanner
+            excluded={bundle.excluded_dates ?? []}
+            warnings={bundle.data_warnings ?? []}
+          />
+        )}
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <LiveChartRoot
+            code={activeCode}
+            timeframe={timeframe}
+            bundle={bundle}
+            clampEngaged={clampEngaged}
+            isPastCandlesLoading={isPastCandlesLoading}
+          />
+        </div>
       </div>
       <div
         role="complementary"

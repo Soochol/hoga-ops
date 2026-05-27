@@ -80,6 +80,12 @@ describe('useLiveBundle', () => {
     expect(useRangeSpy).toHaveBeenCalledWith('005930', '20260329', '20260526', '1m');
   });
 
+  it('exposes clampEngaged=true when historicalFromDate older than 60 days', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260227' });
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    expect(result.current.clampEngaged).toBe(true);
+  });
+
   it('maps KIS bar shape to wire Candle shape (vol_a = volume, vol_b = 0)', () => {
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
     const c = result.current.bundle!.candles[0];
