@@ -11,6 +11,8 @@ spec: docs/superpowers/specs/2026-05-27-live-chart-sync-and-hoga-indicators-desi
 
 **Architecture:** Frontend-only change for the visible work; one tiny backend fix (`/api/range` returns empty bundle instead of 404 when no captured stock-date exists). New module `buildLiveBundle.ts` converts the (SSE buffer, candle hook, `/api/range`) tuple into a single `RangeBundle` that the existing `/replay` `RangeSeriesPane` + `PANE_SPECS` + projectors render verbatim.
 
+**Pane stretch rationale (design review C3):** Pane stretch factors come from `PANE_STRETCH` ([paneSpecs.ts:49](../../frontend/src/chart/paneSpecs.ts#L49)) — candle 1.4, volume 0.3, quoteTotals 0.4, ratio 0.4, fillStrength 0.4. This intentionally matches `/replay`. The previous `/live` had a 3-row grid (`3fr/1fr/2fr`) which gave hoga indicators ~33% of the height; the new layout splits them into 3 separate panes at 0.4 each (~14% each, ~42% combined) — slightly smaller per pane, but the cross-pane x-axis synchronisation (the actual user complaint) and visual parity with `/replay` are larger design wins. Manual QA in Task 6 must confirm this is acceptable.
+
 **Tech Stack:** React 18, TanStack Query, Zustand, lightweight-charts v5, Vitest. Backend: FastAPI, Pydantic, pytest.
 
 **Domain terms (CONTEXT.md, no substitution):** Stock-Date, Regular Session, Auction Window, Quote Totals, 호가비, FillStrength, Source (`hogaplay` / `kis_live`), VirtualAxis.
@@ -266,7 +268,10 @@ function emptyRangeBundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
     candles: [],
     quote_ratio: { bucket_ms: 60_000, points: [] },
     fill_strength: { bucket_ms: 60_000, points: [] },
-    volume_profile_range: { price_min: 0, price_max: 0, price_step: 1, bin_count: 0, bins: [] } as any,
+    // VolumeProfile fields per frontend/src/api/types.ts: bin_count, price_min,
+    // price_max, bin_width, bins. /live never reads these; an empty profile keeps
+    // the type exact without `as any` so future type drift fails compile.
+    volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_by_day: [],
     ...overrides,
   };
@@ -496,16 +501,18 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
     candles,
     quote_ratio: { bucket_ms: bucketMs, points: quoteRatioPoints },
     fill_strength: { bucket_ms: bucketMs, points: fillStrengthPoints },
-    // /live doesn't compute volume profile — feed empty placeholders matching
-    // the type. /replay's VolumeProfileOverlay isn't mounted on /live so these
-    // are never read.
+    // /live doesn't compute volume profile and never mounts
+    // VolumeProfileOverlay; feed an empty profile that satisfies the exact
+    // VolumeProfile type (bin_count, price_min, price_max, bin_width, bins —
+    // see frontend/src/api/types.ts). No `as any` cast so future type drift
+    // fails compile.
     volume_profile_range: {
+      bin_count: 0,
       price_min: 0,
       price_max: 0,
-      price_step: 1,
-      bin_count: 0,
+      bin_width: 0,
       bins: [],
-    } as any,
+    },
     volume_profile_by_day: [],
     excluded_dates: pastBundle?.excluded_dates,
     data_warnings: pastBundle?.data_warnings,
@@ -911,7 +918,7 @@ Expected: FAIL — `LiveChartRoot is not defined`.
 
 ```tsx
 // frontend/src/live/LiveChartRoot.tsx
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createChart, type IChartApi, type Time } from 'lightweight-charts';
 import { resolveTokens } from '../util/tokens';
 import {
@@ -919,7 +926,7 @@ import {
   CHART_LAYOUT_OPTIONS,
   CHART_TIMESCALE_OPTIONS,
 } from '../util/chartScale';
-import { createVirtualAxis } from '../util/virtualAxis';
+import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
 import RangeSeriesPane from '../chart/RangeSeriesPane';
 import { PANE_SPECS, PANE_STRETCH } from '../chart/paneSpecs';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
@@ -967,13 +974,20 @@ export function LiveChartRoot({ code, timeframe }: Props) {
   const today = todayKstYyyymmdd();
 
   const { bundle } = useLiveBundle(code, timeframe, today);
-  const axis = bundle ? createVirtualAxis(
-    bundle.segments.map((s) => ({
-      date: s.date,
-      sessionOpenMs: s.session_open_ms,
-      sessionCloseMs: s.session_close_ms,
-    })),
-  ) : null;
+  // Eng review C1: memoise VirtualAxis on the segments array reference so
+  // an SSE push that doesn't change segments doesn't churn the axis identity
+  // (which would force RangeSeriesPane's data effect to re-project every
+  // series on every ~10s tick).
+  const axis: VirtualAxis | null = useMemo(() => {
+    if (!bundle) return null;
+    return createVirtualAxis(
+      bundle.segments.map((s) => ({
+        date: s.date,
+        sessionOpenMs: s.session_open_ms,
+        sessionCloseMs: s.session_close_ms,
+      })),
+    );
+  }, [bundle?.segments]);
 
   // Mount chart once.
   useEffect(() => {
@@ -1008,23 +1022,35 @@ export function LiveChartRoot({ code, timeframe }: Props) {
   }, []);
 
   // Lazy fetch trigger — extend historicalFromDate when user scrolls left.
+  // Eng review C2/C3: (a) require a usable axis with ≥1 segment before
+  // converting any time; today's session_open_ms is the cutoff for "is this
+  // an actually-past date" — earlier returns mean today-only state never
+  // mistakenly triggers a /api/range call. (b) trailing-debounce by 150ms so
+  // a single pan gesture produces at most one extension call instead of N.
   useEffect(() => {
     if (!chart) return;
     const ts = chart.timeScale();
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const handler = (range: unknown) => {
+      if (!isMinuteTimeframe(timeframe)) return;
+      if (!axis || axis.segments.length === 0) return;
       const r = range as { from?: Time | null } | null;
       if (!r || r.from == null) return;
-      // r.from is virtual axis seconds; convert through axis if present.
-      // Without axis we treat it as a plain unix-second (today-only case).
       const sec = r.from as number;
-      const realMs = axis && axis.segments.length > 0 ? axis.toReal(sec * 1000) : sec * 1000;
+      const realMs = axis.toReal(sec * 1000);
+      // Don't trigger when the visible-range origin is at or after today's
+      // first segment open — that's "still inside today", not "scrolled past".
+      const todayOpen = axis.segments[axis.segments.length - 1].sessionOpenMs;
+      if (realMs >= todayOpen) return;
       const date = realMsToYyyymmdd(realMs);
-      // Only minute timeframes use historical lazy fetch.
-      if (!isMinuteTimeframe(timeframe)) return;
-      useLivePageStore.getState().extendHistoricalRange(date);
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        useLivePageStore.getState().extendHistoricalRange(date);
+      }, 150);
     };
     ts.subscribeVisibleTimeRangeChange(handler);
     return () => {
+      if (timeoutId !== null) clearTimeout(timeoutId);
       ts.unsubscribeVisibleTimeRangeChange(handler);
     };
   }, [chart, axis, timeframe]);
@@ -1248,6 +1274,55 @@ Closes problem 1 (timeScale sync) and the structural side of problem 3
 
 ---
 
+## Task 5A: Add SourceChip to LiveStatusBar (ADR-0039 compliance)
+
+**Files:**
+- Modify: `frontend/src/live/LiveStatusBar.tsx` — mount `SourceChip` reading the last segment's source from the merged bundle.
+- Modify: `frontend/src/live/LiveStatusBar.test.tsx` — assert the chip renders with the expected source label.
+
+ADR-0039 §"Frontend 표시 의무" mandates a per-segment source badge ("chart segment마다 작은 source 뱃지"). `/replay` shows the last segment's source via `SourceChip` in `PriceStrip.tsx:90`. `/live` previously had no badge (only `kis_live` SSE existed); the spec's introduction of multi-segment past data on `/live` makes the badge mandatory — without it, the user can't tell which source's data they're seeing.
+
+Out of scope: per-segment in-chart badges (Design review S4, future work).
+
+- [ ] **Step 5A.1: Read existing SourceChip usage in /replay**
+
+Run: `cat frontend/src/replay/PriceStrip.tsx | head -100`
+
+Note how `PriceStrip` resolves `lastSegmentSource` from the bundle and passes it to `SourceChip`. The `/live` LiveStatusBar follows the same pattern.
+
+- [ ] **Step 5A.2: Add useLiveBundle subscription + SourceChip to LiveStatusBar**
+
+Edit `frontend/src/live/LiveStatusBar.tsx` to:
+1. Import `SourceChip` from `../chart/SourceChip`.
+2. Import `useLivePageStore`.
+3. Subscribe to the merged bundle via a thin selector hook OR via reading directly through `useLiveBundle` IF `LiveStatusBar` has access to `activeCode` / `timeframe`. If `LiveStatusBar` doesn't already have those props, get `activeCode` from `useLivePageStore((s) => s.activeCode)` and `timeframe` from `useLivePageStore((s) => s.candleTimeframe)`, then call `useLiveBundle(activeCode, timeframe, todayKstYyyymmdd())`.
+4. Derive `lastSegmentSource = bundle?.segments[bundle.segments.length - 1]?.source ?? null`.
+5. Render `<SourceChip source={lastSegmentSource} />` in the status-bar layout, near the existing price strip. Match the pattern in `PriceStrip.tsx:90`.
+
+- [ ] **Step 5A.3: Update LiveStatusBar.test.tsx**
+
+Add a test that mocks `useLiveBundle` to return a bundle with one segment tagged `source: 'kis_live'`, then asserts the status bar contains the expected source-label text (verify against `SourceChip.tsx`'s actual rendered text — `'KIS Live'`, `'hogaplay'`, or whatever the chip outputs).
+
+- [ ] **Step 5A.4: Run tests**
+
+Run: `cd frontend && npx vitest run src/live/LiveStatusBar.test.tsx`
+Expected: PASS.
+
+- [ ] **Step 5A.5: Commit**
+
+```bash
+git add frontend/src/live/LiveStatusBar.tsx frontend/src/live/LiveStatusBar.test.tsx
+git commit -m "feat(live): SourceChip in LiveStatusBar (ADR-0039 compliance)
+
+ADR-0039 mandates a per-segment source badge. /replay already shows
+the last segment's source via SourceChip; /live now mirrors that.
+Renders the source of the rightmost (=today / latest) segment, so the
+user can see whether they're viewing kis_live SSE or fallback hogaplay
+data."
+```
+
+---
+
 ## Task 6: Manual QA after Phase 1 — confirm problems 1 and 3 are gone
 
 **Files:** none (manual verification before continuing to Phase 2).
@@ -1314,10 +1389,12 @@ already fixed by Task 1's bucketHogaSeries."
 ## Task 8: Backend — /api/range returns empty bundle on no-data
 
 **Files:**
-- Modify: `hoga/api/bundle.py:369` (the `no captured Stock-Date` ValueError)
+- Modify: `hoga/api/bundle.py` — TWO 404 branches need the same empty-bundle fix:
+  - `~line 366-370`: `if not dates: raise HTTPException(404, "no captured Stock-Date…")` (no captures on disk at all)
+  - `~line 419-427`: `if not segments: raise HTTPException(404, {"reason": "all Stock-Dates in range excluded by invariants", "excluded": [...]})` (ADR-0020 INVALID gate dropped every date)
 - Modify: tests under `hoga/tests/api/` that assert the 404 (discover via grep)
 
-Currently `/api/range` raises `ValueError("no captured Stock-Date for code=X in [from, to]")` when no promoted Parquet exists in the requested range. Spec Section 4.3 treats this case as normal for `/live` (today is fetched separately via SSE; past may be entirely missing). Replace the error with an empty `RangeBundle`.
+Currently `/api/range` raises `HTTPException(404, ...)` (note: actual call is `HTTPException`, not `ValueError` — eng review N1) when no promoted Parquet exists in the requested range OR when every in-range date is excluded by invariants. Spec Section 4.3 treats both as normal for `/live` (today is fetched separately via SSE; past may be entirely missing or fully INVALID). Replace both with an empty `RangeBundle` — for the second branch, populate `excluded_dates` with the gated list so the frontend can still surface DataWarning UX.
 
 - [ ] **Step 8.1: Locate the call site**
 
@@ -1357,21 +1434,19 @@ def test_api_range_no_data_returns_empty_bundle(test_client_with_empty_data_dir)
 Run: `uv run pytest -k "test_api_range_no_data_returns_empty_bundle" -x`
 Expected: FAIL — currently raises and returns 404 / 500.
 
-- [ ] **Step 8.4: Modify hoga/api/bundle.py**
+- [ ] **Step 8.4: Modify hoga/api/bundle.py — first 404 branch (no captures on disk)**
 
-Locate the block around line 369:
+Locate the block around line 366:
 
 ```python
-if not stock_dates:
-    raise ValueError(
-        f"no captured Stock-Date for code={code} in [{from_date}, {to_date}]",
-    )
+if not dates:  # actual var name — read surrounding code to confirm
+    raise HTTPException(status_code=404, detail=f"no captured Stock-Date for code={code} in [{from_date}, {to_date}]")
 ```
 
 Replace with an early return of an empty `RangeBundle`. The exact return shape must match the existing `RangeBundle` Pydantic model — read the surrounding code to find the constructor / dict shape used elsewhere in this function for the success path, and mirror it with empty lists.
 
 ```python
-if not stock_dates:
+if not dates:
     # Spec 2026-05-27: empty range is a normal case for /live's lazy fetch.
     # Surface it as an empty bundle so the frontend can stitch today's SSE
     # buffer in without round-tripping through 404 handling.
@@ -1384,14 +1459,47 @@ if not stock_dates:
         candles=[],
         quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=[]),
         fill_strength=FillStrength(bucket_ms=bucket_ms, points=[]),
-        volume_profile_range=_empty_volume_profile(),
+        volume_profile_range=_empty_volume_profile(bucket_ms),
         volume_profile_by_day=[],
         excluded_dates=[],
         data_warnings=[],
     )
 ```
 
-If `_empty_volume_profile` doesn't exist, define a local helper at the top of the function (or module) that returns a `VolumeProfile` with `price_min=0, price_max=0, price_step=1, bin_count=0, bins=[]`. Cross-reference the actual `VolumeProfile` field names against `hoga/api/models.py`.
+If `_empty_volume_profile` doesn't exist, define a local helper at the top of the function (or module) that returns a `VolumeProfile` matching the Pydantic model — cross-reference the actual `VolumeProfile` field names against `hoga/api/models.py` (expect `bin_count`, `price_min`, `price_max`, `bin_width`, `bins`, NOT `price_step`).
+
+- [ ] **Step 8.4b: Modify hoga/api/bundle.py — second 404 branch (all dates INVALID)**
+
+Locate the block around line 419-427:
+
+```python
+if not segments:
+    raise HTTPException(status_code=404, detail={"reason": "all Stock-Dates in range excluded by invariants", "excluded": [...]})
+```
+
+Replace with the same empty-bundle return shape, but populate `excluded_dates` with the gated list so the frontend can render DataWarning UX:
+
+```python
+if not segments:
+    return RangeBundle(
+        code=code,
+        from_date=from_date,
+        to_date=to_date,
+        bucket_ms=bucket_ms,
+        segments=[],
+        candles=[],
+        quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=[]),
+        fill_strength=FillStrength(bucket_ms=bucket_ms, points=[]),
+        volume_profile_range=_empty_volume_profile(bucket_ms),
+        volume_profile_by_day=[],
+        excluded_dates=excluded,  # the list already built upstream in this function
+        data_warnings=[],
+    )
+```
+
+- [ ] **Step 8.4c: Add regression test for the second branch**
+
+Add a test that supplies a range where every stock-date is gated by an INVALID invariant (use a fixture that produces such a setup, or write one mirroring an existing INVALID fixture). Assert the response is 200 with `segments == []` and `excluded_dates` non-empty.
 
 - [ ] **Step 8.5: Run the new test, expect PASS**
 
@@ -1565,10 +1673,38 @@ If Step 10.4 surfaced a bug, fix it with a targeted commit. Otherwise no commit 
 
 ---
 
+## Deferred review notes
+
+These items are surfaced by the eng/design plan review but kept out of the main task list — either they're optimisations safe to defer, or they're stylistic refinements that don't block correctness.
+
+### Eng review
+
+- **S1. Single bucketHogaSeries call** — `buildLiveBundle` (Task 2.3) currently calls `bucketHogaSeries(sseOb, sseTrade, bucketMs)` twice (once for quoteRatioPoints, once for fillStrengthPoints). Trivial fix: destructure once. Acceptable to leave for an executing-stage cleanup pass.
+- **S2. Typed SSE payload mappers** — `useLiveBundle` (Task 3.4) casts `live.ob as unknown as ObSnapshot[]`. A `mapObEntry` / `mapTradeEntry` helper with a unit test against a real SSE payload would replace runtime guessing with compile-time guarantees. Defer.
+- **S3. Performance measurement step** — at session-long SSE buffer (~2400 ob snapshots), every push re-spreads past arrays and re-buckets. Probably fine but Task 10 manual QA should include a React Profiler measurement; if any pane re-render >50ms, switch to incremental bucketing (last bucket only).
+- **S4. D/W/M candles passthrough test** — Task 3's `useLiveBundle` does not gate `todayCandles` on `isMinute` (only `sseOb` / `sseTrade`). Add a test confirming D/W/M still passes daily candles through, just with empty hoga series.
+- **S6. vol_a / vol_b split convention** — `buildLiveBundle` puts all volume into `vol_a` and 0 into `vol_b`. If `/replay`'s past `RangeBundle` carries a buy/sell split, a future stacked-bar overlay would misrender at the today/yesterday boundary. Acceptable today (volume.ts reads `vol_a + vol_b`). Verify the convention in `hoga/api/bundle.py` and document. Defer.
+- **C4. /api/range race on code/timeframe switch** — when activeCode or timeframe changes mid-fetch, the in-flight `/api/range` request resolves into a different TanStack Query cache key (because the request's keys include code+bucket_ms+source_pref). The stale response lives in the cache forever (`staleTime: Infinity`) but the new render uses the new key, so the user never sees stale data. Cache memory cost is bounded by the number of distinct (code, range, bucket_ms, source_pref) tuples a session visits — acceptable. No additional invalidation needed; the cache-key isolation is the design.
+- **N1. Backend exception wording** — Task 8 prose previously said `ValueError`. Already corrected in this revision to `HTTPException` — the actual call.
+- **N3. Task 9 ESM `require`** — the test as written uses `require('lightweight-charts')` which may fail under Vitest's ESM. Switch to `vi.mocked(createChart).mockImplementationOnce(...)` if so. Adapt during execution.
+- **N4. LivePage.test.tsx mocking** — confirm it mocks lightweight-charts the same way `LiveCandlePane.test.tsx` did before deletion. If a test breaks at Task 5, port over the relevant mock from the deleted file.
+
+### Design review
+
+- **C2 / D/W/M overlay treatment** — current overlay uses `--radius-md` (chip-like) but is centered at the top with `translateX(-50%)` (banner-like). Pick one treatment during execution (chip = also shrink to chip dimensions like `SourceChip`; banner = switch to `--radius-lg` + dropdown shadow). Either is acceptable; the implementation just needs to be internally consistent.
+- **S1. Loading state for /api/range** — no skeleton/spinner specified for the brief moment between scrolling past today and `past.data` arriving. Options: 1px top progress hairline using `--accent`, or reuse `LiveStatusBar`'s pulse animation. Defer to execution discretion.
+- **S3. Empty state when no SSE + no past** — `LiveStateBanner` already covers connection state; verify during Task 6 that the empty-chart case has a banner signal or add a centered "데이터 대기 중" notice.
+- **S4. Per-segment in-chart SourceChip** — ADR-0039 says "차트 segment마다" (per segment); Task 5A only renders the last segment's source in the status bar. Per-segment in-chart badges are a future task — beyond this spec.
+- **N1. D/W/M bucketMs cosmetic** — `useLiveBundle` passes `bucketMs = 60_000` to `buildLiveBundle` on D/W/M, which is cosmetically misleading (the displayed candles are daily). Functionally harmless. Defer.
+- **N2. Test could check tokens** — Task 4 / 5A tests only check `data-testid` presence; for stricter design enforcement, add `getComputedStyle` assertions on token resolution. Overkill for this plan; defer.
+- **N3. Redundant background** — chart container has `background: 'var(--bg-card)'` set both on the outer div and the chart layout. Remove the inline outer-div background during execution (one-line fix).
+
+---
+
 ## Execution Handoff
 
 Plan complete and saved to `docs/superpowers/plans/2026-05-27-live-chart-sync-and-hoga-indicators-plan.md`.
 
-Phase 1 (Tasks 1–6) alone solves problem 1 (timeScale sync) and problem 3 (hoga indicators correct). Phase 2 (Tasks 7–9) adds lazy fetch and confirms the debug hypothesis. Phase 3 (Task 10) is final QA.
+Phase 1 (Tasks 1–6, including 5A) alone solves problem 1 (timeScale sync), problem 3 (hoga indicators correct), and ADR-0039 source-badge compliance. Phase 2 (Tasks 7–9) adds lazy fetch and confirms the debug hypothesis. Phase 3 (Task 10) is final QA.
 
 Each task ends in a commit; tasks are mergeable individually.
