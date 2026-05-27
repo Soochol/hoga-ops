@@ -2557,6 +2557,29 @@ uv run pytest tests/unit/live/test_adr_invariants.py -v
 
 본 섹션은 plan 작성 직후 수행한 두 차례 review(plan-eng-review + plan-design-review)에서 도출된 Blocker / Critical을 stage별로 통합한 결과다. 실행 시 stage 진입 직전에 본 섹션의 해당 항목을 먼저 본문에 패치해 넣어 task 단위로 풀어 쓴다 (다른 stage의 task와 분량 균형 유지). Suggestion / Nit은 본 섹션 말미의 "Deferred review notes"에 누적.
 
+## Schema Discoveries from Task 1.0 (2026-05-27, 실측 fixture 캡쳐 결과)
+
+실제 KIS 응답 6종을 받아본 결과 plan의 일부 가정이 빗나갔다. 다음 보정사항 적용:
+
+1. **Quote (10호가)**: ✓ plan과 완전 일치. `askp1..10`, `bidp1..10`, `askp_rsqn1..10`, `bidp_rsqn1..10`, `total_askp_rsqn`, `total_bidp_rsqn` 모두 확인됨.
+
+2. **Trade (inquire-ccnl)**: ❌ plan이 가정한 `ccld_dvsn` (체결구분 1/5) 필드 **부재**. 실제 응답 필드: `stck_cntg_hour, stck_prpr, cntg_vol, prdy_vrss, prdy_vrss_sign, prdy_ctrt, tday_rltv`. **per-trade side를 직접 못 얻음** — Stage 2.2의 `KisTrade.side` 매핑은 0(unknown) 으로 고정. FillStrength 지표는 본 plan 범위에서 **제외**되고 Phase 2로 이연 (사용자 결정 2026-05-27). Trade는 fixture와 함께 보관되며 promote도 그대로 진행하되 차트 표시는 빈 상태.
+
+3. **Broker (inquire-member)**: `output`이 dict가 아니라 **1-element list**. 접근 시 `body["output"][0]` 사용. 실 응답에 plan 가정의 5개 컬럼 외에도 풍부한 필드 존재 (`seln_mbcr_no1..5`, `glob_total_seln_qty`, `glob_total_shnu_qty`, `glob_ntby_qty`, `*_glob_yn_*`, `seln_qty_icdc1..5` 등). 본 plan에서는 plan이 의도한 5개 (`name`, `total_qty`) 만 추출, 나머지는 무시.
+
+4. **Candles**: plan 가정 OK. 단 **분봉(inquire-time-itemchartprice)**은 필수 파라미터 `fid_etc_cls_code` (빈 문자열 가능), **일봉(inquire-daily-itemchartprice)**은 필수 파라미터 `fid_input_date_1`, `fid_input_date_2` 추가 필요. plan §Task 2.4의 params 빌더 수정.
+
+### 결과로 변경된 스코프
+
+- LiveIndicatorPane은 본래 4개 series (Quote Totals, 호가비, FillStrength, Broker Day-Trajectory) 였으나 **3개 active + 1개 빈 placeholder pane** 으로 조정. spec §7과 일치 (FillStrength pane은 마운트되어 X축 동기 유지하되 series 빈 배열).
+- Stage 2.2 (`fetch_trades`)는 trades 수집은 하되 side=0 으로 고정.
+- Stage 5 (`promote_one`)의 trades.parquet 스키마는 그대로 (side 컬럼 존재), 모든 row의 side=0.
+- Stage 6/9 (read/frontend): FillStrength 시리즈는 kis_live source 일 때 빈 배열을 반환 (사용자의 "pane은 컨테이너, 데이터 없으면 비움" 정책에 부합).
+
+이 발견을 위해 Task 1.0이 존재한 것 — plan의 J-extra 의도대로 동작.
+
+---
+
 ## Pre-Stage Decisions Added (review 머지)
 
 ### F-extra. Single-worker assertion (Eng B2)
