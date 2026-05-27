@@ -117,5 +117,14 @@
   --sidebar-w: 20rem; /* 400px @ default; 320px base intent — Cursor sidebar on the right of replay viewer */
   --combobox-min-w: 13.75rem; /* 275px @ default; 220px base intent — Stock combobox trigger minimum width */
   --dropdown-min-w: 20rem; /* 400px @ default; 320px base intent — Combobox / search dropdown minimum width */
+
+  --watchlist-panel-w: 17.5rem; /* 350px @ default; 280px base intent — Live page watchlist toggle panel */
+  --source-hogaplay-bg: var(--bg-card);
+  --source-hogaplay-border: var(--fg-dimmer);
+  --source-kis-live-bg: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
+  --source-kis-live-border: var(--accent);
+
+  /* Live page grid rows */
+  --h-live-header: 2rem; /* 40px @ default; 32px base intent — Live page header row */
 /* END AUTO-GENERATED */
 }

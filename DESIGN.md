@@ -223,4 +223,30 @@ The design system has a **single density dial** at `:root font-size`.
 | 2026-05-20 | Compressed multi-day time axis (no overnight gap) | Screen density over chronological accuracy; matches TradingView's convention for analyzing across sessions. |
 | 2026-05-20 | Tab status pulse dot | Multi-tab async state needs to be visible. One small animation is worth the tradeoff. |
 | 2026-05-20 | Monospace 100% for numbers | Tabular-nums is required for orderbook column alignment. Two-font cost (~50 KB extra) is negligible on localhost. |
+
+## Live page tokens (Stage 9, ADR-0039)
+
+The `/live` page introduces additional layout and source-identity tokens:
+
+| Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
+|---|---|---|---|
+| `--h-live-header` | 32px | 40px | Live page header row (page title + ⭐ toggle) |
+| `--watchlist-panel-w` | 280px | 350px | Watchlist toggle panel width (right of Live Sidebar) |
+
+**Source identity chips** — neither UI state nor status nor price direction, but data provenance.
+A fourth category limited to identifying which capture source rendered a given segment.
+
+| Token | Value | Use |
+|---|---|---|
+| `--source-hogaplay-bg` | `var(--bg-card)` | hogaplay-sourced segment chip background |
+| `--source-hogaplay-border` | `var(--fg-dimmer)` | hogaplay-sourced segment chip border |
+| `--source-kis-live-bg` | `color-mix(in srgb, var(--accent) 12%, var(--bg-card))` | kis_live-sourced segment chip background |
+| `--source-kis-live-border` | `var(--accent)` | kis_live-sourced segment chip border |
+
+## Copy tone (Stage 9)
+
+- **Domain identifiers** (`hogaplay`, `kis_live`, `cycle_lag_ms`, `EGW00201`): English lowercase, code-style (monospace where appropriate). Never localized.
+- **User-facing messages**: Korean natural-language sentences. No trailing periods. Actions are nominalized ("재발급" not "재발급하기").
+- **Status labels** (LiveStatusBar pills, banner badges): Korean single words ("장 외", "대기 중", "준비됨").
+- **Layout grid for `/live`**: 4-row grid mirroring `/replay`'s PriceStrip pattern — header (32/40px) + status bar (52/65px) + toolbar (60/75px) + workarea (1fr).
 | 2026-05-23 | Adopted KRX market convention (up=red `#DC2626`, down=blue `#2563EB`) | Single-user Korean analyst — Western up=green is counter-intuitive. Renamed `--up`/`--down` → `--success`/`--error` to disambiguate status semantic from price direction; introduced `--price-up`/`--price-down`. Removed `--ratio-ask` (folded into `--price-down`). All chart series now hide both `priceLineVisible` and `lastValueVisible` — analysts read latest values via crosshair. |
