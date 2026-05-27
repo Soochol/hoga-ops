@@ -160,7 +160,15 @@ async def test_fetch_brokers_parses_real_fixture(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "tf,fixture_name",
-    [("D", "candle_d_005930.json"), ("1m", "candle_1m_005930.json")],
+    [
+        ("D", "candle_d_005930.json"),
+        ("1m", "candle_1m_005930.json"),
+        # W/M reuse the daily fixture: the KIS schema for daily/weekly/monthly
+        # is identical (FHKST03010100 + stck_bsop_date YYYYMMDD), and the
+        # test only cares that the period-div parameter is mapped correctly.
+        ("W", "candle_d_005930.json"),
+        ("M", "candle_d_005930.json"),
+    ],
 )
 async def test_fetch_candles_parses_real_fixture(
     tmp_path: Path, tf: str, fixture_name: str
@@ -179,9 +187,12 @@ async def test_fetch_candles_parses_real_fixture(
     try:
         candles = await client.fetch_candles("005930", timeframe=tf)
         assert len(candles) == len(sample["output2"])
-        if tf == "D":
+        if tf in ("D", "W", "M"):
+            # All daily-API frames share the same date-range params and only
+            # differ in fid_period_div_code (D/W/M).
             assert "fid_input_date_1" in captured["params"]
             assert "fid_input_date_2" in captured["params"]
+            assert captured["params"].get("fid_period_div_code") == tf
         else:
             assert captured["params"].get("fid_etc_cls_code") == ""
         first_row = sample["output2"][0]

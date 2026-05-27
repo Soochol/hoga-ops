@@ -329,22 +329,28 @@ class KisClient:
     async def fetch_candles(self, code: str, timeframe: str = "D") -> list[KisCandle]:
         """Fetch OHLCV candles for *code*.
 
-        timeframe: "D" for daily (FHKST03010100), "1m" for 1-minute (FHKST03010200).
+        timeframe: "1m" → intraday (FHKST03010200, 1-minute). "D"/"W"/"M" →
+        daily/weekly/monthly (FHKST03010100 with fid_period_div_code).
+        Minute aggregates (3m, 5m, ...) are computed client-side from the 1m
+        feed — KIS doesn't expose those directly.
         """
         today_kst = datetime.now(KIS_KST).date()
-        if timeframe == "D":
+        daily_period = {"D": "D", "W": "W", "M": "M"}.get(timeframe)
+        if daily_period is not None:
             path = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
             tr_id = "FHKST03010100"
+            # Widen the lookback for W/M so the client has enough bars to render.
+            lookback_days = {"D": 90, "W": 365, "M": 365 * 5}[timeframe]
             params: dict[str, Any] = {
                 "fid_cond_mrkt_div_code": "J",
                 "fid_input_iscd": code,
-                "fid_period_div_code": "D",
+                "fid_period_div_code": daily_period,
                 "fid_org_adj_prc": "0",
-                "fid_input_date_1": (today_kst - timedelta(days=90)).strftime("%Y%m%d"),
+                "fid_input_date_1": (today_kst - timedelta(days=lookback_days)).strftime("%Y%m%d"),
                 "fid_input_date_2": today_kst.strftime("%Y%m%d"),
             }
         else:
-            # intraday (1m)
+            # intraday (1m). Caller is responsible for any minute-aggregation.
             path = "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
             tr_id = "FHKST03010200"
             params = {
@@ -357,8 +363,8 @@ class KisClient:
         body = await self._get(path=path, tr_id=tr_id, params=params)
         candles: list[KisCandle] = []
         for row in body["output2"]:
-            if timeframe == "D":
-                # Daily: date string YYYYMMDD, close = stck_clpr
+            if daily_period is not None:
+                # Daily/Weekly/Monthly: date string YYYYMMDD, close = stck_clpr
                 date_str = row["stck_bsop_date"]
                 dt = datetime(
                     int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]),

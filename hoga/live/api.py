@@ -111,7 +111,10 @@ def build_router(
         kis = get_kis_client()
         if kis is None:
             raise HTTPException(503, "KIS client not initialized")
-        valid_timeframes = ("1m", "3m", "5m", "10m", "15m", "30m", "D", "W")
+        # KIS exposes 1m intraday + D/W/M daily directly. Aggregated minute
+        # timeframes (3m–30m) are computed client-side from the 1m feed, so
+        # the server only accepts the base set.
+        valid_timeframes = ("1m", "D", "W", "M")
         if timeframe not in valid_timeframes:
             raise HTTPException(422, f"unsupported timeframe: {timeframe}")
         cache_key = (code, timeframe)
