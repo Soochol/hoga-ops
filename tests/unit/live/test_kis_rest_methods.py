@@ -153,58 +153,6 @@ async def test_fetch_brokers_parses_real_fixture(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Task 2.4: fetch_candles (FHKST03010100 daily + FHKST03010200 intraday)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "tf,fixture_name",
-    [
-        ("D", "candle_d_005930.json"),
-        ("1m", "candle_1m_005930.json"),
-        # W/M reuse the daily fixture: the KIS schema for daily/weekly/monthly
-        # is identical (FHKST03010100 + stck_bsop_date YYYYMMDD), and the
-        # test only cares that the period-div parameter is mapped correctly.
-        ("W", "candle_d_005930.json"),
-        ("M", "candle_d_005930.json"),
-    ],
-)
-async def test_fetch_candles_parses_real_fixture(
-    tmp_path: Path, tf: str, fixture_name: str
-) -> None:
-    sample = _fixture(fixture_name)
-    captured: dict = {}
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        if req.url.path == "/oauth2/tokenP":
-            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
-        captured["path"] = req.url.path
-        captured["params"] = dict(req.url.params)
-        return httpx.Response(200, json=sample)
-
-    client = _make_client(handler, tmp_path)
-    try:
-        candles = await client.fetch_candles("005930", timeframe=tf)
-        assert len(candles) == len(sample["output2"])
-        if tf in ("D", "W", "M"):
-            # All daily-API frames share the same date-range params and only
-            # differ in fid_period_div_code (D/W/M).
-            assert "fid_input_date_1" in captured["params"]
-            assert "fid_input_date_2" in captured["params"]
-            assert captured["params"].get("fid_period_div_code") == tf
-        else:
-            assert captured["params"].get("fid_etc_cls_code") == ""
-        first_row = sample["output2"][0]
-        first_candle = candles[0]
-        assert first_candle.open == int(first_row["stck_oprc"])
-        assert first_candle.high == int(first_row["stck_hgpr"])
-        assert first_candle.low == int(first_row["stck_lwpr"])
-    finally:
-        await client.aclose()
-
-
-# ---------------------------------------------------------------------------
 # fetch_past_minute_candles (FHKST03010230, 주식일별분봉조회)
 # ---------------------------------------------------------------------------
 

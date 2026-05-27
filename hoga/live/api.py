@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import re
-import time
 from collections.abc import Awaitable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -24,10 +23,6 @@ if TYPE_CHECKING:
     from .kis_client import KisClient
 
 ControlAction = Literal["start", "stop", "pause"]
-
-# Module-level cache: (code, timeframe) -> (fetched_at_monotonic, list[dict])
-_CANDLES_CACHE: dict[tuple[str, str], tuple[float, list[dict]]] = {}
-_CANDLES_TTL_SECONDS = 60.0
 
 _PAST_MAX_DAYS = 60
 _CODE_RE = re.compile(r"^\d{6}$")
@@ -164,31 +159,6 @@ def build_router(
                 buf.unsubscribe(code, q)
 
         return EventSourceResponse(stream())
-
-    @router.get("/candles")
-    async def _get_candles(code: str, timeframe: str = "1m") -> dict:
-        if get_kis_client is None:
-            raise HTTPException(503, "KIS client not wired")
-        kis = get_kis_client()
-        if kis is None:
-            raise HTTPException(503, "KIS client not initialized")
-        # KIS exposes 1m intraday + D/W/M daily directly. Aggregated minute
-        # timeframes (3m–30m) are computed client-side from the 1m feed, so
-        # the server only accepts the base set.
-        valid_timeframes = ("1m", "D", "W", "M")
-        if timeframe not in valid_timeframes:
-            raise HTTPException(422, f"unsupported timeframe: {timeframe}")
-        cache_key = (code, timeframe)
-        now = time.monotonic()
-        cached = _CANDLES_CACHE.get(cache_key)
-        if cached is not None and now - cached[0] < _CANDLES_TTL_SECONDS:
-            return {"code": code, "timeframe": timeframe, "candles": cached[1], "cached": True}
-        candles = await kis.fetch_candles(code, timeframe=timeframe)
-        out = [c.model_dump() for c in candles]
-        _CANDLES_CACHE[cache_key] = (now, out)
-        return {"code": code, "timeframe": timeframe, "candles": out, "cached": False}
-
-    from fastapi import Query
 
     cache_instance: PastCandlesCache | None = (
         PastCandlesCache(data_dir=data_dir) if data_dir is not None else None
