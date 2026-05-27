@@ -153,6 +153,7 @@ def create_app(data_dir: Path) -> FastAPI:
             get_buffer=live_get_buffer,
             on_control=_live_control,
             get_kis_client=live_get_kis_client,
+            data_dir=data_dir,
         )
     )
     if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":

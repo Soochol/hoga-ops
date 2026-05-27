@@ -225,3 +225,233 @@ def test_get_live_candles_invalid_timeframe(tmp_path) -> None:
     with TestClient(app) as c:
         r = c.get("/api/live/candles?code=005930&timeframe=bad")
         assert r.status_code == 422
+
+
+# ----- /api/live/past-candles -----
+
+import datetime
+from hoga.live.kis_models import KisCandle
+
+
+def _today_kst_yyyymmdd() -> str:
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+    return datetime.datetime.now(kst).strftime("%Y%m%d")
+
+
+class _FakeKisForPast:
+    """Stub KIS client returning deterministic minute bars per date."""
+
+    def __init__(self):
+        self.calls: list[str] = []  # records date arg per call
+
+    async def fetch_past_minute_candles(self, code: str, date_yyyymmdd: str) -> list[KisCandle]:
+        self.calls.append(date_yyyymmdd)
+        return [KisCandle(t_ms=int(date_yyyymmdd) * 1000, open=100, high=110, low=95, close=105, volume=10)]
+
+
+def _past_app(tmp_path, fake_kis):
+    """Build a minimal FastAPI mounting only the /api/live router.
+
+    Mirrors `_make_test_app` so we DO NOT trigger create_app's scheduler /
+    capture pool / poller / KRX-network side effects. data_dir is `tmp_path`
+    so the past-candles cache writes into the test sandbox.
+    """
+    from fastapi import FastAPI
+    from hoga.live import lifecycle
+    from hoga.live.api import build_router
+
+    lifecycle.reset_for_tests()
+    lifecycle.set_kis_client(fake_kis)  # type: ignore[arg-type]
+    app = FastAPI()
+    app.include_router(
+        build_router(
+            get_status=lifecycle.get_status,
+            get_kis_client=lifecycle.get_kis_client,
+            data_dir=tmp_path,
+        )
+    )
+    return app
+
+
+def test_past_candles_rejects_missing_code(tmp_path) -> None:
+    app = _past_app(tmp_path, _FakeKisForPast())
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-candles?from=20260501&to=20260502")
+        assert r.status_code == 422
+
+
+def test_past_candles_rejects_invalid_code_format(tmp_path) -> None:
+    app = _past_app(tmp_path, _FakeKisForPast())
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-candles?code=abc&from=20260501&to=20260502")
+        assert r.status_code == 422
+
+
+def test_past_candles_rejects_from_after_to(tmp_path) -> None:
+    app = _past_app(tmp_path, _FakeKisForPast())
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-candles?code=005930&from=20260510&to=20260501")
+        assert r.status_code == 422
+
+
+def test_past_candles_rejects_range_over_60_days(tmp_path) -> None:
+    app = _past_app(tmp_path, _FakeKisForPast())
+    with TestClient(app) as c:
+        # 61 days
+        r = c.get("/api/live/past-candles?code=005930&from=20260101&to=20260302")
+        assert r.status_code == 422
+        assert r.json()["detail"]["code"] == "date_range_too_large"
+
+
+def test_past_candles_rejects_to_in_future(tmp_path) -> None:
+    app = _past_app(tmp_path, _FakeKisForPast())
+    with TestClient(app) as c:
+        r = c.get(f"/api/live/past-candles?code=005930&from=20260501&to=20990101")
+        assert r.status_code == 422
+        assert r.json()["detail"]["code"] == "date_in_future"
+
+
+@pytest.mark.asyncio
+async def test_past_candles_happy_path_single_date(tmp_path) -> None:
+    fake = _FakeKisForPast()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        # Use a past date (yesterday relative to KST)
+        kst = datetime.timezone(datetime.timedelta(hours=9))
+        yesterday = (datetime.datetime.now(kst) - datetime.timedelta(days=1)).strftime("%Y%m%d")
+        r = c.get(f"/api/live/past-candles?code=005930&from={yesterday}&to={yesterday}")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["candles"] and body["candles"][0]["open"] == 100
+        assert body["fresh_dates"] == [yesterday]
+        assert body["cached_dates"] == []
+        assert body["data_warnings"] == []
+        # Disk file written under tmp_path
+        assert (tmp_path / "kis-past-candles" / "005930" / f"{yesterday}.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_past_candles_disk_cache_hit_on_second_call(tmp_path) -> None:
+    fake = _FakeKisForPast()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        kst = datetime.timezone(datetime.timedelta(hours=9))
+        yesterday = (datetime.datetime.now(kst) - datetime.timedelta(days=1)).strftime("%Y%m%d")
+        c.get(f"/api/live/past-candles?code=005930&from={yesterday}&to={yesterday}")
+        assert fake.calls == [yesterday]
+        # Second call — KIS should not be hit again
+        r = c.get(f"/api/live/past-candles?code=005930&from={yesterday}&to={yesterday}")
+        assert r.status_code == 200
+        assert fake.calls == [yesterday]  # unchanged
+        assert r.json()["cached_dates"] == [yesterday]
+        assert r.json()["fresh_dates"] == []
+
+
+@pytest.mark.asyncio
+async def test_past_candles_today_memory_cache(tmp_path) -> None:
+    fake = _FakeKisForPast()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        kst = datetime.timezone(datetime.timedelta(hours=9))
+        today = datetime.datetime.now(kst).strftime("%Y%m%d")
+        c.get(f"/api/live/past-candles?code=005930&from={today}&to={today}")
+        assert fake.calls == [today]
+        r = c.get(f"/api/live/past-candles?code=005930&from={today}&to={today}")
+        assert fake.calls == [today]  # 60s TTL not yet expired
+        assert r.json()["cached_dates"] == [today]
+        # No disk file written for today
+        assert not (tmp_path / "kis-past-candles" / "005930" / f"{today}.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_past_candles_partial_failure_kis_api_error(tmp_path) -> None:
+    from hoga.live.kis_client import KisApiError
+
+    class _PartialFakeKis:
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+            if date_yyyymmdd == "20260502":
+                raise KisApiError(msg_cd="HTTP_500", msg1="server error")
+            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
+
+    app = _past_app(tmp_path, _PartialFakeKis())
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-candles?code=005930&from=20260501&to=20260503")
+        assert r.status_code == 200
+        body = r.json()
+        warnings = body["data_warnings"]
+        assert len(warnings) == 1
+        assert warnings[0]["date"] == "20260502"
+        assert warnings[0]["reason"] == "kis_api_error"
+        # Two successful dates' bars in candles_all
+        assert len(body["candles"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_past_candles_rate_limit_aborts_remaining(tmp_path) -> None:
+    from hoga.live.kis_client import KisRateLimitError
+
+    class _RateLimitedFakeKis:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+            self.calls.append(date_yyyymmdd)
+            if date_yyyymmdd == "20260502":
+                raise KisRateLimitError("EGW00201 rate limited")
+            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
+
+    fake = _RateLimitedFakeKis()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-candles?code=005930&from=20260501&to=20260503")
+        assert r.status_code == 200
+        body = r.json()
+        # 20260502 fires rate limit, 20260503 must be skipped
+        assert fake.calls == ["20260501", "20260502"]
+        reasons = [w["reason"] for w in body["data_warnings"]]
+        assert "kis_rate_limit" in reasons
+        assert "rate_limit_aborted" in reasons
+
+
+@pytest.mark.asyncio
+async def test_past_candles_weekend_empty_response(tmp_path) -> None:
+    """KIS returns [] for non-trading days (weekends, holidays). Endpoint
+    should accept that as a normal zero-candle date — no warning."""
+
+    class _EmptyFakeKis:
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+            return []
+
+    app = _past_app(tmp_path, _EmptyFakeKis())
+    with TestClient(app) as c:
+        # 20260516 (Saturday)
+        r = c.get("/api/live/past-candles?code=005930&from=20260516&to=20260516")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["candles"] == []
+        assert body["data_warnings"] == []
+        assert body["fresh_dates"] == ["20260516"]
+
+
+@pytest.mark.asyncio
+async def test_past_candles_disk_cache_survives_router_rebuild(tmp_path) -> None:
+    """Past disk cache must survive a new router/cache instance — simulating
+    a server restart. Builds two apps against the same tmp_path."""
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+    yesterday = (datetime.datetime.now(kst) - datetime.timedelta(days=1)).strftime("%Y%m%d")
+
+    fake1 = _FakeKisForPast()
+    app1 = _past_app(tmp_path, fake1)
+    with TestClient(app1) as c:
+        c.get(f"/api/live/past-candles?code=005930&from={yesterday}&to={yesterday}")
+        assert fake1.calls == [yesterday]
+
+    # Second router with a *fresh* cache instance (simulating restart). KIS
+    # must not be called again — disk hit only.
+    fake2 = _FakeKisForPast()
+    app2 = _past_app(tmp_path, fake2)
+    with TestClient(app2) as c:
+        r = c.get(f"/api/live/past-candles?code=005930&from={yesterday}&to={yesterday}")
+        assert r.status_code == 200
+        assert fake2.calls == []
+        assert r.json()["cached_dates"] == [yesterday]
