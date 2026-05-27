@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from typing import Callable, Iterator, Literal
 
 PhaseName = Literal[
@@ -27,6 +28,16 @@ _PHASES: tuple[PhaseName, ...] = (
     "cookie_pause",
     "other",
 )
+
+
+@dataclass
+class PageTiming:
+    idx: int
+    http_ms: float = 0.0
+    parse_ms: float = 0.0
+    write_ms: float = 0.0
+    events: int = 0
+    errors: list[str] = field(default_factory=list)
 
 
 class CaptureTimingCollector:
@@ -51,6 +62,9 @@ class CaptureTimingCollector:
         self._started = clock()
         self._active_phase: PhaseName | None = None
         self.phase_totals_ms: dict[PhaseName, float] = {p: 0.0 for p in _PHASES}
+        self.pages: list[PageTiming] = []
+        self.error_counts: dict[str, int] = {}
+        self.event_count: int = 0
 
     @contextmanager
     def phase(self, name: PhaseName) -> Iterator[None]:
@@ -66,4 +80,26 @@ class CaptureTimingCollector:
         finally:
             elapsed_ms = (self._clock() - start) * 1000.0
             self.phase_totals_ms[name] += elapsed_ms
+            current_page = self.pages[-1] if self.pages else None
+            if current_page is not None:
+                if name == "http_fetch":
+                    current_page.http_ms += elapsed_ms
+                elif name == "parse":
+                    current_page.parse_ms += elapsed_ms
+                elif name == "disk_write":
+                    current_page.write_ms += elapsed_ms
             self._active_phase = None
+
+    def mark_page_boundary(self) -> None:
+        self.pages.append(PageTiming(idx=len(self.pages)))
+
+    def record_event_count(self, n: int) -> None:
+        if not self.pages:
+            self.mark_page_boundary()
+        self.pages[-1].events += n
+        self.event_count += n
+
+    def record_error(self, kind: str) -> None:
+        self.error_counts[kind] = self.error_counts.get(kind, 0) + 1
+        if self.pages:
+            self.pages[-1].errors.append(kind)
