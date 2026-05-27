@@ -166,6 +166,73 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> Classification:
     return Classification(state=DiskState.NONE)
 
 
+# ============================================================================
+# Stage 6A — Source-aware helpers (ADR-0037)
+# ============================================================================
+
+
+def classify_stock_date(stock_date_dir: Path) -> dict[str, DiskState]:
+    """Return per-source DiskState for a Stock-Date directory.
+
+    Walks `<stock_date_dir>/*/meta.json` — each immediate subdirectory is a
+    Source (e.g. `hogaplay`, `kis_live` per ADR-0037). Subdirs without a
+    `meta.json` are skipped. Invalid JSON yields `DiskState.INVALID` for
+    that source.
+
+    Returns empty dict if `stock_date_dir` doesn't exist or has no source
+    subdirs. Callers can pipe the result through :func:`aggregate_disk_state`
+    to get a single state for badge display.
+    """
+    out: dict[str, DiskState] = {}
+    if not stock_date_dir.is_dir():
+        return out
+    for src_dir in stock_date_dir.iterdir():
+        if not src_dir.is_dir():
+            continue
+        meta_path = src_dir / "meta.json"
+        if not meta_path.exists():
+            continue
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            out[src_dir.name] = DiskState.INVALID
+            continue
+        out[src_dir.name] = classify_from_meta(meta).state
+    return out
+
+
+# Severity ordering for cross-source aggregation. COMPLETE wins so a single
+# COMPLETE source promotes the Stock-Date to COMPLETE even if other sources
+# are missing or partial — see Pre-Stage A in the live capture plan.
+_AGGREGATE_PRIORITY = (
+    DiskState.COMPLETE,
+    DiskState.SOURCE_PARTIAL,
+    DiskState.CLIENT_INCOMPLETE,
+    DiskState.NO_UPSTREAM_DATA,
+    DiskState.INVALID,
+    DiskState.NONE,
+)
+
+
+def aggregate_disk_state(per_source: dict[str, DiskState]) -> DiskState:
+    """Pick the best DiskState across sources.
+
+    Priority: COMPLETE > SOURCE_PARTIAL > CLIENT_INCOMPLETE > NO_UPSTREAM_DATA
+    > INVALID > NONE. A single COMPLETE source wins even if others are
+    INVALID — the user can still render that Stock-Date via Source Preference
+    fallback (ADR-0039).
+
+    Empty input → NONE.
+    """
+    if not per_source:
+        return DiskState.NONE
+    states = set(per_source.values())
+    for p in _AGGREGATE_PRIORITY:
+        if p in states:
+            return p
+    return DiskState.NONE
+
+
 _SESSION_OPEN_MS: HogaMs = HogaMs(90000000)        # 09:00:00.000
 _GAP_THRESHOLD_MS = 60_000                         # 1 minute (a duration, not a HogaMs)
 _MIN_DATAPOINTS_FOR_GAP_ANALYSIS = 2               # need ≥2 to compute consecutive deltas
