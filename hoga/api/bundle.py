@@ -368,7 +368,8 @@ def build_range_bundle(
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
     Validates ``bucket_ms`` and ``from_date <= to_date``.
-    Returns HTTP 404 if no Stock-Date in range has captured data.
+    Returns an empty RangeBundle when no Stock-Date in range has captured data
+    or all in-range dates are excluded by invariants (spec 2026-05-27 §4.3).
 
     Loops over captured Stock-Dates calling each per-slice builder directly.
     ``volume_profile`` is returned as a per-segment list (each Stock-Date
