@@ -103,6 +103,7 @@ export function aggregateBrokerSeries(broker: RawSnapshot[]): BrokerSeriesEntry[
  */
 export function flattenTrades(trade: RawSnapshot[]): Trade[] {
   const flat: Trade[] = [];
+  let seqCounter = 0;
   for (const snap of trade) {
     const trades = (snap.trades as Array<{
       t_ms?: number;
@@ -113,7 +114,11 @@ export function flattenTrades(trade: RawSnapshot[]): Trade[] {
     for (const t of trades) {
       flat.push({
         ts_ms: t.t_ms ?? 0,
-        seq: 0,
+        // Live snapshots don't carry a real seq; assign a monotonically
+        // increasing counter so FillTape's `${ts_ms}-${seq}` React key
+        // stays unique even when multiple trades share a t_ms (common with
+        // 10s polling cycles collapsing several ticks).
+        seq: seqCounter++,
         price: t.price ?? 0,
         change_pct: 0,
         qty: t.qty ?? 0,
