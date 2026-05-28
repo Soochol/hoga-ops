@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .buffer import LiveBuffer
 from .kis_client import KisClient
@@ -33,6 +33,9 @@ class LiveStatus(BaseModel):
     watchlist_count: int
     kis_calls_today: int
     kis_rate_limit_remaining: int | None
+    # ADR-0043 / design-review B2 — last successful Today Promotion per code (epoch ms).
+    # Empty dict means no promotion has occurred yet this session.
+    today_promote_last_ms: dict[str, int] = Field(default_factory=dict)
 
 
 @dataclass
@@ -51,6 +54,38 @@ class _State:
 _state = _State()
 _buffer = LiveBuffer()
 _kis_client: KisClient | None = None
+
+# ADR-0043 / design-review B2 — in-memory dict of code → last successful
+# Today Promotion epoch_ms. Populated by promote_today via
+# record_today_promote_success; surfaced via LiveStatus.
+_today_promote_last_ms: dict[str, int] = {}
+
+
+def record_today_promote_success(code: str, t_ms: int) -> None:
+    """Called by promote_today on success; surfaced via LiveStatus (ADR-0043)."""
+    _today_promote_last_ms[code] = t_ms
+
+
+def get_today_promote_last_ms() -> dict[str, int]:
+    """Snapshot of last successful Today Promotion epoch_ms per code."""
+    return dict(_today_promote_last_ms)
+
+
+def get_active_codes() -> list[str]:
+    """Return currently active watchlist codes the poller is iterating.
+
+    Empty list if the poller hasn't started or has stopped.
+
+    Contract (eng-review Blocker 2): readers receive a snapshot at call time —
+    `_state.watchlist_codes` is read synchronously. `start_today_promoter`
+    (ADR-0043) calls this each cycle (every `interval_s` seconds), so
+    watchlist mutations through `start_live_poller` (which rebuilds `_state`)
+    propagate immediately to the next cycle — no caching, no stale closure.
+
+    If the watchlist changes mid-cycle and you don't want to wait, call
+    `start_live_poller` again — it's idempotent and restarts the poller task.
+    """
+    return list(_state.watchlist_codes)
 
 
 def get_buffer() -> LiveBuffer:
@@ -120,6 +155,7 @@ def get_status() -> LiveStatus:
         watchlist_count=len(_state.watchlist_codes),
         kis_calls_today=_read_poller_attr("kis_calls_today") or 0,
         kis_rate_limit_remaining=None,  # KIS doesn't expose this header
+        today_promote_last_ms=get_today_promote_last_ms(),
     )
 
 
@@ -138,6 +174,7 @@ def reset_for_tests() -> None:
     _state = _State()
     _buffer = LiveBuffer()
     _kis_client = None
+    _today_promote_last_ms.clear()
 
 
 async def start_live_poller(*, data_dir: Path) -> bool:
