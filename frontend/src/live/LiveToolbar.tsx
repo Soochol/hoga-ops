@@ -1,6 +1,10 @@
 import { LIVE_TIMEFRAMES, useLivePageStore } from '../state/livePage';
 
-export function LiveToolbar() {
+type Props = {
+  onOpenIndicators: () => void;
+};
+
+export function LiveToolbar({ onOpenIndicators }: Props) {
   const tf = useLivePageStore((s) => s.candleTimeframe);
   const setTf = useLivePageStore((s) => s.setCandleTimeframe);
   return (
@@ -33,6 +37,20 @@ export function LiveToolbar() {
           </button>
         ))}
       </div>
+      <button
+        type="button"
+        data-testid="live-indicators-button"
+        onClick={onOpenIndicators}
+        aria-label="지표"
+        className="ml-auto px-2 py-1 rounded text-sm"
+        style={{
+          background: 'var(--bg-input)',
+          color: 'var(--fg-dim)',
+          border: '1px solid var(--border)',
+        }}
+      >
+        📈 지표
+      </button>
     </div>
   );
 }
