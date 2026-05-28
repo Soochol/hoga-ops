@@ -161,9 +161,10 @@ function nextSlotId(existing: readonly LiveMAConfig[]): string {
   return `ma-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
-/** Palette 8색 hex 순서 — tokens.css의 --ma-1..--ma-8과 매칭. canvas는 CSS
- *  var를 직접 받지 못해 hex로 정적 deflate. ColorSwatchButton이 같은
- *  배열을 import하여 swatch grid를 표시하므로 single source. */
+/** 8색 hex palette — tokens.css의 --ma-1..--ma-8과 매칭. canvas는 CSS
+ *  var를 직접 받지 못해 hex로 정적 deflate. 신규 슬롯의 색 자동 배정
+ *  (`nextSlotColor`)에 사용한다. 사용자가 직접 색을 고르는 32색 grid
+ *  (8 hue × 4 shade)는 `MAStylePicker`에 별도로 정의되어 있다. */
 export const MA_PALETTE: readonly string[] = [
   '#EC4899', '#3B82F6', '#F97316', '#22C55E',
   '#F8FAFC', '#06B6D4', '#EAB308', '#94A3B8',

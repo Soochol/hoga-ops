@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { LiveMAConfig } from '../../state/livePage';
 import { MA_PERIOD_MIN, MA_PERIOD_MAX } from '../../state/livePage';
-import ColorSwatchButton from './ColorSwatchButton';
-import LineWidthSelect from './LineWidthSelect';
+import MAStylePicker from './MAStylePicker';
 import MASourceSelect from './MASourceSelect';
 
 type Props = {
@@ -53,9 +52,12 @@ export default function MovingAverageRow({ index, config, canRemove, onChange, o
           }
         />
       </button>
-      <div className="flex items-center gap-2">
-        <ColorSwatchButton value={config.color} onChange={(c) => onChange({ color: c })} />
-        <LineWidthSelect value={config.lineWidth} onChange={(w) => onChange({ lineWidth: w })} />
+      <div className="flex items-center">
+        <MAStylePicker
+          color={config.color}
+          lineWidth={config.lineWidth}
+          onChange={(patch) => onChange(patch)}
+        />
       </div>
       <MASourceSelect value={config.source} onChange={(s) => onChange({ source: s })} />
       <input
