@@ -4,7 +4,7 @@ Backs GET /api/live/past-daily-candles. Daily data is small enough
 (~250 KB per code per 20 years) that disk persistence offers no benefit;
 process restart is the natural cache invalidation event.
 
-ADR-0047 — parallel to ADR-0040; daily cache lives in memory only and has
+ADR-0048 — parallel to ADR-0040; daily cache lives in memory only and has
 no disk artifact. The minute path's PastCandlesCache keeps disk persistence
 because 1-minute data at scale exceeds memory.
 """

@@ -8,7 +8,7 @@ ADR-0040 (Live Candle Backfill 별도 cache + 별도 wire), ADR-0045 (spec decla
 ADR-0046 (live MA fork from replay), [2026-05-28 live-kis-past-candles spec](2026-05-28-live-kis-past-candles-design.md),
 [2026-05-28 live-daily-pane-policy spec](2026-05-28-live-daily-pane-policy-design.md).
 
-신설 ADR: `docs/adr/0047-live-daily-direct-backfill.md` (본 spec 채택과 함께).
+신설 ADR: `docs/adr/0048-live-daily-direct-backfill.md` (본 spec 채택과 함께).
 
 ---
 
@@ -62,7 +62,7 @@ ADR-0046 (live MA fork from replay), [2026-05-28 live-kis-past-candles spec](202
 | 분봉 wire 안정성 | preserves | `/api/live/past-candles` 핸들러/캐시 zero diff. 형제 핸들러로 추가. |
 | lightweight-charts t_ms monotonic | preserves | 신규 핸들러의 step 6 (dedupe + sort + filter) 가 ASC + unique 보장. |
 | OHLC 일관성 | preserves | `fetch_past_daily_candles` 의 boundary defense 가 위반 row 를 skip 하고 `data_warnings.invariant_violation` 으로 surface. |
-| 단일 read-path 균열의 지역성 | preserves (with explicit extension) | 신규 ADR-0047 이 ADR-0040 과 *병렬* 균열임을 명문화. `/live` 도메인 범위 동일 유지. |
+| 단일 read-path 균열의 지역성 | preserves (with explicit extension) | 신규 ADR-0048 이 ADR-0040 과 *병렬* 균열임을 명문화. `/live` 도메인 범위 동일 유지. |
 | clampEngaged 의미적 일관성 | intentionally redefines (per-timeframe) | 분봉은 그대로 250d 클램프, 일봉은 항상 false. |
 
 **"intentionally redefines" 정당화**: 250일 캡은 분봉 payload 보호 장치였고 D-direct 는
@@ -77,7 +77,7 @@ ADR-0046 (live MA fork from replay), [2026-05-28 live-kis-past-candles spec](202
 - 주봉(W) / 월봉(M) 도 같은 데이터 소스(D-direct backend)로 frontend 재집계.
 - 분봉(1m/3m/5m/10m/15m/30m) 의 현행 동작 zero diff.
 - `/replay` 페이지 zero diff.
-- ADR-0040 supersede 가 아닌 **병렬 ADR (ADR-0047)** 으로 균열을 명문화.
+- ADR-0040 supersede 가 아닌 **병렬 ADR (ADR-0048)** 으로 균열을 명문화.
 
 ## Non-Goals
 
@@ -467,7 +467,7 @@ prefetch 동작이 무제한이 되었으므로 사용자가 끝없이 스크롤
 형제 균열로 공존:
 
 - ADR-0040: 분봉 wire + disk cache (`kis-past-candles/`) + memory mirror
-- ADR-0047 (신설): 일봉 wire + 메모리 only cache (디스크 없음)
+- ADR-0048 (신설): 일봉 wire + 메모리 only cache (디스크 없음)
 
 두 cache 는 서로 독립이고 같은 (code, date) 가 두 곳에 중복 저장되는 일은 없다
 (분봉 cache 는 1m bars 만, 일봉 cache 는 daily bars 만; 데이터 단위 자체가 다름).
@@ -516,7 +516,7 @@ spec 으로는 발동되지 않는다.
 > 캐시는 서로 독립 (한쪽이 분봉, 다른쪽이 일봉이라 같은 데이터가 양쪽에 중복될 수
 > 없음). `/api/range` 의 promoted Parquet 호출과도 독립 — promoted Parquet 은
 > snapshots/trades/brokers 만 담고 candle 은 안 담기 때문. /replay 는 둘 다 안 쓴다
-> (RangeBundle 한 길로만). ADR-0040 (분봉) + ADR-0047 (일봉) 두 결정으로 둘 다
+> (RangeBundle 한 길로만). ADR-0040 (분봉) + ADR-0048 (일봉) 두 결정으로 둘 다
 > *별도 cache + 별도 endpoint* 를 갖는다.
 > _Avoid_: "past candles" 단독 (소스를 잃음 — KIS-specific), "historical candles"
 > (replay candle wire 와 중첩), "candle backfill" 단독 ("Live" 페이지 scope 누락).
@@ -646,5 +646,5 @@ spec 으로는 발동되지 않는다.
 - 분봉 cap 의 점진 상향 (별도 spec).
 - D-direct 응답에 분할/배당 metadata 추가 (현재는 수정주가만).
 - WebSocket 기반 today 일봉 실시간 갱신.
-- D-direct path 의 promoted Parquet 통합 (ADR-0047 의 Trigger Conditions 발동 시).
+- D-direct path 의 promoted Parquet 통합 (ADR-0048 의 Trigger Conditions 발동 시).
 - W/M backend 직접 서빙 (현재는 frontend 재집계로 충분).

@@ -1,7 +1,7 @@
 ---
 scope: both
 spec: docs/superpowers/specs/2026-05-28-live-daily-direct-backfill-design.md
-adr: docs/adr/0047-live-daily-direct-backfill.md (신설 예정)
+adr: docs/adr/0048-live-daily-direct-backfill.md (신설 예정)
 ---
 
 # /live D-direct Daily Backfill — Implementation Plan
@@ -84,7 +84,7 @@ categorized findings list (including Suggestion + Nit items not auto-applied).
 - `frontend/src/live/aggregateCandles.test.ts` — `aggregateCalendar('D', dailyInput)` identity-ish 회귀
 
 **Docs — 신설**:
-- `docs/adr/0047-live-daily-direct-backfill.md`
+- `docs/adr/0048-live-daily-direct-backfill.md`
 
 **Docs — 수정** (코드와 함께 ship):
 - `CONTEXT.md` — Live Candle Backfill entry 전체 재작성 + LiveTimeframe 한 문장 교체
@@ -205,7 +205,7 @@ Backs GET /api/live/past-daily-candles. Daily data is small enough
 (~250 KB per code per 20 years) that disk persistence offers no benefit;
 process restart is the natural cache invalidation event.
 
-ADR-0047 — parallel to ADR-0040; daily cache lives in memory only and has
+ADR-0048 — parallel to ADR-0040; daily cache lives in memory only and has
 no disk artifact. The minute path's PastCandlesCache keeps disk persistence
 because 1-minute data at scale exceeds memory.
 """
@@ -1861,7 +1861,7 @@ git commit -m "feat(live): useLivePastDailyCandles hook + wire types"
 Append to `frontend/src/live/aggregateCandles.test.ts`:
 
 ```ts
-// Regression for ADR-0047 / D-direct spec D7:
+// Regression for ADR-0048 / D-direct spec D7:
 // aggregateCalendar('D', dailyInput) must be identity-ish — input is
 // already daily bars, one per trading day, so each bar gets its own
 // bucket and the OHLCV is preserved verbatim.
@@ -1919,7 +1919,7 @@ Expected: all PASS (the function is already correct for daily input; this test p
 
 ```bash
 git add frontend/src/live/aggregateCandles.test.ts
-git commit -m "test(live): regression — aggregateCalendar identity-ish for daily input (ADR-0047)"
+git commit -m "test(live): regression — aggregateCalendar identity-ish for daily input (ADR-0048)"
 ```
 
 ---
@@ -1935,7 +1935,7 @@ git commit -m "test(live): regression — aggregateCalendar identity-ish for dai
 Open `frontend/src/live/useLiveBundle.test.tsx` and append (adjust imports as needed):
 
 ```tsx
-// ADR-0047 / D-direct spec D6:
+// ADR-0048 / D-direct spec D6:
 // - D/W/M timeframe enables useLivePastDailyCandles only
 // - minute timeframe enables useLivePastCandles only
 // - clampEngaged is false for D/W/M regardless of historicalFromDate
@@ -1943,7 +1943,7 @@ Open `frontend/src/live/useLiveBundle.test.tsx` and append (adjust imports as ne
 import * as minuteHookMod from '../api/livePastCandles';
 import * as dailyHookMod from '../api/livePastDailyCandles';
 
-describe('useLiveBundle daily/minute branching (ADR-0047)', () => {
+describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
   it('D timeframe enables daily hook, disables minute hook', async () => {
     const dailySpy = vi.spyOn(dailyHookMod, 'useLivePastDailyCandles');
     const minuteSpy = vi.spyOn(minuteHookMod, 'useLivePastCandles');
@@ -2071,17 +2071,17 @@ Expected: all PASS.
 
 ```bash
 git add frontend/src/live/useLiveBundle.ts frontend/src/live/useLiveBundle.test.tsx
-git commit -m "feat(live): useLiveBundle routes D/W/M through new daily endpoint (ADR-0047)"
+git commit -m "feat(live): useLiveBundle routes D/W/M through new daily endpoint (ADR-0048)"
 ```
 
 ---
 
 ## Phase E — Docs
 
-### Task E1: ADR-0047 — Live Daily Direct Backfill
+### Task E1: ADR-0048 — Live Daily Direct Backfill
 
 **Files:**
-- Create: `docs/adr/0047-live-daily-direct-backfill.md`
+- Create: `docs/adr/0048-live-daily-direct-backfill.md`
 
 - [ ] **Step 1: Write ADR**
 
@@ -2173,7 +2173,7 @@ write / corrupt file handling / "operator deletes cache file to refresh" 같은
 - [ ] **Step 2: Commit**
 
 ```bash
-git add docs/adr/0047-live-daily-direct-backfill.md
+git add docs/adr/0048-live-daily-direct-backfill.md
 git commit -m "docs(adr): 0047 — /live D-direct daily backfill, parallel to ADR-0040"
 ```
 
@@ -2194,7 +2194,7 @@ Replace the entry at lines 303-305 with:
 - **분봉** (1m/3m/5m/10m/15m/30m timeframe): `GET /api/live/past-candles` → KIS `inquire-time-dailychartprice` (TR_ID `FHKST03010230`). 응답은 1분봉, 백엔드가 disk 에 per-Stock-Date 캐시 (`~/.local/share/hoga-ops/kis-past-candles/<code>/<YYYYMMDD>.json`). 250-day hard cap (payload 보호 — 1년치 일봉을 분봉으로 보내면 ~5MB). 프론트는 3m/5m/.../30m 을 1분봉에서 client-aggregate.
 - **일봉** (D/W/M timeframe): `GET /api/live/past-daily-candles` → KIS `inquire-daily-itemchartprice` (TR_ID `FHKST03010100`, period_div_code='D'). 응답은 일봉, 백엔드가 **프로세스 메모리** 에만 캐시 (디스크 안 둠 — 데이터 양이 매우 작아서 메모리 충분; restart = 자연 invalidation). cap 없음 (KIS 보유 기간 ~20-30 년이 자연 상한). 프론트는 D 를 그대로, W/M 는 client-aggregate.
 
-둘 다 **Live Capture** (10초 폴링으로 snapshot/trade/broker raw 이벤트 수집) 와 다른 호출 — KIS 의 *pre-aggregated candle* endpoint 만 사용하는 on-demand 호출. 두 캐시는 서로 독립 (한쪽이 분봉, 다른쪽이 일봉이라 같은 데이터가 양쪽에 중복될 수 없음). `/api/range` 의 promoted Parquet 호출과도 독립 — promoted Parquet 은 snapshots/trades/brokers 만 담고 candle 은 안 담기 때문. /replay 는 둘 다 안 쓴다 (RangeBundle 한 길로만). ADR-0040 (분봉) + ADR-0047 (일봉) 두 결정으로 둘 다 *별도 cache + 별도 endpoint* 를 갖는다.
+둘 다 **Live Capture** (10초 폴링으로 snapshot/trade/broker raw 이벤트 수집) 와 다른 호출 — KIS 의 *pre-aggregated candle* endpoint 만 사용하는 on-demand 호출. 두 캐시는 서로 독립 (한쪽이 분봉, 다른쪽이 일봉이라 같은 데이터가 양쪽에 중복될 수 없음). `/api/range` 의 promoted Parquet 호출과도 독립 — promoted Parquet 은 snapshots/trades/brokers 만 담고 candle 은 안 담기 때문. /replay 는 둘 다 안 쓴다 (RangeBundle 한 길로만). ADR-0040 (분봉) + ADR-0048 (일봉) 두 결정으로 둘 다 *별도 cache + 별도 endpoint* 를 갖는다.
 _Avoid_: "past candles" 단독 (소스를 잃음 — KIS-specific), "historical candles" (replay candle wire 와 중첩), "candle backfill" 단독 ("Live" 페이지 scope 누락).
 ```
 
@@ -2212,7 +2212,7 @@ Replace with:
 
 ```bash
 git add CONTEXT.md
-git commit -m "docs(context): Live Candle Backfill + LiveTimeframe entries reflect D-direct (ADR-0047)"
+git commit -m "docs(context): Live Candle Backfill + LiveTimeframe entries reflect D-direct (ADR-0048)"
 ```
 
 ---
@@ -2342,7 +2342,7 @@ D0 의 `dailyWarningsAsDate` 매핑 옆에 raw warnings 도 export:
 ```ts
 export interface UseLiveBundleResult {
   // ... existing ...
-  /** ADR-0047 — daily endpoint 의 batch-grained warnings.
+  /** ADR-0048 — daily endpoint 의 batch-grained warnings.
    * D0 의 invariant_violation 라우팅과 별개로, kis_rate_limit / kis_api_error
    * 처럼 batch 전체에 걸린 알림을 UI 에 surface. 분봉 timeframe 에서는 항상
    * 빈 배열. */
@@ -2454,7 +2454,7 @@ back in time") 약속과 어긋남 — 한 번 더 스크롤 백 해야 의미 �
 
 ```ts
 // frontend/src/live/liveDateTime.ts — 신규 export
-/** ADR-0047 — 일봉 첫 paint 의 default range. 2년 = ~500 trading bars 로
+/** ADR-0048 — 일봉 첫 paint 의 default range. 2년 = ~500 trading bars 로
  * 의미 있는 차트가 한 번에 보임. 메모리 cache (PastDailyCandlesCache) 가
  * cold-start 비용을 흡수. */
 export const INITIAL_HISTORICAL_DAYS_DAILY = 365 * 2;
@@ -2504,7 +2504,7 @@ plan 의 현재 동작 (`pastDailyCandlesQuery.data?.candles ?? []` 로 명시�
 `useLiveBundle.ts` 의 `kisCandles` memo 위 주석:
 
 ```ts
-// Timeframe 전환 시 깜빡임 정책 (ADR-0047, C1):
+// Timeframe 전환 시 깜빡임 정책 (ADR-0048, C1):
 // 일봉 query 가 처음 발사될 때 빈 candles 를 반환해서 LiveChartRoot 의
 // "일봉 불러오는 중…" 오버레이 (B2) 가 표시되도록 한다. 이전 timeframe 의
 // candles 를 1 frame 보여주는 wrong-timeframe flash 보다 명시적 로딩 상태가
@@ -2547,7 +2547,7 @@ vi.mock('../api/livePastDailyCandles', () => ({
     livePastDailyCandlesSpy(...args as []),
 }));
 
-describe('useLiveBundle daily/minute branching (ADR-0047)', () => {
+describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
     livePastDailyCandlesSpy.mockClear();
@@ -2746,4 +2746,4 @@ for the implementer's discretion.
   zero diff confirmed (the new endpoint is `/api/live/*`).
 - ADR-0013 single read-path: the new endpoint is `/live`-scoped (not
   `/api/range`); ADR-0040's locality argument extends naturally to the
-  parallel ADR-0047.
+  parallel ADR-0048.
