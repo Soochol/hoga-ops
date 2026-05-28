@@ -60,7 +60,7 @@ ADR-0046 (live MA fork from replay), [2026-05-28 live-kis-past-candles spec](202
 |---|---|---|
 | Replay read-path 단일성 | preserves | 신규 `/api/live/past-daily-candles` 는 `/live` 전용. `/api/range` 무변경. |
 | 분봉 wire 안정성 | preserves | `/api/live/past-candles` 핸들러/캐시 zero diff. 형제 핸들러로 추가. |
-| lightweight-charts t_ms monotonic | preserves | 신규 핸들러의 step 4 (dedupe + sort + filter) 가 ASC + unique 보장. |
+| lightweight-charts t_ms monotonic | preserves | 신규 핸들러의 step 6 (dedupe + sort + filter) 가 ASC + unique 보장. |
 | OHLC 일관성 | preserves | `fetch_past_daily_candles` 의 boundary defense 가 위반 row 를 skip 하고 `data_warnings.invariant_violation` 으로 surface. |
 | 단일 read-path 균열의 지역성 | preserves (with explicit extension) | 신규 ADR-0047 이 ADR-0040 과 *병렬* 균열임을 명문화. `/live` 도메인 범위 동일 유지. |
 | clampEngaged 의미적 일관성 | intentionally redefines (per-timeframe) | 분봉은 그대로 250d 클램프, 일봉은 항상 false. |
@@ -83,11 +83,18 @@ ADR-0046 (live MA fork from replay), [2026-05-28 live-kis-past-candles spec](202
 
 - `/replay` 페이지 변경.
 - 분봉 250일 캡 변경.
+- 분봉 wire 스키마 / cache namespace 변경 (응답 필드, 디렉토리 layout, 파일 형식 모두 zero diff).
 - ADR-0040 supersede.
 - 다른 timeframe(예: tick, 60m) 도입.
 - payload 압축/스트리밍 최적화.
 - WebSocket aggregator (별도 spec 거리).
 - hogaplay invariant 자체 변경.
+
+**스코프 내 명시 (Non-Goals 아님)**:
+
+- 분봉 `PastCandlesCache` 의 today negative caching 도입. 일봉 path 와 동일 패턴으로
+  통일 — wire/namespace 무변경, cache 내부 동작만 강화. 두 path 가 형제 구조라는 본
+  spec 의 아키텍처 원칙과 정합 (사용자 의사 grill Q2).
 
 ## Design
 
@@ -130,10 +137,11 @@ ADR-0046 (live MA fork from replay), [2026-05-28 live-kis-past-candles spec](202
 │  │       cap = NONE; rate-limit 은 partial response 로 처리│      │
 │  └────────────────────────────────────────────────────────┘      │
 │  ┌────────────────────────────────────────────────────────┐      │
-│  │  past_daily_candles_cache.py (신설)                     │      │
-│  │   - per-batch JSON                                       │      │
-│  │   - kis-past-daily-candles/<code>/<from>__<to>.json      │      │
-│  │   - today 메모리 TTL (60s) 분리                          │      │
+│  │  past_daily_candles_cache.py (신설) — 메모리 only        │      │
+│  │   - per-code 누적 batch 리스트 (dict[code, list[...]])   │      │
+│  │   - today 메모리 TTL (60s) + negative cache              │      │
+│  │   - 디스크 X (데이터 양 작아서 메모리 충분; restart =    │      │
+│  │     자연 invalidation)                                    │      │
 │  └────────────────────────────────────────────────────────┘      │
 │  ┌────────────────────────────────────────────────────────┐      │
 │  │  kis_client.py                                          │      │
@@ -179,8 +187,8 @@ ADR-0046 (live MA fork from replay), [2026-05-28 live-kis-past-candles spec](202
 - `cached_batches` / `fresh_batches`: 분봉 wire 의 `cached_dates`/`fresh_dates` 와 의미
   대칭. 디버그용.
 - `data_warnings`: ADR-0040 패턴 답습 — `{batch, reason, msg}` 객체 list. reason 후보:
-  `kis_rate_limit`, `kis_api_error`, `cache_write_failed`, `invariant_violation`
-  (close ≤ 0 등).
+  `kis_rate_limit`, `kis_api_error`, `invariant_violation` (close ≤ 0 등).
+  `cache_write_failed` 는 해당 없음 (메모리 only).
 
 422 응답:
 
@@ -191,53 +199,91 @@ ADR-0046 (live MA fork from replay), [2026-05-28 live-kis-past-candles spec](202
 
 **date_range_too_large 422 는 발생시키지 않는다** (D-direct 는 무제한).
 
-### D2. 캐시 구조
+### D2. 캐시 구조 — 프로세스 메모리 only
 
-파일 경로: `~/.local/share/hoga-ops/kis-past-daily-candles/<code>/<from>__<to>.json`
+**디스크 캐시 안 둔다** (grill Q4 결정). 일봉 데이터는 너무 작아서 디스크가 필요 없음:
 
-파일 내용:
+- 1 종목 20년치 = ~5,000 bars × ~50 bytes ≈ **250 KB**
+- 실 사용 패턴(2-3 종목 비교): **< 1 MB**
+- 절대 worst case (50 종목 × 20년) = ~12 MB
 
-```json
-{
-  "candles": [{"t_ms": ..., "open": ..., "high": ..., "low": ..., "close": ..., "volume": ...}],
-  "fetched_at_ms": 1748427600000,
-  "kis_tr_id": "FHKST03010100",
-  "kis_period_code": "D"
-}
+분봉 path 가 disk 를 쓰는 이유는 250일 × 50종목 ≈ 300 MB 가 메모리에 못 들어가기 때문.
+일봉은 그 제약이 없음. 메모리 only 로 가면 다음이 모두 사라짐:
+
+- 디스크 파일 형식 / 파일명 명세
+- atomic_write, OSError, cache_write_failed, 권한/디스크 full 처리
+- corrupt file 처리 (`list_batches ignores corrupt name`)
+- KIS data 정정 후 cache 가 stale 상태로 영속하는 위험 (Grill Q3) — process restart 자연 회복
+- "operator 가 파일 삭제해야 KIS 재호출" 운영 절차
+
+**구조** (개략 — 정확한 코드는 plan 단계 결정):
+
+```python
+class PastDailyCandlesCache:
+    # code -> 누적된 batch 리스트 (insertion order)
+    # 각 batch: (from_date, to_date, bars)
+    _per_code: dict[str, list[tuple[date, date, list[dict]]]]
+
+    # today: code -> (fetched_at_monotonic, dict | None)
+    # tri-state: 키 없음 = cache miss, value 가 dict = hit, value 가 None = negative cache
+    _today_mem: dict[str, tuple[float, dict | None]]
 ```
 
 캐시 정책:
 
-- **per-batch** — 한 KIS 호출 결과를 한 파일로 저장. 파일명이 곧 범위.
-- **immutable** — 일봉은 한 번 확정되면 절대 바뀌지 않음. 캐시 invalidation 없음.
-- **today 분리** — today 일봉은 batch 파일에 절대 포함되지 않음. 메모리 TTL 60s
-  (분봉 캐시 today 와 동일 패턴). 자정 over → 익일 첫 요청 시 today 가 past 로
-  굳어 batch 파일에 자연 포함.
+- **per-batch in memory** — 한 KIS 호출 결과를 한 (from, to, bars) entry 로 메모리에
+  보관. 파일 / 파일명 없음.
+- **immutable within process lifetime** — 일봉은 한 번 확정되면 절대 바뀌지 않음. 캐시
+  invalidation 없음. process restart 가 자연 invalidation.
+- **today 분리** — today 일봉은 batch 에 절대 포함되지 않음. `_today_mem` 에만, 60s TTL.
+  자정 over → 익일 첫 요청 시 today 가 past 로 굳어 batch list 에 자연 포함.
+- **today negative caching** — today 가 비거래일(주말/공휴일) 인 경우 KIS 가 빈 응답을
+  반환할 가능성. 그 결과(`None`) 자체를 메모리에 60s TTL 로 캐시하여 페이지 새로고침/
+  자동 prefetch 마다 KIS 가 반복 호출되는 것을 막는다. TTL 만료 시 다시 fetch.
 - **부분 겹침 허용** — 사용자가 `[2020, 2025]` 받은 후 `[2018, 2022]` 요청하면
-  `2018-2019` 만 새 batch 로 저장 (gap fill). 두 batch 가 부분 겹침 가능 — union 시
-  t_ms dedupe (last-write-wins). 디스크 비용보다 코드 단순성 우선.
+  `2018-2019` 만 새 batch 로 추가 (gap fill). 두 batch 가 부분 겹침 가능 — union 시
+  t_ms dedupe (last-write-wins). 메모리 비용보다 코드 단순성 우선.
+
+**Trade-off 명시** (사용자 사전 동의):
+
+- backend restart 시 다음 페이지 열기에서 5년치 cold start = KIS 페이지네이션 ~13회
+  ≈ 10-30초 loading. 단일 사용자 로컬 dev tool 의 사용 패턴(자주 restart 안 함, 종목
+  비교 자주 안 함)에서 수용 가능.
+- 분봉 path 와 비대칭 (분봉은 disk + memory). 정당화: **데이터 양이 다르다** —
+  분봉 ~300MB worst case → disk 필요, 일봉 ~12MB worst case → 메모리 충분.
 
 ### D3. Cache lookup 알고리즘 (핸들러 책임)
 
 요청 `(code, req_from, req_to)`:
 
-1. **Load existing batches**: `kis-past-daily-candles/<code>/` 의 모든 batch 파일
-   enumerate. 각 파일은 (b_from, b_to, path) 트리플.
+1. **Read existing batches from memory**: `cache._per_code.get(code, [])` 로 누적된
+   (b_from, b_to, bars) 리스트 가져옴.
 2. **Filter by intersection**: `b_to >= req_from and b_from <= req_to` 인 batch 만
-   load. 결과 bars 를 `loaded_bars` 에 누적, `cached_batches` 에 batch 이름 기록.
+   취해서 `loaded_bars` 에 누적, `cached_batches` 에 `f"{b_from}__{b_to}"` 형식으로
+   기록 (디버그용 라벨; 메모리에 파일명은 없지만 wire response 에는 그대로 surface).
 3. **Compute gaps**: 기존 batch coverage 에서 `[req_from, min(req_to, today-1)]` 를
    빼서 gap intervals 계산. 인접 batch 는 coalesce (예: `[(2020,2022), (2023,2025)]`
    는 `[(2020, 2025)]` 로 합쳐 처리).
 4. **Fetch gaps**: 각 gap 에 대해 `kis.fetch_past_daily_candles(code, gap_from, gap_to)`
-   호출. 응답을 새 batch 파일로 저장 (`store_batch`), `loaded_bars` 에 누적,
-   `fresh_batches` 에 기록.
+   호출 → `DailyCandleFetchResult`. 응답의 `candles` 를 새 batch 로
+   `cache._per_code[code].append((gap_from_date, gap_to_date, bars))` 추가, `loaded_bars`
+   에도 누적, `fresh_batches` 에 기록. 응답의 `violations` 는 각각 `data_warnings` 에
+   추가 (reason=`invariant_violation`, batch=해당 gap, detail=violation 의 detail).
    - `KisRateLimitError` → `data_warnings` 에 기록, **break** (다음 gap 도 시도 안
      함; 분봉 핸들러의 `aborted` 패턴 답습).
    - `KisApiError` → `data_warnings` 에 기록, **continue** (다음 gap 시도).
-   - `OSError` (cache_write_failed) → `data_warnings` 에 기록, in-memory bars 는 응답.
+   - **caching policy**: violations 가 있어도 *clean part 는* 그대로 메모리 batch 에
+     append. process restart 가 자연 invalidation (디스크 운영 절차 불필요).
 5. **Today handling**: `req_to >= today_kst` 인 경우, `cache.get_today(code)` 확인.
-   없으면 `kis.fetch_past_daily_candles(code, today_s, today_s)` 한 row 호출,
-   `cache.store_today(code, bar)`.
+   - cache hit (`dict`): 그 bar 를 `loaded_bars` 에 추가, `cached_batches` 에
+     `today_s__today_s` 기록.
+   - cache hit (`None`): negative cache — today 가 비거래일임이 캐시됨. KIS 호출
+     skip. 응답에 today row 없음.
+   - cache miss: `kis.fetch_past_daily_candles(code, today_s, today_s)` 호출.
+     - 응답 non-empty: 첫 row 를 `today_bar` 로 `cache.store_today(code, bar)`,
+       `loaded_bars` 에 추가, `fresh_batches` 에 기록.
+     - 응답 empty (주말/공휴일): `cache.store_today(code, None)` — negative cache
+       기록, 다음 60s 동안 KIS 재호출 방지.
 6. **Dedupe + sort + filter**: 모든 누적 bars 를 t_ms 기준 dedupe (last-write-wins),
    ASC sort, `[frm_ms, too_ms]` 로 final filter.
 
@@ -246,18 +292,40 @@ ADR-0046 (live MA fork from replay), [2026-05-28 live-kis-past-candles spec](202
 `hoga/live/kis_client.py` 에 추가:
 
 ```python
+@dataclass(frozen=True)
+class DailyCandleFetchResult:
+    candles: list[KisCandle]                      # passed invariant defense, ASC by t_ms
+    violations: list[DailyInvariantViolation]     # row-level violations dropped by defense
+
+@dataclass(frozen=True)
+class DailyInvariantViolation:
+    date_yyyymmdd: str                            # the date that was dropped
+    reason: Literal['close_nonpositive', 'ohlc_inconsistent', 'malformed_row', 'out_of_range']
+    detail: str                                   # short human-readable context
+
 async def fetch_past_daily_candles(
     self, code: str, from_yyyymmdd: str, to_yyyymmdd: str
-) -> list[KisCandle]:
+) -> DailyCandleFetchResult:
     """Fetch daily OHLCV for *code* across [from, to] (KST).
 
     KIS TR_ID: FHKST03010100 (inquire-daily-itemchartprice), period_div_code='D'.
     KIS retains roughly 20-30 years of daily candles per the portal docs.
 
-    Returns ascending t_ms order. t_ms anchors at regular_session_open
-    (KST 09:00:00) of each trading day. Non-trading days are absent.
+    Returns DailyCandleFetchResult with:
+    - candles: ascending t_ms, KIS quirk + OHLC invariant defense applied.
+      t_ms anchors at regular_session_open (KST 09:00:00) of each trading day.
+      Non-trading days are absent (KIS does not emit rows for them).
+    - violations: per-row drop reasons surfaced to the caller so the handler can
+      add them to data_warnings. *Caller* (not this client) decides whether to
+      cache the partially-clean batch or refuse to cache; this method makes the
+      decision visible.
     """
 ```
+
+설계 결정: 반환을 tuple-of-(candles, violations) 가 아닌 **dataclass** 로 둔 이유 —
+호출처에서 unpack 패턴 (`candles, violations = await ...`) 보다 `result.candles` /
+`result.violations` 가 명시적이고 future 필드 추가 (fetch metadata 등) 가 break change
+없이 가능.
 
 호출 파라미터 (구현 단계 KIS 문서 verify):
 
@@ -286,9 +354,11 @@ KIS quirk guard: 응답 row 의 `stck_bsop_date` 가 `[from, to]` 밖이면 skip
 (`fetch_past_minute_candles` 의 비거래일 quirk 가드 답습).
 
 Boundary invariant defense: `close > 0`, `high >= max(open, close)`,
-`low <= min(open, close)` 위반 시 row silently skip — 핸들러가 누락분을 감지하면
-`data_warnings.invariant_violation` 으로 surface 가능 (best-effort; 다 surface 하지
-않을 수 있음).
+`low <= min(open, close)` 위반 시 row 를 `candles` 에서 제외하고
+`DailyInvariantViolation(date, reason, detail)` 을 `violations` list 에 추가.
+핸들러는 violations 를 `data_warnings.invariant_violation` 으로 wire surface →
+**operator/사용자가 KIS data 이상을 즉시 인지** (영구 손실 방지를 위한 *명시적 surface*
+설계 — grill Q3 결정).
 
 ### D5. Frontend wire / hook
 
@@ -306,7 +376,7 @@ export interface LivePastDailyCandlesResponse {
   fresh_batches: string[];
   data_warnings: ReadonlyArray<{
     batch: string;
-    reason: 'kis_rate_limit' | 'kis_api_error' | 'cache_write_failed' | 'invariant_violation';
+    reason: 'kis_rate_limit' | 'kis_api_error' | 'invariant_violation';
     msg: string;
   }>;
 }
@@ -396,24 +466,72 @@ prefetch 동작이 무제한이 되었으므로 사용자가 끝없이 스크롤
 본 spec 은 ADR-0040 을 **supersede 하지 않는다**. 두 ADR 은 같은 `/live` 도메인 안에서
 형제 균열로 공존:
 
-- ADR-0040: 분봉 wire + `kis-past-candles/` cache namespace
-- ADR-0047 (신설): 일봉 wire + `kis-past-daily-candles/` cache namespace
+- ADR-0040: 분봉 wire + disk cache (`kis-past-candles/`) + memory mirror
+- ADR-0047 (신설): 일봉 wire + 메모리 only cache (디스크 없음)
 
-두 cache namespace 는 별개이고, 같은 (code, date) 가 두 곳에 중복 저장되는 일은 없다
-(분봉 cache 는 1m bars 만, 일봉 cache 는 daily bars 만). 따라서 ADR-0040 의 "Trigger
-Conditions" 중 "두 path 간 데이터 불일치 사고" 는 본 spec 으로는 발동되지 않는다.
+두 cache 는 서로 독립이고 같은 (code, date) 가 두 곳에 중복 저장되는 일은 없다
+(분봉 cache 는 1m bars 만, 일봉 cache 는 daily bars 만; 데이터 단위 자체가 다름).
+따라서 ADR-0040 의 "Trigger Conditions" 중 "두 path 간 데이터 불일치 사고" 는 본
+spec 으로는 발동되지 않는다.
+
+### D11a. 분봉 PastCandlesCache 의 today negative caching 패치
+
+본 spec scope 안에 포함되는 *유일한* 분봉 path 변경. wire / namespace zero diff.
+
+- `PastCandlesCache._today_mem` 의 value 타입을 `tuple[float, list[dict]]` 에서
+  `tuple[float, list[dict] | None]` 로 확장.
+- `store_today(code, bars: list[dict] | None)` — `bars=None` 일 때 negative cache 기록.
+- `get_today(code)` 는 현재 `list[dict] | None` 반환 (None = cache miss). negative cache
+  진입 후 60s 동안은 cache hit + `None` value 를 반환해야 하므로, tri-state 가 필요.
+  구현 옵션은 plan 단계에서 결정 (sentinel value vs `(state, bars)` 튜플 vs
+  `Optional[Optional[list[dict]]]` distinguishable wrapper).
+- API 핸들러 `_get_past_candles` ([hoga/live/api.py:213-222](hoga/live/api.py#L213-L222))
+  의 today 분기: KIS 응답이 빈 list 인 경우 `cache.store_today(code, None)` 호출.
+- `PastDailyCandlesCache` 와 동일한 tri-state 표현을 두 캐시가 공유 (helper 모듈로
+  추출하거나 base class 도입 가능 — plan 단계 결정).
 
 ### D11. CONTEXT.md 갱신
 
-Live Candle Backfill entry 보강:
+본 spec 의 구현/배포 시점에 CONTEXT.md 의 두 entry 를 갱신한다. 갱신 본은 "path"
+같은 추상 메타 단어를 쓰지 않고 *무엇을 어떻게 하는지* 평이하게 묘사 (grill Q4 결정).
 
-> "Live Candle Backfill 은 두 형제 path 로 구성: (a) **분봉 path** —
-> `/api/live/past-candles`, KIS `FHKST03010230` (`inquire-time-dailychartprice`),
-> per-date cache, 250일 cap (payload 보호). (b) **일봉 path** —
-> `/api/live/past-daily-candles`, KIS `FHKST03010100` (`inquire-daily-itemchartprice`,
-> period_div_code='D'), per-batch cache, no cap (사용자가 끝없이 과거로 스크롤 가능).
-> D 는 backend 에서 직접 서빙, W/M 는 D 를 frontend 에서 `aggregateCalendar` 로
-> 재집계. ADR-0040 + ADR-0047 병렬."
+**1. Live Candle Backfill entry 전체 재작성** (CONTEXT.md line 303-305):
+
+> **Live Candle Backfill**:
+> `/live` 페이지가 KIS REST 를 직접 호출해서 받아온 OHLCV 캔들. 두 KIS endpoint 를
+> 사용한다:
+> - **분봉** (1m/3m/5m/10m/15m/30m timeframe): `GET /api/live/past-candles` → KIS
+>   `inquire-time-dailychartprice` (TR_ID `FHKST03010230`). 응답은 1분봉, 백엔드가
+>   disk 에 per-Stock-Date 캐시 (`~/.local/share/hoga-ops/kis-past-candles/<code>/<YYYYMMDD>.json`).
+>   250-day hard cap (payload 보호 — 1년치 일봉을 분봉으로 보내면 ~5MB). 프론트는
+>   3m/5m/.../30m 을 1분봉에서 client-aggregate.
+> - **일봉** (D/W/M timeframe): `GET /api/live/past-daily-candles` → KIS
+>   `inquire-daily-itemchartprice` (TR_ID `FHKST03010100`, period_div_code='D'). 응답은
+>   일봉, 백엔드가 **프로세스 메모리** 에만 캐시 (디스크 안 둠 — 데이터 양이
+>   매우 작아서 메모리 충분; restart = 자연 invalidation). cap 없음 (KIS 보유 기간
+>   ~20-30년이 자연 상한). 프론트는 D 를 그대로, W/M 는 client-aggregate.
+>
+> 둘 다 **Live Capture** (10초 폴링으로 snapshot/trade/broker raw 이벤트 수집) 와
+> 다른 호출 — KIS 의 *pre-aggregated candle* endpoint 만 사용하는 on-demand 호출. 두
+> 캐시는 서로 독립 (한쪽이 분봉, 다른쪽이 일봉이라 같은 데이터가 양쪽에 중복될 수
+> 없음). `/api/range` 의 promoted Parquet 호출과도 독립 — promoted Parquet 은
+> snapshots/trades/brokers 만 담고 candle 은 안 담기 때문. /replay 는 둘 다 안 쓴다
+> (RangeBundle 한 길로만). ADR-0040 (분봉) + ADR-0047 (일봉) 두 결정으로 둘 다
+> *별도 cache + 별도 endpoint* 를 갖는다.
+> _Avoid_: "past candles" 단독 (소스를 잃음 — KIS-specific), "historical candles"
+> (replay candle wire 와 중첩), "candle backfill" 단독 ("Live" 페이지 scope 누락).
+
+**2. LiveTimeframe entry 부분 수정** (CONTEXT.md line 225 의 한 문장 교체):
+
+> 기존: "the calendar subset (D/W/M) is **frontend-only** — `/api/live/past-candles`
+> returns 1-minute bars and the page client-aggregates them via
+> `aggregateCalendar(raw, 'D'|'W'|'M')`..."
+>
+> 신: "the calendar subset (D/W/M) uses a **separate backend endpoint** —
+> `GET /api/live/past-daily-candles` returns daily bars directly (no client-side
+> minute→daily aggregation needed); the page renders D as-is and client-aggregates
+> D→W/M via `aggregateCalendar(rawDaily, 'W'|'M')`. `/api/range` is not involved for
+> D/W/M (hoga-derived panes have no data and are not mounted)."
 
 ## Testing
 
@@ -432,25 +550,35 @@ Live Candle Backfill entry 보강:
 | `_compute_gaps`: suffix gap | existing=[(2020, 2022)], req=[2020, 2024] | [(2023, 2024)] |
 | `_compute_gaps`: middle gap | existing=[(2020, 2022), (2024, 2025)], req=[2021, 2024-06-30] | [(2023, 2023-12-31)] |
 | `_compute_gaps`: adjacent coalesce | existing=[(2020, 2022), (2023, 2025)], req=[2018, 2025] | [(2018, 2019-12-31)] (single call) |
-| `PastDailyCandlesCache.store/load_batch` round-trip | bars=[{t_ms, OHLCV}], frm=20240101, to=20241231 | load returns same bars |
-| `PastDailyCandlesCache.list_batches` ignores corrupt name | files: 20240101__20241231.json, broken.json | returns 1 entry, broken logged |
-| `PastDailyCandlesCache.get_today` TTL | store, time.monotonic advanced 61s | returns None |
-| `fetch_past_daily_candles` quirk guard | KIS mock returns row with date out of range | row dropped |
-| `fetch_past_daily_candles` OHLC violation | row with close=0 | row dropped (no exception) |
-| `fetch_past_daily_candles` pagination | KIS mock returns 100 + 50 + empty | total 150 candles ASC by t_ms |
-| `fetch_past_daily_candles` rate limit | KIS mock raises KisRateLimitError on page 2 | exception propagates |
+| `PastDailyCandlesCache.append_batch + read` round-trip | append (code, frm, to, bars), read intersecting range | returns those bars |
+| `PastDailyCandlesCache` empty code returns no batches | fresh cache, code never seen | _per_code.get(code, []) = [] |
+| `PastDailyCandlesCache` multiple non-overlapping batches | append two batches, read covering range | both returned in append order |
+| `PastDailyCandlesCache.get_today` TTL | store, time.monotonic advanced 61s | returns sentinel "miss" (ready to re-fetch) |
+| `PastDailyCandlesCache.store_today(None)` negative cache | call store_today(code, None), then get_today within 60s | returns sentinel "negative cache: fetched, no data" — distinguishable from "miss" via tri-state |
+| `PastDailyCandlesCache` negative cache TTL | store_today(code, None), advance 61s, get_today | returns "miss" (ready to re-fetch) |
+| `fetch_past_daily_candles` quirk guard | KIS mock returns row with date out of range | candles excludes it, violations has entry (reason=out_of_range) |
+| `fetch_past_daily_candles` OHLC violation | row with close=0 | candles excludes it, violations has entry (reason=close_nonpositive, date set) |
+| `fetch_past_daily_candles` malformed row | row missing stck_bsop_date | candles excludes it, violations has entry (reason=malformed_row) |
+| `fetch_past_daily_candles` clean response | KIS mock returns 100 valid rows | candles=100, violations=[] |
+| `fetch_past_daily_candles` pagination | KIS mock returns 100 + 50 + empty | candles=150 ASC by t_ms, violations=[] |
+| `fetch_past_daily_candles` rate limit | KIS mock raises KisRateLimitError on page 2 | exception propagates (no partial result return) |
 
 ### Integration tests (backend)
 
 | Case | Setup | Expected |
 |---|---|---|
-| `/past-daily-candles` cache miss → KIS | empty cache dir, KIS mock returns 250 bars | 200, fresh_batches=[range], disk file created |
-| `/past-daily-candles` cache hit | batch file exists | 200, cached_batches=[range], KIS not called |
-| `/past-daily-candles` partial hit (gap fill) | one cached batch [2020,2025], request [2018,2022] | KIS called once for [2018,2019], response merges, ASC, dedupe |
+| `/past-daily-candles` cache miss → KIS | fresh cache instance, KIS mock returns 250 bars | 200, fresh_batches=[range], in-memory batch appended |
+| `/past-daily-candles` cache hit | second call to same range within same process | 200, cached_batches=[range], KIS not called |
+| `/past-daily-candles` partial hit (gap fill) | first call [2020,2025], second call [2018,2022] | KIS called once for [2018,2019], response merges, ASC, dedupe |
 | `/past-daily-candles` rate limit mid-gap | 2 gaps, KIS raises rate limit on second | first gap stored, data_warnings has second, response includes first |
-| `/past-daily-candles` today inclusion | to=today_kst, no batch file | today→memory cache, fresh_batches includes today_s__today_s, NOT on disk |
+| `/past-daily-candles` today inclusion | to=today_kst, fresh cache | today→memory cache, fresh_batches includes today_s__today_s |
 | `/past-daily-candles` today TTL refresh | call twice within 60s | second call cached (no KIS) |
-| `/past-daily-candles` invariant violation surfaces | KIS mock returns close=0 row | row dropped, response valid |
+| `/past-daily-candles` today non-trading day | to=today_kst (Saturday), KIS mock returns empty output2 | negative cache stored, second call within 60s skips KIS, response excludes today row |
+| `/past-candles` (minute) today non-trading day | to=today_kst (Saturday), KIS mock returns empty output2 | PastCandlesCache today negative cache stored, second call within 60s skips KIS, response excludes today rows |
+| `PastCandlesCache.store_today(None)` (minute negative cache) | call store_today(code, None), then get_today within 60s | returns sentinel "fetched, no data" (distinguishable from "not fetched") |
+| `/past-daily-candles` invariant violation surfaces to wire | KIS mock returns close=0 row in middle of clean batch | row dropped from candles, data_warnings has {batch, reason='invariant_violation', msg=detail}, clean part appended to memory batch |
+| `/past-daily-candles` violation persists within process lifetime | first call surfaces violation, second call hits in-memory batch | second call returns same candles (missing the violating date), data_warnings empty; process restart re-fetches and re-surfaces |
+| `/past-daily-candles` process restart loses cache | first call populates memory, simulate restart by re-instantiating cache, second call | KIS called again, fresh_batches non-empty (validates restart = invalidation) |
 
 ### Frontend tests
 
@@ -493,15 +621,25 @@ Live Candle Backfill entry 보강:
   조정 (wire/cache 설계는 무영향).
 - **수정주가 vs 원주가 선택**: `FID_ORG_ADJ_PRC=0` (수정주가) 채택. 사용자가 원주가를
   선호한다면 future spec 으로 토글 추가 (지금은 차트 연속성 우선).
-- **per-batch 누적 시 디렉토리 크기**: 같은 종목에 batch 파일이 누적 → 50+ 종목 ×
-  20년 시나리오에서 디스크 사용량 추정 필요. 상한이 정해지면 ADR-0040 의 Trigger
-  Conditions 와 같은 형식으로 ADR-0047 에 추가.
+- **per-batch 누적 시 메모리 크기**: 같은 종목에 batch 가 누적 → 실 사용 패턴(2-3
+  종목 × 5년)에서는 < 1 MB, worst case(50 종목 × 20년)도 ~12 MB. 위험 없음.
+- **backend restart 시 cold start**: 다음 페이지 열기에서 5년치 KIS 페이지네이션 ~13회
+  ≈ 10-30초 loading 상태. 단일 사용자 로컬 dev tool 의 사용 패턴(자주 restart 안 함)
+  에서 수용 (사용자 사전 동의). dev workflow 가 `--reload --reload-dir hoga` 라서
+  backend 코드 한 줄 바꿀 때마다 재시작이 발생하므로, 일봉 데이터 자주 fetch 하는
+  코드 영역(`hoga/live/`) 작업 시 이 비용이 누적된다. 견디기 어려우면 future spec 으로
+  optional disk persistence 추가 고려.
 - **today bar 의 신선도**: KIS daily endpoint 가 today 호출 시 "현재까지의 일봉
   snapshot" 을 어떻게 반환하는지 구현 단계 verify. 비정상이면 today 만 분봉 path 에서
   계산하는 fallback 검토.
 - **부분 겹침 batch 의 worst case**: 사용자가 매번 다른 범위로 요청을 반복하면 batch
   파일 수가 무한 증가 가능. 실 사용 패턴(scroll-back 은 from 이 점점 작아지는
   monotonic 방향)에서는 자연스럽지 않음. 발생 시 후속 spec 으로 batch coalesce 도입.
+- **분봉 path 의 동일 invariant violation 손실 위험**: `fetch_past_minute_candles` 도
+  KIS 1분봉 응답에 OHLC violation 이 있으면 본 spec 의 D-direct 와 동일하게 silently
+  skip (단 분봉은 현재 boundary defense 가 약함 — defensive parse 만 있음). 분봉 path
+  의 violation surface 강화는 본 spec scope 외 — 별도 follow-up issue. 본 spec 의
+  `DailyCandleFetchResult` 패턴은 분봉용 `MinuteCandleFetchResult` 로 확장 가능한 모형.
 
 ## Out of Scope (Backlog)
 
