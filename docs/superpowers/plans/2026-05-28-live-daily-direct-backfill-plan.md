@@ -16,12 +16,57 @@ adr: docs/adr/0047-live-daily-direct-backfill.md (신설 예정)
 
 ---
 
+## Engineering Review — Applied Patches (2026-05-28)
+
+This plan absorbed two Blocker / Critical findings from `/plan-eng-review`. They
+are inline at the relevant tasks; this header summarizes so reviewers see what
+changed without diffing the whole file.
+
+- **B-1 (Blocker) — InvariantOutcomesBanner shape mismatch.** Spec D9 assumed
+  daily wire `data_warnings` would render in the existing banner. Verified by
+  reading code: the banner reads `bundle.data_warnings` (shape
+  `{date, warnings[]}`) sourced only from `/api/range`; the new wire shape is
+  `{batch, reason, msg}` where `batch` is a date *range*. New Task D0 (before
+  D1) adds `date` alongside `batch` for `invariant_violation` warnings in the
+  backend handler, updates the wire type, and adapts daily warnings into
+  `DateWarning[]` shape inside `useLiveBundle` so the banner surfaces them.
+  Batch-level warnings (`kis_rate_limit`, `kis_api_error`) and minute-path
+  warnings remain unsurfaced — filed as follow-up; the user should be aware
+  the chart will degrade silently on KIS rate-limit until that lands.
+- **C-1 (Critical) — Empty-gap + single-day + today-only + today-negative
+  tests missing.** New Task B3a adds 4 regression tests covering: KIS
+  returning empty for a gap must still cache (else infinite re-fetch),
+  single-day past request, single-day today-only request (must skip the gap
+  branch via `req_to_past < frm`), and today negative caching honors TTL.
+- **C-2 (Critical) — Tri-state "backward-compat wrapper" is a misnomer.** The
+  legacy `get_today` in C1 returned the same value for "miss" and "negative",
+  hiding the exact bug C2 is fixing. Verified only 1 production caller
+  (api.py:214, rewritten by C2) and 3 test assertions remain. Plan now
+  deletes the wrapper outright and updates the 3 test assertions to use
+  `get_today_tri`.
+- **B4 (Suggestion folded in) — `data_dir` already passed.** Verified
+  `hoga/api/app.py:181` already calls `build_live_router(..., data_dir=data_dir)`.
+  B4 is read-only verification, no commit needed.
+
+See "Engineering review report" section at the very end for the full
+categorized findings list (including Suggestion + Nit items not auto-applied).
+
+---
+
 ## File Structure
 
 **Backend — 신설**:
 - `hoga/live/past_daily_candles_cache.py` — 일봉용 메모리 cache 클래스
 - `tests/unit/live/test_past_daily_candles_cache.py`
 - `tests/unit/live/test_past_daily_candles_api.py` (또는 `test_api.py`에 섹션 추가)
+
+**Frontend — Banner 수정 (eng-review Blocker B-1로 추가됨)**:
+- `frontend/src/api/types.ts` — `DateWarning.date`를 optional + `batch?: string` 추가하거나
+  새 `BatchWarning` 타입 도입.
+- `frontend/src/replay/InvariantOutcomesBanner.tsx` — `batch` shape도 렌더 (또는
+  daily 핸들러가 `{date: gap_from_s, warnings: [{invariant_id, message}]}` 형태로 wire
+  방출하도록 backend B3에서 변환). 자세한 결정 기록은 Phase B 끝의 "Banner shape 결정"
+  섹션 참고.
 
 **Backend — 수정**:
 - `hoga/live/kis_client.py` — `DailyCandleFetchResult`, `DailyInvariantViolation`, `fetch_past_daily_candles` 추가
@@ -1205,18 +1250,139 @@ git commit -m "feat(live): GET /api/live/past-daily-candles handler + memory cac
 
 ---
 
+### Task B3a (eng-review Critical added): Additional regression tests
+
+Add to `tests/unit/live/test_api.py` (same _daily_app fixture):
+
+```python
+def test_past_daily_empty_gap_caches_and_does_not_refetch(tmp_path) -> None:
+    """KIS returning [] for a gap (range fully non-trading) must still cache
+    the empty batch so a follow-up request inside that range hits the cache
+    instead of re-calling KIS. Prevents infinite re-fetch on holiday ranges."""
+
+    class _EmptyKis(_FakeKisForDaily):
+        async def fetch_past_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd):
+            self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+            from hoga.live.kis_client import DailyCandleFetchResult
+            return DailyCandleFetchResult(candles=[], violations=[])
+
+    fake = _EmptyKis()
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        # First call: gap fetched, empty result cached.
+        r1 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
+        assert r1.status_code == 200
+        assert len(fake.calls) == 1
+        # Second call (same range): hits cached empty batch, no KIS call.
+        r2 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
+        assert r2.status_code == 200
+        body = r2.json()
+        assert "20240101__20240105" in body["cached_batches"]
+        assert body["fresh_batches"] == []
+        assert len(fake.calls) == 1  # KIS NOT called second time
+
+
+def test_past_daily_single_day_past_request(tmp_path) -> None:
+    """frm == too < today should fetch a 1-day gap and cache it."""
+    fake = _FakeKisForDaily()
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240101")
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body["candles"]) == 1
+        assert len(fake.calls) == 1
+        _, gap_from, gap_to = fake.calls[0]
+        assert gap_from == "20240101" and gap_to == "20240101"
+
+
+def test_past_daily_today_only_request_skips_gap_branch(tmp_path) -> None:
+    """frm == too == today must NOT enter the gap branch (req_to_past=today-1
+    < frm). All work happens in the today branch."""
+    fake = _FakeKisForDaily()
+    app = _daily_app(tmp_path, fake)
+    today = _today_kst_yyyymmdd()
+    with TestClient(app) as c:
+        r = c.get(f"/api/live/past-daily-candles?code=005930&from={today}&to={today}")
+        assert r.status_code == 200
+        # Exactly one KIS call — for today, not for a phantom "gap".
+        assert len(fake.calls) == 1
+        _, call_from, call_to = fake.calls[0]
+        assert call_from == today and call_to == today
+
+
+def test_past_daily_today_negative_cache_skips_kis_within_ttl(tmp_path) -> None:
+    """When today is non-trading (KIS returns empty), negative-cache it so
+    a second request within TTL skips KIS."""
+
+    class _EmptyTodayKis(_FakeKisForDaily):
+        async def fetch_past_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd):
+            self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+            from hoga.live.kis_client import DailyCandleFetchResult
+            return DailyCandleFetchResult(candles=[], violations=[])
+
+    fake = _EmptyTodayKis()
+    app = _daily_app(tmp_path, fake)
+    today = _today_kst_yyyymmdd()
+    with TestClient(app) as c:
+        c.get(f"/api/live/past-daily-candles?code=005930&from={today}&to={today}")
+        c.get(f"/api/live/past-daily-candles?code=005930&from={today}&to={today}")
+        assert len(fake.calls) == 1  # second call skipped via negative cache
+```
+
+Run: `uv run pytest tests/unit/live/test_api.py -v -k "past_daily"`. All PASS.
+
+Commit:
+
+```bash
+git add tests/unit/live/test_api.py
+git commit -m "test(live): /past-daily-candles edge cases — empty gap, single day, today-only, today negative"
+```
+
+---
+
+### Task B3b (eng-review Critical added): Surface today's `fresh_batches` correctly
+
+The B3 handler appends `f"{today_s}__{today_s}"` to `fresh_batches` only when
+the today fetch returned a non-empty `result.candles`. For consistency with
+gap fetches (which append the label even for empty results — see B3a empty-gap
+test) and for operator visibility, also append the today label when the
+negative cache path runs:
+
+```python
+            else:  # miss
+                try:
+                    result = await kis.fetch_past_daily_candles(code, today_s, today_s)
+                    if result.candles:
+                        today_bar = _candle_to_dict(result.candles[0])
+                        cache.store_today(code, today_bar)
+                        loaded_bars.append(today_bar)
+                        fresh_batches.append(f"{today_s}__{today_s}")
+                    else:
+                        # Non-trading day — negative cache, still record the fetch
+                        # in fresh_batches so the wire faithfully reflects the
+                        # KIS round-trip (matches gap-branch behavior).
+                        cache.store_today(code, None)
+                        fresh_batches.append(f"{today_s}__{today_s}")
+                    # ... violations loop unchanged ...
+```
+
+---
+
 ### Task B4: App-level wiring — verify `data_dir` already passes to `build_router`
 
 **Files:**
-- Modify: `hoga/api/app.py` or wherever `build_router` is called with `data_dir`
+- Modify: `hoga/api/app.py` (the lone call site)
 
-- [ ] **Step 1: Locate the `build_router` call**
+**eng-review note:** Verified `build_live_router(...)` at `hoga/api/app.py:181` already
+passes `data_dir=data_dir`. No change required — `PastDailyCandlesCache` is
+instantiated inside `build_router` when `data_dir is not None` (Task B3). Tests
+use the same parameter via `_past_app(tmp_path, fake_kis)` / `_daily_app(...)`.
 
-Run: `grep -rn "build_router(" hoga/ --include="*.py"`
+- [ ] **Step 1: Confirm `build_router` call site (read-only check)**
 
-If `build_router` is already called with `data_dir=<...>`, **no change needed** — `PastDailyCandlesCache` is instantiated *inside* `build_router` when `data_dir is not None`. Task B3 already added that line.
-
-If `data_dir` is *not* being passed yet, modify the call site to add `data_dir=settings.data_dir` (or equivalent project pattern).
+Run: `grep -rn "build_live_router\|build_router(" hoga/api/app.py hoga/live/api.py`
+Expected: a single `build_live_router(..., data_dir=data_dir)` call in `hoga/api/app.py`.
 
 - [ ] **Step 2: Smoke-test the wiring**
 
@@ -1292,12 +1458,26 @@ Expected: AttributeError on `get_today_tri` (the new tri-state accessor).
 
 - [ ] **Step 3: Extend `PastCandlesCache` with tri-state today**
 
+**eng-review Critical (C-2) note:** The original plan claimed the legacy
+`get_today(code)` delegating wrapper preserves "backward compatibility" and
+"behavior stays consistent". Verified via `grep get_today hoga/ tests/`: the
+only production caller of the legacy `get_today` is `_get_past_candles` at
+`hoga/live/api.py:214`, which Task C2 rewrites to use `get_today_tri`. The
+only remaining callers are 3 test assertions in
+`tests/unit/live/test_past_candles_cache.py:53-62`. Those tests pass with
+the wrapper but the wrapper IS a semantic regression in disguise — it maps
+"negative cache" to the same return as "miss", which is exactly the bug the
+plan is fixing for the handler. Therefore: **delete the legacy `get_today`
+in C1 Step 3** (instead of keeping a delegating wrapper), and update the 3
+test assertions to call `get_today_tri` directly. This way no future caller
+can ever silently observe negative-cache-as-miss again.
+
 In `hoga/live/past_candles_cache.py`:
 
 ```python
-# Replace the existing today methods. Keep the old get_today/store_today for
-# backwards compatibility within this file (delegate to new tri-state), so the
-# existing handler call sites in api.py keep working until Task C2 migrates them.
+# Replace the existing today methods. DROP the legacy get_today — see eng-review
+# Critical C-2 above. C2 migrates the only production caller; the tests are
+# updated alongside.
 
 from typing import Literal
 
@@ -1326,13 +1506,14 @@ class PastCandlesCache:
             return "negative", None
         return "hit", value
 
-    # Keep the legacy two-state accessor for callers that don't care about
-    # negative caching (returns the bars for "hit", None otherwise — same as
-    # before). Internally delegates so behavior stays consistent.
-    def get_today(self, code: str) -> list[dict] | None:
-        state, value = self.get_today_tri(code)
-        return value if state == "hit" else None
+    # Legacy get_today() is removed (eng-review C-2). Callers must use
+    # get_today_tri() and explicitly handle the "negative" state.
 ```
+
+Also update `tests/unit/live/test_past_candles_cache.py` lines 53, 55, 62
+(the only remaining `get_today` callers) to use `get_today_tri` and assert on
+the `(state, value)` tuple. The 3 existing tests stay in place; only the
+assertion shape changes.
 
 - [ ] **Step 4: Run tests, verify they pass**
 
@@ -1432,6 +1613,106 @@ git commit -m "feat(live): minute /past-candles today branch uses tri-state + ne
 ---
 
 ## Phase D — Frontend wire + hook
+
+### Task D0 (eng-review Blocker B-1): InvariantOutcomesBanner shape mismatch
+
+**Files:**
+- Read: `frontend/src/replay/InvariantOutcomesBanner.tsx`,
+  `frontend/src/live/LiveWorkarea.tsx`, `frontend/src/api/types.ts`
+- Modify: `hoga/live/api.py` (`_get_past_daily_candles` warnings shape) OR
+  `frontend/src/api/types.ts` + `InvariantOutcomesBanner.tsx`
+
+**Problem (verified by reading the code):**
+
+The spec section D9 claims `data_warnings` from `/past-daily-candles` will render
+in `InvariantOutcomesBanner` via the existing wiring. That is false in two ways:
+
+1. The banner consumes `bundle.data_warnings` (a `DateWarning[]` with shape
+   `{date: YYYYMMDD, warnings: ViolationWire[]}`) which is sourced from
+   `pastBundle?.data_warnings` in `buildLiveBundle.ts:142` — i.e. the
+   `/api/range` RangeBundle, NOT the past-candles wire. The minute path's
+   `/api/live/past-candles` `data_warnings` (shape `{date, reason, msg}`) is
+   already not surfaced anywhere. This is a pre-existing gap inherited, not
+   introduced.
+2. The new daily wire's `data_warnings` shape is `{batch, reason, msg}` —
+   `batch` is a date *range* string like `"20240101__20240229"`, not a single
+   YYYYMMDD. Even if we wired daily warnings into the bundle, the banner's
+   `fmtMD(yyyymmdd.slice(4, 6))` would slice into the `__` separator and
+   render garbage.
+
+**Decision (engineering recommendation):** keep the `{batch, reason, msg}` wire
+shape (it's semantically correct — gap fetches return a range, not a date) and
+do BOTH of the following:
+
+a) In the backend handler, when a violation has a `date_yyyymmdd`, emit it as
+   a *second* `date` field alongside `batch` so the most useful info is
+   immediately accessible:
+
+```python
+warnings.append({
+    "batch": label,
+    "date": v.date_yyyymmdd,           # NEW — single-day violations
+    "reason": "invariant_violation",
+    "msg": f"{v.reason} ({v.detail})",
+})
+```
+
+   `kis_rate_limit` / `kis_api_error` warnings still omit `date` because they
+   apply to the whole batch.
+
+b) Wire daily warnings into the bundle by adapting them in the
+   `useLiveBundle` daily branch (D3) to `DateWarning[]` shape:
+
+```ts
+const dailyWarningsAsDate: DateWarning[] = (pastDailyCandlesQuery.data?.data_warnings ?? [])
+  .filter((w) => w.date != null)
+  .map((w) => ({
+    date: w.date as string,
+    warnings: [{ invariant_id: w.reason, message: w.msg }],
+  }));
+```
+
+   Then thread `dailyWarningsAsDate` into the bundle's `data_warnings`. The
+   banner stays untouched (no Frontend type widening).
+
+**Out of scope acknowledgement:** batch-level warnings (`kis_rate_limit`,
+`kis_api_error`) and minute-path `data_warnings` are NOT surfaced by this
+patch. Tracked as follow-up: "InvariantOutcomesBanner: support batch + reason
+warnings (minute + daily)". The user should be aware that today, if KIS
+rate-limits in the middle of a backfill, the chart degrades silently — the
+chart shows partial data with no UI explanation. Filing this follow-up is
+strongly recommended.
+
+- [ ] **Step 1: Add `date` field to handler warnings in Task B3**
+
+When implementing B3, emit `date=v.date_yyyymmdd` alongside `batch` for
+`invariant_violation` warnings. Update B3's
+`test_past_daily_violation_surfaces_to_wire` to assert `warn[0]["date"] == "20240103"`.
+
+- [ ] **Step 2: Update `livePastDailyCandles.ts` wire type (Task D1)**
+
+```ts
+export interface LivePastDailyCandlesWarning {
+  batch: string;
+  date?: string;  // present when the warning is per-row (invariant_violation)
+  reason: 'kis_rate_limit' | 'kis_api_error' | 'invariant_violation';
+  msg: string;
+}
+```
+
+- [ ] **Step 3: In Task D3 (`useLiveBundle`), merge daily warnings into bundle**
+
+Map daily wire warnings with a `date` field into `DateWarning[]` and add to
+the bundle so the existing `InvariantOutcomesBanner` surfaces them. Add a
+test: render with one `invariant_violation` warning and assert the banner
+shows the corresponding MM/DD.
+
+- [ ] **Step 4: File follow-up issue**
+
+Title: "InvariantOutcomesBanner: support batch + reason warnings (live
+past-candles minute + daily)". Body: link this plan. Don't block Phase F on it.
+
+---
 
 ### Task D1: `livePastDailyCandles.ts` — wire types + react-query hook
 
@@ -1980,3 +2261,489 @@ If all steps pass, the implementation is complete. If any step fails, file a sma
 - D-direct path 의 promoted Parquet 통합
 - W/M backend 직접 서빙
 - 분봉 path 의 `MinuteCandleFetchResult` violation surface 패턴 (별도 follow-up)
+- **InvariantOutcomesBanner: batch + reason warnings (live past-candles minute
+  + daily)** — added by eng-review B-1. Today's rate-limit / api-error fallouts
+  silently degrade the chart; per-row violation rendering is in scope of this
+  plan via D0, but batch-level reasons need banner widening.
+
+---
+
+## Phase D — Design Review Patches (2026-05-28, auto-applied)
+
+`/plan-design-review` 가 Phase D 를 검토한 결과. **Blocker / Critical** 만 plan
+에 인라인 반영 (Suggestion / Nit 는 본 섹션 끝의 Findings 표 참고). Phase D 의
+D1/D2/D3 step body 와 함께 읽고, 본 섹션이 우선.
+
+eng-review 의 D0 가 `invariant_violation` warnings 의 banner 라우팅을 해결했지만,
+**batch-grained warnings (`kis_rate_limit`, `kis_api_error`) 은 여전히 UI 에서
+silent**. 이게 사용자가 가장 자주 마주칠 failure mode (5년치 일봉 스크롤 백 중
+KIS rate-limit) 이라 design 관점에서 못 넘어감.
+
+### Blocker B1' — Batch-grained warnings (`kis_rate_limit` / `kis_api_error`) UI silent
+
+**문제.** D0 의 매핑은 `data_warnings.filter((w) => w.date != null)` 로 per-row
+violation 만 banner 로 surface. `kis_rate_limit` / `kis_api_error` 는 `date` 가
+없어서 filter 에서 빠짐 → 차트는 부분 데이터만 보이는데 *왜 데이터가 끊겼는지*
+UI 표시 없음. 사용자가 5년치 일봉 스크롤 백 중 rate-limit 에 걸리면 "데이터가 더
+있는데 backend 가 안 주는 건지, 정말 없는 건지" 구분 불가. D0 의 acknowledgement
+("KIS rate-limits in the middle of a backfill, the chart degrades silently") 가
+정확히 이 hole. plan 안에서 해결하지 않으면 spec D3.4 의 "violation surface" 약속이
+반쪽짜리.
+
+**해결.** D0 의 banner 라우팅 옆에 batch-grained warnings 전용 stripe 추가
+(`InvariantOutcomesBanner` 는 손대지 않고 별도 컴포넌트):
+
+- [ ] **Step B1'.1: `LiveDailyBatchWarningsStripe` 신설**
+
+```tsx
+// frontend/src/live/LiveDailyBatchWarningsStripe.tsx (신설)
+import type { LivePastDailyCandlesWarning } from '../api/livePastDailyCandles';
+
+const REASON_LABEL: Record<LivePastDailyCandlesWarning['reason'], string> = {
+  kis_rate_limit: '레이트 리밋',
+  kis_api_error: 'API 오류',
+  invariant_violation: '데이터 결함',
+};
+
+/** Batch-grained warnings ({batch, reason, msg}, date 없음) 전용 stripe.
+ * Per-row invariant_violation 은 D0 가 InvariantOutcomesBanner 로 라우팅하므로
+ * 본 컴포넌트는 date 가 없는 batch-level 만 보여준다. */
+export function LiveDailyBatchWarningsStripe({
+  warnings,
+}: { warnings: LivePastDailyCandlesWarning[] }) {
+  const batchOnly = warnings.filter((w) => w.date == null);
+  if (batchOnly.length === 0) return null;
+  return (
+    <div
+      role="status"
+      data-testid="live-daily-batch-warnings-stripe"
+      className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2 text-sm border-b"
+      style={{ background: 'rgba(245,158,11,0.10)', color: 'var(--warn)' }}
+    >
+      <span className="font-medium">일봉 부분 응답:</span>
+      {batchOnly.map((w, i) => (
+        <span key={`${w.batch}-${i}`} title={w.msg}>
+          {w.batch}
+          <span className="ml-1 text-xs opacity-70">({REASON_LABEL[w.reason]})</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+```
+
+DESIGN.md 정합: `--warn` 토큰 + `text-sm` + `border-b` 가 기존 banner 의 warn
+stripe 와 동일. 신규 토큰 없음. `role="status"` = 비파괴 알림.
+
+- [ ] **Step B1'.2: `useLiveBundle` 에서 batch warnings 별도 expose**
+
+D0 의 `dailyWarningsAsDate` 매핑 옆에 raw warnings 도 export:
+
+```ts
+export interface UseLiveBundleResult {
+  // ... existing ...
+  /** ADR-0047 — daily endpoint 의 batch-grained warnings.
+   * D0 의 invariant_violation 라우팅과 별개로, kis_rate_limit / kis_api_error
+   * 처럼 batch 전체에 걸린 알림을 UI 에 surface. 분봉 timeframe 에서는 항상
+   * 빈 배열. */
+  dailyBatchWarnings: LivePastDailyCandlesWarning[];
+}
+
+// useLiveBundle return:
+return {
+  // ... existing fields ...
+  dailyBatchWarnings: pastDailyCandlesQuery.data?.data_warnings ?? [],
+};
+```
+
+- [ ] **Step B1'.3: `LiveWorkarea` props + stripe 합류**
+
+```tsx
+// LiveWorkarea props 에 추가:
+dailyBatchWarnings: LivePastDailyCandlesWarning[];
+
+// return 의 bundle 분기:
+{bundle && (
+  <>
+    <InvariantOutcomesBanner
+      excluded={bundle.excluded_dates ?? []}
+      warnings={bundle.data_warnings ?? []}
+    />
+    <LiveDailyBatchWarningsStripe warnings={dailyBatchWarnings} />
+  </>
+)}
+```
+
+`LivePage.tsx` 에서 `dailyBatchWarnings` destructure 해서 `LiveWorkarea` 로 전달.
+Mock prop 추가 (`LivePage.test.tsx`, `LiveWorkarea.test.tsx`,
+`LiveChartRoot.test.tsx`).
+
+- [ ] **Step B1'.4: 회귀 테스트**
+
+```tsx
+// LiveWorkarea.test.tsx
+it('renders batch warnings stripe with kis_rate_limit reason', () => {
+  // render with dailyBatchWarnings=[{batch:'20240101__20240229', reason:'kis_rate_limit', msg:'rate'}]
+  expect(screen.getByTestId('live-daily-batch-warnings-stripe')).toBeInTheDocument();
+  expect(screen.getByText('일봉 부분 응답:')).toBeInTheDocument();
+  expect(screen.getByText(/레이트 리밋/)).toBeInTheDocument();
+});
+
+it('filters out per-row invariant_violation warnings (D0 handles those)', () => {
+  // render with dailyBatchWarnings=[{batch:'20240101__20240105', date:'20240103', reason:'invariant_violation', msg:'close=0'}]
+  expect(screen.queryByTestId('live-daily-batch-warnings-stripe')).toBeNull();
+});
+```
+
+**Out of scope (다음 plan).** 분봉 path 의 `kis_rate_limit` warnings 도 동일한
+silent failure — 형제 stripe 가 필요하지만 본 plan scope 밖. 이미 "Out of Scope"
+표에 eng-review 가 같은 follow-up 을 적어둠 — 본 patch 가 그 follow-up 의 일봉
+부분만 선제 해결.
+
+---
+
+### Blocker B2 — 로딩 노트 텍스트가 일봉 timeframe 에서 거짓말
+
+**문제.** `LiveChartRoot.tsx:388` 의 로딩 오버레이 텍스트가 하드코딩된
+`"분봉 불러오는 중…"`. 사용자가 D/W/M 에서 처음 데이터를 로딩할 때 "분봉
+(minute candles)" 단어가 보여 혼란 — "내가 일봉 골랐는데 왜 분봉 로딩?".
+Don Norman 의 system status visibility 원칙은 *정확한* 상태를 보여줄 때만
+유효함.
+
+**해결.** `LiveChartRoot` 가 이미 `timeframe: LiveTimeframe` prop 을 받음.
+텍스트를 timeframe 기반으로 분기:
+
+```tsx
+// frontend/src/live/LiveChartRoot.tsx, line ~378-390
+{isPastCandlesLoading && (!bundle || bundle.candles.length === 0) && (
+  <div data-testid="past-candles-loading-note" style={{ /* unchanged */ }}>
+    {isMinuteTimeframe(timeframe) ? '분봉 불러오는 중…' : '일봉 불러오는 중…'}
+  </div>
+)}
+```
+
+`isMinuteTimeframe` 은 `../state/livePage` 에서 이미 export 됨 (`useLiveBundle.ts`
+와 동일 import path).
+
+회귀 테스트 (`LiveChartRoot.test.tsx`):
+
+```tsx
+it('shows "분봉 불러오는 중…" when timeframe is minute and past candles loading', () => {
+  // render with timeframe='1m', isPastCandlesLoading=true, bundle=null
+  expect(screen.getByText('분봉 불러오는 중…')).toBeInTheDocument();
+});
+
+it('shows "일봉 불러오는 중…" when timeframe is D and past candles loading', () => {
+  // render with timeframe='D', isPastCandlesLoading=true, bundle=null
+  expect(screen.getByText('일봉 불러오는 중…')).toBeInTheDocument();
+});
+```
+
+---
+
+### Blocker B3 — 일봉 초기 seed 가 60일짜리 (빈약한 첫 paint)
+
+**문제.** Task D3 의 `seedFrom = historicalFromDate ?? subtractDaysKst(today, INITIAL_HISTORICAL_DAYS)`.
+`INITIAL_HISTORICAL_DAYS` 는 분봉 기준 상수 (60). 사용자가 처음 D 를 누르면 ~60일
+일봉 (= ~45 trading bars) 만 로드. plan F1 step 6 ("Chart extends progressively
+back in time") 약속과 어긋남 — 한 번 더 스크롤 백 해야 의미 있는 일봉 차트가 나옴.
+"daily 는 cap 없이 무한 backfill" 이라는 plan 의 핵심 가치가 *initial paint 가
+빈약함* 으로 가려짐. Norman emotional design 의 visceral level (첫 5초) 실패.
+
+**해결.** 일봉용 초기 seed 상수 분리:
+
+```ts
+// frontend/src/live/liveDateTime.ts — 신규 export
+/** ADR-0047 — 일봉 첫 paint 의 default range. 2년 = ~500 trading bars 로
+ * 의미 있는 차트가 한 번에 보임. 메모리 cache (PastDailyCandlesCache) 가
+ * cold-start 비용을 흡수. */
+export const INITIAL_HISTORICAL_DAYS_DAILY = 365 * 2;
+```
+
+`useLiveBundle.ts`:
+
+```ts
+import {
+  INITIAL_HISTORICAL_DAYS,
+  INITIAL_HISTORICAL_DAYS_DAILY,
+} from './liveDateTime';
+
+const seedFromMinute = historicalFromDate
+  ?? subtractDaysKst(todayKstYyyymmdd, INITIAL_HISTORICAL_DAYS);
+const seedFromDaily = historicalFromDate
+  ?? subtractDaysKst(todayKstYyyymmdd, INITIAL_HISTORICAL_DAYS_DAILY);
+
+const earliestAllowedMinute = subtractDaysKst(
+  todayKstYyyymmdd, PAST_CANDLES_MAX_DAYS - 1,
+);
+const minutePastFrom = laterDate(seedFromMinute, earliestAllowedMinute);
+const minutePastTo = todayKstYyyymmdd;
+
+const dailyPastFrom = seedFromDaily;  // no clamp
+const dailyPastTo = todayKstYyyymmdd;
+```
+
+회귀는 C2 patch 의 "D timeframe with historicalFromDate=null seeds 2-year range"
+테스트로 커버.
+
+---
+
+### Critical C1 — Timeframe 전환 첫 paint 깜빡임 정책 명시
+
+**문제.** `useLivePastDailyCandles` 의 `placeholderData: keepPreviousData` (D1
+step 3) 는 사용자가 1m → D 로 전환할 때 *처음* 발사되는 daily query 의 placeholder
+가 비어 있음 (이전 daily 데이터 없음) → `kisCandles = []` → 1 frame 빈 차트 →
+daily fetch 완료 후 다시 그려짐. 사용자가 직접 요청한 "깜빡임 없는지" 의 핵심.
+
+**해결 — 디자인 결정 (명시).** 잘못된 timeframe 의 bar (직전 1m candles) 를 잠깐
+보여주는 것이 빈 차트보다 더 나쁘다 (사용자 혼란: "왜 D 인데 1분봉 모양?"). 따라서
+plan 의 현재 동작 (`pastDailyCandlesQuery.data?.candles ?? []` 로 명시적 빈 배열)
+이 **올바른 디자인 결정**임을 plan 에 박아 두고, 빈 차트 동안 B2 의 "일봉
+불러오는 중…" 오버레이가 보여야 함을 회귀 테스트로 보장:
+
+`useLiveBundle.ts` 의 `kisCandles` memo 위 주석:
+
+```ts
+// Timeframe 전환 시 깜빡임 정책 (ADR-0047, C1):
+// 일봉 query 가 처음 발사될 때 빈 candles 를 반환해서 LiveChartRoot 의
+// "일봉 불러오는 중…" 오버레이 (B2) 가 표시되도록 한다. 이전 timeframe 의
+// candles 를 1 frame 보여주는 wrong-timeframe flash 보다 명시적 로딩 상태가
+// 정직하다 — Don Norman "system status visibility" 원칙. 두 번째 전환부터는
+// react-query 의 placeholderData: keepPreviousData (livePastDailyCandles.ts)
+// 가 직전 daily 응답을 즉시 반환해서 깜빡임 자체가 없다.
+```
+
+회귀는 C2 patch 의 "1m → D switch returns empty candles while daily query
+first-fires" 테스트로 커버.
+
+---
+
+### Critical C2 — D3 의 D/W/M 테스트가 pseudo-code
+
+**문제.** Task D3 Step 1 의 4 개 테스트 중 3 개가 `// ... existing harness ...`
+주석으로 끝남. TDD 약속 위반 + design-review 의 "engineer ships unimplemented
+behavior" failure mode.
+
+**해결.** D3 Step 1 의 테스트 블록을 아래 구체 버전으로 교체. 기존
+`useLiveBundle.test.tsx` 의 mock 패턴 (`livePastCandlesSpy`, `useRangeSpy`) 그대로
+이어서 `livePastDailyCandlesSpy` 추가. B1' / B3 / C1 의 회귀도 함께 포함:
+
+```tsx
+// frontend/src/live/useLiveBundle.test.tsx — D3 회귀 블록
+
+const livePastDailyCandlesSpy = vi.fn(() => ({
+  data: {
+    code: '005930', from: '', to: '',
+    candles: [
+      { t_ms: 1704153600000, open: 70000, high: 70100, low: 69900,
+        close: 70050, volume: 1000 },
+    ],
+    cached_batches: [], fresh_batches: [], data_warnings: [],
+  },
+  isLoading: false, error: null,
+}));
+vi.mock('../api/livePastDailyCandles', () => ({
+  useLivePastDailyCandles: (...args: unknown[]) =>
+    livePastDailyCandlesSpy(...args as []),
+}));
+
+describe('useLiveBundle daily/minute branching (ADR-0047)', () => {
+  beforeEach(() => {
+    livePastCandlesSpy.mockClear();
+    livePastDailyCandlesSpy.mockClear();
+  });
+
+  it('D timeframe calls daily hook with non-null args, minute hook with null code', () => {
+    renderHook(() => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    expect(livePastDailyCandlesSpy)
+      .toHaveBeenCalledWith('005930', expect.any(String), '20260527');
+    const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1)!;
+    expect(lastMinuteCall[0]).toBeNull();
+  });
+
+  it('1m timeframe calls minute hook with non-null args, daily hook with null code', () => {
+    renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    expect(livePastCandlesSpy)
+      .toHaveBeenCalledWith('005930', expect.any(String), '20260527');
+    const lastDailyCall = livePastDailyCandlesSpy.mock.calls.at(-1)!;
+    expect(lastDailyCall[0]).toBeNull();
+  });
+
+  it('clampEngaged is false on D even when historicalFromDate is very old', () => {
+    useLivePageStore.setState({ historicalFromDate: '20100101' });
+    const { result } = renderHook(
+      () => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    expect(result.current.clampEngaged).toBe(false);
+  });
+
+  it('clampEngaged is true on 1m when historicalFromDate is older than 250d', () => {
+    useLivePageStore.setState({ historicalFromDate: '20100101' });
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    expect(result.current.clampEngaged).toBe(true);
+  });
+
+  it('D timeframe with historicalFromDate=null seeds 2-year range (B3)', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    renderHook(() => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    const lastCall = livePastDailyCandlesSpy.mock.calls.at(-1)!;
+    // from ~= 2024-05-28 (2년 전), to = 20260527
+    expect((lastCall[1] as string) < '20240601').toBe(true);
+  });
+
+  it('dailyBatchWarnings surfaces from daily query (B1 prime)', () => {
+    livePastDailyCandlesSpy.mockReturnValueOnce({
+      data: {
+        code: '005930', from: '', to: '', candles: [],
+        cached_batches: [], fresh_batches: [],
+        data_warnings: [{ batch: '20240101__20240229',
+          reason: 'kis_rate_limit', msg: 'rate' }],
+      },
+      isLoading: false, error: null,
+    });
+    const { result } = renderHook(
+      () => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    expect(result.current.dailyBatchWarnings).toHaveLength(1);
+    expect(result.current.dailyBatchWarnings[0].reason)
+      .toBe('kis_rate_limit');
+  });
+
+  it('1m → D switch returns empty candles while daily query first-fires (C1)', () => {
+    livePastDailyCandlesSpy.mockReturnValueOnce({
+      data: undefined, isLoading: true, error: null,
+    });
+    const { result } = renderHook(
+      () => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    expect(result.current.bundle?.candles ?? []).toHaveLength(0);
+    expect(result.current.isPastCandlesLoading).toBe(true);
+  });
+});
+```
+
+---
+
+### Findings 분류 요약 (design-review)
+
+| # | Severity | Area | Auto-applied? |
+|---|----------|------|---------------|
+| B1 | Blocker | data_warnings unrouted (per-row invariant_violation) | (eng-review D0 이 처리) |
+| B1' | Blocker | batch-grained warnings (rate_limit/api_error) UI silent | yes — section above |
+| B2 | Blocker | 로딩 노트 텍스트 "분봉 불러오는 중…" 거짓말 | yes — section above |
+| B3 | Blocker | 일봉 initial seed 60일 (빈약한 첫 paint) | yes — section above |
+| C1 | Critical | timeframe 전환 첫 paint 깜빡임 정책 미명시 | yes — section above |
+| C2 | Critical | D3 의 D/W/M 테스트 pseudo-code | yes — section above |
+| S1 | Suggestion | D2 KST anchoring fixture 주석 헷갈림 → `kstOpenMs()` 헬퍼 | review report |
+| S2 | Suggestion | D1 'queryKey changes split cache' 회귀 누락 (분봉 형제 테스트 비대칭) | review report |
+| S3 | Suggestion | D 에서 `bucketMs=60_000` placeholder 안전성 주석 | review report |
+| N1 | Nit | 변수명 `pastCandlesQuery` → `minutePastQuery` | review report |
+| N2 | Nit | 기존 clamp chip 텍스트 "최대 60일까지" 가 250일 상수와 안 맞음 (pre-existing, 본 plan 무관) | review report |
+
+---
+
+## Engineering review report (full categorized findings)
+
+Generated 2026-05-28 by `/plan-eng-review`. Blocker + Critical items are
+already absorbed into the plan above; Suggestion + Nit items are listed here
+for the implementer's discretion.
+
+### Blocker (auto-applied)
+
+- **B-1 — InvariantOutcomesBanner shape mismatch.** See plan header + Task D0.
+  Without this fix, every daily `invariant_violation` reaches the wire but
+  vanishes before the user sees it. Verified by reading `LiveWorkarea.tsx`,
+  `InvariantOutcomesBanner.tsx`, `buildLiveBundle.ts:142`, and
+  `api/types.ts:425-428`.
+
+### Critical (auto-applied)
+
+- **C-1 — Empty-gap, single-day, today-only, today-negative tests missing.**
+  See Task B3a. The handler's caching behavior for these edge cases is
+  load-bearing (without empty-gap caching, a request for a holiday-only
+  range would re-call KIS forever) but the plan's test list has zero
+  coverage. Added 4 new tests pinning each behavior.
+- **C-2 — Tri-state "legacy wrapper" hides the bug C2 fixes.** See Task C1.
+  The original delegating `get_today` returned identical values for "miss"
+  and "negative" — exactly the behavior the negative-cache extension exists
+  to disambiguate. Removed the wrapper; verified only 1 production caller
+  + 3 test assertions need updating.
+
+### Suggestion (not auto-applied, deferred to implementer)
+
+- **S-1 — `_compute_daily_gaps` correctness on single-day requests.** The
+  algorithm handles single-day correctly (traced manually: `frm == too`,
+  `existing == []` → returns `[(frm, too)]`), but the test list doesn't
+  exercise it. B3a's `test_past_daily_single_day_past_request` covers the
+  handler-level case; consider adding `_compute_daily_gaps` unit tests for
+  `frm == too` with empty / overlapping / adjacent existing batches if the
+  implementer wants belt-and-suspenders.
+- **S-2 — `fetch_past_daily_candles` pagination cursor stop condition.** The
+  loop breaks when `page_earliest <= from_yyyymmdd`. If KIS returns the
+  exact `from_yyyymmdd` as `page_earliest`, the loop correctly exits with
+  that page included (string comparison on `YYYYMMDD` is lexicographic =
+  date comparison). Consider an explicit comment to that effect — the
+  implementer will be tempted to "tighten" to `<` and break the boundary
+  case.
+- **S-3 — `DailyInvariantViolation.reason` adjacent to minute pattern.** The
+  reason taxonomy (`close_nonpositive`, `ohlc_inconsistent`, `malformed_row`,
+  `out_of_range`) is daily-specific. The Risks section mentions a future
+  `MinuteCandleFetchResult` pattern. Consider naming the dataclass file or
+  the reason `Literal` such that the minute version can be a sibling
+  (e.g. a shared `CandleInvariantViolation` lives in `kis_models.py`) so
+  the follow-up has a low-friction landing spot. Not blocking — adding a
+  parallel `MinuteInvariantViolation` later is also fine.
+- **S-4 — `aggregateCalendar('D', dailyInput)` identity-ish — verify session
+  open alignment.** Spec D7 marks this as "⚠ confirm". Read
+  `aggregateCalendar`: it groups by `calendarBucketKey(t_ms, 'D')` which
+  hashes by KST date and emits the first input bar's `t_ms` per bucket. For
+  D-direct input where every input bar has `t_ms = sessionOpenKst(date)`,
+  the output IS identity in OHLCV and t_ms. The test in D2 pins it. No code
+  change needed; suggesting that D2's test comment cite the
+  `calendarBucketKey` mechanism explicitly so future readers understand WHY
+  identity holds.
+- **S-5 — Today bar consistency across timeframes.** The minute path includes
+  today by polling SSE + KIS. The daily path fetches today as a single bar
+  with `t_ms = session_open_kst`. If the regular session is mid-trading
+  (10:30 KST), the daily wire emits today's bar with the *intraday-so-far*
+  OHLCV; the next 60s the cached value is stale (the bar's close has moved).
+  The 60s TTL is consistent with the minute path's today-cache TTL, so this
+  is acceptable, but the plan should document that the today daily bar can
+  lag 0-60s during regular session. Add a one-liner to the ADR's
+  Consequences section.
+
+### Nit (cosmetic, optional)
+
+- **N-1 — Task A2 import duplication.** `hoga/live/kis_client.py:13` already
+  imports `dataclass`. Task A2's snippet adds a second
+  `from dataclasses import dataclass, field` block. Edit the existing line
+  in place: `from dataclasses import dataclass, field`. Same for the inline
+  `from datetime import datetime as _dt` inside `fetch_past_daily_candles`
+  — module-level `datetime` is already imported.
+- **N-2 — Test file fixture duplication.** `_daily_app(tmp_path, fake_kis)`
+  in B3 is byte-identical to `_past_app(tmp_path, fake_kis)` except the
+  fixture name. Either reuse `_past_app` or refactor both into one helper
+  with a comment. Cosmetic; current state is fine if the implementer wants
+  to keep the two test sections independent.
+- **N-3 — `from_` parameter name shadowing.** Both handlers use
+  `from_: str = Query(..., alias="from")`. The trailing underscore is a
+  long-standing project pattern (consistent with `_validate_past_request`
+  signature), so keep it. Nit only because the variable shadows the
+  built-in `from` keyword visually; alias makes it correct wire-wise.
+- **N-4 — Test list in spec section "Unit tests (backend)" is out of date.**
+  The spec table (around lines 540-565) references some tests the plan
+  doesn't implement (e.g. "today TTL refresh" for daily) and the plan
+  implements some the spec table doesn't list (B3a's empty-gap and today-
+  only tests, post-review). Update the spec table after this plan lands —
+  not blocking.
+
+### Verified correct (no action)
+
+- Gap algorithm: single-day, adjacent-coalesce, prefix/suffix/middle gaps
+  all traced manually and match `_compute_daily_gaps` test expectations.
+- B4 wiring: `hoga/api/app.py:181` already passes `data_dir=data_dir` to
+  `build_live_router`. No change needed.
+- Sibling structure with minute path: handler, cache class, KIS method, and
+  wire are cleanly parallel. ADR-0040 is preserved untouched. `/replay`
+  zero diff confirmed (the new endpoint is `/api/live/*`).
+- ADR-0013 single read-path: the new endpoint is `/live`-scoped (not
+  `/api/range`); ADR-0040's locality argument extends naturally to the
+  parallel ADR-0047.
