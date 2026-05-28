@@ -27,13 +27,16 @@ live 페이지는 sidebar(`LiveSidebar`)가 있지만 현재는 "latest live"만
   구독 자체를 mount하지 않는다.
 - 새 단일 spot 엔드포인트(`/api/spot`) — 측정 없이 도입할 만한 최적화 아님.
 - LiveBuffer 영속화 파이프라인 신설 — 데이터가 파케이에 있다는 전제로 진행.
+- LiveBuffer에 시간 키 인덱스 추가(SSE 기반 hover spot) — 명시적으로 거부, ADR-0044 참조.
 - replay 페이지의 hover 동작 변경.
 
 ## Decisions
 
 1. **데이터 소스**: 기존 replay용 REST 엔드포인트(`/api/orderbook`,
-   `/api/trades`, `/api/brokers/series`)를 재사용. live SSE 버퍼는 사용하지
-   않는다(범위가 "최근 N분"으로 제한되기 때문).
+   `/api/trades`, `/api/brokers/series`)를 재사용. **LiveBuffer / SSE는 hover
+   spot 경로에 참여하지 않는다** — `ADR-0044` 가 이 결정과 ADR-0039와의 경계를
+   정식화한다. 결과적으로 오늘 자 데이터는 ADR-0043 Today Promotion 사이클
+   (기본 5분)만큼의 lag을 가질 수 있다(받아들이는 trade-off).
 2. **Source preference**: 위 세 엔드포인트에 `source_pref` 쿼리 파라미터를
    추가하고, 라우트 핸들러에서 `_resolve_source(engine, date, code, source_pref)`
    를 호출한다. `_resolve_source` 는 이미 `hoga/api/bundle.py` 에 존재하므로
@@ -49,6 +52,18 @@ live 페이지는 sidebar(`LiveSidebar`)가 있지만 현재는 "latest live"만
 6. **Source fallback 가시화**: 세 엔드포인트 응답에 실제 사용된 `source` 필드를
    포함시켜 `LiveStatusBar` 의 source chip이 fallback을 반영하게 한다(이미
    `/api/range` 응답이 source를 포함한다면 동일 패턴).
+7. **LiveSidebar 헤더 모드 표시**: 현재 `LiveSidebar` 의 `LIVE●` 펄스 헤더는
+   "이 sidebar는 latest tick을 자동 추적한다"는 약속을 시각화한다. cursorMs가
+   set인 동안에는 이 약속이 임시로 깨지므로 헤더를 **`SPOT @ HH:MM:SS`**(펄스
+   제거, 시각 강조)로 교체한다. cursorMs가 null이면 즉시 펄스 복귀.
+8. **Hover 시점 Auction Mask 활성**: 현재 `LiveSidebar` 는 `TotalQtyBar` 의
+   `maskRatio={false}` 를 하드코딩한다(live 모드에 virtualAxis 미연결). cursorMs가
+   set이고 그 시점이 closing auction window(15:20–15:30) 안이면
+   `maskRatio = VirtualAxis.inClosingAuctionWindow(cursorMs)` 결과를 사용한다.
+   `LiveChartRoot` 가 이미 VirtualAxis 인스턴스를 보유하므로 동일 인스턴스를
+   `LiveSidebar` 가 참조 가능하도록 store 공유 또는 prop drilling으로 전달.
+   cursorMs가 null이면 기존 동작(`maskRatio={false}`)을 유지 — live 모드의 latest
+   tick에는 axis-기반 mask가 의미를 가지지 않음.
 
 ## Architecture
 
@@ -124,6 +139,15 @@ live 페이지는 sidebar(`LiveSidebar`)가 있지만 현재는 "latest live"만
 **`frontend/src/live/LiveSidebar.tsx`**
 - `useLiveCursorStore(s => s.cursorMs)` 구독.
 - 어댑터 레이어에서 cursorMs로 데이터 소스 분기 후 동일 카드에 prop 주입.
+- 헤더 모드 표시:
+  - `cursorMs == null` → 기존 `LIVE● + HH:MM:SS` 펄스 유지.
+  - `cursorMs != null` → `SPOT @ HH:MM:SS` (펄스 제거, cursorMs를 KST로 포맷).
+- `TotalQtyBar` 의 `maskRatio`:
+  - `cursorMs == null` → 기존 `false` 유지.
+  - `cursorMs != null` → `axis.inClosingAuctionWindow(cursorMs)` 결과 사용.
+  - 이를 위해 `LiveChartRoot` 가 보유한 `VirtualAxis` 인스턴스를 `LiveSidebar`
+    가 참조해야 함 — store에 axis ref를 두거나(권장: `useLiveAxisStore`)
+    `LiveWorkarea` 에서 axis를 prop drilling. 실제 선택은 plan 단계.
 
 ### Backend — 수정
 
@@ -132,8 +156,13 @@ live 페이지는 sidebar(`LiveSidebar`)가 있지만 현재는 "latest live"만
   `source_pref: Literal["hogaplay", "kis_live"] = "hogaplay"` 추가.
 - 핸들러에서 `_resolve_source(engine, date, code, source_pref)` 결과를
   기존 parquet 읽기 함수에 전달.
-- 응답 모델(`OrderbookResponse`, `TradesResponse`, `BrokersResponse`)에
-  `source: SourceName` 필드 추가(없다면).
+- 응답 모델 세 개에 `source: SourceName` 필드 **확정 추가**
+  (확인 결과 셋 다 현재 미존재):
+  - `OrderbookResponse` (models.py:66)
+  - `TradesResponse` (models.py:71)
+  - `BrokerSeriesResponse` (models.py:536)
+- ADR-0039 invariant("`/api/range` 응답 shape 불변")는 `/api/range`에만 적용 —
+  본 변경과 충돌 없음.
 
 **`hoga/api/bundle.py` / `hoga/api/sources.py`**
 - `_resolve_source` 가 `bundle.py` 안에 private이면 `hoga/api/sources.py` 로
@@ -232,7 +261,8 @@ GET /api/orderbook?...&source_pref=kis_live
 각각에 동일 4개 패턴:
 
 - `*_source_pref_prefers_kis_live`
-- `*_source_pref_falls_back_to_hogaplay` (응답 `source` 필드 검증 포함)
+- `*_source_pref_falls_back_to_hogaplay` (응답 `source` 필드가 실제 사용된
+  source = "hogaplay" 임을 검증; 응답 shape 회귀 방지도 겸함)
 - `*_source_pref_default_is_hogaplay` (회귀 방지)
 - `*_source_pref_invalid_returns_422`
 
@@ -259,9 +289,12 @@ GET /api/orderbook?...&source_pref=kis_live
 ### Frontend — 통합
 
 `frontend/src/live/LiveSidebar.test.tsx`:
-- cursorMs == null → `useLiveSeries` 결과 사용.
-- cursorMs != null → cursor 훅 결과 사용.
-- 토글 시 카드가 latest로 즉시 복귀.
+- cursorMs == null → `useLiveSeries` 결과 사용 + `LIVE●` 헤더 + `maskRatio=false`.
+- cursorMs != null → cursor 훅 결과 사용 + `SPOT @ HH:MM:SS` 헤더(펄스 없음).
+- cursorMs가 closing auction window 안(예: 15:25) → `maskRatio=true` 가
+  `TotalQtyBar` 에 전달됨(`axis.inClosingAuctionWindow` mock으로 검증).
+- cursorMs가 window 밖 → `maskRatio=false`.
+- 토글 시 카드가 latest로 즉시 복귀하며 헤더도 펄스로 복귀.
 
 `frontend/src/live/LiveChartRoot.test.tsx`:
 - 분봉 timeframe: crosshair move → `setCursor` 호출.
@@ -282,7 +315,10 @@ GET /api/orderbook?...&source_pref=kis_live
 
 ## Open questions for plan stage
 
-- `_resolve_source` 를 `bundle.py` 에서 빼낼지, 그대로 import할지(가시성 결정).
-- 응답에 `source` 필드 추가가 기존 응답 스키마에 이미 있는지 확인.
-- `available_from` 힌트 표시 UX(replay 패턴 확인 후 결정).
-- E2E 도입 여부.
+- `_resolve_source` 가시성 결정: `bundle.py` 안에서 `resolve_source` 로 rename
+  + export vs 새 `hoga/api/sources.py` 모듈로 추출. 첫 번째가 단순 — simplify
+  단계(8단계)에서 자연스럽게 결정.
+- `VirtualAxis` 인스턴스를 `LiveSidebar` 에 전달하는 방식: 신규
+  `useLiveAxisStore` (권장) vs `LiveWorkarea` 의 prop drilling.
+- `available_from` 힌트 표시 UX(replay 패턴 확인 후 결정 — replay에 이미 있다면 차용).
+- E2E 도입 여부(must/should/nice 우선순위는 정해짐; plan에서 actual task로 승격할지만 결정).

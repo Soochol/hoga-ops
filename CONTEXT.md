@@ -76,17 +76,19 @@ _Avoid_: "model", "domain object", "record"
 **Cursor**:
 A single Unix-ms (UTC) point on the API contract — the value of the `?t=`
 query parameter on spot endpoints (`/api/orderbook`, `/api/brokers`,
-`/api/trades`), the frontend tab's `cursorMs`, and the right edge of the
-viewport published by `ChartStage`. Always a real Unix-ms per ADR 0003 —
-never the native HHMMSSmmm or ms-from-midnight encodings the Parquet
-tables use. Conversion to native happens once at the route boundary via
+`/api/trades`), the **Replay Tab**'s `cursorMs`, the `/live` page's
+`useLiveCursorStore.cursorMs` (set on chart hover, cleared on mouse-leave;
+per ADR-0044), and the right edge of the viewport published by
+`ChartStage`. Always a real Unix-ms per ADR 0003 — never the native
+HHMMSSmmm or ms-from-midnight encodings the Parquet tables use.
+Conversion to native happens once at the route boundary via
 `hoga.api.cursor::cursor_to_native`, which raises HTTPException(400) when
 the Cursor falls outside the requested **Stock-Date**.
 _Avoid_: "timestamp" alone (ambiguous with Entity ts_ms and Wire Model
 ts_ms which may differ in encoding), "t param".
 
 **Cursor Sidebar**:
-The right-side panel of the Replay Viewer's Workarea that hosts three Cursor-aware cards — **10호가** (cursor-anchored orderbook snapshot), **거래원** (day-anchored broker list with per-row cursor-projected net; see **Broker Day-Trajectory** and ADR-0023), **체결** (cursor-anchored recent fills). Two of the three cards (10호가, 체결) are *cursor-keyed* — their list identity changes as the Cursor moves; the 거래원 card is *day-keyed* in identity but *cursor-projected* in its per-row net value. All three still consume the **Cursor**; the asymmetry is in what the cursor controls. Lives in `frontend/src/sidebar/CursorSidebar.tsx`; the connected variant `CursorSidebarConnected` binds each card to its hook — `useSpot`-family for the two cursor-keyed cards, `@tanstack/react-query` (via `useBrokerSeriesForDay`) for the day-keyed broker card. Treated as a single UI object for layout purposes — its width is user-adjustable and the whole panel can be collapsed (per the 2026-05-24 Replay Sidebar Splitter spec). The default width is seeded from the `--sidebar-w` design token; runtime width and collapsed state are owned by `state/replayLayout.ts` (per ADR-0022). The Cursor Sidebar **consumes** **Cursor**; it is not a synonym for Cursor — Cursor is the time-point on the API/UI contract, the Cursor Sidebar is the panel that renders Cursor-derived information (mixed point-in-time and day-aggregate readings).
+The right-side panel of the Replay Viewer's Workarea that hosts three Cursor-aware cards — **10호가** (cursor-anchored orderbook snapshot), **거래원** (day-anchored broker list with per-row cursor-projected net; see **Broker Day-Trajectory** and ADR-0023), **체결** (cursor-anchored recent fills). Two of the three cards (10호가, 체결) are *cursor-keyed* — their list identity changes as the Cursor moves; the 거래원 card is *day-keyed* in identity but *cursor-projected* in its per-row net value. All three still consume the **Cursor**; the asymmetry is in what the cursor controls. Lives in `frontend/src/sidebar/CursorSidebar.tsx`; the connected variant `CursorSidebarConnected` binds each card to its hook — `useSpot`-family for the two cursor-keyed cards, `@tanstack/react-query` (via `useBrokerSeriesForDay`) for the day-keyed broker card. Treated as a single UI object for layout purposes — its width is user-adjustable and the whole panel can be collapsed (per the 2026-05-24 Replay Sidebar Splitter spec). The default width is seeded from the `--sidebar-w` design token; runtime width and collapsed state are owned by `state/replayLayout.ts` (per ADR-0022). The Cursor Sidebar **consumes** **Cursor**; it is not a synonym for Cursor — Cursor is the time-point on the API/UI contract, the Cursor Sidebar is the panel that renders Cursor-derived information (mixed point-in-time and day-aggregate readings). The `/live` page's **`LiveSidebar`** (`frontend/src/live/LiveSidebar.tsx`) reuses this same shell and borrows the same cursor-aware behaviour during chart hover (per ADR-0044): on hover it switches to spot mode and the header swaps `LIVE●` for `SPOT @ HH:MM:SS`; on mouse-leave it reverts to latest-tracking. The two modes share the same card components but different data adapters (`useLiveSeries` for latest vs the `useLiveCursor` hooks for spot).
 _Avoid_: "sidebar" alone (the codebase has other panels that could be called sidebars — Inventory's left list, Capture's queue), "cursor panel" (loses the multi-card structure), "spot sidebar" (the prior internal name; superseded, and now also misleading since the 거래원 card is no longer spot-only), "Cursor-keyed cards" as a description of all three (the 거래원 card is day-keyed in identity per ADR-0023).
 
 **Broker Day-Trajectory**:
