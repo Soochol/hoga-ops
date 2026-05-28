@@ -83,6 +83,7 @@ export type BrokerSeriesEntry = {
 export type BrokerSeriesResponse = {
   date: string;                   // YYYYMMDD KST, echoed
   brokers: BrokerSeriesEntry[];   // sorted by abs(final_net) desc, ≤ 10 entries
+  source: SourceName;             // ADR-0044 — echoed by backend after resolve_source()
 };
 
 // Mirrors hoga/tables/trades.py::ApiTrade. `side` is -1 / 0 / +1 by convention
