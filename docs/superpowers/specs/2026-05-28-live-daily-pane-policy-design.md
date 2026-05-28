@@ -167,3 +167,10 @@ No changes to:
 
 None. Both clarifications (gap interpretation, banner behavior) were
 resolved during brainstorming.
+
+## Related decisions
+
+- ADR-0041 — `/live` calendar timeframes mount candle + volume only
+  (codifies D1).
+- CONTEXT.md — **LiveTimeframe** term, distinguishing the `/live` 9-value
+  selector from the wire-bucketed 6-value **Timeframe**.
