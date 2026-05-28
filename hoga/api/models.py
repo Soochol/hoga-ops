@@ -522,7 +522,7 @@ class WatchlistEntry(BaseModel):
 
 class WatchlistResponse(BaseModel):
     entries: list[WatchlistEntry]
-    next_run_at_ms: int  # Unix-ms of next KST 18:00 boundary (ADR-0003)
+    next_run_at_ms: int  # Unix-ms of next KST 17:00 boundary (ADR-0003)
 
 
 class WatchlistAddRequest(BaseModel):

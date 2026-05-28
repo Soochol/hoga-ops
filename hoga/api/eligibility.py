@@ -5,7 +5,7 @@ Two entry points, both pure:
 
 - :func:`find_ineligible_dates` — enqueue-time gate. Returns the YYYYMMDD
   dates from the request that fail policy checks (currently only the
-  18-KST `today_too_early` rule from spec §11 Q14). Caller raises 400.
+  17-KST `today_too_early` rule from spec §11 Q14). Caller raises 400.
 
 - :func:`decide_capture` — worker-time deciding-phase. Composes
   :func:`disk_state.check_disk_state` with the `force_retry` toggle into
@@ -97,7 +97,7 @@ def find_ineligible_dates(
     """Enqueue-time gate. Returns the dates from ``candidate_dates`` that
     fail eligibility.
 
-    Currently the only gate is the 18-KST :func:`is_today_too_early` policy.
+    Currently the only gate is the 17-KST :func:`is_today_too_early` policy.
     Future gates (holiday filter beyond the trading-day list, code-level
     blacklists, quota checks) add their own predicates here so the route
     handler stays a thin "reject if non-empty" wrapper.

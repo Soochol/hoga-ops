@@ -80,7 +80,7 @@ describe('CalendarCell', () => {
     const { container, rerender } = render(<CalendarCell {...baseProps} status="weekend" />);
     expect(container.querySelector('button')!.getAttribute('title')).toMatch(/weekend/i);
     rerender(<CalendarCell {...baseProps} status="today_locked" />);
-    expect(container.querySelector('button')!.getAttribute('title')).toMatch(/18:00/);
+    expect(container.querySelector('button')!.getAttribute('title')).toMatch(/17:00/);
     rerender(<CalendarCell {...baseProps} status="source_partial" />);
     expect(container.querySelector('button')!.getAttribute('title')).toMatch(/partial/i);
   });

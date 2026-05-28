@@ -81,7 +81,7 @@ class HogaplayClientProto(Protocol):
 
 
 class TodayTooEarlyRefused(RuntimeError):
-    """Capture target is today (KST) and now.hour < 18 — policy refuses regardless of Data Window state."""
+    """Capture target is today (KST) and now.hour < 17 — policy refuses regardless of Data Window state."""
 
 
 class CaptureCancelled(RuntimeError):
@@ -186,9 +186,9 @@ _now_kst = now_kst
 
 
 # Policy cutoff for "is it too early to capture today?" — distinct from
-# _DATA_WINDOW_CLOSE_HOUR (= 16, when raw data stops). The 2-hour buffer
+# _DATA_WINDOW_CLOSE_HOUR (= 16, when raw data stops). The 1-hour buffer
 # accounts for hogaplay's post-close aggregation lag. See spec §11 Q14.
-_TODAY_TOO_EARLY_HOUR = 18
+_TODAY_TOO_EARLY_HOUR = 17
 
 
 def is_today_too_early(date: str, now: dt.datetime) -> bool:
@@ -502,7 +502,7 @@ def collect_stock_date(
     if is_today_too_early(date, now):
         raise TodayTooEarlyRefused(
             f"date={date} is today (KST) and now.hour={now.hour} < {_TODAY_TOO_EARLY_HOUR}. "
-            "Wait until 18:00 KST."
+            "Wait until 17:00 KST."
         )
 
     raw_dir = data_dir / "raw" / date / code

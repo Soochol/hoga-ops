@@ -16,29 +16,29 @@ def _at(h: int, m: int = 0, day: int = 26) -> dt.datetime:
     return dt.datetime(2026, 5, day, h, m, 0, tzinfo=KST)
 
 
-def test_before_18_returns_today_18():
-    from hoga.api.scheduler import seconds_until_next_18_kst
-    secs = seconds_until_next_18_kst(_at(17, 59))
+def test_before_17_returns_today_17():
+    from hoga.api.scheduler import seconds_until_next_17_kst
+    secs = seconds_until_next_17_kst(_at(16, 59))
     assert 50 < secs < 70
 
 
-def test_at_exactly_18_returns_tomorrow_18():
-    from hoga.api.scheduler import seconds_until_next_18_kst
-    secs = seconds_until_next_18_kst(_at(18, 0))
+def test_at_exactly_17_returns_tomorrow_17():
+    from hoga.api.scheduler import seconds_until_next_17_kst
+    secs = seconds_until_next_17_kst(_at(17, 0))
     assert secs == pytest.approx(24 * 3600, abs=2)
 
 
-def test_after_18_returns_tomorrow_18():
-    from hoga.api.scheduler import seconds_until_next_18_kst
-    secs = seconds_until_next_18_kst(_at(18, 1))
-    # 23h 59m to tomorrow's 18:00.
+def test_after_17_returns_tomorrow_17():
+    from hoga.api.scheduler import seconds_until_next_17_kst
+    secs = seconds_until_next_17_kst(_at(17, 1))
+    # 23h 59m to tomorrow's 17:00.
     assert 23 * 3600 + 59 * 60 - 2 < secs < 23 * 3600 + 59 * 60 + 2
 
 
-def test_midnight_returns_18h():
-    from hoga.api.scheduler import seconds_until_next_18_kst
-    secs = seconds_until_next_18_kst(_at(0, 0))
-    assert secs == pytest.approx(18 * 3600, abs=2)
+def test_midnight_returns_17h():
+    from hoga.api.scheduler import seconds_until_next_17_kst
+    secs = seconds_until_next_17_kst(_at(0, 0))
+    assert secs == pytest.approx(17 * 3600, abs=2)
 
 
 @pytest.mark.asyncio
@@ -115,7 +115,7 @@ async def test_catchup_enqueues_gap_since_last_success(tmp_path: Path):
     await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     await watchlist.bump_last_success(tmp_path, code="003490", date="20260522")
-    fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)  # after 18
+    fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)  # after 17
 
     with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
          patch("hoga.api.scheduler.trading_days_in_range",
@@ -134,13 +134,13 @@ async def test_catchup_enqueues_gap_since_last_success(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_catchup_pretrims_today_when_too_early(tmp_path: Path):
-    """When now < 18:00, today must be removed before calling core."""
+    """When now < 17:00, today must be removed before calling core."""
     from hoga.api import scheduler, watchlist
     from hoga.api.models import EnqueueResponse
     await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     await watchlist.bump_last_success(tmp_path, code="003490", date="20260522")
-    fake_now = dt.datetime(2026, 5, 26, 10, 0, 0, tzinfo=KST)  # before 18
+    fake_now = dt.datetime(2026, 5, 26, 10, 0, 0, tzinfo=KST)  # before 17
 
     with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
          patch("hoga.api.scheduler.trading_days_in_range",
@@ -385,7 +385,7 @@ async def test_catchup_one_entry_q14_trim(tmp_path: Path):
         registered_at_kst_date="20260520",
         last_success_date="20260524",
     )
-    fake_now = dt.datetime(2026, 5, 27, 10, 0, 0, tzinfo=KST)  # before 18
+    fake_now = dt.datetime(2026, 5, 27, 10, 0, 0, tzinfo=KST)  # before 17
     with patch("hoga.api.scheduler.latest_complete_date", return_value=None), \
          patch("hoga.api.scheduler.trading_days_in_range",
                return_value=["20260525", "20260526", "20260527"]), \

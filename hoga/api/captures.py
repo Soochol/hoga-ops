@@ -1160,7 +1160,7 @@ async def enqueue_items_core(
     ``_require_data_dir()`` and ``_now_kst()``.
 
     Q14 guard: any date in the request equal to today_kst with
-    now.hour < 18 → 400 today_too_early.
+    now.hour < 17 → 400 today_too_early.
     Q15 Layer 1: per-(code, date) dedupe against
     _queue ∪ _active ∪ _inflight_paths and within-request duplicates.
     Returns the dedupe list in the response.
@@ -1200,7 +1200,7 @@ async def enqueue_items_core(
         raise HTTPException(status_code=400, detail={
             "code": CaptureErrorCode.TODAY_TOO_EARLY,
             "message": (
-                f"Dates {too_early} are today (KST) and now.hour={now.hour} < 18."
+                f"Dates {too_early} are today (KST) and now.hour={now.hour} < 17."
             ),
             "dates": too_early,
         })

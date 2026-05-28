@@ -29,7 +29,7 @@ from hoga.api.models import (
     WatchlistResponse,
 )
 from hoga.api.calendar import KrxUnavailableError
-from hoga.api.scheduler import catchup_one_entry, seconds_until_next_18_kst
+from hoga.api.scheduler import catchup_one_entry, seconds_until_next_17_kst
 from hoga.api.watchlist import (
     AlreadyInWatchlistError,
     NotInWatchlistError,
@@ -41,7 +41,7 @@ from hoga.collector.orchestrator import now_kst
 
 
 def _next_run_at_ms(now: dt.datetime) -> int:
-    secs = seconds_until_next_18_kst(now)
+    secs = seconds_until_next_17_kst(now)
     target = now + dt.timedelta(seconds=secs)
     return int(target.timestamp() * 1000)
 

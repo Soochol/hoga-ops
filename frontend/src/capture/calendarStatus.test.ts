@@ -93,7 +93,7 @@ describe('isDisabled', () => {
 describe('legendText', () => {
   it('joins the visible legend chunks in LEGEND_ORDER', () => {
     expect(legendText()).toBe(
-      'Legend: ✓ complete · ⚠ partial · ✕ broken · – no upstream data · 🔒 today < 18:00 KST'
+      'Legend: ✓ complete · ⚠ partial · ✕ broken · – no upstream data · 🔒 today < 17:00 KST'
     );
   });
 

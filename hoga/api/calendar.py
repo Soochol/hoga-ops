@@ -1,7 +1,7 @@
 """GET /api/inventory/calendar — per-symbol month status map.
 
 Composes disk_state.check_disk_state with the KRX trading-day list and a
-today/18-KST overlay. Pure read-side; no mutation. See spec §5.3, §11 Q21.
+today/17-KST overlay. Pure read-side; no mutation. See spec §5.3, §11 Q21.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from hoga.api.models import CalendarCell, CalendarResponse
 # Single Clock seam: KST + now_kst + is_today_too_early all live on
 # orchestrator.py per Refactor 3. The today_locked overlay below reuses
 # the same predicate that captures.py's enqueue guard uses — keeps the
-# 18-KST cutoff in one place.
+# 17-KST cutoff in one place.
 from hoga.collector.orchestrator import is_today_too_early, now_kst as _now_kst
 from hoga.env import krx_creds_present
 

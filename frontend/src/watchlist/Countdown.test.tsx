@@ -7,7 +7,7 @@ afterEach(() => { vi.useRealTimers(); });
 
 describe('Countdown', () => {
   it('shows hours/minutes/seconds until target', () => {
-    const now = Date.UTC(2026, 4, 26, 9, 0, 0);  // 2026-05-26T09:00Z = 18:00 KST
+    const now = Date.UTC(2026, 4, 26, 8, 0, 0);  // 2026-05-26T08:00Z = 17:00 KST
     vi.setSystemTime(now);
     // Target = now + 1h 2m 3s
     const target = now + (1 * 3600 + 2 * 60 + 3) * 1000;

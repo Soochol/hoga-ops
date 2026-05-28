@@ -94,7 +94,7 @@ def create_app(data_dir: Path) -> FastAPI:
         await start_live_poller(data_dir=data_dir)
         # ADR-0043: Today Promotion task — overwrite today's jsonl to parquet
         # every N minutes so /api/range covers today without waiting for the
-        # 18:00 Daily Promotion batch. Optional kill-switch via
+        # 17:00 Daily Promotion batch. Optional kill-switch via
         # HOGA_LIVE_TODAY_PROMOTE_ENABLED=false; interval tunable via
         # HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S (default 300 = 5 min).
         today_promoter_task: asyncio.Task | None = None

@@ -76,8 +76,8 @@ export const CALENDAR_STATUS: Record<CalendarStatus, CalendarStatusDescriptor> =
     marker: '🔒',
     baseColorVar: 'var(--fg-dim)',
     disabled: true,
-    tooltipSuffix: 'today < 18:00 KST (locked)',
-    legendLabel: '🔒 today < 18:00 KST',
+    tooltipSuffix: 'today < 17:00 KST (locked)',
+    legendLabel: '🔒 today < 17:00 KST',
   },
   weekend: {
     marker: null,
