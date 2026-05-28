@@ -79,12 +79,19 @@ def test_build_volume_profile_range_empty_dates_returns_empty():
     assert out.bins == []
 
 
-def test_build_volume_profile_range_single_date_uses_multi_file_glob():
+def test_build_volume_profile_range_single_date_uses_multi_file_glob(tmp_path):
     """One-date range: still calls read_parquet with a list parameter."""
     from hoga.api.bundle import build_volume_profile_range
 
     mock_engine = MagicMock()
-    mock_engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": __import__("pathlib").Path(f"/data/{c}/{d}")
+    def _mk(d, c, src="hogaplay"):
+        # Real dir + empty trades.parquet so build_volume_profile_range's
+        # existence-guard passes (ADR-0043: missing trades.parquet now skipped).
+        dd = tmp_path / c / d
+        dd.mkdir(parents=True, exist_ok=True)
+        (dd / "trades.parquet").touch()
+        return dd
+    mock_engine.parquet_dir.side_effect = _mk
     # First execute (MIN/MAX): returns (100, 200)
     # Second execute (GROUP BY bin): returns rows like [(0, 10), (1, 20), ...]
     mock_engine.conn.execute.side_effect = [
@@ -107,12 +114,17 @@ def test_build_volume_profile_range_single_date_uses_multi_file_glob():
     assert out.price_max == 200
 
 
-def test_build_volume_profile_range_multi_date_unions_paths():
+def test_build_volume_profile_range_multi_date_unions_paths(tmp_path):
     """Multi-date range: paths list contains every date's trades.parquet."""
     from hoga.api.bundle import build_volume_profile_range
 
     mock_engine = MagicMock()
-    mock_engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": __import__("pathlib").Path(f"/data/{c}/{d}")
+    def _mk(d, c, src="hogaplay"):
+        dd = tmp_path / c / d
+        dd.mkdir(parents=True, exist_ok=True)
+        (dd / "trades.parquet").touch()
+        return dd
+    mock_engine.parquet_dir.side_effect = _mk
     mock_engine.conn.execute.side_effect = [
         MagicMock(fetchone=lambda: (100, 200)),
         MagicMock(fetchall=lambda: [(0, 10), (1, 20), (2, 30)]),

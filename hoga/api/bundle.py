@@ -173,8 +173,15 @@ def build_volume_profile_slice(
     vp_bins: int = 24,
 ) -> VolumeProfile:
     code_dir = engine.parquet_dir(date, code, source)
-    candles_path = str(code_dir / "candles.parquet")
-    trades_path = str(code_dir / "trades.parquet")
+    candles_path_obj = code_dir / "candles.parquet"
+    trades_path_obj = code_dir / "trades.parquet"
+    # ADR-0040/0043: kis_live source has no candles.parquet (Live Candle Backfill
+    # owns that dimension via separate cache). Return degenerate profile rather
+    # than raising. Likewise for missing trades.parquet (empty promote cycle).
+    if not candles_path_obj.exists() or not trades_path_obj.exists():
+        return VolumeProfile(bin_count=1, price_min=0, price_max=0, bin_width=0, bins=[])
+    candles_path = str(candles_path_obj)
+    trades_path = str(trades_path_obj)
     if price_min is None or price_max is None:
         row = engine.conn.execute(
             "SELECT MIN(low), MAX(high) FROM read_parquet(?)", [candles_path],
@@ -229,10 +236,16 @@ def build_volume_profile_range(
     if not dates_with_sources:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
 
+    # ADR-0043: kis_live trades.parquet may not exist for sparse Stock-Dates
+    # (empty promote cycle → atomic_write_parquet unlinks the file). Filter
+    # to existing paths only; if none remain, return empty profile.
     paths = [
         str(engine.parquet_dir(d, code, src) / "trades.parquet")
         for d, src in dates_with_sources
+        if (engine.parquet_dir(d, code, src) / "trades.parquet").exists()
     ]
+    if not paths:
+        return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
 
     min_max = engine.conn.execute(
         "SELECT MIN(price), MAX(price) FROM read_parquet(?)", [paths],

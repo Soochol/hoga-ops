@@ -72,11 +72,25 @@
 
 ADR-0020의 invariant `check` 함수는 meta dict를 받아서 위반 여부 반환. 이제 meta가 source-aware (어느 source의 meta인지)이므로 일부 invariant는 source-conditional이 될 수 있다 (예: hogaplay에서만 의미 있는 `global_seq` 단조 증가는 kis_live meta에 적용 안 됨). plan 단계에서 invariant 카탈로그 audit.
 
-## Invariant introduced
+## Invariants introduced
 
-> `<data_dir>/parquet/{date}/{code}/` 직속 자식은 source 디렉토리뿐이다. parquet/json 파일이 직속에 놓이지 않는다.
+1. **Source-only subdirectories**: `<data_dir>/parquet/{date}/{code}/` 직속 자식은 source 디렉토리뿐이다. parquet/json 파일이 직속에 놓이지 않는다.
 
-위반 시: legacy 경로 코드와 새 코드가 둘 다 valid한 데이터를 만든다고 착각해서 둘 다 읽는 race가 발생.
+   위반 시: legacy 경로 코드와 새 코드가 둘 다 valid한 데이터를 만든다고 착각해서 둘 다 읽는 race가 발생.
+
+2. **Shared read-path column contract** (2026-05-28 추가): 두 source의 `snapshots.parquet` / `trades.parquet`는 **서로 다른 source 고유 column을 가질 수 있지만**, `hoga/api/bundle.py`의 read-path query가 참조하는 column 집합은 **양쪽 모두에 존재해야 한다**:
+
+   - `snapshots.parquet` 필수 columns: `ts_ms`, `bid_q1..10`, `ask_q1..10` (`build_quote_ratio_slice`가 query)
+   - `trades.parquet` 필수 columns: `ts_ms`, `price`, `qty`, `side` (`build_fill_strength_slice`, `build_volume_profile_slice` 등)
+
+   위반 시: `_resolve_source`가 한 source를 고르고 슬라이스 빌더가 그 source의 parquet을 읽으려 할 때 DuckDB `BinderException`. **2026-05-28에 실제 incident** — hogaplay parser는 `ts_ms`로, kis_live promote는 `t_ms`로 작성하던 schema drift가 source-aware data slice fix(spec 2026-05-28) 적용 후 노출됨. Migration으로 디스크 정리 + `tests/unit/api/test_source_schema_contract.py`에 회귀 안전망 추가.
+
+   강제 메커니즘:
+   - `hoga/tables/snapshots.py:PARQUET_SCHEMA` (hogaplay 측 canonical schema)
+   - `hoga/live/promote.py:_parse_jsonl_to_records` (kis_live 측, column name 정합 유지 의무)
+   - `tests/unit/api/test_source_schema_contract.py` (양쪽 schema와 read-path column 교차 검증)
+
+   새 source 추가 시: 같은 column subset을 만족하는 parquet을 produce해야 ADR-0037 layout에 합류 가능.
 
 ## ADR-0006 성장 예산 발동 노트
 
