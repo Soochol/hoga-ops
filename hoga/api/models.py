@@ -539,6 +539,7 @@ class BrokerSeriesEntry(BaseModel):
 class BrokerSeriesResponse(BaseModel):
     date: str
     brokers: list[BrokerSeriesEntry]
+    source: SourceName
 
 
 # --- Watchlist (see spec 2026-05-26 and ADR-0034) --------------------------

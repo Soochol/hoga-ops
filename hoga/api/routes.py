@@ -171,8 +171,20 @@ def build_router(engine: QueryEngine) -> APIRouter:
         return CandlesResponse(candles=rows)
 
     @router.get("/brokers/series", response_model=BrokerSeriesResponse)
-    def brokers_series(code: Code, date: StockDate) -> BrokerSeriesResponse:
-        path = _parquet_path(engine, date, code, "brokers.parquet")
+    def brokers_series(
+        code: Code,
+        date: StockDate,
+        source_pref: SourceName = Query("hogaplay"),
+    ) -> BrokerSeriesResponse:
+        # ADR-0044: hover spot path honors source_pref via resolve_source +
+        # ADR-0039 preference+fallback semantics. The resolved source is
+        # echoed back so LiveStatusBar's chip can reflect fallback honestly.
+        source = resolve_source(engine, date, code, source_pref)
+        try:
+            sd_dir = engine.parquet_dir(date, code, source=source)
+        except StockDateNotFound as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        path = sd_dir / "brokers.parquet"
         raw_entries = brokers_tbl.query_day_series(engine.conn, path=path)
         # Convert each point's ts_ms from HH:MM:SS.ms-encoded to Unix ms,
         # mirroring the /api/brokers and /api/candles handlers.
@@ -189,7 +201,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
             )
             for e in raw_entries
         ]
-        return BrokerSeriesResponse(date=date, brokers=entries)
+        return BrokerSeriesResponse(date=date, brokers=entries, source=source)
 
     @router.get("/range", response_model=RangeBundle)
     def api_range(
