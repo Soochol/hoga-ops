@@ -42,7 +42,7 @@ def test_add_stockdate_copies_and_parses(
         assert body == {"ok": True, "code": "005930", "date": "20260520"}
         # Verify the parquet directory was created
         assert (
-            data_dir / "parquet" / "20260520" / "005930" / "meta.json"
+            data_dir / "parquet" / "20260520" / "005930" / "hogaplay" / "meta.json"
         ).exists()
         # And inventory now sees it
         inv = client.get("/api/stock-dates").json()

@@ -31,7 +31,7 @@ def _stage_raw(tmp_path: Path, fixture_name: str, code: str, date: str, *, finis
 def test_meta_has_collection_complete_true_when_progress_finished(tmp_path: Path) -> None:
     _stage_raw(tmp_path, "tiny_tsv", "005930", "20260520", finished=True)
     parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
-    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "meta.json"
+    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "hogaplay" / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     assert meta["collection_complete"] is True
 
@@ -39,7 +39,7 @@ def test_meta_has_collection_complete_true_when_progress_finished(tmp_path: Path
 def test_meta_has_collection_complete_false_when_progress_not_finished(tmp_path: Path) -> None:
     _stage_raw(tmp_path, "tiny_tsv", "005930", "20260520", finished=False)
     parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
-    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "meta.json"
+    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "hogaplay" / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     assert meta["collection_complete"] is False
 
@@ -48,7 +48,7 @@ def test_meta_collection_complete_false_when_progress_missing(tmp_path: Path) ->
     raw = _stage_raw(tmp_path, "tiny_tsv", "005930", "20260520", finished=True)
     (raw / "_progress.json").unlink()
     parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
-    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "meta.json"
+    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "hogaplay" / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     assert meta["collection_complete"] is False
 
@@ -58,7 +58,7 @@ def test_meta_is_partial_field_present(tmp_path: Path) -> None:
     matters here is that the field exists and is boolean."""
     _stage_raw(tmp_path, "tiny_tsv", "005930", "20260520", finished=True)
     parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
-    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "meta.json"
+    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "hogaplay" / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     assert isinstance(meta.get("is_partial"), bool)
 
@@ -74,7 +74,7 @@ def test_meta_omits_meta_level_violations_when_healthy(tmp_path: Path) -> None:
     test below. Here we lock the meta-level surface.)"""
     _stage_raw(tmp_path, "tiny_tsv", "005930", "20260520", finished=True)
     parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
-    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "meta.json"
+    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "hogaplay" / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     meta_level_ids = {
         v["invariant_id"] for v in meta.get("invariant_violations", [])
@@ -92,7 +92,7 @@ def test_meta_archives_series_violations_for_tiny_tsv_fixture(tmp_path: Path) ->
     """
     _stage_raw(tmp_path, "tiny_tsv", "005930", "20260520", finished=True)
     parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
-    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "meta.json"
+    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "hogaplay" / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     series_ids = {
         v["invariant_id"] for v in meta.get("invariant_violations", [])
@@ -108,7 +108,7 @@ def test_meta_records_invariant_violations_when_incomplete(tmp_path: Path) -> No
     The archival hook records that violation in the meta.json for diagnostics."""
     _stage_raw(tmp_path, "tiny_tsv", "005930", "20260520", finished=False)
     parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
-    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "meta.json"
+    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "hogaplay" / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     assert "invariant_violations" in meta
     ids = {v["invariant_id"] for v in meta["invariant_violations"]}

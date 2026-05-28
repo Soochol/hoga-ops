@@ -116,7 +116,7 @@ def test_parser_increments_full_capture_count_on_recapture(staged_raw: Path) -> 
 
 def test_parser_increments_full_capture_count_from_legacy_meta(staged_raw: Path) -> None:
     """Legacy meta.json without the field → after Retry, full_capture_count == 1."""
-    out_dir = staged_raw / "data" / "parquet" / "20260519" / "003490"
+    out_dir = staged_raw / "data" / "parquet" / "20260519" / "003490" / "hogaplay"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "meta.json").write_text(json.dumps({"legacy": True}), encoding="utf-8")
     parse_stock_date(code="003490", date="20260519", data_dir=staged_raw / "data")
@@ -133,7 +133,7 @@ def test_parser_handles_corrupt_prior_meta(
     except clause. See finding from pre-landing adversarial review.
     """
     import logging
-    out_dir = staged_raw / "data" / "parquet" / "20260519" / "003490"
+    out_dir = staged_raw / "data" / "parquet" / "20260519" / "003490" / "hogaplay"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "meta.json").write_bytes(b"\x80invalid not utf-8")
     with caplog.at_level(logging.WARNING, logger="hoga.parser"):
@@ -149,7 +149,7 @@ def test_parser_rejects_bool_prior_full_capture_count(staged_raw: Path) -> None:
     bool is a subclass of int in Python, so `isinstance(True, int)` is True.
     The guard must explicitly exclude bool to avoid silent off-by-one drift.
     """
-    out_dir = staged_raw / "data" / "parquet" / "20260519" / "003490"
+    out_dir = staged_raw / "data" / "parquet" / "20260519" / "003490" / "hogaplay"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "meta.json").write_text(
         json.dumps({"full_capture_count": True}), encoding="utf-8"

@@ -95,7 +95,7 @@ def test_mtime_change_triggers_recompute(tmp_path: Path) -> None:
         assert len(first) == 2
 
         # Bump mtime on one of the meta.json files by 5 seconds.
-        meta_path = engine.data_dir / "parquet" / _DATES[0] / "003490" / "meta.json"
+        meta_path = engine.data_dir / "parquet" / _DATES[0] / "003490" / "hogaplay" / "meta.json"
         original = meta_path.stat()
         new_ns = original.st_mtime_ns + 5_000_000_000
         os.utime(meta_path, ns=(new_ns, new_ns))

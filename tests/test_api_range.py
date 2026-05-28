@@ -252,3 +252,30 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
         )
     assert r.status_code == 200, r.text
     assert captured == ["hogaplay"]
+
+
+# --- Roundtrip: parser write path is visible to /api/range read path ---
+
+
+def test_parser_output_visible_as_hogaplay_source(app_client: TestClient) -> None:
+    """parse_stock_date → /api/range round-trip surfaces the captured day under
+    source=hogaplay with non-empty candles.
+
+    Regression: when parser wrote to the flat `{date}/{code}/` path (pre v2
+    layout fix), `_resolve_source` ignored it (only scans subdirs). With
+    `kis_live` co-existing the resolver fell through to kis_live, whose
+    candles.parquet doesn't exist by design → empty chart. This test fails
+    if parser ever regresses to the flat layout.
+
+    Setup: the module-scoped `app_client` fixture already runs parse_stock_date
+    for 003490/20260519 via tiny_tsv, so this just exercises read-back.
+    """
+    r = app_client.get(
+        "/api/range?code=003490&from=20260519&to=20260519&bucket_ms=60000"
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["segments"]) == 1
+    assert body["segments"][0]["date"] == "20260519"
+    assert body["segments"][0]["source"] == "hogaplay"
+    assert len(body["candles"]) > 0

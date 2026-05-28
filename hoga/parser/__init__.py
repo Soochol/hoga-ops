@@ -105,10 +105,16 @@ def parse_stock_date(
 ) -> Path:
     """Parse one Stock-Date's raw TSV into Parquet + meta.json.
 
-    Returns the output directory (data/parquet/{date}/{code}).
+    Returns the output directory (data/parquet/{date}/{code}/hogaplay).
+
+    Writes under the `hogaplay/` subdir per the ADR-0037 v2 layout. The
+    flat `{date}/{code}/` path is invisible to `_resolve_source` once a
+    second source (`kis_live`) co-exists on the same day — the resolver
+    only scans subdirectories, so a flat-layout capture silently falls
+    through to `kis_live`, whose candles.parquet doesn't exist by design.
     """
     raw_dir = data_dir / "raw" / date / code
-    out_dir = data_dir / "parquet" / date / code
+    out_dir = data_dir / "parquet" / date / code / "hogaplay"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     info_text = (raw_dir / "info.tsv").read_text(encoding="utf-8").strip()
