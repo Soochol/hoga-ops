@@ -1643,7 +1643,7 @@ def test_enqueue_pair_at_streak_4_is_accepted(monkeypatch, tmp_path):
 
 
 def test_enqueue_pair_at_streak_5_is_blocked(monkeypatch, tmp_path):
-    """At the cap → blocked, no enqueue."""
+    """At the cap → blocked, no enqueue, HTTP 409 (whole request rejected)."""
     _no_workers(monkeypatch)
     captures._fail_streaks["005930|20260520"] = 5
     app = _build_test_app(monkeypatch, tmp_path)
@@ -1651,8 +1651,7 @@ def test_enqueue_pair_at_streak_5_is_blocked(monkeypatch, tmp_path):
         r = c.post("/api/captures/items", json={
             "code": "005930", "dates": ["20260520"], "force_retry": False,
         })
-        # Status code policy lands in Task 6; for now Task 5 just checks the
-        # response shape carries the blocked entry.
+        assert r.status_code == 409
         body = r.json()
         assert body["enqueued"] == []
         assert len(body["blocked"]) == 1
@@ -1675,6 +1674,7 @@ def test_enqueue_force_retry_does_NOT_bypass_guard(monkeypatch, tmp_path):
         r = c.post("/api/captures/items", json={
             "code": "005930", "dates": ["20260520"], "force_retry": True,
         })
+        assert r.status_code == 409
         body = r.json()
         assert body["enqueued"] == []
         assert len(body["blocked"]) == 1

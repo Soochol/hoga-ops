@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 import hoga
@@ -1386,14 +1387,26 @@ def build_router(
     async def get_queue() -> QueueSnapshot:
         return get_queue_snapshot()
 
-    @router.post("/items", status_code=201)
-    async def enqueue_items(req: EnqueueRequest) -> EnqueueResponse:
-        """Thin wrapper around ``enqueue_items_core`` (ADR-0034)."""
-        return await enqueue_items_core(
+    @router.post("/items", status_code=201, response_model=EnqueueResponse)
+    async def enqueue_items(req: EnqueueRequest):
+        """Thin wrapper around ``enqueue_items_core`` (ADR-0034).
+
+        ADR-0042: if every requested (Code, Stock-Date) is blocked by the
+        fail_streak cap, the whole request was rejected — return HTTP 409.
+        Partial cases (some accepted, some blocked) keep the existing 201
+        partial-success shape (ADR-0033 pattern). Return annotation is
+        intentionally omitted: a JSONResponse bypasses Pydantic serialization
+        for the 409 branch while ``response_model=EnqueueResponse`` keeps the
+        OpenAPI schema coherent.
+        """
+        resp = await enqueue_items_core(
             req,
             data_dir=_require_data_dir(),
             now=_now_kst(),
         )
+        if resp.blocked and not resp.enqueued and not resp.deduped:
+            return JSONResponse(content=resp.model_dump(mode="json"), status_code=409)
+        return resp
 
     @router.post("/items/retry", status_code=201)
     async def retry_items_route(req: RetryRequest) -> RetryResponse:
