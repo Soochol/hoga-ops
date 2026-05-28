@@ -52,10 +52,15 @@ export type OrderbookSnapshot = {
   tot_bid: number;
 };
 
+/** Source name for ADR-0039 source_pref thread-through. Mirrors
+ *  hoga/api/sources.py::SourceName. */
+export type SourceName = 'hogaplay' | 'kis_live';
+
 /** GET /api/orderbook response envelope. */
 export type OrderbookResponse = {
   available_from: number | null;
   snapshot: OrderbookSnapshot | null;
+  source: SourceName;
 };
 
 // === Broker Day-Trajectory (ADR-0023) ===

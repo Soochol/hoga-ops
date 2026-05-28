@@ -1,0 +1,182 @@
+/**
+ * Tests for useLiveCursor.ts — live-page cursor spot hooks (ADR-0044).
+ *
+ * Mock strategy: vi.mock('./client') at module scope intercepts apiGet for all
+ * suites. Each describe block resets the mock in its own beforeEach.
+ */
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
+import { act } from 'react';
+import {
+  useLiveOrderbookAtCursor,
+  useLiveTradesAroundCursor,
+  useLiveBrokersAtCursor,
+} from './useLiveCursor';
+import { useLiveCursorStore } from '../live/useLiveCursorStore';
+import { useSourcePreferenceStore } from '../state/sourcePreference';
+
+// Mock the low-level fetch helper used by useSpot fetchers.
+vi.mock('./client', async (orig) => {
+  const actual = await orig<typeof import('./client')>();
+  return {
+    ...actual,
+    apiGet: vi.fn(async (url: string) => {
+      if (url.includes('/api/orderbook')) {
+        return { snapshot: { ts_ms: 1, asks: [], bids: [] }, available_from: null, source: 'hogaplay' };
+      }
+      throw new Error('unexpected url: ' + url);
+    }),
+  };
+});
+
+import { apiGet } from './client';
+
+// ─── Task 10: useLiveOrderbookAtCursor ───────────────────────────────────────
+
+describe('useLiveOrderbookAtCursor', () => {
+  beforeEach(() => {
+    useLiveCursorStore.getState().clearCursor();
+    useSourcePreferenceStore.getState().setSourcePreference('hogaplay');
+    (apiGet as unknown as ReturnType<typeof vi.fn>).mockClear();
+    (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
+      if (url.includes('/api/orderbook')) {
+        return { snapshot: { ts_ms: 1, asks: [], bids: [] }, available_from: null, source: 'hogaplay' };
+      }
+      throw new Error('unexpected url: ' + url);
+    });
+  });
+
+  it('returns undefined and does not fetch when cursorMs is null', async () => {
+    const { result } = renderHook(() =>
+      useLiveOrderbookAtCursor({ code: '005930', date: '20260528', timeframe: '1m' }),
+    );
+    expect(result.current).toBeUndefined();
+    expect(apiGet).not.toHaveBeenCalled();
+  });
+
+  it('fetches once when cursorMs becomes set', async () => {
+    const { result, rerender } = renderHook(() =>
+      useLiveOrderbookAtCursor({ code: '005930', date: '20260528', timeframe: '1m' }),
+    );
+    act(() => {
+      useLiveCursorStore.getState().setCursor(1_748_400_060_000);  // 1m boundary
+    });
+    rerender();
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    const url = (apiGet as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(url).toContain('/api/orderbook');
+    expect(url).toContain('code=005930');
+    expect(url).toContain('date=20260528');
+    expect(url).toContain('t=1748400060000');
+    expect(url).toContain('bucket_ms=60000');
+    expect(url).toContain('source_pref=hogaplay');
+    // T14b: result is LiveOrderbookSpot, assert via .snapshot
+    await waitFor(() => expect(result.current?.snapshot).toBeDefined());
+  });
+
+  it('client-side bucket alignment collapses within-minute hover to one fetch', async () => {
+    renderHook(() =>
+      useLiveOrderbookAtCursor({ code: '005930', date: '20260528', timeframe: '1m' }),
+    );
+    act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    act(() => useLiveCursorStore.getState().setCursor(1_748_400_061_234));  // same minute
+    act(() => useLiveCursorStore.getState().setCursor(1_748_400_089_999));  // same minute
+    // 80ms is enough for useSpot's 30ms debounce to fire.
+    await new Promise((r) => setTimeout(r, 80));
+    expect(apiGet).toHaveBeenCalledTimes(1);  // bucket-aligned: same key, LRU hit
+  });
+
+  it('source_pref change reissues the query', async () => {
+    renderHook(() =>
+      useLiveOrderbookAtCursor({ code: '005930', date: '20260528', timeframe: '1m' }),
+    );
+    act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
+      if (url.includes('/api/orderbook')) {
+        return { snapshot: { ts_ms: 2, asks: [], bids: [] }, available_from: null, source: 'kis_live' };
+      }
+      throw new Error('unexpected url: ' + url);
+    });
+    act(() => useSourcePreferenceStore.getState().setSourcePreference('kis_live'));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
+    const url = (apiGet as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+    expect(url).toContain('source_pref=kis_live');
+  });
+});
+
+// ─── Task 11: useLiveTradesAroundCursor ──────────────────────────────────────
+
+describe('useLiveTradesAroundCursor', () => {
+  beforeEach(() => {
+    useLiveCursorStore.getState().clearCursor();
+    useSourcePreferenceStore.getState().setSourcePreference('hogaplay');
+    (apiGet as unknown as ReturnType<typeof vi.fn>).mockClear();
+    (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
+      if (url.includes('/api/trades')) return { trades: [], source: 'hogaplay' };
+      throw new Error('unexpected url: ' + url);
+    });
+  });
+
+  it('does not fetch when cursorMs null', async () => {
+    const { result } = renderHook(() =>
+      useLiveTradesAroundCursor({ code: '005930', date: '20260528', timeframe: '1m' }),
+    );
+    expect(result.current).toBeUndefined();
+    expect(apiGet).not.toHaveBeenCalled();
+  });
+
+  it('builds URL with t aligned, limit=20, source_pref', async () => {
+    renderHook(() =>
+      useLiveTradesAroundCursor({ code: '005930', date: '20260528', timeframe: '1m' }),
+    );
+    act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    const url = (apiGet as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(url).toContain('/api/trades');
+    expect(url).toContain('t=1748400060000');
+    expect(url).toContain('limit=20');
+    expect(url).toContain('source_pref=hogaplay');
+  });
+});
+
+// ─── Task 12: useLiveBrokersAtCursor ─────────────────────────────────────────
+
+describe('useLiveBrokersAtCursor', () => {
+  beforeEach(() => {
+    useLiveCursorStore.getState().clearCursor();
+    useSourcePreferenceStore.getState().setSourcePreference('hogaplay');
+    (apiGet as unknown as ReturnType<typeof vi.fn>).mockClear();
+    (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
+      if (url.includes('/api/brokers/series')) {
+        return { date: '20260528', brokers: [], source: 'hogaplay' };
+      }
+      throw new Error('unexpected url: ' + url);
+    });
+  });
+
+  it('does not fetch when cursorMs null', () => {
+    renderHook(() => useLiveBrokersAtCursor({ code: '005930', date: '20260528' }));
+    expect(apiGet).not.toHaveBeenCalled();
+  });
+
+  it('fetches once when cursorMs set, key independent of cursorMs value', async () => {
+    renderHook(() => useLiveBrokersAtCursor({ code: '005930', date: '20260528' }));
+    act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    // Moving cursor within the same day must not refetch — the day series
+    // is whole-day; the sidebar projects per-row net at cursor client-side.
+    act(() => useLiveCursorStore.getState().setCursor(1_748_400_900_000));
+    await new Promise((r) => setTimeout(r, 80));
+    expect(apiGet).toHaveBeenCalledTimes(1);
+  });
+
+  it('source_pref change reissues', async () => {
+    renderHook(() => useLiveBrokersAtCursor({ code: '005930', date: '20260528' }));
+    act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    act(() => useSourcePreferenceStore.getState().setSourcePreference('kis_live'));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
+  });
+});
