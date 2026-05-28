@@ -296,8 +296,12 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
               spec={spec}
             />
           ))}
-          {/* Day boundary lines on multi-day axes — same component /replay uses. */}
-          <DayBoundaryOverlay chart={chart} axis={axis} />
+          {/* Day boundary lines only make sense on intraday timeframes —
+              D/W/M's candles are already day/week/month units, so a
+              per-day vertical line collapses onto each candle. */}
+          {isMinuteTimeframe(timeframe) && (
+            <DayBoundaryOverlay chart={chart} axis={axis} />
+          )}
         </>
       )}
       {dwDisabled && (
