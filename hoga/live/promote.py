@@ -27,33 +27,33 @@ from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers_parque
 _log = logging.getLogger(__name__)
 
 
-async def promote_one(
+def _parse_jsonl_to_records(
     jsonl_path: Path,
-    parquet_root: Path,
     *,
     code: str,
     date: str,
-) -> None:
-    """Convert one JSONL file to Parquet artifacts under `parquet/{date}/{code}/kis_live/`.
+) -> tuple[list[dict], list[dict], list[BrokerRow], dict]:
+    """Parse one Live Capture JSONL into (snapshots, trades, broker_rows, meta) tuples.
 
-    Idempotent: if `meta.json` already exists at the target, skip.
+    Shared by promote_one (ADR-0038 daily batch) and promote_today
+    (ADR-0043 in-session N-minute overwrite). Torn last lines are skipped
+    with a `live.promote.partial_line` warn log.
+
+    `meta` is the JSON dict ready to write to meta.json — caller decides
+    when/how to persist it.
+
+    If `jsonl_path` does not exist, returns empty lists and meta with
+    row_counts=0.
     """
-    target = parquet_root / date / code / "kis_live"
-    meta_path = target / "meta.json"
-    if meta_path.exists():
-        _log.info(
-            "live.promote.skip code=%s date=%s reason=already_promoted", code, date
-        )
-        return
-
-    if not jsonl_path.exists():
-        return
-
     snapshots: list[dict] = []
     trades: list[dict] = []
     broker_rows: list[BrokerRow] = []
     broker_snapshot_count = 0
     broker_seq = 0  # monotonic per stock-date; KIS has no native seq.
+
+    if not jsonl_path.exists():
+        meta = _build_meta(code, date, snapshots, trades, broker_snapshot_count)
+        return snapshots, trades, broker_rows, meta
 
     with jsonl_path.open("r", encoding="utf-8") as f:
         for raw in f:
@@ -63,7 +63,6 @@ async def promote_one(
             try:
                 row = json.loads(line)
             except json.JSONDecodeError:
-                # Torn last line from a crash mid-cycle — drop silently.
                 _log.warning(
                     "live.promote.partial_line code=%s date=%s", code, date
                 )
@@ -95,10 +94,6 @@ async def promote_one(
                         "phase": phase,
                     })
             elif kind == "broker":
-                # Long-format, same schema as the hogaplay parser writes
-                # (hoga/tables/brokers.py:PARQUET_SCHEMA). KIS doesn't carry
-                # a global_seq or per-slot delta, so seq is a monotonic
-                # counter and qty_delta=0 — query_day_series ignores both.
                 buy = p.get("buy_top") or []
                 sell = p.get("sell_top") or []
                 broker_snapshot_count += 1
@@ -124,15 +119,14 @@ async def promote_one(
                         qty_delta=0,
                     ))
 
-    target.mkdir(parents=True, exist_ok=True)
-    if snapshots:
-        pl.DataFrame(snapshots).write_parquet(target / "snapshots.parquet")
-    if trades:
-        pl.DataFrame(trades).write_parquet(target / "trades.parquet")
-    if broker_rows:
-        write_brokers_parquet(broker_rows, target / "brokers.parquet")
+    meta = _build_meta(code, date, snapshots, trades, broker_snapshot_count)
+    return snapshots, trades, broker_rows, meta
 
-    meta = {
+
+def _build_meta(
+    code: str, date: str, snapshots: list, trades: list, broker_snapshot_count: int,
+) -> dict:
+    return {
         "source": "kis_live",
         "code": code,
         "date": date,
@@ -140,19 +134,48 @@ async def promote_one(
         "row_counts": {
             "snapshots": len(snapshots),
             "trades": len(trades),
-            # Broker snapshot count (cycles captured), not long-format
-            # row count — same operator-meaningful metric as before.
             "brokers": broker_snapshot_count,
         },
-        # ADR-0003 HHMMSSmmm encoding. /api/range's build_range_bundle reads
-        # these keys to populate segment session bounds; without them the
-        # bundle build raised KeyError when /api/range fell back to a
-        # kis_live source via ADR-0039. KRX Half-Day Sessions are out of
-        # scope here — kis_live doesn't expose the half-day flag, so we
-        # default to the standard 09:00-15:30 window.
+        # ADR-0003 HHMMSSmmm encoding.
         "regular_session_open_ms": 90000000,    # 09:00:00.000
         "regular_session_close_ms": 153000000,  # 15:30:00.000
     }
+
+
+async def promote_one(
+    jsonl_path: Path,
+    parquet_root: Path,
+    *,
+    code: str,
+    date: str,
+) -> None:
+    """Convert one JSONL file to Parquet artifacts under `parquet/{date}/{code}/kis_live/`.
+
+    Idempotent: if `meta.json` already exists at the target, skip.
+    See ADR-0038 (deferred batch promotion) and ADR-0043 (sister Today
+    Promotion that this helper coexists with).
+    """
+    target = parquet_root / date / code / "kis_live"
+    meta_path = target / "meta.json"
+    if meta_path.exists():
+        _log.info(
+            "live.promote.skip code=%s date=%s reason=already_promoted", code, date
+        )
+        return
+    if not jsonl_path.exists():
+        return
+
+    snapshots, trades, broker_rows, meta = _parse_jsonl_to_records(
+        jsonl_path, code=code, date=date,
+    )
+
+    target.mkdir(parents=True, exist_ok=True)
+    if snapshots:
+        pl.DataFrame(snapshots).write_parquet(target / "snapshots.parquet")
+    if trades:
+        pl.DataFrame(trades).write_parquet(target / "trades.parquet")
+    if broker_rows:
+        write_brokers_parquet(broker_rows, target / "brokers.parquet")
     meta_path.write_text(json.dumps(meta, indent=2))
     _log.info(
         "live.promote.done code=%s date=%s row_counts=%s",

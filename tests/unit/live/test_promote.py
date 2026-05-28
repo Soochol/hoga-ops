@@ -1,11 +1,18 @@
-"""Stage 5 / Task 5.1 — Promotion tests."""
+"""Stage 5 / Task 5.1 — Promotion tests.
+
+Also includes Task 2 tests for _parse_jsonl_to_records helper + regression.
+"""
+import asyncio
 import json
 import os
 import time
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import polars as pl
 import pytest
+
+from hoga.live.promote import _parse_jsonl_to_records
 
 
 @pytest.mark.asyncio
@@ -220,3 +227,81 @@ async def test_cleanup_archive_noop_when_dir_missing(tmp_path: Path) -> None:
     from hoga.live.promote import cleanup_archive
     # Should not raise
     await cleanup_archive(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Task 2: _parse_jsonl_to_records helper tests
+# ---------------------------------------------------------------------------
+
+def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
+    jsonl = tmp_path / "in.jsonl"
+    rows = [
+        {"t_ms": 1, "kind": "ob", "payload": {
+            "bids": [{"price": 26800, "qty": 879}],
+            "asks": [{"price": 26850, "qty": 6141}],
+            "total_bid_qty": 95085, "total_ask_qty": 102768,
+        }},
+        {"t_ms": 2, "kind": "trade", "payload": {
+            "trades": [{"t_ms": 2, "price": 26850, "qty": 10, "side": 1}],
+            "phase": "regular",
+        }},
+        {"t_ms": 3, "kind": "broker", "payload": {
+            "buy_top": [{"name": "키움", "qty": 100}],
+            "sell_top": [{"name": "신한", "qty": 50}],
+        }},
+    ]
+    jsonl.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+    snapshots, trades, broker_rows, meta = _parse_jsonl_to_records(
+        jsonl, code="003490", date="20260528",
+    )
+
+    assert len(snapshots) == 1
+    assert snapshots[0]["bid_p1"] == 26800
+    assert snapshots[0]["total_bid_qty"] == 95085
+    assert len(trades) == 1
+    assert trades[0]["price"] == 26850
+    assert len(broker_rows) == 2  # 1 buy + 1 sell
+    assert meta["source"] == "kis_live"
+    assert meta["code"] == "003490"
+    assert meta["row_counts"]["snapshots"] == 1
+    assert meta["row_counts"]["trades"] == 1
+    assert meta["row_counts"]["brokers"] == 1  # snapshot count, not row count
+
+
+def test_parse_jsonl_to_records_skips_torn_line(tmp_path: Path, caplog) -> None:
+    jsonl = tmp_path / "in.jsonl"
+    good = json.dumps({"t_ms": 1, "kind": "ob", "payload": {
+        "bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0,
+    }})
+    jsonl.write_text(good + "\n{ malformed\n")
+
+    with caplog.at_level("WARNING"):
+        snapshots, _, _, meta = _parse_jsonl_to_records(
+            jsonl, code="003490", date="20260528",
+        )
+
+    assert len(snapshots) == 1
+    assert any("partial_line" in r.message for r in caplog.records)
+
+
+def test_promote_one_archive_move_regression(tmp_path: Path) -> None:
+    """eng-review Suggestion #6 — promote_one refactor 후에도 archive 이동 유지."""
+    from hoga.live.promote import promote_pending
+
+    kst = timezone(timedelta(hours=9))
+    yesterday = (datetime.now(kst) - timedelta(days=1)).strftime("%Y%m%d")
+    jsonl = tmp_path / "live" / yesterday / "003490.jsonl"
+    jsonl.parent.mkdir(parents=True, exist_ok=True)
+    jsonl.write_text(json.dumps({
+        "t_ms": 1, "kind": "ob",
+        "payload": {"bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0},
+    }) + "\n")
+
+    asyncio.run(promote_pending(tmp_path))
+
+    # parquet 생성
+    assert (tmp_path / "parquet" / yesterday / "003490" / "kis_live" / "meta.json").exists()
+    # archive 이동 — 핵심 회귀
+    assert not jsonl.exists()
+    assert (tmp_path / "live" / "_archive" / yesterday / "003490.jsonl").exists()
