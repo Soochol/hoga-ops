@@ -1238,7 +1238,7 @@ export default function ColorSwatchButton({ value, onChange }: Props) {
         aria-label="MA 색상 선택"
         onClick={() => setOpen((o) => !o)}
         style={{ backgroundColor: value }}
-        className="w-5 h-5 rounded-[3px] border border-border"
+        className="w-5 h-5 rounded-[2px] border border-border"
       />
       {open && (
         <div
@@ -1254,7 +1254,7 @@ export default function ColorSwatchButton({ value, onChange }: Props) {
               aria-pressed={c.toLowerCase() === value.toLowerCase()}
               onClick={() => { onChange(c); setOpen(false); }}
               style={{ backgroundColor: c }}
-              className="w-5 h-5 rounded-[3px] border border-border hover:scale-110 transition-transform"
+              className="w-5 h-5 rounded-[2px] border border-border hover:scale-110 transition-transform"
             />
           ))}
         </div>
@@ -1688,7 +1688,7 @@ export default function IndicatorPanel({ onClose }: Props) {
         </div>
         <div className="flex">
           <nav className="w-[180px] py-2 border-r border-border" aria-label="지표 카테고리">
-            <div className="text-fg-dimmer text-[10px] uppercase tracking-wider px-4 pb-2">상단 지표</div>
+            <div className="text-fg-dimmer text-xs uppercase tracking-wider px-4 pb-2">상단 지표</div>
             {CATEGORIES.map((c) => (
               <button
                 key={c.id}
@@ -1710,11 +1710,27 @@ export default function IndicatorPanel({ onClose }: Props) {
             <MovingAverageConfig />
           </div>
         </div>
+        {/* Footer — mirrors SettingsModal pattern for cross-modal visual
+            consistency. Top-right ✕ alone is not sufficient: users trained
+            on the /replay 설정 modal expect a footer-anchored 닫기 button. */}
+        <div className="flex justify-end px-4 py-3 border-t border-border">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm bg-bg-input hover:bg-bg-input-hover text-fg rounded"
+          >
+            닫기
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 ```
+
+> **Note**: Task 12 test "✕ button calls onClose" tests the header ✕. Footer 닫기
+> button uses the same `onClose` callback — covered by the same code path, no
+> additional test required (would be testing identical wire-up twice).
 
 - [ ] **Step 4: Run tests — expect PASS**
 
@@ -1722,7 +1738,7 @@ export default function IndicatorPanel({ onClose }: Props) {
 
 ```bash
 git add frontend/src/live/indicators/IndicatorPanel.tsx frontend/src/live/indicators/IndicatorPanel.test.tsx
-git commit -m "feat(live): IndicatorPanel modal — 7 categories, MA active"
+git commit -m "feat(live): IndicatorPanel modal — 7 categories, MA active, SettingsModal-parity footer"
 ```
 
 ---
@@ -1979,4 +1995,32 @@ If any post-fix is necessary, commit those fixes here. Otherwise this task ends 
 
 ## Deferred review notes
 
-_(populated by Plan reviews stage if applicable)_
+### From `plan-design-review` (2026-05-28, scope: frontend)
+
+**Suggestions (not blocking — track for follow-up):**
+
+- **ⓘ info icon은 non-interactive 텍스트** — 현재 plan은 `이동평균선 ⓘ` 의
+  `ⓘ`를 `<span aria-hidden>` 으로만 렌더. mockup의 의도는 hover 시 정의를
+  보여주는 tooltip widget. v1은 시각만 유지하고 후속 spec에서 공용
+  tooltip 컴포넌트와 함께 wire-up.
+- **슬롯 ✕ 삭제 버튼의 hit area가 작음** — `text-base leading-none` 단일
+  글자. desktop-only 앱이라 우선순위 낮음. accessibility 강화 시
+  `min-w-[24px] min-h-[24px]` 추가 고려.
+- **색상 swatch 호버 시 hex 코드 표시 안 함** — 현재는 색만 보이고 이름/hex
+  비공개. color-blind 사용자나 정확한 hex 비교가 필요한 분석가에게 도움
+  될 수 있음 — `title={c}` 추가가 한 줄 변경.
+- **disabled 6개 카테고리의 visual differentiation** — 현재 `opacity-50
+  cursor-not-allowed` + `text-fg-dimmer`. mockup에서는 각각 다른 원형 outline
+  아이콘 (○) 이 보이는데 plan은 텍스트만. v1 acceptable, mockup-fidelity
+  올리려면 좌측 아이콘 슬롯 추가.
+
+**Reviewed scores:**
+
+- Information Architecture: 9/10 — 좌측 카테고리 + 우측 설정 구조 명확
+- Interaction State Coverage: 9/10 — 토글/색상/굵기/소스/기간/추가/삭제 모두 명세
+- AI Slop Risk: 10/10 — Modern Trading Lab DNA 충실, generic SaaS 패턴 부재
+- Design System Alignment: 9/10 (critical 3건 자동 수정 반영 후)
+- Responsive/A11y: 8/10 — desktop-only 앱이라 mobile 불필요, a11y aria 패턴
+  대부분 갖춤
+- Mockup Fidelity: 9/10 — 7 categories + 가변 슬롯 + 4 picker가 모두 plan에
+  매핑됨
