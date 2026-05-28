@@ -24,6 +24,107 @@ adr: docs/adr/0042-capture-fail-streak-cap.md
 
 ---
 
+## Task 0: Reconnaissance — pin actual helper names + test fixtures
+
+**Why this exists:** later tasks reference `_manifest_snapshot()`, `_manifest_lock()`, `_data_dir()` and test fixtures `seeded_manifest` / `seeded_done` / `seeded_inventory` / `client`. These are *placeholders* — the actual helper names live in the existing codebase. Pinning them once up front prevents Tasks 3 and 7 from drifting onto different lock helpers and prevents Tasks 5-8 from inventing inconsistent test bootstraps.
+
+**Files:**
+- Read-only: `hoga/api/captures.py`, `hoga/api/captures_persistence.py`, `tests/unit/live/test_api.py`, `tests/test_api_captures_persistence.py`
+- Output: a short note at the top of this plan file (or in a sticky comment in the worktree) recording the actual names.
+
+- [ ] **Step 1: Find the in-memory manifest mirror + lock helper**
+
+Run: `grep -n "QueueManifest(\|_lock\|asyncio.Lock\|threading.Lock" hoga/api/captures.py | head -40`
+
+Look for: a module-level variable that holds the current `QueueManifest` (the "snapshot"), and the async/threading lock that serializes mutations. Record the exact names. Example outputs:
+- `_manifest: QueueManifest = ...` → snapshot accessor pattern
+- `_queue_lock = asyncio.Lock()` → lock helper
+
+- [ ] **Step 2: Find the `data_dir` accessor**
+
+Run: `grep -n "data_dir\|_data_dir\|DATA_DIR" hoga/api/captures.py | head -20`
+
+Record whether `data_dir` is a module global, passed through `enqueue_items_core(..., data_dir=...)`, or read from `hoga.config`. Tasks 3 and 7 must use the same accessor.
+
+- [ ] **Step 3: Find the existing `cancel-all` / `queue/resume` handler — the reference pattern**
+
+Run: `grep -n "@router.post" hoga/api/captures.py`
+
+Read one of those handlers in full. Confirm the exact shape of "acquire lock → mutate manifest → `save_manifest` → return". Task 7 (unblock endpoint) must mirror this pattern exactly.
+
+- [ ] **Step 4: Locate or create the test fixtures**
+
+Run: `grep -rn "def seeded_\|@pytest.fixture" tests/unit/live/ tests/test_api_captures_persistence.py | head -20`
+
+Two outcomes:
+- **Fixtures exist** → record their names and what they take. Later tasks reference them by these exact names.
+- **Fixtures don't exist** → create `tests/unit/live/conftest.py` with the following minimal fixtures, written by adapting the bootstrap pattern from `test_api.py`:
+  ```python
+  @pytest.fixture
+  def seeded_manifest(tmp_path, monkeypatch):
+      """Returns a callable that writes a .queue.json with the given fail_streaks dict."""
+      def _seed(fail_streaks: dict[str, int]) -> None:
+          from hoga.api.captures_persistence import save_manifest
+          from hoga.api.models import QueueManifest
+          save_manifest(tmp_path, QueueManifest(paused=False, items=[], fail_streaks=fail_streaks))
+          # Point captures.py's data_dir at tmp_path — exact mechanism depends on Step 2's findings.
+          monkeypatch.setattr("hoga.api.captures._data_dir", lambda: tmp_path)  # adjust to actual accessor
+      return _seed
+
+  @pytest.fixture
+  def client(seeded_manifest):
+      """FastAPI TestClient. Match the bootstrap from tests/unit/live/test_api.py."""
+      from fastapi.testclient import TestClient
+      from hoga.api.app import default_app
+      return TestClient(default_app())
+
+  @pytest.fixture
+  def seeded_done(seeded_manifest):
+      """Append a fake terminal entry to _done. Adjust to whatever in-memory _done the captures module uses."""
+      def _seed(code: str, date: str, phase: str) -> None:
+          import hoga.api.captures as cap
+          from hoga.api.models import QueueItemState
+          cap._done.append(QueueItemState(code=code, date=date, phase=phase, ...))
+      return _seed
+
+  @pytest.fixture
+  def seeded_inventory(tmp_path):
+      """Create a minimal parquet/meta.json so QueryEngine.list_stock_dates returns one row."""
+      def _seed(code: str, date: str) -> None:
+          # Pattern: write tmp_path/parquet/{date}/{code}/meta.json with a minimal payload.
+          # See tests/test_queries.py for the exact meta.json schema.
+          ...
+      return _seed
+  ```
+  Stub `...` parts using the patterns observed in the existing test files. **Do not invent fields** — copy from `tests/test_queries.py` / `tests/test_api_captures_persistence.py`.
+
+- [ ] **Step 5: Record the findings**
+
+At the top of this plan file (or in a sticky note in `.git/info/`), record a small mapping:
+
+```
+ACTUAL NAMES (filled in by Task 0):
+  manifest snapshot helper: <name>          # used by Tasks 3, 5, 8
+  manifest lock helper:     <name>          # used by Tasks 3, 7
+  data_dir accessor:        <name>          # used by Tasks 3, 7, 8
+  cancel-all reference:     <line range>    # used by Task 7
+  test fixtures created in: tests/unit/live/conftest.py  (or existing locations)
+```
+
+When subsequent tasks reach a `<placeholder>` like `_manifest_snapshot()`, substitute the actual name from this table.
+
+- [ ] **Step 6: Commit (only if conftest.py was newly created)**
+
+```bash
+# Only if you wrote a new conftest.py:
+git add tests/unit/live/conftest.py
+git commit -m "test(captures): add seeded_manifest/done/inventory/client fixtures for ADR-0042 tests"
+```
+
+If only reconnaissance was done (no file changes), no commit.
+
+---
+
 ## Task 1: Extend `QueueManifest` with `fail_streaks` (Pydantic schema)
 
 **Files:**
@@ -496,7 +597,9 @@ git commit -m "feat(api): BlockedItem model + EnqueueResponse.blocked field (ADR
 - Modify: `hoga/api/captures.py` (`enqueue_items_core`, around captures.py:1144-1287)
 - Test: `tests/unit/live/test_api.py` (existing file — append) or new `tests/unit/live/test_enqueue_blocked.py`
 
-**Critical:** the new guard must run **after** date expansion (so we have concrete dates) but **before** ADR-0033 dedupe (so a blocked pair never reaches Implicit Retry). Concretely: insert between captures.py:1190 (end of date expansion) and captures.py:1208 (start of dedupe). Verify the exact line numbers before editing — the file may have shifted since the spec was written.
+**Critical:** the new guard must run **after** date expansion AND after Q15 Layer 1 dedupe (queue/active/inflight), but **before** ADR-0033's `_done` dedupe (so a blocked pair never reaches Implicit Retry). Concretely: insert between captures.py:1236 (end of Q15 Layer 1) and captures.py:1238 (start of ADR-0033 `_done` dedupe). Verify the exact line numbers before editing — the file may have shifted since the spec was written.
+
+**Why this position:** placing the guard before Q15 Layer 1 would mean a pair already in `_queue`/`_active` could be reported as `blocked` despite an in-flight attempt that hasn't terminated yet (semantically wrong — the in-flight attempt could still succeed and reset the counter). Placing it after ADR-0033 would let a blocked pair go through Implicit Retry first. The narrow window in between is the only correct location.
 
 - [ ] **Step 1: Write failing tests for the guard**
 
@@ -711,19 +814,20 @@ Expected: 409 test fails (route still returns 201 unconditionally).
 Locate the route handler (search: `grep -n "enqueue_items_core" hoga/api/captures.py | head -5`). The handler is the FastAPI function that calls `enqueue_items_core` and returns a Response. Change its return so:
 
 ```python
-from fastapi import Response
+from fastapi.responses import JSONResponse
 
 resp = await enqueue_items_core(req, data_dir=data_dir, now=now)
 if resp.blocked and not resp.enqueued and not resp.deduped:
-    return Response(
-        content=resp.model_dump_json(),
-        media_type="application/json",
+    # Use JSONResponse (not Response) so OpenAPI schema documentation
+    # and response_model behaviour stay coherent for the 409 path.
+    return JSONResponse(
+        content=resp.model_dump(mode="json"),
         status_code=409,
     )
 return resp  # default 201 from existing route declaration
 ```
 
-If the route already uses `JSONResponse` or a different pattern, adapt — keep the semantic: all-blocked → 409, otherwise current behaviour.
+If the route already uses `JSONResponse` or a different pattern, adapt — keep the semantic: all-blocked → 409, otherwise current behaviour. **Do not use bare `Response()`** — it bypasses FastAPI's schema validation and breaks `/docs`.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1228,37 +1332,45 @@ Expected: all 3 fail.
 
 - [ ] **Step 4: Implement the branch in the row component**
 
+**CRITICAL — React Rules of Hooks:** `useInventoryUnblock()` MUST be called unconditionally at the top of the component, BEFORE any early return or conditional branch. Calling it inside `if (row.blocked) { ... }` is illegal — when row.blocked toggles, hook call order changes and React throws.
+
 Edit the row component:
 
 ```tsx
 import { useInventoryUnblock } from './useInventoryUnblock';
 
-// ...inside the component:
-if (row.blocked) {
+export function InventoryRow({ row }: { row: InventoryRowData }) {
+  // Hooks always at top, unconditional. This is non-negotiable.
   const { unblock } = useInventoryUnblock();
+  // ...any other existing hooks (useCallback, useState, etc.) also stay at top...
+
+  if (row.blocked) {
+    return (
+      <div className={/* DESIGN.md warning tint class */}>
+        {/* ...other row cells... */}
+        <span className={/* badge class */}>차단됨 (5/5)</span>
+        <button onClick={() => unblock.mutate({ code: row.code, date: row.date })}>
+          잠금 해제
+        </button>
+      </div>
+    );
+  }
+
+  // Optional indicator slot for 0 < fail_streak < 5 — include only if the design system
+  // provides a suitable subdued token.
   return (
-    <div className={/* DESIGN.md warning tint class */}>
-      {/* ...other row cells... */}
-      <span className={/* badge class */}>차단됨 (5/5)</span>
-      <button onClick={() => unblock.mutate({ code: row.code, date: row.date })}>
-        잠금 해제
-      </button>
+    <div>
+      {/* ...existing row... */}
+      {row.fail_streak > 0 && (
+        <span className={/* subdued class */}>재시도 {row.fail_streak}/5</span>
+      )}
+      {/* existing Re-capture button */}
     </div>
   );
 }
-
-// Optional indicator slot for 0 < fail_streak < 5 — include only if the design system
-// provides a suitable subdued token.
-return (
-  <div>
-    {/* ...existing row... */}
-    {row.fail_streak > 0 && (
-      <span className={/* subdued class */}>재시도 {row.fail_streak}/5</span>
-    )}
-    {/* existing Re-capture button */}
-  </div>
-);
 ```
+
+Note: `unblock` is referenced only inside the `onClick` of the blocked branch — it's created unconditionally but invoked lazily. That's the React-legal pattern.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -1453,6 +1565,15 @@ If no changes were needed, this is just a checkpoint announcement: "All gates gr
 - **No fall-back behaviour that swallows errors.** If `clear_for_unblock` or `apply_terminal_to_manifest` raises, let it propagate. The existing top-level FastAPI handler converts it to a 500; no try/except around manifest writes except the explicit `OSError → 500` in Task 7.
 
 - **No commenting out tests.** If a test in Task 3 Step 6 can't run because the bootstrap helper isn't ready, use `pytest.mark.skip(reason="bootstrap helper TBD")` with a follow-up note — never delete or comment out.
+
+## Deferred review notes
+
+These are non-blocking findings from the eng-review (E7-E9) and design-review (filled in by stage 4 of /full-flow). They are recorded so the implementor can address them opportunistically without expanding the plan's surface area.
+
+- **E7 (eng-review):** Task 11 `재시도 N/5` indicator omission rule has a single test branch (`expect(indicator).toBeInTheDocument()`). When DESIGN.md is checked in Task 11 Step 1 and the token is missing, the test must be flipped to `expect(...).toBeNull()` instead of left as-is. Either outcome is acceptable; the test must follow the decision.
+- **E8 (eng-review):** Task 5 Step 4 uses `# noqa: PLC0415` for a function-level import of `is_blocked` / `read_fail_streak`. Move to module top-level if no circular import surfaces.
+- **E9 (eng-review):** Task 8 Step 4 reads the manifest once per `/api/stock-dates` request. Single-user dev tool, file is tiny — accept. If inventory becomes a hot endpoint later, cache per request scope.
+- **(design-review notes will be appended here in stage 4)**
 
 ## Spec coverage check (filled out after writing the plan)
 
