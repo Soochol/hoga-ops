@@ -444,3 +444,50 @@ def test_validate_daily_rejects_future_to() -> None:
     with pytest.raises(HTTPException) as exc:
         _validate_daily_past_request("005930", today, tomorrow)
     assert exc.value.status_code == 422
+
+
+# ----- _compute_daily_gaps -----
+
+from datetime import date as _date
+from hoga.live.api import _compute_daily_gaps
+
+
+def test_gaps_empty_cache_returns_full_range() -> None:
+    gaps = _compute_daily_gaps(_date(2020, 1, 1), _date(2025, 12, 31), existing=[])
+    assert gaps == [(_date(2020, 1, 1), _date(2025, 12, 31))]
+
+
+def test_gaps_full_coverage_returns_empty() -> None:
+    existing = [(_date(2020, 1, 1), _date(2025, 12, 31))]
+    gaps = _compute_daily_gaps(_date(2021, 1, 1), _date(2024, 12, 31), existing)
+    assert gaps == []
+
+
+def test_gaps_prefix_gap() -> None:
+    existing = [(_date(2020, 1, 1), _date(2025, 12, 31))]
+    gaps = _compute_daily_gaps(_date(2018, 1, 1), _date(2022, 12, 31), existing)
+    assert gaps == [(_date(2018, 1, 1), _date(2019, 12, 31))]
+
+
+def test_gaps_suffix_gap() -> None:
+    existing = [(_date(2020, 1, 1), _date(2022, 12, 31))]
+    gaps = _compute_daily_gaps(_date(2020, 1, 1), _date(2024, 12, 31), existing)
+    assert gaps == [(_date(2023, 1, 1), _date(2024, 12, 31))]
+
+
+def test_gaps_middle_gap_between_two_batches() -> None:
+    existing = [
+        (_date(2020, 1, 1), _date(2022, 12, 31)),
+        (_date(2024, 1, 1), _date(2025, 12, 31)),
+    ]
+    gaps = _compute_daily_gaps(_date(2021, 1, 1), _date(2024, 6, 30), existing)
+    assert gaps == [(_date(2023, 1, 1), _date(2023, 12, 31))]
+
+
+def test_gaps_adjacent_batches_coalesce() -> None:
+    existing = [
+        (_date(2020, 1, 1), _date(2022, 12, 31)),
+        (_date(2023, 1, 1), _date(2025, 12, 31)),
+    ]
+    gaps = _compute_daily_gaps(_date(2018, 1, 1), _date(2025, 12, 31), existing)
+    assert gaps == [(_date(2018, 1, 1), _date(2019, 12, 31))]

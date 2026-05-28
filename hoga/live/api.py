@@ -104,6 +104,49 @@ def _validate_daily_past_request(
     return frm, too, today_d
 
 
+def _compute_daily_gaps(
+    frm: date, too: date,
+    existing: list[tuple[date, date]],
+) -> list[tuple[date, date]]:
+    """Compute non-overlapping gap intervals within [frm, too] not covered by
+    existing batches.
+
+    Algorithm:
+    1. Filter `existing` to entries intersecting [frm, too].
+    2. Sort by start.
+    3. Merge overlapping/adjacent intervals (touching = same continuous day line).
+    4. Walk and emit complement against [frm, too].
+
+    Two existing batches `(a1, a2)` and `(b1, b2)` are *adjacent* when
+    `b1 == a2 + 1 day` — in that case no day gap exists between them.
+    """
+    relevant = [(s, e) for (s, e) in existing if e >= frm and s <= too]
+    if not relevant:
+        return [(frm, too)]
+    relevant.sort()
+    merged: list[tuple[date, date]] = [relevant[0]]
+    for s, e in relevant[1:]:
+        last_s, last_e = merged[-1]
+        if s <= last_e + timedelta(days=1):
+            merged[-1] = (last_s, max(last_e, e))
+        else:
+            merged.append((s, e))
+
+    gaps: list[tuple[date, date]] = []
+    cursor = frm
+    for s, e in merged:
+        if s > cursor:
+            gap_end = min(s - timedelta(days=1), too)
+            if cursor <= gap_end:
+                gaps.append((cursor, gap_end))
+        cursor = max(cursor, e + timedelta(days=1))
+        if cursor > too:
+            break
+    if cursor <= too:
+        gaps.append((cursor, too))
+    return gaps
+
+
 class ControlRequest(BaseModel):
     action: ControlAction
 
