@@ -33,7 +33,7 @@ function padLevels(levels: unknown): OrderbookLevel[] {
  * `asks`/`bids` arrays are zero-padded to length 10 so the table layout
  * stays stable.
  */
-export function latestOrderbookSnapshot(ob: RawSnapshot[]): OrderbookSnapshot | null {
+export function latestOrderbookSnapshot(ob: readonly RawSnapshot[]): OrderbookSnapshot | null {
   if (ob.length === 0) return null;
   const latest = ob[ob.length - 1];
   return {
@@ -58,7 +58,7 @@ export function latestOrderbookSnapshot(ob: RawSnapshot[]): OrderbookSnapshot | 
  * resulting series has gaps wherever a broker fell off the list — that
  * matches how /replay treats broker data and is intentional per ADR-0023.
  */
-export function aggregateBrokerSeries(broker: RawSnapshot[]): BrokerSeriesEntry[] {
+export function aggregateBrokerSeries(broker: readonly RawSnapshot[]): BrokerSeriesEntry[] {
   const byBroker = new Map<string, BrokerSeriesPoint[]>();
 
   for (const snap of broker) {
@@ -115,7 +115,7 @@ const LIVE_FILLTAPE_MAX = 500;
  * snapshots don't carry those derived fields — FillTape only reads
  * price/qty/side/ts_ms so the placeholders are inert.
  */
-export function flattenTrades(trade: RawSnapshot[]): Trade[] {
+export function flattenTrades(trade: readonly RawSnapshot[]): Trade[] {
   const flat: Trade[] = [];
   let seqCounter = 0;
   for (const snap of trade) {
