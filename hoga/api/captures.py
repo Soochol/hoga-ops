@@ -24,6 +24,7 @@ from hoga.api.captures_persistence import load_manifest, manifest_path, save_man
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
 from hoga.api.error_codes import CaptureErrorCode, UpstreamCode
 from hoga.api.models import (
+    BlockedItem,
     CaptureDismissedEvent,
     CaptureError,
     CaptureFinishedEvent,
@@ -263,6 +264,7 @@ def reset_state_for_tests() -> None:
     _active.clear()
     _done.clear()
     _inflight_paths.clear()
+    _fail_streaks.clear()  # ADR-0042 — keep test isolation for the new counter
     _queue_paused = False
     # _wakeup is an asyncio.Event bound to an event loop — pytest-asyncio
     # creates a fresh loop per test, so we must drop the stale Event or the
@@ -1255,9 +1257,28 @@ async def enqueue_items_core(
     #    PLUS phase-aware dedupe against _done (ADR-0033).
     enqueued: list[QueueItemState] = []
     deduped_rows: list[EnqueueDedupedRow] = []
+    blocked_items: list[BlockedItem] = []
     done_dismissed_ids: list[str] = []
     enqueued_at_ms = int(time.time() * 1000)
     async with _lock:
+        # ADR-0042 fail-streak gate. Runs INSIDE the lock (so _fail_streaks is
+        # not racing a concurrent _finalize_item) but BEFORE the Q15/ADR-0033
+        # dedupe loop, so a blocked (Code, Stock-Date) never reaches Implicit
+        # Retry. force_retry=true does NOT bypass this gate — that's the whole
+        # point of the cap. blocked pairs are removed from the candidate list.
+        from hoga.api.fail_streak import ATTEMPT_CAP, streak_key
+        unblocked_dates: list[str] = []
+        for date in candidate_dates:
+            current = _fail_streaks.get(streak_key(req.code, date), 0)
+            if current >= ATTEMPT_CAP:
+                blocked_items.append(BlockedItem(
+                    code=req.code, date=date, fail_streak=current,
+                    reason="fail_streak_exceeded",
+                ))
+            else:
+                unblocked_dates.append(date)
+        candidate_dates = unblocked_dates
+
         active_pairs = {(s.code, s.date) for s in _active.values()}
         queue_pairs = {(s.code, s.date) for s in _queue}
         existing_pairs = set(_inflight_paths) | queue_pairs | active_pairs
@@ -1342,6 +1363,7 @@ async def enqueue_items_core(
     return EnqueueResponse(
         enqueued=[s.to_wire() for s in enqueued],
         deduped=deduped_rows,
+        blocked=blocked_items,
     )
 
 

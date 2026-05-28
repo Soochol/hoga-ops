@@ -1618,3 +1618,115 @@ async def test_finalize_item_failed_does_not_bump(tmp_path):
         await captures._finalize_item(state)
 
     bump.assert_not_awaited()
+
+
+# ----- ADR-0042: fail_streak guard -----------------------------------------
+# Guard runs INSIDE _lock + BEFORE Q15 Layer 1 / ADR-0033 _done dedupe. A
+# (Code, Stock-Date) with fail_streak >= ATTEMPT_CAP is reported on
+# EnqueueResponse.blocked and excluded from further processing. force_retry
+# does NOT bypass the gate — that's the whole point.
+
+
+def test_enqueue_pair_at_streak_4_is_accepted(monkeypatch, tmp_path):
+    """One below the cap → still accepted (cap is exclusive at 5)."""
+    _no_workers(monkeypatch)
+    captures._fail_streaks["005930|20260520"] = 4
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520"], "force_retry": False,
+        })
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert len(body["enqueued"]) == 1
+        assert body["blocked"] == []
+
+
+def test_enqueue_pair_at_streak_5_is_blocked(monkeypatch, tmp_path):
+    """At the cap → blocked, no enqueue."""
+    _no_workers(monkeypatch)
+    captures._fail_streaks["005930|20260520"] = 5
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520"], "force_retry": False,
+        })
+        # Status code policy lands in Task 6; for now Task 5 just checks the
+        # response shape carries the blocked entry.
+        body = r.json()
+        assert body["enqueued"] == []
+        assert len(body["blocked"]) == 1
+        b = body["blocked"][0]
+        assert b == {
+            "code": "005930", "date": "20260520",
+            "fail_streak": 5, "reason": "fail_streak_exceeded",
+        }
+
+
+def test_enqueue_force_retry_does_NOT_bypass_guard(monkeypatch, tmp_path):
+    """force_retry controls disk-cache bypass; it does NOT override the cap.
+    This is the whole point of ADR-0042 — without it, inventory Re-capture
+    with force_retry could keep hitting hogaplay indefinitely on
+    no_upstream_data symbols (ADR-0021 case)."""
+    _no_workers(monkeypatch)
+    captures._fail_streaks["005930|20260520"] = 5
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520"], "force_retry": True,
+        })
+        body = r.json()
+        assert body["enqueued"] == []
+        assert len(body["blocked"]) == 1
+
+
+def test_enqueue_mixed_some_accepted_some_blocked(monkeypatch, tmp_path):
+    """Partial-success: one accepted, one blocked, in the same request."""
+    _no_workers(monkeypatch)
+    captures._fail_streaks["005930|20260520"] = 5
+    # 20260521 has no counter → accepted.
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520", "20260521"], "force_retry": False,
+        })
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert {it["date"] for it in body["enqueued"]} == {"20260521"}
+        assert {b["date"] for b in body["blocked"]} == {"20260520"}
+
+
+def test_enqueue_guard_runs_before_adr_0033_done_dedupe(monkeypatch, tmp_path):
+    """If a pair is BOTH blocked AND in _done(phase=failed) — which ADR-0033
+    would normally auto-re-enqueue — the response must say BLOCKED, not
+    re-enqueued and not deduped. The guard runs first."""
+    _no_workers(monkeypatch)
+    captures._fail_streaks["005930|20260520"] = 5
+    # Seed _done with a failed entry that ADR-0033 would re-enqueue.
+    captures._done.append(QueueItemState(
+        item_id="prev", code="005930", date="20260520",
+        force_retry=False, enqueued_at_ms=0, phase="failed",
+    ))
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520"], "force_retry": False,
+        })
+        body = r.json()
+        assert body["enqueued"] == []
+        assert body["deduped"] == []
+        assert len(body["blocked"]) == 1
+        assert body["blocked"][0]["reason"] == "fail_streak_exceeded"
+
+
+def test_enqueue_blocked_default_field_for_unaffected_paths(monkeypatch, tmp_path):
+    """When no pair is blocked, the response still contains blocked=[]."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520"], "force_retry": False,
+        })
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["blocked"] == []
