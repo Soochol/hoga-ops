@@ -5,19 +5,12 @@
  * If a future feature genuinely needs a hybrid path, create a NEW hook with
  * its own ADR amendment — do not quietly add an import here.
  *
- * Note: resolves the source file via process.cwd() + relative path because
- * the jsdom test environment mocks import.meta.url as http://, not file://,
- * making `new URL(import.meta.url)` throw "URL must be of scheme file".
+ * Uses vite's `?raw` import (filename suffix) so the source text is inlined
+ * at bundle time. Avoids node:fs / process (not in tsconfig.app.json types)
+ * and the jsdom `import.meta.url` mismatch.
  */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-
-// Vitest sets process.cwd() to the package root (frontend/).
-const SOURCE = readFileSync(
-  resolve(process.cwd(), 'src/api/useLiveCursor.ts'),
-  'utf-8',
-);
+import SOURCE from './useLiveCursor.ts?raw';
 
 describe('ADR-0044 invariant', () => {
   it('hover hooks do not import LiveBuffer / useLiveStream / liveSnapshotBuffer', () => {
