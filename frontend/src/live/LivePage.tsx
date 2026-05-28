@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
@@ -11,6 +11,7 @@ import { LiveStateBanner } from './LiveStateBanner';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { todayKstYyyymmdd } from './liveDateTime';
+import IndicatorPanel from './indicators/IndicatorPanel';
 
 /**
  * /live page — KIS-based real-time indicator chart.
@@ -51,6 +52,7 @@ export function LivePage() {
 
   const activeCode = queryCode ?? storedCode;
   const watchlistEmpty = banner.primary === 'watchlist_empty';
+  const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
 
   // Single useLiveBundle source for the page: LiveStatusBar (current price +
   // source chip) and LiveWorkarea (chart + banner + clamp affordances) both
@@ -82,7 +84,7 @@ export function LivePage() {
         cycleLagMs={status?.cycle_lag_ms ?? 0}
         bundle={bundle}
       />
-      <LiveToolbar />
+      <LiveToolbar onOpenIndicators={() => setIndicatorPanelOpen(true)} />
       <LiveWorkarea
         activeCode={activeCode}
         date={today}
@@ -91,6 +93,9 @@ export function LivePage() {
         clampEngaged={clampEngaged}
         isPastCandlesLoading={isPastCandlesLoading}
       />
+      {indicatorPanelOpen && (
+        <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+      )}
     </div>
   );
 }
