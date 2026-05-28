@@ -322,9 +322,24 @@ class EnqueueDedupedRow(BaseModel):
     ]
 
 
+class BlockedItem(BaseModel):
+    """A (Code, Stock-Date) rejected by the fail_streak cap (ADR-0042).
+
+    Reported on ``EnqueueResponse.blocked`` and rendered inline in CaptureForm.
+    User must click "잠금 해제" in inventory to clear the counter before this
+    (Code, Stock-Date) can be enqueued again.
+    """
+
+    code: str
+    date: str
+    fail_streak: int
+    reason: Literal["fail_streak_exceeded"]
+
+
 class EnqueueResponse(BaseModel):
     enqueued: list[QueueItem]
     deduped: list[EnqueueDedupedRow]
+    blocked: list[BlockedItem] = Field(default_factory=list)
 
 
 # --- POST /api/captures/items/retry request/response (ADR-0031) ------------
