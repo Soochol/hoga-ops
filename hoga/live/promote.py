@@ -1,7 +1,7 @@
 """Live Capture JSONL → captures Parquet conversion (ADR-0038 cold path).
 
 This module IS allowed to import polars/pyarrow — it's the cold-path
-converter that runs at 18:00 KST after Live Session ends, not the hot
+converter that runs at 17:00 KST after Live Session ends, not the hot
 write path. The hot path (writer.py, poller.py) must stay polars-free.
 
 Idempotency: presence of {target}/meta.json marks this (date, code) as
@@ -75,7 +75,10 @@ def _parse_jsonl_to_records(
             if kind == "ob":
                 bids = p.get("bids") or []
                 asks = p.get("asks") or []
-                snap: dict = {"t_ms": t_ms, "phase": phase}
+                # Column name must be `ts_ms` to match build_quote_ratio_slice
+                # (hoga/api/bundle.py uses hhmmssms_to_intra_ms_sql("ts_ms")).
+                # Hogaplay-promoted parquet uses ts_ms too; kis_live aligns.
+                snap: dict = {"ts_ms": t_ms, "phase": phase}
                 for i in range(10):
                     snap[f"bid_p{i + 1}"] = bids[i]["price"] if i < len(bids) else 0
                     snap[f"bid_q{i + 1}"] = bids[i]["qty"] if i < len(bids) else 0
@@ -87,7 +90,7 @@ def _parse_jsonl_to_records(
             elif kind == "trade":
                 for tr in p.get("trades") or []:
                     trades.append({
-                        "t_ms": tr.get("t_ms"),
+                        "ts_ms": tr.get("t_ms"),  # column name aligned with bundle query
                         "price": tr.get("price"),
                         "qty": tr.get("qty"),
                         "side": tr.get("side"),
@@ -298,7 +301,7 @@ async def promote_pending(data_dir: Path) -> None:
 async def cleanup_archive(data_dir: Path, retention_days: int = 7) -> None:
     """Remove archived JSONL files older than `retention_days`.
 
-    Called by Daily Scheduler at 18:00 KST after promote_pending. Keeps the
+    Called by Daily Scheduler at 17:00 KST after promote_pending. Keeps the
     `_archive` tree from growing unbounded.
     """
     archive_root = data_dir / "live" / "_archive"

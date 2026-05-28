@@ -96,7 +96,13 @@ def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiC
 def build_candles_slice(
     engine: QueryEngine, *, code: str, date: str, source: str = "hogaplay"
 ) -> list[ApiCandle]:
+    # ADR-0040 / ADR-0043: kis_live promotion never writes candles.parquet —
+    # the candle dimension is served separately by Live Candle Backfill.
+    # Return empty list rather than raising so /api/range can still serve
+    # hoga indicators + segments for kis_live-source Stock-Dates.
     path = engine.parquet_dir(date, code, source) / "candles.parquet"
+    if not path.exists():
+        return []
     rows = candles_tbl.query_all(engine.conn, path=path)
     return [
         r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
@@ -117,7 +123,12 @@ def build_quote_ratio_slice(
     # produces invalid HHMMSSmmm values that decode (via hhmmssms_to_unix_ms)
     # to duplicate or out-of-order Unix-ms outputs — which lightweight-charts
     # then rejects with "asc ordered by time". See hhmmssms_to_intra_ms_sql.
-    path = str(engine.parquet_dir(date, code, source) / "snapshots.parquet")
+    path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    if not path_obj.exists():
+        # ADR-0043: promote_today writes empty records as unlink → missing file
+        # is the valid "no data" state, not an error.
+        return QuoteRatio(bucket_ms=bucket_ms, points=[])
+    path = str(path_obj)
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     rows = engine.conn.execute(
         f"""
@@ -284,7 +295,11 @@ def build_fill_strength_slice(
     # 110_040_000 = HHMMSSmmm "11:00:40.000" — an out-of-order ghost time
     # that fold-decoded via hhmmssms_to_unix_ms to 11:40:20 KST (39-min
     # backward jump). See hhmmssms_to_intra_ms_sql for the encoding details.
-    path = str(engine.parquet_dir(date, code, source) / "trades.parquet")
+    path_obj = engine.parquet_dir(date, code, source) / "trades.parquet"
+    if not path_obj.exists():
+        # ADR-0043: missing trades parquet is the valid "no trades yet" state.
+        return FillStrength(bucket_ms=bucket_ms, points=[])
+    path = str(path_obj)
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     rows = engine.conn.execute(
         f"""

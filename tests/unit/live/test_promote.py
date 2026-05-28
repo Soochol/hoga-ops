@@ -70,7 +70,7 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
 
     trades = pl.read_parquet(target / "trades.parquet")
     assert trades.height == 2
-    assert {"t_ms", "price", "qty", "side", "side_source"} <= set(trades.columns)
+    assert {"ts_ms", "price", "qty", "side", "side_source"} <= set(trades.columns)
     assert trades["side"][0] == 1
     assert trades["side_source"][0] == "inferred"
 
