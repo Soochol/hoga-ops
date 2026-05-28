@@ -6,6 +6,7 @@ This file is the thin glue layer.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal as _Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -23,6 +24,7 @@ from hoga.api.models import (
 )
 from hoga.api.params import Code, StockDate
 from hoga.api.queries import QueryEngine, StockDateNotFound
+from hoga.api.sources import resolve_source
 from hoga.api.timeenc import (
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
@@ -87,14 +89,23 @@ def build_router(engine: QueryEngine) -> APIRouter:
         date: StockDate,
         t: int = Query(...),
         bucket_ms: int | None = Query(None),
+        source_pref: _Literal["hogaplay", "kis_live"] = Query("hogaplay"),
     ) -> OrderbookResponse:
+        # ADR-0044: hover spot path honors source_pref via resolve_source +
+        # ADR-0039 preference+fallback semantics. The resolved source is
+        # echoed back so LiveStatusBar's chip can reflect fallback honestly.
         # bucket_ms aligns the sidebar's 10호가 view with the candle-close
         # convention used by QuoteTotalsPane (and downsample_candles): for a
         # cursor sitting on candle T's start (= bucket_start), return the last
         # snapshot inside [t, t + bucket_ms) — the same snapshot the indicator
         # labels at t. Without bucket_ms the legacy "latest ≤ t" semantics
         # apply, so the parameter is backward-compatible.
-        path = _parquet_path(engine, date, code, "snapshots.parquet")
+        source = resolve_source(engine, date, code, source_pref)
+        try:
+            sd_dir = engine.parquet_dir(date, code, source=source)
+        except StockDateNotFound as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        path = sd_dir / "snapshots.parquet"
         if bucket_ms is not None:
             try:
                 validate_bucket_ms(bucket_ms)
@@ -110,9 +121,9 @@ def build_router(engine: QueryEngine) -> APIRouter:
             available_from = (
                 hhmmssms_to_unix_ms(date, first_ts) if first_ts is not None else None
             )
-            return OrderbookResponse(available_from=available_from, snapshot=None)
+            return OrderbookResponse(available_from=available_from, snapshot=None, source=source)
         snap = snap.model_copy(update={"ts_ms": hhmmssms_to_unix_ms(date, snap.ts_ms)})
-        return OrderbookResponse(available_from=None, snapshot=snap)
+        return OrderbookResponse(available_from=None, snapshot=snap, source=source)
 
     @router.get("/trades", response_model=TradesResponse)
     def trades(
