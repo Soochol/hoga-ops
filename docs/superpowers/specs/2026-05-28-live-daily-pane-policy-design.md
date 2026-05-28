@@ -53,29 +53,28 @@ quote-totals → fill-strength) and never churn candle/volume.
 
 ### D2 — Visible-range policy by timeframe
 
-Replace the current `totalBars < 50 ? fitContent() : setVisibleLogicalRange(...)`
-split with a single timeframe-tuned `target`:
+Keep the existing two branches but re-tune what each handles:
 
-| Timeframe | `target` (logical bars wide) | Rationale                       |
-|-----------|------------------------------|---------------------------------|
-| 1m        | 300                          | ~5h of intraday (current)       |
-| 3m–30m    | 300                          | ~1 trading day–10 days (current)|
-| D         | 120                          | ~6 trading months               |
-| W         | 52                           | ~1 trading year                 |
-| M         | 24                           | ~2 trading years                |
+| Timeframe | Initial visible range                                              |
+|-----------|--------------------------------------------------------------------|
+| 1m–30m    | `setVisibleLogicalRange({from: max(0, totalBars - 300), to: totalBars + 5})` (current) |
+| D, W, M   | `chart.timeScale().fitContent()`                                   |
 
-Visible range always:
-```
-from = max(0, totalBars - target)
-to   = totalBars + 5   // 5-bar right padding
-```
+Rationale: removing the three hoga panes (D1) gives the candle pane
+back the vertical space it was losing to empty stripes. Candle bodies
+become tall enough that the same ~100px-wide horizontal slot reads as
+a normal candle instead of a stretched bar. `fitContent` then does the
+right thing for sparse D/W/M bundles on its own — no magic per-tf
+target table needed.
 
-When `totalBars < target` (the common case for sparse D/W/M today),
-`from = 0` and lightweight-charts allocates `barSpacing = width / (target + 5)`,
-which leaves an empty area on the right — the standard trading-chart
-look ("zoomed out, recent bars at the right edge").
+The current `totalBars < 50 ? fitContent : setVisibleLogicalRange` split
+collapses to a clean `isMinute ? setVisibleLogicalRange : fitContent`
+branch, parallel to D1's pane-set branch. One concept ("D/W/M is the
+long-horizon view") drives both.
 
-`fitContent()` branch is deleted.
+Minute timeframes keep `setVisibleLogicalRange` because their bundles
+are large (~5000 1m bars over 20 days); fitContent there would
+compress every bar to a pixel.
 
 ### D3 — InvariantOutcomesBanner stays auto-hidden
 
@@ -107,15 +106,15 @@ banner") and avoids a parallel "if D/W/M, hide banner" branch.
    }
    ```
 2. Swap the `.map` source: `paneSpecsForTimeframe(timeframe).map(...)`.
-3. Add `TIMEFRAME_TARGET_BARS: Record<LiveTimeframe, number>` (module-level const)
-   and read it inside the initial-view effect.
-4. Replace the `totalBars < 50 ? fitContent() : setVisibleLogicalRange(...)`
-   branch with the single `setVisibleLogicalRange(...)` form parameterized by
-   `target = TIMEFRAME_TARGET_BARS[timeframe]`.
-5. Tests:
+3. Inside the initial-view effect, swap the `totalBars < 50` size-based
+   branch for a timeframe-based branch: `isMinute ? setVisibleLogicalRange : fitContent`.
+   Use the same `isMinuteTimeframe` helper that already lives in
+   `useLiveBundle.ts` (lift it to a shared module if importing across
+   the file boundary feels off; otherwise duplicate the 1-line array
+   membership check in `LiveChartRoot`).
+4. Tests:
    - Unit test for `paneSpecsForTimeframe`: minute timeframes → all 5 specs,
      D/W/M → exactly `[CANDLE_SPEC, VOLUME_SPEC]`.
-   - Unit test for the target table: D=120, W=52, M=24, minute timeframes=300.
    - (Optional) e2e screenshot guard if it doesn't add fixture surface:
      skipped — `live-smoke.spec.ts` doesn't assert pane count and adding
      it would require chart DOM probes that pixel-shift on every layout
@@ -157,10 +156,12 @@ No changes to:
   `ratio`/`quote-totals`/`fill-strength` simply skip render while
   D/W/M is active and reappear on the next minute-timeframe selection.
   Acceptable.
-- **User expectation about candle width**: `target = 120` puts 14
-  daily bars in the left ~12% of the chart width. If the user finds
-  even that too wide after seeing it live, the only knob to turn is
-  `target` — pure config, no architectural change.
+- **User expectation about candle width**: `fitContent` on D/W/M
+  assumes that the recovered vertical space (from hoga-pane removal)
+  rebalances the candle's apparent width. If after landing the
+  candles still feel too wide, the fallback is to introduce the
+  per-timeframe `target` table (D=120 / W=52 / M=24 etc.) — pure
+  config, no architectural change beyond D2.
 
 ## Open questions
 
