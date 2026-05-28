@@ -283,14 +283,23 @@ def build_router(
                     else:
                         cached_dates.append(date_s)
                 else:  # date_s == today_s
-                    bars = cache.get_today(code)
-                    if bars is None:
+                    state, today_bars = cache.get_today_tri(code)
+                    if state == "hit":
+                        bars = today_bars  # type: ignore[assignment]
+                        cached_dates.append(date_s)
+                    elif state == "negative":
+                        # Known non-trading day; skip KIS, no row to add.
+                        bars = []
+                    else:  # miss
                         raw = await kis.fetch_past_minute_candles(code, date_s)
                         bars = [_candle_to_dict(c) for c in raw]
-                        cache.store_today(code, bars)  # memory only — no OSError path
-                        fresh_dates.append(date_s)
-                    else:
-                        cached_dates.append(date_s)
+                        if bars:
+                            cache.store_today(code, bars)
+                            fresh_dates.append(date_s)
+                        else:
+                            # Negative cache: known non-trading day for today.
+                            # Skip KIS for the TTL window.
+                            cache.store_today(code, None)
                 candles_all.extend(bars)
             except KisRateLimitError as e:
                 warnings.append({"date": date_s, "reason": "kis_rate_limit", "msg": str(e)})

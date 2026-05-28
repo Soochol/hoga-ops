@@ -406,6 +406,27 @@ async def test_past_candles_disk_cache_survives_router_rebuild(tmp_path) -> None
         assert r.json()["cached_dates"] == [yesterday]
 
 
+def test_minute_today_non_trading_day_negative_caches(tmp_path) -> None:
+    """When today's KIS minute fetch returns empty, the cache stores a
+    negative sentinel so a follow-up request within the TTL skips KIS."""
+
+    class _EmptyTodayKis:
+        def __init__(self):
+            self.calls = 0
+
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+            self.calls += 1
+            return []  # simulate Saturday / holiday today
+
+    fake = _EmptyTodayKis()
+    app = _past_app(tmp_path, fake)
+    today = _today_kst_yyyymmdd()
+    with TestClient(app) as c:
+        c.get(f"/api/live/past-candles?code=005930&from={today}&to={today}")
+        c.get(f"/api/live/past-candles?code=005930&from={today}&to={today}")
+        assert fake.calls == 1  # second call skipped via negative cache
+
+
 # ----- /api/live/past-daily-candles validation -----
 
 from hoga.live.api import _validate_daily_past_request
