@@ -119,6 +119,14 @@ async def promote_one(
             "trades": len(trades),
             "brokers": len(brokers),
         },
+        # ADR-0003 HHMMSSmmm encoding. /api/range's build_range_bundle reads
+        # these keys to populate segment session bounds; without them the
+        # bundle build raised KeyError when /api/range fell back to a
+        # kis_live source via ADR-0039. KRX Half-Day Sessions are out of
+        # scope here — kis_live doesn't expose the half-day flag, so we
+        # default to the standard 09:00-15:30 window.
+        "regular_session_open_ms": 90000000,    # 09:00:00.000
+        "regular_session_close_ms": 153000000,  # 15:30:00.000
     }
     meta_path.write_text(json.dumps(meta, indent=2))
     _log.info(

@@ -49,6 +49,11 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
     assert meta["code"] == "005930"
     assert meta["date"] == "20260527"
     assert meta["row_counts"] == {"snapshots": 2, "trades": 2, "brokers": 2}
+    # ADR-0003 HHMMSSmmm session bounds — required so build_range_bundle can
+    # compose RangeSegments from kis_live promoted Parquet without KeyError.
+    # Discovered via /investigate 2026-05-28 against /api/range 003490 fallback.
+    assert meta["regular_session_open_ms"] == 90000000
+    assert meta["regular_session_close_ms"] == 153000000
 
     snaps = pl.read_parquet(target / "snapshots.parquet")
     assert snaps.height == 2
