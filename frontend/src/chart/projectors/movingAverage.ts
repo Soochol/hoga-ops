@@ -1,10 +1,27 @@
 import { LineSeries } from 'lightweight-charts';
-import type { RangeBundle } from '../../api/types';
+import type { Candle, RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import { useActivePrefs } from '../../state/chartPrefs';
 import { MA_SLOT_COUNT, type MAConfig, type MAIndex } from '../../state/tabs';
 import type { PaneSpec, SeriesSpec } from '../RangeSeriesPane';
+
+/** 이동평균을 계산할 때 캔들의 어느 가격을 입력 시계열로 쓸지. mockup의
+ *  "소스" dropdown과 1:1 대응. close가 가장 흔하지만 분석가에 따라 시고저
+ *  또는 가중 평균(HL2/HLC3/OHLC4)을 선호한다. */
+export type MASource = 'close' | 'open' | 'high' | 'low' | 'hl2' | 'hlc3' | 'ohlc4';
+
+export function selectSource(c: Candle, source: MASource): number {
+  switch (source) {
+    case 'close': return c.close;
+    case 'open':  return c.open;
+    case 'high':  return c.high;
+    case 'low':   return c.low;
+    case 'hl2':   return (c.high + c.low) / 2;
+    case 'hlc3':  return (c.high + c.low + c.close) / 3;
+    case 'ohlc4': return (c.open + c.high + c.low + c.close) / 4;
+  }
+}
 
 const TOKEN_SPEC = {
   ma1: ['--ma-1', '#EC4899'],
