@@ -37,3 +37,43 @@ def atomic_write_json(path: Path, payload: Any, *, indent: int = 2) -> None:
         os.fsync(tmp.fileno())
         tmp_path = Path(tmp.name)
     os.replace(tmp_path, path)
+
+
+def atomic_write_parquet(path: Path, records: list[dict[str, Any]]) -> None:
+    """Write ``records`` as Parquet to ``path`` atomically.
+
+    Empty ``records`` → unlink existing file. polars handles empty
+    DataFrame poorly, and downstream DuckDB read_parquet errors on
+    zero-row files in some configurations — so we represent "no data"
+    as "no file" (callers must handle FileNotFoundError on the read
+    side, which the standard try/except FileNotFoundError pattern does).
+
+    Pattern: tempfile in target's parent dir → polars write → os.replace.
+    The parent dir is created if missing.
+
+    Raises:
+        OSError: if disk write fails. On failure the target is unchanged
+            (the tempfile may linger; callers can ignore).
+    """
+    import polars as pl  # local import — heavy module
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not records:
+        path.unlink(missing_ok=True)
+        return
+
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent,
+        prefix=path.name + ".",
+        suffix=".tmp",
+        delete=False,
+    ) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        pl.DataFrame(records).write_parquet(tmp_path)
+        os.replace(tmp_path, path)
+    except Exception:
+        # write_parquet raised — tempfile is partial/empty; clean up.
+        tmp_path.unlink(missing_ok=True)
+        raise
