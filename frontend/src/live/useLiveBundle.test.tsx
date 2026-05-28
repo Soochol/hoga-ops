@@ -38,6 +38,25 @@ vi.mock('../api/livePastCandles', () => ({
   useLivePastCandles: (...args: unknown[]) => livePastCandlesSpy(...args as []),
 }));
 
+const livePastDailyCandlesSpy = vi.fn(() => ({
+  data: {
+    code: '005930',
+    from: '',
+    to: '',
+    candles: [
+      { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+    ],
+    cached_batches: [],
+    fresh_batches: [],
+    data_warnings: [],
+  },
+  isLoading: false,
+  error: null,
+}));
+vi.mock('../api/livePastDailyCandles', () => ({
+  useLivePastDailyCandles: (...args: unknown[]) => livePastDailyCandlesSpy(...args as []),
+}));
+
 const useRangeSpy = vi.fn(() => ({ data: null, isLoading: false, error: null }));
 vi.mock('../api/range', () => ({
   useRange: (...args: unknown[]) => useRangeSpy(...args as []),
@@ -51,6 +70,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 describe('useLiveBundle', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
+    livePastDailyCandlesSpy.mockClear();
     useRangeSpy.mockClear();
     useLivePageStore.setState({
       activeCode: '005930',
@@ -92,5 +112,79 @@ describe('useLiveBundle', () => {
     expect(c).toMatchObject({ ts_ms: 1779840000000, open: 70000, vol_a: 1000, vol_b: 0 });
     expect(c).not.toHaveProperty('t_ms');
     expect(c).not.toHaveProperty('volume');
+  });
+});
+
+describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
+  beforeEach(() => {
+    livePastCandlesSpy.mockClear();
+    livePastDailyCandlesSpy.mockClear();
+    useRangeSpy.mockClear();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: null,
+    });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_live' });
+  });
+
+  it('D timeframe calls daily hook with non-null code, minute hook with null code', () => {
+    renderHook(() => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    const lastDailyCall = livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
+    expect(lastDailyCall[0]).toBe('005930');
+    const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
+    expect(lastMinuteCall[0]).toBeNull();
+  });
+
+  it('1m timeframe calls minute hook with non-null code, daily hook with null code', () => {
+    renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
+    expect(lastMinuteCall[0]).toBe('005930');
+    const lastDailyCall = livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
+    expect(lastDailyCall[0]).toBeNull();
+  });
+
+  it('clampEngaged is false on D when historicalFromDate is very old', () => {
+    useLivePageStore.setState({ historicalFromDate: '20100101' });
+    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    expect(result.current.clampEngaged).toBe(false);
+  });
+
+  it('clampEngaged is true on 1m when historicalFromDate is older than 250d', () => {
+    useLivePageStore.setState({ historicalFromDate: '20100101' });
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    expect(result.current.clampEngaged).toBe(true);
+  });
+
+  it('maps daily invariant_violation warnings into bundle.data_warnings (DateWarning shape)', () => {
+    livePastDailyCandlesSpy.mockReturnValueOnce({
+      data: {
+        code: '005930',
+        from: '',
+        to: '',
+        candles: [
+          { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+        ],
+        cached_batches: [],
+        fresh_batches: [],
+        data_warnings: [
+          {
+            batch: '20240103__20240103',
+            date: '20240103',
+            reason: 'invariant_violation' as const,
+            msg: '20240103: close_nonpositive (close=0)',
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof livePastDailyCandlesSpy>);
+    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    const warnings = result.current.bundle?.data_warnings ?? [];
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].date).toBe('20240103');
+    expect(warnings[0].warnings).toHaveLength(1);
+    expect(warnings[0].warnings[0].invariant_id).toBe('invariant_violation');
+    expect(warnings[0].warnings[0].severity).toBe('warn');
   });
 });
