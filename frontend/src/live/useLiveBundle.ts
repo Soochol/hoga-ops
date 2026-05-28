@@ -15,7 +15,7 @@ import {
   INITIAL_HISTORICAL_DAYS,
 } from './liveDateTime';
 
-const PAST_CANDLES_MAX_DAYS = 60;
+const PAST_CANDLES_MAX_DAYS = 250;
 
 function laterDate(a: string, b: string): string {
   return a >= b ? a : b;
@@ -57,8 +57,8 @@ export function useLiveBundle(
   const isMinute = isMinuteTimeframe(timeframe);
   const bucketMs = isMinute ? TIMEFRAME_TO_MS[timeframe] : 60_000;
 
-  // 60-day clamp at the bundle layer so /api/range's 90-day cap and
-  // /api/live/past-candles' 60-day cap can stay independent.
+  // 250-day clamp at the bundle layer so /api/range's 90-day cap and
+  // /api/live/past-candles' 250-day cap can stay independent.
   const seedFrom = historicalFromDate ?? subtractDaysKst(todayKstYyyymmdd, INITIAL_HISTORICAL_DAYS);
   const earliestAllowed = subtractDaysKst(todayKstYyyymmdd, PAST_CANDLES_MAX_DAYS - 1);
   const pastFrom = laterDate(seedFrom, earliestAllowed);

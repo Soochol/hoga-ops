@@ -73,15 +73,15 @@ describe('useLiveBundle', () => {
     expect(result.current.bundle).toBeNull();
   });
 
-  it('clamps pastFrom to 59 days before today when historicalFromDate is older', () => {
-    useLivePageStore.setState({ historicalFromDate: '20260227' });
+  it('clamps pastFrom to 249 days before today when historicalFromDate is older', () => {
+    useLivePageStore.setState({ historicalFromDate: '20250101' });
     renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
-    expect(livePastCandlesSpy).toHaveBeenCalledWith('005930', '20260329', '20260527');
-    expect(useRangeSpy).toHaveBeenCalledWith('005930', '20260329', '20260526', '1m');
+    expect(livePastCandlesSpy).toHaveBeenCalledWith('005930', '20250920', '20260527');
+    expect(useRangeSpy).toHaveBeenCalledWith('005930', '20250920', '20260526', '1m');
   });
 
-  it('exposes clampEngaged=true when historicalFromDate older than 60 days', () => {
-    useLivePageStore.setState({ historicalFromDate: '20260227' });
+  it('exposes clampEngaged=true when historicalFromDate older than 250 days', () => {
+    useLivePageStore.setState({ historicalFromDate: '20250101' });
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
     expect(result.current.clampEngaged).toBe(true);
   });

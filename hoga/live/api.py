@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 ControlAction = Literal["start", "stop", "pause"]
 
-_PAST_MAX_DAYS = 60
+_PAST_MAX_DAYS = 250
 _CODE_RE = re.compile(r"^\d{6}$")
 _KST = timezone(timedelta(hours=9))
 

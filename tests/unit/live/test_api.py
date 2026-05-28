@@ -237,11 +237,11 @@ def test_past_candles_rejects_from_after_to(tmp_path) -> None:
         assert r.status_code == 422
 
 
-def test_past_candles_rejects_range_over_60_days(tmp_path) -> None:
+def test_past_candles_rejects_range_over_250_days(tmp_path) -> None:
     app = _past_app(tmp_path, _FakeKisForPast())
     with TestClient(app) as c:
-        # 61 days
-        r = c.get("/api/live/past-candles?code=005930&from=20260101&to=20260302")
+        # 251 days (inclusive): 2024-01-01 to 2024-09-08
+        r = c.get("/api/live/past-candles?code=005930&from=20240101&to=20240908")
         assert r.status_code == 422
         assert r.json()["detail"]["code"] == "date_range_too_large"
 
