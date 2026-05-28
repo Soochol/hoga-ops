@@ -107,28 +107,26 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     if (didInitialViewRef.current) return;
     if (useLivePageStore.getState().historicalFromDate !== null) return;
     const ts = chart.timeScale();
-    const totalBars = bundle.candles.length;
-    // Sparse bundles (D/W/M with only weeks of data) compress to a few bars;
-    // the 300-bar window then leaves them clustered at the left edge with a
-    // huge empty right pad. Defer to lightweight-charts' fitContent in that
-    // regime — analyst sees every aggregated bucket.
-    // 300 bars ≈ 5h at 1m, ~1 trading day at 5m, ~10 days at 30m — a
-    // sweet spot for minute timeframes where the user wants recent context
-    // with room to drag back.
+    // Branch by timeframe, not bundle size. Minute timeframes carry ~5000
+    // 1m bars and need the 300-bar windowing to stay legible; D/W/M carry
+    // a few dozen bars at most and look right under fitContent now that
+    // the hoga panes are gone (no vertical compression of candles). See
+    // ADR-0041 + the 2026-05-28 spec.
     const target = 300;
     try {
-      if (totalBars < 50) {
-        ts.fitContent();
-      } else {
+      if (isMinuteTimeframe(timeframe)) {
+        const totalBars = bundle.candles.length;
         const from = Math.max(0, totalBars - target);
         const to = totalBars + 5; // 5-bar right padding
         ts.setVisibleLogicalRange({ from, to });
+      } else {
+        ts.fitContent();
       }
       didInitialViewRef.current = true;
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, bundle]);
+  }, [chart, bundle, timeframe]);
 
   useEffect(() => {
     const el = containerRef.current;
