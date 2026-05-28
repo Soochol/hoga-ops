@@ -17,7 +17,7 @@ import json
 import logging
 import shutil
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import polars as pl
@@ -140,6 +140,93 @@ def _build_meta(
         "regular_session_open_ms": 90000000,    # 09:00:00.000
         "regular_session_close_ms": 153000000,  # 15:30:00.000
     }
+
+
+def _today_kst_yyyymmdd() -> str:
+    """오늘 날짜 YYYYMMDD KST."""
+    return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
+
+
+async def promote_today(data_dir: Path, *, code: str) -> None:
+    """ADR-0043 Today Promotion — overwrite, no archive move.
+
+    promote_one과 다른 점:
+      - idempotent skip 안 함 (meta.json 있어도 다시 처리)
+      - archive 이동 안 함 (jsonl 계속 polling 중)
+      - parquet 파일들은 atomic_write_parquet으로 원자 교체
+
+    Midnight race protection (eng-review Blocker 1):
+      - today_kst를 함수 진입 시점에 한 번만 evaluate.
+      - 그 시점 이후 자정이 지나도 이 사이클은 "yesterday" jsonl을 처리.
+      - 다음 사이클(5분 후)이 새 today_kst를 picking → 어제는 Daily Promotion 담당.
+
+    Candles invariant (ADR-0040): snapshots/trades/brokers.parquet만 생성.
+    candles는 Live Candle Backfill의 별도 캐시가 담당하므로 절대 생성하지 않는다.
+    """
+    from hoga.api._atomic_write import atomic_write_parquet, atomic_write_json
+
+    # CRITICAL: today_kst를 한 번만 evaluate해서 자정 race 회피
+    today = _today_kst_yyyymmdd()
+    jsonl_path = data_dir / "live" / today / f"{code}.jsonl"
+    parquet_root = data_dir / "parquet"
+    target = parquet_root / today / code / "kis_live"
+
+    if not jsonl_path.exists():
+        return
+
+    start_ms = int(time.time() * 1000)
+    _log.info("live.today_promote.start code=%s date=%s", code, today)
+
+    try:
+        snapshots, trades, broker_rows, meta = _parse_jsonl_to_records(
+            jsonl_path, code=code, date=today,
+        )
+    except Exception:
+        _log.exception(
+            "live.today_promote.parse_failed code=%s date=%s", code, today,
+        )
+        raise
+
+    target.mkdir(parents=True, exist_ok=True)
+    try:
+        atomic_write_parquet(target / "snapshots.parquet", snapshots)
+        atomic_write_parquet(target / "trades.parquet", trades)
+        # brokers는 BrokerRow dataclass 리스트 → dict 리스트로 변환
+        atomic_write_parquet(
+            target / "brokers.parquet",
+            [
+                {
+                    "ts_ms": r.ts_ms, "seq": r.seq, "side": r.side,
+                    "rank": r.rank, "broker": r.broker,
+                    "qty_today": r.qty_today, "qty_delta": r.qty_delta,
+                }
+                for r in broker_rows
+            ],
+        )
+        atomic_write_json(target / "meta.json", meta, indent=2)
+    except OSError as e:
+        _log.warning(
+            "live.today_promote.write_failed code=%s date=%s reason=%s",
+            code, today, e,
+        )
+        raise
+
+    elapsed = int(time.time() * 1000) - start_ms
+    _log.info(
+        "live.today_promote.done code=%s date=%s row_counts=%s elapsed_ms=%d",
+        code, today, meta["row_counts"], elapsed,
+    )
+
+    # design-review B2 — 사용자가 /api/live/status에서 마지막 promote 시각 확인 가능
+    # Task 5에서 lifecycle.record_today_promote_success가 추가되면 작동.
+    # 그 전엔 ImportError fallback으로 noop.
+    try:
+        from hoga.live import lifecycle
+        record_fn = getattr(lifecycle, "record_today_promote_success", None)
+        if record_fn is not None:
+            record_fn(code, int(time.time() * 1000))
+    except ImportError:
+        pass
 
 
 async def promote_one(
