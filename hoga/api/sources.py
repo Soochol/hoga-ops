@@ -11,7 +11,7 @@ documents the /live hover-spot boundary that motivated this promotion.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
     from hoga.api.queries import QueryEngine
@@ -39,5 +39,8 @@ def resolve_source(engine: "QueryEngine", date: str, code: str, pref: SourceName
     if pref in per_source:
         return pref
     if per_source:
-        return next(iter(per_source))
+        # classify_stock_date keys are dir names — guaranteed SourceName by
+        # ADR-0037's source-subfolder layout. Cast narrows the dict[str, ...]
+        # return without runtime cost.
+        return cast(SourceName, next(iter(per_source)))
     return pref
