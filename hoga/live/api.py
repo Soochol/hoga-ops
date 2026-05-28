@@ -285,7 +285,9 @@ def build_router(
                 else:  # date_s == today_s
                     state, today_bars = cache.get_today_tri(code)
                     if state == "hit":
-                        bars = today_bars  # type: ignore[assignment]
+                        # tri-state invariant: "hit" implies today_bars is not None
+                        assert today_bars is not None
+                        bars = today_bars
                         cached_dates.append(date_s)
                     elif state == "negative":
                         # Known non-trading day; skip KIS, no row to add.
