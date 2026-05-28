@@ -12,15 +12,17 @@ import time.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from pydantic import BaseModel, Field
 
 from .buffer import LiveBuffer
 from .kis_client import KisClient
+from .promote import promote_today
 
 
 class LiveStatus(BaseModel):
@@ -175,6 +177,54 @@ def reset_for_tests() -> None:
     _buffer = LiveBuffer()
     _kis_client = None
     _today_promote_last_ms.clear()
+
+
+async def start_today_promoter(
+    *,
+    data_dir: Path,
+    get_active_codes: Callable[[], list[str]],
+    interval_s: float = 300.0,
+) -> asyncio.Task:
+    """Start the ADR-0043 Today Promotion loop.
+
+    Polls `get_active_codes()` each `interval_s` seconds and calls
+    `promote_today(data_dir, code=...)` for each. Per-code exceptions
+    are caught and logged so one bad code doesn't break the cycle.
+    The outer try/except prevents the loop itself from dying on a
+    transient get_active_codes failure.
+
+    Returns the created asyncio.Task; caller (lifespan) is responsible
+    for cancelling on shutdown via `stop_today_promoter`.
+    """
+    log = logging.getLogger(__name__)
+
+    async def loop() -> None:
+        while True:
+            try:
+                codes = get_active_codes()
+                for code in codes:
+                    try:
+                        await promote_today(data_dir, code=code)
+                    except Exception:
+                        log.exception(
+                            "live.today_promote.code_failed code=%s", code,
+                        )
+            except Exception:
+                log.exception("live.today_promote.cycle_failed")
+            await asyncio.sleep(interval_s)
+
+    return asyncio.create_task(loop(), name="today-promoter")
+
+
+async def stop_today_promoter(task: asyncio.Task | None) -> None:
+    """Cancel the Today Promoter task and await its completion."""
+    if task is None or task.done():
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 async def start_live_poller(*, data_dir: Path) -> bool:
