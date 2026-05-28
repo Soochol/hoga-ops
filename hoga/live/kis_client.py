@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -68,6 +68,32 @@ class KisApiError(RuntimeError):
         self.msg_cd = msg_cd
         self.msg1 = msg1
         super().__init__(f"KIS api error {msg_cd}: {msg1}")
+
+
+@dataclass(frozen=True)
+class DailyInvariantViolation:
+    """A row dropped by fetch_past_daily_candles boundary defense.
+
+    Surfaced to the handler so wire data_warnings can tell operators which
+    dates were silently lost — ADR-0040's defensive-parse policy made explicit
+    (grill Q3 decision in 2026-05-28 daily backfill spec).
+    """
+    date_yyyymmdd: str
+    reason: Literal[
+        "close_nonpositive", "ohlc_inconsistent", "malformed_row", "out_of_range"
+    ]
+    detail: str
+
+
+@dataclass(frozen=True)
+class DailyCandleFetchResult:
+    """Return value of fetch_past_daily_candles.
+
+    `candles` is the cleaned, ASC-sorted result; `violations` is the per-row
+    drop log so the caller can surface them to data_warnings.
+    """
+    candles: list["KisCandle"]
+    violations: list[DailyInvariantViolation] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
