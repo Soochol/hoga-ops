@@ -61,7 +61,8 @@
 모델과 같은 추상(`RangeSeriesPane`)으로 묶으려면 `spec.series`를 함수로
 바꾸고 deps를 재설계해야 한다 — /replay 회귀 위험이 큰 큰 리팩터. 이번 spec은
 범위를 /live에 한정하고, 두 모델을 일단 *나란히* 둔 뒤 두 번째 indicator가
-추가되는 시점에 통합 ADR로 다룬다.
+추가되는 시점에 통합 ADR로 다룬다. fork 결정의 영구 anchor는
+[ADR-0046](../../adr/0046-live-ma-fork-from-replay.md)에 있다.
 
 ## Goals
 
@@ -105,6 +106,10 @@ export type LiveMAConfig = {
 const DEFAULT_LIVE_MAS: readonly LiveMAConfig[] = Object.freeze([
   // hex 값은 tokens.css의 --ma-N과 정확히 일치 (정적 deflate; lightweight-charts는
   // canvas에 색을 쓰므로 CSS var를 그대로 전달할 수 없어 hex로 변환).
+  // --ma-2 (#3B82F6, blue)는 의도적으로 스킵 — KRX `--price-down` (#2563EB, blue)과
+  // 색역이 가까워 분석가가 하락 캔들과 MA line을 혼동할 수 있음. palette에는
+  // 남겨두되 *기본 슬롯에는 자동 선택하지 않는다*; 사용자가 색상 swatch에서
+  // 의식적으로 고를 수는 있음.
   { id: 'ma-1', enabled: true,  period: 5,   color: '#EC4899' /* --ma-1 */, lineWidth: 1, source: 'close' },
   { id: 'ma-2', enabled: true,  period: 20,  color: '#F97316' /* --ma-3 */, lineWidth: 1, source: 'close' },
   { id: 'ma-3', enabled: true,  period: 60,  color: '#22C55E' /* --ma-4 */, lineWidth: 1, source: 'close' },
@@ -345,6 +350,12 @@ modal 표시 상태는 `useLivePageStore.indicatorPanelOpen`(persist 안 함, �
 일부로 보고 평균에 포함시킨다 — 이는 `axis.contains`의 의미와 일치
 (CONTEXT.md `Auction Mask` 정의 참고: candle/volume은 mask에서 제외됨).
 새 `MovingAverageOverlay`도 동일 정책.
+
+**모듈 선택 — sessionTime 권고**: CONTEXT.md `SessionTime` 정의에 따라
+**new chart code는 `frontend/src/util/sessionTime.ts`의 named predicate**
+(`isRegularSession`)를 호출해야 한다. `axis.contains`는 legacy delegate로
+backward-compat이 유지되지만, 새 코드(`MovingAverageOverlay`)는
+`isRegularSession(c.ts_ms, segment)` 직접 사용을 우선한다.
 
 ## Testing
 
