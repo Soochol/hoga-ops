@@ -26,6 +26,22 @@ export class LiveSnapshotBuffer {
     trade: [],
     broker: [],
   };
+  // Snapshot cache — returned by get() until the underlying kind is mutated.
+  // Stable references let downstream useMemo(bundle) keep its identity across
+  // SSE ticks that didn't actually touch a given kind. Without this, every
+  // tick produced a fresh `[...arr]` for all three kinds, invalidating bundle
+  // → forcing lightweight-charts setData on the full dataset every cycle.
+  private snapshot: Record<SnapshotKind, readonly RawSnapshot[]> = {
+    ob: Object.freeze([]),
+    trade: Object.freeze([]),
+    broker: Object.freeze([]),
+  };
+
+  private invalidate(k: SnapshotKind): void {
+    // Defer the copy until get() is next called — that way bursts of pushes
+    // between renders cost one allocation, not one per push.
+    this.snapshot[k] = null as unknown as readonly RawSnapshot[];
+  }
 
   push(entry: RawSnapshot): void {
     const k = entry.kind as SnapshotKind;
@@ -36,6 +52,7 @@ export class LiveSnapshotBuffer {
       // FIFO drop — splice mutates in place, faster than slice+reassign.
       arr.splice(0, arr.length - MAX_BUFFER_PER_KIND);
     }
+    this.invalidate(k);
   }
 
   hydrate(initial: Partial<Record<SnapshotKind, RawSnapshot[]>>): void {
@@ -43,15 +60,26 @@ export class LiveSnapshotBuffer {
       const arr = initial[k] ?? [];
       // Apply cap on hydrate too — defensive against larger backend dumps.
       this.byKind[k] = arr.slice(-MAX_BUFFER_PER_KIND);
+      this.invalidate(k);
     }
   }
 
-  get(kind: SnapshotKind): RawSnapshot[] {
-    // Return a copy so callers can mutate freely without affecting internal state.
-    return [...this.byKind[kind]];
+  /** Returns a frozen, stable-reference snapshot of the kind's buffer.
+   * The same reference is returned across multiple get() calls until the
+   * next push()/hydrate()/clear() for that kind. Callers MUST NOT mutate
+   * the returned array (it's frozen — attempts throw in strict mode).
+   * If you need a mutable copy, do `[...buf.get(kind)]` at the call site. */
+  get(kind: SnapshotKind): readonly RawSnapshot[] {
+    if (this.snapshot[kind] === null) {
+      this.snapshot[kind] = Object.freeze([...this.byKind[kind]]);
+    }
+    return this.snapshot[kind];
   }
 
   clear(): void {
-    for (const k of KINDS) this.byKind[k] = [];
+    for (const k of KINDS) {
+      this.byKind[k] = [];
+      this.invalidate(k);
+    }
   }
 }

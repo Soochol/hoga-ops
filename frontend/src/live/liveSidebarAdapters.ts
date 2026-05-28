@@ -95,11 +95,20 @@ export function aggregateBrokerSeries(broker: RawSnapshot[]): BrokerSeriesEntry[
   return entries.slice(0, 10);
 }
 
+/** Hard cap on rendered fill-tape rows. Without this, /live's 2520-snapshot
+ * buffer × ~30 trades/cycle produces ~27k Trade objects, which FillTape
+ * renders un-virtualized (one DOM subtree per row) — measured at ~1.2s of
+ * React reconciliation per SSE tick on a busy code. At ~1 trade/s typical
+ * cadence, 500 covers the most-recent ~8 minutes — comfortably more than a
+ * trader visually tracks on the live tape. */
+const LIVE_FILLTAPE_MAX = 500;
+
 /**
  * Flatten the per-cycle trade batches into a single chronologically-sorted
- * Trade[] for FillTape. Fills in cum_vol / change_pct / etc. with zero
- * placeholders since live snapshots don't carry those derived fields —
- * FillTape only reads price/qty/side/ts_ms so the placeholders are inert.
+ * Trade[] for FillTape. Caps at LIVE_FILLTAPE_MAX most-recent rows.
+ * Fills in cum_vol / change_pct / etc. with zero placeholders since live
+ * snapshots don't carry those derived fields — FillTape only reads
+ * price/qty/side/ts_ms so the placeholders are inert.
  */
 export function flattenTrades(trade: RawSnapshot[]): Trade[] {
   const flat: Trade[] = [];
@@ -132,5 +141,7 @@ export function flattenTrades(trade: RawSnapshot[]): Trade[] {
     }
   }
   flat.sort((a, b) => a.ts_ms - b.ts_ms);
-  return flat;
+  // Keep only the most-recent LIVE_FILLTAPE_MAX. Returning earlier rows would
+  // force FillTape to render an un-virtualized 27k-row DOM subtree.
+  return flat.length > LIVE_FILLTAPE_MAX ? flat.slice(-LIVE_FILLTAPE_MAX) : flat;
 }

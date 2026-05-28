@@ -68,6 +68,15 @@ export function useLiveSeries(code: string) {
     if (!code) return;
     let es: EventSource | null = null;
     let cancelled = false;
+    // Coalesce SSE bursts into one re-render per animation frame. The backend
+    // poller (cycle_seconds=10s) flushes N snapshots at once; without this,
+    // each message triggered its own setTick → React render → bundle recompute,
+    // which produced ~1s long tasks every 10s on /live.
+    let rafId: number | null = null;
+    const flush = () => {
+      rafId = null;
+      setTick((t) => t + 1);
+    };
     apiUrl(`/api/live/stream?code=${encodeURIComponent(code)}`).then((url: string) => {
       if (cancelled) return;
       es = new EventSource(url);
@@ -75,7 +84,7 @@ export function useLiveSeries(code: string) {
         try {
           const entry = JSON.parse(e.data) as { t_ms: number; kind: string };
           bufferRef.current.push(entry);
-          setTick((t) => t + 1);
+          if (rafId === null) rafId = requestAnimationFrame(flush);
         } catch {
           // Malformed SSE message — skip silently.
         }
@@ -84,6 +93,10 @@ export function useLiveSeries(code: string) {
     return () => {
       cancelled = true;
       es?.close();
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       bufferRef.current.clear();
       setTick(0);
     };
@@ -103,10 +116,11 @@ export function useLiveSeries(code: string) {
 }
 
 // `tick` is ignored at runtime but referenced so React tracks the dep.
+// Returns a readonly, stable-reference snapshot (see LiveSnapshotBuffer.get).
 function readKind(
   buf: LiveSnapshotBuffer,
   kind: SnapshotKind,
   _tick: number,
-): Array<Record<string, unknown>> {
+): ReadonlyArray<Record<string, unknown>> {
   return buf.get(kind);
 }

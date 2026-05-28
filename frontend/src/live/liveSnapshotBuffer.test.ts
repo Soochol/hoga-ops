@@ -50,12 +50,22 @@ describe('LiveSnapshotBuffer', () => {
     expect(buf.get('broker')).toHaveLength(0);
   });
 
-  it('snapshot returns frozen-style copy', () => {
+  it('get returns a frozen, stable reference until the kind is mutated', () => {
     const buf = new LiveSnapshotBuffer();
     buf.push({ t_ms: 1, kind: 'ob' });
-    const snap = buf.get('ob');
-    // Mutating snap shouldn't affect the buffer
-    snap.push({ t_ms: 999, kind: 'ob' });
-    expect(buf.get('ob')).toHaveLength(1);
+    const a = buf.get('ob');
+    const b = buf.get('ob');
+    // Repeated get() with no push between returns the same reference —
+    // this is what lets useMemo(bundle) skip recompute on idle SSE ticks.
+    expect(a).toBe(b);
+    // The snapshot is frozen, so accidental mutation throws in strict mode
+    // (ESM tests run strict) instead of silently corrupting buffer state.
+    expect(Object.isFrozen(a)).toBe(true);
+    expect(() => (a as unknown as { push: (x: unknown) => void }).push({ t_ms: 999, kind: 'ob' })).toThrow();
+    // A push invalidates the cache — next get() returns a fresh reference.
+    buf.push({ t_ms: 2, kind: 'ob' });
+    const c = buf.get('ob');
+    expect(c).not.toBe(a);
+    expect(c).toHaveLength(2);
   });
 });
