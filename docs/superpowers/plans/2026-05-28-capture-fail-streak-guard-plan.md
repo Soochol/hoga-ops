@@ -1268,16 +1268,33 @@ git commit -m "feat(inventory): useInventoryUnblock hook (ADR-0042)"
 - Modify: `DESIGN.md` may be consulted but **not** modified by this task
 - Test: append to the row's existing `*.test.tsx`, or create `<RowComponent>.fail-streak.test.tsx`
 
-- [ ] **Step 1: Open `DESIGN.md` and pick tokens**
+- [ ] **Step 1: Confirm tokens — already pinned by design-review**
 
-Run: `grep -nE "warning|danger|blocked|배지|badge" DESIGN.md | head -30`
+design-review already pinned these to the existing codebase patterns. Verify by running:
 
-Pick:
-- A warning/danger tint for the blocked row background or border.
-- A neutral subdued tint for the `재시도 N/5` indicator (or **skip the indicator** if no suitable token exists).
-- Existing button styling for the `잠금 해제` button (reuse the Re-capture button's class or component).
+```bash
+grep -nE "var\(--error\)|var\(--warn\)|var\(--accent\)" frontend/src/capture/CaptureQueueRow.tsx frontend/src/inventory/StockDateGroupDetail.tsx | head
+```
 
-Record the chosen tokens at the top of the test file as a comment for traceability.
+The tokens are:
+
+- **`차단됨 (5/5)` badge** — DESIGN.md L82-100 mandates `--error` (`#F43F5E`) for status-semantic system feedback (capture failed/blocked). Use:
+  ```
+  text-badge rounded-md px-[0.15rem] border border-[var(--error)] text-[var(--error)] font-mono tabular-nums
+  ```
+  This is the same shape as the existing attempt badge — just `--warn` swapped to `--error`.
+
+- **`재시도 N/5` indicator** — `--warn` is already used by [CaptureQueueRow.tsx:63](frontend/src/capture/CaptureQueueRow.tsx#L63) for the attempt ×N badge. Reuse that exact class:
+  ```
+  text-badge rounded-md px-[0.15rem] border border-[var(--warn)] text-[var(--warn)] font-mono tabular-nums
+  ```
+  This indicator is **always included** when `fail_streak > 0 && !blocked` — design-review confirmed `--warn` exists, so the previous "omit if token missing" branch (deferred note E7) is no longer needed and has been removed.
+
+- **`잠금 해제` button** — reuse the Re-capture button's class from [StockDateGroupDetail.tsx:180-182](frontend/src/inventory/StockDateGroupDetail.tsx#L180-L182). Same component shape; only the label and `onClick` differ.
+
+- **blocked row background tint** — DESIGN.md L100 defines error chip bg as `rgba(244,63,94,0.10)`. Apply this as a tinted background on the row container when `blocked === true` (subtle, not a full red row — the badge does the loud signal). Use Tailwind-style arbitrary value: `bg-[rgba(244,63,94,0.10)]` or wire it to a CSS variable if the project already defines one for chip-bg.
+
+Record these decisions at the top of the test file as a comment for traceability.
 
 - [ ] **Step 2: Write failing render tests**
 
@@ -1314,13 +1331,16 @@ describe('InventoryRow fail-streak surfacing', () => {
     expect(screen.queryByRole('button', { name: /재캡처|Re-?capture/i })).toBeNull();
   });
 
-  it('shows 재시도 N/5 indicator when 0 < fail_streak < 5 (if design token present)', () => {
+  it('shows 재시도 N/5 indicator when 0 < fail_streak < 5', () => {
+    // design-review confirmed --warn token exists (CaptureQueueRow.tsx:63), so the
+    // indicator is always included. No conditional-omit branch.
     render(wrap(<InventoryRow row={{ ...baseRow, fail_streak: 3, blocked: false }} />));
-    // If the indicator is skipped per DESIGN.md, replace this assertion with the explicit
-    // expectation that no indicator is rendered.
-    const indicator = screen.queryByText('재시도 3/5');
-    // If the chosen design omits the indicator, change to: expect(indicator).toBeNull();
-    expect(indicator).toBeInTheDocument();
+    expect(screen.getByText('재시도 3/5')).toBeInTheDocument();
+  });
+
+  it('does NOT show 재시도 N/5 indicator when fail_streak == 0', () => {
+    render(wrap(<InventoryRow row={{ ...baseRow, fail_streak: 0, blocked: false }} />));
+    expect(screen.queryByText(/재시도/)).toBeNull();
   });
 });
 ```
@@ -1346,23 +1366,38 @@ export function InventoryRow({ row }: { row: InventoryRowData }) {
 
   if (row.blocked) {
     return (
-      <div className={/* DESIGN.md warning tint class */}>
+      <div className="bg-[rgba(244,63,94,0.10)]">
         {/* ...other row cells... */}
-        <span className={/* badge class */}>차단됨 (5/5)</span>
-        <button onClick={() => unblock.mutate({ code: row.code, date: row.date })}>
+        <span
+          className="text-badge rounded-md px-[0.15rem] border border-[var(--error)] text-[var(--error)] font-mono tabular-nums"
+          aria-label="5회 연속 실패로 차단됨 — 잠금 해제 필요"
+        >
+          차단됨 (5/5)
+        </span>
+        <button
+          type="button"
+          onClick={() => unblock.mutate({ code: row.code, date: row.date })}
+          aria-label="잠금 해제 (fail_streak 카운터 0으로 초기화)"
+          /* reuse Re-capture button's existing class from StockDateGroupDetail.tsx:180 */
+        >
           잠금 해제
         </button>
       </div>
     );
   }
 
-  // Optional indicator slot for 0 < fail_streak < 5 — include only if the design system
-  // provides a suitable subdued token.
+  // Always include the 재시도 N/5 indicator when 0 < fail_streak < 5.
+  // The --warn token already exists in CaptureQueueRow.tsx:63; design-review pinned this.
   return (
     <div>
       {/* ...existing row... */}
       {row.fail_streak > 0 && (
-        <span className={/* subdued class */}>재시도 {row.fail_streak}/5</span>
+        <span
+          className="text-badge rounded-md px-[0.15rem] border border-[var(--warn)] text-[var(--warn)] font-mono tabular-nums"
+          aria-label={`재시도 ${row.fail_streak}/5 (한 번 더 성공하지 못하면 ${5 - row.fail_streak}회 후 차단됩니다)`}
+        >
+          재시도 {row.fail_streak}/5
+        </span>
       )}
       {/* existing Re-capture button */}
     </div>
@@ -1437,7 +1472,9 @@ describe('CaptureForm blocked surfacing', () => {
     await userEvent.click(screen.getByRole('button', { name: /capture|캡처|등록/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/5회 연속 실패로 차단/)).toBeInTheDocument();
+      // Korean copy follows existing "noun-phrase + em-dash + cause" pattern
+      // (e.g. "캡처 실패 — hogaplay 쿠키 만료" at CaptureRowDetail.test.tsx:154).
+      expect(screen.getByText(/5회 연속 실패 — 인벤토리에서 잠금 해제 필요/)).toBeInTheDocument();
       expect(screen.getByText(/005930.*20260520/)).toBeInTheDocument();
     });
   });
@@ -1477,8 +1514,11 @@ const handleSubmit = async (e: FormEvent) => {
       const pairs = response.blocked
         .map((b) => `${b.code}/${b.date}`)
         .join(', ');
+      // Noun-phrase + em-dash + cause pattern, matching the existing tone of
+      // "캡처 실패 — hogaplay 쿠키 만료" (CaptureRowDetail.test.tsx:154) and
+      // DESIGN.md L249-250's "Korean single words" guidance.
       setBlockedMessage(
-        `다음 항목은 5회 연속 실패로 차단되었습니다. 인벤토리에서 잠금을 해제하세요: ${pairs}`,
+        `5회 연속 실패 — 인벤토리에서 잠금 해제 필요 (${pairs})`,
       );
     } else {
       setBlockedMessage(null);
@@ -1568,12 +1608,12 @@ If no changes were needed, this is just a checkpoint announcement: "All gates gr
 
 ## Deferred review notes
 
-These are non-blocking findings from the eng-review (E7-E9) and design-review (filled in by stage 4 of /full-flow). They are recorded so the implementor can address them opportunistically without expanding the plan's surface area.
+These are non-blocking findings from eng-review (E*) and design-review (D*) recorded for opportunistic handling.
 
-- **E7 (eng-review):** Task 11 `재시도 N/5` indicator omission rule has a single test branch (`expect(indicator).toBeInTheDocument()`). When DESIGN.md is checked in Task 11 Step 1 and the token is missing, the test must be flipped to `expect(...).toBeNull()` instead of left as-is. Either outcome is acceptable; the test must follow the decision.
+- ~~**E7 (eng-review):**~~ **Resolved by design-review D2** — `--warn` token exists in [CaptureQueueRow.tsx:63](frontend/src/capture/CaptureQueueRow.tsx#L63), so the `재시도 N/5` indicator is always included. The conditional-omit branch has been removed from Task 11; tests now cover always-include and `fail_streak == 0` skip.
 - **E8 (eng-review):** Task 5 Step 4 uses `# noqa: PLC0415` for a function-level import of `is_blocked` / `read_fail_streak`. Move to module top-level if no circular import surfaces.
 - **E9 (eng-review):** Task 8 Step 4 reads the manifest once per `/api/stock-dates` request. Single-user dev tool, file is tiny — accept. If inventory becomes a hot endpoint later, cache per request scope.
-- **(design-review notes will be appended here in stage 4)**
+- **D6 (design-review):** If many (Code, Stock-Date) rows are simultaneously blocked, the cumulative `bg-[rgba(244,63,94,0.10)]` tint on every blocked row may visually overload the inventory page (everything pink-tinted). Acceptable for v1 because blocking is expected to be rare; revisit if operations report visual fatigue.
 
 ## Spec coverage check (filled out after writing the plan)
 
