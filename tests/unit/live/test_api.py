@@ -645,3 +645,68 @@ def test_past_daily_validation_404_when_kis_not_wired(tmp_path) -> None:
         assert r.status_code == 503
 
 
+def test_past_daily_empty_gap_caches_and_does_not_refetch(tmp_path) -> None:
+    """KIS returning [] for a gap (range fully non-trading) must still cache
+    the empty batch so a follow-up request inside that range hits the cache
+    instead of re-calling KIS. Prevents infinite re-fetch on holiday ranges."""
+
+    class _EmptyKis(_FakeKisForDaily):
+        async def fetch_past_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd):
+            self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+            from hoga.live.kis_client import DailyCandleFetchResult
+            return DailyCandleFetchResult(candles=[], violations=[])
+
+    fake = _EmptyKis()
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r1 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
+        assert r1.status_code == 200
+        assert len(fake.calls) == 1
+        r2 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
+        assert r2.status_code == 200
+        body = r2.json()
+        assert "20240101__20240105" in body["cached_batches"]
+        assert body["fresh_batches"] == []
+        assert len(fake.calls) == 1
+
+
+def test_past_daily_single_day_past_request(tmp_path) -> None:
+    fake = _FakeKisForDaily()
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240101")
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body["candles"]) == 1
+        assert len(fake.calls) == 1
+        _, gap_from, gap_to = fake.calls[0]
+        assert gap_from == "20240101" and gap_to == "20240101"
+
+
+def test_past_daily_today_only_request_skips_gap_branch(tmp_path) -> None:
+    fake = _FakeKisForDaily()
+    app = _daily_app(tmp_path, fake)
+    today = _today_kst_yyyymmdd()
+    with TestClient(app) as c:
+        r = c.get(f"/api/live/past-daily-candles?code=005930&from={today}&to={today}")
+        assert r.status_code == 200
+        assert len(fake.calls) == 1
+        _, call_from, call_to = fake.calls[0]
+        assert call_from == today and call_to == today
+
+
+def test_past_daily_today_negative_cache_skips_kis_within_ttl(tmp_path) -> None:
+    class _EmptyTodayKis(_FakeKisForDaily):
+        async def fetch_past_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd):
+            self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+            from hoga.live.kis_client import DailyCandleFetchResult
+            return DailyCandleFetchResult(candles=[], violations=[])
+
+    fake = _EmptyTodayKis()
+    app = _daily_app(tmp_path, fake)
+    today = _today_kst_yyyymmdd()
+    with TestClient(app) as c:
+        c.get(f"/api/live/past-daily-candles?code=005930&from={today}&to={today}")
+        c.get(f"/api/live/past-daily-candles?code=005930&from={today}&to={today}")
+        assert len(fake.calls) == 1
+
