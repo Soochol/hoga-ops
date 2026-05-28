@@ -11,12 +11,15 @@ documents the /live hover-spot boundary that motivated this promotion.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from hoga.api.queries import QueryEngine
 
 SourceName = Literal["hogaplay", "kis_live"]
 
 
-def resolve_source(engine, date: str, code: str, pref: str) -> str:
+def resolve_source(engine: "QueryEngine", date: str, code: str, pref: SourceName) -> SourceName:
     """Return the source name actually present on disk for this (date, code).
 
     Prefers ``pref`` if its meta.json exists; otherwise picks the first other

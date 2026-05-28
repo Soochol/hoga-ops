@@ -3,6 +3,7 @@ boundary, source_pref thread-through to spot endpoints)."""
 from __future__ import annotations
 
 from pathlib import Path
+from typing import get_args
 from unittest.mock import MagicMock
 
 import pytest
@@ -53,6 +54,6 @@ def test_mock_engine_data_dir_returns_pref(tmp_path: Path) -> None:
 @pytest.mark.parametrize("bad", ["", "kis_ws", "HOGAPLAY"])
 def test_source_name_literal_excludes_unknown(bad: str) -> None:
     # Static-typing guard. Runtime check is at the FastAPI layer (422).
-    assert bad not in {"hogaplay", "kis_live"}
-    valid: tuple[SourceName, ...] = ("hogaplay", "kis_live")
-    assert all(v in {"hogaplay", "kis_live"} for v in valid)
+    known = set(get_args(SourceName))
+    assert known == {"hogaplay", "kis_live"}, f"SourceName set changed to {known} — update both this test and downstream consumers"
+    assert bad not in known

@@ -6,7 +6,6 @@ This file is the thin glue layer.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal as _Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -24,7 +23,7 @@ from hoga.api.models import (
 )
 from hoga.api.params import Code, StockDate
 from hoga.api.queries import QueryEngine, StockDateNotFound
-from hoga.api.sources import resolve_source
+from hoga.api.sources import SourceName, resolve_source
 from hoga.api.timeenc import (
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
@@ -89,7 +88,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         date: StockDate,
         t: int = Query(...),
         bucket_ms: int | None = Query(None),
-        source_pref: _Literal["hogaplay", "kis_live"] = Query("hogaplay"),
+        source_pref: SourceName = Query("hogaplay"),
     ) -> OrderbookResponse:
         # ADR-0044: hover spot path honors source_pref via resolve_source +
         # ADR-0039 preference+fallback semantics. The resolved source is
