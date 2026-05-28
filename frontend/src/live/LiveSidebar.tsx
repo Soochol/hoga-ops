@@ -65,8 +65,8 @@ export function LiveSidebar({ code, date }: Props) {
   // Axis for Auction Mask in spot mode.
   const axis = useLiveAxisStore((s) => s.axis);
   const maskRatio =
-    isSpot && axis !== null && cursorMs !== null
-      ? axis.inClosingAuctionWindow(cursorMs)
+    isSpot && axis !== null
+      ? axis.inClosingAuctionWindow(cursorMs!)
       : false;
 
   // Branch on spot vs latest.
@@ -74,12 +74,12 @@ export function LiveSidebar({ code, date }: Props) {
   const spotAvailableFrom = spotOrderbook?.available_from ?? null;
   const orderbookForCard = isSpot ? spotSnap : latestOrderbook;
   const tradesForCard = isSpot
-    ? (spotTrades === undefined ? undefined : spotTrades ?? [])
+    ? spotTrades
     : (trade.length === 0 ? undefined : latestTrades);
   const brokerSeriesForCard = isSpot
-    ? (spotBrokers === undefined ? undefined : spotBrokers ?? [])
+    ? spotBrokers
     : (broker.length === 0 ? undefined : latestBrokerSeries);
-  const brokerCursorMs = isSpot ? (cursorMs as number) : latestBrokerTs;
+  const brokerCursorMs = cursorMs ?? latestBrokerTs;
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook
   // has no snapshot yet but backend knows when the first row arrives.

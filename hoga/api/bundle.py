@@ -240,11 +240,11 @@ def build_volume_profile_range(
     # ADR-0043: kis_live trades.parquet may not exist for sparse Stock-Dates
     # (empty promote cycle → atomic_write_parquet unlinks the file). Filter
     # to existing paths only; if none remain, return empty profile.
-    paths = [
-        str(engine.parquet_dir(d, code, src) / "trades.parquet")
-        for d, src in dates_with_sources
-        if (engine.parquet_dir(d, code, src) / "trades.parquet").exists()
-    ]
+    paths: list[str] = []
+    for d, src in dates_with_sources:
+        p = engine.parquet_dir(d, code, src) / "trades.parquet"
+        if p.exists():
+            paths.append(str(p))
     if not paths:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
 
