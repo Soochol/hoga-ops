@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeSMA, MOVING_AVERAGE_SPEC, selectSource, type MAContext, type MASource } from './movingAverage';
+import { computeSMA, MOVING_AVERAGE_SPEC, selectSource, type MAContext } from './movingAverage';
 import type { MAConfig } from '../../state/tabs';
 
 describe('selectSource', () => {
