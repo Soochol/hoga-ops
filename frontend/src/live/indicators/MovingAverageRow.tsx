@@ -30,28 +30,11 @@ export default function MovingAverageRow({ index, config, canRemove, onChange, o
   };
 
   return (
-    <div className="grid grid-cols-[56px_36px_1fr_1fr_72px_24px] items-center gap-2 py-1.5">
+    // The per-slot enable toggle was removed in favour of the master
+    // category checkbox in IndicatorPanel — see useLivePageStore.movingAverageEnabled.
+    // Slot visibility is now controlled by add/remove, not per-slot toggle.
+    <div className="grid grid-cols-[56px_auto_1fr_72px_24px] items-center gap-2 py-1.5">
       <div className="text-sm text-fg tabular-nums">{`기간${index + 1}`}</div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={config.enabled}
-        aria-label={`기간${index + 1} 토글`}
-        onClick={() => onChange({ enabled: !config.enabled })}
-        className={
-          config.enabled
-            ? 'relative inline-flex h-5 w-9 items-center rounded-full bg-accent transition-colors'
-            : 'relative inline-flex h-5 w-9 items-center rounded-full bg-bg-input-hover transition-colors'
-        }
-      >
-        <span
-          className={
-            config.enabled
-              ? 'inline-block h-4 w-4 rounded-full bg-accent-fg translate-x-[18px] transition-transform'
-              : 'inline-block h-4 w-4 rounded-full bg-fg-dim translate-x-[2px] transition-transform'
-          }
-        />
-      </button>
       <div className="flex items-center">
         <MAStylePicker
           color={config.color}

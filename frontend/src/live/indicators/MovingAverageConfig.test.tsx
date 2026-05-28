@@ -10,7 +10,9 @@ describe('MovingAverageConfig', () => {
 
   it('renders one row per slot', () => {
     render(<MovingAverageConfig />);
-    expect(screen.getAllByRole('switch')).toHaveLength(DEFAULT_LIVE_MAS.length);
+    // Per-slot toggle was removed; count rows by the period spinbutton
+    // which is exactly-one-per-slot.
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(DEFAULT_LIVE_MAS.length);
   });
 
   it('"기간 추가" button appends a slot', () => {

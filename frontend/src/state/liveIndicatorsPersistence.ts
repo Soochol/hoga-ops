@@ -47,6 +47,7 @@ const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
+  movingAverageEnabled: boolean;
 };
 
 function isValidEntry(m: unknown): m is LiveMAConfig {
@@ -70,15 +71,24 @@ function isValidEntry(m: unknown): m is LiveMAConfig {
  *  unrecoverable (missing/non-object/non-array MAs) return defaults.
  *  If a subset of entries is valid, keep those; if none are valid,
  *  fall back to defaults. Cap to MA_SLOT_LIMIT to prevent unbounded
- *  growth from a corrupted store. */
+ *  growth from a corrupted store. `movingAverageEnabled` defaults to
+ *  true unless the persisted value is the literal boolean false (any
+ *  other shape — missing, null, "true" string — falls back to true so
+ *  legacy stores written before this field existed keep showing MAs). */
 export function mergeLiveIndicatorPrefs(
   raw: PersistedIndicators | undefined | null | unknown,
 ): PersistedIndicators {
   const defaults = DEFAULT_LIVE_MAS.map((m) => ({ ...m }));
-  if (!raw || typeof raw !== 'object') return { movingAverages: defaults };
-  const arr = (raw as Record<string, unknown>).movingAverages;
-  if (!Array.isArray(arr)) return { movingAverages: defaults };
+  const fallback = (mas: LiveMAConfig[]): PersistedIndicators => ({
+    movingAverages: mas,
+    movingAverageEnabled: true,
+  });
+  if (!raw || typeof raw !== 'object') return fallback(defaults);
+  const obj = raw as Record<string, unknown>;
+  const arr = obj.movingAverages;
+  const enabled = obj.movingAverageEnabled === false ? false : true;
+  if (!Array.isArray(arr)) return { movingAverages: defaults, movingAverageEnabled: enabled };
   const kept = arr.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[];
-  if (kept.length === 0) return { movingAverages: defaults };
-  return { movingAverages: kept };
+  if (kept.length === 0) return { movingAverages: defaults, movingAverageEnabled: enabled };
+  return { movingAverages: kept, movingAverageEnabled: enabled };
 }

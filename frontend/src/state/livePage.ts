@@ -88,6 +88,11 @@ type Persisted = {
 
 type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
+  /** Master toggle for the moving-average indicator. When false the chart
+   *  hides every MA slot regardless of slot count or per-slot fields.
+   *  Controlled by the IndicatorPanel category checkbox; the per-slot
+   *  toggle UI was removed in favour of this single switch. */
+  movingAverageEnabled: boolean;
 };
 
 type Store = Persisted & PersistedIndicators & {
@@ -101,6 +106,7 @@ type Store = Persisted & PersistedIndicators & {
   setMovingAverage: (id: string, patch: Partial<LiveMAConfig>) => void;
   addMovingAverage: () => void;
   removeMovingAverage: (id: string) => void;
+  setMovingAverageEnabled: (enabled: boolean) => void;
 };
 
 const DEFAULTS: Persisted = {
@@ -195,7 +201,10 @@ export const useLivePageStore = create<Store>((set, get) => ({
     const nextArr = current.slice();
     nextArr[idx] = next;
     set({ movingAverages: nextArr });
-    persistIndicators({ movingAverages: nextArr });
+    persistIndicators({
+      movingAverages: nextArr,
+      movingAverageEnabled: get().movingAverageEnabled,
+    });
   },
 
   addMovingAverage: () => {
@@ -213,7 +222,10 @@ export const useLivePageStore = create<Store>((set, get) => ({
     };
     const nextArr = [...current, next];
     set({ movingAverages: nextArr });
-    persistIndicators({ movingAverages: nextArr });
+    persistIndicators({
+      movingAverages: nextArr,
+      movingAverageEnabled: get().movingAverageEnabled,
+    });
   },
 
   removeMovingAverage: (id) => {
@@ -222,7 +234,18 @@ export const useLivePageStore = create<Store>((set, get) => ({
     const nextArr = current.filter((m) => m.id !== id);
     if (nextArr.length === current.length) return; // unknown id
     set({ movingAverages: nextArr });
-    persistIndicators({ movingAverages: nextArr });
+    persistIndicators({
+      movingAverages: nextArr,
+      movingAverageEnabled: get().movingAverageEnabled,
+    });
+  },
+
+  setMovingAverageEnabled: (enabled) => {
+    set({ movingAverageEnabled: enabled });
+    persistIndicators({
+      movingAverages: get().movingAverages,
+      movingAverageEnabled: enabled,
+    });
   },
 
   setActiveCode: (code) => {

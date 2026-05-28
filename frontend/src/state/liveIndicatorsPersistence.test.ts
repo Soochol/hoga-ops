@@ -6,7 +6,23 @@ describe('mergeLiveIndicatorPrefs', () => {
   it('returns defaults for undefined input', () => {
     expect(mergeLiveIndicatorPrefs(undefined)).toEqual({
       movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
+      movingAverageEnabled: true,
     });
+  });
+
+  it('persisted movingAverageEnabled=false survives merge', () => {
+    const merged = mergeLiveIndicatorPrefs({
+      movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
+      movingAverageEnabled: false,
+    });
+    expect(merged.movingAverageEnabled).toBe(false);
+  });
+
+  it('missing movingAverageEnabled defaults to true (legacy stores)', () => {
+    const merged = mergeLiveIndicatorPrefs({
+      movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
+    } as unknown as PersistedIndicators);
+    expect(merged.movingAverageEnabled).toBe(true);
   });
 
   it('returns defaults for non-object input', () => {
@@ -16,14 +32,14 @@ describe('mergeLiveIndicatorPrefs', () => {
 
   it('returns defaults when movingAverages is not an array', () => {
     expect(
-      mergeLiveIndicatorPrefs({ movingAverages: 'oops' as unknown as never } as PersistedIndicators)
+      mergeLiveIndicatorPrefs({ movingAverages: 'oops' } as unknown as PersistedIndicators)
         .movingAverages,
     ).toEqual(DEFAULT_LIVE_MAS.map((m) => ({ ...m })));
   });
 
   it('returns defaults when all entries are invalid', () => {
     expect(
-      mergeLiveIndicatorPrefs({ movingAverages: [{}, { id: 1 }] as unknown as never } as PersistedIndicators)
+      mergeLiveIndicatorPrefs({ movingAverages: [{}, { id: 1 }] } as unknown as PersistedIndicators)
         .movingAverages,
     ).toEqual(DEFAULT_LIVE_MAS.map((m) => ({ ...m })));
   });

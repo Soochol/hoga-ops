@@ -19,6 +19,7 @@ type LineApi = ISeriesApi<'Line'>;
  *  같은 데이터 patch는 setData만 호출 — series identity churn 없음. */
 export default function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   const configs = useLivePageStore((s) => s.movingAverages);
+  const masterEnabled = useLivePageStore((s) => s.movingAverageEnabled);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
 
   // Reconcile series ↔ configs by id.
@@ -72,7 +73,11 @@ export default function MovingAverageOverlay({ chart, bundle, axis }: Props) {
     for (const cfg of configs) {
       const s = map.get(cfg.id);
       if (!s) continue;
-      if (!cfg.enabled) {
+      // Master toggle wins: when the indicator category is off, every slot
+      // is hidden regardless of its own `enabled` flag. The per-slot
+      // `enabled` field is still honoured underneath so legacy stores
+      // (and any future reintroduction of per-slot toggles) keep working.
+      if (!masterEnabled || !cfg.enabled) {
         s.setData([]);
         continue;
       }
@@ -85,7 +90,7 @@ export default function MovingAverageOverlay({ chart, bundle, axis }: Props) {
       });
       s.setData(data as never);
     }
-  }, [bundle, axis, configs]);
+  }, [bundle, axis, configs, masterEnabled]);
 
   return null;
 }

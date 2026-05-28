@@ -3,14 +3,27 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import IndicatorPanel from './IndicatorPanel';
 
 describe('IndicatorPanel', () => {
-  it('lists 7 categories with 이동평균선 as the only active one', () => {
+  it('lists 7 category checkboxes with 이동평균선 as the only active one', () => {
     render(<IndicatorPanel onClose={() => {}} />);
-    const buttons = screen.getAllByRole('button', { name: /이동평균선|일목균형표|볼린저밴드|슈퍼트렌드|매물대분석|엔벨로프|윌리엄스/ });
-    expect(buttons).toHaveLength(7);
-    // 6 of them are disabled.
-    expect(buttons.filter((b) => (b as HTMLButtonElement).disabled)).toHaveLength(6);
-    // 이동평균선 is active.
-    expect((screen.getByRole('button', { name: '이동평균선' }) as HTMLButtonElement).disabled).toBe(false);
+    const checkboxes = screen.getAllByRole('checkbox');
+    expect(checkboxes).toHaveLength(7);
+    // 6 of them are disabled (placeholder indicators not yet supported).
+    expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(6);
+    // 이동평균선 is the only enabled, checked-by-default checkbox.
+    const ma = screen.getByRole('checkbox', { name: '이동평균선' }) as HTMLButtonElement;
+    expect(ma.disabled).toBe(false);
+    expect(ma.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('clicking 이동평균선 checkbox toggles movingAverageEnabled', async () => {
+    const { useLivePageStore } = await import('../../state/livePage');
+    useLivePageStore.setState({ movingAverageEnabled: true });
+    render(<IndicatorPanel onClose={() => {}} />);
+    const ma = screen.getByRole('checkbox', { name: '이동평균선' });
+    fireEvent.click(ma);
+    expect(useLivePageStore.getState().movingAverageEnabled).toBe(false);
+    fireEvent.click(ma);
+    expect(useLivePageStore.getState().movingAverageEnabled).toBe(true);
   });
 
   it('renders MovingAverageConfig in the right pane', () => {

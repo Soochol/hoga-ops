@@ -15,18 +15,8 @@ describe('MovingAverageRow', () => {
     expect(periodInput.value).toBe('20');
   });
 
-  it('toggle button reflects enabled state', () => {
-    render(<MovingAverageRow index={0} config={cfg} canRemove={true} onChange={() => {}} onRemove={() => {}} />);
-    const toggle = screen.getByRole('switch') as HTMLButtonElement;
-    expect(toggle.getAttribute('aria-checked')).toBe('true');
-  });
-
-  it('toggle click emits onChange({enabled: false})', () => {
-    const onChange = vi.fn();
-    render(<MovingAverageRow index={0} config={cfg} canRemove={true} onChange={onChange} onRemove={() => {}} />);
-    fireEvent.click(screen.getByRole('switch'));
-    expect(onChange).toHaveBeenCalledWith({ enabled: false });
-  });
+  // Per-slot toggle was removed; the master 이동평균선 checkbox in
+  // IndicatorPanel controls visibility for the whole category instead.
 
   it('period commit on blur emits onChange({period: N})', () => {
     const onChange = vi.fn();
