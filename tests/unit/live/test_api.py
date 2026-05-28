@@ -429,31 +429,32 @@ def test_minute_today_non_trading_day_negative_caches(tmp_path) -> None:
 
 # ----- /api/live/past-daily-candles validation -----
 
-from hoga.live.api import _validate_daily_past_request
+from hoga.live.api import _validate_past_request
 from fastapi import HTTPException
 
 
 def test_validate_daily_accepts_uncapped_range() -> None:
     today = _today_kst_yyyymmdd()
-    frm, too, today_d = _validate_daily_past_request("005930", "20060101", today)
+    # max_days=None disables the cap — used by the daily path (ADR-0048).
+    frm, _too, _today_d = _validate_past_request("005930", "20060101", today, max_days=None)
     assert frm.strftime("%Y%m%d") == "20060101"
 
 
 def test_validate_daily_rejects_invalid_code() -> None:
     with pytest.raises(HTTPException) as exc:
-        _validate_daily_past_request("abc", "20240101", "20240102")
+        _validate_past_request("abc", "20240101", "20240102")
     assert exc.value.status_code == 422
 
 
 def test_validate_daily_rejects_invalid_date() -> None:
     with pytest.raises(HTTPException) as exc:
-        _validate_daily_past_request("005930", "2024-01-01", "20240102")
+        _validate_past_request("005930", "2024-01-01", "20240102")
     assert exc.value.status_code == 422
 
 
 def test_validate_daily_rejects_from_after_to() -> None:
     with pytest.raises(HTTPException) as exc:
-        _validate_daily_past_request("005930", "20240505", "20240101")
+        _validate_past_request("005930", "20240505", "20240101")
     assert exc.value.status_code == 422
 
 
@@ -463,7 +464,7 @@ def test_validate_daily_rejects_future_to() -> None:
     kst = datetime.timezone(datetime.timedelta(hours=9))
     tomorrow = (_dt.now(kst) + _td(days=1)).strftime("%Y%m%d")
     with pytest.raises(HTTPException) as exc:
-        _validate_daily_past_request("005930", today, tomorrow)
+        _validate_past_request("005930", today, tomorrow)
     assert exc.value.status_code == 422
 
 

@@ -5,7 +5,7 @@ import asyncio
 import json as _json
 import re
 from collections.abc import Awaitable
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
 
@@ -55,8 +55,15 @@ def _candle_to_dict(c) -> dict:
     }
 
 
-def _validate_past_request(code: str, from_: str, to: str) -> tuple[date, date, date]:
+def _validate_past_request(
+    code: str, from_: str, to: str,
+    *, max_days: int | None = _PAST_MAX_DAYS,
+) -> tuple[date, date, date]:
     """Validate past-candles request params, returning parsed (frm, too, today).
+
+    `max_days=None` disables the range cap — used by the daily path, which is
+    uncapped per ADR-0048 (KIS retention ~20-30 years is the natural ceiling
+    and rate-limit handling surfaces partial responses via data_warnings).
 
     Raises HTTPException(422) for any constraint violation.
     """
@@ -71,37 +78,13 @@ def _validate_past_request(code: str, from_: str, to: str) -> tuple[date, date, 
     today_d = _today_kst_date()
     if too > today_d:
         raise HTTPException(422, {"code": "date_in_future", "msg": "to must be <= today_kst"})
-    span_days = (too - frm).days + 1
-    if span_days > _PAST_MAX_DAYS:
-        raise HTTPException(
-            422,
-            {"code": "date_range_too_large", "msg": f"max {_PAST_MAX_DAYS} days", "max_days": _PAST_MAX_DAYS},
-        )
-    return frm, too, today_d
-
-
-def _validate_daily_past_request(
-    code: str, from_: str, to: str
-) -> tuple[date, date, date]:
-    """Validate daily past-candles request, returning parsed (frm, too, today).
-
-    Unlike `_validate_past_request` (250-day cap on minute path), the daily
-    path is uncapped — KIS retention (~20-30 years) is the natural ceiling
-    and rate-limit handling surfaces partial responses via data_warnings.
-
-    Raises HTTPException(422) on invalid code / date / order / future date.
-    """
-    if not _CODE_RE.match(code):
-        raise HTTPException(422, {"code": "invalid_code", "msg": "code must be 6 digits"})
-    frm = _parse_yyyymmdd(from_)
-    too = _parse_yyyymmdd(to)
-    if frm is None or too is None:
-        raise HTTPException(422, {"code": "invalid_date", "msg": "from/to must be YYYYMMDD"})
-    if frm > too:
-        raise HTTPException(422, {"code": "from_after_to", "msg": "from must be <= to"})
-    today_d = _today_kst_date()
-    if too > today_d:
-        raise HTTPException(422, {"code": "date_in_future", "msg": "to must be <= today_kst"})
+    if max_days is not None:
+        span_days = (too - frm).days + 1
+        if span_days > max_days:
+            raise HTTPException(
+                422,
+                {"code": "date_range_too_large", "msg": f"max {max_days} days", "max_days": max_days},
+            )
     return frm, too, today_d
 
 
@@ -350,7 +333,7 @@ def build_router(
         from_: str = Query(..., alias="from"),
         to: str = Query(...),
     ) -> dict:
-        frm, too, today_d = _validate_daily_past_request(code, from_, to)
+        frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
         today_s = today_d.strftime("%Y%m%d")
         from_s = frm.strftime("%Y%m%d")
         to_s = too.strftime("%Y%m%d")
@@ -437,9 +420,8 @@ def build_router(
                     warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, today_label))
 
         # 6. Dedupe by t_ms, sort, filter to [frm, too].
-        from datetime import time as _time
-        frm_ms = int(datetime.combine(frm, _time(0, 0), tzinfo=_KST).timestamp() * 1000)
-        too_ms = int(datetime.combine(too, _time(23, 59, 59), tzinfo=_KST).timestamp() * 1000)
+        frm_ms = int(datetime.combine(frm, time(0, 0), tzinfo=_KST).timestamp() * 1000)
+        too_ms = int(datetime.combine(too, time(23, 59, 59), tzinfo=_KST).timestamp() * 1000)
         by_ts: dict[int, dict] = {}
         for bar in loaded_bars:
             ts = bar.get("t_ms")

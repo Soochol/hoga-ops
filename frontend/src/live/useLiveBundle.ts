@@ -110,17 +110,15 @@ export function useLiveBundle(
   // with the SSE tail (buildLiveBundle.ts:67, 72).
   const minutePastTo = todayKstYyyymmdd;
 
-  // /api/range — minute-only (hoga indicators are a minute concept).
-  const enableRange = !!(code && isMinute && minutePastFrom <= minutePastTo);
-  const past = useRange(
-    enableRange ? code : null,
-    enableRange ? minutePastFrom : null,
-    enableRange ? minutePastTo : null,
-    enableRange ? (timeframe as Timeframe) : null,
-  );
-
-  // KIS minute past-candles — only enabled for minute timeframes.
+  // Minute-only gate: both /api/range (hoga indicators) and
+  // /api/live/past-candles fire on the same condition.
   const enableMinute = !!(code && isMinute && minutePastFrom <= minutePastTo);
+  const past = useRange(
+    enableMinute ? code : null,
+    enableMinute ? minutePastFrom : null,
+    enableMinute ? minutePastTo : null,
+    enableMinute ? (timeframe as Timeframe) : null,
+  );
   const pastCandlesQuery = useLivePastCandles(
     enableMinute ? code : null,
     enableMinute ? minutePastFrom : null,
