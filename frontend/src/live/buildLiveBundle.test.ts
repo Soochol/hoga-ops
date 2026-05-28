@@ -233,3 +233,112 @@ describe('buildLiveBundle', () => {
     expect(bundle.segments[2].source).toBe('kis_live');
   });
 });
+
+const MINUTE_MS = 60_000;
+
+function makeRangeBundle(qrPoints: { t: number; bid_total: number; ask_total: number }[]): RangeBundle {
+  return {
+    code: '003490',
+    from_date: '20260527',
+    to_date: '20260528',
+    bucket_ms: MINUTE_MS,
+    segments: [{
+      date: '20260527',
+      session_open_ms: 1779840000000,
+      session_close_ms: 1779863400000,
+      source: 'kis_live',
+    }],
+    candles: [],
+    quote_ratio: { bucket_ms: MINUTE_MS, points: qrPoints },
+    fill_strength: { bucket_ms: MINUTE_MS, points: [] },
+    volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+    volume_profile_by_day: [],
+  };
+}
+
+describe('buildLiveBundle dedup (ADR-0043 plan Task 9)', () => {
+  const todayDate = '20260528';
+  const todaySession = { open_ms: 1779926400000, close_ms: 1779949800000 };
+
+  it('dedupes SSE buckets that share timestamp with parquet tail', () => {
+    const pastTailT = 1779926400000;  // 5/28 09:00 KST
+    const past = makeRangeBundle([
+      { t: pastTailT, bid_total: 1000, ask_total: 2000 },
+    ]);
+
+    const sseOb = [
+      // 같은 t값 — parquet이 이김
+      { t_ms: pastTailT + 1000, total_bid_qty: 9999, total_ask_qty: 9999 },
+      // 새 timestamp — SSE가 들어감
+      { t_ms: pastTailT + 60_000 + 1000, total_bid_qty: 1100, total_ask_qty: 2100 },
+    ];
+
+    const bundle = buildLiveBundle({
+      code: '003490',
+      todayDate,
+      todaySession,
+      pastBundle: past,
+      sseOb,
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: MINUTE_MS,
+    });
+
+    const ts = bundle.quote_ratio.points.map((p) => p.t);
+    expect(ts).toContain(pastTailT);
+    expect(ts).toContain(pastTailT + 60_000);
+    expect(ts).toHaveLength(2);
+    // pastTailT 위치는 parquet 값 유지
+    expect(bundle.quote_ratio.points.find((p) => p.t === pastTailT)?.bid_total).toBe(1000);
+  });
+
+  it('uses all SSE buckets when past bundle is empty', () => {
+    const sseOb = [
+      { t_ms: 1779926401000, total_bid_qty: 100, total_ask_qty: 200 },
+      { t_ms: 1779926461000, total_bid_qty: 110, total_ask_qty: 210 },
+    ];
+
+    const bundle = buildLiveBundle({
+      code: '003490',
+      todayDate,
+      todaySession,
+      pastBundle: null,
+      sseOb,
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: MINUTE_MS,
+    });
+
+    expect(bundle.quote_ratio.points.length).toBe(2);
+  });
+
+  it('appends only timestamps strictly greater than past tail', () => {
+    const pastTailT = 1779926400000;
+    const past = makeRangeBundle([
+      { t: pastTailT, bid_total: 1000, ask_total: 2000 },
+    ]);
+
+    const sseOb = [
+      // pastTailT - 60s: 더 옛것 (버려져야 함)
+      { t_ms: pastTailT - 60_000 + 1000, total_bid_qty: 50, total_ask_qty: 50 },
+      // pastTailT: 동일 (parquet이 이김)
+      { t_ms: pastTailT + 1000, total_bid_qty: 999, total_ask_qty: 999 },
+      // pastTailT + 60s: 새것 (들어감)
+      { t_ms: pastTailT + 60_000 + 1000, total_bid_qty: 1100, total_ask_qty: 2100 },
+    ];
+
+    const bundle = buildLiveBundle({
+      code: '003490',
+      todayDate,
+      todaySession,
+      pastBundle: past,
+      sseOb,
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: MINUTE_MS,
+    });
+
+    const ts = bundle.quote_ratio.points.map((p) => p.t).sort((a, b) => a - b);
+    expect(ts).toEqual([pastTailT, pastTailT + 60_000]);
+  });
+});

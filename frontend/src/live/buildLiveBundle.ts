@@ -51,22 +51,32 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
   } = input;
 
   const pastSegments = pastBundle?.segments ?? [];
-  const pastHasToday = pastSegments.some((s) => s.date === todayDate);
+  const pastQRPoints = pastBundle?.quote_ratio.points ?? [];
+  const pastFSPoints = pastBundle?.fill_strength.points ?? [];
 
-  // Today hoga indicators from SSE buffer. When promoted past covers today
-  // we skip the SSE bucket to avoid double-counting.
-  const todayBuckets = pastHasToday
-    ? { quoteRatioPoints: [], fillStrengthPoints: [] }
-    : bucketHogaSeries(sseOb, sseTrade, bucketMs);
+  // parquet이 cover한 마지막 timestamp — SSE는 이보다 strict greater인 t만 추가
+  // (boundary timestamp는 parquet이 이김; dedup 방지)
+  const pastMaxQrT = pastQRPoints.length > 0
+    ? pastQRPoints[pastQRPoints.length - 1].t
+    : 0;
+  const pastMaxFsT = pastFSPoints.length > 0
+    ? pastFSPoints[pastFSPoints.length - 1].t
+    : 0;
+
+  const sseBuckets = bucketHogaSeries(sseOb, sseTrade, bucketMs);
+  const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > pastMaxQrT);
+  const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > pastMaxFsT);
 
   // Today segment marker — present if we have any signal for today.
   const todaySegments: RangeSegment[] = [];
-  if (!pastHasToday) {
-    const hasToday =
+  const pastHasTodaySegment = pastSegments.some((s) => s.date === todayDate);
+  if (!pastHasTodaySegment) {
+    const hasTodaySignal =
+      pastQRPoints.some((p) => realMsToYyyymmdd(p.t) === todayDate) ||
+      incrementalQR.length > 0 ||
       sseOb.length > 0 ||
-      sseTrade.length > 0 ||
       kisCandles.some((c) => c.ts_ms >= todaySession.open_ms);
-    if (hasToday) {
+    if (hasTodaySignal) {
       todaySegments.push({
         date: todayDate,
         session_open_ms: todaySession.open_ms,
@@ -120,11 +130,11 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
     candles: kisCandles,
     quote_ratio: {
       bucket_ms: bucketMs,
-      points: [...(pastBundle?.quote_ratio.points ?? []), ...todayBuckets.quoteRatioPoints],
+      points: [...pastQRPoints, ...incrementalQR],
     },
     fill_strength: {
       bucket_ms: bucketMs,
-      points: [...(pastBundle?.fill_strength.points ?? []), ...todayBuckets.fillStrengthPoints],
+      points: [...pastFSPoints, ...incrementalFS],
     },
     volume_profile_range: EMPTY_VOLUME_PROFILE,
     volume_profile_by_day: [],
