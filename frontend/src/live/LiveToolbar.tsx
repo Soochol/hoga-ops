@@ -43,7 +43,7 @@ export function LiveToolbar({ onOpenIndicators }: Props) {
         onClick={onOpenIndicators}
         aria-label="지표"
         title="지표"
-        className="ml-auto inline-flex items-center justify-center rounded-full hover:opacity-90 transition-opacity"
+        className="ml-1 inline-flex items-center justify-center rounded-full hover:opacity-90 transition-opacity"
         style={{
           width: '28px',
           height: '28px',
