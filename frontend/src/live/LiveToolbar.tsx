@@ -41,31 +41,31 @@ export function LiveToolbar({ onOpenIndicators }: Props) {
         type="button"
         data-testid="live-indicators-button"
         onClick={onOpenIndicators}
-        aria-label="지표"
-        title="지표"
-        className="ml-1 inline-flex items-center justify-center rounded-full hover:opacity-90 transition-opacity"
+        aria-label="보조지표"
+        className="ml-1 inline-flex items-center rounded hover:opacity-90 transition-opacity"
         style={{
-          width: '28px',
-          height: '28px',
-          background: 'var(--bg-subtle)',
-          color: 'var(--fg)',
+          gap: '4px',
+          padding: '4px 10px',
+          background: 'var(--bg-input)',
+          color: 'var(--fg-dim)',
           border: '1px solid var(--border)',
+          fontSize: 'var(--text-xs)',
         }}
       >
         <svg
           aria-hidden="true"
-          width="16"
-          height="16"
+          width="12"
+          height="12"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="2.5"
           strokeLinecap="round"
-          strokeLinejoin="round"
         >
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
         </svg>
+        <span>보조지표</span>
       </button>
     </div>
   );
