@@ -121,7 +121,16 @@ Grid 비율 변경의 정당화: 카드를 하나 제거하는 변경은 본질�
 
 ### Backend — test cleanup
 
-- `hoga/api/` 또는 `tests/` 하위의 `/api/trades` 라우트 테스트 제거
+- `tests/test_api_validation.py:25` 의 `/api/trades?t=0` 검증 케이스 제거 (또는 case 리스트에서 빼기)
+- 그 외 `hoga/api/` 하위의 `/api/trades` 라우트 테스트 (있다면) 제거
+
+### Stale-comment cleanup (plan stage)
+
+다음은 dead가 된 `/api/trades` 를 가리키는 comment-only 참조다. 실행 단계에서 함께 정리한다:
+
+- `frontend/src/util/time.ts:101` — JSDoc 의 "spot-data queries (/api/orderbook, /api/trades)" 에서 trades 토큰 제거
+- `frontend/src/chart/ChartStage.tsx:282` — 과거 architecture comment 안의 `/api/trades` 참조 제거
+- `hoga/api/queries.py:75` — historical incident 코멘트 안의 `/api/trades` 참조 제거 또는 재서술
 
 ## Data flow after change
 
@@ -161,6 +170,11 @@ Grid 비율 변경의 정당화: 카드를 하나 제거하는 변경은 본질�
 - 차트 체결강도(FillStrength) pane은 **유지** (사용자 확인).
 - 백엔드 `/api/trades` 엔드포인트는 **이번 PR에서 함께 제거** (사용자 선택, dead code 최소화).
 - `/live` 와 `/replay` **양쪽에서** 체결 카드 삭제 (사용자 확인).
+
+## Related decisions
+
+- **ADR-0047** (`docs/adr/0047-remove-fills-sidebar-card.md`) — 본 spec의 결정을 ADR로 기록. ADR-0023 / ADR-0044 의 "three cards" 인용이 stale 임을 명시.
+- **CONTEXT.md** "Cursor Sidebar" 항목 — 2-card 정의로 갱신됨.
 
 ## Open questions
 
