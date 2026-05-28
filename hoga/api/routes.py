@@ -132,8 +132,17 @@ def build_router(engine: QueryEngine) -> APIRouter:
         from_ms: int | None = Query(None, alias="from"),
         to_ms: int | None = Query(None, alias="to"),
         limit: int = 50,
+        source_pref: SourceName = Query("hogaplay"),
     ) -> TradesResponse:
-        path = _parquet_path(engine, date, code, "trades.parquet")
+        # ADR-0044: hover spot path honors source_pref via resolve_source +
+        # ADR-0039 preference+fallback semantics. The resolved source is
+        # echoed back so LiveStatusBar's chip can reflect fallback honestly.
+        source = resolve_source(engine, date, code, source_pref)
+        try:
+            sd_dir = engine.parquet_dir(date, code, source=source)
+        except StockDateNotFound as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        path = sd_dir / "trades.parquet"
         if from_ms is not None and to_ms is not None:
             rows = trades_tbl.query_range(
                 engine.conn,
@@ -149,7 +158,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         else:
             raise HTTPException(status_code=400, detail="provide either ?t= or ?from=&to=")
         rows = [r.model_copy(update={"ts_ms": hhmmssms_to_unix_ms(date, r.ts_ms)}) for r in rows]
-        return TradesResponse(trades=rows)
+        return TradesResponse(trades=rows, source=source)
 
     @router.get("/candles", response_model=CandlesResponse)
     def candles(code: Code, date: StockDate) -> CandlesResponse:

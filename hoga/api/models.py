@@ -72,6 +72,7 @@ class OrderbookResponse(BaseModel):
 
 class TradesResponse(BaseModel):
     trades: list[ApiTrade]
+    source: SourceName
 
 
 class CandlesResponse(BaseModel):

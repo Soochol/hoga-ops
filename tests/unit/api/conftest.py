@@ -55,6 +55,61 @@ def _write_snapshots(path: Path, rows: list[dict]) -> None:
 # seed_orderbook fixture
 # ---------------------------------------------------------------------------
 
+def _trade(t_hhmmssms: int) -> dict:
+    """Build a trade row matching trades.parquet schema (query columns only)."""
+    return {
+        "ts_ms": t_hhmmssms,
+        "seq": 1,
+        "price": 70000,
+        "change_pct": 0.0,
+        "qty": 10,
+        "side": 1,
+        "cum_vol": 100,
+        "cum_trades": 1,
+        "low_so_far": 70000,
+        "high_so_far": 70000,
+        "net_pressure": 10,
+    }
+
+
+def _write_trades(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(rows).write_parquet(path)
+
+
+@pytest.fixture
+def seed_trades(tmp_path: Path):
+    """Factory fixture: returns a callable (date, code, *, with_kis_live) -> TestClient.
+
+    Seeds a minimal hogaplay (and optionally kis_live) source dir under
+    tmp_path/data/parquet/{date}/{code}/{source}/ so that the /api/trades
+    route can resolve the source and read trades.parquet without a 404.
+    """
+    def _factory(
+        date: str,
+        code: str,
+        *,
+        with_kis_live: bool,
+    ) -> TestClient:
+        # HHMMSSmmm encoding: 100000000 = 10:00:00.000 KST
+        row = _trade(100000000)
+
+        # Seed hogaplay
+        hp_dir = tmp_path / "data" / "parquet" / date / code / "hogaplay"
+        _write_meta(hp_dir / "meta.json", source="hogaplay", code=code, date=date)
+        _write_trades(hp_dir / "trades.parquet", [row])
+
+        if with_kis_live:
+            kl_dir = tmp_path / "data" / "parquet" / date / code / "kis_live"
+            _write_meta(kl_dir / "meta.json", source="kis_live", code=code, date=date)
+            _write_trades(kl_dir / "trades.parquet", [row])
+
+        app = create_app(data_dir=tmp_path / "data")
+        return TestClient(app)
+
+    return _factory
+
+
 @pytest.fixture
 def seed_orderbook(tmp_path: Path):
     """Factory fixture: returns a callable (date, code, *, with_kis_live) -> TestClient.
