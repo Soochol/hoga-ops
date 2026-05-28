@@ -15,6 +15,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from hoga.live.kis_client import KisApiError, KisRateLimitError
 from hoga.live.past_candles_cache import PastCandlesCache
+from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
 from .buffer import LiveBuffer
 from .lifecycle import LiveStatus
@@ -231,6 +232,9 @@ def build_router(
     cache_instance: PastCandlesCache | None = (
         PastCandlesCache(data_dir=data_dir) if data_dir is not None else None
     )
+    daily_cache_instance: PastDailyCandlesCache | None = (
+        PastDailyCandlesCache() if data_dir is not None else None
+    )
 
     @router.get("/past-candles")
     async def _get_past_candles(
@@ -301,6 +305,139 @@ def build_router(
             "candles": candles_all,
             "cached_dates": cached_dates,
             "fresh_dates": fresh_dates,
+            "data_warnings": warnings,
+        }
+
+    @router.get("/past-daily-candles")
+    async def _get_past_daily_candles(
+        code: str = Query(...),
+        from_: str = Query(..., alias="from"),
+        to: str = Query(...),
+    ) -> dict:
+        frm, too, today_d = _validate_daily_past_request(code, from_, to)
+        today_s = today_d.strftime("%Y%m%d")
+        from_s = frm.strftime("%Y%m%d")
+        to_s = too.strftime("%Y%m%d")
+
+        if get_kis_client is None:
+            raise HTTPException(503, "KIS client not wired")
+        kis = get_kis_client()
+        if kis is None:
+            raise HTTPException(503, "KIS client not initialized")
+        if daily_cache_instance is None:
+            raise HTTPException(503, "past-daily-candles cache not wired (data_dir missing)")
+        cache = daily_cache_instance
+
+        warnings: list[dict] = []
+        cached_batches: list[str] = []
+        fresh_batches: list[str] = []
+        loaded_bars: list[dict] = []
+
+        # 1+2. Read existing batches, filter to those intersecting request.
+        existing_all = cache.list_batches(code)
+        existing_relevant: list[tuple[date, date]] = []
+        for b_from, b_to, b_bars in existing_all:
+            if b_to < frm or b_from > too:
+                continue
+            existing_relevant.append((b_from, b_to))
+            loaded_bars.extend(b_bars)
+            cached_batches.append(
+                f"{b_from.strftime('%Y%m%d')}__{b_to.strftime('%Y%m%d')}"
+            )
+
+        # 3. Compute gaps (past-only — today handled separately).
+        req_to_past = min(too, today_d - timedelta(days=1))
+        if frm <= req_to_past:
+            gaps = _compute_daily_gaps(frm, req_to_past, existing_relevant)
+            for gap_from, gap_to in gaps:
+                gap_from_s = gap_from.strftime("%Y%m%d")
+                gap_to_s = gap_to.strftime("%Y%m%d")
+                label = f"{gap_from_s}__{gap_to_s}"
+                try:
+                    result = await kis.fetch_past_daily_candles(
+                        code, gap_from_s, gap_to_s,
+                    )
+                except KisRateLimitError as e:
+                    warnings.append({
+                        "batch": label, "reason": "kis_rate_limit", "msg": str(e),
+                    })
+                    break
+                except KisApiError as e:
+                    warnings.append({
+                        "batch": label, "reason": "kis_api_error", "msg": e.msg_cd,
+                    })
+                    continue
+                bars_dicts = [_candle_to_dict(c) for c in result.candles]
+                cache.append_batch(code, gap_from, gap_to, bars_dicts)
+                loaded_bars.extend(bars_dicts)
+                fresh_batches.append(label)
+                for v in result.violations:
+                    warnings.append({
+                        "batch": label,
+                        "reason": "invariant_violation",
+                        "msg": f"{v.date_yyyymmdd}: {v.reason} ({v.detail})",
+                    })
+
+        # 5. Today handling (separate from past — memory only, tri-state).
+        if too >= today_d:
+            state, today_bar = cache.get_today(code)
+            if state == "hit":
+                loaded_bars.append(today_bar)  # type: ignore[arg-type]
+                cached_batches.append(f"{today_s}__{today_s}")
+            elif state == "negative":
+                pass  # known non-trading day; skip KIS, no row
+            else:  # miss
+                try:
+                    result = await kis.fetch_past_daily_candles(code, today_s, today_s)
+                    if result.candles:
+                        today_bar = _candle_to_dict(result.candles[0])
+                        cache.store_today(code, today_bar)
+                        loaded_bars.append(today_bar)
+                        fresh_batches.append(f"{today_s}__{today_s}")
+                    else:
+                        # Non-trading day — negative cache, still record the
+                        # fetch in fresh_batches for parity with gap-branch
+                        # (B3b: operator visibility for KIS round-trip).
+                        cache.store_today(code, None)
+                        fresh_batches.append(f"{today_s}__{today_s}")
+                    for v in result.violations:
+                        warnings.append({
+                            "batch": f"{today_s}__{today_s}",
+                            "reason": "invariant_violation",
+                            "msg": f"{v.date_yyyymmdd}: {v.reason} ({v.detail})",
+                        })
+                except KisRateLimitError as e:
+                    warnings.append({
+                        "batch": f"{today_s}__{today_s}",
+                        "reason": "kis_rate_limit", "msg": str(e),
+                    })
+                except KisApiError as e:
+                    warnings.append({
+                        "batch": f"{today_s}__{today_s}",
+                        "reason": "kis_api_error", "msg": e.msg_cd,
+                    })
+
+        # 6. Dedupe by t_ms, sort, filter to [frm, too].
+        from datetime import time as _time
+        frm_ms = int(datetime.combine(frm, _time(0, 0), tzinfo=_KST).timestamp() * 1000)
+        too_ms = int(datetime.combine(too, _time(23, 59, 59), tzinfo=_KST).timestamp() * 1000)
+        by_ts: dict[int, dict] = {}
+        for bar in loaded_bars:
+            ts = bar.get("t_ms")
+            if isinstance(ts, int):
+                by_ts[ts] = bar
+        candles_all = sorted(
+            (b for ts, b in by_ts.items() if frm_ms <= ts <= too_ms),
+            key=lambda b: b["t_ms"],
+        )
+
+        return {
+            "code": code,
+            "from": from_s,
+            "to": to_s,
+            "candles": candles_all,
+            "cached_batches": cached_batches,
+            "fresh_batches": fresh_batches,
             "data_warnings": warnings,
         }
 

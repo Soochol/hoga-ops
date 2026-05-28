@@ -491,3 +491,157 @@ def test_gaps_adjacent_batches_coalesce() -> None:
     ]
     gaps = _compute_daily_gaps(_date(2018, 1, 1), _date(2025, 12, 31), existing)
     assert gaps == [(_date(2018, 1, 1), _date(2019, 12, 31))]
+
+
+# ----- /api/live/past-daily-candles -----
+
+from hoga.live.kis_client import DailyCandleFetchResult, DailyInvariantViolation
+
+
+class _FakeKisForDaily:
+    """Stub KIS client returning deterministic daily bars."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, str, str]] = []
+        self.violations: list[DailyInvariantViolation] = []
+        self.raise_rate_limit_on_call: int | None = None
+
+    async def fetch_past_daily_candles(
+        self, code: str, from_yyyymmdd: str, to_yyyymmdd: str
+    ) -> DailyCandleFetchResult:
+        idx = len(self.calls)
+        self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+        if self.raise_rate_limit_on_call is not None and idx == self.raise_rate_limit_on_call:
+            from hoga.live.kis_client import KisRateLimitError
+            raise KisRateLimitError("simulated rate limit")
+        from datetime import datetime as _dt, timedelta as _td
+        kst = datetime.timezone(datetime.timedelta(hours=9))
+        y, m, d = int(from_yyyymmdd[:4]), int(from_yyyymmdd[4:6]), int(from_yyyymmdd[6:8])
+        ye, me, de = int(to_yyyymmdd[:4]), int(to_yyyymmdd[4:6]), int(to_yyyymmdd[6:8])
+        start = _dt(y, m, d, 9, 0, tzinfo=kst)
+        end = _dt(ye, me, de, 9, 0, tzinfo=kst)
+        candles = []
+        cur = start
+        while cur <= end:
+            candles.append(KisCandle(
+                t_ms=int(cur.timestamp() * 1000),
+                open=100, high=110, low=95, close=105, volume=10,
+            ))
+            cur = cur + _td(days=1)
+        return DailyCandleFetchResult(candles=candles, violations=list(self.violations))
+
+
+def _daily_app(tmp_path, fake_kis):
+    from fastapi import FastAPI
+    from hoga.live import lifecycle
+    from hoga.live.api import build_router
+
+    lifecycle.reset_for_tests()
+    lifecycle.set_kis_client(fake_kis)
+    app = FastAPI()
+    app.include_router(
+        build_router(
+            get_status=lifecycle.get_status,
+            get_kis_client=lifecycle.get_kis_client,
+            data_dir=tmp_path,
+        )
+    )
+    return app
+
+
+def test_past_daily_cache_miss_calls_kis(tmp_path) -> None:
+    fake = _FakeKisForDaily()
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body["candles"]) == 5
+        assert "20240101__20240105" in body["fresh_batches"]
+        assert body["cached_batches"] == []
+        assert len(fake.calls) == 1
+
+
+def test_past_daily_cache_hit_skips_kis(tmp_path) -> None:
+    fake = _FakeKisForDaily()
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
+        r2 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
+        body = r2.json()
+        assert "20240101__20240105" in body["cached_batches"]
+        assert body["fresh_batches"] == []
+        assert len(fake.calls) == 1
+
+
+def test_past_daily_partial_hit_gap_fill(tmp_path) -> None:
+    fake = _FakeKisForDaily()
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        c.get("/api/live/past-daily-candles?code=005930&from=20240301&to=20240501")
+        r2 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240501")
+        body = r2.json()
+        assert len(fake.calls) == 2
+        _, gap_from, gap_to = fake.calls[1]
+        assert gap_from == "20240101"
+        assert gap_to == "20240229"
+        ts = [c["t_ms"] for c in body["candles"]]
+        assert ts == sorted(set(ts))
+
+
+def test_past_daily_rate_limit_surfaces_data_warning(tmp_path) -> None:
+    fake = _FakeKisForDaily()
+    fake.raise_rate_limit_on_call = 1
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        c.get("/api/live/past-daily-candles?code=005930&from=20240301&to=20240501")
+        r2 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240501")
+        body = r2.json()
+        assert any(w["reason"] == "kis_rate_limit" for w in body["data_warnings"])
+
+
+def test_past_daily_violation_surfaces_to_wire(tmp_path) -> None:
+    fake = _FakeKisForDaily()
+    fake.violations = [DailyInvariantViolation(
+        date_yyyymmdd="20240103", reason="close_nonpositive", detail="close=0",
+    )]
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
+        body = r.json()
+        warn = [w for w in body["data_warnings"] if w["reason"] == "invariant_violation"]
+        assert len(warn) == 1
+        assert "20240103" in warn[0]["msg"]
+
+
+def test_past_daily_dedupes_and_sorts_overlapping_batches(tmp_path) -> None:
+    fake = _FakeKisForDaily()
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
+        c.get("/api/live/past-daily-candles?code=005930&from=20240103&to=20240107")
+        r3 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240107")
+        body = r3.json()
+        ts = [c["t_ms"] for c in body["candles"]]
+        assert ts == sorted(set(ts))
+        assert len(ts) == 7
+
+
+def test_past_daily_validation_404_when_kis_not_wired(tmp_path) -> None:
+    from fastapi import FastAPI
+    from hoga.live import lifecycle
+    from hoga.live.api import build_router
+
+    lifecycle.reset_for_tests()
+    lifecycle.set_kis_client(None)
+    app = FastAPI()
+    app.include_router(build_router(
+        get_status=lifecycle.get_status,
+        get_kis_client=lifecycle.get_kis_client,
+        data_dir=tmp_path,
+    ))
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240105")
+        assert r.status_code == 503
+
+
