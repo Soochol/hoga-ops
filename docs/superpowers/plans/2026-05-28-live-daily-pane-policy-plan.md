@@ -29,9 +29,11 @@ scope: frontend
 
 **Modify:**
 - `frontend/src/live/LiveChartRoot.tsx`:
-  - Replace `import { PANE_SPECS, PANE_STRETCH } from '../chart/paneSpecs'` consumer with `paneSpecsForTimeframe(timeframe)` at the render site (line ~276).
-  - Inside the initial-view effect (lines 104–122), replace the `totalBars < 50 ? fitContent() : setVisibleLogicalRange(...)` branch with `isMinuteLiveTimeframe(timeframe) ? setVisibleLogicalRange(...) : fitContent()`.
-  - Import the new helper.
+  - Replace `import { PANE_SPECS, PANE_STRETCH } from '../chart/paneSpecs'` consumer with `paneSpecsForTimeframe(timeframe)` at the render site (search for `PANE_SPECS.map`; currently ~line 285). Drop the `PANE_STRETCH` import — its consumer is rewritten below.
+  - **Rewrite the stretch-factor effect** (currently lines 244–270, the `useEffect` that calls `panes.forEach(... setStretchFactor)`) to derive both the expected pane count AND the stretch values from `paneSpecsForTimeframe(timeframe)` rather than the hard-coded `PANE_STRETCH`. Without this, D/W/M renders 2 panes but the effect waits for `panes.length >= 5` and re-schedules a `requestAnimationFrame` forever (until next deps change). This is a **review-found blocker** (B1).
+  - Inside the initial-view effect (currently lines 104–130), replace the `totalBars < 50 ? fitContent() : setVisibleLogicalRange(...)` branch with `isMinuteTimeframe(timeframe) ? setVisibleLogicalRange(...) : fitContent()`. **Reuse the existing in-file `isMinuteTimeframe` helper at lines 34–37** — do NOT inline a new 6-arm `||` chain (review-found nit B2).
+  - Add `timeframe` to BOTH the initial-view effect's deps array AND the stretch-factor effect's deps array (currently `[chart, bundle]` for both — they need to react when `timeframe` flips).
+  - Import the new `paneSpecsForTimeframe` helper.
 
 **No changes:**
 - `frontend/src/chart/paneSpecs.ts` (the canonical 5-pane registry stays the source of truth for `/replay` and the minute-timeframe path on `/live`).
@@ -159,37 +161,30 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 2: Wire `LiveChartRoot` to the helper
+## Task 2: Wire `LiveChartRoot` to the helper + fix stretch-factor effect
 
 **Files:**
-- Modify: `frontend/src/live/LiveChartRoot.tsx` (import + render-site swap)
+- Modify: `frontend/src/live/LiveChartRoot.tsx` (imports + render-site swap + stretch effect rewrite)
 
 - [ ] **Step 2.1: Update import block**
 
-Open `frontend/src/live/LiveChartRoot.tsx`. Find the existing import:
+Open `frontend/src/live/LiveChartRoot.tsx`. Find the existing import (line ~17):
 
 ```tsx
 import { PANE_SPECS, PANE_STRETCH } from '../chart/paneSpecs';
 ```
 
-If `PANE_STRETCH` is also unused after this change, remove it from the import. Check current usages first:
-
-```bash
-grep -n "PANE_STRETCH\|PANE_SPECS" frontend/src/live/LiveChartRoot.tsx
-```
-
-Replace the import line with:
+Replace with:
 
 ```tsx
-import { PANE_STRETCH } from '../chart/paneSpecs';
 import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
 ```
 
-(If `grep` shows `PANE_STRETCH` has no remaining uses, drop that import entirely.)
+Both `PANE_SPECS` and `PANE_STRETCH` are dropped — the render site (Step 2.2) and the stretch effect (Step 2.3) both move to deriving from `paneSpecsForTimeframe(timeframe)`.
 
 - [ ] **Step 2.2: Swap the render site**
 
-Find the JSX block around line 276:
+Search for `PANE_SPECS.map` in `LiveChartRoot.tsx` (currently ~line 285). The block is:
 
 ```tsx
 {PANE_SPECS.map((spec, i) => (
@@ -204,7 +199,7 @@ Find the JSX block around line 276:
 ))}
 ```
 
-Replace `PANE_SPECS.map` with `paneSpecsForTimeframe(timeframe).map`:
+Replace with:
 
 ```tsx
 {paneSpecsForTimeframe(timeframe).map((spec, i) => (
@@ -219,31 +214,108 @@ Replace `PANE_SPECS.map` with `paneSpecsForTimeframe(timeframe).map`:
 ))}
 ```
 
-- [ ] **Step 2.3: Build to catch type errors**
+- [ ] **Step 2.3: Rewrite the stretch-factor effect to use `paneSpecsForTimeframe`**
+
+The current effect at lines ~244–270 reads:
+
+```tsx
+useEffect(() => {
+  if (!chart || !bundle) return;
+  let cancelled = false;
+  const apply = () => {
+    if (cancelled) return;
+    try {
+      const panes = chart.panes();
+      if (panes.length < PANE_STRETCH.length) {
+        requestAnimationFrame(apply);
+        return;
+      }
+      panes.forEach((p, i) => {
+        const f = PANE_STRETCH[i];
+        if (f !== undefined && typeof p.setStretchFactor === 'function') {
+          p.setStretchFactor(f);
+        }
+      });
+    } catch {
+      // chart tearing down
+    }
+  };
+  const raf = requestAnimationFrame(apply);
+  return () => {
+    cancelled = true;
+    cancelAnimationFrame(raf);
+  };
+}, [chart, bundle]);
+```
+
+The `panes.length < PANE_STRETCH.length` (== 5) guard never satisfies on D/W/M (only 2 panes mount), producing an unbounded RAF loop. Replace the whole effect with:
+
+```tsx
+useEffect(() => {
+  if (!chart || !bundle) return;
+  const specs = paneSpecsForTimeframe(timeframe);
+  let cancelled = false;
+  const apply = () => {
+    if (cancelled) return;
+    try {
+      const panes = chart.panes();
+      if (panes.length < specs.length) {
+        requestAnimationFrame(apply);
+        return;
+      }
+      panes.forEach((p, i) => {
+        const f = specs[i]?.stretch;
+        if (f !== undefined && typeof p.setStretchFactor === 'function') {
+          p.setStretchFactor(f);
+        }
+      });
+    } catch {
+      // chart tearing down
+    }
+  };
+  const raf = requestAnimationFrame(apply);
+  return () => {
+    cancelled = true;
+    cancelAnimationFrame(raf);
+  };
+}, [chart, bundle, timeframe]);
+```
+
+Two changes from the original:
+1. `specs = paneSpecsForTimeframe(timeframe)` becomes the source of expected-pane-count AND per-pane stretch values.
+2. `timeframe` added to the deps array so the effect re-runs when the user toggles.
+
+- [ ] **Step 2.4: Build to catch type errors**
 
 ```bash
 cd frontend && npx tsc --noEmit
 ```
 
-Expected: no errors.
+Expected: no errors. (If TS flags an unused-import warning for `PANE_STRETCH`, it means a missed usage — search for it.)
 
-- [ ] **Step 2.4: Manual smoke in browser**
+- [ ] **Step 2.5: Manual smoke in browser**
 
-If a dev server is already running, switch the `/live` page to D, then W, then M, then back to 1m. Confirm: D/W/M shows candle + volume only; 1m shows all 5 panes; no React console errors about removed series.
+If a dev server is already running, switch the `/live` page to D, then W, then M, then back to 1m. Confirm: D/W/M shows candle + volume only with the candle pane filling the recovered vertical space; 1m shows all 5 panes with the original stretch ratios; no console errors about removed series; no RAF loop noise.
 
 If no dev server is running, skip this step — the e2e smoke test in Task 4 covers regression.
 
-- [ ] **Step 2.5: Commit**
+- [ ] **Step 2.6: Commit**
 
 ```bash
 git add frontend/src/live/LiveChartRoot.tsx
-git commit -m "refactor(live): mount panes via paneSpecsForTimeframe(tf)
+git commit -m "refactor(live): mount panes + stretches via paneSpecsForTimeframe(tf)
 
 Replace the unconditional PANE_SPECS.map at the LiveChartRoot render
 site with paneSpecsForTimeframe(timeframe). For minute timeframes the
 result is the same PANE_SPECS reference (no churn), for D/W/M it
 trims the array to [CANDLE_SPEC, VOLUME_SPEC] so the three empty
 hoga panes unmount cleanly.
+
+Also rewrite the stretch-factor useEffect to derive both the
+expected pane count and the per-pane stretch values from
+paneSpecsForTimeframe(timeframe). The prior code compared against
+PANE_STRETCH.length (5) and would have RAF-looped indefinitely on
+D/W/M's 2-pane layout. Surfaced by /plan-design-review.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
@@ -253,11 +325,11 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ## Task 3: Replace size-based initial-view branch with timeframe-based branch
 
 **Files:**
-- Modify: `frontend/src/live/LiveChartRoot.tsx` (initial-view effect, lines 104–122)
+- Modify: `frontend/src/live/LiveChartRoot.tsx` (initial-view effect, lines ~104–130)
 
 - [ ] **Step 3.1: Read the current effect**
 
-Confirm the current shape at `LiveChartRoot.tsx:104-122`:
+Confirm the current shape at `LiveChartRoot.tsx:~104-130`:
 
 ```tsx
 useEffect(() => {
@@ -291,6 +363,8 @@ If `timeframe` is not yet in `[chart, bundle]`, append it: `[chart, bundle, time
 
 - [ ] **Step 3.3: Replace the branch body**
 
+The existing `isMinuteTimeframe` helper at `LiveChartRoot.tsx:34-37` is already in scope (used by other parts of this file). Reuse it — do NOT duplicate the membership check inline.
+
 Replace the `try { if (totalBars < 50) { ... } else { ... } }` block with:
 
 ```tsx
@@ -300,15 +374,8 @@ Replace the `try { if (totalBars < 50) { ... } else { ... } }` block with:
   // the hoga panes are gone (no vertical compression of candles). See
   // ADR-0041 + the 2026-05-28 spec.
   const target = 300;
-  const isMinute =
-    timeframe === '1m' ||
-    timeframe === '3m' ||
-    timeframe === '5m' ||
-    timeframe === '10m' ||
-    timeframe === '15m' ||
-    timeframe === '30m';
   try {
-    if (isMinute) {
+    if (isMinuteTimeframe(timeframe)) {
       const totalBars = bundle.candles.length;
       const from = Math.max(0, totalBars - target);
       const to = totalBars + 5; // 5-bar right padding
@@ -322,7 +389,7 @@ Replace the `try { if (totalBars < 50) { ... } else { ... } }` block with:
   }
 ```
 
-Note: the `const totalBars` declaration moves *inside* the `isMinute` branch since `fitContent` doesn't use it. Remove the outer `const totalBars = bundle.candles.length;` line.
+Note: the `const totalBars` declaration moves *inside* the `isMinuteTimeframe` branch since `fitContent` doesn't use it. Remove the outer `const totalBars = bundle.candles.length;` line.
 
 - [ ] **Step 3.4: Build to catch type errors**
 
@@ -394,13 +461,14 @@ Open `frontend/tests/e2e/live-smoke.spec.ts`. Append inside the `describe` block
     await page.getByRole('button', { name: 'D', exact: true }).click();
     await expect(page.locator('[data-testid="live-chart-root"]')).toBeVisible();
 
-    // No "data must be asc ordered by time", no "removeSeries", no React
-    // boundary catch — the noise we'd see if pane unmount went wrong.
+    // No "data must be asc ordered by time" and no React boundary catch —
+    // the upstream noise we'd see if the pane mount race went wrong.
+    // (RangeSeriesPane's removeSeries is wrapped in try/catch and never
+    // reaches console, so we don't filter for that string.)
     expect(
       consoleErrors.filter(
         (e) =>
           e.includes('asc ordered by time') ||
-          e.includes('removeSeries') ||
           e.includes('The above error occurred'),
       ),
     ).toEqual([]);
@@ -492,6 +560,27 @@ This task is a no-commit checkpoint; the wrapping `/full-flow` command will run 
 3. **Type consistency:** `paneSpecsForTimeframe(tf: LiveTimeframe): readonly BoundPaneSpec[]` matches the consumer at the render site (`spec` and `paneIndex` use `BoundPaneSpec.name` / index).
 
 ---
+
+## Deferred review notes
+
+Parked from /plan-design-review (2026-05-28). Not blocking this plan;
+revisit in a follow-up if friction surfaces.
+
+- **MINUTE_TIMEFRAMES is duplicated across three files** (`useLiveBundle.ts:18`,
+  `LiveChartRoot.tsx:34`, implicit in `paneSpecsForTimeframe.ts`). Worth
+  lifting next to the `LiveTimeframe` union in `state/livePage.ts`.
+- **Spec/plan type signature drift**: spec wrote `BoundPaneSpec[]`, plan
+  uses `readonly BoundPaneSpec[]`. Plan is the stricter (better) form;
+  no change needed if spec is read as guidance not contract.
+- **e2e selector tightness**: `getByRole('button', { name: 'D', exact: true })`
+  is unique today but would collide if any sidebar adds a single-letter
+  `D` label. Tightening via `data-testid="live-toolbar"` scope is a
+  cheap follow-up.
+- **RangeSeriesPane cleanup observability**: the silent try/catch around
+  `chart.removeSeries` in `RangeSeriesPane.tsx:96-102` was justified by
+  ChartErrorBoundary race-condition; consider logging a single
+  `console.warn` so future regressions are visible without rerunning
+  with diagnostic guards.
 
 ## Execution Handoff
 
