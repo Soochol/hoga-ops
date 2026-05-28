@@ -219,7 +219,11 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     const ts = chart.timeScale();
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const handler = (range: unknown) => {
-      if (!isMinuteTimeframe(timeframe)) return;
+      // Lazy-fetch runs for every LiveTimeframe, including D/W/M. The
+      // candle backfill (/api/live/past-candles) is timeframe-independent
+      // — useLiveBundle re-aggregates the same 1m bars into D/W/M on the
+      // client. Without this, D/W/M users dragging past the leftmost bar
+      // saw nothing happen.
       if (axis.segments.length === 0) return;
       const r = range as { from?: number | null; to?: number | null } | null;
       if (!r || r.from == null) return;

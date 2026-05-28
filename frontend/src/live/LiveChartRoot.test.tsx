@@ -258,7 +258,42 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     expect(useLivePageStore.getState().historicalFromDate).toBe('20260516');
   });
 
-  it('does NOT fire extendHistoricalRange on D timeframe (lazy fetch off for D/W/M)', () => {
+  it('fires extendHistoricalRange on D timeframe when logical from goes negative', () => {
+    // Lazy fetch must run for D/W/M too. The candle backfill is timeframe-
+    // independent (useLiveBundle re-aggregates the same 1m bars into D/W/M
+    // on the client), so dragging past the leftmost bar on D should
+    // extend the same way as on minute timeframes. Prior behavior had a
+    // `!isMinuteTimeframe` early-return that blocked D/W/M users from
+    // ever seeing more history; this guards against that regression.
+    const handlers: Array<(r: unknown) => void> = [];
+    vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    act(() => {
+      handlers.forEach((h) => h({ from: -50.3, to: 100.7 }));
+      vi.advanceTimersByTime(200);
+    });
+
+    // Same currentEarliest math as the minute-timeframe sibling test:
+    // axis.segments[0] = '20260526', minus PREFETCH_CHUNK_DAYS=10 → '20260516'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260516');
+  });
+
+  it('does NOT fire extendHistoricalRange when logical from is non-negative', () => {
+    // The handler should only trigger when the viewport's logical origin
+    // is past the leftmost loaded bar (= negative fractional index).
+    // Any positive 'from' means the user is still inside the loaded
+    // range and we should NOT prefetch yet.
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
