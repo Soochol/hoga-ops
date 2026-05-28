@@ -30,6 +30,7 @@ describe('LiveWorkarea', () => {
     render(
       <LiveWorkarea
         activeCode="005930"
+        date="20260528"
         watchlistEmpty={false}
         bundle={BUNDLE_WITH_EXCLUDED}
         clampEngaged={false}

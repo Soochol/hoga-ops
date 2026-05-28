@@ -31,6 +31,14 @@ vi.mock('../api/liveSeries', () => ({
   }),
 }));
 
+// LiveSidebar now calls cursor hooks (ADR-0044) — mock them so the shell
+// tests stay unit-level and don't trigger useSpot/apiGet in jsdom.
+vi.mock('../api/useLiveCursor', () => ({
+  useLiveOrderbookAtCursor: () => undefined,
+  useLiveTradesAroundCursor: () => undefined,
+  useLiveBrokersAtCursor: () => undefined,
+}));
+
 // LivePage now owns the single useLiveBundle call. Mock to avoid TanStack
 // queries hitting real endpoints in the shell test.
 vi.mock('./useLiveBundle', () => ({

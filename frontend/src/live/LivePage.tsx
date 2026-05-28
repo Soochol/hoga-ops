@@ -85,6 +85,7 @@ export function LivePage() {
       <LiveToolbar />
       <LiveWorkarea
         activeCode={activeCode}
+        date={today}
         watchlistEmpty={watchlistEmpty}
         bundle={bundle}
         clampEngaged={clampEngaged}

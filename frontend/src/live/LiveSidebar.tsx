@@ -10,9 +10,23 @@ import {
   flattenTrades,
   latestOrderbookSnapshot,
 } from './liveSidebarAdapters';
+import { useLiveCursorStore } from './useLiveCursorStore';
+import { useLiveAxisStore } from './useLiveAxisStore';
+import { useLivePageStore } from '../state/livePage';
+import {
+  useLiveOrderbookAtCursor,
+  useLiveTradesAroundCursor,
+  useLiveBrokersAtCursor,
+} from '../api/useLiveCursor';
+import type { MinuteTimeframe } from '../state/livePage';
+import { isMinuteTimeframe } from '../state/livePage';
 
 interface Props {
   code: string | null;
+  /** Active stock-date (YYYYMMDD KST). Drilled from LivePage via LiveWorkarea —
+   * the live page treats "today" as the implicit date (see
+   * todayKstYyyymmdd() in LivePage.tsx). Pass null when no code is selected. */
+  date: string | null;
 }
 
 /**
@@ -21,27 +35,56 @@ interface Props {
  * Reuses the existing CursorSidebar layout shell from /replay so visual
  * parity is automatic. The data wiring differs:
  *   - /replay uses cursor-keyed REST hooks (useCursor, useBrokerSeriesForDay)
- *   - /live uses useLiveSeries (initial REST + SSE)
+ *   - /live uses useLiveSeries (initial REST + SSE) in latest mode
+ *   - /live uses useLiveCursor hooks in spot mode (cursor set via hover)
  *
- * Per Design C1: header has a LIVE● pulse so users can see at a glance
- * that this sidebar is auto-tracking the latest tick, not cursor-anchored.
- * Cursor interaction is intentionally disabled (mode='live') — clicking
- * inside the sidebar to seek is a /replay-only affordance.
+ * Per ADR-0044 and Design C1: header toggles between LIVE● pulse (latest
+ * mode) and "과거 시점" + pinned timestamp (spot mode) when cursor is set.
  */
-export function LiveSidebar({ code }: Props) {
+export function LiveSidebar({ code, date }: Props) {
+  const cursorMs = useLiveCursorStore((s) => s.cursorMs);
+  const isSpot = cursorMs !== null;
+  const timeframe = useLivePageStore((s) => s.candleTimeframe);
+
+  // Latest-mode data (always subscribed — useSpot hooks in spot mode
+  // sit dormant when cursorMs is null, no extra fetches).
   const { ob, trade, broker } = useLiveSeries(code ?? '');
+  const latestOrderbook = useMemo(() => latestOrderbookSnapshot(ob), [ob]);
+  const latestBrokerSeries = useMemo(() => aggregateBrokerSeries(broker), [broker]);
+  const latestTrades = useMemo(() => flattenTrades(trade), [trade]);
+  const latestBrokerTs =
+    broker.length > 0 ? (broker[broker.length - 1].t_ms as number) : Date.now();
 
-  // Project live snapshots into the wire shapes the presentational
-  // components consume. useMemo so the adapters don't re-run on every
-  // tick re-render that doesn't change the underlying arrays.
-  const orderbook = useMemo(() => latestOrderbookSnapshot(ob), [ob]);
-  const brokerSeries = useMemo(() => aggregateBrokerSeries(broker), [broker]);
-  const trades = useMemo(() => flattenTrades(trade), [trade]);
+  // Spot-mode data (dormant when cursorMs null).
+  const spotTimeframe: MinuteTimeframe | null =
+    timeframe && isMinuteTimeframe(timeframe) ? timeframe : null;
+  const spotOrderbook = useLiveOrderbookAtCursor({ code, date, timeframe: spotTimeframe });
+  const spotTrades = useLiveTradesAroundCursor({ code, date, timeframe: spotTimeframe });
+  const spotBrokers = useLiveBrokersAtCursor({ code, date });
 
-  // For BrokerTrajectoryTable's cursorMs: in /live mode the cursor is
-  // always "now" — use the latest broker snapshot's t_ms so the
-  // per-row "net at cursor" reads the most recent observed value.
-  const latestBrokerTs = broker.length > 0 ? (broker[broker.length - 1].t_ms as number) : Date.now();
+  // Axis for Auction Mask in spot mode.
+  const axis = useLiveAxisStore((s) => s.axis);
+  const maskRatio =
+    isSpot && axis !== null && cursorMs !== null
+      ? axis.inClosingAuctionWindow(cursorMs)
+      : false;
+
+  // Branch on spot vs latest.
+  const spotSnap = spotOrderbook?.snapshot ?? null;
+  const spotAvailableFrom = spotOrderbook?.available_from ?? null;
+  const orderbookForCard = isSpot ? spotSnap : latestOrderbook;
+  const tradesForCard = isSpot
+    ? (spotTrades === undefined ? undefined : spotTrades ?? [])
+    : (trade.length === 0 ? undefined : latestTrades);
+  const brokerSeriesForCard = isSpot
+    ? (spotBrokers === undefined ? undefined : spotBrokers ?? [])
+    : (broker.length === 0 ? undefined : latestBrokerSeries);
+  const brokerCursorMs = isSpot ? (cursorMs as number) : latestBrokerTs;
+
+  // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook
+  // has no snapshot yet but backend knows when the first row arrives.
+  const showAvailableHint =
+    isSpot && spotOrderbook !== undefined && spotSnap === null && spotAvailableFrom !== null;
 
   return (
     <div
@@ -53,61 +96,101 @@ export function LiveSidebar({ code }: Props) {
         background: 'var(--bg-card)',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-sm)',
-          padding: 'var(--space-sm) var(--space-md)',
-          borderBottom: '1px solid var(--border)',
-          fontSize: 'var(--text-xs)',
-          color: 'var(--fg-dim)',
-        }}
-      >
-        <span
-          data-testid="live-sidebar-pulse"
-          aria-label="live pulse"
-          style={{
-            display: 'inline-block',
-            width: 'var(--space-xs)',
-            height: 'var(--space-xs)',
-            borderRadius: '50%',
-            background: 'var(--accent)',
-            animation: 'live-pulse 1.5s ease-in-out infinite',
-          }}
-        />
-        <span style={{ fontFamily: 'monospace' }}>LIVE</span>
-        {orderbook && (
-          <span style={{ marginLeft: 'auto', color: 'var(--fg-dimmer)' }}>
-            {formatHms(orderbook.ts_ms)}
-          </span>
-        )}
-      </div>
+      <SidebarHeader cursorMs={cursorMs} latestOrderbookTs={latestOrderbook?.ts_ms ?? null} />
       <div style={{ flex: 1, overflow: 'auto' }}>
         <CursorSidebar
           orderbook={
             <>
-              <OrderbookTable snapshot={orderbook} />
-              <TotalQtyBar snapshot={orderbook} maskRatio={false} />
+              {showAvailableHint && (
+                <div
+                  data-testid="orderbook-available-hint"
+                  style={{
+                    padding: 'var(--space-xs) var(--space-md)',
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--fg-dimmer)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  다음 가용: {formatTime(spotAvailableFrom!)}
+                </div>
+              )}
+              <OrderbookTable snapshot={orderbookForCard} />
+              <TotalQtyBar snapshot={orderbookForCard} maskRatio={maskRatio} />
             </>
           }
           brokers={
-            <BrokerTrajectoryTable
-              series={broker.length === 0 ? undefined : brokerSeries}
-              cursorMs={latestBrokerTs}
-            />
+            <BrokerTrajectoryTable series={brokerSeriesForCard} cursorMs={brokerCursorMs} />
           }
-          fills={<FillTape trades={trade.length === 0 ? undefined : trades} />}
+          fills={<FillTape trades={tradesForCard} />}
         />
       </div>
     </div>
   );
 }
 
-function formatHms(t_ms: number): string {
-  const d = new Date(t_ms);
-  const h = String(d.getHours()).padStart(2, '0');
-  const m = String(d.getMinutes()).padStart(2, '0');
-  const s = String(d.getSeconds()).padStart(2, '0');
-  return `${h}:${m}:${s}`;
+function SidebarHeader({
+  cursorMs,
+  latestOrderbookTs,
+}: {
+  cursorMs: number | null;
+  latestOrderbookTs: number | null;
+}) {
+  // Design review B2: keep the timestamp pinned right in BOTH modes so it
+  // doesn't jump columns on mouse leave/enter. Left slot carries the mode
+  // label only. C4: 한글 카피로 "과거 시점" 사용 (DESIGN.md Copy Tone).
+  const isSpot = cursorMs !== null;
+  const rightTs = isSpot ? cursorMs : latestOrderbookTs;
+  return (
+    <div
+      className="font-mono"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 'var(--space-xs)',
+        padding: 'var(--space-sm) var(--space-md)',
+        borderBottom: '1px solid var(--border)',
+        fontSize: 'var(--text-xs)',
+        color: 'var(--fg-dim)',
+      }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
+        {isSpot ? (
+          <span>과거 시점</span>
+        ) : (
+          <>
+            <span
+              data-testid="live-sidebar-pulse"
+              aria-label="live pulse"
+              style={{
+                display: 'inline-block',
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: 'var(--accent)',
+                animation: 'live-pulse 1.5s ease-in-out infinite',
+              }}
+            />
+            <span>LIVE</span>
+          </>
+        )}
+      </span>
+      {rightTs !== null && (
+        <span style={{ color: 'var(--fg-dimmer)' }}>{formatTime(rightTs)}</span>
+      )}
+    </div>
+  );
+}
+
+// Design review B1: KST formatting via toLocaleTimeString — matches FillTape.tsx:50
+// and the rest of the sidebar. Local-tz machine-time clocks would desync from
+// the chart x-axis on non-KST workstations.
+function formatTime(ts_ms: number): string {
+  return new Date(ts_ms).toLocaleTimeString('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
 }
