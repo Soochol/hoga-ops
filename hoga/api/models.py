@@ -53,6 +53,14 @@ class StockDate(BaseModel):
     overwrites of meta.json). Null on legacy meta files written before this counter
     was introduced. See CONTEXT.md "Full Capture Count" and ADR-0031 for the
     distinction from QueueItem.attempt."""
+    fail_streak: int = 0
+    """ADR-0042: consecutive failed+skipped count since last success/unblock.
+    Joined from QueueManifest.fail_streaks at the route layer. 0 means
+    "no recent failures". When ``>= 5`` the row is also ``blocked``."""
+    blocked: bool = False
+    """ADR-0042: ``fail_streak >= 5``. Renders a 차단됨 badge + 잠금 해제
+    button on the inventory row; enqueue requests for this (Code, Stock-Date)
+    are rejected with HTTP 409 until the user clears the counter."""
 
 
 class OrderbookResponse(BaseModel):

@@ -52,7 +52,26 @@ def build_router(engine: QueryEngine) -> APIRouter:
 
     @router.get("/stock-dates", response_model=list[StockDateModel])
     def stock_dates() -> list[StockDateModel]:
-        return engine.list_stock_dates()
+        # ADR-0042: annotate each row with its fail_streak / blocked status.
+        # Read the in-memory _fail_streaks dict once (no I/O); model_copy
+        # produces a non-cached instance so QueryEngine's mtime-cached
+        # StockDate objects keep fail_streak=0 internally.
+        from hoga.api import captures
+        from hoga.api.fail_streak import ATTEMPT_CAP, streak_key
+        rows = engine.list_stock_dates()
+        if not captures._fail_streaks:
+            return rows
+        annotated: list[StockDateModel] = []
+        for row in rows:
+            streak = captures._fail_streaks.get(streak_key(row.code, row.date), 0)
+            if streak == 0:
+                annotated.append(row)
+            else:
+                annotated.append(row.model_copy(update={
+                    "fail_streak": streak,
+                    "blocked": streak >= ATTEMPT_CAP,
+                }))
+        return annotated
 
     @router.get("/meta", response_model=Meta)
     def meta(code: Code, date: StockDate) -> Meta:

@@ -101,3 +101,48 @@ def test_stock_date_full_capture_count_null_for_legacy(tmp_path):
     rows = engine.list_stock_dates()
     assert len(rows) == 1
     assert rows[0].full_capture_count is None
+
+
+# ADR-0042: inventory rows are annotated with fail_streak + blocked.
+
+
+def test_stock_dates_default_fail_streak_zero_and_blocked_false(app_client: TestClient) -> None:
+    """An inventory row with no fail_streak entry returns fail_streak=0, blocked=False."""
+    from hoga.api import captures
+    captures._fail_streaks.clear()  # ensure baseline
+    r = app_client.get("/api/stock-dates")
+    assert r.status_code == 200
+    rows = r.json()
+    assert all(row["fail_streak"] == 0 for row in rows)
+    assert all(row["blocked"] is False for row in rows)
+
+
+def test_stock_dates_reflects_manifest_counter(app_client: TestClient) -> None:
+    """A row whose (Code, Stock-Date) has a fail_streak in the manifest
+    surfaces the live counter."""
+    from hoga.api import captures
+    captures._fail_streaks.clear()
+    captures._fail_streaks["003490|20260519"] = 3
+    try:
+        r = app_client.get("/api/stock-dates")
+        assert r.status_code == 200
+        row = next(x for x in r.json() if x["code"] == "003490" and x["date"] == "20260519")
+        assert row["fail_streak"] == 3
+        assert row["blocked"] is False
+    finally:
+        captures._fail_streaks.clear()
+
+
+def test_stock_dates_blocked_at_threshold(app_client: TestClient) -> None:
+    """fail_streak == 5 → blocked=True."""
+    from hoga.api import captures
+    captures._fail_streaks.clear()
+    captures._fail_streaks["003490|20260519"] = 5
+    try:
+        r = app_client.get("/api/stock-dates")
+        assert r.status_code == 200
+        row = next(x for x in r.json() if x["code"] == "003490" and x["date"] == "20260519")
+        assert row["fail_streak"] == 5
+        assert row["blocked"] is True
+    finally:
+        captures._fail_streaks.clear()
