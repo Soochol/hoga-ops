@@ -88,6 +88,13 @@ test.describe('/live smoke', () => {
     await page.getByRole('button', { name: 'D', exact: true }).click();
     await expect(page.locator('[data-testid="live-chart-root"]')).toBeVisible();
 
+    // Round-trip back to 1m to exercise the dynamic *remount* path of the
+    // hoga panes (RangeSeriesPane mount-after-unmount) — that's the actual
+    // regression class for ADR-0041's pane-set switching, and the riskier
+    // branch the unmount-only case doesn't cover.
+    await page.getByRole('button', { name: '1m', exact: true }).click();
+    await expect(page.locator('[data-testid="live-chart-root"]')).toBeVisible();
+
     // No "data must be asc ordered by time" and no React boundary catch —
     // the upstream noise we'd see if the pane mount race went wrong.
     // (RangeSeriesPane's removeSeries is wrapped in try/catch and never
