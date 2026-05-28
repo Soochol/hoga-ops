@@ -14,7 +14,7 @@ import {
 } from '../util/chartScale';
 import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
 import RangeSeriesPane from '../chart/RangeSeriesPane';
-import { PANE_SPECS, PANE_STRETCH } from '../chart/paneSpecs';
+import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import type { RangeBundle } from '../api/types';
@@ -54,8 +54,9 @@ interface Props {
   isPastCandlesLoading: boolean;
 }
 
-/** /live's single-chart root. Mounts PANE_SPECS 0-4 inside one createChart
- * instance so timeScale is shared across candle/volume/3-hoga panes. */
+/** /live's single-chart root. Mounts the timeframe-appropriate pane set
+ * (see `paneSpecsForTimeframe`) inside one createChart instance so
+ * timeScale is shared across candle/volume/(hoga) panes. */
 export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCandlesLoading }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
@@ -107,13 +108,22 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     if (useLivePageStore.getState().historicalFromDate !== null) return;
     const ts = chart.timeScale();
     const totalBars = bundle.candles.length;
+    // Sparse bundles (D/W/M with only weeks of data) compress to a few bars;
+    // the 300-bar window then leaves them clustered at the left edge with a
+    // huge empty right pad. Defer to lightweight-charts' fitContent in that
+    // regime — analyst sees every aggregated bucket.
     // 300 bars ≈ 5h at 1m, ~1 trading day at 5m, ~10 days at 30m — a
-    // sweet spot across timeframes for "recent context, easy to drag back".
+    // sweet spot for minute timeframes where the user wants recent context
+    // with room to drag back.
     const target = 300;
-    const from = Math.max(0, totalBars - target);
-    const to = totalBars + 5; // 5-bar right padding (matches lightweight-charts default feel)
     try {
-      ts.setVisibleLogicalRange({ from, to });
+      if (totalBars < 50) {
+        ts.fitContent();
+      } else {
+        const from = Math.max(0, totalBars - target);
+        const to = totalBars + 5; // 5-bar right padding
+        ts.setVisibleLogicalRange({ from, to });
+      }
       didInitialViewRef.current = true;
     } catch {
       // chart torn down between effect runs
@@ -234,17 +244,18 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
 
   useEffect(() => {
     if (!chart || !bundle) return;
+    const specs = paneSpecsForTimeframe(timeframe);
     let cancelled = false;
     const apply = () => {
       if (cancelled) return;
       try {
         const panes = chart.panes();
-        if (panes.length < PANE_STRETCH.length) {
+        if (panes.length < specs.length) {
           requestAnimationFrame(apply);
           return;
         }
         panes.forEach((p, i) => {
-          const f = PANE_STRETCH[i];
+          const f = specs[i]?.stretch;
           if (f !== undefined && typeof p.setStretchFactor === 'function') {
             p.setStretchFactor(f);
           }
@@ -258,7 +269,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, bundle]);
+  }, [chart, bundle, timeframe]);
 
   const dwDisabled = !isMinuteTimeframe(timeframe);
 
@@ -273,7 +284,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       />
       {chart && bundle && axis.segments.length > 0 && (
         <>
-          {PANE_SPECS.map((spec, i) => (
+          {paneSpecsForTimeframe(timeframe).map((spec, i) => (
             <RangeSeriesPane
               key={spec.name}
               chart={chart}
