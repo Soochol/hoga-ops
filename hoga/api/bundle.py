@@ -94,9 +94,9 @@ def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiC
 
 
 def build_candles_slice(
-    engine: QueryEngine, *, code: str, date: str
+    engine: QueryEngine, *, code: str, date: str, source: str = "hogaplay"
 ) -> list[ApiCandle]:
-    path = engine.parquet_dir(date, code) / "candles.parquet"
+    path = engine.parquet_dir(date, code, source) / "candles.parquet"
     rows = candles_tbl.query_all(engine.conn, path=path)
     return [
         r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
@@ -110,13 +110,14 @@ def build_quote_ratio_slice(
     code: str,
     date: str,
     bucket_ms: int = 1000,
+    source: str = "hogaplay",
 ) -> QuoteRatio:
     # Bucket on LINEAR ms-from-midnight, not raw HHMMSSmmm. The raw encoding
     # has gaps at minute / hour boundaries, so arithmetic bucketing of HHMMSSmmm
     # produces invalid HHMMSSmmm values that decode (via hhmmssms_to_unix_ms)
     # to duplicate or out-of-order Unix-ms outputs — which lightweight-charts
     # then rejects with "asc ordered by time". See hhmmssms_to_intra_ms_sql.
-    path = str(engine.parquet_dir(date, code) / "snapshots.parquet")
+    path = str(engine.parquet_dir(date, code, source) / "snapshots.parquet")
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     rows = engine.conn.execute(
         f"""
@@ -155,11 +156,12 @@ def build_volume_profile_slice(
     *,
     code: str,
     date: str,
+    source: str = "hogaplay",
     price_min: int | None = None,
     price_max: int | None = None,
     vp_bins: int = 24,
 ) -> VolumeProfile:
-    code_dir = engine.parquet_dir(date, code)
+    code_dir = engine.parquet_dir(date, code, source)
     candles_path = str(code_dir / "candles.parquet")
     trades_path = str(code_dir / "trades.parquet")
     if price_min is None or price_max is None:
@@ -202,7 +204,7 @@ def build_volume_profile_range(
     engine: QueryEngine,
     *,
     code: str,
-    dates: list[str],
+    dates_with_sources: list[tuple[str, str]],
     vp_bins: int = 24,
 ) -> VolumeProfile:
     """Union trades.parquet across all in-range Stock-Dates into one price-binned
@@ -213,10 +215,13 @@ def build_volume_profile_range(
     via a list parameter — no f-string SQL for the path (matches bundle.py:145
     convention; see plan-eng-review D3).
     """
-    if not dates:
+    if not dates_with_sources:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
 
-    paths = [str(engine.parquet_dir(d, code) / "trades.parquet") for d in dates]
+    paths = [
+        str(engine.parquet_dir(d, code, src) / "trades.parquet")
+        for d, src in dates_with_sources
+    ]
 
     min_max = engine.conn.execute(
         "SELECT MIN(price), MAX(price) FROM read_parquet(?)", [paths],
@@ -271,6 +276,7 @@ def build_fill_strength_slice(
     code: str,
     date: str,
     bucket_ms: int = 60_000,
+    source: str = "hogaplay",
 ) -> FillStrength:
     # Bucket on LINEAR ms-from-midnight, not HHMMSSmmm. With the previous
     # `(ts_ms / 60000)::BIGINT * 60000` pattern, a raw 11:00:59.000
@@ -278,7 +284,7 @@ def build_fill_strength_slice(
     # 110_040_000 = HHMMSSmmm "11:00:40.000" — an out-of-order ghost time
     # that fold-decoded via hhmmssms_to_unix_ms to 11:40:20 KST (39-min
     # backward jump). See hhmmssms_to_intra_ms_sql for the encoding details.
-    path = str(engine.parquet_dir(date, code) / "trades.parquet")
+    path = str(engine.parquet_dir(date, code, source) / "trades.parquet")
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     rows = engine.conn.execute(
         f"""
@@ -428,11 +434,11 @@ def build_range_bundle(
                 date=d, warnings=[v.to_model() for v in c.warnings],
             ))
 
-        raw_candles = build_candles_slice(engine, code=code, date=d)
+        raw_candles = build_candles_slice(engine, code=code, date=d, source=source)
         candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
-        qr_d = build_quote_ratio_slice(engine, code=code, date=d, bucket_ms=bucket_ms)
-        fs_d = build_fill_strength_slice(engine, code=code, date=d, bucket_ms=bucket_ms)
-        vp_d = build_volume_profile_slice(engine, code=code, date=d)
+        qr_d = build_quote_ratio_slice(engine, code=code, date=d, bucket_ms=bucket_ms, source=source)
+        fs_d = build_fill_strength_slice(engine, code=code, date=d, bucket_ms=bucket_ms, source=source)
+        vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source)
 
         segments.append(RangeSegment(
             date=d,
@@ -455,8 +461,8 @@ def build_range_bundle(
     # included — using the unfiltered `dates` would pull trades.parquet for
     # INVALID Stock-Dates whose data is corrupt or incomplete, contaminating
     # the range-wide histogram or raising a DuckDB read error.
-    included_dates = [s.date for s in segments]
-    profile_range = build_volume_profile_range(engine, code=code, dates=included_dates)
+    dates_with_sources = [(s.date, s.source) for s in segments]
+    profile_range = build_volume_profile_range(engine, code=code, dates_with_sources=dates_with_sources)
 
     return RangeBundle(
         code=code,

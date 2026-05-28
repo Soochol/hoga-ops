@@ -74,7 +74,7 @@ def test_downsample_candles_handles_all_six_timeframes():
 def test_build_volume_profile_range_empty_dates_returns_empty():
     from hoga.api.bundle import build_volume_profile_range
     mock_engine = MagicMock()
-    out = build_volume_profile_range(mock_engine, code="005930", dates=[])
+    out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[])
     assert out.bin_count == 0
     assert out.bins == []
 
@@ -84,7 +84,7 @@ def test_build_volume_profile_range_single_date_uses_multi_file_glob():
     from hoga.api.bundle import build_volume_profile_range
 
     mock_engine = MagicMock()
-    mock_engine.parquet_dir.side_effect = lambda d, c: __import__("pathlib").Path(f"/data/{c}/{d}")
+    mock_engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": __import__("pathlib").Path(f"/data/{c}/{d}")
     # First execute (MIN/MAX): returns (100, 200)
     # Second execute (GROUP BY bin): returns rows like [(0, 10), (1, 20), ...]
     mock_engine.conn.execute.side_effect = [
@@ -92,7 +92,7 @@ def test_build_volume_profile_range_single_date_uses_multi_file_glob():
         MagicMock(fetchall=lambda: [(0, 10), (1, 20)]),
     ]
 
-    out = build_volume_profile_range(mock_engine, code="005930", dates=["20260512"])
+    out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[("20260512", "hogaplay")])
 
     # Verify the first call's parameter list contains a path-list element
     # (DuckDB multi-file glob: execute(sql, [paths]) where paths=list[str]).
@@ -112,13 +112,13 @@ def test_build_volume_profile_range_multi_date_unions_paths():
     from hoga.api.bundle import build_volume_profile_range
 
     mock_engine = MagicMock()
-    mock_engine.parquet_dir.side_effect = lambda d, c: __import__("pathlib").Path(f"/data/{c}/{d}")
+    mock_engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": __import__("pathlib").Path(f"/data/{c}/{d}")
     mock_engine.conn.execute.side_effect = [
         MagicMock(fetchone=lambda: (100, 200)),
         MagicMock(fetchall=lambda: [(0, 10), (1, 20), (2, 30)]),
     ]
 
-    out = build_volume_profile_range(mock_engine, code="005930", dates=["20260512", "20260513", "20260514"])
+    out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[("20260512", "hogaplay"), ("20260513", "hogaplay"), ("20260514", "hogaplay")])
 
     # Find the path-list parameter and verify it contains all 3 trades.parquet entries.
     # Each execute call's params is [paths] where paths is list[str] of size 3.
@@ -140,10 +140,10 @@ def test_build_volume_profile_range_no_trades_returns_empty():
     from hoga.api.bundle import build_volume_profile_range
 
     mock_engine = MagicMock()
-    mock_engine.parquet_dir.side_effect = lambda d, c: __import__("pathlib").Path(f"/data/{c}/{d}")
+    mock_engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": __import__("pathlib").Path(f"/data/{c}/{d}")
     mock_engine.conn.execute.return_value = MagicMock(fetchone=lambda: (None, None))
 
-    out = build_volume_profile_range(mock_engine, code="005930", dates=["20260512"])
+    out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[("20260512", "hogaplay")])
     assert out.bin_count == 0
     assert out.bins == []
 
