@@ -450,6 +450,140 @@ class KisClient:
         return all_candles
 
     # ------------------------------------------------------------------
+    # fetch_past_daily_candles (FHKST03010100, inquire-daily-itemchartprice)
+    # ------------------------------------------------------------------
+
+    async def fetch_past_daily_candles(
+        self, code: str, from_yyyymmdd: str, to_yyyymmdd: str
+    ) -> DailyCandleFetchResult:
+        """Fetch daily OHLCV for *code* across [from, to] (KST).
+
+        KIS TR_ID: FHKST03010100 (inquire-daily-itemchartprice), period='D'.
+        KIS retains roughly 20-30 years of daily candles per the portal docs.
+
+        Returns DailyCandleFetchResult with:
+        - candles: ASC by t_ms; t_ms anchors at regular_session_open (KST 09:00:00)
+          of each trading day. Non-trading days are absent (KIS doesn't emit them).
+        - violations: per-row drop reasons (close<=0, OHLC inconsistent, malformed,
+          out of requested range). Surfaced to caller for data_warnings.
+        """
+        path = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
+        tr_id = "FHKST03010100"
+        cursor_to = to_yyyymmdd
+        # Tracks every row we've already processed (valid or violation) so that
+        # paginated re-reads — or mock-server tests that replay the same payload
+        # for every cursor — don't double-count violations or candles. Keys are
+        # the YYYYMMDD date; for malformed rows missing a date we fall back to
+        # a stable hash of the row content.
+        seen_keys: set[str] = set()
+        all_candles: list[KisCandle] = []
+        violations: list[DailyInvariantViolation] = []
+
+        for _ in range(60):
+            params = {
+                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_INPUT_ISCD": code,
+                "FID_INPUT_DATE_1": from_yyyymmdd,
+                "FID_INPUT_DATE_2": cursor_to,
+                "FID_PERIOD_DIV_CODE": "D",
+                "FID_ORG_ADJ_PRC": "0",
+            }
+            body = await self._get(path=path, tr_id=tr_id, params=params)
+            rows = body.get("output2") or []
+            page_candles: list[KisCandle] = []
+            page_earliest: str | None = None
+            page_progress = False
+
+            for row in rows:
+                date_str = row.get("stck_bsop_date") or ""
+                if len(date_str) != 8:
+                    row_key = "malformed:" + json.dumps(row, sort_keys=True)
+                    if row_key in seen_keys:
+                        continue
+                    seen_keys.add(row_key)
+                    violations.append(DailyInvariantViolation(
+                        date_yyyymmdd=date_str or "(empty)",
+                        reason="malformed_row",
+                        detail="stck_bsop_date missing or wrong length",
+                    ))
+                    page_progress = True
+                    continue
+                if date_str in seen_keys:
+                    continue
+                # Lexicographic comparison of YYYYMMDD is equivalent to chronological.
+                if date_str < from_yyyymmdd or date_str > to_yyyymmdd:
+                    seen_keys.add(date_str)
+                    violations.append(DailyInvariantViolation(
+                        date_yyyymmdd=date_str,
+                        reason="out_of_range",
+                        detail=f"row date outside [{from_yyyymmdd}, {to_yyyymmdd}]",
+                    ))
+                    page_progress = True
+                    continue
+                try:
+                    o = int(row["stck_oprc"])
+                    h = int(row["stck_hgpr"])
+                    l_ = int(row["stck_lwpr"])
+                    c = int(row.get("stck_clpr") or row.get("stck_prpr") or "0")
+                    v = int(row.get("acml_vol") or row.get("cntg_vol") or "0")
+                except (KeyError, ValueError, TypeError) as e:
+                    seen_keys.add(date_str)
+                    violations.append(DailyInvariantViolation(
+                        date_yyyymmdd=date_str,
+                        reason="malformed_row",
+                        detail=f"OHLCV parse: {e}",
+                    ))
+                    page_progress = True
+                    continue
+                if c <= 0:
+                    seen_keys.add(date_str)
+                    violations.append(DailyInvariantViolation(
+                        date_yyyymmdd=date_str, reason="close_nonpositive",
+                        detail=f"close={c}",
+                    ))
+                    page_progress = True
+                    continue
+                if h < max(o, c) or l_ > min(o, c) or h < l_:
+                    seen_keys.add(date_str)
+                    violations.append(DailyInvariantViolation(
+                        date_yyyymmdd=date_str, reason="ohlc_inconsistent",
+                        detail=f"o={o} h={h} l={l_} c={c}",
+                    ))
+                    page_progress = True
+                    continue
+
+                dt = datetime(
+                    int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]),
+                    9, 0, tzinfo=KIS_KST,
+                )
+                t_ms = int(dt.timestamp() * 1000)
+                seen_keys.add(date_str)
+                page_progress = True
+                page_candles.append(KisCandle(
+                    t_ms=t_ms, open=o, high=h, low=l_, close=c, volume=v,
+                ))
+                if page_earliest is None or date_str < page_earliest:
+                    page_earliest = date_str
+
+            all_candles.extend(page_candles)
+            # Stop when KIS returns an empty page or this iteration produced no
+            # new rows (e.g. test fixture replays the same payload on every call).
+            if not rows or not page_progress:
+                break
+            if page_earliest is None:
+                # No new valid candle to anchor cursor walk-back; rely on the
+                # next iteration's empty/no-progress check to terminate.
+                continue
+            earliest_dt = datetime(
+                int(page_earliest[:4]), int(page_earliest[4:6]),
+                int(page_earliest[6:8]), tzinfo=KIS_KST,
+            )
+            cursor_to = (earliest_dt - timedelta(days=1)).strftime("%Y%m%d")
+
+        all_candles.sort(key=lambda c: c.t_ms)
+        return DailyCandleFetchResult(candles=all_candles, violations=violations)
+
+    # ------------------------------------------------------------------
     # Task 2.5: fetch_overtime_orderbook (FHPST02300400)
     # ------------------------------------------------------------------
 

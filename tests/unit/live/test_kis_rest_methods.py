@@ -345,3 +345,174 @@ async def test_fetch_overtime_trades_uses_correct_tr_id_and_params(tmp_path: Pat
         assert trades[0].side == 0
     finally:
         await client.aclose()
+
+
+# ----------------------------------------------------------------------
+# fetch_past_daily_candles (FHKST03010100, inquire-daily-itemchartprice)
+# ----------------------------------------------------------------------
+
+from hoga.live.kis_client import (
+    DailyCandleFetchResult,
+    DailyInvariantViolation,
+    KisRateLimitError,
+)
+
+
+def _daily_row(date_yyyymmdd: str, *, o=100, h=110, l=95, c=105, v=1000) -> dict:
+    return {
+        "stck_bsop_date": date_yyyymmdd,
+        "stck_oprc": str(o),
+        "stck_hgpr": str(h),
+        "stck_lwpr": str(l),
+        "stck_clpr": str(c),
+        "acml_vol": str(v),
+    }
+
+
+def _ok_daily_body(rows: list[dict]) -> dict:
+    return {"rt_cd": "0", "msg_cd": "", "msg1": "", "output2": rows}
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_daily_clean_response(tmp_path) -> None:
+    rows = [_daily_row(f"2024010{i}") for i in range(1, 6)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/oauth2/tokenP"):
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        return httpx.Response(200, json=_ok_daily_body(rows))
+
+    client = KisClient(
+        KisCredentials(app_key="k", app_secret="s"),
+        token_cache_path=tmp_path / "tok.json",
+        _transport=httpx.MockTransport(handler),
+    )
+    result = await client.fetch_past_daily_candles("005930", "20240101", "20240105")
+    assert isinstance(result, DailyCandleFetchResult)
+    assert len(result.candles) == 5
+    assert result.violations == []
+    assert all(result.candles[i].t_ms < result.candles[i + 1].t_ms for i in range(4))
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_daily_drops_close_nonpositive_row(tmp_path) -> None:
+    rows = [_daily_row("20240101"), _daily_row("20240102", c=0), _daily_row("20240103")]
+
+    def handler(request):
+        if request.url.path.endswith("/oauth2/tokenP"):
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        return httpx.Response(200, json=_ok_daily_body(rows))
+
+    client = KisClient(
+        KisCredentials(app_key="k", app_secret="s"),
+        token_cache_path=tmp_path / "tok.json",
+        _transport=httpx.MockTransport(handler),
+    )
+    result = await client.fetch_past_daily_candles("005930", "20240101", "20240103")
+    assert len(result.candles) == 2
+    assert len(result.violations) == 1
+    assert result.violations[0].date_yyyymmdd == "20240102"
+    assert result.violations[0].reason == "close_nonpositive"
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_daily_drops_ohlc_inconsistent_row(tmp_path) -> None:
+    rows = [_daily_row("20240101", o=120, h=100, l=80, c=110)]
+
+    def handler(request):
+        if request.url.path.endswith("/oauth2/tokenP"):
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        return httpx.Response(200, json=_ok_daily_body(rows))
+
+    client = KisClient(
+        KisCredentials(app_key="k", app_secret="s"),
+        token_cache_path=tmp_path / "tok.json",
+        _transport=httpx.MockTransport(handler),
+    )
+    result = await client.fetch_past_daily_candles("005930", "20240101", "20240101")
+    assert result.candles == []
+    assert len(result.violations) == 1
+    assert result.violations[0].reason == "ohlc_inconsistent"
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_daily_drops_out_of_range_row(tmp_path) -> None:
+    rows = [_daily_row("20240101"), _daily_row("20231231")]
+
+    def handler(request):
+        if request.url.path.endswith("/oauth2/tokenP"):
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        return httpx.Response(200, json=_ok_daily_body(rows))
+
+    client = KisClient(
+        KisCredentials(app_key="k", app_secret="s"),
+        token_cache_path=tmp_path / "tok.json",
+        _transport=httpx.MockTransport(handler),
+    )
+    result = await client.fetch_past_daily_candles("005930", "20240101", "20240105")
+    assert len(result.candles) == 1
+    assert len(result.violations) == 1
+    assert result.violations[0].reason == "out_of_range"
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_daily_drops_malformed_row(tmp_path) -> None:
+    rows = [_daily_row("20240101"), {"stck_bsop_date": ""}]
+
+    def handler(request):
+        if request.url.path.endswith("/oauth2/tokenP"):
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        return httpx.Response(200, json=_ok_daily_body(rows))
+
+    client = KisClient(
+        KisCredentials(app_key="k", app_secret="s"),
+        token_cache_path=tmp_path / "tok.json",
+        _transport=httpx.MockTransport(handler),
+    )
+    result = await client.fetch_past_daily_candles("005930", "20240101", "20240101")
+    assert len(result.candles) == 1
+    assert len(result.violations) == 1
+    assert result.violations[0].reason == "malformed_row"
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_daily_rate_limit_propagates(tmp_path) -> None:
+    def handler(request):
+        if request.url.path.endswith("/oauth2/tokenP"):
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        return httpx.Response(200, json={"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "rate"})
+
+    client = KisClient(
+        KisCredentials(app_key="k", app_secret="s"),
+        token_cache_path=tmp_path / "tok.json",
+        _transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(KisRateLimitError):
+        await client.fetch_past_daily_candles("005930", "20240101", "20240101")
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_daily_paginates_walk_back(tmp_path) -> None:
+    page_responses = [
+        _ok_daily_body([_daily_row(f"2024010{i}") for i in [5, 4, 3]]),
+        _ok_daily_body([_daily_row(f"2024010{i}") for i in [2, 1]]),
+        _ok_daily_body([]),
+    ]
+    call_count = {"n": 0}
+
+    def handler(request):
+        if request.url.path.endswith("/oauth2/tokenP"):
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        i = call_count["n"]
+        call_count["n"] += 1
+        return httpx.Response(200, json=page_responses[i])
+
+    client = KisClient(
+        KisCredentials(app_key="k", app_secret="s"),
+        token_cache_path=tmp_path / "tok.json",
+        _transport=httpx.MockTransport(handler),
+    )
+    result = await client.fetch_past_daily_candles("005930", "20240101", "20240105")
+    assert len(result.candles) == 5
+    assert all(result.candles[i].t_ms < result.candles[i + 1].t_ms for i in range(4))
+    assert call_count["n"] == 3
