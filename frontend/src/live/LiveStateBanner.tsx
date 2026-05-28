@@ -15,7 +15,12 @@ const COPY: Record<BannerCause, { title: string; severity: 'error' | 'warn' | 'i
 
 export function LiveStateBanner({ primary, stack }: Props) {
   // Priority-1 banners render in the header band; priority 2-5 stack below.
-  if (primary === null && stack.length === 0) return null;
+  // Render an empty placeholder when there's nothing to show: LivePage's
+  // CSS grid defines 5 rows and relies on positional auto-placement, so
+  // returning null here would shift LiveWorkarea up into the toolbar's
+  // 75px slot and squash the chart to 0 height. Keep the row occupied;
+  // the empty div collapses to 0 height under the `auto` track.
+  if (primary === null && stack.length === 0) return <div data-testid="live-state-banner-empty" />;
 
   return (
     <div data-testid="live-state-banner" className="flex flex-col">

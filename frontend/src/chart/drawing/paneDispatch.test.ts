@@ -32,7 +32,7 @@ describe('paneIdToIndex', () => {
 });
 
 describe('paneIdAtY', () => {
-  // Realistic layout: candle 400, volume 80, ratio 80, quote-totals 80, fill-strength 80
+  // Realistic layout: candle 400, volume 80, quote-totals 80, ratio 80, fill-strength 80
   const heights = [400, 80, 80, 80, 80];
 
   it('returns candle for py inside pane 0', () => {
@@ -46,8 +46,8 @@ describe('paneIdAtY', () => {
     expect(paneIdAtY(chartWithHeights(heights), 479)).toBe('volume');
   });
 
-  it('returns ratio for py inside pane 2', () => {
-    expect(paneIdAtY(chartWithHeights(heights), 480)).toBe('ratio');
+  it('returns quote-totals for py inside pane 2', () => {
+    expect(paneIdAtY(chartWithHeights(heights), 480)).toBe('quote-totals');
   });
 
   it('clamps to last pane when py is past the chart bottom', () => {
@@ -76,9 +76,9 @@ describe('clampYToPane', () => {
     expect(clampYToPane(chart, 'volume', 600)).toBe(479);
   });
 
-  it('clamps a py inside ratio that strays into quote-totals', () => {
-    // ratio occupies [480, 560); a py at 600 is in quote-totals -> clamp to 559.
-    expect(clampYToPane(chart, 'ratio', 600)).toBe(559);
+  it('clamps a py inside quote-totals that strays into ratio', () => {
+    // quote-totals occupies [480, 560); a py at 600 is in ratio -> clamp to 559.
+    expect(clampYToPane(chart, 'quote-totals', 600)).toBe(559);
   });
 
   it('passes a py exactly at pane top through', () => {
@@ -100,8 +100,8 @@ describe('paneTopY', () => {
 
   it('returns the cumulative height above each indicator pane', () => {
     expect(paneTopY(chart, 'volume')).toBe(400);
-    expect(paneTopY(chart, 'ratio')).toBe(480);
-    expect(paneTopY(chart, 'quote-totals')).toBe(560);
+    expect(paneTopY(chart, 'quote-totals')).toBe(480);
+    expect(paneTopY(chart, 'ratio')).toBe(560);
     expect(paneTopY(chart, 'fill-strength')).toBe(640);
   });
 });

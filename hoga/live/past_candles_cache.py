@@ -19,9 +19,16 @@ from __future__ import annotations
 import json
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from hoga.api._atomic_write import atomic_write_json
+
+_KST = timezone(timedelta(hours=9))
+
+
+def _ts_ms_to_kst_yyyymmdd(ts_ms: int) -> str:
+    return datetime.fromtimestamp(ts_ms / 1000, tz=_KST).strftime("%Y%m%d")
 
 _log = logging.getLogger(__name__)
 
@@ -51,7 +58,14 @@ class PastCandlesCache:
     def get_past(self, code: str, date: str) -> list[dict] | None:
         key = (code, date)
         if key in self._past_mem:
-            return self._past_mem[key]
+            bars = self._past_mem[key]
+            if not self._bars_match_date(bars, date):
+                # In-memory entry is stale (mismatched date). Evict and fall
+                # through to disk; disk validation may also reject and trigger
+                # a fresh fetch upstream.
+                self._past_mem.pop(key, None)
+            else:
+                return bars
         p = self._past_path(code, date)
         if not p.exists():
             return None
@@ -63,8 +77,35 @@ class PastCandlesCache:
             _log.warning("past_candles_cache.corrupt_or_unreadable path=%s", p, exc_info=True)
             return None
         bars = body.get("candles") or []
+        if not self._bars_match_date(bars, date):
+            # KIS dailychartprice quirk (pre-fix f63ed15): non-trading-day
+            # queries returned the prior trading day's bars and were cached
+            # under the queried date. Evict the stale file so the upstream
+            # fetcher (now guarded) writes a correct empty/fresh result.
+            _log.warning(
+                "past_candles_cache.stale_disk_evicting path=%s reason=date_mismatch",
+                p,
+            )
+            try:
+                p.unlink()
+            except OSError:
+                pass
+            return None
         self._past_mem[key] = bars
         return bars
+
+    @staticmethod
+    def _bars_match_date(bars: list[dict], date_yyyymmdd: str) -> bool:
+        """True if `bars` is empty (legitimately a non-trading day) or its first
+        bar's `t_ms` falls within the requested KST date. Used to detect cache
+        files corrupted by the pre-f63ed15 KIS quirk where a non-trading-day
+        query returned the prior trading day's bars."""
+        if not bars:
+            return True
+        first_ts = bars[0].get("t_ms")
+        if not isinstance(first_ts, int):
+            return False
+        return _ts_ms_to_kst_yyyymmdd(first_ts) == date_yyyymmdd
 
     def store_past(self, code: str, date: str, bars: list[dict]) -> None:
         p = self._past_path(code, date)

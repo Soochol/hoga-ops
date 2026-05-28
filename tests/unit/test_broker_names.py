@@ -21,9 +21,12 @@ from hoga.broker_names import canonical
         ("토  스", "토스증권", "토스증권"),
         ("모건스탠리", "모건스탠리증권", "모건스탠리증권"),
         ("JP모간서울", "JP모간", "JP모간"),
+        ("골드만", "골드만삭스증권", "골드만"),
+        ("씨티그룹", "씨티그룹글로벌마켓증권", "씨티그룹"),
         # Identity pairs: both sources already agree.
         ("NH투자증권", "NH투자증권", "NH투자증권"),
         ("키움증권", "키움증권", "키움증권"),
+        ("하나증권", "하나증권", "하나증권"),
     ],
 )
 def test_both_aliases_map_to_same_canonical(

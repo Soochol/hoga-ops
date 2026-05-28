@@ -43,6 +43,15 @@ _CANONICAL: dict[str, str] = {
     # J.P. Morgan Securities Korea — hogaplay tags with city suffix
     "JP모간서울": "JP모간",
     "JP모간": "JP모간",
+    # 골드만삭스증권 서울지점 — hogaplay short form; KIS counterpart inferred
+    # from the same full-form pattern KIS uses for other foreign brokers
+    # (e.g. ``모건스탠리증권``). If KIS actually emits a different form a
+    # fresh unknown_alias warning will surface it.
+    "골드만": "골드만",
+    "골드만삭스증권": "골드만",
+    # 씨티그룹글로벌마켓증권 — same inference as above
+    "씨티그룹": "씨티그룹",
+    "씨티그룹글로벌마켓증권": "씨티그룹",
     # Identity-only entries below: KIS and hogaplay already agree on form,
     # but listing them here makes the mapping table the single source of
     # truth for "broker known to this system".
@@ -51,6 +60,7 @@ _CANONICAL: dict[str, str] = {
     "KB증권": "KB증권",
     "유안타증권": "유안타증권",
     "신영증권": "신영증권",
+    "하나증권": "하나증권",
     "코리아에셋": "코리아에셋",
 }
 

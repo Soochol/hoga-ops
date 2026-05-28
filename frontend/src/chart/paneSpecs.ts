@@ -41,8 +41,8 @@ export type BoundPaneSpec<Ctx = any> = PaneSpec<Ctx> & { name: PaneId };
 export const PANE_SPECS: BoundPaneSpec[] = [
   CANDLE_SPEC,         // paneIndex 0
   VOLUME_SPEC,         // paneIndex 1
-  RATIO_SPEC,          // paneIndex 2
-  QUOTE_TOTALS_SPEC,   // paneIndex 3
+  QUOTE_TOTALS_SPEC,   // paneIndex 2
+  RATIO_SPEC,          // paneIndex 3
   FILL_STRENGTH_SPEC,  // paneIndex 4
 ];
 

@@ -189,7 +189,13 @@ class _FakeKisForPast:
 
     async def fetch_past_minute_candles(self, code: str, date_yyyymmdd: str) -> list[KisCandle]:
         self.calls.append(date_yyyymmdd)
-        return [KisCandle(t_ms=int(date_yyyymmdd) * 1000, open=100, high=110, low=95, close=105, volume=10)]
+        # KST 09:00 of the requested date — matches the real KIS shape so
+        # PastCandlesCache's date-match guard (the "evict stale" check from
+        # f63ed15 follow-up) treats this cache entry as valid on hit.
+        kst = datetime.timezone(datetime.timedelta(hours=9))
+        y, m, d = int(date_yyyymmdd[:4]), int(date_yyyymmdd[4:6]), int(date_yyyymmdd[6:8])
+        t_ms = int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000)
+        return [KisCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
 
 
 def _past_app(tmp_path, fake_kis):
