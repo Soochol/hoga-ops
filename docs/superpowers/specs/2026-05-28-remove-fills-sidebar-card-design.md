@@ -26,7 +26,7 @@
 | CursorSidebar grid 비율 | intentionally breaks | 3행 → 2행으로 reflow. 10호가의 `minmax(624px,2fr)` 는 유지하고 체결이 차지하던 1fr 을 거래원이 흡수한다. |
 | `/replay`-`/live` 사이드바 parity | preserves | 동일한 `CursorSidebar` 컴포넌트를 양쪽이 계속 공유. 두 페이지 모두에서 동시에 체결 카드가 사라진다. |
 
-Grid 비율 변경의 정당화: 카드를 하나 제거하는 변경은 본질적으로 grid를 reflow하지 않을 수 없다. 가장 보수적인 reflow는 (a) 10호가의 최소 높이 보장을 유지하고 (b) 거래원이 자연스럽게 freed 공간을 흡수하는 것 — `grid-rows-[minmax(624px,2fr)_1fr]`. 10호가는 dominant pane이므로 비율 우위를 유지한다.
+Grid 비율 변경의 정당화: 카드를 하나 제거하는 변경은 본질적으로 grid를 reflow하지 않을 수 없다. 가장 보수적인 reflow는 (a) 10호가의 최소 높이 보장을 유지하고 (b) 거래원이 자연스럽게 freed 공간을 흡수하는 것 — `grid-rows-[minmax(624px,2fr)_1.4fr]`. 10호가는 dominant pane이므로 비율 우위를 유지한다.
 
 ## Goals
 
@@ -75,7 +75,7 @@ Grid 비율 변경의 정당화: 카드를 하나 제거하는 변경은 본질�
 
 - `frontend/src/sidebar/CursorSidebar.tsx`
   - Props `fills?: ReactNode` 제거 → `Props = { orderbook?; brokers? }`
-  - `<aside>` grid: `grid-rows-[minmax(624px,2fr)_1.4fr_1fr]` → `grid-rows-[minmax(624px,2fr)_1fr]`
+  - `<aside>` grid: `grid-rows-[minmax(624px,2fr)_1.4fr_1fr]` → `grid-rows-[minmax(624px,2fr)_1.4fr]`
   - `<SidebarCard label="체결" testId="card-fills">` 섹션 제거
   - `FillTape` import + `useTradesAroundCursor` import + `CursorSidebarConnected` 내 `const trades = useTradesAroundCursor()` 제거
   - JSX 의 `fills={<FillTape trades={trades} />}` 제거

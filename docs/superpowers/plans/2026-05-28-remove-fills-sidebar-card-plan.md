@@ -74,6 +74,7 @@ adr: docs/adr/0047-remove-fills-sidebar-card.md
 - Modify: `frontend/src/live/LiveSidebar.tsx`
 - Modify: `frontend/src/live/LiveSidebar.test.tsx`
 - Modify: `frontend/src/live/LivePage.test.tsx`
+- Modify: `frontend/tests/component/CursorSidebar.test.tsx` (eng review B-E2)
 - Delete: `frontend/src/sidebar/FillTape.tsx`
 - Delete: `frontend/tests/component/FillTape.test.tsx`
 
@@ -111,10 +112,13 @@ type Props = {
 };
 
 /**
- * Connected variant for /replay. Binds 10호가 (cursor-anchored, useSpot) and
- * 거래원 (day-anchored, react-query) to their respective hooks. The 체결 card
- * was removed 2026-05-28 (see ADR-0047) — the chart's 체결강도 pane provides
- * equivalent information in a more compact visualization.
+ * Connected variant for /replay. Binds two cards to their hooks:
+ *   - 10호가 (cursor-keyed): useSpot-family (useOrderbookAtCursor)
+ *   - 거래원 (day-keyed in identity, cursor-projected in per-row net):
+ *     react-query (useBrokerSeriesForDay) per ADR-0023
+ *
+ * The 체결 card was removed 2026-05-28 (ADR-0047). The chart's 체결강도 pane
+ * provides an aggregate visualization of fill activity in its place.
  */
 export function CursorSidebarConnected({ axis }: { axis: VirtualAxis }) {
   const orderbook = useOrderbookAtCursor();
@@ -143,7 +147,7 @@ export default function CursorSidebar({ orderbook, brokers }: Props) {
   return (
     <aside
       id="replay-sidebar"
-      className="grid grid-rows-[minmax(624px,2fr)_1fr] gap-2 p-2 bg-bg h-full min-h-0"
+      className="grid grid-rows-[minmax(624px,2fr)_1.4fr] gap-[var(--space-sm)] p-[var(--space-sm)] bg-bg h-full min-h-0"
     >
       <SidebarCard label="10호가" testId="card-orderbook">
         {orderbook ?? <Placeholder />}
@@ -188,9 +192,10 @@ Key diffs from before:
 - `useTradesAroundCursor` import 제거 (이 hook은 Task 2 에서 함수 자체를 제거)
 - `Props.fills` 제거
 - `CursorSidebarConnected` 의 `useTradesAroundCursor()` 호출 + `fills={<FillTape trades={trades} />}` 제거
-- `<aside>` grid: `grid-rows-[minmax(624px,2fr)_1.4fr_1fr]` → `grid-rows-[minmax(624px,2fr)_1fr]`
+- `<aside>` grid: `grid-rows-[minmax(624px,2fr)_1.4fr_1fr]` → `grid-rows-[minmax(624px,2fr)_1.4fr]` (거래원의 1.4fr 절대값 유지 → 10호가가 freed 공간을 가져가되 거래원 카드는 sparkline+table 가독성 보존; design review B-D1)
+- `<aside>` spacing: `gap-2 p-2` → `gap-[var(--space-sm)] p-[var(--space-sm)]` (DESIGN.md 토큰 사용; design review B-D2)
 - 체결 `SidebarCard` 섹션 제거
-- 컴포넌트 도큐 코멘트는 ADR-0047 참조
+- 컴포넌트 도큐 코멘트는 cursor-vs-day-anchored 구분 보존 + ADR-0047 참조 (design review S-D1)
 
 ### Step 1.3 — Edit LiveSidebar.tsx
 
@@ -371,6 +376,21 @@ grep -n "card-fills" frontend/src/live/LiveSidebar.test.tsx
 grep -n "card-fills" frontend/src/live/LivePage.test.tsx
 ```
 
+### Step 1.5a — Update CursorSidebar component test (eng review B-E2)
+
+- [ ] `frontend/tests/component/CursorSidebar.test.tsx` 갱신:
+  1. 라인 12 의 `useTradesAroundCursor: vi.fn(() => undefined),` 항목 제거
+  2. 라인 32 부근의 `fills={<span>FT-CONTENT</span>}` prop 전달 제거
+  3. `card-fills` 또는 `FT-CONTENT` 검증 assertion 이 있으면 그 expect/render 블록 제거 (`card-orderbook`, `card-brokers` assertion 은 유지)
+
+확인:
+
+```bash
+grep -n "useTradesAroundCursor\|card-fills\|FT-CONTENT\|fills=" frontend/tests/component/CursorSidebar.test.tsx
+```
+
+Expected: 매치 0건.
+
 ### Step 1.6 — Delete FillTape files
 
 - [ ] FillTape 컴포넌트와 그 테스트를 삭제.
@@ -405,13 +425,14 @@ Expected: 빌드 성공. TypeScript 미사용 import 에러가 발생하면 임�
 git add frontend/src/sidebar/CursorSidebar.tsx \
         frontend/src/sidebar/FillTape.tsx \
         frontend/tests/component/FillTape.test.tsx \
+        frontend/tests/component/CursorSidebar.test.tsx \
         frontend/src/live/LiveSidebar.tsx \
         frontend/src/live/LiveSidebar.test.tsx \
         frontend/src/live/LivePage.test.tsx
 git commit -m "$(cat <<'EOF'
 feat(sidebar): /live /replay 체결 카드 제거 (UI shell)
 
-CursorSidebar grid를 3행 → 2행 (minmax(624px,2fr)_1fr) 으로 reflow.
+CursorSidebar grid를 3행 → 2행 (minmax(624px,2fr)_1.4fr) 으로 reflow.
 FillTape 컴포넌트와 단위 테스트 삭제. LiveSidebar/LivePage 테스트의
 useLiveTradesAroundCursor mock 정리. 데이터 hook 정의는 Task 2 에서 제거.
 
@@ -549,8 +570,10 @@ EOF
 - Modify: `hoga/api/models.py`
 - Modify: `hoga/tables/trades.py`
 - Modify: `tests/test_api_validation.py`
+- Modify: `tests/test_tables_trades.py` (eng review B-E1 — query_up_to/query_range 테스트 함수 + import 제거)
+- Delete: `tests/unit/api/test_trades_endpoint.py` (eng review B-E1 — 파일 전체가 /api/trades + TradesResponse 전용 56 라인)
 
-### Step 3.1 — Verify trades-route is the only caller of query_up_to / query_range
+### Step 3.1 — Verify trades-route + test_tables_trades.py are the only callers
 
 - [ ] dead code 범위 확인.
 
@@ -558,7 +581,11 @@ EOF
 grep -rn "query_up_to\|query_range" hoga/ tests/ --include="*.py" 2>&1
 ```
 
-Expected: `hoga/api/routes.py` 의 라인 156, 164 (route 핸들러 내부) 와 `hoga/tables/trades.py` 의 정의부 (라인 281, 291) 만 매치. 다른 caller가 있으면 `query_*` 헬퍼는 유지하고 spec/plan 갱신 필요.
+Expected matches (정확히 이것만 — 다른 caller 있으면 plan 갱신):
+- `hoga/api/routes.py:156, 164` — route 핸들러 내부 (Step 3.2 에서 라우트 통째로 제거)
+- `hoga/tables/trades.py:281, 291` — 정의부 (Step 3.4 에서 함수 제거)
+- `tests/test_tables_trades.py:16-17` — import (Step 3.4a 에서 import 정리)
+- `tests/test_tables_trades.py:122, 134` — `test_query_up_to_*` / `test_query_range_*` 함수 (Step 3.4a 에서 함수 제거)
 
 ### Step 3.2 — Remove trades route from routes.py
 
@@ -609,6 +636,28 @@ grep -n "query_up_to\|query_range" hoga/tables/trades.py
 
 Expected: 매치 0건.
 
+### Step 3.4a — Clean tests/test_tables_trades.py (eng review B-E1)
+
+- [ ] `tests/test_tables_trades.py` 갱신:
+  1. 라인 10~20 의 `from hoga.tables.trades import (...)` 블록에서 `query_range,` 와 `query_up_to,` 두 줄 제거. `ApiTrade`, `Trade`, `PARQUET_SCHEMA`, `PARSERS`, `TradeValidationError`, `validate`, `write_parquet` 은 유지 (나머지 14개 테스트가 사용).
+  2. 라인 122~140 의 `def test_query_up_to_returns_api_models_descending(...)` 와 `def test_query_range_returns_api_models(...)` 두 함수 통째로 제거.
+
+확인:
+
+```bash
+grep -n "query_up_to\|query_range" tests/test_tables_trades.py
+```
+
+Expected: 매치 0건.
+
+### Step 3.4b — Delete tests/unit/api/test_trades_endpoint.py (eng review B-E1)
+
+- [ ] 파일 전체가 `TradesResponse` / `/api/trades` 전용 (56 라인) — 삭제.
+
+```bash
+rm tests/unit/api/test_trades_endpoint.py
+```
+
 ### Step 3.5 — Remove /api/trades from validation test
 
 - [ ] `tests/test_api_validation.py` 라인 25 의 `"/api/trades?t=0",` 항목을 endpoint 파라미터 리스트에서 제거.
@@ -638,15 +687,19 @@ Expected: 매치 0건.
 )
 ```
 
-### Step 3.6 — Check for other /api/trades tests
+### Step 3.6 — Final sweep for any remaining /api/trades or TradesResponse references
 
-- [ ] route-specific 테스트가 따로 있는지 확인.
+- [ ] 잔여 참조 확인.
 
 ```bash
-grep -rln "/api/trades\|api/trades" tests/ hoga/ --include="*.py" 2>&1
+grep -rn "/api/trades\|api/trades\|TradesResponse\|query_up_to\|query_range" tests/ hoga/ --include="*.py" 2>&1
 ```
 
-Expected: 라인 코멘트 (`hoga/api/queries.py`, `hoga/api/sources.py`) 외에 actual test code 매치 없음. 만약 별도 테스트 파일 (`tests/test_trades_route.py` 등) 이 있다면 함께 제거.
+Expected matches (정확히 이것만 — 모두 Task 4 stale-comment cleanup 대상이거나 docstring 일반어):
+- `hoga/api/queries.py:75` — comment 안의 `/api/trades` (Task 4 Step 4.4 에서 정리)
+- `hoga/api/sources.py:5` — module docstring 의 `/api/trades` (Task 4 Step 4.5 에서 정리)
+
+다른 actual code/test 매치가 있으면 plan 누락 — grep 결과를 사용자에게 보고 후 처리.
 
 ### Step 3.7 — Run backend tests
 
@@ -670,7 +723,9 @@ grep -rn "TradesResponse\|query_up_to\|query_range" hoga/ tests/ --include="*.py
 git add hoga/api/routes.py \
         hoga/api/models.py \
         hoga/tables/trades.py \
-        tests/test_api_validation.py
+        tests/test_api_validation.py \
+        tests/test_tables_trades.py \
+        tests/unit/api/test_trades_endpoint.py
 git commit -m "$(cat <<'EOF'
 refactor(api): drop /api/trades route, TradesResponse, trade query helpers
 
@@ -860,14 +915,30 @@ Expected: 사이드바 헤더 라벨이 `LIVE` → `과거 시점` 으로 전환
 
 ## Self-Review checklist (작성 직후 1회)
 
-- [x] Spec 의 모든 modify/delete 파일에 대응 task 존재 — Task 1 (UI 8개), Task 2 (hook+adapter 5개), Task 3 (backend 4개), Task 4 (comment 4개).
+- [x] Spec 의 모든 modify/delete 파일에 대응 task 존재 — Task 1 (UI 9개, eng review 후 +1), Task 2 (hook+adapter 5개), Task 3 (backend 6개, eng review 후 +2), Task 4 (comment 4개).
 - [x] Spec 이 "stale-comment cleanup" 을 plan 단계로 이월 — Task 4 가 명시.
 - [x] Spec 이 `tests/test_api_validation.py:25` 명시 — Task 3 Step 3.5 가 처리.
 - [x] No placeholder 검사 — 모든 step에 구체 명령/코드/예상 출력 포함.
 - [x] 타입/이름 일관성 — `useTradesAroundCursor`, `useLiveTradesAroundCursor`, `flattenTrades`, `TradesResponse`, `LIVE_FILLTAPE_MAX` 명칭이 전체 plan 에서 동일.
 - [x] Grid 변경 한 곳에서만 발생 — Task 1 Step 1.2 (CursorSidebar.tsx). LiveSidebar 는 grid 안 건드림.
-- [x] 차트 체결강도 pane 영향 차단 — Task 1 Edit B 의 ⚠️ 검증 노트 + Task 5 Step 5.2 의 시각 확인 (이중 안전망).
+- [x] 차트 체결강도 pane 영향 차단 — Task 1 Edit B 의 ⚠️ 검증 노트 + Task 5 Step 5.2 의 시각 확인 + eng review가 `useLiveBundle.ts:54` 에서 차트가 독립적으로 useLiveSeries(code) 호출함을 confirm (삼중 안전망).
 
-## Deferred review notes
+## Plan-review merge (단계 4 결과)
 
-(없음 — 단계 4 review 후 채워질 자리.)
+**Design review** (APPROVE-WITH-EDITS) — 반영:
+- B-D1: grid `2fr_1fr` → `2fr_1.4fr` (거래원의 1.4fr 보존, 10호가가 freed 1fr 흡수)
+- B-D2: `gap-2 p-2` → `gap-[var(--space-sm)] p-[var(--space-sm)]` (DESIGN.md 토큰)
+- S-D1: CursorSidebarConnected JSDoc 에 cursor-vs-day-anchored 구분 유지
+
+**Eng review** (APPROVE-WITH-EDITS) — 반영:
+- B-E1: Task 3 에 `tests/unit/api/test_trades_endpoint.py` (Step 3.4b 신규 — 전체 삭제) 와 `tests/test_tables_trades.py` (Step 3.4a 신규 — import+테스트 함수 제거) 추가. Step 3.1 grep expected 정정.
+- B-E2: Task 1 에 `frontend/tests/component/CursorSidebar.test.tsx` (Step 1.5a 신규 — mock + fills prop 제거) 추가.
+- 확인: `frontend/src/api/useCursor.test.tsx` 는 spec 에 언급되었지만 실제로 `useTradesAroundCursor` 매치 0건 — 정리 불필요. (spec 의 defensive 나열이었음)
+- 확인: `useLiveBundle.ts:54` 가 차트용 useLiveSeries 를 독립 호출 — Task 1 Edit B 의 trade destructure 제거 안전 (eng review S-1).
+
+## Deferred review notes (Suggestion/Nit 누적)
+
+- **design S-D2**: ADR-0047 본문의 "equivalent information" 표현은 과장 — plan 코멘트는 "an aggregate visualization of fill activity" 로 이미 톤다운됨. ADR 본문은 frozen 으로 두되 미래 spec/문서에서 동일 어법 피할 것.
+- **design S-D3 (nit)**: Task 1 Edit B 의 ⚠️ 인라인 검증 블록이 흐름을 끊는다는 의견. 현 plan 은 그대로 두되, 실행자가 step 순서대로 진행하면 문제 없음 (eng review가 같은 사실을 별도 확인).
+- **eng S-tdd**: deletion 작업의 회귀 방지를 위해 `bucketHogaSeries` 단위 테스트를 매 task 끝에 fast-path 로 돌리는 추가 게이트 제안. 실행 시 `cd frontend && npm test -- bucketHogaSeries --run` 한 줄 추가하면 됨. 현 plan 의 전체 `npm test --run` 이 이미 포함하므로 필수 아님.
+- **eng S-openapi**: 백엔드 OpenAPI 클라이언트 코드젠은 repo 에 없음 — `/api/trades` 제거가 downstream 영향 없음 (확인됨).

@@ -23,7 +23,7 @@
 
 **유지되는 것**: 차트 가격 패널 아래의 **체결강도(FillStrength) 인디케이터 pane** 과 그 데이터 경로 — `useLiveSeries.trade` SSE 스트림, `bucketHogaSeries.fillStrengthPoints`, `chart/projectors/fillStrength.ts`. 이는 사이드바 체결 카드와 별개의 시각화이며 사이드바 삭제와 무관하게 동작을 유지한다. `ApiTrade` / `Trade` 타입도 SSE emitter 및 capture pipeline 에서 계속 사용하므로 유지된다.
 
-CursorSidebar의 grid는 `grid-rows-[minmax(624px,2fr)_1.4fr_1fr]` (3행) → `grid-rows-[minmax(624px,2fr)_1fr]` (2행) 로 reflow된다. 10호가는 dominant pane으로 최소 624px 높이를 유지하고, 거래원이 체결이 점유하던 공간을 흡수한다.
+CursorSidebar의 grid는 `grid-rows-[minmax(624px,2fr)_1.4fr_1fr]` (3행) → `grid-rows-[minmax(624px,2fr)_1.4fr]` (2행) 로 reflow된다. 10호가는 dominant pane으로 최소 624px 높이를 유지하고, 거래원이 체결이 점유하던 공간을 흡수한다.
 
 ## Why
 
