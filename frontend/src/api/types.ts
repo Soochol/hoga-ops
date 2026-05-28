@@ -340,10 +340,20 @@ export interface EnqueueDedupedRow {
   reason: 'already_in_queue' | 'already_running' | 'already_complete' | 'already_skipped';
 }
 
+/** ADR-0042: a (Code, Stock-Date) rejected by the fail_streak cap. */
+export interface BlockedItem {
+  code: string;
+  date: string;
+  fail_streak: number;
+  reason: 'fail_streak_exceeded';
+}
+
 /** Mirrors hoga/api/models.py::EnqueueResponse. */
 export interface EnqueueResponse {
   enqueued: QueueItem[];
   deduped: EnqueueDedupedRow[];
+  /** ADR-0042: pairs rejected by the fail_streak cap. Default []. */
+  blocked: BlockedItem[];
 }
 
 /** Mirrors hoga/api/models.py::RetryRequest. */

@@ -202,4 +202,69 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
     // Unknown code falls back to the server message, not an UpstreamCode hint
     expect(screen.getByText(/KRX is down/)).toBeTruthy();
   });
+
+  // ADR-0042: response.blocked[] surfacing.
+
+  it('shows the blocked message when all pairs blocked (HTTP 409)', async () => {
+    // Mock /api/captures/items to return 409 with the blocked payload.
+    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
+      const s = String(url);
+      if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
+      if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
+      if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }) } as Response;
+      if (s.includes('/api/captures/items')) {
+        return {
+          ok: false, status: 409,
+          json: async () => ({
+            enqueued: [], deduped: [],
+            blocked: [{ code: '005930', date: '20260518', fail_streak: 5, reason: 'fail_streak_exceeded' }],
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.change(screen.getByPlaceholderText(/종목/i), { target: { value: '삼성' } });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByText('삼성전자'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(screen.getByText(/5회 연속 실패 — 인벤토리에서 잠금 해제 필요/)).toBeTruthy();
+    expect(screen.getByText(/005930\/20260518/)).toBeTruthy();
+  });
+
+  it('shows the blocked message on a 201 partial-success (some accepted + some blocked)', async () => {
+    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
+      const s = String(url);
+      if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
+      if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
+      if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }) } as Response;
+      if (s.includes('/api/captures/items')) {
+        return {
+          ok: true, status: 201,
+          json: async () => ({
+            enqueued: [{ item_id: 'new-1', code: '005930', date: '20260520' }],
+            deduped: [],
+            blocked: [{ code: '005930', date: '20260518', fail_streak: 5, reason: 'fail_streak_exceeded' }],
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.change(screen.getByPlaceholderText(/종목/i), { target: { value: '삼성' } });
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByText('삼성전자'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
+    fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(screen.getByText(/5회 연속 실패/)).toBeTruthy();
+  });
 });

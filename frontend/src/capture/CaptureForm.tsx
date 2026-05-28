@@ -5,9 +5,17 @@ import { DateRangePicker, type DateRange } from './DateRangePicker';
 import { useCaptureQueue } from './useCaptureQueue';
 import { enqueueErrorHints } from '../api/upstream-hints';
 import type { ApiError } from '../api/client';
-import type { SymbolHit, UpstreamCode } from '../api/types';
+import type { BlockedItem, EnqueueResponse, SymbolHit, UpstreamCode } from '../api/types';
 import { loadForceRetryDefault } from './forceRetryDefault';
 import { legendText } from './calendarStatus';
+
+function formatBlockedMessage(items: BlockedItem[]): string {
+  // Noun-phrase + em-dash + cause, matching the existing tone from
+  // CaptureRowDetail.test.tsx:154 ("캡처 실패 — hogaplay 쿠키 만료")
+  // and DESIGN.md L249-250's "Korean single words" guidance.
+  const pairs = items.map((b) => `${b.code}/${b.date}`).join(', ');
+  return `5회 연속 실패 — 인벤토리에서 잠금 해제 필요 (${pairs})`;
+}
 
 export interface CaptureFormProps {
   /** Reference month for DateRangePicker's left grid. Defaults to current KST month. */
@@ -20,36 +28,48 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
   const [range, setRange] = useState<DateRange | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inlineError, setInlineError] = useState<ReactNode>(null);
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
 
   const { addItems } = useCaptureQueue();
   const valid = symbol !== null && range !== null && range.end !== null;
 
-  const onStart = () => {
+  const onStart = async () => {
     if (!valid) return;
     setError(null);
     setInlineError(null);
-    addItems.mutate(
-      {
+    setBlockedMessage(null);
+    try {
+      const resp = await addItems.mutateAsync({
         code: symbol!.code,
         start_date: range!.start,
         end_date: range!.end!,
         // Read at submit time so a Settings change between mount and submit
         // is honored without remounting the form.
         force_retry: loadForceRetryDefault(),
-      },
-      {
-        onError: (err: unknown) => {
-          const apiErr = err as ApiError;
-          const code = apiErr.code;
-          if (code && code in enqueueErrorHints) {
-            setInlineError(enqueueErrorHints[code as UpstreamCode]);
-            return;
-          }
-          const msg = err instanceof Error ? err.message : 'Failed to enqueue';
-          setError(msg);
-        },
-      },
-    );
+      });
+      // ADR-0042: 201 partial-success path — some items accepted, some blocked.
+      if (resp.blocked && resp.blocked.length > 0) {
+        setBlockedMessage(formatBlockedMessage(resp.blocked));
+      }
+    } catch (err: unknown) {
+      const apiErr = err as ApiError;
+      // ADR-0042: 409 all-blocked path — the entire request body is the
+      // EnqueueResponse with non-empty `blocked`. ApiError carries it as .data.
+      if (apiErr.status === 409 && apiErr.data) {
+        const body = apiErr.data as Partial<EnqueueResponse>;
+        if (body.blocked && body.blocked.length > 0) {
+          setBlockedMessage(formatBlockedMessage(body.blocked));
+          return;
+        }
+      }
+      const code = apiErr.code;
+      if (code && code in enqueueErrorHints) {
+        setInlineError(enqueueErrorHints[code as UpstreamCode]);
+        return;
+      }
+      const msg = err instanceof Error ? err.message : 'Failed to enqueue';
+      setError(msg);
+    }
   };
 
   return (
@@ -85,6 +105,23 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
 
       {error !== null && (
         <div role="alert" className="text-xs text-error">{error}</div>
+      )}
+
+      {blockedMessage !== null && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 8,
+            padding: '8px 12px',
+            background: 'rgba(244,63,94,0.10)',
+            border: '1px solid var(--error)',
+            borderRadius: 'var(--radius-sm, 4px)',
+            color: 'var(--error)',
+            fontSize: 'var(--font-size-sm, 0.875rem)',
+          }}
+        >
+          {blockedMessage}
+        </div>
       )}
 
       {inlineError !== null && (
