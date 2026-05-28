@@ -291,6 +291,13 @@ class QueueManifest(BaseModel):
     schema_version: int = 1
     paused: bool
     items: list[QueueManifestItem]
+    fail_streaks: dict[str, int] = Field(default_factory=dict)
+    """Per-(Code, Stock-Date) consecutive failed+skipped counter (ADR-0042).
+
+    Key format ``"{code}|{date}"``. Missing key means 0. Reset to 0 on
+    ``phase == done`` or on ``unblock`` action. Old manifests without this
+    key load as empty dict — no migration script.
+    """
 
 
 # --- POST /api/captures/items request/response (Plan B Task 7) --------------
