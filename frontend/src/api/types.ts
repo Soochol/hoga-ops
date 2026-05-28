@@ -16,6 +16,14 @@ export type StockDate = {
    *  Null on legacy meta.json files written before the counter existed.
    *  See CONTEXT.md "Full Capture Count". */
   full_capture_count: number | null;
+  /** ADR-0042: consecutive failed+skipped count since last success/unblock.
+   *  Joined from QueueManifest.fail_streaks at the route layer. 0 means
+   *  "no recent failures"; ``>= 5`` means ``blocked``. */
+  fail_streak: number;
+  /** ADR-0042: ``fail_streak >= 5``. Renders a 차단됨 badge + 잠금 해제
+   *  button on the inventory row; enqueue is rejected with HTTP 409 until
+   *  the user clears the counter. */
+  blocked: boolean;
 };
 
 export type Candle = { ts_ms: number; open: number; close: number; high: number; low: number; vol_a: number; vol_b: number };

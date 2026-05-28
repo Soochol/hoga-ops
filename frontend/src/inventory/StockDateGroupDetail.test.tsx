@@ -19,7 +19,8 @@ vi.mock('../api/sse', () => ({
 }));
 
 const row = (code: string, name: string, date: string,
-             disk_state: StockDate['disk_state'] = 'complete'): StockDate => ({
+             disk_state: StockDate['disk_state'] = 'complete',
+             overrides: Partial<StockDate> = {}): StockDate => ({
   date, code, name,
   regular_session_open_ms: 0, regular_session_close_ms: 0,
   data_window_first_ms: 0, data_window_last_ms: 0,
@@ -29,6 +30,9 @@ const row = (code: string, name: string, date: string,
   today_open: 70_000, today_high: 73_000, today_low: 69_000, today_close: 72_400,
   disk_state,
   full_capture_count: null,
+  fail_streak: 0,
+  blocked: false,
+  ...overrides,
 });
 
 const EMPTY_QUEUE: QueueSnapshot = {
@@ -229,5 +233,70 @@ describe('StockDateGroupDetail full_capture_count column', () => {
     const tr = dateEl.closest('tr')!;
     const cell = within(tr).getByTestId('full-capture-count-cell');
     expect(cell.textContent).toBe('×3');
+  });
+
+  // ADR-0042: fail_streak / blocked surfacing.
+
+  it('renders 재시도 N/5 indicator when fail_streak > 0 and !blocked', async () => {
+    setupFetch();
+    const r = row('005930', '삼성전자', '20260522', 'source_partial', { fail_streak: 3 });
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    expect(within(tr).getByText('재시도 3/5')).toBeTruthy();
+    // The existing ↻ Re-capture button is still rendered (not blocked yet).
+    expect(within(tr).getByRole('button', { name: /Re-capture/i })).toBeTruthy();
+  });
+
+  it('renders 차단됨 (5/5) badge + 잠금 해제 button when blocked', async () => {
+    setupFetch();
+    const r = row('005930', '삼성전자', '20260522', 'source_partial', {
+      fail_streak: 5, blocked: true,
+    });
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    expect(within(tr).getByText('차단됨 (5/5)')).toBeTruthy();
+    expect(within(tr).getByRole('button', { name: /잠금 해제/ })).toBeTruthy();
+    // The normal Re-capture button should be replaced.
+    expect(within(tr).queryByRole('button', { name: /Re-capture this/i })).toBeNull();
+  });
+
+  it('blocked row does not show 재시도 N/5 indicator (badge takes over)', async () => {
+    setupFetch();
+    const r = row('005930', '삼성전자', '20260522', 'source_partial', {
+      fail_streak: 5, blocked: true,
+    });
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    expect(within(tr).queryByText(/재시도/)).toBeNull();
+  });
+
+  it('clicking 잠금 해제 POSTs to the unblock endpoint', async () => {
+    const fetchMock = setupFetch();
+    const r = row('005930', '삼성전자', '20260522', 'source_partial', {
+      fail_streak: 5, blocked: true,
+    });
+    renderDetail([r], '005930', new QueryClient());
+    const button = await screen.findByRole('button', { name: /잠금 해제/ });
+    fireEvent.click(button);
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls.filter((c) =>
+        String(c[0]).includes('/api/captures/items/005930/20260522/unblock'),
+      );
+      expect(calls.length).toBeGreaterThanOrEqual(1);
+      expect((calls[0][1] as RequestInit).method).toBe('POST');
+    });
+  });
+
+  it('normal row (fail_streak=0, !blocked) shows neither badge nor indicator', async () => {
+    setupFetch();
+    const r = row('005930', '삼성전자', '20260522', 'source_partial');
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    expect(within(tr).queryByText(/재시도/)).toBeNull();
+    expect(within(tr).queryByText(/차단됨/)).toBeNull();
   });
 });
