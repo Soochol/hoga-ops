@@ -25,6 +25,8 @@ const row = (
   today_close: 70_500,
   disk_state: 'complete',
   full_capture_count: null,
+  fail_streak: 0,
+  blocked: false,
   ...overrides,
 });
 

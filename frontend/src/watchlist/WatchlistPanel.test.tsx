@@ -201,6 +201,7 @@ describe('WatchlistPanel manual catch-up', () => {
       deduped: [
         { code: '003490', date: '20260525', reason: 'already_complete' },
       ],
+      blocked: [],
     });
     renderWithQuery(<WatchlistPanel />);
     await waitFor(() => screen.getByText('대한항공'));
@@ -222,7 +223,7 @@ describe('WatchlistPanel manual catch-up', () => {
       next_run_at_ms: Date.now() + 3600_000,
     });
     vi.mocked(api.catchupNow).mockResolvedValueOnce({
-      enqueued: [], deduped: [],
+      enqueued: [], deduped: [], blocked: [],
     });
     renderWithQuery(<WatchlistPanel />);
     await waitFor(() => screen.getByText('대한항공'));
@@ -245,6 +246,7 @@ describe('WatchlistPanel manual catch-up', () => {
         { code: '003490', date: '20260525', reason: 'already_complete' },
         { code: '003490', date: '20260526', reason: 'already_complete' },
       ],
+      blocked: [],
     });
     renderWithQuery(<WatchlistPanel />);
     await waitFor(() => screen.getByText('대한항공'));

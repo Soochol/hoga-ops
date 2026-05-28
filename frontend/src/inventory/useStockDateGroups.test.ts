@@ -13,6 +13,8 @@ const row = (code: string, name: string, date: string, capturedAt: number, sizeB
   today_open: 0, today_high: 0, today_low: 0, today_close: 0,
   disk_state: 'complete',
   full_capture_count: null,
+  fail_streak: 0,
+  blocked: false,
 });
 
 describe('useStockDateGroups', () => {
