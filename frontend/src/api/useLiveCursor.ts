@@ -25,6 +25,35 @@ interface Params {
   timeframe: MinuteTimeframe | null;
 }
 
+// ─── Internal helper ──────────────────────────────────────────────────────────
+
+/**
+ * Internal — encapsulates the cursor/sourcePref read + bucket-aligned t.
+ * Returns alignedT/bucketMs null when the cursor is absent (no fetch).
+ *
+ * Used by useLiveOrderbookAtCursor and useLiveTradesAroundCursor so the only
+ * per-hook divergence is the cache-key shape and the endpoint URL.
+ *
+ * useLiveBrokersAtCursor is intentionally NOT refactored here: brokers is a
+ * day-keyed series (no bucket alignment needed), and forcing it through this
+ * helper would be a worse fit than the current straightforward cursor-presence
+ * gate. Orderbook + trades are the natural beneficiaries of bucket alignment.
+ */
+function useAlignedCursor(timeframe: MinuteTimeframe | null): {
+  alignedT: number | null;
+  bucketMs: number | null;
+  sourcePref: ReturnType<typeof useSourcePreferenceStore.getState>['sourcePreference'];
+} {
+  const cursorMs = useLiveCursorStore((s) => s.cursorMs);
+  const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
+  const bucketMs = timeframe ? TIMEFRAME_TO_MS[timeframe as Timeframe] : null;
+  const alignedT =
+    cursorMs !== null && bucketMs !== null
+      ? Math.floor(cursorMs / bucketMs) * bucketMs
+      : null;
+  return { alignedT, bucketMs, sourcePref };
+}
+
 // ─── Task 10 + T14b: useLiveOrderbookAtCursor ────────────────────────────────
 
 /**
@@ -47,13 +76,7 @@ export interface LiveOrderbookSpot {
  * once fetched (snapshot may be null for pre-available slots).
  */
 export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefined {
-  const cursorMs = useLiveCursorStore((s) => s.cursorMs);
-  const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
-  const bucketMs = p.timeframe ? TIMEFRAME_TO_MS[p.timeframe as Timeframe] : null;
-  const alignedT =
-    cursorMs !== null && bucketMs !== null
-      ? Math.floor(cursorMs / bucketMs) * bucketMs
-      : null;
+  const { alignedT, bucketMs, sourcePref } = useAlignedCursor(p.timeframe);
   const key =
     p.code && p.date && alignedT !== null && bucketMs !== null
       ? `live|ob|${p.code}|${p.date}|${alignedT}|${bucketMs}|${sourcePref}`
@@ -83,13 +106,7 @@ export function useLiveTradesAroundCursor(
   p: Params,
   limit: number = 20,
 ): Trade[] | undefined {
-  const cursorMs = useLiveCursorStore((s) => s.cursorMs);
-  const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
-  const bucketMs = p.timeframe ? TIMEFRAME_TO_MS[p.timeframe as Timeframe] : null;
-  const alignedT =
-    cursorMs !== null && bucketMs !== null
-      ? Math.floor(cursorMs / bucketMs) * bucketMs
-      : null;
+  const { alignedT, sourcePref } = useAlignedCursor(p.timeframe);
   const key =
     p.code && p.date && alignedT !== null
       ? `live|tr|${p.code}|${p.date}|${alignedT}|${limit}|${sourcePref}`
