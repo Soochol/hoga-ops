@@ -1,5 +1,20 @@
 import type { MASource } from '../chart/projectors/movingAverage';
 
+/**
+ * /live indicator prefs — canonical types, constants, and the persistence
+ * validator co-live here.
+ *
+ * Module placement note: `LiveMAConfig`, `MA_PERIOD_MIN/MAX/SLOT_LIMIT`, and
+ * `DEFAULT_LIVE_MAS` are *defined* in this leaf module (not in
+ * `state/livePage`) to break a runtime import cycle —
+ * `livePage` imports `mergeLiveIndicatorPrefs` here, and the validator
+ * needs the constants. `state/livePage` re-exports them, so all public
+ * consumers continue to import from `state/livePage` (the spec and plan
+ * both name livePage as the public surface). If you find yourself
+ * importing constants from this module directly, prefer `state/livePage`
+ * — that's the documented public seam.
+ */
+
 /** /live의 이동평균선 한 슬롯. 가변 슬롯이므로 array index가 아니라
  *  안정 id로 식별한다 — mid-list 삭제가 다른 슬롯의 series identity를
  *  churn하지 않게 한다. ADR-0046 참조. */
