@@ -2,6 +2,13 @@
 
 **Status:** draft (2026-05-28)
 
+**Related ADRs:**
+- ADR-0037 — Source별 서브폴더 layout (`kis_live/` 디렉터리 규약)
+- **ADR-0038 — Live Capture는 JSONL append + 18:00 Promotion** (본 spec이 amend; hot-path invariant는 유지)
+- **ADR-0039 — Source Preference는 preference + fallback이지 strict filter가 아니다** (본 spec의 fallback 정책이 정확히 이 ADR을 따름 — preferred source가 존재하면 sparse여도 그것만, 둘 다 없을 때만 다른 source로)
+- ADR-0040 — Live Candle Backfill은 Promotion target과 별도 캐시 (candles는 Promotion에 포함 안 됨 — 본 spec의 promote_today도 candles.parquet 안 만듦)
+- **ADR-0043 — Today Promotion: 장 중 N분 주기 jsonl→Parquet overwrite** (본 spec의 핵심 결정 명문화)
+
 ## 1. Goal
 
 KIS 폴러가 받아온 호가 데이터(총잔량 / ratio / fill_strength)를 사용자가 **언제든지** `/replay`와 `/live` 페이지에서 호가 보조지표 패널로 볼 수 있어야 한다. 사용자가 `/replay > Settings > 기본 데이터 소스`에서 고른 source preference를 엄격히 따르되, 그 source가 디스크에 아예 없는 경우엔 다른 source로 fallback한다.
@@ -379,6 +386,7 @@ const todaySegments: RangeSegment[] =
 | `test_promote_today_handles_torn_last_line` | 마지막 라인이 incomplete JSON → 나머지 N-1줄 정상 promote, warn 로그 |
 | `test_promote_today_returns_when_jsonl_missing` | jsonl 없으면 조용히 반환, parquet 안 만듦 |
 | `test_promote_pending_skips_today` | `live/{today}/x.jsonl`이 promote_pending 호출 후에도 살아있음 |
+| `test_promote_today_does_not_create_candles_parquet` | ADR-0040/0043 invariant — `kis_live/`에 snapshots/trades/brokers.parquet만, candles.parquet은 절대 없음 |
 
 ### 10.2 백엔드 — `start_today_promoter` 단위 테스트
 
@@ -440,4 +448,4 @@ Kill switch (`HOGA_LIVE_TODAY_PROMOTE_ENABLED=false`)로 즉시 비활성 후 18
 
 - **`get_active_codes` 구체 구현**: 현재 `LiveStatus.watchlist_count`만 있고 codes 리스트는 별도 accessor 필요. 폴러 내부에서 노출하는 게 가장 자연스러움 — 구현 시 [hoga/live/lifecycle.py](../../hoga/live/lifecycle.py)에서 watchlist accessor를 lifespan으로 빼낼지 결정.
 - **빈 리스트 → parquet 처리**: `promote_today`가 jsonl 첫 폴링 직후 호출되면 records가 비어있을 수 있음. 빈 parquet 쓰는 게 어려우므로 본 spec은 "unlink" 선택. 만약 downstream(`build_quote_ratio_slice`의 DuckDB read)이 파일 부재를 잘 처리하지 못하면 빈 스키마 parquet 쓰는 쪽으로 변경 필요.
-- **디스크 IO 부담**: 5분 주기 × 활성 종목 N개 × 평균 14MB jsonl → parquet 쓰기 ≈ N×170MB/h. N=10이면 1.7GB/h. 현재 워크트리 환경(SSD)은 무난하지만 본 spec은 절대 수치를 측정하지 않았음. 첫 배포 후 1주일 모니터링으로 결정.
+- **디스크 IO 부담 (재계산)**: jsonl은 평균 14MB이지만 Parquet 압축 후엔 종목당 snapshots~120KB / trades~35KB / brokers~10KB 수준(5/27 003490 실측 기준). 5분 주기 × N종목 × ~170KB overwrite ≈ N×2MB/h. N=10이면 ~20MB/h. tempfile + rename 패턴이라 fragmentation도 없음. 현재 워크트리(SSD)에서 무시 가능 수준. **단** jsonl 자체 read는 매번 14MB 풀스캔이라 CPU/메모리는 측정 대상 — 첫 배포 후 elapsed_ms 로그 모니터링.

@@ -1,12 +1,14 @@
 # 0038 — Live Capture는 JSONL append + 18:00 Promotion (직접 Parquet 쓰기 거부)
 
-**Status:** accepted (2026-05-27)
+**Status:** accepted (2026-05-27), amended by ADR-0043 (2026-05-28)
 
 **Related:**
 - ADR-0019 — Capture Queue manifest persistence (재시작 안전성 일반 패턴)
 - ADR-0034 — Scheduler as queue client (Daily Scheduler 책임 분리)
 - ADR-0037 — Source별 서브폴더 layout
+- **ADR-0043 — Today Promotion: 장 중 N분 주기 jsonl→Parquet overwrite (본 ADR의 "Future signal to revisit" 트리거 발동 — promote 시점 부분만 amend, hot-path invariant는 유지)**
 - `docs/superpowers/specs/2026-05-27-live-capture-design.md`
+- `docs/superpowers/specs/2026-05-28-kis-hoga-indicator-always-visible-design.md`
 
 ## Decision
 
