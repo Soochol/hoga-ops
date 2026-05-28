@@ -79,6 +79,31 @@ def _validate_past_request(code: str, from_: str, to: str) -> tuple[date, date, 
     return frm, too, today_d
 
 
+def _validate_daily_past_request(
+    code: str, from_: str, to: str
+) -> tuple[date, date, date]:
+    """Validate daily past-candles request, returning parsed (frm, too, today).
+
+    Unlike `_validate_past_request` (250-day cap on minute path), the daily
+    path is uncapped — KIS retention (~20-30 years) is the natural ceiling
+    and rate-limit handling surfaces partial responses via data_warnings.
+
+    Raises HTTPException(422) on invalid code / date / order / future date.
+    """
+    if not _CODE_RE.match(code):
+        raise HTTPException(422, {"code": "invalid_code", "msg": "code must be 6 digits"})
+    frm = _parse_yyyymmdd(from_)
+    too = _parse_yyyymmdd(to)
+    if frm is None or too is None:
+        raise HTTPException(422, {"code": "invalid_date", "msg": "from/to must be YYYYMMDD"})
+    if frm > too:
+        raise HTTPException(422, {"code": "from_after_to", "msg": "from must be <= to"})
+    today_d = _today_kst_date()
+    if too > today_d:
+        raise HTTPException(422, {"code": "date_in_future", "msg": "to must be <= today_kst"})
+    return frm, too, today_d
+
+
 class ControlRequest(BaseModel):
     action: ControlAction
 
