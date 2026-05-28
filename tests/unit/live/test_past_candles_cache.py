@@ -5,6 +5,7 @@ import json
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from hoga.live.past_candles_cache import PastCandlesCache
 
@@ -50,16 +51,22 @@ def test_past_disk_miss_then_store_then_hit(tmp_path: Path) -> None:
 
 def test_today_memory_miss_then_store_then_hit(tmp_path: Path) -> None:
     cache = PastCandlesCache(data_dir=tmp_path, today_ttl_seconds=60)
-    assert cache.get_today("005930") is None
+    state, value = cache.get_today_tri("005930")
+    assert state == "miss"
+    assert value is None
     cache.store_today("005930", _bars([100]))
-    assert cache.get_today("005930") == _bars([100])
+    state, value = cache.get_today_tri("005930")
+    assert state == "hit"
+    assert value == _bars([100])
 
 
 def test_today_memory_expires_after_ttl(tmp_path: Path) -> None:
     cache = PastCandlesCache(data_dir=tmp_path, today_ttl_seconds=0.01)
     cache.store_today("005930", _bars([1]))
     time.sleep(0.02)
-    assert cache.get_today("005930") is None
+    state, value = cache.get_today_tri("005930")
+    assert state == "miss"
+    assert value is None
 
 
 def test_today_does_not_touch_disk(tmp_path: Path) -> None:
@@ -157,3 +164,39 @@ def test_past_mem_with_wrong_date_evicts_and_falls_through_to_disk(
     cache._past_mem[("005930", "20260523")] = _bars([_TS_20260522_KST_0900])
     # First get: mem hit is rejected (wrong date), disk hit is the valid empty list.
     assert cache.get_past("005930", "20260523") == []
+
+
+# ----- today negative caching -----
+
+
+def test_today_hit_returns_hit_state(tmp_path: Path) -> None:
+    cache = PastCandlesCache(data_dir=tmp_path)
+    bars = _bars_for("20260520", n=3)
+    cache.store_today("005930", bars)
+    state, value = cache.get_today_tri("005930")
+    assert state == "hit"
+    assert value == bars
+
+
+def test_today_miss_returns_miss_state(tmp_path: Path) -> None:
+    cache = PastCandlesCache(data_dir=tmp_path)
+    state, value = cache.get_today_tri("005930")
+    assert state == "miss"
+    assert value is None
+
+
+def test_today_negative_cache(tmp_path: Path) -> None:
+    cache = PastCandlesCache(data_dir=tmp_path)
+    cache.store_today("005930", None)
+    state, value = cache.get_today_tri("005930")
+    assert state == "negative"
+    assert value is None
+
+
+def test_today_negative_cache_ttl_expiry(tmp_path: Path) -> None:
+    cache = PastCandlesCache(data_dir=tmp_path, today_ttl_seconds=10.0)
+    cache.store_today("005930", None)
+    with patch("hoga.live.past_candles_cache.time.monotonic",
+               return_value=time.monotonic() + 11.0):
+        state, _ = cache.get_today_tri("005930")
+    assert state == "miss"

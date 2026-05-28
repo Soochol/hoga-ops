@@ -21,6 +21,7 @@ import logging
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Literal
 
 from hoga.api._atomic_write import atomic_write_json
 
@@ -38,6 +39,8 @@ TODAY_TTL_SECONDS = 60.0
 # Cache file metadata constant.
 _KIS_TR_ID = "FHKST03010230"
 
+TodayState = Literal["hit", "miss", "negative"]
+
 
 class PastCandlesCache:
     """Disk-backed past + memory-only today cache for KIS minute candles."""
@@ -47,8 +50,10 @@ class PastCandlesCache:
         self._today_ttl = today_ttl_seconds
         # In-memory hot cache for past dates (avoids re-reading disk).
         self._past_mem: dict[tuple[str, str], list[dict]] = {}
-        # Today: (code) -> (fetched_at_monotonic, bars).
-        self._today_mem: dict[str, tuple[float, list[dict]]] = {}
+        # Today: (code) -> (fetched_at_monotonic, bars-or-None).
+        # value=None encodes the negative cache (known non-trading-day today)
+        # so a follow-up request within TTL skips KIS.
+        self._today_mem: dict[str, tuple[float, list[dict] | None]] = {}
 
     # --- past ---
 
@@ -119,14 +124,30 @@ class PastCandlesCache:
 
     # --- today ---
 
-    def get_today(self, code: str) -> list[dict] | None:
+    def get_today_tri(self, code: str) -> tuple[TodayState, list[dict] | None]:
+        """Tri-state today accessor.
+
+        Returns:
+        - ("hit", bars) when within TTL and bars were stored.
+        - ("negative", None) when within TTL and store_today(code, None) was
+          called (known non-trading day; skip KIS for TTL window).
+        - ("miss", None) when no entry or TTL expired.
+
+        Callers MUST handle all three states. The legacy two-state get_today
+        was removed because it conflated "miss" and "negative", defeating the
+        negative-cache invariant.
+        """
         entry = self._today_mem.get(code)
         if entry is None:
-            return None
-        fetched_at, bars = entry
+            return "miss", None
+        fetched_at, value = entry
         if time.monotonic() - fetched_at >= self._today_ttl:
-            return None
-        return bars
+            return "miss", None
+        if value is None:
+            return "negative", None
+        return "hit", value
 
-    def store_today(self, code: str, bars: list[dict]) -> None:
+    def store_today(self, code: str, bars: list[dict] | None) -> None:
+        """Store *bars* (or None for negative cache — non-trading-day today)
+        with monotonic-clock TTL stamp."""
         self._today_mem[code] = (time.monotonic(), bars)
