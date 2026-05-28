@@ -275,9 +275,12 @@ async def promote_pending(data_dir: Path) -> None:
 
     Skipped entries:
     - `_archive/` subdirectory (we don't re-promote our own backup).
+    - **Today's date** — owned by Today Promotion (ADR-0043). Skipping prevents
+      archive-move from racing the still-appending jsonl writer.
     - Non-jsonl files.
     - (date, code) pairs already promoted (handled by promote_one's idempotency).
     """
+    today = _today_kst_yyyymmdd()
     live_root = data_dir / "live"
     archive_root = live_root / "_archive"
     parquet_root = data_dir / "parquet"
@@ -285,6 +288,8 @@ async def promote_pending(data_dir: Path) -> None:
         return
     for date_dir in live_root.iterdir():
         if not date_dir.is_dir() or date_dir.name == "_archive":
+            continue
+        if date_dir.name == today:  # ADR-0043 — owned by Today Promotion
             continue
         for jsonl in date_dir.iterdir():
             if jsonl.suffix != ".jsonl" or not jsonl.is_file():

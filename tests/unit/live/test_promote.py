@@ -305,3 +305,45 @@ def test_promote_one_archive_move_regression(tmp_path: Path) -> None:
     # archive 이동 — 핵심 회귀
     assert not jsonl.exists()
     assert (tmp_path / "live" / "_archive" / yesterday / "003490.jsonl").exists()
+
+
+@pytest.mark.asyncio
+async def test_promote_pending_skips_today(tmp_path: Path) -> None:
+    """ADR-0043 invariant — promote_pending은 오늘 날짜를 건드리지 않음.
+
+    오늘 jsonl이 archive로 옮겨지면 Today Promotion이 빈 jsonl을 만지게 됨.
+    """
+    from hoga.live.promote import promote_pending
+
+    kst = timezone(timedelta(hours=9))
+    today = datetime.now(kst).strftime("%Y%m%d")
+    yesterday = (datetime.now(kst) - timedelta(days=1)).strftime("%Y%m%d")
+
+    # 오늘 jsonl (skip 대상)
+    today_jsonl = tmp_path / "live" / today / "003490.jsonl"
+    today_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    today_jsonl.write_text(json.dumps({
+        "t_ms": 1, "kind": "ob",
+        "payload": {"bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0},
+    }) + "\n")
+
+    # 어제 jsonl (정상 promote 대상)
+    yesterday_jsonl = tmp_path / "live" / yesterday / "003490.jsonl"
+    yesterday_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    yesterday_jsonl.write_text(json.dumps({
+        "t_ms": 1, "kind": "ob",
+        "payload": {"bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0},
+    }) + "\n")
+
+    await promote_pending(tmp_path)
+
+    # 오늘은 live/에 그대로
+    assert today_jsonl.exists()
+    assert not (tmp_path / "live" / "_archive" / today / "003490.jsonl").exists()
+    # 오늘 parquet도 안 만들어짐 (promote_pending이 건드리지 않음)
+    assert not (tmp_path / "parquet" / today / "003490" / "kis_live").exists()
+
+    # 어제는 archive로 이동 + parquet 생성
+    assert not yesterday_jsonl.exists()
+    assert (tmp_path / "live" / "_archive" / yesterday / "003490.jsonl").exists()
+    assert (tmp_path / "parquet" / yesterday / "003490" / "kis_live" / "meta.json").exists()
