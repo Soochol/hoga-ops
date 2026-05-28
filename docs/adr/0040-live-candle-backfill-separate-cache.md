@@ -7,7 +7,7 @@
 - ADR-0020 — Data integrity invariant catalog
 - ADR-0036 — 로컬 전용 배포: retry/enqueue 상한 미설정
 - ADR-0037 — Source별 서브폴더 layout
-- ADR-0038 — Live Capture는 JSONL append + 18:00 Promotion
+- ADR-0038 — Live Capture는 JSONL append + 17:00 Promotion
 - ADR-0039 — Source Preference + fallback
 - `docs/superpowers/specs/2026-05-28-live-kis-past-candles-design.md`
 
@@ -34,7 +34,7 @@ ADR-0013 ("RangeBundle은 read-path 단일 wire")의 *spirit*과 정합하지 �
 1. **/replay 영향 차단이 spec brief의 명시 제약.** Alt A 채택은 `source_pref=kis_live` 사용자에게 *자동 파급*. 현재
    kis_live source는 promoted Parquet에 candles.parquet 자체가 없어서 /replay의 candle 차원이 비어 있고, Alt A는
    그것을 풍부한 KIS dailychartprice candle로 채운다. UX 변경은 별도 검토를 받아야 한다.
-2. **Promotion 패턴과의 충돌.** ADR-0038은 Promotion을 "18:00 batched + idempotent + cold path"로 정의. Alt A의
+2. **Promotion 패턴과의 충돌.** ADR-0038은 Promotion을 "17:00 batched + idempotent + cold path"로 정의. Alt A의
    on-demand mid-day write는 그 정의에 어긋난다. 한 디렉토리에 두 writer (cold path Promotion + hot path on-demand)가
    공존하려면 idempotency 정책 + concurrent write 보호가 추가 필요.
 3. **메타-시스템 적용 부담.** Alt A는 `DiskState.classify_from_meta` (ADR-0007)의 새 부분-promotion 상태 인지,

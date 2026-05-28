@@ -4,31 +4,31 @@
 
 **Related:**
 - ADR-0037 — Source별 서브폴더 layout
-- ADR-0038 — Live Capture는 JSONL append + 18:00 Promotion (이 ADR이 amend함)
+- ADR-0038 — Live Capture는 JSONL append + 17:00 Promotion (이 ADR이 amend함)
 - ADR-0039 — Source Preference는 preference + fallback
 - `docs/superpowers/specs/2026-05-28-kis-hoga-indicator-always-visible-design.md`
 
 ## Decision
 
-Daily Promotion(ADR-0038, 18:00 KST 1회 batch)에 더해, 장 중에도 **오늘 Stock-Date 한정**으로 jsonl을 Parquet으로 변환하는 **Today Promotion**을 도입한다.
+Daily Promotion(ADR-0038, 17:00 KST 1회 batch)에 더해, 장 중에도 **오늘 Stock-Date 한정**으로 jsonl을 Parquet으로 변환하는 **Today Promotion**을 도입한다.
 
 - 별도 asyncio task `start_today_promoter`가 기본 5분(env `HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S`) 주기로 활성 watchlist 종목의 오늘 jsonl을 처리한다.
 - 동작은 `promote_today(data_dir, *, code)` — jsonl 전체 재읽기, 4개 Parquet 파일을 `atomic_write` 패턴(tempfile + rename)으로 overwrite, `meta.json` 갱신, **archive 이동 안 함**(jsonl은 계속 polling 중이므로 살아있어야 함).
 - Daily Promotion(`promote_pending`)은 오늘 날짜를 skip하도록 가드 추가 — 두 promote 경로가 동일 jsonl을 동시에 만지지 않음.
-- 자정 경과 후 어제가 된 jsonl은 다음날 18:00 Daily Promotion이 archive 이동 + 최종화. Today Promotion은 항상 오늘만.
+- 자정 경과 후 어제가 된 jsonl은 다음날 17:00 Daily Promotion이 archive 이동 + 최종화. Today Promotion은 항상 오늘만.
 - Kill switch: `HOGA_LIVE_TODAY_PROMOTE_ENABLED=false`로 task 비활성 → ADR-0038 단독 동작으로 회귀 가능.
 
 ## Why
 
 ADR-0038의 "Future signal to revisit" 항목이 그대로 트리거됐다:
 
-> `/replay에서 "오늘 날짜를 16:00~18:00 사이에 봐야 한다"는 요구가 정당화될 때 — 그 경우 Promotion 시점을 앞당기거나 hot streaming 옵션 도입.`
+> `/replay에서 "오늘 날짜를 16:00~17:00 사이에 봐야 한다"는 요구가 정당화될 때 — 그 경우 Promotion 시점을 앞당기거나 hot streaming 옵션 도입.`
 
-사용자 요구는 더 강함: 16:00~18:00뿐 아니라 **장 중(09:00~15:30) 어느 시점에서든** `/replay`와 `/live` 양쪽에서 오늘 호가 보조지표를 볼 수 있어야 함. 이 요구의 정당화:
+사용자 요구는 더 강함: 16:00~17:00뿐 아니라 **장 중(09:00~15:30) 어느 시점에서든** `/replay`와 `/live` 양쪽에서 오늘 호가 보조지표를 볼 수 있어야 함. 이 요구의 정당화:
 
 - 분석 워크플로우 — 장 중에 KIS source의 quote_ratio / fill_strength를 확인하고 hogaplay 결과(다음날 가능)와 비교하려는 패턴.
 - 서버 재시작 / 폴링 일시 정지 / 첫 진입 후 `LiveBuffer`가 채워지기 전 등의 시나리오에서 `/live`도 빈 차트로 보임 — `LiveBuffer`는 휘발성이고 historical replay 경로가 없음.
-- `/replay`는 정의상 promoted Parquet만 보므로 18:00 이전엔 오늘 데이터를 못 봄 — 사용자는 두 페이지 모두에서 같은 데이터를 보길 원함.
+- `/replay`는 정의상 promoted Parquet만 보므로 17:00 이전엔 오늘 데이터를 못 봄 — 사용자는 두 페이지 모두에서 같은 데이터를 보길 원함.
 
 세 가지 대안:
 
@@ -53,7 +53,7 @@ ADR-0038에서 거부됨. 작은 row group 양산, 파일 수 폭증, schema 마
 
 - **디스크 IO 증가**: 5분 주기 × 활성 N종목 × jsonl 크기(평균 14MB → Parquet 압축 후 ~수 MB). N=10이면 시간당 ~30~170MB. 현재 단일 사용자 로컬 도구 환경(SSD)에선 무난. Future signal — N≥30종목 또는 디스크 IO가 cycle_lag_ms에 보이는 시점에 주기 늘리기 또는 incremental append로 재검토.
 - **Parquet 파일 수 증가 안 함**: overwrite 패턴이라 같은 4개 파일을 매번 갱신 — 작은 row group 양산 문제(ADR-0038의 거부 사유 A)는 발생 안 함.
-- **Today Promotion 실패가 Daily Promotion으로 흡수됨**: Today task가 어떤 이유로 종일 못 돌더라도 18:00 `promote_pending`이 정상 처리. 사용자에게 보이는 영향은 "그날 장 중 오늘 데이터 안 보임" — `LiveBuffer` + SSE는 영향 없음.
+- **Today Promotion 실패가 Daily Promotion으로 흡수됨**: Today task가 어떤 이유로 종일 못 돌더라도 17:00 `promote_pending`이 정상 처리. 사용자에게 보이는 영향은 "그날 장 중 오늘 데이터 안 보임" — `LiveBuffer` + SSE는 영향 없음.
 
 ## Invariant maintained
 

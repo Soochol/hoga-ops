@@ -4,7 +4,7 @@
 
 **Related ADRs:**
 - ADR-0037 — Source별 서브폴더 layout (`kis_live/` 디렉터리 규약)
-- **ADR-0038 — Live Capture는 JSONL append + 18:00 Promotion** (본 spec이 amend; hot-path invariant는 유지)
+- **ADR-0038 — Live Capture는 JSONL append + 17:00 Promotion** (본 spec이 amend; hot-path invariant는 유지)
 - **ADR-0039 — Source Preference는 preference + fallback이지 strict filter가 아니다** (본 spec의 fallback 정책이 정확히 이 ADR을 따름 — preferred source가 존재하면 sparse여도 그것만, 둘 다 없을 때만 다른 source로)
 - ADR-0040 — Live Candle Backfill은 Promotion target과 별도 캐시 (candles는 Promotion에 포함 안 됨 — 본 spec의 promote_today도 candles.parquet 안 만듦)
 - **ADR-0043 — Today Promotion: 장 중 N분 주기 jsonl→Parquet overwrite** (본 spec의 핵심 결정 명문화)
@@ -15,7 +15,7 @@ KIS 폴러가 받아온 호가 데이터(총잔량 / ratio / fill_strength)를 �
 
 본 spec은 두 개의 독립된 버그가 함께 만든 증상을 해결한다:
 
-1. **오늘 데이터가 차트에 안 보임** — KIS poller가 jsonl로 디스크에 쓰지만, parquet 변환(`promote`)은 매일 18:00 KST에 1회만 일어남. 결과적으로 18:00 이전 오늘 데이터는 `/api/range`가 못 본다. `/live`의 SSE 경로는 LiveBuffer(휘발성 메모리)만 보므로, 서버 재시작 / 폴링 정지 / 첫 진입 시 모두 빈 차트.
+1. **오늘 데이터가 차트에 안 보임** — KIS poller가 jsonl로 디스크에 쓰지만, parquet 변환(`promote`)은 매일 17:00 KST에 1회만 일어남. 결과적으로 17:00 이전 오늘 데이터는 `/api/range`가 못 본다. `/live`의 SSE 경로는 LiveBuffer(휘발성 메모리)만 보므로, 서버 재시작 / 폴링 정지 / 첫 진입 시 모두 빈 차트.
 2. **5/27 같은 source 공존일에 손상된 데이터 노출** — 디스크 레이아웃이 ADR-0037 source-aware로 전환되는 과정에서 한 Stock-Date 폴더 안에 `kis_live/` 서브디렉터리와 손상된 hogaplay 잔재(top-level meta + parquet)가 공존하면, 메타는 source-aware로 읽지만 데이터 슬라이스는 source-unaware로 fallback 읽어서 손상 데이터가 차트에 노출된다.
 
 두 fix는 독립적이지만 사용자 요구("언제든지 KIS 데이터 볼 수 있음")를 함께 충족해야 의미가 있어 한 spec으로 묶는다.
@@ -40,7 +40,7 @@ KIS 폴러가 받아온 호가 데이터(총잔량 / ratio / fill_strength)를 �
 | 새 컴포넌트 | `promote_today()` 함수 + `start_today_promoter()` asyncio task |
 | Promote 주기 | 환경변수 `HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S` 기본 300 (5분) |
 | Promote 동작 | jsonl 전체 재읽기 → parquet atomic overwrite. archive 이동 안 함. `meta.json` 매번 갱신 |
-| 18:00 promote_pending과 충돌 처리 | promote_pending이 **오늘 날짜 skip** 가드 추가 |
+| 17:00 promote_pending과 충돌 처리 | promote_pending이 **오늘 날짜 skip** 가드 추가 |
 | Source-aware fix 범위 | 4개 슬라이스 빌더에 `source` 키워드 인자 추가, `bundle.py` 메인 루프가 명시 전달 |
 | Source 부재 시 fallback | 현재 `_resolve_source` 로직 그대로 (preferred 없으면 다른 source 선택) |
 | Source sparse 시 동작 | preferred를 엄격히 따름 — sparse여도 그대로 표시. fallback 안 함 |
@@ -360,7 +360,7 @@ class LiveStatus(BaseModel):
 | 전체 사이클이 예외 | outer try/except로 catch, `live.today_promote.cycle_failed` 로그. 다음 사이클 sleep 후 재진입 |
 | 폴링이 멈춰 jsonl 정체 | parquet은 마지막 promote 시점까지 그대로. 차트는 정체된 데이터 표시 (정상 동작) |
 | watchlist에서 종목 제거 | `get_active_codes()`에서 빠지므로 더 이상 promote 안 됨. 기존 parquet 유지 |
-| 자정 경과로 today_kst 변경 | 다음 사이클이 새 today로 promote 시작. 어제는 18:00 `promote_pending` 처리 (가드 덕분에 충돌 없음) |
+| 자정 경과로 today_kst 변경 | 다음 사이클이 새 today로 promote 시작. 어제는 17:00 `promote_pending` 처리 (가드 덕분에 충돌 없음) |
 | 자정 라이브 race (23:59:58 promote_today + 00:00:01 promote_pending) | `shutil.move`가 원자적. promote_today 다음 사이클은 새 today를 읽어 안전 |
 | 동일 종목 동시 promote_today | task는 단일 루프(직렬 sleep). 구조적으로 발생 불가 |
 | 백엔드 reload | lifespan shutdown 훅이 task `cancel()` + `await`로 정리. atomic_write는 tempfile 단계라 원본 안전 |
@@ -452,10 +452,10 @@ class LiveStatus(BaseModel):
 
 - 첫 배포 직후: today_promoter가 5분 안에 첫 사이클 도는 동안 차트가 평소처럼 동작 (기존 SSE 경로 fallback)
 - 첫 사이클 후: 오늘 parquet 생성됨 → `/api/range`가 즉시 cover
-- 18:00 promote_pending이 그날 오는 시점에 이미 오늘 parquet은 promote_today가 만들어 둔 상태. `promote_pending`의 today-skip 가드가 이중 처리 방지
-- 다음날 00:00 직후: 어제 jsonl은 promote_pending이 18:00에 처리해서 archive로 이동된 상태 (정상 라이프사이클)
+- 17:00 promote_pending이 그날 오는 시점에 이미 오늘 parquet은 promote_today가 만들어 둔 상태. `promote_pending`의 today-skip 가드가 이중 처리 방지
+- 다음날 00:00 직후: 어제 jsonl은 promote_pending이 17:00에 처리해서 archive로 이동된 상태 (정상 라이프사이클)
 
-Kill switch (`HOGA_LIVE_TODAY_PROMOTE_ENABLED=false`)로 즉시 비활성 후 18:00 일괄 동작으로 회귀 가능.
+Kill switch (`HOGA_LIVE_TODAY_PROMOTE_ENABLED=false`)로 즉시 비활성 후 17:00 일괄 동작으로 회귀 가능.
 
 ## 12. Open questions
 

@@ -30,7 +30,7 @@ sourcePreference: "hogaplay" | "kis_live"
 
 ```
 "오늘 자" sources_available 판정 (`/live`에 한정):
-  - promoted Parquet에 kis_live/ 가 있다 → 'kis_live' 가용 (18:00 promote 후)
+  - promoted Parquet에 kis_live/ 가 있다 → 'kis_live' 가용 (17:00 promote 후)
   - promoted Parquet에 hogaplay/ 가 있다 → 'hogaplay' 가용 (사용자가 캡쳐 실행 후)
   - 위 둘 다 없고 라이브 SSE buffer에 데이터가 있다 → 'kis_live' 가용 (latency 0 source)
 ```
@@ -39,7 +39,7 @@ sourcePreference: "hogaplay" | "kis_live"
 
 함의:
 - 장 중 09:00~16:00: 토글이 `hogaplay`이고 오늘 자 hogaplay 캡쳐가 없으면 → fallback to `kis_live` (라이브 SSE buffer). 사용자는 KIS 실시간 데이터를 본다.
-- 18:00 promote 후: 토글이 `kis_live`이면 promoted kis_live Parquet 사용. 토글이 `hogaplay`이고 사용자가 hogaplay 캡쳐를 실행했으면 그 데이터 사용. 둘 다 없는 시나리오는 없음 (kis_live는 자동 promote됨).
+- 17:00 promote 후: 토글이 `kis_live`이면 promoted kis_live Parquet 사용. 토글이 `hogaplay`이고 사용자가 hogaplay 캡쳐를 실행했으면 그 데이터 사용. 둘 다 없는 시나리오는 없음 (kis_live는 자동 promote됨).
 - 토글이 가리키는 source의 데이터가 부분적이어도(예: 09:00~12:00만 hogaplay) 그 source의 데이터만 표시. 가용한 시간대 밖은 빈 차트 — ADR-0039의 "source 선택은 stock-date 단위, 시간대 내 source mixing 없음" 정신 유지.
 
 ## Why

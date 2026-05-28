@@ -1,4 +1,4 @@
-# 0038 — Live Capture는 JSONL append + 18:00 Promotion (직접 Parquet 쓰기 거부)
+# 0038 — Live Capture는 JSONL append + 17:00 Promotion (직접 Parquet 쓰기 거부)
 
 **Status:** accepted (2026-05-27), amended by ADR-0043 (2026-05-28)
 
@@ -12,11 +12,11 @@
 
 ## Decision
 
-Live Capture의 hot path(장 중 09:00~16:00 KST)는 KIS Open API에서 받은 호가/체결/거래원 데이터를 **JSONL append-only**로 `<data_dir>/live/{date}/{code}.jsonl`에 기록한다. **Parquet은 절대 hot path에서 쓰지 않는다**. 장이 끝난 후 18:00 KST Daily Scheduler의 첫 단계 **Promotion**이 JSONL을 Parquet으로 변환한다.
+Live Capture의 hot path(장 중 09:00~16:00 KST)는 KIS Open API에서 받은 호가/체결/거래원 데이터를 **JSONL append-only**로 `<data_dir>/live/{date}/{code}.jsonl`에 기록한다. **Parquet은 절대 hot path에서 쓰지 않는다**. 장이 끝난 후 17:00 KST Daily Scheduler의 첫 단계 **Promotion**이 JSONL을 Parquet으로 변환한다.
 
 Promotion은 **deferred and batched**:
 - 17:30~17:59 사이에 시작하지 않는다 — Live Session(09:00~16:00) 종료 후 안정화 시간을 가진다.
-- 18:00에 모든 watchlist 종목의 unpromoted JSONL을 한 번에 처리.
+- 17:00에 모든 watchlist 종목의 unpromoted JSONL을 한 번에 처리.
 - 멱등 — `kis_live/meta.json` 존재 시 해당 (date, code)는 skip.
 
 ## Why
@@ -37,7 +37,7 @@ Promotion은 **deferred and batched**:
 - 쓰기 성능 우위는 있지만 본 spec의 부하(30종목 × 10s tick = 3 INSERTs/s)는 JSONL append로도 충분.
 - 단일 사용자 로컬 도구에서 트랜잭션 보장은 과잉.
 
-**C. JSONL append + 18:00 Promotion** ← 채택
+**C. JSONL append + 17:00 Promotion** ← 채택
 근거:
 - **Crash-safe**: 줄 단위 append → fsync 1회 / cycle. 크래시 시 마지막 줄 1개만 손실(부분 줄 발생) — Promotion 시 마지막 partial line 한 줄을 무시하면 됨.
 - **Pattern reuse**: 기존 hogaplay 캡쳐도 "raw 페이지 누적 → 파싱해 Parquet"의 2-stage. 본 결정은 같은 패턴을 새 source에 적용한 것 (raw-equivalent = JSONL).
@@ -46,8 +46,8 @@ Promotion은 **deferred and batched**:
 
 ## Trade-off accepted
 
-- 16:00~18:00 사이 `/replay`에서 오늘 날짜 조회 불가. 의도된 동작 — 그 시간엔 `/live`에서 본다.
-- 18:00 promote가 실패하면 그날 데이터가 Parquet에 들어오지 않음. JSONL은 그대로 남아있으므로 수동 재실행으로 복구 가능. 자동 retry는 다음 18:00 사이클에 멱등 가드로 자연스럽게 발생.
+- 16:00~17:00 사이 `/replay`에서 오늘 날짜 조회 불가. 의도된 동작 — 그 시간엔 `/live`에서 본다.
+- 17:00 promote가 실패하면 그날 데이터가 Parquet에 들어오지 않음. JSONL은 그대로 남아있으므로 수동 재실행으로 복구 가능. 자동 retry는 다음 17:00 사이클에 멱등 가드로 자연스럽게 발생.
 
 ## Why not stream-to-Parquet via PyArrow ParquetWriter?
 
@@ -66,5 +66,5 @@ PyArrow의 `ParquetWriter`는 같은 파일에 row group을 점진적으로 추�
 ## Future signal to revisit
 
 - Live Capture가 30종목을 넘어 100+종목으로 확대되고, JSONL append latency 자체가 cycle_lag_ms의 주요 원인이 될 때 (현재 예상 부하에서는 무시 가능).
-- `/replay`에서 "오늘 날짜를 16:00~18:00 사이에 봐야 한다"는 요구가 정당화될 때 — 그 경우 Promotion 시점을 앞당기거나 hot streaming 옵션 도입.
+- `/replay`에서 "오늘 날짜를 16:00~17:00 사이에 봐야 한다"는 요구가 정당화될 때 — 그 경우 Promotion 시점을 앞당기거나 hot streaming 옵션 도입.
 - 마지막 partial line 손실이 사용자 시그널로 보고되는 incident가 발생할 때.
