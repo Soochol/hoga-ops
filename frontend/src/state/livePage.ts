@@ -1,32 +1,27 @@
 import { create } from 'zustand';
 import type { MASource } from '../chart/projectors/movingAverage';
+import {
+  mergeLiveIndicatorPrefs,
+  DEFAULT_LIVE_MAS,
+  MA_PERIOD_MIN,
+  MA_PERIOD_MAX,
+  MA_SLOT_LIMIT,
+  type LiveMAConfig,
+  type PersistedIndicators as MergedIndicators,
+} from './liveIndicatorsPersistence';
 export type { MASource };
 
-/** /live의 이동평균선 한 슬롯. 가변 슬롯이므로 array index가 아니라
- *  안정 id로 식별한다 — mid-list 삭제가 다른 슬롯의 series identity를
- *  churn하지 않게 한다. ADR-0046 참조. */
-export type LiveMAConfig = {
-  id: string;
-  enabled: boolean;
-  period: number;
-  color: string;
-  lineWidth: 1 | 2 | 3 | 4;
-  source: MASource;
+// Re-export so existing imports from `./livePage` keep working — single
+// source of truth lives in `./liveIndicatorsPersistence` to break the
+// circular import the persistence helper would otherwise have on the
+// store module. ADR-0046.
+export {
+  DEFAULT_LIVE_MAS,
+  MA_PERIOD_MIN,
+  MA_PERIOD_MAX,
+  MA_SLOT_LIMIT,
 };
-
-export const MA_PERIOD_MIN = 2;
-export const MA_PERIOD_MAX = 400;
-export const MA_SLOT_LIMIT = 8;
-
-/** 색상 hex는 tokens.css의 --ma-N과 정확히 일치 (canvas는 CSS var를
- *  직접 받지 못함). --ma-2 (#3B82F6, blue)는 KRX --price-down (#2563EB,
- *  blue)과 색역이 가까워 기본 슬롯에서 의도적으로 스킵. spec §1 참조. */
-export const DEFAULT_LIVE_MAS: readonly LiveMAConfig[] = Object.freeze([
-  { id: 'ma-1', enabled: true, period: 5,   color: '#EC4899', lineWidth: 1, source: 'close' },
-  { id: 'ma-2', enabled: true, period: 20,  color: '#F97316', lineWidth: 1, source: 'close' },
-  { id: 'ma-3', enabled: true, period: 60,  color: '#22C55E', lineWidth: 1, source: 'close' },
-  { id: 'ma-4', enabled: true, period: 120, color: '#F8FAFC', lineWidth: 1, source: 'close' },
-]) as readonly LiveMAConfig[];
+export type { LiveMAConfig };
 
 /** Timeframes the live page supports.
  *
@@ -79,6 +74,7 @@ export function bucketSeconds(tf: LiveTimeframe): number | null {
 }
 
 const STORAGE_KEY = 'live.page.v1';
+const INDICATORS_STORAGE_KEY = 'live.indicators.v1';
 
 type Persisted = {
   activeCode: string | null;
@@ -90,7 +86,11 @@ type Persisted = {
   historicalFromDate: string | null;
 };
 
-type Store = Persisted & {
+type PersistedIndicators = {
+  movingAverages: LiveMAConfig[];
+};
+
+type Store = Persisted & PersistedIndicators & {
   setActiveCode: (code: string | null) => void;
   setCandleTimeframe: (tf: LiveTimeframe) => void;
   toggleWatchlistPanel: () => void;
@@ -98,6 +98,9 @@ type Store = Persisted & {
   extendHistoricalRange: (date: string) => void;
   resetHistoricalRange: () => void;
   hydrateFromStorage: () => void;
+  setMovingAverage: (id: string, patch: Partial<LiveMAConfig>) => void;
+  addMovingAverage: () => void;
+  removeMovingAverage: (id: string) => void;
 };
 
 const DEFAULTS: Persisted = {
@@ -126,9 +129,100 @@ function readStorage(): Partial<Persisted> {
   }
 }
 
+function persistIndicators(state: PersistedIndicators): void {
+  try {
+    localStorage.setItem(INDICATORS_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // localStorage unavailable — silent fallback
+  }
+}
+
+function readIndicatorsStorage(): MergedIndicators {
+  try {
+    const raw = localStorage.getItem(INDICATORS_STORAGE_KEY);
+    return mergeLiveIndicatorPrefs(raw ? JSON.parse(raw) : undefined);
+  } catch {
+    return mergeLiveIndicatorPrefs(undefined);
+  }
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+function nextSlotId(existing: readonly LiveMAConfig[]): string {
+  const used = new Set(existing.map((m) => m.id));
+  // Try fast path: ma-N for N up to MA_SLOT_LIMIT * 2.
+  for (let i = 1; i <= MA_SLOT_LIMIT * 2; i++) {
+    const id = `ma-${i}`;
+    if (!used.has(id)) return id;
+  }
+  // Fallback (should never hit given MA_SLOT_LIMIT cap).
+  return `ma-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+}
+
+/** Palette 8색 hex 순서 — tokens.css의 --ma-1..--ma-8과 매칭. canvas는 CSS
+ *  var를 직접 받지 못해 hex로 정적 deflate. ColorSwatchButton이 같은
+ *  배열을 import하여 swatch grid를 표시하므로 single source. */
+export const MA_PALETTE: readonly string[] = [
+  '#EC4899', '#3B82F6', '#F97316', '#22C55E',
+  '#F8FAFC', '#06B6D4', '#EAB308', '#94A3B8',
+];
+
+function nextSlotColor(existing: readonly LiveMAConfig[]): string {
+  const used = new Set(existing.map((m) => m.color.toLowerCase()));
+  const free = MA_PALETTE.find((c) => !used.has(c.toLowerCase()));
+  return free ?? MA_PALETTE[existing.length % MA_PALETTE.length];
+}
+
 export const useLivePageStore = create<Store>((set, get) => ({
   ...DEFAULTS,
   ...readStorage(),
+  ...readIndicatorsStorage(),
+
+  setMovingAverage: (id, patch) => {
+    const current = get().movingAverages;
+    const idx = current.findIndex((m) => m.id === id);
+    if (idx === -1) return;
+    const cur = current[idx];
+    const next: LiveMAConfig = { ...cur, ...patch };
+    if (patch.period !== undefined) {
+      const p = Number(patch.period);
+      if (!Number.isFinite(p)) return;
+      next.period = clamp(Math.floor(p), MA_PERIOD_MIN, MA_PERIOD_MAX);
+    }
+    const nextArr = current.slice();
+    nextArr[idx] = next;
+    set({ movingAverages: nextArr });
+    persistIndicators({ movingAverages: nextArr });
+  },
+
+  addMovingAverage: () => {
+    const current = get().movingAverages;
+    if (current.length >= MA_SLOT_LIMIT) return;
+    const last = current[current.length - 1];
+    const period = last ? clamp(last.period * 2, MA_PERIOD_MIN, MA_PERIOD_MAX) : 20;
+    const next: LiveMAConfig = {
+      id: nextSlotId(current),
+      enabled: true,
+      period,
+      color: nextSlotColor(current),
+      lineWidth: 1,
+      source: 'close',
+    };
+    const nextArr = [...current, next];
+    set({ movingAverages: nextArr });
+    persistIndicators({ movingAverages: nextArr });
+  },
+
+  removeMovingAverage: (id) => {
+    const current = get().movingAverages;
+    if (current.length <= 1) return;
+    const nextArr = current.filter((m) => m.id !== id);
+    if (nextArr.length === current.length) return; // unknown id
+    set({ movingAverages: nextArr });
+    persistIndicators({ movingAverages: nextArr });
+  },
 
   setActiveCode: (code) => {
     set({ activeCode: code, historicalFromDate: null });

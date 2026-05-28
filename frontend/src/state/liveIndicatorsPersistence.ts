@@ -1,10 +1,30 @@
-import {
-  DEFAULT_LIVE_MAS,
-  MA_PERIOD_MIN,
-  MA_PERIOD_MAX,
-  MA_SLOT_LIMIT,
-  type LiveMAConfig,
-} from './livePage';
+import type { MASource } from '../chart/projectors/movingAverage';
+
+/** /live의 이동평균선 한 슬롯. 가변 슬롯이므로 array index가 아니라
+ *  안정 id로 식별한다 — mid-list 삭제가 다른 슬롯의 series identity를
+ *  churn하지 않게 한다. ADR-0046 참조. */
+export type LiveMAConfig = {
+  id: string;
+  enabled: boolean;
+  period: number;
+  color: string;
+  lineWidth: 1 | 2 | 3 | 4;
+  source: MASource;
+};
+
+export const MA_PERIOD_MIN = 2;
+export const MA_PERIOD_MAX = 400;
+export const MA_SLOT_LIMIT = 8;
+
+/** 색상 hex는 tokens.css의 --ma-N과 정확히 일치 (canvas는 CSS var를
+ *  직접 받지 못함). --ma-2 (#3B82F6, blue)는 KRX --price-down (#2563EB,
+ *  blue)과 색역이 가까워 기본 슬롯에서 의도적으로 스킵. spec §1 참조. */
+export const DEFAULT_LIVE_MAS: readonly LiveMAConfig[] = Object.freeze([
+  { id: 'ma-1', enabled: true, period: 5,   color: '#EC4899', lineWidth: 1, source: 'close' },
+  { id: 'ma-2', enabled: true, period: 20,  color: '#F97316', lineWidth: 1, source: 'close' },
+  { id: 'ma-3', enabled: true, period: 60,  color: '#22C55E', lineWidth: 1, source: 'close' },
+  { id: 'ma-4', enabled: true, period: 120, color: '#F8FAFC', lineWidth: 1, source: 'close' },
+]) as readonly LiveMAConfig[];
 
 const VALID_LINE_WIDTHS = new Set([1, 2, 3, 4]);
 const VALID_SOURCES = new Set(['close', 'open', 'high', 'low', 'hl2', 'hlc3', 'ohlc4']);

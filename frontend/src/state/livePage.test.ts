@@ -58,6 +58,106 @@ describe('livePage store', () => {
   });
 });
 
+describe('useLivePageStore.movingAverages', () => {
+  beforeEach(() => {
+    localStorage.removeItem('live.indicators.v1');
+    // Force re-hydrate by resetting state to DEFAULT_LIVE_MAS clone.
+    useLivePageStore.setState({
+      movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
+    });
+  });
+
+  it('starts with DEFAULT_LIVE_MAS clone (4 entries)', () => {
+    expect(useLivePageStore.getState().movingAverages).toHaveLength(4);
+    expect(useLivePageStore.getState().movingAverages[0].period).toBe(5);
+  });
+
+  it('setMovingAverage patches one slot, preserves others by reference', () => {
+    const before = useLivePageStore.getState().movingAverages;
+    useLivePageStore.getState().setMovingAverage(before[1].id, { period: 25 });
+    const after = useLivePageStore.getState().movingAverages;
+    expect(after[1].period).toBe(25);
+    expect(after[1].enabled).toBe(before[1].enabled);
+    // Untouched slots are referentially equal (immutable patch).
+    expect(after[0]).toBe(before[0]);
+    expect(after[2]).toBe(before[2]);
+  });
+
+  it('setMovingAverage clamps period to [MA_PERIOD_MIN, MA_PERIOD_MAX]', () => {
+    const id = useLivePageStore.getState().movingAverages[0].id;
+    useLivePageStore.getState().setMovingAverage(id, { period: 1 });
+    expect(useLivePageStore.getState().movingAverages[0].period).toBe(2);
+    useLivePageStore.getState().setMovingAverage(id, { period: 1000 });
+    expect(useLivePageStore.getState().movingAverages[0].period).toBe(400);
+  });
+
+  it('setMovingAverage floors non-integer period', () => {
+    const id = useLivePageStore.getState().movingAverages[0].id;
+    useLivePageStore.getState().setMovingAverage(id, { period: 3.7 });
+    expect(useLivePageStore.getState().movingAverages[0].period).toBe(3);
+  });
+
+  it('setMovingAverage is no-op for unknown id', () => {
+    const before = useLivePageStore.getState().movingAverages;
+    useLivePageStore.getState().setMovingAverage('nope', { period: 99 });
+    expect(useLivePageStore.getState().movingAverages).toBe(before);
+  });
+
+  it('addMovingAverage appends with new id, period = prev * 2 capped', () => {
+    const before = useLivePageStore.getState().movingAverages;
+    useLivePageStore.getState().addMovingAverage();
+    const after = useLivePageStore.getState().movingAverages;
+    expect(after).toHaveLength(before.length + 1);
+    expect(after[after.length - 1].period).toBe(Math.min(120 * 2, 400));
+    // id is unique
+    expect(new Set(after.map((m) => m.id)).size).toBe(after.length);
+  });
+
+  it('addMovingAverage is no-op when MA_SLOT_LIMIT reached', () => {
+    // Fill to limit.
+    while (useLivePageStore.getState().movingAverages.length < MA_SLOT_LIMIT) {
+      useLivePageStore.getState().addMovingAverage();
+    }
+    const at_limit = useLivePageStore.getState().movingAverages;
+    useLivePageStore.getState().addMovingAverage();
+    expect(useLivePageStore.getState().movingAverages).toBe(at_limit);
+  });
+
+  it('removeMovingAverage drops the entry', () => {
+    const before = useLivePageStore.getState().movingAverages;
+    const targetId = before[1].id;
+    useLivePageStore.getState().removeMovingAverage(targetId);
+    const after = useLivePageStore.getState().movingAverages;
+    expect(after).toHaveLength(before.length - 1);
+    expect(after.find((m) => m.id === targetId)).toBeUndefined();
+  });
+
+  it('removeMovingAverage refuses to drop the last slot', () => {
+    // Reduce to 1.
+    const ids = useLivePageStore.getState().movingAverages.map((m) => m.id);
+    for (const id of ids.slice(1)) {
+      useLivePageStore.getState().removeMovingAverage(id);
+    }
+    expect(useLivePageStore.getState().movingAverages).toHaveLength(1);
+    const single = useLivePageStore.getState().movingAverages;
+    useLivePageStore.getState().removeMovingAverage(single[0].id);
+    expect(useLivePageStore.getState().movingAverages).toBe(single);
+  });
+
+  it('removeMovingAverage is no-op for unknown id', () => {
+    const before = useLivePageStore.getState().movingAverages;
+    useLivePageStore.getState().removeMovingAverage('nope');
+    expect(useLivePageStore.getState().movingAverages).toBe(before);
+  });
+
+  it('mutations persist to localStorage("live.indicators.v1")', () => {
+    const id = useLivePageStore.getState().movingAverages[0].id;
+    useLivePageStore.getState().setMovingAverage(id, { period: 7 });
+    const raw = localStorage.getItem('live.indicators.v1');
+    expect(raw).toContain('"period":7');
+  });
+});
+
 describe('LiveMAConfig constants', () => {
   it('exposes period bounds and slot limit', () => {
     expect(MA_PERIOD_MIN).toBe(2);
