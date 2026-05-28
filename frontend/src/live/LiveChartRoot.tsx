@@ -30,6 +30,7 @@ import {
 } from './liveDateTime';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
+import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -344,6 +345,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
               spec={spec}
             />
           ))}
+          <MovingAverageOverlay chart={chart} bundle={bundle} axis={axis} />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a
               per-day vertical line collapses onto each candle. */}
