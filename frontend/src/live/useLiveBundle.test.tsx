@@ -77,7 +77,7 @@ describe('useLiveBundle', () => {
     useLivePageStore.setState({ historicalFromDate: '20250101' });
     renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
     expect(livePastCandlesSpy).toHaveBeenCalledWith('005930', '20250920', '20260527');
-    expect(useRangeSpy).toHaveBeenCalledWith('005930', '20250920', '20260526', '1m');
+    expect(useRangeSpy).toHaveBeenCalledWith('005930', '20250920', '20260527', '1m');
   });
 
   it('exposes clampEngaged=true when historicalFromDate older than 250 days', () => {

@@ -8,7 +8,6 @@ import { buildLiveBundle } from './buildLiveBundle';
 import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import {
-  yesterdayKst,
   regularSessionOpenMs,
   regularSessionCloseMs,
   subtractDaysKst,
@@ -62,7 +61,13 @@ export function useLiveBundle(
   const seedFrom = historicalFromDate ?? subtractDaysKst(todayKstYyyymmdd, INITIAL_HISTORICAL_DAYS);
   const earliestAllowed = subtractDaysKst(todayKstYyyymmdd, PAST_CANDLES_MAX_DAYS - 1);
   const pastFrom = laterDate(seedFrom, earliestAllowed);
-  const pastTo = yesterdayKst(todayKstYyyymmdd);
+  // Includes today so post-promote disk data (hogaplay/snapshots.parquet,
+  // ADR-0037 v2 layout) feeds today's hoga indicators. Before this, today's
+  // quote_ratio/fill_strength came only from the in-memory SSE buffer, which
+  // is volatile across backend restarts. buildLiveBundle's pastHasTodaySegment
+  // check + the t > pastMaxQrT incremental filter already handle the dedup
+  // with the SSE tail (buildLiveBundle.ts:67, 72).
+  const pastTo = todayKstYyyymmdd;
 
   const enableRange = !!(code && isMinute && pastFrom <= pastTo);
   const past = useRange(
