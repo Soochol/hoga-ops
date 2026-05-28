@@ -298,6 +298,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     let pending: number | null = null;
     const handler = (param: { time?: unknown; point?: { x: number } | null }) => {
       if (param.point == null) {
+        if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
         useLiveCursorStore.getState().clearCursor();
         return;
       }
