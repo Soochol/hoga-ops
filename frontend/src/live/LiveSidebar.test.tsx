@@ -51,17 +51,17 @@ describe('LiveSidebar', () => {
   afterEach(() => cleanup());
 
   it('renders three card slots when code is null (waiting state)', () => {
-    render(<LiveSidebar code={null} date={null} />);
+    render(<LiveSidebar code={null} />);
     expect(screen.getByTestId('live-sidebar')).toBeInTheDocument();
   });
 
   it('subscribes to useLiveSeries with the active code', () => {
-    render(<LiveSidebar code="005930" date="20260528" />);
+    render(<LiveSidebar code="005930" />);
     expect(liveSeriesMod.useLiveSeries).toHaveBeenCalledWith('005930');
   });
 
   it('shows the LIVE pulse badge in header (Design C1)', () => {
-    render(<LiveSidebar code="005930" date="20260528" />);
+    render(<LiveSidebar code="005930" />);
     expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
   });
 });
@@ -86,13 +86,13 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
   afterEach(() => cleanup());
 
   it('shows LIVE● header when cursorMs is null', () => {
-    render(<LiveSidebar code="005930" date="20260528" />);
+    render(<LiveSidebar code="005930" />);
     expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
     expect(screen.getByText('LIVE')).toBeInTheDocument();
   });
 
   it('swaps to "과거 시점" + KST timestamp when cursor is set', () => {
-    render(<LiveSidebar code="005930" date="20260528" />);
+    render(<LiveSidebar code="005930" />);
     // 2026-05-28T04:42:17Z → KST 13:42:17
     const t = new Date('2026-05-28T04:42:17Z').getTime();
     act(() => useLiveCursorStore.getState().setCursor(t));
@@ -103,7 +103,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
   });
 
   it('does not call cursor hooks when cursorMs null', () => {
-    render(<LiveSidebar code="005930" date="20260528" />);
+    render(<LiveSidebar code="005930" />);
     // The hooks are imported and rendered, but their inner useSpot
     // does not fetch — verified separately in useLiveCursor.test.ts.
     // Here we just confirm they were called with code='005930' so
@@ -115,7 +115,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
 
   it('TotalQtyBar maskRatio=true when cursorMs in closing auction window', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => true } as never });
-    render(<LiveSidebar code="005930" date="20260528" />);
+    render(<LiveSidebar code="005930" />);
     act(() => useLiveCursorStore.getState().setCursor(1_748_400_900_000));
     expect(TotalQtyBar).toHaveBeenCalledWith(
       expect.objectContaining({ maskRatio: true }),
@@ -125,7 +125,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
 
   it('TotalQtyBar maskRatio=false when cursorMs outside window', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => false } as never });
-    render(<LiveSidebar code="005930" date="20260528" />);
+    render(<LiveSidebar code="005930" />);
     act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
     expect(TotalQtyBar).toHaveBeenCalledWith(
       expect.objectContaining({ maskRatio: false }),
@@ -135,7 +135,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
 
   it('TotalQtyBar maskRatio=false when cursorMs null (preserves existing behavior)', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => true } as never });
-    render(<LiveSidebar code="005930" date="20260528" />);
+    render(<LiveSidebar code="005930" />);
     // No setCursor — cursorMs stays null. maskRatio must be false despite
     // the axis predicate returning true, because we don't engage mask in
     // latest mode (existing behavior).
@@ -172,7 +172,7 @@ describe('LiveSidebar — empty spot orderbook with available_from hint (T14b)',
       source: 'hogaplay',
     });
     act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
-    render(<LiveSidebar code="005930" date="20260528" />);
+    render(<LiveSidebar code="005930" />);
     expect(screen.getByText(/다음 가용: 12:42/)).toBeInTheDocument();
   });
 
@@ -183,7 +183,7 @@ describe('LiveSidebar — empty spot orderbook with available_from hint (T14b)',
       source: 'hogaplay',
     });
     act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
-    render(<LiveSidebar code="005930" date="20260528" />);
+    render(<LiveSidebar code="005930" />);
     expect(screen.queryByText(/다음 가용/)).toBeNull();
   });
 });

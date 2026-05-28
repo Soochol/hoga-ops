@@ -87,7 +87,6 @@ export function LivePage() {
       <LiveToolbar onOpenIndicators={() => setIndicatorPanelOpen(true)} />
       <LiveWorkarea
         activeCode={activeCode}
-        date={today}
         watchlistEmpty={watchlistEmpty}
         bundle={bundle}
         clampEngaged={clampEngaged}

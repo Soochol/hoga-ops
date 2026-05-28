@@ -16,12 +16,12 @@ import { apiGet } from './client';
 import { TIMEFRAME_TO_MS, type OrderbookResponse, type Timeframe } from './types';
 import type { OrderbookSnapshot, BrokerSeriesEntry, Trade, SourceName } from './types';
 import type { MinuteTimeframe } from '../state/livePage';
+import { unixMsToKSTDate } from '../util/time';
 
 // ─── Shared param type ────────────────────────────────────────────────────────
 
 interface Params {
   code: string | null;
-  date: string | null;
   timeframe: MinuteTimeframe | null;
 }
 
@@ -29,7 +29,11 @@ interface Params {
 
 /**
  * Internal — encapsulates the cursor/sourcePref read + bucket-aligned t.
- * Returns alignedT/bucketMs null when the cursor is absent (no fetch).
+ * Returns alignedT/bucketMs/date null when the cursor is absent (no fetch).
+ *
+ * date is derived from cursorMs via unixMsToKSTDate, NOT passed as a prop —
+ * this mirrors replay's useCursor pattern and fixes the regression where
+ * hovering on past-date candles sent date=today to the API (ADR-0044).
  *
  * Used by useLiveOrderbookAtCursor and useLiveTradesAroundCursor so the only
  * per-hook divergence is the cache-key shape and the endpoint URL.
@@ -43,6 +47,7 @@ function useAlignedCursor(timeframe: MinuteTimeframe | null): {
   alignedT: number | null;
   bucketMs: number | null;
   sourcePref: ReturnType<typeof useSourcePreferenceStore.getState>['sourcePreference'];
+  date: string | null;
 } {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
@@ -51,7 +56,8 @@ function useAlignedCursor(timeframe: MinuteTimeframe | null): {
     cursorMs !== null && bucketMs !== null
       ? Math.floor(cursorMs / bucketMs) * bucketMs
       : null;
-  return { alignedT, bucketMs, sourcePref };
+  const date = cursorMs !== null ? unixMsToKSTDate(cursorMs) : null;
+  return { alignedT, bucketMs, sourcePref, date };
 }
 
 // ─── Task 10 + T14b: useLiveOrderbookAtCursor ────────────────────────────────
@@ -76,14 +82,14 @@ export interface LiveOrderbookSpot {
  * once fetched (snapshot may be null for pre-available slots).
  */
 export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefined {
-  const { alignedT, bucketMs, sourcePref } = useAlignedCursor(p.timeframe);
+  const { alignedT, bucketMs, sourcePref, date } = useAlignedCursor(p.timeframe);
   const key =
-    p.code && p.date && alignedT !== null && bucketMs !== null
-      ? `live|ob|${p.code}|${p.date}|${alignedT}|${bucketMs}|${sourcePref}`
+    p.code && date && alignedT !== null && bucketMs !== null
+      ? `live|ob|${p.code}|${date}|${alignedT}|${bucketMs}|${sourcePref}`
       : null;
   const { data } = useSpot<LiveOrderbookSpot>(key, () =>
     apiGet<OrderbookResponse>(
-      `/api/orderbook?code=${p.code}&date=${p.date}&t=${alignedT}&bucket_ms=${bucketMs}&source_pref=${sourcePref}`,
+      `/api/orderbook?code=${p.code}&date=${date}&t=${alignedT}&bucket_ms=${bucketMs}&source_pref=${sourcePref}`,
     ).then((r) => ({
       snapshot: r.snapshot,
       available_from: r.available_from,
@@ -106,14 +112,14 @@ export function useLiveTradesAroundCursor(
   p: Params,
   limit: number = 20,
 ): Trade[] | undefined {
-  const { alignedT, sourcePref } = useAlignedCursor(p.timeframe);
+  const { alignedT, sourcePref, date } = useAlignedCursor(p.timeframe);
   const key =
-    p.code && p.date && alignedT !== null
-      ? `live|tr|${p.code}|${p.date}|${alignedT}|${limit}|${sourcePref}`
+    p.code && date && alignedT !== null
+      ? `live|tr|${p.code}|${date}|${alignedT}|${limit}|${sourcePref}`
       : null;
   const { data } = useSpot<Trade[]>(key, () =>
     apiGet<{ trades: Trade[]; source: SourceName }>(
-      `/api/trades?code=${p.code}&date=${p.date}&t=${alignedT}&limit=${limit}&source_pref=${sourcePref}`,
+      `/api/trades?code=${p.code}&date=${date}&t=${alignedT}&limit=${limit}&source_pref=${sourcePref}`,
     ).then((r) => r.trades),
   );
   return data;
@@ -123,7 +129,6 @@ export function useLiveTradesAroundCursor(
 
 interface BrokersParams {
   code: string | null;
-  date: string | null;
 }
 
 /**
@@ -135,6 +140,9 @@ interface BrokersParams {
  * independent; moving the cursor within the same day must not refetch.
  * Key gates on cursorMs presence (null key = no fetch in latest mode).
  *
+ * date is derived from cursorMs via unixMsToKSTDate, NOT passed as a prop —
+ * fixes the regression where hovering past-date candles queried date=today.
+ *
  * ADR-0039: source_pref threaded. ADR-0044: parquet path only.
  */
 export function useLiveBrokersAtCursor(
@@ -142,16 +150,17 @@ export function useLiveBrokersAtCursor(
 ): BrokerSeriesEntry[] | undefined {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
+  const date = cursorMs !== null ? unixMsToKSTDate(cursorMs) : null;
   // Key gates on cursor presence (so we don't fetch in latest mode) but
   // doesn't include cursorMs — the day series is the same for any t
   // within (code, date).
   const key =
-    p.code && p.date && cursorMs !== null
-      ? `live|br|${p.code}|${p.date}|${sourcePref}`
+    p.code && date
+      ? `live|br|${p.code}|${date}|${sourcePref}`
       : null;
   const { data } = useSpot<BrokerSeriesEntry[]>(key, () =>
     apiGet<{ date: string; brokers: BrokerSeriesEntry[]; source: SourceName }>(
-      `/api/brokers/series?code=${p.code}&date=${p.date}&source_pref=${sourcePref}`,
+      `/api/brokers/series?code=${p.code}&date=${date}&source_pref=${sourcePref}`,
     ).then((r) => r.brokers),
   );
   return data;

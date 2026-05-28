@@ -8,10 +8,6 @@ import type { RangeBundle } from '../api/types';
 
 interface Props {
   activeCode: string | null;
-  /** Today's date in YYYYMMDD KST format, drilled from LivePage so LiveSidebar
-   * can pass it to the cursor-spot hooks (useLiveOrderbookAtCursor etc.).
-   * Source: todayKstYyyymmdd() called once in LivePage. */
-  date: string;
   watchlistEmpty: boolean;
   /** The Live Candle Backfill bundle, owned by LivePage. ADR-0040 — single
    * useLiveBundle call site per page. */
@@ -22,7 +18,6 @@ interface Props {
 
 export function LiveWorkarea({
   activeCode,
-  date,
   watchlistEmpty,
   bundle,
   clampEngaged,
@@ -89,7 +84,7 @@ export function LiveWorkarea({
           borderLeft: '1px solid var(--border)',
         }}
       >
-        <LiveSidebar code={activeCode} date={date} />
+        <LiveSidebar code={activeCode} />
       </div>
       {watchlistOpen && <WatchlistPanel />}
     </div>

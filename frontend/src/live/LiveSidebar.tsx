@@ -23,10 +23,6 @@ import { isMinuteTimeframe } from '../state/livePage';
 
 interface Props {
   code: string | null;
-  /** Active stock-date (YYYYMMDD KST). Drilled from LivePage via LiveWorkarea —
-   * the live page treats "today" as the implicit date (see
-   * todayKstYyyymmdd() in LivePage.tsx). Pass null when no code is selected. */
-  date: string | null;
 }
 
 /**
@@ -41,7 +37,7 @@ interface Props {
  * Per ADR-0044 and Design C1: header toggles between LIVE● pulse (latest
  * mode) and "과거 시점" + pinned timestamp (spot mode) when cursor is set.
  */
-export function LiveSidebar({ code, date }: Props) {
+export function LiveSidebar({ code }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const isSpot = cursorMs !== null;
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
@@ -58,9 +54,9 @@ export function LiveSidebar({ code, date }: Props) {
   // Spot-mode data (dormant when cursorMs null).
   const spotTimeframe: MinuteTimeframe | null =
     timeframe && isMinuteTimeframe(timeframe) ? timeframe : null;
-  const spotOrderbook = useLiveOrderbookAtCursor({ code, date, timeframe: spotTimeframe });
-  const spotTrades = useLiveTradesAroundCursor({ code, date, timeframe: spotTimeframe });
-  const spotBrokers = useLiveBrokersAtCursor({ code, date });
+  const spotOrderbook = useLiveOrderbookAtCursor({ code, timeframe: spotTimeframe });
+  const spotTrades = useLiveTradesAroundCursor({ code, timeframe: spotTimeframe });
+  const spotBrokers = useLiveBrokersAtCursor({ code });
 
   // Axis for Auction Mask in spot mode.
   const axis = useLiveAxisStore((s) => s.axis);
