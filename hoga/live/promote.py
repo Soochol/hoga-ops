@@ -17,6 +17,7 @@ import json
 import logging
 import shutil
 import time
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -191,17 +192,10 @@ async def promote_today(data_dir: Path, *, code: str) -> None:
     try:
         atomic_write_parquet(target / "snapshots.parquet", snapshots)
         atomic_write_parquet(target / "trades.parquet", trades)
-        # brokers는 BrokerRow dataclass 리스트 → dict 리스트로 변환
+        # BrokerRow dataclass → dict via asdict (preserves all 7 fields).
         atomic_write_parquet(
             target / "brokers.parquet",
-            [
-                {
-                    "ts_ms": r.ts_ms, "seq": r.seq, "side": r.side,
-                    "rank": r.rank, "broker": r.broker,
-                    "qty_today": r.qty_today, "qty_delta": r.qty_delta,
-                }
-                for r in broker_rows
-            ],
+            [asdict(r) for r in broker_rows],
         )
         atomic_write_json(target / "meta.json", meta, indent=2)
     except OSError as e:
