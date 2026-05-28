@@ -205,6 +205,7 @@ _active: dict[str, Any] = {}                            # item_id → QueueItemS
 _done: list[Any] = []                                   # terminal items, cleared by DELETE /done
 _inflight_paths: set[tuple[str, str]] = set()           # (code, date) — see spec §11 Q15 Layer 2
 _queue_paused: bool = False
+_fail_streaks: dict[str, int] = {}                      # ADR-0042: per-(Code, Stock-Date) consecutive failed+skipped counter
 _max_concurrent: int = int(os.environ.get("HOGA_MAX_CONCURRENT", "3"))
 
 
@@ -321,12 +322,50 @@ def _items_in_restore_order() -> Iterator[QueueItemState]:
             yield s
 
 
+def _apply_terminal_to_streaks(
+    fail_streaks: dict[str, int], code: str, date: str, phase: str,
+) -> None:
+    """Mutate ``fail_streaks`` in place per ADR-0042:
+
+    - ``phase == "done"``                → counter reset (key removed for tidiness)
+    - ``phase in {"failed", "skipped"}`` → counter += 1
+    - ``phase == "cancelled"``           → no change (user-initiated; external-call status unknown)
+    - any other phase                    → ValueError (programmer bug; phase enum is closed)
+
+    Caller is responsible for persisting after mutation.
+    """
+    from hoga.api.fail_streak import streak_key
+    key = streak_key(code, date)
+    if phase == "done":
+        fail_streaks.pop(key, None)
+    elif phase in ("failed", "skipped"):
+        fail_streaks[key] = fail_streaks.get(key, 0) + 1
+    elif phase == "cancelled":
+        pass
+    else:
+        raise ValueError(f"unexpected terminal phase: {phase!r}")
+
+
+def apply_terminal_to_manifest(
+    manifest: QueueManifest, code: str, date: str, phase: str,
+) -> None:
+    """ADR-0042 worker-terminal hook (pure function on a QueueManifest).
+
+    Thin wrapper around :func:`_apply_terminal_to_streaks` that operates on
+    ``manifest.fail_streaks``. Tests use this signature directly; the in-process
+    call site mutates the module-global :data:`_fail_streaks` via the inner
+    helper for the same logic.
+    """
+    _apply_terminal_to_streaks(manifest.fail_streaks, code, date, phase)
+
+
 def _persist_queue_locked() -> None:
-    """Snapshot _active + _queue + _queue_paused to the on-disk manifest.
+    """Snapshot _active + _queue + _queue_paused + _fail_streaks to the
+    on-disk manifest.
 
     INVARIANT: caller holds ``_lock``. Called from every mutation site that
-    touches _queue or _active. _done is intentionally excluded (volatile —
-    cleared by DELETE /done; see ADR-0019).
+    touches _queue or _active or _fail_streaks. _done is intentionally
+    excluded (volatile — cleared by DELETE /done; see ADR-0019).
     """
     if _data_dir is None:
         return  # test fixture without data_dir wired — no lock check needed
@@ -343,7 +382,10 @@ def _persist_queue_locked() -> None:
         )
         for s in _items_in_restore_order()
     ]
-    save_manifest(_data_dir, QueueManifest(paused=_queue_paused, items=items))
+    save_manifest(
+        _data_dir,
+        QueueManifest(paused=_queue_paused, items=items, fail_streaks=dict(_fail_streaks)),
+    )
 
 
 def _restore_queue_from_manifest(data_dir: Path) -> None:
@@ -366,11 +408,12 @@ def _restore_queue_from_manifest(data_dir: Path) -> None:
     on the same Stock-Date — both crash points restore to the same recovered
     shape.
     """
-    global _queue_paused  # noqa: PLW0603 — startup-only module write
+    global _queue_paused, _fail_streaks  # noqa: PLW0603 — startup-only module write
     manifest = load_manifest(data_dir)
     if manifest is None:
         return
     _queue_paused = manifest.paused
+    _fail_streaks = dict(manifest.fail_streaks)  # ADR-0042 — restore counter across restart
     for item in manifest.items:
         state = QueueItemState(
             item_id=item.item_id,
@@ -750,7 +793,10 @@ async def _finalize_item(state: QueueItemState) -> None:
         _active.pop(state.item_id, None)
         _inflight_paths.discard((state.code, state.date))
         _done.append(state)
-        _persist_queue_locked()  # ADR-0019 — item left _active
+        # ADR-0042: update fail_streak BEFORE persist so the manifest write
+        # carries the new counter value.
+        _apply_terminal_to_streaks(_fail_streaks, state.code, state.date, state.phase)
+        _persist_queue_locked()  # ADR-0019 + ADR-0042 — item left _active, fail_streak updated
         # Drain detection — also check we're not paused (drained only fires
         # when the queue has naturally bottomed out).
         drained_event: CaptureQueueDrainedEvent | None = None
