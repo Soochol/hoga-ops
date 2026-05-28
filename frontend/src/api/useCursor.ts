@@ -89,14 +89,25 @@ export function useOrderbookAtCursor() {
 }
 
 export function useTradesAroundCursor(limit: number = 20) {
-  const { tabId, code, date, cursorMs } = useCursor();
+  const { tabId, code, date, cursorMs, timeframe } = useCursor();
+  // Bucket-align the cursor before keying — matches useOrderbookAtCursor.
+  // Without this, every pixel of crosshair movement produces a unique query
+  // key, hammering /api/trades on drag/hover (measured: ~60 fetches/s during
+  // a slow drag). Aligning collapses within-bucket motion to a single
+  // request, since users only meaningfully reseat the cursor at bucket
+  // boundaries anyway (FillTape's "last N at-or-before T" semantic).
+  const bucketMs = timeframe !== null ? TIMEFRAME_TO_MS[timeframe] : null;
+  const alignedT =
+    cursorMs !== null && bucketMs !== null
+      ? Math.floor(cursorMs / bucketMs) * bucketMs
+      : cursorMs;
   const key =
-    code && date && Number.isFinite(cursorMs)
-      ? `${tabId}|tr|${code}|${date}|${cursorMs}|${limit}`
+    code && date && Number.isFinite(alignedT)
+      ? `${tabId}|tr|${code}|${date}|${alignedT}|${limit}`
       : null;
   const { data } = useSpot(key, () =>
     apiGet<{ trades: Trade[] }>(
-      `/api/trades?code=${code}&date=${date}&t=${cursorMs}&limit=${limit}`,
+      `/api/trades?code=${code}&date=${date}&t=${alignedT}&limit=${limit}`,
     ).then((r) => r.trades),
   );
   // Preserve the (T | null | undefined) shape: undefined = haven't fetched

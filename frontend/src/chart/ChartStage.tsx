@@ -276,20 +276,39 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
     // undefined when the mouse leaves the chart or hovers an empty
     // area — in those cases we KEEP the last cursor (user preference,
     // 2026-05-23 grilling), so the cards don't blank out on mouseout.
+    // rAF-coalesce crosshair events. lightweight-charts emits one per
+    // browser mousemove (up to ~1 kHz on fast mice). Each emit caused
+    // useTabsStore.setCursor → re-render of every sidebar card subscribed
+    // via useCursor + a fresh /api/trades fetch (before this commit). At
+    // most one cursor write per frame is enough; nothing the sidebar shows
+    // updates faster than the screen anyway.
+    let crosshairRaf: number | null = null;
+    let pendingRealMs: number | null = null;
     const crosshairHandler = (param: { time?: Time | undefined }) => {
       if (param.time === undefined) return;
       const a = axisRef.current;
       if (a.segments.length === 0) return;
       const virtualMs = (param.time as number) * 1000;
-      const realMs = a.toReal(virtualMs);
-      const id = useTabsStore.getState().activeTabId;
-      useTabsStore.getState().setCursor(id, realMs);
+      pendingRealMs = a.toReal(virtualMs);
+      if (crosshairRaf === null) {
+        crosshairRaf = requestAnimationFrame(() => {
+          crosshairRaf = null;
+          if (pendingRealMs === null) return;
+          const id = useTabsStore.getState().activeTabId;
+          useTabsStore.getState().setCursor(id, pendingRealMs);
+          pendingRealMs = null;
+        });
+      }
     };
     c.subscribeCrosshairMove(crosshairHandler);
 
     return () => {
       ts.unsubscribeVisibleTimeRangeChange(handler);
       c.unsubscribeCrosshairMove(crosshairHandler);
+      if (crosshairRaf !== null) {
+        cancelAnimationFrame(crosshairRaf);
+        crosshairRaf = null;
+      }
       c.remove();
       setChart(null);
       useViewportStore.getState().reset();
