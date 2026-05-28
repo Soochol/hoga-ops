@@ -302,7 +302,14 @@ class KisClient:
     # ------------------------------------------------------------------
 
     async def fetch_brokers(self, code: str) -> KisBrokers:
-        """Fetch top-5 buy/sell broker breakdown for *code*."""
+        """Fetch top-5 buy/sell broker breakdown for *code*.
+
+        Broker names are canonicalized at the boundary so the buffer / SSE /
+        JSONL / promoted parquet downstream all see the same canonical KRX
+        member-firm name (see ``hoga.broker_names`` and CONTEXT.md).
+        """
+        from hoga.broker_names import canonical
+
         body = await self._get(
             path="/uapi/domestic-stock/v1/quotations/inquire-member",
             tr_id="FHKST01010600",
@@ -313,11 +320,17 @@ class KisClient:
         )
         out = body["output"][0]  # KIS returns a 1-element list (Audit-3)
         buy_top = [
-            KisBrokerEntry(name=out[f"shnu_mbcr_name{i}"], qty=int(out[f"total_shnu_qty{i}"]))
+            KisBrokerEntry(
+                name=canonical(out[f"shnu_mbcr_name{i}"]),
+                qty=int(out[f"total_shnu_qty{i}"]),
+            )
             for i in range(1, 6)
         ]
         sell_top = [
-            KisBrokerEntry(name=out[f"seln_mbcr_name{i}"], qty=int(out[f"total_seln_qty{i}"]))
+            KisBrokerEntry(
+                name=canonical(out[f"seln_mbcr_name{i}"]),
+                qty=int(out[f"total_seln_qty{i}"]),
+            )
             for i in range(1, 6)
         ]
         return KisBrokers(code=code, buy_top=buy_top, sell_top=sell_top)

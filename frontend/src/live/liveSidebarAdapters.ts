@@ -65,17 +65,22 @@ export function aggregateBrokerSeries(broker: RawSnapshot[]): BrokerSeriesEntry[
     const ts = (snap.t_ms as number) ?? 0;
     const buys = (snap.buy_top as Array<{ name: string; qty: number }>) ?? [];
     const sells = (snap.sell_top as Array<{ name: string; qty: number }>) ?? [];
+    // Sum buy and sell qty per broker within this snapshot so a market-maker
+    // appearing on both top-5 lists collapses to one signed point (matches
+    // backend query_day_series; see CONTEXT.md "Broker Day-Trajectory").
+    const perSnap = new Map<string, number>();
     for (const b of buys) {
       if (typeof b?.name !== 'string') continue;
-      const pts = byBroker.get(b.name) ?? [];
-      pts.push({ ts_ms: ts, net: b.qty ?? 0 });
-      byBroker.set(b.name, pts);
+      perSnap.set(b.name, (perSnap.get(b.name) ?? 0) + (b.qty ?? 0));
     }
     for (const s of sells) {
       if (typeof s?.name !== 'string') continue;
-      const pts = byBroker.get(s.name) ?? [];
-      pts.push({ ts_ms: ts, net: -(s.qty ?? 0) });
-      byBroker.set(s.name, pts);
+      perSnap.set(s.name, (perSnap.get(s.name) ?? 0) - (s.qty ?? 0));
+    }
+    for (const [name, net] of perSnap) {
+      const pts = byBroker.get(name) ?? [];
+      pts.push({ ts_ms: ts, net });
+      byBroker.set(name, pts);
     }
   }
 

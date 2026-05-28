@@ -221,6 +221,49 @@ def test_query_day_series_signs_dual_side_broker(tmp_path: Path) -> None:
     assert kb.dominant_side == "sell"
 
 
+def test_query_day_series_collapses_canonical_aliases(tmp_path: Path) -> None:
+    """Hogaplay and KIS aliases for the same firm collapse to one entry.
+
+    Without canonicalization, a parquet that contains both ``신한증권`` (KIS)
+    and ``신한투자증권`` (hogaplay) rows would surface as TWO BrokerSeriesEntry —
+    splitting net, splitting sparkline, and pushing legitimate brokers out
+    of the top-10. See ``hoga.broker_names`` and CONTEXT.md.
+    """
+    # Snapshot 1 uses KIS alias, snapshot 2 uses hogaplay alias — same firm.
+    s1 = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=90000000,
+            seq=1,
+            sell_names=["신한증권", "X1", "X2", "X3", "X4"],
+            sell_today=[500, 1, 1, 1, 1],
+            buy_names=["Y1", "Y2", "Y3", "Y4", "Y5"],
+            buy_today=[1, 1, 1, 1, 1],
+        )
+    )
+    s2 = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=100000000,
+            seq=2,
+            sell_names=["신한투자증권", "X1", "X2", "X3", "X4"],
+            sell_today=[700, 1, 1, 1, 1],
+            buy_names=["Y1", "Y2", "Y3", "Y4", "Y5"],
+            buy_today=[1, 1, 1, 1, 1],
+        )
+    )
+    out = tmp_path / "brokers.parquet"
+    write_parquet(s1 + s2, out)
+    con = duckdb.connect()
+    entries = query_day_series(con, path=out)
+    shinhan = [e for e in entries if e.broker == "신한투자증권"]
+    assert len(shinhan) == 1, "alias rows must collapse, not double-count"
+    assert [p.ts_ms for p in shinhan[0].points] == [90000000, 100000000]
+    assert shinhan[0].points[0].net == -500
+    assert shinhan[0].points[1].net == -700
+    assert shinhan[0].final_net == -700
+    # Raw alias must not appear independently anywhere in the result.
+    assert not any(e.broker == "신한증권" for e in entries)
+
+
 def test_query_day_series_truncates_to_top_10(tmp_path: Path) -> None:
     """If more than 10 distinct brokers exist, only the top 10 by |final_net| ship."""
     # 5 sell brokers + 5 buy brokers per snapshot = 10 distinct. Use two snapshots

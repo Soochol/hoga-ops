@@ -69,6 +69,26 @@ describe('aggregateBrokerSeries', () => {
     expect(shinhan?.dominant_side).toBe('sell');
   });
 
+  it('collapses buy + sell qty for same broker at same ts into one signed point (matches backend query_day_series)', () => {
+    // Market-maker case: 키움 appears in both top-5 lists at the same snapshot.
+    // Per CONTEXT.md Broker Day-Trajectory: net = SUM(qty * sign(side)) per
+    // (broker, ts_ms), so one signed line — not two points where the sell
+    // overwrites the buy at cursor projection.
+    const broker = [
+      {
+        t_ms: 1000,
+        buy_top: [{ name: '키움', qty: 234423 }],
+        sell_top: [{ name: '키움', qty: 253901 }],
+      },
+    ];
+    const series = aggregateBrokerSeries(broker);
+    const kiwoom = series.find((s) => s.broker === '키움');
+    expect(kiwoom?.points).toHaveLength(1);
+    expect(kiwoom?.points[0]).toEqual({ ts_ms: 1000, net: 234423 - 253901 });
+    expect(kiwoom?.final_net).toBe(234423 - 253901);
+    expect(kiwoom?.dominant_side).toBe('sell');
+  });
+
   it('sorts by abs(final_net) desc and caps at 10', () => {
     const broker = [
       {

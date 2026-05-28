@@ -67,11 +67,26 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
     assert trades["side"][0] == 1
     assert trades["side_source"][0] == "inferred"
 
+    # Long-format schema matches hogaplay parser output so /api/brokers/series
+    # (DuckDB on brokers.parquet) can read KIS-promoted parquets too.
+    import duckdb
+
+    from hoga.tables.brokers import query_day_series
+
     brokers = pl.read_parquet(target / "brokers.parquet")
-    assert brokers.height == 2
-    for prefix in ("buy_name", "buy_qty", "sell_name", "sell_qty"):
-        for i in range(1, 6):
-            assert f"{prefix}{i}" in brokers.columns
+    # 2 snapshots × (5 sell + 5 buy) = 20 long rows.
+    assert brokers.height == 20
+    assert set(brokers.columns) == {
+        "ts_ms", "seq", "side", "rank", "broker", "qty_today", "qty_delta",
+    }
+    # meta still counts snapshots, not long rows — operator-meaningful metric.
+    assert meta["row_counts"]["brokers"] == 2
+
+    # The promoted parquet must be readable via query_day_series — this is the
+    # bug the schema unification closes (kis_live previously stored a wide
+    # schema that query_day_series can't read).
+    entries = query_day_series(duckdb.connect(), path=target / "brokers.parquet")
+    assert entries, "query_day_series must produce entries from KIS-promoted parquet"
 
 
 @pytest.mark.asyncio

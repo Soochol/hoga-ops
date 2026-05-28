@@ -22,6 +22,8 @@ from pathlib import Path
 
 import polars as pl
 
+from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers_parquet
+
 _log = logging.getLogger(__name__)
 
 
@@ -49,7 +51,9 @@ async def promote_one(
 
     snapshots: list[dict] = []
     trades: list[dict] = []
-    brokers: list[dict] = []
+    broker_rows: list[BrokerRow] = []
+    broker_snapshot_count = 0
+    broker_seq = 0  # monotonic per stock-date; KIS has no native seq.
 
     with jsonl_path.open("r", encoding="utf-8") as f:
         for raw in f:
@@ -91,23 +95,42 @@ async def promote_one(
                         "phase": phase,
                     })
             elif kind == "broker":
+                # Long-format, same schema as the hogaplay parser writes
+                # (hoga/tables/brokers.py:PARQUET_SCHEMA). KIS doesn't carry
+                # a global_seq or per-slot delta, so seq is a monotonic
+                # counter and qty_delta=0 — query_day_series ignores both.
                 buy = p.get("buy_top") or []
                 sell = p.get("sell_top") or []
-                broker_row: dict = {"t_ms": t_ms, "phase": phase}
-                for i in range(5):
-                    broker_row[f"buy_name{i + 1}"] = buy[i]["name"] if i < len(buy) else ""
-                    broker_row[f"buy_qty{i + 1}"] = buy[i]["qty"] if i < len(buy) else 0
-                    broker_row[f"sell_name{i + 1}"] = sell[i]["name"] if i < len(sell) else ""
-                    broker_row[f"sell_qty{i + 1}"] = sell[i]["qty"] if i < len(sell) else 0
-                brokers.append(broker_row)
+                broker_snapshot_count += 1
+                broker_seq += 1
+                for rank, e in enumerate(sell[:5], start=1):
+                    broker_rows.append(BrokerRow(
+                        ts_ms=int(t_ms),
+                        seq=broker_seq,
+                        side="sell",
+                        rank=rank,
+                        broker=str(e.get("name") or ""),
+                        qty_today=int(e.get("qty") or 0),
+                        qty_delta=0,
+                    ))
+                for rank, e in enumerate(buy[:5], start=1):
+                    broker_rows.append(BrokerRow(
+                        ts_ms=int(t_ms),
+                        seq=broker_seq,
+                        side="buy",
+                        rank=rank,
+                        broker=str(e.get("name") or ""),
+                        qty_today=int(e.get("qty") or 0),
+                        qty_delta=0,
+                    ))
 
     target.mkdir(parents=True, exist_ok=True)
     if snapshots:
         pl.DataFrame(snapshots).write_parquet(target / "snapshots.parquet")
     if trades:
         pl.DataFrame(trades).write_parquet(target / "trades.parquet")
-    if brokers:
-        pl.DataFrame(brokers).write_parquet(target / "brokers.parquet")
+    if broker_rows:
+        write_brokers_parquet(broker_rows, target / "brokers.parquet")
 
     meta = {
         "source": "kis_live",
@@ -117,7 +140,9 @@ async def promote_one(
         "row_counts": {
             "snapshots": len(snapshots),
             "trades": len(trades),
-            "brokers": len(brokers),
+            # Broker snapshot count (cycles captured), not long-format
+            # row count — same operator-meaningful metric as before.
+            "brokers": broker_snapshot_count,
         },
         # ADR-0003 HHMMSSmmm encoding. /api/range's build_range_bundle reads
         # these keys to populate segment session bounds; without them the

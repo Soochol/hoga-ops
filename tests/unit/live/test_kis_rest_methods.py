@@ -144,10 +144,17 @@ async def test_fetch_brokers_parses_real_fixture(tmp_path: Path) -> None:
         assert res.code == "005930"
         assert len(res.buy_top) == 5
         assert len(res.sell_top) == 5
-        assert res.buy_top[0].name == out["shnu_mbcr_name1"]
+        # Names are canonicalized at the boundary (hoga.broker_names).
+        from hoga.broker_names import canonical
+
+        assert res.buy_top[0].name == canonical(out["shnu_mbcr_name1"])
         assert res.buy_top[0].qty == int(out["total_shnu_qty1"])
-        assert res.sell_top[0].name == out["seln_mbcr_name1"]
+        assert res.sell_top[0].name == canonical(out["seln_mbcr_name1"])
         assert res.sell_top[0].qty == int(out["total_seln_qty1"])
+        # Concrete transformation: fixture has seln_mbcr_name4="신한증권"
+        # which must surface as the canonical "신한투자증권".
+        assert out["seln_mbcr_name4"] == "신한증권"
+        assert res.sell_top[3].name == "신한투자증권"
     finally:
         await client.aclose()
 
