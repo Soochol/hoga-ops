@@ -58,6 +58,9 @@
   --ma-3: #F97316; /* period 20 */
   --ma-4: #22C55E; /* period 60 */
   --ma-5: #F8FAFC; /* period 120 */
+  --ma-6: #06B6D4; /* cyan — extension slot 6 */
+  --ma-7: #EAB308; /* yellow — extension slot 7 */
+  --ma-8: #94A3B8; /* slate — extension slot 8 */
 
   /* ───── Tint backgrounds ───── */
   --tint-selection:  rgba(20, 184, 166, 0.12);
