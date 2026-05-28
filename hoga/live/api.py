@@ -385,6 +385,7 @@ def build_router(
                 for v in result.violations:
                     warnings.append({
                         "batch": label,
+                        "date": v.date_yyyymmdd,
                         "reason": "invariant_violation",
                         "msg": f"{v.date_yyyymmdd}: {v.reason} ({v.detail})",
                     })
@@ -414,6 +415,7 @@ def build_router(
                     for v in result.violations:
                         warnings.append({
                             "batch": f"{today_s}__{today_s}",
+                            "date": v.date_yyyymmdd,
                             "reason": "invariant_violation",
                             "msg": f"{v.date_yyyymmdd}: {v.reason} ({v.detail})",
                         })

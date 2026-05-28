@@ -633,6 +633,7 @@ def test_past_daily_violation_surfaces_to_wire(tmp_path) -> None:
         warn = [w for w in body["data_warnings"] if w["reason"] == "invariant_violation"]
         assert len(warn) == 1
         assert "20240103" in warn[0]["msg"]
+        assert warn[0]["date"] == "20240103"
 
 
 def test_past_daily_dedupes_and_sorts_overlapping_batches(tmp_path) -> None:
