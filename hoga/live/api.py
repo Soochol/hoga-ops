@@ -105,6 +105,31 @@ def _validate_daily_past_request(
     return frm, too, today_d
 
 
+def _violation_to_warning(v, batch_label: str) -> dict:
+    """Render a DailyInvariantViolation as the wire dict the
+    /past-daily-candles handler emits in `data_warnings`.
+
+    Locality: one source of truth for the `{batch, date, reason, msg}` shape
+    so future frontend additions (e.g. `LivePastDailyCandlesWarning`
+    interface widening) only need to touch one builder.
+    """
+    return {
+        "batch": batch_label,
+        "date": v.date_yyyymmdd,
+        "reason": "invariant_violation",
+        "msg": f"{v.date_yyyymmdd}: {v.reason} ({v.detail})",
+    }
+
+
+def _kis_error_to_warning(reason: str, msg: str, batch_label: str) -> dict:
+    """Render a KIS rate-limit/api-error as the wire dict the handler emits.
+
+    `date` field is intentionally omitted — these errors apply to the whole
+    batch range, not a single date (companion to `_violation_to_warning`).
+    """
+    return {"batch": batch_label, "reason": reason, "msg": msg}
+
+
 def _compute_daily_gaps(
     frm: date, too: date,
     existing: list[tuple[date, date]],
@@ -369,26 +394,17 @@ def build_router(
                         code, gap_from_s, gap_to_s,
                     )
                 except KisRateLimitError as e:
-                    warnings.append({
-                        "batch": label, "reason": "kis_rate_limit", "msg": str(e),
-                    })
+                    warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), label))
                     break
                 except KisApiError as e:
-                    warnings.append({
-                        "batch": label, "reason": "kis_api_error", "msg": e.msg_cd,
-                    })
+                    warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, label))
                     continue
                 bars_dicts = [_candle_to_dict(c) for c in result.candles]
                 cache.append_batch(code, gap_from, gap_to, bars_dicts)
                 loaded_bars.extend(bars_dicts)
                 fresh_batches.append(label)
                 for v in result.violations:
-                    warnings.append({
-                        "batch": label,
-                        "date": v.date_yyyymmdd,
-                        "reason": "invariant_violation",
-                        "msg": f"{v.date_yyyymmdd}: {v.reason} ({v.detail})",
-                    })
+                    warnings.append(_violation_to_warning(v, label))
 
         # 5. Today handling (separate from past — memory only, tri-state).
         if too >= today_d:
@@ -399,36 +415,26 @@ def build_router(
             elif state == "negative":
                 pass  # known non-trading day; skip KIS, no row
             else:  # miss
+                today_label = f"{today_s}__{today_s}"
                 try:
                     result = await kis.fetch_past_daily_candles(code, today_s, today_s)
                     if result.candles:
                         today_bar = _candle_to_dict(result.candles[0])
                         cache.store_today(code, today_bar)
                         loaded_bars.append(today_bar)
-                        fresh_batches.append(f"{today_s}__{today_s}")
+                        fresh_batches.append(today_label)
                     else:
                         # Non-trading day — negative cache, still record the
                         # fetch in fresh_batches for parity with gap-branch
                         # (B3b: operator visibility for KIS round-trip).
                         cache.store_today(code, None)
-                        fresh_batches.append(f"{today_s}__{today_s}")
+                        fresh_batches.append(today_label)
                     for v in result.violations:
-                        warnings.append({
-                            "batch": f"{today_s}__{today_s}",
-                            "date": v.date_yyyymmdd,
-                            "reason": "invariant_violation",
-                            "msg": f"{v.date_yyyymmdd}: {v.reason} ({v.detail})",
-                        })
+                        warnings.append(_violation_to_warning(v, today_label))
                 except KisRateLimitError as e:
-                    warnings.append({
-                        "batch": f"{today_s}__{today_s}",
-                        "reason": "kis_rate_limit", "msg": str(e),
-                    })
+                    warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), today_label))
                 except KisApiError as e:
-                    warnings.append({
-                        "batch": f"{today_s}__{today_s}",
-                        "reason": "kis_api_error", "msg": e.msg_cd,
-                    })
+                    warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, today_label))
 
         # 6. Dedupe by t_ms, sort, filter to [frm, too].
         from datetime import time as _time
