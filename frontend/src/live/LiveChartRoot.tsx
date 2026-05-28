@@ -26,8 +26,10 @@ import type { RangeBundle } from '../api/types';
 import {
   realMsToYyyymmdd,
   subtractDaysKst,
-  PREFETCH_CHUNK_DAYS,
+  prefetchChunkDaysFor,
 } from './liveDateTime';
+import { useLiveCursorStore } from './useLiveCursorStore';
+import { useLiveAxisStore } from './useLiveAxisStore';
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -81,6 +83,15 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   const axisRef: MutableRefObject<VirtualAxis> = useRef<VirtualAxis>(axis);
   useEffect(() => {
     axisRef.current = axis;
+  }, [axis]);
+
+  // Publish axis to the shared store so LiveSidebar can read
+  // axis.inClosingAuctionWindow(cursorMs) for TotalQtyBar mask.
+  useEffect(() => {
+    useLiveAxisStore.getState().setAxis(axis);
+    return () => {
+      useLiveAxisStore.getState().setAxis(null);
+    };
   }, [axis]);
 
   // Viewport policy: trading-chart standard. Initial paint shows the
@@ -208,8 +219,10 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // freely go negative past the leftmost bar (-50.3 etc.), which is the
   // signal we actually need.
   //
-  // Each trigger prepends one PREFETCH_CHUNK_DAYS chunk from the current
-  // earliest segment. The 150ms trailing debounce coalesces rapid wheel /
+  // Each trigger prepends one timeframe-sized chunk (see
+  // prefetchChunkDaysFor — minute frames ≈ 1 trading day, daily ≈ 90
+  // calendar days, W/M jump to the 250-day cap) from the current earliest
+  // segment. The 150ms trailing debounce coalesces rapid wheel /
   // drag events into one fetch; the store's extendHistoricalRange is
   // monotonically decreasing, so repeated negative ranges in the same chunk
   // are no-ops. After the new chunk lands, axis.segments[0] becomes earlier,
@@ -231,7 +244,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       // loaded bar, which is exactly the lazy-fetch trigger condition.
       if (r.from >= 0) return;
       const currentEarliestDate = realMsToYyyymmdd(axis.segments[0].sessionOpenMs);
-      const nextHistoricalFrom = subtractDaysKst(currentEarliestDate, PREFETCH_CHUNK_DAYS);
+      const nextHistoricalFrom = subtractDaysKst(currentEarliestDate, prefetchChunkDaysFor(timeframe));
       if (timeoutId !== null) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         useLivePageStore.getState().extendHistoricalRange(nextHistoricalFrom);
@@ -272,6 +285,41 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       cancelAnimationFrame(raf);
     };
   }, [chart, bundle, timeframe]);
+
+  // ADR-0044: hover → cursor store. Only mount on minute timeframes —
+  // calendar timeframes (D/W/M) don't have backing parquet on /live.
+  // rAF-coalesce to one update per frame (matches ChartStage's pattern).
+  useEffect(() => {
+    if (!chart || !isMinuteTimeframe(timeframe)) {
+      useLiveCursorStore.getState().clearCursor();
+      return;
+    }
+    let pending: number | null = null;
+    const handler = (param: { time?: unknown; point?: { x: number } | null }) => {
+      if (param.point == null) {
+        useLiveCursorStore.getState().clearCursor();
+        return;
+      }
+      if (pending !== null) cancelAnimationFrame(pending);
+      pending = requestAnimationFrame(() => {
+        pending = null;
+        const t = param.time;
+        if (typeof t !== 'number') return;
+        // ChartStage.tsx:197 pattern — param.time is virtual-axis seconds.
+        // Convert to virtual-ms, then real Unix-ms via axis.toReal().
+        if (axis.segments.length === 0) return;
+        const virtualMs = t * 1000;
+        const realMs = axis.toReal(virtualMs);
+        useLiveCursorStore.getState().setCursor(realMs);
+      });
+    };
+    chart.subscribeCrosshairMove(handler);
+    return () => {
+      chart.unsubscribeCrosshairMove(handler);
+      if (pending !== null) cancelAnimationFrame(pending);
+      useLiveCursorStore.getState().clearCursor();
+    };
+  }, [chart, axis, timeframe]);
 
   const dwDisabled = isCalendarTimeframe(timeframe);
 

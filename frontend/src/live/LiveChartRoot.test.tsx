@@ -232,8 +232,9 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // Axis with yesterday + today. lightweight-charts emits negative
     // logical.from when the visible-range origin is past the leftmost
     // loaded bar (fractional bar index can go negative beyond the data).
-    // Handler should prepend PREFETCH_CHUNK_DAYS more past data from the
-    // current earliest segment.
+    // Handler should prepend one prefetchChunkDaysFor('1m')=2 calendar-day
+    // chunk (sized to ≥10 minute candles, weekend-safe) from the current
+    // earliest segment.
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
@@ -254,8 +255,8 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // currentEarliest = '20260526', minus PREFETCH_CHUNK_DAYS=10 → '20260516'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260516');
+    // currentEarliest = '20260526', minus prefetchChunkDaysFor('1m')=2 → '20260524'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260524');
   });
 
   it('fires extendHistoricalRange on D timeframe when logical from goes negative', () => {
@@ -284,9 +285,11 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // Same currentEarliest math as the minute-timeframe sibling test:
-    // axis.segments[0] = '20260526', minus PREFETCH_CHUNK_DAYS=10 → '20260516'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260516');
+    // D-timeframe chunk is sized to ~60 daily candles (60 trading days
+    // padded to 90 calendar days for weekends + holidays). axis.segments[0]
+    // = '20260526', minus prefetchChunkDaysFor('D')=90 → '20260225' (May 26
+    // = doy 146, 146 − 90 = doy 56 = Feb 25 in non-leap 2026).
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260225');
   });
 
   it('does NOT fire extendHistoricalRange when logical from is non-negative', () => {
@@ -314,6 +317,117 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     });
 
     expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Crosshair → cursor store (ADR-0044)
+// ---------------------------------------------------------------------------
+
+import { useLiveCursorStore } from './useLiveCursorStore';
+import { useLiveAxisStore } from './useLiveAxisStore';
+
+describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
+  beforeEach(() => {
+    useLiveCursorStore.getState().clearCursor();
+    useLiveAxisStore.getState().setAxis(null);
+    vi.mocked(createChart).mockClear();
+  });
+
+  it('publishes axis to useLiveAxisStore on mount', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(useLiveAxisStore.getState().axis).not.toBeNull();
+  });
+
+  it('subscribes to crosshair move on minute timeframe', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const chart = vi.mocked(createChart).mock.results[0].value;
+    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT subscribe on calendar timeframe (D/W/M)', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const chart = vi.mocked(createChart).mock.results[0].value;
+    expect(chart.subscribeCrosshairMove).not.toHaveBeenCalled();
+  });
+
+  it('crosshair move → setCursor; crosshair leave → clearCursor', async () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const chart = vi.mocked(createChart).mock.results[0].value;
+    const handler = chart.subscribeCrosshairMove.mock.calls[0][0] as (p: {
+      time?: unknown;
+      point?: { x: number } | null;
+    }) => void;
+    // Virtual second 0 → axis.toReal(0) = session_open_ms (virtualMs <= 0 clamps
+    // to segments[0].sessionOpenMs per virtualAxis.ts:185).
+    const SESSION_OPEN = DEFAULT_BUNDLE.segments[0].session_open_ms;
+    act(() => handler({ time: 0, point: { x: 1 } }));
+    // rAF coalescing — flush one frame.
+    await act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+    expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
+
+    act(() => handler({ time: undefined, point: null }));
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
+  });
+
+  it('clears cursor when timeframe switches from minute to calendar', () => {
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
+    rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
   });
 });
 
