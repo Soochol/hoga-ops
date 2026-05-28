@@ -13,6 +13,24 @@ export type LiveTimeframe = (typeof LIVE_TIMEFRAMES)[number];
 export const BASE_TIMEFRAMES = ['1m', 'D', 'W', 'M'] as const;
 export type BaseTimeframe = (typeof BASE_TIMEFRAMES)[number];
 
+/** Minute subset of LiveTimeframe — round-trips to `/api/range` via wire
+ * `bucket_ms`, gets the full 5-pane chart. */
+export const MINUTE_TIMEFRAMES = ['1m', '3m', '5m', '10m', '15m', '30m'] as const;
+export type MinuteTimeframe = (typeof MINUTE_TIMEFRAMES)[number];
+
+/** Calendar subset of LiveTimeframe — client-aggregated (`aggregateCalendar`),
+ * candle + volume panes only (ADR-0041). */
+export const CALENDAR_TIMEFRAMES = ['D', 'W', 'M'] as const;
+export type CalendarTimeframe = (typeof CALENDAR_TIMEFRAMES)[number];
+
+export function isMinuteTimeframe(tf: LiveTimeframe): tf is MinuteTimeframe {
+  return (MINUTE_TIMEFRAMES as readonly string[]).includes(tf);
+}
+
+export function isCalendarTimeframe(tf: LiveTimeframe): tf is CalendarTimeframe {
+  return (CALENDAR_TIMEFRAMES as readonly string[]).includes(tf);
+}
+
 /** Map a display timeframe to the base timeframe to fetch from the server.
  * Minute frames all source from '1m'; D/W/M pass through. */
 export function baseFor(tf: LiveTimeframe): BaseTimeframe {

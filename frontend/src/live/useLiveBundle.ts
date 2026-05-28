@@ -2,10 +2,10 @@ import { useMemo } from 'react';
 import { useLiveSeries } from '../api/liveSeries';
 import { useLivePastCandles } from '../api/livePastCandles';
 import { useRange } from '../api/range';
-import { useLivePageStore, type LiveTimeframe, bucketSeconds } from '../state/livePage';
+import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import { TIMEFRAME_TO_MS, type Timeframe, type RangeBundle, type Candle } from '../api/types';
 import { buildLiveBundle } from './buildLiveBundle';
-import { aggregateCandles } from './aggregateCandles';
+import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import {
   yesterdayKst,
@@ -15,12 +15,7 @@ import {
   INITIAL_HISTORICAL_DAYS,
 } from './liveDateTime';
 
-const MINUTE_TIMEFRAMES: ReadonlyArray<Timeframe> = ['1m', '3m', '5m', '10m', '15m', '30m'];
 const PAST_CANDLES_MAX_DAYS = 60;
-
-function isMinuteTimeframe(tf: LiveTimeframe): tf is Timeframe {
-  return (MINUTE_TIMEFRAMES as ReadonlyArray<string>).includes(tf);
-}
 
 function laterDate(a: string, b: string): string {
   return a >= b ? a : b;
@@ -78,7 +73,9 @@ export function useLiveBundle(
   );
 
   // KIS past-candles: range is [pastFrom, today] (today included, ADR-0040).
-  const pastCandlesEnabled = !!(code && isMinute);
+  // Enabled for ALL timeframes — D/W/M client-aggregate from the same 1m KIS
+  // bars (no backend D/W/M endpoint exists post-4b99191).
+  const pastCandlesEnabled = !!code;
   const pastCandlesQuery = useLivePastCandles(
     pastCandlesEnabled ? code : null,
     pastCandlesEnabled ? pastFrom : null,
@@ -88,10 +85,14 @@ export function useLiveBundle(
   const kisCandles = useMemo<Candle[]>(() => {
     const raw = pastCandlesQuery.data?.candles ?? [];
     if (raw.length === 0) return [];
-    const bucket = isMinute ? bucketSeconds(timeframe) : null;
-    // Skip aggregation for 1m (bucket === 60) and non-minute timeframes —
-    // the raw KIS bars are already 1m, so aggregating would be a no-op pass.
-    const bars = bucket !== null && timeframe !== '1m' ? aggregateCandles(raw, bucket) : raw;
+    // Minute timeframes: epoch-floor bucket via aggregateCandles (also dedupes
+    // within-bucket duplicates from pre-f63ed15 KIS cache files).
+    // D/W/M: calendar-aligned bucket via aggregateCalendar — the result's t_ms
+    // is the bucket's first 1m bar (= sessionOpenMs of the bucket's first
+    // trading day) so axis.contains admits it inside that Segment.
+    const bars = isMinute
+      ? aggregateCandles(raw, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000)
+      : aggregateCalendar(raw, timeframe as 'D' | 'W' | 'M');
     return bars.map(kisBarToCandle);
   }, [pastCandlesQuery.data, isMinute, timeframe]);
 

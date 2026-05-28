@@ -1,4 +1,4 @@
-import type { LiveTimeframe } from '../state/livePage';
+import { type LiveTimeframe, isCalendarTimeframe } from '../state/livePage';
 import { PANE_SPECS, type BoundPaneSpec } from '../chart/paneSpecs';
 import { CANDLE_SPEC } from '../chart/projectors/candle';
 import { VOLUME_SPEC } from '../chart/projectors/volume';
@@ -24,5 +24,5 @@ const CALENDAR_PANE_SPECS: readonly BoundPaneSpec[] = Object.freeze([
  * `RangeSeriesPane` useEffect deps that include `spec` don't churn).
  */
 export function paneSpecsForTimeframe(tf: LiveTimeframe): readonly BoundPaneSpec[] {
-  return tf === 'D' || tf === 'W' || tf === 'M' ? CALENDAR_PANE_SPECS : PANE_SPECS;
+  return isCalendarTimeframe(tf) ? CALENDAR_PANE_SPECS : PANE_SPECS;
 }

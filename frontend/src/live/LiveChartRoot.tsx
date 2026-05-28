@@ -16,7 +16,7 @@ import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
 import RangeSeriesPane from '../chart/RangeSeriesPane';
 import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
-import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
+import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import type { RangeBundle } from '../api/types';
 import {
   realMsToYyyymmdd,
@@ -30,11 +30,6 @@ const TOKEN_SPEC = {
   grid: ['--grid', '#1A1A26'],
   border: ['--border', '#1F1F2A'],
 } as const;
-
-const MINUTE_TIMEFRAMES: ReadonlyArray<LiveTimeframe> = ['1m', '3m', '5m', '10m', '15m', '30m'];
-function isMinuteTimeframe(tf: LiveTimeframe): boolean {
-  return MINUTE_TIMEFRAMES.includes(tf);
-}
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
