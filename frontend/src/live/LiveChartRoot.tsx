@@ -16,7 +16,12 @@ import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
 import RangeSeriesPane from '../chart/RangeSeriesPane';
 import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
-import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
+import {
+  useLivePageStore,
+  type LiveTimeframe,
+  isMinuteTimeframe,
+  isCalendarTimeframe,
+} from '../state/livePage';
 import type { RangeBundle } from '../api/types';
 import {
   realMsToYyyymmdd,
@@ -264,7 +269,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     };
   }, [chart, bundle, timeframe]);
 
-  const dwDisabled = !isMinuteTimeframe(timeframe);
+  const dwDisabled = isCalendarTimeframe(timeframe);
 
   return (
     <div
