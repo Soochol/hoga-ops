@@ -154,3 +154,51 @@ describe('aggregateCalendar', () => {
     expect(out).toHaveLength(2);
   });
 });
+
+// Regression for ADR-0048 / D-direct spec D7:
+// aggregateCalendar('D', dailyInput) must be identity-ish — input is
+// already daily bars, one per trading day, so each bar gets its own
+// bucket and the OHLCV is preserved verbatim.
+describe("aggregateCalendar('D') with already-daily input", () => {
+  it('passes daily bars through unchanged (one bucket per bar)', () => {
+    const kst = (y: number, m: number, d: number) => {
+      // 09:00 KST → UTC ms
+      const utc = Date.UTC(y, m - 1, d, 0, 0); // 09:00 KST = 00:00 UTC
+      return utc;
+    };
+    const input = [
+      { t_ms: kst(2024, 1, 2), open: 100, high: 110, low: 95, close: 105, volume: 1000 },
+      { t_ms: kst(2024, 1, 3), open: 105, high: 115, low: 100, close: 112, volume: 2000 },
+      { t_ms: kst(2024, 1, 4), open: 112, high: 120, low: 108, close: 118, volume: 1500 },
+    ];
+    const out = aggregateCalendar(input, 'D');
+    expect(out).toHaveLength(3);
+    out.forEach((bar, i) => {
+      expect(bar.t_ms).toBe(input[i].t_ms);
+      expect(bar.open).toBe(input[i].open);
+      expect(bar.high).toBe(input[i].high);
+      expect(bar.low).toBe(input[i].low);
+      expect(bar.close).toBe(input[i].close);
+      expect(bar.volume).toBe(input[i].volume);
+    });
+  });
+
+  it('aggregateCalendar(W) with daily bars within one ISO week → single bucket', () => {
+    const kst = (y: number, m: number, d: number) => Date.UTC(y, m - 1, d, 0, 0);
+    // Mon 2024-01-01 through Fri 2024-01-05 — all same week.
+    const input = [
+      { t_ms: kst(2024, 1, 1), open: 100, high: 110, low: 90, close: 105, volume: 100 },
+      { t_ms: kst(2024, 1, 2), open: 105, high: 120, low: 100, close: 115, volume: 200 },
+      { t_ms: kst(2024, 1, 3), open: 115, high: 125, low: 110, close: 120, volume: 150 },
+      { t_ms: kst(2024, 1, 4), open: 120, high: 130, low: 115, close: 125, volume: 175 },
+      { t_ms: kst(2024, 1, 5), open: 125, high: 135, low: 120, close: 130, volume: 225 },
+    ];
+    const out = aggregateCalendar(input, 'W');
+    expect(out).toHaveLength(1);
+    expect(out[0].open).toBe(100);     // first bar's open
+    expect(out[0].close).toBe(130);    // last bar's close
+    expect(out[0].high).toBe(135);     // max of highs
+    expect(out[0].low).toBe(90);       // min of lows
+    expect(out[0].volume).toBe(850);   // sum of volumes
+  });
+});
