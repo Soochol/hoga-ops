@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path as FPath
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -1407,6 +1407,26 @@ def build_router(
         if resp.blocked and not resp.enqueued and not resp.deduped:
             return JSONResponse(content=resp.model_dump(mode="json"), status_code=409)
         return resp
+
+    @router.post("/items/{code}/{date}/unblock", status_code=200)
+    async def unblock_item(
+        code: str = FPath(pattern=r"^\d{6}$"),
+        date: str = FPath(pattern=r"^\d{8}$"),
+    ) -> dict:
+        """ADR-0042: zero the fail_streak counter for (code, date).
+
+        Idempotent. Returns ``action: "unblocked"`` when a key was cleared,
+        ``"noop"`` when the counter was already 0. Mirrors the cancel-handler
+        pattern (line 1344): acquire ``_lock``, mutate, persist, return dict.
+        """
+        from hoga.api.fail_streak import streak_key
+        key = streak_key(code, date)
+        async with _lock:
+            if key in _fail_streaks:
+                del _fail_streaks[key]
+                _persist_queue_locked()  # ADR-0019 + ADR-0042
+                return {"code": code, "date": date, "fail_streak": 0, "action": "unblocked"}
+        return {"code": code, "date": date, "fail_streak": 0, "action": "noop"}
 
     @router.post("/items/retry", status_code=201)
     async def retry_items_route(req: RetryRequest) -> RetryResponse:
