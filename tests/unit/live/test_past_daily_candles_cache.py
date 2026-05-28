@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import time
-from datetime import date, timedelta, timezone
+from datetime import date
 from unittest.mock import patch
 
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
-
-_KST = timezone(timedelta(hours=9))
 
 
 def _bar(t_ms: int) -> dict:
@@ -80,5 +78,5 @@ def test_negative_cache_ttl_expiry_returns_miss() -> None:
     cache.store_today("005930", None)
     with patch("hoga.live.past_daily_candles_cache.time.monotonic",
                return_value=time.monotonic() + 11.0):
-        state, value = cache.get_today("005930")
+        state, _ = cache.get_today("005930")
     assert state == "miss"
