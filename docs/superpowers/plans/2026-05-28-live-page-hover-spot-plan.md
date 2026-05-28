@@ -201,6 +201,14 @@ uv run pytest tests/test_api_range.py tests/unit/api/ -v
 
 Expected: all pass (no behavior change, just moved the function).
 
+> **Eng review C2 acceptance criterion:** `from hoga.api.bundle import _resolve_source` must still resolve — `tests/unit/api/test_bundle_source.py:12` (and any other test file that imports the old private path) depends on this alias. Verify explicitly:
+>
+> ```bash
+> uv run pytest tests/unit/api/test_bundle_source.py -v
+> ```
+>
+> Expected: PASS. If it fails because the alias was dropped, restore it (the line `from hoga.api.sources import resolve_source as _resolve_source` at the top of `bundle.py`).
+
 - [ ] **Step 7: Commit**
 
 ```bash
@@ -283,6 +291,8 @@ Expected: any pre-existing failures here are construction sites missing `source=
 **Files:**
 - Modify: `hoga/api/routes.py:84-115`
 - Test: `tests/unit/api/test_orderbook_endpoint.py`
+
+> **Eng review C4 note:** The existing `_parquet_path` helper (routes.py:36) is intentionally **bypassed** for the three spot routes (`/api/orderbook`, `/api/trades`, `/api/brokers/series`) because it doesn't accept `source`. It remains in use for `/api/candles` (routes.py:146). Don't delete `_parquet_path` — just don't widen its responsibility. The three updated handlers each call `engine.parquet_dir(date, code, source=resolved)` + `StockDateNotFound` handling inline, mirroring `_parquet_path`'s try/except pattern.
 
 - [ ] **Step 1: Write failing tests for source_pref behaviour**
 
@@ -1254,6 +1264,52 @@ git commit -m "feat(api): useLiveBrokersAtCursor (day-series, client-projected)"
 
 ---
 
+## Task 12b — ADR-0044 invariant guard (eng review B3)
+
+**Files:**
+- Create: `frontend/src/api/useLiveCursor.invariant.test.ts`
+
+ADR-0044 codifies: hover-spot hooks must not import LiveBuffer/SSE modules. A static-grep test pins this so a future "tidy up" doesn't silently bridge the two data paths.
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+// frontend/src/api/useLiveCursor.invariant.test.ts
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+const SOURCE = readFileSync(new URL('./useLiveCursor.ts', import.meta.url), 'utf-8');
+
+describe('ADR-0044 invariant', () => {
+  it('hover hooks do not import LiveBuffer / useLiveStream / liveSnapshotBuffer', () => {
+    // Anchor list mirrors hoga/live/ module names and the live page's
+    // SSE-stream modules. If a future feature genuinely needs a hybrid
+    // path, do that with a NEW hook + ADR amendment — not a quiet import.
+    expect(SOURCE).not.toMatch(/from ['"](?:[^'"]*\/)?useLiveStream['"]/);
+    expect(SOURCE).not.toMatch(/from ['"](?:[^'"]*\/)?liveSnapshotBuffer['"]/);
+    expect(SOURCE).not.toMatch(/from ['"](?:[^'"]*\/)?liveSeries['"]/);
+    expect(SOURCE).not.toMatch(/\bLiveBuffer\b/);
+  });
+});
+```
+
+- [ ] **Step 2: Run to confirm fail (or unexpected pass)**
+
+```bash
+cd frontend && npx vitest run src/api/useLiveCursor.invariant.test.ts
+```
+
+Expected behavior depends on Task 10–12 output: if your `useLiveCursor.ts` accidentally imports any of these (it shouldn't, per the plan), this test fails right away — fix the import; don't relax the guard.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add frontend/src/api/useLiveCursor.invariant.test.ts
+git commit -m "test(api): ADR-0044 invariant — hover hooks isolated from LiveBuffer"
+```
+
+---
+
 ## Task 13 — `LiveChartRoot` crosshair subscription + axis publish
 
 **Files:**
@@ -1382,8 +1438,11 @@ Below the existing pane-stretch useEffect (around line 274), add:
         pending = null;
         const t = param.time;
         if (typeof t !== 'number') return;
-        const realMs = axis.virtualToRealMs(t);
-        if (realMs == null) return;
+        // ChartStage.tsx:197 pattern — param.time is virtual-axis seconds.
+        // Convert to virtual-ms, then real Unix-ms via axis.toReal().
+        if (axis.segments.length === 0) return;
+        const virtualMs = t * 1000;
+        const realMs = axis.toReal(virtualMs);
         useLiveCursorStore.getState().setCursor(realMs);
       });
     };
@@ -1396,7 +1455,7 @@ Below the existing pane-stretch useEffect (around line 274), add:
   }, [chart, axis, timeframe]);
 ```
 
-> **Engineer note:** Verify the exact `VirtualAxis` method used in replay's `ChartStage.tsx` for virtual→real conversion. If it's not `virtualToRealMs`, mirror whatever method ChartStage uses (e.g. `axis.realMsFromVirtualSeconds` or similar). Don't invent — match.
+> **Engineer note:** API verified — `VirtualAxis.toReal(virtualMs)` (virtualAxis.ts:54) called with `virtualMs = param.time * 1000` per ChartStage.tsx:197. No alternative method exists; do not improvise.
 
 - [ ] **Step 4: Run tests**
 
@@ -1551,13 +1610,16 @@ import { isMinuteTimeframe } from '../state/livePage';
 
 interface Props {
   code: string | null;
+  /** Active stock-date (YYYYMMDD KST). Drilled from LivePage via LiveWorkarea —
+   * the live page treats "today" as the implicit date (see
+   * todayKstYyyymmdd() in LivePage.tsx). Pass null when no code is selected. */
+  date: string | null;
 }
 
-export function LiveSidebar({ code }: Props) {
+export function LiveSidebar({ code, date }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const isSpot = cursorMs !== null;
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
-  const date = useLivePageStore((s) => s.activeDate);  // adjust if the store field has a different name
 
   // Latest-mode data (always subscribed — useSpot hooks in spot mode
   // sit dormant when cursorMs is null, no extra fetches).
@@ -1628,59 +1690,68 @@ function SidebarHeader({
   cursorMs: number | null;
   latestOrderbookTs: number | null;
 }) {
+  // Design review B2: keep the timestamp pinned right in BOTH modes so it
+  // doesn't jump columns on mouse leave/enter. Left slot carries the mode
+  // label only. C4: 한글 카피로 "과거 시점" 사용 (DESIGN.md Copy Tone).
   const isSpot = cursorMs !== null;
+  const rightTs = isSpot ? cursorMs : latestOrderbookTs;
   return (
     <div
+      className="font-mono"
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--space-sm)',
+        justifyContent: 'space-between',
+        gap: 'var(--space-xs)',
         padding: 'var(--space-sm) var(--space-md)',
         borderBottom: '1px solid var(--border)',
         fontSize: 'var(--text-xs)',
         color: 'var(--fg-dim)',
       }}
     >
-      {isSpot ? (
-        <>
-          <span style={{ fontFamily: 'monospace' }}>SPOT @ {formatHms(cursorMs!)}</span>
-        </>
-      ) : (
-        <>
-          <span
-            data-testid="live-sidebar-pulse"
-            aria-label="live pulse"
-            style={{
-              display: 'inline-block',
-              width: 'var(--space-xs)',
-              height: 'var(--space-xs)',
-              borderRadius: '50%',
-              background: 'var(--accent)',
-              animation: 'live-pulse 1.5s ease-in-out infinite',
-            }}
-          />
-          <span style={{ fontFamily: 'monospace' }}>LIVE</span>
-          {latestOrderbookTs !== null && (
-            <span style={{ marginLeft: 'auto', color: 'var(--fg-dimmer)' }}>
-              {formatHms(latestOrderbookTs)}
-            </span>
-          )}
-        </>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
+        {isSpot ? (
+          <span>과거 시점</span>
+        ) : (
+          <>
+            <span
+              data-testid="live-sidebar-pulse"
+              aria-label="live pulse"
+              style={{
+                display: 'inline-block',
+                width: '6px',  // Design review C2: 6px status dot, px-literal per DESIGN.md.
+                height: '6px',
+                borderRadius: '50%',
+                background: 'var(--accent)',
+                animation: 'live-pulse 1.5s ease-in-out infinite',
+              }}
+            />
+            <span>LIVE</span>
+          </>
+        )}
+      </span>
+      {rightTs !== null && (
+        <span style={{ color: 'var(--fg-dimmer)' }}>{formatTime(rightTs)}</span>
       )}
     </div>
   );
 }
 
-function formatHms(t_ms: number): string {
-  const d = new Date(t_ms);
-  const h = String(d.getHours()).padStart(2, '0');
-  const m = String(d.getMinutes()).padStart(2, '0');
-  const s = String(d.getSeconds()).padStart(2, '0');
-  return `${h}:${m}:${s}`;
+// Design review B1: KST formatting via toLocaleTimeString — matches FillTape.tsx:50
+// and the rest of the sidebar. Local-tz machine-time clocks would desync from
+// the chart x-axis on non-KST workstations.
+function formatTime(ts_ms: number): string {
+  return new Date(ts_ms).toLocaleTimeString('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
 }
 ```
 
-> **Engineer note:** The `useLivePageStore` field name for the current date may differ (`activeDate`, `selectedDate`, etc.). Read `frontend/src/state/livePage.ts` and use whatever exists. If no current `date` is held there, hoist it from `LivePage` via prop drilling — but check first.
+> **Engineer note (eng review B2):** `useLivePageStore` does NOT hold the active date — `LivePage.tsx:61` computes `todayKstYyyymmdd()` and currently does not pass it to `LiveSidebar`. Resolution: add a `date: string | null` prop to `LiveSidebar`, drill it through `LiveWorkarea` (currently passes only `code={activeCode}` at LiveWorkarea.tsx:87), and source it from `LivePage` (use the same `todayKstYyyymmdd()` call already there). Update the `Props` interface, the three cursor-hook call sites in `LiveSidebar`, and `LiveSidebar.test.tsx` to pass an explicit `date="20260528"` (or fixture date).
 
 - [ ] **Step 4: Run tests**
 
@@ -1699,10 +1770,145 @@ git commit -m "feat(live): LiveSidebar cursor branching + SPOT header + Auction 
 
 ---
 
+## Task 14b — `available_from` hint on empty orderbook (eng review C3)
+
+**Files:**
+- Modify: `frontend/src/live/LiveSidebar.tsx`
+- Modify: `frontend/src/live/LiveSidebar.test.tsx`
+
+ADR-0044 documents the 5-min Today Promotion gap as the accepted trade-off and proposes surfacing `OrderbookResponse.available_from` in the empty state. The wire field exists (`types.ts:57`) but no UI consumes it. This closes the loop.
+
+Note this requires the orderbook hook to also expose `available_from`. Currently `useLiveOrderbookAtCursor` returns only `r.snapshot` (Task 10). Adjust it to return the full response (or a `{ snapshot, available_from }` pair) for the live spot case.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `LiveSidebar.test.tsx`:
+
+```typescript
+import { useLiveOrderbookAtCursor as ublOriginal } from '../api/useLiveCursor';
+
+describe('LiveSidebar — empty spot orderbook with available_from hint', () => {
+  beforeEach(() => {
+    useLiveCursorStore.getState().clearCursor();
+  });
+
+  it('renders "다음 가용: HH:MM" when snapshot null but available_from is set', () => {
+    // 12:42 KST as Unix ms — adjust to land on known wall-clock in your tz.
+    const availableMs = new Date('2026-05-28T03:42:00Z').getTime();
+    vi.mocked(ublOriginal).mockReturnValueOnce({
+      snapshot: null,
+      available_from: availableMs,
+      source: 'hogaplay',
+    } as never);
+    render(<LiveSidebar code="005930" date="20260528" />);
+    act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
+    expect(screen.getByText(/다음 가용: \d{2}:\d{2}/)).toBeInTheDocument();
+  });
+
+  it('renders nothing extra when snapshot null AND available_from null', () => {
+    vi.mocked(ublOriginal).mockReturnValueOnce({
+      snapshot: null,
+      available_from: null,
+      source: 'hogaplay',
+    } as never);
+    render(<LiveSidebar code="005930" date="20260528" />);
+    act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
+    expect(screen.queryByText(/다음 가용/)).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Update `useLiveOrderbookAtCursor` to expose full response**
+
+In `frontend/src/api/useLiveCursor.ts`, change the hook to return the full response shape (preserving the `undefined | null | T` discrimination):
+
+```typescript
+import type { OrderbookResponse } from './types';
+
+export interface LiveOrderbookSpot {
+  snapshot: ApiOrderbookSnapshot | null;
+  available_from: number | null;
+  source: SourceName;
+}
+
+export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | null | undefined {
+  // ... same alignedT / key computation ...
+  const { data } = useSpot<LiveOrderbookSpot>(key, () =>
+    apiGet<OrderbookResponse>(
+      `/api/orderbook?code=${p.code}&date=${p.date}&t=${alignedT}&bucket_ms=${bucketMs}&source_pref=${sourcePref}`,
+    ).then((r) => ({
+      snapshot: r.snapshot,
+      available_from: r.available_from,
+      source: r.source,
+    })),
+  );
+  return data;
+}
+```
+
+Update `useLiveCursor.test.ts` orderbook test to assert the new return shape (`result.current === undefined` → `result.current?.snapshot === expected`).
+
+- [ ] **Step 3: Update `LiveSidebar.tsx` to render the hint**
+
+In the spot branch, derive the hint:
+
+```typescript
+const spotOrderbook = useLiveOrderbookAtCursor({ code, date, timeframe: spotTimeframe });
+// orderbookForCard / availableFromHint
+const spotSnap = spotOrderbook?.snapshot ?? null;
+const spotAvailableFrom = spotOrderbook?.available_from ?? null;
+const orderbookForCard = isSpot ? spotSnap : latestOrderbook;
+const showAvailableHint = isSpot && spotOrderbook !== undefined && spotSnap === null && spotAvailableFrom !== null;
+```
+
+Inside the 10호가 card slot (passed to `CursorSidebar.orderbook`), render the hint above `OrderbookTable` when active:
+
+```tsx
+orderbook={
+  <>
+    {showAvailableHint && (
+      <div
+        data-testid="orderbook-available-hint"
+        style={{
+          padding: 'var(--space-xs) var(--space-md)',
+          fontSize: 'var(--text-xs)',
+          color: 'var(--fg-dimmer)',
+          fontFamily: 'var(--font-mono)',
+        }}
+      >
+        다음 가용: {formatTime(spotAvailableFrom!)}
+      </div>
+    )}
+    <OrderbookTable snapshot={orderbookForCard} />
+    <TotalQtyBar snapshot={orderbookForCard} maskRatio={maskRatio} />
+  </>
+}
+```
+
+- [ ] **Step 4: Run tests**
+
+```bash
+cd frontend && npx vitest run src/live/LiveSidebar.test.tsx src/api/useLiveCursor.test.ts
+```
+
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add frontend/src/api/useLiveCursor.ts frontend/src/api/useLiveCursor.test.ts \
+        frontend/src/live/LiveSidebar.tsx frontend/src/live/LiveSidebar.test.tsx
+git commit -m "feat(live): \"다음 가용: HH:MM\" hint on empty spot orderbook (ADR-0044)"
+```
+
+---
+
 ## Task 15 — Frontend type sync + full test sweep
 
 **Files:**
 - Modify: `frontend/src/api/types.ts` — add `SourceName` type, add `source: SourceName` to the two named response types (`OrderbookResponse:56`, `BrokerSeriesResponse:78`). Trades response is inline in callers (no named type today), so the `source` field is added inline by Task 11's hook.
+
+> **Eng review C1 note:** `frontend/src/api/brokerSeries.ts` is another consumer of `BrokerSeriesResponse` (used by replay's `CursorSidebarConnected` via `useBrokerSeriesForDay`). Adding the `source` field is **additive** — `useBrokerSeriesForDay` reads `.brokers`/`.date` and doesn't break. Out of scope for this round: making replay's `useBrokerSeriesForDay` send `source_pref` (the server default `"hogaplay"` preserves today's behavior). Track as deferred review note S5 if interesting later.
 
 - [ ] **Step 1: Add `SourceName` type and extend named response types**
 
@@ -1817,4 +2023,24 @@ Both must be green. If either fails, debug with `superpowers:systematic-debuggin
 
 ## Deferred review notes
 
-(Empty at plan creation — populated by Task 4 of the full-flow pipeline when plan reviews run.)
+Populated by full-flow step 4 (plan reviews, 2026-05-28). Blocker/Critical
+items were merged into the plan above. Items below are accepted as deferred —
+revisit only on user signal or follow-up plan.
+
+**Design review (deferred):**
+
+- **D-S1.** Source chip in SPOT header — reusing `--source-hogaplay-*` / `--source-kis-live-*` tokens to mirror replay segment chips. Optional visual closing of "what time + what source." Defer until source-fallback frequency justifies the extra surface.
+- **D-S2.** Add a regression assertion in `LiveSidebar.test.tsx` comparing `data-testid="total-qty-bar-masked"` className to replay's snapshot for cross-page mask continuity. Cheap; revisit if visual drift between pages shows up.
+- **D-S3.** 60–80ms grace before `clearCursor()` on mouse leave to swallow skim flicker. Measure first — premature without observed pain.
+- **D-C3-policy.** First-hover empty card flash during `useSpot` 30ms debounce: plan accepts the flash. **Rationale:** Task 14b's `available_from` hint covers the most common "no data here" path; flash itself is brief (≤30ms + RTT) and within hover-noise threshold. If users report flicker, switch to opacity-fade transition on the cards' container (cheap CSS-only patch) before considering the more invasive "dim latest data while spot loads" dual-state render.
+- **D-N1.** Header `gap: var(--space-xs)` (5px) — current plan; switch to `--space-sm` (8px / `gap-2`) if alignment with `LiveStatusBar` becomes desirable.
+- **D-N2.** `justify-content: space-between` already in plan (merged from B2) — no follow-up.
+
+**Eng review (deferred):**
+
+- **E-S1.** Task 14 still rewrites ~150 lines in one task. Split into 14a (header SPOT/LIVE toggle) and 14b (cursor-branched data wiring + Auction Mask) if a follow-up agent finds the diff hard to review. Plan keeps it together because the two pieces share the same prop interface and split would force two `LiveSidebar.tsx` edits.
+- **E-S2.** Three hooks duplicate cursor/sourcePref/bucket-align preamble. Intentional — mirrors replay's `useCursor.ts` pattern. Extract to a helper only when a 4th hook lands.
+- **E-S3.** Existing `frontend/src/state/useAuctionMaskActive.ts` wraps `axis.inClosingAuctionWindow`. Plan inlines for clarity; revisit if a 3rd consumer reads the same predicate.
+- **E-S4.** Task 8 "no-op rerender" test depends on the early-return guard inside `setCursor`. Code comment in store added; if a future refactor drops the guard the test catches it.
+- **E-N1, N2, N3.** Cosmetic — fold into simplify step (full-flow step 8).
+- **E-S5 (new from C1 ack).** Wire replay's `useBrokerSeriesForDay` to send `source_pref` for full ADR-0039 alignment across pages. Out of scope this round.
