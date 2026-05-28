@@ -226,6 +226,30 @@ def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
     assert meta["row_counts"]["brokers"] == 1  # snapshot count, not row count
 
 
+def test_promote_one_archive_move_regression(tmp_path: Path) -> None:
+    """eng-review Suggestion #6 — promote_one refactor 후에도 archive 이동 유지."""
+    import asyncio
+    from hoga.live.promote import promote_pending
+    from datetime import datetime, timezone, timedelta
+
+    kst = timezone(timedelta(hours=9))
+    yesterday = (datetime.now(kst) - timedelta(days=1)).strftime("%Y%m%d")
+    jsonl = tmp_path / "live" / yesterday / "003490.jsonl"
+    jsonl.parent.mkdir(parents=True, exist_ok=True)
+    jsonl.write_text(json.dumps({
+        "t_ms": 1, "kind": "ob",
+        "payload": {"bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0},
+    }) + "\n")
+
+    asyncio.run(promote_pending(tmp_path))
+
+    # parquet 생성
+    assert (tmp_path / "parquet" / yesterday / "003490" / "kis_live" / "meta.json").exists()
+    # archive 이동 — 핵심 회귀
+    assert not jsonl.exists()
+    assert (tmp_path / "live" / "_archive" / yesterday / "003490.jsonl").exists()
+
+
 def test_parse_jsonl_to_records_skips_torn_line(tmp_path: Path, caplog) -> None:
     jsonl = tmp_path / "in.jsonl"
     good = json.dumps({"t_ms": 1, "kind": "ob", "payload": {
@@ -554,6 +578,34 @@ async def test_promote_today_returns_when_jsonl_missing(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_promote_today_midnight_race_picks_today_once(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """eng-review Blocker 1 — today_kst를 함수 진입 시 한 번만 evaluate.
+
+    promote_today 실행 중 자정이 지나도 같은 today를 계속 사용. 다음 사이클이
+    새 today를 picking.
+    """
+    from hoga.live import promote as promote_mod
+
+    # 첫 호출 시 5/27, 두 번째 호출 시 5/28을 반환하는 mock
+    dates = iter(["20260527", "20260528"])
+    monkeypatch.setattr(promote_mod, "_today_kst_yyyymmdd", lambda: next(dates))
+
+    jsonl = tmp_path / "live" / "20260527" / "003490.jsonl"
+    _write_jsonl(jsonl, [_ob_event(1779800000000)])
+
+    # 첫 호출 — 5/27 처리
+    await promote_today(tmp_path, code="003490")
+    assert (tmp_path / "parquet" / "20260527" / "003490" / "kis_live" / "meta.json").exists()
+
+    # 두 번째 호출 — 5/28 (jsonl 없으므로 noop)
+    await promote_today(tmp_path, code="003490")
+    # 5/28 parquet 안 만들어짐 (jsonl 없으므로)
+    assert not (tmp_path / "parquet" / "20260528" / "003490").exists()
+
+
+@pytest.mark.asyncio
 async def test_promote_today_does_not_create_candles_parquet(tmp_path: Path) -> None:
     """ADR-0040/0043 invariant — promote_today는 candles.parquet 안 만듦.
 
@@ -577,7 +629,7 @@ async def test_promote_today_does_not_create_candles_parquet(tmp_path: Path) -> 
 Run: `uv run pytest tests/unit/live/test_promote_today.py -v`
 Expected: 6 errors — `ImportError: cannot import name 'promote_today'`
 
-- [ ] **Step 3: 구현 — `promote_today` 추가**
+- [ ] **Step 3: 구현 — `promote_today` 추가 (midnight race fix 포함)**
 
 `hoga/live/promote.py`에 `promote_one` 함수 위에 추가 (또는 `promote_pending` 위쪽):
 
@@ -595,11 +647,19 @@ async def promote_today(data_dir: Path, *, code: str) -> None:
       - archive 이동 안 함 (jsonl 계속 polling 중)
       - parquet 파일들은 atomic_write_parquet으로 원자 교체
 
+    Midnight race protection (eng-review Blocker 1):
+      - today_kst를 함수 진입 시점에 한 번만 evaluate.
+      - 그 시점 이후 자정이 지나도 이 사이클은 "yesterday" jsonl을 처리.
+      - 다음 사이클(5분 후)이 새 today_kst를 picking → 어제는 Daily Promotion 담당.
+      - 자정 직후 5분 windows에서 한 사이클이 늦게 끝나도 promote_pending은
+        today-skip 가드(Task 4)로 그 jsonl 안 건드림.
+
     Candles invariant (ADR-0040): snapshots/trades/brokers.parquet만 생성.
     candles는 Live Candle Backfill의 별도 캐시가 담당하므로 절대 생성하지 않는다.
     """
     from hoga.api._atomic_write import atomic_write_parquet, atomic_write_json
 
+    # CRITICAL: today_kst를 한 번만 evaluate해서 자정 race 회피
     today = _today_kst_yyyymmdd()
     jsonl_path = data_dir / "live" / today / f"{code}.jsonl"
     parquet_root = data_dir / "parquet"
@@ -650,7 +710,13 @@ async def promote_today(data_dir: Path, *, code: str) -> None:
         "live.today_promote.done code=%s date=%s row_counts=%s elapsed_ms=%d",
         code, today, meta["row_counts"], elapsed,
     )
+
+    # design-review B2 — 사용자가 /api/live/status에서 마지막 promote 시각 확인 가능
+    from hoga.live import lifecycle
+    lifecycle.record_today_promote_success(code, int(time.time() * 1000))
 ```
+
+(`lifecycle.record_today_promote_success` 헬퍼는 Task 5에 함께 추가됨 — 단순한 dict 갱신 함수)
 
 추가로 파일 상단 import에 `time`이 이미 있는지 확인 (없으면 추가).
 
@@ -829,14 +895,35 @@ Expected: `ImportError: cannot import name 'get_active_codes'`
 `hoga/live/lifecycle.py`에 `get_status` 근처(line 112 부근) 다음 추가:
 
 ```python
+# design-review B2 — last successful promote_today timestamps (in-memory, per code)
+_today_promote_last_ms: dict[str, int] = {}
+
+
+def record_today_promote_success(code: str, t_ms: int) -> None:
+    """Called by promote_today on success; surfaced via LiveStatus."""
+    _today_promote_last_ms[code] = t_ms
+
+
+def get_today_promote_last_ms() -> dict[str, int]:
+    """Snapshot of last successful Today Promotion epoch_ms per code."""
+    return dict(_today_promote_last_ms)
+
+
 def get_active_codes() -> list[str]:
     """Return the currently active watchlist codes the poller is iterating.
 
-    Empty list if poller hasn't started or has stopped. Used by
-    `start_today_promoter` (ADR-0043) to know which codes' jsonl to
-    promote each cycle — the accessor is the single source of truth so
-    watchlist mutations through the lifecycle layer propagate to Today
-    Promotion automatically on the next poller restart.
+    Empty list if poller hasn't started or has stopped.
+
+    **Contract (eng-review Blocker 2)**: callers receive a snapshot at call
+    time — the accessor reads `_state.watchlist_codes` synchronously. The
+    `start_today_promoter` task (ADR-0043) calls this each cycle (every
+    `interval_s` seconds), so watchlist mutations through `start_live_poller`
+    (which rebuilds `_state`) **propagate immediately** to the next cycle —
+    no caching layer, no closure capture of stale codes.
+
+    If the watchlist changes mid-cycle and you don't want to wait for the
+    current cycle to drain, call `start_live_poller` again (it's idempotent
+    + already restarts the poller task).
     """
     return list(_state.watchlist_codes)
 ```
@@ -957,6 +1044,36 @@ async def test_today_promoter_survives_cycle_exception(
 
 
 @pytest.mark.asyncio
+async def test_today_promoter_picks_up_watchlist_mutations_per_cycle(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """eng-review Blocker 2 — get_active_codes는 매 cycle마다 호출돼서 watchlist 변경을 즉시 반영."""
+    calls: list[str] = []
+
+    async def fake_promote(data_dir, *, code):
+        calls.append(code)
+
+    monkeypatch.setattr("hoga.live.lifecycle.promote_today", fake_promote)
+
+    codes_list = ["003490"]
+    def dynamic_codes() -> list[str]:
+        return list(codes_list)  # mutable closure
+
+    task = await start_today_promoter(
+        data_dir=tmp_path,
+        get_active_codes=dynamic_codes,
+        interval_s=0.05,
+    )
+    await asyncio.sleep(0.07)  # 1+ cycle with original list
+    codes_list.append("058610")  # mutate mid-loop
+    await asyncio.sleep(0.12)  # 2+ more cycles with mutated list
+    await stop_today_promoter(task)
+
+    assert "003490" in calls
+    assert "058610" in calls  # mutation propagated within seconds, no restart needed
+
+
+@pytest.mark.asyncio
 async def test_today_promoter_empty_codes_no_promote_calls(
     tmp_path: Path, monkeypatch,
 ) -> None:
@@ -1071,6 +1188,31 @@ git commit -m "feat(live.lifecycle): add start_today_promoter task (ADR-0043)"
 - [ ] **Step 2: 현재 상태 확인 (skip)**
 
 (env 변수가 없으니 기본 동작 그대로)
+
+- [ ] **Step 2.5: LiveStatus 모델 확장 (design-review B2)**
+
+`hoga/live/lifecycle.py`의 `LiveStatus` model에 필드 추가:
+
+```python
+class LiveStatus(BaseModel):
+    # ... 기존 필드들
+    today_promote_last_ms: dict[str, int] = Field(
+        default_factory=dict,
+        description="code → last successful promote_today epoch_ms (ADR-0043)",
+    )
+```
+
+`get_status()` 함수에서 `_today_promote_last_ms` 포함하도록:
+
+```python
+def get_status() -> LiveStatus:
+    return LiveStatus(
+        # ... 기존 필드들
+        today_promote_last_ms=get_today_promote_last_ms(),
+    )
+```
+
+`reset_for_tests()`에 `_today_promote_last_ms.clear()` 추가.
 
 - [ ] **Step 3: 구현 — `hoga/api/app.py` 변경**
 
@@ -1733,4 +1875,26 @@ Expected: 모두 통과.
 - [ ] Task 9: 프런트 `buildLiveBundle` dedup + 3 단위 테스트
 - [ ] Task 10: 통합 수동 검증
 
-**총 신규 테스트**: ~27개 (백엔드 22 + 프런트 3 + 통합 검증 2)
+**총 신규 테스트**: ~30개 (백엔드 25 + 프런트 3 + 통합 검증 2)
+
+---
+
+## Deferred review notes
+
+이 plan에 반영하지 않은 review suggestion / nit들 — landing 후 follow-up issue로 처리.
+
+### Eng review
+
+- **Suggestion #3** — 슬라이스 빌더의 `FileNotFoundError` 처리 회귀: Task 8에 4개 builder 각각 "missing parquet returns empty slice, no exception" 단위 테스트 추가 권장. 현재 plan은 source-aware 시나리오만 다룸. 첫 빈 cycle (오늘 polling 직후 atomic_write_parquet이 빈 리스트로 unlink) 케이스에서 `/api/range`가 500 안 내는지 확인 필요.
+- **Suggestion #5** — Task 2 step 3 (`promote_one` 100 LOC 리팩터)와 Task 8 step 3 (4개 signature 동시 변경)는 5분 단위를 넘어선다. bisect 용이성을 위해 task 분할 고려. 현재 plan은 한 commit에 모음 — fix-forward 시 git revert 단위가 큼.
+- **Suggestion #7** — `atomic_write_parquet`의 `os.replace` 실패 시 tempfile leak. 크로스 파일시스템 케이스에서 발생 가능. 현재 구현은 try/except로 cleanup하지만 `os.replace`만 별도 wrap 안 함. 운영 중 디스크 bloat 신호 보일 때 fix.
+- **Nit #8** — Task 7의 step 1/2가 "skip / optional"이라 TDD 5-step 패턴 깨짐. lifespan smoke test (`app.state.today_promoter_task` 존재 + cancel 확인) 추가하면 정합성 회복.
+- **Nit #9** — Task 9의 dedup이 `points[-1].t`(last)를 사용. backend가 정렬한다는 invariant 가정. unsorted past input 회귀 테스트 추가하면 명시적.
+- **Nit #10** — Task 6의 timing-based 테스트 (`asyncio.sleep(0.18)`)는 slow CI에서 flaky 가능. event-driven assertion으로 교체 권장.
+
+### Design review
+
+- **Suggestion S1** — 빈 vs 에러 vs sparse 호가 패널 상태 시각 구분: `<panel-empty-state>` "오늘 호가 없음 · 09:00 시작", `<panel-error-state>` retry 버튼. 현재 plan은 frontend UI 변경 없음 정책이라 미반영. 사용자가 헷갈리는 incident 보일 때 별도 spec.
+- **Suggestion S2** — 차트 첫 mount 시 `fitContent`가 오늘 끝으로 잡혀 5/27 호가가 off-screen일 수 있음 (이전 진단 회귀 위험). 현재는 promote_today + source-aware fix로 오늘에도 호가 있어서 자연 해결되지만, 일부 종목/날짜에선 여전히 일어날 수 있음. visible-range 명시 설정은 별도 fix.
+- **Nit N1** — boundary minute에서 SSE가 lag되면 indicator 1 bar plateau — cosmetic, 알려진 동작으로 문서화만.
+- **Nit N2** — Task 9에서 today segment의 `source='kis_live'` 하드코딩. 미래 multi-source-today를 위해 주석 강화 권장.

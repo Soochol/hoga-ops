@@ -335,7 +335,20 @@ const todaySegments: RangeSegment[] =
 
 ### 6.2 UI
 
-변경 없음. Source 선택은 이미 [SettingsModal.tsx:149-275](../../frontend/src/replay/SettingsModal.tsx#L149)에 존재하고, `useSourcePreferenceStore` 글로벌이라 `/live`도 자동 적용된다.
+변경 없음. Source 선택은 이미 [SettingsModal.tsx:149-275](../../frontend/src/replay/SettingsModal.tsx#L149)에 존재하고, `useSourcePreferenceStore` 글로벌이라 `/live`도 **이미 통합되어 있다** — `useLiveBundle`이 `useRange`([frontend/src/api/range.ts:18](../../frontend/src/api/range.ts#L18))를 호출하고 `useRange`가 `useSourcePreferenceStore`에서 자동으로 `source_pref`를 전달한다. 따라서 `/live`의 **과거 영역 호가 지표**(`pastBundle`에서 오는 부분)는 source preference를 따른다. **오늘 영역**(SSE buffer로 incremental 채워지는 부분)은 정의상 `kis_live` 한 source만 존재하므로 source preference 효과가 없는 게 자연스럽다 — 사용자 mental model: "오늘은 어차피 KIS만 있고, 어제 이전은 내가 고른 source".
+
+### 6.3 사용자 신호 — `last_promoted_at`
+
+design-review의 "promote_today가 실패해도 사용자가 모름" 우려를 backend-only 변경으로 해결: `GET /api/live/status` 응답에 종목별 마지막 promote 시각 추가. UI 변경 없이 디버그/관측 surface 확보.
+
+```python
+# hoga/live/lifecycle.py — LiveStatus model 확장
+class LiveStatus(BaseModel):
+    ...
+    today_promote_last_ms: dict[str, int] = Field(default_factory=dict)  # code → last successful promote_today epoch ms
+```
+
+`promote_today` 성공 시 in-memory dict 갱신. 실패 시 갱신 안 함 → 사용자가 `/api/live/status`로 직접 진단 가능.
 
 ## 7. 예외 처리 표
 
