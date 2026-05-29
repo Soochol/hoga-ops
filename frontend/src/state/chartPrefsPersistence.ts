@@ -46,17 +46,11 @@ export function attachChartPrefsPersistence(store: typeof useChartPrefsStore): (
   return attachPersistence(store, {
     storageKey: CHART_PREFS_KEY,
     debounceMs: WRITE_DEBOUNCE_MS,
-    toSnapshot: (s) => {
-      const {
-        setToggle: _setToggle,
-        setNumericPref: _setNumericPref,
-        resetToDefaults: _resetToDefaults,
-        ...prefs
-      } = s;
-      void _setToggle;
-      void _setNumericPref;
-      void _resetToDefaults;
-      return prefs;
-    },
+    // Derive the snapshot from the registry so new action methods on the store
+    // don't need an explicit ignore here — only registry-defined fields persist.
+    toSnapshot: (s) =>
+      Object.fromEntries(
+        Object.keys(DEFAULT_PREFS).map((k) => [k, s[k as keyof ChartViewPrefs]]),
+      ) as ChartViewPrefs,
   });
 }

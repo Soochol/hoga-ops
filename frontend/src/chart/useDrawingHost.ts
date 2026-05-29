@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState, type RefObject } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
-import type { Drawing, PaneId } from '../chart/drawing/types';
-import { priceToCanvasY, realMsToCanvasX } from '../chart/drawing/chartCoordinates';
+import type { Drawing, PaneId } from './drawing/types';
+import { priceToCanvasY, realMsToCanvasX } from './drawing/chartCoordinates';
 import { useDrawingsStore } from '../state/drawings';
 
-// Panel-anchor offsets — kept in sync with ChartStage's values so that
-// drawing-property-panel placement is identical between /replay and /live
-// during the Phase E → G migration window. See ADR-0032.
+// Panel-anchor offsets used by DrawingPropertyPanel positioning. See ADR-0032.
 const PANEL_Y_OFFSET = -38;
 const PANEL_X_OFFSET_PENCIL = 0;
 const PANEL_X_OFFSET_TRENDLINE = -8;

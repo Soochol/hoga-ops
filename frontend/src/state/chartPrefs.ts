@@ -55,14 +55,15 @@ export function categoryOf(
  * Declarative registry of integer numeric prefs surfaced in the Settings
  * modal. Sister of `CHART_TOGGLES`: adding a pref = one entry here, and
  * (a) the `ChartViewPrefs` type field, (b) `DEFAULT_PREFS` value, (c) the
- * generic store setter (`setNumericPref` in tabs.ts), (d) `mergePrefs`
- * validation in tabsPersistence.ts, and (e) the `NumericPrefRow` render
- * in SettingsModal.tsx all derive from this list — no per-pref code in
- * any of those modules.
+ * `setNumericPref` setter on `useChartPrefsStore`, (d) `mergePrefs`
+ * validation in `chartPrefsPersistence.ts`, and (e) the `NumericPrefRow`
+ * render in `LiveSettingsModal.tsx` all derive from this list — no
+ * per-pref code in any of those modules.
  *
- * `enabledBy` (optional): when set, the SettingsModal dims and disables
- * the row when the named toggle is off — the value is preserved, the
- * pref is just inert. The projector that reads the pref is responsible
+ * `enabledBy` (optional): when set, `LiveSettingsModal` dims and disables
+ * the row when the named toggle is off and renders it indented beneath
+ * its gating toggle. The value is preserved while disabled. The projector
+ * that reads the pref is responsible
  * for honoring the same toggle (the pref alone is not load-bearing).
  */
 export type NumericPrefDef = {
@@ -139,7 +140,7 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set) => ({
  * Fine-grained: re-renders only when the selected slice changes (by
  * Zustand's default `Object.is` equality). Use this in chart components
  * and projectors instead of reading the whole prefs object — RatioPane
- * shouldn't re-render when the user flips `volumeProfileMode`.
+ * shouldn't re-render when the user flips `ratioOutlierThreshold`.
  *
  * Thin wrapper over `useChartPrefsStore` preserved so existing chart
  * projectors keep their `useActivePrefs(selector)` call shape.

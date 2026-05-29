@@ -35,7 +35,7 @@ import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
 import type { PaneId } from '../chart/drawing/types';
-import { useDrawingHost } from './useDrawingHost';
+import { useDrawingHost } from '../chart/useDrawingHost';
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],

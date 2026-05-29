@@ -1,12 +1,6 @@
-// frontend/src/live/LiveDrawingMenu.tsx
-//
 // Drawing Tool picker. Reads from the central `TOOLS` registry in
 // `chart/drawing/tools.ts` — adding a new tool there automatically
 // adds it to the menu (label + glyph are owned by the spec).
-//
-// Moved from `replay/DrawingMenu.tsx` in Phase E of the /replay-removal
-// migration (CONTEXT.md "Phase E"). replay/Toolbar still imports it via
-// the same default export until Phase G deletes the replay surface.
 
 import { useCallback, useRef, useState } from 'react';
 import { useDrawingsStore } from '../state/drawings';

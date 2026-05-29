@@ -1,10 +1,9 @@
-import { useEffect } from 'react';
+import { Fragment, useEffect } from 'react';
 import {
   useChartPrefsStore,
   CHART_TOGGLES,
   CHART_NUMERIC_PREFS,
   categoryOf,
-  type ChartToggleKey,
 } from '../state/chartPrefs';
 import { SOURCE_OPTIONS } from '../state/sourcePreference';
 import ToggleRow from './settings/ToggleRow';
@@ -51,42 +50,35 @@ export default function LiveSettingsModal({ onClose }: Props) {
           </button>
         </div>
         <div className="px-5 py-4">
-          {/* Group 1: standalone toggles (each on its own row) */}
-          {CHART_TOGGLES.filter((t) => categoryOf(t) === 'chart' && t.key === 'auctionWindowMask').map((toggle) => {
-            const key: ChartToggleKey = toggle.key;
+          {/* Each chart-category toggle is its own group; numeric prefs gated by
+              `enabledBy` render indented under their parent toggle (registry-driven —
+              adding a new toggle is one entry in CHART_TOGGLES). */}
+          {CHART_TOGGLES.filter((t) => categoryOf(t) === 'chart').map((toggle, idx) => {
+            const gatedNumerics = CHART_NUMERIC_PREFS.filter((p) => p.enabledBy === toggle.key);
             return (
-              <ToggleRow
-                key={key}
-                label={toggle.label}
-                description={toggle.description}
-                checked={prefs[key]}
-                onToggle={() => setToggle(key, !prefs[key])}
-                testId={`settings-toggle-${key}`}
-              />
+              <Fragment key={toggle.key}>
+                {idx > 0 && <div className="border-b border-border my-2" />}
+                <ToggleRow
+                  label={toggle.label}
+                  description={toggle.description}
+                  checked={prefs[toggle.key]}
+                  onToggle={() => setToggle(toggle.key, !prefs[toggle.key])}
+                  testId={`settings-toggle-${toggle.key}`}
+                />
+                {gatedNumerics.length > 0 && (
+                  <div className="ml-4">
+                    {gatedNumerics.map((def) => (
+                      <NumericPrefRow key={def.key} def={def} />
+                    ))}
+                  </div>
+                )}
+              </Fragment>
             );
           })}
-          {/* Divider between standalone toggles and the filter+numeric group */}
-          <div className="border-b border-border my-2" />
-          {/* Group 2: ratio outlier filter — toggle + indented numeric (visual subordination via ml-4 on the numeric row) */}
-          {CHART_TOGGLES.filter((t) => categoryOf(t) === 'chart' && t.key === 'ratioOutlierFilterEnabled').map((toggle) => {
-            const key: ChartToggleKey = toggle.key;
-            return (
-              <ToggleRow
-                key={key}
-                label={toggle.label}
-                description={toggle.description}
-                checked={prefs[key]}
-                onToggle={() => setToggle(key, !prefs[key])}
-                testId={`settings-toggle-${key}`}
-              />
-            );
-          })}
-          <div className="ml-4">
-            {CHART_NUMERIC_PREFS.map((def) => (
-              <NumericPrefRow key={def.key} def={def} />
-            ))}
-          </div>
-          {/* Divider before Source Preference (its sub-heading already visually separates, but a divider strengthens the group boundary) */}
+          {/* Ungated numerics (none today) would render here without indentation */}
+          {CHART_NUMERIC_PREFS.filter((p) => p.enabledBy === undefined).map((def) => (
+            <NumericPrefRow key={def.key} def={def} />
+          ))}
           <div className="border-b border-border my-2" />
           <div style={{ marginTop: 'var(--space-md)' }}>
             <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
