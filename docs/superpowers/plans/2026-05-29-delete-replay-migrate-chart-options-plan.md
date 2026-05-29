@@ -749,6 +749,9 @@ Expected: FAIL (no LiveSettingsModal).
 
 ### Task C5: Implement LiveSettingsModal
 
+> **Design review (Blocker C2): visual group hierarchy**
+> Modal hosts 3 logical groups: (1) 동시호가 마스킹 토글 단독, (2) 호가비 필터 토글 + 종속 numeric input, (3) 데이터 소스 라디오. flat list 그대로 두면 등가 무게로 읽혀 사용자가 "filter+numeric이 한 묶음"이라는 사실을 시각적으로 인지하기 어렵다. **그룹 사이 `border-b border-border` divider** + 데이터 소스 그룹은 sub-heading "기본 데이터 소스 (모든 차트 공통)"이 이미 분리자 역할을 함 (현 코드 그대로). numeric input은 들여쓰기 ml-4 또는 visual indentation으로 호가비 토글에 종속됨을 시각화. 아래 Step 1 코드 블록에 반영됨.
+
 - [ ] **Step 1: Create `frontend/src/live/LiveSettingsModal.tsx`**
 
 ```tsx
@@ -805,7 +808,8 @@ export default function LiveSettingsModal({ onClose }: Props) {
           </button>
         </div>
         <div className="px-5 py-4">
-          {CHART_TOGGLES.filter((t) => categoryOf(t) === 'chart').map((toggle) => {
+          {/* Group 1: standalone toggles (each on its own row) */}
+          {CHART_TOGGLES.filter((t) => categoryOf(t) === 'chart' && t.key === 'auctionWindowMask').map((toggle) => {
             const key: ChartToggleKey = toggle.key;
             return (
               <ToggleRow
@@ -818,9 +822,29 @@ export default function LiveSettingsModal({ onClose }: Props) {
               />
             );
           })}
-          {CHART_NUMERIC_PREFS.map((def) => (
-            <NumericPrefRow key={def.key} def={def} />
-          ))}
+          {/* Divider between standalone toggles and the filter+numeric group */}
+          <div className="border-b border-border my-2" />
+          {/* Group 2: ratio outlier filter — toggle + indented numeric (visual subordination via ml-4 on the numeric row) */}
+          {CHART_TOGGLES.filter((t) => categoryOf(t) === 'chart' && t.key === 'ratioOutlierFilterEnabled').map((toggle) => {
+            const key: ChartToggleKey = toggle.key;
+            return (
+              <ToggleRow
+                key={key}
+                label={toggle.label}
+                description={toggle.description}
+                checked={prefs[key]}
+                onToggle={() => setToggle(key, !prefs[key])}
+                testId={`settings-toggle-${key}`}
+              />
+            );
+          })}
+          <div className="ml-4">
+            {CHART_NUMERIC_PREFS.map((def) => (
+              <NumericPrefRow key={def.key} def={def} />
+            ))}
+          </div>
+          {/* Divider before Source Preference (its sub-heading already visually separates, but a divider strengthens the group boundary) */}
+          <div className="border-b border-border my-2" />
           <div style={{ marginTop: 'var(--space-md)' }}>
             <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
               기본 데이터 소스 <span style={{ color: 'var(--fg-dimmer)' }}>(모든 차트 공통)</span>
@@ -860,6 +884,12 @@ Expected: PASS (6/6).
 
 ### Task C6: Add ⚙ button to LiveToolbar
 
+> **Design review (Blocker C1): icon stroke consistency**
+> 기존 `[+ 보조지표]` 버튼의 SVG는 `stroke-width="2.5"`. 신규 `[⚙ 설정]` 버튼의 SVG도 **stroke-width=2.5로 통일** 필요 — 같은 toolbar에서 stroke가 다르면 시각 weight 불일치. 아래 SVG가 이미 수정된 상태.
+
+> **Design review (Critical C3): toolbar overflow at narrow viewport**
+> Toolbar 요소가 [1m] [3m] [5m] [10m] [15m] [30m] [1d] [1w] [1mo] (9 timeframes) + [보조지표] [설정] [그리기] (3 actions) = 최대 12 elements. 좁은 viewport (e.g. < 720px wide) 에서 가로 overflow 발생 위험. **`overflow-x-auto` + `flex-nowrap`** 으로 가로 스크롤 허용 (모달이 아닌 toolbar 행이므로 wrap 보다 horizontal scroll이 더 예측 가능). 아래 Step 1에 반영.
+
 - [ ] **Step 1: Edit `frontend/src/live/LiveToolbar.tsx`**
 
 Update Props + add second button mirroring `[+ 보조지표]` shape:
@@ -878,7 +908,7 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings }: Props) {
   return (
     <div
       data-testid="live-toolbar"
-      className="flex items-center gap-2 border-b px-3"
+      className="flex items-center gap-2 border-b px-3 overflow-x-auto flex-nowrap"
       style={{
         height: 'var(--h-toolbar)',
         borderColor: 'var(--border)',
@@ -941,7 +971,7 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings }: Props) {
           fontSize: 'var(--text-xs)',
         }}
       >
-        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
@@ -1878,3 +1908,41 @@ Within Phase A: A1→A2 sequential (TDD). A3→A4 sequential (each builds on the
 - Task E1: if `RangeSeriesPane` does not yet expose `onSeriesReady`, the prop signature decision (callback vs. ref-prop) may have alternatives — flag if unclear.
 - Task E2: `DrawingOverlay`'s `paneSeries` prop type may want a function getter vs. a Map; adapt to what exists.
 - Task K1 step 4: leftover "Replay" prose may include nuanced phrasings — surface ambiguous cases instead of guessing.
+
+---
+
+## Deferred review notes (Suggestion / Nit)
+
+발견된 디자인 이슈 중 Blocker/Critical로 분류된 항목은 이미 본 plan에 자동 반영됨. 아래는 implementation 또는 후속 polish 단계에서 다룰 가벼운 개선 사항:
+
+### S1 — 모달/버튼 키보드 focus ring 명시 (a11y nit)
+LiveSettingsModal의 ToggleRow / NumericPrefRow / SourcePreferenceRadio / 닫기 버튼이 Tab으로 순회될 때 focus indicator가 명시되지 않음. DESIGN.md `--accent` 토큰 기반 2px outline 또는 `box-shadow` ring 적용 권장 (e.g. `focus-visible:ring-2 ring-accent`). 키보드 사용자에게 현재 위치를 알리는 표준 패턴.
+
+### S2 — LiveDrawingMenu의 affordance 형태 (interaction nit)
+현재 plan은 `LiveDrawingMenu`를 "self-contained, read the file first" 로 implementation 단계에 위임. Replay의 DrawingMenu가 dropdown인지 inline buttons인지에 따라 toolbar 시각 weight가 달라지므로, Task E3 진행 시 ① 현재 형태 보존 vs ② [⚙ 설정] 버튼과 같은 단일 trigger + popover 패턴으로 통일 둘 중 결정 필요. 통일하는 게 시각 일관성에 좋음.
+
+### S3 — 미래 settings 카테고리 추가 대비 헤더 카피
+현재 모달 헤더는 "차트 설정". 향후 보조지표 외 다른 카테고리가 추가되어 사이드바 패턴으로 돌아갈 경우 헤더가 "설정"으로 다시 좁아져야 함. 본 변경은 scope 밖이지만, 컴포넌트 명은 `LiveSettingsModal` (general)로 한 것이 다행 — 향후 카테고리 추가 시 헤더 카피만 갱신.
+
+### S4 — `[+ 보조지표]` 라벨의 `+` 기호 의미 검토
+현재 라벨 `+ 보조지표`의 `+`는 "추가/열기" 의미로 해석 가능하나, IndicatorPanel을 여는 동작에 `+`가 직관적이지 않을 수 있음 (보통 + 는 "create new"). `[⚙ 설정]` 추가로 toolbar action 버튼이 3개 되면 일관성 검토 가치 있음. 본 plan scope 밖이지만 후속 design polish 후보.
+
+---
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR (PLAN) | score: 6/10 → 9/10, 3 Blocker/Critical 자동 반영, 4 Suggestion deferred |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | scope=frontend, full-flow가 design-review만 트리거 |
+| Eng Review | `/plan-eng-review` | Architecture (required) | 0 | — | scope=frontend, full-flow 정책상 design-review만 실행 |
+| DX Review | `/plan-devex-review` | Developer experience | 0 | — | 해당 없음 |
+
+**Blocker/Critical 자동 반영**:
+- C1: LiveToolbar `[⚙ 설정]` SVG `strokeWidth` 2 → 2.5로 통일 (`[+ 보조지표]`와 일치)
+- C2: LiveSettingsModal에 3그룹 visual divider (`border-b border-border my-2`) + 호가비 numeric input ml-4 들여쓰기로 종속 시각화
+- C3: LiveToolbar `overflow-x-auto flex-nowrap` — 12-element 폭에서 narrow viewport 가로 스크롤 허용
+
+**Suggestion/Nit (Deferred)**: S1 focus ring, S2 LiveDrawingMenu 형태 결정, S3 헤더 카피 미래 대비, S4 `+ 보조지표` 라벨 검토
+
+**VERDICT**: DESIGN CLEARED — 3 blocker 자동 반영 후 plan 점수 9/10. Implementation 진행 가능.
