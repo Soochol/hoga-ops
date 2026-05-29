@@ -62,6 +62,7 @@ export default function AuctionWindowOverlay({ chart, axis }: Props) {
   return (
     <div
       ref={containerRef}
+      data-testid="auction-window-overlay"
       data-overlay="auction-window"
       className="absolute inset-0 pointer-events-none z-0"
     >

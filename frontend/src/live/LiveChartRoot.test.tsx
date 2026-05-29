@@ -123,6 +123,26 @@ describe('LiveChartRoot', () => {
     expect(screen.queryByTestId('indicator-disabled-note')).toBeNull();
   });
 
+  it('mounts AuctionWindowOverlay when bundle has segments', () => {
+    // Phase D2 regression: the auctionWindowMask toggle (default ON) must
+    // render the AuctionWindowOverlay band so the user sees visual parity
+    // with the data masking it triggers on RatioPane / FillStrength /
+    // TotalQtyBar. The overlay self-gates on useActivePrefs(auctionWindowMask)
+    // and on axis.segments.length > 0, so mounting it inside the
+    // bundle-has-segments JSX block is sufficient.
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('auction-window-overlay')).toBeTruthy();
+  });
+
   // ─────────────────────────────────────────────────────────────────────────
   // Initial-view application across (code, timeframe) and candle-count growth.
   //

@@ -31,6 +31,7 @@ import {
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
+import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -373,6 +374,13 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
           {isMinuteTimeframe(timeframe) && (
             <DayBoundaryOverlay chart={chart} axis={axis} />
           )}
+          {/* Auction-window mask shading — self-gates on
+              useActivePrefs(auctionWindowMask) (default ON) and on
+              axis.segments.length > 0, so safe on D/W/M too. Gives
+              visual parity (gray band over 15:20–15:30 KST) with the
+              data masking the same toggle applies to RatioPane /
+              FillStrength / TotalQtyBar. */}
+          <AuctionWindowOverlay chart={chart} axis={axis} />
         </>
       )}
       {dwDisabled && (
