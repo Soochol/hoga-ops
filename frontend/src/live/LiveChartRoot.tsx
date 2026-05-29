@@ -109,10 +109,10 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
 
   // Viewport policy: trading-chart standard. Initial paint shows the
   // most recent INITIAL_VISIBLE_BARS candles (so today and recent past are
-  // legible at native scale); series carries the full INITIAL_HISTORICAL_DAYS
-  // window in memory. User drags left to reveal more past — and when they
-  // drag past the leftmost loaded bar, the chunked-extension fetch fires
-  // (see lazy-fetch trigger below).
+  // legible at native scale); series carries the full
+  // initialHistoricalDaysFor(timeframe) window in memory. User drags left
+  // to reveal more past — and when they drag past the leftmost loaded bar,
+  // the chunked-extension fetch fires (see lazy-fetch trigger below).
   //
   // Without this, fitContent on a 20-day seed compresses today (≈30 1m
   // candles) into ~0.7% of the viewport — visually invisible. The whole
@@ -229,16 +229,12 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       autoSize: true,
     });
     setChart(c);
-
-    const ro = new ResizeObserver(() => {
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-      if (w > 0 && h > 0) c.resize(w, h);
-    });
-    ro.observe(el);
+    // autoSize: true already attaches lightweight-charts' own ResizeObserver
+    // to the container — an extra manual observer here just produces the
+    // "Height and width values ignored because 'autoSize' option is enabled"
+    // warning on every resize without affecting layout.
 
     return () => {
-      ro.disconnect();
       c.remove();
       setChart(null);
     };
@@ -256,11 +252,11 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // signal we actually need.
   //
   // Each trigger prepends one timeframe-sized chunk (see
-  // prefetchChunkDaysFor — minute frames ~5 trading days, daily ≈ 90
-  // calendar days, W/M jump to the 250-day cap). The 150ms trailing
-  // debounce coalesces rapid wheel / drag events into one fetch; the
-  // store's extendHistoricalRange is monotonically decreasing, so repeated
-  // negative ranges within one chunk are no-ops.
+  // prefetchChunkDaysFor — minute ~15 trading days, D = 180 calendar days
+  // (~6 months), W = 60 weeks, M = 60 months). The 150ms trailing debounce
+  // coalesces rapid wheel / drag events into one fetch; the store's
+  // extendHistoricalRange is monotonically decreasing, so repeated negative
+  // ranges within one chunk are no-ops.
   //
   // Base date: prefer the already-requested historicalFromDate over the
   // axis earliest. When a chunk lands on a holiday-only span (e.g. Lunar
