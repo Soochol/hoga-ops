@@ -30,6 +30,13 @@ KIS_KST = timezone(timedelta(hours=9))
 _BASE_REAL = "https://openapi.koreainvestment.com:9443"
 _REISSUE_COOLDOWN_MS = 60_000  # KIS: 1 issuance per minute
 
+# KIS market-division code for KOSPI/KOSDAQ stocks (single value covers both).
+# Justified by the watchlist boundary in `lifecycle.start_live_poller`, which
+# filters codes through `symbols._cache` — only KOSPI/KOSDAQ stocks reach the
+# poller. Supporting ETF/ETN/ELW would require lifting this to a per-call
+# argument derived from the symbol-master entry's `market`/`asset_class`.
+_STOCK_MRKT_DIV = "J"
+
 
 def classify_side(
     t_ms: int, prpr: int, askp: int, bidp: int
@@ -230,11 +237,25 @@ class KisClient:
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
             # 4xx/5xx from KIS — surface as KisApiError so the poller can
-            # log it once at WARN/INFO without a full traceback.
-            raise KisApiError(
-                msg_cd=f"HTTP_{e.response.status_code}",
-                msg1=e.response.text[:200],
-            ) from e
+            # log it once at WARN/INFO without a full traceback. When KIS
+            # ships a JSON body on 5xx (it sometimes does — e.g. session-
+            # window or temporarily-suspended-stock cases), preserve the
+            # upstream ``msg_cd`` next to the HTTP status so the operator
+            # log distinguishes "real gateway 5xx" from "5xx-wrapped
+            # domain error". Non-JSON bodies (HTML gateway pages, plain
+            # text) fall through to the raw-text branch unchanged.
+            upstream_msg_cd = ""
+            upstream_msg1 = e.response.text[:200]
+            try:
+                body = e.response.json()
+                if isinstance(body, dict):
+                    upstream_msg_cd = str(body.get("msg_cd", ""))
+                    upstream_msg1 = str(body.get("msg1", upstream_msg1))[:200]
+            except ValueError:
+                pass
+            http_part = f"HTTP_{e.response.status_code}"
+            msg_cd = f"{http_part}/{upstream_msg_cd}" if upstream_msg_cd else http_part
+            raise KisApiError(msg_cd=msg_cd, msg1=upstream_msg1) from e
         return self._unwrap(resp.json())
 
     def _unwrap(self, body: dict) -> dict:
@@ -258,7 +279,7 @@ class KisClient:
             path="/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
             tr_id="FHKST01010200",
             params={
-                "fid_cond_mrkt_div_code": "J",
+                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
                 "fid_input_iscd": code,
             },
         )
@@ -293,7 +314,7 @@ class KisClient:
             path="/uapi/domestic-stock/v1/quotations/inquire-time-itemconclusion",
             tr_id="FHPST01060000",
             params={
-                "fid_cond_mrkt_div_code": "J",
+                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
                 "fid_input_iscd": code,
                 "fid_input_hour_1": "153000",
             },
@@ -340,7 +361,7 @@ class KisClient:
             path="/uapi/domestic-stock/v1/quotations/inquire-member",
             tr_id="FHKST01010600",
             params={
-                "fid_cond_mrkt_div_code": "J",
+                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
                 "fid_input_iscd": code,
             },
         )
@@ -388,7 +409,7 @@ class KisClient:
         # pages. 6 calls × 120 bars = 720 rows, well past one regular session.
         for _ in range(6):
             params = {
-                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_COND_MRKT_DIV_CODE": _STOCK_MRKT_DIV,
                 "FID_INPUT_ISCD": code,
                 "FID_INPUT_HOUR_1": anchor_hhmmss,
                 "FID_INPUT_DATE_1": date_yyyymmdd,
@@ -481,7 +502,7 @@ class KisClient:
 
         for _ in range(60):
             params = {
-                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_COND_MRKT_DIV_CODE": _STOCK_MRKT_DIV,
                 "FID_INPUT_ISCD": code,
                 "FID_INPUT_DATE_1": from_yyyymmdd,
                 "FID_INPUT_DATE_2": cursor_to,
@@ -593,7 +614,7 @@ class KisClient:
             path="/uapi/domestic-stock/v1/quotations/inquire-overtime-asking-price",
             tr_id="FHPST02300400",
             params={
-                "fid_cond_mrkt_div_code": "J",
+                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
                 "fid_input_iscd": code,
             },
         )
@@ -634,7 +655,7 @@ class KisClient:
             path="/uapi/domestic-stock/v1/quotations/inquire-time-overtimeconclusion",
             tr_id="FHPST02310000",
             params={
-                "fid_cond_mrkt_div_code": "J",
+                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
                 "fid_input_iscd": code,
                 "fid_hour_cls_code": "1",
             },
