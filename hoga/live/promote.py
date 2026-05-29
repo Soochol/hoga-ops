@@ -23,6 +23,7 @@ from pathlib import Path
 
 import polars as pl
 
+from hoga.api.timeenc import unix_ms_to_hhmmssms
 from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers_parquet
 
 _log = logging.getLogger(__name__)
@@ -69,16 +70,27 @@ def _parse_jsonl_to_records(
                 )
                 continue
             kind = row.get("kind")
-            t_ms = row.get("t_ms")
+            t_ms_raw = row.get("t_ms")
+            # ADR-0049: convert Unix ms → HHMMSSmmm so the on-disk `ts_ms`
+            # column honors the ADR-0010 invariant (series-builder SQL
+            # decodes ts_ms as HHMMSSmmm via hhmmssms_to_intra_ms_sql).
+            try:
+                ts_ms_encoded = unix_ms_to_hhmmssms(date, int(t_ms_raw))
+            except (ValueError, TypeError):
+                _log.warning(
+                    "live.promote.midnight_race_skip code=%s date=%s t_ms=%s",
+                    code, date, t_ms_raw,
+                )
+                continue
             p = row.get("payload") or {}
             phase = p.get("phase", "regular")
             if kind == "ob":
                 bids = p.get("bids") or []
                 asks = p.get("asks") or []
-                # Column name must be `ts_ms` to match build_quote_ratio_slice
-                # (hoga/api/bundle.py uses hhmmssms_to_intra_ms_sql("ts_ms")).
-                # Hogaplay-promoted parquet uses ts_ms too; kis_live aligns.
-                snap: dict = {"ts_ms": t_ms, "phase": phase}
+                # ADR-0010 invariant: parquet `ts_ms` column = HHMMSSmmm packed-decimal.
+                # ADR-0049: kis_live writer converts JSONL's Unix-ms `t_ms` to
+                # HHMMSSmmm at promote time so reader-side decoding is source-uniform.
+                snap: dict = {"ts_ms": ts_ms_encoded, "phase": phase}
                 for i in range(10):
                     snap[f"bid_p{i + 1}"] = bids[i]["price"] if i < len(bids) else 0
                     snap[f"bid_q{i + 1}"] = bids[i]["qty"] if i < len(bids) else 0
@@ -89,8 +101,13 @@ def _parse_jsonl_to_records(
                 snapshots.append(snap)
             elif kind == "trade":
                 for tr in p.get("trades") or []:
+                    # Inner trade's t_ms can drift micro-seconds from the outer
+                    # tick. We use the outer ts_ms_encoded so the entire row's
+                    # encoding is uniform per cycle (drift below 1 second is
+                    # absorbed by the same HHMMSSmmm bucket). If inner-vs-outer
+                    # divergence ever matters, revisit at that signal.
                     trades.append({
-                        "ts_ms": tr.get("t_ms"),  # column name aligned with bundle query
+                        "ts_ms": ts_ms_encoded,
                         "price": tr.get("price"),
                         "qty": tr.get("qty"),
                         "side": tr.get("side"),
@@ -104,7 +121,7 @@ def _parse_jsonl_to_records(
                 broker_seq += 1
                 for rank, e in enumerate(sell[:5], start=1):
                     broker_rows.append(BrokerRow(
-                        ts_ms=int(t_ms),
+                        ts_ms=ts_ms_encoded,
                         seq=broker_seq,
                         side="sell",
                         rank=rank,
@@ -114,7 +131,7 @@ def _parse_jsonl_to_records(
                     ))
                 for rank, e in enumerate(buy[:5], start=1):
                     broker_rows.append(BrokerRow(
-                        ts_ms=int(t_ms),
+                        ts_ms=ts_ms_encoded,
                         seq=broker_seq,
                         side="buy",
                         rank=rank,

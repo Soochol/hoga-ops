@@ -17,15 +17,18 @@ from hoga.live.promote import _parse_jsonl_to_records
 
 @pytest.mark.asyncio
 async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
+    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
     from hoga.live.promote import promote_one
 
     live_root = tmp_path / "live"
     jsonl_path = live_root / "20260527" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
-    # 2 cycles worth
+    # 2 cycles worth — ADR-0049: t_ms must be a real Unix ms inside the
+    # 20260527 KST day window so the writer normalizes it to HHMMSSmmm.
+    base_t = _date_unix_ms_at_kst_midnight("20260527") + 9 * 3600 * 1000  # 09:00 KST
     lines = []
     for tick in range(2):
-        t = 1748332800000 + tick * 10_000
+        t = base_t + tick * 10_000
         lines.append(json.dumps({"t_ms": t, "kind": "ob", "payload": {
             "code": "005930", "t_ms": t,
             "asks": [{"price": 75000 + i, "qty": 100 + i} for i in range(10)],
@@ -96,6 +99,122 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
     assert entries, "query_day_series must produce entries from KIS-promoted parquet"
 
 
+def test_parse_jsonl_converts_t_ms_to_hhmmssms(tmp_path: Path) -> None:
+    """ADR-0049 — kis_live Promotion writes ts_ms as HHMMSSmmm (not Unix ms).
+
+    Live Snapshot t_ms is Unix ms per ADR-0003. Promotion writes it to ts_ms
+    column which the schema (ADR-0010) defines as HHMMSSmmm packed decimal.
+    """
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+
+    date = "20260529"
+    # 09:00:00.000 KST on 20260529 = 2026-05-29 00:00 UTC
+    # Compute Unix ms for 10:30:45.123 KST that day.
+    # 10:30:45.123 KST = 09:00:00 + 1h 30m 45s 123ms after open
+    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+    unix_ms_at_open = _date_unix_ms_at_kst_midnight(date) + 9 * 3600 * 1000  # 09:00 KST
+    sample_unix_ms = unix_ms_at_open + (1 * 3600 + 30 * 60 + 45) * 1000 + 123
+    expected_hhmmssms = 103045123  # 10:30:45.123
+
+    jsonl = tmp_path / f"{date}" / "005930.jsonl"
+    jsonl.parent.mkdir(parents=True)
+    jsonl.write_text(json.dumps({
+        "t_ms": sample_unix_ms,
+        "kind": "ob",
+        "payload": {"code": "005930", "t_ms": sample_unix_ms,
+                    "bids": [], "asks": [],
+                    "total_bid_qty": 0, "total_ask_qty": 0},
+    }) + "\n")
+
+    snapshots, trades, broker_rows, meta = _parse_jsonl_to_records(
+        jsonl, code="005930", date=date,
+    )
+
+    assert len(snapshots) == 1
+    assert snapshots[0]["ts_ms"] == expected_hhmmssms, (
+        f"Promotion writer must convert Unix ms → HHMMSSmmm. "
+        f"Got {snapshots[0]['ts_ms']}, expected {expected_hhmmssms}."
+    )
+    # Round-trip: decoding the stored value should yield the original Unix ms.
+    assert hhmmssms_to_unix_ms(date, snapshots[0]["ts_ms"]) == sample_unix_ms
+
+
+def test_parse_jsonl_converts_t_ms_for_trade_and_broker(tmp_path: Path) -> None:
+    """ADR-0049 — trade row + broker row also get HHMMSSmmm encoding.
+
+    Pins the spec §Design 1 decision to use the OUTER t_ms (not the
+    inner trade row's t_ms) so all three kinds emit a uniform ts_ms
+    per polling cycle. A future "fix" that reverts trade to
+    tr.get("t_ms") raw would silently break this; the test guards it.
+    """
+    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+
+    date = "20260529"
+    unix_ms_at_open = _date_unix_ms_at_kst_midnight(date) + 9 * 3600 * 1000  # 09:00 KST
+    sample_unix_ms = unix_ms_at_open + (1 * 3600 + 30 * 60 + 45) * 1000 + 123
+    expected_hhmmssms = 103045123
+
+    jsonl = tmp_path / date / "005930.jsonl"
+    jsonl.parent.mkdir(parents=True)
+    lines = [
+        json.dumps({"t_ms": sample_unix_ms, "kind": "trade", "payload": {
+            "trades": [{"t_ms": sample_unix_ms, "price": 100, "qty": 5,
+                        "side": 1, "side_source": "inferred"}],
+        }}),
+        json.dumps({"t_ms": sample_unix_ms, "kind": "broker", "payload": {
+            "code": "005930", "t_ms": sample_unix_ms,
+            "buy_top": [{"name": "삼성증권", "qty": 10}],
+            "sell_top": [{"name": "키움증권", "qty": 20}],
+        }}),
+    ]
+    jsonl.write_text("\n".join(lines) + "\n")
+
+    _snapshots, trades, broker_rows, _meta = _parse_jsonl_to_records(
+        jsonl, code="005930", date=date,
+    )
+    assert len(trades) == 1
+    assert trades[0]["ts_ms"] == expected_hhmmssms
+    assert len(broker_rows) == 2  # one buy + one sell
+    for br in broker_rows:
+        assert br.ts_ms == expected_hhmmssms
+
+
+def test_parse_jsonl_skips_row_outside_date_window(tmp_path: Path, caplog) -> None:
+    """ADR-0049 — t_ms that falls outside the date's KST day window is skipped.
+
+    Midnight race: Live Capture row was received just before midnight but
+    promotion runs after midnight. unix_ms_to_hhmmssms raises ValueError;
+    we drop the row + log live.promote.midnight_race_skip instead of
+    silently writing a corrupted timestamp.
+    """
+    import logging
+
+    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+
+    date = "20260529"
+    # A t_ms that belongs to the NEXT day (20260530 00:30 KST).
+    next_day_unix_ms = _date_unix_ms_at_kst_midnight(date) + 86_400_000 + 30 * 60 * 1000
+
+    jsonl = tmp_path / date / "005930.jsonl"
+    jsonl.parent.mkdir(parents=True)
+    jsonl.write_text(json.dumps({
+        "t_ms": next_day_unix_ms,
+        "kind": "ob",
+        "payload": {"bids": [], "asks": [],
+                    "total_bid_qty": 0, "total_ask_qty": 0},
+    }) + "\n")
+
+    with caplog.at_level(logging.WARNING, logger="hoga.live.promote"):
+        snapshots, trades, broker_rows, _meta = _parse_jsonl_to_records(
+            jsonl, code="005930", date=date,
+        )
+
+    assert snapshots == [], "Out-of-window row must be dropped, not encoded silently."
+    assert any(
+        "midnight_race_skip" in rec.message for rec in caplog.records
+    ), "Drop must be logged at WARNING level."
+
+
 @pytest.mark.asyncio
 async def test_promote_idempotent_skips_if_meta_exists(tmp_path: Path) -> None:
     from hoga.live.promote import promote_one
@@ -122,16 +241,19 @@ async def test_promote_idempotent_skips_if_meta_exists(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_promote_tolerates_partial_last_line(tmp_path: Path) -> None:
     """ADR-0038: a torn last line from a crash is silently dropped."""
+    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
     from hoga.live.promote import promote_one
 
     jsonl_path = tmp_path / "live" / "20260527" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
+    # ADR-0049: in-window Unix ms so promote normalizes (not midnight_race_skip).
+    t = _date_unix_ms_at_kst_midnight("20260527") + 9 * 3600 * 1000  # 09:00 KST
     full = json.dumps({
-        "t_ms": 1, "kind": "ob",
+        "t_ms": t, "kind": "ob",
         "payload": {
             "asks": [{"price": 1, "qty": 1}] * 10,
             "bids": [{"price": 1, "qty": 1}] * 10,
-            "code": "005930", "t_ms": 1,
+            "code": "005930", "t_ms": t,
             "total_ask_qty": 10, "total_bid_qty": 10,
             "phase": "regular",
         },
@@ -234,18 +356,22 @@ async def test_cleanup_archive_noop_when_dir_missing(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
+    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+
     jsonl = tmp_path / "in.jsonl"
+    # ADR-0049: in-window Unix ms for 20260528 (09:00 KST + small offsets)
+    base = _date_unix_ms_at_kst_midnight("20260528") + 9 * 3600 * 1000
     rows = [
-        {"t_ms": 1, "kind": "ob", "payload": {
+        {"t_ms": base + 1000, "kind": "ob", "payload": {
             "bids": [{"price": 26800, "qty": 879}],
             "asks": [{"price": 26850, "qty": 6141}],
             "total_bid_qty": 95085, "total_ask_qty": 102768,
         }},
-        {"t_ms": 2, "kind": "trade", "payload": {
-            "trades": [{"t_ms": 2, "price": 26850, "qty": 10, "side": 1}],
+        {"t_ms": base + 2000, "kind": "trade", "payload": {
+            "trades": [{"t_ms": base + 2000, "price": 26850, "qty": 10, "side": 1}],
             "phase": "regular",
         }},
-        {"t_ms": 3, "kind": "broker", "payload": {
+        {"t_ms": base + 3000, "kind": "broker", "payload": {
             "buy_top": [{"name": "키움", "qty": 100}],
             "sell_top": [{"name": "신한", "qty": 50}],
         }},
@@ -270,8 +396,12 @@ def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
 
 
 def test_parse_jsonl_to_records_skips_torn_line(tmp_path: Path, caplog) -> None:
+    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+
     jsonl = tmp_path / "in.jsonl"
-    good = json.dumps({"t_ms": 1, "kind": "ob", "payload": {
+    # ADR-0049: in-window Unix ms for 20260528 so the row survives encoding.
+    t = _date_unix_ms_at_kst_midnight("20260528") + 9 * 3600 * 1000
+    good = json.dumps({"t_ms": t, "kind": "ob", "payload": {
         "bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0,
     }})
     jsonl.write_text(good + "\n{ malformed\n")

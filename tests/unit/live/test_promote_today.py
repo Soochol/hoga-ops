@@ -6,6 +6,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
+from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
 from hoga.live.promote import promote_today
 
 _KST = timezone(timedelta(hours=9))
@@ -13,6 +14,11 @@ _KST = timezone(timedelta(hours=9))
 
 def _today_kst_yyyymmdd() -> str:
     return datetime.now(_KST).strftime("%Y%m%d")
+
+
+def _t_ms_for(date: str, offset_ms: int = 0) -> int:
+    """ADR-0049: Unix ms at 09:00 KST on `date` + offset (must stay in-window)."""
+    return _date_unix_ms_at_kst_midnight(date) + 9 * 3600 * 1000 + offset_ms
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -37,7 +43,7 @@ def _ob_event(t_ms: int, bid1_qty: int = 100, ask1_qty: int = 200) -> dict:
 async def test_promote_today_creates_parquet_from_jsonl(tmp_path: Path) -> None:
     today = _today_kst_yyyymmdd()
     jsonl = tmp_path / "live" / today / "003490.jsonl"
-    _write_jsonl(jsonl, [_ob_event(1779800000000)])
+    _write_jsonl(jsonl, [_ob_event(_t_ms_for(today))])
 
     await promote_today(tmp_path, code="003490")
 
@@ -54,12 +60,12 @@ async def test_promote_today_overwrites_existing(tmp_path: Path) -> None:
     today = _today_kst_yyyymmdd()
     jsonl = tmp_path / "live" / today / "003490.jsonl"
 
-    _write_jsonl(jsonl, [_ob_event(1779800000000, bid1_qty=100)])
+    _write_jsonl(jsonl, [_ob_event(_t_ms_for(today), bid1_qty=100)])
     await promote_today(tmp_path, code="003490")
 
     # 새 줄 append
     with jsonl.open("a") as f:
-        f.write(json.dumps(_ob_event(1779800010000, bid1_qty=200)) + "\n")
+        f.write(json.dumps(_ob_event(_t_ms_for(today, 10_000), bid1_qty=200)) + "\n")
 
     await promote_today(tmp_path, code="003490")
     meta = json.loads((tmp_path / "parquet" / today / "003490" / "kis_live" / "meta.json").read_text())
@@ -74,7 +80,7 @@ async def test_promote_today_overwrites_existing(tmp_path: Path) -> None:
 async def test_promote_today_does_not_move_to_archive(tmp_path: Path) -> None:
     today = _today_kst_yyyymmdd()
     jsonl = tmp_path / "live" / today / "003490.jsonl"
-    _write_jsonl(jsonl, [_ob_event(1779800000000)])
+    _write_jsonl(jsonl, [_ob_event(_t_ms_for(today))])
 
     await promote_today(tmp_path, code="003490")
 
@@ -90,7 +96,7 @@ async def test_promote_today_handles_torn_last_line(tmp_path: Path, caplog) -> N
     today = _today_kst_yyyymmdd()
     jsonl = tmp_path / "live" / today / "003490.jsonl"
     jsonl.parent.mkdir(parents=True, exist_ok=True)
-    good = json.dumps(_ob_event(1779800000000))
+    good = json.dumps(_ob_event(_t_ms_for(today)))
     jsonl.write_text(good + "\n{ partial line\n")
 
     with caplog.at_level("WARNING"):
@@ -127,7 +133,7 @@ async def test_promote_today_midnight_race_picks_today_once(
     monkeypatch.setattr(promote_mod, "_today_kst_yyyymmdd", lambda: next(dates))
 
     jsonl = tmp_path / "live" / "20260527" / "003490.jsonl"
-    _write_jsonl(jsonl, [_ob_event(1779800000000)])
+    _write_jsonl(jsonl, [_ob_event(_t_ms_for("20260527"))])
 
     # 첫 호출 — 5/27 처리
     await promote_today(tmp_path, code="003490")
@@ -149,7 +155,7 @@ async def test_promote_today_does_not_create_candles_parquet(tmp_path: Path) -> 
     """
     today = _today_kst_yyyymmdd()
     jsonl = tmp_path / "live" / today / "003490.jsonl"
-    _write_jsonl(jsonl, [_ob_event(1779800000000)])
+    _write_jsonl(jsonl, [_ob_event(_t_ms_for(today))])
 
     await promote_today(tmp_path, code="003490")
 

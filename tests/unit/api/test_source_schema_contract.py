@@ -20,7 +20,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
 from hoga.live.promote import _parse_jsonl_to_records
+
+# ADR-0049: tests must use Unix ms inside the promotion `date`'s KST day
+# window so the writer's HHMMSSmmm conversion succeeds (rows outside the
+# window are dropped with midnight_race_skip).
+_DATE = "20260528"
+_T_MS_AT_OPEN = _date_unix_ms_at_kst_midnight(_DATE) + 9 * 3600 * 1000  # 09:00 KST
 
 
 # Columns the read path queries. Derived from inspection of
@@ -38,7 +45,7 @@ def test_kis_live_promote_snapshot_columns_match_read_path(tmp_path: Path) -> No
     bundle's snapshot query references (ts_ms + 10-level bid_q/ask_q)."""
     jsonl = tmp_path / "in.jsonl"
     jsonl.write_text(json.dumps({
-        "t_ms": 1779800000000, "kind": "ob",
+        "t_ms": _T_MS_AT_OPEN, "kind": "ob",
         "payload": {
             "bids": [{"price": 26800, "qty": 879}],
             "asks": [{"price": 26850, "qty": 6141}],
@@ -49,7 +56,7 @@ def test_kis_live_promote_snapshot_columns_match_read_path(tmp_path: Path) -> No
     }) + "\n")
 
     snapshots, _, _, _ = _parse_jsonl_to_records(
-        jsonl, code="003490", date="20260528",
+        jsonl, code="003490", date=_DATE,
     )
     assert len(snapshots) == 1
     actual_cols = set(snapshots[0].keys())
@@ -66,10 +73,10 @@ def test_kis_live_promote_trade_columns_match_read_path(tmp_path: Path) -> None:
     the bundle's fill-strength + volume-profile queries reference."""
     jsonl = tmp_path / "in.jsonl"
     jsonl.write_text(json.dumps({
-        "t_ms": 1779800000000, "kind": "trade",
+        "t_ms": _T_MS_AT_OPEN, "kind": "trade",
         "payload": {
             "trades": [{
-                "t_ms": 1779800000000, "price": 26900, "qty": 10, "side": 1,
+                "t_ms": _T_MS_AT_OPEN, "price": 26900, "qty": 10, "side": 1,
                 "side_source": "inferred",
             }],
             "phase": "regular",
@@ -77,7 +84,7 @@ def test_kis_live_promote_trade_columns_match_read_path(tmp_path: Path) -> None:
     }) + "\n")
 
     _, trades, _, _ = _parse_jsonl_to_records(
-        jsonl, code="003490", date="20260528",
+        jsonl, code="003490", date=_DATE,
     )
     assert len(trades) == 1
     actual_cols = set(trades[0].keys())
@@ -116,11 +123,11 @@ def test_hogaplay_and_kis_live_share_read_path_columns(tmp_path: Path) -> None:
 
     jsonl = tmp_path / "in.jsonl"
     jsonl.write_text(json.dumps({
-        "t_ms": 1, "kind": "ob",
+        "t_ms": _T_MS_AT_OPEN, "kind": "ob",
         "payload": {"bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0},
     }) + "\n")
     snapshots, _, _, _ = _parse_jsonl_to_records(
-        jsonl, code="003490", date="20260528",
+        jsonl, code="003490", date=_DATE,
     )
     kis_live_cols = set(snapshots[0].keys())
 
@@ -144,7 +151,7 @@ def test_read_path_columns_round_trip_through_kis_live_parquet(tmp_path: Path) -
 
     jsonl = tmp_path / "in.jsonl"
     jsonl.write_text(json.dumps({
-        "t_ms": 1779800000000, "kind": "ob",
+        "t_ms": _T_MS_AT_OPEN, "kind": "ob",
         "payload": {
             "bids": [{"price": 26800, "qty": 879}],
             "asks": [{"price": 26850, "qty": 6141}],
@@ -154,7 +161,7 @@ def test_read_path_columns_round_trip_through_kis_live_parquet(tmp_path: Path) -
         },
     }) + "\n")
     snapshots, _, _, _ = _parse_jsonl_to_records(
-        jsonl, code="003490", date="20260528",
+        jsonl, code="003490", date=_DATE,
     )
 
     parquet_path = tmp_path / "snapshots.parquet"
@@ -175,6 +182,7 @@ def test_read_path_columns_round_trip_through_kis_live_parquet(tmp_path: Path) -
         con.close()
     assert len(result) == 1
     ts_ms, bid_total, ask_total = result[0]
-    assert ts_ms == 1779800000000
+    # ADR-0049: parquet ts_ms stores HHMMSSmmm (90000000 = 09:00:00.000), not Unix ms.
+    assert ts_ms == 90000000
     assert bid_total == 879  # only level 1 set in fixture
     assert ask_total == 6141
