@@ -20,14 +20,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.live.promote import _parse_jsonl_to_records
 
 # ADR-0049: tests must use Unix ms inside the promotion `date`'s KST day
 # window so the writer's HHMMSSmmm conversion succeeds (rows outside the
 # window are dropped with midnight_race_skip).
 _DATE = "20260528"
-_T_MS_AT_OPEN = _date_unix_ms_at_kst_midnight(_DATE) + 9 * 3600 * 1000  # 09:00 KST
+_T_MS_AT_OPEN = hhmmssms_to_unix_ms(_DATE, 90000000)  # 09:00:00.000 KST
 
 
 # Columns the read path queries. Derived from inspection of

@@ -6,7 +6,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.live.promote import promote_today
 
 _KST = timezone(timedelta(hours=9))
@@ -18,7 +18,7 @@ def _today_kst_yyyymmdd() -> str:
 
 def _t_ms_for(date: str, offset_ms: int = 0) -> int:
     """ADR-0049: Unix ms at 09:00 KST on `date` + offset (must stay in-window)."""
-    return _date_unix_ms_at_kst_midnight(date) + 9 * 3600 * 1000 + offset_ms
+    return hhmmssms_to_unix_ms(date, 90000000) + offset_ms  # 09:00:00.000 KST
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:

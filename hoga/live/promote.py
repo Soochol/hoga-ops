@@ -75,11 +75,19 @@ def _parse_jsonl_to_records(
             # column honors the ADR-0010 invariant (series-builder SQL
             # decodes ts_ms as HHMMSSmmm via hhmmssms_to_intra_ms_sql).
             try:
-                ts_ms_encoded = unix_ms_to_hhmmssms(date, int(t_ms_raw))
-            except (ValueError, TypeError):
+                t_ms_int = int(t_ms_raw)
+            except (TypeError, ValueError):
                 _log.warning(
-                    "live.promote.midnight_race_skip code=%s date=%s t_ms=%s",
+                    "live.promote.malformed_t_ms_skip code=%s date=%s t_ms_raw=%r",
                     code, date, t_ms_raw,
+                )
+                continue
+            try:
+                ts_ms_encoded = unix_ms_to_hhmmssms(date, t_ms_int)
+            except ValueError:
+                _log.warning(
+                    "live.promote.midnight_race_skip code=%s date=%s t_ms=%d",
+                    code, date, t_ms_int,
                 )
                 continue
             p = row.get("payload") or {}
@@ -101,11 +109,10 @@ def _parse_jsonl_to_records(
                 snapshots.append(snap)
             elif kind == "trade":
                 for tr in p.get("trades") or []:
-                    # Inner trade's t_ms can drift micro-seconds from the outer
-                    # tick. We use the outer ts_ms_encoded so the entire row's
-                    # encoding is uniform per cycle (drift below 1 second is
-                    # absorbed by the same HHMMSSmmm bucket). If inner-vs-outer
-                    # divergence ever matters, revisit at that signal.
+                    # Inner trade's t_ms can drift micro-seconds from the outer tick.
+                    # Use the outer ts_ms_encoded so the entire row's encoding is uniform
+                    # per cycle. If inner-vs-outer divergence ever matters, revisit at that
+                    # signal.
                     trades.append({
                         "ts_ms": ts_ms_encoded,
                         "price": tr.get("price"),

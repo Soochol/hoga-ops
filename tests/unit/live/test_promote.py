@@ -17,7 +17,7 @@ from hoga.live.promote import _parse_jsonl_to_records
 
 @pytest.mark.asyncio
 async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
-    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
     from hoga.live.promote import promote_one
 
     live_root = tmp_path / "live"
@@ -25,7 +25,7 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
     jsonl_path.parent.mkdir(parents=True)
     # 2 cycles worth — ADR-0049: t_ms must be a real Unix ms inside the
     # 20260527 KST day window so the writer normalizes it to HHMMSSmmm.
-    base_t = _date_unix_ms_at_kst_midnight("20260527") + 9 * 3600 * 1000  # 09:00 KST
+    base_t = hhmmssms_to_unix_ms("20260527", 90000000)  # 09:00:00.000 KST
     lines = []
     for tick in range(2):
         t = base_t + tick * 10_000
@@ -111,8 +111,8 @@ def test_parse_jsonl_converts_t_ms_to_hhmmssms(tmp_path: Path) -> None:
     # 09:00:00.000 KST on 20260529 = 2026-05-29 00:00 UTC
     # Compute Unix ms for 10:30:45.123 KST that day.
     # 10:30:45.123 KST = 09:00:00 + 1h 30m 45s 123ms after open
-    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
-    unix_ms_at_open = _date_unix_ms_at_kst_midnight(date) + 9 * 3600 * 1000  # 09:00 KST
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    unix_ms_at_open = hhmmssms_to_unix_ms(date, 90000000)  # 09:00:00.000 KST
     sample_unix_ms = unix_ms_at_open + (1 * 3600 + 30 * 60 + 45) * 1000 + 123
     expected_hhmmssms = 103045123  # 10:30:45.123
 
@@ -147,10 +147,10 @@ def test_parse_jsonl_converts_t_ms_for_trade_and_broker(tmp_path: Path) -> None:
     per polling cycle. A future "fix" that reverts trade to
     tr.get("t_ms") raw would silently break this; the test guards it.
     """
-    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
 
     date = "20260529"
-    unix_ms_at_open = _date_unix_ms_at_kst_midnight(date) + 9 * 3600 * 1000  # 09:00 KST
+    unix_ms_at_open = hhmmssms_to_unix_ms(date, 90000000)  # 09:00:00.000 KST
     sample_unix_ms = unix_ms_at_open + (1 * 3600 + 30 * 60 + 45) * 1000 + 123
     expected_hhmmssms = 103045123
 
@@ -189,11 +189,12 @@ def test_parse_jsonl_skips_row_outside_date_window(tmp_path: Path, caplog) -> No
     """
     import logging
 
-    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
 
     date = "20260529"
     # A t_ms that belongs to the NEXT day (20260530 00:30 KST).
-    next_day_unix_ms = _date_unix_ms_at_kst_midnight(date) + 86_400_000 + 30 * 60 * 1000
+    # hhmmssms_to_unix_ms(date, 0) == KST midnight of `date`.
+    next_day_unix_ms = hhmmssms_to_unix_ms(date, 0) + 86_400_000 + 30 * 60 * 1000
 
     jsonl = tmp_path / date / "005930.jsonl"
     jsonl.parent.mkdir(parents=True)
@@ -241,13 +242,13 @@ async def test_promote_idempotent_skips_if_meta_exists(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_promote_tolerates_partial_last_line(tmp_path: Path) -> None:
     """ADR-0038: a torn last line from a crash is silently dropped."""
-    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
     from hoga.live.promote import promote_one
 
     jsonl_path = tmp_path / "live" / "20260527" / "005930.jsonl"
     jsonl_path.parent.mkdir(parents=True)
     # ADR-0049: in-window Unix ms so promote normalizes (not midnight_race_skip).
-    t = _date_unix_ms_at_kst_midnight("20260527") + 9 * 3600 * 1000  # 09:00 KST
+    t = hhmmssms_to_unix_ms("20260527", 90000000)  # 09:00:00.000 KST
     full = json.dumps({
         "t_ms": t, "kind": "ob",
         "payload": {
@@ -356,11 +357,11 @@ async def test_cleanup_archive_noop_when_dir_missing(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
-    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
 
     jsonl = tmp_path / "in.jsonl"
     # ADR-0049: in-window Unix ms for 20260528 (09:00 KST + small offsets)
-    base = _date_unix_ms_at_kst_midnight("20260528") + 9 * 3600 * 1000
+    base = hhmmssms_to_unix_ms("20260528", 90000000)  # 09:00:00.000 KST
     rows = [
         {"t_ms": base + 1000, "kind": "ob", "payload": {
             "bids": [{"price": 26800, "qty": 879}],
@@ -396,11 +397,11 @@ def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
 
 
 def test_parse_jsonl_to_records_skips_torn_line(tmp_path: Path, caplog) -> None:
-    from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
 
     jsonl = tmp_path / "in.jsonl"
     # ADR-0049: in-window Unix ms for 20260528 so the row survives encoding.
-    t = _date_unix_ms_at_kst_midnight("20260528") + 9 * 3600 * 1000
+    t = hhmmssms_to_unix_ms("20260528", 90000000)  # 09:00:00.000 KST
     good = json.dumps({"t_ms": t, "kind": "ob", "payload": {
         "bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0,
     }})
