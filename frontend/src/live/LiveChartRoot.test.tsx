@@ -319,10 +319,10 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // D-timeframe chunk: prefetchChunkDaysFor('D')=180 calendar days
-    // (~120 trading days). axis.segments[0] = '20260526', minus 180 →
-    // '20251127' (crosses year boundary into 2025).
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20251127');
+    // D-timeframe chunk: prefetchChunkDaysFor('D')=450 calendar days
+    // (~310 trading days, ~15 months). axis.segments[0] = '20260526',
+    // minus 450 → '20250302' (crosses year boundary into 2025).
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20250302');
   });
 
   it('does NOT fire extendHistoricalRange when logical from is non-negative', () => {

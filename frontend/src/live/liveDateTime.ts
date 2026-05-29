@@ -74,13 +74,14 @@ export const INITIAL_HISTORICAL_DAYS = 20;
  *   trigger: it bases the next chunk off the already-requested
  *   `historicalFromDate` rather than the axis, so each pan jumps another
  *   21 days back regardless of whether new data arrived.
- * - Calendar timeframes: D → 180 calendar days (~120 trading days). W/M
- *   scale proportionally; the 250-day cap (PAST_CANDLES_MAX_DAYS in
- *   useLiveBundle) clamps them, so one scroll on W/M jumps to the
- *   available limit. */
+ * - Calendar timeframes: D → 450 calendar days (~310 trading days,
+ *   ~15 months). W/M scale proportionally; the 250-day cap
+ *   (PAST_CANDLES_MAX_DAYS in useLiveBundle) clamps them, so one scroll
+ *   on W/M jumps to the available limit. The daily endpoint has no
+ *   equivalent cap, so D chunks step freely across year boundaries. */
 export function prefetchChunkDaysFor(tf: LiveTimeframe): number {
   if (isMinuteTimeframe(tf)) return 21;
-  if (tf === 'D') return 180;
+  if (tf === 'D') return 450;
   if (tf === 'W') return 60 * 7;
   return 60 * 31; // tf === 'M'
 }
