@@ -2,9 +2,19 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { LiveWorkarea } from './LiveWorkarea';
 import type { RangeBundle } from '../api/types';
+import type { LiveSeriesData } from '../api/liveSeries';
 
 vi.mock('./LiveChartRoot', () => ({ LiveChartRoot: () => <div data-testid="chart" /> }));
 vi.mock('./LiveSidebar', () => ({ LiveSidebar: () => <div data-testid="sidebar" /> }));
+
+const EMPTY_LIVE: LiveSeriesData = {
+  initial: undefined,
+  isLoading: false,
+  error: null,
+  ob: [],
+  trade: [],
+  broker: [],
+};
 
 const BUNDLE_WITH_EXCLUDED: RangeBundle = {
   code: '005930',
@@ -34,6 +44,7 @@ describe('LiveWorkarea', () => {
         bundle={BUNDLE_WITH_EXCLUDED}
         clampEngaged={false}
         isPastCandlesLoading={false}
+        live={EMPTY_LIVE}
       />,
     );
     // Banner renders date as MM/DD per InvariantOutcomesBanner.fmtMD
