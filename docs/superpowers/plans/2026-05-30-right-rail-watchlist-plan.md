@@ -838,5 +838,9 @@ From plan-design-review (2026-05-30). Suggestion/Nit — apply opportunistically
 - **[NIT] aria-label copy tone**: `<nav aria-label="Right Rail">` → Korean (`"우측 레일"`) to match the component's other Korean aria-labels and DESIGN.md copy tone.
 - **[CONFIRMED — no change] Motion**: the panel slide + rail collapse are grid-track width changes (sidebar/pane-resize class) — DESIGN.md says do NOT animate these, so the plan's no-transition choice is correct. The `»`/`«` chevron glyph is sanctioned by CONTEXT.md's Right Rail entry.
 
+### Deferred architecture note (step 7 — improve-codebase-architecture)
+No deepening opportunity cleared the auto-apply bar for this churn-averse window. One real candidate deferred:
+- **Shared persisted-store helper**: `state/rightRail.ts` and `state/livePage.ts` both reimplement the localStorage `persist()`/`readStorage()` try/catch boilerplate (livePage has a 4-function variant incl. indicators). Extracting a `state/persistedStore.ts` (`savePersisted`/`readPersisted`) would concentrate the localStorage-safety semantics in one place. **Deferred, not applied** — it would touch the large pre-existing `livePage.ts` (+ its indicators persist), which is concurrent-session-adjacent; the locality gain doesn't justify that blast radius mid-stream. Revisit as a standalone post-ship cleanup once the worktree is single-session.
+
 ### GATE 2 decision — icon: DECIDED → **heart icon + "관심"**
 User chose the heart (matches the reference image). Task 5's `HeartIcon` is correct as written. Keep the restrained single line-weight SVG; fill toggles with `panelOpen` as a shape signal (color stays `currentColor` per the de-teal CRITICAL).
