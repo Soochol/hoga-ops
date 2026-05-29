@@ -16,7 +16,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Callable, Literal
 
 from .buffer import LiveBuffer
 from .kis_client import KIS_KST, KisApiError, KisClient, KisRateLimitError
@@ -35,19 +35,39 @@ def _now_ms() -> int:
     return int(datetime.now(timezone.utc).timestamp() * 1000)
 
 
-def _market_phase(t_ms: int) -> str:
-    """Returns 'regular' or 'after_hours_closing' (Audit-1).
+def _market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "closed"]:
+    """KRX session phase by clock alone (no calendar awareness).
 
     regular: 09:00-15:30 KST
     after_hours_closing: 15:30-16:00 KST
-    Outside 09:00-16:00 returns 'regular' as a safe default — Poller scheduler
-    is responsible for not calling run_one_cycle outside market hours.
+    closed: everything else
+
+    Calendar-aware gating (holidays, weekends) lives in :func:`_should_poll_now`
+    so the phase predicate stays pure and reusable from non-poller contexts.
     """
     kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
     h, m = kst.hour, kst.minute
     if h == 15 and m >= 30:
         return "after_hours_closing"
-    return "regular"
+    if 9 <= h < 16:
+        return "regular"
+    return "closed"
+
+
+def _should_poll_now(t_ms: int) -> bool:
+    """Calendar + clock gate: True only when KRX is *probably* trading right now.
+
+    Lenient on missing calendar data — when :func:`calendar.is_trading_day`
+    returns None (KRX creds missing, pykrx flaked), defer to the clock alone.
+    Losing live capture for a transient KRX outage is a worse failure than
+    the noise from a brief burst of HTTP_500s on a stale day.
+    """
+    if _market_phase(t_ms) == "closed":
+        return False
+    from hoga.api.calendar import is_trading_day
+    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
+    verdict = is_trading_day(kst.strftime("%Y%m%d"))
+    return verdict is not False
 
 
 @dataclass(frozen=True)
@@ -175,9 +195,18 @@ class LivePoller:
         self._last_cycle_lag_ms = max(0, elapsed_ms - int(self._cfg.cycle_seconds * 1000))
 
     async def run_forever(self) -> None:
-        """Loop run_one_cycle, sleeping the remainder of each cycle window."""
+        """Loop run_one_cycle, sleeping the remainder of each cycle window.
+
+        When KRX is closed (off-hours, weekends, holidays), sleep 1s between
+        gate checks instead of running a cycle — at market open the first
+        cycle lands within ~1s, avoiding ~10s of missed opening-session data
+        that a coarser tick would lose.
+        """
         while True:
             start = _now_ms()
+            if not _should_poll_now(start):
+                await asyncio.sleep(1.0)
+                continue
             await self.run_one_cycle()
             elapsed_s = (_now_ms() - start) / 1000.0
             await asyncio.sleep(max(0.0, self._cfg.cycle_seconds - elapsed_s))

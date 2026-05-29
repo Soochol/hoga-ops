@@ -113,6 +113,23 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
     return out
 
 
+def is_trading_day(date_yyyymmdd: str) -> bool | None:
+    """Return True/False for ``date``, or None when KRX data is unavailable.
+
+    Policy on None is the caller's: cold-path schedulers fail-fast
+    (``trading_days_in_range`` raises), live-path callers fall back to a
+    permissive default (e.g. don't gate polling so capture stays up when
+    KRX is briefly unreachable). Keeping the data accessor and the policy
+    separate avoids embedding either stance in the module.
+    """
+    year = int(date_yyyymmdd[:4])
+    month = int(date_yyyymmdd[4:6])
+    days = _trading_days_for(year, month)
+    if days is None:
+        return None
+    return date_yyyymmdd in days
+
+
 def reset_cache_for_tests() -> None:
     """Test helper — clears the trading-day cache between tests."""
     global _last_failure_reason  # noqa: PLW0603

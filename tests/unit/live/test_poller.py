@@ -15,7 +15,9 @@ from hoga.live.kis_models import (
     KisTrade,
     OrderbookLevel,
 )
-from hoga.live.poller import LivePoller, LivePollerConfig, _market_phase
+from hoga.live.poller import (
+    LivePoller, LivePollerConfig, _market_phase, _should_poll_now,
+)
 from hoga.live.snapshot import SnapshotKind
 from hoga.live.writer import LiveWriter
 
@@ -179,7 +181,7 @@ async def test_starvation_guard_orders_unsuccessful_codes_first(tmp_path: Path, 
 
 
 def test_market_phase_helper() -> None:
-    """Δ1: regular for 09:00-15:30, after_hours_closing for 15:30-16:00."""
+    """09:00-15:30 = regular, 15:30-16:00 = after_hours_closing, else closed."""
     def t(h, m):
         d = datetime(2026, 5, 27, h, m, 0, tzinfo=KIS_KST)
         return int(d.timestamp() * 1000)
@@ -188,8 +190,44 @@ def test_market_phase_helper() -> None:
     assert _market_phase(t(15, 29)) == "regular"
     assert _market_phase(t(15, 30)) == "after_hours_closing"
     assert _market_phase(t(15, 59)) == "after_hours_closing"
-    assert _market_phase(t(16, 0)) == "regular"  # safe default outside market hours
-    assert _market_phase(t(8, 0)) == "regular"
+    assert _market_phase(t(16, 0)) == "closed"
+    assert _market_phase(t(8, 0)) == "closed"
+
+
+def test_should_poll_now_false_outside_market_hours(monkeypatch) -> None:
+    """Off-hours → no polling regardless of calendar availability."""
+    from hoga.api import calendar as cal
+    # Stub calendar to "trading day" so the only thing left is the clock.
+    monkeypatch.setattr(cal, "is_trading_day", lambda d: True)
+    midnight_ms = int(datetime(2026, 5, 27, 2, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    assert _should_poll_now(midnight_ms) is False
+
+
+def test_should_poll_now_false_on_holiday(monkeypatch) -> None:
+    """In-hours but non-trading-day (weekend/holiday) → no polling."""
+    from hoga.api import calendar as cal
+    monkeypatch.setattr(cal, "is_trading_day", lambda d: False)
+    in_hours_ms = int(datetime(2026, 5, 30, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    assert _should_poll_now(in_hours_ms) is False
+
+
+def test_should_poll_now_lenient_when_calendar_unavailable(monkeypatch) -> None:
+    """Calendar returns None (creds missing, KRX flaked) → fall back to clock alone.
+
+    Losing capture for a transient KRX outage is worse than a brief bout of
+    HTTP_500s on a stale day. See _should_poll_now docstring.
+    """
+    from hoga.api import calendar as cal
+    monkeypatch.setattr(cal, "is_trading_day", lambda d: None)
+    in_hours_ms = int(datetime(2026, 5, 27, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    assert _should_poll_now(in_hours_ms) is True
+
+
+def test_should_poll_now_true_on_trading_day_in_hours(monkeypatch) -> None:
+    from hoga.api import calendar as cal
+    monkeypatch.setattr(cal, "is_trading_day", lambda d: True)
+    in_hours_ms = int(datetime(2026, 5, 27, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    assert _should_poll_now(in_hours_ms) is True
 
 
 @pytest.mark.asyncio
@@ -261,6 +299,41 @@ async def test_poller_without_buffer_still_works(tmp_path: Path) -> None:
         LivePollerConfig(codes_fn=lambda: ["005930"], date_fn=lambda: "20260527"),
     )
     await poller.run_one_cycle()  # no exception
+
+
+@pytest.mark.asyncio
+async def test_run_forever_skips_cycle_when_market_closed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """When the calendar gate says no, run_one_cycle is never invoked.
+
+    Self-inflicted HTTP_500 storms (holiday/off-hours polling) — the whole
+    point of the gate — would silently survive without this assertion.
+    """
+    from hoga.api import calendar as cal
+
+    midnight_ms = int(datetime(2026, 5, 27, 2, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    monkeypatch.setattr("hoga.live.poller._now_ms", lambda: midnight_ms)
+    # Stub: today is a trading day, but it's 2 AM — the clock alone closes the gate.
+    monkeypatch.setattr(cal, "is_trading_day", lambda d: True)
+
+    kis = _mk_kis()
+    writer = LiveWriter(tmp_path / "live")
+    poller = LivePoller(kis, writer, LivePollerConfig(
+        codes_fn=lambda: ["005930"], date_fn=lambda: "20260527",
+        cycle_seconds=0.01,
+    ))
+    task = asyncio.create_task(poller.run_forever())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # No KIS call ever happened.
+    kis.fetch_orderbook.assert_not_called()
+    kis.fetch_brokers.assert_not_called()
+    # No JSONL was written either.
+    assert not (tmp_path / "live" / "20260527" / "005930.jsonl").exists()
 
 
 @pytest.mark.asyncio
