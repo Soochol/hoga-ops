@@ -5,19 +5,30 @@ import type { ReactNode } from 'react';
 import { useLiveBundle } from './useLiveBundle';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
+import type { LiveSeriesData } from '../api/liveSeries';
 
-vi.mock('../api/liveSeries', () => ({
-  useLiveSeries: () => ({
-    initial: { session_open_ms: 1779840000000, session_close_ms: 1779863400000 },
-    isLoading: false,
-    error: null,
-    ob: [
-      { t_ms: 1779840060000, total_ask_qty: 100, total_bid_qty: 80, kind: 'ob' },
-    ],
-    trade: [],
-    broker: [],
-  }),
-}));
+// Live fixture — used to be a mock of useLiveSeries when useLiveBundle owned
+// the hook call. After the LivePage-lift refactor, `live` is a prop passed
+// straight through; tests construct it inline.
+const liveFixture: LiveSeriesData = {
+  initial: {
+    code: '005930',
+    date: '20260527',
+    session_open_ms: 1779840000000,
+    session_close_ms: 1779863400000,
+    is_open: true,
+    snapshots: [],
+    trades: [],
+    brokers: [],
+  },
+  isLoading: false,
+  error: null,
+  ob: [
+    { t_ms: 1779840060000, total_ask_qty: 100, total_bid_qty: 80, kind: 'ob' },
+  ],
+  trade: [],
+  broker: [],
+};
 
 const livePastCandlesSpy = vi.fn(() => ({
   data: {
@@ -81,7 +92,7 @@ describe('useLiveBundle', () => {
   });
 
   it('builds a today-only bundle when historicalFromDate is null', () => {
-    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
     expect(result.current.bundle!.segments.length).toBe(1);
     expect(result.current.bundle!.segments[0].source).toBe('kis_live');
     expect(result.current.bundle!.candles.length).toBe(1);
@@ -89,25 +100,25 @@ describe('useLiveBundle', () => {
   });
 
   it('returns null bundle when code is null', () => {
-    const { result } = renderHook(() => useLiveBundle(null, '1m', '20260527'), { wrapper });
+    const { result } = renderHook(() => useLiveBundle(null, '1m', '20260527', liveFixture), { wrapper });
     expect(result.current.bundle).toBeNull();
   });
 
   it('clamps pastFrom to 249 days before today when historicalFromDate is older', () => {
     useLivePageStore.setState({ historicalFromDate: '20250101' });
-    renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
     expect(livePastCandlesSpy).toHaveBeenCalledWith('005930', '20250920', '20260527');
     expect(useRangeSpy).toHaveBeenCalledWith('005930', '20250920', '20260527', '1m');
   });
 
   it('exposes clampEngaged=true when historicalFromDate older than 250 days', () => {
     useLivePageStore.setState({ historicalFromDate: '20250101' });
-    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
     expect(result.current.clampEngaged).toBe(true);
   });
 
   it('maps KIS bar shape to wire Candle shape (vol_a = volume, vol_b = 0)', () => {
-    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
     const c = result.current.bundle!.candles[0];
     expect(c).toMatchObject({ ts_ms: 1779840000000, open: 70000, vol_a: 1000, vol_b: 0 });
     expect(c).not.toHaveProperty('t_ms');
@@ -129,7 +140,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
   });
 
   it('D timeframe calls daily hook with non-null code, minute hook with null code', () => {
-    renderHook(() => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
     const lastDailyCall = livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastDailyCall[0]).toBe('005930');
     const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
@@ -137,7 +148,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
   });
 
   it('1m timeframe calls minute hook with non-null code, daily hook with null code', () => {
-    renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
     const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastMinuteCall[0]).toBe('005930');
     const lastDailyCall = livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
@@ -146,13 +157,13 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
 
   it('clampEngaged is false on D when historicalFromDate is very old', () => {
     useLivePageStore.setState({ historicalFromDate: '20100101' });
-    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
     expect(result.current.clampEngaged).toBe(false);
   });
 
   it('clampEngaged is true on 1m when historicalFromDate is older than 250d', () => {
     useLivePageStore.setState({ historicalFromDate: '20100101' });
-    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
     expect(result.current.clampEngaged).toBe(true);
   });
 
@@ -175,7 +186,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       isLoading: false,
       error: null,
     } as ReturnType<typeof livePastCandlesSpy>);
-    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
     const warnings = result.current.bundle?.data_warnings ?? [];
     expect(warnings.map((w) => w.date)).toEqual(['20260520', '20260521']);
     expect(warnings[0].warnings[0].invariant_id).toBe('kis_rate_limit');
@@ -204,7 +215,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       isLoading: false,
       error: null,
     } as unknown as ReturnType<typeof livePastDailyCandlesSpy>);
-    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
     const warnings = result.current.bundle?.data_warnings ?? [];
     expect(warnings).toHaveLength(1);
     expect(warnings[0].date).toBe('20240301');
@@ -234,7 +245,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       isLoading: false,
       error: null,
     } as ReturnType<typeof livePastDailyCandlesSpy>);
-    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
     const warnings = result.current.bundle?.data_warnings ?? [];
     expect(warnings).toHaveLength(1);
     expect(warnings[0].date).toBe('20240103');

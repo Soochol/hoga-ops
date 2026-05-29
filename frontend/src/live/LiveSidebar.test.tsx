@@ -4,18 +4,18 @@ import { act } from 'react';
 import { LiveSidebar } from './LiveSidebar';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
+import type { LiveSeriesData } from '../api/liveSeries';
 
-// Mock useLiveSeries so LiveSidebar can render in isolation
-vi.mock('../api/liveSeries', () => ({
-  useLiveSeries: vi.fn(() => ({
-    initial: undefined,
-    isLoading: false,
-    error: null,
-    ob: [],
-    trade: [],
-    broker: [],
-  })),
-}));
+// Live fixture — LiveSidebar receives this as a prop (LivePage-lift refactor).
+// No useLiveSeries mock needed: the sidebar no longer calls the hook.
+const emptyLive: LiveSeriesData = {
+  initial: undefined,
+  isLoading: false,
+  error: null,
+  ob: [],
+  trade: [],
+  broker: [],
+};
 
 vi.mock('../api/useLiveCursor', () => ({
   useLiveOrderbookAtCursor: vi.fn(() => undefined),
@@ -26,20 +26,11 @@ vi.mock('../sidebar/TotalQtyBar', () => ({
   default: vi.fn(() => <div data-testid="total-qty-bar" />),
 }));
 
-import * as liveSeriesMod from '../api/liveSeries';
 import * as cursorHooks from '../api/useLiveCursor';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
 
 describe('LiveSidebar', () => {
   beforeEach(() => {
-    (liveSeriesMod.useLiveSeries as ReturnType<typeof vi.fn>).mockReturnValue({
-      initial: undefined,
-      isLoading: false,
-      error: null,
-      ob: [],
-      trade: [],
-      broker: [],
-    });
     (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     useLiveCursorStore.getState().clearCursor();
@@ -49,31 +40,41 @@ describe('LiveSidebar', () => {
   afterEach(() => cleanup());
 
   it('renders the sidebar shell when code is null (waiting state)', () => {
-    render(<LiveSidebar code={null} />);
+    render(<LiveSidebar code={null} live={emptyLive} />);
     expect(screen.getByTestId('live-sidebar')).toBeInTheDocument();
   });
 
-  it('subscribes to useLiveSeries with the active code', () => {
-    render(<LiveSidebar code="005930" />);
-    expect(liveSeriesMod.useLiveSeries).toHaveBeenCalledWith('005930');
+  it('reads live data from the prop, not from useLiveSeries (LivePage-lift)', () => {
+    // Regression guard for the dual-call-site bug: LiveSidebar must NOT
+    // open its own SSE / hydrate its own buffer. LivePage owns the single
+    // useLiveSeries call site and threads the result down as a prop.
+    const liveWithData: LiveSeriesData = {
+      ...emptyLive,
+      ob: [
+        {
+          t_ms: 1779840060000,
+          kind: 'ob',
+          asks: Array.from({ length: 10 }, (_, i) => ({ price: 100 + i, qty: 1 })),
+          bids: Array.from({ length: 10 }, (_, i) => ({ price: 99 - i, qty: 1 })),
+          total_ask_qty: 10,
+          total_bid_qty: 10,
+        },
+      ],
+    };
+    render(<LiveSidebar code="005930" live={liveWithData} />);
+    // OrderbookTable renders price-level rows (not the "호가 데이터 없음" empty state)
+    // when latestOrderbookSnapshot returns non-null.
+    expect(screen.queryByText('호가 데이터 없음')).toBeNull();
   });
 
   it('shows the LIVE pulse badge in header (Design C1)', () => {
-    render(<LiveSidebar code="005930" />);
+    render(<LiveSidebar code="005930" live={emptyLive} />);
     expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
   });
 });
 
 describe('LiveSidebar cursor branching (ADR-0044)', () => {
   beforeEach(() => {
-    (liveSeriesMod.useLiveSeries as ReturnType<typeof vi.fn>).mockReturnValue({
-      initial: undefined,
-      isLoading: false,
-      error: null,
-      ob: [],
-      trade: [],
-      broker: [],
-    });
     (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     useLiveCursorStore.getState().clearCursor();
@@ -83,13 +84,13 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
   afterEach(() => cleanup());
 
   it('shows LIVE● header when cursorMs is null', () => {
-    render(<LiveSidebar code="005930" />);
+    render(<LiveSidebar code="005930" live={emptyLive} />);
     expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
     expect(screen.getByText('LIVE')).toBeInTheDocument();
   });
 
   it('swaps to "과거 시점" + KST timestamp when cursor is set', () => {
-    render(<LiveSidebar code="005930" />);
+    render(<LiveSidebar code="005930" live={emptyLive} />);
     // 2026-05-28T04:42:17Z → KST 13:42:17
     const t = new Date('2026-05-28T04:42:17Z').getTime();
     act(() => useLiveCursorStore.getState().setCursor(t));
@@ -100,7 +101,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
   });
 
   it('does not call cursor hooks when cursorMs null', () => {
-    render(<LiveSidebar code="005930" />);
+    render(<LiveSidebar code="005930" live={emptyLive} />);
     // The hooks are imported and rendered, but their inner useSpot
     // does not fetch — verified separately in useLiveCursor.test.ts.
     // Here we just confirm they were called with code='005930' so
@@ -112,7 +113,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
 
   it('TotalQtyBar maskRatio=true when cursorMs in closing auction window', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => true } as never });
-    render(<LiveSidebar code="005930" />);
+    render(<LiveSidebar code="005930" live={emptyLive} />);
     act(() => useLiveCursorStore.getState().setCursor(1_748_400_900_000));
     expect(TotalQtyBar).toHaveBeenCalledWith(
       expect.objectContaining({ maskRatio: true }),
@@ -122,7 +123,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
 
   it('TotalQtyBar maskRatio=false when cursorMs outside window', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => false } as never });
-    render(<LiveSidebar code="005930" />);
+    render(<LiveSidebar code="005930" live={emptyLive} />);
     act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
     expect(TotalQtyBar).toHaveBeenCalledWith(
       expect.objectContaining({ maskRatio: false }),
@@ -132,7 +133,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
 
   it('TotalQtyBar maskRatio=false when cursorMs null (preserves existing behavior)', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => true } as never });
-    render(<LiveSidebar code="005930" />);
+    render(<LiveSidebar code="005930" live={emptyLive} />);
     // No setCursor — cursorMs stays null. maskRatio must be false despite
     // the axis predicate returning true, because we don't engage mask in
     // latest mode (existing behavior).
@@ -145,14 +146,6 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
 
 describe('LiveSidebar — empty spot orderbook with available_from hint (T14b)', () => {
   beforeEach(() => {
-    (liveSeriesMod.useLiveSeries as ReturnType<typeof vi.fn>).mockReturnValue({
-      initial: undefined,
-      isLoading: false,
-      error: null,
-      ob: [],
-      trade: [],
-      broker: [],
-    });
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     useLiveCursorStore.getState().clearCursor();
   });
@@ -168,7 +161,7 @@ describe('LiveSidebar — empty spot orderbook with available_from hint (T14b)',
       source: 'hogaplay',
     });
     act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
-    render(<LiveSidebar code="005930" />);
+    render(<LiveSidebar code="005930" live={emptyLive} />);
     expect(screen.getByText(/다음 가용: 12:42/)).toBeInTheDocument();
   });
 
@@ -179,7 +172,7 @@ describe('LiveSidebar — empty spot orderbook with available_from hint (T14b)',
       source: 'hogaplay',
     });
     act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
-    render(<LiveSidebar code="005930" />);
+    render(<LiveSidebar code="005930" live={emptyLive} />);
     expect(screen.queryByText(/다음 가용/)).toBeNull();
   });
 });

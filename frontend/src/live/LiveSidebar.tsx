@@ -3,7 +3,7 @@ import CursorSidebar from '../sidebar/CursorSidebar';
 import OrderbookTable from '../sidebar/OrderbookTable';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
-import { useLiveSeries } from '../api/liveSeries';
+import type { LiveSeriesData } from '../api/liveSeries';
 import {
   aggregateBrokerSeries,
   latestOrderbookSnapshot,
@@ -20,6 +20,11 @@ import { isMinuteTimeframe } from '../state/livePage';
 
 interface Props {
   code: string | null;
+  /** Owned by LivePage's single useLiveSeries call (ADR-0040 spirit). The
+   * sidebar must NOT call useLiveSeries itself — that would open a second
+   * SSE connection and a parallel buffer that drifts out of sync on HMR
+   * re-mounts. */
+  live: LiveSeriesData;
 }
 
 /**
@@ -37,14 +42,15 @@ interface Props {
  * The third "체결" card was removed 2026-05-28 (ADR-0047). The chart's
  * 체결강도 pane provides equivalent information in compact form.
  */
-export function LiveSidebar({ code }: Props) {
+export function LiveSidebar({ code, live }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const isSpot = cursorMs !== null;
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
 
-  // Latest-mode data (always subscribed — useSpot hooks in spot mode
-  // sit dormant when cursorMs is null, no extra fetches).
-  const { ob, broker } = useLiveSeries(code ?? '');
+  // Latest-mode data flows through `live` — LivePage owns the single
+  // useLiveSeries call site. useSpot hooks in spot mode sit dormant when
+  // cursorMs is null, no extra fetches.
+  const { ob, broker } = live;
   const latestOrderbook = useMemo(() => latestOrderbookSnapshot(ob), [ob]);
   const latestBrokerSeries = useMemo(() => aggregateBrokerSeries(broker), [broker]);
   const latestBrokerTs =

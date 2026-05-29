@@ -14,6 +14,20 @@ export interface LiveSeriesResponse {
   brokers: Array<Record<string, unknown>>;
 }
 
+/** Return shape of useLiveSeries. Lifted to a named type so the single-call
+ * site (LivePage) can thread the value through useLiveBundle + LiveSidebar
+ * as a prop. Two separate useLiveSeries calls would open two SSE connections
+ * and two independent buffers — HMR re-mounts cleared one but not the other,
+ * leaving the sidebar's LATEST mode showing the empty-buffer state. */
+export interface LiveSeriesData {
+  initial: LiveSeriesResponse | undefined;
+  isLoading: boolean;
+  error: unknown;
+  ob: ReadonlyArray<Record<string, unknown>>;
+  trade: ReadonlyArray<Record<string, unknown>>;
+  broker: ReadonlyArray<Record<string, unknown>>;
+}
+
 function todayKstYyyymmdd(): string {
   const now = new Date();
   const kst = new Date(now.getTime() + 9 * 3_600_000);
@@ -35,7 +49,7 @@ function todayKstYyyymmdd(): string {
  * Returns parallel arrays per kind plus the initial response metadata so
  * panes can compute session bounds for chart timeframes.
  */
-export function useLiveSeries(code: string) {
+export function useLiveSeries(code: string): LiveSeriesData {
   const date = todayKstYyyymmdd();
   const initial = useQuery({
     queryKey: ['live', 'series', code, date],

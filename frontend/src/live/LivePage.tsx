@@ -10,6 +10,7 @@ import { LiveWorkarea } from './LiveWorkarea';
 import { LiveStateBanner } from './LiveStateBanner';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
+import { useLiveSeries } from '../api/liveSeries';
 import { todayKstYyyymmdd } from './liveDateTime';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import { useDocumentTitle } from '../util/useDocumentTitle';
@@ -56,17 +57,20 @@ export function LivePage() {
   const watchlistEmpty = banner.primary === 'watchlist_empty';
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
 
-  // Single useLiveBundle source for the page: LiveStatusBar (current price +
-  // source chip) and LiveWorkarea (chart + banner + clamp affordances) both
-  // read the same bundle. Calling the hook once here means SSE pushes only
-  // recompute the memoized bundle once per render and the TanStack query key
-  // is derived from a single `today` reference (no KST-midnight drift).
+  // Single live source for the page: useLiveSeries owns the SSE connection
+  // and ring buffer; useLiveBundle composes it with KIS past-candles for the
+  // chart; LiveSidebar reads ob/broker from the same buffer for LATEST mode.
+  // Two independent useLiveSeries calls would open two SSE connections and
+  // two buffers — HMR re-mounts cleared one but not the other, leaving the
+  // sidebar's LATEST mode stuck on the empty-buffer state.
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const today = todayKstYyyymmdd();
+  const live = useLiveSeries(activeCode ?? '');
   const { bundle, clampEngaged, isPastCandlesLoading } = useLiveBundle(
     activeCode,
     timeframe,
     today,
+    live,
   );
 
   return (
@@ -93,6 +97,7 @@ export function LivePage() {
         bundle={bundle}
         clampEngaged={clampEngaged}
         isPastCandlesLoading={isPastCandlesLoading}
+        live={live}
       />
       {indicatorPanelOpen && (
         <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />

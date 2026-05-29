@@ -5,6 +5,7 @@ import { LiveSidebar } from './LiveSidebar';
 import { WatchlistPanel } from './WatchlistPanel';
 import InvariantOutcomesBanner from '../replay/InvariantOutcomesBanner';
 import type { RangeBundle } from '../api/types';
+import type { LiveSeriesData } from '../api/liveSeries';
 
 interface Props {
   activeCode: string | null;
@@ -14,6 +15,9 @@ interface Props {
   bundle: RangeBundle | null;
   clampEngaged: boolean;
   isPastCandlesLoading: boolean;
+  /** Owned by LivePage's single useLiveSeries call. Threaded to LiveSidebar
+   * so the LATEST mode reads the same SSE buffer that feeds useLiveBundle. */
+  live: LiveSeriesData;
 }
 
 export function LiveWorkarea({
@@ -22,6 +26,7 @@ export function LiveWorkarea({
   bundle,
   clampEngaged,
   isPastCandlesLoading,
+  live,
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const watchlistOpen = useLivePageStore((s) => s.watchlistPanelOpen);
@@ -84,7 +89,7 @@ export function LiveWorkarea({
           borderLeft: '1px solid var(--border)',
         }}
       >
-        <LiveSidebar code={activeCode} />
+        <LiveSidebar code={activeCode} live={live} />
       </div>
       {watchlistOpen && <WatchlistPanel />}
     </div>

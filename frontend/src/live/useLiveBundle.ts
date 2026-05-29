@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useLiveSeries } from '../api/liveSeries';
+import type { LiveSeriesData } from '../api/liveSeries';
 import {
   useLivePastCandles,
   type LivePastCandlesWarning,
@@ -121,10 +121,9 @@ export function useLiveBundle(
   code: string | null,
   timeframe: LiveTimeframe,
   todayKstYyyymmdd: string,
+  live: LiveSeriesData,
 ): UseLiveBundleResult {
   const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
-
-  const live = useLiveSeries(code ?? '');
 
   const isMinute = isMinuteTimeframe(timeframe);
   const bucketMs = isMinute ? TIMEFRAME_TO_MS[timeframe] : 60_000;
