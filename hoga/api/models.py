@@ -12,7 +12,6 @@ from hoga.api.error_codes import UpstreamCode
 from hoga.api.sources import SourceName
 from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
-from hoga.tables.trades import ApiTrade
 
 
 class StockDate(BaseModel):
@@ -67,11 +66,6 @@ class StockDate(BaseModel):
 class OrderbookResponse(BaseModel):
     available_from: int | None = None
     snapshot: ApiOrderbookSnapshot | None
-    source: SourceName
-
-
-class TradesResponse(BaseModel):
-    trades: list[ApiTrade]
     source: SourceName
 
 

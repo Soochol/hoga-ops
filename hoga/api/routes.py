@@ -18,7 +18,6 @@ from hoga.api.models import (
     OrderbookResponse,
     RangeBundle,
     StockDate as StockDateModel,
-    TradesResponse,
     validate_bucket_ms,
 )
 from hoga.api.params import Code, StockDate
@@ -31,7 +30,6 @@ from hoga.api.timeenc import (
 from hoga.tables import brokers as brokers_tbl
 from hoga.tables import candles as candles_tbl
 from hoga.tables import snapshots as snapshots_tbl
-from hoga.tables import trades as trades_tbl
 
 
 def _parquet_path(
@@ -136,38 +134,6 @@ def build_router(engine: QueryEngine) -> APIRouter:
             return OrderbookResponse(available_from=available_from, snapshot=None, source=source)
         snap = snap.model_copy(update={"ts_ms": hhmmssms_to_unix_ms(date, snap.ts_ms)})
         return OrderbookResponse(available_from=None, snapshot=snap, source=source)
-
-    @router.get("/trades", response_model=TradesResponse)
-    def trades(
-        code: Code,
-        date: StockDate,
-        t: int | None = Query(None),
-        from_ms: int | None = Query(None, alias="from"),
-        to_ms: int | None = Query(None, alias="to"),
-        limit: int = 50,
-        source_pref: SourceName = Query("hogaplay"),
-    ) -> TradesResponse:
-        # ADR-0044: hover spot path honors source_pref via resolve_source +
-        # ADR-0039 preference+fallback semantics. The resolved source is
-        # echoed back so LiveStatusBar's chip can reflect fallback honestly.
-        sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref)
-        path = sd_dir / "trades.parquet"
-        if from_ms is not None and to_ms is not None:
-            rows = trades_tbl.query_range(
-                engine.conn,
-                path=path,
-                from_ms=cursor_to_native(date, from_ms),
-                to_ms=cursor_to_native(date, to_ms),
-                limit=limit,
-            )
-        elif t is not None:
-            rows = trades_tbl.query_up_to(
-                engine.conn, path=path, t_ms=cursor_to_native(date, t), limit=limit
-            )
-        else:
-            raise HTTPException(status_code=400, detail="provide either ?t= or ?from=&to=")
-        rows = [r.model_copy(update={"ts_ms": hhmmssms_to_unix_ms(date, r.ts_ms)}) for r in rows]
-        return TradesResponse(trades=rows, source=source)
 
     @router.get("/candles", response_model=CandlesResponse)
     def candles(code: Code, date: StockDate) -> CandlesResponse:

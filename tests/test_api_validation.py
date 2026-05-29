@@ -22,7 +22,6 @@ from fastapi.testclient import TestClient
     [
         "/api/meta",
         "/api/orderbook?t=0",
-        "/api/trades?t=0",
         "/api/candles",
     ],
 )
