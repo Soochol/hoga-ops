@@ -16,6 +16,59 @@
 4. `/live` 에 `LiveSettingsModal` 추가 — `LiveToolbar` 의 `[+ 보조지표]` 옆에 `[⚙ 설정]` 버튼 진입.
 5. 이관 옵션이 실제로 차트에 반영되도록 정합성 보강 — `AuctionWindowOverlay` 를 `LiveChartRoot` 에 마운트.
 
+## Drawing migration to `/live`
+
+### 결정
+
+Drawing 기능(수평선/추세선/자유선 차트 그림 도구)을 `/live`로 이관한다. 현재 ChartStage가 host지만 LiveChartRoot에는 없음. ChartStage 자체는 replay wrapper라 같이 삭제하되, Drawing host 책임만 LiveChartRoot로 이동.
+
+### LiveChartRoot에 추가 마운트
+
+- `<DrawingOverlay chart axis paneSeries />` — DPR-scaled canvas + pointer events
+- `<DrawingPropertyPanel computeAnchor />` — floating property panel
+- `paneSeries: Map<PaneId, ISeriesApi>` registry 신설 — 각 `RangeSeriesPane`이 mount 시 등록 (ChartStage 패턴 그대로 이전)
+- `computeAnchor` 헬퍼 (ChartStage:115의 함수) — LiveChartRoot로 이전 또는 hook으로 추출
+
+### LiveToolbar에 Drawing Tool 메뉴 추가
+
+`[1m] [3m] [5m] [15m] [1d] | [+ 보조지표] [⚙ 설정] | [✏ 그리기]` 형태로 그리기 메뉴 버튼 추가. `replay/DrawingMenu.tsx`를 `live/LiveDrawingMenu.tsx`로 이동/리네임. `useDrawingsStore.activeTool`은 글로벌 상태(per CONTEXT.md "Drawing Tool" entry)라 그대로 사용 가능.
+
+### Drawing의 paneId × LiveTimeframe 교차
+
+Drawing은 paneId(`'candle'`/`'volume'`/`'ratio'`/`'quote-totals'`/`'fill-strength'`)에 묶임. Live는 timeframe에 따라 pane 구성이 다름:
+- 분봉 (`1m`/`3m`/`5m`/`15m`): 5개 pane 전부 마운트 → Drawing 정상
+- D/W/M: candle + volume 2개만 마운트 → ratio/quote-totals/fill-strength에 그려진 Drawing은 **렌더 대상 pane이 없음**
+
+**처리 방침** (plan 단계 세부 결정):
+- (1) D/W/M에서는 hoga pane에 묶인 Drawing을 단순히 렌더하지 않음 (paneSeries registry에 없으면 skip — 기존 ChartStage 패턴과 동일)
+- (2) 사용자가 D/W/M 보는 중 새 Drawing을 그리려 하면 candle/volume에만 그릴 수 있게 DrawingMenu에서 다른 pane 선택 자체가 불가
+- 데이터 손실 없음 — 분봉으로 돌아오면 hoga pane Drawing 재출현
+
+### 영속화 키 마이그레이션
+
+현재 키: `replay.drawings.v1.<code>` + `replay.drawingDefaults.v1`. 이름에 "replay" 박혀 있어 의미적으로 어색. 두 옵션:
+- **A. 키 이름 보존** — 가장 안전, 사용자 PC의 기존 drawing 손실 없음, 다만 코드/스토리지에 "replay" 흔적 잔존. plan에서 default 선택.
+- B. 새 키로 마이그레이션 — 한 번만 `replay.*` → `hoga.drawings.v1.<code>` 복사 후 이전 키 삭제. 코드는 깔끔하지만 마이그레이션 코드 작성/테스트 비용.
+
+Plan 단계에서 final decision. 본 spec은 옵션 A를 기본으로 가정.
+
+### Deletion list 보정 (Drawing 관련)
+
+다음은 삭제하지 **않음** (live로 host만 이전):
+- `chart/DrawingOverlay.tsx` (유지, LiveChartRoot가 마운트)
+- `chart/DrawingPropertyPanel.tsx` (유지)
+- `chart/drawing/` 디렉토리 전체 (types, tools, persistence, chartCoordinates — 유지)
+- `state/drawings.ts` (유지)
+- `chart/AuctionWindowOverlay.tsx` (이미 spec에 live 마운트 결정 — 유지)
+
+ChartStage는 여전히 삭제 (replay 전용 wrapper). 단 ChartStage 안의 paneSeries registry + computeAnchor 패턴은 LiveChartRoot로 이전:
+- `chart/ChartStage.tsx` + test — 삭제 (Drawing host 책임은 LiveChartRoot로 이전)
+- 별도 `chart/drawing/chartCoordinates.ts` — DrawingOverlay가 import, 유지
+
+### CONTEXT.md 영향
+
+Drawing 관련 entries (Drawing / Drawing Overlay / Drawing Property Panel / Drawing Tool / Default Drawing Style) 의 "Replay Viewer toolbar" / "ChartStage" 언급을 "Live toolbar" / "LiveChartRoot" 로 갱신 필요 (plan 후 후속 작업으로 처리).
+
 ## Non-goals
 
 - `volumeProfileMode` 는 `/live` 에 `VolumeProfileOverlay` 자체가 없으므로 이관하지 않고 관련 코드(필드, overlay 컴포넌트, modal row)도 삭제한다. Live에 volume profile을 도입하는 작업은 별도 spec.
@@ -195,8 +248,8 @@ export function useActivePrefs<T>(selector: (prefs: ChartViewPrefs) => T): T {
 - `replay/SettingsModal.tsx` + test (행 컴포넌트는 추출 후 `live/settings/` 로 이동)
 - `replay/CollapsedSidebarHandle.tsx` + test
 - `replay/DateRangePicker.tsx`
-- `replay/DrawingMenu.tsx`
-- `replay/InvariantOutcomesBanner.tsx` + test
+- `replay/DrawingMenu.tsx` → **삭제 아님. live로 이동/리네임** (`live/LiveDrawingMenu.tsx`). Drawing Tool 메뉴는 live로 이관 (Drawing migration 섹션 참조)
+- `replay/InvariantOutcomesBanner.tsx` + test → **삭제 아님. live로 이동** (`live/InvariantOutcomesBanner.tsx`). 현재 `LiveWorkarea.tsx:6` 가 import 중이라 live의 invariant warning 표시가 깨지면 안 됨. test도 같이 이동
 - `replay/RangeAdjustmentNotice.tsx` + test
 - `replay/SourcePreferenceRadio.test.tsx` (named import는 live로 이전된 컴포넌트가 받음)
 - `replay/StockCombobox.tsx`
@@ -270,6 +323,37 @@ export function useActivePrefs<T>(selector: (prefs: ChartViewPrefs) => T): T {
 | inventory 행 클릭 비활성화 후 사용자가 혼란 | hover 효과 / cursor 스타일도 제거하여 클릭 가능 시그널 자체 제거 |
 | 기존 `replay.tabs.v?` localStorage 키 화석화 | 코드는 더 이상 읽지 않음. 명시적 cleanup은 별도 작업. 새 키(`hoga.chart.prefs.v1`)와 충돌 없음 |
 | LiveSidebar/sidebar 공유 컴포넌트가 replay에 의존하지 않는지 | `sidebar/CursorSidebar`, `OrderbookTable`, `BrokerTrajectoryTable`, `TotalQtyBar` 는 `sidebar/` 디렉토리 — replay 디렉토리 밖이라 보존. 검증: `grep replay frontend/src/sidebar/` |
+
+## Doc updates (grill-with-docs 발견)
+
+### CONTEXT.md (자동 적용 완료)
+
+- "Source Preference" entry — `/live` 가 Source Preference를 consult한다는 사실 반영 (`useLiveBundle` → `useRange`, `useLiveCursor`). UI 노출 위치도 `LiveSettingsModal` 로 갱신.
+- "Cursor Sidebar" entry — replay 종속 표현 제거, `/live` 단일 consumer로 갱신. user-resize / collapse 기능이 사라짐을 명시.
+
+### CONTEXT.md (plan 후속 작업)
+
+- "Replay Tab" entry — replay 삭제와 함께 entry 자체 삭제. `ChartViewPrefs`는 "Replay Tab 한정" → "글로벌 chartPrefs" 의미로 별도 entry로 분리하거나 인라인 정의.
+- "Drawing" / "Drawing Overlay" / "Drawing Property Panel" / "Drawing Tool" / "Default Drawing Style" entries — "Replay Viewer toolbar" / "ChartStage" 언급을 `/live` / `LiveChartRoot` 로 갱신.
+- "Volume Profile" entry — `volumeProfileMode` 삭제와 함께 entry 삭제 (또는 wire field 정의만 남기고 UI 부분 제거).
+- "Replay" 라는 단어를 prose에서 찾아 일괄 정리 (orderbook replay 라는 브랜드 카피만 남기고 나머지 정정).
+- _Avoid_ 목록에서 "Replay Tab" 관련 항목 정리.
+
+### ADR supersede (plan 후속 작업)
+
+- **ADR-0014** (replay-single-timeframe): replay 페이지 자체가 사라지므로 status를 `superseded by /replay removal (2026-05-29)` 로 갱신. ADR의 결정 자체는 historical context로 보존.
+- **ADR-0022** (runtime-sidebar-width-user-owned): `replayLayout.ts` 삭제로 결정의 implementation이 사라짐. status를 superseded로 갱신.
+- **ADR-0046** (live-ma-fork-from-replay): "fork" 라는 표현 자체가 의미 무효 (one side가 사라짐). status를 superseded로 갱신, 또는 "live MA는 `useLivePageStore`에 자체 슬라이스로 존재" 라는 단순화된 진술로 갱신.
+
+### ADR 영향 없는 것
+
+- ADR-0026 (ratio-outlier-mask-frontend-label-units): 결정 그대로 유효. 표현만 갱신 (선택)
+- ADR-0027 (chart-numeric-prefs-registry): registry 패턴 보존 — 영향 없음
+- ADR-0029 (auction-mask-hide-not-zero): mask semantics 그대로 — 영향 없음
+- ADR-0039 (source-preference-fallback): spec과 일치 — 영향 없음
+- ADR-0041 (live-calendar-timeframe-panes): live D/W/M 결정 그대로 — 영향 없음
+- ADR-0044 (live-hover-spot-from-parquet): hover 동작 그대로 — 영향 없음
+- ADR-0024 / ADR-0028 / ADR-0030 / ADR-0032 (Drawing 관련): Drawing 기능이 live로 이관되므로 결정 자체 유효. 표현 정정만 plan 후속.
 
 ## Out of scope (재확인)
 

@@ -1,4 +1,4 @@
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
 
@@ -42,6 +42,13 @@ export function useLivePastCandles(
     enabled,
     staleTime: 60_000,
     refetchInterval: 60_000,
-    placeholderData: keepPreviousData,
+    // Code-aware placeholder: keep previous data only when the code matches.
+    // Same-code refetches (lazy from/to extension, refetchInterval) keep the
+    // previous render to avoid blanking. Code switches drop the placeholder
+    // so the bundle reports candles.length===0 until fresh data arrives —
+    // without this, LiveChartRoot's initial-view effect runs against the
+    // PREVIOUS code's candle count and locks setVisibleLogicalRange with a
+    // stale right edge, pushing the new code's latest candle off-screen.
+    placeholderData: (prev) => (prev && prev.code === code ? prev : undefined),
   });
 }

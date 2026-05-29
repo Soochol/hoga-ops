@@ -51,4 +51,23 @@ describe('useLivePastDailyCandles', () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(spy).not.toHaveBeenCalled();
   });
+
+  // Same regression as useLivePastCandles — see that test for the rationale.
+  it('drops placeholder data when the code changes', async () => {
+    const A = { ...RESPONSE, code: '005930' };
+    const B = { ...RESPONSE, code: '000660' };
+    vi.spyOn(client, 'apiCall').mockImplementation((url) =>
+      Promise.resolve(url.includes('code=005930') ? A : B),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result, rerender } = renderHook(
+      ({ code }: { code: string }) =>
+        useLivePastDailyCandles(code, '20240101', '20240105'),
+      { wrapper: wrap(qc), initialProps: { code: '005930' } },
+    );
+    await waitFor(() => expect(result.current.data?.code).toBe('005930'));
+    rerender({ code: '000660' });
+    expect(result.current.data?.code).not.toBe('005930');
+    await waitFor(() => expect(result.current.data?.code).toBe('000660'));
+  });
 });

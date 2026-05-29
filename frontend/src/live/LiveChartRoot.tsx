@@ -110,31 +110,43 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // every bundle update. SSE pushes inside today's segment must not snap
   // the user's scroll. The user-extended condition (historicalFromDate !=
   // null) also short-circuits — chunked extension lands silently.
-  const didInitialViewRef = useRef(false);
+  // Tracks the bundle.candles.length at which we last applied the initial
+  // viewport for this (code, timeframe). null = not yet applied.
+  // Minute paths apply once; D/W/M re-apply when the count grows so the
+  // 20-day initial fetch (~14 bars) → 250-day extension fetch (~250 bars)
+  // transition doesn't leave the chart zoomed on the early window with the
+  // latest data off the right edge.
+  const lastAppliedCountRef = useRef<number | null>(null);
   useEffect(() => {
-    didInitialViewRef.current = false;
+    lastAppliedCountRef.current = null;
   }, [code, timeframe]);
   useEffect(() => {
     if (!chart || !bundle || bundle.candles.length === 0) return;
-    if (didInitialViewRef.current) return;
     if (useLivePageStore.getState().historicalFromDate !== null) return;
     const ts = chart.timeScale();
-    // Branch by timeframe, not bundle size. Minute timeframes carry ~5000
-    // 1m bars and need the 300-bar windowing to stay legible; D/W/M carry
-    // a few dozen bars at most and look right under fitContent now that
-    // the hoga panes are gone (no vertical compression of candles). See
-    // ADR-0041 + the 2026-05-28 spec.
-    const target = 300;
+    const totalBars = bundle.candles.length;
+    const applied = lastAppliedCountRef.current;
     try {
       if (isMinuteTimeframe(timeframe)) {
-        const totalBars = bundle.candles.length;
+        // Minute timeframes carry ~5000 1m bars and need 300-bar windowing
+        // to stay legible. Apply once per (code, timeframe): SSE pushes
+        // inside today's segment must not snap the user's scroll.
+        if (applied !== null) return;
+        const target = 300;
         const from = Math.max(0, totalBars - target);
         const to = totalBars + 5; // 5-bar right padding
         ts.setVisibleLogicalRange({ from, to });
+        lastAppliedCountRef.current = totalBars;
       } else {
+        // D/W/M re-fit only when totalBars grows beyond the count at which
+        // we last fitted. The 14 → ~250 bar growth from the daily-fetch
+        // extension would otherwise be invisible. historicalFromDate !== null
+        // (user-driven extension) short-circuits above, so user scroll is
+        // preserved.
+        if (applied !== null && totalBars <= applied) return;
         ts.fitContent();
+        lastAppliedCountRef.current = totalBars;
       }
-      didInitialViewRef.current = true;
     } catch {
       // chart torn down between effect runs
     }
