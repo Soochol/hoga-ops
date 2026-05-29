@@ -41,7 +41,7 @@ interface Params {
  * useLiveBrokersAtCursor is intentionally NOT refactored here: brokers is a
  * day-keyed series (no bucket alignment needed), and forcing it through this
  * helper would be a worse fit than the current straightforward cursor-presence
- * gate. Orderbook + trades are the natural beneficiaries of bucket alignment.
+ * gate. Orderbook is the natural beneficiary of bucket alignment.
  */
 function useAlignedCursor(timeframe: MinuteTimeframe | null): {
   alignedT: number | null;
