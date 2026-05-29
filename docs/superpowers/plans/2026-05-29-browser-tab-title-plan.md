@@ -418,3 +418,11 @@ If `npm run dev` is not running, skip — the unit tests already cover the same 
 - Invariants: Single writer = Task 4 Step 5 + Task 5 Step 2 verification. Default-on-unmount = Task 1 Step 1 (unmount test). Precedence = Task 1 Step 1 (name → code → default tests).
 - Placeholder scan: none.
 - Type consistency: hook signature `useDocumentTitle(code: string | null | undefined): void` is identical across Tasks 1, 3, 4.
+
+## Deferred review notes
+
+플랜 디자인 리뷰(2026-05-29, 인라인)에서 식별했으나 이번 변경 범위에 포함하지 않음:
+
+- **Same-Code 다중 브라우저 탭 disambiguation**: 같은 **Code**(예: 005930)를 두 개 이상의 브라우저 탭에 띄우면 둘 다 `'삼성전자'`로 보여 구분 불가. 가능한 해결책: 탭별로 fromDate/timeframe 접미사 부가, favicon 색상 hint. 미루는 이유: 발생 빈도 낮음(같은 종목을 다른 기간/타임프레임으로 동시 비교하는 케이스). 사용자가 실제로 부딪히면 다시 결정.
+- **First-fetch flicker (`code` → `name`)**: useSymbols 캐시 미스시 한 번 코드 → 이름 깜빡임. spec §Goals에서 옵션 A로 의식적 수용됨. 만약 거슬리면 옵션 B(이름 준비 전까지 `'hoga-ops'` 유지)로 후속 변경 가능.
+- **Screen reader 영향**: `document.title` 변경은 일부 screen reader가 페이지 전환시 발화. `'frontend'` → 종목명은 명백한 개선이며 추가 a11y 작업 불필요. WCAG `2.4.2 Page Titled` 준수 (제목이 페이지 내용을 식별).
