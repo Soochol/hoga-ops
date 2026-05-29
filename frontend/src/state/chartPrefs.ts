@@ -166,45 +166,50 @@ export const DEFAULT_PREFS: ChartViewPrefs = {
   ...NUMERIC_DEFAULTS,
 };
 
-/**
- * Store-injection seam to break the chartPrefs.ts ↔ tabs.ts module cycle.
- *
- * Why: ESM hoists `import` statements regardless of source position.
- * A top-level `import { useTabsStore } from './tabs'` here would force
- * tabs.ts to evaluate while chartPrefs.ts's namespace is still empty —
- * and tabs.ts's `seedInitialState()` reads `CHART_TOGGLES` at module
- * load, which would then be undefined.
- *
- * tabs.ts calls `registerTabsStore(useTabsStore)` immediately after
- * `create(...)`. By the time any React component renders and invokes
- * `useActivePrefs`, registration has happened. The runtime null-check
- * is a tripwire if a non-React caller fires before tabs.ts loads.
- */
-type ActiveTabPrefsStoreApi = {
-  <U>(selector: (state: { activeTabId: string; getPrefs: (id: string) => ChartViewPrefs }) => U): U;
+import { create } from 'zustand';
+
+type ChartPrefsStore = ChartViewPrefs & {
+  setToggle: (key: ChartToggleKey, value: boolean) => void;
+  setNumericPref: (key: NumericPrefKey, value: number) => void;
+  setVolumeProfileMode: (mode: 'range' | 'per-day') => void;
+  setMovingAverage: (i: MAIndex, cfg: MAConfig) => void;
+  resetToDefaults: () => void;
 };
-let _activeTabPrefsStore: ActiveTabPrefsStoreApi | null = null;
-export function registerTabsStore(store: ActiveTabPrefsStoreApi): void {
-  _activeTabPrefsStore = store;
-}
+
+export const useChartPrefsStore = create<ChartPrefsStore>((set) => ({
+  ...DEFAULT_PREFS,
+  setToggle: (key, value) => set({ [key]: value } as Partial<ChartPrefsStore>),
+  setNumericPref: (key, value) => set({ [key]: value } as Partial<ChartPrefsStore>),
+  setVolumeProfileMode: (mode) => set({ volumeProfileMode: mode }),
+  setMovingAverage: (i, cfg) =>
+    set((s) => {
+      const next = [...s.movingAverages];
+      next[i] = cfg;
+      return { movingAverages: next };
+    }),
+  resetToDefaults: () =>
+    set({
+      ...DEFAULT_PREFS,
+      movingAverages: DEFAULT_MOVING_AVERAGES.map((c) => ({ ...c })),
+    }),
+}));
 
 /**
- * Subscribe to a slice of the active tab's `ChartViewPrefs`.
+ * Subscribe to a slice of the global `ChartViewPrefs`.
  *
  * Fine-grained: re-renders only when the selected slice changes (by
  * Zustand's default `Object.is` equality). Use this in chart components
  * and projectors instead of reading the whole prefs object — RatioPane
  * shouldn't re-render when the user flips `volumeProfileMode`.
  *
- * Replaces the prior `useChartPrefs()` + `ChartPrefsContext` pattern,
- * which threaded the whole prefs object through context and forced
- * every consumer to re-render on any pref change.
+ * Thin wrapper over `useChartPrefsStore` preserved so existing chart
+ * projectors keep their `useActivePrefs(selector)` call shape.
  */
 export function useActivePrefs<T>(selector: (prefs: ChartViewPrefs) => T): T {
-  if (_activeTabPrefsStore === null) {
-    throw new Error(
-      'useActivePrefs called before tabs store registered. Ensure ./tabs is imported.',
-    );
-  }
-  return _activeTabPrefsStore((s) => selector(s.getPrefs(s.activeTabId)));
+  return useChartPrefsStore(selector);
 }
+
+import { hydrateChartPrefs, attachChartPrefsPersistence } from './chartPrefsPersistence';
+
+hydrateChartPrefs(useChartPrefsStore);
+attachChartPrefsPersistence(useChartPrefsStore);
