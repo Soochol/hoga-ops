@@ -203,7 +203,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       },
       isLoading: false,
       error: null,
-    } as ReturnType<typeof livePastDailyCandlesSpy>);
+    } as unknown as ReturnType<typeof livePastDailyCandlesSpy>);
     const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527'), { wrapper });
     const warnings = result.current.bundle?.data_warnings ?? [];
     expect(warnings).toHaveLength(1);
