@@ -156,6 +156,61 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     expect(result.current.clampEngaged).toBe(true);
   });
 
+  it('maps minute-path KIS warnings (rate_limit / rate_limit_aborted) into bundle.data_warnings', () => {
+    livePastCandlesSpy.mockReturnValueOnce({
+      data: {
+        code: '005930',
+        from: '',
+        to: '',
+        candles: [
+          { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+        ],
+        cached_dates: [],
+        fresh_dates: [],
+        data_warnings: [
+          { date: '20260520', reason: 'kis_rate_limit', msg: 'EGW00201 rate limited' },
+          { date: '20260521', reason: 'rate_limit_aborted', msg: 'previous date hit rate limit' },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof livePastCandlesSpy>);
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527'), { wrapper });
+    const warnings = result.current.bundle?.data_warnings ?? [];
+    expect(warnings.map((w) => w.date)).toEqual(['20260520', '20260521']);
+    expect(warnings[0].warnings[0].invariant_id).toBe('kis_rate_limit');
+    expect(warnings[1].warnings[0].invariant_id).toBe('rate_limit_aborted');
+  });
+
+  it('surfaces batch-level daily warnings under the batch FROM date', () => {
+    livePastDailyCandlesSpy.mockReturnValueOnce({
+      data: {
+        code: '005930',
+        from: '',
+        to: '',
+        candles: [],
+        cached_batches: [],
+        fresh_batches: [],
+        data_warnings: [
+          // No `date` field — only batch label. The fallback should map this
+          // onto 20240301 (the batch's FROM) so the banner shows it.
+          {
+            batch: '20240301__20240315',
+            reason: 'kis_rate_limit' as const,
+            msg: 'EGW00201 rate limited',
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof livePastDailyCandlesSpy>);
+    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527'), { wrapper });
+    const warnings = result.current.bundle?.data_warnings ?? [];
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].date).toBe('20240301');
+    expect(warnings[0].warnings[0].invariant_id).toBe('kis_rate_limit');
+  });
+
   it('maps daily invariant_violation warnings into bundle.data_warnings (DateWarning shape)', () => {
     livePastDailyCandlesSpy.mockReturnValueOnce({
       data: {

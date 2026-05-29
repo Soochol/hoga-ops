@@ -363,6 +363,59 @@ async def test_past_candles_rate_limit_aborts_remaining(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -> None:
+    """When KIS rate-limits mid-range, dates AFTER the abort that are already
+    on disk must still be served. Regression for the "candles all disappear
+    when scrolling to past" bug: backend used to skip every subsequent date
+    unconditionally, so cached dates were dropped from the response and the
+    frontend's `kisCandles` shrank while `past.data.segments` (independent of
+    KIS) kept full coverage — leaving the candle pane empty over a wide axis."""
+    from hoga.live.kis_client import KisRateLimitError
+    from hoga.live.past_candles_cache import PastCandlesCache
+
+    # Pre-populate the cache for the date AFTER the rate-limited one, so it
+    # would be served as a hit if the loop checks the cache instead of bailing.
+    # t_ms must match the requested date (KST) or PastCandlesCache's
+    # date-match guard evicts the entry as stale.
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+    cached_t_ms = int(datetime.datetime(2026, 5, 3, 9, 0, tzinfo=kst).timestamp() * 1000)
+    pre_cache = PastCandlesCache(data_dir=tmp_path)
+    pre_cache.store_past("005930", "20260503", [
+        {"t_ms": cached_t_ms, "open": 200, "high": 210, "low": 195, "close": 205, "volume": 50},
+    ])
+
+    class _RateLimitedFakeKis:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+            self.calls.append(date_yyyymmdd)
+            if date_yyyymmdd == "20260502":
+                raise KisRateLimitError("EGW00201 rate limited")
+            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
+
+    fake = _RateLimitedFakeKis()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-candles?code=005930&from=20260501&to=20260503")
+        assert r.status_code == 200
+        body = r.json()
+        # 20260503's cached bar must be served (this is the regression check).
+        assert len(body["candles"]) == 2, (
+            f"expected cached date 20260503 to be served alongside 20260501; got candles={body['candles']}"
+        )
+        assert "20260503" in body["cached_dates"]
+        # KIS must still NOT be called for the post-abort date (the existing
+        # invariant — don't hammer the rate-limited remote).
+        assert fake.calls == ["20260501", "20260502"]
+        # The aborted-warning is now only emitted when there was no cache to
+        # fall back on. 20260503 was cached, so it should NOT carry a warning.
+        warn_dates = [w["date"] for w in body["data_warnings"]]
+        assert "20260503" not in warn_dates
+        assert any(w["reason"] == "kis_rate_limit" and w["date"] == "20260502" for w in body["data_warnings"])
+
+
+@pytest.mark.asyncio
 async def test_past_candles_weekend_empty_response(tmp_path) -> None:
     """KIS returns [] for non-trading days (weekends, holidays). Endpoint
     should accept that as a normal zero-candle date — no warning."""

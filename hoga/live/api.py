@@ -265,16 +265,21 @@ def build_router(
         cached_dates: list[str] = []
         fresh_dates: list[str] = []
         warnings: list[dict] = []
-        aborted = False
+        # When KIS rate-limits, stop calling KIS for the rest of the range to
+        # avoid hammering the remote — but keep serving cache hits. Skipping
+        # cached dates broke the frontend's chart: `past.data.segments`
+        # (hogaplay parquet, independent of KIS) kept full coverage while
+        # `kisCandles` shrank, leaving the candle pane empty over a wide axis.
+        kis_blocked = False
 
         for date_s in _date_iter(frm, too):
-            if aborted:
-                warnings.append({"date": date_s, "reason": "rate_limit_aborted", "msg": "previous date hit rate limit"})
-                continue
             try:
                 if date_s < today_s:
                     bars = cache.get_past(code, date_s)
                     if bars is None:
+                        if kis_blocked:
+                            warnings.append({"date": date_s, "reason": "rate_limit_aborted", "msg": "previous date hit rate limit"})
+                            continue
                         raw = await kis.fetch_past_minute_candles(code, date_s)
                         bars = [_candle_to_dict(c) for c in raw]
                         try:
@@ -301,6 +306,9 @@ def build_router(
                         # Known non-trading day; skip KIS, no row to add.
                         bars = []
                     else:  # miss
+                        if kis_blocked:
+                            warnings.append({"date": date_s, "reason": "rate_limit_aborted", "msg": "previous date hit rate limit"})
+                            continue
                         raw = await kis.fetch_past_minute_candles(code, date_s)
                         bars = [_candle_to_dict(c) for c in raw]
                         if bars:
@@ -313,7 +321,7 @@ def build_router(
                 candles_all.extend(bars)
             except KisRateLimitError as e:
                 warnings.append({"date": date_s, "reason": "kis_rate_limit", "msg": str(e)})
-                aborted = True
+                kis_blocked = True
             except KisApiError as e:
                 warnings.append({"date": date_s, "reason": "kis_api_error", "msg": e.msg_cd})
 
