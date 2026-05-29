@@ -337,6 +337,12 @@ async def test_past_candles_partial_failure_kis_api_error(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_past_candles_rate_limit_aborts_remaining(tmp_path) -> None:
+    """Post-ADR-0049: retry is centralized in ``KisClient._get``. From the
+    handler's perspective, a single ``KisRateLimitError`` from the fake means
+    "client has exhausted retries" — the handler marks the range kis_blocked
+    and warns on remaining dates. The retry mechanics themselves are covered
+    by client-level tests in test_kis_client.py.
+    """
     from hoga.live.kis_client import KisRateLimitError
 
     class _RateLimitedFakeKis:
@@ -355,7 +361,8 @@ async def test_past_candles_rate_limit_aborts_remaining(tmp_path) -> None:
         r = c.get("/api/live/past-candles?code=005930&from=20260501&to=20260503")
         assert r.status_code == 200
         body = r.json()
-        # 20260502 fires rate limit, 20260503 must be skipped
+        # Fake raises once on 20260502 (client retry is opaque to the fake).
+        # 20260503 is skipped — kis_blocked path is unchanged.
         assert fake.calls == ["20260501", "20260502"]
         reasons = [w["reason"] for w in body["data_warnings"]]
         assert "kis_rate_limit" in reasons
@@ -406,7 +413,9 @@ async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -
         )
         assert "20260503" in body["cached_dates"]
         # KIS must still NOT be called for the post-abort date (the existing
-        # invariant — don't hammer the rate-limited remote).
+        # invariant — don't hammer the rate-limited remote). The fake raises
+        # once on 20260502; client retry is opaque to it (covered by
+        # test_kis_client.py tests).
         assert fake.calls == ["20260501", "20260502"]
         # The aborted-warning is now only emitted when there was no cache to
         # fall back on. 20260503 was cached, so it should NOT carry a warning.
@@ -665,14 +674,30 @@ def test_past_daily_partial_hit_gap_fill(tmp_path) -> None:
 
 
 def test_past_daily_rate_limit_surfaces_data_warning(tmp_path) -> None:
+    """Daily endpoint inherits ADR-0049: a ``KisRateLimitError`` reaching the
+    handler means the client has already exhausted retries. The gap loop then
+    breaks and the user sees one ``kis_rate_limit`` warning rather than the
+    (now-impossible) wall of retryable transients.
+    """
     fake = _FakeKisForDaily()
     fake.raise_rate_limit_on_call = 1
     app = _daily_app(tmp_path, fake)
     with TestClient(app) as c:
         c.get("/api/live/past-daily-candles?code=005930&from=20240301&to=20240501")
+        # Snapshot the call count after the warm-up call so we can assert the
+        # second request's gap loop bails out after the rate-limited call.
+        warmup_calls = len(fake.calls)
         r2 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240501")
         body = r2.json()
         assert any(w["reason"] == "kis_rate_limit" for w in body["data_warnings"])
+        # Gap loop must break after the first EGW00201 — no further KIS
+        # calls for later gap batches in the SAME request. (Client retries
+        # are opaque to the fake; they don't show up as additional calls.)
+        post_warmup_calls = len(fake.calls) - warmup_calls
+        assert post_warmup_calls == 1, (
+            f"expected gap loop to break after one rate-limited call; got "
+            f"{post_warmup_calls} calls: {fake.calls[warmup_calls:]}"
+        )
 
 
 def test_past_daily_violation_surfaces_to_wire(tmp_path) -> None:

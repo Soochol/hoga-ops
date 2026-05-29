@@ -114,9 +114,18 @@ async def test_reissue_cooldown_blocks_second_call_within_60s(tmp_path: Path) ->
 
 
 def _make_client_with_5xx(
-    tmp_path: Path, status: int, body, content_type: str = "application/json"
+    tmp_path: Path,
+    status: int,
+    body,
+    content_type: str = "application/json",
+    *,
+    _rate_limit_backoff: tuple[float, ...] = (1.0, 2.0, 4.0),
 ) -> KisClient:
-    """Mock both the token endpoint (200) and quote endpoint (status, body)."""
+    """Mock both the token endpoint (200) and quote endpoint (status, body).
+
+    ``_rate_limit_backoff`` defaults to production sequence; pass ``()`` for
+    tests that assert raise-shape on EGW00201 and don't care about retry.
+    """
     def handler(req: httpx.Request) -> httpx.Response:
         if "oauth2/tokenP" in req.url.path:
             return httpx.Response(
@@ -133,6 +142,7 @@ def _make_client_with_5xx(
         credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
         token_cache_path=tmp_path / "token.json",
         _transport=transport,
+        _rate_limit_backoff=_rate_limit_backoff,
     )
 
 
@@ -161,14 +171,13 @@ async def test_5xx_with_json_body_preserves_upstream_msg_cd(tmp_path: Path) -> N
 async def test_5xx_with_egw00201_raises_rate_limit_error(tmp_path: Path) -> None:
     """KIS wraps the rate-limit code (EGW00201) in a 5xx envelope sometimes.
 
-    The poller's `_fetch_with_backoff` distinguishes `KisRateLimitError` (waits
-    1s, 2s, retries) from `KisApiError` (gives up immediately). Without this
-    branch, every rate-limit hint on the 5xx path bypassed backoff entirely
-    — producing the per-code data loss the operator saw as
-    `kis_error code=X msg_cd=HTTP_500/EGW00201 streak=1`.
+    Asserts only the exception SHAPE — retry behavior is covered by the
+    dedicated retry tests below. `_rate_limit_backoff=()` disables retry so
+    this test stays fast.
     """
     client = _make_client_with_5xx(
         tmp_path, 500, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "거래량 초과"},
+        _rate_limit_backoff=(),
     )
     try:
         with pytest.raises(KisRateLimitError) as exc_info:
@@ -309,5 +318,236 @@ async def test_kis_client_get_goes_through_rate_limiter(tmp_path: Path) -> None:
     try:
         await client.fetch_orderbook("003490")
         assert calls["n"] == 1
+    finally:
+        await client.aclose()
+
+
+# ------------------------------------------------------------------------
+# ADR-0049: centralized EGW00201 retry in _get
+# ------------------------------------------------------------------------
+
+
+def _make_attempt_counting_client(
+    tmp_path: Path,
+    *,
+    responses: list,
+    _rate_limit_backoff: tuple[float, ...] = (0.0, 0.0, 0.0),
+) -> tuple[KisClient, dict]:
+    """Per-attempt response sequence. ``responses[i]`` is consumed on the
+    i-th data-endpoint call; the last entry is reused after exhaustion so
+    tests can model "fails N times then succeeds forever" or "fails forever".
+
+    Each entry is `(status, json_or_bytes)`; status 200 with a dict body
+    flows through ``_unwrap``, other statuses raise httpx.HTTPStatusError.
+    Returns the client + a counter dict whose ``["data"]`` key records the
+    number of data-endpoint calls (excludes the token endpoint).
+    """
+    counter = {"data": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if "oauth2/tokenP" in req.url.path:
+            return httpx.Response(
+                200,
+                json={"access_token": "TOK", "expires_in": 86400, "token_type": "Bearer"},
+            )
+        idx = min(counter["data"], len(responses) - 1)
+        counter["data"] += 1
+        status, body = responses[idx]
+        return httpx.Response(status, json=body)
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_cache_path=tmp_path / "token.json",
+        _transport=httpx.MockTransport(handler),
+        _rate_limit_backoff=_rate_limit_backoff,
+    )
+    return client, counter
+
+
+def _ok_orderbook_body() -> dict:
+    return {
+        "rt_cd": "0",
+        "output1": {
+            **{f"askp{i}": "0" for i in range(1, 11)},
+            **{f"askp_rsqn{i}": "0" for i in range(1, 11)},
+            **{f"bidp{i}": "0" for i in range(1, 11)},
+            **{f"bidp_rsqn{i}": "0" for i in range(1, 11)},
+            "total_askp_rsqn": "0",
+            "total_bidp_rsqn": "0",
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_retries_on_rate_limit_5xx_then_succeeds(tmp_path: Path, monkeypatch) -> None:
+    """Two transient 5xx-EGW00201 responses followed by 200/OK — _get retries
+    and finally returns the body. Validates ADR-0049's primary contract.
+    """
+    sleeps: list[float] = []
+
+    async def fake_sleep(s: float) -> None:
+        sleeps.append(s)
+
+    monkeypatch.setattr("hoga.live.kis_client.asyncio.sleep", fake_sleep)
+    client, counter = _make_attempt_counting_client(
+        tmp_path,
+        responses=[
+            (500, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "too fast"}),
+            (500, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "too fast"}),
+            (200, _ok_orderbook_body()),
+        ],
+        _rate_limit_backoff=(1.0, 2.0, 4.0),
+    )
+    try:
+        ob = await client.fetch_orderbook("003490")
+        assert ob is not None
+        # 3 data calls: 2 EGW00201 + 1 OK. Sleeps fired BETWEEN attempts.
+        assert counter["data"] == 3
+        assert sleeps == [1.0, 2.0]
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_retries_on_rt_cd_egw00201_then_raises(tmp_path: Path, monkeypatch) -> None:
+    """200/rt_cd!=0/EGW00201 path: the JSON-envelope flavour of rate limit.
+    Same exception type as the 5xx-EGW00201 path, so the same retry loop
+    catches it. Coverage gap closed by ADR-0049.
+    """
+    sleeps: list[float] = []
+
+    async def fake_sleep(s: float) -> None:
+        sleeps.append(s)
+
+    monkeypatch.setattr("hoga.live.kis_client.asyncio.sleep", fake_sleep)
+    client, counter = _make_attempt_counting_client(
+        tmp_path,
+        responses=[(200, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "rate limited"})],
+        _rate_limit_backoff=(1.0, 2.0, 4.0),
+    )
+    try:
+        with pytest.raises(KisRateLimitError):
+            await client.fetch_orderbook("003490")
+        # 4 attempts = 1 initial + 3 retries; 3 sleeps between them.
+        assert counter["data"] == 4
+        assert sleeps == [1.0, 2.0, 4.0]
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_does_not_retry_on_api_error(tmp_path: Path, monkeypatch) -> None:
+    """Non-EGW00201 KisApiError must propagate on the first attempt — those
+    are caller-actionable (session window, suspended stock, etc.).
+    """
+    sleeps: list[float] = []
+
+    async def fake_sleep(s: float) -> None:
+        sleeps.append(s)
+
+    monkeypatch.setattr("hoga.live.kis_client.asyncio.sleep", fake_sleep)
+    client, counter = _make_attempt_counting_client(
+        tmp_path,
+        responses=[(200, {"rt_cd": "1", "msg_cd": "EGW00121", "msg1": "장시간 아님"})],
+    )
+    try:
+        with pytest.raises(KisApiError):
+            await client.fetch_orderbook("003490")
+        assert counter["data"] == 1
+        assert sleeps == []
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_does_not_retry_on_auth_error(tmp_path: Path) -> None:
+    """Token endpoint failures raise KisAuthError before the retry loop
+    starts — no point retrying an auth problem on the data endpoint.
+    """
+    data_calls = {"n": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if "oauth2/tokenP" in req.url.path:
+            return httpx.Response(401, json={"error_code": "E001", "error_description": "bad"})
+        data_calls["n"] += 1
+        return httpx.Response(200, json=_ok_orderbook_body())
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_cache_path=tmp_path / "token.json",
+        _transport=httpx.MockTransport(handler),
+        _rate_limit_backoff=(0.0, 0.0, 0.0),
+    )
+    try:
+        with pytest.raises(KisAuthError):
+            await client.fetch_orderbook("003490")
+        # Data endpoint never reached — auth failed first.
+        assert data_calls["n"] == 0
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_retry_false_kwarg_disables_retry(tmp_path: Path, monkeypatch) -> None:
+    """``retry=False`` is the diagnostic opt-out: callers that explicitly want
+    raw single-shot behavior (e.g. a probe asking "is KIS currently rate-
+    limiting me?") must NOT get the retry-then-succeed safety net.
+    """
+    sleeps: list[float] = []
+
+    async def fake_sleep(s: float) -> None:
+        sleeps.append(s)
+
+    monkeypatch.setattr("hoga.live.kis_client.asyncio.sleep", fake_sleep)
+    client, counter = _make_attempt_counting_client(
+        tmp_path,
+        responses=[(200, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "rate"})],
+    )
+    try:
+        with pytest.raises(KisRateLimitError):
+            # Direct _get call so we can pass retry=False — fetch_* helpers
+            # don't expose it, by design (production callers always retry).
+            await client._get(
+                path="/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
+                tr_id="FHKST01010200",
+                params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": "003490"},
+                retry=False,
+            )
+        assert counter["data"] == 1
+        assert sleeps == []
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_retry_re_acquires_rate_limiter_each_attempt(tmp_path: Path, monkeypatch) -> None:
+    """Each retry passes through the token bucket again — a retry burst can't
+    skip the per-API-key budget by reusing the previous attempt's token. This
+    is the invariant that lets us reason about poller + backfill coexistence:
+    no matter how many times any caller retries, the total tokens consumed
+    equals the total HTTP attempts.
+    """
+
+    async def fake_sleep(s: float) -> None:
+        pass
+
+    monkeypatch.setattr("hoga.live.kis_client.asyncio.sleep", fake_sleep)
+    client, _ = _make_attempt_counting_client(
+        tmp_path,
+        responses=[(200, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "rate"})],
+    )
+    acquires = {"n": 0}
+    real_acquire = client._rate_limiter.acquire
+
+    async def counting_acquire() -> None:
+        acquires["n"] += 1
+        await real_acquire()
+
+    client._rate_limiter.acquire = counting_acquire  # type: ignore[method-assign]
+    try:
+        with pytest.raises(KisRateLimitError):
+            await client.fetch_orderbook("003490")
+        # 4 attempts ⇒ 4 token acquires (no re-use across retries).
+        assert acquires["n"] == 4
     finally:
         await client.aclose()

@@ -304,8 +304,12 @@ _Avoid_: "rollup" (collides with frontend aggregation like StockDateGroup rollup
 - **분봉** (1m/3m/5m/10m/15m/30m timeframe): `GET /api/live/past-candles` → KIS `inquire-time-dailychartprice` (TR_ID `FHKST03010230`). 응답은 1분봉, 백엔드가 disk 에 per-Stock-Date 캐시 (`~/.local/share/hoga-ops/kis-past-candles/<code>/<YYYYMMDD>.json`). 250-day hard cap (payload 보호 — 1년치 일봉을 분봉으로 보내면 ~5MB). 프론트는 3m/5m/.../30m 을 1분봉에서 client-aggregate.
 - **일봉** (D/W/M timeframe): `GET /api/live/past-daily-candles` → KIS `inquire-daily-itemchartprice` (TR_ID `FHKST03010100`, period_div_code='D'). 응답은 일봉, 백엔드가 **프로세스 메모리** 에만 캐시 (디스크 안 둠 — 데이터 양이 매우 작아서 메모리 충분; restart = 자연 invalidation). cap 없음 (KIS 보유 기간 ~20-30 년이 자연 상한). 프론트는 D 를 그대로, W/M 는 client-aggregate.
 
-둘 다 **Live Capture** (10초 폴링으로 snapshot/trade/broker raw 이벤트 수집) 와 다른 호출 — KIS 의 *pre-aggregated candle* endpoint 만 사용하는 on-demand 호출. 두 캐시는 서로 독립 (한쪽이 분봉, 다른쪽이 일봉이라 같은 데이터가 양쪽에 중복될 수 없음). `/api/range` 의 promoted Parquet 호출과도 독립 — promoted Parquet 은 snapshots/trades/brokers 만 담고 candle 은 안 담기 때문. ADR-0040 (분봉) + ADR-0048 (일봉) 두 결정으로 둘 다 *별도 cache + 별도 endpoint* 를 갖는다.
+둘 다 **Live Capture** (10초 폴링으로 snapshot/trade/broker raw 이벤트 수집) 와 다른 호출 — KIS 의 *pre-aggregated candle* endpoint 만 사용하는 on-demand 호출. 두 캐시는 서로 독립 (한쪽이 분봉, 다른쪽이 일봉이라 같은 데이터가 양쪽에 중복될 수 없음). `/api/range` 의 promoted Parquet 호출과도 독립 — promoted Parquet 은 snapshots/trades/brokers 만 담고 candle 은 안 담기 때문. ADR-0040 (분봉) + ADR-0048 (일봉) 두 결정으로 둘 다 *별도 cache + 별도 endpoint* 를 갖는다. 두 endpoint 모두 KIS 가 `EGW00201` ("초당 거래건수 초과") 을 반환하면 **KisClient** 가 (1s, 2s, 4s) 지수 backoff 으로 자동 재시도 — handler 까지 `KisRateLimitError` 가 도달하면 그건 이미 client retry 가 exhausted 됐다는 신호이고 해당 (date | gap batch) 만 `kis_rate_limit` warning 으로 surface (ADR-0050).
 _Avoid_: "past candles" 단독 (소스를 잃음 — KIS-specific), "historical candles" (replay candle wire 와 중첩), "candle backfill" 단독 ("Live" 페이지 scope 누락).
+
+**KisClient**:
+`hoga/live/kis_client.py` 의 단일 async HTTP wrapper — Live Capture 영역의 모든 KIS Open API 호출이 통과하는 *single ingress*. 토큰 발급/갱신 (`get_access_token`, 1-per-minute reissue cool-down), 15 calls/sec 토큰 버킷 (`_RATE_LIMIT_CALLS_PER_SEC`), EGW00201 자동 retry ((1.0, 2.0, 4.0)s backoff, `_RATE_LIMIT_BACKOFF`) 세 가지를 메서드 호출자에게 투명하게 제공한다. **Invariant (ADR-0050)**: KIS endpoint 를 직접 hit 하는 production 코드는 추가하지 않는다 — `httpx.AsyncClient` 로 `openapi.koreainvestment.com:9443` 을 직접 부르는 새 코드가 review 에 등장하면 본 ADR 위반. 진단/probe 같은 합법적 single-shot 케이스는 `_get(..., retry=False)` opt-out 으로 명시적으로 표기한다.
+_Avoid_: "the KIS client" 라는 모호한 표현 (이 코드베이스엔 단 하나, 항상 capital `KisClient`), "KIS HTTP layer" (HTTP 외에도 토큰 lifecycle + retry 정책을 담음).
 
 ## Relationships
 

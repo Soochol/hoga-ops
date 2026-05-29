@@ -107,30 +107,19 @@ async def test_empty_trades_still_emits_snapshot(tmp_path: Path, monkeypatch) ->
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_retries_then_moves_on(tmp_path: Path, monkeypatch) -> None:
-    """Audit-4: EGW00201 triggers exponential backoff + retry up to 3 times."""
-    # Patch out asyncio.sleep so tests don't actually wait
-    sleeps: list[float] = []
-    real_sleep = asyncio.sleep
-
-    async def fake_sleep(s: float):
-        sleeps.append(s)
-        await real_sleep(0)
-
-    monkeypatch.setattr("hoga.live.poller.asyncio.sleep", fake_sleep)
+async def test_rate_limit_skips_code_and_moves_on(tmp_path: Path, monkeypatch) -> None:
+    """Post-ADR-0049: retry lives in KisClient._get, not the poller. When the
+    AsyncMock raises ``KisRateLimitError`` the poller treats that as
+    "client already exhausted retries" — it logs a giveup warning, skips
+    this code, and proceeds to the next one. From the poller's view there
+    is exactly ONE call per fetch method (the inner retries are an
+    implementation detail of the client and invisible to this mock).
+    """
     regular_ms = int(datetime(2026, 5, 27, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
     monkeypatch.setattr("hoga.live.poller._now_ms", lambda: regular_ms)
 
-    call_count = {"n": 0}
-
-    async def flaky_orderbook(code):
-        call_count["n"] += 1
-        if call_count["n"] <= 3:
-            raise KisRateLimitError("rate limited")
-        return _ob(code)
-
     kis = AsyncMock()
-    kis.fetch_orderbook.side_effect = flaky_orderbook
+    kis.fetch_orderbook.side_effect = KisRateLimitError("rate limited")
     kis.fetch_trades.return_value = []
     kis.fetch_brokers.return_value = _brokers("005930")
     writer = LiveWriter(tmp_path / "live")
@@ -139,10 +128,13 @@ async def test_rate_limit_retries_then_moves_on(tmp_path: Path, monkeypatch) -> 
     ))
     await poller.run_one_cycle()
 
-    # 3 retries attempted, then giveup → no file written for this code
-    assert call_count["n"] == 3  # first call + 2 retries (cap on retry attempts = 3 total)
-    # backoff sequence: 1s, 2s — third gives up
-    assert sleeps[:2] == [1.0, 2.0]
+    # Poller called fetch_orderbook exactly once — no inner retry. (Client's
+    # retry, if any, was opaque to this AsyncMock.)
+    assert kis.fetch_orderbook.await_count == 1
+    # No JSONL written for this code — the cycle skipped it.
+    assert not (tmp_path / "live" / "20260527" / "005930.jsonl").exists()
+    # Code does NOT advance _last_success_cycle on a giveup.
+    assert "005930" not in poller._last_success_cycle
 
 
 @pytest.mark.asyncio

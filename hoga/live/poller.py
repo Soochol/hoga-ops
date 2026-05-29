@@ -26,10 +26,6 @@ from .writer import LiveWriter
 
 _log = logging.getLogger(__name__)
 
-# Audit-4: exponential backoff sequence on EGW00201. Total retries = 3.
-_BACKOFF_SECONDS = (1.0, 2.0, 4.0)
-
-
 def _now_ms() -> int:
     """Module-level for monkeypatch in tests."""
     return int(datetime.now(timezone.utc).timestamp() * 1000)
@@ -131,42 +127,43 @@ class LivePoller:
     async def _fetch_with_backoff(
         self, code: str, phase: str
     ) -> tuple[KisOrderbook, list[KisTrade], KisBrokers] | None:
-        """Fetch ob+trades+brokers with retry on EGW00201 (Audit-4).
+        """Fetch ob+trades+brokers for one code per phase. Returns None on
+        any failure so the cycle moves on to the next code.
 
-        Returns None after exhausting retries.
+        EGW00201 retry was originally implemented here (Audit-4: 1s/2s/4s
+        backoff for up to 3 retries). It has been moved INTO ``KisClient._get``
+        (ADR-0050) so every KIS caller — poller, /past-candles, /past-daily-
+        candles — receives the same retry contract automatically. From the
+        poller's view: a successful retry inside the client is invisible
+        (just a longer wall-clock); only an exhausted retry surfaces here
+        as ``KisRateLimitError``, which now means "client gave up too" and
+        the right move is to drop this code from this cycle and try again
+        next tick.
         """
-        for attempt, backoff in enumerate(_BACKOFF_SECONDS):
-            try:
-                if phase == "after_hours_closing":
-                    ob_task = self._kis.fetch_overtime_orderbook(code)
-                    trades_task = self._kis.fetch_overtime_trades(code)
-                else:
-                    ob_task = self._kis.fetch_orderbook(code)
-                    trades_task = self._kis.fetch_trades(code)
-                brokers_task = self._kis.fetch_brokers(code)
-                ob, trades, brokers = await asyncio.gather(ob_task, trades_task, brokers_task)
-                return ob, trades, brokers
-            except KisRateLimitError:
-                _log.warning(
-                    "live.poller.rate_limited code=%s attempt=%d backoff_s=%s",
-                    code, attempt + 1, backoff,
-                )
-                # Don't sleep on the last attempt — we're about to give up
-                if attempt < len(_BACKOFF_SECONDS) - 1:
-                    await asyncio.sleep(backoff)
-            except KisApiError as e:
-                streak = self._consecutive_fails.get(code, 0) + 1
-                self._consecutive_fails[code] = streak
-                _log.error(
-                    "live.poller.kis_error code=%s msg_cd=%s streak=%d",
-                    code, e.msg_cd, streak,
-                )
-                return None
-            except Exception:  # noqa: BLE001 — one bad cycle must not kill the poller task
-                _log.exception("live.poller.unexpected_error code=%s", code)
-                return None
-        _log.error("live.poller.rate_limit_giveup code=%s", code)
-        return None
+        try:
+            if phase == "after_hours_closing":
+                ob_task = self._kis.fetch_overtime_orderbook(code)
+                trades_task = self._kis.fetch_overtime_trades(code)
+            else:
+                ob_task = self._kis.fetch_orderbook(code)
+                trades_task = self._kis.fetch_trades(code)
+            brokers_task = self._kis.fetch_brokers(code)
+            ob, trades, brokers = await asyncio.gather(ob_task, trades_task, brokers_task)
+            return ob, trades, brokers
+        except KisRateLimitError:
+            _log.warning("live.poller.rate_limit_giveup code=%s", code)
+            return None
+        except KisApiError as e:
+            streak = self._consecutive_fails.get(code, 0) + 1
+            self._consecutive_fails[code] = streak
+            _log.error(
+                "live.poller.kis_error code=%s msg_cd=%s streak=%d",
+                code, e.msg_cd, streak,
+            )
+            return None
+        except Exception:  # noqa: BLE001 — one bad cycle must not kill the poller task
+            _log.exception("live.poller.unexpected_error code=%s", code)
+            return None
 
     async def run_one_cycle(self) -> None:
         start_ms = _now_ms()

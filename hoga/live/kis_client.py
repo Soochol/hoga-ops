@@ -44,6 +44,16 @@ _STOCK_MRKT_DIV = "J"
 # EGW00201 boundary under burst.
 _RATE_LIMIT_CALLS_PER_SEC = 15.0
 
+# Exponential backoff sequence on EGW00201 — applied inside ``_get`` so EVERY
+# KIS call gets retry-on-rate-limit for free. Centralised here (instead of in
+# each caller) because the previous caller-by-caller policy let asymmetries
+# slip in (e.g. `_get_past_candles` aborted after one error while the poller
+# retried, turning a single transient EGW00201 into a wall of cascading
+# "rate_limit_aborted" warnings for ~50 dates). 4 attempts total: 1 immediate
+# + 3 retries with 1s/2s/4s waits between attempts. KisAuthError and
+# KisApiError are NOT retried — those are caller-actionable. See ADR-0050.
+_RATE_LIMIT_BACKOFF: tuple[float, ...] = (1.0, 2.0, 4.0)
+
 
 class _TokenBucket:
     """Leaky-bucket rate limiter shared by all KIS data callers.
@@ -113,7 +123,14 @@ class KisAuthError(RuntimeError):
 
 
 class KisRateLimitError(RuntimeError):
-    """msg_cd == 'EGW00201' — backoff caller's responsibility (Audit-4)."""
+    """msg_cd == 'EGW00201'.
+
+    Originally documented as "backoff caller's responsibility" (Audit-4).
+    Post-ADR-0050 the backoff lives in ``KisClient._get`` itself — this
+    exception only surfaces to callers AFTER the client's retry sequence
+    has been exhausted. Caller-actionable response is "this caller's range
+    is blocked for now, move on".
+    """
 
 
 class KisApiError(RuntimeError):
@@ -172,6 +189,7 @@ class KisClient:
         *,
         _transport: Optional[httpx.AsyncBaseTransport] = None,
         _rate_limit_per_sec: float = _RATE_LIMIT_CALLS_PER_SEC,
+        _rate_limit_backoff: tuple[float, ...] = _RATE_LIMIT_BACKOFF,
     ):
         self._creds = credentials
         self._cache_path = token_cache_path
@@ -188,6 +206,10 @@ class KisClient:
         # bypasses this since it uses its own 1/min cool-down endpoint
         # and KIS scopes the rate budget per data endpoint, not per app.
         self._rate_limiter = _TokenBucket(rate=_rate_limit_per_sec)
+        # Tests pass (0.0, 0.0, 0.0) here to exercise the retry shape without
+        # paying the real wall-clock sleeps; production callers leave the
+        # default. See ADR-0050.
+        self._rate_limit_backoff = _rate_limit_backoff
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -266,22 +288,57 @@ class KisClient:
         )
         self._cache_path.chmod(0o600)
 
-    async def _get(self, path: str, tr_id: str, params: dict[str, Any]) -> dict:
-        """Authenticated GET to KIS API. Unwraps and validates rt_cd.
+    async def _get(
+        self,
+        path: str,
+        tr_id: str,
+        params: dict[str, Any],
+        *,
+        retry: bool = True,
+    ) -> dict:
+        """Authenticated GET to KIS API with built-in EGW00201 retry.
+
+        Contract: returns a validated body or raises a typed Kis*Error.
+        ``KisRateLimitError`` is retried in-place per ``self._rate_limit_backoff``
+        (see ADR-0050); ``KisAuthError`` and ``KisApiError`` propagate on the
+        first attempt. Pass ``retry=False`` for diagnostic callers that want
+        the raw single-shot behavior (e.g. a probe that measures whether KIS
+        is currently rate-limiting). The retry loop wraps the whole
+        acquire+send+unwrap sequence, so each attempt re-acquires a token
+        from the shared bucket — replays of the same call don't get a free
+        ride past the rate limiter.
+        """
+        backoff = self._rate_limit_backoff if retry else ()
+        attempts = len(backoff) + 1
+        for attempt in range(attempts):
+            try:
+                return await self._do_get_once(path, tr_id, params)
+            except KisRateLimitError:
+                if attempt + 1 >= attempts:
+                    raise
+                await asyncio.sleep(backoff[attempt])
+        # Unreachable: loop either returns or re-raises on the final iteration.
+        raise AssertionError("unreachable")
+
+    async def _do_get_once(
+        self, path: str, tr_id: str, params: dict[str, Any]
+    ) -> dict:
+        """One unretried KIS GET. Extracted from ``_get`` so the retry loop
+        sees a single call site; do not call directly from non-test code —
+        callers should go through ``_get`` to get the retry contract.
 
         Normalizes upstream HTTP errors into domain exceptions so callers
-        don't have to know about httpx — `_get`'s contract is "either
-        return a validated body or raise a typed KisXxxError". Without
-        this normalization a transient KIS 500 (common per-code) bubbles
-        up as httpx.HTTPStatusError and forces the poller to log a
-        full traceback at `unexpected_error` level, drowning real bugs
-        in noise. Found by /qa: KIS regularly returns 500 for codes
-        outside the regular session window — expected, not a defect.
+        don't have to know about httpx. Without this normalization a
+        transient KIS 500 (common per-code) bubbles up as httpx.HTTPStatusError
+        and forces the poller to log a full traceback at `unexpected_error`
+        level, drowning real bugs in noise. Found by /qa: KIS regularly
+        returns 500 for codes outside the regular session window — expected,
+        not a defect.
 
-        Rate limit: every call passes through ``self._rate_limiter`` so
-        the per-API-key budget is honoured across all callers (poller +
-        backfill). Acquire happens before the HTTP send so token waiters
-        block on the rate budget, not on KIS response time.
+        Rate limit: passes through ``self._rate_limiter`` so the per-API-key
+        budget is honoured across all callers (poller + backfill). Acquire
+        happens before the HTTP send so token waiters block on the rate
+        budget, not on KIS response time.
         """
         await self._rate_limiter.acquire()
         token = await self.get_access_token()
@@ -316,11 +373,9 @@ class KisClient:
             http_part = f"HTTP_{e.response.status_code}"
             msg_cd = f"{http_part}/{upstream_msg_cd}" if upstream_msg_cd else http_part
             # EGW00201 = KIS rate-limit code. KIS sometimes wraps it in a 5xx
-            # envelope instead of the documented 200/rt_cd!=0 path. Without
-            # this branch the rate-limit signal flows into KisApiError and
-            # the poller's existing backoff+retry loop is bypassed — every
-            # "slow down" hint from KIS becomes per-code data loss instead
-            # of a brief pause. Same downgrade path as `_unwrap`.
+            # envelope instead of the documented 200/rt_cd!=0 path. Both paths
+            # raise KisRateLimitError so the ``_get`` retry loop catches the
+            # same exception type regardless of which envelope KIS used.
             if upstream_msg_cd == "EGW00201":
                 raise KisRateLimitError(f"rate limit ({msg_cd}): {upstream_msg1}") from e
             raise KisApiError(msg_cd=msg_cd, msg1=upstream_msg1) from e

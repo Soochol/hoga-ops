@@ -29,6 +29,12 @@ _PAST_MAX_DAYS = 250
 _CODE_RE = re.compile(r"^\d{6}$")
 _KST = timezone(timedelta(hours=9))
 
+# Rate-limit retry policy lives in ``KisClient._get`` (ADR-0050). Handlers
+# here just call ``kis.fetch_*`` directly; a ``KisRateLimitError`` that
+# reaches the handler's ``except`` block means the client has already
+# exhausted its retries — the right move is then to mark the range
+# blocked and surface the warning to the wire.
+
 
 def _today_kst_date() -> date:
     return datetime.now(_KST).date()
