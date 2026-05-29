@@ -13,7 +13,7 @@
 ## Invariants
 
 - **`useLiveSeries.trade` SSE 스트림 무결성**: `/live` 페이지에서 `useLiveSeries(code)` 가 emit하는 `trade` 배열은 차트의 체결강도(FillStrength) pane 입력이다 — `bucketHogaSeries(snapshots, trade, bucket_ms)` 가 `fillStrengthPoints` 를 계산하고, `buildLiveBundle` 이 차트 bundle에 합친다. 근거: [bucketHogaSeries.ts](../../../frontend/src/live/bucketHogaSeries.ts), [buildLiveBundle.ts](../../../frontend/src/live/buildLiveBundle.ts).
-- **`Trade` / `ApiTrade` 타입 살아있음**: SSE emitter (`hoga/api/sse.py`) 와 capture pipeline (`hoga/tables/trades.py`) 이 `ApiTrade` 로 trade 이벤트를 만든다. 근거: [hoga/tables/trades.py:232](../../../hoga/tables/trades.py#L232).
+- **`Trade` dataclass 살아있음**: capture pipeline (`hoga/tables/trades.py`) 이 `Trade` 를 parquet 스키마의 source of truth 로 쓴다. (집필 시점에는 `ApiTrade` 도 보존 대상으로 적었으나 Stage 7 검토에서 실제 caller가 없음을 발견 — ADR-0047 의 정정 노트 참조.) 근거: [hoga/tables/trades.py:26](../../../hoga/tables/trades.py#L26).
 - **CursorSidebar 카드 grid 비율**: 현재 `grid-rows-[minmax(624px,2fr)_1.4fr_1fr]` 에서 10호가는 최소 624px 높이를 보장받는다. 근거: [CursorSidebar.tsx:56](../../../frontend/src/sidebar/CursorSidebar.tsx#L56).
 - **`/replay` 와 `/live` 사이드바 시각 parity**: ADR-0023 이후 두 페이지는 동일한 `CursorSidebar` 레이아웃 쉘을 공유한다. 근거: [LiveSidebar.tsx:31](../../../frontend/src/live/LiveSidebar.tsx#L31).
 

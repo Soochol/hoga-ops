@@ -25,41 +25,6 @@ interface Params {
   timeframe: MinuteTimeframe | null;
 }
 
-// ─── Internal helper ──────────────────────────────────────────────────────────
-
-/**
- * Internal — encapsulates the cursor/sourcePref read + bucket-aligned t.
- * Returns alignedT/bucketMs/date null when the cursor is absent (no fetch).
- *
- * date is derived from cursorMs via unixMsToKSTDate, NOT passed as a prop —
- * this mirrors replay's useCursor pattern and fixes the regression where
- * hovering on past-date candles sent date=today to the API (ADR-0044).
- *
- * Used by useLiveOrderbookAtCursor so the only per-hook divergence is the
- * cache-key shape and the endpoint URL.
- *
- * useLiveBrokersAtCursor is intentionally NOT refactored here: brokers is a
- * day-keyed series (no bucket alignment needed), and forcing it through this
- * helper would be a worse fit than the current straightforward cursor-presence
- * gate. Orderbook is the natural beneficiary of bucket alignment.
- */
-function useAlignedCursor(timeframe: MinuteTimeframe | null): {
-  alignedT: number | null;
-  bucketMs: number | null;
-  sourcePref: ReturnType<typeof useSourcePreferenceStore.getState>['sourcePreference'];
-  date: string | null;
-} {
-  const cursorMs = useLiveCursorStore((s) => s.cursorMs);
-  const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
-  const bucketMs = timeframe ? TIMEFRAME_TO_MS[timeframe as Timeframe] : null;
-  const alignedT =
-    cursorMs !== null && bucketMs !== null
-      ? Math.floor(cursorMs / bucketMs) * bucketMs
-      : null;
-  const date = cursorMs !== null ? unixMsToKSTDate(cursorMs) : null;
-  return { alignedT, bucketMs, sourcePref, date };
-}
-
 // ─── Task 10 + T14b: useLiveOrderbookAtCursor ────────────────────────────────
 
 /**
@@ -78,11 +43,23 @@ export interface LiveOrderbookSpot {
  * useOrderbookAtCursor. See ADR-0044 — parquet-only path, source_pref
  * threaded, client-side bucket alignment for cache stability.
  *
+ * date is derived from cursorMs via unixMsToKSTDate, NOT passed as a prop —
+ * this mirrors replay's useCursor pattern and fixes the regression where
+ * hovering on past-date candles sent date=today to the API (ADR-0044).
+ *
  * Returns undefined while loading / cursor absent, the full LiveOrderbookSpot
  * once fetched (snapshot may be null for pre-available slots).
  */
 export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefined {
-  const { alignedT, bucketMs, sourcePref, date } = useAlignedCursor(p.timeframe);
+  const cursorMs = useLiveCursorStore((s) => s.cursorMs);
+  const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
+  const bucketMs = p.timeframe ? TIMEFRAME_TO_MS[p.timeframe as Timeframe] : null;
+  const alignedT =
+    cursorMs !== null && bucketMs !== null
+      ? Math.floor(cursorMs / bucketMs) * bucketMs
+      : null;
+  const date = cursorMs !== null ? unixMsToKSTDate(cursorMs) : null;
+
   const key =
     p.code && date && alignedT !== null && bucketMs !== null
       ? `live|ob|${p.code}|${date}|${alignedT}|${bucketMs}|${sourcePref}`

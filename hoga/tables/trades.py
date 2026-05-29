@@ -17,7 +17,6 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from pydantic import BaseModel
 
 # === In-memory entity ===
 
@@ -223,20 +222,3 @@ def validate(trades: list[Trade], *, lenient: bool = False) -> None:
             f"cum_vol decreased at ts_ms={first.ts_ms}: "
             f"{first.prev_cum} -> {first.curr_cum}"
         )
-
-
-# === API representation (wire format for clients; excludes forensic fields) ===
-
-
-class ApiTrade(BaseModel):
-    ts_ms: int
-    seq: int
-    price: int
-    change_pct: float
-    qty: int
-    side: int  # -1, 0, +1
-    cum_vol: int
-    cum_trades: int
-    low_so_far: int
-    high_so_far: int
-    net_pressure: int

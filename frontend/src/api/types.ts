@@ -86,10 +86,10 @@ export type BrokerSeriesResponse = {
   source: SourceName;             // ADR-0044 — echoed by backend after resolve_source()
 };
 
-// Mirrors hoga/tables/trades.py::ApiTrade. `side` is -1 / 0 / +1 by convention
-// (sell / auction-cross / buy) but typed as number — the backend does not
-// enforce the literal, and a runtime guard would be more honest than a TS
-// fiction here.
+// Wire shape for SSE trade events emitted by hoga/live/poller.py.
+// `side` is -1 / 0 / +1 by convention (sell / auction-cross / buy) but typed
+// as number — the backend does not enforce the literal, and a runtime guard
+// would be more honest than a TS fiction here.
 export type Trade = {
   ts_ms: number;
   seq: number;

@@ -21,7 +21,9 @@
 - Backend 모델: `TradesResponse`
 - 위 모든 항목의 테스트
 
-**유지되는 것**: 차트 가격 패널 아래의 **체결강도(FillStrength) 인디케이터 pane** 과 그 데이터 경로 — `useLiveSeries.trade` SSE 스트림, `bucketHogaSeries.fillStrengthPoints`, `chart/projectors/fillStrength.ts`. 이는 사이드바 체결 카드와 별개의 시각화이며 사이드바 삭제와 무관하게 동작을 유지한다. `ApiTrade` / `Trade` 타입도 SSE emitter 및 capture pipeline 에서 계속 사용하므로 유지된다.
+**유지되는 것**: 차트 가격 패널 아래의 **체결강도(FillStrength) 인디케이터 pane** 과 그 데이터 경로 — `useLiveSeries.trade` SSE 스트림, `bucketHogaSeries.fillStrengthPoints`, `chart/projectors/fillStrength.ts`. 이는 사이드바 체결 카드와 별개의 시각화이며 사이드바 삭제와 무관하게 동작을 유지한다. capture pipeline 의 `Trade` dataclass + `write_parquet` + `validate` + `PARSERS` + `PARQUET_SCHEMA` 도 유지된다 — `Trade` 는 parquet 스키마의 source of truth. 프론트엔드 `Trade` TS 타입도 SSE 이벤트 wire shape 으로 유지.
+
+> **2026-05-29 정정**: 이 ADR 초안은 `ApiTrade` Pydantic 모델도 "유지" 목록에 포함했지만, 실제로 `ApiTrade` 는 `/api/trades` 응답 (`TradesResponse`) 의 한 필드 타입으로만 쓰였고 다른 caller가 없었다. SSE poller 는 `KisTrade` 의 `model_dump()` 를 직접 emit 하고, capture 는 `Trade` dataclass + `write_parquet` 경로를 쓴다. 따라서 `ApiTrade` 는 라우트 삭제와 함께 dead code 가 되었고, Stage 7 architecture 검토에서 함께 제거되었다. (커밋 hash 는 PR 참조.)
 
 CursorSidebar의 grid는 `grid-rows-[minmax(624px,2fr)_1.4fr_1fr]` (3행) → `grid-rows-[minmax(624px,2fr)_1.4fr]` (2행) 로 reflow된다. 10호가는 dominant pane으로 최소 624px 높이를 유지하고, 거래원이 체결이 점유하던 공간을 흡수한다.
 
