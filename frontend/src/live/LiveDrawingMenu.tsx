@@ -10,11 +10,23 @@ import { TOOLS, DRAWABLE_TOOLS_ORDER } from '../chart/drawing/tools';
 
 export default function LiveDrawingMenu() {
   const [open, setOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
   useDismissablePopover(open, popoverRef, close);
+
+  const toggleOpen = () => {
+    setOpen((o) => {
+      const next = !o;
+      if (next && buttonRef.current) {
+        setAnchorRect(buttonRef.current.getBoundingClientRect());
+      }
+      return next;
+    });
+  };
 
   const pick = (tool: DrawingTool) => {
     useDrawingsStore.getState().setActiveTool(tool);
@@ -28,26 +40,37 @@ export default function LiveDrawingMenu() {
   return (
     <div ref={popoverRef} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         aria-label="그리기"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className={
-          (activeTool === 'select'
-            ? 'bg-bg-card text-fg-dim hover:text-fg'
-            : 'bg-accent text-accent-fg') +
-          ' px-3 py-1.5 text-sm border border-border rounded'
-        }
+        onClick={toggleOpen}
+        className="inline-flex items-center rounded hover:opacity-90 transition-opacity"
+        style={{
+          gap: '4px',
+          padding: '4px 10px',
+          background: activeTool === 'select' ? 'var(--bg-input)' : 'var(--accent)',
+          color: activeTool === 'select' ? 'var(--fg-dim)' : 'var(--accent-fg)',
+          border: '1px solid',
+          borderColor: activeTool === 'select' ? 'var(--border)' : 'var(--accent)',
+          fontSize: 'var(--text-xs)',
+        }}
         data-drawing-menu-button
       >
-        {buttonGlyph}
+        <span aria-hidden="true" className="font-mono">{buttonGlyph}</span>
+        <span>그리기</span>
       </button>
-      {open && (
+      {open && anchorRect && (
         <div
           role="menu"
           data-drawing-menu
-          className="absolute left-0 top-full mt-1 w-44 bg-bg-card border border-border rounded shadow-lg z-30 py-1"
+          className="w-44 bg-bg-card border border-border rounded shadow-lg z-30 py-1"
+          style={{
+            position: 'fixed',
+            left: anchorRect.left,
+            top: anchorRect.bottom + 4,
+          }}
         >
           {DRAWABLE_TOOLS_ORDER.map((kind) => {
             const spec = TOOLS[kind];
