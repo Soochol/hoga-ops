@@ -27,6 +27,16 @@ from hoga.broker_names import canonical
         ("NH투자증권", "NH투자증권", "NH투자증권"),
         ("키움증권", "키움증권", "키움증권"),
         ("하나증권", "하나증권", "하나증권"),
+        # Member firms first observed via production unknown_alias warnings
+        # (2026-05-29). Identity-only entries — full-form ↔ short-form
+        # equivalences are intentionally not inferred (see 골드만/씨티그룹 lesson
+        # above); a later unknown_alias for the *other* form is the safe
+        # signal to add a verified mapping.
+        ("대신증권", "대신증권", "대신증권"),
+        ("교보증권", "교보증권", "교보증권"),
+        ("SK증권", "SK증권", "SK증권"),
+        ("유진증권", "유진증권", "유진증권"),
+        ("메리츠", "메리츠", "메리츠"),
     ],
 )
 def test_both_aliases_map_to_same_canonical(

@@ -61,6 +61,17 @@ _CANONICAL: dict[str, str] = {
     "신영증권": "신영증권",
     "하나증권": "하나증권",
     "코리아에셋": "코리아에셋",
+    "대신증권": "대신증권",
+    "교보증권": "교보증권",
+    "SK증권": "SK증권",
+    "유진증권": "유진증권",
+    # 메리츠증권 — observed in production logs as the *short* form "메리츠".
+    # The full form (메리츠증권) hasn't been seen yet from either ingest path.
+    # Identity-only entry: if the other path emits 메리츠증권, a fresh
+    # unknown_alias will surface it for an explicit, verified mapping —
+    # preferable to a silent collapse on a guessed equivalence (the
+    # 골드만/씨티그룹 lesson).
+    "메리츠": "메리츠",
 }
 
 _unknown_seen: set[str] = set()
