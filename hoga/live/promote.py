@@ -51,7 +51,14 @@ def _parse_jsonl_to_records(
     trades: list[dict] = []
     broker_rows: list[BrokerRow] = []
     broker_snapshot_count = 0
-    broker_seq = 0  # monotonic per stock-date; KIS has no native seq.
+    # Monotonic per stock-date counters; KIS has no native seq, but the
+    # parquet schemas (snapshots/trades/brokers) require an int seq column
+    # so readers (snapshots.query_at, trades selectors) can SELECT it
+    # without DuckDB BinderException. Each `kind` gets its own counter so
+    # ts_ms-collision tie-breaks are unambiguous within a kind.
+    snap_seq = 0
+    trade_seq = 0
+    broker_seq = 0
 
     if not jsonl_path.exists():
         meta = _build_meta(code, date, snapshots, trades, broker_snapshot_count)
@@ -98,14 +105,24 @@ def _parse_jsonl_to_records(
                 # ADR-0010 invariant: parquet `ts_ms` column = HHMMSSmmm packed-decimal.
                 # ADR-0049: kis_live writer converts JSONL's Unix-ms `t_ms` to
                 # HHMMSSmmm at promote time so reader-side decoding is source-uniform.
-                snap: dict = {"ts_ms": ts_ms_encoded, "phase": phase}
+                # Column-shape invariant: must match hoga/tables/snapshots.py
+                # PARQUET_SCHEMA so snapshots.query_at (and /api/orderbook)
+                # can SELECT without BinderException. KIS REST doesn't carry
+                # per-level depth deltas (ask_d/bid_d) nor total deltas
+                # (tot_*_d) — synthesize 0 for them (forensic-only fields).
+                snap_seq += 1
+                snap: dict = {"ts_ms": ts_ms_encoded, "seq": snap_seq, "phase": phase}
                 for i in range(10):
                     snap[f"bid_p{i + 1}"] = bids[i]["price"] if i < len(bids) else 0
                     snap[f"bid_q{i + 1}"] = bids[i]["qty"] if i < len(bids) else 0
+                    snap[f"bid_d{i + 1}"] = 0
                     snap[f"ask_p{i + 1}"] = asks[i]["price"] if i < len(asks) else 0
                     snap[f"ask_q{i + 1}"] = asks[i]["qty"] if i < len(asks) else 0
-                snap["total_bid_qty"] = p.get("total_bid_qty", 0)
-                snap["total_ask_qty"] = p.get("total_ask_qty", 0)
+                    snap[f"ask_d{i + 1}"] = 0
+                snap["tot_bid"] = p.get("total_bid_qty", 0)
+                snap["tot_bid_d"] = 0
+                snap["tot_ask"] = p.get("total_ask_qty", 0)
+                snap["tot_ask_d"] = 0
                 snapshots.append(snap)
             elif kind == "trade":
                 for tr in p.get("trades") or []:
@@ -113,8 +130,10 @@ def _parse_jsonl_to_records(
                     # Use the outer ts_ms_encoded so the entire row's encoding is uniform
                     # per cycle. If inner-vs-outer divergence ever matters, revisit at that
                     # signal.
+                    trade_seq += 1
                     trades.append({
                         "ts_ms": ts_ms_encoded,
+                        "seq": trade_seq,
                         "price": tr.get("price"),
                         "qty": tr.get("qty"),
                         "side": tr.get("side"),

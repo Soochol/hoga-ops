@@ -68,7 +68,10 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
     snaps = pl.read_parquet(target / "snapshots.parquet")
     assert snaps.height == 2
     assert "ask_p1" in snaps.columns and "bid_q10" in snaps.columns
-    assert "total_ask_qty" in snaps.columns
+    # Canonical hogaplay column names (tot_ask/tot_bid), required so
+    # snapshots.query_at SELECTs succeed against kis_live parquet.
+    assert "tot_ask" in snaps.columns and "tot_bid" in snaps.columns
+    assert "ask_d1" in snaps.columns and "bid_d10" in snaps.columns
     assert "phase" in snaps.columns
 
     trades = pl.read_parquet(target / "trades.parquet")
@@ -382,7 +385,7 @@ def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
 
     assert len(snapshots) == 1
     assert snapshots[0]["bid_p1"] == 26800
-    assert snapshots[0]["total_bid_qty"] == 95085
+    assert snapshots[0]["tot_bid"] == 95085
     assert len(trades) == 1
     assert trades[0]["price"] == 26850
     assert len(broker_rows) == 2  # 1 buy + 1 sell
@@ -391,6 +394,88 @@ def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
     assert meta["row_counts"]["snapshots"] == 1
     assert meta["row_counts"]["trades"] == 1
     assert meta["row_counts"]["brokers"] == 1  # snapshot count, not row count
+
+
+def test_parse_jsonl_synthesizes_monotonic_seq_per_kind(tmp_path: Path) -> None:
+    """kis_live has no native `seq` but snapshots/trades/brokers schemas all
+    declare one (Int32). Promotion must synthesize a monotonic counter per
+    kind so reader-side SELECT (snapshots.query_at, trades selectors,
+    brokers.query_day_series) doesn't BinderException at runtime.
+    Each kind has its own counter; ties on (ts_ms, seq) within a kind
+    must order strictly by arrival.
+    """
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+
+    date = "20260528"
+    base = hhmmssms_to_unix_ms(date, 90000000)
+    rows = []
+    for tick in range(3):
+        t = base + tick * 1000
+        rows.append({"t_ms": t, "kind": "ob", "payload": {
+            "bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0,
+        }})
+        rows.append({"t_ms": t, "kind": "trade", "payload": {
+            "trades": [
+                {"price": 100, "qty": 1, "side": 1},
+                {"price": 101, "qty": 2, "side": -1},
+            ],
+        }})
+        rows.append({"t_ms": t, "kind": "broker", "payload": {
+            "buy_top": [{"name": "A", "qty": 1}],
+            "sell_top": [{"name": "B", "qty": 1}],
+        }})
+    jsonl = tmp_path / "in.jsonl"
+    jsonl.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+    snapshots, trades, broker_rows, _ = _parse_jsonl_to_records(
+        jsonl, code="003490", date=date,
+    )
+
+    assert [s["seq"] for s in snapshots] == [1, 2, 3]
+    # 3 ticks × 2 trades per tick = strictly increasing per trade row.
+    assert [t["seq"] for t in trades] == [1, 2, 3, 4, 5, 6]
+    # broker_seq increments per snapshot, shared between buy/sell rows of the
+    # same tick (preserves the polling-cycle grouping the hogaplay schema uses).
+    broker_seqs = [br.seq for br in broker_rows]
+    assert broker_seqs == [1, 1, 2, 2, 3, 3]
+
+
+def test_promoted_snapshots_query_at_succeeds(tmp_path: Path) -> None:
+    """End-to-end seam test: promoted kis_live snapshots.parquet must be
+    readable via snapshots.query_at without DuckDB BinderException.
+    Locks the bug where ts_ms-only dicts produced a parquet missing the
+    `seq` column that query_at SELECTs.
+    """
+    import asyncio
+
+    import duckdb
+
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.live.promote import promote_one
+    from hoga.tables.snapshots import query_at
+
+    date = "20260528"
+    t = hhmmssms_to_unix_ms(date, 90000000)
+    jsonl = tmp_path / "live" / date / "005930.jsonl"
+    jsonl.parent.mkdir(parents=True)
+    jsonl.write_text(json.dumps({
+        "t_ms": t, "kind": "ob",
+        "payload": {
+            "asks": [{"price": 75000 + i, "qty": 100} for i in range(10)],
+            "bids": [{"price": 74990 - i, "qty": 200} for i in range(10)],
+            "total_ask_qty": 1000, "total_bid_qty": 2000, "phase": "regular",
+        },
+    }) + "\n")
+
+    parquet_root = tmp_path / "parquet"
+    asyncio.run(promote_one(jsonl, parquet_root, code="005930", date=date))
+
+    snapshots_path = parquet_root / date / "005930" / "kis_live" / "snapshots.parquet"
+    con = duckdb.connect()
+    # If `seq` column is missing, this raises BinderException.
+    snap = query_at(con, path=snapshots_path, t_ms=200000000)
+    assert snap is not None
+    assert snap.ts_ms == 90000000
 
 
 def test_parse_jsonl_to_records_skips_torn_line(tmp_path: Path, caplog) -> None:

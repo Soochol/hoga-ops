@@ -31,11 +31,17 @@ _T_MS_AT_OPEN = hhmmssms_to_unix_ms(_DATE, 90000000)  # 09:00:00.000 KST
 
 
 # Columns the read path queries. Derived from inspection of
-# hoga/api/bundle.py — keep in sync if those queries change.
+# hoga/api/bundle.py (build_quote_ratio_slice, build_fill_strength_slice)
+# AND hoga/tables/snapshots.query_at (/api/orderbook hover spot path).
+# Keep in sync if those queries change.
 READ_PATH_SNAPSHOT_COLUMNS = {
     "ts_ms",
+    "seq",  # query_at SELECTs seq for tie-break and ApiOrderbookSnapshot ctor.
+    *(f"bid_p{i}" for i in range(1, 11)),
     *(f"bid_q{i}" for i in range(1, 11)),
+    *(f"ask_p{i}" for i in range(1, 11)),
     *(f"ask_q{i}" for i in range(1, 11)),
+    "tot_ask", "tot_bid",  # query_at returns ApiOrderbookSnapshot.tot_*.
 }
 READ_PATH_TRADE_COLUMNS = {"ts_ms", "price", "qty", "side"}
 
@@ -112,10 +118,10 @@ def test_hogaplay_snapshot_schema_matches_read_path() -> None:
 
 
 def test_hogaplay_and_kis_live_share_read_path_columns(tmp_path: Path) -> None:
-    """Both sources must share the read-path column subset. They may have
-    additional source-specific columns (e.g. hogaplay's `seq`, `ask_d`,
-    `tot_ask`; kis_live's `phase`, `total_bid_qty`) — those don't break the
-    contract. What matters is that read-path queries can bind on BOTH.
+    """Both sources must share the read-path column subset. KIS REST doesn't
+    carry per-level depth deltas or total deltas (hogaplay-only forensic
+    columns) — promote synthesizes them as 0 so the column shape matches.
+    kis_live keeps `phase` as an extra (ignored by read path).
     """
     from hoga.tables.snapshots import PARQUET_SCHEMA
 
@@ -138,6 +144,52 @@ def test_hogaplay_and_kis_live_share_read_path_columns(tmp_path: Path) -> None:
         f"{missing_from_shared}. hogaplay={hogaplay_cols}, "
         f"kis_live={kis_live_cols}."
     )
+
+
+def test_kis_live_snapshots_query_at_round_trip(tmp_path: Path) -> None:
+    """/api/orderbook hover spot path: snapshots.query_at against a kis_live
+    promoted parquet must return a fully-populated ApiOrderbookSnapshot —
+    no BinderException, no None on a row that's present.
+
+    This is the regression seam for the 2026-05-29 hover bug: the previous
+    schema omitted `seq`, `ask_d*`, `bid_d*`, `tot_ask`, `tot_bid`, causing
+    query_at's SELECT to BinderException → /api/orderbook 500 →
+    hover spot empty for today's date.
+    """
+    import asyncio
+
+    import duckdb
+
+    from hoga.live.promote import promote_one
+    from hoga.tables.snapshots import query_at
+
+    jsonl = tmp_path / "live" / _DATE / "005930.jsonl"
+    jsonl.parent.mkdir(parents=True)
+    jsonl.write_text(json.dumps({
+        "t_ms": _T_MS_AT_OPEN, "kind": "ob",
+        "payload": {
+            "bids": [{"price": 26800 - i, "qty": 100 + i} for i in range(10)],
+            "asks": [{"price": 26850 + i, "qty": 200 + i} for i in range(10)],
+            "total_bid_qty": 95085,
+            "total_ask_qty": 102768,
+            "phase": "regular",
+        },
+    }) + "\n")
+
+    parquet_root = tmp_path / "parquet"
+    asyncio.run(promote_one(jsonl, parquet_root, code="005930", date=_DATE))
+    snapshots_path = parquet_root / _DATE / "005930" / "kis_live" / "snapshots.parquet"
+
+    con = duckdb.connect()
+    try:
+        snap = query_at(con, path=snapshots_path, t_ms=200_000_000)
+    finally:
+        con.close()
+    assert snap is not None
+    assert snap.ts_ms == 90000000
+    assert snap.bid[0].price == 26800 and snap.bid[0].qty == 100
+    assert snap.ask[0].price == 26850 and snap.ask[0].qty == 200
+    assert snap.tot_bid == 95085 and snap.tot_ask == 102768
 
 
 def test_read_path_columns_round_trip_through_kis_live_parquet(tmp_path: Path) -> None:
