@@ -1,48 +1,9 @@
 import { type ReactNode } from 'react';
-import OrderbookTable from './OrderbookTable';
-import BrokerTrajectoryTable from './BrokerTrajectoryTable';
-import TotalQtyBar from './TotalQtyBar';
-import {
-  useOrderbookAtCursor,
-  useCursor,
-} from '../api/useCursor';
-import { useBrokerSeriesForDay } from '../api/brokerSeries';
-import { useAuctionMaskActive } from '../state/useAuctionMaskActive';
-import type { VirtualAxis } from '../util/virtualAxis';
 
 type Props = {
   orderbook?: ReactNode;
   brokers?: ReactNode;
 };
-
-/**
- * Connected variant for /replay. Binds two cards to their hooks:
- *   - 10호가 (cursor-keyed): useSpot-family (useOrderbookAtCursor)
- *   - 거래원 (day-keyed in identity, cursor-projected in per-row net):
- *     react-query (useBrokerSeriesForDay) per ADR-0023
- *
- * The 체결 card was removed 2026-05-28 (ADR-0047). The chart's 체결강도 pane
- * provides an aggregate visualization of fill activity in its place.
- */
-export function CursorSidebarConnected({ axis }: { axis: VirtualAxis }) {
-  const orderbook = useOrderbookAtCursor();
-  const { code, date, cursorMs } = useCursor();
-  const { data, isLoading } = useBrokerSeriesForDay(code, date);
-  const series = isLoading ? undefined : (data?.brokers ?? null);
-  const maskRatio = useAuctionMaskActive(axis);
-
-  return (
-    <CursorSidebar
-      orderbook={
-        <>
-          <OrderbookTable snapshot={orderbook} />
-          <TotalQtyBar snapshot={orderbook} maskRatio={maskRatio} />
-        </>
-      }
-      brokers={<BrokerTrajectoryTable series={series} cursorMs={cursorMs} />}
-    />
-  );
-}
 
 export default function CursorSidebar({ orderbook, brokers }: Props) {
   return (
