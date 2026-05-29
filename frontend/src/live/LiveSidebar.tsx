@@ -2,12 +2,10 @@ import { useMemo } from 'react';
 import CursorSidebar from '../sidebar/CursorSidebar';
 import OrderbookTable from '../sidebar/OrderbookTable';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
-import FillTape from '../sidebar/FillTape';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
 import { useLiveSeries } from '../api/liveSeries';
 import {
   aggregateBrokerSeries,
-  flattenTrades,
   latestOrderbookSnapshot,
 } from './liveSidebarAdapters';
 import { useLiveCursorStore } from './useLiveCursorStore';
@@ -15,7 +13,6 @@ import { useLiveAxisStore } from './useLiveAxisStore';
 import { useLivePageStore } from '../state/livePage';
 import {
   useLiveOrderbookAtCursor,
-  useLiveTradesAroundCursor,
   useLiveBrokersAtCursor,
 } from '../api/useLiveCursor';
 import type { MinuteTimeframe } from '../state/livePage';
@@ -26,7 +23,7 @@ interface Props {
 }
 
 /**
- * Live Sidebar — three cards (10호가 / 거래원 / 체결) wired to live data.
+ * Live Sidebar — two cards (10호가 / 거래원) wired to live data.
  *
  * Reuses the existing CursorSidebar layout shell from /replay so visual
  * parity is automatic. The data wiring differs:
@@ -36,6 +33,9 @@ interface Props {
  *
  * Per ADR-0044 and Design C1: header toggles between LIVE● pulse (latest
  * mode) and "과거 시점" + pinned timestamp (spot mode) when cursor is set.
+ *
+ * The third "체결" card was removed 2026-05-28 (ADR-0047). The chart's
+ * 체결강도 pane provides equivalent information in compact form.
  */
 export function LiveSidebar({ code }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
@@ -44,10 +44,9 @@ export function LiveSidebar({ code }: Props) {
 
   // Latest-mode data (always subscribed — useSpot hooks in spot mode
   // sit dormant when cursorMs is null, no extra fetches).
-  const { ob, trade, broker } = useLiveSeries(code ?? '');
+  const { ob, broker } = useLiveSeries(code ?? '');
   const latestOrderbook = useMemo(() => latestOrderbookSnapshot(ob), [ob]);
   const latestBrokerSeries = useMemo(() => aggregateBrokerSeries(broker), [broker]);
-  const latestTrades = useMemo(() => flattenTrades(trade), [trade]);
   const latestBrokerTs =
     broker.length > 0 ? (broker[broker.length - 1].t_ms as number) : Date.now();
 
@@ -55,7 +54,6 @@ export function LiveSidebar({ code }: Props) {
   const spotTimeframe: MinuteTimeframe | null =
     timeframe && isMinuteTimeframe(timeframe) ? timeframe : null;
   const spotOrderbook = useLiveOrderbookAtCursor({ code, timeframe: spotTimeframe });
-  const spotTrades = useLiveTradesAroundCursor({ code, timeframe: spotTimeframe });
   const spotBrokers = useLiveBrokersAtCursor({ code });
 
   // Axis for Auction Mask in spot mode.
@@ -69,9 +67,6 @@ export function LiveSidebar({ code }: Props) {
   const spotSnap = spotOrderbook?.snapshot ?? null;
   const spotAvailableFrom = spotOrderbook?.available_from ?? null;
   const orderbookForCard = isSpot ? spotSnap : latestOrderbook;
-  const tradesForCard = isSpot
-    ? spotTrades
-    : (trade.length === 0 ? undefined : latestTrades);
   const brokerSeriesForCard = isSpot
     ? spotBrokers
     : (broker.length === 0 ? undefined : latestBrokerSeries);
@@ -117,7 +112,6 @@ export function LiveSidebar({ code }: Props) {
           brokers={
             <BrokerTrajectoryTable series={brokerSeriesForCard} cursorMs={brokerCursorMs} />
           }
-          fills={<FillTape trades={tradesForCard} />}
         />
       </div>
     </div>

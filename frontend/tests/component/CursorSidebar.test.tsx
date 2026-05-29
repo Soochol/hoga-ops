@@ -9,7 +9,6 @@ import type { OrderbookSnapshot } from '../../src/api/types';
 vi.mock('../../src/api/useCursor', () => ({
   useCursor: vi.fn(() => ({ tabId: '', code: null, date: null, cursorMs: null })),
   useOrderbookAtCursor: vi.fn(() => undefined),
-  useTradesAroundCursor: vi.fn(() => undefined),
 }));
 
 vi.mock('../../src/api/brokerSeries', () => ({
@@ -17,11 +16,11 @@ vi.mock('../../src/api/brokerSeries', () => ({
 }));
 
 describe('CursorSidebar', () => {
-  it('renders three labeled cards', () => {
+  it('renders two labeled cards', () => {
     render(<CursorSidebar />);
     expect(screen.getByText('10호가')).toBeInTheDocument();
     expect(screen.getByText('거래원')).toBeInTheDocument();
-    expect(screen.getByText('체결')).toBeInTheDocument();
+    expect(screen.queryByText('체결')).toBeNull();
   });
 
   it('renders injected children into the right cards', () => {
@@ -29,12 +28,10 @@ describe('CursorSidebar', () => {
       <CursorSidebar
         orderbook={<span>OB-CONTENT</span>}
         brokers={<span>BR-CONTENT</span>}
-        fills={<span>FT-CONTENT</span>}
       />,
     );
     expect(screen.getByText('OB-CONTENT')).toBeInTheDocument();
     expect(screen.getByText('BR-CONTENT')).toBeInTheDocument();
-    expect(screen.getByText('FT-CONTENT')).toBeInTheDocument();
   });
 
   it('CursorSidebarConnected renders without a Volume Profile mode toggle', async () => {

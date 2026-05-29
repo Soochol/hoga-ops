@@ -19,7 +19,6 @@ vi.mock('../api/liveSeries', () => ({
 
 vi.mock('../api/useLiveCursor', () => ({
   useLiveOrderbookAtCursor: vi.fn(() => undefined),
-  useLiveTradesAroundCursor: vi.fn(() => undefined),
   useLiveBrokersAtCursor: vi.fn(() => undefined),
 }));
 
@@ -42,7 +41,6 @@ describe('LiveSidebar', () => {
       broker: [],
     });
     (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
-    (cursorHooks.useLiveTradesAroundCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     useLiveCursorStore.getState().clearCursor();
     useLiveAxisStore.setState({ axis: null });
@@ -77,7 +75,6 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
       broker: [],
     });
     (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
-    (cursorHooks.useLiveTradesAroundCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     useLiveCursorStore.getState().clearCursor();
     useLiveAxisStore.setState({ axis: null });
@@ -156,7 +153,6 @@ describe('LiveSidebar — empty spot orderbook with available_from hint (T14b)',
       trade: [],
       broker: [],
     });
-    (cursorHooks.useLiveTradesAroundCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     useLiveCursorStore.getState().clearCursor();
   });

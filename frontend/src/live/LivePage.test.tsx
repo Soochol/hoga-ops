@@ -35,7 +35,6 @@ vi.mock('../api/liveSeries', () => ({
 // tests stay unit-level and don't trigger useSpot/apiGet in jsdom.
 vi.mock('../api/useLiveCursor', () => ({
   useLiveOrderbookAtCursor: () => undefined,
-  useLiveTradesAroundCursor: () => undefined,
   useLiveBrokersAtCursor: () => undefined,
 }));
 

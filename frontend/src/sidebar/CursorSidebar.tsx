@@ -1,12 +1,10 @@
 import { type ReactNode } from 'react';
 import OrderbookTable from './OrderbookTable';
 import BrokerTrajectoryTable from './BrokerTrajectoryTable';
-import FillTape from './FillTape';
 import TotalQtyBar from './TotalQtyBar';
 import {
   useOrderbookAtCursor,
   useCursor,
-  useTradesAroundCursor,
 } from '../api/useCursor';
 import { useBrokerSeriesForDay } from '../api/brokerSeries';
 import { useAuctionMaskActive } from '../state/useAuctionMaskActive';
@@ -15,24 +13,22 @@ import type { VirtualAxis } from '../util/virtualAxis';
 type Props = {
   orderbook?: ReactNode;
   brokers?: ReactNode;
-  fills?: ReactNode;
 };
 
 /**
- * Connected variant that pulls live cursor-keyed data for 10호가 / 체결 and
- * day-anchored data for 거래원 (ADR-0023). The 거래원 card's identity is
- * stable across the Stock-Date; cursorMs drives only the per-row net value
- * and the sparkline cursor marker.
+ * Connected variant for /replay. Binds two cards to their hooks:
+ *   - 10호가 (cursor-keyed): useSpot-family (useOrderbookAtCursor)
+ *   - 거래원 (day-keyed in identity, cursor-projected in per-row net):
+ *     react-query (useBrokerSeriesForDay) per ADR-0023
+ *
+ * The 체결 card was removed 2026-05-28 (ADR-0047). The chart's 체결강도 pane
+ * provides an aggregate visualization of fill activity in its place.
  */
 export function CursorSidebarConnected({ axis }: { axis: VirtualAxis }) {
   const orderbook = useOrderbookAtCursor();
   const { code, date, cursorMs } = useCursor();
   const { data, isLoading } = useBrokerSeriesForDay(code, date);
-  // undefined = loading, null = fetched-empty, value = data. Matches the
-  // useSpot contract that OrderbookTable and FillTape consume so the three
-  // cards present consistent loading/empty states.
   const series = isLoading ? undefined : (data?.brokers ?? null);
-  const trades = useTradesAroundCursor();
   const maskRatio = useAuctionMaskActive(axis);
 
   return (
@@ -44,25 +40,21 @@ export function CursorSidebarConnected({ axis }: { axis: VirtualAxis }) {
         </>
       }
       brokers={<BrokerTrajectoryTable series={series} cursorMs={cursorMs} />}
-      fills={<FillTape trades={trades} />}
     />
   );
 }
 
-export default function CursorSidebar({ orderbook, brokers, fills }: Props) {
+export default function CursorSidebar({ orderbook, brokers }: Props) {
   return (
     <aside
       id="replay-sidebar"
-      className="grid grid-rows-[minmax(624px,2fr)_1.4fr_1fr] gap-2 p-2 bg-bg h-full min-h-0"
+      className="grid grid-rows-[minmax(624px,2fr)_1.4fr] gap-[var(--space-sm)] p-[var(--space-sm)] bg-bg h-full min-h-0"
     >
       <SidebarCard label="10호가" testId="card-orderbook">
         {orderbook ?? <Placeholder />}
       </SidebarCard>
       <SidebarCard label="거래원" testId="card-brokers">
         {brokers ?? <Placeholder />}
-      </SidebarCard>
-      <SidebarCard label="체결" testId="card-fills">
-        {fills ?? <Placeholder />}
       </SidebarCard>
     </aside>
   );
