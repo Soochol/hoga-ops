@@ -76,7 +76,6 @@ describe('LivePage shell', () => {
     useLivePageStore.setState({
       activeCode: null,
       candleTimeframe: '1m',
-      watchlistPanelOpen: false,
     });
     vi.spyOn(liveStatus, 'useLiveStatus').mockReturnValue({
       data: {

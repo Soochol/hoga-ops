@@ -17,7 +17,6 @@ describe('WatchlistPanel', () => {
     useLivePageStore.setState({
       activeCode: null,
       candleTimeframe: '1m',
-      watchlistPanelOpen: true,
     });
     vi.restoreAllMocks();
   });

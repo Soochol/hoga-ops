@@ -2,7 +2,6 @@ import { useLivePageStore } from '../state/livePage';
 import { LiveChartRoot } from './LiveChartRoot';
 import { LiveEmptyState } from './LiveEmptyState';
 import { LiveSidebar } from './LiveSidebar';
-import { WatchlistPanel } from './WatchlistPanel';
 import type { RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
 
@@ -28,7 +27,6 @@ export function LiveWorkarea({
   live,
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
-  const watchlistOpen = useLivePageStore((s) => s.watchlistPanelOpen);
 
   if (watchlistEmpty) {
     return (
@@ -43,7 +41,6 @@ export function LiveWorkarea({
         <div style={{ flex: 1 }}>
           <LiveEmptyState cause="no_active_code" />
         </div>
-        {watchlistOpen && <WatchlistPanel />}
       </div>
     );
   }
@@ -82,7 +79,6 @@ export function LiveWorkarea({
       >
         <LiveSidebar code={activeCode} live={live} />
       </div>
-      {watchlistOpen && <WatchlistPanel />}
     </div>
   );
 }
