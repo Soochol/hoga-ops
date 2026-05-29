@@ -6,6 +6,7 @@ import Toolbar from '../replay/Toolbar';
 import PriceStrip from '../replay/PriceStrip';
 import OnboardingCard from '../replay/OnboardingCard';
 import Workarea from '../replay/Workarea';
+import { useDocumentTitle } from '../util/useDocumentTitle';
 
 function useUrlSync() {
   const hydrated = useRef(false);
@@ -53,6 +54,7 @@ function useUrlSync() {
 export default function ReplayViewer() {
   useUrlSync();
   const active = useTabsStore((s) => s.tabs.find((t) => t.id === s.activeTabId)!);
+  useDocumentTitle(active.selection?.code);
   return (
     <div className="grid grid-rows-[40px_60px_52px_1fr] h-full min-h-0 min-w-0">
       <TabStrip />
