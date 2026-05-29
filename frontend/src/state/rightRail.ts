@@ -40,12 +40,7 @@ export const useRightRailStore = create<Store>((set, get) => ({
   ...DEFAULTS,
   ...readStorage(),
 
-  togglePanel: () => {
-    const open = !get().panelOpen;
-    const next: Persisted = { panelOpen: open, railCollapsed: open ? false : get().railCollapsed };
-    set(next);
-    persist(next);
-  },
+  togglePanel: () => get().setPanelOpen(!get().panelOpen),
 
   setPanelOpen: (open) => {
     const next: Persisted = { panelOpen: open, railCollapsed: open ? false : get().railCollapsed };
@@ -53,12 +48,7 @@ export const useRightRailStore = create<Store>((set, get) => ({
     persist(next);
   },
 
-  toggleRailCollapsed: () => {
-    const collapsed = !get().railCollapsed;
-    const next: Persisted = { railCollapsed: collapsed, panelOpen: collapsed ? false : get().panelOpen };
-    set(next);
-    persist(next);
-  },
+  toggleRailCollapsed: () => get().setRailCollapsed(!get().railCollapsed),
 
   setRailCollapsed: (collapsed) => {
     const next: Persisted = { railCollapsed: collapsed, panelOpen: collapsed ? false : get().panelOpen };

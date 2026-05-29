@@ -45,7 +45,7 @@ export function LiveWorkarea({
     );
   }
 
-  // Single chart owns all 5 panes; sidebar + optional watchlist stay siblings.
+  // Single chart owns all 5 panes; sidebar stays a sibling.
   return (
     <div
       data-testid="live-workarea"

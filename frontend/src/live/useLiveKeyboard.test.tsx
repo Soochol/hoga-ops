@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent, cleanup } from '@testing-library/react';
 import { useLiveKeyboard } from './useLiveKeyboard';
-import { useLivePageStore } from '../state/livePage';
 import { useRightRailStore } from '../state/rightRail';
 
 function Harness({ onNextCode, onPrevCode }: { onNextCode?: () => void; onPrevCode?: () => void }) {
@@ -17,10 +16,6 @@ function HarnessWithInput({ onNextCode }: { onNextCode?: () => void }) {
 describe('useLiveKeyboard', () => {
   beforeEach(() => {
     cleanup();
-    useLivePageStore.setState({
-      activeCode: null,
-      candleTimeframe: '1m',
-    });
     useRightRailStore.setState({ panelOpen: false, railCollapsed: false });
   });
 
