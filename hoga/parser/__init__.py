@@ -115,7 +115,10 @@ def parse_stock_date(
     """
     raw_dir = data_dir / "raw" / date / code
     out_dir = data_dir / "parquet" / date / code / "hogaplay"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    # mkdir deferred until after parsing + validation succeed: an upstream-empty
+    # or malformed raw set otherwise leaves an empty hogaplay/ dir that
+    # `resolve_source` cannot distinguish from a real capture, so /api/orderbook
+    # and /api/brokers/series 404 instead of returning ADR-0044's graceful empty.
 
     info_text = (raw_dir / "info.tsv").read_text(encoding="utf-8").strip()
     info = parse_info_row(info_text)
@@ -139,6 +142,7 @@ def parse_stock_date(
         if validate is not None:
             validate(entities, lenient=lenient)
 
+    out_dir.mkdir(parents=True, exist_ok=True)
     trades.write_parquet(trades_list, out_dir / "trades.parquet")
     snapshots.write_parquet(snapshots_list, out_dir / "snapshots.parquet")
     brokers.write_parquet(brokers_list, out_dir / "brokers.parquet")

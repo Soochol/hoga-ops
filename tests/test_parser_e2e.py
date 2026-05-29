@@ -8,6 +8,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from hoga.parser import parse_stock_date
+from hoga.tables.dispatch import FieldCountError
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "tiny_tsv"
 
@@ -159,3 +160,27 @@ def test_parser_rejects_bool_prior_full_capture_count(staged_raw: Path) -> None:
     # Without the bool-reject guard, prior_count would absorb True (== 1)
     # and this would be 2 instead of 1.
     assert meta["full_capture_count"] == 1
+
+
+def test_parser_does_not_leak_out_dir_on_invalid_info_tsv(tmp_path: Path) -> None:
+    """Upstream-empty (or malformed) info.tsv must not leave an empty hogaplay/.
+
+    Regression: prior to the mkdir-after-validate fix, the parser created
+    ``parquet/{date}/{code}/hogaplay/`` before reading info.tsv, so any
+    parse failure left an empty source dir. Downstream, `resolve_source`
+    sees an empty dir (no meta.json), keeps `pref="hogaplay"`, and
+    `parquet_dir(..., source="hogaplay")` raises StockDateNotFound →
+    HTTP 404 from /api/orderbook and /api/brokers/series. Confirmed
+    via 28 such leftover dirs on disk after the ADR-0037 V2 migration.
+    """
+    raw_dir = tmp_path / "data" / "raw" / "20260319" / "058610"
+    raw_dir.mkdir(parents=True)
+    # Empty body — matches the documented hogaplay no-data signal (upstream
+    # returns 200 + empty body for code/date combos with no data).
+    (raw_dir / "info.tsv").write_text("", encoding="utf-8")
+
+    with pytest.raises(FieldCountError):
+        parse_stock_date(code="058610", date="20260319", data_dir=tmp_path / "data")
+
+    leak = tmp_path / "data" / "parquet" / "20260319" / "058610" / "hogaplay"
+    assert not leak.exists(), f"parser leaked empty source dir at {leak}"
