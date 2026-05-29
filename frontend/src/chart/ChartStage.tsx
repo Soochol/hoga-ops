@@ -279,9 +279,9 @@ export default function ChartStage({ bundle, axis }: ChartStageProps) {
     // rAF-coalesce crosshair events. lightweight-charts emits one per
     // browser mousemove (up to ~1 kHz on fast mice). Each emit caused
     // useTabsStore.setCursor → re-render of every sidebar card subscribed
-    // via useCursor + a fresh /api/trades fetch (before this commit). At
-    // most one cursor write per frame is enough; nothing the sidebar shows
-    // updates faster than the screen anyway.
+    // via useCursor + a fresh per-cursor spot fetch. At most one cursor
+    // write per frame is enough; nothing the sidebar shows updates faster
+    // than the screen anyway.
     let crosshairRaf: number | null = null;
     let pendingRealMs: number | null = null;
     const crosshairHandler = (param: { time?: Time | undefined }) => {

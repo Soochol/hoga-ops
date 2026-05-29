@@ -2,8 +2,8 @@
 
 The previous incarnation was `hoga.api.bundle._resolve_source`. Promoted
 to a public module so the per-spot endpoints (/api/orderbook,
-/api/trades, /api/brokers/series) can honor `?source_pref=` without
-back-importing from bundle.py.
+/api/brokers/series) can honor `?source_pref=` without back-importing
+from bundle.py.
 
 ADR-0039 (preference + fallback) defines the semantics. ADR-0044
 documents the /live hover-spot boundary that motivated this promotion.

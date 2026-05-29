@@ -82,8 +82,8 @@ def seed_trades(tmp_path: Path):
     """Factory fixture: returns a callable (date, code, *, with_kis_live) -> TestClient.
 
     Seeds a minimal hogaplay (and optionally kis_live) source dir under
-    tmp_path/data/parquet/{date}/{code}/{source}/ so that the /api/trades
-    route can resolve the source and read trades.parquet without a 404.
+    tmp_path/data/parquet/{date}/{code}/{source}/ so that read-path
+    queries can resolve the source and read trades.parquet without a 404.
     """
     def _factory(
         date: str,

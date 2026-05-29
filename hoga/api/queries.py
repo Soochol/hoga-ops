@@ -71,11 +71,11 @@ class QueryEngine:
         # Returns a fresh cursor per access. DuckDB's parent connection is
         # NOT thread-safe — concurrent .execute() from FastAPI's sync-route
         # thread pool would race on the shared connection state and crash
-        # the process under modest load (verified 2026-05-23: 30 concurrent
-        # /api/trades requests killed the server). Each cursor() call
-        # creates an independent connection over the same in-memory
-        # database, so callers can read in parallel without contention.
-        # Cursors are cheap and GC'd as soon as the call expression ends.
+        # the process under modest load (verified 2026-05-23 with 30
+        # concurrent read-path requests). Each cursor() call creates an
+        # independent connection over the same in-memory database, so
+        # callers can read in parallel without contention. Cursors are
+        # cheap and GC'd as soon as the call expression ends.
         return self._conn.cursor()
 
     def parquet_dir(self, date: str, code: str, source: str = "hogaplay") -> Path:

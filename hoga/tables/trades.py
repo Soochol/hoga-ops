@@ -240,5 +240,3 @@ class ApiTrade(BaseModel):
     low_so_far: int
     high_so_far: int
     net_pressure: int
-
-
