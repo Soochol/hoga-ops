@@ -417,16 +417,6 @@ export type ViolationWire = {
   ctx: Record<string, unknown>;
 };
 
-export type ExcludedDate = {
-  date: string;             // YYYYMMDD KST
-  violations: ViolationWire[];
-};
-
-export type DateWarning = {
-  date: string;
-  warnings: ViolationWire[];
-};
-
 export type RangeBundle = {
   code: string;
   from_date: string;
@@ -438,10 +428,4 @@ export type RangeBundle = {
   fill_strength: FillStrength;
   volume_profile_range: VolumeProfile;
   volume_profile_by_day: VolumeProfile[];
-  /** ADR-0020: Stock-Dates dropped from segments due to error-severity
-   * invariant violations. Default empty list on healthy bundles. */
-  excluded_dates?: ExcludedDate[];
-  /** ADR-0020: Stock-Dates kept in segments but with warn-severity
-   * invariant violations attached. */
-  data_warnings?: DateWarning[];
 };

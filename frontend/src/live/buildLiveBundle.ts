@@ -25,7 +25,7 @@ export interface BuildLiveBundleInput {
   todayDate: string;
   todaySession: { open_ms: number; close_ms: number };
   /** Past stock-dates fetched via /api/range. Used for hoga indicators
-   * (quote_ratio, fill_strength), segments, and excluded_dates only —
+   * (quote_ratio, fill_strength) and segments only —
    * `pastBundle.candles` is intentionally ignored. */
   pastBundle: RangeBundle | null;
   sseOb: ObSnapshot[];
@@ -150,7 +150,5 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
     },
     volume_profile_range: EMPTY_VOLUME_PROFILE,
     volume_profile_by_day: [],
-    excluded_dates: pastBundle?.excluded_dates,
-    data_warnings: pastBundle?.data_warnings,
   };
 }

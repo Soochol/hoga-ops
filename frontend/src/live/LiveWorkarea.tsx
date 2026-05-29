@@ -62,16 +62,14 @@ export function LiveWorkarea({
         overflow: 'hidden',
       }}
     >
-      <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <LiveChartRoot
-            code={activeCode}
-            timeframe={timeframe}
-            bundle={bundle}
-            clampEngaged={clampEngaged}
-            isPastCandlesLoading={isPastCandlesLoading}
-          />
-        </div>
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+        <LiveChartRoot
+          code={activeCode}
+          timeframe={timeframe}
+          bundle={bundle}
+          clampEngaged={clampEngaged}
+          isPastCandlesLoading={isPastCandlesLoading}
+        />
       </div>
       <div
         role="complementary"

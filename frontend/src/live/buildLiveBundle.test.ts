@@ -162,39 +162,6 @@ describe('buildLiveBundle', () => {
     ]);
   });
 
-  it('5/26-style: pastBundle.excluded_dates passes through alongside KIS candles', () => {
-    const past = emptyRangeBundle({
-      excluded_dates: [
-        {
-          date: '20260526',
-          violations: [
-            {
-              invariant_id: 'meta.close_after_open',
-              severity: 'error',
-              message: 'session close must be strictly greater than open',
-              ctx: { open_ms: 90000000, close_ms: 0 },
-            },
-          ],
-        },
-      ],
-    });
-    const kis = [
-      { ts_ms: Date.UTC(2026, 4, 26, 0, 0, 0), open: 70000, close: 70050, high: 70100, low: 69900, vol_a: 10, vol_b: 0 },
-    ];
-    const bundle = buildLiveBundle({
-      code: '005930',
-      todayDate: TODAY,
-      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
-      pastBundle: past,
-      sseOb: [],
-      sseTrade: [],
-      kisCandles: kis,
-      bucketMs: 60_000,
-    });
-    expect(bundle.excluded_dates).toEqual(past.excluded_dates);
-    expect(bundle.candles).toEqual(kis);
-  });
-
   it('synthesizes kis_live segments for past dates that KIS has but /api/range does not', () => {
     // /api/range only knows 5/20. KIS past-candles covers 5/8 + 5/20 + 5/26.
     // Without segment synthesis, VirtualAxis built from segments would only

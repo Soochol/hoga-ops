@@ -1,13 +1,7 @@
 import { useMemo } from 'react';
 import type { LiveSeriesData } from '../api/liveSeries';
-import {
-  useLivePastCandles,
-  type LivePastCandlesWarning,
-} from '../api/livePastCandles';
-import {
-  useLivePastDailyCandles,
-  type LivePastDailyCandlesWarning,
-} from '../api/livePastDailyCandles';
+import { useLivePastCandles } from '../api/livePastCandles';
+import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useRange } from '../api/range';
 import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import {
@@ -15,7 +9,6 @@ import {
   type Timeframe,
   type RangeBundle,
   type Candle,
-  type DateWarning,
 } from '../api/types';
 import { buildLiveBundle } from './buildLiveBundle';
 import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
@@ -43,62 +36,6 @@ function kisBarToCandle(b: { t_ms: number; open: number; high: number; low: numb
     vol_a: b.volume,
     vol_b: 0,
   };
-}
-
-/** Group daily wire warnings into `DateWarning[]` for InvariantOutcomesBanner.
- * Per-row warnings carry a `date`; batch-level ones (kis_rate_limit,
- * kis_api_error) only carry a `batch` label shaped `YYYYMMDD__YYYYMMDD` —
- * fall back to the batch's FROM date so the warning surfaces on the banner
- * instead of vanishing silently. */
-function dailyWarningsToDateWarnings(
-  raw: LivePastDailyCandlesWarning[] | undefined,
-): DateWarning[] {
-  if (!raw || raw.length === 0) return [];
-  const byDate = new Map<string, DateWarning>();
-  for (const w of raw) {
-    const date = w.date ?? w.batch.slice(0, 8);
-    if (!/^\d{8}$/.test(date)) continue; // malformed batch label — drop quietly
-    let entry = byDate.get(date);
-    if (!entry) {
-      entry = { date, warnings: [] };
-      byDate.set(date, entry);
-    }
-    entry.warnings.push({
-      invariant_id: w.reason,
-      severity: 'warn',
-      message: w.msg,
-      ctx: { batch: w.batch },
-    });
-  }
-  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
-}
-
-/** Group minute-path wire warnings into `DateWarning[]`. The backend's
- * /past-candles handler always tags warnings with a `date`, so this is a
- * straight conversion. Surfacing rate_limit / rate_limit_aborted /
- * kis_api_error here means a user whose chart is missing some dates due to
- * KIS transient failures sees them in the banner instead of being silently
- * left without explanation. */
-function pastCandlesWarningsToDateWarnings(
-  raw: LivePastCandlesWarning[] | undefined,
-): DateWarning[] {
-  if (!raw || raw.length === 0) return [];
-  const byDate = new Map<string, DateWarning>();
-  for (const w of raw) {
-    if (!/^\d{8}$/.test(w.date)) continue;
-    let entry = byDate.get(w.date);
-    if (!entry) {
-      entry = { date: w.date, warnings: [] };
-      byDate.set(w.date, entry);
-    }
-    entry.warnings.push({
-      invariant_id: w.reason,
-      severity: 'warn',
-      message: w.msg,
-      ctx: {},
-    });
-  }
-  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export interface UseLiveBundleResult {
@@ -186,14 +123,6 @@ export function useLiveBundle(
     return bars.map(kisBarToCandle);
   }, [isMinute, timeframe, pastCandlesQuery.data, pastDailyCandlesQuery.data]);
 
-  const extraDateWarnings = useMemo<DateWarning[]>(
-    () =>
-      isMinute
-        ? pastCandlesWarningsToDateWarnings(pastCandlesQuery.data?.data_warnings)
-        : dailyWarningsToDateWarnings(pastDailyCandlesQuery.data?.data_warnings),
-    [isMinute, pastCandlesQuery.data, pastDailyCandlesQuery.data],
-  );
-
   const bundle = useMemo<RangeBundle | null>(() => {
     if (!code) return null;
 
@@ -216,20 +145,8 @@ export function useLiveBundle(
       bucketMs,
     });
 
-    // Merge KIS wire warnings into bundle.data_warnings so the
-    // InvariantOutcomesBanner surfaces them. Minute path: per-date warnings
-    // from /past-candles (rate_limit / kis_api_error / cache_write_failed).
-    // Daily path: per-row + batch-level from /past-daily-candles, with
-    // batch-level mapped to its FROM date. buildLiveBundle's own contribution
-    // comes from pastBundle on the minute path; for D/W/M that's always null.
-    if (extraDateWarnings.length > 0) {
-      return {
-        ...built,
-        data_warnings: [...(built.data_warnings ?? []), ...extraDateWarnings],
-      };
-    }
     return built;
-  }, [code, todayKstYyyymmdd, isMinute, live.initial, live.ob, live.trade, past.data, kisCandles, bucketMs, extraDateWarnings]);
+  }, [code, todayKstYyyymmdd, isMinute, live.initial, live.ob, live.trade, past.data, kisCandles, bucketMs]);
 
   // Clamp is a minute-path concern only; the daily endpoint has no 250d cap.
   const clampEngaged = isMinute
