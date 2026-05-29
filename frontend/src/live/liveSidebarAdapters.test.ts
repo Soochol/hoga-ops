@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   latestOrderbookSnapshot,
   aggregateBrokerSeries,
-  flattenTrades,
 } from './liveSidebarAdapters';
 
 describe('latestOrderbookSnapshot', () => {
@@ -104,36 +103,3 @@ describe('aggregateBrokerSeries', () => {
   });
 });
 
-describe('flattenTrades', () => {
-  it('returns empty array for empty input', () => {
-    expect(flattenTrades([])).toEqual([]);
-  });
-
-  it('flattens nested trades arrays into a single sorted-by-ts list', () => {
-    const trade = [
-      { t_ms: 1000, trades: [{ t_ms: 1000, price: 100, qty: 5, side: 1 }] },
-      {
-        t_ms: 2000,
-        trades: [
-          { t_ms: 2000, price: 101, qty: 3, side: -1 },
-          { t_ms: 2001, price: 101, qty: 2, side: 1 },
-        ],
-      },
-    ];
-    const flat = flattenTrades(trade);
-    expect(flat).toHaveLength(3);
-    expect(flat[0].ts_ms).toBe(1000);
-    expect(flat[2].ts_ms).toBe(2001);
-  });
-
-  it('fills in placeholder Trade fields the sidebar needs', () => {
-    const flat = flattenTrades([
-      { t_ms: 1000, trades: [{ t_ms: 1000, price: 100, qty: 5, side: 1 }] },
-    ]);
-    expect(flat[0].price).toBe(100);
-    expect(flat[0].qty).toBe(5);
-    expect(flat[0].side).toBe(1);
-    // Live data doesn't have change_pct etc. — adapters fill with zero defaults.
-    expect(typeof flat[0].change_pct).toBe('number');
-  });
-});

@@ -3,7 +3,6 @@ import type {
   BrokerSeriesPoint,
   OrderbookLevel,
   OrderbookSnapshot,
-  Trade,
 } from '../api/types';
 
 type RawSnapshot = Record<string, unknown>;
@@ -98,55 +97,4 @@ export function aggregateBrokerSeries(broker: readonly RawSnapshot[]): BrokerSer
 
   entries.sort((a, b) => Math.abs(b.final_net) - Math.abs(a.final_net));
   return entries.slice(0, 10);
-}
-
-/** Hard cap on rendered fill-tape rows. Without this, /live's 2520-snapshot
- * buffer × ~30 trades/cycle produces ~27k Trade objects, which FillTape
- * renders un-virtualized (one DOM subtree per row) — measured at ~1.2s of
- * React reconciliation per SSE tick on a busy code. At ~1 trade/s typical
- * cadence, 500 covers the most-recent ~8 minutes — comfortably more than a
- * trader visually tracks on the live tape. */
-const LIVE_FILLTAPE_MAX = 500;
-
-/**
- * Flatten the per-cycle trade batches into a single chronologically-sorted
- * Trade[] for FillTape. Caps at LIVE_FILLTAPE_MAX most-recent rows.
- * Fills in cum_vol / change_pct / etc. with zero placeholders since live
- * snapshots don't carry those derived fields — FillTape only reads
- * price/qty/side/ts_ms so the placeholders are inert.
- */
-export function flattenTrades(trade: readonly RawSnapshot[]): Trade[] {
-  const flat: Trade[] = [];
-  let seqCounter = 0;
-  for (const snap of trade) {
-    const trades = (snap.trades as Array<{
-      t_ms?: number;
-      price?: number;
-      qty?: number;
-      side?: number;
-    }>) ?? [];
-    for (const t of trades) {
-      flat.push({
-        ts_ms: t.t_ms ?? 0,
-        // Live snapshots don't carry a real seq; assign a monotonically
-        // increasing counter so FillTape's `${ts_ms}-${seq}` React key
-        // stays unique even when multiple trades share a t_ms (common with
-        // 10s polling cycles collapsing several ticks).
-        seq: seqCounter++,
-        price: t.price ?? 0,
-        change_pct: 0,
-        qty: t.qty ?? 0,
-        side: t.side ?? 0,
-        cum_vol: 0,
-        cum_trades: 0,
-        low_so_far: 0,
-        high_so_far: 0,
-        net_pressure: 0,
-      });
-    }
-  }
-  flat.sort((a, b) => a.ts_ms - b.ts_ms);
-  // Keep only the most-recent LIVE_FILLTAPE_MAX. Returning earlier rows would
-  // force FillTape to render an un-virtualized 27k-row DOM subtree.
-  return flat.length > LIVE_FILLTAPE_MAX ? flat.slice(-LIVE_FILLTAPE_MAX) : flat;
 }

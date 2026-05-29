@@ -1,16 +1,12 @@
 // useCursor + useSpot wiring. Each sidebar card subscribes to
 // `tab.cursorMs` for the active tab and pulls spot data keyed by
-// (tabId, endpoint, t). Trades pull the last N fills at-or-before the
-// cursor via the backend's ?t= mode — a fixed-time-window query used to
-// return empty arrays in low-volume minutes (e.g. mid-session lulls,
-// auction edges), making the 체결 card read as broken when it was just
-// sparse. "Last N before cursor" matches the UI's intent ("체결 흐름").
+// (tabId, endpoint, t).
 import { useShallow } from 'zustand/react/shallow';
 import { useTabsStore } from '../state/tabs';
 import { apiGet } from './client';
 import { useSpot } from './useSpot';
 import { unixMsToKSTDate } from '../util/time';
-import { TIMEFRAME_TO_MS, type OrderbookResponse, type Timeframe, type Trade } from './types';
+import { TIMEFRAME_TO_MS, type OrderbookResponse, type Timeframe } from './types';
 
 /**
  * Read the active tab's cursorMs (or null when no cursor set), plus the
@@ -81,34 +77,6 @@ export function useOrderbookAtCursor() {
     apiGet<OrderbookResponse>(
       `/api/orderbook?code=${code}&date=${date}&t=${alignedT}&bucket_ms=${bucketMs}`,
     ).then((r) => r.snapshot),
-  );
-  // Preserve the (T | null | undefined) shape: undefined = haven't fetched
-  // yet (no cursor / loading), null = fetched but empty, value = data.
-  // Consumers distinguish loading vs no-data via the undefined check.
-  return data;
-}
-
-export function useTradesAroundCursor(limit: number = 20) {
-  const { tabId, code, date, cursorMs, timeframe } = useCursor();
-  // Bucket-align the cursor before keying — matches useOrderbookAtCursor.
-  // Without this, every pixel of crosshair movement produces a unique query
-  // key, hammering /api/trades on drag/hover (measured: ~60 fetches/s during
-  // a slow drag). Aligning collapses within-bucket motion to a single
-  // request, since users only meaningfully reseat the cursor at bucket
-  // boundaries anyway (FillTape's "last N at-or-before T" semantic).
-  const bucketMs = timeframe !== null ? TIMEFRAME_TO_MS[timeframe] : null;
-  const alignedT =
-    cursorMs !== null && bucketMs !== null
-      ? Math.floor(cursorMs / bucketMs) * bucketMs
-      : cursorMs;
-  const key =
-    code && date && Number.isFinite(alignedT)
-      ? `${tabId}|tr|${code}|${date}|${alignedT}|${limit}`
-      : null;
-  const { data } = useSpot(key, () =>
-    apiGet<{ trades: Trade[] }>(
-      `/api/trades?code=${code}&date=${date}&t=${alignedT}&limit=${limit}`,
-    ).then((r) => r.trades),
   );
   // Preserve the (T | null | undefined) shape: undefined = haven't fetched
   // yet (no cursor / loading), null = fetched but empty, value = data.

@@ -14,7 +14,6 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import {
   useLiveOrderbookAtCursor,
-  useLiveTradesAroundCursor,
   useLiveBrokersAtCursor,
 } from './useLiveCursor';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
@@ -129,41 +128,6 @@ describe('useLiveOrderbookAtCursor', () => {
     const url = (apiGet as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(url).toContain('date=20260415');
     expect(url).not.toContain('date=20260528');  // must NOT be today
-  });
-});
-
-// ─── Task 11: useLiveTradesAroundCursor ──────────────────────────────────────
-
-describe('useLiveTradesAroundCursor', () => {
-  beforeEach(() => {
-    useLiveCursorStore.getState().clearCursor();
-    useSourcePreferenceStore.getState().setSourcePreference('hogaplay');
-    (apiGet as unknown as ReturnType<typeof vi.fn>).mockClear();
-    (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
-      if (url.includes('/api/trades')) return { trades: [], source: 'hogaplay' };
-      throw new Error('unexpected url: ' + url);
-    });
-  });
-
-  it('does not fetch when cursorMs null', async () => {
-    const { result } = renderHook(() =>
-      useLiveTradesAroundCursor({ code: '005930', timeframe: '1m' }),
-    );
-    expect(result.current).toBeUndefined();
-    expect(apiGet).not.toHaveBeenCalled();
-  });
-
-  it('builds URL with t aligned, limit=20, source_pref', async () => {
-    renderHook(() =>
-      useLiveTradesAroundCursor({ code: '005930', timeframe: '1m' }),
-    );
-    act(() => useLiveCursorStore.getState().setCursor(1_779_930_000_000));
-    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
-    const url = (apiGet as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toContain('/api/trades');
-    expect(url).toContain('t=1779930000000');
-    expect(url).toContain('limit=20');
-    expect(url).toContain('source_pref=hogaplay');
   });
 });
 

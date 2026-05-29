@@ -14,7 +14,7 @@ import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { useSpot } from './useSpot';
 import { apiGet } from './client';
 import { TIMEFRAME_TO_MS, type OrderbookResponse, type Timeframe } from './types';
-import type { OrderbookSnapshot, BrokerSeriesEntry, Trade, SourceName } from './types';
+import type { OrderbookSnapshot, BrokerSeriesEntry, SourceName } from './types';
 import type { MinuteTimeframe } from '../state/livePage';
 import { unixMsToKSTDate } from '../util/time';
 
@@ -35,8 +35,8 @@ interface Params {
  * this mirrors replay's useCursor pattern and fixes the regression where
  * hovering on past-date candles sent date=today to the API (ADR-0044).
  *
- * Used by useLiveOrderbookAtCursor and useLiveTradesAroundCursor so the only
- * per-hook divergence is the cache-key shape and the endpoint URL.
+ * Used by useLiveOrderbookAtCursor so the only per-hook divergence is the
+ * cache-key shape and the endpoint URL.
  *
  * useLiveBrokersAtCursor is intentionally NOT refactored here: brokers is a
  * day-keyed series (no bucket alignment needed), and forcing it through this
@@ -95,32 +95,6 @@ export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefin
       available_from: r.available_from,
       source: r.source,
     })),
-  );
-  return data;
-}
-
-// ─── Task 11: useLiveTradesAroundCursor ──────────────────────────────────────
-
-/**
- * Live-side cursor-keyed trades spot. Returns last `limit` fills at-or-before
- * the bucket-aligned cursor. Mirrors replay's useTradesAroundCursor with
- * source_pref threaded (ADR-0044).
- *
- * Frontend has no named TradesResponse — inline `{ trades; source }` per plan.
- */
-export function useLiveTradesAroundCursor(
-  p: Params,
-  limit: number = 20,
-): Trade[] | undefined {
-  const { alignedT, sourcePref, date } = useAlignedCursor(p.timeframe);
-  const key =
-    p.code && date && alignedT !== null
-      ? `live|tr|${p.code}|${date}|${alignedT}|${limit}|${sourcePref}`
-      : null;
-  const { data } = useSpot<Trade[]>(key, () =>
-    apiGet<{ trades: Trade[]; source: SourceName }>(
-      `/api/trades?code=${p.code}&date=${date}&t=${alignedT}&limit=${limit}&source_pref=${sourcePref}`,
-    ).then((r) => r.trades),
   );
   return data;
 }
