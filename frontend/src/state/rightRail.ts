@@ -28,7 +28,15 @@ function readStorage(): Partial<Persisted> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    return (JSON.parse(raw) as Partial<Persisted>) ?? {};
+    const parsed = JSON.parse(raw) as Record<string, unknown> | null;
+    if (typeof parsed !== 'object' || parsed === null) return {};
+    // Accept only real booleans — a corrupt/hand-edited value (e.g. panelOpen: 0)
+    // must not leak a non-boolean into state, where `0 && <Drawer/>` would render
+    // a stray "0" text node and `aria-pressed="1"` would leak to the DOM.
+    const out: Partial<Persisted> = {};
+    if (typeof parsed.panelOpen === 'boolean') out.panelOpen = parsed.panelOpen;
+    if (typeof parsed.railCollapsed === 'boolean') out.railCollapsed = parsed.railCollapsed;
+    return out;
   } catch {
     return {};
   }

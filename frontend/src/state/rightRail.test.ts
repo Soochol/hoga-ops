@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useRightRailStore } from './rightRail';
 
 describe('rightRail store', () => {
@@ -33,5 +33,15 @@ describe('rightRail store', () => {
     expect(useRightRailStore.getState().panelOpen).toBe(false);
     useRightRailStore.getState().setRailCollapsed(false);
     expect(useRightRailStore.getState().panelOpen).toBe(false);
+  });
+
+  it('hydration ignores non-boolean persisted values (corrupt storage → defaults)', async () => {
+    // The store reads localStorage at module init, so re-import with a fresh
+    // module registry to exercise readStorage() against corrupt data.
+    localStorage.setItem('rightRail.layout', JSON.stringify({ panelOpen: 0, railCollapsed: 'yes' }));
+    vi.resetModules();
+    const { useRightRailStore: fresh } = await import('./rightRail');
+    expect(fresh.getState().panelOpen).toBe(false);
+    expect(fresh.getState().railCollapsed).toBe(false);
   });
 });
