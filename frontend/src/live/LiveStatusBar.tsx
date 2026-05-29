@@ -1,6 +1,7 @@
 import { useLivePageStore } from '../state/livePage';
 import { cycleLagSeverity, cycleLagPillColor } from './cycleLagPill';
 import { SourceChip } from '../chart/SourceChip';
+import { useSymbols } from '../capture/useSymbols';
 import type { RangeBundle } from '../api/types';
 
 interface Props {
@@ -13,6 +14,13 @@ interface Props {
 
 export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
+  const { data: symbolsData } = useSymbols();
+  const symbolName = activeCode
+    ? symbolsData?.symbols.find((s) => s.code === activeCode)?.name
+    : undefined;
+  const symbolLabel = activeCode
+    ? (symbolName ? `${symbolName}(${activeCode})` : activeCode)
+    : '—';
   const severity = cycleLagSeverity(cycleLagMs);
   const pill = cycleLagPillColor(severity);
 
@@ -39,7 +47,7 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
       }}
     >
       <span className="font-mono" style={{ color: 'var(--fg)' }}>
-        {activeCode ?? '—'}
+        {symbolLabel}
       </span>
       <span aria-hidden>·</span>
       {currentPrice !== null ? (
