@@ -48,7 +48,7 @@ describe('LiveSidebar', () => {
   });
   afterEach(() => cleanup());
 
-  it('renders three card slots when code is null (waiting state)', () => {
+  it('renders the sidebar shell when code is null (waiting state)', () => {
     render(<LiveSidebar code={null} />);
     expect(screen.getByTestId('live-sidebar')).toBeInTheDocument();
   });

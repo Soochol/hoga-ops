@@ -172,9 +172,9 @@ function SidebarHeader({
   );
 }
 
-// Design review B1: KST formatting via toLocaleTimeString — matches FillTape.tsx:50
-// and the rest of the sidebar. Local-tz machine-time clocks would desync from
-// the chart x-axis on non-KST workstations.
+// KST formatting via toLocaleTimeString — matches the rest of the sidebar
+// (OrderbookTable, BrokerTrajectoryTable). Local-tz machine-time clocks
+// would desync from the chart x-axis on non-KST workstations.
 function formatTime(ts_ms: number): string {
   return new Date(ts_ms).toLocaleTimeString('ko-KR', {
     timeZone: 'Asia/Seoul',
