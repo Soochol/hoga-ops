@@ -342,3 +342,131 @@ describe('buildLiveBundle dedup (ADR-0043 plan Task 9)', () => {
     expect(ts).toEqual([pastTailT, pastTailT + 60_000]);
   });
 });
+
+describe('buildLiveBundle sanity clip (ADR-0049 / spec §3)', () => {
+  const TODAY = '20260529';
+  const TODAY_OPEN = Date.UTC(2026, 4, 29, 0, 0, 0);
+  const TODAY_CLOSE = TODAY_OPEN + 6.5 * 3600 * 1000;
+  // ADR-0044 / CONTEXT.md "Live Session": After-Hours runs 15:30–16:00 KST.
+  // (Ceiling reference; not directly used by assertions — exercised via buildLiveBundle.)
+
+  it('clips pastMaxQrT to live session end when past contains a future timestamp', () => {
+    // Simulate the actual production failure mode: Unix ms decoded as
+    // HHMMSSmmm lands deterministically in year 2046 (~20 years past today).
+    // Without the clip, this would block all SSE merges because
+    // incrementalQR.filter(p => p.t > pastMaxQrT) rejects every 2026-era
+    // SSE point.
+    const futureCorruptT = TODAY_CLOSE + 20 * 365 * 24 * 3600 * 1000; // ~2046
+    const pastBundle: RangeBundle = emptyRangeBundle({
+      segments: [{
+        date: '20260528',
+        session_open_ms: TODAY_OPEN - 86_400_000,
+        session_close_ms: TODAY_CLOSE - 86_400_000,
+        source: 'hogaplay',
+      }],
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [
+          { t: TODAY_OPEN - 86_400_000 + 3600_000, bid_total: 10, ask_total: 10 },
+          { t: futureCorruptT, bid_total: 99, ask_total: 99 }, // corrupt tail
+        ],
+      },
+    });
+
+    const sseTAt = TODAY_OPEN + 30 * 60_000; // 09:30 KST today
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle,
+      sseOb: [{ t_ms: sseTAt, total_ask_qty: 50, total_bid_qty: 40 }],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+
+    const sseMerged = bundle.quote_ratio.points.some(
+      (p) => p.t === sseTAt && p.bid_total === 40 && p.ask_total === 50,
+    );
+    expect(sseMerged).toBe(true);
+  });
+
+  it('preserves dedup for after-hours data (15:30-16:00 KST, Live Session end)', () => {
+    // Design-review B1 regression: clip ceiling must include After-Hours
+    // (Live Session end = close_ms + 30min, CONTEXT.md "Live Session").
+    // If we clipped at close_ms (15:30 KST), past-tail at 15:45 KST would
+    // get reduced to 15:30, letting an SSE point at 15:45 with the SAME
+    // timestamp as a past entry slip through and overwrite the past value.
+    const pastTailT = TODAY_CLOSE + 15 * 60_000; // 15:45 KST (After-Hours)
+    const pastBundle: RangeBundle = emptyRangeBundle({
+      segments: [{
+        date: TODAY,
+        session_open_ms: TODAY_OPEN,
+        session_close_ms: TODAY_CLOSE,
+        source: 'kis_live',
+      }],
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [{ t: pastTailT, bid_total: 10, ask_total: 10 }],
+      },
+    });
+
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle,
+      sseOb: [
+        { t_ms: pastTailT, total_ask_qty: 999, total_bid_qty: 999 }, // boundary dup
+      ],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+
+    const atTail = bundle.quote_ratio.points.find((p) => p.t === pastTailT);
+    expect(atTail?.bid_total).toBe(10); // past value wins, SSE dup rejected
+  });
+
+  it('does NOT clip when past timestamps are all within regular session (normal case)', () => {
+    // Regression guard: when past data is sane, the existing dedup must
+    // still reject SSE buckets that share a timestamp with past tail.
+    const pastTailT = TODAY_OPEN + 60_000; // 09:01 KST today
+    const pastBundle: RangeBundle = emptyRangeBundle({
+      segments: [{
+        date: TODAY,
+        session_open_ms: TODAY_OPEN,
+        session_close_ms: TODAY_CLOSE,
+        source: 'kis_live',
+      }],
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [
+          { t: TODAY_OPEN, bid_total: 5, ask_total: 5 },
+          { t: pastTailT, bid_total: 10, ask_total: 10 },
+        ],
+      },
+    });
+
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle,
+      sseOb: [
+        { t_ms: pastTailT, total_ask_qty: 999, total_bid_qty: 999 }, // boundary dup
+        { t_ms: pastTailT + 60_000, total_ask_qty: 50, total_bid_qty: 40 }, // new
+      ],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+
+    // The boundary-dup SSE point must NOT overwrite past's value 10.
+    const atPastTail = bundle.quote_ratio.points.find((p) => p.t === pastTailT);
+    expect(atPastTail?.bid_total).toBe(10);
+    // The strictly-greater SSE point must pass through.
+    const after = bundle.quote_ratio.points.find((p) => p.t === pastTailT + 60_000);
+    expect(after?.bid_total).toBe(40);
+  });
+});
