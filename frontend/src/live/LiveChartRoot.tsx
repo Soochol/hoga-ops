@@ -207,12 +207,13 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
           if (a.segments.length === 0) return '';
           const realMs = a.toReal(virtualMs);
           const d = new Date(realMs + 9 * 3600_000);
-          const ymd = `${d.getUTCFullYear()}/${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
           // D/W/M candles are all anchored to 09:00 KST — appending the time
           // to the crosshair tooltip would be misleading ("did the daily bar
           // happen at 09:00?"), so the tooltip stays date-only there.
-          if (isCalendarTimeframe(timeframeRef.current)) return ymd;
-          return `${ymd} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+          if (isCalendarTimeframe(timeframeRef.current)) {
+            return `${d.getUTCFullYear()}/${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+          }
+          return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
         },
       },
       timeScale: {
@@ -229,13 +230,11 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
           const calendar = isCalendarTimeframe(timeframeRef.current);
           switch (tickType) {
             case TickMarkType.Year:
-              return calendar ? `${d.getUTCFullYear()}` : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+              return calendar ? `'${String(d.getUTCFullYear()).slice(-2)}` : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
             case TickMarkType.Month:
-              return calendar
-                ? `${d.getUTCFullYear()}/${pad(d.getUTCMonth() + 1)}`
-                : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+              return calendar ? `${d.getUTCMonth() + 1}월` : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
             case TickMarkType.DayOfMonth:
-              return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+              return calendar ? `${d.getUTCDate()}` : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
             case TickMarkType.Time:
               // Intraday HH:MM only makes sense for minute timeframes; on
               // D/W/M every bar is at session-open so the time tick is noise.
