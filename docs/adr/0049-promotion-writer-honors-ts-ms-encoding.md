@@ -65,7 +65,7 @@
 
 ## Reader-side defense-in-depth
 
-옵션 A가 wins이지만, frontend의 `buildLiveBundle.ts`는 추가로 sanity clip을 둔다 ([spec §3](../superpowers/specs/2026-05-29-kis-live-ts-ms-encoding-design.md)): `pastMaxQrT = Math.min(rawPastMaxQrT, todaySession.close_ms + 30 * 60 * 1000)`. 천장은 **Live Session 끝(close_ms + 30min, After-Hours Trading 포함)** — `close_ms` 단독으로 자르면 매일 15:30–16:00 KST After-Hours 데이터의 dedup boundary가 무력화된다. 이는 backend 인코딩 회귀가 다시 발생해도 SSE 라이브 머지(`incrementalQR.filter(p => p.t > pastMaxQrT)`)가 차단되지 않게 하는 독립 방어막. 본 ADR의 writer 결정과 직교 — defense-in-depth.
+옵션 A가 wins이지만, frontend의 `buildLiveBundle.ts`는 추가로 sanity filter를 둔다 ([spec §3](../superpowers/specs/2026-05-29-kis-live-ts-ms-encoding-design.md)): past 포인트 중 `t > todaySession.close_ms + 30 * 60 * 1000` (Live Session 끝, After-Hours Trading 포함)을 **dedup 계산 + 출력 양쪽에서 제거**. clip(`Math.min`)이 아니라 filter인 이유: clip은 산술적으로 SSE를 차단한다 — corrupt past의 clip 결과(today close+30min)가 어떤 SSE timestamp보다도 크므로 `incrementalQR.filter(p => p.t > pastMaxQrT)`가 SSE 전부 거부. filter 방식은 corrupt past를 pastMax 계산에서 빼서 SSE가 자연 통과하게 하고, VirtualAxis의 segment-기반 filtering과 일관되게 corrupt 포인트가 wire 출력에서도 제외된다. 정상 past 데이터는 항상 `close_ms + 30min` 이하이므로 (After-Hours까지 포함) filter는 no-op. 본 ADR의 writer 결정과 직교 — defense-in-depth.
 
 ## Why not enforce via Parquet schema?
 

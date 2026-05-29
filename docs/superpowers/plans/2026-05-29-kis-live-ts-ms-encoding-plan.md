@@ -721,26 +721,35 @@ Expected:
 Edit `frontend/src/live/buildLiveBundle.ts`. Replace lines 59-68 (the `pastMaxQrT` / `pastMaxFsT` + `sseBuckets` block) with:
 
 ```typescript
-  // ADR-0049 / spec §3 — clip dedup guard to the Live Session end so a
-  // backend encoding regression (past point's t escapes upward, e.g. year
-  // 2046 from Unix-ms-decoded-as-HHMMSSmmm) cannot block SSE live merge.
-  // Ceiling = close_ms + 30min (Live Session end including After-Hours
-  // Trading 15:30-16:00 KST, ADR-0044 / CONTEXT.md "Live Session"). Healthy
-  // past tail always falls ≤ this ceiling, so the clip is a no-op for
-  // normal bundles and preserves the boundary-dedup semantic.
+  // ADR-0049 / spec §3 — **filter** (not clip) past points whose t escapes
+  // the Live Session end so a backend encoding regression cannot block SSE
+  // merge. Why filter not Math.min: clipping leaves pastMaxQrT at close+30min,
+  // which is strictly greater than every legitimate SSE timestamp during the
+  // session, so `incrementalQR.filter(p => p.t > pastMaxQrT)` would reject
+  // ALL SSE points. Filter drops corrupt past entries from pastMax calc AND
+  // from the wire output, so SSE merges naturally and renders stay consistent
+  // with VirtualAxis (which filters out-of-segment points anyway).
+  // Ceiling = close_ms + 30min (Live Session end incl. After-Hours Trading,
+  // ADR-0044 / CONTEXT.md "Live Session"). Healthy past always passes.
   const AFTER_HOURS_END_MS = todaySession.close_ms + 30 * 60 * 1000;
-  const rawPastMaxQrT = pastQRPoints.length > 0
-    ? pastQRPoints[pastQRPoints.length - 1].t
+  const validPastQR = pastQRPoints.filter((p) => p.t <= AFTER_HOURS_END_MS);
+  const validPastFS = pastFSPoints.filter((p) => p.t <= AFTER_HOURS_END_MS);
+  const pastMaxQrT = validPastQR.length > 0
+    ? validPastQR[validPastQR.length - 1].t
     : 0;
-  const rawPastMaxFsT = pastFSPoints.length > 0
-    ? pastFSPoints[pastFSPoints.length - 1].t
+  const pastMaxFsT = validPastFS.length > 0
+    ? validPastFS[validPastFS.length - 1].t
     : 0;
-  const pastMaxQrT = Math.min(rawPastMaxQrT, AFTER_HOURS_END_MS);
-  const pastMaxFsT = Math.min(rawPastMaxFsT, AFTER_HOURS_END_MS);
 
   const sseBuckets = bucketHogaSeries(sseOb, sseTrade, bucketMs);
   const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > pastMaxQrT);
   const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > pastMaxFsT);
+
+  // Final wire output also uses validPastQR / validPastFS so corrupt points
+  // are excluded from rendering as well. Replace the original
+  // `points: [...pastQRPoints, ...incrementalQR]` lines further down with:
+  //   points: [...validPastQR, ...incrementalQR]
+  //   points: [...validPastFS, ...incrementalFS]
 ```
 
 - [ ] **Step 4: Run all buildLiveBundle tests — verify all green**

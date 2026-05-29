@@ -174,25 +174,27 @@ const sseBuckets = bucketHogaSeries(sseOb, sseTrade, bucketMs);
 const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > pastMaxQrT);
 const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > pastMaxFsT);
 
-// After — clip dedup 가드를 Live Session 끝(close_ms + 30min, After-Hours 포함)에서
-// 잘라서 backend corruption으로부터 SSE 라이브 보호. 정상 past 데이터의 마지막 포인트는
-// 항상 Live Session 끝 이하이므로 (After-Hours까지 포함) dedup 의미는 동일. 2046년 같은
-// corruption 값이 들어와도 SSE incremental은 정상 통과. close_ms 단독으로 자르면 15:30–16:00
-// KST After-Hours 데이터를 매일 막는다 (CONTEXT.md "Live Session" — Regular Session보다 30분 김).
-const rawPastMaxQrT = pastQRPoints.length > 0
-  ? pastQRPoints[pastQRPoints.length - 1].t
-  : 0;
-const rawPastMaxFsT = pastFSPoints.length > 0
-  ? pastFSPoints[pastFSPoints.length - 1].t
-  : 0;
-// AFTER_HOURS_END_MS = Live Session 끝 (close_ms + 30min, ADR-0044 / CONTEXT.md "Live Session").
+// After — past 포인트 중 Live Session 끝(close_ms + 30min, After-Hours 포함)을
+// 넘어선 것을 dedup 계산 + 출력 양쪽에서 **filter out**. clip은 산술적으로 동작 안 함
+// (clip 후 pastMax = today_close+30min ≥ 어떤 SSE보다 크므로 SSE 전부 차단).
+// filter 방식: corrupt past 포인트가 pastMax 계산에서 빠지면 SSE가 자연 통과 +
+// VirtualAxis 필터링과 일관되게 렌더링에서도 제외. 정상 past는 close+30min 이내이므로 no-op.
 const AFTER_HOURS_END_MS = todaySession.close_ms + 30 * 60 * 1000;
-const pastMaxQrT = Math.min(rawPastMaxQrT, AFTER_HOURS_END_MS);
-const pastMaxFsT = Math.min(rawPastMaxFsT, AFTER_HOURS_END_MS);
+const validPastQR = pastQRPoints.filter((p) => p.t <= AFTER_HOURS_END_MS);
+const validPastFS = pastFSPoints.filter((p) => p.t <= AFTER_HOURS_END_MS);
+const pastMaxQrT = validPastQR.length > 0
+  ? validPastQR[validPastQR.length - 1].t
+  : 0;
+const pastMaxFsT = validPastFS.length > 0
+  ? validPastFS[validPastFS.length - 1].t
+  : 0;
 
 const sseBuckets = bucketHogaSeries(sseOb, sseTrade, bucketMs);
 const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > pastMaxQrT);
 const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > pastMaxFsT);
+
+// 최종 RangeBundle.quote_ratio.points / fill_strength.points 출력도
+// validPastQR / validPastFS를 사용 (corrupt 포인트는 wire에서도 제외).
 ```
 
 `todaySession.close_ms`는 같은 함수의 인자로 이미 들어와 있다 ([buildLiveBundle.ts:25](../../../frontend/src/live/buildLiveBundle.ts), [buildLiveBundle.ts:42](../../../frontend/src/live/buildLiveBundle.ts) 시그니처 참조).
