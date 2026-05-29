@@ -67,9 +67,11 @@ App (shell)
  ├─ WatchlistDrawer  ← panelOpen일 때만, 고정폭 --watchlist-panel-w   (승격된 기존 컴포넌트)
  └─ RightRail        ← 항상, 고정폭 --rail-w (접히면 얇은 핸들)        (신규 chrome)
 
-rightRail store: { panelOpen, railCollapsed, togglePanel, setPanelOpen, toggleRailCollapsed }
+rightRail store: { panelOpen, railCollapsed, togglePanel, setPanelOpen, toggleRailCollapsed, setRailCollapsed }
 livePage store : activeCode (그대로 — live 도메인 개념)
 ```
+
+용어 노트: "RightRail"은 접힘 시 아이콘만 남는 chrome strip을 뜻하며, "Nav"(좌측 페이지 네비게이션 `LeftNav`) · "Sidebar"(`/live` 데이터 패널 `Cursor Sidebar`)와 구분된다 — CONTEXT.md 용어집의 **Right Rail** 참조.
 
 설계 근거:
 
@@ -98,7 +100,7 @@ livePage store : activeCode (그대로 — live 도메인 개념)
 
 ### WatchlistDrawer (승격된 기존 컴포넌트)
 
-[frontend/src/live/WatchlistPanel.tsx](../../../frontend/src/live/WatchlistPanel.tsx)를 `frontend/src/watchlist/WatchlistDrawer.tsx`로 이동하고 일반화한다 (이름은 풀 페이지 `watchlist/WatchlistPanel.tsx`와의 충돌을 피하려 `WatchlistDrawer`로 변경):
+[frontend/src/live/WatchlistPanel.tsx](../../../frontend/src/live/WatchlistPanel.tsx)를 `frontend/src/watchlist/WatchlistDrawer.tsx`로 이동하고 일반화한다. `WatchlistDrawer`로 개명하는 것은 풀 페이지 `watchlist/WatchlistPanel.tsx`(검색/추가/삭제 갖춘 화면)와 구분짓고, 이것이 *페이지가 아닌 읽기 전용 측면 컨테이너*임을 드러내기 위함이다 (CONTEXT.md **Watchlist Panel** 용어):
 
 - 헤더 "관심종목" + 코드/종목명 행 목록 + 로딩/에러/빈 상태 — 현 구현 유지.
 - 폭 `--watchlist-panel-w`(350px), 배경 `--bg-card`, 좌측 1px `--border` — 현 토큰 유지.
@@ -123,7 +125,7 @@ setRailCollapsed(collapsed): 설정. collapsed=true면 panelOpen=false도 함께
 
 위 네 메서드의 동반 set이 *Panel-open ⟹ rail-expanded* 불변식을 양방향으로 강제한다. toggle+set 쌍을 둘 다 제공하는 것은 [livePage.ts](../../../frontend/src/state/livePage.ts)의 persisted boolean 관례(`toggleWatchlistPanel`+`setWatchlistPanelOpen`)와 일치한다.
 
-localStorage 키는 `livePage`와 충돌하지 않는 별도 키(예: `rightRail.layout`).
+localStorage 키는 `livePage`와 충돌하지 않는 별도 키(예: `rightRail.layout`). 이 **전역 chrome 상태를 전용 스토어가 소유**한다는 결정은 ADR-0052에 기록한다 — ADR-0022가 "cross-page 레이아웃 상태는 별도 결정"으로 미뤄둔 바로 그 결정이며, hydrate 순서(첫 라우트 페인트 전 복원)에 유의한다.
 
 ### /live 통합 (대체)
 
@@ -141,13 +143,16 @@ localStorage 키는 `livePage`와 충돌하지 않는 별도 키(예: `rightRail
 
 ### Design tokens
 
-[frontend/src/styles/tokens.css](../../../frontend/src/styles/tokens.css)에 추가:
+토큰은 단일 소스 [frontend/src/styles/design-tokens.ts](../../../frontend/src/styles/design-tokens.ts)의 `SIZE_TOKENS`에 추가하고 `npm run gen:tokens`로 `tokens.css`·`tokens.generated.ts`·`DESIGN.md`를 재생성한다 (ADR-0012). `tokens.css`를 직접 편집하지 않는다 — 자동 생성물이다.
 
-- `--rail-w`: 3rem (60px @ default 1.25× / 48px base intent) — 아이콘 레일 폭.
-- `--rail-handle-w`: 0.6rem (12px @ default / 9.6px base) — 접힘 핸들 폭. (정확한 값은 design-review에서 조정 가능.)
-- `--watchlist-panel-w`(350px)는 기존 값 재사용. DESIGN.md 주석을 "Live page" 한정에서 "전역 우측 패널"로 일반화.
+layout-widths 카테고리(`*-w` 접두)로 두 토큰을 추가 — 생성기의 drift 검사 `rem×16 ≈ baseIntentPx`를 만족해야 한다:
 
-DESIGN.md의 Layout/토큰 섹션과 Decisions Log에 우측 레일을 한 줄로 기록한다 (grill 단계에서 ADR 필요 여부 판단).
+- `'rail-w': { rem: 3, baseIntentPx: 48, usage: 'Right Rail icon column width' }` → 48px base / 60px @1.25×.
+- `'rail-handle-w': { rem: 0.75, baseIntentPx: 12, usage: 'Collapsed Right Rail handle width' }` → 12px base / 15px @1.25×. (정확 값은 design-review에서 조정.)
+
+`--watchlist-panel-w`(350px)는 기존 hand-defined live 토큰(`tokens.css`의 ADR-0039 섹션, 생성 대상 아님)을 그대로 재사용한다. 필요 시 DESIGN.md 주석만 "Live page" → "전역 Watchlist Panel"로 일반화(수동 편집).
+
+새 토큰 추가 시 `design-tokens.ts` 소스와 생성물(`tokens.css`, `tokens.generated.ts`, `DESIGN.md`)을 **함께 커밋**한다. DESIGN.md Decisions Log에 우측 레일을 한 줄 기록.
 
 ## Testing
 
