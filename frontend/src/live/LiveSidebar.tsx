@@ -11,6 +11,7 @@ import {
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import { useLivePageStore } from '../state/livePage';
+import { useAuctionMaskActive } from '../state/useAuctionMaskActive';
 import {
   useLiveOrderbookAtCursor,
   useLiveBrokersAtCursor,
@@ -64,10 +65,7 @@ export function LiveSidebar({ code, live }: Props) {
 
   // Axis for Auction Mask in spot mode.
   const axis = useLiveAxisStore((s) => s.axis);
-  const maskRatio =
-    isSpot && axis !== null
-      ? axis.inClosingAuctionWindow(cursorMs!)
-      : false;
+  const maskRatio = useAuctionMaskActive(axis, isSpot ? cursorMs : null);
 
   // Branch on spot vs latest.
   const spotSnap = spotOrderbook?.snapshot ?? null;
