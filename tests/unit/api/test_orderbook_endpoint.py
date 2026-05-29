@@ -2,9 +2,13 @@
 (source_pref thread-through per ADR-0044 / ADR-0039)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+from fastapi.testclient import TestClient
+
+from hoga.api.app import create_app
 from hoga.api.models import OrderbookResponse
-from hoga.api.sources import SourceName
 
 
 def test_orderbook_response_has_source_field() -> None:
@@ -53,3 +57,39 @@ def test_orderbook_source_pref_invalid_returns_422(seed_orderbook):
         "code": "005930", "date": "20260528", "t": 1779930000000, "source_pref": "garbage"
     })
     assert r.status_code == 422
+
+
+def test_orderbook_returns_empty_response_when_source_dir_missing(
+    tmp_path: Path,
+) -> None:
+    """ADR-0044 graceful-empty: hover on a candle whose source parquet dir was
+    never captured returns 200 + null snapshot, not 404. Previously the
+    handler 404'd, which the frontend's useSpot catch surfaced as console
+    noise on every hover (no spot data UI, just log spam). Mirrors the
+    empty-bundle semantics /api/range adopted for the same reason.
+    """
+    client = TestClient(create_app(data_dir=tmp_path / "data"))
+    r = client.get("/api/orderbook", params={
+        "code": "005930", "date": "20260319", "t": 1779930000000,
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["snapshot"] is None
+    assert body["available_from"] is None
+    assert body["source"] == "hogaplay"
+
+
+def test_orderbook_returns_empty_response_when_source_dir_missing_kis_live_pref(
+    tmp_path: Path,
+) -> None:
+    """Source preference echoed back even when no data exists — chip should
+    show the preferred source so the user understands the empty state isn't
+    a fallback. resolve_source returns the pref unchanged when no source
+    dir exists on disk (per sources.py:46)."""
+    client = TestClient(create_app(data_dir=tmp_path / "data"))
+    r = client.get("/api/orderbook", params={
+        "code": "005930", "date": "20260319", "t": 1779930000000,
+        "source_pref": "kis_live",
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["source"] == "kis_live"

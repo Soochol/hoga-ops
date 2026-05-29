@@ -48,19 +48,25 @@ def _parquet_path(
 
 def _resolved_parquet_dir(
     engine: QueryEngine, date: str, code: str, source_pref: SourceName
-) -> tuple[Path, SourceName]:
+) -> tuple[Path | None, SourceName]:
     """Resolve source preference per ADR-0044 and return (parquet_dir, resolved_source).
 
-    Wraps StockDateNotFound as HTTP 404 — the canonical pattern for the spot
-    routes that honor source_pref (/api/orderbook, /api/brokers/series).
-    /api/candles continues to use the simpler _parquet_path because it doesn't
-    honor source_pref.
+    Returns (None, source_pref) when the Stock-Date or source dir is missing
+    on disk — the spot routes (/api/orderbook, /api/brokers/series) surface
+    that as an empty 200 response rather than 404. This mirrors the empty-
+    bundle semantics /api/range adopted, and matches ADR-0044's intent: a
+    candle whose source dir was never captured should render as an empty
+    sidebar, not a console error on every hover.
+
+    /api/candles continues to use the simpler _parquet_path because it
+    doesn't honor source_pref and keeps strict 404 semantics. /api/meta
+    is the same.
     """
     source = resolve_source(engine, date, code, source_pref)
     try:
         sd_dir = engine.parquet_dir(date, code, source=source)
-    except StockDateNotFound as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+    except StockDateNotFound:
+        return None, source
     return sd_dir, source
 
 
@@ -116,6 +122,8 @@ def build_router(engine: QueryEngine) -> APIRouter:
         # labels at t. Without bucket_ms the legacy "latest ≤ t" semantics
         # apply, so the parameter is backward-compatible.
         sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref)
+        if sd_dir is None:
+            return OrderbookResponse(available_from=None, snapshot=None, source=source)
         path = sd_dir / "snapshots.parquet"
         if bucket_ms is not None:
             try:
@@ -156,6 +164,8 @@ def build_router(engine: QueryEngine) -> APIRouter:
         # ADR-0039 preference+fallback semantics. The resolved source is
         # echoed back so LiveStatusBar's chip can reflect fallback honestly.
         sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref)
+        if sd_dir is None:
+            return BrokerSeriesResponse(date=date, brokers=[], source=source)
         path = sd_dir / "brokers.parquet"
         raw_entries = brokers_tbl.query_day_series(engine.conn, path=path)
         # Convert each point's ts_ms from HH:MM:SS.ms-encoded to Unix ms,
