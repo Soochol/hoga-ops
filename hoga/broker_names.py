@@ -72,6 +72,22 @@ _CANONICAL: dict[str, str] = {
     # preferable to a silent collapse on a guessed equivalence (the
     # 골드만/씨티그룹 lesson).
     "메리츠": "메리츠",
+    # 신영증권 — hogaplay emits 4-char-aligned padded form, same pattern as
+    # 삼  성 → 삼성증권 and 토  스 → 토스증권 documented in the module header.
+    # The space padding is a hogaplay TSV column-width artifact, not an
+    # alias inference, so collapsing to the canonical full form is safe.
+    "신  영": "신영증권",
+    # BNK증권 — observed as a short form. The KRX-registered full name is
+    # BNK투자증권; identity-only for now (골드만/씨티그룹 lesson) so that the
+    # full form, if it ever appears from KIS, surfaces a loud unknown_alias
+    # rather than getting silently merged with an unverified equivalence.
+    "BNK증권": "BNK증권",
+    "맥쿼리증권": "맥쿼리증권",
+    # 유안타 — observed as the *short* form. 유안타증권 (the full form) is
+    # already registered above as identity. Not inferring equivalence here:
+    # if the same KRX member is meant, the user can collapse them once
+    # verified against the source path that emitted each form.
+    "유안타": "유안타",
 }
 
 _unknown_seen: set[str] = set()

@@ -37,6 +37,12 @@ from hoga.broker_names import canonical
         ("SK증권", "SK증권", "SK증권"),
         ("유진증권", "유진증권", "유진증권"),
         ("메리츠", "메리츠", "메리츠"),
+        # 신영증권 — hogaplay 4-char padded form collapses to the canonical
+        # full name (same documented pattern as 삼  성, 토  스).
+        ("신  영", "신영증권", "신영증권"),
+        ("BNK증권", "BNK증권", "BNK증권"),
+        ("맥쿼리증권", "맥쿼리증권", "맥쿼리증권"),
+        ("유안타", "유안타", "유안타"),
     ],
 )
 def test_both_aliases_map_to_same_canonical(
