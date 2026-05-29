@@ -122,6 +122,154 @@ describe('LiveChartRoot', () => {
     );
     expect(screen.queryByTestId('indicator-disabled-note')).toBeNull();
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Initial-view application across (code, timeframe) and candle-count growth.
+  //
+  // Regression: on D/W/M the daily endpoint returns a small initial fetch
+  // (~14 bars for 20 days) and then a much larger extension fetch (~250
+  // bars for 250 days). Without re-fitting when the count grows, the chart
+  // stays zoomed on the early window and the latest data ends up off the
+  // right edge — the exact symptom the user hit on watchlist clicks in D.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  function makeCandles(n: number) {
+    return Array.from({ length: n }, (_, i) => ({
+      ts_ms: TODAY_OPEN_MS + i * 60_000,
+      open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0,
+    }));
+  }
+
+  function makeBundleWithCandles(n: number): RangeBundle {
+    return { ...TODAY_ONLY_BUNDLE, candles: makeCandles(n) };
+  }
+
+  function buildChartMockWithStableTS() {
+    const ts = {
+      subscribeVisibleTimeRangeChange: vi.fn(),
+      unsubscribeVisibleTimeRangeChange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      applyOptions: vi.fn(),
+      fitContent: vi.fn(),
+      scrollToRealTime: vi.fn(),
+      setVisibleLogicalRange: vi.fn(),
+      timeToCoordinate: vi.fn(() => null),
+    };
+    const chart = {
+      addSeries: vi.fn(() => ({
+        setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(),
+        applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+        removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
+        setMarkers: vi.fn(),
+      })),
+      removeSeries: vi.fn(),
+      timeScale: vi.fn(() => ts),
+      panes: vi.fn(() => []),
+      remove: vi.fn(),
+      resize: vi.fn(),
+      applyOptions: vi.fn(),
+      subscribeCrosshairMove: vi.fn(),
+      unsubscribeCrosshairMove: vi.fn(),
+    };
+    return { chart, ts };
+  }
+
+  it('D timeframe: re-applies fitContent when candle count grows (14 → 250)', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    vi.mocked(createChart).mockImplementationOnce(() => chart as never);
+
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={makeBundleWithCandles(14)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(ts.fitContent).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={makeBundleWithCandles(250)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+    // The whole point of the fix: count grew → re-fit so the extended
+    // window's latest bar lands at the right edge.
+    expect(ts.fitContent).toHaveBeenCalledTimes(2);
+  });
+
+  it('1m timeframe: setVisibleLogicalRange applied once even as bars grow (SSE pushes preserved)', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    vi.mocked(createChart).mockImplementationOnce(() => chart as never);
+
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(105)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+    // Minute path stays "apply once" — SSE pushes inside today must not
+    // snap the user's scroll back to the right edge.
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+  });
+
+  it('1m timeframe: code change re-applies setVisibleLogicalRange with new count', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    vi.mocked(createChart).mockImplementationOnce(() => chart as never);
+
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 105 });
+
+    // Watchlist switch: new code, new (smaller-or-larger) bundle. Without
+    // resetting the ref on code change, the new code's latest candle would
+    // be pinned to the previous code's right edge.
+    rerender(
+      <LiveChartRoot
+        code="000660"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(400)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 405 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(2);
+  });
 });
 
 // ---------------------------------------------------------------------------
