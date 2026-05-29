@@ -13,6 +13,7 @@ import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
 import { todayKstYyyymmdd } from './liveDateTime';
 import IndicatorPanel from './indicators/IndicatorPanel';
+import LiveSettingsModal from './LiveSettingsModal';
 import { useDocumentTitle } from '../util/useDocumentTitle';
 
 /**
@@ -56,6 +57,7 @@ export function LivePage() {
   useDocumentTitle(activeCode);
   const watchlistEmpty = banner.primary === 'watchlist_empty';
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Single live source for the page: useLiveSeries owns the SSE connection
   // and ring buffer; useLiveBundle composes it with KIS past-candles for the
@@ -90,7 +92,10 @@ export function LivePage() {
         cycleLagMs={status?.cycle_lag_ms ?? 0}
         bundle={bundle}
       />
-      <LiveToolbar onOpenIndicators={() => setIndicatorPanelOpen(true)} />
+      <LiveToolbar
+        onOpenIndicators={() => setIndicatorPanelOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
       <LiveWorkarea
         activeCode={activeCode}
         watchlistEmpty={watchlistEmpty}
@@ -101,6 +106,9 @@ export function LivePage() {
       />
       {indicatorPanelOpen && (
         <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+      )}
+      {settingsOpen && (
+        <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
       )}
     </div>
   );
