@@ -1,6 +1,6 @@
 # 0046 — `/live` 이동평균선은 `/replay`의 `MOVING_AVERAGE_SPEC`과 분리된 자체 overlay로 구현한다
 
-**Status:** accepted (2026-05-28)
+**Status:** superseded by /replay removal (2026-05-29) — the "fork" framing is moot since `/replay`'s MA implementation is deleted. `/live`'s MA continues to live in `useLivePageStore` (the originally chosen side of the fork).
 
 **Related:**
 - `docs/superpowers/specs/2026-05-28-live-moving-average-indicator-design.md` — 이 결정을 적용하는 spec
