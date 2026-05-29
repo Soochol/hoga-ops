@@ -12,6 +12,7 @@ import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { todayKstYyyymmdd } from './liveDateTime';
 import IndicatorPanel from './indicators/IndicatorPanel';
+import { useDocumentTitle } from '../util/useDocumentTitle';
 
 /**
  * /live page — KIS-based real-time indicator chart.
@@ -51,6 +52,7 @@ export function LivePage() {
   useLiveKeyboard({});
 
   const activeCode = queryCode ?? storedCode;
+  useDocumentTitle(activeCode);
   const watchlistEmpty = banner.primary === 'watchlist_empty';
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
 
