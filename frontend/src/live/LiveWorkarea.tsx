@@ -3,7 +3,7 @@ import { LiveChartRoot } from './LiveChartRoot';
 import { LiveEmptyState } from './LiveEmptyState';
 import { LiveSidebar } from './LiveSidebar';
 import { WatchlistPanel } from './WatchlistPanel';
-import InvariantOutcomesBanner from '../replay/InvariantOutcomesBanner';
+import InvariantOutcomesBanner from './InvariantOutcomesBanner';
 import type { RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
 

@@ -3,15 +3,8 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StockDateGroupDetail } from './StockDateGroupDetail';
-import { useTabsStore } from '../state/tabs';
 import type { StockDate, QueueSnapshot } from '../api/types';
 import type { ReactNode } from 'react';
-
-const navigateMock = vi.fn();
-vi.mock('react-router', async () => {
-  const actual = await vi.importActual<typeof import('react-router')>('react-router');
-  return { ...actual, useNavigate: () => navigateMock };
-});
 
 // SSE stub — useCaptureQueue subscribes on mount; jsdom has no EventSource.
 vi.mock('../api/sse', () => ({
@@ -64,11 +57,6 @@ function renderDetail(rows: StockDate[], selectedCode: string | null, qc: QueryC
   return render(<StockDateGroupDetail rows={rows} selectedCode={selectedCode} />, { wrapper: W(qc) });
 }
 
-beforeEach(() => {
-  navigateMock.mockReset();
-  useTabsStore.setState({ tabs: [] });
-});
-
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('StockDateGroupDetail — header and existing behavior', () => {
@@ -100,15 +88,6 @@ describe('StockDateGroupDetail — header and existing behavior', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     renderDetail([row('005930', '삼성전자', '20260522')], null, qc);
     expect(screen.getByText('종목을 선택하세요')).toBeTruthy();
-  });
-
-  it('clicking a row navigates to /replay via useTabsStore', async () => {
-    setupFetch();
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-    renderDetail([row('005930', '삼성전자', '20260522')], '005930', qc);
-    // The whole row is clickable. Click the date cell.
-    fireEvent.click(screen.getByText('2026-05-22'));
-    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/replay'));
   });
 });
 
@@ -143,7 +122,6 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
       const body = JSON.parse((post![1] as RequestInit).body as string);
       expect(body).toEqual({ code: '005930', dates: ['20260520'], force_retry: true });
     });
-    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   it('row is in-flight when its (code, date) appears in queue.queued: icon disabled + animate-spin', async () => {

@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
 import type { StockDate } from '../api/types';
-import { useTabsStore } from '../state/tabs';
 import { useStockDateGroups } from './useStockDateGroups';
 import { fmtDate, fmtTime, fmtSize, fmtOHLC, fmtVolume } from './format';
 import { DiskStateBadge, isRecapturable } from './DiskStateBadge';
@@ -17,7 +15,6 @@ type Props = {
 };
 
 export function StockDateGroupDetail({ rows, selectedCode }: Props) {
-  const navigate = useNavigate();
   const groups = useStockDateGroups(rows, '');
   const group = useMemo(() => {
     if (selectedCode === null) return null;
@@ -70,17 +67,6 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
     .filter((r) => isRecapturable(r.disk_state))
     .map((r) => r.date);
   const recapturableCount = recapturableDates.length;
-
-  const onRowClick = (r: StockDate) => {
-    const tabId = useTabsStore.getState().newTab();
-    useTabsStore.getState().setSelection(tabId, {
-      code: r.code,
-      fromDate: r.date,
-      toDate: r.date,
-      timeframe: '1m',
-    });
-    navigate('/replay');
-  };
 
   const onSort = (column: SortKey) => setSort((prev) => nextSortState(prev, column));
 
@@ -137,17 +123,15 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
               // ADR-0042 row tint: blocked rows pick up DESIGN.md error chip
               // bg (#F43F5E @ 10%) so the row itself signals "not normal".
               const trClass = r.blocked
-                ? 'border-b bg-[rgba(244,63,94,0.10)] hover:bg-[rgba(244,63,94,0.16)] cursor-pointer'
-                : 'border-b hover:bg-bg-input-hover cursor-pointer';
+                ? 'border-b bg-[rgba(244,63,94,0.10)]'
+                : 'border-b';
               return (
                 <tr
                   key={`${r.code}-${r.date}`}
-                  onClick={() => onRowClick(r)}
                   className={trClass}
                 >
                   <td
                     className="px-2 py-1.5 text-center"
-                    onClick={(e) => e.stopPropagation()}
                   >
                     {r.blocked ? (
                       <UnblockCell

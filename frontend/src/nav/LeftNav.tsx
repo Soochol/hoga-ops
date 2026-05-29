@@ -14,7 +14,6 @@ export default function LeftNav() {
         </div>
       </div>
       <Section label="Workspace">
-        <NavItem to="/replay" label="Replay Viewer" />
         <NavItem to="/live" label="Live" />
         <NavItem to="/inventory" label="Inventory" />
         <NavItem to="/capture" label="Capture" />
