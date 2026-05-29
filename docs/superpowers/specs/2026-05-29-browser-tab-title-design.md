@@ -8,17 +8,35 @@
 
 `frontend/index.html` ships with a static `<title>frontend</title>` tag. When users have multiple browser tabs open, every hoga-ops tab is labelled "frontend", indistinguishable from each other and from any other Vite-default project the user may have running.
 
-The replay viewer and live page already know which symbol the user is looking at (the active tab's selection on `/replay`, the active code on `/live`). That information should reach the browser tab title so users can pick out a hoga-ops tab — and tell apart two hoga-ops tabs viewing different symbols — at a glance.
+The Replay Viewer and `/live` page already know which **Code** the user is looking at (the active Replay Tab's `TabSelection.code` on `/replay`, `useLivePageStore.activeCode` on `/live`). That information should reach the browser tab title so users can pick out a hoga-ops tab — and tell apart two hoga-ops tabs viewing different Codes — at a glance.
+
+## Invariants
+
+기존 시스템에 `document.title`을 쓰는 코드 경로는 없다 (정적 `<title>frontend</title>` 외). 이 spec이 *신설하는* invariant들:
+
+- **Single writer**: `useDocumentTitle` 훅만 `document.title`에 쓴다. 다른 컴포넌트가 직접 `document.title = …`를 호출하면 cleanup 기반 default 복원 가정이 깨진다. 근거: [frontend/src/util/useDocumentTitle.ts](frontend/src/util/useDocumentTitle.ts) (이 spec이 신설).
+- **Default-on-unmount**: Code 페이지(`/replay`, `/live`)에서 다른 페이지로 이동하면 `document.title === 'hoga-ops'`로 복원된다. 근거: 훅의 cleanup 함수가 무조건 `DEFAULT_TITLE`을 쓰며, 비-Code 페이지는 훅을 호출하지 않아 cleanup 후 값이 보존된다.
+- **Precedence**: 한 번의 `useDocumentTitle(code)` 호출이 결정하는 title은 `name (Symbol Master에 있을 때) ?? code ?? 'hoga-ops'` 순서. 근거: 훅 내 `??` 체인.
+
+## Invariant impact
+
+| Invariant | 영향 | 비고 |
+|---|---|---|
+| Single writer | preserves (신설) | grill 단계에서 `git grep "document.title" frontend/src/` 결과 0건 확인 — 이 spec이 도입하는 호출이 유일한 writer가 된다 |
+| Default-on-unmount | preserves | cleanup 함수가 unconditional, 비-Code 페이지는 훅 미호출 → 값 유지 |
+| Precedence | preserves | 훅 내부 단일 `??` 체인; 변경 시 [edge cases](#edge-cases) 표 동시 갱신 |
+
+기존 정적 `<title>frontend</title>` 값은 invariant가 아닌 단순 하드코딩 default이며, index.html 변경으로 `hoga-ops`로 치환된다 — 사용자 시각 가치를 위한 의도된 변경.
 
 ## Goals
 
-- Browser tab title reflects the active symbol on `/replay` and `/live`.
-- Pages without a single "active symbol" concept (`/inventory`, `/capture`, `/watchlist`, `/settings`) show the project name `hoga-ops`.
+- Browser tab title reflects the active **Code** on `/replay` and `/live`.
+- Pages without a single active-**Code** concept (`/inventory`, `/capture`, `/watchlist`, `/settings`) show the project name `hoga-ops`.
 - Direct entry to any page never shows the Vite default "frontend".
 
 ## Non-goals
 
-- Showing the symbol name in the in-app UI (TabStrip already does this).
+- Showing the resolved name in the in-app UI (TabStrip already does this).
 - Persisting title state to localStorage or syncing across tabs.
 - Localising the project name fallback. `hoga-ops` is the literal repo name and stays the same in any locale.
 - Adding a title-management library (react-helmet, etc.) — direct `document.title` mutation is sufficient.
@@ -27,7 +45,7 @@ The replay viewer and live page already know which symbol the user is looking at
 
 ### Architecture
 
-A single hook, `useDocumentTitle(code: string | null | undefined)`, owns all writes to `document.title`. Pages that have a "current symbol" concept call it with that symbol's code; other pages do not call it at all. The hook's cleanup function restores the project-name default on unmount, so navigating from a symbol page to a non-symbol page automatically falls back to `hoga-ops` without any code in the destination page.
+A single hook, `useDocumentTitle(code: string | null | undefined)`, owns all writes to `document.title`. Pages that have a current-**Code** concept call it with that Code; other pages do not call it at all. The hook's cleanup function restores the project-name default on unmount, so navigating from a Code page to a non-Code page automatically falls back to `hoga-ops` without any code in the destination page.
 
 ```
 ReplayViewer ─┐
@@ -52,7 +70,7 @@ Why this shape:
 
 - [`frontend/index.html`](frontend/index.html) — change `<title>frontend</title>` to `<title>hoga-ops</title>` so the very first paint (before React mounts) matches the default.
 - [`frontend/src/pages/ReplayViewer.tsx`](frontend/src/pages/ReplayViewer.tsx) — call `useDocumentTitle(activeTab?.selection?.code)`.
-- [`frontend/src/live/LivePage.tsx`](frontend/src/live/LivePage.tsx) — call `useDocumentTitle(queryCode ?? storedCode)`.
+- [`frontend/src/live/LivePage.tsx`](frontend/src/live/LivePage.tsx) — call `useDocumentTitle(activeCode)` reusing the already-computed `const activeCode = queryCode ?? storedCode;` on line 53. Reusing the variable means any future change to active-code resolution (e.g. Stage 11 watchlist-first fallback per the file's own header comment) flows into the title automatically.
 
 ### Hook contract
 
@@ -80,7 +98,7 @@ export function useDocumentTitle(code: string | null | undefined): void {
 
 Title resolution precedence (first non-empty wins):
 
-1. Symbol name from `useSymbols()` cache, if `code` is provided and a match exists.
+1. Name from the **Symbol Master** (via `useSymbols()` cache), if `code` is provided and a match exists.
 2. The `code` itself, if provided but not yet resolved to a name.
 3. `'hoga-ops'`.
 
@@ -101,8 +119,8 @@ useTabsStore (activeTabId, tabs)
 ```
 useSearchParams() → queryCode
 useLivePageStore → storedCode
-  → queryCode ?? storedCode
-  → useDocumentTitle(code)
+  → activeCode = queryCode ?? storedCode  // already computed at LivePage.tsx:53
+  → useDocumentTitle(activeCode)
   → useSymbols()
   → document.title = name ?? code ?? 'hoga-ops'
 ```
@@ -116,7 +134,7 @@ useLivePageStore → storedCode
 | `code` is `null`, `undefined`, empty, or whitespace-only | `hoga-ops` |
 | `code` present, name resolved | name (e.g. `삼성전자`) |
 | `code` present, `useSymbols` still loading | `code` (e.g. `005930`), updates to name on resolve |
-| `code` present, symbol absent from master (new IPO / delisted) | `code` |
+| `code` present, **Code** absent from **Symbol Master** (new IPO / delisted) | `code` |
 | `useSymbols` query in error state | `code` (data is `undefined`, so `name` is `undefined`) |
 | `/replay` new tab with `selection === null` | `hoga-ops` |
 | `/live` with no `?code=` and empty `activeCode` | `hoga-ops` |
