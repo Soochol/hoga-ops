@@ -343,19 +343,19 @@ describe('buildLiveBundle dedup (ADR-0043 plan Task 9)', () => {
   });
 });
 
-describe('buildLiveBundle sanity clip (ADR-0049 / spec §3)', () => {
+describe('buildLiveBundle session-end filter (ADR-0049 / spec §3)', () => {
   const TODAY = '20260529';
   const TODAY_OPEN = Date.UTC(2026, 4, 29, 0, 0, 0);
   const TODAY_CLOSE = TODAY_OPEN + 6.5 * 3600 * 1000;
-  // ADR-0044 / CONTEXT.md "Live Session": After-Hours runs 15:30–16:00 KST.
-  // (Ceiling reference; not directly used by assertions — exercised via buildLiveBundle.)
+  // ADR-0044 / CONTEXT.md "Live Session": After-Hours runs 15:30–16:00 KST,
+  // so the filter ceiling = close_ms + 30 min (exercised via buildLiveBundle).
 
-  it('clips pastMaxQrT to live session end when past contains a future timestamp', () => {
+  it('filters past points beyond live session end so SSE can still merge', () => {
     // Simulate the actual production failure mode: Unix ms decoded as
     // HHMMSSmmm lands deterministically in year 2046 (~20 years past today).
-    // Without the clip, this would block all SSE merges because
-    // incrementalQR.filter(p => p.t > pastMaxQrT) rejects every 2026-era
-    // SSE point.
+    // Without the filter, pastMaxQrT sits in 2046 and would block all SSE
+    // merges because incrementalQR.filter(p => p.t > pastMaxQrT) rejects
+    // every 2026-era SSE point.
     const futureCorruptT = TODAY_CLOSE + 20 * 365 * 24 * 3600 * 1000; // ~2046
     const pastBundle: RangeBundle = emptyRangeBundle({
       segments: [{
@@ -392,11 +392,11 @@ describe('buildLiveBundle sanity clip (ADR-0049 / spec §3)', () => {
   });
 
   it('preserves dedup for after-hours data (15:30-16:00 KST, Live Session end)', () => {
-    // Design-review B1 regression: clip ceiling must include After-Hours
+    // Design-review B1 regression: filter ceiling must include After-Hours
     // (Live Session end = close_ms + 30min, CONTEXT.md "Live Session").
-    // If we clipped at close_ms (15:30 KST), past-tail at 15:45 KST would
-    // get reduced to 15:30, letting an SSE point at 15:45 with the SAME
-    // timestamp as a past entry slip through and overwrite the past value.
+    // If we filtered at close_ms (15:30 KST), a healthy past-tail at 15:45
+    // KST would be dropped, letting an SSE point at the same 15:45
+    // timestamp pass through and overwrite the past value.
     const pastTailT = TODAY_CLOSE + 15 * 60_000; // 15:45 KST (After-Hours)
     const pastBundle: RangeBundle = emptyRangeBundle({
       segments: [{
@@ -428,7 +428,7 @@ describe('buildLiveBundle sanity clip (ADR-0049 / spec §3)', () => {
     expect(atTail?.bid_total).toBe(10); // past value wins, SSE dup rejected
   });
 
-  it('does NOT clip when past timestamps are all within regular session (normal case)', () => {
+  it('does NOT filter when past timestamps are all within regular session (normal case)', () => {
     // Regression guard: when past data is sane, the existing dedup must
     // still reject SSE buckets that share a timestamp with past tail.
     const pastTailT = TODAY_OPEN + 60_000; // 09:01 KST today

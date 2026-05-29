@@ -108,10 +108,7 @@ def test_parse_jsonl_converts_t_ms_to_hhmmssms(tmp_path: Path) -> None:
     from hoga.api.timeenc import hhmmssms_to_unix_ms
 
     date = "20260529"
-    # 09:00:00.000 KST on 20260529 = 2026-05-29 00:00 UTC
-    # Compute Unix ms for 10:30:45.123 KST that day.
-    # 10:30:45.123 KST = 09:00:00 + 1h 30m 45s 123ms after open
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    # Compute Unix ms for 10:30:45.123 KST = 09:00:00 + 1h 30m 45s 123ms after open.
     unix_ms_at_open = hhmmssms_to_unix_ms(date, 90000000)  # 09:00:00.000 KST
     sample_unix_ms = unix_ms_at_open + (1 * 3600 + 30 * 60 + 45) * 1000 + 123
     expected_hhmmssms = 103045123  # 10:30:45.123
