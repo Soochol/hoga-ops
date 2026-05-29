@@ -24,7 +24,7 @@ import {
   regularSessionOpenMs,
   regularSessionCloseMs,
   subtractDaysKst,
-  INITIAL_HISTORICAL_DAYS,
+  initialHistoricalDaysFor,
 } from './liveDateTime';
 
 const PAST_CANDLES_MAX_DAYS = 250;
@@ -131,7 +131,7 @@ export function useLiveBundle(
   // 250-day clamp at the bundle layer so /api/range's 90-day cap and
   // /api/live/past-candles' 250-day cap can stay independent. Applies to
   // the minute path only — the daily endpoint has no equivalent cap.
-  const seedFrom = historicalFromDate ?? subtractDaysKst(todayKstYyyymmdd, INITIAL_HISTORICAL_DAYS);
+  const seedFrom = historicalFromDate ?? subtractDaysKst(todayKstYyyymmdd, initialHistoricalDaysFor(timeframe));
   const earliestAllowedMinute = subtractDaysKst(todayKstYyyymmdd, PAST_CANDLES_MAX_DAYS - 1);
   const minutePastFrom = laterDate(seedFrom, earliestAllowedMinute);
   // Includes today so post-promote disk data (hogaplay/snapshots.parquet,

@@ -98,6 +98,16 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     axisRef.current = axis;
   }, [axis]);
 
+  // Same ref-bridge for timeframe: the createChart formatters need to know
+  // whether to render intraday (HH:MM) ticks vs calendar-only ticks. Without
+  // this, daily/weekly/monthly charts render a meaningless "09:00" alongside
+  // every date label because every D/W/M candle is timestamped at the
+  // session-open hour.
+  const timeframeRef: MutableRefObject<LiveTimeframe> = useRef<LiveTimeframe>(timeframe);
+  useEffect(() => {
+    timeframeRef.current = timeframe;
+  }, [timeframe]);
+
   // Publish axis to the shared store so LiveSidebar can read
   // axis.inClosingAuctionWindow(cursorMs) for TotalQtyBar mask.
   useEffect(() => {
@@ -197,7 +207,12 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
           if (a.segments.length === 0) return '';
           const realMs = a.toReal(virtualMs);
           const d = new Date(realMs + 9 * 3600_000);
-          return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+          const ymd = `${d.getUTCFullYear()}/${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+          // D/W/M candles are all anchored to 09:00 KST — appending the time
+          // to the crosshair tooltip would be misleading ("did the daily bar
+          // happen at 09:00?"), so the tooltip stays date-only there.
+          if (isCalendarTimeframe(timeframeRef.current)) return ymd;
+          return `${ymd} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
         },
       },
       timeScale: {
@@ -211,15 +226,22 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
           if (a.segments.length === 0) return '';
           const realMs = a.toReal(virtualMs);
           const d = new Date(realMs + 9 * 3600_000);
+          const calendar = isCalendarTimeframe(timeframeRef.current);
           switch (tickType) {
             case TickMarkType.Year:
+              return calendar ? `${d.getUTCFullYear()}` : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
             case TickMarkType.Month:
+              return calendar
+                ? `${d.getUTCFullYear()}/${pad(d.getUTCMonth() + 1)}`
+                : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
             case TickMarkType.DayOfMonth:
               return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
             case TickMarkType.Time:
-              return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+              // Intraday HH:MM only makes sense for minute timeframes; on
+              // D/W/M every bar is at session-open so the time tick is noise.
+              return calendar ? '' : `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
             case TickMarkType.TimeWithSeconds:
-              return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+              return calendar ? '' : `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
             default:
               return '';
           }
@@ -251,12 +273,12 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // freely go negative past the leftmost bar (-50.3 etc.), which is the
   // signal we actually need.
   //
-  // Each trigger prepends one timeframe-sized chunk (see
-  // prefetchChunkDaysFor — minute ~15 trading days, D = 180 calendar days
-  // (~6 months), W = 60 weeks, M = 60 months). The 150ms trailing debounce
-  // coalesces rapid wheel / drag events into one fetch; the store's
-  // extendHistoricalRange is monotonically decreasing, so repeated negative
-  // ranges within one chunk are no-ops.
+  // Each trigger prepends one timeframe-sized chunk sized by candle target
+  // (see prefetchChunkCandlesFor / prefetchChunkDaysFor wrapper — minute
+  // ~2x of the previous 21-day chunk, D/W/M = 250/120/120 candles per pan).
+  // The 150ms trailing debounce coalesces rapid wheel / drag events into one
+  // fetch; the store's extendHistoricalRange is monotonically decreasing, so
+  // repeated negative ranges within one chunk are no-ops.
   //
   // Base date: prefer the already-requested historicalFromDate over the
   // axis earliest. When a chunk lands on a holiday-only span (e.g. Lunar

@@ -8,6 +8,10 @@
  * Half-Day Session handling to a single module.
  */
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import { TIMEFRAME_TO_MS } from '../api/types';
+
+const TRADING_MINUTES_PER_DAY = 390;        // KRX 09:00–15:30 = 6.5 h
+const TRADING_DAYS_PER_CALENDAR_DAYS = 5 / 7;
 
 /** Today's YYYYMMDD in KST. */
 export function todayKstYyyymmdd(): string {
@@ -57,31 +61,73 @@ export function regularSessionCloseMs(yyyymmdd: string): number {
   return regularSessionOpenMs(yyyymmdd) + 6.5 * 3600 * 1000;
 }
 
-/** Days of past data seeded on initial mount so the chart shows usable history
- * without requiring the user to scroll. ~4 trading weeks of minute bars. */
-export const INITIAL_HISTORICAL_DAYS = 20;
-
-/** Calendar days to backfill per scroll-past-leftmost event, sized to a
- * candle-count target rather than a uniform calendar window.
+/** Convert a candle count to a calendar-day window large enough to fetch
+ * ~that many candles at the given timeframe. Uses KRX 09:00–15:30 (390
+ * trading minutes/day) and 5-trading-days-per-7-calendar-day density.
+ * Slight overshoot is fine — the chart consumes whatever the backend
+ * returns and lazy-extend fills any gap on the next pan.
  *
- * - Minute timeframes: 21 calendar days ≈ 15 trading days ≈ ~5850 1m
- *   candles per chunk. The earlier 2-day chunk had a weekend trap (Monday
- *   earliest minus 2 lands on Saturday → zero new trading days, then the
- *   livePage store's monotonic-decrease guard froze further extension).
- *   21 days survives weekends, single holidays, and most multi-day KRX
- *   closures in a single chunk. Longer closures (rare, e.g. Lunar New Year
- *   when bracketed by weekends) are still handled by LiveChartRoot's
- *   trigger: it bases the next chunk off the already-requested
- *   `historicalFromDate` rather than the axis, so each pan jumps another
- *   21 days back regardless of whether new data arrived.
- * - Calendar timeframes: D → 450 calendar days (~310 trading days,
- *   ~15 months). W/M scale proportionally; the 250-day cap
- *   (PAST_CANDLES_MAX_DAYS in useLiveBundle) clamps them, so one scroll
- *   on W/M jumps to the available limit. The daily endpoint has no
- *   equivalent cap, so D chunks step freely across year boundaries. */
+ * D uses the same 5/7 ratio (not a holiday-adjusted 252/365) for a clean,
+ * single source of truth. Result for D=250 is 350 calendar days vs the
+ * "perfect" 365 — close enough; the chart shows whatever ≤250 bars the
+ * backend returns. */
+function candleTargetToCalendarDays(target: number, tf: LiveTimeframe): number {
+  if (tf === 'M') return target * 31;
+  if (tf === 'W') return target * 7;
+  if (tf === 'D') return Math.ceil(target / TRADING_DAYS_PER_CALENDAR_DAYS);
+  const tfMinutes = TIMEFRAME_TO_MS[tf] / 60_000;
+  const tradingDays = (target * tfMinutes) / TRADING_MINUTES_PER_DAY;
+  return Math.ceil(tradingDays / TRADING_DAYS_PER_CALENDAR_DAYS);
+}
+
+/** Target candle count for the initial fetch on (code, timeframe) mount.
+ *
+ * - Minute timeframes: 2× of the previous 20-calendar-day window. At 1m
+ *   that's ~11,143 candles ≈ 40 calendar days ≈ ~28.6 trading days.
+ *   PAST_CANDLES_MAX_DAYS=250 in useLiveBundle still caps the eventual
+ *   scroll-back depth at 250 calendar days; the initial 40-day window is
+ *   well below it.
+ * - D/W/M: flat 250 candles per user spec. D ≈ 1 year, W ≈ 4.8 years,
+ *   M ≈ 21 years (most KRX stocks return less; backend serves whatever
+ *   exists). The daily endpoint has no 250-day cap so the wide M window
+ *   passes through unclamped. */
+export function initialCandleTargetFor(tf: LiveTimeframe): number {
+  if (isMinuteTimeframe(tf)) {
+    const tfMinutes = TIMEFRAME_TO_MS[tf] / 60_000;
+    const candlesPerCalendarDay = (TRADING_DAYS_PER_CALENDAR_DAYS * TRADING_MINUTES_PER_DAY) / tfMinutes;
+    return Math.round(20 * candlesPerCalendarDay * 2);
+  }
+  return 250;
+}
+
+/** Target candle count to prepend per scroll-past-leftmost event.
+ *
+ * - Minute timeframes: 2× of the previous 21-calendar-day chunk. The
+ *   21-day baseline survived weekend / single-holiday traps where shorter
+ *   chunks landed on non-trading days and froze the livePage store's
+ *   monotonic-decrease guard. At 2× that's ~11,700 1m candles ≈ 42
+ *   calendar days, even more weekend-safe.
+ * - D: 250 candles (2× of the previous 180-day ≈ ~125-candle chunk) ≈
+ *   350 calendar days per pan.
+ * - W/M: 120 candles (2× of the previous 60-week / 60-month chunks). */
+export function prefetchChunkCandlesFor(tf: LiveTimeframe): number {
+  if (isMinuteTimeframe(tf)) {
+    const tfMinutes = TIMEFRAME_TO_MS[tf] / 60_000;
+    const candlesPerCalendarDay = (TRADING_DAYS_PER_CALENDAR_DAYS * TRADING_MINUTES_PER_DAY) / tfMinutes;
+    return Math.round(21 * candlesPerCalendarDay * 2);
+  }
+  if (tf === 'D') return 250;
+  return 120; // W, M
+}
+
+/** Calendar-day window enclosing `initialCandleTargetFor(tf)` candles.
+ * Wrapper for the seed-from computation in useLiveBundle. */
+export function initialHistoricalDaysFor(tf: LiveTimeframe): number {
+  return candleTargetToCalendarDays(initialCandleTargetFor(tf), tf);
+}
+
+/** Calendar-day window enclosing `prefetchChunkCandlesFor(tf)` candles.
+ * Wrapper for the lazy-extend trigger in LiveChartRoot. */
 export function prefetchChunkDaysFor(tf: LiveTimeframe): number {
-  if (isMinuteTimeframe(tf)) return 21;
-  if (tf === 'D') return 450;
-  if (tf === 'W') return 60 * 7;
-  return 60 * 31; // tf === 'M'
+  return candleTargetToCalendarDays(prefetchChunkCandlesFor(tf), tf);
 }
