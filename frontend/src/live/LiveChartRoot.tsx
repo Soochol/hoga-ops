@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   createChart,
   TickMarkType,
   type IChartApi,
-  type ISeriesApi,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
@@ -35,16 +34,8 @@ import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
-import { useDrawingsStore } from '../state/drawings';
-import type { Drawing, PaneId } from '../chart/drawing/types';
-import { priceToCanvasY, realMsToCanvasX } from '../chart/drawing/chartCoordinates';
-
-// Panel-anchor offsets — kept in sync with ChartStage's values so that
-// drawing-property-panel placement is identical between /replay and /live
-// during the Phase E → G migration window. See ADR-0032.
-const PANEL_Y_OFFSET = -38;
-const PANEL_X_OFFSET_PENCIL = 0;
-const PANEL_X_OFFSET_TRENDLINE = -8;
+import type { PaneId } from '../chart/drawing/types';
+import { useDrawingHost } from './useDrawingHost';
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -78,46 +69,6 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   const containerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
 
-  // PaneId → primary ISeriesApi registry. Populated by RangeSeriesPane's
-  // onPrimarySeriesReady callback below; consumed by DrawingOverlay for
-  // pane-aware coordinate conversion and by computeAnchor for panel
-  // placement.
-  //
-  // Stored as state (immutable Map per change), not a ref: DrawingOverlay's
-  // redraw `useEffect` has `paneSeries` in its dep array (DrawingOverlay.tsx
-  // line 191). Mutating a ref in place would keep the Map identity stable
-  // and the effect would never re-fire after the first paint — drawings on
-  // panes that register AFTER the overlay mounts would simply not render.
-  // ChartStage uses the same useState-Map pattern (ChartStage.tsx:94-113).
-  const [paneSeries, setPaneSeries] = useState<Map<PaneId, ISeriesApi<any>>>(
-    () => new Map(),
-  );
-  const registerPaneSeries = useCallback(
-    (paneId: PaneId, series: ISeriesApi<any>) => {
-      setPaneSeries((prev) => {
-        const next = new Map(prev);
-        next.set(paneId, series);
-        return next;
-      });
-    },
-    [],
-  );
-  const unregisterPaneSeries = useCallback((paneId: PaneId) => {
-    setPaneSeries((prev) => {
-      if (!prev.has(paneId)) return prev;
-      const next = new Map(prev);
-      next.delete(paneId);
-      return next;
-    });
-  }, []);
-
-  // Bind the drawings store's activeCode to /live's current code. ChartStage
-  // does the equivalent via useTabsStore; /live owns its own code prop so we
-  // mirror it through here. The store dedupes (no-op if unchanged).
-  useEffect(() => {
-    useDrawingsStore.getState().setActiveCode(code);
-  }, [code]);
-
   // Eng review C1: memoise VirtualAxis on the segments array reference so
   // an SSE push that doesn't change segments doesn't churn the axis identity.
   const axis: VirtualAxis = useMemo(() => {
@@ -131,48 +82,11 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     );
   }, [bundle?.segments]);
 
-  // DrawingPropertyPanel anchor computation — kept in lockstep with
-  // ChartStage's computeAnchor logic (ChartStage.tsx:115). The two will
-  // converge when ChartStage is deleted in Phase G.
-  const computeAnchor = useCallback(
-    (d: Drawing): { x: number; y: number } | null => {
-      if (!chart || axis.segments.length === 0) return null;
-
-      if (d.kind === 'hline') {
-        const y = priceToCanvasY(chart, paneSeries, d.paneId, d.price);
-        if (y == null) return null;
-        const containerWidth = containerRef.current?.clientWidth ?? 0;
-        return { x: containerWidth / 2, y: y + PANEL_Y_OFFSET };
-      }
-
-      if (d.kind === 'trendline') {
-        const xa = realMsToCanvasX(chart, axis, d.a.realMs);
-        const xb = realMsToCanvasX(chart, axis, d.b.realMs);
-        const ya = priceToCanvasY(chart, paneSeries, d.paneId, d.a.price);
-        const yb = priceToCanvasY(chart, paneSeries, d.paneId, d.b.price);
-        if (xa == null || xb == null || ya == null || yb == null) return null;
-        return {
-          x: (xa + xb) / 2 + PANEL_X_OFFSET_TRENDLINE,
-          y: (ya + yb) / 2 + PANEL_Y_OFFSET,
-        };
-      }
-
-      // pencil — anchor at top-left bounding box corner.
-      let minX = Infinity;
-      let minY = Infinity;
-      for (const p of d.points) {
-        const x = realMsToCanvasX(chart, axis, p.realMs);
-        const y = priceToCanvasY(chart, paneSeries, d.paneId, p.price);
-        if (x != null && y != null) {
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-        }
-      }
-      if (!isFinite(minX) || !isFinite(minY)) return null;
-      return { x: minX + PANEL_X_OFFSET_PENCIL, y: minY + PANEL_Y_OFFSET };
-    },
-    [chart, axis, paneSeries],
-  );
+  // Drawing-host concerns (paneSeries registry, activeCode binding,
+  // panel-anchor computation) live in their own hook so this file stays
+  // focused on chart bootstrap, viewport policy, and overlay mounts.
+  const { paneSeries, registerPaneSeries, unregisterPaneSeries, computeAnchor } =
+    useDrawingHost(chart, axis, code, containerRef);
 
   // axisRef lets the once-mounted createChart formatters (timeFormatter +
   // tickMarkFormatter) read the latest axis without re-creating the chart.
