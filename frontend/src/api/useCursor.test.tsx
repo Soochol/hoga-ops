@@ -5,10 +5,10 @@ import { useTabsStore } from '../state/tabs';
 
 /**
  * Regression: useCursor used to hard-code `date` to `selection.fromDate`,
- * which broke the 3 spot-data fetches when the cursor lived on a different
+ * which broke the spot-data fetches when the cursor lived on a different
  * Stock-Date in a multi-day range — the backend's cursor_to_native rejected
  * the (date, t) pair with HTTPException(400) and useSpot.catch swallowed
- * the error, leaving the 10호가 / 거래원 / 체결 cards stuck at "커서 위치
+ * the error, leaving the 10호가 / 거래원 cards stuck at "커서 위치
  * 로딩 중…". The fix derives `date` from `cursorMs` itself via KST.
  */
 describe('useCursor', () => {

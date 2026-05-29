@@ -51,9 +51,10 @@ def _resolved_parquet_dir(
 ) -> tuple[Path, SourceName]:
     """Resolve source preference per ADR-0044 and return (parquet_dir, resolved_source).
 
-    Wraps StockDateNotFound as HTTP 404 — the canonical pattern for the three
-    spot routes. /api/candles continues to use the simpler _parquet_path because
-    it doesn't honor source_pref.
+    Wraps StockDateNotFound as HTTP 404 — the canonical pattern for the spot
+    routes that honor source_pref (/api/orderbook, /api/brokers/series).
+    /api/candles continues to use the simpler _parquet_path because it doesn't
+    honor source_pref.
     """
     source = resolve_source(engine, date, code, source_pref)
     try:

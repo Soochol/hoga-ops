@@ -8,7 +8,7 @@ import type { BrokerSeriesResponse } from './types';
  *
  * Mirrors useRange's pattern: react-query, staleTime: Infinity (captured
  * Stock-Dates are immutable). Deliberately NOT useSpot — that hook is the
- * cursor-keyed, rapid-scrub debouncer used by 10호가 / 체결 cards. Day-scope
+ * cursor-keyed, rapid-scrub debouncer used by the 10호가 card. Day-scope
  * data lives next to useRange for visual clustering of the two day-scope
  * read paths in this directory.
  */

@@ -20,7 +20,7 @@ import { TIMEFRAME_TO_MS, type OrderbookResponse, type Timeframe } from './types
  * otherwise the endpoints reject with HTTPException(400). The prior
  * "fromDate is the active day" shortcut (Task 8.5, single-day only) was
  * not generalized when ADR-0013 introduced multi-day ranges, leaving the
- * 10호가 / 거래원 / 체결 cards stuck at "커서 위치 로딩 중…" because
+ * 10호가 / 거래원 cards stuck at "커서 위치 로딩 중…" because
  * `useSpot.catch` swallowed every 400 silently.
  */
 export function useCursor(): {
