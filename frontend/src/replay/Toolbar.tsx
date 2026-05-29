@@ -6,7 +6,7 @@ import StockCombobox from './StockCombobox';
 import DateRangePicker from './DateRangePicker';
 import TimeframeSelector from './TimeframeSelector';
 import SettingsModal from './SettingsModal';
-import DrawingMenu from './DrawingMenu';
+import DrawingMenu from '../live/LiveDrawingMenu';
 import type { Timeframe } from '../api/types';
 
 export default function Toolbar() {

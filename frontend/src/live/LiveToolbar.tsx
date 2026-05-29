@@ -1,4 +1,5 @@
 import { LIVE_TIMEFRAMES, useLivePageStore } from '../state/livePage';
+import LiveDrawingMenu from './LiveDrawingMenu';
 
 type Props = {
   onOpenIndicators: () => void;
@@ -80,6 +81,7 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings }: Props) {
         </svg>
         <span>설정</span>
       </button>
+      <LiveDrawingMenu />
     </div>
   );
 }
