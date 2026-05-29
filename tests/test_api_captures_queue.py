@@ -157,7 +157,7 @@ async def test_deciding_resumes_client_incomplete(monkeypatch, tmp_path):
                         lambda *_a, **_k: Classification(state=DiskState.CLIENT_INCOMPLETE))
 
     captured = {}
-    async def _stub_capture(state, resume):
+    async def _stub_capture(state, resume, **_kwargs):
         captured["resume"] = resume
         state.phase = "done"
     monkeypatch.setattr(captures, "_run_capture_and_parse", _stub_capture)
@@ -178,7 +178,7 @@ async def test_force_retry_overrides_source_partial_skip(monkeypatch, tmp_path):
                         lambda *_a, **_k: Classification(state=DiskState.SOURCE_PARTIAL))
 
     captured = {}
-    async def _stub_capture(state, resume):
+    async def _stub_capture(state, resume, **_kwargs):
         captured["resume"] = resume
         state.phase = "done"
     monkeypatch.setattr(captures, "_run_capture_and_parse", _stub_capture)
@@ -207,7 +207,7 @@ async def test_worker_defers_when_inflight_collision(monkeypatch, tmp_path):
     finish_order: list[str] = []
     sem = asyncio.Semaphore(0)
 
-    async def _capture(state, resume):
+    async def _capture(state, resume, **_kwargs):
         start_order.append(state.item_id)
         await sem.acquire()
         state.phase = "done"
@@ -300,11 +300,11 @@ def test_enqueue_skips_weekend_dates(monkeypatch, tmp_path):
         assert {it["date"] for it in body["enqueued"]} == {"20260515", "20260518"}
 
 
-def test_enqueue_rejects_today_pre_18_kst(monkeypatch, tmp_path):
-    """A date matching today_kst before 18:00 → 400 today_too_early."""
+def test_enqueue_rejects_today_pre_17_kst(monkeypatch, tmp_path):
+    """A date matching today_kst before 17:00 → 400 today_too_early."""
     _no_workers(monkeypatch)
     KST = dt.timezone(dt.timedelta(hours=9))
-    fixed_now = dt.datetime(2026, 5, 22, 17, 30, 0, tzinfo=KST)
+    fixed_now = dt.datetime(2026, 5, 22, 16, 30, 0, tzinfo=KST)
     monkeypatch.setattr(captures, "_now_kst", lambda: fixed_now)
     app = _build_test_app(monkeypatch, tmp_path)
     with TestClient(app) as c:
@@ -392,7 +392,7 @@ def test_cancel_queued_item_removes_and_marks_cancelled(monkeypatch, tmp_path):
     # Patch _run_capture_and_parse to block so items stay queued/active.
     sem = asyncio.Event()
 
-    async def _block(state, resume):
+    async def _block(state, resume, **_kwargs):
         await sem.wait()
         state.phase = "done"
 
@@ -455,7 +455,7 @@ def test_cancel_all_drains_queue(monkeypatch, tmp_path):
                         lambda *_a, **_k: Classification(state=DiskState.NONE))
     sem = asyncio.Event()
 
-    async def _block(state, resume):
+    async def _block(state, resume, **_kwargs):
         await sem.wait()
         state.phase = "done"
 
@@ -498,7 +498,7 @@ async def test_cookie_expired_pauses_pool(monkeypatch):
     # when _handle_cookie_expired sweeps _active.
     barrier = asyncio.Event()
 
-    async def _runner(state, resume):
+    async def _runner(state, resume, **_kwargs):
         # Ensure cancel_token is set so _handle_cookie_expired can trip it.
         if state.cancel_token is None:
             state.cancel_token = CancelToken()
@@ -624,7 +624,7 @@ async def test_429_backoff_then_success(monkeypatch, tmp_path):
 
     attempts = {"n": 0}
 
-    async def _flaky_inner(state, resume):
+    async def _flaky_inner(state, resume, **_kwargs):
         attempts["n"] += 1
         if attempts["n"] <= 3:
             raise HogaplayHTTPError("429 rate limited", status_code=429)
@@ -680,7 +680,7 @@ async def test_429_backoff_exhausted_marks_failed(monkeypatch, tmp_path):
                         lambda *_a, **_k: Classification(state=DiskState.NONE))
     monkeypatch.setattr(captures, "_BACKOFF_DELAYS", (0.0, 0.0, 0.0))
 
-    async def _always_429(state, resume):
+    async def _always_429(state, resume, **_kwargs):
         raise HogaplayHTTPError("429 rate limited", status_code=429)
     monkeypatch.setattr(captures, "_run_capture_inner", _always_429)
 
@@ -802,7 +802,7 @@ async def test_cancel_during_429_backoff_aborts_immediately(monkeypatch, tmp_pat
     # One backoff slot, long enough that we definitely cancel during it.
     monkeypatch.setattr(captures, "_BACKOFF_DELAYS", (5.0,))
 
-    async def _always_429(state, resume):
+    async def _always_429(state, resume, **_kwargs):
         raise HogaplayHTTPError("429 rate limited", status_code=429)
     monkeypatch.setattr(captures, "_run_capture_inner", _always_429)
 
@@ -1618,3 +1618,115 @@ async def test_finalize_item_failed_does_not_bump(tmp_path):
         await captures._finalize_item(state)
 
     bump.assert_not_awaited()
+
+
+# ----- ADR-0042: fail_streak guard -----------------------------------------
+# Guard runs INSIDE _lock + BEFORE Q15 Layer 1 / ADR-0033 _done dedupe. A
+# (Code, Stock-Date) with fail_streak >= ATTEMPT_CAP is reported on
+# EnqueueResponse.blocked and excluded from further processing. force_retry
+# does NOT bypass the gate — that's the whole point.
+
+
+def test_enqueue_pair_at_streak_4_is_accepted(monkeypatch, tmp_path):
+    """One below the cap → still accepted (cap is exclusive at 5)."""
+    _no_workers(monkeypatch)
+    captures._fail_streaks["005930|20260520"] = 4
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520"], "force_retry": False,
+        })
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert len(body["enqueued"]) == 1
+        assert body["blocked"] == []
+
+
+def test_enqueue_pair_at_streak_5_is_blocked(monkeypatch, tmp_path):
+    """At the cap → blocked, no enqueue, HTTP 409 (whole request rejected)."""
+    _no_workers(monkeypatch)
+    captures._fail_streaks["005930|20260520"] = 5
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520"], "force_retry": False,
+        })
+        assert r.status_code == 409
+        body = r.json()
+        assert body["enqueued"] == []
+        assert len(body["blocked"]) == 1
+        b = body["blocked"][0]
+        assert b == {
+            "code": "005930", "date": "20260520",
+            "fail_streak": 5, "reason": "fail_streak_exceeded",
+        }
+
+
+def test_enqueue_force_retry_does_NOT_bypass_guard(monkeypatch, tmp_path):
+    """force_retry controls disk-cache bypass; it does NOT override the cap.
+    This is the whole point of ADR-0042 — without it, inventory Re-capture
+    with force_retry could keep hitting hogaplay indefinitely on
+    no_upstream_data symbols (ADR-0021 case)."""
+    _no_workers(monkeypatch)
+    captures._fail_streaks["005930|20260520"] = 5
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520"], "force_retry": True,
+        })
+        assert r.status_code == 409
+        body = r.json()
+        assert body["enqueued"] == []
+        assert len(body["blocked"]) == 1
+
+
+def test_enqueue_mixed_some_accepted_some_blocked(monkeypatch, tmp_path):
+    """Partial-success: one accepted, one blocked, in the same request."""
+    _no_workers(monkeypatch)
+    captures._fail_streaks["005930|20260520"] = 5
+    # 20260521 has no counter → accepted.
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520", "20260521"], "force_retry": False,
+        })
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert {it["date"] for it in body["enqueued"]} == {"20260521"}
+        assert {b["date"] for b in body["blocked"]} == {"20260520"}
+
+
+def test_enqueue_guard_runs_before_adr_0033_done_dedupe(monkeypatch, tmp_path):
+    """If a pair is BOTH blocked AND in _done(phase=failed) — which ADR-0033
+    would normally auto-re-enqueue — the response must say BLOCKED, not
+    re-enqueued and not deduped. The guard runs first."""
+    _no_workers(monkeypatch)
+    captures._fail_streaks["005930|20260520"] = 5
+    # Seed _done with a failed entry that ADR-0033 would re-enqueue.
+    captures._done.append(QueueItemState(
+        item_id="prev", code="005930", date="20260520",
+        force_retry=False, enqueued_at_ms=0, phase="failed",
+    ))
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520"], "force_retry": False,
+        })
+        body = r.json()
+        assert body["enqueued"] == []
+        assert body["deduped"] == []
+        assert len(body["blocked"]) == 1
+        assert body["blocked"][0]["reason"] == "fail_streak_exceeded"
+
+
+def test_enqueue_blocked_default_field_for_unaffected_paths(monkeypatch, tmp_path):
+    """When no pair is blocked, the response still contains blocked=[]."""
+    _no_workers(monkeypatch)
+    app = _build_test_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        r = c.post("/api/captures/items", json={
+            "code": "005930", "dates": ["20260520"], "force_retry": False,
+        })
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["blocked"] == []

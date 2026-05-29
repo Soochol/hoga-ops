@@ -1,78 +1,52 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { useActivePrefs, CHART_TOGGLES, categoryOf } from './chartPrefs';
-import { useTabsStore } from './tabs';
+import { useChartPrefsStore, DEFAULT_PREFS } from './chartPrefs';
 
-describe('useActivePrefs — scaffold', () => {
+describe('useChartPrefsStore', () => {
   beforeEach(() => {
-    useTabsStore.getState().reset();
-    useTabsStore.setState((s) => ({ ...s, prefs: new Map() }));
+    useChartPrefsStore.getState().resetToDefaults();
   });
 
-  it('returns the default for the active tab when no override exists', () => {
-    const { result } = renderHook(() => useActivePrefs((p) => p.volumeProfileMode));
-    expect(result.current).toBe('range');
+  it('initializes with DEFAULT_PREFS', () => {
+    const s = useChartPrefsStore.getState();
+    for (const key of Object.keys(DEFAULT_PREFS) as Array<keyof typeof DEFAULT_PREFS>) {
+      expect(s[key]).toEqual(DEFAULT_PREFS[key]);
+    }
   });
 
-  it('reflects setVolumeProfileMode on the active tab', () => {
-    const { result } = renderHook(() => useActivePrefs((p) => p.volumeProfileMode));
-    expect(result.current).toBe('range');
-    act(() => {
-      const id = useTabsStore.getState().activeTabId;
-      useTabsStore.getState().setVolumeProfileMode(id, 'per-day');
-    });
-    expect(result.current).toBe('per-day');
+  it('setToggle mutates the named boolean', () => {
+    useChartPrefsStore.getState().setToggle('auctionWindowMask', false);
+    expect(useChartPrefsStore.getState().auctionWindowMask).toBe(false);
+  });
+
+  it('setNumericPref mutates the named number', () => {
+    useChartPrefsStore.getState().setNumericPref('ratioOutlierThreshold', 42);
+    expect(useChartPrefsStore.getState().ratioOutlierThreshold).toBe(42);
+  });
+
+  it('resetToDefaults restores DEFAULT_PREFS', () => {
+    useChartPrefsStore.getState().setToggle('auctionWindowMask', false);
+    useChartPrefsStore.getState().resetToDefaults();
+    expect(useChartPrefsStore.getState().auctionWindowMask).toBe(true);
   });
 });
 
-describe('CHART_TOGGLES — category metadata', () => {
-  it('fillStrengthCumulative entry resolves to category="indicators"', () => {
-    const entry = CHART_TOGGLES.find((t) => t.key === 'fillStrengthCumulative');
-    expect(entry).toBeDefined();
-    expect(categoryOf(entry!)).toBe('indicators');
+import { mergePrefs, CHART_PREFS_KEY } from './chartPrefsPersistence';
+
+describe('chartPrefsPersistence', () => {
+  it('mergePrefs ignores invalid types and falls back to DEFAULT_PREFS', () => {
+    const merged = mergePrefs({ auctionWindowMask: 'not-a-bool', ratioOutlierThreshold: 999_999 });
+    expect(merged.auctionWindowMask).toBe(DEFAULT_PREFS.auctionWindowMask);
+    expect(merged.ratioOutlierThreshold).toBe(DEFAULT_PREFS.ratioOutlierThreshold);
   });
 
-  it('pre-existing toggles default to category="chart" (category field absent)', () => {
-    const auction = CHART_TOGGLES.find((t) => t.key === 'auctionWindowMask');
-    expect(auction).toBeDefined();
-    expect(categoryOf(auction!)).toBe('chart');
-    // Verify the field is genuinely absent at runtime (not silently undefined
-    // because of some shape drift) — the helper's default branch is what
-    // produces the 'chart' result above.
-    expect('category' in auction!).toBe(false);
-  });
-});
-
-describe('useActivePrefs — fine-grained subscription', () => {
-  beforeEach(() => {
-    useTabsStore.getState().reset();
-    useTabsStore.setState((s) => ({ ...s, prefs: new Map() }));
+  it('mergePrefs accepts valid values', () => {
+    const merged = mergePrefs({ auctionWindowMask: false, ratioOutlierThreshold: 50 });
+    expect(merged.auctionWindowMask).toBe(false);
+    expect(merged.ratioOutlierThreshold).toBe(50);
   });
 
-  it('does not re-render when an unselected slice changes', () => {
-    let renders = 0;
-    const { result } = renderHook(() => {
-      renders++;
-      return useActivePrefs((p) => p.volumeProfileMode);
-    });
-    expect(renders).toBe(1);
-    expect(result.current).toBe('range');
-
-    // Mutate a DIFFERENT slice (auctionWindowMask) — should not re-render
-    // this hook because the selected value (volumeProfileMode) didn't change.
-    act(() => {
-      const id = useTabsStore.getState().activeTabId;
-      useTabsStore.getState().setToggle(id, 'auctionWindowMask', false);
-    });
-    expect(renders).toBe(1);
-    expect(result.current).toBe('range');
-
-    // Mutate the selected slice — should re-render.
-    act(() => {
-      const id = useTabsStore.getState().activeTabId;
-      useTabsStore.getState().setVolumeProfileMode(id, 'per-day');
-    });
-    expect(renders).toBe(2);
-    expect(result.current).toBe('per-day');
+  it('uses the new key, not replay.tabs.*', () => {
+    expect(CHART_PREFS_KEY).toBe('hoga.chart.prefs.v1');
+    expect(CHART_PREFS_KEY.includes('replay')).toBe(false);
   });
 });

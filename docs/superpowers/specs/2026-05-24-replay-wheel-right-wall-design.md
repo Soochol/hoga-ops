@@ -1,8 +1,29 @@
 # Replay Chart — Wheel Right Wall (Last-Candle Clamp)
 
 **Date**: 2026-05-24
-**Status**: Approved
+**Status**: Superseded for Ctrl/Cmd branch (2026-05-28) — see "Update" below
 **Scope**: `frontend/src/util/wheelInteractions.ts`, `frontend/src/util/wheelInteractions.test.ts`, `frontend/src/chart/ChartStage.tsx`
+
+## Update — 2026-05-28: Ctrl/Cmd right-wall clamp removed
+
+Field testing showed the ctrl/cmd zoom-out clamp was perceived as a bug:
+on every zoom-out tick that hit the wall (which is nearly every tick from
+the default layout, since initial `to ≈ lastBarIndex + 15 > maxTo`), the
+candle under the mouse drifted on screen because clamping `to` while
+leaving `from` at the formula value asymmetrically narrows the visible
+span and breaks the anchor-ratio invariant `p = (anchor-from)/(to-from)`.
+
+The "anchor migrates to the right edge" design choice (described below at
+line 61) is intentional in spec but violates the stronger user expectation
+that **the candle under the mouse must not move during ctrl+wheel zoom**.
+
+Resolution: the ctrl/cmd branch in `wheelInteractions.ts` no longer
+consults `maxTo`. It returns the unclamped formula result, letting `to`
+extend past `lastBarIndex` (the library renders empty space past the last
+candle by design — see Non-Goals line 33). The shift+pan branch is
+unchanged because its invariant (preserving span at the wall) is
+compatible with the user's expectation; panning right into empty data
+space is a different concern than zoom anchoring.
 
 ## Problem
 

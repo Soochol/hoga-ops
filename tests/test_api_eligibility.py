@@ -85,8 +85,8 @@ def test_decide_capture_none_fresh(tmp_path: Path) -> None:
     assert decision == CaptureDecision(skip_reason=None, resume=False)
 
 
-def test_find_ineligible_dates_flags_today_before_18_kst() -> None:
-    now = dt.datetime(2026, 5, 22, 17, 59, 0, tzinfo=KST)
+def test_find_ineligible_dates_flags_today_before_17_kst() -> None:
+    now = dt.datetime(2026, 5, 22, 16, 59, 0, tzinfo=KST)
     rejected = eligibility.find_ineligible_dates(
         candidate_dates=["20260520", "20260522"], now=now,
     )
@@ -94,16 +94,16 @@ def test_find_ineligible_dates_flags_today_before_18_kst() -> None:
 
 
 def test_find_ineligible_dates_empty_when_no_match() -> None:
-    now = dt.datetime(2026, 5, 22, 17, 59, 0, tzinfo=KST)
+    now = dt.datetime(2026, 5, 22, 16, 59, 0, tzinfo=KST)
     rejected = eligibility.find_ineligible_dates(
         candidate_dates=["20260518", "20260519", "20260520"], now=now,
     )
     assert rejected == []
 
 
-def test_find_ineligible_dates_today_at_18_passes() -> None:
-    """18:00 KST is the boundary — at-or-after-18 is admissible."""
-    now = dt.datetime(2026, 5, 22, 18, 0, 0, tzinfo=KST)
+def test_find_ineligible_dates_today_at_17_passes() -> None:
+    """17:00 KST is the boundary — at-or-after-17 is admissible."""
+    now = dt.datetime(2026, 5, 22, 17, 0, 0, tzinfo=KST)
     rejected = eligibility.find_ineligible_dates(
         candidate_dates=["20260522"], now=now,
     )

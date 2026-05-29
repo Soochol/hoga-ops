@@ -1,0 +1,439 @@
+import { describe, it, expect } from 'vitest';
+import { buildLiveBundle } from './buildLiveBundle';
+import type { RangeBundle } from '../api/types';
+
+const TODAY = '20260527';
+const TODAY_OPEN = Date.UTC(2026, 4, 27, 0, 0, 0);
+const TODAY_CLOSE = TODAY_OPEN + 6.5 * 3600 * 1000;
+
+function emptyRangeBundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
+  return {
+    code: '005930',
+    from_date: TODAY,
+    to_date: TODAY,
+    bucket_ms: 60_000,
+    segments: [],
+    candles: [],
+    quote_ratio: { bucket_ms: 60_000, points: [] },
+    fill_strength: { bucket_ms: 60_000, points: [] },
+    volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+    volume_profile_by_day: [],
+    ...overrides,
+  };
+}
+
+describe('buildLiveBundle', () => {
+  it('empty inputs → empty bundle', () => {
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: null,
+      sseOb: [],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+    expect(bundle.segments).toEqual([]);
+    expect(bundle.candles).toEqual([]);
+    expect(bundle.quote_ratio.points).toEqual([]);
+    expect(bundle.fill_strength.points).toEqual([]);
+  });
+
+  it('today-only: SSE + candles produce a single today segment tagged kis_live', () => {
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: null,
+      sseOb: [
+        { t_ms: TODAY_OPEN + 60_000, total_ask_qty: 100, total_bid_qty: 80 },
+      ],
+      sseTrade: [
+        { t_ms: TODAY_OPEN + 60_000, trades: [{ side: 1, qty: 10 }] },
+      ],
+      kisCandles: [
+        { ts_ms: TODAY_OPEN, open: 70000, close: 70050, high: 70100, low: 69900, vol_a: 1000, vol_b: 0 },
+      ],
+      bucketMs: 60_000,
+    });
+    expect(bundle.segments).toEqual([
+      { date: TODAY, session_open_ms: TODAY_OPEN, session_close_ms: TODAY_CLOSE, source: 'kis_live' },
+    ]);
+    expect(bundle.candles).toEqual([
+      { ts_ms: TODAY_OPEN, open: 70000, close: 70050, high: 70100, low: 69900, vol_a: 1000, vol_b: 0 },
+    ]);
+    expect(bundle.quote_ratio.points.length).toBe(1);
+    expect(bundle.fill_strength.points.length).toBe(1);
+    expect(bundle.bucket_ms).toBe(60_000);
+  });
+
+  it('past bundle includes today → SSE buffer is ignored', () => {
+    const past = emptyRangeBundle({
+      segments: [
+        { date: TODAY, session_open_ms: TODAY_OPEN, session_close_ms: TODAY_CLOSE, source: 'hogaplay' },
+      ],
+      candles: [
+        { ts_ms: TODAY_OPEN, open: 70000, close: 70050, high: 70100, low: 69900, vol_a: 1000, vol_b: 0 },
+      ],
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: TODAY_OPEN, ask_total: 500, bid_total: 500 }] },
+      fill_strength: { bucket_ms: 60_000, points: [] },
+    });
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: past,
+      sseOb: [
+        { t_ms: TODAY_OPEN, total_ask_qty: 999, total_bid_qty: 999 },
+      ],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+    expect(bundle.segments.length).toBe(1);
+    expect(bundle.segments[0].source).toBe('hogaplay');
+    expect(bundle.quote_ratio.points[0].ask_total).toBe(500);
+  });
+
+  it('past-only with yesterday, SSE today → segments concatenated in date order', () => {
+    const yesterday = '20260526';
+    const Y_OPEN = TODAY_OPEN - 86400_000;
+    const Y_CLOSE = Y_OPEN + 6.5 * 3600 * 1000;
+    const past = emptyRangeBundle({
+      segments: [
+        { date: yesterday, session_open_ms: Y_OPEN, session_close_ms: Y_CLOSE, source: 'kis_live' },
+      ],
+      candles: [
+        { ts_ms: Y_OPEN, open: 69000, close: 69500, high: 69600, low: 68900, vol_a: 800, vol_b: 0 },
+      ],
+    });
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: past,
+      sseOb: [{ t_ms: TODAY_OPEN, total_ask_qty: 100, total_bid_qty: 80 }],
+      sseTrade: [],
+      kisCandles: [
+        { ts_ms: TODAY_OPEN, open: 70000, close: 70050, high: 70100, low: 69900, vol_a: 1000, vol_b: 0 },
+      ],
+      bucketMs: 60_000,
+    });
+    expect(bundle.segments.map((s) => s.date)).toEqual([yesterday, TODAY]);
+    expect(bundle.candles.map((c) => c.ts_ms)).toEqual([TODAY_OPEN]);
+  });
+
+  it('past bundle with empty segments (backend empty-no-data response) → treated like null', () => {
+    const past = emptyRangeBundle({ segments: [] });
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: past,
+      sseOb: [{ t_ms: TODAY_OPEN, total_ask_qty: 100, total_bid_qty: 80 }],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+    expect(bundle.segments[0].source).toBe('kis_live');
+  });
+
+  it('pastBundle.candles is ignored; kisCandles is the candle source', () => {
+    const past = emptyRangeBundle({
+      candles: [
+        { ts_ms: TODAY_OPEN - 86400_000, open: 1, close: 2, high: 3, low: 0, vol_a: 99, vol_b: 0 },
+      ],
+    });
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: past,
+      sseOb: [],
+      sseTrade: [],
+      kisCandles: [
+        { ts_ms: TODAY_OPEN, open: 100, close: 100, high: 100, low: 100, vol_a: 5, vol_b: 0 },
+      ],
+      bucketMs: 60_000,
+    });
+    expect(bundle.candles).toEqual([
+      { ts_ms: TODAY_OPEN, open: 100, close: 100, high: 100, low: 100, vol_a: 5, vol_b: 0 },
+    ]);
+  });
+
+  it('synthesizes kis_live segments for past dates that KIS has but /api/range does not', () => {
+    // /api/range only knows 5/20. KIS past-candles covers 5/8 + 5/20 + 5/26.
+    // Without segment synthesis, VirtualAxis built from segments would only
+    // contain 5/20, and projectCandle's axis.contains filter would drop the
+    // 5/8 + 5/26 bars — that's the production bug surfaced by /investigate.
+    const ONE_DAY = 86400_000;
+    const date520 = '20260520';
+    const ms520_open = Date.UTC(2026, 4, 20, 0, 0, 0); // 09:00 KST = 00:00 UTC
+    const past = emptyRangeBundle({
+      segments: [
+        { date: date520, session_open_ms: ms520_open, session_close_ms: ms520_open + 6.5 * 3600_000, source: 'hogaplay' },
+      ],
+    });
+    const ms508_open = ms520_open - 12 * ONE_DAY; // 5/8
+    const ms526_open = ms520_open + 6 * ONE_DAY;  // 5/26
+    const kis = [
+      { ts_ms: ms508_open + 60_000, open: 1, close: 1, high: 1, low: 1, vol_a: 1, vol_b: 0 },
+      { ts_ms: ms520_open + 60_000, open: 2, close: 2, high: 2, low: 2, vol_a: 1, vol_b: 0 },
+      { ts_ms: ms526_open + 60_000, open: 3, close: 3, high: 3, low: 3, vol_a: 1, vol_b: 0 },
+    ];
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: past,
+      sseOb: [],
+      sseTrade: [],
+      kisCandles: kis,
+      bucketMs: 60_000,
+    });
+    const dates = bundle.segments.map((s) => s.date);
+    // 5/8 (KIS-only) + 5/20 (hogaplay) + 5/26 (KIS-only). Ascending order.
+    expect(dates).toEqual(['20260508', '20260520', '20260526']);
+    expect(bundle.segments[0].source).toBe('kis_live');
+    expect(bundle.segments[1].source).toBe('hogaplay');
+    expect(bundle.segments[2].source).toBe('kis_live');
+  });
+});
+
+const MINUTE_MS = 60_000;
+
+function makeRangeBundle(qrPoints: { t: number; bid_total: number; ask_total: number }[]): RangeBundle {
+  return {
+    code: '003490',
+    from_date: '20260527',
+    to_date: '20260528',
+    bucket_ms: MINUTE_MS,
+    segments: [{
+      date: '20260527',
+      session_open_ms: 1779840000000,
+      session_close_ms: 1779863400000,
+      source: 'kis_live',
+    }],
+    candles: [],
+    quote_ratio: { bucket_ms: MINUTE_MS, points: qrPoints },
+    fill_strength: { bucket_ms: MINUTE_MS, points: [] },
+    volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+    volume_profile_by_day: [],
+  };
+}
+
+describe('buildLiveBundle dedup (ADR-0043 plan Task 9)', () => {
+  const todayDate = '20260528';
+  const todaySession = { open_ms: 1779926400000, close_ms: 1779949800000 };
+
+  it('dedupes SSE buckets that share timestamp with parquet tail', () => {
+    const pastTailT = 1779926400000;  // 5/28 09:00 KST
+    const past = makeRangeBundle([
+      { t: pastTailT, bid_total: 1000, ask_total: 2000 },
+    ]);
+
+    const sseOb = [
+      // 같은 t값 — parquet이 이김
+      { t_ms: pastTailT + 1000, total_bid_qty: 9999, total_ask_qty: 9999 },
+      // 새 timestamp — SSE가 들어감
+      { t_ms: pastTailT + 60_000 + 1000, total_bid_qty: 1100, total_ask_qty: 2100 },
+    ];
+
+    const bundle = buildLiveBundle({
+      code: '003490',
+      todayDate,
+      todaySession,
+      pastBundle: past,
+      sseOb,
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: MINUTE_MS,
+    });
+
+    const ts = bundle.quote_ratio.points.map((p) => p.t);
+    expect(ts).toContain(pastTailT);
+    expect(ts).toContain(pastTailT + 60_000);
+    expect(ts).toHaveLength(2);
+    // pastTailT 위치는 parquet 값 유지
+    expect(bundle.quote_ratio.points.find((p) => p.t === pastTailT)?.bid_total).toBe(1000);
+  });
+
+  it('uses all SSE buckets when past bundle is empty', () => {
+    const sseOb = [
+      { t_ms: 1779926401000, total_bid_qty: 100, total_ask_qty: 200 },
+      { t_ms: 1779926461000, total_bid_qty: 110, total_ask_qty: 210 },
+    ];
+
+    const bundle = buildLiveBundle({
+      code: '003490',
+      todayDate,
+      todaySession,
+      pastBundle: null,
+      sseOb,
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: MINUTE_MS,
+    });
+
+    expect(bundle.quote_ratio.points.length).toBe(2);
+  });
+
+  it('appends only timestamps strictly greater than past tail', () => {
+    const pastTailT = 1779926400000;
+    const past = makeRangeBundle([
+      { t: pastTailT, bid_total: 1000, ask_total: 2000 },
+    ]);
+
+    const sseOb = [
+      // pastTailT - 60s: 더 옛것 (버려져야 함)
+      { t_ms: pastTailT - 60_000 + 1000, total_bid_qty: 50, total_ask_qty: 50 },
+      // pastTailT: 동일 (parquet이 이김)
+      { t_ms: pastTailT + 1000, total_bid_qty: 999, total_ask_qty: 999 },
+      // pastTailT + 60s: 새것 (들어감)
+      { t_ms: pastTailT + 60_000 + 1000, total_bid_qty: 1100, total_ask_qty: 2100 },
+    ];
+
+    const bundle = buildLiveBundle({
+      code: '003490',
+      todayDate,
+      todaySession,
+      pastBundle: past,
+      sseOb,
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: MINUTE_MS,
+    });
+
+    const ts = bundle.quote_ratio.points.map((p) => p.t).sort((a, b) => a - b);
+    expect(ts).toEqual([pastTailT, pastTailT + 60_000]);
+  });
+});
+
+describe('buildLiveBundle session-end filter (ADR-0049 / spec §3)', () => {
+  const TODAY = '20260529';
+  const TODAY_OPEN = Date.UTC(2026, 4, 29, 0, 0, 0);
+  const TODAY_CLOSE = TODAY_OPEN + 6.5 * 3600 * 1000;
+  // ADR-0044 / CONTEXT.md "Live Session": After-Hours runs 15:30–16:00 KST,
+  // so the filter ceiling = close_ms + 30 min (exercised via buildLiveBundle).
+
+  it('filters past points beyond live session end so SSE can still merge', () => {
+    // Simulate the actual production failure mode: Unix ms decoded as
+    // HHMMSSmmm lands deterministically in year 2046 (~20 years past today).
+    // Without the filter, pastMaxQrT sits in 2046 and would block all SSE
+    // merges because incrementalQR.filter(p => p.t > pastMaxQrT) rejects
+    // every 2026-era SSE point.
+    const futureCorruptT = TODAY_CLOSE + 20 * 365 * 24 * 3600 * 1000; // ~2046
+    const pastBundle: RangeBundle = emptyRangeBundle({
+      segments: [{
+        date: '20260528',
+        session_open_ms: TODAY_OPEN - 86_400_000,
+        session_close_ms: TODAY_CLOSE - 86_400_000,
+        source: 'hogaplay',
+      }],
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [
+          { t: TODAY_OPEN - 86_400_000 + 3600_000, bid_total: 10, ask_total: 10 },
+          { t: futureCorruptT, bid_total: 99, ask_total: 99 }, // corrupt tail
+        ],
+      },
+    });
+
+    const sseTAt = TODAY_OPEN + 30 * 60_000; // 09:30 KST today
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle,
+      sseOb: [{ t_ms: sseTAt, total_ask_qty: 50, total_bid_qty: 40 }],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+
+    const sseMerged = bundle.quote_ratio.points.some(
+      (p) => p.t === sseTAt && p.bid_total === 40 && p.ask_total === 50,
+    );
+    expect(sseMerged).toBe(true);
+  });
+
+  it('preserves dedup for after-hours data (15:30-16:00 KST, Live Session end)', () => {
+    // Design-review B1 regression: filter ceiling must include After-Hours
+    // (Live Session end = close_ms + 30min, CONTEXT.md "Live Session").
+    // If we filtered at close_ms (15:30 KST), a healthy past-tail at 15:45
+    // KST would be dropped, letting an SSE point at the same 15:45
+    // timestamp pass through and overwrite the past value.
+    const pastTailT = TODAY_CLOSE + 15 * 60_000; // 15:45 KST (After-Hours)
+    const pastBundle: RangeBundle = emptyRangeBundle({
+      segments: [{
+        date: TODAY,
+        session_open_ms: TODAY_OPEN,
+        session_close_ms: TODAY_CLOSE,
+        source: 'kis_live',
+      }],
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [{ t: pastTailT, bid_total: 10, ask_total: 10 }],
+      },
+    });
+
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle,
+      sseOb: [
+        { t_ms: pastTailT, total_ask_qty: 999, total_bid_qty: 999 }, // boundary dup
+      ],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+
+    const atTail = bundle.quote_ratio.points.find((p) => p.t === pastTailT);
+    expect(atTail?.bid_total).toBe(10); // past value wins, SSE dup rejected
+  });
+
+  it('does NOT filter when past timestamps are all within regular session (normal case)', () => {
+    // Regression guard: when past data is sane, the existing dedup must
+    // still reject SSE buckets that share a timestamp with past tail.
+    const pastTailT = TODAY_OPEN + 60_000; // 09:01 KST today
+    const pastBundle: RangeBundle = emptyRangeBundle({
+      segments: [{
+        date: TODAY,
+        session_open_ms: TODAY_OPEN,
+        session_close_ms: TODAY_CLOSE,
+        source: 'kis_live',
+      }],
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [
+          { t: TODAY_OPEN, bid_total: 5, ask_total: 5 },
+          { t: pastTailT, bid_total: 10, ask_total: 10 },
+        ],
+      },
+    });
+
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle,
+      sseOb: [
+        { t_ms: pastTailT, total_ask_qty: 999, total_bid_qty: 999 }, // boundary dup
+        { t_ms: pastTailT + 60_000, total_ask_qty: 50, total_bid_qty: 40 }, // new
+      ],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+
+    // The boundary-dup SSE point must NOT overwrite past's value 10.
+    const atPastTail = bundle.quote_ratio.points.find((p) => p.t === pastTailT);
+    expect(atPastTail?.bid_total).toBe(10);
+    // The strictly-greater SSE point must pass through.
+    const after = bundle.quote_ratio.points.find((p) => p.t === pastTailT + 60_000);
+    expect(after?.bid_total).toBe(40);
+  });
+});

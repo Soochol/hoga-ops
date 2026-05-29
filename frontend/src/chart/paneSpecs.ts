@@ -12,9 +12,8 @@ import { FILL_STRENGTH_SPEC } from './projectors/fillStrength';
  * persistence id" invariant mechanically enforced by the type system
  * rather than relying on social convention.
  *
- * Specs that mount inside an existing pane (e.g. `MOVING_AVERAGE_SPEC`,
- * a candle-pane overlay) remain plain `PaneSpec` because their `name`
- * is not a persistence key.
+ * Specs that mount inside an existing pane (candle-pane overlays etc.)
+ * remain plain `PaneSpec` because their `name` is not a persistence key.
  */
 export type BoundPaneSpec<Ctx = any> = PaneSpec<Ctx> & { name: PaneId };
 
@@ -41,8 +40,8 @@ export type BoundPaneSpec<Ctx = any> = PaneSpec<Ctx> & { name: PaneId };
 export const PANE_SPECS: BoundPaneSpec[] = [
   CANDLE_SPEC,         // paneIndex 0
   VOLUME_SPEC,         // paneIndex 1
-  RATIO_SPEC,          // paneIndex 2
-  QUOTE_TOTALS_SPEC,   // paneIndex 3
+  QUOTE_TOTALS_SPEC,   // paneIndex 2
+  RATIO_SPEC,          // paneIndex 3
   FILL_STRENGTH_SPEC,  // paneIndex 4
 ];
 

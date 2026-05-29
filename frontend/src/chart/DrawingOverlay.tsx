@@ -325,20 +325,40 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
       return;
     }
     container.style.pointerEvents = 'none';
+    // rAF-coalesce the global mousemove. Native mousemove fires at the OS
+    // sampling rate (can exceed 1 kHz on high-poll-rate mice). Without
+    // throttling, every event paid getBoundingClientRect() (forces layout),
+    // hitTestAt (iterates all drawings), and a pointer-events style write
+    // — all wasted between paints since the user can't perceive sub-frame
+    // hit changes. One probe per frame is enough.
+    let hoverRaf: number | null = null;
+    let pendingEvent: MouseEvent | null = null;
     const onHover = (e: MouseEvent) => {
       if (dragRef.current) return;
-      const rect = container.getBoundingClientRect();
-      const px = e.clientX - rect.left;
-      const py = e.clientY - rect.top;
-      const hit =
-        px >= 0 && py >= 0 && px <= rect.width && py <= rect.height
-          ? hitTestAt(px, py)
-          : null;
-      container.style.pointerEvents = hit ? 'auto' : 'none';
+      pendingEvent = e;
+      if (hoverRaf !== null) return;
+      hoverRaf = requestAnimationFrame(() => {
+        hoverRaf = null;
+        const ev = pendingEvent;
+        pendingEvent = null;
+        if (!ev) return;
+        const rect = container.getBoundingClientRect();
+        const px = ev.clientX - rect.left;
+        const py = ev.clientY - rect.top;
+        const hit =
+          px >= 0 && py >= 0 && px <= rect.width && py <= rect.height
+            ? hitTestAt(px, py)
+            : null;
+        container.style.pointerEvents = hit ? 'auto' : 'none';
+      });
     };
     window.addEventListener('mousemove', onHover);
     return () => {
       window.removeEventListener('mousemove', onHover);
+      if (hoverRaf !== null) {
+        cancelAnimationFrame(hoverRaf);
+        hoverRaf = null;
+      }
     };
     // hitTestAt closes over drawings / paneSeries; re-bind on change.
     // eslint-disable-next-line react-hooks/exhaustive-deps

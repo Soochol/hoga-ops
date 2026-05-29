@@ -2,7 +2,7 @@ import { render } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AuctionWindowOverlay from '../../src/chart/AuctionWindowOverlay';
 import { createVirtualAxis } from '../../src/util/virtualAxis';
-import { useTabsStore } from '../../src/state/tabs';
+import { useChartPrefsStore, DEFAULT_PREFS } from '../../src/state/chartPrefs';
 
 // KST 09:00 — 15:30. Full-day session length = 6h30m.
 const DAY1_OPEN = 1_779_062_400_000;
@@ -21,18 +21,16 @@ const axis = createVirtualAxis([
   { date: '20260518', sessionOpenMs: DAY1_OPEN, sessionCloseMs: DAY1_CLOSE },
 ]);
 
-// Component now reads prefs via useActivePrefs from the active tab in
-// useTabsStore — drive the toggle on the store directly instead of
-// wrapping with a context provider.
+// Component reads prefs via useActivePrefs, which is a thin wrapper over
+// useChartPrefsStore (the per-tab prefs map was removed when /replay
+// shipped). Drive the toggle on the global store directly.
 function setAuctionMask(enabled: boolean): void {
-  const id = useTabsStore.getState().activeTabId;
-  useTabsStore.getState().setToggle(id, 'auctionWindowMask', enabled);
+  useChartPrefsStore.getState().setToggle('auctionWindowMask', enabled);
 }
 
 describe('AuctionWindowOverlay', () => {
   beforeEach(() => {
-    useTabsStore.getState().reset();
-    useTabsStore.setState((s) => ({ ...s, prefs: new Map() }));
+    useChartPrefsStore.setState({ ...DEFAULT_PREFS });
   });
 
   it('renders one shaded band per segment when auctionWindowMask is on', () => {

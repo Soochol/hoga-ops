@@ -15,10 +15,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-import duckdb
 import pyarrow as pa
-import pyarrow.parquet as pq
-from pydantic import BaseModel
 
 # === In-memory entity ===
 
@@ -147,7 +144,8 @@ def write_parquet(trades: Iterable[Trade], path: Path) -> None:
         field.name: pa.array([getattr(t, field.name) for t in rows], type=field.type)
         for field in PARQUET_SCHEMA
     }
-    pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
+    from hoga.api._atomic_write import atomic_write_parquet_table
+    atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
 # === Within-table invariants ===
@@ -224,81 +222,3 @@ def validate(trades: list[Trade], *, lenient: bool = False) -> None:
             f"cum_vol decreased at ts_ms={first.ts_ms}: "
             f"{first.prev_cum} -> {first.curr_cum}"
         )
-
-
-# === API representation (wire format for clients; excludes forensic fields) ===
-
-
-class ApiTrade(BaseModel):
-    ts_ms: int
-    seq: int
-    price: int
-    change_pct: float
-    qty: int
-    side: int  # -1, 0, +1
-    cum_vol: int
-    cum_trades: int
-    low_so_far: int
-    high_so_far: int
-    net_pressure: int
-
-
-# === Query (returns ApiTrade directly — no intermediate dict) ===
-
-
-_QUERY_COLS = (
-    "ts_ms",
-    "seq",
-    "price",
-    "change_pct",
-    "qty",
-    "side",
-    "cum_vol",
-    "cum_trades",
-    "low_so_far",
-    "high_so_far",
-    "net_pressure",
-)
-_SELECT = ", ".join(_QUERY_COLS)
-
-
-def _row_to_api(r: tuple) -> ApiTrade:
-    return ApiTrade(
-        ts_ms=r[0],
-        seq=r[1],
-        price=r[2],
-        change_pct=r[3],
-        qty=r[4],
-        side=r[5],
-        cum_vol=r[6],
-        cum_trades=r[7],
-        low_so_far=r[8],
-        high_so_far=r[9],
-        net_pressure=r[10],
-    )
-
-
-def query_up_to(
-    con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int, limit: int
-) -> list[ApiTrade]:
-    rows = con.execute(
-        f"SELECT {_SELECT} FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT ?",
-        [str(path), t_ms, limit],
-    ).fetchall()
-    return [_row_to_api(r) for r in rows]
-
-
-def query_range(
-    con: duckdb.DuckDBPyConnection,
-    *,
-    path: Path,
-    from_ms: int,
-    to_ms: int,
-    limit: int,
-) -> list[ApiTrade]:
-    rows = con.execute(
-        f"SELECT {_SELECT} FROM read_parquet(?) WHERE ts_ms >= ? AND ts_ms <= ? "
-        "ORDER BY ts_ms DESC LIMIT ?",
-        [str(path), from_ms, to_ms, limit],
-    ).fetchall()
-    return [_row_to_api(r) for r in rows]

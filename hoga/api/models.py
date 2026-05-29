@@ -9,9 +9,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from hoga.api.error_codes import UpstreamCode
+from hoga.api.sources import SourceName
 from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
-from hoga.tables.trades import ApiTrade
 
 
 class StockDate(BaseModel):
@@ -48,15 +48,25 @@ class StockDate(BaseModel):
     # the booleans). Values: "complete", "source_partial", "client_incomplete",
     # "invalid". DiskState.NONE never appears here (no meta.json means no row).
     disk_state: str = "complete"
+    full_capture_count: int | None = None
+    """Number of successful Full Captures for this Stock-Date (initial + Retry-driven
+    overwrites of meta.json). Null on legacy meta files written before this counter
+    was introduced. See CONTEXT.md "Full Capture Count" and ADR-0031 for the
+    distinction from QueueItem.attempt."""
+    fail_streak: int = 0
+    """ADR-0042: consecutive failed+skipped count since last success/unblock.
+    Joined from QueueManifest.fail_streaks at the route layer. 0 means
+    "no recent failures". When ``>= 5`` the row is also ``blocked``."""
+    blocked: bool = False
+    """ADR-0042: ``fail_streak >= 5``. Renders a 차단됨 badge + 잠금 해제
+    button on the inventory row; enqueue requests for this (Code, Stock-Date)
+    are rejected with HTTP 409 until the user clears the counter."""
 
 
 class OrderbookResponse(BaseModel):
     available_from: int | None = None
     snapshot: ApiOrderbookSnapshot | None
-
-
-class TradesResponse(BaseModel):
-    trades: list[ApiTrade]
+    source: SourceName
 
 
 class CandlesResponse(BaseModel):
@@ -286,6 +296,13 @@ class QueueManifest(BaseModel):
     schema_version: int = 1
     paused: bool
     items: list[QueueManifestItem]
+    fail_streaks: dict[str, int] = Field(default_factory=dict)
+    """Per-(Code, Stock-Date) consecutive failed+skipped counter (ADR-0042).
+
+    Key format ``"{code}|{date}"``. Missing key means 0. Reset to 0 on
+    ``phase == done`` or on ``unblock`` action. Old manifests without this
+    key load as empty dict — no migration script.
+    """
 
 
 # --- POST /api/captures/items request/response (Plan B Task 7) --------------
@@ -310,9 +327,24 @@ class EnqueueDedupedRow(BaseModel):
     ]
 
 
+class BlockedItem(BaseModel):
+    """A (Code, Stock-Date) rejected by the fail_streak cap (ADR-0042).
+
+    Reported on ``EnqueueResponse.blocked`` and rendered inline in CaptureForm.
+    User must click "잠금 해제" in inventory to clear the counter before this
+    (Code, Stock-Date) can be enqueued again.
+    """
+
+    code: str
+    date: str
+    fail_streak: int
+    reason: Literal["fail_streak_exceeded"]
+
+
 class EnqueueResponse(BaseModel):
     enqueued: list[QueueItem]
     deduped: list[EnqueueDedupedRow]
+    blocked: list[BlockedItem] = Field(default_factory=list)
 
 
 # --- POST /api/captures/items/retry request/response (ADR-0031) ------------
@@ -413,6 +445,7 @@ class RangeSegment(BaseModel):
     date: str
     session_open_ms: int
     session_close_ms: int
+    source: str = "hogaplay"  # ADR-0039: which source subdir this segment came from
 
 
 class ViolationModel(BaseModel):
@@ -500,6 +533,7 @@ class BrokerSeriesEntry(BaseModel):
 class BrokerSeriesResponse(BaseModel):
     date: str
     brokers: list[BrokerSeriesEntry]
+    source: SourceName
 
 
 # --- Watchlist (see spec 2026-05-26 and ADR-0034) --------------------------
@@ -516,7 +550,7 @@ class WatchlistEntry(BaseModel):
 
 class WatchlistResponse(BaseModel):
     entries: list[WatchlistEntry]
-    next_run_at_ms: int  # Unix-ms of next KST 18:00 boundary (ADR-0003)
+    next_run_at_ms: int  # Unix-ms of next KST 17:00 boundary (ADR-0003)
 
 
 class WatchlistAddRequest(BaseModel):
@@ -557,3 +591,64 @@ class ManualCatchupAllEntryResult(BaseModel):
 class ManualCatchupAllResponse(BaseModel):
     """Response shape for POST /api/watchlist/catchup."""
     results: list[ManualCatchupAllEntryResult]
+
+
+class TimingPhaseTotals(BaseModel):
+    http_fetch_ms: float = 0.0
+    parse_ms: float = 0.0
+    disk_write_ms: float = 0.0
+    rate_limit_ms: float = 0.0
+    backoff_ms: float = 0.0
+    cookie_pause_ms: float = 0.0
+    other_ms: float = 0.0
+
+
+class TimingPageDetail(BaseModel):
+    idx: int
+    http_ms: float
+    parse_ms: float
+    write_ms: float
+    events: int
+    errors: list[str]
+
+
+class TimingEnv(BaseModel):
+    rate_limit_s: float
+    max_concurrent: int
+    page_step_ms_initial: int
+    hoga_version: str
+    git_sha: str | None = None
+
+
+class TimingSummary(BaseModel):
+    code: str
+    date: str
+    started_at_kst: str
+    ended_at_kst: str
+    total_ms: float
+    phase_totals_ms: TimingPhaseTotals
+    phase_percentages: dict[str, float]
+    unaccounted_ms: float
+    page_count: int
+    event_count: int
+    error_counts: dict[str, int]
+    env: TimingEnv
+
+
+class TimingReport(BaseModel):
+    summary: TimingSummary
+    pages: list[TimingPageDetail]
+
+
+class CaptureTimingEvent(BaseModel):
+    """SSE summary event for one completed (or failed) capture's timing.
+
+    Carries only the summary — full per-page detail is written to the
+    timing JSON on disk (see ``write_timing_report``) so we don't push
+    page-level payload over the SSE channel.
+
+    ``id`` (``${code}:${date}``) is the frontend dedup key.
+    """
+    type: Literal["capture_timing"] = "capture_timing"
+    id: str
+    summary: TimingSummary

@@ -1,7 +1,7 @@
 """GET /api/inventory/calendar — per-symbol month status map.
 
 Composes disk_state.check_disk_state with the KRX trading-day list and a
-today/18-KST overlay. Pure read-side; no mutation. See spec §5.3, §11 Q21.
+today/17-KST overlay. Pure read-side; no mutation. See spec §5.3, §11 Q21.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from hoga.api.models import CalendarCell, CalendarResponse
 # Single Clock seam: KST + now_kst + is_today_too_early all live on
 # orchestrator.py per Refactor 3. The today_locked overlay below reuses
 # the same predicate that captures.py's enqueue guard uses — keeps the
-# 18-KST cutoff in one place.
+# 17-KST cutoff in one place.
 from hoga.collector.orchestrator import is_today_too_early, now_kst as _now_kst
 from hoga.env import krx_creds_present
 
@@ -111,6 +111,23 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
         else:
             cur = dt.date(cur.year, cur.month + 1, 1)
     return out
+
+
+def is_trading_day(date_yyyymmdd: str) -> bool | None:
+    """Return True/False for ``date``, or None when KRX data is unavailable.
+
+    Policy on None is the caller's: cold-path schedulers fail-fast
+    (``trading_days_in_range`` raises), live-path callers fall back to a
+    permissive default (e.g. don't gate polling so capture stays up when
+    KRX is briefly unreachable). Keeping the data accessor and the policy
+    separate avoids embedding either stance in the module.
+    """
+    year = int(date_yyyymmdd[:4])
+    month = int(date_yyyymmdd[4:6])
+    days = _trading_days_for(year, month)
+    if days is None:
+        return None
+    return date_yyyymmdd in days
 
 
 def reset_cache_for_tests() -> None:

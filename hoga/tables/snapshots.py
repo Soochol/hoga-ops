@@ -111,7 +111,8 @@ def write_parquet(snapshots: Iterable[Orderbook], path: Path) -> None:
             )
     for total in ("tot_ask", "tot_ask_d", "tot_bid", "tot_bid_d"):
         cols[total] = pa.array([getattr(o, total) for o in rows], type=pa.int32())
-    pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
+    from hoga.api._atomic_write import atomic_write_parquet_table
+    atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
 def read_parquet(path: Path) -> list[Orderbook]:

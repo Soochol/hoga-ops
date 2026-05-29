@@ -97,3 +97,29 @@ def test_save_swallows_oserror_via_unwritable_parent(tmp_path: Path, caplog) -> 
         assert any("manifest write failed" in r.message for r in caplog.records)
     finally:
         bad_dir.chmod(0o700)  # restore for cleanup
+
+
+# ADR-0042: fail_streaks dict on the manifest.
+
+def test_load_manifest_without_fail_streaks_defaults_to_empty(tmp_path: Path) -> None:
+    """Old .queue.json files (pre-ADR-0042) lack the fail_streaks key.
+    Loader must treat the missing key as an empty dict — no migration."""
+    manifest_path(tmp_path).write_text(
+        '{"schema_version": 1, "paused": false, "items": []}',
+        encoding="utf-8",
+    )
+    loaded = load_manifest(tmp_path)
+    assert loaded is not None
+    assert loaded.fail_streaks == {}
+
+
+def test_save_load_manifest_roundtrip_preserves_fail_streaks(tmp_path: Path) -> None:
+    saved = QueueManifest(
+        paused=False,
+        items=[],
+        fail_streaks={"005930|20260520": 3, "003490|20260319": 5},
+    )
+    save_manifest(tmp_path, saved)
+    loaded = load_manifest(tmp_path)
+    assert loaded is not None
+    assert loaded.fail_streaks == {"005930|20260520": 3, "003490|20260319": 5}

@@ -12,6 +12,18 @@ export type StockDate = {
   total_volume: number; pages_collected: number; file_size_bytes: number;
   today_open: number; today_high: number; today_low: number; today_close: number;
   disk_state: DiskStateValue;
+  /** ADR-0004 mirror of hoga/api/models.py::StockDate.full_capture_count.
+   *  Null on legacy meta.json files written before the counter existed.
+   *  See CONTEXT.md "Full Capture Count". */
+  full_capture_count: number | null;
+  /** ADR-0042: consecutive failed+skipped count since last success/unblock.
+   *  Joined from QueueManifest.fail_streaks at the route layer. 0 means
+   *  "no recent failures"; ``>= 5`` means ``blocked``. */
+  fail_streak: number;
+  /** ADR-0042: ``fail_streak >= 5``. Renders a 차단됨 badge + 잠금 해제
+   *  button on the inventory row; enqueue is rejected with HTTP 409 until
+   *  the user clears the counter. */
+  blocked: boolean;
 };
 
 export type Candle = { ts_ms: number; open: number; close: number; high: number; low: number; vol_a: number; vol_b: number };
@@ -40,10 +52,15 @@ export type OrderbookSnapshot = {
   tot_bid: number;
 };
 
+/** Source name for ADR-0039 source_pref thread-through. Mirrors
+ *  hoga/api/sources.py::SourceName. */
+export type SourceName = 'hogaplay' | 'kis_live';
+
 /** GET /api/orderbook response envelope. */
 export type OrderbookResponse = {
   available_from: number | null;
   snapshot: OrderbookSnapshot | null;
+  source: SourceName;
 };
 
 // === Broker Day-Trajectory (ADR-0023) ===
@@ -66,12 +83,13 @@ export type BrokerSeriesEntry = {
 export type BrokerSeriesResponse = {
   date: string;                   // YYYYMMDD KST, echoed
   brokers: BrokerSeriesEntry[];   // sorted by abs(final_net) desc, ≤ 10 entries
+  source: SourceName;             // ADR-0044 — echoed by backend after resolve_source()
 };
 
-// Mirrors hoga/tables/trades.py::ApiTrade. `side` is -1 / 0 / +1 by convention
-// (sell / auction-cross / buy) but typed as number — the backend does not
-// enforce the literal, and a runtime guard would be more honest than a TS
-// fiction here.
+// Wire shape for SSE trade events emitted by hoga/live/poller.py.
+// `side` is -1 / 0 / +1 by convention (sell / auction-cross / buy) but typed
+// as number — the backend does not enforce the literal, and a runtime guard
+// would be more honest than a TS fiction here.
 export type Trade = {
   ts_ms: number;
   seq: number;
@@ -205,8 +223,55 @@ export type SSEEvent =
       total_cancelled: number;
       total_skipped: number;
     }
+  | CaptureTimingEvent
   | { type: 'heartbeat' }
   | { type: 'disconnected' };
+
+/** Mirrors hoga/api/models.py::TimingPhaseTotals. All values are milliseconds. */
+export interface TimingPhaseTotalsMs {
+  http_fetch_ms: number;
+  parse_ms: number;
+  disk_write_ms: number;
+  rate_limit_ms: number;
+  backoff_ms: number;
+  cookie_pause_ms: number;
+  other_ms: number;
+}
+
+/** Mirrors hoga/api/models.py::TimingEnv. */
+export interface TimingEnv {
+  rate_limit_s: number;
+  max_concurrent: number;
+  page_step_ms_initial: number;
+  hoga_version: string;
+  git_sha: string | null;
+}
+
+/** Mirrors hoga/api/models.py::TimingSummary. */
+export interface TimingSummary {
+  code: string;
+  date: string;
+  started_at_kst: string;
+  ended_at_kst: string;
+  total_ms: number;
+  phase_totals_ms: TimingPhaseTotalsMs;
+  phase_percentages: Record<string, number>;
+  unaccounted_ms: number;
+  page_count: number;
+  event_count: number;
+  error_counts: Record<string, number>;
+  env: TimingEnv;
+}
+
+/** Mirrors hoga/api/models.py::CaptureTimingEvent. SSE summary event emitted
+ *  when one capture finishes (or fails). `id` is `${code}:${date}` — the
+ *  frontend dedup key. Full per-page detail lives in the timing JSON on
+ *  disk, not on this event. */
+export interface CaptureTimingEvent {
+  type: 'capture_timing';
+  id: string;
+  summary: TimingSummary;
+}
 
 /** Mirrors hoga/api/models.py::SymbolHit. */
 export interface SymbolHit {
@@ -281,10 +346,20 @@ export interface EnqueueDedupedRow {
   reason: 'already_in_queue' | 'already_running' | 'already_complete' | 'already_skipped';
 }
 
+/** ADR-0042: a (Code, Stock-Date) rejected by the fail_streak cap. */
+export interface BlockedItem {
+  code: string;
+  date: string;
+  fail_streak: number;
+  reason: 'fail_streak_exceeded';
+}
+
 /** Mirrors hoga/api/models.py::EnqueueResponse. */
 export interface EnqueueResponse {
   enqueued: QueueItem[];
   deduped: EnqueueDedupedRow[];
+  /** ADR-0042: pairs rejected by the fail_streak cap. Default []. */
+  blocked: BlockedItem[];
 }
 
 /** Mirrors hoga/api/models.py::RetryRequest. */
@@ -318,6 +393,7 @@ export type RangeSegment = {
   date: string;            // YYYYMMDD KST
   session_open_ms: number; // Unix ms
   session_close_ms: number;
+  source?: 'hogaplay' | 'kis_live';  // ADR-0037, ADR-0039; absent in legacy responses
 };
 
 export type Timeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m';
@@ -341,16 +417,6 @@ export type ViolationWire = {
   ctx: Record<string, unknown>;
 };
 
-export type ExcludedDate = {
-  date: string;             // YYYYMMDD KST
-  violations: ViolationWire[];
-};
-
-export type DateWarning = {
-  date: string;
-  warnings: ViolationWire[];
-};
-
 export type RangeBundle = {
   code: string;
   from_date: string;
@@ -362,10 +428,4 @@ export type RangeBundle = {
   fill_strength: FillStrength;
   volume_profile_range: VolumeProfile;
   volume_profile_by_day: VolumeProfile[];
-  /** ADR-0020: Stock-Dates dropped from segments due to error-severity
-   * invariant violations. Default empty list on healthy bundles. */
-  excluded_dates?: ExcludedDate[];
-  /** ADR-0020: Stock-Dates kept in segments but with warn-severity
-   * invariant violations attached. */
-  data_warnings?: DateWarning[];
 };

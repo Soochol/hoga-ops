@@ -183,8 +183,8 @@ def test_collect_cap_detection_halves_step(tmp_path: Path) -> None:
 def test_collect_stock_date_today_too_early_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Today's date + now.hour < 18 raises TodayTooEarlyRefused."""
-    fixed_now = dt.datetime(2026, 5, 22, 17, 30, 0, tzinfo=dt.timezone(dt.timedelta(hours=9)))
+    """Today's date + now.hour < 17 raises TodayTooEarlyRefused."""
+    fixed_now = dt.datetime(2026, 5, 22, 16, 30, 0, tzinfo=dt.timezone(dt.timedelta(hours=9)))
     monkeypatch.setattr(orch, "_now_kst", lambda: fixed_now)
 
     fake = FakeClient(info_body="", first_pages={}, chart_body="")
@@ -198,11 +198,11 @@ def test_collect_stock_date_today_too_early_refused(
         )
 
 
-def test_collect_stock_date_today_after_18_allowed(
+def test_collect_stock_date_today_after_17_allowed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Today's date + now.hour >= 18 proceeds normally."""
-    fixed_now = dt.datetime(2026, 5, 22, 18, 0, 0, tzinfo=dt.timezone(dt.timedelta(hours=9)))
+    """Today's date + now.hour >= 17 proceeds normally."""
+    fixed_now = dt.datetime(2026, 5, 22, 17, 0, 0, tzinfo=dt.timezone(dt.timedelta(hours=9)))
     monkeypatch.setattr(orch, "_now_kst", lambda: fixed_now)
 
     fake = FakeClient(

@@ -14,6 +14,7 @@ from typing import Protocol
 
 from hoga.api.timeenc import HogaMs
 from hoga.collector.client import HogaplayHTTPError
+from hoga.collector.timing import CaptureTimingCollector
 from hoga.collector.page_step import (
     DATA_WINDOW_END_MS,
     DEFAULT_PAGE_STEP_MS,
@@ -80,7 +81,7 @@ class HogaplayClientProto(Protocol):
 
 
 class TodayTooEarlyRefused(RuntimeError):
-    """Capture target is today (KST) and now.hour < 18 — policy refuses regardless of Data Window state."""
+    """Capture target is today (KST) and now.hour < 17 — policy refuses regardless of Data Window state."""
 
 
 class CaptureCancelled(RuntimeError):
@@ -185,9 +186,9 @@ _now_kst = now_kst
 
 
 # Policy cutoff for "is it too early to capture today?" — distinct from
-# _DATA_WINDOW_CLOSE_HOUR (= 16, when raw data stops). The 2-hour buffer
+# _DATA_WINDOW_CLOSE_HOUR (= 16, when raw data stops). The 1-hour buffer
 # accounts for hogaplay's post-close aggregation lag. See spec §11 Q14.
-_TODAY_TOO_EARLY_HOUR = 18
+_TODAY_TOO_EARLY_HOUR = 17
 
 
 def is_today_too_early(date: str, now: dt.datetime) -> bool:
@@ -278,17 +279,36 @@ def _resume_state(raw_dir: Path) -> tuple[set[int], int, int]:
     return seen, last_idx, last_t
 
 
-def _fetch_and_store_page(
-    raw_dir: Path,
+def _fetch_first_body(
     client: HogaplayClientProto,
+    *,
     code: str,
     date: str,
-    t: int,
+    time_ms: int,
+) -> str:
+    """HTTP-only half of _fetch_and_store_page: fetch one first.php Page body.
+
+    Network errors (HogaplayHTTPError, including throttled 429s) surface to
+    the caller unchanged — _page_step_loop's ADR-0017 backoff machinery
+    depends on observing them here.
+    """
+    return client.fetch_first(code, date, time_ms)
+
+
+def _store_page_body(
+    raw_dir: Path,
+    body: str,
+    *,
     page_idx: int,
     seen_seqs: set[int],
-) -> tuple[str, int, set[int]]:
-    """Fetch one first.php Page, store it if non-empty, return (body, new_page_idx, new_seqs)."""
-    body = client.fetch_first(code, date, t)
+) -> tuple[int, set[int]]:
+    """TSV-write-only half of _fetch_and_store_page.
+
+    Returns (new_page_idx, new_seqs). When body is empty (hogaplay's
+    end-of-window signal), page_idx is unchanged and no file is written —
+    matches the `if body:` guard in the original composite. Mutates
+    seen_seqs in place to match the existing contract.
+    """
     page_seqs = _seqs(body)
     new_seqs = page_seqs - seen_seqs
     if body:
@@ -298,7 +318,8 @@ def _fetch_and_store_page(
         # is cheap insurance even though page_sort_key handles mixed widths).
         (raw_dir / f"first_{page_idx:05d}.tsv").write_text(body, encoding="utf-8")
         seen_seqs.update(page_seqs)
-    return body, page_idx, new_seqs
+    return page_idx, new_seqs
+
 
 
 def _page_step_loop(
@@ -313,6 +334,7 @@ def _page_step_loop(
     t: int,
     on_progress: Callable[[ProgressEvent], None] | None = None,
     cancel_token: CancelToken | None = None,
+    collector: CaptureTimingCollector | None = None,
     initial_step_ms: int = DEFAULT_PAGE_STEP_MS,
 ) -> tuple[set[int], int, int, StopReason | None]:
     """Run the Page Step pagination loop; return (seen_seqs, page_idx, final_t, stop_reason).
@@ -332,17 +354,37 @@ def _page_step_loop(
     last_emitted_pages = -1
     iter_idx = 0
     backoff_remaining = 0  # countdown of pages held at doubled rate after a 429
+    # Retry-aware page boundary flag (S2): start True so the first iteration
+    # opens PageTiming row 0; set False after the boundary is marked; set
+    # True again only after a SUCCESSFUL store. On a 429 retry path we hit
+    # `continue` with the flag still False — so the retry stays on the same
+    # PageTiming row instead of creating a phantom ~0-event row.
+    pending_boundary = True
     while True:
         if cancel_token is not None and cancel_token.cancelled:
             raise CaptureCancelled(f"capture cancelled at page {page_idx}")
         iter_idx += 1
         t_in = controller.next_t
         step_before = controller.step_ms
+        if collector is not None and pending_boundary:
+            collector.mark_page_boundary()
+            pending_boundary = False
         try:
             http_t0 = _time.perf_counter()
-            body, page_idx, new_seqs = _fetch_and_store_page(
-                raw_dir, client, code, date, t_in, page_idx, seen_seqs
-            )
+            if collector is not None:
+                with collector.phase("http_fetch"):
+                    body = _fetch_first_body(client, code=code, date=date, time_ms=t_in)
+            else:
+                body = _fetch_first_body(client, code=code, date=date, time_ms=t_in)
+            if collector is not None:
+                with collector.phase("disk_write"):
+                    page_idx, new_seqs = _store_page_body(
+                        raw_dir, body, page_idx=page_idx, seen_seqs=seen_seqs
+                    )
+            else:
+                page_idx, new_seqs = _store_page_body(
+                    raw_dir, body, page_idx=page_idx, seen_seqs=seen_seqs
+                )
             http_ms = (_time.perf_counter() - http_t0) * 1000
         except HogaplayHTTPError as e:
             if e.status_code in THROTTLED_STATUSES:
@@ -353,14 +395,28 @@ def _page_step_loop(
                     })
                     with profile_path.open("a", encoding="utf-8") as f:
                         f.write(marker + "\n")
-                _cancellable_sleep(
-                    max(rate_limit_s * THROTTLE_BACKOFF_FACTOR, 1.0),
-                    cancel_token,
-                )
+                if collector is not None:
+                    collector.record_error(f"http_{e.status_code}")
+                if collector is not None:
+                    with collector.phase("rate_limit"):
+                        _cancellable_sleep(
+                            max(rate_limit_s * THROTTLE_BACKOFF_FACTOR, 1.0),
+                            cancel_token,
+                        )
+                else:
+                    _cancellable_sleep(
+                        max(rate_limit_s * THROTTLE_BACKOFF_FACTOR, 1.0),
+                        cancel_token,
+                    )
                 backoff_remaining = THROTTLE_BACKOFF_HOLD_PAGES
                 iter_idx -= 1
+                # Leave pending_boundary False so the retry stays on the same
+                # PageTiming row (S2 retry-aware semantics).
                 continue  # retry same t_in, do not advance controller
             raise
+        if collector is not None:
+            collector.record_event_count(len(new_seqs))
+            pending_boundary = True  # next iteration opens a new PageTiming row
         max_t = _max_event_time(body)
         decision = controller.observe(max_event_time=max_t, new_seqs=len(new_seqs))
         _write_progress(
@@ -411,7 +467,11 @@ def _page_step_loop(
         if backoff_remaining > 0:
             backoff_remaining -= 1
         if effective_rate > 0:
-            _time.sleep(effective_rate)
+            if collector is not None:
+                with collector.phase("rate_limit"):
+                    _time.sleep(effective_rate)
+            else:
+                _time.sleep(effective_rate)
 
 
 def collect_stock_date(
@@ -424,6 +484,7 @@ def collect_stock_date(
     resume: bool = False,
     on_progress: Callable[[ProgressEvent], None] | None = None,
     cancel_token: CancelToken | None = None,
+    collector: CaptureTimingCollector | None = None,
     initial_step_ms: int = DEFAULT_PAGE_STEP_MS,
 ) -> CollectResult:
     """Drive the full capture for one Stock-Date.
@@ -441,7 +502,7 @@ def collect_stock_date(
     if is_today_too_early(date, now):
         raise TodayTooEarlyRefused(
             f"date={date} is today (KST) and now.hour={now.hour} < {_TODAY_TOO_EARLY_HOUR}. "
-            "Wait until 18:00 KST."
+            "Wait until 17:00 KST."
         )
 
     raw_dir = data_dir / "raw" / date / code
@@ -453,12 +514,24 @@ def collect_stock_date(
     # before zero-byte artifacts pollute disk.
     info_path = raw_dir / "info.tsv"
     if not (resume and info_path.exists()):
-        info_body = client.fetch_info(code, date)
+        if collector is not None:
+            with collector.phase("http_fetch"):
+                info_body = client.fetch_info(code, date)
+        else:
+            info_body = client.fetch_info(code, date)
         if not info_body.strip():
             raise UpstreamNoDataError(code, date)
-        info_path.write_text(info_body, encoding="utf-8")
+        if collector is not None:
+            with collector.phase("disk_write"):
+                info_path.write_text(info_body, encoding="utf-8")
+        else:
+            info_path.write_text(info_body, encoding="utf-8")
         if rate_limit_s > 0:
-            _time.sleep(rate_limit_s)
+            if collector is not None:
+                with collector.phase("rate_limit"):
+                    _time.sleep(rate_limit_s)
+            else:
+                _time.sleep(rate_limit_s)
 
     # 2. Page Step loop
     if resume:
@@ -472,14 +545,23 @@ def collect_stock_date(
         raw_dir, client, code, date, started_at, rate_limit_s, seen_seqs, page_idx, t,
         on_progress=on_progress,
         cancel_token=cancel_token,
+        collector=collector,
         initial_step_ms=initial_step_ms,
     )
 
     # 3. chart.php once
     if cancel_token is not None and cancel_token.cancelled:
         raise CaptureCancelled("capture cancelled before chart fetch")
-    chart_body = client.fetch_chart(code, date, CHART_FINAL_TIME_MS)
-    (raw_dir / "chart.tsv").write_text(chart_body, encoding="utf-8")
+    if collector is not None:
+        with collector.phase("http_fetch"):
+            chart_body = client.fetch_chart(code, date, CHART_FINAL_TIME_MS)
+    else:
+        chart_body = client.fetch_chart(code, date, CHART_FINAL_TIME_MS)
+    if collector is not None:
+        with collector.phase("disk_write"):
+            (raw_dir / "chart.tsv").write_text(chart_body, encoding="utf-8")
+    else:
+        (raw_dir / "chart.tsv").write_text(chart_body, encoding="utf-8")
 
     # Stagnation abort writes finished=False so the parser's
     # ``collection_complete`` flag stays False and the resulting parquet is

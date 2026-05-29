@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { useRange } from './range';
 import * as client from './client';
 import type { RangeBundle } from './types';
+import { useSourcePreferenceStore } from '../state/sourcePreference';
 
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -24,7 +25,11 @@ const fakeBundle: RangeBundle = {
 };
 
 describe('useRange', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay' });
+  });
 
   it('disabled when any input is null', () => {
     const spy = vi.spyOn(client, 'apiCall');
@@ -44,7 +49,7 @@ describe('useRange', () => {
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(spy).toHaveBeenCalledWith(
-      '/api/range?code=005930&from=20260512&to=20260512&bucket_ms=300000',
+      expect.stringContaining('/api/range?code=005930&from=20260512&to=20260512&bucket_ms=300000'),
     );
   });
 
@@ -66,5 +71,18 @@ describe('useRange', () => {
     );
     expect(result.current.isLoading).toBe(false);
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('threads sourcePref into the query string and key', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue({} as RangeBundle);
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_live' });
+
+    renderHook(
+      () => useRange('005930', '20260520', '20260520', '1m'),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(client.apiCall).toHaveBeenCalled());
+    const calledWith = (client.apiCall as ReturnType<typeof vi.spyOn>).mock.calls[0][0] as string;
+    expect(calledWith).toContain('source_pref=kis_live');
   });
 });

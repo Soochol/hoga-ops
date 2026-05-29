@@ -3,18 +3,14 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-import duckdb
 import pyarrow.parquet as pq
 import pytest
 
 from hoga.tables.trades import (
     PARQUET_SCHEMA,
     PARSERS,
-    ApiTrade,
     Trade,
     TradeValidationError,
-    query_range,
-    query_up_to,
     validate,
     write_parquet,
 )
@@ -117,28 +113,6 @@ def test_write_parquet_roundtrip(tmp_path: Path) -> None:
     tbl = pq.read_table(out)
     assert tbl.num_rows == 3
     assert tbl.column("ts_ms").to_pylist() == sorted(tbl.column("ts_ms").to_pylist()), "ascending"
-
-
-def test_query_up_to_returns_api_models_descending(tmp_path: Path) -> None:
-    out = tmp_path / "trades.parquet"
-    write_parquet([PARSERS[1](_AUCTION_TRADE), PARSERS[1](_CONTINUOUS_TRADE)], out)
-    con = duckdb.connect()
-    rows = query_up_to(con, path=out, t_ms=90009000, limit=10)
-    assert len(rows) == 2
-    assert all(isinstance(r, ApiTrade) for r in rows)
-    assert rows[0].ts_ms >= rows[1].ts_ms  # descending
-    # ApiTrade has no forensic fields (unknown_14, _16, _17, _18 absent).
-    assert not hasattr(rows[0], "unknown_14")
-
-
-def test_query_range_returns_api_models(tmp_path: Path) -> None:
-    out = tmp_path / "trades.parquet"
-    write_parquet([PARSERS[3](_PREMARKET), PARSERS[1](_AUCTION_TRADE)], out)
-    con = duckdb.connect()
-    rows = query_range(con, path=out, from_ms=90008000, to_ms=90009000, limit=10)
-    assert len(rows) == 1
-    assert isinstance(rows[0], ApiTrade)
-    assert rows[0].ts_ms == 90008618
 
 
 def test_validate_passes_for_monotonic_cum_vol() -> None:

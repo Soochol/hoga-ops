@@ -58,7 +58,7 @@ import {
 
 describe('watchlist manual catch-up', () => {
   it('catchupNow POSTs to /api/watchlist/{code}/catchup', async () => {
-    const fake: EnqueueResponse = { enqueued: [], deduped: [] };
+    const fake: EnqueueResponse = { enqueued: [], deduped: [], blocked: [] };
     vi.mocked(apiCall).mockResolvedValueOnce(fake);
     const r = await catchupNow('003490');
     const [path, init] = vi.mocked(apiCall).mock.calls[0];

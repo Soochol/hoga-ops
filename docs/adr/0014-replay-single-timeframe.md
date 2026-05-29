@@ -1,6 +1,6 @@
 # 0014 — All Replay series share a single Timeframe
 
-**Status:** accepted (2026-05-22)
+**Status:** superseded by /replay removal (2026-05-29) — the Replay Viewer no longer exists; `/live` uses `LiveTimeframe` per ADR-0041.
 
 ## Decision
 

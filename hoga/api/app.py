@@ -28,6 +28,18 @@ from hoga.api.watchlist_routes import build_router as build_watchlist_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
+from hoga.live.api import build_router as build_live_router
+from hoga.live.lifecycle import get_buffer as live_get_buffer
+from hoga.live.lifecycle import get_kis_client as live_get_kis_client
+from hoga.live.lifecycle import get_status as live_get_status
+from hoga.live.lifecycle import (
+    get_active_codes,
+    start_live_poller,
+    start_today_promoter,
+    stop_live_poller,
+    stop_today_promoter,
+)
+from hoga.live.migrate import migrate_to_v2_layout
 
 log = logging.getLogger(__name__)
 
@@ -52,8 +64,20 @@ def create_app(data_dir: Path) -> FastAPI:
     else:
         client_factory = _real_client_factory
 
+    async def _live_control(action: str) -> None:
+        """Dispatch POST /api/live/control actions to the lifecycle layer."""
+        if action == "start":
+            await start_live_poller(data_dir=data_dir)
+        elif action == "stop":
+            await stop_live_poller()
+        elif action == "pause":
+            # Stage 8: treat pause as stop. Future: true pause (freeze loop
+            # but keep buffer + status alive).
+            await stop_live_poller()
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        migrate_to_v2_layout(data_dir)
         observer.start()
         # bus + loop for thread-safe publishes from the watchdog thread.
         set_captures_bus(bus, asyncio.get_running_loop())
@@ -65,6 +89,24 @@ def create_app(data_dir: Path) -> FastAPI:
         # `start_scheduler` raises.
         _scheduler_tasks: list = []
         _scheduler_tasks = start_scheduler(data_dir)
+        # Stage 8: Start the live poller (graceful degradation: no-op if
+        # KIS_APP_KEY/SECRET missing or watchlist is empty).
+        await start_live_poller(data_dir=data_dir)
+        # ADR-0043: Today Promotion task — overwrite today's jsonl to parquet
+        # every N minutes so /api/range covers today without waiting for the
+        # 17:00 Daily Promotion batch. Optional kill-switch via
+        # HOGA_LIVE_TODAY_PROMOTE_ENABLED=false; interval tunable via
+        # HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S (default 300 = 5 min).
+        today_promoter_task: asyncio.Task | None = None
+        if os.environ.get("HOGA_LIVE_TODAY_PROMOTE_ENABLED", "true").lower() != "false":
+            today_promote_interval_s = float(
+                os.environ.get("HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S", "300")
+            )
+            today_promoter_task = await start_today_promoter(
+                data_dir=data_dir,
+                get_active_codes=get_active_codes,
+                interval_s=today_promote_interval_s,
+            )
         # Tier 1 of the pykrx 3-tier cache policy: load Symbol Master from disk
         # at boot so GET /api/symbols/all is immediately warm without a network call.
         _symbols_module.load_disk_state(
@@ -73,6 +115,12 @@ def create_app(data_dir: Path) -> FastAPI:
         try:
             yield
         finally:
+            # ADR-0043: stop Today Promotion before live poller so the loop
+            # doesn't observe a half-cancelled poller state.
+            await stop_today_promoter(today_promoter_task)
+            # Stop the live poller before scheduler to avoid new ticks being
+            # written while the scheduler is shutting down.
+            await stop_live_poller()
             # Cancel scheduler tasks BEFORE stopping the worker pool: the
             # scheduler enqueues to the workers, so kill the trigger first
             # and then let the workers drain.
@@ -113,6 +161,12 @@ def create_app(data_dir: Path) -> FastAPI:
         allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
+    # Liveness probe. Used by the Playwright e2e webServer config and by any
+    # process supervisor that needs a no-side-effects 200 OK.
+    @app.get("/health")
+    def _health() -> dict[str, str]:
+        return {"status": "ok"}
+
     app.include_router(build_router(engine))
     app.include_router(sse_router)
     app.include_router(
@@ -123,6 +177,15 @@ def create_app(data_dir: Path) -> FastAPI:
     )
     app.include_router(build_calendar_router(data_dir=data_dir))
     app.include_router(build_watchlist_router(data_dir=data_dir))
+    app.include_router(
+        build_live_router(
+            get_status=live_get_status,
+            get_buffer=live_get_buffer,
+            on_control=_live_control,
+            get_kis_client=live_get_kis_client,
+            data_dir=data_dir,
+        )
+    )
     if os.environ.get("HOGA_ENABLE_TEST_ENDPOINTS") == "1":
         app.include_router(build_test_router(data_dir))
     app.state.engine = engine

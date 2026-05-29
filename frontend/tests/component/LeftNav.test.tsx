@@ -1,4 +1,4 @@
-import { vi, beforeEach } from 'vitest';
+import { it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -28,10 +28,11 @@ function W({ children }: { children: ReactNode }) {
   );
 }
 
-it('renders 4 nav items', () => {
+it('renders the current nav items', () => {
   render(<LeftNav />, { wrapper: W });
-  expect(screen.getByText('Replay Viewer')).toBeInTheDocument();
+  expect(screen.getByText('Live')).toBeInTheDocument();
   expect(screen.getByText('Inventory')).toBeInTheDocument();
   expect(screen.getByText('Capture')).toBeInTheDocument();
+  expect(screen.getByText('Watchlist')).toBeInTheDocument();
   expect(screen.getByText('Settings')).toBeInTheDocument();
 });

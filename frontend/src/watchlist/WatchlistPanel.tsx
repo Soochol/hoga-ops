@@ -145,13 +145,13 @@ export function WatchlistPanel() {
                 style={{ background: 'var(--selection-tint)' }}>
             <Countdown targetMs={data.next_run_at_ms} />
           </span>
-          <span className="text-fg-dimmer text-xs">(오늘 KST 18:00 · {isTradingHint})</span>
+          <span className="text-fg-dimmer text-xs">(오늘 KST 17:00 · {isTradingHint})</span>
         </p>
       </header>
 
       {recentAction?.kind === 'added' && (
         <Banner kind="success">
-          {`✓ ${symbolLabel(recentAction)} 추가됨. 내일 18:00부터 자동 수집됩니다.`}
+          {`✓ ${symbolLabel(recentAction)} 추가됨. 내일 17:00부터 자동 수집됩니다.`}
         </Banner>
       )}
 
@@ -198,7 +198,7 @@ export function WatchlistPanel() {
           <div className="p-12 text-center text-fg-dim text-sm leading-relaxed">
             자동 수집할 종목이 아직 없습니다.<br/>
             위에서 검색해서 추가하면 매일{' '}
-            <span className="text-accent font-medium">KST 18:00</span>에 자동으로 캡쳐됩니다.
+            <span className="text-accent font-medium">KST 17:00</span>에 자동으로 캡쳐됩니다.
           </div>
         ) : (
           <>

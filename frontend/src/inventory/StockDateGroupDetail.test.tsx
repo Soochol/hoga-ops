@@ -1,17 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StockDateGroupDetail } from './StockDateGroupDetail';
-import { useTabsStore } from '../state/tabs';
 import type { StockDate, QueueSnapshot } from '../api/types';
 import type { ReactNode } from 'react';
-
-const navigateMock = vi.fn();
-vi.mock('react-router', async () => {
-  const actual = await vi.importActual<typeof import('react-router')>('react-router');
-  return { ...actual, useNavigate: () => navigateMock };
-});
 
 // SSE stub — useCaptureQueue subscribes on mount; jsdom has no EventSource.
 vi.mock('../api/sse', () => ({
@@ -19,7 +12,8 @@ vi.mock('../api/sse', () => ({
 }));
 
 const row = (code: string, name: string, date: string,
-             disk_state: StockDate['disk_state'] = 'complete'): StockDate => ({
+             disk_state: StockDate['disk_state'] = 'complete',
+             overrides: Partial<StockDate> = {}): StockDate => ({
   date, code, name,
   regular_session_open_ms: 0, regular_session_close_ms: 0,
   data_window_first_ms: 0, data_window_last_ms: 0,
@@ -28,6 +22,10 @@ const row = (code: string, name: string, date: string,
   total_volume: 52_100_000, pages_collected: 1240, file_size_bytes: 13_200_000,
   today_open: 70_000, today_high: 73_000, today_low: 69_000, today_close: 72_400,
   disk_state,
+  full_capture_count: null,
+  fail_streak: 0,
+  blocked: false,
+  ...overrides,
 });
 
 const EMPTY_QUEUE: QueueSnapshot = {
@@ -58,11 +56,6 @@ function W(qc: QueryClient) {
 function renderDetail(rows: StockDate[], selectedCode: string | null, qc: QueryClient) {
   return render(<StockDateGroupDetail rows={rows} selectedCode={selectedCode} />, { wrapper: W(qc) });
 }
-
-beforeEach(() => {
-  navigateMock.mockReset();
-  useTabsStore.setState({ tabs: [] });
-});
 
 afterEach(() => { vi.restoreAllMocks(); });
 
@@ -95,15 +88,6 @@ describe('StockDateGroupDetail — header and existing behavior', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     renderDetail([row('005930', '삼성전자', '20260522')], null, qc);
     expect(screen.getByText('종목을 선택하세요')).toBeTruthy();
-  });
-
-  it('clicking a row navigates to /replay via useTabsStore', async () => {
-    setupFetch();
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-    renderDetail([row('005930', '삼성전자', '20260522')], '005930', qc);
-    // The whole row is clickable. Click the date cell.
-    fireEvent.click(screen.getByText('2026-05-22'));
-    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/replay'));
   });
 });
 
@@ -138,7 +122,6 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
       const body = JSON.parse((post![1] as RequestInit).body as string);
       expect(body).toEqual({ code: '005930', dates: ['20260520'], force_retry: true });
     });
-    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   it('row is in-flight when its (code, date) appears in queue.queued: icon disabled + animate-spin', async () => {
@@ -191,5 +174,107 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     renderDetail([row('005930', '삼성전자', '20260520', 'complete')], '005930', qc);
     expect(screen.queryByRole('button', { name: /Re-capture all incomplete/i })).toBeNull();
+  });
+});
+
+describe('StockDateGroupDetail full_capture_count column', () => {
+  beforeEach(() => { setupFetch(); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('renders faint "×1" when full_capture_count is null (legacy treated as ×1)', async () => {
+    const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: null };
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr');
+    expect(tr).not.toBeNull();
+    const cell = within(tr!).getByTestId('full-capture-count-cell');
+    expect(cell.textContent).toBe('×1');
+    // Tooltip stays honest about the legacy lower-bound nature.
+    expect(cell.querySelector('span')?.getAttribute('title')).toBe(
+      'Full Capture 횟수 미기록 (≥1로 간주)'
+    );
+  });
+
+  it('renders faint "×1" when full_capture_count is 1', async () => {
+    const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: 1 };
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    const cell = within(tr).getByTestId('full-capture-count-cell');
+    expect(cell.textContent).toBe('×1');
+  });
+
+  it('renders "×3" when full_capture_count is 3', async () => {
+    const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: 3 };
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    const cell = within(tr).getByTestId('full-capture-count-cell');
+    expect(cell.textContent).toBe('×3');
+  });
+
+  // ADR-0042: fail_streak / blocked surfacing.
+
+  it('renders 재시도 N/5 indicator when fail_streak > 0 and !blocked', async () => {
+    setupFetch();
+    const r = row('005930', '삼성전자', '20260522', 'source_partial', { fail_streak: 3 });
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    expect(within(tr).getByText('재시도 3/5')).toBeTruthy();
+    // The existing ↻ Re-capture button is still rendered (not blocked yet).
+    expect(within(tr).getByRole('button', { name: /Re-capture/i })).toBeTruthy();
+  });
+
+  it('renders 차단됨 (5/5) badge + 잠금 해제 button when blocked', async () => {
+    setupFetch();
+    const r = row('005930', '삼성전자', '20260522', 'source_partial', {
+      fail_streak: 5, blocked: true,
+    });
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    expect(within(tr).getByText('차단됨 (5/5)')).toBeTruthy();
+    expect(within(tr).getByRole('button', { name: /잠금 해제/ })).toBeTruthy();
+    // The normal Re-capture button should be replaced.
+    expect(within(tr).queryByRole('button', { name: /Re-capture this/i })).toBeNull();
+  });
+
+  it('blocked row does not show 재시도 N/5 indicator (badge takes over)', async () => {
+    setupFetch();
+    const r = row('005930', '삼성전자', '20260522', 'source_partial', {
+      fail_streak: 5, blocked: true,
+    });
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    expect(within(tr).queryByText(/재시도/)).toBeNull();
+  });
+
+  it('clicking 잠금 해제 POSTs to the unblock endpoint', async () => {
+    const fetchMock = setupFetch();
+    const r = row('005930', '삼성전자', '20260522', 'source_partial', {
+      fail_streak: 5, blocked: true,
+    });
+    renderDetail([r], '005930', new QueryClient());
+    const button = await screen.findByRole('button', { name: /잠금 해제/ });
+    fireEvent.click(button);
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls.filter((c) =>
+        String(c[0]).includes('/api/captures/items/005930/20260522/unblock'),
+      );
+      expect(calls.length).toBeGreaterThanOrEqual(1);
+      expect((calls[0][1] as RequestInit).method).toBe('POST');
+    });
+  });
+
+  it('normal row (fail_streak=0, !blocked) shows neither badge nor indicator', async () => {
+    setupFetch();
+    const r = row('005930', '삼성전자', '20260522', 'source_partial');
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    expect(within(tr).queryByText(/재시도/)).toBeNull();
+    expect(within(tr).queryByText(/차단됨/)).toBeNull();
   });
 });

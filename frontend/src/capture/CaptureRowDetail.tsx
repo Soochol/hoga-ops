@@ -1,5 +1,7 @@
 import type { CaptureError, QueueItem, UpstreamCode, ViolationWire } from '../api/types';
 import { captureFinishedHints } from '../api/upstream-hints';
+import { TimingPanel } from './timing/TimingPanel';
+import { useCaptureTimings } from './timing/useCaptureTimings';
 
 function ErrorBlock({ error }: { error: CaptureError }) {
   const knownHint = (error.code in captureFinishedHints)
@@ -27,6 +29,8 @@ function formatKstClock(unixMs: number | null): string {
 }
 
 export function CaptureRowDetail({ item }: { item: QueueItem }) {
+  const timingId = `${item.code}:${item.date}`;
+  const hasTiming = useCaptureTimings((s) => Boolean(s.timings[timingId]));
   return (
     <div
       data-testid={`queue-row-detail-${item.item_id}`}
@@ -76,6 +80,14 @@ export function CaptureRowDetail({ item }: { item: QueueItem }) {
             <WarningsBlock warnings={item.warnings} />
           </span>
         </>
+      )}
+      {hasTiming && (
+        <div
+          className="mt-sm pt-xs"
+          style={{ borderTop: '1px solid var(--border)', gridColumn: '1 / -1' }}
+        >
+          <TimingPanel id={timingId} />
+        </div>
       )}
     </div>
   );

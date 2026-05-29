@@ -78,6 +78,17 @@ describe('BrokerTrajectoryTable — render states', () => {
     render(<BrokerTrajectoryTable series={series} cursorMs={null} />);
     expect(screen.getAllByTestId('broker-row')).toHaveLength(10);
   });
+
+  it('renders the compact display label and exposes the canonical name as a tooltip', () => {
+    const series: BrokerSeriesEntry[] = [
+      entry('신한투자증권', [{ ts_ms: 100, net: -100 }]),
+    ];
+    render(<BrokerTrajectoryTable series={series} cursorMs={null} />);
+    // Compact label visible in the row.
+    expect(screen.getByText('신한투자')).toBeInTheDocument();
+    // Canonical name accessible via title attribute for disambiguation.
+    expect(screen.getByTitle('신한투자증권')).toBeInTheDocument();
+  });
 });
 
 describe('BrokerTrajectoryTable — sparkline', () => {

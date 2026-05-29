@@ -15,14 +15,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path as FPath
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+import hoga
 from hoga.api.calendar import KrxUnavailableError
 from hoga.api.captures_persistence import load_manifest, manifest_path, save_manifest
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
 from hoga.api.error_codes import CaptureErrorCode, UpstreamCode
 from hoga.api.models import (
+    BlockedItem,
     CaptureDismissedEvent,
     CaptureError,
     CaptureFinishedEvent,
@@ -34,6 +37,7 @@ from hoga.api.models import (
     CaptureQueuePausedEvent,
     CaptureQueueResumedEvent,
     CaptureResult,
+    CaptureTimingEvent,
     EnqueueDedupedRow,
     EnqueueRequest,
     EnqueueResponse,
@@ -44,14 +48,18 @@ from hoga.api.models import (
     RetryResponse,
     RetrySkippedRow,
     SkipReason,
+    TimingEnv,
     ViolationModel,
 )
 from hoga.api import watchlist
 from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
+from hoga.collector.timing import CaptureTimingCollector
+from hoga.collector.timing_writer import write_timing_report
 from hoga.collector.orchestrator import (
     CHART_FINAL_TIME_MS,
     DATA_WINDOW_START_MS,
+    DEFAULT_PAGE_STEP_MS,
     DEFAULT_RATE_LIMIT_S,
     CancelToken,
     CaptureCancelled,
@@ -60,6 +68,7 @@ from hoga.collector.orchestrator import (
     UpstreamNoDataError,
     collect_stock_date,
 )
+from hoga.util.git_sha import get_git_sha
 from hoga.config import CookieMissingError
 from hoga.parser import parse_stock_date
 from hoga.tables.snapshots import SnapshotValidationError
@@ -198,7 +207,15 @@ _active: dict[str, Any] = {}                            # item_id → QueueItemS
 _done: list[Any] = []                                   # terminal items, cleared by DELETE /done
 _inflight_paths: set[tuple[str, str]] = set()           # (code, date) — see spec §11 Q15 Layer 2
 _queue_paused: bool = False
+_fail_streaks: dict[str, int] = {}                      # ADR-0042: per-(Code, Stock-Date) consecutive failed+skipped counter
 _max_concurrent: int = int(os.environ.get("HOGA_MAX_CONCURRENT", "3"))
+
+
+def _timing_enabled() -> bool:
+    """Read HOGA_CAPTURE_TIMING at call time. Default ON; only explicit
+    falsy values disable. Empty string is treated as 'unset' (= default ON)."""
+    raw = os.environ.get("HOGA_CAPTURE_TIMING", "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
 _wakeup: asyncio.Event | None = None                    # lazily constructed when the first worker starts
 _workers: list[asyncio.Task] = []                       # populated by app lifespan; stopped on shutdown
 
@@ -248,6 +265,7 @@ def reset_state_for_tests() -> None:
     _active.clear()
     _done.clear()
     _inflight_paths.clear()
+    _fail_streaks.clear()  # ADR-0042 — keep test isolation for the new counter
     _queue_paused = False
     # _wakeup is an asyncio.Event bound to an event loop — pytest-asyncio
     # creates a fresh loop per test, so we must drop the stale Event or the
@@ -307,12 +325,50 @@ def _items_in_restore_order() -> Iterator[QueueItemState]:
             yield s
 
 
+def _apply_terminal_to_streaks(
+    fail_streaks: dict[str, int], code: str, date: str, phase: str,
+) -> None:
+    """Mutate ``fail_streaks`` in place per ADR-0042:
+
+    - ``phase == "done"``                → counter reset (key removed for tidiness)
+    - ``phase in {"failed", "skipped"}`` → counter += 1
+    - ``phase == "cancelled"``           → no change (user-initiated; external-call status unknown)
+    - any other phase                    → ValueError (programmer bug; phase enum is closed)
+
+    Caller is responsible for persisting after mutation.
+    """
+    from hoga.api.fail_streak import streak_key
+    key = streak_key(code, date)
+    if phase == "done":
+        fail_streaks.pop(key, None)
+    elif phase in ("failed", "skipped"):
+        fail_streaks[key] = fail_streaks.get(key, 0) + 1
+    elif phase == "cancelled":
+        pass
+    else:
+        raise ValueError(f"unexpected terminal phase: {phase!r}")
+
+
+def apply_terminal_to_manifest(
+    manifest: QueueManifest, code: str, date: str, phase: str,
+) -> None:
+    """ADR-0042 worker-terminal hook (pure function on a QueueManifest).
+
+    Thin wrapper around :func:`_apply_terminal_to_streaks` that operates on
+    ``manifest.fail_streaks``. Tests use this signature directly; the in-process
+    call site mutates the module-global :data:`_fail_streaks` via the inner
+    helper for the same logic.
+    """
+    _apply_terminal_to_streaks(manifest.fail_streaks, code, date, phase)
+
+
 def _persist_queue_locked() -> None:
-    """Snapshot _active + _queue + _queue_paused to the on-disk manifest.
+    """Snapshot _active + _queue + _queue_paused + _fail_streaks to the
+    on-disk manifest.
 
     INVARIANT: caller holds ``_lock``. Called from every mutation site that
-    touches _queue or _active. _done is intentionally excluded (volatile —
-    cleared by DELETE /done; see ADR-0019).
+    touches _queue or _active or _fail_streaks. _done is intentionally
+    excluded (volatile — cleared by DELETE /done; see ADR-0019).
     """
     if _data_dir is None:
         return  # test fixture without data_dir wired — no lock check needed
@@ -329,7 +385,10 @@ def _persist_queue_locked() -> None:
         )
         for s in _items_in_restore_order()
     ]
-    save_manifest(_data_dir, QueueManifest(paused=_queue_paused, items=items))
+    save_manifest(
+        _data_dir,
+        QueueManifest(paused=_queue_paused, items=items, fail_streaks=dict(_fail_streaks)),
+    )
 
 
 def _restore_queue_from_manifest(data_dir: Path) -> None:
@@ -352,11 +411,12 @@ def _restore_queue_from_manifest(data_dir: Path) -> None:
     on the same Stock-Date — both crash points restore to the same recovered
     shape.
     """
-    global _queue_paused  # noqa: PLW0603 — startup-only module write
+    global _queue_paused, _fail_streaks  # noqa: PLW0603 — startup-only module write
     manifest = load_manifest(data_dir)
     if manifest is None:
         return
     _queue_paused = manifest.paused
+    _fail_streaks = dict(manifest.fail_streaks)  # ADR-0042 — restore counter across restart
     for item in manifest.items:
         state = QueueItemState(
             item_id=item.item_id,
@@ -503,7 +563,12 @@ async def _cancel_aware_sleep(state: QueueItemState, delay: float) -> bool:
         return False
 
 
-async def _run_capture_and_parse(state: QueueItemState, resume: bool) -> None:
+async def _run_capture_and_parse(
+    state: QueueItemState,
+    *,
+    resume: bool,
+    collector: CaptureTimingCollector | None = None,
+) -> None:
     """Wrap ``_run_capture_inner`` with 429 exponential backoff.
 
     3 retries (5/10/30s) then propagate. Cancellation during the sleep raises
@@ -517,19 +582,30 @@ async def _run_capture_and_parse(state: QueueItemState, resume: bool) -> None:
     last_exc: BaseException | None = None
     for delay in (*_BACKOFF_DELAYS, None):
         try:
-            await _run_capture_inner(state, resume=resume)
+            await _run_capture_inner(state, resume=resume, collector=collector)
             return
         except HogaplayHTTPError as exc:
             if exc.status_code != 429 or delay is None:
                 raise
             last_exc = exc
-            if await _cancel_aware_sleep(state, delay):
+            if collector is not None:
+                collector.record_error("http_429")
+                with collector.phase("backoff"):
+                    cancelled = await _cancel_aware_sleep(state, delay)
+            else:
+                cancelled = await _cancel_aware_sleep(state, delay)
+            if cancelled:
                 raise CaptureCancelled() from exc
     if last_exc is not None:
         raise last_exc
 
 
-async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
+async def _run_capture_inner(
+    state: QueueItemState,
+    *,
+    resume: bool,
+    collector: CaptureTimingCollector | None = None,
+) -> None:
     """Run the collector then the parser. Cookie-missing/expired rejection
     happens via the cookie-pause path in the worker loop. Task 11's
     ``_run_capture_and_parse`` wrapper provides 429 backoff around this.
@@ -565,6 +641,7 @@ async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
                 resume=resume,
                 on_progress=_make_progress_callback(state),
                 cancel_token=state.cancel_token,
+                collector=collector,
             ),
         )
     except UpstreamNoDataError:
@@ -592,12 +669,21 @@ async def _run_capture_inner(state: QueueItemState, resume: bool) -> None:
     # drift, unknown event types) still propagate to the worker loop's
     # exception handler and flip phase to 'failed' as before.
     try:
-        await loop.run_in_executor(
-            None,
-            lambda: parse_stock_date(
-                code=state.code, date=state.date, data_dir=data_dir, lenient=False,
-            ),
-        )
+        if collector is not None:
+            with collector.phase("parse"):
+                await loop.run_in_executor(
+                    None,
+                    lambda: parse_stock_date(
+                        code=state.code, date=state.date, data_dir=data_dir, lenient=False,
+                    ),
+                )
+        else:
+            await loop.run_in_executor(
+                None,
+                lambda: parse_stock_date(
+                    code=state.code, date=state.date, data_dir=data_dir, lenient=False,
+                ),
+            )
     except (TradeValidationError, SnapshotValidationError) as exc:
         await loop.run_in_executor(
             None,
@@ -637,6 +723,14 @@ async def _run_item(state: QueueItemState) -> None:
     - CLIENT_INCOMPLETE → resume=True (continue from existing pages)
     - NONE → fresh capture (resume=False)
     """
+    collector: CaptureTimingCollector | None = (
+        CaptureTimingCollector(state.code, state.date) if _timing_enabled() else None
+    )
+    # TODO(timing): plumb effective rate, see plan §13 step 4.
+    # _run_capture_inner does not currently surface the rate it passed to
+    # collect_stock_date back to this scope; recording the module default
+    # is accurate for the common case (no environment-driven override).
+    effective_rate_s: float = DEFAULT_RATE_LIMIT_S
     data_dir = _require_data_dir()
     decision = decide_capture(
         data_dir=data_dir,
@@ -648,7 +742,50 @@ async def _run_item(state: QueueItemState) -> None:
         state.phase = "skipped"
         state.skip_reason = decision.skip_reason
         return
-    await _run_capture_and_parse(state, resume=decision.resume)
+    try:
+        try:
+            await _run_capture_and_parse(state, resume=decision.resume, collector=collector)
+        except CookieExpiredError:
+            # Record before re-raising so the error lands in the collector's
+            # ``error_counts`` / page errors. The worker loop's existing
+            # ``_handle_cookie_expired(state)`` handler then pauses the queue.
+            # No ``cookie_pause`` phase wrap here: the failing item is terminal
+            # and never sleeps awaiting a resume (see plan-review eng B2).
+            if collector is not None:
+                collector.record_error("cookie_expired")
+            raise
+    finally:
+        # Best-effort timing emit. Runs on success, failure, AND cancellation
+        # — the finally guarantees we always persist what we measured. Any
+        # exception in this block is swallowed and logged so a timing-writer
+        # bug can never break the capture pipeline itself.
+        if collector is not None:
+            try:
+                env = TimingEnv(
+                    rate_limit_s=effective_rate_s,
+                    max_concurrent=_max_concurrent,
+                    page_step_ms_initial=DEFAULT_PAGE_STEP_MS,
+                    hoga_version=hoga.__version__,
+                    git_sha=get_git_sha(),
+                )
+                report = collector.to_report(env=env)
+                # JSON first so any consumer reacting to the SSE event can
+                # immediately open the file and see a complete report.
+                write_timing_report(_require_data_dir(), report)
+                # Then SSE summary (no per-page detail on the wire).
+                _publish_event(
+                    CaptureTimingEvent(
+                        id=f"{state.code}:{state.date}",
+                        summary=report.summary,
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 — never break the capture pipeline
+                logging.getLogger(__name__).warning(
+                    "capture_timing emit failed for %s/%s: %r",
+                    state.code,
+                    state.date,
+                    exc,
+                )
 
 
 async def _finalize_item(state: QueueItemState) -> None:
@@ -659,7 +796,10 @@ async def _finalize_item(state: QueueItemState) -> None:
         _active.pop(state.item_id, None)
         _inflight_paths.discard((state.code, state.date))
         _done.append(state)
-        _persist_queue_locked()  # ADR-0019 — item left _active
+        # ADR-0042: update fail_streak BEFORE persist so the manifest write
+        # carries the new counter value.
+        _apply_terminal_to_streaks(_fail_streaks, state.code, state.date, state.phase)
+        _persist_queue_locked()  # ADR-0019 + ADR-0042 — item left _active, fail_streak updated
         # Drain detection — also check we're not paused (drained only fires
         # when the queue has naturally bottomed out).
         drained_event: CaptureQueueDrainedEvent | None = None
@@ -1069,7 +1209,7 @@ async def enqueue_items_core(
     ``_require_data_dir()`` and ``_now_kst()``.
 
     Q14 guard: any date in the request equal to today_kst with
-    now.hour < 18 → 400 today_too_early.
+    now.hour < 17 → 400 today_too_early.
     Q15 Layer 1: per-(code, date) dedupe against
     _queue ∪ _active ∪ _inflight_paths and within-request duplicates.
     Returns the dedupe list in the response.
@@ -1109,7 +1249,7 @@ async def enqueue_items_core(
         raise HTTPException(status_code=400, detail={
             "code": CaptureErrorCode.TODAY_TOO_EARLY,
             "message": (
-                f"Dates {too_early} are today (KST) and now.hour={now.hour} < 18."
+                f"Dates {too_early} are today (KST) and now.hour={now.hour} < 17."
             ),
             "dates": too_early,
         })
@@ -1118,9 +1258,28 @@ async def enqueue_items_core(
     #    PLUS phase-aware dedupe against _done (ADR-0033).
     enqueued: list[QueueItemState] = []
     deduped_rows: list[EnqueueDedupedRow] = []
+    blocked_items: list[BlockedItem] = []
     done_dismissed_ids: list[str] = []
     enqueued_at_ms = int(time.time() * 1000)
     async with _lock:
+        # ADR-0042 fail-streak gate. Runs INSIDE the lock (so _fail_streaks is
+        # not racing a concurrent _finalize_item) but BEFORE the Q15/ADR-0033
+        # dedupe loop, so a blocked (Code, Stock-Date) never reaches Implicit
+        # Retry. force_retry=true does NOT bypass this gate — that's the whole
+        # point of the cap. blocked pairs are removed from the candidate list.
+        from hoga.api.fail_streak import ATTEMPT_CAP, streak_key
+        unblocked_dates: list[str] = []
+        for date in candidate_dates:
+            current = _fail_streaks.get(streak_key(req.code, date), 0)
+            if current >= ATTEMPT_CAP:
+                blocked_items.append(BlockedItem(
+                    code=req.code, date=date, fail_streak=current,
+                    reason="fail_streak_exceeded",
+                ))
+            else:
+                unblocked_dates.append(date)
+        candidate_dates = unblocked_dates
+
         active_pairs = {(s.code, s.date) for s in _active.values()}
         queue_pairs = {(s.code, s.date) for s in _queue}
         existing_pairs = set(_inflight_paths) | queue_pairs | active_pairs
@@ -1205,6 +1364,7 @@ async def enqueue_items_core(
     return EnqueueResponse(
         enqueued=[s.to_wire() for s in enqueued],
         deduped=deduped_rows,
+        blocked=blocked_items,
     )
 
 
@@ -1227,14 +1387,46 @@ def build_router(
     async def get_queue() -> QueueSnapshot:
         return get_queue_snapshot()
 
-    @router.post("/items", status_code=201)
-    async def enqueue_items(req: EnqueueRequest) -> EnqueueResponse:
-        """Thin wrapper around ``enqueue_items_core`` (ADR-0034)."""
-        return await enqueue_items_core(
+    @router.post("/items", status_code=201, response_model=EnqueueResponse)
+    async def enqueue_items(req: EnqueueRequest):
+        """Thin wrapper around ``enqueue_items_core`` (ADR-0034).
+
+        ADR-0042: if every requested (Code, Stock-Date) is blocked by the
+        fail_streak cap, the whole request was rejected — return HTTP 409.
+        Partial cases (some accepted, some blocked) keep the existing 201
+        partial-success shape (ADR-0033 pattern). Return annotation is
+        intentionally omitted: a JSONResponse bypasses Pydantic serialization
+        for the 409 branch while ``response_model=EnqueueResponse`` keeps the
+        OpenAPI schema coherent.
+        """
+        resp = await enqueue_items_core(
             req,
             data_dir=_require_data_dir(),
             now=_now_kst(),
         )
+        if resp.blocked and not resp.enqueued and not resp.deduped:
+            return JSONResponse(content=resp.model_dump(mode="json"), status_code=409)
+        return resp
+
+    @router.post("/items/{code}/{date}/unblock", status_code=200)
+    async def unblock_item(
+        code: str = FPath(pattern=r"^\d{6}$"),
+        date: str = FPath(pattern=r"^\d{8}$"),
+    ) -> dict:
+        """ADR-0042: zero the fail_streak counter for (code, date).
+
+        Idempotent. Returns ``action: "unblocked"`` when a key was cleared,
+        ``"noop"`` when the counter was already 0. Mirrors the cancel-handler
+        pattern (line 1344): acquire ``_lock``, mutate, persist, return dict.
+        """
+        from hoga.api.fail_streak import streak_key
+        key = streak_key(code, date)
+        async with _lock:
+            if key in _fail_streaks:
+                del _fail_streaks[key]
+                _persist_queue_locked()  # ADR-0019 + ADR-0042
+                return {"code": code, "date": date, "fail_streak": 0, "action": "unblocked"}
+        return {"code": code, "date": date, "fail_streak": 0, "action": "noop"}
 
     @router.post("/items/retry", status_code=201)
     async def retry_items_route(req: RetryRequest) -> RetryResponse:

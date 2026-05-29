@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { BrokerSeriesEntry, BrokerSeriesPoint } from '../api/types';
+import { brokerDisplayShort } from './brokerDisplayNames';
 
 /** Gap detection threshold (ms). Consecutive points farther apart are
  *  rendered with a dashed segment indicating the broker was outside top-5
@@ -56,7 +57,9 @@ export default function BrokerTrajectoryTable({ series, cursorMs }: Props) {
             data-testid="broker-row"
             className="grid grid-cols-[60px_1fr_80px] gap-2 px-2.5 py-0.5 items-center"
           >
-            <span className="truncate">{trunc(entry.broker)}</span>
+            <span className="truncate" title={entry.broker}>
+              {brokerDisplayShort(entry.broker)}
+            </span>
             <Sparkline entry={entry} cursorMs={cursorMs} dayRange={dayRange} />
             <span
               className={
@@ -75,12 +78,6 @@ export default function BrokerTrajectoryTable({ series, cursorMs }: Props) {
       })}
     </div>
   );
-}
-
-function trunc(name: string): string {
-  // Korean broker names are typically already short. Cap at 4 characters
-  // (carry-over from the prior BrokerNetTable convention).
-  return name.length > 4 ? name.slice(0, 4) : name;
 }
 
 /** Pure function. Binary-searches entry.points for the last ts <= cursorMs.

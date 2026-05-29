@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 
 import duckdb
 import pyarrow as pa
-import pyarrow.parquet as pq
 
 BrokerSide = Literal["buy", "sell"]
 TOP_N = 5
@@ -116,7 +115,8 @@ def write_parquet(rows: Iterable[BrokerRow], path: Path) -> None:
         "qty_today": pa.array([r.qty_today for r in sorted_rows], type=pa.int32()),
         "qty_delta": pa.array([r.qty_delta for r in sorted_rows], type=pa.int32()),
     }
-    pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
+    from hoga.api._atomic_write import atomic_write_parquet_table
+    atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
 def query_day_series(
@@ -129,32 +129,25 @@ def query_day_series(
     groups in Python into one BrokerSeriesEntry per broker. Returns at most
     10 entries sorted by abs(final_net) desc, final_net desc.
 
+    Broker names are canonicalized (see ``hoga.broker_names``) before the
+    Python-side group so hogaplay and KIS aliases for the same KRX member
+    firm collapse into a single entry.
+
     `points` contains only observed snapshots — no synthetic forward-fill
     for gaps when the broker fell out of both top-5 lists (the frontend
     renders such gaps with a dashed line; see ADR-0023).
     """
     from hoga.api.models import BrokerSeriesEntry, BrokerSeriesPoint  # local: avoid cycle
+    from hoga.broker_names import canonical
 
     rows = con.execute(
         """
-        WITH per_snapshot AS (
-            SELECT
-                broker,
-                ts_ms,
-                SUM(CASE WHEN side = 'buy' THEN qty_today ELSE -qty_today END) AS net
-            FROM read_parquet(?)
-            GROUP BY broker, ts_ms
-        )
         SELECT
             broker,
             ts_ms,
-            net,
-            LAST_VALUE(net) OVER (
-                PARTITION BY broker
-                ORDER BY ts_ms
-                ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
-            ) AS final_net
-        FROM per_snapshot
+            SUM(CASE WHEN side = 'buy' THEN qty_today ELSE -qty_today END) AS net
+        FROM read_parquet(?)
+        GROUP BY broker, ts_ms
         ORDER BY broker, ts_ms
         """,
         [str(path)],
@@ -163,21 +156,27 @@ def query_day_series(
     if not rows:
         return []
 
-    # Group rows by broker (rows are already broker-major then ts-ascending).
-    by_broker: dict[str, tuple[int, list[BrokerSeriesPoint]]] = {}
-    for broker, ts_ms, net, final_net in rows:
-        if broker not in by_broker:
-            by_broker[broker] = (int(final_net), [])
-        by_broker[broker][1].append(BrokerSeriesPoint(ts_ms=int(ts_ms), net=int(net)))
+    # Canonicalize broker names then re-collapse: two raw aliases for the
+    # same firm at the same ts_ms must sum into one signed point.
+    collapsed: dict[tuple[str, int], int] = {}
+    for raw_broker, ts_ms, net in rows:
+        key = (canonical(raw_broker), int(ts_ms))
+        collapsed[key] = collapsed.get(key, 0) + int(net)
+
+    by_broker: dict[str, list[BrokerSeriesPoint]] = {}
+    for (broker, ts_ms), net in sorted(collapsed.items()):
+        by_broker.setdefault(broker, []).append(
+            BrokerSeriesPoint(ts_ms=ts_ms, net=net)
+        )
 
     entries = [
         BrokerSeriesEntry(
             broker=broker,
-            final_net=final_net,
-            dominant_side="buy" if final_net >= 0 else "sell",
+            final_net=points[-1].net,
+            dominant_side="buy" if points[-1].net >= 0 else "sell",
             points=points,
         )
-        for broker, (final_net, points) in by_broker.items()
+        for broker, points in by_broker.items()
     ]
     entries.sort(key=lambda e: (-abs(e.final_net), -e.final_net))
     return entries[:10]

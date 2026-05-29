@@ -6,7 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 
-def _build_range_bundle_stub(*, code, from_date, to_date, bucket_ms):
+def _build_range_bundle_stub(*, code, from_date, to_date, bucket_ms, source_pref="hogaplay"):
     """Return a minimal valid RangeBundle for happy-path tests."""
     from hoga.api.models import (
         FillStrength,
@@ -72,8 +72,10 @@ def test_api_range_400_on_from_gt_to(app_client: TestClient) -> None:
     assert r.status_code == 400
 
 
-def test_api_range_404_on_empty_inventory(app_client: TestClient) -> None:
-    # Patch engine inventory lookup to return empty → build_range_bundle raises 404.
+def test_api_range_empty_inventory_returns_empty_bundle(app_client: TestClient) -> None:
+    # Spec 2026-05-27 §4.3: empty range returns 200 + empty bundle so /live's
+    # lazy-fetch doesn't have to special-case 404 handling. Today's data is
+    # fetched separately via SSE.
     with patch(
         "hoga.api.queries.QueryEngine.list_stock_dates_in_range",
         return_value=[],
@@ -81,7 +83,17 @@ def test_api_range_404_on_empty_inventory(app_client: TestClient) -> None:
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000"
         )
-    assert r.status_code == 404
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["segments"] == []
+    assert body["candles"] == []
+    assert body["quote_ratio"]["points"] == []
+    assert body["fill_strength"]["points"] == []
+    assert body["excluded_dates"] == []
+    assert body["code"] == "005930"
+    assert body["from_date"] == "20260512"
+    assert body["to_date"] == "20260512"
+    assert body["bucket_ms"] == 60000
 
 
 # --- ADR-0020: invariant outcomes surfaced on the wire ---
@@ -128,7 +140,7 @@ def test_api_range_surfaces_excluded_dates_on_wire(app_client: TestClient) -> No
         ))
         stack.enter_context(patch(
             "hoga.api.queries.QueryEngine.get_meta",
-            side_effect=lambda date, _code: metas[date],
+            side_effect=lambda date, _code, _source="hogaplay": metas[date],
         ))
         for pcm in _stub_slice_builders():
             stack.enter_context(pcm)
@@ -175,9 +187,10 @@ def test_api_range_surfaces_data_warnings_on_wire(app_client: TestClient) -> Non
     assert "collection.unique_events_ratio" in fired_ids
 
 
-def test_api_range_404_with_excluded_detail_when_all_invalid(app_client: TestClient) -> None:
-    """E2E: when every Stock-Date is INVALID, the existing 404 branch is reused
-    and the detail carries the excluded list for diagnostics."""
+def test_api_range_all_invalid_returns_empty_bundle_with_excluded(app_client: TestClient) -> None:
+    """Spec 2026-05-27 §4.3: when every Stock-Date is INVALID, return 200 with
+    an empty bundle whose excluded_dates carries the gated dates — the frontend
+    renders DataWarning UX from that list."""
     with patch(
         "hoga.api.queries.QueryEngine.list_stock_dates_in_range",
         return_value=["20260518"],
@@ -189,8 +202,80 @@ def test_api_range_404_with_excluded_detail_when_all_invalid(app_client: TestCli
             "/api/range?code=003490&from=20260518&to=20260518&bucket_ms=60000"
         )
 
-    assert r.status_code == 404
-    detail = r.json()["detail"]
-    assert isinstance(detail, dict)
-    assert "excluded" in detail
-    assert detail["excluded"][0]["date"] == "20260518"
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["segments"] == []
+    assert len(body["excluded_dates"]) == 1
+    assert body["excluded_dates"][0]["date"] == "20260518"
+
+
+def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
+    """source_pref query param is forwarded to build_range_bundle (ADR-0039)."""
+    captured: list[str] = []
+
+    def _stub(engine, *, code, from_date, to_date, bucket_ms, source_pref="hogaplay"):
+        captured.append(source_pref)
+        return _build_range_bundle_stub(
+            code=code,
+            from_date=from_date,
+            to_date=to_date,
+            bucket_ms=bucket_ms,
+            source_pref=source_pref,
+        )
+
+    with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
+        r = app_client.get(
+            "/api/range?code=005930&from=20260512&to=20260512"
+            "&bucket_ms=60000&source_pref=kis_live"
+        )
+    assert r.status_code == 200, r.text
+    assert captured == ["kis_live"]
+
+
+def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> None:
+    """source_pref defaults to 'hogaplay' when not provided (ADR-0039)."""
+    captured: list[str] = []
+
+    def _stub(engine, *, code, from_date, to_date, bucket_ms, source_pref="hogaplay"):
+        captured.append(source_pref)
+        return _build_range_bundle_stub(
+            code=code,
+            from_date=from_date,
+            to_date=to_date,
+            bucket_ms=bucket_ms,
+            source_pref=source_pref,
+        )
+
+    with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
+        r = app_client.get(
+            "/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000"
+        )
+    assert r.status_code == 200, r.text
+    assert captured == ["hogaplay"]
+
+
+# --- Roundtrip: parser write path is visible to /api/range read path ---
+
+
+def test_parser_output_visible_as_hogaplay_source(app_client: TestClient) -> None:
+    """parse_stock_date → /api/range round-trip surfaces the captured day under
+    source=hogaplay with non-empty candles.
+
+    Regression: when parser wrote to the flat `{date}/{code}/` path (pre v2
+    layout fix), `_resolve_source` ignored it (only scans subdirs). With
+    `kis_live` co-existing the resolver fell through to kis_live, whose
+    candles.parquet doesn't exist by design → empty chart. This test fails
+    if parser ever regresses to the flat layout.
+
+    Setup: the module-scoped `app_client` fixture already runs parse_stock_date
+    for 003490/20260519 via tiny_tsv, so this just exercises read-back.
+    """
+    r = app_client.get(
+        "/api/range?code=003490&from=20260519&to=20260519&bucket_ms=60000"
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["segments"]) == 1
+    assert body["segments"][0]["date"] == "20260519"
+    assert body["segments"][0]["source"] == "hogaplay"
+    assert len(body["candles"]) > 0

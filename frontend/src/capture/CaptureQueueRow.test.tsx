@@ -141,3 +141,69 @@ describe('CaptureQueueRow — inventory badge', () => {
     expect(screen.queryByText('inventory')).toBeNull();
   });
 });
+
+describe('CaptureQueueRow — Full Capture Count cell', () => {
+  it('renders "—" when fullCaptureCount is undefined (first-ever capture)', () => {
+    render(
+      <CaptureQueueRow
+        item={baseItem}
+        symbolName="삼성전자"
+        onCancel={() => {}}
+        onRetry={() => {}}
+      />,
+    );
+    const cell = screen.getByTestId('queue-row-full-capture-count');
+    expect(cell.textContent).toBe('—');
+  });
+
+  it('renders faint "×1" when fullCaptureCount is null (legacy meta)', () => {
+    render(
+      <CaptureQueueRow
+        item={baseItem}
+        symbolName="삼성전자"
+        fullCaptureCount={null}
+        onCancel={() => {}}
+        onRetry={() => {}}
+      />,
+    );
+    const cell = screen.getByTestId('queue-row-full-capture-count');
+    expect(cell.textContent).toBe('×1');
+    expect(cell.querySelector('span')?.getAttribute('title')).toBe(
+      'Full Capture 횟수 미기록 (≥1로 간주)',
+    );
+  });
+
+  it('renders "×1" with honest tooltip when fullCaptureCount is exactly 1', () => {
+    render(
+      <CaptureQueueRow
+        item={baseItem}
+        symbolName="삼성전자"
+        fullCaptureCount={1}
+        onCancel={() => {}}
+        onRetry={() => {}}
+      />,
+    );
+    const cell = screen.getByTestId('queue-row-full-capture-count');
+    expect(cell.textContent).toBe('×1');
+    expect(cell.querySelector('span')?.getAttribute('title')).toBe(
+      'Full Capture 누적 1회',
+    );
+  });
+
+  it('renders "×3" with standard tone when fullCaptureCount is 3', () => {
+    render(
+      <CaptureQueueRow
+        item={baseItem}
+        symbolName="삼성전자"
+        fullCaptureCount={3}
+        onCancel={() => {}}
+        onRetry={() => {}}
+      />,
+    );
+    const cell = screen.getByTestId('queue-row-full-capture-count');
+    expect(cell.textContent).toBe('×3');
+    expect(cell.querySelector('span')?.getAttribute('title')).toBe(
+      'Full Capture 누적 3회',
+    );
+  });
+});

@@ -16,6 +16,31 @@ Five canonical triage roles map 1:1 to label strings (`needs-triage`, `needs-inf
 
 Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+### Browser automation
+
+For any browser-driven check — opening a page, clicking, inspecting DOM/console/network,
+screenshots, dogfooding a flow — use the `/browse` skill (gstack headless Chromium daemon
+at `~/.claude/skills/gstack/browse/dist/browse`). Do **not** use the `playwright` MCP tools
+(`mcp__plugin_playwright_playwright__*`) in this repo. Rationale: `/browse` keeps a single
+persistent session (cookies, tabs, login state survive across calls), is ~100ms per command
+after the initial ~3s spawn, and ships with project-scoped commands (`snapshot -i`, `text`,
+`network`, `js`, `console --errors`) that the playwright tools don't have. Playwright's
+per-call browser spawn also doubles run time on tight QA loops.
+
+Quick reference:
+
+```bash
+B=/home/dev/.claude/skills/gstack/browse/dist/browse
+$B goto http://localhost:5173/live   # navigate
+$B text                              # page text (untrusted-wrapped)
+$B console --errors                  # JS errors only
+$B network                           # all requests with timings
+$B js "document.title"               # inline JS evaluation
+$B snapshot -i                       # interactive elements with @e refs
+```
+
+See `~/.claude/skills/gstack/browse/SKILL.md` for the full command list.
+
 ## Design System
 
 Always read `DESIGN.md` at the repo root before making any visual or UI decisions in the frontend.

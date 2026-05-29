@@ -24,6 +24,7 @@ const fakeResponse: BrokerSeriesResponse = {
       points: [{ ts_ms: 1747958400000, net: 79523 }],
     },
   ],
+  source: 'hogaplay',
 };
 
 describe('useBrokerSeriesForDay', () => {

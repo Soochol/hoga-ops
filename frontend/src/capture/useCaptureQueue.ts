@@ -10,6 +10,7 @@ import {
   type EnrichedCalendarResponse,
 } from './useCalendar';
 import { phaseToCalendarStatus } from './phase';
+import { useCaptureTimings } from './timing/useCaptureTimings';
 import type { QueueItem, QueueSnapshot, SSEEvent } from '../api/types';
 
 export const CAPTURE_QUEUE_QUERY_KEY = ['capture', 'queue'] as const;
@@ -99,6 +100,8 @@ export function useCaptureQueue() {
         e.type === 'capture_queue_drained'
       ) {
         qc.invalidateQueries({ queryKey: CAPTURE_QUEUE_QUERY_KEY });
+      } else if (e.type === 'capture_timing') {
+        useCaptureTimings.getState().upsert(e.id, e.summary);
       }
     });
     return unsub;

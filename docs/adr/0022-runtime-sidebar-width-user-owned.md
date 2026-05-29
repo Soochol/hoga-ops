@@ -1,6 +1,6 @@
 # 0022 — Cursor Sidebar width: token-as-default, user state as runtime-of-record
 
-**Status:** proposed (2026-05-24) — pending implementation of `docs/superpowers/specs/2026-05-24-replay-sidebar-splitter-design.md`
+**Status:** superseded by /replay removal (2026-05-29) — `state/replayLayout.ts` is gone and `/live`'s sidebar width is the CSS-token constant `--sidebar-w`.
 
 **Related:**
 - ADR-0011 — Default UI density (the density dial that scales rem tokens). This ADR's "token as default" position layers cleanly on the dial.

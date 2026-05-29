@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Drawing, Hline, Pencil, Trendline } from './types';
 import { clampDPriceForDrawing, pricesOf, translateDrawing } from './translate';
 
-const baseStyle = { color: '#14B8A6', width: 1.5 };
+const baseStyle = { color: '#14B8A6', width: 1.5, lineStyle: 'solid' as const };
 
 describe('translateDrawing — hline', () => {
   it('shifts price by dPrice and ignores dMs (hline has no time coordinate)', () => {

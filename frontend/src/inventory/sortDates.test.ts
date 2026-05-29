@@ -24,6 +24,9 @@ const row = (
   today_low: 69_000,
   today_close: 70_500,
   disk_state: 'complete',
+  full_capture_count: null,
+  fail_streak: 0,
+  blocked: false,
   ...overrides,
 });
 
@@ -120,5 +123,32 @@ describe('nextSortState', () => {
     expect(nextSortState({ key: 'volume', dir: 'asc' }, 'state')).toEqual({ key: 'state', dir: 'desc' });
     expect(nextSortState({ key: 'volume', dir: 'desc' }, 'date')).toEqual({ key: 'date', dir: 'desc' });
     expect(nextSortState(null, 'ohlc')).toEqual({ key: 'ohlc', dir: 'desc' });
+  });
+});
+
+describe('sortDates fullCaptureCount (null treated as 1)', () => {
+  const rows: StockDate[] = [
+    row('20260520', { full_capture_count: 3 }),
+    row('20260521', { full_capture_count: null }),
+    row('20260522', { full_capture_count: 1 }),
+  ];
+
+  it('sorts desc by effective count (null counts as 1), date desc tie-break', () => {
+    const out = sortDates(rows, { key: 'fullCaptureCount', dir: 'desc' });
+    // 3 first; the two ×1s (real 1 + legacy null) tie-break by date desc:
+    // 20260522 (real 1) before 20260521 (null = 1).
+    expect(out.map(r => r.date)).toEqual(['20260520', '20260522', '20260521']);
+  });
+
+  it('sorts asc by effective count (null counts as 1), date desc tie-break', () => {
+    const out = sortDates(rows, { key: 'fullCaptureCount', dir: 'asc' });
+    // Both 1s come first (date desc tie-break), then the 3.
+    expect(out.map(r => r.date)).toEqual(['20260522', '20260521', '20260520']);
+  });
+});
+
+describe('nextSortState includes fullCaptureCount', () => {
+  it('null + click(fullCaptureCount) goes to desc', () => {
+    expect(nextSortState(null, 'fullCaptureCount')).toEqual({ key: 'fullCaptureCount', dir: 'desc' });
   });
 });

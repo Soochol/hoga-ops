@@ -15,6 +15,23 @@ from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.tables import snapshots
 
 
+def resolve_source_dir(stock_date_dir: Path, source: str) -> Path:
+    """Resolve the on-disk parquet dir for one source.
+
+    Tries ``{stock_date_dir}/{source}/`` first (post-migration layout per
+    ADR-0037). Falls back to ``{stock_date_dir}/`` (flat, pre-migration)
+    only if the source subdir doesn't exist AND the flat dir has a
+    meta.json — this preserves backward compatibility with test fixtures
+    that build the flat layout directly.
+    """
+    sub = stock_date_dir / source
+    if sub.exists():
+        return sub
+    if (stock_date_dir / "meta.json").exists():
+        return stock_date_dir  # legacy flat layout
+    return sub  # return the not-existing source path for the error to surface naturally
+
+
 @dataclass(frozen=True, slots=True)
 class _CachedStockDate:
     """Cache entry pairing a meta.json mtime fingerprint with the built StockDate.
@@ -54,18 +71,24 @@ class QueryEngine:
         # Returns a fresh cursor per access. DuckDB's parent connection is
         # NOT thread-safe — concurrent .execute() from FastAPI's sync-route
         # thread pool would race on the shared connection state and crash
-        # the process under modest load (verified 2026-05-23: 30 concurrent
-        # /api/trades requests killed the server). Each cursor() call
-        # creates an independent connection over the same in-memory
-        # database, so callers can read in parallel without contention.
-        # Cursors are cheap and GC'd as soon as the call expression ends.
+        # the process under modest load (verified 2026-05-23 with 30
+        # concurrent read-path requests). Each cursor() call creates an
+        # independent connection over the same in-memory database, so
+        # callers can read in parallel without contention. Cursors are
+        # cheap and GC'd as soon as the call expression ends.
         return self._conn.cursor()
 
-    def parquet_dir(self, date: str, code: str) -> Path:
-        d = self.data_dir / "parquet" / date / code
-        if not d.exists():
+    def parquet_dir(self, date: str, code: str, source: str = "hogaplay") -> Path:
+        sd_dir = self.data_dir / "parquet" / date / code
+        if not sd_dir.exists():
             raise StockDateNotFound(f"{date}/{code}")
-        return d
+        resolved = resolve_source_dir(sd_dir, source)
+        # Verify a meta.json actually lives at the resolved path. Bare existence
+        # of the Stock-Date dir isn't enough — could be an empty post-migration
+        # shell without the requested source.
+        if not (resolved / "meta.json").exists():
+            raise StockDateNotFound(f"{date}/{code}/{source}")
+        return resolved
 
     def list_stock_dates(self) -> list[StockDate]:
         base = self.data_dir / "parquet"
@@ -82,14 +105,17 @@ class QueryEngine:
                 continue
             date = date_dir.name
             for code_dir in sorted(date_dir.iterdir()):
+                if not code_dir.is_dir():
+                    continue
                 code = code_dir.name
-                meta_path = code_dir / "meta.json"
+                # Find the "winning" meta.json: prefer hogaplay/, fall back to
+                # other source subdirs, then flat layout.
+                meta_path = self._find_winning_meta(code_dir)
+                if meta_path is None:
+                    continue
                 try:
                     mtime_ns = meta_path.stat().st_mtime_ns
                 except FileNotFoundError:
-                    # Dir without meta.json — incomplete capture or race
-                    # with deletion; matches the pre-cache behavior of
-                    # silently skipping these entries.
                     continue
                 key = (date, code)
                 seen_keys.add(key)
@@ -101,7 +127,17 @@ class QueryEngine:
                 if cached is not None and cached.meta_mtime_ns == mtime_ns:
                     out.append(cached.value)
                     continue
-                sd = self._compute_stock_date(date, code, code_dir)
+                # _compute_stock_date wants the dir containing the parquet files,
+                # which is the source dir or the flat dir — same as meta_path.parent.
+                # Wrap in try/except: a parquet with a non-hogaplay schema
+                # (e.g. partially-migrated state) would raise a DuckDB
+                # BinderException; we'd rather skip the row than 500 the whole
+                # inventory endpoint.
+                try:
+                    sd = self._compute_stock_date(date, code, meta_path.parent)
+                except Exception:  # noqa: BLE001
+                    seen_keys.discard(key)
+                    continue
                 self._stock_date_cache[key] = _CachedStockDate(
                     meta_mtime_ns=mtime_ns, value=sd
                 )
@@ -114,6 +150,27 @@ class QueryEngine:
             if k not in seen_keys:
                 self._stock_date_cache.pop(k, None)
         return out
+
+    @staticmethod
+    def _find_winning_meta(code_dir: Path) -> Path | None:
+        """Find the meta.json to use for inventory display.
+
+        Returns the hogaplay/meta.json if present, else the flat-layout
+        meta.json (pre-migration), else None. kis_live is intentionally
+        EXCLUDED — its snapshots.parquet uses `t_ms` (Unix ms) while
+        the inventory readers assume hogaplay's `ts_ms` (HHMMSSmmm) and
+        the underlying `_compute_stock_date` shape that ApiCandle /
+        snapshot path emit. A kis_live-only Stock-Date is therefore
+        invisible to the Inventory page; users see kis_live data on
+        /live and (via Source Preference) on /replay instead.
+        """
+        candidate = code_dir / "hogaplay" / "meta.json"
+        if candidate.exists():
+            return candidate
+        flat = code_dir / "meta.json"
+        if flat.exists():
+            return flat
+        return None
 
     def _compute_stock_date(
         self, date: str, code: str, code_dir: Path
@@ -202,23 +259,28 @@ class QueryEngine:
             is_partial=_state in (
                 DiskState.SOURCE_PARTIAL, DiskState.CLIENT_INCOMPLETE,
             ),
+            full_capture_count=meta.get("full_capture_count"),
             # ADR-0020: surface the full enum so consumers can
             # see INVALID — the boolean pair above flattens it.
             disk_state=_state.value,
         )
 
-    def get_meta(self, date: str, code: str) -> dict[str, Any]:
-        path = self.parquet_dir(date, code) / "meta.json"
+    def get_meta(self, date: str, code: str, source: str = "hogaplay") -> dict[str, Any]:
+        path = self.parquet_dir(date, code, source) / "meta.json"
         return json.loads(path.read_text(encoding="utf-8"))
 
     def list_stock_dates_in_range(
-        self, *, code: str, from_date: str, to_date: str
+        self, *, code: str, from_date: str, to_date: str,
+        source_pref: str = "hogaplay",
     ) -> list[str]:
         """Ascending list of captured YYYYMMDD strings for ``code`` in [from_date, to_date].
 
         Filters the parquet inventory by code and inclusive date range. Compares
         as YYYYMMDD strings — lexical order matches calendar order for that format.
         Returns ``[]`` when no Stock-Date matches (caller maps to HTTP 404).
+
+        Matches if EITHER the preferred source has meta.json OR any source does
+        (ADR-0039: preference + fallback). Includes legacy flat layout.
         """
         base = self.data_dir / "parquet"
         if not base.exists():
@@ -231,6 +293,19 @@ class QueryEngine:
             if date < from_date or date > to_date:
                 continue
             code_dir = date_dir / code
+            if not code_dir.is_dir():
+                continue
+            # Preferred source first
+            if (code_dir / source_pref / "meta.json").exists():
+                out.append(date)
+                continue
+            # Legacy flat layout
             if (code_dir / "meta.json").exists():
                 out.append(date)
+                continue
+            # Any other source subdir
+            for src_dir in code_dir.iterdir():
+                if src_dir.is_dir() and (src_dir / "meta.json").exists():
+                    out.append(date)
+                    break
         return out

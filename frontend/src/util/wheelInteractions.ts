@@ -7,9 +7,11 @@
  *  - `ctrlOrMetaKey` → zoom anchored at the mouse coordinate.
  *  - default → zoom anchored at `range.to` (rightmost visible candle).
  *
- * Right wall: ctrl and shift branches clamp when rightward motion would
+ * Right wall: only the shift branch clamps when rightward motion would
  * push `to` past `maxTo` (typically the last candle's logical index).
- * Plain wheel is unaffected because it never increases `to`.
+ * The ctrl branch preserves the mouse-anchor invariant unconditionally and
+ * lets `to` extend past `maxTo` — clamping it would warp the anchor's
+ * screen position. Plain wheel is unaffected because it never increases `to`.
  *
  * No DOM, no chart library — separated so the branching logic is
  * unit-testable without mounting a chart.
@@ -65,14 +67,11 @@ export function computeWheelOutcome(i: WheelInput): WheelOutcome {
     const anchor = i.coordinateToLogical(i.mouseX) ?? to;
     const newFrom = anchor - (anchor - from) * factor;
     const newTo = anchor + (to - anchor) * factor;
-    // Right wall: zoom-out that pushes `to` past the last candle clamps `to`
-    // to maxTo and keeps the computed `from`. The anchor effectively migrates
-    // to the right edge for this and subsequent zoom-out ticks. Direction
-    // gate (`newTo > to`) ensures zoom-IN doesn't clamp even when `to` is
-    // already past maxTo (initial state with rightOffset).
-    if (newTo > to && newTo > i.maxTo) {
-      return { from: newFrom, to: i.maxTo };
-    }
+    // No right-wall clamp here: clamping `to` while leaving `from` at the
+    // formula value breaks the anchor-ratio invariant, causing the candle
+    // under the mouse to drift on screen. The library renders empty space
+    // past the last candle by design, so letting `to` exceed `maxTo` on
+    // ctrl-zoom-out is acceptable. `maxTo` still constrains shift-pan.
     return { from: newFrom, to: newTo };
   }
 

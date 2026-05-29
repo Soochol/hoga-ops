@@ -8,6 +8,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from hoga.parser import parse_stock_date
+from hoga.tables.dispatch import FieldCountError
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "tiny_tsv"
 
@@ -94,3 +95,92 @@ def test_parser_dedups_global_seq(tmp_path: Path) -> None:
     out_dir = parse_stock_date(code="003490", date="20260519", data_dir=tmp_path / "data")
     trades_tbl = pq.read_table(out_dir / "trades.parquet")
     assert trades_tbl.num_rows == 6, "duplicates by global_seq must be removed"  # noqa: PLR2004
+
+
+def test_parser_writes_full_capture_count_one_on_first_capture(staged_raw: Path) -> None:
+    """First successful Full Capture writes full_capture_count=1."""
+    out_dir = parse_stock_date(
+        code="003490", date="20260519", data_dir=staged_raw / "data",
+    )
+    meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["full_capture_count"] == 1
+
+
+def test_parser_increments_full_capture_count_on_recapture(staged_raw: Path) -> None:
+    """Second successful Full Capture overwrites meta.json with prior + 1."""
+    out_dir = parse_stock_date(code="003490", date="20260519", data_dir=staged_raw / "data")
+    # First call → 1. Re-run the parser; same raw, same out dir → second meta write.
+    parse_stock_date(code="003490", date="20260519", data_dir=staged_raw / "data")
+    meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["full_capture_count"] == 2
+
+
+def test_parser_increments_full_capture_count_from_legacy_meta(staged_raw: Path) -> None:
+    """Legacy meta.json without the field → after Retry, full_capture_count == 1."""
+    out_dir = staged_raw / "data" / "parquet" / "20260519" / "003490" / "hogaplay"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "meta.json").write_text(json.dumps({"legacy": True}), encoding="utf-8")
+    parse_stock_date(code="003490", date="20260519", data_dir=staged_raw / "data")
+    meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["full_capture_count"] == 1
+
+
+def test_parser_handles_corrupt_prior_meta(
+    staged_raw: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Non-UTF-8 bytes in prior meta.json → warning, prior_count=0, new count=1.
+
+    Guards against UnicodeDecodeError (a ValueError subclass) escaping the
+    except clause. See finding from pre-landing adversarial review.
+    """
+    import logging
+    out_dir = staged_raw / "data" / "parquet" / "20260519" / "003490" / "hogaplay"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "meta.json").write_bytes(b"\x80invalid not utf-8")
+    with caplog.at_level(logging.WARNING, logger="hoga.parser"):
+        parse_stock_date(code="003490", date="20260519", data_dir=staged_raw / "data")
+    meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["full_capture_count"] == 1
+    assert any("corrupt prior meta.json" in rec.message for rec in caplog.records)
+
+
+def test_parser_rejects_bool_prior_full_capture_count(staged_raw: Path) -> None:
+    """meta.json with `"full_capture_count": true` (a bool) → treated as legacy.
+
+    bool is a subclass of int in Python, so `isinstance(True, int)` is True.
+    The guard must explicitly exclude bool to avoid silent off-by-one drift.
+    """
+    out_dir = staged_raw / "data" / "parquet" / "20260519" / "003490" / "hogaplay"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "meta.json").write_text(
+        json.dumps({"full_capture_count": True}), encoding="utf-8"
+    )
+    parse_stock_date(code="003490", date="20260519", data_dir=staged_raw / "data")
+    meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
+    # Without the bool-reject guard, prior_count would absorb True (== 1)
+    # and this would be 2 instead of 1.
+    assert meta["full_capture_count"] == 1
+
+
+def test_parser_does_not_leak_out_dir_on_invalid_info_tsv(tmp_path: Path) -> None:
+    """Upstream-empty (or malformed) info.tsv must not leave an empty hogaplay/.
+
+    Regression: prior to the mkdir-after-validate fix, the parser created
+    ``parquet/{date}/{code}/hogaplay/`` before reading info.tsv, so any
+    parse failure left an empty source dir. Downstream, `resolve_source`
+    sees an empty dir (no meta.json), keeps `pref="hogaplay"`, and
+    `parquet_dir(..., source="hogaplay")` raises StockDateNotFound →
+    HTTP 404 from /api/orderbook and /api/brokers/series. Confirmed
+    via 28 such leftover dirs on disk after the ADR-0037 V2 migration.
+    """
+    raw_dir = tmp_path / "data" / "raw" / "20260319" / "058610"
+    raw_dir.mkdir(parents=True)
+    # Empty body — matches the documented hogaplay no-data signal (upstream
+    # returns 200 + empty body for code/date combos with no data).
+    (raw_dir / "info.tsv").write_text("", encoding="utf-8")
+
+    with pytest.raises(FieldCountError):
+        parse_stock_date(code="058610", date="20260319", data_dir=tmp_path / "data")
+
+    leak = tmp_path / "data" / "parquet" / "20260319" / "058610" / "hogaplay"
+    assert not leak.exists(), f"parser leaked empty source dir at {leak}"

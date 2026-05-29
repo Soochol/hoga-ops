@@ -74,17 +74,24 @@ def test_downsample_candles_handles_all_six_timeframes():
 def test_build_volume_profile_range_empty_dates_returns_empty():
     from hoga.api.bundle import build_volume_profile_range
     mock_engine = MagicMock()
-    out = build_volume_profile_range(mock_engine, code="005930", dates=[])
+    out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[])
     assert out.bin_count == 0
     assert out.bins == []
 
 
-def test_build_volume_profile_range_single_date_uses_multi_file_glob():
+def test_build_volume_profile_range_single_date_uses_multi_file_glob(tmp_path):
     """One-date range: still calls read_parquet with a list parameter."""
     from hoga.api.bundle import build_volume_profile_range
 
     mock_engine = MagicMock()
-    mock_engine.parquet_dir.side_effect = lambda d, c: __import__("pathlib").Path(f"/data/{c}/{d}")
+    def _mk(d, c, src="hogaplay"):
+        # Real dir + empty trades.parquet so build_volume_profile_range's
+        # existence-guard passes (ADR-0043: missing trades.parquet now skipped).
+        dd = tmp_path / c / d
+        dd.mkdir(parents=True, exist_ok=True)
+        (dd / "trades.parquet").touch()
+        return dd
+    mock_engine.parquet_dir.side_effect = _mk
     # First execute (MIN/MAX): returns (100, 200)
     # Second execute (GROUP BY bin): returns rows like [(0, 10), (1, 20), ...]
     mock_engine.conn.execute.side_effect = [
@@ -92,7 +99,7 @@ def test_build_volume_profile_range_single_date_uses_multi_file_glob():
         MagicMock(fetchall=lambda: [(0, 10), (1, 20)]),
     ]
 
-    out = build_volume_profile_range(mock_engine, code="005930", dates=["20260512"])
+    out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[("20260512", "hogaplay")])
 
     # Verify the first call's parameter list contains a path-list element
     # (DuckDB multi-file glob: execute(sql, [paths]) where paths=list[str]).
@@ -107,18 +114,23 @@ def test_build_volume_profile_range_single_date_uses_multi_file_glob():
     assert out.price_max == 200
 
 
-def test_build_volume_profile_range_multi_date_unions_paths():
+def test_build_volume_profile_range_multi_date_unions_paths(tmp_path):
     """Multi-date range: paths list contains every date's trades.parquet."""
     from hoga.api.bundle import build_volume_profile_range
 
     mock_engine = MagicMock()
-    mock_engine.parquet_dir.side_effect = lambda d, c: __import__("pathlib").Path(f"/data/{c}/{d}")
+    def _mk(d, c, src="hogaplay"):
+        dd = tmp_path / c / d
+        dd.mkdir(parents=True, exist_ok=True)
+        (dd / "trades.parquet").touch()
+        return dd
+    mock_engine.parquet_dir.side_effect = _mk
     mock_engine.conn.execute.side_effect = [
         MagicMock(fetchone=lambda: (100, 200)),
         MagicMock(fetchall=lambda: [(0, 10), (1, 20), (2, 30)]),
     ]
 
-    out = build_volume_profile_range(mock_engine, code="005930", dates=["20260512", "20260513", "20260514"])
+    out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[("20260512", "hogaplay"), ("20260513", "hogaplay"), ("20260514", "hogaplay")])
 
     # Find the path-list parameter and verify it contains all 3 trades.parquet entries.
     # Each execute call's params is [paths] where paths is list[str] of size 3.
@@ -140,10 +152,10 @@ def test_build_volume_profile_range_no_trades_returns_empty():
     from hoga.api.bundle import build_volume_profile_range
 
     mock_engine = MagicMock()
-    mock_engine.parquet_dir.side_effect = lambda d, c: __import__("pathlib").Path(f"/data/{c}/{d}")
+    mock_engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": __import__("pathlib").Path(f"/data/{c}/{d}")
     mock_engine.conn.execute.return_value = MagicMock(fetchone=lambda: (None, None))
 
-    out = build_volume_profile_range(mock_engine, code="005930", dates=["20260512"])
+    out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[("20260512", "hogaplay")])
     assert out.bin_count == 0
     assert out.bins == []
 
@@ -233,15 +245,24 @@ def test_build_range_bundle_rejects_from_gt_to():
     assert exc.value.status_code == 400
 
 
-def test_build_range_bundle_raises_404_on_empty_inventory():
-    from fastapi import HTTPException
+def test_build_range_bundle_returns_empty_on_empty_inventory():
+    """Spec 2026-05-27 §4.3: no captured Stock-Date → empty bundle (not 404)."""
     from hoga.api.bundle import build_range_bundle
 
     mock_engine = MagicMock()
     mock_engine.list_stock_dates_in_range.return_value = []
-    with pytest.raises(HTTPException) as exc:
-        build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260520", bucket_ms=60_000)
-    assert exc.value.status_code == 404
+    rb = build_range_bundle(
+        mock_engine, code="005930", from_date="20260512", to_date="20260520", bucket_ms=60_000
+    )
+    assert rb.segments == []
+    assert rb.candles == []
+    assert rb.quote_ratio.points == []
+    assert rb.fill_strength.points == []
+    assert rb.excluded_dates == []
+    assert rb.code == "005930"
+    assert rb.from_date == "20260512"
+    assert rb.to_date == "20260520"
+    assert rb.bucket_ms == 60_000
 
 
 def test_build_range_bundle_rejects_invalid_bucket_ms():
@@ -290,7 +311,7 @@ def test_build_range_bundle_skips_invalid_and_surfaces_in_excluded():
         "20260518": _meta(close_ms=0),
         "20260521": _meta(),
     }
-    eng.get_meta.side_effect = lambda date, _code: metas[date]
+    eng.get_meta.side_effect = lambda date, _code, _source="hogaplay": metas[date]
 
     patches = _patch_slice_builders(bundle_mod) + [
         patch.object(bundle_mod, "build_volume_profile_range",
@@ -346,23 +367,20 @@ def test_build_range_bundle_surfaces_warn_without_excluding():
     assert "collection.unique_events_ratio" in fired_ids
 
 
-def test_build_range_bundle_404_when_all_dates_excluded():
-    """When every Stock-Date is INVALID, raise 404 with excluded detail."""
-    from fastapi import HTTPException
+def test_build_range_bundle_empty_when_all_dates_excluded():
+    """Spec 2026-05-27 §4.3: every Stock-Date INVALID → return empty bundle
+    with excluded_dates populated (not 404)."""
     from hoga.api.bundle import build_range_bundle
 
     eng = _engine_with_meta_for_dates(["20260518"])
     eng.get_meta.return_value = _meta(close_ms=0)
 
-    with pytest.raises(HTTPException) as exc:
-        build_range_bundle(eng, code="003490",
-                           from_date="20260518", to_date="20260518",
-                           bucket_ms=60_000)
-    assert exc.value.status_code == 404
-    detail = exc.value.detail
-    assert isinstance(detail, dict)
-    assert "excluded" in detail
-    assert detail["excluded"][0]["date"] == "20260518"
+    rb = build_range_bundle(
+        eng, code="003490", from_date="20260518", to_date="20260518", bucket_ms=60_000
+    )
+    assert rb.segments == []
+    assert len(rb.excluded_dates) == 1
+    assert rb.excluded_dates[0].date == "20260518"
 
 
 def test_build_range_bundle_excludes_real_5_18_003490_case():
@@ -383,7 +401,7 @@ def test_build_range_bundle_excludes_real_5_18_003490_case():
         "20260520": _meta(),
         "20260518": _meta(close_ms=0, complete=False),
     }
-    eng.get_meta.side_effect = lambda date, _code: metas[date]
+    eng.get_meta.side_effect = lambda date, _code, _source="hogaplay": metas[date]
 
     patches = _patch_slice_builders(bundle_mod) + [
         patch.object(bundle_mod, "build_volume_profile_range",

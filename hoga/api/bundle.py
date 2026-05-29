@@ -32,7 +32,8 @@ from hoga.api.models import (
     VolumeProfileBin,
     validate_bucket_ms,
 )
-from hoga.api.queries import QueryEngine
+from hoga.api.queries import QueryEngine, StockDateNotFound
+from hoga.api.sources import resolve_source as _resolve_source
 from hoga.api.timeenc import (
     hhmmssms_to_intra_ms_sql,
     hhmmssms_to_unix_ms,
@@ -94,9 +95,15 @@ def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiC
 
 
 def build_candles_slice(
-    engine: QueryEngine, *, code: str, date: str
+    engine: QueryEngine, *, code: str, date: str, source: str = "hogaplay"
 ) -> list[ApiCandle]:
-    path = engine.parquet_dir(date, code) / "candles.parquet"
+    # ADR-0040 / ADR-0043: kis_live promotion never writes candles.parquet —
+    # the candle dimension is served separately by Live Candle Backfill.
+    # Return empty list rather than raising so /api/range can still serve
+    # hoga indicators + segments for kis_live-source Stock-Dates.
+    path = engine.parquet_dir(date, code, source) / "candles.parquet"
+    if not path.exists():
+        return []
     rows = candles_tbl.query_all(engine.conn, path=path)
     return [
         r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
@@ -110,13 +117,19 @@ def build_quote_ratio_slice(
     code: str,
     date: str,
     bucket_ms: int = 1000,
+    source: str = "hogaplay",
 ) -> QuoteRatio:
     # Bucket on LINEAR ms-from-midnight, not raw HHMMSSmmm. The raw encoding
     # has gaps at minute / hour boundaries, so arithmetic bucketing of HHMMSSmmm
     # produces invalid HHMMSSmmm values that decode (via hhmmssms_to_unix_ms)
     # to duplicate or out-of-order Unix-ms outputs — which lightweight-charts
     # then rejects with "asc ordered by time". See hhmmssms_to_intra_ms_sql.
-    path = str(engine.parquet_dir(date, code) / "snapshots.parquet")
+    path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    if not path_obj.exists():
+        # ADR-0043: promote_today writes empty records as unlink → missing file
+        # is the valid "no data" state, not an error.
+        return QuoteRatio(bucket_ms=bucket_ms, points=[])
+    path = str(path_obj)
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     rows = engine.conn.execute(
         f"""
@@ -155,17 +168,28 @@ def build_volume_profile_slice(
     *,
     code: str,
     date: str,
+    source: str = "hogaplay",
     price_min: int | None = None,
     price_max: int | None = None,
     vp_bins: int = 24,
 ) -> VolumeProfile:
-    code_dir = engine.parquet_dir(date, code)
-    candles_path = str(code_dir / "candles.parquet")
-    trades_path = str(code_dir / "trades.parquet")
+    code_dir = engine.parquet_dir(date, code, source)
+    candles_path_obj = code_dir / "candles.parquet"
+    trades_path_obj = code_dir / "trades.parquet"
+    # ADR-0040/0043: kis_live source has no candles.parquet (Live Candle Backfill
+    # owns that dimension via separate cache). Return degenerate profile rather
+    # than raising. Likewise for missing trades.parquet (empty promote cycle).
+    if not candles_path_obj.exists() or not trades_path_obj.exists():
+        return VolumeProfile(bin_count=1, price_min=0, price_max=0, bin_width=0, bins=[])
+    candles_path = str(candles_path_obj)
+    trades_path = str(trades_path_obj)
     if price_min is None or price_max is None:
         row = engine.conn.execute(
             "SELECT MIN(low), MAX(high) FROM read_parquet(?)", [candles_path],
         ).fetchone()
+        if row is None or row[0] is None or row[1] is None:
+            # Empty candles table — return a degenerate single-bin profile.
+            return VolumeProfile(bin_count=1, price_min=0, price_max=0, bin_width=0, bins=[])
         price_min = int(row[0])
         price_max = int(row[1])
     bin_width = (price_max - price_min) / vp_bins
@@ -199,7 +223,7 @@ def build_volume_profile_range(
     engine: QueryEngine,
     *,
     code: str,
-    dates: list[str],
+    dates_with_sources: list[tuple[str, str]],
     vp_bins: int = 24,
 ) -> VolumeProfile:
     """Union trades.parquet across all in-range Stock-Dates into one price-binned
@@ -210,10 +234,19 @@ def build_volume_profile_range(
     via a list parameter — no f-string SQL for the path (matches bundle.py:145
     convention; see plan-eng-review D3).
     """
-    if not dates:
+    if not dates_with_sources:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
 
-    paths = [str(engine.parquet_dir(d, code) / "trades.parquet") for d in dates]
+    # ADR-0043: kis_live trades.parquet may not exist for sparse Stock-Dates
+    # (empty promote cycle → atomic_write_parquet unlinks the file). Filter
+    # to existing paths only; if none remain, return empty profile.
+    paths: list[str] = []
+    for d, src in dates_with_sources:
+        p = engine.parquet_dir(d, code, src) / "trades.parquet"
+        if p.exists():
+            paths.append(str(p))
+    if not paths:
+        return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
 
     min_max = engine.conn.execute(
         "SELECT MIN(price), MAX(price) FROM read_parquet(?)", [paths],
@@ -268,6 +301,7 @@ def build_fill_strength_slice(
     code: str,
     date: str,
     bucket_ms: int = 60_000,
+    source: str = "hogaplay",
 ) -> FillStrength:
     # Bucket on LINEAR ms-from-midnight, not HHMMSSmmm. With the previous
     # `(ts_ms / 60000)::BIGINT * 60000` pattern, a raw 11:00:59.000
@@ -275,7 +309,11 @@ def build_fill_strength_slice(
     # 110_040_000 = HHMMSSmmm "11:00:40.000" — an out-of-order ghost time
     # that fold-decoded via hhmmssms_to_unix_ms to 11:40:20 KST (39-min
     # backward jump). See hhmmssms_to_intra_ms_sql for the encoding details.
-    path = str(engine.parquet_dir(date, code) / "trades.parquet")
+    path_obj = engine.parquet_dir(date, code, source) / "trades.parquet"
+    if not path_obj.exists():
+        # ADR-0043: missing trades parquet is the valid "no trades yet" state.
+        return FillStrength(bucket_ms=bucket_ms, points=[])
+    path = str(path_obj)
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     rows = engine.conn.execute(
         f"""
@@ -302,6 +340,34 @@ def build_fill_strength_slice(
     )
 
 
+def _empty_range_bundle(
+    code: str,
+    from_date: str,
+    to_date: str,
+    bucket_ms: int,
+    *,
+    excluded: list[ExcludedDate],
+) -> RangeBundle:
+    """Empty RangeBundle for the no-captured-data and all-INVALID branches
+    (spec 2026-05-27 §4.3). Mirrors the success-path shape with empty series
+    arrays; excluded_dates carries any invariant-gated dates so frontend can
+    surface DataWarning UX."""
+    return RangeBundle(
+        code=code,
+        from_date=from_date,
+        to_date=to_date,
+        bucket_ms=bucket_ms,
+        segments=[],
+        candles=[],
+        quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=[]),
+        fill_strength=FillStrength(bucket_ms=bucket_ms, points=[]),
+        volume_profile_range=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
+        volume_profile_by_day=[],
+        excluded_dates=excluded,
+        data_warnings=[],
+    )
+
+
 def build_range_bundle(
     engine: QueryEngine,
     *,
@@ -309,11 +375,13 @@ def build_range_bundle(
     from_date: str,
     to_date: str,
     bucket_ms: int,
+    source_pref: str = "hogaplay",  # ADR-0039
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
     Validates ``bucket_ms`` and ``from_date <= to_date``.
-    Returns HTTP 404 if no Stock-Date in range has captured data.
+    Returns an empty RangeBundle when no Stock-Date in range has captured data
+    or all in-range dates are excluded by invariants (spec 2026-05-27 §4.3).
 
     Loops over captured Stock-Dates calling each per-slice builder directly.
     ``volume_profile`` is returned as a per-segment list (each Stock-Date
@@ -334,12 +402,13 @@ def build_range_bundle(
 
     dates = engine.list_stock_dates_in_range(
         code=code, from_date=from_date, to_date=to_date,
+        source_pref=source_pref,
     )
     if not dates:
-        raise HTTPException(
-            404,
-            f"no captured Stock-Date for code={code} in [{from_date}, {to_date}]",
-        )
+        # Spec 2026-05-27 §4.3: empty range is a normal case for /live's
+        # lazy-fetch. Surface as an empty bundle so the frontend can stitch
+        # today's SSE buffer in without 404 round-trips.
+        return _empty_range_bundle(code, from_date, to_date, bucket_ms, excluded=[])
 
     # ADR-0020: per-Stock-Date invariant check.
     # INVALID → skip + surface under excluded_dates.
@@ -353,7 +422,11 @@ def build_range_bundle(
     profiles_by_day: list[VolumeProfile] = []
 
     for d in dates:
-        meta = engine.get_meta(d, code)
+        source = _resolve_source(engine, d, code, source_pref)
+        try:
+            meta = engine.get_meta(d, code, source)
+        except (FileNotFoundError, StockDateNotFound):
+            continue
         c = classify_from_meta(meta)   # state + violations in one pass
 
         if c.state == DiskState.INVALID:
@@ -367,16 +440,17 @@ def build_range_bundle(
                 date=d, warnings=[v.to_model() for v in c.warnings],
             ))
 
-        raw_candles = build_candles_slice(engine, code=code, date=d)
+        raw_candles = build_candles_slice(engine, code=code, date=d, source=source)
         candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
-        qr_d = build_quote_ratio_slice(engine, code=code, date=d, bucket_ms=bucket_ms)
-        fs_d = build_fill_strength_slice(engine, code=code, date=d, bucket_ms=bucket_ms)
-        vp_d = build_volume_profile_slice(engine, code=code, date=d)
+        qr_d = build_quote_ratio_slice(engine, code=code, date=d, bucket_ms=bucket_ms, source=source)
+        fs_d = build_fill_strength_slice(engine, code=code, date=d, bucket_ms=bucket_ms, source=source)
+        vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source)
 
         segments.append(RangeSegment(
             date=d,
             session_open_ms=hhmmssms_to_unix_ms(d, meta["regular_session_open_ms"]),
             session_close_ms=hhmmssms_to_unix_ms(d, meta["regular_session_close_ms"]),
+            source=source,
         ))
         candles.extend(candles_d)
         ratio_pts.extend(qr_d.points)
@@ -384,21 +458,17 @@ def build_range_bundle(
         profiles_by_day.append(vp_d)
 
     if not segments:
-        # All in-range dates failed invariants — reuse the existing 404 branch
-        # with the excluded list in detail so the caller can explain to the user.
-        # FastAPI wraps the dict body as {"detail": <body>}, so use top-level
-        # keys here rather than nesting a second "detail" inside.
-        raise HTTPException(404, {
-            "reason": "all Stock-Dates in range excluded by invariants",
-            "excluded": [e.model_dump() for e in excluded],
-        })
+        # Spec 2026-05-27 §4.3: every in-range date is INVALID → return an
+        # empty bundle with excluded_dates populated, so frontend can render
+        # DataWarning UX without 404 round-trips.
+        return _empty_range_bundle(code, from_date, to_date, bucket_ms, excluded=excluded)
 
     # The range-wide volume profile must aggregate only the dates we actually
     # included — using the unfiltered `dates` would pull trades.parquet for
     # INVALID Stock-Dates whose data is corrupt or incomplete, contaminating
     # the range-wide histogram or raising a DuckDB read error.
-    included_dates = [s.date for s in segments]
-    profile_range = build_volume_profile_range(engine, code=code, dates=included_dates)
+    dates_with_sources = [(s.date, s.source) for s in segments]
+    profile_range = build_volume_profile_range(engine, code=code, dates_with_sources=dates_with_sources)
 
     return RangeBundle(
         code=code,

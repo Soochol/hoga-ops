@@ -31,6 +31,17 @@ def test_brokers_series_happy_path_returns_per_broker_trajectories(
         assert ts_list == sorted(ts_list)
 
 
-def test_brokers_series_404_on_unknown_stock_date(app_client: TestClient) -> None:
+def test_brokers_series_returns_empty_response_for_unknown_stock_date(
+    app_client: TestClient,
+) -> None:
+    """ADR-0044 graceful-empty: an unknown (code, date) returns 200 with
+    brokers=[] instead of 404. Matches the empty-bundle semantics adopted
+    for /api/range and removes the console-noise pathway the frontend's
+    useSpot.catch logged on every hover over an uncaptured candle.
+    """
     r = app_client.get("/api/brokers/series?code=999999&date=20990101")
-    assert r.status_code == 404
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["date"] == "20990101"
+    assert body["brokers"] == []
+    assert body["source"] == "hogaplay"

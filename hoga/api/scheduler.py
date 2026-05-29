@@ -26,14 +26,14 @@ from hoga.collector.orchestrator import now_kst
 log = logging.getLogger(__name__)
 
 
-def seconds_until_next_18_kst(now: dt.datetime) -> float:
-    """Seconds from ``now`` until the next KST 18:00 boundary.
+def seconds_until_next_17_kst(now: dt.datetime) -> float:
+    """Seconds from ``now`` until the next KST 17:00 boundary.
 
-    If ``now`` is exactly 18:00 or later, returns the duration to
-    *tomorrow's* 18:00. ``now`` must be tz-aware (Asia/Seoul).
+    If ``now`` is exactly 17:00 or later, returns the duration to
+    *tomorrow's* 17:00. ``now`` must be tz-aware (Asia/Seoul).
     """
-    today_18 = now.replace(hour=18, minute=0, second=0, microsecond=0)
-    target = today_18 if now < today_18 else today_18 + dt.timedelta(days=1)
+    today_17 = now.replace(hour=17, minute=0, second=0, microsecond=0)
+    target = today_17 if now < today_17 else today_17 + dt.timedelta(days=1)
     return (target - now).total_seconds()
 
 
@@ -41,6 +41,14 @@ async def _daily_run(data_dir: Path) -> None:
     """Enqueue ``(code, today_kst)`` for every Watchlist entry on a
     trading day. Per-entry exceptions are logged; the loop continues.
     """
+    # Stage 8: Promote pending Live Capture JSONLs before hogaplay enqueue (ADR-0038).
+    from hoga.live.promote import cleanup_archive, promote_pending
+    try:
+        await promote_pending(data_dir)
+        await cleanup_archive(data_dir)
+    except Exception:  # noqa: BLE001 — one source of failure mustn't block the other
+        log.exception("daily run: live promotion failed; continuing to hogaplay enqueue")
+
     now = now_kst()
     today = now.strftime("%Y%m%d")
     try:
@@ -140,7 +148,7 @@ async def _catchup_run(data_dir: Path) -> None:
 
 
 async def _daily_loop(data_dir: Path) -> None:
-    """Perpetual: sleep to next KST 18:00, run _daily_run, repeat.
+    """Perpetual: sleep to next KST 17:00, run _daily_run, repeat.
 
     Never lets a single failure kill the loop — see ADR-0034 for the
     "scheduler is a queue client" framing. The Capture Queue's own
@@ -148,7 +156,7 @@ async def _daily_loop(data_dir: Path) -> None:
     only ensures the *trigger* stays alive.
     """
     while True:
-        await asyncio.sleep(seconds_until_next_18_kst(now_kst()))
+        await asyncio.sleep(seconds_until_next_17_kst(now_kst()))
         try:
             await _daily_run(data_dir)
         except Exception:  # noqa: BLE001
