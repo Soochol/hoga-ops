@@ -42,11 +42,14 @@ adr: docs/adr/0049-promotion-writer-honors-ts-ms-encoding.md
 - Modify: `hoga/live/promote.py` (line 31-127, `_parse_jsonl_to_records`)
 - Modify: `tests/unit/live/test_promote.py`
 
-- [ ] **Step 1: Read the existing promote test to learn the fixture pattern**
+- [ ] **Step 1: Survey ALL pre-existing tests that build JSONL fixtures**
 
-Run: `cat tests/unit/live/test_promote.py | head -100`
+Run: `grep -n 'def test_\|"t_ms":' tests/unit/live/test_promote.py | head -40`
 
-Note how `test_promote_one_writes_parquet_and_meta` builds JSONL rows with Unix-ms `t_ms` (e.g. `1748332800000 + tick * 10_000`) and currently asserts the parquet column `ts_ms` equals the Unix ms. This assertion will need to change.
+Identify every test that constructs JSONL rows. The critical ones to watch:
+
+- `test_promote_one_writes_parquet_and_meta` (~line 17-96) — uses Unix-ms `t_ms` (e.g. `1748332800000`), already a valid in-window Unix ms for 20260527.
+- `test_parse_jsonl_to_records_basic` / `test_parse_jsonl_to_records_skips_torn_line` (~lines 236-285) — these use **`t_ms=1,2,3`** against `date="20260528"`. After the writer fix, these tiny `t_ms` values fall outside the KST day window and trigger `midnight_race_skip` → drop, making assertions like `len(snapshots) == 1` fail with empty lists. **This is the eng-review Blocker.** Step 7 below explicitly rewrites these fixtures.
 
 - [ ] **Step 2: Add a new failing test for the HHMMSSmmm conversion contract**
 
@@ -90,6 +93,46 @@ def test_parse_jsonl_converts_t_ms_to_hhmmssms(tmp_path: Path) -> None:
     )
     # Round-trip: decoding the stored value should yield the original Unix ms.
     assert hhmmssms_to_unix_ms(date, snapshots[0]["ts_ms"]) == sample_unix_ms
+
+
+def test_parse_jsonl_converts_t_ms_for_trade_and_broker(tmp_path: Path) -> None:
+    """ADR-0049 — trade row + broker row also get HHMMSSmmm encoding.
+
+    Pins the spec §Design 1 decision to use the OUTER t_ms (not the
+    inner trade row's t_ms) so all three kinds emit a uniform ts_ms
+    per polling cycle. A future "fix" that reverts trade to
+    tr.get("t_ms") raw would silently break this; the test guards it.
+    """
+    from hoga.api.timeenc import unix_ms_to_hhmmssms
+
+    date = "20260529"
+    unix_ms_at_open = 1779926400000
+    sample_unix_ms = unix_ms_at_open + (1 * 3600 + 30 * 60 + 45) * 1000 + 123
+    expected_hhmmssms = 103045123
+
+    jsonl = tmp_path / date / "005930.jsonl"
+    jsonl.parent.mkdir(parents=True)
+    lines = [
+        json.dumps({"t_ms": sample_unix_ms, "kind": "trade", "payload": {
+            "trades": [{"t_ms": sample_unix_ms, "price": 100, "qty": 5,
+                        "side": 1, "side_source": "inferred"}],
+        }}),
+        json.dumps({"t_ms": sample_unix_ms, "kind": "broker", "payload": {
+            "code": "005930", "t_ms": sample_unix_ms,
+            "buy_top": [{"name": "삼성증권", "qty": 10}],
+            "sell_top": [{"name": "키움증권", "qty": 20}],
+        }}),
+    ]
+    jsonl.write_text("\n".join(lines) + "\n")
+
+    _snapshots, trades, broker_rows, _meta = _parse_jsonl_to_records(
+        jsonl, code="005930", date=date,
+    )
+    assert len(trades) == 1
+    assert trades[0]["ts_ms"] == expected_hhmmssms
+    assert len(broker_rows) == 2  # one buy + one sell
+    for br in broker_rows:
+        assert br.ts_ms == expected_hhmmssms
 ```
 
 - [ ] **Step 3: Run the new test to verify it FAILS**
@@ -136,10 +179,10 @@ def test_parse_jsonl_skips_row_outside_date_window(tmp_path: Path, caplog) -> No
     ), "Drop must be logged at WARNING level."
 ```
 
-- [ ] **Step 5: Run both new tests to verify they FAIL**
+- [ ] **Step 5: Run new tests to verify they FAIL**
 
-Run: `uv run pytest tests/unit/live/test_promote.py -k "converts_t_ms_to_hhmmssms or skips_row_outside" -v`
-Expected: both FAIL — first with wrong value, second because current code writes the out-of-window row without skip.
+Run: `uv run pytest tests/unit/live/test_promote.py -k "converts_t_ms or skips_row_outside" -v`
+Expected: all three (`test_parse_jsonl_converts_t_ms_to_hhmmssms`, `test_parse_jsonl_converts_t_ms_for_trade_and_broker`, `test_parse_jsonl_skips_row_outside_date_window`) FAIL — first/second with wrong values (raw Unix ms stored), third because current code writes the out-of-window row without skip.
 
 - [ ] **Step 6: Implement the writer normalization in `_parse_jsonl_to_records`**
 
@@ -240,12 +283,14 @@ Also update the misleading comment block above the `snap` dict (currently line 7
                 # HHMMSSmmm at promote time so reader-side decoding is source-uniform.
 ```
 
-- [ ] **Step 7: Update the existing test fixture that hard-codes raw `t_ms` expectations**
+- [ ] **Step 7: Rewrite pre-existing fixtures that use unrealistic Unix-ms values**
 
-The existing `test_promote_one_writes_parquet_and_meta` test (around line 17-96 of `tests/unit/live/test_promote.py`) builds JSONL rows with Unix-ms `t_ms` and reads the resulting parquet. Any assertion that the column `ts_ms` equals the original `t_ms` is now wrong. Find every such assertion and change to expect `unix_ms_to_hhmmssms(date, t_ms)` instead. Use this exact diff template:
+Two classes of edits to `tests/unit/live/test_promote.py`:
+
+**(a) Tests that already use in-window Unix ms but assert raw ts_ms** (e.g. `test_promote_one_writes_parquet_and_meta` uses `1748332800000` which is 2026-05-27 00:00 UTC = 09:00 KST, valid for date `20260527`). For these, update the assertion only:
 
 ```python
-# Before — anywhere in the test that asserts on raw t_ms:
+# Before — somewhere in the test:
 #   assert snaps_df["ts_ms"][0] == 1748332800000
 # After:
 from hoga.api.timeenc import unix_ms_to_hhmmssms
@@ -253,7 +298,28 @@ expected = unix_ms_to_hhmmssms("20260527", 1748332800000)
 assert snaps_df["ts_ms"][0] == expected
 ```
 
-Run `grep -n "ts_ms\|t_ms" tests/unit/live/test_promote.py` first to find every assertion that needs updating. The relevant tests are `test_promote_one_writes_parquet_and_meta` and any tests that pass raw Unix-ms and read back from parquet.
+**(b) Tests using sentinel values (`t_ms=1,2,3`) against a real `date`.** These FAIL post-fix because `unix_ms_to_hhmmssms("20260528", 1)` raises `ValueError`. Tests in this class:
+  - `test_parse_jsonl_to_records_basic` (~line 236)
+  - `test_parse_jsonl_to_records_skips_torn_line` (~line 270)
+  - Any other test that uses `"t_ms": 1` / `"t_ms": 2` / similar with a real date.
+
+For each, replace the sentinel `t_ms` with `_date_unix_ms_at_kst_midnight(date) + 9*3600*1000 + tick` (= 09:00:00.000 KST + tick seconds), and keep the rest of the assertions unchanged. Concrete pattern:
+
+```python
+# Before:
+#   lines.append(json.dumps({"t_ms": 1, "kind": "ob", "payload": {...}}))
+# After:
+from hoga.api.timeenc import _date_unix_ms_at_kst_midnight
+base = _date_unix_ms_at_kst_midnight("20260528") + 9 * 3600 * 1000  # 09:00 KST
+for tick in range(N):
+    lines.append(json.dumps({"t_ms": base + tick * 1000, "kind": "ob", "payload": {...}}))
+```
+
+Find all sentinel usages first:
+```bash
+grep -nE '"t_ms": [0-9]\b' tests/unit/live/test_promote.py
+```
+Update every match. The plan author independently verified `_date_unix_ms_at_kst_midnight` is importable from `hoga.api.timeenc` (it's module-private but Python tests import private helpers by convention).
 
 - [ ] **Step 8: Run the entire promote test module — verify all green**
 
@@ -382,10 +448,14 @@ def _write_trade_parquet(path: Path, unix_ms_list: list[int]) -> None:
 
 @pytest.fixture
 def kis_live_fixture(tmp_path: Path) -> Path:
-    """A kis_live Source dir with a few rows spanning 10:00-10:02 KST."""
-    parquet_root = tmp_path / "parquet"
-    code_dir = parquet_root / DATE / CODE / "kis_live"
-    (code_dir / "meta.json").parent.mkdir(parents=True, exist_ok=True)
+    """A kis_live Source dir with a few rows spanning 09:00-10:00:30 KST.
+
+    Returns the data_dir (parent of parquet/) so callers can construct
+    QueryEngine(data_dir) — established pattern from
+    tests/unit/api/test_bundle_source.py:27.
+    """
+    code_dir = tmp_path / "parquet" / DATE / CODE / "kis_live"
+    code_dir.mkdir(parents=True, exist_ok=True)
     (code_dir / "meta.json").write_text(json.dumps(_meta_dict()))
     sample_unix = [
         DAY_START + (9 * 3600 + 0) * 1000,    # 09:00:00 KST
@@ -394,12 +464,12 @@ def kis_live_fixture(tmp_path: Path) -> Path:
     ]
     _write_snapshot_parquet(code_dir / "snapshots.parquet", sample_unix)
     _write_trade_parquet(code_dir / "trades.parquet", sample_unix)
-    return parquet_root
+    return tmp_path
 
 
 def test_quote_ratio_t_within_day_window(kis_live_fixture: Path) -> None:
     """All quote_ratio.points[*].t must fall in [DAY_START, DAY_END)."""
-    engine = QueryEngine.from_parquet_root(kis_live_fixture)
+    engine = QueryEngine(kis_live_fixture)
     qr = build_quote_ratio_slice(
         engine, code=CODE, date=DATE, bucket_ms=60_000, source="kis_live",
     )
@@ -413,7 +483,7 @@ def test_quote_ratio_t_within_day_window(kis_live_fixture: Path) -> None:
 
 def test_fill_strength_t_within_day_window(kis_live_fixture: Path) -> None:
     """All fill_strength.points[*].t must fall in [DAY_START, DAY_END)."""
-    engine = QueryEngine.from_parquet_root(kis_live_fixture)
+    engine = QueryEngine(kis_live_fixture)
     fs = build_fill_strength_slice(
         engine, code=CODE, date=DATE, bucket_ms=60_000, source="kis_live",
     )
@@ -431,9 +501,8 @@ def test_quote_ratio_breaks_when_writer_skips_encoding(tmp_path: Path) -> None:
     If we deliberately write Unix ms (NOT HHMMSSmmm) into ts_ms — the exact
     bug ADR-0049 fixes — the day-window assertion must fail.
     """
-    parquet_root = tmp_path / "parquet"
-    code_dir = parquet_root / DATE / CODE / "kis_live"
-    (code_dir / "meta.json").parent.mkdir(parents=True, exist_ok=True)
+    code_dir = tmp_path / "parquet" / DATE / CODE / "kis_live"
+    code_dir.mkdir(parents=True, exist_ok=True)
     (code_dir / "meta.json").write_text(json.dumps(_meta_dict()))
     sample_unix = [
         DAY_START + (10 * 3600 + 0) * 1000,
@@ -453,7 +522,7 @@ def test_quote_ratio_breaks_when_writer_skips_encoding(tmp_path: Path) -> None:
         rows.append(row)
     pl.DataFrame(rows).write_parquet(code_dir / "snapshots.parquet")
 
-    engine = QueryEngine.from_parquet_root(parquet_root)
+    engine = QueryEngine(tmp_path)
     qr = build_quote_ratio_slice(
         engine, code=CODE, date=DATE, bucket_ms=60_000, source="kis_live",
     )
@@ -471,11 +540,12 @@ def test_quote_ratio_breaks_when_writer_skips_encoding(tmp_path: Path) -> None:
 Run: `uv run pytest tests/unit/api/test_bundle_day_window_invariant.py -v`
 Expected: all 3 PASS. If `test_quote_ratio_t_within_day_window` fails, Task 1's writer fix didn't fully take — re-verify Task 1 step 8.
 
-- [ ] **Step 4: Verify `QueryEngine.from_parquet_root` exists; if not, use the actual constructor**
+- [ ] **Step 4: Verify the test runs in isolation (sanity)**
 
-Run: `grep -n "class QueryEngine\|def from_parquet_root\|def __init__" hoga/api/queries.py | head -5`
+`QueryEngine(data_dir)` was already verified in plan authoring — it's the constructor used at `tests/unit/api/test_bundle_source.py:27`. The fixture returns `tmp_path` (data_dir, parent of `parquet/`) and the engine's `parquet_dir()` walks down internally. No alternative constructor needed.
 
-If `from_parquet_root` doesn't exist, replace the two `engine = QueryEngine.from_parquet_root(...)` lines in the test with whatever constructor the conftest fixtures use. Run `grep -rn "QueryEngine(" tests/unit/api/ | head -5` for the established pattern.
+Run: `uv run pytest tests/unit/api/test_bundle_day_window_invariant.py::test_quote_ratio_breaks_when_writer_skips_encoding -v`
+Expected: PASS — the bug-simulation case proves the day-window guard is sensitive enough to catch the original bug.
 
 - [ ] **Step 5: Commit**
 
@@ -514,14 +584,16 @@ describe('buildLiveBundle sanity clip (ADR-0049 / spec §3)', () => {
   const TODAY = '20260529';
   const TODAY_OPEN = Date.UTC(2026, 4, 29, 0, 0, 0);
   const TODAY_CLOSE = TODAY_OPEN + 6.5 * 3600 * 1000;
+  // ADR-0044 / CONTEXT.md "Live Session": After-Hours runs 15:30–16:00 KST.
+  const AFTER_HOURS_END = TODAY_CLOSE + 30 * 60 * 1000;
 
-  it('clips pastMaxQrT to todaySession.close_ms when past contains a future timestamp', () => {
-    // Simulate backend encoding corruption: a past QR point's t is far in
-    // the future (year 2046 — the deterministic output of Unix ms decoded
-    // as HHMMSSmmm). Without the clip, this would block all SSE merges
-    // because incrementalQR.filter(p => p.t > pastMaxQrT) rejects every
-    // 2026-era SSE point.
-    const futureCorruptT = TODAY_CLOSE + 100 * 365 * 24 * 3600 * 1000; // ~2126
+  it('clips pastMaxQrT to live session end when past contains a future timestamp', () => {
+    // Simulate the actual production failure mode: Unix ms decoded as
+    // HHMMSSmmm lands deterministically in year 2046 (~20 years past today).
+    // Without the clip, this would block all SSE merges because
+    // incrementalQR.filter(p => p.t > pastMaxQrT) rejects every 2026-era
+    // SSE point.
+    const futureCorruptT = TODAY_CLOSE + 20 * 365 * 24 * 3600 * 1000; // ~2046
     const pastBundle: RangeBundle = emptyRangeBundle({
       segments: [{
         date: '20260528',
@@ -556,7 +628,44 @@ describe('buildLiveBundle sanity clip (ADR-0049 / spec §3)', () => {
     expect(sseMerged).toBe(true);
   });
 
-  it('does NOT clip when past timestamps are all within today close (normal case)', () => {
+  it('preserves dedup for after-hours data (15:30-16:00 KST, Live Session end)', () => {
+    // Design-review B1 regression: clip ceiling must include After-Hours
+    // (Live Session end = close_ms + 30min, CONTEXT.md "Live Session").
+    // If we clipped at close_ms (15:30 KST), past-tail at 15:45 KST would
+    // get reduced to 15:30, letting an SSE point at 15:45 with the SAME
+    // timestamp as a past entry slip through and overwrite the past value.
+    const pastTailT = TODAY_CLOSE + 15 * 60_000; // 15:45 KST (After-Hours)
+    const pastBundle: RangeBundle = emptyRangeBundle({
+      segments: [{
+        date: TODAY,
+        session_open_ms: TODAY_OPEN,
+        session_close_ms: TODAY_CLOSE,
+        source: 'kis_live',
+      }],
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [{ t: pastTailT, bid_total: 10, ask_total: 10 }],
+      },
+    });
+
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle,
+      sseOb: [
+        { t_ms: pastTailT, total_ask_qty: 999, total_bid_qty: 999 }, // boundary dup
+      ],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+
+    const atTail = bundle.quote_ratio.points.find((p) => p.t === pastTailT);
+    expect(atTail?.bid_total).toBe(10); // past value wins, SSE dup rejected
+  });
+
+  it('does NOT clip when past timestamps are all within regular session (normal case)', () => {
     // Regression guard: when past data is sane, the existing dedup must
     // still reject SSE buckets that share a timestamp with past tail.
     const pastTailT = TODAY_OPEN + 60_000; // 09:01 KST today
@@ -612,19 +721,22 @@ Expected:
 Edit `frontend/src/live/buildLiveBundle.ts`. Replace lines 59-68 (the `pastMaxQrT` / `pastMaxFsT` + `sseBuckets` block) with:
 
 ```typescript
-  // ADR-0049 / spec §3 — clip dedup guard to today's close so a backend
-  // encoding regression (past point's t escapes day-window upward, e.g.
-  // year 2046 from Unix-ms-decoded-as-HHMMSSmmm) cannot block SSE live
-  // merge. Normal past data has tail ≤ today close, so the clip is a no-op
-  // for healthy bundles.
+  // ADR-0049 / spec §3 — clip dedup guard to the Live Session end so a
+  // backend encoding regression (past point's t escapes upward, e.g. year
+  // 2046 from Unix-ms-decoded-as-HHMMSSmmm) cannot block SSE live merge.
+  // Ceiling = close_ms + 30min (Live Session end including After-Hours
+  // Trading 15:30-16:00 KST, ADR-0044 / CONTEXT.md "Live Session"). Healthy
+  // past tail always falls ≤ this ceiling, so the clip is a no-op for
+  // normal bundles and preserves the boundary-dedup semantic.
+  const AFTER_HOURS_END_MS = todaySession.close_ms + 30 * 60 * 1000;
   const rawPastMaxQrT = pastQRPoints.length > 0
     ? pastQRPoints[pastQRPoints.length - 1].t
     : 0;
   const rawPastMaxFsT = pastFSPoints.length > 0
     ? pastFSPoints[pastFSPoints.length - 1].t
     : 0;
-  const pastMaxQrT = Math.min(rawPastMaxQrT, todaySession.close_ms);
-  const pastMaxFsT = Math.min(rawPastMaxFsT, todaySession.close_ms);
+  const pastMaxQrT = Math.min(rawPastMaxQrT, AFTER_HOURS_END_MS);
+  const pastMaxFsT = Math.min(rawPastMaxFsT, AFTER_HOURS_END_MS);
 
   const sseBuckets = bucketHogaSeries(sseOb, sseTrade, bucketMs);
   const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > pastMaxQrT);
@@ -812,9 +924,12 @@ Use after deploying the ADR-0049 encoding fix (hoga/live/promote.py) to
 restore historical dates that the today_promoter won't touch (it only
 handles today).
 
-For today (the date today_promoter is actively writing), prefer just
-`rm -rf data/parquet/{today}/*/kis_live` and let the next 5-minute
-cycle rebuild — running this script for today is also safe but redundant.
+DO NOT run for today — today_promoter is actively writing today's
+kis_live dir via atomic_write_parquet (tempfile + rename). This script's
+shutil.rmtree can interleave with the promoter's mkdir/rename and
+produce a transient FileNotFoundError or partial dir. For today, use:
+    rm -rf data/parquet/{today}/*/kis_live
+and let the next 5-min today_promoter cycle rebuild from scratch.
 
 Usage:
     uv run python scripts/repromote_kis_live.py --date 20260527
@@ -831,7 +946,7 @@ import asyncio
 import shutil
 from pathlib import Path
 
-from hoga.api.disk_state import resolve_data_dir
+from hoga.config import resolve_data_dir
 from hoga.live.promote import promote_one
 
 
@@ -854,6 +969,10 @@ async def repromote(data_dir: Path, *, date: str, code: str | None) -> None:
       2. Delete existing kis_live parquet dir (this bypasses promote_one's
          meta.json idempotency guard — intentional, per ADR-0049 spec).
       3. Call promote_one which re-encodes ts_ms per the new contract.
+
+    Per-code errors are caught + logged; the loop continues so a single
+    bad JSONL doesn't leave the batch half-recovered. Exits non-zero if
+    any code failed.
     """
     parquet_root = data_dir / "parquet"
     live_dir = data_dir / "live" / date
@@ -873,17 +992,39 @@ async def repromote(data_dir: Path, *, date: str, code: str | None) -> None:
         print(f"no JSONL found for date={date} (live or archive)")
         return
 
-    for c in codes:
+    total = len(codes)
+    recovered = 0
+    skipped = 0
+    failures: list[tuple[str, str]] = []
+
+    for idx, c in enumerate(codes, start=1):
+        prefix = f"[{idx}/{total}]"
         jsonl = _resolve_jsonl(data_dir, date, c)
         if jsonl is None:
-            print(f"skip {c}: no JSONL")
+            print(f"{prefix} skip {c}: no JSONL")
+            skipped += 1
             continue
         target = parquet_root / date / c / "kis_live"
-        if target.exists():
-            print(f"delete {target}")
-            shutil.rmtree(target)
-        print(f"promote {date}/{c} from {jsonl}")
-        await promote_one(jsonl, parquet_root, code=c, date=date)
+        try:
+            if target.exists():
+                print(f"{prefix} delete {target}")
+                shutil.rmtree(target)
+            print(f"{prefix} promote {date}/{c} from {jsonl}")
+            await promote_one(jsonl, parquet_root, code=c, date=date)
+            recovered += 1
+        except Exception as e:  # noqa: BLE001 — one bad JSONL must not abort batch
+            print(f"{prefix} FAILED {c}: {type(e).__name__}: {e}")
+            failures.append((c, f"{type(e).__name__}: {e}"))
+
+    print(
+        f"\nrecovered={recovered} skipped={skipped} failed={len(failures)} "
+        f"total={total}"
+    )
+    if failures:
+        print("failures:")
+        for c, msg in failures:
+            print(f"  {c}: {msg}")
+        raise SystemExit(1)
 
 
 def _main() -> None:
@@ -896,7 +1037,7 @@ def _main() -> None:
         help="Override data dir (default: resolve_data_dir())",
     )
     args = parser.parse_args()
-    data_dir = Path(args.data_dir) if args.data_dir else Path(resolve_data_dir())
+    data_dir = Path(args.data_dir) if args.data_dir else resolve_data_dir()
     asyncio.run(repromote(data_dir, date=args.date, code=args.code))
 
 
@@ -904,11 +1045,87 @@ if __name__ == "__main__":
     _main()
 ```
 
-- [ ] **Step 4: Verify `resolve_data_dir` exists with the expected signature**
+- [ ] **Step 4: Sanity-check the import path (already verified in plan authoring)**
 
-Run: `grep -n "def resolve_data_dir" hoga/api/disk_state.py`
+Run: `grep -n "def resolve_data_dir" hoga/config.py`
+Expected: prints `14:def resolve_data_dir() -> Path:`. The script imports from `hoga.config` (NOT `hoga.api.disk_state` — the function lives in `hoga/config.py`). Returns `Path` directly, no `Path(...)` wrapping needed.
 
-If the function doesn't exist or has a different name, replace the import. Look for similar helpers — `grep -rn "data_dir" hoga/api/disk_state.py | head -5`. Adjust the import to match.
+Also extend the test to assert per-code error handling. Add to `tests/unit/test_repromote_script.py`:
+
+```python
+def test_repromote_continues_on_single_code_failure(tmp_path: Path, capsys) -> None:
+    """One bad JSONL must not abort the batch; failures are reported."""
+    date = "20260527"
+    good_code = "005930"
+    bad_code = "000660"
+    unix_ms = 1748304000000
+    data_dir = tmp_path
+    parquet_root = data_dir / "parquet"
+
+    # Good code: real JSONL + corrupt parquet to recover.
+    _seed_corrupt_parquet(parquet_root / date / good_code / "kis_live", good_code, date)
+    _seed_jsonl(data_dir / "live" / date / f"{good_code}.jsonl", good_code, date, unix_ms=unix_ms)
+    # Bad code: malformed JSONL to trigger promote_one failure.
+    bad_jsonl = data_dir / "live" / date / f"{bad_code}.jsonl"
+    bad_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    bad_jsonl.write_text("{not valid json\n")
+
+    mod = _load_script_module()
+    with pytest.raises(SystemExit) as excinfo:
+        asyncio.run(mod.repromote(data_dir, date=date, code=None))
+    assert excinfo.value.code == 1
+
+    captured = capsys.readouterr()
+    assert "FAILED" in captured.out
+    assert good_code in captured.out
+    assert "recovered=1" in captured.out
+    # Good code's parquet still got recovered despite bad code's failure.
+    df = pl.read_parquet(parquet_root / date / good_code / "kis_live" / "snapshots.parquet")
+    assert df["ts_ms"][0] == unix_ms_to_hhmmssms(date, unix_ms)
+```
+
+Note: `promote_one`'s `_parse_jsonl_to_records` actually swallows JSONDecodeError (line 64-69 of promote.py) with a partial_line warning; it does NOT raise. To force a real failure, the test seeds a structurally fine but encoding-defying value — change the `bad_jsonl.write_text(...)` line to:
+```python
+bad_jsonl.write_text(json.dumps({
+    "t_ms": "not-a-number",  # int() in promote.py will TypeError
+    "kind": "ob", "payload": {"bids": [], "asks": [],
+                              "total_bid_qty": 0, "total_ask_qty": 0},
+}) + "\n")
+```
+Actually verify: post-fix, `_parse_jsonl_to_records` catches `(ValueError, TypeError)` from `unix_ms_to_hhmmssms` and just skips the row, returning empty results — NOT raising. So `promote_one` itself never raises on bad JSONL content; it just produces an empty parquet. The "failures" path of the script is therefore reserved for I/O errors (disk full, permission denied), not data errors. Adjust the test by patching `promote_one` to raise via `monkeypatch.setattr(mod, "promote_one", lambda **_: _ for _ in ()).throw(RuntimeError("simulated"))`:
+
+```python
+def test_repromote_continues_on_single_code_failure(tmp_path, capsys, monkeypatch) -> None:
+    date = "20260527"
+    good_code = "005930"
+    bad_code = "000660"
+    unix_ms = 1748304000000
+    data_dir = tmp_path
+    parquet_root = data_dir / "parquet"
+
+    _seed_corrupt_parquet(parquet_root / date / good_code / "kis_live", good_code, date)
+    _seed_jsonl(data_dir / "live" / date / f"{good_code}.jsonl", good_code, date, unix_ms=unix_ms)
+    _seed_jsonl(data_dir / "live" / date / f"{bad_code}.jsonl", bad_code, date, unix_ms=unix_ms)
+
+    mod = _load_script_module()
+    real_promote = mod.promote_one
+    async def patched(*args, **kw):
+        if kw.get("code") == bad_code:
+            raise RuntimeError("simulated promote_one failure")
+        await real_promote(*args, **kw)
+    monkeypatch.setattr(mod, "promote_one", patched)
+
+    with pytest.raises(SystemExit) as excinfo:
+        asyncio.run(mod.repromote(data_dir, date=date, code=None))
+    assert excinfo.value.code == 1
+
+    captured = capsys.readouterr()
+    assert "FAILED" in captured.out
+    assert bad_code in captured.out
+    assert "recovered=1" in captured.out
+    df = pl.read_parquet(parquet_root / date / good_code / "kis_live" / "snapshots.parquet")
+    assert df["ts_ms"][0] == unix_ms_to_hhmmssms(date, unix_ms)
+```
 
 - [ ] **Step 5: Run the script tests — verify all PASS**
 
@@ -967,6 +1184,8 @@ Expected before recovery: still mixed (2026 + 2046) because the parquet dirs on 
 ```bash
 rm -rf /home/dev/.local/share/hoga-ops/data/parquet/20260529/*/kis_live
 ```
+
+**Heads-up to the operator**: between this `rm -rf` and the next `today_promoter` cycle (up to 5 minutes), `/live` shows hoga panes (Ratio, QuoteTotals, FillStrength) **completely empty for today** — past dates still render. This window is temporarily *worse* than the pre-fix state (which at least showed partial year-2046 data getting filtered). Tell the user if they're watching. The SSE buffer keeps the chart's live tick stream alive throughout, only the past-derived indicator series go blank.
 
 Wait up to 5 minutes for `today_promoter` (ADR-0043) to repopulate. Verify with the same curl from Step 1 — quote_ratio years should now show `{2026}` only.
 
@@ -1044,3 +1263,19 @@ All spec sections have at least one task.
 - `buildLiveBundle` input signature unchanged (Task 3 only modifies internals).
 - `unix_ms_to_hhmmssms(date, t_ms)` and `hhmmssms_to_unix_ms(date, ts_ms)` used consistently per `hoga/api/timeenc.py`.
 - `QueryEngine` constructor — Task 2 Step 4 explicitly verifies the actual constructor name; if `from_parquet_root` doesn't exist, the test imports the real one. This is a known unknown handled inline.
+
+---
+
+## Deferred review notes
+
+Plan review (2026-05-29) accepted the following as **Suggestions / Nits** that don't block landing this PR but should be noted:
+
+- **Inventory exclusion follow-up** (eng-review). [hoga/api/queries.py:155-166](../../../hoga/api/queries.py)'s `_find_winning_meta` docstring says "kis_live is intentionally EXCLUDED — its snapshots.parquet uses `t_ms` (Unix ms)". After ADR-0049 lands, that rationale evaporates. The exclusion itself is out-of-scope for this PR (no Inventory UI change shipped), but the docstring is now misleading. Open a follow-up issue: "Inventory: integrate kis_live Source now that ts_ms encoding is unified (post-ADR-0049)".
+
+- **Writer assertion alternative** (eng-review nit). ADR-0049 §"Why not enforce via schema" considered `assert 0 <= ts_ms < 240_000_000` at writer time as a runtime guard, and rejected it in favor of the day-window regression test in Task 2. The decision is documented in the ADR; no plan change. If the regression test ever gets disabled or skipped, revisit the writer assertion.
+
+- **Recovery script progress indicator** (design-review S3). Plan Task 4 Step 3 already emits `[i/N] promote ...` lines per code, addressing this.
+
+- **Year 2126 → year 2046 in clip test** (design-review N1). Already addressed in Task 3 Step 1 (test uses `20 * 365 * 24 * 3600 * 1000` offset to match the production failure mode).
+
+- **Design tokens / CSS untouched** (design-review N2). Confirmed — plan touches no `frontend/src/styles/`, no `.css`, no `DESIGN.md` tokens. No verification step needed.

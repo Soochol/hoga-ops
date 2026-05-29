@@ -174,17 +174,21 @@ const sseBuckets = bucketHogaSeries(sseOb, sseTrade, bucketMs);
 const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > pastMaxQrT);
 const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > pastMaxFsT);
 
-// After — clip dedup 가드를 today close에서 잘라서 backend corruption으로부터 SSE 라이브 보호.
-// 정상 past 데이터의 마지막 포인트는 항상 today close_ms 이하이므로 dedup 의미는 동일.
-// 2046년 같은 corruption 값이 들어와도 SSE incremental은 정상 통과.
+// After — clip dedup 가드를 Live Session 끝(close_ms + 30min, After-Hours 포함)에서
+// 잘라서 backend corruption으로부터 SSE 라이브 보호. 정상 past 데이터의 마지막 포인트는
+// 항상 Live Session 끝 이하이므로 (After-Hours까지 포함) dedup 의미는 동일. 2046년 같은
+// corruption 값이 들어와도 SSE incremental은 정상 통과. close_ms 단독으로 자르면 15:30–16:00
+// KST After-Hours 데이터를 매일 막는다 (CONTEXT.md "Live Session" — Regular Session보다 30분 김).
 const rawPastMaxQrT = pastQRPoints.length > 0
   ? pastQRPoints[pastQRPoints.length - 1].t
   : 0;
 const rawPastMaxFsT = pastFSPoints.length > 0
   ? pastFSPoints[pastFSPoints.length - 1].t
   : 0;
-const pastMaxQrT = Math.min(rawPastMaxQrT, todaySession.close_ms);
-const pastMaxFsT = Math.min(rawPastMaxFsT, todaySession.close_ms);
+// AFTER_HOURS_END_MS = Live Session 끝 (close_ms + 30min, ADR-0044 / CONTEXT.md "Live Session").
+const AFTER_HOURS_END_MS = todaySession.close_ms + 30 * 60 * 1000;
+const pastMaxQrT = Math.min(rawPastMaxQrT, AFTER_HOURS_END_MS);
+const pastMaxFsT = Math.min(rawPastMaxFsT, AFTER_HOURS_END_MS);
 
 const sseBuckets = bucketHogaSeries(sseOb, sseTrade, bucketMs);
 const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > pastMaxQrT);
