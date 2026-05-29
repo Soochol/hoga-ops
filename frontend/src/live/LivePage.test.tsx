@@ -38,6 +38,13 @@ vi.mock('../api/useLiveCursor', () => ({
   useLiveBrokersAtCursor: () => undefined,
 }));
 
+// useLiveBannerState now reads the authoritative watchlist via useWatchlist;
+// mock it non-empty so the banner logic stays unit-level and doesn't hit
+// /api/watchlist in jsdom. (Empty-state is exercised in useLiveBannerState.test.ts.)
+vi.mock('../watchlist/useWatchlist', () => ({
+  useWatchlist: () => ({ data: { entries: [{ code: '000660' }], next_run_at_ms: 0 } }),
+}));
+
 // LivePage now owns the single useLiveBundle call. Mock to avoid TanStack
 // queries hitting real endpoints in the shell test.
 vi.mock('./useLiveBundle', () => ({
