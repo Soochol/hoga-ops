@@ -48,7 +48,7 @@ scope: frontend
 
 **Why a heal is required (read before starting):** `tokens.css` currently has `--watchlist-panel-w`, `--source-hogaplay-bg/border`, `--source-kis-live-bg/border`, and `--h-live-header` *inside* the `BEGIN/END AUTO-GENERATED` markers, but they are **not** in `design-tokens.ts`. `scripts/gen-tokens.ts::rewriteCss()` replaces everything between the markers with output built only from `SIZE_TOKENS`/`FIXED_PX_TOKENS`. So running `npm run gen:tokens` **deletes those orphaned tokens** — silently, because `npm run build` does not validate CSS-var existence. This task reconciles them first, then adds the rail tokens.
 
-> **GATE 2 decision recorded:** This task implements the *proper heal* (recommended). If the user chose to *relax ADR-0012* for the two rail tokens instead, skip the gen:tokens path and hand-add `--rail-w`/`--rail-handle-w` to the hand-edited color/layout section of `tokens.css` (and do NOT run `npm run gen:tokens`). The plan below assumes the heal.
+> **GATE 2 decision — DECIDED: proper heal (option A).** Implement this task exactly as written (reconcile orphans → register in `design-tokens.ts` → `gen:tokens`). The relax-ADR-0012 alternative was rejected by the user.
 
 **Files:**
 - Modify: `frontend/src/styles/design-tokens.ts`
@@ -838,5 +838,5 @@ From plan-design-review (2026-05-30). Suggestion/Nit — apply opportunistically
 - **[NIT] aria-label copy tone**: `<nav aria-label="Right Rail">` → Korean (`"우측 레일"`) to match the component's other Korean aria-labels and DESIGN.md copy tone.
 - **[CONFIRMED — no change] Motion**: the panel slide + rail collapse are grid-track width changes (sidebar/pane-resize class) — DESIGN.md says do NOT animate these, so the plan's no-transition choice is correct. The `»`/`«` chevron glyph is sanctioned by CONTEXT.md's Right Rail entry.
 
-### Open decision for GATE 2 — icon
-**Heart icon vs text-only "관심".** Reviewer: a heart is NOT a CONTEXT.md violation (the `_Avoid_` targets the *star* metaphor, and heart=관심 matches the reference image), but LeftNav/NavItem are entirely text-only, so any icon is the first decorative glyph in the nav chrome. Options: (a) text-only "관심" (most on-system, zero decoration), (b) restrained line-weight heart (matches the user's reference image). Default per reviewer: text-only, user opts into heart.
+### GATE 2 decision — icon: DECIDED → **heart icon + "관심"**
+User chose the heart (matches the reference image). Task 5's `HeartIcon` is correct as written. Keep the restrained single line-weight SVG; fill toggles with `panelOpen` as a shape signal (color stays `currentColor` per the de-teal CRITICAL).
