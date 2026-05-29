@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pyarrow as pa
-import pyarrow.parquet as pq
 
 # === In-memory entity ===
 
@@ -145,7 +144,8 @@ def write_parquet(trades: Iterable[Trade], path: Path) -> None:
         field.name: pa.array([getattr(t, field.name) for t in rows], type=field.type)
         for field in PARQUET_SCHEMA
     }
-    pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
+    from hoga.api._atomic_write import atomic_write_parquet_table
+    atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
 # === Within-table invariants ===

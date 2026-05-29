@@ -72,13 +72,11 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
     # snapshots.query_at SELECTs succeed against kis_live parquet.
     assert "tot_ask" in snaps.columns and "tot_bid" in snaps.columns
     assert "ask_d1" in snaps.columns and "bid_d10" in snaps.columns
-    assert "phase" in snaps.columns
 
     trades = pl.read_parquet(target / "trades.parquet")
     assert trades.height == 2
-    assert {"ts_ms", "price", "qty", "side", "side_source"} <= set(trades.columns)
+    assert {"ts_ms", "seq", "price", "qty", "side"} <= set(trades.columns)
     assert trades["side"][0] == 1
-    assert trades["side_source"][0] == "inferred"
 
     # Long-format schema matches hogaplay parser output so /api/brokers/series
     # (DuckDB on brokers.parquet) can read KIS-promoted parquets too.
@@ -131,12 +129,12 @@ def test_parse_jsonl_converts_t_ms_to_hhmmssms(tmp_path: Path) -> None:
     )
 
     assert len(snapshots) == 1
-    assert snapshots[0]["ts_ms"] == expected_hhmmssms, (
+    assert snapshots[0].ts_ms == expected_hhmmssms, (
         f"Promotion writer must convert Unix ms → HHMMSSmmm. "
-        f"Got {snapshots[0]['ts_ms']}, expected {expected_hhmmssms}."
+        f"Got {snapshots[0].ts_ms}, expected {expected_hhmmssms}."
     )
     # Round-trip: decoding the stored value should yield the original Unix ms.
-    assert hhmmssms_to_unix_ms(date, snapshots[0]["ts_ms"]) == sample_unix_ms
+    assert hhmmssms_to_unix_ms(date, snapshots[0].ts_ms) == sample_unix_ms
 
 
 def test_parse_jsonl_converts_t_ms_for_trade_and_broker(tmp_path: Path) -> None:
@@ -173,7 +171,7 @@ def test_parse_jsonl_converts_t_ms_for_trade_and_broker(tmp_path: Path) -> None:
         jsonl, code="005930", date=date,
     )
     assert len(trades) == 1
-    assert trades[0]["ts_ms"] == expected_hhmmssms
+    assert trades[0].ts_ms == expected_hhmmssms
     assert len(broker_rows) == 2  # one buy + one sell
     for br in broker_rows:
         assert br.ts_ms == expected_hhmmssms
@@ -384,10 +382,10 @@ def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
     )
 
     assert len(snapshots) == 1
-    assert snapshots[0]["bid_p1"] == 26800
-    assert snapshots[0]["tot_bid"] == 95085
+    assert snapshots[0].bid_p[0] == 26800
+    assert snapshots[0].tot_bid == 95085
     assert len(trades) == 1
-    assert trades[0]["price"] == 26850
+    assert trades[0].price == 26850
     assert len(broker_rows) == 2  # 1 buy + 1 sell
     assert meta["source"] == "kis_live"
     assert meta["code"] == "003490"
@@ -431,9 +429,9 @@ def test_parse_jsonl_synthesizes_monotonic_seq_per_kind(tmp_path: Path) -> None:
         jsonl, code="003490", date=date,
     )
 
-    assert [s["seq"] for s in snapshots] == [1, 2, 3]
+    assert [s.seq for s in snapshots] == [1, 2, 3]
     # 3 ticks × 2 trades per tick = strictly increasing per trade row.
-    assert [t["seq"] for t in trades] == [1, 2, 3, 4, 5, 6]
+    assert [t.seq for t in trades] == [1, 2, 3, 4, 5, 6]
     # broker_seq increments per snapshot, shared between buy/sell rows of the
     # same tick (preserves the polling-cycle grouping the hogaplay schema uses).
     broker_seqs = [br.seq for br in broker_rows]

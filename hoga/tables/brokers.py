@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 
 import duckdb
 import pyarrow as pa
-import pyarrow.parquet as pq
 
 BrokerSide = Literal["buy", "sell"]
 TOP_N = 5
@@ -116,7 +115,8 @@ def write_parquet(rows: Iterable[BrokerRow], path: Path) -> None:
         "qty_today": pa.array([r.qty_today for r in sorted_rows], type=pa.int32()),
         "qty_delta": pa.array([r.qty_delta for r in sorted_rows], type=pa.int32()),
     }
-    pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
+    from hoga.api._atomic_write import atomic_write_parquet_table
+    atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
 def query_day_series(

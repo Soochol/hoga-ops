@@ -61,11 +61,17 @@ def test_kis_live_promote_snapshot_columns_match_read_path(tmp_path: Path) -> No
         },
     }) + "\n")
 
+    import pyarrow.parquet as pq
+
+    from hoga.tables.snapshots import write_parquet as write_snapshots_parquet
+
     snapshots, _, _, _ = _parse_jsonl_to_records(
         jsonl, code="003490", date=_DATE,
     )
     assert len(snapshots) == 1
-    actual_cols = set(snapshots[0].keys())
+    out = tmp_path / "snapshots.parquet"
+    write_snapshots_parquet(snapshots, out)
+    actual_cols = set(pq.read_table(out).column_names)
     missing = READ_PATH_SNAPSHOT_COLUMNS - actual_cols
     assert not missing, (
         f"kis_live promote snapshot missing columns required by build_quote_ratio_slice: "
@@ -89,11 +95,17 @@ def test_kis_live_promote_trade_columns_match_read_path(tmp_path: Path) -> None:
         },
     }) + "\n")
 
+    import pyarrow.parquet as pq
+
+    from hoga.tables.trades import write_parquet as write_trades_parquet
+
     _, trades, _, _ = _parse_jsonl_to_records(
         jsonl, code="003490", date=_DATE,
     )
     assert len(trades) == 1
-    actual_cols = set(trades[0].keys())
+    out = tmp_path / "trades.parquet"
+    write_trades_parquet(trades, out)
+    actual_cols = set(pq.read_table(out).column_names)
     missing = READ_PATH_TRADE_COLUMNS - actual_cols
     assert not missing, (
         f"kis_live promote trade missing columns: {missing}. "
@@ -118,12 +130,15 @@ def test_hogaplay_snapshot_schema_matches_read_path() -> None:
 
 
 def test_hogaplay_and_kis_live_share_read_path_columns(tmp_path: Path) -> None:
-    """Both sources must share the read-path column subset. KIS REST doesn't
-    carry per-level depth deltas or total deltas (hogaplay-only forensic
-    columns) — promote synthesizes them as 0 so the column shape matches.
-    kis_live keeps `phase` as an extra (ignored by read path).
+    """Both sources go through the same canonical PARQUET_SCHEMA writer, so
+    a kis_live-promoted parquet must expose the read-path columns even
+    though KIS REST is delta-free (depth deltas / tot deltas synthesized
+    as 0). This locks the writer contract: both sources land in the same
+    column shape on disk.
     """
-    from hoga.tables.snapshots import PARQUET_SCHEMA
+    import pyarrow.parquet as pq
+
+    from hoga.tables.snapshots import PARQUET_SCHEMA, write_parquet as write_snapshots_parquet
 
     hogaplay_cols = {f.name for f in PARQUET_SCHEMA}
 
@@ -135,7 +150,9 @@ def test_hogaplay_and_kis_live_share_read_path_columns(tmp_path: Path) -> None:
     snapshots, _, _, _ = _parse_jsonl_to_records(
         jsonl, code="003490", date=_DATE,
     )
-    kis_live_cols = set(snapshots[0].keys())
+    out = tmp_path / "snapshots.parquet"
+    write_snapshots_parquet(snapshots, out)
+    kis_live_cols = set(pq.read_table(out).column_names)
 
     shared_required = hogaplay_cols & kis_live_cols
     missing_from_shared = READ_PATH_SNAPSHOT_COLUMNS - shared_required
@@ -192,14 +209,63 @@ def test_kis_live_snapshots_query_at_round_trip(tmp_path: Path) -> None:
     assert snap.tot_bid == 95085 and snap.tot_ask == 102768
 
 
-def test_read_path_columns_round_trip_through_kis_live_parquet(tmp_path: Path) -> None:
-    """Integration smoke: write a kis_live snapshot via the actual promote
-    path (atomic_write_parquet → polars.write_parquet), then verify a
-    DuckDB query mimicking build_quote_ratio_slice can SELECT the column
-    set without BinderException."""
+def test_kis_live_trades_full_schema_round_trip(tmp_path: Path) -> None:
+    """trades.parquet must expose every canonical PARQUET_SCHEMA column,
+    not just the four (ts_ms/price/qty/side) current bundle.py readers use.
+
+    Guards against the same class of bug as the snapshots round-trip:
+    if promote.py ever regresses to a dict-form path that drops forensic
+    columns (cum_vol, change_pct, net_pressure, unknown_*), any analytics
+    endpoint that later SELECTs those will BinderException at runtime.
+    Locking the full shape at write time makes that drift fail in CI.
+    """
+    import asyncio
+
     import duckdb
 
-    from hoga.api._atomic_write import atomic_write_parquet
+    from hoga.live.promote import promote_one
+    from hoga.tables.trades import PARQUET_SCHEMA as TRADES_PARQUET_SCHEMA
+
+    jsonl = tmp_path / "live" / _DATE / "005930.jsonl"
+    jsonl.parent.mkdir(parents=True)
+    jsonl.write_text(json.dumps({
+        "t_ms": _T_MS_AT_OPEN, "kind": "trade",
+        "payload": {
+            "trades": [
+                {"price": 26900, "qty": 10, "side": 1, "side_source": "inferred"},
+                {"price": 26890, "qty": 5, "side": -1, "side_source": "inferred"},
+            ],
+        },
+    }) + "\n")
+
+    parquet_root = tmp_path / "parquet"
+    asyncio.run(promote_one(jsonl, parquet_root, code="005930", date=_DATE))
+    trades_path = parquet_root / _DATE / "005930" / "kis_live" / "trades.parquet"
+
+    canonical_cols = [f.name for f in TRADES_PARQUET_SCHEMA]
+    select_clause = ", ".join(canonical_cols)
+    con = duckdb.connect()
+    try:
+        rows = con.execute(
+            f"SELECT {select_clause} FROM read_parquet(?) ORDER BY seq",
+            [str(trades_path)],
+        ).fetchall()
+    finally:
+        con.close()
+    assert len(rows) == 2
+    # seq is the 2nd column, monotonic per the writer contract.
+    seq_idx = canonical_cols.index("seq")
+    assert [r[seq_idx] for r in rows] == [1, 2]
+
+
+def test_read_path_columns_round_trip_through_kis_live_parquet(tmp_path: Path) -> None:
+    """Integration smoke: write a kis_live snapshot via the canonical writer
+    (snapshots.write_parquet → PARQUET_SCHEMA-enforced pyarrow table), then
+    verify a DuckDB query mimicking build_quote_ratio_slice can SELECT the
+    column set without BinderException."""
+    import duckdb
+
+    from hoga.tables.snapshots import write_parquet as write_snapshots_parquet
 
     jsonl = tmp_path / "in.jsonl"
     jsonl.write_text(json.dumps({
@@ -217,7 +283,7 @@ def test_read_path_columns_round_trip_through_kis_live_parquet(tmp_path: Path) -
     )
 
     parquet_path = tmp_path / "snapshots.parquet"
-    atomic_write_parquet(parquet_path, snapshots)
+    write_snapshots_parquet(snapshots, parquet_path)
     assert parquet_path.exists()
 
     # Mimic build_quote_ratio_slice's column references.

@@ -17,16 +17,32 @@ import json
 import logging
 import shutil
 import time
-from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import polars as pl
-
 from hoga.api.timeenc import unix_ms_to_hhmmssms
 from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers_parquet
+from hoga.tables.snapshots import Orderbook, write_parquet as write_snapshots_parquet
+from hoga.tables.trades import Trade, write_parquet as write_trades_parquet
+
+_ZERO_LEVELS: tuple[int, ...] = (0,) * 10
 
 _log = logging.getLogger(__name__)
+
+
+def _atomic_write_table(writer, records, path: Path) -> None:
+    """Bridge: call the canonical table writer if non-empty, else unlink.
+
+    ADR-0043 today_promoter's contract is "no records → no file" (DuckDB
+    chokes on zero-row parquet in some configs; readers handle missing
+    file via FileNotFoundError, which is the standard pattern). The
+    canonical writers always emit a row group, so apply the unlink-on-
+    empty policy at this seam instead of inside the table modules.
+    """
+    if records:
+        writer(records, path)
+    else:
+        path.unlink(missing_ok=True)
 
 
 def _parse_jsonl_to_records(
@@ -34,21 +50,28 @@ def _parse_jsonl_to_records(
     *,
     code: str,
     date: str,
-) -> tuple[list[dict], list[dict], list[BrokerRow], dict]:
-    """Parse one Live Capture JSONL into (snapshots, trades, broker_rows, meta) tuples.
+) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], dict]:
+    """Parse one Live Capture JSONL into typed table records + meta.
 
     Shared by promote_one (ADR-0038 daily batch) and promote_today
     (ADR-0043 in-session N-minute overwrite). Torn last lines are skipped
     with a `live.promote.partial_line` warn log.
 
-    `meta` is the JSON dict ready to write to meta.json — caller decides
-    when/how to persist it.
+    Returns canonical dataclasses (Orderbook / Trade / BrokerRow), not
+    dicts — the table writers enforce PARQUET_SCHEMA at construction time,
+    so a missing column or wrong dtype fails fast here instead of as a
+    DuckDB BinderException in a downstream reader.
 
-    If `jsonl_path` does not exist, returns empty lists and meta with
-    row_counts=0.
+    KIS REST doesn't carry hogaplay's forensic fields (depth deltas,
+    cum_vol, change_pct, unknown_*); they are synthesized as 0 / 0.0 so
+    the wire schema stays uniform across sources (ADR-0049).
+
+    `meta` is the JSON dict ready to write to meta.json — caller decides
+    when/how to persist it. If `jsonl_path` does not exist, returns empty
+    lists and meta with row_counts=0.
     """
-    snapshots: list[dict] = []
-    trades: list[dict] = []
+    snapshots: list[Orderbook] = []
+    trades: list[Trade] = []
     broker_rows: list[BrokerRow] = []
     broker_snapshot_count = 0
     # Monotonic per stock-date counters; KIS has no native seq, but the
@@ -98,48 +121,59 @@ def _parse_jsonl_to_records(
                 )
                 continue
             p = row.get("payload") or {}
-            phase = p.get("phase", "regular")
+            # `phase` ("regular" / "premarket" / "afterhours") is preserved in
+            # the JSONL forensic record but not in canonical parquet — no
+            # downstream reader queries it. If a future use case needs it,
+            # extend Orderbook/Trade dataclasses and PARQUET_SCHEMA.
             if kind == "ob":
                 bids = p.get("bids") or []
                 asks = p.get("asks") or []
                 # ADR-0010 invariant: parquet `ts_ms` column = HHMMSSmmm packed-decimal.
                 # ADR-0049: kis_live writer converts JSONL's Unix-ms `t_ms` to
                 # HHMMSSmmm at promote time so reader-side decoding is source-uniform.
-                # Column-shape invariant: must match hoga/tables/snapshots.py
-                # PARQUET_SCHEMA so snapshots.query_at (and /api/orderbook)
-                # can SELECT without BinderException. KIS REST doesn't carry
-                # per-level depth deltas (ask_d/bid_d) nor total deltas
-                # (tot_*_d) — synthesize 0 for them (forensic-only fields).
+                # Forensic columns (ask_d/bid_d/tot_*_d) — KIS REST is delta-free.
                 snap_seq += 1
-                snap: dict = {"ts_ms": ts_ms_encoded, "seq": snap_seq, "phase": phase}
-                for i in range(10):
-                    snap[f"bid_p{i + 1}"] = bids[i]["price"] if i < len(bids) else 0
-                    snap[f"bid_q{i + 1}"] = bids[i]["qty"] if i < len(bids) else 0
-                    snap[f"bid_d{i + 1}"] = 0
-                    snap[f"ask_p{i + 1}"] = asks[i]["price"] if i < len(asks) else 0
-                    snap[f"ask_q{i + 1}"] = asks[i]["qty"] if i < len(asks) else 0
-                    snap[f"ask_d{i + 1}"] = 0
-                snap["tot_bid"] = p.get("total_bid_qty", 0)
-                snap["tot_bid_d"] = 0
-                snap["tot_ask"] = p.get("total_ask_qty", 0)
-                snap["tot_ask_d"] = 0
-                snapshots.append(snap)
+                snapshots.append(Orderbook(
+                    ts_ms=ts_ms_encoded,
+                    seq=snap_seq,
+                    ask_p=tuple(asks[i]["price"] if i < len(asks) else 0 for i in range(10)),
+                    ask_q=tuple(asks[i]["qty"] if i < len(asks) else 0 for i in range(10)),
+                    ask_d=_ZERO_LEVELS,
+                    bid_p=tuple(bids[i]["price"] if i < len(bids) else 0 for i in range(10)),
+                    bid_q=tuple(bids[i]["qty"] if i < len(bids) else 0 for i in range(10)),
+                    bid_d=_ZERO_LEVELS,
+                    tot_ask=int(p.get("total_ask_qty") or 0),
+                    tot_ask_d=0,
+                    tot_bid=int(p.get("total_bid_qty") or 0),
+                    tot_bid_d=0,
+                ))
             elif kind == "trade":
                 for tr in p.get("trades") or []:
                     # Inner trade's t_ms can drift micro-seconds from the outer tick.
                     # Use the outer ts_ms_encoded so the entire row's encoding is uniform
                     # per cycle. If inner-vs-outer divergence ever matters, revisit at that
-                    # signal.
+                    # signal. Forensic / cumulative fields (change_pct, cum_vol,
+                    # cum_trades, low/high_so_far, net_pressure, unknown_*) are
+                    # hogaplay-TSV-only — synthesize zero so the canonical schema
+                    # stays uniform across sources.
                     trade_seq += 1
-                    trades.append({
-                        "ts_ms": ts_ms_encoded,
-                        "seq": trade_seq,
-                        "price": tr.get("price"),
-                        "qty": tr.get("qty"),
-                        "side": tr.get("side"),
-                        "side_source": tr.get("side_source", "inferred"),
-                        "phase": phase,
-                    })
+                    trades.append(Trade(
+                        ts_ms=ts_ms_encoded,
+                        seq=trade_seq,
+                        price=int(tr.get("price") or 0),
+                        change_pct=0.0,
+                        qty=int(tr.get("qty") or 0),
+                        side=int(tr.get("side") or 0),
+                        cum_vol=0,
+                        cum_trades=0,
+                        low_so_far=0,
+                        high_so_far=0,
+                        net_pressure=0,
+                        unknown_14=0,
+                        unknown_16=0.0,
+                        unknown_17=0.0,
+                        unknown_18=0.0,
+                    ))
             elif kind == "broker":
                 buy = p.get("buy_top") or []
                 sell = p.get("sell_top") or []
@@ -210,7 +244,7 @@ async def promote_today(data_dir: Path, *, code: str) -> None:
     Candles invariant (ADR-0040): snapshots/trades/brokers.parquet만 생성.
     candles는 Live Candle Backfill의 별도 캐시가 담당하므로 절대 생성하지 않는다.
     """
-    from hoga.api._atomic_write import atomic_write_parquet, atomic_write_json
+    from hoga.api._atomic_write import atomic_write_json
 
     # CRITICAL: today_kst를 한 번만 evaluate해서 자정 race 회피
     today = _today_kst_yyyymmdd()
@@ -236,13 +270,9 @@ async def promote_today(data_dir: Path, *, code: str) -> None:
 
     target.mkdir(parents=True, exist_ok=True)
     try:
-        atomic_write_parquet(target / "snapshots.parquet", snapshots)
-        atomic_write_parquet(target / "trades.parquet", trades)
-        # BrokerRow dataclass → dict via asdict (preserves all 7 fields).
-        atomic_write_parquet(
-            target / "brokers.parquet",
-            [asdict(r) for r in broker_rows],
-        )
+        _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
+        _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
+        _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
         atomic_write_json(target / "meta.json", meta, indent=2)
     except OSError as e:
         _log.warning(
@@ -297,12 +327,9 @@ async def promote_one(
     )
 
     target.mkdir(parents=True, exist_ok=True)
-    if snapshots:
-        pl.DataFrame(snapshots).write_parquet(target / "snapshots.parquet")
-    if trades:
-        pl.DataFrame(trades).write_parquet(target / "trades.parquet")
-    if broker_rows:
-        write_brokers_parquet(broker_rows, target / "brokers.parquet")
+    _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
+    _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
+    _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
     meta_path.write_text(json.dumps(meta, indent=2))
     _log.info(
         "live.promote.done code=%s date=%s row_counts=%s",
