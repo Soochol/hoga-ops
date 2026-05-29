@@ -121,12 +121,18 @@ describe('computeWheelOutcome', () => {
     });
   });
 
-  describe('right wall — Ctrl/Cmd zoom-out clamp', () => {
-    it('clamps `to` to maxTo when ctrl zoom-out would push past the wall', () => {
+  describe('Ctrl/Cmd zoom-out — anchor preserved past right wall', () => {
+    // The right wall does NOT clamp ctrl-zoom. The mouse-anchor invariant
+    // (anchor's screen-x stays under the mouse) is sacred — clamping `to`
+    // while leaving `from` at the formula value breaks that invariant by
+    // narrowing the visible span asymmetrically. The library renders empty
+    // space past the last candle by design; ctrl-zoom-out is allowed to
+    // extend that padding. See ADR-0045 (this fix).
+    it('lets ctrl zoom-out push `to` past maxTo and preserves anchor ratio', () => {
       // range={50,99}, anchor=80, deltaY=100, maxTo=100
-      // span=49, factor=exp(0.1)≈1.105
-      // newFrom = 80 - (80-50)*1.105 ≈ 46.85
-      // newTo   = 80 + (99-80)*1.105 ≈ 100.99  → clamp to 100
+      // span=49, factor=exp(0.1)≈1.10517
+      // newFrom = 80 - (80-50)*factor ≈ 46.8448
+      // newTo   = 80 + (99-80)*factor ≈ 100.998  (> maxTo, but NOT clamped)
       const out = computeWheelOutcome(
         baseInput({
           range: { from: 50, to: 99 },
@@ -137,8 +143,12 @@ describe('computeWheelOutcome', () => {
         }),
       );
       expect(out).not.toBeNull();
-      expect(out!.to).toBe(100);
-      expect(out!.from).toBeCloseTo(46.85, 1);
+      expect(out!.from).toBeCloseTo(46.8448, 3);
+      expect(out!.to).toBeCloseTo(100.998, 2);
+      // Anchor ratio invariant: (anchor - from)/(to - from) preserved.
+      const pBefore = (80 - 50) / (99 - 50);
+      const pAfter = (80 - out!.from) / (out!.to - out!.from);
+      expect(pAfter).toBeCloseTo(pBefore, 10);
     });
 
     it('does not clamp ctrl zoom-out that stays under the wall', () => {

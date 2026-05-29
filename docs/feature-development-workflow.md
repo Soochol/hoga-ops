@@ -24,8 +24,8 @@
 
 | 단계 | 산출물 | 게이트 |
 |------|--------|--------|
-| `/superpowers:brainstorming` | spec 초안 | user가 spec 파일 검토 후 승인 |
-| `/grill-with-docs` (1차) | spec 도메인 용어/ADR 정합성 확인 | CONTEXT.md 용어 mismatch 없음 |
+| `/superpowers:brainstorming` | spec 초안 ([SPEC_TEMPLATE.md](superpowers/specs/SPEC_TEMPLATE.md) 기반, **Invariants + Invariant impact 섹션 필수** — ADR-0045) | user가 spec 파일 검토 후 승인 |
+| `/grill-with-docs` (1차) | spec 도메인 용어/ADR 정합성 + **invariant 누락 검토** | CONTEXT.md 용어 mismatch 없음, Invariants 섹션 채워짐 |
 | `/superpowers:writing-plans` | 실행 가능한 plan 파일 | — |
 | `/plan-eng-review` | plan에 반영된 review 코멘트 | — |
 | `/grill-with-docs` (2차, 조건부) | review로 plan이 **실질 변경**됐을 때만 재실행 | plan 무변경 시 skip |
@@ -73,3 +73,4 @@ git branch --show-current     # 현재 세션이 어느 브랜치에 있는지
 - **spec 승인 gate 없음** → spec이 휘발되어 plan과 drift.
 - **verification 없음** → subagent의 self-report 신뢰 → 거짓 통과.
 - **ADR commit 없음** → architecture 결정이 코드에만 남고 *왜*가 사라짐 (ADR 0001이 만들어진 이유).
+- **spec에 invariant 섹션 없음** → 코드 변경이 깰 invariant가 명시되지 않아 검토자가 알아채지 못함. `2026-05-24-replay-wheel-right-wall-design.md`의 ctrl-zoom clamp이 anchor 비율 invariant를 깬 채 통과해 사용자 버그로 이어진 사례 → ADR-0045로 spec template + Invariants 필수 게이트 도입.
