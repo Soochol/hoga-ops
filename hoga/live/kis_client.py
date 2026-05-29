@@ -8,6 +8,7 @@ KIS's 6-hour same-token reissue policy.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from dataclasses import dataclass, field
@@ -36,6 +37,53 @@ _REISSUE_COOLDOWN_MS = 60_000  # KIS: 1 issuance per minute
 # poller. Supporting ETF/ETN/ELW would require lifting this to a per-call
 # argument derived from the symbol-master entry's `market`/`asset_class`.
 _STOCK_MRKT_DIV = "J"
+
+# Conservative cap on KIS data calls per second across all callers (poller +
+# backfill + future). KIS doesn't publish an exact retail limit — 20/sec is
+# the commonly-cited figure; 15 gives ~25% headroom so we stay clear of the
+# EGW00201 boundary under burst.
+_RATE_LIMIT_CALLS_PER_SEC = 15.0
+
+
+class _TokenBucket:
+    """Leaky-bucket rate limiter shared by all KIS data callers.
+
+    Single instance per ``KisClient`` so the poller, on-demand backfill,
+    and any future caller draw from one budget — matching KIS's per-API-
+    key quota model. The bucket starts full so short bursts under
+    capacity don't pay an artificial penalty; once drained, ``acquire``
+    sleeps just long enough for one token to replenish.
+
+    Concurrency: token bookkeeping happens under ``_lock`` so concurrent
+    acquirers see consistent state. The ``await asyncio.sleep`` is
+    intentionally OUTSIDE the lock so other tasks can recompute their
+    own wait while one task sleeps. CancelledError during sleep is safe
+    — the token is only deducted after the lock confirms availability,
+    never before the sleep, so cancellation never leaks tokens.
+    """
+
+    def __init__(self, rate: float):
+        if rate <= 0:
+            raise ValueError("rate must be positive")
+        self._rate = float(rate)
+        self._tokens = float(rate)
+        self._last = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                self._tokens = min(
+                    self._rate,
+                    self._tokens + (now - self._last) * self._rate,
+                )
+                self._last = now
+                if self._tokens >= 1.0:
+                    self._tokens -= 1.0
+                    return
+                wait = (1.0 - self._tokens) / self._rate
+            await asyncio.sleep(wait)
 
 
 def classify_side(
@@ -123,6 +171,7 @@ class KisClient:
         token_cache_path: Path,
         *,
         _transport: Optional[httpx.AsyncBaseTransport] = None,
+        _rate_limit_per_sec: float = _RATE_LIMIT_CALLS_PER_SEC,
     ):
         self._creds = credentials
         self._cache_path = token_cache_path
@@ -134,6 +183,11 @@ class KisClient:
         # Audit-3: track last issuance to enforce 1-per-minute cool-down.
         # monotonic clock so we don't get confused by NTP step or daylight changes.
         self._last_issued_monotonic_ms: Optional[int] = None
+        # Single rate limiter shared by all data calls — `_get` acquires
+        # one token per HTTP request. Token issuance (`_issue_token`)
+        # bypasses this since it uses its own 1/min cool-down endpoint
+        # and KIS scopes the rate budget per data endpoint, not per app.
+        self._rate_limiter = _TokenBucket(rate=_rate_limit_per_sec)
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -223,7 +277,13 @@ class KisClient:
         full traceback at `unexpected_error` level, drowning real bugs
         in noise. Found by /qa: KIS regularly returns 500 for codes
         outside the regular session window — expected, not a defect.
+
+        Rate limit: every call passes through ``self._rate_limiter`` so
+        the per-API-key budget is honoured across all callers (poller +
+        backfill). Acquire happens before the HTTP send so token waiters
+        block on the rate budget, not on KIS response time.
         """
+        await self._rate_limiter.acquire()
         token = await self.get_access_token()
         headers = {
             "authorization": f"Bearer {token}",

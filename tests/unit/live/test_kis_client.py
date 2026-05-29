@@ -1,5 +1,7 @@
 """Stage 1 / Task 1.1 + 1.2 — KIS HTTP client tests."""
+import asyncio
 import json
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -13,6 +15,7 @@ from hoga.live.kis_client import (
     KisClient,
     KisCredentials,
     KisRateLimitError,
+    _TokenBucket,
 )
 
 
@@ -191,5 +194,120 @@ async def test_5xx_with_non_json_body_falls_back_to_text(tmp_path: Path) -> None
         err = exc_info.value
         assert err.msg_cd == "HTTP_502"
         assert "Bad Gateway" in err.msg1
+    finally:
+        await client.aclose()
+
+
+# ------------------------------------------------------------------------
+# Token bucket rate limiter
+# ------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_lets_initial_burst_through() -> None:
+    """Bucket starts full so short bursts under capacity don't pay a penalty.
+
+    This is the per-code 3-way fetch case (`asyncio.gather` 3 calls at once
+    while we're well under steady-state rate): they should all go through
+    without artificial sleep, otherwise every poller cycle starts slow.
+    """
+    bucket = _TokenBucket(rate=10.0)
+    start = time.monotonic()
+    for _ in range(10):
+        await bucket.acquire()
+    elapsed = time.monotonic() - start
+    # 10 initial tokens consumed instantly — well under 100ms even on slow CI.
+    assert elapsed < 0.1
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_paces_to_rate_when_drained() -> None:
+    """Past the initial burst, calls space out to the configured rate.
+
+    With rate=10/sec, the 11th call has to wait for one token to refill —
+    ~100ms. Tested singly so we measure the wait directly without floating-
+    point compounding over a long sequence.
+    """
+    bucket = _TokenBucket(rate=10.0)
+    for _ in range(10):
+        await bucket.acquire()
+    start = time.monotonic()
+    await bucket.acquire()
+    elapsed = time.monotonic() - start
+    # Expected ~100ms; allow generous tolerance for event-loop scheduling.
+    assert 0.05 < elapsed < 0.3
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_serialises_concurrent_acquirers() -> None:
+    """Multiple tasks acquiring simultaneously cumulatively respect the rate.
+
+    Models the actual production scenario: poller cycle fires three
+    coroutines (`asyncio.gather`) while a backfill request lands at the
+    same instant. All four contend for the same bucket. Total wall time
+    must reflect the cumulative cost, not let any acquirer "skip the queue".
+    """
+    bucket = _TokenBucket(rate=10.0)
+    # Drain the initial burst.
+    for _ in range(10):
+        await bucket.acquire()
+    start = time.monotonic()
+    # 5 concurrent acquirers past empty bucket: total wait ≥ (5-1)/10 = 0.4s
+    # because each needs ~100ms beyond the previous.
+    await asyncio.gather(*(bucket.acquire() for _ in range(5)))
+    elapsed = time.monotonic() - start
+    assert elapsed >= 0.4
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_invalid_rate_rejected() -> None:
+    """Negative / zero rate is a programming error, not a soft default."""
+    with pytest.raises(ValueError):
+        _TokenBucket(rate=0)
+    with pytest.raises(ValueError):
+        _TokenBucket(rate=-1.0)
+
+
+@pytest.mark.asyncio
+async def test_kis_client_get_goes_through_rate_limiter(tmp_path: Path) -> None:
+    """`_get` must route every call through `_rate_limiter.acquire()`.
+
+    Without this contract, future endpoints that bypass `_get` would
+    silently escape the per-API-key budget — exactly the regression the
+    rate limiter exists to prevent.
+    """
+    def handler(req: httpx.Request) -> httpx.Response:
+        if "oauth2/tokenP" in req.url.path:
+            return httpx.Response(
+                200,
+                json={"access_token": "TOK", "expires_in": 86400, "token_type": "Bearer"},
+            )
+        return httpx.Response(200, json={
+            "rt_cd": "0",
+            "output1": {
+                **{f"askp{i}": "0" for i in range(1, 11)},
+                **{f"askp_rsqn{i}": "0" for i in range(1, 11)},
+                **{f"bidp{i}": "0" for i in range(1, 11)},
+                **{f"bidp_rsqn{i}": "0" for i in range(1, 11)},
+                "total_askp_rsqn": "0",
+                "total_bidp_rsqn": "0",
+            },
+        })
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_cache_path=tmp_path / "token.json",
+        _transport=httpx.MockTransport(handler),
+    )
+    calls = {"n": 0}
+    real_acquire = client._rate_limiter.acquire
+
+    async def counting_acquire() -> None:
+        calls["n"] += 1
+        await real_acquire()
+
+    client._rate_limiter.acquire = counting_acquire  # type: ignore[method-assign]
+    try:
+        await client.fetch_orderbook("003490")
+        assert calls["n"] == 1
     finally:
         await client.aclose()
