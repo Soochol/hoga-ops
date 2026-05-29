@@ -1,10 +1,4 @@
-import { LineSeries } from 'lightweight-charts';
-import type { Candle, RangeBundle } from '../../api/types';
-import { type VirtualAxis } from '../../util/virtualAxis';
-import { resolveTokens } from '../../util/tokens';
-import { useActivePrefs } from '../../state/chartPrefs';
-import { MA_SLOT_COUNT, type MAConfig, type MAIndex } from '../../state/tabs';
-import type { PaneSpec, SeriesSpec } from '../RangeSeriesPane';
+import type { Candle } from '../../api/types';
 
 /** 이동평균을 계산할 때 캔들의 어느 가격을 입력 시계열로 쓸지. mockup의
  *  "소스" dropdown과 1:1 대응. close가 가장 흔하지만 분석가에 따라 시고저
@@ -22,23 +16,6 @@ export function selectSource(c: Candle, source: MASource): number {
     case 'ohlc4': return (c.open + c.high + c.low + c.close) / 4;
   }
 }
-
-const TOKEN_SPEC = {
-  ma1: ['--ma-1', '#EC4899'],
-  ma2: ['--ma-2', '#3B82F6'],
-  ma3: ['--ma-3', '#F97316'],
-  ma4: ['--ma-4', '#22C55E'],
-  ma5: ['--ma-5', '#F8FAFC'],
-} as const;
-
-const { ma1, ma2, ma3, ma4, ma5 } = resolveTokens(TOKEN_SPEC);
-
-/**
- * Palette for the five Moving Average overlays, indexed 0..4 to align with
- * `ChartViewPrefs.movingAverages` slots. Resolved once at module load from
- * the `--ma-1..--ma-5` design tokens (T1).
- */
-const MA_COLORS: string[] = [ma1, ma2, ma3, ma4, ma5];
 
 /**
  * Simple Moving Average over `closes` with window `period`. O(n) sliding-
@@ -67,68 +44,3 @@ export function computeSMA(closes: number[], period: number): (number | null)[] 
   }
   return out;
 }
-
-/** Per-render context passed to every MA series' `data` projector. */
-export type MAContext = readonly MAConfig[];
-
-/**
- * Returns the current MA configuration array.
- *
- * RangeSeriesPane splits series lifecycle from data updates: series are
- * added once per (chart, spec) and only `setData` runs when `ctx` changes.
- * So a fresh reference here triggers a cheap re-projection, not a series
- * teardown — the previous "identity must stay stable across
- * setMovingAverage" contract is no longer load-bearing.
- */
-const useMAContext = (): MAContext => useActivePrefs((p) => p.movingAverages);
-
-function makeSeries(index: MAIndex): SeriesSpec<MAContext> {
-  return {
-    type: LineSeries,
-    options: {
-      color: MA_COLORS[index],
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      crosshairMarkerVisible: false,
-    },
-    data: (bundle: RangeBundle, axis: VirtualAxis, ctx: MAContext) => {
-      const cfg = ctx[index];
-      if (!cfg || !cfg.enabled) return [];
-      // Filter pre-open auction candles before computing the SMA so the
-      // first `period` regular-session values aren't averaged with
-      // 8:30–9:00 KST auction closes — matches what volume/ratio/
-      // quoteTotals/fillStrength projectors do.
-      const inSession = bundle.candles.filter((c) => axis.contains(c.ts_ms));
-      const closes = inSession.map((c) => c.close);
-      const sma = computeSMA(closes, cfg.period);
-      const out: any[] = [];
-      for (let j = 0; j < inSession.length; j++) {
-        const c = inSession[j];
-        const time = (axis.toVirtual(c.ts_ms) / 1000) as any;
-        const v = sma[j];
-        if (v === null) {
-          // Whitespace data: keeps the time slot but draws no line segment.
-          out.push({ time });
-        } else {
-          out.push({ time, value: v });
-        }
-      }
-      return out;
-    },
-  };
-}
-
-/**
- * Moving Average overlay pane (paneIndex 0, mounted above the candle pane).
- * Static 5-series shape: disabled slots return `[]` instead of being
- * removed, so series handles don't churn between renders. `stretch: 0`
- * because the overlay shares the candle pane's vertical space and is not
- * driven by `ChartStage`'s stretch loop.
- */
-export const MOVING_AVERAGE_SPEC: PaneSpec<MAContext> = {
-  name: 'moving-average',
-  stretch: 0,
-  useContext: useMAContext,
-  series: Array.from({ length: MA_SLOT_COUNT }, (_, i) => makeSeries(i as MAIndex)),
-};

@@ -13,9 +13,6 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
-// Importing ./tabs registers the active tab prefs store as a side effect,
-// required by RangeSeriesPane's projectors (useActivePrefs).
-import '../state/tabs';
 import { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
 import { createChart } from 'lightweight-charts';
