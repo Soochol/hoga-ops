@@ -3,7 +3,6 @@ import { LiveChartRoot } from './LiveChartRoot';
 import { LiveEmptyState } from './LiveEmptyState';
 import { LiveSidebar } from './LiveSidebar';
 import { WatchlistPanel } from './WatchlistPanel';
-import InvariantOutcomesBanner from './InvariantOutcomesBanner';
 import type { RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
 
@@ -64,12 +63,6 @@ export function LiveWorkarea({
       }}
     >
       <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {bundle && (
-          <InvariantOutcomesBanner
-            excluded={bundle.excluded_dates ?? []}
-            warnings={bundle.data_warnings ?? []}
-          />
-        )}
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <LiveChartRoot
             code={activeCode}
