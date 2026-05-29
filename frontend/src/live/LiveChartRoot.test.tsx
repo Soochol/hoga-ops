@@ -232,9 +232,8 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // Axis with yesterday + today. lightweight-charts emits negative
     // logical.from when the visible-range origin is past the leftmost
     // loaded bar (fractional bar index can go negative beyond the data).
-    // Handler should prepend one prefetchChunkDaysFor('1m')=2 calendar-day
-    // chunk (sized to ≥10 minute candles, weekend-safe) from the current
-    // earliest segment.
+    // Handler should prepend one prefetchChunkDaysFor('1m')=7 calendar-day
+    // chunk (≈5 trading days, weekend- and single-holiday-safe).
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
@@ -255,8 +254,43 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // currentEarliest = '20260526', minus prefetchChunkDaysFor('1m')=2 → '20260524'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260524');
+    // currentEarliest = '20260526', minus prefetchChunkDaysFor('1m')=21 → '20260505'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260505');
+  });
+
+  it('bases next chunk on historicalFromDate (not axis) when axis did not advance', () => {
+    // Holiday/long-weekend regression: if the prior chunk fetched only
+    // non-trading days, axis.segments[0] stays put. Without basing the
+    // next chunk off historicalFromDate, the trigger would recompute the
+    // same target, the store's monotonic-decrease guard would reject it,
+    // and extension would freeze. Verify the next pan steps another full
+    // chunk back from the already-requested boundary instead.
+    useLivePageStore.setState({ historicalFromDate: '20260519' }); // earlier than axisEarliest '20260526'
+
+    const handlers: Array<(r: unknown) => void> = [];
+    vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    act(() => {
+      handlers.forEach((h) => h({ from: -50.3, to: 100.7 }));
+      vi.advanceTimersByTime(200);
+    });
+
+    // base = historicalFromDate '20260519' (earlier than axisEarliest
+    // '20260526'), minus 21 → '20260428'. If the trigger had re-based on
+    // axis instead, it would compute '20260505' and the store guard would
+    // reject that as not strictly earlier than '20260519'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260428');
   });
 
   it('fires extendHistoricalRange on D timeframe when logical from goes negative', () => {
@@ -285,11 +319,10 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // D-timeframe chunk is sized to ~60 daily candles (60 trading days
-    // padded to 90 calendar days for weekends + holidays). axis.segments[0]
-    // = '20260526', minus prefetchChunkDaysFor('D')=90 → '20260225' (May 26
-    // = doy 146, 146 − 90 = doy 56 = Feb 25 in non-leap 2026).
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260225');
+    // D-timeframe chunk: prefetchChunkDaysFor('D')=180 calendar days
+    // (~120 trading days). axis.segments[0] = '20260526', minus 180 →
+    // '20251127' (crosses year boundary into 2025).
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20251127');
   });
 
   it('does NOT fire extendHistoricalRange when logical from is non-negative', () => {

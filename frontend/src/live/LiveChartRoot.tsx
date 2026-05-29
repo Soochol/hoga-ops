@@ -221,13 +221,19 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // signal we actually need.
   //
   // Each trigger prepends one timeframe-sized chunk (see
-  // prefetchChunkDaysFor — minute frames ≈ 1 trading day, daily ≈ 90
-  // calendar days, W/M jump to the 250-day cap) from the current earliest
-  // segment. The 150ms trailing debounce coalesces rapid wheel /
-  // drag events into one fetch; the store's extendHistoricalRange is
-  // monotonically decreasing, so repeated negative ranges in the same chunk
-  // are no-ops. After the new chunk lands, axis.segments[0] becomes earlier,
-  // so the next drag-past triggers another chunk relative to the new earliest.
+  // prefetchChunkDaysFor — minute frames ~5 trading days, daily ≈ 90
+  // calendar days, W/M jump to the 250-day cap). The 150ms trailing
+  // debounce coalesces rapid wheel / drag events into one fetch; the
+  // store's extendHistoricalRange is monotonically decreasing, so repeated
+  // negative ranges within one chunk are no-ops.
+  //
+  // Base date: prefer the already-requested historicalFromDate over the
+  // axis earliest. When a chunk lands on a holiday-only span (e.g. Lunar
+  // New Year), axis.segments[0] stays put — so basing off axis would have
+  // the next trigger recompute the same target, the store guard would
+  // reject it, and extension would freeze. Basing off historicalFromDate
+  // instead means each pan-past steps another chunk back regardless of
+  // whether the server returned new trading days for the prior chunk.
   useEffect(() => {
     if (!chart) return;
     const ts = chart.timeScale();
@@ -244,8 +250,10 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       // logical.from is a fractional bar index; negative = past the leftmost
       // loaded bar, which is exactly the lazy-fetch trigger condition.
       if (r.from >= 0) return;
-      const currentEarliestDate = realMsToYyyymmdd(axis.segments[0].sessionOpenMs);
-      const nextHistoricalFrom = subtractDaysKst(currentEarliestDate, prefetchChunkDaysFor(timeframe));
+      const axisEarliestDate = realMsToYyyymmdd(axis.segments[0].sessionOpenMs);
+      const cur = useLivePageStore.getState().historicalFromDate;
+      const baseDate = cur !== null && cur < axisEarliestDate ? cur : axisEarliestDate;
+      const nextHistoricalFrom = subtractDaysKst(baseDate, prefetchChunkDaysFor(timeframe));
       if (timeoutId !== null) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         useLivePageStore.getState().extendHistoricalRange(nextHistoricalFrom);

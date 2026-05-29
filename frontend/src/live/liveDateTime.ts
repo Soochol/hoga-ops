@@ -7,6 +7,7 @@
  * Korea?" — keeping the math in one place means localising any future
  * Half-Day Session handling to a single module.
  */
+import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 
 /** Today's YYYYMMDD in KST. */
 export function todayKstYyyymmdd(): string {
@@ -60,7 +61,26 @@ export function regularSessionCloseMs(yyyymmdd: string): number {
  * without requiring the user to scroll. ~4 trading weeks of minute bars. */
 export const INITIAL_HISTORICAL_DAYS = 20;
 
-/** Days of additional past data fetched each time the user scrolls past the
- * currently-loaded window. Smaller than INITIAL so the seed loads quickly and
- * subsequent extensions stay small. */
-export const PREFETCH_CHUNK_DAYS = 10;
+/** Calendar days to backfill per scroll-past-leftmost event, sized to a
+ * candle-count target rather than a uniform calendar window.
+ *
+ * - Minute timeframes: 21 calendar days ≈ 15 trading days ≈ ~5850 1m
+ *   candles per chunk. The earlier 2-day chunk had a weekend trap (Monday
+ *   earliest minus 2 lands on Saturday → zero new trading days, then the
+ *   livePage store's monotonic-decrease guard froze further extension).
+ *   21 days survives weekends, single holidays, and most multi-day KRX
+ *   closures in a single chunk. Longer closures (rare, e.g. Lunar New Year
+ *   when bracketed by weekends) are still handled by LiveChartRoot's
+ *   trigger: it bases the next chunk off the already-requested
+ *   `historicalFromDate` rather than the axis, so each pan jumps another
+ *   21 days back regardless of whether new data arrived.
+ * - Calendar timeframes: D → 180 calendar days (~120 trading days). W/M
+ *   scale proportionally; the 250-day cap (PAST_CANDLES_MAX_DAYS in
+ *   useLiveBundle) clamps them, so one scroll on W/M jumps to the
+ *   available limit. */
+export function prefetchChunkDaysFor(tf: LiveTimeframe): number {
+  if (isMinuteTimeframe(tf)) return 21;
+  if (tf === 'D') return 180;
+  if (tf === 'W') return 60 * 7;
+  return 60 * 31; // tf === 'M'
+}
