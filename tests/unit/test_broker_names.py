@@ -21,8 +21,8 @@ from hoga.broker_names import canonical
         ("토  스", "토스증권", "토스증권"),
         ("모건스탠리", "모건스탠리증권", "모건스탠리증권"),
         ("JP모간서울", "JP모간", "JP모간"),
-        ("골드만", "골드만삭스증권", "골드만"),
-        ("씨티그룹", "씨티그룹글로벌마켓증권", "씨티그룹"),
+        # 골드만/씨티그룹 KIS long forms removed — unverified inference, prefer
+        # loud unknown_alias warning over silent member-firm collapse.
         # Identity pairs: both sources already agree.
         ("NH투자증권", "NH투자증권", "NH투자증권"),
         ("키움증권", "키움증권", "키움증권"),

@@ -24,6 +24,8 @@ from .buffer import LiveBuffer
 from .kis_client import KisClient
 from .promote import promote_today
 
+_log = logging.getLogger(__name__)
+
 
 class LiveStatus(BaseModel):
     """Wire model for GET /api/live/status (spec §6)."""
@@ -258,6 +260,20 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     codes = [e.code for e in entries]
     if not codes:
         return False
+
+    # Filter against the symbol master so codes that aren't (or are no longer)
+    # listed don't reach KIS — those calls 5xx and drown the error log in noise
+    # that masks real failures. Cold cache → fall back to unfiltered polling
+    # rather than silently halt capture for everyone.
+    from hoga.api import symbols as _symbols
+    _known = {h.code for h in _symbols.search("", limit=10_000)}
+    if _known:
+        _dropped = [c for c in codes if c not in _known]
+        if _dropped:
+            _log.warning("live.poller.codes_unknown dropped=%r", _dropped)
+        codes = [c for c in codes if c in _known]
+        if not codes:
+            return False
 
     # If already running, stop first.
     await stop_live_poller()
