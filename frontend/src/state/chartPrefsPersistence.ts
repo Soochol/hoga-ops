@@ -19,20 +19,6 @@ export function mergePrefs(raw: unknown): ChartViewPrefs {
       (out as Record<string, unknown>)[p.key] = v;
     }
   }
-  // volumeProfileMode + movingAverages handled inline until Phase I removes them.
-  if (obj.volumeProfileMode === 'range' || obj.volumeProfileMode === 'per-day') {
-    out.volumeProfileMode = obj.volumeProfileMode;
-  }
-  if (Array.isArray(obj.movingAverages)) {
-    out.movingAverages = obj.movingAverages.map((ma, i) => ({
-      period: typeof (ma as { period?: number }).period === 'number'
-        ? (ma as { period: number }).period
-        : DEFAULT_PREFS.movingAverages[i]?.period ?? 20,
-      enabled: typeof (ma as { enabled?: boolean }).enabled === 'boolean'
-        ? (ma as { enabled: boolean }).enabled
-        : DEFAULT_PREFS.movingAverages[i]?.enabled ?? false,
-    }));
-  }
   return out;
 }
 
@@ -64,15 +50,11 @@ export function attachChartPrefsPersistence(store: typeof useChartPrefsStore): (
       const {
         setToggle: _setToggle,
         setNumericPref: _setNumericPref,
-        setVolumeProfileMode: _setVolumeProfileMode,
-        setMovingAverage: _setMovingAverage,
         resetToDefaults: _resetToDefaults,
         ...prefs
       } = s;
       void _setToggle;
       void _setNumericPref;
-      void _setVolumeProfileMode;
-      void _setMovingAverage;
       void _resetToDefaults;
       return prefs;
     },

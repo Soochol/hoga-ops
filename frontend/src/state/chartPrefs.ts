@@ -51,49 +51,6 @@ export function categoryOf(
   return 'category' in t ? t.category : 'chart';
 }
 
-/** Per-MA configuration. Indexed slot in `ChartViewPrefs.movingAverages`
- *  aligns 1:1 with `MA_COLORS` (T1). Period range (2..400) is validated
- *  at the UI layer (T5), not in the store. */
-export type MAConfig = {
-  period: number;
-  enabled: boolean;
-};
-
-/** Number of Moving Average slots surfaced in the UI. Single source of
- *  truth — DEFAULT_MOVING_AVERAGES.length, the bounds check in
- *  setMovingAverage, and the loop assembling MOVING_AVERAGE_SPEC.series
- *  all derive their fixed cardinality from this constant. Bumping it
- *  requires updating DEFAULT_MOVING_AVERAGES (add a default entry) and
- *  tokens.css (add --ma-N for the new slot); the rest follows. */
-export const MA_SLOT_COUNT = 5;
-
-/** Valid MA slot index. Derived from MA_SLOT_COUNT; do not hand-write the union. */
-export type MAIndex = 0 | 1 | 2 | 3 | 4;
-
-// Type-level guard: this expression fails to typecheck if MAIndex doesn't
-// cover exactly [0..MA_SLOT_COUNT-1]. Adjust both together.
-type _MAIndexCheck =
-  [MAIndex, typeof MA_SLOT_COUNT] extends [0 | 1 | 2 | 3 | 4, 5] ? true : never;
-const _maIndexCheckOk: _MAIndexCheck = true;
-void _maIndexCheckOk;
-
-/**
- * Canonical MA slot defaults (period + enabled). Frozen so direct mutation
- * trips at runtime; DEFAULT_PREFS holds a deep mutable copy so each tab
- * gets an independently mutable array via the `setMovingAverage` action.
- *
- * To add a new slot: append here (the new index will need a matching
- * --ma-N token in tokens.css and a bump of MA_SLOT_COUNT). MAIndex and
- * the type-level guard will then fail to compile until updated.
- */
-export const DEFAULT_MOVING_AVERAGES: readonly MAConfig[] = Object.freeze([
-  { period: 5, enabled: true },
-  { period: 10, enabled: true },
-  { period: 20, enabled: true },
-  { period: 60, enabled: true },
-  { period: 120, enabled: true },
-]);
-
 /**
  * Declarative registry of integer numeric prefs surfaced in the Settings
  * modal. Sister of `CHART_TOGGLES`: adding a pref = one entry here, and
@@ -143,12 +100,9 @@ export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];
 /** Per-tab chart view preferences. Stored in a `Map<tabId, ChartViewPrefs>`
  *  on the store for parity with `Tab.bundles` (CQ1). Boolean fields come
  *  from `CHART_TOGGLES`; integer numeric fields come from
- *  `CHART_NUMERIC_PREFS`; structural prefs (e.g. `volumeProfileMode`,
- *  `movingAverages`) sit alongside as explicit fields. */
-export type ChartViewPrefs = {
-  volumeProfileMode: 'range' | 'per-day';
-  movingAverages: MAConfig[];
-} & { [K in ChartToggleKey]: boolean }
+ *  `CHART_NUMERIC_PREFS`. */
+export type ChartViewPrefs =
+  & { [K in ChartToggleKey]: boolean }
   & { [K in NumericPrefKey]: number };
 
 const TOGGLE_DEFAULTS = Object.fromEntries(
@@ -160,8 +114,6 @@ const NUMERIC_DEFAULTS = Object.fromEntries(
 ) as { [K in NumericPrefKey]: number };
 
 export const DEFAULT_PREFS: ChartViewPrefs = {
-  volumeProfileMode: 'range',
-  movingAverages: DEFAULT_MOVING_AVERAGES.map((c) => ({ ...c })),
   ...TOGGLE_DEFAULTS,
   ...NUMERIC_DEFAULTS,
 };
@@ -171,8 +123,6 @@ import { create } from 'zustand';
 type ChartPrefsStore = ChartViewPrefs & {
   setToggle: (key: ChartToggleKey, value: boolean) => void;
   setNumericPref: (key: NumericPrefKey, value: number) => void;
-  setVolumeProfileMode: (mode: 'range' | 'per-day') => void;
-  setMovingAverage: (i: MAIndex, cfg: MAConfig) => void;
   resetToDefaults: () => void;
 };
 
@@ -180,18 +130,7 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set) => ({
   ...DEFAULT_PREFS,
   setToggle: (key, value) => set({ [key]: value } as Partial<ChartPrefsStore>),
   setNumericPref: (key, value) => set({ [key]: value } as Partial<ChartPrefsStore>),
-  setVolumeProfileMode: (mode) => set({ volumeProfileMode: mode }),
-  setMovingAverage: (i, cfg) =>
-    set((s) => {
-      const next = [...s.movingAverages];
-      next[i] = cfg;
-      return { movingAverages: next };
-    }),
-  resetToDefaults: () =>
-    set({
-      ...DEFAULT_PREFS,
-      movingAverages: DEFAULT_MOVING_AVERAGES.map((c) => ({ ...c })),
-    }),
+  resetToDefaults: () => set(DEFAULT_PREFS),
 }));
 
 /**
