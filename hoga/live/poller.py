@@ -97,6 +97,13 @@ class LivePoller:
         # Starvation guard (Eng C6)
         self._last_success_cycle: dict[str, int] = {}
         self._cycle_counter = 0
+        # Diagnostic only: per-code KisApiError streak. Surfaced in the
+        # error log so a week of production data can answer "do we need
+        # ADR-0042-style quarantine on the hot path?". Increments on
+        # KisApiError, resets on a successful cycle. Not touched by rate-
+        # limit or unexpected-exception paths — those are system-wide
+        # signals, not per-code defects.
+        self._consecutive_fails: dict[str, int] = {}
 
     @property
     def last_cycle_lag_ms(self) -> int:
@@ -148,7 +155,12 @@ class LivePoller:
                 if attempt < len(_BACKOFF_SECONDS) - 1:
                     await asyncio.sleep(backoff)
             except KisApiError as e:
-                _log.error("live.poller.kis_error code=%s msg_cd=%s", code, e.msg_cd)
+                streak = self._consecutive_fails.get(code, 0) + 1
+                self._consecutive_fails[code] = streak
+                _log.error(
+                    "live.poller.kis_error code=%s msg_cd=%s streak=%d",
+                    code, e.msg_cd, streak,
+                )
                 return None
             except Exception:  # noqa: BLE001 — one bad cycle must not kill the poller task
                 _log.exception("live.poller.unexpected_error code=%s", code)
@@ -170,6 +182,7 @@ class LivePoller:
             ob, trades, brokers = result
             self._kis_calls_today += 3
             self._last_success_cycle[code] = self._cycle_counter
+            self._consecutive_fails.pop(code, None)
 
             ob_payload = ob.model_dump()
             ob_payload["phase"] = phase

@@ -354,3 +354,46 @@ async def test_run_forever_until_cancel(tmp_path: Path, monkeypatch) -> None:
 
     lines = (tmp_path / "live" / "20260527" / "005930.jsonl").read_text().splitlines()
     assert len(lines) >= 3  # at least one full cycle
+
+
+@pytest.mark.asyncio
+async def test_consecutive_fails_streak_increments_then_resets(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Diagnostic counter informs whether step-5 quarantine is warranted.
+
+    KisApiError increments the streak; one successful cycle resets it.
+    Rate-limit and unexpected-exception paths intentionally don't touch
+    the counter — those are system-wide signals, not per-code defects.
+    """
+    from hoga.live.kis_client import KisApiError
+
+    regular_ms = int(datetime(2026, 5, 27, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    monkeypatch.setattr("hoga.live.poller._now_ms", lambda: regular_ms)
+
+    call_count = {"n": 0}
+
+    async def flaky_orderbook(code):
+        call_count["n"] += 1
+        if call_count["n"] <= 2:
+            raise KisApiError(msg_cd="HTTP_500/EGW00121", msg1="장시간이 아닙니다")
+        return _ob(code)
+
+    kis = AsyncMock()
+    kis.fetch_orderbook.side_effect = flaky_orderbook
+    kis.fetch_trades.return_value = []
+    kis.fetch_brokers.side_effect = lambda c: _brokers(c)
+    writer = LiveWriter(tmp_path / "live")
+    poller = LivePoller(kis, writer, LivePollerConfig(
+        codes_fn=lambda: ["005930"], date_fn=lambda: "20260527",
+    ))
+
+    # Two failing cycles → streak should be 2.
+    await poller.run_one_cycle()
+    assert poller._consecutive_fails["005930"] == 1
+    await poller.run_one_cycle()
+    assert poller._consecutive_fails["005930"] == 2
+
+    # Third cycle succeeds → streak entry should be cleared.
+    await poller.run_one_cycle()
+    assert "005930" not in poller._consecutive_fails
