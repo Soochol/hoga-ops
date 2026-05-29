@@ -44,6 +44,7 @@ vi.mock('lightweight-charts', async () => {
         applyOptions: vi.fn(),
         fitContent: vi.fn(),
         scrollToRealTime: vi.fn(),
+        scrollToPosition: vi.fn(),
         setVisibleLogicalRange: vi.fn(),
         timeToCoordinate: vi.fn(() => null),
       })),
@@ -170,6 +171,7 @@ describe('LiveChartRoot', () => {
       applyOptions: vi.fn(),
       fitContent: vi.fn(),
       scrollToRealTime: vi.fn(),
+      scrollToPosition: vi.fn(),
       setVisibleLogicalRange: vi.fn(),
       timeToCoordinate: vi.fn(() => null),
     };
@@ -253,6 +255,30 @@ describe('LiveChartRoot', () => {
     // Minute path stays "apply once" — SSE pushes inside today must not
     // snap the user's scroll back to the right edge.
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+  });
+
+  it('1m timeframe: initial apply also pins right edge via scrollToPosition(0)', () => {
+    // Regression: /diagnose 2026-05-29 found setVisibleLogicalRange alone does
+    // NOT pin the latest bar to the right edge when CHART_TIMESCALE_OPTIONS.
+    // rightOffset is non-zero AND the chart instance retains a prior code's
+    // bar layout. scrollToPosition(0, false) explicitly snaps the right edge.
+    // Removing it regresses watchlist-switch viewport to "엉뚱한 곳에서 시작".
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    vi.mocked(createChart).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+    expect(ts.scrollToPosition).toHaveBeenCalledWith(0, false);
   });
 
   it('1m timeframe: code change re-applies setVisibleLogicalRange with new count', () => {

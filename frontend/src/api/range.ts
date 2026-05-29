@@ -1,4 +1,4 @@
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
 import { TIMEFRAME_TO_MS, type RangeBundle, type Timeframe } from './types';
@@ -45,12 +45,15 @@ export function useRange(
       ),
     enabled,
     staleTime: Infinity,
-    // Keep the previous response visible during a refetch with a new query
-    // key (e.g., /live extending historicalFromDate to fetch one more
-    // chunk). Without this, `data` flips to undefined while the new query
-    // is in flight, which on /live makes the bundle shrink to today-only
-    // for a frame and the chart visibly collapses to ~2 candles before
-    // re-expanding when the response lands.
-    placeholderData: keepPreviousData,
+    // Code-aware placeholder mirrors livePastCandles.ts: keep the previous
+    // response visible during same-code refetches (e.g., /live extending
+    // historicalFromDate to fetch one more chunk), but DROP it on code
+    // switches. Without this code guard, a watchlist click on /live left
+    // the previous code's segments / quote_ratio / fill_strength in
+    // bundle until /api/range for the new code resolved, which made the
+    // VirtualAxis (built from those segments) stale and projected the
+    // new code's hoga indicator points onto the old code's date layout —
+    // surfaced as "엉뚱한 곳에서 시작하는" charts in /diagnose 2026-05-29.
+    placeholderData: (prev) => (prev && prev.code === code ? prev : undefined),
   });
 }
