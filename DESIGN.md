@@ -224,14 +224,16 @@ The design system has a **single density dial** at `:root font-size`.
 | 2026-05-20 | Tab status pulse dot | Multi-tab async state needs to be visible. One small animation is worth the tradeoff. |
 | 2026-05-20 | Monospace 100% for numbers | Tabular-nums is required for orderbook column alignment. Two-font cost (~50 KB extra) is negligible on localhost. |
 
-## Live page tokens (Stage 9, ADR-0039)
+## App-shell & live tokens (ADR-0039, ADR-0052)
 
-The `/live` page introduces additional layout and source-identity tokens:
+Layout and source-identity tokens beyond the core scale. The Right Rail tokens (ADR-0052) are app-shell-wide (every route); the live tokens are `/live`-scoped. These layout widths/heights live in `design-tokens.ts` `SIZE_TOKENS` (ADR-0012); this hand-maintained table mirrors them for reference (no auto-marker yet):
 
 | Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
 |---|---|---|---|
-| `--h-live-header` | 32px | 40px | Live page header row (page title + ⭐ toggle) |
-| `--watchlist-panel-w` | 280px | 350px | Watchlist toggle panel width (right of Live Sidebar) |
+| `--rail-w` | 48px | 60px | Right Rail icon column width (app shell, all routes) |
+| `--rail-handle-w` | 12px | 15px | Collapsed Right Rail handle width |
+| `--watchlist-panel-w` | 280px | 350px | Watchlist Panel width — opened from the Right Rail (global) |
+| `--h-live-header` | 32px | 40px | Live page header row (page title) |
 
 **Source identity chips** — neither UI state nor status nor price direction, but data provenance.
 A fourth category limited to identifying which capture source rendered a given segment.
@@ -250,3 +252,4 @@ A fourth category limited to identifying which capture source rendered a given s
 - **Status labels** (LiveStatusBar pills, banner badges): Korean single words ("장 외", "대기 중", "준비됨").
 - **Layout grid for `/live`**: 4-row grid mirroring `/replay`'s PriceStrip pattern — header (32/40px) + status bar (52/65px) + toolbar (60/75px) + workarea (1fr).
 | 2026-05-23 | Adopted KRX market convention (up=red `#DC2626`, down=blue `#2563EB`) | Single-user Korean analyst — Western up=green is counter-intuitive. Renamed `--up`/`--down` → `--success`/`--error` to disambiguate status semantic from price direction; introduced `--price-up`/`--price-down`. Removed `--ratio-ask` (folded into `--price-down`). All chart series now hide both `priceLineVisible` and `lastValueVisible` — analysts read latest values via crosshair. |
+| 2026-05-30 | Global Right Rail (single 관심 item, heart icon) replaces the `/live` ★ watchlist drawer; rail chrome state in a dedicated `rightRail` store (ADR-0052) | Watchlist reachable from every page. Active state = tint bg + neutral text (no triple-teal, matches LeftNav). `--rail-w`/`--rail-handle-w` added via `design-tokens.ts` (ADR-0012). |
