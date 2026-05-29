@@ -562,7 +562,7 @@ function WatchlistRow({
       <span style={{ fontFamily: 'monospace', color: 'var(--fg-dim)', fontSize: 'var(--text-xs)' }}>
         {entry.code}
       </span>
-      <span style={{ color: active ? 'var(--accent)' : 'var(--fg)', fontSize: 'var(--text-sm)' }}>
+      <span style={{ color: 'var(--fg)', fontSize: 'var(--text-sm)' }}>
         {entry.name}
       </span>
     </li>
@@ -683,9 +683,11 @@ export default function RightRail() {
           aria-pressed={panelOpen}
           aria-controls="right-rail-watchlist-panel"
           aria-label="관심종목 패널 토글"
+          // Active = tint bg + neutral text, matching NavItem (no triple-teal).
+          // The heart fill (currentColor=fg) is a shape signal, not a 2nd accent.
           className={`w-full py-3 flex flex-col items-center gap-1 ${
             panelOpen
-              ? 'bg-tint-selection text-accent'
+              ? 'bg-tint-selection text-fg'
               : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
           }`}
         >
@@ -827,4 +829,14 @@ With backend + Vite running (see CLAUDE.md):
 
 ## Deferred review notes
 
-(Populated by Task 4 — plan reviews — Suggestion/Nit items go here.)
+From plan-design-review (2026-05-30). Suggestion/Nit — apply opportunistically during execution; not blocking. (The CRITICAL — active-state triple-teal — was applied inline to Tasks 4 & 5.)
+
+- **[SUGGESTION] Focus-visible ring**: add `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent` to both RightRail buttons (DESIGN.md reserves `--accent` for focus rings; keyboard-driven tool). Pre-existing gap in NavItem too.
+- **[SUGGESTION] Collapsed-rail expand target**: when collapsed, make the chevron button `h-full` so the whole ~15px strip is the expand affordance, not just a top sliver.
+- **[NIT] Spacing vocabulary**: `py-2`/`py-3`/`gap-1` render identically to `--space-sm`/`--space-md`/`--space-xs` (both rem, track the density dial — no pixel change); prefer the named `py-sm`/`py-md`/`gap-xs` classes for design-system vocabulary consistency.
+- **[NIT] Icon sizing**: if the heart is kept, use `width="1.125em" height="1.125em"` (not hardcoded `18`) so it scales with future density modes.
+- **[NIT] aria-label copy tone**: `<nav aria-label="Right Rail">` → Korean (`"우측 레일"`) to match the component's other Korean aria-labels and DESIGN.md copy tone.
+- **[CONFIRMED — no change] Motion**: the panel slide + rail collapse are grid-track width changes (sidebar/pane-resize class) — DESIGN.md says do NOT animate these, so the plan's no-transition choice is correct. The `»`/`«` chevron glyph is sanctioned by CONTEXT.md's Right Rail entry.
+
+### Open decision for GATE 2 — icon
+**Heart icon vs text-only "관심".** Reviewer: a heart is NOT a CONTEXT.md violation (the `_Avoid_` targets the *star* metaphor, and heart=관심 matches the reference image), but LeftNav/NavItem are entirely text-only, so any icon is the first decorative glyph in the nav chrome. Options: (a) text-only "관심" (most on-system, zero decoration), (b) restrained line-weight heart (matches the user's reference image). Default per reviewer: text-only, user opts into heart.
