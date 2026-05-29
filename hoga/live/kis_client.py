@@ -255,6 +255,14 @@ class KisClient:
                 pass
             http_part = f"HTTP_{e.response.status_code}"
             msg_cd = f"{http_part}/{upstream_msg_cd}" if upstream_msg_cd else http_part
+            # EGW00201 = KIS rate-limit code. KIS sometimes wraps it in a 5xx
+            # envelope instead of the documented 200/rt_cd!=0 path. Without
+            # this branch the rate-limit signal flows into KisApiError and
+            # the poller's existing backoff+retry loop is bypassed — every
+            # "slow down" hint from KIS becomes per-code data loss instead
+            # of a brief pause. Same downgrade path as `_unwrap`.
+            if upstream_msg_cd == "EGW00201":
+                raise KisRateLimitError(f"rate limit ({msg_cd}): {upstream_msg1}") from e
             raise KisApiError(msg_cd=msg_cd, msg1=upstream_msg1) from e
         return self._unwrap(resp.json())
 

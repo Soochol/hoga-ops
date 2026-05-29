@@ -74,7 +74,7 @@ def _should_poll_now(t_ms: int) -> bool:
 class LivePollerConfig:
     codes_fn: Callable[[], list[str]]
     date_fn: Callable[[], str]
-    cycle_seconds: float = 10.0
+    cycle_seconds: float = 20.0
 
 
 class LivePoller:

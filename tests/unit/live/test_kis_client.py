@@ -7,7 +7,12 @@ import httpx
 import pytest
 
 from hoga.live.kis_client import (
-    KIS_KST, KisApiError, KisAuthError, KisClient, KisCredentials,
+    KIS_KST,
+    KisApiError,
+    KisAuthError,
+    KisClient,
+    KisCredentials,
+    KisRateLimitError,
 )
 
 
@@ -145,6 +150,30 @@ async def test_5xx_with_json_body_preserves_upstream_msg_cd(tmp_path: Path) -> N
         err = exc_info.value
         assert err.msg_cd == "HTTP_500/EGW00121"
         assert err.msg1 == "장시간이 아닙니다"
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_5xx_with_egw00201_raises_rate_limit_error(tmp_path: Path) -> None:
+    """KIS wraps the rate-limit code (EGW00201) in a 5xx envelope sometimes.
+
+    The poller's `_fetch_with_backoff` distinguishes `KisRateLimitError` (waits
+    1s, 2s, retries) from `KisApiError` (gives up immediately). Without this
+    branch, every rate-limit hint on the 5xx path bypassed backoff entirely
+    — producing the per-code data loss the operator saw as
+    `kis_error code=X msg_cd=HTTP_500/EGW00201 streak=1`.
+    """
+    client = _make_client_with_5xx(
+        tmp_path, 500, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "거래량 초과"},
+    )
+    try:
+        with pytest.raises(KisRateLimitError) as exc_info:
+            await client.fetch_orderbook("003490")
+        # Surface both the HTTP status and the upstream code so the
+        # rate_limited log can name the precise upstream signal.
+        assert "HTTP_500/EGW00201" in str(exc_info.value)
+        assert "거래량 초과" in str(exc_info.value)
     finally:
         await client.aclose()
 
