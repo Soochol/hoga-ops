@@ -73,4 +73,25 @@ describe('useSymbolCombobox', () => {
     expect(setQuery).toHaveBeenCalledWith('sam');
     expect(hook.result.current.open).toBe(true);
   });
+
+  it('getOptionProps wires hover-highlight, aria-selected, and focus-retention', () => {
+    const { hook } = setup();
+    act(() => hook.result.current.inputProps.onFocus());
+    act(() => hook.result.current.getOptionProps(2).onMouseEnter());
+    expect(hook.result.current.highlightedIndex).toBe(2);
+    expect(hook.result.current.getOptionProps(2)['aria-selected']).toBe(true);
+    expect(hook.result.current.getOptionProps(0)['aria-selected']).toBe(false);
+    const ev = { preventDefault: vi.fn() } as unknown as React.MouseEvent;
+    hook.result.current.getOptionProps(0).onMouseDown(ev);
+    expect(ev.preventDefault).toHaveBeenCalled();
+  });
+
+  it('resets highlight to 0 when the query changes via onChange', () => {
+    const { hook } = setup();
+    act(() => hook.result.current.inputProps.onFocus());
+    act(() => hook.result.current.inputProps.onKeyDown(key('ArrowDown')));
+    expect(hook.result.current.highlightedIndex).toBe(1);
+    act(() => hook.result.current.inputProps.onChange({ target: { value: 'sams' } } as React.ChangeEvent<HTMLInputElement>));
+    expect(hook.result.current.highlightedIndex).toBe(0);
+  });
 });

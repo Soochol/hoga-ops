@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 export interface UseSymbolComboboxOptions<T> {
   /** Owned by the consumer — items derive from it via a separate data hook. */
@@ -36,9 +36,6 @@ export function useSymbolCombobox<T>({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset highlight whenever the query changes (mirrors capture SymbolSearch).
-  useEffect(() => { setHighlightedIndex(0); }, [query]);
-
   const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       if (open && items.length > 0) {
@@ -67,7 +64,7 @@ export function useSymbolCombobox<T>({
     open, setOpen, highlightedIndex, inputRef,
     inputProps: {
       value: query,
-      onChange: (e) => { setQuery(e.target.value); setOpen(true); },
+      onChange: (e) => { setQuery(e.target.value); setOpen(true); setHighlightedIndex(0); },
       onFocus: () => setOpen(true),
       onKeyDown,
     },
