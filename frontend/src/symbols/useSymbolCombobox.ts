@@ -10,7 +10,7 @@ export interface UseSymbolComboboxOptions<T> {
   onEnterEmpty?: (query: string) => boolean;
 }
 
-export interface UseSymbolComboboxResult<T> {
+export interface UseSymbolComboboxResult {
   open: boolean;
   setOpen: (o: boolean) => void;
   highlightedIndex: number;
@@ -31,7 +31,7 @@ export interface UseSymbolComboboxResult<T> {
 
 export function useSymbolCombobox<T>({
   query, setQuery, items, onSelect, onEnterEmpty,
-}: UseSymbolComboboxOptions<T>): UseSymbolComboboxResult<T> {
+}: UseSymbolComboboxOptions<T>): UseSymbolComboboxResult {
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
