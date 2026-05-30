@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -239,3 +239,28 @@ def test_catchup_all_empty_watchlist_returns_empty_results(tmp_path: Path):
         r = client.post("/api/watchlist/catchup")
     assert r.status_code == 201
     assert r.json()["results"] == []
+
+
+def test_post_add_refreshes_poller(tmp_path: Path):
+    fake_now = dt.datetime(2026, 5, 26, 10, 0, tzinfo=KST)
+    with patch("hoga.api.watchlist_routes.symbols.search", return_value=[_fake_hit()]), \
+         patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
+         patch("hoga.api.watchlist_routes.refresh_live_poller", new=AsyncMock()) as ref:
+        client = TestClient(_app(tmp_path))
+        r = client.post("/api/watchlist", json={"code": "003490"})
+    assert r.status_code == 201
+    ref.assert_awaited_once()
+    assert ref.await_args.kwargs["data_dir"] == tmp_path
+
+
+@pytest.mark.asyncio
+async def test_delete_refreshes_poller(tmp_path: Path):
+    from hoga.api import watchlist
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260526")
+    with patch("hoga.api.watchlist_routes.refresh_live_poller", new=AsyncMock()) as ref:
+        client = TestClient(_app(tmp_path))
+        r = client.delete("/api/watchlist/003490")
+    assert r.status_code == 204
+    ref.assert_awaited_once()
+    assert ref.await_args.kwargs["data_dir"] == tmp_path
