@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LivePage } from './LivePage';
@@ -123,5 +123,18 @@ describe('LivePage shell', () => {
     renderWithRouter();
     // Empty state placeholder in workarea
     expect(screen.getByTestId('live-workarea').textContent).toMatch(/검색하세요/);
+  });
+
+  it('store write (search/♥ select) wins over a ?code= deep link — store is the single SoT', async () => {
+    // Mount at /live?code=005930 → the deep-link code seeds the store once.
+    renderWithRouter('/live?code=005930');
+    // After the mount-seed effect, the active code is 005930.
+    await waitFor(() => expect(useLivePageStore.getState().activeCode).toBe('005930'));
+    // Now simulate a search / ♥ selection writing a DIFFERENT code to the store.
+    act(() => useLivePageStore.getState().setActiveCode('000660'));
+    // It must STICK — the URL must not revert it back to 005930.
+    expect(useLivePageStore.getState().activeCode).toBe('000660');
+    // And it must not flip back across a re-render.
+    await waitFor(() => expect(useLivePageStore.getState().activeCode).toBe('000660'));
   });
 });

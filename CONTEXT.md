@@ -17,7 +17,7 @@ A 6-digit KRX ticker, e.g. `005930`. Strings, not integers — leading zeros mat
 _Avoid_: "symbol", "ticker"
 
 **activeCode**:
-The single **Code** currently rendered on the `/live` chart. Owned by `useLivePageStore.activeCode`, persisted across reloads, and unaffected by navigating away from `/live` (returning restores the same chart). Set by clicking a row in the **Watchlist Panel** (which also navigates to `/live` if elsewhere). Distinct from the **Watchlist** (a set of Codes) — activeCode is one selected view-Code, not a saved list.
+The single **Code** currently rendered on the `/live` chart. `useLivePageStore.activeCode` is the single source of truth (ADR-0052), persisted across reloads and unaffected by navigating away from `/live` (returning restores the same chart). Set by selecting a symbol in the header search, clicking a row in the **Watchlist Panel** (which also navigates to `/live` if elsewhere), or — one-shot, on first load only — a `/live?code=` deep link that seeds the store (store writes thereafter always win). The header search and Watchlist Panel are writers; the chart is the reader. Distinct from the **Watchlist** (a set of Codes) — activeCode is one selected view-Code, not a saved list.
 _Avoid_: "selected ticker", "current symbol" (use **Code** vocabulary); conflating with **Watchlist** (list vs single active view).
 
 **Stock-Date**:
