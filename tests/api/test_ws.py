@@ -7,10 +7,16 @@ code-tagged live frames, and explicit unsubscribe tears the subscription down.
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from hoga.api.sse import _Bus
+from hoga.api.sse import _Bus, build_event_bus
 from hoga.api.ws import build_ws_router
 from hoga.live.buffer import LiveBuffer
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
+
+
+def test_build_event_bus_exposes_unbound_handler(tmp_path):
+    bus, observer, handler = build_event_bus(tmp_path / "parquet")
+    assert handler.loop is None  # lifespan binds it; the removed route used to
+    # observer is scheduled but NOT started — do not start/join it here.
 
 
 def _make_app() -> tuple[FastAPI, _Bus, LiveBuffer]:

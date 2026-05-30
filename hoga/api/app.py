@@ -21,7 +21,8 @@ from hoga.api.captures import set_bus as set_captures_bus
 from hoga.api.queries import QueryEngine
 from hoga.api.routes import build_router
 from hoga.api.scheduler import start_scheduler
-from hoga.api.sse import build_sse
+from hoga.api.sse import build_event_bus
+from hoga.api.ws import build_ws_router
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
@@ -46,7 +47,7 @@ log = logging.getLogger(__name__)
 
 def create_app(data_dir: Path) -> FastAPI:
     engine = QueryEngine(data_dir)
-    sse_router, bus, observer = build_sse(data_dir / "parquet")
+    bus, observer, inv_handler = build_event_bus(data_dir / "parquet")
 
     def _real_client_factory():
         cfg = Config.from_cwd()
@@ -78,9 +79,11 @@ def create_app(data_dir: Path) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         migrate_to_v2_layout(data_dir)
+        loop = asyncio.get_running_loop()
+        inv_handler.loop = loop  # ADR-0053: route no longer binds this
         observer.start()
         # bus + loop for thread-safe publishes from the watchdog thread.
-        set_captures_bus(bus, asyncio.get_running_loop())
+        set_captures_bus(bus, loop)
         # Single entry point bundles restore-before-spawn invariant (ADR-0019).
         _captures_module._workers = _captures_module.start_capture_pool(data_dir)
         # ADR-0034: Watchlist scheduler runs alongside the capture pool
@@ -168,7 +171,7 @@ def create_app(data_dir: Path) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(build_router(engine))
-    app.include_router(sse_router)
+    app.include_router(build_ws_router(bus, live_get_buffer))
     app.include_router(
         build_captures_router(data_dir=data_dir, client_factory=client_factory)
     )
