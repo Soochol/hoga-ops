@@ -303,6 +303,27 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     return True
 
 
+async def refresh_live_poller(*, data_dir: Path) -> None:
+    """Re-sync the running poller to the on-disk watchlist after a mutation.
+
+    Non-empty watchlist → ``start_live_poller`` (idempotent restart that rebuilds
+    ``_state`` from disk and *reuses* the module-global ``_buffer``, preserving
+    accumulated snapshots). Empty watchlist → ``stop_live_poller`` — calling
+    ``start_live_poller`` alone would early-return on the empty check *before* it
+    stops the existing task, leaving a stale poller iterating the old codes.
+
+    Cheap: no awaited network round-trip; ``KisClient`` reuses the on-disk token
+    cache. Off-hours/missing-creds are safe (start no-ops/idle-gates; stop is a
+    no-op when nothing runs).
+    """
+    from hoga.api.watchlist import load_watchlist
+
+    if load_watchlist(data_dir):
+        await start_live_poller(data_dir=data_dir)
+    else:
+        await stop_live_poller()
+
+
 async def stop_live_poller() -> None:
     """Stop the running poller. No-op if already stopped."""
     global _state, _kis_client
