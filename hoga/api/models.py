@@ -186,7 +186,10 @@ class QueueItem(BaseModel):
 
 # SSE event Wire Models — same ADR-0004 rule applies to events as to HTTP responses:
 # the schema is declared once here and shipped verbatim to consumers. Frontend
-# types.ts hand-mirrors these; drift is caught by TypeScript at compile time.
+# types.ts hand-mirrors these BY HAND — per ADR-0004 there is no codegen, so the
+# TypeScript compiler has no visibility into this file: a field rename here
+# compiles clean on both sides and surfaces as runtime `undefined` in the browser.
+# Keep types.ts in sync by hand when editing these models.
 #
 # Each subclass carries its own `type` Literal so pydantic serializes the
 # discriminator automatically — class name is the source of truth, no manual
