@@ -21,7 +21,7 @@ describe('useLiveSeries', () => {
   });
   afterEach(() => { resetWs(); });
 
-  it('fetches initial series and exposes empty buffers before any SSE', async () => {
+  it('fetches initial series and exposes empty buffers before any WebSocket frames', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       code: '005930',
       date: '20260527',

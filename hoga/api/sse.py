@@ -23,7 +23,7 @@ def classify_inventory_event(
     kind: WatchdogKind,
 ) -> dict | None:
     """Decide whether a watchdog filesystem event should produce an
-    inventory_* SSE event, and build the payload if so.
+    inventory_* event, and build the payload if so.
 
     Returns None when the event is irrelevant (wrong path, wrong depth,
     or wrong kind/is_directory combination). Returns a payload dict

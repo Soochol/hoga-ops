@@ -17,7 +17,7 @@ export interface LiveSeriesResponse {
 
 /** Return shape of useLiveSeries. Lifted to a named type so the single-call
  * site (LivePage) can thread the value through useLiveBundle + LiveSidebar
- * as a prop. Two separate useLiveSeries calls would open two SSE connections
+ * as a prop. Two separate useLiveSeries calls would open two WebSocket subscriptions
  * and two independent buffers — HMR re-mounts cleared one but not the other,
  * leaving the sidebar's LATEST mode showing the empty-buffer state. */
 export interface LiveSeriesData {
