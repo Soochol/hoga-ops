@@ -1,9 +1,10 @@
 """Live Capture lifecycle singleton.
 
 Owns the single in-process LivePoller instance and exposes a stable
-`get_status()` callable for the API layer. Stage 8 will wire `start()`
-into FastAPI's lifespan; Stage 7-α only needs the module to be queryable
-so `/api/live/status` can return defaults before the poller starts.
+`get_status()` callable for the API layer. The poller is driven through
+`start_live_poller` / `stop_live_poller` (wired into FastAPI's lifespan);
+`get_status()` is always safe to call and returns defaults before the
+poller starts so `/api/live/status` works at any time.
 
 Single-worker invariant: see ADR-0038. The module-level singleton is
 safe because hoga/live/__init__.py asserts UVICORN_WORKERS == 1 at
@@ -108,44 +109,6 @@ def set_kis_client(client: KisClient | None) -> None:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-def start(
-    *,
-    data_dir: Path,
-    codes: list[str],
-    dry_run: bool = False,
-) -> None:
-    """Start (or replace) the live poller singleton.
-
-    Stage 7-α: when `dry_run=True`, skip creating the actual asyncio
-    task — useful for unit tests and for /api/live/status to report
-    a running state without consuming KIS quota. Stage 8 will wire the
-    real start path through FastAPI's lifespan.
-    """
-    global _state
-    _state = _State(
-        started_at_ms=_now_ms(),
-        watchlist_codes=tuple(codes),
-        poller_task=None,  # Stage 8 will populate
-        poller_obj=None,
-    )
-    if dry_run:
-        return
-    # Real start path is wired in Stage 8. Stage 7-α stub keeps the API
-    # endpoint functional without spinning real network traffic.
-    raise NotImplementedError(
-        "lifecycle.start() with dry_run=False is implemented in Stage 8 "
-        "(lifespan + scheduler integration)."
-    )
-
-
-def stop() -> None:
-    """Stop the running poller (no-op if already stopped)."""
-    global _state
-    if _state.poller_task is not None and not _state.poller_task.done():
-        _state.poller_task.cancel()
-    _state = _State()
 
 
 def get_status() -> LiveStatus:

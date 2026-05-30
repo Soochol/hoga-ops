@@ -40,7 +40,6 @@ _HOT_PATH_MODULES = (
     "hoga/live/lifecycle.py",
     "hoga/live/kis_client.py",
     "hoga/live/kis_models.py",
-    "hoga/live/status.py",
 )
 
 
