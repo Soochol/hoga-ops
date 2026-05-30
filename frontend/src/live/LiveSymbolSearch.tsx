@@ -64,7 +64,10 @@ export function LiveSymbolSearch() {
           combo.open ? 'border-accent' : 'border-border-strong'
         }`}
       >
-        <span aria-hidden className="text-fg-dimmer text-sm">🔍</span>
+        <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-fg-dimmer w-[14px] h-[14px] shrink-0">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
         <input
           // eslint-disable-next-line react-hooks/refs -- false positive: assigning a RefObject to ref= is not a .current read
           ref={combo.inputRef}

@@ -186,7 +186,7 @@ function SymbolRow({ hit, highlighted, onClick }: { hit: SymbolHit; highlighted:
       aria-selected={highlighted}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      style={{ background: highlighted ? 'rgba(20,184,166,0.10)' : 'transparent' }}
+      style={{ background: highlighted ? 'var(--tint-selection)' : 'transparent' }}
       className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center py-sm px-sm cursor-pointer"
     >
       <span className="font-normal text-base text-fg">{hit.name}</span>

@@ -99,7 +99,9 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
       {activeCode && !isMember ? (
         <span style={{ color: 'var(--fg-dimmer)' }}>
           과거 차트 · 실시간 ✕
-          <span className="ml-2" style={{ color: 'var(--accent)' }}>♡ 눌러 실시간 추적</span>
+          <span className="ml-2 inline-flex items-center gap-1" style={{ color: 'var(--accent)' }}>
+            <HeartIcon filled={false} className="w-[1em] h-[1em]" /> 눌러 실시간 추적
+          </span>
         </span>
       ) : (
         <span style={{ color: live ? 'var(--success)' : 'var(--warn)' }}>
