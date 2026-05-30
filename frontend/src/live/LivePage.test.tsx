@@ -41,8 +41,12 @@ vi.mock('../api/useLiveCursor', () => ({
 // useLiveBannerState now reads the authoritative watchlist via useWatchlist;
 // mock it non-empty so the banner logic stays unit-level and doesn't hit
 // /api/watchlist in jsdom. (Empty-state is exercised in useLiveBannerState.test.ts.)
+// useAddToWatchlist / useRemoveFromWatchlist are also stubbed because
+// LiveSymbolSearch (mounted in LiveHeader) calls them.
 vi.mock('../watchlist/useWatchlist', () => ({
   useWatchlist: () => ({ data: { entries: [{ code: '000660' }], next_run_at_ms: 0 } }),
+  useAddToWatchlist: () => ({ mutate: vi.fn() }),
+  useRemoveFromWatchlist: () => ({ mutate: vi.fn() }),
 }));
 
 // LivePage now owns the single useLiveBundle call. Mock to avoid TanStack
