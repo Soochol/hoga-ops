@@ -1,9 +1,10 @@
 # Live WebSocket Transport — 단일 전송 통일 설계
 
 - **Date**: 2026-05-30
-- **Status**: Draft (brainstorming 승인 완료, spec 리뷰 대기)
+- **Status**: Approved (GATE 1 통과, grill 완료) — plan 작성 대기
 - **Scope**: `both` (backend + frontend)
 - **Topic slug**: `live-websocket-transport`
+- **ADR**: [ADR-0053](../../adr/0053-live-push-channel-single-websocket.md) — Live push 채널 단일 WebSocket 전송
 
 ## 1. 문제 (진단 완료)
 
@@ -166,7 +167,26 @@ watchdog ──▶ _Bus ──────────────────�
 - 재연결 시 누락 구간 — 활성 code 재구독 + 필요 시 `get_series` 재하이드레이트로 보강.
 - `ws.ts`의 per-code refcount 정확성(중복 subscribe/조기 unsubscribe 방지).
 
-## 11. 미해결/이월 메모 (grill·plan 입력)
+## 11. 기존 결정과의 정합성 (grill 검증)
+
+CONTEXT.md·ADR과 대조한 결과(2026-05-30 grill):
+
+- **ADR-0044 (hover spot은 parquet, LiveBuffer 아님)** — 정합·보강. 굶던 호버 10호가는
+  `/api/orderbook`(parquet REST spot) 경로이며 WS/LiveBuffer에 의존하지 않는다. WS
+  마이그레이션은 **live tick stream 전송만** 바꾸므로 ADR-0044의 invariant
+  (`useLiveOrderbookAtCursor` 등이 LiveBuffer/SSE를 import하면 위반)는 그대로 유지된다.
+  호버가 안 되던 원인은 *경로가 SSE라서가 아니라 그 fetch가 풀 슬롯을 못 얻어서*였다.
+- **ADR-0039 ("SSE buffer" 용어)** — `sources_available` 판정이 부르는 "SSE buffer"는
+  실제로는 `LiveBuffer`(in-memory ring)이고 본 작업으로 바뀌지 않는다(전송만 WS).
+  "SSE buffer"는 레거시 별칭이 되며 새 코드/문서는 `LiveBuffer`로 칭한다.
+- **ADR-0036 (로컬 단일 사용자 배포)** — HTTP/2 대안 기각의 근거(프로덕션/TLS/프록시
+  경로 없음). 멀티유저 전환 시 본 결정도 함께 재검토(ADR-0036 트리거와 동조).
+- **용어 구분** — WS 프로토콜의 `subscribe`/`unsubscribe`는 **전송 계층 액션**으로,
+  CONTEXT.md가 "subscription"이라 부르길 피하는 도메인 **Watchlist**와 무관하다.
+- **CONTEXT.md 신규 용어 없음** — 전송 방식(SSE↔WS)은 구현 세부이지 도메인 전문가의
+  언어가 아니므로 CONTEXT.md에 항목을 추가하지 않는다.
+
+## 12. 미해결/이월 메모 (grill·plan 입력)
 
 - 파일 개명 여부: `sse.ts` 유지 vs `eventStream.ts`.
 - 재연결 시 live 버퍼 재하이드레이트를 자동화할지(초기엔 수동/REST로 충분).
