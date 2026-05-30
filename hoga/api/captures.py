@@ -567,7 +567,7 @@ async def _run_capture_and_parse(
     state: QueueItemState,
     *,
     resume: bool,
-    collector: CaptureTimingCollector | None = None,
+    collector: CaptureTimingCollector | NullTimingCollector | None = None,
 ) -> None:
     """Wrap ``_run_capture_inner`` with 429 exponential backoff.
 
@@ -577,6 +577,7 @@ async def _run_capture_and_parse(
     — Task 11 backoff is INTERNAL.
     """
     from hoga.collector.orchestrator import CaptureCancelled
+    collector = collector or NullTimingCollector()
     if state.cancel_token is None:
         state.cancel_token = CancelToken()
     last_exc: BaseException | None = None
@@ -601,7 +602,7 @@ async def _run_capture_inner(
     state: QueueItemState,
     *,
     resume: bool,
-    collector: CaptureTimingCollector | None = None,
+    collector: CaptureTimingCollector | NullTimingCollector | None = None,
 ) -> None:
     """Run the collector then the parser. Cookie-missing/expired rejection
     happens via the cookie-pause path in the worker loop. Task 11's
@@ -614,6 +615,7 @@ async def _run_capture_inner(
     and returns. The outer worker loop's generic ``except Exception`` never
     sees this, so the item is not classified as ``failed``.
     """
+    collector = collector or NullTimingCollector()
     if state.cancel_token is None:
         state.cancel_token = CancelToken()
     data_dir = _require_data_dir()
@@ -638,7 +640,10 @@ async def _run_capture_inner(
                 resume=resume,
                 on_progress=_make_progress_callback(state),
                 cancel_token=state.cancel_token,
-                collector=collector,
+                # orchestrator keeps the older `| None` contract (its own tests
+                # pass None directly); hand it the real collector or None, never
+                # the Null object.
+                collector=collector if isinstance(collector, CaptureTimingCollector) else None,
             ),
         )
     except UpstreamNoDataError:
