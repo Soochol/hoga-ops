@@ -6,7 +6,7 @@ import { useInventoryRecapture } from './useInventoryRecapture';
 import { useInventoryRecaptureOrigins } from './useInventoryRecaptureOrigins';
 
 // SSE stub — useCaptureQueue subscribes on mount; jsdom has no EventSource.
-vi.mock('../api/sse', () => ({
+vi.mock('../api/eventStream', () => ({
   subscribeToCaptureEvents: () => () => {},
 }));
 

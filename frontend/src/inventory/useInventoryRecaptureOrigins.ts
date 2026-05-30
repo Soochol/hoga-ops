@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import { subscribeToCaptureEvents } from '../api/sse';
+import { subscribeToCaptureEvents } from '../api/eventStream';
 
 /** Client-side set of QueueItem ids that were enqueued via inventory
  *  re-capture (vs. CaptureForm). Drives the `inventory` badge on

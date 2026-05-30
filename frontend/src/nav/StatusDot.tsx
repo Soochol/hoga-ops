@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { lastHeartbeat } from '../api/sse';
+import { lastHeartbeat } from '../api/eventStream';
 
 type Status = 'green' | 'yellow' | 'red';
 

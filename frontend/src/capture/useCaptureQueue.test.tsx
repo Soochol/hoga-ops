@@ -12,7 +12,7 @@ const sseState = vi.hoisted(() => {
   return { subs };
 });
 
-vi.mock('../api/sse', () => ({
+vi.mock('../api/eventStream', () => ({
   subscribeToCaptureEvents: (cb: (e: SSEEvent) => void) => {
     sseState.subs.current.push(cb);
     return () => {

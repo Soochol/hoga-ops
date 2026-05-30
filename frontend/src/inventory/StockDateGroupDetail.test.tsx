@@ -7,7 +7,7 @@ import type { StockDate, QueueSnapshot } from '../api/types';
 import type { ReactNode } from 'react';
 
 // SSE stub — useCaptureQueue subscribes on mount; jsdom has no EventSource.
-vi.mock('../api/sse', () => ({
+vi.mock('../api/eventStream', () => ({
   subscribeToCaptureEvents: () => () => {},
 }));
 

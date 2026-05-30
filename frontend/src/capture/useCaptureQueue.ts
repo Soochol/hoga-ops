@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   addItems, getQueue, cancelItem, cancelAll, resumeQueue, dismissDone, retryItems,
 } from '../api/captures';
-import { subscribeToCaptureEvents } from '../api/sse';
+import { subscribeToCaptureEvents } from '../api/eventStream';
 import {
   CALENDAR_QUERY_KEY,
   applyCellPatch,

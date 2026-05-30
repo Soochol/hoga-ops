@@ -3,7 +3,7 @@ import LeftNav from './nav/LeftNav';
 import RightRail from './rightrail/RightRail';
 import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
 import { useRightRailStore } from './state/rightRail';
-import { useEventStream } from './api/sse';
+import { useEventStream } from './api/eventStream';
 import { useInventoryRecaptureOriginsCleanup } from './inventory/useInventoryRecaptureOrigins';
 
 export default function App() {

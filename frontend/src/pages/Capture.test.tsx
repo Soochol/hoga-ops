@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Capture from './Capture';
 import type { ReactNode } from 'react';
 
-vi.mock('../api/sse', () => ({
+vi.mock('../api/eventStream', () => ({
   subscribeToCaptureEvents: () => () => {},
 }));
 
