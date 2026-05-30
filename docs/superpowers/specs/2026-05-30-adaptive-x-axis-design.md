@@ -182,10 +182,18 @@ DayBoundaryOverlay 테스트에서 칩 텍스트 단언이 있으면 세로선 �
   재계산하거나, bundle 변경 시 `series.setData` 전량 리셋이면 startIndex가 항상 0임을 확인.
 - "stale 불가능"이라는 단정은 경험 검증 전까지 보류.
 
-### R2. `axisRef.current` 타이밍 (timeframe 전환 1프레임 오정렬)
-현 코드는 `axisRef.current = axis`를 **render 중 동기 대입**([LiveChartRoot.tsx:74](../../../frontend/src/live/LiveChartRoot.tsx))
-하므로 자식 `RangeSeriesPane`의 data effect `setData`(weight 재계산)는 새 축을 가리킨다(유리).
-신규 override가 `axisRef`를 effect로 미루지 않도록 이 순서를 깨지 않는다. 검증 4에 통합.
+### R2. `axisRef.current` 타이밍 — **실제로 발생했고 수정함** (commit fdfb9a4)
+이 spec은 원래 "현 코드가 `axisRef.current = axis`를 render 중 동기 대입하므로 안전"하다고
+적었으나 **그 전제가 틀렸다.** 실제 코드는 `axisRef.current`를 passive `useEffect`로 갱신했고,
+자식 `RangeSeriesPane`의 data effect(`setData` → weight 재계산)는 **부모 effect보다 먼저** 실행되므로,
+새 타임프레임 캔들을 처음 push하는 commit에서 weight가 **이전 축** 기준으로 계산됐다.
+분봉→일봉 전환 시 일봉 캔들의 가상 시간이 이전(작은 범위) 축의 `toReal`로 한 실제 시각에 clamp되어
+같은 KST 날짜 → intraday weight → calendar 축이 모든 Time 틱을 억제 → **x축 라벨이 사라지고
+새로고침해야 복구**되는 버그로 나타났다.
+**수정**: `axisRef`/`timeframeRef`를 effect가 아니라 **render 중 동기 대입**으로 바꿔, 자식 effect가
+실행되기 전에 ref가 최신 축을 가리키게 한다(이 ref들은 imperative 차트 콜백만 읽고 렌더 출력에는
+쓰이지 않아 안전). 회귀 테스트: `LiveChartRoot.test.tsx`의
+"timeframe-switch axis freshness" — 수정 전 weight 30(<50)로 실패, 수정 후 50으로 통과.
 
 ### R3. calendar(D/W/M) 경로 일관성 (half-fixed 방지)
 override는 전 타임프레임 데이터에 적용 → D/W/M 가상-1970 weight 오류도 함께 교정. **기본은
