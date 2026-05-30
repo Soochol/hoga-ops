@@ -80,6 +80,11 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
     // Gate items to mirror the original `dropdownVisible` Enter guard: an empty
     // query must not let Enter select hits[0] (filterSymbols('') returns all
     // symbols). When unavailable, hits is already [] so no extra gate is needed.
+    // Note: we no longer re-check cacheStatus here (the original `dropdownVisible`
+    // gate did) — it's safe because the backend guarantees
+    // status === 'unavailable' ⇒ empty symbol cache ⇒ hits === [] (see
+    // hoga/api/symbols.py; the disk-cache-masking case surfaces as 'stale', not
+    // 'unavailable'). If that invariant ever changes, restore the cacheStatus term.
     items: query.length >= 1 ? hits : [],
     onSelect: (hit) => select(hit),
     onEnterEmpty: () => promoteUnverifiedCode(),
