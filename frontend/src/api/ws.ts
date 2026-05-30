@@ -6,6 +6,7 @@
  * on every frame; one-shot connected/disconnected on state transitions.
  */
 import { wsUrl } from './client';
+import { WATCHDOG_TIMEOUT_MS } from './liveness';
 import type { SSEEvent } from './types';
 
 type Frame =
@@ -22,7 +23,6 @@ let _reconnectMs = 500;
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let _livenessTimer: ReturnType<typeof setInterval> | null = null;
 const RECONNECT_MAX_MS = 10_000;
-const LIVENESS_TIMEOUT_MS = 45_000;
 
 const _eventSubs = new Set<(e: SSEEvent) => void>();
 const _liveSubs = new Map<string, Set<(d: Record<string, unknown>) => void>>();
@@ -81,7 +81,7 @@ function ensureLivenessWatchdog(): void {
   if (_livenessTimer !== null) return;
   _livenessTimer = setInterval(() => {
     if (!_ws || _ws.readyState !== 1) return;
-    if (_lastHeartbeatMs !== 0 && Date.now() - _lastHeartbeatMs > LIVENESS_TIMEOUT_MS) {
+    if (_lastHeartbeatMs !== 0 && Date.now() - _lastHeartbeatMs > WATCHDOG_TIMEOUT_MS) {
       _ws.close(); // triggers onclose → disconnected + scheduleReconnect
     }
   }, 10_000);

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { lastHeartbeat } from '../api/eventStream';
 import { useLivePageStore } from '../state/livePage';
+import { useConnectionLiveness } from '../api/useConnectionLiveness';
+import { LIVE_STALE_MS } from '../api/liveness';
 import { cycleLagSeverity, cycleLagPillColor } from './cycleLagPill';
 import { SourceChip } from '../chart/SourceChip';
 import { useSymbols } from '../capture/useSymbols';
@@ -15,19 +15,10 @@ interface Props {
 }
 
 export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
-  const [live, setLive] = useState(false);
-  useEffect(() => {
-    const tick = () => {
-      const last = lastHeartbeat();
-      // Threshold MUST exceed the 30s server ping so a connected-but-idle
-      // socket (e.g. market closed) stays "LIVE●"; only a real disconnect
-      // (no frame for >35s) flips it. (plan-review cross-task flag)
-      setLive(last !== 0 && Date.now() - last < 35_000);
-    };
-    tick();
-    const id = setInterval(tick, 3000);
-    return () => clearInterval(id);
-  }, []);
+  // Threshold MUST exceed the 30s server ping so a connected-but-idle
+  // socket (e.g. market closed) stays "LIVE●"; only a real disconnect
+  // (no frame for >35s) flips it. (plan-review cross-task flag)
+  const live = useConnectionLiveness(LIVE_STALE_MS);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const { data: symbolsData } = useSymbols();
   const symbolName = activeCode

@@ -1,21 +1,11 @@
-import { useEffect, useState } from 'react';
-import { lastHeartbeat } from '../api/eventStream';
+import { useConnectionLiveness } from '../api/useConnectionLiveness';
+import { STATUS_STALE_MS } from '../api/liveness';
 
 type Status = 'green' | 'yellow' | 'red';
 
 export default function StatusDot() {
-  const [status, setStatus] = useState<Status>('yellow');
-  useEffect(() => {
-    const tick = () => {
-      const last = lastHeartbeat();
-      if (last === 0) setStatus('yellow');
-      else if (Date.now() - last > 60_000) setStatus('yellow');
-      else setStatus('green');
-    };
-    tick();
-    const id = setInterval(tick, 5000);
-    return () => clearInterval(id);
-  }, []);
+  const live = useConnectionLiveness(STATUS_STALE_MS, 5000);
+  const status: Status = live ? 'green' : 'yellow';
   const color =
     status === 'green' ? 'var(--success)' : status === 'yellow' ? 'var(--warn)' : 'var(--error)';
   const text =
