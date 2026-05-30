@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import datetime as _dt
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
-from typing import Callable, Iterator, Literal
+from typing import Callable, ContextManager, Iterator, Literal
 from zoneinfo import ZoneInfo
 
 from hoga.api.models import (
@@ -170,3 +170,31 @@ class CaptureTimingCollector:
                 for p in self.pages
             ],
         )
+
+
+class NullTimingCollector:
+    """No-op collector used when capture timing is disabled (HOGA_CAPTURE_TIMING=0).
+
+    Substituting this for ``None`` lets every ingest call site use
+    ``with collector.phase(...)`` / ``collector.record_*()`` unconditionally —
+    the on/off decision lives once at construction instead of being re-tested
+    at ~10 branch points. The report-emit gate stays separate (see
+    ``_timing_enabled`` in ``hoga/api/captures.py``), so disabling timing still
+    writes no JSON and emits no SSE event.
+
+    Unlike :class:`CaptureTimingCollector`, ``phase()`` does NOT forbid
+    nesting: the Null object measures nothing, so a (hypothetical) nested
+    ``with`` is harmless rather than a double-count bug to catch.
+    """
+
+    def phase(self, name: PhaseName) -> ContextManager[None]:
+        return nullcontext()
+
+    def mark_page_boundary(self) -> None:
+        pass
+
+    def record_event_count(self, n: int) -> None:
+        pass
+
+    def record_error(self, kind: str) -> None:
+        pass
