@@ -756,10 +756,17 @@ describe('useEventStream disconnect handler', () => {
 Run: `cd frontend && npx vitest run src/api/eventStream.test.ts && npx tsc --noEmit`
 Expected: PASS; zero TS errors (StatusDot's `lastHeartbeat` import resolves via the re-export).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Commit** (explicit adds only — a concurrent diagnose session holds an unrelated `[DEBUG-x7k]` change in `LiveChartRoot.tsx`; never `git add -A`, never stage that file)
 
 ```bash
-git add -A frontend/src
+# the two renames are already staged by `git mv`; add the edits explicitly
+git add frontend/src/api/eventStream.ts frontend/src/api/eventStream.test.ts \
+  frontend/src/App.tsx frontend/src/capture/useCaptureQueue.ts \
+  frontend/src/inventory/useInventoryRecaptureOrigins.ts frontend/src/nav/StatusDot.tsx \
+  frontend/src/nav/CaptureStatusPill.test.tsx frontend/src/capture/CaptureForm.test.tsx \
+  frontend/src/capture/CaptureQueue.test.tsx frontend/src/capture/useCaptureQueue.test.tsx \
+  frontend/src/pages/Capture.test.tsx frontend/src/inventory/useInventoryRecapture.test.tsx \
+  frontend/src/inventory/StockDateGroupDetail.test.tsx
 git commit -m "refactor(ws): rename sse.ts→eventStream.ts on ws.ts; re-point 11 imports; fix capture_dismissed"
 ```
 
@@ -952,10 +959,10 @@ Expected: PASS. The 7 `vi.mock('../api/eventStream')` suites resolve (re-pointed
 
 - [ ] **Step 2: If any suite fails** because a component now needs a socket present, add `installFakeWebSocket()` (from `../test/fakeWebSocket`) in that file's `beforeEach`. Show the diff. Otherwise no change.
 
-- [ ] **Step 3: Commit (only if a file changed)**
+- [ ] **Step 3: Commit (only if a file changed — add ONLY the changed file(s) by explicit path; never `git add -A`, never stage `LiveChartRoot.tsx`)**
 
 ```bash
-git add -A frontend/src && git commit -m "test(ws): keep full suite green under WebSocket transport"
+git add <explicit/path/to/changed.test.tsx> && git commit -m "test(ws): keep full suite green under WebSocket transport"
 ```
 
 ---
