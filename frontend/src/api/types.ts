@@ -225,6 +225,7 @@ export type SSEEvent =
     }
   | CaptureTimingEvent
   | { type: 'heartbeat' }
+  | { type: 'connected' }
   | { type: 'disconnected' };
 
 /** Mirrors hoga/api/models.py::TimingPhaseTotals. All values are milliseconds. */
