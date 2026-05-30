@@ -14,7 +14,6 @@ from pathlib import Path
 
 import duckdb
 import pyarrow as pa
-import pyarrow.parquet as pq
 from pydantic import BaseModel
 
 from hoga.tables.dispatch import FieldCountError, split_row
@@ -89,7 +88,9 @@ def write_parquet(candles: Iterable[Candle], path: Path) -> None:
         "vol_a": pa.array([c.vol_a for c in rows], type=pa.int32()),
         "vol_b": pa.array([c.vol_b for c in rows], type=pa.int32()),
     }
-    pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
+    from hoga.api._atomic_write import atomic_write_parquet_table
+
+    atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
 # === API representation ===
