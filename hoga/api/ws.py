@@ -85,6 +85,14 @@ def build_ws_router(
         recv_task = asyncio.create_task(receiver())
         try:
             await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:
+            # The endpoint task itself was cancelled (e.g. ASGI server / test-client
+            # teardown tearing the connection down out from under us, rather than a
+            # clean client disconnect). Swallow after the finally cleanup so the
+            # cancellation doesn't propagate to the caller as an error — teardown is
+            # not a failure. (Fixes a CancelledError leaking out of Starlette's
+            # TestClient portal under load.)
+            pass
         finally:
             for t in (send_task, recv_task, bus_task):
                 t.cancel()
