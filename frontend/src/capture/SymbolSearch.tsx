@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSymbols, useSymbolSearch, SYMBOLS_QUERY_KEY } from './useSymbols';
-import { useSymbolCombobox } from '../symbols/useSymbolCombobox';
+import { useCombobox } from '../util/useCombobox';
 import { symbolSearchHints } from '../api/upstream-hints';
 import { refreshSymbols } from '../api/symbols';
 import type { SymbolHit, SymbolsCacheStatus } from '../api/types';
@@ -74,7 +74,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
     combo.setOpen(false);
   };
 
-  const combo = useSymbolCombobox<SymbolHit>({
+  const combo = useCombobox<SymbolHit>({
     query: text,
     setQuery: (q) => { setText(q); onChange(null); },
     // Gate items to mirror the original `dropdownVisible` Enter guard: an empty

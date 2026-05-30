@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSymbolSearch } from '../capture/useSymbols';
-import { useSymbolCombobox } from '../symbols/useSymbolCombobox';
+import { useCombobox } from '../util/useCombobox';
 import { useLivePageStore } from '../state/livePage';
 import { useWatchlist, useAddToWatchlist, useRemoveFromWatchlist } from '../watchlist/useWatchlist';
 import { shouldIgnoreEvent } from './useLiveKeyboard';
@@ -26,7 +26,7 @@ export function LiveSymbolSearch() {
 
   const selectHit = (hit: SymbolHit) => { setActiveCode(hit.code); setQuery(''); };
 
-  const combo = useSymbolCombobox<SymbolHit>({
+  const combo = useCombobox<SymbolHit>({
     query,
     setQuery,
     items,

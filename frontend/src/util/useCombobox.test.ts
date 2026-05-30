@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useSymbolCombobox } from './useSymbolCombobox';
+import { useCombobox } from './useCombobox';
 
 type Hit = { code: string };
 const ITEMS: Hit[] = [{ code: 'a' }, { code: 'b' }, { code: 'c' }];
@@ -9,16 +9,16 @@ function key(k: string) {
   return { key: k, preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
 }
 
-function setup(opts: Partial<Parameters<typeof useSymbolCombobox<Hit>>[0]> = {}) {
+function setup(opts: Partial<Parameters<typeof useCombobox<Hit>>[0]> = {}) {
   const onSelect = vi.fn();
   const setQuery = vi.fn();
   const hook = renderHook(() =>
-    useSymbolCombobox<Hit>({ query: 'x', setQuery, items: ITEMS, onSelect, ...opts }),
+    useCombobox<Hit>({ query: 'x', setQuery, items: ITEMS, onSelect, ...opts }),
   );
   return { hook, onSelect, setQuery };
 }
 
-describe('useSymbolCombobox', () => {
+describe('useCombobox', () => {
   it('opens on focus and selects highlighted on Enter', () => {
     const { hook, onSelect } = setup();
     act(() => hook.result.current.inputProps.onFocus());
@@ -55,7 +55,7 @@ describe('useSymbolCombobox', () => {
     const onSelect = vi.fn();
     const ev = key('Enter');
     const hook = renderHook(() =>
-      useSymbolCombobox<Hit>({ query: '005930', setQuery: vi.fn(), items: [], onSelect, onEnterEmpty }),
+      useCombobox<Hit>({ query: '005930', setQuery: vi.fn(), items: [], onSelect, onEnterEmpty }),
     );
     act(() => hook.result.current.inputProps.onKeyDown(ev));
     expect(onEnterEmpty).toHaveBeenCalledWith('005930');

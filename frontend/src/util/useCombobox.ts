@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 
-export interface UseSymbolComboboxOptions<T> {
+export interface UseComboboxOptions<T> {
   /** Owned by the consumer — items derive from it via a separate data hook. */
   query: string;
   setQuery: (q: string) => void;
@@ -10,7 +10,7 @@ export interface UseSymbolComboboxOptions<T> {
   onEnterEmpty?: (query: string) => boolean;
 }
 
-export interface UseSymbolComboboxResult {
+export interface UseComboboxResult {
   open: boolean;
   setOpen: (o: boolean) => void;
   highlightedIndex: number;
@@ -29,9 +29,9 @@ export interface UseSymbolComboboxResult {
   listProps: { role: 'listbox' };
 }
 
-export function useSymbolCombobox<T>({
+export function useCombobox<T>({
   query, setQuery, items, onSelect, onEnterEmpty,
-}: UseSymbolComboboxOptions<T>): UseSymbolComboboxResult {
+}: UseComboboxOptions<T>): UseComboboxResult {
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
