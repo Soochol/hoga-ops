@@ -3,27 +3,8 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useLiveSeries } from './liveSeries';
 import * as client from './client';
-
-// Minimal EventSource stub
-class StubEventSource {
-  url: string;
-  onmessage: ((e: MessageEvent) => void) | null = null;
-  onerror: ((e: Event) => void) | null = null;
-  readyState = 1;
-  closed = false;
-  constructor(url: string) {
-    this.url = url;
-    activeStubs.add(this);
-  }
-  close() {
-    this.closed = true;
-    activeStubs.delete(this);
-  }
-  emit(data: unknown) {
-    this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent);
-  }
-}
-const activeStubs = new Set<StubEventSource>();
+import { installFakeWebSocket, fakeSockets } from '../test/fakeWebSocket';
+import { __resetForTests as resetWs } from './ws';
 
 function wrap(qc: QueryClient) {
   return ({ children }: { children: React.ReactNode }) => (
@@ -34,13 +15,11 @@ function wrap(qc: QueryClient) {
 describe('useLiveSeries', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    activeStubs.clear();
-    (globalThis as any).EventSource = StubEventSource;
+    installFakeWebSocket();
+    resetWs();
+    vi.spyOn(client, 'wsUrl').mockResolvedValue('ws://localhost:8000/api/ws');
   });
-  afterEach(() => {
-    activeStubs.forEach((s) => s.close());
-    activeStubs.clear();
-  });
+  afterEach(() => { resetWs(); });
 
   it('fetches initial series and exposes empty buffers before any SSE', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({
@@ -61,29 +40,21 @@ describe('useLiveSeries', () => {
     expect(result.current.broker).toEqual([]);
   });
 
-  it('subscribes to SSE and appends incoming snapshots by kind', async () => {
+  it('subscribes over WebSocket and appends code-tagged snapshots by kind', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({
-      code: '005930',
-      date: '20260527',
-      session_open_ms: 1000,
-      session_close_ms: null,
-      is_open: true,
-      snapshots: [],
-      trades: [],
-      brokers: [],
+      code: '005930', date: '20260527', session_open_ms: 1000,
+      session_close_ms: null, is_open: true, snapshots: [], trades: [], brokers: [],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useLiveSeries('005930'), { wrapper: wrap(qc) });
     await waitFor(() => expect(result.current.initial).toBeDefined());
-
-    // Wait for EventSource to be created (useEffect after render)
-    await waitFor(() => expect(activeStubs.size).toBe(1));
-    const es = Array.from(activeStubs)[0]!;
-    expect(es.url).toContain('/api/live/stream?code=005930');
-
+    await waitFor(() => expect(fakeSockets.length).toBe(1));
+    const sock = fakeSockets[0];
+    sock.open();
+    expect(sock.parsedSent()).toContainEqual({ action: 'subscribe', code: '005930' });
     act(() => {
-      es.emit({ t_ms: 100, kind: 'ob', total_bid_qty: 999 });
-      es.emit({ t_ms: 100, kind: 'trade', trades: [] });
+      sock.message({ ch: 'live', code: '005930', data: { t_ms: 100, kind: 'ob', total_bid_qty: 999 } });
+      sock.message({ ch: 'live', code: '005930', data: { t_ms: 100, kind: 'trade', trades: [] } });
     });
     await waitFor(() => expect(result.current.ob).toHaveLength(1));
     expect(result.current.trade).toHaveLength(1);
@@ -107,7 +78,7 @@ describe('useLiveSeries', () => {
     expect(result.current.trade).toHaveLength(1);
   });
 
-  it('closes the EventSource when code changes or component unmounts', async () => {
+  it('unsubscribes the code on unmount', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       code: '005930', date: '20260527', session_open_ms: 1000,
       session_close_ms: null, is_open: true,
@@ -115,10 +86,10 @@ describe('useLiveSeries', () => {
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { unmount } = renderHook(() => useLiveSeries('005930'), { wrapper: wrap(qc) });
-    await waitFor(() => expect(activeStubs.size).toBe(1));
-    const es = Array.from(activeStubs)[0]!;
-    expect(es.closed).toBe(false);
+    await waitFor(() => expect(fakeSockets.length).toBe(1));
+    const sock = fakeSockets[0];
+    sock.open();
     unmount();
-    expect(es.closed).toBe(true);
+    expect(sock.parsedSent()).toContainEqual({ action: 'unsubscribe', code: '005930' });
   });
 });
