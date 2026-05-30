@@ -27,18 +27,6 @@ export function useEventStream(): void {
 
 export function subscribeToCaptureEvents(handler: (e: SSEEvent) => void): () => void {
   return subscribeEvents((e: SSEEvent) => {
-    if (
-      e.type === 'capture_progress' ||
-      e.type === 'capture_phase' ||
-      e.type === 'capture_finished' ||
-      e.type === 'capture_queued' ||
-      e.type === 'capture_dismissed' ||
-      e.type === 'capture_queue_paused' ||
-      e.type === 'capture_queue_resumed' ||
-      e.type === 'capture_queue_drained' ||
-      e.type === 'capture_timing'
-    ) {
-      handler(e);
-    }
+    if (e.type.startsWith('capture_')) handler(e);
   });
 }
