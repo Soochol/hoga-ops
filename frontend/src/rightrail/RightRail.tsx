@@ -1,4 +1,5 @@
 import { useRightRailStore } from '../state/rightRail';
+import { HeartIcon } from '../ui/HeartIcon';
 
 /**
  * Global Right Rail (ADR-0052) — fixed thin right-edge chrome on every route.
@@ -40,25 +41,9 @@ export default function RightRail() {
             : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
         }`}
       >
-        <HeartIcon filled={panelOpen} />
+        <HeartIcon filled={panelOpen} className="w-[1.125em] h-[1.125em]" />
         <span className="text-xs">관심</span>
       </button>
     </nav>
-  );
-}
-
-function HeartIcon({ filled }: { filled: boolean }) {
-  return (
-    <svg
-      width="1.125em"
-      height="1.125em"
-      viewBox="0 0 24 24"
-      fill={filled ? 'currentColor' : 'none'}
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden="true"
-    >
-      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-    </svg>
   );
 }
