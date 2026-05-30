@@ -1,8 +1,13 @@
 # /live 종목 검색 (헤더 인라인 바 + ♥ 토글) — Design
 
 **Date**: 2026-05-30
-**Status**: Draft
+**Status**: Implemented (with the corrections below)
 **Scope**: frontend (`live/`, 신규 `symbols/`·`ui/`, `capture/`, `rightrail/`), backend (`hoga/api/watchlist_routes.py`, `hoga/live/lifecycle.py`)
+
+> **Post-implementation corrections (2026-05-30, from an architecture review).**
+> - **"Live activeCode resolution" invariant changed (was "preserves").** The aspirational `?code=` 우선 → localStorage 순서가 실제로는 *데이터 손실*을 유발했다: `/live?code=A` 딥링크 상태에서 검색·♥로 B를 선택하면 `queryCode ?? storedCode` resolver + resync effect가 store 쓰기를 즉시 A로 되돌리고 localStorage까지 오염시켰다. 이는 CONTEXT.md/ADR-0052의 "store가 activeCode를 소유" 모델과 충돌. **수정**: `livePage` store를 단일 source-of-truth로, `?code=`는 첫 mount 1회 seed로 강등 ([LivePage.tsx](../../../frontend/src/live/LivePage.tsx), CONTEXT.md 갱신, 회귀 테스트 추가). 따라서 아래 Invariant impact 표의 "Live activeCode resolution = preserves"는 **intentionally changes**로 정정한다.
+> - **add/remove 라우트의 `refresh_live_poller`는 best-effort.** 부수효과 실패가 이미 커밋된 mutation을 500으로 가리지 않도록 try/except + `log.exception`으로 격리(같은 파일 `catchup_all` 컨벤션과 정합).
+> - 나머지 설계는 본문대로 구현됨. 헤드리스 훅 위치(`symbols/` → `util/` 이동)·하트 토글 공유 컴포넌트화 등은 백로그.
 
 ## Problem
 
