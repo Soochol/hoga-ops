@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import datetime as _dt
 import time
-from contextlib import contextmanager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field
-from typing import Callable, ContextManager, Iterator, Literal
+from typing import Callable, Iterator, Literal
 from zoneinfo import ZoneInfo
 
 from hoga.api.models import (
@@ -187,7 +187,7 @@ class NullTimingCollector:
     ``with`` is harmless rather than a double-count bug to catch.
     """
 
-    def phase(self, name: PhaseName) -> ContextManager[None]:
+    def phase(self, name: PhaseName) -> AbstractContextManager[None]:
         return nullcontext()
 
     def mark_page_boundary(self) -> None:
