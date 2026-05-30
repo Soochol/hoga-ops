@@ -25,7 +25,7 @@ export function WatchlistRow({
       data-just-added={justAdded ? 'true' : undefined}
       className="grid grid-cols-[6ch_1fr_8ch_8ch_2.5ch_2.5ch] items-center gap-3 px-6 py-2 border-b border-border text-sm hover:bg-bg-input"
       style={{
-        background: justAdded ? 'var(--selection-tint)' : undefined,
+        background: justAdded ? 'var(--tint-selection)' : undefined,
         transition: 'background 800ms ease-out',
       }}
     >

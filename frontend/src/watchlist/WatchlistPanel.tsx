@@ -142,7 +142,7 @@ export function WatchlistPanel() {
         <p className="text-sm text-fg-dim mt-2 flex items-center gap-2">
           다음 자동 수집까지
           <span className="font-mono tabular-nums text-accent px-2 py-0.5 rounded"
-                style={{ background: 'var(--selection-tint)' }}>
+                style={{ background: 'var(--tint-selection)' }}>
             <Countdown targetMs={data.next_run_at_ms} />
           </span>
           <span className="text-fg-dimmer text-xs">(오늘 KST 17:00 · {isTradingHint})</span>
