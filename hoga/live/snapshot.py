@@ -12,7 +12,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from hoga.live.kis_models import KisBrokers, KisOrderbook, KisTrade
 
 
 class SnapshotKind(str, Enum):
@@ -37,6 +40,37 @@ class LiveSnapshot:
     t_ms: int
     kind: SnapshotKind
     payload: dict[str, Any]
+
+    @classmethod
+    def from_orderbook(cls, ob: KisOrderbook, *, phase: str) -> LiveSnapshot:
+        """Build an OB snapshot from a typed KIS orderbook.
+
+        Byte-identical to the legacy poller path (``ob.model_dump()`` plus a
+        ``phase`` key) so promote.py's on-disk re-parse is unaffected; the
+        payoff is that a KIS field rename is a type error here, not a silently
+        zeroed parquet column at promote time.
+        """
+        payload = ob.model_dump()
+        payload["phase"] = phase
+        return cls(t_ms=ob.t_ms, kind=SnapshotKind.OB, payload=payload)
+
+    @classmethod
+    def from_trades(
+        cls, trades: list[KisTrade], *, t_ms: int, phase: str
+    ) -> LiveSnapshot:
+        """Build a TRADE snapshot. ``t_ms`` is the cycle's outer tick (the OB
+        t_ms), matching the legacy poller which anchored all three kinds to it."""
+        payload = {"trades": [t.model_dump() for t in trades], "phase": phase}
+        return cls(t_ms=t_ms, kind=SnapshotKind.TRADE, payload=payload)
+
+    @classmethod
+    def from_brokers(
+        cls, brokers: KisBrokers, *, t_ms: int, phase: str
+    ) -> LiveSnapshot:
+        """Build a BROKER snapshot. ``t_ms`` is the cycle's outer tick."""
+        payload = brokers.model_dump()
+        payload["phase"] = phase
+        return cls(t_ms=t_ms, kind=SnapshotKind.BROKER, payload=payload)
 
     def to_jsonl(self) -> str:
         """Serialize to one JSONL line (no trailing newline)."""

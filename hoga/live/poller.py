@@ -21,7 +21,7 @@ from typing import Callable, Literal
 from .buffer import LiveBuffer
 from .kis_client import KIS_KST, KisApiError, KisClient, KisRateLimitError
 from .kis_models import KisBrokers, KisOrderbook, KisTrade
-from .snapshot import LiveSnapshot, SnapshotKind
+from .snapshot import LiveSnapshot
 from .writer import LiveWriter
 
 _log = logging.getLogger(__name__)
@@ -181,19 +181,15 @@ class LivePoller:
             self._last_success_cycle[code] = self._cycle_counter
             self._consecutive_fails.pop(code, None)
 
-            ob_payload = ob.model_dump()
-            ob_payload["phase"] = phase
-            trades_payload: dict = {
-                "trades": [t.model_dump() for t in trades],
-                "phase": phase,
-            }
-            brokers_payload = brokers.model_dump()
-            brokers_payload["phase"] = phase
-
+            # Typed builders (SR-1): the (KisOrderbook, list[KisTrade],
+            # KisBrokers) inputs flow into the snapshot through a typed seam, so
+            # a KIS field rename is a type error here rather than a zeroed
+            # parquet column at promote. JSONL output is byte-identical to the
+            # old hand-rolled model_dump()+phase path (pinned by test_snapshot).
             snaps = [
-                LiveSnapshot(t_ms=ob.t_ms, kind=SnapshotKind.OB, payload=ob_payload),
-                LiveSnapshot(t_ms=ob.t_ms, kind=SnapshotKind.TRADE, payload=trades_payload),
-                LiveSnapshot(t_ms=ob.t_ms, kind=SnapshotKind.BROKER, payload=brokers_payload),
+                LiveSnapshot.from_orderbook(ob, phase=phase),
+                LiveSnapshot.from_trades(trades, t_ms=ob.t_ms, phase=phase),
+                LiveSnapshot.from_brokers(brokers, t_ms=ob.t_ms, phase=phase),
             ]
             await self._writer.append(date, code, snaps)
             if self._buffer is not None:
