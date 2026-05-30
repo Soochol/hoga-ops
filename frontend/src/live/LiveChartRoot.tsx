@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
-  createChart,
+  createChartEx,
   TickMarkType,
   type IChartApi,
+  type IHorzScaleBehavior,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
+import { createKstHorzScaleBehavior } from '../util/kstHorzScaleBehavior';
 import { resolveTokens } from '../util/tokens';
 import {
   CHART_CROSSHAIR_OPTIONS,
@@ -189,7 +191,10 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     const el = containerRef.current;
     if (!el) return;
     const tokens = resolveTokens(TOKEN_SPEC);
-    const c = createChart(el, {
+    const c = createChartEx<Time, IHorzScaleBehavior<Time>>(
+      el,
+      createKstHorzScaleBehavior(axisRef),
+      {
       ...CHART_LAYOUT_OPTIONS,
       width: el.clientWidth,
       height: el.clientHeight,
@@ -228,31 +233,19 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
           const realMs = a.toReal(virtualMs);
           const d = new Date(realMs + 9 * 3600_000);
           const calendar = isCalendarTimeframe(timeframeRef.current);
-          // Minute timeframes show ONLY time (HH:MM) on the x-axis; date
-          // orientation is owned solely by DayBoundaryOverlay's MM/DD chips.
-          //
-          // Why: the chart's time axis is the gap-compressed Virtual Axis with
-          // virtualStart[0] == 0, i.e. virtual values sit near the 1970 epoch.
-          // lightweight-charts therefore assigns the Year/Month/DayOfMonth tick
-          // types from the *virtual 1970 calendar*, placing "date" ticks at
-          // virtual midnights — ≈ every 3.7 trading days, mid-session — never
-          // at real trading-day boundaries. Rendering a real MM/DD there stamps
-          // e.g. "05/28" at 14:30 KST, which both reads as a spurious mid-session
-          // day change and collides with the DayBoundaryOverlay chip that already
-          // marks that day at its real 09:00 open. So every minute-axis tick
-          // (whatever type lightweight-charts assigns) renders as HH:MM, and the
-          // Day Boundary chips carry the dates. /diagnose 2026-05-30.
-          //
-          // D/W/M (calendar) keep date labels: those charts mount no
-          // DayBoundaryOverlay, so the axis ticks are their only date source.
+          // Weights now follow the real KST calendar (see kstHorzScaleBehavior),
+          // so tickType is trustworthy: month boundaries get Month, day
+          // boundaries get DayOfMonth, intraday gets Time. We just format.
+          // Calendar (D/W/M) bars are all anchored to 09:00 KST, so their
+          // intraday Time tiers carry no meaning and are suppressed.
           const hhmm = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
           switch (tickType) {
             case TickMarkType.Year:
-              return calendar ? `'${String(d.getUTCFullYear()).slice(-2)}` : hhmm;
+              return `'${String(d.getUTCFullYear()).slice(-2)}`;
             case TickMarkType.Month:
-              return calendar ? `${d.getUTCMonth() + 1}월` : hhmm;
+              return `${d.getUTCMonth() + 1}월`;
             case TickMarkType.DayOfMonth:
-              return calendar ? `${d.getUTCDate()}` : hhmm;
+              return `${d.getUTCDate()}`;
             case TickMarkType.Time:
               return calendar ? '' : hhmm;
             case TickMarkType.TimeWithSeconds:
@@ -265,7 +258,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       rightPriceScale: { borderColor: tokens.border },
       autoSize: true,
     });
-    setChart(c);
+    setChart(c as IChartApi);
     // autoSize: true already attaches lightweight-charts' own ResizeObserver
     // to the container — an extra manual observer here just produces the
     // "Height and width values ignored because 'autoSize' option is enabled"

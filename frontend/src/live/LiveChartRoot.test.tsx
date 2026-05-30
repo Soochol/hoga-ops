@@ -15,14 +15,14 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 
 import { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
-import { createChart, TickMarkType } from 'lightweight-charts';
+import { createChartEx, TickMarkType } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 
 vi.mock('lightweight-charts', async () => {
   const mod = await vi.importActual<typeof import('lightweight-charts')>('lightweight-charts');
   return {
     ...mod,
-    createChart: vi.fn(() => ({
+    createChartEx: vi.fn(() => ({
       addSeries: vi.fn(() => ({
         setData: vi.fn(),
         update: vi.fn(),
@@ -198,7 +198,7 @@ describe('LiveChartRoot', () => {
   it('D timeframe: re-applies fitContent when candle count grows (14 → 250)', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
-    vi.mocked(createChart).mockImplementationOnce(() => chart as never);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
 
     const { rerender } = render(
       <LiveChartRoot
@@ -229,7 +229,7 @@ describe('LiveChartRoot', () => {
   it('1m timeframe: setVisibleLogicalRange applied once even as bars grow (SSE pushes preserved)', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
-    vi.mocked(createChart).mockImplementationOnce(() => chart as never);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
 
     const { rerender } = render(
       <LiveChartRoot
@@ -265,7 +265,7 @@ describe('LiveChartRoot', () => {
     // Removing it regresses watchlist-switch viewport to "엉뚱한 곳에서 시작".
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
-    vi.mocked(createChart).mockImplementationOnce(() => chart as never);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
 
     render(
       <LiveChartRoot
@@ -284,7 +284,7 @@ describe('LiveChartRoot', () => {
   it('1m timeframe: code change re-applies setVisibleLogicalRange with new count', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
-    vi.mocked(createChart).mockImplementationOnce(() => chart as never);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
 
     const { rerender } = render(
       <LiveChartRoot
@@ -371,7 +371,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // logical.from >= 0 means the visible-range origin is inside loaded
     // bars — no extension needed.
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
     render(
       <LiveChartRoot
@@ -398,7 +398,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // so scrolling there is already covered by the seeded fetch and must NOT
     // trigger an additional extension.
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
     render(
       <LiveChartRoot
@@ -427,7 +427,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // chunk (≈30 trading days; 2× the previous 21-day baseline per user
     // tuning request, doubly weekend- / multi-holiday-safe).
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
     render(
       <LiveChartRoot
@@ -460,7 +460,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     useLivePageStore.setState({ historicalFromDate: '20260519' }); // earlier than axisEarliest '20260526'
 
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
     render(
       <LiveChartRoot
@@ -493,7 +493,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // `!isMinuteTimeframe` early-return that blocked D/W/M users from
     // ever seeing more history; this guards against that regression.
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
     render(
       <LiveChartRoot
@@ -524,7 +524,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // Any positive 'from' means the user is still inside the loaded
     // range and we should NOT prefetch yet.
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChart).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
     render(
       <LiveChartRoot
@@ -557,7 +557,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
   beforeEach(() => {
     useLiveCursorStore.getState().clearCursor();
     useLiveAxisStore.getState().setAxis(null);
-    vi.mocked(createChart).mockClear();
+    vi.mocked(createChartEx).mockClear();
   });
 
   it('publishes axis to useLiveAxisStore on mount', () => {
@@ -585,7 +585,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
       />,
       { wrapper },
     );
-    const chart = vi.mocked(createChart).mock.results[0].value;
+    const chart = vi.mocked(createChartEx).mock.results[0].value;
     expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(1);
   });
 
@@ -600,7 +600,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
       />,
       { wrapper },
     );
-    const chart = vi.mocked(createChart).mock.results[0].value;
+    const chart = vi.mocked(createChartEx).mock.results[0].value;
     expect(chart.subscribeCrosshairMove).not.toHaveBeenCalled();
   });
 
@@ -615,7 +615,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
       />,
       { wrapper },
     );
-    const chart = vi.mocked(createChart).mock.results[0].value;
+    const chart = vi.mocked(createChartEx).mock.results[0].value;
     const handler = chart.subscribeCrosshairMove.mock.calls[0][0] as (p: {
       time?: unknown;
       point?: { x: number } | null;
@@ -697,26 +697,18 @@ function buildChartMockCapturing(handlers: Array<(r: unknown) => void>) {
 }
 
 // ---------------------------------------------------------------------------
-// x-axis tickMarkFormatter — minute charts show TIME only (/diagnose 2026-05-30)
+// x-axis tickMarkFormatter — adaptive tiers (2026-05-30 redesign)
 //
-// Regression: the chart's time axis is the gap-compressed Virtual Axis
-// (virtualStart[0] == 0 ≈ 1970 epoch), so lightweight-charts assigns
-// Year/Month/DayOfMonth tick types on the virtual 1970 calendar. Those date
-// ticks land at virtual midnights — mid-session in real time — so rendering a
-// real MM/DD there stamped e.g. "05/28" at 14:30 KST: a spurious mid-session
-// "day change" that also collided with the DayBoundaryOverlay chip already
-// marking that day at its real 09:00 open. Fix: minute-axis ticks render HH:MM
-// for every tick type; date orientation is owned solely by the Day Boundary
-// chips. D/W/M keep date labels (they mount no DayBoundaryOverlay).
+// The chart now injects a KST horizontal-scale behavior (createChartEx) whose
+// weights follow the real KST calendar, so lightweight-charts assigns the
+// correct TickMarkType at real boundaries. tickMarkFormatter therefore TRUSTS
+// tickType: Month→"N월", DayOfMonth→day, Time→HH:MM. Calendar (D/W/M) suppress
+// the intraday Time tiers (daily bars are all anchored to 09:00).
 //
-// The seam: capture the tickMarkFormatter from the createChart options and
-// invoke it directly with the (virtualSec, tickType) pairs lightweight-charts
-// would pass. TWO_SEGMENT_BUNDLE → axis where virtual second 43201 maps to
-// today 14:30 KST (5.5h into segment[1]) — the exact mid-session position that
-// produced the bug.
+// Seam: capture tickMarkFormatter from the createChartEx options (3rd arg).
 describe('LiveChartRoot x-axis tickMarkFormatter', () => {
   beforeEach(() => {
-    vi.mocked(createChart).mockClear();
+    vi.mocked(createChartEx).mockClear();
   });
 
   function captureTickFormatter(timeframe: 'D' | '1m') {
@@ -730,39 +722,42 @@ describe('LiveChartRoot x-axis tickMarkFormatter', () => {
       />,
       { wrapper },
     );
-    const opts = vi.mocked(createChart).mock.calls[0][1] as {
+    // createChartEx(container, behavior, options) — options is the 3rd arg.
+    const opts = vi.mocked(createChartEx).mock.calls[0][2] as {
       timeScale: { tickMarkFormatter: (t: number, k: TickMarkType) => string };
     };
     return opts.timeScale.tickMarkFormatter;
   }
 
   // virtual second 43201 = segment[1].virtualStart (23401s) + 5.5h (19800s)
-  // → real today 14:30 KST. This is a mid-session position the library tags as
-  // a DayOfMonth/Month/Year "date" tick on the virtual 1970 calendar.
+  // → real today 14:30 KST (mid-session).
   const MID_SESSION_SEC = 43201;
+  // virtual second 0 = segment[0] open = 2026-05-26 09:00 KST (TWO_SEGMENT_BUNDLE's
+  // first segment is yesterday; today is segment[1]).
+  const FIRST_OPEN_SEC = 0;
 
-  it('1m: DayOfMonth tick renders HH:MM (the bug repro), not MM/DD', () => {
-    const fmt = captureTickFormatter('1m');
-    const out = fmt(MID_SESSION_SEC, TickMarkType.DayOfMonth);
-    expect(out).toBe('14:30'); // was "05/27" before the fix
-    expect(out).not.toMatch(/\//); // never a date on the minute axis
-  });
-
-  it('1m: Month and Year ticks also render HH:MM (long multi-day windows)', () => {
-    const fmt = captureTickFormatter('1m');
-    expect(fmt(MID_SESSION_SEC, TickMarkType.Month)).toBe('14:30');
-    expect(fmt(MID_SESSION_SEC, TickMarkType.Year)).toBe('14:30');
-  });
-
-  it('1m: Time tick still renders HH:MM', () => {
+  it('1m: Time tick renders HH:MM', () => {
     const fmt = captureTickFormatter('1m');
     expect(fmt(MID_SESSION_SEC, TickMarkType.Time)).toBe('14:30');
   });
 
-  it('D (calendar): DayOfMonth tick keeps its date label (day-of-month)', () => {
-    // D/W/M mount no DayBoundaryOverlay, so the axis is their only date source —
-    // the fix must NOT strip dates there.
+  it('1m: DayOfMonth tick renders the day number', () => {
+    const fmt = captureTickFormatter('1m');
+    expect(fmt(FIRST_OPEN_SEC, TickMarkType.DayOfMonth)).toBe('26');
+  });
+
+  it('1m: Month tick renders "N월"', () => {
+    const fmt = captureTickFormatter('1m');
+    expect(fmt(FIRST_OPEN_SEC, TickMarkType.Month)).toBe('5월');
+  });
+
+  it('D (calendar): DayOfMonth tick keeps its day number', () => {
     const fmt = captureTickFormatter('D');
-    expect(fmt(MID_SESSION_SEC, TickMarkType.DayOfMonth)).toBe('27'); // 2026-05-27
+    expect(fmt(FIRST_OPEN_SEC, TickMarkType.DayOfMonth)).toBe('26');
+  });
+
+  it('D (calendar): Time tick is suppressed (empty)', () => {
+    const fmt = captureTickFormatter('D');
+    expect(fmt(MID_SESSION_SEC, TickMarkType.Time)).toBe('');
   });
 });
