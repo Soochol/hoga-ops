@@ -3,7 +3,6 @@ import {
   createChartEx,
   TickMarkType,
   type IChartApi,
-  type IHorzScaleBehavior,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
@@ -191,10 +190,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     const el = containerRef.current;
     if (!el) return;
     const tokens = resolveTokens(TOKEN_SPEC);
-    const c = createChartEx<Time, IHorzScaleBehavior<Time>>(
-      el,
-      createKstHorzScaleBehavior(axisRef),
-      {
+    const c = createChartEx(el, createKstHorzScaleBehavior(axisRef), {
       ...CHART_LAYOUT_OPTIONS,
       width: el.clientWidth,
       height: el.clientHeight,

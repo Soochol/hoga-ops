@@ -1,4 +1,5 @@
 import { defaultHorzScaleBehavior } from 'lightweight-charts';
+import type { TimeChartOptions } from 'lightweight-charts';
 import type { MutableRefObject } from 'react';
 import type { VirtualAxis } from './virtualAxis';
 
@@ -49,6 +50,17 @@ function weightByKstDate(cur: Date, prev: Date): number {
 export function createKstHorzScaleBehavior(axisRef: MutableRefObject<VirtualAxis>) {
   const Base = defaultHorzScaleBehavior();
   class KstHorzScaleBehavior extends Base {
+    // Narrow the options type to TimeChartOptions so createChartEx's options
+    // param (DeepPartial<ReturnType<behavior["options"]>>) carries
+    // `timeScale.tickMarkFormatter`. The base's options() returns
+    // ChartOptionsImpl<Time> whose timeScale is HorzScaleOptions (no
+    // tickMarkFormatter); only TimeChartOptions narrows it to TimeScaleOptions.
+    // This mirrors what createChart() gets for free (ChartOptions =
+    // TimeChartOptions). Runtime is unchanged — pure type narrowing.
+    override options(): TimeChartOptions {
+      return super.options() as TimeChartOptions;
+    }
+
     // Loose signature: base wants `readonly Mutable<TimeScalePoint>[]` but
     // `Mutable` isn't exported and `TimeScalePoint.timeWeight` is readonly in
     // the public typings. `readonly unknown[]` is wider (contravariant-OK) and
