@@ -65,10 +65,13 @@
 **서버 → 클라이언트** (모든 메시지는 JSON):
 ```json
 { "ch": "event", "data": { "type": "inventory_added", "code": "005930", "date": "20260530" } }
-{ "ch": "live",  "data": { "t_ms": 1716000000000, "kind": "ob", "...": "..." } }
+{ "ch": "live",  "code": "005930", "data": { "t_ms": 1716000000000, "kind": "ob", "...": "..." } }
+{ "ch": "subscribed", "code": "005930" }
 { "ch": "heartbeat" }
 ```
-- `ch`가 채널 식별자(demux 키). `event`는 기존 전역 이벤트 payload를 `data`에 그대로 담는다. `live`는 `LiveBuffer` 스냅샷 dict.
+- `ch`가 채널 식별자(demux 키). `event`는 기존 전역 이벤트 payload를 `data`에 그대로 담는다.
+- `live`는 `LiveBuffer` 스냅샷 dict이며 **`code`로 태깅**한다 — `LiveBuffer` 엔트리는 `kind`만 있고 `code`가 없으므로(buffer.py), 한 WS가 여러 종목을 구독할 때 클라이언트가 올바른 구독자에게만 전달하려면 프레임에 `code`가 필요하다(0..N 종목 invariant 보호; plan-review CRITICAL).
+- `subscribed` ack은 서버가 `LiveBuffer.subscribe(code)`를 등록한 직후 보낸다 — publish-before-subscribe 레이스 방지(테스트 동기화 + 클라이언트가 구독 확정 시점 인지).
 
 **클라이언트 → 서버**:
 ```json
@@ -77,7 +80,11 @@
 ```
 - 연결 즉시 전역 이벤트(`ch:"event"`)는 **자동 구독**(별도 action 불필요).
 - 종목 시세는 `subscribe`로 켠다. `/live`에서 종목 전환 시 `unsubscribe(이전)+subscribe(신규)` — **재연결 없이** 채널만 바꾼다.
-- 한 WS는 동시에 0..N개 코드를 구독할 수 있다(현재 UI는 탭당 1개지만 프로토콜은 제약하지 않음).
+- 한 WS는 동시에 0..N개 코드를 구독할 수 있다(현재 UI는 탭당 1개지만 프로토콜은 제약하지 않음 — 그래서 `code` 태깅이 필요).
+
+**연결 상태(liveness)** — WebSocket은 EventSource의 자동 재연결·가시성이 없으므로 클라이언트가 상태를 노출한다(plan-review CRITICAL):
+- **어떤 프레임이든** 수신하면 `lastHeartbeat`를 갱신한다(`heartbeat`뿐 아니라 `event`/`live`도 liveness 증거). 서버 ping은 30초 out-queue idle 시에만 오므로, 활성 스트리밍 중엔 데이터 프레임이 liveness가 된다 — 그렇지 않으면 StatusDot이 스트리밍 중에도 "재연결 중"으로 고착.
+- `onopen` 시 `connected`, `onclose` 시 `disconnected`를 **상태 전이 시 1회씩** 이벤트 채널로 발행한다(재연결 시도마다 반복 발행 금지 → 장기 단절 중 쿼리 무효화 폭주 방지). UI(StatusDot·LiveStatusBar)는 이 상태 + `lastHeartbeat` 신선도로 live / 재연결 중 / stale을 표시한다.
 
 `live_snapshot` vs `onmessage` 버그는 구조적으로 소멸한다 — 프레임 형태를 우리가 정의하고 `ch`로 demux하므로 named/unnamed 구분 자체가 없다.
 

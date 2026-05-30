@@ -8,54 +8,62 @@ scope: both
 
 **Goal:** Replace the two long-lived SSE streams (`/api/events`, `/api/live/stream`) with a single per-tab WebSocket (`/api/ws`) so the HTTP/1.1 6-connection-per-origin pool is never exhausted by multiple `/live` tabs.
 
-**Architecture:** One Starlette WebSocket endpoint multiplexes global app events (from `_Bus`) and per-code live snapshots (from `LiveBuffer`) into `{ch, data}` frames; the client demuxes by `ch` and sends `{action, code}` to (un)subscribe codes. A frontend `ws.ts` singleton owns the socket with backoff reconnect; `eventStream.ts` (renamed from `sse.ts`) and `liveSeries.ts` consume it. Data sources (`_Bus`, watchdog, `LiveBuffer`, KIS poller) are unchanged — only the wire transport changes (ADR-0053). The ADR-0044 hover-spot parquet REST path is untouched.
+**Architecture:** One Starlette WebSocket endpoint multiplexes global app events (from `_Bus`) and per-code live snapshots (from `LiveBuffer`) into `{ch, data}` frames (`live` frames are `code`-tagged); the client demuxes by `ch`/`code` and sends `{action, code}` to (un)subscribe codes. A frontend `ws.ts` singleton owns the socket with backoff reconnect, stamps liveness on every frame, and emits one-shot `connected`/`disconnected` events. Data sources (`_Bus`, watchdog, `LiveBuffer`, KIS poller) are unchanged — only the wire transport changes (ADR-0053). The ADR-0044 hover-spot parquet REST path is untouched.
 
 **Tech Stack:** FastAPI/Starlette 1.0 native WebSocket (`@router.websocket`), React + Vite 8, Vitest/jsdom, `@tanstack/react-query`.
 
-**Reference:** spec `docs/superpowers/specs/2026-05-30-live-websocket-transport-design.md`; ADR-0053.
+**Reference:** spec `docs/superpowers/specs/2026-05-30-live-websocket-transport-design.md`; ADR-0053. Plan-review fixes (eng + design, 2026-05-30) folded in — see header notes and the Deferred section.
 
 **Deferred-memo decisions (from grill):**
-1. **Rename `sse.ts` → `eventStream.ts`** (and its test). Leaving a file named `sse.ts` with zero SSE is rot; churn is 3 import sites + 1 test. The `SSEEvent` *type* keeps its name (wider churn; cosmetic) — noted as future cleanup.
-2. **No automatic live-buffer re-hydrate on reconnect** in v1. Reconnect re-subscribes the active code and fires the existing disconnect-recovery query invalidation; gaps self-heal as ticks resume (spec §10/§12).
-3. **Remove `sse-starlette` dependency** as the final task, gated on confirming no other `EventSourceResponse` users.
+1. **Rename `sse.ts` → `eventStream.ts`** (and its test). The `SSEEvent` *type* keeps its name (cosmetic; deferred).
+2. **No automatic live-buffer re-hydrate on reconnect** in v1. Reconnect re-subscribes the active code and fires the existing disconnect-recovery query invalidation **once per disconnect** (not per retry); gaps self-heal as ticks resume.
+3. **Remove `sse-starlette` dependency** as a late task, gated on confirming no other `EventSourceResponse` users.
+
+**Plan-review fixes folded in (blockers/criticals):**
+- Import blast radius is **11 sites**, not 3: prod `App.tsx`, `capture/useCaptureQueue.ts`, `inventory/useInventoryRecaptureOrigins.ts`, **`nav/StatusDot.tsx`** (imports `lastHeartbeat`), plus **7 test files** doing `vi.mock('../api/sse', …)`: `nav/CaptureStatusPill.test.tsx`, `capture/CaptureForm.test.tsx`, `capture/CaptureQueue.test.tsx`, `capture/useCaptureQueue.test.tsx`, `pages/Capture.test.tsx`, `inventory/useInventoryRecapture.test.tsx`, `inventory/StockDateGroupDetail.test.tsx`. ALL re-pointed in the rename commit (Task 5).
+- `eventStream.ts` **must re-export `lastHeartbeat`** (StatusDot depends on it) — backed by a `ws.ts` liveness timestamp stamped on **every** frame.
+- Backend teardown awaits cancelled tasks (`gather(..., return_exceptions=True)`) — no "Task exception never retrieved"; no dead `except WebSocketDisconnect`.
+- `live` frames are **`code`-tagged**; client filters by code (multi-code-safe).
+- Server sends a **`subscribed` ack**; the backend test waits for it before publishing (no race).
+- `out` queue **drops on overflow** (`put_nowait`) to match `_Bus`/`LiveBuffer`.
+- `inv_handler.loop` bound **before** `observer.start()`.
+- `ws.ts` reconnect timer stored + cleared in `__resetForTests`.
+- New **connection-state UI surface** (Task 7): StatusDot uses status tokens (`--success`/`--warn`/`--error`); `/live` `LIVE●` reflects live / 재연결 중 / stale.
+- `capture_dismissed` was dropped at **two** levels in the old code (no `addEventListener` AND not in the filter) — fixed + tested.
 
 ---
 
 ## File Structure
 
 **Backend**
-- Create `hoga/api/ws.py` — `build_ws_router(bus, get_buffer)` → `@router.websocket("/api/ws")`. Owns connection lifecycle, dynamic per-code subscription, queue fan-in, 30s ping, teardown.
-- Modify `hoga/api/sse.py` — `build_sse` → `build_event_bus(parquet_root) -> tuple[_Bus, Observer, _InventoryHandler]`; drop the `/api/events` route. `_Bus`, `classify_inventory_event`, `_InventoryHandler` unchanged.
-- Modify `hoga/live/api.py` — delete the `/stream` route (`_get_stream`); everything else unchanged.
-- Modify `hoga/api/app.py` — consume `build_event_bus`, bind `handler.loop` in lifespan, include `build_ws_router`, drop the SSE router include.
-- Modify `pyproject.toml` — remove `sse-starlette` (final task).
-- Create `tests/api/test_ws.py` — WebSocket endpoint tests via `TestClient.websocket_connect`.
+- Create `hoga/api/ws.py` — `build_ws_router(bus, get_buffer)` → `@router.websocket("/api/ws")`. Connection lifecycle, dynamic per-code subscription, queue fan-in (drop on overflow), `subscribed` ack, 30s ping, gathered teardown.
+- Modify `hoga/api/sse.py` — `build_sse` → `build_event_bus(parquet_root) -> tuple[_Bus, Observer, _InventoryHandler]`; drop the `/api/events` route + now-unused imports (`APIRouter`, `EventSourceResponse`, `json`).
+- Modify `hoga/live/api.py` — delete the `/stream` route (`_get_stream`) + now-unused imports (`EventSourceResponse`, `asyncio`, `json as _json`).
+- Modify `hoga/api/app.py` — consume `build_event_bus` (3-tuple); bind `inv_handler.loop` before `observer.start()`; include `build_ws_router`; drop the SSE router include.
+- Modify `pyproject.toml` — remove `sse-starlette` (Task 9).
+- Create `tests/api/test_ws.py`.
 
 **Frontend**
 - Modify `frontend/src/api/client.ts` — add `wsUrl(path)`.
-- Create `frontend/src/api/ws.ts` — singleton WebSocket client (DI factory, backoff reconnect, `subscribeEvents` / `subscribeLive`, `__resetForTests`).
-- Create `frontend/src/test/fakeWebSocket.ts` — shared test double.
-- Create `frontend/src/api/ws.test.ts` — unit tests for `ws.ts`.
-- Rename `frontend/src/api/sse.ts` → `frontend/src/api/eventStream.ts` — reimplement `useEventStream` / `subscribeToCaptureEvents` on `ws.ts`; identical public signatures.
-- Rename `frontend/src/api/sse.test.ts` → `frontend/src/api/eventStream.test.ts` — stub WebSocket, fire `{ch:'event'}` frames.
-- Modify `frontend/src/api/liveSeries.ts` — replace `new EventSource('/api/live/stream')` with `ws.subscribeLive(code, …)`; buffer/rAF/clear stay.
-- Modify `frontend/src/api/liveSeries.test.tsx` — swap the `StubEventSource` for the fake WebSocket; fire `{ch:'live'}` frames.
-- Modify import sites: `frontend/src/App.tsx`, `frontend/src/capture/useCaptureQueue.ts`, `frontend/src/inventory/useInventoryRecaptureOrigins.ts` — change `'../api/sse'` → `'../api/eventStream'`.
-- **Unchanged (verify only):** `LivePage.test.tsx`, `inventory/useInventoryRecapture.test.tsx`, `capture/CaptureForm.test.tsx`, `inventory/StockDateGroupDetail.test.tsx` reference EventSource only in comments and rely on silent-fail; `ws.ts`'s `typeof WebSocket` guard preserves that.
+- Modify `frontend/src/api/types.ts` — add `| { type: 'connected' }` to the `SSEEvent` union.
+- Create `frontend/src/api/ws.ts` — singleton WS client (DI ctor via `globalThis.WebSocket`, backoff reconnect w/ stored timer, `subscribeEvents`/`subscribeLive`, `lastHeartbeat`, one-shot `connected`/`disconnected`, code-filtered live fan-out, `__resetForTests`).
+- Create `frontend/src/test/fakeWebSocket.ts` + `frontend/src/api/ws.test.ts`.
+- Rename `frontend/src/api/sse.ts` → `eventStream.ts` (reimplement on `ws.ts`; re-export `lastHeartbeat`; `capture_dismissed` in filter).
+- Rename `frontend/src/api/sse.test.ts` → `eventStream.test.ts`.
+- Modify `frontend/src/api/liveSeries.ts` + `liveSeries.test.tsx`.
+- Re-point ALL 11 `../api/sse` import sites → `../api/eventStream` (Task 5).
+- Modify `frontend/src/nav/StatusDot.tsx` + `frontend/src/live/LiveStatusBar.tsx` (Task 7).
 
 ---
 
 ## Task 1: Backend WebSocket endpoint (`build_ws_router`)
 
-**Files:**
-- Create: `hoga/api/ws.py`
-- Test: `tests/api/test_ws.py`
+**Files:** Create `hoga/api/ws.py`; Test `tests/api/test_ws.py`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing test** (waits for the `subscribed` ack before publishing — no race):
 
 ```python
 # tests/api/test_ws.py
-import asyncio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -75,54 +83,55 @@ def _make_app() -> tuple[FastAPI, _Bus, LiveBuffer]:
 
 def test_global_events_auto_delivered():
     app, bus, _ = _make_app()
-    with TestClient(app) as client:
-        with client.websocket_connect("/api/ws") as ws:
-            bus.publish({"type": "inventory_added", "code": "005930", "date": "20260530"})
-            frame = ws.receive_json()
-            assert frame["ch"] == "event"
-            assert frame["data"]["type"] == "inventory_added"
+    with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:
+        bus.publish({"type": "inventory_added", "code": "005930", "date": "20260530"})
+        frame = ws.receive_json()
+        assert frame["ch"] == "event"
+        assert frame["data"]["type"] == "inventory_added"
 
 
-def test_subscribe_then_live_snapshot_delivered():
+def test_subscribe_acks_then_delivers_code_tagged_live():
     app, _, buf = _make_app()
-    with TestClient(app) as client:
-        with client.websocket_connect("/api/ws") as ws:
-            ws.send_json({"action": "subscribe", "code": "005930"})
-            # Give the receiver task a turn to register the subscription.
-            ws.send_json({"action": "subscribe", "code": "005930"})  # idempotent
-            async def _pub():
-                await buf.publish("005930", [LiveSnapshot(t_ms=100, kind=SnapshotKind.OB, payload={"total_bid_qty": 5})])
-            client.portal.call(_pub)  # type: ignore[attr-defined]
-            frame = ws.receive_json()
-            assert frame["ch"] == "live"
-            assert frame["data"]["kind"] == "ob"
-            assert frame["data"]["t_ms"] == 100
+    with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:
+        ws.send_json({"action": "subscribe", "code": "005930"})
+        ack = ws.receive_json()
+        assert ack == {"ch": "subscribed", "code": "005930"}
+        # Buffer subscription is now registered; publish on the server loop.
+        client.portal.call(
+            buf.publish,
+            "005930",
+            [LiveSnapshot(t_ms=100, kind=SnapshotKind.OB, payload={"total_bid_qty": 5})],
+        )
+        frame = ws.receive_json()
+        assert frame["ch"] == "live"
+        assert frame["code"] == "005930"
+        assert frame["data"]["kind"] == "ob"
+        assert frame["data"]["t_ms"] == 100
 ```
 
-> Note: `TestClient` runs the app on an anyio portal; `client.portal.call(coro_fn)` runs an async publish on the server loop. If the portal handle differs in this Starlette version, publish through a tiny test-only HTTP route instead — but try the portal first.
+> `client.portal.call(coro_fn, *args)` runs the async `buf.publish` on the same anyio portal/event loop the WS endpoint uses (verified against Starlette 1.0.0 — `WebSocketTestSession` shares the `TestClient` portal). The `subscribed` ack guarantees `buf.subscribe("005930")` ran before we publish.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run to verify it fails**
 
 Run: `uv run pytest tests/api/test_ws.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'hoga.api.ws'`.
+Expected: FAIL — `ModuleNotFoundError: No module named 'hoga.api.ws'`.
 
-- [ ] **Step 3: Write the implementation**
+- [ ] **Step 3: Write `hoga/api/ws.py`**
 
 ```python
-# hoga/api/ws.py
 """Single WebSocket transport for live push (ADR-0053).
 
 Multiplexes global app events (_Bus) and per-code live snapshots (LiveBuffer)
 into {ch, data} frames over one connection per tab, replacing the two SSE
-endpoints (/api/events, /api/live/stream). Data sources are unchanged — this
-is a wire-transport layer only.
+endpoints. live frames are code-tagged so one socket can carry 0..N codes.
+Data sources are unchanged — this is a wire-transport layer only.
 """
 from __future__ import annotations
 
 import asyncio
 from typing import Callable
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket
 
 from hoga.api.sse import _Bus
 from hoga.live.buffer import LiveBuffer
@@ -141,36 +150,45 @@ def build_ws_router(
         await websocket.accept()
         out: asyncio.Queue[dict] = asyncio.Queue(maxsize=2048)
         bus_q = bus.subscribe()
-        # code -> (queue, pump task)
         code_subs: dict[str, tuple[asyncio.Queue, asyncio.Task]] = {}
 
-        async def pump(channel: str, q: asyncio.Queue) -> None:
-            while True:
-                item = await q.get()
-                await out.put({"ch": channel, "data": item})
+        def emit(frame: dict) -> None:
+            try:
+                out.put_nowait(frame)
+            except asyncio.QueueFull:
+                pass  # slow client: drop (matches _Bus / LiveBuffer semantics)
 
-        bus_task = asyncio.create_task(pump("event", bus_q))
+        async def pump_event() -> None:
+            while True:
+                emit({"ch": "event", "data": await bus_q.get()})
+
+        async def pump_live(code: str, q: asyncio.Queue) -> None:
+            while True:
+                emit({"ch": "live", "code": code, "data": await q.get()})
+
+        bus_task = asyncio.create_task(pump_event())
 
         async def sender() -> None:
             while True:
                 try:
                     frame = await asyncio.wait_for(out.get(), timeout=_PING_TIMEOUT_S)
-                    await websocket.send_json(frame)
                 except asyncio.TimeoutError:
-                    await websocket.send_json({"ch": "heartbeat"})
+                    frame = {"ch": "heartbeat"}
+                await websocket.send_json(frame)
 
         async def receiver() -> None:
             while True:
                 msg = await websocket.receive_json()
                 action = msg.get("action")
                 code = msg.get("code")
-                if action == "subscribe" and isinstance(code, str) and code not in code_subs:
-                    buf = get_buffer()
-                    if buf is None:
-                        continue
-                    q = buf.subscribe(code)
-                    task = asyncio.create_task(pump("live", q))
-                    code_subs[code] = (q, task)
+                if action == "subscribe" and isinstance(code, str):
+                    if code not in code_subs:
+                        buf = get_buffer()
+                        if buf is None:
+                            continue
+                        q = buf.subscribe(code)
+                        code_subs[code] = (q, asyncio.create_task(pump_live(code, q)))
+                    emit({"ch": "subscribed", "code": code})
                 elif action == "unsubscribe" and isinstance(code, str) and code in code_subs:
                     q, task = code_subs.pop(code)
                     task.cancel()
@@ -181,76 +199,75 @@ def build_ws_router(
         send_task = asyncio.create_task(sender())
         recv_task = asyncio.create_task(receiver())
         try:
-            await asyncio.wait(
-                {send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED
-            )
-        except WebSocketDisconnect:
-            pass
+            await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
         finally:
-            for task in (send_task, recv_task, bus_task):
+            for t in (send_task, recv_task, bus_task):
+                t.cancel()
+            subs = list(code_subs.items())
+            for _code, (_q, task) in subs:
                 task.cancel()
+            # Await all cancellations so exceptions are retrieved (no
+            # "Task exception was never retrieved" warnings on disconnect).
+            await asyncio.gather(
+                send_task, recv_task, bus_task,
+                *(task for _code, (_q, task) in subs),
+                return_exceptions=True,
+            )
             buf = get_buffer()
-            for code, (q, task) in code_subs.items():
-                task.cancel()
-                if buf is not None:
+            if buf is not None:
+                for code, (q, _task) in subs:
                     buf.unsubscribe(code, q)
             bus.unsubscribe(bus_q)
 
     return router
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run to verify it passes**
 
 Run: `uv run pytest tests/api/test_ws.py -v`
-Expected: PASS (both tests). If the `client.portal` handle is unavailable, switch the publish in the test to a `client.portal_factory`/anyio approach or a tiny test route, then re-run.
+Expected: PASS (2 tests), no asyncio "Task exception" warnings in output.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add hoga/api/ws.py tests/api/test_ws.py
-git commit -m "feat(ws): single WebSocket endpoint multiplexing events + live (ADR-0053)"
+git commit -m "feat(ws): single WebSocket endpoint (code-tagged live, ack, drop-on-overflow) (ADR-0053)"
 ```
 
 ---
 
-## Task 2: Drop `/api/events` SSE, wire the WS router, preserve watchdog loop binding
+## Task 2: Drop `/api/events`, wire WS, preserve watchdog loop binding
 
-**Files:**
-- Modify: `hoga/api/sse.py` (rename `build_sse` → `build_event_bus`, drop route)
-- Modify: `hoga/api/app.py:49`, `:81-83`, `:171`
-- Test: `tests/api/test_ws.py` (add inventory-watchdog regression), existing SSE tests for `sse.py`
+**Files:** `hoga/api/sse.py`, `hoga/api/app.py` (`:49`, lifespan `~79-83`, `:171`), `tests/api/test_ws.py`
 
-- [ ] **Step 1: Write the failing test (watchdog loop binding regression guard)**
-
-Add to `tests/api/test_ws.py`:
+- [ ] **Step 1: Write the failing regression test** (handler exposed for loop binding; do NOT join an unstarted observer):
 
 ```python
+# add to tests/api/test_ws.py
 from hoga.api.sse import build_event_bus
 
 
-def test_build_event_bus_returns_handler_for_loop_binding(tmp_path):
-    # The /api/events route used to bind handler.loop lazily; with the route
-    # gone, lifespan must bind it. build_event_bus must expose the handler.
+def test_build_event_bus_exposes_unbound_handler(tmp_path):
     bus, observer, handler = build_event_bus(tmp_path / "parquet")
-    assert handler.loop is None  # not bound until lifespan startup
-    observer.stop(); observer.join()
+    assert handler.loop is None  # lifespan binds it; the removed route used to
+    # observer is scheduled but NOT started — do not start/join it here.
 ```
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `uv run pytest tests/api/test_ws.py::test_build_event_bus_returns_handler_for_loop_binding -v`
-Expected: FAIL with `ImportError: cannot import name 'build_event_bus'`.
+Run: `uv run pytest tests/api/test_ws.py::test_build_event_bus_exposes_unbound_handler -v`
+Expected: FAIL — `ImportError: cannot import name 'build_event_bus' from 'hoga.api.sse'`.
 
-- [ ] **Step 3: Edit `hoga/api/sse.py`** — replace the `build_sse` function (lines 134-163) with:
+- [ ] **Step 3: Replace `build_sse` (sse.py lines 134-163) with `build_event_bus`:**
 
 ```python
 def build_event_bus(parquet_root: Path) -> tuple[_Bus, Observer, _InventoryHandler]:
     """Create the inventory event bus + watchdog observer (no HTTP route).
 
     The push channel moved to the WebSocket transport (ADR-0053); this builder
-    now only wires the data source. ``handler.loop`` is bound by the FastAPI
-    lifespan once a running loop exists (it used to be bound lazily by the
-    removed ``/api/events`` route).
+    only wires the data source. ``handler.loop`` is bound by the FastAPI
+    lifespan once a running loop exists (the removed ``/api/events`` route used
+    to bind it lazily).
     """
     bus = _Bus()
     handler = _InventoryHandler(bus, parquet_root, loop=None)
@@ -260,66 +277,60 @@ def build_event_bus(parquet_root: Path) -> tuple[_Bus, Observer, _InventoryHandl
     return bus, observer, handler
 ```
 
-Remove the now-unused `APIRouter`, `EventSourceResponse`, `asyncio`, `json` imports from `sse.py` **only if** no longer referenced (the `_Bus.publish`/handler keep `asyncio`? No — `_Bus` uses `asyncio.Queue`; keep `asyncio`. `json` and `EventSourceResponse` and `APIRouter` become unused — remove those three).
+Then remove the now-unused imports at the top of `sse.py`: `from fastapi import APIRouter`, `from sse_starlette.sse import EventSourceResponse`, and `import json`. Keep `import asyncio` (used by `_Bus`).
 
-- [ ] **Step 4: Edit `hoga/api/app.py`** — three edits:
+- [ ] **Step 4: Edit `hoga/api/app.py`:**
 
-Line 24 import (unchanged module, changed symbol):
+Imports (line 24 area):
 ```python
 from hoga.api.sse import build_event_bus
-```
-Add WS import near line 24:
-```python
 from hoga.api.ws import build_ws_router
 ```
 Line 49:
 ```python
     bus, observer, inv_handler = build_event_bus(data_dir / "parquet")
 ```
-Inside `lifespan` startup (after line 81 `observer.start()` / alongside line 83):
+Lifespan startup — bind the loop **before** starting the observer (so startup-window filesystem events aren't dropped by the `loop is None` guard), replacing lines 81-83:
 ```python
-        observer.start()
-        # bus + loop for thread-safe publishes from the watchdog thread.
         loop = asyncio.get_running_loop()
         inv_handler.loop = loop  # ADR-0053: route no longer binds this
+        observer.start()
         set_captures_bus(bus, loop)
 ```
-Replace the SSE include (line 171 `app.include_router(sse_router)`) with:
+Replace the SSE include (line 171 `app.include_router(sse_router)`):
 ```python
     app.include_router(build_ws_router(bus, live_get_buffer))
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 5: Run tests**
 
-Run: `uv run pytest tests/api/test_ws.py tests/api/ -v -k "ws or sse or event or inventory or app"`
-Expected: PASS. Fix any `sse.py` test that referenced `build_sse` (rename to `build_event_bus`, adjust unpacking to 3-tuple).
+Run: `uv run pytest tests/api -v`
+Expected: PASS. Update any test importing `build_sse` (rename → `build_event_bus`, 3-tuple unpack).
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add hoga/api/sse.py hoga/api/app.py tests/api/test_ws.py
-git commit -m "refactor(ws): drop /api/events SSE; bind watchdog loop in lifespan; wire WS router"
+git commit -m "refactor(ws): drop /api/events SSE; bind watchdog loop pre-start; wire WS router"
 ```
 
 ---
 
 ## Task 3: Remove the `/api/live/stream` SSE route
 
-**Files:**
-- Modify: `hoga/live/api.py:226-244` (delete `_get_stream`)
-- Test: existing `hoga/live` tests
+**Files:** `hoga/live/api.py:226-244`
 
-- [ ] **Step 1: Confirm no test depends on `/api/live/stream`**
+- [ ] **Step 1: Confirm nothing else hits it**
 
-Run: `grep -rn "live/stream\|_get_stream\|EventSourceResponse" hoga tests`
-Expected: only `hoga/live/api.py`. If a test hits `/api/live/stream`, delete/port it to the WS test.
+Run: `grep -rn "live/stream\|_get_stream" hoga tests`
+Expected: only `hoga/live/api.py`. If a test hits it, port it to `tests/api/test_ws.py`.
 
-- [ ] **Step 2: Delete the route** — remove lines 226-244 (`@router.get("/stream")` … `return EventSourceResponse(stream())`) from `hoga/live/api.py`. Remove the now-unused `EventSourceResponse` import (line 14) and `asyncio`/`json as _json` **only if** unused elsewhere in the file (check: `asyncio` may be unused after; `_json` likely unused — remove if so).
+- [ ] **Step 2: Delete the route** — remove `hoga/live/api.py` lines 226-244 (`@router.get("/stream")` … `return EventSourceResponse(stream())`). Then remove the now-unused imports: `from sse_starlette.sse import EventSourceResponse` (line 14), `import asyncio` (line 4), `import json as _json` (line 5) — all three are used **only** inside the deleted handler (verified). Run `grep -n "asyncio\|_json\|EventSourceResponse" hoga/live/api.py` after deletion to confirm zero matches before removing the imports.
 
-- [ ] **Step 3: Run the live API tests**
+- [ ] **Step 3: Run the live tests**
 
 Run: `uv run pytest tests/live -v`
-Expected: PASS (the buffer's `subscribe`/`unsubscribe` are still exercised via the WS test).
+Expected: PASS (buffer `subscribe`/`unsubscribe` still covered via `tests/api/test_ws.py`).
 
 - [ ] **Step 4: Commit**
 
@@ -330,51 +341,48 @@ git commit -m "refactor(ws): remove /api/live/stream SSE route (superseded by /a
 
 ---
 
-## Task 4: Frontend `ws.ts` client + `wsUrl` helper
+## Task 4: Frontend `ws.ts` client + `wsUrl` + `connected` type
 
-**Files:**
-- Modify: `frontend/src/api/client.ts` (add `wsUrl`)
-- Create: `frontend/src/api/ws.ts`
-- Create: `frontend/src/test/fakeWebSocket.ts`
-- Create: `frontend/src/api/ws.test.ts`
+**Files:** `frontend/src/api/client.ts`, `frontend/src/api/types.ts`, Create `frontend/src/api/ws.ts`, `frontend/src/test/fakeWebSocket.ts`, `frontend/src/api/ws.test.ts`
 
-- [ ] **Step 1: Add `wsUrl` to `client.ts`** (after `apiUrl`, line 9):
+- [ ] **Step 1: Add `wsUrl` to `client.ts`** (after `apiUrl`):
 
 ```typescript
-/** Build a ws(s):// URL for the WebSocket transport by swapping the scheme
- *  of the configured http(s) api_url. */
+/** Build a ws(s):// URL by swapping the configured http(s) api_url scheme. */
 export async function wsUrl(path: string): Promise<string> {
-  const http = await apiUrl(path);
-  return http.replace(/^http/, 'ws');
+  return (await apiUrl(path)).replace(/^http/, 'ws');
 }
 ```
 
-- [ ] **Step 2: Write the fake WebSocket test double**
+- [ ] **Step 2: Add `connected` to the `SSEEvent` union** in `types.ts` (next to `| { type: 'disconnected' }`):
 
 ```typescript
-// frontend/src/test/fakeWebSocket.ts
+  | { type: 'connected' }
+  | { type: 'disconnected' };
+```
+
+- [ ] **Step 3: Write `frontend/src/test/fakeWebSocket.ts`:**
+
+```typescript
 export const fakeSockets: FakeWebSocket[] = [];
 
 export class FakeWebSocket {
-  static OPEN = 1;
   url: string;
-  readyState = 0;
+  readyState = 0; // CONNECTING
   sent: string[] = [];
   onopen: (() => void) | null = null;
   onmessage: ((e: MessageEvent) => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  constructor(url: string) {
-    this.url = url;
-    fakeSockets.push(this);
-  }
-  // Test helpers
+  constructor(url: string) { this.url = url; fakeSockets.push(this); }
+  // test helpers
   open() { this.readyState = 1; this.onopen?.(); }
   message(frame: unknown) { this.onmessage?.({ data: JSON.stringify(frame) } as MessageEvent); }
   serverClose() { this.readyState = 3; this.onclose?.(); }
   // WS API
   send(data: string) { this.sent.push(data); }
   close() { this.readyState = 3; }
+  parsedSent() { return this.sent.map((s) => JSON.parse(s)); }
 }
 
 export function installFakeWebSocket(): void {
@@ -383,15 +391,13 @@ export function installFakeWebSocket(): void {
 }
 ```
 
-- [ ] **Step 3: Write the failing test for `ws.ts`**
+- [ ] **Step 4: Write the failing `ws.test.ts`:**
 
 ```typescript
-// frontend/src/api/ws.test.ts
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { FakeWebSocket, fakeSockets, installFakeWebSocket } from '../test/fakeWebSocket';
-import { __resetForTests, subscribeEvents, subscribeLive } from './ws';
+import { __resetForTests, lastHeartbeat, subscribeEvents, subscribeLive } from './ws';
 import * as client from './client';
-import { vi } from 'vitest';
 
 beforeEach(() => {
   installFakeWebSocket();
@@ -399,36 +405,49 @@ beforeEach(() => {
   vi.spyOn(client, 'wsUrl').mockResolvedValue('ws://localhost:8000/api/ws');
 });
 
+async function connect(): Promise<FakeWebSocket> {
+  await new Promise((r) => setTimeout(r, 0));
+  const s = fakeSockets[0];
+  s.open();
+  return s;
+}
+
 describe('ws.ts', () => {
-  it('delivers ch:event frames to event subscribers', async () => {
-    const got: unknown[] = [];
-    subscribeEvents((e) => got.push(e));
-    await new Promise((r) => setTimeout(r, 0)); // let wsUrl resolve + socket construct
-    const sock = fakeSockets[0];
-    sock.open();
-    sock.message({ ch: 'event', data: { type: 'inventory_added', code: '005930', date: '20260530' } });
-    expect(got).toEqual([{ type: 'inventory_added', code: '005930', date: '20260530' }]);
-  });
-
-  it('sends subscribe on first live subscriber and delivers ch:live frames', async () => {
-    const got: unknown[] = [];
-    subscribeLive('005930', (d) => got.push(d));
-    await new Promise((r) => setTimeout(r, 0));
-    const sock = fakeSockets[0];
-    sock.open(); // onopen flushes pending subscribe
-    expect(sock.sent.map((s) => JSON.parse(s))).toContainEqual({ action: 'subscribe', code: '005930' });
-    sock.message({ ch: 'live', data: { t_ms: 100, kind: 'ob' } });
-    expect(got).toEqual([{ t_ms: 100, kind: 'ob' }]);
-  });
-
-  it('emits a disconnected event to event subscribers on close', async () => {
+  it('delivers ch:event frames and emits connected on open', async () => {
     const got: any[] = [];
     subscribeEvents((e) => got.push(e));
-    await new Promise((r) => setTimeout(r, 0));
-    const sock = fakeSockets[0];
-    sock.open();
+    const sock = await connect();
+    sock.message({ ch: 'event', data: { type: 'inventory_added', code: '005930', date: '20260530' } });
+    expect(got).toContainEqual({ type: 'connected' });
+    expect(got).toContainEqual({ type: 'inventory_added', code: '005930', date: '20260530' });
+  });
+
+  it('delivers ch:live frames only to the matching code', async () => {
+    const a: any[] = []; const b: any[] = [];
+    subscribeLive('005930', (d) => a.push(d));
+    subscribeLive('000660', (d) => b.push(d));
+    const sock = await connect();
+    expect(sock.parsedSent()).toContainEqual({ action: 'subscribe', code: '005930' });
+    expect(sock.parsedSent()).toContainEqual({ action: 'subscribe', code: '000660' });
+    sock.message({ ch: 'live', code: '005930', data: { t_ms: 1, kind: 'ob' } });
+    expect(a).toEqual([{ t_ms: 1, kind: 'ob' }]);
+    expect(b).toEqual([]);
+  });
+
+  it('stamps lastHeartbeat on any frame', async () => {
+    subscribeEvents(() => {});
+    const sock = await connect();
+    expect(lastHeartbeat()).toBe(0);
+    sock.message({ ch: 'heartbeat' });
+    expect(lastHeartbeat()).toBeGreaterThan(0);
+  });
+
+  it('emits disconnected once on close', async () => {
+    const got: any[] = [];
+    subscribeEvents((e) => got.push(e));
+    const sock = await connect();
     sock.serverClose();
-    expect(got.some((e) => e.type === 'disconnected')).toBe(true);
+    expect(got.filter((e) => e.type === 'disconnected')).toHaveLength(1);
   });
 
   it('no-ops when WebSocket is undefined (jsdom default)', async () => {
@@ -436,37 +455,50 @@ describe('ws.ts', () => {
     __resetForTests();
     expect(() => subscribeEvents(() => {})).not.toThrow();
     await new Promise((r) => setTimeout(r, 0));
+    expect(fakeSockets.length).toBe(0);
   });
 });
 ```
 
-- [ ] **Step 4: Run to verify it fails**
+> `lastHeartbeat()` uses `Date.now()`. If the test runner forbids real time, inject a clock; here `Date.now()` is fine (assertion is `> 0`).
+
+- [ ] **Step 5: Run to verify it fails**
 
 Run: `cd frontend && npx vitest run src/api/ws.test.ts`
-Expected: FAIL — `./ws` has no exports / module missing.
+Expected: FAIL — `./ws` missing exports.
 
-- [ ] **Step 5: Implement `ws.ts`**
+- [ ] **Step 6: Implement `frontend/src/api/ws.ts`:**
 
 ```typescript
-// frontend/src/api/ws.ts
 /**
  * Single WebSocket transport (ADR-0053). Replaces the two SSE EventSources.
- * Multiplexes global app events (ch:'event') and per-code live snapshots
- * (ch:'live') over one connection per tab; demuxes by `ch` and (un)subscribes
- * codes via {action, code} messages. Backoff reconnect + active-code resubscribe.
+ * Multiplexes global app events (ch:'event') and code-tagged per-code live
+ * snapshots (ch:'live') over one connection per tab; demuxes by ch/code and
+ * (un)subscribes codes via {action, code}. Backoff reconnect; liveness stamped
+ * on every frame; one-shot connected/disconnected on state transitions.
  */
 import { wsUrl } from './client';
 import type { SSEEvent } from './types';
 
-type Frame = { ch: 'event' | 'live' | 'heartbeat'; data?: unknown };
+type Frame =
+  | { ch: 'event'; data: SSEEvent }
+  | { ch: 'live'; code: string; data: Record<string, unknown> }
+  | { ch: 'subscribed'; code: string }
+  | { ch: 'heartbeat' };
 
 let _ws: WebSocket | null = null;
 let _opening = false;
+let _connected = false;
+let _lastHeartbeatMs = 0;
 let _reconnectMs = 500;
+let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 const RECONNECT_MAX_MS = 10_000;
 
 const _eventSubs = new Set<(e: SSEEvent) => void>();
 const _liveSubs = new Map<string, Set<(d: Record<string, unknown>) => void>>();
+
+function emitEvent(e: SSEEvent): void { _eventSubs.forEach((fn) => fn(e)); }
+export function lastHeartbeat(): number { return _lastHeartbeatMs; }
 
 function wsCtor(): typeof WebSocket | null {
   const W = (globalThis as { WebSocket?: typeof WebSocket }).WebSocket;
@@ -488,26 +520,23 @@ async function open(): Promise<void> {
     const sock = new W(url);
     sock.onopen = () => {
       _reconnectMs = 500;
-      // Resubscribe every active code after a (re)connect.
+      if (!_connected) { _connected = true; emitEvent({ type: 'connected' }); }
       for (const code of _liveSubs.keys()) send({ action: 'subscribe', code });
     };
     sock.onmessage = (e: MessageEvent) => {
+      _lastHeartbeatMs = Date.now(); // ANY frame proves liveness
       let frame: Frame;
       try { frame = JSON.parse(e.data) as Frame; } catch { return; }
       if (frame.ch === 'event') {
-        _eventSubs.forEach((fn) => fn(frame.data as SSEEvent));
+        emitEvent(frame.data);
       } else if (frame.ch === 'live') {
-        // ch:'live' frames are not code-tagged on the wire (one code per tab in
-        // practice); fan out to all live subscribers, which key by buffer kind.
-        _liveSubs.forEach((set) =>
-          set.forEach((fn) => fn(frame.data as Record<string, unknown>)),
-        );
+        _liveSubs.get(frame.code)?.forEach((fn) => fn(frame.data));
       }
-      // ch:'heartbeat' → ignore (liveness only).
+      // ch:'subscribed' / 'heartbeat' → liveness only
     };
     sock.onclose = () => {
       _ws = null;
-      _eventSubs.forEach((fn) => fn({ type: 'disconnected' }));
+      if (_connected) { _connected = false; emitEvent({ type: 'disconnected' }); }
       scheduleReconnect();
     };
     sock.onerror = () => sock.close();
@@ -519,9 +548,10 @@ async function open(): Promise<void> {
 
 function scheduleReconnect(): void {
   if (!_eventSubs.size && !_liveSubs.size) return; // nobody listening
+  if (_reconnectTimer !== null) return; // already scheduled
   const delay = _reconnectMs;
   _reconnectMs = Math.min(_reconnectMs * 2, RECONNECT_MAX_MS);
-  setTimeout(() => { void open(); }, delay);
+  _reconnectTimer = setTimeout(() => { _reconnectTimer = null; void open(); }, delay);
 }
 
 export function subscribeEvents(handler: (e: SSEEvent) => void): () => void {
@@ -539,7 +569,7 @@ export function subscribeLive(
   if (!set) { set = new Set(); _liveSubs.set(code, set); }
   set.add(handler);
   void open();
-  if (first) send({ action: 'subscribe', code }); // flushed on open if not yet connected
+  if (first) send({ action: 'subscribe', code }); // flushed by onopen if not yet open
   return () => {
     const s = _liveSubs.get(code);
     if (!s) return;
@@ -552,68 +582,70 @@ export function subscribeLive(
 }
 
 export function __resetForTests(): void {
+  if (_reconnectTimer !== null) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
   _ws?.close();
   _ws = null;
   _opening = false;
+  _connected = false;
+  _lastHeartbeatMs = 0;
   _reconnectMs = 500;
   _eventSubs.clear();
   _liveSubs.clear();
 }
 ```
 
-- [ ] **Step 6: Run to verify it passes**
+- [ ] **Step 7: Run to verify it passes**
 
 Run: `cd frontend && npx vitest run src/api/ws.test.ts`
-Expected: PASS (4 tests).
+Expected: PASS (5 tests).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add frontend/src/api/client.ts frontend/src/api/ws.ts frontend/src/test/fakeWebSocket.ts frontend/src/api/ws.test.ts
-git commit -m "feat(ws): frontend WebSocket client with backoff reconnect + per-code subscribe"
+git add frontend/src/api/client.ts frontend/src/api/types.ts frontend/src/api/ws.ts frontend/src/test/fakeWebSocket.ts frontend/src/api/ws.test.ts
+git commit -m "feat(ws): frontend WebSocket client (reconnect, liveness, code-filtered fan-out)"
 ```
 
 ---
 
-## Task 5: Rename `sse.ts` → `eventStream.ts`, reimplement on `ws.ts`
+## Task 5: Rename `sse.ts`→`eventStream.ts`, reimplement on `ws.ts`, re-point ALL imports
 
-**Files:**
-- Rename: `frontend/src/api/sse.ts` → `frontend/src/api/eventStream.ts`
-- Rename: `frontend/src/api/sse.test.ts` → `frontend/src/api/eventStream.test.ts`
-- Modify: `frontend/src/App.tsx:6`, `frontend/src/capture/useCaptureQueue.ts:6`, `frontend/src/inventory/useInventoryRecaptureOrigins.ts:3`
+**Files:** rename `sse.ts`/`sse.test.ts`; reimplement; re-point 11 sites. (Single commit — no intermediate broken state.)
 
-- [ ] **Step 1: Rename the files (preserve history)**
+- [ ] **Step 1: Rename**
 
 ```bash
 git mv frontend/src/api/sse.ts frontend/src/api/eventStream.ts
 git mv frontend/src/api/sse.test.ts frontend/src/api/eventStream.test.ts
 ```
 
-- [ ] **Step 2: Rewrite `eventStream.ts`** to delegate to `ws.ts` (replace the EventSource internals; keep `useEventStream` + `subscribeToCaptureEvents` signatures):
+- [ ] **Step 2: Rewrite `eventStream.ts`** (delegates to `ws.ts`; re-exports `lastHeartbeat`; `capture_dismissed` in filter; recovery only on `disconnected`):
 
 ```typescript
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { STOCK_DATES_QUERY_KEY } from './stock-dates';
-import { subscribeEvents } from './ws';
+import { subscribeEvents, lastHeartbeat } from './ws';
 import type { SSEEvent } from './types';
+
+export { lastHeartbeat };
 
 export function useEventStream(): void {
   const qc = useQueryClient();
   useEffect(() => {
-    const unsub = subscribeEvents((e: SSEEvent) => {
+    return subscribeEvents((e: SSEEvent) => {
       if (e.type === 'inventory_added' || e.type === 'inventory_removed') {
         qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
       } else if (e.type === 'disconnected') {
-        // Reconnect recovery: refetch queue + calendar + stock dates (ADR-0019).
+        // Reconnect recovery (once per disconnect transition; ADR-0019).
         qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
         qc.invalidateQueries({ queryKey: ['capture', 'queue'] });
         qc.invalidateQueries({
           predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'calendar',
         });
       }
+      // 'connected' → no query work; UI surfaces (StatusDot/LiveStatusBar) use it.
     });
-    return unsub;
   }, [qc]);
 }
 
@@ -636,21 +668,20 @@ export function subscribeToCaptureEvents(handler: (e: SSEEvent) => void): () => 
 }
 ```
 
-> Note: `capture_dismissed` is added to the filter — `useInventoryRecaptureOrigins` needs it and the old `subscribeToCaptureEvents` filter omitted it (latent gap; the old code registered the `capture_dismissed` listener on the EventSource directly). Verify against `SSEEvent` union in `types.ts`.
+> `capture_dismissed` was dropped at TWO levels in the old code (no `addEventListener('capture_dismissed')` in `sse.ts` AND absent from the `subscribeToCaptureEvents` filter), so `useCaptureQueue`/`useInventoryRecaptureOriginsCleanup` never saw it in production. Adding it here fixes that latent bug.
 
-- [ ] **Step 3: Update the three import sites**
+- [ ] **Step 3: Re-point ALL 11 import sites** from `'../api/sse'`/`'./api/sse'` → `'../api/eventStream'`/`'./api/eventStream'`:
 
-`App.tsx:6`, `capture/useCaptureQueue.ts:6`, `inventory/useInventoryRecaptureOrigins.ts:3`:
-```typescript
-// from:
-import { useEventStream } from './api/sse';            // App.tsx
-import { subscribeToCaptureEvents } from '../api/sse'; // the two hooks
-// to:
-import { useEventStream } from './api/eventStream';
-import { subscribeToCaptureEvents } from '../api/eventStream';
+Prod (4): `App.tsx:6`, `capture/useCaptureQueue.ts:6`, `inventory/useInventoryRecaptureOrigins.ts:3`, `nav/StatusDot.tsx:2`.
+
+Test `vi.mock` paths (7): `nav/CaptureStatusPill.test.tsx:9`, `capture/CaptureForm.test.tsx:9`, `capture/CaptureQueue.test.tsx:8`, `capture/useCaptureQueue.test.tsx:15`, `pages/Capture.test.tsx:8`, `inventory/useInventoryRecapture.test.tsx:9`, `inventory/StockDateGroupDetail.test.tsx:10` — change `vi.mock('../api/sse', …)` → `vi.mock('../api/eventStream', …)` (mock factory body unchanged; if a factory mocks `lastHeartbeat`, it still exists on the new module).
+
+Sweep to confirm none missed:
+```bash
+grep -rn "api/sse'" frontend/src   # expect: no matches after this step
 ```
 
-- [ ] **Step 4: Rewrite `eventStream.test.ts`** to use the fake WebSocket + `ch:'event'` frames:
+- [ ] **Step 4: Rewrite `eventStream.test.ts`** (fake WS + `ch:'event'` frames; add a `capture_dismissed` regression test):
 
 ```typescript
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -677,13 +708,20 @@ async function connect() {
 }
 
 describe('subscribeToCaptureEvents', () => {
-  it('delivers capture_queued events to subscribers', async () => {
+  it('delivers capture_queued events', async () => {
     const events: SSEEvent[] = [];
     subscribeToCaptureEvents((e) => events.push(e));
     const sock = await connect();
-    sock.message({ ch: 'event', data: { type: 'capture_queued', items: [{ item_id: 'x', code: '005930', date: '20260520' }] } });
-    expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('capture_queued');
+    sock.message({ ch: 'event', data: { type: 'capture_queued', items: [] } });
+    expect(events.map((e) => e.type)).toEqual(['capture_queued']);
+  });
+
+  it('delivers capture_dismissed (regression: dropped at two levels before)', async () => {
+    const events: SSEEvent[] = [];
+    subscribeToCaptureEvents((e) => events.push(e));
+    const sock = await connect();
+    sock.message({ ch: 'event', data: { type: 'capture_dismissed', item_ids: ['x'] } });
+    expect(events.map((e) => e.type)).toEqual(['capture_dismissed']);
   });
 
   it('drops non-capture events (inventory_added)', async () => {
@@ -696,14 +734,14 @@ describe('subscribeToCaptureEvents', () => {
 });
 
 describe('useEventStream disconnect handler', () => {
-  it('invalidates capture queue + calendar + stock dates on disconnect', async () => {
+  it('invalidates queue + calendar + stock dates on disconnect', async () => {
     const qc = new QueryClient();
     const spy = vi.spyOn(qc, 'invalidateQueries');
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(QueryClientProvider, { client: qc }, children);
     renderHook(() => useEventStream(), { wrapper });
     const sock = await connect();
-    sock.serverClose(); // ws.ts emits {type:'disconnected'} to event subs
+    sock.serverClose();
     await new Promise((r) => setTimeout(r, 0));
     const calls = spy.mock.calls.map((c) => c[0]);
     expect(calls.some((c: any) => Array.isArray(c?.queryKey) && c.queryKey[0] === 'stock-dates')).toBe(true);
@@ -716,57 +754,46 @@ describe('useEventStream disconnect handler', () => {
 - [ ] **Step 5: Run tests + typecheck**
 
 Run: `cd frontend && npx vitest run src/api/eventStream.test.ts && npx tsc --noEmit`
-Expected: PASS; no TS errors about `./api/sse`.
+Expected: PASS; zero TS errors (StatusDot's `lastHeartbeat` import resolves via the re-export).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A frontend/src/api/eventStream.ts frontend/src/api/eventStream.test.ts frontend/src/App.tsx frontend/src/capture/useCaptureQueue.ts frontend/src/inventory/useInventoryRecaptureOrigins.ts
-git commit -m "refactor(ws): rename sse.ts→eventStream.ts, reimplement on ws.ts transport"
+git add -A frontend/src
+git commit -m "refactor(ws): rename sse.ts→eventStream.ts on ws.ts; re-point 11 imports; fix capture_dismissed"
 ```
 
 ---
 
 ## Task 6: Migrate `liveSeries.ts` to `ws.subscribeLive`
 
-**Files:**
-- Modify: `frontend/src/api/liveSeries.ts:81-117`
-- Modify: `frontend/src/api/liveSeries.test.tsx`
+**Files:** `frontend/src/api/liveSeries.ts:81-117`, `frontend/src/api/liveSeries.test.tsx`
 
-- [ ] **Step 1: Rewrite the SSE effect (lines 81-117) in `liveSeries.ts`** to subscribe via `ws.ts`:
+- [ ] **Step 1: Rewrite the SSE effect (lines 81-117) in `liveSeries.ts`:**
 
 ```typescript
-  // Subscribe to live snapshots over the shared WebSocket (ADR-0053). The
-  // buffer + rAF coalescing stay tab-side; only the transport changed.
+  // Subscribe to live snapshots over the shared WebSocket (ADR-0053). Buffer +
+  // rAF coalescing stay tab-side; only the transport changed.
   useEffect(() => {
     if (!code) return;
     let rafId: number | null = null;
-    const flush = () => {
-      rafId = null;
-      setTick((t) => t + 1);
-    };
+    const flush = () => { rafId = null; setTick((t) => t + 1); };
     const unsub = subscribeLive(code, (entry: Record<string, unknown>) => {
       bufferRef.current.push(entry as { t_ms: number; kind: string });
       if (rafId === null) rafId = requestAnimationFrame(flush);
     });
     return () => {
       unsub();
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
+      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
       bufferRef.current.clear();
       setTick(0);
     };
   }, [code]);
 ```
 
-Update imports at top of `liveSeries.ts`: remove `apiUrl` if now unused (still used? `apiCall` is used for the initial fetch; `apiUrl` was only for the EventSource — remove it from the import), add:
-```typescript
-import { subscribeLive } from './ws';
-```
+Imports at top of `liveSeries.ts`: remove `apiUrl` from the `./client` import (now only `apiCall` is used); add `import { subscribeLive } from './ws';`.
 
-- [ ] **Step 2: Rewrite the SSE parts of `liveSeries.test.tsx`** — swap `StubEventSource` for the fake WebSocket and fire `ch:'live'` frames. Replace the stub class + setup (lines 7-43) with:
+- [ ] **Step 2: Rewrite the stream parts of `liveSeries.test.tsx`** — replace the `StubEventSource` class + `beforeEach`/`afterEach` (lines 7-43) with:
 
 ```typescript
 import { installFakeWebSocket, fakeSockets } from '../test/fakeWebSocket';
@@ -781,10 +808,10 @@ beforeEach(() => {
 afterEach(() => { resetWs(); });
 ```
 
-Replace the "subscribes to SSE" test body (lines 64-91) with:
+Replace the "subscribes to SSE" test (lines 64-91) with a code-tagged WS test:
 
 ```typescript
-  it('subscribes over WebSocket and appends incoming snapshots by kind', async () => {
+  it('subscribes over WebSocket and appends code-tagged snapshots by kind', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       code: '005930', date: '20260527', session_open_ms: 1000,
       session_close_ms: null, is_open: true, snapshots: [], trades: [], brokers: [],
@@ -795,10 +822,10 @@ Replace the "subscribes to SSE" test body (lines 64-91) with:
     await waitFor(() => expect(fakeSockets.length).toBe(1));
     const sock = fakeSockets[0];
     sock.open();
-    expect(sock.sent.map((s) => JSON.parse(s))).toContainEqual({ action: 'subscribe', code: '005930' });
+    expect(sock.parsedSent()).toContainEqual({ action: 'subscribe', code: '005930' });
     act(() => {
-      sock.message({ ch: 'live', data: { t_ms: 100, kind: 'ob', total_bid_qty: 999 } });
-      sock.message({ ch: 'live', data: { t_ms: 100, kind: 'trade', trades: [] } });
+      sock.message({ ch: 'live', code: '005930', data: { t_ms: 100, kind: 'ob', total_bid_qty: 999 } });
+      sock.message({ ch: 'live', code: '005930', data: { t_ms: 100, kind: 'trade', trades: [] } });
     });
     await waitFor(() => expect(result.current.ob).toHaveLength(1));
     expect(result.current.trade).toHaveLength(1);
@@ -820,56 +847,129 @@ Replace the "closes the EventSource on unmount" test (lines 110-123) with an uns
     const sock = fakeSockets[0];
     sock.open();
     unmount();
-    expect(sock.sent.map((s) => JSON.parse(s))).toContainEqual({ action: 'unsubscribe', code: '005930' });
+    expect(sock.parsedSent()).toContainEqual({ action: 'unsubscribe', code: '005930' });
   });
 ```
 
-The "fetches initial series" and "hydrates from initial series" tests are unchanged (they don't touch the stream).
+The "fetches initial series" and "hydrates from initial series" tests are unchanged.
 
 - [ ] **Step 3: Run tests + typecheck**
 
 Run: `cd frontend && npx vitest run src/api/liveSeries.test.tsx && npx tsc --noEmit`
-Expected: PASS. This test now fires a NAMED-channel `ch:'live'` frame, exercising the path that the old `es.onmessage` silently dropped — the regression guard for the latent bug.
+Expected: PASS. The `ch:'live'` frame exercises the path the old `es.onmessage` silently dropped — the named-event-bug regression guard.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add frontend/src/api/liveSeries.ts frontend/src/api/liveSeries.test.tsx
-git commit -m "refactor(ws): liveSeries subscribes via ws.ts; fixes dropped live ticks (named-event bug)"
+git commit -m "refactor(ws): liveSeries subscribes via ws.ts; fixes dropped live ticks"
 ```
 
 ---
 
-## Task 7: Verify the four ancillary tests still pass (no change expected)
+## Task 7: Connection-state UI surface (StatusDot + LiveStatusBar)
 
-**Files (verify only):** `LivePage.test.tsx`, `inventory/useInventoryRecapture.test.tsx`, `capture/CaptureForm.test.tsx`, `inventory/StockDateGroupDetail.test.tsx`
+**Files:** `frontend/src/nav/StatusDot.tsx`, `frontend/src/live/LiveStatusBar.tsx`
 
-- [ ] **Step 1: Run them**
+Rationale (design-review CRITICAL): WebSocket has no auto-reconnect visibility; without this, a frozen chart looks live. StatusDot's import path was changed in Task 5; here we fix its status tokens/wording and add an honest `/live` liveness chip. Both read `lastHeartbeat()` freshness (fed by every frame + the 30s ping).
 
-Run: `cd frontend && npx vitest run src/live/LivePage.test.tsx src/inventory/useInventoryRecapture.test.tsx src/capture/CaptureForm.test.tsx src/inventory/StockDateGroupDetail.test.tsx`
-Expected: PASS unchanged. These never stubbed EventSource (only mentioned it in comments); `useEventStream`/`useCaptureQueue` now call `ws.ts`'s `open()`, which **no-ops** when `globalThis.WebSocket` is undefined (jsdom). No unhandled rejection (the old `new EventSource` threw inside an un-caught async; `ws.ts` guards with `wsCtor()` returning null).
+- [ ] **Step 1: Update `StatusDot.tsx`** — keep the `lastHeartbeat` freshness logic; fix the DESIGN token (yellow must not be teal `--accent`) and WS wording:
 
-- [ ] **Step 2: If any fails** because the component now logs a different warning or an unhandled rejection appears, add `installFakeWebSocket()` from `../test/fakeWebSocket` in that file's `beforeEach`. Show the exact diff in the commit. Otherwise no change.
+```typescript
+  const color =
+    status === 'green' ? 'var(--success)' : status === 'yellow' ? 'var(--warn)' : 'var(--error)';
+  const text =
+    status === 'green'
+      ? '실시간 연결 활성'
+      : status === 'yellow'
+        ? '재연결 중...'
+        : '백엔드 응답 없음';
+  return (
+    <span title={text}>
+      <span
+        className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle"
+        style={{ background: color, boxShadow: status === 'green' ? `0 0 4px ${color}` : undefined }}
+      />
+      WS · :8000
+    </span>
+  );
+```
+
+(The `import { lastHeartbeat } from '../api/eventStream';` path was already set in Task 5. The 60s threshold stays — comfortably above the 30s server ping.)
+
+- [ ] **Step 2: Add a heartbeat-driven `/live` liveness chip** — replace the hardcoded placeholder at `LiveStatusBar.tsx:69` (`<span style={{ color: 'var(--fg-dimmer)' }}>LIVE● (대기 중)</span>`) with a live/stale indicator. Add at the top of `LiveStatusBar.tsx`:
+
+```typescript
+import { useEffect, useState } from 'react';
+import { lastHeartbeat } from '../api/eventStream';
+```
+
+Inside the component, before `return`:
+
+```typescript
+  const [live, setLive] = useState(false);
+  useEffect(() => {
+    const tick = () => {
+      const last = lastHeartbeat();
+      setLive(last !== 0 && Date.now() - last < 25_000); // ~2 poll cycles
+    };
+    tick();
+    const id = setInterval(tick, 3000);
+    return () => clearInterval(id);
+  }, []);
+```
+
+Replace line 69 with:
+
+```typescript
+      <span style={{ color: live ? 'var(--success)' : 'var(--warn)' }}>
+        {live ? 'LIVE●' : '재연결 중…'}
+      </span>
+```
+
+- [ ] **Step 3: Run the related suites + typecheck**
+
+Run: `cd frontend && npx vitest run src/nav src/live/LiveStatusBar* && npx tsc --noEmit`
+Expected: PASS. If `LiveStatusBar` lacked a test, no new test is required here (covered by render in `LivePage.test.tsx`); the change is presentational.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add frontend/src/nav/StatusDot.tsx frontend/src/live/LiveStatusBar.tsx
+git commit -m "feat(ws): honest connection-state surface (StatusDot tokens + /live LIVE/stale chip)"
+```
+
+---
+
+## Task 8: Full frontend suite green
+
+**Files:** none (verification; edits only if a suite breaks)
+
+- [ ] **Step 1: Run the entire frontend test suite + typecheck**
+
+Run: `cd frontend && npx vitest run && npx tsc --noEmit`
+Expected: PASS. The 7 `vi.mock('../api/eventStream')` suites resolve (re-pointed in Task 5). The non-mocking suites (`LivePage.test.tsx` etc.) rely on `ws.ts` no-op'ing when `globalThis.WebSocket` is undefined (jsdom) — no unhandled rejection.
+
+- [ ] **Step 2: If any suite fails** because a component now needs a socket present, add `installFakeWebSocket()` (from `../test/fakeWebSocket`) in that file's `beforeEach`. Show the diff. Otherwise no change.
 
 - [ ] **Step 3: Commit (only if a file changed)**
 
 ```bash
-git add -A frontend/src
-git commit -m "test(ws): keep ancillary suites green under WebSocket transport"
+git add -A frontend/src && git commit -m "test(ws): keep full suite green under WebSocket transport"
 ```
 
 ---
 
-## Task 8: Remove the `sse-starlette` dependency
+## Task 9: Remove the `sse-starlette` dependency
 
 **Files:** `pyproject.toml`, lockfile
 
 - [ ] **Step 1: Confirm no remaining users**
 
 Run: `grep -rn "sse_starlette\|EventSourceResponse" hoga tests`
-Expected: no matches. If any remain, do not remove the dep — stop and report.
+Expected: no matches (Tasks 2-3 removed the imports). If any remain, stop and report.
 
-- [ ] **Step 2: Remove the dependency** — delete the `"sse-starlette>=3.4.4",` line from `pyproject.toml` `dependencies`.
+- [ ] **Step 2: Remove** the `"sse-starlette>=3.4.4",` line from `pyproject.toml`.
 
 - [ ] **Step 3: Sync + test**
 
@@ -885,63 +985,52 @@ git commit -m "chore(ws): drop sse-starlette dependency (no SSE endpoints remain
 
 ---
 
-## Task 9: End-to-end verification (cross-origin WS + multi-tab)
+## Task 10: End-to-end verification
 
-**Files:** none (manual verification with running dev servers)
+**Files:** none (manual; running dev servers)
 
-- [ ] **Step 1: Start both dev servers** per CLAUDE.md (uvicorn `--reload --reload-dir hoga`; `npm run dev`).
+- [ ] **Step 1: Start dev servers** per CLAUDE.md (uvicorn `--reload --reload-dir hoga`; `cd frontend && npm run dev`).
 
-- [ ] **Step 2: Confirm the cross-origin WS handshake** (`:5173` page → `:8000` `/api/ws`). Using `/browse`:
+- [ ] **Step 2: Cross-origin WS handshake** (`:5173` → `:8000`):
 
 ```bash
 B=/home/dev/.claude/skills/gstack/browse/dist/browse
 $B goto http://localhost:5173/live
 $B js "await (async()=>{const ws=new WebSocket('ws://localhost:8000/api/ws');return await new Promise(r=>{ws.onopen=()=>r('open');ws.onerror=()=>r('error');setTimeout(()=>r('timeout'),3000)})})()"
 ```
-Expected: `open`. If `error`, the backend rejected the Origin — add an explicit Origin allowlist to the WS endpoint and re-run.
+Expected: `open`. If `error`, add an explicit Origin allowlist to the WS endpoint and re-run (commit separately).
 
-- [ ] **Step 3: Reproduce the original failure is GONE.** Open 4 `/live` tabs (or, faithfully, hold the equivalent connections) and time the hover orderbook fetch with the harness from the diagnosis:
+- [ ] **Step 3: The original failure is GONE** — open 4 `/live` tabs, then time a real orderbook fetch while all are live:
 
 ```bash
-$B newtab http://localhost:5173/live   # repeat to 4 tabs
-# In any tab, time a real orderbook fetch while all tabs are live:
+$B newtab http://localhost:5173/live   # ×4
 $B js "await (t0=>fetch('http://localhost:8000/api/orderbook?code=005930&date=20260530&t=0&bucket_ms=60000&source_pref=auto',{cache:'no-store',signal:AbortSignal.timeout(3000)}).then(r=>Math.round(performance.now()-t0)+'ms HTTP'+r.status,e=>Math.round(performance.now()-t0)+'ms '+(e.name||e)))(performance.now())"
 ```
-Expected: fast `…ms HTTP<status>` (NOT `3000ms TimeoutError`) with 4+ tabs open — the HTTP pool is no longer held by SSE.
+Expected: fast `…ms HTTP<status>` (NOT `3000ms TimeoutError`) with 4+ tabs — the HTTP pool is no longer held by SSE.
 
-- [ ] **Step 4: Confirm live ticks now stream** (during market hours, or via a published snapshot): hover/observe that the chart updates without reload (the named-event bug fix). If market is closed, assert via the `liveSeries.test.tsx` `ch:'live'` test added in Task 6.
+- [ ] **Step 4: Liveness + chart under real ticks** — confirm StatusDot is green and `/live` shows `LIVE●`. During market hours, confirm the chart updates without reload AND that incoming ticks do not jump/rescale the chart or interrupt the hover-to-read-10호가 workflow (rAF coalescing preserved). If market is closed, rely on the Task 6 `ch:'live'` test for the streaming-path guard.
 
 - [ ] **Step 5: Final full verification**
 
 Run: `uv run pytest -q && cd frontend && npm run build`
 Expected: all pass; production build succeeds.
 
-- [ ] **Step 6: Commit (if Step 2 required an Origin allowlist)**
-
-```bash
-git add hoga/api/ws.py
-git commit -m "fix(ws): explicit Origin allowlist for cross-origin dev handshake"
-```
-
 ---
 
 ## Self-Review
 
-**Spec coverage:**
-- §3 WS decision, §4.2 backend endpoint → Tasks 1-3. ✓
-- §4.3 `ws.ts` / eventStream / liveSeries → Tasks 4-6. ✓
-- §4.1 protocol `{ch,data}` / `{action,code}` → Task 1 (server) + Task 4 (client). ✓
-- §5 reconnect → Task 4 (`scheduleReconnect`, onopen resubscribe). ✓
-- §6 error handling (disconnect recovery, queue overflow drop, ping) → Task 1 (ping/teardown), Task 5 (disconnect recovery). ✓
-- §7 testing (FakeWebSocket, DI) → Tasks 4-7. ✓
-- §8 scope/blast radius → matches File Structure. ✓
-- §9 hard-cut migration → Tasks 2,3,8 remove SSE wholesale. ✓
-- §10 cross-origin WS risk → Task 9 Step 2. ✓
-- §11 ADR-0044 invariant preserved → no task touches the hover-spot hooks. ✓
-- §12 deferred memos → resolved in header. ✓
+**Spec coverage:** §3 decision→T1-3; §4.1 protocol (code-tagged live, ack, connected/disconnected, liveness)→T1+T4; §4.2 backend→T1-3; §4.3 ws.ts/eventStream/liveSeries→T4-6; §5 reconnect→T4; §6 errors (drop-on-overflow, ping, gathered teardown, disconnect recovery)→T1+T5; §7 testing→T4-8; §8 scope→File Structure; §9 hard-cut→T2,3,9; §10 cross-origin→T10; §11 ADR-0044 invariant (hover-spot untouched)→no task touches `useLive*AtCursor`; §12 memos→header. ✓
 
 **Placeholder scan:** every code step shows full code; no TBD/TODO. ✓
 
-**Type consistency:** `Frame{ch,data}`, `subscribeEvents(SSEEvent)`, `subscribeLive(code, Record<string,unknown>)`, `__resetForTests`, `wsUrl`, `build_event_bus`→3-tuple, `build_ws_router(bus, get_buffer)` — names used identically across backend (Tasks 1-3), client (Task 4), consumers (Tasks 5-6), tests (Tasks 4-7). ✓
+**Type consistency:** `Frame{ch,(code),data}`, `subscribeEvents(SSEEvent)`, `subscribeLive(code, Record<string,unknown>)`, `lastHeartbeat()`, `wsUrl`, `__resetForTests`, `build_event_bus`→3-tuple, `build_ws_router(bus,get_buffer)`, `{ch:'subscribed',code}` ack — identical across backend (T1-3), client (T4), consumers (T5-6), UI (T7), tests. `SSEEvent` gains `connected` (T4 types.ts). ✓
 
-**Known follow-ups (out of scope, noted):** `SSEEvent` type name retained (cosmetic); `capture_dismissed` added to the capture filter (Task 5 note).
+**Sequencing:** T5 re-points all 11 imports + rename in one commit (no broken intermediate); T6 imports `./ws` (created T4); T7's StatusDot path set in T5. ✓
+
+## Deferred review notes (suggestions/nits — not blocking)
+
+- **[SUGGESTION]** `SSEEvent` type name retained despite SSE removal — rename to `AppEvent`/`PushEvent` is wider churn (captures.ts, many sites); cosmetic, deferred.
+- **[NIT, resolved in-plan]** `hoga/live/api.py` `asyncio`/`json as _json` confirmed used only in the deleted handler — Task 3 removes them definitively (grep gate).
+- **[NIT]** Task 9 grep gate won't false-match import lines (removed in T2-3 first) — sequencing confirmed.
+- **[NOTE, no action]** Hidden background tabs batch their rAF flush on refocus (buffer is capped per kind) — pre-existing, bounded, not a regression.
+- **[SUGGESTION, folded]** DESIGN.md status-color discipline applied in T7 (`--warn` amber for reconnecting, not teal `--accent`).
