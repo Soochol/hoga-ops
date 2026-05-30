@@ -12,7 +12,6 @@ import {
 } from '../api/types';
 import { buildLiveBundle } from './buildLiveBundle';
 import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
-import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import {
   regularSessionOpenMs,
   regularSessionCloseMs,
@@ -131,8 +130,8 @@ export function useLiveBundle(
         ? { open_ms: live.initial.session_open_ms, close_ms: live.initial.session_close_ms ?? regularSessionCloseMs(todayKstYyyymmdd) }
         : { open_ms: regularSessionOpenMs(todayKstYyyymmdd), close_ms: regularSessionCloseMs(todayKstYyyymmdd) };
 
-    const sseOb = isMinute ? (live.ob as unknown as ObSnapshot[]) : [];
-    const sseTrade = isMinute ? (live.trade as unknown as TradeSnapshot[]) : [];
+    const sseOb = isMinute ? live.ob : [];
+    const sseTrade = isMinute ? live.trade : [];
 
     const built = buildLiveBundle({
       code,

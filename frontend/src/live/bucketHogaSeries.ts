@@ -1,9 +1,18 @@
-import type { QuoteRatioPoint, FillStrengthPoint } from '../api/types';
+import type { QuoteRatioPoint, FillStrengthPoint, OrderbookLevel } from '../api/types';
 
+/** One live OB snapshot as it crosses the SSE seam (SR-1). The chart reads
+ * t_ms + total_*_qty; LiveSidebar reads asks/bids too (optional because the
+ * minute-chart path only needs the totals). `kind` rides along from the
+ * buffer entry. The index signature keeps it assignable from the structurally
+ * untyped buffer (`Record<string, unknown>`) without an `as unknown as`. */
 export interface ObSnapshot {
   t_ms: number;
   total_ask_qty: number;
   total_bid_qty: number;
+  asks?: OrderbookLevel[];
+  bids?: OrderbookLevel[];
+  kind?: string;
+  [field: string]: unknown;
 }
 
 export interface TradeEvent {
@@ -14,6 +23,8 @@ export interface TradeEvent {
 export interface TradeSnapshot {
   t_ms: number;
   trades: TradeEvent[];
+  kind?: string;
+  [field: string]: unknown;
 }
 
 /** Bucket label = floor(t_ms / bucketMs) * bucketMs (bucket start). Matches
@@ -25,8 +36,8 @@ export interface TradeSnapshot {
  * intentionally excluded — same semantics as ADR-0029's auction-window hide
  * and the replay viewer's existing FillStrength projector. */
 export function bucketHogaSeries(
-  ob: ObSnapshot[],
-  trade: TradeSnapshot[],
+  ob: readonly ObSnapshot[],
+  trade: readonly TradeSnapshot[],
   bucketMs: number,
 ): { quoteRatioPoints: QuoteRatioPoint[]; fillStrengthPoints: FillStrengthPoint[] } {
   if (bucketMs <= 0) throw new Error(`bucketMs must be positive, got ${bucketMs}`);

@@ -4,6 +4,7 @@ import { apiCall } from './client';
 import { subscribeLive } from './ws';
 import type { LiveSnapshotEntry } from './types';
 import { LiveSnapshotBuffer, type SnapshotKind } from '../live/liveSnapshotBuffer';
+import type { ObSnapshot, TradeSnapshot } from '../live/bucketHogaSeries';
 
 export interface LiveSeriesResponse {
   code: string;
@@ -25,8 +26,12 @@ export interface LiveSeriesData {
   initial: LiveSeriesResponse | undefined;
   isLoading: boolean;
   error: unknown;
-  ob: ReadonlyArray<Record<string, unknown>>;
-  trade: ReadonlyArray<Record<string, unknown>>;
+  // ob/trade are narrowed to the shapes their consumers read (SR-1). The SSE
+  // entries genuinely carry these fields (the poller's typed builders write
+  // them); ObSnapshot/TradeSnapshot keep an index signature so the buffer's
+  // structurally-untyped rows assign without an `as unknown as` double cast.
+  ob: ReadonlyArray<ObSnapshot>;
+  trade: ReadonlyArray<TradeSnapshot>;
   broker: ReadonlyArray<Record<string, unknown>>;
 }
 
@@ -103,8 +108,11 @@ export function useLiveSeries(code: string): LiveSeriesData {
     initial: initial.data,
     isLoading: initial.isLoading,
     error: initial.error,
-    ob: readKind(bufferRef.current, 'ob', tick),
-    trade: readKind(bufferRef.current, 'trade', tick),
+    // One structural cast at the buffer boundary: the buffer stores raw
+    // {t_ms, kind, ...payload} dicts; the 'ob'/'trade' kinds carry the
+    // ObSnapshot/TradeSnapshot fields the poller's typed builders wrote.
+    ob: readKind(bufferRef.current, 'ob', tick) as ReadonlyArray<ObSnapshot>,
+    trade: readKind(bufferRef.current, 'trade', tick) as ReadonlyArray<TradeSnapshot>,
     broker: readKind(bufferRef.current, 'broker', tick),
   };
 }
