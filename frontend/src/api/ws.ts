@@ -20,7 +20,9 @@ let _connected = false;
 let _lastHeartbeatMs = 0;
 let _reconnectMs = 500;
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let _livenessTimer: ReturnType<typeof setInterval> | null = null;
 const RECONNECT_MAX_MS = 10_000;
+const LIVENESS_TIMEOUT_MS = 45_000;
 
 const _eventSubs = new Set<(e: SSEEvent) => void>();
 const _liveSubs = new Map<string, Set<(d: Record<string, unknown>) => void>>();
@@ -47,6 +49,7 @@ async function open(): Promise<void> {
     if (_ws) return; // raced
     const sock = new W(url);
     sock.onopen = () => {
+      _lastHeartbeatMs = Date.now();
       _reconnectMs = 500;
       if (!_connected) { _connected = true; emitEvent({ type: 'connected' }); }
       for (const code of _liveSubs.keys()) send({ action: 'subscribe', code });
@@ -68,9 +71,20 @@ async function open(): Promise<void> {
     };
     sock.onerror = () => sock.close();
     _ws = sock;
+    ensureLivenessWatchdog();
   } finally {
     _opening = false;
   }
+}
+
+function ensureLivenessWatchdog(): void {
+  if (_livenessTimer !== null) return;
+  _livenessTimer = setInterval(() => {
+    if (!_ws || _ws.readyState !== 1) return;
+    if (_lastHeartbeatMs !== 0 && Date.now() - _lastHeartbeatMs > LIVENESS_TIMEOUT_MS) {
+      _ws.close(); // triggers onclose → disconnected + scheduleReconnect
+    }
+  }, 10_000);
 }
 
 function scheduleReconnect(): void {
@@ -110,6 +124,7 @@ export function subscribeLive(
 
 export function __resetForTests(): void {
   if (_reconnectTimer !== null) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+  if (_livenessTimer !== null) { clearInterval(_livenessTimer); _livenessTimer = null; }
   _ws?.close();
   _ws = null;
   _opening = false;

@@ -38,12 +38,15 @@ describe('ws.ts', () => {
     expect(b).toEqual([]);
   });
 
-  it('stamps lastHeartbeat on any frame', async () => {
+  it('stamps lastHeartbeat on open and on any frame', async () => {
     subscribeEvents(() => {});
     const sock = await connect();
-    expect(lastHeartbeat()).toBe(0);
-    sock.message({ ch: 'heartbeat' });
+    // onopen stamps liveness so the watchdog has a baseline from connect.
     expect(lastHeartbeat()).toBeGreaterThan(0);
+    const afterOpen = lastHeartbeat();
+    sock.message({ ch: 'heartbeat' });
+    // Any incoming frame also re-stamps liveness.
+    expect(lastHeartbeat()).toBeGreaterThanOrEqual(afterOpen);
   });
 
   it('emits disconnected once on close', async () => {
@@ -60,6 +63,22 @@ describe('ws.ts', () => {
     expect(() => subscribeEvents(() => {})).not.toThrow();
     await new Promise((r) => setTimeout(r, 0));
     expect(fakeSockets.length).toBe(0);
+  });
+
+  it('force-closes and reconnects a silently-stale socket (no onclose)', async () => {
+    vi.useFakeTimers();
+    try {
+      subscribeEvents(() => {});
+      await vi.advanceTimersByTimeAsync(0); // resolve wsUrl
+      const sock = fakeSockets[0];
+      sock.open(); // onopen stamps lastHeartbeat
+      // No frames arrive; advance past the liveness timeout + a watchdog tick.
+      const closeSpy = vi.spyOn(sock, 'close');
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(closeSpy).toHaveBeenCalled(); // watchdog force-closed the dead socket
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reconnects after close and resubscribes active codes', async () => {
