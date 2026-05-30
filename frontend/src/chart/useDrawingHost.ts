@@ -9,6 +9,11 @@ import { useDrawingsStore } from '../state/drawings';
 const PANEL_Y_OFFSET = -38;
 const PANEL_X_OFFSET_PENCIL = 0;
 const PANEL_X_OFFSET_TRENDLINE = -8;
+// hline panels are bottom-anchored (DrawingPropertyPanel applies
+// `translateY(-100%)`), so this is the clearance between the line and the
+// panel's bottom edge — height-independent, unlike PANEL_Y_OFFSET which is a
+// top-edge offset that has to out-measure the panel's own height to clear it.
+const PANEL_HLINE_GAP_ABOVE = 14;
 
 export type DrawingHost = {
   paneSeries: Map<PaneId, ISeriesApi<'Line'>>;
@@ -67,7 +72,9 @@ export function useDrawingHost(
         const y = priceToCanvasY(chart, paneSeries, d.paneId, d.price);
         if (y == null) return null;
         const containerWidth = containerRef.current?.clientWidth ?? 0;
-        return { x: containerWidth / 2, y: y + PANEL_Y_OFFSET };
+        // y is the panel's bottom edge (bottom-anchored via translateY(-100%));
+        // sit it PANEL_HLINE_GAP_ABOVE px above the line so it never overlaps.
+        return { x: containerWidth / 2, y: y - PANEL_HLINE_GAP_ABOVE };
       }
 
       if (d.kind === 'trendline') {

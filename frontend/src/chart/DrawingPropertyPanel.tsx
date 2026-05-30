@@ -118,10 +118,12 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
       style={{
         top: position.y,
         left: position.x,
-        // hline panels are anchored to the chart's horizontal centre; this
-        // translate makes the visual centre land on `position.x` rather
-        // than the panel's left edge. trendline / pencil keep left-anchor.
-        transform: drawing.kind === 'hline' ? 'translateX(-50%)' : undefined,
+        // hline panels are anchored to the chart's horizontal centre and to
+        // their own bottom edge: translateX(-50%) lands the visual centre on
+        // `position.x` (not the left edge), and translateY(-100%) lifts the
+        // panel fully above `position.y` so it rests over the line rather than
+        // covering it. trendline / pencil keep top-left anchoring.
+        transform: drawing.kind === 'hline' ? 'translate(-50%, -100%)' : undefined,
       }}
     >
       <span
