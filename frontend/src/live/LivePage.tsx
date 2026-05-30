@@ -55,7 +55,6 @@ export function LivePage() {
 
   const activeCode = queryCode ?? storedCode;
   useDocumentTitle(activeCode);
-  const watchlistEmpty = banner.primary === 'watchlist_empty';
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -86,7 +85,10 @@ export function LivePage() {
       }}
     >
       <LiveHeader />
-      <LiveStateBanner primary={banner.primary} stack={banner.stack} />
+      <LiveStateBanner
+        primary={activeCode && banner.primary === 'watchlist_empty' ? null : banner.primary}
+        stack={banner.stack}
+      />
       <LiveStatusBar
         activeCode={activeCode}
         cycleLagMs={status?.cycle_lag_ms ?? 0}
@@ -98,7 +100,6 @@ export function LivePage() {
       />
       <LiveWorkarea
         activeCode={activeCode}
-        watchlistEmpty={watchlistEmpty}
         bundle={bundle}
         clampEngaged={clampEngaged}
         isPastCandlesLoading={isPastCandlesLoading}

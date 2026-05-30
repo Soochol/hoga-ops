@@ -7,7 +7,6 @@ import type { LiveSeriesData } from '../api/liveSeries';
 
 interface Props {
   activeCode: string | null;
-  watchlistEmpty: boolean;
   /** The Live Candle Backfill bundle, owned by LivePage. ADR-0040 — single
    * useLiveBundle call site per page. */
   bundle: RangeBundle | null;
@@ -20,7 +19,6 @@ interface Props {
 
 export function LiveWorkarea({
   activeCode,
-  watchlistEmpty,
   bundle,
   clampEngaged,
   isPastCandlesLoading,
@@ -28,13 +26,6 @@ export function LiveWorkarea({
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
 
-  if (watchlistEmpty) {
-    return (
-      <div data-testid="live-workarea" className="h-full">
-        <LiveEmptyState cause="watchlist_empty" />
-      </div>
-    );
-  }
   if (!activeCode) {
     return (
       <div data-testid="live-workarea" className="h-full flex">

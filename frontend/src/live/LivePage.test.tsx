@@ -118,6 +118,6 @@ describe('LivePage shell', () => {
   it('shows empty-state placeholder when no activeCode anywhere', () => {
     renderWithRouter();
     // Empty state placeholder in workarea
-    expect(screen.getByTestId('live-workarea').textContent).toMatch(/관심종목/);
+    expect(screen.getByTestId('live-workarea').textContent).toMatch(/검색하세요/);
   });
 });
