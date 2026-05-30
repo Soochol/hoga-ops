@@ -10,7 +10,11 @@ import type { SymbolHit } from '../api/types';
 export function LiveSymbolSearch() {
   const setActiveCode = useLivePageStore((s) => s.setActiveCode);
   const [query, setQuery] = useState('');
-  const items = useSymbolSearch(query, 20);
+  const rawItems = useSymbolSearch(query, 20);
+  // `filterSymbols('')` returns ALL symbols (not []), so without this gate a
+  // focus-then-Enter on an empty input would invisibly select rawItems[0]
+  // (the dropdown is hidden when the query is empty). Mirrors capture/SymbolSearch.
+  const items = query.trim().length >= 1 ? rawItems : [];
 
   const { data: watchlist } = useWatchlist();
   const memberCodes = useMemo(

@@ -12,8 +12,11 @@ const HIT: SymbolHit = {
   captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
 };
 
+// Faithful to the real contract: filterSymbols('') returns ALL symbols (not
+// []), so the mock returns [HIT] for EVERY query — including the empty one.
+// This is what lets the empty-Enter guard test below catch the regression.
 vi.mock('../capture/useSymbols', () => ({
-  useSymbolSearch: (q: string) => (q.trim().length ? [HIT] : []),
+  useSymbolSearch: () => [HIT],
 }));
 
 function renderSearch() {
@@ -58,5 +61,13 @@ describe('LiveSymbolSearch', () => {
     fireEvent.click(screen.getByRole('button', { name: '관심종목 추가' }));
     await waitFor(() => expect(spy).toHaveBeenCalledWith('005930'));
     spy.mockRestore();
+  });
+
+  it('Enter on a focused empty input does not select an arbitrary symbol', () => {
+    renderSearch();
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input); // opens dropdown logic but query is still ''
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(useLivePageStore.getState().activeCode).toBeNull();
   });
 });
