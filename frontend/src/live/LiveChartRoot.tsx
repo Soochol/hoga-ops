@@ -142,8 +142,17 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // transition doesn't leave the chart zoomed on the early window with the
   // latest data off the right edge.
   const lastAppliedCountRef = useRef<number | null>(null);
+  // Historical-prepend viewport preservation (see the restore effect below).
+  // viewportAnchorRef holds the visible range as REAL timestamps, captured the
+  // instant a leftward pan triggers a historical fetch; prevEarliestTsMsRef
+  // holds the earliest drawn candle of the last applied bundle so the restore
+  // effect can detect a genuine prepend.
+  const viewportAnchorRef = useRef<{ fromMs: number; toMs: number } | null>(null);
+  const prevEarliestTsMsRef = useRef<number | null>(null);
   useEffect(() => {
     lastAppliedCountRef.current = null;
+    prevEarliestTsMsRef.current = null;
+    viewportAnchorRef.current = null;
   }, [code, timeframe]);
   useEffect(() => {
     if (!chart || !bundle || bundle.candles.length === 0) return;
@@ -187,6 +196,64 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       // chart torn down between effect runs
     }
   }, [chart, bundle, timeframe]);
+
+  // Historical-prepend viewport preservation. When the user pans left past the
+  // leftmost bar, extendHistoricalRange refetches with an earlier `from`, the
+  // bundle is rebuilt with older candles PREPENDED, and RangeSeriesPane calls
+  // series.setData(fullArray). lightweight-charts keeps the visible LOGICAL
+  // range numerically fixed across setData, so inserting N bars at the front
+  // slides the previously-viewed bars right by N — the viewport appears to
+  // "jump". We undo that here by restoring the pre-prepend viewport via
+  // setVisibleRange, re-projecting the captured real-ms anchor through the new
+  // axis. Verified 2026-05-31 (/browse harness): setVisibleRange is union-safe
+  // across series with different time grids; a logical +N restore is NOT,
+  // because hoga panes (quote_ratio / fill_strength) sample at a different
+  // cadence than candles, so the union logical-index shift != candle count.
+  //
+  // Ordering: this parent effect runs AFTER RangeSeriesPane's child setData
+  // effect (child effects fire before parent effects within the same bundle
+  // commit). Complementary to the initial-view effect above via
+  // historicalFromDate (null → that effect owns the viewport; non-null → this
+  // one), so the two never fight over the same render.
+  useEffect(() => {
+    if (!chart || !bundle || bundle.candles.length === 0) return;
+    // [TEMP-DIAG-VIEWPORT] dev-only kill switch for the differential repro.
+    if (import.meta.env.DEV && (window as unknown as { __noRestore?: boolean }).__noRestore) return;
+    const ts = chart.timeScale();
+    // Earliest candle actually drawn — mirror projectCandle's axis.contains
+    // filter. The absolute ts_ms is stable under the axis re-base, unlike the
+    // virtual time or the logical index.
+    let newEarliest: number | null = null;
+    for (const c of bundle.candles) {
+      if (!axis.contains(c.ts_ms)) continue;
+      if (newEarliest === null || c.ts_ms < newEarliest) newEarliest = c.ts_ms;
+    }
+    const prevEarliest = prevEarliestTsMsRef.current;
+    prevEarliestTsMsRef.current = newEarliest;
+    // Initial paint and SSE growth are owned by the initial-view effect above;
+    // only the user-driven extension path corrects the viewport here.
+    if (useLivePageStore.getState().historicalFromDate === null) return;
+    if (prevEarliest === null || newEarliest === null) return;
+    // Only a genuine LEFTWARD extension (an older bar appeared) jumps the view.
+    // SSE ticks (right edge) and holiday-only chunks (no new trading day) leave
+    // the earliest bar unchanged → nothing to correct.
+    if (newEarliest >= prevEarliest) return;
+    const anchor = viewportAnchorRef.current;
+    if (!anchor) return;
+    try {
+      // Math.round: lightweight-charts' UTCTimestamp must be an integer; the
+      // captured visible-range edge can fall between bars (sub-second virtual
+      // seconds after the toReal→toVirtual round-trip), and a fractional Time
+      // throws inside setVisibleRange — which the catch would silently swallow,
+      // leaving the jump uncorrected.
+      ts.setVisibleRange({
+        from: Math.round(axis.toVirtual(anchor.fromMs) / 1000) as Time,
+        to: Math.round(axis.toVirtual(anchor.toMs) / 1000) as Time,
+      });
+    } catch {
+      // chart torn down between effect runs
+    }
+  }, [chart, bundle, axis]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -268,6 +335,12 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     // to the container — an extra manual observer here just produces the
     // "Height and width values ignored because 'autoSize' option is enabled"
     // warning on every resize without affecting layout.
+    // [TEMP-DIAG-VIEWPORT] dev-only QA handles for the in-browser repro.
+    if (import.meta.env.DEV) {
+      const w = window as unknown as { __liveChart?: unknown; __liveAxisGet?: unknown };
+      w.__liveChart = c;
+      w.__liveAxisGet = () => useLiveAxisStore.getState().axis;
+    }
 
     return () => {
       c.remove();
@@ -316,6 +389,22 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       // logical.from is a fractional bar index; negative = past the leftmost
       // loaded bar, which is exactly the lazy-fetch trigger condition.
       if (r.from >= 0) return;
+      // Capture the current viewport as REAL timestamps before triggering the
+      // prepend. The restore effect re-projects these through the rebuilt axis
+      // (segments re-base from 0 on every rebuild) and calls setVisibleRange so
+      // the bars the user is looking at stay put. Real-ms is the stable key: it
+      // survives both the axis re-base and the multi-series logical-index union
+      // (candle vs hoga panes use different time grids). Capture is synchronous
+      // here (not in the 150ms debounce) so `axis` is the pre-prepend
+      // generation the user is actually looking at — the effect re-subscribes on
+      // [chart, axis, timeframe], so this closure's axis is always current.
+      const vr = ts.getVisibleRange();
+      if (vr) {
+        viewportAnchorRef.current = {
+          fromMs: axis.toReal((vr.from as number) * 1000),
+          toMs: axis.toReal((vr.to as number) * 1000),
+        };
+      }
       const axisEarliestDate = realMsToYyyymmdd(axis.segments[0].sessionOpenMs);
       const cur = useLivePageStore.getState().historicalFromDate;
       const baseDate = cur !== null && cur < axisEarliestDate ? cur : axisEarliestDate;

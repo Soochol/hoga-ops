@@ -17,6 +17,7 @@ import { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
 import { createChartEx, TickMarkType } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
+import { createVirtualAxis } from '../util/virtualAxis';
 
 vi.mock('lightweight-charts', async () => {
   const mod = await vi.importActual<typeof import('lightweight-charts')>('lightweight-charts');
@@ -46,6 +47,8 @@ vi.mock('lightweight-charts', async () => {
         scrollToRealTime: vi.fn(),
         scrollToPosition: vi.fn(),
         setVisibleLogicalRange: vi.fn(),
+        getVisibleRange: vi.fn(() => null),
+        setVisibleRange: vi.fn(),
         timeToCoordinate: vi.fn(() => null),
       })),
       panes: vi.fn(() => []),
@@ -173,6 +176,8 @@ describe('LiveChartRoot', () => {
       scrollToRealTime: vi.fn(),
       scrollToPosition: vi.fn(),
       setVisibleLogicalRange: vi.fn(),
+      getVisibleRange: vi.fn(() => null),
+      setVisibleRange: vi.fn(),
       timeToCoordinate: vi.fn(() => null),
     };
     const chart = {
@@ -547,6 +552,234 @@ describe('LiveChartRoot lazy fetch trigger', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Historical-prepend viewport preservation (/diagnose 2026-05-31)
+//
+// Bug: panning left fetched older candles, the bundle was rebuilt with the
+// older bars PREPENDED, and RangeSeriesPane's setData kept the visible LOGICAL
+// range numerically fixed — so the previously-viewed bars slid right by N and
+// the viewport "jumped". Fix: LiveChartRoot captures the visible range as REAL
+// timestamps when the leftward pan triggers a fetch, then re-applies it via
+// setVisibleRange (re-projected through the rebuilt axis) once the grown bundle
+// lands. Real-ms is the stable key because the VirtualAxis re-bases virtualStart
+// from 0 on every rebuild (so a logical +N or a raw time restore are both
+// wrong; verified in-browser with the real lightweight-charts build).
+//
+// Harness: a stable timeScale object (so the setVisibleRange spy is shared
+// across the handler-capture call and the restore effect) that also captures
+// the logical-range handler and returns a real getVisibleRange().
+describe('LiveChartRoot historical-prepend viewport preservation', () => {
+  beforeEach(() => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    vi.useFakeTimers();
+    vi.setSystemTime(TODAY_OPEN_MS);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // Visible window the user is parked on, in virtual SECONDS (both within
+  // today's 6.5h session: 1h and 2h past open).
+  const VR_FROM_SEC = 3600;
+  const VR_TO_SEC = 7200;
+
+  function buildStableCapturingMock(ts: Record<string, unknown>) {
+    return {
+      addSeries: vi.fn(() => ({
+        setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(),
+        applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+        removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
+        setMarkers: vi.fn(),
+      })),
+      removeSeries: vi.fn(),
+      timeScale: vi.fn(() => ts),
+      panes: vi.fn(() => []),
+      remove: vi.fn(),
+      resize: vi.fn(),
+      applyOptions: vi.fn(),
+      subscribeCrosshairMove: vi.fn(),
+      unsubscribeCrosshairMove: vi.fn(),
+    };
+  }
+
+  function makeTs(handlers: Array<(r: unknown) => void>) {
+    return {
+      subscribeVisibleTimeRangeChange: vi.fn(),
+      unsubscribeVisibleTimeRangeChange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: (h: (r: unknown) => void) => { handlers.push(h); },
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      applyOptions: vi.fn(),
+      fitContent: vi.fn(),
+      scrollToRealTime: vi.fn(),
+      scrollToPosition: vi.fn(),
+      setVisibleLogicalRange: vi.fn(),
+      getVisibleRange: vi.fn(() => ({ from: VR_FROM_SEC, to: VR_TO_SEC })),
+      setVisibleRange: vi.fn(),
+      timeToCoordinate: vi.fn(() => null),
+    };
+  }
+
+  const todayBundle = (candleTsList: number[]): RangeBundle => ({
+    ...TODAY_ONLY_BUNDLE,
+    candles: candleTsList.map((ts_ms) => ({ ts_ms, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 })),
+  });
+  const twoSegBundle = (candleTsList: number[]): RangeBundle => ({
+    ...TWO_SEGMENT_BUNDLE,
+    candles: candleTsList.map((ts_ms) => ({ ts_ms, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 })),
+  });
+
+  it('restores the viewport (setVisibleRange) re-anchored to the same real time after a historical prepend', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    // 1) Initial paint: today-only, historicalFromDate=null. Records the
+    //    earliest drawn candle and short-circuits the restore (initial-view
+    //    effect owns the viewport here).
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+
+    // 2) User pans past the leftmost bar: logical.from < 0. The handler
+    //    captures the current viewport as REAL ms (via getVisibleRange on the
+    //    today-only axis) and debounces extendHistoricalRange.
+    act(() => {
+      handlers.forEach((h) => h({ from: -40.2, to: 120.7 }));
+      vi.advanceTimersByTime(200);
+    });
+    expect(useLivePageStore.getState().historicalFromDate).not.toBeNull();
+    expect(ts.setVisibleRange).not.toHaveBeenCalled(); // not yet — bundle hasn't grown
+
+    // 3) Grown bundle lands: yesterday PREPENDED (earlier earliest candle).
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    // Expected restore: the same REAL timestamps, re-projected through the
+    // rebuilt (two-segment) axis — mirrors the production conversion exactly.
+    const oldAxis = createVirtualAxis([
+      { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
+    ]);
+    const anchorFromMs = oldAxis.toReal(VR_FROM_SEC * 1000);
+    const anchorToMs = oldAxis.toReal(VR_TO_SEC * 1000);
+    const newAxis = createVirtualAxis([
+      { date: '20260526', sessionOpenMs: YESTERDAY_OPEN_MS, sessionCloseMs: YESTERDAY_CLOSE_MS },
+      { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
+    ]);
+    const expFrom = Math.round(newAxis.toVirtual(anchorFromMs) / 1000);
+    const expTo = Math.round(newAxis.toVirtual(anchorToMs) / 1000);
+
+    expect(ts.setVisibleRange).toHaveBeenCalledWith({ from: expFrom, to: expTo });
+    // The restore shifts RIGHT in virtual time (older day now occupies the
+    // left), proving it compensated for the prepend rather than leaving the
+    // window on the old logical position.
+    expect(expFrom).toBeGreaterThan(VR_FROM_SEC);
+    // Round-trip losslessness (advisor #1): the restored LEFT edge, projected
+    // back to real time through the NEW axis, lands on the exact same real
+    // timestamp that was captured before the prepend. This is the property the
+    // user perceives — "the bar I was looking at stays put". Both viewport
+    // edges sit mid-session (1h/2h past open) so toReal/toVirtual is exact;
+    // they are never in the trailing whitespace because the restore only fires
+    // after a leftward pan (historicalFromDate != null), where the right edge
+    // has moved left off the latest bar.
+    const restoredFromMs = newAxis.toReal(expFrom * 1000);
+    expect(restoredFromMs).toBe(anchorFromMs);
+  });
+
+  it('does NOT restore on pure SSE growth while historicalFromDate is null', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    // SSE appends a bar at the right edge; earliest is unchanged, no extension.
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle([TODAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 120_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    expect(ts.setVisibleRange).not.toHaveBeenCalled();
+  });
+
+  it('does NOT restore when the extension adds no earlier bar (holiday-only chunk)', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    // Pan left → captures anchor + sets historicalFromDate.
+    act(() => {
+      handlers.forEach((h) => h({ from: -40.2, to: 120.7 }));
+      vi.advanceTimersByTime(200);
+    });
+    expect(useLivePageStore.getState().historicalFromDate).not.toBeNull();
+    // The fetched chunk was holiday-only: earliest drawn candle unchanged.
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    expect(ts.setVisibleRange).not.toHaveBeenCalled();
+  });
+
+  it('initial-view and restore never fight on the first extension (mutual exclusion via historicalFromDate)', () => {
+    // advisor #4: trace the first extension from a fresh load. The store
+    // update (historicalFromDate null→non-null) and the bundle refetch land in
+    // SEPARATE commits, so on the bundle-grows commit historicalFromDate is
+    // already non-null — the initial-view effect early-returns (no second
+    // scrollToPosition / setVisibleLogicalRange) while the restore owns the
+    // viewport. This locks that the two viewport effects are mutually exclusive.
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    // 1) Fresh load, minute: initial-view effect applies ONCE.
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1); // initial window
+    expect(ts.scrollToPosition).toHaveBeenCalledTimes(1);       // initial right-edge snap
+    expect(ts.setVisibleRange).not.toHaveBeenCalled();
+
+    // 2) Pan left → historicalFromDate flips non-null (commit A: bundle unchanged).
+    act(() => {
+      handlers.forEach((h) => h({ from: -40.2, to: 120.7 }));
+      vi.advanceTimersByTime(200);
+    });
+
+    // 3) Prepend lands (commit B: bundle grows, historicalFromDate already non-null).
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    // Initial-view effect did NOT re-fire (counts unchanged); restore fired once.
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+    expect(ts.scrollToPosition).toHaveBeenCalledTimes(1);
+    expect(ts.setVisibleRange).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Crosshair → cursor store (ADR-0044)
 // ---------------------------------------------------------------------------
 
@@ -685,6 +918,8 @@ function buildChartMockCapturing(handlers: Array<(r: unknown) => void>) {
       fitContent: vi.fn(),
       scrollToRealTime: vi.fn(),
       setVisibleLogicalRange: vi.fn(),
+      getVisibleRange: vi.fn(() => null),
+      setVisibleRange: vi.fn(),
       timeToCoordinate: vi.fn(() => null),
     })),
     panes: vi.fn(() => []),
@@ -849,6 +1084,8 @@ describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
           scrollToRealTime: vi.fn(),
           scrollToPosition: vi.fn(),
           setVisibleLogicalRange: vi.fn(),
+          getVisibleRange: vi.fn(() => null),
+          setVisibleRange: vi.fn(),
           timeToCoordinate: vi.fn(() => null),
         })),
         panes: vi.fn(() => []),
