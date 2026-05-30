@@ -70,4 +70,14 @@ describe('LiveSymbolSearch', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(useLivePageStore.getState().activeCode).toBeNull();
   });
+
+  it('closes the dropdown on an outside mousedown', () => {
+    renderSearch();
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: '삼성' } });
+    expect(screen.getByText('삼성전자')).toBeInTheDocument(); // dropdown open
+    fireEvent.mouseDown(document.body);                       // click outside
+    expect(screen.queryByText('삼성전자')).toBeNull();         // dropdown closed
+  });
 });

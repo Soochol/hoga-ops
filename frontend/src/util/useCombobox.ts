@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { useDismissablePopover } from './useDismissablePopover';
 
 export interface UseComboboxOptions<T> {
   /** Owned by the consumer — items derive from it via a separate data hook. */
@@ -15,6 +16,7 @@ export interface UseComboboxResult {
   setOpen: (o: boolean) => void;
   highlightedIndex: number;
   inputRef: React.RefObject<HTMLInputElement>;
+  wrapperRef: React.RefObject<HTMLDivElement>;
   inputProps: {
     value: string;
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -35,6 +37,9 @@ export function useCombobox<T>({
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useDismissablePopover(open, wrapperRef, () => setOpen(false));
 
   const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -61,7 +66,7 @@ export function useCombobox<T>({
   }, [open, items, highlightedIndex, onSelect, onEnterEmpty, query]);
 
   return {
-    open, setOpen, highlightedIndex, inputRef,
+    open, setOpen, highlightedIndex, inputRef, wrapperRef,
     inputProps: {
       value: query,
       onChange: (e) => { setQuery(e.target.value); setOpen(true); setHighlightedIndex(0); },

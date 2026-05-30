@@ -89,7 +89,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
     onSelect: (hit) => select(hit),
     onEnterEmpty: () => promoteUnverifiedCode(),
   });
-  const { inputRef } = combo;
+  const { inputRef, wrapperRef } = combo;
 
   // F3 (design review): explicit empty-state dropdown when query has chars but
   // no matches. Without this, users wonder if their input is broken.
@@ -115,7 +115,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
   };
 
   return (
-    <div className="relative font-ui">
+    <div ref={wrapperRef} className="relative font-ui">
       <div className="flex items-center gap-2">
         <input
           ref={inputRef}

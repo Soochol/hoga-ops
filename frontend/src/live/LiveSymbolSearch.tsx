@@ -32,25 +32,33 @@ export function LiveSymbolSearch() {
     },
   });
 
+  // Destructure so render code uses plain identifiers — the react-hooks/refs rule
+  // fires on `combo.*` member-access when the result contains refs.
+  const {
+    open, setOpen, highlightedIndex,
+    inputRef, wrapperRef,
+    inputProps, getOptionProps, listProps,
+  } = combo;
+
   // Global "/" focuses the input (Discord/Linear pattern). The shared guard
   // skips when focus is already in an input, so "/" types literally there.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== '/' || shouldIgnoreEvent(e.target)) return;
       e.preventDefault();
-      combo.inputRef.current?.focus();
+      inputRef.current?.focus();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [combo.inputRef]);
+  }, [inputRef]);
 
-  const dropdownVisible = combo.open && query.trim().length >= 1;
+  const dropdownVisible = open && query.trim().length >= 1;
 
   return (
-    <div className="relative flex-1 max-w-[360px] font-ui">
+    <div ref={wrapperRef} className="relative flex-1 max-w-[360px] font-ui">
       <div
         className={`flex items-center gap-2 h-7 px-2.5 bg-bg-input border rounded-lg ${
-          combo.open ? 'border-accent' : 'border-border-strong'
+          open ? 'border-accent' : 'border-border-strong'
         }`}
       >
         <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-fg-dimmer w-[14px] h-[14px] shrink-0">
@@ -58,16 +66,14 @@ export function LiveSymbolSearch() {
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
         <input
-          // eslint-disable-next-line react-hooks/refs -- false positive: assigning a RefObject to ref= is not a .current read
-          ref={combo.inputRef}
+          ref={inputRef}
           role="combobox"
           aria-expanded={dropdownVisible}
           aria-controls="live-symbol-search-list"
           type="text"
           placeholder="종목명 또는 코드 검색…"
           className="flex-1 bg-transparent text-fg text-sm outline-none placeholder:text-fg-dimmer"
-          // eslint-disable-next-line react-hooks/refs -- false positive: inputProps holds no ref, only value/onChange/onFocus/onKeyDown
-          {...combo.inputProps}
+          {...inputProps}
         />
         <span className="ml-auto flex items-center gap-1 text-fg-dimmer text-xs">
           <kbd className="inline-flex items-center justify-center min-w-[17px] h-[17px] px-1 border border-border-strong rounded bg-bg-input font-mono">/</kbd>
@@ -77,24 +83,22 @@ export function LiveSymbolSearch() {
       {dropdownVisible && (
         <div
           id="live-symbol-search-list"
-          // eslint-disable-next-line react-hooks/refs -- false positive: listProps is only { role: 'listbox' }, no ref
-          {...combo.listProps}
+          {...listProps}
           style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
           className="absolute z-20 top-full left-0 right-0 mt-1 bg-bg-card border border-border-strong rounded-lg max-h-80 overflow-y-auto"
         >
           {items.length === 0 ? (
             <div className="py-3 px-2.5 text-sm text-fg-dim">검색 결과가 없습니다.</div>
           ) : (
-            // eslint-disable-next-line react-hooks/refs -- false positive: map callback closes over getOptionProps (props only), no render-time .current read
             items.map((hit, i) => {
               const member = isMember(hit.code);
               return (
                 <div
                   key={hit.code}
                   role="option"
-                  {...combo.getOptionProps(i)}
-                  onClick={() => { selectHit(hit); combo.setOpen(false); }}
-                  style={{ background: i === combo.highlightedIndex ? 'var(--tint-selection)' : 'transparent' }}
+                  {...getOptionProps(i)}
+                  onClick={() => { selectHit(hit); setOpen(false); }}
+                  style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'transparent' }}
                   className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center py-2 px-2.5 cursor-pointer"
                 >
                   <span className="text-sm text-fg">{hit.name}</span>
