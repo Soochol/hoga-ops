@@ -89,25 +89,27 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   const { paneSeries, registerPaneSeries, unregisterPaneSeries, computeAnchor } =
     useDrawingHost(chart, axis, code, containerRef);
 
-  // axisRef lets the once-mounted createChart formatters (timeFormatter +
-  // tickMarkFormatter) read the latest axis without re-creating the chart.
-  // Mirrors ChartStage's pattern — without this the formatters close over a
-  // stale axis from first render and the x-axis renders virtual-seconds-as-
-  // 1970-epoch ("02 1월 '70 ..."), which is exactly the bug we're fixing.
+  // axisRef / timeframeRef bridge the latest axis + timeframe to the
+  // once-mounted chart's imperative callbacks (the timeFormatter +
+  // tickMarkFormatter, and the injected KST HorzScaleBehavior's
+  // fillWeightsForPoints) without re-creating the chart.
+  //
+  // These MUST be written synchronously during render, NOT in a useEffect.
+  // Child panes push setData in their own effects, and child effects fire
+  // BEFORE a parent effect. fillWeightsForPoints runs inside that child
+  // setData, so an effect-deferred axisRef would still hold the PREVIOUS axis
+  // on the commit that first pushes a new timeframe's candles — mapping the new
+  // candles' virtual times through the old (smaller-range) axis clamps them all
+  // to one real time → identical KST dates → intraday weights → the calendar
+  // axis suppresses every Time tick → blank x-axis until refresh (regression
+  // test: "timeframe-switch axis freshness"). A render-time write is current
+  // before any child renders/effects. Safe because these refs are read only by
+  // imperative chart callbacks, never to produce render output (idempotent
+  // under StrictMode double-render).
   const axisRef: MutableRefObject<VirtualAxis> = useRef<VirtualAxis>(axis);
-  useEffect(() => {
-    axisRef.current = axis;
-  }, [axis]);
-
-  // Same ref-bridge for timeframe: the createChart formatters need to know
-  // whether to render intraday (HH:MM) ticks vs calendar-only ticks. Without
-  // this, daily/weekly/monthly charts render a meaningless "09:00" alongside
-  // every date label because every D/W/M candle is timestamped at the
-  // session-open hour.
+  axisRef.current = axis;
   const timeframeRef: MutableRefObject<LiveTimeframe> = useRef<LiveTimeframe>(timeframe);
-  useEffect(() => {
-    timeframeRef.current = timeframe;
-  }, [timeframe]);
+  timeframeRef.current = timeframe;
 
   // Publish axis to the shared store so LiveSidebar can read
   // axis.inClosingAuctionWindow(cursorMs) for TotalQtyBar mask.

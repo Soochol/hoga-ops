@@ -761,3 +761,135 @@ describe('LiveChartRoot x-axis tickMarkFormatter', () => {
     expect(fmt(MID_SESSION_SEC, TickMarkType.Time)).toBe('');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression (2026-05-30): switching minute → calendar (D/W/M) blanked the
+// x-axis until a browser refresh.
+//
+// Root cause: axisRef was mirrored to the latest axis in a passive useEffect,
+// which runs AFTER child panes' setData effects (child effects fire before
+// parent effects). The injected KST behavior's fillWeightsForPoints runs inside
+// that child setData, so on the commit that first pushes the new timeframe's
+// candles it read the PREVIOUS axis. The new candles' large virtual times,
+// mapped through the old (smaller-range) axis, clamp to a single real time →
+// identical KST dates → intraday weights (<50) → the calendar formatter
+// suppresses every Time tick → blank axis. Weights are cached, so it stayed
+// blank until a fresh mount (refresh). Fix: write axisRef synchronously during
+// render so it is current when setData fires.
+//
+// Harness: the createChartEx mock wires series.setData to invoke the REAL
+// injected behavior (arg 1) at setData-time, capturing the weights the behavior
+// computes against whatever axis it actually sees during the switch commit.
+describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
+  const ONE_DAY_MINUTE_BUNDLE: RangeBundle = {
+    ...TODAY_ONLY_BUNDLE,
+    candles: [{ ts_ms: TODAY_OPEN_MS, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 }],
+  };
+
+  function dailyBundle(): RangeBundle {
+    const DAY = 86_400_000;
+    const segments = Array.from({ length: 5 }, (_, i) => ({
+      date: `2026052${7 + i}`,
+      session_open_ms: TODAY_OPEN_MS + i * DAY,
+      session_close_ms: TODAY_CLOSE_MS + i * DAY,
+      source: 'kis_live' as const,
+    }));
+    const candles = segments.map((s) => ({
+      ts_ms: s.session_open_ms,
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100,
+      vol_a: 1,
+      vol_b: 0,
+    }));
+    return { ...TODAY_ONLY_BUNDLE, from_date: '20260527', to_date: '20260531', segments, candles };
+  }
+
+  let weightCaptures: number[][] = [];
+  let restoreImpl: (() => void) | undefined;
+
+  beforeEach(() => {
+    weightCaptures = [];
+    const prev = vi.mocked(createChartEx).getMockImplementation();
+    restoreImpl = () => {
+      if (prev) vi.mocked(createChartEx).mockImplementation(prev);
+    };
+    vi.mocked(createChartEx).mockImplementation(((_el: unknown, behavior: unknown) => {
+      const beh = behavior as {
+        fillWeightsForPoints: (pts: Array<{ originalTime: number; timeWeight: number }>, s: number) => void;
+      };
+      const makeSeries = () => ({
+        setData: (data: Array<{ time: number }>) => {
+          const points = (data ?? []).map((d) => ({ originalTime: d.time, timeWeight: -1 }));
+          if (points.length) {
+            beh.fillWeightsForPoints(points, 0);
+            weightCaptures.push(points.map((p) => p.timeWeight));
+          }
+        },
+        update: vi.fn(),
+        applyOptions: vi.fn(),
+        priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+        removePriceLine: vi.fn(),
+        attachPrimitive: vi.fn(),
+        detachPrimitive: vi.fn(),
+        setMarkers: vi.fn(),
+      });
+      return {
+        addSeries: vi.fn(() => makeSeries()),
+        removeSeries: vi.fn(),
+        timeScale: vi.fn(() => ({
+          subscribeVisibleTimeRangeChange: vi.fn(),
+          unsubscribeVisibleTimeRangeChange: vi.fn(),
+          subscribeVisibleLogicalRangeChange: vi.fn(),
+          unsubscribeVisibleLogicalRangeChange: vi.fn(),
+          applyOptions: vi.fn(),
+          fitContent: vi.fn(),
+          scrollToRealTime: vi.fn(),
+          scrollToPosition: vi.fn(),
+          setVisibleLogicalRange: vi.fn(),
+          timeToCoordinate: vi.fn(() => null),
+        })),
+        panes: vi.fn(() => []),
+        remove: vi.fn(),
+        resize: vi.fn(),
+        applyOptions: vi.fn(),
+        subscribeCrosshairMove: vi.fn(),
+        unsubscribeCrosshairMove: vi.fn(),
+      };
+    }) as never);
+  });
+
+  afterEach(() => {
+    restoreImpl?.();
+  });
+
+  it('computes calendar-tier weights for daily candles after switching from minute', () => {
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={ONE_DAY_MINUTE_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    weightCaptures = []; // discard the minute-mount captures; only the switch matters
+    rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={dailyBundle()}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+    // Daily candles are one-per-day, so consecutive weights must be Day-tier
+    // (50) or higher. With the stale-axis bug every daily candle clamps to one
+    // real time → all weights intraday (<50) → the calendar axis renders blank.
+    const maxWeight = Math.max(0, ...weightCaptures.flat());
+    expect(maxWeight).toBeGreaterThanOrEqual(50);
+  });
+});
