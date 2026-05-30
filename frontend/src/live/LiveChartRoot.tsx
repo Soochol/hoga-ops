@@ -24,11 +24,7 @@ import {
   isCalendarTimeframe,
 } from '../state/livePage';
 import type { RangeBundle } from '../api/types';
-import {
-  realMsToYyyymmdd,
-  subtractDaysKst,
-  prefetchChunkDaysFor,
-} from './liveDateTime';
+import { nextHistoricalFrom } from './liveDateTime';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
