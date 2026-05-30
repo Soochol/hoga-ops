@@ -21,6 +21,8 @@ _PING_TIMEOUT_S = 30.0
 def build_ws_router(
     bus: _Bus,
     get_buffer: Callable[[], LiveBuffer | None],
+    *,
+    ping_timeout_s: float = _PING_TIMEOUT_S,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -50,7 +52,7 @@ def build_ws_router(
         async def sender() -> None:
             while True:
                 try:
-                    frame = await asyncio.wait_for(out.get(), timeout=_PING_TIMEOUT_S)
+                    frame = await asyncio.wait_for(out.get(), timeout=ping_timeout_s)
                 except asyncio.TimeoutError:
                     frame = {"ch": "heartbeat"}
                 await websocket.send_json(frame)

@@ -55,6 +55,16 @@ def test_subscribe_acks_then_delivers_code_tagged_live():
         assert frame["data"]["t_ms"] == 100
 
 
+def test_heartbeat_on_idle():
+    bus = _Bus()
+    buf = LiveBuffer()
+    app = FastAPI()
+    app.include_router(build_ws_router(bus, lambda: buf, ping_timeout_s=0.05))
+    with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:
+        frame = ws.receive_json()
+        assert frame == {"ch": "heartbeat"}
+
+
 def test_unsubscribe_tears_down_code_subscription():
     # "No frame arrives" is non-deterministic with TestClient's blocking
     # receive (no timeout), so we assert teardown directly: after unsubscribe
