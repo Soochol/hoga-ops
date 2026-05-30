@@ -106,7 +106,10 @@ MM/DD 칩이 담당**하도록 우회했다. 이 우회 때문에 줌 적응이 
 - `fillWeightsForPoints(points, startIndex)` 오버라이드:
   - `points[i].originalTime`(가상 초) → `axisRef.current.toReal(sec*1000)` → +9h KST `Date`.
   - 인접 KST Date 비교로 weight: 연 다름→70, 월 다름→60, 일 다름→50, else intraday divisor.
-  - `axisRef.current.segments.length === 0`이면 `super.fillWeightsForPoints(...)`로 폴백.
+  - `axisRef.current.segments.length === 0`(로딩 중)이면 — **구현 정정**: `super`로 폴백하지
+    않는다. base 구현은 내부 필드 `_internal_timestamp`(prod 망글링 `.Sf`)를 읽어
+    public-fields-only 제약을 위반하고 public `timeWeight`를 안 채운다. 대신 `originalTime`을
+    raw UTC 초로 취급해 같은 weight 사다리를 적용한다(데이터 도착 전 짧은 플래시 동안의 무해한 근사).
   - 첫 포인트(point[0]) weight는 R4 참고 — 가상-공간 평균 추정을 맹목 복제하지 않음.
 
 **2. `frontend/src/live/LiveChartRoot.tsx`**

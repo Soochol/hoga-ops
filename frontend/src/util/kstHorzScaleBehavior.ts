@@ -68,37 +68,31 @@ export function createKstHorzScaleBehavior(axisRef: MutableRefObject<VirtualAxis
     fillWeightsForPoints(points: readonly unknown[], startIndex: number): void {
       const axis = axisRef.current;
       const pts = points as Array<{ readonly originalTime: unknown; timeWeight: number }>;
-      // Loading: no segments yet → no axis mapping is available. The library's
-      // own base impl only populates the internal `_internal_timeWeight` field
-      // (minified `.Sf`) and never the public `timeWeight`, so delegating to it
-      // would (a) crash on internal-less points and (b) leave the public field
-      // at its sentinel. Instead compute the same weight ladder directly over
-      // the public `originalTime` (treated as UTC seconds), writing ONLY the
-      // public `timeWeight`. This keeps us crash-free and minification-safe
-      // until the real axis arrives.
-      if (axis.segments.length === 0) {
-        const utc = (p: { readonly originalTime: unknown }): Date =>
-          new Date((p.originalTime as number) * 1000);
-        for (let i = Math.max(startIndex, 1); i < pts.length; i++) {
-          pts[i].timeWeight = weightByKstDate(utc(pts[i]), utc(pts[i - 1]));
-        }
-        if (startIndex === 0 && pts.length >= 2) {
-          pts[0].timeWeight = weightByKstDate(utc(pts[1]), utc(pts[0]));
-        }
-        return;
-      }
-      const kst = (p: { readonly originalTime: unknown }): Date =>
-        new Date(axis.toReal((p.originalTime as number) * 1000) + KST_OFFSET_MS);
+      // Map a point's public `originalTime` (virtual seconds) to the KST Date
+      // whose calendar fields drive the weight ladder. Once the axis has
+      // segments, virtual → real via axis.toReal, then +9h KST. While still
+      // loading (no segments), there is no mapping yet, so treat originalTime
+      // as raw UTC seconds — a harmless approximation for the brief pre-data
+      // flash. We deliberately do NOT delegate to super here: the base impl
+      // reads the internal `_internal_timestamp` field (minified `.Sf`), which
+      // would both violate our public-fields-only constraint and leave the
+      // public `timeWeight` unset. (Plan said "super fallback"; using the
+      // public field instead is the load-bearing correction.)
+      const toDate =
+        axis.segments.length === 0
+          ? (p: { readonly originalTime: unknown }): Date =>
+              new Date((p.originalTime as number) * 1000)
+          : (p: { readonly originalTime: unknown }): Date =>
+              new Date(axis.toReal((p.originalTime as number) * 1000) + KST_OFFSET_MS);
 
-      const begin = Math.max(startIndex, 1);
-      for (let i = begin; i < pts.length; i++) {
-        pts[i].timeWeight = weightByKstDate(kst(pts[i]), kst(pts[i - 1]));
+      for (let i = Math.max(startIndex, 1); i < pts.length; i++) {
+        pts[i].timeWeight = weightByKstDate(toDate(pts[i]), toDate(pts[i - 1]));
       }
       // R4: points[0] has no predecessor. Estimate its tier from the NEXT
-      // point's real-KST delta (symmetric) rather than the library's
-      // virtual-space average, which is meaningless under gap compression.
+      // point's delta (symmetric) rather than the library's virtual-space
+      // average, which is meaningless under gap compression.
       if (startIndex === 0 && pts.length >= 2) {
-        pts[0].timeWeight = weightByKstDate(kst(pts[1]), kst(pts[0]));
+        pts[0].timeWeight = weightByKstDate(toDate(pts[1]), toDate(pts[0]));
       }
     }
   }
