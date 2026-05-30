@@ -16,7 +16,7 @@ test('range-capture: search → pick 3 trading days → Start → queue progress
   // 3. Start.
   await page.getByRole('button', { name: /Start/i }).click();
 
-  // 4. capture_queued SSE: 3 rows appear.
+  // 4. capture_queued WebSocket event (ch:'event'): 3 rows appear.
   await expect(page.getByTestId(/^queue-row-/)).toHaveCount(3, { timeout: 5_000 });
 
   // 5. Phase transitions visible — wait for header summary to read "3 of 3 done".

@@ -137,7 +137,7 @@ export interface InstallLiveMocksOpts {
 /**
  * Install Playwright route mocks for every backend endpoint LivePage touches
  * during a normal session. Backend-independent: the spec controls what the
- * frontend sees, so SSE timing, KIS credentials, market hours, etc. cannot
+ * frontend sees, so tick timing, KIS credentials, market hours, etc. cannot
  * destabilize the test.
  */
 export async function installLiveMocks(
@@ -160,8 +160,26 @@ export async function installLiveMocks(
   await page.route('http://localhost:8000/api/calendar*', (r) => json(r, { holidays: [] }));
   await page.route('http://localhost:8000/api/symbols*', (r) => json(r, { symbols: [] }));
   await page.route('http://localhost:8000/api/upstream-hints*', (r) => json(r, { hints: [] }));
-  // TODO(ws-migration): mock /api/ws via page.routeWebSocket so live-tick
-  // frames ({ch:'live', code, data}) can be injected in e2e tests without a
-  // real backend. The removed /api/events and /api/live/stream SSE mocks were
-  // dead after the SSE→WebSocket migration (ADR-0053).
+  // TODO(ws-migration): the /live tick channel is no longer mockable via page.route.
+  // The app now opens ONE WebSocket at ws://<host>/api/ws (ADR-0053) carrying
+  // {ch:'event'|'live'|'subscribed'|'heartbeat'} frames; the client sends
+  // {action:'subscribe'|'unsubscribe', code} to drive subscription.
+  // To restore controllable e2e ticks inject frames like this:
+  //
+  //   await page.routeWebSocket('**/api/ws', ws => {
+  //     ws.onMessage(msg => {
+  //       const parsed = JSON.parse(msg as string);
+  //       if (parsed.action === 'subscribe') {
+  //         ws.send(JSON.stringify({ ch: 'subscribed', code: parsed.code }));
+  //       }
+  //       // push live-tick frames on demand:
+  //       // ws.send(JSON.stringify({ ch: 'live', code: '098460', data: { t_ms, kind, ... } }));
+  //     });
+  //   });
+  //
+  // NOTE: page.routeWebSocket requires Playwright ≥ 1.48. The removed
+  // /api/events and /api/live/stream SSE route mocks were dead after the
+  // SSE→WebSocket migration (ADR-0053) and have been dropped.
+  // Tracked as a follow-up; requires a Playwright run to validate (not in the
+  // vitest+build gate).
 }

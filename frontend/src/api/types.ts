@@ -417,6 +417,16 @@ export type ViolationWire = {
   ctx: Record<string, unknown>;
 };
 
+/** One live snapshot frame payload (ws.ts ch:'live' data). Mirrors the
+ *  LiveBuffer entry: hoga/live/buffer.py — t_ms + kind are guaranteed;
+ *  per-kind fields (orderbook/trade/broker) remain open pending a
+ *  per-kind wire model (deliberate follow-up). */
+export interface LiveSnapshotEntry {
+  t_ms: number;
+  kind: 'ob' | 'trade' | 'broker';
+  [field: string]: unknown;
+}
+
 export type RangeBundle = {
   code: string;
   from_date: string;

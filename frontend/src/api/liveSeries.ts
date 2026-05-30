@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
 import { subscribeLive } from './ws';
+import type { LiveSnapshotEntry } from './types';
 import { LiveSnapshotBuffer, type SnapshotKind } from '../live/liveSnapshotBuffer';
 
 export interface LiveSeriesResponse {
@@ -83,8 +84,8 @@ export function useLiveSeries(code: string): LiveSeriesData {
     if (!code) return;
     let rafId: number | null = null;
     const flush = () => { rafId = null; setTick((t) => t + 1); };
-    const unsub = subscribeLive(code, (entry: Record<string, unknown>) => {
-      bufferRef.current.push(entry as { t_ms: number; kind: string });
+    const unsub = subscribeLive(code, (entry: LiveSnapshotEntry) => {
+      bufferRef.current.push(entry);
       if (rafId === null) rafId = requestAnimationFrame(flush);
     });
     return () => {
