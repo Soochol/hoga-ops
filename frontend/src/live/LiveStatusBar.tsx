@@ -5,6 +5,8 @@ import { cycleLagSeverity, cycleLagPillColor } from './cycleLagPill';
 import { SourceChip } from '../chart/SourceChip';
 import { useSymbols } from '../capture/useSymbols';
 import type { RangeBundle } from '../api/types';
+import { useWatchlist, useAddToWatchlist, useRemoveFromWatchlist } from '../watchlist/useWatchlist';
+import { HeartIcon } from '../ui/HeartIcon';
 
 interface Props {
   activeCode: string | null;
@@ -27,6 +29,17 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
   const symbolLabel = activeCode
     ? (symbolName ? `${symbolName}(${activeCode})` : activeCode)
     : '—';
+
+  const { data: watchlist } = useWatchlist();
+  const isMember = !!activeCode && (watchlist?.entries.some((e) => e.code === activeCode) ?? false);
+  const addM = useAddToWatchlist();
+  const removeM = useRemoveFromWatchlist();
+  const toggleMember = () => {
+    if (!activeCode) return;
+    if (isMember) removeM.mutate(activeCode);
+    else addM.mutate(activeCode);
+  };
+
   const severity = cycleLagSeverity(cycleLagMs);
   const pill = cycleLagPillColor(severity);
 
@@ -55,6 +68,17 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
       <span className="font-mono" style={{ color: 'var(--fg)' }}>
         {symbolLabel}
       </span>
+      {activeCode && (
+        <button
+          type="button"
+          aria-label={isMember ? '관심종목 해제' : '관심종목 추가'}
+          aria-pressed={isMember}
+          onClick={toggleMember}
+          className={`leading-none ${isMember ? 'text-fg' : 'text-fg-dimmer hover:text-fg'}`}
+        >
+          <HeartIcon filled={isMember} className="w-[1em] h-[1em]" />
+        </button>
+      )}
       <span aria-hidden>·</span>
       {currentPrice !== null ? (
         <span
@@ -72,9 +96,16 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
       <span aria-hidden>·</span>
       <SourceChip source={lastSegmentSource} />
       <span aria-hidden>·</span>
-      <span style={{ color: live ? 'var(--success)' : 'var(--warn)' }}>
-        {live ? 'LIVE●' : '재연결 중…'}
-      </span>
+      {activeCode && !isMember ? (
+        <span style={{ color: 'var(--fg-dimmer)' }}>
+          과거 차트 · 실시간 ✕
+          <span className="ml-2" style={{ color: 'var(--accent)' }}>♡ 눌러 실시간 추적</span>
+        </span>
+      ) : (
+        <span style={{ color: live ? 'var(--success)' : 'var(--warn)' }}>
+          {live ? 'LIVE●' : '재연결 중…'}
+        </span>
+      )}
       <span aria-hidden>·</span>
       <span
         data-testid="cycle-lag-pill"

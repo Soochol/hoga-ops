@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveStatusBar } from './LiveStatusBar';
 import type { RangeBundle } from '../api/types';
+import * as watchlistApi from '../api/watchlist';
 
 const EMPTY_BUNDLE: RangeBundle = {
   code: '005930',
@@ -24,8 +25,17 @@ const EMPTY_BUNDLE: RangeBundle = {
   volume_profile_by_day: [],
 };
 
-function renderBar(props: { activeCode: string | null; cycleLagMs: number; bundle: RangeBundle | null }) {
+function renderBar(
+  props: { activeCode: string | null; cycleLagMs: number; bundle: RangeBundle | null },
+  watchlistCodes: string[] = [],
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(['watchlist'], {
+    entries: watchlistCodes.map((code) => ({
+      code, name: code, registered_at_kst_date: '20260101', last_success_date: null,
+    })),
+    next_run_at_ms: 0,
+  });
   return render(
     <QueryClientProvider client={qc}>
       <LiveStatusBar {...props} />
@@ -68,5 +78,26 @@ describe('LiveStatusBar', () => {
   it('renders the kis_live source chip (ADR-0039 compliance)', () => {
     renderBar({ activeCode: '005930', cycleLagMs: 0, bundle: EMPTY_BUNDLE });
     expect(screen.getByTestId('source-chip-kis_live')).toBeTruthy();
+  });
+
+  it('shows a filled heart + no historical-only hint for a watchlist member', () => {
+    renderBar({ activeCode: '005930', cycleLagMs: 0, bundle: EMPTY_BUNDLE }, ['005930']);
+    const btn = screen.getByRole('button', { name: '관심종목 해제' });
+    expect(btn.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByText(/실시간 ✕/)).toBeNull();
+  });
+
+  it('shows an outline heart + historical-only hint for a non-member', () => {
+    renderBar({ activeCode: '000660', cycleLagMs: 0, bundle: EMPTY_BUNDLE }, ['005930']);
+    expect(screen.getByRole('button', { name: '관심종목 추가' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByText(/실시간 ✕/)).toBeInTheDocument();
+  });
+
+  it('clicking the heart of a member calls removeFromWatchlist', async () => {
+    const spy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined as never);
+    renderBar({ activeCode: '005930', cycleLagMs: 0, bundle: EMPTY_BUNDLE }, ['005930']);
+    fireEvent.click(screen.getByRole('button', { name: '관심종목 해제' }));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith('005930'));
+    spy.mockRestore();
   });
 });
