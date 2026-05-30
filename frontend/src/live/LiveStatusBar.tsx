@@ -5,7 +5,7 @@ import { cycleLagSeverity, cycleLagPillColor } from './cycleLagPill';
 import { SourceChip } from '../chart/SourceChip';
 import { useSymbols } from '../capture/useSymbols';
 import type { RangeBundle } from '../api/types';
-import { useWatchlist, useAddToWatchlist, useRemoveFromWatchlist } from '../watchlist/useWatchlist';
+import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 import { HeartIcon } from '../ui/HeartIcon';
 
 interface Props {
@@ -30,15 +30,8 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
     ? (symbolName ? `${symbolName}(${activeCode})` : activeCode)
     : '—';
 
-  const { data: watchlist } = useWatchlist();
-  const isMember = !!activeCode && (watchlist?.entries.some((e) => e.code === activeCode) ?? false);
-  const addM = useAddToWatchlist();
-  const removeM = useRemoveFromWatchlist();
-  const toggleMember = () => {
-    if (!activeCode) return;
-    if (isMember) removeM.mutate(activeCode);
-    else addM.mutate(activeCode);
-  };
+  const { isMember, toggle } = useWatchlistMembership();
+  const member = !!activeCode && isMember(activeCode);
 
   const severity = cycleLagSeverity(cycleLagMs);
   const pill = cycleLagPillColor(severity);
@@ -71,12 +64,12 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
       {activeCode && (
         <button
           type="button"
-          aria-label={isMember ? '관심종목 해제' : '관심종목 추가'}
-          aria-pressed={isMember}
-          onClick={toggleMember}
-          className={`leading-none ${isMember ? 'text-fg' : 'text-fg-dimmer hover:text-fg'}`}
+          aria-label={member ? '관심종목 해제' : '관심종목 추가'}
+          aria-pressed={member}
+          onClick={() => { if (activeCode) toggle(activeCode); }}
+          className={`leading-none ${member ? 'text-fg' : 'text-fg-dimmer hover:text-fg'}`}
         >
-          <HeartIcon filled={isMember} className="w-[1em] h-[1em]" />
+          <HeartIcon filled={member} className="w-[1em] h-[1em]" />
         </button>
       )}
       <span aria-hidden>·</span>
@@ -96,7 +89,7 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
       <span aria-hidden>·</span>
       <SourceChip source={lastSegmentSource} />
       <span aria-hidden>·</span>
-      {activeCode && !isMember ? (
+      {activeCode && !member ? (
         <span style={{ color: 'var(--fg-dimmer)' }}>
           과거 차트 · 실시간 ✕
           <span className="ml-2 inline-flex items-center gap-1" style={{ color: 'var(--accent)' }}>

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSymbolSearch } from '../capture/useSymbols';
 import { useCombobox } from '../util/useCombobox';
 import { useLivePageStore } from '../state/livePage';
-import { useWatchlist, useAddToWatchlist, useRemoveFromWatchlist } from '../watchlist/useWatchlist';
+import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 import { shouldIgnoreEvent } from './useLiveKeyboard';
 import { HeartIcon } from '../ui/HeartIcon';
 import type { SymbolHit } from '../api/types';
@@ -16,13 +16,7 @@ export function LiveSymbolSearch() {
   // (the dropdown is hidden when the query is empty). Mirrors capture/SymbolSearch.
   const items = query.trim().length >= 1 ? rawItems : [];
 
-  const { data: watchlist } = useWatchlist();
-  const memberCodes = useMemo(
-    () => new Set(watchlist?.entries.map((e) => e.code) ?? []),
-    [watchlist],
-  );
-  const addM = useAddToWatchlist();
-  const removeM = useRemoveFromWatchlist();
+  const { isMember, toggle } = useWatchlistMembership();
 
   const selectHit = (hit: SymbolHit) => { setActiveCode(hit.code); setQuery(''); };
 
@@ -49,11 +43,6 @@ export function LiveSymbolSearch() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [combo.inputRef]);
-
-  const toggleMember = (hit: SymbolHit) => {
-    if (memberCodes.has(hit.code)) removeM.mutate(hit.code);
-    else addM.mutate(hit.code);
-  };
 
   const dropdownVisible = combo.open && query.trim().length >= 1;
 
@@ -98,7 +87,7 @@ export function LiveSymbolSearch() {
           ) : (
             // eslint-disable-next-line react-hooks/refs -- false positive: map callback closes over getOptionProps (props only), no render-time .current read
             items.map((hit, i) => {
-              const member = memberCodes.has(hit.code);
+              const member = isMember(hit.code);
               return (
                 <div
                   key={hit.code}
@@ -117,7 +106,7 @@ export function LiveSymbolSearch() {
                     aria-pressed={member}
                     className={`leading-none ${member ? 'text-fg' : 'text-fg-dimmer hover:text-fg'}`}
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={(e) => { e.stopPropagation(); toggleMember(hit); }}
+                    onClick={(e) => { e.stopPropagation(); toggle(hit.code); }}
                   >
                     <HeartIcon filled={member} className="w-[1em] h-[1em]" />
                   </button>
