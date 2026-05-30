@@ -17,10 +17,10 @@ export default function StatusDot() {
     return () => clearInterval(id);
   }, []);
   const color =
-    status === 'green' ? 'var(--success)' : status === 'yellow' ? 'var(--accent)' : 'var(--error)';
+    status === 'green' ? 'var(--success)' : status === 'yellow' ? 'var(--warn)' : 'var(--error)';
   const text =
     status === 'green'
-      ? 'SSE 연결 활성'
+      ? '실시간 연결 활성'
       : status === 'yellow'
         ? '재연결 중...'
         : '백엔드 응답 없음';
@@ -33,7 +33,7 @@ export default function StatusDot() {
           boxShadow: status === 'green' ? `0 0 4px ${color}` : undefined,
         }}
       />
-      SSE · :8000
+      WS · :8000
     </span>
   );
 }

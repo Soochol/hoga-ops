@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { lastHeartbeat } from '../api/eventStream';
 import { useLivePageStore } from '../state/livePage';
 import { cycleLagSeverity, cycleLagPillColor } from './cycleLagPill';
 import { SourceChip } from '../chart/SourceChip';
@@ -13,6 +15,19 @@ interface Props {
 }
 
 export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
+  const [live, setLive] = useState(false);
+  useEffect(() => {
+    const tick = () => {
+      const last = lastHeartbeat();
+      // Threshold MUST exceed the 30s server ping so a connected-but-idle
+      // socket (e.g. market closed) stays "LIVE●"; only a real disconnect
+      // (no frame for >35s) flips it. (plan-review cross-task flag)
+      setLive(last !== 0 && Date.now() - last < 35_000);
+    };
+    tick();
+    const id = setInterval(tick, 3000);
+    return () => clearInterval(id);
+  }, []);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const { data: symbolsData } = useSymbols();
   const symbolName = activeCode
@@ -66,7 +81,9 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
       <span aria-hidden>·</span>
       <SourceChip source={lastSegmentSource} />
       <span aria-hidden>·</span>
-      <span style={{ color: 'var(--fg-dimmer)' }}>LIVE● (대기 중)</span>
+      <span style={{ color: live ? 'var(--success)' : 'var(--warn)' }}>
+        {live ? 'LIVE●' : '재연결 중…'}
+      </span>
       <span aria-hidden>·</span>
       <span
         data-testid="cycle-lag-pill"
