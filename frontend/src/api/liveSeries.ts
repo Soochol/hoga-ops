@@ -43,8 +43,8 @@ function todayKstYyyymmdd(): string {
  *
  * - Initial fetch: GET /api/live/series → hydrates the in-memory buffer with
  *   anything already in the backend's ring buffer (e.g. session-to-date).
- * - WebSocket: subscribes via ws.ts (ADR-0053) and appends each live_snapshot
- *   frame to the buffer.
+ * - WebSocket: subscribes via ws.ts (ADR-0053) and appends each live snapshot
+ *   from the ws.ts live channel ({ch:'live', code, data}) to the buffer.
  * - Buffer cap: `LiveSnapshotBuffer` caps each kind at MAX_BUFFER_PER_KIND
  *   (Eng C5) so the page can run all day without unbounded growth.
  *

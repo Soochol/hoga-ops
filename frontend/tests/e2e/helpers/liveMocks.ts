@@ -148,8 +148,6 @@ export async function installLiveMocks(
 
   const json = (route: Route, body: unknown) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  const sse = (route: Route) =>
-    route.fulfill({ status: 200, contentType: 'text/event-stream', body: ': keepalive\n\n' });
 
   await page.route('http://localhost:8000/api/watchlist*', (r) => json(r, WATCHLIST));
   await page.route('http://localhost:8000/api/live/status*', (r) => json(r, LIVE_STATUS_OK));
@@ -162,6 +160,8 @@ export async function installLiveMocks(
   await page.route('http://localhost:8000/api/calendar*', (r) => json(r, { holidays: [] }));
   await page.route('http://localhost:8000/api/symbols*', (r) => json(r, { symbols: [] }));
   await page.route('http://localhost:8000/api/upstream-hints*', (r) => json(r, { hints: [] }));
-  await page.route('http://localhost:8000/api/events*', sse);
-  await page.route('http://localhost:8000/api/live/stream*', sse);
+  // TODO(ws-migration): mock /api/ws via page.routeWebSocket so live-tick
+  // frames ({ch:'live', code, data}) can be injected in e2e tests without a
+  // real backend. The removed /api/events and /api/live/stream SSE mocks were
+  // dead after the SSE→WebSocket migration (ADR-0053).
 }
