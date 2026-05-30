@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSymbols, useSymbolSearch, SYMBOLS_QUERY_KEY } from './useSymbols';
+import { useSymbolCombobox } from '../symbols/useSymbolCombobox';
 import { symbolSearchHints } from '../api/upstream-hints';
 import { refreshSymbols } from '../api/symbols';
 import type { SymbolHit, SymbolsCacheStatus } from '../api/types';
@@ -57,18 +58,10 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
     await queryClient.invalidateQueries({ queryKey: SYMBOLS_QUERY_KEY });
   };
   const [text, setText] = useState(value ? `${value.name} ${value.code}` : '');
-  const [open, setOpen] = useState(false);
-  const [highlight, setHighlight] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const query = text.trim();
   const hits = useSymbolSearch(query, 20);
-  // F3 (design review): explicit empty-state dropdown when query has chars but
-  // no matches. Without this, users wonder if their input is broken.
-  const dropdownVisible = open && query.length >= 1 && cacheStatus !== 'unavailable';
-  const isEmpty = dropdownVisible && hits.length === 0;
 
-  useEffect(() => { setHighlight(0); }, [query]);
   // Sync displayed text when parent resets selection (e.g. form reset after Start).
   useEffect(() => {
     if (value === null) setText('');
@@ -78,8 +71,25 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
   const select = (hit: SymbolHit) => {
     onChange(hit);
     setText(`${hit.name} ${hit.code}`);
-    setOpen(false);
+    combo.setOpen(false);
   };
+
+  const combo = useSymbolCombobox<SymbolHit>({
+    query: text,
+    setQuery: (q) => { setText(q); onChange(null); },
+    // Gate items to mirror the original `dropdownVisible` Enter guard: an empty
+    // query must not let Enter select hits[0] (filterSymbols('') returns all
+    // symbols). When unavailable, hits is already [] so no extra gate is needed.
+    items: query.length >= 1 ? hits : [],
+    onSelect: (hit) => select(hit),
+    onEnterEmpty: () => promoteUnverifiedCode(),
+  });
+  const { inputRef } = combo;
+
+  // F3 (design review): explicit empty-state dropdown when query has chars but
+  // no matches. Without this, users wonder if their input is broken.
+  const dropdownVisible = combo.open && query.length >= 1 && cacheStatus !== 'unavailable';
+  const isEmpty = dropdownVisible && hits.length === 0;
 
   // BUG-001 fallback: when the symbol cache is unavailable (KRX auth missing,
   // network blip, etc.), the user is told to enter a 6-digit code directly —
@@ -99,34 +109,13 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
     return true;
   };
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      if (dropdownVisible && hits.length > 0) {
-        e.preventDefault();
-        select(hits[highlight]);
-        return;
-      }
-      if (promoteUnverifiedCode()) {
-        e.preventDefault();
-        return;
-      }
-    }
-    if (!dropdownVisible) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight((h) => Math.min(h + 1, hits.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight((h) => Math.max(h - 1, 0)); }
-    else if (e.key === 'Escape') { setOpen(false); }
-  };
-
   return (
     <div className="relative font-ui">
       <div className="flex items-center gap-2">
         <input
           ref={inputRef}
           type="text"
-          value={text}
-          onChange={(e) => { setText(e.target.value); setOpen(true); onChange(null); }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={onKeyDown}
+          {...combo.inputProps}
           placeholder="종목명 또는 6자리 코드"
           className="flex-1 bg-bg-input border rounded-lg text-fg py-sm px-sm text-base"
         />
@@ -174,7 +163,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
             </div>
           ) : (
             hits.map((h, i) => (
-              <SymbolRow key={h.code} hit={h} highlighted={i === highlight} onClick={() => select(h)} />
+              <SymbolRow key={h.code} hit={h} highlighted={i === combo.highlightedIndex} onClick={() => select(h)} />
             ))
           )}
         </div>
