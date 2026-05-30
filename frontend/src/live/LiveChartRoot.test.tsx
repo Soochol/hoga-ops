@@ -15,7 +15,7 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 
 import { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
-import { createChart } from 'lightweight-charts';
+import { createChart, TickMarkType } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 
 vi.mock('lightweight-charts', async () => {
@@ -695,3 +695,74 @@ function buildChartMockCapturing(handlers: Array<(r: unknown) => void>) {
     unsubscribeCrosshairMove: vi.fn(),
   };
 }
+
+// ---------------------------------------------------------------------------
+// x-axis tickMarkFormatter — minute charts show TIME only (/diagnose 2026-05-30)
+//
+// Regression: the chart's time axis is the gap-compressed Virtual Axis
+// (virtualStart[0] == 0 ≈ 1970 epoch), so lightweight-charts assigns
+// Year/Month/DayOfMonth tick types on the virtual 1970 calendar. Those date
+// ticks land at virtual midnights — mid-session in real time — so rendering a
+// real MM/DD there stamped e.g. "05/28" at 14:30 KST: a spurious mid-session
+// "day change" that also collided with the DayBoundaryOverlay chip already
+// marking that day at its real 09:00 open. Fix: minute-axis ticks render HH:MM
+// for every tick type; date orientation is owned solely by the Day Boundary
+// chips. D/W/M keep date labels (they mount no DayBoundaryOverlay).
+//
+// The seam: capture the tickMarkFormatter from the createChart options and
+// invoke it directly with the (virtualSec, tickType) pairs lightweight-charts
+// would pass. TWO_SEGMENT_BUNDLE → axis where virtual second 43201 maps to
+// today 14:30 KST (5.5h into segment[1]) — the exact mid-session position that
+// produced the bug.
+describe('LiveChartRoot x-axis tickMarkFormatter', () => {
+  beforeEach(() => {
+    vi.mocked(createChart).mockClear();
+  });
+
+  function captureTickFormatter(timeframe: 'D' | '1m') {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe={timeframe}
+        bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const opts = vi.mocked(createChart).mock.calls[0][1] as {
+      timeScale: { tickMarkFormatter: (t: number, k: TickMarkType) => string };
+    };
+    return opts.timeScale.tickMarkFormatter;
+  }
+
+  // virtual second 43201 = segment[1].virtualStart (23401s) + 5.5h (19800s)
+  // → real today 14:30 KST. This is a mid-session position the library tags as
+  // a DayOfMonth/Month/Year "date" tick on the virtual 1970 calendar.
+  const MID_SESSION_SEC = 43201;
+
+  it('1m: DayOfMonth tick renders HH:MM (the bug repro), not MM/DD', () => {
+    const fmt = captureTickFormatter('1m');
+    const out = fmt(MID_SESSION_SEC, TickMarkType.DayOfMonth);
+    expect(out).toBe('14:30'); // was "05/27" before the fix
+    expect(out).not.toMatch(/\//); // never a date on the minute axis
+  });
+
+  it('1m: Month and Year ticks also render HH:MM (long multi-day windows)', () => {
+    const fmt = captureTickFormatter('1m');
+    expect(fmt(MID_SESSION_SEC, TickMarkType.Month)).toBe('14:30');
+    expect(fmt(MID_SESSION_SEC, TickMarkType.Year)).toBe('14:30');
+  });
+
+  it('1m: Time tick still renders HH:MM', () => {
+    const fmt = captureTickFormatter('1m');
+    expect(fmt(MID_SESSION_SEC, TickMarkType.Time)).toBe('14:30');
+  });
+
+  it('D (calendar): DayOfMonth tick keeps its date label (day-of-month)', () => {
+    // D/W/M mount no DayBoundaryOverlay, so the axis is their only date source —
+    // the fix must NOT strip dates there.
+    const fmt = captureTickFormatter('D');
+    expect(fmt(MID_SESSION_SEC, TickMarkType.DayOfMonth)).toBe('27'); // 2026-05-27
+  });
+});

@@ -228,19 +228,35 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
           const realMs = a.toReal(virtualMs);
           const d = new Date(realMs + 9 * 3600_000);
           const calendar = isCalendarTimeframe(timeframeRef.current);
+          // Minute timeframes show ONLY time (HH:MM) on the x-axis; date
+          // orientation is owned solely by DayBoundaryOverlay's MM/DD chips.
+          //
+          // Why: the chart's time axis is the gap-compressed Virtual Axis with
+          // virtualStart[0] == 0, i.e. virtual values sit near the 1970 epoch.
+          // lightweight-charts therefore assigns the Year/Month/DayOfMonth tick
+          // types from the *virtual 1970 calendar*, placing "date" ticks at
+          // virtual midnights — ≈ every 3.7 trading days, mid-session — never
+          // at real trading-day boundaries. Rendering a real MM/DD there stamps
+          // e.g. "05/28" at 14:30 KST, which both reads as a spurious mid-session
+          // day change and collides with the DayBoundaryOverlay chip that already
+          // marks that day at its real 09:00 open. So every minute-axis tick
+          // (whatever type lightweight-charts assigns) renders as HH:MM, and the
+          // Day Boundary chips carry the dates. /diagnose 2026-05-30.
+          //
+          // D/W/M (calendar) keep date labels: those charts mount no
+          // DayBoundaryOverlay, so the axis ticks are their only date source.
+          const hhmm = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
           switch (tickType) {
             case TickMarkType.Year:
-              return calendar ? `'${String(d.getUTCFullYear()).slice(-2)}` : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+              return calendar ? `'${String(d.getUTCFullYear()).slice(-2)}` : hhmm;
             case TickMarkType.Month:
-              return calendar ? `${d.getUTCMonth() + 1}월` : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+              return calendar ? `${d.getUTCMonth() + 1}월` : hhmm;
             case TickMarkType.DayOfMonth:
-              return calendar ? `${d.getUTCDate()}` : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+              return calendar ? `${d.getUTCDate()}` : hhmm;
             case TickMarkType.Time:
-              // Intraday HH:MM only makes sense for minute timeframes; on
-              // D/W/M every bar is at session-open so the time tick is noise.
-              return calendar ? '' : `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+              return calendar ? '' : hhmm;
             case TickMarkType.TimeWithSeconds:
-              return calendar ? '' : `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+              return calendar ? '' : `${hhmm}:${pad(d.getUTCSeconds())}`;
             default:
               return '';
           }
