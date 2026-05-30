@@ -4,14 +4,14 @@
 
 **Related:**
 - ADR-0022 (Cursor Sidebar width: token-as-default, user state as runtime-of-record) — superseded by the `/replay` removal; its **Scope boundary** explicitly deferred cross-page layout state to "a separate decision." This ADR is that decision.
-- ADR-0012 (Design tokens single source) — the rail's *widths* (`--rail-w`, `--rail-handle-w`) are tokens authored in `design-tokens.ts`; only the runtime *open/collapse* state lives in the store.
+- ADR-0012 (Design tokens single source) — the rail's *width* (`--rail-w`) is a token authored in `design-tokens.ts`; only the runtime *panel open/closed* state lives in the store.
 - `docs/superpowers/specs/2026-05-30-right-rail-watchlist-design.md` — the spec this ADR records reasoning for.
 
 ## Decision
 
-The **Right Rail**'s runtime UI state — `panelOpen` (Watchlist Panel shown) and `railCollapsed` (rail collapsed to a handle) — is owned by a dedicated zustand store `frontend/src/state/rightRail.ts`, persisted to localStorage under its own key `rightRail.layout`. It is **not** stored in any page-scoped store (notably not `livePage`).
+The **Right Rail**'s runtime UI state — a single `panelOpen` boolean (whether the Watchlist Panel is shown) — is owned by a dedicated zustand store `frontend/src/state/rightRail.ts`, persisted to localStorage under its own key `rightRail.layout`. It is **not** stored in any page-scoped store (notably not `livePage`).
 
-The store enforces the spec's **Panel-open ⟹ rail-expanded** invariant bidirectionally in its mutators: opening the panel expands the rail; collapsing the rail closes the panel.
+The rail itself is **fixed chrome** (always `--rail-w`); it does not collapse. Both the chevron (`»`/`«`) and the single 관심 item toggle `panelOpen` — there is no separate rail-collapse state. `readStorage` accepts only a real boolean for `panelOpen`, so a corrupt/hand-edited value cannot leak a non-boolean into state.
 
 `activeCode` — which **Code** the `/live` chart shows — stays in `livePage`. It is live-page view state, not rail chrome state, and is read (not owned) by the **Watchlist Panel**.
 
@@ -31,7 +31,7 @@ Smallest diff — reuse `watchlistPanelOpen`. **Rejected**: a global App-shell w
 
 ### B. Dedicated `state/rightRail.ts` store (chosen)
 
-A small persisted store owns exactly the rail's two booleans. App shell and `RightRail` read it; no page coupling. Mirrors the established per-concern store convention (`livePage`, the former `replayLayout`) but at App-shell scope. Cost: one more localStorage key and a hydration-order note.
+A small persisted store owns exactly the rail's `panelOpen` boolean. App shell and `RightRail` read it; no page coupling. Mirrors the established per-concern store convention (`livePage`, the former `replayLayout`) but at App-shell scope. Cost: one more localStorage key and a hydration-order note.
 
 ### C. Encode open/collapse in a design token or CSS only
 
@@ -41,7 +41,7 @@ A small persisted store owns exactly the rail's two booleans. App shell and `Rig
 
 **Positive:**
 - App-shell chrome state has a clean, page-independent home. A future global chrome element (e.g., a global search rail, an alerts panel) follows this precedent instead of re-deciding.
-- The Panel-open ⟹ rail-expanded invariant is enforced in one place (the store mutators) and is testable without rendering.
+- A single `panelOpen` boolean keeps the store trivial and testable without rendering; the fixed rail removes a whole class of layout-state coupling (no collapse/expand to coordinate with the panel).
 
 **Negative / watch:**
 - A second persisted layout store means two localStorage keys (`livePage`, `rightRail.layout`). Hydration order matters — `rightRail` must be restored before the first route paints to avoid a flash of the default (closed) state.

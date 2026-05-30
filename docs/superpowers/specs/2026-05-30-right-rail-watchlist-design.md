@@ -1,8 +1,10 @@
 # Global right rail — watchlist 
 
 **Date:** 2026-05-30
-**Status:** Draft
+**Status:** Implemented (with the correction below)
 **Scope:** frontend
+
+> **Post-implementation correction (2026-05-30).** The rail-collapse feature was dropped per user feedback after implementation. The **rail is fixed** (always `--rail-w`; no collapse, no handle). The chevron `»`/`«` and the 관심 item **both show/hide the Watchlist Panel** — that is the only toggle. Consequently the following parts of this spec are superseded: the `railCollapsed` state, the `--rail-handle-w` token, and the **Panel-open ⟹ rail-expanded** invariant are all removed. The `rightRail` store now owns a single `panelOpen` boolean. Everything else (global rail, read-only drawer reuse, jump-to-`/live`, dedicated store per ADR-0052, token discipline per ADR-0012) stands as written.
 
 ## Problem
 

@@ -128,7 +128,6 @@
   --combobox-min-w: 13.75rem; /* 275px @ default; 220px base intent — Stock combobox trigger minimum width */
   --dropdown-min-w: 20rem; /* 400px @ default; 320px base intent — Combobox / search dropdown minimum width */
   --watchlist-panel-w: 17.5rem; /* 350px @ default; 280px base intent — Global Watchlist Panel (Right Rail) width */
-  --rail-w: 3rem; /* 60px @ default; 48px base intent — Right Rail icon column width */
-  --rail-handle-w: 0.75rem; /* 15px @ default; 12px base intent — Collapsed Right Rail handle width */
+  --rail-w: 3rem; /* 60px @ default; 48px base intent — Right Rail icon column width (fixed) */
 /* END AUTO-GENERATED */
 }

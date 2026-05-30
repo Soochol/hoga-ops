@@ -10,13 +10,11 @@ export default function App() {
   useEventStream();
   useInventoryRecaptureOriginsCleanup();
   const panelOpen = useRightRailStore((s) => s.panelOpen);
-  const railCollapsed = useRightRailStore((s) => s.railCollapsed);
 
-  // Panel-open ⟹ rail-expanded (store invariant); guard defensively so the
-  // rendered children always match the grid track count.
-  const showPanel = panelOpen && !railCollapsed;
-  const railTrack = railCollapsed ? 'var(--rail-handle-w)' : 'var(--rail-w)';
-  const cols = `var(--nav-w) 1fr${showPanel ? ' var(--watchlist-panel-w)' : ''} ${railTrack}`;
+  // The Right Rail is fixed (always --rail-w); the Watchlist Panel column
+  // appears between main and the rail only when open. Grid track count always
+  // equals rendered child count: 3 closed, 4 open.
+  const cols = `var(--nav-w) 1fr${panelOpen ? ' var(--watchlist-panel-w)' : ''} var(--rail-w)`;
 
   return (
     <div
@@ -25,7 +23,7 @@ export default function App() {
     >
       <LeftNav />
       <main className="overflow-hidden min-w-0"><Outlet /></main>
-      {showPanel && <WatchlistDrawer />}
+      {panelOpen && <WatchlistDrawer />}
       <RightRail />
     </div>
   );

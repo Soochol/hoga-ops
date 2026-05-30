@@ -38,7 +38,6 @@ export const TAILWIND_THEME = {
     "sidebar": "var(--sidebar-w)",
     "watchlist-panel": "var(--watchlist-panel-w)",
     "rail": "var(--rail-w)",
-    "rail-handle": "var(--rail-handle-w)",
   },
   minWidth: {
     "combobox": "var(--combobox-min-w)",

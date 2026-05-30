@@ -16,7 +16,7 @@ function HarnessWithInput({ onNextCode }: { onNextCode?: () => void }) {
 describe('useLiveKeyboard', () => {
   beforeEach(() => {
     cleanup();
-    useRightRailStore.setState({ panelOpen: false, railCollapsed: false });
+    useRightRailStore.setState({ panelOpen: false });
   });
 
   it('j triggers onNextCode', () => {

@@ -230,8 +230,7 @@ Layout and source-identity tokens beyond the core scale. The Right Rail tokens (
 
 | Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
 |---|---|---|---|
-| `--rail-w` | 48px | 60px | Right Rail icon column width (app shell, all routes) |
-| `--rail-handle-w` | 12px | 15px | Collapsed Right Rail handle width |
+| `--rail-w` | 48px | 60px | Right Rail icon column width (app shell, all routes; fixed — does not collapse) |
 | `--watchlist-panel-w` | 280px | 350px | Watchlist Panel width — opened from the Right Rail (global) |
 | `--h-live-header` | 32px | 40px | Live page header row (page title) |
 
@@ -252,4 +251,4 @@ A fourth category limited to identifying which capture source rendered a given s
 - **Status labels** (LiveStatusBar pills, banner badges): Korean single words ("장 외", "대기 중", "준비됨").
 - **Layout grid for `/live`**: 4-row grid mirroring `/replay`'s PriceStrip pattern — header (32/40px) + status bar (52/65px) + toolbar (60/75px) + workarea (1fr).
 | 2026-05-23 | Adopted KRX market convention (up=red `#DC2626`, down=blue `#2563EB`) | Single-user Korean analyst — Western up=green is counter-intuitive. Renamed `--up`/`--down` → `--success`/`--error` to disambiguate status semantic from price direction; introduced `--price-up`/`--price-down`. Removed `--ratio-ask` (folded into `--price-down`). All chart series now hide both `priceLineVisible` and `lastValueVisible` — analysts read latest values via crosshair. |
-| 2026-05-30 | Global Right Rail (single 관심 item, heart icon) replaces the `/live` ★ watchlist drawer; rail chrome state in a dedicated `rightRail` store (ADR-0052) | Watchlist reachable from every page. Active state = tint bg + neutral text (no triple-teal, matches LeftNav). `--rail-w`/`--rail-handle-w` added via `design-tokens.ts` (ADR-0012). |
+| 2026-05-30 | Global Right Rail (fixed; single 관심 item, heart icon) replaces the `/live` ★ watchlist drawer; the chevron `»`/`«` and the 관심 item both show/hide the Watchlist Panel; chrome state in a dedicated `rightRail` store (ADR-0052) | Watchlist reachable from every page. Rail does not collapse — only the panel opens. Active state = tint bg + neutral text (no triple-teal, matches LeftNav). `--rail-w` added via `design-tokens.ts` (ADR-0012). |

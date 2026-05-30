@@ -1,50 +1,48 @@
 import { useRightRailStore } from '../state/rightRail';
 
 /**
- * Global Right Rail (ADR-0052) — thin right-edge chrome on every route.
- * Top chevron toggles rail collapse; the single 관심 item toggles the
- * Watchlist Panel. Mounted by App; the panel itself is the WatchlistDrawer.
+ * Global Right Rail (ADR-0052) — fixed thin right-edge chrome on every route.
+ * The rail itself does not collapse; both the chevron and the single 관심 item
+ * show/hide the Watchlist Panel (which opens to the rail's left). Mounted by
+ * App; the panel body is the WatchlistDrawer.
  */
 export default function RightRail() {
   const panelOpen = useRightRailStore((s) => s.panelOpen);
-  const railCollapsed = useRightRailStore((s) => s.railCollapsed);
   const togglePanel = useRightRailStore((s) => s.togglePanel);
-  const toggleRailCollapsed = useRightRailStore((s) => s.toggleRailCollapsed);
 
   return (
     <nav
-      aria-label="Right Rail"
+      aria-label="우측 레일"
       className="flex flex-col items-center h-full bg-bg-subtle border-l"
-      style={{ width: railCollapsed ? 'var(--rail-handle-w)' : 'var(--rail-w)' }}
+      style={{ width: 'var(--rail-w)' }}
     >
       <button
         type="button"
-        onClick={toggleRailCollapsed}
-        aria-label={railCollapsed ? '레일 펼치기' : '레일 접기'}
-        aria-expanded={!railCollapsed}
+        onClick={togglePanel}
+        aria-expanded={panelOpen}
+        aria-controls="right-rail-watchlist-panel"
+        aria-label={panelOpen ? '관심종목 패널 닫기' : '관심종목 패널 열기'}
         className="w-full py-2 grid place-items-center text-fg-dim hover:text-fg hover:bg-bg-input-hover"
       >
-        {railCollapsed ? '«' : '»'}
+        {panelOpen ? '»' : '«'}
       </button>
-      {!railCollapsed && (
-        <button
-          type="button"
-          onClick={togglePanel}
-          aria-pressed={panelOpen}
-          aria-controls="right-rail-watchlist-panel"
-          aria-label="관심종목 패널 토글"
-          // Active = tint bg + neutral text, matching NavItem (no triple-teal).
-          // The heart fill (currentColor=fg) is a shape signal, not a 2nd accent.
-          className={`w-full py-3 flex flex-col items-center gap-1 ${
-            panelOpen
-              ? 'bg-tint-selection text-fg'
-              : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
-          }`}
-        >
-          <HeartIcon filled={panelOpen} />
-          <span className="text-xs">관심</span>
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={togglePanel}
+        aria-pressed={panelOpen}
+        aria-controls="right-rail-watchlist-panel"
+        aria-label="관심종목 패널 토글"
+        // Active = tint bg + neutral text, matching NavItem (no triple-teal).
+        // The heart fill (currentColor=fg) is a shape signal, not a 2nd accent.
+        className={`w-full py-3 flex flex-col items-center gap-1 ${
+          panelOpen
+            ? 'bg-tint-selection text-fg'
+            : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
+        }`}
+      >
+        <HeartIcon filled={panelOpen} />
+        <span className="text-xs">관심</span>
+      </button>
     </nav>
   );
 }
@@ -52,8 +50,8 @@ export default function RightRail() {
 function HeartIcon({ filled }: { filled: boolean }) {
   return (
     <svg
-      width="18"
-      height="18"
+      width="1.125em"
+      height="1.125em"
       viewBox="0 0 24 24"
       fill={filled ? 'currentColor' : 'none'}
       stroke="currentColor"

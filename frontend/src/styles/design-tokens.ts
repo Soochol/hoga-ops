@@ -85,8 +85,7 @@ export const SIZE_TOKENS = {
   'combobox-min-w':     { rem: 13.75,   baseIntentPx: 220, usage: 'Stock combobox trigger minimum width' },
   'dropdown-min-w':     { rem: 20,      baseIntentPx: 320, usage: 'Combobox / search dropdown minimum width' },
   'watchlist-panel-w':  { rem: 17.5,    baseIntentPx: 280, usage: 'Global Watchlist Panel (Right Rail) width' },
-  'rail-w':             { rem: 3,       baseIntentPx: 48,  usage: 'Right Rail icon column width' },
-  'rail-handle-w':      { rem: 0.75,    baseIntentPx: 12,  usage: 'Collapsed Right Rail handle width' },
+  'rail-w':             { rem: 3,       baseIntentPx: 48,  usage: 'Right Rail icon column width (fixed)' },
 } as const satisfies Record<string, SizeToken>;
 
 export const FIXED_PX_TOKENS = {

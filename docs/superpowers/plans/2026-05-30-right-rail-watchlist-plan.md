@@ -4,6 +4,8 @@
 
 scope: frontend
 
+> **Post-implementation correction (2026-05-30).** Rail-collapse was dropped per user feedback. The **rail is fixed** (always `--rail-w`); the chevron `»`/`«` and the 관심 item **both show/hide the Watchlist Panel**. The `railCollapsed` state, the `--rail-handle-w` token (Task 1), and the **Panel-open ⟹ rail-expanded** invariant (Tasks 2/6) are all removed — the `rightRail` store owns a single `panelOpen` boolean. Tasks below that mention collapse/handle/invariant are superseded by this note; everything else stands.
+
 **Goal:** Add a global right-edge icon rail (single 관심 item) that toggles a read-only Watchlist Panel on every page, replacing the `/live`-only ★ drawer.
 
 **Architecture:** App shell owns a `RightRail` (always mounted) + a `WatchlistDrawer` (mounted when open). A dedicated `rightRail` zustand store (ADR-0052) owns `panelOpen`/`railCollapsed` with a bidirectional *Panel-open ⟹ rail-expanded* invariant. The drawer is the promoted former `/live` drawer; clicking a row sets `activeCode` and jumps to `/live`.
