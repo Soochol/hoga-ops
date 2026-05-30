@@ -67,9 +67,9 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
           aria-label={member ? '관심종목 해제' : '관심종목 추가'}
           aria-pressed={member}
           onClick={() => { if (activeCode) toggle(activeCode); }}
-          className={`leading-none ${member ? 'text-fg' : 'text-fg-dimmer hover:text-fg'}`}
+          className={`leading-none ${member ? 'text-error' : 'text-fg-dimmer hover:text-fg'}`}
         >
-          <HeartIcon filled={member} className="w-[1em] h-[1em]" />
+          <HeartIcon filled className="w-[1em] h-[1em]" />
         </button>
       )}
       <span aria-hidden>·</span>

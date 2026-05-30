@@ -87,7 +87,7 @@ describe('LiveStatusBar', () => {
     expect(screen.queryByText(/실시간 ✕/)).toBeNull();
   });
 
-  it('shows an outline heart + historical-only hint for a non-member', () => {
+  it('shows a filled gray heart + historical-only hint for a non-member', () => {
     renderBar({ activeCode: '000660', cycleLagMs: 0, bundle: EMPTY_BUNDLE }, ['005930']);
     expect(screen.getByRole('button', { name: '관심종목 추가' }).getAttribute('aria-pressed')).toBe('false');
     expect(screen.getByText(/실시간 ✕/)).toBeInTheDocument();
