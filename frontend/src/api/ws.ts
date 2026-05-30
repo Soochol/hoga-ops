@@ -7,10 +7,10 @@
  */
 import { wsUrl } from './client';
 import { WATCHDOG_TIMEOUT_MS } from './liveness';
-import type { SSEEvent, LiveSnapshotEntry } from './types';
+import type { PushEvent, LiveSnapshotEntry } from './types';
 
 type Frame =
-  | { ch: 'event'; data: SSEEvent }
+  | { ch: 'event'; data: PushEvent }
   | { ch: 'live'; code: string; data: LiveSnapshotEntry }
   | { ch: 'subscribed'; code: string }
   | { ch: 'heartbeat' };
@@ -24,10 +24,10 @@ let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let _livenessTimer: ReturnType<typeof setInterval> | null = null;
 const RECONNECT_MAX_MS = 10_000;
 
-const _eventSubs = new Set<(e: SSEEvent) => void>();
+const _eventSubs = new Set<(e: PushEvent) => void>();
 const _liveSubs = new Map<string, Set<(d: LiveSnapshotEntry) => void>>();
 
-function emitEvent(e: SSEEvent): void { _eventSubs.forEach((fn) => fn(e)); }
+function emitEvent(e: PushEvent): void { _eventSubs.forEach((fn) => fn(e)); }
 export function lastHeartbeat(): number { return _lastHeartbeatMs; }
 
 function wsCtor(): typeof WebSocket | null {
@@ -95,7 +95,7 @@ function scheduleReconnect(): void {
   _reconnectTimer = setTimeout(() => { _reconnectTimer = null; void open(); }, delay);
 }
 
-export function subscribeEvents(handler: (e: SSEEvent) => void): () => void {
+export function subscribeEvents(handler: (e: PushEvent) => void): () => void {
   _eventSubs.add(handler);
   void open();
   return () => { _eventSubs.delete(handler); };

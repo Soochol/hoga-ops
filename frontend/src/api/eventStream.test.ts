@@ -6,7 +6,7 @@ import { installFakeWebSocket, fakeSockets } from '../test/fakeWebSocket';
 import { __resetForTests as resetWs } from './ws';
 import * as client from './client';
 import { subscribeToCaptureEvents, useEventStream } from './eventStream';
-import type { SSEEvent } from './types';
+import type { PushEvent } from './types';
 
 beforeEach(() => {
   installFakeWebSocket();
@@ -23,7 +23,7 @@ async function connect() {
 
 describe('subscribeToCaptureEvents', () => {
   it('delivers capture_queued events', async () => {
-    const events: SSEEvent[] = [];
+    const events: PushEvent[] = [];
     subscribeToCaptureEvents((e) => events.push(e));
     const sock = await connect();
     sock.message({ ch: 'event', data: { type: 'capture_queued', items: [] } });
@@ -31,7 +31,7 @@ describe('subscribeToCaptureEvents', () => {
   });
 
   it('delivers capture_dismissed (regression: dropped at two levels before)', async () => {
-    const events: SSEEvent[] = [];
+    const events: PushEvent[] = [];
     subscribeToCaptureEvents((e) => events.push(e));
     const sock = await connect();
     sock.message({ ch: 'event', data: { type: 'capture_dismissed', item_ids: ['x'] } });
@@ -39,7 +39,7 @@ describe('subscribeToCaptureEvents', () => {
   });
 
   it('drops non-capture events (inventory_added)', async () => {
-    const events: SSEEvent[] = [];
+    const events: PushEvent[] = [];
     subscribeToCaptureEvents((e) => events.push(e));
     const sock = await connect();
     sock.message({ ch: 'event', data: { type: 'inventory_added', code: '005930', date: '20260520' } });

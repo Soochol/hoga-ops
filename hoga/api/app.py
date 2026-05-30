@@ -21,7 +21,7 @@ from hoga.api.captures import set_bus as set_captures_bus
 from hoga.api.queries import QueryEngine
 from hoga.api.routes import build_router
 from hoga.api.scheduler import start_scheduler
-from hoga.api.sse import build_event_bus
+from hoga.api.events import build_event_bus
 from hoga.api.ws import build_ws_router
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router

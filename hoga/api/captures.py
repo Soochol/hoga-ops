@@ -288,7 +288,7 @@ def cancel_all_on_shutdown() -> None:
             s.cancel_token.cancel()
 
 
-# Bus injection point: the captures router holds a reference to the SSE _Bus
+# Bus injection point: the captures router holds a reference to the EventBus
 # AND the event loop, because the collector runs in a thread executor and its
 # on_progress callback fires from the worker thread, NOT the event loop.
 # asyncio.Queue.put_nowait is not loop-safe across threads — same reason the

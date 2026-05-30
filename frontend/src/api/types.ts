@@ -200,7 +200,7 @@ export interface CaptureEventBase {
   phase: CapturePhase;
 }
 
-export type SSEEvent =
+export type PushEvent =
   | { type: 'inventory_added'; code: string; date: string }
   | { type: 'inventory_removed'; code: string; date: string }
   | (CaptureEventBase & { type: 'capture_progress'; progress: CaptureProgress })

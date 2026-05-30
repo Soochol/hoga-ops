@@ -3,17 +3,17 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useCaptureQueue, CAPTURE_QUEUE_QUERY_KEY, patchQueueItem } from './useCaptureQueue';
-import type { QueueItem, QueueSnapshot, SSEEvent } from '../api/types';
+import type { QueueItem, QueueSnapshot, PushEvent } from '../api/types';
 
 // vi.mock factory is hoisted to top of file — declare subscribers state via
 // vi.hoisted so it's available inside the factory and outside (for fireSse).
 const sseState = vi.hoisted(() => {
-  const subs: { current: ((e: SSEEvent) => void)[] } = { current: [] };
+  const subs: { current: ((e: PushEvent) => void)[] } = { current: [] };
   return { subs };
 });
 
 vi.mock('../api/eventStream', () => ({
-  subscribeToCaptureEvents: (cb: (e: SSEEvent) => void) => {
+  subscribeToCaptureEvents: (cb: (e: PushEvent) => void) => {
     sseState.subs.current.push(cb);
     return () => {
       sseState.subs.current = sseState.subs.current.filter((s) => s !== cb);
@@ -21,7 +21,7 @@ vi.mock('../api/eventStream', () => ({
   },
 }));
 
-function fireSse(e: SSEEvent) {
+function fireSse(e: PushEvent) {
   act(() => { sseState.subs.current.forEach((s) => s(e)); });
 }
 

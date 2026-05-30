@@ -2,14 +2,14 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { STOCK_DATES_QUERY_KEY } from './stock-dates';
 import { subscribeEvents, lastHeartbeat } from './ws';
-import type { SSEEvent } from './types';
+import type { PushEvent } from './types';
 
 export { lastHeartbeat };
 
 export function useEventStream(): void {
   const qc = useQueryClient();
   useEffect(() => {
-    return subscribeEvents((e: SSEEvent) => {
+    return subscribeEvents((e: PushEvent) => {
       if (e.type === 'inventory_added' || e.type === 'inventory_removed') {
         qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
       } else if (e.type === 'disconnected') {
@@ -25,8 +25,8 @@ export function useEventStream(): void {
   }, [qc]);
 }
 
-export function subscribeToCaptureEvents(handler: (e: SSEEvent) => void): () => void {
-  return subscribeEvents((e: SSEEvent) => {
+export function subscribeToCaptureEvents(handler: (e: PushEvent) => void): () => void {
+  return subscribeEvents((e: PushEvent) => {
     if (e.type.startsWith('capture_')) handler(e);
   });
 }

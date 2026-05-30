@@ -1,6 +1,6 @@
 """Single WebSocket transport for live push (ADR-0053).
 
-Multiplexes global app events (_Bus) and per-code live snapshots (LiveBuffer)
+Multiplexes global app events (EventBus) and per-code live snapshots (LiveBuffer)
 into {ch, data} frames over one connection per tab, replacing the two SSE
 endpoints. live frames are code-tagged so one socket can carry 0..N codes.
 Data sources are unchanged — this is a wire-transport layer only.
@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, WebSocket
 
-from hoga.api.sse import _Bus
+from hoga.api.events import EventBus
 from hoga.live.buffer import LiveBuffer
 
 _PING_TIMEOUT_S = 30.0
 
 
 def build_ws_router(
-    bus: _Bus,
+    bus: EventBus,
     get_buffer: Callable[[], LiveBuffer | None],
     *,
     ping_timeout_s: float = _PING_TIMEOUT_S,
@@ -40,7 +40,7 @@ def build_ws_router(
             try:
                 out.put_nowait(frame)
             except asyncio.QueueFull:
-                # Slow client: log so the consistency gap is visible (mirrors _Bus.publish).
+                # Slow client: log so the consistency gap is visible (mirrors EventBus.publish).
                 logger.warning("WS send queue full, dropped frame: %s", frame.get("ch"))
 
         async def pump_event() -> None:

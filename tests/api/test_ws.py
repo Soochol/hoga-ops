@@ -1,13 +1,13 @@
 """Behavioral tests for the single WebSocket transport (ADR-0053).
 
 Exercise the /api/ws endpoint end-to-end through Starlette's TestClient:
-global _Bus events are auto-delivered, per-code subscribe acks then streams
+global EventBus events are auto-delivered, per-code subscribe acks then streams
 code-tagged live frames, and explicit unsubscribe tears the subscription down.
 """
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from hoga.api.sse import _Bus, build_event_bus
+from hoga.api.events import EventBus, build_event_bus
 from hoga.api.ws import build_ws_router
 from hoga.live.buffer import LiveBuffer
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
@@ -19,8 +19,8 @@ def test_build_event_bus_exposes_unbound_handler(tmp_path):
     # observer is scheduled but NOT started — do not start/join it here.
 
 
-def _make_app() -> tuple[FastAPI, _Bus, LiveBuffer]:
-    bus = _Bus()
+def _make_app() -> tuple[FastAPI, EventBus, LiveBuffer]:
+    bus = EventBus()
     buf = LiveBuffer()
     app = FastAPI()
     app.include_router(build_ws_router(bus, lambda: buf))
@@ -56,7 +56,7 @@ def test_subscribe_acks_then_delivers_code_tagged_live():
 
 
 def test_heartbeat_on_idle():
-    bus = _Bus()
+    bus = EventBus()
     buf = LiveBuffer()
     app = FastAPI()
     app.include_router(build_ws_router(bus, lambda: buf, ping_timeout_s=0.05))
@@ -118,7 +118,7 @@ def test_frame_envelope_shapes():
     collected: list[dict] = []
 
     # -- "event" frame: publish a bus event before connecting so it queues immediately.
-    bus = _Bus()
+    bus = EventBus()
     buf = LiveBuffer()
     app = FastAPI()
     # Use a very short ping_timeout so the heartbeat frame arrives quickly in CI.

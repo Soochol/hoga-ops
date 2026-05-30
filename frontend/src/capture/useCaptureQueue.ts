@@ -11,7 +11,7 @@ import {
 } from './useCalendar';
 import { phaseToCalendarStatus } from './phase';
 import { useCaptureTimings } from './timing/useCaptureTimings';
-import type { QueueItem, QueueSnapshot, SSEEvent } from '../api/types';
+import type { QueueItem, QueueSnapshot, PushEvent } from '../api/types';
 
 export const CAPTURE_QUEUE_QUERY_KEY = ['capture', 'queue'] as const;
 
@@ -54,7 +54,7 @@ export function useCaptureQueue() {
   });
 
   useEffect(() => {
-    const unsub = subscribeToCaptureEvents((e: SSEEvent) => {
+    const unsub = subscribeToCaptureEvents((e: PushEvent) => {
       if (e.type === 'capture_progress') {
         qc.setQueryData<QueueSnapshot>(CAPTURE_QUEUE_QUERY_KEY, (prev) =>
           prev ? patchQueueItem(prev, e.item_id, { progress: e.progress, phase: e.phase }) : prev,
