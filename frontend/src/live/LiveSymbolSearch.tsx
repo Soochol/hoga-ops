@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/refs -- false positives: rule v7 incorrectly flags (1) assigning a RefObject to JSX ref= (not a .current read), (2) spreading props objects from hooks that the rule tracks as "ref-containing", and (3) arrow functions passed to .map whose closure uses getOptionProps. All flagged patterns are idiomatic React; no actual .current read during render occurs. */
 import { useEffect, useMemo, useState } from 'react';
 import { useSymbolSearch } from '../capture/useSymbols';
 import { useSymbolCombobox } from '../symbols/useSymbolCombobox';
@@ -21,11 +20,13 @@ export function LiveSymbolSearch() {
   const addM = useAddToWatchlist();
   const removeM = useRemoveFromWatchlist();
 
+  const selectHit = (hit: SymbolHit) => { setActiveCode(hit.code); setQuery(''); };
+
   const combo = useSymbolCombobox<SymbolHit>({
     query,
     setQuery,
     items,
-    onSelect: (hit) => { setActiveCode(hit.code); setQuery(''); },
+    onSelect: selectHit,
     onEnterEmpty: (q) => {
       const t = q.trim();
       if (/^\d{6}$/.test(t)) { setActiveCode(t); setQuery(''); return true; }
@@ -61,6 +62,7 @@ export function LiveSymbolSearch() {
       >
         <span aria-hidden className="text-fg-dimmer text-sm">🔍</span>
         <input
+          // eslint-disable-next-line react-hooks/refs -- false positive: assigning a RefObject to ref= is not a .current read
           ref={combo.inputRef}
           role="combobox"
           aria-expanded={dropdownVisible}
@@ -68,6 +70,7 @@ export function LiveSymbolSearch() {
           type="text"
           placeholder="종목명 또는 코드 검색…"
           className="flex-1 bg-transparent text-fg text-sm outline-none placeholder:text-fg-dimmer"
+          // eslint-disable-next-line react-hooks/refs -- false positive: inputProps holds no ref, only value/onChange/onFocus/onKeyDown
           {...combo.inputProps}
         />
         <span className="ml-auto flex items-center gap-1 text-fg-dimmer text-xs">
@@ -78,6 +81,7 @@ export function LiveSymbolSearch() {
       {dropdownVisible && (
         <div
           id="live-symbol-search-list"
+          // eslint-disable-next-line react-hooks/refs -- false positive: listProps is only { role: 'listbox' }, no ref
           {...combo.listProps}
           style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
           className="absolute z-20 top-full left-0 right-0 mt-1 bg-bg-card border border-border-strong rounded-lg max-h-80 overflow-y-auto"
@@ -85,6 +89,7 @@ export function LiveSymbolSearch() {
           {items.length === 0 ? (
             <div className="py-3 px-2.5 text-sm text-fg-dim">검색 결과가 없습니다.</div>
           ) : (
+            // eslint-disable-next-line react-hooks/refs -- false positive: map callback closes over getOptionProps (props only), no render-time .current read
             items.map((hit, i) => {
               const member = memberCodes.has(hit.code);
               return (
@@ -92,8 +97,8 @@ export function LiveSymbolSearch() {
                   key={hit.code}
                   role="option"
                   {...combo.getOptionProps(i)}
-                  onClick={() => { setActiveCode(hit.code); setQuery(''); combo.setOpen(false); }}
-                  style={{ background: i === combo.highlightedIndex ? 'rgba(20,184,166,0.10)' : 'transparent' }}
+                  onClick={() => { selectHit(hit); combo.setOpen(false); }}
+                  style={{ background: i === combo.highlightedIndex ? 'var(--tint-selection)' : 'transparent' }}
                   className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center py-2 px-2.5 cursor-pointer"
                 >
                   <span className="text-sm text-fg">{hit.name}</span>
