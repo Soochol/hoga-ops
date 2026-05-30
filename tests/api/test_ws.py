@@ -63,6 +63,10 @@ def test_heartbeat_on_idle():
     with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:
         frame = ws.receive_json()
         assert frame == {"ch": "heartbeat"}
+        # Close from the client side before leaving the context so the server's
+        # rapid (50ms) heartbeat sender is torn down deterministically — avoids a
+        # CancelledError racing out of the portal on context exit (test-only flake).
+        ws.close()
 
 
 def test_unsubscribe_tears_down_code_subscription():
