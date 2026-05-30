@@ -49,12 +49,20 @@ describe('DayBoundaryOverlay', () => {
     expect(document.querySelectorAll('[data-day-boundary]').length).toBe(2);
   });
 
-  it('renders MM/DD chip text matching segment date', () => {
+  it('renders the divider only — no date chip (the adaptive x-axis owns dates)', () => {
     const axis = createVirtualAxis([
       { date: '20260512', sessionOpenMs: 1_000_000, sessionCloseMs: 2_000_000 },
       { date: '20260513', sessionOpenMs: 3_000_000, sessionCloseMs: 4_000_000 },
     ]);
-    render(<DayBoundaryOverlay chart={makeMockChart(() => 150)} axis={axis} />);
-    expect(screen.getByText('5/13')).toBeInTheDocument();
+    const { container } = render(
+      <DayBoundaryOverlay chart={makeMockChart(() => 150)} axis={axis} />,
+    );
+    // The MM/DD chip was removed (commit b6cd06f) — date/month labels are now
+    // rendered by the x-axis (util/kstHorzScaleBehavior). The boundary div is a
+    // bare divider with no text content.
+    expect(screen.queryByText('5/13')).not.toBeInTheDocument();
+    const boundary = container.querySelector('[data-day-boundary]');
+    expect(boundary).not.toBeNull();
+    expect(boundary?.textContent).toBe('');
   });
 });
