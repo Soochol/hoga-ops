@@ -237,9 +237,9 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     will reflect the running state.
 
     Idempotent: calling when already running stops the current task and
-    starts a fresh one (use case: watchlist changed and we want to pick
-    up new codes immediately — Stage 8 doesn't auto-restart on change yet,
-    that's a future enhancement).
+    starts a fresh one. Watchlist changes are propagated immediately by
+    ``refresh_live_poller`` (below), which the add/remove watchlist routes
+    call after mutating — that is the auto-restart that was formerly deferred.
     """
     import os
     from datetime import datetime, timedelta, timezone
