@@ -187,5 +187,5 @@ async def test_bus_publish_drops_with_warning_when_queue_full(
         bus.publish({"type": "heartbeat"})
 
     assert any(
-        "SSE queue full" in rec.message for rec in caplog.records
+        "event bus queue full" in rec.message for rec in caplog.records
     ), f"expected QueueFull warning in caplog records: {[r.message for r in caplog.records]}"

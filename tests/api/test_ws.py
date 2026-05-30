@@ -100,3 +100,69 @@ def test_unsubscribe_tears_down_code_subscription():
         # Exactly one live queue remains for the code — the unsubscribe removed
         # the old one before the re-subscribe added a new one.
         assert client.portal.call(lambda: len(buf._subscribers["005930"]) == 1)
+
+
+def test_frame_envelope_shapes():
+    """Pin the complete server→client frame contract in one place.
+
+    Server emits exactly four ``ch`` discriminants.  If a future dev adds a
+    fifth ch, this test is where they document it.  ws.ts's ``Frame`` union
+    must mirror these exactly (no codegen — ADR-0004).
+
+    Expected shapes per ch:
+      - "event"      → {"ch": "event",      "data": {...}}
+      - "subscribed" → {"ch": "subscribed", "code": <str>}
+      - "live"       → {"ch": "live",       "code": <str>, "data": {...}}
+      - "heartbeat"  → {"ch": "heartbeat"}
+    """
+    collected: list[dict] = []
+
+    # -- "event" frame: publish a bus event before connecting so it queues immediately.
+    bus = _Bus()
+    buf = LiveBuffer()
+    app = FastAPI()
+    # Use a very short ping_timeout so the heartbeat frame arrives quickly in CI.
+    app.include_router(build_ws_router(bus, lambda: buf, ping_timeout_s=0.05))
+
+    with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:
+        assert client.portal is not None
+
+        # Drive "event" frame.
+        bus.publish({"type": "inventory_added", "code": "000660", "date": "20260530"})
+        event_frame = ws.receive_json()
+        assert event_frame["ch"] == "event"
+        assert "data" in event_frame
+        collected.append(event_frame)
+
+        # Drive "subscribed" ack frame.
+        ws.send_json({"action": "subscribe", "code": "000660"})
+        sub_frame = ws.receive_json()
+        assert sub_frame["ch"] == "subscribed"
+        assert "code" in sub_frame
+        collected.append(sub_frame)
+
+        # Drive "live" frame.
+        client.portal.call(
+            buf.publish,
+            "000660",
+            [LiveSnapshot(t_ms=200, kind=SnapshotKind.OB, payload={"total_bid_qty": 9})],
+        )
+        live_frame = ws.receive_json()
+        assert live_frame["ch"] == "live"
+        assert "code" in live_frame
+        assert "data" in live_frame
+        collected.append(live_frame)
+
+        # Drive "heartbeat" frame: wait for the 50 ms idle timeout.
+        hb_frame = ws.receive_json()
+        assert hb_frame == {"ch": "heartbeat"}
+        collected.append(hb_frame)
+
+        ws.close()  # deterministic teardown before context exit
+
+    # Assert the complete set of ch discriminants is exactly the documented contract.
+    observed_chs = {f["ch"] for f in collected}
+    assert observed_chs == {"event", "subscribed", "live", "heartbeat"}, (
+        "Server emitted an undocumented ch discriminant or a documented one is missing. "
+        "Update ws.ts's Frame union and this set to match."
+    )

@@ -224,7 +224,6 @@ export type SSEEvent =
       total_skipped: number;
     }
   | CaptureTimingEvent
-  | { type: 'heartbeat' }
   | { type: 'connected' }
   | { type: 'disconnected' };
 

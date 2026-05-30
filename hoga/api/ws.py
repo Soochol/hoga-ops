@@ -8,7 +8,10 @@ Data sources are unchanged — this is a wire-transport layer only.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, WebSocket
 
@@ -37,7 +40,8 @@ def build_ws_router(
             try:
                 out.put_nowait(frame)
             except asyncio.QueueFull:
-                pass  # slow client: drop (matches _Bus / LiveBuffer semantics)
+                # Slow client: log so the consistency gap is visible (mirrors _Bus.publish).
+                logger.warning("WS send queue full, dropped frame: %s", frame.get("ch"))
 
         async def pump_event() -> None:
             while True:
