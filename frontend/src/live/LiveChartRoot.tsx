@@ -405,13 +405,15 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
           toMs: axis.toReal((vr.to as number) * 1000),
         };
       }
-      const axisEarliestDate = realMsToYyyymmdd(axis.segments[0].sessionOpenMs);
+      // SR-3: the holiday-span / monotonic-decrease backfill policy lives in
+      // the pure nextHistoricalFrom kernel (liveDateTime, table-tested). This
+      // effect keeps only the imperative shell: trigger gate, anchor capture,
+      // debounce, store dispatch.
       const cur = useLivePageStore.getState().historicalFromDate;
-      const baseDate = cur !== null && cur < axisEarliestDate ? cur : axisEarliestDate;
-      const nextHistoricalFrom = subtractDaysKst(baseDate, prefetchChunkDaysFor(timeframe));
+      const nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe);
       if (timeoutId !== null) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
-        useLivePageStore.getState().extendHistoricalRange(nextHistoricalFrom);
+        useLivePageStore.getState().extendHistoricalRange(nextFrom);
       }, 150);
     };
     ts.subscribeVisibleLogicalRangeChange(handler);

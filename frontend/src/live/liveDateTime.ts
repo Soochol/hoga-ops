@@ -131,3 +131,31 @@ export function initialHistoricalDaysFor(tf: LiveTimeframe): number {
 export function prefetchChunkDaysFor(tf: LiveTimeframe): number {
   return candleTargetToCalendarDays(prefetchChunkCandlesFor(tf), tf);
 }
+
+/** /live infinite-scroll backfill policy (SR-3), extracted pure from
+ * LiveChartRoot's subscribeVisibleLogicalRangeChange effect.
+ *
+ * Given where the axis currently starts (`axisEarliestMs`, real Unix ms — the
+ * first segment's session open) and the date already requested
+ * (`historicalFromDate`, or null before any extension), returns the YYYYMMDD
+ * the next leftward chunk should fetch back to.
+ *
+ * Base date: prefer `historicalFromDate` when it is strictly earlier than the
+ * axis earliest. A chunk that lands on a holiday-only span (e.g. Lunar New
+ * Year) leaves `axis.segments[0]` put, so basing off the axis would recompute
+ * the same target and the store's monotonic guard would freeze extension.
+ * Basing off `historicalFromDate` steps another chunk back regardless of
+ * whether the server returned new trading days for the prior chunk. The result
+ * is always strictly earlier than the base, so feeding it back is monotonic. */
+export function nextHistoricalFrom(
+  axisEarliestMs: number,
+  historicalFromDate: string | null,
+  tf: LiveTimeframe,
+): string {
+  const axisEarliestDate = realMsToYyyymmdd(axisEarliestMs);
+  const baseDate =
+    historicalFromDate !== null && historicalFromDate < axisEarliestDate
+      ? historicalFromDate
+      : axisEarliestDate;
+  return subtractDaysKst(baseDate, prefetchChunkDaysFor(tf));
+}
