@@ -190,7 +190,14 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     const el = containerRef.current;
     if (!el) return;
     const tokens = resolveTokens(TOKEN_SPEC);
-    const c = createChartEx(el, createKstHorzScaleBehavior(axisRef), {
+    // Explicit generics pin HorzScaleItem=Time: without them createChartEx
+    // infers `unknown` and the IHorzScaleBehavior<Time> instance no longer
+    // matches. The behavior's options() override (TimeChartOptions) is what
+    // makes timeScale.tickMarkFormatter typecheck below.
+    const c = createChartEx<Time, ReturnType<typeof createKstHorzScaleBehavior>>(
+      el,
+      createKstHorzScaleBehavior(axisRef),
+      {
       ...CHART_LAYOUT_OPTIONS,
       width: el.clientWidth,
       height: el.clientHeight,
