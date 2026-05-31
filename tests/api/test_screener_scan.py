@@ -79,3 +79,23 @@ def test_ma_below(tmp_path):
     leaf = MaLeaf(id="m", params=MaParams(period=20, relation="below"))
     out = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
     assert [r.code for r in out] == ["000111"]
+
+
+from hoga.api.models import NewHighLeaf, BreakoutParams
+
+def test_repeated_new_high_and(tmp_path):
+    # 005930: 강한 신고가(긴/짧은 윈도우 모두), 000660: 단기 신고가만 → AND(둘 다)면 005930만.
+    long5 = [("005930", f"2026-04-{d:02d}", 0, 100 + d, 0, 100 + d, 1) for d in range(1, 26)]  # 꾸준 신고가
+    short = [("000660", f"2026-04-{d:02d}", 0, 100, 0, 100, 1) for d in range(1, 24)] + [("000660", "2026-04-25", 0, 130, 0, 130, 1)]
+    adj, stk = _seed(tmp_path, rows=long5 + short,
+        stocks=[("005930","a","KOSPI",False,False),("000660","b","KOSPI",False,False)])
+    leaves = [NewHighLeaf(id="h1", params=BreakoutParams(lookback=20, period=20)),
+              NewHighLeaf(id="h2", params=BreakoutParams(lookback=5, period=5))]
+    out = screener_scan.run_scan(adj, stk, conditions=leaves, universe=ScreenerUniverse())
+    assert "005930" in [r.code for r in out]
+
+def test_code_roundtrip_leading_zero(tmp_path):
+    adj, stk = _seed(tmp_path, rows=[("005930", "2026-05-30", 0, 0, 0, 100, 9_999_999)],
+        stocks=[("005930", "삼성전자", "KOSPI", False, False)])
+    out = screener_scan.run_scan(adj, stk, conditions=[], universe=ScreenerUniverse())
+    assert out[0].code == "005930"            # VARCHAR preserved, not 5930
