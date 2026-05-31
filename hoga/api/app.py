@@ -179,7 +179,7 @@ def create_app(data_dir: Path) -> FastAPI:
             "http://localhost:5173",
             "http://127.0.0.1:5173",
         ],
-        allow_methods=["GET", "POST", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["*"],
     )
     # Liveness probe. Used by the Playwright e2e webServer config and by any
