@@ -1,36 +1,10 @@
 import pytest
-from pydantic import ValidationError
+from pydantic import ValidationError, TypeAdapter
 from hoga.api.models import (
-    BreakoutHit, BreakoutMiss, ScreenerRow, ScreenerResponse,
-    ScreenerStatusFile, BreakoutFilter,
+    ScreenerResponse, ScreenerStatusFile, ConditionLeaf,
+    ScanRequest, ScreenerRow, SavedScreener, ScreenerSaveWriteRequest,
 )
 
-def test_breakout_hit_requires_fields():
-    h = BreakoutHit(hit=True, event_date="20260514", days_ago=3, period_extreme=323000)
-    assert h.hit is True and h.days_ago == 3
-
-def test_breakout_miss_is_bare():
-    m = BreakoutMiss(hit=False)
-    assert m.hit is False
-
-def test_screener_row_code_is_str_leading_zero():
-    row = ScreenerRow(
-        code="005930", name="삼성전자", market="KOSPI", price=317000,
-        trade_value_won=11699639541368, change_pct=5.84,
-        new_high=BreakoutHit(hit=True, event_date="20260514", days_ago=0, period_extreme=323000),
-        new_high_vol=BreakoutMiss(hit=False),
-    )
-    assert row.code == "005930"
-
-def test_screener_row_code_rejects_non_6digit():
-    with pytest.raises(ValidationError):
-        ScreenerRow(code="5930", name="x", market="KOSPI", price=1,
-                    trade_value_won=1, change_pct=None, new_high=None, new_high_vol=None)
-
-def test_breakout_filter_bounds():
-    BreakoutFilter(lookback=200, period=500)
-    with pytest.raises(ValidationError):
-        BreakoutFilter(lookback=0, period=500)
 
 def test_screener_response_status_discriminates_empty():
     r = ScreenerResponse(status="not_seeded", rows=[])
@@ -43,9 +17,6 @@ def test_status_file_schema_version():
 
 
 # === A1: condition leaf discriminated union + param validators ===
-
-from pydantic import TypeAdapter
-from hoga.api.models import ConditionLeaf
 
 _A = TypeAdapter(ConditionLeaf)
 
@@ -70,3 +41,21 @@ def test_price_range_needs_at_least_one_bound():
 def test_ma_relation_literal():
     with pytest.raises(ValidationError):
         _A.validate_python({"id": "x", "type": "ma", "params": {"period": 20, "relation": "sideways"}})
+
+
+# === A2: ScanRequest / flat ScreenerRow / saved-screener models ===
+
+def test_scan_request_defaults():
+    r = ScanRequest.model_validate({"conditions": [], "universe": {}})
+    assert r.limit == 1000 and r.universe.markets == []
+
+def test_screener_row_is_flat_no_matches():
+    row = ScreenerRow(code="005930", name="삼성전자", market="KOSPI",
+                      price=74200, trade_value_won=842_000_000_000, change_pct=5.8)
+    assert not hasattr(row, "new_high") and not hasattr(row, "matches")
+
+def test_saved_screener_roundtrip():
+    req = ScreenerSaveWriteRequest(name="급등주", conditions=[
+        {"id": "a", "type": "new_high", "params": {"lookback": 200, "period": 500}}], universe={})
+    s = SavedScreener(id="srv1", created_at_ms=1, updated_at_ms=1, **req.model_dump())
+    assert s.conditions[0].type == "new_high" and s.created_at_ms == 1

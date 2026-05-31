@@ -660,45 +660,6 @@ class CaptureTimingEvent(BaseModel):
 # === Screener Wire Models ===
 
 
-class BreakoutHit(BaseModel):
-    """Lookback Window 안에서 Record Period 신고 발생(CONTEXT.md Breakout)."""
-
-    hit: Literal[True] = True
-    event_date: str = Field(pattern=r"^\d{8}$")   # YYYYMMDD, 가장 최근 돌파일
-    days_ago: int = Field(ge=0)                    # 거래일 기준
-    period_extreme: int                            # 신고가=기간 최고가 / 신고거래량=기간 최대거래량
-
-
-class BreakoutMiss(BaseModel):
-    hit: Literal[False] = False
-
-
-Breakout = Annotated[Union[BreakoutHit, BreakoutMiss], Field(discriminator="hit")]
-
-
-class ScreenerRow(BaseModel):
-    code: str = Field(pattern=r"^\d{6}$")          # 6자리 문자열, leading-zero 유지
-    name: str
-    market: Literal["KOSPI", "KOSDAQ"]
-    price: int
-    trade_value_won: int
-    change_pct: float | None
-    new_high: Breakout | None                      # 필터 off면 None
-    new_high_vol: Breakout | None
-
-
-class ScreenerResponse(BaseModel):
-    status: Literal["ok", "not_seeded", "building"]
-    rows: list[ScreenerRow]
-
-
-class BreakoutFilter(BaseModel):
-    """신고가·신고거래량이 공유하는 돌파 필터(신고가 전용 아님)."""
-
-    lookback: int = Field(ge=1)                    # N: Lookback Window
-    period: int = Field(ge=1)                      # M: Record Period
-
-
 class ScreenerStatusFile(BaseModel):
     """디스크 status.json (Stock-Date capture meta.json 과 별개)."""
 
@@ -785,3 +746,43 @@ ConditionLeaf = Annotated[
     Union[TradeValueLeaf, NewHighLeaf, NewHighVolLeaf, ChangePctLeaf, PriceRangeLeaf, MaLeaf],
     Field(discriminator="type"),
 ]
+
+
+# === Saved-screener scan request / response / persistence models ===
+
+class ScreenerUniverse(BaseModel):
+    markets: list[Literal["KOSPI", "KOSDAQ"]] = Field(default_factory=list)
+    exclude_etf: bool = False
+    exclude_halted: bool = False
+
+class ScanRequest(BaseModel):
+    conditions: list[ConditionLeaf] = Field(default_factory=list)
+    universe: ScreenerUniverse = Field(default_factory=ScreenerUniverse)
+    limit: int = Field(1000, ge=1, le=2000)
+
+class ScreenerRow(BaseModel):                          # 평면형 — 조건 배지 없음
+    code: str = Field(pattern=r"^\d{6}$")
+    name: str
+    market: Literal["KOSPI", "KOSDAQ"]
+    price: int
+    trade_value_won: int
+    change_pct: float | None
+
+class ScreenerResponse(BaseModel):
+    status: Literal["ok", "not_seeded", "building"]
+    rows: list[ScreenerRow]
+    warnings: list[str] = Field(default_factory=list)
+
+class ScreenerSaveWriteRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    conditions: list[ConditionLeaf] = Field(default_factory=list)
+    universe: ScreenerUniverse = Field(default_factory=ScreenerUniverse)
+
+class SavedScreener(ScreenerSaveWriteRequest):
+    id: str
+    created_at_ms: int
+    updated_at_ms: int
+
+class SavedScreenersFile(BaseModel):
+    schema_version: int = 1
+    saves: list[SavedScreener] = Field(default_factory=list)
