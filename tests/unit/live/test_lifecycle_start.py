@@ -200,3 +200,95 @@ async def test_start_live_poller_cold_cache_polls_all_codes(
     assert result is True
     assert lifecycle.get_status().watchlist_count == 1  # 489790 was NOT filtered
     await lifecycle.stop_live_poller()
+
+
+@pytest.mark.asyncio
+async def test_refresh_live_poller_picks_up_new_codes(tmp_path: Path, monkeypatch) -> None:
+    """refresh after a watchlist mutation re-syncs the poller's tracked codes."""
+    import json
+    from hoga.live import lifecycle, poller as poller_module
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setenv("KIS_APP_KEY", "K")
+    monkeypatch.setenv("KIS_APP_SECRET", "S")
+
+    async def fake_run_forever(self):
+        while True:
+            await asyncio.sleep(60)
+    monkeypatch.setattr(poller_module.LivePoller, "run_forever", fake_run_forever)
+
+    def write_wl(codes: list[str]) -> None:
+        (tmp_path / "watchlist.json").write_text(json.dumps({
+            "version": 1,
+            "entries": [
+                {"code": c, "name": c, "registered_at_kst_date": "20260101",
+                 "last_success_date": None} for c in codes
+            ],
+        }))
+
+    write_wl(["005930"])
+    await lifecycle.refresh_live_poller(data_dir=tmp_path)
+    assert lifecycle.get_active_codes() == ["005930"]
+
+    write_wl(["005930", "000660"])
+    await lifecycle.refresh_live_poller(data_dir=tmp_path)
+    assert set(lifecycle.get_active_codes()) == {"005930", "000660"}
+    await lifecycle.stop_live_poller()
+
+
+@pytest.mark.asyncio
+async def test_refresh_live_poller_stops_on_empty(tmp_path: Path, monkeypatch) -> None:
+    """Removing the last code must STOP the poller (start alone early-returns
+    without stopping, leaving a stale poller on the old codes)."""
+    import json
+    from hoga.live import lifecycle, poller as poller_module
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setenv("KIS_APP_KEY", "K")
+    monkeypatch.setenv("KIS_APP_SECRET", "S")
+
+    async def fake_run_forever(self):
+        while True:
+            await asyncio.sleep(60)
+    monkeypatch.setattr(poller_module.LivePoller, "run_forever", fake_run_forever)
+
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "version": 1,
+        "entries": [{"code": "005930", "name": "삼성전자",
+                     "registered_at_kst_date": "20260101", "last_success_date": None}],
+    }))
+    await lifecycle.refresh_live_poller(data_dir=tmp_path)
+    assert lifecycle.get_status().running is True
+
+    # Simulate "removed the last entry".
+    (tmp_path / "watchlist.json").write_text(json.dumps({"version": 1, "entries": []}))
+    await lifecycle.refresh_live_poller(data_dir=tmp_path)
+    assert lifecycle.get_status().running is False
+
+
+@pytest.mark.asyncio
+async def test_refresh_live_poller_preserves_buffer(tmp_path: Path, monkeypatch) -> None:
+    """A refresh must not swap out the snapshot buffer (♥ toggles must not drop
+    accumulated live snapshots)."""
+    import json
+    from hoga.live import lifecycle, poller as poller_module
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setenv("KIS_APP_KEY", "K")
+    monkeypatch.setenv("KIS_APP_SECRET", "S")
+
+    async def fake_run_forever(self):
+        while True:
+            await asyncio.sleep(60)
+    monkeypatch.setattr(poller_module.LivePoller, "run_forever", fake_run_forever)
+
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "version": 1,
+        "entries": [{"code": "005930", "name": "삼성전자",
+                     "registered_at_kst_date": "20260101", "last_success_date": None}],
+    }))
+    await lifecycle.refresh_live_poller(data_dir=tmp_path)
+    buf_before = lifecycle.get_buffer()
+    await lifecycle.refresh_live_poller(data_dir=tmp_path)
+    assert lifecycle.get_buffer() is buf_before
+    await lifecycle.stop_live_poller()

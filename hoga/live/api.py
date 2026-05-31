@@ -1,8 +1,6 @@
 """FastAPI router for Live Capture endpoints (spec §6)."""
 from __future__ import annotations
 
-import asyncio
-import json as _json
 import re
 from collections.abc import Awaitable
 from datetime import date, datetime, time, timedelta, timezone
@@ -11,8 +9,6 @@ from typing import TYPE_CHECKING, Callable, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from sse_starlette.sse import EventSourceResponse
-
 from hoga.live.kis_client import KisApiError, KisRateLimitError
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
@@ -222,26 +218,6 @@ def build_router(
             "session_close_ms": None,
             "is_open": True,
         }
-
-    @router.get("/stream")
-    async def _get_stream(code: str) -> EventSourceResponse:
-        if get_buffer is None:
-            raise HTTPException(503, "live buffer not wired")
-        buf = get_buffer()
-        q = buf.subscribe(code)
-
-        async def stream():
-            try:
-                while True:
-                    try:
-                        entry = await asyncio.wait_for(q.get(), timeout=30.0)
-                        yield {"event": "live_snapshot", "data": _json.dumps(entry)}
-                    except asyncio.TimeoutError:
-                        yield {"event": "heartbeat", "data": ""}
-            finally:
-                buf.unsubscribe(code, q)
-
-        return EventSourceResponse(stream())
 
     cache_instance: PastCandlesCache | None = (
         PastCandlesCache(data_dir=data_dir) if data_dir is not None else None

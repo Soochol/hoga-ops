@@ -79,7 +79,6 @@ const INDICATORS_STORAGE_KEY = 'live.indicators.v1';
 type Persisted = {
   activeCode: string | null;
   candleTimeframe: LiveTimeframe;
-  watchlistPanelOpen: boolean;
   /** Earliest stock-date the user has scrolled into (YYYYMMDD). null = today
    * only (no /api/range call needed yet). Resets when activeCode or timeframe
    * changes. */
@@ -98,8 +97,6 @@ type PersistedIndicators = {
 type Store = Persisted & PersistedIndicators & {
   setActiveCode: (code: string | null) => void;
   setCandleTimeframe: (tf: LiveTimeframe) => void;
-  toggleWatchlistPanel: () => void;
-  setWatchlistPanelOpen: (open: boolean) => void;
   extendHistoricalRange: (date: string) => void;
   resetHistoricalRange: () => void;
   hydrateFromStorage: () => void;
@@ -112,7 +109,6 @@ type Store = Persisted & PersistedIndicators & {
 const DEFAULTS: Persisted = {
   activeCode: null,
   candleTimeframe: '1m',
-  watchlistPanelOpen: false,
   historicalFromDate: null,
 };
 
@@ -269,17 +265,6 @@ export const useLivePageStore = create<Store>((set, get) => ({
   resetHistoricalRange: () => {
     set({ historicalFromDate: null });
     persist({ ...get(), historicalFromDate: null });
-  },
-
-  toggleWatchlistPanel: () => {
-    const next = !get().watchlistPanelOpen;
-    set({ watchlistPanelOpen: next });
-    persist({ ...get(), watchlistPanelOpen: next });
-  },
-
-  setWatchlistPanelOpen: (open) => {
-    set({ watchlistPanelOpen: open });
-    persist({ ...get(), watchlistPanelOpen: open });
   },
 
   hydrateFromStorage: () => {

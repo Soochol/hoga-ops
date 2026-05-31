@@ -1,16 +1,14 @@
-"""Inventory push channel via SSE + watchdog directory observer."""
+"""Inventory event bus + watchdog directory observer (ADR-0053: push moved to WS)."""
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter
-from sse_starlette.sse import EventSourceResponse
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
+from watchdog.observers.api import BaseObserver
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +23,7 @@ def classify_inventory_event(
     kind: WatchdogKind,
 ) -> dict | None:
     """Decide whether a watchdog filesystem event should produce an
-    inventory_* SSE event, and build the payload if so.
+    inventory_* event, and build the payload if so.
 
     Returns None when the event is irrelevant (wrong path, wrong depth,
     or wrong kind/is_directory combination). Returns a payload dict
@@ -64,7 +62,7 @@ def classify_inventory_event(
     return None
 
 
-class _Bus:
+class EventBus:
     def __init__(self) -> None:
         self.queues: set[asyncio.Queue] = set()
 
@@ -82,13 +80,13 @@ class _Bus:
                 q.put_nowait(evt)
             except asyncio.QueueFull:
                 # Slow subscriber: log so the consistency gap is visible.
-                logger.warning("SSE queue full, dropped event: %s", evt)
+                logger.warning("event bus queue full, dropped event: %s", evt)
 
 
 class _InventoryHandler(FileSystemEventHandler):
     def __init__(
         self,
-        bus: _Bus,
+        bus: EventBus,
         parquet_root: Path,
         loop: asyncio.AbstractEventLoop | None,
     ) -> None:
@@ -131,33 +129,17 @@ class _InventoryHandler(FileSystemEventHandler):
         )
 
 
-def build_sse(parquet_root: Path) -> tuple[APIRouter, _Bus, Observer]:
-    bus = _Bus()
-    router = APIRouter()
+def build_event_bus(parquet_root: Path) -> tuple[EventBus, BaseObserver, _InventoryHandler]:
+    """Create the inventory event bus + watchdog observer (no HTTP route).
 
-    # Loop is captured at request time when a real running loop exists.
+    The push channel moved to the WebSocket transport (ADR-0053); this builder
+    only wires the data source. ``handler.loop`` is bound by the FastAPI
+    lifespan once a running loop exists (the removed ``/api/events`` route used
+    to bind it lazily).
+    """
+    bus = EventBus()
     handler = _InventoryHandler(bus, parquet_root, loop=None)
     observer = Observer()
     parquet_root.mkdir(parents=True, exist_ok=True)
     observer.schedule(handler, str(parquet_root), recursive=True)
-
-    @router.get("/api/events")
-    async def events():
-        # Bind the watchdog handler to the loop that is actually serving requests.
-        handler.loop = asyncio.get_running_loop()
-
-        async def stream():
-            q = bus.subscribe()
-            try:
-                while True:
-                    try:
-                        evt = await asyncio.wait_for(q.get(), timeout=30.0)
-                        yield {"event": evt["type"], "data": json.dumps(evt)}
-                    except asyncio.TimeoutError:
-                        yield {"event": "heartbeat", "data": ""}
-            finally:
-                bus.unsubscribe(q)
-
-        return EventSourceResponse(stream())
-
-    return router, bus, observer
+    return bus, observer, handler

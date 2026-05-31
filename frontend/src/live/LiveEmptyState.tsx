@@ -45,10 +45,11 @@ export function LiveEmptyState({ cause }: Props) {
     >
       <div className="text-center">
         <p style={{ fontSize: 'var(--text-md)', color: 'var(--fg-dim)' }}>
-          관심종목을 선택해주세요
+          <kbd className="bg-bg-input border border-border rounded px-1.5 py-0.5 font-mono">/</kbd>
+          {' '}를 눌러 종목을 검색하세요
         </p>
         <p style={{ fontSize: 'var(--text-sm)', marginTop: 'var(--space-sm)' }}>
-          우측 ★ 토글로 관심종목 패널을 여세요
+          최근 본 종목이 있으면 자동으로 불러옵니다
         </p>
       </div>
     </div>

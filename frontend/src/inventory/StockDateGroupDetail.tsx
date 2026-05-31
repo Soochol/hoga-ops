@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { StockDate } from '../api/types';
-import { useStockDateGroups } from './useStockDateGroups';
+import type { StockDateGroup } from './types';
 import { fmtDate, fmtTime, fmtSize, fmtOHLC, fmtVolume } from './format';
 import { DiskStateBadge, isRecapturable } from './DiskStateBadge';
 import { sortDates, nextSortState, type SortKey, type SortState } from './sortDates';
@@ -8,19 +7,13 @@ import { useInventoryRecapture } from './useInventoryRecapture';
 import { useInventoryUnblock } from './useInventoryUnblock';
 import { RecaptureActionBar } from './RecaptureActionBar';
 import { useCaptureQueue } from '../capture/useCaptureQueue';
+import { FullCaptureCountBadge } from '../ui/FullCaptureCountBadge';
 
 type Props = {
-  rows: StockDate[];
-  selectedCode: string | null;
+  group: StockDateGroup | null;
 };
 
-export function StockDateGroupDetail({ rows, selectedCode }: Props) {
-  const groups = useStockDateGroups(rows, '');
-  const group = useMemo(() => {
-    if (selectedCode === null) return null;
-    return groups.find((g) => g.code === selectedCode) ?? groups[0] ?? null;
-  }, [groups, selectedCode]);
-
+export function StockDateGroupDetail({ group }: Props) {
   const [sort, setSort] = useState<SortState>(null);
   const sortedDates = useMemo(
     () => (group ? sortDates(group.dates, sort) : []),
@@ -123,7 +116,7 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
               // ADR-0042 row tint: blocked rows pick up DESIGN.md error chip
               // bg (#F43F5E @ 10%) so the row itself signals "not normal".
               const trClass = r.blocked
-                ? 'border-b bg-[rgba(244,63,94,0.10)]'
+                ? 'border-b bg-tint-error'
                 : 'border-b';
               return (
                 <tr
@@ -237,26 +230,6 @@ function UnblockCell({ onClick, isPending }: { onClick: () => void; isPending: b
         잠금 해제
       </button>
     </div>
-  );
-}
-
-function FullCaptureCountBadge({ n }: { n: number | null }) {
-  // Legacy (null) is rendered as ×1 — every Stock-Date on disk has been
-  // captured at least once by construction, so a missing counter is a
-  // lower-bound claim, not "unknown". Tooltip stays honest about the
-  // distinction so a curious user can still see which is which.
-  const effective = n ?? 1;
-  const tone = effective >= 2
-    ? 'text-fg-dim border-[var(--fg-dim)]'
-    : 'text-fg-dimmer border-[var(--fg-dimmer)]';
-  const title = n === null
-    ? 'Full Capture 횟수 미기록 (≥1로 간주)'
-    : `Full Capture 누적 ${n}회`;
-  return (
-    <span
-      title={title}
-      className={`text-badge rounded-md px-[0.15rem] border ${tone} font-mono tabular-nums`}
-    >×{effective}</span>
   );
 }
 

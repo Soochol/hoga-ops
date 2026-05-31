@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent, cleanup } from '@testing-library/react';
 import { useLiveKeyboard } from './useLiveKeyboard';
-import { useLivePageStore } from '../state/livePage';
+import { useRightRailStore } from '../state/rightRail';
 
 function Harness({ onNextCode, onPrevCode }: { onNextCode?: () => void; onPrevCode?: () => void }) {
   useLiveKeyboard({ onNextCode, onPrevCode });
@@ -16,11 +16,7 @@ function HarnessWithInput({ onNextCode }: { onNextCode?: () => void }) {
 describe('useLiveKeyboard', () => {
   beforeEach(() => {
     cleanup();
-    useLivePageStore.setState({
-      activeCode: null,
-      candleTimeframe: '1m',
-      watchlistPanelOpen: false,
-    });
+    useRightRailStore.setState({ panelOpen: false });
   });
 
   it('j triggers onNextCode', () => {
@@ -39,21 +35,21 @@ describe('useLiveKeyboard', () => {
 
   it('w toggles watchlist panel', () => {
     render(<Harness />);
-    expect(useLivePageStore.getState().watchlistPanelOpen).toBe(false);
+    expect(useRightRailStore.getState().panelOpen).toBe(false);
     fireEvent.keyDown(window, { key: 'w' });
-    expect(useLivePageStore.getState().watchlistPanelOpen).toBe(true);
+    expect(useRightRailStore.getState().panelOpen).toBe(true);
     fireEvent.keyDown(window, { key: 'w' });
-    expect(useLivePageStore.getState().watchlistPanelOpen).toBe(false);
+    expect(useRightRailStore.getState().panelOpen).toBe(false);
   });
 
   it('Escape closes panel only when open', () => {
     render(<Harness />);
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(useLivePageStore.getState().watchlistPanelOpen).toBe(false);
+    expect(useRightRailStore.getState().panelOpen).toBe(false);
 
-    useLivePageStore.setState({ watchlistPanelOpen: true } as any);
+    useRightRailStore.setState({ panelOpen: true });
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(useLivePageStore.getState().watchlistPanelOpen).toBe(false);
+    expect(useRightRailStore.getState().panelOpen).toBe(false);
   });
 
   it('ignores shortcuts when focus is in an input', () => {

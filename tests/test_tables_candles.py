@@ -49,6 +49,37 @@ def test_parquet_schema_columns() -> None:
         assert col in names
 
 
+def test_write_parquet_is_atomic_on_replace_failure(tmp_path: Path, monkeypatch) -> None:
+    """A failed write must leave a pre-existing candles.parquet intact.
+
+    Regression guard (architecture-review QW-1): candles.write_parquet must
+    route through the shared atomic-write helper (tempfile + os.replace) like
+    its sibling tables, so a crash mid-write can never expose a torn or
+    zero-length parquet to a concurrent reader. With the old in-place
+    pq.write_table the target was overwritten/torn on failure; with os.replace
+    the original survives untouched.
+    """
+    out = tmp_path / "candles.parquet"
+    write_parquet([Candle(ts_ms=1, open_=1, close_=1, high=1, low=1, vol_a=1, vol_b=1)], out)
+
+    import hoga.api._atomic_write as aw
+
+    def _boom(_src, _dst):
+        raise OSError("simulated crash during atomic replace")
+
+    monkeypatch.setattr(aw.os, "replace", _boom)
+
+    raised = False
+    try:
+        write_parquet([Candle(ts_ms=2, open_=2, close_=2, high=2, low=2, vol_a=2, vol_b=2)], out)
+    except OSError:
+        raised = True
+    assert raised, "write_parquet must use os.replace (atomic); a failed replace should propagate"
+
+    rows = query_all(duckdb.connect(), path=out)
+    assert [r.ts_ms for r in rows] == [1], "original parquet must survive a failed write intact"
+
+
 def test_write_parquet_sorts_ascending(tmp_path: Path) -> None:
     p = 281000
     candles = [

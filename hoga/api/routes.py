@@ -10,15 +10,16 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 
 from hoga.api.bundle import build_range_bundle
-from hoga.api.cursor import cursor_to_native
 from hoga.api.models import (
     BrokerSeriesResponse,
     CandlesResponse,
     Meta,
     OrderbookResponse,
     RangeBundle,
-    StockDate as StockDateModel,
     validate_bucket_ms,
+)
+from hoga.api.models import (
+    StockDate as StockDateModel,
 )
 from hoga.api.params import Code, StockDate
 from hoga.api.queries import QueryEngine, StockDateNotFound
@@ -26,6 +27,7 @@ from hoga.api.sources import SourceName, resolve_source
 from hoga.api.timeenc import (
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
+    unix_ms_to_hhmmssms,
 )
 from hoga.tables import brokers as brokers_tbl
 from hoga.tables import candles as candles_tbl
@@ -68,6 +70,21 @@ def _resolved_parquet_dir(
     except StockDateNotFound:
         return None, source
     return sd_dir, source
+
+
+def _cursor_to_native(date: str, unix_ms: int) -> int:
+    """Translate a request **Cursor** (Unix-ms, ADR-0003) into the native
+    HHMMSSmmm encoding the snapshot/trade/broker tables store.
+
+    Out-of-day cursors (a cursor falling on a different Stock-Date than
+    ``date``) become HTTP 400 instead of leaking ``timeenc``'s ValueError
+    as a 500. ``timeenc`` stays pure (no FastAPI dependency); the HTTP
+    mapping lives at this route-handler seam.
+    """
+    try:
+        return unix_ms_to_hhmmssms(date, unix_ms)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def build_router(engine: QueryEngine) -> APIRouter:
@@ -133,7 +150,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
             cutoff_unix = t + bucket_ms - 1
         else:
             cutoff_unix = t
-        raw_t = cursor_to_native(date, cutoff_unix)
+        raw_t = _cursor_to_native(date, cutoff_unix)
         snap = snapshots_tbl.query_at(engine.conn, path=path, t_ms=raw_t)
         if snap is None:
             first_ts = snapshots_tbl.query_first_ts(engine.conn, path=path)

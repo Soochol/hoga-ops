@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { apiCall, apiUrl } from './client';
+import { apiCall } from './client';
+import { subscribeLive } from './ws';
+import type { LiveSnapshotEntry } from './types';
 import { LiveSnapshotBuffer, type SnapshotKind } from '../live/liveSnapshotBuffer';
+import type { ObSnapshot, TradeSnapshot } from '../live/bucketHogaSeries';
+import { unixMsToKSTDate } from '../util/time';
 
 export interface LiveSeriesResponse {
   code: string;
@@ -16,33 +20,29 @@ export interface LiveSeriesResponse {
 
 /** Return shape of useLiveSeries. Lifted to a named type so the single-call
  * site (LivePage) can thread the value through useLiveBundle + LiveSidebar
- * as a prop. Two separate useLiveSeries calls would open two SSE connections
+ * as a prop. Two separate useLiveSeries calls would open two WebSocket subscriptions
  * and two independent buffers — HMR re-mounts cleared one but not the other,
  * leaving the sidebar's LATEST mode showing the empty-buffer state. */
 export interface LiveSeriesData {
   initial: LiveSeriesResponse | undefined;
   isLoading: boolean;
   error: unknown;
-  ob: ReadonlyArray<Record<string, unknown>>;
-  trade: ReadonlyArray<Record<string, unknown>>;
+  // ob/trade are narrowed to the shapes their consumers read (SR-1). The SSE
+  // entries genuinely carry these fields (the poller's typed builders write
+  // them); ObSnapshot/TradeSnapshot keep an index signature so the buffer's
+  // structurally-untyped rows assign without an `as unknown as` double cast.
+  ob: ReadonlyArray<ObSnapshot>;
+  trade: ReadonlyArray<TradeSnapshot>;
   broker: ReadonlyArray<Record<string, unknown>>;
 }
 
-function todayKstYyyymmdd(): string {
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 3_600_000);
-  const y = kst.getUTCFullYear();
-  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(kst.getUTCDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
-}
-
 /**
- * useLiveSeries — initial REST fetch + SSE subscription for live snapshots.
+ * useLiveSeries — initial REST fetch + WebSocket subscription for live snapshots.
  *
  * - Initial fetch: GET /api/live/series → hydrates the in-memory buffer with
  *   anything already in the backend's ring buffer (e.g. session-to-date).
- * - SSE: subscribes to /api/live/stream and appends each event to the buffer.
+ * - WebSocket: subscribes via ws.ts (ADR-0053) and appends each live snapshot
+ *   from the ws.ts live channel ({ch:'live', code, data}) to the buffer.
  * - Buffer cap: `LiveSnapshotBuffer` caps each kind at MAX_BUFFER_PER_KIND
  *   (Eng C5) so the page can run all day without unbounded growth.
  *
@@ -50,7 +50,7 @@ function todayKstYyyymmdd(): string {
  * panes can compute session bounds for chart timeframes.
  */
 export function useLiveSeries(code: string): LiveSeriesData {
-  const date = todayKstYyyymmdd();
+  const date = unixMsToKSTDate(Date.now());
   const initial = useQuery({
     queryKey: ['live', 'series', code, date],
     queryFn: () =>
@@ -75,56 +75,36 @@ export function useLiveSeries(code: string): LiveSeriesData {
     setTick((t) => t + 1);
   }, [initial.data]);
 
-  // Subscribe to SSE. The URL must go through apiUrl() so that frontend dev
-  // server (vite, 5173) doesn't intercept it; backend lives on a different
-  // origin in dev (8000) and apiUrl resolves that from config.
+  // Subscribe to live snapshots over the shared WebSocket (ADR-0053). Buffer +
+  // rAF coalescing stay tab-side; only the transport changed.
   useEffect(() => {
     if (!code) return;
-    let es: EventSource | null = null;
-    let cancelled = false;
-    // Coalesce SSE bursts into one re-render per animation frame. The backend
-    // poller (cycle_seconds=10s) flushes N snapshots at once; without this,
-    // each message triggered its own setTick → React render → bundle recompute,
-    // which produced ~1s long tasks every 10s on /live.
     let rafId: number | null = null;
-    const flush = () => {
-      rafId = null;
-      setTick((t) => t + 1);
-    };
-    apiUrl(`/api/live/stream?code=${encodeURIComponent(code)}`).then((url: string) => {
-      if (cancelled) return;
-      es = new EventSource(url);
-      es.onmessage = (e: MessageEvent) => {
-        try {
-          const entry = JSON.parse(e.data) as { t_ms: number; kind: string };
-          bufferRef.current.push(entry);
-          if (rafId === null) rafId = requestAnimationFrame(flush);
-        } catch {
-          // Malformed SSE message — skip silently.
-        }
-      };
+    const flush = () => { rafId = null; setTick((t) => t + 1); };
+    const unsub = subscribeLive(code, (entry: LiveSnapshotEntry) => {
+      bufferRef.current.push(entry);
+      if (rafId === null) rafId = requestAnimationFrame(flush);
     });
     return () => {
-      cancelled = true;
-      es?.close();
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
+      unsub();
+      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
       bufferRef.current.clear();
       setTick(0);
     };
   }, [code]);
 
   // `tick` is intentionally passed to readKind so that React re-reads the
-  // buffer on every SSE push — bump state forces a re-render, readKind then
+  // buffer on every WS push — bump state forces a re-render, readKind then
   // sees the updated buffer contents.
   return {
     initial: initial.data,
     isLoading: initial.isLoading,
     error: initial.error,
-    ob: readKind(bufferRef.current, 'ob', tick),
-    trade: readKind(bufferRef.current, 'trade', tick),
+    // One structural cast at the buffer boundary: the buffer stores raw
+    // {t_ms, kind, ...payload} dicts; the 'ob'/'trade' kinds carry the
+    // ObSnapshot/TradeSnapshot fields the poller's typed builders wrote.
+    ob: readKind(bufferRef.current, 'ob', tick) as ReadonlyArray<ObSnapshot>,
+    trade: readKind(bufferRef.current, 'trade', tick) as ReadonlyArray<TradeSnapshot>,
     broker: readKind(bufferRef.current, 'broker', tick),
   };
 }

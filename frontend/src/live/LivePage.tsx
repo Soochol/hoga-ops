@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
@@ -26,11 +26,12 @@ import { useDocumentTitle } from '../util/useDocumentTitle';
  *   4. LiveToolbar     (var(--h-toolbar))      — timeframe selector
  *   5. LiveWorkarea    (1fr)                   — chart + sidebar (filled by 9-γ + 11)
  *
- * Active code resolution (Addendum H-extra, 9.2):
- *   1. ?code= query param wins
- *   2. localStorage `live.page.v1` activeCode falls through
- *   3. (Future, Stage 11) first watchlist entry
- *   4. Empty state otherwise
+ * Active code resolution (CONTEXT.md / ADR-0052):
+ *   The `livePage` store is the single source of truth for activeCode. `?code=`
+ *   is a one-shot deep-link SEED — adopted into the store once on first mount,
+ *   after which search / ♥ / Watchlist Panel writes always win and are never
+ *   reverted by the URL. (Future, Stage 11) first watchlist entry; empty state
+ *   otherwise.
  */
 export function LivePage() {
   const [params] = useSearchParams();
@@ -38,11 +39,18 @@ export function LivePage() {
   const storedCode = useLivePageStore((s) => s.activeCode);
   const setActiveCode = useLivePageStore((s) => s.setActiveCode);
 
-  // Sync query param → store so deep links update activeCode atomically.
+  // The livePage store is the single source of truth for the active code
+  // (CONTEXT.md / ADR-0052). `?code=` is a one-shot deep-link SEED: adopted into
+  // the store once on first mount, after which search / ♥ / Watchlist Panel
+  // writes win and are never reverted by the URL. (The former `queryCode ??
+  // storedCode` + resync effect made the URL a permanent master and silently
+  // erased store writes — and corrupted persisted localStorage — on a ?code=
+  // deep link.)
+  const seeded = useRef(false);
   useEffect(() => {
-    if (queryCode && queryCode !== storedCode) {
-      setActiveCode(queryCode);
-    }
+    if (seeded.current) return;
+    seeded.current = true;
+    if (queryCode && queryCode !== storedCode) setActiveCode(queryCode);
   }, [queryCode, storedCode, setActiveCode]);
 
   const { data: status } = useLiveStatus();
@@ -53,9 +61,8 @@ export function LivePage() {
   // panel is wired up; for now they're no-ops.
   useLiveKeyboard({});
 
-  const activeCode = queryCode ?? storedCode;
+  const activeCode = storedCode;
   useDocumentTitle(activeCode);
-  const watchlistEmpty = banner.primary === 'watchlist_empty';
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -86,7 +93,10 @@ export function LivePage() {
       }}
     >
       <LiveHeader />
-      <LiveStateBanner primary={banner.primary} stack={banner.stack} />
+      <LiveStateBanner
+        primary={activeCode && banner.primary === 'watchlist_empty' ? null : banner.primary}
+        stack={banner.stack}
+      />
       <LiveStatusBar
         activeCode={activeCode}
         cycleLagMs={status?.cycle_lag_ms ?? 0}
@@ -98,7 +108,6 @@ export function LivePage() {
       />
       <LiveWorkarea
         activeCode={activeCode}
-        watchlistEmpty={watchlistEmpty}
         bundle={bundle}
         clampEngaged={clampEngaged}
         isPastCandlesLoading={isPastCandlesLoading}

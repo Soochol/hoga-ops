@@ -77,12 +77,15 @@ export const SIZE_TOKENS = {
   'h-pricestrip':       { rem: 3.25,    baseIntentPx: 52, usage: 'Current-price strip below toolbar' },
   'h-orderbook-row':    { rem: 1.375,   baseIntentPx: 22, usage: 'Single row in the orderbook table' },
   'h-capture-row':      { rem: 2.25,    baseIntentPx: 36, usage: 'Single row in the capture queue' },
+  'h-live-header':      { rem: 2,       baseIntentPx: 32, usage: 'Live page header row' },
 
   // ── layout — widths ───────────────────────────────────────────
   'nav-w':              { rem: 13.125,  baseIntentPx: 210, usage: 'LeftNav fixed column width' },
   'sidebar-w':          { rem: 20,      baseIntentPx: 320, usage: 'Cursor sidebar on the right of replay viewer' },
   'combobox-min-w':     { rem: 13.75,   baseIntentPx: 220, usage: 'Stock combobox trigger minimum width' },
   'dropdown-min-w':     { rem: 20,      baseIntentPx: 320, usage: 'Combobox / search dropdown minimum width' },
+  'watchlist-panel-w':  { rem: 17.5,    baseIntentPx: 280, usage: 'Global Watchlist Panel (Right Rail) width' },
+  'rail-w':             { rem: 3,       baseIntentPx: 48,  usage: 'Right Rail icon column width (fixed)' },
 } as const satisfies Record<string, SizeToken>;
 
 export const FIXED_PX_TOKENS = {

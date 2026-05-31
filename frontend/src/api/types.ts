@@ -200,7 +200,7 @@ export interface CaptureEventBase {
   phase: CapturePhase;
 }
 
-export type SSEEvent =
+export type PushEvent =
   | { type: 'inventory_added'; code: string; date: string }
   | { type: 'inventory_removed'; code: string; date: string }
   | (CaptureEventBase & { type: 'capture_progress'; progress: CaptureProgress })
@@ -224,7 +224,7 @@ export type SSEEvent =
       total_skipped: number;
     }
   | CaptureTimingEvent
-  | { type: 'heartbeat' }
+  | { type: 'connected' }
   | { type: 'disconnected' };
 
 /** Mirrors hoga/api/models.py::TimingPhaseTotals. All values are milliseconds. */
@@ -416,6 +416,16 @@ export type ViolationWire = {
   message: string;
   ctx: Record<string, unknown>;
 };
+
+/** One live snapshot frame payload (ws.ts ch:'live' data). Mirrors the
+ *  LiveBuffer entry: hoga/live/buffer.py — t_ms + kind are guaranteed;
+ *  per-kind fields (orderbook/trade/broker) remain open pending a
+ *  per-kind wire model (deliberate follow-up). */
+export interface LiveSnapshotEntry {
+  t_ms: number;
+  kind: 'ob' | 'trade' | 'broker';
+  [field: string]: unknown;
+}
 
 export type RangeBundle = {
   code: string;

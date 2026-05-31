@@ -8,6 +8,11 @@ export async function apiUrl(path: string): Promise<string> {
   return `${cfg.api_url}${path}`;
 }
 
+/** Build a ws(s):// URL by swapping the configured http(s) api_url scheme. */
+export async function wsUrl(path: string): Promise<string> {
+  return (await apiUrl(path)).replace(/^http/, 'ws');
+}
+
 /** Error thrown by apiCall / apiAction when the backend responds non-OK.
  *  `code` and `status` are populated from the FastAPI-style structured detail
  *  body (`{detail: {code, message}}`). Consumers that know the router's

@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import LeftNav from '../../src/nav/LeftNav';
 import type { ReactNode } from 'react';
 
-vi.mock('../../src/api/sse', () => ({
+vi.mock('../../src/api/eventStream', () => ({
   subscribeToCaptureEvents: () => () => {},
   lastHeartbeat: () => Date.now(),
   useEventStream: () => {},

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
-  createChart,
+  createChartEx,
   TickMarkType,
   type IChartApi,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
+import { createKstHorzScaleBehavior } from '../util/kstHorzScaleBehavior';
 import { resolveTokens } from '../util/tokens';
 import {
   CHART_CROSSHAIR_OPTIONS,
@@ -23,11 +24,7 @@ import {
   isCalendarTimeframe,
 } from '../state/livePage';
 import type { RangeBundle } from '../api/types';
-import {
-  realMsToYyyymmdd,
-  subtractDaysKst,
-  prefetchChunkDaysFor,
-} from './liveDateTime';
+import { nextHistoricalFrom } from './liveDateTime';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
@@ -88,25 +85,27 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   const { paneSeries, registerPaneSeries, unregisterPaneSeries, computeAnchor } =
     useDrawingHost(chart, axis, code, containerRef);
 
-  // axisRef lets the once-mounted createChart formatters (timeFormatter +
-  // tickMarkFormatter) read the latest axis without re-creating the chart.
-  // Mirrors ChartStage's pattern — without this the formatters close over a
-  // stale axis from first render and the x-axis renders virtual-seconds-as-
-  // 1970-epoch ("02 1월 '70 ..."), which is exactly the bug we're fixing.
+  // axisRef / timeframeRef bridge the latest axis + timeframe to the
+  // once-mounted chart's imperative callbacks (the timeFormatter +
+  // tickMarkFormatter, and the injected KST HorzScaleBehavior's
+  // fillWeightsForPoints) without re-creating the chart.
+  //
+  // These MUST be written synchronously during render, NOT in a useEffect.
+  // Child panes push setData in their own effects, and child effects fire
+  // BEFORE a parent effect. fillWeightsForPoints runs inside that child
+  // setData, so an effect-deferred axisRef would still hold the PREVIOUS axis
+  // on the commit that first pushes a new timeframe's candles — mapping the new
+  // candles' virtual times through the old (smaller-range) axis clamps them all
+  // to one real time → identical KST dates → intraday weights → the calendar
+  // axis suppresses every Time tick → blank x-axis until refresh (regression
+  // test: "timeframe-switch axis freshness"). A render-time write is current
+  // before any child renders/effects. Safe because these refs are read only by
+  // imperative chart callbacks, never to produce render output (idempotent
+  // under StrictMode double-render).
   const axisRef: MutableRefObject<VirtualAxis> = useRef<VirtualAxis>(axis);
-  useEffect(() => {
-    axisRef.current = axis;
-  }, [axis]);
-
-  // Same ref-bridge for timeframe: the createChart formatters need to know
-  // whether to render intraday (HH:MM) ticks vs calendar-only ticks. Without
-  // this, daily/weekly/monthly charts render a meaningless "09:00" alongside
-  // every date label because every D/W/M candle is timestamped at the
-  // session-open hour.
+  axisRef.current = axis;
   const timeframeRef: MutableRefObject<LiveTimeframe> = useRef<LiveTimeframe>(timeframe);
-  useEffect(() => {
-    timeframeRef.current = timeframe;
-  }, [timeframe]);
+  timeframeRef.current = timeframe;
 
   // Publish axis to the shared store so LiveSidebar can read
   // axis.inClosingAuctionWindow(cursorMs) for TotalQtyBar mask.
@@ -139,8 +138,20 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // transition doesn't leave the chart zoomed on the early window with the
   // latest data off the right edge.
   const lastAppliedCountRef = useRef<number | null>(null);
+  // Historical-prepend viewport preservation (see the restore effect below).
+  // viewportShiftRef pins a STABLE reference bar captured the instant a leftward
+  // pan triggers a historical fetch: its real ms (survives the axis re-base) plus
+  // its logical index at capture time. prevEarliestTsMsRef holds the earliest
+  // drawn candle of the last applied bundle so the restore effect can detect a
+  // genuine prepend.
+  const viewportShiftRef = useRef<
+    { refMs: number; refIdx: number; fromLogical: number; toLogical: number } | null
+  >(null);
+  const prevEarliestTsMsRef = useRef<number | null>(null);
   useEffect(() => {
     lastAppliedCountRef.current = null;
+    prevEarliestTsMsRef.current = null;
+    viewportShiftRef.current = null;
   }, [code, timeframe]);
   useEffect(() => {
     if (!chart || !bundle || bundle.candles.length === 0) return;
@@ -185,11 +196,108 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     }
   }, [chart, bundle, timeframe]);
 
+  // Historical-prepend viewport preservation. When the user pans left past the
+  // leftmost bar, extendHistoricalRange refetches with an earlier `from`, the
+  // bundle is rebuilt with older candles PREPENDED, and RangeSeriesPane calls
+  // series.setData(fullArray). lightweight-charts keeps the visible LOGICAL
+  // range numerically fixed across setData, so inserting N union points at the
+  // front slides the previously-viewed bars right by N — the viewport "jumps".
+  // We undo that by SHIFTING the visible logical range by exactly N.
+  //
+  // Why a logical shift, not setVisibleRange(real time): setVisibleRange refits
+  // a TIME span into the viewport and the captured span is whitespace-clamped
+  // (getVisibleRange pins its left edge to bar 0 while the user is panned into
+  // the pre-data whitespace), so it zooms in on EVERY prepend (measured
+  // barSpacing 1.6→2.2 over 3 prepends). A logical shift preserves the logical
+  // width exactly → barSpacing, and thus the candle scale, is invariant.
+  //
+  // Why N is read from the chart, not computed as candle count: the shared
+  // timeScale's logical index is the UNION across all series, and hoga panes
+  // (quote_ratio / fill_strength) sample at a different cadence than candles, so
+  // the inserted-index count != candle count. timeToIndex returns the bar's TRUE
+  // union index off the rebuilt scale (data-, not pixel-based, so it works even
+  // when the reference bar is off-screen), giving the exact shift.
+  //
+  // Ordering: this parent effect runs AFTER RangeSeriesPane's child setData
+  // effect (child effects fire before parent effects within the same bundle
+  // commit). useLiveBundle's extension gate makes the prepend land in ONE commit
+  // (candles+hoga together) so the shift sees the full union and is computed once
+  // — but a brief (~1-2 frame) position flash can still remain on a heavy
+  // prepend: a large multi-pane setData flush is internally split across lwc's
+  // own rAF render cycles, so the chart can paint the un-shifted frame before
+  // this shift lands. It is purely positional (the scale never changes) and not
+  // controllable from the React effect phase (verified: layout effects don't
+  // close it). Complementary to the initial-view effect above via
+  // historicalFromDate (null → that effect owns the viewport; non-null → this
+  // one), so the two never fight over the same render.
+  useEffect(() => {
+    if (!chart || !bundle || bundle.candles.length === 0) return;
+    // [TEMP-DIAG-VIEWPORT] dev-only kill switch for the differential repro.
+    if (import.meta.env.DEV && (window as unknown as { __noRestore?: boolean }).__noRestore) return;
+    const ts = chart.timeScale();
+    // Earliest candle actually drawn — mirror projectCandle's axis.contains
+    // filter. The absolute ts_ms is stable under the axis re-base, unlike the
+    // virtual time or the logical index.
+    let newEarliest: number | null = null;
+    for (const c of bundle.candles) {
+      if (!axis.contains(c.ts_ms)) continue;
+      if (newEarliest === null || c.ts_ms < newEarliest) newEarliest = c.ts_ms;
+    }
+    const prevEarliest = prevEarliestTsMsRef.current;
+    prevEarliestTsMsRef.current = newEarliest;
+    // Initial paint and SSE growth are owned by the initial-view effect above;
+    // only the user-driven extension path corrects the viewport here.
+    if (useLivePageStore.getState().historicalFromDate === null) return;
+    if (prevEarliest === null || newEarliest === null) return;
+    // Only a genuine LEFTWARD extension (an older bar appeared) jumps the view.
+    // SSE ticks (right edge) and holiday-only chunks (no new trading day) leave
+    // the earliest bar unchanged → nothing to correct.
+    if (newEarliest >= prevEarliest) return;
+    const shiftRef = viewportShiftRef.current;
+    if (!shiftRef) return;
+    try {
+      // The reference bar (real ms, stable under the re-base) now sits at a
+      // higher union logical index because older points were inserted ahead of
+      // it. shift = newIdx - refIdx = exactly how many union points were
+      // inserted. Round the virtual seconds: UTCTimestamp must be an integer and
+      // the toReal→toVirtual round-trip can land a hair off a bar boundary.
+      const refVirtual = Math.round(axis.toVirtual(shiftRef.refMs) / 1000);
+      const newIdx = ts.timeToIndex(refVirtual as Time, true);
+      if (newIdx === null) return;
+      const shift = newIdx - shiftRef.refIdx;
+      if (shift === 0) return;
+      // Apply the shift to the CAPTURED pre-prepend logical range, NOT the
+      // current one: lightweight-charts' setData does NOT leave the logical range
+      // numerically fixed across a prepend (it partially re-anchors it), so
+      // reading it back here would compound the chart's own move with ours and
+      // double-shift. The captured [from,to] + the inserted-point count is the
+      // absolute target that pins the previously-viewed bars at the same scale,
+      // overriding whatever setData did.
+      ts.setVisibleLogicalRange({
+        from: shiftRef.fromLogical + shift,
+        to: shiftRef.toLogical + shift,
+      });
+    } catch (e) {
+      // Reachable in practice only when the chart tears down between effect runs
+      // (the axis math is total and timeToIndex is guarded above). Surface an
+      // unexpected lwc-internal throw in dev so it isn't a silent no-op the user
+      // reads as "the jump just wasn't fixed".
+      if (import.meta.env.DEV) console.warn('[live] viewport restore shift threw', e);
+    }
+  }, [chart, bundle, axis]);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const tokens = resolveTokens(TOKEN_SPEC);
-    const c = createChart(el, {
+    // Explicit generics pin HorzScaleItem=Time: without them createChartEx
+    // infers `unknown` and the IHorzScaleBehavior<Time> instance no longer
+    // matches. The behavior's options() override (TimeChartOptions) is what
+    // makes timeScale.tickMarkFormatter typecheck below.
+    const c = createChartEx<Time, ReturnType<typeof createKstHorzScaleBehavior>>(
+      el,
+      createKstHorzScaleBehavior(axisRef),
+      {
       ...CHART_LAYOUT_OPTIONS,
       width: el.clientWidth,
       height: el.clientHeight,
@@ -228,19 +336,23 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
           const realMs = a.toReal(virtualMs);
           const d = new Date(realMs + 9 * 3600_000);
           const calendar = isCalendarTimeframe(timeframeRef.current);
+          // Weights now follow the real KST calendar (see kstHorzScaleBehavior),
+          // so tickType is trustworthy: month boundaries get Month, day
+          // boundaries get DayOfMonth, intraday gets Time. We just format.
+          // Calendar (D/W/M) bars are all anchored to 09:00 KST, so their
+          // intraday Time tiers carry no meaning and are suppressed.
+          const hhmm = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
           switch (tickType) {
             case TickMarkType.Year:
-              return calendar ? `'${String(d.getUTCFullYear()).slice(-2)}` : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+              return `'${String(d.getUTCFullYear()).slice(-2)}`;
             case TickMarkType.Month:
-              return calendar ? `${d.getUTCMonth() + 1}월` : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+              return `${d.getUTCMonth() + 1}월`;
             case TickMarkType.DayOfMonth:
-              return calendar ? `${d.getUTCDate()}` : `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+              return `${d.getUTCDate()}`;
             case TickMarkType.Time:
-              // Intraday HH:MM only makes sense for minute timeframes; on
-              // D/W/M every bar is at session-open so the time tick is noise.
-              return calendar ? '' : `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+              return calendar ? '' : hhmm;
             case TickMarkType.TimeWithSeconds:
-              return calendar ? '' : `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+              return calendar ? '' : `${hhmm}:${pad(d.getUTCSeconds())}`;
             default:
               return '';
           }
@@ -249,11 +361,17 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       rightPriceScale: { borderColor: tokens.border },
       autoSize: true,
     });
-    setChart(c);
+    setChart(c as IChartApi);
     // autoSize: true already attaches lightweight-charts' own ResizeObserver
     // to the container — an extra manual observer here just produces the
     // "Height and width values ignored because 'autoSize' option is enabled"
     // warning on every resize without affecting layout.
+    // [TEMP-DIAG-VIEWPORT] dev-only QA handles for the in-browser repro.
+    if (import.meta.env.DEV) {
+      const w = window as unknown as { __liveChart?: unknown; __liveAxisGet?: unknown };
+      w.__liveChart = c;
+      w.__liveAxisGet = () => useLiveAxisStore.getState().axis;
+    }
 
     return () => {
       c.remove();
@@ -302,13 +420,40 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       // logical.from is a fractional bar index; negative = past the leftmost
       // loaded bar, which is exactly the lazy-fetch trigger condition.
       if (r.from >= 0) return;
-      const axisEarliestDate = realMsToYyyymmdd(axis.segments[0].sessionOpenMs);
+      // Capture a STABLE reference bar before triggering the prepend: its real
+      // ms (survives the segments re-base from 0 on every rebuild) and its
+      // current union logical index (timeToIndex). The restore effect reprojects
+      // the real ms through the rebuilt axis, reads the bar's NEW index, and
+      // shifts the visible logical range by the difference so the bars the user
+      // is looking at stay put at the same scale. Use the RIGHT edge (vr.to):
+      // panned into the left whitespace it is a real, on-data bar (getVisibleRange
+      // clamps only the left edge to bar 0). Capture is synchronous here (not in
+      // the 150ms debounce) so `axis`/`ts` are the pre-prepend generation the
+      // user is looking at — the effect re-subscribes on [chart, axis, timeframe],
+      // so this closure is always current.
+      const vr = ts.getVisibleRange();
+      const lr = vr ? ts.getVisibleLogicalRange() : null;
+      const refIdx = vr ? ts.timeToIndex(vr.to as Time, true) : null;
+      // Always overwrite (capture OR clear): a failed capture must not leave a
+      // PREVIOUS pan's anchors live for the next prepend's restore, which would
+      // shift a stale logical window through a fresh refMs reprojection.
+      viewportShiftRef.current = vr && lr && refIdx !== null
+        ? {
+            refMs: axis.toReal((vr.to as number) * 1000),
+            refIdx,
+            fromLogical: lr.from,
+            toLogical: lr.to,
+          }
+        : null;
+      // SR-3: the holiday-span / monotonic-decrease backfill policy lives in
+      // the pure nextHistoricalFrom kernel (liveDateTime, table-tested). This
+      // effect keeps only the imperative shell: trigger gate, anchor capture,
+      // debounce, store dispatch.
       const cur = useLivePageStore.getState().historicalFromDate;
-      const baseDate = cur !== null && cur < axisEarliestDate ? cur : axisEarliestDate;
-      const nextHistoricalFrom = subtractDaysKst(baseDate, prefetchChunkDaysFor(timeframe));
+      const nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe);
       if (timeoutId !== null) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
-        useLivePageStore.getState().extendHistoricalRange(nextHistoricalFrom);
+        useLivePageStore.getState().extendHistoricalRange(nextFrom);
       }, 150);
     };
     ts.subscribeVisibleLogicalRangeChange(handler);

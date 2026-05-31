@@ -31,10 +31,13 @@ export const TAILWIND_THEME = {
     "pricestrip": "var(--h-pricestrip)",
     "orderbook-row": "var(--h-orderbook-row)",
     "capture-row": "var(--h-capture-row)",
+    "live-header": "var(--h-live-header)",
   },
   width: {
     "nav": "var(--nav-w)",
     "sidebar": "var(--sidebar-w)",
+    "watchlist-panel": "var(--watchlist-panel-w)",
+    "rail": "var(--rail-w)",
   },
   minWidth: {
     "combobox": "var(--combobox-min-w)",

@@ -54,7 +54,7 @@ from hoga.api.models import (
 from hoga.api import watchlist
 from hoga.api.timeenc import HogaMs, hhmmssms_to_unix_ms
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
-from hoga.collector.timing import CaptureTimingCollector
+from hoga.collector.timing import CaptureTimingCollector, NullTimingCollector
 from hoga.collector.timing_writer import write_timing_report
 from hoga.collector.orchestrator import (
     CHART_FINAL_TIME_MS,
@@ -288,7 +288,7 @@ def cancel_all_on_shutdown() -> None:
             s.cancel_token.cancel()
 
 
-# Bus injection point: the captures router holds a reference to the SSE _Bus
+# Bus injection point: the captures router holds a reference to the EventBus
 # AND the event loop, because the collector runs in a thread executor and its
 # on_progress callback fires from the worker thread, NOT the event loop.
 # asyncio.Queue.put_nowait is not loop-safe across threads — same reason the
@@ -567,7 +567,7 @@ async def _run_capture_and_parse(
     state: QueueItemState,
     *,
     resume: bool,
-    collector: CaptureTimingCollector | None = None,
+    collector: CaptureTimingCollector | NullTimingCollector | None = None,
 ) -> None:
     """Wrap ``_run_capture_inner`` with 429 exponential backoff.
 
@@ -577,6 +577,7 @@ async def _run_capture_and_parse(
     — Task 11 backoff is INTERNAL.
     """
     from hoga.collector.orchestrator import CaptureCancelled
+    collector = collector or NullTimingCollector()
     if state.cancel_token is None:
         state.cancel_token = CancelToken()
     last_exc: BaseException | None = None
@@ -588,11 +589,8 @@ async def _run_capture_and_parse(
             if exc.status_code != 429 or delay is None:
                 raise
             last_exc = exc
-            if collector is not None:
-                collector.record_error("http_429")
-                with collector.phase("backoff"):
-                    cancelled = await _cancel_aware_sleep(state, delay)
-            else:
+            collector.record_error("http_429")
+            with collector.phase("backoff"):
                 cancelled = await _cancel_aware_sleep(state, delay)
             if cancelled:
                 raise CaptureCancelled() from exc
@@ -604,7 +602,7 @@ async def _run_capture_inner(
     state: QueueItemState,
     *,
     resume: bool,
-    collector: CaptureTimingCollector | None = None,
+    collector: CaptureTimingCollector | NullTimingCollector | None = None,
 ) -> None:
     """Run the collector then the parser. Cookie-missing/expired rejection
     happens via the cookie-pause path in the worker loop. Task 11's
@@ -617,6 +615,7 @@ async def _run_capture_inner(
     and returns. The outer worker loop's generic ``except Exception`` never
     sees this, so the item is not classified as ``failed``.
     """
+    collector = collector or NullTimingCollector()
     if state.cancel_token is None:
         state.cancel_token = CancelToken()
     data_dir = _require_data_dir()
@@ -641,7 +640,10 @@ async def _run_capture_inner(
                 resume=resume,
                 on_progress=_make_progress_callback(state),
                 cancel_token=state.cancel_token,
-                collector=collector,
+                # orchestrator keeps the older `| None` contract (its own tests
+                # pass None directly); hand it the real collector or None, never
+                # the Null object.
+                collector=collector if isinstance(collector, CaptureTimingCollector) else None,
             ),
         )
     except UpstreamNoDataError:
@@ -669,15 +671,7 @@ async def _run_capture_inner(
     # drift, unknown event types) still propagate to the worker loop's
     # exception handler and flip phase to 'failed' as before.
     try:
-        if collector is not None:
-            with collector.phase("parse"):
-                await loop.run_in_executor(
-                    None,
-                    lambda: parse_stock_date(
-                        code=state.code, date=state.date, data_dir=data_dir, lenient=False,
-                    ),
-                )
-        else:
+        with collector.phase("parse"):
             await loop.run_in_executor(
                 None,
                 lambda: parse_stock_date(
@@ -723,8 +717,10 @@ async def _run_item(state: QueueItemState) -> None:
     - CLIENT_INCOMPLETE → resume=True (continue from existing pages)
     - NONE → fresh capture (resume=False)
     """
-    collector: CaptureTimingCollector | None = (
-        CaptureTimingCollector(state.code, state.date) if _timing_enabled() else None
+    collector: CaptureTimingCollector | NullTimingCollector = (
+        CaptureTimingCollector(state.code, state.date)
+        if _timing_enabled()
+        else NullTimingCollector()
     )
     # TODO(timing): plumb effective rate, see plan §13 step 4.
     # _run_capture_inner does not currently surface the rate it passed to
@@ -751,15 +747,17 @@ async def _run_item(state: QueueItemState) -> None:
             # ``_handle_cookie_expired(state)`` handler then pauses the queue.
             # No ``cookie_pause`` phase wrap here: the failing item is terminal
             # and never sleeps awaiting a resume (see plan-review eng B2).
-            if collector is not None:
-                collector.record_error("cookie_expired")
+            collector.record_error("cookie_expired")
             raise
     finally:
         # Best-effort timing emit. Runs on success, failure, AND cancellation
         # — the finally guarantees we always persist what we measured. Any
         # exception in this block is swallowed and logged so a timing-writer
-        # bug can never break the capture pipeline itself.
-        if collector is not None:
+        # bug can never break the capture pipeline itself. The isinstance gate
+        # both preserves HOGA_CAPTURE_TIMING=0 semantics (a NullTimingCollector
+        # writes no JSON and emits no SSE event) and narrows the type so
+        # to_report() — which only the real collector has — is well-typed.
+        if isinstance(collector, CaptureTimingCollector):
             try:
                 env = TimingEnv(
                     rate_limit_s=effective_rate_s,

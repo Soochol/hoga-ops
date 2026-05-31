@@ -1,8 +1,12 @@
 import { useLivePageStore } from '../state/livePage';
+import { useConnectionLiveness } from '../api/useConnectionLiveness';
+import { LIVE_STALE_MS } from '../api/liveness';
 import { cycleLagSeverity, cycleLagPillColor } from './cycleLagPill';
 import { SourceChip } from '../chart/SourceChip';
 import { useSymbols } from '../capture/useSymbols';
 import type { RangeBundle } from '../api/types';
+import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
+import { HeartIcon } from '../ui/HeartIcon';
 
 interface Props {
   activeCode: string | null;
@@ -13,6 +17,10 @@ interface Props {
 }
 
 export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
+  // Threshold MUST exceed the 30s server ping so a connected-but-idle
+  // socket (e.g. market closed) stays "LIVE●"; only a real disconnect
+  // (no frame for >35s) flips it. (plan-review cross-task flag)
+  const live = useConnectionLiveness(LIVE_STALE_MS);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const { data: symbolsData } = useSymbols();
   const symbolName = activeCode
@@ -21,6 +29,10 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
   const symbolLabel = activeCode
     ? (symbolName ? `${symbolName}(${activeCode})` : activeCode)
     : '—';
+
+  const { isMember, toggle } = useWatchlistMembership();
+  const member = !!activeCode && isMember(activeCode);
+
   const severity = cycleLagSeverity(cycleLagMs);
   const pill = cycleLagPillColor(severity);
 
@@ -49,6 +61,17 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
       <span className="font-mono" style={{ color: 'var(--fg)' }}>
         {symbolLabel}
       </span>
+      {activeCode && (
+        <button
+          type="button"
+          aria-label={member ? '관심종목 해제' : '관심종목 추가'}
+          aria-pressed={member}
+          onClick={() => { if (activeCode) toggle(activeCode); }}
+          className={`leading-none ${member ? 'text-error' : 'text-fg-dimmer hover:text-fg'}`}
+        >
+          <HeartIcon filled className="w-[1em] h-[1em]" />
+        </button>
+      )}
       <span aria-hidden>·</span>
       {currentPrice !== null ? (
         <span
@@ -66,7 +89,18 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
       <span aria-hidden>·</span>
       <SourceChip source={lastSegmentSource} />
       <span aria-hidden>·</span>
-      <span style={{ color: 'var(--fg-dimmer)' }}>LIVE● (대기 중)</span>
+      {activeCode && !member ? (
+        <span style={{ color: 'var(--fg-dimmer)' }}>
+          과거 차트 · 실시간 ✕
+          <span className="ml-2 inline-flex items-center gap-1" style={{ color: 'var(--accent)' }}>
+            <HeartIcon filled={false} className="w-[1em] h-[1em]" /> 눌러 실시간 추적
+          </span>
+        </span>
+      ) : (
+        <span style={{ color: live ? 'var(--success)' : 'var(--warn)' }}>
+          {live ? 'LIVE●' : '재연결 중…'}
+        </span>
+      )}
       <span aria-hidden>·</span>
       <span
         data-testid="cycle-lag-pill"

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { useLivePastCandles } from '../api/livePastCandles';
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
@@ -12,7 +12,6 @@ import {
 } from '../api/types';
 import { buildLiveBundle } from './buildLiveBundle';
 import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
-import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import {
   regularSessionOpenMs,
   regularSessionCloseMs,
@@ -123,7 +122,7 @@ export function useLiveBundle(
     return bars.map(kisBarToCandle);
   }, [isMinute, timeframe, pastCandlesQuery.data, pastDailyCandlesQuery.data]);
 
-  const bundle = useMemo<RangeBundle | null>(() => {
+  const computedBundle = useMemo<RangeBundle | null>(() => {
     if (!code) return null;
 
     const todaySession =
@@ -131,8 +130,8 @@ export function useLiveBundle(
         ? { open_ms: live.initial.session_open_ms, close_ms: live.initial.session_close_ms ?? regularSessionCloseMs(todayKstYyyymmdd) }
         : { open_ms: regularSessionOpenMs(todayKstYyyymmdd), close_ms: regularSessionCloseMs(todayKstYyyymmdd) };
 
-    const sseOb = isMinute ? (live.ob as unknown as ObSnapshot[]) : [];
-    const sseTrade = isMinute ? (live.trade as unknown as TradeSnapshot[]) : [];
+    const sseOb = isMinute ? live.ob : [];
+    const sseTrade = isMinute ? live.trade : [];
 
     const built = buildLiveBundle({
       code,
@@ -147,6 +146,56 @@ export function useLiveBundle(
 
     return built;
   }, [code, todayKstYyyymmdd, isMinute, live.initial, live.ob, live.trade, past.data, kisCandles, bucketMs]);
+
+  // Atomize the historical-prepend across the two independent past sources.
+  // A leftward pan changes `historicalFromDate`, which re-keys BOTH past
+  // queries (candles via /api/live/past-candles, hoga via /api/range). They
+  // resolve in SEPARATE commits, so without gating the bundle would rebuild
+  // twice — once with new candles + stale hoga, then with both — landing the
+  // prepend in two paints. That splits LiveChartRoot's viewport shift across two
+  // commits (a visible ~60ms jump-then-correct flicker) and makes the first
+  // shift see a candles-only union (wrong inserted-index count). All three
+  // queries keep the previous response as `placeholderData` during a same-code
+  // re-key, so `isPlaceholderData` is true for exactly the window where one
+  // source has the new range and the other does not. Hold the last fully-settled
+  // bundle until BOTH are fresh, so the prepend swaps in ONE commit. SSE-only
+  // and periodic-refetch updates do NOT set isPlaceholderData, so today's live
+  // ticks are not gated.
+  // Atomize ONLY a genuine historical extension (a leftward pan), keyed on
+  // historicalFromDate != null. A pan re-keys BOTH past queries (candles via
+  // /api/live/past-candles, hoga via /api/range), which resolve in SEPARATE
+  // commits; without gating, the bundle rebuilds twice (new candles + stale
+  // hoga, then both), splitting LiveChartRoot's viewport shift across two paints
+  // and feeding the first shift a candles-only union (wrong inserted-index
+  // count). Hold the last fully-settled bundle until BOTH sources are fresh so
+  // the prepend swaps in ONE commit.
+  //
+  // The historicalFromDate gate is what scopes this to extensions: setActiveCode
+  // and setCandleTimeframe reset it to null, so a code OR timeframe switch — both
+  // of which ALSO re-key the past queries (useRange embeds bucketMs;
+  // useLivePastCandles' from embeds initialHistoricalDaysFor(timeframe)) — is NOT
+  // gated and falls straight through to computedBundle, instead of stalling on
+  // the previous code/timeframe's bundle. SSE / periodic refetches never set
+  // isPlaceholderData, so today's live ticks are not gated either.
+  //
+  // `&& isFetching` releases the hold if a re-keyed query goes
+  // pending-but-NOT-fetching (paused/offline, or `enabled` flipped mid-flight),
+  // which would otherwise freeze the bundle with no fetch in flight; a settled
+  // error drops isPlaceholderData on its own (status leaves 'pending'). The hold
+  // lasts as long as the slower past-fetch (bounded by the global retry:1),
+  // pausing today's right edge — acceptable because the user is panned into
+  // history, not watching the live edge.
+  const extending = historicalFromDate != null && (isMinute
+    ? (past.isPlaceholderData && past.isFetching) ||
+      (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching)
+    : pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching);
+  const lastSettledBundleRef = useRef<RangeBundle | null>(null);
+  const bundle = extending && lastSettledBundleRef.current
+    ? lastSettledBundleRef.current
+    : computedBundle;
+  useEffect(() => {
+    if (!extending) lastSettledBundleRef.current = computedBundle;
+  }, [extending, computedBundle]);
 
   // Clamp is a minute-path concern only; the daily endpoint has no 250d cap.
   const clampEngaged = isMinute

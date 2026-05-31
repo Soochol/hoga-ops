@@ -38,6 +38,7 @@ from hoga.api.watchlist import (
     remove_entry,
 )
 from hoga.collector.orchestrator import now_kst
+from hoga.live.lifecycle import refresh_live_poller
 
 
 def _next_run_at_ms(now: dt.datetime) -> int:
@@ -79,6 +80,10 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "code": "already_in_watchlist",
                 "message": f"Code {req.code} is already in the Watchlist.",
             }) from e
+        try:
+            await refresh_live_poller(data_dir=data_dir)
+        except Exception:  # noqa: BLE001 — poller re-sync is best-effort; the watchlist mutation already succeeded
+            log.exception("watchlist.add: refresh_live_poller failed code=%s", req.code)
         return entry
 
     @router.post("/catchup", status_code=201, response_model=ManualCatchupAllResponse)
@@ -133,6 +138,10 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "code": "not_in_watchlist",
                 "message": f"Code {code} is not in the Watchlist.",
             }) from e
+        try:
+            await refresh_live_poller(data_dir=data_dir)
+        except Exception:  # noqa: BLE001 — poller re-sync is best-effort; the watchlist mutation already succeeded
+            log.exception("watchlist.remove: refresh_live_poller failed code=%s", code)
 
     @router.post("/{code}/catchup", status_code=201, response_model=EnqueueResponse)
     async def catchup_one(code: CodePathParam) -> EnqueueResponse:

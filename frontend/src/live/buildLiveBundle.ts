@@ -28,8 +28,8 @@ export interface BuildLiveBundleInput {
    * (quote_ratio, fill_strength) and segments only —
    * `pastBundle.candles` is intentionally ignored. */
   pastBundle: RangeBundle | null;
-  sseOb: ObSnapshot[];
-  sseTrade: TradeSnapshot[];
+  sseOb: readonly ObSnapshot[];
+  sseTrade: readonly TradeSnapshot[];
   /** Candles from /api/live/past-candles (KIS dailychartprice), already
    * client-side aggregated to the display timeframe and converted to wire
    * Candle shape. Single source of truth for the bundle's candle array

@@ -1,8 +1,8 @@
-"""Pure-function and behavioral tests for the inventory SSE pipeline.
+"""Pure-function and behavioral tests for the inventory event bus pipeline.
 
 Separate from test_api_sse.py (the live uvicorn integration test) because
 these tests are purely in-process — no inotify, no asyncio loop, no
-network. The pure function and _Bus are unit-testable without fixtures.
+network. The pure function and EventBus are unit-testable without fixtures.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from watchdog.events import FileCreatedEvent
 
-from hoga.api.sse import WatchdogKind, _Bus, _InventoryHandler, classify_inventory_event
+from hoga.api.events import WatchdogKind, EventBus, _InventoryHandler, classify_inventory_event
 
 
 @pytest.fixture
@@ -93,7 +93,7 @@ async def test_inventory_handler_dispatches_meta_create_to_bus(
     parquet_root: Path,
 ) -> None:
     """A meta.json file_created event reaches bus.publish with the right payload."""
-    bus = _Bus()
+    bus = EventBus()
     loop = asyncio.get_running_loop()
     handler = _InventoryHandler(bus, parquet_root, loop=loop)
     # Spy on the bus
@@ -116,7 +116,7 @@ async def test_inventory_handler_short_circuits_when_loop_none(
     parquet_root: Path,
 ) -> None:
     """Pre-startup events (loop=None) are silently dropped."""
-    bus = _Bus()
+    bus = EventBus()
     handler = _InventoryHandler(bus, parquet_root, loop=None)
     bus.publish = MagicMock(wraps=bus.publish)  # type: ignore[method-assign]
 
@@ -128,7 +128,7 @@ async def test_inventory_handler_short_circuits_when_loop_none(
 
 @pytest.mark.asyncio
 async def test_bus_publish_fans_to_all_subscribers() -> None:
-    bus = _Bus()
+    bus = EventBus()
     q1 = bus.subscribe()
     q2 = bus.subscribe()
 
@@ -140,7 +140,7 @@ async def test_bus_publish_fans_to_all_subscribers() -> None:
 
 @pytest.mark.asyncio
 async def test_bus_unsubscribe_stops_delivery() -> None:
-    bus = _Bus()
+    bus = EventBus()
     q1 = bus.subscribe()
     q2 = bus.subscribe()
     bus.unsubscribe(q1)
@@ -158,12 +158,12 @@ async def test_bus_unsubscribe_stops_delivery() -> None:
 async def test_bus_unsubscribe_idempotent() -> None:
     """Calling unsubscribe twice on the same queue must not raise.
 
-    _Bus uses set.discard internally, which is the no-raise contract
+    EventBus uses set.discard internally, which is the no-raise contract
     the caller relies on (the SSE stream's finally-block always calls
     unsubscribe, even if the client disconnected before subscribe
     completed in some error paths).
     """
-    bus = _Bus()
+    bus = EventBus()
     q = bus.subscribe()
     bus.unsubscribe(q)
     bus.unsubscribe(q)  # must not raise
@@ -175,7 +175,7 @@ async def test_bus_publish_drops_with_warning_when_queue_full(
 ) -> None:
     """When a subscriber's queue is full, publish logs a warning and
     does NOT raise. This protects fast publishers from one slow client."""
-    bus = _Bus()
+    bus = EventBus()
     q = bus.subscribe()
     # Saturate the queue (maxsize=64 per the bus implementation) so the
     # next publish hits QueueFull. Use put_nowait to avoid await yield
@@ -183,9 +183,9 @@ async def test_bus_publish_drops_with_warning_when_queue_full(
     while not q.full():
         q.put_nowait({"type": "filler"})
 
-    with caplog.at_level(logging.WARNING, logger="hoga.api.sse"):
+    with caplog.at_level(logging.WARNING, logger="hoga.api.events"):
         bus.publish({"type": "heartbeat"})
 
     assert any(
-        "SSE queue full" in rec.message for rec in caplog.records
+        "event bus queue full" in rec.message for rec in caplog.records
     ), f"expected QueueFull warning in caplog records: {[r.message for r in caplog.records]}"

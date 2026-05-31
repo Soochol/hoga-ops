@@ -222,3 +222,35 @@ describe('DrawingPropertyPanel — initial position per selection', () => {
     expect(panel.style.top).toBe('20px');
   });
 });
+
+describe('DrawingPropertyPanel — hline anchoring', () => {
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+    useDrawingsStore.getState().setActiveCode('005930');
+  });
+
+  // hline panels rest *above* the line (bottom-edge anchored) so the line
+  // they describe stays visible. The vertical lift is done with
+  // translateY(-100%); without it the panel hangs below `top` and covers the
+  // line. The horizontal translateX(-50%) centres the panel on the line.
+  it('hline panel is bottom+centre anchored via translate(-50%, -100%)', () => {
+    useDrawingsStore.getState().add(HLINE);
+    useDrawingsStore.getState().setSelected('h1');
+    render(<DrawingPropertyPanel />);
+    const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
+    expect(panel.style.transform).toBe('translate(-50%, -100%)');
+  });
+
+  it('non-hline (trendline) keeps top-left anchoring (no transform)', () => {
+    const TREND: Drawing = {
+      id: 't1', kind: 'trendline',
+      a: { realMs: 1, price: 100 }, b: { realMs: 2, price: 200 },
+      color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+    };
+    useDrawingsStore.getState().add(TREND);
+    useDrawingsStore.getState().setSelected('t1');
+    render(<DrawingPropertyPanel />);
+    const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
+    expect(panel.style.transform).toBe('');
+  });
+});

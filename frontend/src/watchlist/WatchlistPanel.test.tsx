@@ -54,6 +54,22 @@ describe('WatchlistPanel', () => {
       expect(screen.getByText(/자동 수집할 종목이 아직 없습니다/)).toBeInTheDocument());
   });
 
+  it('renders no redundant page-title heading (nav is the label) and cards the body', async () => {
+    vi.mocked(api.getWatchlist).mockResolvedValueOnce({
+      entries: [
+        { code: '003490', name: '대한항공',
+          registered_at_kst_date: '20260528', last_success_date: '20260529' },
+      ],
+      next_run_at_ms: Date.now() + 60_000,
+    });
+    renderWithQuery(<WatchlistPanel />);
+    await waitFor(() => expect(screen.getByText('대한항공')).toBeInTheDocument());
+    // No <h1>Watchlist</h1> — the left nav already labels the page.
+    expect(screen.queryByRole('heading', { name: 'Watchlist' })).toBeNull();
+    // Body is wrapped in the standard card.
+    expect(screen.getByTestId('watchlist-card')).toBeInTheDocument();
+  });
+
   it('shows count badge with N종목', async () => {
     vi.mocked(api.getWatchlist).mockResolvedValueOnce({
       entries: [

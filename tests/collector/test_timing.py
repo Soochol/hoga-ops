@@ -1,6 +1,6 @@
 import pytest
 
-from hoga.collector.timing import CaptureTimingCollector
+from hoga.collector.timing import CaptureTimingCollector, NullTimingCollector
 
 
 def make_env():
@@ -124,3 +124,49 @@ def test_to_report_includes_pages(fake_clock):
     assert report.pages[0].idx == 0
     assert report.pages[0].http_ms == pytest.approx(50.0)
     assert report.pages[0].events == 10
+
+
+# --- NullTimingCollector (architecture-review SR-2) -------------------------
+#
+# When HOGA_CAPTURE_TIMING is off, the ingest path holds a NullTimingCollector
+# instead of None, so every call site can use `with collector.phase(...)` /
+# `collector.record_*()` unconditionally (no `if collector is not None`).
+
+
+def test_null_collector_phase_is_a_noop_context_manager(fake_clock):
+    """phase() must be a usable context manager that records nothing."""
+    c = NullTimingCollector()
+    with c.phase("http_fetch"):
+        pass
+    # No phase_totals to inspect — the Null object simply must not raise and
+    # must yield control to the body.
+
+
+def test_null_collector_phase_allows_reentry_unlike_real_collector():
+    """The real collector forbids nested phases; the Null object must NOT, so
+    the unconditional `with collector.phase(...)` call sites are always safe
+    even if a future change nests them."""
+    c = NullTimingCollector()
+    with c.phase("http_fetch"):
+        with c.phase("parse"):  # would RuntimeError on the real collector
+            pass
+
+
+def test_null_collector_record_methods_are_noops():
+    """mark_page_boundary / record_event_count / record_error accept the same
+    calls as the real collector and do nothing."""
+    c = NullTimingCollector()
+    c.mark_page_boundary()
+    c.record_event_count(10)
+    c.record_error("http_429")
+    # Nothing to assert beyond "did not raise" — that is the contract.
+
+
+def test_null_collector_satisfies_real_collector_call_surface():
+    """Every method the ingest path calls on a collector must exist on the
+    Null object with a compatible signature, so it is a drop-in substitute."""
+    real = CaptureTimingCollector("005930", "20250520")
+    null = NullTimingCollector()
+    for name in ("phase", "mark_page_boundary", "record_event_count", "record_error"):
+        assert callable(getattr(null, name)), f"NullTimingCollector.{name} missing"
+        assert callable(getattr(real, name))

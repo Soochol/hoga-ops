@@ -18,25 +18,18 @@ import {
   formatCaughtUpAllHeader,
   symbolLabel,
 } from './banners';
+import { PageContainer } from '../layout/PageContainer';
 
 const JUST_ADDED_MS = 5000;
 
-const BANNER_STYLES = {
-  success: {
-    background: 'rgba(34,197,94,0.10)',
-    borderColor: 'rgba(34,197,94,0.30)',
-    color: 'var(--success)',
-  },
-  error: {
-    background: 'rgba(244,63,94,0.10)',
-    borderColor: 'rgba(244,63,94,0.30)',
-    color: 'var(--error)',
-  },
+const BANNER_CLASS = {
+  success: 'bg-tint-success border-tint-success-border text-success',
+  error: 'bg-tint-error border-tint-error-border text-error',
 } as const;
 
 function Banner({ kind, children }: { kind: 'success' | 'error'; children: React.ReactNode }) {
   return (
-    <div className="mx-6 mt-3 px-3 py-2 rounded border text-sm" style={BANNER_STYLES[kind]}>
+    <div className={`mx-6 mt-3 px-3 py-2 rounded border text-sm ${BANNER_CLASS[kind]}`}>
       {children}
     </div>
   );
@@ -120,14 +113,17 @@ export function WatchlistPanel() {
     : null;
 
   return (
-    <div className="flex flex-col h-full">
+    <PageContainer>
+      <div
+        data-testid="watchlist-card"
+        className="bg-bg-card border rounded-lg flex flex-col h-full min-h-0 overflow-hidden"
+      >
       <header className="px-6 py-4 border-b border-border">
         <div className="flex items-baseline justify-between">
-          <h1 className="text-lg font-semibold">Watchlist</h1>
+          <span className="font-mono tabular-nums text-xs text-fg-dimmer px-2 py-0.5 rounded bg-bg-input">
+            {data.entries.length}종목
+          </span>
           <div className="flex items-center gap-2">
-            <span className="font-mono tabular-nums text-xs text-fg-dimmer px-2 py-0.5 rounded bg-bg-input">
-              {data.entries.length}종목
-            </span>
             <button
               type="button"
               onClick={handleCatchupAll}
@@ -142,7 +138,7 @@ export function WatchlistPanel() {
         <p className="text-sm text-fg-dim mt-2 flex items-center gap-2">
           다음 자동 수집까지
           <span className="font-mono tabular-nums text-accent px-2 py-0.5 rounded"
-                style={{ background: 'var(--selection-tint)' }}>
+                style={{ background: 'var(--tint-selection)' }}>
             <Countdown targetMs={data.next_run_at_ms} />
           </span>
           <span className="text-fg-dimmer text-xs">(오늘 KST 17:00 · {isTradingHint})</span>
@@ -229,6 +225,7 @@ export function WatchlistPanel() {
           </>
         )}
       </div>
-    </div>
+      </div>
+    </PageContainer>
   );
 }

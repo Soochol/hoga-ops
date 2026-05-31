@@ -10,7 +10,7 @@ function render_(node: React.ReactNode) {
 describe('LiveEmptyState', () => {
   it('renders no_active_code variant', () => {
     render_(<LiveEmptyState cause="no_active_code" />);
-    expect(screen.getByText(/관심종목을 선택해주세요/)).toBeInTheDocument();
+    expect(screen.getByText(/검색하세요/)).toBeInTheDocument();
   });
 
   it('renders watchlist_empty variant with /capture link', () => {

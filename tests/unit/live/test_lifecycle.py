@@ -1,8 +1,4 @@
-"""Stage 7-α — lifecycle singleton."""
-from datetime import datetime
-from pathlib import Path
-
-import pytest
+"""Live Capture lifecycle singleton — status + today-promote accessors."""
 
 
 def test_get_status_returns_not_running_initially() -> None:
@@ -18,24 +14,6 @@ def test_get_status_returns_not_running_initially() -> None:
     assert status.watchlist_count == 0
     assert status.kis_calls_today == 0
     assert status.kis_rate_limit_remaining is None
-
-
-def test_status_reflects_poller_state_after_start(tmp_path: Path) -> None:
-    """After start(), status reports running=True with the configured watchlist size."""
-    from hoga.live import lifecycle
-
-    lifecycle.reset_for_tests()
-    lifecycle.start(
-        data_dir=tmp_path,
-        codes=["005930", "000660"],
-        # Skip the actual asyncio task by passing dry_run=True
-        dry_run=True,
-    )
-    status = lifecycle.get_status()
-    assert status.running is True
-    assert status.watchlist_count == 2
-    assert status.started_at_ms is not None and status.started_at_ms > 0
-    lifecycle.reset_for_tests()
 
 
 def test_reset_for_tests_is_idempotent() -> None:

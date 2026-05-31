@@ -1,14 +1,16 @@
 /**
  * KST date/time helpers for /live.
  *
- * Centralises the YYYYMMDD KST conversion, the previous-day arithmetic, and
- * the default Regular Session bounds. /live components (`LiveChartRoot`,
- * `useLiveBundle`, `LiveStatusBar`) all need "what date is right now in
- * Korea?" — keeping the math in one place means localising any future
- * Half-Day Session handling to a single module.
+ * Holds /live's previous-day arithmetic and default Regular Session bounds.
+ * The "Unix-ms → YYYYMMDD KST" calendar-day conversion itself lives once in
+ * `util/time::unixMsToKSTDate`; `realMsToYyyymmdd` is a thin /live-local alias.
+ * /live components (`LiveChartRoot`, `useLiveBundle`, `LiveStatusBar`) all need
+ * "what date is right now in Korea?" — keeping the date math in one place means
+ * localising any future Half-Day Session handling here.
  */
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { TIMEFRAME_TO_MS } from '../api/types';
+import { unixMsToKSTDate } from '../util/time';
 
 const TRADING_MINUTES_PER_DAY = 390;        // KRX 09:00–15:30 = 6.5 h
 const TRADING_DAYS_PER_CALENDAR_DAYS = 5 / 7;
@@ -18,13 +20,13 @@ export function todayKstYyyymmdd(): string {
   return realMsToYyyymmdd(Date.now());
 }
 
-/** Convert a real Unix ms timestamp to its YYYYMMDD KST date. */
+/**
+ * Convert a real Unix ms timestamp to its YYYYMMDD KST date. Thin /live-local
+ * alias for `util/time::unixMsToKSTDate`, the single owner of the calendar-day
+ * rule (fe-shared-02); kept so /live code reads in its own vocabulary.
+ */
 export function realMsToYyyymmdd(realMs: number): string {
-  const kst = new Date(realMs + 9 * 3_600_000);
-  const y = kst.getUTCFullYear();
-  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(kst.getUTCDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
+  return unixMsToKSTDate(realMs);
 }
 
 /** YYYYMMDD KST for the day before `todayYyyymmdd`. */
@@ -130,4 +132,32 @@ export function initialHistoricalDaysFor(tf: LiveTimeframe): number {
  * Wrapper for the lazy-extend trigger in LiveChartRoot. */
 export function prefetchChunkDaysFor(tf: LiveTimeframe): number {
   return candleTargetToCalendarDays(prefetchChunkCandlesFor(tf), tf);
+}
+
+/** /live infinite-scroll backfill policy (SR-3), extracted pure from
+ * LiveChartRoot's subscribeVisibleLogicalRangeChange effect.
+ *
+ * Given where the axis currently starts (`axisEarliestMs`, real Unix ms — the
+ * first segment's session open) and the date already requested
+ * (`historicalFromDate`, or null before any extension), returns the YYYYMMDD
+ * the next leftward chunk should fetch back to.
+ *
+ * Base date: prefer `historicalFromDate` when it is strictly earlier than the
+ * axis earliest. A chunk that lands on a holiday-only span (e.g. Lunar New
+ * Year) leaves `axis.segments[0]` put, so basing off the axis would recompute
+ * the same target and the store's monotonic guard would freeze extension.
+ * Basing off `historicalFromDate` steps another chunk back regardless of
+ * whether the server returned new trading days for the prior chunk. The result
+ * is always strictly earlier than the base, so feeding it back is monotonic. */
+export function nextHistoricalFrom(
+  axisEarliestMs: number,
+  historicalFromDate: string | null,
+  tf: LiveTimeframe,
+): string {
+  const axisEarliestDate = realMsToYyyymmdd(axisEarliestMs);
+  const baseDate =
+    historicalFromDate !== null && historicalFromDate < axisEarliestDate
+      ? historicalFromDate
+      : axisEarliestDate;
+  return subtractDaysKst(baseDate, prefetchChunkDaysFor(tf));
 }

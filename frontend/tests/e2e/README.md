@@ -1,6 +1,6 @@
 # E2E specs — gating + run instructions
 
-These Playwright specs are committed as the **canonical contract** for E2E coverage. The `replay-smoke` (W5.4) and `multi-tab` (W6.2) specs are now live; the remaining 2 specs (`sse-refresh`, `error-states`) still hold `test.skip(true, ...)` pending the gating items listed below.
+These Playwright specs are committed as the **canonical contract** for E2E coverage. The `replay-smoke` (W5.4) and `multi-tab` (W6.2) specs are now live; the remaining 2 specs (`push-refresh`, `error-states`) still hold `test.skip(true, ...)` pending the gating items listed below.
 
 ## Resolved gating
 
@@ -14,7 +14,7 @@ These Playwright specs are committed as the **canonical contract** for E2E cover
 
 1. **Backend test data setup script:** the running backend's `data/raw/<date>/<code>/` directories must be seeded with `tests/fixtures/tiny_tsv_multi/<code>/*`, and the parser must be triggered, before the smoke spec can pick a stock. Either add a Playwright `globalSetup` that copies fixtures + hits the parse endpoint, or a `scripts/seed-e2e-fixtures.sh` helper run before `npx playwright test`.
 2. **Multi-day stitching for `error-states.spec.ts`:** `[data-segment-status]` requires per-segment loading state on the chart — part of the virtual-axis stitching deferred from Phase 6+.
-3. **SSE test endpoint for `sse-refresh.spec.ts`:** `/api/test/add-stockdate?code=...&date=...` needs to be implemented as a dev-only mutator that appends to the inventory and broadcasts the SSE event.
+3. **WebSocket event for `push-refresh.spec.ts`:** `/api/test/add-stockdate?code=...&date=...` appends to the inventory and must broadcast an `inventory_added` event over the WebSocket channel (`ch:'event'`) so the combobox refreshes without a page reload.
 
 ## Run instructions (once gating is satisfied)
 

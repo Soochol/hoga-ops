@@ -1,19 +1,37 @@
 import { useEffect, useRef } from 'react';
-import { type IChartApi, type ISeriesApi } from 'lightweight-charts';
+import {
+  type IChartApi,
+  type ISeriesApi,
+  type SeriesDataItemTypeMap,
+  type SeriesDefinition,
+  type SeriesPartialOptionsMap,
+  type SeriesType,
+} from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 
 /**
- * One series inside a `PaneSpec`. Carries the lightweight-charts
- * SeriesDefinition + options plus a pure `data` projector and an optional
- * `afterAdd` hook (e.g. `series.createPriceLine` for `RATIO_SPEC`'s
- * zero-baseline reference).
+ * One series inside a `PaneSpec`. Each field is typed to the lightweight-charts
+ * series vocabulary rather than `any`: `type` must be a real `SeriesDefinition`,
+ * `options` real series options, and `data` must return real series data items
+ * (`SeriesDataItemTypeMap` entries) — not arbitrary objects.
+ *
+ * The per-entry `type`↔`data` correlation is deliberately NOT encoded as a
+ * discriminated `SeriesSpec<T>`: every `SeriesDataItemTypeMap[T]` includes the
+ * minimal `WhitespaceData` (`{ time }`), and OHLC/value items are structural
+ * supersets of it, so a `SeriesSpec<'Histogram'>` cannot actually reject a
+ * candle-shaped projector — the same "catches nothing" trap the audit flagged
+ * for the `defineSeries<T>` factory (verified: a deliberate
+ * Candlestick-series-with-value-data spec still type-checked under the union).
+ * The real guard lives one level down — each projector annotates its concrete
+ * return (`projectCandle(): CandlestickData<Time>[]`, …), so a wrong-shaped
+ * item fails TS2353 at the projector, where the literal is fresh.
  */
 export type SeriesSpec<Ctx = void> = {
-  type: any;
-  options: any;
-  data: (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => any[];
-  afterAdd?: (series: ISeriesApi<any>) => void;
+  type: SeriesDefinition<SeriesType>;
+  options: SeriesPartialOptionsMap[SeriesType];
+  data: (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => SeriesDataItemTypeMap[SeriesType][];
+  afterAdd?: (series: ISeriesApi<SeriesType>) => void;
 };
 
 /**

@@ -6,6 +6,13 @@ export interface LiveStatus {
   started_at_ms: number | null;
   last_tick_ms: number | null;
   cycle_lag_ms: number;
+  /**
+   * Codes the live poller is *actively iterating* — a poller-health metric,
+   * NOT the watchlist inventory size. It is 0 whenever the poller isn't
+   * running (missing KIS creds, off-hours, never started). For "how many
+   * symbols are on the watchlist", read GET /api/watchlist (`useWatchlist`).
+   * Keying UI empty-states off this field conflates the two (diagnose 2026-05-30).
+   */
   watchlist_count: number;
   kis_calls_today: number;
   kis_rate_limit_remaining: number | null;

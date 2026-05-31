@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiGet } from './client';
 import type { StockDate } from './types';
 
-/** Shared with SSE invalidator in `./sse.ts` — single source of truth. */
+/** Shared with inventory event invalidator in `./eventStream.ts` — single source of truth. */
 export const STOCK_DATES_QUERY_KEY = ['stock-dates'] as const;
 
 export function useStockDates() {

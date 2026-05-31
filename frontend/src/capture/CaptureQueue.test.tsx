@@ -5,7 +5,7 @@ import { CaptureQueue, computeHeaderSummary } from './CaptureQueue';
 import type { QueueItem, QueueSnapshot } from '../api/types';
 import type { ReactNode } from 'react';
 
-vi.mock('../api/sse', () => ({
+vi.mock('../api/eventStream', () => ({
   subscribeToCaptureEvents: () => () => {},
 }));
 

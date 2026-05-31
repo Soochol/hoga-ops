@@ -1,4 +1,9 @@
-import { CandlestickSeries } from 'lightweight-charts';
+import {
+  CandlestickSeries,
+  type CandlestickData,
+  type Time,
+  type UTCTimestamp,
+} from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
@@ -18,14 +23,14 @@ const priceFormat = {
   minMove: 1,
 };
 
-export function projectCandle(bundle: RangeBundle, axis: VirtualAxis): any[] {
+export function projectCandle(bundle: RangeBundle, axis: VirtualAxis): CandlestickData<Time>[] {
   return bundle.candles
     .filter((c) => axis.contains(c.ts_ms))
-    .map((c) => {
+    .map((c): CandlestickData<Time> => {
       const inClosingAuction = axis.inClosingAuctionWindow(c.ts_ms);
       const color = inClosingAuction ? muted : c.close >= c.open ? up : down;
       return {
-        time: (axis.toVirtual(c.ts_ms) / 1000) as any,
+        time: (axis.toVirtual(c.ts_ms) / 1000) as UTCTimestamp,
         open: c.open,
         close: c.close,
         high: c.high,

@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 
 // jsdom has no EventSource; useCaptureQueue subscribes to SSE on mount.
 // Stub the SSE module so the hook's useEffect is a no-op in this test file.
-vi.mock('../api/sse', () => ({
+vi.mock('../api/eventStream', () => ({
   subscribeToCaptureEvents: () => () => {},
 }));
 

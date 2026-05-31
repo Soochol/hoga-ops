@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useStockDateGroups } from './useStockDateGroups';
+import { useStockDateGroups, selectGroup } from './useStockDateGroups';
 import type { StockDate } from '../api/types';
+import type { StockDateGroup } from './types';
 
 const row = (code: string, name: string, date: string, capturedAt: number, sizeBytes: number): StockDate => ({
   date, code, name,
@@ -81,5 +82,28 @@ describe('useStockDateGroups', () => {
   it('empty rows returns empty array', () => {
     const { result } = renderHook(() => useStockDateGroups([], ''));
     expect(result.current).toEqual([]);
+  });
+});
+
+describe('selectGroup', () => {
+  const G = (code: string): StockDateGroup => ({
+    code, name: code, dates: [], lastCapturedAt: 0, totalSizeBytes: 0,
+  });
+  const groups = [G('A'), G('B'), G('C')];
+
+  it('returns null when nothing is selected', () => {
+    expect(selectGroup(groups, null)).toBeNull();
+  });
+
+  it('returns the group matching the selected code', () => {
+    expect(selectGroup(groups, 'B')?.code).toBe('B');
+  });
+
+  it('falls back to the first group when the selected code is absent (default-to-first)', () => {
+    expect(selectGroup(groups, 'ZZZ')?.code).toBe('A');
+  });
+
+  it('returns null when there are no groups even if a code is selected', () => {
+    expect(selectGroup([], 'A')).toBeNull();
   });
 });

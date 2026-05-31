@@ -2,13 +2,11 @@ import { useLivePageStore } from '../state/livePage';
 import { LiveChartRoot } from './LiveChartRoot';
 import { LiveEmptyState } from './LiveEmptyState';
 import { LiveSidebar } from './LiveSidebar';
-import { WatchlistPanel } from './WatchlistPanel';
 import type { RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
 
 interface Props {
   activeCode: string | null;
-  watchlistEmpty: boolean;
   /** The Live Candle Backfill bundle, owned by LivePage. ADR-0040 — single
    * useLiveBundle call site per page. */
   bundle: RangeBundle | null;
@@ -21,34 +19,24 @@ interface Props {
 
 export function LiveWorkarea({
   activeCode,
-  watchlistEmpty,
   bundle,
   clampEngaged,
   isPastCandlesLoading,
   live,
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
-  const watchlistOpen = useLivePageStore((s) => s.watchlistPanelOpen);
 
-  if (watchlistEmpty) {
-    return (
-      <div data-testid="live-workarea" className="h-full">
-        <LiveEmptyState cause="watchlist_empty" />
-      </div>
-    );
-  }
   if (!activeCode) {
     return (
       <div data-testid="live-workarea" className="h-full flex">
         <div style={{ flex: 1 }}>
           <LiveEmptyState cause="no_active_code" />
         </div>
-        {watchlistOpen && <WatchlistPanel />}
       </div>
     );
   }
 
-  // Single chart owns all 5 panes; sidebar + optional watchlist stay siblings.
+  // Single chart owns all 5 panes; sidebar stays a sibling.
   return (
     <div
       data-testid="live-workarea"
@@ -82,7 +70,6 @@ export function LiveWorkarea({
       >
         <LiveSidebar code={activeCode} live={live} />
       </div>
-      {watchlistOpen && <WatchlistPanel />}
     </div>
   );
 }

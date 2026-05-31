@@ -10,15 +10,13 @@ type Props = {
   axis: VirtualAxis;
 };
 
-function fmtMD(yyyymmdd: string): string {
-  return `${Number(yyyymmdd.slice(4, 6))}/${Number(yyyymmdd.slice(6, 8))}`;
-}
-
 /**
- * Vertical line + MM/DD chip per Day Boundary (CONTEXT.md). The reposition
- * handler coalesces subscribeVisibleLogicalRangeChange + ResizeObserver
- * events through requestAnimationFrame and mutates only transform:translateX
- * (GPU compositor path, no layout thrash). plan-eng-review Perf #1.
+ * Vertical dashed line per Day Boundary (CONTEXT.md). Date labels are owned by
+ * the adaptive x-axis (see util/kstHorzScaleBehavior) — this overlay draws only
+ * the divider. The reposition handler coalesces
+ * subscribeVisibleLogicalRangeChange + ResizeObserver events through
+ * requestAnimationFrame and mutates only transform:translateX (GPU compositor
+ * path, no layout thrash). plan-eng-review Perf #1.
  *
  * N segments → N-1 boundaries (no boundary at the start of segment[0]).
  */
@@ -67,11 +65,7 @@ export default function DayBoundaryOverlay({ chart, axis }: Props) {
               transform: `translateX(${b.x as number}px)`,
               backgroundImage: `repeating-linear-gradient(to bottom, ${boundary} 0 3px, transparent 3px 6px)`,
             }}
-          >
-            <span className="absolute top-1 left-1 bg-bg-card text-fg-dim text-xs px-1.5 py-0.5 rounded">
-              {fmtMD(b.date)}
-            </span>
-          </div>
+          />
         ),
       )}
     </div>

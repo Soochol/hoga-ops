@@ -1,26 +1,16 @@
-import { useEffect, useState } from 'react';
-import { lastHeartbeat } from '../api/sse';
+import { useConnectionLiveness } from '../api/useConnectionLiveness';
+import { STATUS_STALE_MS } from '../api/liveness';
 
 type Status = 'green' | 'yellow' | 'red';
 
 export default function StatusDot() {
-  const [status, setStatus] = useState<Status>('yellow');
-  useEffect(() => {
-    const tick = () => {
-      const last = lastHeartbeat();
-      if (last === 0) setStatus('yellow');
-      else if (Date.now() - last > 60_000) setStatus('yellow');
-      else setStatus('green');
-    };
-    tick();
-    const id = setInterval(tick, 5000);
-    return () => clearInterval(id);
-  }, []);
+  const live = useConnectionLiveness(STATUS_STALE_MS, 5000);
+  const status: Status = live ? 'green' : 'yellow';
   const color =
-    status === 'green' ? 'var(--success)' : status === 'yellow' ? 'var(--accent)' : 'var(--error)';
+    status === 'green' ? 'var(--success)' : status === 'yellow' ? 'var(--warn)' : 'var(--error)';
   const text =
     status === 'green'
-      ? 'SSE 연결 활성'
+      ? '실시간 연결 활성'
       : status === 'yellow'
         ? '재연결 중...'
         : '백엔드 응답 없음';
@@ -33,7 +23,7 @@ export default function StatusDot() {
           boxShadow: status === 'green' ? `0 0 4px ${color}` : undefined,
         }}
       />
-      SSE · :8000
+      WS · :8000
     </span>
   );
 }

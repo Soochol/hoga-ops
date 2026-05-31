@@ -98,6 +98,8 @@ The design system has a **single density dial** at `:root font-size`.
   - Selection tint: `rgba(20,184,166,0.12)` — active nav, active tab, primary hover
   - Success tint: `rgba(34,197,94,0.10)` — completion chip background
   - Error tint: `rgba(244,63,94,0.10)` — error chip background
+  - Success border: `rgba(34,197,94,0.30)` — `--tint-success-border` (banner/chip borders)
+  - Error border: `rgba(244,63,94,0.30)` — `--tint-error-border` (banner/chip borders)
   - Price-up tint: `rgba(220,38,38,0.10)` — buy depth bar, positive market chip
   - Price-down tint: `rgba(37,99,235,0.10)` — sell depth bar, negative market chip
 
@@ -147,6 +149,15 @@ The design system has a **single density dial** at `:root font-size`.
   - `md` 4px (presets, small buttons)
   - `lg` 6px (cards, inputs, buttons, dropdowns — the default)
   - `full` 50% (status dots, avatars)
+
+### Page shell (feature routes)
+
+Every feature route except the chart workspace follows one shell:
+
+- **Outer padding:** wrap the route in `<PageContainer>` (`frontend/src/layout/PageContainer.tsx`) — the single source of the page padding token (`p-md`). Never hardcode `p-4`/`p-8` at the page root.
+- **Content framing:** primary content sits in `bg-bg-card border rounded-lg` cards. Multi-pane pages (master-detail, splitter) use one card per pane; single-content pages use one card. Never nest cards.
+- **No redundant page title:** the left nav is the page label, so a page never repeats its own name. Pages expose a *title-less* control bar (search / counts / actions) at the top of their card. (See the `/live` header: search only, with the active symbol shown in the status bar below.)
+- **Full-bleed exception:** only the chart workspace (`/live`) is full-bleed (no `PageContainer`, no card) — the chart must fill the viewport. Its sidebar still uses `--bg-card` to match other panels.
 
 ## Motion
 
@@ -224,14 +235,15 @@ The design system has a **single density dial** at `:root font-size`.
 | 2026-05-20 | Tab status pulse dot | Multi-tab async state needs to be visible. One small animation is worth the tradeoff. |
 | 2026-05-20 | Monospace 100% for numbers | Tabular-nums is required for orderbook column alignment. Two-font cost (~50 KB extra) is negligible on localhost. |
 
-## Live page tokens (Stage 9, ADR-0039)
+## App-shell & live tokens (ADR-0039, ADR-0052)
 
-The `/live` page introduces additional layout and source-identity tokens:
+Layout and source-identity tokens beyond the core scale. The Right Rail tokens (ADR-0052) are app-shell-wide (every route); the live tokens are `/live`-scoped. These layout widths/heights live in `design-tokens.ts` `SIZE_TOKENS` (ADR-0012); this hand-maintained table mirrors them for reference (no auto-marker yet):
 
 | Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
 |---|---|---|---|
-| `--h-live-header` | 32px | 40px | Live page header row (page title + ⭐ toggle) |
-| `--watchlist-panel-w` | 280px | 350px | Watchlist toggle panel width (right of Live Sidebar) |
+| `--rail-w` | 48px | 60px | Right Rail icon column width (app shell, all routes; fixed — does not collapse) |
+| `--watchlist-panel-w` | 280px | 350px | Watchlist Panel width — opened from the Right Rail (global) |
+| `--h-live-header` | 32px | 40px | Live page header row (page title) |
 
 **Source identity chips** — neither UI state nor status nor price direction, but data provenance.
 A fourth category limited to identifying which capture source rendered a given segment.
@@ -250,3 +262,4 @@ A fourth category limited to identifying which capture source rendered a given s
 - **Status labels** (LiveStatusBar pills, banner badges): Korean single words ("장 외", "대기 중", "준비됨").
 - **Layout grid for `/live`**: 4-row grid mirroring `/replay`'s PriceStrip pattern — header (32/40px) + status bar (52/65px) + toolbar (60/75px) + workarea (1fr).
 | 2026-05-23 | Adopted KRX market convention (up=red `#DC2626`, down=blue `#2563EB`) | Single-user Korean analyst — Western up=green is counter-intuitive. Renamed `--up`/`--down` → `--success`/`--error` to disambiguate status semantic from price direction; introduced `--price-up`/`--price-down`. Removed `--ratio-ask` (folded into `--price-down`). All chart series now hide both `priceLineVisible` and `lastValueVisible` — analysts read latest values via crosshair. |
+| 2026-05-30 | Global Right Rail (fixed; single 관심 item, heart icon) replaces the `/live` ★ watchlist drawer; the chevron `»`/`«` and the 관심 item both show/hide the Watchlist Panel; chrome state in a dedicated `rightRail` store (ADR-0052) | Watchlist reachable from every page. Rail does not collapse — only the panel opens. Active state = tint bg + neutral text (no triple-teal, matches LeftNav). `--rail-w` added via `design-tokens.ts` (ADR-0012). |

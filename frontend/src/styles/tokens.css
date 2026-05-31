@@ -66,6 +66,8 @@
   --tint-selection:  rgba(20, 184, 166, 0.12);
   --tint-success:    rgba(34, 197, 94, 0.10);
   --tint-error:      rgba(244, 63, 94, 0.10);
+  --tint-success-border: rgba(34, 197, 94, 0.30);  /* banner/chip borders */
+  --tint-error-border:   rgba(244, 63, 94, 0.30);  /* banner/chip borders */
   --tint-price-up:   rgba(220, 38, 38, 0.10);  /* DC2626 @ 10% */
   --tint-price-down: rgba(37, 99, 235, 0.10);  /* 2563EB @ 10% */
   /* Closing Auction Window shading. Drawn behind chart panes by
@@ -81,6 +83,12 @@
      column inward — bar grows toward the price side. */
   --bar-ask: rgba(37, 99, 235, 0.28);   /* 2563EB @ 28% */
   --bar-bid: rgba(220, 38, 38, 0.28);   /* DC2626 @ 28% */
+
+  /* Source-identity chips (ADR-0039) — provenance, not UI/status/price. Hand-edited (color refs, not size). */
+  --source-hogaplay-bg: var(--bg-card);
+  --source-hogaplay-border: var(--fg-dimmer);
+  --source-kis-live-bg: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
+  --source-kis-live-border: var(--accent);
 
   /* BEGIN AUTO-GENERATED (size + radius + layout) — regenerate via npm run gen:tokens */
   /* ───── Typography sizes (rem-based) ───── */
@@ -116,18 +124,12 @@
   --h-pricestrip: 3.25rem; /* 65px @ default; 52px base intent — Current-price strip below toolbar */
   --h-orderbook-row: 1.375rem; /* 27.5px @ default; 22px base intent — Single row in the orderbook table */
   --h-capture-row: 2.25rem; /* 45px @ default; 36px base intent — Single row in the capture queue */
+  --h-live-header: 2rem; /* 40px @ default; 32px base intent — Live page header row */
   --nav-w: 13.125rem; /* 262.5px @ default; 210px base intent — LeftNav fixed column width */
   --sidebar-w: 20rem; /* 400px @ default; 320px base intent — Cursor sidebar on the right of replay viewer */
   --combobox-min-w: 13.75rem; /* 275px @ default; 220px base intent — Stock combobox trigger minimum width */
   --dropdown-min-w: 20rem; /* 400px @ default; 320px base intent — Combobox / search dropdown minimum width */
-
-  --watchlist-panel-w: 17.5rem; /* 350px @ default; 280px base intent — Live page watchlist toggle panel */
-  --source-hogaplay-bg: var(--bg-card);
-  --source-hogaplay-border: var(--fg-dimmer);
-  --source-kis-live-bg: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
-  --source-kis-live-border: var(--accent);
-
-  /* Live page grid rows */
-  --h-live-header: 2rem; /* 40px @ default; 32px base intent — Live page header row */
+  --watchlist-panel-w: 17.5rem; /* 350px @ default; 280px base intent — Global Watchlist Panel (Right Rail) width */
+  --rail-w: 3rem; /* 60px @ default; 48px base intent — Right Rail icon column width (fixed) */
 /* END AUTO-GENERATED */
 }
