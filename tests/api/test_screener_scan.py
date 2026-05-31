@@ -52,3 +52,21 @@ def test_days_ago_is_trading_days_not_calendar(tmp_path: Path):
     assert len(out) == 1
     assert out[0].new_high.event_date == "20260508"
     assert out[0].new_high.days_ago == 3          # 거래일(달력 5 아님)
+
+
+def test_change_pct_populated(tmp_path: Path):
+    # prev close=100 on 2026-05-13, latest close=110 on 2026-05-14 → +10.0%
+    rows = [("000001", "2026-05-13", 100, 10), ("000001", "2026-05-14", 110, 10)]
+    p, s = _store(tmp_path, rows)
+    out = run_scan(p, s, min_trade_value_eok=0.0)
+    assert len(out) == 1
+    assert out[0].change_pct == 10.0
+
+
+def test_change_pct_none_for_single_row(tmp_path: Path):
+    # only one trading day — no previous close → change_pct must be None
+    rows = [("000001", "2026-05-14", 110, 10)]
+    p, s = _store(tmp_path, rows)
+    out = run_scan(p, s, min_trade_value_eok=0.0)
+    assert len(out) == 1
+    assert out[0].change_pct is None

@@ -35,6 +35,30 @@ def export_db_to_csv(csv_path: Path, *, container: str = "tradingview-db",
                        stdout=f, check=True)
 
 
+def seed_stocks_from_csv(csv_path: Path, out_path: Path) -> int:
+    """CSV(code,name,market,is_etf,is_halted) → stocks.parquet. code VARCHAR 강제."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(":memory:")
+    csv_s = str(csv_path).replace("'", "''")
+    out_s = str(out_path).replace("'", "''")
+    con.execute(
+        f"COPY (SELECT code, name, market, is_etf, is_halted "
+        f"FROM read_csv('{csv_s}', header=true, types={{'code':'VARCHAR'}})) "
+        f"TO '{out_s}' (FORMAT parquet, COMPRESSION zstd)"
+    )
+    return con.execute(f"SELECT count(*) FROM '{out_s}'").fetchone()[0]
+
+
+def export_stocks_from_db(csv_path: Path, *, container: str = "tradingview-db",
+                          db: str = "tradingview", user: str = "tradingview") -> None:
+    """docker exec psql \\copy stocks → CSV (운영 1회 시드용)."""
+    sql = ("\\copy (SELECT code, name, market, is_etf, is_halted "
+           "FROM stocks ORDER BY code) TO STDOUT WITH CSV HEADER")
+    with csv_path.open("wb") as f:
+        subprocess.run(["docker", "exec", container, "psql", "-U", user, "-d", db, "-c", sql],
+                       stdout=f, check=True)
+
+
 import polars as pl  # noqa: E402 — appended after stdlib imports
 
 # 깨끗한 분할 비율(신주/구주) 후보 + 역수. ratio = close[d]/close[d-1].
@@ -68,7 +92,7 @@ def adjust_splits(df: pl.DataFrame) -> pl.DataFrame:
         f = pl.Series("f", factor)
         adj = g.with_columns([
             (pl.col(c) * f).alias(c) for c in ("open", "high", "low", "close")
-        ]).with_columns((pl.col("volume") / f).cast(pl.Int64).alias("volume"))
+        ]).with_columns((pl.col("volume") / f).round(0).cast(pl.Int64).alias("volume"))
         out.append(adj)
     return pl.concat(out)
 

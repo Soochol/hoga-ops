@@ -41,7 +41,8 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
     con.execute(f"CREATE VIEW adj AS SELECT * FROM '{adjusted_path}'")
     con.execute(f"CREATE VIEW stk AS SELECT * FROM '{stocks_path}'")
 
-    ctes = ["base AS (SELECT DISTINCT ON (code) code, date, high, close, volume "
+    ctes = ["base AS (SELECT DISTINCT ON (code) code, date, high, close, volume, "
+            "LAG(close) OVER (PARTITION BY code ORDER BY date) AS prev_close "
             "FROM adj ORDER BY code, date DESC)"]
     joins: list[str] = []
     if new_high:
@@ -50,7 +51,9 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
         ctes.append(_breakout_cte("nhv", "volume", new_high_vol)); joins.append("nhv")
 
     sel = ["base.code", "stk.name", "stk.market", "base.close::BIGINT price",
-           "(base.close*base.volume)::BIGINT trade_value_won"]
+           "(base.close*base.volume)::BIGINT trade_value_won",
+           "CASE WHEN base.prev_close IS NULL OR base.prev_close = 0 THEN NULL "
+           "ELSE round((base.close / base.prev_close - 1) * 100, 2) END change_pct"]
     sel.append("nh.event_date nh_date, nh.days_ago nh_days, nh.period_extreme nh_ext"
                if new_high else "NULL nh_date, NULL nh_days, NULL nh_ext")
     sel.append("nhv.event_date nhv_date, nhv.days_ago nhv_days, nhv.period_extreme nhv_ext"
@@ -89,7 +92,8 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
         d = dict(zip(cols, r))
         out.append(ScreenerRow(
             code=d["code"], name=d["name"], market=d["market"], price=int(d["price"]),
-            trade_value_won=int(d["trade_value_won"]), change_pct=None,
+            trade_value_won=int(d["trade_value_won"]),
+            change_pct=float(d["change_pct"]) if d["change_pct"] is not None else None,
             new_high=_bk(d["nh_date"], d["nh_days"], d["nh_ext"]) if new_high else None,
             new_high_vol=_bk(d["nhv_date"], d["nhv_days"], d["nhv_ext"]) if new_high_vol else None,
         ))
