@@ -187,9 +187,15 @@ function SingleLegendRow({ row }: { row: Exclude<LegendRow, { paneId: 'candle' }
   const setForeign = useLivePageStore((s) => s.setForeignNetEnabled);
   const setInstitution = useLivePageStore((s) => s.setInstitutionNetEnabled);
   const turnOff = () => {
-    if (row.paneId === 'volume') setVolumeEnabled(false);
-    else if (row.paneId === 'investor-foreign') setForeign(false);
-    else setInstitution(false);
+    // Exhaustive over the single-pane variants — a future 4th single pane added
+    // to LegendRow fails to compile here instead of silently routing its ✕ to
+    // setInstitution.
+    switch (row.paneId) {
+      case 'volume': setVolumeEnabled(false); break;
+      case 'investor-foreign': setForeign(false); break;
+      case 'investor-institution': setInstitution(false); break;
+      default: { const _exhaustive: never = row; void _exhaustive; }
+    }
   };
   return (
     <>
@@ -265,11 +271,11 @@ export default function PaneLegendOverlay({ chart, timeframe, paneSeries }: Prop
     movingAverageHidden,
     maValues,
     volumeEnabled,
-    volumeValue: valueFor('volume' as PaneId),
+    volumeValue: valueFor('volume'),
     foreignNetEnabled,
-    foreignValue: valueFor('investor-foreign' as PaneId),
+    foreignValue: valueFor('investor-foreign'),
     institutionNetEnabled,
-    institutionValue: valueFor('investor-institution' as PaneId),
+    institutionValue: valueFor('investor-institution'),
   });
 
   // ── pane geometry (runtime order, not static paneTopY) ─────────────────

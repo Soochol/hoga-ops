@@ -105,8 +105,9 @@ export function useLiveBundle(
     enableDaily ? dailyPastTo : null,
   );
 
-  // Investor net-buy (foreign/institution) — 'D' (일봉) ONLY, no date range (KIS
-  // inquire-investor returns the ~30 most-recent trading days). ADR-0055.
+  // Investor net-buy (foreign/institution) — 'D' (일봉) ONLY. KIS
+  // investor-trade-by-stock-daily (FHPTJ04160001) walks back the requested
+  // [from, to] range by date cursor. ADR-0055.
   // Why daily-only, not all calendar frames: investor points are daily-anchored
   // (09:00 KST), but W/M aggregate candles into week/month segments, so most
   // daily points would fall outside axis.contains and render a near-empty pane.

@@ -443,7 +443,8 @@ export type RangeBundle = {
   fill_strength: FillStrength;
   volume_profile_range: VolumeProfile;
   volume_profile_by_day: VolumeProfile[];
-  /** ADR-0055: recent (~30 trading day) foreign/institution net-buy bars.
+  /** ADR-0055: daily foreign/institution net-buy bars across the requested
+   *  range (FHPTJ04160001 date-cursor walk-back).
    *  Empty on minute timeframes (KIS provides investor data for D/W/M only).
    *  Separate array (not on Candle) so minute candles never carry null. */
   investorPoints: InvestorNetPoint[];

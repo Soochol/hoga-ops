@@ -761,7 +761,7 @@ class KisClient:
         return DailyCandleFetchResult(candles=all_candles, violations=violations)
 
     # ------------------------------------------------------------------
-    # fetch_investor_net (FHKST01010900, inquire-investor)
+    # fetch_investor_net (FHPTJ04160001, investor-trade-by-stock-daily)
     # ------------------------------------------------------------------
 
     async def fetch_investor_net(
