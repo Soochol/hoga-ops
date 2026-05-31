@@ -1,14 +1,16 @@
 from __future__ import annotations
+from collections.abc import Callable
 from pathlib import Path
-from typing import Literal
 import duckdb
-from hoga.api.models import BreakoutFilter, ScreenerRow, BreakoutHit, BreakoutMiss
+from hoga.api.models import (
+    BreakoutParams, ConditionLeaf, ScreenerRow, ScreenerUniverse,
+)
 
 _WON_PER_EOK = 100_000_000
 
 
-def _breakout_cte(name: str, col: str, f: BreakoutFilter) -> str:
-    """col(high|volume) 의 (lookback,period) 돌파 이력 CTE."""
+def _breakout_cte(name: str, col: str, f: BreakoutParams) -> str:
+    """col(high|volume) 의 (lookback,period) 돌파 이력 CTE. VERBATIM — 재작성 금지."""
     N, M = f.lookback, f.period
     return f"""
     {name}_lb AS (
@@ -23,20 +25,46 @@ def _breakout_cte(name: str, col: str, f: BreakoutFilter) -> str:
                       ROWS BETWEEN {M - 1} PRECEDING AND CURRENT ROW) wc
       FROM adj),
     {name} AS (
-      SELECT DISTINCT ON (w.code) w.code, w.date event_date, CAST(w.v AS BIGINT) period_extreme,
-        (SELECT count(*) FROM adj a WHERE a.code=w.code AND a.date > w.date) AS days_ago
+      SELECT DISTINCT ON (w.code) w.code
       FROM {name}_win w JOIN {name}_lb l ON l.code=w.code
       WHERE w.date >= l.lb_start AND w.v >= w.mx AND w.wc = {M}
       ORDER BY w.code, w.date DESC)"""
 
 
+# A leaf compiler: (leaf, i) -> (cte_sql_defining_cond_i, sql_params)
+LeafCompiler = Callable[[ConditionLeaf, int], tuple[str, list]]
+
+
+def _compile_trade_value(leaf, i):
+    return f"cond_{i} AS (SELECT code FROM base WHERE close*volume >= ?)", [int(leaf.params.min_eok * _WON_PER_EOK)]
+
+
+def _breakout(col: str) -> LeafCompiler:
+    return lambda leaf, i: (_breakout_cte(f"cond_{i}", col, leaf.params), [])
+
+
+CONDITION_COMPILERS: dict[str, LeafCompiler] = {
+    "trade_value": _compile_trade_value,
+    "new_high": _breakout("high"),
+    "new_high_vol": _breakout("volume"),
+    # change_pct / price_range / ma added in B2/B3/B4
+}
+
+
+def _universe_wheres(u: ScreenerUniverse) -> tuple[list[str], list]:
+    wheres, params = [], []
+    if u.markets:
+        wheres.append(f"stk.market IN ({','.join('?' * len(u.markets))})"); params += list(u.markets)
+    if u.exclude_etf:
+        wheres.append("NOT stk.is_etf")
+    if u.exclude_halted:
+        wheres.append("NOT stk.is_halted")
+    return wheres, params
+
+
 def run_scan(adjusted_path: Path, stocks_path: Path, *,
-             new_high: BreakoutFilter | None = None,
-             new_high_vol: BreakoutFilter | None = None,
-             min_trade_value_eok: float | None = None,
-             markets: list[Literal["KOSPI", "KOSDAQ"]] | None = None,
-             exclude_etf: bool = False, exclude_halted: bool = False,
-             q: str | None = None, limit: int = 1000) -> list[ScreenerRow]:
+             conditions: list[ConditionLeaf], universe: ScreenerUniverse,
+             limit: int = 1000) -> list[ScreenerRow]:
     con = duckdb.connect(":memory:")
     con.execute(f"CREATE VIEW adj AS SELECT * FROM '{adjusted_path}'")
     con.execute(f"CREATE VIEW stk AS SELECT * FROM '{stocks_path}'")
@@ -45,56 +73,31 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
             "LAG(close) OVER (PARTITION BY code ORDER BY date) AS prev_close "
             "FROM adj ORDER BY code, date DESC)"]
     joins: list[str] = []
-    if new_high:
-        ctes.append(_breakout_cte("nh", "high", new_high)); joins.append("nh")
-    if new_high_vol:
-        ctes.append(_breakout_cte("nhv", "volume", new_high_vol)); joins.append("nhv")
-
-    sel = ["base.code", "stk.name", "stk.market", "base.close::BIGINT price",
-           "(base.close*base.volume)::BIGINT trade_value_won",
-           "CASE WHEN base.prev_close IS NULL OR base.prev_close = 0 THEN NULL "
-           "ELSE round((base.close / base.prev_close - 1) * 100, 2) END change_pct"]
-    sel.append("nh.event_date nh_date, nh.days_ago nh_days, nh.period_extreme nh_ext"
-               if new_high else "NULL nh_date, NULL nh_days, NULL nh_ext")
-    sel.append("nhv.event_date nhv_date, nhv.days_ago nhv_days, nhv.period_extreme nhv_ext"
-               if new_high_vol else "NULL nhv_date, NULL nhv_days, NULL nhv_ext")
-
-    join_sql = "JOIN stk ON stk.code=base.code "
-    for j in joins:
-        join_sql += f"JOIN {j} ON {j}.code=base.code "
-
-    wheres: list[str] = []
     params: list = []
-    if min_trade_value_eok is not None:
-        wheres.append("base.close*base.volume >= ?"); params.append(int(min_trade_value_eok * _WON_PER_EOK))
-    if markets:
-        wheres.append(f"stk.market IN ({','.join('?' * len(markets))})"); params += list(markets)
-    if exclude_etf:
-        wheres.append("NOT stk.is_etf")
-    if exclude_halted:
-        wheres.append("NOT stk.is_halted")
-    if q:
-        wheres.append("(stk.name LIKE ? OR base.code LIKE ?)"); params += [f"%{q}%", f"{q}%"]
-    where_sql = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+    for i, leaf in enumerate(conditions):
+        cte, p = CONDITION_COMPILERS[leaf.type](leaf, i)
+        ctes.append(cte)
+        joins.append(f"JOIN cond_{i} ON cond_{i}.code = base.code")
+        params += p
 
-    sql = (f"WITH {', '.join(ctes)} SELECT {', '.join(sel)} FROM base {join_sql}"
-           f"{where_sql} ORDER BY trade_value_won DESC LIMIT {int(limit)}")
+    uwheres, uparams = _universe_wheres(universe)
+    params += uparams
+    where_sql = ("WHERE " + " AND ".join(uwheres)) if uwheres else ""
+
+    sel = ("base.code, stk.name, stk.market, base.close::BIGINT price, "
+           "(base.close*base.volume)::BIGINT trade_value_won, "
+           "CASE WHEN base.prev_close IS NULL OR base.prev_close = 0 THEN NULL "
+           "ELSE round((base.close / base.prev_close - 1) * 100, 2) END change_pct")
+    sql = (f"WITH {', '.join(ctes)} SELECT {sel} FROM base JOIN stk ON stk.code=base.code "
+           f"{' '.join(joins)} {where_sql} ORDER BY trade_value_won DESC LIMIT {int(limit)}")
+
     cur = con.execute(sql, params)
     cols = [c[0] for c in cur.description]
-
-    def _bk(date, days, ext):
-        return (BreakoutHit(hit=True, event_date=date.strftime("%Y%m%d"),
-                            days_ago=int(days), period_extreme=int(ext))
-                if date is not None else BreakoutMiss(hit=False))
-
     out: list[ScreenerRow] = []
     for r in cur.fetchall():
         d = dict(zip(cols, r))
         out.append(ScreenerRow(
             code=d["code"], name=d["name"], market=d["market"], price=int(d["price"]),
             trade_value_won=int(d["trade_value_won"]),
-            change_pct=float(d["change_pct"]) if d["change_pct"] is not None else None,
-            new_high=_bk(d["nh_date"], d["nh_days"], d["nh_ext"]) if new_high else None,
-            new_high_vol=_bk(d["nhv_date"], d["nhv_days"], d["nhv_ext"]) if new_high_vol else None,
-        ))
+            change_pct=float(d["change_pct"]) if d["change_pct"] is not None else None))
     return out

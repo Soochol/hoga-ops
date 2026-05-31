@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from hoga.api import screener_scan, screener_store
 from hoga.api.calendar import trading_days_in_range
-from hoga.api.models import BreakoutFilter, ScreenerResponse
+from hoga.api.models import ScreenerResponse
 from hoga.api.symbols import _RefreshCoordinator
 from hoga.live import lifecycle
 from hoga.live.kis_client import KIS_KST, KisCredentials
