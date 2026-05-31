@@ -3,6 +3,7 @@ import { useStockDates } from '../api/stock-dates';
 import { StockDateGroupList } from '../inventory/StockDateGroupList';
 import { StockDateGroupDetail } from '../inventory/StockDateGroupDetail';
 import { useStockDateGroups } from '../inventory/useStockDateGroups';
+import { PageContainer } from '../layout/PageContainer';
 
 export default function Inventory() {
   const { data: rows = [], isLoading } = useStockDates();
@@ -22,12 +23,12 @@ export default function Inventory() {
   }
 
   return (
-    <div
-      className="p-md h-full grid gap-md min-h-0"
-      style={{ gridTemplateColumns: '320px 1fr' }}
+    <PageContainer
+      className="grid gap-md"
+      style={{ gridTemplateColumns: 'var(--sidebar-w) 1fr' }}
     >
       <StockDateGroupList rows={rows} selectedCode={selectedCode} onSelect={setSelectedCode} />
       <StockDateGroupDetail rows={rows} selectedCode={selectedCode} />
-    </div>
+    </PageContainer>
   );
 }

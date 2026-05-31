@@ -123,7 +123,7 @@ export function StockDateGroupDetail({ rows, selectedCode }: Props) {
               // ADR-0042 row tint: blocked rows pick up DESIGN.md error chip
               // bg (#F43F5E @ 10%) so the row itself signals "not normal".
               const trClass = r.blocked
-                ? 'border-b bg-[rgba(244,63,94,0.10)]'
+                ? 'border-b bg-tint-error'
                 : 'border-b';
               return (
                 <tr
