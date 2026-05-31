@@ -3,13 +3,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { it, expect, vi } from 'vitest';
 
-vi.mock('../api/screener', () => ({
-  runScreener: vi.fn(async () => ({ status: 'ok', rows: [{
-    code: '005930', name: '삼성전자', market: 'KOSPI', price: 317000,
-    trade_value_won: 1, change_pct: 5.8,
-    new_high: { hit: true, event_date: '20260514', days_ago: 0, period_extreme: 323000 },
-    new_high_vol: { hit: false } }] })),
-  getScreenerStatus: vi.fn(async () => ({ status: 'ok', last_raw_date: '20260514' })),
+vi.mock('../api/screener', async (orig) => ({
+  ...(await orig<typeof import('../api/screener')>()),
+  runScan: vi.fn(() => Promise.resolve({ status: 'ok', warnings: [], rows: [
+    { code: '005930', name: '삼성전자', market: 'KOSPI', price: 74200, trade_value_won: 842_000_000_000, change_pct: 5.8 }] })),
+  getScreenerStatus: vi.fn(() => Promise.resolve({ status: 'ok', last_raw_date: '20260530', days_behind: 0 })),
+  triggerScreenerUpdate: vi.fn(),
+}));
+vi.mock('../api/savedScreeners', () => ({
+  listSaves: vi.fn(() => Promise.resolve({ schema_version: 1, saves: [] })),
+  createSave: vi.fn(), updateSave: vi.fn(), deleteSave: vi.fn(),
 }));
 
 // useLivePageStore lives at ../state/livePage (the path LiveStatusBar imports);
