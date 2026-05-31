@@ -4,6 +4,7 @@ import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import { useLivePageStore } from '../../state/livePage';
 import { computeSMA, selectSource } from '../../chart/projectors/movingAverage';
+import { useMaSeriesRegistry } from './maSeriesRegistry';
 
 type Props = {
   chart: IChartApi;
@@ -20,6 +21,7 @@ type LineApi = ISeriesApi<'Line'>;
 export default function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   const configs = useLivePageStore((s) => s.movingAverages);
   const masterEnabled = useLivePageStore((s) => s.movingAverageEnabled);
+  const hidden = useLivePageStore((s) => s.movingAverageHidden);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
 
   // Reconcile series ↔ configs by id.
@@ -32,6 +34,7 @@ export default function MovingAverageOverlay({ chart, bundle, axis }: Props) {
       if (!currentIds.has(id)) {
         try { chart.removeSeries(s); } catch { /* chart torn down */ }
         map.delete(id);
+        useMaSeriesRegistry.getState().unregister(id);
       }
     }
 
@@ -48,6 +51,7 @@ export default function MovingAverageOverlay({ chart, bundle, axis }: Props) {
             crosshairMarkerVisible: false,
           }, 0); // paneIndex 0 — candle pane overlay
           map.set(cfg.id, s);
+          useMaSeriesRegistry.getState().register(cfg.id, s);
         } catch { /* chart torn down */ }
       } else {
         existing.applyOptions({ color: cfg.color, lineWidth: cfg.lineWidth });
@@ -59,8 +63,9 @@ export default function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   useEffect(() => {
     return () => {
       const map = seriesByIdRef.current;
-      for (const [, s] of map) {
+      for (const [id, s] of map) {
         try { chart.removeSeries(s); } catch { /* chart torn down */ }
+        useMaSeriesRegistry.getState().unregister(id);
       }
       map.clear();
     };
@@ -73,11 +78,12 @@ export default function MovingAverageOverlay({ chart, bundle, axis }: Props) {
     for (const cfg of configs) {
       const s = map.get(cfg.id);
       if (!s) continue;
-      // Master toggle wins: when the indicator category is off, every slot
-      // is hidden regardless of its own `enabled` flag. The per-slot
-      // `enabled` field is still honoured underneath so legacy stores
-      // (and any future reintroduction of per-slot toggles) keep working.
-      if (!masterEnabled || !cfg.enabled) {
+      // ✕ off (master/slot disabled) clears data + hides. 눈 hide
+      // (movingAverageHidden) only flips visibility — data stays so the Pane
+      // Legend can read the SMA-at-cursor value while the line is hidden.
+      const drawn = masterEnabled && cfg.enabled;
+      s.applyOptions({ visible: drawn && !hidden });
+      if (!drawn) {
         s.setData([]);
         continue;
       }
@@ -90,7 +96,7 @@ export default function MovingAverageOverlay({ chart, bundle, axis }: Props) {
       });
       s.setData(data as never);
     }
-  }, [bundle, axis, configs, masterEnabled]);
+  }, [bundle, axis, configs, masterEnabled, hidden]);
 
   return null;
 }
