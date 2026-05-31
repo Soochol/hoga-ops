@@ -29,10 +29,12 @@ const NO_INVESTOR: InvestorPaneToggles = { foreignNet: false, institutionNet: fa
 /**
  * Pick the pane spec list to mount in `LiveChartRoot` for a given
  * **LiveTimeframe**. Minute frames always get the full `PANE_SPECS`; calendar
- * frames (D/W/M) get candle + volume, plus the opt-in foreign / institution
- * net-buy panes appended in canonical order when their toggles are on
- * (ADR-0055). Investor data is D/W/M-only, so the toggles are ignored on
- * minute frames.
+ * frames (D/W/M) get candle + volume. The opt-in foreign / institution net-buy
+ * panes are appended in canonical order — but only on **'D'** (ADR-0055):
+ * investor points are daily-anchored (09:00), whereas W/M aggregate candles
+ * into week/month segments, so daily points wouldn't align (they'd be filtered
+ * by `axis.contains`, rendering a near-empty pane). W/M therefore show no
+ * investor pane even with the toggles on.
  *
  * Each individual spec is a module-level constant (stable ref), so when the
  * toggles are unchanged `RangeSeriesPane`'s `spec`-keyed effect doesn't churn.
@@ -46,7 +48,12 @@ export function paneSpecsForTimeframe(
   investor: InvestorPaneToggles = NO_INVESTOR,
 ): readonly BoundPaneSpec[] {
   if (!isCalendarTimeframe(tf)) return PANE_SPECS;
-  if (!investor.foreignNet && !investor.institutionNet) return CALENDAR_PANE_SPECS;
+  // Investor panes are daily-only; W/M aggregate candles so daily points
+  // wouldn't align to their segments.
+  const investorAllowed = tf === 'D';
+  if (!investorAllowed || (!investor.foreignNet && !investor.institutionNet)) {
+    return CALENDAR_PANE_SPECS;
+  }
   const extra: BoundPaneSpec[] = [];
   if (investor.foreignNet) extra.push(INVESTOR_FOREIGN_SPEC);
   if (investor.institutionNet) extra.push(INVESTOR_INSTITUTION_SPEC);

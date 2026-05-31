@@ -105,14 +105,18 @@ export function useLiveBundle(
     enableDaily ? dailyPastTo : null,
   );
 
-  // Investor net-buy (foreign/institution) — D/W/M only, no date range (KIS
+  // Investor net-buy (foreign/institution) — 'D' (일봉) ONLY, no date range (KIS
   // inquire-investor returns the ~30 most-recent trading days). ADR-0055.
+  // Why daily-only, not all calendar frames: investor points are daily-anchored
+  // (09:00 KST), but W/M aggregate candles into week/month segments, so most
+  // daily points would fall outside axis.contains and render a near-empty pane.
   // Kept out of isLoading/error: it's an optional overlay, so a missing or
   // failed investor fetch must not block the candle chart from rendering.
-  const investorQuery = useLivePastInvestorNet(enableDaily ? code : null);
+  const enableInvestor = !!(code && timeframe === 'D');
+  const investorQuery = useLivePastInvestorNet(enableInvestor ? code : null);
   const investorPoints = useMemo<InvestorNetPoint[]>(
-    () => (isMinute ? [] : investorQuery.data?.points ?? []),
-    [isMinute, investorQuery.data],
+    () => (enableInvestor ? investorQuery.data?.points ?? [] : []),
+    [enableInvestor, investorQuery.data],
   );
 
   const kisCandles = useMemo<Candle[]>(() => {

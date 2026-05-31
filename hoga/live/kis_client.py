@@ -785,9 +785,17 @@ class KisClient:
             "FID_INPUT_ISCD": code,
         }
         body = await self._get(path=path, tr_id=tr_id, params=params)
-        # KIS inquire-investor returns the daily array under "output"; an absent
-        # or empty array means no data (not an error). See plan mock gates #1/#5.
-        rows = body.get("output") or []
+        # KIS inquire-investor returns the daily array under "output". We scan
+        # output/output1/output2 for the first *list* so a key mismatch vs the
+        # live envelope (unverified against a real response — mock gate #1)
+        # doesn't silently yield zero bars (no error → negative-cached for the
+        # TTL). An absent/empty array still means no data, not an error (#5).
+        rows: list = []
+        for _key in ("output", "output1", "output2"):
+            _val = body.get(_key)
+            if isinstance(_val, list):
+                rows = _val
+                break
         points: list[InvestorNetPoint] = []
         violations: list[InvestorNetInvariantViolation] = []
         seen: set[str] = set()
