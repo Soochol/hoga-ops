@@ -45,6 +45,53 @@ def test_future_version_quarantined(tmp_path):
     assert list(p.parent.glob("saves.json.corrupt-*"))
 
 
+@pytest.mark.parametrize("payload", ["[]", "5", '"x"', "null"])
+def test_non_object_json_quarantined(tmp_path, payload):
+    # Valid JSON but not an object would AttributeError on raw.get and escape
+    # quarantine. The isinstance(dict) guard treats it as corrupt instead.
+    p = tmp_path / "screener" / "saves.json"
+    p.parent.mkdir(parents=True)
+    p.write_text(payload, encoding="utf-8")
+    assert ss.load_saves(tmp_path).saves == []
+    assert list(p.parent.glob("saves.json.corrupt-*-badshape"))
+
+
+def test_schema_mismatch_quarantined(tmp_path):
+    # Valid JSON object, right top-level shape, but a save missing required
+    # `id` → pydantic ValidationError → quarantined to .corrupt-*-schema.
+    p = tmp_path / "screener" / "saves.json"
+    p.parent.mkdir(parents=True)
+    p.write_text(json.dumps({"schema_version": 1, "saves": [
+        {"name": "x", "conditions": [], "universe": {},
+         "created_at_ms": 1, "updated_at_ms": 1}]}), encoding="utf-8")  # no `id`
+    assert ss.load_saves(tmp_path).saves == []
+    assert list(p.parent.glob("saves.json.corrupt-*-schema"))
+
+
+async def test_save_saves_oserror_propagates(tmp_path, monkeypatch):
+    # The one invariant whose violation is SILENT DATA LOSS: save_saves must
+    # let OSError bubble (file=SSOT). Pin it so a future try/except regresses red.
+    def _boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(ss, "atomic_write_json", _boom)
+    with pytest.raises(OSError):
+        await ss.create_save(tmp_path, req=_req(), id="srv1", now_ms=1)
+
+
+def test_route_surfaces_500_on_write_failure(tmp_path, monkeypatch):
+    # End-to-end: a write OSError reaches the client as HTTP 500, not a
+    # swallowed 201 with no persisted data.
+    def _boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(ss, "atomic_write_json", _boom)
+    app = FastAPI()
+    app.include_router(build_router(data_dir=tmp_path))
+    c = TestClient(app, raise_server_exceptions=False)
+    r = c.post("/api/screener/saves",
+               json={"name": "급등주", "conditions": [], "universe": {}})
+    assert r.status_code == 500
+
+
 def _req(name="급등주"):
     return ScreenerSaveWriteRequest(name=name, conditions=[
         {"id": "a", "type": "new_high", "params": {"lookback": 200, "period": 500}}], universe={})
@@ -88,6 +135,20 @@ def test_saves_routes_crud(client):
 
 def test_save_blank_name_422(client):
     assert client.post("/api/screener/saves", json={"name": "", "conditions": [], "universe": {}}).status_code == 422
+
+
+def test_save_whitespace_only_name_422(client):
+    # Spec: 이름 공백 → 422. min_length=1 alone accepts "   "; the field
+    # validator strips and rejects empty-after-strip.
+    assert client.post("/api/screener/saves",
+        json={"name": "   ", "conditions": [], "universe": {}}).status_code == 422
+
+
+def test_name_is_stripped(client):
+    # Surrounding whitespace is trimmed before persistence.
+    r = client.post("/api/screener/saves",
+        json={"name": "  급등주  ", "conditions": [], "universe": {}})
+    assert r.status_code == 201 and r.json()["name"] == "급등주"
 
 
 def test_put_preserves_created_bumps_updated(client):

@@ -48,6 +48,10 @@ def load_saves(data_dir: Path) -> SavedScreenersFile:
         raw = json.loads(p.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return _quarantine(p, "badjson")
+    if not isinstance(raw, dict):
+        # Valid JSON but not an object ([], 5, "x") → raw.get below would
+        # AttributeError and escape quarantine. Treat as corrupt.
+        return _quarantine(p, "badshape")
     if raw.get("schema_version", 0) > _CURRENT_VERSION:
         return _quarantine(p, "future-version")
     try:

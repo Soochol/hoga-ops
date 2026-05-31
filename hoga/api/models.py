@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.sources import SourceName
@@ -777,6 +777,16 @@ class ScreenerSaveWriteRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     conditions: list[ConditionLeaf] = Field(default_factory=list)
     universe: ScreenerUniverse = Field(default_factory=ScreenerUniverse)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, v: str) -> str:
+        # min_length=1 alone accepts whitespace-only names ("   "); spec
+        # requires 이름 공백 → 422. Strip and reject empty-after-strip.
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("name must not be blank")
+        return stripped
 
 class SavedScreener(ScreenerSaveWriteRequest):
     id: str

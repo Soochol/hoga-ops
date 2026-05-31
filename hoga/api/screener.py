@@ -15,6 +15,7 @@ from hoga.api import screener_saves, screener_scan, screener_store
 from hoga.api.calendar import trading_days_in_range
 from hoga.api.models import (
     SavedScreener,
+    SavedScreenersFile,
     ScanRequest,
     ScreenerResponse,
     ScreenerSaveWriteRequest,
@@ -141,9 +142,12 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
         return await screener_saves.create_save(
             data_dir, req=req, id=uuid.uuid4().hex, now_ms=int(time.time() * 1000))
 
-    @router.get("/saves")
-    async def list_saves() -> dict:
-        return {"schema_version": 1, "saves": await screener_saves.list_saves(data_dir)}
+    @router.get("/saves", response_model=SavedScreenersFile)
+    async def list_saves() -> SavedScreenersFile:
+        # Return the whole file so schema_version comes from the single
+        # source of truth (the model default) and can't drift from a
+        # hardcoded literal. Response shape stays {schema_version, saves}.
+        return screener_saves.load_saves(data_dir)
 
     @router.get("/saves/{save_id}", response_model=SavedScreener)
     async def get_save(save_id: str) -> SavedScreener:
