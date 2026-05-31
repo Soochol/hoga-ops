@@ -154,20 +154,16 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> Classification:
     # via the same priority used by aggregate_disk_state.
     per_source = classify_stock_date(parquet_dir)
     if per_source:
-        aggregated = aggregate_disk_state(per_source)
-        # Need violations too — surface them from the winning source.
-        winning_source = next(
-            (src for src in ("hogaplay", "kis_live") if per_source.get(src) == aggregated),
+        aggregated = aggregate_disk_state({src: c.state for src, c in per_source.items()})
+        # classify_stock_date already parsed every source's meta and kept the
+        # violations, so surface the winning source's Classification directly —
+        # no second meta.json read (be-capture-03).
+        winning = next(
+            (per_source[src] for src in ("hogaplay", "kis_live")
+             if src in per_source and per_source[src].state == aggregated),
             None,
         )
-        if winning_source:
-            winning_meta_path = parquet_dir / winning_source / "meta.json"
-            try:
-                winning_meta = json.loads(winning_meta_path.read_text(encoding="utf-8"))
-                return classify_from_meta(winning_meta)
-            except (ValueError, OSError):
-                return Classification(state=DiskState.CLIENT_INCOMPLETE)
-        return Classification(state=aggregated)
+        return winning if winning is not None else Classification(state=aggregated)
 
     # Legacy flat-layout fallback (pre-migration / never-migrated test fixtures).
     meta_path = parquet_dir / "meta.json"
@@ -192,19 +188,24 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> Classification:
 # ============================================================================
 
 
-def classify_stock_date(stock_date_dir: Path) -> dict[str, DiskState]:
-    """Return per-source DiskState for a Stock-Date directory.
+def classify_stock_date(stock_date_dir: Path) -> dict[str, Classification]:
+    """Return per-source :class:`Classification` for a Stock-Date directory.
 
     Walks `<stock_date_dir>/*/meta.json` — each immediate subdirectory is a
     Source (e.g. `hogaplay`, `kis_live` per ADR-0037). Subdirs without a
-    `meta.json` are skipped. Invalid JSON yields `DiskState.INVALID` for
-    that source.
+    `meta.json` are skipped. Invalid JSON yields ``Classification(INVALID)``
+    (no violations — the JSON didn't parse) for that source.
+
+    Carries the full Classification (state + violations) rather than just the
+    state, so :func:`check_disk_state` can surface the winning source's
+    violations without reading its meta.json a second time. Aggregation callers
+    project to state via ``{src: c.state for src, c in result.items()}``;
+    key-only callers (``sources.resolve_source``) are unaffected.
 
     Returns empty dict if `stock_date_dir` doesn't exist or has no source
-    subdirs. Callers can pipe the result through :func:`aggregate_disk_state`
-    to get a single state for badge display.
+    subdirs.
     """
-    out: dict[str, DiskState] = {}
+    out: dict[str, Classification] = {}
     if not stock_date_dir.is_dir():
         return out
     for src_dir in stock_date_dir.iterdir():
@@ -216,9 +217,9 @@ def classify_stock_date(stock_date_dir: Path) -> dict[str, DiskState]:
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except (ValueError, OSError):
-            out[src_dir.name] = DiskState.INVALID
+            out[src_dir.name] = Classification(state=DiskState.INVALID)
             continue
-        out[src_dir.name] = classify_from_meta(meta).state
+        out[src_dir.name] = classify_from_meta(meta)
     return out
 
 

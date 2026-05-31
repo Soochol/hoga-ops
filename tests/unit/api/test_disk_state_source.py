@@ -43,7 +43,7 @@ def test_classify_stock_date_returns_per_source_states(tmp_path: Path) -> None:
         },
     )
 
-    states = classify_stock_date(sd_dir)
+    states = {k: v.state for k, v in classify_stock_date(sd_dir).items()}
     assert set(states.keys()) == {"hogaplay", "kis_live"}
     assert states["hogaplay"] == DiskState.COMPLETE
 
@@ -58,7 +58,7 @@ def test_classify_stock_date_handles_only_one_source(tmp_path: Path) -> None:
             "regular_session_close_ms": 153000000,
         },
     )
-    states = classify_stock_date(sd_dir)
+    states = {k: v.state for k, v in classify_stock_date(sd_dir).items()}
     assert set(states.keys()) == {"hogaplay"}
 
 
@@ -75,20 +75,20 @@ def test_classify_stock_date_skips_non_dir_entries(tmp_path: Path) -> None:
             "regular_session_close_ms": 153000000,
         },
     )
-    states = classify_stock_date(sd_dir)
+    states = {k: v.state for k, v in classify_stock_date(sd_dir).items()}
     assert set(states.keys()) == {"hogaplay"}
 
 
 def test_classify_stock_date_missing_dir_returns_empty(tmp_path: Path) -> None:
     states = classify_stock_date(tmp_path / "nope")
-    assert states == {}
+    assert states == {}  # empty dict regardless of value type
 
 
 def test_classify_stock_date_invalid_json_yields_INVALID(tmp_path: Path) -> None:
     sd_dir = tmp_path / "parquet" / "20260527" / "005930"
     (sd_dir / "hogaplay").mkdir(parents=True)
     (sd_dir / "hogaplay" / "meta.json").write_text("not-json-{")
-    states = classify_stock_date(sd_dir)
+    states = {k: v.state for k, v in classify_stock_date(sd_dir).items()}
     assert states == {"hogaplay": DiskState.INVALID}
 
 
