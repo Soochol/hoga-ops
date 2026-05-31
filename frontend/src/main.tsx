@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { LivePage } from './live/LivePage';
 import Inventory from './pages/Inventory';
+import { Screener } from './pages/Screener';
 import Capture from './pages/Capture';
 import Watchlist from './pages/Watchlist';
 import Settings from './pages/Settings';
@@ -19,6 +20,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/" element={<Navigate to="/live" replace />} />
           <Route path="live" element={<LivePage />} />
           <Route path="inventory" element={<Inventory />} />
+          <Route path="screener" element={<Screener />} />
           <Route path="capture" element={<Capture />} />
           <Route path="watchlist" element={<Watchlist />} />
           <Route path="settings" element={<Settings />} />

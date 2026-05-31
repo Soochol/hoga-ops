@@ -15,6 +15,7 @@ export default function LeftNav() {
       </div>
       <Section label="Workspace">
         <NavItem to="/live" label="Live" />
+        <NavItem to="/screener" label="Screener" />
         <NavItem to="/inventory" label="Inventory" />
         <NavItem to="/capture" label="Capture" />
         <NavItem to="/watchlist" label="Watchlist" />
