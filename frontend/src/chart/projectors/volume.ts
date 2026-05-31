@@ -7,6 +7,7 @@ import {
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
+import { formatKoreanInt } from '../../util/koreanNumber';
 import type { PaneSpec } from '../RangeSeriesPane';
 
 const TOKEN_SPEC = {
@@ -18,7 +19,7 @@ const { up, down } = resolveTokens(TOKEN_SPEC);
 
 const priceFormat = {
   type: 'custom' as const,
-  formatter: (v: number) => Math.round(v).toLocaleString('ko-KR'),
+  formatter: (v: number) => formatKoreanInt(v),
   minMove: 1,
 };
 
@@ -32,6 +33,9 @@ export function projectVolume(bundle: RangeBundle, axis: VirtualAxis): Histogram
     }));
 }
 
+// volumeEnabled gating lives in `paneSpecsForTimeframe` (the pane is removed
+// when off, like the investor panes), so the spec is unconditional — when this
+// pane is mounted, volume is on.
 export const VOLUME_SPEC = {
   name: 'volume' as const,
   stretch: 0.3,
@@ -44,7 +48,7 @@ export const VOLUME_SPEC = {
         priceLineVisible: false,
         lastValueVisible: false,
       },
-      data: projectVolume,
+      data: (bundle: RangeBundle, axis: VirtualAxis) => projectVolume(bundle, axis),
     },
   ],
 } satisfies PaneSpec;

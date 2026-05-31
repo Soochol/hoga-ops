@@ -131,8 +131,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
       }
 
       const clipAndRender = (paneId: PaneId, body: (ctx: ProjectCtx) => void) => {
-        const idx = paneIdToIndex(paneId);
-        if (idx >= panes.length) return;
+        const idx = paneIdToIndex(paneSeries, paneId);
+        if (idx < 0 || idx >= panes.length) return; // pane toggled off → skip
         const top = paneTops[idx];
         const paneH = panes[idx].getHeight();
         c.save();
@@ -225,16 +225,16 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
   const realMsToCanvasX = (realMs: number) => projRealMsToCanvasX(chart, axis, realMs);
   const priceToCanvasY = (price: number, paneId: PaneId) =>
     projPriceToCanvasY(chart, paneSeries, paneId, price);
-  const paneIdAtY = (py: number) => projPaneIdAtY(chart, py);
+  const paneIdAtY = (py: number) => projPaneIdAtY(chart, paneSeries, py);
   const clampYToPane = (paneId: PaneId, py: number) =>
-    projClampYToPane(chart, paneId, py);
+    projClampYToPane(chart, paneSeries, paneId, py);
 
   const priceBoundsForPane = (paneId: PaneId) => {
     const series = paneSeries.get(paneId);
     if (!series) return null;
-    const idx = paneIdToIndex(paneId);
+    const idx = paneIdToIndex(paneSeries, paneId);
     const panes = chart.panes();
-    if (idx >= panes.length) return null;
+    if (idx < 0 || idx >= panes.length) return null;
     // coordinateToPrice expects pane-local Y; the pane's top in its own
     // local frame is 0, the bottom is its height.
     const paneH = panes[idx].getHeight();
@@ -249,7 +249,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
   // the chart-aware coordinate closures.
   const hitTestAt = (px: number, py: number): Drawing | null =>
     hitTestDrawings(
-      { realMsToCanvasX, priceToCanvasY, paneIdAtY: (y) => projPaneIdAtY(chart, y) },
+      { realMsToCanvasX, priceToCanvasY, paneIdAtY: (y) => projPaneIdAtY(chart, paneSeries, y) },
       drawings,
       px,
       py,

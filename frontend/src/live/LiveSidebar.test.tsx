@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { act } from 'react';
 import { LiveSidebar } from './LiveSidebar';
+import { useLivePageStore } from '../state/livePage';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import type { LiveSeriesData } from '../api/liveSeries';
@@ -141,6 +142,17 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
       expect.objectContaining({ maskRatio: false }),
       expect.anything(),
     );
+  });
+
+  it('on D timeframe, cursor does NOT enter spot — keeps LIVE header (legend regression guard)', () => {
+    // Pane Legend publishes cursorMs on D, but spot mode is minute-only
+    // (ADR-0044). Cursor on D must NOT blank the orderbook / flip the header.
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+    render(<LiveSidebar code="005930" live={emptyLive} />);
+    act(() => useLiveCursorStore.getState().setCursor(new Date('2026-05-28T04:42:17Z').getTime()));
+    expect(screen.queryByText('과거 시점')).toBeNull();
+    expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
+    useLivePageStore.setState({ candleTimeframe: '1m' });
   });
 });
 

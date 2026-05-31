@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { useLivePastCandles } from '../api/livePastCandles';
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
+import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useRange } from '../api/range';
 import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import {
@@ -9,6 +10,7 @@ import {
   type Timeframe,
   type RangeBundle,
   type Candle,
+  type InvestorNetPoint,
 } from '../api/types';
 import { buildLiveBundle } from './buildLiveBundle';
 import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
@@ -103,6 +105,25 @@ export function useLiveBundle(
     enableDaily ? dailyPastTo : null,
   );
 
+  // Investor net-buy (foreign/institution) — 'D' (일봉) ONLY. KIS
+  // investor-trade-by-stock-daily (FHPTJ04160001) walks back the requested
+  // [from, to] range by date cursor. ADR-0055.
+  // Why daily-only, not all calendar frames: investor points are daily-anchored
+  // (09:00 KST), but W/M aggregate candles into week/month segments, so most
+  // daily points would fall outside axis.contains and render a near-empty pane.
+  // Kept out of isLoading/error: it's an optional overlay, so a missing or
+  // failed investor fetch must not block the candle chart from rendering.
+  const enableInvestor = !!(code && timeframe === 'D');
+  const investorQuery = useLivePastInvestorNet(
+    enableInvestor ? code : null,
+    enableInvestor ? dailyPastFrom : null,
+    enableInvestor ? dailyPastTo : null,
+  );
+  const investorPoints = useMemo<InvestorNetPoint[]>(
+    () => (enableInvestor ? investorQuery.data?.points ?? [] : []),
+    [enableInvestor, investorQuery.data],
+  );
+
   const kisCandles = useMemo<Candle[]>(() => {
     if (isMinute) {
       const raw = pastCandlesQuery.data?.candles ?? [];
@@ -144,8 +165,8 @@ export function useLiveBundle(
       bucketMs,
     });
 
-    return built;
-  }, [code, todayKstYyyymmdd, isMinute, live.initial, live.ob, live.trade, past.data, kisCandles, bucketMs]);
+    return { ...built, investorPoints };
+  }, [code, todayKstYyyymmdd, isMinute, live.initial, live.ob, live.trade, past.data, kisCandles, bucketMs, investorPoints]);
 
   // Atomize the historical-prepend across the two independent past sources.
   // A leftward pan changes `historicalFromDate`, which re-keys BOTH past

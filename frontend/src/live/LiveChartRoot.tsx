@@ -31,6 +31,7 @@ import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
+import PaneLegendOverlay from './PaneLegendOverlay';
 import type { PaneId } from '../chart/drawing/types';
 import { useDrawingHost } from '../chart/useDrawingHost';
 
@@ -463,9 +464,17 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     };
   }, [chart, axis, timeframe]);
 
+  const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
+  const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
+  const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
+
   useEffect(() => {
     if (!chart || !bundle) return;
-    const specs = paneSpecsForTimeframe(timeframe);
+    const specs = paneSpecsForTimeframe(timeframe, {
+      foreignNet: foreignNetEnabled,
+      institutionNet: institutionNetEnabled,
+      volumeEnabled,
+    });
     let cancelled = false;
     const apply = () => {
       if (cancelled) return;
@@ -490,13 +499,15 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, bundle, timeframe]);
+  }, [chart, bundle, timeframe, foreignNetEnabled, institutionNetEnabled, volumeEnabled]);
 
   // ADR-0044: hover → cursor store. Only mount on minute timeframes —
   // calendar timeframes (D/W/M) don't have backing parquet on /live.
   // rAF-coalesce to one update per frame (matches ChartStage's pattern).
   useEffect(() => {
-    if (!chart || !isMinuteTimeframe(timeframe)) {
+    // Publish cursor on ALL timeframes (Pane Legend reads it on D too). Spot-mode
+    // entry stays minute-only — gated on the LiveSidebar consumer side (ADR-0044).
+    if (!chart) {
       useLiveCursorStore.getState().clearCursor();
       return;
     }
@@ -541,7 +552,11 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       />
       {chart && bundle && axis.segments.length > 0 && (
         <>
-          {paneSpecsForTimeframe(timeframe).map((spec, i) => (
+          {paneSpecsForTimeframe(timeframe, {
+            foreignNet: foreignNetEnabled,
+            institutionNet: institutionNetEnabled,
+            volumeEnabled,
+          }).map((spec, i) => (
             <RangeSeriesPane
               key={spec.name}
               chart={chart}
@@ -555,6 +570,10 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
           ))}
           <MovingAverageOverlay chart={chart} bundle={bundle} axis={axis} />
           <DrawingOverlay chart={chart} axis={axis} paneSeries={paneSeries} />
+          {/* After DrawingOverlay so the legend's ✕/eye buttons paint above the
+              drawing canvas; the container is pointer-transparent so the
+              crosshair + drawing hover still work underneath it. */}
+          <PaneLegendOverlay chart={chart} timeframe={timeframe} paneSeries={paneSeries} />
           <DrawingPropertyPanel computeAnchor={computeAnchor} />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a
