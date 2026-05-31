@@ -48,6 +48,10 @@ const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
   movingAverageEnabled: boolean;
+  /** ADR-0055: foreign-investor net-buy bar pane. Opt-in (default false). */
+  foreignNetEnabled: boolean;
+  /** ADR-0055: institution net-buy bar pane. Opt-in (default false). */
+  institutionNetEnabled: boolean;
 };
 
 function isValidEntry(m: unknown): m is LiveMAConfig {
@@ -79,16 +83,24 @@ export function mergeLiveIndicatorPrefs(
   raw: PersistedIndicators | undefined | null | unknown,
 ): PersistedIndicators {
   const defaults = DEFAULT_LIVE_MAS.map((m) => ({ ...m }));
-  const fallback = (mas: LiveMAConfig[]): PersistedIndicators => ({
+  const build = (
+    mas: LiveMAConfig[], enabled: boolean, fNet: boolean, iNet: boolean,
+  ): PersistedIndicators => ({
     movingAverages: mas,
-    movingAverageEnabled: true,
+    movingAverageEnabled: enabled,
+    foreignNetEnabled: fNet,
+    institutionNetEnabled: iNet,
   });
-  if (!raw || typeof raw !== 'object') return fallback(defaults);
+  if (!raw || typeof raw !== 'object') return build(defaults, true, false, false);
   const obj = raw as Record<string, unknown>;
-  const arr = obj.movingAverages;
   const enabled = obj.movingAverageEnabled === false ? false : true;
-  if (!Array.isArray(arr)) return { movingAverages: defaults, movingAverageEnabled: enabled };
+  // New indicators are opt-in: default false unless explicitly persisted true,
+  // so legacy stores (written before these fields existed) stay hidden.
+  const fNet = obj.foreignNetEnabled === true;
+  const iNet = obj.institutionNetEnabled === true;
+  const arr = obj.movingAverages;
+  if (!Array.isArray(arr)) return build(defaults, enabled, fNet, iNet);
   const kept = arr.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[];
-  if (kept.length === 0) return { movingAverages: defaults, movingAverageEnabled: enabled };
-  return { movingAverages: kept, movingAverageEnabled: enabled };
+  if (kept.length === 0) return build(defaults, enabled, fNet, iNet);
+  return build(kept, enabled, fNet, iNet);
 }

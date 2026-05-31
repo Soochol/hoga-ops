@@ -2,6 +2,10 @@ import { type LiveTimeframe, isCalendarTimeframe } from '../state/livePage';
 import { PANE_SPECS, type BoundPaneSpec } from '../chart/paneSpecs';
 import { CANDLE_SPEC } from '../chart/projectors/candle';
 import { VOLUME_SPEC } from '../chart/projectors/volume';
+import {
+  INVESTOR_FOREIGN_SPEC,
+  INVESTOR_INSTITUTION_SPEC,
+} from '../chart/projectors/investorNet';
 
 /**
  * Module-frozen "calendar" pane set: D/W/M timeframes mount only candle +
@@ -18,11 +22,33 @@ const CALENDAR_PANE_SPECS: readonly BoundPaneSpec[] = Object.freeze([
   VOLUME_SPEC,
 ]) as readonly BoundPaneSpec[];
 
+export type InvestorPaneToggles = { foreignNet: boolean; institutionNet: boolean };
+
+const NO_INVESTOR: InvestorPaneToggles = { foreignNet: false, institutionNet: false };
+
 /**
  * Pick the pane spec list to mount in `LiveChartRoot` for a given
- * **LiveTimeframe**. Returns the same array reference across calls (so the
- * `RangeSeriesPane` useEffect deps that include `spec` don't churn).
+ * **LiveTimeframe**. Minute frames always get the full `PANE_SPECS`; calendar
+ * frames (D/W/M) get candle + volume, plus the opt-in foreign / institution
+ * net-buy panes appended in canonical order when their toggles are on
+ * (ADR-0055). Investor data is D/W/M-only, so the toggles are ignored on
+ * minute frames.
+ *
+ * Each individual spec is a module-level constant (stable ref), so when the
+ * toggles are unchanged `RangeSeriesPane`'s `spec`-keyed effect doesn't churn.
+ * lightweight-charts v5 clamps an out-of-range `paneIndex` to the next slot and
+ * auto-removes a pane once its last series is gone, so appending/removing these
+ * specs mounts and tears down the panes cleanly; returning canonical order keeps
+ * foreign above institution regardless of which toggled on first.
  */
-export function paneSpecsForTimeframe(tf: LiveTimeframe): readonly BoundPaneSpec[] {
-  return isCalendarTimeframe(tf) ? CALENDAR_PANE_SPECS : PANE_SPECS;
+export function paneSpecsForTimeframe(
+  tf: LiveTimeframe,
+  investor: InvestorPaneToggles = NO_INVESTOR,
+): readonly BoundPaneSpec[] {
+  if (!isCalendarTimeframe(tf)) return PANE_SPECS;
+  if (!investor.foreignNet && !investor.institutionNet) return CALENDAR_PANE_SPECS;
+  const extra: BoundPaneSpec[] = [];
+  if (investor.foreignNet) extra.push(INVESTOR_FOREIGN_SPEC);
+  if (investor.institutionNet) extra.push(INVESTOR_INSTITUTION_SPEC);
+  return [...CALENDAR_PANE_SPECS, ...extra];
 }

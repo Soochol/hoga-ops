@@ -3,16 +3,36 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import IndicatorPanel from './IndicatorPanel';
 
 describe('IndicatorPanel', () => {
-  it('lists 7 category checkboxes with 이동평균선 as the only active one', () => {
+  it('lists 9 category checkboxes with MA/외국인/기관 active', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(7);
-    // 6 of them are disabled (placeholder indicators not yet supported).
+    expect(checkboxes).toHaveLength(9);
+    // 6 placeholders remain disabled (indicators not yet supported).
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(6);
-    // 이동평균선 is the only enabled, checked-by-default checkbox.
+    // 이동평균선 is enabled and checked by default.
     const ma = screen.getByRole('checkbox', { name: '이동평균선' }) as HTMLButtonElement;
     expect(ma.disabled).toBe(false);
     expect(ma.getAttribute('aria-checked')).toBe('true');
+    // Investor toggles are enabled but off by default (opt-in).
+    const fn = screen.getByRole('checkbox', { name: '외국인 순매수' }) as HTMLButtonElement;
+    expect(fn.disabled).toBe(false);
+    expect(fn.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('clicking 외국인 순매수 toggles foreignNetEnabled', async () => {
+    const { useLivePageStore } = await import('../../state/livePage');
+    useLivePageStore.setState({ foreignNetEnabled: false });
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: '외국인 순매수' }));
+    expect(useLivePageStore.getState().foreignNetEnabled).toBe(true);
+  });
+
+  it('clicking 기관 순매수 toggles institutionNetEnabled', async () => {
+    const { useLivePageStore } = await import('../../state/livePage');
+    useLivePageStore.setState({ institutionNetEnabled: false });
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: '기관 순매수' }));
+    expect(useLivePageStore.getState().institutionNetEnabled).toBe(true);
   });
 
   it('clicking 이동평균선 checkbox toggles movingAverageEnabled', async () => {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { useLivePastCandles } from '../api/livePastCandles';
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
+import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useRange } from '../api/range';
 import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import {
@@ -9,6 +10,7 @@ import {
   type Timeframe,
   type RangeBundle,
   type Candle,
+  type InvestorNetPoint,
 } from '../api/types';
 import { buildLiveBundle } from './buildLiveBundle';
 import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
@@ -103,6 +105,16 @@ export function useLiveBundle(
     enableDaily ? dailyPastTo : null,
   );
 
+  // Investor net-buy (foreign/institution) — D/W/M only, no date range (KIS
+  // inquire-investor returns the ~30 most-recent trading days). ADR-0055.
+  // Kept out of isLoading/error: it's an optional overlay, so a missing or
+  // failed investor fetch must not block the candle chart from rendering.
+  const investorQuery = useLivePastInvestorNet(enableDaily ? code : null);
+  const investorPoints = useMemo<InvestorNetPoint[]>(
+    () => (isMinute ? [] : investorQuery.data?.points ?? []),
+    [isMinute, investorQuery.data],
+  );
+
   const kisCandles = useMemo<Candle[]>(() => {
     if (isMinute) {
       const raw = pastCandlesQuery.data?.candles ?? [];
@@ -144,8 +156,8 @@ export function useLiveBundle(
       bucketMs,
     });
 
-    return built;
-  }, [code, todayKstYyyymmdd, isMinute, live.initial, live.ob, live.trade, past.data, kisCandles, bucketMs]);
+    return { ...built, investorPoints };
+  }, [code, todayKstYyyymmdd, isMinute, live.initial, live.ob, live.trade, past.data, kisCandles, bucketMs, investorPoints]);
 
   // Atomize the historical-prepend across the two independent past sources.
   // A leftward pan changes `historicalFromDate`, which re-keys BOTH past

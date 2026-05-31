@@ -2,10 +2,21 @@ import { useEffect } from 'react';
 import { useLivePageStore } from '../../state/livePage';
 import MovingAverageConfig from './MovingAverageConfig';
 
-type CategoryId = 'moving-average' | 'ichimoku' | 'bollinger' | 'supertrend' | 'volume-profile' | 'envelope' | 'williams';
+type CategoryId =
+  | 'moving-average'
+  | 'foreign-net'
+  | 'institution-net'
+  | 'ichimoku'
+  | 'bollinger'
+  | 'supertrend'
+  | 'volume-profile'
+  | 'envelope'
+  | 'williams';
 
 const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; active: boolean }> = [
-  { id: 'moving-average', label: '이동평균선',  active: true  },
+  { id: 'moving-average',  label: '이동평균선',     active: true  },
+  { id: 'foreign-net',     label: '외국인 순매수',  active: true  },
+  { id: 'institution-net', label: '기관 순매수',    active: true  },
   { id: 'ichimoku',       label: '일목균형표',  active: false },
   { id: 'bollinger',      label: '볼린저밴드',  active: false },
   { id: 'supertrend',     label: '슈퍼트렌드',  active: false },
@@ -61,6 +72,31 @@ type Props = {
 export default function IndicatorPanel({ onClose }: Props) {
   const maEnabled = useLivePageStore((s) => s.movingAverageEnabled);
   const setMaEnabled = useLivePageStore((s) => s.setMovingAverageEnabled);
+  const foreignNet = useLivePageStore((s) => s.foreignNetEnabled);
+  const setForeignNet = useLivePageStore((s) => s.setForeignNetEnabled);
+  const institutionNet = useLivePageStore((s) => s.institutionNetEnabled);
+  const setInstitutionNet = useLivePageStore((s) => s.setInstitutionNetEnabled);
+
+  // Each active category maps to a master on/off toggle. Investor bars carry no
+  // per-slot config (sign-colored, daily), so the left checkbox is the whole
+  // control — the same popover "형식" as the MA category, just without a right
+  // detail pane.
+  const checkedFor = (id: CategoryId): boolean => {
+    switch (id) {
+      case 'moving-average': return maEnabled;
+      case 'foreign-net': return foreignNet;
+      case 'institution-net': return institutionNet;
+      default: return false;
+    }
+  };
+  const toggleFor = (id: CategoryId): (() => void) | null => {
+    switch (id) {
+      case 'moving-average': return () => setMaEnabled(!maEnabled);
+      case 'foreign-net': return () => setForeignNet(!foreignNet);
+      case 'institution-net': return () => setInstitutionNet(!institutionNet);
+      default: return null;
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -95,11 +131,11 @@ export default function IndicatorPanel({ onClose }: Props) {
           <nav className="w-[200px] py-2 border-r border-border" aria-label="지표 카테고리">
             <div className="text-fg-dimmer text-xs uppercase tracking-wider px-4 pb-2">상단 지표</div>
             {CATEGORIES.map((c) => {
-              // Active row = a checkbox that toggles `movingAverageEnabled`.
+              // Active row = a checkbox toggling that indicator's master switch.
               // Inactive rows are placeholders for indicators we haven't shipped
               // yet — they show a hollow check ring and don't respond to clicks.
-              const isMA = c.id === 'moving-average';
-              const checked = isMA ? maEnabled : false;
+              const checked = checkedFor(c.id);
+              const onToggle = toggleFor(c.id);
               const rowBase =
                 'flex w-full items-center justify-between px-4 py-2 text-sm';
               return (
@@ -110,9 +146,7 @@ export default function IndicatorPanel({ onClose }: Props) {
                   aria-checked={checked}
                   aria-label={c.label}
                   disabled={!c.active}
-                  onClick={() => {
-                    if (isMA) setMaEnabled(!maEnabled);
-                  }}
+                  onClick={() => { onToggle?.(); }}
                   className={
                     c.active
                       ? `${rowBase} text-fg hover:bg-bg-input cursor-pointer`
@@ -121,7 +155,7 @@ export default function IndicatorPanel({ onClose }: Props) {
                   title={c.active ? undefined : '추후 지원 예정'}
                 >
                   <span>{c.label}</span>
-                  <CheckIcon filled={isMA && checked} />
+                  <CheckIcon filled={c.active && checked} />
                 </button>
               );
             })}

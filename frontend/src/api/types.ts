@@ -427,6 +427,11 @@ export interface LiveSnapshotEntry {
   [field: string]: unknown;
 }
 
+/** One trading day's foreign/institution net-buy quantity. Mirrors
+ *  hoga/live/kis_models.py::InvestorNetPoint. Net is signed: + = net buy,
+ *  − = net sell. t_ms anchors at 09:00 KST — the same anchor as daily candles. */
+export type InvestorNetPoint = { t_ms: number; foreign_net: number; institution_net: number };
+
 export type RangeBundle = {
   code: string;
   from_date: string;
@@ -438,4 +443,8 @@ export type RangeBundle = {
   fill_strength: FillStrength;
   volume_profile_range: VolumeProfile;
   volume_profile_by_day: VolumeProfile[];
+  /** ADR-0055: recent (~30 trading day) foreign/institution net-buy bars.
+   *  Empty on minute timeframes (KIS provides investor data for D/W/M only).
+   *  Separate array (not on Candle) so minute candles never carry null. */
+  investorPoints: InvestorNetPoint[];
 };
