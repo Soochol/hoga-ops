@@ -3,6 +3,25 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.1.1.0] - 2026-05-31
+
+### Removed
+- The off-hours `/live` banner ("장 외 시간 — 09:00 KST에 폴링이 시작됩니다"). Live
+  polling is gated server-side by the trading-hours window (`poller.py:_should_poll_now`),
+  so the banner never affected capture — it was only an always-on row outside market
+  hours. The chart reclaims that vertical space when the market is closed. The status
+  bar `LIVE●` reflects socket liveness, not market phase, so it stays green off-hours.
+
+### Fixed
+- Capture queue detail rows rendered an invalid clock (e.g. "31:13:21") for timestamps
+  in the KST 00:00–08:59 window. The detail formatter now reuses the shared
+  `unixMsToKSTClock` helper, which wraps the hour correctly.
+
+### Changed
+- Retired the now-dead minute-tick machinery behind the live banner state (the
+  per-minute re-render timer and the KST-hour computation); no remaining banner cause
+  depends on the wall clock.
+
 ## [0.1.0.0] - 2026-05-31
 
 First versioned release. Captures the `feat+frontend5` work since the previous

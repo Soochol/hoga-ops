@@ -50,7 +50,7 @@
 | Color discipline | preserves | ♥는 RightRail의 `HeartIcon`(채움=중립 currentColor / 외곽선=dim)을 그대로 추출·재사용. teal/rose 미사용. |
 | Capture SymbolSearch behavior | preserves | 훅 이관 후에도 `promoteUnverifiedCode`를 `onEnterEmpty` 이음새로 보존. `Capture.test`가 회귀 가드. |
 
-**"Workarea gate" 의도적 변경 정당화** — 사용자가 선택한 모델(전체검색 → 차트 표시, ♥는 명시적)에서는 "둘러보기는 자유, 추적은 명시적"이 핵심 가치다. 관심종목이 비었다는 이유로 검색해 고른 종목의 과거 차트를 막으면 이 모델이 성립하지 않는다. 빈 watchlist의 안내 역할은 (a) activeCode 없을 때의 "/" 검색 유도 빈 상태와 (b) 상태바의 "실시간 ✕ · ♡ 눌러 실시간 추적" 힌트가 대신한다. `kis_credentials_missing`(watchlist는 있는데 폴러 미동작)·`off_hours` 배너는 그대로 둔다.
+**"Workarea gate" 의도적 변경 정당화** — 사용자가 선택한 모델(전체검색 → 차트 표시, ♥는 명시적)에서는 "둘러보기는 자유, 추적은 명시적"이 핵심 가치다. 관심종목이 비었다는 이유로 검색해 고른 종목의 과거 차트를 막으면 이 모델이 성립하지 않는다. 빈 watchlist의 안내 역할은 (a) activeCode 없을 때의 "/" 검색 유도 빈 상태와 (b) 상태바의 "실시간 ✕ · ♡ 눌러 실시간 추적" 힌트가 대신한다. `kis_credentials_missing`(watchlist는 있는데 폴러 미동작)·`off_hours` 배너는 그대로 둔다. _(Update 2026-05-31: `off_hours` 배너는 이후 제거됨 — 폴링이 서버 시계(`poller.py:_should_poll_now`)로 게이팅되어 배너는 폴러 동작에 영향이 없고 운영상 불필요하다고 판단. `kis_credentials_missing`만 유지.)_
 
 **"Poller refresh" 의도적 변경 정당화** — `start_live_poller`는 docstring상 *idempotent하며 watchlist 변경을 즉시 반영하기 위한* 재시작 경로로 설계됐고, `_buffer`를 보존한다. ♥ → 즉시 실시간이라는 약속을 정직하게 만들려면 이 경로를 add/remove에 연결하는 것이 정공법이며, "watchlist 변경 → 폴러 추적"이라는 불변식을 **서버에 두어** 모든 클라이언트에 일관시킨다.
 
@@ -155,7 +155,7 @@ interface UseSymbolComboboxResult {
 [LiveWorkarea.tsx](../../../frontend/src/live/LiveWorkarea.tsx):
 - 기존: `if (watchlistEmpty) blank → if (!activeCode) blank → chart`.
 - 변경: `if (!activeCode) → LiveEmptyState(search) → else chart`. `watchlistEmpty` 프롭으로 인한 차트 차단 제거.
-- [LivePage.tsx:88-106](../../../frontend/src/live/LivePage.tsx)에서 `watchlistEmpty` 전달을 정리하고, [useLiveBannerState.ts](../../../frontend/src/live/useLiveBannerState.ts)의 `watchlist_empty` primary가 **activeCode가 있을 때 차트를 막거나 모순 배너를 띄우지 않도록** 분리한다. `kis_credentials_missing`/`off_hours`는 유지.
+- [LivePage.tsx:88-106](../../../frontend/src/live/LivePage.tsx)에서 `watchlistEmpty` 전달을 정리하고, [useLiveBannerState.ts](../../../frontend/src/live/useLiveBannerState.ts)의 `watchlist_empty` primary가 **activeCode가 있을 때 차트를 막거나 모순 배너를 띄우지 않도록** 분리한다. `kis_credentials_missing`/`off_hours`는 유지. _(Update 2026-05-31: `off_hours`는 이후 제거됨 — `kis_credentials_missing`만 유지.)_
 
 ### LiveEmptyState
 
@@ -253,7 +253,7 @@ async def refresh_live_poller(*, data_dir: Path) -> None:
 - **잦은 ♥ 토글 → 폴러 재시작 비용**: 매 토글이 KisClient/LiveWriter를 재생성하고 진행 중 사이클을 취소한다. 단일 사용자·간헐 클릭엔 허용. 디바운스는 backlog.
 - **`useLiveBannerState` 분리 범위**: `watchlist_empty` primary를 완전 제거할지, activeCode 유무로 억제만 할지 구현 시 확정(테스트로 고정). `kis_credentials_missing` 분기는 유지.
 - **`/` 글로벌 리스너 위치**: LiveSymbolSearch 자체 리스너 vs `useLiveKeyboard`에 `onOpenSearch` 추가. 전자(자체완결)를 기본안으로 하되 cross-component ref 플러밍 회피 차원에서 design 시 재확인.
-- **off-hours ♥ 추가**: 폴러는 시작되나 `_should_poll_now`로 idle — "실시간 ✕"(멤버십)과 장 phase 표현이 겹치지 않게 카피 분리 유지.
+- **off-hours ♥ 추가**: 폴러는 시작되나 `_should_poll_now`로 idle — "실시간 ✕"(멤버십)과 장 phase 표현이 겹치지 않게 카피 분리 유지. _(Update 2026-05-31: `off_hours` 배너 제거로 장 phase의 배너 표현은 더 이상 없음. 장 마감 중에도 상태바 `LIVE●`(연결성 신호)는 유지됨. 장외 단서가 필요하면 상태바 phase pill로 별도 표기하는 방안이 backlog.)_
 
 ## Out of Scope (Backlog)
 

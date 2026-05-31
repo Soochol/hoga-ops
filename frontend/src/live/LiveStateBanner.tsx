@@ -10,11 +10,10 @@ const COPY: Record<BannerCause, { title: string; severity: 'error' | 'warn' | 'i
   watchlist_empty: { title: '관심종목을 먼저 추가해주세요', severity: 'info' },
   kis_credentials_missing: { title: 'KIS 자격증명이 설정되지 않았습니다', severity: 'error' },
   kis_token_expired: { title: 'KIS 토큰이 만료되었습니다', severity: 'warn' },
-  off_hours: { title: '장 외 시간 — 09:00 KST에 폴링이 시작됩니다', severity: 'info' },
 };
 
 export function LiveStateBanner({ primary, stack }: Props) {
-  // Priority-1 banners render in the header band; priority 2-5 stack below.
+  // Priority-1 banners render in the header band; priority-2 stackable causes stack below.
   // Render an empty placeholder when there's nothing to show: LivePage's
   // CSS grid defines 5 rows and relies on positional auto-placement, so
   // returning null here would shift LiveWorkarea up into the toolbar's
