@@ -2,226 +2,208 @@
 
 **Date**: 2026-05-31
 **Status**: Draft
-**Scope**: `hoga/api/screener.py` (신규), `hoga/api/screener_store.py` (신규: seed/adjust/update), `hoga/api/screener_scan.py` (신규: DuckDB 스캔), `hoga/api/scheduler.py`, `hoga/api/app.py`, `hoga/api/models.py`, `hoga/live/kis_client.py`, `frontend/src/pages/Screener.tsx` (신규), `frontend/src/screener/*` (신규), `frontend/src/api/screener.ts` (신규), `frontend/src/nav/LeftNav.tsx`, `frontend/src/main.tsx`
+**Scope**: `hoga/api/screener.py` (신규), `hoga/api/screener_store.py` (신규: seed/derive/update), `hoga/api/screener_scan.py` (신규: DuckDB 스캔), `hoga/api/scheduler.py`, `hoga/api/app.py`, `hoga/api/models.py`, `hoga/live/kis_client.py`, `hoga/live/lifecycle.py` (KisClient 프로세스 싱글턴화), `frontend/src/pages/Screener.tsx` (신규), `frontend/src/screener/*` (신규), `frontend/src/api/screener.ts` (신규), `frontend/src/nav/LeftNav.tsx`, `frontend/src/main.tsx`
+
+> grill-with-docs(2026-05-31)로 critic 패널 22개 발견을 반영: 네이밍 충돌 해소(`raw`→`unadjusted`, `meta.json`→`status.json`, `ohlcv_daily`→`daily_*`, `scanner`→`Screener/scan`), 수정주가 SSOT 일관성(보정 A + KIS 교차검증), KisClient 프로세스 싱글턴, 타입 경계 조이기.
 
 ## Problem
 
-사용자는 호가 리플레이를 **캡처할 가치가 있는 종목을 발굴**할 수단이 없다. 현재
-진입점은 이름/코드 직접 검색뿐이며, "지금 주목할 종목"을 조건으로 거를 방법이 없다.
-호가 리플레이 캡처가 hoga-ops에만 있으므로 — 스크리너 결과를 클릭하면 바로 `/live`
-호가 차트로 이어지는 것이 핵심 가치 — 이 기능은 hoga-ops에 만든다.
+사용자는 호가 리플레이를 **캡처할 가치가 있는 종목을 발굴**할 수단이 없다. 진입점이
+이름/코드 직접 검색뿐이라 "지금 주목할 종목"을 조건으로 거를 수 없다. 호가 리플레이
+캡처가 hoga-ops에만 있으므로 — 스크리너 결과 클릭 → 바로 `/live` 호가 차트 — 이 기능은
+hoga-ops에 만든다.
 
-요구 조건(사용자 확정):
+요구 조건(사용자 확정): **거래대금** 임계값 · **"N일 내 M일 신고가/신고거래량"**(돌파
+이력) · 전 종목(소형주 포함) · **시가총액 조건 제외**.
 
-- **거래대금** 임계값 필터.
-- **"N일 내 M일 신고가 (고가 기준)"** — *최근 N거래일 중 하루라도, 그날 고가가
-  직전 M일 최고가를 갱신한 적이 있는가* (돌파 이력; 한국 조건검색 관용구). 예: 200일 내
-  500일 신고가.
-- **"N일 내 M일 신고거래량"** — 위와 동일하되 거래량 기준.
-- 전 종목 대상(소형주 포함).
-- **시가총액 조건은 제외**(확정).
+### dev-tradingview 평가 결과 (출발점)
 
-### dev-tradingview 평가 결과 (이 설계의 출발점)
+`/home/dev/code/dev-tradingview`에 동일 개념 scanner와 27년 일봉 데이터가 있어 재사용 평가:
 
-`/home/dev/code/dev-tradingview`(사용자가 만든 별도 프로젝트)에 이미 동일 개념의
-scanner와 데이터가 있어 재사용을 평가했다. 결론:
-
-- **스캔 로직은 가져온다(참고).** dev-tradingview의 "N일 내 M일 신고가/신고거래량"
-  쿼리는 윈도우 함수 기반이고 **이미 DuckDB 방언**(`apps/api/src/domain/scanner/`).
-  hoga-ops도 이미 DuckDB-over-parquet 쿼리엔진(`hoga/api/queries.py`의 `QueryEngine`)을
-  쓰므로 **검증된 윈도우 SQL을 거의 그대로 이식**한다(새 의존성 0, correctness-by-reuse).
-  실측: 92MB parquet에 그 SQL을 돌려 "200일내 200일 신고가" 2,501종목을 **0.45초**에 반환.
-- **27년 일봉 데이터는 가져온다(유지).** dev-tradingview의 TimescaleDB `ohlcv_daily`는
-  3,561종목 × 8,458,572행, 1999-01-04 ~ 2026-05-14. DB→parquet 마이그레이션 실측
-  **~10초**(Postgres→CSV 8.5초 + CSV→parquet 0.7초), 결과 **92MB**(zstd). 무시할 비용.
-  단 ⚠️ **원주가(수정 미반영)** — 카카오 2021-04 5:1(558,000→120,500), 삼성전자 2018-05
-  50:1(2,650,000→51,900) 분할 불연속 검증됨. **다년 신고가 정확성을 위해 보정 필요**(아래
-  Design "보정" 참고).
-- **시총은 dev-tradingview에 없다**(상장주식수 부재). 사용자가 시총 조건을 제외하기로 해
-  쟁점 소멸.
-- **교훈**: dev-tradingview의 데이터는 2026-05-14에 멈춰 있다. 원인은 in-process
-  node-cron(서버 미가동 시 그날 업데이트 증발) + **관측성 0**(`cron_runs` 미기록). 우리
-  업데이트는 gap 따라잡기 + staleness 가시화로 이 실패를 구조적으로 막는다.
+- **스캔 로직 이식**: dev-tradingview의 "N일 내 M일 신고가/신고거래량" 윈도우 SQL은 이미
+  DuckDB 방언. hoga-ops도 DuckDB-over-parquet 쿼리엔진(`hoga/api/queries.py`)을 쓰므로
+  거의 verbatim 이식(새 의존성 0). 실측: 92MB parquet에 그 SQL → "200일내 200일 신고가"
+  **0.45초** 반환.
+- **27년 일봉 유지**: dev-tradingview TimescaleDB `ohlcv_daily` 3,561종목 × 8,458,572행,
+  1999-01-04 ~ 2026-05-14. DB→parquet 마이그레이션 실측 **~10초**(Postgres→CSV 8.5초 +
+  CSV→parquet 0.7초), 결과 **92MB**(zstd). markets = KOSPI 1797 / KOSDAQ 1764(제3시장
+  없음), ETF 745. 단 ⚠️ **원주가**(카카오 5:1·삼성 50:1 분할 불연속 검증) — 다년 신고가
+  정확성 위해 보정 필요(Design "수정주가 파생").
+- **시총은 dev-tradingview에 없음**(상장주식수 부재). 사용자가 시총 조건 제외 → 쟁점 소멸.
+- **교훈**: dev-tradingview 데이터는 2026-05-14에 멈춤(in-process cron + 관측성 0). 우리는
+  gap 따라잡기 + staleness 가시화로 구조적으로 방지.
 
 ## Invariants
 
-- **KIS 앱키 레이트 한도 단일 공유**: 한 앱키의 모든 KIS 데이터 호출은 단일
-  토큰버킷(15콜/초)을 거친다. 별도 `KisClient` 인스턴스가 각자 토큰버킷을 가지면 합산
-  호출이 한도를 넘어 `EGW00201`을 유발한다. 근거: [kis_client.py](../../../hoga/live/kis_client.py) `_TokenBucket`, `_RATE_LIMIT_CALLS_PER_SEC=15.0`.
-- **핫패스 모듈은 pyarrow/polars/duckdb를 import하지 않음 (ADR-0038)**: 라이브 캡처
-  핫패스(`hoga/live/*` write-path, `kis_client.py`)는 무거운 데이터 라이브러리를 import하지
-  않는다. 근거: ADR-0038, `kis_client.py` 헤더 주석.
-- **Catch-up Run = gap 따라잡기 (ADR-0034 부근)**: hoga-ops는 이미 "마지막 성공일과 오늘
-  사이의 빈 거래일을 따라잡는다"는 패턴을 Watchlist에 보유(`scheduler.catchup_one_entry`).
-  서버 다운타임을 견디고 놓침이 누적되지 않는다. 근거: CONTEXT.md "Catch-up Run",
-  [scheduler.py](../../../hoga/api/scheduler.py).
-- **activeCode 단일 진실원천 (ADR-0052)**: `/live` 차트 Code는
-  `useLivePageStore.activeCode` 하나가 결정. 헤더 검색·Watchlist Panel은 writer. 근거:
-  CONTEXT.md "activeCode".
-- **DuckDB-over-parquet 읽기 패턴**: hoga-ops의 분석 읽기경로는
-  `duckdb.connect(":memory:")`로 parquet을 직접 쿼리(`hoga/api/queries.py`). 스크리너 스캔도
-  이 idiom을 따른다.
+- **KIS 앱키 레이트 한도 단일 공유**: 한 앱키의 모든 KIS 호출은 단일 토큰버킷(15콜/초)을
+  거쳐야 한다. 별도 `KisClient` 인스턴스는 각자 버킷을 가져 합산이 한도를 넘어 `EGW00201`을
+  유발. 근거: [kis_client.py](../../../hoga/live/kis_client.py) `_TokenBucket`,
+  `_RATE_LIMIT_CALLS_PER_SEC=15.0`. **현 상태의 약점**: 버킷이 폴러 소유
+  (`lifecycle._kis_client`, 폴러 stop 시 None) → EOD 업데이트가 돌 때 공유 대상이 없을 수
+  있음. 이 spec이 **프로세스 싱글턴으로 격상해 invariant를 강화한다**(Invariant impact 참고).
+- **핫패스 모듈은 pyarrow/polars/duckdb를 import하지 않음 (ADR-0038)**: `hoga/live/*`
+  write-path·`kis_client.py`는 무거운 데이터 라이브러리를 import하지 않는다.
+- **Catch-up Run = gap 따라잡기**: hoga-ops는 "마지막 성공일~오늘 사이 빈 거래일을 따라잡는"
+  패턴을 Watchlist에 보유(`scheduler.catchup_one_entry`). 서버 다운타임을 견딘다. 근거:
+  CONTEXT.md "Catch-up Run".
+- **activeCode 단일 진실원천 (ADR-0052)**: `/live` 차트 Code는 `useLivePageStore.activeCode`.
+- **Code는 문자열, leading-zero 유의 (CONTEXT.md "Code")**: `005930`은 6자리 문자열이며
+  정수 5930이 아니다. **시드 경로(psql copy → CSV → DuckDB)에서 CSV는 dtype가 없어 자동추론이
+  005930을 BIGINT로 뭉갤 위험** → 이 spec은 전 구간 VARCHAR를 강제한다.
+- **Wire Model은 도메인 이름 (CONTEXT.md "Wire Model")**: 클라이언트가 보는 필드는 KIS 원시
+  필드명이 아니라 도메인 이름(`ApiCandle.open` 등). → 결과 행은 `prdy_ctrt`가 아니라
+  `change_pct`.
+- **DuckDB-over-parquet 읽기 패턴**: 분석 읽기경로는 `duckdb.connect(":memory:")`로 parquet
+  직접 쿼리(`hoga/api/queries.py`). 스크리너 스캔도 이 idiom.
 
 ## Invariant impact
 
 | Invariant | 영향 | 비고 |
 |-----------|------|------|
-| KIS 앱키 레이트 한도 단일 공유 | preserves | 스크리너 일일 업데이트는 라이브 폴러와 **동일 `KisClient`(동일 토큰버킷)** 를 공유, EOD/폴러 idle 시간대에 실행. |
-| 핫패스 pyarrow/duckdb 금지 (ADR-0038) | preserves | seed/adjust/scan(duckdb·polars)은 신규 `hoga/api/screener_*.py`에 두며 `hoga/live/*` 핫패스에서 import하지 않음. KIS fetch만 기존 `kis_client.py` 메서드 재사용. |
-| Catch-up Run gap 패턴 | preserves (재사용) | 스크리너 업데이트는 동일 gap-따라잡기 멘탈모델을 복제(별도 store 대상). Watchlist Catch-up 코드를 직접 수정하지 않음. |
-| activeCode SSOT | preserves | 결과 클릭은 `setActiveCode` writer 경로 그대로(Watchlist Panel과 동일 jump-to-chart). |
-| DuckDB-over-parquet 패턴 | preserves (재사용) | 스캔은 기존 패턴을 따르는 신규 in-memory 연결. |
+| KIS 레이트 한도 단일 공유 | **strengthens(의도적 강화)** | KisClient를 **폴러 소유 → 프로세스 싱글턴**으로 격상(`lifecycle`에서 lifespan 생성·보존, stop과 무관). 폴러·업데이트가 같은 인스턴스/버킷 공유 → 폴러 on/off 무관하게 항상 15/s 한 버킷. 폴러 idle 시엔 업데이트가 유일 호출자라 자명히 안전. |
+| 핫패스 pyarrow/duckdb 금지 (ADR-0038) | preserves | seed/derive/scan(duckdb·polars)은 `hoga/api/screener_*.py`; `hoga/live/*`에서 import 안 함. KIS fetch만 기존 `kis_client.py` 메서드 재사용. |
+| Catch-up Run gap 패턴 | preserves(재사용) | 업데이트가 동일 gap-따라잡기 멘탈모델 복제(별도 store). |
+| activeCode SSOT | preserves | 결과 클릭은 `setActiveCode` writer 경로. |
+| Code 문자열/leading-zero | preserves(명시 강제) | 시드·parquet·스캔·결과 전 구간 VARCHAR. round-trip 회귀 테스트. |
+| Wire Model 도메인 이름 | preserves | 결과 필드 `change_pct`(KIS `prdy_ctrt` 미노출). |
+| DuckDB-over-parquet | preserves(재사용) | 신규 in-memory 연결. |
 
-*의도적으로 깨는 invariant 없음.*
+*의도적으로 깨는 invariant 없음. KIS 레이트 한도는 의도적으로 **강화**.*
 
 ## Goals
 
-- 전 종목(~3,561, ETF 제외 옵션)에 대해 `거래대금 / 신고가(N,M) / 신고거래량(N,M)` AND
-  조건으로 필터링하는 전용 `/screener` 페이지.
-- **검색(조회) 지연 sub-second** — 필터 선택도와 무관(실측 0.45초/27년 풀스캔).
-- 신고가/신고거래량의 `(최근 N일, M일 신고)`를 UI에서 가변. **깊이 제한 없음**(27년 보유 →
-  "10년 신고가"까지 가능).
-- 정확성: **수정주가 기준**(분할 보정), 분할 가짜 신고가 없음.
-- 데이터 최신성: 자동(EOD) + 서버시작 복구 + 수동 갱신, **staleness 항상 가시화**(silent
-  staleness 불가 — dev-tradingview 실패 방지).
-- 결과 행 → 캡처 워크플로우 직결: 클릭→`/live` 차트 / ♥워치리스트 / 캡처 큐.
+- 전 종목(~3,561, ETF 제외 옵션)에 `거래대금 / 신고가(N,M) / 신고거래량(N,M)` AND 필터
+  전용 `/screener` 페이지.
+- **조회 지연 sub-second**(실측 0.45초/27년 풀스캔), 필터 선택도 무관.
+- `(Lookback Window N, Record Period M)` UI 가변, **깊이 제한 없음**(27년 보유).
+- 정확성: **수정주가 기준, KIS 공식 수정주가와 일치**(보정 A + KIS 교차검증), 분할 가짜
+  신고가 없음, Code leading-zero 보존.
+- 데이터 최신성: 자동(EOD)+서버시작 복구+수동, **staleness 항상 가시화**.
+- 결과 행 → 클릭 차트 / ♥워치리스트 / 캡처 큐.
 
 ## Non-Goals
 
-- 시가총액 조건(확정 제외).
-- 실시간(틱) 스크리닝. EOD 일봉 기준. 장중 변동은 다음 업데이트 전까지 미반영.
-- 분봉(`ohlcv_minute`) 활용. dev-tradingview의 1.3억행 분봉은 스크리너 범위 밖(향후).
-- OR 조건/임의 팩터(PER/PBR/수급). v1은 거래대금·신고가·신고거래량 AND.
-- 멀티유저/서비스용 per-user 상태 저장(향후 서비스화 시 Postgres 별도 트랙; 일봉 store는
-  parquet 유지 — Design "저장소 선택" 참고).
+- 시가총액 조건(확정 제외). 실시간 틱 스크리닝. 분봉 활용. OR 조건/임의 팩터. 멀티유저
+  per-user 상태(서비스화 시 Postgres 별도 트랙; 일봉 store는 parquet 유지).
 
 ## Design
 
-### 데이터 파이프라인 — raw 아카이브 → 수정주가 파생 → 스캔
+### 용어 (CONTEXT.md 등재)
+
+- **Screener** — 이 기능/페이지. 조회 연산은 동사 **scan**(`run_scan`). dev-tradingview의
+  "scanner" 명칭은 _Avoid_(hoga 네임스페이스 통일).
+- **Lookback Window (N)** — 돌파를 찾는 최근 거래일 수("최근 200일").
+- **Record Period (M)** — 신고 판정의 직전 거래일 수("500일 신고가"). N·M 모두 거래일.
+- **Breakout(돌파)** — 어떤 날의 값이 직전 M-1일 최고를 달성(`>=`, 동점 포함)한 사건. 신고가
+  ·신고거래량이 공유하는 개념.
+
+### 데이터 파이프라인 — 원주가 아카이브 → 수정주가 파생 → 스캔
 
 ```
-[1회 시드] dev-tradingview DB.ohlcv_daily(원주가) ──10초──► raw 아카이브 parquet (92MB)
-[매일]     KIS 원주가 신규 거래일 append (gap 따라잡기) ──────► raw 아카이브 (append-only)
-[파생,싼]  raw → split 보정(A) ─────────────────────────────► 수정주가 scan store parquet
-[조회]     DuckDB 윈도우 SQL (거래대금·신고가·신고거래량) ◄──┘  sub-second
+[1회 시드] dev-tradingview DB(원주가) ──10초──► daily_unadjusted.parquet (원주가 아카이브, 92MB)
+[매일]     KIS 원주가 신규 거래일 append (gap 따라잡기) ─────────────► daily_unadjusted.parquet (append-only)
+[싼 파생]  보정 A(오프라인 split) + KIS 수정주가 교차검증 ──────────► daily_adjusted.parquet (수정주가, 스캔 대상)
+[조회]     DuckDB 윈도우 SQL (거래대금·신고가·신고거래량) ◄─────────┘  sub-second
 ```
 
-핵심: **raw 아카이브가 진실원천**(append-only, 1999~현재 원주가), **수정주가 scan
-store는 그 위에서 파생**(split 보정). 파생이 싸므로 raw가 바뀔 때마다 재계산 → 역사/신규
-사이 보정 seam 없음, **분할이 파생 단계에서 자동 처리**(per-code 재빌드 불필요), raw 보존이라
-보정 방식을 나중에 B(KIS 수정주가 재수집)로 교체할 escape hatch 확보.
+**원주가 아카이브가 진실원천**(append-only), **수정주가는 파생**. 파생이 싸 raw 변경 시
+재계산 → 보정 seam 없음, 분할 자동 처리, 아카이브 보존이라 정확도 escape hatch 확보.
 
 ### 컴포넌트 1 — 시드 (1회, `screener_store.seed_from_db`)
 
-- dev-tradingview TimescaleDB `ohlcv_daily`(+`stocks`의 code/name/market/is_etf/is_halted)를
-  parquet으로 내보냄. 경로: `<data_dir>/screener/ohlcv_daily_raw.parquet`,
-  `<data_dir>/screener/stocks.parquet`.
+- dev-tradingview `ohlcv_daily`(+`stocks`의 code/name/market/is_etf/is_halted)를 parquet으로.
+  경로: `<data_dir>/screener/daily_unadjusted.parquet`, `<data_dir>/screener/stocks.parquet`.
 - 방식(실측): `docker exec ... psql \copy (...) TO STDOUT CSV` → DuckDB
-  `COPY (read_csv) TO ... (FORMAT parquet, COMPRESSION zstd)`. **~10초, 92MB.**
-- DuckDB postgres scanner(ATTACH)로 한 단계 직결도 가능하나 네트워크/확장 의존이 있어 CSV
-  중간 경로를 기본으로(검증됨).
-- 시드는 운영 중 1회. 이후 DB 불필요(파일로 보존). DB는 dev-tradingview용으로 두거나 끔.
+  `COPY (read_csv(..., types={'code':'VARCHAR'})) TO ... (FORMAT parquet, COMPRESSION zstd)`.
+  **~10초, 92MB.** **`code`는 전 구간 VARCHAR 강제**(read_csv dtype override; parquet code
+  컬럼 VARCHAR) — 005930 round-trip 보존.
+- **parquet 스키마(확정)**: `daily_unadjusted`/`daily_adjusted` = `{code:VARCHAR, date:DATE,
+  open:DOUBLE, high:DOUBLE, low:DOUBLE, close:DOUBLE, volume:BIGINT}`. `stocks` =
+  `{code:VARCHAR, name:VARCHAR, market:VARCHAR, is_etf:BOOLEAN, is_halted:BOOLEAN}`.
+- 시드는 1회. 이후 DB 비의존. `screener/`는 parquet/raw/timing/live와 나란한 **새 top-level
+  sibling**(Stock-Date 스코프가 아닌 전역 코퍼스라 flat 의도적).
 
-### 컴포넌트 2 — 수정주가 파생: 보정 A (`screener_store.derive_adjusted`)
+### 컴포넌트 2 — 수정주가 파생: 보정 A + KIS 교차검증 (`screener_store.derive_adjusted`)
 
-원주가 → 수정주가 오프라인 보정(재수집 없음):
+수정주가 SSOT는 **KIS 공식 수정주가**(/live와 일치)이되, 비용을 위해 오프라인 A를 1차로:
 
-- 종목별 일봉 시계열에서 **분할/병합일 탐지**: 무상 가격 변동 외의 **하룻밤 비율 점프**가
-  깨끗한 분수(≈1/2,1/3,1/5,1/10,1/50 등)에 가까운 날을 분할로 판정. 그 이전 가격에
-  누적 계수를 곱하고(back-adjust), 거래량은 역수로 보정.
-- 결과: `<data_dir>/screener/ohlcv_daily.parquet`(수정주가, scan store).
-- polars/DuckDB 윈도우 연산(92MB 규모) → 초 단위(구현 시 실측). raw가 바뀔 때만 재파생.
-- **알려진 한계**(사용자 승인): 유상증자·비율이 깔끔하지 않은 이벤트는 근사·오차 가능.
-  raw 아카이브를 보존하므로, A의 정확도가 부족하면 해당 종목만(또는 전체) **B(KIS
-  `FID_ORG_ADJ_PRC=0` 재수집)** 로 교체 가능 — Risks 참고.
+- **1차 — 오프라인 A**: 종목별 원주가에서 분할/병합일(하룻밤 비율 점프가 깨끗한 분수
+  ≈1/2,1/5,1/10,1/50)을 탐지해 back-adjust(가격 곱·거래량 역수).
+- **2차 — KIS 교차검증·per-code 폴백**: A의 보정 비율이 **깨끗하지 않은(유상증자 등) 의심
+  종목만** KIS 수정주가(`FID_ORG_ADJ_PRC=0`, /live가 쓰는 바로 그 값)로 대조해, 갈리면 그
+  종목을 KIS 수정주가로 교체. 분할 안 한 대다수는 A=KIS라 그대로 → **전종목 재수집 회피 +
+  /live와 일치**.
+- 결과: `<data_dir>/screener/daily_adjusted.parquet`(스캔 대상). raw 변경 시 재파생.
+- 비용: polars/DuckDB 윈도우 연산(92MB) → 초 단위(구현 시 실측). 의심 종목 KIS 호출만 추가.
 
 ### 컴포넌트 3 — 스캔 (조회, `screener_scan.run_scan`)
 
 dev-tradingview `buildScanQuery`의 윈도우 SQL을 DuckDB-over-parquet로 이식(거의 verbatim).
-`base` CTE = 종목별 최신 봉, 조건별 CTE를 JOIN, 거래대금 desc 정렬, LIMIT.
+SQL의 `lookback`(N)/`period`(M)를 **그대로** 쓴다(wire 파라미터도 `nh_lookback`/`nh_period`로
+일치 — 반쪽 명명 제거).
 
-- **거래대금**: 인라인 `close * volume >= 임계값`(억원 입력 → 원 변환). dev-tradingview와 동일.
-- **신고가 (N,M) = 돌파 이력** (이식할 핵심 SQL, 실측 0.45초):
-  ```sql
-  -- lookback 시작일(최근 N번째 거래일) per code
-  lb_start AS (
-    SELECT code, MIN(date) lb_start FROM (
-      SELECT code, date, ROW_NUMBER() OVER (PARTITION BY code ORDER BY date DESC) rn
-      FROM adj) t WHERE rn <= :N GROUP BY code),
-  -- 롤링 M일 최대 + 윈도우 충원수
-  win AS (
-    SELECT code, date, high,
-      MAX(high) OVER (PARTITION BY code ORDER BY date
-                      ROWS BETWEEN :M-1 PRECEDING AND CURRENT ROW) AS mx,
-      COUNT(*)  OVER (PARTITION BY code ORDER BY date
-                      ROWS BETWEEN :M-1 PRECEDING AND CURRENT ROW) AS wc
-    FROM adj),
-  -- 최근 N일 내, 직전 M일 최고를 달성한(=) 가장 최근 날; 부분윈도우(wc<M) 제외
-  evt AS (
-    SELECT DISTINCT ON (w.code) w.code, w.date event_date
-    FROM win w JOIN lb_start l ON l.code=w.code
-    WHERE w.date >= l.lb_start AND w.high = w.mx AND w.wc = :M
-    ORDER BY w.code, w.date DESC)
-  ```
-  **확정 시맨틱**(dev-tradingview 일치): lookback/period는 **거래일** 단위; 돌파 판정은
-  `high = rolling_max`(**동점 포함** — 고점 터치도 돌파로 인정); `wc = M` **부분윈도우
-  가드**(상장 M일 미만 신규주 가짜 신고가 제외). `daysAgo`로 가장 최근 돌파일 보고.
-- **신고거래량 (N,M)**: 위와 동일하되 `volume` 기준.
-- **글로벌 필터**: market(KOSPI/KOSDAQ), ETF 제외(`stocks.is_etf`), 거래정지 제외(`is_halted`).
-- 결과 행: `{code, name, market, price, trade_value, prdy_ctrt?, new_high:{hit, event_date,
-  days_ago, period_high}, new_high_vol:{hit, event_date, days_ago}}`. 정렬 거래대금 desc, LIMIT 1000.
+- **거래대금**: 인라인 명명 표현식 `trade_value_won := close * volume`, `>= min_trade_value_eok
+  * 1e8`. (억원 입력 → 원 환산; SQL 텍스트 한 곳에서 정의.)
+- **신고가 (N,M)** — 핵심 이식 SQL(실측 0.45초): `lb_start`(최근 N번째 거래일) → 롤링 M일
+  최대 `MAX(high) OVER (... ROWS BETWEEN M-1 PRECEDING AND CURRENT ROW)` + 윈도우 충원수
+  `COUNT(*) OVER w` → 최근 N일 내 `high = mx AND wc = M`인 가장 최근 날(`DISTINCT ON`).
+  시맨틱: **거래일 단위**, 돌파 `>=`(**동점 포함**, dev-tradingview 일치), **`wc=M` 부분윈도우
+  가드**(상장 M일 미만 신규주 제외).
+- **신고거래량 (N,M)**: 동일하되 `volume` 기준.
+- **글로벌 필터**: `markets: list[Literal['KOSPI','KOSDAQ']]`, ETF 제외(`is_etf`), 정지
+  제외(`is_halted`).
 
 ### 컴포넌트 4 — 일일 업데이트 (자동+복구+수동, gap 따라잡기)
 
-raw 아카이브 최신일과 최신 거래일 사이의 **gap을 따라잡는다**(Watchlist Catch-up과 동형):
+원주가 아카이브 최신일~최신 거래일 gap을 따라잡는다(Watchlist Catch-up과 동형):
 
-- **트리거 3종 → 동일 gap 따라잡기 호출**:
-  1. **자동**: Daily Scheduler EOD 단계에 "스크리너 gap 따라잡기" 추가(서버 가동 시).
-  2. **서버 시작 시**: 부팅하며 밀린 거래일 자동 복구(17:00 미가동도 다음 기동에 복구).
-  3. **수동**: 헤더 "갱신" 버튼 → 즉시 gap 따라잡기.
-- **비용**: 하루치 = 전종목 KIS 1페이지씩 ≈ 3,561콜 ÷ 15 ≈ **~4분/일**. 1주 밀리면 ~30분.
-- **KIS fetch**: 신규 거래일을 **원주가(`FID_ORG_ADJ_PRC=1`)** 로 받아 raw 아카이브에 append
-  (DB 시드와 동일 원주가 계열 유지). 이후 수정주가 scan store 재파생(분할 자동 반영).
-- **레이트리밋 공유**: 라이브 폴러와 동일 토큰버킷(15/s), EOD/idle 시간대.
-- **관측성(필수)**: `screener/meta.json`에 `last_raw_date, last_built_ms, universe_size,
-  derive_ms`. UI는 "마지막: YYYY-MM-DD (N거래일 뒤처짐)" 칩을 항상 표시, 뒤처지면 강조.
-  진행률은 기존 `EventBus.publish('screener.update', {done,total})` → SSE.
+- **트리거 3종 → 동일 호출**: ① Daily Scheduler EOD 단계 ② 서버 시작 시 복구 ③ 헤더 "갱신".
+- **KIS fetch**: 신규 거래일을 **원주가(`FID_ORG_ADJ_PRC=1`)** 로 받아 아카이브 append →
+  수정주가 재파생. ⚠️ `fetch_past_daily_candles`는 현재 `FID_ORG_ADJ_PRC='0'` 하드코딩
+  (/live·ADR-0048 의존) → **플래그를 인자화**(기본 `'0'` 유지로 /live 보존, 스크리너만 `'1'`).
+- **KisClient**: `lifecycle`의 **프로세스 싱글턴**을 `get_kis_client()`로 획득(폴러와 동일
+  버킷). 폴러 미가동 시에도 싱글턴 존재(lifespan 생성). 비용 ~4분/일(전종목 1페이지씩).
+- **관측성(필수)**: `screener/status.json` = 타입드 pydantic 모델 `ScreenerStatusFile{
+  schema_version:int, last_raw_date:str(YYYYMMDD), last_built_ms:int, universe_size:int,
+  derive_ms:int}` (구버전은 default 채움). UI는 "마지막 YYYY-MM-DD (N거래일 뒤처짐)" 칩,
+  뒤처지면 강조. 진행률 `EventBus.publish('screener.update', {done,total})` → SSE.
 
 ### API (`hoga/api/screener.py`)
 
-- `GET /api/screener` — 쿼리: `min_trade_value?, nh_enabled?, nh_recency?, nh_period?,
-  nhv_enabled?, nhv_recency?, nhv_period?, markets?, exclude_etf?, exclude_halted?, q?,
-  sort?, limit?`. scan store 위 DuckDB 즉시 실행. store 없으면 빈 결과 + status.
-- `POST /api/screener/update` — gap 따라잡기 트리거(single-flight). 즉시 반환, 진행 SSE.
-- `GET /api/screener/status` — `{last_raw_date, last_built_ms, days_behind, universe_size,
-  building?}`.
-- Wire Model: `ScreenerRow, ScreenerResponse, ScreenerStatus` (`hoga/api/models.py`).
+- `GET /api/screener` — 쿼리: `min_trade_value_eok?`, `nh_lookback?`+`nh_period?`(둘 다-또는-
+  둘 다-없음, 라우트에서 `NewHighFilter{lookback≥1, period≥1}|None`로 조립), `nhv_lookback?`+
+  `nhv_period?`, `markets?`(repeated, Literal), `exclude_etf?`, `exclude_halted?`, `q?`,
+  `sort?`(Literal), `limit?`. 상한: `lookback+period > 가용 깊이`면 클램프 + `truncated`
+  경고(silent cap 금지). `period > lookback` 허용(헤드라인 200내500).
+- `POST /api/screener/update` — gap 따라잡기(single-flight). 즉시 반환, 진행 SSE.
+- `GET /api/screener/status` — `ScreenerStatusFile` + `days_behind` 파생.
+- **Wire Model**(`hoga/api/models.py`):
+  - `Breakout` 판별 union: `BreakoutHit{hit:Literal[True], event_date:str, days_ago:int,
+    period_extreme:int}` | `BreakoutMiss{hit:Literal[False]}`. 신고가의 `period_extreme`=기간
+    최고가, 신고거래량의 `period_extreme`=기간 최대거래량(대칭).
+  - `ScreenerRow{code:str, name:str, market:Literal['KOSPI','KOSDAQ'], price:int,
+    trade_value_won:int, change_pct:float|None, new_high:Breakout|None,
+    new_high_vol:Breakout|None}`. 필터 off면 해당 Breakout=None(omit).
+  - `ScreenerResponse{status:Literal['ok','not_seeded','building'], rows:list[ScreenerRow]}`
+    — **빈 rows의 의미를 status가 판별**(not_seeded=시드 필요 vs ok+rows=[]=0매칭). `building`은
+    `/status`와 단일 진실원천 공유.
 
 ### 프론트엔드 (`/screener`)
 
-- **라우팅**: `main.tsx` `<Route path="screener">`, `LeftNav` Workspace에
-  `<NavItem to="/screener" label="Screener" />`.
-- **레이아웃**: 전용 페이지. 좌측 조건 패널 + 우측 결과 테이블.
-  - 조건: 이름/코드 검색 · 거래대금 하한 · 신고가 토글+`최근 N일`+`M일 신고`(프리셋
-    20/60/120/250 + 직접입력) · 신고거래량 동일 · 글로벌(market·ETF/정지 제외).
-  - 결과 테이블: 코드·종목명·현재가·전일대비·거래대금 + **신고가/신고거래량 돌파 배지**
-    (돌파일 `N일 전` tooltip). 행 액션 3종:
-    - 클릭(행) → `setActiveCode(code)` + `/live` 이동(이미 /live면 차트 교체).
-    - ♥ → `POST /api/watchlist` (기존 `api/watchlist.ts`).
-    - 캡처 → 오늘자 Stock-Date Capture Queue 등록(기존 `api/captures.ts`).
-  - 헤더: **staleness 칩**("마지막 YYYY-MM-DD · N일 뒤처짐") + "갱신" 버튼 + 진행률(SSE).
-- 훅: `useScreener(filters)`, `useScreenerStatus()`, `api/screener.ts`.
-- **디자인**: `DESIGN.md` 토큰 준수(UI 작업 전 정독).
+- 라우팅: `main.tsx` `<Route path="screener">`, `LeftNav`에 `Screener`.
+- 좌측 조건 패널: 이름/코드 검색 · 거래대금 하한(억원) · 신고가 토글+`Lookback`+`Period`
+  (프리셋 20/60/120/250+직접입력) · 신고거래량 동일 · market/ETF/정지 필터.
+- 결과 테이블: 코드·종목명·현재가·전일대비(`change_pct`)·거래대금 + 신고가/신고거래량 **돌파
+  배지**(`days_ago` tooltip) + 3액션(클릭→차트 `setActiveCode` / ♥ `POST /api/watchlist` /
+  캡처 `api/captures.ts`).
+- 헤더: staleness 칩 + "갱신" 버튼 + 진행률(SSE). `status='not_seeded'`면 "시드 필요" 안내.
+- `DESIGN.md` 토큰 준수.
 
-### 저장소 선택 — 왜 parquet (서비스화 포함)
+### 저장소 선택 — parquet (서비스화 포함)
 
-- 일봉은 **공용·읽기 위주·하루 1회 추가**(유저 수와 무관하게 데이터량 일정) → 컬럼형
-  parquet+DuckDB가 행기반 DB보다 풀스캔 분석에 빠르고 운영비 0. hoga-ops 기존 패턴과 일치.
-- 서비스화해도 일봉 store는 parquet 유지(로컬→S3는 "파일 이동"이지 재작성 아님; DuckDB가 S3
-  parquet 직읽기; 스캔 SQL 이식 가능 → 락인 낮음).
-- DB가 필요해지는 건 일봉이 아니라 **유저별 상태**(계정·유저 워치리스트·설정) — 서비스화 시
-  Postgres를 별도 트랙으로 추가. Timescale은 고속 수집(틱/분봉)용이라 일봉 스크리너엔 이득
-  없음. 따라서 지금 DB 도입은 순손해.
+일봉은 공용·읽기 위주·하루 1회 추가 → 컬럼형 parquet+DuckDB가 풀스캔에 유리, hoga 패턴
+일치. 서비스화해도 parquet 유지(로컬→S3=파일 이동). DB는 유저별 상태용으로 그때 Postgres
+별도 추가. Timescale은 고속 수집(틱/분봉)용이라 일봉 스크리너엔 이득 없음.
 
 ## Testing
 
@@ -229,48 +211,44 @@ raw 아카이브 최신일과 최신 거래일 사이의 **gap을 따라잡는�
 
 | Case | Setup | Expected |
 |------|-------|----------|
-| 돌파 동점 포함 | high가 직전 M 최대와 같음 | `=` 이므로 돌파 인정(hit) |
-| 돌파 hit/날짜 | d에서 직전 M-1 최고 갱신 | `hit=true`, `event_date=d`, `days_ago` 정확 |
-| 부분윈도우 가드 | 상장 M일 미만 신규주 | `wc<M` → 제외(가짜 신고가 없음) |
-| N 윈도우 경계 | 돌파가 N+1일 전만 존재 | `hit=false` |
-| 신고거래량 | volume 시계열 동일 로직 | 가격과 독립 계산 |
-| 거래대금 임계 | close*volume 경계값 | `>=` 정확(억원→원 변환) |
-| 분할 보정 정확성 | 카카오/삼성 분할 종목 | 보정 후 분할 가짜 신고가 없음(연속 시계열) |
-| 분할 자동 반영 | raw에 분할일 추가 후 재파생 | scan store가 자동 re-base |
-| 시드 왕복 | DB→parquet→DuckDB count | DB 행수와 일치(8,458,572) |
-| gap 따라잡기 | last_raw_date < 최신거래일 | 누락 거래일만 fetch, 누적 안 됨 |
-| store 없음 | 시드 전 조회 | 빈 결과 + status, 500 아님 |
+| Code round-trip | 005930 시드→parquet→scan→결과 | 6자리 문자열 보존(BIGINT 5930 아님) |
+| 돌파 동점 포함 | high=직전 M 최대와 같음 | `>=` → 돌파 인정 |
+| 돌파 hit/날짜 | d에서 직전 M-1 최고 갱신 | `BreakoutHit{event_date=d, days_ago}` |
+| 부분윈도우 가드 | 상장 M일 미만 | `wc<M` → 제외 |
+| N 윈도우 경계 | 돌파가 N+1일 전만 | `BreakoutMiss` |
+| 필터 off | nh_lookback 없음 | `new_high=None`(omit) |
+| 필터 짝 검증 | nh_lookback만 주고 nh_period 없음 | 422(둘 다-또는-없음) |
+| 깊이 클램프 | lookback+period > 깊이 | 결과 + `truncated` 경고 |
+| 보정 A=KIS | 분할 종목 A보정 vs KIS adjusted | 일치(동일 다년 신고가) |
+| KIS 폴백 | 유상증자 등 A≠KIS 종목 | KIS 수정주가로 교체됨 |
+| status 판별 | 시드 전 / 0매칭 | `not_seeded` / `ok`+rows=[] |
+| markets Literal | 잘못된 market 값 | 422 |
+| 시드 왕복 | DB→parquet count | 8,458,572 |
+| gap 따라잡기 | last_raw_date < 최신거래일 | 누락일만 fetch, 누적 안 됨 |
 
-**Invariant 회귀 테스트**:
-- 레이트리밋 공유: 업데이트+폴러 동시 시 단일 토큰버킷 경유(주입된 동일 인스턴스).
-- ADR-0038: `hoga/live/*` 핫패스가 `screener_*`/duckdb/polars를 import하지 않음(import 그래프).
-- activeCode: 결과 클릭이 `setActiveCode`만 호출.
+**Invariant 회귀**: KisClient 싱글턴(폴러+업데이트 단일 버킷); ADR-0038 import 그래프;
+activeCode setter; Code VARCHAR round-trip; `change_pct`(prdy_ctrt 미노출).
 
 ### Manual verification
 
-- 시드 1회 → `screener/ohlcv_daily.parquet` 생성, status `universe_size` 표시.
-- `/screener` "200일 내 500일 신고가" 조회 → sub-second 결과 + 배지.
-- "갱신" → 진행률 → status `days_behind=0`.
-- 결과 클릭 → `/live` 해당 Code 호가 차트. ♥/캡처 → Watchlist/Capture Queue 반영.
+- 시드 1회 → `daily_unadjusted.parquet`/`daily_adjusted.parquet` 생성, status `universe_size`.
+- `/screener` "200일 내 500일 신고가" → sub-second + 배지. 분할 종목(카카오 등) 고가가 /live
+  차트와 일치.
+- "갱신" → 진행률 → `days_behind=0`. 결과 클릭 → `/live` 호가 차트.
 
 ## Risks / Open questions
 
-- **보정 A 정확도**: 유상증자·비정수 비율 이벤트는 오프라인 탐지가 근사. 검출 임계값 튜닝
-  필요. **완화**: raw 아카이브 보존 → 의심 종목을 KIS 수정주가(B)로 교체하는 per-code
-  fallback을 backlog에 둔다(스캔 store는 derived라 일부만 교체해도 일관 유지).
-- **파생 비용 실측**: derive_adjusted를 92MB에 대해 실측해 "초 단위" 주장을 검증(구현 1순위).
-- **신규일 원주가 append vs 분할일**: 분할일은 raw에 자연 반영(원주가가 실제로 하락) →
-  파생이 자동 처리. 별도 분할 이벤트 API 의존 없음(탐지 기반).
-- **DB 가용성**: 시드는 dev-tradingview DB가 켜져 있을 때 1회. 꺼졌다면 docker compose up 후
-  시드. 시드 후 영구 비의존.
-- **레이트리밋 경합**: 업데이트 중 `/live` 동시 사용 시 폴러+업데이트가 15/s 분할 → 업데이트가
-  느려질 뿐 정확성 무해(동일 버킷).
+- **보정 A 정확도**: 유상증자 등은 오프라인 탐지 근사 → **KIS 교차검증·per-code 폴백으로
+  완화**(의심 종목만 KIS 수정주가로 교정, /live와 일치). 의심 판정 임계값 튜닝 필요.
+- **파생 비용 실측**: derive_adjusted를 92MB에 실측(구현 1순위).
+- **KisClient 싱글턴 리팩터**: `lifecycle`의 폴러-소유 → 프로세스-소유 격상은 폴러 start/stop
+  경로를 건드림 → plan에서 회귀 주의(stop이 클라이언트를 null하지 않게).
+- **`fetch_past_daily_candles` 플래그 인자화**: 기본 `'0'` 유지로 /live(ADR-0048) 보존 확인.
+- **DB 가용성**: 시드는 dev-tradingview DB 가동 시 1회. 이후 영구 비의존.
 
 ## Out of Scope (Backlog)
 
-- 분봉(`ohlcv_minute`, 1.3억행) 활용 — 분봉 기반 조건/리플레이.
-- 보정 B(KIS 수정주가) per-code fallback, A/B 교차검증 리포트.
-- 추가 조건(등락률·이평선 배열·PER/PBR), OR 로직, 저장 프리셋(dev-tradingview `scanner_configs`
-  JSONB 모델 참고).
-- 서비스화: 유저별 상태용 Postgres, 일봉 parquet의 S3 이전, 동시성 스케일아웃.
-- 시가총액 조건(상장주식수 소스 확보 시; KIS output1 `hts_avls` 경로 존재).
+- 분봉(`ohlcv_minute`) 활용. 추가 조건(등락률·이평선·PER/PBR), OR 로직, 저장 프리셋
+  (dev-tradingview `scanner_configs` JSONB 참고 — 단 hoga에선 `screener_presets`로 명명).
+- 서비스화: 유저 상태용 Postgres, parquet S3 이전. 시가총액(상장주식수 소스 확보 시,
+  KIS output1 `hts_avls`).

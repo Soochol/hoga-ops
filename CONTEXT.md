@@ -320,8 +320,20 @@ _Avoid_: "rollup" (collides with frontend aggregation like StockDateGroup rollup
 _Avoid_: "past candles" 단독 (소스를 잃음 — KIS-specific), "historical candles" (replay candle wire 와 중첩), "candle backfill" 단독 ("Live" 페이지 scope 누락).
 
 **KisClient**:
-`hoga/live/kis_client.py` 의 단일 async HTTP wrapper — Live Capture 영역의 모든 KIS Open API 호출이 통과하는 *single ingress*. 토큰 발급/갱신 (`get_access_token`, 1-per-minute reissue cool-down), 15 calls/sec 토큰 버킷 (`_RATE_LIMIT_CALLS_PER_SEC`), EGW00201 자동 retry ((1.0, 2.0, 4.0)s backoff, `_RATE_LIMIT_BACKOFF`) 세 가지를 메서드 호출자에게 투명하게 제공한다. **Invariant (ADR-0050)**: KIS endpoint 를 직접 hit 하는 production 코드는 추가하지 않는다 — `httpx.AsyncClient` 로 `openapi.koreainvestment.com:9443` 을 직접 부르는 새 코드가 review 에 등장하면 본 ADR 위반. 진단/probe 같은 합법적 single-shot 케이스는 `_get(..., retry=False)` opt-out 으로 명시적으로 표기한다.
+`hoga/live/kis_client.py` 의 단일 async HTTP wrapper — Live Capture 영역의 모든 KIS Open API 호출이 통과하는 *single ingress*. 토큰 발급/갱신 (`get_access_token`, 1-per-minute reissue cool-down), 15 calls/sec 토큰 버킷 (`_RATE_LIMIT_CALLS_PER_SEC`), EGW00201 자동 retry ((1.0, 2.0, 4.0)s backoff, `_RATE_LIMIT_BACKOFF`) 세 가지를 메서드 호출자에게 투명하게 제공한다. **Invariant (ADR-0050)**: KIS endpoint 를 직접 hit 하는 production 코드는 추가하지 않는다 — `httpx.AsyncClient` 로 `openapi.koreainvestment.com:9443` 을 직접 부르는 새 코드가 review 에 등장하면 본 ADR 위반. 진단/probe 같은 합법적 single-shot 케이스는 `_get(..., retry=False)` opt-out 으로 명시적으로 표기한다. **Screener** 의 일일 업데이트도 이 단일 ingress 를 공유한다 — 이를 위해 KisClient 는 폴러 소유에서 **프로세스 단일 싱글턴**(lifespan 소유, 폴러 start/stop 과 무관)으로 격상되어, 폴러 가동 여부와 무관하게 항상 토큰 버킷이 하나만 존재한다(2026-05-31 Screener spec; 한 앱키 = 한 버킷 invariant 강화).
 _Avoid_: "the KIS client" 라는 모호한 표현 (이 코드베이스엔 단 하나, 항상 capital `KisClient`), "KIS HTTP layer" (HTTP 외에도 토큰 lifecycle + retry 정책을 담음).
+
+**Screener**:
+`/screener` 페이지·기능 — 전 시장 일봉 코퍼스를 **거래대금 / 신고가 / 신고거래량** 조건으로 걸러 캡처할 가치가 있는 **Code** 를 찾는다. 조회 연산은 동사 **scan**(`run_scan`); 결과 클릭은 **activeCode** 를 설정해 `/live` 호가 차트로 점프한다(Watchlist Panel 과 같은 jump-to-chart 패턴). 데이터는 `<data_dir>/screener/` 하위의 전 시장 일봉-OHLCV 코퍼스 — **원주가 아카이브**(`daily_unadjusted.parquet`, append-only 진실원천; dev-tradingview TimescaleDB 1회 시드 + KIS 일봉 append)와 거기서 split-보정으로 파생한 **수정주가 store**(`daily_adjusted.parquet`, scan 대상). per-Stock-Date 캡처 산출물과 구별된다 — Screener 코퍼스는 전역·일봉 입도·다년·읽기전용 scan 대상이고, **Source**(hogaplay/kis_live) 분류 밖이다. 수정주가 SSOT 는 KIS 공식 수정주가(`FID_ORG_ADJ_PRC=0`, /live 와 동일) — 오프라인 보정의 의심 종목만 KIS 값으로 교차검증·교체한다.
+_Avoid_: "scanner" (dev-tradingview 차용어 — hoga 는 **Screener** + 동사 **scan**); 원주가 store 를 "raw" 로 (이미 `raw/{date}/{code}` = 파싱 전 hogaplay Page 의미와 충돌 — **원주가/unadjusted** 사용); 상태 파일을 `meta.json` 으로 (Stock-Date 캡처 meta.json 과 충돌 — Screener 는 `status.json`); `ohlcv_daily` (Timescale 테이블명 누수 — `daily_unadjusted`/`daily_adjusted`).
+
+**Lookback Window (N)** / **Record Period (M)**:
+Screener 신고가/신고거래량(**Breakout**) 조건의 두 거래일 파라미터. **Record Period (M)** = 어떤 날이 신고로 인정받으려면 넘어야 하는 직전 윈도우("500일 신고가"). **Lookback Window (N)** = 그 신고가 얼마나 최근에 일어났어야 하는가("최근 200일 내"). 한 **Code** 는 *최근 N거래일 중 하루라도 M일 신고를 낸 적이 있으면* 매치. 둘 다 달력일이 아닌 **거래일**; 이식한 scan SQL 이 `lookback`/`period` 로 그대로 부른다. `period > lookback` 은 정상(헤드라인 "200일내 500일").
+_Avoid_: N 을 "recency" 로 (초기 반쪽 명명 — **Lookback Window**); 달력일 해석(둘 다 거래일 카운트).
+
+**Breakout (돌파)**:
+Screener 의 신고 사건 — 어떤 날의 값이 직전 **Record Period** 최대를 **달성(`>=`, 동점 포함)** 한 것. 신고가(high)·신고거래량(volume)이 공유. Wire 는 `Breakout` 판별 union — **Lookback Window** 안에 신고가 있으면 `BreakoutHit{event_date, days_ago, period_extreme}`, 없으면 `BreakoutMiss`. `wc = period` 가드로 상장 M일 미만 Code 는 제외(짧은 윈도우 가짜 신고 차단).
+_Avoid_: 일반 개념을 "신고가" 단독으로 (거래량도 포함 — **Breakout**); strict `>` 해석(동점 포함 `>=`).
 
 ## Relationships
 
@@ -339,3 +351,5 @@ _Avoid_: "the KIS client" 라는 모호한 표현 (이 코드베이스엔 단 �
 - "session" was used ambiguously to mean both **Regular Session** (info.tsv's `session_open`/`session_close` fields) and **Data Window** (collector loop range, scrubber range) — resolved 2026-05-19: these are distinct, use the precise term.
 - "cursor" was used in early Capture UI mockups to label the collector's progress marker; this clashes with the API/UI **Cursor** — resolved 2026-05-21: in-flight progress is **Capture Frontier**, **Cursor** is reserved for read-path API/UI use.
 - "symbol" was used as a bare noun in early `symbols.py` code and the 2026-05-22 KRX env spec — clashes with the **Code** glossary entry that _Avoid_'s "symbol" — resolved 2026-05-22: bare "symbol" remains _Avoid_'d (use **Code** for the 6-digit ticker), but the compound **Symbol Master** is sanctioned as the catalog/lookup-layer term, mirroring the **SessionBundle** precedent. Class names `SymbolHit`, `SymbolsAllResponse`, `SymbolSearch`, `useSymbols` are sanctioned compounds — not renamed.
+- "raw" was about to be reused by the 2026-05-31 Screener spec to name its unadjusted (split-unadjusted) daily-price store — clashes with the established `raw/{date}/{code}` directory (unparsed hogaplay capture Pages, the pre-parser **Full Capture** artifact) — resolved 2026-05-31: the Screener store is **원주가/unadjusted** (`daily_unadjusted.parquet`); bare "raw" stays reserved for the capture-Page meaning. See **Screener**.
+- "meta.json" basename: the Screener spec initially wrote its observability state to `screener/meta.json`, colliding by basename with the schema-fixed per-Stock-Date capture `meta.json` (read by `DiskState.classify_from_meta`, the **Invariant** catalog, `full_capture_count`) — resolved 2026-05-31: Screener state file is `screener/status.json` (typed `ScreenerStatusFile`); `meta.json` stays reserved for Stock-Date capture metadata.
