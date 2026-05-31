@@ -79,3 +79,36 @@ def derive_adjusted(unadjusted_path: Path, out_path: Path) -> int:
     df = pl.read_parquet(unadjusted_path)
     adjust_splits(df).write_parquet(out_path, compression="zstd")
     return int((time.perf_counter() - t0) * 1000)
+
+
+from hoga.api.models import ScreenerStatusFile  # noqa: E402
+
+
+def last_raw_date(unadjusted_path: Path) -> str | None:
+    """아카이브 최신 거래일(YYYYMMDD) 또는 None(파일 없음)."""
+    if not unadjusted_path.exists():
+        return None
+    r = duckdb.connect(":memory:").execute(
+        f"SELECT max(date) FROM '{unadjusted_path}'").fetchone()[0]
+    return r.strftime("%Y%m%d") if r else None
+
+
+def append_rows(unadjusted_path: Path, new: pl.DataFrame) -> None:
+    """원주가 신규 거래일 append. (code,date) 멱등(중복 트리거 안전), 정렬 유지."""
+    base = pl.read_parquet(unadjusted_path)
+    pl.concat([base, new.select(base.columns)]).unique(
+        subset=["code", "date"], keep="last").sort(["code", "date"]).write_parquet(
+        unadjusted_path, compression="zstd")
+
+
+def write_status(path: Path, *, last_raw_date: str, universe_size: int,
+                 derive_ms: int, now_ms: int) -> None:
+    path.write_text(ScreenerStatusFile(
+        schema_version=1, last_raw_date=last_raw_date, last_built_ms=now_ms,
+        universe_size=universe_size, derive_ms=derive_ms).model_dump_json())
+
+
+def read_status(path: Path) -> ScreenerStatusFile | None:
+    if not path.exists():
+        return None
+    return ScreenerStatusFile.model_validate_json(path.read_text())
