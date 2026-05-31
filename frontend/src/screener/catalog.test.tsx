@@ -26,4 +26,11 @@ describe('catalog', () => {
     expect(CONDITION_CATALOG.price_range.summarize({ max: 50000 })).toBe('≤ 50000원');
     expect(CONDITION_CATALOG.price_range.summarize({ min: 1000, max: 50000 })).toBe('1000~50000원');
   });
+  it('change_pct summarize never renders undefined', () => {
+    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'lte', pct: 3 })).toBe('≤ 3%');
+    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'between', lo: 2, hi: 5 })).toBe('2~5%');
+    // between with bounds not yet set → neutral placeholder, no "undefined~undefined%"
+    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'between' })).toBe('사이');
+    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'gte' })).toBe('≥ %');
+  });
 });

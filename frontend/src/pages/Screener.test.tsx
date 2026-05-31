@@ -28,6 +28,7 @@ vi.mock('../state/livePage', () => ({
 
 import { Screener } from './Screener';
 import { runScan } from '../api/screener';
+import { listSaves } from '../api/savedScreeners';
 
 function renderPage() {
   const qc = new QueryClient();
@@ -55,4 +56,15 @@ it('surfaces a scan error instead of a silent dead-end', async () => {
   renderPage();
   fireEvent.click(screen.getByText('조회'));
   expect(await screen.findByText('조회 실패 — 조건을 확인하세요')).toBeInTheDocument();
+});
+
+it('selecting a saved screener loads it without running a scan', async () => {
+  vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [
+    { id: 's1', name: '급등주', conditions: [], universe: {}, created_at_ms: 1, updated_at_ms: 1 }] });
+  vi.mocked(runScan).mockClear();
+  renderPage();
+  const item = await screen.findByText('급등주');
+  fireEvent.click(item);
+  // select = load-into-builder only; scan happens only on 조회 click (ADR/spec).
+  expect(runScan).not.toHaveBeenCalled();
 });

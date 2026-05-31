@@ -39,7 +39,10 @@ export function BreakoutForm({ params, onChange }: { params: BreakoutParams; onC
 }
 export function ChangePctForm({ params, onChange }: { params: ChangePctParams; onChange: (p: ChangePctParams) => void }) {
   return <div className="flex items-center gap-2 flex-wrap">
-    <Select label="등락률 연산" value={params.op} onChange={(op) => onChange({ ...params, op })}
+    <Select label="등락률 연산" value={params.op}
+      onChange={(op) => onChange(op === 'between'
+        ? { op: 'between', lo: params.lo ?? 2, hi: params.hi ?? 5 }
+        : { op, pct: params.pct ?? 5 })}
       options={[['gte', '≥'], ['lte', '≤'], ['between', '사이']]} />
     {params.op === 'between' ? (<>
       <Num label="lo" value={params.lo} onChange={(n) => onChange({ ...params, lo: n })} w="w-16" />

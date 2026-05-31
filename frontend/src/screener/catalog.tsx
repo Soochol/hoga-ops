@@ -22,7 +22,10 @@ export const CONDITION_CATALOG: Record<ConditionType, CatalogEntry> = {
   new_high_vol: { label: '신고거래량', defaultParams: { lookback: 60, period: 250 }, ParamForm: BreakoutForm,
     summarize: (p) => `${p.lookback}·${p.period}` },
   change_pct: { label: '등락률', defaultParams: { op: 'gte', pct: 5 }, ParamForm: ChangePctForm,
-    summarize: (p) => p.op === 'between' ? `${p.lo}~${p.hi}%` : `${OP[p.op as 'gte' | 'lte']} ${p.pct}%` },
+    summarize: (p) => {
+      if (p.op === 'between') return (p.lo != null && p.hi != null) ? `${p.lo}~${p.hi}%` : '사이';
+      return `${OP[p.op as 'gte' | 'lte']} ${p.pct ?? ''}%`;
+    } },
   price_range: { label: '현재가 범위', defaultParams: { min: 1000 }, ParamForm: PriceRangeForm,
     summarize: (p) => {
       if (p.min != null && p.max != null) return `${p.min}~${p.max}원`;
