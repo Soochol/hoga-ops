@@ -24,6 +24,7 @@ export interface ScreenerStatus {
   status: string;
   last_raw_date?: string;
   universe_size?: number;
+  days_behind?: number | null;
 }
 
 export interface BreakoutFilter {
@@ -37,6 +38,7 @@ export interface ScreenerFilters {
   newHighVol?: BreakoutFilter;
   markets?: ('KOSPI' | 'KOSDAQ')[];
   excludeEtf?: boolean;
+  excludeHalted?: boolean;
   q?: string;
 }
 
@@ -53,6 +55,7 @@ export function runScreener(f: ScreenerFilters): Promise<ScreenerResponse> {
   }
   (f.markets ?? []).forEach((m) => p.append('markets', m));
   if (f.excludeEtf) p.set('exclude_etf', 'true');
+  if (f.excludeHalted) p.set('exclude_halted', 'true');
   if (f.q) p.set('q', f.q);
   return apiCall<ScreenerResponse>(`/api/screener?${p.toString()}`);
 }

@@ -160,6 +160,17 @@ export function ConditionPanel({ value, onChange }: Props) {
         />
         ETF 제외
       </label>
+
+      {/* 거래정지 제외 */}
+      <label className="flex items-center gap-2 text-sm text-fg cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={!!value.excludeHalted}
+          onChange={(e) => onChange({ ...value, excludeHalted: e.target.checked || undefined })}
+          className="accent-[var(--accent)]"
+        />
+        거래정지 제외
+      </label>
     </div>
   );
 }

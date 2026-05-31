@@ -4,25 +4,18 @@ interface Props {
   status: ScreenerStatus | undefined;
 }
 
-/** Trading-day distance from the latest available raw date to today (KST).
- *  The wire shape does not carry `days_behind` directly, so we derive a coarse
- *  behind-signal: any `last_raw_date` strictly before today's KST date counts
- *  as behind. This is a calendar-day proxy (weekends/holidays inflate it), so
- *  the chip wording stays "마지막: {date}" rather than an exact day count —
- *  the colour is the load-bearing signal, per the DESIGN DECISION. */
-function isBehind(lastRawDate: string | undefined): boolean {
-  if (!lastRawDate) return false;
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' }).replaceAll('-', '');
-  return lastRawDate < today;
-}
-
 /** Header data-freshness chip. DESIGN DECISION: neutral --fg-dim when current
- *  (days_behind === 0), amber --warn when behind (days_behind ≥ 1). Shows the
- *  last raw date; colour carries the behind state. */
+ *  (days_behind === 0 or undefined-but-status-ok), amber --warn when behind
+ *  (days_behind ≥ 1). `days_behind === null` means KRX outage / unknown — stay
+ *  neutral, don't false-alarm. The trading-day distance comes from the wire
+ *  (GET /api/screener/status), so the chip no longer derives a calendar-day
+ *  proxy (which false-amber'd on weekends). Colour carries the behind state,
+ *  same idiom as CaptureStatusPill. */
 export function StalenessChip({ status }: Props) {
   if (!status) return null;
   const last = status.last_raw_date;
-  const behind = isBehind(last);
+  const daysBehind = status.days_behind;
+  const behind = typeof daysBehind === 'number' && daysBehind >= 1;
   const color = behind ? 'var(--warn)' : 'var(--fg-dim)';
   return (
     <span
@@ -33,6 +26,7 @@ export function StalenessChip({ status }: Props) {
     >
       <span className="rounded-full" style={{ width: 6, height: 6, background: color }} aria-hidden />
       마지막: {last ?? '—'}
+      {behind && ` · ${daysBehind}거래일 뒤처짐`}
     </span>
   );
 }
