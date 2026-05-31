@@ -49,6 +49,15 @@ THROTTLE_BACKOFF_HOLD_PAGES = 10  # Open Question #3: revisit if Phase 2 says ot
 THROTTLED_STATUSES = frozenset({429})
 
 
+# Single owner of the raw first.php Page-file layout contract (the glob
+# pattern, the numeric-not-lexical sort, and the zero-padded write name). The
+# read side (raw_pages) and the write side (page_filename) live here together
+# so a future change to one can't silently desync from the other; parser
+# imports raw_pages instead of re-spelling the glob. (disk_state.py keeps its
+# own inline existence-only glob to avoid an api->collector import.)
+PAGE_GLOB = "first_*.tsv"
+
+
 def page_sort_key(path: Path) -> int:
     """Numeric sort key for `first_NNN.tsv` page files.
 
@@ -60,9 +69,30 @@ def page_sort_key(path: Path) -> int:
     check. Confirmed root cause for the 005930/20260520 capture failure
     (qa-3-rows real cookie test, 1756 pages).
 
-    Used everywhere `raw_dir.glob("first_*.tsv")` is sorted.
+    Internal helper for raw_pages(); not called directly outside this module.
     """
     return int(path.stem.split("_", 1)[1])
+
+
+def raw_pages(raw_dir: Path) -> list[Path]:
+    """All Page files in `raw_dir`, in ascending page-index order.
+
+    The single read-side enumeration of the page layout. Numeric ordering (via
+    page_sort_key) is load-bearing — see page_sort_key for why a lexical sort
+    corrupts dedup ordering. A missing `raw_dir` yields `[]` (pathlib globs an
+    absent directory to nothing rather than raising).
+    """
+    return sorted(raw_dir.glob(PAGE_GLOB), key=page_sort_key)
+
+
+def page_filename(page_idx: int) -> str:
+    """Write-side name for raw Page `page_idx`, zero-padded to 5 digits.
+
+    The `:05d` pad keeps even a naive lexical sort correct up to 99999 pages (a
+    single Stock-Date Data Window rarely exceeds ~2000); raw_pages' numeric sort
+    already handles any width, so the padding is cheap belt-and-suspenders.
+    """
+    return f"first_{page_idx:05d}.tsv"
 
 # Data Window closes at 16:00 KST (Regular Session close 15:30 +
 # Auction Cross + After-Hours Trading 15:30–16:00). Captures before
@@ -264,7 +294,7 @@ def _write_progress(
 def _resume_state(raw_dir: Path) -> tuple[set[int], int, int]:
     seen: set[int] = set()
     last_idx = 0
-    for page_path in sorted(raw_dir.glob("first_*.tsv"), key=page_sort_key):
+    for page_path in raw_pages(raw_dir):
         last_idx += 1
         text = page_path.read_text(encoding="utf-8")
         seen.update(_seqs(text))
@@ -313,10 +343,7 @@ def _store_page_body(
     new_seqs = page_seqs - seen_seqs
     if body:
         page_idx += 1
-        # :05d so lexical sort stays correct up to 99999 pages (a single
-        # Stock-Date Data Window rarely exceeds ~2000 pages, but pre-padding
-        # is cheap insurance even though page_sort_key handles mixed widths).
-        (raw_dir / f"first_{page_idx:05d}.tsv").write_text(body, encoding="utf-8")
+        (raw_dir / page_filename(page_idx)).write_text(body, encoding="utf-8")
         seen_seqs.update(page_seqs)
     return page_idx, new_seqs
 

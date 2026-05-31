@@ -5,6 +5,7 @@ import { subscribeLive } from './ws';
 import type { LiveSnapshotEntry } from './types';
 import { LiveSnapshotBuffer, type SnapshotKind } from '../live/liveSnapshotBuffer';
 import type { ObSnapshot, TradeSnapshot } from '../live/bucketHogaSeries';
+import { unixMsToKSTDate } from '../util/time';
 
 export interface LiveSeriesResponse {
   code: string;
@@ -35,15 +36,6 @@ export interface LiveSeriesData {
   broker: ReadonlyArray<Record<string, unknown>>;
 }
 
-function todayKstYyyymmdd(): string {
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 3_600_000);
-  const y = kst.getUTCFullYear();
-  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(kst.getUTCDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
-}
-
 /**
  * useLiveSeries — initial REST fetch + WebSocket subscription for live snapshots.
  *
@@ -58,7 +50,7 @@ function todayKstYyyymmdd(): string {
  * panes can compute session bounds for chart timeframes.
  */
 export function useLiveSeries(code: string): LiveSeriesData {
-  const date = todayKstYyyymmdd();
+  const date = unixMsToKSTDate(Date.now());
   const initial = useQuery({
     queryKey: ['live', 'series', code, date],
     queryFn: () =>

@@ -20,3 +20,18 @@ export function useStockDateGroups(rows: StockDate[], search: string): StockDate
     return groups.filter((g) => g.name.toLowerCase().includes(q) || g.code.includes(q));
   }, [rows, search]);
 }
+
+/**
+ * Resolve the detail panel's group from a selection: the group whose code
+ * matches, else the first group (default-to-first), else null when there is
+ * nothing to show. Single owner of the default-to-first policy so the page
+ * and the detail panel can't drift — the detail takes a resolved `group`
+ * rather than re-deriving it from `(rows, selectedCode)`.
+ */
+export function selectGroup(
+  groups: StockDateGroup[],
+  selectedCode: string | null,
+): StockDateGroup | null {
+  if (selectedCode === null) return null;
+  return groups.find((g) => g.code === selectedCode) ?? groups[0] ?? null;
+}

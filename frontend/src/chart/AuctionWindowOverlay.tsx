@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
+import { AUCTION_WINDOW_LENGTH_MS } from '../util/sessionTime';
 
 type Props = {
   chart: IChartApi;
@@ -19,8 +20,6 @@ type Props = {
  * + ResizeObserver path as DayBoundaryOverlay so pan/zoom/resize stay
  * smooth.
  */
-const AUCTION_WINDOW_LENGTH_MS = 10 * 60 * 1000;
-
 export default function AuctionWindowOverlay({ chart, axis }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);

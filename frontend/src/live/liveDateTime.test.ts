@@ -5,6 +5,7 @@ import {
   subtractDaysKst,
   prefetchChunkDaysFor,
 } from './liveDateTime';
+import { unixMsToKSTDate } from '../util/time';
 
 /** SR-1/SR-3: the /live infinite-scroll backfill policy was fused inside
  * LiveChartRoot's subscribeVisibleLogicalRangeChange effect, testable only by
@@ -54,5 +55,30 @@ describe('nextHistoricalFrom', () => {
     const first = nextHistoricalFrom(axisEarliestMs, null, '1m');
     const second = nextHistoricalFrom(axisEarliestMs, first, '1m');
     expect(second < first).toBe(true);
+  });
+});
+
+describe('realMsToYyyymmdd', () => {
+  // Single-source invariant (fe-shared-02): realMsToYyyymmdd is a /live-local
+  // alias that delegates to util/time::unixMsToKSTDate — the one owner of the
+  // "Unix-ms → YYYYMMDD KST" calendar-day rule. These pin the boundary (which
+  // had no direct coverage) and lock the delegation so a future edit can't
+  // quietly reintroduce a divergent +9h copy.
+  it('returns the KST calendar day at session open (09:00 KST = 00:00 UTC)', () => {
+    expect(realMsToYyyymmdd(Date.UTC(2026, 4, 20, 0, 0, 0))).toBe('20260520');
+  });
+
+  it('uses the KST calendar boundary (UTC 15:00 of day N-1 = KST 00:00 of day N)', () => {
+    const kstMidnight = Date.UTC(2026, 4, 19, 15, 0, 0);
+    expect(realMsToYyyymmdd(kstMidnight - 1)).toBe('20260519');
+    expect(realMsToYyyymmdd(kstMidnight)).toBe('20260520');
+  });
+
+  it('agrees with the single source unixMsToKSTDate across 48h of samples', () => {
+    const base = Date.UTC(2026, 0, 1, 0, 0, 0);
+    for (let h = 0; h < 48; h += 1) {
+      const ms = base + h * 3_600_000;
+      expect(realMsToYyyymmdd(ms)).toBe(unixMsToKSTDate(ms));
+    }
   });
 });

@@ -11,7 +11,7 @@ from typing import assert_never
 
 from hoga.api.disk_state import has_meaningful_gaps
 from hoga.api.timeenc import HogaMs
-from hoga.collector.orchestrator import page_sort_key
+from hoga.collector.orchestrator import raw_pages
 from hoga.tables import brokers, candles, snapshots, trades
 from hoga.tables.brokers import BrokerRow
 from hoga.tables.candles import Candle
@@ -74,10 +74,7 @@ class ParserError(RuntimeError):
 
 
 def _iter_first_lines(raw_dir: Path) -> Iterable[tuple[Path, int, str]]:
-    # Numeric sort: lexical sort breaks past page index 999 (`first_1000.tsv`
-    # alphabetically precedes `first_997.tsv`), corrupting dedup-first-wins
-    # ordering and ultimately breaking trades.validate cum_vol monotonicity.
-    for page_path in sorted(raw_dir.glob("first_*.tsv"), key=page_sort_key):
+    for page_path in raw_pages(raw_dir):
         text = page_path.read_text(encoding="utf-8")
         for lineno, line in enumerate(text.splitlines(keepends=False), start=1):
             if not line:
@@ -311,7 +308,7 @@ def _build_meta(
     raw_dir: Path,
     snapshots_list: list[Orderbook],
 ) -> dict[str, object]:
-    pages = sorted(raw_dir.glob("first_*.tsv"), key=page_sort_key)
+    pages = raw_pages(raw_dir)
     progress_path = raw_dir / "_progress.json"
     collection_complete = False
     if progress_path.exists():

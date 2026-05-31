@@ -1,4 +1,9 @@
-import { HistogramSeries } from 'lightweight-charts';
+import {
+  HistogramSeries,
+  type HistogramData,
+  type Time,
+  type UTCTimestamp,
+} from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
@@ -17,11 +22,11 @@ const priceFormat = {
   minMove: 1,
 };
 
-export function projectVolume(bundle: RangeBundle, axis: VirtualAxis): any[] {
+export function projectVolume(bundle: RangeBundle, axis: VirtualAxis): HistogramData<Time>[] {
   return bundle.candles
     .filter((c) => axis.contains(c.ts_ms))
-    .map((c) => ({
-      time: (axis.toVirtual(c.ts_ms) / 1000) as any,
+    .map((c): HistogramData<Time> => ({
+      time: (axis.toVirtual(c.ts_ms) / 1000) as UTCTimestamp,
       value: c.vol_a + c.vol_b,
       color: c.close >= c.open ? up : down,
     }));
