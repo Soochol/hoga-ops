@@ -764,74 +764,102 @@ class KisClient:
     # fetch_investor_net (FHKST01010900, inquire-investor)
     # ------------------------------------------------------------------
 
-    async def fetch_investor_net(self, code: str) -> InvestorNetFetchResult:
-        """Fetch recent daily foreign/institution net-buy quantities for *code*.
+    async def fetch_investor_net(
+        self, code: str, from_yyyymmdd: str, to_yyyymmdd: str
+    ) -> InvestorNetFetchResult:
+        """Fetch daily foreign/institution net-buy quantities for *code* across
+        [from, to] (KST).
 
-        KIS TR_ID: FHKST01010900 (inquire-investor, 주식현재가 투자자). KIS exposes
-        no date-range params and returns only the most recent ~30 trading days,
-        so this is a single uncursored call. Net-buy *quantity* (frgn/orgn
-        ``_ntby_qty``) is signed: positive = net buy, negative = net sell. The
-        won-value siblings (``_ntby_tr_pbmn``) are intentionally ignored.
+        KIS TR_ID: FHPTJ04160001 (investor-trade-by-stock-daily, 종목별 일별동향).
+        Each call returns ``FID_INPUT_DATE_1`` (an anchor day) plus the prior
+        ~30 trading days under ``output2``; we re-anchor to (page oldest − 1)
+        and walk backward until the requested ``from`` is covered — the same
+        cursor walk-back as ``fetch_past_daily_candles``. Net-buy *quantity*
+        (frgn/orgn ``_ntby_qty``) is signed: positive = net buy, negative = net
+        sell. Won-value siblings (``_ntby_tr_pbmn``) and the individual investor
+        (``prsn``) are intentionally ignored.
 
         Returns InvestorNetFetchResult with:
         - points: ASC by t_ms; t_ms anchors at 09:00 KST of each trading day
-          (same anchor as fetch_past_daily_candles via _daily_anchor_t_ms).
+          (same anchor as fetch_past_daily_candles via ``_daily_anchor_t_ms``).
         - violations: per-row drop reasons (malformed). Surfaced to data_warnings.
+
+        Note: KIS finalizes the current day only after ~15:40 (가집계);
+        historical rows are confirmed.
         """
-        path = "/uapi/domestic-stock/v1/quotations/inquire-investor"
-        tr_id = "FHKST01010900"
-        params = {
-            "FID_COND_MRKT_DIV_CODE": _STOCK_MRKT_DIV,
-            "FID_INPUT_ISCD": code,
-        }
-        body = await self._get(path=path, tr_id=tr_id, params=params)
-        # KIS inquire-investor returns the daily array under "output". We scan
-        # output/output1/output2 for the first *list* so a key mismatch vs the
-        # live envelope (unverified against a real response — mock gate #1)
-        # doesn't silently yield zero bars (no error → negative-cached for the
-        # TTL). An absent/empty array still means no data, not an error (#5).
-        rows: list = []
-        for _key in ("output", "output1", "output2"):
-            _val = body.get(_key)
-            if isinstance(_val, list):
-                rows = _val
-                break
+        path = "/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily"
+        tr_id = "FHPTJ04160001"
+        cursor_to = to_yyyymmdd  # FID_INPUT_DATE_1 anchor; walks back each page.
         points: list[InvestorNetPoint] = []
         violations: list[InvestorNetInvariantViolation] = []
         seen: set[str] = set()
 
-        for row in rows:
-            date_str = row.get("stck_bsop_date") or ""
-            if len(date_str) != 8:
-                row_key = "malformed:" + json.dumps(row, sort_keys=True)
-                if row_key in seen:
+        for _ in range(60):  # safety cap; ~30 rows/page → ~5 years of history
+            params = {
+                "FID_COND_MRKT_DIV_CODE": _STOCK_MRKT_DIV,
+                "FID_INPUT_ISCD": code,
+                "FID_INPUT_DATE_1": cursor_to,
+                "FID_ORG_ADJ_PRC": "",
+                "FID_ETC_CLS_CODE": "",
+            }
+            body = await self._get(path=path, tr_id=tr_id, params=params)
+            # output2 holds the daily array (output1 is a current-price summary).
+            rows = body.get("output2")
+            if not isinstance(rows, list):
+                rows = []
+            page_oldest: str | None = None
+            page_progress = False
+
+            for row in rows:
+                date_str = row.get("stck_bsop_date") or ""
+                if len(date_str) != 8:
+                    row_key = "malformed:" + json.dumps(row, sort_keys=True)
+                    if row_key in seen:
+                        continue
+                    seen.add(row_key)
+                    violations.append(InvestorNetInvariantViolation(
+                        date_yyyymmdd=date_str or "(empty)",
+                        reason="malformed_row",
+                        detail="stck_bsop_date missing or wrong length",
+                    ))
+                    page_progress = True
                     continue
-                seen.add(row_key)
-                violations.append(InvestorNetInvariantViolation(
-                    date_yyyymmdd=date_str or "(empty)",
-                    reason="malformed_row",
-                    detail="stck_bsop_date missing or wrong length",
-                ))
-                continue
-            if date_str in seen:
-                continue
-            try:
-                frgn = int(row.get("frgn_ntby_qty") or "0")
-                orgn = int(row.get("orgn_ntby_qty") or "0")
-            except (ValueError, TypeError) as e:
+                if date_str in seen:
+                    continue
                 seen.add(date_str)
-                violations.append(InvestorNetInvariantViolation(
-                    date_yyyymmdd=date_str,
-                    reason="malformed_row",
-                    detail=f"net-qty parse: {e}",
+                page_progress = True
+                if page_oldest is None or date_str < page_oldest:
+                    page_oldest = date_str
+                # Range filter — a page can overshoot the requested window.
+                if date_str < from_yyyymmdd or date_str > to_yyyymmdd:
+                    continue
+                try:
+                    frgn = int(row.get("frgn_ntby_qty") or "0")
+                    orgn = int(row.get("orgn_ntby_qty") or "0")
+                except (ValueError, TypeError) as e:
+                    violations.append(InvestorNetInvariantViolation(
+                        date_yyyymmdd=date_str,
+                        reason="malformed_row",
+                        detail=f"net-qty parse: {e}",
+                    ))
+                    continue
+                points.append(InvestorNetPoint(
+                    t_ms=_daily_anchor_t_ms(date_str),
+                    foreign_net=frgn,
+                    institution_net=orgn,
                 ))
-                continue
-            seen.add(date_str)
-            points.append(InvestorNetPoint(
-                t_ms=_daily_anchor_t_ms(date_str),
-                foreign_net=frgn,
-                institution_net=orgn,
-            ))
+
+            # Stop on an empty page, no new rows (fixture replays same payload),
+            # or once we've paged back to/past the requested start.
+            if not rows or not page_progress:
+                break
+            if page_oldest is None or page_oldest <= from_yyyymmdd:
+                break
+            oldest_dt = datetime(
+                int(page_oldest[:4]), int(page_oldest[4:6]), int(page_oldest[6:8]),
+                tzinfo=KIS_KST,
+            )
+            cursor_to = (oldest_dt - timedelta(days=1)).strftime("%Y%m%d")
 
         points.sort(key=lambda p: p.t_ms)
         return InvestorNetFetchResult(points=points, violations=violations)

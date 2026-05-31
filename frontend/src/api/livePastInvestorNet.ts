@@ -14,20 +14,30 @@ export interface LivePastInvestorNetWarning {
 
 export interface LivePastInvestorNetResponse {
   code: string;
+  from: string;
+  to: string;
   points: InvestorNetPoint[];
+  cached_batches: string[];
+  fresh_batches: string[];
   data_warnings: LivePastInvestorNetWarning[];
-  cached: boolean;
 }
 
-/** GET /api/live/past-investor-net — recent (~30 trading day) foreign/institution
- * net-buy quantities. KIS inquire-investor takes no date range, so the query key
- * is code-only (ADR-0055). Enabled only for D/W/M timeframes by the caller. */
-export function useLivePastInvestorNet(code: string | null) {
-  const enabled = !!code;
+/** GET /api/live/past-investor-net — daily foreign/institution net-buy across
+ * [from, to]. KIS investor-trade-by-stock-daily (FHPTJ04160001) walks back by
+ * date cursor, so this mirrors useLivePastDailyCandles with a batch/gap cache
+ * (ADR-0055). Enabled only for 'D' (일봉) by the caller. */
+export function useLivePastInvestorNet(
+  code: string | null,
+  from: string | null,
+  to: string | null,
+) {
+  const enabled = !!(code && from && to && from <= to);
   return useQuery({
-    queryKey: ['live', 'past-investor-net', code] as const,
+    queryKey: ['live', 'past-investor-net', code, from, to] as const,
     queryFn: () =>
-      apiCall<LivePastInvestorNetResponse>(`/api/live/past-investor-net?code=${code}`),
+      apiCall<LivePastInvestorNetResponse>(
+        `/api/live/past-investor-net?code=${code}&from=${from}&to=${to}`,
+      ),
     enabled,
     staleTime: 60_000,
     refetchInterval: 60_000,

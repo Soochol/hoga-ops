@@ -113,7 +113,11 @@ export function useLiveBundle(
   // Kept out of isLoading/error: it's an optional overlay, so a missing or
   // failed investor fetch must not block the candle chart from rendering.
   const enableInvestor = !!(code && timeframe === 'D');
-  const investorQuery = useLivePastInvestorNet(enableInvestor ? code : null);
+  const investorQuery = useLivePastInvestorNet(
+    enableInvestor ? code : null,
+    enableInvestor ? dailyPastFrom : null,
+    enableInvestor ? dailyPastTo : null,
+  );
   const investorPoints = useMemo<InvestorNetPoint[]>(
     () => (enableInvestor ? investorQuery.data?.points ?? [] : []),
     [enableInvestor, investorQuery.data],

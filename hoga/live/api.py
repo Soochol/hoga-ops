@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from hoga.live.kis_client import KisApiError, KisRateLimitError
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
-from hoga.live.past_investor_net_cache import PastInvestorNetCache
 
 from .buffer import LiveBuffer
 from .lifecycle import LiveStatus
@@ -55,6 +54,13 @@ def _candle_to_dict(c) -> dict:
     return {
         "t_ms": c.t_ms, "open": c.open, "high": c.high, "low": c.low,
         "close": c.close, "volume": c.volume,
+    }
+
+
+def _investor_point_to_dict(p) -> dict:
+    return {
+        "t_ms": p.t_ms, "foreign_net": p.foreign_net,
+        "institution_net": p.institution_net,
     }
 
 
@@ -226,8 +232,10 @@ def build_router(
     daily_cache_instance: PastDailyCandlesCache | None = (
         PastDailyCandlesCache() if data_dir is not None else None
     )
-    investor_cache_instance: PastInvestorNetCache | None = (
-        PastInvestorNetCache() if data_dir is not None else None
+    # Investor net-buy reuses the daily candle cache (ADR-0055): same date-cursor
+    # walk-back + batch/gap memory cache shape, just storing point dicts.
+    investor_cache_instance: PastDailyCandlesCache | None = (
+        PastDailyCandlesCache() if data_dir is not None else None
     )
 
     @router.get("/past-candles")
@@ -437,16 +445,23 @@ def build_router(
         }
 
     @router.get("/past-investor-net")
-    async def _get_past_investor_net(code: str = Query(...)) -> dict:
-        """Recent (~30 trading day) foreign/institution net-buy quantities.
+    async def _get_past_investor_net(
+        code: str = Query(...),
+        from_: str = Query(..., alias="from"),
+        to: str = Query(...),
+    ) -> dict:
+        """Daily foreign/institution net-buy quantities across [from, to].
 
-        KIS inquire-investor (FHKST01010900) takes no date range, so this is a
-        single uncursored fetch per code backed by a flat-TTL memory cache.
-        Empty results are cached too (negative cache) to avoid re-hitting KIS.
-        Net-buy is signed: positive = net buy, negative = net sell.
+        KIS investor-trade-by-stock-daily (FHPTJ04160001) supports date-cursor
+        walk-back (ADR-0055), so this mirrors /past-daily-candles: batch/gap
+        memory cache + per-gap walk-back fetch + today tri-state. Net-buy is
+        signed (+ buy / − sell). Today's row is provisional until ~15:40 (가집계).
         """
-        if not _CODE_RE.match(code):
-            raise HTTPException(422, {"code": "invalid_code", "msg": "code must be 6 digits"})
+        frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
+        today_s = today_d.strftime("%Y%m%d")
+        from_s = frm.strftime("%Y%m%d")
+        to_s = too.strftime("%Y%m%d")
+
         if get_kis_client is None:
             raise HTTPException(503, "KIS client not wired")
         kis = get_kis_client()
@@ -456,36 +471,94 @@ def build_router(
             raise HTTPException(503, "past-investor-net cache not wired (data_dir missing)")
         cache = investor_cache_instance
 
-        state, cached_points = cache.get(code)
-        if state == "hit":
-            return {
-                "code": code,
-                "points": cached_points,
-                "data_warnings": [],
-                "cached": True,
-            }
-
         warnings: list[dict] = []
-        try:
-            result = await kis.fetch_investor_net(code)
-        except KisRateLimitError as e:
-            warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), code))
-            return {"code": code, "points": [], "data_warnings": warnings, "cached": False}
-        except KisApiError as e:
-            warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, code))
-            return {"code": code, "points": [], "data_warnings": warnings, "cached": False}
+        cached_batches: list[str] = []
+        fresh_batches: list[str] = []
+        loaded: list[dict] = []
 
-        points = [
-            {
-                "t_ms": p.t_ms,
-                "foreign_net": p.foreign_net,
-                "institution_net": p.institution_net,
-            }
-            for p in result.points
-        ]
-        cache.store(code, points)
-        for v in result.violations:
-            warnings.append(_violation_to_warning(v, code))
-        return {"code": code, "points": points, "data_warnings": warnings, "cached": False}
+        # 1+2. Read existing batches intersecting the request.
+        existing_all = cache.list_batches(code)
+        existing_relevant: list[tuple[date, date]] = []
+        for b_from, b_to, b_pts in existing_all:
+            if b_to < frm or b_from > too:
+                continue
+            existing_relevant.append((b_from, b_to))
+            loaded.extend(b_pts)
+            cached_batches.append(
+                f"{b_from.strftime('%Y%m%d')}__{b_to.strftime('%Y%m%d')}"
+            )
+
+        # 3. Compute gaps (past-only — today handled separately).
+        req_to_past = min(too, today_d - timedelta(days=1))
+        if frm <= req_to_past:
+            gaps = _compute_daily_gaps(frm, req_to_past, existing_relevant)
+            for gap_from, gap_to in gaps:
+                gap_from_s = gap_from.strftime("%Y%m%d")
+                gap_to_s = gap_to.strftime("%Y%m%d")
+                label = f"{gap_from_s}__{gap_to_s}"
+                try:
+                    result = await kis.fetch_investor_net(code, gap_from_s, gap_to_s)
+                except KisRateLimitError as e:
+                    warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), label))
+                    break
+                except KisApiError as e:
+                    warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, label))
+                    continue
+                pts = [_investor_point_to_dict(p) for p in result.points]
+                cache.append_batch(code, gap_from, gap_to, pts)
+                loaded.extend(pts)
+                fresh_batches.append(label)
+                for v in result.violations:
+                    warnings.append(_violation_to_warning(v, label))
+
+        # 5. Today handling (separate — memory only, tri-state).
+        if too >= today_d:
+            state, today_pt = cache.get_today(code)
+            if state == "hit":
+                loaded.append(today_pt)  # type: ignore[arg-type]
+                cached_batches.append(f"{today_s}__{today_s}")
+            elif state == "negative":
+                pass  # known no-data today; skip KIS
+            else:  # miss
+                today_label = f"{today_s}__{today_s}"
+                try:
+                    result = await kis.fetch_investor_net(code, today_s, today_s)
+                    if result.points:
+                        today_pt = _investor_point_to_dict(result.points[0])
+                        cache.store_today(code, today_pt)
+                        loaded.append(today_pt)
+                        fresh_batches.append(today_label)
+                    else:
+                        cache.store_today(code, None)
+                        fresh_batches.append(today_label)
+                    for v in result.violations:
+                        warnings.append(_violation_to_warning(v, today_label))
+                except KisRateLimitError as e:
+                    warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), today_label))
+                except KisApiError as e:
+                    warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, today_label))
+
+        # 6. Dedupe by t_ms, sort, filter to [frm, too].
+        frm_ms = int(datetime.combine(frm, time(0, 0), tzinfo=_KST).timestamp() * 1000)
+        too_ms = int(datetime.combine(too, time(23, 59, 59), tzinfo=_KST).timestamp() * 1000)
+        by_ts: dict[int, dict] = {}
+        for pt in loaded:
+            ts = pt.get("t_ms")
+            if isinstance(ts, int):
+                by_ts[ts] = pt
+        points = sorted(
+            (p for ts, p in by_ts.items() if frm_ms <= ts <= too_ms),
+            key=lambda p: p["t_ms"],
+        )
+
+        return {
+            "code": code,
+            "from": from_s,
+            "to": to_s,
+            "points": points,
+            "cached_batches": cached_batches,
+            "fresh_batches": fresh_batches,
+            "data_warnings": warnings,
+        }
 
     return router

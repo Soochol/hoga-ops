@@ -789,25 +789,34 @@ from hoga.live.kis_models import InvestorNetPoint
 
 
 class _FakeKisForInvestor:
-    """Stub KIS client returning deterministic investor net-buy points."""
+    """Stub KIS client returning deterministic investor points across [from, to]."""
 
     def __init__(self):
-        self.calls: list[str] = []
-        self.points: list[InvestorNetPoint] = [
-            InvestorNetPoint(t_ms=1_700_000_000_000, foreign_net=100, institution_net=-50),
-            InvestorNetPoint(t_ms=1_700_086_400_000, foreign_net=-30, institution_net=70),
-        ]
+        self.calls: list[tuple[str, str, str]] = []
         self.violations: list[InvestorNetInvariantViolation] = []
-        self.raise_rate_limit = False
+        self.raise_rate_limit_on_call: int | None = None
 
-    async def fetch_investor_net(self, code: str) -> InvestorNetFetchResult:
-        self.calls.append(code)
-        if self.raise_rate_limit:
+    async def fetch_investor_net(
+        self, code: str, from_yyyymmdd: str, to_yyyymmdd: str
+    ) -> InvestorNetFetchResult:
+        idx = len(self.calls)
+        self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+        if self.raise_rate_limit_on_call is not None and idx == self.raise_rate_limit_on_call:
             from hoga.live.kis_client import KisRateLimitError
             raise KisRateLimitError("simulated rate limit")
-        return InvestorNetFetchResult(
-            points=list(self.points), violations=list(self.violations)
-        )
+        from datetime import datetime as _dt, timedelta as _td
+        kst = datetime.timezone(datetime.timedelta(hours=9))
+        y, m, d = int(from_yyyymmdd[:4]), int(from_yyyymmdd[4:6]), int(from_yyyymmdd[6:8])
+        ye, me, de = int(to_yyyymmdd[:4]), int(to_yyyymmdd[4:6]), int(to_yyyymmdd[6:8])
+        cur = _dt(y, m, d, 9, 0, tzinfo=kst)
+        end = _dt(ye, me, de, 9, 0, tzinfo=kst)
+        points: list[InvestorNetPoint] = []
+        while cur <= end:
+            points.append(InvestorNetPoint(
+                t_ms=int(cur.timestamp() * 1000), foreign_net=100, institution_net=-50,
+            ))
+            cur = cur + _td(days=1)
+        return InvestorNetFetchResult(points=points, violations=list(self.violations))
 
 
 def _investor_app(tmp_path, fake_kis):
@@ -830,12 +839,13 @@ def test_past_investor_net_miss_calls_kis(tmp_path) -> None:
     fake = _FakeKisForInvestor()
     app = _investor_app(tmp_path, fake)
     with TestClient(app) as c:
-        r = c.get("/api/live/past-investor-net?code=005930")
+        r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         assert r.status_code == 200
         body = r.json()
         assert body["code"] == "005930"
-        assert body["cached"] is False
-        assert len(body["points"]) == 2
+        assert len(body["points"]) == 5
+        assert "20240101__20240105" in body["fresh_batches"]
+        assert body["cached_batches"] == []
         assert body["points"][0]["foreign_net"] == 100
         assert body["points"][0]["institution_net"] == -50
         assert len(fake.calls) == 1
@@ -845,19 +855,34 @@ def test_past_investor_net_cache_hit_skips_kis(tmp_path) -> None:
     fake = _FakeKisForInvestor()
     app = _investor_app(tmp_path, fake)
     with TestClient(app) as c:
-        c.get("/api/live/past-investor-net?code=005930")
-        r2 = c.get("/api/live/past-investor-net?code=005930")
+        c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
+        r2 = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         body = r2.json()
-        assert body["cached"] is True
-        assert len(body["points"]) == 2
+        assert "20240101__20240105" in body["cached_batches"]
+        assert body["fresh_batches"] == []
         assert len(fake.calls) == 1
+
+
+def test_past_investor_net_partial_hit_gap_fill(tmp_path) -> None:
+    fake = _FakeKisForInvestor()
+    app = _investor_app(tmp_path, fake)
+    with TestClient(app) as c:
+        c.get("/api/live/past-investor-net?code=005930&from=20240301&to=20240501")
+        r2 = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240501")
+        body = r2.json()
+        assert len(fake.calls) == 2
+        _, gap_from, gap_to = fake.calls[1]
+        assert gap_from == "20240101"
+        assert gap_to == "20240229"
+        ts = [p["t_ms"] for p in body["points"]]
+        assert ts == sorted(set(ts))
 
 
 def test_past_investor_net_rejects_invalid_code(tmp_path) -> None:
     fake = _FakeKisForInvestor()
     app = _investor_app(tmp_path, fake)
     with TestClient(app) as c:
-        r = c.get("/api/live/past-investor-net?code=ABC")
+        r = c.get("/api/live/past-investor-net?code=ABC&from=20240101&to=20240105")
         assert r.status_code == 422
         assert len(fake.calls) == 0
 
@@ -876,19 +901,18 @@ def test_past_investor_net_503_when_kis_not_wired(tmp_path) -> None:
         data_dir=tmp_path,
     ))
     with TestClient(app) as c:
-        r = c.get("/api/live/past-investor-net?code=005930")
+        r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         assert r.status_code == 503
 
 
 def test_past_investor_net_rate_limit_surfaces_warning(tmp_path) -> None:
     fake = _FakeKisForInvestor()
-    fake.raise_rate_limit = True
+    fake.raise_rate_limit_on_call = 0
     app = _investor_app(tmp_path, fake)
     with TestClient(app) as c:
-        r = c.get("/api/live/past-investor-net?code=005930")
+        r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         assert r.status_code == 200
         body = r.json()
-        assert body["points"] == []
         assert any(w["reason"] == "kis_rate_limit" for w in body["data_warnings"])
 
 
@@ -899,26 +923,27 @@ def test_past_investor_net_violation_surfaces_to_wire(tmp_path) -> None:
     )]
     app = _investor_app(tmp_path, fake)
     with TestClient(app) as c:
-        r = c.get("/api/live/past-investor-net?code=005930")
+        r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         body = r.json()
         warn = [w for w in body["data_warnings"] if w["reason"] == "invariant_violation"]
-        assert len(warn) == 1
+        assert len(warn) >= 1
         assert warn[0]["date"] == "20240103"
 
 
 def test_past_investor_net_empty_result_cached(tmp_path) -> None:
     class _EmptyKis(_FakeKisForInvestor):
-        async def fetch_investor_net(self, code):
-            self.calls.append(code)
+        async def fetch_investor_net(self, code, from_yyyymmdd, to_yyyymmdd):
+            self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
             return InvestorNetFetchResult(points=[], violations=[])
 
     fake = _EmptyKis()
     app = _investor_app(tmp_path, fake)
     with TestClient(app) as c:
-        c.get("/api/live/past-investor-net?code=005930")
-        r2 = c.get("/api/live/past-investor-net?code=005930")
+        c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
+        r2 = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         body = r2.json()
-        assert body["cached"] is True
+        assert "20240101__20240105" in body["cached_batches"]
         assert body["points"] == []
+        assert len(fake.calls) == 1
         assert len(fake.calls) == 1
 

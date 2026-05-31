@@ -520,7 +520,7 @@ async def test_fetch_past_daily_paginates_walk_back(tmp_path) -> None:
 
 
 # ----------------------------------------------------------------------
-# fetch_investor_net (FHKST01010900, inquire-investor)
+# fetch_investor_net (FHPTJ04160001, investor-trade-by-stock-daily)
 # ----------------------------------------------------------------------
 
 from hoga.live.kis_client import (  # noqa: E402
@@ -531,9 +531,9 @@ from hoga.live.kis_client import (  # noqa: E402
 
 
 def _investor_row(date_yyyymmdd: str, *, frgn: int, orgn: int) -> dict:
-    # KIS inquire-investor row. We consume net-buy *quantity* fields only
-    # (frgn/orgn _ntby_qty); the value-in-won siblings (_ntby_tr_pbmn) and
-    # the individual investor (prsn) are ignored — see plan mock gate #4.
+    # KIS investor-trade-by-stock-daily output2 row. We consume net-buy
+    # *quantity* fields only (frgn/orgn _ntby_qty); the won-value siblings
+    # (_ntby_tr_pbmn) and the individual investor (prsn) are ignored.
     return {
         "stck_bsop_date": date_yyyymmdd,
         "frgn_ntby_qty": str(frgn),
@@ -543,16 +543,35 @@ def _investor_row(date_yyyymmdd: str, *, frgn: int, orgn: int) -> dict:
 
 
 def _ok_investor_body(rows: list[dict]) -> dict:
-    # KIS inquire-investor returns the daily array under "output"
-    # (plan mock gate #1 — verify against a live response).
-    return {"rt_cd": "0", "msg_cd": "", "msg1": "", "output": rows}
+    # KIS investor-trade-by-stock-daily returns the daily array under "output2"
+    # (output1 is a current-price summary dict). Verified against a live
+    # response (code=005930, 2026-05): FID_INPUT_DATE_1 anchors the newest day
+    # and rows walk back ~30 trading days.
+    return {"rt_cd": "0", "msg_cd": "", "msg1": "", "output1": {}, "output2": rows}
 
 
 def _investor_handler(rows: list[dict]):
+    """Single-page handler: returns the same rows regardless of anchor."""
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/oauth2/tokenP"):
             return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
         return httpx.Response(200, json=_ok_investor_body(rows))
+
+    return handler
+
+
+def _investor_walk_handler(pages: dict[str, list[dict]]):
+    """Walk-back handler: maps FID_INPUT_DATE_1 anchor → output2 rows.
+
+    Mirrors KIS: each call returns the requested anchor day plus the prior
+    ~N trading days; the client re-anchors to (oldest - 1) to page further
+    back. Unknown anchors return [] (no more data).
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/oauth2/tokenP"):
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        anchor = request.url.params.get("FID_INPUT_DATE_1", "")
+        return httpx.Response(200, json=_ok_investor_body(pages.get(anchor, [])))
 
     return handler
 
@@ -564,7 +583,7 @@ async def test_fetch_investor_net_parses_foreign_and_institution(tmp_path) -> No
         _investor_row("20240104", frgn=-500, orgn=200),
     ]
     client = _make_client(_investor_handler(rows), tmp_path)
-    result = await client.fetch_investor_net("005930")
+    result = await client.fetch_investor_net("005930", "20240104", "20240105")
     assert isinstance(result, InvestorNetFetchResult)
     assert len(result.points) == 2
     # Sorted ASC by t_ms regardless of upstream order.
@@ -586,9 +605,47 @@ async def test_fetch_investor_net_anchors_t_ms_at_session_open(tmp_path) -> None
     client = _make_client(
         _investor_handler([_investor_row("20240105", frgn=1, orgn=2)]), tmp_path
     )
-    result = await client.fetch_investor_net("005930")
+    result = await client.fetch_investor_net("005930", "20240105", "20240105")
     expected = int(datetime(2024, 1, 5, 9, 0, tzinfo=KIS_KST).timestamp() * 1000)
     assert result.points[0].t_ms == expected
+
+
+@pytest.mark.asyncio
+async def test_fetch_investor_net_walks_back_across_pages(tmp_path) -> None:
+    # Each anchor returns its day + prior days; the client re-anchors to
+    # (oldest - 1) and pages backward until `from` is covered.
+    pages = {
+        "20240110": [_investor_row(d, frgn=1, orgn=2)
+                     for d in ("20240110", "20240109", "20240108")],
+        "20240107": [_investor_row(d, frgn=1, orgn=2)
+                     for d in ("20240107", "20240106", "20240105")],
+        "20240104": [_investor_row(d, frgn=1, orgn=2)
+                     for d in ("20240104", "20240103")],
+    }
+    client = _make_client(_investor_walk_handler(pages), tmp_path)
+    result = await client.fetch_investor_net("005930", "20240103", "20240110")
+    dates = sorted(
+        datetime.fromtimestamp(p.t_ms / 1000, tz=KIS_KST).strftime("%Y%m%d")
+        for p in result.points
+    )
+    assert dates == [
+        "20240103", "20240104", "20240105", "20240106",
+        "20240107", "20240108", "20240109", "20240110",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_fetch_investor_net_filters_outside_requested_range(tmp_path) -> None:
+    # A page may overshoot the requested `from`; rows older than from are dropped.
+    rows = [_investor_row(d, frgn=1, orgn=2)
+            for d in ("20240105", "20240104", "20240103", "20240102")]
+    client = _make_client(_investor_handler(rows), tmp_path)
+    result = await client.fetch_investor_net("005930", "20240104", "20240105")
+    dates = sorted(
+        datetime.fromtimestamp(p.t_ms / 1000, tz=KIS_KST).strftime("%Y%m%d")
+        for p in result.points
+    )
+    assert dates == ["20240104", "20240105"]
 
 
 @pytest.mark.asyncio
@@ -601,7 +658,7 @@ async def test_fetch_investor_net_empty_output_returns_empty(tmp_path) -> None:
         return httpx.Response(200, json={"rt_cd": "0", "msg_cd": "", "msg1": ""})
 
     client = _make_client(handler, tmp_path)
-    result = await client.fetch_investor_net("005930")
+    result = await client.fetch_investor_net("005930", "20240101", "20240105")
     assert result.points == []
     assert result.violations == []
 
@@ -610,7 +667,7 @@ async def test_fetch_investor_net_empty_output_returns_empty(tmp_path) -> None:
 async def test_fetch_investor_net_drops_malformed_row(tmp_path) -> None:
     rows = [_investor_row("20240105", frgn=1, orgn=2), {"stck_bsop_date": ""}]
     client = _make_client(_investor_handler(rows), tmp_path)
-    result = await client.fetch_investor_net("005930")
+    result = await client.fetch_investor_net("005930", "20240105", "20240105")
     assert len(result.points) == 1
     assert len(result.violations) == 1
     assert isinstance(result.violations[0], InvestorNetInvariantViolation)
@@ -626,4 +683,4 @@ async def test_fetch_investor_net_rate_limit_propagates(tmp_path) -> None:
 
     client = _make_client(handler, tmp_path)
     with pytest.raises(KisRateLimitError):
-        await client.fetch_investor_net("005930")
+        await client.fetch_investor_net("005930", "20240101", "20240105")
