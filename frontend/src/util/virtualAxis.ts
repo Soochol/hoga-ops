@@ -75,12 +75,16 @@ export type VirtualAxis = Readonly<{
   isInGap(realMs: number): boolean;
   /**
    * True if realMs falls inside its owning segment's **Closing Auction Window**
-   * (15:20:00–15:30:00 KST, i.e. `[sessionOpenMs + 6h20m, sessionCloseMs]`).
-   * False for realMs outside any segment, before the auction band, or anywhere
-   * in the pre-axis / gap / post-axis regions. Mirrors the CONTEXT.md
-   * "Auction Window" entry. Used by panes that suppress derived metrics
-   * (e.g. RatioPane masks 호가비 to 0; CandlePane mutes candle colors) during
-   * the band where one-sided order accumulation makes data non-informative.
+   * — the last `AUCTION_WINDOW_LENGTH_MS` (10 min) of the Regular Session,
+   * `[sessionCloseMs - 10min, sessionCloseMs]` (15:20–15:30 KST on a full-day
+   * session). The band is anchored to `sessionCloseMs` by *length*, not a fixed
+   * offset from open, so half-day sessions (e.g. 12:30 close) get the same
+   * 10-min band shifted with the early close (see `sessionTime.isClosingAuction`).
+   * False for realMs outside any segment or anywhere in the pre-axis / gap /
+   * post-axis regions. Mirrors the CONTEXT.md "Auction Window" entry. Used by
+   * panes that suppress derived metrics (e.g. RatioPane masks 호가비 to 0;
+   * CandlePane mutes candle colors) during the band where one-sided order
+   * accumulation makes data non-informative.
    */
   inClosingAuctionWindow(realMs: number): boolean;
 }>;

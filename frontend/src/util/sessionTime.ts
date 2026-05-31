@@ -37,11 +37,11 @@ export interface SessionSegment {
 }
 
 /**
- * Last N minutes of every Regular Session, regardless of session length.
- * Mirrors `AUCTION_WINDOW_LENGTH_MS` in `util/virtualAxis.ts` — keep both
- * in sync. The duplication is intentional during the migration; once all
- * call sites route through `sessionTime`, the `virtualAxis` copy can be
- * dropped.
+ * Last N minutes of every Regular Session, regardless of session length — the
+ * single source of the Closing Auction Window length. Anchored to
+ * `sessionCloseMs` by length (not a fixed offset from open), so half-day
+ * sessions inherit the same 10-min band. Overlays and predicates import this
+ * constant rather than re-spelling the literal.
  */
 export const AUCTION_WINDOW_LENGTH_MS = 10 * 60 * 1000;
 
