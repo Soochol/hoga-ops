@@ -22,7 +22,7 @@ from typing import Callable, Optional
 from pydantic import BaseModel, Field
 
 from .buffer import LiveBuffer
-from .kis_client import KisClient
+from .kis_client import KisClient, KisCredentials
 from .promote import promote_today
 
 _log = logging.getLogger(__name__)
@@ -105,6 +105,42 @@ def set_kis_client(client: KisClient | None) -> None:
     """Stage 8 hook: inject the KisClient singleton."""
     global _kis_client
     _kis_client = client
+
+
+def ensure_kis_client(token_cache_path: Path, creds: KisCredentials) -> KisClient:
+    """Return the process-wide KisClient singleton, creating it once.
+
+    The KIS rate-limit invariant ("one app key = one 15/s token bucket")
+    requires exactly ONE KisClient per process. This client is a PROCESS
+    singleton, decoupled from poller start/stop: ``start_live_poller`` and the
+    screener's EOD update both obtain it here, so they share one token bucket
+    even when the poller has been stopped. It is closed only at process
+    shutdown via ``aclose_kis_client`` — a poller stop must NOT close it.
+
+    Returns the existing client if already set; otherwise constructs one from
+    ``creds`` + ``token_cache_path``, stores it in the module global, and
+    returns it.
+    """
+    global _kis_client
+    if _kis_client is None:
+        _kis_client = KisClient(credentials=creds, token_cache_path=token_cache_path)
+    return _kis_client
+
+
+async def aclose_kis_client() -> None:
+    """Close and drop the KisClient singleton — for PROCESS shutdown only.
+
+    A poller stop must not call this (the singleton survives across poller
+    start/stop). Wire this into the app's lifespan ``finally`` so the httpx
+    client is closed cleanly on process shutdown.
+    """
+    global _kis_client
+    if _kis_client is not None:
+        try:
+            await _kis_client.aclose()
+        except Exception:  # noqa: BLE001
+            pass
+        _kis_client = None
 
 
 def _now_ms() -> int:
@@ -210,7 +246,7 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     from hoga.api.watchlist import load_watchlist
 
     from .buffer import LiveBuffer
-    from .kis_client import KisClient, KisCredentials
+    from .kis_client import KisCredentials
     from .poller import LivePoller, LivePollerConfig
     from .writer import LiveWriter
 
@@ -241,13 +277,13 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     # If already running, stop first.
     await stop_live_poller()
 
-    # Build the real singletons.
-    kis = KisClient(
-        credentials=KisCredentials(app_key=app_key, app_secret=app_secret, env="real"),
-        token_cache_path=data_dir / ".local" / "kis-token.json",
-    )
+    # Obtain the PROCESS-singleton KisClient (shared 15/s token bucket). Decoupled
+    # from poller start/stop: ensure_kis_client reuses the existing client if one
+    # is already set, so a stop→start cycle (or the screener's EOD update running
+    # while the poller is stopped) never creates a second token bucket.
+    creds = KisCredentials(app_key=app_key, app_secret=app_secret, env="real")
+    kis = ensure_kis_client(data_dir / ".local" / "kis-token.json", creds)
     writer = LiveWriter(data_dir / "live")
-    set_kis_client(kis)
 
     def _today_kst() -> str:
         return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
@@ -288,8 +324,15 @@ async def refresh_live_poller(*, data_dir: Path) -> None:
 
 
 async def stop_live_poller() -> None:
-    """Stop the running poller. No-op if already stopped."""
-    global _state, _kis_client
+    """Stop the running poller. No-op if already stopped.
+
+    Does NOT touch the KisClient singleton: the shared 15/s token bucket is a
+    PROCESS singleton (see ``ensure_kis_client``) that must survive a poller
+    stop so the screener's EOD update can reuse it and no second bucket is ever
+    created. The httpx client is closed only at process shutdown, via
+    ``aclose_kis_client`` (wired into the app's lifespan ``finally``).
+    """
+    global _state
     if _state.poller_task is not None:
         _state.poller_task.cancel()
         try:
@@ -298,11 +341,4 @@ async def stop_live_poller() -> None:
             pass
         except Exception:  # noqa: BLE001
             pass  # don't let a buggy poller block shutdown
-    # Close the KIS client cleanly
-    if _kis_client is not None:
-        try:
-            await _kis_client.aclose()
-        except Exception:  # noqa: BLE001
-            pass
     _state = _State()
-    _kis_client = None
