@@ -45,14 +45,19 @@ export function patchQueueItem(
 function yearOf(date8: string): number { return parseInt(date8.slice(0, 4), 10); }
 function monthOf(date8: string): number { return parseInt(date8.slice(4, 6), 10); }
 
-export function useCaptureQueue() {
+/** Single owner of the capture-queue push subscription. Mount EXACTLY ONCE at
+ *  the app root (App.tsx) alongside useEventStream / the origins cleanup hook.
+ *
+ *  Previously this subscription lived inside useCaptureQueue, which is mounted
+ *  by ~5 components (CaptureStatusPill in the always-on nav, CaptureForm,
+ *  CaptureQueue, StockDateGroupDetail, useInventoryRecapture). The shared
+ *  /api/ws connection was already a singleton (ADR-0053), but each mount
+ *  registered its own capture-event callback, so every push ran N identical
+ *  setQueryData reducers — idempotent (one shared cache key) but wasteful.
+ *  The read side (useCaptureQueue) now only reads the cache; this hook owns
+ *  the writes. */
+export function useCaptureQueueSync(): void {
   const qc = useQueryClient();
-  const queue = useQuery<QueueSnapshot>({
-    queryKey: CAPTURE_QUEUE_QUERY_KEY,
-    queryFn: getQueue,
-    staleTime: 0,
-  });
-
   useEffect(() => {
     const unsub = subscribeToCaptureEvents((e: PushEvent) => {
       if (e.type === 'capture_progress') {
@@ -106,6 +111,19 @@ export function useCaptureQueue() {
     });
     return unsub;
   }, [qc]);
+}
+
+/** Read the capture queue + expose its mutations. Safe to mount in any number
+ *  of components — the useQuery shares one cache entry (CAPTURE_QUEUE_QUERY_KEY)
+ *  and the push subscription that keeps it fresh is owned by useCaptureQueueSync
+ *  at the app root. */
+export function useCaptureQueue() {
+  const qc = useQueryClient();
+  const queue = useQuery<QueueSnapshot>({
+    queryKey: CAPTURE_QUEUE_QUERY_KEY,
+    queryFn: getQueue,
+    staleTime: 0,
+  });
 
   const addItemsM = useMutation({
     mutationKey: ADD_ITEMS_MUTATION_KEY,
