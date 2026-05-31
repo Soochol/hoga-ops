@@ -598,7 +598,12 @@ class KisClient:
     # ------------------------------------------------------------------
 
     async def fetch_past_daily_candles(
-        self, code: str, from_yyyymmdd: str, to_yyyymmdd: str
+        self,
+        code: str,
+        from_yyyymmdd: str,
+        to_yyyymmdd: str,
+        *,
+        adjust: bool = True,
     ) -> DailyCandleFetchResult:
         """Fetch daily OHLCV for *code* across [from, to] (KST).
 
@@ -630,7 +635,8 @@ class KisClient:
                 "FID_INPUT_DATE_1": from_yyyymmdd,
                 "FID_INPUT_DATE_2": cursor_to,
                 "FID_PERIOD_DIV_CODE": "D",
-                "FID_ORG_ADJ_PRC": "0",
+                # 0=수정주가(/live 기본·ADR-0048), 1=원주가(스크리너)
+                "FID_ORG_ADJ_PRC": "0" if adjust else "1",
             }
             body = await self._get(path=path, tr_id=tr_id, params=params)
             rows = body.get("output2") or []
