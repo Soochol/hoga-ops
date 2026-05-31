@@ -778,3 +778,147 @@ def test_past_daily_today_negative_cache_skips_kis_within_ttl(tmp_path) -> None:
         c.get(f"/api/live/past-daily-candles?code=005930&from={today}&to={today}")
         assert len(fake.calls) == 1
 
+
+# ----- /api/live/past-investor-net -----
+
+from hoga.live.kis_client import (
+    InvestorNetFetchResult,
+    InvestorNetInvariantViolation,
+)
+from hoga.live.kis_models import InvestorNetPoint
+
+
+class _FakeKisForInvestor:
+    """Stub KIS client returning deterministic investor net-buy points."""
+
+    def __init__(self):
+        self.calls: list[str] = []
+        self.points: list[InvestorNetPoint] = [
+            InvestorNetPoint(t_ms=1_700_000_000_000, foreign_net=100, institution_net=-50),
+            InvestorNetPoint(t_ms=1_700_086_400_000, foreign_net=-30, institution_net=70),
+        ]
+        self.violations: list[InvestorNetInvariantViolation] = []
+        self.raise_rate_limit = False
+
+    async def fetch_investor_net(self, code: str) -> InvestorNetFetchResult:
+        self.calls.append(code)
+        if self.raise_rate_limit:
+            from hoga.live.kis_client import KisRateLimitError
+            raise KisRateLimitError("simulated rate limit")
+        return InvestorNetFetchResult(
+            points=list(self.points), violations=list(self.violations)
+        )
+
+
+def _investor_app(tmp_path, fake_kis):
+    from fastapi import FastAPI
+    from hoga.live import lifecycle
+    from hoga.live.api import build_router
+
+    lifecycle.reset_for_tests()
+    lifecycle.set_kis_client(fake_kis)
+    app = FastAPI()
+    app.include_router(build_router(
+        get_status=lifecycle.get_status,
+        get_kis_client=lifecycle.get_kis_client,
+        data_dir=tmp_path,
+    ))
+    return app
+
+
+def test_past_investor_net_miss_calls_kis(tmp_path) -> None:
+    fake = _FakeKisForInvestor()
+    app = _investor_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-investor-net?code=005930")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["code"] == "005930"
+        assert body["cached"] is False
+        assert len(body["points"]) == 2
+        assert body["points"][0]["foreign_net"] == 100
+        assert body["points"][0]["institution_net"] == -50
+        assert len(fake.calls) == 1
+
+
+def test_past_investor_net_cache_hit_skips_kis(tmp_path) -> None:
+    fake = _FakeKisForInvestor()
+    app = _investor_app(tmp_path, fake)
+    with TestClient(app) as c:
+        c.get("/api/live/past-investor-net?code=005930")
+        r2 = c.get("/api/live/past-investor-net?code=005930")
+        body = r2.json()
+        assert body["cached"] is True
+        assert len(body["points"]) == 2
+        assert len(fake.calls) == 1
+
+
+def test_past_investor_net_rejects_invalid_code(tmp_path) -> None:
+    fake = _FakeKisForInvestor()
+    app = _investor_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-investor-net?code=ABC")
+        assert r.status_code == 422
+        assert len(fake.calls) == 0
+
+
+def test_past_investor_net_503_when_kis_not_wired(tmp_path) -> None:
+    from fastapi import FastAPI
+    from hoga.live import lifecycle
+    from hoga.live.api import build_router
+
+    lifecycle.reset_for_tests()
+    lifecycle.set_kis_client(None)
+    app = FastAPI()
+    app.include_router(build_router(
+        get_status=lifecycle.get_status,
+        get_kis_client=lifecycle.get_kis_client,
+        data_dir=tmp_path,
+    ))
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-investor-net?code=005930")
+        assert r.status_code == 503
+
+
+def test_past_investor_net_rate_limit_surfaces_warning(tmp_path) -> None:
+    fake = _FakeKisForInvestor()
+    fake.raise_rate_limit = True
+    app = _investor_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-investor-net?code=005930")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["points"] == []
+        assert any(w["reason"] == "kis_rate_limit" for w in body["data_warnings"])
+
+
+def test_past_investor_net_violation_surfaces_to_wire(tmp_path) -> None:
+    fake = _FakeKisForInvestor()
+    fake.violations = [InvestorNetInvariantViolation(
+        date_yyyymmdd="20240103", reason="malformed_row", detail="bad",
+    )]
+    app = _investor_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-investor-net?code=005930")
+        body = r.json()
+        warn = [w for w in body["data_warnings"] if w["reason"] == "invariant_violation"]
+        assert len(warn) == 1
+        assert warn[0]["date"] == "20240103"
+
+
+def test_past_investor_net_empty_result_cached(tmp_path) -> None:
+    class _EmptyKis(_FakeKisForInvestor):
+        async def fetch_investor_net(self, code):
+            self.calls.append(code)
+            return InvestorNetFetchResult(points=[], violations=[])
+
+    fake = _EmptyKis()
+    app = _investor_app(tmp_path, fake)
+    with TestClient(app) as c:
+        c.get("/api/live/past-investor-net?code=005930")
+        r2 = c.get("/api/live/past-investor-net?code=005930")
+        body = r2.json()
+        assert body["cached"] is True
+        assert body["points"] == []
+        assert len(fake.calls) == 1
+

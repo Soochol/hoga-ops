@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from hoga.live.kis_client import KisApiError, KisRateLimitError
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
+from hoga.live.past_investor_net_cache import PastInvestorNetCache
 
 from .buffer import LiveBuffer
 from .lifecycle import LiveStatus
@@ -225,6 +226,9 @@ def build_router(
     daily_cache_instance: PastDailyCandlesCache | None = (
         PastDailyCandlesCache() if data_dir is not None else None
     )
+    investor_cache_instance: PastInvestorNetCache | None = (
+        PastInvestorNetCache() if data_dir is not None else None
+    )
 
     @router.get("/past-candles")
     async def _get_past_candles(
@@ -431,5 +435,57 @@ def build_router(
             "fresh_batches": fresh_batches,
             "data_warnings": warnings,
         }
+
+    @router.get("/past-investor-net")
+    async def _get_past_investor_net(code: str = Query(...)) -> dict:
+        """Recent (~30 trading day) foreign/institution net-buy quantities.
+
+        KIS inquire-investor (FHKST01010900) takes no date range, so this is a
+        single uncursored fetch per code backed by a flat-TTL memory cache.
+        Empty results are cached too (negative cache) to avoid re-hitting KIS.
+        Net-buy is signed: positive = net buy, negative = net sell.
+        """
+        if not _CODE_RE.match(code):
+            raise HTTPException(422, {"code": "invalid_code", "msg": "code must be 6 digits"})
+        if get_kis_client is None:
+            raise HTTPException(503, "KIS client not wired")
+        kis = get_kis_client()
+        if kis is None:
+            raise HTTPException(503, "KIS client not initialized")
+        if investor_cache_instance is None:
+            raise HTTPException(503, "past-investor-net cache not wired (data_dir missing)")
+        cache = investor_cache_instance
+
+        state, cached_points = cache.get(code)
+        if state == "hit":
+            return {
+                "code": code,
+                "points": cached_points,
+                "data_warnings": [],
+                "cached": True,
+            }
+
+        warnings: list[dict] = []
+        try:
+            result = await kis.fetch_investor_net(code)
+        except KisRateLimitError as e:
+            warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), code))
+            return {"code": code, "points": [], "data_warnings": warnings, "cached": False}
+        except KisApiError as e:
+            warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, code))
+            return {"code": code, "points": [], "data_warnings": warnings, "cached": False}
+
+        points = [
+            {
+                "t_ms": p.t_ms,
+                "foreign_net": p.foreign_net,
+                "institution_net": p.institution_net,
+            }
+            for p in result.points
+        ]
+        cache.store(code, points)
+        for v in result.violations:
+            warnings.append(_violation_to_warning(v, code))
+        return {"code": code, "points": points, "data_warnings": warnings, "cached": False}
 
     return router

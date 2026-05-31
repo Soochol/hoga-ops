@@ -19,6 +19,7 @@ from typing import Any, Literal, Optional
 import httpx
 
 from hoga.live.kis_models import (
+    InvestorNetPoint,
     KisBrokerEntry,
     KisBrokers,
     KisCandle,
@@ -166,6 +167,42 @@ class DailyCandleFetchResult:
     """
     candles: list["KisCandle"]
     violations: list[DailyInvariantViolation] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class InvestorNetInvariantViolation:
+    """A row dropped by fetch_investor_net boundary defense.
+
+    Investor rows carry no OHLC invariant, so the only drop reason is a
+    malformed/missing trading date. Surfaced to wire data_warnings.
+    """
+    date_yyyymmdd: str
+    reason: Literal["malformed_row"]
+    detail: str
+
+
+@dataclass(frozen=True)
+class InvestorNetFetchResult:
+    """Return value of fetch_investor_net.
+
+    `points` is ASC-sorted by t_ms; `violations` is the per-row drop log.
+    """
+    points: list["InvestorNetPoint"]
+    violations: list[InvestorNetInvariantViolation] = field(default_factory=list)
+
+
+def _daily_anchor_t_ms(date_yyyymmdd: str) -> int:
+    """Epoch-ms anchor for a daily datum: 09:00:00 KST of the trading day.
+
+    Single source of truth shared by daily candles and investor-net so the
+    frontend pins both series to the same x-coordinate. Callers must pass a
+    validated 8-char YYYYMMDD (boundary defense lives in the caller).
+    """
+    dt = datetime(
+        int(date_yyyymmdd[:4]), int(date_yyyymmdd[4:6]), int(date_yyyymmdd[6:8]),
+        9, 0, tzinfo=KIS_KST,
+    )
+    return int(dt.timestamp() * 1000)
 
 
 @dataclass(frozen=True)
@@ -696,11 +733,7 @@ class KisClient:
                     page_progress = True
                     continue
 
-                dt = datetime(
-                    int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]),
-                    9, 0, tzinfo=KIS_KST,
-                )
-                t_ms = int(dt.timestamp() * 1000)
+                t_ms = _daily_anchor_t_ms(date_str)
                 seen_keys.add(date_str)
                 page_progress = True
                 page_candles.append(KisCandle(
@@ -726,6 +759,74 @@ class KisClient:
 
         all_candles.sort(key=lambda c: c.t_ms)
         return DailyCandleFetchResult(candles=all_candles, violations=violations)
+
+    # ------------------------------------------------------------------
+    # fetch_investor_net (FHKST01010900, inquire-investor)
+    # ------------------------------------------------------------------
+
+    async def fetch_investor_net(self, code: str) -> InvestorNetFetchResult:
+        """Fetch recent daily foreign/institution net-buy quantities for *code*.
+
+        KIS TR_ID: FHKST01010900 (inquire-investor, 주식현재가 투자자). KIS exposes
+        no date-range params and returns only the most recent ~30 trading days,
+        so this is a single uncursored call. Net-buy *quantity* (frgn/orgn
+        ``_ntby_qty``) is signed: positive = net buy, negative = net sell. The
+        won-value siblings (``_ntby_tr_pbmn``) are intentionally ignored.
+
+        Returns InvestorNetFetchResult with:
+        - points: ASC by t_ms; t_ms anchors at 09:00 KST of each trading day
+          (same anchor as fetch_past_daily_candles via _daily_anchor_t_ms).
+        - violations: per-row drop reasons (malformed). Surfaced to data_warnings.
+        """
+        path = "/uapi/domestic-stock/v1/quotations/inquire-investor"
+        tr_id = "FHKST01010900"
+        params = {
+            "FID_COND_MRKT_DIV_CODE": _STOCK_MRKT_DIV,
+            "FID_INPUT_ISCD": code,
+        }
+        body = await self._get(path=path, tr_id=tr_id, params=params)
+        # KIS inquire-investor returns the daily array under "output"; an absent
+        # or empty array means no data (not an error). See plan mock gates #1/#5.
+        rows = body.get("output") or []
+        points: list[InvestorNetPoint] = []
+        violations: list[InvestorNetInvariantViolation] = []
+        seen: set[str] = set()
+
+        for row in rows:
+            date_str = row.get("stck_bsop_date") or ""
+            if len(date_str) != 8:
+                row_key = "malformed:" + json.dumps(row, sort_keys=True)
+                if row_key in seen:
+                    continue
+                seen.add(row_key)
+                violations.append(InvestorNetInvariantViolation(
+                    date_yyyymmdd=date_str or "(empty)",
+                    reason="malformed_row",
+                    detail="stck_bsop_date missing or wrong length",
+                ))
+                continue
+            if date_str in seen:
+                continue
+            try:
+                frgn = int(row.get("frgn_ntby_qty") or "0")
+                orgn = int(row.get("orgn_ntby_qty") or "0")
+            except (ValueError, TypeError) as e:
+                seen.add(date_str)
+                violations.append(InvestorNetInvariantViolation(
+                    date_yyyymmdd=date_str,
+                    reason="malformed_row",
+                    detail=f"net-qty parse: {e}",
+                ))
+                continue
+            seen.add(date_str)
+            points.append(InvestorNetPoint(
+                t_ms=_daily_anchor_t_ms(date_str),
+                foreign_net=frgn,
+                institution_net=orgn,
+            ))
+
+        points.sort(key=lambda p: p.t_ms)
+        return InvestorNetFetchResult(points=points, violations=violations)
 
     # ------------------------------------------------------------------
     # Task 2.5: fetch_overtime_orderbook (FHPST02300400)
