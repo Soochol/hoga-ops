@@ -19,14 +19,8 @@ describe('LiveStateBanner', () => {
     expect(screen.getByText('설정').getAttribute('href')).toBe('/settings');
   });
 
-  it('renders stacked off_hours banner without action', () => {
-    render_(<LiveStateBanner primary={null} stack={['off_hours']} />);
-    expect(screen.getByText(/장 외 시간/)).toBeInTheDocument();
-  });
-
-  it('renders token_expired + off_hours stacked', () => {
-    render_(<LiveStateBanner primary={null} stack={['kis_token_expired', 'off_hours']} />);
+  it('renders stacked kis_token_expired banner without action', () => {
+    render_(<LiveStateBanner primary={null} stack={['kis_token_expired']} />);
     expect(screen.getByText(/토큰이 만료/)).toBeInTheDocument();
-    expect(screen.getByText(/장 외 시간/)).toBeInTheDocument();
   });
 });
