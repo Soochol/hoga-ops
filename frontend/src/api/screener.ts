@@ -1,8 +1,34 @@
 import { apiCall } from './client';
 
-export type Breakout =
-  | { hit: true; event_date: string; days_ago: number; period_extreme: number }
-  | { hit: false };
+// --- condition params (one per catalog type; type keys MUST match backend) ---
+export interface TradeValueParams { min_eok: number }
+export interface BreakoutParams { lookback: number; period: number }
+export type ChangePctOp = 'gte' | 'lte' | 'between';
+export interface ChangePctParams { op: ChangePctOp; pct?: number; lo?: number; hi?: number }
+export interface PriceRangeParams { min?: number; max?: number }
+export type MaRelation = 'above' | 'below';
+export interface MaParams { period: number; relation: MaRelation }
+
+export type ConditionLeaf =
+  | { id: string; type: 'trade_value'; params: TradeValueParams }
+  | { id: string; type: 'new_high'; params: BreakoutParams }
+  | { id: string; type: 'new_high_vol'; params: BreakoutParams }
+  | { id: string; type: 'change_pct'; params: ChangePctParams }
+  | { id: string; type: 'price_range'; params: PriceRangeParams }
+  | { id: string; type: 'ma'; params: MaParams };
+export type ConditionType = ConditionLeaf['type'];
+
+export interface ScreenerUniverse {
+  markets?: ('KOSPI' | 'KOSDAQ')[];
+  exclude_etf?: boolean;
+  exclude_halted?: boolean;
+}
+
+export interface ScanRequest {
+  conditions: ConditionLeaf[];
+  universe: ScreenerUniverse;
+  limit?: number;
+}
 
 export interface ScreenerRow {
   code: string;
@@ -11,13 +37,12 @@ export interface ScreenerRow {
   price: number;
   trade_value_won: number;
   change_pct: number | null;
-  new_high: Breakout | null;
-  new_high_vol: Breakout | null;
 }
 
 export interface ScreenerResponse {
   status: 'ok' | 'not_seeded' | 'building';
   rows: ScreenerRow[];
+  warnings: string[];
 }
 
 export interface ScreenerStatus {
@@ -27,37 +52,12 @@ export interface ScreenerStatus {
   days_behind?: number | null;
 }
 
-export interface BreakoutFilter {
-  lookback: number;
-  period: number;
-}
-
-export interface ScreenerFilters {
-  minTradeValueEok?: number;
-  newHigh?: BreakoutFilter;
-  newHighVol?: BreakoutFilter;
-  markets?: ('KOSPI' | 'KOSDAQ')[];
-  excludeEtf?: boolean;
-  excludeHalted?: boolean;
-  q?: string;
-}
-
-export function runScreener(f: ScreenerFilters): Promise<ScreenerResponse> {
-  const p = new URLSearchParams();
-  if (f.minTradeValueEok != null) p.set('min_trade_value_eok', String(f.minTradeValueEok));
-  if (f.newHigh) {
-    p.set('nh_lookback', String(f.newHigh.lookback));
-    p.set('nh_period', String(f.newHigh.period));
-  }
-  if (f.newHighVol) {
-    p.set('nhv_lookback', String(f.newHighVol.lookback));
-    p.set('nhv_period', String(f.newHighVol.period));
-  }
-  (f.markets ?? []).forEach((m) => p.append('markets', m));
-  if (f.excludeEtf) p.set('exclude_etf', 'true');
-  if (f.excludeHalted) p.set('exclude_halted', 'true');
-  if (f.q) p.set('q', f.q);
-  return apiCall<ScreenerResponse>(`/api/screener?${p.toString()}`);
+export function runScan(body: ScanRequest): Promise<ScreenerResponse> {
+  return apiCall<ScreenerResponse>('/api/screener/scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 export const getScreenerStatus = () => apiCall<ScreenerStatus>('/api/screener/status');
