@@ -110,15 +110,7 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
       {blockedMessage !== null && (
         <div
           role="alert"
-          style={{
-            marginTop: 8,
-            padding: '8px 12px',
-            background: 'rgba(244,63,94,0.10)',
-            border: '1px solid var(--error)',
-            borderRadius: 'var(--radius-sm, 4px)',
-            color: 'var(--error)',
-            fontSize: 'var(--font-size-sm, 0.875rem)',
-          }}
+          className="mt-2 px-3 py-2 rounded border border-error bg-tint-error text-error text-sm"
         >
           {blockedMessage}
         </div>
@@ -127,15 +119,7 @@ export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps)
       {inlineError !== null && (
         <div
           role="alert"
-          style={{
-            marginTop: 8,
-            padding: '8px 12px',
-            background: 'var(--bg-input)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm, 4px)',
-            color: 'var(--error)',
-            fontSize: 'var(--font-size-sm, 0.875rem)',
-          }}
+          className="mt-2 px-3 py-2 rounded border bg-bg-input text-error text-sm"
         >
           {inlineError}
         </div>

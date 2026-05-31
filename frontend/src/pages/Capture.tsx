@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CaptureForm } from '../capture/CaptureForm';
 import { CaptureQueue } from '../capture/CaptureQueue';
 import VerticalSplitter from '../layout/VerticalSplitter';
+import { PageContainer } from '../layout/PageContainer';
 
 function currentKstMonth(): { year: number; month: number } {
   const now = new Date();
@@ -55,10 +56,10 @@ export default function Capture() {
   };
 
   return (
-    <div
+    <PageContainer
       ref={containerRef}
+      className="grid gap-0 bg-bg text-fg"
       style={{ gridTemplateColumns: `${leftPct}fr 12px ${100 - leftPct}fr` }}
-      className="grid gap-0 p-4 h-full bg-bg text-fg"
     >
       <section className="bg-bg-card border rounded-lg p-4 overflow-y-auto">
         <CaptureForm referenceYear={year} referenceMonth={month} />
@@ -75,6 +76,6 @@ export default function Capture() {
       <section className="bg-bg-card border rounded-lg p-3 flex flex-col min-h-0">
         <CaptureQueue />
       </section>
-    </div>
+    </PageContainer>
   );
 }
