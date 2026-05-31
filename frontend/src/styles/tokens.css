@@ -66,6 +66,8 @@
   --tint-selection:  rgba(20, 184, 166, 0.12);
   --tint-success:    rgba(34, 197, 94, 0.10);
   --tint-error:      rgba(244, 63, 94, 0.10);
+  --tint-success-border: rgba(34, 197, 94, 0.30);  /* banner/chip borders */
+  --tint-error-border:   rgba(244, 63, 94, 0.30);  /* banner/chip borders */
   --tint-price-up:   rgba(220, 38, 38, 0.10);  /* DC2626 @ 10% */
   --tint-price-down: rgba(37, 99, 235, 0.10);  /* 2563EB @ 10% */
   /* Closing Auction Window shading. Drawn behind chart panes by
