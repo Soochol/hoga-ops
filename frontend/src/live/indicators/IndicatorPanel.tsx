@@ -4,6 +4,7 @@ import MovingAverageConfig from './MovingAverageConfig';
 
 type CategoryId =
   | 'moving-average'
+  | 'volume'
   | 'foreign-net'
   | 'institution-net'
   | 'ichimoku'
@@ -14,9 +15,10 @@ type CategoryId =
   | 'williams';
 
 const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; active: boolean }> = [
-  { id: 'moving-average',  label: '이동평균선',     active: true  },
-  { id: 'foreign-net',     label: '외국인 순매수',  active: true  },
-  { id: 'institution-net', label: '기관 순매수',    active: true  },
+  { id: 'moving-average',  label: '이동평균선',       active: true  },
+  { id: 'volume',          label: '거래량',           active: true  },
+  { id: 'foreign-net',     label: '외국인 순매수량',  active: true  },
+  { id: 'institution-net', label: '기관 순매수량',    active: true  },
   { id: 'ichimoku',       label: '일목균형표',  active: false },
   { id: 'bollinger',      label: '볼린저밴드',  active: false },
   { id: 'supertrend',     label: '슈퍼트렌드',  active: false },
@@ -76,6 +78,8 @@ export default function IndicatorPanel({ onClose }: Props) {
   const setForeignNet = useLivePageStore((s) => s.setForeignNetEnabled);
   const institutionNet = useLivePageStore((s) => s.institutionNetEnabled);
   const setInstitutionNet = useLivePageStore((s) => s.setInstitutionNetEnabled);
+  const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
+  const setVolumeEnabled = useLivePageStore((s) => s.setVolumeEnabled);
 
   // Each active category maps to a master on/off toggle. Investor bars carry no
   // per-slot config (sign-colored, daily), so the left checkbox is the whole
@@ -86,6 +90,7 @@ export default function IndicatorPanel({ onClose }: Props) {
       case 'moving-average': return maEnabled;
       case 'foreign-net': return foreignNet;
       case 'institution-net': return institutionNet;
+      case 'volume': return volumeEnabled;
       default: return false;
     }
   };
@@ -94,6 +99,7 @@ export default function IndicatorPanel({ onClose }: Props) {
       case 'moving-average': return () => setMaEnabled(!maEnabled);
       case 'foreign-net': return () => setForeignNet(!foreignNet);
       case 'institution-net': return () => setInstitutionNet(!institutionNet);
+      case 'volume': return () => setVolumeEnabled(!volumeEnabled);
       default: return null;
     }
   };

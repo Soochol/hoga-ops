@@ -3,10 +3,10 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import IndicatorPanel from './IndicatorPanel';
 
 describe('IndicatorPanel', () => {
-  it('lists 9 category checkboxes with MA/외국인/기관 active', () => {
+  it('lists 10 category checkboxes with MA/거래량/외국인/기관 active', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(9);
+    expect(checkboxes).toHaveLength(10);
     // 6 placeholders remain disabled (indicators not yet supported).
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(6);
     // 이동평균선 is enabled and checked by default.
@@ -14,25 +14,38 @@ describe('IndicatorPanel', () => {
     expect(ma.disabled).toBe(false);
     expect(ma.getAttribute('aria-checked')).toBe('true');
     // Investor toggles are enabled but off by default (opt-in).
-    const fn = screen.getByRole('checkbox', { name: '외국인 순매수' }) as HTMLButtonElement;
+    const fn = screen.getByRole('checkbox', { name: '외국인 순매수량' }) as HTMLButtonElement;
     expect(fn.disabled).toBe(false);
     expect(fn.getAttribute('aria-checked')).toBe('false');
   });
 
-  it('clicking 외국인 순매수 toggles foreignNetEnabled', async () => {
+  it('clicking 외국인 순매수량 toggles foreignNetEnabled', async () => {
     const { useLivePageStore } = await import('../../state/livePage');
     useLivePageStore.setState({ foreignNetEnabled: false });
     render(<IndicatorPanel onClose={() => {}} />);
-    fireEvent.click(screen.getByRole('checkbox', { name: '외국인 순매수' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '외국인 순매수량' }));
     expect(useLivePageStore.getState().foreignNetEnabled).toBe(true);
   });
 
-  it('clicking 기관 순매수 toggles institutionNetEnabled', async () => {
+  it('clicking 기관 순매수량 toggles institutionNetEnabled', async () => {
     const { useLivePageStore } = await import('../../state/livePage');
     useLivePageStore.setState({ institutionNetEnabled: false });
     render(<IndicatorPanel onClose={() => {}} />);
-    fireEvent.click(screen.getByRole('checkbox', { name: '기관 순매수' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '기관 순매수량' }));
     expect(useLivePageStore.getState().institutionNetEnabled).toBe(true);
+  });
+
+  it('clicking 거래량 toggles volumeEnabled', async () => {
+    const { useLivePageStore } = await import('../../state/livePage');
+    useLivePageStore.setState({ volumeEnabled: true });
+    render(<IndicatorPanel onClose={() => {}} />);
+    const vol = screen.getByRole('checkbox', { name: '거래량' }) as HTMLButtonElement;
+    // 거래량은 active 카테고리 — 기본 켜짐(default true), 클릭하면 토글.
+    expect(vol.disabled).toBe(false);
+    fireEvent.click(vol);
+    expect(useLivePageStore.getState().volumeEnabled).toBe(false);
+    fireEvent.click(vol);
+    expect(useLivePageStore.getState().volumeEnabled).toBe(true);
   });
 
   it('clicking 이동평균선 checkbox toggles movingAverageEnabled', async () => {
