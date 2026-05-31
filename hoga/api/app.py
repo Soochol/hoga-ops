@@ -26,6 +26,7 @@ from hoga.api.ws import build_ws_router
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
+from hoga.api import screener as _screener_module
 from hoga.api.screener import build_router as build_screener_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
@@ -35,6 +36,7 @@ from hoga.live.lifecycle import get_buffer as live_get_buffer
 from hoga.live.lifecycle import get_kis_client as live_get_kis_client
 from hoga.live.lifecycle import get_status as live_get_status
 from hoga.live.lifecycle import (
+    aclose_kis_client,
     get_active_codes,
     start_live_poller,
     start_today_promoter,
@@ -93,6 +95,15 @@ def create_app(data_dir: Path) -> FastAPI:
         # `start_scheduler` raises.
         _scheduler_tasks: list = []
         _scheduler_tasks = start_scheduler(data_dir)
+        # Screener startup recovery: catch up any EOD gap the scheduler missed
+        # while the process was down. Spawned (NOT awaited) so it never blocks
+        # boot and a KrxUnavailable inside it can't abort startup. Tracked in
+        # _scheduler_tasks so the `finally` block cancels/awaits it on shutdown.
+        _scheduler_tasks.append(
+            asyncio.create_task(
+                _screener_module.trigger_update(data_dir), name="screener-recovery"
+            )
+        )
         # Stage 8: Start the live poller (graceful degradation: no-op if
         # KIS_APP_KEY/SECRET missing or watchlist is empty).
         await start_live_poller(data_dir=data_dir)
@@ -125,6 +136,10 @@ def create_app(data_dir: Path) -> FastAPI:
             # Stop the live poller before scheduler to avoid new ticks being
             # written while the scheduler is shutting down.
             await stop_live_poller()
+            # Task-7 follow-up: close the PROCESS-singleton KisClient (shared
+            # 15/s token bucket) only at process shutdown — survives poller
+            # stop, so the screener's EOD update can reuse it.
+            await aclose_kis_client()
             # Cancel scheduler tasks BEFORE stopping the worker pool: the
             # scheduler enqueues to the workers, so kill the trigger first
             # and then let the workers drain.
@@ -181,7 +196,7 @@ def create_app(data_dir: Path) -> FastAPI:
     )
     app.include_router(build_calendar_router(data_dir=data_dir))
     app.include_router(build_watchlist_router(data_dir=data_dir))
-    app.include_router(build_screener_router(data_dir=data_dir))
+    app.include_router(build_screener_router(data_dir=data_dir, bus=bus))
     app.include_router(
         build_live_router(
             get_status=live_get_status,

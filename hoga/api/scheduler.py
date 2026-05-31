@@ -69,6 +69,14 @@ async def _daily_run(data_dir: Path) -> None:
         except Exception:  # noqa: BLE001 — one bad entry mustn't kill the run
             log.exception("daily enqueue failed for %s/%s", entry.code, today)
 
+    # Screener daily gap update (local import avoids an import cycle). A
+    # screener failure must not kill the rest of the daily run.
+    try:
+        from hoga.api import screener
+        await screener.trigger_update(data_dir)
+    except Exception:  # noqa: BLE001
+        log.exception("daily run: screener update failed; continuing")
+
 
 def _next_kst_day(yyyymmdd: str) -> str:
     d = dt.date(int(yyyymmdd[0:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]))

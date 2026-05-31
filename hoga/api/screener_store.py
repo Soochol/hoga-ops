@@ -112,3 +112,31 @@ def read_status(path: Path) -> ScreenerStatusFile | None:
     if not path.exists():
         return None
     return ScreenerStatusFile.model_validate_json(path.read_text())
+
+
+import asyncio  # noqa: E402 — appended orchestration block
+from collections.abc import Awaitable, Callable  # noqa: E402
+
+FetchOne = Callable[[str, str, str], Awaitable[list[dict]]]
+
+
+async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
+                     trading_days: list[str], now_ms: int) -> int:
+    """gap 거래일 행을 await fetch_one 으로 모아 append→derive→status. 추가 거래일 수 반환."""
+    rows: list[dict] = []
+    for code in codes:
+        rows += await fetch_one(code, trading_days[0], trading_days[-1])
+    if not rows:
+        return 0
+    up = sdir / "daily_unadjusted.parquet"
+
+    def _commit() -> int:                  # 동기 polars는 to_thread로 (루프 블로킹 방지)
+        append_rows(up, pl.DataFrame(rows))
+        ms = derive_adjusted(up, sdir / "daily_adjusted.parquet")
+        n = pl.read_parquet(up).select(pl.col("code").n_unique()).item()
+        write_status(sdir / "status.json", last_raw_date=last_raw_date(up),
+                     universe_size=n, derive_ms=ms, now_ms=now_ms)
+        return ms
+
+    await asyncio.to_thread(_commit)
+    return len(trading_days)
