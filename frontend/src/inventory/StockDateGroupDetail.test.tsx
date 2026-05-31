@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StockDateGroupDetail } from './StockDateGroupDetail';
+import { useStockDateGroups, selectGroup } from './useStockDateGroups';
 import type { StockDate, QueueSnapshot } from '../api/types';
 import type { ReactNode } from 'react';
 
@@ -53,8 +54,17 @@ function W(qc: QueryClient) {
   );
 }
 
+// The page (Inventory.tsx) groups the rows and resolves the selected group;
+// the detail just renders the resolved group. This harness mirrors that wiring
+// via the real useStockDateGroups + selectGroup so the cases below still drive
+// the detail with a (rows, selectedCode) pair.
+function DetailHarness({ rows, selectedCode }: { rows: StockDate[]; selectedCode: string | null }) {
+  const groups = useStockDateGroups(rows, '');
+  return <StockDateGroupDetail group={selectGroup(groups, selectedCode)} />;
+}
+
 function renderDetail(rows: StockDate[], selectedCode: string | null, qc: QueryClient) {
-  return render(<StockDateGroupDetail rows={rows} selectedCode={selectedCode} />, { wrapper: W(qc) });
+  return render(<DetailHarness rows={rows} selectedCode={selectedCode} />, { wrapper: W(qc) });
 }
 
 afterEach(() => { vi.restoreAllMocks(); });

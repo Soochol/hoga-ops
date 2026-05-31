@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { StockDate } from '../api/types';
-import { useStockDateGroups } from './useStockDateGroups';
+import type { StockDateGroup } from './types';
 import { fmtDate, fmtTime, fmtSize, fmtOHLC, fmtVolume } from './format';
 import { DiskStateBadge, isRecapturable } from './DiskStateBadge';
 import { sortDates, nextSortState, type SortKey, type SortState } from './sortDates';
@@ -11,17 +10,10 @@ import { useCaptureQueue } from '../capture/useCaptureQueue';
 import { FullCaptureCountBadge } from '../ui/FullCaptureCountBadge';
 
 type Props = {
-  rows: StockDate[];
-  selectedCode: string | null;
+  group: StockDateGroup | null;
 };
 
-export function StockDateGroupDetail({ rows, selectedCode }: Props) {
-  const groups = useStockDateGroups(rows, '');
-  const group = useMemo(() => {
-    if (selectedCode === null) return null;
-    return groups.find((g) => g.code === selectedCode) ?? groups[0] ?? null;
-  }, [groups, selectedCode]);
-
+export function StockDateGroupDetail({ group }: Props) {
   const [sort, setSort] = useState<SortState>(null);
   const sortedDates = useMemo(
     () => (group ? sortDates(group.dates, sort) : []),
