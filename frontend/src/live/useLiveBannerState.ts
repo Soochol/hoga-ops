@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react';
 import type { LiveStatus } from '../api/liveStatus';
 import { useWatchlist } from '../watchlist/useWatchlist';
 
 export type BannerCause =
   | 'watchlist_empty'           // priority 1, workarea emptystate
   | 'kis_credentials_missing'   // priority 1, red header banner
-  | 'kis_token_expired'         // priority 2, amber header banner
-  | 'off_hours';                // priority 3, neutral header banner
+  | 'kis_token_expired';        // priority 2, amber header banner
 
 export interface LiveStatusInput {
   running: boolean;
@@ -15,7 +13,6 @@ export interface LiveStatusInput {
 }
 
 export interface BannerInput {
-  now: Date;
   status: LiveStatusInput | null;
   /**
    * Authoritative watchlist inventory size from GET /api/watchlist
@@ -37,11 +34,11 @@ export interface BannerInput {
 
 export interface BannerState {
   primary: 'watchlist_empty' | 'kis_credentials_missing' | null;
-  stack: BannerCause[]; // priorities 2-5, ordered
+  stack: BannerCause[]; // priority-2 stackable causes, ordered
 }
 
 /** Pure derivation of banner state from inputs — testable without React. */
-export function deriveBannerState({ now, status, watchlistSize, tokenExpired = false }: BannerInput): BannerState {
+export function deriveBannerState({ status, watchlistSize, tokenExpired = false }: BannerInput): BannerState {
   if (status === null) return { primary: null, stack: [] };
 
   // Priority 1 (mutually exclusive). These hinge on the authoritative
@@ -62,39 +59,15 @@ export function deriveBannerState({ now, status, watchlistSize, tokenExpired = f
     }
   }
 
-  // Priority 2-5 (stackable).
+  // Priority 2 (stackable).
   const stack: BannerCause[] = [];
   if (tokenExpired) stack.push('kis_token_expired');
-
-  // Off-hours: outside 09:00:00–16:00:00 KST.
-  const kstHour = computeKstHour(now);
-  if (kstHour < 9 || kstHour >= 16) {
-    stack.push('off_hours');
-  }
 
   return { primary: null, stack };
 }
 
-/**
- * Compute the KST hour from a Date instance.
- *
- * KST = UTC+9. We shift the epoch by 9h and read the UTC hours of the
- * shifted value, so the result is independent of the system timezone.
- * (The plan's formula `d.getTime() + d.getTimezoneOffset()*60_000` is
- * wrong on non-UTC systems — it double-applies the local offset.)
- */
-function computeKstHour(d: Date): number {
-  return new Date(d.getTime() + 9 * 3_600_000).getUTCHours();
-}
-
-/** React hook wrapper that re-derives every minute as the wall clock advances. */
+/** React hook wrapper deriving banner state from live status + watchlist. */
 export function useLiveBannerState(status: LiveStatus | undefined | null, opts?: { tokenExpired?: boolean }): BannerState {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
   // Authoritative watchlist inventory. react-query dedupes the ['watchlist']
   // key, so this shares the cache with any other mounted subscriber; on /live
   // it costs one cheap load (9-row disk read) plus the 60s poll. `undefined`
@@ -105,7 +78,6 @@ export function useLiveBannerState(status: LiveStatus | undefined | null, opts?:
 
   if (!status) return { primary: null, stack: [] };
   return deriveBannerState({
-    now,
     status: {
       running: status.running,
       cycle_lag_ms: status.cycle_lag_ms,

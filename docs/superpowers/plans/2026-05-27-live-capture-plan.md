@@ -2692,7 +2692,7 @@ ADR-0019/0006의 single-uvicorn-worker 가정이 plan 전반(특히 JSONL writer
 | watchlist 비어 있음 | 차트 영역 emptystate | 1 | /capture 로 이동 |
 | KIS 자격증명 없음 | 헤더 배너 (red) | 1 | Settings → KIS 설정 |
 | KIS 토큰 만료 | 헤더 배너 (amber) | 2 | "재발급" 버튼 |
-| 장 외 시간 | 헤더 배너 (neutral) | 3 | 안내문만 (액션 없음) |
+| 장 외 시간 | 헤더 배너 (neutral) | 3 | 안내문만 (액션 없음) _(2026-05-31 제거됨)_ |
 | cycle_lag_ms > 10s | LiveStatusBar pill (amber/red) | 4 | (상시 표시) |
 | 특정 종목 데이터 결측 | 해당 차트만 emptystate | 5 | "다른 종목 보기" CTA |
 
