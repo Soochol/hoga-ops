@@ -32,3 +32,41 @@ def export_db_to_csv(csv_path: Path, *, container: str = "tradingview-db",
     with csv_path.open("wb") as f:
         subprocess.run(["docker", "exec", container, "psql", "-U", user, "-d", db, "-c", sql],
                        stdout=f, check=True)
+
+
+import polars as pl  # noqa: E402 — appended after stdlib imports
+
+# 깨끗한 분할 비율(신주/구주) 후보 + 역수. ratio = close[d]/close[d-1].
+_SPLIT_RATIOS = [1/2, 1/3, 1/4, 1/5, 1/10, 1/20, 1/50, 2, 3, 4, 5, 10]
+_SPLIT_TOL = 0.03  # ±3%
+
+
+def _detect_factor(ratio: float) -> float | None:
+    """ratio 가 깨끗한 분할 비율에 가까우면 그 비율, 아니면 None."""
+    for r in _SPLIT_RATIOS:
+        if abs(ratio - r) / r <= _SPLIT_TOL:
+            return r
+    return None
+
+
+def adjust_splits(df: pl.DataFrame) -> pl.DataFrame:
+    """원주가 일봉 → 수정주가(최신일 basis). per-code back-adjust."""
+    out = []
+    for (code,), g in df.sort("date").group_by(["code"], maintain_order=True):
+        g = g.sort("date")
+        closes = g["close"].to_list()
+        n = len(closes)
+        factor = [1.0] * n              # 각 날 d 의 누적계수(d 이후 분할 비율 곱). 최신일=1.
+        cum = 1.0
+        for d in range(n - 1, 0, -1):
+            ratio = closes[d] / closes[d - 1] if closes[d - 1] else 1.0
+            split = _detect_factor(ratio)
+            if split is not None:
+                cum *= split            # d 에 split → d 이전에 split 곱
+            factor[d - 1] = cum
+        f = pl.Series("f", factor)
+        adj = g.with_columns([
+            (pl.col(c) * f).alias(c) for c in ("open", "high", "low", "close")
+        ]).with_columns((pl.col("volume") / f).cast(pl.Int64).alias("volume"))
+        out.append(adj)
+    return pl.concat(out)
