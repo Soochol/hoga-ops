@@ -3,6 +3,7 @@ import { CaptureRowDetail } from './CaptureRowDetail';
 import { getPhase } from './phase';
 import { useInventoryRecaptureOrigins } from '../inventory/useInventoryRecaptureOrigins';
 import type { QueueItem } from '../api/types';
+import { FullCaptureCountBadge } from '../ui/FullCaptureCountBadge';
 
 export interface CaptureQueueRowProps {
   item: QueueItem;
@@ -111,35 +112,5 @@ export function CaptureQueueRow({
       </div>
       {expanded && <CaptureRowDetail item={item} />}
     </>
-  );
-}
-
-/** Queue-flavored Full Capture Count badge.
- *
- * Differs from the inventory variant on purpose: the queue can hold rows for
- * (code, date) pairs that have NEVER been captured yet (initial capture in
- * the `queued` phase), so we need a distinct visual state for "no prior".
- *
- * - undefined  → no row in /api/stock-dates  → "—" (first-ever capture attempt)
- * - null       → legacy meta without counter → ×1 (faint, "≥1로 간주" tooltip)
- * - 1          → real ×1                     → ×1 (faint)
- * - ≥2         → real ×N                     → ×N (standard tone)
- */
-function FullCaptureCountBadge({ n }: { n: number | null | undefined }) {
-  if (n === undefined) {
-    return <span className="text-fg-dimmer">—</span>;
-  }
-  const effective = n ?? 1;
-  const tone = effective >= 2
-    ? 'text-fg-dim border-[var(--fg-dim)]'
-    : 'text-fg-dimmer border-[var(--fg-dimmer)]';
-  const title = n === null
-    ? 'Full Capture 횟수 미기록 (≥1로 간주)'
-    : `Full Capture 누적 ${n}회`;
-  return (
-    <span
-      title={title}
-      className={`text-badge rounded-md px-[0.15rem] border ${tone} font-mono tabular-nums`}
-    >×{effective}</span>
   );
 }
