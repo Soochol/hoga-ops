@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 import duckdb
 import subprocess
+import time
 
 # parquet 컬럼 dtype 계약. code 는 전 구간 VARCHAR (leading-zero 보존).
 _DAILY_COLS = {
@@ -70,3 +71,11 @@ def adjust_splits(df: pl.DataFrame) -> pl.DataFrame:
         ]).with_columns((pl.col("volume") / f).cast(pl.Int64).alias("volume"))
         out.append(adj)
     return pl.concat(out)
+
+
+def derive_adjusted(unadjusted_path: Path, out_path: Path) -> int:
+    """원주가 parquet → 수정주가 parquet. 소요 ms 반환."""
+    t0 = time.perf_counter()
+    df = pl.read_parquet(unadjusted_path)
+    adjust_splits(df).write_parquet(out_path, compression="zstd")
+    return int((time.perf_counter() - t0) * 1000)
