@@ -6,8 +6,10 @@ import {
 } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
+import { useShallow } from 'zustand/react/shallow';
 import { resolveTokens } from '../../util/tokens';
 import { formatKoreanInt } from '../../util/koreanNumber';
+import { useLivePageStore } from '../../state/livePage';
 import type { PaneSpec } from '../RangeSeriesPane';
 
 const TOKEN_SPEC = {
@@ -33,9 +35,15 @@ export function projectVolume(bundle: RangeBundle, axis: VirtualAxis): Histogram
     }));
 }
 
+export type VolumePaneContext = { volumeEnabled: boolean };
+
+const useVolumeContext = (): VolumePaneContext =>
+  useLivePageStore(useShallow((s) => ({ volumeEnabled: s.volumeEnabled })));
+
 export const VOLUME_SPEC = {
   name: 'volume' as const,
   stretch: 0.3,
+  useContext: useVolumeContext,
   series: [
     {
       type: HistogramSeries,
@@ -45,7 +53,10 @@ export const VOLUME_SPEC = {
         priceLineVisible: false,
         lastValueVisible: false,
       },
-      data: projectVolume,
+      // volumeEnabled=false → empty data (bars hidden, pane stays mounted so
+      // drawing pane-index stays stable). FillStrength useContext precedent.
+      data: (bundle: RangeBundle, axis: VirtualAxis, ctx: VolumePaneContext) =>
+        ctx.volumeEnabled ? projectVolume(bundle, axis) : [],
     },
   ],
-} satisfies PaneSpec;
+} satisfies PaneSpec<VolumePaneContext>;
