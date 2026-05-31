@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.sources import SourceName
@@ -707,3 +707,81 @@ class ScreenerStatusFile(BaseModel):
     last_built_ms: int
     universe_size: int
     derive_ms: int
+
+
+# === Saved-screener condition leaves (2026-05-31 saved-screener spec) ===
+
+class TradeValueParams(BaseModel):
+    min_eok: float = Field(ge=0)                       # 최신일 거래대금 ≥ N억
+
+class BreakoutParams(BaseModel):                       # 신고가/신고거래량 공용 (구 BreakoutFilter)
+    lookback: int = Field(ge=1)                        # N: Lookback Window
+    period: int = Field(ge=1)                          # M: Record Period
+
+class ChangePctParams(BaseModel):
+    op: Literal["gte", "lte", "between"]
+    pct: float | None = None                           # gte/lte
+    lo: float | None = None                            # between
+    hi: float | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> "ChangePctParams":
+        if self.op in ("gte", "lte") and self.pct is None:
+            raise ValueError("gte/lte requires pct")
+        if self.op == "between":
+            if self.lo is None or self.hi is None:
+                raise ValueError("between requires lo and hi")
+            if self.lo > self.hi:
+                raise ValueError("lo must be <= hi")
+        return self
+
+class PriceRangeParams(BaseModel):
+    min: int | None = None                             # 원
+    max: int | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> "PriceRangeParams":
+        if self.min is None and self.max is None:
+            raise ValueError("price_range needs at least one of min/max")
+        if self.min is not None and self.max is not None and self.min > self.max:
+            raise ValueError("min must be <= max")
+        return self
+
+class MaParams(BaseModel):
+    period: int = Field(ge=1)
+    relation: Literal["above", "below"]                # close >= SMA / close <= SMA
+
+class TradeValueLeaf(BaseModel):
+    type: Literal["trade_value"] = "trade_value"
+    id: str
+    params: TradeValueParams
+
+class NewHighLeaf(BaseModel):
+    type: Literal["new_high"] = "new_high"
+    id: str
+    params: BreakoutParams
+
+class NewHighVolLeaf(BaseModel):
+    type: Literal["new_high_vol"] = "new_high_vol"
+    id: str
+    params: BreakoutParams
+
+class ChangePctLeaf(BaseModel):
+    type: Literal["change_pct"] = "change_pct"
+    id: str
+    params: ChangePctParams
+
+class PriceRangeLeaf(BaseModel):
+    type: Literal["price_range"] = "price_range"
+    id: str
+    params: PriceRangeParams
+
+class MaLeaf(BaseModel):
+    type: Literal["ma"] = "ma"
+    id: str
+    params: MaParams
+
+ConditionLeaf = Annotated[
+    Union[TradeValueLeaf, NewHighLeaf, NewHighVolLeaf, ChangePctLeaf, PriceRangeLeaf, MaLeaf],
+    Field(discriminator="type"),
+]
