@@ -581,6 +581,11 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   // today's 6.5h session: 1h and 2h past open).
   const VR_FROM_SEC = 3600;
   const VR_TO_SEC = 7200;
+  // Captured visible LOGICAL range (bar indices) the restore translates. The
+  // restore preserves its WIDTH exactly (= candle scale invariant) and shifts
+  // both edges by the inserted-union-point count.
+  const LR_FROM = 100;
+  const LR_TO = 400;
 
   function buildStableCapturingMock(ts: Record<string, unknown>) {
     return {
@@ -614,6 +619,10 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       scrollToPosition: vi.fn(),
       setVisibleLogicalRange: vi.fn(),
       getVisibleRange: vi.fn(() => ({ from: VR_FROM_SEC, to: VR_TO_SEC })),
+      getVisibleLogicalRange: vi.fn(() => ({ from: LR_FROM, to: LR_TO })),
+      // Stand-in union index = the (integer) virtual-second value, so the test
+      // can derive the expected shift from the same axis math production uses.
+      timeToIndex: vi.fn((t: unknown) => Math.round(t as number)),
       setVisibleRange: vi.fn(),
       timeToCoordinate: vi.fn(() => null),
     };
@@ -628,7 +637,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     candles: candleTsList.map((ts_ms) => ({ ts_ms, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 })),
   });
 
-  it('restores the viewport (setVisibleRange) re-anchored to the same real time after a historical prepend', () => {
+  it('restores the viewport (setVisibleLogicalRange) shifted by the inserted-index count after a historical prepend', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
@@ -642,16 +651,25 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
+    const beforePan = ts.setVisibleLogicalRange.mock.calls.length; // initial-view call(s)
 
-    // 2) User pans past the leftmost bar: logical.from < 0. The handler
-    //    captures the current viewport as REAL ms (via getVisibleRange on the
-    //    today-only axis) and debounces extendHistoricalRange.
+    // 2) User pans past the leftmost bar: logical.from < 0. The handler captures
+    //    the RIGHT-edge reference bar (real ms + its union index via timeToIndex)
+    //    and the visible logical range, then debounces extendHistoricalRange.
     act(() => {
       handlers.forEach((h) => h({ from: -40.2, to: 120.7 }));
       vi.advanceTimersByTime(200);
     });
     expect(useLivePageStore.getState().historicalFromDate).not.toBeNull();
-    expect(ts.setVisibleRange).not.toHaveBeenCalled(); // not yet — bundle hasn't grown
+    // No restore yet — bundle hasn't grown.
+    expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforePan);
+
+    // Simulate setData's partial logical re-anchor: a FRESH getVisibleLogicalRange
+    // read at restore time now returns a SHIFTED window. The fix must translate
+    // the range CAPTURED at the pan, not this fresh value — otherwise it
+    // double-shifts. This sentinel makes a fresh-read regression fail the
+    // assertion below (it would land at LR_FROM + 5000 + shift).
+    ts.getVisibleLogicalRange.mockReturnValue({ from: LR_FROM + 5000, to: LR_TO + 5000 });
 
     // 3) Grown bundle lands: yesterday PREPENDED (earlier earliest candle).
     rerender(
@@ -660,35 +678,34 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} />,
     );
 
-    // Expected restore: the same REAL timestamps, re-projected through the
-    // rebuilt (two-segment) axis — mirrors the production conversion exactly.
+    // Expected shift: refIdx = timeToIndex(VR_TO_SEC) = VR_TO_SEC; newIdx =
+    // timeToIndex(refVirtual) where refVirtual reprojects the right-edge real ms
+    // through the rebuilt two-segment axis. The mock timeToIndex returns the
+    // (integer) virtual second, so this mirrors production exactly.
     const oldAxis = createVirtualAxis([
       { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
     ]);
-    const anchorFromMs = oldAxis.toReal(VR_FROM_SEC * 1000);
-    const anchorToMs = oldAxis.toReal(VR_TO_SEC * 1000);
+    const refMs = oldAxis.toReal(VR_TO_SEC * 1000);
     const newAxis = createVirtualAxis([
       { date: '20260526', sessionOpenMs: YESTERDAY_OPEN_MS, sessionCloseMs: YESTERDAY_CLOSE_MS },
       { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
     ]);
-    const expFrom = Math.round(newAxis.toVirtual(anchorFromMs) / 1000);
-    const expTo = Math.round(newAxis.toVirtual(anchorToMs) / 1000);
+    const refVirtual = Math.round(newAxis.toVirtual(refMs) / 1000);
+    const shift = refVirtual - VR_TO_SEC; // newIdx - refIdx
 
-    expect(ts.setVisibleRange).toHaveBeenCalledWith({ from: expFrom, to: expTo });
-    // The restore shifts RIGHT in virtual time (older day now occupies the
-    // left), proving it compensated for the prepend rather than leaving the
-    // window on the old logical position.
-    expect(expFrom).toBeGreaterThan(VR_FROM_SEC);
-    // Round-trip losslessness (advisor #1): the restored LEFT edge, projected
-    // back to real time through the NEW axis, lands on the exact same real
-    // timestamp that was captured before the prepend. This is the property the
-    // user perceives — "the bar I was looking at stays put". Both viewport
-    // edges sit mid-session (1h/2h past open) so toReal/toVirtual is exact;
-    // they are never in the trailing whitespace because the restore only fires
-    // after a leftward pan (historicalFromDate != null), where the right edge
-    // has moved left off the latest bar.
-    const restoredFromMs = newAxis.toReal(expFrom * 1000);
-    expect(restoredFromMs).toBe(anchorFromMs);
+    // Restore translates the CAPTURED logical range by the inserted count.
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({
+      from: LR_FROM + shift,
+      to: LR_TO + shift,
+    });
+    // Scale invariant: the logical WIDTH is unchanged → barSpacing (candle
+    // scale) does not move. This is the user-perceived "스케일 변화 없음".
+    const last = ts.setVisibleLogicalRange.mock.calls.at(-1)![0] as { from: number; to: number };
+    expect(last.to - last.from).toBe(LR_TO - LR_FROM);
+    // Position: a genuine RIGHT translation (older day now occupies the left),
+    // proving it compensated for the prepend rather than leaving the old logical
+    // window pointing at the newly-prepended bars.
+    expect(shift).toBeGreaterThan(0);
   });
 
   it('does NOT restore on pure SSE growth while historicalFromDate is null', () => {
@@ -702,13 +719,15 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
+    const beforeSse = ts.setVisibleLogicalRange.mock.calls.length; // initial-view only
     // SSE appends a bar at the right edge; earliest is unchanged, no extension.
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 120_000])}
         clampEngaged={false} isPastCandlesLoading={false} />,
     );
-    expect(ts.setVisibleRange).not.toHaveBeenCalled();
+    // Restore must NOT fire (historicalFromDate null) — no new setVisibleLogicalRange.
+    expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforeSse);
   });
 
   it('does NOT restore when the extension adds no earlier bar (holiday-only chunk)', () => {
@@ -722,19 +741,21 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
-    // Pan left → captures anchor + sets historicalFromDate.
+    // Pan left → captures the reference bar + sets historicalFromDate.
     act(() => {
       handlers.forEach((h) => h({ from: -40.2, to: 120.7 }));
       vi.advanceTimersByTime(200);
     });
     expect(useLivePageStore.getState().historicalFromDate).not.toBeNull();
+    const beforeHoliday = ts.setVisibleLogicalRange.mock.calls.length;
     // The fetched chunk was holiday-only: earliest drawn candle unchanged.
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
         clampEngaged={false} isPastCandlesLoading={false} />,
     );
-    expect(ts.setVisibleRange).not.toHaveBeenCalled();
+    // newEarliest >= prevEarliest → restore short-circuits, no shift.
+    expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforeHoliday);
   });
 
   it('initial-view and restore never fight on the first extension (mutual exclusion via historicalFromDate)', () => {
@@ -757,7 +778,6 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     );
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1); // initial window
     expect(ts.scrollToPosition).toHaveBeenCalledTimes(1);       // initial right-edge snap
-    expect(ts.setVisibleRange).not.toHaveBeenCalled();
 
     // 2) Pan left → historicalFromDate flips non-null (commit A: bundle unchanged).
     act(() => {
@@ -772,10 +792,12 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} />,
     );
 
-    // Initial-view effect did NOT re-fire (counts unchanged); restore fired once.
-    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+    // Mutual exclusion: the initial-view effect did NOT re-fire (scrollToPosition
+    // stayed at 1), while the restore added exactly one setVisibleLogicalRange
+    // (initial 1 → 2). Both viewport owners share setVisibleLogicalRange now, so
+    // the scrollToPosition count is what distinguishes them.
     expect(ts.scrollToPosition).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleRange).toHaveBeenCalledTimes(1);
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(2);
   });
 });
 

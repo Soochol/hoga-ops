@@ -30,20 +30,28 @@ const liveFixture: LiveSeriesData = {
   broker: [],
 };
 
+const DEFAULT_CANDLE = { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 };
+// Mutable per-test control over the candle query's data + react-query flags so
+// the extension-atomization gate (isPlaceholderData / isFetching) is testable.
+const candlesMock = {
+  candles: [DEFAULT_CANDLE] as Array<typeof DEFAULT_CANDLE>,
+  isPlaceholderData: false,
+  isFetching: false,
+};
 const livePastCandlesSpy = vi.fn(() => ({
   data: {
     code: '005930',
     from: '',
     to: '',
-    candles: [
-      { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
-    ],
+    candles: candlesMock.candles,
     cached_dates: [],
     fresh_dates: [],
     data_warnings: [],
   },
   isLoading: false,
   error: null,
+  isPlaceholderData: candlesMock.isPlaceholderData,
+  isFetching: candlesMock.isFetching,
 }));
 vi.mock('../api/livePastCandles', () => ({
   useLivePastCandles: (...args: unknown[]) => livePastCandlesSpy(...args as []),
@@ -68,7 +76,14 @@ vi.mock('../api/livePastDailyCandles', () => ({
   useLivePastDailyCandles: (...args: unknown[]) => livePastDailyCandlesSpy(...args as []),
 }));
 
-const useRangeSpy = vi.fn(() => ({ data: null, isLoading: false, error: null }));
+const rangeMock = { isPlaceholderData: false, isFetching: false };
+const useRangeSpy = vi.fn(() => ({
+  data: null,
+  isLoading: false,
+  error: null,
+  isPlaceholderData: rangeMock.isPlaceholderData,
+  isFetching: rangeMock.isFetching,
+}));
 vi.mock('../api/range', () => ({
   useRange: (...args: unknown[]) => useRangeSpy(...args as []),
 }));
@@ -83,6 +98,11 @@ describe('useLiveBundle', () => {
     livePastCandlesSpy.mockClear();
     livePastDailyCandlesSpy.mockClear();
     useRangeSpy.mockClear();
+    candlesMock.candles = [DEFAULT_CANDLE];
+    candlesMock.isPlaceholderData = false;
+    candlesMock.isFetching = false;
+    rangeMock.isPlaceholderData = false;
+    rangeMock.isFetching = false;
     useLivePageStore.setState({
       activeCode: '005930',
       candleTimeframe: '1m',
@@ -131,6 +151,11 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     livePastCandlesSpy.mockClear();
     livePastDailyCandlesSpy.mockClear();
     useRangeSpy.mockClear();
+    candlesMock.candles = [DEFAULT_CANDLE];
+    candlesMock.isPlaceholderData = false;
+    candlesMock.isFetching = false;
+    rangeMock.isPlaceholderData = false;
+    rangeMock.isFetching = false;
     useLivePageStore.setState({
       activeCode: '005930',
       candleTimeframe: '1m',
@@ -167,4 +192,88 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     expect(result.current.clampEngaged).toBe(true);
   });
 
+});
+
+// ---------------------------------------------------------------------------
+// Historical-extension atomization gate (/diagnose 2026-05-31)
+//
+// A leftward pan re-keys BOTH past queries; they settle in separate commits, so
+// useLiveBundle holds the last fully-settled bundle until both are fresh and the
+// prepend lands in ONE commit (otherwise LiveChartRoot's viewport shift sees a
+// candles-only union and flickers across two paints). The hold is scoped to a
+// genuine extension via historicalFromDate != null, so code/timeframe switches
+// (which also re-key the queries but reset historicalFromDate) are NOT gated.
+//
+// Observed via bundle IDENTITY: while held, an SSE-driven `live` change is
+// masked (bundle stays the prior object); when released the fresh computedBundle
+// (a new object) is returned.
+describe('useLiveBundle extension atomization gate', () => {
+  beforeEach(() => {
+    livePastCandlesSpy.mockClear();
+    useRangeSpy.mockClear();
+    candlesMock.candles = [DEFAULT_CANDLE];
+    candlesMock.isPlaceholderData = false;
+    candlesMock.isFetching = false;
+    rangeMock.isPlaceholderData = false;
+    rangeMock.isFetching = false;
+    useLivePageStore.setState({ activeCode: '005930', candleTimeframe: '1m', historicalFromDate: null });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_live' });
+  });
+
+  const liveWithOb = (tMs: number): LiveSeriesData => ({
+    ...liveFixture,
+    ob: [{ t_ms: tMs, total_ask_qty: 100, total_bid_qty: 80, kind: 'ob' }],
+  });
+
+  it('HOLDS the last-settled bundle while a re-keyed past query is placeholder+fetching', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260420' }); // genuine extension
+    const { result, rerender } = renderHook(
+      ({ live }) => useLiveBundle('005930', '1m', '20260527', live),
+      { wrapper, initialProps: { live: liveWithOb(1779840060000) } },
+    );
+    const settled = result.current.bundle; // both fresh → computedBundle, now last-settled
+    expect(settled).not.toBeNull();
+
+    // Mid-extension: hoga still placeholder+fetching AND a new SSE tick would
+    // rebuild computedBundle — the gate must mask it and keep the prior object.
+    rangeMock.isPlaceholderData = true;
+    rangeMock.isFetching = true;
+    rerender({ live: liveWithOb(1779840120000) });
+    expect(result.current.bundle).toBe(settled); // HELD
+
+    // Both fresh again → released to the fresh computedBundle (a new object).
+    rangeMock.isPlaceholderData = false;
+    rangeMock.isFetching = false;
+    rerender({ live: liveWithOb(1779840120000) });
+    expect(result.current.bundle).not.toBe(settled); // RELEASED
+  });
+
+  it('does NOT gate a same-key periodic refetch (isFetching true but not placeholder)', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260420' });
+    const { result, rerender } = renderHook(
+      ({ live }) => useLiveBundle('005930', '1m', '20260527', live),
+      { wrapper, initialProps: { live: liveWithOb(1779840060000) } },
+    );
+    const before = result.current.bundle;
+    // Background refetch on the SAME key: fetching but data is real, not placeholder.
+    candlesMock.isFetching = true;
+    rerender({ live: liveWithOb(1779840120000) });
+    expect(result.current.bundle).not.toBe(before); // live tick flows through
+  });
+
+  it('does NOT gate when historicalFromDate is null (code / timeframe switch)', () => {
+    // A timeframe switch re-keys the past queries (placeholder+fetching) but
+    // setCandleTimeframe resets historicalFromDate to null, so the gate must NOT
+    // hold the previous timeframe's bundle.
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { result, rerender } = renderHook(
+      ({ live }) => useLiveBundle('005930', '1m', '20260527', live),
+      { wrapper, initialProps: { live: liveWithOb(1779840060000) } },
+    );
+    const before = result.current.bundle;
+    candlesMock.isPlaceholderData = true;
+    candlesMock.isFetching = true;
+    rerender({ live: liveWithOb(1779840120000) });
+    expect(result.current.bundle).not.toBe(before); // NOT gated (no extension in progress)
+  });
 });

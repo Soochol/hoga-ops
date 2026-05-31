@@ -139,16 +139,19 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // latest data off the right edge.
   const lastAppliedCountRef = useRef<number | null>(null);
   // Historical-prepend viewport preservation (see the restore effect below).
-  // viewportAnchorRef holds the visible range as REAL timestamps, captured the
-  // instant a leftward pan triggers a historical fetch; prevEarliestTsMsRef
-  // holds the earliest drawn candle of the last applied bundle so the restore
-  // effect can detect a genuine prepend.
-  const viewportAnchorRef = useRef<{ fromMs: number; toMs: number } | null>(null);
+  // viewportShiftRef pins a STABLE reference bar captured the instant a leftward
+  // pan triggers a historical fetch: its real ms (survives the axis re-base) plus
+  // its logical index at capture time. prevEarliestTsMsRef holds the earliest
+  // drawn candle of the last applied bundle so the restore effect can detect a
+  // genuine prepend.
+  const viewportShiftRef = useRef<
+    { refMs: number; refIdx: number; fromLogical: number; toLogical: number } | null
+  >(null);
   const prevEarliestTsMsRef = useRef<number | null>(null);
   useEffect(() => {
     lastAppliedCountRef.current = null;
     prevEarliestTsMsRef.current = null;
-    viewportAnchorRef.current = null;
+    viewportShiftRef.current = null;
   }, [code, timeframe]);
   useEffect(() => {
     if (!chart || !bundle || bundle.candles.length === 0) return;
@@ -197,18 +200,34 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // leftmost bar, extendHistoricalRange refetches with an earlier `from`, the
   // bundle is rebuilt with older candles PREPENDED, and RangeSeriesPane calls
   // series.setData(fullArray). lightweight-charts keeps the visible LOGICAL
-  // range numerically fixed across setData, so inserting N bars at the front
-  // slides the previously-viewed bars right by N — the viewport appears to
-  // "jump". We undo that here by restoring the pre-prepend viewport via
-  // setVisibleRange, re-projecting the captured real-ms anchor through the new
-  // axis. Verified 2026-05-31 (/browse harness): setVisibleRange is union-safe
-  // across series with different time grids; a logical +N restore is NOT,
-  // because hoga panes (quote_ratio / fill_strength) sample at a different
-  // cadence than candles, so the union logical-index shift != candle count.
+  // range numerically fixed across setData, so inserting N union points at the
+  // front slides the previously-viewed bars right by N — the viewport "jumps".
+  // We undo that by SHIFTING the visible logical range by exactly N.
+  //
+  // Why a logical shift, not setVisibleRange(real time): setVisibleRange refits
+  // a TIME span into the viewport and the captured span is whitespace-clamped
+  // (getVisibleRange pins its left edge to bar 0 while the user is panned into
+  // the pre-data whitespace), so it zooms in on EVERY prepend (measured
+  // barSpacing 1.6→2.2 over 3 prepends). A logical shift preserves the logical
+  // width exactly → barSpacing, and thus the candle scale, is invariant.
+  //
+  // Why N is read from the chart, not computed as candle count: the shared
+  // timeScale's logical index is the UNION across all series, and hoga panes
+  // (quote_ratio / fill_strength) sample at a different cadence than candles, so
+  // the inserted-index count != candle count. timeToIndex returns the bar's TRUE
+  // union index off the rebuilt scale (data-, not pixel-based, so it works even
+  // when the reference bar is off-screen), giving the exact shift.
   //
   // Ordering: this parent effect runs AFTER RangeSeriesPane's child setData
   // effect (child effects fire before parent effects within the same bundle
-  // commit). Complementary to the initial-view effect above via
+  // commit). useLiveBundle's extension gate makes the prepend land in ONE commit
+  // (candles+hoga together) so the shift sees the full union and is computed once
+  // — but a brief (~1-2 frame) position flash can still remain on a heavy
+  // prepend: a large multi-pane setData flush is internally split across lwc's
+  // own rAF render cycles, so the chart can paint the un-shifted frame before
+  // this shift lands. It is purely positional (the scale never changes) and not
+  // controllable from the React effect phase (verified: layout effects don't
+  // close it). Complementary to the initial-view effect above via
   // historicalFromDate (null → that effect owns the viewport; non-null → this
   // one), so the two never fight over the same render.
   useEffect(() => {
@@ -234,20 +253,36 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     // SSE ticks (right edge) and holiday-only chunks (no new trading day) leave
     // the earliest bar unchanged → nothing to correct.
     if (newEarliest >= prevEarliest) return;
-    const anchor = viewportAnchorRef.current;
-    if (!anchor) return;
+    const shiftRef = viewportShiftRef.current;
+    if (!shiftRef) return;
     try {
-      // Math.round: lightweight-charts' UTCTimestamp must be an integer; the
-      // captured visible-range edge can fall between bars (sub-second virtual
-      // seconds after the toReal→toVirtual round-trip), and a fractional Time
-      // throws inside setVisibleRange — which the catch would silently swallow,
-      // leaving the jump uncorrected.
-      ts.setVisibleRange({
-        from: Math.round(axis.toVirtual(anchor.fromMs) / 1000) as Time,
-        to: Math.round(axis.toVirtual(anchor.toMs) / 1000) as Time,
+      // The reference bar (real ms, stable under the re-base) now sits at a
+      // higher union logical index because older points were inserted ahead of
+      // it. shift = newIdx - refIdx = exactly how many union points were
+      // inserted. Round the virtual seconds: UTCTimestamp must be an integer and
+      // the toReal→toVirtual round-trip can land a hair off a bar boundary.
+      const refVirtual = Math.round(axis.toVirtual(shiftRef.refMs) / 1000);
+      const newIdx = ts.timeToIndex(refVirtual as Time, true);
+      if (newIdx === null) return;
+      const shift = newIdx - shiftRef.refIdx;
+      if (shift === 0) return;
+      // Apply the shift to the CAPTURED pre-prepend logical range, NOT the
+      // current one: lightweight-charts' setData does NOT leave the logical range
+      // numerically fixed across a prepend (it partially re-anchors it), so
+      // reading it back here would compound the chart's own move with ours and
+      // double-shift. The captured [from,to] + the inserted-point count is the
+      // absolute target that pins the previously-viewed bars at the same scale,
+      // overriding whatever setData did.
+      ts.setVisibleLogicalRange({
+        from: shiftRef.fromLogical + shift,
+        to: shiftRef.toLogical + shift,
       });
-    } catch {
-      // chart torn down between effect runs
+    } catch (e) {
+      // Reachable in practice only when the chart tears down between effect runs
+      // (the axis math is total and timeToIndex is guarded above). Surface an
+      // unexpected lwc-internal throw in dev so it isn't a silent no-op the user
+      // reads as "the jump just wasn't fixed".
+      if (import.meta.env.DEV) console.warn('[live] viewport restore shift threw', e);
     }
   }, [chart, bundle, axis]);
 
@@ -385,22 +420,31 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       // logical.from is a fractional bar index; negative = past the leftmost
       // loaded bar, which is exactly the lazy-fetch trigger condition.
       if (r.from >= 0) return;
-      // Capture the current viewport as REAL timestamps before triggering the
-      // prepend. The restore effect re-projects these through the rebuilt axis
-      // (segments re-base from 0 on every rebuild) and calls setVisibleRange so
-      // the bars the user is looking at stay put. Real-ms is the stable key: it
-      // survives both the axis re-base and the multi-series logical-index union
-      // (candle vs hoga panes use different time grids). Capture is synchronous
-      // here (not in the 150ms debounce) so `axis` is the pre-prepend
-      // generation the user is actually looking at — the effect re-subscribes on
-      // [chart, axis, timeframe], so this closure's axis is always current.
+      // Capture a STABLE reference bar before triggering the prepend: its real
+      // ms (survives the segments re-base from 0 on every rebuild) and its
+      // current union logical index (timeToIndex). The restore effect reprojects
+      // the real ms through the rebuilt axis, reads the bar's NEW index, and
+      // shifts the visible logical range by the difference so the bars the user
+      // is looking at stay put at the same scale. Use the RIGHT edge (vr.to):
+      // panned into the left whitespace it is a real, on-data bar (getVisibleRange
+      // clamps only the left edge to bar 0). Capture is synchronous here (not in
+      // the 150ms debounce) so `axis`/`ts` are the pre-prepend generation the
+      // user is looking at — the effect re-subscribes on [chart, axis, timeframe],
+      // so this closure is always current.
       const vr = ts.getVisibleRange();
-      if (vr) {
-        viewportAnchorRef.current = {
-          fromMs: axis.toReal((vr.from as number) * 1000),
-          toMs: axis.toReal((vr.to as number) * 1000),
-        };
-      }
+      const lr = vr ? ts.getVisibleLogicalRange() : null;
+      const refIdx = vr ? ts.timeToIndex(vr.to as Time, true) : null;
+      // Always overwrite (capture OR clear): a failed capture must not leave a
+      // PREVIOUS pan's anchors live for the next prepend's restore, which would
+      // shift a stale logical window through a fresh refMs reprojection.
+      viewportShiftRef.current = vr && lr && refIdx !== null
+        ? {
+            refMs: axis.toReal((vr.to as number) * 1000),
+            refIdx,
+            fromLogical: lr.from,
+            toLogical: lr.to,
+          }
+        : null;
       // SR-3: the holiday-span / monotonic-decrease backfill policy lives in
       // the pure nextHistoricalFrom kernel (liveDateTime, table-tested). This
       // effect keeps only the imperative shell: trigger gate, anchor capture,
