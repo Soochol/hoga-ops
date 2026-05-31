@@ -324,7 +324,7 @@ _Avoid_: "past candles" 단독 (소스를 잃음 — KIS-specific), "historical 
 _Avoid_: "the KIS client" 라는 모호한 표현 (이 코드베이스엔 단 하나, 항상 capital `KisClient`), "KIS HTTP layer" (HTTP 외에도 토큰 lifecycle + retry 정책을 담음).
 
 **Screener**:
-`/screener` 페이지·기능 — 전 시장 일봉 코퍼스를 **거래대금 / 신고가 / 신고거래량** 조건으로 걸러 캡처할 가치가 있는 **Code** 를 찾는다. 조회 연산은 동사 **scan**(`run_scan`); 결과 클릭은 **activeCode** 를 설정해 `/live` 호가 차트로 점프한다(Watchlist Panel 과 같은 jump-to-chart 패턴). 데이터는 `<data_dir>/screener/` 하위의 전 시장 일봉-OHLCV 코퍼스 — **원주가 아카이브**(`daily_unadjusted.parquet`, append-only 진실원천; dev-tradingview TimescaleDB 1회 시드 + KIS 일봉 append)와 거기서 split-보정으로 파생한 **수정주가 store**(`daily_adjusted.parquet`, scan 대상). per-Stock-Date 캡처 산출물과 구별된다 — Screener 코퍼스는 전역·일봉 입도·다년·읽기전용 scan 대상이고, **Source**(hogaplay/kis_live) 분류 밖이다. 수정주가 SSOT 는 KIS 공식 수정주가(`FID_ORG_ADJ_PRC=0`, /live 와 동일) — 오프라인 보정의 의심 종목만 KIS 값으로 교차검증·교체한다.
+`/screener` 페이지·기능 — 전 시장 일봉 코퍼스를 사용자가 **빌트인 조건 카탈로그**(거래대금·신고가·신고거래량·등락률·현재가 범위·이동평균)에서 고른 **조건**들의 **AND 조합**으로 걸러 캡처할 가치가 있는 **Code** 를 찾는다. 이 조합은 이름 붙여 **저장된 조건검색(SavedScreener)** 으로 저장/조회한다(2026-05-31 Saved Screener spec). 조회 연산은 동사 **scan**(`run_scan`); 결과 클릭은 **activeCode** 를 설정해 `/live` 호가 차트로 점프한다(Watchlist Panel 과 같은 jump-to-chart 패턴). 데이터는 `<data_dir>/screener/` 하위의 전 시장 일봉-OHLCV 코퍼스 — **원주가 아카이브**(`daily_unadjusted.parquet`, append-only 진실원천; dev-tradingview TimescaleDB 1회 시드 + KIS 일봉 append)와 거기서 split-보정으로 파생한 **수정주가 store**(`daily_adjusted.parquet`, scan 대상). per-Stock-Date 캡처 산출물과 구별된다 — Screener 코퍼스는 전역·일봉 입도·다년·읽기전용 scan 대상이고, **Source**(hogaplay/kis_live) 분류 밖이다. 수정주가 SSOT 는 KIS 공식 수정주가(`FID_ORG_ADJ_PRC=0`, /live 와 동일) — 오프라인 보정의 의심 종목만 KIS 값으로 교차검증·교체한다.
 _Avoid_: "scanner" (dev-tradingview 차용어 — hoga 는 **Screener** + 동사 **scan**); 원주가 store 를 "raw" 로 (이미 `raw/{date}/{code}` = 파싱 전 hogaplay Page 의미와 충돌 — **원주가/unadjusted** 사용); 상태 파일을 `meta.json` 으로 (Stock-Date 캡처 meta.json 과 충돌 — Screener 는 `status.json`); `ohlcv_daily` (Timescale 테이블명 누수 — `daily_unadjusted`/`daily_adjusted`).
 
 **Lookback Window (N)** / **Record Period (M)**:
@@ -334,6 +334,19 @@ _Avoid_: N 을 "recency" 로 (초기 반쪽 명명 — **Lookback Window**); 달
 **Breakout (돌파)**:
 Screener 의 신고 사건 — 어떤 날의 값이 직전 **Record Period** 최대를 **달성(`>=`, 동점 포함)** 한 것. 신고가(high)·신고거래량(volume)이 공유. Wire 는 `Breakout` 판별 union — **Lookback Window** 안에 신고가 있으면 `BreakoutHit{event_date, days_ago, period_extreme}`, 없으면 `BreakoutMiss`. `wc = period` 가드로 상장 M일 미만 Code 는 제외(짧은 윈도우 가짜 신고 차단).
 _Avoid_: 일반 개념을 "신고가" 단독으로 (거래량도 포함 — **Breakout**); strict `>` 해석(동점 포함 `>=`).
+
+**Condition (조건)** / **빌트인 조건 카탈로그**:
+Screener 가 제공하는 **빌트인 조건 타입**의 파라미터화된 인스턴스. v1 카탈로그 6종 — `trade_value`(거래대금), `new_high`(신고가), `new_high_vol`(신고거래량), `change_pct`(등락률), `price_range`(현재가 범위), `ma`(이동평균). 사용자는 같은 타입을 **중복 추가**할 수 있고(신고가 200·500 AND 신고가 20·60), 전부 **AND** 로 조합한다(v1; OR/그룹은 backlog). 각 조건은 **수정주가** 기준 최신 거래일 행에 대해 평가(신고가·신고거래량만 **Lookback Window** 내 **Breakout** 이력). 백엔드는 조건 하나를 `cond_i` CTE 멤버십(매칭 **Code** 집합)으로 컴파일해 INNER JOIN(=AND)한다. **전역 사전필터**(시장·ETF제외·거래정지제외)는 조건이 아니라 코퍼스를 제한하는 별도 축이다.
+_Avoid_: 시장/ETF/정지 필터를 "조건" 으로 (그건 **전역 사전필터**); "factor"·"지표" 같은 모호어 (— **Condition** + type 키).
+
+**등락률 / 현재가 범위 / 이동평균 (신규 조건 타입)**:
+- **등락률(`change_pct`)** — **최신일** 전일대비 `(close/prev_close-1)*100` 에 `gte`/`lte`/`between` 적용. (기간 내 등락률 아님 — 최신일 1일.)
+- **현재가 범위(`price_range`)** — 최신일 `close` 가 [min,max] 원 안. 최신일은 수정주가 보정계수=1 이라 **실제가와 일치**.
+- **이동평균(`ma`)** — 최신일 `close` vs `SMA(close, period거래일)`. `above`=`close≥SMA`(동점 포함), `below`=`close≤SMA`. `wc=period` 풀윈도우 가드(상장 N일 미만 제외). v1 은 위/아래만(상향돌파·이격% 임계값은 backlog).
+
+**저장된 조건검색 (SavedScreener)**:
+이름 붙은 `{conditions, universe}` 의 영속 사본 — 사용자가 빌더에서 만든 조건검색을 저장/목록/이름변경/삭제(CRUD)한다. 목록에서 선택하면 빌더에 **로드만** 되고(자동 조회 X), `조회` 로 실행한다(스테이트리스 — `/scan` 에 현재 빌더 상태 POST; `/saves/{id}/run` 없음). 영속은 **Watchlist 패턴**(파일=SSOT, `<data_dir>/screener/saves.json`, `atomic_write_json` + `asyncio.Lock` + `schema_version` + 손상 격리). `SavedScreener.id` 는 서버 uuid4(이름변경과 무관)이고, 각 조건 leaf 의 `id` 는 프론트 React key/저장 라운드트립용 클라이언트 nanoid 로 **별개**다.
+_Avoid_: "프리셋"·"필터 저장" 단독 (— **저장된 조건검색/SavedScreener**); `SavedScreener.id` 와 조건 leaf `id` 혼동.
 
 ## Relationships
 
