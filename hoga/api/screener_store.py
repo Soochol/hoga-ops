@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import duckdb
+import subprocess
 
 # parquet 컬럼 dtype 계약. code 는 전 구간 VARCHAR (leading-zero 보존).
 _DAILY_COLS = {
@@ -21,3 +22,13 @@ def seed_daily_from_csv(csv_path: Path, out_path: Path) -> int:
         f"TO '{out_s}' (FORMAT parquet, COMPRESSION zstd)"
     )
     return con.execute(f"SELECT count(*) FROM '{out_s}'").fetchone()[0]
+
+
+def export_db_to_csv(csv_path: Path, *, container: str = "tradingview-db",
+                     db: str = "tradingview", user: str = "tradingview") -> None:
+    """docker exec psql \\copy ohlcv_daily → CSV (운영 1회 시드용)."""
+    sql = ("\\copy (SELECT code, date, open, high, low, close, volume "
+           "FROM ohlcv_daily ORDER BY code, date) TO STDOUT WITH CSV HEADER")
+    with csv_path.open("wb") as f:
+        subprocess.run(["docker", "exec", container, "psql", "-U", user, "-d", db, "-c", sql],
+                       stdout=f, check=True)
