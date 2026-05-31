@@ -4,7 +4,7 @@ module (``hoga/tables/{trades,snapshots,brokers,candles}.py``).
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
 
@@ -655,3 +655,55 @@ class CaptureTimingEvent(BaseModel):
     type: Literal["capture_timing"] = "capture_timing"
     id: str
     summary: TimingSummary
+
+
+# === Screener Wire Models ===
+
+
+class BreakoutHit(BaseModel):
+    """Lookback Window 안에서 Record Period 신고 발생(CONTEXT.md Breakout)."""
+
+    hit: Literal[True] = True
+    event_date: str = Field(pattern=r"^\d{8}$")   # YYYYMMDD, 가장 최근 돌파일
+    days_ago: int = Field(ge=0)                    # 거래일 기준
+    period_extreme: int                            # 신고가=기간 최고가 / 신고거래량=기간 최대거래량
+
+
+class BreakoutMiss(BaseModel):
+    hit: Literal[False] = False
+
+
+Breakout = Annotated[Union[BreakoutHit, BreakoutMiss], Field(discriminator="hit")]
+
+
+class ScreenerRow(BaseModel):
+    code: str = Field(pattern=r"^\d{6}$")          # 6자리 문자열, leading-zero 유지
+    name: str
+    market: Literal["KOSPI", "KOSDAQ"]
+    price: int
+    trade_value_won: int
+    change_pct: float | None
+    new_high: Breakout | None                      # 필터 off면 None
+    new_high_vol: Breakout | None
+
+
+class ScreenerResponse(BaseModel):
+    status: Literal["ok", "not_seeded", "building"]
+    rows: list[ScreenerRow]
+
+
+class BreakoutFilter(BaseModel):
+    """신고가·신고거래량이 공유하는 돌파 필터(신고가 전용 아님)."""
+
+    lookback: int = Field(ge=1)                    # N: Lookback Window
+    period: int = Field(ge=1)                      # M: Record Period
+
+
+class ScreenerStatusFile(BaseModel):
+    """디스크 status.json (Stock-Date capture meta.json 과 별개)."""
+
+    schema_version: int = 1
+    last_raw_date: str = Field(pattern=r"^\d{8}$")
+    last_built_ms: int
+    universe_size: int
+    derive_ms: int
