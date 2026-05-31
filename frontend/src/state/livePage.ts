@@ -96,6 +96,10 @@ type PersistedIndicators = {
   foreignNetEnabled: boolean;
   /** ADR-0055: institution net-buy bar pane (D/W/M only). Opt-in. */
   institutionNetEnabled: boolean;
+  /** Pane Legend: volume pane on/off. Default true. */
+  volumeEnabled: boolean;
+  /** Pane Legend: MA lines temporarily hidden (눈), config preserved. Default false. */
+  movingAverageHidden: boolean;
 };
 
 type Store = Persisted & PersistedIndicators & {
@@ -110,6 +114,8 @@ type Store = Persisted & PersistedIndicators & {
   setMovingAverageEnabled: (enabled: boolean) => void;
   setForeignNetEnabled: (enabled: boolean) => void;
   setInstitutionNetEnabled: (enabled: boolean) => void;
+  setVolumeEnabled: (enabled: boolean) => void;
+  setMovingAverageHidden: (hidden: boolean) => void;
 };
 
 const DEFAULTS: Persisted = {
@@ -155,6 +161,8 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     movingAverageEnabled: s.movingAverageEnabled,
     foreignNetEnabled: s.foreignNetEnabled,
     institutionNetEnabled: s.institutionNetEnabled,
+    volumeEnabled: s.volumeEnabled,
+    movingAverageHidden: s.movingAverageHidden,
   };
 }
 
@@ -258,6 +266,16 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   setInstitutionNetEnabled: (enabled) => {
     set({ institutionNetEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setVolumeEnabled: (enabled) => {
+    set({ volumeEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setMovingAverageHidden: (hidden) => {
+    set({ movingAverageHidden: hidden });
     persistIndicators(snapshotIndicators(get));
   },
 

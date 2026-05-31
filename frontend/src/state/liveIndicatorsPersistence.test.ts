@@ -9,6 +9,8 @@ describe('mergeLiveIndicatorPrefs', () => {
       movingAverageEnabled: true,
       foreignNetEnabled: false,
       institutionNetEnabled: false,
+      volumeEnabled: true,
+      movingAverageHidden: false,
     });
   });
 
@@ -98,5 +100,27 @@ describe('mergeLiveIndicatorPrefs', () => {
     } as unknown as PersistedIndicators);
     expect(merged.foreignNetEnabled).toBe(true);
     expect(merged.institutionNetEnabled).toBe(true);
+  });
+
+  it('volumeEnabled defaults true (kept for legacy stores)', () => {
+    const m = mergeLiveIndicatorPrefs({
+      movingAverages: DEFAULT_LIVE_MAS.map((x) => ({ ...x })),
+    } as unknown as PersistedIndicators);
+    expect(m.volumeEnabled).toBe(true);
+  });
+
+  it('persisted volumeEnabled=false survives', () => {
+    const m = mergeLiveIndicatorPrefs({
+      movingAverages: DEFAULT_LIVE_MAS.map((x) => ({ ...x })),
+      volumeEnabled: false,
+    } as unknown as PersistedIndicators);
+    expect(m.volumeEnabled).toBe(false);
+  });
+
+  it('movingAverageHidden defaults false (opt-in hide)', () => {
+    const m = mergeLiveIndicatorPrefs({
+      movingAverages: DEFAULT_LIVE_MAS.map((x) => ({ ...x })),
+    } as unknown as PersistedIndicators);
+    expect(m.movingAverageHidden).toBe(false);
   });
 });
