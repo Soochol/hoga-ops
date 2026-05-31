@@ -43,11 +43,24 @@ def _breakout(col: str) -> LeafCompiler:
     return lambda leaf, i: (_breakout_cte(f"cond_{i}", col, leaf.params), [])
 
 
+def _compile_change_pct(leaf, i):
+    guard = "prev_close IS NOT NULL AND prev_close <> 0"
+    expr = "(close/prev_close - 1) * 100"
+    op = leaf.params.op
+    if op == "gte":
+        return f"cond_{i} AS (SELECT code FROM base WHERE {guard} AND {expr} >= ?)", [leaf.params.pct]
+    if op == "lte":
+        return f"cond_{i} AS (SELECT code FROM base WHERE {guard} AND {expr} <= ?)", [leaf.params.pct]
+    return (f"cond_{i} AS (SELECT code FROM base WHERE {guard} AND {expr} BETWEEN ? AND ?)",
+            [leaf.params.lo, leaf.params.hi])
+
+
 CONDITION_COMPILERS: dict[str, LeafCompiler] = {
     "trade_value": _compile_trade_value,
     "new_high": _breakout("high"),
     "new_high_vol": _breakout("volume"),
-    # change_pct / price_range / ma added in B2/B3/B4
+    "change_pct": _compile_change_pct,
+    # price_range / ma added in B3/B4
 }
 
 

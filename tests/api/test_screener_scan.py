@@ -28,3 +28,18 @@ def test_trade_value_filters_latest_day(tmp_path):
     rows = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
     assert [r.code for r in rows] == ["005930"]
     assert rows[0].code == "005930" and rows[0].trade_value_won == 600_000_000
+
+
+from hoga.api.models import ChangePctLeaf, ChangePctParams
+
+def test_change_pct_gte_latest_day(tmp_path):
+    adj, stk = _seed(tmp_path,
+        rows=[("005930", "2026-05-29", 100, 100, 100, 100, 1),
+              ("005930", "2026-05-30", 100, 100, 100, 106, 1),    # +6%
+              ("000660", "2026-05-29", 100, 100, 100, 100, 1),
+              ("000660", "2026-05-30", 100, 100, 100, 103, 1)],   # +3%
+        stocks=[("005930", "삼성", "KOSPI", False, False), ("000660", "하닉", "KOSPI", False, False)])
+    leaf = ChangePctLeaf(id="c", params=ChangePctParams(op="gte", pct=5))
+    rows = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
+    assert [r.code for r in rows] == ["005930"]
+    assert rows[0].change_pct == 6.0
