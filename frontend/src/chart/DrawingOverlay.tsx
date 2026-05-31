@@ -10,8 +10,7 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { useDrawingsStore } from '../state/drawings';
 import { renderDrawing, type ProjectCtx } from './drawing/render';
 import type { Drawing, PaneId } from './drawing/types';
-import { HIT_THRESHOLD } from './drawing/types';
-import { distanceToHline, distanceToPolyline, distanceToSegment } from './drawing/hitTest';
+import { hitTestDrawings } from './drawing/hitTest';
 import {
   TOOLS,
   matchShortcut,
@@ -245,35 +244,16 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
     return { top: Number(topPrice), bottom: Number(bottomPrice) };
   };
 
-  const hitTestAt = (px: number, py: number): Drawing | null => {
-    const cursorPaneId = projPaneIdAtY(chart, py);
-    for (let i = drawings.length - 1; i >= 0; i--) {
-      const d = drawings[i];
-      if (d.paneId !== cursorPaneId) continue;
-      if (d.kind === 'hline') {
-        const y = priceToCanvasY(d.price, d.paneId);
-        if (y != null && distanceToHline({ x: px, y: py }, y) <= HIT_THRESHOLD.hline) return d;
-      } else if (d.kind === 'trendline') {
-        const xa = realMsToCanvasX(d.a.realMs);
-        const ya = priceToCanvasY(d.a.price, d.paneId);
-        const xb = realMsToCanvasX(d.b.realMs);
-        const yb = priceToCanvasY(d.b.price, d.paneId);
-        if (xa != null && ya != null && xb != null && yb != null &&
-            distanceToSegment({ x: px, y: py }, { x: xa, y: ya }, { x: xb, y: yb }) <= HIT_THRESHOLD.trendlineBody) {
-          return d;
-        }
-      } else if (d.kind === 'pencil') {
-        const poly: { x: number; y: number }[] = [];
-        for (const pt of d.points) {
-          const x = realMsToCanvasX(pt.realMs);
-          const y = priceToCanvasY(pt.price, d.paneId);
-          if (x != null && y != null) poly.push({ x, y });
-        }
-        if (distanceToPolyline({ x: px, y: py }, poly) <= HIT_THRESHOLD.pencil) return d;
-      }
-    }
-    return null;
-  };
+  // SR-5: the kind-dispatch hit geometry lives in the pure hitTestDrawings
+  // kernel (hitTest.ts, unit-tested with stub coords). This wrapper just binds
+  // the chart-aware coordinate closures.
+  const hitTestAt = (px: number, py: number): Drawing | null =>
+    hitTestDrawings(
+      { realMsToCanvasX, priceToCanvasY, paneIdAtY: (y) => projPaneIdAtY(chart, y) },
+      drawings,
+      px,
+      py,
+    );
 
   const buildCtx = (e: React.PointerEvent<HTMLDivElement>): ToolCtx => {
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
