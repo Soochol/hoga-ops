@@ -14,8 +14,8 @@ from fastapi import APIRouter, HTTPException
 from hoga.api import screener_saves, screener_scan, screener_store
 from hoga.api.calendar import trading_days_in_range
 from hoga.api.models import (
-    ScanRequest,
     SavedScreener,
+    ScanRequest,
     ScreenerResponse,
     ScreenerSaveWriteRequest,
 )
@@ -94,6 +94,11 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
     return await _update_coordinator.coalesce(lambda: asyncio.create_task(_do()))
 
 
+def _save_not_found(save_id: str) -> HTTPException:
+    return HTTPException(
+        404, {"code": "save_not_found", "message": f"No saved screener {save_id}"})
+
+
 def build_router(*, data_dir: Path, bus=None) -> APIRouter:
     router = APIRouter(prefix="/api/screener", tags=["screener"])
     sdir = data_dir / "screener"
@@ -145,20 +150,21 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
         try:
             return await screener_saves.get_save(data_dir, id=save_id)
         except screener_saves.ScreenerSaveNotFoundError as e:
-            raise HTTPException(404, {"code": "save_not_found", "message": f"No saved screener {save_id}"}) from e
+            raise _save_not_found(save_id) from e
 
     @router.put("/saves/{save_id}", response_model=SavedScreener)
     async def update_save(save_id: str, req: ScreenerSaveWriteRequest) -> SavedScreener:
         try:
-            return await screener_saves.update_save(data_dir, id=save_id, req=req, now_ms=int(time.time() * 1000))
+            return await screener_saves.update_save(
+                data_dir, id=save_id, req=req, now_ms=int(time.time() * 1000))
         except screener_saves.ScreenerSaveNotFoundError as e:
-            raise HTTPException(404, {"code": "save_not_found", "message": f"No saved screener {save_id}"}) from e
+            raise _save_not_found(save_id) from e
 
     @router.delete("/saves/{save_id}", status_code=204)
     async def delete_save(save_id: str) -> None:
         try:
             await screener_saves.delete_save(data_dir, id=save_id)
         except screener_saves.ScreenerSaveNotFoundError as e:
-            raise HTTPException(404, {"code": "save_not_found", "message": f"No saved screener {save_id}"}) from e
+            raise _save_not_found(save_id) from e
 
     return router
