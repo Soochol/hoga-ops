@@ -1259,8 +1259,8 @@ export const CONDITION_CATALOG: Record<ConditionType, CatalogEntry> = {
     summarize: (p) => `${p.lookback}·${p.period}` },
   change_pct: { label: '등락률', defaultParams: { op: 'gte', pct: 5 }, ParamForm: ChangePctForm,
     summarize: (p) => p.op === 'between' ? `${p.lo}~${p.hi}%` : `${OP[p.op as 'gte' | 'lte']} ${p.pct}%` },
-  price_range: { label: '현재가 범위', defaultParams: { min: undefined, max: undefined }, ParamForm: PriceRangeForm,
-    summarize: (p) => `${p.min ?? ''}~${p.max ?? ''}원` },
+  price_range: { label: '현재가 범위', defaultParams: { min: 1000 }, ParamForm: PriceRangeForm,    // valid single bound — {} would 422
+    summarize: (p) => p.min != null && p.max != null ? `${p.min}~${p.max}원` : p.min != null ? `≥ ${p.min}원` : p.max != null ? `≤ ${p.max}원` : '—' },
   ma: { label: '이동평균', defaultParams: { period: 20, relation: 'above' }, ParamForm: MaForm,
     summarize: (p) => `MA${p.period} ${p.relation === 'above' ? '위' : '아래'}` },
 };

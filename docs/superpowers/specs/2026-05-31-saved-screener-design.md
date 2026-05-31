@@ -51,7 +51,7 @@
 | `price_range` | 현재가 범위 | `{min?:int, max?:int}` (원, 최소 한쪽) | 최신일 `close` 가 [min,max] 안. 둘 다면 min≤max |
 | `ma` | 이동평균 | `{period:int≥1, relation:'above'|'below'}` | 최신일 `close` vs `SMA(close, period거래일)`. above:`close≥SMA`(동점 포함), below:`close≤SMA`. `wc=period` 풀윈도우 가드(상장 N일 미만 제외) |
 
-UI 기본값(makeLeaf): trade_value 50, new_high {200,500}, new_high_vol {60,250}, change_pct {gte,5}, price_range {}, ma {20,above}.
+UI 기본값(makeLeaf): trade_value 50, new_high {200,500}, new_high_vol {60,250}, change_pct {gte,5}, price_range {min:1000}, ma {20,above}. (price_range·change_pct는 빈/불완전 params면 백엔드가 422 — 기본값은 항상 유효한 값으로; change_pct op 토글 시 폼이 새 op에 맞는 필드를 시드.)
 
 ### 백엔드 — 레지스트리 + 컴파일러 (`screener_scan.py`)
 
