@@ -5,10 +5,14 @@ import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
 import { useRightRailStore } from './state/rightRail';
 import { useEventStream } from './api/eventStream';
 import { useInventoryRecaptureOriginsCleanup } from './inventory/useInventoryRecaptureOrigins';
+import { useCaptureQueueSync } from './capture/useCaptureQueue';
 
 export default function App() {
   useEventStream();
   useInventoryRecaptureOriginsCleanup();
+  // Single owner of the capture-queue push subscription (was fanned out across
+  // ~5 useCaptureQueue mounts); the read side now only reads the shared cache.
+  useCaptureQueueSync();
   const panelOpen = useRightRailStore((s) => s.panelOpen);
 
   // The Right Rail is fixed (always --rail-w); the Watchlist Panel column

@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import { useCaptureQueue, CAPTURE_QUEUE_QUERY_KEY, patchQueueItem } from './useCaptureQueue';
+import { useCaptureQueue, useCaptureQueueSync, CAPTURE_QUEUE_QUERY_KEY, patchQueueItem } from './useCaptureQueue';
 import type { QueueItem, QueueSnapshot, PushEvent } from '../api/types';
 
 // vi.mock factory is hoisted to top of file — declare subscribers state via
@@ -66,7 +66,7 @@ describe('useCaptureQueue SSE multiplex', () => {
       json: async () => ({ active: [], queued: [QUEUED_ITEM], done: [], paused: false, max_concurrent: 3 }),
     } as Response);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const { result } = renderHook(() => useCaptureQueue(), { wrapper: makeWrapper(qc) });
+    const { result } = renderHook(() => { useCaptureQueueSync(); return useCaptureQueue(); }, { wrapper: makeWrapper(qc) });
     await waitFor(() => expect(result.current.queue?.queued).toHaveLength(1));
 
     fireSse({
@@ -85,7 +85,7 @@ describe('useCaptureQueue SSE multiplex', () => {
       json: async () => ({ active: [], queued: [QUEUED_ITEM], done: [], paused: false, max_concurrent: 3 }),
     } as Response);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    renderHook(() => useCaptureQueue(), { wrapper: makeWrapper(qc) });
+    renderHook(() => { useCaptureQueueSync(); return useCaptureQueue(); }, { wrapper: makeWrapper(qc) });
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const before = fetchMock.mock.calls.length;
 
@@ -103,7 +103,7 @@ describe('useCaptureQueue SSE multiplex', () => {
       json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }),
     } as Response);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    renderHook(() => useCaptureQueue(), { wrapper: makeWrapper(qc) });
+    renderHook(() => { useCaptureQueueSync(); return useCaptureQueue(); }, { wrapper: makeWrapper(qc) });
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const before = fetchMock.mock.calls.length;
 
@@ -144,7 +144,7 @@ describe('useCaptureQueue capture_dismissed handling', () => {
       return { ok: true, status: 200, json: async () => ({}) } as Response;
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const { result } = renderHook(() => useCaptureQueue(), { wrapper: makeWrapper(qc) });
+    const { result } = renderHook(() => { useCaptureQueueSync(); return useCaptureQueue(); }, { wrapper: makeWrapper(qc) });
 
     await waitFor(() => expect(result.current.queue).toBeDefined());
     expect(result.current.queue?.done.length).toBe(2);
@@ -179,7 +179,7 @@ describe('useCaptureQueue retryItems mutation', () => {
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
-    const { result } = renderHook(() => useCaptureQueue(), { wrapper: makeWrapper(qc) });
+    const { result } = renderHook(() => { useCaptureQueueSync(); return useCaptureQueue(); }, { wrapper: makeWrapper(qc) });
 
     await waitFor(() => expect(result.current.queue).toBeDefined());
     act(() => { result.current.retryItems.mutate({ item_ids: ['f1', 'f2'] }); });
