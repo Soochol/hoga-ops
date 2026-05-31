@@ -98,6 +98,8 @@ The design system has a **single density dial** at `:root font-size`.
   - Selection tint: `rgba(20,184,166,0.12)` — active nav, active tab, primary hover
   - Success tint: `rgba(34,197,94,0.10)` — completion chip background
   - Error tint: `rgba(244,63,94,0.10)` — error chip background
+  - Success border: `rgba(34,197,94,0.30)` — `--tint-success-border` (banner/chip borders)
+  - Error border: `rgba(244,63,94,0.30)` — `--tint-error-border` (banner/chip borders)
   - Price-up tint: `rgba(220,38,38,0.10)` — buy depth bar, positive market chip
   - Price-down tint: `rgba(37,99,235,0.10)` — sell depth bar, negative market chip
 
@@ -147,6 +149,15 @@ The design system has a **single density dial** at `:root font-size`.
   - `md` 4px (presets, small buttons)
   - `lg` 6px (cards, inputs, buttons, dropdowns — the default)
   - `full` 50% (status dots, avatars)
+
+### Page shell (feature routes)
+
+Every feature route except the chart workspace follows one shell:
+
+- **Outer padding:** wrap the route in `<PageContainer>` (`frontend/src/layout/PageContainer.tsx`) — the single source of the page padding token (`p-md`). Never hardcode `p-4`/`p-8` at the page root.
+- **Content framing:** primary content sits in `bg-bg-card border rounded-lg` cards. Multi-pane pages (master-detail, splitter) use one card per pane; single-content pages use one card. Never nest cards.
+- **No redundant page title:** the left nav is the page label, so a page never repeats its own name. Pages expose a *title-less* control bar (search / counts / actions) at the top of their card. (See the `/live` header: search only, with the active symbol shown in the status bar below.)
+- **Full-bleed exception:** only the chart workspace (`/live`) is full-bleed (no `PageContainer`, no card) — the chart must fill the viewport. Its sidebar still uses `--bg-card` to match other panels.
 
 ## Motion
 
