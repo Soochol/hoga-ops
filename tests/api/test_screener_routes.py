@@ -43,3 +43,25 @@ def test_lookback_zero_422(tmp_path):
     r = TestClient(_app(tmp_path)).get("/api/screener",
                                        params={"nh_lookback": 0, "nh_period": 5})
     assert r.status_code == 422
+
+
+def test_status_days_behind_present(tmp_path):
+    # StalenessChip needs a TRADING-day freshness signal. days_behind is
+    # present and int|None (None when KRX is unavailable in the test env).
+    r = TestClient(_app(tmp_path)).get("/api/screener/status")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "ok"
+    assert "days_behind" in body
+    assert body["days_behind"] is None or isinstance(body["days_behind"], int)
+
+
+def test_status_days_behind_deterministic(tmp_path, monkeypatch):
+    # Monkeypatch the calendar helper (bound in the screener module namespace)
+    # to a deterministic 3-trading-day gap.
+    import hoga.api.screener as screener_mod
+    monkeypatch.setattr(screener_mod, "trading_days_in_range",
+                        lambda start, end: ["20260515", "20260518", "20260519"])
+    r = TestClient(_app(tmp_path)).get("/api/screener/status")
+    assert r.status_code == 200
+    assert r.json()["days_behind"] == 3

@@ -136,10 +136,6 @@ def create_app(data_dir: Path) -> FastAPI:
             # Stop the live poller before scheduler to avoid new ticks being
             # written while the scheduler is shutting down.
             await stop_live_poller()
-            # Task-7 follow-up: close the PROCESS-singleton KisClient (shared
-            # 15/s token bucket) only at process shutdown — survives poller
-            # stop, so the screener's EOD update can reuse it.
-            await aclose_kis_client()
             # Cancel scheduler tasks BEFORE stopping the worker pool: the
             # scheduler enqueues to the workers, so kill the trigger first
             # and then let the workers drain.
@@ -155,6 +151,12 @@ def create_app(data_dir: Path) -> FastAPI:
                     # but they MUST be logged — otherwise a regression in
                     # bump_last_success/_daily_loop shutdown vanishes.
                     log.exception("scheduler task crashed during shutdown")
+            # Task-7 follow-up: close the PROCESS-singleton KisClient (shared
+            # 15/s token bucket) only at process shutdown. Closed AFTER every
+            # _scheduler_tasks entry (incl. screener-recovery) is cancelled and
+            # awaited above, so no task — not the EOD update, not the recovery
+            # catch-up — can still be using the client when it's torn down.
+            await aclose_kis_client()
             # Stop the worker pool first so in-flight items observe cancellation
             # while bus + observer are still live (they emit terminal events).
             await _captures_module.stop_workers(_captures_module._workers)

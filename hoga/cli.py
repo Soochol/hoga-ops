@@ -93,6 +93,26 @@ def serve(port: int = typer.Option(8000, "--port")) -> None:
     )
 
 
+@app.command(name="screener-seed")
+def screener_seed() -> None:
+    """One-time seed of the Screener archive from the dev-tradingview DB.
+
+    Wires export(CSV) → seed parquet → derive 수정주가 → status.json into the
+    machine-global data dir. Requires the tradingview-db docker container to
+    be running (export_db_to_csv shells out to `docker exec ... psql`).
+    """
+    import time
+
+    from hoga.api.screener_store import seed_all
+
+    try:
+        n = seed_all(resolve_data_dir(), now_ms=int(time.time() * 1000))
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]screener-seed failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+    console.print(f"[green]seeded[/green] screener archive: {n} stocks")
+
+
 @app.command(name="ls")
 def list_stock_dates() -> None:
     """Show captured/parsed Stock-Dates."""

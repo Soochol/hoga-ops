@@ -126,7 +126,19 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
         s = screener_store.read_status(sdir / "status.json")
         if s is None:
             return {"status": "not_seeded"}
-        return {**s.model_dump(), "status": "ok"}
+        # TRADING-day freshness for the frontend StalenessChip: count trading
+        # days from the day AFTER last_raw_date through today KST. A calendar-
+        # day proxy shows false-amber on weekends. Mirror trigger_update's gap
+        # logic (same _next_kst_day + start>today short-circuit) so the
+        # inverted-range ValueError never fires. KRX outage → None (frontend
+        # treats None as unknown), never crash the status route.
+        today = datetime.now(KIS_KST).strftime("%Y%m%d")
+        start = _next_kst_day(s.last_raw_date)
+        try:
+            days_behind = 0 if start > today else len(trading_days_in_range(start, today))
+        except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
+            days_behind = None
+        return {**s.model_dump(), "status": "ok", "days_behind": days_behind}
 
     @router.post("/update")
     async def update() -> dict:

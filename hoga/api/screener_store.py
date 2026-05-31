@@ -138,6 +138,26 @@ def read_status(path: Path) -> ScreenerStatusFile | None:
     return ScreenerStatusFile.model_validate_json(path.read_text())
 
 
+def seed_all(data_dir: Path, *, now_ms: int) -> int:
+    """운영 1회 시드: dev-tradingview DB → screener/ parquet 전체 빌드. 종목 수 반환.
+    daily + stocks export(CSV) → seed parquet(VARCHAR code) → derive 수정주가 → status."""
+    sdir = data_dir / "screener"
+    sdir.mkdir(parents=True, exist_ok=True)
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        export_db_to_csv(td / "daily.csv")
+        seed_daily_from_csv(td / "daily.csv", sdir / "daily_unadjusted.parquet")
+        export_stocks_from_db(td / "stocks.csv")
+        seed_stocks_from_csv(td / "stocks.csv", sdir / "stocks.parquet")
+    ms = derive_adjusted(sdir / "daily_unadjusted.parquet", sdir / "daily_adjusted.parquet")
+    n = pl.read_parquet(sdir / "stocks.parquet").height
+    write_status(sdir / "status.json",
+                 last_raw_date=last_raw_date(sdir / "daily_unadjusted.parquet"),
+                 universe_size=n, derive_ms=ms, now_ms=now_ms)
+    return n
+
+
 import asyncio  # noqa: E402 — appended orchestration block
 from collections.abc import Awaitable, Callable  # noqa: E402
 
