@@ -152,7 +152,7 @@ describe('useLiveBrokersAtCursor', () => {
   });
 
   it('does not fetch on calendar timeframe (D/W/M) even with cursor set', async () => {
-    // LiveChartRoot publishes cursorMs on D/W/M for the Pane Legend, but
+    // LiveChartRoot publishes cursorMs on all frames (D/W/M included), but
     // /api/brokers/series has no per-cursor parquet there (ADR-0044). The
     // timeframe gate (null on calendar frames) keeps the fetch dormant — the
     // isSpot gate in LiveSidebar only suppresses display, not the fetch.
