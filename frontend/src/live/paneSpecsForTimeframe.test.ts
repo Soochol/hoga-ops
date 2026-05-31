@@ -58,4 +58,32 @@ describe('paneSpecsForTimeframe', () => {
         .toEqual(['candle', 'volume']);
     }
   });
+
+  it('volumeEnabled:false drops the volume pane on minute timeframes', () => {
+    expect(
+      paneSpecsForTimeframe('1m', { foreignNet: false, institutionNet: false, volumeEnabled: false }).map((s) => s.name),
+    ).toEqual(['candle', 'quote-totals', 'ratio', 'fill-strength']);
+  });
+
+  it('volumeEnabled:false drops the volume pane on calendar timeframes', () => {
+    expect(
+      paneSpecsForTimeframe('D', { foreignNet: false, institutionNet: false, volumeEnabled: false }).map((s) => s.name),
+    ).toEqual(['candle']);
+  });
+
+  it('volumeEnabled:false + investor on → candle then investor, no volume', () => {
+    expect(
+      paneSpecsForTimeframe('D', { foreignNet: true, institutionNet: true, volumeEnabled: false }).map((s) => s.name),
+    ).toEqual(['candle', 'investor-foreign', 'investor-institution']);
+  });
+
+  it('volumeEnabled omitted defaults to true (volume present)', () => {
+    expect(paneSpecsForTimeframe('1m', { foreignNet: false, institutionNet: false })).toBe(PANE_SPECS);
+  });
+
+  it('volume-off minute frames share a stable (frozen) array reference', () => {
+    const a = paneSpecsForTimeframe('1m', { foreignNet: false, institutionNet: false, volumeEnabled: false });
+    const b = paneSpecsForTimeframe('5m', { foreignNet: false, institutionNet: false, volumeEnabled: false });
+    expect(a).toBe(b);
+  });
 });

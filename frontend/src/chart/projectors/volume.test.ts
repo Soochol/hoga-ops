@@ -38,13 +38,12 @@ describe('projectVolume', () => {
 });
 
 describe('VOLUME_SPEC', () => {
-  it('hides data when volumeEnabled is false, shows when true', () => {
+  it('projects one bar per in-session candle (volume gating is pane mount, not data)', () => {
     const bundle = {
       candles: [{ ts_ms: 0, open: 1, close: 2, high: 2, low: 1, vol_a: 5, vol_b: 5 }],
     } as never;
     const ax = { contains: () => true, toVirtual: (t: number) => t } as never;
     const dataFn = VOLUME_SPEC.series[0].data;
-    expect(dataFn(bundle, ax, { volumeEnabled: false }).length).toBe(0);
-    expect(dataFn(bundle, ax, { volumeEnabled: true }).length).toBe(1);
+    expect(dataFn(bundle, ax).length).toBe(1);
   });
 });

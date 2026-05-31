@@ -6,10 +6,8 @@ import {
 } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
-import { useShallow } from 'zustand/react/shallow';
 import { resolveTokens } from '../../util/tokens';
 import { formatKoreanInt } from '../../util/koreanNumber';
-import { useLivePageStore } from '../../state/livePage';
 import type { PaneSpec } from '../RangeSeriesPane';
 
 const TOKEN_SPEC = {
@@ -35,15 +33,12 @@ export function projectVolume(bundle: RangeBundle, axis: VirtualAxis): Histogram
     }));
 }
 
-export type VolumePaneContext = { volumeEnabled: boolean };
-
-const useVolumeContext = (): VolumePaneContext =>
-  useLivePageStore(useShallow((s) => ({ volumeEnabled: s.volumeEnabled })));
-
+// volumeEnabled gating lives in `paneSpecsForTimeframe` (the pane is removed
+// when off, like the investor panes), so the spec is unconditional — when this
+// pane is mounted, volume is on.
 export const VOLUME_SPEC = {
   name: 'volume' as const,
   stretch: 0.3,
-  useContext: useVolumeContext,
   series: [
     {
       type: HistogramSeries,
@@ -53,10 +48,7 @@ export const VOLUME_SPEC = {
         priceLineVisible: false,
         lastValueVisible: false,
       },
-      // volumeEnabled=false → empty data (bars hidden, pane stays mounted so
-      // drawing pane-index stays stable). FillStrength useContext precedent.
-      data: (bundle: RangeBundle, axis: VirtualAxis, ctx: VolumePaneContext) =>
-        ctx.volumeEnabled ? projectVolume(bundle, axis) : [],
+      data: (bundle: RangeBundle, axis: VirtualAxis) => projectVolume(bundle, axis),
     },
   ],
-} satisfies PaneSpec<VolumePaneContext>;
+} satisfies PaneSpec;

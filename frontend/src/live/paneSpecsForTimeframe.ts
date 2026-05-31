@@ -22,40 +22,65 @@ const CALENDAR_PANE_SPECS: readonly BoundPaneSpec[] = Object.freeze([
   VOLUME_SPEC,
 ]) as readonly BoundPaneSpec[];
 
-export type InvestorPaneToggles = { foreignNet: boolean; institutionNet: boolean };
+// Volume-off variants, frozen once so the returned reference stays stable
+// across renders (RangeSeriesPane's spec-keyed effect doesn't churn on an
+// unchanged toggle). Dropping the volume pane is safe for drawing pane-binding
+// because chartCoordinates now resolves pane index at runtime (getPane().
+// paneIndex()), so panes below volume self-correct when it's removed.
+const PANE_SPECS_NO_VOLUME: readonly BoundPaneSpec[] = Object.freeze(
+  PANE_SPECS.filter((s) => s.name !== 'volume'),
+) as readonly BoundPaneSpec[];
+const CALENDAR_PANE_SPECS_NO_VOLUME: readonly BoundPaneSpec[] = Object.freeze(
+  CALENDAR_PANE_SPECS.filter((s) => s.name !== 'volume'),
+) as readonly BoundPaneSpec[];
 
-const NO_INVESTOR: InvestorPaneToggles = { foreignNet: false, institutionNet: false };
+export type PaneToggles = {
+  foreignNet: boolean;
+  institutionNet: boolean;
+  /** Volume pane mount. Omitted/true → mounted; false → removed entirely
+   *  (matches the investor panes' on/off behavior, not an empty stripe). */
+  volumeEnabled?: boolean;
+};
+
+const NO_TOGGLES: PaneToggles = { foreignNet: false, institutionNet: false };
 
 /**
  * Pick the pane spec list to mount in `LiveChartRoot` for a given
- * **LiveTimeframe**. Minute frames always get the full `PANE_SPECS`; calendar
- * frames (D/W/M) get candle + volume. The opt-in foreign / institution net-buy
- * panes are appended in canonical order — but only on **'D'** (ADR-0055):
- * investor points are daily-anchored (09:00), whereas W/M aggregate candles
- * into week/month segments, so daily points wouldn't align (they'd be filtered
- * by `axis.contains`, rendering a near-empty pane). W/M therefore show no
- * investor pane even with the toggles on.
+ * **LiveTimeframe**. Minute frames always get `PANE_SPECS`; calendar frames
+ * (D/W/M) get candle + volume. Two opt-in adjustments:
  *
- * Each individual spec is a module-level constant (stable ref), so when the
- * toggles are unchanged `RangeSeriesPane`'s `spec`-keyed effect doesn't churn.
- * lightweight-charts v5 clamps an out-of-range `paneIndex` to the next slot and
- * auto-removes a pane once its last series is gone, so appending/removing these
- * specs mounts and tears down the panes cleanly; returning canonical order keeps
- * foreign above institution regardless of which toggled on first.
+ *  - `volumeEnabled === false` removes the volume pane on every timeframe
+ *    (the popover ✕ / toggle should hide the pane, not leave an empty stripe).
+ *  - foreign / institution net-buy panes are appended in canonical order, but
+ *    only on **'D'** (ADR-0055): investor points are daily-anchored (09:00),
+ *    whereas W/M aggregate candles into week/month segments, so daily points
+ *    wouldn't align (they'd be filtered by `axis.contains`).
+ *
+ * Each spec is a module-level constant (stable ref) and the four base arrays
+ * are frozen, so an unchanged toggle returns the SAME array reference and
+ * `RangeSeriesPane`'s `spec`-keyed effect doesn't churn. lightweight-charts v5
+ * clamps an out-of-range `paneIndex` and auto-removes a pane once its last
+ * series is gone, so appending/removing specs mounts and tears down panes
+ * cleanly; canonical order keeps volume above the investor panes regardless of
+ * toggle order.
  */
 export function paneSpecsForTimeframe(
   tf: LiveTimeframe,
-  investor: InvestorPaneToggles = NO_INVESTOR,
+  toggles: PaneToggles = NO_TOGGLES,
 ): readonly BoundPaneSpec[] {
-  if (!isCalendarTimeframe(tf)) return PANE_SPECS;
+  const volumeOn = toggles.volumeEnabled !== false; // default true
+  if (!isCalendarTimeframe(tf)) {
+    return volumeOn ? PANE_SPECS : PANE_SPECS_NO_VOLUME;
+  }
+  const base = volumeOn ? CALENDAR_PANE_SPECS : CALENDAR_PANE_SPECS_NO_VOLUME;
   // Investor panes are daily-only; W/M aggregate candles so daily points
   // wouldn't align to their segments.
   const investorAllowed = tf === 'D';
-  if (!investorAllowed || (!investor.foreignNet && !investor.institutionNet)) {
-    return CALENDAR_PANE_SPECS;
+  if (!investorAllowed || (!toggles.foreignNet && !toggles.institutionNet)) {
+    return base;
   }
   const extra: BoundPaneSpec[] = [];
-  if (investor.foreignNet) extra.push(INVESTOR_FOREIGN_SPEC);
-  if (investor.institutionNet) extra.push(INVESTOR_INSTITUTION_SPEC);
-  return [...CALENDAR_PANE_SPECS, ...extra];
+  if (toggles.foreignNet) extra.push(INVESTOR_FOREIGN_SPEC);
+  if (toggles.institutionNet) extra.push(INVESTOR_INSTITUTION_SPEC);
+  return [...base, ...extra];
 }

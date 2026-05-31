@@ -296,6 +296,7 @@ export default function PaneLegendOverlay({ chart, timeframe, paneSeries }: Prop
   const specs = paneSpecsForTimeframe(timeframe, {
     foreignNet: foreignNetEnabled,
     institutionNet: institutionNetEnabled,
+    volumeEnabled,
   });
   const indexByPaneId = new Map<string, number>();
   specs.forEach((s, i) => indexByPaneId.set(s.name, i));
