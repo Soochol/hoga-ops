@@ -64,6 +64,35 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText('지난 n일 동안 주가 평균값을 이은 선')).toBeTruthy();
   });
 
+  it('clicking a category label navigates the right pane to that indicator detail', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    // Default detail is 이동평균선.
+    expect(screen.getByText(/지난 n일 동안/)).toBeTruthy();
+
+    // 거래량 → 거래량 detail (MA detail gone). The label is a button; the
+    // on/off control is the separate role=checkbox icon.
+    fireEvent.click(screen.getByRole('button', { name: '거래량' }));
+    expect(screen.getByText(/거래량을 막대로/)).toBeTruthy();
+    expect(screen.queryByText(/지난 n일 동안/)).toBeNull();
+
+    // 외국인 순매수량 → its detail.
+    fireEvent.click(screen.getByRole('button', { name: '외국인 순매수량' }));
+    expect(screen.getByText(/외국인.*순매수 수량/)).toBeTruthy();
+
+    // 기관 순매수량 → its detail.
+    fireEvent.click(screen.getByRole('button', { name: '기관 순매수량' }));
+    expect(screen.getByText(/기관.*순매수 수량/)).toBeTruthy();
+  });
+
+  it('navigating to a category does NOT toggle its master switch', async () => {
+    const { useLivePageStore } = await import('../../state/livePage');
+    useLivePageStore.setState({ volumeEnabled: true });
+    render(<IndicatorPanel onClose={() => {}} />);
+    // Clicking the label navigates only — the checkbox is the toggle.
+    fireEvent.click(screen.getByRole('button', { name: '거래량' }));
+    expect(useLivePageStore.getState().volumeEnabled).toBe(true);
+  });
+
   it('Escape calls onClose', () => {
     const onClose = vi.fn();
     render(<IndicatorPanel onClose={onClose} />);
