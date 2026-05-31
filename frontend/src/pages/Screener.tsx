@@ -61,6 +61,13 @@ export function Screener() {
           <span className="font-semibold" style={{ color: 'var(--warn)' }}>시드 필요</span>
           <span>스크리너 인덱스가 아직 시드되지 않았습니다. 운영자 CLI로 일회성 시드를 수행한 뒤 다시 조회하세요.</span>
         </div>
+      ) : screener.isError ? (
+        <div className="bg-bg-card border rounded-lg p-md flex flex-col gap-sm text-sm">
+          <span className="font-semibold" style={{ color: 'var(--error)' }}>조회 실패 — 조건을 확인하세요</span>
+          {screener.error instanceof Error && screener.error.message && (
+            <span className="text-fg-dim">{screener.error.message}</span>
+          )}
+        </div>
       ) : (
         <ResultTable rows={screener.data?.rows ?? []} onActivate={openLive}
           onWatch={(code) => watch.mutate(code)} onCapture={(code) => capture.mutate(code)} />

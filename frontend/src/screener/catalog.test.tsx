@@ -17,4 +17,13 @@ describe('catalog', () => {
     expect(CONDITION_CATALOG.change_pct.summarize({ op: 'gte', pct: 5 })).toBe('≥ 5%');
     expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'above' })).toBe('MA20 위');
   });
+  it('price_range default is a valid single bound', () => {
+    const leaf = makeLeaf('price_range');
+    expect(leaf.params).toEqual({ min: 1000 });          // no undefined keys → not {} → no 422
+  });
+  it('price_range summarize handles min-only / max-only / both', () => {
+    expect(CONDITION_CATALOG.price_range.summarize({ min: 1000 })).toBe('≥ 1000원');
+    expect(CONDITION_CATALOG.price_range.summarize({ max: 50000 })).toBe('≤ 50000원');
+    expect(CONDITION_CATALOG.price_range.summarize({ min: 1000, max: 50000 })).toBe('1000~50000원');
+  });
 });

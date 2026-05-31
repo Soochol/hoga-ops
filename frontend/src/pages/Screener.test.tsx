@@ -27,6 +27,7 @@ vi.mock('../state/livePage', () => ({
 }));
 
 import { Screener } from './Screener';
+import { runScan } from '../api/screener';
 
 function renderPage() {
   const qc = new QueryClient();
@@ -47,4 +48,11 @@ it('row is keyboard-activatable', async () => {
   const row = await screen.findByText('삼성전자');
   fireEvent.keyDown(row.closest('[role="button"]')!, { key: 'Enter' });
   expect(setActiveCode).toHaveBeenCalledWith('005930');
+});
+
+it('surfaces a scan error instead of a silent dead-end', async () => {
+  vi.mocked(runScan).mockRejectedValueOnce(new Error('422'));
+  renderPage();
+  fireEvent.click(screen.getByText('조회'));
+  expect(await screen.findByText('조회 실패 — 조건을 확인하세요')).toBeInTheDocument();
 });
