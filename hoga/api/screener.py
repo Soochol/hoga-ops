@@ -4,15 +4,21 @@ import asyncio
 import logging
 import os
 import time
+import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import polars as pl
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
-from hoga.api import screener_scan, screener_store
+from hoga.api import screener_saves, screener_scan, screener_store
 from hoga.api.calendar import trading_days_in_range
-from hoga.api.models import ScanRequest, ScreenerResponse
+from hoga.api.models import (
+    ScanRequest,
+    SavedScreener,
+    ScreenerResponse,
+    ScreenerSaveWriteRequest,
+)
 from hoga.api.symbols import _RefreshCoordinator
 from hoga.live import lifecycle
 from hoga.live.kis_client import KIS_KST, KisCredentials
@@ -124,5 +130,35 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
     async def update() -> dict:
         n = await trigger_update(data_dir, bus=bus)
         return {"updated": n}
+
+    @router.post("/saves", status_code=201, response_model=SavedScreener)
+    async def create_save(req: ScreenerSaveWriteRequest) -> SavedScreener:
+        return await screener_saves.create_save(
+            data_dir, req=req, id=uuid.uuid4().hex, now_ms=int(time.time() * 1000))
+
+    @router.get("/saves")
+    async def list_saves() -> dict:
+        return {"schema_version": 1, "saves": await screener_saves.list_saves(data_dir)}
+
+    @router.get("/saves/{save_id}", response_model=SavedScreener)
+    async def get_save(save_id: str) -> SavedScreener:
+        try:
+            return await screener_saves.get_save(data_dir, id=save_id)
+        except screener_saves.ScreenerSaveNotFoundError as e:
+            raise HTTPException(404, {"code": "save_not_found", "message": f"No saved screener {save_id}"}) from e
+
+    @router.put("/saves/{save_id}", response_model=SavedScreener)
+    async def update_save(save_id: str, req: ScreenerSaveWriteRequest) -> SavedScreener:
+        try:
+            return await screener_saves.update_save(data_dir, id=save_id, req=req, now_ms=int(time.time() * 1000))
+        except screener_saves.ScreenerSaveNotFoundError as e:
+            raise HTTPException(404, {"code": "save_not_found", "message": f"No saved screener {save_id}"}) from e
+
+    @router.delete("/saves/{save_id}", status_code=204)
+    async def delete_save(save_id: str) -> None:
+        try:
+            await screener_saves.delete_save(data_dir, id=save_id)
+        except screener_saves.ScreenerSaveNotFoundError as e:
+            raise HTTPException(404, {"code": "save_not_found", "message": f"No saved screener {save_id}"}) from e
 
     return router
