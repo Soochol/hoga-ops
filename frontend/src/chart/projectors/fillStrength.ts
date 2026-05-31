@@ -1,6 +1,7 @@
 import {
   HistogramSeries,
   LineSeries,
+  type HistogramData,
   type LineData,
   type Time,
   type UTCTimestamp,
@@ -52,11 +53,11 @@ export function projectBuy(
   bundle: RangeBundle,
   axis: VirtualAxis,
   auctionWindowMask: boolean,
-): any[] {
-  const out: any[] = [];
+): (HistogramData<Time> | WhitespaceData<Time>)[] {
+  const out: (HistogramData<Time> | WhitespaceData<Time>)[] = [];
   for (const p of bundle.fill_strength.points) {
     if (!axis.contains(p.t)) continue;
-    const time = (axis.toVirtual(p.t) / 1000) as any;
+    const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
     if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
       out.push({ time });
       continue;
@@ -70,11 +71,11 @@ export function projectSell(
   bundle: RangeBundle,
   axis: VirtualAxis,
   auctionWindowMask: boolean,
-): any[] {
-  const out: any[] = [];
+): (HistogramData<Time> | WhitespaceData<Time>)[] {
+  const out: (HistogramData<Time> | WhitespaceData<Time>)[] = [];
   for (const p of bundle.fill_strength.points) {
     if (!axis.contains(p.t)) continue;
-    const time = (axis.toVirtual(p.t) / 1000) as any;
+    const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
     if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
       out.push({ time });
       continue;
