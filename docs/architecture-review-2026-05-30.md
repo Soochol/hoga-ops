@@ -366,6 +366,9 @@ These survived adversarial verification but fell below the headline-10 cap.
   comment living once. *Genuine consolidation, but testability is already
   realized (boundary test exists) and the go-forward write side now zero-pads to
   `:05d`, so impact is low.*
+  **✅ 처리됨 — `feat+arch-appendix` `6a62774`.** Owner는 `orchestrator.py`(쓰기·읽기
+  유일 소유, parser→orchestrator 엣지 기존) 채택 — `page_step.py` 이동은 순환 위험.
+  `disk_state.py`는 미변경. write→read 라운드트립 테스트 추가.
 - **fe-capture-02** *(structural, low/low)* — `inventory/StockDateGroupDetail.tsx`
   + `StockDateGroupList.tsx` + `pages/Inventory.tsx` + `useStockDateGroups.ts`:
   `useStockDateGroups` is called 3× over the same rows; the detail panel
@@ -374,12 +377,18 @@ These survived adversarial verification but fell below the headline-10 cap.
   `group: StockDateGroup | null` down — narrowing the detail interface from
   `(rows, selectedCode)` to `(group)`. *The grouping algorithm is already
   well-extracted; only the policy wrapper is at issue → modest impact.*
+  **✅ 처리됨 — `feat+arch-appendix` `268d03a`.** pure `selectGroup(groups, code)` 추출로
+  default-to-first 정책 단일화; detail은 `(rows, selectedCode)` → `(group)`로 축소
+  (useStockDateGroups 호출 3→2).
 - **fe-capture-04** *(consistency, low/low)* — `capture/CaptureQueueRow.tsx` +
   `inventory/StockDateGroupDetail.tsx`: `FullCaptureCountBadge` is defined twice
   (same tokens, same Korean tooltips, same `null→×1` "legacy meta lower-bound ≥1"
   rule) with deliberately different `undefined` handling. Fix: extract one badge
   parameterized on whether `undefined` is reachable; the load-bearing `null→×1`
   rule + tooltip copy live once.
+  **✅ 처리됨 — `feat+arch-appendix` `a1ac662`.** `ui/FullCaptureCountBadge`(prop
+  `n: number | null | undefined`)로 단일 추출 + 직접 단위테스트; 두 호출부의 부모
+  테스트는 그대로 통과(동작 무변경).
 - **fe-chart-04** *(contract, low/low)* — `chart/RangeSeriesPane.tsx` +
   `projectors/candle.ts` + `projectors/fillStrength.ts`: `SeriesSpec` is
   `type: any; options: any; data: () => any[]`, so "the data your projector emits
@@ -391,6 +400,13 @@ These survived adversarial verification but fell below the headline-10 cap.
   projector even *without* `strict`, and is already practiced by
   `ratio.ts`/`quoteTotals.ts` — plus narrow `SeriesSpec` to a `SeriesEntry<T>`
   discriminated by `T`. *Demoted: smaller, lower-leverage than SR-1.*
+  **✅ 처리됨 (이탈) — `feat+arch-appendix` `1b6bc90`.** Projector 반환 직접 타입화는
+  채택(임시 mismatch로 TS2353 검출 **증명**). 그러나 `SeriesEntry<T>` 판별 union은
+  **무력**임을 실증: 모든 `SeriesDataItemTypeMap[T]`가 최소형 `WhitespaceData`(`{time}`)를
+  포함하고 OHLC/value 데이터가 그 구조적 상위형이라, Candlestick-series-with-value-data
+  spec도 컴파일됨 (`defineSeries<T>`가 "아무것도 못 잡는다"던 것과 동일 부류). 따라서
+  SeriesSpec은 판별 union이 아닌 **`any` 제거한 broad 타입**으로 정착; 실제 가드는
+  projector 반환 타입에만 존재. 근거는 `SeriesSpec` 도크스트링에 기록.
 - **fe-shared-02** *(consistency, medium/low)* — `util/time.ts` + `api/liveSeries.ts`
   + `live/liveDateTime.ts`: the "Unix-ms → YYYYMMDD KST" calendar-day rule (which
   decides which Stock-Date a Cursor / "today" resolves to) is implemented 3× with
@@ -399,6 +415,9 @@ These survived adversarial verification but fell below the headline-10 cap.
   `liveSeries.ts` imports instead of inlining a private copy. Git history
   (`216fd24`) shows a prior pass that stayed inside `live/` and missed both other
   copies. **⇄ Swap candidate for SR-5.**
+  **✅ 처리됨 — `feat+arch-appendix` `1234ad5`.** `util/time.ts::unixMsToKSTDate` 단일
+  소스; `realMsToYyyymmdd` 위임, `liveSeries`는 private 복사 제거. 위임을 잠그는 경계+
+  일치 테스트 추가.
 - **fe-shared-04** *(consistency, low/low)* — `util/sessionTime.ts` +
   `virtualAxis.ts` + `chart/AuctionWindowOverlay.tsx`: `sessionTime.ts` is the
   single source for the Closing Auction Window length but carries a **stale
@@ -409,6 +428,8 @@ These survived adversarial verification but fell below the headline-10 cap.
   full-day-only offset, contradicting the half-day-safe semantics. Fix:
   `AuctionWindowOverlay` imports the exported constant; delete the false comment;
   correct the docstring. *Latent/maintainability, not a live bug.*
+  **✅ 처리됨 — `feat+arch-appendix` `ce86790`.** 셋 다 적용; 동작 무변경(동일 상수,
+  tsc로 import 검증).
 
 ---
 
