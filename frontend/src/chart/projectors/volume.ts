@@ -7,6 +7,7 @@ import {
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
+import { formatKoreanInt } from '../../util/koreanNumber';
 import type { PaneSpec } from '../RangeSeriesPane';
 
 const TOKEN_SPEC = {
@@ -18,7 +19,7 @@ const { up, down } = resolveTokens(TOKEN_SPEC);
 
 const priceFormat = {
   type: 'custom' as const,
-  formatter: (v: number) => Math.round(v).toLocaleString('ko-KR'),
+  formatter: (v: number) => formatKoreanInt(v),
   minMove: 1,
 };
 
