@@ -64,7 +64,7 @@ export function LiveSidebar({ code, live }: Props) {
   const spotTimeframe: MinuteTimeframe | null =
     timeframe && isMinuteTimeframe(timeframe) ? timeframe : null;
   const spotOrderbook = useLiveOrderbookAtCursor({ code, timeframe: spotTimeframe });
-  const spotBrokers = useLiveBrokersAtCursor({ code });
+  const spotBrokers = useLiveBrokersAtCursor({ code, timeframe: spotTimeframe });
 
   // Axis for Auction Mask in spot mode.
   const axis = useLiveAxisStore((s) => s.axis);

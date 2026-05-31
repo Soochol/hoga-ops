@@ -80,6 +80,12 @@ export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefin
 
 interface BrokersParams {
   code: string | null;
+  /** Minute timeframe, or null on D/W/M. Gates the fetch: /api/brokers/series
+   *  is parquet-backed only on minute frames (ADR-0044). LiveChartRoot now
+   *  publishes cursorMs on calendar frames too (for the Pane Legend), so
+   *  without this gate a D/W/M hover would fire a spurious series fetch —
+   *  mirrors useLiveOrderbookAtCursor's bucketMs gate. */
+  timeframe: MinuteTimeframe | null;
 }
 
 /**
@@ -102,11 +108,12 @@ export function useLiveBrokersAtCursor(
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
   const date = cursorMs !== null ? unixMsToKSTDate(cursorMs) : null;
-  // Key gates on cursor presence (so we don't fetch in latest mode) but
-  // doesn't include cursorMs — the day series is the same for any t
-  // within (code, date).
+  // Key gates on cursor presence AND a minute timeframe — no fetch in latest
+  // mode, and never on D/W/M (no per-cursor parquet; LiveChartRoot publishes
+  // cursorMs there only for the Pane Legend). The key omits cursorMs — the day
+  // series is the same for any t within (code, date).
   const key =
-    p.code && date
+    p.code && date && p.timeframe !== null
       ? `live|br|${p.code}|${date}|${sourcePref}`
       : null;
   const { data } = useSpot<BrokerSeriesEntry[]>(key, () =>

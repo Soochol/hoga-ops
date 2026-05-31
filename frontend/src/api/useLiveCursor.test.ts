@@ -147,12 +147,23 @@ describe('useLiveBrokersAtCursor', () => {
   });
 
   it('does not fetch when cursorMs null', () => {
-    renderHook(() => useLiveBrokersAtCursor({ code: '005930' }));
+    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m' }));
+    expect(apiGet).not.toHaveBeenCalled();
+  });
+
+  it('does not fetch on calendar timeframe (D/W/M) even with cursor set', async () => {
+    // LiveChartRoot publishes cursorMs on D/W/M for the Pane Legend, but
+    // /api/brokers/series has no per-cursor parquet there (ADR-0044). The
+    // timeframe gate (null on calendar frames) keeps the fetch dormant — the
+    // isSpot gate in LiveSidebar only suppresses display, not the fetch.
+    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: null }));
+    act(() => useLiveCursorStore.getState().setCursor(1_779_930_000_000));
+    await new Promise((r) => setTimeout(r, 80));
     expect(apiGet).not.toHaveBeenCalled();
   });
 
   it('fetches once when cursorMs set, key independent of cursorMs value', async () => {
-    renderHook(() => useLiveBrokersAtCursor({ code: '005930' }));
+    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m' }));
     act(() => useLiveCursorStore.getState().setCursor(1_779_930_000_000));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
     // Moving cursor within the same day must not refetch — the day series
@@ -163,7 +174,7 @@ describe('useLiveBrokersAtCursor', () => {
   });
 
   it('source_pref change reissues', async () => {
-    renderHook(() => useLiveBrokersAtCursor({ code: '005930' }));
+    renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m' }));
     act(() => useLiveCursorStore.getState().setCursor(1_779_930_000_000));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
     act(() => useSourcePreferenceStore.getState().setSourcePreference('kis_live'));
