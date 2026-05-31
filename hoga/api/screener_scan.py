@@ -40,6 +40,7 @@ def _compile_trade_value(leaf, i):
 
 
 def _breakout(col: str) -> LeafCompiler:
+    # registry guarantees only new_high/new_high_vol leaves reach here (params is BreakoutParams)
     return lambda leaf, i: (_breakout_cte(f"cond_{i}", col, leaf.params), [])
 
 
