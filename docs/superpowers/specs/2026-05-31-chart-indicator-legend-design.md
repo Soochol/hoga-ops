@@ -47,9 +47,11 @@ type LegendRow =
 ## 아키텍처
 
 **단일 `PaneLegendOverlay`** (`LiveChartRoot` 마운트):
-- pane Y-오프셋은 **기존 `chartCoordinates.paneTopY(chart, paneId)`를 재사용**(per-pane HTML
-  컨테이너는 없다 — `chart.panes()[i].getHeight()` 누적). 세 번째 pane-top 루프를 새로 만들지
-  않는다. 레전드는 차트 위에 절대배치된 단일 HTML 오버레이.
+- pane Y-오프셋은 `chart.panes()[i].getHeight()` 누적으로 계산한다(per-pane HTML 컨테이너는 없다).
+  **pane index는 런타임 `paneSpecsForTimeframe(timeframe, toggles)` 결과에서 paneId로 도출** —
+  `drawing/chartCoordinates.ts`의 static `paneTopY`/`PANE_ID_TO_INDEX`는 런타임 append되는 투자자
+  pane을 몰라(`return 0` fallback → 최상단 오배치) 재사용하지 않는다. 토글 조합(foreign off,
+  institution on 등)도 런타임 index로 정확히. 레전드는 차트 위에 절대배치된 단일 HTML 오버레이.
 - **crosshair 시간 소스 분리** (Blocker): 현재 `LiveChartRoot`의 `subscribeCrosshairMove`는
   `isMinuteTimeframe` 게이트(ADR-0044, sidebar-spot이 D parquet 없어서)라 D에서 안 발동.
   레전드는 **모든 timeframe에서 커서 시간을 발행**하되 sidebar-spot 진입은 분봉만으로 유지한다
@@ -76,11 +78,14 @@ type LegendRow =
 ## 데이터 흐름
 
 - **정적 메타**: `livePage` store — `movingAverages`(색상/기간), 토글 상태.
-- **동적 값 (단일 index 아님)**: 커서를 **real Unix-ms 1개**(`useLiveCursorStore.cursorMs`)로
-  운반. 각 `LegendValue`는 series별로 `findByReal(cursorMs)`/nearest-bar lookup으로 해석 —
-  공유 정수 index 금지(캔들·investorPoints·거래량 샘플링 cadence가 달라 union logical index ≠
-  per-series index, `LiveChartRoot.tsx:213` 주석 참조). lookup 타입 `(series-data, cursorMs) => number | null`.
-- **MA 값**: registry된 MA series에서 읽기(차트와 동일). recompute하지 않음.
+- **동적 값 (`param.seriesData`에서 읽기)**: 레전드는 `chart.subscribeCrosshairMove`의
+  `param.seriesData`(series ref → 그 시점 데이터 Map)에서 각 series 값을 읽는다 — series별 값이라
+  cross-cadence(캔들·investorPoints·거래량 cadence 차이)를 자동 회피한다. 값 추출:
+  `d && 'value' in d ? d.value : null`. MA series는 `maSeriesRegistry`로 식별(slot id→series),
+  거래량/투자자는 pane primary series(`paneSeries`). 커서 없으면(`param.point==null`) 각 series
+  마지막 점. `useLiveCursorStore.cursorMs`는 cursor 발행/sidebar 용도로 유지하되 레전드 값 자체는
+  `param.seriesData`에서.
+- **recompute 없음**: SMA를 레전드가 다시 계산하지 않는다(차트 series 값과 단일 출처).
 - **✕ 클릭** → store 토글 off. popover ↔ 레전드 양방향.
 - **눈 클릭** → `movingAverageHidden` 토글.
 
@@ -108,9 +113,12 @@ type LegendRow =
   쿼리 가능하게 남겨 레전드 값이 유지된다(TradingView 방식; registry 읽기와 결합).
 - **MA series registry**: `MovingAverageOverlay`의 슬롯 series를 `onPrimarySeriesReady`류 패턴으로
   공유 registry(`paneSeries` 또는 별도 MA registry)에 등록 → 레전드가 slot id로 값을 읽는다.
-- **`paneSpecsForTimeframe` param 확장**: 두 번째 인자를 `InvestorPaneToggles`에서
-  `PaneToggles = { volume: boolean; foreignNet: boolean; institutionNet: boolean }`로 확장.
-  거래량 gating은 append가 아니라 **양쪽 branch(PANE_SPECS·CALENDAR_PANE_SPECS) 공통 필터**.
+- **거래량 데이터 조건부 (paneSpecsForTimeframe 불변)**: 사용자 결정("MA처럼 series 숨김")에 따라
+  거래량 pane을 제거하지 않는다. `VOLUME_SPEC.useContext = () => ({ volumeEnabled })`(기존 FillStrength
+  `useContext` 패턴, `fillStrength.ts:245-256`)로 data를 조건부화: `ctx.volumeEnabled ? projectVolume(b,a) : []`.
+  pane이 항상 마운트되어 `drawing/chartCoordinates.ts`의 static `PANE_ID_TO_INDEX` + `DrawingOverlay`
+  pane-binding이 안전하다(mid-array 제거 회피). `paneSpecsForTimeframe` 시그니처는 **그대로** —
+  PaneToggles 확장 불필요.
 
 ## 테스트
 
