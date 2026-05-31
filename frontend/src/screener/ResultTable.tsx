@@ -1,9 +1,7 @@
-import type { ScreenerRow, ScreenerFilters } from '../api/screener';
-import { BreakoutBadge } from './BreakoutBadge';
+import type { ScreenerRow } from '../api/screener';
 
 interface Props {
   rows: ScreenerRow[];
-  filters: ScreenerFilters;
   onActivate: (code: string) => void;
   onWatch: (code: string) => void;
   onCapture: (code: string) => void;
@@ -13,117 +11,51 @@ interface Props {
  *  (red), <0 text-price-down (blue), 0 neutral --fg-dim. ▲▼ glyph for
  *  colorblind redundancy. null → "—". NOT western green=up. */
 function ChangeCell({ pct }: { pct: number | null }) {
-  if (pct === null) {
-    return <span className="text-fg-dim">—</span>;
-  }
+  if (pct === null) return <span className="text-fg-dim">—</span>;
   const dir = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
   const cls = dir === 'up' ? 'text-price-up' : dir === 'down' ? 'text-price-down' : 'text-fg-dim';
   const glyph = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '';
-  return (
-    <span className={cls}>
-      {glyph}
-      {glyph && ' '}
-      {pct > 0 ? '+' : ''}
-      {pct.toFixed(2)}%
-    </span>
-  );
+  return <span className={cls}>{glyph}{glyph && ' '}{pct > 0 ? '+' : ''}{pct.toFixed(2)}%</span>;
 }
-
-const COLS = 'grid-cols-[3.5rem_1fr_4rem_6rem_5rem_5rem_1fr_3.2rem]';
-
+const COLS = 'grid-cols-[3.5rem_1fr_4rem_6rem_5rem_6rem_3.2rem]';
 /** Won → 억 (100M), rounded to whole 억 for the table — matches the filter
  *  unit (거래대금 하한 is entered in 억). */
-function toEok(won: number): string {
-  return Math.round(won / 1e8).toLocaleString('ko-KR');
-}
+const toEok = (won: number) => Math.round(won / 1e8).toLocaleString('ko-KR');
 
-export function ResultTable({ rows, filters, onActivate, onWatch, onCapture }: Props) {
+export function ResultTable({ rows, onActivate, onWatch, onCapture }: Props) {
   return (
     <div className="bg-bg-card border rounded-lg flex flex-col min-h-0 overflow-hidden">
-      {/* Header */}
-      <div
-        className={`grid ${COLS} items-center gap-2 px-sm py-1 border-b text-xs font-semibold uppercase tracking-[0.06em] text-fg-dimmer`}
-      >
-        <span>코드</span>
-        <span>종목명</span>
-        <span>시장</span>
-        <span className="text-right">현재가</span>
-        <span className="text-right">등락률</span>
-        <span className="text-right">거래대금(억)</span>
-        <span>돌파</span>
-        <span className="text-right">액션</span>
+      <div className={`grid ${COLS} items-center gap-2 px-sm py-1 border-b text-xs font-semibold uppercase tracking-[0.06em] text-fg-dimmer`}>
+        <span>코드</span><span>종목명</span><span>시장</span>
+        <span className="text-right">현재가</span><span className="text-right">등락률</span>
+        <span className="text-right">거래대금(억)</span><span className="text-right">액션</span>
       </div>
-
-      {/* Body */}
       <div className="flex-1 min-h-0 overflow-auto">
         {rows.length === 0 ? (
           <div className="p-md text-fg-dim text-sm">조건에 맞는 종목이 없습니다.</div>
-        ) : (
-          rows.map((r) => {
-            const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onActivate(r.code);
-              }
-            };
-            return (
-              <div
-                key={r.code}
-                role="button"
-                tabIndex={0}
-                aria-label={`${r.name} ${r.code} 호가창 열기`}
-                onClick={() => onActivate(r.code)}
-                onKeyDown={onKeyDown}
-                className={`grid ${COLS} items-center gap-2 px-sm h-orderbook-row border-b text-sm text-fg cursor-pointer outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover`}
-              >
-                <span className="font-mono tabular-nums text-fg-dim">{r.code}</span>
-                <span className="truncate">{r.name}</span>
-                <span className="font-mono text-xs text-fg-dim">{r.market}</span>
-                <span className="font-mono tabular-nums text-right">
-                  {r.price.toLocaleString('ko-KR')}
-                </span>
-                <span className="font-mono tabular-nums text-right">
-                  <ChangeCell pct={r.change_pct} />
-                </span>
-                <span className="font-mono tabular-nums text-right text-fg-dim">
-                  {toEok(r.trade_value_won)}
-                </span>
-                <span className="flex flex-wrap items-center gap-1">
-                  <BreakoutBadge breakout={r.new_high} label="신고가" filter={filters.newHigh} />
-                  <BreakoutBadge
-                    breakout={r.new_high_vol}
-                    label="신고거래량"
-                    filter={filters.newHighVol}
-                  />
-                </span>
-                <span className="flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    aria-label="관심종목 추가"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onWatch(r.code);
-                    }}
-                    className="bg-transparent border-none text-fg-dimmer hover:text-fg cursor-pointer leading-none p-0"
-                  >
-                    ♥
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="캡처 큐 추가"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCapture(r.code);
-                    }}
-                    className="bg-transparent border-none text-fg-dimmer hover:text-fg cursor-pointer leading-none p-0"
-                  >
-                    📥
-                  </button>
-                </span>
-              </div>
-            );
-          })
-        )}
+        ) : rows.map((r) => {
+          const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(r.code); }
+          };
+          return (
+            <div key={r.code} role="button" tabIndex={0} aria-label={`${r.name} ${r.code} 호가창 열기`}
+              onClick={() => onActivate(r.code)} onKeyDown={onKeyDown}
+              className={`grid ${COLS} items-center gap-2 px-sm h-orderbook-row border-b text-sm text-fg cursor-pointer outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover`}>
+              <span className="font-mono tabular-nums text-fg-dim">{r.code}</span>
+              <span className="truncate">{r.name}</span>
+              <span className="font-mono text-xs text-fg-dim">{r.market}</span>
+              <span className="font-mono tabular-nums text-right">{r.price.toLocaleString('ko-KR')}</span>
+              <span className="font-mono tabular-nums text-right"><ChangeCell pct={r.change_pct} /></span>
+              <span className="font-mono tabular-nums text-right text-fg-dim">{toEok(r.trade_value_won)}</span>
+              <span className="flex items-center justify-end gap-2">
+                <button type="button" aria-label="관심종목 추가" onClick={(e) => { e.stopPropagation(); onWatch(r.code); }}
+                  className="bg-transparent border-none text-fg-dimmer hover:text-fg cursor-pointer leading-none p-0">♥</button>
+                <button type="button" aria-label="캡처 큐 추가" onClick={(e) => { e.stopPropagation(); onCapture(r.code); }}
+                  className="bg-transparent border-none text-fg-dimmer hover:text-fg cursor-pointer leading-none p-0">📥</button>
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,5 +1,4 @@
 import { useMutation } from '@tanstack/react-query';
-import { runScreener, type ScreenerFilters } from '../api/screener';
+import { runScan, type ScanRequest } from '../api/screener';
 
-export const useScreener = () =>
-  useMutation({ mutationFn: (f: ScreenerFilters) => runScreener(f) });
+export const useScreener = () => useMutation({ mutationFn: (b: ScanRequest) => runScan(b) });
