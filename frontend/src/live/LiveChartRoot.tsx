@@ -502,7 +502,9 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // calendar timeframes (D/W/M) don't have backing parquet on /live.
   // rAF-coalesce to one update per frame (matches ChartStage's pattern).
   useEffect(() => {
-    if (!chart || !isMinuteTimeframe(timeframe)) {
+    // Publish cursor on ALL timeframes (Pane Legend reads it on D too). Spot-mode
+    // entry stays minute-only — gated on the LiveSidebar consumer side (ADR-0044).
+    if (!chart) {
       useLiveCursorStore.getState().clearCursor();
       return;
     }

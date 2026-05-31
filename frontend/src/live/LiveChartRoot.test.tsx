@@ -847,7 +847,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(1);
   });
 
-  it('does NOT subscribe on calendar timeframe (D/W/M)', () => {
+  it('subscribes on calendar timeframe too (publishes cursor for Pane Legend; spot stays minute-only in LiveSidebar)', () => {
     render(
       <LiveChartRoot
         code="005930"
@@ -859,7 +859,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
       { wrapper },
     );
     const chart = vi.mocked(createChartEx).mock.results[0].value;
-    expect(chart.subscribeCrosshairMove).not.toHaveBeenCalled();
+    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(1);
   });
 
   it('crosshair move → setCursor; crosshair leave → clearCursor', async () => {

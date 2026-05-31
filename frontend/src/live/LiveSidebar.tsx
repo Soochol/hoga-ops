@@ -16,7 +16,7 @@ import {
   useLiveOrderbookAtCursor,
   useLiveBrokersAtCursor,
 } from '../api/useLiveCursor';
-import type { MinuteTimeframe } from '../state/livePage';
+import type { MinuteTimeframe, LiveTimeframe } from '../state/livePage';
 import { isMinuteTimeframe } from '../state/livePage';
 
 interface Props {
@@ -45,8 +45,11 @@ interface Props {
  */
 export function LiveSidebar({ code, live }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
-  const isSpot = cursorMs !== null;
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
+  // Spot mode is minute-only (ADR-0044): D/W/M have no per-cursor parquet. The
+  // chart still publishes cursorMs on D for the Pane Legend, so gate spot entry
+  // on the timeframe here — NOT on cursorMs alone.
+  const isSpot = cursorMs !== null && isMinuteTimeframe(timeframe);
 
   // Latest-mode data flows through `live` — LivePage owns the single
   // useLiveSeries call site. useSpot hooks in spot mode sit dormant when
@@ -74,7 +77,7 @@ export function LiveSidebar({ code, live }: Props) {
   const brokerSeriesForCard = isSpot
     ? spotBrokers
     : (broker.length === 0 ? undefined : latestBrokerSeries);
-  const brokerCursorMs = cursorMs ?? latestBrokerTs;
+  const brokerCursorMs = isSpot ? (cursorMs ?? latestBrokerTs) : latestBrokerTs;
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook
   // has no snapshot yet but backend knows when the first row arrives.
@@ -91,7 +94,7 @@ export function LiveSidebar({ code, live }: Props) {
         background: 'var(--bg-card)',
       }}
     >
-      <SidebarHeader cursorMs={cursorMs} latestOrderbookTs={latestOrderbook?.ts_ms ?? null} />
+      <SidebarHeader cursorMs={cursorMs} latestOrderbookTs={latestOrderbook?.ts_ms ?? null} timeframe={timeframe} />
       <div style={{ flex: 1, overflow: 'auto' }}>
         <CursorSidebar
           orderbook={
@@ -125,14 +128,16 @@ export function LiveSidebar({ code, live }: Props) {
 function SidebarHeader({
   cursorMs,
   latestOrderbookTs,
+  timeframe,
 }: {
   cursorMs: number | null;
   latestOrderbookTs: number | null;
+  timeframe: LiveTimeframe;
 }) {
   // Design review B2: keep the timestamp pinned right in BOTH modes so it
   // doesn't jump columns on mouse leave/enter. Left slot carries the mode
   // label only. C4: 한글 카피로 "과거 시점" 사용 (DESIGN.md Copy Tone).
-  const isSpot = cursorMs !== null;
+  const isSpot = cursorMs !== null && isMinuteTimeframe(timeframe);
   const rightTs = isSpot ? cursorMs : latestOrderbookTs;
   return (
     <div
