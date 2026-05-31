@@ -44,10 +44,8 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings }: Props) {
         data-testid="live-indicators-button"
         onClick={onOpenIndicators}
         aria-label="보조지표"
-        className="ml-1 inline-flex items-center rounded hover:opacity-90 transition-opacity"
+        className="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded hover:opacity-90 transition-opacity"
         style={{
-          gap: '4px',
-          padding: '4px 10px',
           background: 'var(--bg-input)',
           color: 'var(--fg-dim)',
           border: '1px solid var(--border)',
@@ -65,10 +63,8 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings }: Props) {
         data-testid="live-settings-button"
         onClick={onOpenSettings}
         aria-label="설정"
-        className="inline-flex items-center rounded hover:opacity-90 transition-opacity"
+        className="inline-flex items-center gap-1 px-2 py-1 rounded hover:opacity-90 transition-opacity"
         style={{
-          gap: '4px',
-          padding: '4px 10px',
           background: 'var(--bg-input)',
           color: 'var(--fg-dim)',
           border: '1px solid var(--border)',
