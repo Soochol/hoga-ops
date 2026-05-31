@@ -16,33 +16,42 @@ def _app(tmp_path):
     app = FastAPI(); app.include_router(build_router(data_dir=tmp_path)); return app
 
 
-def test_scan_ok(tmp_path):
-    c = TestClient(_app(tmp_path))
-    r = c.get("/api/screener", params={"min_trade_value_eok": 0})
-    assert r.status_code == 200 and r.json()["status"] == "ok"
-    assert r.json()["rows"][0]["code"] == "000001"
-
-
-def test_not_seeded(tmp_path):
+def test_scan_post_not_seeded(tmp_path):
+    # bare data_dir: no screener/status.json → not_seeded
     app = FastAPI(); app.include_router(build_router(data_dir=tmp_path))
-    r = TestClient(app).get("/api/screener")
-    assert r.json()["status"] == "not_seeded" and r.json()["rows"] == []
+    resp = TestClient(app).post("/api/screener/scan", json={"conditions": [], "universe": {}})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "not_seeded" and body["rows"] == []
 
 
-def test_filter_pair_required(tmp_path):
-    r = TestClient(_app(tmp_path)).get("/api/screener", params={"nh_lookback": 200})
-    assert r.status_code == 422
+def test_scan_post_ok_shape(tmp_path):
+    c = TestClient(_app(tmp_path))
+    resp = c.post("/api/screener/scan", json={
+        "conditions": [{"id": "a", "type": "trade_value", "params": {"min_eok": 0}}],
+        "universe": {"markets": ["KOSPI"]}, "limit": 10})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok" and "warnings" in body
+    assert body["rows"][0]["code"] == "000001"
+    assert all(set(r) >= {"code", "name", "market", "price", "trade_value_won", "change_pct"} for r in body["rows"])
+    assert all("matches" not in r and "new_high" not in r for r in body["rows"])
 
 
-def test_invalid_market_422(tmp_path):
-    r = TestClient(_app(tmp_path)).get("/api/screener", params={"markets": "FOO"})
-    assert r.status_code == 422
+def test_scan_post_invalid_market_422(tmp_path):
+    # invalid market literal in the universe body → Pydantic 422
+    c = TestClient(_app(tmp_path))
+    resp = c.post("/api/screener/scan", json={"conditions": [], "universe": {"markets": ["FOO"]}})
+    assert resp.status_code == 422
 
 
-def test_lookback_zero_422(tmp_path):
-    r = TestClient(_app(tmp_path)).get("/api/screener",
-                                       params={"nh_lookback": 0, "nh_period": 5})
-    assert r.status_code == 422
+def test_scan_post_lookback_zero_422(tmp_path):
+    # lookback below ge=1 in a new_high leaf → Pydantic 422
+    c = TestClient(_app(tmp_path))
+    resp = c.post("/api/screener/scan", json={
+        "conditions": [{"id": "a", "type": "new_high", "params": {"lookback": 0, "period": 5}}],
+        "universe": {}})
+    assert resp.status_code == 422
 
 
 def test_status_days_behind_present(tmp_path):
