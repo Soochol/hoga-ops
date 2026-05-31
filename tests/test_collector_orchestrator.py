@@ -9,10 +9,13 @@ import pytest
 
 from hoga.collector import orchestrator as orch
 from hoga.collector.orchestrator import (
+    PAGE_GLOB,
     CancelToken,
     CaptureCancelled,
     collect_stock_date,
+    page_filename,
     page_sort_key,
+    raw_pages,
 )
 
 # Magic constants used across tests.
@@ -235,6 +238,47 @@ def test_page_sort_key_numeric_across_digit_widths(tmp_path: Path) -> None:
     # Sanity: plain lexical sort would NOT match (proves the test is meaningful).
     lexical = [page_sort_key(p) for p in sorted(raw.glob("first_*.tsv"))]
     assert lexical != indices
+
+
+def test_page_glob_matches_only_first_pages(tmp_path: Path) -> None:
+    # PAGE_GLOB is the single owner of the on-disk page filename pattern.
+    (tmp_path / "first_00001.tsv").touch()
+    (tmp_path / "info.tsv").touch()
+    (tmp_path / "chart.tsv").touch()
+    (tmp_path / "_progress.json").touch()
+    matched = sorted(p.name for p in tmp_path.glob(PAGE_GLOB))
+    assert matched == ["first_00001.tsv"]
+
+
+def test_page_filename_zero_pads_to_five_digits() -> None:
+    assert page_filename(1) == "first_00001.tsv"
+    assert page_filename(997) == "first_00997.tsv"
+    assert page_filename(1500) == "first_01500.tsv"
+    # Beyond the pad width it does not truncate — page_sort_key still recovers it.
+    assert page_filename(123456) == "first_123456.tsv"
+
+
+def test_raw_pages_missing_dir_returns_empty(tmp_path: Path) -> None:
+    assert raw_pages(tmp_path / "does_not_exist") == []
+
+
+def test_raw_pages_ignores_non_page_files(tmp_path: Path) -> None:
+    (tmp_path / "first_00001.tsv").touch()
+    (tmp_path / "chart.tsv").touch()
+    (tmp_path / "info.tsv").touch()
+    assert [p.name for p in raw_pages(tmp_path)] == ["first_00001.tsv"]
+
+
+def test_page_filename_raw_pages_write_read_roundtrip(tmp_path: Path) -> None:
+    # The write side (page_filename) and the read side (raw_pages) are one
+    # contract: files created in scrambled index order — crossing the
+    # digit-width boundary that broke the 005930/20260520 capture — must be
+    # enumerated back in ascending page-index order.
+    indices = [1500, 1, 1000, 9, 997, 100, 10]
+    for idx in indices:
+        (tmp_path / page_filename(idx)).write_text(f"page-{idx}\n", encoding="utf-8")
+    recovered = [page_sort_key(p) for p in raw_pages(tmp_path)]
+    assert recovered == sorted(indices)
 
 
 def test_profile_jsonl_not_created_when_env_unset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
