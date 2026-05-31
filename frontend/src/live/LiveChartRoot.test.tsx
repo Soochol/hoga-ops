@@ -844,7 +844,11 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
       { wrapper },
     );
     const chart = vi.mocked(createChartEx).mock.results[0].value;
-    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(1);
+    // Two subscribers: LiveChartRoot's own cursor-publish effect + the
+    // PaneLegendOverlay value reader (it needs param.seriesData, which the
+    // cursor store doesn't carry). A count of 3 would mean a leaked/duplicate
+    // subscription.
+    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(2);
   });
 
   it('subscribes on calendar timeframe too (publishes cursor for Pane Legend; spot stays minute-only in LiveSidebar)', () => {
@@ -859,7 +863,11 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
       { wrapper },
     );
     const chart = vi.mocked(createChartEx).mock.results[0].value;
-    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(1);
+    // Two subscribers: LiveChartRoot's own cursor-publish effect + the
+    // PaneLegendOverlay value reader (it needs param.seriesData, which the
+    // cursor store doesn't carry). A count of 3 would mean a leaked/duplicate
+    // subscription.
+    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(2);
   });
 
   it('crosshair move → setCursor; crosshair leave → clearCursor', async () => {
@@ -874,19 +882,23 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
       { wrapper },
     );
     const chart = vi.mocked(createChartEx).mock.results[0].value;
-    const handler = chart.subscribeCrosshairMove.mock.calls[0][0] as (p: {
-      time?: unknown;
-      point?: { x: number } | null;
-    }) => void;
+    // Both LiveChartRoot's cursor-publish handler and PaneLegendOverlay's value
+    // reader subscribe; the real chart dispatches each crosshair event to ALL
+    // subscribers, so fan the synthetic event out to every registered handler
+    // (order-independent — only LiveChartRoot's writes the cursor store).
+    const fire = (p: { time?: unknown; point?: { x: number } | null }) =>
+      chart.subscribeCrosshairMove.mock.calls.forEach(
+        ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h(p),
+      );
     // Virtual second 0 → axis.toReal(0) = session_open_ms (virtualMs <= 0 clamps
     // to segments[0].sessionOpenMs per virtualAxis.ts:185).
     const SESSION_OPEN = DEFAULT_BUNDLE.segments[0].session_open_ms;
-    act(() => handler({ time: 0, point: { x: 1 } }));
+    act(() => fire({ time: 0, point: { x: 1 } }));
     // rAF coalescing — flush one frame.
     await act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
     expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
 
-    act(() => handler({ time: undefined, point: null }));
+    act(() => fire({ time: undefined, point: null }));
     expect(useLiveCursorStore.getState().cursorMs).toBeNull();
   });
 

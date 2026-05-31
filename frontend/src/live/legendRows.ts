@@ -113,8 +113,13 @@ export function readSeriesValue(
     const atCursor = pointValue(seriesData.get(series));
     if (atCursor !== null) return atCursor;
   }
-  const data = series.data();
-  return pointValue(data.length > 0 ? data[data.length - 1] : undefined);
+  // `data()` is absent on a torn-down or stubbed series — degrade to null
+  // ("—") rather than throwing inside a render frame.
+  const dataFn = (series as { data?: () => readonly unknown[] }).data;
+  if (typeof dataFn !== 'function') return null;
+  const data = dataFn.call(series);
+  const last = Array.isArray(data) && data.length > 0 ? data[data.length - 1] : undefined;
+  return pointValue(last);
 }
 
 function pointValue(point: unknown): number | null {
