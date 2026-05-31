@@ -43,3 +43,16 @@ def test_change_pct_gte_latest_day(tmp_path):
     rows = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
     assert [r.code for r in rows] == ["005930"]
     assert rows[0].change_pct == 6.0
+
+
+from hoga.api.models import PriceRangeLeaf, PriceRangeParams
+
+def test_price_range_both_bounds(tmp_path):
+    adj, stk = _seed(tmp_path,
+        rows=[("005930", "2026-05-30", 0, 0, 0, 5000, 1),
+              ("000660", "2026-05-30", 0, 0, 0, 25000, 1),
+              ("035420", "2026-05-30", 0, 0, 0, 80000, 1)],
+        stocks=[("005930","a","KOSPI",False,False),("000660","b","KOSPI",False,False),("035420","c","KOSPI",False,False)])
+    leaf = PriceRangeLeaf(id="p", params=PriceRangeParams(min=10000, max=50000))
+    rows = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
+    assert [r.code for r in rows] == ["000660"]

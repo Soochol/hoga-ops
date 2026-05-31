@@ -55,12 +55,22 @@ def _compile_change_pct(leaf, i):
             [leaf.params.lo, leaf.params.hi])
 
 
+def _compile_price_range(leaf, i):
+    clauses, params = [], []
+    if leaf.params.min is not None:
+        clauses.append("close >= ?"); params.append(leaf.params.min)
+    if leaf.params.max is not None:
+        clauses.append("close <= ?"); params.append(leaf.params.max)
+    return f"cond_{i} AS (SELECT code FROM base WHERE {' AND '.join(clauses)})", params
+
+
 CONDITION_COMPILERS: dict[str, LeafCompiler] = {
     "trade_value": _compile_trade_value,
     "new_high": _breakout("high"),
     "new_high_vol": _breakout("volume"),
     "change_pct": _compile_change_pct,
-    # price_range / ma added in B3/B4
+    "price_range": _compile_price_range,
+    # ma added in B4
 }
 
 
