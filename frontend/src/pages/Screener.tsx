@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation } from '@tanstack/react-query';
 import { PageContainer } from '../layout/PageContainer';
@@ -10,6 +10,7 @@ import { SavedScreenerList } from '../screener/SavedScreenerList';
 import { ResultTable } from '../screener/ResultTable';
 import { StalenessChip } from '../screener/StalenessChip';
 import { triggerScreenerUpdate, type ConditionLeaf, type ScreenerUniverse } from '../api/screener';
+import type { SavedScreener } from '../api/savedScreeners';
 import { makeLeaf } from '../screener/catalog';
 import { addToWatchlist } from '../api/watchlist';
 import { addItems } from '../api/captures';
@@ -19,6 +20,44 @@ export function Screener() {
   const setActiveCode = useLivePageStore((s) => s.setActiveCode);
   const [conditions, setConditions] = useState<ConditionLeaf[]>(() => [makeLeaf('new_high')]);
   const [universe, setUniverse] = useState<ScreenerUniverse>({});
+  // anchorId = the saved screener the builder currently corresponds to (null when
+  // the builder is unsaved or has been edited away from it). dirty = the builder
+  // diverged from that anchor since the last load/save. A boolean FLAG, not a
+  // deep-equal: server↔builder normalization gaps (Pydantic None→null, false→
+  // omitted key) make naive comparison report false "dirty"/"clean". The flag is
+  // biased toward a false "수정됨" (e.g. after a manual revert) over a false
+  // "clean". Under normal single-threaded use it does not show a lying clean
+  // highlight; the one known residual is changing the builder/anchor while a
+  // create/overwrite is still in flight (the edit-during-flight case is closed by
+  // the generation guard below; loading a *different* save mid-flight is not, and
+  // self-corrects on the next edit). Full correctness here would need a second
+  // anchor generation — deliberately not added for that near-zero, self-healing path.
+  const [anchorId, setAnchorId] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  // editGen bumps on every builder edit. beginSave() snapshots it; settleAnchor()
+  // (the save's onSuccess) marks the row clean ONLY if no edit landed while the
+  // save was in flight — otherwise the builder diverged from what was actually
+  // saved and must stay dirty. Refs (read at call time) dodge stale closures. This
+  // guards the common false-clean (an edit landing during a slow save's in-flight
+  // window). It does NOT guard a mid-flight load of a different save — see the
+  // residual noted above; that path self-heals on the next edit.
+  const editGen = useRef(0);
+  const pendingSaveGen = useRef<number | null>(null);
+  // Load routes through the RAW setters + dirty=false. User edits route through
+  // the wrappers below (passed only to ConditionBuilder) + dirty=true. Keeping
+  // these paths separate is what makes "clean on load, dirty on edit" hold.
+  const loadSave = (s: SavedScreener) => { setConditions(s.conditions); setUniverse(s.universe); setAnchorId(s.id); setDirty(false); };
+  const editConditions = (c: ConditionLeaf[]) => { editGen.current += 1; setConditions(c); setDirty(true); };
+  const editUniverse = (u: ScreenerUniverse) => { editGen.current += 1; setUniverse(u); setDirty(true); };
+  const beginSave = () => { pendingSaveGen.current = editGen.current; };
+  const settleAnchor = (id: string | null) => {
+    setAnchorId(id);
+    // Clean only when nothing was edited since the save was dispatched (or when
+    // clearing the anchor). A mutation failure never calls this → dirty is left
+    // as-is, which is correct (the save didn't change, so the builder still differs).
+    if (id === null || pendingSaveGen.current === editGen.current) setDirty(false);
+    pendingSaveGen.current = null;
+  };
 
   const screener = useScreener();
   const { data: status } = useScreenerStatus();
@@ -51,10 +90,10 @@ export function Screener() {
         <StalenessChip status={status} />
       </div>
 
-      <SavedScreenerList current={{ conditions, universe }}
-        onLoad={(s) => { setConditions(s.conditions); setUniverse(s.universe); }} />
+      <SavedScreenerList current={{ conditions, universe }} anchorId={anchorId} dirty={dirty}
+        onLoad={loadSave} onBeginSave={beginSave} onAnchorChange={settleAnchor} />
       <ConditionBuilder conditions={conditions} universe={universe}
-        onConditionsChange={setConditions} onUniverseChange={setUniverse} />
+        onConditionsChange={editConditions} onUniverseChange={editUniverse} />
 
       {notSeeded ? (
         <div className="bg-bg-card border rounded-lg p-md flex flex-col gap-sm text-sm text-fg-dim">

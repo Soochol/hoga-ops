@@ -28,7 +28,29 @@ export interface ApiError extends Error {
 
 async function buildApiError(r: Response, path: string): Promise<ApiError> {
   const body = await r.json().catch(() => ({}));
-  const detail = (body as { detail?: { code?: string; message?: string } })?.detail;
+  const rawDetail = (body as { detail?: unknown })?.detail;
+
+  // FastAPI request-validation errors (422) put `detail` as an ARRAY of
+  // {loc, msg, type}. The object path below only reads detail.message, so
+  // without this branch a 422 surfaces the useless "<status> <path>" while the
+  // real per-field reason sits unused in the body (the screener "조회 실패 →
+  // 422 /api/screener/scan" case). Summarize the msgs instead.
+  if (Array.isArray(rawDetail)) {
+    const reason = rawDetail
+      .map((e) => (e && typeof e === 'object' && 'msg' in e ? String((e as { msg: unknown }).msg) : ''))
+      .filter(Boolean)
+      // Strip Pydantic's "Value error, " prefix ONLY when present — field
+      // constraints (ge/le, min_length, …) emit msgs without it.
+      .map((m) => m.replace(/^Value error,\s*/, ''))
+      .join('; ');
+    const err = new Error(reason || `${r.status} ${path}`) as ApiError;
+    err.code = 'validation_error';
+    err.status = r.status;
+    err.data = body;
+    return err;
+  }
+
+  const detail = rawDetail as { code?: string; message?: string } | undefined;
   const err = new Error(detail?.message ?? `${r.status} ${path}`) as ApiError;
   err.code = detail?.code;
   err.status = r.status;

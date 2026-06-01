@@ -28,7 +28,8 @@ vi.mock('../state/livePage', () => ({
 
 import { Screener } from './Screener';
 import { runScan } from '../api/screener';
-import { listSaves } from '../api/savedScreeners';
+import { listSaves, createSave } from '../api/savedScreeners';
+import type { SavedScreener } from '../api/savedScreeners';
 
 function renderPage() {
   const qc = new QueryClient();
@@ -67,4 +68,38 @@ it('selecting a saved screener loads it without running a scan', async () => {
   fireEvent.click(item);
   // select = load-into-builder only; scan happens only on 조회 click (ADR/spec).
   expect(runScan).not.toHaveBeenCalled();
+});
+
+it('anchors a loaded screener as clean, then marks 수정됨 once the builder is edited (C4)', async () => {
+  // Pins the load-vs-edit setter routing: loading must NOT flip dirty (else the
+  // marker would show immediately, before any edit), and a real edit must.
+  vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [
+    { id: 's1', name: '급등주', conditions: [], universe: {}, created_at_ms: 1, updated_at_ms: 1 }] });
+  renderPage();
+  fireEvent.click(await screen.findByText('급등주'));        // load → anchored, clean
+  expect(screen.queryByText('수정됨')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByLabelText('ETF 제외'));         // edit a global pre-filter
+  expect(await screen.findByText('수정됨')).toBeInTheDocument();
+});
+
+it('does not lie "clean" when the builder is edited while a create is in flight (C4 race)', async () => {
+  // The false-clean the adversarial pass found: on a slow save, an edit landing
+  // mid-flight must keep the freshly-anchored row 수정됨, never reset it to clean.
+  let resolveCreate!: (v: SavedScreener) => void;
+  const created: SavedScreener = { id: 'new1', name: '레이스', conditions: [], universe: {}, created_at_ms: 2, updated_at_ms: 2 };
+  vi.mocked(createSave).mockImplementationOnce(() => new Promise<SavedScreener>((r) => { resolveCreate = r; }));
+  vi.mocked(listSaves).mockResolvedValue({ schema_version: 1, saves: [created] });
+  vi.spyOn(window, 'prompt').mockReturnValue('레이스');
+
+  renderPage();
+  await screen.findByLabelText('ETF 제외');
+  fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));  // onBeginSave snapshots the edit gen
+  fireEvent.click(screen.getByLabelText('ETF 제외'));                   // edit DURING the in-flight create (bumps gen)
+  await waitFor(() => expect(createSave).toHaveBeenCalled());           // mutationFn runs on a microtask
+  resolveCreate(created);                                               // create resolves now
+
+  // The new row anchors but the mid-flight edit must win: 수정됨, not a clean fill.
+  expect(await screen.findByText('수정됨')).toBeInTheDocument();
+  expect(screen.getByText('레이스').closest('[role="button"]')!.className)
+    .not.toContain('bg-[rgba(20,184,166,0.14)]');
 });
