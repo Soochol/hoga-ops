@@ -17,7 +17,7 @@ export function ConfirmModal({ message, confirmLabel, tone, onConfirm, onClose }
   }, [onClose]);
 
   return (
-    <div role="dialog" aria-modal="true" onClick={onClose}
+    <div role="dialog" aria-modal="true" aria-label={confirmLabel} onClick={onClose}
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
       <div onClick={(e) => e.stopPropagation()}
         className="bg-bg-card border border-border-strong rounded-[6px] shadow-[0_8px_24px_rgba(0,0,0,0.4)] w-[360px] max-w-[90vw] flex flex-col">
@@ -28,7 +28,7 @@ export function ConfirmModal({ message, confirmLabel, tone, onConfirm, onClose }
           <button type="button" onClick={onConfirm}
             className="px-3 py-1.5 text-sm rounded font-semibold"
             style={tone === 'destructive'
-              ? { background: 'var(--error)', color: '#fff' }
+              ? { background: 'var(--error)', color: 'var(--fg)' }
               : { background: 'var(--accent)', color: 'var(--accent-fg)' }}>
             {confirmLabel}
           </button>

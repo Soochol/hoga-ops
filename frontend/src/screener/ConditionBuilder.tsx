@@ -23,11 +23,9 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
   // The menu is position:fixed (anchored via getBoundingClientRect) so the
   // card's overflow-auto does not clip it.
   const toggleMenu = () => {
-    setMenuOpen((o) => {
-      const next = !o;
-      if (next && btnRef.current) setAnchorRect(btnRef.current.getBoundingClientRect());
-      return next;
-    });
+    const next = !menuOpen;
+    if (next && btnRef.current) setAnchorRect(btnRef.current.getBoundingClientRect());
+    setMenuOpen(next);
   };
   const add = (t: ConditionType) => { onConditionsChange([...conditions, makeLeaf(t)]); setMenuOpen(false); };
   const replace = (id: string, next: ConditionLeaf) => onConditionsChange(conditions.map((c) => c.id === id ? next : c));
