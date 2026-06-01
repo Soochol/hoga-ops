@@ -30,10 +30,13 @@ describe('ConditionBuilder', () => {
     expect(screen.getAllByText('기간내 신고가')).toHaveLength(2);
   });
 
-  it('toggles a market pre-filter', () => {
+  it('delegates universe editing to the 사전필터 modal (header button → modal → onUniverseChange)', () => {
+    // 인라인 시장 토글이 UniverseFilterModal 로 이동(전역 사전필터 → 센터 모달).
+    // ConditionBuilder 는 헤더 버튼만 두고 onUniverseChange 를 위임한다.
     const onUniverse = vi.fn();
     render(<ConditionBuilder {...base} onConditionsChange={vi.fn()} onUniverseChange={onUniverse} />);
-    fireEvent.click(screen.getByRole('button', { name: 'KOSPI' }));
+    fireEvent.click(screen.getByRole('button', { name: /사전필터/ }));  // 모달 열기 (기본 '시장' pane)
+    fireEvent.click(screen.getByRole('button', { name: 'KOSPI' }));      // 시장 토글
     expect(onUniverse).toHaveBeenCalledWith({ markets: ['KOSPI'] });
   });
 
