@@ -1215,3 +1215,19 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **2. Placeholder 스캔:** 모든 코드 단계에 완전한 코드/명령/기대값 포함. "TBD"·"적절히 처리" 없음.
 
 **3. 타입 일관성:** `activePanel`/`lastPanel`/`RailPanel`(Task 5), `PanelScan`/`scanStatus`/`selectedSavedId`(Task 3·4), `setActivePanel`/`togglePanel(panel)`/`toggleCollapse`(Task 5에서 정의·사용), `ChangeCell` props `{ pct }`(Task 1·4 일치) 모두 정의처와 사용처가 일치.
+
+---
+
+## 구현 중 정정 (review-driven deltas)
+
+실행 중 spec/code 리뷰에서 잡혀 **실제 코드에 반영된** 차이. 위 Task 본문의 코드 블록보다 이 절이 우선한다(계획을 resume/재실행할 경우 아래를 반영할 것).
+
+- **[Task 4 — CRITICAL]** 선택-복구 `useEffect`가 `useSavedScreeners` 로딩 창에서 `savesData === undefined → saves === []`라 `setSelectedSavedId(null)`을 실행, **영속된 비-첫번째 선택을 파괴**(저장 ≥2개일 때)하던 버그. 수정: `const { data: savesData, isSuccess: savesLoaded } = useSavedScreeners();` 로 받고 effect 첫 줄에 `if (!savesLoaded) return;`, deps에 `savesLoaded` 추가. 회귀 테스트 `preserves a persisted non-first selection when saves load` 추가. (커밋 `b4fe9d9`)
+- **[Task 4]** 결과 캡션 `text-[10.5px]` → `text-xs`(밀도 다이얼과 함께 스케일되도록, DESIGN.md 토큰). (`b4fe9d9`)
+- **[Task 4]** `const saves = savesData?.saves ?? []` → `const saves = useMemo(() => savesData?.saves ?? [], [savesData])`(effect deps 안정화, `react-hooks/exhaustive-deps` 경고 해소). 테스트의 불필요한 `as any` 제거(`@typescript-eslint/no-explicit-any` 에러). (`ff00208`)
+- **[Task 4]** 테스트 6건 추가(다중 save 선택 보존, 갱신, 조회 실패, 빈 결과, /live에서 클릭 시 비-내비, 선택 불일치 힌트) → 총 12건.
+- **[Task 5]** 셰브론에 `aria-controls="right-rail-watchlist-panel right-rail-screener-panel"` 추가(두 패널 명시). 미사용 `data-panel` QA seam과 `panel` prop·`RailPanel` import 제거(YAGNI·데드코드). 활성 상태에 `font-medium`(NavItem 일치). `useLiveKeyboard.ts` JSDoc의 Esc 설명을 "open panel"로 갱신. 셰브론 재오픈 테스트 추가. (`137c214`)
+- **[Task 1]** `ChangeCell` 보합(`pct === 0`) 분기 테스트 추가 + `toHaveClass`로 단언 전환. (`37047a9`)
+- **[Task 3]** `lastScan` 미영속 단언을 무조건적으로 강화(`setSelectedSavedId` 선행 후 `persisted.lastScan` undefined 확인). (`2c28ac0`)
+
+전체 검증(최종): `npx tsc -b` clean · `npx vitest run` 143 파일 / 1171 테스트 PASS · 변경 파일 eslint 0 error.

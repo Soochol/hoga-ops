@@ -50,3 +50,31 @@ A small persisted store owns exactly the rail's `panelOpen` boolean. App shell a
 ## Scope boundary
 
 This authorizes one global chrome store for the Right Rail. It does not retroactively move other page layout state into it, nor create a general "layout preferences" service. Additional *global chrome* state may join `rightRail` (it is the App-shell chrome store), but page-scoped layout stays in its page store.
+
+## Update (2026-06-01): Screener panel — `panelOpen` boolean → `activePanel` enum
+
+The rail now holds **two items** — 관심 (Watchlist) and 스크리너 (Screener). The chrome
+state moved from a single `panelOpen: boolean` to `activePanel: 'watchlist' | 'screener' | null`.
+The two panels are **mutually exclusive**: the App grid still has exactly one optional panel
+column, so the track-count == child-count invariant (3 closed, 4 open) is preserved by
+construction — `activePanel` is a single discriminant, so at most one drawer renders. A
+memory-only `lastPanel: RailPanel` drives the chevron's re-open target; the chevron's
+`aria-controls` lists both panel ids.
+
+Legacy persisted state under `rightRail.layout` migrates on read: `{ panelOpen: true }` →
+`'watchlist'`, `{ panelOpen: false }`/absent → `null`. The strict-validation guard now
+whitelists the enum (`'watchlist' | 'screener' | null`); unknown strings (e.g. `'foo'`) and
+non-string/non-boolean values fall back to `null`, so a corrupt value still cannot leak into
+state. Existing users with an open Watchlist Panel are therefore unaffected.
+
+The Screener panel (`ScreenerDrawer`) is **read-only** with respect to saved screeners — it
+lists and selects them and runs a scan; create/rename/overwrite/delete remain on the
+`/screener` page. Scan results live in a separate, in-memory `screenerPanel` store
+(`selectedSavedId` is persisted; `lastScan` is not), so results survive panel close/reopen and
+route changes but are cleared on a full reload (a screener row is a stale-prone price
+snapshot). Chart symbol selection still routes solely through `useLivePageStore.setActiveCode`.
+
+See spec `docs/superpowers/specs/2026-06-01-screener-rail-panel-design.md` and plan
+`docs/superpowers/plans/2026-06-01-screener-rail-panel.md`. The Negative/watch note above now
+reads "two right-edge **panels** (Watchlist, Screener) share one slot" rather than a single
+Watchlist panel.
