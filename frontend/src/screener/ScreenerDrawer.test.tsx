@@ -44,7 +44,7 @@ describe('ScreenerDrawer', () => {
   beforeEach(() => {
     cleanup();
     localStorage.clear();
-    useLivePageStore.setState({ activeCode: null } as any);
+    useLivePageStore.setState({ activeCode: null });
     useScreenerPanelStore.setState({ selectedSavedId: null, lastScan: null });
     vi.restoreAllMocks();
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'ok', last_raw_date: '20260530', days_behind: 0 });

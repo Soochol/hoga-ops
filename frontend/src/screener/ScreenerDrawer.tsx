@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { useMutation } from '@tanstack/react-query';
 import { useLivePageStore } from '../state/livePage';
@@ -29,7 +29,7 @@ export function ScreenerDrawer() {
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
 
   const { data: savesData, isSuccess: savesLoaded } = useSavedScreeners();
-  const saves = savesData?.saves ?? [];
+  const saves = useMemo(() => savesData?.saves ?? [], [savesData]);
   const { data: status } = useScreenerStatus();
   const screener = useScreener();
   const update = useMutation({ mutationFn: () => triggerScreenerUpdate() });
