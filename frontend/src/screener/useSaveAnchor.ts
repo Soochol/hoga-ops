@@ -8,6 +8,7 @@ export interface SaveAnchor {
   anchorId: string | null;
   dirty: boolean;
   loadSave: (s: SavedScreener) => void;
+  newDraft: () => void;
   editConditions: (c: ConditionLeaf[]) => void;
   editUniverse: (u: ScreenerUniverse) => void;
   beginSave: () => void;
@@ -44,6 +45,7 @@ export function useSaveAnchor(): SaveAnchor {
   const pendingSaveGen = useRef<number | null>(null);
 
   const loadSave = (s: SavedScreener) => { setConditions(s.conditions); setUniverse(s.universe); setAnchorId(s.id); setDirty(false); };
+  const newDraft = () => { setConditions([]); setUniverse({}); setAnchorId(null); setDirty(false); };
   const editConditions = (c: ConditionLeaf[]) => { editGen.current += 1; setConditions(c); setDirty(true); };
   const editUniverse = (u: ScreenerUniverse) => { editGen.current += 1; setUniverse(u); setDirty(true); };
   const beginSave = () => { pendingSaveGen.current = editGen.current; };
@@ -56,5 +58,5 @@ export function useSaveAnchor(): SaveAnchor {
     pendingSaveGen.current = null;
   };
 
-  return { conditions, universe, anchorId, dirty, loadSave, editConditions, editUniverse, beginSave, settleAnchor };
+  return { conditions, universe, anchorId, dirty, loadSave, newDraft, editConditions, editUniverse, beginSave, settleAnchor };
 }

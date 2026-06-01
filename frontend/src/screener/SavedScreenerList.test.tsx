@@ -27,7 +27,7 @@ type Props = React.ComponentProps<typeof SavedScreenerList>;
 const mount = (over: Partial<Props> = {}) => {
   const props: Props = {
     current: { conditions: [], universe: {} },
-    anchorId: null, dirty: false, onLoad: vi.fn(), onBeginSave: vi.fn(), onAnchorChange: vi.fn(),
+    anchorId: null, dirty: false, onLoad: vi.fn(), onBeginSave: vi.fn(), onAnchorChange: vi.fn(), onNew: vi.fn(),
     ...over,
   };
   render(<QueryClientProvider client={new QueryClient()}><SavedScreenerList {...props} /></QueryClientProvider>);
@@ -38,6 +38,15 @@ const rowOf = (name: string) => screen.getByText(name).closest('[role="button"]'
 beforeEach(() => vi.clearAllMocks());
 
 describe('SavedScreenerList', () => {
+  it('＋ starts a blank draft (calls onNew) then opens the name editor', async () => {
+    const onNew = vi.fn();
+    mount({ onNew });
+    await screen.findByText('급등주');
+    fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));
+    expect(onNew).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('조건검색 이름')).toBeInTheDocument();
+  });
+
   it('renders saved names and loads (no scan) on click', async () => {
     const { onLoad } = mount();
     fireEvent.click(await screen.findByText('급등주'));

@@ -61,4 +61,15 @@ describe('useSaveAnchor', () => {
     expect(result.current.anchorId).toBeNull();
     expect(result.current.dirty).toBe(false);
   });
+
+  it('newDraft clears conditions/universe/anchor and marks clean', () => {
+    const { result } = renderHook(() => useSaveAnchor());
+    act(() => result.current.loadSave(SAVE));
+    act(() => result.current.editConditions(SAVE.conditions));   // anchored + dirty
+    act(() => result.current.newDraft());
+    expect(result.current.conditions).toEqual([]);
+    expect(result.current.universe).toEqual({});
+    expect(result.current.anchorId).toBeNull();
+    expect(result.current.dirty).toBe(false);
+  });
 });

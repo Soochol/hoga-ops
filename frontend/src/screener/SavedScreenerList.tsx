@@ -43,9 +43,10 @@ function NameRowInput({ initial, onCommit, onCancel }: {
   );
 }
 
-export function SavedScreenerList({ current, anchorId, dirty, onLoad, onBeginSave, onAnchorChange }: {
+export function SavedScreenerList({ current, anchorId, dirty, onLoad, onBeginSave, onAnchorChange, onNew }: {
   current: Current; anchorId: string | null; dirty: boolean;
   onLoad: (s: SavedScreener) => void; onBeginSave: () => void; onAnchorChange: (id: string | null) => void;
+  onNew: () => void;
 }) {
   const { data } = useSavedScreeners();
   const { create, update, remove } = useSaveMutations();
@@ -90,7 +91,7 @@ export function SavedScreenerList({ current, anchorId, dirty, onLoad, onBeginSav
       <div className="flex items-center gap-1.5">
         <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-dimmer">저장한 조건검색</span>
         <button type="button" aria-label="새로 저장"
-          onClick={() => setEditing({ mode: 'create', initial: suggestSaveName(saves.map((s) => s.name)) })}
+          onClick={() => { onNew(); setEditing({ mode: 'create', initial: suggestSaveName(saves.map((s) => s.name)) }); }}
           className="ml-auto w-[22px] h-[22px] rounded-md bg-bg-input border text-fg-dim hover:text-fg">＋</button>
       </div>
       <div className="flex flex-col gap-1">

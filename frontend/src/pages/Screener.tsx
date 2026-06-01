@@ -16,7 +16,7 @@ import { addItems } from '../api/captures';
 export function Screener() {
   const navigate = useNavigate();
   const setActiveCode = useLivePageStore((s) => s.setActiveCode);
-  const { conditions, universe, anchorId, dirty, loadSave, editConditions, editUniverse, beginSave, settleAnchor } = useSaveAnchor();
+  const { conditions, universe, anchorId, dirty, loadSave, newDraft, editConditions, editUniverse, beginSave, settleAnchor } = useSaveAnchor();
 
   const screener = useScreener();
   const { data: status } = useScreenerStatus();
@@ -50,7 +50,7 @@ export function Screener() {
       </div>
 
       <SavedScreenerList current={{ conditions, universe }} anchorId={anchorId} dirty={dirty}
-        onLoad={loadSave} onBeginSave={beginSave} onAnchorChange={settleAnchor} />
+        onLoad={loadSave} onBeginSave={beginSave} onAnchorChange={settleAnchor} onNew={newDraft} />
       <ConditionBuilder conditions={conditions} universe={universe}
         onConditionsChange={editConditions} onUniverseChange={editUniverse} />
 
