@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useLocation } from 'react-router';
 import { getWatchlist } from '../api/watchlist';
+import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
 import { QuoteRow } from '../rightrail/QuoteRow';
@@ -15,9 +15,7 @@ import { TrashIcon } from '../ui/TrashIcon';
  */
 export function WatchlistDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
-  const setActiveCode = useLivePageStore((s) => s.setActiveCode);
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const onPick = useJumpToLive();
   const { data, isLoading, error } = useQuery({
     queryKey: ['watchlist'],
     queryFn: getWatchlist,
@@ -28,11 +26,6 @@ export function WatchlistDrawer() {
   const quoteByCode = useQuoteByCode(codes);
 
   const removeM = useRemoveFromWatchlist();
-
-  const onPick = (code: string) => {
-    setActiveCode(code);
-    if (pathname !== '/live') navigate('/live');
-  };
 
   return (
     <div

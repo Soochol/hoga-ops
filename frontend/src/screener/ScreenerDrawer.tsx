@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router';
 import { useMutation } from '@tanstack/react-query';
+import { useJumpToLive } from '../live/useJumpToLive';
 import { useLivePageStore } from '../state/livePage';
 import { useScreenerPanelStore } from '../state/screenerPanel';
 import { useSavedScreeners } from './useSavedScreeners';
@@ -21,10 +21,8 @@ import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
  * screenerPanel store so they survive close/reopen; cleared on full reload.
  */
 export function ScreenerDrawer() {
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
   const activeCode = useLivePageStore((s) => s.activeCode);
-  const setActiveCode = useLivePageStore((s) => s.setActiveCode);
+  const openLive = useJumpToLive();
   const { isMember, toggle } = useWatchlistMembership();
 
   const selectedSavedId = useScreenerPanelStore((s) => s.selectedSavedId);
@@ -66,11 +64,6 @@ export function ScreenerDrawer() {
           }),
       },
     );
-  };
-
-  const openLive = (code: string) => {
-    setActiveCode(code);
-    if (pathname !== '/live') navigate('/live');
   };
 
   const liveCodes = useMemo(
