@@ -1,4 +1,5 @@
 import type { ScreenerRow } from '../api/screener';
+import { ChangeCell } from './ChangeCell';
 
 interface Props {
   rows: ScreenerRow[];
@@ -7,16 +8,6 @@ interface Props {
   onCapture: (code: string) => void;
 }
 
-/** change_pct cell — sign-based KRX color (DESIGN DECISION): >0 text-price-up
- *  (red), <0 text-price-down (blue), 0 neutral --fg-dim. ▲▼ glyph for
- *  colorblind redundancy. null → "—". NOT western green=up. */
-function ChangeCell({ pct }: { pct: number | null }) {
-  if (pct === null) return <span className="text-fg-dim">—</span>;
-  const dir = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
-  const cls = dir === 'up' ? 'text-price-up' : dir === 'down' ? 'text-price-down' : 'text-fg-dim';
-  const glyph = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '';
-  return <span className={cls}>{glyph}{glyph && ' '}{pct > 0 ? '+' : ''}{pct.toFixed(2)}%</span>;
-}
 const COLS = 'grid-cols-[3.5rem_1fr_4rem_6rem_5rem_6rem_3.2rem]';
 /** Won → 억 (100M), rounded to whole 억 for the table — matches the filter
  *  unit (거래대금 하한 is entered in 억). */
