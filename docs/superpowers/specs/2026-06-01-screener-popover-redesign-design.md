@@ -6,11 +6,11 @@
 
 ## 배경 / 목표
 
-`/screener`에서 네 가지를 바꾼다. 둘은 floating UI(popover/메뉴) 통일 작업, 둘은 한 줄짜리 기본값 변경이다.
+`/screener`에서 네 가지를 바꾼다. 둘은 floating UI(popover/메뉴) 통일 작업, 둘은 빌더 기본 동작 단순화다.
 
 1. **네이티브 브라우저 팝업 → 인앱 popover.** 저장 목록의 네 가지 동작(새로 저장 · 이름변경 · 덮어쓰기 · 삭제)이 지금은 `window.prompt` / `window.confirm`을 쓴다. 이 투박한 OS 팝업을 트리거 버튼에 앵커되는 앱 디자인 popover로 교체한다.
 2. **빌더 기본 조건 제거.** 페이지 로드 시 자동으로 들어가던 `new_high`(신고가) 조건을 없애고 **빈 빌더**로 시작한다.
-3. **조건 세부 항목 펼침 기본값.** 조건 행의 ParamForm이 접힌 채(▸) 시작하던 것을 **펼친 채(▾)** 시작하도록 한다.
+3. **조건 세부 항목 항상 표시.** 조건 행의 접힘/펼침(▾/▸) 토글을 **없애고**, ParamForm을 항상 표시한다.
 4. **조건 추가 메뉴 popover 통일.** `＋ 조건 추가` 드롭다운은 이미 in-app이지만 새 popover와 메커니즘이 다르다(외부클릭 닫기 없음 + 동일 클리핑 리스크). 동일한 닫기 계약 + fixed positioning으로 통일한다.
 
 핵심 제약: 변경 1은 저장 목록의 **mutation 안전 의미론**(아래 §변경1-안전)을 한 바이트도 바꾸지 않는다. popover는 `window.prompt/confirm`의 *반환값을 받던 자리*를 콜백으로 교체할 뿐이다. 변경 4도 동작 보존 — 조건 추가가 하는 일(카탈로그 leaf 1개 추가)은 그대로고 chrome(닫기·위치)만 통일한다.
@@ -115,10 +115,14 @@ popover: { kind: 'create'|'rename'|'overwrite'|'delete'; save?: SavedScreener; a
 - `makeLeaf` import가 [Screener.tsx](frontend/src/pages/Screener.tsx)에서 더는 쓰이지 않으면 제거(이 줄이 유일 사용처임을 확인함). `ConditionBuilder`는 자체적으로 `makeLeaf`를 import하므로 영향 없음.
 - 빈 조건일 때 `조건 추가` 버튼 + 전역 사전필터만 보이고 `모두 충족 · AND` 라벨은 숨는다(기존 `conditions.length > 0` 가드가 처리).
 
-## 변경 3 — 조건 세부 항목 펼침 기본값
+## 변경 3 — 조건 세부 항목 항상 표시
 
-- [ConditionRow.tsx:8](frontend/src/screener/ConditionRow.tsx#L8): `const [open, setOpen] = useState(false)` → `useState(true)`.
-- 로드/추가되는 모든 조건 행이 ParamForm을 펼친 상태(▾)로 마운트. caret aria-label 토글(`접기`/`펼치기`)은 그대로 동작.
+[ConditionRow.tsx](frontend/src/screener/ConditionRow.tsx)에서 접힘/펼침 기능을 **통째로 제거**한다(기본값을 펼침으로 바꾸는 게 아니라 토글 자체를 삭제).
+
+- `open` 상태(`useState`)와 ▾/▸ caret 버튼([ConditionRow.tsx:14-15](frontend/src/screener/ConditionRow.tsx#L14-L15))을 삭제한다.
+- `{open && (...)}` 조건 렌더를 없애고 ParamForm을 **항상 렌더**한다([ConditionRow.tsx:21-25](frontend/src/screener/ConditionRow.tsx#L21-L25)).
+- 제목줄의 라벨 + 요약(`entry.summarize`) + × 제거 버튼은 그대로 유지. 결과적으로 `ConditionRow`는 상태 없는 순수 표시 컴포넌트가 된다.
+- 코드를 추가가 아니라 **삭제**하는 변경이라 더 단순하다. 트레이드오프: 조건이 많으면 칸이 길어져 스크롤이 필요(스크리너는 보통 조건 2~5개라 영향 미미).
 
 ## 변경 4 — 조건 추가 메뉴 popover 통일
 
@@ -156,7 +160,7 @@ popover: { kind: 'create'|'rename'|'overwrite'|'delete'; save?: SavedScreener; a
 | `frontend/src/screener/SavedScreenerList.tsx` | `window.prompt/confirm` 제거 → popover 상태 + 콜백. 안전 의미론 유지 |
 | `frontend/src/screener/ConditionBuilder.tsx` | `조건 추가` 드롭다운을 useDismissablePopover + fixed positioning + 드롭다운 스타일로 통일 |
 | `frontend/src/pages/Screener.tsx` | 기본 조건 시드 제거, 미사용 `makeLeaf` import 정리 |
-| `frontend/src/screener/ConditionRow.tsx` | `open` 기본값 `true` |
+| `frontend/src/screener/ConditionRow.tsx` | 접힘/펼침 토글 제거 — `open` 상태·caret 삭제, ParamForm 항상 렌더 |
 | `frontend/src/screener/SavedScreenerList.test.tsx` | popover 상호작용으로 재작성 |
 | `frontend/src/pages/Screener.test.tsx` | race 테스트의 prompt spy 교체 |
 | `frontend/src/screener/ConditionBuilder.test.tsx` | 변경 시 검증(대개 무변경) |
@@ -166,6 +170,7 @@ popover: { kind: 'create'|'rename'|'overwrite'|'delete'; save?: SavedScreener; a
 - **확인 단계 유지** (사용자 선택): overwrite·delete는 대상명을 명시하는 확인 popover로 교체(즉시 실행 아님). 기존 안전장치 보존.
 - **앵커형 popover 채택** (A안): 사용자가 "popover UI"를 명시 요청. 모달(B)·인라인 편집(C)은 기각.
 - **조건 추가 메뉴 통일 포함** (사용자 선택): 이미 in-app이지만 외부클릭 닫기·클리핑 방지가 없어, 저장목록 popover와 동일 메커니즘(useDismissablePopover + fixed + anchorRect)으로 통일. 모든 floating UI가 한 방식으로 동작.
+- **조건 세부 항목 = 토글 삭제, 항상 표시** (사용자 선택): 기본값 펼침이 아니라 접힘/펼침 기능 자체를 제거. 숨겨진 설정이 없어지고 `ConditionRow`가 상태 없는 컴포넌트로 단순화.
 - **positioning = fixed + anchorRect** (LiveDrawingMenu에서 차용): 저장목록 popover는 **우측정렬·클램프·수직폴백 신규 추가**(좁은 패널 우측 앵커), 조건 추가 메뉴는 **좌측정렬·전체폭**(전체폭 버튼 앵커). `overflow-auto` 클리핑은 두 경우 모두 회피.
 - **delete 문구 = "삭제?" 유지** (확정): 현행 코드·승인 미리보기와 일치.
 - **미리보기 검증**: 디자인 컴패니언으로 실제 토큰 기반 목업을 렌더, 적대적 디자인/스펙/마크업 리뷰 통과 후 사용자 승인.
