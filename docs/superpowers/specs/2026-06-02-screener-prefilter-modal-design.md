@@ -137,12 +137,14 @@ ModalShell title="사전필터"  (width ≈ w-[480px], 토큰 따라 조정)
 - **race 테스트 안무**: 모달 오버레이 ↔ `SavedScreenerList` 버튼 클릭 순서(위 §마이그레이션 주의). 잘못하면 fixed backdrop이 클릭을 가로챔.
 - ~~단일 nav 희소성~~ → 해소: nav 2그룹(시장 / 제외)으로 전환(위 §그릴 결과).
 - **`is_halted` 신선도**: 데이터 스냅샷 노후 가능(이 spec 무관, 별도 추적 권장).
+- **a11y — nav 활성 상태 AT 미노출 (minor, feature-introduced)**: 좌측 nav 행의 "필터 적용됨" 상태가 `data-active`(순수 data 속성) + `aria-hidden` 체크 SVG로만 전달되어, 라이브 `IndicatorPanel`이 `aria-checked`로 주던 보조기술 패리티를 잃었다(WCAG 1.3.1). 단 트리거 버튼의 **열거형 `aria-label`**(예: `사전필터, 2개: KOSPI · ETF 제외`)이 활성 항목을 AT에 이미 전달하므로 기능적 접근성은 보존된다. 최종 리뷰(2026-06-02 다차원 Workflow)에서 minor로 확정. 수정은 nav 접근명을 바꾸면 테스트 쿼리가 흔들려 `aria-describedby`+sr-only 또는 보강이 필요 — 아래 Backlog 참조.
 
 ## Out of Scope (Backlog)
 
 - **지수(index) 필터** (KOSPI200·KRX300 등) — 코퍼스에 구성종목 데이터 없음, 시드·백엔드·`ScreenerUniverse` 확장 필요. 시장(market)과 다른 축(CONTEXT.md "전역 사전필터" _Avoid_ 참조).
 - **신규 "제외" 플래그**(경고종목·관리종목·우선주·스팩 등) — 각기 시드에 새 `is_*` 컬럼 필요.
 - 트리거 버튼에 활성 필터 **요약 칩** 노출 — 현재는 카운트 배지 + `aria-label` 열거로 대체(그릴 #2).
+- **nav 활성 상태 AT 노출** — `aria-describedby`+`sr-only`("적용된 필터 있음")로 접근명을 바꾸지 않고 상태를 보조기술에 전달(위 Risks a11y 항목). `ui/CheckIcon` 공유 추출과 함께 다루면 자연스러움.
 - `ui/CheckIcon` 공유 컴포넌트 추출(현재 로컬 복제).
 - `ScreenerDrawer`(우측 레일) 필터 편집 가능화.
 - `is_halted` 갱신 주기 개선.
