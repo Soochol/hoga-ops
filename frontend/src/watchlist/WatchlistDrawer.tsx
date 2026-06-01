@@ -1,12 +1,15 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useLocation } from 'react-router';
-import { getWatchlist, type WatchlistEntry } from '../api/watchlist';
+import { getWatchlist } from '../api/watchlist';
+import { useQuotes } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
+import { QuoteRow } from '../rightrail/QuoteRow';
 
 /**
- * Read-only Watchlist Panel (CONTEXT.md), surfaced app-wide via the Right Rail
- * (ADR-0052). Promoted from the former /live-only drawer. Clicking a row sets
- * `activeCode` and jumps to /live (when not already there).
+ * Read-only Watchlist Panel (CONTEXT.md), app-wide via the Right Rail (ADR-0052).
+ * 각 행에 KIS 라이브 현재가+등락률 오버레이 (ADR-0056). 클릭 시 activeCode 세팅
+ * + /live 점프.
  */
 export function WatchlistDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
@@ -18,6 +21,13 @@ export function WatchlistDrawer() {
     queryFn: getWatchlist,
     staleTime: 60_000,
   });
+
+  const codes = useMemo(() => data?.entries.map((e) => e.code) ?? [], [data]);
+  const { data: quotesData } = useQuotes(codes);
+  const quoteByCode = useMemo(
+    () => new Map((quotesData?.quotes ?? []).map((q) => [q.code, q])),
+    [quotesData],
+  );
 
   const onPick = (code: string) => {
     setActiveCode(code);
@@ -65,49 +75,23 @@ export function WatchlistDrawer() {
         </div>
       )}
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-        {data?.entries.map((entry) => (
-          <WatchlistRow
-            key={entry.code}
-            entry={entry}
-            active={entry.code === activeCode}
-            onClick={() => onPick(entry.code)}
-          />
-        ))}
+        {data?.entries.map((entry) => {
+          const q = quoteByCode.get(entry.code);
+          return (
+            <QuoteRow
+              key={entry.code}
+              code={entry.code}
+              name={entry.name}
+              price={q?.price ?? null}
+              pct={q?.change_pct ?? null}
+              active={entry.code === activeCode}
+              ariaLabel={`${entry.name} ${entry.code} 차트 열기`}
+              testId={`watchlist-row-${entry.code}`}
+              onClick={() => onPick(entry.code)}
+            />
+          );
+        })}
       </ul>
     </div>
-  );
-}
-
-function WatchlistRow({
-  entry,
-  active,
-  onClick,
-}: {
-  entry: WatchlistEntry;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <li
-      data-testid={`watchlist-row-${entry.code}`}
-      aria-current={active ? 'true' : undefined}
-      onClick={onClick}
-      style={{
-        cursor: 'pointer',
-        padding: 'var(--space-sm) var(--space-md)',
-        background: active ? 'var(--tint-selection)' : 'transparent',
-        borderLeft: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--space-2xs)',
-      }}
-    >
-      <span style={{ fontFamily: 'monospace', color: 'var(--fg-dim)', fontSize: 'var(--text-xs)' }}>
-        {entry.code}
-      </span>
-      <span style={{ color: 'var(--fg)', fontSize: 'var(--text-sm)' }}>
-        {entry.name}
-      </span>
-    </li>
   );
 }
