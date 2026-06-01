@@ -43,6 +43,16 @@ def _compile_trade_value(leaf, i):
     return f"cond_{i} AS (SELECT code FROM base WHERE {_TV} >= ?)", [int(leaf.params.min_eok * _WON_PER_EOK)]
 
 
+def _compile_trade_value_period(leaf, i):
+    # 돌파 아님 — 최근 N거래일 중 하루라도 거래대금이 임계값 도달. wc 가드 없음.
+    n = leaf.params.lookback
+    return (f"cond_{i} AS (SELECT DISTINCT code FROM ("
+            f"SELECT code, {_TV} AS tv, "
+            f"ROW_NUMBER() OVER (PARTITION BY code ORDER BY date DESC) rn FROM adj) t "
+            f"WHERE rn <= {n} AND tv >= ?)",
+            [int(leaf.params.min_eok * _WON_PER_EOK)])
+
+
 def _breakout(col: str) -> LeafCompiler:
     # registry guarantees only new_high/new_high_vol leaves reach here (params is BreakoutParams)
     return lambda leaf, i: (_breakout_cte(f"cond_{i}", col, leaf.params), [])
@@ -86,6 +96,7 @@ def _compile_ma(leaf, i):
 
 CONDITION_COMPILERS: dict[str, LeafCompiler] = {
     "trade_value": _compile_trade_value,
+    "trade_value_period": _compile_trade_value_period,
     "new_high": _breakout("high"),
     "new_high_vol": _breakout("volume"),
     "change_pct": _compile_change_pct,

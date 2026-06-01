@@ -196,3 +196,33 @@ def test_trade_value_uses_ohlc_average_price(tmp_path):
     rows = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
     assert [r.code for r in rows] == ["005930"]
     assert rows[0].trade_value_won == 250_000_000
+
+
+from hoga.api.models import TradeValuePeriodLeaf, TradeValuePeriodParams
+
+def test_trade_value_period_threshold_within_lookback(tmp_path):
+    # 005930: 3억 날이 2거래일 전(lookback 3 안) → 매치.
+    # 000660: 유일한 3억 날이 5거래일 전(lookback 3 밖) → 미스. OHLC 평탄(avg=close).
+    rows = [("005930","2026-05-26",100,100,100,100,1_000_000),
+            ("005930","2026-05-27",100,100,100,100,3_000_000),   # 3억, 2일 전(rn=3)
+            ("005930","2026-05-28",100,100,100,100,1_000_000),
+            ("005930","2026-05-29",100,100,100,100,1_000_000),
+            ("000660","2026-05-25",100,100,100,100,3_000_000),   # 3억, 5일 전(rn=5)
+            ("000660","2026-05-26",100,100,100,100,1_000_000),
+            ("000660","2026-05-27",100,100,100,100,1_000_000),
+            ("000660","2026-05-28",100,100,100,100,1_000_000),
+            ("000660","2026-05-29",100,100,100,100,1_000_000)]
+    adj, stk = _seed(tmp_path, rows=rows,
+        stocks=[("005930","a","KOSPI",False,False),("000660","b","KOSPI",False,False)])
+    leaf = TradeValuePeriodLeaf(id="tp", params=TradeValuePeriodParams(lookback=3, min_eok=3))
+    out = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
+    assert [r.code for r in out] == ["005930"]
+
+def test_trade_value_period_short_history_eligible(tmp_path):
+    # 임계값 가족은 wc 가드 없음 — 상장 2일짜리도 보유일 중 도달하면 매치.
+    rows = [("000111","2026-05-28",100,100,100,100,1_000_000),
+            ("000111","2026-05-29",100,100,100,100,3_000_000)]
+    adj, stk = _seed(tmp_path, rows=rows, stocks=[("000111","a","KOSPI",False,False)])
+    leaf = TradeValuePeriodLeaf(id="tp", params=TradeValuePeriodParams(lookback=60, min_eok=3))
+    out = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
+    assert [r.code for r in out] == ["000111"]

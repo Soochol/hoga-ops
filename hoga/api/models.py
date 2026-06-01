@@ -675,6 +675,10 @@ class ScreenerStatusFile(BaseModel):
 class TradeValueParams(BaseModel):
     min_eok: float = Field(ge=0)                       # 최신일 거래대금 ≥ N억
 
+class TradeValuePeriodParams(BaseModel):                # 최근 N거래일 중 하루라도 거래대금 ≥ min_eok억
+    lookback: int = Field(ge=1)
+    min_eok: float = Field(ge=0)
+
 class BreakoutParams(BaseModel):                       # 신고가/신고거래량 공용 (구 BreakoutFilter)
     lookback: int = Field(ge=1)                        # N: Lookback Window
     period: int = Field(ge=1)                          # M: Record Period
@@ -717,6 +721,11 @@ class TradeValueLeaf(BaseModel):
     id: str
     params: TradeValueParams
 
+class TradeValuePeriodLeaf(BaseModel):
+    type: Literal["trade_value_period"] = "trade_value_period"
+    id: str
+    params: TradeValuePeriodParams
+
 class NewHighLeaf(BaseModel):
     type: Literal["new_high"] = "new_high"
     id: str
@@ -743,7 +752,8 @@ class MaLeaf(BaseModel):
     params: MaParams
 
 ConditionLeaf = Annotated[
-    Union[TradeValueLeaf, NewHighLeaf, NewHighVolLeaf, ChangePctLeaf, PriceRangeLeaf, MaLeaf],
+    Union[TradeValueLeaf, TradeValuePeriodLeaf, NewHighLeaf, NewHighVolLeaf,
+          ChangePctLeaf, PriceRangeLeaf, MaLeaf],
     Field(discriminator="type"),
 ]
 
