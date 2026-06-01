@@ -169,6 +169,14 @@ class DailyCandleFetchResult:
 
 
 @dataclass(frozen=True)
+class KisQuote:
+    """One row of intstock-multprice (현재가 + 등락률) for a Code."""
+    code: str
+    price: int
+    change_pct: float | None
+
+
+@dataclass(frozen=True)
 class KisCredentials:
     app_key: str
     app_secret: str
@@ -819,3 +827,41 @@ class KisClient:
                 t_ms=t_ms,
             ))
         return trades
+
+
+# ---------------------------------------------------------------------------
+# intstock-multprice helpers (FHKST11300006)
+# ---------------------------------------------------------------------------
+
+_MULTI_PRICE_CHUNK = 30  # intstock-multprice: 최대 30종목/콜 (FHKST11300006)
+
+
+def _build_multi_price_params(codes_chunk: list[str]) -> dict[str, str]:
+    """FID_COND_MRKT_DIV_CODE_N / FID_INPUT_ISCD_N (N=1..30) 번호 키 빌드."""
+    params: dict[str, str] = {}
+    for n, c in enumerate(codes_chunk, start=1):
+        params[f"FID_COND_MRKT_DIV_CODE_{n}"] = _STOCK_MRKT_DIV  # "J"
+        params[f"FID_INPUT_ISCD_{n}"] = c
+    return params
+
+
+def _parse_quote(code: str, row: dict) -> KisQuote:
+    """multprice output 한 항목 → KisQuote.
+
+    price = inter2_prpr. change_pct = prdy_ctrt(절대값) 에 prdy_vrss_sign 적용
+    (1·2 상한/상승=양수, 4·5 하한/하락=음수, 3 보합=0). prdy_ctrt 가 빈값이면 None.
+    """
+    raw_price = row.get("inter2_prpr") or "0"
+    price = int(float(raw_price))
+    raw_ctrt = row.get("prdy_ctrt")
+    if raw_ctrt in (None, ""):
+        return KisQuote(code=code, price=price, change_pct=None)
+    mag = abs(float(raw_ctrt))
+    sign = str(row.get("prdy_vrss_sign", ""))
+    if sign in ("4", "5"):
+        pct = -mag
+    elif sign in ("1", "2"):
+        pct = mag
+    else:
+        pct = 0.0 if mag == 0 else float(raw_ctrt)
+    return KisQuote(code=code, price=price, change_pct=pct)
