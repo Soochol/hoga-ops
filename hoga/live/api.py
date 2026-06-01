@@ -158,6 +158,23 @@ def _compute_daily_gaps(
     return gaps
 
 
+class LiveQuote(BaseModel):
+    code: str
+    price: int
+    change_pct: float | None
+
+
+class LiveQuotesResponse(BaseModel):
+    phase: Literal["pre_open", "open"]
+    quotes: list[LiveQuote]
+
+
+def _market_phase(now: datetime) -> Literal["pre_open", "open"]:
+    """장전(09:00 이전) = 등락률 숨김. 09:00 이후 = 표시. 오픈 09:00 은 반장에도
+    동일하므로 경계 하나로 충분 (주말 이른 아침은 잠깐 숨김 — 무해)."""
+    return "pre_open" if now.time() < time(9, 0) else "open"
+
+
 class ControlRequest(BaseModel):
     action: ControlAction
 
@@ -218,6 +235,24 @@ def build_router(
             "session_close_ms": None,
             "is_open": True,
         }
+
+    @router.get("/quotes", response_model=LiveQuotesResponse)
+    async def _get_quotes(codes: str = Query(...)) -> LiveQuotesResponse:
+        phase = _market_phase(datetime.now(_KST))
+        code_list = [c for c in codes.split(",") if _CODE_RE.match(c)]
+        kis = get_kis_client() if get_kis_client is not None else None
+        if kis is None or not code_list:
+            return LiveQuotesResponse(phase=phase, quotes=[])
+        try:
+            quotes = await kis.fetch_multi_price(code_list)
+        except (KisRateLimitError, KisApiError):
+            return LiveQuotesResponse(phase=phase, quotes=[])
+        pre = phase == "pre_open"
+        return LiveQuotesResponse(phase=phase, quotes=[
+            LiveQuote(code=q.code, price=q.price,
+                      change_pct=(None if pre else q.change_pct))
+            for q in quotes
+        ])
 
     cache_instance: PastCandlesCache | None = (
         PastCandlesCache(data_dir=data_dir) if data_dir is not None else None
