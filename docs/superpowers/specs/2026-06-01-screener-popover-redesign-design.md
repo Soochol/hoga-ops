@@ -6,21 +6,22 @@
 
 ## 배경 / 목표
 
-`/screener`에서 세 가지를 바꾼다. 하나는 실질적인 UI 작업, 둘은 한 줄짜리 기본값 변경이다.
+`/screener`에서 네 가지를 바꾼다. 둘은 floating UI(popover/메뉴) 통일 작업, 둘은 한 줄짜리 기본값 변경이다.
 
 1. **네이티브 브라우저 팝업 → 인앱 popover.** 저장 목록의 네 가지 동작(새로 저장 · 이름변경 · 덮어쓰기 · 삭제)이 지금은 `window.prompt` / `window.confirm`을 쓴다. 이 투박한 OS 팝업을 트리거 버튼에 앵커되는 앱 디자인 popover로 교체한다.
 2. **빌더 기본 조건 제거.** 페이지 로드 시 자동으로 들어가던 `new_high`(신고가) 조건을 없애고 **빈 빌더**로 시작한다.
 3. **조건 세부 항목 펼침 기본값.** 조건 행의 ParamForm이 접힌 채(▸) 시작하던 것을 **펼친 채(▾)** 시작하도록 한다.
+4. **조건 추가 메뉴 popover 통일.** `＋ 조건 추가` 드롭다운은 이미 in-app이지만 새 popover와 메커니즘이 다르다(외부클릭 닫기 없음 + 동일 클리핑 리스크). 동일한 닫기 계약 + fixed positioning으로 통일한다.
 
-핵심 제약: 변경 1은 저장 목록의 **mutation 안전 의미론**(아래 §변경1-안전)을 한 바이트도 바꾸지 않는다. popover는 `window.prompt/confirm`의 *반환값을 받던 자리*를 콜백으로 교체할 뿐이다.
+핵심 제약: 변경 1은 저장 목록의 **mutation 안전 의미론**(아래 §변경1-안전)을 한 바이트도 바꾸지 않는다. popover는 `window.prompt/confirm`의 *반환값을 받던 자리*를 콜백으로 교체할 뿐이다. 변경 4도 동작 보존 — 조건 추가가 하는 일(카탈로그 leaf 1개 추가)은 그대로고 chrome(닫기·위치)만 통일한다.
 
 ## 비목표 (YAGNI)
 
 - undo / 실행취소.
 - 저장 이름 중복 검증.
 - 빈 조건일 때 `조회` 버튼 비활성화 (백엔드에 최소-조건 검증이 없어 빈 조건 조회는 422를 내지 않음 — 현행 동작 유지).
-- popover가 열린 채 리스트 스크롤 시 위치를 따라가는 재배치 (스크롤 중 열림은 드물어 수용; 필요 시 후속 보강).
 - 중앙 모달 다이얼로그(백드롭). DESIGN.md의 minimal/Linear 기조에 과하고 코드베이스에 선례 없음.
+- popover가 열린 채 리스트 스크롤 시 위치를 따라가는 재배치 (스크롤 중 열림은 드물어 수용; 필요 시 후속 보강).
 
 ## 변경 1 — 네이티브 팝업을 앵커형 popover로
 
@@ -119,6 +120,16 @@ popover: { kind: 'create'|'rename'|'overwrite'|'delete'; save?: SavedScreener; a
 - [ConditionRow.tsx:8](frontend/src/screener/ConditionRow.tsx#L8): `const [open, setOpen] = useState(false)` → `useState(true)`.
 - 로드/추가되는 모든 조건 행이 ParamForm을 펼친 상태(▾)로 마운트. caret aria-label 토글(`접기`/`펼치기`)은 그대로 동작.
 
+## 변경 4 — 조건 추가 메뉴 popover 통일
+
+`＋ 조건 추가` 메뉴([ConditionBuilder.tsx:26-39](frontend/src/screener/ConditionBuilder.tsx#L26-L39))는 이미 in-app 드롭다운(`<ul role="menu">`, 조건 종류 목록)이라 네이티브 팝업은 아니다. 그러나 새 popover들과 메커니즘이 달라 통일한다.
+
+- **닫기 통일**: 현재는 외부클릭으로 닫히지 않는다(버튼 토글/항목 선택으로만 닫힘). [useDismissablePopover](frontend/src/util/useDismissablePopover.ts)를 적용해 외부 mousedown·Esc로 닫는다. 버튼 + 메뉴를 함께 감싸는 wrapper를 anchor로 두어, 트리거 버튼 클릭은 내부로 취급(토글 정상 동작 — LiveDrawingMenu와 동일 구조).
+- **클리핑 방지**: [ConditionBuilder.tsx:25](frontend/src/screener/ConditionBuilder.tsx#L25)의 루트도 `overflow-auto`다. 현행 `position: absolute`(`z-10`)를 `position: fixed` + 캡처한 `anchorRect`로 바꿔 클리핑을 피한다(저장목록 popover와 동일 메커니즘).
+- **위치(저장목록보다 단순)**: 이 메뉴는 전체폭 트리거 버튼 아래에 꽉 맞춰 뜬다 — `top = anchorRect.bottom + 4`, `left = anchorRect.left`, `width = anchorRect.width`. 좁은 글리프가 아니라 전체폭 버튼에 앵커되므로 저장목록 popover의 우측정렬·클램프는 불필요(실제 LiveDrawingMenu의 단순 좌측정렬에 더 가깝다).
+- **스타일**: 드롭다운 컨벤션(DESIGN.md radius `lg`)에 맞춰 `border-border-strong` + `shadow-lg` + `--radius-lg`로 정렬(현행 `rounded-md` → `rounded-lg`). `role="menu"`/`role="menuitem"` 시맨틱과 카탈로그 항목은 그대로 유지.
+- **공유 여지(선택)**: 저장목록 popover와 이 메뉴가 모두 "열릴 때 `anchorRect` 캡처 + fixed 렌더"를 쓰므로, 작은 공유 훅(예: `useAnchoredRect`)으로 추출할 수 있다. 호출처가 둘뿐이라 추출 여부는 구현 계획에서 판단(YAGNI 기준).
+
 ## 테스트 영향
 
 ### 재작성 (입력 수단만 교체 — 단언은 유지)
@@ -126,11 +137,16 @@ popover: { kind: 'create'|'rename'|'overwrite'|'delete'; save?: SavedScreener; a
 - [SavedScreenerList.test.tsx](frontend/src/screener/SavedScreenerList.test.tsx) — 4개 동작 핸들러(create·rename·overwrite·delete)의 모든 `window.prompt`/`window.confirm` spy(현재 총 7개 `spy()` 호출: prompt 3 + confirm 4)를 제거. 대신 트리거 클릭 → (입력형) popover 입력칸에 타이핑 + `확인`/Enter, (확인형) popover `확인` 버튼 클릭. **mutation 단언은 그대로**: `onBeginSave` 동기 호출, rename이 save 자신 conds 사용, 확인문이 대상명 포함(이제 `confirmSpy` 대신 popover 텍스트에 이름 포함 단언), create/overwrite re-anchor, delete anchor 처리.
 - [Screener.test.tsx](frontend/src/pages/Screener.test.tsx) — create-in-flight race 테스트(L85–105)의 `window.prompt` spy를 popover 입력 구동으로 교체. race 의미론(in-flight 편집 → `수정됨`)은 유지.
 
+### 검증 (대개 무변경)
+
+- [ConditionBuilder.test.tsx](frontend/src/screener/ConditionBuilder.test.tsx) — 기존 3개 테스트는 `role="menu"`/`menuitem`을 그대로 쓰므로 변경 불필요할 가능성이 높다. 단, 새 `useDismissablePopover`의 mousedown 리스너가 "메뉴에서 조건 추가" 테스트(항목 클릭)와 충돌하지 않는지 확인한다(항목은 anchor 내부라 내부 mousedown으로 취급되어 안전할 것). `getBoundingClientRect`가 jsdom에서 0을 반환해도 메뉴 렌더 자체는 영향 없음.
+
 ### 추가
 
 - popover 열림 / Esc · 외부클릭 닫힘(mutation 없음).
 - 빈/공백 이름이면 `확인` 비활성.
 - rename이 현재 이름으로 prefill.
+- 조건 추가 메뉴: 외부클릭 · Esc 로 닫힘.
 
 ## 파일 변경 요약
 
@@ -138,16 +154,19 @@ popover: { kind: 'create'|'rename'|'overwrite'|'delete'; save?: SavedScreener; a
 |---|---|
 | `frontend/src/screener/SavedScreenerActionPopover.tsx` | **신규** — 앵커형 popover(입력/확인 두 몸체) |
 | `frontend/src/screener/SavedScreenerList.tsx` | `window.prompt/confirm` 제거 → popover 상태 + 콜백. 안전 의미론 유지 |
+| `frontend/src/screener/ConditionBuilder.tsx` | `조건 추가` 드롭다운을 useDismissablePopover + fixed positioning + 드롭다운 스타일로 통일 |
 | `frontend/src/pages/Screener.tsx` | 기본 조건 시드 제거, 미사용 `makeLeaf` import 정리 |
 | `frontend/src/screener/ConditionRow.tsx` | `open` 기본값 `true` |
 | `frontend/src/screener/SavedScreenerList.test.tsx` | popover 상호작용으로 재작성 |
 | `frontend/src/pages/Screener.test.tsx` | race 테스트의 prompt spy 교체 |
+| `frontend/src/screener/ConditionBuilder.test.tsx` | 변경 시 검증(대개 무변경) |
 
 ## 결정 로그
 
 - **확인 단계 유지** (사용자 선택): overwrite·delete는 대상명을 명시하는 확인 popover로 교체(즉시 실행 아님). 기존 안전장치 보존.
 - **앵커형 popover 채택** (A안): 사용자가 "popover UI"를 명시 요청. 모달(B)·인라인 편집(C)은 기각.
-- **positioning = fixed + anchorRect** (LiveDrawingMenu에서 차용) **+ 우측정렬·클램프·수직폴백 신규 추가**: `overflow-auto` 클리핑을 피하면서 좁은 패널 우측 앵커를 화면 안에 유지.
+- **조건 추가 메뉴 통일 포함** (사용자 선택): 이미 in-app이지만 외부클릭 닫기·클리핑 방지가 없어, 저장목록 popover와 동일 메커니즘(useDismissablePopover + fixed + anchorRect)으로 통일. 모든 floating UI가 한 방식으로 동작.
+- **positioning = fixed + anchorRect** (LiveDrawingMenu에서 차용): 저장목록 popover는 **우측정렬·클램프·수직폴백 신규 추가**(좁은 패널 우측 앵커), 조건 추가 메뉴는 **좌측정렬·전체폭**(전체폭 버튼 앵커). `overflow-auto` 클리핑은 두 경우 모두 회피.
 - **delete 문구 = "삭제?" 유지** (확정): 현행 코드·승인 미리보기와 일치.
 - **미리보기 검증**: 디자인 컴패니언으로 실제 토큰 기반 목업을 렌더, 적대적 디자인/스펙/마크업 리뷰 통과 후 사용자 승인.
 - **스펙 적대적 검증**: 실제 코드 대비 3렌즈(code-fidelity / consistency-completeness / ambiguity-clarity) 검증으로 18건 반영(positioning 정확성 정정, 포커스 관리·dirty/anchor 후처리·빈이름 라이브 검증 명세화 등).
