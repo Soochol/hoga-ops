@@ -16,7 +16,7 @@ function HarnessWithInput({ onNextCode }: { onNextCode?: () => void }) {
 describe('useLiveKeyboard', () => {
   beforeEach(() => {
     cleanup();
-    useRightRailStore.setState({ panelOpen: false });
+    useRightRailStore.setState({ activePanel: null, lastPanel: 'watchlist' });
   });
 
   it('j triggers onNextCode', () => {
@@ -35,21 +35,21 @@ describe('useLiveKeyboard', () => {
 
   it('w toggles watchlist panel', () => {
     render(<Harness />);
-    expect(useRightRailStore.getState().panelOpen).toBe(false);
+    expect(useRightRailStore.getState().activePanel).toBeNull();
     fireEvent.keyDown(window, { key: 'w' });
-    expect(useRightRailStore.getState().panelOpen).toBe(true);
+    expect(useRightRailStore.getState().activePanel).toBe('watchlist');
     fireEvent.keyDown(window, { key: 'w' });
-    expect(useRightRailStore.getState().panelOpen).toBe(false);
+    expect(useRightRailStore.getState().activePanel).toBeNull();
   });
 
   it('Escape closes panel only when open', () => {
     render(<Harness />);
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(useRightRailStore.getState().panelOpen).toBe(false);
+    expect(useRightRailStore.getState().activePanel).toBeNull();
 
-    useRightRailStore.setState({ panelOpen: true });
+    useRightRailStore.setState({ activePanel: 'watchlist' });
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(useRightRailStore.getState().panelOpen).toBe(false);
+    expect(useRightRailStore.getState().activePanel).toBeNull();
   });
 
   it('ignores shortcuts when focus is in an input', () => {

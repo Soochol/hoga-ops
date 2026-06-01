@@ -4,31 +4,55 @@ import { useRightRailStore } from './rightRail';
 describe('rightRail store', () => {
   beforeEach(() => {
     localStorage.clear();
-    useRightRailStore.setState({ panelOpen: false });
+    useRightRailStore.setState({ activePanel: null, lastPanel: 'watchlist' });
   });
 
-  it('togglePanel flips panelOpen and persists', () => {
-    useRightRailStore.getState().togglePanel();
-    expect(useRightRailStore.getState().panelOpen).toBe(true);
-    expect(JSON.parse(localStorage.getItem('rightRail.layout')!).panelOpen).toBe(true);
-
-    useRightRailStore.getState().togglePanel();
-    expect(useRightRailStore.getState().panelOpen).toBe(false);
-    expect(JSON.parse(localStorage.getItem('rightRail.layout')!).panelOpen).toBe(false);
+  it('togglePanel opens a panel and persists activePanel', () => {
+    useRightRailStore.getState().togglePanel('watchlist');
+    expect(useRightRailStore.getState().activePanel).toBe('watchlist');
+    expect(JSON.parse(localStorage.getItem('rightRail.layout')!).activePanel).toBe('watchlist');
   });
 
-  it('setPanelOpen sets and persists', () => {
-    useRightRailStore.getState().setPanelOpen(true);
-    expect(useRightRailStore.getState().panelOpen).toBe(true);
-    expect(JSON.parse(localStorage.getItem('rightRail.layout')!).panelOpen).toBe(true);
+  it('togglePanel on the active panel closes it (null)', () => {
+    useRightRailStore.getState().togglePanel('watchlist');
+    useRightRailStore.getState().togglePanel('watchlist');
+    expect(useRightRailStore.getState().activePanel).toBeNull();
+    expect(JSON.parse(localStorage.getItem('rightRail.layout')!).activePanel).toBeNull();
   });
 
-  it('hydration ignores non-boolean persisted values (corrupt storage → defaults)', async () => {
-    // The store reads localStorage at module init, so re-import with a fresh
-    // module registry to exercise readStorage() against corrupt data.
-    localStorage.setItem('rightRail.layout', JSON.stringify({ panelOpen: 0 }));
+  it('togglePanel switches between panels (mutually exclusive)', () => {
+    useRightRailStore.getState().togglePanel('watchlist');
+    useRightRailStore.getState().togglePanel('screener');
+    expect(useRightRailStore.getState().activePanel).toBe('screener');
+    expect(useRightRailStore.getState().lastPanel).toBe('screener');
+  });
+
+  it('toggleCollapse closes when open and reopens lastPanel when collapsed', () => {
+    useRightRailStore.getState().togglePanel('screener'); // lastPanel = 'screener'
+    useRightRailStore.getState().toggleCollapse();        // close
+    expect(useRightRailStore.getState().activePanel).toBeNull();
+    useRightRailStore.getState().toggleCollapse();        // reopen lastPanel
+    expect(useRightRailStore.getState().activePanel).toBe('screener');
+  });
+
+  it('migrates legacy { panelOpen: true } to activePanel "watchlist"', async () => {
+    localStorage.setItem('rightRail.layout', JSON.stringify({ panelOpen: true }));
     vi.resetModules();
     const { useRightRailStore: fresh } = await import('./rightRail');
-    expect(fresh.getState().panelOpen).toBe(false);
+    expect(fresh.getState().activePanel).toBe('watchlist');
+  });
+
+  it('migrates legacy { panelOpen: false } to null', async () => {
+    localStorage.setItem('rightRail.layout', JSON.stringify({ panelOpen: false }));
+    vi.resetModules();
+    const { useRightRailStore: fresh } = await import('./rightRail');
+    expect(fresh.getState().activePanel).toBeNull();
+  });
+
+  it('rejects a corrupt activePanel value → default null', async () => {
+    localStorage.setItem('rightRail.layout', JSON.stringify({ activePanel: 'foo' }));
+    vi.resetModules();
+    const { useRightRailStore: fresh } = await import('./rightRail');
+    expect(fresh.getState().activePanel).toBeNull();
   });
 });

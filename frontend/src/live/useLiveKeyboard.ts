@@ -43,12 +43,12 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
           e.preventDefault();
           break;
         case 'w':
-          useRightRailStore.getState().togglePanel();
+          useRightRailStore.getState().togglePanel('watchlist');
           e.preventDefault();
           break;
         case 'Escape':
-          if (useRightRailStore.getState().panelOpen) {
-            useRightRailStore.getState().setPanelOpen(false);
+          if (useRightRailStore.getState().activePanel) {
+            useRightRailStore.getState().setActivePanel(null);
             e.preventDefault();
           }
           break;

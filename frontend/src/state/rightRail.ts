@@ -2,16 +2,24 @@ import { create } from 'zustand';
 
 const STORAGE_KEY = 'rightRail.layout';
 
+export type RailPanel = 'watchlist' | 'screener';
+const VALID_PANELS: readonly RailPanel[] = ['watchlist', 'screener'];
+
 type Persisted = {
-  panelOpen: boolean;
+  activePanel: RailPanel | null;
 };
 
 type Store = Persisted & {
-  togglePanel: () => void;
-  setPanelOpen: (open: boolean) => void;
+  // Which panel the chevron re-opens after a collapse. Memory-only (not
+  // persisted) — after a reload it falls back to the hydrated activePanel or
+  // 'watchlist'. The rail itself is fixed chrome; only the panel shows/hides.
+  lastPanel: RailPanel;
+  setActivePanel: (panel: RailPanel | null) => void;
+  togglePanel: (panel: RailPanel) => void;
+  toggleCollapse: () => void;
 };
 
-const DEFAULTS: Persisted = { panelOpen: false };
+const DEFAULTS: Persisted = { activePanel: null };
 
 function persist(state: Persisted): void {
   try {
@@ -21,36 +29,54 @@ function persist(state: Persisted): void {
   }
 }
 
+// Accept only the new enum shape (whitelist) OR migrate the legacy boolean
+// shape ({ panelOpen: true } → 'watchlist', else → null). A corrupt/hand-edited
+// value must not leak into state (e.g. activePanel: 'foo' or panelOpen: 0).
 function readStorage(): Partial<Persisted> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown> | null;
     if (typeof parsed !== 'object' || parsed === null) return {};
-    // Accept only a real boolean — a corrupt/hand-edited value (e.g. panelOpen: 0)
-    // must not leak a non-boolean into state, where `0 && <Drawer/>` would render
-    // a stray "0" text node and `aria-pressed="1"` would leak to the DOM.
-    const out: Partial<Persisted> = {};
-    if (typeof parsed.panelOpen === 'boolean') out.panelOpen = parsed.panelOpen;
-    return out;
+    if ('activePanel' in parsed) {
+      const v = parsed.activePanel;
+      if (v === null) return { activePanel: null };
+      if (typeof v === 'string' && (VALID_PANELS as readonly string[]).includes(v)) {
+        return { activePanel: v as RailPanel };
+      }
+      return {}; // corrupt → default
+    }
+    if (typeof parsed.panelOpen === 'boolean') {
+      return { activePanel: parsed.panelOpen ? 'watchlist' : null };
+    }
+    return {};
   } catch {
     return {};
   }
 }
 
-// Read at module load (synchronous) so the panel's persisted open/closed state
-// is present before the first route paints — no flash of the default state.
-// The Right Rail itself is fixed chrome (always --rail-w); only the Watchlist
-// Panel shows/hides, so the store owns a single boolean (ADR-0052).
+// Read at module load (synchronous) so the panel's persisted state is present
+// before the first route paints — no flash of the default state (ADR-0052).
+const hydrated = readStorage();
+
 export const useRightRailStore = create<Store>((set, get) => ({
   ...DEFAULTS,
-  ...readStorage(),
+  ...hydrated,
+  lastPanel: hydrated.activePanel ?? 'watchlist',
 
-  togglePanel: () => get().setPanelOpen(!get().panelOpen),
-
-  setPanelOpen: (open) => {
-    const next: Persisted = { panelOpen: open };
-    set(next);
+  setActivePanel: (panel) => {
+    const next: Persisted = { activePanel: panel };
+    // Opening a panel also remembers it as the chevron's re-open target.
+    set(panel ? { ...next, lastPanel: panel } : next);
     persist(next);
+  },
+
+  togglePanel: (panel) => {
+    get().setActivePanel(get().activePanel === panel ? null : panel);
+  },
+
+  toggleCollapse: () => {
+    const { activePanel, lastPanel } = get();
+    get().setActivePanel(activePanel ? null : lastPanel);
   },
 }));
