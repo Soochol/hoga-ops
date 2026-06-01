@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { WatchlistDrawer } from './WatchlistDrawer';
@@ -104,5 +104,17 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('clicking a row trash icon removes it from the watchlist', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
+    const removeSpy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    const trash = within(screen.getByTestId('watchlist-row-005930')).getByRole('button', { name: '삼성전자 관심종목 해제' });
+    fireEvent.click(trash);
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('005930'));
+    expect(useLivePageStore.getState().activeCode).toBeNull();
   });
 });

@@ -5,6 +5,8 @@ import { getWatchlist } from '../api/watchlist';
 import { useQuotes } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
 import { QuoteRow } from '../rightrail/QuoteRow';
+import { useRemoveFromWatchlist } from './useWatchlist';
+import { TrashIcon } from '../ui/TrashIcon';
 
 /**
  * Read-only Watchlist Panel (CONTEXT.md), app-wide via the Right Rail (ADR-0052).
@@ -28,6 +30,8 @@ export function WatchlistDrawer() {
     () => new Map((quotesData?.quotes ?? []).map((q) => [q.code, q])),
     [quotesData],
   );
+
+  const removeM = useRemoveFromWatchlist();
 
   const onPick = (code: string) => {
     setActiveCode(code);
@@ -88,6 +92,17 @@ export function WatchlistDrawer() {
               ariaLabel={`${entry.name} ${entry.code} 차트 열기`}
               testId={`watchlist-row-${entry.code}`}
               onClick={() => onPick(entry.code)}
+              trailingAction={
+                <button
+                  type="button"
+                  aria-label={`${entry.name} 관심종목 해제`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => { e.stopPropagation(); removeM.mutate(entry.code); }}
+                  className="leading-none text-fg-dimmer opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-error focus-visible:text-error transition-[opacity,color] duration-[80ms]"
+                >
+                  <TrashIcon className="w-[1em] h-[1em]" />
+                </button>
+              }
             />
           );
         })}
