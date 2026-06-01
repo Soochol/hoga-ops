@@ -103,3 +103,11 @@ it('does not lie "clean" when the builder is edited while a create is in flight 
   expect(screen.getByText('레이스').closest('[role="button"]')!.className)
     .not.toContain('bg-[rgba(20,184,166,0.14)]');
 });
+
+it('starts with an empty builder (no default 신고가 condition)', async () => {
+  renderPage();
+  // The seed condition used to render a 신고가 row. With an empty builder there
+  // is no condition row and no AND label.
+  expect(screen.queryByText('신고가')).not.toBeInTheDocument();
+  expect(screen.queryByText('모두 충족 · AND')).not.toBeInTheDocument();
+});

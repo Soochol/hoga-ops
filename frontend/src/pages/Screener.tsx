@@ -11,14 +11,13 @@ import { ResultTable } from '../screener/ResultTable';
 import { StalenessChip } from '../screener/StalenessChip';
 import { triggerScreenerUpdate, type ConditionLeaf, type ScreenerUniverse } from '../api/screener';
 import type { SavedScreener } from '../api/savedScreeners';
-import { makeLeaf } from '../screener/catalog';
 import { addToWatchlist } from '../api/watchlist';
 import { addItems } from '../api/captures';
 
 export function Screener() {
   const navigate = useNavigate();
   const setActiveCode = useLivePageStore((s) => s.setActiveCode);
-  const [conditions, setConditions] = useState<ConditionLeaf[]>(() => [makeLeaf('new_high')]);
+  const [conditions, setConditions] = useState<ConditionLeaf[]>(() => []);
   const [universe, setUniverse] = useState<ScreenerUniverse>({});
   // anchorId = the saved screener the builder currently corresponds to (null when
   // the builder is unsaved or has been edited away from it). dirty = the builder
