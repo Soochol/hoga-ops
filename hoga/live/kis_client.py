@@ -742,6 +742,17 @@ class KisClient:
         return DailyCandleFetchResult(candles=all_candles, violations=violations)
 
     # ------------------------------------------------------------------
+    # fetch_multi_price (FHKST11300006, intstock-multprice)
+    # ------------------------------------------------------------------
+
+    async def fetch_multi_price(self, codes: list[str]) -> list[KisQuote]:
+        """관심종목/스크리너 결과 코드들의 현재가+등락률 (intstock-multprice)."""
+        return await _fetch_multi_price(
+            lambda *, path, tr_id, params: self._get(path=path, tr_id=tr_id, params=params),
+            codes,
+        )
+
+    # ------------------------------------------------------------------
     # Task 2.5: fetch_overtime_orderbook (FHPST02300400)
     # ------------------------------------------------------------------
 
@@ -865,3 +876,20 @@ def _parse_quote(code: str, row: dict) -> KisQuote:
     else:
         pct = 0.0 if mag == 0 else float(raw_ctrt)
     return KisQuote(code=code, price=price, change_pct=pct)
+
+
+async def _fetch_multi_price(get, codes: list[str]) -> list["KisQuote"]:
+    """get: async (*, path, tr_id, params)->dict (KisClient._get 와 동일 시그니처).
+    30개씩 청크해 intstock-multprice 호출, output 을 입력 순서로 zip."""
+    out: list[KisQuote] = []
+    for i in range(0, len(codes), _MULTI_PRICE_CHUNK):
+        chunk = codes[i:i + _MULTI_PRICE_CHUNK]
+        body = await get(
+            path="/uapi/domestic-stock/v1/quotations/intstock-multprice",
+            tr_id="FHKST11300006",
+            params=_build_multi_price_params(chunk),
+        )
+        rows = body.get("output") or []
+        for c, row in zip(chunk, rows):
+            out.append(_parse_quote(c, row))
+    return out
