@@ -12,13 +12,19 @@ describe('ChangeCell', () => {
     render(<ChangeCell pct={2.1} />);
     const el = screen.getByText(/▲ \+2\.10%/);
     expect(el).toBeInTheDocument();
-    expect(el.className).toContain('text-price-up');
+    expect(el).toHaveClass('text-price-up');
   });
 
   it('renders a blue down cell with ▼ for negative', () => {
     render(<ChangeCell pct={-1.2} />);
     const el = screen.getByText(/▼ -1\.20%/);
     expect(el).toBeInTheDocument();
-    expect(el.className).toContain('text-price-down');
+    expect(el).toHaveClass('text-price-down');
+  });
+
+  it('renders a neutral flat cell with no glyph for zero', () => {
+    render(<ChangeCell pct={0} />);
+    const el = screen.getByText('0.00%');
+    expect(el).toHaveClass('text-fg-dim');
   });
 });
