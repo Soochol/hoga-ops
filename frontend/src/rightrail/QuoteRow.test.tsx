@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { QuoteRow } from './QuoteRow';
 
 function row(props: Partial<React.ComponentProps<typeof QuoteRow>> = {}) {
@@ -30,6 +30,28 @@ describe('QuoteRow', () => {
 
   it('Enter key triggers onClick (keyboard a11y)', () => {
     const { onClick } = row();
+    fireEvent.keyDown(screen.getByTestId('quote-row-005930'), { key: 'Enter' });
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it('renders no trailing cell when trailingAction is omitted (backward compat)', () => {
+    row();
+    expect(within(screen.getByTestId('quote-row-005930')).queryByRole('button')).toBeNull();
+  });
+
+  it('renders the trailingAction node when provided', () => {
+    row({ trailingAction: <button data-testid="act">x</button> });
+    expect(within(screen.getByTestId('quote-row-005930')).getByTestId('act')).toBeInTheDocument();
+  });
+
+  it('Enter on the trailing action does NOT trigger the row onClick (keyboard isolation)', () => {
+    const { onClick } = row({ trailingAction: <button data-testid="act">x</button> });
+    fireEvent.keyDown(screen.getByTestId('act'), { key: 'Enter' });
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('Enter on the row itself still triggers onClick', () => {
+    const { onClick } = row({ trailingAction: <button data-testid="act">x</button> });
     fireEvent.keyDown(screen.getByTestId('quote-row-005930'), { key: 'Enter' });
     expect(onClick).toHaveBeenCalledOnce();
   });
