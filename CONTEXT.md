@@ -347,6 +347,10 @@ _Avoid_: 일반 개념을 "신고가" 단독으로 (거래량도 포함 — **Br
 Screener 가 제공하는 **빌트인 조건 타입**의 파라미터화된 인스턴스. 카탈로그 9종 — `trade_value`(거래대금), `trade_value_period`(기간내 거래대금), `new_high_today`(신고가/당일), `new_high`(기간내 신고가), `new_high_vol_today`(신고거래량/당일), `new_high_vol`(기간내 신고거래량), `change_pct`(등락률), `price_range`(현재가 범위), `ma`(이동평균). 사용자는 같은 타입을 **중복 추가**할 수 있고(기간내 신고가 200·500 AND 20·60), 전부 **AND** 로 조합한다(v1; OR/그룹은 backlog). 평가 기준은 **수정주가**·**거래일**. 대부분 조건은 **최신 거래일 행**에 대해 평가하지만, **돌파 가족**(신고가/신고거래량)은 **Lookback Window** 내 **Breakout** 이력으로, **`trade_value_period`** 는 최근 N거래일 내 임계값 도달 이력으로 평가한다(둘 다 "당일"=N=1 과 "기간내"=N≥1 두 변형). 백엔드는 조건 하나를 `cond_i` CTE 멤버십(매칭 **Code** 집합)으로 컴파일해 INNER JOIN(=AND)한다. **전역 사전필터**(시장·ETF제외·거래정지제외)는 조건이 아니라 코퍼스를 제한하는 별도 축이다.
 _Avoid_: 시장/ETF/정지 필터를 "조건" 으로 (그건 **전역 사전필터**); "factor"·"지표" 같은 모호어 (— **Condition** + type 키); 라벨 "신고가"/"신고거래량"(=당일, N=1) 과 "기간내 …"(N≥1) 혼동.
 
+**전역 사전필터 (Universe) / 약칭 "사전필터"**:
+Condition 과 별개로 **scan 대상 코퍼스 자체를 좁히는 축** — `ScreenerUniverse{markets, exclude_etf, exclude_halted}`. 백엔드는 `stk` 조인의 WHERE 로 적용한다(조건의 `cond_i` CTE INNER JOIN 과 **다른 경로**). 두 하위 축으로 갈린다 — **시장 선택**(어느 market 소속인가)과 **종목 제외**(`is_*` 불리언 플래그 집합 — ETF·거래정지·향후 경고종목 등, 확장 가능). 각 **SavedScreener** 가 자기 universe 를 함께 영속한다(조건검색마다 다른 사전필터). 약칭 "사전필터"는 동의어 — 별도 우산 개념 아님.
+_Avoid_: **시장(market)** 과 **지수(index)** 혼동 — `KOSPI`/`KOSDAQ` 는 시장(`stk.market`)이지만 `KOSPI200`/`KRX300` 은 지수다(코퍼스에 구성종목 데이터 **없음** → 지수 필터·신규 `is_*` 제외 플래그는 모두 **backlog**, 별도 시드 필요).
+
 **등락률 / 현재가 범위 / 이동평균 (신규 조건 타입)**:
 - **등락률(`change_pct`)** — **최신일** 전일대비 `(close/prev_close-1)*100` 에 `gte`/`lte`/`between` 적용. (기간 내 등락률 아님 — 최신일 1일.)
 - **현재가 범위(`price_range`)** — 최신일 `close` 가 [min,max] 원 안. 최신일은 수정주가 보정계수=1 이라 **실제가와 일치**.

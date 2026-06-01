@@ -43,7 +43,7 @@ intentionally breaks: **없음.**
 
 ## Non-Goals (YAGNI)
 
-- 추가 필터 그룹(재무·수급·테마·섹터) — 좌측 nav는 **"전역 사전필터" 1개만**. 플레이스홀더 행 없음.
+- per-종목 필터(재무·시총·수급)를 사전필터 "그룹"으로 추가 — 그건 **Condition**(빌더 `＋ 조건 추가`)이지 사전필터 아님. 좌측 nav 그룹은 **시장 / 제외 2개**로 한정.
 - 우측 레일 `ScreenerDrawer`를 필터 편집 가능하게(읽기전용 유지).
 - `is_halted` 데이터 신선도 개선(데이터 파이프라인 이슈, 별도).
 - 시장 양쪽(KOSPI+KOSDAQ) 동시 선택을 "제한 없음=0"으로 정규화(아래 §배지 카운트 참조 — 단순 규칙 채택).
@@ -73,27 +73,28 @@ countActiveUniverse(u) =
 
 ### 모달 — `UniverseFilterModal`
 
-props `{ universe, onChange, onClose }`. `ModalShell`(ariaLabel/title **"사전필터"**) 사용. 라이브 보조지표(`IndicatorPanel`)와 동일 골격:
+props `{ universe, onChange, onClose }`. `ModalShell`(ariaLabel/title **"사전필터"**) 사용. 로컬 상태 `selectedGroup: 'market' | 'exclude'`(기본 `'market'`)로 좌측 nav 클릭 시 우측 pane 전환 — 라이브 보조지표(`IndicatorPanel`)와 동일 골격:
 
 ```
 ModalShell title="사전필터"  (width ≈ w-[480px], 토큰 따라 조정)
 └ body: flex (body-split)
-   ├ nav  (w-160, border-r)   필터 그룹
-   │   └ [전역 사전필터]  ← 단일 활성 행 + 활성 체크 표시(count>0이면 accent 채움, 아니면 hollow)
-   └ pane (flex-1)            제목 "전역 사전필터"
-        ├ 시장   [KOSPI][KOSDAQ]   (segmented, on=accent — 기존 마크업 이식)
-        ├ ☐ ETF 제외
-        └ ☐ 거래정지 제외
+   ├ nav (w-160, border-r)   필터 그룹
+   │   ├ [시장]  ← markets 비어있지 않으면 활성 체크(✓)
+   │   └ [제외]  ← exclude_* 하나라도 true 면 활성 체크(✓)
+   └ pane (flex-1)
+        · group='market':  시장  [KOSPI][KOSDAQ]   (segmented, on=accent — 기존 마크업 이식)
+        · group='exclude': ☐ ETF 제외 / ☐ 거래정지 제외
 └ footer: [닫기]
 ```
 
-- **즉시 적용**: 세 컨트롤(시장 토글/ETF/거래정지)은 변경 즉시 `onChange(nextUniverse)` 호출(현행 인라인과 동일, 보조지표 MA 토글과 동일). `닫기`/Esc/배경/✕는 **순수 dismiss** — 적용/취소 버퍼 아님.
-- 좌측 nav 활성 체크: count>0이면 채운 원+체크(accent), 아니면 hollow ring — `IndicatorPanel`의 `CheckIcon` 모양. 작은 로컬 컴포넌트로 복제(라이브 코드 손대지 않음); 공유 `ui/CheckIcon` 추출은 선택(현 spec 범위 밖).
+- **즉시 적용**: 모든 컨트롤(시장 토글/ETF/거래정지)은 변경 즉시 `onChange(nextUniverse)` 호출(현행 인라인·보조지표 MA 토글과 동일). `닫기`/Esc/배경/✕는 **순수 dismiss** — 적용/취소 버퍼 아님.
+- nav 그룹별 활성 체크: 해당 그룹 필드가 활성이면 채운 원+체크(accent), 아니면 hollow ring — `IndicatorPanel`의 `CheckIcon` 모양. 작은 로컬 컴포넌트로 복제(라이브 코드 무변경); 공유 `ui/CheckIcon` 추출은 선택(범위 밖).
 - 시장 토글의 `MARKETS` 상수 + `toggleMarket` 로직은 `ConditionBuilder`에서 이 모달로 **이동**.
+- universe 필드는 그대로 3개(`markets`/`exclude_etf`/`exclude_halted`) — **2그룹은 UI 묶음일 뿐 모델·배지 카운트 불변**.
 
-### 단일 행 nav를 남기는 이유 (기록)
+### 좌측 nav를 2그룹(시장 / 제외)으로 나누는 이유 (그릴 결과)
 
-미리보기에서 "그룹이 1개면 nav가 비어 보인다"는 단점을 명시했고, 사용자가 보고도 옵션 B(센터 모달 + 좌측 nav) + "플레이스홀더 삭제"를 선택했다. **의도된 선택** — 향후 "사전필터" 우산 아래 그룹(재무·수급 등)을 추가할 때 행만 늘리면 되도록 구조를 먼저 잡아두는 것. 우발적 미완성이 아니다.
+초안은 nav 단일행("전역 사전필터")이었으나, 그릴에서 "단일행이면 좌측 nav 존재 근거가 약하다"는 지적이 나왔다. CONTEXT.md 분류상 새 제한은 (a) 또 다른 `is_*` 제외 플래그이거나 (b) Condition 이라, 임의의 "그룹"이 무한정 생기진 않는다. 대신 **전역 사전필터 자체가 두 하위 축**(시장 선택 / 종목 제외)을 갖는다는 점을 nav 구조로 드러낸다. "제외" 축은 향후 항목(경고종목 등)이 늘 수 있어 그룹으로서 실질 근거가 있다. → 2그룹 nav 는 도메인 축을 반영한 것이지 빈 미래 자리표가 아니다. (근거 정리: CONTEXT.md "전역 사전필터" 항목.)
 
 ### `ConditionBuilder` 변경
 
@@ -110,18 +111,19 @@ ModalShell title="사전필터"  (width ≈ w-[480px], 토큰 따라 조정)
 | 배지 없음 | `universe={}` | 배지 미표시, 테두리 기본 |
 | 배지 카운트 | `{markets:['KOSPI'], exclude_etf:true}` | 배지 `2`, accent 테두리 |
 | 양쪽 시장 = 활성 | `{markets:['KOSPI','KOSDAQ']}` | 배지 `1` (단순 규칙) |
-| 열기 | 버튼 클릭 | `role=dialog` 표시, 컨트롤 보임 |
+| 열기 | 버튼 클릭 | `role=dialog`, 기본 '시장' pane(KOSPI/KOSDAQ) 보임 |
+| pane 전환 | nav '제외' 클릭 | 우측이 ETF/거래정지 체크박스로 전환 |
 | 닫기 | Esc / 배경 클릭 / 닫기 / ✕ | `onClose` 호출, dialog 사라짐 |
-| 토글 즉시 적용 | 모달에서 `ETF 제외` 클릭 | `onChange({…, exclude_etf:true})` 즉시 호출 |
-| 시장 토글 | `KOSDAQ` 클릭 | `onChange`에 markets 갱신 |
-| nav 활성 체크 | count>0 vs 0 | 채운 체크 vs hollow |
+| 토글 즉시 적용 | '제외' pane에서 `ETF 제외` 클릭 | `onChange({…, exclude_etf:true})` 즉시 호출 |
+| 시장 토글 | '시장' pane에서 `KOSDAQ` 클릭 | `onChange`에 markets 갱신 |
+| nav 그룹 체크 | markets 활성 / exclude 활성 각각 | 해당 nav 행 채운 체크, 아니면 hollow |
 
 ### 마이그레이션 (`Screener.test.tsx` — 2건)
 
 `ETF 제외` 체크박스가 이제 **모달이 열렸을 때만 DOM에 존재**한다. 즉시-적용 의미가 보존되므로 dirty/race 로직은 그대로고, "모달 열기" 스텝만 추가:
 
-- **L73-83 (dirty 마킹, C4)**: `getByLabelText('ETF 제외')` 앞에 사전필터 버튼 클릭(모달 열기) 추가 → 토글 → `수정됨` 단언 유지.
-- **L85-106 (in-flight create race, C4)**: ① L94의 "페이지 로드" await를 `findByLabelText('ETF 제외')` → 항상 존재하는 요소(예: `findByText('조회')` 또는 사전필터 버튼)로 교체. ② create in-flight 상태(L98 blur 후)에서 **사전필터 모달을 열고** `ETF 제외` 토글(L99). 모달(fixed 오버레이)이 열린 채여도 `수정됨`/행 className 단언은 DOM 조회라 오버레이와 무관하게 통과. **주의**: 모달은 fixed backdrop이라 `SavedScreenerList`의 `새 조건검색` 버튼과 동시 클릭 불가 — create 흐름(L95-98)을 먼저, 모달 열기는 L99 직전에.
+- **L73-83 (dirty 마킹, C4)**: `getByLabelText('ETF 제외')` 앞에 [사전필터 버튼 클릭 → nav '제외' 클릭] 추가 → 토글 → `수정됨` 단언 유지.
+- **L85-106 (in-flight create race, C4)**: ① L94의 "페이지 로드" await를 `findByLabelText('ETF 제외')` → 항상 존재하는 요소(예: `findByText('조회')` 또는 사전필터 버튼)로 교체. ② create in-flight(L98 blur 후) 상태에서 **사전필터 모달을 열고 nav '제외' 선택 후** `ETF 제외` 토글(L99). 모달(fixed 오버레이)이 열린 채여도 `수정됨`/행 className 단언은 DOM 조회라 무관하게 통과. **주의**: 모달 fixed backdrop이 `SavedScreenerList`의 `새 조건검색` 버튼 클릭을 가로채므로 create 흐름(L95-98)을 먼저, 모달 열기는 L99 직전에.
 
 ### Manual verification (`/screener`)
 
@@ -133,12 +135,13 @@ ModalShell title="사전필터"  (width ≈ w-[480px], 토큰 따라 조정)
 ## Risks / Open questions
 
 - **race 테스트 안무**: 모달 오버레이 ↔ `SavedScreenerList` 버튼 클릭 순서(위 §마이그레이션 주의). 잘못하면 fixed backdrop이 클릭을 가로챔.
-- **단일 nav 희소성**: 의도된 선택(위 기록). 추후 그룹 추가 시 자연 해소.
+- ~~단일 nav 희소성~~ → 해소: nav 2그룹(시장 / 제외)으로 전환(위 §그릴 결과).
 - **`is_halted` 신선도**: 데이터 스냅샷 노후 가능(이 spec 무관, 별도 추적 권장).
 
 ## Out of Scope (Backlog)
 
-- 추가 사전필터 그룹(재무·수급·테마/섹터)과 그에 따른 nav 다행화.
+- **지수(index) 필터** (KOSPI200·KRX300 등) — 코퍼스에 구성종목 데이터 없음, 시드·백엔드·`ScreenerUniverse` 확장 필요. 시장(market)과 다른 축(CONTEXT.md "전역 사전필터" _Avoid_ 참조).
+- **신규 "제외" 플래그**(경고종목·관리종목·우선주·스팩 등) — 각기 시드에 새 `is_*` 컬럼 필요.
 - `ui/CheckIcon` 공유 컴포넌트 추출(현재 로컬 복제).
 - `ScreenerDrawer`(우측 레일) 필터 편집 가능화.
 - `is_halted` 갱신 주기 개선.
