@@ -683,6 +683,9 @@ class BreakoutParams(BaseModel):                       # 신고가/신고거래�
     lookback: int = Field(ge=1)                        # N: Lookback Window
     period: int = Field(ge=1)                          # M: Record Period
 
+class PeriodParams(BaseModel):                         # 당일 신고가/신고거래량 — 단일 윈도우
+    period: int = Field(ge=1)
+
 class ChangePctParams(BaseModel):
     op: Literal["gte", "lte", "between"]
     pct: float | None = None                           # gte/lte
@@ -736,6 +739,16 @@ class NewHighVolLeaf(BaseModel):
     id: str
     params: BreakoutParams
 
+class NewHighTodayLeaf(BaseModel):
+    type: Literal["new_high_today"] = "new_high_today"
+    id: str
+    params: PeriodParams
+
+class NewHighVolTodayLeaf(BaseModel):
+    type: Literal["new_high_vol_today"] = "new_high_vol_today"
+    id: str
+    params: PeriodParams
+
 class ChangePctLeaf(BaseModel):
     type: Literal["change_pct"] = "change_pct"
     id: str
@@ -752,8 +765,8 @@ class MaLeaf(BaseModel):
     params: MaParams
 
 ConditionLeaf = Annotated[
-    Union[TradeValueLeaf, TradeValuePeriodLeaf, NewHighLeaf, NewHighVolLeaf,
-          ChangePctLeaf, PriceRangeLeaf, MaLeaf],
+    Union[TradeValueLeaf, TradeValuePeriodLeaf, NewHighTodayLeaf, NewHighLeaf,
+          NewHighVolTodayLeaf, NewHighVolLeaf, ChangePctLeaf, PriceRangeLeaf, MaLeaf],
     Field(discriminator="type"),
 ]
 

@@ -54,8 +54,14 @@ def _compile_trade_value_period(leaf, i):
 
 
 def _breakout(col: str) -> LeafCompiler:
-    # registry guarantees only new_high/new_high_vol leaves reach here (params is BreakoutParams)
+    # registry guarantees only new_high/new_high_vol/new_high_*_today leaves reach _breakout_cte
     return lambda leaf, i: (_breakout_cte(f"cond_{i}", col, leaf.params), [])
+
+
+def _breakout_today(col: str) -> LeafCompiler:
+    # 당일 = Lookback Window N=1. 기존 _breakout_cte 재사용(VERBATIM 준수, SQL 무복제).
+    return lambda leaf, i: (
+        _breakout_cte(f"cond_{i}", col, BreakoutParams(lookback=1, period=leaf.params.period)), [])
 
 
 def _compile_change_pct(leaf, i):
@@ -98,7 +104,9 @@ CONDITION_COMPILERS: dict[str, LeafCompiler] = {
     "trade_value": _compile_trade_value,
     "trade_value_period": _compile_trade_value_period,
     "new_high": _breakout("high"),
+    "new_high_today": _breakout_today("high"),
     "new_high_vol": _breakout("volume"),
+    "new_high_vol_today": _breakout_today("volume"),
     "change_pct": _compile_change_pct,
     "price_range": _compile_price_range,
     "ma": _compile_ma,

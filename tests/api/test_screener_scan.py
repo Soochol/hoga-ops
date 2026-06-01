@@ -226,3 +226,53 @@ def test_trade_value_period_short_history_eligible(tmp_path):
     leaf = TradeValuePeriodLeaf(id="tp", params=TradeValuePeriodParams(lookback=60, min_eok=3))
     out = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
     assert [r.code for r in out] == ["000111"]
+
+
+from hoga.api.models import NewHighTodayLeaf, NewHighVolTodayLeaf, PeriodParams
+
+def test_new_high_today_vs_period_divergence(tmp_path):
+    # A(000111): 최신일까지 상승 → 오늘이 5일 신고가.
+    # B(000222): 5일 신고가를 day5에 찍고 이후 하락 → 오늘은 신고가 아님, 그러나
+    #            최근 5일 내 돌파 이력은 있음. 당일/기간내가 갈려야 신규 타입이 진짜 다름.
+    a = [("000111", f"2026-04-{d:02d}", 0, 100+d, 0, 100+d, 1) for d in range(1, 9)]   # 고가 101..108
+    bh = [100, 101, 102, 103, 104, 103, 102, 101]                                       # day5=104 peak
+    b = [("000222", f"2026-04-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(1, 9), bh)]
+    adj, stk = _seed(tmp_path, rows=a + b,
+        stocks=[("000111","a","KOSPI",False,False),("000222","b","KOSPI",False,False)])
+    today = NewHighTodayLeaf(id="t", params=PeriodParams(period=5))
+    period = NewHighLeaf(id="p", params=BreakoutParams(lookback=5, period=5))
+    out_today = screener_scan.run_scan(adj, stk, conditions=[today], universe=ScreenerUniverse())
+    out_period = screener_scan.run_scan(adj, stk, conditions=[period], universe=ScreenerUniverse())
+    assert [r.code for r in out_today] == ["000111"]                       # 당일: 오늘 신고만
+    assert sorted(r.code for r in out_period) == ["000111", "000222"]      # 기간내: 둘 다
+
+def test_new_high_today_wc_window_guard(tmp_path):
+    # period=5: 상장 3일 종목은 wc=5 불충족 → 제외; 6일 상승 종목은 오늘이 신고 → 포함.
+    short = [("000111", f"2026-05-{d:02d}", 0, 100+d, 0, 100+d, 1) for d in range(10, 13)]
+    full = [("000222", f"2026-05-{d:02d}", 0, 100+d, 0, 100+d, 1) for d in range(10, 16)]
+    adj, stk = _seed(tmp_path, rows=short + full,
+        stocks=[("000111","a","KOSPI",False,False),("000222","b","KOSPI",False,False)])
+    leaf = NewHighTodayLeaf(id="g", params=PeriodParams(period=5))
+    out = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
+    assert [r.code for r in out] == ["000222"]
+
+def test_new_high_vol_today_latest_is_volume_peak(tmp_path):
+    # A: 거래량이 오늘 최고; B: 거래량이 과거에 최고, 오늘은 최저.
+    a = [("000111", f"2026-05-{d:02d}", 0, 1, 0, 1, vol) for d, vol in zip(range(10, 14), [10, 20, 30, 40])]
+    b = [("000222", f"2026-05-{d:02d}", 0, 1, 0, 1, vol) for d, vol in zip(range(10, 14), [40, 30, 20, 10])]
+    adj, stk = _seed(tmp_path, rows=a + b,
+        stocks=[("000111","a","KOSPI",False,False),("000222","b","KOSPI",False,False)])
+    leaf = NewHighVolTodayLeaf(id="v", params=PeriodParams(period=4))
+    out = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
+    assert [r.code for r in out] == ["000111"]
+
+def test_new_high_today_equals_breakout_lookback1(tmp_path):
+    # 동치 보증: new_high_today(P) == new_high(lookback=1, period=P).
+    hs = [100, 105, 103, 108, 107, 110, 109, 112]
+    rows = [("000111", f"2026-05-{d:02d}", 0, h, 0, h, 1) for d, h in zip(range(10, 18), hs)]
+    adj, stk = _seed(tmp_path, rows=rows, stocks=[("000111","a","KOSPI",False,False)])
+    today = screener_scan.run_scan(adj, stk,
+        conditions=[NewHighTodayLeaf(id="t", params=PeriodParams(period=5))], universe=ScreenerUniverse())
+    bk1 = screener_scan.run_scan(adj, stk,
+        conditions=[NewHighLeaf(id="b", params=BreakoutParams(lookback=1, period=5))], universe=ScreenerUniverse())
+    assert [r.code for r in today] == [r.code for r in bk1]
