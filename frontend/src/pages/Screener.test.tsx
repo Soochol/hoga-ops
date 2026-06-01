@@ -92,7 +92,7 @@ it('does not lie "clean" when the builder is edited while a create is in flight 
 
   renderPage();
   await screen.findByLabelText('ETF 제외');
-  fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));  // open inline editor
+  fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));  // open inline editor
   const input = screen.getByLabelText('조건검색 이름');
   fireEvent.change(input, { target: { value: '레이스' } });
   fireEvent.blur(input);                                               // commit → onBeginSave + create.mutate

@@ -34,7 +34,7 @@ describe('SavedScreenerList', () => {
     const onNewDraft = vi.fn();
     mount({ onNewDraft });
     await screen.findByText('급등주');
-    fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));
     expect(onNewDraft).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText('조건검색 이름')).toBeInTheDocument();
   });
@@ -48,7 +48,7 @@ describe('SavedScreenerList', () => {
   it('fires onSaveAsNew via inline edit (＋ → type → blur)', async () => {
     const { onSaveAsNew } = mount();
     await screen.findByText('급등주');
-    fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));
     const input = screen.getByLabelText('조건검색 이름');
     fireEvent.change(input, { target: { value: '새이름' } });
     fireEvent.blur(input);
@@ -58,7 +58,7 @@ describe('SavedScreenerList', () => {
   it('create with an empty/whitespace name does not fire onSaveAsNew', async () => {
     const { onSaveAsNew } = mount();
     await screen.findByText('급등주');
-    fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));
     const input = screen.getByLabelText('조건검색 이름');
     fireEvent.change(input, { target: { value: '   ' } });
     fireEvent.blur(input);
@@ -68,7 +68,7 @@ describe('SavedScreenerList', () => {
   it('create cancels on Escape (no onSaveAsNew, editor closed)', async () => {
     const { onSaveAsNew } = mount();
     await screen.findByText('급등주');
-    fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));
     const input = screen.getByLabelText('조건검색 이름');
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(onSaveAsNew).not.toHaveBeenCalled();
