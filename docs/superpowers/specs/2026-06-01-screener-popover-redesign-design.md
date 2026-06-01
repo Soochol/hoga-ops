@@ -101,7 +101,7 @@ popover: { kind: 'create'|'rename'|'overwrite'|'delete'; save?: SavedScreener; a
 
 ### 스타일 토큰 (DESIGN.md)
 
-- popover 카드: `background: var(--bg-card)`; `1px solid var(--border-strong)`; `border-radius: 6px` (`--radius-lg`); 그림자 `0 8px 24px rgba(0,0,0,0.4)`; 너비 ~220px; 패딩 `--space-sm`.
+- popover 카드 = **프로젝트 floating-surface 캐논**과 동일(IndicatorPanel·LiveSettingsModal 모달, LiveSymbolSearch·capture/SymbolSearch 드롭다운이 공유; DESIGN.md Combobox 그림자 규격): `background: var(--bg-card)`; `1px solid var(--border-strong)`; `border-radius: 6px` (`--radius-lg`); 그림자 `0 8px 24px rgba(0,0,0,0.4)`; 너비 ~220px; 패딩 `--space-sm`.
 - 입력: `var(--bg-input)` + `var(--border)` + `--radius-lg`, Geist Sans.
 - 버튼:
   - `취소` — 중립(`--bg-input` / `--border` / `--fg-dim`).
@@ -131,7 +131,7 @@ popover: { kind: 'create'|'rename'|'overwrite'|'delete'; save?: SavedScreener; a
 - **닫기 통일**: 현재는 외부클릭으로 닫히지 않는다(버튼 토글/항목 선택으로만 닫힘). [useDismissablePopover](frontend/src/util/useDismissablePopover.ts)를 적용해 외부 mousedown·Esc로 닫는다. 버튼 + 메뉴를 함께 감싸는 wrapper를 anchor로 두어, 트리거 버튼 클릭은 내부로 취급(토글 정상 동작 — LiveDrawingMenu와 동일 구조).
 - **클리핑 방지**: [ConditionBuilder.tsx:25](frontend/src/screener/ConditionBuilder.tsx#L25)의 루트도 `overflow-auto`다. 현행 `position: absolute`(`z-10`)를 `position: fixed` + 캡처한 `anchorRect`로 바꿔 클리핑을 피한다(저장목록 popover와 동일 메커니즘).
 - **위치(저장목록보다 단순)**: 이 메뉴는 전체폭 트리거 버튼 아래에 꽉 맞춰 뜬다 — `top = anchorRect.bottom + 4`, `left = anchorRect.left`, `width = anchorRect.width`. 좁은 글리프가 아니라 전체폭 버튼에 앵커되므로 저장목록 popover의 우측정렬·클램프는 불필요(실제 LiveDrawingMenu의 단순 좌측정렬에 더 가깝다).
-- **스타일**: 드롭다운 컨벤션(DESIGN.md radius `lg`)에 맞춰 `border-border-strong` + `shadow-lg` + `--radius-lg`로 정렬(현행 `rounded-md` → `rounded-lg`). `role="menu"`/`role="menuitem"` 시맨틱과 카탈로그 항목은 그대로 유지.
+- **스타일**: 위 floating-surface 캐논에 맞춘다 — `bg-card` + `border-border-strong` + `--radius-lg`(6px) + 그림자 `0 8px 24px rgba(0,0,0,0.4)`. 즉 현행이 캐논에서 벗어나 있으므로 `bg-bg-subtle`→`bg-card`, `rounded-md`→`rounded-lg`, Tailwind `shadow-lg`→캐논 그림자로 교체한다. `role="menu"`/`role="menuitem"` 시맨틱과 카탈로그 항목은 그대로 유지.
 - **공유 여지(선택)**: 저장목록 popover와 이 메뉴가 모두 "열릴 때 `anchorRect` 캡처 + fixed 렌더"를 쓰므로, 작은 공유 훅(예: `useAnchoredRect`)으로 추출할 수 있다. 호출처가 둘뿐이라 추출 여부는 구현 계획에서 판단(YAGNI 기준).
 
 ## 테스트 영향
@@ -172,6 +172,7 @@ popover: { kind: 'create'|'rename'|'overwrite'|'delete'; save?: SavedScreener; a
 - **조건 추가 메뉴 통일 포함** (사용자 선택): 이미 in-app이지만 외부클릭 닫기·클리핑 방지가 없어, 저장목록 popover와 동일 메커니즘(useDismissablePopover + fixed + anchorRect)으로 통일. 모든 floating UI가 한 방식으로 동작.
 - **조건 세부 항목 = 토글 삭제, 항상 표시** (사용자 선택): 기본값 펼침이 아니라 접힘/펼침 기능 자체를 제거. 숨겨진 설정이 없어지고 `ConditionRow`가 상태 없는 컴포넌트로 단순화.
 - **positioning = fixed + anchorRect** (LiveDrawingMenu에서 차용): 저장목록 popover는 **우측정렬·클램프·수직폴백 신규 추가**(좁은 패널 우측 앵커), 조건 추가 메뉴는 **좌측정렬·전체폭**(전체폭 버튼 앵커). `overflow-auto` 클리핑은 두 경우 모두 회피.
+- **공통 floating-surface 캐논 채택**: 신규 popover와 조건추가 메뉴 모두, 프로젝트 다수 컴포넌트(모달 2 + 검색 드롭다운 2, DESIGN.md Combobox 규격)가 공유하는 `bg-card + border-strong + 6px + 그림자 0 8px 24px`로 정렬한다. 조건추가는 현행이 `bg-subtle`/`rounded-md`/`shadow-lg`로 벗어나 있어 이번에 캐논으로 맞춘다. 기존 LiveDrawingMenu·MAStylePicker도 약간 드리프트(`border`·`rounded`·`shadow-lg`)되어 있으나 이번 범위에서는 건드리지 않는다.
 - **delete 문구 = "삭제?" 유지** (확정): 현행 코드·승인 미리보기와 일치.
 - **미리보기 검증**: 디자인 컴패니언으로 실제 토큰 기반 목업을 렌더, 적대적 디자인/스펙/마크업 리뷰 통과 후 사용자 승인.
 - **스펙 적대적 검증**: 실제 코드 대비 3렌즈(code-fidelity / consistency-completeness / ambiguity-clarity) 검증으로 18건 반영(positioning 정확성 정정, 포커스 관리·dirty/anchor 후처리·빈이름 라이브 검증 명세화 등).
