@@ -40,4 +40,13 @@ describe('RightRail', () => {
     fireEvent.click(chevron);
     expect(useRightRailStore.getState().activePanel).toBeNull();
   });
+
+  it('chevron reopens the last panel after collapsing', () => {
+    useRightRailStore.setState({ activePanel: 'screener', lastPanel: 'screener' });
+    render(<RightRail />);
+    fireEvent.click(screen.getByLabelText('우측 패널 닫기')); // collapse
+    expect(useRightRailStore.getState().activePanel).toBeNull();
+    fireEvent.click(screen.getByLabelText('우측 패널 열기')); // reopen lastPanel
+    expect(useRightRailStore.getState().activePanel).toBe('screener');
+  });
 });

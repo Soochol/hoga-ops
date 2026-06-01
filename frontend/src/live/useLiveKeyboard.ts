@@ -7,7 +7,7 @@ import { useRightRailStore } from '../state/rightRail';
  *   j   — focus next watchlist code (handled via callback for caller wiring)
  *   k   — focus previous watchlist code
  *   w   — toggle watchlist panel
- *   Esc — close watchlist panel if open (do not toggle off otherwise)
+ *   Esc — close the open panel if any (do not toggle off otherwise)
  *
  * Shortcuts are suppressed when the user is typing in an input/textarea or
  * any element with `data-prevent-shortcuts`. This avoids interfering with
