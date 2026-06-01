@@ -38,6 +38,8 @@ function readStorage(): Partial<Persisted> {
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown> | null;
     if (typeof parsed !== 'object' || parsed === null) return {};
+    // Explicit null branch: a stored null (deselected) is valid and must be
+    // accepted before the string check, mirroring rightRail.ts's guard.
     if (parsed.selectedSavedId === null) return { selectedSavedId: null };
     if (typeof parsed.selectedSavedId === 'string') return { selectedSavedId: parsed.selectedSavedId };
     return {};

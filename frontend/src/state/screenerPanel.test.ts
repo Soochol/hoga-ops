@@ -18,10 +18,14 @@ describe('screenerPanel store', () => {
   });
 
   it('setLastScan stores in memory and does NOT persist', () => {
+    // Write selectedSavedId first so storage definitely exists — otherwise a
+    // raw===null short-circuit would pass even if lastScan leaked to storage.
+    useScreenerPanelStore.getState().setSelectedSavedId('s1');
     useScreenerPanelStore.getState().setLastScan(SCAN);
     expect(useScreenerPanelStore.getState().lastScan).toEqual(SCAN);
-    const raw = localStorage.getItem('screenerPanel.v1');
-    expect(raw === null || JSON.parse(raw).lastScan === undefined).toBe(true);
+    const persisted = JSON.parse(localStorage.getItem('screenerPanel.v1')!);
+    expect(persisted.lastScan).toBeUndefined();
+    expect(persisted.selectedSavedId).toBe('s1');
   });
 
   it('clearScan empties lastScan', () => {
