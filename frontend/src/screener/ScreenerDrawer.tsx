@@ -8,7 +8,7 @@ import { useScreener } from './useScreener';
 import { useScreenerStatus } from './useScreenerStatus';
 import { StalenessChip } from './StalenessChip';
 import { QuoteRow } from '../rightrail/QuoteRow';
-import { useQuotes } from '../api/liveQuotes';
+import { useQuoteByCode } from '../api/liveQuotes';
 import { triggerScreenerUpdate } from '../api/screener';
 import { HeartIcon } from '../ui/HeartIcon';
 import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
@@ -77,11 +77,7 @@ export function ScreenerDrawer() {
     () => (lastScan?.rows ?? []).slice(0, 30).map((r) => r.code),
     [lastScan],
   );
-  const { data: quotesData } = useQuotes(liveCodes);
-  const quoteByCode = useMemo(
-    () => new Map((quotesData?.quotes ?? []).map((q) => [q.code, q])),
-    [quotesData],
-  );
+  const quoteByCode = useQuoteByCode(liveCodes);
 
   return (
     <div

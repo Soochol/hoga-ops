@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useLocation } from 'react-router';
 import { getWatchlist } from '../api/watchlist';
-import { useQuotes } from '../api/liveQuotes';
+import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useRemoveFromWatchlist } from './useWatchlist';
@@ -25,11 +25,7 @@ export function WatchlistDrawer() {
   });
 
   const codes = useMemo(() => data?.entries.map((e) => e.code) ?? [], [data]);
-  const { data: quotesData } = useQuotes(codes);
-  const quoteByCode = useMemo(
-    () => new Map((quotesData?.quotes ?? []).map((q) => [q.code, q])),
-    [quotesData],
-  );
+  const quoteByCode = useQuoteByCode(codes);
 
   const removeM = useRemoveFromWatchlist();
 
