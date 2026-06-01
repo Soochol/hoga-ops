@@ -33,4 +33,11 @@ describe('UniverseFilterButton', () => {
     fireEvent.click(closers[closers.length - 1]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
+
+  it('활성 시 accent 테두리, 비활성은 기본 테두리', () => {
+    const { rerender } = render(<UniverseFilterButton universe={{}} onChange={vi.fn()} />);
+    expect(screen.getByRole('button', { name: '사전필터' }).className).toContain('border-border-strong');
+    rerender(<UniverseFilterButton universe={{ markets: ['KOSPI'] }} onChange={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /사전필터/ }).className).toContain('border-accent');
+  });
 });

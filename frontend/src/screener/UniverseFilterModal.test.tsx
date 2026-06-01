@@ -50,4 +50,17 @@ describe('UniverseFilterModal', () => {
     expect(screen.getByRole('button', { name: '제외' })).toHaveAttribute('data-active', 'true');
     expect(screen.getByRole('button', { name: '시장' })).toHaveAttribute('data-active', 'false');
   });
+
+  it('마지막 시장 토글 해제 → markets undefined 로 정규화', () => {
+    const { onChange } = mount({ markets: ['KOSPI'] });
+    fireEvent.click(screen.getByRole('button', { name: 'KOSPI' }));   // 유일한 선택 시장 해제
+    expect(onChange).toHaveBeenCalledWith({ markets: undefined });
+  });
+
+  it('체크된 ETF 제외 해제 → exclude_etf undefined 로 정규화', () => {
+    const { onChange } = mount({ exclude_etf: true });
+    fireEvent.click(screen.getByRole('button', { name: '제외' }));     // 제외 pane
+    fireEvent.click(screen.getByLabelText('ETF 제외'));               // 이미 체크됨 → 해제
+    expect(onChange).toHaveBeenCalledWith({ exclude_etf: undefined });
+  });
 });
