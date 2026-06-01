@@ -1,7 +1,9 @@
+from datetime import datetime
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from hoga.live import lifecycle, api as live_api
-from hoga.live.api import build_router
+from hoga.live.api import build_router, _market_phase, _KST
 from hoga.live.kis_client import KisQuote
 
 
@@ -61,3 +63,10 @@ def test_quotes_filters_invalid_codes(monkeypatch):
     app.include_router(build_router(get_status=lifecycle.get_status, get_kis_client=lambda: _Rec([])))
     TestClient(app).get("/api/live/quotes", params={"codes": "005930,BADCODE,00066"})
     assert seen["codes"] == ["005930"]
+
+
+def test_market_phase_boundary_at_0900_kst():
+    # 장전(09:00 직전)=pre_open, 정각 09:00=open (반장도 오픈은 09:00 동일)
+    assert _market_phase(datetime(2026, 6, 1, 8, 59, tzinfo=_KST)) == "pre_open"
+    assert _market_phase(datetime(2026, 6, 1, 9, 0, tzinfo=_KST)) == "open"
+    assert _market_phase(datetime(2026, 6, 1, 15, 30, tzinfo=_KST)) == "open"
