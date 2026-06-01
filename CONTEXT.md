@@ -332,17 +332,21 @@ Screener 신고가/신고거래량(**Breakout**) 조건의 두 거래일 파라�
 _Avoid_: N 을 "recency" 로 (초기 반쪽 명명 — **Lookback Window**); 달력일 해석(둘 다 거래일 카운트).
 
 **Breakout (돌파)**:
-Screener 의 신고 사건 — 어떤 날의 값이 직전 **Record Period** 최대를 **달성(`>=`, 동점 포함)** 한 것. 신고가(high)·신고거래량(volume)이 공유. Wire 는 `Breakout` 판별 union — **Lookback Window** 안에 신고가 있으면 `BreakoutHit{event_date, days_ago, period_extreme}`, 없으면 `BreakoutMiss`. `wc = period` 가드로 상장 M일 미만 Code 는 제외(짧은 윈도우 가짜 신고 차단).
-_Avoid_: 일반 개념을 "신고가" 단독으로 (거래량도 포함 — **Breakout**); strict `>` 해석(동점 포함 `>=`).
+Screener 의 신고 사건 — 어떤 날의 값이 직전 **Record Period** 최대를 **달성(`>=`, 동점 포함)** 한 것. 신고가(high)·신고거래량(volume)이 공유. `wc = period` 가드로 상장 M일 미만 Code 는 제외(짧은 윈도우 가짜 신고 차단). 두 변형 — **당일**(`new_high_today`/`new_high_vol_today`, Lookback Window **N=1** 고정 → 최신일이 곧 신고, param 은 `period` 1개)과 **기간내**(`new_high`/`new_high_vol`, N 사용자 설정, param 2개). 당일은 기간내 컴파일러를 N=1 로 재사용한다(SQL 무복제).
+_Avoid_: 일반 개념을 "신고가" 단독으로 (거래량도 포함 — **Breakout**); strict `>` 해석(동점 포함 `>=`); **거래대금**(가격×거래량)을 Breakout 으로 (그건 임계값 가족 — **거래대금** 참조).
 
 **Condition (조건)** / **빌트인 조건 카탈로그**:
-Screener 가 제공하는 **빌트인 조건 타입**의 파라미터화된 인스턴스. v1 카탈로그 6종 — `trade_value`(거래대금), `new_high`(신고가), `new_high_vol`(신고거래량), `change_pct`(등락률), `price_range`(현재가 범위), `ma`(이동평균). 사용자는 같은 타입을 **중복 추가**할 수 있고(신고가 200·500 AND 신고가 20·60), 전부 **AND** 로 조합한다(v1; OR/그룹은 backlog). 각 조건은 **수정주가** 기준 최신 거래일 행에 대해 평가(신고가·신고거래량만 **Lookback Window** 내 **Breakout** 이력). 백엔드는 조건 하나를 `cond_i` CTE 멤버십(매칭 **Code** 집합)으로 컴파일해 INNER JOIN(=AND)한다. **전역 사전필터**(시장·ETF제외·거래정지제외)는 조건이 아니라 코퍼스를 제한하는 별도 축이다.
-_Avoid_: 시장/ETF/정지 필터를 "조건" 으로 (그건 **전역 사전필터**); "factor"·"지표" 같은 모호어 (— **Condition** + type 키).
+Screener 가 제공하는 **빌트인 조건 타입**의 파라미터화된 인스턴스. 카탈로그 9종 — `trade_value`(거래대금), `trade_value_period`(기간내 거래대금), `new_high_today`(신고가/당일), `new_high`(기간내 신고가), `new_high_vol_today`(신고거래량/당일), `new_high_vol`(기간내 신고거래량), `change_pct`(등락률), `price_range`(현재가 범위), `ma`(이동평균). 사용자는 같은 타입을 **중복 추가**할 수 있고(기간내 신고가 200·500 AND 20·60), 전부 **AND** 로 조합한다(v1; OR/그룹은 backlog). 평가 기준은 **수정주가**·**거래일**. 대부분 조건은 **최신 거래일 행**에 대해 평가하지만, **돌파 가족**(신고가/신고거래량)은 **Lookback Window** 내 **Breakout** 이력으로, **`trade_value_period`** 는 최근 N거래일 내 임계값 도달 이력으로 평가한다(둘 다 "당일"=N=1 과 "기간내"=N≥1 두 변형). 백엔드는 조건 하나를 `cond_i` CTE 멤버십(매칭 **Code** 집합)으로 컴파일해 INNER JOIN(=AND)한다. **전역 사전필터**(시장·ETF제외·거래정지제외)는 조건이 아니라 코퍼스를 제한하는 별도 축이다.
+_Avoid_: 시장/ETF/정지 필터를 "조건" 으로 (그건 **전역 사전필터**); "factor"·"지표" 같은 모호어 (— **Condition** + type 키); 라벨 "신고가"/"신고거래량"(=당일, N=1) 과 "기간내 …"(N≥1) 혼동.
 
 **등락률 / 현재가 범위 / 이동평균 (신규 조건 타입)**:
 - **등락률(`change_pct`)** — **최신일** 전일대비 `(close/prev_close-1)*100` 에 `gte`/`lte`/`between` 적용. (기간 내 등락률 아님 — 최신일 1일.)
 - **현재가 범위(`price_range`)** — 최신일 `close` 가 [min,max] 원 안. 최신일은 수정주가 보정계수=1 이라 **실제가와 일치**.
 - **이동평균(`ma`)** — 최신일 `close` vs `SMA(close, period거래일)`. `above`=`close≥SMA`(동점 포함), `below`=`close≤SMA`. `wc=period` 풀윈도우 가드(상장 N일 미만 제외). v1 은 위/아래만(상향돌파·이격% 임계값은 backlog).
+
+**거래대금 (trade value) / 기간내 거래대금**:
+하루 **거래대금 = `(open+high+low+close)/4 × volume`** (평균가 × 거래량). 코퍼스에 거래대금 컬럼이 없어(OHLCV 뿐) 매 거래일 산출한다 — 종가×거래량 아님(평균가가 일중 체결가에 더 근접). 두 조건이 임계값 가족을 이룸 — **`trade_value`**(거래대금): 최신일 거래대금 ≥ `min_eok`억. **`trade_value_period`**(기간내 거래대금): 최근 **Lookback Window N**거래일 중 **하루라도** 거래대금 ≥ `min_eok`억(돌파/신고 아님 — 단순 임계값 도달). 임계값이라 **`wc` 풀윈도우 가드 없음** — 상장 N일 미만 종목도 보유 거래일 중 도달하면 매치(가짜 신고 위험이 없으므로). param: `{lookback, min_eok}`.
+_Avoid_: 거래대금을 종가×거래량으로 (— 평균가×거래량); 기간내 거래대금을 "거래대금 신고/돌파" 로 (Breakout 아님 — 임계값 도달 이력).
 
 **저장된 조건검색 (SavedScreener)**:
 이름 붙은 `{conditions, universe}` 의 영속 사본 — 사용자가 빌더에서 만든 조건검색을 저장/목록/이름변경/삭제(CRUD)한다. 목록에서 선택하면 빌더에 **로드만** 되고(자동 조회 X), `조회` 로 실행한다(스테이트리스 — `/scan` 에 현재 빌더 상태 POST; `/saves/{id}/run` 없음). 영속은 **Watchlist 패턴**(파일=SSOT, `<data_dir>/screener/saves.json`, `atomic_write_json` + `asyncio.Lock` + `schema_version` + 손상 격리). `SavedScreener.id` 는 서버 uuid4(이름변경과 무관)이고, 각 조건 leaf 의 `id` 는 프론트 React key/저장 라운드트립용 클라이언트 nanoid 로 **별개**다.
