@@ -36,6 +36,16 @@ def _next_kst_day(yyyymmdd: str) -> str:
     return (d + timedelta(days=1)).strftime("%Y%m%d")
 
 
+def _gap_trading_days(last_raw_date: str, today: str) -> list[str]:
+    """last_raw_date 다음날부터 today(KST)까지의 거래일 목록. 갭 없으면 [].
+    trading_days_in_range 예외(KRX 먹통)는 전파 — 호출자가 0/None 으로 다르게 매핑한다.
+    trigger_update(갭 캐치업)와 status(days_behind)가 공유하는 단일 갭 규칙."""
+    start = _next_kst_day(last_raw_date)
+    if start > today:
+        return []
+    return trading_days_in_range(start, today)
+
+
 async def _kis_fetch_one(client, code: str, frm: str, to: str) -> list[dict]:
     res = await client.fetch_past_daily_candles(code, frm, to, adjust=False)  # 원주가
     if res.violations:
@@ -60,16 +70,13 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
         return 0  # not seeded — nothing to catch up
 
     today = datetime.now(KIS_KST).strftime("%Y%m%d")
-    start = _next_kst_day(last)
-    if start > today:
-        return 0  # no gap (normal no-gap day) — avoid ValueError + warning noise
     try:
-        days = trading_days_in_range(start, today)
+        days = _gap_trading_days(last, today)
     except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
         log.warning("screener update: trading-day list unavailable")
         return 0
     if not days:
-        return 0
+        return 0  # no gap (normal no-gap day) or empty range
 
     codes = pl.read_parquet(sdir / "stocks.parquet")["code"].to_list()
 
@@ -125,9 +132,8 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
         # inverted-range ValueError never fires. KRX outage → None (frontend
         # treats None as unknown), never crash the status route.
         today = datetime.now(KIS_KST).strftime("%Y%m%d")
-        start = _next_kst_day(s.last_raw_date)
         try:
-            days_behind = 0 if start > today else len(trading_days_in_range(start, today))
+            days_behind = len(_gap_trading_days(s.last_raw_date, today))
         except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
             days_behind = None
         return {**s.model_dump(), "status": "ok", "days_behind": days_behind}

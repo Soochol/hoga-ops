@@ -1,6 +1,7 @@
 import polars as pl
 from pathlib import Path
 from hoga.api.screener_store import last_raw_date, append_rows, write_status, read_status
+from hoga.api import screener as _screener_mod
 
 
 def test_last_date_and_append(tmp_path: Path):
@@ -35,3 +36,17 @@ def test_status_roundtrip(tmp_path: Path):
     write_status(sp, last_raw_date="20260514", universe_size=2, derive_ms=3, now_ms=100)
     s = read_status(sp)
     assert s.last_raw_date == "20260514" and s.schema_version == 1
+
+
+def test_gap_trading_days_no_gap_short_circuits(monkeypatch):
+    # next day after 20260601 (=20260602) > today 20260601 → [] WITHOUT calling the calendar.
+    calls = []
+    monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda f, t: calls.append((f, t)) or ["x"])
+    assert _screener_mod._gap_trading_days("20260601", "20260601") == []
+    assert calls == []  # short-circuited, never hit the calendar
+
+
+def test_gap_trading_days_delegates_when_gap(monkeypatch):
+    # next day after 20260529 = 20260530; today 20260601 → delegates to the calendar.
+    monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda f, t: [f, t])
+    assert _screener_mod._gap_trading_days("20260529", "20260601") == ["20260530", "20260601"]
