@@ -26,4 +26,12 @@ describe('ConditionBuilder', () => {
     fireEvent.click(screen.getByRole('button', { name: 'KOSPI' }));
     expect(onUniverse).toHaveBeenCalledWith({ markets: ['KOSPI'] });
   });
+
+  it('closes the menu on outside mousedown', () => {
+    render(<ConditionBuilder {...base} onConditionsChange={vi.fn()} onUniverseChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '조건 추가' }));
+    expect(screen.getByRole('menuitem', { name: /신고가$/ })).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('menuitem', { name: /신고가$/ })).not.toBeInTheDocument();
+  });
 });
