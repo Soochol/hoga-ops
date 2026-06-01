@@ -22,6 +22,7 @@
 | `frontend/src/screener/UniverseFilterButton.tsx` (생성) | 헤더 트리거 버튼 — 배지/accent 테두리/aria-label + open 상태 + 모달 렌더 |
 | `frontend/src/screener/ConditionBuilder.tsx` (수정) | 헤더 2버튼 행으로, 하단 인라인 사전필터 섹션·`MARKETS`·`toggleMarket` 제거 |
 | `frontend/src/pages/Screener.test.tsx` (수정) | 사전필터 편집 테스트 2건을 "모달 열기→제외 그룹→토글"로 마이그레이션 |
+| `frontend/src/screener/ConditionBuilder.test.tsx` (수정) | 컴패니언 유닛 테스트 — 인라인 시장 토글 테스트 → 모달 위임 검증으로 교체 |
 | `frontend/src/screener/universeFilter.test.ts` (생성) | 헬퍼 유닛 테스트 |
 | `frontend/src/screener/UniverseFilterModal.test.tsx` (생성) | 모달 유닛 테스트 |
 | `frontend/src/screener/UniverseFilterButton.test.tsx` (생성) | 버튼 유닛 테스트 |
@@ -417,6 +418,7 @@ git commit -m "feat(screener-fe): UniverseFilterButton — 트리거 버튼 + �
 **Files:**
 - Modify: `frontend/src/screener/ConditionBuilder.tsx` (전체 교체 — 인라인 섹션·`MARKETS`·`toggleMarket`·`SectionLabel` import 제거, 헤더에 버튼)
 - Modify: `frontend/src/pages/Screener.test.tsx:73-83`, `:85-106` (사전필터 편집 2건)
+- Modify: `frontend/src/screener/ConditionBuilder.test.tsx` (`toggles a market pre-filter` → 모달 위임 검증으로 교체 — 인라인 KOSPI 버튼이 모달로 이동해 깨짐)
 
 - [ ] **Step 1: 마이그레이션 테스트 먼저 수정 (이 시점엔 빨강)**
 
@@ -542,12 +544,28 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
 - [ ] **Step 4: Screener.test 통과 확인**
 
 Run: `npx vitest run src/pages/Screener.test.tsx`
-Expected: PASS (8 tests — 마이그레이션 2건 포함 전부 초록).
+Expected: PASS (7 tests — 마이그레이션 2건 포함 전부 초록). (이 파일은 7개 테스트다.)
+
+- [ ] **Step 4b: 컴패니언 유닛 테스트 마이그레이션 (`ConditionBuilder.test.tsx`)**
+
+`frontend/src/screener/ConditionBuilder.test.tsx`의 `toggles a market pre-filter`는 인라인 KOSPI 버튼을 클릭하던 테스트라 인라인 섹션 제거로 깨진다. 모달 위임 검증으로 교체(같은 `onUniverseChange({ markets: ['KOSPI'] })` 단언 유지, 모달 경로로 라우팅):
+
+```tsx
+  it('delegates universe editing to the 사전필터 modal (header button → modal → onUniverseChange)', () => {
+    const onUniverse = vi.fn();
+    render(<ConditionBuilder {...base} onConditionsChange={vi.fn()} onUniverseChange={onUniverse} />);
+    fireEvent.click(screen.getByRole('button', { name: /사전필터/ }));  // 모달 열기 (기본 '시장' pane)
+    fireEvent.click(screen.getByRole('button', { name: 'KOSPI' }));      // 시장 토글
+    expect(onUniverse).toHaveBeenCalledWith({ markets: ['KOSPI'] });
+  });
+```
+
+Run: `npx vitest run src/screener/ConditionBuilder.test.tsx` → 5 pass.
 
 - [ ] **Step 5: 커밋**
 
 ```bash
-git add frontend/src/screener/ConditionBuilder.tsx frontend/src/pages/Screener.test.tsx
+git add frontend/src/screener/ConditionBuilder.tsx frontend/src/pages/Screener.test.tsx frontend/src/screener/ConditionBuilder.test.tsx
 git commit -m "feat(screener-fe): 빌더 헤더에 사전필터 버튼, 인라인 섹션 제거 + 테스트 마이그레이션"
 ```
 
@@ -589,6 +607,6 @@ Expected: 변경 파일 에러 0.
 
 ## Self-Review (작성자 체크 결과)
 
-- **Spec coverage:** 배지 카운트+엣지(T1), aria 요약/그릴#2(T1·T3), ModalShell 2-group nav+pane 전환+즉시적용+닫기 dismiss(T2), nav 활성 체크(T2), 트리거 배지/accent/aria/open-close(T3), ConditionBuilder 헤더+인라인 제거+MARKETS 이동(T4), Screener.test 2건 마이그레이션(T4), 타입/스코프/수동(T5). 백엔드·모델·드로어 무변경 → 손대는 태스크 없음(의도적). ✔
+- **Spec coverage:** 배지 카운트+엣지(T1), aria 요약/그릴#2(T1·T3), ModalShell 2-group nav+pane 전환+즉시적용+닫기 dismiss(T2), nav 활성 체크(T2), 트리거 배지/accent/aria/open-close(T3), ConditionBuilder 헤더+인라인 제거+MARKETS 이동(T4), Screener.test 2건 + ConditionBuilder.test 컴패니언 마이그레이션(T4), 타입/스코프/수동(T5). 백엔드·모델·드로어 무변경 → 손대는 태스크 없음(의도적). ✔
 - **Placeholder scan:** "적절히/TODO/유사하게" 없음. 모든 코드 step은 완전한 코드 포함. ✔
 - **Type consistency:** `countActiveUniverse(u: ScreenerUniverse): number`, `universeSummary(u: ScreenerUniverse): string` — T1 정의, T3 사용 일치. `UniverseFilterModal` props `{universe,onChange,onClose}` / `UniverseFilterButton` props `{universe,onChange}` — T2·T3 정의, T4(`ConditionBuilder`)에서 `universe`/`onUniverseChange` 전달 일치. `Group='market'|'exclude'` 내부 일관. ✔
