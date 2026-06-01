@@ -17,7 +17,6 @@ type Store = Persisted & {
   lastScan: PanelScan | null;
   setSelectedSavedId: (id: string | null) => void;
   setLastScan: (scan: PanelScan) => void;
-  clearScan: () => void;
 };
 
 const DEFAULTS: Persisted = { selectedSavedId: null };
@@ -62,5 +61,4 @@ export const useScreenerPanelStore = create<Store>((set) => ({
     persist(next);
   },
   setLastScan: (scan) => set({ lastScan: scan }),
-  clearScan: () => set({ lastScan: null }),
 }));

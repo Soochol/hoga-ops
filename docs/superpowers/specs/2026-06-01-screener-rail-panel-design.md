@@ -67,7 +67,7 @@
 
 ### 2. 레일 항목 — `rightrail/RightRail.tsx`
 
-- 기존 `관심` 버튼 아래 `스크` 버튼 추가: 신규 `FunnelIcon` + 라벨 `스크`.
+- 기존 `관심` 버튼 아래 `스크리너` 버튼 추가: 신규 `FunnelIcon` + 라벨 `스크리너`.
 - 각 항목 버튼: `onClick = togglePanel('watchlist' | 'screener')`; active 하이라이트(틸 배경 `bg-tint-selection` + 중립 텍스트 — 관심과 동일, 트리플-틸 금지); `aria-controls`는 각 패널 id, `aria-pressed = activePanel === <자기>`.
 - 셰브론: `onClick = toggleCollapse()`; `aria-expanded = activePanel !== null`; 글리프 `activePanel ? '»' : '«'`.
 

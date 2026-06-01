@@ -28,12 +28,6 @@ describe('screenerPanel store', () => {
     expect(persisted.selectedSavedId).toBe('s1');
   });
 
-  it('clearScan empties lastScan', () => {
-    useScreenerPanelStore.getState().setLastScan(SCAN);
-    useScreenerPanelStore.getState().clearScan();
-    expect(useScreenerPanelStore.getState().lastScan).toBeNull();
-  });
-
   it('hydrates selectedSavedId from storage; lastScan starts null', async () => {
     localStorage.setItem('screenerPanel.v1', JSON.stringify({ selectedSavedId: 's9' }));
     vi.resetModules();
