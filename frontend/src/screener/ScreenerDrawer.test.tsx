@@ -104,4 +104,64 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     expect(scan).not.toHaveBeenCalled();
   });
+
+  it('preserves a persisted non-first selection when saves load', async () => {
+    const SAVE2 = { ...SAVE, id: 's2', name: '두번째조건' };
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE, SAVE2] });
+    useScreenerPanelStore.setState({ selectedSavedId: 's2', lastScan: null });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByRole('option', { name: '두번째조건' })).toBeInTheDocument());
+    expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s2');
+  });
+
+  it('갱신 triggers a screener data update', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    const upd = vi.spyOn(screenerApi, 'triggerScreenerUpdate').mockResolvedValue(undefined as never);
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+    fireEvent.click(screen.getByRole('button', { name: '데이터 갱신' }));
+    await waitFor(() => expect(upd).toHaveBeenCalled());
+  });
+
+  it('shows 조회 실패 when the scan errors', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'runScan').mockRejectedValue(new Error('boom'));
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    await waitFor(() => expect(screen.getByText('조회 실패')).toBeInTheDocument());
+    expect(screen.getByText('boom')).toBeInTheDocument();
+  });
+
+  it('shows the empty-result message when a scan returns no rows', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: [], warnings: [] });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    await waitFor(() => expect(screen.getByText('조건에 맞는 종목이 없습니다.')).toBeInTheDocument());
+  });
+
+  it('clicking a result on /live sets activeCode without navigating away', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('SK하이닉스'));
+    expect(useLivePageStore.getState().activeCode).toBe('000660');
+    expect(screen.getByTestId('pathname').textContent).toBe('/live');
+  });
+
+  it('flags when the dropdown selection differs from the last scan', async () => {
+    const SAVE2 = { ...SAVE, id: 's2', name: '두번째조건' };
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE, SAVE2] });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's2',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByText(/선택한 조건과 다름/)).toBeInTheDocument());
+  });
 });

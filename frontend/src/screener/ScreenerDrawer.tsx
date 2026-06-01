@@ -28,21 +28,24 @@ export function ScreenerDrawer() {
   const lastScan = useScreenerPanelStore((s) => s.lastScan);
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
 
-  const { data: savesData } = useSavedScreeners();
+  const { data: savesData, isSuccess: savesLoaded } = useSavedScreeners();
   const saves = savesData?.saves ?? [];
   const { data: status } = useScreenerStatus();
   const screener = useScreener();
   const update = useMutation({ mutationFn: () => triggerScreenerUpdate() });
 
-  // Restore/repair selection once saves are known: keep the persisted id if it
-  // still exists, else fall back to the first save, else none.
+  // Restore/repair selection once saves have loaded: keep the persisted id if it
+  // still exists, else fall back to the first save, else none. Gate on
+  // savesLoaded — before the query resolves, saves is [] and we must NOT clobber
+  // a persisted (non-first) selection by writing null.
   useEffect(() => {
+    if (!savesLoaded) return;
     if (saves.length === 0) {
       if (selectedSavedId !== null) setSelectedSavedId(null);
       return;
     }
     if (!saves.some((s) => s.id === selectedSavedId)) setSelectedSavedId(saves[0].id);
-  }, [saves, selectedSavedId, setSelectedSavedId]);
+  }, [savesLoaded, saves, selectedSavedId, setSelectedSavedId]);
 
   const selected = saves.find((s) => s.id === selectedSavedId) ?? null;
   const notSeeded = status?.status === 'not_seeded' || lastScan?.scanStatus === 'not_seeded';
@@ -137,7 +140,7 @@ export function ScreenerDrawer() {
           </div>
         ) : lastScan ? (
           <>
-            <div className="px-md pt-sm pb-1 text-[10.5px] uppercase tracking-[0.08em] text-fg-dimmer">
+            <div className="px-md pt-sm pb-1 text-xs uppercase tracking-[0.08em] text-fg-dimmer">
               결과 {lastScan.rows.length} · {lastScan.savedName}
               {selectedSavedId !== lastScan.savedId && (
                 <span className="ml-1 normal-case tracking-normal" style={{ color: 'var(--warn)' }}>
