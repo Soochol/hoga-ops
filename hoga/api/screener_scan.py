@@ -8,6 +8,10 @@ from hoga.api.models import (
 
 _WON_PER_EOK = 100_000_000
 
+# 거래대금 = 평균가(OHLC/4) × 거래량. 코퍼스에 거래대금 컬럼이 없어 매일 산출(ADR-0055/CONTEXT).
+# trade_value·trade_value_period·결과표가 공유하는 단일 식(드리프트 방지).
+_TV = "((open+high+low+close)/4.0)*volume"
+
 
 def _breakout_cte(name: str, col: str, f: BreakoutParams) -> str:
     """col(high|volume) 의 (lookback,period) 돌파 이력 CTE. VERBATIM — 재작성 금지."""
@@ -36,7 +40,7 @@ LeafCompiler = Callable[[ConditionLeaf, int], tuple[str, list]]
 
 
 def _compile_trade_value(leaf, i):
-    return f"cond_{i} AS (SELECT code FROM base WHERE close*volume >= ?)", [int(leaf.params.min_eok * _WON_PER_EOK)]
+    return f"cond_{i} AS (SELECT code FROM base WHERE {_TV} >= ?)", [int(leaf.params.min_eok * _WON_PER_EOK)]
 
 
 def _breakout(col: str) -> LeafCompiler:
@@ -108,7 +112,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
     con.execute(f"CREATE VIEW adj AS SELECT * FROM '{adjusted_path}'")
     con.execute(f"CREATE VIEW stk AS SELECT * FROM '{stocks_path}'")
 
-    ctes = ["base AS (SELECT DISTINCT ON (code) code, date, high, close, volume, "
+    ctes = ["base AS (SELECT DISTINCT ON (code) code, date, open, high, low, close, volume, "
             "LAG(close) OVER (PARTITION BY code ORDER BY date) AS prev_close "
             "FROM adj ORDER BY code, date DESC)"]
     joins: list[str] = []
@@ -124,7 +128,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
     where_sql = ("WHERE " + " AND ".join(uwheres)) if uwheres else ""
 
     sel = ("base.code, stk.name, stk.market, base.close::BIGINT price, "
-           "(base.close*base.volume)::BIGINT trade_value_won, "
+           f"({_TV})::BIGINT trade_value_won, "
            "CASE WHEN base.prev_close IS NULL OR base.prev_close = 0 THEN NULL "
            "ELSE round((base.close / base.prev_close - 1) * 100, 2) END change_pct")
     sql = (f"WITH {', '.join(ctes)} SELECT {sel} FROM base JOIN stk ON stk.code=base.code "

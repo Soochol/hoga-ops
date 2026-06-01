@@ -184,3 +184,15 @@ def test_code_roundtrip_leading_zero(tmp_path):
         stocks=[("005930", "삼성전자", "KOSPI", False, False)])
     out = screener_scan.run_scan(adj, stk, conditions=[], universe=ScreenerUniverse())
     assert out[0].code == "005930"            # VARCHAR preserved, not 5930
+
+
+def test_trade_value_uses_ohlc_average_price(tmp_path):
+    # close*volume = 1억(<2) 이지만 avg(OHLC)*volume = 2.5억(>=2). 새 산식이
+    # 임계값 매칭과 표시 trade_value_won 둘 다를 구동해야 한다.
+    adj, stk = _seed(tmp_path,
+        rows=[("005930", "2026-05-30", 300, 300, 300, 100, 1_000_000)],
+        stocks=[("005930", "삼성", "KOSPI", False, False)])
+    leaf = TradeValueLeaf(id="t", params=TradeValueParams(min_eok=2))
+    rows = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
+    assert [r.code for r in rows] == ["005930"]
+    assert rows[0].trade_value_won == 250_000_000
