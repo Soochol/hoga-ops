@@ -856,31 +856,48 @@ def _build_multi_price_params(codes_chunk: list[str]) -> dict[str, str]:
     return params
 
 
-def _parse_quote(code: str, row: dict) -> KisQuote:
+def _parse_quote(row: dict) -> KisQuote | None:
     """multprice output 한 항목 → KisQuote.
 
+    코드는 **행 자신의 `inter_shrn_iscd`** 에서 읽는다 — 요청 순서가 아니라 응답이
+    스스로 식별한 종목코드라, KIS 가 무효 코드를 빈 placeholder 행으로 채우거나
+    행 순서를 바꿔도 값이 엉뚱한 종목에 붙지 않는다. `inter_shrn_iscd` 가 비면
+    (무효/placeholder 행) None 을 돌려 호출부가 건너뛰게 한다.
+
     price = inter2_prpr. change_pct = prdy_ctrt(절대값) 에 prdy_vrss_sign 적용
-    (1·2 상한/상승=양수, 4·5 하한/하락=음수, 3 보합=0). prdy_ctrt 가 빈값이면 None.
+    (1·2 상한/상승=양수, 4·5 하한/하락=음수, 3 보합=0, 그 외 부호코드는 원값).
+    prdy_ctrt 가 빈값이거나 숫자 파싱 실패면 None.
     """
-    raw_price = row.get("inter2_prpr") or "0"
-    price = int(float(raw_price))
+    code = (row.get("inter_shrn_iscd") or "").strip()
+    if not code:
+        return None
+    try:
+        price = int(float(row.get("inter2_prpr") or "0"))
+    except (TypeError, ValueError):
+        price = 0
     raw_ctrt = row.get("prdy_ctrt")
     if raw_ctrt in (None, ""):
         return KisQuote(code=code, price=price, change_pct=None)
-    mag = abs(float(raw_ctrt))
+    try:
+        mag = abs(float(raw_ctrt))
+    except (TypeError, ValueError):
+        return KisQuote(code=code, price=price, change_pct=None)
     sign = str(row.get("prdy_vrss_sign", ""))
     if sign in ("4", "5"):
         pct = -mag
     elif sign in ("1", "2"):
         pct = mag
+    elif sign == "3":
+        pct = 0.0
     else:
-        pct = 0.0 if mag == 0 else float(raw_ctrt)
+        pct = float(raw_ctrt)  # 알 수 없는 부호코드 → 원값(이미 float 검증됨)
     return KisQuote(code=code, price=price, change_pct=pct)
 
 
 async def _fetch_multi_price(get, codes: list[str]) -> list["KisQuote"]:
     """get: async (*, path, tr_id, params)->dict (KisClient._get 와 동일 시그니처).
-    30개씩 청크해 intstock-multprice 호출, output 을 입력 순서로 zip."""
+    30개씩 청크해 intstock-multprice 호출. 각 행을 **응답 자신의 inter_shrn_iscd**
+    로 매핑(위치 의존 X — 누락/재정렬·빈 placeholder 행 안전). 빈/무효 행은 건너뛴다."""
     out: list[KisQuote] = []
     for i in range(0, len(codes), _MULTI_PRICE_CHUNK):
         chunk = codes[i:i + _MULTI_PRICE_CHUNK]
@@ -889,7 +906,8 @@ async def _fetch_multi_price(get, codes: list[str]) -> list["KisQuote"]:
             tr_id="FHKST11300006",
             params=_build_multi_price_params(chunk),
         )
-        rows = body.get("output") or []
-        for c, row in zip(chunk, rows):
-            out.append(_parse_quote(c, row))
+        for row in (body.get("output") or []):
+            q = _parse_quote(row)
+            if q is not None:
+                out.append(q)
     return out

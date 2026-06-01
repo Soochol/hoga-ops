@@ -3,27 +3,46 @@ from hoga.live.kis_client import KisQuote, _parse_quote, _build_multi_price_para
 
 
 def test_parse_quote_up_sign_positive():
-    # prdy_vrss_sign 2 = 상승 → 양수, inter2_prpr → price
-    q = _parse_quote("005930", {"inter2_prpr": "72400", "prdy_ctrt": "1.20", "prdy_vrss_sign": "2"})
+    # prdy_vrss_sign 2 = 상승 → 양수, inter2_prpr → price, 코드는 inter_shrn_iscd
+    q = _parse_quote({"inter_shrn_iscd": "005930", "inter2_prpr": "72400",
+                      "prdy_ctrt": "1.20", "prdy_vrss_sign": "2"})
     assert q == KisQuote(code="005930", price=72400, change_pct=1.20)
 
 
 def test_parse_quote_down_sign_forces_negative():
     # 부호 5(하락)는 prdy_ctrt 가 부호 없이 와도 음수로 정규화
-    q = _parse_quote("000660", {"inter2_prpr": "183500", "prdy_ctrt": "0.80", "prdy_vrss_sign": "5"})
+    q = _parse_quote({"inter_shrn_iscd": "000660", "inter2_prpr": "183500",
+                      "prdy_ctrt": "0.80", "prdy_vrss_sign": "5"})
+    assert q is not None
     assert q.change_pct == -0.80
     assert q.price == 183500
 
 
 def test_parse_quote_flat_sign_zero():
-    q = _parse_quote("000020", {"inter2_prpr": "10000", "prdy_ctrt": "0.00", "prdy_vrss_sign": "3"})
+    q = _parse_quote({"inter_shrn_iscd": "000020", "inter2_prpr": "10000",
+                      "prdy_ctrt": "0.00", "prdy_vrss_sign": "3"})
+    assert q is not None
     assert q.change_pct == 0.0
 
 
 def test_parse_quote_missing_ctrt_is_none():
-    q = _parse_quote("123456", {"inter2_prpr": "5000", "prdy_ctrt": "", "prdy_vrss_sign": ""})
+    q = _parse_quote({"inter_shrn_iscd": "123456", "inter2_prpr": "5000",
+                      "prdy_ctrt": "", "prdy_vrss_sign": ""})
+    assert q is not None
     assert q.change_pct is None
     assert q.price == 5000
+
+
+def test_parse_quote_blank_or_missing_code_is_none():
+    # 무효 코드 placeholder 행(inter_shrn_iscd 빈값) / 빈 dict → None
+    assert _parse_quote({"inter_shrn_iscd": "", "inter2_prpr": ""}) is None
+    assert _parse_quote({}) is None
+
+
+def test_parse_quote_nonnumeric_price_is_safe():
+    # 숫자 파싱 실패해도 500 유발 없이 안전 처리 (price 0, change_pct None)
+    q = _parse_quote({"inter_shrn_iscd": "005930", "inter2_prpr": "N/A", "prdy_ctrt": "x"})
+    assert q is not None and q.price == 0 and q.change_pct is None
 
 
 def test_build_multi_price_params_numbered_keys():
@@ -34,20 +53,43 @@ def test_build_multi_price_params_numbered_keys():
 
 
 @pytest.mark.asyncio
-async def test_fetch_multi_price_chunks_over_30_and_zips_order():
+async def test_fetch_multi_price_chunks_over_30():
     calls: list[dict] = []
 
     async def fake_get(*, path, tr_id, params):
         calls.append(params)
-        # output 순서 = 입력 순서. 청크 내 코드 수만큼 행 반환.
-        n = sum(1 for k in params if k.startswith("FID_INPUT_ISCD_"))
+        # output 행마다 자신의 inter_shrn_iscd (요청 코드 순서대로)
+        codes_in = []
+        n = 1
+        while f"FID_INPUT_ISCD_{n}" in params:
+            codes_in.append(params[f"FID_INPUT_ISCD_{n}"])
+            n += 1
         return {"output": [
-            {"inter2_prpr": "100", "prdy_ctrt": "1.00", "prdy_vrss_sign": "2"} for _ in range(n)
+            {"inter_shrn_iscd": c, "inter2_prpr": "100", "prdy_ctrt": "1.00", "prdy_vrss_sign": "2"}
+            for c in codes_in
         ]}
 
     codes = [f"{i:06d}" for i in range(35)]  # 35개 → 30 + 5 두 청크
     quotes = await _fetch_multi_price(fake_get, codes)
 
     assert len(calls) == 2  # 청킹
-    assert [q.code for q in quotes] == codes  # 입력 순서 보존
+    assert {q.code for q in quotes} == set(codes)
     assert all(q.change_pct == 1.0 for q in quotes)
+
+
+@pytest.mark.asyncio
+async def test_fetch_multi_price_maps_by_response_code_not_position():
+    # 핵심: 응답이 요청과 다른 순서 + 가운데 빈 placeholder 행이어도
+    # inter_shrn_iscd 로 매핑되어 값이 엉뚱한 종목에 붙지 않는다.
+    async def fake_get(*, path, tr_id, params):
+        return {"output": [
+            {"inter_shrn_iscd": "000660", "inter2_prpr": "183500", "prdy_ctrt": "0.80", "prdy_vrss_sign": "5"},
+            {"inter_shrn_iscd": "", "inter2_prpr": ""},  # 무효 코드 → 빈 placeholder
+            {"inter_shrn_iscd": "005930", "inter2_prpr": "72400", "prdy_ctrt": "1.20", "prdy_vrss_sign": "2"},
+        ]}
+
+    quotes = await _fetch_multi_price(fake_get, ["005930", "999999", "000660"])
+    by = {q.code: q for q in quotes}
+    assert set(by) == {"005930", "000660"}  # 빈 placeholder 는 건너뜀
+    assert by["005930"].price == 72400 and by["005930"].change_pct == 1.20
+    assert by["000660"].price == 183500 and by["000660"].change_pct == -0.80

@@ -1,6 +1,7 @@
 """FastAPI router for Live Capture endpoints (spec §6)."""
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Awaitable
 from datetime import date, datetime, time, timedelta, timezone
@@ -20,6 +21,8 @@ if TYPE_CHECKING:
     from .kis_client import KisClient
 
 ControlAction = Literal["start", "stop", "pause"]
+
+log = logging.getLogger(__name__)
 
 _PAST_MAX_DAYS = 250
 _CODE_RE = re.compile(r"^\d{6}$")
@@ -245,7 +248,10 @@ def build_router(
             return LiveQuotesResponse(phase=phase, quotes=[])
         try:
             quotes = await kis.fetch_multi_price(code_list)
-        except (KisRateLimitError, KisApiError):
+        except Exception as e:  # noqa: BLE001 — 10초 폴링 오버레이는 절대 500 금지;
+            # KIS rate-limit/api-error/네트워크 타임아웃 등 무엇이든 빈 결과로 graceful
+            # (프론트는 '—' 표시). retry-exhausted 신호는 warning 으로만 남긴다.
+            log.warning("live quotes fetch failed (%d codes): %s", len(code_list), e)
             return LiveQuotesResponse(phase=phase, quotes=[])
         pre = phase == "pre_open"
         return LiveQuotesResponse(phase=phase, quotes=[
