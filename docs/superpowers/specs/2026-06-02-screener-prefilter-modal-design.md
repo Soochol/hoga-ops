@@ -58,7 +58,7 @@ intentionally breaks: **없음.**
 
 - 라벨 **"사전필터"** + 활성 시 카운트 배지(예: `2`) + (count>0이면) accent 테두리.
 - **아이콘은 이모지(`⚙`) 금지.** 코드베이스 관습은 인라인 SVG/텍스트 글리프다([LiveToolbar.tsx:55-58](../../../frontend/src/live/LiveToolbar.tsx#L55-L58)의 보조지표 버튼 = 12×12 stroke SVG + `bg-input`/`border`/`text-xs`). 기본안: **작은 인라인 SVG 깔때기**(funnel, `stroke="currentColor"`) 또는 텍스트-온리. 최종 시각은 DESIGN.md를 따르고, 버튼 스타일(`bg-input`·`border`·`text-xs`·`gap`)은 보조지표 버튼과 맞춘다.
-- a11y: `aria-haspopup="dialog"`, `aria-expanded={open}`, `aria-label`은 활성 개수 포함(예: `사전필터, 2개 적용`).
+- a11y: `aria-haspopup="dialog"`, `aria-expanded={open}`, `aria-label`은 **활성 항목을 풀어 표기**(예: `사전필터, 2개: KOSPI · ETF 제외`) — 모달이 닫혀 있어도 무엇이 켜졌는지 스크린리더/title로 드러나도록(그릴 #2: 카운트만으론 한눈에 안 보이는 리스크 보완).
 
 ### 배지 카운트
 
@@ -142,6 +142,7 @@ ModalShell title="사전필터"  (width ≈ w-[480px], 토큰 따라 조정)
 
 - **지수(index) 필터** (KOSPI200·KRX300 등) — 코퍼스에 구성종목 데이터 없음, 시드·백엔드·`ScreenerUniverse` 확장 필요. 시장(market)과 다른 축(CONTEXT.md "전역 사전필터" _Avoid_ 참조).
 - **신규 "제외" 플래그**(경고종목·관리종목·우선주·스팩 등) — 각기 시드에 새 `is_*` 컬럼 필요.
+- 트리거 버튼에 활성 필터 **요약 칩** 노출 — 현재는 카운트 배지 + `aria-label` 열거로 대체(그릴 #2).
 - `ui/CheckIcon` 공유 컴포넌트 추출(현재 로컬 복제).
 - `ScreenerDrawer`(우측 레일) 필터 편집 가능화.
 - `is_halted` 갱신 주기 개선.
