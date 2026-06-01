@@ -26,3 +26,14 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
+
+/* 다크 테마 스크롤바 — 전역. 토큰만 사용(DESIGN.md, 그라데이션/장식 금지).
+   실제 렌더 환경은 WebKit/Chromium(Vite dev + /browse). lightweight-charts
+   캔버스는 자체 캔버스라 영향 없음. */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--fg-dimmer); }
+
+/* Firefox 폴백 — 폭/색만 제어 가능 */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
