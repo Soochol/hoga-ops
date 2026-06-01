@@ -2,10 +2,8 @@ import { useRef, useState } from 'react';
 import type { ConditionLeaf, ConditionType, ScreenerUniverse } from '../api/screener';
 import { CONDITION_CATALOG, CONDITION_ORDER, makeLeaf } from './catalog';
 import { ConditionRow } from './ConditionRow';
-import { SectionLabel } from './paramForms';
+import { UniverseFilterButton } from './UniverseFilterButton';
 import { useDismissablePopover } from '../util/useDismissablePopover';
-
-const MARKETS = ['KOSPI', 'KOSDAQ'] as const;
 
 export function ConditionBuilder({ conditions, universe, onConditionsChange, onUniverseChange }: {
   conditions: ConditionLeaf[]; universe: ScreenerUniverse;
@@ -15,13 +13,9 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
-  // Outside-mousedown / Escape dismissal. The wrapper (button + fixed menu) is
-  // the anchor, so a click on the trigger toggles without the global handler
-  // immediately closing it.
+  // Outside-mousedown / Escape dismissal for the add-condition menu only.
   useDismissablePopover(menuOpen, wrapRef, () => setMenuOpen(false));
 
-  // The menu is position:fixed (anchored via getBoundingClientRect) so the
-  // card's overflow-auto does not clip it.
   const toggleMenu = () => {
     const next = !menuOpen;
     if (next && btnRef.current) setAnchorRect(btnRef.current.getBoundingClientRect());
@@ -31,29 +25,28 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
   const replace = (id: string, next: ConditionLeaf) => onConditionsChange(conditions.map((c) => c.id === id ? next : c));
   const remove = (id: string) => onConditionsChange(conditions.filter((c) => c.id !== id));
 
-  const markets = universe.markets ?? [];
-  const toggleMarket = (m: (typeof MARKETS)[number]) => {
-    const next = markets.includes(m) ? markets.filter((x) => x !== m) : [...markets, m];
-    onUniverseChange({ ...universe, markets: next.length ? next : undefined });
-  };
-
   return (
     <div className="bg-bg-card border rounded-lg p-md flex flex-col gap-sm min-h-0 overflow-auto">
-      <div ref={wrapRef} className="relative">
-        <button ref={btnRef} type="button" aria-label="조건 추가" aria-expanded={menuOpen} onClick={toggleMenu}
-          className="w-full border border-dashed border-border-strong rounded-md text-fg-dim text-sm py-2 hover:bg-bg-input-hover">
-          ＋ 조건 추가 ▾
-        </button>
-        {menuOpen && anchorRect && (
-          <ul role="menu"
-            className="bg-bg-card border border-border-strong rounded-[6px] shadow-[0_8px_24px_rgba(0,0,0,0.4)] overflow-hidden z-50"
-            style={{ position: 'fixed', top: anchorRect.bottom + 4, left: anchorRect.left, width: anchorRect.width }}>
-            {CONDITION_ORDER.map((t) => (
-              <li key={t}><button type="button" role="menuitem" aria-label={CONDITION_CATALOG[t].label} onClick={() => add(t)}
-                className="w-full text-left px-3 py-2 text-sm text-fg hover:bg-bg-input-hover">{CONDITION_CATALOG[t].label}</button></li>
-            ))}
-          </ul>
-        )}
+      {/* Header: [조건 추가 (flex-1)] [사전필터 버튼]. 전역 사전필터는 버튼이 여는
+          UniverseFilterModal 로 이동(빌더 카드 정리). */}
+      <div className="flex gap-sm items-stretch">
+        <div ref={wrapRef} className="relative flex-1">
+          <button ref={btnRef} type="button" aria-label="조건 추가" aria-expanded={menuOpen} onClick={toggleMenu}
+            className="w-full border border-dashed border-border-strong rounded-md text-fg-dim text-sm py-2 hover:bg-bg-input-hover">
+            ＋ 조건 추가 ▾
+          </button>
+          {menuOpen && anchorRect && (
+            <ul role="menu"
+              className="bg-bg-card border border-border-strong rounded-[6px] shadow-[0_8px_24px_rgba(0,0,0,0.4)] overflow-hidden z-50"
+              style={{ position: 'fixed', top: anchorRect.bottom + 4, left: anchorRect.left, width: anchorRect.width }}>
+              {CONDITION_ORDER.map((t) => (
+                <li key={t}><button type="button" role="menuitem" aria-label={CONDITION_CATALOG[t].label} onClick={() => add(t)}
+                  className="w-full text-left px-3 py-2 text-sm text-fg hover:bg-bg-input-hover">{CONDITION_CATALOG[t].label}</button></li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <UniverseFilterButton universe={universe} onChange={onUniverseChange} />
       </div>
 
       {conditions.length > 0 && (
@@ -62,25 +55,6 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
       {conditions.map((leaf) => (
         <ConditionRow key={leaf.id} leaf={leaf} onChange={(n) => replace(leaf.id, n)} onRemove={() => remove(leaf.id)} />
       ))}
-
-      <div className="mt-auto pt-md border-t flex flex-col gap-sm">
-        <SectionLabel>전역 사전필터</SectionLabel>
-        <div className="flex gap-px p-[2px] bg-bg-input rounded-md w-fit">
-          {MARKETS.map((m) => {
-            const active = markets.includes(m);
-            return <button key={m} type="button" aria-label={m} aria-pressed={active} onClick={() => toggleMarket(m)}
-              className={`px-2.5 py-[0.15rem] rounded-sm font-mono text-xs transition-colors ${active ? 'bg-accent text-accent-fg' : 'text-fg-dim hover:bg-bg-input-hover'}`}>{m}</button>;
-          })}
-        </div>
-        <label className="flex items-center gap-2 text-sm text-fg cursor-pointer select-none">
-          <input type="checkbox" checked={!!universe.exclude_etf}
-            onChange={(e) => onUniverseChange({ ...universe, exclude_etf: e.target.checked || undefined })}
-            className="accent-[var(--accent)]" />ETF 제외</label>
-        <label className="flex items-center gap-2 text-sm text-fg cursor-pointer select-none">
-          <input type="checkbox" checked={!!universe.exclude_halted}
-            onChange={(e) => onUniverseChange({ ...universe, exclude_halted: e.target.checked || undefined })}
-            className="accent-[var(--accent)]" />거래정지 제외</label>
-      </div>
     </div>
   );
 }

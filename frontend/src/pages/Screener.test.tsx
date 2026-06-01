@@ -78,7 +78,9 @@ it('anchors a loaded screener as clean, then marks 수정됨 once the builder is
   renderPage();
   fireEvent.click(await screen.findByText('급등주'));        // load → anchored, clean
   expect(screen.queryByText('수정됨')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByLabelText('ETF 제외'));         // edit a global pre-filter
+  fireEvent.click(screen.getByRole('button', { name: /사전필터/ }));  // 모달 열기
+  fireEvent.click(screen.getByRole('button', { name: '제외' }));      // 제외 그룹 pane
+  fireEvent.click(screen.getByLabelText('ETF 제외'));                 // edit a global pre-filter
   expect(await screen.findByText('수정됨')).toBeInTheDocument();
 });
 
@@ -91,11 +93,13 @@ it('does not lie "clean" when the builder is edited while a create is in flight 
   vi.mocked(listSaves).mockResolvedValue({ schema_version: 1, saves: [created] });
 
   renderPage();
-  await screen.findByLabelText('ETF 제외');
+  await screen.findByText('조회');                                      // 페이지 렌더 대기(항상 존재)
   fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));  // open inline editor
   const input = screen.getByLabelText('조건검색 이름');
   fireEvent.change(input, { target: { value: '레이스' } });
   fireEvent.blur(input);                                               // commit → onBeginSave + create.mutate
+  fireEvent.click(screen.getByRole('button', { name: /사전필터/ }));    // 모달 열기 (create in-flight 중)
+  fireEvent.click(screen.getByRole('button', { name: '제외' }));        // 제외 그룹 pane
   fireEvent.click(screen.getByLabelText('ETF 제외'));                   // edit DURING the in-flight create (bumps gen)
   await waitFor(() => expect(createSave).toHaveBeenCalled());
   resolveCreate(created);
