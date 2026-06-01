@@ -3,9 +3,6 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SavedScreenerList } from './SavedScreenerList';
 
-// Saved screener with its OWN conditions/universe, deliberately DISTINCT from
-// the live-builder state the tests pass in — so a rename that wrongly forwarded
-// the builder (the ✎ data-loss bug) is unambiguously visible.
 const SAVED_CONDS = [{ id: 'orig', type: 'new_high', params: { lookback: 200, period: 500 } }];
 const SAVED_UNIVERSE = { markets: ['KOSPI'] };
 vi.mock('../api/savedScreeners', () => ({
@@ -19,13 +16,12 @@ vi.mock('../api/savedScreeners', () => ({
 import * as api from '../api/savedScreeners';
 import type { ConditionLeaf } from '../api/screener';
 
-// Live builder state — distinct from the saved screener above.
 const BUILDER = {
   conditions: [{ id: 'b', type: 'trade_value', params: { min_eok: 99 } }] as ConditionLeaf[],
   universe: { exclude_etf: true },
 };
-const FILL = 'bg-[rgba(20,184,166,0.14)]';            // teal fill = exact match
-const BAR = 'shadow-[inset_2px_0_0_var(--accent)]';   // anchor bar
+const FILL = 'bg-[rgba(20,184,166,0.14)]';
+const BAR = 'shadow-[inset_2px_0_0_var(--accent)]';
 
 type Props = React.ComponentProps<typeof SavedScreenerList>;
 const mount = (over: Partial<Props> = {}) => {
@@ -48,64 +44,96 @@ describe('SavedScreenerList', () => {
     expect(onLoad).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }));
   });
 
-  it('creates a new save with a name', async () => {
+  it('creates a new save via inline edit (＋ → type → blur)', async () => {
     mount();
     await screen.findByText('급등주');
-    vi.spyOn(window, 'prompt').mockReturnValue('새이름');
     fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));
+    const input = screen.getByLabelText('조건검색 이름');
+    fireEvent.change(input, { target: { value: '새이름' } });
+    fireEvent.blur(input);
     await waitFor(() => expect(api.createSave).toHaveBeenCalledWith(expect.objectContaining({ name: '새이름' })));
   });
 
-  it('re-anchors to the newly created save (auto-highlight), signalling save-start first', async () => {
+  it('re-anchors to the newly created save, signalling save-start first', async () => {
     const { onAnchorChange, onBeginSave } = mount({ current: BUILDER });
     await screen.findByText('급등주');
-    vi.spyOn(window, 'prompt').mockReturnValue('새이름');
     fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));
-    // onBeginSave must fire synchronously at dispatch so the parent can snapshot
-    // the edit generation (the guard against the in-flight-edit false-clean).
+    const input = screen.getByLabelText('조건검색 이름');
+    fireEvent.change(input, { target: { value: '새이름' } });
+    fireEvent.blur(input);
     expect(onBeginSave).toHaveBeenCalled();
     await waitFor(() => expect(onAnchorChange).toHaveBeenCalledWith('s-new'));
   });
 
+  it('create with an empty name does nothing', async () => {
+    const { onBeginSave } = mount();
+    await screen.findByText('급등주');
+    fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));
+    const input = screen.getByLabelText('조건검색 이름');
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.blur(input);
+    expect(api.createSave).not.toHaveBeenCalled();
+    expect(onBeginSave).not.toHaveBeenCalled();
+  });
+
+  it('create cancels on Escape (no save)', async () => {
+    mount();
+    await screen.findByText('급등주');
+    fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));
+    const input = screen.getByLabelText('조건검색 이름');
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(api.createSave).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('조건검색 이름')).not.toBeInTheDocument();
+  });
+
   it('rename changes ONLY the name, keeps the save\'s own conditions/universe, and does NOT re-anchor', async () => {
-    // Regression for the ✎ data-loss bug: PUT is full-replace, so rename must
-    // carry the SAVED screener's conditions, never the (unrelated) builder state.
     const { onAnchorChange } = mount({ current: BUILDER });
     await screen.findByText('급등주');
-    vi.spyOn(window, 'prompt').mockReturnValue('새이름');
     fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '이름변경' }));
+    const input = screen.getByLabelText('조건검색 이름');
+    fireEvent.change(input, { target: { value: '새이름' } });
+    fireEvent.blur(input);
     await waitFor(() => expect(api.updateSave).toHaveBeenCalled());
     const [id, body] = vi.mocked(api.updateSave).mock.calls[0];
     expect(id).toBe('s1');
     expect(body.name).toBe('새이름');
-    expect(body.conditions).toEqual(SAVED_CONDS);        // save's own, NOT BUILDER.conditions
-    expect(body.universe).toEqual(SAVED_UNIVERSE);        // save's own, NOT BUILDER.universe
-    expect(onAnchorChange).not.toHaveBeenCalled();        // rename leaves the anchor alone
+    expect(body.conditions).toEqual(SAVED_CONDS);
+    expect(body.universe).toEqual(SAVED_UNIVERSE);
+    expect(onAnchorChange).not.toHaveBeenCalled();
   });
 
-  it('overwrite saves the live builder onto the save, keeps its name, re-anchors, after a target-naming confirm', async () => {
+  it('rename reverts on Escape (no update)', async () => {
+    mount();
+    await screen.findByText('급등주');
+    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '이름변경' }));
+    const input = screen.getByLabelText('조건검색 이름');
+    fireEvent.change(input, { target: { value: '바뀐이름' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(api.updateSave).not.toHaveBeenCalled();
+    expect(screen.getByText('급등주')).toBeInTheDocument();
+  });
+
+  it('overwrite saves the live builder onto the save (keeps name, re-anchors) after a target-naming confirm', async () => {
     const { onAnchorChange, onBeginSave } = mount({ current: BUILDER });
     await screen.findByText('급등주');
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '현재 조건으로 덮어쓰기' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('급등주');
+    fireEvent.click(screen.getByRole('button', { name: '덮어쓰기' }));
     expect(onBeginSave).toHaveBeenCalled();
     await waitFor(() => expect(api.updateSave).toHaveBeenCalled());
-    // Load-bearing safety: the confirm MUST name the target save, else "load A →
-    // 덮어쓰기 on B" silently clobbers the wrong screener (C1 round two).
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('급등주'));
     const [id, body] = vi.mocked(api.updateSave).mock.calls[0];
     expect(id).toBe('s1');
-    expect(body.name).toBe('급등주');                     // keeps the save's name
-    expect(body.conditions).toEqual(BUILDER.conditions);  // intentional: live builder
+    expect(body.name).toBe('급등주');
+    expect(body.conditions).toEqual(BUILDER.conditions);
     expect(body.universe).toEqual(BUILDER.universe);
-    await waitFor(() => expect(onAnchorChange).toHaveBeenCalledWith('s1'));  // builder now matches → clean
+    await waitFor(() => expect(onAnchorChange).toHaveBeenCalledWith('s1'));
   });
 
-  it('overwrite does nothing when the confirm is dismissed', async () => {
+  it('overwrite does nothing when the modal is dismissed', async () => {
     const { onAnchorChange, onBeginSave } = mount({ current: BUILDER });
     await screen.findByText('급등주');
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
     fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '현재 조건으로 덮어쓰기' }));
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
     expect(api.updateSave).not.toHaveBeenCalled();
     expect(onBeginSave).not.toHaveBeenCalled();
     expect(onAnchorChange).not.toHaveBeenCalled();
@@ -122,23 +150,23 @@ describe('SavedScreenerList', () => {
     mount({ anchorId: 's1', dirty: true });
     await screen.findByText('급등주');
     expect(screen.getByText('수정됨')).toBeInTheDocument();
-    expect(rowOf('급등주').className).not.toContain(FILL);   // no false "exact match" fill
-    expect(rowOf('급등주').className).toContain(BAR);          // still anchored
+    expect(rowOf('급등주').className).not.toContain(FILL);
+    expect(rowOf('급등주').className).toContain(BAR);
   });
 
   it('delete clears the anchor when the deleted row was the anchor', async () => {
     const { onAnchorChange } = mount({ anchorId: 's1' });
     await screen.findByText('급등주');
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '삭제' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제' }));
     await waitFor(() => expect(onAnchorChange).toHaveBeenCalledWith(null));
   });
 
   it('delete keeps the anchor when a different row is deleted', async () => {
     const { onAnchorChange } = mount({ anchorId: 's1' });
     await screen.findByText('눌림목');
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(within(rowOf('눌림목')).getByRole('button', { name: '삭제' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제' }));
     await waitFor(() => expect(api.deleteSave).toHaveBeenCalledWith('s2'));
     expect(onAnchorChange).not.toHaveBeenCalled();
   });

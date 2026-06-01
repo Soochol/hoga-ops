@@ -89,16 +89,17 @@ it('does not lie "clean" when the builder is edited while a create is in flight 
   const created: SavedScreener = { id: 'new1', name: '레이스', conditions: [], universe: {}, created_at_ms: 2, updated_at_ms: 2 };
   vi.mocked(createSave).mockImplementationOnce(() => new Promise<SavedScreener>((r) => { resolveCreate = r; }));
   vi.mocked(listSaves).mockResolvedValue({ schema_version: 1, saves: [created] });
-  vi.spyOn(window, 'prompt').mockReturnValue('레이스');
 
   renderPage();
   await screen.findByLabelText('ETF 제외');
-  fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));  // onBeginSave snapshots the edit gen
+  fireEvent.click(screen.getByRole('button', { name: '새로 저장' }));  // open inline editor
+  const input = screen.getByLabelText('조건검색 이름');
+  fireEvent.change(input, { target: { value: '레이스' } });
+  fireEvent.blur(input);                                               // commit → onBeginSave + create.mutate
   fireEvent.click(screen.getByLabelText('ETF 제외'));                   // edit DURING the in-flight create (bumps gen)
-  await waitFor(() => expect(createSave).toHaveBeenCalled());           // mutationFn runs on a microtask
-  resolveCreate(created);                                               // create resolves now
+  await waitFor(() => expect(createSave).toHaveBeenCalled());
+  resolveCreate(created);
 
-  // The new row anchors but the mid-flight edit must win: 수정됨, not a clean fill.
   expect(await screen.findByText('수정됨')).toBeInTheDocument();
   expect(screen.getByText('레이스').closest('[role="button"]')!.className)
     .not.toContain('bg-[rgba(20,184,166,0.14)]');
