@@ -59,3 +59,21 @@ def test_saved_screener_roundtrip():
         {"id": "a", "type": "new_high", "params": {"lookback": 200, "period": 500}}], universe={})
     s = SavedScreener(id="srv1", created_at_ms=1, updated_at_ms=1, **req.model_dump())
     assert s.conditions[0].type == "new_high" and s.created_at_ms == 1
+
+
+def test_new_today_and_period_leaves_roundtrip():
+    nt = _A.validate_python({"id": "x", "type": "new_high_today", "params": {"period": 200}})
+    assert nt.type == "new_high_today" and nt.params.period == 200
+    tv = _A.validate_python({"id": "y", "type": "trade_value_period", "params": {"lookback": 60, "min_eok": 1000}})
+    assert tv.type == "trade_value_period" and tv.params.min_eok == 1000
+
+def test_period_params_reject_below_one():
+    with pytest.raises(ValidationError):
+        _A.validate_python({"id": "x", "type": "new_high_today", "params": {"period": 0}})
+    with pytest.raises(ValidationError):
+        _A.validate_python({"id": "y", "type": "trade_value_period", "params": {"lookback": 0, "min_eok": 1}})
+
+def test_existing_new_high_still_parses_backcompat():
+    # 디스크 saves.json의 기존 new_high 형태(타입 불변)가 여전히 유효 — 마이그레이션 0.
+    leaf = _A.validate_python({"id": "old", "type": "new_high", "params": {"lookback": 500, "period": 250}})
+    assert leaf.type == "new_high" and leaf.params.period == 250
