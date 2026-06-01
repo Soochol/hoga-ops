@@ -38,9 +38,10 @@ describe('UniverseFilterModal', () => {
     expect(onChange).toHaveBeenCalledWith({ markets: ['KOSDAQ'] });
   });
 
-  it('닫기 클릭 → onClose', () => {
+  it('푸터 닫기 클릭 → onClose', () => {
     const { onClose } = mount();
-    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    const closers = screen.getAllByRole('button', { name: '닫기' });  // 헤더 ✕ + 푸터 닫기
+    fireEvent.click(closers[closers.length - 1]);                      // 푸터 닫기
     expect(onClose).toHaveBeenCalled();
   });
 

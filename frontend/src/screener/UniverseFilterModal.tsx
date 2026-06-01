@@ -40,7 +40,7 @@ export function UniverseFilterModal({ universe, onChange, onClose }: {
   ];
 
   return (
-    <ModalShell ariaLabel="사전필터" width="w-[480px]" onClose={onClose}>
+    <ModalShell ariaLabel="사전필터" title="사전필터" width="w-[480px]" onClose={onClose}>
       <div className="flex">
         <nav className="w-[160px] py-2 border-r border-border" aria-label="필터 그룹">
           <div className="text-fg-dimmer text-xs uppercase tracking-wider px-4 pb-2">필터 그룹</div>
