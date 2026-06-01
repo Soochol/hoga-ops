@@ -8,7 +8,7 @@ import { ConditionBuilder } from '../screener/ConditionBuilder';
 import { SavedScreenerList } from '../screener/SavedScreenerList';
 import { ResultTable } from '../screener/ResultTable';
 import { StalenessChip } from '../screener/StalenessChip';
-import { useSaveAnchor } from '../screener/useSaveAnchor';
+import { useSavedScreenerEditor } from '../screener/useSavedScreenerEditor';
 import { triggerScreenerUpdate } from '../api/screener';
 import { addToWatchlist } from '../api/watchlist';
 import { addItems } from '../api/captures';
@@ -16,7 +16,7 @@ import { addItems } from '../api/captures';
 export function Screener() {
   const navigate = useNavigate();
   const setActiveCode = useLivePageStore((s) => s.setActiveCode);
-  const { conditions, universe, anchorId, dirty, loadSave, newDraft, editConditions, editUniverse, beginSave, settleAnchor } = useSaveAnchor();
+  const editor = useSavedScreenerEditor();
 
   const screener = useScreener();
   const { data: status } = useScreenerStatus();
@@ -28,7 +28,7 @@ export function Screener() {
 
   const notSeeded = screener.data?.status === 'not_seeded' || status?.status === 'not_seeded';
   const openLive = (code: string) => { setActiveCode(code); navigate('/live'); };
-  const runScan = () => screener.mutate({ conditions, universe });
+  const runScan = () => screener.mutate({ conditions: editor.conditions, universe: editor.universe });
 
   return (
     <PageContainer className="grid gap-md min-h-0"
@@ -49,10 +49,12 @@ export function Screener() {
         <StalenessChip status={status} />
       </div>
 
-      <SavedScreenerList current={{ conditions, universe }} anchorId={anchorId} dirty={dirty}
-        onLoad={loadSave} onBeginSave={beginSave} onAnchorChange={settleAnchor} onNew={newDraft} />
-      <ConditionBuilder conditions={conditions} universe={universe}
-        onConditionsChange={editConditions} onUniverseChange={editUniverse} />
+      <SavedScreenerList anchorId={editor.anchorId} dirty={editor.dirty}
+        onLoad={editor.load} onNewDraft={editor.newDraft}
+        onSaveAsNew={editor.saveAsNew} onOverwrite={editor.overwrite}
+        onRename={editor.rename} onRemove={editor.remove} />
+      <ConditionBuilder conditions={editor.conditions} universe={editor.universe}
+        onConditionsChange={editor.editConditions} onUniverseChange={editor.editUniverse} />
 
       {notSeeded ? (
         <div className="bg-bg-card border rounded-lg p-md flex flex-col gap-sm text-sm text-fg-dim">

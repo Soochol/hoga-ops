@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ConditionLeaf, ScreenerUniverse } from '../api/screener';
 import type { SavedScreener } from '../api/savedScreeners';
-import { useSavedScreeners, useSaveMutations } from './useSavedScreeners';
+import { useSavedScreeners } from './useSavedScreeners';
 import { ConfirmModal } from './ConfirmModal';
 import { suggestSaveName } from './suggestName';
-
-interface Current { conditions: ConditionLeaf[]; universe: ScreenerUniverse }
 
 type Editing =
   | { mode: 'create'; initial: string }
@@ -43,46 +40,43 @@ function NameRowInput({ initial, onCommit, onCancel }: {
   );
 }
 
-export function SavedScreenerList({ current, anchorId, dirty, onLoad, onBeginSave, onAnchorChange, onNew }: {
-  current: Current; anchorId: string | null; dirty: boolean;
-  onLoad: (s: SavedScreener) => void; onBeginSave: () => void; onAnchorChange: (id: string | null) => void;
-  onNew: () => void;
+export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveAsNew, onOverwrite, onRename, onRemove }: {
+  anchorId: string | null; dirty: boolean;
+  onLoad: (s: SavedScreener) => void;
+  onNewDraft: () => void;
+  onSaveAsNew: (name: string) => void;
+  onOverwrite: (s: SavedScreener) => void;
+  onRename: (s: SavedScreener, name: string) => void;
+  onRemove: (s: SavedScreener) => void;
 }) {
   const { data } = useSavedScreeners();
-  const { create, update, remove } = useSaveMutations();
   const saves = data?.saves ?? [];
   const [editing, setEditing] = useState<Editing>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
 
-  const bodyFromBuilder = (name: string) => ({ name, conditions: current.conditions, universe: current.universe });
-
   // create re-anchors to the new save; rename never re-anchors and must carry
   // the SAVE's own conditions/universe (forwarding the live builder is the ✎
-  // data-loss bug). onBeginSave fires synchronously at dispatch so the parent
-  // can snapshot its edit generation.
+  // data-loss bug). The editor owns the begin→mutate→settle race guard now; the
+  // view just trims the name and fires the op.
   const commitCreate = (raw: string) => {
     const name = raw.trim();
-    if (name) { onBeginSave(); create.mutate(bodyFromBuilder(name), { onSuccess: (created) => onAnchorChange(created.id) }); }
+    if (name) onSaveAsNew(name);
     setEditing(null);
   };
   const commitRename = (s: SavedScreener, raw: string) => {
     const name = raw.trim();
-    if (name && name !== s.name) update.mutate({ id: s.id, body: { name, conditions: s.conditions, universe: s.universe } });
+    if (name && name !== s.name) onRename(s, name);
     setEditing(null);
   };
 
   // Overwrite/delete go through the shared center ConfirmModal. The confirm
   // message NAMES the target so "load A → 덮어쓰기 on B" can't silently clobber
-  // the wrong save. All mutation + anchor logic lives here, not in the modal.
+  // the wrong save. The editor's ops own the mutation + anchor settlement.
   const runConfirm = () => {
     if (!confirm) return;
     const s = confirm.save;
-    if (confirm.kind === 'overwrite') {
-      onBeginSave();
-      update.mutate({ id: s.id, body: bodyFromBuilder(s.name) }, { onSuccess: () => onAnchorChange(s.id) });
-    } else {
-      remove.mutate(s.id, { onSuccess: () => { if (s.id === anchorId) onAnchorChange(null); } });
-    }
+    if (confirm.kind === 'overwrite') onOverwrite(s);
+    else onRemove(s);
     setConfirm(null);
   };
 
@@ -91,7 +85,7 @@ export function SavedScreenerList({ current, anchorId, dirty, onLoad, onBeginSav
       <div className="flex items-center gap-1.5">
         <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-dimmer">저장한 조건검색</span>
         <button type="button" aria-label="새로 저장"
-          onClick={() => { onNew(); setEditing({ mode: 'create', initial: suggestSaveName(saves.map((s) => s.name)) }); }}
+          onClick={() => { onNewDraft(); setEditing({ mode: 'create', initial: suggestSaveName(saves.map((s) => s.name)) }); }}
           className="ml-auto w-[22px] h-[22px] rounded-md bg-bg-input border text-fg-dim hover:text-fg">＋</button>
       </div>
       <div className="flex flex-col gap-1">
