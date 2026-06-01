@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { ScreenerDrawer } from './ScreenerDrawer';
@@ -8,6 +8,7 @@ import { useScreenerPanelStore } from '../state/screenerPanel';
 import * as savesApi from '../api/savedScreeners';
 import * as screenerApi from '../api/screener';
 import * as client from '../api/client';
+import * as watchlistApi from '../api/watchlist';
 
 function LocationProbe() {
   const { pathname } = useLocation();
@@ -50,6 +51,7 @@ describe('ScreenerDrawer', () => {
     vi.restoreAllMocks();
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'ok', last_raw_date: '20260530', days_behind: 0 });
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: [], next_run_at_ms: 0 });
   });
 
   it('lists saved screeners in the dropdown', async () => {
@@ -182,5 +184,41 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(screen.getByText('72,400')).toBeInTheDocument()); // live price
     expect(screen.getByText(/\+3\.40%/)).toBeInTheDocument();                    // live pct (not corpus)
     expect(screen.getByTestId('screener-row-005930')).toBeInTheDocument();       // testid preserved (regression)
+  });
+
+  it('clicking a non-member row heart adds it to the watchlist', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    const addSpy = vi.spyOn(watchlistApi, 'addToWatchlist').mockResolvedValue({
+      code: '005930', name: '삼성전자', registered_at_kst_date: '20260602', last_success_date: null,
+    });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    const heart = within(screen.getByTestId('screener-row-005930')).getByRole('button', { name: '관심종목 추가' });
+    fireEvent.click(heart);
+    await waitFor(() => expect(addSpy).toHaveBeenCalledWith('005930'));
+    expect(useLivePageStore.getState().activeCode).toBeNull();
+  });
+
+  it('clicking a member row heart removes it from the watchlist', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
+      entries: [{ code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null }],
+      next_run_at_ms: 0,
+    });
+    const removeSpy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined);
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    const heart = await waitFor(() =>
+      within(screen.getByTestId('screener-row-005930')).getByRole('button', { name: '관심종목 해제' }),
+    );
+    fireEvent.click(heart);
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('005930'));
   });
 });

@@ -10,6 +10,8 @@ import { StalenessChip } from './StalenessChip';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useQuotes } from '../api/liveQuotes';
 import { triggerScreenerUpdate } from '../api/screener';
+import { HeartIcon } from '../ui/HeartIcon';
+import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 
 /**
  * Screener panel (ADR-0052) — app-wide sibling of the Watchlist Panel. Pick a
@@ -23,6 +25,7 @@ export function ScreenerDrawer() {
   const { pathname } = useLocation();
   const activeCode = useLivePageStore((s) => s.activeCode);
   const setActiveCode = useLivePageStore((s) => s.setActiveCode);
+  const { isMember, toggle } = useWatchlistMembership();
 
   const selectedSavedId = useScreenerPanelStore((s) => s.selectedSavedId);
   const setSelectedSavedId = useScreenerPanelStore((s) => s.setSelectedSavedId);
@@ -165,6 +168,7 @@ export function ScreenerDrawer() {
               <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                 {lastScan.rows.map((r) => {
                   const q = quoteByCode.get(r.code);
+                  const member = isMember(r.code);
                   return (
                     <QuoteRow
                       key={r.code}
@@ -176,6 +180,22 @@ export function ScreenerDrawer() {
                       ariaLabel={`${r.name} ${r.code} 차트 열기`}
                       testId={`screener-row-${r.code}`}
                       onClick={() => openLive(r.code)}
+                      trailingAction={
+                        <button
+                          type="button"
+                          aria-label={member ? '관심종목 해제' : '관심종목 추가'}
+                          aria-pressed={member}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => { e.stopPropagation(); toggle(r.code); }}
+                          className={
+                            member
+                              ? 'leading-none text-fg transition-[opacity,color] duration-[80ms]'
+                              : 'leading-none text-fg-dimmer opacity-45 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-fg focus-visible:text-fg transition-[opacity,color] duration-[80ms]'
+                          }
+                        >
+                          <HeartIcon filled={member} className="w-[1em] h-[1em]" />
+                        </button>
+                      }
                     />
                   );
                 })}
