@@ -1,5 +1,6 @@
 import type {
   TradeValueParams, BreakoutParams, ChangePctParams, PriceRangeParams, MaParams,
+  PeriodParams, TradeValuePeriodParams,
 } from '../api/screener';
 
 export function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -64,4 +65,16 @@ export function MaForm({ params, onChange }: { params: MaParams; onChange: (p: M
     <Num value={params.period} onChange={(n) => onChange({ ...params, period: n ?? 1 })} w="w-16" />
     <Select label="이평선 관계" value={params.relation} onChange={(relation) => onChange({ ...params, relation })}
       options={[['above', '위'], ['below', '아래']]} /></div>;
+}
+export function PeriodForm({ params, onChange }: { params: PeriodParams; onChange: (p: PeriodParams) => void }) {
+  return <div className="flex items-center gap-2">
+    <Num label="period (M)" value={params.period} onChange={(n) => onChange({ period: n ?? 1 })} />
+    <span className="text-sm text-fg-dimmer">일</span></div>;
+}
+export function TradeValuePeriodForm({ params, onChange }: { params: TradeValuePeriodParams; onChange: (p: TradeValuePeriodParams) => void }) {
+  return <div className="flex items-center gap-2 flex-wrap">
+    <Num label="lookback (N)" value={params.lookback} onChange={(n) => onChange({ ...params, lookback: n ?? 1 })} />
+    <span className="text-fg-dimmer">일내 ≥</span>
+    <Num label="min_eok" value={params.min_eok} onChange={(n) => onChange({ ...params, min_eok: n ?? 0 })} />
+    <span className="text-sm text-fg-dimmer">억</span></div>;
 }

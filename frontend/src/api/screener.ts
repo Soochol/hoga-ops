@@ -3,6 +3,8 @@ import { apiCall } from './client';
 // --- condition params (one per catalog type; type keys MUST match backend) ---
 export interface TradeValueParams { min_eok: number }
 export interface BreakoutParams { lookback: number; period: number }
+export interface PeriodParams { period: number }
+export interface TradeValuePeriodParams { lookback: number; min_eok: number }
 export type ChangePctOp = 'gte' | 'lte' | 'between';
 export interface ChangePctParams { op: ChangePctOp; pct?: number; lo?: number; hi?: number }
 export interface PriceRangeParams { min?: number; max?: number }
@@ -11,7 +13,10 @@ export interface MaParams { period: number; relation: MaRelation }
 
 export type ConditionLeaf =
   | { id: string; type: 'trade_value'; params: TradeValueParams }
+  | { id: string; type: 'trade_value_period'; params: TradeValuePeriodParams }
+  | { id: string; type: 'new_high_today'; params: PeriodParams }
   | { id: string; type: 'new_high'; params: BreakoutParams }
+  | { id: string; type: 'new_high_vol_today'; params: PeriodParams }
   | { id: string; type: 'new_high_vol'; params: BreakoutParams }
   | { id: string; type: 'change_pct'; params: ChangePctParams }
   | { id: string; type: 'price_range'; params: PriceRangeParams }

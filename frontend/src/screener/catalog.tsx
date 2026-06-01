@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 import type { ConditionLeaf, ConditionType } from '../api/screener';
-import { TradeValueForm, BreakoutForm, ChangePctForm, PriceRangeForm, MaForm } from './paramForms';
+import { TradeValueForm, BreakoutForm, ChangePctForm, PriceRangeForm, MaForm, PeriodForm, TradeValuePeriodForm } from './paramForms';
 
 interface CatalogEntry {
   label: string;
@@ -10,16 +10,23 @@ interface CatalogEntry {
 }
 
 export const CONDITION_ORDER: ConditionType[] =
-  ['trade_value', 'new_high', 'new_high_vol', 'change_pct', 'price_range', 'ma'];
+  ['trade_value', 'trade_value_period', 'new_high_today', 'new_high',
+   'new_high_vol_today', 'new_high_vol', 'change_pct', 'price_range', 'ma'];
 
 const OP = { gte: '≥', lte: '≤', between: '사이' } as const;
 
 export const CONDITION_CATALOG: Record<ConditionType, CatalogEntry> = {
   trade_value: { label: '거래대금', defaultParams: { min_eok: 50 }, ParamForm: TradeValueForm,
     summarize: (p) => `≥ ${p.min_eok}억` },
-  new_high: { label: '신고가', defaultParams: { lookback: 200, period: 500 }, ParamForm: BreakoutForm,
+  trade_value_period: { label: '기간내 거래대금', defaultParams: { lookback: 60, min_eok: 1000 }, ParamForm: TradeValuePeriodForm,
+    summarize: (p) => `${p.lookback}일내 ≥${p.min_eok}억` },
+  new_high_today: { label: '신고가', defaultParams: { period: 200 }, ParamForm: PeriodForm,
+    summarize: (p) => `${p.period}일` },
+  new_high: { label: '기간내 신고가', defaultParams: { lookback: 200, period: 500 }, ParamForm: BreakoutForm,
     summarize: (p) => `${p.lookback}·${p.period}` },
-  new_high_vol: { label: '신고거래량', defaultParams: { lookback: 60, period: 250 }, ParamForm: BreakoutForm,
+  new_high_vol_today: { label: '신고거래량', defaultParams: { period: 60 }, ParamForm: PeriodForm,
+    summarize: (p) => `${p.period}일` },
+  new_high_vol: { label: '기간내 신고거래량', defaultParams: { lookback: 60, period: 250 }, ParamForm: BreakoutForm,
     summarize: (p) => `${p.lookback}·${p.period}` },
   change_pct: { label: '등락률', defaultParams: { op: 'gte', pct: 5 }, ParamForm: ChangePctForm,
     summarize: (p) => {
