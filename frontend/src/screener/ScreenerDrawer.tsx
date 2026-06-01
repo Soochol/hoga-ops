@@ -7,7 +7,8 @@ import { useSavedScreeners } from './useSavedScreeners';
 import { useScreener } from './useScreener';
 import { useScreenerStatus } from './useScreenerStatus';
 import { StalenessChip } from './StalenessChip';
-import { ChangeCell } from './ChangeCell';
+import { QuoteRow } from '../rightrail/QuoteRow';
+import { useQuotes } from '../api/liveQuotes';
 import { triggerScreenerUpdate } from '../api/screener';
 
 /**
@@ -68,6 +69,16 @@ export function ScreenerDrawer() {
     setActiveCode(code);
     if (pathname !== '/live') navigate('/live');
   };
+
+  const liveCodes = useMemo(
+    () => (lastScan?.rows ?? []).slice(0, 30).map((r) => r.code),
+    [lastScan],
+  );
+  const { data: quotesData } = useQuotes(liveCodes);
+  const quoteByCode = useMemo(
+    () => new Map((quotesData?.quotes ?? []).map((q) => [q.code, q])),
+    [quotesData],
+  );
 
   return (
     <div
@@ -152,12 +163,22 @@ export function ScreenerDrawer() {
               <div className="p-md text-fg-dim text-sm">조건에 맞는 종목이 없습니다.</div>
             ) : (
               <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                {lastScan.rows.map((r) => (
-                  <ScreenerResultRow
-                    key={r.code} code={r.code} name={r.name} pct={r.change_pct}
-                    active={r.code === activeCode} onClick={() => openLive(r.code)}
-                  />
-                ))}
+                {lastScan.rows.map((r) => {
+                  const q = quoteByCode.get(r.code);
+                  return (
+                    <QuoteRow
+                      key={r.code}
+                      code={r.code}
+                      name={r.name}
+                      price={q?.price ?? null}
+                      pct={q?.change_pct ?? r.change_pct}
+                      active={r.code === activeCode}
+                      ariaLabel={`${r.name} ${r.code} 차트 열기`}
+                      testId={`screener-row-${r.code}`}
+                      onClick={() => openLive(r.code)}
+                    />
+                  );
+                })}
               </ul>
             )}
           </>
@@ -169,28 +190,3 @@ export function ScreenerDrawer() {
   );
 }
 
-function ScreenerResultRow({
-  code, name, pct, active, onClick,
-}: { code: string; name: string; pct: number | null; active: boolean; onClick: () => void }) {
-  const onKeyDown = (e: React.KeyboardEvent<HTMLLIElement>) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
-  };
-  return (
-    <li
-      data-testid={`screener-row-${code}`}
-      role="button" tabIndex={0}
-      aria-current={active ? 'true' : undefined}
-      aria-label={`${name} ${code} 차트 열기`}
-      onClick={onClick} onKeyDown={onKeyDown}
-      className="cursor-pointer px-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover"
-      style={{
-        background: active ? 'var(--tint-selection)' : 'transparent',
-        borderLeft: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
-      }}
-    >
-      <span className="font-mono text-xs text-fg-dim" style={{ minWidth: '3.2rem' }}>{code}</span>
-      <span className="flex-1 truncate text-sm text-fg">{name}</span>
-      <span className="font-mono tabular-nums text-sm text-right"><ChangeCell pct={pct} /></span>
-    </li>
-  );
-}

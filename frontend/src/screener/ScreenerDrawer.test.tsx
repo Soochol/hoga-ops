@@ -7,6 +7,7 @@ import { useLivePageStore } from '../state/livePage';
 import { useScreenerPanelStore } from '../state/screenerPanel';
 import * as savesApi from '../api/savedScreeners';
 import * as screenerApi from '../api/screener';
+import * as client from '../api/client';
 
 function LocationProbe() {
   const { pathname } = useLocation();
@@ -48,6 +49,7 @@ describe('ScreenerDrawer', () => {
     useScreenerPanelStore.setState({ selectedSavedId: null, lastScan: null });
     vi.restoreAllMocks();
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'ok', last_raw_date: '20260530', days_behind: 0 });
+    vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
   });
 
   it('lists saved screeners in the dropdown', async () => {
@@ -163,5 +165,22 @@ describe('ScreenerDrawer', () => {
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText(/선택한 조건과 다름/)).toBeInTheDocument());
+  });
+
+  it('overlays live price + change% on result rows (top-30), overriding corpus pct', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      phase: 'open',
+      quotes: [{ code: '005930', price: 72400, change_pct: 3.4 }],
+    });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('72,400')).toBeInTheDocument()); // live price
+    expect(screen.getByText(/\+3\.40%/)).toBeInTheDocument();                    // live pct (not corpus)
+    expect(screen.getByTestId('screener-row-005930')).toBeInTheDocument();       // testid preserved (regression)
   });
 });
