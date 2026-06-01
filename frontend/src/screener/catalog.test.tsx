@@ -26,7 +26,8 @@ describe('catalog', () => {
   it('summarize renders sublabels', () => {
     expect(CONDITION_CATALOG.new_high.summarize({ lookback: 200, period: 500 })).toBe('200·500');
     expect(CONDITION_CATALOG.change_pct.summarize({ op: 'gte', pct: 5 })).toBe('≥ 5%');
-    expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'above' })).toBe('MA20 위');
+    expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'above' })).toBe('종가 ≥ MA20');
+    expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'below' })).toBe('종가 ≤ MA20');
     expect(CONDITION_CATALOG.new_high_today.summarize({ period: 200 })).toBe('200일');
     expect(CONDITION_CATALOG.trade_value_period.summarize({ lookback: 60, min_eok: 1000 })).toBe('60일내 ≥1000억');
   });
