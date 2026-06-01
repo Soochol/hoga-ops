@@ -10,7 +10,7 @@ import { StalenessChip } from './StalenessChip';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { triggerScreenerUpdate } from '../api/screener';
-import { HeartIcon } from '../ui/HeartIcon';
+import { WatchlistToggleButton } from '../watchlist/WatchlistToggleButton';
 import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 
 /**
@@ -176,22 +176,7 @@ export function ScreenerDrawer() {
                       ariaLabel={`${r.name} ${r.code} 차트 열기`}
                       testId={`screener-row-${r.code}`}
                       onClick={() => openLive(r.code)}
-                      trailingAction={
-                        <button
-                          type="button"
-                          aria-label={member ? '관심종목 해제' : '관심종목 추가'}
-                          aria-pressed={member}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={(e) => { e.stopPropagation(); toggle(r.code); }}
-                          className={
-                            member
-                              ? 'leading-none text-fg transition-[opacity,color] duration-[80ms]'
-                              : 'leading-none text-fg-dimmer opacity-45 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-fg focus-visible:text-fg transition-[opacity,color] duration-[80ms]'
-                          }
-                        >
-                          <HeartIcon filled={member} className="w-[1em] h-[1em]" />
-                        </button>
-                      }
+                      trailingAction={<WatchlistToggleButton isMember={member} onToggle={() => toggle(r.code)} variant="row" />}
                     />
                   );
                 })}

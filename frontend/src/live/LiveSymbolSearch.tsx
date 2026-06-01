@@ -4,7 +4,7 @@ import { useCombobox } from '../util/useCombobox';
 import { useLivePageStore } from '../state/livePage';
 import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 import { shouldIgnoreEvent } from './useLiveKeyboard';
-import { HeartIcon } from '../ui/HeartIcon';
+import { WatchlistToggleButton } from '../watchlist/WatchlistToggleButton';
 import type { SymbolHit } from '../api/types';
 
 export function LiveSymbolSearch() {
@@ -104,16 +104,7 @@ export function LiveSymbolSearch() {
                   <span className="text-sm text-fg">{hit.name}</span>
                   <span className="text-sm font-mono text-fg-dim tabular-nums">{hit.code}</span>
                   <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">{hit.market}</span>
-                  <button
-                    type="button"
-                    aria-label={member ? '관심종목 해제' : '관심종목 추가'}
-                    aria-pressed={member}
-                    className={`leading-none ${member ? 'text-fg' : 'text-fg-dimmer hover:text-fg'}`}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={(e) => { e.stopPropagation(); toggle(hit.code); }}
-                  >
-                    <HeartIcon filled={member} className="w-[1em] h-[1em]" />
-                  </button>
+                  <WatchlistToggleButton isMember={member} onToggle={() => toggle(hit.code)} />
                 </div>
               );
             })
