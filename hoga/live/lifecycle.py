@@ -127,6 +127,27 @@ def ensure_kis_client(token_cache_path: Path, creds: KisCredentials) -> KisClien
     return _kis_client
 
 
+def ensure_kis_client_from_env(data_dir: Path) -> KisClient | None:
+    """Resolve KIS creds from the environment and return the process singleton,
+    or None when creds are absent.
+
+    The single source of the env→creds→token-path recipe shared by the live
+    poller, the screener EOD update, and the /api/live/quotes route. Centralizing
+    it here means a consumer can't drift on env-var names / env / token path, and
+    it makes ensure_kis_client's "reuse existing, ignore later args" behavior
+    safe-by-construction (every caller resolves identical values). A new consumer
+    obtains the shared 15/s-bucket singleton with one call + a None check.
+    """
+    import os
+
+    app_key = os.environ.get("KIS_APP_KEY")
+    app_secret = os.environ.get("KIS_APP_SECRET")
+    if not app_key or not app_secret:
+        return None
+    creds = KisCredentials(app_key=app_key, app_secret=app_secret, env="real")
+    return ensure_kis_client(data_dir / ".local" / "kis-token.json", creds)
+
+
 async def aclose_kis_client() -> None:
     """Close and drop the KisClient singleton — for PROCESS shutdown only.
 
@@ -245,8 +266,6 @@ async def start_live_poller(*, data_dir: Path) -> bool:
 
     from hoga.api.watchlist import load_watchlist
 
-    from .buffer import LiveBuffer
-    from .kis_client import KisCredentials
     from .poller import LivePoller, LivePollerConfig
     from .writer import LiveWriter
 
@@ -277,12 +296,13 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     # If already running, stop first.
     await stop_live_poller()
 
-    # Obtain the PROCESS-singleton KisClient (shared 15/s token bucket). Decoupled
-    # from poller start/stop: ensure_kis_client reuses the existing client if one
-    # is already set, so a stop→start cycle (or the screener's EOD update running
-    # while the poller is stopped) never creates a second token bucket.
-    creds = KisCredentials(app_key=app_key, app_secret=app_secret, env="real")
-    kis = ensure_kis_client(data_dir / ".local" / "kis-token.json", creds)
+    # Obtain the PROCESS-singleton KisClient (shared 15/s token bucket) via the
+    # single env→creds→path resolver — the same one the screener EOD update and
+    # the /quotes route use. Decoupled from poller start/stop: the singleton is
+    # reused if already set, so a stop→start cycle never creates a 2nd bucket.
+    kis = ensure_kis_client_from_env(data_dir)
+    if kis is None:  # creds vanished after the early guard above
+        return False
     writer = LiveWriter(data_dir / "live")
 
     def _today_kst() -> str:

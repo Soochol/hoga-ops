@@ -67,6 +67,42 @@ def test_quotes_filters_invalid_codes(monkeypatch):
     assert seen["codes"] == ["005930"]
 
 
+def test_quotes_lazy_inits_kis_when_singleton_absent(monkeypatch, tmp_path):
+    # _kis_client singleton never seeded (empty watchlist + no-gap day) but the
+    # route is wired with data_dir → it resolves a client from env on demand
+    # instead of silently returning empty quotes (code-review #2).
+    monkeypatch.setattr(live_api, "_market_phase", lambda now: "open")
+    fake = _FakeKis(QUOTES)
+    monkeypatch.setattr(lifecycle, "ensure_kis_client_from_env", lambda data_dir: fake)
+    app = FastAPI()
+    app.include_router(build_router(
+        get_status=lifecycle.get_status,
+        get_kis_client=lambda: None,   # singleton absent
+        data_dir=tmp_path,
+    ))
+    r = TestClient(app).get("/api/live/quotes", params={"codes": "005930,000660"})
+    assert r.status_code == 200
+    assert [q["code"] for q in r.json()["quotes"]] == ["005930", "000660"]
+
+
+def test_quotes_no_lazy_init_without_data_dir(monkeypatch):
+    # Without data_dir wired, a None singleton stays graceful-empty and the
+    # resolver is never invoked (no accidental client construction).
+    monkeypatch.setattr(live_api, "_market_phase", lambda now: "open")
+    calls = {"n": 0}
+
+    def _resolver(data_dir):
+        calls["n"] += 1
+
+    monkeypatch.setattr(lifecycle, "ensure_kis_client_from_env", _resolver)
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, get_kis_client=lambda: None))
+    r = TestClient(app).get("/api/live/quotes", params={"codes": "005930"})
+    assert r.status_code == 200
+    assert r.json()["quotes"] == []
+    assert calls["n"] == 0  # data_dir None → resolver never called
+
+
 def test_market_phase_boundary_at_0900_kst():
     # 장전(09:00 직전)=pre_open, 정각 09:00=open (반장도 오픈은 09:00 동일)
     assert _market_phase(datetime(2026, 6, 1, 8, 59, tzinfo=_KST)) == "pre_open"

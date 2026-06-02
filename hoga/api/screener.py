@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import time
 import uuid
 from datetime import date, datetime, timedelta
@@ -22,7 +21,7 @@ from hoga.api.models import (
 )
 from hoga.api.symbols import _RefreshCoordinator
 from hoga.live import lifecycle
-from hoga.live.kis_client import KIS_KST, KisCredentials
+from hoga.live.kis_client import KIS_KST
 
 log = logging.getLogger(__name__)
 
@@ -80,13 +79,10 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
 
     codes = pl.read_parquet(sdir / "stocks.parquet")["code"].to_list()
 
-    app_key = os.environ.get("KIS_APP_KEY")
-    app_secret = os.environ.get("KIS_APP_SECRET")
-    if not app_key or not app_secret:
+    client = lifecycle.ensure_kis_client_from_env(data_dir)
+    if client is None:
         log.warning("screener update: KIS creds missing, skipping")
         return 0
-    creds = KisCredentials(app_key=app_key, app_secret=app_secret, env="real")
-    client = lifecycle.ensure_kis_client(data_dir / ".local" / "kis-token.json", creds)
 
     async def fetch_one(c: str, f: str, t: str) -> list[dict]:
         return await _kis_fetch_one(client, c, f, t)
