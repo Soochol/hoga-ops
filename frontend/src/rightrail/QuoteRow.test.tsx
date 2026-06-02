@@ -65,4 +65,27 @@ describe('QuoteRow', () => {
     fireEvent.click(li);
     expect(onClick).toHaveBeenCalledOnce();
   });
+
+  it('right-click calls onContextMenu', () => {
+    const onContextMenu = vi.fn();
+    row({ onContextMenu });
+    fireEvent.contextMenu(screen.getByTestId('quote-row-005930'));
+    expect(onContextMenu).toHaveBeenCalledOnce();
+  });
+
+  it('Delete key on the focused row calls onDelete (not onClick)', () => {
+    const onDelete = vi.fn();
+    const { onClick } = row({ onDelete });
+    fireEvent.keyDown(screen.getByTestId('quote-row-005930'), { key: 'Delete' });
+    expect(onDelete).toHaveBeenCalledOnce();
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('Enter still triggers onClick when onDelete is provided', () => {
+    const onDelete = vi.fn();
+    const { onClick } = row({ onDelete });
+    fireEvent.keyDown(screen.getByTestId('quote-row-005930'), { key: 'Enter' });
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
 });

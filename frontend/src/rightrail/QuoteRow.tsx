@@ -22,16 +22,23 @@ export interface QuoteRowProps {
   dragListeners?: DraggableSyntheticListeners;
   dragAttributes?: DraggableAttributes;
   dragging?: boolean;
+  // --- 관심종목 패널 전용 우클릭/Delete (미전달 시 무동작) ---
+  onContextMenu?: (e: React.MouseEvent<HTMLLIElement>) => void;
+  onDelete?: () => void;
 }
 
 export function QuoteRow({
   name, price, pct, changeWon, active, ariaLabel, testId, onClick, trailingAction,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragging,
+  onContextMenu, onDelete,
 }: QuoteRowProps) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLLIElement>) => {
     // 중첩 버튼(trailingAction)에서 올라온 keydown 은 무시 — 행이 직접
-    // 포커스됐을 때만 Enter/Space 로 차트를 연다.
+    // 포커스됐을 때만 동작한다.
     if (e.target !== e.currentTarget) return;
+    if (onDelete && (e.key === 'Delete' || e.key === 'Backspace')) {
+      e.preventDefault(); onDelete(); return;
+    }
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
   };
   return (
@@ -45,6 +52,7 @@ export function QuoteRow({
       aria-label={ariaLabel}
       onClick={onClick}
       onKeyDown={onKeyDown}
+      onContextMenu={onContextMenu}
       className="group cursor-pointer px-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover"
       style={{
         background: active ? 'var(--tint-selection)' : 'transparent',
