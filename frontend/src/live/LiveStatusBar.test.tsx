@@ -28,6 +28,7 @@ const EMPTY_BUNDLE: RangeBundle = {
 function renderBar(
   props: { activeCode: string | null; cycleLagMs: number; bundle: RangeBundle | null },
   watchlistCodes: string[] = [],
+  quote?: { price: number; change_pct: number | null; change_won: number | null },
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(['watchlist'], {
@@ -36,6 +37,11 @@ function renderBar(
     })),
     next_run_at_ms: 0,
   });
+  if (props.activeCode && quote) {
+    qc.setQueryData(['live-quotes', props.activeCode], {
+      phase: 'open', quotes: [{ code: props.activeCode, ...quote }],
+    });
+  }
   return render(
     <QueryClientProvider client={qc}>
       <LiveStatusBar {...props} />
@@ -73,6 +79,20 @@ describe('LiveStatusBar', () => {
     };
     renderBar({ activeCode: '005930', cycleLagMs: 50, bundle });
     expect(screen.getByTestId('live-current-price').textContent).toContain('71,200');
+  });
+
+  it('shows 등락률(%) next to price from the live quote (등락액은 헤더에서 생략)', () => {
+    renderBar(
+      { activeCode: '005930', cycleLagMs: 0, bundle: EMPTY_BUNDLE },
+      ['005930'],
+      { price: 361000, change_pct: 0.29, change_won: 1000 },
+    );
+    expect(screen.getByTestId('live-change').textContent).toBe('+0.29%');
+  });
+
+  it('omits the change cell when no live quote is available', () => {
+    renderBar({ activeCode: '005930', cycleLagMs: 0, bundle: EMPTY_BUNDLE });
+    expect(screen.queryByTestId('live-change')).toBeNull();
   });
 
   it('renders the kis_live source chip (ADR-0039 compliance)', () => {

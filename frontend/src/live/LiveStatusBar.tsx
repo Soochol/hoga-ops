@@ -7,6 +7,8 @@ import { useSymbols } from '../capture/useSymbols';
 import type { RangeBundle } from '../api/types';
 import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 import { HeartIcon } from '../ui/HeartIcon';
+import { useQuoteByCode } from '../api/liveQuotes';
+import { QuoteChange } from '../rightrail/QuoteChange';
 
 interface Props {
   activeCode: string | null;
@@ -32,6 +34,11 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
 
   const { isMember, toggle } = useWatchlistMembership();
   const member = !!activeCode && isMember(activeCode);
+
+  // 종목명·현재가 옆 전일대비(등락액·등락률) — 관심/스크리너 패널과 동일한
+  // 라이브 quote 단일 출처(ADR-0056). 현재가는 bundle(WS) 이라 별개.
+  const quoteByCode = useQuoteByCode(activeCode ? [activeCode] : []);
+  const quote = activeCode ? quoteByCode.get(activeCode) : undefined;
 
   const severity = cycleLagSeverity(cycleLagMs);
   const pill = cycleLagPillColor(severity);
@@ -83,6 +90,13 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
         </span>
       ) : (
         <span>가격 (대기 중)</span>
+      )}
+      {quote && (
+        <span className="font-mono whitespace-nowrap shrink-0" data-testid="live-change">
+          {/* 헤더는 등락률(%)만 — 현재가가 이미 옆에 있고 좁은 상태바라
+              등락액은 생략(관심·스크리너 패널은 등락액+등락률 둘 다). */}
+          <QuoteChange won={null} pct={quote.change_pct} />
+        </span>
       )}
       <span aria-hidden>·</span>
       <span>{timeframe}</span>
