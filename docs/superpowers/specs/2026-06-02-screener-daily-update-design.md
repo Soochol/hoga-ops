@@ -68,6 +68,7 @@ KIS는 가격·거래량에 **동일 계수**를 적용해 거래대금(price×v
 ## 2. 결정
 
 1. **원주가 권위 소스 = KIS** (adjust=False). DB는 은퇴(1999~ 역사 시드용으로만 보관, 재시드 안 함).
+   - **단, 기존 원주가를 KIS와 1회 교차검증(reconcile)** — 그릴링에서 사용자가 기존 raw 무결성을 우려. 스폿체크(7종목×2기간, 1585행) 결과 **값은 100% 일치**(틀린 값 아님)이나 **커버리지 구멍 존재**(예: 000660 디스크 2015~ 시작, KIS는 2010 보유). 소스마다 구멍이 달라(005930은 디스크 1999가 더 깊음) **합집합이 최선**. → reconcile = ① 값 검증 ② 디스크 결측일 KIS 보충 ③ KIS 미도달 깊은 역사는 디스크 유지.
 2. **수정주가 = KIS 정확 계수 기반**으로 전환. 로컬 휴리스틱은 폐기하지 않고 **(i) 감지 트리거 (ii) 손상 시 폴백**으로 강등.
 3. **검색 레이어(DuckDB-over-parquet)는 변경 없음** — 풀 코퍼스 스캔 ~0.6초(실측, 신고거래량 lookback=500/period=1000), 소스와 무관.
 
@@ -122,7 +123,8 @@ factor      DOUBLE    -- 그 구간 원주가에 곱할 배율 (adj_close/raw_cl
  ⑥ stocks_refresh  : symbol-master → stocks.parquet (주기)  [(나)]
  ⑦ intraday guard  : 오늘 바는 EOD 확정 후만 ingest  [(나)]
 [일회성]
- ⑧ factor_backfill : 전 종목 계수 최초 구축 + 구/신 임팩트 리포트 (resumable, rate-limited)
+ ⑧ raw_reconcile   : 1회 — 기존 원주가 vs KIS(adj=False) 값 검증 + 디스크 결측일 보충(합집합)
+ ⑨ factor_backfill : 전 종목 계수 최초 구축 + 구/신 임팩트 리포트 (resumable, rate-limited)
 ```
 
 ---
@@ -130,7 +132,7 @@ factor      DOUBLE    -- 그 구간 원주가에 곱할 배율 (adj_close/raw_cl
 ## 4. 데이터 흐름 (일일 EOD)
 
 ```
-0. 장중 가드 : ingest 대상 = '세션 확정 거래일'만 (date<오늘 OR now≥EOD컷오프). KIS가 미확정 오늘 행 줘도 드롭.
+0. 장중 가드 : ingest 대상 = '세션 확정 거래일'만 (date<today_kst OR now_kst≥16:00 KST). KIS가 미확정 오늘 행 줘도 드롭.
 1. 갭 계산   : last_raw_date → 확정 거래일 갭 (KRX 캘린더)
 2. raw 수신  : 종목별 갭만 KIS(adj=False)
 3. append    : daily_unadjusted (원자적, (code,date) 멱등)
@@ -152,6 +154,7 @@ factor      DOUBLE    -- 그 구간 원주가에 곱할 배율 (adj_close/raw_cl
 - **D3 — 최초 1회 백필** (전 종목, KIS 도달 깊이까지, resumable·rate-limited, 구/신 임팩트 리포트 산출).
 - **D4 — 계수 `adj/raw` 저장 → derive 수학 불변** (price×factor, volume/factor).
 - **D5 — 월 1/30 순환 안전망** (밤당 ~120종목 KIS 전 역사 재확인 → 감지 놓친 희석을 한 달 내 자가 교정). 순환율 튜닝 가능.
+- **D6 — 장중 가드 컷오프 = 16:00 KST 고정** (그릴링 Q1 해결). `date<today_kst` OR `now_kst≥16:00`일 때만 당일 ingest. 정규장 종가(15:30) 확정 + 버퍼, 반장(12:30 마감)도 안전, 17:00 스케줄러가 당일 같은 저녁 포착, 부팅 복구의 미완성 당일 바 차단. **ingest 단계에서 집행**(KIS가 미확정 오늘 행 줘도 드롭). 라이브 캐시(`past_daily_candles_cache`)의 "과거=디스크 / 오늘=확정 전 메모리" 원칙과 정합.
 
 ---
 
@@ -191,6 +194,7 @@ factor      DOUBLE    -- 그 구간 원주가에 곱할 배율 (adj_close/raw_cl
 
 ## 7. 마이그레이션 & 임팩트 리포트
 
+- **0단계 — 원주가 reconcile (1회)**: 기존 `daily_unadjusted` vs KIS(adj=False) 값 검증 + 디스크 결측일 KIS 보충(합집합). 스폿체크(7종목×2기간, 1585행): 값 100% 일치, 그러나 000660 등 커버리지 구멍 확인 → 전 종목 확대 시 보충 목록 산출. KIS 미도달 깊은 역사(예: 005930 1999)는 디스크 유지.
 - 백필이 구(휴리스틱) vs 신(KIS 계수) 수정주가를 전 종목 비교해 **임팩트 리포트** 산출:
   어떤 종목(≈572)이 고쳐지는지, 조건별(new_high/ma/price_range/change_pct vs trade_value) 영향 범위 명시.
 - 백필 1회 실행(운영, ~2~4h, resumable) 후 일일 흐름이 인계.
@@ -209,8 +213,11 @@ factor      DOUBLE    -- 그 구간 원주가에 곱할 배율 (adj_close/raw_cl
 
 ## 9. 열린 질문 (그릴링 대상)
 
-- EOD 확정 컷오프 정확 시각(17:00? 16:00?)과 today tri-state 처리.
-- 월 1/30 순환 vs 더 잦은/드문 주기 — 유상증자 빈도 대비 적정 순환율.
-- 백필 깊이: KIS 도달 한계(1999 미달 가능) 구간의 계수 폴백 정책(1.0 vs 휴리스틱).
-- `factors.parquet` upsert를 전체 재작성 vs 종목 파티션 — 규모(작음)상 전체 재작성으로 충분?
-- 임팩트 리포트 산출물 형식·보관 위치(status.json? 별도 artifact?).
+- ~~EOD 확정 컷오프 시각~~ → **해결(D6): 16:00 KST 고정.**
+- ~~순환 주기~~ → **확정: 월 1회 전 종목(1/30씩/밤)**(D5). 유상증자가 시장 전체 월 수 건이라 풀 스윕 월 1회로 충분. 순환율은 설정값으로 튜닝 가능.
+- ~~백필 깊이 / 깊은 역사 폴백~~ → **해결(그릴링 Q2=A)**: KIS가 빈 응답 줄 때까지(60페이지 캡 풀어) 정확 계수, KIS 미도달 깊은 역사는 휴리스틱 폴백. 원주가는 디스크∪KIS 합집합(reconcile)으로 최대 커버리지.
+- ~~기존 원주가 무결성 우려~~ → **해결(reconcile)**: 스폿체크 값 100% 일치, 커버리지 구멍만 KIS 보충.
+- ~~factors.parquet 갱신 방식~~ → **확정: 전체 원자적 재작성.** 종목당 몇 줄(~1만 행)이라 사소하고 원자성·단순성 우위. 파티션 불요.
+- ~~임팩트 리포트 형식·위치~~ → **확정: `screener/impact-report.json` 별도 artifact + 요약 로그.** status.json은 신선도 전용 유지(혼합 안 함).
+
+> 그릴링 종료(2026-06-03): 위 5개 + 핵심 결정 전부 확정. ADR-0057 참조. 구현 플랜으로 이행.
