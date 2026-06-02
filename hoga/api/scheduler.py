@@ -37,6 +37,25 @@ def seconds_until_next_17_kst(now: dt.datetime) -> float:
     return (target - now).total_seconds()
 
 
+def _log_blocked(resp: EnqueueResponse, *, context: str) -> None:
+    """Surface fail_streak-blocked (Code, Stock-Date)s rejected by the enqueue gate.
+
+    The daily/catch-up sweep enqueues through ``enqueue_items_core``, whose
+    ADR-0042 cap can reject a (Code, Stock-Date) as ``blocked`` — e.g. a Watchlist
+    date stuck in ``stagnation_abort`` that now counts as a failed attempt
+    (ADR-0042 amendment 2026-06-03). ``enqueue_items_core`` returns these on
+    ``resp.blocked`` (it does NOT raise), so without this they vanish silently and
+    the date quietly drops out of unattended capture. Warn so the operator knows
+    to clear it via the inventory ``잠금 해제`` action.
+    """
+    for item in resp.blocked:
+        log.warning(
+            "%s: %s/%s blocked (fail_streak=%d, %s) — not enqueued; "
+            "clear via inventory unblock",
+            context, item.code, item.date, item.fail_streak, item.reason,
+        )
+
+
 async def _daily_run(data_dir: Path) -> None:
     """Enqueue ``(code, today_kst)`` for every Watchlist entry on a
     trading day. Per-entry exceptions are logged; the loop continues.
@@ -61,11 +80,12 @@ async def _daily_run(data_dir: Path) -> None:
         return
     for entry in load_watchlist(data_dir):
         try:
-            await enqueue_items_core(
+            resp = await enqueue_items_core(
                 EnqueueRequest(code=entry.code, dates=[today]),
                 data_dir=data_dir,
                 now=now,
             )
+            _log_blocked(resp, context="daily")
         except Exception:  # noqa: BLE001 — one bad entry mustn't kill the run
             log.exception("daily enqueue failed for %s/%s", entry.code, today)
 
@@ -145,7 +165,8 @@ async def _catchup_run(data_dir: Path) -> None:
     now = now_kst()
     for entry in load_watchlist(data_dir):
         try:
-            await catchup_one_entry(entry, data_dir=data_dir, now=now)
+            resp = await catchup_one_entry(entry, data_dir=data_dir, now=now)
+            _log_blocked(resp, context="catch-up")
         except Exception:  # noqa: BLE001
             log.exception("catch-up failed for %s", entry.code)
 

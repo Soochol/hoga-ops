@@ -109,6 +109,41 @@ async def test_daily_run_per_entry_failure_does_not_abort_loop(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_daily_run_logs_blocked_watchlist_date(tmp_path: Path, caplog):
+    """ADR-0042 amendment: when the fail_streak cap blocks a Watchlist date, the
+    daily sweep must log it. Otherwise the date (e.g. 180640/20260601 once it hits
+    the cap from repeated stagnation_abort) silently drops out of unattended
+    capture with no operator signal."""
+    import logging
+    from hoga.api import scheduler, watchlist
+    from hoga.api.models import BlockedItem, EnqueueResponse
+    await watchlist.add_entry(tmp_path, code="180640", name="한진칼",
+                              today_kst_date="20260520")
+    fake_now = dt.datetime(2026, 5, 26, 18, 0, 0, tzinfo=KST)
+    blocked = EnqueueResponse(
+        enqueued=[], deduped=[],
+        blocked=[BlockedItem(code="180640", date="20260526",
+                             fail_streak=5, reason="fail_streak_exceeded")],
+    )
+
+    with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
+         patch("hoga.api.scheduler.trading_days_in_range",
+               return_value=["20260526"]), \
+         patch("hoga.api.scheduler.enqueue_items_core",
+               new_callable=AsyncMock, return_value=blocked), \
+         caplog.at_level(logging.WARNING, logger="hoga.api.scheduler"):
+        await scheduler._daily_run(tmp_path)
+
+    blocked_warnings = [
+        r for r in caplog.records
+        if r.levelno == logging.WARNING
+        and "180640" in r.getMessage() and "blocked" in r.getMessage()
+    ]
+    assert blocked_warnings, \
+        "daily run must warn when a Watchlist date is fail_streak-blocked"
+
+
+@pytest.mark.asyncio
 async def test_catchup_enqueues_gap_since_last_success(tmp_path: Path):
     from hoga.api import scheduler, watchlist
     from hoga.api.models import EnqueueResponse
