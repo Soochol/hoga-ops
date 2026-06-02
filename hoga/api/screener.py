@@ -64,7 +64,9 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
     calendar/KIS work runs in unseeded test/boot data dirs.
     """
     sdir = data_dir / "screener"
-    last = screener_store.last_raw_date(sdir / "daily_unadjusted.parquet")
+    # 동기 duckdb/polars read 는 to_thread 로 — 이벤트 루프 블로킹 방지(_commit 과 동일 규칙).
+    last = await asyncio.to_thread(
+        screener_store.last_raw_date, sdir / "daily_unadjusted.parquet")
     if last is None:
         return 0  # not seeded — nothing to catch up
 
@@ -77,7 +79,8 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
     if not days:
         return 0  # no gap (normal no-gap day) or empty range
 
-    codes = pl.read_parquet(sdir / "stocks.parquet")["code"].to_list()
+    stocks_df = await asyncio.to_thread(pl.read_parquet, sdir / "stocks.parquet")
+    codes = stocks_df["code"].to_list()   # 무거운 read 는 스레드로; 인메모리 추출만 루프
 
     client = lifecycle.ensure_kis_client_from_env(data_dir)
     if client is None:

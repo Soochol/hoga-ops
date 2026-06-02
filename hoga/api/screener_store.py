@@ -86,8 +86,8 @@ def _detect_factor(ratio: float) -> float | None:
 def adjust_splits(df: pl.DataFrame) -> pl.DataFrame:
     """원주가 일봉 → 수정주가(최신일 basis). per-code back-adjust."""
     out = []
+    # 전역 date 정렬 + maintain_order → 각 그룹은 이미 date 오름차순(group 별 재정렬 불요).
     for (code,), g in df.sort("date").group_by(["code"], maintain_order=True):
-        g = g.sort("date")
         closes = g["close"].to_list()
         n = len(closes)
         factor = [1.0] * n              # 각 날 d 의 누적계수(d 이후 분할 비율 곱). 최신일=1.
@@ -127,14 +127,19 @@ def last_raw_date(unadjusted_path: Path) -> str | None:
     return r.strftime("%Y%m%d") if r else None
 
 
-def append_rows(unadjusted_path: Path, new: pl.DataFrame) -> None:
+def append_rows(unadjusted_path: Path, new: pl.DataFrame) -> tuple[int, str | None]:
     """원주가 신규 거래일 append. (code,date) 멱등(중복 트리거 안전), 정렬 유지.
     무백업 SSOT 이므로 원자적 기록(tempfile→os.replace) — 중도 종료가 부분/손상
-    parquet 를 readers 에게 노출하지 않는다."""
+    parquet 를 readers 에게 노출하지 않는다. 반환: (universe_size=distinct code,
+    last_raw_date=max date YYYYMMDD|None) — 호출부가 같은 파일을 재독하지 않도록
+    메모리 df 에서 산출."""
     base = pl.read_parquet(unadjusted_path)
     merged = pl.concat([base, new.select(base.columns)]).unique(
         subset=["code", "date"], keep="last").sort(["code", "date"])
     atomic_write_parquet_df(unadjusted_path, merged)
+    n_codes = merged.select(pl.col("code").n_unique()).item()
+    max_date = merged.select(pl.col("date").max()).item()
+    return n_codes, (max_date.strftime("%Y%m%d") if max_date is not None else None)
 
 
 def write_status(path: Path, *, last_raw_date: str | None, universe_size: int,
@@ -194,24 +199,33 @@ from collections.abc import Awaitable, Callable  # noqa: E402
 
 FetchOne = Callable[[str, str, str], Awaitable[list[dict]]]
 
+# KIS _get 가 15/s leaky-bucket 으로 HTTP rate 를 캡하므로, 동시성은 버킷을 채울
+# 정도면 충분(직렬 RTT 병목 제거, 버킷 초과 아님).
+_FETCH_CONCURRENCY = 8
+
 
 async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
                      trading_days: list[str], now_ms: int) -> int:
     """gap 거래일 행을 await fetch_one 으로 모아 append→derive→status. 실제로 추가된
     거래일 수(append 된 행의 distinct date) 반환 — 상류가 갭 일부만 반환해도 요청
-    거래일 수(len(trading_days))로 과대보고하지 않는다."""
-    rows: list[dict] = []
-    for code in codes:
-        rows += await fetch_one(code, trading_days[0], trading_days[-1])
+    거래일 수(len(trading_days))로 과대보고하지 않는다. fetch 는 세마포어로 제한한
+    동시 호출(직렬 RTT 병목 제거; 15/s 버킷은 _get 가 캡)."""
+    sem = asyncio.Semaphore(_FETCH_CONCURRENCY)
+
+    async def _one(code: str) -> list[dict]:
+        async with sem:
+            return await fetch_one(code, trading_days[0], trading_days[-1])
+
+    fetched = await asyncio.gather(*(_one(c) for c in codes))
+    rows: list[dict] = [r for batch in fetched for r in batch]
     if not rows:
         return 0
     up = sdir / "daily_unadjusted.parquet"
 
     def _commit() -> int:                  # 동기 polars는 to_thread로 (루프 블로킹 방지)
-        append_rows(up, pl.DataFrame(rows))
+        n, last = append_rows(up, pl.DataFrame(rows))   # 통계는 메모리 df 에서(재독 X)
         ms = derive_adjusted(up, sdir / "daily_adjusted.parquet")
-        n = pl.read_parquet(up).select(pl.col("code").n_unique()).item()
-        write_status(sdir / "status.json", last_raw_date=last_raw_date(up),
+        write_status(sdir / "status.json", last_raw_date=last,
                      universe_size=n, derive_ms=ms, now_ms=now_ms)
         return ms
 

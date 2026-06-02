@@ -909,16 +909,20 @@ def _parse_change_won(raw: str | None, mult: float) -> int | None:
 
 async def _fetch_multi_price(get, codes: list[str]) -> list["KisQuote"]:
     """get: async (*, path, tr_id, params)->dict (KisClient._get 와 동일 시그니처).
-    30개씩 청크해 intstock-multprice 호출. 각 행을 **응답 자신의 inter_shrn_iscd**
-    로 매핑(위치 의존 X — 누락/재정렬·빈 placeholder 행 안전). 빈/무효 행은 건너뛴다."""
-    out: list[KisQuote] = []
-    for i in range(0, len(codes), _MULTI_PRICE_CHUNK):
-        chunk = codes[i:i + _MULTI_PRICE_CHUNK]
-        body = await get(
+    30개씩 청크해 intstock-multprice 호출. 청크는 동시 호출(직렬 RTT 제거; 15/s 버킷은
+    _get 가 캡). 각 행을 **응답 자신의 inter_shrn_iscd** 로 매핑(위치 의존 X — 누락/
+    재정렬·빈 placeholder 행 안전). 빈/무효 행은 건너뛴다."""
+    chunks = [codes[i:i + _MULTI_PRICE_CHUNK] for i in range(0, len(codes), _MULTI_PRICE_CHUNK)]
+    bodies = await asyncio.gather(*(
+        get(
             path="/uapi/domestic-stock/v1/quotations/intstock-multprice",
             tr_id="FHKST11300006",
             params=_build_multi_price_params(chunk),
         )
+        for chunk in chunks
+    ))
+    out: list[KisQuote] = []
+    for body in bodies:
         for row in (body.get("output") or []):
             q = _parse_quote(row)
             if q is not None:
