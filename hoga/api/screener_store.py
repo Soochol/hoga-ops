@@ -70,6 +70,8 @@ def export_stocks_from_db(csv_path: Path, *, container: str = "tradingview-db",
 
 import polars as pl  # noqa: E402 — appended after stdlib imports
 
+from hoga.api import screener_factors  # noqa: E402 — 순환 없음(screener_factors는 _atomic_write만 import)
+
 # 깨끗한 분할 비율(신주/구주) 후보 + 역수. ratio = close[d]/close[d-1].
 _SPLIT_RATIOS = [1/2, 1/3, 1/4, 1/5, 1/10, 1/20, 1/50, 2, 3, 4, 5, 10]
 _SPLIT_TOL = 0.03  # ±3%
@@ -106,12 +108,27 @@ def adjust_splits(df: pl.DataFrame) -> pl.DataFrame:
     return pl.concat(out)
 
 
-def derive_adjusted(unadjusted_path: Path, out_path: Path) -> int:
-    """원주가 parquet → 수정주가 parquet. 소요 ms 반환."""
+def derive_adjusted(unadjusted_path: Path, out_path: Path, *,
+                    factors_path: Path | None = None) -> int:
+    """원주가 parquet → 수정주가 parquet. 소요 ms 반환.
+
+    factors_path 가 있고 로드되면 계수 적용(원주가×계수, ADR-0057). 없거나 손상이면
+    기존 split 휴리스틱(adjust_splits)으로 폴백. factors에 없는 종목도 휴리스틱 폴백.
+    """
     t0 = time.perf_counter()
     df = pl.read_parquet(unadjusted_path)
-    # run_scan 가 읽는 파생본 — 중도 종료가 손상본을 노출하면 모든 스캔이 깨지므로 원자적.
-    atomic_write_parquet_df(out_path, adjust_splits(df))
+    factors = screener_factors.read_factors(factors_path) if factors_path else None
+    if factors is not None and factors.height:
+        covered = set(factors["code"].unique().to_list())
+        have = df.filter(pl.col("code").is_in(covered))
+        miss = df.filter(~pl.col("code").is_in(covered))
+        parts = [screener_factors.apply_factors(have, factors)]
+        if miss.height:
+            parts.append(adjust_splits(miss).select(parts[0].columns))
+        adjusted = pl.concat(parts)
+    else:
+        adjusted = adjust_splits(df)
+    atomic_write_parquet_df(out_path, adjusted)
     return int((time.perf_counter() - t0) * 1000)
 
 
@@ -186,7 +203,8 @@ def seed_all(data_dir: Path, *, now_ms: int) -> int:
         seed_daily_from_csv(td / "daily.csv", sdir / "daily_unadjusted.parquet")
         export_stocks_from_db(td / "stocks.csv")
         seed_stocks_from_csv(td / "stocks.csv", sdir / "stocks.parquet")
-    ms = derive_adjusted(sdir / "daily_unadjusted.parquet", sdir / "daily_adjusted.parquet")
+    ms = derive_adjusted(sdir / "daily_unadjusted.parquet", sdir / "daily_adjusted.parquet",
+                         factors_path=sdir / "factors.parquet")
     n = pl.read_parquet(sdir / "stocks.parquet").height
     write_status(sdir / "status.json",
                  last_raw_date=last_raw_date(sdir / "daily_unadjusted.parquet"),
@@ -224,7 +242,8 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
 
     def _commit() -> int:                  # 동기 polars는 to_thread로 (루프 블로킹 방지)
         n, last = append_rows(up, pl.DataFrame(rows))   # 통계는 메모리 df 에서(재독 X)
-        ms = derive_adjusted(up, sdir / "daily_adjusted.parquet")
+        ms = derive_adjusted(up, sdir / "daily_adjusted.parquet",
+                             factors_path=sdir / "factors.parquet")
         write_status(sdir / "status.json", last_raw_date=last,
                      universe_size=n, derive_ms=ms, now_ms=now_ms)
         return ms

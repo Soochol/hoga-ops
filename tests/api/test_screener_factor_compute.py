@@ -48,5 +48,13 @@ def test_zero_raw_close_skipped():
     assert compute_factor_segments(rows) == [FactorSegment(dt.date(2024, 1, 3), 1.0)]
 
 
+def test_zero_adj_close_skipped():
+    rows = [
+        (dt.date(2024, 1, 2), 1000.0, 0.0),    # adj 불량/결측 → 스킵(factor=0 방지)
+        (dt.date(2024, 1, 3), 1000.0, 1000.0),
+    ]
+    assert compute_factor_segments(rows) == [FactorSegment(dt.date(2024, 1, 3), 1.0)]
+
+
 def test_empty_input_returns_empty():
     assert compute_factor_segments([]) == []

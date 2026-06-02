@@ -27,12 +27,13 @@ def compute_factor_segments(
     """rows: (date, raw_close, adj_close) — date ASC 정렬 가정.
 
     factor=adj/raw 를 run-length로 압축: factor가 직전 대비 tol(상대) 넘게 바뀌면 새 세그먼트.
-    raw_close==0(불량/결측)은 스킵(직전 세그먼트 유지). 첫 유효행이 첫 세그먼트(seg_start=그 날짜).
+    raw/adj 둘 중 하나라도 0(불량/결측)이면 스킵(직전 세그먼트 유지) — adj==0 은 factor==0 을
+    만들어 apply_factors 의 volume/factor 0나눗셈을 유발하므로 명시 가드. 첫 유효행이 첫 세그먼트.
     """
     segments: list[FactorSegment] = []
     prev: float | None = None
     for d, raw_c, adj_c in rows:
-        if raw_c == 0:
+        if raw_c == 0 or adj_c == 0:
             continue
         f = adj_c / raw_c
         if prev is None or abs(f - prev) / prev > tol:
@@ -82,3 +83,29 @@ def read_factors(path: Path) -> pl.DataFrame | None:
     except Exception:  # noqa: BLE001 — 손상 parquet은 어떤 예외든 폴백으로 강등
         _quarantine(path)
         return None
+
+
+_PRICE_COLS = ("open", "high", "low", "close")
+
+
+def apply_factors(unadjusted: pl.DataFrame, factors: pl.DataFrame) -> pl.DataFrame:
+    """원주가 × 계수 → 수정주가. backward ASOF(code별, date >= seg_start).
+
+    가격 ×factor, 거래량 ÷factor (거래대금 보존). 가장 오래된 seg_start 이전 날짜(계수 null)는
+    그 종목의 최古 factor로 채움(extend backward). 반환은 입력과 동일한 7개 기본 컬럼.
+
+    전제: (1) unadjusted의 각 code는 factors에 최소 1개 세그먼트가 있어야 한다(없으면 null→오염;
+    derive_adjusted가 미커버 종목을 adjust_splits로 분리). (2) factor > 0 — compute_factor_segments가
+    raw/adj==0 행을 스킵해 보장.
+    """
+    # join_asof 전제: 양 프레임을 asof 키(date/seg_start)로 by-그룹 내 정렬
+    u = unadjusted.sort(["code", "date"])
+    f = factors.select(["code", "seg_start", "factor"]).sort(["code", "seg_start"])
+    joined = u.join_asof(f, left_on="date", right_on="seg_start", by="code", strategy="backward")
+    joined = joined.with_columns(
+        pl.col("factor").fill_null(strategy="backward").over("code")
+    )
+    return joined.with_columns(
+        [(pl.col(c) * pl.col("factor")).alias(c) for c in _PRICE_COLS]
+        + [(pl.col("volume") / pl.col("factor")).round(0).cast(pl.Int64).alias("volume")]
+    ).select(["code", "date", *_PRICE_COLS, "volume"])
