@@ -565,7 +565,9 @@ class WatchlistReorderRequest(BaseModel):
     code. Tolerant server-side: unknown codes are ignored and unmentioned
     entries are appended (see watchlist.reorder_entries)."""
 
-    codes: list[Annotated[str, Field(pattern=r"^\d{6}$")]]
+    codes: list[Annotated[str, Field(pattern=r"^\d{6}$")]] = Field(
+        description="Desired display order; 6-digit KRX codes.",
+    )
 
 
 # --- Watchlist manual catch-up (see spec 2026-05-27) -----------------------
