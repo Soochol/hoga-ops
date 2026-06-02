@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { WatchlistDrawer } from './WatchlistDrawer';
@@ -128,16 +128,28 @@ describe('WatchlistDrawer', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('clicking a row trash icon removes it from the watchlist', async () => {
+  it('right-click opens the context menu; 관심 해제 removes the entry and closes', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
     const removeSpy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined);
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    const trash = within(screen.getByTestId('watchlist-row-005930')).getByRole('button', { name: '삼성전자 관심종목 해제' });
-    fireEvent.click(trash);
+    // 네이티브 메뉴 억제: preventDefault → dispatchEvent 가 false
+    const notCancelled = fireEvent.contextMenu(screen.getByTestId('watchlist-row-005930'));
+    expect(notCancelled).toBe(false);
+    fireEvent.click(screen.getByTestId('watchlist-menu-remove'));
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('005930'));
-    expect(useLivePageStore.getState().activeCode).toBeNull();
+    expect(screen.queryByTestId('watchlist-row-menu')).toBeNull();
+  });
+
+  it('Delete key on a focused row removes the entry', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
+    const removeSpy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
+    fireEvent.keyDown(screen.getByTestId('watchlist-row-000660'), { key: 'Delete' });
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('000660'));
   });
 });
 

@@ -65,4 +65,67 @@ describe('QuoteRow', () => {
     fireEvent.click(li);
     expect(onClick).toHaveBeenCalledOnce();
   });
+
+  it('right-click calls onContextMenu', () => {
+    const onContextMenu = vi.fn();
+    row({ onContextMenu });
+    fireEvent.contextMenu(screen.getByTestId('quote-row-005930'));
+    expect(onContextMenu).toHaveBeenCalledOnce();
+  });
+
+  it('Delete key on the focused row calls onDelete (not onClick)', () => {
+    const onDelete = vi.fn();
+    const { onClick } = row({ onDelete });
+    fireEvent.keyDown(screen.getByTestId('quote-row-005930'), { key: 'Delete' });
+    expect(onDelete).toHaveBeenCalledOnce();
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('Enter still triggers onClick when onDelete is provided', () => {
+    const onDelete = vi.fn();
+    const { onClick } = row({ onDelete });
+    fireEvent.keyDown(screen.getByTestId('quote-row-005930'), { key: 'Enter' });
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it('Backspace does NOT delete (only Delete is destructive)', () => {
+    const onDelete = vi.fn();
+    const { onClick } = row({ onDelete });
+    fireEvent.keyDown(screen.getByTestId('quote-row-005930'), { key: 'Backspace' });
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('advertises aria-keyshortcuts="Delete" only when onDelete is wired', () => {
+    const { unmount } = render(
+      <ul><QuoteRow name="삼성전자" price={1} pct={null} changeWon={null} active={false}
+        ariaLabel="a" testId="kbd-no" onClick={vi.fn()} /></ul>,
+    );
+    expect(screen.getByTestId('kbd-no').getAttribute('aria-keyshortcuts')).toBeNull();
+    unmount();
+    render(
+      <ul><QuoteRow name="삼성전자" price={1} pct={null} changeWon={null} active={false}
+        ariaLabel="a" testId="kbd-yes" onClick={vi.fn()} onDelete={vi.fn()} /></ul>,
+    );
+    expect(screen.getByTestId('kbd-yes').getAttribute('aria-keyshortcuts')).toBe('Delete');
+  });
+
+  it('moves focus to the sibling row before Delete removes the focused row', () => {
+    const onDelete = vi.fn();
+    render(
+      <ul>
+        <QuoteRow name="A" price={1} pct={null} changeWon={null} active={false}
+          ariaLabel="A" testId="row-a" onClick={vi.fn()} onDelete={onDelete} />
+        <QuoteRow name="B" price={2} pct={null} changeWon={null} active={false}
+          ariaLabel="B" testId="row-b" onClick={vi.fn()} onDelete={vi.fn()} />
+      </ul>,
+    );
+    const a = screen.getByTestId('row-a');
+    a.focus();
+    fireEvent.keyDown(a, { key: 'Delete' });
+    expect(onDelete).toHaveBeenCalledOnce();
+    // focus handed to the next sibling so it won't fall to <body> on unmount
+    expect(document.activeElement).toBe(screen.getByTestId('row-b'));
+  });
 });

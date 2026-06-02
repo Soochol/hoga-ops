@@ -4,6 +4,7 @@ import { CONDITION_CATALOG, CONDITION_ORDER, makeLeaf } from './catalog';
 import { ConditionRow } from './ConditionRow';
 import { UniverseFilterButton } from './UniverseFilterButton';
 import { useDismissablePopover } from '../util/useDismissablePopover';
+import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 
 export function ConditionBuilder({ conditions, universe, onConditionsChange, onUniverseChange }: {
   conditions: ConditionLeaf[]; universe: ScreenerUniverse;
@@ -15,6 +16,11 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
   const btnRef = useRef<HTMLButtonElement>(null);
   // Outside-mousedown / Escape dismissal for the add-condition menu only.
   useDismissablePopover(menuOpen, wrapRef, () => setMenuOpen(false));
+  // 버튼 아래로 떠 화면 밖으로 넘치면 가장자리로 슬라이드(공용 클램프).
+  const { ref: menuRef, left, top } = useClampedFixedPosition<HTMLUListElement>(
+    anchorRect?.left ?? 0,
+    anchorRect ? anchorRect.bottom + 4 : 0,
+  );
 
   const toggleMenu = () => {
     const next = !menuOpen;
@@ -36,9 +42,9 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
             ＋ 조건 추가 ▾
           </button>
           {menuOpen && anchorRect && (
-            <ul role="menu"
+            <ul ref={menuRef} role="menu"
               className="bg-bg-card border border-border-strong rounded-[6px] shadow-[0_8px_24px_rgba(0,0,0,0.4)] overflow-hidden z-50"
-              style={{ position: 'fixed', top: anchorRect.bottom + 4, left: anchorRect.left, width: anchorRect.width }}>
+              style={{ position: 'fixed', top, left, width: anchorRect.width }}>
               {CONDITION_ORDER.map((t) => (
                 <li key={t}><button type="button" role="menuitem" aria-label={CONDITION_CATALOG[t].label} onClick={() => add(t)}
                   className="w-full text-left px-3 py-2 text-sm text-fg hover:bg-bg-input-hover">{CONDITION_CATALOG[t].label}</button></li>
