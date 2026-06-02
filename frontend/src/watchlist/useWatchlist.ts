@@ -66,6 +66,8 @@ export function useReorderWatchlist() {
     onMutate: async (codes: string[]) => {
       await qc.cancelQueries({ queryKey: KEY });
       const prev = qc.getQueryData<WatchlistResponse>(KEY);
+      // Cold cache (query never loaded) → nothing to reorder optimistically;
+      // the server response via onSettled invalidate will populate it.
       if (prev) {
         const byCode = new Map(prev.entries.map((e) => [e.code, e]));
         const reordered = codes
