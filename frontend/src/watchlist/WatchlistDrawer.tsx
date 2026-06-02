@@ -4,13 +4,12 @@ import { getWatchlist } from '../api/watchlist';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
-import { useRemoveFromWatchlist } from './useWatchlist';
+import { useRemoveFromWatchlist, useReorderWatchlist } from './useWatchlist';
 import { TrashIcon } from '../ui/TrashIcon';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { SortableQuoteRow } from './SortableQuoteRow';
 import { reorderCodes } from './reorderCodes';
-import { useReorderWatchlist } from './useWatchlist';
 
 /**
  * Read-only Watchlist Panel (CONTEXT.md), app-wide via the Right Rail (ADR-0052).
