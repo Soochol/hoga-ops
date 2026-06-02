@@ -72,6 +72,38 @@ def atomic_write_parquet_table(path: Path, table: Any) -> None:
         raise
 
 
+def atomic_write_parquet_df(path: Path, df: Any, *, compression: str = "zstd") -> None:
+    """Write a polars ``DataFrame`` to ``path`` atomically (tempfile → os.replace).
+
+    The polars-DataFrame counterpart of :func:`atomic_write_parquet_table`,
+    preserving the screener archive's ``zstd`` compression. Used by the screener
+    store so an interrupted EOD write never leaves a partial
+    ``daily_unadjusted``/``daily_adjusted`` parquet visible to readers (the
+    archive is the no-backup SSOT). ``df`` is typed ``Any`` to keep polars a
+    local/heavy import elsewhere.
+
+    The parent dir is created if missing.
+
+    Raises:
+        OSError: if disk write fails. On failure the target is unchanged
+            (the tempfile is removed).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent,
+        prefix=path.name + ".",
+        suffix=".tmp",
+        delete=False,
+    ) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        df.write_parquet(tmp_path, compression=compression)
+        os.replace(tmp_path, path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
 def atomic_write_parquet(path: Path, records: list[dict[str, Any]]) -> None:
     """Write ``records`` as Parquet to ``path`` atomically.
 

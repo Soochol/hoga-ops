@@ -664,7 +664,10 @@ class ScreenerStatusFile(BaseModel):
     """디스크 status.json (Stock-Date capture meta.json 과 별개)."""
 
     schema_version: int = 1
-    last_raw_date: str = Field(pattern=r"^\d{8}$")
+    # None = 시드됐으나 유효 거래일이 없음(빈/NULL-date 아카이브) — last_raw_date()
+    # 가 None 을 돌려줘도 ValidationError 로 죽지 않고 상태를 표현한다. status 라우트는
+    # None 을 days_behind=None(불명)으로 강등한다.
+    last_raw_date: str | None = Field(default=None, pattern=r"^\d{8}$")
     last_built_ms: int
     universe_size: int
     derive_ms: int

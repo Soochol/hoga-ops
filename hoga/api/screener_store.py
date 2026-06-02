@@ -1,8 +1,17 @@
 from __future__ import annotations
-from pathlib import Path
-import duckdb
+
+import datetime as dt
+import logging
 import subprocess
 import time
+from pathlib import Path
+
+import duckdb
+from pydantic import ValidationError
+
+from hoga.api._atomic_write import atomic_write_json, atomic_write_parquet_df
+
+log = logging.getLogger(__name__)
 
 # parquet 컬럼 dtype 계약. code 는 전 구간 VARCHAR (leading-zero 보존).
 _DAILY_COLS = {
@@ -101,7 +110,8 @@ def derive_adjusted(unadjusted_path: Path, out_path: Path) -> int:
     """원주가 parquet → 수정주가 parquet. 소요 ms 반환."""
     t0 = time.perf_counter()
     df = pl.read_parquet(unadjusted_path)
-    adjust_splits(df).write_parquet(out_path, compression="zstd")
+    # run_scan 가 읽는 파생본 — 중도 종료가 손상본을 노출하면 모든 스캔이 깨지므로 원자적.
+    atomic_write_parquet_df(out_path, adjust_splits(df))
     return int((time.perf_counter() - t0) * 1000)
 
 
@@ -118,24 +128,45 @@ def last_raw_date(unadjusted_path: Path) -> str | None:
 
 
 def append_rows(unadjusted_path: Path, new: pl.DataFrame) -> None:
-    """원주가 신규 거래일 append. (code,date) 멱등(중복 트리거 안전), 정렬 유지."""
+    """원주가 신규 거래일 append. (code,date) 멱등(중복 트리거 안전), 정렬 유지.
+    무백업 SSOT 이므로 원자적 기록(tempfile→os.replace) — 중도 종료가 부분/손상
+    parquet 를 readers 에게 노출하지 않는다."""
     base = pl.read_parquet(unadjusted_path)
-    pl.concat([base, new.select(base.columns)]).unique(
-        subset=["code", "date"], keep="last").sort(["code", "date"]).write_parquet(
-        unadjusted_path, compression="zstd")
+    merged = pl.concat([base, new.select(base.columns)]).unique(
+        subset=["code", "date"], keep="last").sort(["code", "date"])
+    atomic_write_parquet_df(unadjusted_path, merged)
 
 
-def write_status(path: Path, *, last_raw_date: str, universe_size: int,
+def write_status(path: Path, *, last_raw_date: str | None, universe_size: int,
                  derive_ms: int, now_ms: int) -> None:
-    path.write_text(ScreenerStatusFile(
+    # 원자적 기록(saves.json 과 동일 계약) — 중도 종료가 잘린 status.json 을 남기지
+    # 않는다. last_raw_date 는 None 허용(빈/NULL-date 아카이브에서도 안 죽고 표현).
+    atomic_write_json(path, ScreenerStatusFile(
         schema_version=1, last_raw_date=last_raw_date, last_built_ms=now_ms,
-        universe_size=universe_size, derive_ms=derive_ms).model_dump_json())
+        universe_size=universe_size, derive_ms=derive_ms).model_dump(mode="json"))
+
+
+def _quarantine_status(path: Path) -> None:
+    """손상/잘린 status.json 격리(saves.json _quarantine 과 동일 계약). 실패는 로깅만."""
+    stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S")
+    try:
+        path.rename(path.with_name(f"{path.name}.corrupt-{stamp}"))
+        log.warning("screener status.json unusable; backed up to %s.corrupt-%s",
+                    path.name, stamp)
+    except OSError:
+        log.exception("could not back up corrupt status.json")
 
 
 def read_status(path: Path) -> ScreenerStatusFile | None:
     if not path.exists():
         return None
-    return ScreenerStatusFile.model_validate_json(path.read_text())
+    try:
+        return ScreenerStatusFile.model_validate_json(path.read_text())
+    except ValidationError:
+        # 부분쓰기/수동편집으로 손상된 status.json → 격리 후 None(not_seeded)으로 강등.
+        # /status 가 500 대신 not_seeded 를 돌려주고, 다음 update/seed 가 재생성한다.
+        _quarantine_status(path)
+        return None
 
 
 def seed_all(data_dir: Path, *, now_ms: int) -> int:

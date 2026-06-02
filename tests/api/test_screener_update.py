@@ -38,6 +38,36 @@ def test_status_roundtrip(tmp_path: Path):
     assert s.last_raw_date == "20260514" and s.schema_version == 1
 
 
+def test_status_none_last_raw_date_roundtrips(tmp_path: Path):
+    # 빈/NULL-date 아카이브: last_raw_date()=None 을 써도 ValidationError 없이 표현(#13).
+    sp = tmp_path / "status.json"
+    write_status(sp, last_raw_date=None, universe_size=0, derive_ms=1, now_ms=1)
+    s = read_status(sp)
+    assert s is not None and s.last_raw_date is None
+
+
+def test_read_status_quarantines_corrupt(tmp_path: Path):
+    # 부분쓰기/수동편집으로 손상된 status.json → 격리 + None(not_seeded), 500 금지(#7).
+    sp = tmp_path / "status.json"
+    sp.write_text('{"schema_version":1,"last_raw_date"')  # 잘린 JSON
+    assert read_status(sp) is None
+    assert not sp.exists()                                 # 원본은 rename 격리됨
+    assert list(tmp_path.glob("status.json.corrupt-*"))    # 백업 남음
+
+
+def test_append_rows_atomic_leaves_no_tmp(tmp_path: Path):
+    # 원자적 기록: 성공 후 .tmp 잔여물 없음 + 데이터 정상(#6).
+    p = tmp_path / "u.parquet"
+    pl.DataFrame({"code": ["000001"], "date": ["2026-05-13"], "open": [1.0], "high": [1.0],
+                  "low": [1.0], "close": [1.0], "volume": [1]}).with_columns(
+                  pl.col("date").str.to_date()).write_parquet(p)
+    append_rows(p, pl.DataFrame({"code": ["000002"], "date": ["2026-05-13"], "open": [2.0],
+        "high": [2.0], "low": [2.0], "close": [2.0], "volume": [2]}).with_columns(
+        pl.col("date").str.to_date()))
+    assert pl.read_parquet(p).height == 2
+    assert not list(tmp_path.glob("*.tmp"))                # tempfile→os.replace 후 잔여 없음
+
+
 def test_gap_trading_days_no_gap_short_circuits(monkeypatch):
     # next day after 20260601 (=20260602) > today 20260601 → [] WITHOUT calling the calendar.
     calls = []

@@ -128,10 +128,13 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
         # inverted-range ValueError never fires. KRX outage → None (frontend
         # treats None as unknown), never crash the status route.
         today = datetime.now(KIS_KST).strftime("%Y%m%d")
-        try:
-            days_behind = len(_gap_trading_days(s.last_raw_date, today))
-        except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
-            days_behind = None
+        if s.last_raw_date is None:
+            days_behind = None  # 유효 거래일 없음(빈/NULL-date 아카이브) → 신선도 불명
+        else:
+            try:
+                days_behind = len(_gap_trading_days(s.last_raw_date, today))
+            except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
+                days_behind = None
         return {**s.model_dump(), "status": "ok", "days_behind": days_behind}
 
     @router.post("/update")
