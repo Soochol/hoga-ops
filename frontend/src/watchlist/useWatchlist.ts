@@ -3,9 +3,11 @@ import {
   getWatchlist,
   addToWatchlist,
   removeFromWatchlist,
+  reorderWatchlist,
   catchupNow,
   catchupAll,
   type WatchlistResponse,
+  type WatchlistEntry,
   type EnqueueResponse,
   type ManualCatchupAllResponse,
 } from '../api/watchlist';
@@ -53,5 +55,30 @@ export function useCatchupAll() {
     mutationKey: ['watchlist', 'catchup-all'],
     mutationFn: () => catchupAll(),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
+export function useReorderWatchlist() {
+  const qc = useQueryClient();
+  return useMutation<WatchlistResponse, Error, string[], { prev?: WatchlistResponse }>({
+    mutationKey: ['watchlist', 'reorder'],
+    mutationFn: (codes: string[]) => reorderWatchlist(codes),
+    onMutate: async (codes: string[]) => {
+      await qc.cancelQueries({ queryKey: KEY });
+      const prev = qc.getQueryData<WatchlistResponse>(KEY);
+      if (prev) {
+        const byCode = new Map(prev.entries.map((e) => [e.code, e]));
+        const reordered = codes
+          .map((c) => byCode.get(c))
+          .filter((e): e is WatchlistEntry => e !== undefined);
+        const rest = prev.entries.filter((e) => !codes.includes(e.code));
+        qc.setQueryData<WatchlistResponse>(KEY, { ...prev, entries: [...reordered, ...rest] });
+      }
+      return { prev };
+    },
+    onError: (_err, _codes, ctx) => {
+      if (ctx?.prev) qc.setQueryData(KEY, ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 }
