@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useLivePageStore } from '../state/livePage';
 import { useScreenerPanelStore } from '../state/screenerPanel';
@@ -34,7 +34,13 @@ export function ScreenerDrawer() {
   const saves = useMemo(() => savesData?.saves ?? [], [savesData]);
   const { data: status } = useScreenerStatus();
   const screener = useScreener();
-  const update = useMutation({ mutationFn: () => triggerScreenerUpdate() });
+  const queryClient = useQueryClient();
+  // 성공·실패 모두 freshness 칩(screener-status)을 다시 읽어 결과를 반영하고,
+  // 실패는 표면화한다(이전엔 onSettled/onError 가 없어 무변화든 에러든 무피드백).
+  const update = useMutation({
+    mutationFn: () => triggerScreenerUpdate(),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['screener-status'] }),
+  });
 
   // Restore/repair selection once saves have loaded: keep the persisted id if it
   // still exists, else fall back to the first save, else none. Gate on
@@ -121,12 +127,15 @@ export function ScreenerDrawer() {
           </button>
           <button
             type="button" aria-label="데이터 갱신" onClick={() => update.mutate()}
-            disabled={update.isPending}
+            disabled={update.isPending || notSeeded}
             className="px-2.5 py-1.5 rounded-lg bg-bg-input border text-fg-dim text-sm hover:bg-bg-input-hover disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {update.isPending ? '갱신 중…' : '갱신'}
           </button>
         </div>
+        {update.isError && (
+          <div className="text-sm" style={{ color: 'var(--error)' }}>갱신 실패 — 잠시 후 다시 시도하세요</div>
+        )}
         {notSeeded && (
           <div className="text-sm" style={{ color: 'var(--warn)' }}>시드 필요 — 운영자 CLI로 시드 후 조회하세요</div>
         )}
@@ -162,7 +171,7 @@ export function ScreenerDrawer() {
                     <QuoteRow
                       key={r.code}
                       name={r.name}
-                      price={q?.price ?? null}
+                      price={q?.price ?? r.price}
                       pct={q?.change_pct ?? r.change_pct}
                       changeWon={q?.change_won ?? null}
                       active={r.code === activeCode}

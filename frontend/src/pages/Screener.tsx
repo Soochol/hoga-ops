@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PageContainer } from '../layout/PageContainer';
 import { useLivePageStore } from '../state/livePage';
 import { useScreener } from '../screener/useScreener';
@@ -22,9 +22,14 @@ export function Screener() {
   const { data: status } = useScreenerStatus();
   // Side-effect actions on a result row. Lazy — only fire on click, never at
   // render, so the screener API mock that omits these stays valid.
+  const queryClient = useQueryClient();
   const watch = useMutation({ mutationFn: (code: string) => addToWatchlist(code) });
   const capture = useMutation({ mutationFn: (code: string) => addItems({ code, force_retry: false }) });
-  const update = useMutation({ mutationFn: () => triggerScreenerUpdate() });
+  // 성공·실패 모두 freshness 칩을 다시 읽어 반영하고, 실패는 표면화한다.
+  const update = useMutation({
+    mutationFn: () => triggerScreenerUpdate(),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['screener-status'] }),
+  });
 
   const notSeeded = screener.data?.status === 'not_seeded' || status?.status === 'not_seeded';
   const openLive = (code: string) => { setActiveCode(code); navigate('/live'); };
@@ -44,6 +49,9 @@ export function Screener() {
             className="px-3 py-[7px] rounded-lg bg-bg-input border text-fg-dim text-sm hover:bg-bg-input-hover disabled:opacity-50 disabled:cursor-not-allowed">
             {update.isPending ? '갱신 중…' : '갱신'}
           </button>
+        )}
+        {update.isError && (
+          <span className="text-sm" style={{ color: 'var(--error)' }}>갱신 실패</span>
         )}
         <div className="flex-1" />
         <StalenessChip status={status} />

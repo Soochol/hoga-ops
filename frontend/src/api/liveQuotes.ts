@@ -28,6 +28,10 @@ export function useQuotes(codes: string[]) {
     enabled: codes.length > 0,
     staleTime: 10_000,
     refetchInterval: 10_000,
+    // codes 집합이 바뀌면 새 queryKey라 data가 잠시 undefined → 전 셀이 '—'로
+    // 깜빡인다. 직전 결과를 유지해 겹치는 코드는 그대로 두고 새 코드만 채워지게
+    // 한다(형제 훅 range.ts·livePastCandles.ts 와 동일 패턴).
+    placeholderData: (prev) => prev,
   });
 }
 

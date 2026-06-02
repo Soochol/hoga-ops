@@ -203,6 +203,31 @@ describe('ScreenerDrawer', () => {
     expect(useLivePageStore.getState().activeCode).toBeNull();
   });
 
+  it('falls back to the corpus price when a row has no live quote (no —)', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    // live quote only for 005930 → 000660 has no quote and must show its corpus price.
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      phase: 'open',
+      quotes: [{ code: '005930', price: 72400, change_pct: 3.4, change_won: 2380 }],
+    });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByText('72,400원')).toBeInTheDocument()); // live price (005930)
+    expect(screen.getByText('180,000원')).toBeInTheDocument();                     // corpus price (000660), not —
+  });
+
+  it('surfaces 갱신 실패 when the update mutation errors', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'triggerScreenerUpdate').mockRejectedValue(new Error('boom'));
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+    fireEvent.click(screen.getByRole('button', { name: '데이터 갱신' }));
+    await waitFor(() => expect(screen.getByText(/갱신 실패/)).toBeInTheDocument());
+  });
+
   it('clicking a member row heart removes it from the watchlist', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useQuoteByCode } from './liveQuotes';
 import * as client from './client';
@@ -43,5 +43,21 @@ describe('useQuoteByCode', () => {
     const { result } = renderHook(() => useQuoteByCode([]), { wrapper: wrap() });
     expect(result.current.size).toBe(0);
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('keeps the previous quotes while a new codes set loads (placeholderData, no flash to —)', async () => {
+    // First key resolves; the second key (different codes) never resolves so the
+    // hook stays in the transition window. Without placeholderData the Map would
+    // be empty here and every row would flash to '—'.
+    vi.spyOn(client, 'apiCall')
+      .mockResolvedValueOnce({ phase: 'open', quotes: [{ code: '005930', price: 72400, change_pct: 1.2, change_won: 100 }] })
+      .mockReturnValueOnce(new Promise<never>(() => {}));
+    const { result, rerender } = renderHook((codes: string[]) => useQuoteByCode(codes), {
+      wrapper: wrap(), initialProps: ['005930'],
+    });
+    await waitFor(() => expect(result.current.get('005930')?.price).toBe(72400));
+    act(() => rerender(['000660']));
+    // Previous data is retained during the new key's in-flight window.
+    expect(result.current.get('005930')?.price).toBe(72400);
   });
 });
