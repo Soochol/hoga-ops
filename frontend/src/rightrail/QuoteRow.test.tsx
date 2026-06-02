@@ -54,4 +54,15 @@ describe('QuoteRow', () => {
     fireEvent.keyDown(screen.getByTestId('quote-row-005930'), { key: 'Enter' });
     expect(onClick).toHaveBeenCalledOnce();
   });
+
+  it('applies dragging styles, forwards the sortable ref, and still fires onClick', () => {
+    const setRef = vi.fn();
+    const { onClick } = row({ dragging: true, sortableRef: setRef });
+    const li = screen.getByTestId('quote-row-005930');
+    expect(li.style.opacity).toBe('0.6');
+    expect(li.style.cursor).toBe('grabbing');
+    expect(setRef).toHaveBeenCalledWith(li);
+    fireEvent.click(li);
+    expect(onClick).toHaveBeenCalledOnce();
+  });
 });

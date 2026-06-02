@@ -18,7 +18,7 @@ export interface QuoteRowProps {
   trailingAction?: React.ReactNode;
   // --- drag (관심종목 패널 전용; 미전달 시 비-드래그 동작) ---
   sortableRef?: (node: HTMLElement | null) => void;
-  sortableStyle?: React.CSSProperties;
+  sortableStyle?: Pick<React.CSSProperties, 'transform' | 'transition'>;
   dragListeners?: DraggableSyntheticListeners;
   dragAttributes?: DraggableAttributes;
   dragging?: boolean;
@@ -37,6 +37,7 @@ export function QuoteRow({
   return (
     <li
       ref={sortableRef}
+      {...dragAttributes}
       data-testid={testId}
       role="button"
       tabIndex={0}
@@ -51,7 +52,6 @@ export function QuoteRow({
         ...sortableStyle,
         ...(dragging ? { opacity: 0.6, cursor: 'grabbing', zIndex: 1, position: 'relative' } : {}),
       }}
-      {...dragAttributes}
       {...dragListeners}
     >
       <span className="flex-1 truncate text-sm text-fg">{name}</span>
