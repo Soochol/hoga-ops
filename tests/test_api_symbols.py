@@ -706,6 +706,41 @@ def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_coalesce_cancels_detached_worker_when_awaiter_abandons() -> None:
+    """#8: when the (sole) awaiter is cancelled, _RefreshCoordinator must cancel
+    AND await the detached worker — not leak it to run on past its awaiters (e.g.
+    touching a torn-down KIS client during shutdown). Before the fix the worker
+    kept running after the joiner was cancelled."""
+    coord: symbols_module._RefreshCoordinator[str] = symbols_module._RefreshCoordinator()
+    started = asyncio.Event()
+    was_cancelled = {"v": False}
+    holder: dict[str, asyncio.Task[str]] = {}
+
+    async def _work() -> str:
+        started.set()
+        try:
+            await asyncio.sleep(30)
+            return "done"
+        except asyncio.CancelledError:
+            was_cancelled["v"] = True
+            raise
+
+    def _factory() -> asyncio.Task[str]:
+        t = asyncio.create_task(_work())
+        holder["t"] = t
+        return t
+
+    joiner = asyncio.create_task(coord.coalesce(_factory))
+    await started.wait()                      # worker is running
+    joiner.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await joiner
+    # The worker must be finished (cancelled), not orphaned and still running.
+    assert holder["t"].done()
+    assert was_cancelled["v"] is True
+
+
+@pytest.mark.asyncio
 async def test_refresh_invokes_ensure_credentials_in_production_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

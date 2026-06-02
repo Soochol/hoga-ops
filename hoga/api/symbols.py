@@ -11,6 +11,7 @@ Three-tier policy (spec §11 Q19):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -110,6 +111,10 @@ class _RefreshCoordinator(Generic[T]):
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
         self._inflight: asyncio.Future[T] | None = None
+        # The detached worker task for the current flight. Tracked so an abandoned
+        # flight (all waiters cancelled) can cancel+await it instead of leaking a
+        # task that runs on after its awaiters are gone (#8).
+        self._task: asyncio.Task[T] | None = None
 
     async def coalesce(self, task_factory: Callable[[], asyncio.Task[T]]) -> T:
         """Start ``task_factory()`` once for the in-flight group; join existing.
@@ -141,9 +146,16 @@ class _RefreshCoordinator(Generic[T]):
                     # Roll back — no task was scheduled, future would never resolve.
                     self._inflight = None
                     raise
+                self._task = task
 
                 def _signal(t: asyncio.Task[T]) -> None:
                     if fut.done():
+                        # fut already settled (e.g. the flight was abandoned and the
+                        # worker cancelled in the finally below). Still OBSERVE the
+                        # worker's outcome so a worker exception is never reported as
+                        # "Task exception was never retrieved" at GC.
+                        if not t.cancelled():
+                            t.exception()
                         return
                     if t.cancelled():
                         fut.cancel()
@@ -159,8 +171,23 @@ class _RefreshCoordinator(Generic[T]):
             return await fut
         finally:
             if is_initiator:
+                # If the flight was abandoned mid-run — this task (and therefore the
+                # shared future, and thus every waiter) was cancelled — the worker is
+                # still detached and running. Cancel and AWAIT it so it cannot run on
+                # past this point (e.g. touch a torn-down KIS client during shutdown:
+                # the lifespan awaits this task before aclose_kis_client, so awaiting
+                # the worker here makes that ordering invariant hold). On normal
+                # completion the worker is already done, so this is a no-op. Atomic
+                # parquet writes (#6) make a mid-write cancel safe.
+                worker = self._task
+                if worker is not None and not worker.done():
+                    worker.cancel()
+                    # observe the worker's cancel/error; suppress in this cleanup path
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await asyncio.shield(worker)
                 async with self._lock:
                     self._inflight = None
+                    self._task = None
 
     def reset(self) -> None:
         """Test helper — clear in-flight state between tests.
@@ -170,7 +197,10 @@ class _RefreshCoordinator(Generic[T]):
         """
         if self._inflight is not None and not self._inflight.done():
             self._inflight.cancel()
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
         self._inflight = None
+        self._task = None
 
 
 # Module-level state (per ADR-0006 single-module pattern, scoped to symbols.py).
