@@ -6,6 +6,28 @@ import { WatchlistDrawer } from './WatchlistDrawer';
 import { useLivePageStore } from '../state/livePage';
 import * as watchlistApi from '../api/watchlist';
 import * as client from '../api/client';
+import type { DragEndEvent } from '@dnd-kit/core';
+
+// vi.mock 팩토리는 호이스팅됨 → 캡처 슬롯도 vi.hoisted 로 만들어야 안전.
+const dnd = vi.hoisted(() => ({ onDragEnd: undefined as undefined | ((e: DragEndEvent) => void) }));
+
+// DndContext 를 패스스루로 모킹하고 주입된 onDragEnd 를 캡처. SortableContext 도
+// 패스스루(실제 DndContext provider 가 없으니). useSortable 은 default context 로
+// graceful 하게 동작(setNodeRef noop) → 행은 정상 렌더.
+vi.mock('@dnd-kit/core', async (orig) => {
+  const actual = await orig<typeof import('@dnd-kit/core')>();
+  return {
+    ...actual,
+    DndContext: (props: { onDragEnd?: (e: DragEndEvent) => void; children: React.ReactNode }) => {
+      dnd.onDragEnd = props.onDragEnd;
+      return props.children;
+    },
+  };
+});
+vi.mock('@dnd-kit/sortable', async (orig) => {
+  const actual = await orig<typeof import('@dnd-kit/sortable')>();
+  return { ...actual, SortableContext: (props: { children: React.ReactNode }) => props.children };
+});
 
 function LocationProbe() {
   const { pathname } = useLocation();
@@ -116,5 +138,38 @@ describe('WatchlistDrawer', () => {
     fireEvent.click(trash);
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('005930'));
     expect(useLivePageStore.getState().activeCode).toBeNull();
+  });
+});
+
+describe('WatchlistDrawer drag reorder', () => {
+  beforeEach(() => {
+    cleanup();
+    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' } as any);
+    vi.restoreAllMocks();
+    dnd.onDragEnd = undefined;
+    vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
+  });
+
+  it('calls reorderWatchlist with the new code order on drag end', async () => {
+    const spy = vi.spyOn(watchlistApi, 'reorderWatchlist')
+      .mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    await waitFor(() => expect(dnd.onDragEnd).toBeTypeOf('function'));
+    // drag 005930(삼성전자) onto 000660(SK하이닉스) → 새 순서 [000660, 005930]
+    dnd.onDragEnd!({ active: { id: '005930' }, over: { id: '000660' } } as DragEndEvent);
+    await waitFor(() => expect(spy).toHaveBeenCalledWith(['000660', '005930']));
+  });
+
+  it('does not call reorderWatchlist when dropped in place', async () => {
+    const spy = vi.spyOn(watchlistApi, 'reorderWatchlist')
+      .mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(dnd.onDragEnd).toBeTypeOf('function'));
+    dnd.onDragEnd!({ active: { id: '005930' }, over: { id: '005930' } } as DragEndEvent);
+    expect(spy).not.toHaveBeenCalled();
   });
 });
