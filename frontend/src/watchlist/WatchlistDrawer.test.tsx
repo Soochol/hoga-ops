@@ -54,7 +54,7 @@ const ENTRIES = [
 describe('WatchlistDrawer', () => {
   beforeEach(() => {
     cleanup();
-    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' } as any);
+    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
     vi.restoreAllMocks();
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
   });
@@ -95,7 +95,7 @@ describe('WatchlistDrawer', () => {
   });
 
   it('highlights the active code regardless of route', async () => {
-    useLivePageStore.setState({ activeCode: '000660' } as any);
+    useLivePageStore.setState({ activeCode: '000660' });
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/capture') });
@@ -144,7 +144,7 @@ describe('WatchlistDrawer', () => {
 describe('WatchlistDrawer drag reorder', () => {
   beforeEach(() => {
     cleanup();
-    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' } as any);
+    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
     vi.restoreAllMocks();
     dnd.onDragEnd = undefined;
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
