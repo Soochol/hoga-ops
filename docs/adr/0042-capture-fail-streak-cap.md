@@ -1,14 +1,47 @@
 # 0042 — Capture Fail-Streak Cap (per Stock-Date, 5 consecutive failed+skipped → blocked)
 
-**Status:** accepted (2026-05-28)
+**Status:** accepted (2026-05-28); amended (2026-06-03) — 아래 **Amendment** 참조
 
 **Related:**
 - ADR-0019 — Capture Queue 매니페스트 영속화 (`.queue.json` 패턴의 차용 대상)
 - ADR-0021 — No-Upstream-Data sentinel (skipped/no_upstream_data가 `failed`로 분류되지 않는 이유)
 - ADR-0031 — Retry endpoint 분리 (`attempt` 카운터의 도입처)
 - ADR-0033 — `addItems` phase별 `_done` dedupe (본 ADR이 "When to revisit"에 예약해둔 시나리오)
+- ADR-0034 — Scheduler-as-queue-client (Watchlist 마커가 `phase=done`이 아니라 `check_disk_state == COMPLETE`로 전진하는, 동일 함정의 선행 해소; 본 개정이 차용하는 술어)
 - ADR-0035 — `phase=done + force_retry=true` Implicit Retry 허용
+- ADR-0037 — Source subfolder layout (`check_disk_state`의 소스-통합 분류 = inventory ✓/✕의 근거)
 - `docs/superpowers/specs/2026-05-28-capture-fail-streak-guard-design.md` — 본 ADR이 근거를 보존하는 spec
+
+## Amendment (2026-06-03) — `done` 이 곧 성공은 아니다: 불완전 완료도 fail_streak에 카운트
+
+**계기.** 운영 중 (180640, 20260601)이 inventory에서 `×16`(= `full_capture_count`)에 도달했는데도 차단되지 않는 사례 발견. 해당 Stock-Date는 hogaplay 데이터가 09:10:29에서 freeze → 매 캡처가 `stagnation_abort`로 **동일 지점에서 중단**(`collection_complete=False`, `_progress.json.abort_reason="stagnation_abort"`, 16회 전부 309페이지·1206이벤트에서 정지). 그러나 worker는 예외를 던지지 않으므로 `phase="done"`에 도달(`captures.py` 캡처+파싱 완료 분기) → **원 규칙 §1상 `done`은 fail_streak을 0으로 리셋** → cap이 영원히 arm되지 않음. `.queue.json`의 `fail_streaks`에 해당 키가 부재(=0)함으로 실측 확인.
+
+이는 본 ADR 동기 #1("외부 API 무한 fetch 보호")을 **정면으로 무력화**한다: `CLIENT_INCOMPLETE`는 `resume=True`로 매 재캡처마다 hogaplay에 HTTP를 친다. 원 ADR이 논한 `003490/20260319`는 `phase=skipped`(no_upstream_data sentinel)라 cap에 잡혔지만, "데이터를 일부 받았으나 끝까지 못 감 → `done`" 케이스는 고려되지 않은 **사각지대**였다. `done`이 "worker가 예외 없이 종료"를 의미할 뿐 "COMPLETE한 Stock-Date를 디스크에 남김"을 의미하지 않는다는 것은 ADR-0034가 Watchlist 마커에서 이미 발견·해소한 함정이다 — 본 개정은 같은 술어를 fail_streak에 적용한다.
+
+**변경.** `_apply_terminal_to_streaks`의 `done` 분기를 **on-disk 완성도**로 재분기한다 (원 §1을 대체):
+
+- `phase == "done"` AND `check_disk_state(code,date).state == COMPLETE` → **리셋** (진짜 성공)
+- `phase == "done"` AND `state != COMPLETE` (CLIENT_INCOMPLETE / SOURCE_PARTIAL / INVALID / NONE) → **+1** (시도했으나 완성 실패)
+- `phase ∈ {failed, skipped}` → +1 (불변)
+- `phase == cancelled` → 변화 없음 (불변)
+
+판정 신호는 **inventory가 ✓/✕를 그리는 바로 그 `check_disk_state` 소스-통합 분류**(ADR-0037) — 사용자 mental model은 "inventory에 ✓면 리셋, 아니면 +1"이다. 카운트는 **첫 캡처부터**(원 ADR과 동일하게 "첫 발생을 봐주지 않음"): 정상일은 1회에 COMPLETE라 즉시 리셋되어 절대 차단되지 않고, 다회 resume으로 완성되는 날(예: 06-02, `×3`으로 COMPLETE 도달)도 cap(5) 안에서 COMPLETE에 닿으면 리셋된다. **5회 연속 비-COMPLETE 종료만** 차단된다.
+
+`_finalize_item`은 분류를 **1회** 수행해 (a) fail_streak 리셋/증가 판정과 (b) ADR-0034 Watchlist 마커 전진 둘에 재사용한다 — 두 소비자가 동일 술어를 공유하므로 구성상 절대 불일치할 수 없고, 디스크 재독도 제거된다.
+
+### 왜 "불완전=실패"(A)이고 "진전 없음=실패"(B)가 아닌가
+
+후보안 B는 "재캡처가 새 이벤트(global_seq)를 못 얻었을 때만 +1"으로 다회-완성 케이스를 절대 처벌하지 않는 더 정밀한 신호다. A를 택한 이유:
+
+1. **`stagnation_abort` 케이스는 매번 동일 지점 정체라 새 데이터가 0** → A와 B가 같은 결과. 실제 발생한 06-01 케이스에서 두 안은 구분 불가.
+2. **정상 resume은 보통 1~3회에 COMPLETE**(cap 5 미만) → A의 오차단 위험이 실데이터상 작다. 수집기는 한 번 돌면 Data Window 끝까지 걷도록 설계(stagnation guard 200페이지, ADR-0017)되어 정상 Stock-Date가 6회+ 사람 개입 재캡처를 요구하는 일은 드물다.
+3. **오차단되어도 `unblock` 1클릭으로 복구**되며, 이는 본 ADR 동기 #2(사용자 주의 환기)와 정합. 단일 사용자 로컬 도구에서 A의 단순함(완성도 bool 하나)을 택했다.
+
+B로의 격상은 "정상적으로 6회+ resume이 필요한 Stock-Date"가 운영상 관측되면 재고 — "When to revisit"에 추가.
+
+### 역호환
+
+순수 additive: `_apply_terminal_to_streaks(..., done_complete: bool = False)` 키워드 인자 추가. `.queue.json` 스키마 무변경. 기존에 done-불완전으로 리셋됐던 (Code,Date)는 다음 캡처부터 새 규칙이 적용된다(마이그레이션 불필요).
 
 ## Decision
 
