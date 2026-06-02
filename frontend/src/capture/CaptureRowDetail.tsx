@@ -1,5 +1,6 @@
 import type { CaptureError, QueueItem, UpstreamCode, ViolationWire } from '../api/types';
 import { captureFinishedHints } from '../api/upstream-hints';
+import { unixMsToKSTClock } from '../util/time';
 import { TimingPanel } from './timing/TimingPanel';
 import { useCaptureTimings } from './timing/useCaptureTimings';
 
@@ -19,13 +20,12 @@ function ErrorBlock({ error }: { error: CaptureError }) {
   );
 }
 
+// Delegates to the canonical KST formatter (util/time.ts), which shifts the
+// epoch by +9h before reading UTC fields. The previous inline `getUTCHours()
+// + 9` overflowed past 23 for UTC hours >= 15 (KST 00:00–08:59 rendered as
+// "24:.."–"32:..").
 function formatKstClock(unixMs: number | null): string {
-  if (unixMs === null) return '–';
-  const d = new Date(unixMs);
-  const hh = String(d.getUTCHours() + 9).padStart(2, '0');
-  const mm = String(d.getUTCMinutes()).padStart(2, '0');
-  const ss = String(d.getUTCSeconds()).padStart(2, '0');
-  return `${hh}:${mm}:${ss}`;
+  return unixMs === null ? '–' : unixMsToKSTClock(unixMs);
 }
 
 export function CaptureRowDetail({ item }: { item: QueueItem }) {

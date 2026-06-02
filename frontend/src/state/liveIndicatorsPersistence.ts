@@ -48,6 +48,14 @@ const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
   movingAverageEnabled: boolean;
+  /** ADR-0055: foreign-investor net-buy bar pane. Opt-in (default false). */
+  foreignNetEnabled: boolean;
+  /** ADR-0055: institution net-buy bar pane. Opt-in (default false). */
+  institutionNetEnabled: boolean;
+  /** Pane Legend: volume pane on/off. Default TRUE (kept for legacy stores). */
+  volumeEnabled: boolean;
+  /** Pane Legend: MA lines temporarily hidden (눈), config preserved. Default FALSE. */
+  movingAverageHidden: boolean;
 };
 
 function isValidEntry(m: unknown): m is LiveMAConfig {
@@ -79,16 +87,31 @@ export function mergeLiveIndicatorPrefs(
   raw: PersistedIndicators | undefined | null | unknown,
 ): PersistedIndicators {
   const defaults = DEFAULT_LIVE_MAS.map((m) => ({ ...m }));
-  const fallback = (mas: LiveMAConfig[]): PersistedIndicators => ({
+  const build = (
+    mas: LiveMAConfig[], enabled: boolean, fNet: boolean, iNet: boolean,
+    vol: boolean, hidden: boolean,
+  ): PersistedIndicators => ({
     movingAverages: mas,
-    movingAverageEnabled: true,
+    movingAverageEnabled: enabled,
+    foreignNetEnabled: fNet,
+    institutionNetEnabled: iNet,
+    volumeEnabled: vol,
+    movingAverageHidden: hidden,
   });
-  if (!raw || typeof raw !== 'object') return fallback(defaults);
+  if (!raw || typeof raw !== 'object') return build(defaults, true, false, false, true, false);
   const obj = raw as Record<string, unknown>;
-  const arr = obj.movingAverages;
   const enabled = obj.movingAverageEnabled === false ? false : true;
-  if (!Array.isArray(arr)) return { movingAverages: defaults, movingAverageEnabled: enabled };
+  // New indicators are opt-in: default false unless explicitly persisted true,
+  // so legacy stores (written before these fields existed) stay hidden.
+  const fNet = obj.foreignNetEnabled === true;
+  const iNet = obj.institutionNetEnabled === true;
+  // volumeEnabled defaults TRUE (mirror movingAverageEnabled); movingAverageHidden
+  // defaults FALSE (mirror foreignNetEnabled).
+  const vol = obj.volumeEnabled === false ? false : true;
+  const hidden = obj.movingAverageHidden === true;
+  const arr = obj.movingAverages;
+  if (!Array.isArray(arr)) return build(defaults, enabled, fNet, iNet, vol, hidden);
   const kept = arr.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[];
-  if (kept.length === 0) return { movingAverages: defaults, movingAverageEnabled: enabled };
-  return { movingAverages: kept, movingAverageEnabled: enabled };
+  if (kept.length === 0) return build(defaults, enabled, fNet, iNet, vol, hidden);
+  return build(kept, enabled, fNet, iNet, vol, hidden);
 }

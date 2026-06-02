@@ -32,7 +32,9 @@ export type PaneId =
   | 'volume'
   | 'ratio'
   | 'quote-totals'
-  | 'fill-strength';
+  | 'fill-strength'
+  | 'investor-foreign'
+  | 'investor-institution';
 
 interface DrawingBase {
   id: DrawingId;

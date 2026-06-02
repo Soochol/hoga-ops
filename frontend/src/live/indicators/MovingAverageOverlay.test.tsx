@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { useLivePageStore, DEFAULT_LIVE_MAS } from '../../state/livePage';
 import MovingAverageOverlay from './MovingAverageOverlay';
+import { useMaSeriesRegistry } from './maSeriesRegistry';
 
 // Minimal IChartApi mock — captures addSeries / removeSeries / applyOptions
 // / setData calls so we can assert on series lifecycle without booting
@@ -39,7 +40,12 @@ const axis = { contains: () => true, toVirtual: (m: number) => m } as never;
 describe('MovingAverageOverlay', () => {
   beforeEach(() => {
     cleanup();
-    useLivePageStore.setState({ movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })) });
+    useLivePageStore.setState({
+      movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
+      movingAverageEnabled: true,
+      movingAverageHidden: false,
+    });
+    useMaSeriesRegistry.setState({ series: new Map() });
   });
 
   it('mounts one LineSeries per configured slot', () => {
@@ -141,6 +147,25 @@ describe('MovingAverageOverlay', () => {
     expect(data[1]).toEqual({ time: 2, value: 1.5 });
     expect(data[2]).toEqual({ time: 4, value: 3 });
     expect(data[3]).toEqual({ time: 5, value: 4.5 });
+  });
+
+  it('movingAverageHidden=true hides via visible:false but keeps SMA data (legend reads it)', () => {
+    const m = makeChartMock();
+    useLivePageStore.setState({ movingAverageEnabled: true, movingAverageHidden: true });
+    render(<MovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} />);
+    const first = m.addSeries.mock.results[0].value as {
+      applyOptions: ReturnType<typeof vi.fn>; setData: ReturnType<typeof vi.fn>;
+    };
+    const visibleCalls = first.applyOptions.mock.calls.filter((c) => 'visible' in (c[0] as object));
+    expect(visibleCalls.some((c) => (c[0] as { visible: boolean }).visible === false)).toBe(true);
+    const lastSetData = first.setData.mock.calls.at(-1)?.[0] as unknown[];
+    expect(lastSetData.length).toBeGreaterThan(0); // data NOT cleared — only hidden
+  });
+
+  it('registers each MA series in maSeriesRegistry by slot id', () => {
+    const m = makeChartMock();
+    render(<MovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} />);
+    expect(useMaSeriesRegistry.getState().series.size).toBe(DEFAULT_LIVE_MAS.length);
   });
 
   it('unmount removes all series', () => {

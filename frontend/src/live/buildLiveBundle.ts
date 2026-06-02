@@ -150,5 +150,8 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
     },
     volume_profile_range: EMPTY_VOLUME_PROFILE,
     volume_profile_by_day: [],
+    // Investor net-buy is fetched separately and merged by useLiveBundle; this
+    // builder never sees it, so default to empty and let the caller override.
+    investorPoints: [],
   };
 }

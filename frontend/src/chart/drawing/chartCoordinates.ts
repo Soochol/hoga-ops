@@ -7,34 +7,45 @@
 // (origin at the pane's top, not the chart's top), so `priceToCanvasY` adds
 // `paneTopY(paneId)` and `canvasYToPrice` subtracts it before round-trip.
 //
-// PaneSeriesMap is owned by ChartStage; each RangeSeriesPane registers
-// its first (primary) series on mount and clears it on unmount.
+// Pane index is resolved at RUNTIME from `paneSeries` — each registered
+// primary series reports its live pane via `getPane().paneIndex()` (LWC v5.2).
+// This tracks conditionally-mounted panes (volume off, daily-only investor
+// panes): a pane removed at runtime shifts every pane below it, and a static
+// PANE_SPECS lookup would mislocate drawings on those shifted panes.
 
 import type { IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../../util/virtualAxis';
-import { PANE_SPECS } from '../paneSpecs';
 import type { PaneId, Point } from './types';
 
 export type PaneSeriesMap = ReadonlyMap<PaneId, ISeriesApi<any>>;
 
-/** PANE_SPECS lookup: PaneId → numeric paneIndex (lightweight-charts API).
- *  Built once at module load; PANE_SPECS is a module-level constant so a
- *  static cache is safe. */
-const PANE_ID_TO_INDEX: ReadonlyMap<PaneId, number> = (() => {
-  const m = new Map<PaneId, number>();
-  PANE_SPECS.forEach((spec, idx) => m.set(spec.name, idx));
-  return m;
-})();
-
-export function paneIdToIndex(paneId: PaneId): number {
-  const idx = PANE_ID_TO_INDEX.get(paneId);
-  if (idx == null) {
-    // Should be unreachable — PaneId literals mirror PANE_SPECS exactly.
-    // Returning 0 keeps rendering alive (the drawing visually lands on the
-    // candle pane) instead of throwing during a redraw frame.
-    return 0;
+/** A series' live pane index, or -1 if the chart/series is mid-teardown. */
+function safePaneIndex(series: ISeriesApi<any>): number {
+  try {
+    return series.getPane().paneIndex();
+  } catch {
+    return -1;
   }
-  return idx;
+}
+
+/**
+ * Runtime paneId → pane index via the mounted series' `getPane().paneIndex()`.
+ * Returns -1 when the pane isn't currently mounted (toggled off) — callers
+ * skip rather than mislocating onto another pane.
+ */
+export function paneIdToIndex(paneSeries: PaneSeriesMap, paneId: PaneId): number {
+  const series = paneSeries.get(paneId);
+  return series ? safePaneIndex(series) : -1;
+}
+
+/** Reverse map: runtime pane index → paneId, from the mounted series. */
+function indexToPaneId(paneSeries: PaneSeriesMap): Map<number, PaneId> {
+  const m = new Map<number, PaneId>();
+  for (const [paneId, series] of paneSeries) {
+    const idx = safePaneIndex(series);
+    if (idx >= 0) m.set(idx, paneId);
+  }
+  return m;
 }
 
 /**
@@ -54,8 +65,7 @@ export function realMsToCanvasX(
 
 /**
  * Sum of pane heights above `paneId`. For the candle pane (index 0) this
- * is 0, so the helper is a no-op on the original single-pane path that
- * shipped before the indicator-pane feature.
+ * is 0. Returns 0 when the pane isn't mounted.
  *
  * Why this exists: lightweight-charts v5's `series.priceToCoordinate` and
  * `coordinateToPrice` operate in **pane-local Y** (origin at the pane's
@@ -63,9 +73,14 @@ export function realMsToCanvasX(
  * — we must add the pane offset to land the pixel in the right place,
  * and subtract it before feeding a chart-global Y back to the series.
  */
-export function paneTopY(chart: IChartApi, paneId: PaneId): number {
+export function paneTopY(
+  chart: IChartApi,
+  paneSeries: PaneSeriesMap,
+  paneId: PaneId,
+): number {
+  const idx = paneIdToIndex(paneSeries, paneId);
+  if (idx < 0) return 0;
   const panes = chart.panes();
-  const idx = paneIdToIndex(paneId);
   let top = 0;
   for (let i = 0; i < idx && i < panes.length; i++) top += panes[i].getHeight();
   return top;
@@ -90,7 +105,7 @@ export function priceToCanvasY(
   if (!series) return null;
   const yLocal = series.priceToCoordinate(price);
   if (yLocal == null) return null;
-  return Number(yLocal) + paneTopY(chart, paneId);
+  return Number(yLocal) + paneTopY(chart, paneSeries, paneId);
 }
 
 /**
@@ -114,7 +129,7 @@ export function pixelToData(
   if (timeSec == null) return null;
   const virtualMs = (timeSec as number) * 1000;
   const realMs = axis.toReal(virtualMs);
-  const yLocal = py - paneTopY(chart, paneId);
+  const yLocal = py - paneTopY(chart, paneSeries, paneId);
   const price = series.coordinateToPrice(yLocal);
   if (price == null) return null;
   return { realMs, price: Number(price) };
@@ -122,33 +137,44 @@ export function pixelToData(
 
 /**
  * Cursor pixel Y → PaneId of the pane the cursor is inside. Falls back to
- * the last pane when py is beyond the chart bottom; falls back to the
- * first pane when py < 0 (matches lightweight-charts' top-down stacking).
+ * the first pane when py < 0, the last pane when py is beyond the chart
+ * bottom — resolved from the live mounted order (not static PANE_SPECS).
  */
-export function paneIdAtY(chart: IChartApi, py: number): PaneId {
+export function paneIdAtY(
+  chart: IChartApi,
+  paneSeries: PaneSeriesMap,
+  py: number,
+): PaneId {
+  const byIndex = indexToPaneId(paneSeries);
+  const fallback = byIndex.get(0) ?? 'candle';
   const panes = chart.panes();
-  if (panes.length === 0 || py < 0) {
-    return PANE_SPECS[0].name;
-  }
+  if (panes.length === 0 || py < 0) return fallback;
   let cursor = 0;
   for (let i = 0; i < panes.length; i++) {
     const h = panes[i].getHeight();
     if (py >= cursor && py < cursor + h) {
-      return PANE_SPECS[i]?.name ?? PANE_SPECS[0].name;
+      return byIndex.get(i) ?? fallback;
     }
     cursor += h;
   }
-  return PANE_SPECS[panes.length - 1]?.name ?? PANE_SPECS[0].name;
+  return byIndex.get(panes.length - 1) ?? fallback;
 }
 
 /**
  * Clamp a pixel Y to the vertical span of `paneId`'s pane. Used by tools
  * during creation drag and by body-translate so a Drawing started in one
- * pane never escapes into another.
+ * pane never escapes into another. A no-op (returns py) when the pane is
+ * not mounted.
  */
-export function clampYToPane(chart: IChartApi, paneId: PaneId, py: number): number {
+export function clampYToPane(
+  chart: IChartApi,
+  paneSeries: PaneSeriesMap,
+  paneId: PaneId,
+  py: number,
+): number {
+  const idx = paneIdToIndex(paneSeries, paneId);
+  if (idx < 0) return py;
   const panes = chart.panes();
-  const idx = paneIdToIndex(paneId);
   let top = 0;
   for (let i = 0; i < idx && i < panes.length; i++) top += panes[i].getHeight();
   const h = panes[idx]?.getHeight() ?? 0;

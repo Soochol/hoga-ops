@@ -92,6 +92,14 @@ type PersistedIndicators = {
    *  Controlled by the IndicatorPanel category checkbox; the per-slot
    *  toggle UI was removed in favour of this single switch. */
   movingAverageEnabled: boolean;
+  /** ADR-0055: foreign-investor net-buy bar pane (D/W/M only). Opt-in. */
+  foreignNetEnabled: boolean;
+  /** ADR-0055: institution net-buy bar pane (D/W/M only). Opt-in. */
+  institutionNetEnabled: boolean;
+  /** Pane Legend: volume pane on/off. Default true. */
+  volumeEnabled: boolean;
+  /** Pane Legend: MA lines temporarily hidden (눈), config preserved. Default false. */
+  movingAverageHidden: boolean;
 };
 
 type Store = Persisted & PersistedIndicators & {
@@ -104,6 +112,10 @@ type Store = Persisted & PersistedIndicators & {
   addMovingAverage: () => void;
   removeMovingAverage: (id: string) => void;
   setMovingAverageEnabled: (enabled: boolean) => void;
+  setForeignNetEnabled: (enabled: boolean) => void;
+  setInstitutionNetEnabled: (enabled: boolean) => void;
+  setVolumeEnabled: (enabled: boolean) => void;
+  setMovingAverageHidden: (hidden: boolean) => void;
 };
 
 const DEFAULTS: Persisted = {
@@ -137,6 +149,21 @@ function persistIndicators(state: PersistedIndicators): void {
   } catch {
     // localStorage unavailable — silent fallback
   }
+}
+
+/** Serialize the current indicator slice for persistence. Reads the live store
+ *  so every setter persists ALL indicator fields, not just the one it changed
+ *  (prevents a foreign-toggle write from clobbering MA prefs, and vice versa). */
+function snapshotIndicators(get: () => Store): PersistedIndicators {
+  const s = get();
+  return {
+    movingAverages: s.movingAverages,
+    movingAverageEnabled: s.movingAverageEnabled,
+    foreignNetEnabled: s.foreignNetEnabled,
+    institutionNetEnabled: s.institutionNetEnabled,
+    volumeEnabled: s.volumeEnabled,
+    movingAverageHidden: s.movingAverageHidden,
+  };
 }
 
 function readIndicatorsStorage(): MergedIndicators {
@@ -197,10 +224,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
     const nextArr = current.slice();
     nextArr[idx] = next;
     set({ movingAverages: nextArr });
-    persistIndicators({
-      movingAverages: nextArr,
-      movingAverageEnabled: get().movingAverageEnabled,
-    });
+    persistIndicators(snapshotIndicators(get));
   },
 
   addMovingAverage: () => {
@@ -218,10 +242,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
     };
     const nextArr = [...current, next];
     set({ movingAverages: nextArr });
-    persistIndicators({
-      movingAverages: nextArr,
-      movingAverageEnabled: get().movingAverageEnabled,
-    });
+    persistIndicators(snapshotIndicators(get));
   },
 
   removeMovingAverage: (id) => {
@@ -230,18 +251,32 @@ export const useLivePageStore = create<Store>((set, get) => ({
     const nextArr = current.filter((m) => m.id !== id);
     if (nextArr.length === current.length) return; // unknown id
     set({ movingAverages: nextArr });
-    persistIndicators({
-      movingAverages: nextArr,
-      movingAverageEnabled: get().movingAverageEnabled,
-    });
+    persistIndicators(snapshotIndicators(get));
   },
 
   setMovingAverageEnabled: (enabled) => {
     set({ movingAverageEnabled: enabled });
-    persistIndicators({
-      movingAverages: get().movingAverages,
-      movingAverageEnabled: enabled,
-    });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setForeignNetEnabled: (enabled) => {
+    set({ foreignNetEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setInstitutionNetEnabled: (enabled) => {
+    set({ institutionNetEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setVolumeEnabled: (enabled) => {
+    set({ volumeEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setMovingAverageHidden: (hidden) => {
+    set({ movingAverageHidden: hidden });
+    persistIndicators(snapshotIndicators(get));
   },
 
   setActiveCode: (code) => {

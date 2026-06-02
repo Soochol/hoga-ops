@@ -1,0 +1,11 @@
+{"id":"f001","provenance":"plan-4","file":"plan T4/T7","claim":"maSeriesRegistry dead code; T7 recompute violates spec registry-read decision","kind":"dead-code","severity":"Critical","status":"applied","evidence_ref":"wa2b701e0"}
+{"id":"f002","provenance":"plan-4","file":"plan T5 / LiveSidebar.tsx","claim":"cursor publish on D forces sidebar spot regression (blank orderbook)","kind":"correctness","severity":"Blocker","status":"applied","evidence_ref":"wa2b701e0"}
+{"id":"f003","provenance":"plan-4","file":"plan T7","claim":"paneTopY for runtime-appended investor pane returns 0 -> legend at chart top","kind":"correctness","severity":"Critical","status":"applied","evidence_ref":"wa2b701e0"}
+{"id":"f004","provenance":"plan-4","file":"plan T7","claim":"no tabular-nums/reserved-width -> legend horizontal jitter on cursor move","kind":"design","severity":"Critical","status":"applied","evidence_ref":"wa2b701e0"}
+{"id":"f005","provenance":"plan-4","file":"plan T7","claim":"translucent bg has no token; resolved to opaque --bg-card","kind":"design","severity":"Critical","status":"applied","evidence_ref":"wa2b701e0"}
+{"id":"f006","provenance":"plan-4","file":"plan T7","claim":"vol/investor nearest-bar unspecified; resolved via param.seriesData","kind":"correctness","severity":"Suggestion","status":"applied","evidence_ref":"wa2b701e0"}
+{"id":"f007","provenance":"plan-4","file":"plan T6","claim":"IndicatorPanel disabled-count assertion omitted","kind":"correctness","severity":"Nit","status":"applied","evidence_ref":"wa2b701e0"}
+{"id":"f008","provenance":"plan-4","file":"plan T3","claim":"volume-off empty pane stretch unresolved (accepted 0.3)","kind":"altitude","severity":"Nit","status":"applied","evidence_ref":"wa2b701e0"}
+{"id":"f009","provenance":"plan-4","file":"plan T7","claim":"legend text contrast over saturated candles","kind":"design","severity":"Suggestion","status":"applied","evidence_ref":"wa2b701e0"}
+{"id":"f010","provenance":"plan-4","file":"plan T7","claim":"eye/x icon affordance unspecified","kind":"design","severity":"Suggestion","status":"applied","evidence_ref":"wa2b701e0"}
+{"id":"f011","provenance":"plan-4","file":"plan T7","claim":"forbid value-change animation (numbers snap)","kind":"design","severity":"Suggestion","status":"applied","evidence_ref":"wa2b701e0"}

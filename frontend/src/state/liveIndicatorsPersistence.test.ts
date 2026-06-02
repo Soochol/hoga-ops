@@ -7,6 +7,10 @@ describe('mergeLiveIndicatorPrefs', () => {
     expect(mergeLiveIndicatorPrefs(undefined)).toEqual({
       movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
       movingAverageEnabled: true,
+      foreignNetEnabled: false,
+      institutionNetEnabled: false,
+      volumeEnabled: true,
+      movingAverageHidden: false,
     });
   });
 
@@ -78,5 +82,45 @@ describe('mergeLiveIndicatorPrefs', () => {
     const merged = mergeLiveIndicatorPrefs({ movingAverages: many });
     expect(merged.movingAverages).toHaveLength(8);
     expect(merged.movingAverages.map((m) => m.id)).toEqual(many.slice(0, 8).map((m) => m.id));
+  });
+
+  it('investor toggles default to false (opt-in) on legacy stores', () => {
+    const merged = mergeLiveIndicatorPrefs({
+      movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
+    } as unknown as PersistedIndicators);
+    expect(merged.foreignNetEnabled).toBe(false);
+    expect(merged.institutionNetEnabled).toBe(false);
+  });
+
+  it('persisted investor toggles survive the merge', () => {
+    const merged = mergeLiveIndicatorPrefs({
+      movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
+      foreignNetEnabled: true,
+      institutionNetEnabled: true,
+    } as unknown as PersistedIndicators);
+    expect(merged.foreignNetEnabled).toBe(true);
+    expect(merged.institutionNetEnabled).toBe(true);
+  });
+
+  it('volumeEnabled defaults true (kept for legacy stores)', () => {
+    const m = mergeLiveIndicatorPrefs({
+      movingAverages: DEFAULT_LIVE_MAS.map((x) => ({ ...x })),
+    } as unknown as PersistedIndicators);
+    expect(m.volumeEnabled).toBe(true);
+  });
+
+  it('persisted volumeEnabled=false survives', () => {
+    const m = mergeLiveIndicatorPrefs({
+      movingAverages: DEFAULT_LIVE_MAS.map((x) => ({ ...x })),
+      volumeEnabled: false,
+    } as unknown as PersistedIndicators);
+    expect(m.volumeEnabled).toBe(false);
+  });
+
+  it('movingAverageHidden defaults false (opt-in hide)', () => {
+    const m = mergeLiveIndicatorPrefs({
+      movingAverages: DEFAULT_LIVE_MAS.map((x) => ({ ...x })),
+    } as unknown as PersistedIndicators);
+    expect(m.movingAverageHidden).toBe(false);
   });
 });

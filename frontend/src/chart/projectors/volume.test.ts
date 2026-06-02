@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectVolume } from './volume';
+import { projectVolume, VOLUME_SPEC } from './volume';
 import { createVirtualAxis } from '../../util/virtualAxis';
 
 const sessionOpenMs = 1_779_062_400_000;
@@ -34,5 +34,16 @@ describe('projectVolume', () => {
     const data = projectVolume(bundle, axis);
     expect(data).toHaveLength(1);
     expect(data[0].value).toBe(80);
+  });
+});
+
+describe('VOLUME_SPEC', () => {
+  it('projects one bar per in-session candle (volume gating is pane mount, not data)', () => {
+    const bundle = {
+      candles: [{ ts_ms: 0, open: 1, close: 2, high: 2, low: 1, vol_a: 5, vol_b: 5 }],
+    } as never;
+    const ax = { contains: () => true, toVirtual: (t: number) => t } as never;
+    const dataFn = VOLUME_SPEC.series[0].data;
+    expect(dataFn(bundle, ax).length).toBe(1);
   });
 });

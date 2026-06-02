@@ -129,12 +129,17 @@ export default function RangeSeriesPane<Ctx>({
   // Data effect: push new projected data into existing series whenever
   // bundle/axis/ctx changes. Cheap (setData on a held handle), so it's
   // fine to run on every render where any of those changes.
+  //
+  // `paneIndex` is in the deps because the lifecycle effect above RE-CREATES
+  // the series when paneIndex changes (a pane toggled off above this one shifts
+  // its index). The fresh series starts empty, so the data must be re-pushed in
+  // the same commit — otherwise the pane renders blank until a full remount.
   useEffect(() => {
     const seriesList = seriesRef.current;
     if (seriesList.length !== spec.series.length) return;
     spec.series.forEach((s, i) => {
       seriesList[i].setData(s.data(bundle, axis, ctx));
     });
-  }, [bundle, axis, ctx, spec]);
+  }, [bundle, axis, ctx, spec, paneIndex]);
   return null;
 }
