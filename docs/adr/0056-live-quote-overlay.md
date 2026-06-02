@@ -42,3 +42,19 @@ realm 분리 유지, 시드 의존 0, `prdy_ctrt` 한 필드로 세션단계 대
 ## Scope boundary
 
 P1(관심종목 Drawer)은 출하됨. P2(스크리너 Drawer)는 동일 `QuoteRow`/`useQuotes`를 재사용해 표시값만 라이브로 전환(필터 불변, 상위 30 cap). 전체 페이지 `/watchlist`·`/screener` 편집 UI는 범위 밖.
+
+## Amendment (2026-06-02)
+
+표시 모델이 아래처럼 진화함 (결정 자체는 불변 — KIS 직접·표시전용·세션게이트 유지):
+
+1. **전일대비 등락액 추가.** `LiveQuote`에 `change_won`(KIS `inter2_prdy_vrss`, 절대값에
+   `prdy_vrss_sign` 적용 — `prdy_ctrt`와 동일 부호 규칙, 실측 확인) 추가. 패널 행은 현재가 +
+   **등락액(원) + 등락률** 을 함께 표시. 필드명은 공식 `koreainvestment/open-trading-api`
+   `chk_intstock_multprice.py` 컬럼 매핑으로 검증(= '관심2 전일 대비').
+2. **QuoteRow 레이아웃 변경.** 종목코드 컬럼 제거, **이름(좌) / 현재가·전일대비(우) 2줄 스택**.
+   등락 셀은 `ChangeCell` → 신규 `QuoteChange`(등락액+등락률, ▲▼ 글리프 없음 — 부호 있는
+   등락액이 색맹 보조를 겸함). 종목코드는 `aria-label`/`testid`에만 잔존.
+3. **세 번째 소비처: Live Status Bar.** `/live` 상태바가 활성 종목의 **등락률(%)만** 같은
+   `useQuoteByCode`로 현재가 옆에 표시. 현재가는 기존대로 **RangeBundle(WS)** 에서 오므로
+   *가격 출처 ≠ 등락 출처*(의도적, 좁은 상태바라 등락액은 생략·줄바꿈 방지). 위 "Negative /
+   watch"의 "같은 종목이 surface별 다른 %" 목록에 이 변종이 하나 더해짐.
