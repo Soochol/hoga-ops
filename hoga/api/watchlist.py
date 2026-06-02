@@ -117,6 +117,41 @@ async def remove_entry(data_dir: Path, *, code: str) -> None:
         )
 
 
+async def reorder_entries(
+    data_dir: Path,
+    *,
+    codes: list[str],
+) -> list[WatchlistEntry]:
+    """Rewrite watchlist order to match ``codes``.
+
+    Tolerant of a stale ``codes`` list (a concurrent add/remove means the
+    caller's view may differ from disk): codes not currently present are
+    ignored; entries not mentioned in ``codes`` are appended in their
+    existing relative order. Shares ``_lock`` with add/remove/bump so a
+    concurrent mutation cannot interleave a half-applied state. No-op write:
+    if the resulting order equals the current order, the file is not touched.
+
+    Only the order changes — ``last_success_date`` / ``registered_at_kst_date``
+    are preserved by re-using the existing entry objects.
+    """
+    async with _lock:
+        entries = load_watchlist(data_dir)
+        by_code = {e.code: e for e in entries}
+        seen: set[str] = set()
+        ordered: list[WatchlistEntry] = []
+        for c in codes:
+            e = by_code.get(c)
+            if e is not None and c not in seen:
+                ordered.append(e)
+                seen.add(c)
+        for e in entries:
+            if e.code not in seen:
+                ordered.append(e)
+        if [e.code for e in ordered] != [e.code for e in entries]:
+            save_watchlist(data_dir, entries=ordered)
+        return ordered
+
+
 async def bump_last_success(
     data_dir: Path,
     *,
