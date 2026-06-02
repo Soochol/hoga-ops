@@ -6,7 +6,13 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from dataclasses import dataclass
+from pathlib import Path
+
+import polars as pl
+
+from hoga.api._atomic_write import atomic_write_parquet_df
 
 
 @dataclass(frozen=True)
@@ -34,3 +40,45 @@ def compute_factor_segments(
             # prev = 세그먼트-오픈 factor — sub-threshold 누적 변동엔 새 세그먼트를 안 만든다(안정성)
             prev = f
     return segments
+
+
+log = logging.getLogger(__name__)
+
+FACTOR_SCHEMA = {
+    "code": pl.Utf8, "seg_start": pl.Date, "factor": pl.Float64,
+}
+
+
+def segments_to_frame(by_code: dict[str, list[FactorSegment]]) -> pl.DataFrame:
+    """{code: [FactorSegment,...]} → factors DataFrame (code,seg_start,factor). 정렬은 write_factors가 담당."""
+    rows = [
+        {"code": code, "seg_start": s.seg_start, "factor": s.factor}
+        for code, segs in by_code.items() for s in segs
+    ]
+    return pl.DataFrame(rows, schema=FACTOR_SCHEMA)
+
+
+def write_factors(df: pl.DataFrame, path: Path) -> None:
+    """factors.parquet 원자적 기록(SSOT 계약 — 토막 노출 금지). 컬럼 순서·정렬을 쓰기 경계에서 강제."""
+    atomic_write_parquet_df(path, df.select(list(FACTOR_SCHEMA)).sort(["code", "seg_start"]))
+
+
+def _quarantine(path: Path) -> None:
+    stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S")
+    target = path.with_name(f"{path.name}.corrupt-{stamp}")
+    try:
+        path.rename(target)
+        log.warning("factors.parquet unusable; quarantined to %s", target.name)
+    except OSError:
+        log.exception("could not quarantine corrupt factors.parquet")
+
+
+def read_factors(path: Path) -> pl.DataFrame | None:
+    """factors.parquet 로드. 없으면 None. 손상이면 격리 후 None(폴백 유도)."""
+    if not path.exists():
+        return None
+    try:
+        return pl.read_parquet(path)
+    except Exception:  # noqa: BLE001 — 손상 parquet은 어떤 예외든 폴백으로 강등
+        _quarantine(path)
+        return None
