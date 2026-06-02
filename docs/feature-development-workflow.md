@@ -15,7 +15,6 @@
   → /superpowers:subagent-driven-development
   → /improve-codebase-architecture
   → (가치 있으면) ADR draft + commit
-  → /checking-domain-terms                        (CONTEXT.md ubiquitous language 사후 검증)
   → /superpowers:verification-before-completion   (최종 게이트 — refactor 후 회귀 차단)
   → /superpowers:finishing-a-development-branch   (worktree 정리 + merge/PR)
 ```
@@ -33,13 +32,12 @@
 | `/superpowers:subagent-driven-development` | 구현 코드 + 테스트 | — |
 | `/improve-codebase-architecture` | deepening 기회 평가 + refactor | — |
 | ADR draft + commit | `docs/adr/NNNN-*.md` | 결정 가치가 있을 때만 |
-| `/checking-domain-terms` | Claude가 CONTEXT.md + `git diff`를 읽고 ubiquitous-language 위반을 의미 수준에서 보고 | 위반 0건 또는 false positive로 정당화됨 |
 | `/superpowers:verification-before-completion` | 실제 명령 실행 증거 (refactor 후 최종) | 완료 주장 전 필수 |
 | `/superpowers:finishing-a-development-branch` | merge/PR 완료 후 worktree 제거 | 작업 commit 완료 |
 
 ## 운영 원칙
 
-1. **subagent에게 항상 컨텍스트 주입 (prevention)**: 각 subagent prompt에 **반드시** `CONTEXT.md` + 관련 ADR 경로를 포함. 예: `"Read CONTEXT.md before starting. Use the ubiquitous language defined there — never use terms listed in _Avoid_:. Follow docs/adr/0001-table-as-module.md for the table module contract."` 안 하면 비명시 규약(table-as-module, Wire Model 등)을 모르고 layer-style + 잘못된 용어가 생성됨. 사전 명시는 prevention이고, 사후의 `/checking-domain-terms`는 detection — 두 단계가 보완재.
+1. **subagent에게 항상 컨텍스트 주입 (prevention)**: 각 subagent prompt에 **반드시** `CONTEXT.md` + 관련 ADR 경로를 포함. 예: `"Read CONTEXT.md before starting. Use the ubiquitous language defined there — never use terms listed in _Avoid_:. Follow docs/adr/0001-table-as-module.md for the table module contract."` 안 하면 비명시 규약(table-as-module, Wire Model 등)을 모르고 layer-style + 잘못된 용어가 생성됨. 사전 명시(prevention)가 비명시 규약·용어 위반의 1차 방어선이며, 코드↔문서 사실 정합은 `/grill-with-docs`(spec/plan 단계)로 동기화한다.
 2. **2차 grill은 조건부**: `/plan-eng-review`가 plan을 안 건드렸으면 skip. 반복 grill은 "yes/sure" 자동응답으로 품질 하락 유발.
 3. **verification은 생략 금지**: subagent가 "통과했다"고 보고해도 main에서 실제 명령 재실행. 거짓 완료 방지.
 4. **ADR commit은 결정에만**: architecture 개선이 단순 cleanup이면 commit으로 충분. *결정*(다른 대안을 명시적으로 기각)일 때만 ADR.
