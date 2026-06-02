@@ -438,12 +438,13 @@ async def test_catchup_one_entry_returns_empty_on_krx_unavailable(tmp_path: Path
     ("20260228", "20260301"),  # standard February-end (non-leap)
 ])
 def test_next_kst_day_rollovers(inp: str, expected: str):
-    """_next_kst_day boundaries: month, year, leap-day, non-leap February.
+    """next_kst_day boundaries: month, year, leap-day, non-leap February.
     The catch-up logic uses this to compute start = day after last_success;
     a rollover bug would produce out-of-bounds dates the trading-day
-    expander would silently filter out."""
-    from hoga.api.scheduler import _next_kst_day
-    assert _next_kst_day(inp) == expected
+    expander would silently filter out. (Hoisted to orchestrator — the single
+    Clock seam — and shared by scheduler day-stepping + screener gap logic.)"""
+    from hoga.collector.orchestrator import next_kst_day
+    assert next_kst_day(inp) == expected
 
 
 @pytest.mark.asyncio

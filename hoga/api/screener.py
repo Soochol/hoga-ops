@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import polars as pl
@@ -20,6 +20,7 @@ from hoga.api.models import (
     ScreenerSaveWriteRequest,
 )
 from hoga.api.symbols import _RefreshCoordinator
+from hoga.collector.orchestrator import next_kst_day, now_kst
 from hoga.live import lifecycle
 from hoga.live.kis_client import KIS_KST
 
@@ -30,16 +31,11 @@ log = logging.getLogger(__name__)
 _update_coordinator: _RefreshCoordinator[int] = _RefreshCoordinator()
 
 
-def _next_kst_day(yyyymmdd: str) -> str:
-    d = date(int(yyyymmdd[0:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]))
-    return (d + timedelta(days=1)).strftime("%Y%m%d")
-
-
 def _gap_trading_days(last_raw_date: str, today: str) -> list[str]:
     """last_raw_date 다음날부터 today(KST)까지의 거래일 목록. 갭 없으면 [].
     trading_days_in_range 예외(KRX 먹통)는 전파 — 호출자가 0/None 으로 다르게 매핑한다.
     trigger_update(갭 캐치업)와 status(days_behind)가 공유하는 단일 갭 규칙."""
-    start = _next_kst_day(last_raw_date)
+    start = next_kst_day(last_raw_date)
     if start > today:
         return []
     return trading_days_in_range(start, today)
@@ -70,7 +66,7 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
     if last is None:
         return 0  # not seeded — nothing to catch up
 
-    today = datetime.now(KIS_KST).strftime("%Y%m%d")
+    today = now_kst().strftime("%Y%m%d")
     try:
         days = _gap_trading_days(last, today)
     except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
@@ -127,10 +123,10 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
         # TRADING-day freshness for the frontend StalenessChip: count trading
         # days from the day AFTER last_raw_date through today KST. A calendar-
         # day proxy shows false-amber on weekends. Mirror trigger_update's gap
-        # logic (same _next_kst_day + start>today short-circuit) so the
+        # logic (same next_kst_day + start>today short-circuit) so the
         # inverted-range ValueError never fires. KRX outage → None (frontend
         # treats None as unknown), never crash the status route.
-        today = datetime.now(KIS_KST).strftime("%Y%m%d")
+        today = now_kst().strftime("%Y%m%d")
         if s.last_raw_date is None:
             days_behind = None  # 유효 거래일 없음(빈/NULL-date 아카이브) → 신선도 불명
         else:

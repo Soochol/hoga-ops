@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persistJson, readJsonObject } from './persist';
 
 const STORAGE_KEY = 'rightRail.layout';
 
@@ -22,37 +23,26 @@ type Store = Persisted & {
 const DEFAULTS: Persisted = { activePanel: null };
 
 function persist(state: Persisted): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // localStorage unavailable (SSR, privacy mode) — silent fallback.
-  }
+  persistJson(STORAGE_KEY, state);
 }
 
 // Accept only the new enum shape (whitelist) OR migrate the legacy boolean
 // shape ({ panelOpen: true } → 'watchlist', else → null). A corrupt/hand-edited
 // value must not leak into state (e.g. activePanel: 'foo' or panelOpen: 0).
 function readStorage(): Partial<Persisted> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, unknown> | null;
-    if (typeof parsed !== 'object' || parsed === null) return {};
-    if ('activePanel' in parsed) {
-      const v = parsed.activePanel;
-      if (v === null) return { activePanel: null };
-      if (typeof v === 'string' && (VALID_PANELS as readonly string[]).includes(v)) {
-        return { activePanel: v as RailPanel };
-      }
-      return {}; // corrupt → default
+  const parsed = readJsonObject(STORAGE_KEY);
+  if ('activePanel' in parsed) {
+    const v = parsed.activePanel;
+    if (v === null) return { activePanel: null };
+    if (typeof v === 'string' && (VALID_PANELS as readonly string[]).includes(v)) {
+      return { activePanel: v as RailPanel };
     }
-    if (typeof parsed.panelOpen === 'boolean') {
-      return { activePanel: parsed.panelOpen ? 'watchlist' : null };
-    }
-    return {};
-  } catch {
-    return {};
+    return {}; // corrupt → default
   }
+  if (typeof parsed.panelOpen === 'boolean') {
+    return { activePanel: parsed.panelOpen ? 'watchlist' : null };
+  }
+  return {};
 }
 
 // Read at module load (synchronous) so the panel's persisted state is present

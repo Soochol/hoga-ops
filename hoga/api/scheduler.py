@@ -21,7 +21,7 @@ from hoga.api.disk_state import latest_complete_date
 from hoga.api.eligibility import find_ineligible_dates
 from hoga.api.models import EnqueueRequest, EnqueueResponse, WatchlistEntry
 from hoga.api.watchlist import load_watchlist, set_last_success
-from hoga.collector.orchestrator import now_kst
+from hoga.collector.orchestrator import next_kst_day, now_kst
 
 log = logging.getLogger(__name__)
 
@@ -78,11 +78,6 @@ async def _daily_run(data_dir: Path) -> None:
         log.exception("daily run: screener update failed; continuing")
 
 
-def _next_kst_day(yyyymmdd: str) -> str:
-    d = dt.date(int(yyyymmdd[0:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]))
-    return (d + dt.timedelta(days=1)).strftime("%Y%m%d")
-
-
 async def catchup_one_entry(
     entry: WatchlistEntry,
     *,
@@ -119,7 +114,7 @@ async def catchup_one_entry(
     floor = latest or entry.registered_at_kst_date
 
     # Step 2: compute candidate dates.
-    start = _next_kst_day(floor)
+    start = next_kst_day(floor)
     if start > today:
         return EnqueueResponse(enqueued=[], deduped=[])
     try:

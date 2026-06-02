@@ -4,11 +4,12 @@
  *  - won·pct 둘 다 → "+750원 (1.20%)" (퍼센트는 부호 없이 괄호 안 절대값)
  *  - won 없음(스크리너 코퍼스 폴백) → 등락률만 "+1.20%"
  *  - 둘 다 null(장전/무데이터) → "—" */
+import { priceDirClass } from '../ui/priceDir';
+
 export function QuoteChange({ won, pct }: { won: number | null; pct: number | null }) {
   if (won === null && pct === null) return <span className="text-fg-dim">—</span>;
   const basis = won ?? pct ?? 0;
-  const dir = basis > 0 ? 'up' : basis < 0 ? 'down' : 'flat';
-  const cls = dir === 'up' ? 'text-price-up' : dir === 'down' ? 'text-price-down' : 'text-fg-dim';
+  const cls = priceDirClass(basis);
 
   if (won !== null) {
     const wonStr = `${won > 0 ? '+' : ''}${won.toLocaleString('ko-KR')}원`;

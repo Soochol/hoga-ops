@@ -1,36 +1,30 @@
 import { useNavigate } from 'react-router';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { PageContainer } from '../layout/PageContainer';
-import { useLivePageStore } from '../state/livePage';
+import { useJumpToLive } from '../live/useJumpToLive';
 import { useScreener } from '../screener/useScreener';
 import { useScreenerStatus } from '../screener/useScreenerStatus';
+import { useScreenerUpdate } from '../screener/useScreenerUpdate';
 import { ConditionBuilder } from '../screener/ConditionBuilder';
 import { SavedScreenerList } from '../screener/SavedScreenerList';
 import { ResultTable } from '../screener/ResultTable';
 import { StalenessChip } from '../screener/StalenessChip';
 import { useSavedScreenerEditor } from '../screener/useSavedScreenerEditor';
-import { triggerScreenerUpdate } from '../api/screener';
 import { addToWatchlist } from '../api/watchlist';
 
 export function Screener() {
-  const navigate = useNavigate();
-  const setActiveCode = useLivePageStore((s) => s.setActiveCode);
+  const navigate = useNavigate();   // 캡처 deep-link(/capture?code=…)용
+  const openLive = useJumpToLive();
   const editor = useSavedScreenerEditor();
 
   const screener = useScreener();
   const { data: status } = useScreenerStatus();
   // Side-effect actions on a result row. Lazy — only fire on click, never at
   // render, so the screener API mock that omits these stays valid.
-  const queryClient = useQueryClient();
   const watch = useMutation({ mutationFn: (code: string) => addToWatchlist(code) });
-  // 성공·실패 모두 freshness 칩을 다시 읽어 반영하고, 실패는 표면화한다.
-  const update = useMutation({
-    mutationFn: () => triggerScreenerUpdate(),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['screener-status'] }),
-  });
+  const update = useScreenerUpdate();
 
   const notSeeded = screener.data?.status === 'not_seeded' || status?.status === 'not_seeded';
-  const openLive = (code: string) => { setActiveCode(code); navigate('/live'); };
   const runScan = () => screener.mutate({ conditions: editor.conditions, universe: editor.universe });
 
   return (

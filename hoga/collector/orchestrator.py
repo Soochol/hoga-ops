@@ -209,6 +209,13 @@ def now_kst() -> dt.datetime:
     return dt.datetime.now(tz=KST)
 
 
+def next_kst_day(yyyymmdd: str) -> str:
+    """YYYYMMDD 다음 날(KST 달력) → YYYYMMDD. 거래일 갭 계산의 단일 출처 — scheduler
+    의 day-stepping 과 screener 의 gap/freshness 가 공유(월·연·윤일 경계가 한 곳)."""
+    d = dt.date(int(yyyymmdd[0:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]))
+    return (d + dt.timedelta(days=1)).strftime("%Y%m%d")
+
+
 # Internal alias preserved so tests that monkeypatch `_now_kst` at
 # orchestrator scope keep working through the rename. New callers
 # should import `now_kst` directly.

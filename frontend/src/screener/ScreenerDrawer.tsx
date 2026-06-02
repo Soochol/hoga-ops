@@ -1,15 +1,14 @@
 import { useEffect, useMemo } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useLivePageStore } from '../state/livePage';
 import { useScreenerPanelStore } from '../state/screenerPanel';
 import { useSavedScreeners } from './useSavedScreeners';
 import { useScreener } from './useScreener';
 import { useScreenerStatus } from './useScreenerStatus';
+import { useScreenerUpdate } from './useScreenerUpdate';
 import { StalenessChip } from './StalenessChip';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useQuoteByCode } from '../api/liveQuotes';
-import { triggerScreenerUpdate } from '../api/screener';
 import { WatchlistToggleButton } from '../watchlist/WatchlistToggleButton';
 import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 
@@ -34,13 +33,7 @@ export function ScreenerDrawer() {
   const saves = useMemo(() => savesData?.saves ?? [], [savesData]);
   const { data: status } = useScreenerStatus();
   const screener = useScreener();
-  const queryClient = useQueryClient();
-  // 성공·실패 모두 freshness 칩(screener-status)을 다시 읽어 결과를 반영하고,
-  // 실패는 표면화한다(이전엔 onSettled/onError 가 없어 무변화든 에러든 무피드백).
-  const update = useMutation({
-    mutationFn: () => triggerScreenerUpdate(),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['screener-status'] }),
-  });
+  const update = useScreenerUpdate();
 
   // Restore/repair selection once saves have loaded: keep the persisted id if it
   // still exists, else fall back to the first save, else none. Gate on

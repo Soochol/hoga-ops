@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ScreenerRow, ScreenerResponse } from '../api/screener';
+import { persistJson, readJsonObject } from './persist';
 
 const STORAGE_KEY = 'screenerPanel.v1';
 
@@ -22,29 +23,18 @@ type Store = Persisted & {
 const DEFAULTS: Persisted = { selectedSavedId: null };
 
 function persist(state: Persisted): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // localStorage unavailable (SSR, privacy mode) — silent fallback.
-  }
+  persistJson(STORAGE_KEY, state);
 }
 
 // Only selectedSavedId is persisted. Accept a string id or an explicit null;
 // reject anything else (corrupt/hand-edited) so it can't leak into state.
 function readStorage(): Partial<Persisted> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, unknown> | null;
-    if (typeof parsed !== 'object' || parsed === null) return {};
-    // Explicit null branch: a stored null (deselected) is valid and must be
-    // accepted before the string check, mirroring rightRail.ts's guard.
-    if (parsed.selectedSavedId === null) return { selectedSavedId: null };
-    if (typeof parsed.selectedSavedId === 'string') return { selectedSavedId: parsed.selectedSavedId };
-    return {};
-  } catch {
-    return {};
-  }
+  const parsed = readJsonObject(STORAGE_KEY);
+  // Explicit null branch: a stored null (deselected) is valid and must be
+  // accepted before the string check.
+  if (parsed.selectedSavedId === null) return { selectedSavedId: null };
+  if (typeof parsed.selectedSavedId === 'string') return { selectedSavedId: parsed.selectedSavedId };
+  return {};
 }
 
 // lastScan is in-memory only: it survives panel close/reopen and route changes
