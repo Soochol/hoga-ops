@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { SymbolSearch } from './SymbolSearch';
 import { DateRangePicker, type DateRange } from './DateRangePicker';
 import { useCaptureQueue } from './useCaptureQueue';
+import { useSymbols, filterSymbols } from './useSymbols';
 import { enqueueErrorHints } from '../api/upstream-hints';
 import type { ApiError } from '../api/client';
 import type { BlockedItem, EnqueueResponse, SymbolHit, UpstreamCode } from '../api/types';
@@ -21,14 +22,37 @@ export interface CaptureFormProps {
   /** Reference month for DateRangePicker's left grid. Defaults to current KST month. */
   referenceYear: number;
   referenceMonth: number;
+  /** 6-digit code to prefill the symbol field (e.g. the Screener row 캡처 button
+   *  routes here with ?code=…). Resolved against the symbol cache for the real
+   *  name/market; an unverified code still prefills as a placeholder. */
+  initialCode?: string | null;
 }
 
-export function CaptureForm({ referenceYear, referenceMonth }: CaptureFormProps) {
+export function CaptureForm({ referenceYear, referenceMonth, initialCode = null }: CaptureFormProps) {
   const [symbol, setSymbol] = useState<SymbolHit | null>(null);
   const [range, setRange] = useState<DateRange | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inlineError, setInlineError] = useState<ReactNode>(null);
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
+
+  // Prefill the symbol from ?code once the cache has resolved (so we get the real
+  // name/market); fall back to a placeholder for an unverified 6-digit code.
+  // Applied during render (React's "adjust state on prop change" pattern, not an
+  // effect) and gated on prefilledCode so the user's later selection is never
+  // clobbered — each initialCode is consumed exactly once.
+  const { data: symbolsData } = useSymbols();
+  const [prefilledCode, setPrefilledCode] = useState<string | null>(null);
+  if (initialCode && initialCode !== prefilledCode && symbolsData !== undefined) {
+    setPrefilledCode(initialCode);
+    const code = initialCode.trim();
+    if (/^\d{6}$/.test(code)) {
+      const hit = filterSymbols(symbolsData.symbols ?? [], code, 1).find((h) => h.code === code);
+      setSymbol(hit ?? {
+        code, name: '—', market: 'KOSPI', captured_count: 0,
+        captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
+      });
+    }
+  }
 
   const { addItems } = useCaptureQueue();
   const valid = symbol !== null && range !== null && range.end !== null;

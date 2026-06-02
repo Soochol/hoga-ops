@@ -121,6 +121,14 @@ describe('CaptureForm', () => {
     expect(screen.getByTestId('calendar-cell-20260520').getAttribute('style')).toContain('var(--accent)');
   });
 
+  it('prefills the symbol from initialCode, resolving the real name via the cache', async () => {
+    const { qc } = setup();
+    render(<CaptureForm referenceYear={2026} referenceMonth={5} initialCode="005930" />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    // SymbolSearch shows "name code" once a SymbolHit is set (here resolved to 삼성전자).
+    expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toContain('삼성전자');
+  });
+
   it('does not render the per-capture Force re-capture checkbox (moved to Settings)', async () => {
     const { qc } = setup();
     render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });

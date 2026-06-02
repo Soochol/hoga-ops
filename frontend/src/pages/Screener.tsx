@@ -11,7 +11,6 @@ import { StalenessChip } from '../screener/StalenessChip';
 import { useSavedScreenerEditor } from '../screener/useSavedScreenerEditor';
 import { triggerScreenerUpdate } from '../api/screener';
 import { addToWatchlist } from '../api/watchlist';
-import { addItems } from '../api/captures';
 
 export function Screener() {
   const navigate = useNavigate();
@@ -24,7 +23,6 @@ export function Screener() {
   // render, so the screener API mock that omits these stays valid.
   const queryClient = useQueryClient();
   const watch = useMutation({ mutationFn: (code: string) => addToWatchlist(code) });
-  const capture = useMutation({ mutationFn: (code: string) => addItems({ code, force_retry: false }) });
   // 성공·실패 모두 freshness 칩을 다시 읽어 반영하고, 실패는 표면화한다.
   const update = useMutation({
     mutationFn: () => triggerScreenerUpdate(),
@@ -78,7 +76,8 @@ export function Screener() {
         </div>
       ) : (
         <ResultTable rows={screener.data?.rows ?? []} onActivate={openLive}
-          onWatch={(code) => watch.mutate(code)} onCapture={(code) => capture.mutate(code)} />
+          onWatch={(code) => watch.mutate(code)}
+          onCapture={(code) => navigate(`/capture?code=${encodeURIComponent(code)}`)} />
       )}
     </PageContainer>
   );

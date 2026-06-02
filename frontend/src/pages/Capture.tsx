@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { CaptureForm } from '../capture/CaptureForm';
 import { CaptureQueue } from '../capture/CaptureQueue';
 import VerticalSplitter from '../layout/VerticalSplitter';
@@ -32,6 +33,8 @@ function clamp(pct: number): number {
 
 export default function Capture() {
   const { year, month } = currentKstMonth();
+  const [searchParams] = useSearchParams();
+  const initialCode = searchParams.get('code');
   const containerRef = useRef<HTMLDivElement>(null);
   const [leftPct, setLeftPct] = useState<number>(loadInitialPct);
 
@@ -62,7 +65,7 @@ export default function Capture() {
       style={{ gridTemplateColumns: `${leftPct}fr 12px ${100 - leftPct}fr` }}
     >
       <section className="bg-bg-card border rounded-lg p-4 overflow-y-auto">
-        <CaptureForm referenceYear={year} referenceMonth={month} />
+        <CaptureForm referenceYear={year} referenceMonth={month} initialCode={initialCode} />
       </section>
       <VerticalSplitter
         ariaLabel={`패널 크기 조정 (${Math.round(leftPct)}% / ${Math.round(100 - leftPct)}%)`}

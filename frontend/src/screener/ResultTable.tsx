@@ -41,7 +41,7 @@ export function ResultTable({ rows, onActivate, onWatch, onCapture }: Props) {
               <span className="flex items-center justify-end gap-2">
                 <button type="button" aria-label="관심종목 추가" onClick={(e) => { e.stopPropagation(); onWatch(r.code); }}
                   className="bg-transparent border-none text-fg-dimmer hover:text-fg cursor-pointer leading-none p-0">♥</button>
-                <button type="button" aria-label="캡처 큐 추가" onClick={(e) => { e.stopPropagation(); onCapture(r.code); }}
+                <button type="button" aria-label="캡처 페이지 열기" onClick={(e) => { e.stopPropagation(); onCapture(r.code); }}
                   className="bg-transparent border-none text-fg-dimmer hover:text-fg cursor-pointer leading-none p-0">📥</button>
               </span>
             </div>
