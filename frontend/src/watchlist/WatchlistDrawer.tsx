@@ -1,11 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getWatchlist } from '../api/watchlist';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
 import { useRemoveFromWatchlist, useReorderWatchlist } from './useWatchlist';
-import { TrashIcon } from '../ui/TrashIcon';
+import { WatchlistRowMenu } from './WatchlistRowMenu';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { SortableQuoteRow } from './SortableQuoteRow';
@@ -37,6 +37,13 @@ export function WatchlistDrawer() {
     const next = reorderCodes(codes, String(e.active.id), e.over ? String(e.over.id) : null);
     if (next) reorderM.mutate(next);
   };
+
+  const [menu, setMenu] = useState<{ x: number; y: number; code: string; name: string } | null>(null);
+  const openMenu = (e: React.MouseEvent, code: string, name: string) => {
+    e.preventDefault();                                   // 네이티브 우클릭 메뉴 억제
+    setMenu({ x: e.clientX, y: e.clientY, code, name });  // raw 좌표 — 클램프는 메뉴가 실측
+  };
+  const closeMenu = () => setMenu(null);
 
   return (
     <div
@@ -95,23 +102,23 @@ export function WatchlistDrawer() {
                   ariaLabel={`${entry.name} ${entry.code} 차트 열기`}
                   testId={`watchlist-row-${entry.code}`}
                   onClick={() => onPick(entry.code)}
-                  trailingAction={
-                    <button
-                      type="button"
-                      aria-label={`${entry.name} 관심종목 해제`}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={(e) => { e.stopPropagation(); removeM.mutate(entry.code); }}
-                      className="leading-none text-fg-dimmer opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-error focus-visible:text-error transition-[opacity,color] duration-[80ms]"
-                    >
-                      <TrashIcon className="w-[1em] h-[1em]" />
-                    </button>
-                  }
+                  onContextMenu={(e) => openMenu(e, entry.code, entry.name)}
+                  onDelete={() => removeM.mutate(entry.code)}
                 />
               );
             })}
           </ul>
         </SortableContext>
       </DndContext>
+      {menu && (
+        <WatchlistRowMenu
+          x={menu.x}
+          y={menu.y}
+          name={menu.name}
+          onRemove={() => removeM.mutate(menu.code)}
+          onClose={closeMenu}
+        />
+      )}
     </div>
   );
 }
