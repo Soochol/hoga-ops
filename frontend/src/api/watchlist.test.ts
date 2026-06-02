@@ -3,6 +3,7 @@ import {
   getWatchlist,
   addToWatchlist,
   removeFromWatchlist,
+  reorderWatchlist,
   type WatchlistResponse,
 } from './watchlist';
 
@@ -46,6 +47,17 @@ describe('watchlist api client', () => {
       '/api/watchlist/003490',
       expect.objectContaining({ method: 'DELETE' }),
     );
+  });
+
+  it('reorderWatchlist PUTs the codes array to /api/watchlist/order', async () => {
+    const fake: WatchlistResponse = { entries: [], next_run_at_ms: 0 };
+    vi.mocked(apiCall).mockResolvedValueOnce(fake);
+    const r = await reorderWatchlist(['005930', '003490']);
+    const [path, init] = vi.mocked(apiCall).mock.calls[0];
+    expect(path).toBe('/api/watchlist/order');
+    expect(init?.method).toBe('PUT');
+    expect(JSON.parse(init?.body as string)).toEqual({ codes: ['005930', '003490'] });
+    expect(r).toEqual(fake);
   });
 });
 

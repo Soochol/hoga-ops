@@ -31,6 +31,14 @@ export function removeFromWatchlist(code: string): Promise<void> {
   return apiAction(`/api/watchlist/${code}`, { method: 'DELETE' });
 }
 
+export function reorderWatchlist(codes: string[]): Promise<WatchlistResponse> {
+  return apiCall<WatchlistResponse>('/api/watchlist/order', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ codes }),
+  });
+}
+
 // --- Manual catch-up (spec 2026-05-27) ------------------------------------
 // EnqueueResponse / EnqueueDedupedRow / QueueItem live in ./types so the
 // wire shape stays single-source-of-truth for both /api/captures/items and
