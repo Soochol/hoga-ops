@@ -33,6 +33,16 @@ def test_parse_quote_missing_ctrt_is_none():
     assert q.price == 5000
 
 
+def test_parse_quote_unknown_sign_is_none_not_positive():
+    # #11: 미인식 부호코드(1·2·3·4·5 밖)는 방향 불명 → change_pct·change_won 모두
+    # None. prdy_ctrt·inter2_prdy_vrss 는 절대값이라, 양수로 위조하면 하락 종목이
+    # 상승(KRX 빨강)으로 역표시된다.
+    q = _parse_quote({"inter_shrn_iscd": "000660", "inter2_prpr": "183500",
+                      "inter2_prdy_vrss": "1500", "prdy_ctrt": "0.80", "prdy_vrss_sign": "0"})
+    assert q is not None and q.price == 183500
+    assert q.change_pct is None and q.change_won is None
+
+
 def test_parse_quote_blank_or_missing_code_is_none():
     # 무효 코드 placeholder 행(inter_shrn_iscd 빈값) / 빈 dict → None
     assert _parse_quote({"inter_shrn_iscd": "", "inter2_prpr": ""}) is None

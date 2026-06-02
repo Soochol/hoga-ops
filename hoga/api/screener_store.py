@@ -197,7 +197,9 @@ FetchOne = Callable[[str, str, str], Awaitable[list[dict]]]
 
 async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
                      trading_days: list[str], now_ms: int) -> int:
-    """gap 거래일 행을 await fetch_one 으로 모아 append→derive→status. 추가 거래일 수 반환."""
+    """gap 거래일 행을 await fetch_one 으로 모아 append→derive→status. 실제로 추가된
+    거래일 수(append 된 행의 distinct date) 반환 — 상류가 갭 일부만 반환해도 요청
+    거래일 수(len(trading_days))로 과대보고하지 않는다."""
     rows: list[dict] = []
     for code in codes:
         rows += await fetch_one(code, trading_days[0], trading_days[-1])
@@ -214,4 +216,4 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
         return ms
 
     await asyncio.to_thread(_commit)
-    return len(trading_days)
+    return len({r["date"] for r in rows})

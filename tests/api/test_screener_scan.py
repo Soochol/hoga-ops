@@ -30,6 +30,21 @@ def test_trade_value_filters_latest_day(tmp_path):
     assert rows[0].code == "005930" and rows[0].trade_value_won == 600_000_000
 
 
+def test_scan_filters_noncorpus_market_and_null_name(tmp_path):
+    # #12: 상류 stocks 에 KONEX/NULL-name 행이 섞여도 한 행이 ScreenerRow(Literal
+    # market·필수 name) 생성을 깨 전체 스캔을 500 시키지 않는다 — SQL 가드로 걸러
+    # 유효 KOSPI/KOSDAQ·non-null name 행만 반환(기본 universe=markets 무제한이어도).
+    adj, stk = _seed(tmp_path,
+        rows=[("005930", "2026-05-30", 100, 100, 100, 100, 1),
+              ("111111", "2026-05-30", 100, 100, 100, 100, 1),   # KONEX
+              ("222222", "2026-05-30", 100, 100, 100, 100, 1)],  # NULL name
+        stocks=[("005930", "삼성", "KOSPI", False, False),
+                ("111111", "코넥스주", "KONEX", False, False),
+                ("222222", None, "KOSDAQ", False, False)])
+    rows = screener_scan.run_scan(adj, stk, conditions=[], universe=ScreenerUniverse())
+    assert [r.code for r in rows] == ["005930"]   # 불량 2행 제외, 크래시 없음
+
+
 from hoga.api.models import ChangePctLeaf, ChangePctParams
 
 def test_change_pct_gte_latest_day(tmp_path):

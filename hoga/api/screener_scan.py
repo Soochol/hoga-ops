@@ -144,7 +144,12 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
 
     uwheres, uparams = _universe_wheres(universe)
     params += uparams
-    where_sql = ("WHERE " + " AND ".join(uwheres)) if uwheres else ""
+    # 코퍼스 계약 가드(항상 적용): ScreenerRow.market 은 Literal["KOSPI","KOSDAQ"],
+    # name 은 필수 str. 상류 stocks export 가 KONEX/ETN/NULL-name 행을 흘려도 한 행이
+    # ScreenerRow 생성을 깨 전체 스캔을 500 시키지 못하도록 SQL 에서 걸러낸다(시장 목록은
+    # ScreenerRow.market Literal 과 한 쌍 — 함께 바뀐다).
+    wheres = ["stk.market IN ('KOSPI', 'KOSDAQ')", "stk.name IS NOT NULL", *uwheres]
+    where_sql = "WHERE " + " AND ".join(wheres)
 
     sel = ("base.code, stk.name, stk.market, base.close::BIGINT price, "
            f"({_TV})::BIGINT trade_value_won, "

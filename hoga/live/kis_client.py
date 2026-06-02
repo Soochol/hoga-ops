@@ -867,8 +867,9 @@ def _parse_quote(row: dict) -> KisQuote | None:
 
     price = inter2_prpr. change_pct = prdy_ctrt(절대값), change_won =
     inter2_prdy_vrss(절대값) 에 prdy_vrss_sign 을 공통 적용 (1·2 상한/상승=양수,
-    4·5 하한/하락=음수, 3 보합=0, 그 외 부호코드는 원값 부호 유지). prdy_ctrt 가
-    빈값이거나 숫자 파싱 실패면 change_pct·change_won 모두 None.
+    4·5 하한/하락=음수, 3 보합=0). prdy_ctrt 가 빈값/파싱실패거나 부호코드가
+    1·2·3·4·5 밖(방향 불명)이면 change_pct·change_won 모두 None — 필드가 절대값이라
+    부호를 못 붙이므로 양수로 위조하지 않고 미표시한다.
     """
     code = (row.get("inter_shrn_iscd") or "").strip()
     if not code:
@@ -884,25 +885,26 @@ def _parse_quote(row: dict) -> KisQuote | None:
         mag = abs(float(raw_ctrt))
     except (TypeError, ValueError):
         return KisQuote(code=code, price=price, change_pct=None, change_won=None)
-    # 부호코드 → 멀티플라이어. 등락률·등락액에 공통 적용. None = 알 수 없는 코드
-    # (값 자체의 부호를 그대로 쓴다).
+    # 부호코드 → 멀티플라이어. 등락률·등락액에 공통 적용. 미인식 코드(1·2·3·4·5 밖)는
+    # 방향 불명 → None(절대값 필드라 부호를 못 붙임 → 양수 위조 금지).
     sign = str(row.get("prdy_vrss_sign", ""))
     mult = {"1": 1.0, "2": 1.0, "4": -1.0, "5": -1.0, "3": 0.0}.get(sign)
-    pct = float(raw_ctrt) if mult is None else mult * mag
+    if mult is None:
+        return KisQuote(code=code, price=price, change_pct=None, change_won=None)
     change_won = _parse_change_won(row.get("inter2_prdy_vrss") or row.get("prdy_vrss"), mult)
-    return KisQuote(code=code, price=price, change_pct=pct, change_won=change_won)
+    return KisQuote(code=code, price=price, change_pct=mult * mag, change_won=change_won)
 
 
-def _parse_change_won(raw: str | None, mult: float | None) -> int | None:
-    """전일대비 등락액(원). raw 는 절대값(빈값/파싱실패 → None). mult 가 None(알 수
-    없는 부호코드)이면 raw 자체 부호를 유지한다 (_parse_quote 의 pct 처리와 대칭)."""
+def _parse_change_won(raw: str | None, mult: float) -> int | None:
+    """전일대비 등락액(원). raw 는 절대값(빈값/파싱실패 → None); mult(부호코드 멀티
+    플라이어)로 방향을 적용한다 (호출부가 mult!=None 을 보장)."""
     if raw in (None, ""):
         return None
     try:
         v = float(raw)
     except (TypeError, ValueError):
         return None
-    return int(v) if mult is None else int(mult * abs(v))
+    return int(mult * abs(v))
 
 
 async def _fetch_multi_price(get, codes: list[str]) -> list["KisQuote"]:
