@@ -285,3 +285,24 @@ async def test_reorder_no_change_does_not_rewrite_file(tmp_path: Path):
     mtime_before = p.stat().st_mtime_ns
     await reorder_entries(tmp_path, codes=["003490", "005930"])  # same order
     assert p.stat().st_mtime_ns == mtime_before  # untouched
+
+
+@pytest.mark.asyncio
+async def test_reorder_empty_codes_is_noop(tmp_path: Path):
+    from hoga.api.watchlist import add_entry, reorder_entries
+    await add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
+    await add_entry(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
+    p = tmp_path / "watchlist.json"
+    mtime_before = p.stat().st_mtime_ns
+    out = await reorder_entries(tmp_path, codes=[])
+    assert [e.code for e in out] == ["003490", "005930"]
+    assert p.stat().st_mtime_ns == mtime_before  # no write
+
+
+@pytest.mark.asyncio
+async def test_reorder_dedupes_duplicate_input_codes(tmp_path: Path):
+    from hoga.api.watchlist import add_entry, reorder_entries
+    await add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
+    await add_entry(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
+    out = await reorder_entries(tmp_path, codes=["005930", "005930", "003490"])
+    assert [e.code for e in out] == ["005930", "003490"]
