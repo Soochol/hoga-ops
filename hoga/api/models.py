@@ -560,6 +560,14 @@ class WatchlistAddRequest(BaseModel):
     code: str = Field(pattern=r"^\d{6}$")
 
 
+class WatchlistReorderRequest(BaseModel):
+    """New display order for the Watchlist. Each element is a 6-digit KRX
+    code. Tolerant server-side: unknown codes are ignored and unmentioned
+    entries are appended (see watchlist.reorder_entries)."""
+
+    codes: list[Annotated[str, Field(pattern=r"^\d{6}$")]]
+
+
 # --- Watchlist manual catch-up (see spec 2026-05-27) -----------------------
 
 

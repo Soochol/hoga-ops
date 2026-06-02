@@ -293,3 +293,37 @@ async def test_delete_survives_refresh_poller_failure(tmp_path: Path):
         r = client.delete("/api/watchlist/003490")
     assert r.status_code == 204
     assert watchlist.load_watchlist(tmp_path) == []
+
+
+@pytest.mark.asyncio
+async def test_put_order_reorders(tmp_path: Path):
+    from hoga.api import watchlist
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
+    await watchlist.add_entry(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
+    fake_now = dt.datetime(2026, 5, 26, 10, 0, tzinfo=KST)
+    with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now):
+        client = TestClient(_app(tmp_path))
+        r = client.put("/api/watchlist/order", json={"codes": ["005930", "003490"]})
+    assert r.status_code == 200
+    body = r.json()
+    assert [e["code"] for e in body["entries"]] == ["005930", "003490"]
+    assert [e.code for e in watchlist.load_watchlist(tmp_path)] == ["005930", "003490"]
+
+
+def test_put_order_rejects_non_6_digit_code(tmp_path: Path):
+    client = TestClient(_app(tmp_path))
+    r = client.put("/api/watchlist/order", json={"codes": ["12345"]})  # 5 digits
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_put_order_does_not_collide_with_delete_route(tmp_path: Path):
+    """`/order` is a literal segment, not a {code} path param. The DELETE
+    /{code} route (pattern ^\\d{6}$) must not shadow it."""
+    from hoga.api import watchlist
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
+    fake_now = dt.datetime(2026, 5, 26, 10, 0, tzinfo=KST)
+    with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now):
+        client = TestClient(_app(tmp_path))
+        r = client.put("/api/watchlist/order", json={"codes": ["003490"]})
+    assert r.status_code == 200

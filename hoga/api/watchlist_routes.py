@@ -26,6 +26,7 @@ from hoga.api.models import (
     ManualCatchupError,
     WatchlistAddRequest,
     WatchlistEntry,
+    WatchlistReorderRequest,
     WatchlistResponse,
 )
 from hoga.api.calendar import KrxUnavailableError
@@ -36,6 +37,7 @@ from hoga.api.watchlist import (
     add_entry,
     load_watchlist,
     remove_entry,
+    reorder_entries,
 )
 from hoga.collector.orchestrator import now_kst
 from hoga.live.lifecycle import refresh_live_poller
@@ -154,6 +156,14 @@ def build_router(*, data_dir: Path) -> APIRouter:
             })
         return await catchup_one_entry(
             match, data_dir=data_dir, now=now_kst(),
+        )
+
+    @router.put("/order", response_model=WatchlistResponse)
+    async def reorder_watchlist(req: WatchlistReorderRequest) -> WatchlistResponse:
+        entries = await reorder_entries(data_dir, codes=req.codes)
+        return WatchlistResponse(
+            entries=entries,
+            next_run_at_ms=_next_run_at_ms(now_kst()),
         )
 
     return router
