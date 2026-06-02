@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState } from 'react';
 import { useDismissablePopover } from '../util/useDismissablePopover';
+import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { HeartIcon } from '../ui/HeartIcon';
 
 interface Props {
@@ -14,22 +14,13 @@ type MenuItem = { key: string; label: string; icon: React.ReactNode; onClick: ()
 
 /**
  * 관심종목 행 우클릭 컨텍스트 메뉴 (워치리스트 전용). 커서 (x,y)에 fixed 로 뜨되,
- * 렌더 후 자기 rect 를 실측해 우/하단 오버플로를 보정한다(매직넘버 없음). 항목은
- * 배열을 순회 — 추후 '메모' 가 두 번째 항목으로 합류한다(그때 onMemo prop 추가).
+ * `useClampedFixedPosition` 이 렌더 후 자기 rect 를 실측해 우/하단 오버플로를
+ * 보정한다(매직넘버 없음). 항목은 배열을 순회 — 추후 '메모' 가 두 번째 항목으로
+ * 합류한다(그때 onMemo prop 추가).
  */
 export function WatchlistRowMenu({ x, y, name, onRemove, onClose }: Props) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: x, top: y });
-  useDismissablePopover(true, menuRef, onClose);
-
-  useLayoutEffect(() => {
-    const el = menuRef.current;
-    if (!el) return;
-    const { width, height } = el.getBoundingClientRect();
-    const left = x + width  > window.innerWidth  ? Math.max(0, window.innerWidth  - width)  : x;
-    const top  = y + height > window.innerHeight ? Math.max(0, window.innerHeight - height) : y;
-    setPos({ left, top });
-  }, [x, y]);
+  const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);
+  useDismissablePopover(true, ref, onClose);
 
   const items: MenuItem[] = [
     {
@@ -42,13 +33,13 @@ export function WatchlistRowMenu({ x, y, name, onRemove, onClose }: Props) {
 
   return (
     <div
-      ref={menuRef}
+      ref={ref}
       role="menu"
       aria-label={`${name} 컨텍스트 메뉴`}
       data-testid="watchlist-row-menu"
       onContextMenu={(e) => e.preventDefault()}
       className="bg-bg-card border border-border rounded shadow-lg z-30 py-1"
-      style={{ position: 'fixed', left: pos.left, top: pos.top, minWidth: '8rem' }}
+      style={{ position: 'fixed', left, top, minWidth: '8rem' }}
     >
       {items.map((item) => (
         <button
