@@ -21,4 +21,8 @@ describe('clampToViewport', () => {
   it('clamps both axes independently', () => {
     expect(clampToViewport(950, 790, 100, 40, 1000, 800)).toEqual({ left: 900, top: 760 });
   });
+
+  it('floors a negative desired position at 0 on both axes', () => {
+    expect(clampToViewport(-30, -10, 100, 40, 1000, 800)).toEqual({ left: 0, top: 0 });
+  });
 });

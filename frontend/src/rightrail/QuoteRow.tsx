@@ -36,20 +36,35 @@ export function QuoteRow({
     // 중첩 버튼(trailingAction)에서 올라온 keydown 은 무시 — 행이 직접
     // 포커스됐을 때만 동작한다.
     if (e.target !== e.currentTarget) return;
-    if (onDelete && (e.key === 'Delete' || e.key === 'Backspace')) {
-      e.preventDefault(); onDelete(); return;
+    // Delete 만 삭제 트리거 — Backspace 는 뒤로가기/문자삭제 머슬메모리와 충돌하는
+    // 파괴적 오발동이라 제외(undo 없음).
+    if (onDelete && e.key === 'Delete') {
+      e.preventDefault();
+      // 삭제는 비낙관적(invalidate 기반)이라 행이 잠시 뒤 언마운트된다. 인접 행으로
+      // 먼저 포커스를 옮겨 두면 언마운트 시 포커스가 <body> 로 떨어지지 않는다.
+      const li = e.currentTarget;
+      const sibling = (li.nextElementSibling ?? li.previousElementSibling) as HTMLElement | null;
+      sibling?.focus();
+      onDelete();
+      return;
     }
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
   };
   return (
+    // dragAttributes/dragListeners 를 명시 핸들러보다 먼저 스프레드한다 — 그래야
+    // 아래 onClick/onKeyDown/onContextMenu(우리 것)가 dnd-kit 이 같은 이름으로 주는
+    // 핸들러를 항상 덮는다. 현재는 PointerSensor 만이라 listeners=onPointerDown 뿐이나,
+    // 훗날 KeyboardSensor 추가 시 onKeyDown 충돌(Enter/Delete 무력화)을 미연에 막는다.
     <li
       ref={sortableRef}
       {...dragAttributes}
+      {...dragListeners}
       data-testid={testId}
       role="button"
       tabIndex={0}
       aria-current={active ? 'true' : undefined}
       aria-label={ariaLabel}
+      aria-keyshortcuts={onDelete ? 'Delete' : undefined}
       onClick={onClick}
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
@@ -60,7 +75,6 @@ export function QuoteRow({
         ...sortableStyle,
         ...(dragging ? { opacity: 0.6, cursor: 'grabbing', zIndex: 1, position: 'relative' } : {}),
       }}
-      {...dragListeners}
     >
       <span className="flex-1 truncate text-sm text-fg">{name}</span>
       <span className="flex flex-col items-end leading-tight">
