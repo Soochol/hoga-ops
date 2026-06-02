@@ -6,7 +6,7 @@ function row(props: Partial<React.ComponentProps<typeof QuoteRow>> = {}) {
   const onClick = vi.fn();
   render(
     <ul>
-      <QuoteRow code="005930" name="삼성전자" price={72400} pct={1.2}
+      <QuoteRow name="삼성전자" price={72400} pct={1.2} changeWon={750}
         active={false} ariaLabel="삼성전자 005930 차트 열기"
         testId="quote-row-005930" onClick={onClick} {...props} />
     </ul>,
@@ -15,16 +15,15 @@ function row(props: Partial<React.ComponentProps<typeof QuoteRow>> = {}) {
 }
 
 describe('QuoteRow', () => {
-  it('renders code, name, price (ko-KR), and signed change %', () => {
+  it('renders name, price (ko-KR, 원), and 전일대비 등락액 + %', () => {
     row();
-    expect(screen.getByText('005930')).toBeInTheDocument();
     expect(screen.getByText('삼성전자')).toBeInTheDocument();
-    expect(screen.getByText('72,400')).toBeInTheDocument();
-    expect(screen.getByText(/\+1\.20%/)).toBeInTheDocument();
+    expect(screen.getByText('72,400원')).toBeInTheDocument();
+    expect(screen.getByText('+750원 (1.20%)')).toBeInTheDocument();
   });
 
-  it('renders — for null pct (장전/무데이터)', () => {
-    row({ pct: null });
+  it('renders — for null change (장전/무데이터)', () => {
+    row({ pct: null, changeWon: null });
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 

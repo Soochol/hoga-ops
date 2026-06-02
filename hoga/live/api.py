@@ -165,6 +165,7 @@ class LiveQuote(BaseModel):
     code: str
     price: int
     change_pct: float | None
+    change_won: int | None
 
 
 class LiveQuotesResponse(BaseModel):
@@ -256,7 +257,8 @@ def build_router(
         pre = phase == "pre_open"
         return LiveQuotesResponse(phase=phase, quotes=[
             LiveQuote(code=q.code, price=q.price,
-                      change_pct=(None if pre else q.change_pct))
+                      change_pct=(None if pre else q.change_pct),
+                      change_won=(None if pre else q.change_won))
             for q in quotes
         ])
 

@@ -7,6 +7,8 @@ export interface LiveQuote {
   code: string;
   price: number;
   change_pct: number | null;
+  /** 전일대비 등락액(원). 장전(pre_open)·무데이터 시 null. */
+  change_won: number | null;
 }
 
 export interface LiveQuotesResponse {

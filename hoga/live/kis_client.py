@@ -170,10 +170,11 @@ class DailyCandleFetchResult:
 
 @dataclass(frozen=True)
 class KisQuote:
-    """One row of intstock-multprice (현재가 + 등락률) for a Code."""
+    """One row of intstock-multprice (현재가 + 등락률 + 전일대비 등락액) for a Code."""
     code: str
     price: int
     change_pct: float | None
+    change_won: int | None = None
 
 
 @dataclass(frozen=True)
@@ -864,9 +865,10 @@ def _parse_quote(row: dict) -> KisQuote | None:
     행 순서를 바꿔도 값이 엉뚱한 종목에 붙지 않는다. `inter_shrn_iscd` 가 비면
     (무효/placeholder 행) None 을 돌려 호출부가 건너뛰게 한다.
 
-    price = inter2_prpr. change_pct = prdy_ctrt(절대값) 에 prdy_vrss_sign 적용
-    (1·2 상한/상승=양수, 4·5 하한/하락=음수, 3 보합=0, 그 외 부호코드는 원값).
-    prdy_ctrt 가 빈값이거나 숫자 파싱 실패면 None.
+    price = inter2_prpr. change_pct = prdy_ctrt(절대값), change_won =
+    inter2_prdy_vrss(절대값) 에 prdy_vrss_sign 을 공통 적용 (1·2 상한/상승=양수,
+    4·5 하한/하락=음수, 3 보합=0, 그 외 부호코드는 원값 부호 유지). prdy_ctrt 가
+    빈값이거나 숫자 파싱 실패면 change_pct·change_won 모두 None.
     """
     code = (row.get("inter_shrn_iscd") or "").strip()
     if not code:
@@ -877,21 +879,30 @@ def _parse_quote(row: dict) -> KisQuote | None:
         price = 0
     raw_ctrt = row.get("prdy_ctrt")
     if raw_ctrt in (None, ""):
-        return KisQuote(code=code, price=price, change_pct=None)
+        return KisQuote(code=code, price=price, change_pct=None, change_won=None)
     try:
         mag = abs(float(raw_ctrt))
     except (TypeError, ValueError):
-        return KisQuote(code=code, price=price, change_pct=None)
+        return KisQuote(code=code, price=price, change_pct=None, change_won=None)
+    # 부호코드 → 멀티플라이어. 등락률·등락액에 공통 적용. None = 알 수 없는 코드
+    # (값 자체의 부호를 그대로 쓴다).
     sign = str(row.get("prdy_vrss_sign", ""))
-    if sign in ("4", "5"):
-        pct = -mag
-    elif sign in ("1", "2"):
-        pct = mag
-    elif sign == "3":
-        pct = 0.0
-    else:
-        pct = float(raw_ctrt)  # 알 수 없는 부호코드 → 원값(이미 float 검증됨)
-    return KisQuote(code=code, price=price, change_pct=pct)
+    mult = {"1": 1.0, "2": 1.0, "4": -1.0, "5": -1.0, "3": 0.0}.get(sign)
+    pct = float(raw_ctrt) if mult is None else mult * mag
+    change_won = _parse_change_won(row.get("inter2_prdy_vrss") or row.get("prdy_vrss"), mult)
+    return KisQuote(code=code, price=price, change_pct=pct, change_won=change_won)
+
+
+def _parse_change_won(raw: str | None, mult: float | None) -> int | None:
+    """전일대비 등락액(원). raw 는 절대값(빈값/파싱실패 → None). mult 가 None(알 수
+    없는 부호코드)이면 raw 자체 부호를 유지한다 (_parse_quote 의 pct 처리와 대칭)."""
+    if raw in (None, ""):
+        return None
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return int(v) if mult is None else int(mult * abs(v))
 
 
 async def _fetch_multi_price(get, codes: list[str]) -> list["KisQuote"]:

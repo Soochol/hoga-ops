@@ -73,10 +73,10 @@ export function WatchlistDrawer() {
           return (
             <QuoteRow
               key={entry.code}
-              code={entry.code}
               name={entry.name}
               price={q?.price ?? null}
               pct={q?.change_pct ?? null}
+              changeWon={q?.change_won ?? null}
               active={entry.code === activeCode}
               ariaLabel={`${entry.name} ${entry.code} 차트 열기`}
               testId={`watchlist-row-${entry.code}`}

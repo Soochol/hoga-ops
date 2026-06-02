@@ -169,11 +169,11 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(screen.getByText(/선택한 조건과 다름/)).toBeInTheDocument());
   });
 
-  it('overlays live price + change% on result rows (top-30), overriding corpus pct', async () => {
+  it('overlays live price + 전일대비 on result rows (top-30), overriding corpus pct', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       phase: 'open',
-      quotes: [{ code: '005930', price: 72400, change_pct: 3.4 }],
+      quotes: [{ code: '005930', price: 72400, change_pct: 3.4, change_won: 2380 }],
     });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
@@ -181,9 +181,9 @@ describe('ScreenerDrawer', () => {
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByText('72,400')).toBeInTheDocument()); // live price
-    expect(screen.getByText(/\+3\.40%/)).toBeInTheDocument();                    // live pct (not corpus)
-    expect(screen.getByTestId('screener-row-005930')).toBeInTheDocument();       // testid preserved (regression)
+    await waitFor(() => expect(screen.getByText('72,400원')).toBeInTheDocument()); // live price
+    expect(screen.getByText('+2,380원 (3.40%)')).toBeInTheDocument();             // live 전일대비+pct (not corpus)
+    expect(screen.getByTestId('screener-row-005930')).toBeInTheDocument();        // testid preserved (regression)
   });
 
   it('clicking a non-member row heart adds it to the watchlist', async () => {

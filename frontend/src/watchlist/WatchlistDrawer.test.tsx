@@ -81,20 +81,20 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByTestId('watchlist-row-000660').getAttribute('aria-current')).toBe('true');
   });
 
-  it('renders live price and change % from useQuotes', async () => {
+  it('renders live price (원) and 전일대비 from useQuotes', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       phase: 'open',
       quotes: [
-        { code: '005930', price: 72400, change_pct: 1.2 },
-        { code: '000660', price: 183500, change_pct: -0.8 },
+        { code: '005930', price: 72400, change_pct: 1.2, change_won: 850 },
+        { code: '000660', price: 183500, change_pct: -0.8, change_won: -1500 },
       ],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(screen.getByText('72,400')).toBeInTheDocument());
-    expect(screen.getByText(/\+1\.20%/)).toBeInTheDocument();
-    expect(screen.getByText(/-0\.80%/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('72,400원')).toBeInTheDocument());
+    expect(screen.getByText('+850원 (1.20%)')).toBeInTheDocument();
+    expect(screen.getByText('-1,500원 (0.80%)')).toBeInTheDocument();
   });
 
   it('shows — for a code missing from quotes (장전/무데이터)', async () => {

@@ -161,10 +161,10 @@ export function ScreenerDrawer() {
                   return (
                     <QuoteRow
                       key={r.code}
-                      code={r.code}
                       name={r.name}
                       price={q?.price ?? null}
                       pct={q?.change_pct ?? r.change_pct}
+                      changeWon={q?.change_won ?? null}
                       active={r.code === activeCode}
                       ariaLabel={`${r.name} ${r.code} 차트 열기`}
                       testId={`screener-row-${r.code}`}

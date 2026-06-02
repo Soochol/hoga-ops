@@ -22,7 +22,7 @@ def _app(quotes, kis=True):
     return app
 
 
-QUOTES = [KisQuote("005930", 72400, 1.2), KisQuote("000660", 183500, -0.8)]
+QUOTES = [KisQuote("005930", 72400, 1.2, 750), KisQuote("000660", 183500, -0.8, -1500)]
 
 
 def test_quotes_open_returns_change_pct(monkeypatch):
@@ -32,8 +32,9 @@ def test_quotes_open_returns_change_pct(monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body["phase"] == "open"
-    assert body["quotes"][0] == {"code": "005930", "price": 72400, "change_pct": 1.2}
+    assert body["quotes"][0] == {"code": "005930", "price": 72400, "change_pct": 1.2, "change_won": 750}
     assert body["quotes"][1]["change_pct"] == -0.8
+    assert body["quotes"][1]["change_won"] == -1500
 
 
 def test_quotes_pre_open_nulls_change_pct(monkeypatch):
@@ -43,6 +44,7 @@ def test_quotes_pre_open_nulls_change_pct(monkeypatch):
     body = r.json()
     assert body["phase"] == "pre_open"
     assert all(q["change_pct"] is None for q in body["quotes"])
+    assert all(q["change_won"] is None for q in body["quotes"])
     assert body["quotes"][0]["price"] == 72400
 
 

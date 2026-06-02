@@ -45,6 +45,36 @@ def test_parse_quote_nonnumeric_price_is_safe():
     assert q is not None and q.price == 0 and q.change_pct is None
 
 
+def test_parse_quote_includes_signed_change_won():
+    # inter2_prdy_vrss(전일대비 등락액, 절대값) 에 prdy_vrss_sign 을 등락률과 공통 적용
+    up = _parse_quote({"inter_shrn_iscd": "005930", "inter2_prpr": "72400",
+                       "inter2_prdy_vrss": "750", "prdy_ctrt": "1.05", "prdy_vrss_sign": "2"})
+    assert up is not None and up.change_won == 750
+    down = _parse_quote({"inter_shrn_iscd": "000660", "inter2_prpr": "183500",
+                         "inter2_prdy_vrss": "1500", "prdy_ctrt": "0.81", "prdy_vrss_sign": "5"})
+    assert down is not None and down.change_won == -1500
+
+
+def test_parse_quote_change_won_falls_back_to_prdy_vrss():
+    # inter2 접두사 없는 prdy_vrss 폴백 (multprice 정식 키는 inter2_prdy_vrss)
+    q = _parse_quote({"inter_shrn_iscd": "005930", "inter2_prpr": "72400",
+                      "prdy_vrss": "750", "prdy_ctrt": "1.05", "prdy_vrss_sign": "2"})
+    assert q is not None and q.change_won == 750
+
+
+def test_parse_quote_flat_change_won_is_zero():
+    q = _parse_quote({"inter_shrn_iscd": "000020", "inter2_prpr": "10000",
+                      "inter2_prdy_vrss": "0", "prdy_ctrt": "0.00", "prdy_vrss_sign": "3"})
+    assert q is not None and q.change_won == 0
+
+
+def test_parse_quote_missing_change_won_is_none():
+    # 등락액 키가 없으면 change_won None — 등락률은 정상 파싱
+    q = _parse_quote({"inter_shrn_iscd": "005930", "inter2_prpr": "72400",
+                      "prdy_ctrt": "1.05", "prdy_vrss_sign": "2"})
+    assert q is not None and q.change_won is None and q.change_pct == 1.05
+
+
 def test_build_multi_price_params_numbered_keys():
     p = _build_multi_price_params(["005930", "000660"])
     assert p["FID_COND_MRKT_DIV_CODE_1"] == "J" and p["FID_INPUT_ISCD_1"] == "005930"
