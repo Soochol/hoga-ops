@@ -1,3 +1,4 @@
+import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { QuoteChange } from './QuoteChange';
 
 /** 관심종목·스크리너 드로어 공용 행: 종목명(좌) │ 현재가·전일대비 2줄 스택(우) │ (선택) 트레일링 액션.
@@ -5,9 +6,7 @@ import { QuoteChange } from './QuoteChange';
  *  trailingAction: 패널이 주입하는 행 우측 affordance(하트/휴지통). 자체적으로
  *  stopPropagation/aria 를 책임진다. <li> 는 group 이라 액션이 group-hover/
  *  group-focus-within 로 등장 처리를 할 수 있다. */
-export function QuoteRow({
-  name, price, pct, changeWon, active, ariaLabel, testId, onClick, trailingAction,
-}: {
+export interface QuoteRowProps {
   name: string;
   price: number | null;
   pct: number | null;
@@ -17,7 +16,18 @@ export function QuoteRow({
   testId: string;
   onClick: () => void;
   trailingAction?: React.ReactNode;
-}) {
+  // --- drag (관심종목 패널 전용; 미전달 시 비-드래그 동작) ---
+  sortableRef?: (node: HTMLElement | null) => void;
+  sortableStyle?: React.CSSProperties;
+  dragListeners?: DraggableSyntheticListeners;
+  dragAttributes?: DraggableAttributes;
+  dragging?: boolean;
+}
+
+export function QuoteRow({
+  name, price, pct, changeWon, active, ariaLabel, testId, onClick, trailingAction,
+  sortableRef, sortableStyle, dragListeners, dragAttributes, dragging,
+}: QuoteRowProps) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLLIElement>) => {
     // 중첩 버튼(trailingAction)에서 올라온 keydown 은 무시 — 행이 직접
     // 포커스됐을 때만 Enter/Space 로 차트를 연다.
@@ -26,6 +36,7 @@ export function QuoteRow({
   };
   return (
     <li
+      ref={sortableRef}
       data-testid={testId}
       role="button"
       tabIndex={0}
@@ -37,7 +48,11 @@ export function QuoteRow({
       style={{
         background: active ? 'var(--tint-selection)' : 'transparent',
         borderLeft: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
+        ...sortableStyle,
+        ...(dragging ? { opacity: 0.6, cursor: 'grabbing', zIndex: 1, position: 'relative' } : {}),
       }}
+      {...dragAttributes}
+      {...dragListeners}
     >
       <span className="flex-1 truncate text-sm text-fg">{name}</span>
       <span className="flex flex-col items-end leading-tight">
