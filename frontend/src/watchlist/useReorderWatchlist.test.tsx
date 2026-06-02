@@ -44,4 +44,24 @@ describe('useReorderWatchlist', () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(codesOf(qc)).toEqual(['003490', '005930']); // restored
   });
+
+  it('preserves an unmentioned entry (concurrent add) at the tail of the optimistic order', async () => {
+    vi.spyOn(api, 'reorderWatchlist').mockReturnValue(new Promise<never>(() => {}));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    qc.setQueryData<WatchlistResponse>(['watchlist'], {
+      next_run_at_ms: 0,
+      entries: [
+        { code: '003490', name: '대한항공', registered_at_kst_date: '20260526', last_success_date: null },
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260526', last_success_date: null },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260526', last_success_date: null },
+      ],
+    });
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useReorderWatchlist(), { wrapper });
+    // payload mentions only two codes; 000660 must be preserved at the tail
+    act(() => { result.current.mutate(['005930', '003490']); });
+    await waitFor(() => expect(codesOf(qc)).toEqual(['005930', '003490', '000660']));
+  });
 });
