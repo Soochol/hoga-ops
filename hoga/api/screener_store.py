@@ -4,6 +4,7 @@ import datetime as dt
 import logging
 import subprocess
 import time
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import duckdb
@@ -71,6 +72,26 @@ def export_stocks_from_db(csv_path: Path, *, container: str = "tradingview-db",
 import polars as pl  # noqa: E402 — appended after stdlib imports
 
 from hoga.api import screener_factors  # noqa: E402 — 순환 없음(screener_factors는 _atomic_write만 import)
+
+
+@dataclass(frozen=True)
+class DailyBar:
+    """원주가 일봉 한 행 — KIS fetch와 SSOT append 사이 이음매의 타입 계약."""
+    code: str
+    date: dt.date
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+
+
+# 코퍼스 parquet 과 동형(append concat 가 스키마 일치하도록). _DAILY_COLS(duckdb 문자열)의 polars 짝.
+_DAILY_PL_SCHEMA: dict = {
+    "code": pl.Utf8, "date": pl.Date,
+    "open": pl.Float64, "high": pl.Float64, "low": pl.Float64, "close": pl.Float64,
+    "volume": pl.Int64,
+}
 
 # 깨끗한 분할 비율(신주/구주) 후보 + 역수. ratio = close[d]/close[d-1].
 _SPLIT_RATIOS = [1/2, 1/3, 1/4, 1/5, 1/10, 1/20, 1/50, 2, 3, 4, 5, 10]
@@ -215,7 +236,7 @@ def seed_all(data_dir: Path, *, now_ms: int) -> int:
 import asyncio  # noqa: E402 — appended orchestration block
 from collections.abc import Awaitable, Callable  # noqa: E402
 
-FetchOne = Callable[[str, str, str], Awaitable[list[dict]]]
+FetchOne = Callable[[str, str, str], Awaitable[list[DailyBar]]]
 
 # KIS _get 가 15/s leaky-bucket 으로 HTTP rate 를 캡하므로, 동시성은 버킷을 채울
 # 정도면 충분(직렬 RTT 병목 제거, 버킷 초과 아님).
@@ -230,18 +251,19 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
     동시 호출(직렬 RTT 병목 제거; 15/s 버킷은 _get 가 캡)."""
     sem = asyncio.Semaphore(_FETCH_CONCURRENCY)
 
-    async def _one(code: str) -> list[dict]:
+    async def _one(code: str) -> list[DailyBar]:
         async with sem:
             return await fetch_one(code, trading_days[0], trading_days[-1])
 
     fetched = await asyncio.gather(*(_one(c) for c in codes))
-    rows: list[dict] = [r for batch in fetched for r in batch]
+    rows: list[DailyBar] = [b for batch in fetched for b in batch]
     if not rows:
         return 0
     up = sdir / "daily_unadjusted.parquet"
 
     def _commit() -> int:                  # 동기 polars는 to_thread로 (루프 블로킹 방지)
-        n, last = append_rows(up, pl.DataFrame(rows))   # 통계는 메모리 df 에서(재독 X)
+        new = pl.DataFrame([asdict(b) for b in rows], schema=_DAILY_PL_SCHEMA)
+        n, last = append_rows(up, new)      # 통계는 메모리 df 에서(재독 X)
         ms = derive_adjusted(up, sdir / "daily_adjusted.parquet",
                              factors_path=sdir / "factors.parquet")
         write_status(sdir / "status.json", last_raw_date=last,
@@ -249,4 +271,4 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
         return ms
 
     await asyncio.to_thread(_commit)
-    return len({r["date"] for r in rows})
+    return len({b.date for b in rows})
