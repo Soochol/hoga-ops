@@ -163,3 +163,39 @@ export function nextHistoricalFrom(
       : axisEarliestDate;
   return subtractDaysKst(baseDate, chunkDays);
 }
+
+export interface FillStepArgs {
+  /** getVisibleLogicalRange().from — 음수면 왼쪽 빈영역. null이면 측정 불가. */
+  visibleFrom: number | null;
+  historicalFromDate: string | null;
+  axisEarliestMs: number;
+  /** 250일 클램프 하한(YYYYMMDD). earliestAllowedMinuteDate(today). */
+  earliestAllowedDate: string;
+  /** stepChunkDays(tf). */
+  stepCalendarDays: number;
+  /** 이번 fill에서 지금까지 dispatch한 스텝 수. */
+  stepCount: number;
+  /** 무한 루프 백스톱. */
+  maxSteps: number;
+}
+
+/** 한 스텝 settle 후 진행 루프가 멈출지 / 다음 from을 받을지 결정.
+ *
+ * 종료: (a) viewport 꽉 참(visibleFrom ≥ 0) (b) 측정 불가(null) (c) 250일 클램프
+ * 하한 도달 (d) 백스톱(stepCount ≥ maxSteps). 그 외엔 cur-base nextHistoricalFrom
+ * 으로 한 스텝 더 과거를 받는다. 연휴 스텝(거래일 0개)은 여기서 멈추지 않는다 —
+ * cur-base가 다음 스텝을 자동으로 더 과거로 보낸다. */
+export function planFillStep(
+  args: FillStepArgs,
+): { action: 'stop' } | { action: 'fetch'; nextFrom: string } {
+  const { visibleFrom, historicalFromDate, axisEarliestMs, earliestAllowedDate, stepCalendarDays, stepCount, maxSteps } = args;
+  if (visibleFrom === null || visibleFrom >= 0) return { action: 'stop' };
+  if (stepCount >= maxSteps) return { action: 'stop' };
+  if (historicalFromDate !== null && historicalFromDate <= earliestAllowedDate) {
+    return { action: 'stop' };
+  }
+  return {
+    action: 'fetch',
+    nextFrom: nextHistoricalFrom(axisEarliestMs, historicalFromDate, stepCalendarDays),
+  };
+}

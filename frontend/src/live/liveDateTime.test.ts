@@ -6,6 +6,7 @@ import {
   earliestAllowedMinuteDate,
   PAST_CANDLES_MAX_DAYS,
   stepChunkDays,
+  planFillStep,
 } from './liveDateTime';
 import { unixMsToKSTDate } from '../util/time';
 
@@ -108,5 +109,44 @@ describe('realMsToYyyymmdd', () => {
       const ms = base + h * 3_600_000;
       expect(realMsToYyyymmdd(ms)).toBe(unixMsToKSTDate(ms));
     }
+  });
+});
+
+describe('planFillStep', () => {
+  const axisEarliestMs = Date.UTC(2026, 4, 26, 0, 0, 0); // '20260526' 09:00 KST
+  const base = {
+    historicalFromDate: '20260521' as string | null,
+    axisEarliestMs,
+    earliestAllowedDate: '20251010', // far floor → not clamped
+    stepCalendarDays: 5,
+    stepCount: 1,
+    maxSteps: 60,
+  };
+
+  it('stops when the viewport is full (visibleFrom >= 0)', () => {
+    expect(planFillStep({ ...base, visibleFrom: 3 })).toEqual({ action: 'stop' });
+  });
+
+  it('stops when the viewport range is unavailable (visibleFrom null)', () => {
+    expect(planFillStep({ ...base, visibleFrom: null })).toEqual({ action: 'stop' });
+  });
+
+  it('fetches the next step back when whitespace remains', () => {
+    expect(planFillStep({ ...base, visibleFrom: -50 })).toEqual({
+      action: 'fetch',
+      nextFrom: subtractDaysKst('20260521', 5), // '20260516'
+    });
+  });
+
+  it('stops at the 250-day clamp floor (already at/below earliestAllowed)', () => {
+    expect(
+      planFillStep({ ...base, visibleFrom: -50, historicalFromDate: '20251010' }),
+    ).toEqual({ action: 'stop' });
+  });
+
+  it('stops at the backstop (stepCount reached maxSteps) to bound the loop', () => {
+    expect(
+      planFillStep({ ...base, visibleFrom: -50, stepCount: 60 }),
+    ).toEqual({ action: 'stop' });
   });
 });
