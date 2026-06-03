@@ -23,7 +23,7 @@ today 미포함 42일 구간)으로 cold/warm을 비교:
 한 번의 좌측 팬 요청에 **두 비용**이 섞여 있다:
 
 - **Cost A — 이미 가진 `[prevFrom, today]` 재전송.** warm 디스크 캐시라
-  **0.01초**. 무시할 수준.
+  **0.01초**(네트워크). 무시할 수준.
 - **Cost B — 새로 드러난 청크의 cold KIS fetch.** `fetch_past_minute_candles`
   가 하루를 시간 역진으로 4~5회 호출(120행/호출), 한 청크가 **42 캘린더일
   (≈28 거래일 × 4~5호출 ÷ 15호출/초) = 32초**. 이게 체감 지연의 전부다.
@@ -32,6 +32,23 @@ today 미포함 42일 구간)으로 cold/warm을 비교:
 (`prefetchChunkCandlesFor`, `liveDateTime.ts:115`), 1분봉 화면에 실제 보이는
 건 수백 봉이다 — 사용자가 "보이는 것보다 훨씬 많이 불러온다"고 느낀 그대로,
 줌 레벨과 무관하게 항상 42일치를 cold로 긁는다.
+
+### 렌더 비용 (별도 축, 측정)
+
+네트워크 외에 **클라이언트 렌더 비용**이 따로 있다. `bundle`이 바뀌면
+`RangeSeriesPane`이 모든 시리즈에 **전체 `setData`**를 호출하는데(lwc v5엔
+front-insert/prepend API가 없어 전체 교체만 가능), 이 비용은 차트에 들어있는
+봉 개수(스크롤백 깊이)에 비례한다. lwc v5.2.0, 오프스크린 3시리즈 실측:
+
+| 깊이 | 봉 수 | `setData` ×3시리즈 |
+|---|---|---|
+| ~72일 | 20k | **~48ms** |
+| ~144일 | 40k | **~105ms** |
+| ~250일(clamp 상한) | 70k | **~158ms** |
+
+선형(~2.3ms/1k봉). **보통 깊이(≤72일)는 jank 임계 이하, 250일 극단만 hitch.**
+동적 청크가 작을수록 이 비용을 **더 자주** 트리거하지만, 보통 깊이에선 청크당
+~48ms 단발이라 수용 가능하다(사용자가 250일 극단 hitch는 감수하기로 결정).
 
 ## Invariants
 
@@ -62,28 +79,40 @@ today 미포함 42일 구간)으로 cold/warm을 비교:
 | No-freeze backfill (cur-base) | **preserves** | cur-base 식 자체를 안 건드림. 3거래일 하한이 빈 청크 빈도까지 낮춰 오히려 강화 |
 | Atomic prepend (single commit) | **preserves** | `extending` 게이트 미변경. 청크가 작아져도 prepend 단위만 작아질 뿐 한 commit 보장 유지 |
 | Viewport position preservation | **preserves** | union-delta 기반 shift라 청크 크기와 무관. `viewportShiftRef` 로직 미변경 |
-| 250-day minute clamp | **preserves** | clamp는 `useLiveBundle`에 그대로. 동적 청크는 clamp **이내**에서만 작게 자름 |
+| 250-day minute clamp | **preserves** | clamp 유지(250일). 동적 청크는 clamp **이내**에서만 작게 자름. worst-case `setData`(~158ms)는 이 상한이 곧 한계 |
 
 이 spec은 어떤 invariant도 깨지 않는다 — 청크 **크기 산출 입력**만 고정값에서
 viewport 기반으로 교체하고, 그 위에 캐시 워밍(prefetch)을 얹는다.
 
 ## Goals
 
-- 보통 줌(1분봉, 화면 수백 봉)에서 한 청크 cold fetch **32초 → ~3.4초**
-  (3거래일 하한, 측정 1.14초/거래일 기준).
-- 백그라운드 prefetch로 **연속 드래그 시 체감 대기 ~0** (다음 청크가 미리
-  warm → 0.01초).
-- 줌 레벨에 비례하는 청크 크기 — 줌인하면 적게, 줌아웃하면 많이(250일 clamp
-  이내).
+- **헤드라인**: 보통 줌(1분봉)에서 한 청크 cold fetch **32초 → ~3.4초**
+  (3거래일 하한, 측정 1.14초/거래일).
+- warm/prefetch된 팬에서 **네트워크 대기 제거**(디스크 캐시 0.01초). 단 이때
+  남는 잔여 대기 = **현재 깊이의 `setData` 렌더**(72일 ~48ms … 250일 ~158ms) —
+  이건 네트워크가 아니라 lwc 전체 교체 비용이며 이 spec의 대상이 아니다.
+- 줌 레벨에 비례하는 청크 크기(줌인 적게, 줌아웃 많이, 250일 clamp 이내).
+- prefetch는 **간헐적 팬**에서 cold 대기를 제거해 렌더 비용만 남긴다. (연속
+  드래그는 1-ahead prefetch가 못 따라잡는다 — Risks 참조. "체감 0"이 아니다.)
 
 ## Non-Goals
 
+- **차트 render-windowing**(lwc에 보이는 범위+마진만 `setData`하고 스크롤마다
+  재윈도잉) — `setData` 전체 교체 비용(깊이 250일 ~158ms)을 줄일 **유일한**
+  길이지만 ask보다 훨씬 크고 회귀 위험이 높다. 보통 깊이(≤72일 ~48ms)는
+  불필요하고, 250일 극단 hitch는 감수하기로 결정(clamp도 250일 유지).
+- **초기 first-paint cold** — `initialCandleTargetFor(1m)` ≈ 28거래일도 같은
+  cold 32초가 든다. 사용자가 "드래그"로 한정한 범위 밖. 별도 작업.
+- **SSE tick마다 bundle 전체 rebuild → setData** — `computedBundle`의 deps에
+  `live.ob`/`live.trade`가 있어, 깊이 팬한 채 장중이면 tick마다 전체 `setData`가
+  발생한다(청크 크기와 **무관**). 직교하는 선재(先在) 문제이자 더 큰 렌더
+  이슈일 수 있으나 이번 범위 밖 — 후속.
 - **백엔드 KIS 호출 최적화**(주말/휴일 사전 스킵, `FID_PW_DATA_INCU_YN=Y`
-  연속 walk-back) — cold 절대시간을 32→~19초로 줄이는 별도 레버. 후속 작업.
-- **Windowing(새 청크만 전송, 이미 가진 범위 제외)** — Cost A가 0.01초로
-  측정돼 체감 이득이 없음. 하지 않는다. `[from, today]` 전체 재요청 구조 유지.
+  연속 walk-back) — cold 절대시간 32→~19초. 별도 레버. 후속.
+- **Windowing(네트워크: 새 청크만 전송)** — Cost A가 0.01초로 측정돼 체감
+  이득이 없음. `[from, today]` 전체 재요청 구조 유지.
 - **today 폴링·WebSocket 실시간 경로** — 무관. 미변경.
-- **일/주/월봉 fetch 구조** — 분봉이 대상. 단 동적 청크 산출은 모든
+- **일/주/월봉 fetch 구조** — 분봉이 대상. 동적 청크 산출은 모든
   LiveTimeframe에 자연 적용 가능(Design에서 명시).
 
 ## Design
@@ -139,11 +168,14 @@ nextHistoricalFrom(axisEarliestMs, historicalFromDate, chunkDays)
 - **트리거 위치**: `useLiveBundle`(또는 전용 훅)에서 `pastCandlesQuery`가
   `isSuccess && !isFetching`일 때 effect로 1회. 코드/타임프레임 전환 시(=
   `historicalFromDate` null 리셋) prefetch 상태도 리셋.
-- **prefetch 청크 크기**: 직전 사용자 청크의 `chunkDays`를 재사용(보통 줌이
-  바뀌지 않으므로). viewport 부재 시 3거래일 하한.
+- **prefetch 청크 크기**: 직전 사용자 청크의 `chunkDays`를 재사용.
+  viewport 부재 시 3거래일 하한.
 - **상한**: `nextFrom < earliestAllowedMinute`(250일 clamp)면 prefetch 생략.
-- hoga(`/api/range`)는 prefetch 대상에서 제외(분봉 candle cold 비용이 지배적이고,
-  `/api/range`는 90일 cap + 별 캐시 특성이 달라 1차 범위 밖). 필요 시 후속.
+- **효과 한계**: prefetch는 **네트워크 대기만** 제거한다. 캐시가 데워져도
+  드래그 시 `setData` 렌더(깊이별 ~48~158ms)는 남는다. 또한 1-ahead는
+  **간헐적** 팬용이다 — 연속 드래그는 못 따라잡는다(Risks).
+- hoga(`/api/range`)는 prefetch 대상에서 제외(분봉 candle cold 비용이 지배적,
+  `/api/range`는 90일 cap + 캐시 특성 상이). 필요 시 후속.
 
 ### 3. 데이터 흐름 (변경 후)
 
@@ -158,8 +190,8 @@ nextHistoricalFrom(axisEarliestMs, historicalFromDate, chunkDays)
               └─ 백엔드: [nextFrom..prevFrom) 새 거래일만 cold(~3.4초),
                         [prevFrom..today]는 디스크 캐시 warm(0.01초)
               └─ extending 게이트로 candles+hoga 한 commit prepend
-              └─ viewportShiftRef restore — 보던 봉 위치 유지
-  └─ settle 후: prefetchQuery(nextFrom 한 칸 더 과거) — 백그라운드 워밍
+              └─ RangeSeriesPane 전체 setData(깊이별 ~48~158ms) + viewportShiftRef restore
+  └─ settle 후: prefetchQuery(nextFrom 한 칸 더 과거) — 백그라운드 네트워크 워밍
 ```
 
 ## Testing
@@ -180,35 +212,43 @@ nextHistoricalFrom(axisEarliestMs, historicalFromDate, chunkDays)
 - Monotonic: 동적 chunkDays(1~250)에 대해 `nextHistoricalFrom(...) < cur` 항상 참.
 - No-freeze: 동일 axis로 연속 호출 시 결과가 단조 감소(기존 table-test에 동적
   chunkDays 케이스 추가).
-- 250-day clamp: 줌아웃 큰 청크여도 `minutePastFrom ≥ earliestAllowedMinute`
-  (기존 clamp 회귀 유지).
+- 250-day clamp: 줌아웃 큰 청크여도 `minutePastFrom ≥ earliestAllowedMinute`.
 
 ### Manual verification
 
 `/live`에서 (CORS상 직접 API 라운드트립 병행):
 1. 캐시 없는 종목으로 1분봉 좌측 팬 1회 → 응답 timing이 **~3~4초**(기존 ~32초
    대비), `fresh_dates` 길이가 ~5(3거래일 하한)인지.
-2. 같은 방향으로 한 번 더 팬 → 직전 prefetch 덕에 **즉시(warm)** 그려지는지
-   (`cached_dates`로 응답).
+2. 같은 방향으로 한 번 더 팬 → 직전 prefetch 덕에 네트워크 대기 없이(warm,
+   `cached_dates`) 그려지고, 남는 지연은 `setData` 렌더뿐인지.
 3. 줌아웃 후 팬 → 청크가 자연히 커지는지(`fresh_dates` 증가).
 4. 보던 봉이 prepend 후 같은 화면 위치에 머무는지(viewport preservation 회귀).
 5. 연휴 구간(예 설/추석)을 가로질러 팬 → 동결 없이 계속 과거로 가는지.
 
 ## Risks / Open questions
 
-- **prefetch 중복/경쟁**: 사용자가 빠르게 연속 팬하면 prefetch 대상과 실제
-  요청이 같은 키로 겹칠 수 있음 — react-query dedup이 처리하지만, prefetch
-  effect의 재실행 가드(직전 nextFrom 기억) 필요.
+- **prefetch 중복/경쟁**: 빠른 연속 팬 시 prefetch 대상과 실제 요청이 같은
+  키로 겹칠 수 있음 — react-query dedup이 처리하지만, prefetch effect 재실행
+  가드(직전 nextFrom 기억) 필요.
+- **연속 드래그 ≠ 체감 0**: 3거래일 청크(~1.5 화면폭)는 연속 드래그로 1~3초에
+  소진되는데 다음 청크 cold prefetch는 ~3.4초 → 1-ahead로는 못 따라잡는다.
+  goal을 "간헐적 팬"으로 한정한 이유. 연속 드래그 near-zero가 필요하면
+  "clamp까지 점진 백그라운드 워밍"이 follow-up 후보(현 범위 밖).
+- **렌더 floor (`setData`)**: warm/prefetch로 네트워크를 지워도 깊이별
+  ~48~158ms `setData`는 남는다. 보통 깊이는 수용, 250일만 hitch(감수). 줄이는
+  유일한 길은 render-windowing(Non-Goal).
 - **slotsInView 단위 확인**: `getVisibleLogicalRange().to − from`이 화면 폭
   봉 슬롯 수와 일치하는지 실측 1회 확인(라이브러리 버전 의존). 어긋나면
   `timeScale().width() / barSpacing` fallback.
-- **prefetch 1칸으로 충분한가**: 매우 빠른 연속 드래그는 1칸 prefetch를
-  추월할 수 있음. 2칸 또는 "idle 동안 clamp까지 점진 워밍"은 후속에서 평가.
 
 ## Out of Scope (Backlog)
 
-- 백엔드 KIS 호출 최적화: 주말/휴일 사전 스킵(거래일 캘린더 연계) +
-  `FID_PW_DATA_INCU_YN=Y` 연속 walk-back으로 per-day 루프 제거(cold 32→~19초).
+- **SSE tick rebuild → 전체 setData**: `computedBundle` deps의 `live.ob/trade`로
+  장중 깊이 팬 시 청크 무관 연속 `setData`. 직교하나 더 큰 렌더 물고기 — 우선
+  검토할 follow-up.
+- 백엔드 KIS 호출 최적화: 주말/휴일 사전 스킵 + `FID_PW_DATA_INCU_YN=Y` 연속
+  walk-back으로 per-day 루프 제거(cold 32→~19초).
+- 연속 드래그 near-zero: clamp까지 점진 백그라운드 prefetch 워밍.
+- 초기 first-paint cold 단축.
 - hoga(`/api/range`) 경로 prefetch 워밍.
-- 일/주/월봉 청크의 viewport 동적화(현재도 동작하나 분봉만큼 cold 비용이
-  크지 않음).
+- 차트 render-windowing(보이는 범위만 setData)으로 250일 hitch 제거.
