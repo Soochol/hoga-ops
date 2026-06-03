@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.3.3.0] - 2026-06-03
+
+### Changed
+- 인벤토리 상세 테이블의 `Captures`(평생 누적 캡처 횟수 `×N`) 컬럼을 `재시도`
+  (`fail_streak`) 컬럼으로 교체했습니다. 이제 각 종목·날짜가 차단(5회 연속 실패)까지
+  얼마나 남았는지 한눈에 보입니다 — 정상은 `—`, 1~4회는 `N/5`, 차단되면 `차단됨`.
+  평생 누적 `×N` 표시는 캡처 큐 화면에 그대로 유지됩니다.
+
 ## [0.3.2.0] - 2026-06-03
 
 ### Changed
