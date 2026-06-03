@@ -128,3 +128,19 @@ def apply_factors(unadjusted: pl.DataFrame, factors: pl.DataFrame) -> pl.DataFra
         [(pl.col(c) * pl.col("factor")).alias(c) for c in _PRICE_COLS]
         + [(pl.col("volume") / pl.col("factor")).round(0).cast(pl.Int64).alias("volume")]
     ).select(["code", "date", *_PRICE_COLS, "volume"])
+
+
+def pair_raw_adj(
+    raw_close: list[tuple[dt.date, float]],
+    adj_close: list[tuple[dt.date, float]],
+) -> list[tuple[dt.date, float, float]]:
+    """원주가·수정주가 종가를 날짜로 inner-join → compute_factor_segments 입력.
+
+    양쪽에 모두 있는 날짜만, date ASC 정렬해 (date, raw_close, adj_close) 로 반환.
+    KIS 수정주가가 원주가만큼 과거로 안 닿는 날짜는 자연히 제외(그 깊은 구간은
+    apply_factors 의 extend-backward 가 최古 계수로 채운다, ADR-0057).
+    """
+    adj_by = dict(adj_close)
+    return [
+        (d, rc, adj_by[d]) for d, rc in sorted(raw_close) if d in adj_by
+    ]
