@@ -34,7 +34,7 @@ const EMPTY_QUEUE: QueueSnapshot = {
 };
 
 function setupFetch(opts: { queue?: QueueSnapshot } = {}) {
-  return vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url) => {
+  return vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url) => {
     const s = String(url);
     if (s.includes('/api/captures/queue')) {
       return { ok: true, status: 200, json: async () => (opts.queue ?? EMPTY_QUEUE) } as Response;
@@ -187,78 +187,63 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
   });
 });
 
-describe('StockDateGroupDetail full_capture_count column', () => {
+describe('StockDateGroupDetail 재시도 column (fail_streak)', () => {
   beforeEach(() => { setupFetch(); });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it('renders faint "×1" when full_capture_count is null (legacy treated as ×1)', async () => {
-    const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: null };
+  it('removes the old Captures/×N column entirely', async () => {
+    const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: 39 };
     renderDetail([r], '005930', new QueryClient());
-    const dateEl = await screen.findByText('2026-05-22');
-    const tr = dateEl.closest('tr');
-    expect(tr).not.toBeNull();
-    const cell = within(tr!).getByTestId('full-capture-count-cell');
-    expect(cell.textContent).toBe('×1');
-    // Tooltip stays honest about the legacy lower-bound nature.
-    expect(cell.querySelector('span')?.getAttribute('title')).toBe(
-      'Full Capture 횟수 미기록 (≥1로 간주)'
-    );
+    await screen.findByText('2026-05-22');
+    // The ×N full_capture_count cell no longer exists in the inventory table.
+    expect(screen.queryByTestId('full-capture-count-cell')).toBeNull();
+    expect(screen.queryByText('×39')).toBeNull();
   });
 
-  it('renders faint "×1" when full_capture_count is 1', async () => {
-    const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: 1 };
+  it('renders a quiet — in the 재시도 column when fail_streak is 0', async () => {
+    const r = row('005930', '삼성전자', '20260522', 'complete', { fail_streak: 0 });
     renderDetail([r], '005930', new QueryClient());
     const dateEl = await screen.findByText('2026-05-22');
     const tr = dateEl.closest('tr')!;
-    const cell = within(tr).getByTestId('full-capture-count-cell');
-    expect(cell.textContent).toBe('×1');
+    const cell = within(tr).getByTestId('fail-streak-cell');
+    expect(cell.textContent).toBe('—');
   });
 
-  it('renders "×3" when full_capture_count is 3', async () => {
-    const r = { ...row('005930', '삼성전자', '20260522'), full_capture_count: 3 };
+  it('renders N/5 inside the 재시도 column when fail_streak is 1–4', async () => {
+    const r = row('005930', '삼성전자', '20260522', 'source_partial', { fail_streak: 2 });
     renderDetail([r], '005930', new QueryClient());
     const dateEl = await screen.findByText('2026-05-22');
     const tr = dateEl.closest('tr')!;
-    const cell = within(tr).getByTestId('full-capture-count-cell');
-    expect(cell.textContent).toBe('×3');
+    const cell = within(tr).getByTestId('fail-streak-cell');
+    expect(cell.textContent).toBe('2/5');
   });
 
-  // ADR-0042: fail_streak / blocked surfacing.
-
-  it('renders 재시도 N/5 indicator when fail_streak > 0 and !blocked', async () => {
-    setupFetch();
-    const r = row('005930', '삼성전자', '20260522', 'source_partial', { fail_streak: 3 });
-    renderDetail([r], '005930', new QueryClient());
-    const dateEl = await screen.findByText('2026-05-22');
-    const tr = dateEl.closest('tr')!;
-    expect(within(tr).getByText('재시도 3/5')).toBeTruthy();
-    // The existing ↻ Re-capture button is still rendered (not blocked yet).
-    expect(within(tr).getByRole('button', { name: /Re-capture/i })).toBeTruthy();
-  });
-
-  it('renders 차단됨 (5/5) badge + 잠금 해제 button when blocked', async () => {
-    setupFetch();
+  it('renders only 차단됨 (no N/5) in the 재시도 column when blocked', async () => {
     const r = row('005930', '삼성전자', '20260522', 'source_partial', {
       fail_streak: 5, blocked: true,
     });
     renderDetail([r], '005930', new QueryClient());
     const dateEl = await screen.findByText('2026-05-22');
     const tr = dateEl.closest('tr')!;
-    expect(within(tr).getByText('차단됨 (5/5)')).toBeTruthy();
+    const cell = within(tr).getByTestId('fail-streak-cell');
+    expect(cell.textContent).toBe('차단됨');
+    // blocked takes precedence over the failStreak>0 warn branch — no "N/5".
+    expect(cell.textContent).not.toMatch(/\/5/);
+  });
+
+  // ADR-0042: fail_streak / blocked surfacing (badge content + action cell).
+
+  it('renders 차단됨 badge + 잠금 해제 button when blocked', async () => {
+    const r = row('005930', '삼성전자', '20260522', 'source_partial', {
+      fail_streak: 5, blocked: true,
+    });
+    renderDetail([r], '005930', new QueryClient());
+    const dateEl = await screen.findByText('2026-05-22');
+    const tr = dateEl.closest('tr')!;
+    expect(within(tr).getByText('차단됨')).toBeTruthy();
     expect(within(tr).getByRole('button', { name: /잠금 해제/ })).toBeTruthy();
     // The normal Re-capture button should be replaced.
     expect(within(tr).queryByRole('button', { name: /Re-capture this/i })).toBeNull();
-  });
-
-  it('blocked row does not show 재시도 N/5 indicator (badge takes over)', async () => {
-    setupFetch();
-    const r = row('005930', '삼성전자', '20260522', 'source_partial', {
-      fail_streak: 5, blocked: true,
-    });
-    renderDetail([r], '005930', new QueryClient());
-    const dateEl = await screen.findByText('2026-05-22');
-    const tr = dateEl.closest('tr')!;
-    expect(within(tr).queryByText(/재시도/)).toBeNull();
   });
 
   it('clicking 잠금 해제 POSTs to the unblock endpoint', async () => {
@@ -278,13 +263,15 @@ describe('StockDateGroupDetail full_capture_count column', () => {
     });
   });
 
-  it('normal row (fail_streak=0, !blocked) shows neither badge nor indicator', async () => {
-    setupFetch();
+  it('normal row (fail_streak=0, !blocked) shows a quiet — in the 재시도 column', async () => {
     const r = row('005930', '삼성전자', '20260522', 'source_partial');
     renderDetail([r], '005930', new QueryClient());
     const dateEl = await screen.findByText('2026-05-22');
     const tr = dateEl.closest('tr')!;
-    expect(within(tr).queryByText(/재시도/)).toBeNull();
+    const cell = within(tr).getByTestId('fail-streak-cell');
+    expect(cell.textContent).toBe('—');
+    // No warn "N/5" and no 차단됨 badge for a healthy row.
+    expect(cell.textContent).not.toMatch(/\/5/);
     expect(within(tr).queryByText(/차단됨/)).toBeNull();
   });
 });

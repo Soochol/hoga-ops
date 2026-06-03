@@ -4,6 +4,7 @@ import { getPhase } from './phase';
 import { useInventoryRecaptureOrigins } from '../inventory/useInventoryRecaptureOrigins';
 import type { QueueItem } from '../api/types';
 import { FullCaptureCountBadge } from '../ui/FullCaptureCountBadge';
+import { StatusBadge } from '../ui/StatusBadge';
 
 export interface CaptureQueueRowProps {
   item: QueueItem;
@@ -59,22 +60,13 @@ export function CaptureQueueRow({
         <span className="font-normal text-sm text-fg-dim">
           {symbolName}
           {item.force_retry && (
-            <span
-              title="Force re-capture"
-              className="ml-1.5 text-badge rounded-md px-[0.15rem] border border-[var(--warn)] text-[var(--warn)]"
-            >⚠ force</span>
+            <StatusBadge tone="warn" title="Force re-capture" className="ml-1.5">⚠ force</StatusBadge>
           )}
           {item.attempt > 1 && (
-            <span
-              title={`Attempt ${item.attempt}`}
-              className="ml-1.5 text-badge rounded-md px-[0.15rem] border border-[var(--fg-dim)] text-fg-dim"
-            >×{item.attempt}</span>
+            <StatusBadge tone="dim" title={`Attempt ${item.attempt}`} className="ml-1.5">×{item.attempt}</StatusBadge>
           )}
           {isFromInventory && (
-            <span
-              title="Triggered from inventory re-capture"
-              className="ml-1.5 text-badge rounded-md px-[0.15rem] border border-[var(--fg-dim)] text-fg-dim"
-            >inventory</span>
+            <StatusBadge tone="dim" title="Triggered from inventory re-capture" className="ml-1.5">inventory</StatusBadge>
           )}
         </span>
         <span style={{ background: descriptor.chipColor }} className="py-[0.1rem] px-xs rounded-md text-fg-dim">
