@@ -250,8 +250,8 @@ crosshair move
 
 ## plan 이월 (구현 단계에서 확정)
 
-- `param.point` 좌표계(컨테이너 상대 여부) 1회 실측 검증.
-- 가상시각→index 맵 구성 위치(컴포넌트 메모) 및 `bundle.candles`/`axis` 배선.
+- ~~`param.point` 좌표계(컨테이너 상대 여부) 1회 실측 검증.~~ **해소**: `chart.chartElement()` 기준 좌표 사용(param.point 와 동일 공간), 별도 `getBoundingClientRect` 오프셋 불필요.
+- ~~가상시각→index 맵 구성 위치(컴포넌트 메모) 및 `bundle.candles`/`axis` 배선.~~ **해소**: `CandleTooltip` `useMemo` 로 구성(키 `axis.toVirtual(ts_ms)/1000`).
 - LiveSidebar의 cursor→candle 해석과 동일 봉을 가리키는지 교차 확인.
 - `paneIdAtY` 호출에 필요한 `paneSeries`/`chart` 배선
   (`chartCoordinates.ts:143-161`).
