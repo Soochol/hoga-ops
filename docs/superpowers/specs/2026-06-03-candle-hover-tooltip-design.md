@@ -218,6 +218,10 @@ crosshair move
 
 - **index===0 (가장 이른 봉)**: 직전 봉 없음 → 직전대비·거래량비 `—`. 블로킹 없음.
 - **prevVolume === 0**: 거래량비 `null` → `—` (0 나눗셈 회피).
+- **prev.close === 0**: 봉대비 변동(액·률) `null` → `—` (Infinity 방지, `volumeRatioPct`와
+  대칭 가드; 렌더 `bobNull`에 `!Number.isFinite` 방어 — /code-review xhigh 반영).
+- **axis 리베이스(과거확장)**: 호버 키를 가상시각이 아닌 **절대 `ts_ms`** 로 저장
+  (`tsMsToIndex` 맵)하여, 리베이스로 가상시각이 시프트돼도 정지 커서에서 같은 봉을 유지.
 - **봉 사이 빈 위치 / 차트 밖 / whitespace**: 가상시각 맵 키 부재 또는
   `point==null` → 숨김.
 - **캔들 외 페인**: 숨김(`paneIdAtY`).
