@@ -9,7 +9,6 @@ import {
   regularSessionOpenMs,
   regularSessionCloseMs,
 } from './liveDateTime';
-import { AUCTION_WINDOW_LENGTH_MS } from '../util/sessionTime';
 
 /** /live never mounts VolumeProfileOverlay; the bundle ships an empty profile
  * that satisfies the RangeBundle type without claiming any data. */
@@ -76,12 +75,14 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
     ? validPastFS[validPastFS.length - 1].t
     : 0;
 
-  // Today's straddle bucket (3m/15m/30m) must not pull the 15:20+ closing-
-  // auction book into its 호가비·총잔량 value. session bound is today's
-  // close − 10min. (Known limitation: today's close_ms falls back to 15:30 on
-  // half-days — see the 2026-06-03 spec Risks; backend handles past dates.)
-  const auctionStartMs = todaySession.close_ms - AUCTION_WINDOW_LENGTH_MS;
-  const sseBuckets = bucketHogaSeries(sseOb, sseTrade, bucketMs, auctionStartMs);
+  // Today's straddle/auction buckets must not pull the closing-auction (3-level)
+  // book into 호가비·총잔량. bucketHogaSeries detects the auction structurally
+  // (book collapse) per ob snapshot's asks/bids and excludes everything after the
+  // last continuous-book snapshot at/before close. today's close is the upper
+  // bound for that search (load-bearing — 2026-06-03 structural-boundary spec).
+  // Known limitation: close_ms falls back to 15:30 on half-days, so the today-live
+  // half-day tail stays uncleaned; backend (past dates) uses the exact per-date close.
+  const sseBuckets = bucketHogaSeries(sseOb, sseTrade, bucketMs, todaySession.close_ms);
   const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > pastMaxQrT);
   const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > pastMaxFsT);
 
