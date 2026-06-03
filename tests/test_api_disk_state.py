@@ -495,3 +495,38 @@ def test_latest_complete_date_integration_with_real_meta(tmp_path: Path) -> None
     write_complete("20260522", "098460")
     write_partial("20260524", "098460")     # latest by date, but partial
     assert latest_complete_date(tmp_path, "098460") == "20260522"
+
+
+# --- ADR-0063: open_ms=0 normalisation ---
+
+def test_open_ms_zero_classifies_complete_with_warning() -> None:
+    meta = {
+        "regular_session_open_ms": 0,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": True,
+        "is_partial": False,
+    }
+    c = classify_from_meta(meta)
+    assert c.state is DiskState.COMPLETE
+    assert [v.invariant_id for v in c.warnings] == ["meta.open_ms_normalized"]
+    assert c.errors == []
+
+
+def test_open_ms_zero_but_incomplete_stays_client_incomplete() -> None:
+    meta = {
+        "regular_session_open_ms": 0,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": False,   # 수집 미완은 정상화로 안 살아남
+        "is_partial": False,
+    }
+    assert classify_from_meta(meta).state is DiskState.CLIENT_INCOMPLETE
+
+
+def test_close_ms_zero_still_invalid() -> None:
+    meta = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 0,     # 별도 트랙: 여전히 INVALID
+        "collection_complete": True,
+        "is_partial": False,
+    }
+    assert classify_from_meta(meta).state is DiskState.INVALID
