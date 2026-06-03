@@ -49,3 +49,41 @@ def test_value_mismatch_recorded_not_overwritten(tmp_path: Path):
     assert rep.value_mismatches == 1
     assert rep.filled_rows == 0
     assert pl.read_parquet(sdir / "daily_unadjusted.parquet")["close"][0] == 70000.0
+
+
+def test_recent_overwrite_and_old_preserved(tmp_path: Path):
+    """overwrite_recent_days=14: recent mismatch is overwritten by KIS; old mismatch preserved.
+
+    Disk has two mismatching rows:
+      - OLD: 2024-01-02 (old date, beyond 14-day window from max=2024-06-01) → disk preserved
+      - RECENT: 2024-06-01 (== disk max, within 14-day window) → KIS value wins
+
+    Both rows count toward value_mismatches.  recent_overwrites == 1.
+    """
+    old_date = dt.date(2024, 1, 2)
+    recent_date = dt.date(2024, 6, 1)
+    sdir = tmp_path / "screener"
+    _seed(sdir, [
+        _row("005930", old_date, 70000.0),     # OLD mismatch: disk=70000, KIS=71000
+        _row("005930", recent_date, 80000.0),  # RECENT mismatch: disk=80000, KIS=81000
+    ])
+    fetch = _fetch({"005930": [
+        _row("005930", old_date, 71000.0),     # KIS old close (different)
+        _row("005930", recent_date, 81000.0),  # KIS recent close (different)
+    ]})
+    rep = asyncio.run(reconcile_raw(sdir, fetch_raw=fetch, codes=["005930"],
+                                    overwrite_recent_days=14))
+
+    # Both mismatches are counted
+    assert rep.value_mismatches == 2
+    # Only the recent one is overwritten
+    assert rep.recent_overwrites == 1
+    # Gap-fill count is for pure new rows only (none here)
+    assert rep.filled_rows == 0
+
+    disk = pl.read_parquet(sdir / "daily_unadjusted.parquet").sort("date")
+    close_by_date = dict(zip(disk["date"].to_list(), disk["close"].to_list()))
+    # Old mismatch: disk value preserved
+    assert close_by_date[old_date] == 70000.0
+    # Recent mismatch: KIS value overwrote disk value
+    assert close_by_date[recent_date] == 81000.0

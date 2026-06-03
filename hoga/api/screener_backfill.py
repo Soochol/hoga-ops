@@ -95,16 +95,21 @@ class ReconcileReport:
     value_mismatches: int
     filled_rows: int
     mismatch_sample: list[tuple[str, str]]  # (code, YYYY-MM-DD) up to 20
+    recent_overwrites: int = 0  # bars corrected in-place (within overwrite_recent_days window)
 
 
 async def reconcile_raw(
     sdir: Path, *, fetch_raw: FetchRaw, codes: list[str] | None = None,
     concurrency: int = _BACKFILL_CONCURRENCY,
+    overwrite_recent_days: int = 0,
 ) -> ReconcileReport:
     """기존 원주가를 KIS(원주가)와 대조: 겹치는 날 값 검증 + 디스크 결측일을 KIS로 보충(합집합).
 
-    값 불일치는 '기록만' 하고 덮어쓰지 않는다(디스크 SSOT 보존). 결측일(KIS엔 있고 디스크엔
-    없음)만 append_rows 로 union — (code,date) 멱등이 중복을 막는다. 원자적 기록.
+    값 불일치: 기본은 '기록만'하고 덮어쓰지 않는다(디스크 SSOT 보존). 단 최근
+    overwrite_recent_days 일 이내(disk 최대일 기준)의 불일치는 장중 데이터 오염으로 간주해
+    KIS 값으로 덮어쓴다 — append_rows 의 keep="last" 가 신규 행을 우선한다.
+    결측일(KIS엔 있고 디스크엔 없음)만 append_rows 로 union — (code,date) 멱등이 중복을 막는다.
+    원자적 기록.  recent_overwrites 는 덮어쓴 행 수(height 변화 없음).
     """
     up = sdir / "daily_unadjusted.parquet"
     disk = pl.read_parquet(up)
@@ -112,6 +117,13 @@ async def reconcile_raw(
     disk_close = {(c, d): cl for c, d, cl in
                   zip(disk["code"].to_list(), disk["date"].to_list(), disk["close"].to_list())}
     all_codes = codes if codes is not None else sorted(disk["code"].unique().to_list())
+
+    # recent_cutoff: bars on or after this date are eligible for in-place overwrite
+    disk_max = disk["date"].max() if disk.height > 0 else None
+    recent_cutoff: dt.date | None = (
+        disk_max - dt.timedelta(days=overwrite_recent_days)
+        if disk_max is not None and overwrite_recent_days > 0 else None
+    )
 
     sem = asyncio.Semaphore(concurrency)
 
@@ -130,7 +142,7 @@ async def reconcile_raw(
 
     fetched = await asyncio.gather(*(_one(c) for c in all_codes))
 
-    matches = mismatches = 0
+    matches = mismatches = recent_overwrites = 0
     sample: list[tuple[str, str]] = []
     fill: list[DailyBar] = []
     for bars in fetched:
@@ -143,6 +155,10 @@ async def reconcile_raw(
                     mismatches += 1
                     if len(sample) < 20:
                         sample.append((b.code, b.date.strftime("%Y-%m-%d")))
+                    # overwrite recent days: KIS is authoritative for intraday-stale raw
+                    if recent_cutoff is not None and b.date >= recent_cutoff:
+                        fill.append(b)
+                        recent_overwrites += 1
             else:
                 fill.append(b)
 
@@ -151,11 +167,12 @@ async def reconcile_raw(
         new = pl.DataFrame([vars(b) for b in fill], schema=_DAILY_PL_SCHEMA)
         n_before = disk.height
         _, _, merged = append_rows(up, new)
+        # filled_rows = net new rows (overwrites don't change height)
         filled = merged.height - n_before
 
     return ReconcileReport(
         codes_checked=len(all_codes), value_matches=matches, value_mismatches=mismatches,
-        filled_rows=filled, mismatch_sample=sample,
+        filled_rows=filled, mismatch_sample=sample, recent_overwrites=recent_overwrites,
     )
 
 
@@ -198,7 +215,7 @@ async def run_backfill_with(sdir: Path, *, fetch_adj: FetchAdj, fetch_raw: Fetch
     ⑤ build_impact_report. 반환: {reconcile, factors_added, impact}.
     """
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
-    rec = await reconcile_raw(sdir, fetch_raw=fetch_raw)
+    rec = await reconcile_raw(sdir, fetch_raw=fetch_raw, overwrite_recent_days=14)
     added = await factor_backfill(sdir, fetch_adj=fetch_adj)
 
     # write-once baseline: 재실행 시 KIS-보정본이 휴리스틱 baseline 을 덮어쓰면
