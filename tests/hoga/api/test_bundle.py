@@ -461,6 +461,50 @@ def test_build_range_bundle_surfaces_warn_without_excluding():
     assert "collection.unique_events_ratio" in fired_ids
 
 
+def test_bundle_open_ms_zero_served_and_normalized():
+    """open_ms=0 upstream sentinel: segment must be served (not excluded),
+    session_open_ms must be KRX 09:00 (not midnight), and the
+    meta.open_ms_normalized warn must appear exactly once (ADR-0063)."""
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import VolumeProfile
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+
+    DATE = "20260520"
+    eng = _engine_with_meta_for_dates([DATE])
+    # open=0 is the upstream sentinel; close and completeness are healthy.
+    eng.get_meta.return_value = _meta(open_ms=0)
+
+    patches = _patch_slice_builders(bundle_mod) + [
+        patch.object(bundle_mod, "build_volume_profile_range",
+                     return_value=VolumeProfile(bin_count=0, price_min=0,
+                                                price_max=0, bin_width=0, bins=[])),
+    ]
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        rb = build_range_bundle(eng, code="005930",
+                                from_date=DATE, to_date=DATE,
+                                bucket_ms=60_000)
+
+    # 1) Not excluded; present in segments.
+    assert [s.date for s in rb.segments] == [DATE]
+    assert DATE not in [e.date for e in rb.excluded_dates]
+
+    # 2) session_open_ms == KRX 09:00 unix (NOT midnight).
+    seg = rb.segments[0]
+    assert seg.session_open_ms == hhmmssms_to_unix_ms(DATE, 90_000_000)
+    assert seg.session_open_ms != hhmmssms_to_unix_ms(DATE, 0)
+
+    # 3) The warn tag appears exactly once — guards against double-emit.
+    warns = [w for w in rb.data_warnings if w.date == DATE]
+    assert sum(
+        1 for w in warns for v in w.warnings
+        if v.invariant_id == "meta.open_ms_normalized"
+    ) == 1
+
+
 def test_build_range_bundle_empty_when_all_dates_excluded():
     """Spec 2026-05-27 §4.3: every Stock-Date INVALID → return empty bundle
     with excluded_dates populated (not 404)."""

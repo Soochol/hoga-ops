@@ -19,6 +19,7 @@ from datetime import datetime
 from fastapi import HTTPException
 
 from hoga.api.disk_state import DiskState, classify_from_meta
+from hoga.api.invariants import normalize_session_bounds
 from hoga.api.models import (
     DateWarning,
     ExcludedDate,
@@ -417,9 +418,10 @@ def build_range_bundle(
         fs_d = build_fill_strength_slice(engine, code=code, date=d, bucket_ms=bucket_ms, source=source)
         vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source)
 
+        norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
         segments.append(RangeSegment(
             date=d,
-            session_open_ms=hhmmssms_to_unix_ms(d, meta["regular_session_open_ms"]),
+            session_open_ms=hhmmssms_to_unix_ms(d, norm_meta["regular_session_open_ms"]),
             session_close_ms=hhmmssms_to_unix_ms(d, meta["regular_session_close_ms"]),
             source=source,
         ))
