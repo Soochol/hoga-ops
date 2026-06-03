@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.4.3.0] - 2026-06-03
+
+### Added
+- `/live` **그리기 속성 패널**(수평선 등 도형을 선택하면 뜨는 색·두께·선스타일·삭제
+  툴바)이 이제 **드래그한 마지막 위치를 유지**합니다. 이전에는 다른 도형을 클릭할 때마다
+  패널이 초기 앵커(가로 중앙·선 위)로 되돌아갔지만, 한 번 그립으로 끌어 옮기면 그 위치를
+  세션 동안 고수합니다. 첫 선택은 종전대로 도형 옆에 자동 배치되고, 새로고침하면 다시
+  앵커로 리셋됩니다(세션 한정).
+
+### Internal
+- 패널은 항상 마운트되어 위치 state가 이미 세션 내내 보존되므로, 버그의 원인은 "위치를
+  저장하지 않음"이 아니라 선택이 바뀔 때마다 위치를 앵커로 **덮어쓰던** re-anchor effect
+  였습니다. `userMovedRef` 플래그(드래그 `onMove`에서 set)로 그 effect를 게이트 —
+  사용자가 한 번 드래그하면 재앵커를 중단합니다. localStorage 영속화는 없습니다(세션 한정).
+  설계·근거는 ADR-0062(ADR-0032의 *per-selection 재앵커* 조항을 부분 대체, *no-persistence*
+  결정은 유지).
+
 ## [0.4.2.0] - 2026-06-03
 
 ### Added
