@@ -6,6 +6,7 @@ import {
   prefetchChunkDaysFor,
   earliestAllowedMinuteDate,
   PAST_CANDLES_MAX_DAYS,
+  stepChunkDays,
 } from './liveDateTime';
 import { unixMsToKSTDate } from '../util/time';
 
@@ -57,6 +58,24 @@ describe('nextHistoricalFrom', () => {
     const first = nextHistoricalFrom(axisEarliestMs, null, '1m');
     const second = nextHistoricalFrom(axisEarliestMs, first, '1m');
     expect(second < first).toBe(true);
+  });
+});
+
+describe('stepChunkDays', () => {
+  it('minute timeframes are a fixed 3-trading-day step (≈5 calendar days)', () => {
+    // 3 trading days / (5/7 trading-days-per-calendar-day) = ceil(4.2) = 5.
+    for (const tf of ['1m', '3m', '5m', '10m', '15m', '30m'] as const) {
+      expect(stepChunkDays(tf)).toBe(5);
+    }
+  });
+
+  it('D keeps the prior one-shot 350-calendar-day window (≈250 daily candles)', () => {
+    expect(stepChunkDays('D')).toBe(350);
+  });
+
+  it('W/M keep the prior one-shot windows (120 candles)', () => {
+    expect(stepChunkDays('W')).toBe(840); // 120 × 7
+    expect(stepChunkDays('M')).toBe(3720); // 120 × 31
   });
 });
 

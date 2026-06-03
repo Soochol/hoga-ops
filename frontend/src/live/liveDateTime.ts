@@ -92,6 +92,23 @@ function candleTargetToCalendarDays(target: number, tf: LiveTimeframe): number {
   return Math.ceil(tradingDays / TRADING_DAYS_PER_CALENDAR_DAYS);
 }
 
+/** 좌측 팬 한 스텝의 캘린더일 크기.
+ *
+ * - 분봉: 고정 3거래일(=latency cap). 3거래일을 5/7 밀도로 환산 → 5 캘린더일.
+ *   주말 1회를 한 스텝에 항상 덮어 빈 결과 재드래그를 막는 최소값.
+ *   `STEP_TRADING_DAYS`는 실측 후 조정 가능한 단일 상수(데이터를 덜 받는 게
+ *   아니라 첫 그림 시점·렌더 분할 횟수만 바뀐다).
+ * - D/W/M: 기존 one-shot 윈도 유지(진행 루프는 minute-only). 한 번의 팬으로
+ *   ~1년치를 그려 채우므로 스텝 분할이 불필요. */
+const STEP_TRADING_DAYS = 3;
+export function stepChunkDays(tf: LiveTimeframe): number {
+  if (isMinuteTimeframe(tf)) {
+    return Math.ceil(STEP_TRADING_DAYS / TRADING_DAYS_PER_CALENDAR_DAYS);
+  }
+  if (tf === 'D') return candleTargetToCalendarDays(250, tf);
+  return candleTargetToCalendarDays(120, tf); // W, M
+}
+
 /** Target candle count for the initial fetch on (code, timeframe) mount.
  *
  * - Minute timeframes: 2× of the previous 20-calendar-day window. At 1m
