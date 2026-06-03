@@ -20,22 +20,28 @@ describe('buildCandleTooltip', () => {
     expect(buildCandleTooltip(bars, 3, '1m')).toBeNull();
   });
 
-  it('index 0 (직전 봉 없음) → 봉대비/거래량비 null, OHLC·거래량은 채움', () => {
+  it('index 0 (직전 봉 없음) → OHLC %·직전대비·거래량비 null, OHLC·거래량은 채움', () => {
     const m = buildCandleTooltip(bars, 0, '1m')!;
     expect(m.open).toBe(100);
     expect(m.close).toBe(102);
     expect(m.volume).toBe(10);
+    expect(m.openPct).toBeNull();
+    expect(m.highPct).toBeNull();
+    expect(m.lowPct).toBeNull();
+    expect(m.closePct).toBeNull();
     expect(m.barOverBarWon).toBeNull();
-    expect(m.barOverBarPct).toBeNull();
     expect(m.volumeRatioPct).toBeNull();
   });
 
-  it('상승봉: 봉대비 변동(액·률) + 거래량비 = 직전 봉 대비', () => {
+  it('상승봉: OHLC 각 %·직전대비 금액 = 직전 봉 종가(102) 대비', () => {
     const m = buildCandleTooltip(bars, 1, '1m')!;
-    expect(m.barOverBarWon).toBe(5);            // 107 - 102
-    expect(m.barOverBarPct).toBeCloseTo((107 / 102 - 1) * 100, 6);
+    expect(m.openPct).toBeCloseTo(0, 6);                 // 102/102
+    expect(m.highPct).toBeCloseTo((108 / 102 - 1) * 100, 6);
+    expect(m.lowPct).toBeCloseTo((101 / 102 - 1) * 100, 6);
+    expect(m.closePct).toBeCloseTo((107 / 102 - 1) * 100, 6);
+    expect(m.barOverBarWon).toBe(5);                     // 107 - 102 (직전대비 금액)
     expect(m.volume).toBe(20);
-    expect(m.volumeRatioPct).toBe(200);          // 20 / 10 * 100
+    expect(m.volumeRatioPct).toBe(200);                  // 20 / 10 * 100
   });
 
   it('거래량 동일 → 거래량비 100%', () => {
@@ -48,11 +54,14 @@ describe('buildCandleTooltip', () => {
     expect(buildCandleTooltip(zeroPrev, 1, '1m')!.volumeRatioPct).toBeNull();
   });
 
-  it('prev.close===0 → 봉대비 변동(액·률) null (Infinity 방지, 0 나눗셈 회피)', () => {
+  it('prev.close===0 → OHLC %·직전대비 null (Infinity 방지, 0 나눗셈 회피)', () => {
     const zeroClose = [C(baseMs, 0, 0, 0, 0, 5), C(baseMs + 60_000, 100, 110, 90, 105, 8)];
     const m = buildCandleTooltip(zeroClose, 1, '1m')!;
     expect(m.barOverBarWon).toBeNull();
-    expect(m.barOverBarPct).toBeNull();   // (105/0-1)*100 = Infinity 가 아니라 null
+    expect(m.openPct).toBeNull();
+    expect(m.highPct).toBeNull();
+    expect(m.lowPct).toBeNull();
+    expect(m.closePct).toBeNull();        // (105/0-1)*100 = Infinity 가 아니라 null
   });
 
   it('분봉: dateLabel MM/DD + timeLabel HH:MM (KST)', () => {
