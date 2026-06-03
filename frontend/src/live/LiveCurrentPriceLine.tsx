@@ -34,8 +34,11 @@ export default function LiveCurrentPriceLine({ paneSeries, bundle, code }: Props
   const model = deriveCurrentPriceLine(bundle, quote, TOKENS);
   const lineRef = useRef<IPriceLine | null>(null);
 
-  // 생성: 시리즈 핸들당 1회. code/타임프레임 변경 → candle pane remount →
-  // 'candle' 재등록 → series 핸들 교체 → 재생성(이전 라인은 cleanup 제거).
+  // 생성: 시리즈 핸들당 1회. candle 시리즈는 RangeSeriesPane 의 생성 effect deps
+  // 가 [chart, paneIndex, spec] 라 타임프레임·종목 전환에도 핸들이 유지된다 →
+  // 라인은 재생성되지 않고 persist 하며, 가격/색은 아래 update effect 로 흐른다
+  // (스위치마다 teardown flicker 없음). [series] cleanup 은 실제 핸들이 바뀌는
+  // 경우(chart 재생성/pane 제거) 의 안전망이다 — 이전 라인을 제거한다.
   useEffect(() => {
     if (!series) return;
     // `as PriceLineOptions`: lightweight-charts 가 lineVisible 등을 required 로
