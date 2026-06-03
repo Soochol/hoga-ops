@@ -64,6 +64,7 @@ export default function CandleTooltip({ chart, bundle, axis, paneSeries, timefra
   }, [bundle.candles, axis]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!enabled) { setState(null); return; }
     let pending: number | null = null;
     const handler = (param: MouseEventParams) => {
