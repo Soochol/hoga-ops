@@ -1,8 +1,9 @@
-import type { ScreenerRow } from '../api/screener';
+import type { ScreenerRowLive } from './useScreenerRowsLive';
 import { ChangeCell } from './ChangeCell';
 
 interface Props {
-  rows: ScreenerRow[];
+  /** Live Quote 가 이미 머지된 결과 행(useScreenerRowsLive). 표시만 하면 된다. */
+  rows: ScreenerRowLive[];
   onActivate: (code: string) => void;
   onWatch: (code: string) => void;
   onCapture: (code: string) => void;

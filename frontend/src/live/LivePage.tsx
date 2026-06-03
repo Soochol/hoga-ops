@@ -75,7 +75,7 @@ export function LivePage() {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const today = todayKstYyyymmdd();
   const live = useLiveSeries(activeCode ?? '');
-  const { bundle, clampEngaged, isPastCandlesLoading } = useLiveBundle(
+  const { bundle, clampEngaged, isPastCandlesLoading, isExtending } = useLiveBundle(
     activeCode,
     timeframe,
     today,
@@ -111,6 +111,7 @@ export function LivePage() {
         bundle={bundle}
         clampEngaged={clampEngaged}
         isPastCandlesLoading={isPastCandlesLoading}
+        isExtending={isExtending}
         live={live}
       />
       {indicatorPanelOpen && (

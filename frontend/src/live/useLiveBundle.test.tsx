@@ -277,3 +277,44 @@ describe('useLiveBundle extension atomization gate', () => {
     expect(result.current.bundle).not.toBe(before); // NOT gated (no extension in progress)
   });
 });
+
+describe('useLiveBundle isExtending', () => {
+  beforeEach(() => {
+    livePastCandlesSpy.mockClear();
+    livePastDailyCandlesSpy.mockClear();
+    useRangeSpy.mockClear();
+    candlesMock.candles = [DEFAULT_CANDLE];
+    candlesMock.isPlaceholderData = false;
+    candlesMock.isFetching = false;
+    rangeMock.isPlaceholderData = false;
+    rangeMock.isFetching = false;
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: null,
+    });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_live' });
+  });
+
+  it('is true during a historical extension (placeholderData + isFetching, historicalFromDate set)', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260514' });
+    candlesMock.isPlaceholderData = true;
+    candlesMock.isFetching = true;
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper },
+    );
+    expect(result.current.isExtending).toBe(true);
+  });
+
+  it('is false when not extending (no historicalFromDate)', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    candlesMock.isPlaceholderData = false;
+    candlesMock.isFetching = false;
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper },
+    );
+    expect(result.current.isExtending).toBe(false);
+  });
+});

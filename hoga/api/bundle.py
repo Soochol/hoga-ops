@@ -119,19 +119,24 @@ def build_quote_ratio_slice(
     date: str,
     bucket_ms: int = 1000,
     source: str = "hogaplay",
+    session_close_ms: int | None = None,
 ) -> QuoteRatio:
     # ADR-0001: the bucketing SQL + snapshots schema knowledge (the per-level
-    # ask/bid quantity columns, the last-in-bucket selection, the HHMMSSmmm-
-    # linearization rationale) now lives in snapshots_tbl.query_bucketed_ratio.
-    # bundle stays the coordinator: it owns the path layout + the no-data guard,
-    # and re-bases the native ms-from-midnight bucket into Unix ms (the table
-    # query is date-agnostic, so it cannot).
+    # ask/bid quantity columns, the last-in-bucket selection, the closing-auction
+    # pre-auction representative, the HHMMSSmmm-linearization rationale) now lives
+    # in snapshots_tbl.query_bucketed_ratio. bundle stays the coordinator: it owns
+    # the path layout + the no-data guard, passes the session bound through (so the
+    # table can exclude the auction book from a straddling bucket — ADR-0029), and
+    # re-bases the native ms-from-midnight bucket into Unix ms (the table query is
+    # date-agnostic, so it cannot).
     path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
     if not path_obj.exists():
         # ADR-0043: promote_today writes empty records as unlink → missing file
         # is the valid "no data" state, not an error.
         return QuoteRatio(bucket_ms=bucket_ms, points=[])
-    rows = snapshots_tbl.query_bucketed_ratio(engine.conn, path=path_obj, bucket_ms=bucket_ms)
+    rows = snapshots_tbl.query_bucketed_ratio(
+        engine.conn, path=path_obj, bucket_ms=bucket_ms, session_close_ms=session_close_ms
+    )
     return QuoteRatio(
         bucket_ms=bucket_ms,
         points=[
@@ -405,7 +410,10 @@ def build_range_bundle(
 
         raw_candles = build_candles_slice(engine, code=code, date=d, source=source)
         candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
-        qr_d = build_quote_ratio_slice(engine, code=code, date=d, bucket_ms=bucket_ms, source=source)
+        qr_d = build_quote_ratio_slice(
+            engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
+            session_close_ms=meta["regular_session_close_ms"],
+        )
         fs_d = build_fill_strength_slice(engine, code=code, date=d, bucket_ms=bucket_ms, source=source)
         vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source)
 

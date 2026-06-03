@@ -22,8 +22,12 @@ export function getQuotes(codes: string[]): Promise<LiveQuotesResponse> {
 
 /** 코드 목록의 현재가+등락률을 10초 폴링. codes 비면 비활성. */
 export function useQuotes(codes: string[]) {
+  // 순서 무관 캐시 키: 관심종목 재정렬(같은 집합·다른 순서)이 queryKey 를 바꿔
+  // 전 종목 시세를 불필요하게 재요청하지 않도록 정렬한 키를 쓴다. 백엔드 응답은
+  // 코드 집합에만 의존하므로 요청 자체는 원래 순서 그대로 보낸다.
+  const key = [...codes].sort().join(',');
   return useQuery({
-    queryKey: ['live-quotes', codes.join(',')],
+    queryKey: ['live-quotes', key],
     queryFn: () => getQuotes(codes),
     enabled: codes.length > 0,
     staleTime: 10_000,

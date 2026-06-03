@@ -19,9 +19,8 @@ import {
   regularSessionCloseMs,
   subtractDaysKst,
   initialHistoricalDaysFor,
+  earliestAllowedMinuteDate,
 } from './liveDateTime';
-
-const PAST_CANDLES_MAX_DAYS = 250;
 
 function laterDate(a: string, b: string): string {
   return a >= b ? a : b;
@@ -45,6 +44,9 @@ export interface UseLiveBundleResult {
   error: unknown;
   clampEngaged: boolean;
   isPastCandlesLoading: boolean;
+  /** 좌측 팬 한 스텝이 진행 중(placeholderData+isFetching). false-edge = 스텝 settle.
+   * LiveChartRoot 진행 루프가 이 falling edge에 반응해 다음 스텝을 dispatch한다. */
+  isExtending: boolean;
 }
 
 /** Orchestrate live SSE + KIS past-candles + /api/range hoga indicators into a
@@ -70,7 +72,7 @@ export function useLiveBundle(
   // /api/live/past-candles' 250-day cap can stay independent. Applies to
   // the minute path only — the daily endpoint has no equivalent cap.
   const seedFrom = historicalFromDate ?? subtractDaysKst(todayKstYyyymmdd, initialHistoricalDaysFor(timeframe));
-  const earliestAllowedMinute = subtractDaysKst(todayKstYyyymmdd, PAST_CANDLES_MAX_DAYS - 1);
+  const earliestAllowedMinute = earliestAllowedMinuteDate(todayKstYyyymmdd);
   const minutePastFrom = laterDate(seedFrom, earliestAllowedMinute);
   // Includes today so post-promote disk data (hogaplay/snapshots.parquet,
   // ADR-0037 v2 layout) feeds today's hoga indicators. Before this, today's
@@ -221,7 +223,7 @@ export function useLiveBundle(
   // Clamp is a minute-path concern only; the daily endpoint has no 250d cap.
   const clampEngaged = isMinute
     && historicalFromDate != null
-    && historicalFromDate < earliestAllowedMinute;
+    && historicalFromDate <= earliestAllowedMinute;
 
   return {
     bundle,
@@ -229,5 +231,6 @@ export function useLiveBundle(
     error: live.error ?? past.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? null,
     clampEngaged,
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
+    isExtending: extending,
   };
 }

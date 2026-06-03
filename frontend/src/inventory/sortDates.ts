@@ -3,7 +3,7 @@ import { STATE_SEVERITY } from './DiskStateBadge';
 
 export type SortKey =
   | 'state' | 'date' | 'captured' | 'volume' | 'pages' | 'size' | 'ohlc'
-  | 'fullCaptureCount';
+  | 'failStreak';
 export type SortDir = 'asc' | 'desc';
 /** null = unsorted = 기본 date desc (useStockDateGroups가 이미 적용한 순서). */
 export type SortState = { key: SortKey; dir: SortDir } | null;
@@ -19,8 +19,9 @@ function keyOf(row: StockDate, key: SortKey): Comparable {
     case 'pages':    return row.pages_collected;
     case 'size':     return row.file_size_bytes;
     case 'ohlc':     return row.today_close;
-    // Legacy meta (null) is treated as ×1 — see FullCaptureCountBadge.
-    case 'fullCaptureCount': return row.full_capture_count ?? 1;
+    // ADR-0042: fail_streak (0–5). blocked rows carry >= 5, so desc surfaces
+    // struggling/blocked Stock-Dates to the top.
+    case 'failStreak': return row.fail_streak;
   }
 }
 

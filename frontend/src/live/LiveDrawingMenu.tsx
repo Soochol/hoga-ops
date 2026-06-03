@@ -5,6 +5,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useDrawingsStore } from '../state/drawings';
 import { useDismissablePopover } from '../util/useDismissablePopover';
+import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import type { DrawingTool } from '../chart/drawing/types';
 import { TOOLS, DRAWABLE_TOOLS_ORDER } from '../chart/drawing/tools';
 
@@ -17,6 +18,11 @@ export default function LiveDrawingMenu() {
 
   const close = useCallback(() => setOpen(false), []);
   useDismissablePopover(open, popoverRef, close);
+  // 버튼 아래로 떠 화면 밖으로 넘치면 가장자리로 슬라이드(공용 클램프).
+  const { ref: menuRef, left, top } = useClampedFixedPosition<HTMLDivElement>(
+    anchorRect?.left ?? 0,
+    anchorRect ? anchorRect.bottom + 4 : 0,
+  );
 
   const toggleOpen = () => {
     setOpen((o) => {
@@ -63,14 +69,11 @@ export default function LiveDrawingMenu() {
       </button>
       {open && anchorRect && (
         <div
+          ref={menuRef}
           role="menu"
           data-drawing-menu
           className="w-44 bg-bg-card border border-border rounded shadow-lg z-30 py-1"
-          style={{
-            position: 'fixed',
-            left: anchorRect.left,
-            top: anchorRect.bottom + 4,
-          }}
+          style={{ position: 'fixed', left, top }}
         >
           {DRAWABLE_TOOLS_ORDER.map((kind) => {
             const spec = TOOLS[kind];

@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router';
-import { it, expect, vi } from 'vitest';
+import { it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('../api/screener', async (orig) => ({
   ...(await orig<typeof import('../api/screener')>()),
@@ -14,6 +14,9 @@ vi.mock('../api/savedScreeners', () => ({
   listSaves: vi.fn(() => Promise.resolve({ schema_version: 1, saves: [] })),
   createSave: vi.fn(), updateSave: vi.fn(), deleteSave: vi.fn(),
 }));
+// 라이브 오버레이는 결과 행의 현재가·등락률을 덮는다. 기본 빈 Map(오버레이 없음)으로
+// 두어 EOD 검증 테스트를 보존하고, 오버레이 테스트에서만 quote 를 주입한다.
+vi.mock('../api/liveQuotes', () => ({ useQuoteByCode: vi.fn(() => new Map()) }));
 
 // useLivePageStore lives at ../state/livePage (the path LiveStatusBar imports);
 // `../live/useLivePageStore` does not exist. Mock the real module so clicking a
@@ -29,7 +32,11 @@ vi.mock('../state/livePage', () => ({
 import { Screener } from './Screener';
 import { runScan } from '../api/screener';
 import { listSaves, createSave } from '../api/savedScreeners';
+import { useQuoteByCode } from '../api/liveQuotes';
 import type { SavedScreener } from '../api/savedScreeners';
+
+// 오버레이 테스트가 주입한 quote 가 다음 테스트로 새지 않도록 매 테스트 후 빈 Map 복구.
+afterEach(() => { vi.mocked(useQuoteByCode).mockReturnValue(new Map()); });
 
 function renderPage() {
   const qc = new QueryClient();
@@ -136,4 +143,17 @@ it('starts with an empty builder (no default 신고가 condition)', async () => 
   // is no condition row and no AND label.
   expect(screen.queryByText('신고가')).not.toBeInTheDocument();
   expect(screen.queryByText('모두 충족 · AND')).not.toBeInTheDocument();
+});
+
+it('현재가·등락률을 라이브 quote 로 덮는다 (EOD 코퍼스 위 오버레이)', async () => {
+  // 코퍼스(EOD): price 74,200 / pct 5.80% → 라이브: 80,000 / 7.70% 로 덮여야 한다.
+  vi.mocked(useQuoteByCode).mockReturnValue(new Map([
+    ['005930', { code: '005930', price: 80000, change_pct: 7.7, change_won: 5000 }],
+  ]));
+  renderPage();
+  fireEvent.click(screen.getByText('조회'));
+  await screen.findByText('삼성전자');
+  expect(screen.getByText('80,000')).toBeInTheDocument();     // 라이브 현재가 (ResultTable: 원 suffix 없음)
+  expect(screen.getByText('▲ +7.70%')).toBeInTheDocument();   // 라이브 등락률 (ChangeCell)
+  expect(screen.queryByText('74,200')).not.toBeInTheDocument(); // 코퍼스 현재가는 덮여 사라짐
 });

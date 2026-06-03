@@ -81,3 +81,30 @@
 
 - 결함 데이터의 자동 복구는 명시적으로 비목표. `hoga validate --fix`는 archival 필드만 갱신, 데이터 재캡처는 사용자 결정.
 - 시계열 invariants(candles 단조성 등)는 follow-up. 본 spec의 `Callable[[dict], Violation | None]` 시그니처가 series-level에는 맞지 않으나, 카탈로그를 type별로 분할하는 자연스러운 확장 자리만 비워 둠.
+
+## Amendment (2026-06-03) — read-path가 archived series-error를 INVALID 게이트로 소비
+
+위 Neutral의 "시계열 invariants follow-up" 자리가 메워졌으나(§3c에서 `SERIES_INVARIANTS` +
+`check_series` 추가), **read-path 소비가 빠져 있었다**: parser write-path는
+`META_INVARIANTS + SERIES_INVARIANTS`를 모두 평가해 `meta.json`의 `invariant_violations`에
+archive했지만, `classify_from_meta`(read-path 단일 funnel)는 `check(meta)`(meta-only)만
+재평가하고 archived 필드를 읽지 않았다. archived 필드의 유일 소비자는 `hoga validate --fix`
+(forensic)였다.
+
+결과 결함: `series.candles_ts_monotonic`(severity `error`, 차트 setData assert의 직접
+원인 — 5/18/003490)이 write 시점에 archive돼도 `DiskState`를 `INVALID`로 바꾸지 못해
+`build_range_bundle`이 해당 **Stock-Date**를 그대로 serve했다. read-path는 candle `ts_ms`를
+dedup하지 않는다(`candles.query_all`=`ORDER BY ts_ms ASC`만). 즉 §4.6의 "read-path는 series를
+live-evaluate하지 않고 **archived field를 trust**한다"는 설계 의도가 **구현되지 않은 상태**였다.
+
+**결정:** `classify_from_meta`가 `meta["invariant_violations"]`에서 **`series.*` violation만**
+union한다(meta는 `check(meta)`로 live 재평가가 진실원이라 double-count 방지; series는 archived가
+유일원 — parquet 재로드 없이 per-request SLO 보존). error-severity면 `INVALID`, warn은
+`Classification.warnings`. `Violation.from_dict`(=`as_dict` 역변환) 추가; malformed/unknown-severity
+archive 항목은 skip(read-path-hot helper crash 방지).
+
+**stale archive 신뢰 정책:** archived as-is 신뢰 + `hoga validate --fix` 1회 sweep으로 수정
+이전(`series.candles_ts_monotonic` raw-order false-positive 시절) archive 정리. 단일 사용자 로컬
+툴(ADR-0036)이라 운영상 충분 — version-gate self-healing은 분산 배포에서나 필요(미채택).
+
+reopen 아님 — §4.6이 의도한 "archived field trust" 계약을 read-path에서 *이행*한 것.

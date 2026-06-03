@@ -76,4 +76,29 @@ describe('bucketHogaSeries', () => {
       { t: b1, ask_total: 300, bid_total: 95 },
     ]);
   });
+
+  it('Quote Totals de-contaminates a bucket straddling the auction window', () => {
+    const BUCKET = 180_000;
+    const base = Math.floor(1_700_000_000_000 / BUCKET) * BUCKET; // 3m 버킷 시작
+    const auctionStartMs = base + 120_000;   // "15:20" 경계
+    const ob = [
+      { t_ms: base, total_ask_qty: 21, total_bid_qty: 11 },             // pre
+      { t_ms: base + 60_000, total_ask_qty: 22, total_bid_qty: 12 },    // 마지막 pre → 정화값
+      { t_ms: base + 150_000, total_ask_qty: 98, total_bid_qty: 99 },   // auction → 제외
+    ];
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, auctionStartMs);
+    expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 22, bid_total: 12 }]);
+  });
+
+  it('Quote Totals falls back to last snapshot for a fully-auction bucket', () => {
+    const BUCKET = 180_000;
+    const base = Math.floor(1_700_000_000_000 / BUCKET) * BUCKET;
+    const auctionStartMs = base + 120_000;        // "15:20"
+    const ob = [
+      { t_ms: base + 180_000, total_ask_qty: 41, total_bid_qty: 31 },   // [15:21,15:24) auction
+      { t_ms: base + 240_000, total_ask_qty: 42, total_bid_qty: 32 },   // 마지막 auction → fallback
+    ];
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, auctionStartMs);
+    expect(quoteRatioPoints).toEqual([{ t: base + 180_000, ask_total: 42, bid_total: 32 }]);
+  });
 });
