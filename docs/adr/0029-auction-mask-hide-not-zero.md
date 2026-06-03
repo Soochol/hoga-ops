@@ -96,3 +96,20 @@ The carve-out rule is mechanical: **a pane is hidden during the Auction Window i
 **Per-point transparent color** (current decision). Bar slot stays present (overlay works), outgoing segment from each in-window point is invisible (no diagonal). Histograms still use `WhitespaceData` because HistogramSeries genuinely skips bars at whitespace.
 
 **Split each affected indicator into multiple LineSeries — one per visible chunk between auction windows.** Rejected as overengineering. Different series don't connect visually, so it would solve the line problem cleanly. But it requires dynamic series lifecycle in `RangeSeriesPane` (currently "one PaneSpec → fixed N series at mount"), per-segment priceScale coordination, and risks regressions in drawing pane-binding (ADR-0028 binds drawings to a series reference). Not worth the complexity for the gain. Re-evaluate if a future feature needs dynamic series counts anyway.
+
+## Amendment — 2026-06-03 (호가비·총잔량 걸침 버킷 정화)
+
+ADR-0029의 Auction Mask는 *표시 레이어*(시작이 [15:20,15:30]에 든 점을
+숨김)다. 15:20이 버킷 경계가 아닌 타임프레임(3m·15m·30m)에서는 15:20을 가로지르는
+**걸침 버킷**(예: 3m `[15:18,15:21)`)이 마스크를 빠져나가면서, last-in-bucket
+대표값이 15:20+ 동시호가 호가창을 끌어들이는 *데이터 레이어* 오염이 있었다.
+
+수정(2026-06-03 spec): 호가비·총잔량의 버킷 대표 스냅샷 선택을 **"버킷 내 마지막
+15:20 이전(연속거래) 스냅샷 우선, 없으면 마지막 전체"**로 정제했다
+(`build_quote_ratio_slice` 2-tier `ORDER BY`, `bucketHogaSeries` `seenPre`).
+- 표시 마스크의 hide 동작·`auctionWindowMask` 토글 의미는 **불변**. 완전-동시호가
+  버킷(시작 ≥ 15:20)은 대표값 그대로라 토글이 계속 표시/숨김을 제어한다(토글 OFF
+  시 동시호가 호가창 여전히 드러남 — 계약 유지).
+- 체결강도는 미변경(매수/매도 합산이 `side=±1`만 집계 → 동시호가 면역).
+- 경계는 `session_close − 10min`(strict `<`), per-Stock-Date(half-day 안전).
+참조: `docs/superpowers/specs/2026-06-03-closing-auction-straddle-bucket-design.md`.
