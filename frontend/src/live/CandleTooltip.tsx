@@ -41,6 +41,28 @@ const valStyle: CSSProperties = { color: 'var(--fg)' };
 const signed = (n: number) => (n >= 0 ? '+' : '') + formatKoreanInt(n);
 const signedPct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
 
+// OHLC 행: 가격(중립 --fg) + 직전 봉(이전 캔들) 종가 대비 변동률%(상승 빨강/하락 파랑).
+// pct 없으면(가장 이른 봉 / prev.close<=0) % 칸은 비워 세로 정렬을 유지한다.
+function PriceRow({ k, price, pct }: { k: string; price: number; pct: number | null }) {
+  // 색·텍스트 모두 '반올림된' 값 기준 — 표시가 "+0.00%" 인데 색만 빨강/파랑인 불일치 방지
+  // (priceDirClass 는 raw 부호, signedPct 는 toFixed(2) 반올림이라 미세값에서 어긋남).
+  const r = pct != null && Number.isFinite(pct) ? Number(pct.toFixed(2)) : null;
+  return (
+    <div style={rowStyle}>
+      <span style={keyStyle}>{k}</span>
+      <span style={{ display: 'inline-flex', gap: 10 }}>
+        <span style={{ ...valStyle, minWidth: '7ch', textAlign: 'right' }}>{formatKoreanInt(price)}</span>
+        <span
+          className={r != null ? priceDirClass(r) : undefined}
+          style={{ minWidth: '6ch', textAlign: 'right' }}
+        >
+          {r != null ? signedPct(r) : ''}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function Row({ k, children }: { k: string; children: React.ReactNode }) {
   return (
     <div style={rowStyle}>
@@ -125,21 +147,18 @@ export default function CandleTooltip({ chart, bundle, axis, paneSeries, timefra
   if (idx === undefined) return null;
   const m = buildCandleTooltip(drawn, idx, timeframe);
   if (!m) return null;
-  // barOverBarPct 는 모델에서 prev.close>0 으로 가드되지만, 비유한값이 새어들면 '—'(방어).
-  const bobNull =
-    m.barOverBarWon == null || m.barOverBarPct == null || !Number.isFinite(m.barOverBarPct);
   return (
     <div ref={tipRef} data-testid="candle-tooltip" style={{ ...boxStyle, left: hover.left, top: hover.top }}>
       <div style={{ ...rowStyle, color: 'var(--fg-dim)', marginBottom: 4 }}>
         <span>{m.dateLabel}{m.timeLabel ? ` ${m.timeLabel}` : ''}</span>
       </div>
-      <Row k="시"><span style={valStyle}>{formatKoreanInt(m.open)}</span></Row>
-      <Row k="고"><span style={valStyle}>{formatKoreanInt(m.high)}</span></Row>
-      <Row k="저"><span style={valStyle}>{formatKoreanInt(m.low)}</span></Row>
-      <Row k="종"><span style={valStyle}>{formatKoreanInt(m.close)}</span></Row>
+      <PriceRow k="시" price={m.open} pct={m.openPct} />
+      <PriceRow k="고" price={m.high} pct={m.highPct} />
+      <PriceRow k="저" price={m.low} pct={m.lowPct} />
+      <PriceRow k="종" price={m.close} pct={m.closePct} />
       <Row k="직전대비">
-        <span className={bobNull ? undefined : priceDirClass(m.barOverBarWon!)}>
-          {bobNull ? '—' : `${signed(m.barOverBarWon!)}  ${signedPct(m.barOverBarPct!)}`}
+        <span className={m.barOverBarWon == null ? undefined : priceDirClass(m.barOverBarWon)}>
+          {m.barOverBarWon == null ? '—' : signed(m.barOverBarWon)}
         </span>
       </Row>
       <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />

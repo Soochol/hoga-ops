@@ -59,15 +59,34 @@ describe('CandleTooltip', () => {
     expect(screen.queryByTestId('candle-tooltip')).toBeNull();
   });
 
-  it('캔들 페인 위에서 OHLC·직전대비·거래량비 표시', () => {
+  it('캔들 페인 위에서 OHLC 각 % + 직전대비 금액 + 거래량비 표시 (직전 봉 종가 102 기준)', () => {
     const { chart, fire } = makeChart();
     renderTip(chart);
-    // time = axis.toVirtual(1_060_000)/1000 = 1060 ; y=50 ∈ pane0
+    // time = axis.toVirtual(1_060_000)/1000 = 1060 ; y=50 ∈ pane0. prev.close=102.
     fire({ point: { x: 100, y: 50 }, time: 1060 });
     const tip = screen.getByTestId('candle-tooltip');
-    expect(tip).toHaveTextContent('107');   // 종가
-    expect(tip).toHaveTextContent('+5');    // 직전대비 = 107-102
-    expect(tip).toHaveTextContent('200%');  // 거래량비 = 20/10*100
+    expect(tip).toHaveTextContent('107');       // 종가
+    expect(tip).toHaveTextContent('+0.00%');    // 시 % = 102/102
+    expect(tip).toHaveTextContent('+5.88%');    // 고 % = 108/102
+    expect(tip).toHaveTextContent('-0.98%');    // 저 % = 101/102
+    expect(tip).toHaveTextContent('+4.90%');    // 종 % = 107/102
+    expect(tip).toHaveTextContent('+5');        // 직전대비 금액 = 107-102 (원, % 없음)
+    expect(tip).toHaveTextContent('200%');      // 거래량비 = 20/10*100
+  });
+
+  it('반올림으로 0.00% 가 되는 미세 양수 % 는 중립색(빨강 아님)', () => {
+    // prev.close=30000, close=30001 → +0.0033% → 반올림 +0.00% → 중립이어야(색·텍스트 일치).
+    const { chart, fire } = makeChart();
+    const ps = new Map() as never;
+    const b = { candles: [
+      C(1_000_000, 30000, 30000, 30000, 30000, 10),
+      C(1_060_000, 30600, 30900, 30300, 30001, 20),
+    ] } as never;
+    render(<CandleTooltip chart={chart} bundle={b} axis={axis} paneSeries={ps} timeframe="1m" />);
+    fire({ point: { x: 100, y: 50 }, time: 1060 });
+    const zero = screen.getByText('+0.00%'); // 종 행(유일)
+    expect(zero).toHaveClass('text-fg-dim');
+    expect(zero).not.toHaveClass('text-price-up');
   });
 
   it('첫 봉(직전 없음) → 직전대비·거래량비 —', () => {
