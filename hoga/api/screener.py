@@ -11,6 +11,7 @@ import polars as pl
 from fastapi import APIRouter, HTTPException
 
 from hoga.api import screener_saves, screener_scan, screener_store
+from hoga.api.screener_store import DailyBar
 from hoga.api.calendar import trading_days_in_range
 from hoga.api.models import (
     SavedScreener,
@@ -41,14 +42,14 @@ def _gap_trading_days(last_raw_date: str, today: str) -> list[str]:
     return trading_days_in_range(start, today)
 
 
-async def _kis_fetch_one(client, code: str, frm: str, to: str) -> list[dict]:
+async def _kis_fetch_one(client, code: str, frm: str, to: str) -> list[DailyBar]:
     res = await client.fetch_past_daily_candles(code, frm, to, adjust=False)  # 원주가
     if res.violations:
         log.warning("screener daily violations %s: %d", code, len(res.violations))
-    return [{"code": code,
-             "date": datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(),
-             "open": float(c.open), "high": float(c.high),
-             "low": float(c.low), "close": float(c.close), "volume": c.volume}
+    return [DailyBar(code=code,
+                     date=datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(),
+                     open=float(c.open), high=float(c.high),
+                     low=float(c.low), close=float(c.close), volume=c.volume)
             for c in res.candles]
 
 
@@ -83,7 +84,7 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
         log.warning("screener update: KIS creds missing, skipping")
         return 0
 
-    async def fetch_one(c: str, f: str, t: str) -> list[dict]:
+    async def fetch_one(c: str, f: str, t: str) -> list[DailyBar]:
         return await _kis_fetch_one(client, c, f, t)
 
     async def _do() -> int:

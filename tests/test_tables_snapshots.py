@@ -166,3 +166,88 @@ def test_validate_raises_when_bid_prices_not_sorted() -> None:
     broken = replace(base, bid_p=bad_bid)
     with pytest.raises(SnapshotValidationError, match="bid prices not sorted"):
         validate([broken])
+
+
+# ---------------------------------------------------------------------------
+# query_bucketed_ratio (ADR-0001): bucketed bid/ask depth totals, native time
+# ---------------------------------------------------------------------------
+
+
+def _ob(*, ts_ms: int, seq: int, ask_q: tuple[int, ...], bid_q: tuple[int, ...]) -> Orderbook:
+    """Build an Orderbook with controlled per-level qty arrays.
+
+    Only ask_q / bid_q matter for query_bucketed_ratio (it SUMs the 10 levels);
+    prices/deltas/totals are filler. Pads/truncates the given tuples to 10.
+    """
+    def _pad(t: tuple[int, ...]) -> tuple[int, ...]:
+        return (tuple(t) + (0,) * 10)[:10]
+
+    return Orderbook(
+        ts_ms=ts_ms, seq=seq,
+        ask_p=tuple(range(1, 11)), ask_q=_pad(ask_q), ask_d=(0,) * 10,
+        bid_p=tuple(range(10, 0, -1)), bid_q=_pad(bid_q), bid_d=(0,) * 10,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+
+
+def test_query_bucketed_ratio_sums_all_ten_levels(tmp_path: Path) -> None:
+    """ask_total / bid_total are the SUM across all 10 ask_q / bid_q columns."""
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    obs = [_ob(ts_ms=90_000_100, seq=1, ask_q=(10, 20, 30), bid_q=(5, 5, 5, 5))]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_ratio(con, path=out, bucket_ms=1000)
+    assert len(rows) == 1
+    assert rows[0].ask_total == 60   # 10+20+30
+    assert rows[0].bid_total == 20   # 5*4
+
+
+def test_query_bucketed_ratio_takes_last_snapshot_in_bucket(tmp_path: Path) -> None:
+    """Within one bucket, the LAST snapshot (max ts_ms) wins — mirrors the
+    ROW_NUMBER() OVER (... ORDER BY ts_ms DESC) rn=1 selection."""
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    # All three in the same 1000ms bucket (09:00:00.x -> intra 32_400_0xx).
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(1,), bid_q=(1,)),
+        _ob(ts_ms=90_000_500, seq=2, ask_q=(2,), bid_q=(2,)),
+        _ob(ts_ms=90_000_900, seq=3, ask_q=(99,), bid_q=(77,)),  # latest in bucket
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_ratio(con, path=out, bucket_ms=1000)
+    assert len(rows) == 1
+    assert rows[0].ask_total == 99
+    assert rows[0].bid_total == 77
+
+
+def test_query_bucketed_ratio_buckets_on_linear_minute_boundary(tmp_path: Path) -> None:
+    """Two snapshots straddling a minute boundary land in distinct, ascending
+    intra_ms buckets (hhmmssms_to_intra_ms_sql, not naive ts_ms // bucket_ms)."""
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    # 09:00:59.000 -> intra 32_459_000; 09:01:00.000 -> intra 32_460_000.
+    # bucket_ms=60_000: bucket_a = 32_400_000, bucket_b = 32_460_000.
+    obs = [
+        _ob(ts_ms=90_059_000, seq=1, ask_q=(11,), bid_q=(22,)),
+        _ob(ts_ms=90_100_000, seq=2, ask_q=(33,), bid_q=(44,)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_ratio(con, path=out, bucket_ms=60_000)
+    assert [r.bucket_intra_ms for r in rows] == [32_400_000, 32_460_000]  # ascending, distinct
+    assert [r.ask_total for r in rows] == [11, 33]
+    assert [r.bid_total for r in rows] == [22, 44]
+
+
+def test_query_bucketed_ratio_empty_parquet_returns_no_rows(tmp_path: Path) -> None:
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([], out)
+    con = duckdb.connect()
+    assert query_bucketed_ratio(con, path=out, bucket_ms=1000) == []

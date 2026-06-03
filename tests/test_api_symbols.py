@@ -118,6 +118,36 @@ def test_search_filters_by_code_prefix(monkeypatch, tmp_path):
     assert sorted(h.code for h in hits) == ["005930", "005935"]
 
 
+def test_search_name_is_case_insensitive(monkeypatch, tmp_path):
+    """영문 종목명은 입력 케이스와 무관하게 매칭된다 (한글은 영향 없음)."""
+    _stub_pykrx(
+        monkeypatch,
+        kospi=[("058850", "KTcs"), ("010950", "S-Oil"), ("001040", "CJ")],
+        kosdaq=[],
+    )
+    path = tmp_path / "sm.json"
+    asyncio.run(symbols.refresh(path=path, data_dir=tmp_path))
+    # 소문자 쿼리 → 혼합 케이스 종목명 매칭
+    assert [h.code for h in symbols.search("ktcs", limit=5)] == ["058850"]
+    # 대문자 쿼리 → 혼합 케이스 종목명 매칭
+    assert [h.code for h in symbols.search("S-OIL", limit=5)] == ["010950"]
+    # 소문자 쿼리 → 대문자 종목명 매칭
+    assert [h.code for h in symbols.search("cj", limit=5)] == ["001040"]
+
+
+def test_search_name_case_insensitive_ordering(monkeypatch, tmp_path):
+    """대소문자 무시 시에도 접두사 우선 + 이름 길이순 정렬이 유지된다."""
+    _stub_pykrx(
+        monkeypatch,
+        kospi=[("000120", "CJ대한통운"), ("001040", "CJ")],
+        kosdaq=[],
+    )
+    path = tmp_path / "sm.json"
+    asyncio.run(symbols.refresh(path=path, data_dir=tmp_path))
+    # 'cj' → 둘 다 접두사 매칭 → 이름 길이순: 'CJ'(2자) 먼저
+    assert [h.code for h in symbols.search("cj", limit=5)] == ["001040", "000120"]
+
+
 def test_captured_breakdown_classifies_states(monkeypatch, tmp_path):
     """Setup a parquet dir per code with meta files representing each state."""
     (tmp_path / "parquet" / "20260518" / "005930").mkdir(parents=True)

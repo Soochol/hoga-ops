@@ -107,3 +107,32 @@ def test_query_all_returns_ascending_api_models(tmp_path: Path) -> None:
     assert [r.ts_ms for r in rows] == [30600000, 30660000]
     assert rows[0].open == 2  # ascending sort moves second-inserted to first
     assert rows[1].open == 1
+
+
+# ---------------------------------------------------------------------------
+# query_price_range (ADR-0001): MIN(low)/MAX(high) for the volume-profile grid
+# ---------------------------------------------------------------------------
+
+
+def test_query_price_range_returns_min_low_max_high(tmp_path: Path) -> None:
+    from hoga.tables.candles import query_price_range
+
+    out = tmp_path / "candles.parquet"
+    write_parquet(
+        [
+            Candle(ts_ms=1, open_=100, close_=100, high=150, low=90, vol_a=1, vol_b=1),
+            Candle(ts_ms=2, open_=100, close_=100, high=200, low=80, vol_a=1, vol_b=1),
+        ],
+        out,
+    )
+    con = duckdb.connect()
+    assert query_price_range(con, path=out) == (80, 200)  # (MIN(low), MAX(high))
+
+
+def test_query_price_range_empty_candles_returns_none(tmp_path: Path) -> None:
+    from hoga.tables.candles import query_price_range
+
+    out = tmp_path / "candles.parquet"
+    write_parquet([], out)
+    con = duckdb.connect()
+    assert query_price_range(con, path=out) is None

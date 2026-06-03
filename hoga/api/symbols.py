@@ -595,7 +595,7 @@ def search(q: str, *, limit: int = 20) -> list[SymbolHit]:
     the cache via :func:`get_all`.
 
     Numeric prefix → code match. Otherwise → name substring match.
-    Sort: code-prefix matches before substring matches, then by name length.
+    Sort: name-prefix matches before substring matches, then by name length.
     """
     q_norm = q.strip()
     if not q_norm:
@@ -604,9 +604,10 @@ def search(q: str, *, limit: int = 20) -> list[SymbolHit]:
         # Code prefix
         matches = [h for h in _cache if h.code.startswith(q_norm)]
         return matches[:limit]
-    # Name substring
-    matches = [h for h in _cache if q_norm in h.name]
-    matches.sort(key=lambda h: (not h.name.startswith(q_norm), len(h.name)))
+    # Name substring (case-insensitive)
+    q_lower = q_norm.lower()
+    matches = [h for h in _cache if q_lower in h.name.lower()]
+    matches.sort(key=lambda h: (not h.name.lower().startswith(q_lower), len(h.name)))
     return matches[:limit]
 
 

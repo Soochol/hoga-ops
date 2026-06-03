@@ -42,6 +42,29 @@ describe('filterSymbols', () => {
     expect(out[0].name.startsWith('삼성')).toBe(true);
     expect(out[1].name.startsWith('삼성')).toBe(true);
   });
+  it('name match is case-insensitive', () => {
+    const en: SymbolHit[] = [
+      { code: '058850', name: 'KTcs', market: 'KOSPI', captured_count: 0,
+        captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } },
+      { code: '010950', name: 'S-Oil', market: 'KOSPI', captured_count: 0,
+        captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } },
+      { code: '001040', name: 'CJ', market: 'KOSPI', captured_count: 0,
+        captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } },
+    ];
+    expect(filterSymbols(en, 'ktcs', 10).map((h) => h.code)).toEqual(['058850']);
+    expect(filterSymbols(en, 'S-OIL', 10).map((h) => h.code)).toEqual(['010950']);
+    expect(filterSymbols(en, 'cj', 10).map((h) => h.code)).toEqual(['001040']);
+  });
+  it('case-insensitive query keeps prefix-first then length ordering', () => {
+    const en: SymbolHit[] = [
+      { code: '000120', name: 'CJ대한통운', market: 'KOSPI', captured_count: 0,
+        captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } },
+      { code: '001040', name: 'CJ', market: 'KOSPI', captured_count: 0,
+        captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } },
+    ];
+    // 'cj'는 둘 다 접두사 매칭(ap=bp=0) → 이름 길이순: 'CJ'(2자)가 'CJ대한통운'보다 앞
+    expect(filterSymbols(en, 'cj', 10).map((h) => h.code)).toEqual(['001040', '000120']);
+  });
   it('respects limit', () => {
     expect(filterSymbols(HITS, '', 2)).toHaveLength(2);
   });
