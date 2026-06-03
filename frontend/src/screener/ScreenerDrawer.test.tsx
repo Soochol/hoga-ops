@@ -169,7 +169,7 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(screen.getByText(/선택한 조건과 다름/)).toBeInTheDocument());
   });
 
-  it('overlays live price + 전일대비 on result rows (top-30), overriding corpus pct', async () => {
+  it('overlays live price + 전일대비 on result rows, overriding corpus pct', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       phase: 'open',
@@ -245,5 +245,33 @@ describe('ScreenerDrawer', () => {
     );
     fireEvent.click(heart);
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('005930'));
+  });
+
+  it('overlays live quotes on ALL result rows, not just the top 30 (cap removed)', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    // 31 rows. The codes-aware mock returns a live quote only for codes that
+    // actually reach the backend — so the 31st row going live proves the old
+    // `.slice(0, 30)` cap is gone (capped, its code would never be requested).
+    const rows = Array.from({ length: 31 }, (_, i) => ({
+      code: String(100000 + i), name: `종목${i}`, market: 'KOSPI' as const,
+      price: 1000, trade_value_won: 1e10, change_pct: 0.5,
+    }));
+    vi.spyOn(client, 'apiCall').mockImplementation((path: string) => {
+      const codes = (path.split('codes=')[1] ?? '').split(',').filter(Boolean);
+      return Promise.resolve({
+        phase: 'open',
+        quotes: codes.map((c) => ({ code: c, price: 99999, change_pct: 7.7, change_won: 5000 })),
+      });
+    });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows, scanStatus: 'ok', warnings: [] },
+    });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    // 행은 EOD(1,000원)로 먼저 렌더되고 라이브 quote 가 비동기로 덮는다. cap 이
+    // 살아있다면 100030 은 요청조차 안 돼 영영 1,000원 — 99,999원 도달이 cap 제거 증명.
+    await waitFor(() =>
+      expect(within(screen.getByTestId('screener-row-100030')).getByText('99,999원')).toBeInTheDocument(),
+    );
   });
 });

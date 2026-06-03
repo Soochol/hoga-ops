@@ -8,7 +8,7 @@ import { useScreenerStatus } from './useScreenerStatus';
 import { useScreenerUpdate } from './useScreenerUpdate';
 import { StalenessChip } from './StalenessChip';
 import { QuoteRow } from '../rightrail/QuoteRow';
-import { useQuoteByCode } from '../api/liveQuotes';
+import { useScreenerRowsLive } from './useScreenerRowsLive';
 import { WatchlistToggleButton } from '../watchlist/WatchlistToggleButton';
 import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 
@@ -65,11 +65,12 @@ export function ScreenerDrawer() {
     );
   };
 
-  const liveCodes = useMemo(
-    () => (lastScan?.rows ?? []).slice(0, 30).map((r) => r.code),
-    [lastScan],
-  );
-  const quoteByCode = useQuoteByCode(liveCodes);
+  // 결과 전 종목에 Live Quote 오버레이(ADR-0056 개정 2026-06-03 — 상위 30 cap 제거).
+  // 풀페이지 ResultTable 과 공유하는 단일 머지 seam(codes 추출·폴링·머지 캡슐화).
+  // scanRows 메모화로 lastScan null 동안 매 렌더 새 [] 가 훅 내부 codes 메모를
+  // 무효화하지 않게 한다(풀페이지 Screener.tsx 와 대칭).
+  const scanRows = useMemo(() => lastScan?.rows ?? [], [lastScan]);
+  const liveRows = useScreenerRowsLive(scanRows);
 
   return (
     <div
@@ -157,16 +158,15 @@ export function ScreenerDrawer() {
               <div className="p-md text-fg-dim text-sm">조건에 맞는 종목이 없습니다.</div>
             ) : (
               <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                {lastScan.rows.map((r) => {
-                  const q = quoteByCode.get(r.code);
+                {liveRows.map((r) => {
                   const member = isMember(r.code);
                   return (
                     <QuoteRow
                       key={r.code}
                       name={r.name}
-                      price={q?.price ?? r.price}
-                      pct={q?.change_pct ?? r.change_pct}
-                      changeWon={q?.change_won ?? null}
+                      price={r.price}
+                      pct={r.change_pct}
+                      changeWon={r.change_won}
                       active={r.code === activeCode}
                       ariaLabel={`${r.name} ${r.code} 차트 열기`}
                       testId={`screener-row-${r.code}`}
