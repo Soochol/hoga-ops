@@ -1,7 +1,7 @@
 # Closing Auction Window — 호가비·총잔량 걸침 버킷 정화 (Straddle-Bucket Decontamination) — Design
 
 **Date**: 2026-06-03
-**Status**: Draft
+**Status**: Approved
 **Scope**: `hoga/api/bundle.py` (`build_quote_ratio_slice`, `build_range_bundle`), `frontend/src/live/bucketHogaSeries.ts`
 
 > 새 분기가 아니라 **기존 버킷 집계 규칙의 정제**다. 캔들·거래량·체결강도·표시
