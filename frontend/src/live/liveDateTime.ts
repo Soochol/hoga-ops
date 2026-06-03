@@ -25,6 +25,16 @@ export function earliestAllowedMinuteDate(todayKstYyyymmdd: string): string {
   return subtractDaysKst(todayKstYyyymmdd, PAST_CANDLES_MAX_DAYS - 1);
 }
 
+/** 일봉 settle-loop 백필의 하한 날짜(YYYYMMDD KST) = far-past 센티넬.
+ *
+ * 일봉은 분봉의 250일 클램프가 없어 가용한 전 과거(수십 년)까지 스크롤백할 수
+ * 있어야 한다. 그래서 `planFillStep`의 하한 검사(`historicalFromDate <=
+ * earliestAllowedDate`)를 사실상 비활성화하는 값을 쓴다 — 어떤 실제
+ * historicalFromDate(>1900)도 YYYYMMDD 사전식 비교에서 이 값 이하가 되지
+ * 않으므로 하한은 결코 트립되지 않는다. 진행 루프 종료는 viewport 충족 /
+ * 데이터 소진 가드(useViewportBackfill) / MAX_FILL_STEPS가 담당한다. */
+export const DAILY_BACKFILL_FLOOR_DATE = '19000101';
+
 /** Today's YYYYMMDD in KST. */
 export function todayKstYyyymmdd(): string {
   return realMsToYyyymmdd(Date.now());
@@ -98,14 +108,20 @@ function candleTargetToCalendarDays(target: number, tf: LiveTimeframe): number {
  *   주말 1회를 한 스텝에 항상 덮어 빈 결과 재드래그를 막는 최소값.
  *   `STEP_TRADING_DAYS`는 실측 후 조정 가능한 단일 상수(데이터를 덜 받는 게
  *   아니라 첫 그림 시점·렌더 분할 횟수만 바뀐다).
- * - D/W/M: 기존 one-shot 윈도 유지(진행 루프는 minute-only). 한 번의 팬으로
- *   ~1년치를 그려 채우므로 스텝 분할이 불필요. */
+ * - D(일봉): 분봉과 동일하게 진행 루프(settle-loop)로 채운다. 한 스텝
+ *   90거래일(`DAILY_STEP_TRADING_DAYS`)을 5/7 밀도로 환산 → 126 캘린더일.
+ *   viewport가 찰 때까지 진행 루프가 다음 스텝을 자가 dispatch하고, 종료는
+ *   viewport 충족 / 데이터 소진 가드 / MAX_FILL_STEPS가 판정한다(하한 날짜
+ *   없음 — `DAILY_BACKFILL_FLOOR_DATE` 참고).
+ * - W/M: 기존 one-shot 윈도 유지(진행 루프는 분봉·일봉만). 한 번의 팬으로
+ *   ~수년치를 그려 채우므로 스텝 분할이 불필요. */
 const STEP_TRADING_DAYS = 3;
+const DAILY_STEP_TRADING_DAYS = 90;
 export function stepChunkDays(tf: LiveTimeframe): number {
   if (isMinuteTimeframe(tf)) {
     return Math.ceil(STEP_TRADING_DAYS / TRADING_DAYS_PER_CALENDAR_DAYS);
   }
-  if (tf === 'D') return candleTargetToCalendarDays(250, tf);
+  if (tf === 'D') return candleTargetToCalendarDays(DAILY_STEP_TRADING_DAYS, tf);
   return candleTargetToCalendarDays(120, tf); // W, M
 }
 

@@ -519,10 +519,11 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // D-timeframe chunk: stepChunkDays('D')=350 calendar days (~1 year).
-    // axis.segments[0] = '20260526', minus 350 → '20250610'
-    // (crosses year boundary into 2025).
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20250610');
+    // D-timeframe chunk: stepChunkDays('D')=126 calendar days (90-trading-day
+    // settle-loop step). axis.segments[0] = '20260526', minus 126 → '20260120'.
+    // The settle-loop then continues from here on each isExtending falling edge
+    // until the viewport fills (covered by the daily settle-loop tests below).
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260120');
   });
 
   it('does NOT fire extendHistoricalRange when logical from is non-negative', () => {
@@ -759,27 +760,131 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.getVisibleLogicalRange).toHaveBeenCalled();
   });
 
-  it('does NOT run the fill loop on D timeframe (minute-only)', () => {
+  // ── 일봉(D) 진행 루프: 분봉과 동일한 settle-loop. 단 하한 날짜가 없어 데이터
+  //    소진 가드가 종료를 판정한다. 소진 판정은 "연속 DAILY_MAX_NO_PROGRESS_STEPS(=3)
+  //    회 무진척"이라야 한다 — 거래정지 갭이 1스텝(126일)을 넘을 수 있어 1회 무진척은
+  //    정지가 아니라 계속(갭 내성). 아래 세 테스트가 그 경계를 고정한다:
+  //    (A) 진척 있음 → 계속, (B) 무진척 1회 → 여전히 계속, (C) 무진척 연속 3회 → 정지.
+  //    공통: getVisibleLogicalRange().from = -50(빈영역 남음)이라 종료의 유일한
+  //    원인은 소진 가드여야 한다(viewport-full이 아님).
+  it('continues the daily fill loop on a falling edge when an older bar arrived', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260521' });
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 })); // 빈영역 남음
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    // Mount: today-only candles (earliest = today). isExtending=true.
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="D"
+        bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
+      { wrapper },
+    );
+    // Falling edge with an OLDER bar prepended (yesterday) → restore arms
+    // lastExtendAddedOlder=true → exhaustion guard passes → next step dispatched.
+    act(() => {
+      rerender(
+        <LiveChartRoot code="005930" timeframe="D"
+          bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
+          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
+      );
+    });
+    // cur '20260521' − stepChunkDays('D')=126 → '20260115'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260115');
+  });
+
+  it('CONTINUES after a SINGLE no-progress daily step (suspension-gap tolerance)', () => {
+    // A 거래정지 gap can exceed one 126-day step, so one no-progress step must NOT
+    // stop the loop — the next step keeps pushing the cursor past the gap. cur is
+    // still dispatched onward (counter=1 < DAILY_MAX_NO_PROGRESS_STEPS=3).
+    useLivePageStore.setState({ historicalFromDate: '20260521' });
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 })); // 빈영역 남음
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    // Mount: two-segment candles (earliest = yesterday). isExtending=true.
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="D"
+        bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
+      { wrapper },
+    );
+    // Falling edge with the SAME earliest (new bundle object, no older bar) →
+    // lastExtendAddedOlder=false, counter 0→1 (< 3) → loop STILL dispatches.
+    act(() => {
+      rerender(
+        <LiveChartRoot code="005930" timeframe="D"
+          bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
+          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
+      );
+    });
+    // cur '20260521' − stepChunkDays('D')=126 → '20260115' (dispatched, NOT stalled).
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260115');
+  });
+
+  it('STOPS only after DAILY_MAX_NO_PROGRESS_STEPS consecutive no-progress steps (true exhaustion)', () => {
+    // Three consecutive same-earliest falling edges = three no-progress steps.
+    // Steps 1 & 2 still dispatch (cursor walks back, crossing any gap ≤ ~2 steps);
+    // step 3 hits the counter threshold → STOP. Pin both the tolerance and the
+    // eventual halt so neither a 1-step stop nor an unbounded loop can regress.
+    useLivePageStore.setState({ historicalFromDate: '20260521' });
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 })); // 빈영역 남았으나 소진
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    // Fresh same-earliest bundle each render so the restore effect re-runs and
+    // re-arms lastExtendAddedOlder=false (no older bar) on every falling edge.
+    const sameEarliest = () =>
+      twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000]);
+    const D = (isExtending: boolean) => (
+      <LiveChartRoot code="005930" timeframe="D" bundle={sameEarliest()}
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={isExtending} />
+    );
+
+    const { rerender } = render(D(true), { wrapper });
+    const after: Array<string | null> = [];
+    for (let i = 0; i < 3; i++) {
+      act(() => { rerender(D(false)); });           // falling edge → no-progress step
+      after.push(useLivePageStore.getState().historicalFromDate);
+      if (i < 2) act(() => { rerender(D(true)); }); // re-arm the next falling edge
+    }
+    // Steps 1 & 2 dispatched (counter 1, 2 < 3 → keep walking back past the gap)…
+    expect(after[0]).toBe('20260115');               // 20260521 − 126
+    expect(after[1]).toBe('20250911');               // 20260115 − 126
+    // …step 3 reaches DAILY_MAX_NO_PROGRESS_STEPS=3 → STOP (cursor frozen).
+    expect(after[2]).toBe('20250911');               // unchanged
+  });
+
+  it('counts a falling edge with an UNCHANGED bundle as no-progress (#2 stale-ref guard)', () => {
+    // Simulates a fetchNextPage error: isExtending true→false but the bundle ref
+    // is UNCHANGED, so the restore effect ([chart,bundle,axis]) never re-runs and
+    // lastExtendAddedOlder is stale. The settle-loop must NOT trust the stale ref —
+    // restoreFreshRef forces no-progress, so 3 such edges still stop the loop.
+    // Without the `!fresh` guard the stale (null) ref reads as progress → resets →
+    // never stops, so after[2] would advance instead of holding.
     useLivePageStore.setState({ historicalFromDate: '20260521' });
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 }));
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
-
-    const { rerender } = render(
-      <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
-      { wrapper },
+    // ONE frozen bundle object across every render → restore effect never re-runs.
+    const FROZEN = twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000]);
+    const D = (isExtending: boolean) => (
+      <LiveChartRoot code="005930" timeframe="D" bundle={FROZEN}
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={isExtending} />
     );
-    act(() => {
-      rerender(
-        <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
-          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
-      );
-    });
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // D one-shot, 불변
-    // minute-only 조기 반환이 viewport를 읽기 전에 막았음을 국소화.
-    expect(ts.getVisibleLogicalRange).not.toHaveBeenCalled();
+    const { rerender } = render(D(true), { wrapper });
+    const after: Array<string | null> = [];
+    for (let i = 0; i < 3; i++) {
+      act(() => { rerender(D(false)); });
+      after.push(useLivePageStore.getState().historicalFromDate);
+      if (i < 2) act(() => { rerender(D(true)); });
+    }
+    expect(after[0]).toBe('20260115'); // step 1 dispatched (no-progress, counter 1 < 3)
+    expect(after[1]).toBe('20250911'); // step 2 dispatched (counter 2 < 3)
+    expect(after[2]).toBe('20250911'); // step 3 → counter 3 → STOP (stale ref NOT trusted)
   });
 
   it('does NOT restore on pure SSE growth while historicalFromDate is null', () => {

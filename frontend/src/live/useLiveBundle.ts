@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { useLivePastCandles } from '../api/livePastCandles';
-import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
-import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
+import { useDailyCandlesAccumulated } from './useDailyCandlesAccumulated';
+import { useInvestorNetAccumulated } from './useInvestorNetAccumulated';
 import { useRange } from '../api/range';
 import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import {
@@ -97,33 +97,34 @@ export function useLiveBundle(
     enableMinute ? minutePastTo : null,
   );
 
-  // KIS daily past-candles — only enabled for D/W/M timeframes (ADR-0048).
-  const enableDaily = !!(code && !isMinute);
-  const dailyPastFrom = seedFrom;
-  const dailyPastTo = todayKstYyyymmdd;
-  const pastDailyCandlesQuery = useLivePastDailyCandles(
-    enableDaily ? code : null,
-    enableDaily ? dailyPastFrom : null,
-    enableDaily ? dailyPastTo : null,
+  // KIS daily past-candles — only for D/W/M timeframes (ADR-0048). Loads history
+  // INCREMENTALLY (immutable older slices accumulated) + a live today bar, so a
+  // leftward pan no longer re-downloads [cursor, today] every step. The shared
+  // `historicalFromDate` cursor stays the sole trigger (settle-loop untouched).
+  const dailyResult = useDailyCandlesAccumulated(
+    code,
+    timeframe,
+    todayKstYyyymmdd,
+    historicalFromDate,
+    !isMinute,
   );
 
-  // Investor net-buy (foreign/institution) — 'D' (일봉) ONLY. KIS
-  // investor-trade-by-stock-daily (FHPTJ04160001) walks back the requested
-  // [from, to] range by date cursor. ADR-0055.
-  // Why daily-only, not all calendar frames: investor points are daily-anchored
-  // (09:00 KST), but W/M aggregate candles into week/month segments, so most
-  // daily points would fall outside axis.contains and render a near-empty pane.
-  // Kept out of isLoading/error: it's an optional overlay, so a missing or
-  // failed investor fetch must not block the candle chart from rendering.
-  const enableInvestor = !!(code && timeframe === 'D');
-  const investorQuery = useLivePastInvestorNet(
-    enableInvestor ? code : null,
-    enableInvestor ? dailyPastFrom : null,
-    enableInvestor ? dailyPastTo : null,
+  // Investor net-buy (foreign/institution) — 'D' (일봉) ONLY. ADR-0055. Shares
+  // the same incremental accumulation as the candles (on the historicalFromDate
+  // cursor), so a daily scroll no longer re-downloads [cursor, today] of investor
+  // data each step. Why daily-only: investor points are daily-anchored (09:00
+  // KST); on W/M most would fall outside axis.contains. Kept out of isLoading/
+  // error: an optional overlay must not block the candle chart from rendering.
+  const enableInvestor = timeframe === 'D';
+  const investorResult = useInvestorNetAccumulated(
+    code,
+    todayKstYyyymmdd,
+    historicalFromDate,
+    enableInvestor,
   );
   const investorPoints = useMemo<InvestorNetPoint[]>(
-    () => (enableInvestor ? investorQuery.data?.points ?? [] : []),
-    [enableInvestor, investorQuery.data],
+    () => (enableInvestor ? investorResult.points : []),
+    [enableInvestor, investorResult.points],
   );
 
   const kisCandles = useMemo<Candle[]>(() => {
@@ -139,11 +140,11 @@ export function useLiveBundle(
     // identity-ish (one bucket per bar); for 'W'/'M' aggregateCalendar groups
     // by ISO week / calendar month using the bar's first 1m bar t_ms so
     // axis.contains admits it inside that Segment.
-    const raw = pastDailyCandlesQuery.data?.candles ?? [];
+    const raw = dailyResult.candles;
     if (raw.length === 0) return [];
     const bars = timeframe === 'D' ? raw : aggregateCalendar(raw, timeframe as 'W' | 'M');
     return bars.map(kisBarToCandle);
-  }, [isMinute, timeframe, pastCandlesQuery.data, pastDailyCandlesQuery.data]);
+  }, [isMinute, timeframe, pastCandlesQuery.data, dailyResult.candles]);
 
   const computedBundle = useMemo<RangeBundle | null>(() => {
     if (!code) return null;
@@ -211,7 +212,7 @@ export function useLiveBundle(
   const extending = historicalFromDate != null && (isMinute
     ? (past.isPlaceholderData && past.isFetching) ||
       (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching)
-    : pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching);
+    : dailyResult.isExtending);
   const lastSettledBundleRef = useRef<RangeBundle | null>(null);
   const bundle = extending && lastSettledBundleRef.current
     ? lastSettledBundleRef.current
@@ -227,10 +228,10 @@ export function useLiveBundle(
 
   return {
     bundle,
-    isLoading: live.isLoading || past.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
-    error: live.error ?? past.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? null,
+    isLoading: live.isLoading || past.isLoading || pastCandlesQuery.isLoading || dailyResult.isLoading,
+    error: live.error ?? past.error ?? pastCandlesQuery.error ?? dailyResult.error ?? null,
     clampEngaged,
-    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
+    isPastCandlesLoading: pastCandlesQuery.isLoading || dailyResult.isLoading,
     isExtending: extending,
   };
 }

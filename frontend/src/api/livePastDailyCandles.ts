@@ -1,5 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
-
 import { apiCall } from './client';
 
 export interface LivePastDailyCandle {
@@ -30,24 +28,16 @@ export interface LivePastDailyCandlesResponse {
   data_warnings: LivePastDailyCandlesWarning[];
 }
 
-export function useLivePastDailyCandles(
-  code: string | null,
-  from: string | null,
-  to: string | null,
-) {
-  const enabled = !!(code && from && to && from <= to);
-  return useQuery({
-    queryKey: ['live', 'past-daily-candles', code, from, to] as const,
-    queryFn: () =>
-      apiCall<LivePastDailyCandlesResponse>(
-        `/api/live/past-daily-candles?code=${code}&from=${from}&to=${to}`,
-      ),
-    enabled,
-    staleTime: 60_000,
-    refetchInterval: 60_000,
-    // See livePastCandles.ts for the rationale — code-aware placeholder
-    // prevents the previous code's candle count from leaking into
-    // LiveChartRoot's initial-view effect on watchlist switches.
-    placeholderData: (prev) => (prev && prev.code === code ? prev : undefined),
-  });
+/** Fetch a single [from, to] daily-candle slice from the KIS-backed endpoint
+ * (ADR-0048). This is the dumb wire call — the accumulation/today-split policy
+ * lives in `useDailyCandlesAccumulated` (live layer) so this stays free of any
+ * date math or React state. `from`/`to` are YYYYMMDD KST, inclusive. */
+export function fetchPastDailyCandles(
+  code: string,
+  from: string,
+  to: string,
+): Promise<LivePastDailyCandlesResponse> {
+  return apiCall<LivePastDailyCandlesResponse>(
+    `/api/live/past-daily-candles?code=${code}&from=${from}&to=${to}`,
+  );
 }

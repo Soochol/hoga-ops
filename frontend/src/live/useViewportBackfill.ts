@@ -9,11 +9,24 @@ import {
   planFillStep,
   earliestAllowedMinuteDate,
   todayKstYyyymmdd,
+  DAILY_BACKFILL_FLOOR_DATE,
 } from './liveDateTime';
 
-/** 진행 루프 무한 방지 백스톱. 250일 클램프(≈50스텝 @ 5캘린더일)가 먼저 멈추므로
- * 이건 백스톱-of-백스톱(60×5=300일 > 250일). */
+/** 진행 루프 무한 방지 백스톱. 분봉은 250일 클램프(≈50스텝 @ 5캘린더일)가 먼저
+ * 멈추므로 백스톱-of-백스톱(60×5=300일 > 250일). 일봉은 하한 날짜가 없어 이 값이
+ * 1회 팬 burst의 1차 백스톱이 된다(60×126캘린더일 ≈ 20년/burst; 보통은 데이터
+ * 소진 가드가 더 먼저 멈춘다). 매 새 팬마다 fillStepCount가 0으로 리셋되므로
+ * 깊은 과거로의 연속 팬은 막지 않는다. */
 const MAX_FILL_STEPS = 60;
+
+/** 일봉 데이터 소진 판정 임계: "연속 N회 무진척(더 오래된 봉 0개)"이면 백엔드에
+ * 더 과거 데이터가 없다고 보고 진행 루프를 멈춘다. 1회가 아니라 N회로 둔 이유는
+ * 거래정지/관리종목의 무데이터 갭이 126캘린더일(1스텝)을 넘을 수 있기 때문 —
+ * 한 번의 무진척이 곧 소진은 아니다. 그 사이 스텝들이 cursor를 갭 너머로 밀어
+ * 데이터가 다시 나오면 카운터를 리셋한다. N=3 → 자동으로 ≤~378캘린더일(≈12.5개월)
+ * 갭까지 건너뛰고, 그보다 긴 갭은 재드래그로 복구. 소진주(신규상장)는 ≤3회만
+ * 헛fetch 후 정지(무바닥 일봉의 MAX_FILL_STEPS=60 대비 크게 절감). */
+const DAILY_MAX_NO_PROGRESS_STEPS = 3;
 
 /** 좌측 팬 prepend 직전의 STABLE 기준 봉을 캡처한다(real ms + 현재 union logical
  * 인덱스 + 캡처 시점 logical range). 복원 effect가 이 ref로 viewport 위치를
@@ -52,7 +65,8 @@ export interface ViewportBackfillArgs {
  *   1. prepend-restore — shifts the visible logical range by the inserted-index
  *      count so the user's bars stay put across a prepend.
  *   2. progressive settle-loop — on each `isExtending` falling edge, fills the
- *      next 3-trading-day step until the viewport is full (minute-only).
+ *      next step until the viewport is full (minute = 3-trading-day steps; daily
+ *      = 90-trading-day steps with a data-exhaustion guard; W/M stay one-shot).
  *   3. lazy-fetch trigger — captures the shift anchor + debounced dispatch when
  *      the user pans past the leftmost loaded bar.
  *
@@ -86,12 +100,28 @@ export function useViewportBackfill({
   // 진행 루프: 현재 fill에서 dispatch한 스텝 수(백스톱용) + isExtending 직전값(falling edge 검출).
   const fillStepCountRef = useRef(0);
   const prevExtendingRef = useRef(false);
+  // 직전 확장 스텝이 더 오래된 봉을 실제로 가져왔는지(복원 effect가 갱신). 일봉
+  // settle-loop의 데이터 소진 가드가 읽는다. null = 미확정(첫 확장 전/측정 불가)
+  // → 가드는 통과시켜 MAX_FILL_STEPS로 안전 degrade.
+  const lastExtendAddedOlderRef = useRef<boolean | null>(null);
+  // 일봉 진행 루프의 연속 무진척 스텝 수(거래정지 갭 내성용). 진척이 있으면 0으로
+  // 리셋, DAILY_MAX_NO_PROGRESS_STEPS 도달 시 소진으로 보고 정지.
+  const noProgressStepsRef = useRef(0);
+  // 복원 effect가 직전 settle 이후 lastExtendAddedOlderRef를 실제로 새로 기록했는가.
+  // settle-loop이 소비하며 false로 리셋. 복원 effect는 bundle 참조가 바뀔 때만
+  // 재실행되므로, 한 스텝이 bundle을 안 바꾸면(예: fetchNextPage 에러 → 더 오래된
+  // 봉 0개) 복원이 재실행되지 않아 ref가 stale해진다. 이 플래그가 false면 ref를
+  // 믿지 않고 "무진척"으로 처리한다(producer/consumer effect-분리 staleness 차단).
+  const restoreFreshRef = useRef(false);
 
   useEffect(() => {
     prevEarliestTsMsRef.current = null;
     viewportShiftRef.current = null;
     fillStepCountRef.current = 0;
     prevExtendingRef.current = false;
+    lastExtendAddedOlderRef.current = null;
+    noProgressStepsRef.current = 0;
+    restoreFreshRef.current = false;
   }, [code, timeframe]);
 
   // Historical-prepend viewport preservation. When the user pans left past the
@@ -130,8 +160,6 @@ export function useViewportBackfill({
   // one), so the two never fight over the same render.
   useEffect(() => {
     if (!chart || !bundle || bundle.candles.length === 0) return;
-    // [TEMP-DIAG-VIEWPORT] dev-only kill switch for the differential repro.
-    if (import.meta.env.DEV && (window as unknown as { __noRestore?: boolean }).__noRestore) return;
     const ts = chart.timeScale();
     // Earliest candle actually drawn — mirror projectCandle's axis.contains
     // filter. The absolute ts_ms is stable under the axis re-base, unlike the
@@ -150,7 +178,17 @@ export function useViewportBackfill({
     // Only a genuine LEFTWARD extension (an older bar appeared) jumps the view.
     // SSE ticks (right edge) and holiday-only chunks (no new trading day) leave
     // the earliest bar unchanged → nothing to correct.
-    if (newEarliest >= prevEarliest) return;
+    // Record whether THIS extension brought an older bar — the daily settle-loop
+    // reads it as a data-exhaustion signal: a 90-trading-day step that moved the
+    // earliest bar nowhere means the backend has no older data (a span that large
+    // can't be holiday-only, unlike minute's 3-trading-day step).
+    const addedOlder = newEarliest < prevEarliest;
+    lastExtendAddedOlderRef.current = addedOlder;
+    restoreFreshRef.current = true; // (#2) ref freshly recorded for THIS commit
+    if (!addedOlder) return;
+    // [TEMP-DIAG-VIEWPORT] dev-only kill switch — skips the viewport SHIFT only;
+    // the exhaustion ref above is kept fresh so the daily guard isn't starved (#6).
+    if (import.meta.env.DEV && (window as unknown as { __noRestore?: boolean }).__noRestore) return;
     const shiftRef = viewportShiftRef.current;
     if (!shiftRef) return;
     try {
@@ -185,18 +223,47 @@ export function useViewportBackfill({
   }, [chart, bundle, axis]);
 
   // 진행 루프(스텝 2..N): 한 스텝 settle(isExtending true→false) 직후 viewport가
-  // 아직 빈영역이면 다음 스텝을 자가 dispatch한다. minute-only(D/W/M은 one-shot).
-  // planFillStep이 종료(꽉 참/클램프/백스톱)를 판정. 복원 effect 뒤에 선언해
-  // getVisibleLogicalRange가 shift 적용 후 위치를 읽도록 한다.
+  // 아직 빈영역이면 다음 스텝을 자가 dispatch한다. 분봉·일봉(D)만 — W/M은 one-shot.
+  // planFillStep이 종료(꽉 참/클램프/백스톱)를, 일봉은 추가로 데이터 소진 가드가
+  // 종료를 판정. 복원 effect 뒤에 선언해 getVisibleLogicalRange가 shift 적용 후
+  // 위치를, lastExtendAddedOlderRef는 복원 effect가 갱신한 값을 읽도록 한다.
   useEffect(() => {
     const wasExtending = prevExtendingRef.current;
     prevExtendingRef.current = isExtending;
     if (!chart) return;
-    if (!isMinuteTimeframe(timeframe)) return;
+    const isDaily = timeframe === 'D';
+    // 진행 루프는 분봉과 일봉(D)만. W/M은 one-shot(한 번의 팬으로 수년치).
+    if (!isMinuteTimeframe(timeframe) && !isDaily) return;
     if (!(wasExtending && !isExtending)) return; // falling edge만
     const cur = useLivePageStore.getState().historicalFromDate;
     if (cur === null) return;
     if (axis.segments.length === 0) return;
+    // 일봉 데이터 소진 가드: 방금 settle된 스텝이 더 오래된 봉을 못 가져오면
+    // (가장 오래된 봉 불변) 무진척 카운터를 +1, 진척이 있으면 0으로 리셋한다.
+    // 연속 DAILY_MAX_NO_PROGRESS_STEPS회 무진척일 때만 "진짜 소진"으로 보고 정지.
+    // 1회로 즉시 멈추지 않는 이유: 거래정지/관리종목의 무데이터 갭이 126캘린더일
+    // (1스텝)을 넘을 수 있어, 한 번의 무진척이 곧 소진은 아니다 — 카운터가 임계에
+    // 닿기 전엔 계속 dispatch해 cursor를 갭 너머로 밀고, 데이터가 다시 나오면
+    // 리셋된다(분봉은 250일 클램프가 종료를 맡으므로 이 가드를 쓰지 않는다).
+    // null/true면 진척으로 간주(=리셋) → 하한 없는 일봉도 안전 degrade. 단 복원
+    // effect가 이번 settle에 ref를 새로 기록했을 때만 신뢰한다(restoreFreshRef):
+    // 미기록(fetchNextPage 에러로 bundle 불변 → 복원 미재실행)이면 ref가 stale일
+    // 수 있어 "무진척"으로 처리한다(#2: producer/consumer effect-분리 staleness).
+    if (isDaily) {
+      const fresh = restoreFreshRef.current;
+      restoreFreshRef.current = false;
+      const noOlder = !fresh || lastExtendAddedOlderRef.current === false;
+      if (noOlder) {
+        noProgressStepsRef.current += 1;
+        if (noProgressStepsRef.current >= DAILY_MAX_NO_PROGRESS_STEPS) {
+          fillStepCountRef.current = 0;
+          noProgressStepsRef.current = 0;
+          return;
+        }
+      } else {
+        noProgressStepsRef.current = 0;
+      }
+    }
     const ts = chart.timeScale();
     let visibleFrom: number | null = null;
     try {
@@ -208,7 +275,11 @@ export function useViewportBackfill({
       visibleFrom,
       historicalFromDate: cur,
       axisEarliestMs: axis.segments[0].sessionOpenMs,
-      earliestAllowedDate: earliestAllowedMinuteDate(todayKstYyyymmdd()),
+      // 분봉은 250일 클램프 하한; 일봉은 하한 없음(far-past 센티넬). 일봉에 250일
+      // 하한을 주면 ~1년에서 멈춰 무제한 과거 스크롤이 회귀하므로 분리한다.
+      earliestAllowedDate: isDaily
+        ? DAILY_BACKFILL_FLOOR_DATE
+        : earliestAllowedMinuteDate(todayKstYyyymmdd()),
       stepCalendarDays: stepChunkDays(timeframe),
       stepCount: fillStepCountRef.current,
       maxSteps: MAX_FILL_STEPS,
@@ -234,20 +305,23 @@ export function useViewportBackfill({
   // signal we actually need.
   //
   // Each trigger prepends one chunk sized by stepChunkDays(timeframe) — minute
-  // = 5 calendar days (3-trading-day step), D = 350, W/M = 840/3720.
-  // The 150ms trailing debounce coalesces rapid wheel / drag events into one
-  // fetch; the store's extendHistoricalRange is monotonically decreasing, so
-  // repeated negative ranges within one chunk are no-ops.
+  // = 5 calendar days (3-trading-day step), D = 126 (90-trading-day step,
+  // continued by the settle-loop until the viewport fills), W/M = 840/3720
+  // (one-shot). The 150ms trailing debounce coalesces rapid wheel / drag events
+  // into one fetch; the store's extendHistoricalRange is monotonically
+  // decreasing, so repeated negative ranges within one chunk are no-ops.
   useEffect(() => {
     if (!chart) return;
     const ts = chart.timeScale();
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const handler = (range: unknown) => {
-      // Lazy-fetch runs for every LiveTimeframe, including D/W/M. The
-      // candle backfill (/api/live/past-candles) is timeframe-independent
-      // — useLiveBundle re-aggregates the same 1m bars into D/W/M on the
-      // client. Without this, D/W/M users dragging past the leftmost bar
-      // saw nothing happen.
+      // Lazy-fetch runs for every LiveTimeframe, including D/W/M. The candle
+      // backfill is timeframe-aware in useLiveBundle: minute frames page
+      // /api/live/past-candles (1m bars, client-bucketed), while D/W/M page the
+      // dedicated /api/live/past-daily-candles endpoint (ADR-0048; W/M then
+      // client-aggregate via aggregateCalendar). Either way historicalFromDate
+      // is the shared cursor. Without this, D/W/M users dragging past the
+      // leftmost bar saw nothing happen.
       if (axis.segments.length === 0) return;
       const r = range as { from?: number | null; to?: number | null } | null;
       if (!r || r.from == null) return;
@@ -269,6 +343,7 @@ export function useViewportBackfill({
       // PREVIOUS pan's anchors live for the next prepend's restore.
       viewportShiftRef.current = captureViewportShift(ts, axis);
       fillStepCountRef.current = 1; // 이 dispatch가 스텝 1
+      noProgressStepsRef.current = 0; // 새 팬 = 새 burst → 무진척 카운터 리셋
       // SR-3: the holiday-span / monotonic-decrease backfill policy lives in
       // the pure nextHistoricalFrom kernel (liveDateTime, table-tested). This
       // effect keeps only the imperative shell: trigger gate, anchor capture,

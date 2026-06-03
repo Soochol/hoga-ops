@@ -61,8 +61,10 @@ describe('stepChunkDays', () => {
     }
   });
 
-  it('D keeps the prior one-shot 350-calendar-day window (≈250 daily candles)', () => {
-    expect(stepChunkDays('D')).toBe(350);
+  it('D is a 90-trading-day settle-loop step (≈126 calendar days)', () => {
+    // 90 trading days / (5/7 trading-days-per-calendar-day) = ceil(126) = 126.
+    // Daily now fills progressively (settle-loop) like minute, not one-shot.
+    expect(stepChunkDays('D')).toBe(126);
   });
 
   it('W/M keep the prior one-shot windows (120 candles)', () => {

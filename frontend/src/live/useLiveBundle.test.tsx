@@ -57,23 +57,16 @@ vi.mock('../api/livePastCandles', () => ({
   useLivePastCandles: (...args: unknown[]) => livePastCandlesSpy(...args as []),
 }));
 
-const livePastDailyCandlesSpy = vi.fn(() => ({
-  data: {
-    code: '005930',
-    from: '',
-    to: '',
-    candles: [
-      { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
-    ],
-    cached_batches: [],
-    fresh_batches: [],
-    data_warnings: [],
-  },
+const dailyCandlesSpy = vi.fn(() => ({
+  candles: [
+    { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+  ],
   isLoading: false,
+  isExtending: false,
   error: null,
 }));
-vi.mock('../api/livePastDailyCandles', () => ({
-  useLivePastDailyCandles: (...args: unknown[]) => livePastDailyCandlesSpy(...args as []),
+vi.mock('./useDailyCandlesAccumulated', () => ({
+  useDailyCandlesAccumulated: (...args: unknown[]) => dailyCandlesSpy(...args as []),
 }));
 
 const rangeMock = { isPlaceholderData: false, isFetching: false };
@@ -96,7 +89,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 describe('useLiveBundle', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
-    livePastDailyCandlesSpy.mockClear();
+    dailyCandlesSpy.mockClear();
     useRangeSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
@@ -149,7 +142,7 @@ describe('useLiveBundle', () => {
 describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
-    livePastDailyCandlesSpy.mockClear();
+    dailyCandlesSpy.mockClear();
     useRangeSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
@@ -164,20 +157,22 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_live' });
   });
 
-  it('D timeframe calls daily hook with non-null code, minute hook with null code', () => {
+  it('D timeframe ENABLES the daily source and nulls the minute source', () => {
     renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
-    const lastDailyCall = livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
+    // useDailyCandlesAccumulated(code, timeframe, today, historicalFromDate, enabled)
+    const lastDailyCall = dailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastDailyCall[0]).toBe('005930');
+    expect(lastDailyCall[4]).toBe(true); // enabled — D routes to the daily source
     const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastMinuteCall[0]).toBeNull();
   });
 
-  it('1m timeframe calls minute hook with non-null code, daily hook with null code', () => {
+  it('1m timeframe enables the minute source and DISABLES the daily source', () => {
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
     const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastMinuteCall[0]).toBe('005930');
-    const lastDailyCall = livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
-    expect(lastDailyCall[0]).toBeNull();
+    const lastDailyCall = dailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
+    expect(lastDailyCall[4]).toBe(false); // disabled — minute uses /api/live/past-candles
   });
 
   it('clampEngaged is false on D when historicalFromDate is very old', () => {
@@ -281,7 +276,7 @@ describe('useLiveBundle extension atomization gate', () => {
 describe('useLiveBundle isExtending', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
-    livePastDailyCandlesSpy.mockClear();
+    dailyCandlesSpy.mockClear();
     useRangeSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
