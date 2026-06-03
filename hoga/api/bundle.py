@@ -35,11 +35,11 @@ from hoga.api.models import (
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import resolve_source as _resolve_source
 from hoga.api.timeenc import (
-    hhmmssms_to_intra_ms_sql,
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
 )
 from hoga.tables import candles as candles_tbl
+from hoga.tables import snapshots as snapshots_tbl
 from hoga.tables import trades as trades_tbl
 from hoga.tables.candles import ApiCandle
 
@@ -120,44 +120,27 @@ def build_quote_ratio_slice(
     bucket_ms: int = 1000,
     source: str = "hogaplay",
 ) -> QuoteRatio:
-    # Bucket on LINEAR ms-from-midnight, not raw HHMMSSmmm. The raw encoding
-    # has gaps at minute / hour boundaries, so arithmetic bucketing of HHMMSSmmm
-    # produces invalid HHMMSSmmm values that decode (via hhmmssms_to_unix_ms)
-    # to duplicate or out-of-order Unix-ms outputs — which lightweight-charts
-    # then rejects with "asc ordered by time". See hhmmssms_to_intra_ms_sql.
+    # ADR-0001: the bucketing SQL + snapshots schema knowledge (ask_q1..q10 /
+    # bid_q1..q10 level columns, the last-in-bucket selection, the HHMMSSmmm-
+    # linearization rationale) now lives in snapshots_tbl.query_bucketed_ratio.
+    # bundle stays the coordinator: it owns the path layout + the no-data guard,
+    # and re-bases the native ms-from-midnight bucket into Unix ms (the table
+    # query is date-agnostic, so it cannot).
     path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
     if not path_obj.exists():
         # ADR-0043: promote_today writes empty records as unlink → missing file
         # is the valid "no data" state, not an error.
         return QuoteRatio(bucket_ms=bucket_ms, points=[])
-    path = str(path_obj)
-    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    rows = engine.conn.execute(
-        f"""
-        WITH bucketed AS (
-          SELECT ts_ms,
-                 (ask_q1 + ask_q2 + ask_q3 + ask_q4 + ask_q5 +
-                  ask_q6 + ask_q7 + ask_q8 + ask_q9 + ask_q10) AS ask_total,
-                 (bid_q1 + bid_q2 + bid_q3 + bid_q4 + bid_q5 +
-                  bid_q6 + bid_q7 + bid_q8 + bid_q9 + bid_q10) AS bid_total,
-                 ({intra_ms_expr} // {bucket_ms}) AS bucket,
-                 ROW_NUMBER() OVER (PARTITION BY ({intra_ms_expr} // {bucket_ms})
-                                   ORDER BY ts_ms DESC) AS rn
-          FROM read_parquet(?)
-        )
-        SELECT bucket * {bucket_ms}, bid_total, ask_total
-        FROM bucketed WHERE rn = 1 ORDER BY bucket
-        """,
-        [path],
-    ).fetchall()
+    rows = snapshots_tbl.query_bucketed_ratio(engine.conn, path=path_obj, bucket_ms=bucket_ms)
     return QuoteRatio(
         bucket_ms=bucket_ms,
         points=[
             QuoteRatioPoint(
-                # r[0] is bucket-aligned ms-from-midnight, not HHMMSSmmm.
-                t=ms_from_midnight_to_unix_ms(date, r[0]),
-                bid_total=int(r[1]),
-                ask_total=int(r[2]),
+                # r.bucket_intra_ms is bucket-aligned ms-from-midnight, not
+                # HHMMSSmmm — so convert via ms_from_midnight_to_unix_ms.
+                t=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
+                bid_total=r.bid_total,
+                ask_total=r.ask_total,
             )
             for r in rows
         ],
