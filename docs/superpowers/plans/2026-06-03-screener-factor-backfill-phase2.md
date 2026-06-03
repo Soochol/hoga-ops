@@ -256,9 +256,13 @@ async def factor_backfill(
 
     async def _one(code: str):
         rr = raw_by_code[code]
-        async with sem:
-            adj = await fetch_adj(code, rr[0][0].strftime("%Y%m%d"), rr[-1][0].strftime("%Y%m%d"))
-        return code, screener_factors.compute_factor_segments(screener_factors.pair_raw_adj(rr, adj))
+        try:
+            async with sem:
+                adj = await fetch_adj(code, rr[0][0].strftime("%Y%m%d"), rr[-1][0].strftime("%Y%m%d"))
+            return code, screener_factors.compute_factor_segments(screener_factors.pair_raw_adj(rr, adj))
+        except Exception:  # noqa: BLE001 — 한 종목 실패가 멀티시간 백필을 중단시키면 안 됨
+            log.warning("factor_backfill: %s fetch/compute 실패, skip(다음 run 재시도)", code, exc_info=True)
+            return code, []
 
     def _flush() -> None:
         frame = screener_factors.segments_to_frame(new_by_code)
