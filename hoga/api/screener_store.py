@@ -130,14 +130,18 @@ def adjust_splits(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def derive_adjusted(unadjusted_path: Path, out_path: Path, *,
-                    factors_path: Path | None = None) -> int:
+                    factors_path: Path | None = None,
+                    unadjusted_df: pl.DataFrame | None = None) -> int:
     """원주가 parquet → 수정주가 parquet. 소요 ms 반환.
 
     factors_path 가 있고 로드되면 계수 적용(원주가×계수, ADR-0057). 없거나 손상이면
     기존 split 휴리스틱(adjust_splits)으로 폴백. factors에 없는 종목도 휴리스틱 폴백.
+
+    unadjusted_df 가 주어지면 read_parquet 을 건너뛰고 해당 프레임을 사용 —
+    append_rows 가 방금 원자적으로 기록한 merged df 를 재사용해 중복 I/O 제거.
     """
     t0 = time.perf_counter()
-    df = pl.read_parquet(unadjusted_path)
+    df = unadjusted_df if unadjusted_df is not None else pl.read_parquet(unadjusted_path)
     factors = screener_factors.read_factors(factors_path) if factors_path else None
     if factors is not None and factors.height:
         covered = set(factors["code"].unique().to_list())
@@ -165,19 +169,21 @@ def last_raw_date(unadjusted_path: Path) -> str | None:
     return r.strftime("%Y%m%d") if r else None
 
 
-def append_rows(unadjusted_path: Path, new: pl.DataFrame) -> tuple[int, str | None]:
+def append_rows(
+    unadjusted_path: Path, new: pl.DataFrame
+) -> tuple[int, str | None, pl.DataFrame]:
     """원주가 신규 거래일 append. (code,date) 멱등(중복 트리거 안전), 정렬 유지.
     무백업 SSOT 이므로 원자적 기록(tempfile→os.replace) — 중도 종료가 부분/손상
     parquet 를 readers 에게 노출하지 않는다. 반환: (universe_size=distinct code,
-    last_raw_date=max date YYYYMMDD|None) — 호출부가 같은 파일을 재독하지 않도록
-    메모리 df 에서 산출."""
+    last_raw_date=max date YYYYMMDD|None, merged_df) — 호출부가 같은 파일을 재독하지
+    않도록 메모리 df 까지 전달(derive_adjusted 의 중복 read_parquet 제거)."""
     base = pl.read_parquet(unadjusted_path)
     merged = pl.concat([base, new.select(base.columns)]).unique(
         subset=["code", "date"], keep="last").sort(["code", "date"])
     atomic_write_parquet_df(unadjusted_path, merged)
     n_codes = merged.select(pl.col("code").n_unique()).item()
     max_date = merged.select(pl.col("date").max()).item()
-    return n_codes, (max_date.strftime("%Y%m%d") if max_date is not None else None)
+    return n_codes, (max_date.strftime("%Y%m%d") if max_date is not None else None), merged
 
 
 def write_status(path: Path, *, last_raw_date: str | None, universe_size: int,
@@ -263,9 +269,10 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
 
     def _commit() -> int:                  # 동기 polars는 to_thread로 (루프 블로킹 방지)
         new = pl.DataFrame([vars(b) for b in rows], schema=_DAILY_PL_SCHEMA)
-        n, last = append_rows(up, new)      # 통계는 메모리 df 에서(재독 X)
+        n, last, merged = append_rows(up, new)   # 통계 + merged df 는 메모리에서(재독 X)
         ms = derive_adjusted(up, sdir / "daily_adjusted.parquet",
-                             factors_path=sdir / "factors.parquet")
+                             factors_path=sdir / "factors.parquet",
+                             unadjusted_df=merged)  # 방금 기록한 merged 를 재사용(I/O 절감)
         write_status(sdir / "status.json", last_raw_date=last,
                      universe_size=n, derive_ms=ms, now_ms=now_ms)
         return ms
