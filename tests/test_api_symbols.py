@@ -135,6 +135,19 @@ def test_search_name_is_case_insensitive(monkeypatch, tmp_path):
     assert [h.code for h in symbols.search("cj", limit=5)] == ["001040"]
 
 
+def test_search_name_case_insensitive_ordering(monkeypatch, tmp_path):
+    """대소문자 무시 시에도 접두사 우선 + 이름 길이순 정렬이 유지된다."""
+    _stub_pykrx(
+        monkeypatch,
+        kospi=[("000120", "CJ대한통운"), ("001040", "CJ")],
+        kosdaq=[],
+    )
+    path = tmp_path / "sm.json"
+    asyncio.run(symbols.refresh(path=path, data_dir=tmp_path))
+    # 'cj' → 둘 다 접두사 매칭 → 이름 길이순: 'CJ'(2자) 먼저
+    assert [h.code for h in symbols.search("cj", limit=5)] == ["001040", "000120"]
+
+
 def test_captured_breakdown_classifies_states(monkeypatch, tmp_path):
     """Setup a parquet dir per code with meta files representing each state."""
     (tmp_path / "parquet" / "20260518" / "005930").mkdir(parents=True)
