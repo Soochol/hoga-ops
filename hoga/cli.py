@@ -113,6 +113,30 @@ def screener_seed() -> None:
     console.print(f"[green]seeded[/green] screener archive: {n} stocks")
 
 
+@app.command(name="screener-backfill")
+def screener_backfill() -> None:
+    """Plan-2 1회 백필: KIS 수정주가로 factors.parquet 구축 + 원주가 reconcile + 수정주가 재파생.
+
+    ~2-4h, resumable(중단 후 재실행하면 완료 종목 skip). KIS_APP_KEY/SECRET 필요.
+    """
+    import asyncio
+    import time
+
+    from hoga.api.screener_backfill import run_backfill
+
+    t0 = time.time()
+    try:
+        rep = asyncio.run(run_backfill(resolve_data_dir()))
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]screener-backfill failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+    print(f"backfill done in {time.time() - t0:.0f}s: "
+          f"factors_added={rep['factors_added']}, "
+          f"reconcile(match={rep['reconcile'].value_matches}, "
+          f"mismatch={rep['reconcile'].value_mismatches}, filled={rep['reconcile'].filled_rows}), "
+          f"impact(changed_codes={rep['impact']['changed_codes']})")
+
+
 @app.command(name="ls")
 def list_stock_dates() -> None:
     """Show captured/parsed Stock-Dates."""

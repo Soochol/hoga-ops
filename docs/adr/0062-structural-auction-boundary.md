@@ -13,7 +13,8 @@ iff its book shows depth beyond level 3 (any of `ask_q4..ask_q10` /
 is `last_continuous_ms` — the last continuous snapshot at/before the session close
 — and any snapshot after it is the closing auction.
 
-Applies to both read paths: `build_quote_ratio_slice` (past Stock-Dates) computes
+Applies to both read paths: `build_quote_ratio_slice` (past Stock-Dates) — whose
+bucketing SQL lives in `snapshots_tbl.query_bucketed_ratio` per ADR-0001 — computes
 `last_continuous_ms` from `snapshots.parquet`; `bucketHogaSeries` (today live)
 computes it from the SSE ob buffer's `asks`/`bids`. The representative-selection
 machinery (backend 2-tier `ORDER BY (pre_auction) DESC, ts DESC`; frontend
@@ -67,9 +68,11 @@ the existing display mask. The wire field is required only for the v2 VI work.
 
 ## Consequences
 
-- `_CLOSING_AUCTION_WINDOW_MS` removed from `bundle.py`; `AUCTION_WINDOW_LENGTH_MS`
-  no longer used by `buildLiveBundle` (still used by `sessionTime`/overlays).
-- `build_quote_ratio_slice` runs one extra aggregate scan to derive the threshold.
+- `_CLOSING_AUCTION_WINDOW_MS` removed from `hoga/tables/snapshots.py` (its ADR-0001
+  home), replaced by `_AUCTION_BOOK_DEPTH` + derived deep-level sums;
+  `AUCTION_WINDOW_LENGTH_MS` no longer used by `buildLiveBundle` (still used by
+  `sessionTime`/overlays).
+- `query_bucketed_ratio` runs one extra aggregate scan to derive the threshold.
 - Half-day (12:30 close) past Stock-Dates are handled with no `−10min` offset.
   The frontend today-live half-day tail remains uncleaned (15:30 fallback close_ms
   loosens the load-bearing bound) — an inherited limitation, root-fixed when the

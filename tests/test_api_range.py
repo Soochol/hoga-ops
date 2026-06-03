@@ -1,6 +1,7 @@
 """Route tests for GET /api/range (ADR-0013)."""
 from __future__ import annotations
 
+import json
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -279,3 +280,147 @@ def test_parser_output_visible_as_hogaplay_source(app_client: TestClient) -> Non
     assert body["segments"][0]["date"] == "20260519"
     assert body["segments"][0]["source"] == "hogaplay"
     assert len(body["candles"]) > 0
+
+
+# --- Unmocked end-to-end value lock for the ADR-0001 extracted slices ---
+
+
+def test_range_bundle_unmocked_asymmetric_value_mapping(tmp_path) -> None:
+    """E2E regression lock (reviewer I-1): drive build_range_bundle against REAL
+    parquet — no slice builder mocked — and assert the rewired bundle wrappers
+    map the extracted query results to the wire shape correctly.
+
+    Fixtures are deliberately ASYMMETRIC so a field swap is caught instantly:
+      * snapshots: bid depth-total != ask depth-total, and two snapshots share
+        one bucket with different ts_ms → the LATER one must win (locks the
+        ORDER BY ts_ms DESC last-in-bucket selection of quote_ratio).
+      * trades: buy_qty (side=+1) != sell_qty (side=-1) (locks fill_strength
+        sign mapping). An auction-cross trade (side=0) priced ABOVE the candle
+        range makes the trades price-range differ from the candle range, which
+        separates the two volume profiles:
+          - volume_profile_by_day (slice 4): range from candles MIN(low)/MAX(high)
+            = [0, 100] → the above-range trade is filtered out (WHERE price
+            BETWEEN 0 AND 100).
+          - volume_profile_range (slice 3): range from trades MIN/MAX price
+            = [10, 150] → price_max == 150 reflects that trade.
+      * candle range 0..100 over 24 bins → FRACTIONAL bin_width 4.1666… The
+        wire bin_width truncates to int(4) either way, so the ONLY discriminator
+        for the float-vs-int-truncation fix is price_low: a trade at price 30
+        lands in bin 7, whose price_low must be int(7 * 4.1666…) == 29 (the
+        pre-fix int-truncated path would yield int(7 * 4) == 28).
+    """
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.queries import QueryEngine
+    from hoga.tables.candles import Candle
+    from hoga.tables.candles import write_parquet as write_candles
+    from hoga.tables.snapshots import Orderbook
+    from hoga.tables.snapshots import write_parquet as write_snapshots
+    from hoga.tables.trades import Trade
+    from hoga.tables.trades import write_parquet as write_trades
+
+    code, date = "003490", "20260519"
+    code_dir = tmp_path / "parquet" / date / code / "hogaplay"
+    code_dir.mkdir(parents=True)
+
+    def _ob(*, ts_ms: int, seq: int, ask_q: tuple[int, ...], bid_q: tuple[int, ...]) -> Orderbook:
+        def _pad(t: tuple[int, ...]) -> tuple[int, ...]:
+            return (tuple(t) + (0,) * 10)[:10]
+        return Orderbook(
+            ts_ms=ts_ms, seq=seq,
+            ask_p=tuple(range(1, 11)), ask_q=_pad(ask_q), ask_d=(0,) * 10,
+            bid_p=tuple(range(10, 0, -1)), bid_q=_pad(bid_q), bid_d=(0,) * 10,
+            tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+        )
+
+    # Two snapshots in the SAME 60s bucket (09:00:00.000 and 09:00:00.500).
+    # Earlier ts = decoy (ask 111 / bid 222); later ts = winner (ask 700 / bid 300).
+    write_snapshots(
+        [
+            _ob(ts_ms=90_000_000, seq=1, ask_q=(11, 100), bid_q=(22, 200)),   # decoy
+            _ob(ts_ms=90_000_500, seq=2, ask_q=(300, 400), bid_q=(100, 200)),  # winner
+        ],
+        code_dir / "snapshots.parquet",
+    )
+
+    def _trade(*, ts_ms: int, seq: int, price: int, qty: int, side: int) -> Trade:
+        return Trade(
+            ts_ms=ts_ms, seq=seq, price=price, change_pct=0.0, qty=qty, side=side,
+            cum_vol=0, cum_trades=0, low_so_far=0, high_so_far=0, net_pressure=0,
+            unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0,
+        )
+
+    write_trades(
+        [
+            _trade(ts_ms=90_000_000, seq=1, price=30, qty=50, side=1),    # buy, bin 7
+            _trade(ts_ms=90_000_200, seq=2, price=10, qty=20, side=-1),   # sell, bin 2
+            _trade(ts_ms=90_000_300, seq=3, price=150, qty=999, side=0),  # above candle range
+        ],
+        code_dir / "trades.parquet",
+    )
+
+    # Candle price grid: low=0, high=100 (DIFFERENT from trades price range 10..150).
+    write_candles(
+        [Candle(ts_ms=32_400_000, open_=50, close_=60, high=100, low=0, vol_a=5, vol_b=7)],
+        code_dir / "candles.parquet",
+    )
+
+    # Healthy COMPLETE meta (not INVALID, not partial) so the segment is included.
+    (code_dir / "meta.json").write_text(json.dumps({
+        "code": code, "name": "테스트",
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+        "prev_close": 50, "upper_limit": 200, "lower_limit": 1,
+        "today_open": 50, "today_high": 100, "today_low": 0, "today_close": 60,
+        "pages_collected": 100, "total_unique_events": 80,
+        "parser_version": "test", "collection_complete": True, "is_partial": False,
+    }), encoding="utf-8")
+
+    engine = QueryEngine(data_dir=tmp_path)
+    try:
+        rb = build_range_bundle(
+            engine, code=code, from_date=date, to_date=date, bucket_ms=60_000,
+        )
+    finally:
+        engine.close()
+
+    assert len(rb.segments) == 1
+    assert rb.excluded_dates == []
+
+    # --- quote_ratio: one bucket, LATER snapshot wins; bid_total != ask_total ---
+    assert len(rb.quote_ratio.points) == 1
+    pt = rb.quote_ratio.points[0]
+    assert pt.ask_total == 700  # 300 + 400 (winner)  — NOT 111 (decoy)
+    assert pt.bid_total == 300  # 100 + 200 (winner)  — NOT 222 (decoy)
+    assert pt.ask_total != pt.bid_total  # asymmetry: a swap would surface here
+
+    # --- fill_strength: one bucket; buy_qty != sell_qty (side sign mapping) ---
+    assert len(rb.fill_strength.points) == 1
+    fp = rb.fill_strength.points[0]
+    assert fp.buy_qty == 50   # side=+1
+    assert fp.sell_qty == 20  # side=-1
+    assert fp.buy_qty != fp.sell_qty
+
+    # --- volume_profile_by_day (slice 4): candle range [0,100], fractional width ---
+    assert len(rb.volume_profile_by_day) == 1
+    by_day = rb.volume_profile_by_day[0]
+    assert by_day.bin_count == 24
+    assert by_day.price_min == 0
+    assert by_day.price_max == 100
+    assert by_day.bin_width == 4  # wire = int(4.1666…)
+    # The float-vs-int-truncation DISCRIMINATOR: bin 7's price_low must use the
+    # raw float (29), not the truncated-int width (would be 28).
+    assert by_day.bins[7].price_low == 29
+    assert by_day.bins[7].qty == 50   # the price-30 buy trade lands here
+    assert by_day.bins[2].qty == 20   # the price-10 sell trade lands here
+    # The above-range (price 150) trade is filtered OUT of the candle-bounded
+    # profile — its qty must NOT appear in any by_day bin.
+    assert sum(b.qty for b in by_day.bins) == 70  # 50 + 20, NOT 70 + 999
+
+    # --- volume_profile_range (slice 3): trades price range [10,150] ---
+    vpr = rb.volume_profile_range
+    assert vpr.bin_count == 24
+    assert vpr.price_min == 10
+    assert vpr.price_max == 150  # driven by the price-150 trade, NOT the candle high
+    # price 30 -> FLOOR((30-10)/5.8333)=3, price 10 -> bin 0; assert their qty.
+    assert vpr.bins[0].qty == 20  # price 10
+    assert vpr.bins[3].qty == 50  # price 30

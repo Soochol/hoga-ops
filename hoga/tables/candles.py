@@ -119,3 +119,20 @@ def query_all(con: duckdb.DuckDBPyConnection, *, path: Path) -> list[ApiCandle]:
         ApiCandle(ts_ms=r[0], open=r[1], close=r[2], high=r[3], low=r[4], vol_a=r[5], vol_b=r[6])
         for r in rows
     ]
+
+
+def query_price_range(con: duckdb.DuckDBPyConnection, *, path: Path) -> tuple[int, int] | None:
+    """Return ``(MIN(low), MAX(high))`` across the candles, or ``None`` if the
+    table is empty (NULL aggregates).
+
+    This owns the ``low`` / ``high`` candle-column knowledge (ADR-0001) so
+    callers that need a price grid — e.g. the range bundle's volume-profile
+    slice — get the spread without re-deriving the schema. Mirrors
+    ``snapshots.query_time_bounds``'s ``tuple | None`` shape.
+    """
+    row = con.execute(
+        "SELECT MIN(low), MAX(high) FROM read_parquet(?)", [str(path)]
+    ).fetchone()
+    if row is None or row[0] is None or row[1] is None:
+        return None
+    return int(row[0]), int(row[1])

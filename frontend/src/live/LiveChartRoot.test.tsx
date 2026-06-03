@@ -57,6 +57,7 @@ vi.mock('lightweight-charts', async () => {
       applyOptions: vi.fn(),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
+      chartElement: vi.fn(() => ({ clientWidth: 0, clientHeight: 0 })),
     })),
   };
 });
@@ -914,11 +915,12 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
       { wrapper },
     );
     const chart = vi.mocked(createChartEx).mock.results[0].value;
-    // Two subscribers: LiveChartRoot's own cursor-publish effect + the
-    // PaneLegendOverlay value reader (it needs param.seriesData, which the
-    // cursor store doesn't carry). A count of 3 would mean a leaked/duplicate
-    // subscription.
-    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(2);
+    // Subscribers: (1) LiveChartRoot's cursor-publish effect, (2) PaneLegendOverlay
+    // value reader, (3) CandleTooltip — subscribes exactly once, keyed on
+    // [chart, enabled] (paneSeries + drawn/index map read via refs/render so SSE
+    // ticks and pane registration do NOT resubscribe). A higher count would mean a
+    // leaked/duplicate subscription beyond these three legitimate calls.
+    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(3);
   });
 
   it('subscribes on calendar timeframe too (publishes cursor for Pane Legend; spot stays minute-only in LiveSidebar)', () => {
@@ -933,11 +935,12 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
       { wrapper },
     );
     const chart = vi.mocked(createChartEx).mock.results[0].value;
-    // Two subscribers: LiveChartRoot's own cursor-publish effect + the
-    // PaneLegendOverlay value reader (it needs param.seriesData, which the
-    // cursor store doesn't carry). A count of 3 would mean a leaked/duplicate
-    // subscription.
-    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(2);
+    // Subscribers: (1) LiveChartRoot's cursor-publish effect, (2) PaneLegendOverlay
+    // value reader, (3) CandleTooltip — subscribes exactly once, keyed on
+    // [chart, enabled] (paneSeries + drawn/index map read via refs/render so SSE
+    // ticks and pane registration do NOT resubscribe). A higher count would mean a
+    // leaked/duplicate subscription beyond these three legitimate calls.
+    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(3);
   });
 
   it('crosshair move → setCursor; crosshair leave → clearCursor', async () => {

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import duckdb
 import pytest
 
 from hoga.api.bundle import downsample_candles
@@ -158,6 +159,99 @@ def test_build_volume_profile_range_no_trades_returns_empty():
     out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[("20260512", "hogaplay")])
     assert out.bin_count == 0
     assert out.bins == []
+
+
+# ---------------------------------------------------------------------------
+# Fix #2: top-edge bin clamped into last bin (price_max volume not dropped)
+# ---------------------------------------------------------------------------
+
+
+def _write_trades_parquet(path, rows: list[tuple[int, int, int]]) -> None:
+    """Write a minimal trades.parquet: each row is (ts_ms, price, qty).
+    Fills other required Trade columns with zeros."""
+    from hoga.tables.trades import Trade, write_parquet
+    trades = [
+        Trade(
+            ts_ms=ts_ms, seq=i, price=price, change_pct=0.0, qty=qty, side=0,
+            cum_vol=0, cum_trades=0, low_so_far=0, high_so_far=0, net_pressure=0,
+            unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0,
+        )
+        for i, (ts_ms, price, qty) in enumerate(rows, start=1)
+    ]
+    write_parquet(trades, path)
+
+
+def test_build_volume_profile_range_top_edge_bin_not_dropped(tmp_path):
+    """Trade at price_max must land in the top dense bin (vp_bins-1), not vanish.
+
+    Setup: price_min=100, price_max=200, vp_bins=2 → bin_width=50.
+    - price 100 → bin 0 (qty 15)
+    - price 200 → FLOOR((200-100)/50)=2, folded into vp_bins-1=1 (qty 30)
+    Before the fix the fold was absent and the 30 qty was silently dropped.
+    """
+    from hoga.api.bundle import build_volume_profile_range
+
+    p = tmp_path / "trades.parquet"
+    _write_trades_parquet(p, [
+        (90_000_100, 100, 10),
+        (90_000_200, 100, 5),
+        (90_000_300, 200, 30),  # price_max — previously dropped
+    ])
+
+    mock_engine = MagicMock()
+    mock_engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    mock_engine.conn = duckdb.connect()
+
+    out = build_volume_profile_range(
+        mock_engine, code="005930",
+        dates_with_sources=[("20260512", "hogaplay")],
+        vp_bins=2,
+    )
+
+    assert out.bin_count == 2
+    assert out.price_min == 100
+    assert out.price_max == 200
+    qty_by_price_low = {b.price_low: b.qty for b in out.bins}
+    assert qty_by_price_low[100] == 15  # bin 0: prices at 100
+    assert qty_by_price_low[150] == 30  # bin 1 (top): price_max 200 folded in
+
+
+def test_build_volume_profile_slice_top_edge_bin_not_dropped(tmp_path):
+    """Trade at price_max must land in the top dense bin (vp_bins-1), not vanish.
+
+    build_volume_profile_slice receives price_min/price_max externally (from candles),
+    passed as price_min/price_max kwargs to bypass the candles query.
+    Setup: price_lo=100, price_hi=200, vp_bins=2 → bin_width=50.
+    - price 100 → bin 0 (qty 15)
+    - price 200 → FLOOR((200-100)/50)=2, folded into vp_bins-1=1 (qty 30)
+    """
+    from hoga.api.bundle import build_volume_profile_slice
+
+    trades_path = tmp_path / "trades.parquet"
+    _write_trades_parquet(trades_path, [
+        (90_000_100, 100, 10),
+        (90_000_200, 100, 5),
+        (90_000_300, 200, 30),  # price_hi — previously dropped
+    ])
+    # candles.parquet must exist for the existence guard (even if not queried
+    # when price_min/price_max are supplied explicitly).
+    (tmp_path / "candles.parquet").touch()
+
+    mock_engine = MagicMock()
+    mock_engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    mock_engine.conn = duckdb.connect()
+
+    out = build_volume_profile_slice(
+        mock_engine, code="005930", date="20260512",
+        price_min=100, price_max=200, vp_bins=2,
+    )
+
+    assert out.bin_count == 2
+    assert out.price_min == 100
+    assert out.price_max == 200
+    qty_by_price_low = {b.price_low: b.qty for b in out.bins}
+    assert qty_by_price_low[100] == 15  # bin 0: prices at 100
+    assert qty_by_price_low[150] == 30  # bin 1 (top): price_hi 200 folded in
 
 
 # ---------------------------------------------------------------------------

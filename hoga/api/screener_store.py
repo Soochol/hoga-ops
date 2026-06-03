@@ -4,6 +4,7 @@ import datetime as dt
 import logging
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
@@ -70,6 +71,28 @@ def export_stocks_from_db(csv_path: Path, *, container: str = "tradingview-db",
 
 import polars as pl  # noqa: E402 — appended after stdlib imports
 
+from hoga.api import screener_factors  # noqa: E402 — 순환 없음(screener_factors는 _atomic_write만 import)
+
+
+@dataclass(frozen=True)
+class DailyBar:
+    """원주가 일봉 한 행 — KIS fetch와 SSOT append 사이 이음매의 타입 계약."""
+    code: str
+    date: dt.date
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+
+
+# 코퍼스 parquet 과 동형(append concat 가 스키마 일치하도록). _DAILY_COLS(duckdb 문자열)의 polars 짝.
+_DAILY_PL_SCHEMA: dict = {
+    "code": pl.Utf8, "date": pl.Date,
+    "open": pl.Float64, "high": pl.Float64, "low": pl.Float64, "close": pl.Float64,
+    "volume": pl.Int64,
+}
+
 # 깨끗한 분할 비율(신주/구주) 후보 + 역수. ratio = close[d]/close[d-1].
 _SPLIT_RATIOS = [1/2, 1/3, 1/4, 1/5, 1/10, 1/20, 1/50, 2, 3, 4, 5, 10]
 _SPLIT_TOL = 0.03  # ±3%
@@ -106,12 +129,31 @@ def adjust_splits(df: pl.DataFrame) -> pl.DataFrame:
     return pl.concat(out)
 
 
-def derive_adjusted(unadjusted_path: Path, out_path: Path) -> int:
-    """원주가 parquet → 수정주가 parquet. 소요 ms 반환."""
+def derive_adjusted(unadjusted_path: Path, out_path: Path, *,
+                    factors_path: Path | None = None,
+                    unadjusted_df: pl.DataFrame | None = None) -> int:
+    """원주가 parquet → 수정주가 parquet. 소요 ms 반환.
+
+    factors_path 가 있고 로드되면 계수 적용(원주가×계수, ADR-0057). 없거나 손상이면
+    기존 split 휴리스틱(adjust_splits)으로 폴백. factors에 없는 종목도 휴리스틱 폴백.
+
+    unadjusted_df 가 주어지면 read_parquet 을 건너뛰고 해당 프레임을 사용 —
+    append_rows 가 방금 원자적으로 기록한 merged df 를 재사용해 중복 I/O 제거.
+    """
     t0 = time.perf_counter()
-    df = pl.read_parquet(unadjusted_path)
-    # run_scan 가 읽는 파생본 — 중도 종료가 손상본을 노출하면 모든 스캔이 깨지므로 원자적.
-    atomic_write_parquet_df(out_path, adjust_splits(df))
+    df = unadjusted_df if unadjusted_df is not None else pl.read_parquet(unadjusted_path)
+    factors = screener_factors.read_factors(factors_path) if factors_path else None
+    if factors is not None and factors.height:
+        covered = set(factors["code"].unique().to_list())
+        have = df.filter(pl.col("code").is_in(covered))
+        miss = df.filter(~pl.col("code").is_in(covered))
+        parts = [screener_factors.apply_factors(have, factors)]
+        if miss.height:
+            parts.append(adjust_splits(miss).select(parts[0].columns))
+        adjusted = pl.concat(parts)
+    else:
+        adjusted = adjust_splits(df)
+    atomic_write_parquet_df(out_path, adjusted)
     return int((time.perf_counter() - t0) * 1000)
 
 
@@ -127,19 +169,21 @@ def last_raw_date(unadjusted_path: Path) -> str | None:
     return r.strftime("%Y%m%d") if r else None
 
 
-def append_rows(unadjusted_path: Path, new: pl.DataFrame) -> tuple[int, str | None]:
+def append_rows(
+    unadjusted_path: Path, new: pl.DataFrame
+) -> tuple[int, str | None, pl.DataFrame]:
     """원주가 신규 거래일 append. (code,date) 멱등(중복 트리거 안전), 정렬 유지.
     무백업 SSOT 이므로 원자적 기록(tempfile→os.replace) — 중도 종료가 부분/손상
     parquet 를 readers 에게 노출하지 않는다. 반환: (universe_size=distinct code,
-    last_raw_date=max date YYYYMMDD|None) — 호출부가 같은 파일을 재독하지 않도록
-    메모리 df 에서 산출."""
+    last_raw_date=max date YYYYMMDD|None, merged_df) — 호출부가 같은 파일을 재독하지
+    않도록 메모리 df 까지 전달(derive_adjusted 의 중복 read_parquet 제거)."""
     base = pl.read_parquet(unadjusted_path)
     merged = pl.concat([base, new.select(base.columns)]).unique(
         subset=["code", "date"], keep="last").sort(["code", "date"])
     atomic_write_parquet_df(unadjusted_path, merged)
     n_codes = merged.select(pl.col("code").n_unique()).item()
     max_date = merged.select(pl.col("date").max()).item()
-    return n_codes, (max_date.strftime("%Y%m%d") if max_date is not None else None)
+    return n_codes, (max_date.strftime("%Y%m%d") if max_date is not None else None), merged
 
 
 def write_status(path: Path, *, last_raw_date: str | None, universe_size: int,
@@ -186,7 +230,8 @@ def seed_all(data_dir: Path, *, now_ms: int) -> int:
         seed_daily_from_csv(td / "daily.csv", sdir / "daily_unadjusted.parquet")
         export_stocks_from_db(td / "stocks.csv")
         seed_stocks_from_csv(td / "stocks.csv", sdir / "stocks.parquet")
-    ms = derive_adjusted(sdir / "daily_unadjusted.parquet", sdir / "daily_adjusted.parquet")
+    ms = derive_adjusted(sdir / "daily_unadjusted.parquet", sdir / "daily_adjusted.parquet",
+                         factors_path=sdir / "factors.parquet")
     n = pl.read_parquet(sdir / "stocks.parquet").height
     write_status(sdir / "status.json",
                  last_raw_date=last_raw_date(sdir / "daily_unadjusted.parquet"),
@@ -197,7 +242,7 @@ def seed_all(data_dir: Path, *, now_ms: int) -> int:
 import asyncio  # noqa: E402 — appended orchestration block
 from collections.abc import Awaitable, Callable  # noqa: E402
 
-FetchOne = Callable[[str, str, str], Awaitable[list[dict]]]
+FetchOne = Callable[[str, str, str], Awaitable[list[DailyBar]]]
 
 # KIS _get 가 15/s leaky-bucket 으로 HTTP rate 를 캡하므로, 동시성은 버킷을 채울
 # 정도면 충분(직렬 RTT 병목 제거, 버킷 초과 아님).
@@ -212,22 +257,25 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
     동시 호출(직렬 RTT 병목 제거; 15/s 버킷은 _get 가 캡)."""
     sem = asyncio.Semaphore(_FETCH_CONCURRENCY)
 
-    async def _one(code: str) -> list[dict]:
+    async def _one(code: str) -> list[DailyBar]:
         async with sem:
             return await fetch_one(code, trading_days[0], trading_days[-1])
 
     fetched = await asyncio.gather(*(_one(c) for c in codes))
-    rows: list[dict] = [r for batch in fetched for r in batch]
+    rows: list[DailyBar] = [b for batch in fetched for b in batch]
     if not rows:
         return 0
     up = sdir / "daily_unadjusted.parquet"
 
     def _commit() -> int:                  # 동기 polars는 to_thread로 (루프 블로킹 방지)
-        n, last = append_rows(up, pl.DataFrame(rows))   # 통계는 메모리 df 에서(재독 X)
-        ms = derive_adjusted(up, sdir / "daily_adjusted.parquet")
+        new = pl.DataFrame([vars(b) for b in rows], schema=_DAILY_PL_SCHEMA)
+        n, last, merged = append_rows(up, new)   # 통계 + merged df 는 메모리에서(재독 X)
+        ms = derive_adjusted(up, sdir / "daily_adjusted.parquet",
+                             factors_path=sdir / "factors.parquet",
+                             unadjusted_df=merged)  # 방금 기록한 merged 를 재사용(I/O 절감)
         write_status(sdir / "status.json", last_raw_date=last,
                      universe_size=n, derive_ms=ms, now_ms=now_ms)
         return ms
 
     await asyncio.to_thread(_commit)
-    return len({r["date"] for r in rows})
+    return len({b.date for b in rows})
