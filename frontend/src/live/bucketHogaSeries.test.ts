@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { bucketHogaSeries } from './bucketHogaSeries';
+import type { OrderbookLevel } from '../api/types';
+
+// 10-level continuous book (deep levels populated).
+const contLvls = (qty: number): OrderbookLevel[] =>
+  Array.from({ length: 10 }, (_, i) => ({ price: 100 + i, qty }));
+// 3-level auction book (levels 1-3 only; 4-10 zero).
+const aucLvls = (qty: number): OrderbookLevel[] =>
+  Array.from({ length: 10 }, (_, i) => ({ price: 100 + i, qty: i < 3 ? qty : 0 }));
+const cont = (t: number, a: number, b: number) => ({
+  t_ms: t, total_ask_qty: a, total_bid_qty: b, asks: contLvls(a), bids: contLvls(b),
+});
+const auc = (t: number, a: number, b: number) => ({
+  t_ms: t, total_ask_qty: a, total_bid_qty: b, asks: aucLvls(a), bids: aucLvls(b),
+});
 
 describe('bucketHogaSeries', () => {
   it('returns empty arrays for empty input', () => {
@@ -77,28 +91,77 @@ describe('bucketHogaSeries', () => {
     ]);
   });
 
-  it('Quote Totals de-contaminates a bucket straddling the auction window', () => {
+  it('de-contaminates a straddle bucket via structure (last continuous wins)', () => {
     const BUCKET = 180_000;
-    const base = Math.floor(1_700_000_000_000 / BUCKET) * BUCKET; // 3m 버킷 시작
-    const auctionStartMs = base + 120_000;   // "15:20" 경계
+    const base = Math.floor(1_700_000_000_000 / BUCKET) * BUCKET;
+    const sessionCloseMs = base + 600_000;
     const ob = [
-      { t_ms: base, total_ask_qty: 21, total_bid_qty: 11 },             // pre
-      { t_ms: base + 60_000, total_ask_qty: 22, total_bid_qty: 12 },    // 마지막 pre → 정화값
-      { t_ms: base + 150_000, total_ask_qty: 98, total_bid_qty: 99 },   // auction → 제외
+      cont(base, 21, 11),
+      cont(base + 60_000, 22, 12),      // last continuous → 정화값
+      auc(base + 150_000, 98, 99),      // auction (3-level) → 제외
     ];
-    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, auctionStartMs);
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
     expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 22, bid_total: 12 }]);
   });
 
-  it('Quote Totals falls back to last snapshot for a fully-auction bucket', () => {
+  it('falls back to last snapshot for a fully-auction bucket', () => {
     const BUCKET = 180_000;
     const base = Math.floor(1_700_000_000_000 / BUCKET) * BUCKET;
-    const auctionStartMs = base + 120_000;        // "15:20"
+    const sessionCloseMs = base + 600_000;
     const ob = [
-      { t_ms: base + 180_000, total_ask_qty: 41, total_bid_qty: 31 },   // [15:21,15:24) auction
-      { t_ms: base + 240_000, total_ask_qty: 42, total_bid_qty: 32 },   // 마지막 auction → fallback
+      cont(base + 60_000, 50, 60),      // continuous → defines lastContinuous
+      auc(base + 180_000, 41, 31),      // [base+3m,..) auction
+      auc(base + 240_000, 42, 32),      // 마지막 auction → fallback
     ];
-    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, auctionStartMs);
-    expect(quoteRatioPoints).toEqual([{ t: base + 180_000, ask_total: 42, bid_total: 32 }]);
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
+    expect(quoteRatioPoints).toEqual([
+      { t: base, ask_total: 50, bid_total: 60 },
+      { t: base + 180_000, ask_total: 42, bid_total: 32 },
+    ]);
+  });
+
+  it('a post-close continuous book does not extend the boundary (close bound)', () => {
+    const BUCKET = 180_000;
+    const base = Math.floor(1_700_000_000_000 / BUCKET) * BUCKET;
+    const sessionCloseMs = base + 70_000;          // close inside the bucket
+    const ob = [
+      cont(base, 11, 21),                          // continuous <= close → threshold
+      auc(base + 60_000, 98, 99),                  // auction (3-level) → 대표 못 됨 (seenPre already set)
+      cont(base + 90_000, 77, 88),                 // post-close continuous (> close)
+    ];
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
+    // bucket represented by the base continuous, NOT the 60_000 auction.
+    expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 11, bid_total: 21 }]);
+  });
+
+  it('treats totals-only snapshots (no asks/bids) as continuous → legacy last-in-bucket', () => {
+    const BUCKET = 180_000;
+    const base = Math.floor(1_700_000_000_000 / BUCKET) * BUCKET;
+    const ob = [
+      { t_ms: base, total_ask_qty: 21, total_bid_qty: 11 },
+      { t_ms: base + 60_000, total_ask_qty: 22, total_bid_qty: 12 },
+      { t_ms: base + 150_000, total_ask_qty: 98, total_bid_qty: 99 },
+    ];
+    // No asks/bids + default sessionCloseMs(+Infinity) → all continuous →
+    // lastContinuous = last t_ms → legacy last-in-bucket.
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET);
+    expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 98, bid_total: 99 }]);
+  });
+
+  it('asks/bids-absent guard keeps totals-only continuous under a close bound', () => {
+    const BUCKET = 180_000;
+    const base = Math.floor(1_700_000_000_000 / BUCKET) * BUCKET;
+    // Two totals-only snapshots in the SAME bucket; close falls between them.
+    const ob = [
+      { t_ms: base, total_ask_qty: 11, total_bid_qty: 21 },
+      { t_ms: base + 60_000, total_ask_qty: 98, total_bid_qty: 99 },
+    ];
+    const sessionCloseMs = base + 30_000;
+    // With the guard, both are "continuous"; the 2nd is > close so the threshold
+    // is the 1st (base) → the 2nd is auction → seenPre skips it → representative is
+    // the 1st. WITHOUT the guard, no snapshot is continuous → lastContinuous=+Infinity
+    // → the 2nd would win. So this asserts the guard's effect.
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
+    expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 11, bid_total: 21 }]);
   });
 });

@@ -27,6 +27,18 @@ export interface TradeSnapshot {
   [field: string]: unknown;
 }
 
+/** A live OB snapshot is a *continuous-trading book* iff it shows depth beyond
+ * level 3 (asks[3..] or bids[3..] qty > 0). The closing auction collapses every
+ * book to exactly 3 levels. If neither asks nor bids rode along (minute-chart
+ * totals-only path) we cannot tell structurally → treat as continuous so the
+ * series falls back to legacy last-in-bucket (no spurious masking). */
+function isContinuousBook(s: ObSnapshot): boolean {
+  const hasDeep = (lv: OrderbookLevel[] | undefined): boolean =>
+    !!lv && lv.slice(3).some((l) => l.qty > 0);
+  if (!s.asks && !s.bids) return true;
+  return hasDeep(s.asks) || hasDeep(s.bids);
+}
+
 /** Bucket label = floor(t_ms / bucketMs) * bucketMs (bucket start). Matches
  * `aggregateCandles.ts` convention so candle/volume/호가 align on the x-axis.
  *
@@ -39,24 +51,35 @@ export function bucketHogaSeries(
   ob: readonly ObSnapshot[],
   trade: readonly TradeSnapshot[],
   bucketMs: number,
-  auctionStartMs: number = Number.POSITIVE_INFINITY,
+  sessionCloseMs: number = Number.POSITIVE_INFINITY,
 ): { quoteRatioPoints: QuoteRatioPoint[]; fillStrengthPoints: FillStrengthPoint[] } {
   if (bucketMs <= 0) throw new Error(`bucketMs must be positive, got ${bucketMs}`);
 
-  // Quote Totals — last *continuous-trading* snapshot in bucket. A bucket that
-  // straddles the closing Auction Window (e.g. a 3m bucket [15:18,15:21)) must
-  // NOT be represented by its 15:20+ auction snapshot. Prefer the last
-  // pre-auction snapshot; fall back to the last overall only when the bucket
-  // has no pre-auction snapshot (fully inside the auction window — left to the
-  // display Auction Mask, ADR-0029). `auctionStartMs` defaults to +Infinity =
-  // "no cutoff" → every snapshot is pre-auction → legacy last-in-bucket.
   const obSorted = [...ob].sort((a, b) => a.t_ms - b.t_ms);
+
+  // Structural closing-auction boundary (2026-06-03 spec). `lastContinuousMs` =
+  // the last continuous-book snapshot at/before the session close; snapshots after
+  // it are the closing auction. The `<= sessionCloseMs` bound is load-bearing — a
+  // post-cross book re-expansion would otherwise push the boundary past the
+  // auction. None found → +Infinity (no cutoff = every snapshot pre-auction =
+  // legacy last-in-bucket).
+  let lastContinuousMs = Number.NEGATIVE_INFINITY;
+  for (const s of obSorted) {
+    if (s.t_ms <= sessionCloseMs && isContinuousBook(s)) lastContinuousMs = s.t_ms;
+  }
+  if (lastContinuousMs === Number.NEGATIVE_INFINITY) {
+    lastContinuousMs = Number.POSITIVE_INFINITY;
+  }
+
+  // Quote Totals — last *continuous-trading* snapshot in bucket. Straddle buckets
+  // prefer the last pre-auction (<= lastContinuousMs) snapshot; fully-auction
+  // buckets fall back to the last auction snapshot (seenPre stays empty).
   const quoteByBucket = new Map<number, QuoteRatioPoint>();
   const seenPre = new Set<number>();
   for (const s of obSorted) {
     const t = Math.floor(s.t_ms / bucketMs) * bucketMs;
     const point = { t, ask_total: s.total_ask_qty, bid_total: s.total_bid_qty };
-    if (s.t_ms < auctionStartMs) {
+    if (s.t_ms <= lastContinuousMs) {
       quoteByBucket.set(t, point); // pre-auction: 마지막이 덮어씀
       seenPre.add(t);
     } else if (!seenPre.has(t)) {
