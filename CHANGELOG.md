@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.3.5.0] - 2026-06-03
+
+### Changed
+- (내부 리팩터, 동작 변화 없음) `/api/live/past-daily-candles`(일봉)와
+  `/api/live/past-investor-net`(투자자 순매수)의 near-verbatim 중복 핸들러를
+  `batched_daily_walkback` 공유 orchestrator로 통합했습니다. 두 핸들러는 fetch
+  클로저 + output key만 제공하는 얇은 adapter가 되고, gap/cache/today/dedupe 조립은
+  한 곳에서 격리 단위 테스트됩니다. KIS 일별 walk-back의 커서 감산은
+  `_prev_day_yyyymmdd` 공유 헬퍼로 추출(ADR-0060).
+
+### Notes
+- ADR-0061: source resolver 4개는 서로 다른 질문(데이터 읽기·inventory 표시·완성도
+  state·존재 여부)에 답하므로 통합 거부 — 통합은 shallow abstraction이 된다는 근거 기록.
+
 ## [0.3.4.0] - 2026-06-03
 
 ### Fixed
