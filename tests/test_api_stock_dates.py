@@ -146,3 +146,33 @@ def test_stock_dates_blocked_at_threshold(app_client: TestClient) -> None:
         assert row["blocked"] is True
     finally:
         captures._fail_streaks.clear()
+
+
+# ADR-0063: open_ms=0 sentinel normalization on the StockDate inventory path.
+
+
+def test_stock_date_open_ms_zero_normalized_and_complete(tmp_path) -> None:
+    """meta.json with open_ms=0 → StockDate.regular_session_open_ms is KRX 09:00 (unix ms),
+    and disk_state remains 'complete' (open=0 is normalized before invariant checks)."""
+    import json
+    from hoga.api.queries import QueryEngine
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+
+    DATE = "20260519"
+    code_dir = tmp_path / "parquet" / DATE / "005930"
+    code_dir.mkdir(parents=True)
+    meta = {
+        "code": "005930", "name": "삼성전자",
+        "regular_session_open_ms": 0, "regular_session_close_ms": 153_000_000,
+        "pages_collected": 1, "total_unique_events": 0,
+        "today_open": 70_000, "today_high": 71_000, "today_low": 69_000, "today_close": 70_500,
+        "parser_version": "0", "collection_complete": True, "is_partial": False,
+    }
+    (code_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    engine = QueryEngine(data_dir=tmp_path)
+    rows = engine.list_stock_dates()
+    assert len(rows) == 1
+    sd = rows[0]
+    assert sd.regular_session_open_ms == hhmmssms_to_unix_ms(DATE, 90_000_000)
+    assert sd.regular_session_open_ms != hhmmssms_to_unix_ms(DATE, 0)
+    assert sd.disk_state == "complete"

@@ -10,6 +10,7 @@ from typing import Any
 import duckdb
 
 from hoga.api.disk_state import DiskState, classify_from_meta
+from hoga.api.invariants import normalize_session_bounds
 from hoga.api.models import StockDate
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.tables import snapshots
@@ -182,7 +183,8 @@ class QueryEngine:
         price/volume aggregates + dir stat() for captured_at and total size.
         """
         meta = json.loads((code_dir / "meta.json").read_text(encoding="utf-8"))
-        _state = classify_from_meta(meta).state
+        _state = classify_from_meta(meta).state          # original meta; warn note discarded (StockDate has no warn field)
+        norm_meta, _ = normalize_session_bounds(meta)    # value-conversion only
         snap_path = code_dir / "snapshots.parquet"
         # snapshots.ts_ms is stored as HHMMSSmmm (per existing tests
         # asserting e.g. ts_ms == 90010435). Convert to Unix ms here.
@@ -191,7 +193,7 @@ class QueryEngine:
             if snap_path.exists()
             else None
         )
-        open_ms = hhmmssms_to_unix_ms(date, meta["regular_session_open_ms"])
+        open_ms = hhmmssms_to_unix_ms(date, norm_meta["regular_session_open_ms"])
         close_ms = hhmmssms_to_unix_ms(date, meta["regular_session_close_ms"])
         if bounds is not None:
             first_ms = hhmmssms_to_unix_ms(date, bounds[0])
