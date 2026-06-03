@@ -33,6 +33,7 @@ import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
 import PaneLegendOverlay from './PaneLegendOverlay';
+import CandleTooltip from './CandleTooltip';
 import type { PaneId } from '../chart/drawing/types';
 import { useDrawingHost } from '../chart/useDrawingHost';
 
@@ -400,6 +401,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
               drawing canvas; the container is pointer-transparent so the
               crosshair + drawing hover still work underneath it. */}
           <PaneLegendOverlay chart={chart} timeframe={timeframe} paneSeries={paneSeries} />
+          <CandleTooltip chart={chart} bundle={bundle} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
           <DrawingPropertyPanel computeAnchor={computeAnchor} />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a
