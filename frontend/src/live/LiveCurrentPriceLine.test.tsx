@@ -84,6 +84,19 @@ describe('LiveCurrentPriceLine', () => {
     ).not.toThrow();
   });
 
+  it('hides the line when candles become empty (model null)', () => {
+    const s = makeSeriesMock();
+    const paneSeries = new Map([['candle', s]]);
+    mockUseQuoteByCode.mockReturnValue(quoteMap({ change_won: 500, change_pct: 0.7 }));
+    const { rerender } = render(
+      <LiveCurrentPriceLine paneSeries={paneSeries as never} bundle={bundleWith([70000])} code="005930" />,
+    );
+    rerender(<LiveCurrentPriceLine paneSeries={paneSeries as never} bundle={bundleWith([])} code="005930" />);
+    expect(s.priceLine.applyOptions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ lineVisible: false, axisLabelVisible: false }),
+    );
+  });
+
   it('removes the price line on unmount', () => {
     const s = makeSeriesMock();
     const paneSeries = new Map([['candle', s]]);

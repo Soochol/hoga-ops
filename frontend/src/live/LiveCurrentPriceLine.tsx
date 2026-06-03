@@ -60,23 +60,26 @@ export default function LiveCurrentPriceLine({ paneSeries, bundle, code }: Props
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [series]);
 
-  // 갱신: 가격/색 변경 시에만. deps 는 원시값 — bundle.candles 가 SSE 틱마다 새
-  // 식별자를 받아도 이 effect 는 재실행 안 됨(메모리: live_bundle_identity_churn).
+  // 갱신: 가격/색 변경 시에만. price/color 를 원시값으로 추출해 deps 로 쓰면
+  // bundle.candles 가 SSE 틱마다 새 식별자를 받아도(메모리: live_bundle_identity_churn)
+  // 이 effect 는 재실행 안 되고, exhaustive-deps 도 suppression 없이 만족한다.
+  const price = model?.price;
+  const color = model?.color;
   useEffect(() => {
     const line = lineRef.current;
     if (!line) return;
-    if (!model) {
+    if (price == null || color == null) {
       line.applyOptions({ lineVisible: false, axisLabelVisible: false });
       return;
     }
     line.applyOptions({
-      price: model.price,
-      color: model.color,
-      axisLabelColor: model.color,
+      price,
+      color,
+      axisLabelColor: color,
       lineVisible: true,
       axisLabelVisible: true,
     });
-  }, [model?.price, model?.color]);
+  }, [price, color]);
 
   return null;
 }
