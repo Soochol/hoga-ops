@@ -64,8 +64,9 @@ export default function CandleTooltip({ chart, bundle, axis, paneSeries, timefra
   }, [bundle.candles, axis]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!enabled) { setState(null); return; }
+    // 토글 OFF: 구독하지 않는다. 직전 effect 의 cleanup 이 이미 state 를 비웠고,
+    // 렌더 가드(`!enabled || !state`)가 표시를 막으므로 여기서 setState 불필요.
+    if (!enabled) return;
     let pending: number | null = null;
     const handler = (param: MouseEventParams) => {
       if (param.point == null || typeof param.time !== 'number') {
