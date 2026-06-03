@@ -7,8 +7,9 @@
 The closing **Auction Window** boundary that gates 호가비·**Quote Totals** bucket
 representative selection is detected from **orderbook structure**, not a
 `session_close − 10min` wall-clock threshold. A snapshot is *continuous-trading*
-iff its book shows depth beyond level 3 (`ask_q4..ask_q10` or `bid_q4..bid_q10`
-> 0); the closing auction collapses every book to exactly 3 levels. The boundary
+iff its book shows depth beyond level 3 (any of `ask_q4..ask_q10` /
+`bid_q4..bid_q10` is nonzero); the closing auction collapses every book to exactly
+3 levels. The boundary
 is `last_continuous_ms` — the last continuous snapshot at/before the session close
 — and any snapshot after it is the closing auction.
 

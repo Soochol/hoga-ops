@@ -164,4 +164,28 @@ describe('bucketHogaSeries', () => {
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
     expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 11, bid_total: 21 }]);
   });
+
+  it('detects the auction from a live-shaped ob payload (asks/bids passthrough contract)', () => {
+    // Pins the live SSE ob payload shape that LiveSnapshotBuffer delivers as sseOb
+    // (poller from_orderbook → model_dump → buffer passthrough): extra kind/phase/
+    // code fields ride along, and asks/bids carry {price, qty} levels. Guards
+    // against a payload-shape refactor silently renaming asks/bids and disabling
+    // the structural cutoff (spec Risk: "라이브 페이로드에 asks/bids 존재를 테스트로 확인").
+    const BUCKET = 180_000;
+    const base = Math.floor(1_700_000_000_000 / BUCKET) * BUCKET;
+    const sessionCloseMs = base + 600_000;
+    const liveOb = (t: number, a: number, b: number, isAuction: boolean) => ({
+      t_ms: t, kind: 'ob', phase: 'regular', code: '005930',
+      total_ask_qty: a, total_bid_qty: b,
+      asks: (isAuction ? aucLvls : contLvls)(a),
+      bids: (isAuction ? aucLvls : contLvls)(b),
+    });
+    const ob = [
+      liveOb(base, 21, 11, false),           // continuous
+      liveOb(base + 60_000, 22, 12, false),  // last continuous → 정화값
+      liveOb(base + 150_000, 98, 99, true),  // auction (3-level) → excluded
+    ];
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
+    expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 22, bid_total: 12 }]);
+  });
 });
