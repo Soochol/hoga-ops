@@ -31,6 +31,7 @@ import {
   planFillStep,
   earliestAllowedMinuteDate,
   todayKstYyyymmdd,
+  PAST_CANDLES_MAX_DAYS,
 } from './liveDateTime';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
@@ -701,7 +702,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
             pointerEvents: 'none',
           }}
         >
-          최대 60일까지 표시됩니다
+          최대 {PAST_CANDLES_MAX_DAYS}일까지 표시됩니다
         </div>
       )}
     </div>

@@ -223,7 +223,7 @@ export function useLiveBundle(
   // Clamp is a minute-path concern only; the daily endpoint has no 250d cap.
   const clampEngaged = isMinute
     && historicalFromDate != null
-    && historicalFromDate < earliestAllowedMinute;
+    && historicalFromDate <= earliestAllowedMinute;
 
   return {
     bundle,
