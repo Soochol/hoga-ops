@@ -24,7 +24,7 @@ import {
   isCalendarTimeframe,
 } from '../state/livePage';
 import type { RangeBundle } from '../api/types';
-import { nextHistoricalFrom } from './liveDateTime';
+import { nextHistoricalFrom, stepChunkDays } from './liveDateTime';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
@@ -391,9 +391,8 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // freely go negative past the leftmost bar (-50.3 etc.), which is the
   // signal we actually need.
   //
-  // Each trigger prepends one timeframe-sized chunk sized by candle target
-  // (see prefetchChunkCandlesFor / prefetchChunkDaysFor wrapper — minute
-  // ~2x of the previous 21-day chunk, D/W/M = 250/120/120 candles per pan).
+  // Each trigger prepends one chunk sized by stepChunkDays(timeframe) — minute
+  // = 5 calendar days (3-trading-day step), D = 350, W/M = 840/3720.
   // The 150ms trailing debounce coalesces rapid wheel / drag events into one
   // fetch; the store's extendHistoricalRange is monotonically decreasing, so
   // repeated negative ranges within one chunk are no-ops.
@@ -451,7 +450,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       // effect keeps only the imperative shell: trigger gate, anchor capture,
       // debounce, store dispatch.
       const cur = useLivePageStore.getState().historicalFromDate;
-      const nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe);
+      const nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, stepChunkDays(timeframe));
       if (timeoutId !== null) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         useLivePageStore.getState().extendHistoricalRange(nextFrom);

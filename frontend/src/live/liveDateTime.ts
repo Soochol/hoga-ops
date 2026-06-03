@@ -129,45 +129,20 @@ export function initialCandleTargetFor(tf: LiveTimeframe): number {
   return 250;
 }
 
-/** Target candle count to prepend per scroll-past-leftmost event.
- *
- * - Minute timeframes: 2× of the previous 21-calendar-day chunk. The
- *   21-day baseline survived weekend / single-holiday traps where shorter
- *   chunks landed on non-trading days and froze the livePage store's
- *   monotonic-decrease guard. At 2× that's ~11,700 1m candles ≈ 42
- *   calendar days, even more weekend-safe.
- * - D: 250 candles (2× of the previous 180-day ≈ ~125-candle chunk) ≈
- *   350 calendar days per pan.
- * - W/M: 120 candles (2× of the previous 60-week / 60-month chunks). */
-export function prefetchChunkCandlesFor(tf: LiveTimeframe): number {
-  if (isMinuteTimeframe(tf)) {
-    const tfMinutes = TIMEFRAME_TO_MS[tf] / 60_000;
-    const candlesPerCalendarDay = (TRADING_DAYS_PER_CALENDAR_DAYS * TRADING_MINUTES_PER_DAY) / tfMinutes;
-    return Math.round(21 * candlesPerCalendarDay * 2);
-  }
-  if (tf === 'D') return 250;
-  return 120; // W, M
-}
-
 /** Calendar-day window enclosing `initialCandleTargetFor(tf)` candles.
  * Wrapper for the seed-from computation in useLiveBundle. */
 export function initialHistoricalDaysFor(tf: LiveTimeframe): number {
   return candleTargetToCalendarDays(initialCandleTargetFor(tf), tf);
 }
 
-/** Calendar-day window enclosing `prefetchChunkCandlesFor(tf)` candles.
- * Wrapper for the lazy-extend trigger in LiveChartRoot. */
-export function prefetchChunkDaysFor(tf: LiveTimeframe): number {
-  return candleTargetToCalendarDays(prefetchChunkCandlesFor(tf), tf);
-}
-
 /** /live infinite-scroll backfill policy (SR-3), extracted pure from
  * LiveChartRoot's subscribeVisibleLogicalRangeChange effect.
  *
  * Given where the axis currently starts (`axisEarliestMs`, real Unix ms — the
- * first segment's session open) and the date already requested
- * (`historicalFromDate`, or null before any extension), returns the YYYYMMDD
- * the next leftward chunk should fetch back to.
+ * first segment's session open), the date already requested
+ * (`historicalFromDate`, or null before any extension), and the caller-injected
+ * `chunkDays` (use `stepChunkDays(tf)`), returns the YYYYMMDD the next leftward
+ * chunk should fetch back to.
  *
  * Base date: prefer `historicalFromDate` when it is strictly earlier than the
  * axis earliest. A chunk that lands on a holiday-only span (e.g. Lunar New
@@ -179,12 +154,12 @@ export function prefetchChunkDaysFor(tf: LiveTimeframe): number {
 export function nextHistoricalFrom(
   axisEarliestMs: number,
   historicalFromDate: string | null,
-  tf: LiveTimeframe,
+  chunkDays: number,
 ): string {
   const axisEarliestDate = realMsToYyyymmdd(axisEarliestMs);
   const baseDate =
     historicalFromDate !== null && historicalFromDate < axisEarliestDate
       ? historicalFromDate
       : axisEarliestDate;
-  return subtractDaysKst(baseDate, prefetchChunkDaysFor(tf));
+  return subtractDaysKst(baseDate, chunkDays);
 }
