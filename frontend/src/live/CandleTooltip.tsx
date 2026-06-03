@@ -44,16 +44,19 @@ const signedPct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
 // OHLC 행: 가격(중립 --fg) + 직전 봉(이전 캔들) 종가 대비 변동률%(상승 빨강/하락 파랑).
 // pct 없으면(가장 이른 봉 / prev.close<=0) % 칸은 비워 세로 정렬을 유지한다.
 function PriceRow({ k, price, pct }: { k: string; price: number; pct: number | null }) {
+  // 색·텍스트 모두 '반올림된' 값 기준 — 표시가 "+0.00%" 인데 색만 빨강/파랑인 불일치 방지
+  // (priceDirClass 는 raw 부호, signedPct 는 toFixed(2) 반올림이라 미세값에서 어긋남).
+  const r = pct != null && Number.isFinite(pct) ? Number(pct.toFixed(2)) : null;
   return (
     <div style={rowStyle}>
       <span style={keyStyle}>{k}</span>
       <span style={{ display: 'inline-flex', gap: 10 }}>
         <span style={{ ...valStyle, minWidth: '7ch', textAlign: 'right' }}>{formatKoreanInt(price)}</span>
         <span
-          className={pct != null && Number.isFinite(pct) ? priceDirClass(pct) : undefined}
+          className={r != null ? priceDirClass(r) : undefined}
           style={{ minWidth: '6ch', textAlign: 'right' }}
         >
-          {pct != null && Number.isFinite(pct) ? signedPct(pct) : ''}
+          {r != null ? signedPct(r) : ''}
         </span>
       </span>
     </div>

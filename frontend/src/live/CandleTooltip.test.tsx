@@ -74,6 +74,21 @@ describe('CandleTooltip', () => {
     expect(tip).toHaveTextContent('200%');      // 거래량비 = 20/10*100
   });
 
+  it('반올림으로 0.00% 가 되는 미세 양수 % 는 중립색(빨강 아님)', () => {
+    // prev.close=30000, close=30001 → +0.0033% → 반올림 +0.00% → 중립이어야(색·텍스트 일치).
+    const { chart, fire } = makeChart();
+    const ps = new Map() as never;
+    const b = { candles: [
+      C(1_000_000, 30000, 30000, 30000, 30000, 10),
+      C(1_060_000, 30600, 30900, 30300, 30001, 20),
+    ] } as never;
+    render(<CandleTooltip chart={chart} bundle={b} axis={axis} paneSeries={ps} timeframe="1m" />);
+    fire({ point: { x: 100, y: 50 }, time: 1060 });
+    const zero = screen.getByText('+0.00%'); // 종 행(유일)
+    expect(zero).toHaveClass('text-fg-dim');
+    expect(zero).not.toHaveClass('text-price-up');
+  });
+
   it('첫 봉(직전 없음) → 직전대비·거래량비 —', () => {
     const { chart, fire } = makeChart();
     renderTip(chart);
