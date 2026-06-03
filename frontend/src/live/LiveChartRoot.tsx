@@ -3,6 +3,7 @@ import {
   createChartEx,
   TickMarkType,
   type IChartApi,
+  type ITimeScaleApi,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
@@ -58,6 +59,26 @@ interface Props {
   bundle: RangeBundle | null;
   clampEngaged: boolean;
   isPastCandlesLoading: boolean;
+}
+
+/** 좌측 팬 prepend 직전의 STABLE 기준 봉을 캡처한다(real ms + 현재 union logical
+ * 인덱스 + 캡처 시점 logical range). 복원 effect가 이 ref로 viewport 위치를
+ * 동기 shift해 사용자가 보던 봉을 같은 위치에 고정한다. 스텝 1(드래그 핸들러)과
+ * 스텝 2..N(settle-effect)이 공유한다. 캡처 불가(vr/lr/refIdx 누락)면 null. */
+function captureViewportShift(
+  ts: ITimeScaleApi<Time>,
+  axis: VirtualAxis,
+): { refMs: number; refIdx: number; fromLogical: number; toLogical: number } | null {
+  const vr = ts.getVisibleRange();
+  const lr = vr ? ts.getVisibleLogicalRange() : null;
+  const refIdx = vr ? ts.timeToIndex(vr.to as Time, true) : null;
+  if (!vr || !lr || refIdx === null) return null;
+  return {
+    refMs: axis.toReal((vr.to as number) * 1000),
+    refIdx,
+    fromLogical: lr.from,
+    toLogical: lr.to,
+  };
 }
 
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
@@ -431,20 +452,9 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       // the 150ms debounce) so `axis`/`ts` are the pre-prepend generation the
       // user is looking at — the effect re-subscribes on [chart, axis, timeframe],
       // so this closure is always current.
-      const vr = ts.getVisibleRange();
-      const lr = vr ? ts.getVisibleLogicalRange() : null;
-      const refIdx = vr ? ts.timeToIndex(vr.to as Time, true) : null;
       // Always overwrite (capture OR clear): a failed capture must not leave a
-      // PREVIOUS pan's anchors live for the next prepend's restore, which would
-      // shift a stale logical window through a fresh refMs reprojection.
-      viewportShiftRef.current = vr && lr && refIdx !== null
-        ? {
-            refMs: axis.toReal((vr.to as number) * 1000),
-            refIdx,
-            fromLogical: lr.from,
-            toLogical: lr.to,
-          }
-        : null;
+      // PREVIOUS pan's anchors live for the next prepend's restore.
+      viewportShiftRef.current = captureViewportShift(ts, axis);
       // SR-3: the holiday-span / monotonic-decrease backfill policy lives in
       // the pure nextHistoricalFrom kernel (liveDateTime, table-tested). This
       // effect keeps only the imperative shell: trigger gate, anchor capture,
