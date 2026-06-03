@@ -78,6 +78,31 @@ class Invariant:
 # Production session_open_ms / close_ms use this encoding —
 # cross-reference hoga/api/disk_state.py:_SESSION_OPEN_MS = HogaMs(90000000)  # 09:00:00.000.
 
+_KRX_REGULAR_OPEN_MS = 90_000_000  # 09:00:00.000 — KRX 정규장 정의상 시가 (ADR-0063)
+
+
+def normalize_session_bounds(meta: dict) -> tuple[dict, list["Violation"]]:
+    """알려진 업스트림 sentinel(``regular_session_open_ms == 0``)을 KRX 표준
+    09:00으로 복원한 사본과, 보정이 일어났을 때의 warn violation을 반환한다.
+
+    원본 ``meta``는 변경하지 않는다(원본 불변). ``open != 0``이면 원본을 그대로
+    반환한다. ``close_ms``는 의도적으로 손대지 않는다(별도 복합 결함, ADR-0063 §Non-Goals).
+
+    규약: ``regular_session_open_ms``를 *값으로 소비*하기 전(분류 또는 unix 변환)에
+    호출한다. 새 변환처를 추가하면 반드시 여기를 통과시킨다.
+    """
+    if meta.get("regular_session_open_ms") != 0:
+        return meta, []
+    patched = {**meta, "regular_session_open_ms": _KRX_REGULAR_OPEN_MS}
+    note = Violation(
+        "meta.open_ms_normalized",
+        Severity.warn,
+        "upstream sent regular_session_open_ms=0; normalized to KRX 09:00",
+        {"original_open_ms": 0, "normalized_open_ms": _KRX_REGULAR_OPEN_MS},
+    )
+    return patched, [note]
+
+
 def _meta_close_after_open(m: Mapping[str, Any]) -> Violation | None:
     # Skip when either bound is absent — legacy/partial meta has nothing
     # to compare. Fire only when both are present and the relation is wrong
@@ -201,8 +226,13 @@ def check(meta: dict) -> list[Violation]:
     """Run every invariant against ``meta``. Returns the violations list
     (empty when ``meta`` is integral). Order matches ``INVARIANTS`` declaration
     order — callers that care about presentation order should not re-sort.
+
+    ADR-0063: ``regular_session_open_ms == 0`` (알려진 hogaplay 업스트림 결함)은
+    invariant 평가 전에 09:00으로 정상화되고, ``meta.open_ms_normalized`` warn이
+    선두에 추가된다(warn은 state를 강등하지 않음).
     """
-    return [v for inv in INVARIANTS if (v := inv.check(meta)) is not None]
+    patched, notes = normalize_session_bounds(meta)
+    return notes + [v for inv in INVARIANTS if (v := inv.check(patched)) is not None]
 
 
 # === Series-level invariants (ADR-0020 §3c) ==============================

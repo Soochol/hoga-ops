@@ -6,6 +6,7 @@ from hoga.api.invariants import (
     Severity,
     Violation,
     check,
+    normalize_session_bounds,
 )
 
 
@@ -270,3 +271,36 @@ def test_stock_date_artifacts_accepts_optional_fields() -> None:
 def test_check_series_returns_empty_when_catalog_empty() -> None:
     from hoga.api.invariants import StockDateArtifacts, check_series
     assert check_series(StockDateArtifacts(meta={})) == []
+
+
+# --- ADR-0063: open_ms=0 분류단계 정상화 ---
+
+def test_open_ms_zero_normalized_to_0900_no_error() -> None:
+    meta = _healthy_meta() | {"regular_session_open_ms": 0}
+    violations = check(meta)
+    ids = {v.invariant_id for v in violations}
+    assert "meta.open_in_kst_range" not in ids       # 09:00으로 정상화되어 통과
+    assert "meta.open_ms_normalized" in ids           # 보정 꼬리표 1개
+    note = next(v for v in violations if v.invariant_id == "meta.open_ms_normalized")
+    assert note.severity is Severity.warn
+    assert note.ctx == {"original_open_ms": 0, "normalized_open_ms": 90_000_000}
+
+def test_open_ms_zero_does_not_touch_close() -> None:
+    # close=0 은 정상화 대상이 아님 — close invariants 그대로 발화
+    meta = _healthy_meta() | {"regular_session_open_ms": 0, "regular_session_close_ms": 0}
+    ids = {v.invariant_id for v in check(meta)}
+    assert "meta.close_after_open" in ids
+    assert "meta.close_in_kst_range" in ids
+
+def test_normalize_session_bounds_does_not_mutate_input() -> None:
+    meta = _healthy_meta() | {"regular_session_open_ms": 0}
+    patched, notes = normalize_session_bounds(meta)
+    assert meta["regular_session_open_ms"] == 0        # 원본 불변
+    assert patched["regular_session_open_ms"] == 90_000_000
+    assert len(notes) == 1
+
+def test_normalize_noop_when_open_nonzero() -> None:
+    meta = _healthy_meta()                              # open=90_000_000
+    patched, notes = normalize_session_bounds(meta)
+    assert patched is meta                              # 사본 안 만듦
+    assert notes == []
