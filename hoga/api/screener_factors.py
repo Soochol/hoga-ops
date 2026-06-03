@@ -75,14 +75,21 @@ def _quarantine(path: Path) -> None:
 
 
 def read_factors(path: Path) -> pl.DataFrame | None:
-    """factors.parquet 로드. 없으면 None. 손상이면 격리 후 None(폴백 유도)."""
+    """factors.parquet 로드. 없으면 None. 손상이면 격리 후 None(폴백 유도).
+
+    읽기 성공 후에도 FACTOR_SCHEMA 필수 컬럼이 빠져 있으면 격리(부분/버그 프로듀서 방어).
+    """
     if not path.exists():
         return None
     try:
-        return pl.read_parquet(path)
+        df = pl.read_parquet(path)
     except Exception:  # noqa: BLE001 — 손상 parquet은 어떤 예외든 폴백으로 강등
         _quarantine(path)
         return None
+    if not (set(FACTOR_SCHEMA) <= set(df.columns)):
+        _quarantine(path)
+        return None
+    return df
 
 
 _PRICE_COLS = ("open", "high", "low", "close")

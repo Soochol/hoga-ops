@@ -38,3 +38,19 @@ def test_read_corrupt_quarantines_and_returns_none(tmp_path: Path):
     # 손상본은 격리되어 원래 경로엔 없어야 함
     assert not p.exists()
     assert list(tmp_path.glob("factors.parquet.corrupt*"))
+
+
+def test_read_wrong_schema_quarantines_and_returns_none(tmp_path: Path):
+    """읽기는 성공하지만 스키마 불일치(seg_start 누락) → 격리 후 None 반환.
+
+    부분/버그 프로듀서가 만든 parquet 이 apply_factors 를 통해 ColumnNotFoundError를
+    일으키지 않도록 read_factors 단계에서 차단 (Fix #3).
+    """
+    p = tmp_path / "factors.parquet"
+    # seg_start 없는 구조적으로 유효한 parquet
+    pl.DataFrame({"code": ["005930"], "factor": [0.02]}).write_parquet(p)
+    result = read_factors(p)
+    assert result is None
+    # 원래 경로엔 없어야 하고, 격리본이 남아야 함
+    assert not p.exists()
+    assert list(tmp_path.glob("factors.parquet.corrupt*"))
