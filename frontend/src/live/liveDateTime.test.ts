@@ -3,7 +3,10 @@ import {
   nextHistoricalFrom,
   realMsToYyyymmdd,
   subtractDaysKst,
-  prefetchChunkDaysFor,
+  earliestAllowedMinuteDate,
+  PAST_CANDLES_MAX_DAYS,
+  stepChunkDays,
+  planFillStep,
 } from './liveDateTime';
 import { unixMsToKSTDate } from '../util/time';
 
@@ -15,46 +18,72 @@ import { unixMsToKSTDate } from '../util/time';
  * rule directly. */
 describe('nextHistoricalFrom', () => {
   // 2026-02-02 09:00 KST in Unix ms — axis earliest for the base cases.
-  const axisEarliestMs = Date.UTC(2026, 1, 2, 0, 0, 0); // 09:00 KST == 00:00 UTC
+  const axisEarliestMs = Date.UTC(2026, 1, 2, 0, 0, 0);
   const axisEarliestDate = realMsToYyyymmdd(axisEarliestMs);
 
-  it('steps back one prefetch chunk from the axis earliest when no fetch is in flight', () => {
-    // historicalFromDate null → base off the axis earliest.
-    const got = nextHistoricalFrom(axisEarliestMs, null, '1m');
-    expect(got).toBe(subtractDaysKst(axisEarliestDate, prefetchChunkDaysFor('1m')));
+  it('steps back chunkDays from the axis earliest when no fetch is in flight', () => {
+    const got = nextHistoricalFrom(axisEarliestMs, null, 5);
+    expect(got).toBe(subtractDaysKst(axisEarliestDate, 5));
   });
 
   it('bases off historicalFromDate when it is already earlier than the axis (holiday-span progress)', () => {
-    // A prior chunk landed on a holiday-only span: the axis earliest did NOT
-    // move, but historicalFromDate already stepped back. The next trigger must
-    // keep stepping back from historicalFromDate, not re-request the axis date.
     const earlier = subtractDaysKst(axisEarliestDate, 40);
-    const got = nextHistoricalFrom(axisEarliestMs, earlier, '1m');
-    expect(got).toBe(subtractDaysKst(earlier, prefetchChunkDaysFor('1m')));
+    const got = nextHistoricalFrom(axisEarliestMs, earlier, 5);
+    expect(got).toBe(subtractDaysKst(earlier, 5));
   });
 
   it('ignores a historicalFromDate that is NOT earlier than the axis earliest', () => {
-    // Defensive: if the store somehow holds a date >= axis earliest, prefer the
-    // axis so we never step forward.
-    const later = subtractDaysKst(axisEarliestDate, -5); // 5 days AFTER axis earliest
-    const got = nextHistoricalFrom(axisEarliestMs, later, '1m');
-    expect(got).toBe(subtractDaysKst(axisEarliestDate, prefetchChunkDaysFor('1m')));
+    const later = subtractDaysKst(axisEarliestDate, -5);
+    const got = nextHistoricalFrom(axisEarliestMs, later, 5);
+    expect(got).toBe(subtractDaysKst(axisEarliestDate, 5));
   });
 
-  it('uses the timeframe-specific chunk size (D differs from 1m)', () => {
-    const minute = nextHistoricalFrom(axisEarliestMs, null, '1m');
-    const daily = nextHistoricalFrom(axisEarliestMs, null, 'D');
-    expect(minute).toBe(subtractDaysKst(axisEarliestDate, prefetchChunkDaysFor('1m')));
-    expect(daily).toBe(subtractDaysKst(axisEarliestDate, prefetchChunkDaysFor('D')));
-    // The two chunk sizes differ, so the resulting dates differ.
-    expect(prefetchChunkDaysFor('1m')).not.toBe(prefetchChunkDaysFor('D'));
-    expect(minute).not.toBe(daily);
+  it('honors the injected chunkDays (different chunkDays → different result)', () => {
+    const small = nextHistoricalFrom(axisEarliestMs, null, 5);
+    const large = nextHistoricalFrom(axisEarliestMs, null, 350);
+    expect(small).toBe(subtractDaysKst(axisEarliestDate, 5));
+    expect(large).toBe(subtractDaysKst(axisEarliestDate, 350));
+    expect(small).not.toBe(large);
   });
 
   it('is monotonic: feeding its own output back always steps further back', () => {
-    const first = nextHistoricalFrom(axisEarliestMs, null, '1m');
-    const second = nextHistoricalFrom(axisEarliestMs, first, '1m');
+    const first = nextHistoricalFrom(axisEarliestMs, null, 5);
+    const second = nextHistoricalFrom(axisEarliestMs, first, 5);
     expect(second < first).toBe(true);
+  });
+});
+
+describe('stepChunkDays', () => {
+  it('minute timeframes are a fixed 3-trading-day step (≈5 calendar days)', () => {
+    // 3 trading days / (5/7 trading-days-per-calendar-day) = ceil(4.2) = 5.
+    for (const tf of ['1m', '3m', '5m', '10m', '15m', '30m'] as const) {
+      expect(stepChunkDays(tf)).toBe(5);
+    }
+  });
+
+  it('D keeps the prior one-shot 350-calendar-day window (≈250 daily candles)', () => {
+    expect(stepChunkDays('D')).toBe(350);
+  });
+
+  it('W/M keep the prior one-shot windows (120 candles)', () => {
+    expect(stepChunkDays('W')).toBe(840); // 120 × 7
+    expect(stepChunkDays('M')).toBe(3720); // 120 × 31
+  });
+});
+
+describe('earliestAllowedMinuteDate', () => {
+  it('is today minus (PAST_CANDLES_MAX_DAYS - 1) calendar days', () => {
+    expect(PAST_CANDLES_MAX_DAYS).toBe(250);
+    expect(earliestAllowedMinuteDate('20260527')).toBe(
+      subtractDaysKst('20260527', PAST_CANDLES_MAX_DAYS - 1),
+    );
+  });
+
+  it('uses 249 (inclusive 250-day window), not 250', () => {
+    // 250-day window inclusive of today → floor is today-249.
+    expect(earliestAllowedMinuteDate('20260527')).not.toBe(
+      subtractDaysKst('20260527', 250),
+    );
   });
 });
 
@@ -80,5 +109,44 @@ describe('realMsToYyyymmdd', () => {
       const ms = base + h * 3_600_000;
       expect(realMsToYyyymmdd(ms)).toBe(unixMsToKSTDate(ms));
     }
+  });
+});
+
+describe('planFillStep', () => {
+  const axisEarliestMs = Date.UTC(2026, 4, 26, 0, 0, 0); // '20260526' 09:00 KST
+  const base = {
+    historicalFromDate: '20260521' as string | null,
+    axisEarliestMs,
+    earliestAllowedDate: '20251010', // far floor → not clamped
+    stepCalendarDays: 5,
+    stepCount: 1,
+    maxSteps: 60,
+  };
+
+  it('stops when the viewport is full (visibleFrom >= 0)', () => {
+    expect(planFillStep({ ...base, visibleFrom: 3 })).toEqual({ action: 'stop' });
+  });
+
+  it('stops when the viewport range is unavailable (visibleFrom null)', () => {
+    expect(planFillStep({ ...base, visibleFrom: null })).toEqual({ action: 'stop' });
+  });
+
+  it('fetches the next step back when whitespace remains', () => {
+    expect(planFillStep({ ...base, visibleFrom: -50 })).toEqual({
+      action: 'fetch',
+      nextFrom: subtractDaysKst('20260521', 5), // '20260516'
+    });
+  });
+
+  it('stops at the 250-day clamp floor (already at/below earliestAllowed)', () => {
+    expect(
+      planFillStep({ ...base, visibleFrom: -50, historicalFromDate: '20251010' }),
+    ).toEqual({ action: 'stop' });
+  });
+
+  it('stops at the backstop (stepCount reached maxSteps) to bound the loop', () => {
+    expect(
+      planFillStep({ ...base, visibleFrom: -50, stepCount: 60 }),
+    ).toEqual({ action: 'stop' });
   });
 });

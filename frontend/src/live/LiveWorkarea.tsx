@@ -12,6 +12,8 @@ interface Props {
   bundle: RangeBundle | null;
   clampEngaged: boolean;
   isPastCandlesLoading: boolean;
+  /** useLiveBundle.isExtending — 진행 루프 settle-effect 구동용. LiveChartRoot로 전달. */
+  isExtending: boolean;
   /** Owned by LivePage's single useLiveSeries call. Threaded to LiveSidebar
    * so the LATEST mode reads the same SSE buffer that feeds useLiveBundle. */
   live: LiveSeriesData;
@@ -22,6 +24,7 @@ export function LiveWorkarea({
   bundle,
   clampEngaged,
   isPastCandlesLoading,
+  isExtending,
   live,
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
@@ -57,6 +60,7 @@ export function LiveWorkarea({
           bundle={bundle}
           clampEngaged={clampEngaged}
           isPastCandlesLoading={isPastCandlesLoading}
+          isExtending={isExtending}
         />
       </div>
       <div

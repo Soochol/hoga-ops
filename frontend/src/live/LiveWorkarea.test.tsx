@@ -17,6 +17,7 @@ function renderWorkarea(activeCode: string | null) {
       bundle={null}
       clampEngaged={false}
       isPastCandlesLoading={false}
+      isExtending={false}
       live={LIVE}
     />,
   );
