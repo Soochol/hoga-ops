@@ -4,6 +4,8 @@ import {
   realMsToYyyymmdd,
   subtractDaysKst,
   prefetchChunkDaysFor,
+  earliestAllowedMinuteDate,
+  PAST_CANDLES_MAX_DAYS,
 } from './liveDateTime';
 import { unixMsToKSTDate } from '../util/time';
 
@@ -55,6 +57,22 @@ describe('nextHistoricalFrom', () => {
     const first = nextHistoricalFrom(axisEarliestMs, null, '1m');
     const second = nextHistoricalFrom(axisEarliestMs, first, '1m');
     expect(second < first).toBe(true);
+  });
+});
+
+describe('earliestAllowedMinuteDate', () => {
+  it('is today minus (PAST_CANDLES_MAX_DAYS - 1) calendar days', () => {
+    expect(PAST_CANDLES_MAX_DAYS).toBe(250);
+    expect(earliestAllowedMinuteDate('20260527')).toBe(
+      subtractDaysKst('20260527', PAST_CANDLES_MAX_DAYS - 1),
+    );
+  });
+
+  it('uses 249 (inclusive 250-day window), not 250', () => {
+    // 250-day window inclusive of today → floor is today-249.
+    expect(earliestAllowedMinuteDate('20260527')).not.toBe(
+      subtractDaysKst('20260527', 250),
+    );
   });
 });
 

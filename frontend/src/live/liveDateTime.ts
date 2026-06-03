@@ -15,6 +15,16 @@ import { unixMsToKSTDate } from '../util/time';
 const TRADING_MINUTES_PER_DAY = 390;        // KRX 09:00–15:30 = 6.5 h
 const TRADING_DAYS_PER_CALENDAR_DAYS = 5 / 7;
 
+/** 분봉 scroll-back 깊이 상한 (캘린더일). payload 보호 + lwc setData 비용 한계.
+ * useLiveBundle의 클램프와 LiveChartRoot 진행 루프의 종료 판정이 공유한다. */
+export const PAST_CANDLES_MAX_DAYS = 250;
+
+/** 250일 클램프 하한 날짜(YYYYMMDD KST). 분봉 fetch는 이 날짜보다 과거로 못 간다.
+ * 250일 윈도가 오늘을 포함하므로 오늘 − 249. */
+export function earliestAllowedMinuteDate(todayKstYyyymmdd: string): string {
+  return subtractDaysKst(todayKstYyyymmdd, PAST_CANDLES_MAX_DAYS - 1);
+}
+
 /** Today's YYYYMMDD in KST. */
 export function todayKstYyyymmdd(): string {
   return realMsToYyyymmdd(Date.now());
