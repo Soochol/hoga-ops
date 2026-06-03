@@ -36,4 +36,16 @@ describe('useScreenerRowsLive', () => {
     const { result } = renderHook(() => useScreenerRowsLive([]));
     expect(result.current).toEqual([]);
   });
+
+  it('라이브 quote 가 change_pct=null(장전/파싱실패)이면 EOD 로 폴백하지 않고 null 유지', () => {
+    // 백엔드: 장전엔 모든 코드 change_pct=null + price 유효(api.py), 장중 파싱실패도 동일.
+    // quote 가 왔으므로(미폴링 아님) EOD 등락률로 폴백하면 안 된다 — null 유지 → '—'(관심종목 동일).
+    vi.spyOn(liveQuotes, 'useQuoteByCode').mockReturnValue(new Map([
+      ['005930', { code: '005930', price: 72000, change_pct: null, change_won: null }],
+    ]));
+    const { result } = renderHook(() => useScreenerRowsLive(ROWS));
+    expect(result.current[0]).toMatchObject({
+      code: '005930', price: 72000, change_pct: null, change_won: null,
+    });
+  });
 });

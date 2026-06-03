@@ -22,12 +22,13 @@ export function useScreenerRowsLive(rows: ScreenerRow[]): ScreenerRowLive[] {
     () =>
       rows.map((r) => {
         const q = quoteByCode.get(r.code);
-        return {
-          ...r,
-          price: q?.price ?? r.price,
-          change_pct: q?.change_pct ?? r.change_pct,
-          change_won: q?.change_won ?? null,
-        };
+        // quote 존재 여부로 분기(값의 null 여부가 아니라). 라이브가 도착하면 현재가·
+        // 등락률·등락액을 그대로 쓴다 — 장전·파싱실패로 change_pct=null 이면 그 null 을
+        // 유지해 '—' 로 표시(관심종목과 동일 기준). quote 미도착 행만 EOD 로 폴백한다.
+        // `?? r.change_pct` 로 두면 장전에 EOD 등락률이 떠 관심종목과 어긋난다.
+        return q
+          ? { ...r, price: q.price, change_pct: q.change_pct, change_won: q.change_won }
+          : { ...r, change_won: null };
       }),
     [rows, quoteByCode],
   );

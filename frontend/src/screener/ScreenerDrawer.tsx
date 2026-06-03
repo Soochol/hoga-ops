@@ -67,7 +67,10 @@ export function ScreenerDrawer() {
 
   // 결과 전 종목에 Live Quote 오버레이(ADR-0056 개정 2026-06-03 — 상위 30 cap 제거).
   // 풀페이지 ResultTable 과 공유하는 단일 머지 seam(codes 추출·폴링·머지 캡슐화).
-  const liveRows = useScreenerRowsLive(lastScan?.rows ?? []);
+  // scanRows 메모화로 lastScan null 동안 매 렌더 새 [] 가 훅 내부 codes 메모를
+  // 무효화하지 않게 한다(풀페이지 Screener.tsx 와 대칭).
+  const scanRows = useMemo(() => lastScan?.rows ?? [], [lastScan]);
+  const liveRows = useScreenerRowsLive(scanRows);
 
   return (
     <div
