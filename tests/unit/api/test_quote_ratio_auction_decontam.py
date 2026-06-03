@@ -81,3 +81,50 @@ def test_straddle_bucket_uses_last_pre_auction_snapshot(tmp_path: Path) -> None:
     )
     assert len(qr.points) == 1
     assert (qr.points[0].bid_total, qr.points[0].ask_total) == (12, 22)
+
+
+def test_fully_auction_bucket_falls_back_to_last(tmp_path: Path) -> None:
+    # 3m bucket [15:21,15:24): 모두 동시호가 → 마지막(15:22) 스냅샷 fallback.
+    snaps = [
+        (_hms_unix(15, 21, 0), 31, 41),
+        (_hms_unix(15, 22, 0), 32, 42),    # last overall → wins
+    ]
+    engine = _engine(tmp_path, snaps, CLOSE_FULL)
+    qr = build_quote_ratio_slice(
+        engine, code=CODE, date=DATE, bucket_ms=BUCKET_3M,
+        source="kis_live", session_close_ms=CLOSE_FULL,
+    )
+    assert len(qr.points) == 1
+    assert (qr.points[0].bid_total, qr.points[0].ask_total) == (32, 42)
+
+
+def test_clean_timeframe_unchanged_5m(tmp_path: Path) -> None:
+    # 5m: 15:20 은 버킷 경계 → [15:15,15:20) 는 전부 pre-auction. 마지막=15:19.
+    snaps = [
+        (_hms_unix(15, 15, 0), 51, 61),
+        (_hms_unix(15, 18, 0), 52, 62),
+        (_hms_unix(15, 19, 0), 53, 63),    # last in [15:15,15:20)
+    ]
+    engine = _engine(tmp_path, snaps, CLOSE_FULL)
+    qr = build_quote_ratio_slice(
+        engine, code=CODE, date=DATE, bucket_ms=BUCKET_5M,
+        source="kis_live", session_close_ms=CLOSE_FULL,
+    )
+    assert len(qr.points) == 1
+    assert (qr.points[0].bid_total, qr.points[0].ask_total) == (53, 63)
+
+
+def test_half_day_anchors_auction_start_at_close_minus_10min(tmp_path: Path) -> None:
+    # Half-day 12:30 마감 → auction_start = 12:20. 3m bucket [12:18,12:21).
+    snaps = [
+        (_hms_unix(12, 18, 0), 71, 81),
+        (_hms_unix(12, 19, 0), 72, 82),    # last pre-auction (< 12:20) → wins
+        (_hms_unix(12, 20, 30), 99, 98),   # auction → excluded
+    ]
+    engine = _engine(tmp_path, snaps, CLOSE_HALF)
+    qr = build_quote_ratio_slice(
+        engine, code=CODE, date=DATE, bucket_ms=BUCKET_3M,
+        source="kis_live", session_close_ms=CLOSE_HALF,
+    )
+    assert len(qr.points) == 1
+    assert (qr.points[0].bid_total, qr.points[0].ask_total) == (72, 82)
