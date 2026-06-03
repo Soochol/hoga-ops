@@ -21,11 +21,12 @@ export function filterSymbols(hits: SymbolHit[], q: string, limit: number): Symb
   if (/^\d+$/.test(norm)) {
     return hits.filter((h) => h.code.startsWith(norm)).slice(0, limit);
   }
-  // Name match: prefix-matches first, then substring matches; secondary sort by name length.
-  const matches = hits.filter((h) => h.name.includes(norm));
+  // Name match (case-insensitive): prefix-matches first, then substring matches; secondary sort by name length.
+  const lower = norm.toLowerCase();
+  const matches = hits.filter((h) => h.name.toLowerCase().includes(lower));
   matches.sort((a, b) => {
-    const ap = a.name.startsWith(norm) ? 0 : 1;
-    const bp = b.name.startsWith(norm) ? 0 : 1;
+    const ap = a.name.toLowerCase().startsWith(lower) ? 0 : 1;
+    const bp = b.name.toLowerCase().startsWith(lower) ? 0 : 1;
     if (ap !== bp) return ap - bp;
     return a.name.length - b.name.length;
   });
