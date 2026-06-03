@@ -1,0 +1,51 @@
+from __future__ import annotations
+
+import asyncio
+import datetime as dt
+from pathlib import Path
+
+import polars as pl
+
+from hoga.api.screener_backfill import ReconcileReport, reconcile_raw
+from hoga.api.screener_store import DailyBar
+
+_S = {"code": pl.Utf8, "date": pl.Date, "open": pl.Float64, "high": pl.Float64,
+      "low": pl.Float64, "close": pl.Float64, "volume": pl.Int64}
+
+
+def _row(code, d, c):
+    return DailyBar(code=code, date=d, open=c, high=c, low=c, close=c, volume=10)
+
+
+def _seed(sdir: Path, rows):
+    sdir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame([vars(r) for r in rows], schema=_S).write_parquet(sdir / "daily_unadjusted.parquet")
+
+
+def _fetch(raw_by_code):
+    async def f(code, frm, to):
+        return raw_by_code.get(code, [])
+    return f
+
+
+def test_value_match_and_gap_fill(tmp_path: Path):
+    sdir = tmp_path / "screener"
+    _seed(sdir, [_row("000660", dt.date(2015, 1, 2), 30000.0)])
+    fetch = _fetch({"000660": [_row("000660", dt.date(2014, 1, 2), 25000.0),
+                               _row("000660", dt.date(2015, 1, 2), 30000.0)]})
+    rep = asyncio.run(reconcile_raw(sdir, fetch_raw=fetch, codes=["000660"]))
+    assert isinstance(rep, ReconcileReport)
+    assert rep.value_mismatches == 0
+    assert rep.filled_rows == 1
+    merged = pl.read_parquet(sdir / "daily_unadjusted.parquet").sort("date")
+    assert merged["date"].to_list() == [dt.date(2014, 1, 2), dt.date(2015, 1, 2)]
+
+
+def test_value_mismatch_recorded_not_overwritten(tmp_path: Path):
+    sdir = tmp_path / "screener"
+    _seed(sdir, [_row("005930", dt.date(2024, 1, 2), 70000.0)])
+    fetch = _fetch({"005930": [_row("005930", dt.date(2024, 1, 2), 71000.0)]})
+    rep = asyncio.run(reconcile_raw(sdir, fetch_raw=fetch, codes=["005930"]))
+    assert rep.value_mismatches == 1
+    assert rep.filled_rows == 0
+    assert pl.read_parquet(sdir / "daily_unadjusted.parquet")["close"][0] == 70000.0
