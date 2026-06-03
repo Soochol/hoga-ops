@@ -214,6 +214,18 @@ def _daily_anchor_t_ms(date_yyyymmdd: str) -> int:
     return int(dt.timestamp() * 1000)
 
 
+def _prev_day_yyyymmdd(yyyymmdd: str) -> str:
+    """YYYYMMDD of the calendar day before *yyyymmdd*. The one piece the two
+    daily KIS walk-backs (``fetch_past_daily_candles`` / ``fetch_investor_net``)
+    genuinely share — both step the cursor to (page oldest − 1 day). Their loop
+    skeletons otherwise differ (cursor param slot, anchor semantics, termination)
+    enough that a unified driver would be leaky — see ADR-0060."""
+    d = datetime(
+        int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]), tzinfo=KIS_KST,
+    )
+    return (d - timedelta(days=1)).strftime("%Y%m%d")
+
+
 @dataclass(frozen=True)
 class KisCredentials:
     app_key: str
@@ -766,11 +778,7 @@ class KisClient:
                 # No new valid candle to anchor cursor walk-back; rely on the
                 # next iteration's empty/no-progress check to terminate.
                 continue
-            earliest_dt = datetime(
-                int(page_earliest[:4]), int(page_earliest[4:6]),
-                int(page_earliest[6:8]), tzinfo=KIS_KST,
-            )
-            cursor_to = (earliest_dt - timedelta(days=1)).strftime("%Y%m%d")
+            cursor_to = _prev_day_yyyymmdd(page_earliest)
 
         all_candles.sort(key=lambda c: c.t_ms)
         return DailyCandleFetchResult(candles=all_candles, violations=violations)
@@ -881,11 +889,7 @@ class KisClient:
                 break
             if page_oldest is None or page_oldest <= from_yyyymmdd:
                 break
-            oldest_dt = datetime(
-                int(page_oldest[:4]), int(page_oldest[4:6]), int(page_oldest[6:8]),
-                tzinfo=KIS_KST,
-            )
-            cursor_to = (oldest_dt - timedelta(days=1)).strftime("%Y%m%d")
+            cursor_to = _prev_day_yyyymmdd(page_oldest)
 
         points.sort(key=lambda p: p.t_ms)
         return InvestorNetFetchResult(points=points, violations=violations)
