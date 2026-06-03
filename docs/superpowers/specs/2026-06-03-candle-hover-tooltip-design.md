@@ -42,6 +42,13 @@ brainstorming 대화에서 비주얼 컴패니언 목업으로 확정한 결정�
 6. **라벨 = "직전대비"** (통일). 분봉에선 "전일대비"가 부정확하므로 "직전대비"로
    통일한다. 일/주/월봉은 직전 봉 = 전일/전주/전월이라 의미가 그대로 맞는다.
    거래량 비율 행 라벨은 "거래량비".
+7. **설정 토글 (기본 ON).** `CHART_TOGGLES` 레지스트리(`frontend/src/state/chartPrefs.ts`)
+   에 엔트리 하나 추가 — `candleTooltipEnabled`, default `true`, category `chart`.
+   레지스트리가 단일 진실원천이라 `ChartToggleKey`·`ChartViewPrefs` 필드·기본값·
+   persist(`chartPrefsPersistence.ts`의 `mergePrefs`)·`LiveSettingsModal` "차트" 행이
+   모두 자동 파생된다(`auctionWindowMask`·`ratioOutlierFilterEnabled` 선례). 컴포넌트는
+   `useActivePrefs((p) => p.candleTooltipEnabled)`로 게이팅 — false면 크로스헤어 구독도
+   걸지 않고 `null` 반환.
 
 ### 알려진 거동 (의도된 동작, 버그 아님)
 
@@ -129,6 +136,8 @@ export function buildCandleTooltip(
 2. **오버레이 컴포넌트** `CandleTooltip.tsx`
    - `LiveChartRoot`의 오버레이 그룹에 마운트(`PaneLegendOverlay`·`DrawingOverlay`
      형제). `pointer-events:none`.
+   - **설정 게이팅**: `useActivePrefs((p) => p.candleTooltipEnabled)`가 false면 즉시
+     `null` 반환 — 크로스헤어 구독·맵 구성도 하지 않는다(결정 7).
    - **인덱스 해석(컴포넌트 책임)**: 그려진 캔들 배열 =
      `bundle.candles.filter(c => axis.contains(c.ts_ms))` (projectCandle와 동일
      필터). 이 배열로부터 `가상시각 → index` 맵을 1회 구성한다 — **키는
@@ -172,14 +181,16 @@ export function buildCandleTooltip(
 - **직전대비 행만** `priceDirClass`(`frontend/src/ui/priceDir.ts`)로 색칠.
   금액·% 모두 같은 색, 부호는 색으로 전달. % 표기 = `Math.abs(pct).toFixed(2)+'%'`
   (`QuoteChange.tsx`/`ChangeCell.tsx` 관례).
-- 거래량 = `formatKoreanInt`(`frontend/src/util/koreanNumber.ts`). 거래량비는
-  정수% (`Math.round`). 기본 중립색(>100% 강조는 plan 이월).
+- 거래량 = `formatKoreanInt`(`frontend/src/util/koreanNumber.ts`). 직전봉
+  거래량비 = 정수%(`Math.round`), **상한 없음**(`1,247%`도 그대로), **중립색**
+  (방향 델타가 아니므로 빨강/파랑 미적용). `prevVolume==0` → `—`.
 - 폰트 = `--font-mono`, `tabular-nums`. 박스 = `--bg-card`/`--bg-subtle` +
   `--border` + `--radius-md`, `--shadow`(레전드 `boxStyle` 선례).
 
 ## 데이터 흐름
 
 ```
+candleTooltipEnabled == false ?  → 컴포넌트 null (구독·맵 없음)
 crosshair move
   → param.point == null ?        → 숨김
   → paneIdAtY != 'candle' ?      → 숨김
@@ -212,6 +223,17 @@ crosshair move
 - **캔들 외 페인**: 숨김(`paneIdAtY`).
 - **차트 teardown**: 기존 오버레이들과 동일하게 try/catch로 graceful.
 
+### 거동 (의도된 동작)
+
+- **라이브 형성 중인 봉**(오늘 마지막 분봉, WS 갱신): 호버 시 OHLC·거래량·봉대비가
+  실시간으로 갱신된다(직전 봉은 직전 완성봉). 매 크로스헤어 이동마다 현재 번들로
+  재계산하므로 자동.
+- **종가 동시호가 muted 캔들**(15:20–15:30, `projectCandle`이 회색 처리): 데이터는
+  그대로이므로 툴팁 정상 표시(muting은 시각 처리일 뿐).
+- **크로스헤어 구독**: cursor store(`cursorMs`)만으론 index·픽셀·pane을 못 얻으므로
+  `CandleTooltip`이 독립 구독(rAF coalesce). LiveChartRoot·PaneLegendOverlay와
+  합쳐 3개 구독이나 각자 가볍다.
+
 ## 테스트
 
 - **모델 테이블 테스트** `candleTooltipModel.test.ts` (순수, 차트 불필요):
@@ -222,7 +244,8 @@ crosshair move
 - **컴포넌트 테스트** `CandleTooltip.test.tsx`:
   - `param.point==null` → 숨김, 캔들 페인 → 표시 / 다른 페인 → 숨김,
   - 가상시각 맵 인덱스 해석(정확 조회, whitespace → 숨김),
-  - 가장자리 flip, 모델 값 렌더(라벨·색 클래스), mouse-leave 후 잔상 없음.
+  - 가장자리 flip, 모델 값 렌더(라벨·색 클래스), mouse-leave 후 잔상 없음,
+  - `candleTooltipEnabled=false` → 구독/렌더 없음(툴팁 안 뜸), 토글 ON → 복귀.
 - 게이트: `npx vitest run` + `npx tsc -b` (eslint는 변경 파일 한정 0 error).
 
 ## plan 이월 (구현 단계에서 확정)
@@ -232,5 +255,5 @@ crosshair move
 - LiveSidebar의 cursor→candle 해석과 동일 봉을 가리키는지 교차 확인.
 - `paneIdAtY` 호출에 필요한 `paneSeries`/`chart` 배선
   (`chartCoordinates.ts:143-161`).
-- 라벨 최종 문구("직전대비"/"거래량비") 및 거래량비 >100% 강조색 여부.
+- 라벨 최종 문구("직전대비"/"거래량비") 시안 확정 (거래량비 색은 중립으로 결정).
 - 툴팁 z-index/좌상단 레전드 영역 회피 클램프.
