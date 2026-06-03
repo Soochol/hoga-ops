@@ -63,3 +63,28 @@ export function buildCandleTooltip(
     volumeRatioPct: prev && prevVol > 0 ? (volume / prevVol) * 100 : null,
   };
 }
+
+export interface TooltipPlacement {
+  left: number;
+  top: number;
+}
+
+/** 커서 기준 우하단 배치, 가장자리에서 flip, 컨테이너 안으로 clamp.
+ *  px/py·containerW/H 는 chart.chartElement() 기준 좌표(= param.point 와 동일 공간). */
+export function placeTooltip(
+  px: number,
+  py: number,
+  containerW: number,
+  containerH: number,
+  tipW: number,
+  tipH: number,
+  margin = 12,
+): TooltipPlacement {
+  let left = px + 14;
+  let top = py + 12;
+  if (left + tipW + margin > containerW) left = px - 14 - tipW; // 우측 flip
+  if (top + tipH + margin > containerH) top = py - 12 - tipH;   // 하단 flip
+  left = Math.max(margin, Math.min(left, Math.max(margin, containerW - tipW - margin)));
+  top = Math.max(margin, Math.min(top, Math.max(margin, containerH - tipH - margin)));
+  return { left, top };
+}

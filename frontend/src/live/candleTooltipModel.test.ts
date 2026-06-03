@@ -65,3 +65,28 @@ describe('buildCandleTooltip', () => {
     expect(buildCandleTooltip(split, 0, '1m')!.volume).toBe(7);
   });
 });
+
+import { placeTooltip } from './candleTooltipModel';
+
+describe('placeTooltip', () => {
+  // 컨테이너 800×400, 툴팁 160×130, margin 12
+  it('여유 있으면 커서 우하단(+14,+12)', () => {
+    expect(placeTooltip(100, 50, 800, 400, 160, 130)).toEqual({ left: 114, top: 62 });
+  });
+
+  it('오른쪽 넘치면 커서 왼쪽으로 flip', () => {
+    const p = placeTooltip(760, 50, 800, 400, 160, 130);
+    expect(p.left).toBe(760 - 14 - 160); // 586
+  });
+
+  it('아래 넘치면 커서 위로 flip', () => {
+    const p = placeTooltip(100, 380, 800, 400, 160, 130);
+    expect(p.top).toBe(380 - 12 - 130); // 238
+  });
+
+  it('항상 컨테이너 안으로 clamp', () => {
+    const p = placeTooltip(5, 5, 800, 400, 160, 130);
+    expect(p.left).toBeGreaterThanOrEqual(12);
+    expect(p.top).toBeGreaterThanOrEqual(12);
+  });
+});
