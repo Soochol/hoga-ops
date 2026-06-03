@@ -1,8 +1,12 @@
 import type { ScreenerRow } from '../api/screener';
+import type { LiveQuote } from '../api/liveQuotes';
 import { ChangeCell } from './ChangeCell';
 
 interface Props {
   rows: ScreenerRow[];
+  /** code→Live Quote 오버레이(ADR-0056). 현재가·등락률을 라이브로 덮는다. 빈
+   *  Map(무데이터/장전/무결과)이면 EOD 코퍼스 값(r.price/r.change_pct) 그대로. */
+  quoteByCode: Map<string, LiveQuote>;
   onActivate: (code: string) => void;
   onWatch: (code: string) => void;
   onCapture: (code: string) => void;
@@ -13,7 +17,7 @@ const COLS = 'grid-cols-[3.5rem_1fr_4rem_6rem_5rem_6rem_3.2rem]';
  *  unit (거래대금 하한 is entered in 억). */
 const toEok = (won: number) => Math.round(won / 1e8).toLocaleString('ko-KR');
 
-export function ResultTable({ rows, onActivate, onWatch, onCapture }: Props) {
+export function ResultTable({ rows, quoteByCode, onActivate, onWatch, onCapture }: Props) {
   return (
     <div className="bg-bg-card border rounded-lg flex flex-col min-h-0 overflow-hidden">
       <div className={`grid ${COLS} items-center gap-2 px-sm py-1 border-b text-xs font-semibold uppercase tracking-[0.06em] text-fg-dimmer`}>
@@ -25,6 +29,11 @@ export function ResultTable({ rows, onActivate, onWatch, onCapture }: Props) {
         {rows.length === 0 ? (
           <div className="p-md text-fg-dim text-sm">조건에 맞는 종목이 없습니다.</div>
         ) : rows.map((r) => {
+          // 라이브 오버레이: 있으면 현재가·등락률을 덮고, 없으면 EOD 코퍼스 값 유지.
+          // 거래대금은 intstock-multprice 에 없어 항상 EOD(정렬 기준도 EOD 불변).
+          const q = quoteByCode.get(r.code);
+          const price = q?.price ?? r.price;
+          const pct = q?.change_pct ?? r.change_pct;
           const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(r.code); }
           };
@@ -35,8 +44,8 @@ export function ResultTable({ rows, onActivate, onWatch, onCapture }: Props) {
               <span className="font-mono tabular-nums text-fg-dim">{r.code}</span>
               <span className="truncate">{r.name}</span>
               <span className="font-mono text-xs text-fg-dim">{r.market}</span>
-              <span className="font-mono tabular-nums text-right">{r.price.toLocaleString('ko-KR')}</span>
-              <span className="font-mono tabular-nums text-right"><ChangeCell pct={r.change_pct} /></span>
+              <span className="font-mono tabular-nums text-right">{price.toLocaleString('ko-KR')}</span>
+              <span className="font-mono tabular-nums text-right"><ChangeCell pct={pct} /></span>
               <span className="font-mono tabular-nums text-right text-fg-dim">{toEok(r.trade_value_won)}</span>
               <span className="flex items-center justify-end gap-2">
                 <button type="button" aria-label="관심종목 추가" onClick={(e) => { e.stopPropagation(); onWatch(r.code); }}

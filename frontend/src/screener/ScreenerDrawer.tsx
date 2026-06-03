@@ -65,8 +65,10 @@ export function ScreenerDrawer() {
     );
   };
 
+  // 결과 전 종목을 라이브 시세로 오버레이(ADR-0056 개정 2026-06-03 — 상위 30 cap 제거).
+  // 백엔드 fetch_multi_price 가 30개씩 청크 동시호출하므로 코드 수 제한 없음.
   const liveCodes = useMemo(
-    () => (lastScan?.rows ?? []).slice(0, 30).map((r) => r.code),
+    () => (lastScan?.rows ?? []).map((r) => r.code),
     [lastScan],
   );
   const quoteByCode = useQuoteByCode(liveCodes);
