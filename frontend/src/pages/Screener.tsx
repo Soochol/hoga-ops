@@ -11,7 +11,7 @@ import { SavedScreenerList } from '../screener/SavedScreenerList';
 import { ResultTable } from '../screener/ResultTable';
 import { StalenessChip } from '../screener/StalenessChip';
 import { useSavedScreenerEditor } from '../screener/useSavedScreenerEditor';
-import { useQuoteByCode } from '../api/liveQuotes';
+import { useScreenerRowsLive } from '../screener/useScreenerRowsLive';
 import { addToWatchlist } from '../api/watchlist';
 
 export function Screener() {
@@ -26,12 +26,11 @@ export function Screener() {
   const watch = useMutation({ mutationFn: (code: string) => addToWatchlist(code) });
   const update = useScreenerUpdate();
 
-  // 결과 행의 현재가·등락률을 라이브 시세로 오버레이(ADR-0056 개정 — 드로어와 동일
-  // 기준, 전 종목). rows 를 메모화해 useQuoteByCode 의 queryKey 가 매 렌더 흔들리지
-  // 않게 하고, codes 가 비면(notSeeded/error/무결과) 훅이 폴링을 끈다.
+  // 결과 행에 Live Quote 오버레이(현재가·등락률)를 적용 — 드로어와 공유하는 단일
+  // 머지 seam. rows 를 메모화해 훅 내부 polling 의 queryKey 가 매 렌더 흔들리지 않게
+  // 하고, codes 가 비면(notSeeded/error/무결과) 훅이 폴링을 끈다.
   const rows = useMemo(() => screener.data?.rows ?? [], [screener.data]);
-  const liveCodes = useMemo(() => rows.map((r) => r.code), [rows]);
-  const quoteByCode = useQuoteByCode(liveCodes);
+  const liveRows = useScreenerRowsLive(rows);
 
   const notSeeded = screener.data?.status === 'not_seeded' || status?.status === 'not_seeded';
   const runScan = () => screener.mutate({ conditions: editor.conditions, universe: editor.universe });
@@ -78,7 +77,7 @@ export function Screener() {
           )}
         </div>
       ) : (
-        <ResultTable rows={rows} quoteByCode={quoteByCode} onActivate={openLive}
+        <ResultTable rows={liveRows} onActivate={openLive}
           onWatch={(code) => watch.mutate(code)}
           onCapture={(code) => navigate(`/capture?code=${encodeURIComponent(code)}`)} />
       )}
