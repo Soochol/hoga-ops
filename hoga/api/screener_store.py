@@ -4,7 +4,7 @@ import datetime as dt
 import logging
 import subprocess
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
@@ -262,7 +262,7 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
     up = sdir / "daily_unadjusted.parquet"
 
     def _commit() -> int:                  # 동기 polars는 to_thread로 (루프 블로킹 방지)
-        new = pl.DataFrame([asdict(b) for b in rows], schema=_DAILY_PL_SCHEMA)
+        new = pl.DataFrame([vars(b) for b in rows], schema=_DAILY_PL_SCHEMA)
         n, last = append_rows(up, new)      # 통계는 메모리 df 에서(재독 X)
         ms = derive_adjusted(up, sdir / "daily_adjusted.parquet",
                              factors_path=sdir / "factors.parquet")
