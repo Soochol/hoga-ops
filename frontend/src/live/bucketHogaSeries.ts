@@ -39,15 +39,29 @@ export function bucketHogaSeries(
   ob: readonly ObSnapshot[],
   trade: readonly TradeSnapshot[],
   bucketMs: number,
+  auctionStartMs: number = Number.POSITIVE_INFINITY,
 ): { quoteRatioPoints: QuoteRatioPoint[]; fillStrengthPoints: FillStrengthPoint[] } {
   if (bucketMs <= 0) throw new Error(`bucketMs must be positive, got ${bucketMs}`);
 
-  // Quote Totals — last-in-bucket.
+  // Quote Totals — last *continuous-trading* snapshot in bucket. A bucket that
+  // straddles the closing Auction Window (e.g. a 3m bucket [15:18,15:21)) must
+  // NOT be represented by its 15:20+ auction snapshot. Prefer the last
+  // pre-auction snapshot; fall back to the last overall only when the bucket
+  // has no pre-auction snapshot (fully inside the auction window — left to the
+  // display Auction Mask, ADR-0029). `auctionStartMs` defaults to +Infinity =
+  // "no cutoff" → every snapshot is pre-auction → legacy last-in-bucket.
   const obSorted = [...ob].sort((a, b) => a.t_ms - b.t_ms);
   const quoteByBucket = new Map<number, QuoteRatioPoint>();
+  const seenPre = new Set<number>();
   for (const s of obSorted) {
     const t = Math.floor(s.t_ms / bucketMs) * bucketMs;
-    quoteByBucket.set(t, { t, ask_total: s.total_ask_qty, bid_total: s.total_bid_qty });
+    const point = { t, ask_total: s.total_ask_qty, bid_total: s.total_bid_qty };
+    if (s.t_ms < auctionStartMs) {
+      quoteByBucket.set(t, point); // pre-auction: 마지막이 덮어씀
+      seenPre.add(t);
+    } else if (!seenPre.has(t)) {
+      quoteByBucket.set(t, point); // auction: pre 없을 때만, 마지막 auction이 덮어씀
+    }
   }
   const quoteRatioPoints = Array.from(quoteByBucket.values()).sort((a, b) => a.t - b.t);
 

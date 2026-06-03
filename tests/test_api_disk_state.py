@@ -126,6 +126,78 @@ def test_classify_from_meta_legacy_empty_dict() -> None:
     assert classify_from_meta({}).state == DiskState.CLIENT_INCOMPLETE
 
 
+def test_classify_from_meta_archived_series_error_forces_invalid() -> None:
+    """ADR-0020: series invariants are too costly to live-evaluate on the read
+    path (parquet I/O breaks the per-request SLO), so the parser archives them
+    in meta.json's ``invariant_violations``. A series-level ``error`` (e.g.
+    ``series.candles_ts_monotonic`` — the chart-crash root cause) must gate
+    ``INVALID`` here too, not only on the write path + ``hoga validate``."""
+    meta = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": True,
+        "is_partial": False,
+        "invariant_violations": [
+            {
+                "invariant_id": "series.candles_ts_monotonic",
+                "severity": "error",
+                "message": "candles ts_ms must be strictly ascending",
+                "ctx": {"index": 5, "prev_ts_ms": 1, "curr_ts_ms": 1},
+            },
+        ],
+    }
+    result = classify_from_meta(meta)
+    assert result.state == DiskState.INVALID
+    assert any(v.invariant_id == "series.candles_ts_monotonic" for v in result.errors)
+
+
+def test_classify_from_meta_archived_series_warn_does_not_invalidate() -> None:
+    """A series ``warn`` (e.g. snapshots_no_gaps) is surfaced via ``.warnings``
+    but does not change the routing state — same rule meta warns follow."""
+    meta = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": True,
+        "is_partial": False,
+        "invariant_violations": [
+            {
+                "invariant_id": "series.snapshots_no_gaps",
+                "severity": "warn",
+                "message": "snapshot stream has >=60s gap",
+                "ctx": {"datapoint_count": 10},
+            },
+        ],
+    }
+    result = classify_from_meta(meta)
+    assert result.state == DiskState.COMPLETE
+    assert any(v.invariant_id == "series.snapshots_no_gaps" for v in result.warnings)
+
+
+def test_classify_from_meta_ignores_archived_meta_violations() -> None:
+    """The archived field holds BOTH meta and series violations (parser archives
+    the union). Meta invariants are re-checked live above, so classify must take
+    ONLY ``series.*`` from the archive — never re-consume an archived *meta*
+    violation (which could be stale after the meta was fixed). Here the live
+    meta is clean, so a stale archived meta error must NOT force INVALID."""
+    meta = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": True,
+        "is_partial": False,
+        "invariant_violations": [
+            {
+                "invariant_id": "session_close_after_open",  # a META invariant id
+                "severity": "error",
+                "message": "stale archived meta violation (already fixed live)",
+                "ctx": {},
+            },
+        ],
+    }
+    result = classify_from_meta(meta)
+    assert result.state == DiskState.COMPLETE
+    assert result.violations == []
+
+
 def test_malformed_meta_json_returns_client_incomplete(tmp_path: Path) -> None:
     """Truncated / corrupt meta.json must not crash callers — conservative fallback."""
     parquet_dir = tmp_path / "parquet" / "20260520" / "005930"

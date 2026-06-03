@@ -3,6 +3,76 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.3.9.0] - 2026-06-03
+
+### Internal
+- 종목 검색 코드 정리(동작·결과 불변). 프론트 `filterSymbols()` 정렬이 비교마다
+  `toLowerCase()`를 재계산하던 것을 종목명당 1회 사전계산으로 바꿔 백엔드 `search()`의
+  `key=` 의미와 일치시켰습니다. 백엔드 `search()` docstring의 'code-prefix' 오기재를
+  'name-prefix'로 정정(정렬은 종목명 접두사 기준).
+
+## [0.3.8.0] - 2026-06-03
+
+### Changed
+- 종목 검색이 **영문 대소문자를 구분하지 않습니다.** 예전엔 `CJ`·`KTcs`·`S-Oil`처럼
+  영문이 섞인 종목명을 찾으려면 케이스를 정확히 맞춰야 했지만(`cj`로는 `CJ`가 안 나옴),
+  이제 `cj`/`ktcs`/`s-oil` 어떤 케이스로 입력해도 매칭됩니다. 한글 종목명 검색과 숫자
+  코드 검색 동작은 그대로이며, 백엔드 `/api/symbols`와 프론트 클라이언트 필터에 동시
+  적용됩니다.
+
+## [0.3.7.0] - 2026-06-03
+
+### Changed
+- `/live` 분봉 차트를 **왼쪽으로 끌어 과거 데이터를 부를 때** 빠르고 부드러워졌습니다.
+  예전엔 줌과 무관하게 항상 42일치(~28거래일)를 한 번에 새로 받아 **한 번 끌 때마다
+  ~32초** 멈췄습니다. 이제 **고정 3거래일씩 점진적으로** 받아 화면이 찰 때까지 채웁니다:
+  어떤 줌이든 **첫 그림이 ~3.4초 안에** 보이고(latency cap), 넓은 구간은 3거래일씩
+  여러 번에 걸쳐 채워집니다. 한 번 본 범위 재방문은 디스크 캐시로 즉시. 일/주/월봉은
+  기존 one-shot 유지. (ADR-0059)
+
+### Internal
+- `/live` 좌측 팬 backfill + viewport 보존(prepend-restore shift, 진행 settle-loop,
+  lazy-fetch trigger)을 `LiveChartRoot`에서 headless `useViewportBackfill` 훅으로 추출.
+  동작 불변, locality 향상. 종료 판정·스텝 크기는 순수 함수(`planFillStep`/`stepChunkDays`)로
+  격리 단위 테스트.
+
+## [0.3.6.0] - 2026-06-03
+
+### Fixed
+- 차트 데이터 무결성: parser가 archive한 **series-level invariant 위반**(예
+  `series.candles_ts_monotonic` — 캔들 `ts_ms` 중복으로 lightweight-charts `setData`가
+  터지는 직접 원인)이 read-path에서 무시되던 결함을 고쳤습니다. 이제
+  `classify_from_meta`가 `meta.json`의 archived `series.*` error를 INVALID 판정에
+  반영해, 해당 Stock-Date를 `build_range_bundle`이 차트에 내보내지 않습니다. meta
+  invariant는 여전히 live 재평가, series는 archived만 union(double-count 방지),
+  parquet 재로드 없음(ADR-0020 §4.6 amendment). 수정 이전 archive의 false-positive는
+  `hoga validate --fix` 1회로 정리.
+
+## [0.3.5.0] - 2026-06-03
+
+### Changed
+- (내부 리팩터, 동작 변화 없음) `/api/live/past-daily-candles`(일봉)와
+  `/api/live/past-investor-net`(투자자 순매수)의 near-verbatim 중복 핸들러를
+  `batched_daily_walkback` 공유 orchestrator로 통합했습니다. 두 핸들러는 fetch
+  클로저 + output key만 제공하는 얇은 adapter가 되고, gap/cache/today/dedupe 조립은
+  한 곳에서 격리 단위 테스트됩니다. KIS 일별 walk-back의 커서 감산은
+  `_prev_day_yyyymmdd` 공유 헬퍼로 추출(ADR-0060).
+
+### Notes
+- ADR-0061: source resolver 4개는 서로 다른 질문(데이터 읽기·inventory 표시·완성도
+  state·존재 여부)에 답하므로 통합 거부 — 통합은 shallow abstraction이 된다는 근거 기록.
+
+## [0.3.4.0] - 2026-06-03
+
+### Fixed
+- `/live` 보조지표 중 **호가비·호가총합·체결강도**가 마감 직전 종가 동시호가
+  (15:20~15:30) 데이터를 계산에 끌어들이던 문제를 고쳤습니다. 15:20이 버킷 경계가
+  아닌 타임프레임(3·15·30분봉)에서, 15:20을 가로지르는 버킷(예: 3분봉 15:18 봉)이
+  대표값으로 15:20 동시호가 호가창을 집어 마감 직전 값이 튀었습니다. 이제 그런
+  버킷은 **15:20 직전 마지막 호가 스냅샷**으로 계산되어 정확한 값으로 표시됩니다.
+  과거 날짜(`/api/range`)와 당일 실시간(SSE) 양쪽 모두 적용되며, 반장일은 백엔드가
+  그날의 실제 마감 시각을 기준으로 처리합니다. (ADR-0029 개정)
+
 ## [0.3.3.0] - 2026-06-03
 
 ### Changed

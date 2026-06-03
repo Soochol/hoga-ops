@@ -169,6 +169,123 @@ def _compute_daily_gaps(
     return gaps
 
 
+async def batched_daily_walkback(
+    *,
+    cache: PastDailyCandlesCache,
+    fetch_batch: Callable[[str, str, str], Awaitable[tuple[list[dict], list]]],
+    output_key: str,
+    code: str,
+    frm: date,
+    too: date,
+    today_d: date,
+) -> dict:
+    """Shared gap/cache/today/dedupe walk-back orchestration for the daily KIS
+    series endpoints — `/past-daily-candles` (**Live Candle Backfill** 일봉) and
+    `/past-investor-net` (**Live Investor Net**), which used to copy-paste this
+    body verbatim (the only differences were the cache instance, fetch method,
+    row→dict converter, and output key).
+
+    The caller supplies a thin `fetch_batch(code, from_s, to_s)` closure that
+    fetches one date range and returns `(rows: list[dict], violations)` — it may
+    raise ``KisRateLimitError`` / ``KisApiError`` (this orchestrator catches them
+    and turns them into ``data_warnings``, breaking on rate-limit, continuing on
+    api-error). Everything else — batch-cache intersect, gap compute, per-gap
+    fetch + persist, today tri-state, dedupe-by-``t_ms`` / sort / [frm,too]
+    filter — lives here, tested once in ``test_batched_daily_walkback.py``.
+    """
+    today_s = today_d.strftime("%Y%m%d")
+    from_s = frm.strftime("%Y%m%d")
+    to_s = too.strftime("%Y%m%d")
+
+    warnings: list[dict] = []
+    cached_batches: list[str] = []
+    fresh_batches: list[str] = []
+    loaded: list[dict] = []
+
+    # 1+2. Read existing batches intersecting the request.
+    existing_relevant: list[tuple[date, date]] = []
+    for b_from, b_to, b_rows in cache.list_batches(code):
+        if b_to < frm or b_from > too:
+            continue
+        existing_relevant.append((b_from, b_to))
+        loaded.extend(b_rows)
+        cached_batches.append(f"{b_from.strftime('%Y%m%d')}__{b_to.strftime('%Y%m%d')}")
+
+    # 3. Compute gaps (past-only — today handled separately).
+    req_to_past = min(too, today_d - timedelta(days=1))
+    if frm <= req_to_past:
+        for gap_from, gap_to in _compute_daily_gaps(frm, req_to_past, existing_relevant):
+            gap_from_s = gap_from.strftime("%Y%m%d")
+            gap_to_s = gap_to.strftime("%Y%m%d")
+            label = f"{gap_from_s}__{gap_to_s}"
+            try:
+                rows, violations = await fetch_batch(code, gap_from_s, gap_to_s)
+            except KisRateLimitError as e:
+                warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), label))
+                break
+            except KisApiError as e:
+                warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, label))
+                continue
+            cache.append_batch(code, gap_from, gap_to, rows)
+            loaded.extend(rows)
+            fresh_batches.append(label)
+            for v in violations:
+                warnings.append(_violation_to_warning(v, label))
+
+    # 5. Today handling (separate from past — memory only, tri-state).
+    if too >= today_d:
+        state, today_row = cache.get_today(code)
+        if state == "hit":
+            loaded.append(today_row)  # type: ignore[arg-type]
+            cached_batches.append(f"{today_s}__{today_s}")
+        elif state == "negative":
+            pass  # known non-trading day; skip KIS, no row
+        else:  # miss
+            today_label = f"{today_s}__{today_s}"
+            try:
+                rows, violations = await fetch_batch(code, today_s, today_s)
+                if rows:
+                    today_row = rows[0]
+                    cache.store_today(code, today_row)
+                    loaded.append(today_row)
+                    fresh_batches.append(today_label)
+                else:
+                    # Non-trading day — negative cache, still record the fetch
+                    # in fresh_batches for parity with the gap branch (operator
+                    # visibility for the KIS round-trip).
+                    cache.store_today(code, None)
+                    fresh_batches.append(today_label)
+                for v in violations:
+                    warnings.append(_violation_to_warning(v, today_label))
+            except KisRateLimitError as e:
+                warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), today_label))
+            except KisApiError as e:
+                warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, today_label))
+
+    # 6. Dedupe by t_ms, sort, filter to [frm, too].
+    frm_ms = int(datetime.combine(frm, time(0, 0), tzinfo=_KST).timestamp() * 1000)
+    too_ms = int(datetime.combine(too, time(23, 59, 59), tzinfo=_KST).timestamp() * 1000)
+    by_ts: dict[int, dict] = {}
+    for row in loaded:
+        ts = row.get("t_ms")
+        if isinstance(ts, int):
+            by_ts[ts] = row
+    rows_out = sorted(
+        (r for ts, r in by_ts.items() if frm_ms <= ts <= too_ms),
+        key=lambda r: r["t_ms"],
+    )
+
+    return {
+        "code": code,
+        "from": from_s,
+        "to": to_s,
+        output_key: rows_out,
+        "cached_batches": cached_batches,
+        "fresh_batches": fresh_batches,
+        "data_warnings": warnings,
+    }
+
+
 class LiveQuote(BaseModel):
     code: str
     price: int
@@ -388,10 +505,6 @@ def build_router(
         to: str = Query(...),
     ) -> dict:
         frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
-        today_s = today_d.strftime("%Y%m%d")
-        from_s = frm.strftime("%Y%m%d")
-        to_s = too.strftime("%Y%m%d")
-
         if get_kis_client is None:
             raise HTTPException(503, "KIS client not wired")
         kis = get_kis_client()
@@ -399,102 +512,15 @@ def build_router(
             raise HTTPException(503, "KIS client not initialized")
         if daily_cache_instance is None:
             raise HTTPException(503, "past-daily-candles cache not wired (data_dir missing)")
-        cache = daily_cache_instance
 
-        warnings: list[dict] = []
-        cached_batches: list[str] = []
-        fresh_batches: list[str] = []
-        loaded_bars: list[dict] = []
+        async def fetch_batch(code_: str, from_s: str, to_s: str):
+            result = await kis.fetch_past_daily_candles(code_, from_s, to_s)
+            return [_candle_to_dict(c) for c in result.candles], result.violations
 
-        # 1+2. Read existing batches, filter to those intersecting request.
-        existing_all = cache.list_batches(code)
-        existing_relevant: list[tuple[date, date]] = []
-        for b_from, b_to, b_bars in existing_all:
-            if b_to < frm or b_from > too:
-                continue
-            existing_relevant.append((b_from, b_to))
-            loaded_bars.extend(b_bars)
-            cached_batches.append(
-                f"{b_from.strftime('%Y%m%d')}__{b_to.strftime('%Y%m%d')}"
-            )
-
-        # 3. Compute gaps (past-only — today handled separately).
-        req_to_past = min(too, today_d - timedelta(days=1))
-        if frm <= req_to_past:
-            gaps = _compute_daily_gaps(frm, req_to_past, existing_relevant)
-            for gap_from, gap_to in gaps:
-                gap_from_s = gap_from.strftime("%Y%m%d")
-                gap_to_s = gap_to.strftime("%Y%m%d")
-                label = f"{gap_from_s}__{gap_to_s}"
-                try:
-                    result = await kis.fetch_past_daily_candles(
-                        code, gap_from_s, gap_to_s,
-                    )
-                except KisRateLimitError as e:
-                    warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), label))
-                    break
-                except KisApiError as e:
-                    warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, label))
-                    continue
-                bars_dicts = [_candle_to_dict(c) for c in result.candles]
-                cache.append_batch(code, gap_from, gap_to, bars_dicts)
-                loaded_bars.extend(bars_dicts)
-                fresh_batches.append(label)
-                for v in result.violations:
-                    warnings.append(_violation_to_warning(v, label))
-
-        # 5. Today handling (separate from past — memory only, tri-state).
-        if too >= today_d:
-            state, today_bar = cache.get_today(code)
-            if state == "hit":
-                loaded_bars.append(today_bar)  # type: ignore[arg-type]
-                cached_batches.append(f"{today_s}__{today_s}")
-            elif state == "negative":
-                pass  # known non-trading day; skip KIS, no row
-            else:  # miss
-                today_label = f"{today_s}__{today_s}"
-                try:
-                    result = await kis.fetch_past_daily_candles(code, today_s, today_s)
-                    if result.candles:
-                        today_bar = _candle_to_dict(result.candles[0])
-                        cache.store_today(code, today_bar)
-                        loaded_bars.append(today_bar)
-                        fresh_batches.append(today_label)
-                    else:
-                        # Non-trading day — negative cache, still record the
-                        # fetch in fresh_batches for parity with gap-branch
-                        # (B3b: operator visibility for KIS round-trip).
-                        cache.store_today(code, None)
-                        fresh_batches.append(today_label)
-                    for v in result.violations:
-                        warnings.append(_violation_to_warning(v, today_label))
-                except KisRateLimitError as e:
-                    warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), today_label))
-                except KisApiError as e:
-                    warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, today_label))
-
-        # 6. Dedupe by t_ms, sort, filter to [frm, too].
-        frm_ms = int(datetime.combine(frm, time(0, 0), tzinfo=_KST).timestamp() * 1000)
-        too_ms = int(datetime.combine(too, time(23, 59, 59), tzinfo=_KST).timestamp() * 1000)
-        by_ts: dict[int, dict] = {}
-        for bar in loaded_bars:
-            ts = bar.get("t_ms")
-            if isinstance(ts, int):
-                by_ts[ts] = bar
-        candles_all = sorted(
-            (b for ts, b in by_ts.items() if frm_ms <= ts <= too_ms),
-            key=lambda b: b["t_ms"],
+        return await batched_daily_walkback(
+            cache=daily_cache_instance, fetch_batch=fetch_batch, output_key="candles",
+            code=code, frm=frm, too=too, today_d=today_d,
         )
-
-        return {
-            "code": code,
-            "from": from_s,
-            "to": to_s,
-            "candles": candles_all,
-            "cached_batches": cached_batches,
-            "fresh_batches": fresh_batches,
-            "data_warnings": warnings,
-        }
 
     @router.get("/past-investor-net")
     async def _get_past_investor_net(
@@ -510,10 +536,6 @@ def build_router(
         signed (+ buy / − sell). Today's row is provisional until ~15:40 (가집계).
         """
         frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
-        today_s = today_d.strftime("%Y%m%d")
-        from_s = frm.strftime("%Y%m%d")
-        to_s = too.strftime("%Y%m%d")
-
         if get_kis_client is None:
             raise HTTPException(503, "KIS client not wired")
         kis = get_kis_client()
@@ -521,96 +543,14 @@ def build_router(
             raise HTTPException(503, "KIS client not initialized")
         if investor_cache_instance is None:
             raise HTTPException(503, "past-investor-net cache not wired (data_dir missing)")
-        cache = investor_cache_instance
 
-        warnings: list[dict] = []
-        cached_batches: list[str] = []
-        fresh_batches: list[str] = []
-        loaded: list[dict] = []
+        async def fetch_batch(code_: str, from_s: str, to_s: str):
+            result = await kis.fetch_investor_net(code_, from_s, to_s)
+            return [_investor_point_to_dict(p) for p in result.points], result.violations
 
-        # 1+2. Read existing batches intersecting the request.
-        existing_all = cache.list_batches(code)
-        existing_relevant: list[tuple[date, date]] = []
-        for b_from, b_to, b_pts in existing_all:
-            if b_to < frm or b_from > too:
-                continue
-            existing_relevant.append((b_from, b_to))
-            loaded.extend(b_pts)
-            cached_batches.append(
-                f"{b_from.strftime('%Y%m%d')}__{b_to.strftime('%Y%m%d')}"
-            )
-
-        # 3. Compute gaps (past-only — today handled separately).
-        req_to_past = min(too, today_d - timedelta(days=1))
-        if frm <= req_to_past:
-            gaps = _compute_daily_gaps(frm, req_to_past, existing_relevant)
-            for gap_from, gap_to in gaps:
-                gap_from_s = gap_from.strftime("%Y%m%d")
-                gap_to_s = gap_to.strftime("%Y%m%d")
-                label = f"{gap_from_s}__{gap_to_s}"
-                try:
-                    result = await kis.fetch_investor_net(code, gap_from_s, gap_to_s)
-                except KisRateLimitError as e:
-                    warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), label))
-                    break
-                except KisApiError as e:
-                    warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, label))
-                    continue
-                pts = [_investor_point_to_dict(p) for p in result.points]
-                cache.append_batch(code, gap_from, gap_to, pts)
-                loaded.extend(pts)
-                fresh_batches.append(label)
-                for v in result.violations:
-                    warnings.append(_violation_to_warning(v, label))
-
-        # 5. Today handling (separate — memory only, tri-state).
-        if too >= today_d:
-            state, today_pt = cache.get_today(code)
-            if state == "hit":
-                loaded.append(today_pt)  # type: ignore[arg-type]
-                cached_batches.append(f"{today_s}__{today_s}")
-            elif state == "negative":
-                pass  # known no-data today; skip KIS
-            else:  # miss
-                today_label = f"{today_s}__{today_s}"
-                try:
-                    result = await kis.fetch_investor_net(code, today_s, today_s)
-                    if result.points:
-                        today_pt = _investor_point_to_dict(result.points[0])
-                        cache.store_today(code, today_pt)
-                        loaded.append(today_pt)
-                        fresh_batches.append(today_label)
-                    else:
-                        cache.store_today(code, None)
-                        fresh_batches.append(today_label)
-                    for v in result.violations:
-                        warnings.append(_violation_to_warning(v, today_label))
-                except KisRateLimitError as e:
-                    warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), today_label))
-                except KisApiError as e:
-                    warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, today_label))
-
-        # 6. Dedupe by t_ms, sort, filter to [frm, too].
-        frm_ms = int(datetime.combine(frm, time(0, 0), tzinfo=_KST).timestamp() * 1000)
-        too_ms = int(datetime.combine(too, time(23, 59, 59), tzinfo=_KST).timestamp() * 1000)
-        by_ts: dict[int, dict] = {}
-        for pt in loaded:
-            ts = pt.get("t_ms")
-            if isinstance(ts, int):
-                by_ts[ts] = pt
-        points = sorted(
-            (p for ts, p in by_ts.items() if frm_ms <= ts <= too_ms),
-            key=lambda p: p["t_ms"],
+        return await batched_daily_walkback(
+            cache=investor_cache_instance, fetch_batch=fetch_batch, output_key="points",
+            code=code, frm=frm, too=too, today_d=today_d,
         )
-
-        return {
-            "code": code,
-            "from": from_s,
-            "to": to_s,
-            "points": points,
-            "cached_batches": cached_batches,
-            "fresh_batches": fresh_batches,
-            "data_warnings": warnings,
-        }
 
     return router

@@ -432,9 +432,8 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // Axis with yesterday + today. lightweight-charts emits negative
     // logical.from when the visible-range origin is past the leftmost
     // loaded bar (fractional bar index can go negative beyond the data).
-    // Handler should prepend one prefetchChunkDaysFor('1m')=42 calendar-day
-    // chunk (≈30 trading days; 2× the previous 21-day baseline per user
-    // tuning request, doubly weekend- / multi-holiday-safe).
+    // Handler should prepend one stepChunkDays('1m')=5 calendar-day chunk
+    // (fixed 3-trading-day step, weekend-safe).
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
@@ -455,8 +454,8 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // currentEarliest = '20260526', minus prefetchChunkDaysFor('1m')=42 → '20260414'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260414');
+    // currentEarliest = '20260526', minus stepChunkDays('1m')=5 → '20260521'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521');
   });
 
   it('bases next chunk on historicalFromDate (not axis) when axis did not advance', () => {
@@ -488,10 +487,10 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     });
 
     // base = historicalFromDate '20260519' (earlier than axisEarliest
-    // '20260526'), minus 42 → '20260407'. If the trigger had re-based on
-    // axis instead, it would compute '20260414' and the store guard would
+    // '20260526'), minus 5 → '20260514'. If the trigger had re-based on
+    // axis instead, it would compute '20260521' and the store guard would
     // reject that as not strictly earlier than '20260519'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260407');
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260514');
   });
 
   it('fires extendHistoricalRange on D timeframe when logical from goes negative', () => {
@@ -520,9 +519,8 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // D-timeframe chunk: prefetchChunkCandlesFor('D')=250 candles →
-    // prefetchChunkDaysFor('D')=ceil(250 × 7/5)=350 calendar days
-    // (~1 year). axis.segments[0] = '20260526', minus 350 → '20250610'
+    // D-timeframe chunk: stepChunkDays('D')=350 calendar days (~1 year).
+    // axis.segments[0] = '20260526', minus 350 → '20250610'
     // (crosses year boundary into 2025).
     expect(useLivePageStore.getState().historicalFromDate).toBe('20250610');
   });
@@ -710,6 +708,78 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     // proving it compensated for the prepend rather than leaving the old logical
     // window pointing at the newly-prepended bars.
     expect(shift).toBeGreaterThan(0);
+  });
+
+  // ── 진행 루프(스텝 2..N): isExtending falling edge + 빈영역 → 다음 스텝 자가 dispatch ──
+  // makeTs는 STABLE ts를 돌려주므로 per-test로 getVisibleLogicalRange().from을
+  // 덮어 viewport 상태(빈영역/꽉 참)를 제어한다. bundle은 rerender 사이 동결이라
+  // 복원 effect([chart,bundle,axis])가 재실행되지 않아 우리가 덮은 from을 그대로 읽는다.
+  it('dispatches the next step on isExtending falling edge while whitespace remains', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260521' });
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 })); // 빈영역 남음
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
+      { wrapper },
+    );
+    act(() => {
+      rerender(
+        <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
+          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
+      );
+    });
+    // cur '20260521' − stepChunkDays('1m')=5 → '20260516'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260516');
+  });
+
+  it('does NOT dispatch a next step when the viewport is full (visibleFrom >= 0)', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260521' });
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: 4, to: 100 })); // 꽉 참
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
+      { wrapper },
+    );
+    act(() => {
+      rerender(
+        <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
+          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
+      );
+    });
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // 불변
+    // 효과가 게이트까지 실행돼 viewport를 읽고 'full'이라 멈췄음을 국소화.
+    expect(ts.getVisibleLogicalRange).toHaveBeenCalled();
+  });
+
+  it('does NOT run the fill loop on D timeframe (minute-only)', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260521' });
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 }));
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
+      { wrapper },
+    );
+    act(() => {
+      rerender(
+        <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
+          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
+      );
+    });
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // D one-shot, 불변
+    // minute-only 조기 반환이 viewport를 읽기 전에 막았음을 국소화.
+    expect(ts.getVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
   it('does NOT restore on pure SSE growth while historicalFromDate is null', () => {

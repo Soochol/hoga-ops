@@ -15,6 +15,16 @@ import { unixMsToKSTDate } from '../util/time';
 const TRADING_MINUTES_PER_DAY = 390;        // KRX 09:00–15:30 = 6.5 h
 const TRADING_DAYS_PER_CALENDAR_DAYS = 5 / 7;
 
+/** 분봉 scroll-back 깊이 상한 (캘린더일). payload 보호 + lwc setData 비용 한계.
+ * useLiveBundle의 클램프와 LiveChartRoot 진행 루프의 종료 판정이 공유한다. */
+export const PAST_CANDLES_MAX_DAYS = 250;
+
+/** 250일 클램프 하한 날짜(YYYYMMDD KST). 분봉 fetch는 이 날짜보다 과거로 못 간다.
+ * 250일 윈도가 오늘을 포함하므로 오늘 − 249. */
+export function earliestAllowedMinuteDate(todayKstYyyymmdd: string): string {
+  return subtractDaysKst(todayKstYyyymmdd, PAST_CANDLES_MAX_DAYS - 1);
+}
+
 /** Today's YYYYMMDD in KST. */
 export function todayKstYyyymmdd(): string {
   return realMsToYyyymmdd(Date.now());
@@ -82,6 +92,23 @@ function candleTargetToCalendarDays(target: number, tf: LiveTimeframe): number {
   return Math.ceil(tradingDays / TRADING_DAYS_PER_CALENDAR_DAYS);
 }
 
+/** 좌측 팬 한 스텝의 캘린더일 크기.
+ *
+ * - 분봉: 고정 3거래일(=latency cap). 3거래일을 5/7 밀도로 환산 → 5 캘린더일.
+ *   주말 1회를 한 스텝에 항상 덮어 빈 결과 재드래그를 막는 최소값.
+ *   `STEP_TRADING_DAYS`는 실측 후 조정 가능한 단일 상수(데이터를 덜 받는 게
+ *   아니라 첫 그림 시점·렌더 분할 횟수만 바뀐다).
+ * - D/W/M: 기존 one-shot 윈도 유지(진행 루프는 minute-only). 한 번의 팬으로
+ *   ~1년치를 그려 채우므로 스텝 분할이 불필요. */
+const STEP_TRADING_DAYS = 3;
+export function stepChunkDays(tf: LiveTimeframe): number {
+  if (isMinuteTimeframe(tf)) {
+    return Math.ceil(STEP_TRADING_DAYS / TRADING_DAYS_PER_CALENDAR_DAYS);
+  }
+  if (tf === 'D') return candleTargetToCalendarDays(250, tf);
+  return candleTargetToCalendarDays(120, tf); // W, M
+}
+
 /** Target candle count for the initial fetch on (code, timeframe) mount.
  *
  * - Minute timeframes: 2× of the previous 20-calendar-day window. At 1m
@@ -102,45 +129,20 @@ export function initialCandleTargetFor(tf: LiveTimeframe): number {
   return 250;
 }
 
-/** Target candle count to prepend per scroll-past-leftmost event.
- *
- * - Minute timeframes: 2× of the previous 21-calendar-day chunk. The
- *   21-day baseline survived weekend / single-holiday traps where shorter
- *   chunks landed on non-trading days and froze the livePage store's
- *   monotonic-decrease guard. At 2× that's ~11,700 1m candles ≈ 42
- *   calendar days, even more weekend-safe.
- * - D: 250 candles (2× of the previous 180-day ≈ ~125-candle chunk) ≈
- *   350 calendar days per pan.
- * - W/M: 120 candles (2× of the previous 60-week / 60-month chunks). */
-export function prefetchChunkCandlesFor(tf: LiveTimeframe): number {
-  if (isMinuteTimeframe(tf)) {
-    const tfMinutes = TIMEFRAME_TO_MS[tf] / 60_000;
-    const candlesPerCalendarDay = (TRADING_DAYS_PER_CALENDAR_DAYS * TRADING_MINUTES_PER_DAY) / tfMinutes;
-    return Math.round(21 * candlesPerCalendarDay * 2);
-  }
-  if (tf === 'D') return 250;
-  return 120; // W, M
-}
-
 /** Calendar-day window enclosing `initialCandleTargetFor(tf)` candles.
  * Wrapper for the seed-from computation in useLiveBundle. */
 export function initialHistoricalDaysFor(tf: LiveTimeframe): number {
   return candleTargetToCalendarDays(initialCandleTargetFor(tf), tf);
 }
 
-/** Calendar-day window enclosing `prefetchChunkCandlesFor(tf)` candles.
- * Wrapper for the lazy-extend trigger in LiveChartRoot. */
-export function prefetchChunkDaysFor(tf: LiveTimeframe): number {
-  return candleTargetToCalendarDays(prefetchChunkCandlesFor(tf), tf);
-}
-
 /** /live infinite-scroll backfill policy (SR-3), extracted pure from
  * LiveChartRoot's subscribeVisibleLogicalRangeChange effect.
  *
  * Given where the axis currently starts (`axisEarliestMs`, real Unix ms — the
- * first segment's session open) and the date already requested
- * (`historicalFromDate`, or null before any extension), returns the YYYYMMDD
- * the next leftward chunk should fetch back to.
+ * first segment's session open), the date already requested
+ * (`historicalFromDate`, or null before any extension), and the caller-injected
+ * `chunkDays` (use `stepChunkDays(tf)`), returns the YYYYMMDD the next leftward
+ * chunk should fetch back to.
  *
  * Base date: prefer `historicalFromDate` when it is strictly earlier than the
  * axis earliest. A chunk that lands on a holiday-only span (e.g. Lunar New
@@ -152,12 +154,48 @@ export function prefetchChunkDaysFor(tf: LiveTimeframe): number {
 export function nextHistoricalFrom(
   axisEarliestMs: number,
   historicalFromDate: string | null,
-  tf: LiveTimeframe,
+  chunkDays: number,
 ): string {
   const axisEarliestDate = realMsToYyyymmdd(axisEarliestMs);
   const baseDate =
     historicalFromDate !== null && historicalFromDate < axisEarliestDate
       ? historicalFromDate
       : axisEarliestDate;
-  return subtractDaysKst(baseDate, prefetchChunkDaysFor(tf));
+  return subtractDaysKst(baseDate, chunkDays);
+}
+
+export interface FillStepArgs {
+  /** getVisibleLogicalRange().from — 음수면 왼쪽 빈영역. null이면 측정 불가. */
+  visibleFrom: number | null;
+  historicalFromDate: string | null;
+  axisEarliestMs: number;
+  /** 250일 클램프 하한(YYYYMMDD). earliestAllowedMinuteDate(today). */
+  earliestAllowedDate: string;
+  /** stepChunkDays(tf). */
+  stepCalendarDays: number;
+  /** 이번 fill에서 지금까지 dispatch한 스텝 수. */
+  stepCount: number;
+  /** 무한 루프 백스톱. */
+  maxSteps: number;
+}
+
+/** 한 스텝 settle 후 진행 루프가 멈출지 / 다음 from을 받을지 결정.
+ *
+ * 종료: (a) viewport 꽉 참(visibleFrom ≥ 0) (b) 측정 불가(null) (c) 250일 클램프
+ * 하한 도달 (d) 백스톱(stepCount ≥ maxSteps). 그 외엔 cur-base nextHistoricalFrom
+ * 으로 한 스텝 더 과거를 받는다. 연휴 스텝(거래일 0개)은 여기서 멈추지 않는다 —
+ * cur-base가 다음 스텝을 자동으로 더 과거로 보낸다. */
+export function planFillStep(
+  args: FillStepArgs,
+): { action: 'stop' } | { action: 'fetch'; nextFrom: string } {
+  const { visibleFrom, historicalFromDate, axisEarliestMs, earliestAllowedDate, stepCalendarDays, stepCount, maxSteps } = args;
+  if (visibleFrom === null || visibleFrom >= 0) return { action: 'stop' };
+  if (stepCount >= maxSteps) return { action: 'stop' };
+  if (historicalFromDate !== null && historicalFromDate <= earliestAllowedDate) {
+    return { action: 'stop' };
+  }
+  return {
+    action: 'fetch',
+    nextFrom: nextHistoricalFrom(axisEarliestMs, historicalFromDate, stepCalendarDays),
+  };
 }
