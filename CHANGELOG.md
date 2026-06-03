@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.4.2.0] - 2026-06-03
+
+### Added
+- `/live` 캔들 차트에 **현재가 라인**을 추가했습니다. 마지막 캔들 종가(=현재가) 위치에
+  **수평 점선**을 그리고 **y축에 현재가 가격 태그**(원화 ko-KR 포맷)를 표시합니다. 라인·태그
+  색은 **전일 대비 등락 방향**(상승 빨강 / 하락 파랑 / 보합·장전 중립)으로, 차트 위 Live
+  Status Bar의 등락률 색과 항상 일치합니다(색 기준 `change_won ?? change_pct`). 과거로
+  스크롤해도 라인은 현재가에 고정되고, 모든 타임프레임(분/일/주/월)에서 표시됩니다.
+
+### Internal
+- 현재가 라인은 캔들 시리즈 옵션을 건드리지 않고 별도 `createPriceLine`을 거는 `/live`
+  전용 오버레이(`LiveCurrentPriceLine`)로 구현 — 제네릭 candle projector 순수성과 전역
+  `priceLineVisible/lastValueVisible=false` 컨벤션을 보존합니다. 가격·색 산출은 순수 함수
+  (`deriveCurrentPriceLine`)로 분리해 단위 테스트. 설계·검증 근거는
+  `docs/superpowers/specs/2026-06-03-live-current-price-line-design.md`.
+
 ## [0.4.1.0] - 2026-06-03
 
 ### Added
