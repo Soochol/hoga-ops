@@ -113,3 +113,12 @@ ADR-0029의 Auction Mask는 *표시 레이어*(시작이 [15:20,15:30]에 든 �
 - 체결강도는 미변경(매수/매도 합산이 `side=±1`만 집계 → 동시호가 면역).
 - 경계는 `session_close − 10min`(strict `<`), per-Stock-Date(half-day 안전).
 참조: `docs/superpowers/specs/2026-06-03-closing-auction-straddle-bucket-design.md`.
+
+## Amendment — 2026-06-03 #2 (동시호가 경계 시간→구조)
+
+호가비·총잔량의 *버킷 대표 선택* 동시호가 경계를 `session_close − 10min` 시각에서
+**호가창 구조**(4호가 이상 잔량 소멸 = `last_continuous_ms` 이후)로 정제했다. 실제
+연속→동시호가 전환이 15:20 정각이 아니라 15:20:01.xx(±초)로 흔들려, 시각 경계가
+tail 버킷을 양방향으로 오분류하던 것을 해소. 표시 마스크의 hide 동작·토글 의미는
+불변(v1, 계산 레이어). 결정 상세는 ADR-0062. 참조:
+`docs/superpowers/specs/2026-06-03-auction-structural-boundary-design.md`.

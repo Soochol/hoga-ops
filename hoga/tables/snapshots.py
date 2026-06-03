@@ -268,11 +268,18 @@ def query_first_ts(con: duckdb.DuckDBPyConnection, *, path: Path) -> int | None:
 _ASK_Q_SUM: str = " + ".join(f"ask_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1))
 _BID_Q_SUM: str = " + ".join(f"bid_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1))
 
-# Closing Auction Window length — last 10 min of the Regular Session (ADR-0029).
-# A bucket straddling this window must be represented by its last pre-auction
-# snapshot, not the auction book. Mirrors the frontend
-# `sessionTime.AUCTION_WINDOW_LENGTH_MS` and `disk_state._AUCTION_WINDOW_DURATION_MS`.
-_CLOSING_AUCTION_WINDOW_MS: int = 10 * 60 * 1000
+# Single-price auction is detected by orderbook STRUCTURE, not a 15:20 clock
+# (ADR-0062). KRX single-price phases (closing auction, intraday VI) expose exactly
+# the top 3 levels per side; a continuous-trading book still has depth beyond level
+# 3. _ASK_DEEP_SUM / _BID_DEEP_SUM sum the deep (level 4..10) columns so
+# query_bucketed_ratio can test "is this a continuous-trading book?".
+_AUCTION_BOOK_DEPTH: int = 3
+_ASK_DEEP_SUM: str = " + ".join(
+    f"ask_q{i}" for i in range(_AUCTION_BOOK_DEPTH + 1, ORDERBOOK_LEVELS + 1)
+)
+_BID_DEEP_SUM: str = " + ".join(
+    f"bid_q{i}" for i in range(_AUCTION_BOOK_DEPTH + 1, ORDERBOOK_LEVELS + 1)
+)
 
 
 @dataclass(frozen=True)
@@ -304,17 +311,22 @@ def query_bucketed_ratio(
     For each bucket, ``ask_total`` / ``bid_total`` are the SUM across all 10
     ask_q / bid_q level columns of the bucket's representative snapshot.
 
-    The representative is the last *continuous-trading* snapshot. A bucket
-    straddling the closing Auction Window (e.g. a 3m bucket [15:18,15:21) on a
-    15:30 close) is represented by its last pre-15:20 snapshot, not the 15:20+
-    auction book it also spans: ``pre_auction_pred`` is true for rows strictly
-    before auction_start, and ``ORDER BY (pred) DESC, ts_ms DESC`` puts those
-    first so ``rn = 1`` picks the last pre-auction row — falling back to the last
-    overall row when a bucket has none (fully inside the auction window, left for
-    the display Auction Mask, ADR-0029). When ``session_close_ms`` is None the
-    predicate is the constant TRUE, so ``ORDER BY (TRUE) DESC, ts_ms DESC`` is
-    exactly the legacy last-in-bucket behavior (callers without a session bound
-    are unaffected).
+    The representative is the last *continuous-trading* snapshot. The closing
+    Auction Window (and intraday VI) collapses the book to 3 levels per side, so a
+    snapshot is continuous-trading iff it shows depth beyond level 3
+    (``_ASK_DEEP_SUM`` / ``_BID_DEEP_SUM`` > 0). ``last_continuous_ms`` = the last
+    continuous snapshot at/before ``session_close_ms``; ``pre_auction_pred`` is true
+    for rows at/before it, and ``ORDER BY (pred) DESC, ts_ms DESC`` puts those first
+    so ``rn = 1`` picks the last pre-auction row — falling back to the last overall
+    row when a bucket has none (fully inside the auction window, left for the display
+    Auction Mask, ADR-0029). This structural boundary replaces the prior
+    ``session_close - 10min`` clock, which mis-sliced the tail bucket when the real
+    continuous→auction transition drifted off 15:20:00 (observed 15:20:01.xx). The
+    ``<= session_close`` bound is load-bearing: every stock shows a post-cross book
+    re-expansion (~15:30:14) that would otherwise pull the threshold past the
+    auction. When ``session_close_ms`` is None (or no continuous snapshot exists)
+    the predicate is the constant TRUE, so ``ORDER BY (TRUE) DESC, ts_ms DESC`` is
+    exactly the legacy last-in-bucket behavior. See ADR-0062.
 
     Buckets on LINEAR ms-from-midnight, not raw HHMMSSmmm. The raw encoding has
     gaps at minute / hour boundaries, so arithmetic bucketing of HHMMSSmmm
@@ -326,14 +338,25 @@ def query_bucketed_ratio(
     Returns rows in ascending ``bucket_intra_ms`` order. Empty parquet → [].
     """
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    if session_close_ms is None:
+    # Structural closing-auction boundary (ADR-0062). last_continuous_ms = the last
+    # continuous-trading book (depth beyond level 3) at/before the session close;
+    # everything after it is the auction. None (no session bound / no continuous
+    # snapshot) -> TRUE predicate == legacy last-in-bucket.
+    deep_book_sql = f"(({_ASK_DEEP_SUM}) > 0 OR ({_BID_DEEP_SUM}) > 0)"
+    last_continuous_ms: int | None = None
+    if session_close_ms is not None:
+        close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
+        row = con.execute(
+            f"SELECT max({intra_ms_expr}) FROM read_parquet(?) "
+            f"WHERE {deep_book_sql} AND {intra_ms_expr} <= {close_intra_sql}",
+            [str(path)],
+        ).fetchone()
+        if row is not None and row[0] is not None:
+            last_continuous_ms = int(row[0])
+    if last_continuous_ms is None:
         pre_auction_pred = "TRUE"
     else:
-        auction_start_sql = (
-            f"(({hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))})"
-            f" - {_CLOSING_AUCTION_WINDOW_MS})"
-        )
-        pre_auction_pred = f"({intra_ms_expr} < {auction_start_sql})"
+        pre_auction_pred = f"({intra_ms_expr} <= {last_continuous_ms})"
     rows = con.execute(
         f"""
         WITH bucketed AS (
