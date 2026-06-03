@@ -232,49 +232,33 @@ def build_volume_profile_range(
     if not paths:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
 
-    min_max = engine.conn.execute(
-        "SELECT MIN(price), MAX(price) FROM read_parquet(?)", [paths],
-    ).fetchone()
-    if min_max is None or min_max[0] is None:
+    # ADR-0001: the MIN/MAX price query, the zero-width-guarded bin_width, and
+    # the multi-file binning SQL (price/qty schema knowledge) now live in
+    # trades_tbl.query_volume_profile_range. bundle stays the coordinator: it
+    # owns the path layout + existence filtering above, maps the no-trades
+    # signal (None) to the empty-profile wire shape, and expands the sparse
+    # per-bin rows into the dense VolumeProfileBin array (a models concern).
+    binning = trades_tbl.query_volume_profile_range(engine.conn, paths=paths, vp_bins=vp_bins)
+    if binning is None:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
-    price_min, price_max = int(min_max[0]), int(min_max[1])
-
-    # Bin-width derived from vp_bins, mirroring build_volume_profile_slice.
-    # Guard against zero-width range (single-price day) by flooring at 1.
-    bin_width_raw = (price_max - price_min) / vp_bins if vp_bins > 0 else 1
-    if bin_width_raw <= 0:
-        bin_width_raw = 1
-
-    # No side filter — auction crosses count toward volume profile per spec §4.1.
-    # Path is parameter-bound (list) for multi-file glob; bin arithmetic is
-    # f-string'd since price_min/bin_width_raw are server-derived numerics.
-    rows = engine.conn.execute(
-        f"""
-        SELECT FLOOR((price - {price_min}) / {bin_width_raw})::BIGINT AS bin_idx,
-               SUM(qty) AS qty
-        FROM read_parquet(?)
-        WHERE price BETWEEN {price_min} AND {price_max}
-        GROUP BY 1 ORDER BY 1
-        """,
-        [paths],
-    ).fetchall()
 
     bins_arr = [
-        VolumeProfileBin(price_low=int(price_min + i * bin_width_raw), qty=0)
+        VolumeProfileBin(price_low=int(binning.price_min + i * binning.bin_width), qty=0)
         for i in range(vp_bins)
     ]
-    for idx, qty in rows:
-        i = int(idx)
-        if 0 <= i < vp_bins:
-            bins_arr[i] = VolumeProfileBin(
-                price_low=int(price_min + i * bin_width_raw), qty=int(qty),
+    for idx, qty in binning.bins:
+        if 0 <= idx < vp_bins:
+            bins_arr[idx] = VolumeProfileBin(
+                price_low=int(binning.price_min + idx * binning.bin_width), qty=qty,
             )
 
     return VolumeProfile(
         bin_count=vp_bins,
-        price_min=price_min,
-        price_max=price_max,
-        bin_width=int(bin_width_raw),
+        price_min=binning.price_min,
+        price_max=binning.price_max,
+        # int() the float bin_width only for the wire value — price_low above is
+        # computed from the raw float so fractional widths don't shift the grid.
+        bin_width=int(binning.bin_width),
         bins=bins_arr,
     )
 

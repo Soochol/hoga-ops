@@ -281,3 +281,75 @@ def query_fill_strength(
         FillStrengthRow(bucket_intra_ms=int(r[0]), buy_qty=int(r[1]), sell_qty=int(r[2]))
         for r in rows
     ]
+
+
+@dataclass(frozen=True)
+class VolumeProfileBinning:
+    """Result of :func:`query_volume_profile_range` — the price range plus the
+    sparse per-bin quantities.
+
+    ``bins`` is sparse: ``list[(bin_idx, qty)]`` straight from the GROUP BY, in
+    ascending bin_idx order. ``bin_idx`` may fall outside ``[0, vp_bins)`` at the
+    upper edge (FLOOR of the max price); the caller is responsible for clamping
+    when it expands these into a dense bin array. Returning sparse rows + the
+    range (not a wire ``VolumeProfile``) keeps this module free of any
+    ``hoga.api.models`` dependency (ADR-0001: tables don't import wire models).
+
+    ``bin_width`` is the RAW float bin width (geometric truth), floored at 1.0
+    for single-price ranges (no ZeroDivision). It is deliberately NOT truncated
+    here: callers compute each bin's ``price_low`` as
+    ``int(price_min + idx * bin_width)`` using this float, and only truncate to
+    int for the wire value — truncating earlier would shift ``price_low`` for
+    fractional bin widths.
+    """
+
+    price_min: int
+    price_max: int
+    bin_width: float
+    bins: list[tuple[int, int]]
+
+
+def query_volume_profile_range(
+    con: duckdb.DuckDBPyConnection, *, paths: list[str], vp_bins: int = 24
+) -> VolumeProfileBinning | None:
+    """Union ``paths`` (multi-file ``read_parquet`` via a list parameter) into one
+    price-binned volume profile over the unioned ``MIN(price)..MAX(price)`` range.
+
+    No side filter — auction crosses (``side == 0``) count toward the volume
+    profile per spec §4.1. The path is parameter-bound (list) for the multi-file
+    glob; the bin arithmetic is f-string'd because price_min / bin_width are
+    server-derived numerics.
+
+    Returns ``None`` when the union has no priced rows (``MIN/MAX`` is NULL) so
+    the caller can map that to an empty profile. ``bin_width`` is floored at 1
+    for a single-price range (guards ZeroDivision).
+    """
+    min_max = con.execute(
+        "SELECT MIN(price), MAX(price) FROM read_parquet(?)", [paths],
+    ).fetchone()
+    if min_max is None or min_max[0] is None:
+        return None
+    price_min, price_max = int(min_max[0]), int(min_max[1])
+
+    # Bin-width derived from vp_bins. Guard against zero-width range
+    # (single-price day) by flooring at 1.
+    bin_width_raw = (price_max - price_min) / vp_bins if vp_bins > 0 else 1
+    if bin_width_raw <= 0:
+        bin_width_raw = 1
+
+    rows = con.execute(
+        f"""
+        SELECT FLOOR((price - {price_min}) / {bin_width_raw})::BIGINT AS bin_idx,
+               SUM(qty) AS qty
+        FROM read_parquet(?)
+        WHERE price BETWEEN {price_min} AND {price_max}
+        GROUP BY 1 ORDER BY 1
+        """,
+        [paths],
+    ).fetchall()
+    return VolumeProfileBinning(
+        price_min=price_min,
+        price_max=price_max,
+        bin_width=float(bin_width_raw),
+        bins=[(int(idx), int(qty)) for idx, qty in rows],
+    )
