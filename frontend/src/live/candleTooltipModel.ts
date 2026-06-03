@@ -58,8 +58,8 @@ export function buildCandleTooltip(
     low: c.low,
     close: c.close,
     volume,
-    barOverBarWon: prev ? c.close - prev.close : null,
-    barOverBarPct: prev ? (c.close / prev.close - 1) * 100 : null,
+    barOverBarWon: prev && prev.close > 0 ? c.close - prev.close : null,
+    barOverBarPct: prev && prev.close > 0 ? (c.close / prev.close - 1) * 100 : null,
     volumeRatioPct: prev && prevVol > 0 ? (volume / prevVol) * 100 : null,
   };
 }

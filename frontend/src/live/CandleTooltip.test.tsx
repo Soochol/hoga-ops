@@ -27,12 +27,12 @@ const bundle = {
   candles: [C(1_000_000, 100, 105, 99, 102, 10), C(1_060_000, 102, 108, 101, 107, 20)],
 } as never;
 
-function makeChart() {
+function makeChart(paneHeights: number[] = [400]) {
   let handler: ((p: unknown) => void) | null = null;
   const chart = {
     subscribeCrosshairMove: (h: (p: unknown) => void) => { handler = h; },
     unsubscribeCrosshairMove: () => { handler = null; },
-    panes: () => [{ getHeight: () => 400 }],
+    panes: () => paneHeights.map((h) => ({ getHeight: () => h })),
     chartElement: () => ({ clientWidth: 800, clientHeight: 400 }),
   } as never;
   return { chart, fire: (p: unknown) => act(() => { handler?.(p); }) };
@@ -97,5 +97,40 @@ describe('CandleTooltip', () => {
     const tip = screen.getByTestId('candle-tooltip'); // 사라지지 않음(없으면 throw)
     expect(tip).toHaveTextContent('111');   // 갱신된 종가
     expect(tip).toHaveTextContent('400%');  // 40/10*100 갱신된 거래량비
+  });
+
+  it('비-캔들 페인(거래량 등) 위에서는 숨김 (paneIdAtY)', () => {
+    // paneSeries 가 volume 시리즈를 pane index 1 에 매핑 → paneIdAtY 가 'volume' 반환.
+    const { chart, fire } = makeChart([300, 100]); // pane0=candle, pane1=volume
+    const ps = new Map([
+      ['volume', { getPane: () => ({ paneIndex: () => 1 }) }],
+    ]) as never;
+    render(
+      <CandleTooltip chart={chart} bundle={bundle} axis={axis} paneSeries={ps} timeframe="1m" />,
+    );
+    fire({ point: { x: 100, y: 350 }, time: 1060 }); // y=350 ∈ pane1(volume)
+    expect(screen.queryByTestId('candle-tooltip')).toBeNull();
+  });
+
+  it('axis 리베이스(가상시각 시프트)에도 같은 봉을 가리킨다 (ts_ms 키)', () => {
+    const { chart, fire } = makeChart();
+    const ps = new Map() as never;
+    const { rerender } = render(
+      <CandleTooltip chart={chart} bundle={bundle} axis={axis} paneSeries={ps} timeframe="1m" />,
+    );
+    fire({ point: { x: 100, y: 50 }, time: 1060 }); // 가상시각 1060 = ts 1_060_000
+    expect(screen.getByTestId('candle-tooltip')).toHaveTextContent('107');
+    // 과거확장 리베이스: toVirtual 이 시프트(가상시각 전부 달라짐), ts_ms 는 불변
+    const shifted = {
+      segments: [{}],
+      toVirtual: (ms: number) => ms + 999_000_000,
+      toReal: (ms: number) => ms,
+      contains: () => true,
+    } as never;
+    act(() => {
+      rerender(<CandleTooltip chart={chart} bundle={bundle} axis={shifted} paneSeries={ps} timeframe="1m" />);
+    });
+    // 커서 안 움직였지만 ts_ms 키로 같은 봉 유지(가상시각 키였다면 사라졌을 것)
+    expect(screen.getByTestId('candle-tooltip')).toHaveTextContent('107');
   });
 });

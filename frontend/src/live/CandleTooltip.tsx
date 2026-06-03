@@ -53,25 +53,31 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
 export default function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
   const enabled = useActivePrefs((p) => p.candleTooltipEnabled);
   const tipRef = useRef<HTMLDivElement>(null);
-  // 호버 "키"만 저장한다(가상시각 time + 화면 위치). 툴팁 내용 모델은 아래 렌더에서
-  // 현재 drawn/vsecToIndex 로 파생한다 — 이렇게 분리해야 /live 의 SSE 틱이
-  // bundle.candles 를 재생성해도 (a) 구독이 끊겨 툴팁이 사라지지 않고,
-  // (b) 커서를 안 움직여도 내용이 in-place 로 갱신된다(스펙 §거동, ADR-0059).
-  const [hover, setHover] = useState<{ time: number; left: number; top: number } | null>(null);
+  // 호버 "키"는 절대 ts_ms 로 저장한다(가상시각 X). 가상시각은 axis 리베이스(과거 거래일
+  // 확장)로 시프트되지만 ts_ms 는 불변 — 리베이스 중 정지 커서에서도 같은 봉을 가리킨다.
+  // 툴팁 내용 모델은 아래 렌더에서 현재 drawn 으로 파생하므로 SSE 틱마다 in-place 갱신된다.
+  const [hover, setHover] = useState<{ tsMs: number; left: number; top: number } | null>(null);
 
-  // 그려진 캔들 배열(projectCandle 와 동일 필터) + 가상시각(초)→index 맵.
-  // 키는 projectCandle 의 candle.time = axis.toVirtual(ts_ms)/1000 과 정확히 동일(반올림 X).
-  const { drawn, vsecToIndex } = useMemo(() => {
+  // 그려진 캔들 배열(projectCandle 와 동일 필터) + 두 인덱스 맵:
+  //  - vsecToIndex: 가상시각(초)→index. 핸들러가 param.time(=projectCandle 의 candle.time,
+  //    axis.toVirtual(ts_ms)/1000, 반올림 X)을 봉으로 변환할 때.
+  //  - tsMsToIndex: ts_ms→index. 렌더가 저장된 hover.tsMs 를 현재 봉으로 변환(리베이스 안전).
+  const { drawn, vsecToIndex, tsMsToIndex } = useMemo(() => {
     const drawnArr = bundle.candles.filter((c) => axis.contains(c.ts_ms));
-    const map = new Map<number, number>();
-    drawnArr.forEach((c, i) => map.set(axis.toVirtual(c.ts_ms) / 1000, i));
-    return { drawn: drawnArr, vsecToIndex: map };
+    const vmap = new Map<number, number>();
+    const tmap = new Map<number, number>();
+    drawnArr.forEach((c, i) => {
+      vmap.set(axis.toVirtual(c.ts_ms) / 1000, i);
+      tmap.set(c.ts_ms, i);
+    });
+    return { drawn: drawnArr, vsecToIndex: vmap, tsMsToIndex: tmap };
   }, [bundle.candles, axis]);
 
-  // paneIdAtY 에 쓰는 paneSeries 는 ref 로 읽어, 구독 effect 가 [chart, enabled] 에만
-  // 의존하게 한다 — 데이터 틱·pane 등록 변화로 재구독(→ 툴팁 소멸)되지 않도록.
-  const paneSeriesRef = useRef(paneSeries);
-  useEffect(() => { paneSeriesRef.current = paneSeries; }, [paneSeries]);
+  // 핸들러가 읽는 최신 데이터(drawn·vsecToIndex·paneSeries)는 ref 로 — 구독 effect 가
+  // [chart, enabled] 에만 의존하게 해, 데이터 틱·pane 등록 변화로 재구독(→ 툴팁 소멸)되지
+  // 않도록(스펙 §거동, ADR-0059). 매 렌더 커밋 후 sync → 다음 크로스헤어 이벤트엔 항상 최신.
+  const live = useRef({ drawn, vsecToIndex, paneSeries });
+  useEffect(() => { live.current = { drawn, vsecToIndex, paneSeries }; }, [drawn, vsecToIndex, paneSeries]);
 
   useEffect(() => {
     // 토글 OFF: 구독하지 않는다. 직전 effect 의 cleanup 이 이미 hover 를 비웠고,
@@ -89,8 +95,11 @@ export default function CandleTooltip({ chart, bundle, axis, paneSeries, timefra
       if (pending !== null) cancelAnimationFrame(pending);
       pending = requestAnimationFrame(() => {
         pending = null;
+        const { drawn: d, vsecToIndex: vmap, paneSeries: ps } = live.current;
         // 캔들 페인 한정.
-        if (paneIdAtY(chart, paneSeriesRef.current, point.y) !== 'candle') { setHover(null); return; }
+        if (paneIdAtY(chart, ps, point.y) !== 'candle') { setHover(null); return; }
+        const vidx = vmap.get(time);
+        if (vidx === undefined) { setHover(null); return; } // 봉 사이 whitespace
         const el = chart.chartElement();
         const tip = tipRef.current;
         const place = placeTooltip(
@@ -98,7 +107,7 @@ export default function CandleTooltip({ chart, bundle, axis, paneSeries, timefra
           el?.clientWidth ?? 0, el?.clientHeight ?? 0,
           tip?.offsetWidth ?? 160, tip?.offsetHeight ?? 130,
         );
-        setHover({ time, left: place.left, top: place.top });
+        setHover({ tsMs: d[vidx].ts_ms, left: place.left, top: place.top });
       });
     };
     chart.subscribeCrosshairMove(handler);
@@ -109,14 +118,16 @@ export default function CandleTooltip({ chart, bundle, axis, paneSeries, timefra
     };
   }, [chart, enabled]);
 
-  // 내용 모델은 렌더에서 현재 데이터로 파생(순수) — SSE 틱으로 drawn 이 갱신되면
-  // 커서를 안 움직여도 자동으로 최신값. 호버 봉이 사라지면(idx 부재) 숨김.
+  // 내용 모델은 렌더에서 현재 데이터로 파생(순수) — SSE 틱/리베이스로 drawn 이 갱신되면
+  // 커서를 안 움직여도 자동으로 최신 봉. 호버 봉이 사라지면(idx 부재) 숨김.
   if (!enabled || !hover) return null;
-  const idx = vsecToIndex.get(hover.time);
+  const idx = tsMsToIndex.get(hover.tsMs);
   if (idx === undefined) return null;
   const m = buildCandleTooltip(drawn, idx, timeframe);
   if (!m) return null;
-  const bobNull = m.barOverBarWon == null || m.barOverBarPct == null;
+  // barOverBarPct 는 모델에서 prev.close>0 으로 가드되지만, 비유한값이 새어들면 '—'(방어).
+  const bobNull =
+    m.barOverBarWon == null || m.barOverBarPct == null || !Number.isFinite(m.barOverBarPct);
   return (
     <div ref={tipRef} data-testid="candle-tooltip" style={{ ...boxStyle, left: hover.left, top: hover.top }}>
       <div style={{ ...rowStyle, color: 'var(--fg-dim)', marginBottom: 4 }}>

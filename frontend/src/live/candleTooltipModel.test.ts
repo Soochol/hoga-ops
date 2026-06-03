@@ -48,6 +48,13 @@ describe('buildCandleTooltip', () => {
     expect(buildCandleTooltip(zeroPrev, 1, '1m')!.volumeRatioPct).toBeNull();
   });
 
+  it('prev.close===0 → 봉대비 변동(액·률) null (Infinity 방지, 0 나눗셈 회피)', () => {
+    const zeroClose = [C(baseMs, 0, 0, 0, 0, 5), C(baseMs + 60_000, 100, 110, 90, 105, 8)];
+    const m = buildCandleTooltip(zeroClose, 1, '1m')!;
+    expect(m.barOverBarWon).toBeNull();
+    expect(m.barOverBarPct).toBeNull();   // (105/0-1)*100 = Infinity 가 아니라 null
+  });
+
   it('분봉: dateLabel MM/DD + timeLabel HH:MM (KST)', () => {
     const m = buildCandleTooltip(bars, 1, '1m')!;
     expect(m.dateLabel).toBe('05/27');           // baseMs+1m 의 KST 날짜
