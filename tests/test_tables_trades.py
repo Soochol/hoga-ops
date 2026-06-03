@@ -395,3 +395,54 @@ def test_query_volume_profile_range_exposes_raw_float_bin_width(tmp_path: Path) 
     assert abs(res.bin_width - 100 / 24) < 1e-9   # raw float, NOT int(4)
     # Downstream price_low for bin 6 must use the float: int(0 + 6 * 4.1666) = 25.
     assert int(res.price_min + 6 * res.bin_width) == 25
+
+
+# ---------------------------------------------------------------------------
+# query_volume_profile (ADR-0001): single-file binning within a caller-supplied
+# price range (cross-table: bundle derives lo/hi from candles)
+# ---------------------------------------------------------------------------
+
+
+def test_query_volume_profile_bins_within_supplied_range(tmp_path: Path) -> None:
+    """Bins trades' price/qty within [price_lo, price_hi] (no side filter —
+    auction crosses count, per spec §4.1). Range is supplied by the caller."""
+    import duckdb
+
+    from hoga.tables.trades import query_volume_profile
+
+    p = tmp_path / "t.parquet"
+    write_parquet([
+        _price_trade(ts_ms=90_000_100, seq=1, price=100, qty=10, side=1),
+        _price_trade(ts_ms=90_000_200, seq=2, price=100, qty=5, side=-1),
+        _price_trade(ts_ms=90_000_300, seq=3, price=150, qty=7, side=0),
+    ], p)
+    con = duckdb.connect()
+    res = query_volume_profile(con, path=p, price_lo=100, price_hi=200, bins=2)
+    assert res is not None
+    assert res.price_min == 100
+    assert res.price_max == 200
+    assert res.bin_width == 50.0  # (200-100)/2
+    bins = dict(res.bins)
+    assert bins.get(0) == 15  # prices 100 -> bin 0 (10+5)
+    assert bins.get(1) == 7   # price 150 -> FLOOR((150-100)/50)=1
+
+
+def test_query_volume_profile_exposes_raw_float_bin_width(tmp_path: Path) -> None:
+    """bin_width is the RAW float (mirrors range): a fractional width must not
+    be truncated in the method, else price_low shifts downstream. No zero-width
+    guard here (slice 4 has none) — only fractional/normal ranges are tested."""
+    import duckdb
+
+    from hoga.tables.trades import query_volume_profile
+
+    p = tmp_path / "t.parquet"
+    write_parquet([
+        _price_trade(ts_ms=90_000_100, seq=1, price=0, qty=1),
+        _price_trade(ts_ms=90_000_200, seq=2, price=100, qty=1),
+    ], p)
+    con = duckdb.connect()
+    # range 0..100 over 24 bins -> bin_width_raw = 4.16666...
+    res = query_volume_profile(con, path=p, price_lo=0, price_hi=100, bins=24)
+    assert res is not None
+    assert abs(res.bin_width - 100 / 24) < 1e-9
+    assert int(res.price_min + 6 * res.bin_width) == 25

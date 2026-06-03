@@ -120,8 +120,8 @@ def build_quote_ratio_slice(
     bucket_ms: int = 1000,
     source: str = "hogaplay",
 ) -> QuoteRatio:
-    # ADR-0001: the bucketing SQL + snapshots schema knowledge (ask_q1..q10 /
-    # bid_q1..q10 level columns, the last-in-bucket selection, the HHMMSSmmm-
+    # ADR-0001: the bucketing SQL + snapshots schema knowledge (the per-level
+    # ask/bid quantity columns, the last-in-bucket selection, the HHMMSSmmm-
     # linearization rationale) now lives in snapshots_tbl.query_bucketed_ratio.
     # bundle stays the coordinator: it owns the path layout + the no-data guard,
     # and re-bases the native ms-from-midnight bucket into Unix ms (the table
@@ -157,6 +157,12 @@ def build_volume_profile_slice(
     price_max: int | None = None,
     vp_bins: int = 24,
 ) -> VolumeProfile:
+    # ADR-0001: this is the cross-table coordinator — it derives the price grid
+    # from the candles dimension (candles_tbl.query_price_range owns the
+    # low/high column knowledge) and bins the trades within it
+    # (trades_tbl.query_volume_profile owns the price/qty binning SQL). bundle
+    # keeps only the glue: path layout, the degenerate-profile guards, and the
+    # dense VolumeProfileBin expansion (a models concern).
     code_dir = engine.parquet_dir(date, code, source)
     candles_path_obj = code_dir / "candles.parquet"
     trades_path_obj = code_dir / "trades.parquet"
@@ -165,41 +171,30 @@ def build_volume_profile_slice(
     # than raising. Likewise for missing trades.parquet (empty promote cycle).
     if not candles_path_obj.exists() or not trades_path_obj.exists():
         return VolumeProfile(bin_count=1, price_min=0, price_max=0, bin_width=0, bins=[])
-    candles_path = str(candles_path_obj)
-    trades_path = str(trades_path_obj)
     if price_min is None or price_max is None:
-        row = engine.conn.execute(
-            "SELECT MIN(low), MAX(high) FROM read_parquet(?)", [candles_path],
-        ).fetchone()
-        if row is None or row[0] is None or row[1] is None:
+        price_range = candles_tbl.query_price_range(engine.conn, path=candles_path_obj)
+        if price_range is None:
             # Empty candles table — return a degenerate single-bin profile.
             return VolumeProfile(bin_count=1, price_min=0, price_max=0, bin_width=0, bins=[])
-        price_min = int(row[0])
-        price_max = int(row[1])
-    bin_width = (price_max - price_min) / vp_bins
-    # No side filter — auction crosses count toward volume profile per spec §4.1
-    rows = engine.conn.execute(
-        f"""
-        SELECT FLOOR((price - {price_min}) / {bin_width})::BIGINT AS bin_idx, SUM(qty) AS qty
-        FROM read_parquet(?)
-        WHERE price BETWEEN {price_min} AND {price_max}
-        GROUP BY 1 ORDER BY 1
-        """,
-        [trades_path],
-    ).fetchall()
+        price_min, price_max = price_range
+    binning = trades_tbl.query_volume_profile(
+        engine.conn, path=trades_path_obj,
+        price_lo=price_min, price_hi=price_max, bins=vp_bins,
+    )
     bins_arr = [
-        VolumeProfileBin(price_low=int(price_min + i * bin_width), qty=0)
+        VolumeProfileBin(price_low=int(price_min + i * binning.bin_width), qty=0)
         for i in range(vp_bins)
     ]
-    for idx, qty in rows:
-        i = int(idx)
-        if 0 <= i < vp_bins:
-            bins_arr[i] = VolumeProfileBin(
-                price_low=int(price_min + i * bin_width), qty=int(qty),
+    for idx, qty in binning.bins:
+        if 0 <= idx < vp_bins:
+            bins_arr[idx] = VolumeProfileBin(
+                price_low=int(price_min + idx * binning.bin_width), qty=qty,
             )
     return VolumeProfile(
         bin_count=vp_bins, price_min=price_min, price_max=price_max,
-        bin_width=int(bin_width), bins=bins_arr,
+        # int() the float bin_width only for the wire value — price_low above is
+        # computed from the raw float so fractional widths don't shift the grid.
+        bin_width=int(binning.bin_width), bins=bins_arr,
     )
 
 
