@@ -290,11 +290,13 @@ class VolumeProfileBinning:
     per-bin quantities.
 
     ``bins`` is sparse: ``list[(bin_idx, qty)]`` straight from the GROUP BY, in
-    ascending bin_idx order. ``bin_idx`` may fall outside ``[0, vp_bins)`` at the
-    upper edge (FLOOR of the max price); the caller is responsible for clamping
-    when it expands these into a dense bin array. Returning sparse rows + the
-    range (not a wire ``VolumeProfile``) keeps this module free of any
-    ``hoga.api.models`` dependency (ADR-0001: tables don't import wire models).
+    ascending bin_idx order. ``bin_idx`` may equal ``vp_bins`` at the upper edge
+    (FLOOR of the max price lands one past the last valid index); the caller
+    clamps this top-edge row into ``vp_bins-1`` (the last bin) when expanding
+    into a dense bin array — so price_max volume is never dropped. Returning
+    sparse rows + the range (not a wire ``VolumeProfile``) keeps this module
+    free of any ``hoga.api.models`` dependency (ADR-0001: tables don't import
+    wire models).
 
     ``bin_width`` is the RAW float bin width (geometric truth). It is
     deliberately NOT truncated here: callers compute each bin's ``price_low`` as

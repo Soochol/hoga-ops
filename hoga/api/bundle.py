@@ -186,10 +186,16 @@ def build_volume_profile_slice(
         for i in range(vp_bins)
     ]
     for idx, qty in binning.bins:
-        if 0 <= idx < vp_bins:
-            bins_arr[idx] = VolumeProfileBin(
-                price_low=int(price_min + idx * binning.bin_width), qty=qty,
-            )
+        if idx < 0:
+            continue
+        # Clamp the top-edge bin (FLOOR of price_max == vp_bins) into the last
+        # valid bin (vp_bins-1). Without this fold, the highest-price volume is
+        # silently dropped. GROUP BY guarantees at most one row per idx, so
+        # accumulating with += is safe; for non-folded bins += equals =.
+        b = min(idx, vp_bins - 1)
+        bins_arr[b] = VolumeProfileBin(
+            price_low=bins_arr[b].price_low, qty=bins_arr[b].qty + qty,
+        )
     return VolumeProfile(
         bin_count=vp_bins, price_min=price_min, price_max=price_max,
         # int() the float bin_width only for the wire value — price_low above is
@@ -242,10 +248,16 @@ def build_volume_profile_range(
         for i in range(vp_bins)
     ]
     for idx, qty in binning.bins:
-        if 0 <= idx < vp_bins:
-            bins_arr[idx] = VolumeProfileBin(
-                price_low=int(binning.price_min + idx * binning.bin_width), qty=qty,
-            )
+        if idx < 0:
+            continue
+        # Clamp the top-edge bin (FLOOR of price_max == vp_bins) into the last
+        # valid bin (vp_bins-1). Without this fold, the highest-price volume is
+        # silently dropped. GROUP BY guarantees at most one row per idx, so
+        # accumulating with += is safe; for non-folded bins += equals =.
+        b = min(idx, vp_bins - 1)
+        bins_arr[b] = VolumeProfileBin(
+            price_low=bins_arr[b].price_low, qty=bins_arr[b].qty + qty,
+        )
 
     return VolumeProfile(
         bin_count=vp_bins,
