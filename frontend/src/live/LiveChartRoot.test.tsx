@@ -846,11 +846,11 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     );
     const chart = vi.mocked(createChartEx).mock.results[0].value;
     // Subscribers: (1) LiveChartRoot's cursor-publish effect, (2) PaneLegendOverlay
-    // value reader, (3+4) CandleTooltip — subscribes once on mount then once more
-    // when paneSeries identity changes after RangeSeriesPane calls onPrimarySeriesReady
-    // (paneSeries is in CandleTooltip's effect deps). A higher count would mean a
-    // leaked/duplicate subscription beyond these four legitimate calls.
-    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(4);
+    // value reader, (3) CandleTooltip — subscribes exactly once, keyed on
+    // [chart, enabled] (paneSeries + drawn/index map read via refs/render so SSE
+    // ticks and pane registration do NOT resubscribe). A higher count would mean a
+    // leaked/duplicate subscription beyond these three legitimate calls.
+    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(3);
   });
 
   it('subscribes on calendar timeframe too (publishes cursor for Pane Legend; spot stays minute-only in LiveSidebar)', () => {
@@ -866,11 +866,11 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     );
     const chart = vi.mocked(createChartEx).mock.results[0].value;
     // Subscribers: (1) LiveChartRoot's cursor-publish effect, (2) PaneLegendOverlay
-    // value reader, (3+4) CandleTooltip — subscribes once on mount then once more
-    // when paneSeries identity changes after RangeSeriesPane calls onPrimarySeriesReady
-    // (paneSeries is in CandleTooltip's effect deps). A higher count would mean a
-    // leaked/duplicate subscription beyond these four legitimate calls.
-    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(4);
+    // value reader, (3) CandleTooltip — subscribes exactly once, keyed on
+    // [chart, enabled] (paneSeries + drawn/index map read via refs/render so SSE
+    // ticks and pane registration do NOT resubscribe). A higher count would mean a
+    // leaked/duplicate subscription beyond these three legitimate calls.
+    expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(3);
   });
 
   it('crosshair move → setCursor; crosshair leave → clearCursor', async () => {

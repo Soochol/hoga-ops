@@ -7,7 +7,7 @@ import { useActivePrefs } from '../state/chartPrefs';
 import { paneIdAtY, type PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import { priceDirClass } from '../ui/priceDir';
 import { formatKoreanInt } from '../util/koreanNumber';
-import { buildCandleTooltip, placeTooltip, type CandleTooltipModel } from './candleTooltipModel';
+import { buildCandleTooltip, placeTooltip } from './candleTooltipModel';
 
 type Props = {
   chart: IChartApi;
@@ -32,6 +32,7 @@ const boxStyle: CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
   whiteSpace: 'nowrap',
   minWidth: 150,
+  boxShadow: 'var(--shadow)',
 };
 const rowStyle: CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 16 };
 const keyStyle: CSSProperties = { color: 'var(--fg-dimmer)' };
@@ -52,7 +53,11 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
 export default function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
   const enabled = useActivePrefs((p) => p.candleTooltipEnabled);
   const tipRef = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<{ model: CandleTooltipModel; left: number; top: number } | null>(null);
+  // 호버 "키"만 저장한다(가상시각 time + 화면 위치). 툴팁 내용 모델은 아래 렌더에서
+  // 현재 drawn/vsecToIndex 로 파생한다 — 이렇게 분리해야 /live 의 SSE 틱이
+  // bundle.candles 를 재생성해도 (a) 구독이 끊겨 툴팁이 사라지지 않고,
+  // (b) 커서를 안 움직여도 내용이 in-place 로 갱신된다(스펙 §거동, ADR-0059).
+  const [hover, setHover] = useState<{ time: number; left: number; top: number } | null>(null);
 
   // 그려진 캔들 배열(projectCandle 와 동일 필터) + 가상시각(초)→index 맵.
   // 키는 projectCandle 의 candle.time = axis.toVirtual(ts_ms)/1000 과 정확히 동일(반올림 X).
@@ -63,15 +68,20 @@ export default function CandleTooltip({ chart, bundle, axis, paneSeries, timefra
     return { drawn: drawnArr, vsecToIndex: map };
   }, [bundle.candles, axis]);
 
+  // paneIdAtY 에 쓰는 paneSeries 는 ref 로 읽어, 구독 effect 가 [chart, enabled] 에만
+  // 의존하게 한다 — 데이터 틱·pane 등록 변화로 재구독(→ 툴팁 소멸)되지 않도록.
+  const paneSeriesRef = useRef(paneSeries);
+  useEffect(() => { paneSeriesRef.current = paneSeries; }, [paneSeries]);
+
   useEffect(() => {
-    // 토글 OFF: 구독하지 않는다. 직전 effect 의 cleanup 이 이미 state 를 비웠고,
-    // 렌더 가드(`!enabled || !state`)가 표시를 막으므로 여기서 setState 불필요.
+    // 토글 OFF: 구독하지 않는다. 직전 effect 의 cleanup 이 이미 hover 를 비웠고,
+    // 렌더 가드(`!enabled || !hover`)가 표시를 막으므로 여기서 setHover 불필요.
     if (!enabled) return;
     let pending: number | null = null;
     const handler = (param: MouseEventParams) => {
       if (param.point == null || typeof param.time !== 'number') {
         if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
-        setState(null);
+        setHover(null);
         return;
       }
       const point = param.point;
@@ -80,11 +90,7 @@ export default function CandleTooltip({ chart, bundle, axis, paneSeries, timefra
       pending = requestAnimationFrame(() => {
         pending = null;
         // 캔들 페인 한정.
-        if (paneIdAtY(chart, paneSeries, point.y) !== 'candle') { setState(null); return; }
-        const idx = vsecToIndex.get(time);
-        if (idx === undefined) { setState(null); return; }
-        const model = buildCandleTooltip(drawn, idx, timeframe);
-        if (!model) { setState(null); return; }
+        if (paneIdAtY(chart, paneSeriesRef.current, point.y) !== 'candle') { setHover(null); return; }
         const el = chart.chartElement();
         const tip = tipRef.current;
         const place = placeTooltip(
@@ -92,22 +98,27 @@ export default function CandleTooltip({ chart, bundle, axis, paneSeries, timefra
           el?.clientWidth ?? 0, el?.clientHeight ?? 0,
           tip?.offsetWidth ?? 160, tip?.offsetHeight ?? 130,
         );
-        setState({ model, left: place.left, top: place.top });
+        setHover({ time, left: place.left, top: place.top });
       });
     };
     chart.subscribeCrosshairMove(handler);
     return () => {
       chart.unsubscribeCrosshairMove(handler);
       if (pending !== null) cancelAnimationFrame(pending);
-      setState(null);
+      setHover(null);
     };
-  }, [chart, enabled, drawn, vsecToIndex, paneSeries, timeframe]);
+  }, [chart, enabled]);
 
-  if (!enabled || !state) return null;
-  const m = state.model;
+  // 내용 모델은 렌더에서 현재 데이터로 파생(순수) — SSE 틱으로 drawn 이 갱신되면
+  // 커서를 안 움직여도 자동으로 최신값. 호버 봉이 사라지면(idx 부재) 숨김.
+  if (!enabled || !hover) return null;
+  const idx = vsecToIndex.get(hover.time);
+  if (idx === undefined) return null;
+  const m = buildCandleTooltip(drawn, idx, timeframe);
+  if (!m) return null;
   const bobNull = m.barOverBarWon == null || m.barOverBarPct == null;
   return (
-    <div ref={tipRef} data-testid="candle-tooltip" style={{ ...boxStyle, left: state.left, top: state.top }}>
+    <div ref={tipRef} data-testid="candle-tooltip" style={{ ...boxStyle, left: hover.left, top: hover.top }}>
       <div style={{ ...rowStyle, color: 'var(--fg-dim)', marginBottom: 4 }}>
         <span>{m.dateLabel}{m.timeLabel ? ` ${m.timeLabel}` : ''}</span>
       </div>

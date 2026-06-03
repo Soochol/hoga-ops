@@ -77,4 +77,25 @@ describe('CandleTooltip', () => {
     const tip = screen.getByTestId('candle-tooltip');
     expect(tip).toHaveTextContent('—');
   });
+
+  it('라이브 틱(bundle.candles 재생성)에도 호버 툴팁 유지 + 값 in-place 갱신', () => {
+    // /live SSE 틱마다 bundle.candles 가 새 식별자로 재생성된다. 커서가 멈춰 있어도
+    // (a) 구독이 끊겨 툴팁이 사라지면 안 되고, (b) 내용이 최신값으로 갱신돼야 한다.
+    const { chart, fire } = makeChart();
+    const ps = new Map() as never; // 렌더 간 안정적 paneSeries
+    const b1 = { candles: [C(1_000_000, 100, 105, 99, 102, 10), C(1_060_000, 102, 108, 101, 107, 20)] } as never;
+    const { rerender } = render(
+      <CandleTooltip chart={chart} bundle={b1} axis={axis} paneSeries={ps} timeframe="1m" />,
+    );
+    fire({ point: { x: 100, y: 50 }, time: 1060 });
+    expect(screen.getByTestId('candle-tooltip')).toHaveTextContent('107');
+    // 같은 ts_ms, 형성 중인 봉의 종가·거래량만 갱신된 새 bundle 식별자
+    const b2 = { candles: [C(1_000_000, 100, 105, 99, 102, 10), C(1_060_000, 102, 112, 101, 111, 40)] } as never;
+    act(() => {
+      rerender(<CandleTooltip chart={chart} bundle={b2} axis={axis} paneSeries={ps} timeframe="1m" />);
+    });
+    const tip = screen.getByTestId('candle-tooltip'); // 사라지지 않음(없으면 throw)
+    expect(tip).toHaveTextContent('111');   // 갱신된 종가
+    expect(tip).toHaveTextContent('400%');  // 40/10*100 갱신된 거래량비
+  });
 });
