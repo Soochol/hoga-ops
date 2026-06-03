@@ -29,6 +29,7 @@ import { useViewportBackfill } from './useViewportBackfill';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
+import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
@@ -395,6 +396,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
             />
           ))}
           <MovingAverageOverlay chart={chart} bundle={bundle} axis={axis} />
+          <LiveCurrentPriceLine paneSeries={paneSeries} bundle={bundle} code={code} />
           <DrawingOverlay chart={chart} axis={axis} paneSeries={paneSeries} />
           {/* After DrawingOverlay so the legend's ✕/eye buttons paint above the
               drawing canvas; the container is pointer-transparent so the
