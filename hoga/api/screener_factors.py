@@ -22,11 +22,15 @@ class FactorSegment:
 
 
 def compute_factor_segments(
-    rows: list[tuple[dt.date, float, float]], *, tol: float = 1e-4
+    rows: list[tuple[dt.date, float, float]], *, tol: float = 1e-2
 ) -> list[FactorSegment]:
     """rows: (date, raw_close, adj_close) — date ASC 정렬 가정.
 
-    factor=adj/raw 를 run-length로 압축: factor가 직전 대비 tol(상대) 넘게 바뀌면 새 세그먼트.
+    factor=adj/raw 를 run-length로 압축: factor가 직전 세그먼트-오픈 대비 tol(상대) 넘게 바뀌면
+    새 세그먼트.  tol=1e-2(기본): KIS 수정주가는 정수 반올림을 거치므로 안정 기간에도 factor가
+    ~1e-3 규모로 흔들린다(라운딩 노이즈). tol 이 이보다 작으면 노이즈마다 새 세그먼트가 생겨
+    종목당 수백 개로 불어난다(카카오 파일럿: tol=1e-4 → 129개). 실제 코퍼레이트 액션(주식 분할·
+    병합)은 factor 가 수십 % 바뀌므로 tol=1e-2 는 노이즈를 흡수하면서 실제 액션은 정확히 잡는다.
     raw/adj 둘 중 하나라도 0(불량/결측)이면 스킵(직전 세그먼트 유지) — adj==0 은 factor==0 을
     만들어 apply_factors 의 volume/factor 0나눗셈을 유발하므로 명시 가드. 첫 유효행이 첫 세그먼트.
     """
