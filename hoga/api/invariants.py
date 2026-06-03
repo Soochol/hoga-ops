@@ -39,6 +39,19 @@ class Violation:
             "ctx": self.ctx,
         }
 
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> "Violation":
+        """Inverse of :meth:`as_dict` — reconstruct a violation archived in
+        meta.json's ``invariant_violations`` field. Raises on a missing
+        ``invariant_id`` or an unknown ``severity`` (callers reading a possibly
+        stale archive should guard)."""
+        return cls(
+            invariant_id=str(d["invariant_id"]),
+            severity=Severity(d["severity"]),
+            message=str(d.get("message", "")),
+            ctx=dict(d.get("ctx") or {}),
+        )
+
     def to_model(self) -> "ViolationModel":
         """Convert to the Pydantic wire mirror. Keeps the dataclass free
         of Pydantic dep while giving callers a typed wire boundary."""
