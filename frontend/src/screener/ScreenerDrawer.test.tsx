@@ -51,7 +51,7 @@ describe('ScreenerDrawer', () => {
     vi.restoreAllMocks();
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'ok', last_raw_date: '20260530', days_behind: 0 });
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: [], next_run_at_ms: 0 });
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ folders: [], entries: [], next_run_at_ms: 0 });
   });
 
   it('lists saved screeners in the dropdown', async () => {
@@ -190,6 +190,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     const addSpy = vi.spyOn(watchlistApi, 'addToWatchlist').mockResolvedValue({
       code: '005930', name: '삼성전자', registered_at_kst_date: '20260602', last_success_date: null,
+      folder_id: null, order: 0,
     });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
@@ -231,7 +232,8 @@ describe('ScreenerDrawer', () => {
   it('clicking a member row heart removes it from the watchlist', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
-      entries: [{ code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null }],
+      folders: [],
+      entries: [{ code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 }],
       next_run_at_ms: 0,
     });
     const removeSpy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined);

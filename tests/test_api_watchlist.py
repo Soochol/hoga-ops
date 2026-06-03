@@ -15,15 +15,15 @@ def test_load_returns_empty_when_file_missing(tmp_path: Path):
 
 
 def test_save_then_load_round_trip(tmp_path: Path):
-    from hoga.api.watchlist import load_watchlist, save_watchlist
-    from hoga.api.models import WatchlistEntry
+    from hoga.api.watchlist import load_watchlist, save_document
+    from hoga.api.models import WatchlistDocument, WatchlistEntry
     entry = WatchlistEntry(
         code="003490",
         name="대한항공",
         registered_at_kst_date="20260526",
         last_success_date=None,
     )
-    save_watchlist(tmp_path, entries=[entry])
+    save_document(tmp_path, WatchlistDocument(entries=[entry]))
     wl = load_watchlist(tmp_path)
     assert len(wl) == 1
     assert wl[0].code == "003490"
@@ -230,79 +230,7 @@ async def test_bump_last_success_same_date_is_noop_no_write(tmp_path: Path, monk
     def spy_save(*args, **kwargs):
         nonlocal save_calls
         save_calls += 1
-    monkeypatch.setattr(watchlist, "save_watchlist", spy_save)
+    monkeypatch.setattr(watchlist, "save_document", spy_save)
 
     await watchlist.bump_last_success(tmp_path, code="003490", date="20260527")
     assert save_calls == 0
-
-
-@pytest.mark.asyncio
-async def test_reorder_entries_reorders(tmp_path: Path):
-    from hoga.api.watchlist import add_entry, reorder_entries, load_watchlist
-    await add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
-    await add_entry(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
-    await add_entry(tmp_path, code="000660", name="SK하이닉스", today_kst_date="20260526")
-    out = await reorder_entries(tmp_path, codes=["000660", "003490", "005930"])
-    assert [e.code for e in out] == ["000660", "003490", "005930"]
-    assert [e.code for e in load_watchlist(tmp_path)] == ["000660", "003490", "005930"]
-
-
-@pytest.mark.asyncio
-async def test_reorder_ignores_unknown_codes(tmp_path: Path):
-    from hoga.api.watchlist import add_entry, reorder_entries
-    await add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
-    await add_entry(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
-    out = await reorder_entries(tmp_path, codes=["999999", "005930", "003490"])
-    assert [e.code for e in out] == ["005930", "003490"]
-
-
-@pytest.mark.asyncio
-async def test_reorder_appends_unmentioned_in_existing_order(tmp_path: Path):
-    from hoga.api.watchlist import add_entry, reorder_entries
-    await add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
-    await add_entry(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
-    await add_entry(tmp_path, code="000660", name="SK하이닉스", today_kst_date="20260526")
-    out = await reorder_entries(tmp_path, codes=["000660"])
-    assert [e.code for e in out] == ["000660", "003490", "005930"]
-
-
-@pytest.mark.asyncio
-async def test_reorder_preserves_entry_fields(tmp_path: Path):
-    from hoga.api.watchlist import add_entry, reorder_entries
-    await add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
-    out = await reorder_entries(tmp_path, codes=["003490"])
-    assert out[0].name == "대한항공"
-    assert out[0].registered_at_kst_date == "20260526"
-    assert out[0].last_success_date is None
-
-
-@pytest.mark.asyncio
-async def test_reorder_no_change_does_not_rewrite_file(tmp_path: Path):
-    from hoga.api.watchlist import add_entry, reorder_entries
-    await add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
-    await add_entry(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
-    p = tmp_path / "watchlist.json"
-    mtime_before = p.stat().st_mtime_ns
-    await reorder_entries(tmp_path, codes=["003490", "005930"])  # same order
-    assert p.stat().st_mtime_ns == mtime_before  # untouched
-
-
-@pytest.mark.asyncio
-async def test_reorder_empty_codes_is_noop(tmp_path: Path):
-    from hoga.api.watchlist import add_entry, reorder_entries
-    await add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
-    await add_entry(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
-    p = tmp_path / "watchlist.json"
-    mtime_before = p.stat().st_mtime_ns
-    out = await reorder_entries(tmp_path, codes=[])
-    assert [e.code for e in out] == ["003490", "005930"]
-    assert p.stat().st_mtime_ns == mtime_before  # no write
-
-
-@pytest.mark.asyncio
-async def test_reorder_dedupes_duplicate_input_codes(tmp_path: Path):
-    from hoga.api.watchlist import add_entry, reorder_entries
-    await add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
-    await add_entry(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
-    out = await reorder_entries(tmp_path, codes=["005930", "005930", "003490"])
-    assert [e.code for e in out] == ["005930", "003490"]
