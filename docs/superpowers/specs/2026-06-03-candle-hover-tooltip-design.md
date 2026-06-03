@@ -29,21 +29,23 @@ brainstorming 대화에서 비주얼 컴패니언 목업으로 확정한 결정�
    (전일 종가 +3.19% vs 직전 분봉 +0.05%, 사이드바 불일치 가능성 포함)을 보고
    **의도적으로** 직전 봉 기준을 선택했다. 이유: 모든 타임프레임에 같은 규칙 →
    혼란이 없음.
-   - 등락률 = `(이 봉 종가 / 직전 봉 종가 − 1) × 100`
-   - 직전대비 금액 = `이 봉 종가 − 직전 봉 종가`
-   - 거래량비 = `(이 봉 거래량 / 직전 봉 거래량) × 100` ("같으면 100%" 충족)
+   - 봉대비 변동률 = `(이 봉 종가 / 직전 봉 종가 − 1) × 100`
+   - 봉대비 변동액 = `이 봉 종가 − 직전 봉 종가`
+   - 직전봉 거래량비 = `(이 봉 거래량 / 직전 봉 거래량) × 100` ("같으면 100%" 충족)
    - **직전 봉 = 현재 타임프레임으로 그려진 캔들 배열의 바로 앞 봉**
      (`bundle.candles[index−1]` — 아래 "검증" 참고: 이 배열은 이미 타임프레임별로
      집계되어 있다). 분봉 09:00 봉의 직전 봉은 전일 마지막 분봉이므로, 날짜·
      세그먼트 경계 특수처리 없이도 그 봉 한정으로 "전일 종가 대비"가 된다.
-   - 가장 이른 봉(`index===0`, 직전 봉 없음) → 등락·거래량비 `—`.
+   - 가장 이른 봉(`index===0`, 직전 봉 없음) → 봉대비 변동·거래량비 `—`.
+   - **이 분기·근거·트레이드오프는 ADR-0059에 기록**(등락률/전일대비와 의도적
+     으로 다름; 용어 `봉대비`는 CONTEXT.md 참조).
 6. **라벨 = "직전대비"** (통일). 분봉에선 "전일대비"가 부정확하므로 "직전대비"로
    통일한다. 일/주/월봉은 직전 봉 = 전일/전주/전월이라 의미가 그대로 맞는다.
    거래량 비율 행 라벨은 "거래량비".
 
 ### 알려진 거동 (의도된 동작, 버그 아님)
 
-- **분봉 등락률 열의 하루 내 불연속**: "직전 봉" 규칙이라 매일 첫 봉(09:00)은
+- **분봉 봉대비 변동률 열의 하루 내 불연속**: "직전 봉" 규칙이라 매일 첫 봉(09:00)은
   밤사이 갭(큰 값일 수 있음)을, 나머지 봉은 1분 단위 미세 변화를 보인다. 이는
   의도된 동작이다.
 - **사이드바와의 불일치(분봉)**: 사이드바/HTS의 등락률은 전일 종가 기준이라,
@@ -90,16 +92,16 @@ export interface CandleTooltipModel {
   close: number;
   volume: number;          // vol_a + vol_b
   // ── 직전 봉 대비 (직전 봉이 없으면 모두 null → "—") ──
-  changeWon: number | null;   // close − prev.close
-  changePct: number | null;   // (close/prev.close − 1) × 100
-  volumePct: number | null;   // (volume / prevVolume) × 100, prevVolume==0 → null
+  barOverBarWon: number | null;   // 봉대비 변동액 = close − prev.close
+  barOverBarPct: number | null;   // 봉대비 변동률 = (close/prev.close − 1) × 100
+  volumeRatioPct: number | null;  // 직전봉 거래량비 = (volume / prevVolume) × 100, prevVolume==0 → null
 }
 
 /**
  * 인덱스 기반 순수 함수. 현재 타임프레임으로 그려진(=집계된) 캔들 배열과, 그 안의
  * 호버 인덱스만 받는다. 차트 API·axis·시각 매칭 미접근 — 테이블 테스트 가능.
  *  - candles[index]      = 호버된 봉
- *  - candles[index − 1]  = 직전 봉 (index===0 이면 change/volumePct = null)
+ *  - candles[index − 1]  = 직전 봉 (index===0 이면 봉대비/거래량비 필드 = null)
  *  - 날짜/시각 라벨은 candles[index].ts_ms 를 KST 로 포맷(별도 axis 불필요).
  */
 export function buildCandleTooltip(
@@ -127,11 +129,16 @@ export function buildCandleTooltip(
 2. **오버레이 컴포넌트** `CandleTooltip.tsx`
    - `LiveChartRoot`의 오버레이 그룹에 마운트(`PaneLegendOverlay`·`DrawingOverlay`
      형제). `pointer-events:none`.
-   - **인덱스 해석(컴포넌트 책임)**: `bundle.candles`로부터 `가상시각(초) →
-     index` 맵을 1회 구성한다(`Math.round(axis.toVirtual(c.ts_ms)/1000)` 키). 이
-     맵은 RangeSeriesPane이 캔들을 그릴 때 쓰는 것과 동일한 가상시각이므로,
-     `param.time`(가상 초)을 키로 **정확 조회**해 index를 얻는다(O(1), tolerance
-     불필요). 키 부재(봉 사이 whitespace) → 숨김. `param.logical`은 쓰지 않는다.
+   - **인덱스 해석(컴포넌트 책임)**: 그려진 캔들 배열 =
+     `bundle.candles.filter(c => axis.contains(c.ts_ms))` (projectCandle와 동일
+     필터). 이 배열로부터 `가상시각 → index` 맵을 1회 구성한다 — **키는
+     projectCandle이 캔들 `time`으로 쓰는 값과 정확히 동일**해야 하므로
+     `axis.toVirtual(c.ts_ms) / 1000` (**반올림하지 않음**; `candle.ts`의
+     projectCandle은 `time: axis.toVirtual(c.ts_ms)/1000`을 그대로 쓴다). 같은
+     float이 `param.time`으로 되돌아오므로 키로 **정확 조회**해 index를 얻는다
+     (O(1)). 키 부재(봉 사이 whitespace) → 숨김. `param.logical`(페인 union
+     인덱스)은 쓰지 않는다. 모델에 넘기는 `candles`도 이 filter된 그려진 배열이라
+     `index−1`이 직전 그려진 봉을 가리킨다.
      - LiveSidebar의 cursor→데이터포인트 해석과 **같은 봉**을 가리켜야 한다(둘 다
        가상시각 기반 → 동일 봉 보장; 구현 시 교차 확인).
    - `chart.subscribeCrosshairMove(handler)` 직접 구독, rAF coalesce
@@ -208,7 +215,7 @@ crosshair move
 ## 테스트
 
 - **모델 테이블 테스트** `candleTooltipModel.test.ts` (순수, 차트 불필요):
-  - 상승/하락/보합(change·pct 부호·반올림), `index===0` → `—`,
+  - 상승/하락/보합(봉대비 변동 부호·반올림), `index===0` → `—`,
   - 직전 봉이 전일 마지막 분봉인 케이스(분봉 자정 경계 갭),
   - D/W/M 직전 봉, 거래량비(같음=100%, 증가/감소, prevVolume=0 → null),
   - `index` 범위 밖 → null, D/W/M은 `timeLabel===null`.
