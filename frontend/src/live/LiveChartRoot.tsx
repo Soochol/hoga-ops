@@ -25,7 +25,13 @@ import {
   isCalendarTimeframe,
 } from '../state/livePage';
 import type { RangeBundle } from '../api/types';
-import { nextHistoricalFrom, stepChunkDays } from './liveDateTime';
+import {
+  nextHistoricalFrom,
+  stepChunkDays,
+  planFillStep,
+  earliestAllowedMinuteDate,
+  todayKstYyyymmdd,
+} from './liveDateTime';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
@@ -59,6 +65,8 @@ interface Props {
   bundle: RangeBundle | null;
   clampEngaged: boolean;
   isPastCandlesLoading: boolean;
+  /** useLiveBundle.isExtending. false-edge = 한 스텝 settle → 진행 루프 다음 스텝 판정. */
+  isExtending?: boolean;
 }
 
 /** 좌측 팬 prepend 직전의 STABLE 기준 봉을 캡처한다(real ms + 현재 union logical
@@ -84,7 +92,7 @@ function captureViewportShift(
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCandlesLoading }: Props) {
+export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCandlesLoading, isExtending = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
 
@@ -170,10 +178,15 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     { refMs: number; refIdx: number; fromLogical: number; toLogical: number } | null
   >(null);
   const prevEarliestTsMsRef = useRef<number | null>(null);
+  // 진행 루프: 현재 fill에서 dispatch한 스텝 수(백스톱용) + isExtending 직전값(falling edge 검출).
+  const fillStepCountRef = useRef(0);
+  const prevExtendingRef = useRef(false);
   useEffect(() => {
     lastAppliedCountRef.current = null;
     prevEarliestTsMsRef.current = null;
     viewportShiftRef.current = null;
+    fillStepCountRef.current = 0;
+    prevExtendingRef.current = false;
   }, [code, timeframe]);
   useEffect(() => {
     if (!chart || !bundle || bundle.candles.length === 0) return;
@@ -307,6 +320,44 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       if (import.meta.env.DEV) console.warn('[live] viewport restore shift threw', e);
     }
   }, [chart, bundle, axis]);
+
+  // 진행 루프(스텝 2..N): 한 스텝 settle(isExtending true→false) 직후 viewport가
+  // 아직 빈영역이면 다음 스텝을 자가 dispatch한다. minute-only(D/W/M은 one-shot).
+  // planFillStep이 종료(꽉 참/클램프/백스톱)를 판정. 복원 effect 뒤에 선언해
+  // getVisibleLogicalRange가 shift 적용 후 위치를 읽도록 한다.
+  useEffect(() => {
+    const wasExtending = prevExtendingRef.current;
+    prevExtendingRef.current = isExtending;
+    if (!chart) return;
+    if (!isMinuteTimeframe(timeframe)) return;
+    if (!(wasExtending && !isExtending)) return; // falling edge만
+    const cur = useLivePageStore.getState().historicalFromDate;
+    if (cur === null) return;
+    if (axis.segments.length === 0) return;
+    const ts = chart.timeScale();
+    let visibleFrom: number | null = null;
+    try {
+      visibleFrom = ts.getVisibleLogicalRange()?.from ?? null;
+    } catch {
+      visibleFrom = null;
+    }
+    const plan = planFillStep({
+      visibleFrom,
+      historicalFromDate: cur,
+      axisEarliestMs: axis.segments[0].sessionOpenMs,
+      earliestAllowedDate: earliestAllowedMinuteDate(todayKstYyyymmdd()),
+      stepCalendarDays: stepChunkDays(timeframe),
+      stepCount: fillStepCountRef.current,
+      maxSteps: 60,
+    });
+    if (plan.action === 'stop') {
+      fillStepCountRef.current = 0;
+      return;
+    }
+    viewportShiftRef.current = captureViewportShift(ts, axis);
+    fillStepCountRef.current += 1;
+    useLivePageStore.getState().extendHistoricalRange(plan.nextFrom);
+  }, [chart, axis, timeframe, isExtending]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -455,6 +506,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       // Always overwrite (capture OR clear): a failed capture must not leave a
       // PREVIOUS pan's anchors live for the next prepend's restore.
       viewportShiftRef.current = captureViewportShift(ts, axis);
+      fillStepCountRef.current = 1; // 이 dispatch가 스텝 1
       // SR-3: the holiday-span / monotonic-decrease backfill policy lives in
       // the pure nextHistoricalFrom kernel (liveDateTime, table-tested). This
       // effect keeps only the imperative shell: trigger gate, anchor capture,

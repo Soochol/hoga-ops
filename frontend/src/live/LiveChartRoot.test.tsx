@@ -709,6 +709,74 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(shift).toBeGreaterThan(0);
   });
 
+  // ── 진행 루프(스텝 2..N): isExtending falling edge + 빈영역 → 다음 스텝 자가 dispatch ──
+  // makeTs는 STABLE ts를 돌려주므로 per-test로 getVisibleLogicalRange().from을
+  // 덮어 viewport 상태(빈영역/꽉 참)를 제어한다. bundle은 rerender 사이 동결이라
+  // 복원 effect([chart,bundle,axis])가 재실행되지 않아 우리가 덮은 from을 그대로 읽는다.
+  it('dispatches the next step on isExtending falling edge while whitespace remains', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260521' });
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 })); // 빈영역 남음
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
+      { wrapper },
+    );
+    act(() => {
+      rerender(
+        <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
+          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
+      );
+    });
+    // cur '20260521' − stepChunkDays('1m')=5 → '20260516'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260516');
+  });
+
+  it('does NOT dispatch a next step when the viewport is full (visibleFrom >= 0)', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260521' });
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: 4, to: 100 })); // 꽉 참
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
+      { wrapper },
+    );
+    act(() => {
+      rerender(
+        <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
+          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
+      );
+    });
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // 불변
+  });
+
+  it('does NOT run the fill loop on D timeframe (minute-only)', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260521' });
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 }));
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
+      { wrapper },
+    );
+    act(() => {
+      rerender(
+        <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
+          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
+      );
+    });
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // D one-shot, 불변
+  });
+
   it('does NOT restore on pure SSE growth while historicalFromDate is null', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
