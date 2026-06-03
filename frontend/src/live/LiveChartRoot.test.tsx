@@ -754,6 +754,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       );
     });
     expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // 불변
+    // 효과가 게이트까지 실행돼 viewport를 읽고 'full'이라 멈췄음을 국소화.
+    expect(ts.getVisibleLogicalRange).toHaveBeenCalled();
   });
 
   it('does NOT run the fill loop on D timeframe (minute-only)', () => {
@@ -775,6 +777,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       );
     });
     expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // D one-shot, 불변
+    // minute-only 조기 반환이 viewport를 읽기 전에 막았음을 국소화.
+    expect(ts.getVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
   it('does NOT restore on pure SSE growth while historicalFromDate is null', () => {

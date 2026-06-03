@@ -53,6 +53,10 @@ function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
+/** 진행 루프 무한 방지 백스톱. 250일 클램프(≈50스텝 @ 5캘린더일)가 먼저 멈추므로
+ * 이건 백스톱-of-백스톱(60×5=300일 > 250일). */
+const MAX_FILL_STEPS = 60;
+
 /** Empty axis used while the bundle is loading. timeFormatter / tickMarkFormatter
  * read through `axisRef.current` to convert virtual seconds back to real KST;
  * before the real axis arrives they need a working `.toReal()` to return
@@ -348,7 +352,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       earliestAllowedDate: earliestAllowedMinuteDate(todayKstYyyymmdd()),
       stepCalendarDays: stepChunkDays(timeframe),
       stepCount: fillStepCountRef.current,
-      maxSteps: 60,
+      maxSteps: MAX_FILL_STEPS,
     });
     if (plan.action === 'stop') {
       fillStepCountRef.current = 0;
