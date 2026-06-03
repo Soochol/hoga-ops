@@ -35,19 +35,13 @@ from hoga.api.models import (
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import resolve_source as _resolve_source
 from hoga.api.timeenc import (
-    hhmmssms_to_intra_ms_sql,
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
 )
 from hoga.tables import candles as candles_tbl
+from hoga.tables import snapshots as snapshots_tbl
+from hoga.tables import trades as trades_tbl
 from hoga.tables.candles import ApiCandle
-
-
-# Closing Auction Window length — last 10 min of the Regular Session. Mirrors
-# the frontend `sessionTime.AUCTION_WINDOW_LENGTH_MS` and `disk_state.
-# _AUCTION_WINDOW_DURATION_MS`; kept as a local literal here to avoid importing
-# a private cross-module symbol for a one-line constant.
-_CLOSING_AUCTION_WINDOW_MS = 10 * 60 * 1000
 
 
 def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiCandle]:
@@ -127,65 +121,31 @@ def build_quote_ratio_slice(
     source: str = "hogaplay",
     session_close_ms: int | None = None,
 ) -> QuoteRatio:
-    # Bucket on LINEAR ms-from-midnight, not raw HHMMSSmmm. The raw encoding
-    # has gaps at minute / hour boundaries, so arithmetic bucketing of HHMMSSmmm
-    # produces invalid HHMMSSmmm values that decode (via hhmmssms_to_unix_ms)
-    # to duplicate or out-of-order Unix-ms outputs — which lightweight-charts
-    # then rejects with "asc ordered by time". See hhmmssms_to_intra_ms_sql.
+    # ADR-0001: the bucketing SQL + snapshots schema knowledge (the per-level
+    # ask/bid quantity columns, the last-in-bucket selection, the closing-auction
+    # pre-auction representative, the HHMMSSmmm-linearization rationale) now lives
+    # in snapshots_tbl.query_bucketed_ratio. bundle stays the coordinator: it owns
+    # the path layout + the no-data guard, passes the session bound through (so the
+    # table can exclude the auction book from a straddling bucket — ADR-0029), and
+    # re-bases the native ms-from-midnight bucket into Unix ms (the table query is
+    # date-agnostic, so it cannot).
     path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
     if not path_obj.exists():
         # ADR-0043: promote_today writes empty records as unlink → missing file
         # is the valid "no data" state, not an error.
         return QuoteRatio(bucket_ms=bucket_ms, points=[])
-    path = str(path_obj)
-    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    # Per-bucket representative = last *continuous-trading* snapshot. A bucket
-    # straddling the closing Auction Window (e.g. a 3m bucket [15:18,15:21) on a
-    # 15:30 close) must be represented by its last pre-15:20 snapshot, not the
-    # 15:20+ auction book it also spans. `pre_auction_pred` is true for rows
-    # strictly before auction_start; ORDER BY (pred) DESC puts those first, so
-    # ROW_NUMBER rn=1 picks the last pre-auction row, falling back to the last
-    # overall row when a bucket has none (fully inside the auction window —
-    # left for the display Auction Mask, ADR-0029). When session_close_ms is
-    # None the predicate is the constant TRUE → ORDER BY (TRUE) DESC, ts_ms DESC
-    # ≡ the legacy last-in-bucket behavior (callers that don't supply a session
-    # bound are unaffected).
-    if session_close_ms is None:
-        pre_auction_pred = "TRUE"
-    else:
-        auction_start_sql = (
-            f"(({hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))})"
-            f" - {_CLOSING_AUCTION_WINDOW_MS})"
-        )
-        pre_auction_pred = f"({intra_ms_expr} < {auction_start_sql})"
-    rows = engine.conn.execute(
-        f"""
-        WITH bucketed AS (
-          SELECT ts_ms,
-                 (ask_q1 + ask_q2 + ask_q3 + ask_q4 + ask_q5 +
-                  ask_q6 + ask_q7 + ask_q8 + ask_q9 + ask_q10) AS ask_total,
-                 (bid_q1 + bid_q2 + bid_q3 + bid_q4 + bid_q5 +
-                  bid_q6 + bid_q7 + bid_q8 + bid_q9 + bid_q10) AS bid_total,
-                 ({intra_ms_expr} // {bucket_ms}) AS bucket,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
-                   ORDER BY ({pre_auction_pred}) DESC, ts_ms DESC
-                 ) AS rn
-          FROM read_parquet(?)
-        )
-        SELECT bucket * {bucket_ms}, bid_total, ask_total
-        FROM bucketed WHERE rn = 1 ORDER BY bucket
-        """,
-        [path],
-    ).fetchall()
+    rows = snapshots_tbl.query_bucketed_ratio(
+        engine.conn, path=path_obj, bucket_ms=bucket_ms, session_close_ms=session_close_ms
+    )
     return QuoteRatio(
         bucket_ms=bucket_ms,
         points=[
             QuoteRatioPoint(
-                # r[0] is bucket-aligned ms-from-midnight, not HHMMSSmmm.
-                t=ms_from_midnight_to_unix_ms(date, r[0]),
-                bid_total=int(r[1]),
-                ask_total=int(r[2]),
+                # r.bucket_intra_ms is bucket-aligned ms-from-midnight, not
+                # HHMMSSmmm — so convert via ms_from_midnight_to_unix_ms.
+                t=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
+                bid_total=r.bid_total,
+                ask_total=r.ask_total,
             )
             for r in rows
         ],
@@ -202,6 +162,12 @@ def build_volume_profile_slice(
     price_max: int | None = None,
     vp_bins: int = 24,
 ) -> VolumeProfile:
+    # ADR-0001: this is the cross-table coordinator — it derives the price grid
+    # from the candles dimension (candles_tbl.query_price_range owns the
+    # low/high column knowledge) and bins the trades within it
+    # (trades_tbl.query_volume_profile owns the price/qty binning SQL). bundle
+    # keeps only the glue: path layout, the degenerate-profile guards, and the
+    # dense VolumeProfileBin expansion (a models concern).
     code_dir = engine.parquet_dir(date, code, source)
     candles_path_obj = code_dir / "candles.parquet"
     trades_path_obj = code_dir / "trades.parquet"
@@ -210,41 +176,36 @@ def build_volume_profile_slice(
     # than raising. Likewise for missing trades.parquet (empty promote cycle).
     if not candles_path_obj.exists() or not trades_path_obj.exists():
         return VolumeProfile(bin_count=1, price_min=0, price_max=0, bin_width=0, bins=[])
-    candles_path = str(candles_path_obj)
-    trades_path = str(trades_path_obj)
     if price_min is None or price_max is None:
-        row = engine.conn.execute(
-            "SELECT MIN(low), MAX(high) FROM read_parquet(?)", [candles_path],
-        ).fetchone()
-        if row is None or row[0] is None or row[1] is None:
+        price_range = candles_tbl.query_price_range(engine.conn, path=candles_path_obj)
+        if price_range is None:
             # Empty candles table — return a degenerate single-bin profile.
             return VolumeProfile(bin_count=1, price_min=0, price_max=0, bin_width=0, bins=[])
-        price_min = int(row[0])
-        price_max = int(row[1])
-    bin_width = (price_max - price_min) / vp_bins
-    # No side filter — auction crosses count toward volume profile per spec §4.1
-    rows = engine.conn.execute(
-        f"""
-        SELECT FLOOR((price - {price_min}) / {bin_width})::BIGINT AS bin_idx, SUM(qty) AS qty
-        FROM read_parquet(?)
-        WHERE price BETWEEN {price_min} AND {price_max}
-        GROUP BY 1 ORDER BY 1
-        """,
-        [trades_path],
-    ).fetchall()
+        price_min, price_max = price_range
+    binning = trades_tbl.query_volume_profile(
+        engine.conn, path=trades_path_obj,
+        price_lo=price_min, price_hi=price_max, bins=vp_bins,
+    )
     bins_arr = [
-        VolumeProfileBin(price_low=int(price_min + i * bin_width), qty=0)
+        VolumeProfileBin(price_low=int(price_min + i * binning.bin_width), qty=0)
         for i in range(vp_bins)
     ]
-    for idx, qty in rows:
-        i = int(idx)
-        if 0 <= i < vp_bins:
-            bins_arr[i] = VolumeProfileBin(
-                price_low=int(price_min + i * bin_width), qty=int(qty),
-            )
+    for idx, qty in binning.bins:
+        if idx < 0:
+            continue
+        # Clamp the top-edge bin (FLOOR of price_max == vp_bins) into the last
+        # valid bin (vp_bins-1). Without this fold, the highest-price volume is
+        # silently dropped. GROUP BY guarantees at most one row per idx, so
+        # accumulating with += is safe; for non-folded bins += equals =.
+        b = min(idx, vp_bins - 1)
+        bins_arr[b] = VolumeProfileBin(
+            price_low=bins_arr[b].price_low, qty=bins_arr[b].qty + qty,
+        )
     return VolumeProfile(
         bin_count=vp_bins, price_min=price_min, price_max=price_max,
-        bin_width=int(bin_width), bins=bins_arr,
+        # int() the float bin_width only for the wire value — price_low above is
+        # computed from the raw float so fractional widths don't shift the grid.
+        bin_width=int(binning.bin_width), bins=bins_arr,
     )
 
 
@@ -277,49 +238,39 @@ def build_volume_profile_range(
     if not paths:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
 
-    min_max = engine.conn.execute(
-        "SELECT MIN(price), MAX(price) FROM read_parquet(?)", [paths],
-    ).fetchone()
-    if min_max is None or min_max[0] is None:
+    # ADR-0001: the MIN/MAX price query, the zero-width-guarded bin_width, and
+    # the multi-file binning SQL (price/qty schema knowledge) now live in
+    # trades_tbl.query_volume_profile_range. bundle stays the coordinator: it
+    # owns the path layout + existence filtering above, maps the no-trades
+    # signal (None) to the empty-profile wire shape, and expands the sparse
+    # per-bin rows into the dense VolumeProfileBin array (a models concern).
+    binning = trades_tbl.query_volume_profile_range(engine.conn, paths=paths, vp_bins=vp_bins)
+    if binning is None:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
-    price_min, price_max = int(min_max[0]), int(min_max[1])
-
-    # Bin-width derived from vp_bins, mirroring build_volume_profile_slice.
-    # Guard against zero-width range (single-price day) by flooring at 1.
-    bin_width_raw = (price_max - price_min) / vp_bins if vp_bins > 0 else 1
-    if bin_width_raw <= 0:
-        bin_width_raw = 1
-
-    # No side filter — auction crosses count toward volume profile per spec §4.1.
-    # Path is parameter-bound (list) for multi-file glob; bin arithmetic is
-    # f-string'd since price_min/bin_width_raw are server-derived numerics.
-    rows = engine.conn.execute(
-        f"""
-        SELECT FLOOR((price - {price_min}) / {bin_width_raw})::BIGINT AS bin_idx,
-               SUM(qty) AS qty
-        FROM read_parquet(?)
-        WHERE price BETWEEN {price_min} AND {price_max}
-        GROUP BY 1 ORDER BY 1
-        """,
-        [paths],
-    ).fetchall()
 
     bins_arr = [
-        VolumeProfileBin(price_low=int(price_min + i * bin_width_raw), qty=0)
+        VolumeProfileBin(price_low=int(binning.price_min + i * binning.bin_width), qty=0)
         for i in range(vp_bins)
     ]
-    for idx, qty in rows:
-        i = int(idx)
-        if 0 <= i < vp_bins:
-            bins_arr[i] = VolumeProfileBin(
-                price_low=int(price_min + i * bin_width_raw), qty=int(qty),
-            )
+    for idx, qty in binning.bins:
+        if idx < 0:
+            continue
+        # Clamp the top-edge bin (FLOOR of price_max == vp_bins) into the last
+        # valid bin (vp_bins-1). Without this fold, the highest-price volume is
+        # silently dropped. GROUP BY guarantees at most one row per idx, so
+        # accumulating with += is safe; for non-folded bins += equals =.
+        b = min(idx, vp_bins - 1)
+        bins_arr[b] = VolumeProfileBin(
+            price_low=bins_arr[b].price_low, qty=bins_arr[b].qty + qty,
+        )
 
     return VolumeProfile(
         bin_count=vp_bins,
-        price_min=price_min,
-        price_max=price_max,
-        bin_width=int(bin_width_raw),
+        price_min=binning.price_min,
+        price_max=binning.price_max,
+        # int() the float bin_width only for the wire value — price_low above is
+        # computed from the raw float so fractional widths don't shift the grid.
+        bin_width=int(binning.bin_width),
         bins=bins_arr,
     )
 
@@ -332,37 +283,25 @@ def build_fill_strength_slice(
     bucket_ms: int = 60_000,
     source: str = "hogaplay",
 ) -> FillStrength:
-    # Bucket on LINEAR ms-from-midnight, not HHMMSSmmm. With the previous
-    # `(ts_ms / 60000)::BIGINT * 60000` pattern, a raw 11:00:59.000
-    # (HHMMSSmmm=110_059_000) bucketed to integer 1834, multiplied back to
-    # 110_040_000 = HHMMSSmmm "11:00:40.000" — an out-of-order ghost time
-    # that fold-decoded via hhmmssms_to_unix_ms to 11:40:20 KST (39-min
-    # backward jump). See hhmmssms_to_intra_ms_sql for the encoding details.
+    # ADR-0001: the bucketing SQL + trades schema knowledge (side/qty columns,
+    # the HHMMSSmmm-linearization rationale) now lives in
+    # trades_tbl.query_fill_strength. bundle stays the coordinator: it owns the
+    # path layout + the no-data guard, and re-bases the native ms-from-midnight
+    # bucket into Unix ms (the table query is date-agnostic, so it cannot).
     path_obj = engine.parquet_dir(date, code, source) / "trades.parquet"
     if not path_obj.exists():
         # ADR-0043: missing trades parquet is the valid "no trades yet" state.
         return FillStrength(bucket_ms=bucket_ms, points=[])
-    path = str(path_obj)
-    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    rows = engine.conn.execute(
-        f"""
-        SELECT (({intra_ms_expr} // {bucket_ms}) * {bucket_ms}) AS bucket,
-               SUM(CASE WHEN side = 1 THEN qty ELSE 0 END) AS buy_qty,
-               SUM(CASE WHEN side = -1 THEN qty ELSE 0 END) AS sell_qty
-        FROM read_parquet(?)
-        WHERE side != 0
-        GROUP BY 1 ORDER BY 1
-        """,
-        [path],
-    ).fetchall()
+    rows = trades_tbl.query_fill_strength(engine.conn, path=path_obj, bucket_ms=bucket_ms)
     return FillStrength(
         bucket_ms=bucket_ms,
         points=[
             FillStrengthPoint(
-                # r[0] is bucket-aligned ms-from-midnight (linear), not HHMMSSmmm.
-                t=ms_from_midnight_to_unix_ms(date, r[0]),
-                buy_qty=int(r[1]),
-                sell_qty=int(r[2]),
+                # r.bucket_intra_ms is bucket-aligned ms-from-midnight (linear),
+                # not HHMMSSmmm — so convert via ms_from_midnight_to_unix_ms.
+                t=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
+                buy_qty=r.buy_qty,
+                sell_qty=r.sell_qty,
             )
             for r in rows
         ],

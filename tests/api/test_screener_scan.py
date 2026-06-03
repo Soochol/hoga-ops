@@ -201,6 +201,31 @@ def test_code_roundtrip_leading_zero(tmp_path):
     assert out[0].code == "005930"            # VARCHAR preserved, not 5930
 
 
+# ---------------------------------------------------------------------------
+# Drift guard: ConditionLeaf union type literals == CONDITION_COMPILERS keys
+# ---------------------------------------------------------------------------
+from typing import get_args
+
+from hoga.api.models import ConditionLeaf
+from hoga.api.screener_scan import CONDITION_COMPILERS
+
+
+def test_every_condition_leaf_has_a_compiler():
+    # ConditionLeaf = Annotated[Union[...Leaf], Field(discriminator="type")]
+    # get_args(Annotated[X, meta]) -> (X, meta); unwrap to the Union, then its members.
+    union = get_args(ConditionLeaf)[0]
+    leaf_models = get_args(union)
+    leaf_types = {m.model_fields["type"].default for m in leaf_models}
+
+    # Non-vacuous: introspection must actually have extracted the literals.
+    assert leaf_types, "failed to introspect ConditionLeaf union type literals"
+    assert len(leaf_types) == len(leaf_models)  # each leaf has a distinct type literal
+
+    assert leaf_types == set(CONDITION_COMPILERS), (
+        f"condition drift — union types {leaf_types} != compilers {set(CONDITION_COMPILERS)}"
+    )
+
+
 def test_trade_value_uses_ohlc_average_price(tmp_path):
     # close*volume = 1억(<2) 이지만 avg(OHLC)*volume = 2.5억(>=2). 새 산식이
     # 임계값 매칭과 표시 trade_value_won 둘 다를 구동해야 한다.
