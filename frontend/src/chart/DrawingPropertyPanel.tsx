@@ -47,11 +47,16 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
     startPanelX: number;
     startPanelY: number;
   } | null>(null);
+  // Once the user has dragged the panel, it stops re-anchoring on selection
+  // changes and stays where they parked it (session-scoped; see ADR-0062).
+  // Set inside onMove (a real drag), not startDrag (a bare grip mousedown).
+  const userMovedRef = useRef(false);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const d = dragRef.current;
       if (!d) return;
+      userMovedRef.current = true;
       setPosition({
         x: d.startPanelX + (e.clientX - d.startMouseX),
         y: d.startPanelY + (e.clientY - d.startMouseY),
@@ -68,9 +73,13 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
     };
   }, []);
 
-  // Re-anchor when selection identity changes
+  // Re-anchor when selection identity changes — but only until the user has
+  // dragged the panel. After a manual drag the panel is sticky: it keeps the
+  // last position across selections instead of snapping back to each drawing's
+  // anchor (ADR-0062, reversing ADR-0032's per-selection re-anchor clause).
   useEffect(() => {
     if (drawing == null) return;
+    if (userMovedRef.current) return;
     const anchor = computeAnchor?.(drawing) ?? null;
     setPosition(anchor ?? INITIAL_POSITION);
   // Re-anchor only on selection identity change, not on every drawing edit

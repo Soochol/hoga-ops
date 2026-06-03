@@ -29,6 +29,8 @@ The palette is registered in `DESIGN.md` as a fourth "user annotation layer" cat
 
 Persistent panel position would be feature creep — the panel's role is "edit this drawing now," not "remember where I parked the panel for this line." Two questions would also have to be answered (per-drawing? per-stock? what about pan/zoom?) for a feature whose return is "the panel reopens 30 pixels to the left of where it would otherwise." We chose to skip the question and accept that the panel re-anchors per selection.
 
+> **Superseded in part by ADR-0062 (2026-06-03).** The *re-anchor per selection* clause was reversed: once the user drags the panel it becomes **sticky** and keeps the last position across selections. The *no-persistence (session-scoped)* decision in this section is retained — sticky position still dies with the page.
+
 ## Consequences
 
 - `Drawing.lineStyle` field added; legacy hydration defaults to `'solid'`.

@@ -1,4 +1,4 @@
-import { render, fireEvent, screen } from '@testing-library/react';
+import { render, fireEvent, screen, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import DrawingPropertyPanel from './DrawingPropertyPanel';
 import { useDrawingsStore } from '../state/drawings';
@@ -252,5 +252,63 @@ describe('DrawingPropertyPanel — hline anchoring', () => {
     render(<DrawingPropertyPanel />);
     const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
     expect(panel.style.transform).toBe('');
+  });
+});
+
+describe('DrawingPropertyPanel — sticky position after drag (ADR-0062)', () => {
+  const HLINE2: Drawing = {
+    id: 'h2', kind: 'hline', price: 2000,
+    color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+  };
+  // h1 anchors at (100,100); h2 would anchor at (300,300). A sticky panel must
+  // ignore h2's anchor once the user has dragged.
+  const anchorByDrawing = (d: Drawing) =>
+    d.id === 'h1' ? { x: 100, y: 100 } : { x: 300, y: 300 };
+
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+    useDrawingsStore.getState().setActiveCode('005930');
+    useDrawingsStore.getState().add(HLINE); // h1
+    useDrawingsStore.getState().add(HLINE2); // h2
+    useDrawingsStore.getState().setSelected('h1');
+  });
+
+  it('re-selecting a different drawing keeps the dragged position (no re-anchor)', () => {
+    const computeAnchor = vi.fn(anchorByDrawing);
+    render(<DrawingPropertyPanel computeAnchor={computeAnchor} />);
+    const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
+    const grip = screen.getByTestId('drawing-panel-grip');
+
+    // First selection anchors normally.
+    expect(panel.style.left).toBe('100px');
+    expect(panel.style.top).toBe('100px');
+
+    // User drags the panel by (+40, +40).
+    fireEvent.mouseDown(grip, { clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(window, { clientX: 40, clientY: 40 });
+    fireEvent.mouseUp(window);
+    expect(panel.style.left).toBe('140px');
+    expect(panel.style.top).toBe('140px');
+
+    // Re-selecting a DIFFERENT drawing must NOT snap to its anchor — the bug.
+    act(() => {
+      useDrawingsStore.getState().setSelected('h2');
+    });
+    expect(panel.style.left).toBe('140px');
+    expect(panel.style.top).toBe('140px');
+  });
+
+  it('before any drag, selection still re-anchors per drawing', () => {
+    const computeAnchor = vi.fn(anchorByDrawing);
+    render(<DrawingPropertyPanel computeAnchor={computeAnchor} />);
+    const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
+    expect(panel.style.left).toBe('100px');
+
+    // No drag yet → switching selection re-anchors to h2's anchor.
+    act(() => {
+      useDrawingsStore.getState().setSelected('h2');
+    });
+    expect(panel.style.left).toBe('300px');
+    expect(panel.style.top).toBe('300px');
   });
 });
