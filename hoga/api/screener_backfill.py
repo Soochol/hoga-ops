@@ -157,3 +157,28 @@ async def reconcile_raw(
         codes_checked=len(all_codes), value_matches=matches, value_mismatches=mismatches,
         filled_rows=filled, mismatch_sample=sample,
     )
+
+
+from hoga.api._atomic_write import atomic_write_json  # noqa: E402 — appended impact-report block
+
+
+def build_impact_report(sdir: Path, *, old_path: Path) -> dict:
+    """구(휴리스틱) vs 신(KIS 계수) 수정주가를 종목별로 비교 → 어떤 종목이 바뀌었는지.
+
+    new = 현재 daily_adjusted.parquet (factor_backfill 후 derive_adjusted 가 재생성한 것).
+    old = 백필 전 보관해둔 사본(old_path). (code,date) 기준 close 가 달라진 종목을 센다.
+    screener/impact-report.json 으로 산출. 반환은 같은 dict.
+    """
+    new = pl.read_parquet(sdir / "daily_adjusted.parquet").select(["code", "date", "close"])
+    old = pl.read_parquet(old_path).select(["code", "date", "close"]).rename({"close": "old_close"})
+    joined = new.join(old, on=["code", "date"], how="inner")
+    changed = joined.filter((pl.col("close") - pl.col("old_close")).abs() > 1e-6)
+    changed_codes = sorted(changed["code"].unique().to_list())
+    report = {
+        "rows_compared": joined.height,
+        "changed_rows": changed.height,
+        "changed_codes": len(changed_codes),
+        "changed_code_sample": changed_codes[:50],
+    }
+    atomic_write_json(sdir / "impact-report.json", report)
+    return report
