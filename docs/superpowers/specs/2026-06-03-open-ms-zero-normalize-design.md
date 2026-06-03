@@ -1,7 +1,7 @@
 # hogaplay `open_ms=0` 분류단계 정상화 — Design
 
 **Date**: 2026-06-03
-**Status**: Draft
+**Status**: Approved
 **Scope**: hoga/api/invariants.py, hoga/api/bundle.py, hoga/api/queries.py, hoga/api/disk_state.py (간접), tests/api/test_invariants*.py, docs/adr/0063-*.md
 
 ## Problem
