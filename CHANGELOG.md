@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.3.6.0] - 2026-06-03
+
+### Fixed
+- 차트 데이터 무결성: parser가 archive한 **series-level invariant 위반**(예
+  `series.candles_ts_monotonic` — 캔들 `ts_ms` 중복으로 lightweight-charts `setData`가
+  터지는 직접 원인)이 read-path에서 무시되던 결함을 고쳤습니다. 이제
+  `classify_from_meta`가 `meta.json`의 archived `series.*` error를 INVALID 판정에
+  반영해, 해당 Stock-Date를 `build_range_bundle`이 차트에 내보내지 않습니다. meta
+  invariant는 여전히 live 재평가, series는 archived만 union(double-count 방지),
+  parquet 재로드 없음(ADR-0020 §4.6 amendment). 수정 이전 archive의 false-positive는
+  `hoga validate --fix` 1회로 정리.
+
 ## [0.3.5.0] - 2026-06-03
 
 ### Changed
