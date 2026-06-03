@@ -106,7 +106,7 @@ hogaplay 업스트림이 **특정 거래일 전체**에 대해 `info.tsv`의 정
 # 인코딩 상수 (invariants.py 상단, 기존 주석과 정합)
 _KRX_REGULAR_OPEN_MS = 90_000_000  # 09:00:00.000, KRX 정규장 정의상 시가
 
-def _normalize_session_bounds(meta: dict) -> tuple[dict, list[Violation]]:
+def normalize_session_bounds(meta: dict) -> tuple[dict, list[Violation]]:
     """알려진 업스트림 sentinel(open_ms==0)을 KRX 표준 09:00으로 복원한 사본과,
     보정이 일어났을 때의 warn violation을 반환한다. 원본 meta는 변경하지 않는다.
     close_ms는 의도적으로 건드리지 않는다(Non-Goals: 별도 복합 결함)."""
@@ -122,7 +122,7 @@ def _normalize_session_bounds(meta: dict) -> tuple[dict, list[Violation]]:
     return patched, [note]
 
 def check(meta: dict) -> list[Violation]:
-    patched, notes = _normalize_session_bounds(meta)
+    patched, notes = normalize_session_bounds(meta)
     return notes + [v for inv in INVARIANTS if (v := inv.check(patched)) is not None]
 ```
 
@@ -136,7 +136,7 @@ def check(meta: dict) -> list[Violation]:
   open만 살리고, 나머지 error는 그대로 평가되어 INVALID/CLIENT_INCOMPLETE 유지.
   (스캔상 31/32가 open만 결함이라 대부분 COMPLETE로 살아난다. 002380/2026-03-18
   한 건은 `collection_complete=False`라 정상화 후에도 CLIENT_INCOMPLETE — 정상.)
-- `close_ms==0`: `_normalize_session_bounds`가 손대지 않음 → `meta.close_after_open`
+- `close_ms==0`: `normalize_session_bounds`가 손대지 않음 → `meta.close_after_open`
   + `meta.close_in_kst_range` error 그대로 → INVALID 유지(별도 트랙 보존).
 - 정상 시각 meta: `open_ms != 0` 분기에서 즉시 원본 반환 → 동작·결과 완전 불변.
 
@@ -150,7 +150,7 @@ def check(meta: dict) -> list[Violation]:
 결과 `open`을 *값으로 변환·소비*하는 곳은 정확히 이 둘뿐이다(`promote.py`는 생성=
 90000000, `parser.py`는 raw 파싱/원본 archival, `models.py`는 타입 선언).
 
-따라서 `_normalize_session_bounds`를 **public `normalize_session_bounds`** 로 노출하고,
+따라서 `normalize_session_bounds`는 **public 헬퍼**로 노출하고,
 두 변환처가 open을 변환하기 직전 정상화된 값을 쓰게 한다. 단 **분류는 원본 meta로**
 수행해 `check()` 내부 정상화가 warn 꼬리표를 생성하게 한다 — 값 변환만 정상화하고
 꼬리표는 분류가 전담(책임 분리, 꼬리표 중복 방지):

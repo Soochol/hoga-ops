@@ -291,6 +291,7 @@ def test_open_ms_zero_does_not_touch_close() -> None:
     ids = {v.invariant_id for v in check(meta)}
     assert "meta.close_after_open" in ids
     assert "meta.close_in_kst_range" in ids
+    assert "meta.open_ms_normalized" in ids   # open=0 정상화 꼬리표는 close=0이 함께여도 유지
 
 def test_normalize_session_bounds_does_not_mutate_input() -> None:
     meta = _healthy_meta() | {"regular_session_open_ms": 0}
