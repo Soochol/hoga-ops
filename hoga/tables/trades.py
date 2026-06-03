@@ -300,8 +300,8 @@ class VolumeProfileBinning:
     deliberately NOT truncated here: callers compute each bin's ``price_low`` as
     ``int(price_min + idx * bin_width)`` using this float, and only truncate to
     int for the wire value — truncating earlier would shift ``price_low`` for
-    fractional bin widths. Each producing query documents its own zero-width
-    policy (the range query floors at 1.0; the per-slice query does not).
+    fractional bin widths. Both producing queries floor ``bin_width`` at 1.0
+    for a zero-width (single-price) range to prevent a divide-by-zero in SQL.
     """
 
     price_min: int
@@ -373,14 +373,16 @@ def query_volume_profile(
     auction crosses (``side == 0``) count toward the volume profile per spec
     §4.1.
 
-    Unlike :func:`query_volume_profile_range`, this has NO zero-width guard: if
-    ``price_lo == price_hi`` the bin width is 0 and the binning SQL divides by
-    zero — preserved as the pre-existing behavior of build_volume_profile_slice
-    (the caller's candle range is non-degenerate in practice). ``bin_width`` is
-    returned as the RAW float; the caller truncates for the wire value (see
-    :class:`VolumeProfileBinning`).
+    ``bin_width`` is returned as the RAW float; the caller truncates for the
+    wire value (see :class:`VolumeProfileBinning`). Like
+    :func:`query_volume_profile_range`, ``bin_width`` is floored at 1 when the
+    range is zero (``price_lo == price_hi``, e.g. a limit-lock 점상한가 day)
+    so a single-price day yields a degenerate single-bin profile instead of a
+    DuckDB ConversionException / HTTP 500.
     """
     bin_width = (price_hi - price_lo) / bins
+    if bin_width <= 0:
+        bin_width = 1
     rows = con.execute(
         f"""
         SELECT FLOOR((price - {price_lo}) / {bin_width})::BIGINT AS bin_idx,

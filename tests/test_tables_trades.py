@@ -333,10 +333,12 @@ def test_query_volume_profile_range_bins_across_files(tmp_path: Path) -> None:
     assert res.price_min == 100
     assert res.price_max == 200
     # range 100..200 over 2 bins -> bin_width 50. price 100 -> bin 0 (qty 15);
-    # price 200 -> FLOOR((200-100)/50)=2, clamped out of [0,2) by caller, but the
-    # method returns the raw sparse rows it gets from GROUP BY.
+    # price 200 -> FLOOR((200-100)/50)=2. bin_idx 2 == vp_bins is the top-edge
+    # raw row; the table returns raw sparse rows (GROUP BY), so it emits idx 2.
+    # The bundle is responsible for folding idx==vp_bins into vp_bins-1 (top bin).
     bins = dict(res.bins)
     assert bins.get(0) == 15  # 10 + 5
+    assert bins.get(2) == 30  # raw top-edge row: FLOOR((200-100)/50)=2
     assert res.bin_width == 50
 
 
@@ -446,3 +448,26 @@ def test_query_volume_profile_exposes_raw_float_bin_width(tmp_path: Path) -> Non
     assert res is not None
     assert abs(res.bin_width - 100 / 24) < 1e-9
     assert int(res.price_min + 6 * res.bin_width) == 25
+
+
+def test_query_volume_profile_zero_width_guard(tmp_path: Path) -> None:
+    """Single-price day (price_lo == price_hi, e.g. limit-lock 점상한가):
+    bin_width is floored at 1 (no DuckDB ConversionException / HTTP 500).
+    All qty must land in bin 0 — a degenerate single-bin profile."""
+    import duckdb
+
+    from hoga.tables.trades import query_volume_profile
+
+    p = tmp_path / "t.parquet"
+    write_parquet([
+        _price_trade(ts_ms=90_000_100, seq=1, price=500, qty=7),
+        _price_trade(ts_ms=90_000_200, seq=2, price=500, qty=3),
+    ], p)
+    con = duckdb.connect()
+    res = query_volume_profile(con, path=p, price_lo=500, price_hi=500, bins=24)
+    assert res is not None
+    assert res.price_min == 500
+    assert res.price_max == 500
+    assert res.bin_width == 1  # floored at 1 (mirrors query_volume_profile_range)
+    bins = dict(res.bins)
+    assert bins.get(0) == 10  # all qty in bin 0
