@@ -7,7 +7,7 @@ import { useInventoryRecapture } from './useInventoryRecapture';
 import { useInventoryUnblock } from './useInventoryUnblock';
 import { RecaptureActionBar } from './RecaptureActionBar';
 import { useCaptureQueue } from '../capture/useCaptureQueue';
-import { FullCaptureCountBadge } from '../ui/FullCaptureCountBadge';
+import { StatusBadge } from '../ui/StatusBadge';
 
 type Props = {
   group: StockDateGroup | null;
@@ -99,7 +99,7 @@ export function StockDateGroupDetail({ group }: Props) {
             <tr>
               <th className="px-2 py-2 border-b w-8" aria-label="re-capture" />
               <SortableTh column="state"    sort={sort} onSort={onSort}>State</SortableTh>
-              <SortableTh column="fullCaptureCount" sort={sort} onSort={onSort} right title="Full Capture 누적 횟수">Captures</SortableTh>
+              <SortableTh column="failStreak" sort={sort} onSort={onSort} title="연속 실패 횟수 — 5회 시 차단">재시도</SortableTh>
               <SortableTh column="date"     sort={sort} onSort={onSort}>Date</SortableTh>
               <SortableTh column="captured" sort={sort} onSort={onSort}>Captured</SortableTh>
               <SortableTh column="volume"   sort={sort} onSort={onSort} right>Volume</SortableTh>
@@ -134,17 +134,16 @@ export function StockDateGroupDetail({ group }: Props) {
                     ) : recap ? (
                       <RowRecaptureCell
                         isInFlight={inFlight}
-                        failStreak={r.fail_streak}
                         onClick={() => handleRecaptureRow(r.date)}
                       />
                     ) : null}
                   </td>
                   <td className="px-3 py-1.5 text-center"><DiskStateBadge state={r.disk_state} /></td>
                   <td
-                    data-testid="full-capture-count-cell"
-                    className="px-3 py-1.5 text-right"
+                    data-testid="fail-streak-cell"
+                    className="px-3 py-1.5 text-center"
                   >
-                    <FullCaptureCountBadge n={r.full_capture_count} />
+                    <FailStreakCell failStreak={r.fail_streak} blocked={r.blocked} />
                   </td>
                   <td className="px-3 py-1.5">{fmtDate(r.date)}</td>
                   <td className="px-3 py-1.5 text-fg-dim">{fmtTime(r.captured_at)}</td>
@@ -162,74 +161,82 @@ export function StockDateGroupDetail({ group }: Props) {
   );
 }
 
+function FailStreakCell({ failStreak, blocked }: { failStreak: number; blocked: boolean }) {
+  // ADR-0042: per-(Code, Stock-Date) consecutive-failure surfacing, relocated
+  // from the ↻ action cell into its own sortable 재시도 column. Renders the
+  // shared StatusBadge so the warn/error pill shape stays in lockstep with the
+  // capture-queue and full-capture badges.
+  if (blocked) {
+    // Visible text is just "차단됨" — the column header "재시도" supplies the
+    // context, and aria-label / red row-tint / 잠금 해제 button carry the rest.
+    return (
+      <StatusBadge tone="error" ariaLabel="5회 연속 실패로 차단됨 — 잠금 해제 필요">
+        차단됨
+      </StatusBadge>
+    );
+  }
+  if (failStreak > 0) {
+    // "N/5" under the 재시도 column — no redundant "재시도" prefix in the cell.
+    return (
+      <StatusBadge
+        tone="warn"
+        ariaLabel={`재시도 ${failStreak}/5 — ${5 - failStreak}회 더 실패하면 차단됩니다`}
+      >
+        {failStreak}/5
+      </StatusBadge>
+    );
+  }
+  // fail_streak === 0 (정상): 최근 실패 없음 — 조용한 placeholder.
+  return <span className="text-fg-dimmer">—</span>;
+}
+
 function RowRecaptureCell({
   isInFlight,
-  failStreak,
   onClick,
 }: {
   isInFlight: boolean;
-  failStreak: number;
   onClick: () => void;
 }) {
-  // ADR-0042: when fail_streak > 0 (but not yet blocked), render the
-  // attempt-badge-shaped indicator below the existing ↻ button. Uses the
-  // same --warn token + class shape as CaptureQueueRow.tsx:63's ×N badge.
+  // ADR-0042: the "재시도 N/5" status moved to its own 재시도 column
+  // (see FailStreakCell); this cell is now just the ↻ Re-capture action.
   return (
-    <div className="flex flex-col items-center gap-0.5">
-      <button
-        type="button"
-        aria-label={isInFlight ? 'Re-capturing…' : 'Re-capture this Stock-Date'}
-        disabled={isInFlight}
-        onClick={onClick}
-        className={[
-          'bg-transparent border-none p-0 text-sm',
-          isInFlight
-            ? 'text-fg-dim animate-spin cursor-not-allowed'
-            : 'text-accent hover:text-fg cursor-pointer',
-        ].join(' ')}
-      >
-        ↻
-      </button>
-      {failStreak > 0 && (
-        <span
-          className="text-badge rounded-md px-[0.15rem] border border-[var(--warn)] text-[var(--warn)] font-mono tabular-nums"
-          aria-label={`재시도 ${failStreak}/5 — 한 번 더 성공하지 못하면 ${5 - failStreak}회 후 차단됩니다`}
-        >
-          재시도 {failStreak}/5
-        </span>
-      )}
-    </div>
+    <button
+      type="button"
+      aria-label={isInFlight ? 'Re-capturing…' : 'Re-capture this Stock-Date'}
+      disabled={isInFlight}
+      onClick={onClick}
+      className={[
+        'bg-transparent border-none p-0 text-sm',
+        isInFlight
+          ? 'text-fg-dim animate-spin cursor-not-allowed'
+          : 'text-accent hover:text-fg cursor-pointer',
+      ].join(' ')}
+    >
+      ↻
+    </button>
   );
 }
 
 function UnblockCell({ onClick, isPending }: { onClick: () => void; isPending: boolean }) {
-  // ADR-0042 blocked row: replace ↻ with a 차단됨 badge stacked above a
-  // 잠금 해제 button. Badge uses --error (DESIGN.md L82-100 status-semantic
-  // for system feedback — capture failed/blocked). Button reuses the same
-  // shape as the recapture ↻ button so the column doesn't jump.
+  // ADR-0042 blocked row: the blocked status (차단됨) moved to the 재시도 column
+  // (see FailStreakCell); this cell keeps just the 잠금 해제 action that resets
+  // the fail_streak counter. Button uses --error (DESIGN.md L82-100
+  // status-semantic for system feedback — capture failed/blocked).
   return (
-    <div className="flex flex-col items-center gap-0.5">
-      <span
-        className="text-badge rounded-md px-[0.15rem] border border-[var(--error)] text-[var(--error)] font-mono tabular-nums"
-        aria-label="5회 연속 실패로 차단됨 — 잠금 해제 필요"
-      >
-        차단됨 (5/5)
-      </span>
-      <button
-        type="button"
-        aria-label="잠금 해제 (fail_streak 카운터 0으로 초기화)"
-        disabled={isPending}
-        onClick={onClick}
-        className={[
-          'bg-transparent border-none p-0 text-badge underline',
-          isPending
-            ? 'text-fg-dim cursor-not-allowed'
-            : 'text-[var(--error)] hover:text-fg cursor-pointer',
-        ].join(' ')}
-      >
-        잠금 해제
-      </button>
-    </div>
+    <button
+      type="button"
+      aria-label="잠금 해제 (fail_streak 카운터 0으로 초기화)"
+      disabled={isPending}
+      onClick={onClick}
+      className={[
+        'bg-transparent border-none p-0 text-badge underline',
+        isPending
+          ? 'text-fg-dim cursor-not-allowed'
+          : 'text-[var(--error)] hover:text-fg cursor-pointer',
+      ].join(' ')}
+    >
+      잠금 해제
+    </button>
   );
 }
 

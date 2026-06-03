@@ -1,8 +1,10 @@
+import { StatusBadge } from './StatusBadge';
+
 /**
  * Full Capture 누적 횟수 badge — the single source for rendering a Stock-Date's
- * `full_capture_count`. Shared by the capture queue (CaptureQueueRow) and the
- * inventory detail table (StockDateGroupDetail), which previously each carried
- * a byte-identical copy.
+ * `full_capture_count`. Rendered in the capture queue (CaptureQueueRow). The
+ * inventory detail table previously rendered it too but now shows a fail_streak
+ * 재시도 column instead (see StockDateGroupDetail / FailStreakCell).
  *
  * The load-bearing rule: **null is a lower bound, not "unknown"**. Every
  * Stock-Date on disk was captured at least once by construction, so a legacy
@@ -22,17 +24,10 @@ export function FullCaptureCountBadge({ n }: { n: number | null | undefined }) {
     return <span className="text-fg-dimmer">—</span>;
   }
   const effective = n ?? 1;
-  const tone =
-    effective >= 2
-      ? 'text-fg-dim border-[var(--fg-dim)]'
-      : 'text-fg-dimmer border-[var(--fg-dimmer)]';
   const title = n === null ? 'Full Capture 횟수 미기록 (≥1로 간주)' : `Full Capture 누적 ${n}회`;
   return (
-    <span
-      title={title}
-      className={`text-badge rounded-md px-[0.15rem] border ${tone} font-mono tabular-nums`}
-    >
+    <StatusBadge tone={effective >= 2 ? 'dim' : 'dimmer'} title={title}>
       ×{effective}
-    </span>
+    </StatusBadge>
   );
 }
