@@ -160,6 +160,7 @@ async def reconcile_raw(
 
 
 from hoga.api._atomic_write import atomic_write_json  # noqa: E402 — appended impact-report block
+from hoga.api.screener_store import derive_adjusted, last_raw_date, write_status  # noqa: E402
 
 
 def build_impact_report(sdir: Path, *, old_path: Path) -> dict:
@@ -182,3 +183,62 @@ def build_impact_report(sdir: Path, *, old_path: Path) -> dict:
     }
     atomic_write_json(sdir / "impact-report.json", report)
     return report
+
+
+import shutil  # noqa: E402 — appended orchestrator block
+import time  # noqa: E402
+
+
+async def run_backfill_with(sdir: Path, *, fetch_adj: FetchAdj, fetch_raw: FetchRaw,
+                            now_ms: int | None = None) -> dict:
+    """Plan-2 1회 백필 오케스트레이션(주입된 fetch — 테스트/프로덕션 공용).
+
+    ① reconcile_raw(원주가 검증+결측 보충) ② factor_backfill(factors.parquet)
+    ③ 기존 daily_adjusted 사본 보관 ④ derive_adjusted(이제 factors 적용→ KIS 정확 수정주가)
+    ⑤ build_impact_report. 반환: {reconcile, factors_added, impact}.
+    """
+    now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
+    rec = await reconcile_raw(sdir, fetch_raw=fetch_raw)
+    added = await factor_backfill(sdir, fetch_adj=fetch_adj)
+
+    # write-once baseline: 재실행 시 KIS-보정본이 휴리스틱 baseline 을 덮어쓰면
+    # impact 리포트가 0 으로 무력화되므로, prebackfill 사본은 최초 1회만 보관한다.
+    old_path = sdir / "daily_adjusted.prebackfill.parquet"
+    if (sdir / "daily_adjusted.parquet").exists() and not old_path.exists():
+        shutil.copyfile(sdir / "daily_adjusted.parquet", old_path)
+
+    derive_ms = derive_adjusted(sdir / "daily_unadjusted.parquet", sdir / "daily_adjusted.parquet",
+                                factors_path=sdir / "factors.parquet")
+    write_status(sdir / "status.json",
+                 last_raw_date=last_raw_date(sdir / "daily_unadjusted.parquet"),
+                 universe_size=pl.read_parquet(sdir / "daily_unadjusted.parquet")["code"].n_unique(),
+                 derive_ms=derive_ms, now_ms=now_ms)
+
+    impact = build_impact_report(sdir, old_path=old_path) if old_path.exists() else {"changed_codes": 0}
+    return {"reconcile": rec, "factors_added": added, "impact": impact}
+
+
+async def run_backfill(data_dir: Path) -> dict:
+    """프로덕션 진입: KIS 클라이언트로 fetch_adj/fetch_raw 를 묶어 run_backfill_with 실행."""
+    from datetime import datetime
+
+    from hoga.live import lifecycle
+    from hoga.live.kis_client import KIS_KST
+
+    sdir = data_dir / "screener"
+    client = lifecycle.ensure_kis_client_from_env(data_dir)
+    if client is None:
+        raise RuntimeError("KIS creds missing (KIS_APP_KEY/SECRET) — cannot backfill")
+
+    async def fetch_adj(code: str, frm: str, to: str):
+        res = await client.fetch_past_daily_candles(code, frm, to, adjust=True)   # 수정주가
+        return [(datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(), float(c.close))
+                for c in res.candles]
+
+    async def fetch_raw(code: str, frm: str, to: str):
+        res = await client.fetch_past_daily_candles(code, frm, to, adjust=False)  # 원주가
+        return [DailyBar(code, datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(),
+                         float(c.open), float(c.high), float(c.low), float(c.close), c.volume)
+                for c in res.candles]
+
+    return await run_backfill_with(sdir, fetch_adj=fetch_adj, fetch_raw=fetch_raw)
