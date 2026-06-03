@@ -3,6 +3,62 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.3.6.0] - 2026-06-03
+
+### Fixed
+- 차트 데이터 무결성: parser가 archive한 **series-level invariant 위반**(예
+  `series.candles_ts_monotonic` — 캔들 `ts_ms` 중복으로 lightweight-charts `setData`가
+  터지는 직접 원인)이 read-path에서 무시되던 결함을 고쳤습니다. 이제
+  `classify_from_meta`가 `meta.json`의 archived `series.*` error를 INVALID 판정에
+  반영해, 해당 Stock-Date를 `build_range_bundle`이 차트에 내보내지 않습니다. meta
+  invariant는 여전히 live 재평가, series는 archived만 union(double-count 방지),
+  parquet 재로드 없음(ADR-0020 §4.6 amendment). 수정 이전 archive의 false-positive는
+  `hoga validate --fix` 1회로 정리.
+
+## [0.3.5.0] - 2026-06-03
+
+### Changed
+- (내부 리팩터, 동작 변화 없음) `/api/live/past-daily-candles`(일봉)와
+  `/api/live/past-investor-net`(투자자 순매수)의 near-verbatim 중복 핸들러를
+  `batched_daily_walkback` 공유 orchestrator로 통합했습니다. 두 핸들러는 fetch
+  클로저 + output key만 제공하는 얇은 adapter가 되고, gap/cache/today/dedupe 조립은
+  한 곳에서 격리 단위 테스트됩니다. KIS 일별 walk-back의 커서 감산은
+  `_prev_day_yyyymmdd` 공유 헬퍼로 추출(ADR-0060).
+
+### Notes
+- ADR-0061: source resolver 4개는 서로 다른 질문(데이터 읽기·inventory 표시·완성도
+  state·존재 여부)에 답하므로 통합 거부 — 통합은 shallow abstraction이 된다는 근거 기록.
+
+## [0.3.4.0] - 2026-06-03
+
+### Fixed
+- `/live` 보조지표 중 **호가비·호가총합·체결강도**가 마감 직전 종가 동시호가
+  (15:20~15:30) 데이터를 계산에 끌어들이던 문제를 고쳤습니다. 15:20이 버킷 경계가
+  아닌 타임프레임(3·15·30분봉)에서, 15:20을 가로지르는 버킷(예: 3분봉 15:18 봉)이
+  대표값으로 15:20 동시호가 호가창을 집어 마감 직전 값이 튀었습니다. 이제 그런
+  버킷은 **15:20 직전 마지막 호가 스냅샷**으로 계산되어 정확한 값으로 표시됩니다.
+  과거 날짜(`/api/range`)와 당일 실시간(SSE) 양쪽 모두 적용되며, 반장일은 백엔드가
+  그날의 실제 마감 시각을 기준으로 처리합니다. (ADR-0029 개정)
+
+## [0.3.3.0] - 2026-06-03
+
+### Changed
+- 인벤토리 상세 테이블의 `Captures`(평생 누적 캡처 횟수 `×N`) 컬럼을 `재시도`
+  (`fail_streak`) 컬럼으로 교체했습니다. 이제 각 종목·날짜가 차단(5회 연속 실패)까지
+  얼마나 남았는지 한눈에 보입니다 — 정상은 `—`, 1~4회는 `N/5`, 차단되면 `차단됨`.
+  평생 누적 `×N` 표시는 캡처 큐 화면에 그대로 유지됩니다.
+
+## [0.3.2.0] - 2026-06-03
+
+### Changed
+- 스크리너 결과의 현재가·등락률을 전 종목 실시간(라이브)으로 표시합니다. 이전에는
+  우측 패널이 상위 30종목만 라이브였고 `/screener` 전체 페이지는 전부 어제 종가
+  기준이었는데, 이제 관심종목과 동일하게 모든 행이 현재가 기준으로 갱신됩니다.
+
+### Fixed
+- 장 시작 전·시세 파싱 실패 시 스크리너 등락률이 "어제 종가 기준값"으로 잘못
+  표시되던 문제를 고쳤습니다. 이제 관심종목과 동일하게 "—"로 표시됩니다.
+
 ## [0.3.1.0] - 2026-06-03
 
 ### Fixed

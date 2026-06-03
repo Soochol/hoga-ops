@@ -43,6 +43,13 @@ from hoga.tables import candles as candles_tbl
 from hoga.tables.candles import ApiCandle
 
 
+# Closing Auction Window length — last 10 min of the Regular Session. Mirrors
+# the frontend `sessionTime.AUCTION_WINDOW_LENGTH_MS` and `disk_state.
+# _AUCTION_WINDOW_DURATION_MS`; kept as a local literal here to avoid importing
+# a private cross-module symbol for a one-line constant.
+_CLOSING_AUCTION_WINDOW_MS = 10 * 60 * 1000
+
+
 def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiCandle]:
     """Re-aggregate 1-minute OHLCV candles into the requested Timeframe bucket.
 
@@ -118,6 +125,7 @@ def build_quote_ratio_slice(
     date: str,
     bucket_ms: int = 1000,
     source: str = "hogaplay",
+    session_close_ms: int | None = None,
 ) -> QuoteRatio:
     # Bucket on LINEAR ms-from-midnight, not raw HHMMSSmmm. The raw encoding
     # has gaps at minute / hour boundaries, so arithmetic bucketing of HHMMSSmmm
@@ -131,6 +139,25 @@ def build_quote_ratio_slice(
         return QuoteRatio(bucket_ms=bucket_ms, points=[])
     path = str(path_obj)
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    # Per-bucket representative = last *continuous-trading* snapshot. A bucket
+    # straddling the closing Auction Window (e.g. a 3m bucket [15:18,15:21) on a
+    # 15:30 close) must be represented by its last pre-15:20 snapshot, not the
+    # 15:20+ auction book it also spans. `pre_auction_pred` is true for rows
+    # strictly before auction_start; ORDER BY (pred) DESC puts those first, so
+    # ROW_NUMBER rn=1 picks the last pre-auction row, falling back to the last
+    # overall row when a bucket has none (fully inside the auction window —
+    # left for the display Auction Mask, ADR-0029). When session_close_ms is
+    # None the predicate is the constant TRUE → ORDER BY (TRUE) DESC, ts_ms DESC
+    # ≡ the legacy last-in-bucket behavior (callers that don't supply a session
+    # bound are unaffected).
+    if session_close_ms is None:
+        pre_auction_pred = "TRUE"
+    else:
+        auction_start_sql = (
+            f"(({hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))})"
+            f" - {_CLOSING_AUCTION_WINDOW_MS})"
+        )
+        pre_auction_pred = f"({intra_ms_expr} < {auction_start_sql})"
     rows = engine.conn.execute(
         f"""
         WITH bucketed AS (
@@ -140,8 +167,10 @@ def build_quote_ratio_slice(
                  (bid_q1 + bid_q2 + bid_q3 + bid_q4 + bid_q5 +
                   bid_q6 + bid_q7 + bid_q8 + bid_q9 + bid_q10) AS bid_total,
                  ({intra_ms_expr} // {bucket_ms}) AS bucket,
-                 ROW_NUMBER() OVER (PARTITION BY ({intra_ms_expr} // {bucket_ms})
-                                   ORDER BY ts_ms DESC) AS rn
+                 ROW_NUMBER() OVER (
+                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
+                   ORDER BY ({pre_auction_pred}) DESC, ts_ms DESC
+                 ) AS rn
           FROM read_parquet(?)
         )
         SELECT bucket * {bucket_ms}, bid_total, ask_total
@@ -442,7 +471,10 @@ def build_range_bundle(
 
         raw_candles = build_candles_slice(engine, code=code, date=d, source=source)
         candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
-        qr_d = build_quote_ratio_slice(engine, code=code, date=d, bucket_ms=bucket_ms, source=source)
+        qr_d = build_quote_ratio_slice(
+            engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
+            session_close_ms=meta["regular_session_close_ms"],
+        )
         fs_d = build_fill_strength_slice(engine, code=code, date=d, bucket_ms=bucket_ms, source=source)
         vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source)
 

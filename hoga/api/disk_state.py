@@ -52,6 +52,33 @@ class Classification:
         return [v for v in self.violations if v.severity == Severity.warn]
 
 
+def _archived_series_violations(meta: Mapping[str, object]) -> list[Violation]:
+    """Series-level violations the parser archived in ``meta['invariant_violations']``.
+
+    Series invariants run over loaded parquet (too costly to live-evaluate on
+    the read path — parquet I/O breaks the per-request SLO, ADR-0020 §4.6), so
+    the parser archives them at write time. Only ``series.*`` entries are
+    returned: meta invariants are re-evaluated live by :func:`check`, so
+    re-consuming archived meta violations would double-count *and* trust a
+    possibly-stale archive (the meta may have been fixed since). Malformed or
+    unknown-severity entries are skipped rather than crashing this hot helper.
+    """
+    archived = meta.get("invariant_violations")
+    if not isinstance(archived, list):
+        return []
+    out: list[Violation] = []
+    for d in archived:
+        if not isinstance(d, Mapping):
+            continue
+        if not str(d.get("invariant_id", "")).startswith("series."):
+            continue
+        try:
+            out.append(Violation.from_dict(d))
+        except (KeyError, ValueError, TypeError):
+            continue
+    return out
+
+
 def classify_from_meta(meta: Mapping[str, object]) -> Classification:
     """Classify a Stock-Date's meta into a routing decision + violations.
 
@@ -66,7 +93,13 @@ def classify_from_meta(meta: Mapping[str, object]) -> Classification:
          data shape (e.g. ``close_ms=0``) is the most serious finding and
          trumps everything: forces eligibility to fresh-capture instead of
          resuming a corrupted parquet, and lets ``build_range_bundle`` skip
-         the segment regardless of whether collection completed.
+         the segment regardless of whether collection completed. *Meta*
+         invariants are re-checked live via :func:`check`; *series* invariants
+         (too costly to live-evaluate) are read back from the parser's archive
+         via :func:`_archived_series_violations`, so a series ``error`` such as
+         ``series.candles_ts_monotonic`` (the chart-crash root cause) gates
+         ``INVALID`` here too — not only on the write path + ``hoga validate``
+         (ADR-0020 §4.6 amendment, 2026-06-03).
       2. ``collection_complete=False`` → ``CLIENT_INCOMPLETE``. Shape fine
          but capture stopped early — resume from the cursor on next run.
       3. ``warn``-severity violations don't change state (surfaced separately
@@ -82,7 +115,7 @@ def classify_from_meta(meta: Mapping[str, object]) -> Classification:
     Legacy meta (pre-foundation) lacks both completeness fields. Conservative
     default is ``CLIENT_INCOMPLETE`` so a subsequent capture run will upgrade it.
     """
-    violations = check(meta)
+    violations = check(meta) + _archived_series_violations(meta)
     if any(v.severity == Severity.error for v in violations):
         return Classification(state=DiskState.INVALID, violations=violations)
 

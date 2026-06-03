@@ -126,29 +126,29 @@ describe('nextSortState', () => {
   });
 });
 
-describe('sortDates fullCaptureCount (null treated as 1)', () => {
+describe('sortDates failStreak', () => {
   const rows: StockDate[] = [
-    row('20260520', { full_capture_count: 3 }),
-    row('20260521', { full_capture_count: null }),
-    row('20260522', { full_capture_count: 1 }),
+    row('20260520', { fail_streak: 3 }),
+    row('20260521', { fail_streak: 1 }),
+    row('20260522', { fail_streak: 1 }),
   ];
 
-  it('sorts desc by effective count (null counts as 1), date desc tie-break', () => {
-    const out = sortDates(rows, { key: 'fullCaptureCount', dir: 'desc' });
-    // 3 first; the two ×1s (real 1 + legacy null) tie-break by date desc:
-    // 20260522 (real 1) before 20260521 (null = 1).
+  it('sorts desc by fail_streak, date desc tie-break', () => {
+    const out = sortDates(rows, { key: 'failStreak', dir: 'desc' });
+    // 3 (struggling) first; the two fail_streak=1 rows tie-break by date desc
+    // (20260522 before 20260521) — surfaces near-blocked rows up.
     expect(out.map(r => r.date)).toEqual(['20260520', '20260522', '20260521']);
   });
 
-  it('sorts asc by effective count (null counts as 1), date desc tie-break', () => {
-    const out = sortDates(rows, { key: 'fullCaptureCount', dir: 'asc' });
-    // Both 1s come first (date desc tie-break), then the 3.
+  it('sorts asc by fail_streak, date desc tie-break', () => {
+    const out = sortDates(rows, { key: 'failStreak', dir: 'asc' });
+    // Both fail_streak=1 rows first (date desc tie-break), then 3.
     expect(out.map(r => r.date)).toEqual(['20260522', '20260521', '20260520']);
   });
 });
 
-describe('nextSortState includes fullCaptureCount', () => {
-  it('null + click(fullCaptureCount) goes to desc', () => {
-    expect(nextSortState(null, 'fullCaptureCount')).toEqual({ key: 'fullCaptureCount', dir: 'desc' });
+describe('nextSortState includes failStreak', () => {
+  it('null + click(failStreak) goes to desc', () => {
+    expect(nextSortState(null, 'failStreak')).toEqual({ key: 'failStreak', dir: 'desc' });
   });
 });
