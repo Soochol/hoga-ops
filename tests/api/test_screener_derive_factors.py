@@ -74,6 +74,37 @@ def test_apply_factors_extends_oldest_factor_backward():
     assert adj["close"][1] == 2581000.0 * 0.02
 
 
+def test_apply_factors_all_dates_before_earliest_seg_start():
+    """code의 모든 날짜가 earliest seg_start 보다 이를 때 최古 factor 적용, null 없음.
+
+    join_asof(backward) → 전 행 null → fill_null(backward).over(code) 도 anchor 없음
+    → factor 여전히 null → 가격/볼륨 all-null. Fix #4 가 이 케이스를 막는다.
+    """
+    unadj = pl.DataFrame({
+        "code": ["005930", "005930"],
+        # 두 날짜 모두 seg_start(2018-05-01)보다 이르다 → join_asof 전 행 null
+        "date": [dt.date(2018, 4, 10), dt.date(2018, 4, 20)],
+        "open": [1000.0, 1100.0],
+        "high": [1000.0, 1100.0],
+        "low": [1000.0, 1100.0],
+        "close": [1000.0, 1100.0],
+        "volume": [50000, 60000],
+    })
+    factors = pl.DataFrame({
+        "code": ["005930"],
+        "seg_start": [dt.date(2018, 5, 1)],  # 모든 날짜보다 나중
+        "factor": [0.05],
+    })
+    adj = apply_factors(unadj, factors).sort("date")
+    # 최古 factor(0.05)가 적용되어야 함 — null 아님
+    assert adj["close"].null_count() == 0
+    assert adj["volume"].null_count() == 0
+    assert adj["open"].null_count() == 0
+    assert abs(adj["close"][0] - 1000.0 * 0.05) < 1e-9
+    assert adj["volume"][0] == round(50000 / 0.05)
+    assert abs(adj["close"][1] - 1100.0 * 0.05) < 1e-9
+
+
 # ── Integration: derive_adjusted factors branch ──────────────────────────────
 
 def test_derive_adjusted_with_factors_path(tmp_path):

@@ -112,6 +112,18 @@ def apply_factors(unadjusted: pl.DataFrame, factors: pl.DataFrame) -> pl.DataFra
     joined = joined.with_columns(
         pl.col("factor").fill_null(strategy="backward").over("code")
     )
+    # 전 행이 earliest seg_start 이전이면 fill_null(backward).over("code") 도 anchor 없음
+    # → factor 여전히 null. 코드의 最古 factor 로 채워 extend-backward 계약을 완성한다.
+    if joined["factor"].null_count():
+        earliest = (
+            f.group_by("code", maintain_order=False)
+            .agg(pl.col("factor").sort_by("seg_start").first().alias("_ef"))
+        )
+        joined = (
+            joined.join(earliest, on="code", how="left")
+            .with_columns(pl.col("factor").fill_null(pl.col("_ef")))
+            .drop("_ef")
+        )
     return joined.with_columns(
         [(pl.col(c) * pl.col("factor")).alias(c) for c in _PRICE_COLS]
         + [(pl.col("volume") / pl.col("factor")).round(0).cast(pl.Int64).alias("volume")]
