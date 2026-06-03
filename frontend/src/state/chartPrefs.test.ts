@@ -50,3 +50,17 @@ describe('chartPrefsPersistence', () => {
     expect(CHART_PREFS_KEY.includes('replay')).toBe(false);
   });
 });
+
+describe('candleTooltipEnabled 토글', () => {
+  it('기본값 true', () => {
+    expect(DEFAULT_PREFS.candleTooltipEnabled).toBe(true);
+  });
+
+  it('persist 된 false 를 보존', () => {
+    expect(mergePrefs({ candleTooltipEnabled: false }).candleTooltipEnabled).toBe(false);
+  });
+
+  it('없으면 기본값(true) 으로 폴백', () => {
+    expect(mergePrefs({}).candleTooltipEnabled).toBe(true);
+  });
+});
