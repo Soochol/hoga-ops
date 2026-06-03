@@ -46,6 +46,11 @@ describe('deriveCurrentPriceLine', () => {
     expect(m?.color).toBe('UP');
   });
 
+  it('falls back to change_pct sign when change_won is null and pct is negative', () => {
+    const m = deriveCurrentPriceLine(bundleWith([70000]), quote({ change_won: null, change_pct: -0.9 }), COLORS);
+    expect(m?.color).toBe('DOWN');
+  });
+
   it('is neutral when both change fields are null (pre-open)', () => {
     const m = deriveCurrentPriceLine(bundleWith([70000]), quote({ change_won: null, change_pct: null }), COLORS);
     expect(m?.color).toBe('NEUTRAL');
