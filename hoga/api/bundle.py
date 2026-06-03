@@ -40,6 +40,7 @@ from hoga.api.timeenc import (
     ms_from_midnight_to_unix_ms,
 )
 from hoga.tables import candles as candles_tbl
+from hoga.tables import trades as trades_tbl
 from hoga.tables.candles import ApiCandle
 
 
@@ -303,37 +304,25 @@ def build_fill_strength_slice(
     bucket_ms: int = 60_000,
     source: str = "hogaplay",
 ) -> FillStrength:
-    # Bucket on LINEAR ms-from-midnight, not HHMMSSmmm. With the previous
-    # `(ts_ms / 60000)::BIGINT * 60000` pattern, a raw 11:00:59.000
-    # (HHMMSSmmm=110_059_000) bucketed to integer 1834, multiplied back to
-    # 110_040_000 = HHMMSSmmm "11:00:40.000" — an out-of-order ghost time
-    # that fold-decoded via hhmmssms_to_unix_ms to 11:40:20 KST (39-min
-    # backward jump). See hhmmssms_to_intra_ms_sql for the encoding details.
+    # ADR-0001: the bucketing SQL + trades schema knowledge (side/qty columns,
+    # the HHMMSSmmm-linearization rationale) now lives in
+    # trades_tbl.query_fill_strength. bundle stays the coordinator: it owns the
+    # path layout + the no-data guard, and re-bases the native ms-from-midnight
+    # bucket into Unix ms (the table query is date-agnostic, so it cannot).
     path_obj = engine.parquet_dir(date, code, source) / "trades.parquet"
     if not path_obj.exists():
         # ADR-0043: missing trades parquet is the valid "no trades yet" state.
         return FillStrength(bucket_ms=bucket_ms, points=[])
-    path = str(path_obj)
-    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    rows = engine.conn.execute(
-        f"""
-        SELECT (({intra_ms_expr} // {bucket_ms}) * {bucket_ms}) AS bucket,
-               SUM(CASE WHEN side = 1 THEN qty ELSE 0 END) AS buy_qty,
-               SUM(CASE WHEN side = -1 THEN qty ELSE 0 END) AS sell_qty
-        FROM read_parquet(?)
-        WHERE side != 0
-        GROUP BY 1 ORDER BY 1
-        """,
-        [path],
-    ).fetchall()
+    rows = trades_tbl.query_fill_strength(engine.conn, path=path_obj, bucket_ms=bucket_ms)
     return FillStrength(
         bucket_ms=bucket_ms,
         points=[
             FillStrengthPoint(
-                # r[0] is bucket-aligned ms-from-midnight (linear), not HHMMSSmmm.
-                t=ms_from_midnight_to_unix_ms(date, r[0]),
-                buy_qty=int(r[1]),
-                sell_qty=int(r[2]),
+                # r.bucket_intra_ms is bucket-aligned ms-from-midnight (linear),
+                # not HHMMSSmmm — so convert via ms_from_midnight_to_unix_ms.
+                t=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
+                buy_qty=r.buy_qty,
+                sell_qty=r.sell_qty,
             )
             for r in rows
         ],

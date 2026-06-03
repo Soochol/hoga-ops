@@ -200,3 +200,96 @@ def test_find_cum_vol_violations_excludes_auction_cross_rows() -> None:
               net_pressure=0, unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0),
     ]
     assert find_cum_vol_violations(trades) == []
+
+
+# ---------------------------------------------------------------------------
+# query_fill_strength (ADR-0001): bucketed buy/sell aggregation, native time
+# ---------------------------------------------------------------------------
+
+
+def _trade(*, ts_ms: int, seq: int, qty: int, side: int) -> Trade:
+    """Minimal continuous-trade Trade for fill-strength fixtures.
+
+    qty is the positive magnitude; sign lives in ``side`` (+1 buy, -1 sell,
+    0 auction cross). Forensic / cum fields are irrelevant to the aggregation.
+    """
+    return Trade(
+        ts_ms=ts_ms, seq=seq, price=1000, change_pct=0.0, qty=qty, side=side,
+        cum_vol=0, cum_trades=0, low_so_far=0, high_so_far=0, net_pressure=0,
+        unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0,
+    )
+
+
+def test_query_fill_strength_buckets_on_linear_minute_boundary(tmp_path: Path) -> None:
+    """Two trades straddling a minute boundary must land in distinct, ascending
+    intra_ms buckets — the whole reason this uses hhmmssms_to_intra_ms_sql
+    instead of naive ts_ms // bucket_ms (raw HHMMSSmmm is non-linear)."""
+    import duckdb
+
+    from hoga.tables.trades import query_fill_strength
+
+    # 09:00:59.000 = HHMMSSmmm 90059000, 09:01:00.000 = HHMMSSmmm 90100000.
+    # Linear ms-from-midnight: 09:00:59.000 -> 32_459_000; 09:01:00.000 -> 32_460_000.
+    # With bucket_ms=60_000: bucket_a = (32_459_000 // 60_000) * 60_000 = 32_400_000
+    #                        bucket_b = (32_460_000 // 60_000) * 60_000 = 32_460_000
+    trades = [
+        _trade(ts_ms=90_059_000, seq=1, qty=10, side=1),
+        _trade(ts_ms=90_100_000, seq=2, qty=7, side=1),
+    ]
+    out = tmp_path / "trades.parquet"
+    write_parquet(trades, out)
+    con = duckdb.connect()
+    rows = query_fill_strength(con, path=out, bucket_ms=60_000)
+    assert [r.bucket_intra_ms for r in rows] == [32_400_000, 32_460_000]  # ascending, distinct
+    assert [r.buy_qty for r in rows] == [10, 7]
+    assert [r.sell_qty for r in rows] == [0, 0]
+
+
+def test_query_fill_strength_splits_buy_and_sell(tmp_path: Path) -> None:
+    """side=1 qty -> buy_qty, side=-1 qty -> sell_qty within the same bucket."""
+    import duckdb
+
+    from hoga.tables.trades import query_fill_strength
+
+    trades = [
+        _trade(ts_ms=90_000_100, seq=1, qty=10, side=1),
+        _trade(ts_ms=90_000_200, seq=2, qty=4, side=-1),
+        _trade(ts_ms=90_000_300, seq=3, qty=6, side=1),
+    ]
+    out = tmp_path / "trades.parquet"
+    write_parquet(trades, out)
+    con = duckdb.connect()
+    rows = query_fill_strength(con, path=out, bucket_ms=60_000)
+    assert len(rows) == 1
+    assert rows[0].buy_qty == 16
+    assert rows[0].sell_qty == 4
+
+
+def test_query_fill_strength_excludes_auction_cross(tmp_path: Path) -> None:
+    """side=0 (auction cross / premarket) rows contribute nothing (WHERE side != 0)."""
+    import duckdb
+
+    from hoga.tables.trades import query_fill_strength
+
+    trades = [
+        _trade(ts_ms=90_000_100, seq=1, qty=999, side=0),  # excluded
+        _trade(ts_ms=90_000_200, seq=2, qty=5, side=1),
+    ]
+    out = tmp_path / "trades.parquet"
+    write_parquet(trades, out)
+    con = duckdb.connect()
+    rows = query_fill_strength(con, path=out, bucket_ms=60_000)
+    assert len(rows) == 1
+    assert rows[0].buy_qty == 5
+    assert rows[0].sell_qty == 0
+
+
+def test_query_fill_strength_empty_parquet_returns_no_rows(tmp_path: Path) -> None:
+    import duckdb
+
+    from hoga.tables.trades import query_fill_strength
+
+    out = tmp_path / "trades.parquet"
+    write_parquet([], out)
+    con = duckdb.connect()
+    assert query_fill_strength(con, path=out, bucket_ms=60_000) == []

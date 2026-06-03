@@ -15,7 +15,10 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+import duckdb
 import pyarrow as pa
+
+from hoga.api.timeenc import hhmmssms_to_intra_ms_sql
 
 # === In-memory entity ===
 
@@ -222,3 +225,59 @@ def validate(trades: list[Trade], *, lenient: bool = False) -> None:
             f"cum_vol decreased at ts_ms={first.ts_ms}: "
             f"{first.prev_cum} -> {first.curr_cum}"
         )
+
+
+# === Query helpers (return native-time rows; callers own time/wire conversion) ===
+
+
+@dataclass(frozen=True)
+class FillStrengthRow:
+    """One bucketed buy/sell-pressure row from :func:`query_fill_strength`.
+
+    ``bucket_intra_ms`` is bucket-aligned LINEAR ms-from-midnight (NOT raw
+    HHMMSSmmm and NOT Unix ms). The caller converts it to Unix ms via
+    ``hoga.api.timeenc.ms_from_midnight_to_unix_ms(date, bucket_intra_ms)`` —
+    the conversion needs the Stock-Date, which this table-level query does not
+    take, so it stays the caller's responsibility (mirrors how candles.query_all
+    returns native ts_ms and bundle re-bases it). ``buy_qty`` / ``sell_qty`` are
+    positive magnitudes (sign lives in the source ``side`` column, not here).
+    """
+
+    bucket_intra_ms: int
+    buy_qty: int
+    sell_qty: int
+
+
+def query_fill_strength(
+    con: duckdb.DuckDBPyConnection, *, path: Path, bucket_ms: int
+) -> list[FillStrengthRow]:
+    """Aggregate continuous trades into per-bucket buy/sell quantities.
+
+    Buckets on LINEAR ms-from-midnight, not raw HHMMSSmmm. The raw encoding
+    is non-linear (jumps at minute / hour boundaries), so arithmetic bucketing
+    of HHMMSSmmm produces out-of-order ghost times — e.g. a raw 11:00:59.000
+    bucketed via ``(ts_ms // 60000) * 60000`` decoded back to an earlier wall
+    time. Decoding to linear ms BEFORE bucketing (via hhmmssms_to_intra_ms_sql)
+    yields strictly ascending, distinct buckets. See hhmmssms_to_intra_ms_sql.
+
+    Auction Cross / premarket rows (``side == 0``) are excluded (``WHERE side
+    != 0``) — only aggressor-signed continuous trades count toward fill strength.
+
+    Returns rows in ascending ``bucket_intra_ms`` order. Empty parquet → [].
+    """
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    rows = con.execute(
+        f"""
+        SELECT (({intra_ms_expr} // {bucket_ms}) * {bucket_ms}) AS bucket,
+               SUM(CASE WHEN side = 1 THEN qty ELSE 0 END) AS buy_qty,
+               SUM(CASE WHEN side = -1 THEN qty ELSE 0 END) AS sell_qty
+        FROM read_parquet(?)
+        WHERE side != 0
+        GROUP BY 1 ORDER BY 1
+        """,
+        [str(path)],
+    ).fetchall()
+    return [
+        FillStrengthRow(bucket_intra_ms=int(r[0]), buy_qty=int(r[1]), sell_qty=int(r[2]))
+        for r in rows
+    ]
