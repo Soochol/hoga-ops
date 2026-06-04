@@ -72,18 +72,24 @@ export function bucketHogaSeries(
   }
 
   // Quote Totals — last *continuous-trading* snapshot in bucket. Straddle buckets
-  // prefer the last pre-auction (<= lastContinuousMs) snapshot; fully-auction
-  // buckets fall back to the last auction snapshot (seenPre stays empty).
+  // prefer the last pre-auction (<= lastContinuousMs) snapshot. A fully-auction
+  // bucket (no pre-auction snapshot, e.g. the closing 15:21-15:30 buckets) emits
+  // 0 instead of the auction book, so the closing-auction 3-level book never
+  // enters the 호가비·총잔량 calculation regardless of the display Auction Mask
+  // toggle (ADR-0062). The 0 point is kept so the mask / overlay band / day-
+  // boundary connector handling stay intact. Mirrors query_bucketed_ratio's
+  // CASE WHEN is_pre on the past-date path.
   const quoteByBucket = new Map<number, QuoteRatioPoint>();
   const seenPre = new Set<number>();
   for (const s of obSorted) {
     const t = Math.floor(s.t_ms / bucketMs) * bucketMs;
-    const point = { t, ask_total: s.total_ask_qty, bid_total: s.total_bid_qty };
     if (s.t_ms <= lastContinuousMs) {
-      quoteByBucket.set(t, point); // pre-auction: 마지막이 덮어씀
+      // pre-auction: last continuous wins.
+      quoteByBucket.set(t, { t, ask_total: s.total_ask_qty, bid_total: s.total_bid_qty });
       seenPre.add(t);
     } else if (!seenPre.has(t)) {
-      quoteByBucket.set(t, point); // auction: pre 없을 때만, 마지막 auction이 덮어씀
+      // fully-auction bucket: exclude the auction book (emit 0, keep the slot).
+      quoteByBucket.set(t, { t, ask_total: 0, bid_total: 0 });
     }
   }
   const quoteRatioPoints = Array.from(quoteByBucket.values()).sort((a, b) => a.t - b.t);

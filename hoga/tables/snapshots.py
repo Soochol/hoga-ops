@@ -220,17 +220,10 @@ _QUERY_COLS: tuple[str, ...] = _build_query_cols()
 _SELECT: str = ", ".join(_QUERY_COLS)
 
 
-def query_at(
-    con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int
-) -> ApiOrderbookSnapshot | None:
-    """Return the latest snapshot at ts_ms <= t_ms as an ApiOrderbookSnapshot, or None
-    if before any data."""
-    row = con.execute(
-        f"SELECT {_SELECT} FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT 1",
-        [str(path), t_ms],
-    ).fetchone()
-    if row is None:
-        return None
+def _row_to_api_snapshot(row: tuple) -> ApiOrderbookSnapshot:
+    """Unflatten a ``SELECT _SELECT`` row into an ApiOrderbookSnapshot. Shared by
+    the point-in-time (`query_at`) and bucket-representative
+    (`query_bucket_representative`) read paths so both agree on column order."""
     by_name = dict(zip(_QUERY_COLS, row, strict=True))
     return ApiOrderbookSnapshot(
         ts_ms=by_name["ts_ms"],
@@ -246,6 +239,18 @@ def query_at(
         tot_ask=by_name["tot_ask"],
         tot_bid=by_name["tot_bid"],
     )
+
+
+def query_at(
+    con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int
+) -> ApiOrderbookSnapshot | None:
+    """Return the latest snapshot at ts_ms <= t_ms as an ApiOrderbookSnapshot, or None
+    if before any data."""
+    row = con.execute(
+        f"SELECT {_SELECT} FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT 1",
+        [str(path), t_ms],
+    ).fetchone()
+    return _row_to_api_snapshot(row) if row is not None else None
 
 
 def query_time_bounds(con: duckdb.DuckDBPyConnection, *, path: Path) -> tuple[int, int] | None:
@@ -363,6 +368,7 @@ def query_bucketed_ratio(
           SELECT ts_ms,
                  ({_ASK_Q_SUM}) AS ask_total,
                  ({_BID_Q_SUM}) AS bid_total,
+                 ({pre_auction_pred}) AS is_pre,
                  ({intra_ms_expr} // {bucket_ms}) AS bucket,
                  ROW_NUMBER() OVER (
                    PARTITION BY ({intra_ms_expr} // {bucket_ms})
@@ -370,7 +376,16 @@ def query_bucketed_ratio(
                  ) AS rn
           FROM read_parquet(?)
         )
-        SELECT bucket * {bucket_ms}, bid_total, ask_total
+        -- A fully-auction bucket (rn=1 row is NOT pre-auction = it had no
+        -- continuous-trading book, e.g. the closing 15:21-15:30 buckets) emits 0
+        -- instead of the auction fallback, so the closing-auction 3-level book
+        -- never enters the 호가비·총잔량 calculation regardless of the display
+        -- Auction Mask toggle (ADR-0062). Straddle buckets keep their last
+        -- continuous representative; intraday VI sits before the threshold
+        -- (is_pre TRUE) and is retained.
+        SELECT bucket * {bucket_ms},
+               CASE WHEN is_pre THEN bid_total ELSE 0 END,
+               CASE WHEN is_pre THEN ask_total ELSE 0 END
         FROM bucketed WHERE rn = 1 ORDER BY bucket
         """,
         [str(path)],
@@ -379,3 +394,53 @@ def query_bucketed_ratio(
         QuoteRatioRow(bucket_intra_ms=int(r[0]), bid_total=int(r[1]), ask_total=int(r[2]))
         for r in rows
     ]
+
+
+def query_bucket_representative(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    lo_native: int,
+    hi_native: int,
+    session_close_ms: int | None = None,
+) -> ApiOrderbookSnapshot | None:
+    """Return the structural bucket-representative snapshot for the native-time
+    window ``[lo_native, hi_native]`` (HHMMSSmmm, inclusive).
+
+    The representative is the last *continuous-trading* book (depth beyond level
+    3) at/before the session close, falling back to the last snapshot in the
+    window when it is fully auction. This mirrors :func:`query_bucketed_ratio`'s
+    representative selection so the sidebar 10호가 (orderbook) spot view shows the
+    SAME snapshot the 호가비·총잔량 indicator labels at a closing Auction Window
+    straddle bucket — i.e. the closing-auction 3-level book is excluded from the
+    spot view, consistent with the indicator (ADR-0062). Without this the
+    `/orderbook` endpoint's `t + bucket_ms` cutoff returns the 15:20+ auction
+    book while the indicator shows the last pre-auction continuous book.
+
+    ``session_close_ms`` None → legacy last-in-window (no structural exclusion).
+    Returns None when no snapshot falls in the window.
+    """
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    if session_close_ms is None:
+        pre_auction_pred = "TRUE"
+    else:
+        deep_book_sql = f"(({_ASK_DEEP_SUM}) > 0 OR ({_BID_DEEP_SUM}) > 0)"
+        close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
+        thr = con.execute(
+            f"SELECT max({intra_ms_expr}) FROM read_parquet(?) "
+            f"WHERE {deep_book_sql} AND {intra_ms_expr} <= {close_intra_sql}",
+            [str(path)],
+        ).fetchone()
+        last_continuous_ms = int(thr[0]) if thr is not None and thr[0] is not None else None
+        pre_auction_pred = (
+            f"({intra_ms_expr} <= {last_continuous_ms})"
+            if last_continuous_ms is not None
+            else "TRUE"
+        )
+    row = con.execute(
+        f"SELECT {_SELECT} FROM read_parquet(?) "
+        f"WHERE ts_ms >= ? AND ts_ms <= ? "
+        f"ORDER BY ({pre_auction_pred}) DESC, ts_ms DESC LIMIT 1",
+        [str(path), lo_native, hi_native],
+    ).fetchone()
+    return _row_to_api_snapshot(row) if row is not None else None

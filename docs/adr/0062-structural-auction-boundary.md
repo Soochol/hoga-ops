@@ -81,4 +81,43 @@ the existing display mask. The wire field is required only for the v2 VI work.
   band can disagree by the boundary minute — re-anchoring the band to the structural
   boundary is the deferred display task.
 
+## Amendment (2026-06-05) — fully-auction buckets, 10호가 sidebar, crosshair marker
+
+Three follow-ups landed after the v1 boundary, all keyed to the same structural
+boundary:
+
+- **Fully-auction buckets emit 0, not the auction fallback.** A bucket whose
+  representative row is *not* pre-auction (no continuous member at all — e.g. the
+  closing `15:21–15:30` buckets) previously fell back to the last auction 3-level
+  book. Now both read paths exclude it: `query_bucketed_ratio` selects
+  `CASE WHEN is_pre THEN total ELSE 0`, and `bucketHogaSeries` emits
+  `{ask_total:0, bid_total:0}`. The point is kept (at 0), not dropped, so the
+  display mask / overlay band / day-boundary connector handling stay intact. The
+  호가비 pane renders these flat at 0 for free via `quoteImbalance`'s degenerate
+  (≤0 → 0) contract — no projector-level NaN guard (an earlier guard was dead code;
+  removed).
+- **10호가 sidebar matches the indicator representative.** `/api/orderbook` with
+  `bucket_ms` now routes through `query_bucket_representative`, which mirrors the
+  same structural `pre_auction DESC, ts DESC` selection. A straddle bucket no
+  longer shows the 15:20+ auction book in the sidebar while the indicator shows
+  the last continuous book.
+- **총잔량 crosshair marker survives the connector-break.** The Auction Mask
+  transparents the last pre-auction point's per-point `color` to break the
+  outgoing connector; for a `LineSeries` that color also drives the crosshair
+  marker, so the marker vanished on hover (1분봉 15:19). `crosshairMarkerBackgroundColor`
+  pins it to a solid series color, matching the `BaselineSeries` 호가비 pane (whose
+  marker color is series-level, not per-point).
+
+**Known limitation (v1).** The structural `(0,0)` exclusion is boundary-by-structure,
+but the display Auction Mask is still clock-based (`[close−10min, close]`). A
+**sustained single-price run (intraday VI / halt) that abuts the close with no
+continuous resumption** pushes `last_continuous_ms` minutes before 15:20, so buckets
+like `[15:18,15:19)` emit `(0,0)` yet fall *outside* the clock mask — rendering as a
+plotted multi-minute drop to 0 in the unmasked region (most visible in 총잔량; 호가비
+returns to the neutral 0 baseline). No corruption/crash. This extends the
+"calc and the cosmetic band can disagree by the boundary minute" consequence above
+to multi-minute under a VI-to-close, and is resolved by the same deferred work:
+re-anchor the display band to the structural boundary (or carry `is_auction` on the
+wire, per the v2 "모든 단일가 제외" follow-up).
+
 Reference: `docs/superpowers/specs/2026-06-03-auction-structural-boundary-design.md`.

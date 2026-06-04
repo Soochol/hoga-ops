@@ -251,3 +251,87 @@ def test_query_bucketed_ratio_empty_parquet_returns_no_rows(tmp_path: Path) -> N
     write_parquet([], out)
     con = duckdb.connect()
     assert query_bucketed_ratio(con, path=out, bucket_ms=1000) == []
+
+
+# ---------------------------------------------------------------------------
+# query_bucket_representative (ADR-0062): sidebar 10호가 = indicator's structural
+# representative. The orderbook endpoint must show the same snapshot the
+# 호가비·총잔량 indicator labels at a straddle bucket, EXCLUDING the closing
+# auction (3-level) book.
+# ---------------------------------------------------------------------------
+
+
+def test_query_bucket_representative_excludes_auction_snapshot(tmp_path: Path) -> None:
+    """Straddle bucket [15:18,15:21): the representative is the last continuous
+    book (depth beyond level 3) at/before close (15:19:58), NOT the 15:20:58
+    closing-auction 3-level snapshot the window also spans."""
+    from hoga.tables.snapshots import query_bucket_representative
+
+    CLOSE = 153_000_000  # 15:30:00.000
+    obs = [
+        _ob(ts_ms=151_800_000, seq=1, ask_q=(10, 20, 30, 40), bid_q=(5, 5, 5, 5)),  # 15:18 continuous
+        _ob(ts_ms=151_958_000, seq=2, ask_q=(1, 2, 3, 4), bid_q=(9, 9, 9, 9)),      # 15:19:58 LAST continuous
+        _ob(ts_ms=152_058_000, seq=3, ask_q=(99, 98, 97), bid_q=(7, 7, 7)),         # 15:20:58 auction (3-level)
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    snap = query_bucket_representative(
+        con, path=out, lo_native=151_800_000, hi_native=152_059_999, session_close_ms=CLOSE
+    )
+    assert snap is not None
+    assert snap.ts_ms == 151_958_000  # last continuous, NOT the 15:20:58 auction
+    assert sum(1 for l in snap.ask if l.qty > 0) == 4  # 10-level book, not the 3-level auction
+
+
+def test_query_bucket_representative_fully_auction_falls_back_to_last(tmp_path: Path) -> None:
+    """A fully-auction window (no continuous snapshot in it) falls back to the
+    last snapshot in the window — mirrors query_bucketed_ratio's fallback."""
+    from hoga.tables.snapshots import query_bucket_representative
+
+    CLOSE = 153_000_000
+    obs = [
+        _ob(ts_ms=151_700_000, seq=1, ask_q=(1, 2, 3, 4), bid_q=(1, 1, 1, 1)),  # continuous before window → sets threshold
+        _ob(ts_ms=152_100_000, seq=2, ask_q=(11, 12, 13), bid_q=(2, 2, 2)),     # auction in window
+        _ob(ts_ms=152_200_000, seq=3, ask_q=(21, 22, 23), bid_q=(3, 3, 3)),     # last auction in window
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    snap = query_bucket_representative(
+        con, path=out, lo_native=152_100_000, hi_native=152_359_999, session_close_ms=CLOSE
+    )
+    assert snap is not None
+    assert snap.ts_ms == 152_200_000  # last in the fully-auction window
+
+
+def test_query_bucket_representative_no_session_close_is_legacy_last(tmp_path: Path) -> None:
+    """session_close_ms None → legacy last-in-window (no structural exclusion)."""
+    from hoga.tables.snapshots import query_bucket_representative
+
+    obs = [
+        _ob(ts_ms=151_800_000, seq=1, ask_q=(1, 2, 3, 4), bid_q=(1,)),
+        _ob(ts_ms=152_058_000, seq=2, ask_q=(99, 98, 97), bid_q=(7,)),  # auction, but no bound → last wins
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    snap = query_bucket_representative(
+        con, path=out, lo_native=151_800_000, hi_native=152_059_999, session_close_ms=None
+    )
+    assert snap is not None
+    assert snap.ts_ms == 152_058_000  # legacy last-in-window
+
+
+def test_query_bucket_representative_empty_window_returns_none(tmp_path: Path) -> None:
+    from hoga.tables.snapshots import query_bucket_representative
+
+    obs = [_ob(ts_ms=151_800_000, seq=1, ask_q=(1, 2, 3, 4), bid_q=(1,))]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    # window entirely after the only snapshot → None
+    snap = query_bucket_representative(
+        con, path=out, lo_native=160_000_000, hi_native=160_300_000, session_close_ms=153_000_000
+    )
+    assert snap is None

@@ -13,7 +13,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
-import { isAuctionHidden, BASELINE_HIDDEN_COLORS } from '../util/auctionHide';
+import { isAuctionHidden, BASELINE_HIDDEN_COLORS, maskOutgoingConnector } from '../util/auctionHide';
 
 const TOKEN_SPEC = {
   // KRX 컨벤션: 매수=상승=빨강, 매도=하락=파랑. RatioPane은 price-direction
@@ -63,10 +63,18 @@ export function projectRatio(
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
     // Auction-window hide (ADR-0029, util/auctionHide.ts). Skipping the
     // outlier check is intentional: a hidden point has no value to clamp.
+    // Break the connector from the last pre-auction point so the baseline
+    // doesn't slope into the window.
     if (isAuctionHidden(axis, ctx.auctionWindowMask, p.t)) {
+      maskOutgoingConnector(out, BASELINE_HIDDEN_COLORS);
       out.push({ time, value: 0, ...BASELINE_HIDDEN_COLORS });
       continue;
     }
+    // A fully-auction bucket is excluded upstream by emitting (0,0) totals
+    // (bucketHogaSeries / query_bucketed_ratio, ADR-0062). No NaN guard is
+    // needed here: quoteImbalance returns 0 for a degenerate (≤0) book
+    // (util/imbalance.ts), so an excluded bucket renders flat at 0 — matching
+    // the 총잔량 pane — in both the mask-ON and mask-OFF views.
     const raw = quoteImbalance(p.bid_total, p.ask_total);
     // Outlier clamp (ADR-0026): mask the value to 0 when the chart-label
     // magnitude crosses the user threshold. The point stays on the time

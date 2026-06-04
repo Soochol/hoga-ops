@@ -58,3 +58,24 @@ export function isAuctionHidden(
   if (!mask) return false;
   return axis.inClosingAuctionWindow(t);
 }
+
+/**
+ * Break the visible connector INTO a masked auction run.
+ *
+ * The Auction Mask transparents each masked point's OUTGOING segment
+ * (lightweight-charts colors the segment that *leaves* a point), but the
+ * connector FROM the last pre-auction point INTO the first masked point stays
+ * visible — the line slopes from the last continuous bucket across the auction
+ * window down to the masked `value: 0` point (the "내려가며 뻗는 연결선"). Call
+ * this right before pushing a masked point to transparent the previous emitted
+ * point's outgoing segment. Idempotent within a masked run: re-applying the
+ * hidden color to an already-hidden previous point is a no-op. No-op when `out`
+ * is empty (the run starts at the viewport edge).
+ *
+ * `projectCumulativeNetFill` solves the same problem inline via
+ * `lastPreAuctionIdx`; the line/baseline quote projectors use this helper.
+ */
+export function maskOutgoingConnector<T extends object>(out: T[], hiddenColors: object): void {
+  const i = out.length - 1;
+  if (i >= 0) out[i] = { ...out[i], ...hiddenColors } as T;
+}
