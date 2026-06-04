@@ -117,12 +117,12 @@ describe('projectRatio', () => {
     expect(p.value).not.toBe(0);
   });
 
-  it('renders a fully-auction (0,0) bucket as flat 0, not NaN (mask off)', () => {
+  it('renders a fully-auction (0,0) bucket as flat 0 via the degenerate-book contract (mask off)', () => {
     // bucketHogaSeries / query_bucketed_ratio emit (0,0) totals for an excluded
-    // fully-auction bucket (ADR-0062). quoteImbalance(0,0) = 0/0 = NaN, which
-    // corrupts BaselineSeries. Mask OFF so isAuctionHidden does NOT pre-empt the
-    // guard — this is exactly the diagnostic view (mask toggled off) where the
-    // raw zeroed bucket reaches the ratio projection.
+    // fully-auction bucket (ADR-0062). quoteImbalance returns 0 for a degenerate
+    // (≤0) book (util/imbalance.ts), so it renders flat at 0 even with the mask
+    // OFF (the diagnostic view) — no projector-level guard needed. This pins the
+    // composed behavior; the degenerate contract itself is pinned in imbalance.test.ts.
     const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
     const bundle: any = {
       quote_ratio: {
@@ -132,7 +132,6 @@ describe('projectRatio', () => {
     const data = projectRatio(bundle, axis, baseCtx) as { time: number; value: number }[];
     expect(data).toHaveLength(1);
     expect(data[0].value).toBe(0);
-    expect(Number.isNaN(data[0].value)).toBe(false);
   });
 
   it('masks outlier points to 0 when outlierFilterEnabled=true and label >= threshold', () => {

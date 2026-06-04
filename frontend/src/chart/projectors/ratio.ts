@@ -71,15 +71,10 @@ export function projectRatio(
       continue;
     }
     // A fully-auction bucket is excluded upstream by emitting (0,0) totals
-    // (bucketHogaSeries / query_bucketed_ratio, ADR-0062). quoteImbalance(0,0)
-    // is 0/0 = NaN, which corrupts BaselineSeries autoscale / breaks the line —
-    // and an excluded bucket has no defined ratio anyway. With the Auction Mask
-    // ON these were already caught above; this guard covers the mask-OFF view,
-    // rendering them flat at 0 to match the 총잔량 pane (which shows 0 there).
-    if (p.bid_total === 0 && p.ask_total === 0) {
-      out.push({ time, value: 0 });
-      continue;
-    }
+    // (bucketHogaSeries / query_bucketed_ratio, ADR-0062). No NaN guard is
+    // needed here: quoteImbalance returns 0 for a degenerate (≤0) book
+    // (util/imbalance.ts), so an excluded bucket renders flat at 0 — matching
+    // the 총잔량 pane — in both the mask-ON and mask-OFF views.
     const raw = quoteImbalance(p.bid_total, p.ask_total);
     // Outlier clamp (ADR-0026): mask the value to 0 when the chart-label
     // magnitude crosses the user threshold. The point stays on the time
