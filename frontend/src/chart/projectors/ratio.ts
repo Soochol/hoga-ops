@@ -13,7 +13,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
-import { isAuctionHidden, BASELINE_HIDDEN_COLORS } from '../util/auctionHide';
+import { isAuctionHidden, BASELINE_HIDDEN_COLORS, maskOutgoingConnector } from '../util/auctionHide';
 
 const TOKEN_SPEC = {
   // KRX 컨벤션: 매수=상승=빨강, 매도=하락=파랑. RatioPane은 price-direction
@@ -63,7 +63,10 @@ export function projectRatio(
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
     // Auction-window hide (ADR-0029, util/auctionHide.ts). Skipping the
     // outlier check is intentional: a hidden point has no value to clamp.
+    // Break the connector from the last pre-auction point so the baseline
+    // doesn't slope into the window.
     if (isAuctionHidden(axis, ctx.auctionWindowMask, p.t)) {
+      maskOutgoingConnector(out, BASELINE_HIDDEN_COLORS);
       out.push({ time, value: 0, ...BASELINE_HIDDEN_COLORS });
       continue;
     }

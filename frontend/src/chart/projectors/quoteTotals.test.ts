@@ -76,8 +76,12 @@ describe('closing-auction-window hide', () => {
     expect(bids).toHaveLength(3);
     expect(asks).toHaveLength(3);
 
-    expect(bids[0]).toEqual({ time: 0, value: 100 });
-    expect(asks[0]).toEqual({ time: 0, value: 200 });
+    // The last pre-auction point's OUTGOING connector is transparent so the line
+    // does not slope from the last continuous bucket into the auction window
+    // (ADR-0029 connector-gap fix). Its value is still shown via the incoming
+    // segment from the prior visible point.
+    expect(bids[0]).toEqual({ time: 0, value: 100, color: 'rgba(0,0,0,0)' });
+    expect(asks[0]).toEqual({ time: 0, value: 200, color: 'rgba(0,0,0,0)' });
 
     const t1 = (auctionStartMs + 60_000 - sessionOpenMs) / 1000;
     const t2 = (auctionStartMs + 120_000 - sessionOpenMs) / 1000;
@@ -85,6 +89,34 @@ describe('closing-auction-window hide', () => {
     expect(asks[1]).toEqual({ time: t1, value: 0, color: 'rgba(0,0,0,0)' });
     expect(bids[2]).toEqual({ time: t2, value: 0, color: 'rgba(0,0,0,0)' });
     expect(asks[2]).toEqual({ time: t2, value: 0, color: 'rgba(0,0,0,0)' });
+  });
+
+  it('breaks the connector from the last pre-auction point into the masked run', () => {
+    // ADR-0029 gap: the mask transparents each masked point's OUTGOING segment,
+    // but the connector FROM the last visible (pre-auction) point INTO the first
+    // masked point stayed visible — the 총잔량 line sloped from the last
+    // continuous bucket (e.g. 274/404) down into the auction window toward the
+    // masked value=0. The last pre-auction point's outgoing segment must be
+    // transparent too. (numbers from 한진칼 2026-06-04 3m 15:18 bucket.)
+    const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
+    const bundle: any = {
+      quote_ratio: {
+        points: [
+          { t: auctionStartMs - 60_000, bid_total: 274, ask_total: 404 }, // last continuous (15:19)
+          { t: auctionStartMs + 60_000, bid_total: 33, ask_total: 3039 },  // auction (masked)
+        ],
+      },
+    };
+    const tCont = (auctionStartMs - 60_000 - sessionOpenMs) / 1000;
+    const tAuc = (auctionStartMs + 60_000 - sessionOpenMs) / 1000;
+    expect(projectBid(bundle, axis, true)).toEqual([
+      { time: tCont, value: 274, color: 'rgba(0,0,0,0)' },
+      { time: tAuc, value: 0, color: 'rgba(0,0,0,0)' },
+    ]);
+    expect(projectAsk(bundle, axis, true)).toEqual([
+      { time: tCont, value: 404, color: 'rgba(0,0,0,0)' },
+      { time: tAuc, value: 0, color: 'rgba(0,0,0,0)' },
+    ]);
   });
 
   it('keeps in-window points when auctionWindowMask=false', () => {

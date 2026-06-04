@@ -9,7 +9,7 @@ import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
-import { isAuctionHidden, LINE_HIDDEN_COLOR } from '../util/auctionHide';
+import { isAuctionHidden, LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
 
 const TOKEN_SPEC = {
   bid: ['--price-up', '#DC2626'],   // 매수 호가 총합 (KRX 빨강)
@@ -33,8 +33,10 @@ export function projectBid(
   for (const p of bundle.quote_ratio.points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
-    // Auction-window hide (ADR-0029, util/auctionHide.ts).
+    // Auction-window hide (ADR-0029, util/auctionHide.ts). Break the connector
+    // from the last pre-auction point so the line doesn't slope into the window.
     if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
+      maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
       continue;
     }
@@ -53,6 +55,7 @@ export function projectAsk(
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
     if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
+      maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
       continue;
     }
