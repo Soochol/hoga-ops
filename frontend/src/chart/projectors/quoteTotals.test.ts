@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectBid, projectAsk } from './quoteTotals';
+import { projectBid, projectAsk, QUOTE_TOTALS_SPEC } from './quoteTotals';
 import { createVirtualAxis } from '../../util/virtualAxis';
 
 const sessionOpenMs = 1_779_062_400_000;
@@ -134,5 +134,24 @@ describe('closing-auction-window hide', () => {
     expect(projectAsk(bundle, axis, false)).toEqual([
       { time: (auctionStartMs + 60_000 - sessionOpenMs) / 1000, value: 900 },
     ]);
+  });
+});
+
+describe('QUOTE_TOTALS_SPEC crosshair marker', () => {
+  // The Auction Mask connector-break transparents the last pre-auction point's
+  // per-point `color`; for a LineSeries that also drives the crosshair marker,
+  // so the marker would vanish at that point (the 15:19 dot on 1m). A solid
+  // series-level crosshairMarkerBackgroundColor decouples the marker from the
+  // per-point color and keeps the dot — matching 호가비 (BaselineSeries). Lock
+  // it so a future options refactor can't silently drop the marker.
+  it('pins each line a solid crosshairMarkerBackgroundColor (not transparent)', () => {
+    const colors = QUOTE_TOTALS_SPEC.series.map(
+      (s) => (s.options as { crosshairMarkerBackgroundColor?: string }).crosshairMarkerBackgroundColor,
+    );
+    expect(colors).toHaveLength(2);
+    for (const c of colors) {
+      expect(c).toBeTruthy();
+      expect(c).not.toBe('rgba(0,0,0,0)');
+    }
   });
 });
