@@ -104,19 +104,20 @@ describe('bucketHogaSeries', () => {
     expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 22, bid_total: 12 }]);
   });
 
-  it('falls back to last snapshot for a fully-auction bucket', () => {
+  it('excludes a fully-auction bucket (emits 0, keeps the slot)', () => {
     const BUCKET = 180_000;
     const base = Math.floor(1_700_000_000_000 / BUCKET) * BUCKET;
     const sessionCloseMs = base + 600_000;
     const ob = [
       cont(base + 60_000, 50, 60),      // continuous → defines lastContinuous
-      auc(base + 180_000, 41, 31),      // [base+3m,..) auction
-      auc(base + 240_000, 42, 32),      // 마지막 auction → fallback
+      auc(base + 180_000, 41, 31),      // [base+3m,..) fully-auction
+      auc(base + 240_000, 42, 32),      // 같은 버킷, 여전히 auction
     ];
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
     expect(quoteRatioPoints).toEqual([
       { t: base, ask_total: 50, bid_total: 60 },
-      { t: base + 180_000, ask_total: 42, bid_total: 32 },
+      // no pre-auction member → auction book excluded, slot kept at 0 (ADR-0062).
+      { t: base + 180_000, ask_total: 0, bid_total: 0 },
     ]);
   });
 

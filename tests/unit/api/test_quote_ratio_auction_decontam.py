@@ -127,18 +127,21 @@ def test_jitter_late_transition_keeps_post_1520_continuous(tmp_path: Path) -> No
     assert (qr.points[0].bid_total, qr.points[0].ask_total) == (12, 22)
 
 
-def test_fully_auction_bucket_falls_back_to_last(tmp_path: Path) -> None:
+def test_fully_auction_bucket_excluded_as_zero(tmp_path: Path) -> None:
     # A continuous snapshot at 15:19 defines the threshold; the [15:21,15:24)
-    # bucket is fully auction → no continuous member → fallback to last (15:22).
+    # bucket is fully auction (no continuous member) → the closing-auction 3-level
+    # book is EXCLUDED from the calculation: the bucket emits 0, not the auction
+    # fallback (ADR-0062). The point is kept (at 0) so the display mask / overlay
+    # band / day-boundary handling stay intact.
     snaps = [
         (_hms_unix(15, 19, 0), 53, 63, True),    # threshold anchor (bucket [15:18,15:21))
         (_hms_unix(15, 21, 0), 31, 41, False),
-        (_hms_unix(15, 22, 0), 32, 42, False),   # last auction → fallback wins
+        (_hms_unix(15, 22, 0), 32, 42, False),   # fully-auction bucket → excluded (0)
     ]
     qr = _slice(_engine(tmp_path, snaps, CLOSE_FULL), BUCKET_3M, CLOSE_FULL)
     assert len(qr.points) == 2
     assert (qr.points[0].bid_total, qr.points[0].ask_total) == (53, 63)
-    assert (qr.points[1].bid_total, qr.points[1].ask_total) == (32, 42)
+    assert (qr.points[1].bid_total, qr.points[1].ask_total) == (0, 0)
 
 
 def test_clean_timeframe_unchanged_5m(tmp_path: Path) -> None:

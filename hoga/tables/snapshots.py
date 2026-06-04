@@ -368,6 +368,7 @@ def query_bucketed_ratio(
           SELECT ts_ms,
                  ({_ASK_Q_SUM}) AS ask_total,
                  ({_BID_Q_SUM}) AS bid_total,
+                 ({pre_auction_pred}) AS is_pre,
                  ({intra_ms_expr} // {bucket_ms}) AS bucket,
                  ROW_NUMBER() OVER (
                    PARTITION BY ({intra_ms_expr} // {bucket_ms})
@@ -375,7 +376,16 @@ def query_bucketed_ratio(
                  ) AS rn
           FROM read_parquet(?)
         )
-        SELECT bucket * {bucket_ms}, bid_total, ask_total
+        -- A fully-auction bucket (rn=1 row is NOT pre-auction = it had no
+        -- continuous-trading book, e.g. the closing 15:21-15:30 buckets) emits 0
+        -- instead of the auction fallback, so the closing-auction 3-level book
+        -- never enters the 호가비·총잔량 calculation regardless of the display
+        -- Auction Mask toggle (ADR-0062). Straddle buckets keep their last
+        -- continuous representative; intraday VI sits before the threshold
+        -- (is_pre TRUE) and is retained.
+        SELECT bucket * {bucket_ms},
+               CASE WHEN is_pre THEN bid_total ELSE 0 END,
+               CASE WHEN is_pre THEN ask_total ELSE 0 END
         FROM bucketed WHERE rn = 1 ORDER BY bucket
         """,
         [str(path)],
