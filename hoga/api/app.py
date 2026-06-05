@@ -130,11 +130,16 @@ def create_app(data_dir: Path) -> FastAPI:
         # §4.4: .mst is fast + no-auth, so an empty/old cache auto-refreshes in
         # the background (does NOT block startup; load_disk_state already ran).
         # Routed through refresh()/coordinator → single-flight, so a concurrent
-        # manual click won't double-download.
+        # manual click won't double-download. Tracked in _scheduler_tasks (same
+        # as screener-recovery) so the `finally` block cancels+awaits it at
+        # shutdown instead of leaking an in-flight download.
         if _symbols_module.current_status() == "unavailable":
-            asyncio.create_task(
-                _symbols_module.refresh(
-                    path=resolve_symbol_master_path(), data_dir=data_dir
+            _scheduler_tasks.append(
+                asyncio.create_task(
+                    _symbols_module.refresh(
+                        path=resolve_symbol_master_path(), data_dir=data_dir
+                    ),
+                    name="symbols-boot-refresh",
                 )
             )
         try:
