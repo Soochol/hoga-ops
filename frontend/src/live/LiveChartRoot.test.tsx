@@ -16,8 +16,8 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 import { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
 import { createChartEx, TickMarkType } from 'lightweight-charts';
-import type { RangeBundle } from '../api/types';
 import { createVirtualAxis } from '../util/virtualAxis';
+import type { RangeBundle } from '../api/types';
 
 vi.mock('lightweight-charts', async () => {
   const mod = await vi.importActual<typeof import('lightweight-charts')>('lightweight-charts');
@@ -680,21 +680,34 @@ describe('LiveChartRoot lazy fetch trigger', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Historical-prepend viewport preservation (/diagnose 2026-05-31)
+// Historical-prepend viewport repositioning (/diagnose 2026-05-31 → 2026-06-05 ×2)
 //
-// Bug: panning left fetched older candles, the bundle was rebuilt with the
-// older bars PREPENDED, and RangeSeriesPane's setData kept the visible LOGICAL
-// range numerically fixed — so the previously-viewed bars slid right by N and
-// the viewport "jumped". Fix: LiveChartRoot captures the visible range as REAL
-// timestamps when the leftward pan triggers a fetch, then re-applies it via
-// setVisibleRange (re-projected through the rebuilt axis) once the grown bundle
-// lands. Real-ms is the stable key because the VirtualAxis re-bases virtualStart
-// from 0 on every rebuild (so a logical +N or a raw time restore are both
-// wrong; verified in-browser with the real lightweight-charts build).
+// Contract (v3, 2026-06-05 round 2): a historical prepend must keep the SAME
+// BARS on screen, and the reposition target must be computed from the view AS
+// OF THE PREPEND COMMIT — never from a position captured earlier.
 //
-// Harness: a stable timeScale object (so the setVisibleRange spy is shared
-// across the handler-capture call and the restore effect) that also captures
-// the logical-range handler and returns a real getVisibleRange().
+// Why (measured in-browser, lwc 5.2.0, stack-attributed monkey-patch + real
+// synthetic-mouse drags): lwc's own setData re-anchor is position-DEPENDENT —
+//   ① view at the live edge → preserved exactly (no help needed);
+//   ② view deep in left whitespace → lands near the new/old data seam;
+//   ③ view mid-data → logical indices FROZEN, content slides by the inserted
+//     count (days-scale teleport; reproduced on the user's build).
+// The original restore corrected ③ but captured its anchor at the FETCH
+// TRIGGER — by the time the prepend landed the chart had moved (kept dragging,
+// panned back), so the re-assert teleported (30-bar wobble fresh; thousands of
+// bars stale). The v3 design closes the staleness window structurally: a
+// parent useLayoutEffect snapshots the view in the SAME commit as the bundle
+// swap (layout effects run before RangeSeriesPane's passive setData), and the
+// post-setData repositioner re-projects that snapshot through the new axis —
+// skipping the set entirely when lwc already landed on the target (case ①).
+//
+// Seam limit (stated, not papered over): this mock's setData is a NO-OP and
+// its range getters are static, so these tests lock the CALL CONTRACT (when a
+// reposition fires, its target, and the staleness-freedom of the capture); the
+// rendered-pixels half is browser-only evidence (diagnose notes 2026-06-05).
+//
+// Harness: a stable timeScale object shared across commits, capturing the
+// logical-range handler and returning controllable range getters.
 describe('LiveChartRoot historical-prepend viewport preservation', () => {
   beforeEach(() => {
     useLivePageStore.setState({ historicalFromDate: null });
@@ -709,9 +722,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   // today's 6.5h session: 1h and 2h past open).
   const VR_FROM_SEC = 3600;
   const VR_TO_SEC = 7200;
-  // Captured visible LOGICAL range (bar indices) the restore translates. The
-  // restore preserves its WIDTH exactly (= candle scale invariant) and shifts
-  // both edges by the inserted-union-point count.
+  // Visible LOGICAL range (bar indices) the mock's getVisibleLogicalRange
+  // returns — read by the settle-loop's planFillStep viewport gate.
   const LR_FROM = 100;
   const LR_TO = 400;
 
@@ -765,14 +777,14 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     candles: candleTsList.map((ts_ms) => ({ ts_ms, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 })),
   });
 
-  it('restores the viewport (setVisibleLogicalRange) shifted by the inserted-index count after a historical prepend', () => {
+  it('repositions to the pre-swap view (same bars) after a historical prepend', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
-    // 1) Initial paint: today-only, historicalFromDate=null. Records the
-    //    earliest drawn candle and short-circuits the restore (initial-view
-    //    effect owns the viewport here).
+    // 1) Initial paint: today-only, historicalFromDate=null. The initial-view
+    //    effect owns the FIRST viewport placement; the layout-effect snapshot
+    //    also primes prevAxisRef with the today-only axis here.
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
@@ -781,35 +793,28 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     );
     const beforePan = ts.setVisibleLogicalRange.mock.calls.length; // initial-view call(s)
 
-    // 2) User pans past the leftmost bar: logical.from < 0. The handler captures
-    //    the RIGHT-edge reference bar (real ms + its union index via timeToIndex)
-    //    and the visible logical range, then debounces extendHistoricalRange.
+    // 2) User pans past the leftmost bar: logical.from < 0 → the handler
+    //    debounces extendHistoricalRange. Data IS fetched ("데이터만 fetch").
+    //    NOTE: nothing is captured here — that's the v3 point.
     act(() => {
       handlers.forEach((h) => h({ from: -40.2, to: 120.7 }));
       vi.advanceTimersByTime(200);
     });
     expect(useLivePageStore.getState().historicalFromDate).not.toBeNull();
-    // No restore yet — bundle hasn't grown.
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforePan);
 
-    // Simulate setData's partial logical re-anchor: a FRESH getVisibleLogicalRange
-    // read at restore time now returns a SHIFTED window. The fix must translate
-    // the range CAPTURED at the pan, not this fresh value — otherwise it
-    // double-shifts. This sentinel makes a fresh-read regression fail the
-    // assertion below (it would land at LR_FROM + 5000 + shift).
-    ts.getVisibleLogicalRange.mockReturnValue({ from: LR_FROM + 5000, to: LR_TO + 5000 });
-
-    // 3) Grown bundle lands: yesterday PREPENDED (earlier earliest candle).
+    // 3) Grown bundle lands: yesterday PREPENDED. The layout-effect snapshot
+    //    (same commit, pre-setData) reads the mock's current view (VR/LR) and
+    //    converts the right edge through the PREVIOUS axis; the repositioner
+    //    re-projects it through the rebuilt two-segment axis.
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
         clampEngaged={false} isPastCandlesLoading={false} />,
     );
 
-    // Expected shift: refIdx = timeToIndex(VR_TO_SEC) = VR_TO_SEC; newIdx =
-    // timeToIndex(refVirtual) where refVirtual reprojects the right-edge real ms
-    // through the rebuilt two-segment axis. The mock timeToIndex returns the
-    // (integer) virtual second, so this mirrors production exactly.
+    // Expected shift: refIdx = timeToIndex(VR_TO_SEC) = VR_TO_SEC (mock);
+    // refMs reprojects through old→new axis exactly as production does.
     const oldAxis = createVirtualAxis([
       { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
     ]);
@@ -821,19 +826,42 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const refVirtual = Math.round(newAxis.toVirtual(refMs) / 1000);
     const shift = refVirtual - VR_TO_SEC; // newIdx - refIdx
 
-    // Restore translates the CAPTURED logical range by the inserted count.
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({
       from: LR_FROM + shift,
       to: LR_TO + shift,
     });
-    // Scale invariant: the logical WIDTH is unchanged → barSpacing (candle
-    // scale) does not move. This is the user-perceived "스케일 변화 없음".
+    // Width invariant → barSpacing (candle scale) does not move.
     const last = ts.setVisibleLogicalRange.mock.calls.at(-1)![0] as { from: number; to: number };
     expect(last.to - last.from).toBe(LR_TO - LR_FROM);
-    // Position: a genuine RIGHT translation (older day now occupies the left),
-    // proving it compensated for the prepend rather than leaving the old logical
-    // window pointing at the newly-prepended bars.
     expect(shift).toBeGreaterThan(0);
+  });
+
+  it('skips the reposition when lwc already landed on the target (live-edge case)', () => {
+    // Regime ①: at the live edge lwc preserves the view natively. shift=0 here
+    // (timeToIndex returns the same index pre/post), so target == current and
+    // the repositioner must NOT issue a redundant setVisibleLogicalRange.
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.timeToIndex = vi.fn(() => VR_TO_SEC); // index unchanged across the swap
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    act(() => {
+      handlers.forEach((h) => h({ from: -40.2, to: 120.7 }));
+      vi.advanceTimersByTime(200);
+    });
+    const before = ts.setVisibleLogicalRange.mock.calls.length;
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
   });
 
   // ── 진행 루프(스텝 2..N): isExtending falling edge + 빈영역 → 다음 스텝 자가 dispatch ──
@@ -904,8 +932,9 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       );
     });
     expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // D one-shot, 불변
-    // minute-only 조기 반환이 viewport를 읽기 전에 막았음을 국소화.
-    expect(ts.getVisibleLogicalRange).not.toHaveBeenCalled();
+    // (구 국소화였던 "getVisibleLogicalRange 미호출"은 v3에서 무효 — pre-swap
+    // 스냅샷 layout effect가 모든 타임프레임에서 정당하게 viewport를 읽는다.
+    // 잠그는 행동은 위의 단언: D에서 settle-loop가 dispatch하지 않는다.)
   });
 
   it('does NOT restore on pure SSE growth while historicalFromDate is null', () => {
@@ -958,13 +987,14 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforeHoliday);
   });
 
-  it('initial-view and restore never fight on the first extension (mutual exclusion via historicalFromDate)', () => {
-    // advisor #4: trace the first extension from a fresh load. The store
-    // update (historicalFromDate null→non-null) and the bundle refetch land in
+  it('initial-view applies exactly once; the first extension adds exactly one reposition', () => {
+    // Trace the first extension from a fresh load. The store update
+    // (historicalFromDate null→non-null) and the bundle refetch land in
     // SEPARATE commits, so on the bundle-grows commit historicalFromDate is
     // already non-null — the initial-view effect early-returns (no second
-    // scrollToPosition / setVisibleLogicalRange) while the restore owns the
-    // viewport. This locks that the two viewport effects are mutually exclusive.
+    // scrollToPosition / setVisibleLogicalRange) while the repositioner owns
+    // that commit's viewport. Exactly two owners, never on the same commit:
+    // initial-view (first paint) and the repositioner (prepends).
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
@@ -992,39 +1022,25 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} />,
     );
 
-    // Mutual exclusion: the initial-view effect did NOT re-fire (scrollToPosition
-    // stayed at 1), while the restore added exactly one setVisibleLogicalRange
-    // (initial 1 → 2). Both viewport owners share setVisibleLogicalRange now, so
-    // the scrollToPosition count is what distinguishes them.
+    // The initial-view effect did NOT re-fire (scrollToPosition stayed at 1);
+    // the repositioner added exactly one setVisibleLogicalRange (1 → 2).
     expect(ts.scrollToPosition).toHaveBeenCalledTimes(1);
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(2);
   });
 
-  // Stale-anchor teleport (/diagnose 2026-06-05).
+  // Staleness-freedom regression (/diagnose 2026-06-05, the saga's crown jewel).
   //
-  // Repro: the user pans left past the leftmost bar (arms the 150ms debounced
-  // fetch AND captures a viewport anchor at the LEFT region), then immediately
-  // pans back to recent BEFORE the fetch lands. The pan-back makes logical.from
-  // non-negative; the anchor captured at the left is now STALE. When the
-  // already-armed fetch resolves and the older bars are prepended, the OLD code
-  // applied the stale anchor — teleporting the user from recent back to the
-  // left region they'd left.
+  // The whole 3-round bug class was ONE mistake: capturing the reposition
+  // anchor at the FETCH TRIGGER and applying it at the PREPEND — the chart
+  // moves in between (user keeps dragging / pans back), so the re-assert
+  // teleports. v3 captures in the SAME COMMIT as the bundle swap (parent
+  // useLayoutEffect, before the child's passive setData), making staleness
+  // structurally impossible.
   //
-  // Verified in-browser (lightweight-charts 5.2.0): series.setData with N older
-  // bars PREPENDED re-anchors the visible logical range by +N on its own, so
-  // the user's current view stays put across a prepend with NO restore. The
-  // restore is therefore redundant when the user holds position and harmful
-  // when they move. Fix: invalidate the anchor the instant the user pans back
-  // into loaded bars (logical.from >= 0), so the restore short-circuits and
-  // setData's own re-anchor preserves the recent view. The fetch is NOT
-  // cancelled — the user still gets the older data preloaded ("데이터만 fetch").
-  //
-  // Mock caveat: buildStableCapturingMock's setData is a no-op, so it does NOT
-  // re-anchor the way real lwc does. This test therefore locks the restore-side
-  // guard (no setVisibleLogicalRange on a stale anchor); the "setData re-anchors
-  // so the view is preserved anyway" half is only observable in the browser
-  // (differential __noRestore repro, recorded in the diagnose notes).
-  it('does NOT teleport when the user pans back to recent before the fetch lands (stale-anchor guard)', () => {
+  // This test moves the mock's view BETWEEN the trigger and the swap, then
+  // asserts the reposition target is derived from the AT-SWAP view (B), not
+  // the at-trigger view (A). Trigger-time-capture semantics fail this test.
+  it('reposition target derives from the at-swap view, not the at-trigger view (no staleness)', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
@@ -1036,32 +1052,43 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       { wrapper },
     );
 
-    // 1) Pan left past the leftmost bar → captures the anchor + arms the debounce.
+    // 1) Trigger at view A (the mock's defaults) → debounced fetch armed.
     act(() => {
       handlers.forEach((h) => h({ from: -40.2, to: 120.7 }));
+      vi.advanceTimersByTime(200);
     });
-    // 2) Pan back into recent bars BEFORE the debounce fires → anchor goes stale.
-    //    The fetch stays armed (user still gets the data); only the viewport
-    //    anchor must be invalidated.
-    act(() => {
-      handlers.forEach((h) => h({ from: 50, to: 350 }));
-      vi.advanceTimersByTime(200); // debounce fires → extendHistoricalRange dispatched
-    });
-    // The fetch DID happen — "데이터만 fetch하면 되는데" is satisfied.
     expect(useLivePageStore.getState().historicalFromDate).not.toBeNull();
-    const beforePrepend = ts.setVisibleLogicalRange.mock.calls.length;
 
-    // 3) Grown bundle lands: yesterday PREPENDED (earlier earliest candle).
+    // 2) User pans elsewhere BEFORE the fetch lands → the chart now shows
+    //    view B. (Static mocks: just swap what the getters return.)
+    const B_VR_TO = VR_TO_SEC + 1800;
+    ts.getVisibleRange.mockReturnValue({ from: VR_FROM_SEC + 1800, to: B_VR_TO });
+    ts.getVisibleLogicalRange.mockReturnValue({ from: LR_FROM + 30, to: LR_TO + 30 });
+
+    // 3) Grown bundle lands. The layout-effect snapshot (same commit) reads B.
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
         clampEngaged={false} isPastCandlesLoading={false} />,
     );
 
-    // Restore must NOT fire: the stale anchor was invalidated on pan-back, so
-    // no setVisibleLogicalRange is issued. The user stays where they panned to
-    // (recent), preserved by setData's own re-anchor — no teleport.
-    expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforePrepend);
+    const oldAxis = createVirtualAxis([
+      { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
+    ]);
+    const refMs = oldAxis.toReal(B_VR_TO * 1000);
+    const newAxis = createVirtualAxis([
+      { date: '20260526', sessionOpenMs: YESTERDAY_OPEN_MS, sessionCloseMs: YESTERDAY_CLOSE_MS },
+      { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
+    ]);
+    const refVirtual = Math.round(newAxis.toVirtual(refMs) / 1000);
+    const shiftB = refVirtual - B_VR_TO;
+
+    // Target must be view B + shiftB. A trigger-time capture would have used
+    // view A (LR_FROM..LR_TO, refIdx VR_TO_SEC) and produced different numbers.
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({
+      from: LR_FROM + 30 + shiftB,
+      to: LR_TO + 30 + shiftB,
+    });
   });
 });
 
