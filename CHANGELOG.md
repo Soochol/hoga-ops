@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.6.1.0] - 2026-06-05
+
+### Added
+- **관심종목 그룹 관리 UI** (로컬 0.5.7.0~0.5.10.1 통합): 그룹 생성/이름 변경/삭제,
+  헤더 `⋯` 메뉴, 우측 chevron 접기(상태 localStorage 영속화), 그룹 순서 변경(패널 ▲▼ +
+  편집 모달 ⠿ 드래그), 우클릭 → 그룹으로 이동. 체크 표시를 공용 `ui/CheckIcon`으로 통합.
+
+### Fixed
+- Escape 이중 닫힘(모달/메뉴 먼저 닫고 다음 Escape가 패널), hover 전용 버튼 키보드
+  접근성(Tab opacity 계약), GroupNameModal 거부 시 unhandled rejection 없이 재시도.
+
+### Tests
+- 폴더 도입 이후 깨져 있던 watchlist e2e 복구·재편(컨텍스트 메뉴/그룹 메뉴/Escape 레이어링/
+  편집 모달 드래그, 총 5스펙).
+
+> 세부 변경 이력은 아래 [0.5.10.1]~[0.5.7.0] 항목 참조. v0.6.0.0(KRX→KIS) 위에 병합.
+
 ## [0.6.0.0] - 2026-06-05
 
 ### Added
