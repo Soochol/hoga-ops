@@ -52,15 +52,26 @@ class LiveStream:
         self._ds.set_active_codes(codes)
 
     async def on_tick(self, tick: WsTick) -> None:
-        """ws_client 콜백 — 표시 경로(즉시) + 저장 경로(누적)."""
+        """ws_client 콜백 — 표시 경로(즉시·무게이트) + 저장 경로(누적·게이트)."""
+        # phase 이중 스탬프(M1): 여기 phase는 **표시 스냅샷 전용** — 수신 벽시계
+        # 기준 위상을 buffer 스냅에 박는다(tick.t_ms 거래소 시각이 아니라 도착
+        # 시점). 저장 경로의 위상은 별개로 flush 시점에 _ds.flush(phase=...)가
+        # 박는다(M2 참고) — ingest는 raw tick만 받으므로 이 phase를 안 본다.
         phase = self._phase_fn()
         snap = LiveSnapshot(t_ms=tick.t_ms, kind=tick.kind,
                             payload={**tick.payload, "phase": phase})
+        # 표시 경로는 §11에 따라 무게이트 — 항상 publish.
         await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
-        self._ds.ingest(tick)
+        # 저장 경로만 게이트 — 15:30 이후 잔여 틱이 다운샘플러에 누적돼 밤을
+        # 넘기는 것을 차단(리뷰 C1 벡터 1).
+        if ws_capture_window(_now_ms()):
+            self._ds.ingest(tick)
 
     async def flush_once(self, *, now_ms: int | None = None) -> None:
         now_ms = now_ms if now_ms is not None else _now_ms()
+        # date/phase는 flush 호출 시점의 샘플 — 윈도 내 틱들이 아니라 마감 순간의
+        # 날짜·위상으로 귀속된다(M2). 게이트 닫힘 전환 drain은 15:30:0x 수 초 내라
+        # date_fn이 아직 당일이어서 마지막 부분 윈도가 올바른 날짜로 기록된다.
         date = self._date_fn()
         flushed = self._ds.flush(now_ms=now_ms, phase=self._phase_fn())
         for code, snaps in flushed.items():
@@ -70,9 +81,15 @@ class LiveStream:
 
     async def run_flush_loop(self) -> None:
         """10초 flush 루프 — lifecycle이 task로 돌린다. 게이트 밖(장외·15:30 이후)엔
-        1초 idle — advisor B: 15:30 이후 쓰기를 막아 유령 carry를 차단한다."""
+        1초 idle — advisor B: 15:30 이후 쓰기를 막아 유령 carry를 차단한다.
+
+        게이트가 닫히는 전환 순간 drain flush 1회(마지막 부분 윈도를 **마감 당일**
+        날짜로 기록) 후 다운샘플러를 reset — 흐름 합·carry가 밤을 넘겨 다음
+        거래일 JSONL을 오염시키지 않게 한다(리뷰 C1)."""
+        was_open = False
         while True:
-            if ws_capture_window(_now_ms()):
+            open_now = ws_capture_window(_now_ms())
+            if open_now:
                 started = time.monotonic()
                 try:
                     await self.flush_once()
@@ -81,4 +98,12 @@ class LiveStream:
                 elapsed = time.monotonic() - started
                 await asyncio.sleep(max(0.0, FLUSH_INTERVAL_S - elapsed))
             else:
+                if was_open:  # open→closed 전환: drain + 상태 초기화
+                    try:
+                        await self.flush_once()
+                    except Exception:  # noqa: BLE001
+                        _log.exception("live.stream.drain_flush_failed")
+                    self._ds.reset()
+                    _log.info("live.stream.gate_closed_drained")
                 await asyncio.sleep(1.0)
+            was_open = open_now

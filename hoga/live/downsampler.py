@@ -51,6 +51,12 @@ class TickDownsampler:
             if code not in codes:
                 del self._codes[code]
 
+    def reset(self) -> None:
+        """일경계 초기화 — carry는 '같은 날 조용한 종목'용이지 익일용이 아니다
+        (리뷰 C1 벡터 2). 게이트가 닫히는 순간 호출해 last_ob/last_broker가 밤을
+        넘겨 다음 거래일 첫 flush를 어제 종가 호가창으로 오염시키는 것을 막는다."""
+        self._codes.clear()
+
     def flush(self, *, now_ms: int, phase: str) -> dict[str, list[LiveSnapshot]]:
         """윈도 마감 — 코드별 [ob?, broker?, fill] 반환. 흐름 합은 리셋,
         상태(last_ob/last_broker)는 다음 윈도 carry를 위해 보존."""

@@ -742,6 +742,12 @@ class TickDownsampler:
             if code not in codes:
                 del self._codes[code]
 
+    def reset(self) -> None:
+        """일경계 초기화 — carry는 '같은 날 조용한 종목'용이지 익일용이 아니다
+        (리뷰 C1 벡터 2). 게이트가 닫히는 순간 호출해 last_ob/last_broker가 밤을
+        넘겨 다음 거래일 첫 flush를 어제 종가 호가창으로 오염시키는 것을 막는다."""
+        self._codes.clear()
+
     def flush(self, *, now_ms: int, phase: str) -> dict[str, list[LiveSnapshot]]:
         """윈도 마감 — 코드별 [ob?, broker?, fill] 반환. 흐름 합은 리셋,
         상태(last_ob/last_broker)는 다음 윈도 carry를 위해 보존."""
@@ -766,7 +772,7 @@ class TickDownsampler:
 - [ ] **Step 4: 통과 확인**
 
 Run: `uv run pytest tests/unit/live/test_downsampler.py -v`
-Expected: 7 passed
+Expected: 8 passed
 
 - [ ] **Step 5: 커밋**
 
@@ -1346,8 +1352,11 @@ git commit -m "refactor(live): extract session gate from poller (pre-retirement)
 - [ ] **Step 2: 실패하는 LiveStream 테스트 작성**
 
 ```python
+import asyncio
+import contextlib
 import time
 
+import hoga.live.stream as stream_mod
 from hoga.live.buffer import LiveBuffer
 from hoga.live.snapshot import SnapshotKind
 from hoga.live.stream import LiveStream
@@ -1362,11 +1371,14 @@ def _trade_tick(t_ms, qty, side):
     })
 
 
-async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path):
+async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path, monkeypatch):
     buf = LiveBuffer()
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    # 저장 경로 게이트는 실벽시계라 야간·주말·휴일엔 ingest를 건너뛴다 — 결정성
+    # 위해 게이트를 강제로 연다(리뷰 C1로 추가된 on_tick ingest 게이팅 때문).
+    monkeypatch.setattr(stream_mod, "ws_capture_window", lambda now_ms: True)
 
     # Task 4 벽시계 eviction과의 충돌 — plan 원본 t_ms는 컷오프 밖
     now = int(time.time() * 1000)   # 벽시계 — buffer eviction 컷오프 안쪽
@@ -1379,6 +1391,74 @@ async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path):
     assert '"kind": "fill"' in jsonl
     assert '"buy_qty": 5' in jsonl
     assert '"kind": "trade"' not in jsonl            # 체결 raw는 JSONL에 안 감(Q4)
+
+
+async def test_on_tick_ingest_gated_off_skips_storage_but_still_displays(tmp_path, monkeypatch):
+    """게이트 False면 표시(buffer)는 들어가고 저장(다운샘플러)은 비어야 한다
+    (리뷰 C1 벡터 1 — 15:30 이후 잔여 틱의 저장 누적 차단)."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    monkeypatch.setattr(stream_mod, "ws_capture_window", lambda now_ms: False)
+
+    now = int(time.time() * 1000)
+    await stream.on_tick(_trade_tick(now, qty=5, side=1))
+    series = await buf.get_series("005930")          # 표시는 무게이트 — 들어간다
+    assert len(series["trades"]) == 1
+
+    await stream.flush_once(now_ms=now + 10_000)     # 다운샘플러 비어 있음
+    jsonl_path = tmp_path / "live" / "20260605" / "005930.jsonl"
+    assert not jsonl_path.exists()                   # 저장 경로엔 아무것도 안 감
+
+
+async def test_run_flush_loop_drains_and_resets_at_gate_close(tmp_path, monkeypatch):
+    """게이트 닫힘 전환 시 drain flush가 마감 당일 날짜로 합을 기록하고, 이후
+    reset로 carry가 소멸해 재개장 후에도 유령 fill이 안 생김을 확인(리뷰 C1·I1)."""
+    monkeypatch.setattr(stream_mod, "FLUSH_INTERVAL_S", 0.05)
+
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+
+    now = int(time.time() * 1000)
+    trade = _trade_tick(now, qty=5, side=1)
+
+    # 게이트 스텁: call 1 open(빈 _codes flush) → call 2에서 ingest 후 closed로
+    # 전환(drain이 buy_qty=5를 유일한 fill로 기록) → 이후 항상 closed 유지.
+    # 시간 의존을 스텁 안에 가둬 '무엇이 쓰이는가'를 결정적으로 만든다.
+    calls = {"n": 0}
+
+    def gate(now_ms):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return True
+        if calls["n"] == 2:
+            stream._ds.ingest(trade)   # 닫히기 직전 잔여 합
+            return False
+        return False
+
+    monkeypatch.setattr(stream_mod, "ws_capture_window", gate)
+
+    jsonl_path = tmp_path / "live" / "20260605" / "005930.jsonl"
+    task = asyncio.create_task(stream.run_flush_loop())
+    try:
+        for _ in range(40):                       # drain JSONL 기록 폴링
+            await asyncio.sleep(0.05)
+            if jsonl_path.exists() and '"buy_qty": 5' in jsonl_path.read_text():
+                break
+        text = jsonl_path.read_text()
+        assert '"kind": "fill"' in text
+        assert '"buy_qty": 5' in text
+        assert text.count('"kind": "fill"') == 1   # drain 1회만
+        for _ in range(40):                        # 1s idle보다 길게 대기(≥2s)
+            await asyncio.sleep(0.05)
+        assert jsonl_path.read_text().count('"kind": "fill"') == 1   # 유령 carry 없음
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 ```
 
 - [ ] **Step 3: 실패 확인**
@@ -1402,7 +1482,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
@@ -1443,15 +1523,26 @@ class LiveStream:
         self._ds.set_active_codes(codes)
 
     async def on_tick(self, tick: WsTick) -> None:
-        """ws_client 콜백 — 표시 경로(즉시) + 저장 경로(누적)."""
+        """ws_client 콜백 — 표시 경로(즉시·무게이트) + 저장 경로(누적·게이트)."""
+        # phase 이중 스탬프(M1): 여기 phase는 **표시 스냅샷 전용** — 수신 벽시계
+        # 기준 위상을 buffer 스냅에 박는다(tick.t_ms 거래소 시각이 아니라 도착
+        # 시점). 저장 경로의 위상은 별개로 flush 시점에 _ds.flush(phase=...)가
+        # 박는다(M2 참고) — ingest는 raw tick만 받으므로 이 phase를 안 본다.
         phase = self._phase_fn()
         snap = LiveSnapshot(t_ms=tick.t_ms, kind=tick.kind,
                             payload={**tick.payload, "phase": phase})
+        # 표시 경로는 §11에 따라 무게이트 — 항상 publish.
         await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
-        self._ds.ingest(tick)
+        # 저장 경로만 게이트 — 15:30 이후 잔여 틱이 다운샘플러에 누적돼 밤을
+        # 넘기는 것을 차단(리뷰 C1 벡터 1).
+        if ws_capture_window(_now_ms()):
+            self._ds.ingest(tick)
 
     async def flush_once(self, *, now_ms: int | None = None) -> None:
         now_ms = now_ms if now_ms is not None else _now_ms()
+        # date/phase는 flush 호출 시점의 샘플 — 윈도 내 틱들이 아니라 마감 순간의
+        # 날짜·위상으로 귀속된다(M2). 게이트 닫힘 전환 drain은 15:30:0x 수 초 내라
+        # date_fn이 아직 당일이어서 마지막 부분 윈도가 올바른 날짜로 기록된다.
         date = self._date_fn()
         flushed = self._ds.flush(now_ms=now_ms, phase=self._phase_fn())
         for code, snaps in flushed.items():
@@ -1461,9 +1552,15 @@ class LiveStream:
 
     async def run_flush_loop(self) -> None:
         """10초 flush 루프 — lifecycle이 task로 돌린다. 게이트 밖(장외·15:30 이후)엔
-        1초 idle — advisor B: 15:30 이후 쓰기를 막아 유령 carry를 차단한다."""
+        1초 idle — advisor B: 15:30 이후 쓰기를 막아 유령 carry를 차단한다.
+
+        게이트가 닫히는 전환 순간 drain flush 1회(마지막 부분 윈도를 **마감 당일**
+        날짜로 기록) 후 다운샘플러를 reset — 흐름 합·carry가 밤을 넘겨 다음
+        거래일 JSONL을 오염시키지 않게 한다(리뷰 C1)."""
+        was_open = False
         while True:
-            if ws_capture_window(_now_ms()):
+            open_now = ws_capture_window(_now_ms())
+            if open_now:
                 started = time.monotonic()
                 try:
                     await self.flush_once()
@@ -1472,13 +1569,30 @@ class LiveStream:
                 elapsed = time.monotonic() - started
                 await asyncio.sleep(max(0.0, FLUSH_INTERVAL_S - elapsed))
             else:
+                if was_open:  # open→closed 전환: drain + 상태 초기화
+                    try:
+                        await self.flush_once()
+                    except Exception:  # noqa: BLE001
+                        _log.exception("live.stream.drain_flush_failed")
+                    self._ds.reset()
+                    _log.info("live.stream.gate_closed_drained")
                 await asyncio.sleep(1.0)
+            was_open = open_now
 ```
+
+**Drain 설계 (리뷰 C1).** 일경계 오염은 세 갈래다 — (1) 15:29:5x 마지막 flush
+후 닫힘까지 ingest된 **좌초된 흐름 합**이 미flush로 밤을 넘겨 익일 첫 flush에
+다음날 date_fn으로 기록, (2) `_ds`의 last_ob/last_broker **carry가 월경**해 익일
+아침 어제 종가 호가창을 오늘 스냅샷으로 기록, (3) 연결이 살아있는 15:30~16:00에
+on_tick이 무게이트로 ingest를 계속해 합이 더 자람. 닫는 수단도 셋: on_tick의
+**ingest 게이팅**(벡터 3·1의 추가 누적 차단), run_flush_loop의 open→closed
+**drain flush**(벡터 1의 좌초 합을 마감 당일 날짜로 비움), 직후 **reset**(벡터 2의
+carry 소멸). 표시 경로(buffer.publish)는 §11대로 무게이트 유지 — 게이트는 저장만.
 
 - [ ] **Step 5: 통과 확인 + 커밋**
 
 Run: `uv run pytest tests/unit/live/test_stream.py -v`
-Expected: 1 passed
+Expected: 3 passed
 
 ```bash
 git add hoga/live/stream.py tests/unit/live/test_stream.py

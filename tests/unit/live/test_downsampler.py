@@ -76,6 +76,15 @@ def test_evicted_code_stops_emitting():
     assert ds.flush(now_ms=10_000, phase="regular") == {}
 
 
+def test_reset_clears_carry_across_day_boundary():
+    """리뷰 C1 벡터 2: reset 후엔 carry가 소멸 — 익일 첫 flush가 어제 종가
+    호가창을 쓰지 않는다."""
+    ds = TickDownsampler()
+    ds.ingest(_ob("005930", 1000, tot_ask=111))
+    ds.reset()
+    assert ds.flush(now_ms=10_000, phase="regular") == {}
+
+
 def test_broker_state_last_wins_and_carries():
     ds = TickDownsampler()
     ds.ingest(_broker("005930", 1000, "A증권"))
