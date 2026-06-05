@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import type { IChartApi, ITimeScaleApi, Time } from 'lightweight-charts';
+import { useEffect, useLayoutEffect, useRef } from 'react';
+import type { IChartApi, Time } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { RangeBundle } from '../api/types';
 import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
@@ -15,25 +15,9 @@ import {
  * 이건 백스톱-of-백스톱(60×5=300일 > 250일). */
 const MAX_FILL_STEPS = 60;
 
-/** 좌측 팬 prepend 직전의 STABLE 기준 봉을 캡처한다(real ms + 현재 union logical
- * 인덱스 + 캡처 시점 logical range). 복원 effect가 이 ref로 viewport 위치를
- * 동기 shift해 사용자가 보던 봉을 같은 위치에 고정한다. 스텝 1(드래그 핸들러)과
- * 스텝 2..N(settle-effect)이 공유한다. 캡처 불가(vr/lr/refIdx 누락)면 null. */
-function captureViewportShift(
-  ts: ITimeScaleApi<Time>,
-  axis: VirtualAxis,
-): { refMs: number; refIdx: number; fromLogical: number; toLogical: number } | null {
-  const vr = ts.getVisibleRange();
-  const lr = vr ? ts.getVisibleLogicalRange() : null;
-  const refIdx = vr ? ts.timeToIndex(vr.to as Time, true) : null;
-  if (!vr || !lr || refIdx === null) return null;
-  return {
-    refMs: axis.toReal((vr.to as number) * 1000),
-    refIdx,
-    fromLogical: lr.from,
-    toLogical: lr.to,
-  };
-}
+/** 재배치 skip 허용 오차(논리 인덱스). lwc가 스스로 타깃에 착지한 경우(라이브
+ * 엣지 보존) 중복 set으로 한 프레임 플래시를 만들지 않기 위한 게이트. */
+const REPOSITION_EPSILON = 0.5;
 
 export interface ViewportBackfillArgs {
   chart: IChartApi | null;
@@ -42,30 +26,48 @@ export interface ViewportBackfillArgs {
   timeframe: LiveTimeframe;
   /** useLiveBundle.isExtending. false-edge = 한 스텝 settle. */
   isExtending: boolean;
-  /** Reset key — backfill anchors clear when the viewed Code changes. */
+  /** Reset key — per-code state (snapshot, fill-step counter) clears on switch. */
   code: string;
 }
 
-/** Headless controller for /live's leftward-pan historical backfill + viewport
- * preservation. Owns the four backfill anchor refs and the three effects that
- * were previously inline in `LiveChartRoot`:
- *   1. prepend-restore — shifts the visible logical range by the inserted-index
- *      count so the user's bars stay put across a prepend.
- *   2. progressive settle-loop — on each `isExtending` falling edge, fills the
- *      next 3-trading-day step until the viewport is full (minute-only).
- *   3. lazy-fetch trigger — captures the shift anchor + debounced dispatch when
+/** Headless controller for /live's leftward-pan historical backfill +
+ * staleness-free viewport repositioning. Three effects:
+ *   1. pre-swap snapshot (useLayoutEffect) — records the view in the SAME
+ *      commit as a bundle swap, before any setData runs.
+ *   2. repositioner — after the prepend's setData, pins the snapshot's bars
+ *      back on screen (skip when lwc already landed there).
+ *   3. lazy-fetch trigger + progressive settle-loop — dispatch fetches when
  *      the user pans past the leftmost loaded bar.
  *
- * Effect *declaration order* is load-bearing and preserved here: the restore
- * effect must precede the settle-loop (settle reads `getVisibleLogicalRange`
- * AFTER restore's shift lands), and both are parent effects (they run after
- * `RangeSeriesPane`'s child `setData`). This hook is called from `LiveChartRoot`
- * (the parent), so that parent-after-child ordering still holds.
+ * VIEWPORT CONTRACT (v3, /diagnose 2026-06-05 ×2): a historical prepend keeps
+ * the SAME BARS on screen, and the reposition target is computed from the view
+ * AS OF THE PREPEND COMMIT — never from a position captured earlier.
  *
- * Test surface: today these effects are exercised through `LiveChartRoot`'s
- * lightweight-charts mock. A future deepening can drive the controller through
- * a `TimeScale` port (no real chart) — the refs + effect bodies are already
- * isolated here for that. */
+ * Why app-side repositioning is needed at all — lwc 5.2.0's own setData
+ * re-anchor is position-DEPENDENT (measured in-browser, stack-attributed
+ * monkey-patch on every timeScale viewport API, real synthetic-mouse drags):
+ *   ① view at the live edge → preserved exactly (repositioner skips);
+ *   ② view deep in left whitespace → lands near the new/old data seam;
+ *   ③ view mid-data → logical indices FROZEN, the content slides by the
+ *     inserted count — a days-scale teleport (reproduced on the user's build:
+ *     [598,1561] byte-identical across a 4-day prepend, content 04-20→04-14).
+ *
+ * Why the snapshot lives in a LAYOUT effect — the entire bug saga was ONE
+ * mistake: capturing the anchor at the FETCH TRIGGER and applying it at the
+ * PREPEND. The chart moves in between (the user keeps dragging / pans back /
+ * kinetic settle), so the re-assert teleported (±30-bar wobble fresh,
+ * thousands of bars stale). Layout effects run before ALL passive effects in
+ * the same commit — `RangeSeriesPane`'s setData is a passive useEffect — so a
+ * parent useLayoutEffect snapshot is taken after every user input but before
+ * the data mutates: the staleness window is structurally zero. The chart still
+ * holds the PREVIOUS bundle's data during the layout phase, so the snapshot's
+ * right edge converts through the PREVIOUS axis (prevAxisRef), and the
+ * repositioner re-projects it through the new axis (timeToIndex on the rebuilt
+ * union scale — data-based, works with the reference bar off-screen).
+ *
+ * Test surface: `LiveChartRoot`'s lwc mock locks the call contract (reposition
+ * target, staleness-freedom, live-edge skip). The mock's setData is a no-op,
+ * so the rendered-pixels half is browser-only evidence (diagnose notes). */
 export function useViewportBackfill({
   chart,
   axis,
@@ -74,84 +76,67 @@ export function useViewportBackfill({
   isExtending,
   code,
 }: ViewportBackfillArgs): void {
-  // viewportShiftRef pins a STABLE reference bar captured the instant a leftward
-  // pan triggers a historical fetch: its real ms (survives the axis re-base) plus
-  // its logical index at capture time. prevEarliestTsMsRef holds the earliest
-  // drawn candle of the last applied bundle so the restore effect can detect a
-  // genuine prepend.
-  const viewportShiftRef = useRef<
-    { refMs: number; refIdx: number; fromLogical: number; toLogical: number } | null
+  // Pre-swap snapshot: the view as of the CURRENT commit's layout phase, with
+  // the right edge resolved to real ms through the axis the chart was actually
+  // drawn with (prevAxisRef). prevEarliestTsMsRef detects a genuine prepend.
+  const preSwapRef = useRef<
+    { fromLogical: number; toLogical: number; refMs: number; refIdx: number } | null
   >(null);
+  const prevAxisRef = useRef<VirtualAxis | null>(null);
   const prevEarliestTsMsRef = useRef<number | null>(null);
   // 진행 루프: 현재 fill에서 dispatch한 스텝 수(백스톱용) + isExtending 직전값(falling edge 검출).
   const fillStepCountRef = useRef(0);
   const prevExtendingRef = useRef(false);
 
   useEffect(() => {
+    preSwapRef.current = null;
+    prevAxisRef.current = null;
     prevEarliestTsMsRef.current = null;
-    viewportShiftRef.current = null;
     fillStepCountRef.current = 0;
     prevExtendingRef.current = false;
   }, [code, timeframe]);
 
-  // Historical-prepend viewport preservation (redundant safety net + stale-anchor
-  // guard). When the user pans left past the leftmost bar, extendHistoricalRange
-  // refetches with an earlier `from`, the bundle is rebuilt with older candles
-  // PREPENDED, and RangeSeriesPane calls series.setData(fullArray).
-  //
-  // Measured in-browser at lightweight-charts 5.2.0 (/diagnose 2026-06-05):
-  // setData RE-ANCHORS the visible logical range by the inserted count N on its
-  // own — the right-edge real-ms HOLDS while the logical window shifts +N — so
-  // the user's view is preserved by the library WITHOUT this effect. (An earlier
-  // comment here claimed setData kept the logical range numerically fixed,
-  // implying a jump this effect had to "undo"; that premise was FALSE — cf. the
-  // "setData does NOT leave the logical range numerically fixed" note in the
-  // shift application below.) This effect therefore recomputes the SAME +N shift
-  // and re-applies it, landing on the value setData already produced — a
-  // belt-and-suspenders no-op in the normal case, kept because ripping out a
-  // battle-tested path is riskier than leaving a harmless re-assert.
-  //
-  // Its ONE real hazard is firing on a STALE anchor: a shift computed relative to
-  // a position the user has since LEFT teleports them there. That was this
-  // /diagnose's bug — user pans left (arms fetch + captures anchor), pans back to
-  // recent, fetch lands, restore yanks them back. The lazy-fetch handler now
-  // nulls the anchor the instant the user pans back into loaded bars, so this
-  // effect short-circuits and setData's own re-anchor keeps the recent view.
-  //
-  // Why a logical shift, not setVisibleRange(real time): setVisibleRange refits
-  // a TIME span into the viewport and the captured span is whitespace-clamped
-  // (getVisibleRange pins its left edge to bar 0 while the user is panned into
-  // the pre-data whitespace), so it zooms in on EVERY prepend (measured
-  // barSpacing 1.6→2.2 over 3 prepends). A logical shift preserves the logical
-  // width exactly → barSpacing, and thus the candle scale, is invariant.
-  //
-  // Why N is read from the chart, not computed as candle count: the shared
-  // timeScale's logical index is the UNION across all series, and hoga panes
-  // (quote_ratio / fill_strength) sample at a different cadence than candles, so
-  // the inserted-index count != candle count. timeToIndex returns the bar's TRUE
-  // union index off the rebuilt scale (data-, not pixel-based, so it works even
-  // when the reference bar is off-screen), giving the exact shift.
-  //
-  // Ordering: this parent effect runs AFTER RangeSeriesPane's child setData
-  // effect (child effects fire before parent effects within the same bundle
-  // commit). useLiveBundle's extension gate makes the prepend land in ONE commit
-  // (candles+hoga together) so the shift sees the full union and is computed once
-  // — but a brief (~1-2 frame) position flash can still remain on a heavy
-  // prepend: a large multi-pane setData flush is internally split across lwc's
-  // own rAF render cycles, so the chart can paint the un-shifted frame before
-  // this shift lands. It is purely positional (the scale never changes) and not
-  // controllable from the React effect phase (verified: layout effects don't
-  // close it). Complementary to LiveChartRoot's initial-view effect via
-  // historicalFromDate (null → that effect owns the viewport; non-null → this
-  // one), so the two never fight over the same render.
+  // 1. Pre-swap snapshot. Runs in the layout phase of every bundle/axis
+  // commit — after the user's last input, before RangeSeriesPane's passive
+  // setData mutates the chart. getVisibleRange() therefore returns virtual
+  // times in the PREVIOUS axis's coordinate system (the data on screen is
+  // still the previous bundle's), which prevAxisRef converts to real ms.
+  useLayoutEffect(() => {
+    if (!chart) {
+      preSwapRef.current = null;
+      prevAxisRef.current = null;
+      return;
+    }
+    const ts = chart.timeScale();
+    const prevAxis = prevAxisRef.current;
+    try {
+      const lr = ts.getVisibleLogicalRange();
+      const vr = ts.getVisibleRange();
+      const refIdx = vr ? ts.timeToIndex(vr.to as Time, true) : null;
+      preSwapRef.current =
+        lr && vr && refIdx !== null && prevAxis && prevAxis.segments.length > 0
+          ? {
+              fromLogical: lr.from,
+              toLogical: lr.to,
+              refMs: prevAxis.toReal((vr.to as number) * 1000),
+              refIdx,
+            }
+          : null;
+    } catch {
+      preSwapRef.current = null;
+    }
+    prevAxisRef.current = axis;
+  }, [chart, bundle, axis]);
+
+  // 2. Repositioner. Runs after the child setData in the same commit. Only a
+  // genuine LEFTWARD extension repositions — initial paint and SSE growth are
+  // owned by LiveChartRoot's initial-view effect (mutually exclusive via
+  // historicalFromDate), and holiday-only chunks change nothing on screen.
   useEffect(() => {
     if (!chart || !bundle || bundle.candles.length === 0) return;
-    // [TEMP-DIAG-VIEWPORT] dev-only kill switch for the differential repro.
-    if (import.meta.env.DEV && (window as unknown as { __noRestore?: boolean }).__noRestore) return;
     const ts = chart.timeScale();
     // Earliest candle actually drawn — mirror projectCandle's axis.contains
-    // filter. The absolute ts_ms is stable under the axis re-base, unlike the
-    // virtual time or the logical index.
+    // filter. Absolute ts_ms is stable under the axis re-base.
     let newEarliest: number | null = null;
     for (const c of bundle.candles) {
       if (!axis.contains(c.ts_ms)) continue;
@@ -159,51 +144,44 @@ export function useViewportBackfill({
     }
     const prevEarliest = prevEarliestTsMsRef.current;
     prevEarliestTsMsRef.current = newEarliest;
-    // Initial paint and SSE growth are owned by LiveChartRoot's initial-view
-    // effect; only the user-driven extension path corrects the viewport here.
     if (useLivePageStore.getState().historicalFromDate === null) return;
     if (prevEarliest === null || newEarliest === null) return;
-    // Only a genuine LEFTWARD extension (an older bar appeared) jumps the view.
-    // SSE ticks (right edge) and holiday-only chunks (no new trading day) leave
-    // the earliest bar unchanged → nothing to correct.
     if (newEarliest >= prevEarliest) return;
-    const shiftRef = viewportShiftRef.current;
-    if (!shiftRef) return;
+    const snap = preSwapRef.current;
+    if (!snap) return;
     try {
-      // The reference bar (real ms, stable under the re-base) now sits at a
-      // higher union logical index because older points were inserted ahead of
-      // it. shift = newIdx - refIdx = exactly how many union points were
-      // inserted. Round the virtual seconds: UTCTimestamp must be an integer and
-      // the toReal→toVirtual round-trip can land a hair off a bar boundary.
-      const refVirtual = Math.round(axis.toVirtual(shiftRef.refMs) / 1000);
+      // Reproject the snapshot's right-edge bar through the rebuilt axis. Its
+      // union index moved by exactly the number of points inserted ahead of it;
+      // translating the snapshot window by that shift pins the user's bars.
+      // Round the virtual seconds: UTCTimestamp must be an integer and the
+      // toReal→toVirtual round-trip can land a hair off a bar boundary.
+      const refVirtual = Math.round(axis.toVirtual(snap.refMs) / 1000);
       const newIdx = ts.timeToIndex(refVirtual as Time, true);
       if (newIdx === null) return;
-      const shift = newIdx - shiftRef.refIdx;
-      if (shift === 0) return;
-      // Apply the shift to the CAPTURED pre-prepend logical range, NOT the
-      // current one: lightweight-charts' setData does NOT leave the logical range
-      // numerically fixed across a prepend (it partially re-anchors it), so
-      // reading it back here would compound the chart's own move with ours and
-      // double-shift. The captured [from,to] + the inserted-point count is the
-      // absolute target that pins the previously-viewed bars at the same scale,
-      // overriding whatever setData did.
-      ts.setVisibleLogicalRange({
-        from: shiftRef.fromLogical + shift,
-        to: shiftRef.toLogical + shift,
-      });
+      const shift = newIdx - snap.refIdx;
+      const target = { from: snap.fromLogical + shift, to: snap.toLogical + shift };
+      // Live-edge case (①): lwc preserved the view on its own — re-setting the
+      // same range would only risk a redundant repaint. Skip within tolerance.
+      const cur = ts.getVisibleLogicalRange();
+      if (
+        cur &&
+        Math.abs(cur.from - target.from) < REPOSITION_EPSILON &&
+        Math.abs(cur.to - target.to) < REPOSITION_EPSILON
+      ) {
+        return;
+      }
+      ts.setVisibleLogicalRange(target);
     } catch (e) {
-      // Reachable in practice only when the chart tears down between effect runs
-      // (the axis math is total and timeToIndex is guarded above). Surface an
-      // unexpected lwc-internal throw in dev so it isn't a silent no-op the user
-      // reads as "the jump just wasn't fixed".
-      if (import.meta.env.DEV) console.warn('[live] viewport restore shift threw', e);
+      // Reachable in practice only when the chart tears down between effect
+      // runs. Surface in dev so it isn't a silent no-op read as "still broken".
+      if (import.meta.env.DEV) console.warn('[live] viewport reposition threw', e);
     }
   }, [chart, bundle, axis]);
 
-  // 진행 루프(스텝 2..N): 한 스텝 settle(isExtending true→false) 직후 viewport가
+  // 3a. 진행 루프(스텝 2..N): 한 스텝 settle(isExtending true→false) 직후 viewport가
   // 아직 빈영역이면 다음 스텝을 자가 dispatch한다. minute-only(D/W/M은 one-shot).
-  // planFillStep이 종료(꽉 참/클램프/백스톱)를 판정. 복원 effect 뒤에 선언해
-  // getVisibleLogicalRange가 shift 적용 후 위치를 읽도록 한다.
+  // planFillStep이 종료(꽉 참/클램프/백스톱)를 판정. 재배치 effect 뒤에 선언해
+  // getVisibleLogicalRange가 재배치 적용 후 위치를 읽도록 한다.
   useEffect(() => {
     const wasExtending = prevExtendingRef.current;
     prevExtendingRef.current = isExtending;
@@ -233,12 +211,11 @@ export function useViewportBackfill({
       fillStepCountRef.current = 0;
       return;
     }
-    viewportShiftRef.current = captureViewportShift(ts, axis);
     fillStepCountRef.current += 1;
     useLivePageStore.getState().extendHistoricalRange(plan.nextFrom);
   }, [chart, axis, timeframe, isExtending]);
 
-  // Lazy fetch trigger — extend historicalFromDate when user scrolls past
+  // 3b. Lazy fetch trigger — extend historicalFromDate when user scrolls past
   // the leftmost loaded candle.
   //
   // Why logical range, not time range: subscribeVisibleTimeRangeChange clamps
@@ -268,41 +245,15 @@ export function useViewportBackfill({
       const r = range as { from?: number | null; to?: number | null } | null;
       if (!r || r.from == null) return;
       // logical.from is a fractional bar index; negative = past the leftmost
-      // loaded bar, which is exactly the lazy-fetch trigger condition.
-      if (r.from >= 0) {
-        // The user has panned back INTO the loaded bars before an in-flight
-        // prepend lands. The anchor captured at the earlier leftward trigger now
-        // points at a region the user has LEFT — applying it in the restore
-        // effect would teleport them back there (/diagnose 2026-06-05: "과거로
-        // 드래그하고 직후에 최근으로 되돌아오면 fetch가 끝날 때 화면이 이동됨").
-        // Invalidate it so the restore short-circuits; lightweight-charts' setData
-        // re-anchors the visible logical range by the inserted count on its own
-        // (measured in-browser at lwc 5.2.0: right-edge real-ms held while the
-        // logical window shifted +N), so the user's CURRENT view is preserved with
-        // no restore. The pending fetch is left armed — the user still gets the
-        // older data preloaded; only the unwanted viewport move is suppressed.
-        viewportShiftRef.current = null;
-        return;
-      }
-      // Capture a STABLE reference bar before triggering the prepend: its real
-      // ms (survives the segments re-base from 0 on every rebuild) and its
-      // current union logical index (timeToIndex). The restore effect reprojects
-      // the real ms through the rebuilt axis, reads the bar's NEW index, and
-      // shifts the visible logical range by the difference so the bars the user
-      // is looking at stay put at the same scale. Use the RIGHT edge (vr.to):
-      // panned into the left whitespace it is a real, on-data bar (getVisibleRange
-      // clamps only the left edge to bar 0). Capture is synchronous here (not in
-      // the 150ms debounce) so `axis`/`ts` are the pre-prepend generation the
-      // user is looking at — the effect re-subscribes on [chart, axis, timeframe],
-      // so this closure is always current.
-      // Always overwrite (capture OR clear): a failed capture must not leave a
-      // PREVIOUS pan's anchors live for the next prepend's restore.
-      viewportShiftRef.current = captureViewportShift(ts, axis);
+      // loaded bar, which is exactly the lazy-fetch trigger condition. NOTE:
+      // nothing is captured here — the v3 snapshot happens at the prepend
+      // commit itself, so user movement after this trigger cannot go stale.
+      if (r.from >= 0) return;
       fillStepCountRef.current = 1; // 이 dispatch가 스텝 1
       // SR-3: the holiday-span / monotonic-decrease backfill policy lives in
       // the pure nextHistoricalFrom kernel (liveDateTime, table-tested). This
-      // effect keeps only the imperative shell: trigger gate, anchor capture,
-      // debounce, store dispatch.
+      // effect keeps only the imperative shell: trigger gate, debounce, store
+      // dispatch.
       const cur = useLivePageStore.getState().historicalFromDate;
       const nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, stepChunkDays(timeframe));
       if (timeoutId !== null) clearTimeout(timeoutId);
