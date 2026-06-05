@@ -49,9 +49,12 @@ def _resolve_provider():
 
     Late import + tiny tuple so tests monkeypatch THIS seam without touching
     kis_runtime. Token issuance/cooldown lives in KisTokenProvider (Phase 1).
-    reload_env: this is the user-retry path the UI's ".env 수정 후 재시도" copy
-    points at — a creds miss re-reads .env once so the promised loop works
-    without a server restart.
+    reload_env: the UI's ".env 수정 후 재시도" copy points at the calendar/
+    enqueue retries that land here — a creds miss re-reads .env so the
+    promised loop works without a restart. The background poller gate also
+    reaches this (cheap: one .env stat per 60s failure-TTL expiry), so the
+    calendar self-heals within a minute of the keys appearing; the live
+    poller itself still starts on the next watchlist mutation or restart.
     """
     from hoga.live.kis_runtime import ensure_kis_token_provider_from_env
 
