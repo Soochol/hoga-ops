@@ -174,6 +174,35 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith('f_0000000a'));
   });
 
+  it('우클릭 → 그룹으로 이동 moves the entry to the chosen folder', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const moveSpy = vi.spyOn(watchlistApi, 'moveEntries').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
+    // 미분류 소속 000660 → 스윙(f_0000000a)으로 이동
+    fireEvent.contextMenu(screen.getByTestId('watchlist-row-000660'));
+    fireEvent.click(screen.getByTestId('watchlist-menu-move-f_0000000a'));
+    await waitFor(() => expect(moveSpy).toHaveBeenCalledWith(['000660'], 'f_0000000a'));
+    expect(screen.queryByTestId('watchlist-row-menu')).toBeNull();   // 메뉴 닫힘
+  });
+
+  it('접기 상태가 localStorage에 영속되어 리마운트에도 유지된다', async () => {
+    localStorage.removeItem('watchlist.collapsed');
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { unmount } = render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('미분류 접기'));
+    expect(screen.queryByText('SK하이닉스')).toBeNull();
+    unmount();
+    // 리마운트(패널 재오픈에 해당) — 접기 상태가 localStorage에서 복원된다
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    expect(screen.queryByText('SK하이닉스')).toBeNull();
+    localStorage.removeItem('watchlist.collapsed');
+  });
+
   it('그룹 헤더 ⋯ → 아래로 이동 reorders folders (full ordered_ids)', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
       folders: [

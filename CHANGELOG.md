@@ -3,6 +3,26 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.5.10.0] - 2026-06-05
+
+### Added
+- **우클릭 → 그룹으로 이동**: 관심종목 패널 종목 우클릭 메뉴에 `그룹으로 이동` 섹션이
+  추가됐습니다 — 현재 그룹을 제외한 그룹들과(그룹 소속이면) **미분류**가 나열되고,
+  누르면 편집 모달 없이 바로 이동합니다.
+- **그룹 접기 상태 영속화**: 패널 그룹의 접힘/펼침이 localStorage에 저장되어 패널을
+  닫았다 열어도 유지됩니다.
+
+### Fixed
+- **편집 모달 그룹 행 키보드 접근**: hover에서만 보이던 ▲▼✎🗑 버튼이 Tab 포커스로도
+  도달·표시됩니다(패널 ⋯과 같은 opacity 계약).
+
+### Tests
+- **watchlist e2e 복구·재편**: 폴더 도입(0.5.5.0) 이후 mock 형태가 낡아 깨져 있던
+  watchlist e2e를 복구하고(`watchlist-context-menu` + 공용 `liveMocks`), 제거된 패널
+  드래그 기능의 `watchlist-reorder.spec.ts`는 폐기 후 **편집 모달 ⠿ 드래그**로
+  포팅했습니다(`watchlist-edit-reorder.spec.ts`). 그룹 ⋯ 메뉴·Escape 레이어링·
+  그룹으로 이동을 덮는 e2e도 추가됐습니다(총 5건 통과).
+
 ## [0.5.9.0] - 2026-06-05
 
 ### Added

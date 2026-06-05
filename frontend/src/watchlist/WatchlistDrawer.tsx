@@ -4,8 +4,9 @@ import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
 import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
-  useCreateFolder, useRenameFolder, useDeleteFolder, useReorderFolders,
+  useCreateFolder, useRenameFolder, useDeleteFolder, useReorderFolders, useMoveEntries,
 } from './useWatchlist';
+import { persistJson, readJsonObject } from '../state/persist';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
 import { groupByFolder } from './grouping';
 import { Countdown } from './Countdown';
@@ -107,9 +108,9 @@ function GroupHeader(props: {
  * Folder-grouped read+navigate: rows show the KIS live quote overlay (ADR-0056)
  * and click → activeCode + /live jump. The 편집 control opens a small menu
  * (관심 편집 → WatchlistEditModal, 새 그룹 만들기 → GroupNameModal); group
- * headers carry a hover ⋯ menu (이름 변경/삭제). All other mutation
- * (add/delete/move/reorder) lives in the edit modal. The only in-drawer
- * row edit affordance is the right-click quick-remove menu.
+ * headers carry a hover ⋯ menu (이름 변경/순서/삭제), and the row context menu
+ * does quick-remove + 그룹으로 이동. Entry add/multi-delete/drag-reorder live
+ * in the edit modal. Collapse state persists via localStorage.
  */
 export function WatchlistDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
@@ -121,24 +122,36 @@ export function WatchlistDrawer() {
   const renameM = useRenameFolder();
   const deleteM = useDeleteFolder();
   const reorderFoldersM = useReorderFolders();
+  const moveM = useMoveEntries();
   const { recentAction, setRecentAction } = useWatchlistFeedback();
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // 접기 상태는 localStorage 영속 — 패널을 닫았다 열어도(언마운트) 유지된다.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    const saved = readJsonObject('watchlist.collapsed');
+    const keys = Array.isArray(saved.keys) ? saved.keys.filter((k): k is string => typeof k === 'string') : [];
+    return new Set(keys);
+  });
   const [editOpen, setEditOpen] = useState(false);
   const [addGroupOpen, setAddGroupOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [editMenu, setEditMenu] = useState(false);
   const editMenuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(editMenu, editMenuRef, () => setEditMenu(false));
-  const [menu, setMenu] = useState<{ x: number; y: number; code: string; name: string } | null>(null);
+  const [menu, setMenu] =
+    useState<{ x: number; y: number; code: string; name: string; folderId: string | null } | null>(null);
 
   const codes = useMemo(() => data?.entries.map((e) => e.code) ?? [], [data]);
   const quoteByCode = useQuoteByCode(codes);
 
-  const toggle = (key: string) =>
-    setCollapsed((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
-  const openMenu = (e: React.MouseEvent, code: string, name: string) => {
+  const toggle = (key: string) => {
+    const n = new Set(collapsed);
+    if (n.has(key)) n.delete(key);
+    else n.add(key);
+    setCollapsed(n);
+    persistJson('watchlist.collapsed', { keys: [...n] });
+  };
+  const openMenu = (e: React.MouseEvent, code: string, name: string, folderId: string | null) => {
     e.preventDefault();                                   // 네이티브 우클릭 메뉴 억제
-    setMenu({ x: e.clientX, y: e.clientY, code, name });  // raw 좌표 — 클램프는 메뉴가 실측
+    setMenu({ x: e.clientX, y: e.clientY, code, name, folderId });  // raw 좌표 — 클램프는 메뉴가 실측
   };
 
   const groups = data ? groupByFolder(data.folders, data.entries) : [];
@@ -228,7 +241,7 @@ export function WatchlistDrawer() {
                         ariaLabel={`${entry.name} ${entry.code} 차트 열기`}
                         testId={`watchlist-row-${entry.code}`}
                         onClick={() => onPick(entry.code)}
-                        onContextMenu={(e) => openMenu(e, entry.code, entry.name)}
+                        onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                         onDelete={() => removeM.mutate(entry.code)}
                       />
                     );
@@ -275,6 +288,9 @@ export function WatchlistDrawer() {
 
       {menu && (
         <WatchlistRowMenu x={menu.x} y={menu.y} name={menu.name}
+          folders={[...(data?.folders ?? [])].sort((a, b) => a.order - b.order)}
+          currentFolderId={menu.folderId}
+          onMove={(folderId) => moveM.mutate({ codes: [menu.code], folderId })}
           onRemove={() => removeM.mutate(menu.code)} onClose={() => setMenu(null)} />
       )}
       {editOpen && <WatchlistEditModal onClose={() => setEditOpen(false)} />}

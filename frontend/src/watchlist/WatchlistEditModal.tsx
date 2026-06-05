@@ -47,7 +47,9 @@ function FolderRow(props: {
         </button>
       )}
       {!props.isEditing && (
-        <div className="hidden group-hover:flex items-center gap-0.5 text-fg-dimmer">
+        // opacity 숨김(display:none 아님) — Tab 포커스 도달 + group-focus-within 노출
+        // (패널 GroupHeader ⋯과 같은 키보드 접근성 계약).
+        <div className="flex items-center gap-0.5 text-fg-dimmer opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
           <button type="button" aria-label={`${props.name} 위로`} disabled={props.idx === 0}
             onClick={props.onMoveUp}
             className="px-1 leading-none hover:text-fg disabled:opacity-40">▲</button>
