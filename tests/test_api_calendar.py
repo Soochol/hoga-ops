@@ -178,6 +178,120 @@ def test_trading_days_for_returns_none_when_pykrx_raises(
     assert calendar_module.last_failure_reason() == UpstreamCode.KRX_FETCH_FAILED
 
 
+# ---------------------------------------------------------------------------
+# is_trading_session_today (ADR-0064): lag-free "is TODAY a KRX session?"
+#
+# The poller gate must NOT rely on get_market_ohlcv to decide whether *today*
+# is a trading day: today's daily bar isn't published until intraday/after
+# close, so a live trading day reads as non-trading early in the session and
+# silently halts capture for the whole process. is_trading_session_today uses
+# the KRX business-day *calendar* (get_previous_business_days), which marks
+# today as a session from the open.
+# ---------------------------------------------------------------------------
+
+def _fake_pykrx(business_days_yyyymmdd, *, raises=False, calls=None):
+    """Install a fake `pykrx` whose get_previous_business_days returns the given
+    days as datetime objects (real pandas Timestamps also satisfy .strftime)."""
+    import sys
+    import datetime as _dt
+
+    class _FakeStock:
+        @staticmethod
+        def get_previous_business_days(*, year, month):
+            if calls is not None:
+                calls.append((year, month))
+            if raises:
+                raise RuntimeError("pykrx exploded")
+            return [
+                _dt.datetime(int(d[:4]), int(d[4:6]), int(d[6:8]))
+                for d in business_days_yyyymmdd
+            ]
+
+    fake = type(sys)("pykrx")
+    fake.stock = _FakeStock
+    return fake
+
+
+def test_is_trading_session_today_true_when_in_business_days(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    import sys
+    monkeypatch.setenv("KRX_ID", "u")
+    monkeypatch.setenv("KRX_PW", "p")
+    # June 2026: 1,2,4,5 trading; 3 holiday. Today=05 IS in the set.
+    monkeypatch.setitem(sys.modules, "pykrx",
+                        _fake_pykrx(["20260601", "20260602", "20260604", "20260605"]))
+    assert calendar_module.is_trading_session_today("20260605") is True
+
+
+def test_is_trading_session_today_false_on_holiday(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    import sys
+    monkeypatch.setenv("KRX_ID", "u")
+    monkeypatch.setenv("KRX_PW", "p")
+    # 20260603 is NOT in the business-day set → it's a holiday → False.
+    monkeypatch.setitem(sys.modules, "pykrx",
+                        _fake_pykrx(["20260601", "20260602", "20260604", "20260605"]))
+    assert calendar_module.is_trading_session_today("20260603") is False
+
+
+def test_is_trading_session_today_none_when_creds_missing(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+    assert calendar_module.is_trading_session_today("20260605") is None
+
+
+def test_is_trading_session_today_none_when_pykrx_raises(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    import sys
+    monkeypatch.setenv("KRX_ID", "u")
+    monkeypatch.setenv("KRX_PW", "p")
+    monkeypatch.setitem(sys.modules, "pykrx", _fake_pykrx([], raises=True))
+    assert calendar_module.is_trading_session_today("20260605") is None
+
+
+def test_is_trading_session_today_caches_positive(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    """A confirmed trading session is cached per day — no repeat KRX fetch."""
+    import sys
+    monkeypatch.setenv("KRX_ID", "u")
+    monkeypatch.setenv("KRX_PW", "p")
+    calls: list = []
+    monkeypatch.setitem(sys.modules, "pykrx",
+                        _fake_pykrx(["20260605"], calls=calls))
+    assert calendar_module.is_trading_session_today("20260605") is True
+    assert calendar_module.is_trading_session_today("20260605") is True
+    assert len(calls) == 1  # second call served from cache
+
+
+def test_is_trading_session_today_rechecks_negative_and_self_heals(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    """A False for today is NOT cached permanently. If the calendar source
+    transiently omits today (the bug), the gate self-heals once it reappears,
+    without a process restart. Re-fetches are throttled, not every call."""
+    import sys
+    monkeypatch.setenv("KRX_ID", "u")
+    monkeypatch.setenv("KRX_PW", "p")
+    calls: list = []
+    # First: today missing → False.
+    monkeypatch.setitem(sys.modules, "pykrx", _fake_pykrx([], calls=calls))
+    assert calendar_module.is_trading_session_today("20260605", _now_s=0.0) is False
+    assert len(calls) == 1
+    # Within the throttle window: still False, but NO re-fetch.
+    assert calendar_module.is_trading_session_today("20260605", _now_s=10.0) is False
+    assert len(calls) == 1
+    # After the throttle window AND the source now includes today → True.
+    monkeypatch.setitem(sys.modules, "pykrx", _fake_pykrx(["20260605"], calls=calls))
+    assert calendar_module.is_trading_session_today("20260605", _now_s=999.0) is True
+    assert len(calls) == 2
+
+
 def test_get_month_map_fail_soft_when_creds_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

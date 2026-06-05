@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.5.2.0] - 2026-06-05
+
+### Fixed
+- `/live`의 **10호가가 장중 갑자기 사라지던** 문제를 고쳤습니다. KIS·파싱·프론트
+  경로는 정상이었고, 라이브 캡처 **poller 태스크가 예외 한 번에 traceback 없이
+  조용히 죽은** 뒤 상태는 거짓으로 `running:true`를 보고해 호가 버퍼가 빈 채로
+  남았던 것이 원인입니다. (ADR-0064)
+
+### Changed
+- 거래일 게이트가 일별 OHLCV(장중엔 오늘 봉이 아직 발행 안 됨) 대신 KRX 거래일
+  **달력**(`is_trading_session_today`)을 사용해, 살아있는 거래일이 장 초반에
+  거짓으로 닫히지 않습니다. 주말은 KRX 호출 전에 단락 처리합니다. (ADR-0064)
+- 라이브 poller가 자가 복원력을 갖습니다: `run_forever` 루프가 일시적 예외를
+  로그 후 계속하고(today-promoter 패턴), `/api/live/status`의 `running`이 실제
+  태스크 생사를 반영하며, 장중 죽거나 멈춘 poller를 **세션 개장 기준** staleness로
+  감지해 자동 재시작하는 watchdog을 추가했습니다. (ADR-0064)
+
 ## [0.5.1.0] - 2026-06-05
 
 ### Fixed
