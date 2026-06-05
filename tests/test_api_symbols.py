@@ -351,8 +351,9 @@ def test_disk_round_trip(tmp_path):
 
     result = symbols_module._load_from_disk(path)
     assert result is not None
-    loaded, fetched_at_ms = result
+    loaded, fetched_at_ms, schema_version = result
     assert fetched_at_ms == 1747900000000
+    assert schema_version == symbols_module.SCHEMA_VERSION
     assert [(h.code, h.name, h.market) for h in loaded] == [
         ("005930", "삼성전자", "KOSPI"),
         ("000660", "SK하이닉스", "KOSPI"),

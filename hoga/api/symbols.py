@@ -185,26 +185,40 @@ _state: SymbolCacheState = SymbolCacheState.unavailable(
 )
 _refresh_coordinator: _RefreshCoordinator[SymbolsAllResponse] = _RefreshCoordinator()
 SCHEMA_VERSION = 2
+# Oldest schema the loader still accepts. v1 (pykrx era) lacks security_type,
+# which the loader defaults to "stock" — rejecting it discarded a perfectly
+# usable catalog on upgrade and left search EMPTY on an offline boot (the
+# stale-serving tier can never engage on a cache that was never loaded).
+_MIN_SCHEMA_VERSION = 1
+# Schema version of the file load_disk_state read (None = nothing loaded).
+# needs_boot_refresh() uses it to schedule a background re-download when a
+# legacy-schema cache was accepted, so the upgrade converges to v2 online.
+_loaded_schema_version: int | None = None
 
 
 def reset_state_for_tests() -> None:
-    global _cache, _fetched_at_ms, _state  # noqa: PLW0603
+    global _cache, _fetched_at_ms, _state, _loaded_schema_version  # noqa: PLW0603
     _cache, _fetched_at_ms, _state = (
         [],
         None,
         SymbolCacheState.unavailable(reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED),
     )
+    _loaded_schema_version = None
     _refresh_coordinator.reset()
 
 
-def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
-    """Read the Symbol Master file. Return (entries, fetched_at_ms) or None.
+def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int, int] | None:
+    """Read the Symbol Master file. Return (entries, fetched_at_ms,
+    schema_version) or None.
 
     Returns None when:
       - the file does not exist (no log; this is the first-boot normal path),
       - the JSON cannot be parsed,
-      - schema_version is missing or != SCHEMA_VERSION,
+      - schema_version is missing or outside [_MIN_SCHEMA_VERSION, SCHEMA_VERSION],
       - the entries array is missing or malformed.
+
+    Legacy v1 files load fine (security_type defaults to "stock" below);
+    needs_boot_refresh() schedules a background re-download to converge to v2.
 
     Every failure path other than "file absent" emits a logger.warning so
     developers can diagnose disk-corruption events without user reporting.
@@ -220,10 +234,14 @@ def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Symbol Master disk file unreadable at %s: %s", path, e)
         return None
-    if not isinstance(payload, dict) or payload.get("schema_version") != SCHEMA_VERSION:
+    schema_version = payload.get("schema_version") if isinstance(payload, dict) else None
+    if (
+        not isinstance(schema_version, int)
+        or not (_MIN_SCHEMA_VERSION <= schema_version <= SCHEMA_VERSION)
+    ):
         logger.warning(
-            "Symbol Master disk file schema mismatch at %s (got %r, expected %d)",
-            path, payload.get("schema_version") if isinstance(payload, dict) else None, SCHEMA_VERSION,
+            "Symbol Master disk file schema mismatch at %s (got %r, accept %d..%d)",
+            path, schema_version, _MIN_SCHEMA_VERSION, SCHEMA_VERSION,
         )
         return None
     raw_entries = payload.get("entries")
@@ -251,7 +269,7 @@ def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
             "Symbol Master disk file has malformed entry at %s: %s", path, e,
         )
         return None
-    return entries, fetched_at_ms
+    return entries, fetched_at_ms, schema_version
 
 
 def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> None:
@@ -282,13 +300,12 @@ async def _fetch_symbol_master() -> list[SymbolHit]:
     UpstreamCode.KIS_MASTER_FETCH_FAILED (see _do_refresh). No credentials
     needed — the .mst is a static file (SPEC §7).
     """
+    # No re-wrap here: kis_master already normalizes every download/parse
+    # failure to KisMasterFetchError, and wrapping the remainder downgraded
+    # genuinely unexpected errors (executor machinery) into the SILENT typed
+    # handler in _do_refresh, skipping its logger.exception traceback.
     loop = asyncio.get_running_loop()
-    try:
-        rows = await loop.run_in_executor(None, _fetch_mst)
-    except KisMasterFetchError:
-        raise
-    except Exception as e:  # noqa: BLE001 — unexpected → same failure class
-        raise KisMasterFetchError(str(e)) from e
+    rows = await loop.run_in_executor(None, _fetch_mst)
     return [
         SymbolHit(
             code=r.code,
@@ -366,14 +383,15 @@ def load_disk_state(*, path: Path, data_dir: Path) -> None:
     cache is empty and _state surfaces SYMBOL_MASTER_NOT_INITIALIZED so the
     UI prompts the user to click Update.
     """
-    global _cache, _fetched_at_ms, _state  # noqa: PLW0603
+    global _cache, _fetched_at_ms, _state, _loaded_schema_version  # noqa: PLW0603
     result = _load_from_disk(path)
     if result is None:
         _cache = []
         _fetched_at_ms = None
         _state = SymbolCacheState.unavailable(reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED)
+        _loaded_schema_version = None
         return
-    entries, fetched_at_ms = result
+    entries, fetched_at_ms, schema_version = result
     breakdowns = _build_all_captured_breakdowns(data_dir)
     empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0}
     for h in entries:
@@ -383,11 +401,22 @@ def load_disk_state(*, path: Path, data_dir: Path) -> None:
     _cache = entries
     _fetched_at_ms = fetched_at_ms
     _state = SymbolCacheState.fresh()
+    _loaded_schema_version = schema_version
 
 
 def current_status() -> str:
     """Boot helper — current cache status without building a full response."""
     return _state.status
+
+
+def needs_boot_refresh() -> bool:
+    """§4.4 boot policy, owned HERE (not at the lifespan call site): schedule
+    the background .mst auto-refresh when the cache is unavailable OR a
+    legacy-schema file was accepted (serve the old catalog now, converge to
+    the current schema online)."""
+    if _state.status == "unavailable":
+        return True
+    return _loaded_schema_version is not None and _loaded_schema_version < SCHEMA_VERSION
 
 
 async def get_all(*, data_dir: Path) -> SymbolsAllResponse:

@@ -127,13 +127,15 @@ def create_app(data_dir: Path) -> FastAPI:
         _symbols_module.load_disk_state(
             path=resolve_symbol_master_path(), data_dir=data_dir
         )
-        # §4.4: .mst is fast + no-auth, so an empty/old cache auto-refreshes in
-        # the background (does NOT block startup; load_disk_state already ran).
+        # §4.4: .mst is fast + no-auth, so an empty/legacy cache auto-refreshes
+        # in the background (does NOT block startup; load_disk_state already
+        # ran). The fire/skip condition lives in symbols.needs_boot_refresh()
+        # — one owner instead of a status string-compare at this call site.
         # Routed through refresh()/coordinator → single-flight, so a concurrent
         # manual click won't double-download. Tracked in _scheduler_tasks (same
         # as screener-recovery) so the `finally` block cancels+awaits it at
         # shutdown instead of leaking an in-flight download.
-        if _symbols_module.current_status() == "unavailable":
+        if _symbols_module.needs_boot_refresh():
             _scheduler_tasks.append(
                 asyncio.create_task(
                     _symbols_module.refresh(
