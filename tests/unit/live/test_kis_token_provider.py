@@ -28,6 +28,7 @@ def test_issue_token_caches_to_disk(tmp_path: Path) -> None:
         assert provider.get_token() == "MOCK_TOKEN"
         assert cache.exists()
         assert json.loads(cache.read_text())["access_token"] == "MOCK_TOKEN"
+        assert (cache.stat().st_mode & 0o777) == 0o600
     finally:
         provider.close()
 
@@ -104,13 +105,27 @@ def test_memory_cache_hit_avoids_second_issue(tmp_path: Path) -> None:
 
 
 def test_get_token_is_thread_safe(tmp_path: Path) -> None:
-    """Concurrent get_token from many threads issues exactly once (lock holds)."""
+    """Concurrent get_token issues exactly once AND the lock serializes the
+    issue path: at most one thread is ever inside the issuance handler.
+
+    The sleep widens the race window so that a MISSING lock would let multiple
+    threads overlap inside the handler (max > 1) — making the assertions below
+    actually load-bearing, not vacuously green.
+    """
+    import time as _time
+
     calls = {"n": 0}
-    lock = threading.Lock()
+    concurrency = {"active": 0, "max": 0}
+    state_lock = threading.Lock()
 
     def handler(req: httpx.Request) -> httpx.Response:
-        with lock:
+        with state_lock:
+            concurrency["active"] += 1
+            concurrency["max"] = max(concurrency["max"], concurrency["active"])
             calls["n"] += 1
+        _time.sleep(0.02)  # hold the issue path open so a missing lock overlaps
+        with state_lock:
+            concurrency["active"] -= 1
         return httpx.Response(
             200,
             json={"access_token": "TOK", "expires_in": 86400, "token_type": "Bearer"},
@@ -132,6 +147,26 @@ def test_get_token_is_thread_safe(tmp_path: Path) -> None:
         for t in threads:
             t.join()
         assert results == ["TOK"] * 8
-        assert calls["n"] == 1  # the lock serialized issuance to exactly one POST
+        assert calls["n"] == 1          # exactly one issuance
+        assert concurrency["max"] == 1  # the lock serialized the issue path
+    finally:
+        provider.close()
+
+
+def test_valid_disk_cache_returns_without_issue(tmp_path: Path) -> None:
+    """A fresh provider with a far-future disk token returns it without any POST."""
+    far_future = (datetime.now(KIS_KST) + timedelta(hours=20)).isoformat()
+    cache = tmp_path / "token.json"
+    cache.write_text(json.dumps({"access_token": "DISK", "expires_at": far_future}))
+    calls = {"n": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json={"access_token": "X", "expires_in": 86400})
+
+    provider = KisTokenProvider(_creds(), cache, _transport=httpx.MockTransport(handler))
+    try:
+        assert provider.get_token() == "DISK"
+        assert calls["n"] == 0  # served from disk, no issuance
     finally:
         provider.close()
