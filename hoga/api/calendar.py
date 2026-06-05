@@ -31,6 +31,19 @@ from hoga.env import krx_creds_present
 # rare enough that bouncing the server fixes it.
 _month_cache: dict[tuple[int, int], set[str]] = {}
 
+# ADR-0064 — "is TODAY a KRX session?" cache, kept SEPARATE from _month_cache.
+# `_session_confirmed` holds YYYYMMDD strings proven to be trading sessions by
+# the business-day calendar; a positive verdict is stable for the day, so it is
+# cached and never re-fetched. A *negative* verdict is deliberately NOT cached
+# permanently — only its last fetch time is recorded, so a transient calendar
+# miss for today (which would otherwise silently halt live capture for the rest
+# of the process, the way the get_market_ohlcv proxy did) self-heals on the next
+# re-check instead of needing a process restart. Re-checks are throttled to
+# avoid hammering KRX on a real holiday.
+_session_confirmed: set[str] = set()
+_session_last_miss_ms: dict[str, float] = {}
+_SESSION_MISS_RECHECK_S = 60.0
+
 _last_failure_reason: UpstreamCode | None = None
 
 
@@ -78,6 +91,59 @@ def _trading_days_for(year: int, month: int) -> set[str] | None:
     _month_cache[key] = result
     _last_failure_reason = None
     return result
+
+
+def is_trading_session_today(
+    today_yyyymmdd: str, *, _now_s: float | None = None
+) -> bool | None:
+    """Is ``today`` a live KRX trading session right now? (ADR-0064)
+
+    Lag-free: backed by the KRX business-day *calendar*
+    (``pykrx.stock.get_previous_business_days``), which lists today as a
+    business day from the session open. This is the gate the live poller must
+    use — ``is_trading_day`` proxies "trading day" via daily OHLCV, whose bar
+    for today is not published until intraday/after close, so it misreads a
+    live trading day as non-trading early in the session and (once cached)
+    silently halts capture for the whole process.
+
+    Returns True/False, or None when KRX data is unavailable (the poller stays
+    lenient on None — losing capture for a transient KRX outage is worse than a
+    brief burst of empty fetches). A True verdict is cached for the day; a
+    False is re-checked (throttled) so a transient miss self-heals without a
+    restart.
+
+    ``_now_s`` is a monotonic-seconds seam for tests; production passes None.
+    """
+    global _last_failure_reason  # noqa: PLW0603
+
+    if today_yyyymmdd in _session_confirmed:
+        return True
+
+    now = _now_s if _now_s is not None else time.monotonic()
+    last_miss = _session_last_miss_ms.get(today_yyyymmdd)
+    if last_miss is not None and (now - last_miss) < _SESSION_MISS_RECHECK_S:
+        return False  # recently fetched; today genuinely absent (holiday) — throttle
+
+    if not krx_creds_present():
+        _last_failure_reason = UpstreamCode.KRX_CREDENTIALS_MISSING
+        return None
+
+    year = int(today_yyyymmdd[:4])
+    month = int(today_yyyymmdd[4:6])
+    try:
+        from pykrx import stock
+        business_days = stock.get_previous_business_days(year=year, month=month)
+    except Exception:  # noqa: BLE001
+        _last_failure_reason = UpstreamCode.KRX_FETCH_FAILED
+        return None
+
+    days = {d.strftime("%Y%m%d") for d in business_days}
+    _last_failure_reason = None
+    if today_yyyymmdd in days:
+        _session_confirmed.add(today_yyyymmdd)
+        return True
+    _session_last_miss_ms[today_yyyymmdd] = now
+    return False
 
 
 def trading_days_in_range(start: str, end: str) -> list[str]:
@@ -134,6 +200,8 @@ def reset_cache_for_tests() -> None:
     """Test helper — clears the trading-day cache between tests."""
     global _last_failure_reason  # noqa: PLW0603
     _month_cache.clear()
+    _session_confirmed.clear()
+    _session_last_miss_ms.clear()
     _last_failure_reason = None
 
 
