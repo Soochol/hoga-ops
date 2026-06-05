@@ -7,11 +7,10 @@ import { useWatchlistFeedback } from './useWatchlistFeedback';
 import { groupByFolder } from './grouping';
 import { Countdown } from './Countdown';
 import { Banner } from './Banner';
-import { WatchlistAddForm } from './WatchlistAddForm';
 import { WatchlistEditModal } from './WatchlistEditModal';
 import { WatchlistRowMenu } from './WatchlistRowMenu';
 import { QuoteRow } from '../rightrail/QuoteRow';
-import { symbolLabel, summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
+import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
 
 /**
  * Watchlist Panel (CONTEXT.md), app-wide via the Right Rail (ADR-0052).
@@ -47,7 +46,7 @@ export function WatchlistDrawer() {
     <div id="right-rail-watchlist-panel" data-testid="watchlist-panel"
       style={{ width: 'var(--watchlist-panel-w)', height: '100%', background: 'var(--bg-card)',
                borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
-      {/* 헤더: 관심종목 라벨 + 편집 + 공용 WatchlistAddForm 빠른 추가 (spec:111 / grill:166) */}
+      {/* 헤더: 관심종목 라벨 + 편집 (종목 추가는 편집 모달에서 — 빠른 추가 제거) */}
       <div style={{ borderBottom: '1px solid var(--border)' }}>
         <div style={{ padding: 'var(--space-sm) var(--space-md)',
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -56,12 +55,6 @@ export function WatchlistDrawer() {
           <button type="button" aria-label="관심종목 편집 열기" onClick={() => setEditOpen(true)}
                   className="text-fg-dim hover:text-accent text-xs">편집</button>
         </div>
-        <div style={{ padding: '0 var(--space-md) var(--space-sm)' }}>
-          <WatchlistAddForm onAdded={(hit) => setRecentAction({ kind: 'added', code: hit.code, name: hit.name })} />
-        </div>
-        {recentAction?.kind === 'added' && (
-          <div className="mx-3 mb-2"><Banner kind="success">{`✓ ${symbolLabel(recentAction)} 추가됨`}</Banner></div>
-        )}
       </div>
 
       <div style={{ flex: 1, overflow: 'auto' }}>

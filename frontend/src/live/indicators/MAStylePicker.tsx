@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useDismissablePopover } from '../../util/useDismissablePopover';
 
 /** 8 hue × 4 shade. shade 인덱스 0=darkest → 3=lightest. mockup의
  *  컬러 palette layout과 1:1 일치. tokens.css의 --ma-N 8색 (단일 행)
@@ -27,16 +28,10 @@ export default function MAStylePicker({ color, lineWidth, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [open]);
+  // 공용 dismiss 계약(바깥 mousedown + Escape)으로 통일 — 자체 useEffect 복붙 제거.
+  // 이 픽커는 IndicatorPanel(ModalShell) 안에 떠서 Escape는 모달이 먼저 먹지만,
+  // 계약을 한곳(useDismissablePopover)으로 모아 document→window 리스너까지 일관화.
+  useDismissablePopover(open, containerRef, () => setOpen(false));
 
   return (
     <div ref={containerRef} className="relative inline-block">

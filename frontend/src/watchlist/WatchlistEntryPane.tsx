@@ -111,23 +111,15 @@ export function WatchlistEntryPane({ selected }: { selected: Selected }) {
         </div>
       )}
 
-      {/* list — sortable only in a concrete folder; ALL view is read-order (no ⠿ handle) */}
+      {/* list — drag-reorder within the selected folder / 미분류 (⠿ handle) */}
       <ul className="flex-1 overflow-auto" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-        {selected === 'ALL' ? (
-          entries.map((e) => (
-            <EntryRow key={e.code} entry={e} checked={checked.has(e.code)} onToggle={() => toggle(e.code)}
+        <SortableContext items={entries.map((e) => e.code)} strategy={verticalListSortingStrategy}>
+          {entries.map((e) => (
+            <SortableEntryRow key={e.code} entry={e} checked={checked.has(e.code)} onToggle={() => toggle(e.code)}
               onCatchup={() => onCatchup(e.code, e.name)}
               catchingUp={catchupOneM.isPending && catchupOneM.variables === e.code} />
-          ))
-        ) : (
-          <SortableContext items={entries.map((e) => e.code)} strategy={verticalListSortingStrategy}>
-            {entries.map((e) => (
-              <SortableEntryRow key={e.code} entry={e} checked={checked.has(e.code)} onToggle={() => toggle(e.code)}
-                onCatchup={() => onCatchup(e.code, e.name)}
-                catchingUp={catchupOneM.isPending && catchupOneM.variables === e.code} />
-            ))}
-          </SortableContext>
-        )}
+          ))}
+        </SortableContext>
         {entries.length === 0 && <li className="p-4 text-sm text-fg-dimmer">이 폴더에 종목이 없습니다</li>}
       </ul>
     </div>
@@ -142,24 +134,7 @@ type RowProps = {
 const ROW_CLASS =
   'grid grid-cols-[2ch_1ch_6ch_1fr_8ch_2.5ch] items-center gap-2 px-3 py-2 border-b border-border text-sm hover:bg-bg-input';
 
-/** ALL view: read-order, no drag handle (structurally non-sortable). The handle
- *  cell renders an empty aria-hidden span so the 6-column grid stays aligned. */
-function EntryRow(props: RowProps) {
-  const { entry, checked, onToggle } = props;
-  return (
-    <li data-testid={`edit-row-${entry.code}`} className={ROW_CLASS}>
-      <input type="checkbox" aria-label={`${entry.code} 선택`} checked={checked} onChange={onToggle} />
-      <span aria-hidden />
-      <span className="font-mono text-fg-dim text-xs">{entry.code}</span>
-      <span className="truncate">{entry.name}</span>
-      <LastSuccessBadge date={entry.last_success_date} />
-      <button type="button" aria-label={`${entry.name} 수집`} onClick={props.onCatchup} disabled={props.catchingUp}
-        className={`text-fg-dimmer hover:text-accent disabled:opacity-40 ${props.catchingUp ? 'animate-spin' : ''}`}>↻</button>
-    </li>
-  );
-}
-
-/** Folder view: sortable row. ⠿ is the drag handle (listeners on the handle only,
+/** Sortable row. ⠿ is the drag handle (listeners on the handle only,
  *  so the checkbox / ↻ button stay clickable). */
 function SortableEntryRow(props: RowProps) {
   const { entry } = props;

@@ -30,9 +30,6 @@ describe('groupByFolder', () => {
 });
 
 describe('selectVisibleEntries (drag-index contract shared by pane + modal)', () => {
-  it("'ALL' returns every entry sorted by .order", () => {
-    expect(selectVisibleEntries(entries, 'ALL').map((e) => e.code)).toEqual(['000660', '035720', '005930']);
-  });
   it('a folder id returns only that folder, by .order', () => {
     expect(selectVisibleEntries(entries, 'f_b').map((e) => e.code)).toEqual(['000660', '005930']);
   });
@@ -41,7 +38,7 @@ describe('selectVisibleEntries (drag-index contract shared by pane + modal)', ()
   });
   it('does not mutate the input array', () => {
     const before = entries.map((e) => e.code);
-    selectVisibleEntries(entries, 'ALL');
+    selectVisibleEntries(entries, 'f_b');
     expect(entries.map((e) => e.code)).toEqual(before);
   });
 });
