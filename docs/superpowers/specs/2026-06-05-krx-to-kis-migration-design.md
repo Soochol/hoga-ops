@@ -159,6 +159,8 @@ fetch_symbol_master() -> list[MasterRow]  # 위 둘을 코스피+코스닥에 �
 
 두 경로를 옮기고 나면 아래가 모두 죽은 코드가 되어 함께 제거한다.
 
+> **Phase 2에서 완료된 부분 (2026-06-05)**: `.mst`가 무인증 정적 파일이라 §7의 "종목 검색은 KIS 자격증명 없이 동작"을 지키려면 **symbol path의 KRX 정리를 Phase 4까지 미룰 수 없었다.** 따라서 아래 중 `symbols.py` 행(`_ensure_krx_credentials`/`KrxCredentialsMissing`/`KrxFetchFailed`/`PykrxFetchError` 삭제, 에러 코드는 신설 `KIS_MASTER_FETCH_FAILED`로)은 Phase 2에서 랜딩됐다. `calendar.py`·`env.py`의 `krx_creds_present`/`KRX_CREDENTIALS_MISSING`은 거래일이 Phase 3에서 옮겨질 때까지 유지된다. (silent re-slice 방지를 위한 명시 — Phase 1 plan-defect fix와 같은 규율.)
+
 | 위치 | 제거/교체 |
 |---|---|
 | `env.py` | `KRX_ID`/`KRX_PW`, `krx_creds_present()` |

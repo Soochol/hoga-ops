@@ -352,7 +352,7 @@ In `hoga/api/error_codes.py`, add to `UpstreamCode` (after `DISK_WRITE_FAILED`, 
     KIS_MASTER_FETCH_FAILED = "kis_master_fetch_failed"
 ```
 
-In `frontend/src/api/types.ts`, find the `UpstreamCode` literal union and add `"kis_master_fetch_failed"` (ADR-0004 mirror — same commit as backend).
+In `frontend/src/api/types.ts`, find the `UpstreamCode` literal union and add `"kis_master_fetch_failed"` (ADR-0004 mirror — same commit as backend). **그리고 `frontend/src/api/upstream-hints.tsx`의 모든 `Record<UpstreamCode, ReactNode>` 힌트 맵(5개)에 같은 키의 힌트를 채워야 한다** — union만 추가하면 exhaustive Record들이 tsc red가 된다. (실행 중 발견된 plan 결함: fresh worktree는 node_modules가 비어 Task 3 시점의 tsc가 이를 못 잡았다 → `npm install` 후 tsc가 실제 게이트.)
 
 - [ ] **Step 2: Replace the fetch function and drop the cred-gate**
 

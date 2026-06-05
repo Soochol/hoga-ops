@@ -42,6 +42,12 @@ export const symbolSearchHints: Record<UpstreamCode, ReactNode> = {
   disk_write_failed: (
     <>디스크 쓰기에 실패했습니다 — 저장 공간 또는 권한을 확인하세요.</>
   ),
+  kis_master_fetch_failed: (
+    <>
+      KIS 종목 마스터(.mst) 다운로드에 실패했습니다 — 네트워크를 확인하고 잠시 후{' '}
+      <strong>Refresh</strong>를 시도하세요.
+    </>
+  ),
 };
 
 /** Banner above the calendar grid (informational; data still renders). */
@@ -64,6 +70,9 @@ export const calendarHints: Record<UpstreamCode, ReactNode> = {
     </>
   ),
   disk_write_failed: <>디스크 쓰기 오류 — 저장 공간 또는 권한을 확인하세요.</>,
+  kis_master_fetch_failed: (
+    <>종목 목록 다운로드 실패 — 휴일 표시는 정상이지만 종목 검색을 쓰려면 설정에서 다시 받으세요.</>
+  ),
 };
 
 /** Inline error in the range-capture form when enqueue returns HTTP 503. */
@@ -86,6 +95,9 @@ export const enqueueErrorHints: Record<UpstreamCode, ReactNode> = {
     </>
   ),
   disk_write_failed: <>캡처 시작 실패 — 디스크 쓰기 오류. 저장 공간 또는 권한을 확인하세요.</>,
+  kis_master_fetch_failed: (
+    <>종목 마스터 다운로드 실패 — 종목 목록 갱신 오류입니다. 잠시 후 재시도하세요.</>
+  ),
 };
 
 /** Per-item failure display from the capture_finished SSE event. */
@@ -99,6 +111,7 @@ export const captureFinishedHints: Record<UpstreamCode, ReactNode> = {
     <>캡처 실패 — Symbol Master 미초기화. 설정에서 Update.</>
   ),
   disk_write_failed: <>캡처 실패 — 디스크 쓰기 오류. 저장 공간 또는 권한을 확인하세요.</>,
+  kis_master_fetch_failed: <>캡처 실패 — 종목 마스터 다운로드 오류.</>,
 };
 
 /** Settings page → Symbol Master section. Longer-form copy than inline hints. */
@@ -125,10 +138,16 @@ export const symbolMasterSettingsHints: Record<UpstreamCode, ReactNode> = {
   ),
   symbol_master_not_initialized: (
     <>
-      종목 목록이 아직 다운로드되지 않았습니다 — 아래 <strong>Update Now</strong> 버튼을 누르면 ~30~120초가 소요됩니다.
+      종목 목록이 아직 다운로드되지 않았습니다 — 아래 <strong>Update Now</strong> 버튼을 누르세요(KIS .mst 다운로드, 수 초 소요).
     </>
   ),
   disk_write_failed: (
     <>디스크 쓰기에 실패했습니다 — 저장 공간 또는 권한을 확인하세요. 디스크 파일이 손상되었을 수 있습니다.</>
+  ),
+  kis_master_fetch_failed: (
+    <>
+      KIS 종목 마스터(.mst) 다운로드에 실패했습니다 — 네트워크를 확인하고 다시
+      시도하세요. 기존 디스크 파일은 보존되었습니다.
+    </>
   ),
 };
