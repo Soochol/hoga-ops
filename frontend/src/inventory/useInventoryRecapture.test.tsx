@@ -87,7 +87,7 @@ describe('useInventoryRecapture', () => {
 
   it('sets error status on API failure and does NOT auto-clear', async () => {
     vi.useFakeTimers();
-    setupFetch({ detail: { code: 'krx_credentials_missing', message: 'no creds' } }, 503);
+    setupFetch({ detail: { code: 'kis_holiday_fetch_failed', message: 'no creds' } }, 503);
     const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
     const { result } = renderHook(() => useInventoryRecapture(), { wrapper: wrapper(qc) });
 
@@ -118,7 +118,7 @@ describe('useInventoryRecapture', () => {
   });
 
   it('does not push to origins store on error', async () => {
-    setupFetch({ detail: { code: 'krx_credentials_missing', message: 'no creds' } }, 503);
+    setupFetch({ detail: { code: 'kis_holiday_fetch_failed', message: 'no creds' } }, 503);
     const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
     const { result } = renderHook(() => useInventoryRecapture(), { wrapper: wrapper(qc) });
 
@@ -132,7 +132,7 @@ describe('useInventoryRecapture', () => {
 
   // /review audit gap: the error branch falls back to `err.message` (or a
   // hard-coded string) when ApiError has no recognized UpstreamCode. The
-  // existing error tests all use a known code (krx_credentials_missing);
+  // existing error tests all use a known code (kis_holiday_fetch_failed);
   // pin the fallback path so an unknown 5xx surfaces SOMETHING to the user.
   it('shows generic error fallback when ApiError has no recognized upstream code', async () => {
     vi.useFakeTimers();

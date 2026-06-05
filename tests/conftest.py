@@ -12,6 +12,46 @@ from hoga.parser import parse_stock_date
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "tiny_tsv"
 
 
+@pytest.fixture(autouse=True)
+def _no_real_mst_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Suite-wide network guard for the Symbol Master boot auto-refresh.
+
+    app.py's lifespan schedules a REAL .mst download whenever
+    symbols.needs_boot_refresh() is true — which it is for every
+    TestClient(create_app(...)) on a machine/CI without the machine-global
+    symbol-master.json (resolve_symbol_master_path deliberately ignores
+    HOGA_DATA_DIR, so tmp_path can't sandbox it). Without this guard, dozens
+    of lifespan-running tests each fired two HTTPS downloads, could overwrite
+    the developer's real symbol-master.json, and hung teardown up to 60s on
+    the non-cancellable urllib thread.
+
+    Failing fast at download_master keeps the whole refresh path (status
+    transitions, error mapping) intact; tests that exercise refresh success
+    stub higher-level seams (symbols.refresh / _fetch_symbol_master) and are
+    unaffected.
+    """
+    from hoga.api import kis_master
+
+    def _blocked(market: str) -> bytes:
+        raise kis_master.KisMasterFetchError(
+            f"{market} .mst download blocked in tests (autouse guard)"
+        )
+
+    monkeypatch.setattr(kis_master, "download_master", _blocked)
+
+
+@pytest.fixture(autouse=True)
+def _no_env_reload_on_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep creds isolation honest: the user-retry path (kis_holidays →
+    kis_runtime, reload_env=True) re-reads the repo's REAL .env on a creds
+    miss. In tests that would silently restore KIS_APP_KEY/SECRET that a test
+    delenv'ed — and background paths (poller gate) reach it too. No-op the
+    dedicated hook; tests exercising the reload behavior re-patch it."""
+    from hoga.live import kis_runtime
+
+    monkeypatch.setattr(kis_runtime, "_reload_env_for_retry", lambda: None)
+
+
 @pytest.fixture
 def tmp_data_dir(tmp_path: Path) -> Path:
     """A fresh per-test data directory."""

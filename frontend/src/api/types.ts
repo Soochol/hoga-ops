@@ -152,13 +152,14 @@ export type CaptureErrorCode =
  *  bodies, and as `CaptureError.code` on per-item SSE failures (via the
  *  `CaptureFinishedErrorCode` alias below). */
 export type UpstreamCode =
-  | 'krx_credentials_missing'
-  | 'krx_fetch_failed'
+  | 'kis_holiday_fetch_failed'
+  | 'kis_credentials_missing'
   | 'cookie_expired'
   | 'cookie_missing'
   | 'hogaplay_http_error'
   | 'symbol_master_not_initialized'
-  | 'disk_write_failed';
+  | 'disk_write_failed'
+  | 'kis_master_fetch_failed';
 
 /** Union used wherever an error code can be either domain — currently
  *  CaptureError.code on the per-item SSE capture_finished payload. */

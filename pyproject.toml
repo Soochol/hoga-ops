@@ -14,7 +14,6 @@ dependencies = [
     "python-dotenv>=1.0",
     "rich>=13",
     "watchdog>=6.0.0",
-    "pykrx>=1.2.8",
     "polars>=1.41.0",
 ]
 

@@ -212,7 +212,7 @@ async def test_catchup_all_per_entry_failure_does_not_abort(tmp_path: Path):
 
     def fake_helper(entry, *, data_dir, now):
         if entry.code == "003490":
-            raise RuntimeError("krx_credentials_missing")
+            raise RuntimeError("some_internal_error")
         return EnqueueResponse(enqueued=[], deduped=[])
 
     with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
@@ -230,6 +230,66 @@ async def test_catchup_all_per_entry_failure_does_not_abort(tmp_path: Path):
         "message": "Catch-up failed; see server log.",
     }
     assert results["005930"]["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_catchup_all_surfaces_trading_day_unavailable(tmp_path: Path):
+    """End-to-end through the REAL catchup_one_entry: a KIS calendar outage
+    must produce the structured error envelope (error.code) per entry, not a
+    clean success with enqueued=0 — the panel branches on this code. Before
+    the fix, catchup_one_entry swallowed the exception and this route's
+    `except TradingDayUnavailableError` was unreachable dead code."""
+    from hoga.api import kis_holidays as kis_holidays_module
+    from hoga.api import watchlist
+    from hoga.api.calendar import reset_cache_for_tests
+
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    fake_now = dt.datetime(2026, 5, 27, 19, 0, tzinfo=KST)
+
+    def _raise(year, month):
+        raise kis_holidays_module.KisHolidayFetchError("upstream down")
+
+    reset_cache_for_tests()
+    try:
+        with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
+             patch.object(kis_holidays_module, "fetch_month_trading_days", _raise):
+            client = TestClient(_app(tmp_path))
+            r = client.post("/api/watchlist/catchup")
+    finally:
+        reset_cache_for_tests()
+    assert r.status_code == 201
+    body = r.json()
+    results = {row["code"]: row for row in body["results"]}
+    assert results["003490"]["error"] == {
+        "code": "kis_holiday_fetch_failed",
+        "message": "Trading-day list unavailable (KIS).",
+    }
+    assert results["003490"]["enqueued_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_catchup_one_route_maps_trading_day_unavailable_to_503(tmp_path: Path):
+    """Per-row catch-up: TradingDayUnavailableError → 503 with the stable
+    code (it previously escaped as an unhandled 500)."""
+    from unittest.mock import AsyncMock
+
+    from hoga.api import watchlist
+    from hoga.api.calendar import TradingDayUnavailableError
+    from hoga.api.error_codes import UpstreamCode
+
+    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+                              today_kst_date="20260520")
+    fake_now = dt.datetime(2026, 5, 27, 19, 0, tzinfo=KST)
+    with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
+         patch("hoga.api.watchlist_routes.catchup_one_entry",
+               new_callable=AsyncMock,
+               side_effect=TradingDayUnavailableError(
+                   UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)):
+        client = TestClient(_app(tmp_path))
+        r = client.post("/api/watchlist/003490/catchup")
+    assert r.status_code == 503
+    assert r.json()["detail"]["code"] == "kis_holiday_fetch_failed"
 
 
 def test_catchup_all_empty_watchlist_returns_empty_results(tmp_path: Path):

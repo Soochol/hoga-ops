@@ -1,0 +1,201 @@
+{
+ "ctx_area_nk": "20260624            ",
+ "ctx_area_fk": "20260601            ",
+ "output": [
+  {
+   "bass_dt": "20260601",
+   "wday_dvsn_cd": "02",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260602",
+   "wday_dvsn_cd": "03",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260603",
+   "wday_dvsn_cd": "04",
+   "bzdy_yn": "N",
+   "tr_day_yn": "Y",
+   "opnd_yn": "N",
+   "sttl_day_yn": "N"
+  },
+  {
+   "bass_dt": "20260604",
+   "wday_dvsn_cd": "05",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260605",
+   "wday_dvsn_cd": "06",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260606",
+   "wday_dvsn_cd": "07",
+   "bzdy_yn": "N",
+   "tr_day_yn": "Y",
+   "opnd_yn": "N",
+   "sttl_day_yn": "N"
+  },
+  {
+   "bass_dt": "20260607",
+   "wday_dvsn_cd": "01",
+   "bzdy_yn": "N",
+   "tr_day_yn": "Y",
+   "opnd_yn": "N",
+   "sttl_day_yn": "N"
+  },
+  {
+   "bass_dt": "20260608",
+   "wday_dvsn_cd": "02",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260609",
+   "wday_dvsn_cd": "03",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260610",
+   "wday_dvsn_cd": "04",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260611",
+   "wday_dvsn_cd": "05",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260612",
+   "wday_dvsn_cd": "06",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260613",
+   "wday_dvsn_cd": "07",
+   "bzdy_yn": "N",
+   "tr_day_yn": "Y",
+   "opnd_yn": "N",
+   "sttl_day_yn": "N"
+  },
+  {
+   "bass_dt": "20260614",
+   "wday_dvsn_cd": "01",
+   "bzdy_yn": "N",
+   "tr_day_yn": "Y",
+   "opnd_yn": "N",
+   "sttl_day_yn": "N"
+  },
+  {
+   "bass_dt": "20260615",
+   "wday_dvsn_cd": "02",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260616",
+   "wday_dvsn_cd": "03",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260617",
+   "wday_dvsn_cd": "04",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260618",
+   "wday_dvsn_cd": "05",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260619",
+   "wday_dvsn_cd": "06",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260620",
+   "wday_dvsn_cd": "07",
+   "bzdy_yn": "N",
+   "tr_day_yn": "Y",
+   "opnd_yn": "N",
+   "sttl_day_yn": "N"
+  },
+  {
+   "bass_dt": "20260621",
+   "wday_dvsn_cd": "01",
+   "bzdy_yn": "N",
+   "tr_day_yn": "Y",
+   "opnd_yn": "N",
+   "sttl_day_yn": "N"
+  },
+  {
+   "bass_dt": "20260622",
+   "wday_dvsn_cd": "02",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260623",
+   "wday_dvsn_cd": "03",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20260624",
+   "wday_dvsn_cd": "04",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  }
+ ],
+ "rt_cd": "0",
+ "msg_cd": "KIOK0500",
+ "msg1": "조회가 계속됩니다..다음버튼을 Click 하십시오.                                   "
+}

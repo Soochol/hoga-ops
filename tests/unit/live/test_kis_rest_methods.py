@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from hoga.live.kis_client import KisClient, KisCredentials
+from tests.unit.live._fakes import FakeTokenProvider
 
 FIXTURES = Path("tests/fixtures/kis_mock/responses")
 
@@ -20,7 +21,7 @@ def _fixture(name: str) -> dict:
 def _make_client(handler, tmp_path: Path) -> KisClient:
     return KisClient(
         credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
-        token_cache_path=tmp_path / "token.json",
+        token_provider=FakeTokenProvider(),
         _transport=httpx.MockTransport(handler),
     )
 
@@ -385,7 +386,7 @@ async def test_fetch_past_daily_clean_response(tmp_path) -> None:
 
     client = KisClient(
         KisCredentials(app_key="k", app_secret="s"),
-        token_cache_path=tmp_path / "tok.json",
+        token_provider=FakeTokenProvider(),
         _transport=httpx.MockTransport(handler),
     )
     result = await client.fetch_past_daily_candles("005930", "20240101", "20240105")
@@ -406,7 +407,7 @@ async def test_fetch_past_daily_drops_close_nonpositive_row(tmp_path) -> None:
 
     client = KisClient(
         KisCredentials(app_key="k", app_secret="s"),
-        token_cache_path=tmp_path / "tok.json",
+        token_provider=FakeTokenProvider(),
         _transport=httpx.MockTransport(handler),
     )
     result = await client.fetch_past_daily_candles("005930", "20240101", "20240103")
@@ -427,7 +428,7 @@ async def test_fetch_past_daily_drops_ohlc_inconsistent_row(tmp_path) -> None:
 
     client = KisClient(
         KisCredentials(app_key="k", app_secret="s"),
-        token_cache_path=tmp_path / "tok.json",
+        token_provider=FakeTokenProvider(),
         _transport=httpx.MockTransport(handler),
     )
     result = await client.fetch_past_daily_candles("005930", "20240101", "20240101")
@@ -447,7 +448,7 @@ async def test_fetch_past_daily_drops_out_of_range_row(tmp_path) -> None:
 
     client = KisClient(
         KisCredentials(app_key="k", app_secret="s"),
-        token_cache_path=tmp_path / "tok.json",
+        token_provider=FakeTokenProvider(),
         _transport=httpx.MockTransport(handler),
     )
     result = await client.fetch_past_daily_candles("005930", "20240101", "20240105")
@@ -467,7 +468,7 @@ async def test_fetch_past_daily_drops_malformed_row(tmp_path) -> None:
 
     client = KisClient(
         KisCredentials(app_key="k", app_secret="s"),
-        token_cache_path=tmp_path / "tok.json",
+        token_provider=FakeTokenProvider(),
         _transport=httpx.MockTransport(handler),
     )
     result = await client.fetch_past_daily_candles("005930", "20240101", "20240101")
@@ -485,7 +486,7 @@ async def test_fetch_past_daily_rate_limit_propagates(tmp_path) -> None:
 
     client = KisClient(
         KisCredentials(app_key="k", app_secret="s"),
-        token_cache_path=tmp_path / "tok.json",
+        token_provider=FakeTokenProvider(),
         _transport=httpx.MockTransport(handler),
     )
     with pytest.raises(KisRateLimitError):
@@ -510,7 +511,7 @@ async def test_fetch_past_daily_paginates_walk_back(tmp_path) -> None:
 
     client = KisClient(
         KisCredentials(app_key="k", app_secret="s"),
-        token_cache_path=tmp_path / "tok.json",
+        token_provider=FakeTokenProvider(),
         _transport=httpx.MockTransport(handler),
     )
     result = await client.fetch_past_daily_candles("005930", "20240101", "20240105")

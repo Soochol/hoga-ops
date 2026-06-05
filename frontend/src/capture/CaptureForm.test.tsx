@@ -166,13 +166,13 @@ describe('CaptureForm', () => {
 });
 
 describe('CaptureForm enqueue 503 reason surfacing', () => {
-  it('shows enqueueErrorHints copy when 503 returns krx_credentials_missing', async () => {
+  it('shows enqueueErrorHints copy when 503 returns kis_holiday_fetch_failed', async () => {
     const { qc, fetchMock } = setup();
     fetchMock.mockImplementation(async (url: RequestInfo | URL) => {
       const s = String(url);
       if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
       if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
-      if (s.includes('/api/captures/items')) return { ok: false, status: 503, json: async () => ({ detail: { code: 'krx_credentials_missing', message: 'KRX credentials not set' } }) } as Response;
+      if (s.includes('/api/captures/items')) return { ok: false, status: 503, json: async () => ({ detail: { code: 'kis_holiday_fetch_failed', message: 'KIS creds not set' } }) } as Response;
       if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }) } as Response;
       return { ok: true, status: 200, json: async () => ({}) } as Response;
     });
@@ -185,7 +185,7 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
     fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
     fireEvent.click(screen.getByRole('button', { name: /Start/i }));
     await new Promise((r) => setTimeout(r, 60));
-    expect(screen.getByText(/범위 캡처 시작 실패 — KRX 자격증명/)).toBeTruthy();
+    expect(screen.getByText(/범위 캡처 시작 실패 — KIS 거래일 조회 일시 오류/)).toBeTruthy();
   });
 
   it('shows generic error when 503 code is unknown', async () => {

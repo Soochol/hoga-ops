@@ -71,7 +71,9 @@ async def _daily_run(data_dir: Path) -> None:
     now = now_kst()
     today = now.strftime("%Y%m%d")
     try:
-        trading = trading_days_in_range(today, today)
+        # to_thread: a cold-month KIS chk-holiday fetch is blocking sync HTTP —
+        # never run it on the event loop (the live poller shares this loop).
+        trading = await asyncio.to_thread(trading_days_in_range, today, today)
     except Exception:  # noqa: BLE001
         log.warning("daily run: trading-day check failed, skipping")
         return
@@ -111,8 +113,11 @@ async def catchup_one_entry(
 
     Reconciles last_success_date with the disk first (idempotent), then
     enqueues the trading-day gap up to today (Q14-trimmed). Returns
-    EnqueueResponse(enqueued=[], deduped=[]) on no-gap, KrxUnavailable,
-    or fully-Q14-trimmed cases.
+    EnqueueResponse(enqueued=[], deduped=[]) on no-gap or fully-Q14-trimmed
+    cases. Raises :class:`TradingDayUnavailableError` when the KIS calendar is
+    unavailable — swallowing it here made the routes' error envelope
+    unreachable, so a KIS outage reported per-entry SUCCESS (enqueued=0,
+    error=None) and the gap silently persisted.
     """
     today = now.strftime("%Y%m%d")
 
@@ -133,15 +138,14 @@ async def catchup_one_entry(
         await set_last_success(data_dir, code=entry.code, date=latest)
     floor = latest or entry.registered_at_kst_date
 
-    # Step 2: compute candidate dates.
+    # Step 2: compute candidate dates. to_thread: cold-month KIS fetch is
+    # blocking sync HTTP — keep it off the event loop. A
+    # TradingDayUnavailableError propagates to the caller (routes map it to
+    # their error envelope / 503; _catchup_run logs per entry).
     start = next_kst_day(floor)
     if start > today:
         return EnqueueResponse(enqueued=[], deduped=[])
-    try:
-        candidates = trading_days_in_range(start, today)
-    except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
-        log.warning("catch-up: trading-day list unavailable for %s", entry.code)
-        return EnqueueResponse(enqueued=[], deduped=[])
+    candidates = await asyncio.to_thread(trading_days_in_range, start, today)
 
     # Step 3: Q14 pre-trim.
     too_early = set(find_ineligible_dates(candidate_dates=candidates, now=now))

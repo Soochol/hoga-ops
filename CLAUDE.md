@@ -71,10 +71,12 @@ the API. Verify with `curl -s http://127.0.0.1:8000/api/events`.
 
 Both entry points (`hoga serve` and direct uvicorn) auto-load `.env` from the repo root —
 `default_app()` calls `load_env()` so the discovery is a property of the app, not the CLI.
-Set `KRX_ID` / `KRX_PW` (and optionally `HOGAPLAY_COOKIE`) per `.env.example`. Symptom of
-missing KRX creds: `POST /api/captures/items` with a date range returns
-HTTP 503 `krx_credentials_missing`, while symbol endpoints keep responding from the disk
-cache at `~/.local/share/hoga-ops/symbol-master.json` and mask the real cause.
+Set `KIS_APP_KEY` / `KIS_APP_SECRET` (and optionally `HOGAPLAY_COOKIE`) per `.env.example`.
+Symbol search uses the static KIS `.mst` files — no credentials required.
+거래일 조회는 KIS Open API를 사용하며, 자격증명이 없으면 `kis_holiday_fetch_failed`가
+기록되고 평일 폴백으로 전환됩니다 (캡처 동작에 영향 없음).
+`/live` 실시간 폴러는 `KIS_APP_KEY`/`KIS_APP_SECRET` 미설정 시 오프라인으로 시작하며
+프론트엔드에 "KIS 자격증명이 설정되지 않았습니다" 배너를 표시합니다.
 
 **Frontend** — Vite's HMR is on by default:
 

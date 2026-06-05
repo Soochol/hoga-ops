@@ -1,10 +1,10 @@
-"""pykrx symbol master cache + search + captured breakdown via disk_state.
+"""KIS .mst symbol master cache + search + captured breakdown via disk_state.
 
 Three-tier policy (spec §11 Q19):
 - Tier 1: lifespan calls load_disk_state() at startup (disk-backed boot).
 - Tier 2: GET-time ``asyncio.Lock`` + in-flight Future dedupe — N concurrent
-  GETs trigger exactly one pykrx call.
-- Tier 3: pykrx failure returns the last-known cache with ``status="stale"``
+  GETs trigger exactly one .mst fetch.
+- Tier 3: .mst failure returns the last-known cache with ``status="stale"``
   (or ``status="unavailable"`` if no cache ever existed).
 """
 
@@ -27,34 +27,8 @@ from fastapi import APIRouter, Query
 from hoga.api._atomic_write import atomic_write_json
 from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.error_codes import UpstreamCode
+from hoga.api.kis_master import KisMasterFetchError, fetch_symbol_master as _fetch_mst
 from hoga.api.models import SymbolHit, SymbolMasterInfo, SymbolsAllResponse
-from hoga.env import krx_creds_present, load_env
-
-class PykrxFetchError(Exception):
-    """Base for typed _fetch_from_pykrx failures.
-
-    Subclasses distinguish the two upstream failure modes that need
-    different ``reason`` codes on the response envelope. Caller
-    (``_do_refresh``) maps each subclass to its UpstreamCode without an
-    ``isinstance`` chain on a generic Exception.
-    """
-
-
-class KrxCredentialsMissing(PykrxFetchError):
-    """KRX_ID/KRX_PW absent after ``load_env(override=True)``.
-
-    Surfaces as ``UpstreamCode.KRX_CREDENTIALS_MISSING``. Raised before any
-    pykrx call so a missing-creds refresh is a fast, network-free no-op.
-    """
-
-
-class KrxFetchFailed(PykrxFetchError):
-    """pykrx network/auth/parsing failure.
-
-    Surfaces as ``UpstreamCode.KRX_FETCH_FAILED``. Wraps the underlying
-    exception via ``raise KrxFetchFailed() from e`` so logs preserve the
-    original traceback.
-    """
 
 
 @dataclass(frozen=True)
@@ -210,27 +184,41 @@ _state: SymbolCacheState = SymbolCacheState.unavailable(
     reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
 )
 _refresh_coordinator: _RefreshCoordinator[SymbolsAllResponse] = _RefreshCoordinator()
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+# Oldest schema the loader still accepts. v1 (pykrx era) lacks security_type,
+# which the loader defaults to "stock" — rejecting it discarded a perfectly
+# usable catalog on upgrade and left search EMPTY on an offline boot (the
+# stale-serving tier can never engage on a cache that was never loaded).
+_MIN_SCHEMA_VERSION = 1
+# Schema version of the file load_disk_state read (None = nothing loaded).
+# needs_boot_refresh() uses it to schedule a background re-download when a
+# legacy-schema cache was accepted, so the upgrade converges to v2 online.
+_loaded_schema_version: int | None = None
 
 
 def reset_state_for_tests() -> None:
-    global _cache, _fetched_at_ms, _state  # noqa: PLW0603
+    global _cache, _fetched_at_ms, _state, _loaded_schema_version  # noqa: PLW0603
     _cache, _fetched_at_ms, _state = (
         [],
         None,
         SymbolCacheState.unavailable(reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED),
     )
+    _loaded_schema_version = None
     _refresh_coordinator.reset()
 
 
-def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
-    """Read the Symbol Master file. Return (entries, fetched_at_ms) or None.
+def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int, int] | None:
+    """Read the Symbol Master file. Return (entries, fetched_at_ms,
+    schema_version) or None.
 
     Returns None when:
       - the file does not exist (no log; this is the first-boot normal path),
       - the JSON cannot be parsed,
-      - schema_version is missing or != SCHEMA_VERSION,
+      - schema_version is missing or outside [_MIN_SCHEMA_VERSION, SCHEMA_VERSION],
       - the entries array is missing or malformed.
+
+    Legacy v1 files load fine (security_type defaults to "stock" below);
+    needs_boot_refresh() schedules a background re-download to converge to v2.
 
     Every failure path other than "file absent" emits a logger.warning so
     developers can diagnose disk-corruption events without user reporting.
@@ -246,10 +234,14 @@ def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Symbol Master disk file unreadable at %s: %s", path, e)
         return None
-    if not isinstance(payload, dict) or payload.get("schema_version") != SCHEMA_VERSION:
+    schema_version = payload.get("schema_version") if isinstance(payload, dict) else None
+    if (
+        not isinstance(schema_version, int)
+        or not (_MIN_SCHEMA_VERSION <= schema_version <= SCHEMA_VERSION)
+    ):
         logger.warning(
-            "Symbol Master disk file schema mismatch at %s (got %r, expected %d)",
-            path, payload.get("schema_version") if isinstance(payload, dict) else None, SCHEMA_VERSION,
+            "Symbol Master disk file schema mismatch at %s (got %r, accept %d..%d)",
+            path, schema_version, _MIN_SCHEMA_VERSION, SCHEMA_VERSION,
         )
         return None
     raw_entries = payload.get("entries")
@@ -266,6 +258,7 @@ def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
                 code=e["code"],
                 name=e["name"],
                 market=e["market"],
+                security_type=e.get("security_type", "stock"),
                 captured_count=0,
                 captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
             )
@@ -276,7 +269,7 @@ def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
             "Symbol Master disk file has malformed entry at %s: %s", path, e,
         )
         return None
-    return entries, fetched_at_ms
+    return entries, fetched_at_ms, schema_version
 
 
 def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> None:
@@ -290,84 +283,39 @@ def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> 
     payload = {
         "schema_version": SCHEMA_VERSION,
         "fetched_at_ms": fetched_at_ms,
-        "source": "pykrx",
+        "source": "kis_mst",
         "entries": [
-            {"code": e.code, "name": e.name, "market": e.market}
+            {"code": e.code, "name": e.name, "market": e.market, "security_type": e.security_type}
             for e in entries
         ],
     }
     atomic_write_json(path, payload)
 
 
-def _ensure_krx_credentials() -> None:
-    """Reload .env and verify KRX_ID/KRX_PW are present.
+async def _fetch_symbol_master() -> list[SymbolHit]:
+    """Sole upstream entry point — downloads + parses the KIS .mst (no auth).
 
-    Called by :func:`_fetch_from_pykrx` before any pykrx I/O so the user's
-    most recent ``.env`` edits take effect on every explicit refresh click
-    (override=True wins over shell env). Raises :class:`KrxCredentialsMissing`
-    when either value is empty after the reload — a fast, network-free
-    failure mode.
-
-    Safe to call under an asyncio Lock: when a local worktree ``.env`` exists
-    no subprocess runs, and the git-fallback subprocess (when it does fire)
-    is bounded by a short timeout in :func:`hoga.env.load_env`.
+    Blocking download+parse runs in a threadpool so the event loop isn't
+    stalled. Any download/unzip/parse failure surfaces as KisMasterFetchError →
+    UpstreamCode.KIS_MASTER_FETCH_FAILED (see _do_refresh). No credentials
+    needed — the .mst is a static file (SPEC §7).
     """
-    load_env(override=True)
-    if not krx_creds_present():
-        raise KrxCredentialsMissing()
-
-
-async def _fetch_from_pykrx() -> list[SymbolHit]:
-    """Sole upstream entry point — loads creds, calls pykrx, maps errors.
-
-    Self-contained: callers do not load .env or check credentials. The two
-    failure modes surface as typed exceptions (:class:`KrxCredentialsMissing`,
-    :class:`KrxFetchFailed`) so :func:`_do_refresh` maps each to its
-    UpstreamCode without an opaque catch-all.
-
-    Verified against pykrx 1.2.8 in Task 9 Step 1 (Variant B). In pykrx 1.2.8,
-    ``get_market_cap`` no longer returns a ``종목명`` column
-    (columns: ['종가','시가총액','거래량','거래대금','상장주식수']), and
-    ``get_market_fundamental`` also lacks it. Per-ticker
-    ``get_market_ticker_name`` is the only reliable name-lookup API.
-
-    ThreadPoolExecutor batches per-code get_market_ticker_name calls
-    (max_workers=8). Total fetch ~30-120s for ~2600 codes across both markets;
-    acceptable because pykrx is called only on explicit user trigger.
-    All-or-nothing: any per-market or per-code failure raises and aborts.
-    """
-    _ensure_krx_credentials()
-
-    from concurrent.futures import ThreadPoolExecutor
-
-    from pykrx import stock
-
+    # No re-wrap here: kis_master already normalizes every download/parse
+    # failure to KisMasterFetchError, and wrapping the remainder downgraded
+    # genuinely unexpected errors (executor machinery) into the SILENT typed
+    # handler in _do_refresh, skipping its logger.exception traceback.
     loop = asyncio.get_running_loop()
-    today = time.strftime("%Y%m%d")
-
-    def _scrape() -> list[tuple[str, str, str]]:
-        rows: list[tuple[str, str, str]] = []
-        for market in ("KOSPI", "KOSDAQ"):
-            codes = stock.get_market_ticker_list(today, market=market)
-            with ThreadPoolExecutor(max_workers=8) as pool:
-                names = list(pool.map(stock.get_market_ticker_name, codes))
-            for code, name in zip(codes, names, strict=True):
-                rows.append((str(code), str(name), market))
-        return rows
-
-    try:
-        rows = await loop.run_in_executor(None, _scrape)
-    except Exception as e:  # noqa: BLE001 — pykrx exposes no typed errors
-        raise KrxFetchFailed() from e
+    rows = await loop.run_in_executor(None, _fetch_mst)
     return [
         SymbolHit(
-            code=c,
-            name=n,
-            market=m,  # type: ignore[arg-type]
+            code=r.code,
+            name=r.name,
+            market=r.market,  # type: ignore[arg-type]
+            security_type=r.security_type,
             captured_count=0,
             captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
         )
-        for c, n, m in rows
+        for r in rows
     ]
 
 
@@ -426,7 +374,7 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
 def load_disk_state(*, path: Path, data_dir: Path) -> None:
     """Boot-time entry: populate in-memory state from disk + data_dir walk.
 
-    No pykrx, no network — pure disk read. Called once from lifespan startup
+    No network — pure disk read. Called once from lifespan startup
     (see hoga/api/app.py — wired in T11). Replaces the deleted ensure_cache_warm.
 
     On success the in-memory cache is fresh with the disk file's contents and
@@ -435,14 +383,15 @@ def load_disk_state(*, path: Path, data_dir: Path) -> None:
     cache is empty and _state surfaces SYMBOL_MASTER_NOT_INITIALIZED so the
     UI prompts the user to click Update.
     """
-    global _cache, _fetched_at_ms, _state  # noqa: PLW0603
+    global _cache, _fetched_at_ms, _state, _loaded_schema_version  # noqa: PLW0603
     result = _load_from_disk(path)
     if result is None:
         _cache = []
         _fetched_at_ms = None
         _state = SymbolCacheState.unavailable(reason=UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED)
+        _loaded_schema_version = None
         return
-    entries, fetched_at_ms = result
+    entries, fetched_at_ms, schema_version = result
     breakdowns = _build_all_captured_breakdowns(data_dir)
     empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0}
     for h in entries:
@@ -452,6 +401,22 @@ def load_disk_state(*, path: Path, data_dir: Path) -> None:
     _cache = entries
     _fetched_at_ms = fetched_at_ms
     _state = SymbolCacheState.fresh()
+    _loaded_schema_version = schema_version
+
+
+def current_status() -> str:
+    """Boot helper — current cache status without building a full response."""
+    return _state.status
+
+
+def needs_boot_refresh() -> bool:
+    """§4.4 boot policy, owned HERE (not at the lifespan call site): schedule
+    the background .mst auto-refresh when the cache is unavailable OR a
+    legacy-schema file was accepted (serve the old catalog now, converge to
+    the current schema online)."""
+    if _state.status == "unavailable":
+        return True
+    return _loaded_schema_version is not None and _loaded_schema_version < SCHEMA_VERSION
 
 
 async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
@@ -474,33 +439,11 @@ async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
 
 
 async def refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
-    """POST /api/symbols/refresh — the only pykrx entry point.
+    """POST /api/symbols/refresh — the only .mst fetch entry point.
 
-    Concurrency: :data:`_refresh_coordinator` dedupes simultaneous clicks
-    (Settings + SymbolSearch may fire together) — N concurrent calls trigger
-    exactly one underlying fetch and every joined caller receives the same
-    response snapshot.
-
-    Credentials are verified on a fast-path BEFORE flipping ``_state`` to
-    ``loading()`` so a missing-creds system never produces a transient
-    ``loading`` status flash. Concurrent GET /api/symbols/all would
-    otherwise briefly observe ``status='loading'`` and the UI would
-    spinner-flash before re-flipping to KRX_CREDENTIALS_MISSING.
-
-    Failure semantics: pykrx exception → disk file unchanged, memory state
-    stale (if cache populated) or unavailable. Any other unexpected exception
-    is caught by :func:`_do_refresh`'s broad fallback and surfaces as
-    ``KRX_FETCH_FAILED``.
+    No credentials gate — the .mst is a static no-auth download (SPEC §7).
+    Concurrency: _refresh_coordinator dedupes simultaneous clicks.
     """
-    try:
-        _ensure_krx_credentials()
-    except KrxCredentialsMissing:
-        # Idempotent: concurrent callers without .env all converge on the
-        # same stale/unavailable snapshot. No need to route through the
-        # coordinator's single-flight machinery — there is no flight.
-        _set_stale_or_unavailable(UpstreamCode.KRX_CREDENTIALS_MISSING)
-        return _build_response()
-
     def _start_refresh_task() -> asyncio.Task[SymbolsAllResponse]:
         global _state  # noqa: PLW0603
         _state = SymbolCacheState.loading()
@@ -541,19 +484,15 @@ async def _do_refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
     Returns the response snapshot the coordinator hands back to every
     waiter joined to this flight. Always returns — the broad ``except``
     safety net at the bottom guarantees ``_state`` is never left at
-    ``loading()`` even when an unexpected exception (e.g. ``ImportError``
-    from a broken pykrx, ``OSError`` from a filesystem walk) escapes the
-    typed handlers above.
+    ``loading()`` even when an unexpected exception (e.g. ``OSError`` from
+    a filesystem walk) escapes the typed handlers above.
     """
     global _cache, _fetched_at_ms, _state  # noqa: PLW0603
     try:
         try:
-            entries = await _fetch_from_pykrx()
-        except KrxCredentialsMissing:
-            _set_stale_or_unavailable(UpstreamCode.KRX_CREDENTIALS_MISSING)
-            return _build_response()
-        except KrxFetchFailed:
-            _set_stale_or_unavailable(UpstreamCode.KRX_FETCH_FAILED)
+            entries = await _fetch_symbol_master()
+        except KisMasterFetchError:
+            _set_stale_or_unavailable(UpstreamCode.KIS_MASTER_FETCH_FAILED)
             return _build_response()
 
         now_ms = int(time.time() * 1000)
@@ -586,7 +525,7 @@ async def _do_refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
         return _build_response()
     except Exception:  # noqa: BLE001 — safety net so _state never sticks at loading()
         logger.exception("Symbol refresh failed unexpectedly")
-        _set_stale_or_unavailable(UpstreamCode.KRX_FETCH_FAILED)
+        _set_stale_or_unavailable(UpstreamCode.KIS_MASTER_FETCH_FAILED)
         return _build_response()
 
 
