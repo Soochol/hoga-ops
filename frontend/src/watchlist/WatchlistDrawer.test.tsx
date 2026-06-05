@@ -174,6 +174,27 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith('f_0000000a'));
   });
 
+  it('그룹 헤더 ⋯ → 아래로 이동 reorders folders (full ordered_ids)', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
+      folders: [
+        { id: 'f_0000000a', name: '스윙', order: 0 },
+        { id: 'f_0000000b', name: '장기', order: 1 },
+      ],
+      entries: ENTRIES,
+      next_run_at_ms: 0,
+    });
+    const reorderSpy = vi.spyOn(watchlistApi, 'reorderFolders').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    // 첫 그룹: 위로 이동은 disabled, 아래로 이동은 동작
+    expect(await screen.findByRole('menuitem', { name: /위로 이동/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('menuitem', { name: /아래로 이동/ }));
+    await waitFor(() =>
+      expect(reorderSpy).toHaveBeenCalledWith(['f_0000000b', 'f_0000000a']));
+  });
+
   it('미분류 헤더에는 ⋯ 메뉴가 없고 접기 토글만 있다', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

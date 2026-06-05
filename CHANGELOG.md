@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.5.9.0] - 2026-06-05
+
+### Added
+- **패널에서 그룹 순서 변경**: 그룹 헤더 `⋯` 메뉴에 `▲ 위로 이동` / `▼ 아래로 이동`이
+  추가됐습니다(맨 위/맨 아래에서는 비활성). 편집 모달과 같은 전체 순서 계약을 씁니다.
+
+### Fixed
+- **Escape 이중 닫힘**: 모달이나 메뉴가 열린 상태에서 Escape를 누르면 관심종목 패널까지
+  한번에 닫히던 문제를 수정했습니다 — 이제 Escape는 열린 모달/메뉴를 먼저 닫고,
+  다음 Escape가 패널을 닫습니다.
+- **그룹 `⋯` 키보드 접근**: hover에서만 나타나던 `⋯` 버튼이 Tab 포커스로도 도달·표시
+  됩니다(display 숨김 → opacity 숨김 전환).
+
+### Changed
+- **사전필터 체크 아이콘 통합**: 스크리너 사전필터 모달의 체크 표시를 공용 `ui/CheckIcon`
+  으로 교체했습니다(미활성 링 안에 희미한 체크가 생기는 미세한 외관 변화).
+
 ## [0.5.8.0] - 2026-06-05
 
 ### Added

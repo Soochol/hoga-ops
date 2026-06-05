@@ -4,7 +4,7 @@ import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
 import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
-  useCreateFolder, useRenameFolder, useDeleteFolder,
+  useCreateFolder, useRenameFolder, useDeleteFolder, useReorderFolders,
 } from './useWatchlist';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
 import { groupByFolder } from './grouping';
@@ -39,10 +39,16 @@ function GroupHeader(props: {
   onToggle: () => void;
   onRename?: () => void;
   onDelete?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(menuOpen, menuRef, () => setMenuOpen(false));
+  const itemClass =
+    'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent';
   return (
     <div className="group flex items-center gap-1 px-3 py-1.5 text-xs text-fg-dim hover:bg-bg-input-hover">
       <button type="button" onClick={props.onToggle} className="flex-1 min-w-0 text-left truncate">
@@ -51,11 +57,13 @@ function GroupHeader(props: {
       <span className="font-mono tabular-nums text-fg-dimmer">{props.count}</span>
       {props.onRename && (
         <div className="relative" ref={menuRef}>
-          {/* 메뉴가 열려 있는 동안엔 ⋯을 계속 보여 앵커 크기를 유지한다(마우스가 떠나도). */}
+          {/* opacity(레이아웃 유지)로 숨겨 Tab 포커스가 닿게 한다 — display:none이면
+              키보드 사용자가 접근 불가. group-focus-within으로 헤더 내 포커스 시 노출,
+              메뉴가 열려 있는 동안엔 계속 보여 앵커를 유지한다(마우스가 떠나도). */}
           <button type="button" aria-label={`${props.label} 그룹 메뉴`}
             aria-haspopup="menu" aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
-            className={`${menuOpen ? 'block' : 'hidden group-hover:block'} px-1 leading-none hover:text-fg`}>
+            className={`${menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'} px-1 leading-none hover:text-fg`}>
             ⋯
           </button>
           {menuOpen && (
@@ -64,12 +72,22 @@ function GroupHeader(props: {
               <div className="px-3 py-1 text-xs text-fg-dimmer">{props.label}</div>
               <button type="button" role="menuitem"
                 onClick={() => { setMenuOpen(false); props.onRename?.(); }}
-                className="w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2">
+                className={itemClass}>
                 <span className="w-4 grid place-items-center">✎</span> 그룹 이름 변경
+              </button>
+              <button type="button" role="menuitem" disabled={!props.canMoveUp}
+                onClick={() => { setMenuOpen(false); props.onMoveUp?.(); }}
+                className={itemClass}>
+                <span className="w-4 grid place-items-center">▲</span> 위로 이동
+              </button>
+              <button type="button" role="menuitem" disabled={!props.canMoveDown}
+                onClick={() => { setMenuOpen(false); props.onMoveDown?.(); }}
+                className={itemClass}>
+                <span className="w-4 grid place-items-center">▼</span> 아래로 이동
               </button>
               <button type="button" role="menuitem"
                 onClick={() => { setMenuOpen(false); props.onDelete?.(); }}
-                className="w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2">
+                className={itemClass}>
                 <span className="w-4 grid place-items-center"><TrashIcon className="w-[1em] h-[1em]" /></span> 그룹 삭제
               </button>
             </div>
@@ -102,6 +120,7 @@ export function WatchlistDrawer() {
   const createM = useCreateFolder();
   const renameM = useRenameFolder();
   const deleteM = useDeleteFolder();
+  const reorderFoldersM = useReorderFolders();
   const { recentAction, setRecentAction } = useWatchlistFeedback();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editOpen, setEditOpen] = useState(false);
@@ -123,6 +142,17 @@ export function WatchlistDrawer() {
   };
 
   const groups = data ? groupByFolder(data.folders, data.entries) : [];
+  const folderCount = data?.folders.length ?? 0;
+
+  // 편집 모달 moveFolder와 같은 계약: 전체 id 목록을 보내 서버가 0..N-1 재부여.
+  const moveFolder = (folderId: string, dir: -1 | 1) => {
+    const ids = [...(data?.folders ?? [])].sort((a, b) => a.order - b.order).map((f) => f.id);
+    const idx = ids.indexOf(folderId);
+    const j = idx + dir;
+    if (idx < 0 || j < 0 || j >= ids.length) return;
+    [ids[idx], ids[j]] = [ids[j], ids[idx]];
+    reorderFoldersM.mutate(ids);
+  };
 
   return (
     <div id="right-rail-watchlist-panel" data-testid="watchlist-panel"
@@ -166,18 +196,23 @@ export function WatchlistDrawer() {
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (
           <div className="p-3 text-fg-dimmer text-sm">관심종목이 없습니다</div>
         )}
-        {groups.map((g) => {
+        {groups.map((g, gi) => {
           const key = g.folder?.id ?? '__uncat__';
           const label = g.folder?.name ?? '미분류';
           if (g.entries.length === 0 && g.folder === null) return null; // 빈 미분류는 숨김
           const isCollapsed = collapsed.has(key);
           const folder = g.folder;
+          // groupByFolder는 실폴더를 order 순으로 앞에 두므로 gi == 폴더 인덱스.
           return (
             <div key={key}>
               <GroupHeader label={label} count={g.entries.length} collapsed={isCollapsed}
                 onToggle={() => toggle(key)}
                 onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
-                onDelete={folder ? () => deleteM.mutate(folder.id) : undefined} />
+                onDelete={folder ? () => deleteM.mutate(folder.id) : undefined}
+                onMoveUp={folder ? () => moveFolder(folder.id, -1) : undefined}
+                onMoveDown={folder ? () => moveFolder(folder.id, +1) : undefined}
+                canMoveUp={gi > 0}
+                canMoveDown={gi < folderCount - 1} />
               {!isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {g.entries.map((entry) => {
