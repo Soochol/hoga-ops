@@ -37,7 +37,7 @@ class UnsupportedWatchlistSchema(Exception):
     """Raised by _migrate for an unrecognised FUTURE schema_version (>2).
     Deliberately NOT a ValueError, so load_document's corruption catch (which
     includes ValueError for malformed on-disk shapes) does not swallow it: an
-    unrecognised future version must halt loudly, never be downgraded (ADR-0064).
+    unrecognised future version must halt loudly, never be downgraded (ADR-0065).
     """
 
 
@@ -47,13 +47,13 @@ def _migrate(raw: dict) -> dict:
     - v1 (`{version:1, entries:[...]}`) or field-less legacy → seed
       `folder_id=null`, `order` by index, `folders=[]`.
     - Dangling `folder_id` (references a missing folder) → repaired to null
-      rather than rejected (watchlist = irreplaceable user data, ADR-0064).
+      rather than rejected (watchlist = irreplaceable user data, ADR-0065).
     Genuine corruption (bad JSON / field-pattern violations) is NOT handled
     here — it surfaces as ValidationError to load_document's backup path.
     """
     version = raw.get("schema_version", raw.get("version", 1))
     if version > 2:
-        # ADR-0064 rule 1: an unrecognised FUTURE version must RAISE, not be
+        # ADR-0065 rule 1: an unrecognised FUTURE version must RAISE, not be
         # silently downgraded — never clobber data a newer build wrote. A
         # dedicated (non-ValueError) type so load_document's corruption catch
         # doesn't swallow it; it propagates loudly.
@@ -93,7 +93,7 @@ def _reindex(doc: WatchlistDocument) -> WatchlistDocument:
 
 def load_document(data_dir: Path) -> WatchlistDocument:
     """Read watchlist.json as a v2 WatchlistDocument. Missing → empty doc.
-    Forward-migrates v1 in place (never quarantines — ADR-0064). Genuine
+    Forward-migrates v1 in place (never quarantines — ADR-0065). Genuine
     corruption (invalid JSON / schema-violating entries) → backup + empty,
     matching the prior behaviour; OSError propagates."""
     p = _path(data_dir)
@@ -106,7 +106,7 @@ def load_document(data_dir: Path) -> WatchlistDocument:
         # Corruption = unparseable JSON, schema-violating fields, OR a malformed
         # shape that trips _migrate's structural ops (non-dict root / entries /
         # folders → TypeError / AttributeError / ValueError, e.g. dict("str")).
-        # Back up + return empty instead of crashing on a read (ADR-0064: never
+        # Back up + return empty instead of crashing on a read (ADR-0065: never
         # crash or wipe silently on the read path). The schema_version>2 guard
         # raises UnsupportedWatchlistSchema (a non-ValueError) which is NOT caught
         # here, so an unrecognised future version still halts loudly.
@@ -288,7 +288,7 @@ async def rename_folder(data_dir: Path, *, folder_id: str, name: str) -> None:
         # validation, so a whitespace-only name (strips to "" < min_length=1) or
         # an over-length name (>max_length=40 after strip) would otherwise be
         # persisted unchecked and then trip model_validate on the NEXT load —
-        # quarantining the whole watchlist (ADR-0064: irreplaceable user data).
+        # quarantining the whole watchlist (ADR-0065: irreplaceable user data).
         new = [WatchlistFolder(id=f.id, name=name.strip(), order=f.order)
                if f.id == folder_id else f
                for f in doc.folders]

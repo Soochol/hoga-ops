@@ -1,4 +1,4 @@
-# 0064 — watchlist.json v2: forward-migrate in place, never quarantine
+# 0065 — watchlist.json v2: forward-migrate in place, never quarantine
 
 **Status:** accepted (2026-05-31)
 

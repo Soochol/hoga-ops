@@ -143,18 +143,18 @@
 
 ## Grill resolutions (2026-05-31)
 
-completeness-critic 패널(17개 발견: Blocker 1 + Critical 7 + Suggestion 9)에 대한 결정. **이 섹션이 위 본문과 충돌하면 이 섹션이 우선한다.** 문서(CONTEXT.md / ADR-0064) 변경은 적용 완료; 코드형 결정은 stage 3 writing-plans 입력(`→ plan`).
+completeness-critic 패널(17개 발견: Blocker 1 + Critical 7 + Suggestion 9)에 대한 결정. **이 섹션이 위 본문과 충돌하면 이 섹션이 우선한다.** 문서(CONTEXT.md / ADR-0065) 변경은 적용 완료; 코드형 결정은 stage 3 writing-plans 입력(`→ plan`).
 
 **용어 확정 (CONTEXT.md 적용 완료):**
 - 조직 단위 = **폴더 / Watchlist Folder / `folder`·`folder_id`**. "그룹/Group" 금지 — `StockDateGroup`(Inventory rollup)이 이미 선점. UI 라벨도 "폴더 추가".
 - 편집 표면 = **Modal (`WatchlistEditModal`)**, "popover" 아님 (codebase 관례: popover = 앵커드 outside-click mini-affordance `useDismissablePopover`; Modal = backdrop 중앙 다이얼로그 `LiveSettingsModal`).
-- **미분류 = `folder_id === null`** 단일 진실원. 합성 폴더 객체 금지 (ADR-0004 / ADR-0064).
+- **미분류 = `folder_id === null`** 단일 진실원. 합성 폴더 객체 금지 (ADR-0004 / ADR-0065).
 - drawer 컴포넌트는 **`WatchlistDrawer` 이름 유지** — 풀페이지 삭제로 비는 `WatchlistPanel` 이름을 회수하지 않는다(churn 최소; 새 컴포넌트가 그 이름을 가져가지도 않음). CONTEXT.md "Watchlist Panel" 정의 + _Avoid_ 두 줄 모두 재작성 완료.
 - "전체" 3중 과부하 분화: pseudo-folder = **"모든 종목"**, 체크박스 = **"전체 선택"**, 푸터 = **"전체 수집"**.
 
-**백엔드 / 영속화 (ADR-0064 적용 완료 + → plan):**
+**백엔드 / 영속화 (ADR-0065 적용 완료 + → plan):**
 - v2 문서 봉투 = **`WatchlistDocument` Pydantic 모델**(`QueueManifest` 선례), 필드명 **`schema_version`**(자매 통일), `model_validate_json` 검증. → plan
-- **forward-migrate, quarantine 금지** (ADR-0064): v1→v2 idempotent in-place write-back. → plan
+- **forward-migrate, quarantine 금지** (ADR-0065): v1→v2 idempotent in-place write-back. → plan
 - **모든 writer가 전체 문서 round-trip** — `add_entry`/`remove_entry`/`bump_last_success`/`set_last_success` + 신규 mutation 전부 동일 `_lock` 경유. **entries-only save 경로 제거** (Blocker #1: 안 그러면 17:00 스케줄러가 매 캡처 성공마다 folders를 삭제). → plan
 - **참조 무결성**: `entry.folder_id ∈ folders[].id ∪ {null}`. 로드 시 document `model_validator` + 변경 함수가 `_lock` 아래 유지(폴더 삭제 → 멤버 `folder_id=null` 재배치, 삭제 차단 아님). → plan
 - **folder id**: 백엔드가 mint하는 opaque id(클라이언트 생성 금지), rename에도 보존되어 참조 안정. 신규 `Folder` 모델. → plan

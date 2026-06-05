@@ -6,11 +6,11 @@ scope: both
 
 **Goal:** 관심종목을 사용자 폴더로 묶고, 우측 패널을 폴더-그룹 읽기 뷰로, 모든 편집(추가/삭제/폴더이동/순서/폴더 CRUD)을 2-pane `WatchlistEditModal`로 일원화한다.
 
-**Architecture:** 백엔드 `watchlist.json`을 v2 문서(`{schema_version, folders, entries}`)로 forward-migrate한다(quarantine 금지, ADR-0064). 타입드 `WatchlistDocument` 봉투 + document-level `model_validator`로 참조 무결성을 강제하고, **모든 writer가 단일 `_lock` 아래 전체 문서를 round-trip**한다(folders가 캡처-성공 write에 삭제되지 않음). 프론트는 wire를 verbatim 미러(ADR-0004)하고 폴더 그룹핑은 순수 렌더(미분류 = `folder_id===null`). 편집은 backdrop Modal, 이동/순서는 dnd-kit + 낙관적 업데이트, 폴더 CRUD는 invalidate-only.
+**Architecture:** 백엔드 `watchlist.json`을 v2 문서(`{schema_version, folders, entries}`)로 forward-migrate한다(quarantine 금지, ADR-0065). 타입드 `WatchlistDocument` 봉투 + document-level `model_validator`로 참조 무결성을 강제하고, **모든 writer가 단일 `_lock` 아래 전체 문서를 round-trip**한다(folders가 캡처-성공 write에 삭제되지 않음). 프론트는 wire를 verbatim 미러(ADR-0004)하고 폴더 그룹핑은 순수 렌더(미분류 = `folder_id===null`). 편집은 backdrop Modal, 이동/순서는 dnd-kit + 낙관적 업데이트, 폴더 CRUD는 invalidate-only.
 
 **Tech Stack:** Python 3 / FastAPI / Pydantic v2 / pytest · React 18 / TypeScript / Vite / Zustand / TanStack Query / @dnd-kit / vitest.
 
-**참조:** spec `docs/superpowers/specs/2026-05-31-watchlist-folders-design.md` (특히 "Grill resolutions" 섹션이 권위), ADR-0064, CONTEXT.md (Watchlist / Watchlist Folder / 미분류 / Watchlist Edit Modal).
+**참조:** spec `docs/superpowers/specs/2026-05-31-watchlist-folders-design.md` (특히 "Grill resolutions" 섹션이 권위), ADR-0065, CONTEXT.md (Watchlist / Watchlist Folder / 미분류 / Watchlist Edit Modal).
 
 **테스트 실행:** 백엔드 `uv run --extra dev pytest <path>`; 프론트 `cd frontend && npx vitest run <path>`; 빌드 `cd frontend && npm run build`.
 
@@ -71,7 +71,7 @@ scope: both
 
 ```python
 """Watchlist v2: folders + document envelope + referential integrity.
-See spec 2026-05-31-watchlist-folders-design.md, ADR-0064."""
+See spec 2026-05-31-watchlist-folders-design.md, ADR-0065."""
 from __future__ import annotations
 
 import pytest
@@ -155,7 +155,7 @@ class WatchlistEntry(BaseModel):
 class WatchlistDocument(BaseModel):
     """On-disk watchlist.json (v2). Typed envelope, validated on load via
     model_validate. Every writer round-trips the WHOLE document under one
-    lock so folders survive a capture-success write (ADR-0064)."""
+    lock so folders survive a capture-success write (ADR-0065)."""
 
     schema_version: int = 2
     folders: list[WatchlistFolder] = Field(default_factory=list)
@@ -277,7 +277,7 @@ def test_bump_last_success_preserves_folders(tmp_path):
 
 
 def test_future_version_raises_not_downgrades(tmp_path):
-    """ADR-0064 rule 1: a future schema_version must raise, not be clobbered to v2."""
+    """ADR-0065 rule 1: a future schema_version must raise, not be clobbered to v2."""
     import json
     import pytest
     from hoga.api.watchlist import load_document
@@ -302,13 +302,13 @@ def _migrate(raw: dict) -> dict:
     - v1 (`{version:1, entries:[...]}`) or field-less legacy → seed
       `folder_id=null`, `order` by index, `folders=[]`.
     - Dangling `folder_id` (references a missing folder) → repaired to null
-      rather than rejected (watchlist = irreplaceable user data, ADR-0064).
+      rather than rejected (watchlist = irreplaceable user data, ADR-0065).
     Genuine corruption (bad JSON / field-pattern violations) is NOT handled
     here — it surfaces as ValidationError to load_document's backup path.
     """
     version = raw.get("schema_version", raw.get("version", 1))
     if version > 2:
-        # ADR-0064 rule 1: an unrecognised FUTURE version must RAISE, not be
+        # ADR-0065 rule 1: an unrecognised FUTURE version must RAISE, not be
         # silently downgraded — never clobber data a newer build wrote. This
         # ValueError is NOT caught by load_document's backup path (which only
         # catches JSONDecodeError/ValidationError), so it propagates loudly.
@@ -348,7 +348,7 @@ def _reindex(doc: WatchlistDocument) -> WatchlistDocument:
 
 def load_document(data_dir: Path) -> WatchlistDocument:
     """Read watchlist.json as a v2 WatchlistDocument. Missing → empty doc.
-    Forward-migrates v1 in place (never quarantines — ADR-0064). Genuine
+    Forward-migrates v1 in place (never quarantines — ADR-0065). Genuine
     corruption (invalid JSON / schema-violating entries) → backup + empty,
     matching the prior behaviour; OSError propagates."""
     p = _path(data_dir)
@@ -913,7 +913,7 @@ git commit -m "feat(watchlist): folder CRUD + move/reorder/bulk-remove routes; G
 
 ```python
 """Concurrent watchlist mutation must serialize under the single _lock and
-never drop folders or leave dangling folder_id. See ADR-0064, Blocker #1."""
+never drop folders or leave dangling folder_id. See ADR-0065, Blocker #1."""
 from __future__ import annotations
 
 import asyncio
@@ -2314,5 +2314,5 @@ git commit -m "refactor(watchlist): delete /watchlist page + dead WatchlistPanel
 
 plan-critic(`wg85qpdhm`) Suggestion/Nit 중 plan에 반영하지 않고 남긴 항목. Findings Ledger `docs/superpowers/plans/2026-05-31-watchlist-folders-findings.jsonl` 참조.
 
-- **f008 (Suggestion, type-design, deferred):** 디스크의 entry `folder_id`가 **잘못된 *형식***(예 hand-edit `"f_x"`)일 때 — `_migrate`는 `fid in valid_ids` else `None` 규칙으로 **이미 null 복구**한다(형식 불량 id는 valid_ids에 없으므로). 잔여 엣지는 디스크 *폴더* 객체의 id 자체가 형식 불량인 경우뿐인데, 그때 `WatchlistFolder` 필드 검증 실패 → load_document의 backup+empty(=ADR-0064이 꺼리는 wipe)로 빠진다. **발생 경로는 hand-edit뿐**(코드가 쓰는 id는 항상 minted 8-hex). 구현 시 여력 있으면 `_migrate`에서 형식 불량 폴더도 드롭+멤버 null 처리하고 회귀 테스트 추가; 아니면 load 경로에 "folder-id 형식 drift는 의도적으로 corruption 취급" 1줄 주석. 지금은 deferred.
+- **f008 (Suggestion, type-design, deferred):** 디스크의 entry `folder_id`가 **잘못된 *형식***(예 hand-edit `"f_x"`)일 때 — `_migrate`는 `fid in valid_ids` else `None` 규칙으로 **이미 null 복구**한다(형식 불량 id는 valid_ids에 없으므로). 잔여 엣지는 디스크 *폴더* 객체의 id 자체가 형식 불량인 경우뿐인데, 그때 `WatchlistFolder` 필드 검증 실패 → load_document의 backup+empty(=ADR-0065이 꺼리는 wipe)로 빠진다. **발생 경로는 hand-edit뿐**(코드가 쓰는 id는 항상 minted 8-hex). 구현 시 여력 있으면 `_migrate`에서 형식 불량 폴더도 드롭+멤버 null 처리하고 회귀 테스트 추가; 아니면 load 경로에 "folder-id 형식 drift는 의도적으로 corruption 취급" 1줄 주석. 지금은 deferred.
 - **f019 (Nit, design, deferred):** `WatchlistEditModal`이 토큰 없는 고정 크기 `w-[860px] h-[600px]` 사용 — `LiveSettingsModal`의 `w-[640px]` 선례처럼 모달 크기 토큰이 시스템에 없고, 2-pane 편집기는 settings 리스트보다 넓을 정당한 이유가 있어 **수용**. `max-w-[92vw]/max-h-[88vh]` 캡이 작은 뷰포트를 처리. 글리프(↻ ✕ 🗑 ✎ ▾ ▲▼)·raw Tailwind spacing(px-3/py-2/gap-2)은 기존 코드베이스 지배적 관례(42/65 컴포넌트)와 일치 — 신규 이탈 아님.

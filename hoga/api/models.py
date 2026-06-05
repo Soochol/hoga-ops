@@ -565,7 +565,7 @@ class WatchlistEntry(BaseModel):
 class WatchlistDocument(BaseModel):
     """On-disk watchlist.json (v2). Typed envelope, validated on load via
     model_validate. Every writer round-trips the WHOLE document under one
-    lock so folders survive a capture-success write (ADR-0064)."""
+    lock so folders survive a capture-success write (ADR-0065)."""
 
     schema_version: int = 2
     folders: list[WatchlistFolder] = Field(default_factory=list)
