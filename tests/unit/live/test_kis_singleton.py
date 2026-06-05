@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+import hoga.live.kis_runtime as kis_runtime
 import hoga.live.lifecycle as lifecycle
 from hoga.live.kis_client import KisCredentials
 
@@ -55,7 +56,7 @@ async def test_aclose_closes_and_nulls_both_singletons(tmp_path: Path) -> None:
     creds = KisCredentials(app_key="K", app_secret="S", env="real")
     provider = lifecycle.ensure_kis_token_provider(tmp_path / ".local" / "kis-token.json", creds)
     client = lifecycle.ensure_kis_client(creds, provider)
-    assert lifecycle._kis_client is client
+    assert kis_runtime._kis_client is client
     await lifecycle.aclose_kis_client()
-    assert lifecycle._kis_client is None
-    assert lifecycle._kis_token_provider is None
+    assert kis_runtime._kis_client is None
+    assert kis_runtime._kis_token_provider is None
