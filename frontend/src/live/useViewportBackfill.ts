@@ -94,13 +94,29 @@ export function useViewportBackfill({
     prevExtendingRef.current = false;
   }, [code, timeframe]);
 
-  // Historical-prepend viewport preservation. When the user pans left past the
-  // leftmost bar, extendHistoricalRange refetches with an earlier `from`, the
-  // bundle is rebuilt with older candles PREPENDED, and RangeSeriesPane calls
-  // series.setData(fullArray). lightweight-charts keeps the visible LOGICAL
-  // range numerically fixed across setData, so inserting N union points at the
-  // front slides the previously-viewed bars right by N — the viewport "jumps".
-  // We undo that by SHIFTING the visible logical range by exactly N.
+  // Historical-prepend viewport preservation (redundant safety net + stale-anchor
+  // guard). When the user pans left past the leftmost bar, extendHistoricalRange
+  // refetches with an earlier `from`, the bundle is rebuilt with older candles
+  // PREPENDED, and RangeSeriesPane calls series.setData(fullArray).
+  //
+  // Measured in-browser at lightweight-charts 5.2.0 (/diagnose 2026-06-05):
+  // setData RE-ANCHORS the visible logical range by the inserted count N on its
+  // own — the right-edge real-ms HOLDS while the logical window shifts +N — so
+  // the user's view is preserved by the library WITHOUT this effect. (An earlier
+  // comment here claimed setData kept the logical range numerically fixed,
+  // implying a jump this effect had to "undo"; that premise was FALSE — cf. the
+  // "setData does NOT leave the logical range numerically fixed" note in the
+  // shift application below.) This effect therefore recomputes the SAME +N shift
+  // and re-applies it, landing on the value setData already produced — a
+  // belt-and-suspenders no-op in the normal case, kept because ripping out a
+  // battle-tested path is riskier than leaving a harmless re-assert.
+  //
+  // Its ONE real hazard is firing on a STALE anchor: a shift computed relative to
+  // a position the user has since LEFT teleports them there. That was this
+  // /diagnose's bug — user pans left (arms fetch + captures anchor), pans back to
+  // recent, fetch lands, restore yanks them back. The lazy-fetch handler now
+  // nulls the anchor the instant the user pans back into loaded bars, so this
+  // effect short-circuits and setData's own re-anchor keeps the recent view.
   //
   // Why a logical shift, not setVisibleRange(real time): setVisibleRange refits
   // a TIME span into the viewport and the captured span is whitespace-clamped
@@ -253,7 +269,21 @@ export function useViewportBackfill({
       if (!r || r.from == null) return;
       // logical.from is a fractional bar index; negative = past the leftmost
       // loaded bar, which is exactly the lazy-fetch trigger condition.
-      if (r.from >= 0) return;
+      if (r.from >= 0) {
+        // The user has panned back INTO the loaded bars before an in-flight
+        // prepend lands. The anchor captured at the earlier leftward trigger now
+        // points at a region the user has LEFT — applying it in the restore
+        // effect would teleport them back there (/diagnose 2026-06-05: "과거로
+        // 드래그하고 직후에 최근으로 되돌아오면 fetch가 끝날 때 화면이 이동됨").
+        // Invalidate it so the restore short-circuits; lightweight-charts' setData
+        // re-anchors the visible logical range by the inserted count on its own
+        // (measured in-browser at lwc 5.2.0: right-edge real-ms held while the
+        // logical window shifted +N), so the user's CURRENT view is preserved with
+        // no restore. The pending fetch is left armed — the user still gets the
+        // older data preloaded; only the unwanted viewport move is suppressed.
+        viewportShiftRef.current = null;
+        return;
+      }
       // Capture a STABLE reference bar before triggering the prepend: its real
       // ms (survives the segments re-base from 0 on every rebuild) and its
       // current union logical index (timeToIndex). The restore effect reprojects

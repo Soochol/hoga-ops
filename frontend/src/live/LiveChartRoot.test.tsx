@@ -999,6 +999,70 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.scrollToPosition).toHaveBeenCalledTimes(1);
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(2);
   });
+
+  // Stale-anchor teleport (/diagnose 2026-06-05).
+  //
+  // Repro: the user pans left past the leftmost bar (arms the 150ms debounced
+  // fetch AND captures a viewport anchor at the LEFT region), then immediately
+  // pans back to recent BEFORE the fetch lands. The pan-back makes logical.from
+  // non-negative; the anchor captured at the left is now STALE. When the
+  // already-armed fetch resolves and the older bars are prepended, the OLD code
+  // applied the stale anchor — teleporting the user from recent back to the
+  // left region they'd left.
+  //
+  // Verified in-browser (lightweight-charts 5.2.0): series.setData with N older
+  // bars PREPENDED re-anchors the visible logical range by +N on its own, so
+  // the user's current view stays put across a prepend with NO restore. The
+  // restore is therefore redundant when the user holds position and harmful
+  // when they move. Fix: invalidate the anchor the instant the user pans back
+  // into loaded bars (logical.from >= 0), so the restore short-circuits and
+  // setData's own re-anchor preserves the recent view. The fetch is NOT
+  // cancelled — the user still gets the older data preloaded ("데이터만 fetch").
+  //
+  // Mock caveat: buildStableCapturingMock's setData is a no-op, so it does NOT
+  // re-anchor the way real lwc does. This test therefore locks the restore-side
+  // guard (no setVisibleLogicalRange on a stale anchor); the "setData re-anchors
+  // so the view is preserved anyway" half is only observable in the browser
+  // (differential __noRestore repro, recorded in the diagnose notes).
+  it('does NOT teleport when the user pans back to recent before the fetch lands (stale-anchor guard)', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+
+    // 1) Pan left past the leftmost bar → captures the anchor + arms the debounce.
+    act(() => {
+      handlers.forEach((h) => h({ from: -40.2, to: 120.7 }));
+    });
+    // 2) Pan back into recent bars BEFORE the debounce fires → anchor goes stale.
+    //    The fetch stays armed (user still gets the data); only the viewport
+    //    anchor must be invalidated.
+    act(() => {
+      handlers.forEach((h) => h({ from: 50, to: 350 }));
+      vi.advanceTimersByTime(200); // debounce fires → extendHistoricalRange dispatched
+    });
+    // The fetch DID happen — "데이터만 fetch하면 되는데" is satisfied.
+    expect(useLivePageStore.getState().historicalFromDate).not.toBeNull();
+    const beforePrepend = ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 3) Grown bundle lands: yesterday PREPENDED (earlier earliest candle).
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    // Restore must NOT fire: the stale anchor was invalidated on pan-back, so
+    // no setVisibleLogicalRange is issued. The user stays where they panned to
+    // (recent), preserved by setData's own re-anchor — no teleport.
+    expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforePrepend);
+  });
 });
 
 // ---------------------------------------------------------------------------
