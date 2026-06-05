@@ -1,7 +1,7 @@
 # KRX 로그인·종목 검색·거래일을 KIS로 이전 — 설계서
 
 - 날짜: 2026-06-05
-- 상태: 설계 승인 대기
+- 상태: **구현 완료** (2026-06-05, Phase 1~4 — KRX 로그인·pykrx 완전 제거)
 - 관련 모듈: `hoga/api/symbols.py`, `hoga/api/calendar.py`, `hoga/live/kis_client.py`, `hoga/live/lifecycle.py`, `hoga/api/models.py`, 신규 `hoga/live/kis_token_provider.py`, 신규 `hoga/api/kis_master.py`, 신규 `hoga/api/kis_holidays.py`
 - 관련 결정: ADR-0050 amendment(2026-06-05 — 토큰 획득 추출 + 동기 보조 경로 예외)
 
@@ -160,6 +160,8 @@ fetch_symbol_master() -> list[MasterRow]  # 위 둘을 코스피+코스닥에 �
 두 경로를 옮기고 나면 아래가 모두 죽은 코드가 되어 함께 제거한다.
 
 > **Phase 2에서 완료된 부분 (2026-06-05)**: `.mst`가 무인증 정적 파일이라 §7의 "종목 검색은 KIS 자격증명 없이 동작"을 지키려면 **symbol path의 KRX 정리를 Phase 4까지 미룰 수 없었다.** 따라서 아래 중 `symbols.py` 행(`_ensure_krx_credentials`/`KrxCredentialsMissing`/`KrxFetchFailed`/`PykrxFetchError` 삭제, 에러 코드는 신설 `KIS_MASTER_FETCH_FAILED`로)은 Phase 2에서 랜딩됐다. `calendar.py`·`env.py`의 `krx_creds_present`/`KRX_CREDENTIALS_MISSING`은 거래일이 Phase 3에서 옮겨질 때까지 유지된다. (silent re-slice 방지를 위한 명시 — Phase 1 plan-defect fix와 같은 규율.)
+
+> **Phase 3~4에서 완료 (2026-06-05)**: calendar가 KIS `chk-holiday`(opnd_yn, BASS_DT 전진 루프)로 이전되고, `KrxUnavailableError`→`TradingDayUnavailableError` rename + `KIS_HOLIDAY_FETCH_FAILED`로 코드 스왑(프론트 union+5 Record 동시). 이어서 아래 표의 잔재 전부 — `env.py`의 `krx_creds_present`, `pyproject.toml`의 pykrx(+transitive 15패키지), `.env.example`·`CLAUDE.md`·주석 — 가 제거되어 **KRX 흔적 grep 0**. 본 표는 전 항목 완료됨.
 
 | 위치 | 제거/교체 |
 |---|---|
