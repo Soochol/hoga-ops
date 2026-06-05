@@ -40,6 +40,22 @@ _month_cache: dict[tuple[int, int], set[str]] = {}
 _failure_cache: dict[tuple[int, int], float] = {}
 _FAILURE_TTL_SECONDS = 60.0
 
+# ADR-0064 — "is TODAY a KRX session?" cache, kept SEPARATE from _month_cache.
+# `_session_confirmed` holds YYYYMMDD strings proven to be trading sessions;
+# a positive verdict is stable for the day, so it is cached and never
+# re-fetched. A *negative* verdict is deliberately NOT cached permanently —
+# only its last check time is recorded, so a transient calendar miss for today
+# (which would otherwise silently halt live capture for the rest of the
+# process, the way the old get_market_ohlcv proxy did) self-heals on the next
+# re-check instead of needing a process restart. Re-checks are throttled to
+# avoid hammering the upstream on a real holiday. (Post KRX→KIS migration the
+# data source is KIS chk-holiday via _trading_days_for, which adds its own
+# month cache + failure TTL underneath — the per-day session semantics here
+# are unchanged.)
+_session_confirmed: set[str] = set()
+_session_last_miss_ms: dict[str, float] = {}
+_SESSION_MISS_RECHECK_S = 60.0
+
 _last_failure_reason: UpstreamCode | None = None
 
 
@@ -97,6 +113,57 @@ def _trading_days_for(year: int, month: int) -> set[str] | None:
     return result
 
 
+def is_trading_session_today(
+    today_yyyymmdd: str, *, _now_s: float | None = None
+) -> bool | None:
+    """Is ``today`` a live KRX trading session right now? (ADR-0064)
+
+    Lag-free: backed by the KIS chk-holiday *calendar* (via
+    :func:`_trading_days_for`), which lists the whole month — today included —
+    upfront. This is the gate the live poller must use; the old daily-OHLCV
+    proxy misread a live trading day as non-trading early in the session and
+    (once cached) silently halted capture for the whole process.
+
+    Returns True/False, or None when KIS data is unavailable (the poller stays
+    lenient on None — losing capture for a transient outage is worse than a
+    brief burst of empty fetches). A True verdict is cached for the day; a
+    False is re-checked (throttled) so a transient miss self-heals without a
+    restart. Underneath, ``_trading_days_for`` adds its own month cache and
+    60s failure TTL, and the fetch raises on an empty month — so a cached
+    wrong-False for a real session would require KIS itself answering a
+    non-empty month that omits today.
+
+    ``_now_s`` is a monotonic-seconds seam for tests; production passes None.
+    """
+    if today_yyyymmdd in _session_confirmed:
+        return True
+
+    now = _now_s if _now_s is not None else time.monotonic()
+    year, month = int(today_yyyymmdd[:4]), int(today_yyyymmdd[4:6])
+    last_miss = _session_last_miss_ms.get(today_yyyymmdd)
+    if last_miss is not None:
+        if (now - last_miss) < _SESSION_MISS_RECHECK_S:
+            return False  # recently checked; today genuinely absent (holiday) — throttle
+        # Throttle expired: this is a deliberate RE-CHECK of a negative.
+        # Evict the month so the verdict comes from a FRESH fetch — otherwise
+        # the permanent month cache would pin a transient miss for the whole
+        # process, which is exactly the silent-halt ADR-0064 exists to prevent.
+        # Cost: one extra KIS fetch per minute, only on days the calendar says
+        # holiday during market hours (rare), and off-loop at the call sites.
+        _month_cache.pop((year, month), None)
+
+    days = _trading_days_for(year, month)
+    if days is None:
+        # Fetch failed — reason (creds vs upstream) already recorded by
+        # _trading_days_for; its failure TTL throttles the retry cadence.
+        return None
+    if today_yyyymmdd in days:
+        _session_confirmed.add(today_yyyymmdd)
+        return True
+    _session_last_miss_ms[today_yyyymmdd] = now
+    return False
+
+
 def trading_days_in_range(start: str, end: str) -> list[str]:
     """Public helper used by captures.py Task 7. Returns YYYYMMDD trading days
     in [start, end] inclusive, sorted.
@@ -152,6 +219,8 @@ def reset_cache_for_tests() -> None:
     global _last_failure_reason  # noqa: PLW0603
     _month_cache.clear()
     _failure_cache.clear()
+    _session_confirmed.clear()
+    _session_last_miss_ms.clear()
     _last_failure_reason = None
 
 

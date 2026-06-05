@@ -127,7 +127,7 @@ async def test_catchup_regresses_stale_marker_to_disk_truth(tmp_path: Path):
         registered_at_kst_date="20260520",
         last_success_date="20260526",
     )]
-    watchlist.save_watchlist(tmp_path, entries=stale)
+    watchlist.save_document(tmp_path, watchlist.WatchlistDocument(entries=stale))
 
     fake_now = dt.datetime(2026, 5, 27, 11, 0, 0, tzinfo=KST)
     with patch("hoga.api.scheduler.latest_complete_date",

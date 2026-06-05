@@ -224,6 +224,12 @@ Every feature route except the chart workspace follows one shell:
 ### Status dot (general)
 - 6px circle, glow via `box-shadow` for active states only
 
+### Modals & popovers — dismissal contract
+Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss `useEffect`.
+- **Center modal** (full-screen backdrop, fixed-position card): wrap in `ModalShell` (`frontend/src/ui/ModalShell.tsx`) — it owns the backdrop, Escape + backdrop-click dismiss, the canon card, and the title + ✕ header.
+- **Anchored popover / dropdown** (floats next to a trigger): use `useDismissablePopover` (`frontend/src/util/useDismissablePopover.ts`) for the outside-click + Escape contract, plus `clampToViewport` for edge safety.
+- A copied `addEventListener('mousedown'|'keydown')` is how this drifts (one site on `document`, another on `window`; one forgets Escape) — the helpers concentrate the contract so it can't.
+
 ## Decisions Log
 
 | Date | Decision | Rationale |

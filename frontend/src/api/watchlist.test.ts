@@ -3,7 +3,7 @@ import {
   getWatchlist,
   addToWatchlist,
   removeFromWatchlist,
-  reorderWatchlist,
+  moveEntries,
   type WatchlistResponse,
 } from './watchlist';
 
@@ -21,7 +21,7 @@ beforeEach(() => {
 
 describe('watchlist api client', () => {
   it('getWatchlist hits /api/watchlist', async () => {
-    const fake: WatchlistResponse = { entries: [], next_run_at_ms: 0 };
+    const fake: WatchlistResponse = { folders: [], entries: [], next_run_at_ms: 0 };
     vi.mocked(apiCall).mockResolvedValueOnce(fake);
     const r = await getWatchlist();
     expect(apiCall).toHaveBeenCalledWith('/api/watchlist');
@@ -49,15 +49,13 @@ describe('watchlist api client', () => {
     );
   });
 
-  it('reorderWatchlist PUTs the codes array to /api/watchlist/order', async () => {
-    const fake: WatchlistResponse = { entries: [], next_run_at_ms: 0 };
-    vi.mocked(apiCall).mockResolvedValueOnce(fake);
-    const r = await reorderWatchlist(['005930', '003490']);
-    const [path, init] = vi.mocked(apiCall).mock.calls[0];
-    expect(path).toBe('/api/watchlist/order');
-    expect(init?.method).toBe('PUT');
-    expect(JSON.parse(init?.body as string)).toEqual({ codes: ['005930', '003490'] });
-    expect(r).toEqual(fake);
+  it('moveEntries POSTs codes + folder_id to /api/watchlist/move', async () => {
+    vi.mocked(apiAction).mockResolvedValueOnce(undefined);
+    await moveEntries(['005930', '003490'], 'f_0000000a');
+    const [path, init] = vi.mocked(apiAction).mock.calls[0];
+    expect(path).toBe('/api/watchlist/move');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(init?.body as string)).toEqual({ codes: ['005930', '003490'], folder_id: 'f_0000000a' });
   });
 });
 

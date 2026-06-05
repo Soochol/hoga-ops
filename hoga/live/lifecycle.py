@@ -102,7 +102,13 @@ def _now_ms() -> int:
 
 def get_status() -> LiveStatus:
     """Read the current live status. Always safe to call."""
-    running = _state.started_at_ms is not None
+    # ADR-0064: `running` reflects TASK LIVENESS, not merely that start was once
+    # called. The old `started_at_ms is not None` proxy reported running=true even
+    # after the poller task had silently died, masking a dead capture loop (and
+    # giving the watchdog/UI no honest signal). A task is "running" when it exists
+    # and has not finished (a gated, idle-between-cycles task is still not done()).
+    task = _state.poller_task
+    running = task is not None and not task.done()
     return LiveStatus(
         running=running,
         started_at_ms=_state.started_at_ms,
@@ -292,3 +298,94 @@ async def stop_live_poller() -> None:
         except Exception:  # noqa: BLE001
             pass  # don't let a buggy poller block shutdown
     _state = _State()
+
+
+# ADR-0064 — poller watchdog. Defense-in-depth self-heal: even with the
+# supervised run_forever loop and the honest `running` flag, a poller task that
+# somehow exits (or stops ticking) during market hours must not leave capture
+# silently dead until someone restarts the process. The watchdog restarts it.
+_WATCHDOG_CHECK_INTERVAL_S = 30.0
+_WATCHDOG_STALE_AFTER_MS = 120_000  # ~2 min (≈6 cycles) without a completed tick
+
+
+async def _live_watchdog_check(
+    *, data_dir: Path, now_ms: int, stale_after_ms: int
+) -> bool:
+    """One watchdog pass. Returns True iff it restarted the poller.
+
+    Acts ONLY during market hours (same gate the poller uses). Restarts when:
+      - the poller was started this session but its task is missing/finished
+        (crashed or exited), or
+      - the task is alive but hasn't completed a cycle within ``stale_after_ms``
+        (and the startup grace window has elapsed) — "running but not working".
+
+    No-op off-hours, and no-op when the poller was never started this session
+    (e.g. empty watchlist / missing creds) — restarting then would just
+    re-hit the same precondition.
+    """
+    from datetime import datetime
+
+    from .kis_client import KIS_KST
+    from .poller import _should_poll_now
+
+    if not _should_poll_now(now_ms):
+        return False
+    started = _state.started_at_ms
+    if started is None:
+        return False
+
+    task = _state.poller_task
+    dead = task is None or task.done()
+
+    # Staleness is measured from TODAY's session open, not from poller start.
+    # A server running since before 09:00 carries yesterday's last_tick (set at
+    # ~15:59 close) across the boundary; measuring grace from `started` would
+    # flag it stale the instant the gate opens and restart the poller mid-opening
+    # cycle — destroying the opening data that fix ① exists to protect. So the
+    # grace clock starts at max(start, session-open), and a last_tick from BEFORE
+    # today's open does not count as fresh.
+    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
+    session_open_ms = int(
+        kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
+    )
+    ref_ms = max(started, session_open_ms)
+    last_tick = _read_poller_attr("last_tick_ms")
+    grace_elapsed = (now_ms - ref_ms) > stale_after_ms
+    tick_fresh = (
+        last_tick is not None
+        and last_tick >= session_open_ms
+        and (now_ms - last_tick) <= stale_after_ms
+    )
+    stale = (not dead) and grace_elapsed and (not tick_fresh)
+    if dead or stale:
+        _log.warning(
+            "live.poller.watchdog_restart dead=%s stale=%s last_tick_ms=%s",
+            dead, stale, last_tick,
+        )
+        await start_live_poller(data_dir=data_dir)
+        return True
+    return False
+
+
+async def start_live_poller_watchdog(
+    *,
+    data_dir: Path,
+    check_interval_s: float = _WATCHDOG_CHECK_INTERVAL_S,
+    stale_after_ms: int = _WATCHDOG_STALE_AFTER_MS,
+) -> asyncio.Task:
+    """Spawn the poller watchdog loop (ADR-0064). Caller (lifespan) cancels it
+    on shutdown. The loop is self-supervised — a bad pass logs and continues."""
+
+    async def loop() -> None:
+        while True:
+            try:
+                await _live_watchdog_check(
+                    data_dir=data_dir,
+                    now_ms=_now_ms(),
+                    stale_after_ms=stale_after_ms,
+                )
+            except Exception:  # noqa: BLE001 — watchdog must outlive any single pass
+                _log.exception("live.poller.watchdog_cycle_failed")
+            await asyncio.sleep(check_interval_s)
+
+    return asyncio.create_task(loop(), name="live-poller-watchdog")

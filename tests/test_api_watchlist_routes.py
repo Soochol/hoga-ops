@@ -355,35 +355,82 @@ async def test_delete_survives_refresh_poller_failure(tmp_path: Path):
     assert watchlist.load_watchlist(tmp_path) == []
 
 
-@pytest.mark.asyncio
-async def test_put_order_reorders(tmp_path: Path):
-    from hoga.api import watchlist
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
-    await watchlist.add_entry(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
+# --- Folder + move/reorder/bulk routes (Task B5) ---------------------------
+#
+# The plan's reference tests assume `client` / `tmp_path_data` fixtures; this
+# file instead builds the client inline via `_app(tmp_path)` (the established
+# pattern above). Adding a code goes through POST /api/watchlist, which calls
+# symbols.search + refresh_live_poller, so each test stacks those patches the
+# same way test_post_adds_entry does. `_folder_client` centralises that setup.
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def _folder_client(tmp_path: Path):
     fake_now = dt.datetime(2026, 5, 26, 10, 0, tzinfo=KST)
-    with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now):
-        client = TestClient(_app(tmp_path))
-        r = client.put("/api/watchlist/order", json={"codes": ["005930", "003490"]})
-    assert r.status_code == 200
-    body = r.json()
-    assert [e["code"] for e in body["entries"]] == ["005930", "003490"]
-    assert [e.code for e in watchlist.load_watchlist(tmp_path)] == ["005930", "003490"]
+
+    def _search(code, limit=1):
+        return [_fake_hit(code=code, name=f"종목{code}")]
+
+    with patch("hoga.api.watchlist_routes.symbols.search", side_effect=_search), \
+         patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
+         patch("hoga.api.watchlist_routes.refresh_live_poller", new=AsyncMock()):
+        yield TestClient(_app(tmp_path))
 
 
-def test_put_order_rejects_non_6_digit_code(tmp_path: Path):
-    client = TestClient(_app(tmp_path))
-    r = client.put("/api/watchlist/order", json={"codes": ["12345"]})  # 5 digits
+def test_get_returns_folders_and_entry_folder_id(tmp_path: Path):
+    # create folder, add code, move it, then GET
+    with _folder_client(tmp_path) as client:
+        fid = client.post("/api/watchlist/folders", json={"name": "스윙"}).json()["id"]
+        client.post("/api/watchlist", json={"code": "005930"})
+        client.post("/api/watchlist/move", json={"codes": ["005930"], "folder_id": fid})
+        body = client.get("/api/watchlist").json()
+    assert body["folders"][0]["id"] == fid
+    assert next(e for e in body["entries"] if e["code"] == "005930")["folder_id"] == fid
+
+
+def test_folder_crud_routes(tmp_path: Path):
+    with _folder_client(tmp_path) as client:
+        fid = client.post("/api/watchlist/folders", json={"name": "A"}).json()["id"]
+        assert client.patch(f"/api/watchlist/folders/{fid}", json={"name": "B"}).status_code == 204
+        assert client.get("/api/watchlist").json()["folders"][0]["name"] == "B"
+        assert client.delete(f"/api/watchlist/folders/{fid}").status_code == 204
+        assert client.get("/api/watchlist").json()["folders"] == []
+
+
+def test_folder_reorder_route(tmp_path: Path):
+    with _folder_client(tmp_path) as client:
+        a = client.post("/api/watchlist/folders", json={"name": "A"}).json()["id"]
+        b = client.post("/api/watchlist/folders", json={"name": "B"}).json()["id"]
+        assert client.put("/api/watchlist/folders/order", json={"ordered_ids": [b, a]}).status_code == 204
+        assert [f["name"] for f in client.get("/api/watchlist").json()["folders"]] == ["B", "A"]
+
+
+def test_reorder_and_bulk_remove_routes(tmp_path: Path):
+    with _folder_client(tmp_path) as client:
+        for c in ("005930", "000660"):
+            client.post("/api/watchlist", json={"code": c})
+        r = client.put("/api/watchlist/reorder",
+                       json={"folder_id": None, "ordered_codes": ["000660", "005930"]})
+        assert r.status_code == 204
+        assert client.post("/api/watchlist/remove",
+                           json={"codes": ["005930", "000660"]}).status_code == 204
+        assert client.get("/api/watchlist").json()["entries"] == []
+
+
+def test_folder_create_whitespace_name_returns_422(tmp_path: Path):
+    """A whitespace-only name strips to "" and must be rejected at the request
+    boundary with a clean 422 — not a 500 from the service reconstructing
+    WatchlistFolder(name="") and re-tripping min_length=1 uncaught."""
+    with _folder_client(tmp_path) as client:
+        r = client.post("/api/watchlist/folders", json={"name": "   "})
     assert r.status_code == 422
 
 
-@pytest.mark.asyncio
-async def test_put_order_does_not_collide_with_delete_route(tmp_path: Path):
-    """`/order` is a literal segment, not a {code} path param. The DELETE
-    /{code} route (pattern ^\\d{6}$) must not shadow it."""
-    from hoga.api import watchlist
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
-    fake_now = dt.datetime(2026, 5, 26, 10, 0, tzinfo=KST)
-    with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now):
-        client = TestClient(_app(tmp_path))
-        r = client.put("/api/watchlist/order", json={"codes": ["003490"]})
-    assert r.status_code == 200
+def test_folder_rename_whitespace_name_returns_422(tmp_path: Path):
+    """PATCH rename rejects a whitespace-only name with 422 (see create test)."""
+    with _folder_client(tmp_path) as client:
+        fid = client.post("/api/watchlist/folders", json={"name": "A"}).json()["id"]
+        r = client.patch(f"/api/watchlist/folders/{fid}", json={"name": "   "})
+    assert r.status_code == 422

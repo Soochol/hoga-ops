@@ -163,6 +163,107 @@ def test_trading_days_for_returns_none_when_fetch_raises(
     assert calendar_module.last_failure_reason() == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
 
 
+# ---------------------------------------------------------------------------
+# is_trading_session_today (ADR-0064): lag-free "is TODAY a KRX session?"
+#
+# The poller gate must NOT rely on a lagging proxy to decide whether *today*
+# is a trading day — a wrong False, once cached, silently halts live capture
+# for the whole process. Post KRX→KIS migration the source is the KIS
+# chk-holiday calendar via _trading_days_for (month cache + failure TTL);
+# the per-day session semantics (positive cached, negative re-checked with a
+# throttle + fresh fetch) are preserved from the pykrx-era tests these
+# replace. Seam: monkeypatch hoga.api.kis_holidays.fetch_month_trading_days.
+# ---------------------------------------------------------------------------
+
+def _stub_month_fetch(monkeypatch, days_yyyymmdd, *, raises=None, calls=None):
+    """fetch_month_trading_days stub returning the given day set (or raising)."""
+    import hoga.api.kis_holidays as kis_holidays_module
+
+    def _fetch(year, month):
+        if calls is not None:
+            calls.append((year, month))
+        if raises is not None:
+            raise raises
+        return set(days_yyyymmdd)
+
+    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _fetch)
+
+
+def test_is_trading_session_today_true_when_in_trading_days(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    # June 2026: 1,2,4,5 trading; 3 holiday. Today=05 IS in the set.
+    _stub_month_fetch(monkeypatch, ["20260601", "20260602", "20260604", "20260605"])
+    assert calendar_module.is_trading_session_today("20260605") is True
+
+
+def test_is_trading_session_today_false_on_holiday(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    # 20260603 is NOT in the trading-day set → it's a holiday → False.
+    _stub_month_fetch(monkeypatch, ["20260601", "20260602", "20260604", "20260605"])
+    assert calendar_module.is_trading_session_today("20260603") is False
+
+
+def test_is_trading_session_today_none_when_creds_missing(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    import hoga.api.kis_holidays as kis_holidays_module
+
+    _stub_month_fetch(
+        monkeypatch, [],
+        raises=kis_holidays_module.KisCredentialsMissing("KIS keys missing"),
+    )
+    assert calendar_module.is_trading_session_today("20260605") is None
+    assert calendar_module.last_failure_reason() == UpstreamCode.KIS_CREDENTIALS_MISSING
+
+
+def test_is_trading_session_today_none_when_fetch_raises(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    import hoga.api.kis_holidays as kis_holidays_module
+
+    _stub_month_fetch(
+        monkeypatch, [],
+        raises=kis_holidays_module.KisHolidayFetchError("chk-holiday exploded"),
+    )
+    assert calendar_module.is_trading_session_today("20260605") is None
+
+
+def test_is_trading_session_today_caches_positive(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    """A confirmed trading session is cached per day — no repeat KIS fetch."""
+    calls: list = []
+    _stub_month_fetch(monkeypatch, ["20260605"], calls=calls)
+    assert calendar_module.is_trading_session_today("20260605") is True
+    assert calendar_module.is_trading_session_today("20260605") is True
+    assert len(calls) == 1  # second call served from the per-day cache
+
+
+def test_is_trading_session_today_rechecks_negative_and_self_heals(
+    monkeypatch: pytest.MonkeyPatch, _reset_calendar_state: None,
+) -> None:
+    """A False for today is NOT cached permanently. If the calendar source
+    transiently omits today (the ADR-0064 bug shape), the gate self-heals once
+    it reappears — the throttled re-check evicts the month cache so the
+    verdict comes from a FRESH fetch, not the pinned month set. Re-fetches are
+    throttled, not every call."""
+    calls: list = []
+    # First: today missing from a non-empty month → False.
+    _stub_month_fetch(monkeypatch, ["20260604"], calls=calls)
+    assert calendar_module.is_trading_session_today("20260605", _now_s=0.0) is False
+    assert len(calls) == 1
+    # Within the throttle window: still False, but NO re-fetch.
+    assert calendar_module.is_trading_session_today("20260605", _now_s=10.0) is False
+    assert len(calls) == 1
+    # After the throttle window AND the source now includes today → True
+    # (month cache evicted on re-check, fresh fetch sees the fixed data).
+    _stub_month_fetch(monkeypatch, ["20260604", "20260605"], calls=calls)
+    assert calendar_module.is_trading_session_today("20260605", _now_s=999.0) is True
+    assert len(calls) == 2
+
+
 def test_get_month_map_fail_soft_when_kis_fetch_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

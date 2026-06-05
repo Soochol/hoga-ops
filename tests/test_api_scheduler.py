@@ -251,7 +251,7 @@ async def test_catchup_reconciles_marker_from_disk(tmp_path: Path):
         registered_at_kst_date="20260527",
         last_success_date=None,
     )]
-    watchlist.save_watchlist(tmp_path, entries=forced)
+    watchlist.save_document(tmp_path, watchlist.WatchlistDocument(entries=forced))
 
     fake_now = dt.datetime(2026, 5, 27, 19, 0, 0, tzinfo=KST)
     with patch("hoga.api.scheduler.latest_complete_date",

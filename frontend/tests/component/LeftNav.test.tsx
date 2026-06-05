@@ -33,6 +33,8 @@ it('renders the current nav items', () => {
   expect(screen.getByText('Live')).toBeInTheDocument();
   expect(screen.getByText('Inventory')).toBeInTheDocument();
   expect(screen.getByText('Capture')).toBeInTheDocument();
-  expect(screen.getByText('Watchlist')).toBeInTheDocument();
   expect(screen.getByText('Settings')).toBeInTheDocument();
+  // /watchlist page removed (folders feature): editing now lives in the Right
+  // Rail panel + WatchlistEditModal, so there is no left-nav Watchlist entry.
+  expect(screen.queryByText('Watchlist')).not.toBeInTheDocument();
 });

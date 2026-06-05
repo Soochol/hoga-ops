@@ -53,16 +53,29 @@ def _market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "close
 def _should_poll_now(t_ms: int) -> bool:
     """Calendar + clock gate: True only when KRX is *probably* trading right now.
 
-    Lenient on missing calendar data — when :func:`calendar.is_trading_day`
-    returns None (KIS calendar unavailable), defer to the clock alone.
-    Losing live capture for a transient calendar outage is a worse failure than
-    the noise from a brief burst of HTTP_500s on a stale day.
+    ADR-0064: the trading-day check uses :func:`calendar.is_trading_session_today`
+    (backed by the KIS chk-holiday calendar, which lists today from the session
+    open), NOT a daily-OHLCV proxy. The old proxy returned False for a live
+    trading day early in the session — today's bar wasn't published yet — and
+    once that False was cached the poller silently halted capture for the
+    whole process.
+
+    Weekends are short-circuited by the clock/weekday before any KIS call, so a
+    weekend stays closed even when KIS is unreachable (a None verdict is treated
+    leniently below and would otherwise poll).
+
+    Lenient on missing calendar data — when ``is_trading_session_today`` returns
+    None (KIS creds missing, chk-holiday flaked), defer to the clock alone.
+    Losing live capture for a transient outage is a worse failure than the
+    noise from a brief burst of empty fetches on a stale day.
     """
     if _market_phase(t_ms) == "closed":
         return False
-    from hoga.api.calendar import is_trading_day
     kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
-    verdict = is_trading_day(kst.strftime("%Y%m%d"))
+    if kst.weekday() >= 5:  # Saturday/Sunday — never a KRX session
+        return False
+    from hoga.api.calendar import is_trading_session_today
+    verdict = is_trading_session_today(kst.strftime("%Y%m%d"))
     return verdict is not False
 
 
@@ -207,16 +220,32 @@ class LivePoller:
         gate checks instead of running a cycle — at market open the first
         cycle lands within ~1s, avoiding ~10s of missed opening-session data
         that a coarser tick would lose.
+
+        ADR-0064: the loop body (gate + cycle) is wrapped so a transient raise
+        — a flaky calendar/KRX call, a bug in a cycle — logs and continues to
+        the next tick instead of silently killing the task. Before this guard,
+        a single unhandled exception ended live capture for the whole process
+        while ``get_status()`` still reported ``running=true`` (the task object
+        was retained, so even the "exception never retrieved" warning was
+        suppressed). ``CancelledError`` (BaseException, not Exception) is NOT
+        caught, so ``stop_live_poller``'s cancel still terminates the loop.
+        Mirrors the supervised ``today-promoter`` loop in lifecycle.py.
         """
         while True:
             start = _now_ms()
-            # to_thread: the gate's is_trading_day can trigger a cold-month KIS
-            # chk-holiday fetch (blocking sync HTTP, seconds) — never run it on
-            # the event loop this poller shares with every route and SSE
-            # stream. Warm cache hits cost only the thread hop (~µs).
-            if not await asyncio.to_thread(_should_poll_now, start):
-                await asyncio.sleep(1.0)
-                continue
-            await self.run_one_cycle()
-            elapsed_s = (_now_ms() - start) / 1000.0
-            await asyncio.sleep(max(0.0, self._cfg.cycle_seconds - elapsed_s))
+            try:
+                # to_thread: the gate's session check can trigger a cold-month
+                # KIS chk-holiday fetch (blocking sync HTTP, seconds) — never
+                # run it on the event loop this poller shares with every route
+                # and SSE stream. Warm cache hits cost only the thread hop.
+                if not await asyncio.to_thread(_should_poll_now, start):
+                    await asyncio.sleep(1.0)
+                    continue
+                await self.run_one_cycle()
+                elapsed_s = (_now_ms() - start) / 1000.0
+                await asyncio.sleep(max(0.0, self._cfg.cycle_seconds - elapsed_s))
+            except Exception:  # noqa: BLE001 — one bad tick must not kill capture
+                _log.exception("live.poller.run_forever_tick_failed")
+                # Back off one cycle window so a hard-looping failure (e.g. the
+                # gate raising every call) doesn't spin the CPU or spam the log.
+                await asyncio.sleep(self._cfg.cycle_seconds)

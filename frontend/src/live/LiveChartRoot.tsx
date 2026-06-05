@@ -144,21 +144,94 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // transition doesn't leave the chart zoomed on the early window with the
   // latest data off the right edge.
   const lastAppliedCountRef = useRef<number | null>(null);
+  // Cold-load reveal gate. On a cold (code, timeframe) load the hoga panes
+  // (/api/range) resolve up to ~2.5s before the candles (/api/live/past-candles
+  // carries ~40 days) and establish lightweight-charts' default ~60-bar fit on
+  // the shared timeScale; when the candles land, the initial-view effect below
+  // re-applies the 300-bar window — but lwc paints a visible-WIDTH (barSpacing)
+  // change one frame LATE (verified 2026-06-05 via cold-load frame traces:
+  // setVisibleLogicalRange lands on frame N, the new barSpacing paints on N+1).
+  // So the candles flash in zoomed to ~60 bars and then zoom out to ~300 — the
+  // "drawn twice" feeling. We keep `chartReady` false (an opaque cover masks the
+  // chart) from the switch until two rAFs after the viewport is applied
+  // (barSpacing settled), then fade the cover out so the candles appear once,
+  // already at the final zoom. Warm switches reveal in ~2 frames, so the fade is
+  // imperceptible there.
+  //
+  // The reveal is keyed by load identity (`code|timeframe`): `chartReady` is
+  // DERIVED (revealedKey === viewKey), not reset in an effect, so a watchlist
+  // switch re-masks synchronously with the new props — no extra render and no
+  // one-frame glimpse of the previous code's candles. The key also makes the
+  // reveal scheduler idempotent across SSE bundle churn (revealedKey already
+  // === viewKey short-circuits). `revealRafRef` lets the key-change effect
+  // cancel a still-pending reveal.
+  const viewKey = `${code ?? ''}|${timeframe}`;
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const revealRafRef = useRef<number | null>(null);
+  const chartReady = revealedKey === viewKey;
   useEffect(() => {
     lastAppliedCountRef.current = null;
+    if (revealRafRef.current !== null) {
+      cancelAnimationFrame(revealRafRef.current);
+      revealRafRef.current = null;
+    }
   }, [code, timeframe]);
+  // Cancel a pending reveal rAF on unmount so it can't setState after teardown.
+  useEffect(() => () => {
+    if (revealRafRef.current !== null) cancelAnimationFrame(revealRafRef.current);
+  }, []);
 
-  // Leftward-pan historical backfill + viewport preservation (prepend-restore
-  // shift, progressive settle-loop, lazy-fetch trigger) live in this headless
-  // controller. Called from the parent so its restore effect runs after
-  // RangeSeriesPane's child setData. The restore effect and the initial-view
-  // effect (declared below) are mutually exclusive via historicalFromDate
-  // (null → initial-view owns the viewport; non-null → restore), so their
-  // relative declaration order is immaterial.
+  // Leftward-pan historical backfill + staleness-free viewport repositioning
+  // (pre-swap layout snapshot, post-setData reposition, lazy-fetch trigger,
+  // settle-loop) live in this headless controller. Called from the parent so
+  // its layout snapshot runs before — and its repositioner after —
+  // RangeSeriesPane's child setData within the same bundle commit. The
+  // repositioner and the initial-view effect below are mutually exclusive via
+  // historicalFromDate (null → initial-view owns the viewport; non-null →
+  // repositioner), so their relative declaration order is immaterial.
   useViewportBackfill({ chart, axis, bundle, timeframe, isExtending, code: code ?? '' });
   useEffect(() => {
-    if (!chart || !bundle || bundle.candles.length === 0) return;
-    if (useLivePageStore.getState().historicalFromDate !== null) return;
+    // Reveal the chart two rAFs after the viewport is applied, so lightweight-
+    // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands
+    // behind the still-opaque cover. Idempotent across SSE bundle churn (the
+    // revealedKey === viewKey guard); a second rAF guarantees the width has
+    // painted before fade-in.
+    const reveal = () => {
+      if (revealedKey === viewKey || revealRafRef.current !== null) return;
+      revealRafRef.current = requestAnimationFrame(() => {
+        revealRafRef.current = requestAnimationFrame(() => {
+          revealRafRef.current = null;
+          setRevealedKey(viewKey);
+        });
+      });
+    };
+    if (!chart || !bundle) {
+      // No chart/bundle to position yet. If the past-candle fetch has SETTLED
+      // with no bundle to show (no active code / null bundle), reveal anyway so
+      // the cover can't wedge opaque over a chartless surface; while still
+      // loading, keep it up. Safe against a re-flash: a null bundle means no
+      // candle data is pending, so nothing can later paint at the wrong zoom.
+      if (chart && !isPastCandlesLoading) reveal();
+      return;
+    }
+    if (bundle.candles.length === 0) {
+      // No candles yet. If the past-candle fetch has settled (empty result, or
+      // D/W/M with no history), reveal the empty chart so the cover doesn't
+      // linger; while it's still loading, keep the cover up.
+      if (!isPastCandlesLoading) reveal();
+      return;
+    }
+    if (useLivePageStore.getState().historicalFromDate !== null) {
+      // User-driven extension owns the viewport (prepend-restore); the chart was
+      // already revealed on the initial load, so nothing to schedule here.
+      //
+      // historicalFromDate is read via getState() (not an effect dep) on purpose:
+      // it only flips non-null AFTER the initial reveal (a leftward pan), and
+      // setActiveCode / setCandleTimeframe reset it to null — so a fresh
+      // (code, timeframe) load always passes this gate and reveals. The reveal is
+      // therefore never gated behind a value that's missing from the deps.
+      return;
+    }
     const ts = chart.timeScale();
     const totalBars = bundle.candles.length;
     const applied = lastAppliedCountRef.current;
@@ -167,7 +240,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
         // Minute timeframes carry ~5000 1m bars and need 300-bar windowing
         // to stay legible. Apply once per (code, timeframe): SSE pushes
         // inside today's segment must not snap the user's scroll.
-        if (applied !== null) return;
+        if (applied !== null) { reveal(); return; }
         const target = 300;
         const from = Math.max(0, totalBars - target);
         const to = totalBars + 5; // 5-bar right padding
@@ -184,20 +257,22 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
         // still preserve user scroll.
         ts.scrollToPosition(0, false);
         lastAppliedCountRef.current = totalBars;
+        reveal();
       } else {
         // D/W/M re-fit only when totalBars grows beyond the count at which
         // we last fitted. The 14 → ~250 bar growth from the daily-fetch
         // extension would otherwise be invisible. historicalFromDate !== null
         // (user-driven extension) short-circuits above, so user scroll is
         // preserved.
-        if (applied !== null && totalBars <= applied) return;
+        if (applied !== null && totalBars <= applied) { reveal(); return; }
         ts.fitContent();
         lastAppliedCountRef.current = totalBars;
+        reveal();
       }
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, bundle, timeframe]);
+  }, [chart, bundle, timeframe, isPastCandlesLoading, viewKey, revealedKey]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -420,6 +495,31 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
           <AuctionWindowOverlay chart={chart} axis={axis} />
         </>
       )}
+      {/* Reveal cover — masks the chart + its overlays while the initial
+          viewport's barSpacing settles (see chartReady gate above), then fades
+          out so the candles appear once at the final zoom instead of flashing
+          in at lightweight-charts' default ~60-bar fit and zooming out. Painted
+          after the chart/overlay fragment (above it) but before the loading /
+          clamp notes below (so those stay visible through the masked window).
+          bg-card matches the chart background, so the cover reads as the empty
+          chart surface during a cold load.
+
+          The transition is asymmetric: it animates only on REVEAL (chartReady
+          true → fade out). Masking (chartReady false, e.g. a watchlist switch)
+          applies instantly so the previous code's candles are hidden in the
+          same frame rather than lingering through a 160ms fade-to-opaque. */}
+      <div
+        data-testid="chart-reveal-cover"
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'var(--bg-card)',
+          opacity: chartReady ? 0 : 1,
+          transition: chartReady ? 'opacity 0.16s ease-out' : 'none',
+          pointerEvents: 'none',
+        }}
+      />
       {dwDisabled && (
         <div
           data-testid="indicator-disabled-note"
