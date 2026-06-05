@@ -114,3 +114,11 @@ def test_builders_roundtrip_through_jsonl_unchanged() -> None:
     assert set(row.keys()) == {"t_ms", "kind", "payload"}
     assert row["kind"] == "ob"
     assert row["payload"]["bids"][0]["price"] == 26800
+
+
+def test_from_fill_payload_shape():
+    s = LiveSnapshot.from_fill(t_ms=1_770_000_000_000, buy_qty=120, sell_qty=80, phase="regular")
+    assert s.kind is SnapshotKind.FILL
+    assert s.t_ms == 1_770_000_000_000
+    assert s.payload == {"buy_qty": 120, "sell_qty": 80, "phase": "regular"}
+    assert '"kind": "fill"' in s.to_jsonl()

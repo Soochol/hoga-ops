@@ -19,11 +19,13 @@ if TYPE_CHECKING:
 
 
 class SnapshotKind(str, Enum):
-    """The three kinds of Live Snapshot produced per polling cycle."""
+    """The kinds of Live Snapshot. ob/broker/trade는 poller 시절부터,
+    fill은 WS 전환(그릴링 Q4)의 10초 체결강도 구간합."""
 
     OB = "ob"
-    TRADE = "trade"
+    TRADE = "trade"   # 저장 경로에선 fill로 대체; 메모리(buffer) 전용으로 존속
     BROKER = "broker"
+    FILL = "fill"
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,17 @@ class LiveSnapshot:
         payload = brokers.model_dump()
         payload["phase"] = phase
         return cls(t_ms=t_ms, kind=SnapshotKind.BROKER, payload=payload)
+
+    @classmethod
+    def from_fill(
+        cls, *, t_ms: int, buy_qty: int, sell_qty: int, phase: str
+    ) -> LiveSnapshot:
+        """10초 체결강도 구간합 — side==±1만 합산된 값을 받는다(분류는 다운샘플러 책임)."""
+        return cls(
+            t_ms=t_ms,
+            kind=SnapshotKind.FILL,
+            payload={"buy_qty": buy_qty, "sell_qty": sell_qty, "phase": phase},
+        )
 
     def to_jsonl(self) -> str:
         """Serialize to one JSONL line (no trailing newline)."""
