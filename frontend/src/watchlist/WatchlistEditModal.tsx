@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   DndContext, PointerSensor, useSensor, useSensors, useDroppable, closestCenter,
   type DragEndEvent,
@@ -10,6 +10,7 @@ import {
 import { WatchlistEntryPane } from './WatchlistEntryPane';
 import { resolveDrag, folderDroppableId } from './dragHandlers';
 import { selectVisibleEntries, type Selected } from './grouping';
+import { ModalShell } from '../ui/ModalShell';
 
 // Hoisted to module scope (stable identity) so the inline-edit <input> reconciles in place
 // instead of remounting on every keystroke (remount → detached node → lost focus + blur).
@@ -26,7 +27,7 @@ function FolderRow(props: {
   const { setNodeRef, isOver } = useDroppable({ id: folderDroppableId(props.id) });
   return (
     <div ref={setNodeRef}
-      className={`group flex items-center gap-1 px-2 py-1 rounded text-sm ${
+      className={`group flex items-center gap-1 pl-3 pr-2 py-1.5 rounded text-sm ${
         props.isSelected ? 'bg-bg-input text-fg' : 'text-fg-dim hover:bg-bg-input-hover'} ${
         isOver ? 'ring-1 ring-accent bg-bg-input-hover' : ''}`}>
       {props.isEditing ? (
@@ -65,6 +66,25 @@ function FolderRow(props: {
   );
 }
 
+/** 미분류 의사폴더 버튼 — FolderRow와 같은 행 스타일이되 액션/드래그핸들 없는 단순
+ *  선택 버튼. FolderRow처럼 모듈 스코프(stable identity)로 둬 render마다 재생성되지
+ *  않게 한다(react-hooks/static-components). */
+function FolderButton(props: {
+  sel: Selected; label: string; count: number | null;
+  selected: Selected; onSelect: (sel: Selected) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: folderDroppableId(props.sel) });
+  return (
+    <button ref={setNodeRef} type="button" onClick={() => props.onSelect(props.sel)}
+      className={`w-full flex items-center justify-between pl-3 pr-2 py-1.5 rounded text-sm ${
+        props.selected === props.sel ? 'bg-bg-input text-fg' : 'text-fg-dim hover:bg-bg-input-hover'} ${
+        isOver ? 'ring-1 ring-accent bg-bg-input-hover' : ''}`}>
+      <span className="truncate">{props.label}</span>
+      {props.count !== null && <span className="font-mono tabular-nums text-fg-dimmer text-xs">{props.count}</span>}
+    </button>
+  );
+}
+
 export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
   const { data } = useWatchlist();
   const createM = useCreateFolder();
@@ -73,7 +93,7 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
   const renameM = useRenameFolder();
   const deleteM = useDeleteFolder();
   const reorderFoldersM = useReorderFolders();
-  const [selected, setSelected] = useState<Selected>('ALL');
+  const [selected, setSelected] = useState<Selected>(null);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -81,12 +101,6 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
 
   // distance constraint so a click on the ⠿ handle still fires checkbox/↻ buttons.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   const folders = [...(data?.folders ?? [])].sort((a, b) => a.order - b.order);
   const countIn = (id: string | null) => (data?.entries ?? []).filter((e) => e.folder_id === id).length;
@@ -97,8 +111,8 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
 
   const onDragEnd = (ev: DragEndEvent) => {
     if (!ev.over) return;
-    const r = resolveDrag(visible, selected === 'ALL' ? null : selected, String(ev.active.id), String(ev.over.id));
-    if (r.kind === 'reorder' && selected !== 'ALL') reorderM.mutate({ folderId: r.folderId, orderedCodes: r.orderedCodes });
+    const r = resolveDrag(visible, selected, String(ev.active.id), String(ev.over.id));
+    if (r.kind === 'reorder') reorderM.mutate({ folderId: r.folderId, orderedCodes: r.orderedCodes });
     else if (r.kind === 'move') moveM.mutate({ codes: r.codes, folderId: r.folderId });
   };
 
@@ -125,45 +139,27 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
     reorderFoldersM.mutate(ids);
   };
 
-  const FolderButton = ({ sel, label, count }: { sel: Selected; label: string; count: number | null }) => {
-    // ALL is not a drop target (cross-folder dest is ambiguous); disabled also suppresses isOver.
-    const { setNodeRef, isOver } = useDroppable({
-      id: folderDroppableId(sel),
-      disabled: sel === 'ALL',
-    });
-    return (
-      <button ref={setNodeRef} type="button" onClick={() => setSelected(sel)}
-        className={`w-full flex items-center justify-between px-3 py-2 rounded text-sm ${
-          selected === sel ? 'bg-bg-input text-fg' : 'text-fg-dim hover:bg-bg-input-hover'} ${
-          isOver ? 'ring-1 ring-accent bg-bg-input-hover' : ''}`}>
-        <span className="truncate">{label}</span>
-        {count !== null && <span className="font-mono tabular-nums text-fg-dimmer text-xs">{count}</span>}
-      </button>
-    );
-  };
-
+  // Aligned with the 보조지표 modal (IndicatorPanel): shared ModalShell chrome
+  // (backdrop/Escape/title/✕), a left nav with a small-caps section header + rows,
+  // and a footer-anchored 닫기. Folder CRUD + the right entry pane are unchanged;
+  // rows keep member counts (folders are select/edit targets, not on/off toggles,
+  // so the indicator panel's checkbox icon would be the wrong affordance).
   return (
-    <div role="dialog" aria-modal="true" aria-label="관심종목 편집" onClick={onClose}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-      <div onClick={(e) => e.stopPropagation()}
-        className="bg-bg-card border border-border-strong rounded-[6px] shadow-[0_8px_24px_rgba(0,0,0,0.4)] w-[860px] max-w-[92vw] h-[600px] max-h-[88vh] flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h2 className="text-fg text-base font-medium">관심종목 편집</h2>
-          <button type="button" aria-label="닫기" onClick={onClose} className="text-fg-dim hover:text-fg text-lg leading-none">✕</button>
-        </div>
-
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+    <ModalShell ariaLabel="관심종목 편집" title="관심종목 편집"
+      width="w-[860px]" height="h-[600px] max-h-[88vh]" onClose={onClose}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <div className="flex-1 grid grid-cols-[220px_1fr] min-h-0">
-          {/* 좌: 폴더 pane */}
+          {/* 좌: 폴더 pane — 보조지표 nav 패턴(섹션 헤더 + 행)과 정렬 */}
           <div className="border-r border-border flex flex-col min-h-0">
-            <div className="p-2">
+            <div className="text-fg-dimmer text-xs uppercase tracking-wider px-3 pt-3 pb-2">관심 폴더</div>
+            <div className="px-2 pb-2">
               {adding ? (
                 <form data-testid="folder-create-form" onSubmit={submitFolder} className="flex gap-1">
                   <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)}
                     placeholder="폴더 이름" maxLength={40}
                     onKeyDown={(e) => {
                       // Escape cancels the create input; stopPropagation so it
-                      // doesn't bubble to the modal's document keydown (= close modal).
+                      // doesn't bubble to ModalShell's document keydown (= close modal).
                       if (e.key === 'Escape') { e.stopPropagation(); setNewName(''); setAdding(false); }
                     }}
                     className="flex-1 min-w-0 px-2 py-1 rounded bg-bg-input text-sm border border-border" />
@@ -177,29 +173,35 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
               )}
             </div>
             <div className="flex-1 overflow-auto px-2 pb-2 flex flex-col gap-px">
-              <FolderButton sel="ALL" label="모든 종목" count={data?.entries.length ?? 0} />
               {folders.map((f, idx) => (
                 <FolderRow key={f.id} id={f.id} name={f.name} idx={idx} count={countIn(f.id)}
                   isSelected={selected === f.id} isEditing={editingId === f.id}
                   isLast={idx === folders.length - 1} editName={editName}
                   onSelect={() => setSelected(f.id)}
                   onStartEdit={() => { setEditingId(f.id); setEditName(f.name); }}
-                  onDelete={() => { deleteM.mutate(f.id); if (selected === f.id) setSelected('ALL'); }}
+                  onDelete={() => { deleteM.mutate(f.id); if (selected === f.id) setSelected(null); }}
                   onMoveUp={() => moveFolder(idx, -1)}
                   onMoveDown={() => moveFolder(idx, +1)}
                   onEditNameChange={setEditName}
                   onCommit={() => commitRename(f.id)}
                   onCancelEdit={() => setEditingId(null)} />
               ))}
-              <FolderButton sel={null} label="미분류" count={countIn(null)} />
+              <FolderButton sel={null} label="미분류" count={countIn(null)} selected={selected} onSelect={setSelected} />
             </div>
           </div>
 
           {/* 우: entry pane (F7) */}
           <WatchlistEntryPane selected={selected} />
         </div>
-        </DndContext>
+      </DndContext>
+
+      {/* footer — 보조지표 모달과 동일: border-t + 우측 닫기 버튼 */}
+      <div className="flex justify-end px-4 py-3 border-t border-border">
+        <button type="button" onClick={onClose}
+          className="px-3 py-1.5 text-sm bg-bg-input hover:bg-bg-input-hover text-fg rounded">
+          닫기
+        </button>
       </div>
-    </div>
+    </ModalShell>
   );
 }

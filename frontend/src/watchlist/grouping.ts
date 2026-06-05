@@ -6,10 +6,10 @@ export interface FolderGroup {
   entries: WatchlistEntry[];
 }
 
-/** UI folder selection: 'ALL' = the 모든 종목 pseudo-folder, null = 미분류, string = a folder id. */
-export type Selected = 'ALL' | null | string;
+/** UI folder selection: null = 미분류, string = a folder id. */
+export type Selected = null | string;
 
-/** The selected folder's entries, sorted by `.order`. 'ALL' = no folder filter.
+/** The selected folder's entries, sorted by `.order` (null = 미분류, string = folder id).
  *  Shared by the entry pane (what it renders) and the edit modal (the list it
  *  feeds resolveDrag for row indices) so the two stay in lockstep — the
  *  drag-reorder index contract lives in one function, not a comment two files
@@ -18,7 +18,7 @@ export function selectVisibleEntries(
   entries: WatchlistEntry[],
   selected: Selected,
 ): WatchlistEntry[] {
-  const list = selected === 'ALL' ? entries : entries.filter((e) => e.folder_id === selected);
+  const list = entries.filter((e) => e.folder_id === selected);
   return [...list].sort((a, b) => a.order - b.order);
 }
 

@@ -16,13 +16,14 @@ const DATA = {
 
 describe('WatchlistEditModal', () => {
   beforeEach(() => { cleanup(); vi.restoreAllMocks(); });
-  it('renders dialog with folder list + member counts, and a 전체 pseudo-folder labelled 모든 종목', async () => {
+  it('renders dialog with folder list + member counts (folders + 미분류, no 모든 종목)', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
     expect(await screen.findByRole('dialog', { name: '관심종목 편집' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('스윙')).toBeInTheDocument());
-    expect(screen.getByText('모든 종목')).toBeInTheDocument();
+    expect(screen.getByText('미분류')).toBeInTheDocument();
+    expect(screen.queryByText('모든 종목')).not.toBeInTheDocument();
   });
   it('creates a folder via 폴더 추가', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
@@ -90,7 +91,7 @@ describe('WatchlistEditModal', () => {
     await waitFor(() => expect(ro).toHaveBeenCalledWith(['f_b', 'f_a']));
   });
 
-  it('resets selection to 모든 종목 when the currently-selected folder is deleted', async () => {
+  it('resets selection to 미분류 when the currently-selected folder is deleted', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
       folders: [{ id: 'f_a', name: '스윙', order: 0 }],
       entries: [
@@ -106,9 +107,10 @@ describe('WatchlistEditModal', () => {
     // select 스윙 → pane filters to its member only (미분류 000660 hidden)
     fireEvent.click(screen.getByText('스윙'));
     await waitFor(() => expect(screen.queryByText('SK하이닉스')).not.toBeInTheDocument());
-    // delete the selected folder → selection falls back to 모든 종목, not a stale empty pane
+    // delete the selected folder → selection falls back to 미분류 (not a stale empty pane):
+    // its member (000660) shows; the deleted folder's member (005930) does not.
     fireEvent.click(screen.getByLabelText('스윙 삭제'));
     await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
-    expect(screen.getByText('삼성전자')).toBeInTheDocument();
+    expect(screen.queryByText('삼성전자')).not.toBeInTheDocument();
   });
 });

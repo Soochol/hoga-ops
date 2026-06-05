@@ -32,7 +32,7 @@ describe('WatchlistEntryPane', () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
     const rm = vi.spyOn(api, 'removeEntries').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<WatchlistEntryPane selected="ALL" />, { wrapper: wrap(qc) });
+    render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
     await screen.findByText('삼성전자');
     fireEvent.click(screen.getByLabelText('005930 선택'));
     fireEvent.click(screen.getByRole('button', { name: /삭제/ }));
@@ -40,28 +40,44 @@ describe('WatchlistEntryPane', () => {
   });
 
   it('multi-select move sends codes in VISUAL order, not checkbox-click order', async () => {
-    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    // both in 스윙(f_a): 005930 (order 0) before 000660 (order 1) → visual order 005930, 000660.
+    // moving to 장기(f_b) exercises the cross-folder case the 모든 종목 view used to cover.
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [{ id: 'f_a', name: '스윙', order: 0 }, { id: 'f_b', name: '장기', order: 1 }],
+      entries: [
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 1 },
+      ],
+      next_run_at_ms: 0,
+    });
     const mv = vi.spyOn(api, 'moveEntries').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<WatchlistEntryPane selected="ALL" />, { wrapper: wrap(qc) });
+    render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
     await screen.findByText('삼성전자');
     // check in REVERSE visual order: 000660 (2nd row) then 005930 (1st row)
     fireEvent.click(screen.getByLabelText('000660 선택'));
     fireEvent.click(screen.getByLabelText('005930 선택'));
     fireEvent.click(screen.getByRole('button', { name: /이동/ }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: '스윙' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: '장기' }));
     // visual order is 005930 before 000660 → codes must follow that, not click order
-    await waitFor(() => expect(mv).toHaveBeenCalledWith(['005930', '000660'], 'f_a'));
+    await waitFor(() => expect(mv).toHaveBeenCalledWith(['005930', '000660'], 'f_b'));
   });
 
   it('clears the multi-select when the viewed folder changes', async () => {
-    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [{ id: 'f_a', name: '스윙', order: 0 }, { id: 'f_b', name: '장기', order: 1 }],
+      entries: [
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
+      ],
+      next_run_at_ms: 0,
+    });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const { rerender } = render(<WatchlistEntryPane selected="ALL" />, { wrapper: wrap(qc) });
+    const { rerender } = render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
     await screen.findByText('삼성전자');
     fireEvent.click(screen.getByLabelText('005930 선택'));
     expect((screen.getByLabelText('005930 선택') as HTMLInputElement).checked).toBe(true);
-    rerender(<WatchlistEntryPane selected="f_a" />);  // switch folders
+    rerender(<WatchlistEntryPane selected="f_b" />);   // switch away …
+    rerender(<WatchlistEntryPane selected="f_a" />);   // … and back: the selection must have cleared
     await waitFor(() =>
       expect((screen.getByLabelText('005930 선택') as HTMLInputElement).checked).toBe(false));
   });
@@ -102,7 +118,7 @@ describe('WatchlistEntryPane', () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
     const c = vi.spyOn(api, 'catchupNow').mockResolvedValue({ enqueued: ['x'], deduped: [] } as any);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<WatchlistEntryPane selected="ALL" />, { wrapper: wrap(qc) });
+    render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
     await screen.findByText('삼성전자');
     fireEvent.click(screen.getByLabelText('삼성전자 수집'));
     await waitFor(() => expect(c).toHaveBeenCalledWith('005930'));
