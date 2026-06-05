@@ -39,6 +39,7 @@ from hoga.live.lifecycle import (
     aclose_kis_client,
     get_active_codes,
     start_live_poller,
+    start_live_poller_watchdog,
     start_today_promoter,
     stop_live_poller,
     stop_today_promoter,
@@ -107,6 +108,10 @@ def create_app(data_dir: Path) -> FastAPI:
         # Stage 8: Start the live poller (graceful degradation: no-op if
         # KIS_APP_KEY/SECRET missing or watchlist is empty).
         await start_live_poller(data_dir=data_dir)
+        # ADR-0064: watchdog that restarts the poller if it dies or stops
+        # ticking during market hours (defense-in-depth self-heal). Spawned
+        # unconditionally — it no-ops when the poller wasn't started.
+        live_watchdog_task = await start_live_poller_watchdog(data_dir=data_dir)
         # ADR-0043: Today Promotion task — overwrite today's jsonl to parquet
         # every N minutes so /api/range covers today without waiting for the
         # 17:00 Daily Promotion batch. Optional kill-switch via
@@ -133,6 +138,10 @@ def create_app(data_dir: Path) -> FastAPI:
             # ADR-0043: stop Today Promotion before live poller so the loop
             # doesn't observe a half-cancelled poller state.
             await stop_today_promoter(today_promoter_task)
+            # ADR-0064: stop the watchdog before the poller so it can't race to
+            # "restart" the poller we're deliberately shutting down. (reuses the
+            # generic cancel-and-await helper.)
+            await stop_today_promoter(live_watchdog_task)
             # Stop the live poller before scheduler to avoid new ticks being
             # written while the scheduler is shutting down.
             await stop_live_poller()

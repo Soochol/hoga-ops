@@ -189,17 +189,32 @@ def test_market_phase_helper() -> None:
 def test_should_poll_now_false_outside_market_hours(monkeypatch) -> None:
     """Off-hours → no polling regardless of calendar availability."""
     from hoga.api import calendar as cal
-    # Stub calendar to "trading day" so the only thing left is the clock.
-    monkeypatch.setattr(cal, "is_trading_day", lambda d: True)
+    # Stub calendar to "trading session" so the only thing left is the clock.
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: True)
     midnight_ms = int(datetime(2026, 5, 27, 2, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
     assert _should_poll_now(midnight_ms) is False
 
 
-def test_should_poll_now_false_on_holiday(monkeypatch) -> None:
-    """In-hours but non-trading-day (weekend/holiday) → no polling."""
+def test_should_poll_now_false_on_weekend_without_krx_fetch(monkeypatch) -> None:
+    """Weekend → no polling via a clock/weekday short-circuit that never touches
+    KRX. A weekend must stay closed even if KRX is unreachable (which would
+    otherwise read as None → lenient-poll)."""
     from hoga.api import calendar as cal
-    monkeypatch.setattr(cal, "is_trading_day", lambda d: False)
-    in_hours_ms = int(datetime(2026, 5, 30, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+
+    def _boom(_d):
+        raise AssertionError("calendar must not be consulted on a weekend")
+    monkeypatch.setattr(cal, "is_trading_session_today", _boom)
+    # 2026-05-30 is a Saturday, 10:00 KST (in market clock hours).
+    sat_ms = int(datetime(2026, 5, 30, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    assert _should_poll_now(sat_ms) is False
+
+
+def test_should_poll_now_false_on_weekday_holiday(monkeypatch) -> None:
+    """In-hours weekday but the calendar says it's not a session → no polling."""
+    from hoga.api import calendar as cal
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: False)
+    # 2026-05-27 is a Wednesday.
+    in_hours_ms = int(datetime(2026, 5, 27, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
     assert _should_poll_now(in_hours_ms) is False
 
 
@@ -210,14 +225,29 @@ def test_should_poll_now_lenient_when_calendar_unavailable(monkeypatch) -> None:
     HTTP_500s on a stale day. See _should_poll_now docstring.
     """
     from hoga.api import calendar as cal
-    monkeypatch.setattr(cal, "is_trading_day", lambda d: None)
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: None)
     in_hours_ms = int(datetime(2026, 5, 27, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
     assert _should_poll_now(in_hours_ms) is True
 
 
 def test_should_poll_now_true_on_trading_day_in_hours(monkeypatch) -> None:
     from hoga.api import calendar as cal
-    monkeypatch.setattr(cal, "is_trading_day", lambda d: True)
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: True)
+    in_hours_ms = int(datetime(2026, 5, 27, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    assert _should_poll_now(in_hours_ms) is True
+
+
+def test_should_poll_now_polls_when_ohlcv_lags_today(monkeypatch) -> None:
+    """ADR-0064 regression: the gate must NOT depend on is_trading_day (the
+    daily-OHLCV proxy). Early in the session today's bar is unpublished, so
+    is_trading_day returns False for a live trading day — the trigger that
+    silently halted capture all day. The gate now consults the lag-free
+    is_trading_session_today instead, so it polls."""
+    from hoga.api import calendar as cal
+    # OHLCV proxy says "not a trading day" (today's bar missing intraday)...
+    monkeypatch.setattr(cal, "is_trading_day", lambda d: False)
+    # ...but the business-day calendar correctly says today IS a session.
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: True)
     in_hours_ms = int(datetime(2026, 5, 27, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
     assert _should_poll_now(in_hours_ms) is True
 
@@ -346,6 +376,46 @@ async def test_run_forever_until_cancel(tmp_path: Path, monkeypatch) -> None:
 
     lines = (tmp_path / "live" / "20260527" / "005930.jsonl").read_text().splitlines()
     assert len(lines) >= 3  # at least one full cycle
+
+
+@pytest.mark.asyncio
+async def test_run_forever_survives_cycle_exception(tmp_path: Path, monkeypatch) -> None:
+    """ADR-0064: a raising cycle (or gate) must NOT kill the poller task.
+
+    An unguarded raise in run_forever silently halted live capture for the
+    whole process while /api/live/status still reported running=true. The loop
+    must log and continue to the next cycle instead.
+    """
+    regular_ms = int(datetime(2026, 5, 27, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    monkeypatch.setattr("hoga.live.poller._now_ms", lambda: regular_ms)
+    monkeypatch.setattr("hoga.live.poller._should_poll_now", lambda t: True)
+
+    kis = _mk_kis()
+    writer = LiveWriter(tmp_path / "live")
+    poller = LivePoller(kis, writer, LivePollerConfig(
+        codes_fn=lambda: ["005930"], date_fn=lambda: "20260527",
+        cycle_seconds=0.001,
+    ))
+
+    calls = {"n": 0}
+
+    async def flaky_cycle() -> None:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom on first cycle")
+        # subsequent cycles succeed (no-op)
+
+    monkeypatch.setattr(poller, "run_one_cycle", flaky_cycle)
+
+    task = asyncio.create_task(poller.run_forever())
+    await asyncio.sleep(0.05)
+
+    assert not task.done()      # survived the exception (would be done() if it propagated)
+    assert calls["n"] >= 2      # kept ticking after the raise
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
 
 @pytest.mark.asyncio

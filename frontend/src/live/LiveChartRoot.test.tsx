@@ -320,6 +320,132 @@ describe('LiveChartRoot', () => {
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 405 });
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(2);
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Cold-load reveal cover (/diagnose 2026-06-05).
+  //
+  // Bug: on a cold load the hoga panes resolve ~2.5s before the candles and
+  // establish lightweight-charts' default ~60-bar fit on the shared timeScale;
+  // when the candles land the initial-view effect re-applies the 300-bar window,
+  // but lwc paints the visible-WIDTH change one frame late, so the candles flash
+  // in zoomed to ~60 bars then zoom out to ~300 (the "drawn twice" feeling).
+  // Fix: keep an opaque cover over the chart from the (code, timeframe) switch
+  // until two rAFs after the viewport is applied, then fade it out.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Run N animation frames, flushing React after each so a setState inside a
+  // nested rAF is committed to the DOM before we assert.
+  async function flushFrames(n: number) {
+    for (let i = 0; i < n; i++) {
+      await act(async () => {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      });
+    }
+  }
+
+  it('mounts an opaque reveal cover before the viewport settles', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const cover = screen.getByTestId('chart-reveal-cover');
+    // Synchronously after mount the reveal rAFs have NOT fired yet → opaque.
+    expect(cover.style.opacity).toBe('1');
+  });
+
+  it('fades the cover out (opacity 0) two rAFs after the initial viewport is applied', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
+  });
+
+  it('keeps the cover opaque while past candles are still loading (no candles yet)', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(0)}
+        clampEngaged={false}
+        isPastCandlesLoading={true}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    // Candles still loading → the reveal must wait, cover stays opaque so the
+    // user never sees the candle pane paint at the wrong zoom.
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
+  });
+
+  it('reveals the empty chart once the candle fetch settles with no candles', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(0)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    // No candles but loading settled → reveal so the cover doesn't linger over
+    // an empty (but legitimately data-less) chart.
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
+  });
+
+  it('reveals when the load settles with a null bundle (cover must not wedge opaque)', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={null}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    // Null bundle + settled fetch → no data is pending, so reveal rather than
+    // leave the cover stuck over a chartless surface.
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
+  });
+
+  it('keeps the cover opaque while a null-bundle load is still in flight', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={null}
+        clampEngaged={false}
+        isPastCandlesLoading={true}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    // Still loading → hold the cover so the candles can't appear at the wrong zoom.
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -872,6 +998,70 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     // the scrollToPosition count is what distinguishes them.
     expect(ts.scrollToPosition).toHaveBeenCalledTimes(1);
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(2);
+  });
+
+  // Stale-anchor teleport (/diagnose 2026-06-05).
+  //
+  // Repro: the user pans left past the leftmost bar (arms the 150ms debounced
+  // fetch AND captures a viewport anchor at the LEFT region), then immediately
+  // pans back to recent BEFORE the fetch lands. The pan-back makes logical.from
+  // non-negative; the anchor captured at the left is now STALE. When the
+  // already-armed fetch resolves and the older bars are prepended, the OLD code
+  // applied the stale anchor — teleporting the user from recent back to the
+  // left region they'd left.
+  //
+  // Verified in-browser (lightweight-charts 5.2.0): series.setData with N older
+  // bars PREPENDED re-anchors the visible logical range by +N on its own, so
+  // the user's current view stays put across a prepend with NO restore. The
+  // restore is therefore redundant when the user holds position and harmful
+  // when they move. Fix: invalidate the anchor the instant the user pans back
+  // into loaded bars (logical.from >= 0), so the restore short-circuits and
+  // setData's own re-anchor preserves the recent view. The fetch is NOT
+  // cancelled — the user still gets the older data preloaded ("데이터만 fetch").
+  //
+  // Mock caveat: buildStableCapturingMock's setData is a no-op, so it does NOT
+  // re-anchor the way real lwc does. This test therefore locks the restore-side
+  // guard (no setVisibleLogicalRange on a stale anchor); the "setData re-anchors
+  // so the view is preserved anyway" half is only observable in the browser
+  // (differential __noRestore repro, recorded in the diagnose notes).
+  it('does NOT teleport when the user pans back to recent before the fetch lands (stale-anchor guard)', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+
+    // 1) Pan left past the leftmost bar → captures the anchor + arms the debounce.
+    act(() => {
+      handlers.forEach((h) => h({ from: -40.2, to: 120.7 }));
+    });
+    // 2) Pan back into recent bars BEFORE the debounce fires → anchor goes stale.
+    //    The fetch stays armed (user still gets the data); only the viewport
+    //    anchor must be invalidated.
+    act(() => {
+      handlers.forEach((h) => h({ from: 50, to: 350 }));
+      vi.advanceTimersByTime(200); // debounce fires → extendHistoricalRange dispatched
+    });
+    // The fetch DID happen — "데이터만 fetch하면 되는데" is satisfied.
+    expect(useLivePageStore.getState().historicalFromDate).not.toBeNull();
+    const beforePrepend = ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 3) Grown bundle lands: yesterday PREPENDED (earlier earliest candle).
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    // Restore must NOT fire: the stale anchor was invalidated on pan-back, so
+    // no setVisibleLogicalRange is issued. The user stays where they panned to
+    // (recent), preserved by setData's own re-anchor — no teleport.
+    expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforePrepend);
   });
 });
 
