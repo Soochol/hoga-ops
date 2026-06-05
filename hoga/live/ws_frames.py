@@ -1,7 +1,8 @@
 """KIS WS 프레임 → Live Tick 순수 파서. I/O 없음 — fixture로 완전 테스트 가능.
 
-payload 형태는 poller 시절 JSONL payload와 동일 모양(byte-compat)을 유지해
-promote._parse_jsonl_to_records 와 프론트 bucketHogaSeries 가 무변경으로 동작한다.
+payload 형태는 poller 시절 JSONL payload와 키-호환(shape-compat; 키 순서·phase
+키는 다르며 promote는 무영향)을 유지해 promote._parse_jsonl_to_records 와
+프론트 bucketHogaSeries 가 무변경으로 동작한다.
 """
 
 from __future__ import annotations
@@ -73,44 +74,61 @@ def _parse_orderbook(f: list[str], *, date: str) -> list[WsTick]:
     if len(f) < F.ASP_MIN_FIELDS:
         _log.warning("live.ws.asp_short_frame n=%d", len(f))
         return []
-    t_ms = _hhmmss_to_unix_ms(date, f[F.ASP_TIME_HHMMSS])
     code = f[F.ASP_CODE]
-    payload = {
-        "code": code,
-        "t_ms": t_ms,
-        "asks": [
-            {"price": int(f[p]), "qty": int(f[q])}
-            for p, q in zip(F.ASP_ASK_P, F.ASP_ASK_Q, strict=True)
-        ],
-        "bids": [
-            {"price": int(f[p]), "qty": int(f[q])}
-            for p, q in zip(F.ASP_BID_P, F.ASP_BID_Q, strict=True)
-        ],
-        "total_ask_qty": int(f[F.ASP_TOT_ASK_Q]),
-        "total_bid_qty": int(f[F.ASP_TOT_BID_Q]),
-    }
+    try:
+        t_ms = _hhmmss_to_unix_ms(date, f[F.ASP_TIME_HHMMSS])
+        payload = {
+            "code": code,
+            "t_ms": t_ms,
+            "asks": [
+                {"price": int(f[p]), "qty": int(f[q])}
+                for p, q in zip(F.ASP_ASK_P, F.ASP_ASK_Q, strict=True)
+            ],
+            "bids": [
+                {"price": int(f[p]), "qty": int(f[q])}
+                for p, q in zip(F.ASP_BID_P, F.ASP_BID_Q, strict=True)
+            ],
+            "total_ask_qty": int(f[F.ASP_TOT_ASK_Q]),
+            "total_bid_qty": int(f[F.ASP_TOT_BID_Q]),
+        }
+    except ValueError:
+        # 숫자 필드 불량은 프레임 1건 손실로 격리 — recv 루프까지 전파 금지.
+        _log.warning(
+            "live.ws.bad_numeric_field tr=%s head=%s", F.TR_ORDERBOOK, "^".join(f)[:64]
+        )
+        return []
     return [WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.OB, payload=payload)]
 
 
 def _parse_trades(f: list[str], *, cnt: int, date: str) -> list[WsTick]:
+    if len(f) != cnt * F.CNT_FIELDS:
+        # stride 불변식 — 어긋나면 레코드 k가 (k-1)필드씩 시프트되는
+        # silent corruption(종목 오귀속 포함)이므로 프레임 전체를 버린다.
+        _log.warning("live.ws.cnt_stride_mismatch n=%d cnt=%d", len(f), cnt)
+        return []
     ticks: list[WsTick] = []
     for i in range(cnt):
         rec = f[i * F.CNT_FIELDS : (i + 1) * F.CNT_FIELDS]
-        if len(rec) < F.CNT_FIELDS:
-            _log.warning("live.ws.cnt_short_record i=%d n=%d", i, len(rec))
-            break
-        t_ms = _hhmmss_to_unix_ms(date, rec[F.CNT_TIME_HHMMSS])
-        code = rec[F.CNT_CODE]
-        trade = {
-            "t_ms": t_ms,
-            "price": int(rec[F.CNT_PRICE]),
-            "qty": int(rec[F.CNT_QTY]),
-            "side": _SIDE_MAP.get(rec[F.CNT_SIDE], 0),
-            "side_source": "kis_ws",
-        }
+        try:
+            t_ms = _hhmmss_to_unix_ms(date, rec[F.CNT_TIME_HHMMSS])
+            trade = {
+                "t_ms": t_ms,
+                "price": int(rec[F.CNT_PRICE]),
+                "qty": int(rec[F.CNT_QTY]),
+                "side": _SIDE_MAP.get(rec[F.CNT_SIDE], 0),
+                "side_source": "kis_ws",
+            }
+        except ValueError:
+            # 숫자 필드 불량은 레코드 1건 손실로 격리 — recv 루프까지 전파 금지.
+            _log.warning(
+                "live.ws.bad_numeric_field tr=%s head=%s",
+                F.TR_TRADE,
+                "^".join(rec)[:64],
+            )
+            continue
         ticks.append(
             WsTick(
-                code=code,
+                code=rec[F.CNT_CODE],
                 t_ms=t_ms,
                 kind=SnapshotKind.TRADE,
                 payload={"trades": [trade]},
@@ -124,16 +142,23 @@ def _parse_member(f: list[str], *, now_ms: int) -> list[WsTick]:
         _log.warning("live.ws.mbc_short_frame n=%d", len(f))
         return []
     code = f[F.MBC_CODE]
-    payload = {
-        "code": code,
-        "t_ms": now_ms,  # H0STMBC0엔 시간 필드 없음(spec §12) — 수신 시각 사용
-        "sell_top": [
-            {"name": f[n].strip(), "qty": int(f[q])}
-            for n, q in zip(F.MBC_SELL_NAMES, F.MBC_SELL_QTYS, strict=True)
-        ],
-        "buy_top": [
-            {"name": f[n].strip(), "qty": int(f[q])}
-            for n, q in zip(F.MBC_BUY_NAMES, F.MBC_BUY_QTYS, strict=True)
-        ],
-    }
+    try:
+        payload = {
+            "code": code,
+            "t_ms": now_ms,  # H0STMBC0엔 시간 필드 없음(spec §12) — 수신 시각 사용
+            "sell_top": [
+                {"name": f[n].strip(), "qty": int(f[q])}
+                for n, q in zip(F.MBC_SELL_NAMES, F.MBC_SELL_QTYS, strict=True)
+            ],
+            "buy_top": [
+                {"name": f[n].strip(), "qty": int(f[q])}
+                for n, q in zip(F.MBC_BUY_NAMES, F.MBC_BUY_QTYS, strict=True)
+            ],
+        }
+    except ValueError:
+        # 숫자 필드 불량은 프레임 1건 손실로 격리 — recv 루프까지 전파 금지.
+        _log.warning(
+            "live.ws.bad_numeric_field tr=%s head=%s", F.TR_MEMBER, "^".join(f)[:64]
+        )
+        return []
     return [WsTick(code=code, t_ms=now_ms, kind=SnapshotKind.BROKER, payload=payload)]

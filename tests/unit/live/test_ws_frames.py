@@ -4,6 +4,7 @@ from hoga.live.snapshot import SnapshotKind
 from hoga.live.ws_frames import parse_message
 
 
+# 주의: 합성 fixture는 파서와 같은 상수로 생성 — 레이아웃 동어반복. 실검증은 Task 0 녹화 재생.
 def _asp_frame(code: str = "005930", hhmmss: str = "093015") -> str:
     f = ["0"] * 59
     f[0], f[1], f[2] = code, hhmmss, "0"
@@ -22,7 +23,7 @@ def _asp_frame(code: str = "005930", hhmmss: str = "093015") -> str:
 def _cnt_frame(n: int = 1) -> str:
     recs = []
     for k in range(n):
-        f = ["0"] * 45
+        f = ["0"] * 46
         f[0], f[1], f[2] = "005930", "093015", "75000"
         f[12] = str(5 + k)  # 체결거래량
         f[21] = "1" if k % 2 == 0 else "5"  # 매수/매도 교대
@@ -87,3 +88,42 @@ def test_parse_control_pingpong():
     raw = '{"header":{"tr_id":"PINGPONG","datetime":"20260605093000"}}'
     out = parse_message(raw, date="20260605", now_ms=0)
     assert out == []  # 컨트롤은 빈 리스트 — 클라이언트가 raw로 직접 echo 판단
+
+
+def test_parse_bad_numeric_field_no_raise():
+    # OB: 총매도호가잔량이 빈 문자열 → 프레임만 버림, 예외 전파 없음
+    parts = _asp_frame().split("^")
+    parts[43] = ""  # ASP_TOT_ASK_Q
+    assert parse_message("^".join(parts), date="20260605", now_ms=0) == []
+    # TRADE: 2레코드 중 레코드0 현재가 불량 → 해당 레코드만 제외, 레코드1 생존
+    parts = _cnt_frame(2).split("^")
+    parts[2] = "abc"  # 레코드0 CNT_PRICE
+    ticks = parse_message("^".join(parts), date="20260605", now_ms=0)
+    assert len(ticks) == 1
+    assert ticks[0].payload["trades"][0]["qty"] == 6  # 생존한 건 레코드1
+
+
+def test_parse_trade_stride_mismatch_drops_frame():
+    # 45필드×2(어긋난 stride) → 레코드 시프트 corruption 대신 프레임 전체 폐기
+    recs = ["^".join(["0"] * 45) for _ in range(2)]
+    raw = "0|H0STCNT0|002|" + "^".join(recs)
+    assert parse_message(raw, date="20260605", now_ms=0) == []
+
+
+def test_parse_short_frame_returns_empty():
+    # ASP 최소 필드 미달
+    assert parse_message("0|H0STASP0|001|005930^093015", date="20260605", now_ms=0) == []
+
+
+def test_parse_encrypted_frame_returns_empty():
+    # '1' 플래그 = 암호문 — 시세 3종은 평문이어야 함
+    assert parse_message("1|H0STASP0|001|AAAA", date="20260605", now_ms=0) == []
+
+
+def test_parse_malformed_header_returns_empty():
+    # 파이프 3개 미만
+    assert parse_message("0|H0STASP0|001", date="20260605", now_ms=0) == []
+
+
+def test_parse_unknown_tr_returns_empty():
+    assert parse_message("0|H0STOAA0|001|x^y", date="20260605", now_ms=0) == []

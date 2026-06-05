@@ -16,7 +16,7 @@
 - 구독 메시지: `{"header":{"approval_key":K,"custtype":"P","tr_type":"1"|"2","content-type":"utf-8"},"body":{"input":{"tr_id":T,"tr_key":code}}}` (tr_type 1=등록 2=해제)
 - 데이터 프레임: `암호화플래그|tr_id|건수|필드1^필드2^...` (첫 글자 `0`=평문, `1`=암호문 — 시세 3종은 평문). 컨트롤은 JSON(`PINGPONG`은 받은 raw 그대로 echo).
 - H0STASP0(호가): idx 0=종목코드, 1=영업시간(HHMMSS), 매도호가1~10=idx 3~12, 매수호가1~10=idx 13~22, 매도잔량=23~32, 매수잔량=33~42, 총매도호가잔량=43, 총매수호가잔량=44
-- H0STCNT0(체결): 45필드, idx 0=종목코드, 1=체결시간(HHMMSS), 2=현재가, 12=체결거래량, 21=체결구분(`1`=매수, `5`=매도, `3`=장전)
+- H0STCNT0(체결): 46필드, idx 0=종목코드, 1=체결시간(HHMMSS), 2=현재가, 12=체결거래량, 21=체결구분(`1`=매수, `5`=매도, `3`=장전)
 - H0STMBC0(회원사): idx 0=종목코드, 매도회원사명1~5=idx 1~5, 매수회원사명1~5=idx 6~10, 총매도수량1~5=idx 11~15, 총매수수량1~5=idx 16~20. **시간 필드 없음** → t_ms는 수신 시각.
 
 ---
@@ -124,7 +124,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: 장중 실행 (정규장 1회 + 15:35경 1회)**
 
 Run: `KIS_APP_KEY=... KIS_APP_SECRET=... uv run python scripts/record_kis_ws_frames.py 005930 60`
-Expected: `recorded: {'H0STASP0': N, 'H0STCNT0': M, 'H0STMBC0': K}` (N,M > 0; K ≥ 0 — K=0이면 H0STMBC0 push 주기가 60초보다 길다는 뜻이니 300초로 재시도). 15:35 실행 결과(시간외 수신 여부)를 `tests/fixtures/kis_ws/README.md`에 기록.
+Expected: `recorded: {'H0STASP0': N, 'H0STCNT0': M, 'H0STMBC0': K}` (N,M > 0; K ≥ 0 — K=0이면 H0STMBC0 push 주기가 60초보다 길다는 뜻이니 300초로 재시도). 15:35 실행 결과(시간외 수신 여부)를 `tests/fixtures/kis_ws/README.md`에 기록. (녹화본에 cnt≥2 H0STCNT0 프레임이 포함되는지 확인 — 멀티레코드 stride의 유일한 실검증)
 
 - [ ] **Step 3: README 작성**
 
@@ -238,8 +238,8 @@ ASP_TOT_ASK_Q = 43
 ASP_TOT_BID_Q = 44
 ASP_MIN_FIELDS = 45
 
-# --- H0STCNT0 (체결) — 45필드 ---
-CNT_FIELDS = 45
+# --- H0STCNT0 (체결) — 46필드(마지막 idx 45 = 정적VI발동기준가) ---
+CNT_FIELDS = 46
 CNT_CODE = 0
 CNT_TIME_HHMMSS = 1
 CNT_PRICE = 2
@@ -283,7 +283,7 @@ def _asp_frame(code: str = "005930", hhmmss: str = "093015") -> str:
 def _cnt_frame(n: int = 1) -> str:
     recs = []
     for k in range(n):
-        f = ["0"] * 45
+        f = ["0"] * 46
         f[0], f[1], f[2] = "005930", "093015", "75000"
         f[12] = str(5 + k)                  # 체결거래량
         f[21] = "1" if k % 2 == 0 else "5"  # 매수/매도 교대
@@ -493,7 +493,7 @@ def _parse_member(f: list[str], *, now_ms: int) -> list[WsTick]:
 - [ ] **Step 5: 통과 확인 + 커밋**
 
 Run: `uv run pytest tests/unit/live/test_ws_frames.py -v`
-Expected: 6 passed
+Expected: 5 passed
 
 ```bash
 git add hoga/live/ws_fields.py hoga/live/ws_frames.py tests/unit/live/test_ws_frames.py

@@ -17,8 +17,8 @@ ASP_TOT_ASK_Q = 43
 ASP_TOT_BID_Q = 44
 ASP_MIN_FIELDS = 45
 
-# --- H0STCNT0 (체결) — 45필드 ---
-CNT_FIELDS = 45
+# --- H0STCNT0 (체결) — 46필드(마지막 idx 45 = 정적VI발동기준가) ---
+CNT_FIELDS = 46
 CNT_CODE = 0
 CNT_TIME_HHMMSS = 1
 CNT_PRICE = 2
