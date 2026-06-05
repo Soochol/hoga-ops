@@ -13,20 +13,7 @@ from hoga.live.kis_client import (
     KisRateLimitError,
     _TokenBucket,
 )
-
-
-class _FakeTokenProvider:
-    """Minimal sync provider stub for KisClient fetch tests — fetch paths
-    don't exercise issuance, so a constant token is sufficient."""
-
-    def __init__(self, token: str = "MOCK_TOKEN") -> None:
-        self._token = token
-
-    def get_token(self) -> str:
-        return self._token
-
-    def close(self) -> None:
-        pass
+from tests.unit.live._fakes import FakeTokenProvider
 
 
 class _RaisingTokenProvider:
@@ -61,7 +48,7 @@ def _make_client_with_5xx(
     transport = httpx.MockTransport(handler)
     return KisClient(
         credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
-        token_provider=_FakeTokenProvider(),
+        token_provider=FakeTokenProvider(),
         _transport=transport,
         _rate_limit_backoff=_rate_limit_backoff,
     )
@@ -220,7 +207,7 @@ async def test_kis_client_get_goes_through_rate_limiter() -> None:
         })
     client = KisClient(
         credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
-        token_provider=_FakeTokenProvider(),
+        token_provider=FakeTokenProvider(),
         _transport=httpx.MockTransport(handler),
     )
     calls = {"n": 0}
@@ -267,7 +254,7 @@ def _make_attempt_counting_client(
 
     client = KisClient(
         credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
-        token_provider=_FakeTokenProvider(),
+        token_provider=FakeTokenProvider(),
         _transport=httpx.MockTransport(handler),
         _rate_limit_backoff=_rate_limit_backoff,
     )
