@@ -1,6 +1,6 @@
 # 0050 — KIS rate-limit retry는 KisClient._get에 내장한다
 
-**Status:** accepted (2026-05-29)
+**Status:** accepted (2026-05-29); amended (2026-06-05 — KRX→KIS 이전, 토큰 획득 추출)
 
 **Related:**
 - ADR-0038 (Live Capture JSONL append + 17:00 Promotion — KIS REST polling 선택)
@@ -118,3 +118,58 @@ C 가 사고의 근본 원인을 코드 구조로 제거 — A 는 *convention* 
   per-method 화.
 - KIS 의 EGW00201 이 short-window quota 가 아니라 *penalty box* 로 동작하는
   증거 (60s 대기로도 풀리지 않음) — backoff 만으로 부족, circuit breaker 도입.
+
+---
+
+## Amendment (2026-06-05): 토큰 획득 추출 + 동기 보조 경로 예외
+
+**배경.** KRX→KIS 이전(`docs/superpowers/specs/2026-06-05-krx-to-kis-migration-design.md`)으로
+종목 마스터·거래일을 pykrx 에서 KIS 로 옮긴다. 거래일은 동기 cold-path
+(`calendar._trading_days_for`)에서 `chk-holiday` 를 호출해야 하는데,
+`KisClient` 의 `httpx.AsyncClient` 는 생성 시점 이벤트루프에 바인딩되어
+executor 스레드의 `asyncio.run` 에서는 안전하게 쓸 수 없다 — 동기 경로가
+이 async 클라이언트를 재사용할 수 없는 구조적 제약이다.
+
+**결정.**
+
+1. **토큰 획득을 `KisClient` 에서 `KisTokenProvider` 로 추출한다.** 인터페이스는
+   동기 `get_token() -> str` 하나 (메모리→디스크 캐시→동기 발급, 만료 10분 버퍼,
+   1분 쿨다운, chmod 600 을 은폐). 발급은 동기 `httpx.Client` (POST `/oauth2/tokenP`).
+   `lifecycle` 이 프로세스 싱글턴으로 소유 (현 `KisClient` 싱글턴 패턴 그대로),
+   `KisClient` 와 동기 `kis_holidays` 가 **같은 인스턴스를 주입받아 공유**한다 —
+   메모리 캐시·쿨다운이 자동 일관. `KisClient._do_get_once` 의
+   `await self.get_access_token()` 은 `self._token.get_token()` (동기)로 바뀐다.
+
+2. **Invariant-50.1 을 다음으로 대체한다.** "모든 KIS *데이터 fetch* (호가/체결/
+   매매원/캔들/투자자/현재가) 는 `KisClient` 메서드를 통과한다" 는 그대로 유지.
+   여기에 두 가지 **명시적 예외**를 둔다: (a) **토큰 획득**은 `KisTokenProvider`
+   가 단일 소유하고 `KisClient` 조차 이를 경유한다 — 토큰 발급 `httpx.Client`
+   직접 호출은 provider 내부에 격리되므로 위반이 아니다. (b) **`chk-holiday`**
+   는 cold-path 저빈도 동기 보조 호출로, `KisClient` 밖 동기 `httpx.Client`
+   사용을 허용한다. 새 *데이터* 엔드포인트는 여전히 `KisClient` 에 추가한다.
+
+3. **스레드 안전: `KisTokenProvider.get_token()` 은 `threading.Lock` 으로 보호한다.**
+   추출 전 토큰 상태는 `KisClient` 안에서 이벤트루프 스레드만 만져 사실상
+   단일 스레드였으나, 추출 후 provider 는 **세 스레드 컨텍스트에서 동시 호출**된다:
+   이벤트루프 스레드(`KisClient` fetch), executor 스레드(`calendar_route` →
+   `run_in_executor` → `kis_holidays`), FastAPI 동기 라우트 threadpool
+   (`screener.status` → `trading_days_in_range` → `kis_holidays`). `_last_issued_*`
+   의 check-then-set 과 토큰 상태가 진짜 멀티스레드 mutable 이 되므로 락이 필요하다.
+   캐시 히트 경로는 lock-and-return (I/O 없음)이고 발급만 락 안에서 일어나며,
+   휴장일이 cold-path 라 경합은 사소하다. (이는 `calendar._month_cache` 의
+   "락 없는 중복 fetch 허용" 결정과 구별된다 — 그쪽은 동일 값을 반환하는
+   무해한 중복이지만, 토큰은 공유 mutable 상태라 보호 대상이다.)
+
+**기각한 대안 (후보 2).** `chk-holiday` 를 `KisClient.fetch_holidays()` (async)
+메서드로 넣어 토큰·rate-limit·헤더·unwrap 을 재사용하는 안. rate-limit/retry
+재사용은 매력적이지만, 동기 `_trading_days_for` 가 executor 스레드에서
+`asyncio.run(client.fetch_holidays(...))` 을 부르면 **다른 스레드의 새 루프에서
+메인 루프 바인딩 `httpx.AsyncClient` 를 만져 깨진다.** 거래일을 async 로 정렬하는
+대안은 `screener.status` 가 동기 FastAPI 라우트라 라우트 시그니처까지 연쇄
+async 화를 요구하므로 cold-path feed 에 비해 과도하다. 따라서 휴장일은 동기
+경로로 두고, 남는 복제(Bearer 헤더 + `rt_cd` 언팩 몇 줄)는 YAGNI 로 수용한다.
+
+**rate-limit/retry 본문과 무충돌.** 토큰 발급은 amendment 이전에도 `_rate_limiter`
+밖이었고(코드 주석 참조: issuance bypasses the bucket), `chk-holiday` 는 cold-month
+저빈도 순차 호출이라 네트워크 RTT 로 self-throttle 된다. EGW00201 backoff 는
+*데이터 fetch* 전용이라 두 보조 경로와 무관하다 — 본 ADR 의 retry 본문은 불변.

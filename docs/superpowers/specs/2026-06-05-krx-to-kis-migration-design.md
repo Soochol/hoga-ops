@@ -2,7 +2,8 @@
 
 - 날짜: 2026-06-05
 - 상태: 설계 승인 대기
-- 관련 모듈: `hoga/api/symbols.py`, `hoga/api/calendar.py`, `hoga/live/kis_client.py`, `hoga/api/models.py`, 신규 `hoga/api/kis_master.py`, 신규 `hoga/api/kis_holidays.py`
+- 관련 모듈: `hoga/api/symbols.py`, `hoga/api/calendar.py`, `hoga/live/kis_client.py`, `hoga/live/lifecycle.py`, `hoga/api/models.py`, 신규 `hoga/live/kis_token_provider.py`, 신규 `hoga/api/kis_master.py`, 신규 `hoga/api/kis_holidays.py`
+- 관련 결정: ADR-0050 amendment(2026-06-05 — 토큰 획득 추출 + 동기 보조 경로 예외)
 
 ---
 
@@ -45,6 +46,17 @@
 기각한 대안:
 - **종목+거래일을 한 모듈로 묶기** — 종목은 무인증 정적 다운로드, 거래일은 토큰 REST로 성격이 달라 응집도가 나쁘다.
 - **pykrx + KIS 듀얼 토글** — pykrx가 남아 "로그인 제거" 목표와 배치된다.
+
+### 3.1 구현 순서 — 토큰 추출을 격리한다
+
+이 설계는 "받는 함수 속만 교체"라는 최소 침습이 원칙이지만, **`KisTokenProvider` 추출(§5.5)만은 예외**다 — 그것은 `/live`의 라이브 트레이딩 클라이언트(`KisClient`)의 내부를 바꾸므로, KRX→KIS 이전이 본래 건드리지 않는 hot-path다. 이를 "최소 침습" 수사 뒤에 숨기지 않고 **plan의 첫 독립 태스크**로 분리한다:
+
+1. **`KisTokenProvider` 추출** — `KisClient`의 토큰 내부 이전 + 스레드 안전. 라이브 트레이딩 상대로 **단독 랜딩·검증**(기존 fetch 동작 불변 확인). 이 태스크의 테스트 표면은 토큰 provider + `KisClient` fetch로 닫힌다.
+2. **종목 목록 이전**(§4) — 1과 독립. `.mst` 파서.
+3. **거래일 이전**(§5) — 1 위에 얹는다. `kis_holidays`가 provider를 주입받는다.
+4. **KRX 흔적 정리**(§6) — 2·3 완료 후.
+
+이렇게 나누면 §9의 "기존 검색·달력 테스트가 그대로 통과해야 한다"는 주장이 *그것이 중요한 곳*(종목·거래일 교체)에서 참으로 유지되고, 토큰 추출의 회귀 위험은 라이브 클라이언트 검증으로 따로 격리된다.
 
 ---
 
@@ -109,11 +121,10 @@ fetch_symbol_master() -> list[MasterRow]  # 위 둘을 코스피+코스닥에 �
 
 `chk-holiday`를 **동기 httpx**로 호출한다(`KisClient`의 async 경로를 거치지 않는다).
 
-**토큰 공유(핵심 결정)**:
-- KIS 토큰의 조율점은 **디스크 캐시 `kis-token.json`**(`{access_token, expires_at}`)이다. `KisClient._read_cache()`가 이미 순수 동기 읽기다 — 같은 파일·같은 형식을 재사용한다.
-- 동기 경로는 캐시를 읽어 만료 전이면 그 토큰을 쓴다.
-- **만료/부재 시 동기로 발급한다** — 작은 동기 httpx `POST /oauth2/tokenP` → 같은 캐시 파일에 기록. **평일-폴백으로 떨어지지 않는다.** (떨어지면 검색 전용 프로세스는 토큰을 영영 못 얻어 달력이 항상 폴백이 된다.)
-- 1분 쿨다운 상태(`_last_issued_monotonic_ms`)는 `KisClient` 메모리에 있어 동기 발급기가 못 본다. 그러나 동기 경로는 *진짜 만료 시에만* 발급(재시도 폭주 없음)하므로 쿨다운에 걸리지 않는다. 최악은 만료 경계에서 `/live`와 동시 이중 발급 1회 — KIS가 6시간 내 같은 토큰을 돌려주므로 **무해**(lockout 아님)하다.
+**토큰 획득 — `KisTokenProvider` 공유 (그릴링 2026-06-05, ADR-0050 amendment)**:
+- 토큰 디스크 형식을 두 곳이 직접 아는 대신, 토큰 획득을 `KisClient`에서 별도 모듈 **`KisTokenProvider`로 추출**한다(§5.5). `kis_holidays`는 이 provider를 주입받아 `provider.get_token()`(동기)으로 토큰을 얻고, 동기 `httpx.Client`로 `chk-holiday`를 호출한다.
+- `KisClient`도 *같은* provider 인스턴스를 공유하므로 메모리 캐시·1분 쿨다운이 자동 일관 — 별도 동기 발급기가 쿨다운을 못 보는 문제 자체가 없다. (이전 초안의 '이중 발급 benign' 논리는 폐기.)
+- **토큰 발급 실패는 평일-폴백으로 떨어지지 않는다** — provider가 동기 발급을 먼저 시도한다(떨어지면 검색 전용 프로세스는 토큰을 영영 못 얻어 달력이 항상 폴백이 된다).
 
 **응답 처리(방어적 — 호출 횟수를 단정하지 않는다)**:
 - 1차 소스로도 `chk-holiday`가 하루치만 주는지 한 달치를 주는지 단정할 수 없다(범위 파라미터 없음, 예제가 output을 단일/리스트 양쪽으로 coerce, "1일 1회 호출 권장"만 명시).
@@ -129,6 +140,18 @@ fetch_symbol_master() -> list[MasterRow]  # 위 둘을 코스피+코스닥에 �
 ### 5.4 폴백 — KIS 실패 시
 
 기존 폴백을 유지한다: 휴장일 조회가 실패하면 `_all_weekdays_in_month`(평일=거래일)로 달력은 계속 뜨고, 라이브 폴러는 계속 돈다(관대한 기본값). 단 §5.2대로 토큰 발급 실패는 폴백이 아니라 동기 발급으로 먼저 해소를 시도한다.
+
+### 5.5 신규 `hoga/live/kis_token_provider.py` — 토큰 획득 추출 (그릴링 결과)
+
+`KisClient`에 갇혀 있던 토큰 생명주기를 독립 모듈로 빼낸다. 동기/async 두 소비자가 같은 인터페이스를 공유하므로 진짜 seam이다(ADR-0050 amendment).
+
+**인터페이스(seam)**: 동기 `get_token() -> str` 하나. 그 뒤에 숨는 것: 메모리 캐시 → 디스크 캐시(`kis-token.json`) → 동기 발급(`httpx.Client` POST `/oauth2/tokenP`) → 만료 10분 버퍼 → 1분 쿨다운 → chmod 600. 실패는 `KisAuthError`. `app_key`/`secret`/`base_url`도 provider가 보유.
+
+**소유**: `lifecycle`이 프로세스 싱글턴으로 소유(현 `KisClient` 싱글턴 패턴 그대로). `ensure_kis_token_provider(data_dir)`가 토큰 캐시 경로를 결정(현 `lifecycle.py:148`의 역할을 흡수). `KisClient`와 `kis_holidays`가 같은 인스턴스를 주입받는다.
+
+**`KisClient` 내부 변화**: `get_access_token`/`_issue_token`/`_read_cache`/`_write_cache`는 provider로 **이사**(외부 호출자 0 — `_do_get_once:402` 내부 + 토큰 테스트만 확인됨). `_do_get_once`의 `await self.get_access_token()`이 `self._token.get_token()`(동기)으로 바뀐다. `httpx.AsyncClient`는 fetch 전용으로 남는다.
+
+**스레드 안전(필수)**: `get_token()`은 세 스레드 컨텍스트에서 동시 호출된다 — 이벤트루프 스레드(`KisClient` fetch), executor 스레드(`calendar_route`→`run_in_executor`→`kis_holidays`), FastAPI 동기 라우트 threadpool(`screener.status`→`trading_days_in_range`→`kis_holidays`). 따라서 `threading.Lock`으로 보호한다. 캐시 히트 경로는 lock-and-return(I/O 없음)이고 발급만 락 안에서 일어나며, 휴장일이 cold-path라 경합은 사소하다.
 
 ---
 
@@ -162,7 +185,7 @@ fetch_symbol_master() -> list[MasterRow]  # 위 둘을 코스피+코스닥에 �
 ## 8. 의도적으로 건드리지 않는 것
 
 - **거래일 호출자 5개 파일**(`captures`/`scheduler`/`screener`/`poller`) — §5.1 동기 유지로 변경 없음.
-- **월별 캐시 `_month_cache`에 락을 추가하지 않는다** — 동기 유지 하에서는 check-then-populate 경쟁이 *지금과 동일*하다(executor 스레드 + 이벤트루프 스레드, GIL-원자적 dict 연산, 비원자적 check-then-set). 결과는 같은 값을 한 번 더 받아오는 무해한 중복이며, 스레드 모델을 바꾸지 않으므로 **새 위험이 없다**.
+- **월별 캐시 `_month_cache`에 락을 추가하지 않는다** — 동기 유지 하에서는 check-then-populate 경쟁이 *지금과 동일*하다(executor 스레드 + 이벤트루프 스레드, GIL-원자적 dict 연산, 비원자적 check-then-set). 결과는 같은 값을 한 번 더 받아오는 무해한 중복이며, 스레드 모델을 바꾸지 않으므로 **새 위험이 없다**. (대조: `KisTokenProvider`(§5.5)는 공유 mutable 토큰 상태라 `threading.Lock`으로 보호한다 — month-cache의 '무해한 중복'과 달리 토큰 발급은 보호 대상이다.)
 - **검색 로직·캐시 상태머신·달력 셀 상태** — 데이터 출처만 교체.
 
 ---
@@ -171,7 +194,7 @@ fetch_symbol_master() -> list[MasterRow]  # 위 둘을 코스피+코스닥에 �
 
 - **`.mst` 파서**: 실제 파일 조각을 커밋된 fixture로 둔다(직접 만든 가짜 데이터는 byte-offset이 틀려도 통과하는 함정). 보통주·ETF·ETN·ELW를 한 개씩 넣어 **걸러내기와 `security_type` 판정**을 검증. `parse_master(bytes)`는 네트워크 없이 테스트.
 - **휴장일 조회**: 실제 응답을 fixture로 두고 `opnd_yn` 읽기 + single/list 정규화 + `BASS_DT` 전진 루프를 검증. **응답 키 이름을 실제 응답으로 확정.**
-- **토큰 공유**: 만료 전 캐시 재사용 / 만료 시 동기 발급 / 발급 실패가 폴백이 아님을 검증.
+- **`KisTokenProvider`**: 메모리/디스크 캐시 히트 / 만료 시 동기 발급 / 1분 쿨다운 / 발급 실패가 폴백이 아님을 검증. 토큰 테스트는 `KisClient`에서 provider로 **재배치**. `KisClient` fetch·`kis_holidays` 테스트는 **fake provider 주입**으로 토큰 걱정 없이 자기 일만 검증.
 - **회귀**: 기존 검색·캐시·달력 테스트는 데이터 받는 함수만 monkeypatch하므로 **대부분 그대로 통과해야 한다**. 통과하지 않으면 그게 회귀 신호다.
 
 ---
@@ -187,10 +210,12 @@ fetch_symbol_master() -> list[MasterRow]  # 위 둘을 코스피+코스닥에 �
 
 | 파일 | 변경 |
 |---|---|
+| `hoga/live/kis_token_provider.py` | **신규** — 토큰 획득 추출(§5.5). 동기 `get_token()`, `threading.Lock`, 동기 발급 |
 | `hoga/api/kis_master.py` | **신규** — `.mst` 다운로드/파싱(분리), `security_type` 판정 |
-| `hoga/api/kis_holidays.py` | **신규** — 동기 `chk-holiday` 조회 + 토큰 공유 발급 |
+| `hoga/api/kis_holidays.py` | **신규** — 동기 `chk-holiday` 조회, `KisTokenProvider` 주입 |
 | `hoga/api/symbols.py` | 받는 함수 본문·이름 교체, 디스크 스키마 v2 |
 | `hoga/api/calendar.py` | `_trading_days_for` 본문 교체(동기 유지) |
 | `hoga/api/models.py` | `SymbolHit.security_type` 추가 |
-| `hoga/live/kis_client.py` | 토큰 캐시 파일 형식·경로를 동기 경로와 공유(필요 시 동기 토큰 헬퍼 노출) |
+| `hoga/live/kis_client.py` | 토큰 내부(`get_access_token`/`_issue_token`/`_read_cache`/`_write_cache`)를 `KisTokenProvider`로 이전, fetch 전용 async 클라이언트만 보유 |
+| `hoga/live/lifecycle.py` | `KisTokenProvider` 싱글턴 소유 + 토큰 경로 결정(현 `:148`), `KisClient` 생성 시 주입 |
 | `hoga/env.py`, `error_codes.py`, `captures.py`, `frontend/.../upstream-hints.tsx`, `.env.example`, `CLAUDE.md` | KRX 흔적 제거/교체 |
