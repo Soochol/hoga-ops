@@ -5,9 +5,16 @@ so symbol search works without KIS credentials (SPEC §7).
 
 Parsing is BYTE-based: cp949 한글명 is 2 bytes/char, so decoding the whole row
 before slicing misaligns the fixed-width byte offsets. Slice raw bytes, decode
-the pieces. part2 width differs by market: KOSPI 228, KOSDAQ 222. The
-증권그룹구분코드 (part2[0:2]) classifies the row; values were discovered
-empirically (probe), not assumed.
+the pieces.
+
+part2 width differs by market and EXCLUDES the newline: KOSPI 227, KOSDAQ 221.
+The official KIS parsers slice ``row[-228:]`` / ``row[-222:]`` on rows that
+still carry their ``\\n`` (field-spec sums are 227/221) — we strip the newline
+first, so our tail is one byte narrower. Using 228/222 here reads the group
+code one byte early, pulling the last name byte into part2[0]: full-40-byte
+names then yield garbage group codes and are silently dropped (verified against
+the committed real-download fixtures). 증권그룹구분코드 (part2[0:2]) classifies
+the row with the official 2-char codes ('ST'/'EF'/'EN'/...).
 """
 from __future__ import annotations
 
@@ -32,23 +39,25 @@ class KisMasterFetchError(Exception):
 
 
 _MARKETS: dict[str, tuple[str, int]] = {
-    "KOSPI": ("https://new.real.download.dws.co.kr/common/master/kospi_code.mst.zip", 228),
-    "KOSDAQ": ("https://new.real.download.dws.co.kr/common/master/kosdaq_code.mst.zip", 222),
+    # tail = part2 width on a newline-STRIPPED row (official 228/222 minus '\n')
+    "KOSPI": ("https://new.real.download.dws.co.kr/common/master/kospi_code.mst.zip", 227),
+    "KOSDAQ": ("https://new.real.download.dws.co.kr/common/master/kosdaq_code.mst.zip", 221),
 }
 
 
 def _classify(group: str) -> SecurityType | None:
     """증권그룹구분코드 → security_type, or None to drop the row.
 
-    Probe-discovered values (2026-06-05): ' S'=보통주, ' E'=ETF, 'BE'/'NE'=ETN.
-    리츠(' R')/외국주(' F')/펀드(' B')/기타는 SPEC scope(보통주+ETF+ETN) 밖이라
-    제외. ELW is absent from these files entirely.
+    Official 2-char codes (fixture-verified 2026-06-05 at the corrected offset):
+    'ST'=보통주, 'EF'=ETF, 'EN'=ETN. 리츠('RT')/외국주('FS')/예탁증서('DR')/
+    기타('BC','PF','IF','MF')는 SPEC scope(보통주+ETF+ETN) 밖이라 제외.
+    ELW is absent from these files entirely.
     """
-    if group == " S":
+    if group == "ST":
         return "stock"
-    if group == " E":
+    if group == "EF":
         return "etf"
-    if group in ("BE", "NE"):
+    if group == "EN":
         return "etn"
     return None
 
