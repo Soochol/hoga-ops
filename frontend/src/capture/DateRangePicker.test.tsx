@@ -163,7 +163,7 @@ describe('DateRangePicker reason banner', () => {
     });
     await new Promise((r) => setTimeout(r, 50));
     // calendarHints.kis_holiday_fetch_failed contains this Korean phrase
-    expect(screen.getByText(/KIS에서 거래일을 가져오지 못해 휴일 표시가/)).toBeTruthy();
+    expect(screen.getByText(/KIS 거래일 조회 일시 오류/)).toBeTruthy();
   });
 
   it('hides banner when both months have null reason', async () => {

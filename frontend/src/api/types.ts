@@ -153,6 +153,7 @@ export type CaptureErrorCode =
  *  `CaptureFinishedErrorCode` alias below). */
 export type UpstreamCode =
   | 'kis_holiday_fetch_failed'
+  | 'kis_credentials_missing'
   | 'cookie_expired'
   | 'cookie_missing'
   | 'hogaplay_http_error'

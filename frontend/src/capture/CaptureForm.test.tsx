@@ -185,7 +185,7 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
     fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
     fireEvent.click(screen.getByRole('button', { name: /Start/i }));
     await new Promise((r) => setTimeout(r, 60));
-    expect(screen.getByText(/범위 캡처 시작 실패 — KIS 거래일 조회 실패/)).toBeTruthy();
+    expect(screen.getByText(/범위 캡처 시작 실패 — KIS 거래일 조회 일시 오류/)).toBeTruthy();
   });
 
   it('shows generic error when 503 code is unknown', async () => {

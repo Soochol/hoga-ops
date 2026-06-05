@@ -9,7 +9,10 @@ import type { UpstreamCode } from './types';
 /** Empty-state hint shown in SymbolSearch when the Symbol Master is empty. */
 export const symbolSearchHints: Record<UpstreamCode, ReactNode> = {
   kis_holiday_fetch_failed: (
-    <>거래일 조회 오류 — 종목 검색과는 무관합니다. <code>.env</code>의 <code>KIS_APP_KEY</code>/<code>KIS_APP_SECRET</code>을 확인하세요.</>
+    <>KIS 거래일 조회 일시 오류 — 종목 검색과는 무관합니다. 자격증명 문제가 아니니 잠시 후 재시도하세요.</>
+  ),
+  kis_credentials_missing: (
+    <>KIS 자격증명 미설정 — 종목 검색과는 무관합니다. <code>.env</code>에 <code>KIS_APP_KEY</code>/<code>KIS_APP_SECRET</code>을 설정하고 재시도하세요.</>
   ),
   cookie_expired: (
     <>hogaplay 쿠키가 만료되어 종목 목록을 가져올 수 없습니다 — 쿠키를 갱신하세요.</>
@@ -43,7 +46,10 @@ export const symbolSearchHints: Record<UpstreamCode, ReactNode> = {
 /** Banner above the calendar grid (informational; data still renders). */
 export const calendarHints: Record<UpstreamCode, ReactNode> = {
   kis_holiday_fetch_failed: (
-    <>KIS에서 거래일을 가져오지 못해 휴일 표시가 정확하지 않을 수 있습니다 — <code>.env</code>의 <code>KIS_APP_KEY</code>/<code>KIS_APP_SECRET</code>을 확인하세요.</>
+    <>KIS 거래일 조회 일시 오류 — 휴일 표시가 정확하지 않을 수 있습니다. 자격증명 문제가 아니니 잠시 후 새로고침하세요.</>
+  ),
+  kis_credentials_missing: (
+    <>KIS 자격증명 미설정으로 휴일 표시가 정확하지 않을 수 있습니다 — <code>.env</code>에 <code>KIS_APP_KEY</code>/<code>KIS_APP_SECRET</code>을 설정하세요.</>
   ),
   cookie_expired: <>hogaplay 쿠키 만료 — 캡처 가능 여부가 정확하지 않을 수 있습니다.</>,
   cookie_missing: <>hogaplay 쿠키 미설정 — 캡처 가능 여부가 정확하지 않을 수 있습니다.</>,
@@ -62,7 +68,10 @@ export const calendarHints: Record<UpstreamCode, ReactNode> = {
 /** Inline error in the range-capture form when enqueue returns HTTP 503. */
 export const enqueueErrorHints: Record<UpstreamCode, ReactNode> = {
   kis_holiday_fetch_failed: (
-    <>범위 캡처 시작 실패 — KIS 거래일 조회 실패. <code>.env</code>의 <code>KIS_APP_KEY</code>/<code>KIS_APP_SECRET</code>을 확인하고 재시도하세요.</>
+    <>범위 캡처 시작 실패 — KIS 거래일 조회 일시 오류. 자격증명 문제가 아니니 잠시 후 재시도하세요.</>
+  ),
+  kis_credentials_missing: (
+    <>범위 캡처 시작 실패 — KIS 자격증명 미설정. <code>.env</code>에 <code>KIS_APP_KEY</code>/<code>KIS_APP_SECRET</code>을 설정하고 재시도하세요.</>
   ),
   cookie_expired: <>범위 캡처 시작 실패 — hogaplay 쿠키 만료. 쿠키를 갱신하세요.</>,
   cookie_missing: <>범위 캡처 시작 실패 — hogaplay 쿠키 미설정.</>,
@@ -80,7 +89,8 @@ export const enqueueErrorHints: Record<UpstreamCode, ReactNode> = {
 
 /** Per-item failure display from the capture_finished SSE event. */
 export const captureFinishedHints: Record<UpstreamCode, ReactNode> = {
-  kis_holiday_fetch_failed: <>캡처 실패 — KIS 거래일 조회 오류.</>,
+  kis_holiday_fetch_failed: <>캡처 실패 — KIS 거래일 조회 일시 오류. 잠시 후 재시도하세요.</>,
+  kis_credentials_missing: <>캡처 실패 — KIS 자격증명 미설정. <code>.env</code>를 확인하세요.</>,
   cookie_expired: <>캡처 실패 — hogaplay 쿠키 만료. 큐 일시중지됨.</>,
   cookie_missing: <>캡처 실패 — hogaplay 쿠키 미설정.</>,
   hogaplay_http_error: <>캡처 실패 — hogaplay 응답 오류.</>,
@@ -94,7 +104,10 @@ export const captureFinishedHints: Record<UpstreamCode, ReactNode> = {
 /** Settings page → Symbol Master section. Longer-form copy than inline hints. */
 export const symbolMasterSettingsHints: Record<UpstreamCode, ReactNode> = {
   kis_holiday_fetch_failed: (
-    <>거래일 조회 오류 — 종목 검색과는 무관합니다. <code>.env</code>의 <code>KIS_APP_KEY</code>/<code>KIS_APP_SECRET</code>을 확인하세요.</>
+    <>KIS 거래일 조회 일시 오류 — 종목 검색과는 무관합니다. 자격증명 문제가 아니니 잠시 후 재시도하세요.</>
+  ),
+  kis_credentials_missing: (
+    <>KIS 자격증명 미설정 — 종목 검색과는 무관합니다(.mst는 무인증). <code>.env</code>에 <code>KIS_APP_KEY</code>/<code>KIS_APP_SECRET</code>을 설정하면 거래일·실시간 기능이 활성화됩니다.</>
   ),
   cookie_expired: (
     <>hogaplay 쿠키가 만료되어 종목 목록 갱신에 영향이 있을 수 있습니다 — 쿠키를 갱신하세요.</>
