@@ -14,69 +14,24 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Callable, Literal
+from datetime import UTC, datetime
 
 from .buffer import LiveBuffer
 from .kis_client import KIS_KST, KisApiError, KisClient, KisRateLimitError
 from .kis_models import KisBrokers, KisOrderbook, KisTrade
+from .session_gate import market_phase as _market_phase
+from .session_gate import should_run_now as _should_poll_now
 from .snapshot import LiveSnapshot
 from .writer import LiveWriter
 
 _log = logging.getLogger(__name__)
 
+
 def _now_ms() -> int:
     """Module-level for monkeypatch in tests."""
-    return int(datetime.now(timezone.utc).timestamp() * 1000)
-
-
-def _market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "closed"]:
-    """KRX session phase by clock alone (no calendar awareness).
-
-    regular: 09:00-15:30 KST
-    after_hours_closing: 15:30-16:00 KST
-    closed: everything else
-
-    Calendar-aware gating (holidays, weekends) lives in :func:`_should_poll_now`
-    so the phase predicate stays pure and reusable from non-poller contexts.
-    """
-    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
-    h, m = kst.hour, kst.minute
-    if h == 15 and m >= 30:
-        return "after_hours_closing"
-    if 9 <= h < 16:
-        return "regular"
-    return "closed"
-
-
-def _should_poll_now(t_ms: int) -> bool:
-    """Calendar + clock gate: True only when KRX is *probably* trading right now.
-
-    ADR-0064: the trading-day check uses :func:`calendar.is_trading_session_today`
-    (backed by the KRX business-day *calendar*), NOT :func:`calendar.is_trading_day`
-    (backed by daily OHLCV). The OHLCV proxy returns False for a live trading day
-    early in the session — today's bar isn't published yet — and once that False
-    was cached the poller silently halted capture for the whole process. The
-    business-day calendar marks today as a session from the open.
-
-    Weekends are short-circuited by the clock/weekday before any KRX call, so a
-    weekend stays closed even when KRX is unreachable (a None verdict is treated
-    leniently below and would otherwise poll).
-
-    Lenient on missing calendar data — when ``is_trading_session_today`` returns
-    None (KRX creds missing, pykrx flaked), defer to the clock alone. Losing live
-    capture for a transient KRX outage is a worse failure than the noise from a
-    brief burst of empty fetches on a stale day.
-    """
-    if _market_phase(t_ms) == "closed":
-        return False
-    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
-    if kst.weekday() >= 5:  # Saturday/Sunday — never a KRX session
-        return False
-    from hoga.api.calendar import is_trading_session_today
-    verdict = is_trading_session_today(kst.strftime("%Y%m%d"))
-    return verdict is not False
+    return int(datetime.now(UTC).timestamp() * 1000)
 
 
 @dataclass(frozen=True)
