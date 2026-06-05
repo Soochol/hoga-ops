@@ -11,12 +11,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path as PathParam
 
+from hoga.api.params import CODE_PATTERN
+
 log = logging.getLogger(__name__)
 
-# 6-digit numeric KRX code — see models.WatchlistEntry.code, which uses the
-# same pattern on the body/response shape. Centralised here so the four
-# routes that take {code} in the path don't each re-implement isdigit/len.
-CodePathParam = Annotated[str, PathParam(pattern=r"^\d{6}$")]
+# KRX code — params.CODE_PATTERN is the single source of the ticker grammar
+# (6-char alphanumeric + 7-char Q-prefixed ETN). models.WatchlistEntry.code
+# uses the same pattern on the body/response shape.
+CodePathParam = Annotated[str, PathParam(pattern=CODE_PATTERN)]
 
 from hoga.api import symbols
 from hoga.api.models import (
@@ -154,9 +156,15 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "code": "not_in_watchlist",
                 "message": f"Code {code} is not in the Watchlist.",
             })
-        return await catchup_one_entry(
-            match, data_dir=data_dir, now=now_kst(),
-        )
+        try:
+            return await catchup_one_entry(
+                match, data_dir=data_dir, now=now_kst(),
+            )
+        except TradingDayUnavailableError as e:
+            raise HTTPException(status_code=503, detail={
+                "code": e.code,
+                "message": "Trading-day list unavailable (KIS).",
+            }) from e
 
     @router.put("/order", response_model=WatchlistResponse)
     async def reorder_watchlist(req: WatchlistReorderRequest) -> WatchlistResponse:

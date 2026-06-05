@@ -165,9 +165,17 @@ def test_watchlist_add_request_validates_code():
     from hoga.api.models import WatchlistAddRequest
     import pytest
     from pydantic import ValidationError
+    # params.CODE_PATTERN grammar: 6-char alphanumeric (KRX's newer ticker
+    # scheme — 0001A0 is a real KOSDAQ stock, 0000H0 a real ETF) plus
+    # 7-char Q-prefixed ETN codes (Q500093).
     WatchlistAddRequest(code="003490")
-    with pytest.raises(ValidationError):
-        WatchlistAddRequest(code="ABCDEF")
+    WatchlistAddRequest(code="0001A0")
+    WatchlistAddRequest(code="Q500093")
+    # NOTE: "Q12345" is VALID — it is 6 alphanumeric chars, indistinguishable
+    # from the newer KRX ticker space; only 7-char codes require the Q prefix.
+    for bad in ("abc123", "12345", "1234567", "Q5000931", ""):
+        with pytest.raises(ValidationError):
+            WatchlistAddRequest(code=bad)
 
 
 def test_manual_catchup_all_entry_result_fields():

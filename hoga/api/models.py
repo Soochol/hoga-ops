@@ -9,6 +9,7 @@ from typing import Annotated, Literal, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from hoga.api.error_codes import UpstreamCode
+from hoga.api.params import CODE_PATTERN
 from hoga.api.sources import SourceName
 from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
@@ -312,7 +313,7 @@ class QueueManifest(BaseModel):
 
 
 class EnqueueRequest(BaseModel):
-    code: str = Field(pattern=r"^\d{6}$")
+    code: str = Field(pattern=CODE_PATTERN)
     start_date: str | None = Field(default=None, pattern=r"^\d{8}$")
     end_date: str | None = Field(default=None, pattern=r"^\d{8}$")
     dates: list[str] | None = None       # alternative to start/end
@@ -546,7 +547,7 @@ class BrokerSeriesResponse(BaseModel):
 class WatchlistEntry(BaseModel):
     """One Code in the Watchlist. See CONTEXT.md WatchlistEntry."""
 
-    code: str = Field(pattern=r"^\d{6}$")
+    code: str = Field(pattern=CODE_PATTERN)
     name: str
     registered_at_kst_date: str = Field(pattern=r"^\d{8}$")
     last_success_date: str | None = Field(default=None, pattern=r"^\d{8}$")
@@ -558,16 +559,16 @@ class WatchlistResponse(BaseModel):
 
 
 class WatchlistAddRequest(BaseModel):
-    code: str = Field(pattern=r"^\d{6}$")
+    code: str = Field(pattern=CODE_PATTERN)
 
 
 class WatchlistReorderRequest(BaseModel):
-    """New display order for the Watchlist. Each element is a 6-digit KRX
-    code. Tolerant server-side: unknown codes are ignored and unmentioned
-    entries are appended (see watchlist.reorder_entries)."""
+    """New display order for the Watchlist. Each element is a KRX code
+    (params.CODE_PATTERN). Tolerant server-side: unknown codes are ignored and
+    unmentioned entries are appended (see watchlist.reorder_entries)."""
 
-    codes: list[Annotated[str, Field(pattern=r"^\d{6}$")]] = Field(
-        description="Desired display order; 6-digit KRX codes.",
+    codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]] = Field(
+        description="Desired display order; KRX codes.",
     )
 
 
@@ -595,7 +596,7 @@ class ManualCatchupAllEntryResult(BaseModel):
     the panel branch on known failure modes (e.g.
     ``kis_holiday_fetch_failed``) without parsing exception strings.
     """
-    code: str = Field(pattern=r"^\d{6}$")
+    code: str = Field(pattern=CODE_PATTERN)
     name: str
     enqueued_count: int
     deduped_count: int
@@ -798,7 +799,7 @@ class ScanRequest(BaseModel):
     limit: int = Field(1000, ge=1, le=2000)
 
 class ScreenerRow(BaseModel):                          # 평면형 — 조건 배지 없음
-    code: str = Field(pattern=r"^\d{6}$")
+    code: str = Field(pattern=CODE_PATTERN)
     name: str
     market: Literal["KOSPI", "KOSDAQ"]
     price: int

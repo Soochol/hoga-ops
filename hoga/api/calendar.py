@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import calendar as stdlib_calendar
 import datetime as dt
+import logging
 import time
 from pathlib import Path
 
@@ -16,12 +17,14 @@ from fastapi import APIRouter, Query
 from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import CalendarCell, CalendarResponse
+from hoga.api.params import CODE_PATTERN
 # Single Clock seam: KST + now_kst + is_today_too_early all live on
 # orchestrator.py per Refactor 3. The today_locked overlay below reuses
 # the same predicate that captures.py's enqueue guard uses — keeps the
 # 17-KST cutoff in one place.
 from hoga.collector.orchestrator import is_today_too_early, now_kst as _now_kst
 
+log = logging.getLogger(__name__)
 
 # Module-level cache: (year, month) → set of YYYYMMDD trading-day strings.
 # KRX trading days for past months are stable (holidays don't reschedule retro-
@@ -29,6 +32,13 @@ from hoga.collector.orchestrator import is_today_too_early, now_kst as _now_kst
 # month we accept up to 24h staleness — a new holiday landing mid-month is
 # rare enough that bouncing the server fixes it.
 _month_cache: dict[tuple[int, int], set[str]] = {}
+
+# Negative cache: (year, month) → monotonic time of the last FAILED fetch.
+# Without it, the live poller's calendar gate re-ran the full blocking fetch
+# every ~20s cycle for the whole session during a chk-holiday outage. Within
+# the TTL we return None (weekday fallback) instantly instead of re-fetching.
+_failure_cache: dict[tuple[int, int], float] = {}
+_FAILURE_TTL_SECONDS = 60.0
 
 _last_failure_reason: UpstreamCode | None = None
 
@@ -50,7 +60,9 @@ def _trading_days_for(year: int, month: int) -> set[str] | None:
     """Return YYYYMMDD strings for trading days in (year, month) via KIS
     chk-holiday (opnd_yn). Returns None when the fetch fails (creds missing,
     network, rt_cd) — most recent reason via :func:`last_failure_reason`.
-    Cached results from earlier successful fetches stay valid.
+    Cached results from earlier successful fetches stay valid; failures are
+    negative-cached for ``_FAILURE_TTL_SECONDS`` so hot callers (poller gate)
+    don't re-run the blocking fetch every cycle during an outage.
     """
     global _last_failure_reason  # noqa: PLW0603
 
@@ -59,14 +71,28 @@ def _trading_days_for(year: int, month: int) -> set[str] | None:
     if cached is not None:
         return cached
 
-    try:
-        from hoga.api.kis_holidays import fetch_month_trading_days
+    failed_at = _failure_cache.get(key)
+    if failed_at is not None and (time.monotonic() - failed_at) < _FAILURE_TTL_SECONDS:
+        return None  # recent failure — keep the fallback, don't re-fetch yet
 
+    # Late import (per call) keeps the documented monkeypatch seam: tests patch
+    # hoga.api.kis_holidays.fetch_month_trading_days as a module attribute.
+    from hoga.api.kis_holidays import KisCredentialsMissing, fetch_month_trading_days
+
+    try:
         result = fetch_month_trading_days(year, month)
-    except Exception:  # noqa: BLE001 — KisHolidayFetchError or worse
-        _last_failure_reason = UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+    except Exception as e:  # noqa: BLE001 — KisHolidayFetchError or worse
+        _last_failure_reason = (
+            UpstreamCode.KIS_CREDENTIALS_MISSING
+            if isinstance(e, KisCredentialsMissing)
+            else UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+        )
+        _failure_cache[key] = time.monotonic()
+        # The cause never reached operators before (no logger here) — keep it.
+        log.warning("calendar: KIS trading-day fetch failed for %04d-%02d: %s", year, month, e)
         return None
     _month_cache[key] = result
+    _failure_cache.pop(key, None)
     _last_failure_reason = None
     return result
 
@@ -125,6 +151,7 @@ def reset_cache_for_tests() -> None:
     """Test helper — clears the trading-day cache between tests."""
     global _last_failure_reason  # noqa: PLW0603
     _month_cache.clear()
+    _failure_cache.clear()
     _last_failure_reason = None
 
 
@@ -211,7 +238,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
     router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 
     @router.get("/calendar")
-    async def calendar_route(code: str = Query(..., pattern=r"^\d{6}$"),
+    async def calendar_route(code: str = Query(..., pattern=CODE_PATTERN),
                               year: int = Query(..., ge=2000, le=2100),
                               month: int = Query(..., ge=1, le=12)) -> CalendarResponse:
         # Offload the entire build to a threadpool so the cold-month KIS
