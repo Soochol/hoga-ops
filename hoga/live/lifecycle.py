@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from .buffer import LiveBuffer
 from .kis_client import KisClient, KisCredentials
+from .kis_token_provider import KisTokenProvider
 from .promote import promote_today
 
 _log = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ class _State:
 _state = _State()
 _buffer = LiveBuffer()
 _kis_client: KisClient | None = None
+_kis_token_provider: KisTokenProvider | None = None
 
 # ADR-0043 / design-review B2 — in-memory dict of code → last successful
 # Today Promotion epoch_ms. Populated by promote_today via
@@ -107,23 +109,34 @@ def set_kis_client(client: KisClient | None) -> None:
     _kis_client = client
 
 
-def ensure_kis_client(token_cache_path: Path, creds: KisCredentials) -> KisClient:
+def ensure_kis_token_provider(
+    token_cache_path: Path, creds: KisCredentials
+) -> KisTokenProvider:
+    """Return the process-wide KisTokenProvider singleton, creating it once.
+
+    Token lifecycle (cache + 1/min cooldown) must be shared by the async fetch
+    path (KisClient) and the sync holiday path (Phase 3), so there is exactly
+    ONE provider per process. The token cache path is decided here — the single
+    source that downstream consumers inherit.
+    """
+    global _kis_token_provider
+    if _kis_token_provider is None:
+        _kis_token_provider = KisTokenProvider(creds, token_cache_path)
+    return _kis_token_provider
+
+
+def ensure_kis_client(creds: KisCredentials, provider: KisTokenProvider) -> KisClient:
     """Return the process-wide KisClient singleton, creating it once.
 
     The KIS rate-limit invariant ("one app key = one 15/s token bucket")
-    requires exactly ONE KisClient per process. This client is a PROCESS
-    singleton, decoupled from poller start/stop: ``start_live_poller`` and the
-    screener's EOD update both obtain it here, so they share one token bucket
-    even when the poller has been stopped. It is closed only at process
-    shutdown via ``aclose_kis_client`` — a poller stop must NOT close it.
-
-    Returns the existing client if already set; otherwise constructs one from
-    ``creds`` + ``token_cache_path``, stores it in the module global, and
-    returns it.
+    requires exactly ONE KisClient per process, decoupled from poller
+    start/stop. The injected ``provider`` supplies tokens; the client owns only
+    the fetch AsyncClient + rate bucket. Closed at process shutdown via
+    ``aclose_kis_client`` — a poller stop must NOT close it.
     """
     global _kis_client
     if _kis_client is None:
-        _kis_client = KisClient(credentials=creds, token_cache_path=token_cache_path)
+        _kis_client = KisClient(credentials=creds, token_provider=provider)
     return _kis_client
 
 
@@ -145,23 +158,27 @@ def ensure_kis_client_from_env(data_dir: Path) -> KisClient | None:
     if not app_key or not app_secret:
         return None
     creds = KisCredentials(app_key=app_key, app_secret=app_secret, env="real")
-    return ensure_kis_client(data_dir / ".local" / "kis-token.json", creds)
+    provider = ensure_kis_token_provider(data_dir / ".local" / "kis-token.json", creds)
+    return ensure_kis_client(creds, provider)
 
 
 async def aclose_kis_client() -> None:
-    """Close and drop the KisClient singleton — for PROCESS shutdown only.
-
-    A poller stop must not call this (the singleton survives across poller
-    start/stop). Wire this into the app's lifespan ``finally`` so the httpx
-    client is closed cleanly on process shutdown.
+    """Close and drop the KisClient + KisTokenProvider singletons — PROCESS
+    shutdown only. A poller stop must not call this.
     """
-    global _kis_client
+    global _kis_client, _kis_token_provider
     if _kis_client is not None:
         try:
             await _kis_client.aclose()
         except Exception:  # noqa: BLE001
             pass
         _kis_client = None
+    if _kis_token_provider is not None:
+        try:
+            _kis_token_provider.close()
+        except Exception:  # noqa: BLE001
+            pass
+        _kis_token_provider = None
 
 
 def _now_ms() -> int:
@@ -192,12 +209,13 @@ def _read_poller_attr(name: str) -> int | None:
 
 def reset_for_tests() -> None:
     """Test-only hook. Resets module state without raising."""
-    global _state, _buffer, _kis_client
+    global _state, _buffer, _kis_client, _kis_token_provider
     if _state.poller_task is not None and not _state.poller_task.done():
         _state.poller_task.cancel()
     _state = _State()
     _buffer = LiveBuffer()
     _kis_client = None
+    _kis_token_provider = None
     _today_promote_last_ms.clear()
 
 
