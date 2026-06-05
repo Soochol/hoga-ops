@@ -320,6 +320,132 @@ describe('LiveChartRoot', () => {
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 405 });
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(2);
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Cold-load reveal cover (/diagnose 2026-06-05).
+  //
+  // Bug: on a cold load the hoga panes resolve ~2.5s before the candles and
+  // establish lightweight-charts' default ~60-bar fit on the shared timeScale;
+  // when the candles land the initial-view effect re-applies the 300-bar window,
+  // but lwc paints the visible-WIDTH change one frame late, so the candles flash
+  // in zoomed to ~60 bars then zoom out to ~300 (the "drawn twice" feeling).
+  // Fix: keep an opaque cover over the chart from the (code, timeframe) switch
+  // until two rAFs after the viewport is applied, then fade it out.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Run N animation frames, flushing React after each so a setState inside a
+  // nested rAF is committed to the DOM before we assert.
+  async function flushFrames(n: number) {
+    for (let i = 0; i < n; i++) {
+      await act(async () => {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      });
+    }
+  }
+
+  it('mounts an opaque reveal cover before the viewport settles', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const cover = screen.getByTestId('chart-reveal-cover');
+    // Synchronously after mount the reveal rAFs have NOT fired yet → opaque.
+    expect(cover.style.opacity).toBe('1');
+  });
+
+  it('fades the cover out (opacity 0) two rAFs after the initial viewport is applied', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
+  });
+
+  it('keeps the cover opaque while past candles are still loading (no candles yet)', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(0)}
+        clampEngaged={false}
+        isPastCandlesLoading={true}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    // Candles still loading → the reveal must wait, cover stays opaque so the
+    // user never sees the candle pane paint at the wrong zoom.
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
+  });
+
+  it('reveals the empty chart once the candle fetch settles with no candles', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(0)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    // No candles but loading settled → reveal so the cover doesn't linger over
+    // an empty (but legitimately data-less) chart.
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
+  });
+
+  it('reveals when the load settles with a null bundle (cover must not wedge opaque)', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={null}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    // Null bundle + settled fetch → no data is pending, so reveal rather than
+    // leave the cover stuck over a chartless surface.
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
+  });
+
+  it('keeps the cover opaque while a null-bundle load is still in flight', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={null}
+        clampEngaged={false}
+        isPastCandlesLoading={true}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    // Still loading → hold the cover so the candles can't appear at the wrong zoom.
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
+  });
 });
 
 // ---------------------------------------------------------------------------
