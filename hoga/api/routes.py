@@ -147,11 +147,29 @@ def build_router(engine: QueryEngine) -> APIRouter:
                 validate_bucket_ms(bucket_ms)
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=str(e)) from e
-            cutoff_unix = t + bucket_ms - 1
+            # The bucket representative is the last *continuous-trading* book in
+            # [t, t+bucket_ms), EXCLUDING the closing-auction 3-level book — the
+            # same snapshot the 호가비·총잔량 indicator labels at t
+            # (query_bucketed_ratio, ADR-0062). Without the structural exclusion a
+            # straddle bucket (e.g. 3m [15:18,15:21)) would show the 15:20+ auction
+            # book here while the indicator shows the last pre-auction book.
+            try:
+                session_close_ms = engine.get_meta(date, code, source).get(
+                    "regular_session_close_ms"
+                )
+            except (FileNotFoundError, StockDateNotFound):
+                session_close_ms = None
+            snap = snapshots_tbl.query_bucket_representative(
+                engine.conn,
+                path=path,
+                lo_native=_cursor_to_native(date, t),
+                hi_native=_cursor_to_native(date, t + bucket_ms - 1),
+                session_close_ms=session_close_ms,
+            )
         else:
-            cutoff_unix = t
-        raw_t = _cursor_to_native(date, cutoff_unix)
-        snap = snapshots_tbl.query_at(engine.conn, path=path, t_ms=raw_t)
+            snap = snapshots_tbl.query_at(
+                engine.conn, path=path, t_ms=_cursor_to_native(date, t)
+            )
         if snap is None:
             first_ts = snapshots_tbl.query_first_ts(engine.conn, path=path)
             available_from = (

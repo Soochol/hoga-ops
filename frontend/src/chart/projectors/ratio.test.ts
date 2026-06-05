@@ -63,7 +63,10 @@ describe('projectRatio', () => {
     const first = masked[0] as { time: number; value: number };
     expect(first.time).toBe(0);
     expect(first.value).toBeCloseTo(1.0, 5);
-    expect((first as any).topLineColor).toBeUndefined(); // default style
+    // The last pre-auction point's OUTGOING connector is transparent so the 호가비
+    // line does not slope into the auction window (ADR-0029 connector-gap fix);
+    // its value is still shown via the incoming segment from the prior point.
+    expect((first as any).topLineColor).toBe('rgba(0,0,0,0)');
 
     // In-auction entries: value present but rendered invisible via colors.
     const hidden1 = masked[1] as any;
@@ -73,6 +76,30 @@ describe('projectRatio', () => {
     expect(hidden1.topLineColor).toBe('rgba(0,0,0,0)');
     expect(hidden1.bottomLineColor).toBe('rgba(0,0,0,0)');
     expect(hidden2.topLineColor).toBe('rgba(0,0,0,0)');
+  });
+
+  it('breaks the connector from the last pre-auction point into the masked run', () => {
+    // ADR-0029 gap (same as quoteTotals): the last visible pre-auction point's
+    // OUTGOING segment must be transparent so the 호가비 baseline does not slope
+    // from the last continuous bucket into the auction window.
+    const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
+    const bundle: any = {
+      quote_ratio: {
+        points: [
+          { t: auctionStartMs - 60_000, bid_total: 100, ask_total: 200 },  // last continuous → connector broken
+          { t: auctionStartMs + 60_000, bid_total: 100, ask_total: 1000 }, // auction (masked)
+        ],
+      },
+    };
+    const masked = projectRatio(bundle, axis, { ...baseCtx, auctionWindowMask: true }) as any[];
+    expect(masked).toHaveLength(2);
+    // last pre-auction point: value kept, outgoing connector transparent.
+    expect(masked[0].value).toBeCloseTo(1.0, 5);
+    expect(masked[0].topLineColor).toBe('rgba(0,0,0,0)');
+    expect(masked[0].bottomFillColor2).toBe('rgba(0,0,0,0)');
+    // auction point: masked.
+    expect(masked[1].value).toBe(0);
+    expect(masked[1].topLineColor).toBe('rgba(0,0,0,0)');
   });
 
   it('keeps auction-window points when auctionWindowMask=false', () => {
@@ -88,6 +115,23 @@ describe('projectRatio', () => {
     expect(unmasked).toHaveLength(1);
     const p = unmasked[0] as { value: number };
     expect(p.value).not.toBe(0);
+  });
+
+  it('renders a fully-auction (0,0) bucket as flat 0 via the degenerate-book contract (mask off)', () => {
+    // bucketHogaSeries / query_bucketed_ratio emit (0,0) totals for an excluded
+    // fully-auction bucket (ADR-0062). quoteImbalance returns 0 for a degenerate
+    // (≤0) book (util/imbalance.ts), so it renders flat at 0 even with the mask
+    // OFF (the diagnostic view) — no projector-level guard needed. This pins the
+    // composed behavior; the degenerate contract itself is pinned in imbalance.test.ts.
+    const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
+    const bundle: any = {
+      quote_ratio: {
+        points: [{ t: auctionStartMs + 60_000, bid_total: 0, ask_total: 0 }],
+      },
+    };
+    const data = projectRatio(bundle, axis, baseCtx) as { time: number; value: number }[];
+    expect(data).toHaveLength(1);
+    expect(data[0].value).toBe(0);
   });
 
   it('masks outlier points to 0 when outlierFilterEnabled=true and label >= threshold', () => {
