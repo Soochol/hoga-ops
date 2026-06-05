@@ -640,6 +640,7 @@ async def test_refresh_concurrent_dedupe(tmp_path, monkeypatch):
 def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from hoga.api.app import create_app
+    from hoga.api import symbols
 
     symbols_module.reset_state_for_tests()
     # Isolate disk path so we don't read the real machine-global file.
@@ -652,6 +653,12 @@ def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     data_dir.mkdir(exist_ok=True)
     monkeypatch.setenv("HOGA_DATA_DIR", str(data_dir))
+    # §4.4: suppress background auto-fetch so the status stays at "unavailable"
+    # for the duration of this endpoint-format test. The auto-fetch behaviour
+    # itself is covered by test_boot_autofetch_fires_when_cache_unavailable.
+    async def _noop_refresh(**_kwargs):
+        pass
+    monkeypatch.setattr(symbols, "refresh", _noop_refresh)
 
     app = create_app(data_dir)
     with TestClient(app) as client:
@@ -663,6 +670,107 @@ def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
     assert body["status"] == "unavailable"
     assert body["fetched_at_ms"] is None
     assert body["reason"] == "symbol_master_not_initialized"
+
+
+# ---------------------------------------------------------------------------
+# T4 §4.4 — boot auto-fetch on empty cache (background, non-blocking)
+# ---------------------------------------------------------------------------
+
+
+def test_boot_autofetch_fires_when_cache_unavailable(tmp_path, monkeypatch):
+    """§4.4: when disk file is absent (status=unavailable), lifespan must
+    schedule refresh() as a background task — not block startup on it."""
+    from fastapi.testclient import TestClient
+    from hoga.api.app import create_app
+    from hoga.api import symbols
+
+    symbols_module.reset_state_for_tests()
+
+    # Point at a nonexistent disk file → load_disk_state leaves status=unavailable.
+    monkeypatch.setattr(
+        "hoga.api.app.resolve_symbol_master_path",
+        lambda: tmp_path / "symbol-master.json",
+    )
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOGA_DATA_DIR", str(data_dir))
+
+    # Patch refresh with a *sync* recorder that returns a real coroutine so the
+    # flag is set when create_task() evaluates its argument — synchronously,
+    # before TestClient.__enter__ returns — not when the task body runs.
+    called = {"v": False, "path": None}
+    async def _noop():
+        return None
+    def _record(**kwargs):
+        called["v"] = True
+        called["path"] = kwargs.get("path")
+        return _noop()
+    monkeypatch.setattr(symbols, "refresh", _record)
+
+    app = create_app(data_dir)
+    with TestClient(app):
+        # Startup must complete (no blocking await on the task).
+        assert called["v"], "refresh must be scheduled when cache is unavailable"
+
+
+def test_boot_autofetch_skipped_when_cache_fresh(tmp_path, monkeypatch):
+    """§4.4: when a valid disk file loads (status=fresh), refresh must NOT be
+    scheduled — no redundant network call on a warm boot."""
+    from fastapi.testclient import TestClient
+    from hoga.api.app import create_app
+    from hoga.api import symbols
+    import json
+
+    symbols_module.reset_state_for_tests()
+
+    # Write a valid v2 disk file so load_disk_state sets status=fresh.
+    sm_path = tmp_path / "symbol-master.json"
+    sm_path.write_text(
+        json.dumps({
+            "schema_version": 2,
+            "fetched_at_ms": 1747900000000,
+            "source": "kis_mst",
+            "entries": [{"code": "005930", "name": "삼성전자", "market": "KOSPI"}],
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "hoga.api.app.resolve_symbol_master_path",
+        lambda: sm_path,
+    )
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOGA_DATA_DIR", str(data_dir))
+
+    called = {"v": False}
+    async def _noop():
+        return None
+    def _record(**kwargs):
+        called["v"] = True
+        return _noop()
+    monkeypatch.setattr(symbols, "refresh", _record)
+
+    app = create_app(data_dir)
+    with TestClient(app):
+        assert not called["v"], "refresh must NOT be scheduled when cache is already fresh"
+
+
+def test_current_status_reflects_state():
+    """current_status() returns the current _state.status string."""
+    from hoga.api.error_codes import UpstreamCode
+
+    symbols_module.reset_state_for_tests()
+    # After reset, state is unavailable.
+    assert symbols_module.current_status() == "unavailable"
+
+    # Manually drive state to fresh via _state attribute.
+    symbols_module._state = symbols_module.SymbolCacheState.fresh()
+    assert symbols_module.current_status() == "fresh"
+
+    symbols_module._state = symbols_module.SymbolCacheState.stale(reason=UpstreamCode.KIS_MASTER_FETCH_FAILED)
+    assert symbols_module.current_status() == "stale"
+
+    symbols_module.reset_state_for_tests()  # restore
 
 
 # ---------------------------------------------------------------------------

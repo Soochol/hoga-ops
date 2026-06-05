@@ -127,6 +127,16 @@ def create_app(data_dir: Path) -> FastAPI:
         _symbols_module.load_disk_state(
             path=resolve_symbol_master_path(), data_dir=data_dir
         )
+        # §4.4: .mst is fast + no-auth, so an empty/old cache auto-refreshes in
+        # the background (does NOT block startup; load_disk_state already ran).
+        # Routed through refresh()/coordinator → single-flight, so a concurrent
+        # manual click won't double-download.
+        if _symbols_module.current_status() == "unavailable":
+            asyncio.create_task(
+                _symbols_module.refresh(
+                    path=resolve_symbol_master_path(), data_dir=data_dir
+                )
+            )
         try:
             yield
         finally:

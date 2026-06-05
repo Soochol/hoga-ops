@@ -385,6 +385,11 @@ def load_disk_state(*, path: Path, data_dir: Path) -> None:
     _state = SymbolCacheState.fresh()
 
 
+def current_status() -> str:
+    """Boot helper — current cache status without building a full response."""
+    return _state.status
+
+
 async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
     """Return the in-memory Symbol Master.
 
