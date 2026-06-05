@@ -2,7 +2,7 @@
 
 A LiveSnapshot is the unit of measurement Live Capture writes per
 (Code, t_ms) tick — one entry in the JSONL feed of the form
-`{t_ms, kind, payload}` where kind ∈ {"ob", "trade", "broker"}.
+`{t_ms, kind, payload}` where kind ∈ {"ob", "trade", "broker", "fill"}.
 
 Wire-model models live in hoga/live/kis_models.py; LiveSnapshot is the
 internal write-path representation only.
@@ -37,6 +37,7 @@ class LiveSnapshot:
     - OB: {"code": str, "t_ms": int, "asks": [...], "bids": [...], ...}
     - TRADE: {"trades": [{"t_ms", "price", "qty", "side", "side_source"}, ...]}
     - BROKER: {"code": str, "t_ms": int, "buy_top": [...], "sell_top": [...]}
+    - FILL: {"buy_qty": int, "sell_qty": int, "phase": str}
     """
 
     t_ms: int
