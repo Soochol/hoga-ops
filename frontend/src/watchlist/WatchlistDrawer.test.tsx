@@ -46,7 +46,6 @@ describe('WatchlistDrawer', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    // folder headers render as "▾ 스윙" / "▾ 미분류" (collapse glyph), so match loosely
     expect(screen.getByText(/스윙/)).toBeInTheDocument();
     expect(screen.getByText(/미분류/)).toBeInTheDocument();
     expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
@@ -145,6 +144,45 @@ describe('WatchlistDrawer', () => {
     // 생성 후 다이얼로그는 닫힌다
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: '그룹 추가하기' })).toBeNull());
+  });
+
+  it('그룹 헤더 ⋯ → 그룹 이름 변경 renames via the dialog', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const renameSpy = vi.spyOn(watchlistApi, 'renameFolder').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /그룹 이름 변경/ }));
+    const input = await screen.findByPlaceholderText('그룹 이름 입력');
+    expect((input as HTMLInputElement).value).toBe('스윙');   // 현재 이름이 미리 채워진다
+    fireEvent.change(input, { target: { value: '단타' } });
+    fireEvent.click(screen.getByRole('button', { name: '변경' }));
+    await waitFor(() => expect(renameSpy).toHaveBeenCalledWith('f_0000000a', '단타'));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: '그룹 이름 변경' })).toBeNull());
+  });
+
+  it('그룹 헤더 ⋯ → 그룹 삭제 deletes the folder', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const deleteSpy = vi.spyOn(watchlistApi, 'deleteFolder').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /그룹 삭제/ }));
+    await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith('f_0000000a'));
+  });
+
+  it('미분류 헤더에는 ⋯ 메뉴가 없고 접기 토글만 있다', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
+    expect(screen.queryByLabelText('미분류 그룹 메뉴')).toBeNull();
+    // chevron(접기)으로 접으면 행이 사라진다
+    fireEvent.click(screen.getByLabelText('미분류 접기'));
+    expect(screen.queryByText('SK하이닉스')).toBeNull();
   });
 
   it('그룹 추가하기 disables 추가 while the name is empty', async () => {

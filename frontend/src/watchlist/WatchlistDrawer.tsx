@@ -2,25 +2,96 @@ import { useMemo, useRef, useState } from 'react';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
-import { useWatchlist, useCatchupAll, useRemoveFromWatchlist } from './useWatchlist';
+import {
+  useWatchlist, useCatchupAll, useRemoveFromWatchlist,
+  useCreateFolder, useRenameFolder, useDeleteFolder,
+} from './useWatchlist';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
 import { groupByFolder } from './grouping';
 import { Countdown } from './Countdown';
 import { Banner } from './Banner';
 import { WatchlistEditModal } from './WatchlistEditModal';
-import { AddGroupModal } from './AddGroupModal';
+import { GroupNameModal } from './GroupNameModal';
 import { WatchlistRowMenu } from './WatchlistRowMenu';
 import { useDismissablePopover } from '../util/useDismissablePopover';
+import { TrashIcon } from '../ui/TrashIcon';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
+
+/** 접기 chevron — 펼침=∧(클릭하면 접기), 접힘=∨. 유니코드 대신 SVG(폰트별 렌더 불일치 회피). */
+function ChevronIcon({ up }: { up: boolean }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {up ? <path d="M6 15l6-6 6 6" /> : <path d="M6 9l6 6 6-6" />}
+    </svg>
+  );
+}
+
+/**
+ * 그룹 헤더 행 — 라벨/chevron 클릭 = 접기 토글, 호버 시 ⋯ 메뉴(이름 변경/삭제;
+ * 실폴더만 — 미분류는 onRename/onDelete 미전달 → chevron만). FolderRow(편집 모달)
+ * 처럼 button-in-button을 피해 div + 형제 버튼 구조이고, 메뉴 state/dismiss 훅을
+ * 루프 밖에서 쓰기 위해 module-scope 컴포넌트로 분리했다(react-hooks 규칙).
+ */
+function GroupHeader(props: {
+  label: string; count: number; collapsed: boolean;
+  onToggle: () => void;
+  onRename?: () => void;
+  onDelete?: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useDismissablePopover(menuOpen, menuRef, () => setMenuOpen(false));
+  return (
+    <div className="group flex items-center gap-1 px-3 py-1.5 text-xs text-fg-dim hover:bg-bg-input-hover">
+      <button type="button" onClick={props.onToggle} className="flex-1 min-w-0 text-left truncate">
+        {props.label}
+      </button>
+      <span className="font-mono tabular-nums text-fg-dimmer">{props.count}</span>
+      {props.onRename && (
+        <div className="relative" ref={menuRef}>
+          {/* 메뉴가 열려 있는 동안엔 ⋯을 계속 보여 앵커 크기를 유지한다(마우스가 떠나도). */}
+          <button type="button" aria-label={`${props.label} 그룹 메뉴`}
+            aria-haspopup="menu" aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+            className={`${menuOpen ? 'block' : 'hidden group-hover:block'} px-1 leading-none hover:text-fg`}>
+            ⋯
+          </button>
+          {menuOpen && (
+            <div role="menu" aria-label={props.label}
+              className="absolute right-0 z-30 mt-1 bg-bg-card border border-border rounded shadow-lg py-1 min-w-[150px]">
+              <div className="px-3 py-1 text-xs text-fg-dimmer">{props.label}</div>
+              <button type="button" role="menuitem"
+                onClick={() => { setMenuOpen(false); props.onRename?.(); }}
+                className="w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2">
+                <span className="w-4 grid place-items-center">✎</span> 그룹 이름 변경
+              </button>
+              <button type="button" role="menuitem"
+                onClick={() => { setMenuOpen(false); props.onDelete?.(); }}
+                className="w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2">
+                <span className="w-4 grid place-items-center"><TrashIcon className="w-[1em] h-[1em]" /></span> 그룹 삭제
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
+        onClick={props.onToggle} className="px-1 leading-none text-fg-dimmer hover:text-fg">
+        <ChevronIcon up={!props.collapsed} />
+      </button>
+    </div>
+  );
+}
 
 /**
  * Watchlist Panel (CONTEXT.md), app-wide via the Right Rail (ADR-0052).
  * Folder-grouped read+navigate: rows show the KIS live quote overlay (ADR-0056)
  * and click → activeCode + /live jump. The 편집 control opens a small menu
- * (관심 편집 → WatchlistEditModal, 새 그룹 만들기 → AddGroupModal); all other
- * mutation (add/delete/move/reorder) lives in the edit modal. The only
- * in-drawer edit affordance is the right-click quick-remove menu.
+ * (관심 편집 → WatchlistEditModal, 새 그룹 만들기 → GroupNameModal); group
+ * headers carry a hover ⋯ menu (이름 변경/삭제). All other mutation
+ * (add/delete/move/reorder) lives in the edit modal. The only in-drawer
+ * row edit affordance is the right-click quick-remove menu.
  */
 export function WatchlistDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
@@ -28,10 +99,14 @@ export function WatchlistDrawer() {
   const { data, isLoading, error } = useWatchlist();
   const catchupAllM = useCatchupAll();
   const removeM = useRemoveFromWatchlist();
+  const createM = useCreateFolder();
+  const renameM = useRenameFolder();
+  const deleteM = useDeleteFolder();
   const { recentAction, setRecentAction } = useWatchlistFeedback();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editOpen, setEditOpen] = useState(false);
   const [addGroupOpen, setAddGroupOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [editMenu, setEditMenu] = useState(false);
   const editMenuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(editMenu, editMenuRef, () => setEditMenu(false));
@@ -96,13 +171,13 @@ export function WatchlistDrawer() {
           const label = g.folder?.name ?? '미분류';
           if (g.entries.length === 0 && g.folder === null) return null; // 빈 미분류는 숨김
           const isCollapsed = collapsed.has(key);
+          const folder = g.folder;
           return (
             <div key={key}>
-              <button type="button" onClick={() => toggle(key)}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-fg-dim hover:bg-bg-input-hover">
-                <span>{isCollapsed ? '▸' : '▾'} {label}</span>
-                <span className="font-mono tabular-nums text-fg-dimmer">{g.entries.length}</span>
-              </button>
+              <GroupHeader label={label} count={g.entries.length} collapsed={isCollapsed}
+                onToggle={() => toggle(key)}
+                onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
+                onDelete={folder ? () => deleteM.mutate(folder.id) : undefined} />
               {!isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {g.entries.map((entry) => {
@@ -168,7 +243,17 @@ export function WatchlistDrawer() {
           onRemove={() => removeM.mutate(menu.code)} onClose={() => setMenu(null)} />
       )}
       {editOpen && <WatchlistEditModal onClose={() => setEditOpen(false)} />}
-      {addGroupOpen && <AddGroupModal onClose={() => setAddGroupOpen(false)} />}
+      {addGroupOpen && (
+        <GroupNameModal title="그룹 추가하기" submitLabel="추가" busy={createM.isPending}
+          onSubmit={async (name) => { await createM.mutateAsync(name); }}
+          onClose={() => setAddGroupOpen(false)} />
+      )}
+      {renameTarget && (
+        <GroupNameModal title="그룹 이름 변경" submitLabel="변경"
+          initialName={renameTarget.name} busy={renameM.isPending}
+          onSubmit={async (name) => { await renameM.mutateAsync({ folderId: renameTarget.id, name }); }}
+          onClose={() => setRenameTarget(null)} />
+      )}
     </div>
   );
 }
