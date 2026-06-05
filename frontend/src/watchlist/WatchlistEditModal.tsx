@@ -9,7 +9,7 @@ import {
 } from './useWatchlist';
 import { WatchlistEntryPane } from './WatchlistEntryPane';
 import { resolveDrag, folderDroppableId } from './dragHandlers';
-import { selectVisibleEntries, type Selected } from './grouping';
+import { selectVisibleEntries, swapFolderOrder, type Selected } from './grouping';
 import { ModalShell } from '../ui/ModalShell';
 
 // Hoisted to module scope (stable identity) so the inline-edit <input> reconciles in place
@@ -47,7 +47,9 @@ function FolderRow(props: {
         </button>
       )}
       {!props.isEditing && (
-        <div className="hidden group-hover:flex items-center gap-0.5 text-fg-dimmer">
+        // opacity 숨김(display:none 아님) — Tab 포커스 도달 + group-focus-within 노출
+        // (패널 GroupHeader ⋯과 같은 키보드 접근성 계약).
+        <div className="flex items-center gap-0.5 text-fg-dimmer opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
           <button type="button" aria-label={`${props.name} 위로`} disabled={props.idx === 0}
             onClick={props.onMoveUp}
             className="px-1 leading-none hover:text-fg disabled:opacity-40">▲</button>
@@ -130,13 +132,10 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
     setEditingId(null);
   };
 
-  // Authoritative ordered_ids: send the full id list and let the server re-assign 0..N-1.
-  const moveFolder = (idx: number, dir: -1 | 1) => {
-    const ids = folders.map((x) => x.id);
-    const j = idx + dir;
-    if (j < 0 || j >= ids.length) return;
-    [ids[idx], ids[j]] = [ids[j], ids[idx]];
-    reorderFoldersM.mutate(ids);
+  // Authoritative ordered_ids 계약은 swapFolderOrder(grouping.ts)에 — 패널 ⋯ 메뉴와 공유.
+  const moveFolder = (folderId: string, dir: -1 | 1) => {
+    const ids = swapFolderOrder(folders, folderId, dir);
+    if (ids) reorderFoldersM.mutate(ids);
   };
 
   // Aligned with the 보조지표 modal (IndicatorPanel): shared ModalShell chrome
@@ -151,12 +150,12 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
         <div className="flex-1 grid grid-cols-[220px_1fr] min-h-0">
           {/* 좌: 폴더 pane — 보조지표 nav 패턴(섹션 헤더 + 행)과 정렬 */}
           <div className="border-r border-border flex flex-col min-h-0">
-            <div className="text-fg-dimmer text-xs uppercase tracking-wider px-3 pt-3 pb-2">관심 폴더</div>
+            <div className="text-fg-dimmer text-xs uppercase tracking-wider px-3 pt-3 pb-2">관심 그룹</div>
             <div className="px-2 pb-2">
               {adding ? (
                 <form data-testid="folder-create-form" onSubmit={submitFolder} className="flex gap-1">
                   <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)}
-                    placeholder="폴더 이름" maxLength={40}
+                    placeholder="그룹 이름" maxLength={40}
                     onKeyDown={(e) => {
                       // Escape cancels the create input; stopPropagation so it
                       // doesn't bubble to ModalShell's document keydown (= close modal).
@@ -168,7 +167,7 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
               ) : (
                 <button type="button" onClick={() => setAdding(true)}
                   className="w-full px-3 py-2 rounded border border-border text-sm text-fg-dim hover:text-accent hover:border-accent">
-                  ＋ 폴더 추가
+                  ＋ 그룹 추가
                 </button>
               )}
             </div>
@@ -180,8 +179,8 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
                   onSelect={() => setSelected(f.id)}
                   onStartEdit={() => { setEditingId(f.id); setEditName(f.name); }}
                   onDelete={() => { deleteM.mutate(f.id); if (selected === f.id) setSelected(null); }}
-                  onMoveUp={() => moveFolder(idx, -1)}
-                  onMoveDown={() => moveFolder(idx, +1)}
+                  onMoveUp={() => moveFolder(f.id, -1)}
+                  onMoveDown={() => moveFolder(f.id, +1)}
                   onEditNameChange={setEditName}
                   onCommit={() => commitRename(f.id)}
                   onCancelEdit={() => setEditingId(null)} />

@@ -35,6 +35,9 @@ const DATA = { folders: FOLDERS, entries: ENTRIES, next_run_at_ms: 0 };
 describe('WatchlistDrawer', () => {
   beforeEach(() => {
     cleanup();
+    // 접기 토글이 watchlist.collapsed를 영속하므로 매 테스트 격리 필수 —
+    // 없으면 접기를 수행한 테스트가 이후 테스트의 행 가시성을 오염시킨다.
+    localStorage.clear();
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
     vi.restoreAllMocks();
     // useQuoteByCode → useQuotes → getQuotes → apiCall('/api/live/quotes')
@@ -46,7 +49,6 @@ describe('WatchlistDrawer', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    // folder headers render as "▾ 스윙" / "▾ 미분류" (collapse glyph), so match loosely
     expect(screen.getByText(/스윙/)).toBeInTheDocument();
     expect(screen.getByText(/미분류/)).toBeInTheDocument();
     expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
@@ -117,12 +119,131 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('000660'));
   });
 
-  it('opens the edit modal when 편집 is clicked', async () => {
+  it('opens the edit modal via 편집 → 관심 편집', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(screen.getByLabelText('관심종목 편집 열기')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('관심종목 편집 열기'));
+    await waitFor(() => expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('관심종목 편집 메뉴'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: '관심 편집' }));
     expect(await screen.findByRole('dialog', { name: '관심종목 편집' })).toBeInTheDocument();
+    // 메뉴는 항목 선택과 동시에 닫힌다
+    expect(screen.queryByRole('menuitem', { name: '관심 편집' })).toBeNull();
+  });
+
+  it('새 그룹 만들기 creates a folder through the 그룹 추가하기 dialog', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const createSpy = vi.spyOn(watchlistApi, 'createFolder')
+      .mockResolvedValue({ id: 'f_new', name: '단타', order: 1 });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('관심종목 편집 메뉴'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: '새 그룹 만들기' }));
+    expect(await screen.findByRole('dialog', { name: '그룹 추가하기' })).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('그룹 이름 입력'), { target: { value: '단타' } });
+    fireEvent.click(screen.getByRole('button', { name: '추가' }));
+    await waitFor(() => expect(createSpy).toHaveBeenCalledWith('단타'));
+    // 생성 후 다이얼로그는 닫힌다
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: '그룹 추가하기' })).toBeNull());
+  });
+
+  it('그룹 헤더 ⋯ → 그룹 이름 변경 renames via the dialog', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const renameSpy = vi.spyOn(watchlistApi, 'renameFolder').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /그룹 이름 변경/ }));
+    const input = await screen.findByPlaceholderText('그룹 이름 입력');
+    expect((input as HTMLInputElement).value).toBe('스윙');   // 현재 이름이 미리 채워진다
+    fireEvent.change(input, { target: { value: '단타' } });
+    fireEvent.click(screen.getByRole('button', { name: '변경' }));
+    await waitFor(() => expect(renameSpy).toHaveBeenCalledWith('f_0000000a', '단타'));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: '그룹 이름 변경' })).toBeNull());
+  });
+
+  it('그룹 헤더 ⋯ → 그룹 삭제 deletes the folder', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const deleteSpy = vi.spyOn(watchlistApi, 'deleteFolder').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /그룹 삭제/ }));
+    await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith('f_0000000a'));
+  });
+
+  it('우클릭 → 그룹으로 이동 moves the entry to the chosen folder', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const moveSpy = vi.spyOn(watchlistApi, 'moveEntries').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
+    // 미분류 소속 000660 → 스윙(f_0000000a)으로 이동
+    fireEvent.contextMenu(screen.getByTestId('watchlist-row-000660'));
+    fireEvent.click(screen.getByTestId('watchlist-menu-move-f_0000000a'));
+    await waitFor(() => expect(moveSpy).toHaveBeenCalledWith(['000660'], 'f_0000000a'));
+    expect(screen.queryByTestId('watchlist-row-menu')).toBeNull();   // 메뉴 닫힘
+  });
+
+  it('접기 상태가 localStorage에 영속되어 리마운트에도 유지된다', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { unmount } = render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('미분류 접기'));
+    expect(screen.queryByText('SK하이닉스')).toBeNull();
+    unmount();
+    // 리마운트(패널 재오픈에 해당) — 접기 상태가 localStorage에서 복원된다
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    expect(screen.queryByText('SK하이닉스')).toBeNull();
+  });
+
+  it('그룹 헤더 ⋯ → 아래로 이동 reorders folders (full ordered_ids)', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
+      folders: [
+        { id: 'f_0000000a', name: '스윙', order: 0 },
+        { id: 'f_0000000b', name: '장기', order: 1 },
+      ],
+      entries: ENTRIES,
+      next_run_at_ms: 0,
+    });
+    const reorderSpy = vi.spyOn(watchlistApi, 'reorderFolders').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    // 첫 그룹: 위로 이동은 disabled, 아래로 이동은 동작
+    expect(await screen.findByRole('menuitem', { name: /위로 이동/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('menuitem', { name: /아래로 이동/ }));
+    await waitFor(() =>
+      expect(reorderSpy).toHaveBeenCalledWith(['f_0000000b', 'f_0000000a']));
+  });
+
+  it('미분류 헤더에는 ⋯ 메뉴가 없고 접기 토글만 있다', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
+    expect(screen.queryByLabelText('미분류 그룹 메뉴')).toBeNull();
+    // chevron(접기)으로 접으면 행이 사라진다
+    fireEvent.click(screen.getByLabelText('미분류 접기'));
+    expect(screen.queryByText('SK하이닉스')).toBeNull();
+  });
+
+  it('그룹 추가하기 disables 추가 while the name is empty', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('관심종목 편집 메뉴'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: '새 그룹 만들기' }));
+    await screen.findByRole('dialog', { name: '그룹 추가하기' });
+    expect(screen.getByRole('button', { name: '추가' })).toBeDisabled();
   });
 });

@@ -25,14 +25,14 @@ describe('WatchlistEditModal', () => {
     expect(screen.getByText('미분류')).toBeInTheDocument();
     expect(screen.queryByText('모든 종목')).not.toBeInTheDocument();
   });
-  it('creates a folder via 폴더 추가', async () => {
+  it('creates a folder via 그룹 추가', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
     const create = vi.spyOn(api, 'createFolder').mockResolvedValue({ id: 'f_new', name: '장기', order: 1 });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
     await screen.findByText('스윙');
-    fireEvent.click(screen.getByRole('button', { name: /폴더 추가/ }));
-    fireEvent.change(screen.getByPlaceholderText('폴더 이름'), { target: { value: '장기' } });
+    fireEvent.click(screen.getByRole('button', { name: /그룹 추가/ }));
+    fireEvent.change(screen.getByPlaceholderText('그룹 이름'), { target: { value: '장기' } });
     fireEvent.submit(screen.getByTestId('folder-create-form'));
     await waitFor(() => expect(create).toHaveBeenCalledWith('장기'));
   });

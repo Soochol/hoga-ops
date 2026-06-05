@@ -47,6 +47,11 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
           e.preventDefault();
           break;
         case 'Escape':
+          // 모달/팝오버가 열려 있으면 Escape는 그쪽 소유 — 패널까지 같이 닫지
+          // 않는다. ModalShell은 document, useDismissablePopover는 window 리스너
+          // 인데 이 핸들러가 먼저 등록돼 stopPropagation으로는 막을 수 없으므로
+          // DOM에 열린 dialog/menu가 있는지를 단일 진실로 삼는다.
+          if (document.querySelector('[role="dialog"], [role="menu"]')) break;
           if (useRightRailStore.getState().activePanel) {
             useRightRailStore.getState().setActivePanel(null);
             e.preventDefault();

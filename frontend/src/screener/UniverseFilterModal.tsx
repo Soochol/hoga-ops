@@ -1,25 +1,11 @@
 import { useState } from 'react';
 import type { ScreenerUniverse } from '../api/screener';
 import { ModalShell } from '../ui/ModalShell';
+import { CheckIcon } from '../ui/CheckIcon';
 import { SectionLabel } from './paramForms';
 
 const MARKETS = ['KOSPI', 'KOSDAQ'] as const;
 type Group = 'market' | 'exclude';
-
-// 활성=accent 채운 원+체크, 비활성=hollow ring (IndicatorPanel CheckIcon 모양 복제).
-function NavCheck({ active }: { active: boolean }) {
-  return active ? (
-    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" fill="var(--accent)" />
-      <path d="M7.5 12.5l3 3 6-6" stroke="var(--accent-fg)" strokeWidth="2.5"
-        strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    </svg>
-  ) : (
-    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" fill="none" stroke="var(--fg-dimmer)" strokeWidth="1.5" />
-    </svg>
-  );
-}
 
 // 전역 사전필터 편집 모달. 좌측 nav 2그룹(시장/제외) + 우측 pane 전환.
 // 토글은 즉시 onChange 호출(초안 버퍼 없음); 닫기/Esc/배경은 순수 dismiss.
@@ -50,7 +36,7 @@ export function UniverseFilterModal({ universe, onChange, onClose }: {
               className={`flex w-full items-center justify-between px-4 py-2 text-sm ${
                 group === n.id ? 'bg-bg-input text-fg' : 'text-fg-dim hover:bg-bg-input'}`}>
               <span>{n.label}</span>
-              <NavCheck active={n.active} />
+              <CheckIcon filled={n.active} size={16} />
             </button>
           ))}
         </nav>

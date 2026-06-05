@@ -1,14 +1,20 @@
 import type { Page, Route } from '@playwright/test';
 
+// 폴더 도입(spec 2026-05-31) 이후 GET /api/watchlist 응답 형태: folders +
+// entry.folder_id/order 필수 — 빠지면 groupByFolder가 throw해 패널이 통째로 죽는다.
 const WATCHLIST = {
+  folders: [],
   entries: [
     {
       code: '098460',
       name: '고영',
       registered_at_kst_date: '20260527',
       last_success_date: '20260522',
+      folder_id: null,
+      order: 0,
     },
   ],
+  next_run_at_ms: 0,
 };
 
 const LIVE_STATUS_OK = {

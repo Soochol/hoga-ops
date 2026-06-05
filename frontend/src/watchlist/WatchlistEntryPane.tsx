@@ -3,6 +3,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { useWatchlist, useRemoveEntries, useMoveEntries, useCatchupOne } from './useWatchlist';
 import { useDismissablePopover } from '../util/useDismissablePopover';
+import { CheckIcon } from '../ui/CheckIcon';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
 import { WatchlistAddForm } from './WatchlistAddForm';
 import { Banner } from './Banner';
@@ -73,7 +74,10 @@ export function WatchlistEntryPane({ selected }: { selected: Selected }) {
     <div className="flex flex-col min-h-0">
       {/* 툴바 */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
-        <input type="checkbox" aria-label="전체 선택" checked={allChecked} onChange={toggleAll} />
+        <button type="button" role="checkbox" aria-checked={allChecked} aria-label="전체 선택"
+          onClick={toggleAll} className="flex items-center cursor-pointer">
+          <CheckIcon filled={allChecked} size={16} />
+        </button>
         <div className="relative" ref={moveMenuRef}>
           <button type="button" disabled={selectedCodes.length === 0} onClick={() => setMoveMenu((v) => !v)}
             className="px-2 py-1 rounded border border-border text-xs text-fg-dim hover:text-accent disabled:opacity-40">⇄ 이동</button>
@@ -120,7 +124,7 @@ export function WatchlistEntryPane({ selected }: { selected: Selected }) {
               catchingUp={catchupOneM.isPending && catchupOneM.variables === e.code} />
           ))}
         </SortableContext>
-        {entries.length === 0 && <li className="p-4 text-sm text-fg-dimmer">이 폴더에 종목이 없습니다</li>}
+        {entries.length === 0 && <li className="p-4 text-sm text-fg-dimmer">이 그룹에 종목이 없습니다</li>}
       </ul>
     </div>
   );
@@ -131,8 +135,10 @@ type RowProps = {
   onCatchup: () => void; catchingUp: boolean;
 };
 
+// 1st col 16px = CheckIcon size (보조지표 IndicatorPanel과 같은 glyph; 행 밀도 때문에 18 대신 16).
+// 종목코드는 표시하지 않음 — 체크박스 aria-label(`{code} 선택`)에만 남는다(이름과 달리 유일).
 const ROW_CLASS =
-  'grid grid-cols-[2ch_1ch_6ch_1fr_8ch_2.5ch] items-center gap-2 px-3 py-2 border-b border-border text-sm hover:bg-bg-input';
+  'grid grid-cols-[16px_1ch_1fr_8ch_2.5ch] items-center gap-2 px-3 py-2 border-b border-border text-sm hover:bg-bg-input';
 
 /** Sortable row. ⠿ is the drag handle (listeners on the handle only,
  *  so the checkbox / ↻ button stay clickable). */
@@ -149,10 +155,12 @@ function SortableEntryRow(props: RowProps) {
   };
   return (
     <li ref={setNodeRef} style={style} data-testid={`edit-row-${entry.code}`} className={ROW_CLASS}>
-      <input type="checkbox" aria-label={`${entry.code} 선택`} checked={props.checked} onChange={props.onToggle} />
+      <button type="button" role="checkbox" aria-checked={props.checked} aria-label={`${entry.code} 선택`}
+        onClick={props.onToggle} className="flex items-center cursor-pointer">
+        <CheckIcon filled={props.checked} size={16} />
+      </button>
       <span {...listeners} aria-hidden
         className="text-fg-dimmer cursor-grab select-none touch-none">⠿</span>
-      <span className="font-mono text-fg-dim text-xs">{entry.code}</span>
       <span className="truncate">{entry.name}</span>
       <LastSuccessBadge date={entry.last_success_date} />
       <button type="button" aria-label={`${entry.name} 수집`} onClick={props.onCatchup} disabled={props.catchingUp}
