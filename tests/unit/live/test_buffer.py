@@ -18,7 +18,7 @@ async def test_publish_and_read_latest() -> None:
         _snap(1, SnapshotKind.OB, {"asks": [], "bids": []}),
         _snap(1, SnapshotKind.TRADE, {"trades": [{"price": 100}]}),
         _snap(1, SnapshotKind.BROKER, {"buy_top": []}),
-    ])
+    ], now_ms=1)
     latest = await buf.get_latest("005930")
     assert latest is not None
     assert latest["t_ms"] == 1
@@ -42,7 +42,7 @@ async def test_get_series_returns_all_published() -> None:
             _snap(t, SnapshotKind.OB, {"total_bid_qty": 100 + tick}),
             _snap(t, SnapshotKind.TRADE, {"trades": [{"qty": tick}]}),
             _snap(t, SnapshotKind.BROKER, {"buy_top": []}),
-        ])
+        ], now_ms=t)
     series = await buf.get_series("005930")
     assert series["code"] == "005930"
     assert len(series["snapshots"]) == 3
@@ -61,7 +61,7 @@ async def test_buffer_caps_at_MAX_BUFFER_ENTRIES_per_kind() -> None:
             _snap(tick, SnapshotKind.OB, {"i": tick}),
             _snap(tick, SnapshotKind.TRADE, {"trades": []}),
             _snap(tick, SnapshotKind.BROKER, {}),
-        ])
+        ], now_ms=tick)
     series = await buf.get_series("005930")
     assert len(series["snapshots"]) == MAX_BUFFER_ENTRIES
     # FIFO drop: oldest is no longer at index 0; the earliest retained is
@@ -77,6 +77,7 @@ async def test_concurrent_publish_serialized() -> None:
             buf.publish(
                 "005930",
                 [_snap(i, SnapshotKind.OB, {"i": i})],
+                now_ms=i,
             )
             for i in range(100)
         )
@@ -88,8 +89,8 @@ async def test_concurrent_publish_serialized() -> None:
 @pytest.mark.asyncio
 async def test_per_code_isolation() -> None:
     buf = LiveBuffer()
-    await buf.publish("005930", [_snap(1, SnapshotKind.OB, {"x": 1})])
-    await buf.publish("000660", [_snap(1, SnapshotKind.OB, {"x": 2})])
+    await buf.publish("005930", [_snap(1, SnapshotKind.OB, {"x": 1})], now_ms=1)
+    await buf.publish("000660", [_snap(1, SnapshotKind.OB, {"x": 2})], now_ms=1)
     a = await buf.get_latest("005930")
     b = await buf.get_latest("000660")
     assert a is not None and a["orderbook"] == {"x": 1}
@@ -136,3 +137,15 @@ async def test_unsubscribe_removes_queue() -> None:
     buf.unsubscribe("005930", q)
     # Subsequent publish must not raise (no subscribers left)
     await buf.publish("005930", [_snap(1, SnapshotKind.OB, {})])
+
+
+@pytest.mark.asyncio
+async def test_publish_evicts_by_time() -> None:
+    buf = LiveBuffer(retention_ms=900_000)
+    old = LiveSnapshot(t_ms=1_000, kind=SnapshotKind.OB, payload={"code": "005930"})
+    new = LiveSnapshot(t_ms=2_000_000, kind=SnapshotKind.OB, payload={"code": "005930"})
+    await buf.publish("005930", [old], now_ms=1_000)
+    await buf.publish("005930", [new], now_ms=2_000_000)   # old(1초)는 컷오프 밖
+    series = await buf.get_series("005930")
+    t_list = [e["t_ms"] for e in series["snapshots"]]
+    assert 1_000 not in t_list and 2_000_000 in t_list

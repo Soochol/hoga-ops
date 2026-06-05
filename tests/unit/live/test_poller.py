@@ -291,11 +291,18 @@ async def test_after_hours_calls_overtime_fetchers(tmp_path: Path, monkeypatch) 
 
 
 @pytest.mark.asyncio
-async def test_poller_publishes_to_buffer_when_provided(tmp_path: Path) -> None:
+async def test_poller_publishes_to_buffer_when_provided(tmp_path: Path, monkeypatch) -> None:
     """When given a LiveBuffer, run_one_cycle publishes after writing."""
+    import time
     from hoga.live.buffer import LiveBuffer
+    # Use a t_ms close to the actual wall clock so time-based eviction keeps the entry.
+    snap_ms = int(time.time() * 1000)
+    monkeypatch.setattr("hoga.live.poller._now_ms", lambda: snap_ms)
     buf = LiveBuffer()
-    kis = _mk_kis(trades=[KisTrade(t_ms=1, price=100, qty=1, side=1, side_source="inferred")])
+    kis = _mk_kis(trades=[KisTrade(t_ms=snap_ms, price=100, qty=1, side=1, side_source="inferred")])
+    kis.fetch_orderbook.side_effect = lambda code: _ob(code, t_ms=snap_ms)
+    kis.fetch_overtime_orderbook.side_effect = lambda code: _ob(code, t_ms=snap_ms)
+    kis.fetch_brokers.side_effect = lambda code: _brokers(code, t_ms=snap_ms)
     writer = LiveWriter(tmp_path / "live")
     poller = LivePoller(
         kis, writer,

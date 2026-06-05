@@ -95,7 +95,7 @@ async def test_get_live_snapshot_returns_buffered_latest(tmp_path) -> None:
         LiveSnapshot(t_ms=12345, kind=SnapshotKind.OB, payload={"total_bid_qty": 1000}),
         LiveSnapshot(t_ms=12345, kind=SnapshotKind.TRADE, payload={"trades": [{"price": 100}]}),
         LiveSnapshot(t_ms=12345, kind=SnapshotKind.BROKER, payload={"buy_top": []}),
-    ])
+    ], now_ms=12345)
 
     app = create_app(tmp_path)
     with TestClient(app) as c:
@@ -122,7 +122,7 @@ async def test_get_live_series_returns_buffered_arrays(tmp_path) -> None:
             LiveSnapshot(t_ms=t, kind=SnapshotKind.OB, payload={"total_bid_qty": 100 + tick}),
             LiveSnapshot(t_ms=t, kind=SnapshotKind.TRADE, payload={"trades": []}),
             LiveSnapshot(t_ms=t, kind=SnapshotKind.BROKER, payload={"buy_top": []}),
-        ])
+        ], now_ms=t)
 
     app = create_app(tmp_path)
     with TestClient(app) as c:

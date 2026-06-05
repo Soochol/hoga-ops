@@ -789,14 +789,11 @@ git commit -m "feat(live): 10s tick downsampler (state last-wins, flow sum, side
 
 ```python
 async def test_publish_evicts_by_time():
-    from hoga.live.buffer import LiveBuffer
-    from hoga.live.snapshot import LiveSnapshot, SnapshotKind
-
     buf = LiveBuffer(retention_ms=900_000)
     old = LiveSnapshot(t_ms=1_000, kind=SnapshotKind.OB, payload={"code": "005930"})
     new = LiveSnapshot(t_ms=2_000_000, kind=SnapshotKind.OB, payload={"code": "005930"})
-    await buf.publish("005930", [old])
-    await buf.publish("005930", [new], now_ms=2_000_000)   # old(1초)는 컷오프 밖
+    await buf.publish("005930", [old], now_ms=1_000)        # deterministic: cutoff=1_000-900_000 < 0
+    await buf.publish("005930", [new], now_ms=2_000_000)   # old(1초)는 컷오프 밖 → evicted
     series = await buf.get_series("005930")
     t_list = [e["t_ms"] for e in series["snapshots"]]
     assert 1_000 not in t_list and 2_000_000 in t_list
