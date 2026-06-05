@@ -124,7 +124,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: 장중 실행 (정규장 1회 + 15:35경 1회)**
 
 Run: `KIS_APP_KEY=... KIS_APP_SECRET=... uv run python scripts/record_kis_ws_frames.py 005930 60`
-Expected: `recorded: {'H0STASP0': N, 'H0STCNT0': M, 'H0STMBC0': K}` (N,M > 0; K ≥ 0 — K=0이면 H0STMBC0 push 주기가 60초보다 길다는 뜻이니 300초로 재시도). 15:35 실행 결과(시간외 수신 여부)를 `tests/fixtures/kis_ws/README.md`에 기록. (녹화본에 cnt≥2 H0STCNT0 프레임이 포함되는지 확인 — 멀티레코드 stride의 유일한 실검증)
+Expected: `recorded: {'H0STASP0': N, 'H0STCNT0': M, 'H0STMBC0': K}` (N,M > 0; K ≥ 0 — K=0이면 H0STMBC0 push 주기가 60초보다 길다는 뜻이니 300초로 재시도). 15:35 실행 결과(시간외 수신 여부)를 `tests/fixtures/kis_ws/README.md`에 기록. (녹화본에 cnt≥2 H0STCNT0 프레임이 포함되는지 확인 — 멀티레코드 stride의 유일한 실검증. 추가 게이트(리뷰 잔여 조건): 각 H0STCNT0 프레임에서 `len(body.split('^')) == cnt*46`이 **정확히**(trailing 원소 0개) 성립하는지 확인 — exact-equality stride 가드가 "trailing 구분자 없음" 가정에 의존하므로, padding이 관찰되면 가드를 하한+per-record 슬라이스로 완화)
 
 - [ ] **Step 3: README 작성**
 
