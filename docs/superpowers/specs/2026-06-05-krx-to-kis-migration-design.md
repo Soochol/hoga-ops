@@ -203,6 +203,7 @@ fetch_symbol_master() -> list[MasterRow]  # 위 둘을 코스피+코스닥에 �
 
 - 종목 목록·거래일의 **일일 자동 갱신 스케줄**(현재는 부팅 시 자동 1회 + 수동 Update).
 - ETF/ETN의 **캡처·라이브 시세 동작 검증** — 검색 노출과 별개로, 선택된 ETF 코드가 hogaplay 캡처/KIS 라이브에서 제대로 처리되는지는 별도 확인이 필요(사용자도 인지).
+- **Phase 3 직전 `kis_runtime` 추출** (아키텍처 그릴링 2026-06-05 결정): KIS 자원 싱글턴 관리 — `ensure_kis_token_provider`/`ensure_kis_client`/`ensure_kis_client_from_env`/`aclose_kis_client`/`get_kis_client`/`set_kis_client` + `reset_for_tests`의 KIS 부분 — 를 `lifecycle.py`에서 신규 `hoga/live/kis_runtime.py`로 옮긴다. `lifecycle.py`는 poller lifecycle(start/stop/refresh)·status·buffer·promote에 집중하고, Phase 3의 `kis_holidays`(poller 무관 동기 소비자)가 poller 모듈을 import하지 않고 `kis_runtime`에서 토큰 provider를 얻게 한다. **시점**: Phase 2(.mst, 토큰 불필요)와 무관하므로 Phase 3 시작 직전에 수행해 kis_holidays가 처음부터 깨끗한 모듈을 쓰게 한다. ADR-0038(프로세스 싱글턴)·ADR-0050(KIS 단일 소유) 유지 — 싱글턴성은 그대로, 위치만 이동. 근거: 현재 lifecycle은 5 전역 싱글턴·19 함수의 kitchen-sink이고 Phase 1의 provider 싱글턴이 KIS 부분을 가중시킴.
 
 ---
 
