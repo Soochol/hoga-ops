@@ -75,11 +75,11 @@ describe('WatchlistEntryPane', () => {
     const { rerender } = render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
     await screen.findByText('삼성전자');
     fireEvent.click(screen.getByLabelText('005930 선택'));
-    expect((screen.getByLabelText('005930 선택') as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByLabelText('005930 선택')).toHaveAttribute('aria-checked', 'true');
     rerender(<WatchlistEntryPane selected="f_b" />);   // switch away …
     rerender(<WatchlistEntryPane selected="f_a" />);   // … and back: the selection must have cleared
     await waitFor(() =>
-      expect((screen.getByLabelText('005930 선택') as HTMLInputElement).checked).toBe(false));
+      expect(screen.getByLabelText('005930 선택')).toHaveAttribute('aria-checked', 'false'));
   });
 
   it('bulk-moves checked rows to a chosen folder', async () => {

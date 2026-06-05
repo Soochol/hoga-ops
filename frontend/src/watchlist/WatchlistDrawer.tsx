@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
@@ -8,16 +8,19 @@ import { groupByFolder } from './grouping';
 import { Countdown } from './Countdown';
 import { Banner } from './Banner';
 import { WatchlistEditModal } from './WatchlistEditModal';
+import { AddGroupModal } from './AddGroupModal';
 import { WatchlistRowMenu } from './WatchlistRowMenu';
+import { useDismissablePopover } from '../util/useDismissablePopover';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
 
 /**
  * Watchlist Panel (CONTEXT.md), app-wide via the Right Rail (ADR-0052).
  * Folder-grouped read+navigate: rows show the KIS live quote overlay (ADR-0056)
- * and click → activeCode + /live jump. All mutation (add/delete/folder CRUD/
- * move/reorder) lives in the WatchlistEditModal opened from the 편집 control;
- * the only in-drawer edit affordance is the right-click quick-remove menu.
+ * and click → activeCode + /live jump. The 편집 control opens a small menu
+ * (관심 편집 → WatchlistEditModal, 새 그룹 만들기 → AddGroupModal); all other
+ * mutation (add/delete/move/reorder) lives in the edit modal. The only
+ * in-drawer edit affordance is the right-click quick-remove menu.
  */
 export function WatchlistDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
@@ -28,6 +31,10 @@ export function WatchlistDrawer() {
   const { recentAction, setRecentAction } = useWatchlistFeedback();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editOpen, setEditOpen] = useState(false);
+  const [addGroupOpen, setAddGroupOpen] = useState(false);
+  const [editMenu, setEditMenu] = useState(false);
+  const editMenuRef = useRef<HTMLDivElement>(null);
+  useDismissablePopover(editMenu, editMenuRef, () => setEditMenu(false));
   const [menu, setMenu] = useState<{ x: number; y: number; code: string; name: string } | null>(null);
 
   const codes = useMemo(() => data?.entries.map((e) => e.code) ?? [], [data]);
@@ -46,14 +53,35 @@ export function WatchlistDrawer() {
     <div id="right-rail-watchlist-panel" data-testid="watchlist-panel"
       style={{ width: 'var(--watchlist-panel-w)', height: '100%', background: 'var(--bg-card)',
                borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
-      {/* 헤더: 관심종목 라벨 + 편집 (종목 추가는 편집 모달에서 — 빠른 추가 제거) */}
+      {/* 헤더: 관심종목 라벨 + 편집 메뉴 (종목 추가는 편집 모달에서 — 빠른 추가 제거) */}
       <div style={{ borderBottom: '1px solid var(--border)' }}>
         <div style={{ padding: 'var(--space-sm) var(--space-md)',
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-dim)', fontFamily: 'monospace',
                          textTransform: 'uppercase', letterSpacing: '0.08em' }}>관심종목</span>
-          <button type="button" aria-label="관심종목 편집 열기" onClick={() => setEditOpen(true)}
-                  className="text-fg-dim hover:text-accent text-xs">편집</button>
+          {/* 편집 → 앵커드 메뉴 (이동 메뉴와 같은 relative+absolute+useDismissablePopover 패턴).
+              패널이 뷰포트 우측 끝이라 right-0으로 안쪽으로 연다 — 클램프 불필요. */}
+          <div className="relative" ref={editMenuRef}>
+            <button type="button" aria-label="관심종목 편집 메뉴" aria-haspopup="menu" aria-expanded={editMenu}
+                    onClick={() => setEditMenu((v) => !v)}
+                    className="text-fg-dim hover:text-accent text-xs">편집</button>
+            {editMenu && (
+              <div role="menu" aria-label="관심"
+                   className="absolute right-0 z-30 mt-1 bg-bg-card border border-border rounded shadow-lg py-1 min-w-[140px]">
+                <div className="px-3 py-1 text-xs text-fg-dimmer">관심</div>
+                <button type="button" role="menuitem"
+                        onClick={() => { setEditMenu(false); setEditOpen(true); }}
+                        className="block w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover">
+                  관심 편집
+                </button>
+                <button type="button" role="menuitem"
+                        onClick={() => { setEditMenu(false); setAddGroupOpen(true); }}
+                        className="block w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover">
+                  새 그룹 만들기
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -140,6 +168,7 @@ export function WatchlistDrawer() {
           onRemove={() => removeM.mutate(menu.code)} onClose={() => setMenu(null)} />
       )}
       {editOpen && <WatchlistEditModal onClose={() => setEditOpen(false)} />}
+      {addGroupOpen && <AddGroupModal onClose={() => setAddGroupOpen(false)} />}
     </div>
   );
 }

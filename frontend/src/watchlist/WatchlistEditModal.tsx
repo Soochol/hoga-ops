@@ -151,12 +151,12 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
         <div className="flex-1 grid grid-cols-[220px_1fr] min-h-0">
           {/* 좌: 폴더 pane — 보조지표 nav 패턴(섹션 헤더 + 행)과 정렬 */}
           <div className="border-r border-border flex flex-col min-h-0">
-            <div className="text-fg-dimmer text-xs uppercase tracking-wider px-3 pt-3 pb-2">관심 폴더</div>
+            <div className="text-fg-dimmer text-xs uppercase tracking-wider px-3 pt-3 pb-2">관심 그룹</div>
             <div className="px-2 pb-2">
               {adding ? (
                 <form data-testid="folder-create-form" onSubmit={submitFolder} className="flex gap-1">
                   <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)}
-                    placeholder="폴더 이름" maxLength={40}
+                    placeholder="그룹 이름" maxLength={40}
                     onKeyDown={(e) => {
                       // Escape cancels the create input; stopPropagation so it
                       // doesn't bubble to ModalShell's document keydown (= close modal).
@@ -168,7 +168,7 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
               ) : (
                 <button type="button" onClick={() => setAdding(true)}
                   className="w-full px-3 py-2 rounded border border-border text-sm text-fg-dim hover:text-accent hover:border-accent">
-                  ＋ 폴더 추가
+                  ＋ 그룹 추가
                 </button>
               )}
             </div>
