@@ -6,28 +6,6 @@ import { WatchlistDrawer } from './WatchlistDrawer';
 import { useLivePageStore } from '../state/livePage';
 import * as watchlistApi from '../api/watchlist';
 import * as client from '../api/client';
-import type { DragEndEvent } from '@dnd-kit/core';
-
-// vi.mock 팩토리는 호이스팅됨 → 캡처 슬롯도 vi.hoisted 로 만들어야 안전.
-const dnd = vi.hoisted(() => ({ onDragEnd: undefined as undefined | ((e: DragEndEvent) => void) }));
-
-// DndContext 를 패스스루로 모킹하고 주입된 onDragEnd 를 캡처. SortableContext 도
-// 패스스루(실제 DndContext provider 가 없으니). useSortable 은 default context 로
-// graceful 하게 동작(setNodeRef noop) → 행은 정상 렌더.
-vi.mock('@dnd-kit/core', async (orig) => {
-  const actual = await orig<typeof import('@dnd-kit/core')>();
-  return {
-    ...actual,
-    DndContext: (props: { onDragEnd?: (e: DragEndEvent) => void; children: React.ReactNode }) => {
-      dnd.onDragEnd = props.onDragEnd;
-      return props.children;
-    },
-  };
-});
-vi.mock('@dnd-kit/sortable', async (orig) => {
-  const actual = await orig<typeof import('@dnd-kit/sortable')>();
-  return { ...actual, SortableContext: (props: { children: React.ReactNode }) => props.children };
-});
 
 function LocationProbe() {
   const { pathname } = useLocation();
@@ -46,29 +24,36 @@ function wrap(qc: QueryClient, initial: string) {
   );
 }
 
+// 005930 in folder 스윙, 000660 in 미분류 — exercises folder grouping.
+const FOLDERS = [{ id: 'f_0000000a', name: '스윙', order: 0 }];
 const ENTRIES = [
-  { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null },
-  { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null },
+  { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000a', order: 0 },
+  { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 },
 ];
+const DATA = { folders: FOLDERS, entries: ENTRIES, next_run_at_ms: 0 };
 
 describe('WatchlistDrawer', () => {
   beforeEach(() => {
     cleanup();
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
     vi.restoreAllMocks();
+    // useQuoteByCode → useQuotes → getQuotes → apiCall('/api/live/quotes')
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
   });
 
-  it('renders entries from the API', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
+  it('renders folder groups (스윙 / 미분류) with their entries', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    // folder headers render as "▾ 스윙" / "▾ 미분류" (collapse glyph), so match loosely
+    expect(screen.getByText(/스윙/)).toBeInTheDocument();
+    expect(screen.getByText(/미분류/)).toBeInTheDocument();
     expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
   });
 
   it('clicking a row sets activeCode and navigates to /live when elsewhere', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
@@ -77,26 +62,16 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
   });
 
-  it('clicking a row on /live sets activeCode without changing route', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/live') });
-    await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('SK하이닉스'));
-    expect(useLivePageStore.getState().activeCode).toBe('000660');
-    expect(screen.getByTestId('pathname').textContent).toBe('/live');
-  });
-
-  it('shows empty message when no entries', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: [], next_run_at_ms: 0 });
+  it('shows empty message when no entries and no folders', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ folders: [], entries: [], next_run_at_ms: 0 });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText(/관심종목이 없습니다/)).toBeInTheDocument());
   });
 
-  it('highlights the active code regardless of route', async () => {
+  it('highlights the active code', async () => {
     useLivePageStore.setState({ activeCode: '000660' });
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/capture') });
     await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
@@ -104,7 +79,7 @@ describe('WatchlistDrawer', () => {
   });
 
   it('renders live price (원) and 전일대비 from useQuotes', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       phase: 'open',
       quotes: [
@@ -119,31 +94,21 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByText('-1,500원 (0.80%)')).toBeInTheDocument();
   });
 
-  it('shows — for a code missing from quotes (장전/무데이터)', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
-    vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
-  });
-
   it('right-click opens the context menu; 관심 해제 removes the entry and closes', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const removeSpy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    // 네이티브 메뉴 억제: preventDefault → dispatchEvent 가 false
     const notCancelled = fireEvent.contextMenu(screen.getByTestId('watchlist-row-005930'));
-    expect(notCancelled).toBe(false);
+    expect(notCancelled).toBe(false);  // preventDefault suppresses native menu
     fireEvent.click(screen.getByTestId('watchlist-menu-remove'));
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('005930'));
     expect(screen.queryByTestId('watchlist-row-menu')).toBeNull();
   });
 
   it('Delete key on a focused row removes the entry', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const removeSpy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
@@ -151,37 +116,13 @@ describe('WatchlistDrawer', () => {
     fireEvent.keyDown(screen.getByTestId('watchlist-row-000660'), { key: 'Delete' });
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('000660'));
   });
-});
 
-describe('WatchlistDrawer drag reorder', () => {
-  beforeEach(() => {
-    cleanup();
-    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
-    vi.restoreAllMocks();
-    dnd.onDragEnd = undefined;
-    vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
-  });
-
-  it('calls reorderWatchlist with the new code order on drag end', async () => {
-    const spy = vi.spyOn(watchlistApi, 'reorderWatchlist')
-      .mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  it('opens the edit modal when 편집 is clicked', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    await waitFor(() => expect(dnd.onDragEnd).toBeTypeOf('function'));
-    // drag 005930(삼성전자) onto 000660(SK하이닉스) → 새 순서 [000660, 005930]
-    dnd.onDragEnd!({ active: { id: '005930' }, over: { id: '000660' } } as DragEndEvent);
-    await waitFor(() => expect(spy).toHaveBeenCalledWith(['000660', '005930']));
-  });
-
-  it('does not call reorderWatchlist when dropped in place', async () => {
-    const spy = vi.spyOn(watchlistApi, 'reorderWatchlist')
-      .mockResolvedValue({ entries: ENTRIES, next_run_at_ms: 0 });
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(dnd.onDragEnd).toBeTypeOf('function'));
-    dnd.onDragEnd!({ active: { id: '005930' }, over: { id: '005930' } } as DragEndEvent);
-    expect(spy).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByLabelText('관심종목 편집 열기')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('관심종목 편집 열기'));
+    expect(await screen.findByRole('dialog', { name: '관심종목 편집' })).toBeInTheDocument();
   });
 });

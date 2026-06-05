@@ -542,6 +542,15 @@ class BrokerSeriesResponse(BaseModel):
 # --- Watchlist (see spec 2026-05-26 and ADR-0034) --------------------------
 
 
+class WatchlistFolder(BaseModel):
+    """A named, ordered grouping of WatchlistEntries. See CONTEXT.md
+    "Watchlist Folder". `id` is backend-minted and stable across renames."""
+
+    id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
+    name: str = Field(min_length=1, max_length=40)
+    order: int = Field(ge=0)
+
+
 class WatchlistEntry(BaseModel):
     """One Code in the Watchlist. See CONTEXT.md WatchlistEntry."""
 
@@ -549,9 +558,32 @@ class WatchlistEntry(BaseModel):
     name: str
     registered_at_kst_date: str = Field(pattern=r"^\d{8}$")
     last_success_date: str | None = Field(default=None, pattern=r"^\d{8}$")
+    folder_id: str | None = Field(default=None, pattern=r"^f_[0-9a-f]{8}$")
+    order: int = Field(default=0, ge=0)
+
+
+class WatchlistDocument(BaseModel):
+    """On-disk watchlist.json (v2). Typed envelope, validated on load via
+    model_validate. Every writer round-trips the WHOLE document under one
+    lock so folders survive a capture-success write (ADR-0065)."""
+
+    schema_version: int = 2
+    folders: list[WatchlistFolder] = Field(default_factory=list)
+    entries: list[WatchlistEntry] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _no_dangling_folder_id(self) -> "WatchlistDocument":
+        valid = {f.id for f in self.folders}
+        for e in self.entries:
+            if e.folder_id is not None and e.folder_id not in valid:
+                raise ValueError(
+                    f"entry {e.code} references unknown folder {e.folder_id}"
+                )
+        return self
 
 
 class WatchlistResponse(BaseModel):
+    folders: list[WatchlistFolder] = Field(default_factory=list)
     entries: list[WatchlistEntry]
     next_run_at_ms: int  # Unix-ms of next KST 17:00 boundary (ADR-0003)
 
@@ -560,14 +592,49 @@ class WatchlistAddRequest(BaseModel):
     code: str = Field(pattern=r"^\d{6}$")
 
 
-class WatchlistReorderRequest(BaseModel):
-    """New display order for the Watchlist. Each element is a 6-digit KRX
-    code. Tolerant server-side: unknown codes are ignored and unmentioned
-    entries are appended (see watchlist.reorder_entries)."""
+class _FolderNameBody(BaseModel):
+    """Shared request body for folder create/rename — one validated folder name."""
 
-    codes: list[Annotated[str, Field(pattern=r"^\d{6}$")]] = Field(
-        description="Desired display order; 6-digit KRX codes.",
-    )
+    name: str = Field(min_length=1, max_length=40)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_nonempty(cls, v: str) -> str:
+        # Field(min_length=1) runs first on the RAW string, so "   " (len 3)
+        # passes it. Strip and re-check here so a whitespace-only name is
+        # rejected at the request boundary with a clean 422 — otherwise the
+        # service strips to "" and reconstructs WatchlistFolder(name=""),
+        # which re-trips min_length=1 as an uncaught ValidationError → HTTP 500.
+        v = v.strip()
+        if not v:
+            raise ValueError("name must not be blank")
+        return v
+
+
+class FolderCreateRequest(_FolderNameBody):
+    pass
+
+
+class FolderRenameRequest(_FolderNameBody):
+    pass
+
+
+class FolderReorderRequest(BaseModel):
+    ordered_ids: list[str]
+
+
+class EntriesMoveRequest(BaseModel):
+    codes: list[str]
+    folder_id: str | None = None
+
+
+class EntriesReorderRequest(BaseModel):
+    folder_id: str | None = None
+    ordered_codes: list[str]
+
+
+class EntriesRemoveRequest(BaseModel):
+    codes: list[str]
 
 
 # --- Watchlist manual catch-up (see spec 2026-05-27) -----------------------
