@@ -65,3 +65,6 @@ class UpstreamCode(StrEnum):
     # Operators see distinct reasons; UIs can surface a different remediation
     # ("free disk space" vs "check KRX credentials").
     DISK_WRITE_FAILED = "disk_write_failed"
+    # KIS .mst symbol-master download/unzip/parse failure (Phase 2). The .mst is
+    # a static no-auth file, so there is no credentials failure mode here.
+    KIS_MASTER_FETCH_FAILED = "kis_master_fetch_failed"

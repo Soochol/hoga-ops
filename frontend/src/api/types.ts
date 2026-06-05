@@ -158,7 +158,8 @@ export type UpstreamCode =
   | 'cookie_missing'
   | 'hogaplay_http_error'
   | 'symbol_master_not_initialized'
-  | 'disk_write_failed';
+  | 'disk_write_failed'
+  | 'kis_master_fetch_failed';
 
 /** Union used wherever an error code can be either domain — currently
  *  CaptureError.code on the per-item SSE capture_finished payload. */
