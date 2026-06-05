@@ -258,3 +258,47 @@ def test_calendar_cell_shows_no_upstream_data_for_sentinel(tmp_path: Path) -> No
     cell = next(c for c in resp.cells if c.date == "20260319")
     assert cell.status == "no_upstream_data"
     assert cell.captured_at_ms is None
+
+
+def test_trading_days_for_negative_caches_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_calendar_state: None,
+) -> None:
+    """Within the failure TTL a repeat call must NOT re-fetch — without this
+    the live poller's gate re-ran the full blocking fetch every ~20s cycle on
+    the event loop for the whole session during a chk-holiday outage."""
+    import hoga.api.kis_holidays as kis_holidays_module
+
+    calls = {"n": 0}
+
+    def _raise(year, month):
+        calls["n"] += 1
+        raise kis_holidays_module.KisHolidayFetchError("upstream down")
+
+    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
+
+    assert calendar_module._trading_days_for(2026, 5) is None
+    assert calendar_module._trading_days_for(2026, 5) is None  # within TTL
+    assert calls["n"] == 1  # second call served by the negative cache
+
+    # TTL expiry → one more real attempt
+    key = (2026, 5)
+    calendar_module._failure_cache[key] -= calendar_module._FAILURE_TTL_SECONDS + 1
+    assert calendar_module._trading_days_for(2026, 5) is None
+    assert calls["n"] == 2
+
+
+def test_trading_days_for_maps_creds_missing_to_distinct_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_calendar_state: None,
+) -> None:
+    """KisCredentialsMissing → KIS_CREDENTIALS_MISSING (UI says 'set keys');
+    any other failure → KIS_HOLIDAY_FETCH_FAILED (UI says 'retry later')."""
+    import hoga.api.kis_holidays as kis_holidays_module
+
+    def _creds_missing(year, month):
+        raise kis_holidays_module.KisCredentialsMissing("KIS_APP_KEY/KIS_APP_SECRET missing")
+
+    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _creds_missing)
+    assert calendar_module._trading_days_for(2026, 5) is None
+    assert calendar_module.last_failure_reason() == UpstreamCode.KIS_CREDENTIALS_MISSING

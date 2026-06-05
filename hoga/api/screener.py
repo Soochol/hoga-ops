@@ -69,7 +69,9 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
 
     today = now_kst().strftime("%Y%m%d")
     try:
-        days = _gap_trading_days(last, today)
+        # to_thread: 콜드 월이면 KIS chk-holiday sync HTTP — duckdb read 와 같은
+        # 규칙으로 이벤트 루프 밖에서.
+        days = await asyncio.to_thread(_gap_trading_days, last, today)
     except Exception:  # noqa: BLE001 — TradingDayUnavailableError or worse
         log.warning("screener update: trading-day list unavailable")
         return 0

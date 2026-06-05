@@ -437,8 +437,11 @@ async def test_catchup_one_entry_q14_trim(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_catchup_one_entry_returns_empty_on_trading_day_unavailable(tmp_path: Path):
-    """TradingDayUnavailableError → empty response, no enqueue."""
+async def test_catchup_one_entry_propagates_trading_day_unavailable(tmp_path: Path):
+    """TradingDayUnavailableError must PROPAGATE (no enqueue) — swallowing it
+    here made the routes' error envelope unreachable dead code, so a KIS
+    calendar outage reported per-entry success (enqueued=0, error=None) and
+    the gap silently persisted."""
     from hoga.api import scheduler
     from hoga.api.calendar import TradingDayUnavailableError
     from hoga.api.error_codes import UpstreamCode
@@ -455,10 +458,10 @@ async def test_catchup_one_entry_returns_empty_on_trading_day_unavailable(tmp_pa
          patch("hoga.api.scheduler.trading_days_in_range", side_effect=boom), \
          patch("hoga.api.scheduler.enqueue_items_core",
                new_callable=AsyncMock) as enq:
-        result = await scheduler.catchup_one_entry(
-            entry, data_dir=tmp_path, now=fake_now,
-        )
-    assert result.enqueued == [] and result.deduped == []
+        with pytest.raises(TradingDayUnavailableError):
+            await scheduler.catchup_one_entry(
+                entry, data_dir=tmp_path, now=fake_now,
+            )
     assert enq.await_count == 0
 
 

@@ -53,9 +53,13 @@ class UpstreamCode(StrEnum):
     vs ``code``) signals the response shape.
     """
 
-    # KIS chk-holiday trading-day fetch failure (Phase 3) — covers creds-missing,
-    # HTTP/rt_cd errors, and parse failures on the calendar path.
+    # KIS chk-holiday trading-day fetch failure (Phase 3) — HTTP/rt_cd errors
+    # and parse failures on the calendar path. Transient; remediation = retry.
     KIS_HOLIDAY_FETCH_FAILED = "kis_holiday_fetch_failed"
+    # KIS credentials absent (KIS_APP_KEY/KIS_APP_SECRET unset) — distinct from
+    # FETCH_FAILED so UIs give the right remediation ("set keys" vs "retry
+    # later"); same principle as DISK_WRITE_FAILED vs KIS_MASTER_FETCH_FAILED.
+    KIS_CREDENTIALS_MISSING = "kis_credentials_missing"
     COOKIE_EXPIRED = "cookie_expired"
     COOKIE_MISSING = "cookie_missing"
     HOGAPLAY_HTTP_ERROR = "hogaplay_http_error"
