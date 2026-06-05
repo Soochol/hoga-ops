@@ -304,12 +304,16 @@ class KisClient:
                 "appkey": self._creds.app_key,
                 "secretkey": self._creds.app_secret,
             },
-            headers={"content-type": "application/json"},
         )
-        resp.raise_for_status()
+        if resp.status_code != 200:  # noqa: PLR2004 — HTTP OK, same shape as _issue_token
+            raise KisAuthError(
+                f"/oauth2/Approval HTTP {resp.status_code}: {resp.text[:200]}"
+            )
         key = resp.json().get("approval_key")
         if not key:
-            raise KisAuthError("approval_key missing in /oauth2/Approval response")
+            raise KisAuthError(
+                f"approval_key missing in /oauth2/Approval response: {resp.text[:200]}"
+            )
         return str(key)
 
     async def _issue_token(self) -> str:

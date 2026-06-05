@@ -886,6 +886,38 @@ async def test_get_approval_key(tmp_path):
         _transport=httpx.MockTransport(handler),
     )
     assert await kis.get_approval_key() == "APPROVAL-123"
+
+
+async def test_get_approval_key_missing_key_raises_with_body(tmp_path):
+    """200인데 approval_key가 없는 KIS 에러 envelope — Task 6 재연결 루프의
+    `err=%r` 로그가 운영 진단의 전부이므로 에러 메시지에 응답 본문이 실려야 한다."""
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(200, json={"error_description": "bad appkey"})
+    )
+    kis = KisClient(
+        KisCredentials(app_key="AK", app_secret="AS"),
+        tmp_path / "token.json",
+        _transport=transport,
+    )
+    with pytest.raises(KisAuthError) as exc_info:
+        await kis.get_approval_key()
+    assert "bad appkey" in str(exc_info.value)
+
+
+async def test_get_approval_key_non_200_raises_with_status(tmp_path):
+    """비-200 → httpx.HTTPStatusError traceback이 아니라 HTTP 상태를 담은
+    KisAuthError (_issue_token과 동일 패턴)."""
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(403, json={"error_description": "forbidden"})
+    )
+    kis = KisClient(
+        KisCredentials(app_key="AK", app_secret="AS"),
+        tmp_path / "token.json",
+        _transport=transport,
+    )
+    with pytest.raises(KisAuthError) as exc_info:
+        await kis.get_approval_key()
+    assert "HTTP 403" in str(exc_info.value)
 ```
 
 - [ ] **Step 2: 실패 확인**
@@ -911,14 +943,22 @@ Expected: FAIL — `AttributeError: 'KisClient' object has no attribute 'get_app
                 "appkey": self._creds.app_key,
                 "secretkey": self._creds.app_secret,
             },
-            headers={"content-type": "application/json"},
         )
-        resp.raise_for_status()
+        if resp.status_code != 200:  # noqa: PLR2004 — HTTP OK, same shape as _issue_token
+            raise KisAuthError(
+                f"/oauth2/Approval HTTP {resp.status_code}: {resp.text[:200]}"
+            )
         key = resp.json().get("approval_key")
         if not key:
-            raise KisAuthError("approval_key missing in /oauth2/Approval response")
+            raise KisAuthError(
+                f"approval_key missing in /oauth2/Approval response: {resp.text[:200]}"
+            )
         return str(key)
 ```
+
+(비-200은 `_issue_token`과 동일하게 명시 검사로 KisAuthError 정규화 — Task 6 재연결
+루프의 `err=%r` 로그가 운영 진단의 전부이므로 상태코드/본문을 메시지에 싣는다.
+`headers={"content-type": ...}`는 httpx가 `json=`으로 자동 설정하므로 생략.)
 
 - [ ] **Step 4: 통과 확인**
 
