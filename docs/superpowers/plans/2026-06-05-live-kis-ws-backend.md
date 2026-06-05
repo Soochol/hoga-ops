@@ -1639,9 +1639,24 @@ git commit -m "feat(api): fill_strength reads fills.parquet first, trades fallba
 
 **Files:**
 - Modify: `hoga/live/lifecycle.py`
+- Modify: `hoga/live/buffer.py` (`drop_codes_except` — Task 4 리뷰 Minor 3)
 - Modify: `hoga/api/app.py` (lifespan)
 - Modify: `hoga/api/watchlist.py` (reorder/add/remove 후크 — `grep -n "refresh_live_poller" hoga/`로 호출부 확인)
-- Test: `tests/unit/live/test_lifecycle.py` (추가)
+- Test: `tests/unit/live/test_lifecycle.py` (추가), `tests/unit/live/test_buffer.py` (추가)
+
+**buffer.py 추가분 (Task 4 리뷰 이월):** 떠난 코드의 deque는 publish-경로 eviction이 못 치우므로(조용한 deque는 동결) Live Set 축출 시 명시 해제가 필요 — per-tick 유량에선 종목당 ~수십 MB가 영구 잔존할 수 있다.
+
+```python
+# hoga/live/buffer.py에 추가:
+    async def drop_codes_except(self, keep: set[str]) -> None:
+        """Live Set 축출 코드의 deque 해제(Task 4 리뷰 Minor 3) —
+        다운샘플러 set_active_codes와 동일 원칙(떠난 종목은 ring에서도 제거)."""
+        async with self._lock:
+            for key in [k for k in self._buf if k[0] not in keep]:
+                del self._buf[key]
+```
+
+함께 추가할 버퍼 테스트 3건(`tests/unit/live/test_buffer.py`): ① `drop_codes_except`가 keep 밖 코드의 모든 kind deque를 제거하고 keep 코드는 보존, ② eviction 경계 pin — `t_ms == cutoff`인 엔트리는 **유지**, `cutoff - 1`은 제거(`<` 의미론 고정), ③ mixed-kind 배치(`[OB, TRADE]`) publish 시 각 kind deque가 독립적으로 eviction.
 
 - [ ] **Step 1: 실패하는 Live Set 테스트 추가**
 
@@ -1754,6 +1769,7 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
     codes = live_set_codes([e.code for e in load_watchlist(data_dir)])
     await stream.ws.update_codes(codes)
     stream.set_active_codes(set(codes))   # advisor C: 밀려난 코드 carry 즉시 제거
+    await _buffer.drop_codes_except(set(codes))  # Task 4 리뷰: 떠난 코드 ring 해제
     global _state
     _state = replace(_state, live_set=tuple(codes), watchlist_codes=tuple(codes))
 ```
