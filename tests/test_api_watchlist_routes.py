@@ -212,7 +212,7 @@ async def test_catchup_all_per_entry_failure_does_not_abort(tmp_path: Path):
 
     def fake_helper(entry, *, data_dir, now):
         if entry.code == "003490":
-            raise RuntimeError("krx_credentials_missing")
+            raise RuntimeError("some_internal_error")
         return EnqueueResponse(enqueued=[], deduped=[])
 
     with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \

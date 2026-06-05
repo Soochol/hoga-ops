@@ -146,47 +146,36 @@ def _reset_calendar_state():
     calendar_module.reset_cache_for_tests()
 
 
-def test_trading_days_for_returns_none_when_creds_missing(
+def test_trading_days_for_returns_none_when_fetch_raises(
     monkeypatch: pytest.MonkeyPatch,
     _reset_calendar_state: None,
 ) -> None:
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
+    """_trading_days_for returns None and sets KIS_HOLIDAY_FETCH_FAILED when
+    fetch_month_trading_days raises (covers creds-missing, network, rt_cd)."""
+    import hoga.api.kis_holidays as kis_holidays_module
+
+    def _raise(year, month):
+        raise kis_holidays_module.KisHolidayFetchError("KIS_APP_KEY/KIS_APP_SECRET missing")
+
+    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
 
     assert calendar_module._trading_days_for(2026, 5) is None
-    assert calendar_module.last_failure_reason() == UpstreamCode.KRX_CREDENTIALS_MISSING
+    assert calendar_module.last_failure_reason() == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
 
 
-def test_trading_days_for_returns_none_when_pykrx_raises(
-    monkeypatch: pytest.MonkeyPatch,
-    _reset_calendar_state: None,
-) -> None:
-    monkeypatch.setenv("KRX_ID", "u")
-    monkeypatch.setenv("KRX_PW", "p")
-
-    # The function does `from pykrx import stock` — patch the import path.
-    import sys
-    class _FakeStock:
-        @staticmethod
-        def get_market_ohlcv(*args, **kwargs):
-            raise RuntimeError("pykrx exploded")
-    fake_pykrx = type(sys)("pykrx")
-    fake_pykrx.stock = _FakeStock
-    monkeypatch.setitem(sys.modules, "pykrx", fake_pykrx)
-
-    assert calendar_module._trading_days_for(2026, 5) is None
-    assert calendar_module.last_failure_reason() == UpstreamCode.KRX_FETCH_FAILED
-
-
-def test_get_month_map_fail_soft_when_creds_missing(
+def test_get_month_map_fail_soft_when_kis_fetch_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     _reset_calendar_state: None,
 ) -> None:
     """Calendar UI still renders every weekday; banner reason is set."""
     import datetime as dt
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
+    import hoga.api.kis_holidays as kis_holidays_module
+
+    def _raise(year, month):
+        raise kis_holidays_module.KisHolidayFetchError("KIS_APP_KEY/KIS_APP_SECRET missing")
+
+    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
     # Freeze "now" to a mid-month weekday (Wed 2026-05-13) so that the
     # weekend-cell assertion below stays deterministic regardless of the
     # actual calendar date when the suite runs. Without this freeze, a test
@@ -197,7 +186,7 @@ def test_get_month_map_fail_soft_when_creds_missing(
     monkeypatch.setattr(calendar_module, "_now_kst", lambda: frozen_now)
 
     resp = calendar_module.get_month_map(data_dir=tmp_path, code="005930", year=2026, month=5)
-    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
+    assert resp.reason == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
     # May 2026 has 31 days; all are present as cells.
     assert len(resp.cells) == 31
     weekday_cells = [c for c in resp.cells
@@ -212,24 +201,32 @@ def test_get_month_map_fail_soft_when_creds_missing(
     assert all(c.status in ("weekend", "future") for c in weekend_cells)
 
 
-def test_trading_days_in_range_raises_when_creds_missing(
+def test_trading_days_in_range_raises_when_kis_fetch_fails(
     monkeypatch: pytest.MonkeyPatch,
     _reset_calendar_state: None,
 ) -> None:
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
+    import hoga.api.kis_holidays as kis_holidays_module
 
-    with pytest.raises(calendar_module.KrxUnavailableError) as exc_info:
+    def _raise(year, month):
+        raise kis_holidays_module.KisHolidayFetchError("KIS_APP_KEY/KIS_APP_SECRET missing")
+
+    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
+
+    with pytest.raises(calendar_module.TradingDayUnavailableError) as exc_info:
         calendar_module.trading_days_in_range("20260501", "20260531")
-    assert exc_info.value.code == UpstreamCode.KRX_CREDENTIALS_MISSING
+    assert exc_info.value.code == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
 
 
 def test_reset_cache_clears_last_failure_reason(
     monkeypatch: pytest.MonkeyPatch,
     _reset_calendar_state: None,
 ) -> None:
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
+    import hoga.api.kis_holidays as kis_holidays_module
+
+    def _raise(year, month):
+        raise kis_holidays_module.KisHolidayFetchError("creds missing")
+
+    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
     calendar_module._trading_days_for(2026, 5)
     assert calendar_module.last_failure_reason() is not None
     calendar_module.reset_cache_for_tests()

@@ -767,13 +767,17 @@ def test_dismiss_done_empty_publishes_no_event(monkeypatch, tmp_path):
     assert not any(isinstance(e, CaptureDismissedEvent) for e in published)
 
 
-def test_enqueue_range_returns_503_when_krx_creds_missing(monkeypatch, tmp_path):
-    """When KRX creds are missing, range-based enqueue returns 503 with code."""
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
-
-    # Reset calendar cache so the pre-check kicks in.
+def test_enqueue_range_returns_503_when_kis_holiday_fetch_fails(monkeypatch, tmp_path):
+    """When KIS holiday fetch fails, range-based enqueue returns 503 with code."""
+    import hoga.api.kis_holidays as kis_holidays_module
     from hoga.api import calendar as calendar_module
+
+    def _raise(year, month):
+        raise kis_holidays_module.KisHolidayFetchError("KIS_APP_KEY/KIS_APP_SECRET missing")
+
+    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
+
+    # Reset calendar cache so the fetch is attempted.
     calendar_module.reset_cache_for_tests()
 
     _no_workers(monkeypatch)
@@ -787,8 +791,8 @@ def test_enqueue_range_returns_503_when_krx_creds_missing(monkeypatch, tmp_path)
         })
         assert response.status_code == 503
         detail = response.json()["detail"]
-        assert detail["code"] == "krx_credentials_missing"
-        assert "KRX" in detail["message"] or "krx" in detail["message"].lower()
+        assert detail["code"] == "kis_holiday_fetch_failed"
+        assert "KIS" in detail["message"] or "kis" in detail["message"].lower()
 
 
 async def test_cancel_during_429_backoff_aborts_immediately(monkeypatch, tmp_path):

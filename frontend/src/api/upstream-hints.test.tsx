@@ -8,8 +8,7 @@ import {
 import type { UpstreamCode } from './types';
 
 const ALL_CODES: UpstreamCode[] = [
-  'krx_credentials_missing',
-  'krx_fetch_failed',
+  'kis_holiday_fetch_failed',
   'cookie_expired',
   'cookie_missing',
   'hogaplay_http_error',

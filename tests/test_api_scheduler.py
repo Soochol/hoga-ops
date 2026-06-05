@@ -94,7 +94,7 @@ async def test_daily_run_per_entry_failure_does_not_abort_loop(tmp_path: Path):
     async def flaky(req, *, data_dir, now):
         if req.code == "003490":
             raise HTTPException(status_code=503,
-                                detail={"code": "krx_credentials_missing"})
+                                detail={"code": "kis_holiday_fetch_failed"})
         from hoga.api.models import EnqueueResponse
         return EnqueueResponse(enqueued=[], deduped=[])
 
@@ -437,10 +437,10 @@ async def test_catchup_one_entry_q14_trim(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_catchup_one_entry_returns_empty_on_krx_unavailable(tmp_path: Path):
-    """KrxUnavailableError → empty response, no enqueue."""
+async def test_catchup_one_entry_returns_empty_on_trading_day_unavailable(tmp_path: Path):
+    """TradingDayUnavailableError → empty response, no enqueue."""
     from hoga.api import scheduler
-    from hoga.api.calendar import KrxUnavailableError
+    from hoga.api.calendar import TradingDayUnavailableError
     from hoga.api.error_codes import UpstreamCode
     from hoga.api.models import WatchlistEntry
     entry = WatchlistEntry(
@@ -450,7 +450,7 @@ async def test_catchup_one_entry_returns_empty_on_krx_unavailable(tmp_path: Path
     )
     fake_now = dt.datetime(2026, 5, 27, 19, 0, 0, tzinfo=KST)
     def boom(*args, **kwargs):
-        raise KrxUnavailableError(UpstreamCode.KRX_CREDENTIALS_MISSING)
+        raise TradingDayUnavailableError(UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
     with patch("hoga.api.scheduler.latest_complete_date", return_value=None), \
          patch("hoga.api.scheduler.trading_days_in_range", side_effect=boom), \
          patch("hoga.api.scheduler.enqueue_items_core",

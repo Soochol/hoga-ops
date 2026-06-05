@@ -93,7 +93,7 @@ describe('Settings — Symbol Master section', () => {
       count: 6012,
       fetched_at_ms: TWO_HOURS_AGO,
       status: 'stale',
-      reason: 'krx_fetch_failed',
+      reason: 'kis_holiday_fetch_failed',
     });
 
     renderWithQuery(<Settings />);
@@ -102,7 +102,7 @@ describe('Settings — Symbol Master section', () => {
       expect(screen.getByText('6,012')).toBeInTheDocument();
     });
     expect(screen.getByText('stale')).toBeInTheDocument();
-    expect(screen.getByText(/KRX에서 종목 목록을 가져오지 못했습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/거래일 조회 오류/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Update Now/i })).toBeEnabled();
   });
 

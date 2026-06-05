@@ -29,7 +29,7 @@ from hoga.api.models import (
     WatchlistReorderRequest,
     WatchlistResponse,
 )
-from hoga.api.calendar import KrxUnavailableError
+from hoga.api.calendar import TradingDayUnavailableError
 from hoga.api.scheduler import catchup_one_entry, seconds_until_next_17_kst
 from hoga.api.watchlist import (
     AlreadyInWatchlistError,
@@ -103,15 +103,15 @@ def build_router(*, data_dir: Path) -> APIRouter:
                     deduped_count=len(resp.deduped),
                     error=None,
                 ))
-            except KrxUnavailableError as e:
+            except TradingDayUnavailableError as e:
                 # Map known upstream failures to a stable code the panel
-                # can branch on (e.g. show a 'configure KRX_ID/KRX_PW' hint).
+                # can branch on (e.g. show a 'configure KIS_APP_KEY/KIS_APP_SECRET' hint).
                 results.append(ManualCatchupAllEntryResult(
                     code=entry.code, name=entry.name,
                     enqueued_count=0, deduped_count=0,
                     error=ManualCatchupError(
                         code=e.code,
-                        message="KRX trading-day list unavailable.",
+                        message="Trading-day list unavailable (KIS).",
                     ),
                 ))
             except Exception:  # noqa: BLE001 — one bad entry mustn't kill the run

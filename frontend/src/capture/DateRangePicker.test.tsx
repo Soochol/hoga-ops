@@ -156,14 +156,14 @@ describe('DateRangePicker reason banner', () => {
     return new QueryClient({ defaultOptions: { queries: { retry: false } } });
   }
 
-  it('shows banner when left month has krx_credentials_missing reason', async () => {
-    const qc = setupCalendarWithReason('krx_credentials_missing');
+  it('shows banner when left month has kis_holiday_fetch_failed reason', async () => {
+    const qc = setupCalendarWithReason('kis_holiday_fetch_failed');
     render(<DateRangePicker code="005930" referenceYear={2026} referenceMonth={5} value={null} onChange={() => {}} />, {
       wrapper: W(qc),
     });
     await new Promise((r) => setTimeout(r, 50));
-    // calendarHints.krx_credentials_missing contains this Korean phrase
-    expect(screen.getByText(/KRX 자격증명이 없어 휴일 표시가/)).toBeTruthy();
+    // calendarHints.kis_holiday_fetch_failed contains this Korean phrase
+    expect(screen.getByText(/KIS에서 거래일을 가져오지 못해 휴일 표시가/)).toBeTruthy();
   });
 
   it('hides banner when both months have null reason', async () => {

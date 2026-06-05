@@ -159,18 +159,18 @@ describe('SymbolSearch reason-aware empty state', () => {
     return <QueryClientProvider client={qc}>{ui}</QueryClientProvider>;
   }
 
-  it('shows krx_credentials_missing hint when reason is set', () => {
+  it('shows kis_holiday_fetch_failed hint when reason is set', () => {
     render(wrapWithData(
       <SymbolSearch value={null} onChange={() => {}} />,
-      { symbols: [], status: 'unavailable', fetched_at_ms: null, reason: 'krx_credentials_missing' },
+      { symbols: [], status: 'unavailable', fetched_at_ms: null, reason: 'kis_holiday_fetch_failed' },
     ));
-    expect(screen.getByText(/KRX 자격증명이 없습니다/)).toBeTruthy();
+    expect(screen.getByText(/거래일 조회 오류/)).toBeTruthy();
   });
 
   it('shows Refresh button when status is unavailable', () => {
     render(wrapWithData(
       <SymbolSearch value={null} onChange={() => {}} />,
-      { symbols: [], status: 'unavailable', fetched_at_ms: null, reason: 'krx_credentials_missing' },
+      { symbols: [], status: 'unavailable', fetched_at_ms: null, reason: 'kis_holiday_fetch_failed' },
     ));
     expect(screen.getByRole('button', { name: /refresh/i })).toBeTruthy();
   });

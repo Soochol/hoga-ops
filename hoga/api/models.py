@@ -578,7 +578,7 @@ class ManualCatchupError(BaseModel):
     """Structured error for one watchlist entry that failed catch-up.
 
     ``code`` is a stable identifier the frontend can branch on (e.g.
-    ``krx_credentials_missing``, ``catchup_failed``); ``message`` is a
+    ``kis_holiday_fetch_failed``, ``catchup_failed``); ``message`` is a
     human-readable explanation. Raw exception strings are NOT exposed —
     server-side details (file paths, stack traces, credential hints) go
     to log.exception only.
@@ -593,7 +593,7 @@ class ManualCatchupAllEntryResult(BaseModel):
     ``error`` is a structured ``{code, message}`` envelope when the entry
     failed, or ``None`` when it succeeded. The stable ``error.code`` lets
     the panel branch on known failure modes (e.g.
-    ``krx_credentials_missing``) without parsing exception strings.
+    ``kis_holiday_fetch_failed``) without parsing exception strings.
     """
     code: str = Field(pattern=r"^\d{6}$")
     name: str

@@ -10,8 +10,8 @@ describe('formatCaughtUpOneMessage', () => {
 
   it('error: shows 수집 실패 with error string', () => {
     expect(formatCaughtUpOneMessage({
-      ...base, enqueued: 0, deduped: 0, error: 'krx_credentials_missing',
-    })).toBe('대한항공 (003490) 수집 실패: krx_credentials_missing');
+      ...base, enqueued: 0, deduped: 0, error: 'kis_holiday_fetch_failed',
+    })).toBe('대한항공 (003490) 수집 실패: kis_holiday_fetch_failed');
   });
 
   it('empty-empty: shows 수집할 거래일 없음', () => {
@@ -65,7 +65,7 @@ describe('summarizeCaughtUpAll', () => {
   it('collects failed entries (error != null)', () => {
     const failed = { code: '003490', name: '대한항공',
                      enqueued_count: 0, deduped_count: 0,
-                     error: { code: 'krx_credentials_missing', message: 'no creds' } };
+                     error: { code: 'kis_holiday_fetch_failed', message: 'no creds' } };
     const ok = { code: '005930', name: '삼성전자',
                  enqueued_count: 1, deduped_count: 0, error: null };
     const s = summarizeCaughtUpAll([failed, ok]);
@@ -86,7 +86,7 @@ describe('formatCaughtUpAllHeader', () => {
       failed: [{
         code: '003490', name: '대한항공',
         enqueued_count: 0, deduped_count: 0,
-        error: { code: 'krx_credentials_missing', message: 'no creds' },
+        error: { code: 'kis_holiday_fetch_failed', message: 'no creds' },
       }],
     })).toBe('✓ 전체 catch-up: 3종목, 1건 추가, 2건 이미 완료, 1종목 실패');
   });

@@ -174,8 +174,8 @@ def test_symbols_all_response_accepts_reason() -> None:
     from hoga.api.models import SymbolsAllResponse
 
     resp = SymbolsAllResponse(symbols=[], status="unavailable", fetched_at_ms=None,
-                              reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
-    assert resp.reason == "krx_credentials_missing"
+                              reason=UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+    assert resp.reason == "kis_holiday_fetch_failed"
 
     # Default is None for backward compat.
     resp_default = SymbolsAllResponse(symbols=[], status="fresh", fetched_at_ms=123)
@@ -188,8 +188,8 @@ def test_calendar_response_accepts_reason() -> None:
     from hoga.api.models import CalendarResponse
 
     resp = CalendarResponse(cells=[], as_of_ms=123,
-                            reason=UpstreamCode.KRX_FETCH_FAILED)
-    assert resp.reason == "krx_fetch_failed"
+                            reason=UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+    assert resp.reason == "kis_holiday_fetch_failed"
 
     resp_default = CalendarResponse(cells=[], as_of_ms=123)
     assert resp_default.reason is None
@@ -279,7 +279,7 @@ def test_reset_state_for_tests_clears_reason() -> None:
     T7: reset now mirrors the module-level default — boot must populate via
     load_disk_state(); if it hasn't run, state is unavailable, not loading.
     """
-    symbols_module._state = SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
+    symbols_module._state = SymbolCacheState.stale(reason=UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
     symbols_module.reset_state_for_tests()
     assert symbols_module._state.status == "unavailable"
     assert symbols_module._state.reason == UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
@@ -303,13 +303,13 @@ def test_symbol_cache_state_factories_enforce_invariants() -> None:
     assert SymbolCacheState.fresh().reason is None
 
     # Stale and unavailable require a reason.
-    stale = SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
+    stale = SymbolCacheState.stale(reason=UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
     assert stale.status == "stale"
-    assert stale.reason == UpstreamCode.KRX_FETCH_FAILED
+    assert stale.reason == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
 
-    unavailable = SymbolCacheState.unavailable(reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
+    unavailable = SymbolCacheState.unavailable(reason=UpstreamCode.KIS_MASTER_FETCH_FAILED)
     assert unavailable.status == "unavailable"
-    assert unavailable.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
+    assert unavailable.reason == UpstreamCode.KIS_MASTER_FETCH_FAILED
 
     # Frozen — immutable after construction.
     with pytest.raises(Exception):  # dataclasses.FrozenInstanceError

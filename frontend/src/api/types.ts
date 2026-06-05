@@ -152,8 +152,7 @@ export type CaptureErrorCode =
  *  bodies, and as `CaptureError.code` on per-item SSE failures (via the
  *  `CaptureFinishedErrorCode` alias below). */
 export type UpstreamCode =
-  | 'krx_credentials_missing'
-  | 'krx_fetch_failed'
+  | 'kis_holiday_fetch_failed'
   | 'cookie_expired'
   | 'cookie_missing'
   | 'hogaplay_http_error'

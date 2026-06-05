@@ -46,7 +46,7 @@ export function reorderWatchlist(codes: string[]): Promise<WatchlistResponse> {
 // from this module.
 
 /** Structured error envelope — mirrors hoga/api/models.py::ManualCatchupError.
- *  `code` is stable (e.g. `krx_credentials_missing`, `catchup_failed`); the
+ *  `code` is stable (e.g. `kis_holiday_fetch_failed`, `catchup_failed`); the
  *  panel can branch on it instead of regex-matching exception strings. */
 export interface ManualCatchupError {
   code: string;

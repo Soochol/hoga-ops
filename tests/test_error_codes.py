@@ -5,9 +5,8 @@ from hoga.api.error_codes import CaptureErrorCode, UpstreamCode
 
 
 def test_upstream_code_values() -> None:
-    """All five UpstreamCode values are present with stable string values."""
-    assert UpstreamCode.KRX_CREDENTIALS_MISSING.value == "krx_credentials_missing"
-    assert UpstreamCode.KRX_FETCH_FAILED.value == "krx_fetch_failed"
+    """Stable string values for all UpstreamCode members."""
+    assert UpstreamCode.KIS_HOLIDAY_FETCH_FAILED.value == "kis_holiday_fetch_failed"
     assert UpstreamCode.COOKIE_EXPIRED.value == "cookie_expired"
     assert UpstreamCode.COOKIE_MISSING.value == "cookie_missing"
     assert UpstreamCode.HOGAPLAY_HTTP_ERROR.value == "hogaplay_http_error"
@@ -15,8 +14,8 @@ def test_upstream_code_values() -> None:
 
 def test_upstream_code_is_str_enum() -> None:
     """StrEnum so FastAPI serializes to the bare string on the wire."""
-    assert isinstance(UpstreamCode.KRX_CREDENTIALS_MISSING, str)
-    assert UpstreamCode.KRX_CREDENTIALS_MISSING == "krx_credentials_missing"
+    assert isinstance(UpstreamCode.KIS_HOLIDAY_FETCH_FAILED, str)
+    assert UpstreamCode.KIS_HOLIDAY_FETCH_FAILED == "kis_holiday_fetch_failed"
 
 
 def test_capture_error_code_retains_non_upstream_values() -> None:

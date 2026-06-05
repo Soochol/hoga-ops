@@ -139,7 +139,7 @@ async def catchup_one_entry(
         return EnqueueResponse(enqueued=[], deduped=[])
     try:
         candidates = trading_days_in_range(start, today)
-    except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
+    except Exception:  # noqa: BLE001 — TradingDayUnavailableError or worse
         log.warning("catch-up: trading-day list unavailable for %s", entry.code)
         return EnqueueResponse(enqueued=[], deduped=[])
 

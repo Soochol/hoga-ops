@@ -53,17 +53,18 @@ class UpstreamCode(StrEnum):
     vs ``code``) signals the response shape.
     """
 
-    KRX_CREDENTIALS_MISSING = "krx_credentials_missing"
-    KRX_FETCH_FAILED = "krx_fetch_failed"
+    # KIS chk-holiday trading-day fetch failure (Phase 3) — covers creds-missing,
+    # HTTP/rt_cd errors, and parse failures on the calendar path.
+    KIS_HOLIDAY_FETCH_FAILED = "kis_holiday_fetch_failed"
     COOKIE_EXPIRED = "cookie_expired"
     COOKIE_MISSING = "cookie_missing"
     HOGAPLAY_HTTP_ERROR = "hogaplay_http_error"
     SYMBOL_MASTER_NOT_INITIALIZED = "symbol_master_not_initialized"
     # Disk-write failure during a cache flush — distinguishes "the upstream
-    # source is down" (KRX_FETCH_FAILED) from "the upstream returned data
+    # source is down" (KIS_MASTER_FETCH_FAILED) from "the upstream returned data
     # but we couldn't persist it" (full volume, EACCES, detached volume).
     # Operators see distinct reasons; UIs can surface a different remediation
-    # ("free disk space" vs "check KRX credentials").
+    # ("free disk space" vs "check KIS credentials").
     DISK_WRITE_FAILED = "disk_write_failed"
     # KIS .mst symbol-master download/unzip/parse failure (Phase 2). The .mst is
     # a static no-auth file, so there is no credentials failure mode here.

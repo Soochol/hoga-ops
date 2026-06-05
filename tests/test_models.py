@@ -191,13 +191,13 @@ def test_manual_catchup_all_entry_result_with_error():
         code="003490", name="대한항공",
         enqueued_count=0, deduped_count=0,
         error=ManualCatchupError(
-            code="krx_credentials_missing",
-            message="KRX trading-day list unavailable.",
+            code="kis_holiday_fetch_failed",
+            message="Trading-day list unavailable (KIS).",
         ),
     )
     assert r.error is not None
-    assert r.error.code == "krx_credentials_missing"
-    assert "KRX" in r.error.message
+    assert r.error.code == "kis_holiday_fetch_failed"
+    assert "KIS" in r.error.message
 
 
 def test_manual_catchup_all_response_aggregates():

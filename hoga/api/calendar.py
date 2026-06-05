@@ -1,6 +1,6 @@
 """GET /api/inventory/calendar — per-symbol month status map.
 
-Composes disk_state.check_disk_state with the KRX trading-day list and a
+Composes disk_state.check_disk_state with the KIS trading-day list and a
 today/17-KST overlay. Pure read-side; no mutation. See spec §5.3, §11 Q21.
 """
 from __future__ import annotations
@@ -21,7 +21,6 @@ from hoga.api.models import CalendarCell, CalendarResponse
 # the same predicate that captures.py's enqueue guard uses — keeps the
 # 17-KST cutoff in one place.
 from hoga.collector.orchestrator import is_today_too_early, now_kst as _now_kst
-from hoga.env import krx_creds_present
 
 
 # Module-level cache: (year, month) → set of YYYYMMDD trading-day strings.
@@ -35,22 +34,22 @@ _last_failure_reason: UpstreamCode | None = None
 
 
 def last_failure_reason() -> UpstreamCode | None:
-    """Public accessor for the most recent KRX-availability failure."""
+    """Public accessor for the most recent KIS-availability failure."""
     return _last_failure_reason
 
 
-class KrxUnavailableError(RuntimeError):
-    """KRX trading-day data unavailable. Carries an UpstreamCode for HTTP surfacing."""
+class TradingDayUnavailableError(RuntimeError):
+    """Trading-day data unavailable (KIS chk-holiday failed).
+    Carries an UpstreamCode for HTTP surfacing."""
     def __init__(self, code: UpstreamCode) -> None:
-        super().__init__(f"KRX unavailable: {code.value}")
+        super().__init__(f"trading days unavailable: {code.value}")
         self.code = code
 
 
 def _trading_days_for(year: int, month: int) -> set[str] | None:
-    """Return YYYYMMDD strings for KRX trading days in (year, month).
-
-    Returns None when KRX data cannot be obtained (no creds, or pykrx failed).
-    The most recent failure reason is exposed via :func:`last_failure_reason`.
+    """Return YYYYMMDD strings for trading days in (year, month) via KIS
+    chk-holiday (opnd_yn). Returns None when the fetch fails (creds missing,
+    network, rt_cd) — most recent reason via :func:`last_failure_reason`.
     Cached results from earlier successful fetches stay valid.
     """
     global _last_failure_reason  # noqa: PLW0603
@@ -60,21 +59,13 @@ def _trading_days_for(year: int, month: int) -> set[str] | None:
     if cached is not None:
         return cached
 
-    if not krx_creds_present():
-        _last_failure_reason = UpstreamCode.KRX_CREDENTIALS_MISSING
-        return None
-
-    start = f"{year:04d}{month:02d}01"
-    last_day = stdlib_calendar.monthrange(year, month)[1]
-    end = f"{year:04d}{month:02d}{last_day:02d}"
     try:
-        from pykrx import stock
-        df = stock.get_market_ohlcv(start, end, "005930")
-    except Exception:  # noqa: BLE001
-        _last_failure_reason = UpstreamCode.KRX_FETCH_FAILED
-        return None
+        from hoga.api.kis_holidays import fetch_month_trading_days
 
-    result = {d.strftime("%Y%m%d") for d in df.index}
+        result = fetch_month_trading_days(year, month)
+    except Exception:  # noqa: BLE001 — KisHolidayFetchError or worse
+        _last_failure_reason = UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+        return None
     _month_cache[key] = result
     _last_failure_reason = None
     return result
@@ -84,13 +75,13 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
     """Public helper used by captures.py Task 7. Returns YYYYMMDD trading days
     in [start, end] inclusive, sorted.
 
-    Raises :class:`KrxUnavailableError` when KRX data is unavailable for any
-    month spanned by the range — fail-fast on the enqueue path so the user
+    Raises :class:`TradingDayUnavailableError` when KIS data is unavailable for
+    any month spanned by the range — fail-fast on the enqueue path so the user
     can't proceed with a guessed day list.
 
-    Tests should monkeypatch this function (or pre-populate ``_month_cache``)
-    rather than rely on live KRX access — KRX endpoints require KRX_ID / KRX_PW
-    env vars.
+    Tests should monkeypatch or pre-populate ``_month_cache`` rather than rely
+    on live KIS chk-holiday; tests should monkeypatch
+    ``hoga.api.kis_holidays.fetch_month_trading_days`` to raise for error paths.
     """
     start_d = dt.date(int(start[:4]), int(start[4:6]), int(start[6:8]))
     end_d = dt.date(int(end[:4]), int(end[4:6]), int(end[6:8]))
@@ -101,7 +92,7 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
     while cur <= end_d:
         days = _trading_days_for(cur.year, cur.month)
         if days is None:
-            raise KrxUnavailableError(last_failure_reason() or UpstreamCode.KRX_FETCH_FAILED)
+            raise TradingDayUnavailableError(last_failure_reason() or UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
         for d in sorted(days):
             if start <= d <= end:
                 out.append(d)
@@ -114,12 +105,12 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
 
 
 def is_trading_day(date_yyyymmdd: str) -> bool | None:
-    """Return True/False for ``date``, or None when KRX data is unavailable.
+    """Return True/False for ``date``, or None when KIS data is unavailable.
 
     Policy on None is the caller's: cold-path schedulers fail-fast
     (``trading_days_in_range`` raises), live-path callers fall back to a
     permissive default (e.g. don't gate polling so capture stays up when
-    KRX is briefly unreachable). Keeping the data accessor and the policy
+    KIS is briefly unreachable). Keeping the data accessor and the policy
     separate avoids embedding either stance in the module.
     """
     year = int(date_yyyymmdd[:4])
@@ -223,7 +214,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
     async def calendar_route(code: str = Query(..., pattern=r"^\d{6}$"),
                               year: int = Query(..., ge=2000, le=2100),
                               month: int = Query(..., ge=1, le=12)) -> CalendarResponse:
-        # Offload the entire build to a threadpool so the cold-month pykrx
+        # Offload the entire build to a threadpool so the cold-month KIS
         # HTTP fetch inside _trading_days_for doesn't block the event loop.
         # Warm calls (cache hit) still incur the round-trip; overhead is
         # negligible (~microseconds) vs the per-stall (seconds) we avoid.

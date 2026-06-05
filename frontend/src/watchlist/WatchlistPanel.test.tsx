@@ -315,7 +315,7 @@ describe('WatchlistPanel manual catch-up', () => {
       results: [
         { code: '003490', name: '대한항공',
           enqueued_count: 0, deduped_count: 0,
-          error: { code: 'krx_credentials_missing',
+          error: { code: 'kis_holiday_fetch_failed',
                    message: 'KRX trading-day list unavailable.' } },
       ],
     });
@@ -324,7 +324,7 @@ describe('WatchlistPanel manual catch-up', () => {
     await userEvent.click(screen.getByRole('button', { name: /지금 전체 수집/ }));
     await waitFor(() =>
       expect(screen.getByText(/1종목 실패/)).toBeInTheDocument());
-    expect(screen.getByText(/krx_credentials_missing/)).toBeInTheDocument();
+    expect(screen.getByText(/kis_holiday_fetch_failed/)).toBeInTheDocument();
   });
 
   // --- Coverage gaps from /review audit (2026-05-27) ---------------------
