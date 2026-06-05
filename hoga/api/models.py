@@ -380,6 +380,7 @@ class SymbolHit(BaseModel):
     code: str
     name: str
     market: Literal["KOSPI", "KOSDAQ"]
+    security_type: Literal["stock", "etf", "etn"] = "stock"
     captured_count: int                 # complete only — headline number (spec §11 Q18)
     captured_breakdown: dict[str, int]  # {"complete": N, "source_partial": M, "client_incomplete": K, "invalid": J}
 

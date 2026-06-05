@@ -266,6 +266,7 @@ def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int] | None:
                 code=e["code"],
                 name=e["name"],
                 market=e["market"],
+                security_type=e.get("security_type", "stock"),
                 captured_count=0,
                 captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
             )
@@ -292,7 +293,7 @@ def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> 
         "fetched_at_ms": fetched_at_ms,
         "source": "pykrx",
         "entries": [
-            {"code": e.code, "name": e.name, "market": e.market}
+            {"code": e.code, "name": e.name, "market": e.market, "security_type": e.security_type}
             for e in entries
         ],
     }
