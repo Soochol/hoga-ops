@@ -3,6 +3,7 @@ import json
 
 import pytest
 
+import hoga.live.ws_client as ws_client_mod
 from hoga.live.ws_client import KisWsClient, build_request
 
 
@@ -63,3 +64,80 @@ async def test_subscribe_sends_three_trs_per_code():
     assert len(fake.sent) == 6                  # 2종목 × 3TR
     trs = {json.loads(s)["body"]["input"]["tr_id"] for s in fake.sent}
     assert trs == {"H0STASP0", "H0STCNT0", "H0STMBC0"}
+
+
+class _FakeConnectCM:
+    """websockets.connect 대체 — __aenter__가 FakeWs를 반환하는 async CM."""
+
+    def __init__(self, ws: FakeWs):
+        self._ws = ws
+
+    async def __aenter__(self) -> FakeWs:
+        return self._ws
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+
+async def test_run_reconnects_and_resubscribes_after_failure(monkeypatch):
+    # 2회차 connect만 성공(FakeWs) — 1회차/3회차+는 예외 → fake.sent는 정확히
+    # 6에서 안정되어 cancel 시점과 무관하게 단언이 결정적이다(spec §10).
+    fake = FakeWs([])  # recv 즉시 ConnectionError → 두 번째 연결도 곧 종료
+    calls = {"n": 0}
+
+    def fake_connect(url, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            return _FakeConnectCM(fake)
+        raise ConnectionError("refused")
+
+    monkeypatch.setattr(ws_client_mod.websockets, "connect", fake_connect)
+    monkeypatch.setattr(ws_client_mod, "_BACKOFF_S", (0,))
+
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    task = asyncio.create_task(client.run(["005930", "000660"]))
+    for _ in range(100):
+        if len(fake.sent) >= 6:
+            break
+        await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert calls["n"] >= 2  # 1회차 실패 후 백오프 → 재연결
+    # 재연결 성공 시 전 종목 × 3TR 재구독 (tr_type="1")
+    sent = {
+        (json.loads(s)["body"]["input"]["tr_id"], json.loads(s)["body"]["input"]["tr_key"])
+        for s in fake.sent
+    }
+    assert sent == {
+        (tr, code)
+        for tr in ("H0STASP0", "H0STCNT0", "H0STMBC0")
+        for code in ("005930", "000660")
+    }
+    assert all(json.loads(s)["header"]["tr_type"] == "1" for s in fake.sent)
+
+
+async def test_run_does_not_connect_while_gate_closed(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_connect(url, **kwargs):
+        calls["n"] += 1
+        raise AssertionError("must not connect while gate closed")
+
+    monkeypatch.setattr(ws_client_mod.websockets, "connect", fake_connect)
+    client = KisWsClient(
+        approval_key_fn=_fake_approval,
+        on_tick=None,
+        date_fn=lambda: "20260605",
+        gate_fn=lambda: False,
+    )
+    task = asyncio.create_task(client.run(["005930"]))
+    await asyncio.sleep(0.01)
+    assert calls["n"] == 0
+    assert client.connected is False
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
