@@ -15,6 +15,10 @@ def test_build_request_shape():
     }
 
 
+async def _fake_approval() -> str:
+    return "APPR"
+
+
 class FakeWs:
     """recv 스크립트 재생 + send 기록. 스크립트 소진 시 ConnectionClosed 흉내."""
 
@@ -43,7 +47,9 @@ async def test_recv_loop_dispatches_ticks_and_echoes_pingpong():
     async def on_tick(tick):
         got.append(tick)
 
-    client = KisWsClient(approval_key_fn=None, on_tick=on_tick, date_fn=lambda: "20260605")
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=on_tick, date_fn=lambda: "20260605"
+    )
     with pytest.raises(ConnectionError):
         await client._recv_loop(fake)          # 스크립트 소진 → closed
     assert any("PINGPONG" in s for s in fake.sent)  # echo
@@ -52,7 +58,7 @@ async def test_recv_loop_dispatches_ticks_and_echoes_pingpong():
 
 async def test_subscribe_sends_three_trs_per_code():
     fake = FakeWs([])
-    client = KisWsClient(approval_key_fn=None, on_tick=None, date_fn=lambda: "20260605")
+    client = KisWsClient(approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605")
     await client._send_subscriptions(fake, "APPR", ["005930", "000660"], tr_type="1")
     assert len(fake.sent) == 6                  # 2종목 × 3TR
     trs = {json.loads(s)["body"]["input"]["tr_id"] for s in fake.sent}

@@ -35,7 +35,7 @@ class KisWsClient:
     def __init__(
         self,
         *,
-        approval_key_fn: Callable[[], Awaitable[str]] | None,
+        approval_key_fn: Callable[[], Awaitable[str]],
         on_tick: Callable[[WsTick], Awaitable[None]] | None,
         date_fn: Callable[[], str],
         url: str = WS_URL_REAL,
