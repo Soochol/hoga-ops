@@ -1346,7 +1346,7 @@ git commit -m "refactor(live): extract session gate from poller (pre-retirement)
 - [ ] **Step 2: 실패하는 LiveStream 테스트 작성**
 
 ```python
-import asyncio
+import time
 
 from hoga.live.buffer import LiveBuffer
 from hoga.live.snapshot import SnapshotKind
@@ -1368,11 +1368,13 @@ async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path):
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
 
-    await stream.on_tick(_trade_tick(1_770_000_000_000, qty=5, side=1))
+    # Task 4 벽시계 eviction과의 충돌 — plan 원본 t_ms는 컷오프 밖
+    now = int(time.time() * 1000)   # 벽시계 — buffer eviction 컷오프 안쪽
+    await stream.on_tick(_trade_tick(now, qty=5, side=1))
     series = await buf.get_series("005930")          # per-tick: 즉시 buffer에
     assert len(series["trades"]) == 1
 
-    await stream.flush_once(now_ms=1_770_000_010_000)  # 10초 경계 flush
+    await stream.flush_once(now_ms=now + 10_000)     # 10초 경계 flush
     jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
     assert '"kind": "fill"' in jsonl
     assert '"buy_qty": 5' in jsonl

@@ -1,0 +1,84 @@
+"""LiveStream — WS 수집 오케스트레이터 (spec §6·§7).
+
+per-tick: LiveBuffer.publish (표시, sub-second / ADR-0053 다운스트림 무변경)
+10초:    TickDownsampler.flush → LiveWriter.append (저장; ADR-0038 hot-path
+         invariant — JSONL만 쓴다)
+게이팅:  session_gate.ws_capture_window(09:00–15:30, advisor B) — 밖에선
+         flush 안 함 + WS (재)연결 보류. 장후 시간외는 의도적 회귀(spec §11).
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from collections.abc import Callable
+
+from .buffer import LiveBuffer
+from .downsampler import TickDownsampler
+from .session_gate import market_phase, ws_capture_window
+from .snapshot import LiveSnapshot
+from .writer import LiveWriter
+from .ws_client import KisWsClient
+from .ws_frames import WsTick
+
+_log = logging.getLogger(__name__)
+
+FLUSH_INTERVAL_S = 10.0
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+class LiveStream:
+    def __init__(
+        self,
+        *,
+        buffer: LiveBuffer,
+        writer: LiveWriter,
+        date_fn: Callable[[], str],
+        phase_fn: Callable[[], str] | None = None,
+    ) -> None:
+        self._buffer = buffer
+        self._writer = writer
+        self._date_fn = date_fn
+        self._phase_fn = phase_fn or (lambda: market_phase(_now_ms()))
+        self._ds = TickDownsampler()
+        self.ws: KisWsClient | None = None       # lifecycle이 주입
+        self.last_flush_ms: int | None = None
+
+    def set_active_codes(self, codes: set[str]) -> None:
+        """Live Set 변경 위임 — refresh_live_stream이 호출(advisor C)."""
+        self._ds.set_active_codes(codes)
+
+    async def on_tick(self, tick: WsTick) -> None:
+        """ws_client 콜백 — 표시 경로(즉시) + 저장 경로(누적)."""
+        phase = self._phase_fn()
+        snap = LiveSnapshot(t_ms=tick.t_ms, kind=tick.kind,
+                            payload={**tick.payload, "phase": phase})
+        await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
+        self._ds.ingest(tick)
+
+    async def flush_once(self, *, now_ms: int | None = None) -> None:
+        now_ms = now_ms if now_ms is not None else _now_ms()
+        date = self._date_fn()
+        flushed = self._ds.flush(now_ms=now_ms, phase=self._phase_fn())
+        for code, snaps in flushed.items():
+            await self._writer.append(date, code, snaps)
+        await self._writer.fsync_all()
+        self.last_flush_ms = now_ms
+
+    async def run_flush_loop(self) -> None:
+        """10초 flush 루프 — lifecycle이 task로 돌린다. 게이트 밖(장외·15:30 이후)엔
+        1초 idle — advisor B: 15:30 이후 쓰기를 막아 유령 carry를 차단한다."""
+        while True:
+            if ws_capture_window(_now_ms()):
+                started = time.monotonic()
+                try:
+                    await self.flush_once()
+                except Exception:  # noqa: BLE001
+                    _log.exception("live.stream.flush_failed")
+                elapsed = time.monotonic() - started
+                await asyncio.sleep(max(0.0, FLUSH_INTERVAL_S - elapsed))
+            else:
+                await asyncio.sleep(1.0)
