@@ -62,14 +62,17 @@ async def test_5xx_with_json_body_preserves_upstream_msg_cd() -> None:
     gateway 5xx and a domain error like "session not open"; the operator
     can't tell them apart.
     """
+    # NOTE: msg_cd must be a NON-token code here — EGW00121/00123 are KIS's
+    # invalid/expired-token codes and now trigger the invalidate-and-retry
+    # path; "장시간이 아닙니다" is a session-window domain error.
     client = _make_client_with_5xx(
-        500, {"rt_cd": "1", "msg_cd": "EGW00121", "msg1": "장시간이 아닙니다"},
+        500, {"rt_cd": "1", "msg_cd": "OPSQ2000", "msg1": "장시간이 아닙니다"},
     )
     try:
         with pytest.raises(KisApiError) as exc_info:
             await client.fetch_orderbook("003490")
         err = exc_info.value
-        assert err.msg_cd == "HTTP_500/EGW00121"
+        assert err.msg_cd == "HTTP_500/OPSQ2000"
         assert err.msg1 == "장시간이 아닙니다"
     finally:
         await client.aclose()
@@ -341,14 +344,53 @@ async def test_get_does_not_retry_on_api_error(monkeypatch) -> None:
         sleeps.append(s)
 
     monkeypatch.setattr("hoga.live.kis_client.asyncio.sleep", fake_sleep)
+    # Non-token msg_cd (EGW00121/00123 would trigger the invalidate-and-retry
+    # path; that behavior has its own tests below).
     client, counter = _make_attempt_counting_client(
-        responses=[(200, {"rt_cd": "1", "msg_cd": "EGW00121", "msg1": "장시간 아님"})],
+        responses=[(200, {"rt_cd": "1", "msg_cd": "OPSQ2000", "msg1": "장시간 아님"})],
     )
     try:
         with pytest.raises(KisApiError):
             await client.fetch_orderbook("003490")
         assert counter["data"] == 1
         assert sleeps == []
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_token_invalid_invalidates_and_retries_once() -> None:
+    """EGW00123 (expired token): _get must invalidate the provider's cached
+    token and retry once with a fresh one — without this a server-side
+    revocation had NO recovery path (dead token served from memory+disk for
+    up to ~24h, surviving restarts)."""
+    client, counter = _make_attempt_counting_client(
+        responses=[
+            (200, {"rt_cd": "1", "msg_cd": "EGW00123", "msg1": "기간이 만료된 token 입니다"}),
+            (200, _ok_orderbook_body()),
+        ],
+    )
+    provider = client._token_provider
+    try:
+        await client.fetch_orderbook("003490")  # must not raise
+        assert counter["data"] == 2
+        assert provider.invalidated == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_token_invalid_twice_propagates() -> None:
+    """A second consecutive token-invalid response propagates (no retry loop)."""
+    client, counter = _make_attempt_counting_client(
+        responses=[(200, {"rt_cd": "1", "msg_cd": "EGW00121", "msg1": "유효하지 않은 token 입니다"})],
+    )
+    provider = client._token_provider
+    try:
+        with pytest.raises(KisApiError):
+            await client.fetch_orderbook("003490")
+        assert counter["data"] == 2  # original + one retry
+        assert provider.invalidated == 1  # invalidated once, not in a loop
     finally:
         await client.aclose()
 

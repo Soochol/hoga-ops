@@ -193,7 +193,6 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     ``refresh_live_poller`` (below), which the add/remove watchlist routes
     call after mutating — that is the auto-restart that was formerly deferred.
     """
-    import os
     from datetime import datetime, timedelta, timezone
 
     from hoga.api.watchlist import load_watchlist
@@ -201,10 +200,9 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     from .poller import LivePoller, LivePollerConfig
     from .writer import LiveWriter
 
-    app_key = os.environ.get("KIS_APP_KEY")
-    app_secret = os.environ.get("KIS_APP_SECRET")
-    if not app_key or not app_secret:
-        return False
+    # Creds-presence policy lives in kis_runtime (ensure_kis_client_from_env
+    # returns None below) — no duplicate os.environ guard here, so creds
+    # resolution can evolve in ONE place without silently disabling the poller.
 
     entries = load_watchlist(data_dir)
     codes = [e.code for e in entries]
@@ -233,7 +231,7 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     # the /quotes route use. Decoupled from poller start/stop: the singleton is
     # reused if already set, so a stop→start cycle never creates a 2nd bucket.
     kis = kis_runtime.ensure_kis_client_from_env(data_dir)
-    if kis is None:  # creds vanished after the early guard above
+    if kis is None:  # KIS creds absent — the single gate for this precondition
         return False
     writer = LiveWriter(data_dir / "live")
 

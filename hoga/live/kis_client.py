@@ -32,7 +32,12 @@ from hoga.live.kis_models import (
 
 KIS_KST = timezone(timedelta(hours=9))
 _BASE_REAL = "https://openapi.koreainvestment.com:9443"
-_REISSUE_COOLDOWN_MS = 60_000  # KIS: 1 issuance per minute
+
+# KIS auth-failure msg_cds that mean "this TOKEN is bad" (expired/invalid) as
+# opposed to "this request is bad". On these, `_get` invalidates the provider
+# cache and retries once — without it a server-side revocation had no recovery
+# path: the dead token was served from memory+disk until expires_at (~24h).
+_TOKEN_INVALID_MSG_CDS = ("EGW00121", "EGW00123")
 
 # KIS market-division code for KOSPI/KOSDAQ stocks (single value covers both).
 # Justified by the watchlist boundary in `lifecycle.start_live_poller`, which
@@ -276,17 +281,37 @@ class KisClient:
         *,
         retry: bool = True,
     ) -> dict:
-        """Authenticated GET to KIS API with built-in EGW00201 retry.
+        """Authenticated GET to KIS API with built-in EGW00201 retry and a
+        single invalidate-and-retry on token-invalid responses.
 
         Contract: returns a validated body or raises a typed Kis*Error.
         ``KisRateLimitError`` is retried in-place per ``self._rate_limit_backoff``
-        (see ADR-0050); ``KisAuthError`` and ``KisApiError`` propagate on the
-        first attempt. Pass ``retry=False`` for diagnostic callers that want
-        the raw single-shot behavior (e.g. a probe that measures whether KIS
-        is currently rate-limiting). The retry loop wraps the whole
-        acquire+send+unwrap sequence, so each attempt re-acquires a token
-        from the shared bucket — replays of the same call don't get a free
-        ride past the rate limiter.
+        (see ADR-0050); ``KisAuthError`` and non-token ``KisApiError`` propagate
+        on the first attempt. A token-invalid ``KisApiError`` (EGW00121/00123 —
+        revoked or expired server-side) invalidates the provider's cached token
+        and retries ONCE with a fresh one; repeating failures propagate.
+        Pass ``retry=False`` for diagnostic callers that want the raw
+        single-shot behavior.
+        """
+        try:
+            return await self._get_with_rate_retry(path, tr_id, params, retry=retry)
+        except KisApiError as e:
+            if not any(cd in e.msg_cd for cd in _TOKEN_INVALID_MSG_CDS):
+                raise
+            await asyncio.to_thread(self._token_provider.invalidate)
+            return await self._get_with_rate_retry(path, tr_id, params, retry=retry)
+
+    async def _get_with_rate_retry(
+        self,
+        path: str,
+        tr_id: str,
+        params: dict[str, Any],
+        *,
+        retry: bool,
+    ) -> dict:
+        """EGW00201 retry loop. The loop wraps the whole acquire+send+unwrap
+        sequence, so each attempt re-acquires a token from the shared bucket —
+        replays of the same call don't get a free ride past the rate limiter.
         """
         backoff = self._rate_limit_backoff if retry else ()
         attempts = len(backoff) + 1
@@ -321,7 +346,11 @@ class KisClient:
         budget, not on KIS response time.
         """
         await self._rate_limiter.acquire()
-        token = self._token_provider.get_token()
+        # to_thread: get_token() is sync-blocking by design (threading.Lock +
+        # disk I/O + up to a 10s POST on cache miss). Calling it bare here
+        # froze the entire event loop at every issuance boundary (~daily) and
+        # whenever an executor thread held the provider lock mid-issuance.
+        token = await asyncio.to_thread(self._token_provider.get_token)
         headers = {
             "authorization": f"Bearer {token}",
             "appkey": self._creds.app_key,
