@@ -339,7 +339,8 @@ git commit -m "feat(kis): KisTokenProvider — sync token acquisition (ADR-0050 
 
 **Files:**
 - Modify: `hoga/live/kis_client.py:243-347` (생성자 + 토큰 메서드 4개), `hoga/live/kis_client.py:401-402` (`_do_get_once` 토큰 취득)
-- Test: `tests/unit/live/test_kis_client.py`
+- Create: `tests/unit/live/_fakes.py` (공유 `FakeTokenProvider`)
+- Test: `tests/unit/live/test_kis_client.py`, `tests/unit/live/test_kis_rest_methods.py`(8곳), `tests/unit/live/test_kis_daily_adjust_flag.py`(1곳) — **생성자 시그니처 변경은 `KisClient(...)`를 생성하는 모든 live 테스트 파일에 fallout을 낸다. 한 파일만 고치면 전체 스위트가 RED로 남는다.**
 
 - [ ] **Step 1: Add a TYPE_CHECKING import for the provider**
 
@@ -462,10 +463,10 @@ client = KisClient(
 )
 ```
 
-`_make_client_with_5xx` 헬퍼(116~)를 포함해 `token_cache_path=`가 나오는 모든 생성 지점에 적용한다. 확인:
+`_make_client_with_5xx` 헬퍼(116~)를 포함해 `token_cache_path=`가 나오는 모든 생성 지점에 적용한다. **여기서 그치지 말 것** — `test_kis_rest_methods.py`(8곳)와 `test_kis_daily_adjust_flag.py`(1곳)도 `KisClient(token_cache_path=...)`로 생성하므로, 공유 `_fakes.FakeTokenProvider`를 두 파일에 import해 모두 변환한다. 확인:
 
-Run: `grep -n "token_cache_path" tests/unit/live/test_kis_client.py`
-Expected: 교체 후 결과 0줄.
+Run: `grep -rn "token_cache_path" tests/unit/live/`
+Expected: 0줄 (세 파일 전부 변환되어야 한다 — 한 파일만 고치면 시그니처 fallout으로 전체 스위트가 RED).
 
 - [ ] **Step 5: Run the full kis_client + provider test set**
 
