@@ -13,8 +13,10 @@ import json
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
+
+if TYPE_CHECKING:
+    from hoga.live.kis_token_provider import KisTokenProvider
 
 import httpx
 
@@ -243,26 +245,20 @@ class KisClient:
     def __init__(
         self,
         credentials: KisCredentials,
-        token_cache_path: Path,
+        token_provider: "KisTokenProvider",
         *,
         _transport: Optional[httpx.AsyncBaseTransport] = None,
         _rate_limit_per_sec: float = _RATE_LIMIT_CALLS_PER_SEC,
         _rate_limit_backoff: tuple[float, ...] = _RATE_LIMIT_BACKOFF,
     ):
         self._creds = credentials
-        self._cache_path = token_cache_path
+        self._token_provider = token_provider
         self._client = httpx.AsyncClient(
             base_url=credentials.base_url, transport=_transport, timeout=10.0
         )
-        self._token: Optional[str] = None
-        self._token_expires_at: Optional[datetime] = None
-        # Audit-3: track last issuance to enforce 1-per-minute cool-down.
-        # monotonic clock so we don't get confused by NTP step or daylight changes.
-        self._last_issued_monotonic_ms: Optional[int] = None
         # Single rate limiter shared by all data calls — `_get` acquires
-        # one token per HTTP request. Token issuance (`_issue_token`)
-        # bypasses this since it uses its own 1/min cool-down endpoint
-        # and KIS scopes the rate budget per data endpoint, not per app.
+        # one token per HTTP request. Token issuance lives in the injected
+        # KisTokenProvider (ADR-0050 amendment) and bypasses this bucket.
         self._rate_limiter = _TokenBucket(rate=_rate_limit_per_sec)
         # Tests pass (0.0, 0.0, 0.0) here to exercise the retry shape without
         # paying the real wall-clock sleeps; production callers leave the
@@ -271,80 +267,6 @@ class KisClient:
 
     async def aclose(self) -> None:
         await self._client.aclose()
-
-    async def get_access_token(self) -> str:
-        # in-memory hit
-        if (
-            self._token
-            and self._token_expires_at
-            and datetime.now(KIS_KST) < self._token_expires_at - timedelta(minutes=10)
-        ):
-            return self._token
-
-        # disk cache hit
-        cached = self._read_cache()
-        if cached:
-            self._token, self._token_expires_at = cached
-            return self._token
-
-        return await self._issue_token()
-
-    async def _issue_token(self) -> str:
-        """Issue a fresh access_token via /oauth2/tokenP.
-
-        KIS limits issuance to 1 per minute (Audit-3). Additionally, KIS
-        returns the same token for any reissue request within 6 hours of the
-        previous issue — disk caching is therefore essential and a `_issue`
-        call is rarely the right answer in steady-state.
-        """
-        now_ms = int(time.monotonic() * 1000)
-        if (
-            self._last_issued_monotonic_ms is not None
-            and now_ms - self._last_issued_monotonic_ms < _REISSUE_COOLDOWN_MS
-        ):
-            raise KisAuthError(
-                "token reissue cooldown: KIS allows 1 issuance per minute"
-            )
-        resp = await self._client.post(
-            "/oauth2/tokenP",
-            json={
-                "grant_type": "client_credentials",
-                "appkey": self._creds.app_key,
-                "appsecret": self._creds.app_secret,
-            },
-        )
-        if resp.status_code != 200:
-            raise KisAuthError(
-                f"token issue failed: HTTP {resp.status_code} {resp.text[:200]}"
-            )
-        body = resp.json()
-        token: str = body["access_token"]
-        expires_in = int(body.get("expires_in", 86400))
-        expires_at = datetime.now(KIS_KST) + timedelta(seconds=expires_in)
-        self._token = token
-        self._token_expires_at = expires_at
-        self._last_issued_monotonic_ms = now_ms
-        self._write_cache(token, expires_at)
-        return token
-
-    def _read_cache(self) -> Optional[tuple[str, datetime]]:
-        if not self._cache_path.exists():
-            return None
-        try:
-            data = json.loads(self._cache_path.read_text())
-            exp = datetime.fromisoformat(data["expires_at"])
-            if datetime.now(KIS_KST) >= exp - timedelta(minutes=10):
-                return None
-            return data["access_token"], exp
-        except (json.JSONDecodeError, KeyError, ValueError):
-            return None
-
-    def _write_cache(self, token: str, expires_at: datetime) -> None:
-        self._cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self._cache_path.write_text(
-            json.dumps({"access_token": token, "expires_at": expires_at.isoformat()})
-        )
-        self._cache_path.chmod(0o600)
 
     async def _get(
         self,
@@ -399,7 +321,7 @@ class KisClient:
         budget, not on KIS response time.
         """
         await self._rate_limiter.acquire()
-        token = await self.get_access_token()
+        token = self._token_provider.get_token()
         headers = {
             "authorization": f"Bearer {token}",
             "appkey": self._creds.app_key,
