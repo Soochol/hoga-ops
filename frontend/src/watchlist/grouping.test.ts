@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupByFolder, selectVisibleEntries } from './grouping';
+import { groupByFolder, selectVisibleEntries, swapFolderOrder } from './grouping';
 import type { WatchlistFolder, WatchlistEntry } from '../api/watchlist';
 
 const folders: WatchlistFolder[] = [
@@ -40,5 +40,27 @@ describe('selectVisibleEntries (drag-index contract shared by pane + modal)', ()
     const before = entries.map((e) => e.code);
     selectVisibleEntries(entries, 'f_b');
     expect(entries.map((e) => e.code)).toEqual(before);
+  });
+});
+
+describe('swapFolderOrder (패널 ⋯ 메뉴 + 편집 모달 ▲▼ 공유 계약)', () => {
+  // folders는 order 역순 선언(f_b=1, f_a=0) — 정렬 후 [f_a, f_b].
+  it('moves a folder down: full ordered_ids with the pair swapped', () => {
+    expect(swapFolderOrder(folders, 'f_a', +1)).toEqual(['f_b', 'f_a']);
+  });
+  it('moves a folder up', () => {
+    expect(swapFolderOrder(folders, 'f_b', -1)).toEqual(['f_b', 'f_a']);
+  });
+  it('returns null at the boundary (first up / last down)', () => {
+    expect(swapFolderOrder(folders, 'f_a', -1)).toBeNull();
+    expect(swapFolderOrder(folders, 'f_b', +1)).toBeNull();
+  });
+  it('returns null for an unknown id', () => {
+    expect(swapFolderOrder(folders, 'f_zzz', +1)).toBeNull();
+  });
+  it('does not mutate the input array', () => {
+    const before = folders.map((f) => f.id);
+    swapFolderOrder(folders, 'f_a', +1);
+    expect(folders.map((f) => f.id)).toEqual(before);
   });
 });

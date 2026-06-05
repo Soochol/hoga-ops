@@ -4,9 +4,9 @@ import { ModalShell } from '../ui/ModalShell';
 /**
  * 그룹 이름 하나를 입력받는 소형 다이얼로그 — 추가("그룹 추가하기")와 이름 변경
  * ("그룹 이름 변경")이 공유한다. mutation은 소유하지 않고 onSubmit으로 위임;
- * 성공(resolve) 시 닫힌다(실패는 mutation의 onError 몫 — WatchlistEditModal.
- * submitFolder와 같은 패턴). UI 카피는 전부 "그룹" — 도메인/API 계층(folder_id,
- * createFolder 등)만 "folder"를 유지한다.
+ * 성공(resolve) 시에만 닫히고, 실패하면 열린 채로 남아 재시도할 수 있다.
+ * UI 카피는 전부 "그룹" — 도메인/API 계층(folder_id, createFolder 등)만
+ * "folder"를 유지한다.
  */
 export function GroupNameModal({ title, submitLabel, initialName = '', busy = false, onSubmit, onClose }: {
   title: string;
@@ -22,7 +22,13 @@ export function GroupNameModal({ title, submitLabel, initialName = '', busy = fa
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed || busy) return;
-    await onSubmit(trimmed);
+    try {
+      await onSubmit(trimmed);
+    } catch {
+      // 실패 시 다이얼로그를 열어 둬 재시도 가능하게 하고, fire-and-forget 제출
+      // 핸들러라 unhandled rejection으로 새지 않게 삼킨다(EntryPane.doMove 패턴).
+      return;
+    }
     onClose();
   };
 

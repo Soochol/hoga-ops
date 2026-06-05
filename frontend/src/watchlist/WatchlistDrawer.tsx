@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
@@ -8,7 +8,7 @@ import {
 } from './useWatchlist';
 import { persistJson, readJsonObject } from '../state/persist';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
-import { groupByFolder } from './grouping';
+import { groupByFolder, swapFolderOrder } from './grouping';
 import { Countdown } from './Countdown';
 import { Banner } from './Banner';
 import { WatchlistEditModal } from './WatchlistEditModal';
@@ -18,6 +18,18 @@ import { useDismissablePopover } from '../util/useDismissablePopover';
 import { TrashIcon } from '../ui/TrashIcon';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
+
+/** 우측 정렬 앵커드 메뉴 셸 — dim 라벨 헤더 + menuitem children. 패널의 두 메뉴
+ *  (헤더 편집 메뉴, 그룹 ⋯ 메뉴)가 공유해 컨테이너/헤더 스타일 드리프트를 막는다. */
+function AnchoredMenu({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div role="menu" aria-label={label}
+      className="absolute right-0 z-30 mt-1 bg-bg-card border border-border rounded shadow-lg py-1 min-w-[150px]">
+      <div className="px-3 py-1 text-xs text-fg-dimmer">{label}</div>
+      {children}
+    </div>
+  );
+}
 
 /** 접기 chevron — 펼침=∧(클릭하면 접기), 접힘=∨. 유니코드 대신 SVG(폰트별 렌더 불일치 회피). */
 function ChevronIcon({ up }: { up: boolean }) {
@@ -68,9 +80,7 @@ function GroupHeader(props: {
             ⋯
           </button>
           {menuOpen && (
-            <div role="menu" aria-label={props.label}
-              className="absolute right-0 z-30 mt-1 bg-bg-card border border-border rounded shadow-lg py-1 min-w-[150px]">
-              <div className="px-3 py-1 text-xs text-fg-dimmer">{props.label}</div>
+            <AnchoredMenu label={props.label}>
               <button type="button" role="menuitem"
                 onClick={() => { setMenuOpen(false); props.onRename?.(); }}
                 className={itemClass}>
@@ -91,7 +101,7 @@ function GroupHeader(props: {
                 className={itemClass}>
                 <span className="w-4 grid place-items-center"><TrashIcon className="w-[1em] h-[1em]" /></span> 그룹 삭제
               </button>
-            </div>
+            </AnchoredMenu>
           )}
         </div>
       )}
@@ -142,13 +152,20 @@ export function WatchlistDrawer() {
   const codes = useMemo(() => data?.entries.map((e) => e.code) ?? [], [data]);
   const quoteByCode = useQuoteByCode(codes);
 
-  const toggle = (key: string) => {
-    const n = new Set(collapsed);
-    if (n.has(key)) n.delete(key);
-    else n.add(key);
-    setCollapsed(n);
-    persistJson('watchlist.collapsed', { keys: [...n] });
-  };
+  // 함수형 업데이터 — 같은 배치의 다중 toggle도 최신 Set 위에서 계산된다.
+  const toggle = (key: string) =>
+    setCollapsed((s) => {
+      const n = new Set(s);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
+  // 영속화는 상태 변화에 반응. 기록 시점에 실존 그룹 키만 남겨 삭제된 그룹의
+  // 키가 localStorage에 누적되지 않게 한다(메모리의 inert 키는 다음 마운트에서 소멸).
+  useEffect(() => {
+    const valid = data ? new Set([...data.folders.map((f) => f.id), '__uncat__']) : null;
+    persistJson('watchlist.collapsed', { keys: [...collapsed].filter((k) => !valid || valid.has(k)) });
+  }, [collapsed, data]);
   const openMenu = (e: React.MouseEvent, code: string, name: string, folderId: string | null) => {
     e.preventDefault();                                   // 네이티브 우클릭 메뉴 억제
     setMenu({ x: e.clientX, y: e.clientY, code, name, folderId });  // raw 좌표 — 클램프는 메뉴가 실측
@@ -157,14 +174,9 @@ export function WatchlistDrawer() {
   const groups = data ? groupByFolder(data.folders, data.entries) : [];
   const folderCount = data?.folders.length ?? 0;
 
-  // 편집 모달 moveFolder와 같은 계약: 전체 id 목록을 보내 서버가 0..N-1 재부여.
   const moveFolder = (folderId: string, dir: -1 | 1) => {
-    const ids = [...(data?.folders ?? [])].sort((a, b) => a.order - b.order).map((f) => f.id);
-    const idx = ids.indexOf(folderId);
-    const j = idx + dir;
-    if (idx < 0 || j < 0 || j >= ids.length) return;
-    [ids[idx], ids[j]] = [ids[j], ids[idx]];
-    reorderFoldersM.mutate(ids);
+    const ids = swapFolderOrder(data?.folders ?? [], folderId, dir);
+    if (ids) reorderFoldersM.mutate(ids);
   };
 
   return (
@@ -184,9 +196,7 @@ export function WatchlistDrawer() {
                     onClick={() => setEditMenu((v) => !v)}
                     className="text-fg-dim hover:text-accent text-xs">편집</button>
             {editMenu && (
-              <div role="menu" aria-label="관심"
-                   className="absolute right-0 z-30 mt-1 bg-bg-card border border-border rounded shadow-lg py-1 min-w-[140px]">
-                <div className="px-3 py-1 text-xs text-fg-dimmer">관심</div>
+              <AnchoredMenu label="관심">
                 <button type="button" role="menuitem"
                         onClick={() => { setEditMenu(false); setEditOpen(true); }}
                         className="block w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover">
@@ -197,7 +207,7 @@ export function WatchlistDrawer() {
                         className="block w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover">
                   새 그룹 만들기
                 </button>
-              </div>
+              </AnchoredMenu>
             )}
           </div>
         </div>

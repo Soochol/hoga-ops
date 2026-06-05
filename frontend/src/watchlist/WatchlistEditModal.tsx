@@ -9,7 +9,7 @@ import {
 } from './useWatchlist';
 import { WatchlistEntryPane } from './WatchlistEntryPane';
 import { resolveDrag, folderDroppableId } from './dragHandlers';
-import { selectVisibleEntries, type Selected } from './grouping';
+import { selectVisibleEntries, swapFolderOrder, type Selected } from './grouping';
 import { ModalShell } from '../ui/ModalShell';
 
 // Hoisted to module scope (stable identity) so the inline-edit <input> reconciles in place
@@ -132,13 +132,10 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
     setEditingId(null);
   };
 
-  // Authoritative ordered_ids: send the full id list and let the server re-assign 0..N-1.
-  const moveFolder = (idx: number, dir: -1 | 1) => {
-    const ids = folders.map((x) => x.id);
-    const j = idx + dir;
-    if (j < 0 || j >= ids.length) return;
-    [ids[idx], ids[j]] = [ids[j], ids[idx]];
-    reorderFoldersM.mutate(ids);
+  // Authoritative ordered_ids 계약은 swapFolderOrder(grouping.ts)에 — 패널 ⋯ 메뉴와 공유.
+  const moveFolder = (folderId: string, dir: -1 | 1) => {
+    const ids = swapFolderOrder(folders, folderId, dir);
+    if (ids) reorderFoldersM.mutate(ids);
   };
 
   // Aligned with the 보조지표 modal (IndicatorPanel): shared ModalShell chrome
@@ -182,8 +179,8 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
                   onSelect={() => setSelected(f.id)}
                   onStartEdit={() => { setEditingId(f.id); setEditName(f.name); }}
                   onDelete={() => { deleteM.mutate(f.id); if (selected === f.id) setSelected(null); }}
-                  onMoveUp={() => moveFolder(idx, -1)}
-                  onMoveDown={() => moveFolder(idx, +1)}
+                  onMoveUp={() => moveFolder(f.id, -1)}
+                  onMoveDown={() => moveFolder(f.id, +1)}
                   onEditNameChange={setEditName}
                   onCommit={() => commitRename(f.id)}
                   onCancelEdit={() => setEditingId(null)} />

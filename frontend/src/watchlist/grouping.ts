@@ -41,3 +41,20 @@ export function groupByFolder(
   });
   return groups;
 }
+
+/** 폴더 하나를 한 칸 위/아래로 옮긴 전체 id 순서를 만든다 — 서버 reorder_folders가
+ *  전체 id 목록을 요구하는 계약(authoritative ordered_ids)의 클라이언트 절반.
+ *  경계 밖(맨 위에서 위로 등)이나 미존재 id면 null. 패널 ⋯ 메뉴와 편집 모달
+ *  ▲▼이 공유한다. Pure. */
+export function swapFolderOrder(
+  folders: WatchlistFolder[],
+  folderId: string,
+  dir: -1 | 1,
+): string[] | null {
+  const ids = [...folders].sort((a, b) => a.order - b.order).map((f) => f.id);
+  const idx = ids.indexOf(folderId);
+  const j = idx + dir;
+  if (idx < 0 || j < 0 || j >= ids.length) return null;
+  [ids[idx], ids[j]] = [ids[j], ids[idx]];
+  return ids;
+}

@@ -13,7 +13,11 @@ describe('CheckIcon', () => {
     expect(circle?.getAttribute('fill')).toBe('none');
     expect(circle?.getAttribute('stroke')).toBe('var(--fg-dimmer)');
   });
-  it('sizes via the size prop (default 18)', () => {
+  it('defaults to size 18 (IndicatorPanel nav rows)', () => {
+    const { container } = render(<CheckIcon filled />);
+    expect(container.querySelector('svg')?.getAttribute('width')).toBe('18');
+  });
+  it('sizes via the size prop', () => {
     const { container } = render(<CheckIcon filled size={16} />);
     expect(container.querySelector('svg')?.getAttribute('width')).toBe('16');
   });

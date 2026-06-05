@@ -35,6 +35,9 @@ const DATA = { folders: FOLDERS, entries: ENTRIES, next_run_at_ms: 0 };
 describe('WatchlistDrawer', () => {
   beforeEach(() => {
     cleanup();
+    // 접기 토글이 watchlist.collapsed를 영속하므로 매 테스트 격리 필수 —
+    // 없으면 접기를 수행한 테스트가 이후 테스트의 행 가시성을 오염시킨다.
+    localStorage.clear();
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
     vi.restoreAllMocks();
     // useQuoteByCode → useQuotes → getQuotes → apiCall('/api/live/quotes')
@@ -188,7 +191,6 @@ describe('WatchlistDrawer', () => {
   });
 
   it('접기 상태가 localStorage에 영속되어 리마운트에도 유지된다', async () => {
-    localStorage.removeItem('watchlist.collapsed');
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { unmount } = render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
@@ -200,7 +202,6 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     expect(screen.queryByText('SK하이닉스')).toBeNull();
-    localStorage.removeItem('watchlist.collapsed');
   });
 
   it('그룹 헤더 ⋯ → 아래로 이동 reorders folders (full ordered_ids)', async () => {

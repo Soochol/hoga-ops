@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.5.10.1] - 2026-06-05
+
+### Fixed
+- **그룹 추가/이름 변경 실패 처리**: 서버가 거부해도 unhandled rejection 없이
+  다이얼로그가 열린 채로 남아 재시도할 수 있습니다.
+
+### Internal
+- 코드리뷰 후속 정리: 폴더 순서 스왑 로직을 `swapFolderOrder`(grouping.ts)로 승격해
+  패널 ⋯ 메뉴와 편집 모달이 공유, 패널의 두 앵커드 메뉴 셸을 `AnchoredMenu`로 통합,
+  접기 toggle을 함수형 업데이터 + 반응형 영속화(effect)로 재구성하고 기록 시점에
+  삭제된 그룹 키를 정리, 드로어 테스트에 localStorage 격리(beforeEach clear) 추가,
+  CheckIcon 기본 크기(18) 회귀 테스트 추가.
+
 ## [0.5.10.0] - 2026-06-05
 
 ### Added
