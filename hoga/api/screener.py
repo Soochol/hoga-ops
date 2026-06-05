@@ -22,7 +22,7 @@ from hoga.api.models import (
 )
 from hoga.api.symbols import _RefreshCoordinator
 from hoga.collector.orchestrator import next_kst_day, now_kst
-from hoga.live import lifecycle
+from hoga.live import kis_runtime
 from hoga.live.kis_client import KIS_KST
 
 log = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
     stocks_df = await asyncio.to_thread(pl.read_parquet, sdir / "stocks.parquet")
     codes = stocks_df["code"].to_list()   # 무거운 read 는 스레드로; 인메모리 추출만 루프
 
-    client = lifecycle.ensure_kis_client_from_env(data_dir)
+    client = kis_runtime.ensure_kis_client_from_env(data_dir)
     if client is None:
         log.warning("screener update: KIS creds missing, skipping")
         return 0

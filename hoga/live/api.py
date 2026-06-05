@@ -14,6 +14,7 @@ from hoga.live.kis_client import KisApiError, KisRateLimitError
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
+from . import kis_runtime
 from . import lifecycle
 from .buffer import LiveBuffer
 from .lifecycle import LiveStatus
@@ -377,7 +378,7 @@ def build_router(
             # 싱글턴이 아직 없으면(빈 관심목록 + 무갭일 등 흔한 상태) env-creds 로
             # 지연 생성한다 — poller/EOD 업데이트와 같은 단일 리졸버를 공유하므로
             # 15/s 버킷이 1개로 유지된다. creds 없으면 None → graceful empty.
-            kis = lifecycle.ensure_kis_client_from_env(data_dir)
+            kis = kis_runtime.ensure_kis_client_from_env(data_dir)
         if kis is None:
             return LiveQuotesResponse(phase=phase, quotes=[])
         try:

@@ -32,11 +32,11 @@ from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
 from hoga.live.api import build_router as build_live_router
+from hoga.live.kis_runtime import aclose_kis_client
+from hoga.live.kis_runtime import get_kis_client as live_get_kis_client
 from hoga.live.lifecycle import get_buffer as live_get_buffer
-from hoga.live.lifecycle import get_kis_client as live_get_kis_client
 from hoga.live.lifecycle import get_status as live_get_status
 from hoga.live.lifecycle import (
-    aclose_kis_client,
     get_active_codes,
     start_live_poller,
     start_today_promoter,

@@ -21,16 +21,8 @@ from typing import Callable, Optional
 
 from pydantic import BaseModel, Field
 
-from . import kis_runtime  # needed by reset_for_tests()
+from . import kis_runtime  # needed by reset_for_tests() + start_live_poller
 from .buffer import LiveBuffer
-from .kis_runtime import (  # re-export: KIS resource singletons moved per SPEC §10
-    aclose_kis_client,
-    ensure_kis_client,
-    ensure_kis_client_from_env,
-    ensure_kis_token_provider,
-    get_kis_client,
-    set_kis_client,
-)
 from .promote import promote_today
 
 _log = logging.getLogger(__name__)
@@ -240,7 +232,7 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     # single env→creds→path resolver — the same one the screener EOD update and
     # the /quotes route use. Decoupled from poller start/stop: the singleton is
     # reused if already set, so a stop→start cycle never creates a 2nd bucket.
-    kis = ensure_kis_client_from_env(data_dir)
+    kis = kis_runtime.ensure_kis_client_from_env(data_dir)
     if kis is None:  # creds vanished after the early guard above
         return False
     writer = LiveWriter(data_dir / "live")
