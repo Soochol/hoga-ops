@@ -255,9 +255,7 @@ async def test_spec7_no_creds_refresh_succeeds(
     monkeypatch: pytest.MonkeyPatch,
     _reset_symbols_state: None,
 ) -> None:
-    """SPEC §7: symbol refresh works without KRX_ID/KRX_PW — .mst is static/no-auth."""
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
+    """SPEC §7: symbol refresh works without credentials — .mst is static/no-auth."""
 
     # Patch the sync _fetch_mst (called in executor) to return rows without network.
     fake_rows = [MasterRow(code="005930", name="삼성전자", market="KOSPI", security_type="stock")]

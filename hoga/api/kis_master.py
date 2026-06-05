@@ -1,6 +1,6 @@
 """KIS .mst symbol master — download + parse (Phase 2).
 
-Replaces the pykrx symbol fetch. The .mst files are STATIC downloads (no auth),
+Uses static KIS .mst downloads (no auth),
 so symbol search works without KIS credentials (SPEC §7).
 
 Parsing is BYTE-based: cp949 한글명 is 2 bytes/char, so decoding the whole row

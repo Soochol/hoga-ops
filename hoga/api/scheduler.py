@@ -111,7 +111,7 @@ async def catchup_one_entry(
 
     Reconciles last_success_date with the disk first (idempotent), then
     enqueues the trading-day gap up to today (Q14-trimmed). Returns
-    EnqueueResponse(enqueued=[], deduped=[]) on no-gap, KrxUnavailable,
+    EnqueueResponse(enqueued=[], deduped=[]) on no-gap, calendar-unavailable,
     or fully-Q14-trimmed cases.
     """
     today = now.strftime("%Y%m%d")

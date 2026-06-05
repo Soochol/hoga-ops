@@ -54,8 +54,8 @@ def _should_poll_now(t_ms: int) -> bool:
     """Calendar + clock gate: True only when KRX is *probably* trading right now.
 
     Lenient on missing calendar data — when :func:`calendar.is_trading_day`
-    returns None (KRX creds missing, pykrx flaked), defer to the clock alone.
-    Losing live capture for a transient KRX outage is a worse failure than
+    returns None (KIS calendar unavailable), defer to the clock alone.
+    Losing live capture for a transient calendar outage is a worse failure than
     the noise from a brief burst of HTTP_500s on a stale day.
     """
     if _market_phase(t_ms) == "closed":

@@ -97,7 +97,7 @@ def create_app(data_dir: Path) -> FastAPI:
         _scheduler_tasks = start_scheduler(data_dir)
         # Screener startup recovery: catch up any EOD gap the scheduler missed
         # while the process was down. Spawned (NOT awaited) so it never blocks
-        # boot and a KrxUnavailable inside it can't abort startup. Tracked in
+        # boot and a calendar error inside it can't abort startup. Tracked in
         # _scheduler_tasks so the `finally` block cancels/awaits it on shutdown.
         _scheduler_tasks.append(
             asyncio.create_task(
@@ -122,8 +122,8 @@ def create_app(data_dir: Path) -> FastAPI:
                 get_active_codes=get_active_codes,
                 interval_s=today_promote_interval_s,
             )
-        # Tier 1 of the pykrx 3-tier cache policy: load Symbol Master from disk
-        # at boot so GET /api/symbols/all is immediately warm without a network call.
+        # Symbol Master warm-load: read the KIS .mst disk cache at boot so
+        # GET /api/symbols/all is immediately warm without a network call.
         _symbols_module.load_disk_state(
             path=resolve_symbol_master_path(), data_dir=data_dir
         )
@@ -238,8 +238,8 @@ def default_app() -> FastAPI:
     raw-TSV downloads aren't duplicated.
 
     Also loads .env so ``uvicorn --reload`` (which bypasses
-    ``hoga.cli.serve``) still picks up KRX_ID / KRX_PW. The CLI entry
-    point calls ``load_env()`` too; the discovery cache makes the
+    ``hoga.cli.serve``) still picks up KIS_APP_KEY / KIS_APP_SECRET. The CLI
+    entry point calls ``load_env()`` too; the discovery cache makes the
     second call a no-op.
     """
     load_env()
