@@ -646,6 +646,39 @@ def test_evicted_code_stops_emitting():
     ds.ingest(_ob("005930", 1000, tot_ask=111))
     ds.set_active_codes({"000660"})                    # 005930 구독 해제됨
     assert ds.flush(now_ms=10_000, phase="regular") == {}
+
+
+def _broker(code, t_ms, top_name):
+    return WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.BROKER, payload={
+        "code": code, "t_ms": t_ms,
+        "sell_top": [{"name": top_name, "qty": 10}], "buy_top": [],
+    })
+
+
+def test_broker_state_last_wins_and_carries():
+    """리뷰 follow-up: BROKER 분기도 last-wins + carry — OB 미러."""
+    ds = TickDownsampler()
+    ds.ingest(_broker("005930", 1000, "A증권"))
+    ds.ingest(_broker("005930", 2000, "B증권"))      # 마지막이 이김
+    out = ds.flush(now_ms=10_000, phase="regular")
+    br = next(s for s in out["005930"] if s.kind is SnapshotKind.BROKER)
+    assert br.payload["sell_top"][0]["name"] == "B증권"
+    out2 = ds.flush(now_ms=20_000, phase="regular")  # carry
+    br2 = next(s for s in out2["005930"] if s.kind is SnapshotKind.BROKER)
+    assert br2.payload["sell_top"][0]["name"] == "B증권"
+    assert br2.t_ms == 20_000
+
+
+def test_multi_code_sums_are_isolated():
+    """리뷰 follow-up: 같은 윈도의 두 종목 buy/sell 합이 섞이면 안 됨."""
+    ds = TickDownsampler()
+    ds.ingest(_tr("005930", 1000, qty=5, side=1))
+    ds.ingest(_tr("000660", 1100, qty=7, side=-1))
+    out = ds.flush(now_ms=10_000, phase="regular")
+    f1 = next(s for s in out["005930"] if s.kind is SnapshotKind.FILL)
+    f2 = next(s for s in out["000660"] if s.kind is SnapshotKind.FILL)
+    assert (f1.payload["buy_qty"], f1.payload["sell_qty"]) == (5, 0)
+    assert (f2.payload["buy_qty"], f2.payload["sell_qty"]) == (0, 7)
 ```
 
 - [ ] **Step 2: 실패 확인**
@@ -681,6 +714,9 @@ class _CodeState:
 
 
 class TickDownsampler:
+    """모든 메서드는 sync(no await)여야 한다 — LiveStream의 윈도 경계 원자성
+    (materialize-then-reset)이 단일 이벤트 루프에서의 무중단 실행에 의존한다."""
+
     def __init__(self) -> None:
         self._codes: dict[str, _CodeState] = {}
 
@@ -730,7 +766,7 @@ class TickDownsampler:
 - [ ] **Step 4: 통과 확인**
 
 Run: `uv run pytest tests/unit/live/test_downsampler.py -v`
-Expected: 4 passed
+Expected: 7 passed
 
 - [ ] **Step 5: 커밋**
 

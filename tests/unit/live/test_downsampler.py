@@ -17,6 +17,13 @@ def _tr(code, t_ms, qty, side):
     })
 
 
+def _broker(code, t_ms, top_name):
+    return WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.BROKER, payload={
+        "code": code, "t_ms": t_ms,
+        "sell_top": [{"name": top_name, "qty": 10}], "buy_top": [],
+    })
+
+
 def test_state_last_wins_and_flow_sums():
     ds = TickDownsampler()
     ds.ingest(_ob("005930", 1000, tot_ask=111))
@@ -67,3 +74,27 @@ def test_evicted_code_stops_emitting():
     ds.ingest(_ob("005930", 1000, tot_ask=111))
     ds.set_active_codes({"000660"})                    # 005930 구독 해제됨
     assert ds.flush(now_ms=10_000, phase="regular") == {}
+
+
+def test_broker_state_last_wins_and_carries():
+    ds = TickDownsampler()
+    ds.ingest(_broker("005930", 1000, "A증권"))
+    ds.ingest(_broker("005930", 2000, "B증권"))      # 마지막이 이김
+    out = ds.flush(now_ms=10_000, phase="regular")
+    br = next(s for s in out["005930"] if s.kind is SnapshotKind.BROKER)
+    assert br.payload["sell_top"][0]["name"] == "B증권"
+    out2 = ds.flush(now_ms=20_000, phase="regular")  # carry
+    br2 = next(s for s in out2["005930"] if s.kind is SnapshotKind.BROKER)
+    assert br2.payload["sell_top"][0]["name"] == "B증권"
+    assert br2.t_ms == 20_000
+
+
+def test_multi_code_sums_are_isolated():
+    ds = TickDownsampler()
+    ds.ingest(_tr("005930", 1000, qty=5, side=1))
+    ds.ingest(_tr("000660", 1100, qty=7, side=-1))
+    out = ds.flush(now_ms=10_000, phase="regular")
+    f1 = next(s for s in out["005930"] if s.kind is SnapshotKind.FILL)
+    f2 = next(s for s in out["000660"] if s.kind is SnapshotKind.FILL)
+    assert (f1.payload["buy_qty"], f1.payload["sell_qty"]) == (5, 0)
+    assert (f2.payload["buy_qty"], f2.payload["sell_qty"]) == (0, 7)

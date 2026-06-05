@@ -23,6 +23,9 @@ class _CodeState:
 
 
 class TickDownsampler:
+    """모든 메서드는 sync(no await)여야 한다 — LiveStream의 윈도 경계 원자성
+    (materialize-then-reset)이 단일 이벤트 루프에서의 무중단 실행에 의존한다."""
+
     def __init__(self) -> None:
         self._codes: dict[str, _CodeState] = {}
 
