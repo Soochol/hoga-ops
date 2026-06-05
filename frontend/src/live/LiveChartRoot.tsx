@@ -181,13 +181,14 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     if (revealRafRef.current !== null) cancelAnimationFrame(revealRafRef.current);
   }, []);
 
-  // Leftward-pan historical backfill + viewport preservation (prepend-restore
-  // shift, progressive settle-loop, lazy-fetch trigger) live in this headless
-  // controller. Called from the parent so its restore effect runs after
-  // RangeSeriesPane's child setData. The restore effect and the initial-view
-  // effect (declared below) are mutually exclusive via historicalFromDate
-  // (null → initial-view owns the viewport; non-null → restore), so their
-  // relative declaration order is immaterial.
+  // Leftward-pan historical backfill + staleness-free viewport repositioning
+  // (pre-swap layout snapshot, post-setData reposition, lazy-fetch trigger,
+  // settle-loop) live in this headless controller. Called from the parent so
+  // its layout snapshot runs before — and its repositioner after —
+  // RangeSeriesPane's child setData within the same bundle commit. The
+  // repositioner and the initial-view effect below are mutually exclusive via
+  // historicalFromDate (null → initial-view owns the viewport; non-null →
+  // repositioner), so their relative declaration order is immaterial.
   useViewportBackfill({ chart, axis, bundle, timeframe, isExtending, code: code ?? '' });
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
