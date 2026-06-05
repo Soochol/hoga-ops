@@ -89,11 +89,15 @@ describe('Settings — Symbol Master section', () => {
 
   it('renders stale state: cache preserved, reason hint visible, button still actionable', async () => {
     const TWO_HOURS_AGO = Date.now() - 2 * 60 * 60 * 1000;
+    // kis_master_fetch_failed is the only fetch-failure reason the symbols
+    // backend actually emits on this surface — the previous mock used
+    // kis_holiday_fetch_failed, an impossible state here, so the reachable
+    // hint copy went untested.
     vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
       count: 6012,
       fetched_at_ms: TWO_HOURS_AGO,
       status: 'stale',
-      reason: 'krx_fetch_failed',
+      reason: 'kis_master_fetch_failed',
     });
 
     renderWithQuery(<Settings />);
@@ -102,7 +106,7 @@ describe('Settings — Symbol Master section', () => {
       expect(screen.getByText('6,012')).toBeInTheDocument();
     });
     expect(screen.getByText('stale')).toBeInTheDocument();
-    expect(screen.getByText(/KRX에서 종목 목록을 가져오지 못했습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/KIS 종목 마스터.*다운로드에 실패/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Update Now/i })).toBeEnabled();
   });
 

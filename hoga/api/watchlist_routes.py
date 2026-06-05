@@ -11,12 +11,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path as PathParam
 
+from hoga.api.params import CODE_PATTERN
+
 log = logging.getLogger(__name__)
 
-# 6-digit numeric KRX code — see models.WatchlistEntry.code, which uses the
-# same pattern on the body/response shape. Centralised here so the four
-# routes that take {code} in the path don't each re-implement isdigit/len.
-CodePathParam = Annotated[str, PathParam(pattern=r"^\d{6}$")]
+# KRX code — params.CODE_PATTERN is the single source of the ticker grammar
+# (6-char alphanumeric + 7-char Q-prefixed ETN). models.WatchlistEntry.code
+# uses the same pattern on the body/response shape.
+CodePathParam = Annotated[str, PathParam(pattern=CODE_PATTERN)]
 
 from hoga.api import symbols
 from hoga.api.models import (
@@ -35,7 +37,7 @@ from hoga.api.models import (
     WatchlistFolder,
     WatchlistResponse,
 )
-from hoga.api.calendar import KrxUnavailableError
+from hoga.api.calendar import TradingDayUnavailableError
 from hoga.api.scheduler import catchup_one_entry, seconds_until_next_17_kst
 from hoga.api.watchlist import (
     AlreadyInWatchlistError,
@@ -120,15 +122,15 @@ def build_router(*, data_dir: Path) -> APIRouter:
                     deduped_count=len(resp.deduped),
                     error=None,
                 ))
-            except KrxUnavailableError as e:
+            except TradingDayUnavailableError as e:
                 # Map known upstream failures to a stable code the panel
-                # can branch on (e.g. show a 'configure KRX_ID/KRX_PW' hint).
+                # can branch on (e.g. show a 'configure KIS_APP_KEY/KIS_APP_SECRET' hint).
                 results.append(ManualCatchupAllEntryResult(
                     code=entry.code, name=entry.name,
                     enqueued_count=0, deduped_count=0,
                     error=ManualCatchupError(
                         code=e.code,
-                        message="KRX trading-day list unavailable.",
+                        message="Trading-day list unavailable (KIS).",
                     ),
                 ))
             except Exception:  # noqa: BLE001 — one bad entry mustn't kill the run
@@ -171,9 +173,15 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "code": "not_in_watchlist",
                 "message": f"Code {code} is not in the Watchlist.",
             })
-        return await catchup_one_entry(
-            match, data_dir=data_dir, now=now_kst(),
-        )
+        try:
+            return await catchup_one_entry(
+                match, data_dir=data_dir, now=now_kst(),
+            )
+        except TradingDayUnavailableError as e:
+            raise HTTPException(status_code=503, detail={
+                "code": e.code,
+                "message": "Trading-day list unavailable (KIS).",
+            }) from e
 
     @router.post("/folders", status_code=201, response_model=WatchlistFolder)
     async def create_watchlist_folder(req: FolderCreateRequest) -> WatchlistFolder:

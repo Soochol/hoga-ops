@@ -39,36 +39,36 @@ def test_returns_none_when_no_env_file(tmp_path: Path, monkeypatch: pytest.Monke
 def test_loads_env_file_into_os_environ(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import hoga.env as env_module
 
-    (tmp_path / ".env").write_text("KRX_ID=u\nKRX_PW=p\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("HOGA_TEST_KEY=u\nHOGA_TEST_KEY2=p\n", encoding="utf-8")
     monkeypatch.setattr(env_module, "_WORKING_TREE", tmp_path)
-    _purge_keys(monkeypatch, "KRX_ID", "KRX_PW")
+    _purge_keys(monkeypatch, "HOGA_TEST_KEY", "HOGA_TEST_KEY2")
 
     loaded = env_module.load_env()
     assert loaded == tmp_path / ".env"
-    assert os.environ["KRX_ID"] == "u"
-    assert os.environ["KRX_PW"] == "p"
+    assert os.environ["HOGA_TEST_KEY"] == "u"
+    assert os.environ["HOGA_TEST_KEY2"] == "p"
 
 
 def test_override_false_preserves_existing_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import hoga.env as env_module
 
-    (tmp_path / ".env").write_text("KRX_ID=fromfile\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("HOGA_TEST_KEY=fromfile\n", encoding="utf-8")
     monkeypatch.setattr(env_module, "_WORKING_TREE", tmp_path)
-    monkeypatch.setenv("KRX_ID", "fromshell")
+    monkeypatch.setenv("HOGA_TEST_KEY", "fromshell")
 
     env_module.load_env(override=False)
-    assert os.environ["KRX_ID"] == "fromshell"
+    assert os.environ["HOGA_TEST_KEY"] == "fromshell"
 
 
 def test_override_true_overwrites_existing_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import hoga.env as env_module
 
-    (tmp_path / ".env").write_text("KRX_ID=fromfile\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("HOGA_TEST_KEY=fromfile\n", encoding="utf-8")
     monkeypatch.setattr(env_module, "_WORKING_TREE", tmp_path)
-    monkeypatch.setenv("KRX_ID", "fromshell")
+    monkeypatch.setenv("HOGA_TEST_KEY", "fromshell")
 
     env_module.load_env(override=True)
-    assert os.environ["KRX_ID"] == "fromfile"
+    assert os.environ["HOGA_TEST_KEY"] == "fromfile"
 
 
 def test_worktree_fallback_to_main_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -79,15 +79,15 @@ def test_worktree_fallback_to_main_repo(tmp_path: Path, monkeypatch: pytest.Monk
     main_repo = tmp_path / "main"
     worktree.mkdir()
     main_repo.mkdir()
-    (main_repo / ".env").write_text("KRX_ID=fromMain\n", encoding="utf-8")
+    (main_repo / ".env").write_text("HOGA_TEST_KEY=fromMain\n", encoding="utf-8")
 
     monkeypatch.setattr(env_module, "_WORKING_TREE", worktree)
     monkeypatch.setattr(env_module, "_main_repo_root", lambda: main_repo)
-    _purge_keys(monkeypatch, "KRX_ID")
+    _purge_keys(monkeypatch, "HOGA_TEST_KEY")
 
     loaded = env_module.load_env()
     assert loaded == main_repo / ".env"
-    assert os.environ["KRX_ID"] == "fromMain"
+    assert os.environ["HOGA_TEST_KEY"] == "fromMain"
 
 
 def test_worktree_env_wins_over_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -98,16 +98,16 @@ def test_worktree_env_wins_over_main(tmp_path: Path, monkeypatch: pytest.MonkeyP
     main_repo = tmp_path / "main"
     worktree.mkdir()
     main_repo.mkdir()
-    (worktree / ".env").write_text("KRX_ID=fromWorktree\n", encoding="utf-8")
-    (main_repo / ".env").write_text("KRX_ID=fromMain\n", encoding="utf-8")
+    (worktree / ".env").write_text("HOGA_TEST_KEY=fromWorktree\n", encoding="utf-8")
+    (main_repo / ".env").write_text("HOGA_TEST_KEY=fromMain\n", encoding="utf-8")
 
     monkeypatch.setattr(env_module, "_WORKING_TREE", worktree)
     monkeypatch.setattr(env_module, "_main_repo_root", lambda: main_repo)
-    _purge_keys(monkeypatch, "KRX_ID")
+    _purge_keys(monkeypatch, "HOGA_TEST_KEY")
 
     loaded = env_module.load_env()
     assert loaded == worktree / ".env"
-    assert os.environ["KRX_ID"] == "fromWorktree"
+    assert os.environ["HOGA_TEST_KEY"] == "fromWorktree"
 
 
 def test_main_repo_root_returns_none_when_git_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -128,7 +128,7 @@ def test_discovery_is_cached_across_calls(tmp_path: Path, monkeypatch: pytest.Mo
     """
     import hoga.env as env_module
 
-    (tmp_path / ".env").write_text("KRX_ID=u\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("HOGA_TEST_KEY=u\n", encoding="utf-8")
     monkeypatch.setattr(env_module, "_WORKING_TREE", tmp_path)
 
     call_count = {"n": 0}
@@ -155,7 +155,7 @@ def test_discovery_cache_only_one_subprocess_when_falling_back(
     main_repo = tmp_path / "main"
     worktree.mkdir()
     main_repo.mkdir()
-    (main_repo / ".env").write_text("KRX_ID=u\n", encoding="utf-8")
+    (main_repo / ".env").write_text("HOGA_TEST_KEY=u\n", encoding="utf-8")
 
     monkeypatch.setattr(env_module, "_WORKING_TREE", worktree)
     call_count = {"n": 0}
@@ -187,33 +187,16 @@ def test_override_true_always_rediscovers(
 
     monkeypatch.setattr(env_module, "_WORKING_TREE", tmp_path)
     monkeypatch.setattr(env_module, "_main_repo_root", lambda: None)
-    _purge_keys(monkeypatch, "KRX_ID")
+    _purge_keys(monkeypatch, "HOGA_TEST_KEY")
 
     # Cold boot: no .env present.
     assert env_module.load_env() is None
-    assert "KRX_ID" not in os.environ
+    assert "HOGA_TEST_KEY" not in os.environ
 
     # User creates .env after boot.
-    (tmp_path / ".env").write_text("KRX_ID=appeared-after-boot\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("HOGA_TEST_KEY=appeared-after-boot\n", encoding="utf-8")
 
     # Refresh path should re-discover and pick up the new file.
     loaded = env_module.load_env(override=True)
     assert loaded == tmp_path / ".env"
-    assert os.environ["KRX_ID"] == "appeared-after-boot"
-
-
-def test_krx_creds_present_truthiness(monkeypatch: pytest.MonkeyPatch) -> None:
-    import hoga.env as env_module
-
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
-    assert env_module.krx_creds_present() is False
-
-    monkeypatch.setenv("KRX_ID", "u")
-    assert env_module.krx_creds_present() is False  # PW still missing
-
-    monkeypatch.setenv("KRX_PW", "")
-    assert env_module.krx_creds_present() is False  # empty string is falsy
-
-    monkeypatch.setenv("KRX_PW", "p")
-    assert env_module.krx_creds_present() is True
+    assert os.environ["HOGA_TEST_KEY"] == "appeared-after-boot"

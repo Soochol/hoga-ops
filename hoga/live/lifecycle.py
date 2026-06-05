@@ -21,8 +21,8 @@ from typing import Callable, Optional
 
 from pydantic import BaseModel, Field
 
+from . import kis_runtime  # needed by reset_for_tests() + start_live_poller
 from .buffer import LiveBuffer
-from .kis_client import KisClient, KisCredentials
 from .promote import promote_today
 
 _log = logging.getLogger(__name__)
@@ -58,7 +58,6 @@ class _State:
 
 _state = _State()
 _buffer = LiveBuffer()
-_kis_client: KisClient | None = None
 
 # ADR-0043 / design-review B2 — in-memory dict of code → last successful
 # Today Promotion epoch_ms. Populated by promote_today via
@@ -97,73 +96,6 @@ def get_buffer() -> LiveBuffer:
     return _buffer
 
 
-def get_kis_client() -> KisClient | None:
-    return _kis_client
-
-
-def set_kis_client(client: KisClient | None) -> None:
-    """Stage 8 hook: inject the KisClient singleton."""
-    global _kis_client
-    _kis_client = client
-
-
-def ensure_kis_client(token_cache_path: Path, creds: KisCredentials) -> KisClient:
-    """Return the process-wide KisClient singleton, creating it once.
-
-    The KIS rate-limit invariant ("one app key = one 15/s token bucket")
-    requires exactly ONE KisClient per process. This client is a PROCESS
-    singleton, decoupled from poller start/stop: ``start_live_poller`` and the
-    screener's EOD update both obtain it here, so they share one token bucket
-    even when the poller has been stopped. It is closed only at process
-    shutdown via ``aclose_kis_client`` — a poller stop must NOT close it.
-
-    Returns the existing client if already set; otherwise constructs one from
-    ``creds`` + ``token_cache_path``, stores it in the module global, and
-    returns it.
-    """
-    global _kis_client
-    if _kis_client is None:
-        _kis_client = KisClient(credentials=creds, token_cache_path=token_cache_path)
-    return _kis_client
-
-
-def ensure_kis_client_from_env(data_dir: Path) -> KisClient | None:
-    """Resolve KIS creds from the environment and return the process singleton,
-    or None when creds are absent.
-
-    The single source of the env→creds→token-path recipe shared by the live
-    poller, the screener EOD update, and the /api/live/quotes route. Centralizing
-    it here means a consumer can't drift on env-var names / env / token path, and
-    it makes ensure_kis_client's "reuse existing, ignore later args" behavior
-    safe-by-construction (every caller resolves identical values). A new consumer
-    obtains the shared 15/s-bucket singleton with one call + a None check.
-    """
-    import os
-
-    app_key = os.environ.get("KIS_APP_KEY")
-    app_secret = os.environ.get("KIS_APP_SECRET")
-    if not app_key or not app_secret:
-        return None
-    creds = KisCredentials(app_key=app_key, app_secret=app_secret, env="real")
-    return ensure_kis_client(data_dir / ".local" / "kis-token.json", creds)
-
-
-async def aclose_kis_client() -> None:
-    """Close and drop the KisClient singleton — for PROCESS shutdown only.
-
-    A poller stop must not call this (the singleton survives across poller
-    start/stop). Wire this into the app's lifespan ``finally`` so the httpx
-    client is closed cleanly on process shutdown.
-    """
-    global _kis_client
-    if _kis_client is not None:
-        try:
-            await _kis_client.aclose()
-        except Exception:  # noqa: BLE001
-            pass
-        _kis_client = None
-
-
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -198,12 +130,12 @@ def _read_poller_attr(name: str) -> int | None:
 
 def reset_for_tests() -> None:
     """Test-only hook. Resets module state without raising."""
-    global _state, _buffer, _kis_client
+    global _state, _buffer
     if _state.poller_task is not None and not _state.poller_task.done():
         _state.poller_task.cancel()
     _state = _State()
     _buffer = LiveBuffer()
-    _kis_client = None
+    kis_runtime.reset_for_tests()
     _today_promote_last_ms.clear()
 
 
@@ -267,7 +199,6 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     ``refresh_live_poller`` (below), which the add/remove watchlist routes
     call after mutating — that is the auto-restart that was formerly deferred.
     """
-    import os
     from datetime import datetime, timedelta, timezone
 
     from hoga.api.watchlist import load_watchlist
@@ -275,10 +206,9 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     from .poller import LivePoller, LivePollerConfig
     from .writer import LiveWriter
 
-    app_key = os.environ.get("KIS_APP_KEY")
-    app_secret = os.environ.get("KIS_APP_SECRET")
-    if not app_key or not app_secret:
-        return False
+    # Creds-presence policy lives in kis_runtime (ensure_kis_client_from_env
+    # returns None below) — no duplicate os.environ guard here, so creds
+    # resolution can evolve in ONE place without silently disabling the poller.
 
     entries = load_watchlist(data_dir)
     codes = [e.code for e in entries]
@@ -306,8 +236,8 @@ async def start_live_poller(*, data_dir: Path) -> bool:
     # single env→creds→path resolver — the same one the screener EOD update and
     # the /quotes route use. Decoupled from poller start/stop: the singleton is
     # reused if already set, so a stop→start cycle never creates a 2nd bucket.
-    kis = ensure_kis_client_from_env(data_dir)
-    if kis is None:  # creds vanished after the early guard above
+    kis = kis_runtime.ensure_kis_client_from_env(data_dir)
+    if kis is None:  # KIS creds absent — the single gate for this precondition
         return False
     writer = LiveWriter(data_dir / "live")
 

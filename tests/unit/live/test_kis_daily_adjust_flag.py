@@ -6,13 +6,11 @@ adjust=False (원주가, for the screener).
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from pathlib import Path
-
 import httpx
 import pytest
 
-from hoga.live.kis_client import KIS_KST, KisClient, KisCredentials
+from hoga.live.kis_client import KisClient, KisCredentials
+from tests.unit.live._fakes import FakeTokenProvider
 
 
 class _Capture(httpx.AsyncBaseTransport):
@@ -25,16 +23,13 @@ class _Capture(httpx.AsyncBaseTransport):
 
 
 @pytest.mark.asyncio
-async def test_adjust_flag_default_is_0_and_overridable(tmp_path: Path) -> None:
+async def test_adjust_flag_default_is_0_and_overridable() -> None:
     t = _Capture()
     c = KisClient(
         KisCredentials(app_key="k", app_secret="s"),
-        token_cache_path=tmp_path / "tok.json",
+        token_provider=FakeTokenProvider(),
         _transport=t,
     )
-    # Prime the token so no real token request fires.
-    c._token = "x"
-    c._token_expires_at = datetime.now(KIS_KST) + timedelta(hours=1)
 
     # Default: adjust=True → FID_ORG_ADJ_PRC should be "0" (수정주가, /live default)
     await c.fetch_past_daily_candles("005930", "20260101", "20260131")

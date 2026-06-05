@@ -1,4 +1,4 @@
-"""hoga/api/symbols.py — pykrx cache + 3-tier policy + breakdown."""
+"""hoga/api/symbols.py — KIS .mst cache + 3-tier policy + breakdown."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import json
 import pytest
 
 from hoga.api import symbols
+from hoga.api.kis_master import MasterRow
 
 
 @pytest.fixture(autouse=True)
@@ -17,20 +18,17 @@ def _reset():
     symbols.reset_state_for_tests()
 
 
-def _stub_pykrx(monkeypatch, kospi=None, kosdaq=None, *, raise_exc=None):
-    """Patch pykrx fetch with an in-memory list (bypasses the DataFrame layer).
+def _stub_fetch(monkeypatch, kospi=None, kosdaq=None, *, raise_exc=None):
+    """Patch _fetch_symbol_master with an in-memory list.
 
-    Also sets KRX_ID/KRX_PW so the new krx_creds_present() pre-check passes
-    (unless the test is explicitly testing the missing-credentials path).
+    No credentials required — the new path is static (SPEC §7).
     """
     kospi = kospi if kospi is not None else [("005930", "삼성전자")]
     kosdaq = kosdaq if kosdaq is not None else [("035720", "카카오")]
-    monkeypatch.setenv("KRX_ID", "stub_id")
-    monkeypatch.setenv("KRX_PW", "stub_pw")
     if raise_exc is not None:
         async def _raise():
             raise raise_exc
-        monkeypatch.setattr(symbols, "_fetch_from_pykrx", _raise)
+        monkeypatch.setattr(symbols, "_fetch_symbol_master", _raise)
         return
 
     async def _fetch():
@@ -40,7 +38,7 @@ def _stub_pykrx(monkeypatch, kospi=None, kosdaq=None, *, raise_exc=None):
                 name=n,
                 market="KOSPI",
                 captured_count=0,
-                captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0},
+                captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
             )
             for c, n in kospi
         ] + [
@@ -49,17 +47,17 @@ def _stub_pykrx(monkeypatch, kospi=None, kosdaq=None, *, raise_exc=None):
                 name=n,
                 market="KOSDAQ",
                 captured_count=0,
-                captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0},
+                captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
             )
             for c, n in kosdaq
         ]
 
-    monkeypatch.setattr(symbols, "_fetch_from_pykrx", _fetch)
+    monkeypatch.setattr(symbols, "_fetch_symbol_master", _fetch)
 
 
 @pytest.mark.asyncio
 async def test_initial_status_is_loading_then_fresh(monkeypatch, tmp_path):
-    _stub_pykrx(monkeypatch)
+    _stub_fetch(monkeypatch)
     path = tmp_path / "sm.json"
     resp = await symbols.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "fresh"
@@ -70,8 +68,6 @@ async def test_initial_status_is_loading_then_fresh(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_concurrent_gets_dedupe_to_one_fetch(monkeypatch, tmp_path):
     """N concurrent refresh calls trigger exactly one underlying fetch."""
-    monkeypatch.setenv("KRX_ID", "stub_id")
-    monkeypatch.setenv("KRX_PW", "stub_pw")
     counter = {"n": 0}
     sem = asyncio.Event()
 
@@ -80,7 +76,7 @@ async def test_concurrent_gets_dedupe_to_one_fetch(monkeypatch, tmp_path):
         await sem.wait()
         return []
 
-    monkeypatch.setattr(symbols, "_fetch_from_pykrx", _slow_fetch)
+    monkeypatch.setattr(symbols, "_fetch_symbol_master", _slow_fetch)
     path = tmp_path / "sm.json"
 
     t1 = asyncio.create_task(symbols.refresh(path=path, data_dir=tmp_path))
@@ -94,8 +90,9 @@ async def test_concurrent_gets_dedupe_to_one_fetch(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_pykrx_failure_returns_unavailable_when_no_cache(monkeypatch, tmp_path):
-    _stub_pykrx(monkeypatch, raise_exc=symbols.KrxFetchFailed("krx down"))
+async def test_kis_master_failure_returns_unavailable_when_no_cache(monkeypatch, tmp_path):
+    from hoga.api.kis_master import KisMasterFetchError
+    _stub_fetch(monkeypatch, raise_exc=KisMasterFetchError("mst down"))
     path = tmp_path / "sm.json"
     resp = await symbols.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "unavailable"
@@ -103,7 +100,7 @@ async def test_pykrx_failure_returns_unavailable_when_no_cache(monkeypatch, tmp_
 
 
 def test_search_filters_by_name(monkeypatch, tmp_path):
-    _stub_pykrx(monkeypatch, kospi=[("005930", "삼성전자"), ("000660", "SK하이닉스")])
+    _stub_fetch(monkeypatch, kospi=[("005930", "삼성전자"), ("000660", "SK하이닉스")])
     path = tmp_path / "sm.json"
     asyncio.run(symbols.refresh(path=path, data_dir=tmp_path))
     hits = symbols.search("삼성", limit=5)
@@ -111,7 +108,7 @@ def test_search_filters_by_name(monkeypatch, tmp_path):
 
 
 def test_search_filters_by_code_prefix(monkeypatch, tmp_path):
-    _stub_pykrx(monkeypatch, kospi=[("005930", "삼성전자"), ("005935", "삼성전자우")])
+    _stub_fetch(monkeypatch, kospi=[("005930", "삼성전자"), ("005935", "삼성전자우")])
     path = tmp_path / "sm.json"
     asyncio.run(symbols.refresh(path=path, data_dir=tmp_path))
     hits = symbols.search("00593", limit=5)
@@ -120,7 +117,7 @@ def test_search_filters_by_code_prefix(monkeypatch, tmp_path):
 
 def test_search_name_is_case_insensitive(monkeypatch, tmp_path):
     """영문 종목명은 입력 케이스와 무관하게 매칭된다 (한글은 영향 없음)."""
-    _stub_pykrx(
+    _stub_fetch(
         monkeypatch,
         kospi=[("058850", "KTcs"), ("010950", "S-Oil"), ("001040", "CJ")],
         kosdaq=[],
@@ -137,7 +134,7 @@ def test_search_name_is_case_insensitive(monkeypatch, tmp_path):
 
 def test_search_name_case_insensitive_ordering(monkeypatch, tmp_path):
     """대소문자 무시 시에도 접두사 우선 + 이름 길이순 정렬이 유지된다."""
-    _stub_pykrx(
+    _stub_fetch(
         monkeypatch,
         kospi=[("000120", "CJ대한통운"), ("001040", "CJ")],
         kosdaq=[],
@@ -177,8 +174,8 @@ def test_symbols_all_response_accepts_reason() -> None:
     from hoga.api.models import SymbolsAllResponse
 
     resp = SymbolsAllResponse(symbols=[], status="unavailable", fetched_at_ms=None,
-                              reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
-    assert resp.reason == "krx_credentials_missing"
+                              reason=UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+    assert resp.reason == "kis_holiday_fetch_failed"
 
     # Default is None for backward compat.
     resp_default = SymbolsAllResponse(symbols=[], status="fresh", fetched_at_ms=123)
@@ -191,8 +188,8 @@ def test_calendar_response_accepts_reason() -> None:
     from hoga.api.models import CalendarResponse
 
     resp = CalendarResponse(cells=[], as_of_ms=123,
-                            reason=UpstreamCode.KRX_FETCH_FAILED)
-    assert resp.reason == "krx_fetch_failed"
+                            reason=UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
+    assert resp.reason == "kis_holiday_fetch_failed"
 
     resp_default = CalendarResponse(cells=[], as_of_ms=123)
     assert resp_default.reason is None
@@ -214,36 +211,21 @@ def _reset_symbols_state():
 
 
 @pytest.mark.asyncio
-async def test_get_all_unavailable_when_creds_missing(
+async def test_get_all_fetch_failed_when_kis_master_raises(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     _reset_symbols_state: None,
 ) -> None:
-    """_fetch_from_pykrx raising KrxCredentialsMissing surfaces as the matching reason."""
-    async def _raise_missing() -> list:
-        raise symbols_module.KrxCredentialsMissing()
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _raise_missing)
+    from hoga.api.kis_master import KisMasterFetchError
 
-    path = tmp_path / "sm.json"
-    resp = await symbols_module.refresh(path=path, data_dir=tmp_path)
-    assert resp.status == "unavailable"
-    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
-
-
-@pytest.mark.asyncio
-async def test_get_all_fetch_failed_when_creds_set_but_pykrx_raises(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    _reset_symbols_state: None,
-) -> None:
     async def _raise() -> list:
-        raise symbols_module.KrxFetchFailed("pykrx exploded")
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _raise)
+        raise KisMasterFetchError("mst download failed")
+    monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _raise)
 
     path = tmp_path / "sm.json"
     resp = await symbols_module.refresh(path=path, data_dir=tmp_path)
     assert resp.status == "unavailable"
-    assert resp.reason == UpstreamCode.KRX_FETCH_FAILED
+    assert resp.reason == UpstreamCode.KIS_MASTER_FETCH_FAILED
 
 
 @pytest.mark.asyncio
@@ -252,16 +234,13 @@ async def test_get_all_reason_cleared_on_success(
     monkeypatch: pytest.MonkeyPatch,
     _reset_symbols_state: None,
 ) -> None:
-    monkeypatch.setenv("KRX_ID", "u")
-    monkeypatch.setenv("KRX_PW", "p")
-
     from hoga.api.models import SymbolHit
 
     async def _ok() -> list[SymbolHit]:
         return [SymbolHit(code="005930", name="삼성전자", market="KOSPI",
                           captured_count=0,
-                          captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0})]
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _ok)
+                          captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0})]
+    monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _ok)
 
     path = tmp_path / "sm.json"
     resp = await symbols_module.refresh(path=path, data_dir=tmp_path)
@@ -270,48 +249,26 @@ async def test_get_all_reason_cleared_on_success(
     assert len(resp.symbols) == 1
 
 
-def test_ensure_krx_credentials_calls_load_env_override_true(
+@pytest.mark.asyncio
+async def test_spec7_no_creds_refresh_succeeds(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     _reset_symbols_state: None,
 ) -> None:
-    """_ensure_krx_credentials hot-reloads .env (override wins over shell env)."""
-    monkeypatch.setenv("KRX_ID", "u")
-    monkeypatch.setenv("KRX_PW", "p")
+    """SPEC §7: symbol refresh works without credentials — .mst is static/no-auth."""
 
-    calls: list[bool] = []
-    def _spy(*, override: bool) -> None:
-        calls.append(override)
-        return None
-    monkeypatch.setattr(symbols_module, "load_env", _spy)
+    # Patch the sync _fetch_mst (called in executor) to return rows without network.
+    fake_rows = [MasterRow(code="005930", name="삼성전자", market="KOSPI", security_type="stock")]
+    monkeypatch.setattr(symbols_module, "_fetch_mst", lambda: fake_rows)
 
-    symbols_module._ensure_krx_credentials()
-    assert calls == [True]
+    path = tmp_path / "sm.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    resp = await symbols_module.refresh(path=path, data_dir=data_dir)
 
-
-def test_ensure_krx_credentials_raises_when_missing(
-    monkeypatch: pytest.MonkeyPatch,
-    _reset_symbols_state: None,
-) -> None:
-    """Missing KRX_ID/KRX_PW → KrxCredentialsMissing before any pykrx call."""
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
-    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
-
-    with pytest.raises(symbols_module.KrxCredentialsMissing):
-        symbols_module._ensure_krx_credentials()
-
-
-def test_ensure_krx_credentials_empty_strings_treated_as_missing(
-    monkeypatch: pytest.MonkeyPatch,
-    _reset_symbols_state: None,
-) -> None:
-    """Empty-string KRX_ID/KRX_PW are treated as missing (not as valid creds)."""
-    monkeypatch.setenv("KRX_ID", "")
-    monkeypatch.setenv("KRX_PW", "")
-    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
-
-    with pytest.raises(symbols_module.KrxCredentialsMissing):
-        symbols_module._ensure_krx_credentials()
+    assert resp.status == "fresh", "refresh must succeed without any KRX credentials"
+    assert len(resp.symbols) == 1
+    assert resp.symbols[0].code == "005930"
 
 
 def test_reset_state_for_tests_clears_reason() -> None:
@@ -320,7 +277,7 @@ def test_reset_state_for_tests_clears_reason() -> None:
     T7: reset now mirrors the module-level default — boot must populate via
     load_disk_state(); if it hasn't run, state is unavailable, not loading.
     """
-    symbols_module._state = SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
+    symbols_module._state = SymbolCacheState.stale(reason=UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
     symbols_module.reset_state_for_tests()
     assert symbols_module._state.status == "unavailable"
     assert symbols_module._state.reason == UpstreamCode.SYMBOL_MASTER_NOT_INITIALIZED
@@ -344,13 +301,13 @@ def test_symbol_cache_state_factories_enforce_invariants() -> None:
     assert SymbolCacheState.fresh().reason is None
 
     # Stale and unavailable require a reason.
-    stale = SymbolCacheState.stale(reason=UpstreamCode.KRX_FETCH_FAILED)
+    stale = SymbolCacheState.stale(reason=UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
     assert stale.status == "stale"
-    assert stale.reason == UpstreamCode.KRX_FETCH_FAILED
+    assert stale.reason == UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
 
-    unavailable = SymbolCacheState.unavailable(reason=UpstreamCode.KRX_CREDENTIALS_MISSING)
+    unavailable = SymbolCacheState.unavailable(reason=UpstreamCode.KIS_MASTER_FETCH_FAILED)
     assert unavailable.status == "unavailable"
-    assert unavailable.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
+    assert unavailable.reason == UpstreamCode.KIS_MASTER_FETCH_FAILED
 
     # Frozen — immutable after construction.
     with pytest.raises(Exception):  # dataclasses.FrozenInstanceError
@@ -383,7 +340,7 @@ def _make_hit(code: str, name: str, market: str = "KOSPI") -> SymbolHit:
         name=name,
         market=market,  # type: ignore[arg-type]
         captured_count=0,
-        captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0},
+        captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
     )
 
 
@@ -394,8 +351,9 @@ def test_disk_round_trip(tmp_path):
 
     result = symbols_module._load_from_disk(path)
     assert result is not None
-    loaded, fetched_at_ms = result
+    loaded, fetched_at_ms, schema_version = result
     assert fetched_at_ms == 1747900000000
+    assert schema_version == symbols_module.SCHEMA_VERSION
     assert [(h.code, h.name, h.market) for h in loaded] == [
         ("005930", "삼성전자", "KOSPI"),
         ("000660", "SK하이닉스", "KOSPI"),
@@ -424,7 +382,7 @@ def test_load_wrong_schema_version_returns_none(tmp_path):
 def test_load_missing_entries_array_returns_none(tmp_path):
     path = tmp_path / "no-entries.json"
     path.write_text(
-        json.dumps({"schema_version": 1, "fetched_at_ms": 1}),
+        json.dumps({"schema_version": 2, "fetched_at_ms": 1}),
         encoding="utf-8",
     )
     assert symbols_module._load_from_disk(path) is None
@@ -434,7 +392,7 @@ def test_load_malformed_entry_returns_none(tmp_path):
     path = tmp_path / "bad-entry.json"
     path.write_text(
         json.dumps({
-            "schema_version": 1,
+            "schema_version": 2,
             "fetched_at_ms": 1,
             "entries": [{"code": "005930"}],  # missing name and market
         }),
@@ -447,13 +405,13 @@ def test_write_strips_captured_breakdown(tmp_path):
     path = tmp_path / "sm.json"
     hit = _make_hit("005930", "삼성전자")
     hit.captured_count = 99
-    hit.captured_breakdown = {"complete": 99, "source_partial": 0, "client_incomplete": 0}
+    hit.captured_breakdown = {"complete": 99, "source_partial": 0, "client_incomplete": 0, "invalid": 0}
     symbols_module._write_to_disk(path, [hit], fetched_at_ms=1)
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert "captured_count" not in payload["entries"][0]
     assert "captured_breakdown" not in payload["entries"][0]
-    assert set(payload["entries"][0].keys()) == {"code", "name", "market"}
+    assert set(payload["entries"][0].keys()) == {"code", "name", "market", "security_type"}
 
 
 def test_write_creates_parent_dir(tmp_path):
@@ -516,9 +474,9 @@ def test_load_disk_state_valid_file(tmp_path):
     path = tmp_path / "sm.json"
     path.write_text(
         json.dumps({
-            "schema_version": 1,
+            "schema_version": 2,
             "fetched_at_ms": 1747900000000,
-            "source": "pykrx",
+            "source": "kis_mst",
             "entries": [
                 {"code": "005930", "name": "삼성전자", "market": "KOSPI"},
                 {"code": "000660", "name": "SK하이닉스", "market": "KOSPI"},
@@ -546,8 +504,8 @@ def test_load_disk_state_valid_file(tmp_path):
 
 async def _patch_fetch_to_raise(monkeypatch):
     async def _boom():
-        raise AssertionError("get_all() must not trigger pykrx fetch")
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _boom)
+        raise AssertionError("get_all() must not trigger .mst fetch")
+    monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _boom)
 
 
 @pytest.mark.asyncio
@@ -572,9 +530,9 @@ async def test_get_all_returns_cached_entries(tmp_path, monkeypatch):
     path = tmp_path / "sm.json"
     path.write_text(
         json.dumps({
-            "schema_version": 1,
+            "schema_version": 2,
             "fetched_at_ms": 99,
-            "source": "pykrx",
+            "source": "kis_mst",
             "entries": [{"code": "005930", "name": "삼성전자", "market": "KOSPI"}],
         }),
         encoding="utf-8",
@@ -591,20 +549,18 @@ async def test_get_all_returns_cached_entries(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# T8 — refresh(*, path, data_dir): sole pykrx entry point, disk write, dedupe
+# T8 — refresh(*, path, data_dir): sole .mst entry point, disk write, dedupe
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_refresh_happy_path(tmp_path, monkeypatch):
     symbols_module.reset_state_for_tests()
-    monkeypatch.setenv("KRX_ID", "x")
-    monkeypatch.setenv("KRX_PW", "y")
 
     async def _fake_fetch():
         return [_make_hit("005930", "삼성전자")]
 
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _fake_fetch)
+    monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _fake_fetch)
     path = tmp_path / "sm.json"
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -616,63 +572,41 @@ async def test_refresh_happy_path(tmp_path, monkeypatch):
     assert resp.status == "fresh"
     assert resp.reason is None
     payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert len(payload["entries"]) == 1
 
 
 @pytest.mark.asyncio
-async def test_refresh_missing_creds(tmp_path, monkeypatch):
-    """KrxCredentialsMissing → reason + no disk write."""
+async def test_refresh_kis_failure_preserves_disk(tmp_path, monkeypatch):
+    from hoga.api.kis_master import KisMasterFetchError
+
     symbols_module.reset_state_for_tests()
-
-    async def _raise_missing():
-        raise symbols_module.KrxCredentialsMissing()
-
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _raise_missing)
-    path = tmp_path / "sm.json"
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-
-    resp = await symbols_module.refresh(path=path, data_dir=data_dir)
-
-    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
-    assert resp.status == "unavailable"
-    assert not path.exists(), "no disk write when creds missing"
-
-
-@pytest.mark.asyncio
-async def test_refresh_pykrx_failure_preserves_disk(tmp_path, monkeypatch):
-    symbols_module.reset_state_for_tests()
-    monkeypatch.setenv("KRX_ID", "x")
-    monkeypatch.setenv("KRX_PW", "y")
     path = tmp_path / "sm.json"
     data_dir = tmp_path / "data"
     data_dir.mkdir()
 
     async def _ok():
         return [_make_hit("005930", "삼성전자")]
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _ok)
+    monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _ok)
     await symbols_module.refresh(path=path, data_dir=data_dir)
     original_content = path.read_text(encoding="utf-8")
 
     async def _boom():
-        raise symbols_module.KrxFetchFailed("KRX down")
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _boom)
+        raise KisMasterFetchError("mst down")
+    monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _boom)
     resp = await symbols_module.refresh(path=path, data_dir=data_dir)
 
-    assert resp.reason == UpstreamCode.KRX_FETCH_FAILED
+    assert resp.reason == UpstreamCode.KIS_MASTER_FETCH_FAILED
     assert resp.status == "stale", "cache populated → state is stale, not unavailable"
     assert path.read_text(encoding="utf-8") == original_content
 
 
 @pytest.mark.asyncio
 async def test_refresh_concurrent_dedupe(tmp_path, monkeypatch):
-    """Two simultaneous refresh calls collapse to one pykrx fetch."""
+    """Two simultaneous refresh calls collapse to one .mst fetch."""
     import asyncio as _asyncio
 
     symbols_module.reset_state_for_tests()
-    monkeypatch.setenv("KRX_ID", "x")
-    monkeypatch.setenv("KRX_PW", "y")
     call_count = 0
 
     async def _slow():
@@ -681,7 +615,7 @@ async def test_refresh_concurrent_dedupe(tmp_path, monkeypatch):
         await _asyncio.sleep(0.05)
         return [_make_hit("005930", "삼성전자")]
 
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _slow)
+    monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _slow)
     path = tmp_path / "sm.json"
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -705,6 +639,7 @@ async def test_refresh_concurrent_dedupe(tmp_path, monkeypatch):
 def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from hoga.api.app import create_app
+    from hoga.api import symbols
 
     symbols_module.reset_state_for_tests()
     # Isolate disk path so we don't read the real machine-global file.
@@ -717,6 +652,12 @@ def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     data_dir.mkdir(exist_ok=True)
     monkeypatch.setenv("HOGA_DATA_DIR", str(data_dir))
+    # §4.4: suppress background auto-fetch so the status stays at "unavailable"
+    # for the duration of this endpoint-format test. The auto-fetch behaviour
+    # itself is covered by test_boot_autofetch_fires_when_cache_unavailable.
+    async def _noop_refresh(**_kwargs):
+        pass
+    monkeypatch.setattr(symbols, "refresh", _noop_refresh)
 
     app = create_app(data_dir)
     with TestClient(app) as client:
@@ -728,6 +669,107 @@ def test_symbols_info_endpoint_empty(tmp_path, monkeypatch):
     assert body["status"] == "unavailable"
     assert body["fetched_at_ms"] is None
     assert body["reason"] == "symbol_master_not_initialized"
+
+
+# ---------------------------------------------------------------------------
+# T4 §4.4 — boot auto-fetch on empty cache (background, non-blocking)
+# ---------------------------------------------------------------------------
+
+
+def test_boot_autofetch_fires_when_cache_unavailable(tmp_path, monkeypatch):
+    """§4.4: when disk file is absent (status=unavailable), lifespan must
+    schedule refresh() as a background task — not block startup on it."""
+    from fastapi.testclient import TestClient
+    from hoga.api.app import create_app
+    from hoga.api import symbols
+
+    symbols_module.reset_state_for_tests()
+
+    # Point at a nonexistent disk file → load_disk_state leaves status=unavailable.
+    monkeypatch.setattr(
+        "hoga.api.app.resolve_symbol_master_path",
+        lambda: tmp_path / "symbol-master.json",
+    )
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOGA_DATA_DIR", str(data_dir))
+
+    # Patch refresh with a *sync* recorder that returns a real coroutine so the
+    # flag is set when create_task() evaluates its argument — synchronously,
+    # before TestClient.__enter__ returns — not when the task body runs.
+    called = {"v": False, "path": None}
+    async def _noop():
+        return None
+    def _record(**kwargs):
+        called["v"] = True
+        called["path"] = kwargs.get("path")
+        return _noop()
+    monkeypatch.setattr(symbols, "refresh", _record)
+
+    app = create_app(data_dir)
+    with TestClient(app):
+        # Startup must complete (no blocking await on the task).
+        assert called["v"], "refresh must be scheduled when cache is unavailable"
+
+
+def test_boot_autofetch_skipped_when_cache_fresh(tmp_path, monkeypatch):
+    """§4.4: when a valid disk file loads (status=fresh), refresh must NOT be
+    scheduled — no redundant network call on a warm boot."""
+    from fastapi.testclient import TestClient
+    from hoga.api.app import create_app
+    from hoga.api import symbols
+    import json
+
+    symbols_module.reset_state_for_tests()
+
+    # Write a valid v2 disk file so load_disk_state sets status=fresh.
+    sm_path = tmp_path / "symbol-master.json"
+    sm_path.write_text(
+        json.dumps({
+            "schema_version": 2,
+            "fetched_at_ms": 1747900000000,
+            "source": "kis_mst",
+            "entries": [{"code": "005930", "name": "삼성전자", "market": "KOSPI"}],
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "hoga.api.app.resolve_symbol_master_path",
+        lambda: sm_path,
+    )
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOGA_DATA_DIR", str(data_dir))
+
+    called = {"v": False}
+    async def _noop():
+        return None
+    def _record(**kwargs):
+        called["v"] = True
+        return _noop()
+    monkeypatch.setattr(symbols, "refresh", _record)
+
+    app = create_app(data_dir)
+    with TestClient(app):
+        assert not called["v"], "refresh must NOT be scheduled when cache is already fresh"
+
+
+def test_current_status_reflects_state():
+    """current_status() returns the current _state.status string."""
+    from hoga.api.error_codes import UpstreamCode
+
+    symbols_module.reset_state_for_tests()
+    # After reset, state is unavailable.
+    assert symbols_module.current_status() == "unavailable"
+
+    # Manually drive state to fresh via _state attribute.
+    symbols_module._state = symbols_module.SymbolCacheState.fresh()
+    assert symbols_module.current_status() == "fresh"
+
+    symbols_module._state = symbols_module.SymbolCacheState.stale(reason=UpstreamCode.KIS_MASTER_FETCH_FAILED)
+    assert symbols_module.current_status() == "stale"
+
+    symbols_module.reset_state_for_tests()  # restore
 
 
 # ---------------------------------------------------------------------------
@@ -771,35 +813,6 @@ async def test_coalesce_cancels_detached_worker_when_awaiter_abandons() -> None:
 
 
 @pytest.mark.asyncio
-async def test_refresh_invokes_ensure_credentials_in_production_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """End-to-end: refresh() must call load_env(override=True) via _ensure_krx_credentials.
-
-    Uses the missing-creds short-circuit so we don't have to mock pykrx. The
-    refresh-level tests elsewhere all stub _fetch_from_pykrx, which would
-    silently pass even if a future change removed the _ensure_krx_credentials()
-    call from the real implementation. This test catches that.
-    """
-    symbols_module.reset_state_for_tests()
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
-
-    calls: list[bool] = []
-    def _spy_load_env(*, override: bool) -> None:
-        calls.append(override)
-    monkeypatch.setattr(symbols_module, "load_env", _spy_load_env)
-
-    path = tmp_path / "sm.json"
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-    resp = await symbols_module.refresh(path=path, data_dir=data_dir)
-
-    assert calls == [True], "refresh() must call load_env(override=True) via the real fetch path"
-    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
-
-
-@pytest.mark.asyncio
 async def test_refresh_disk_write_oserror_maps_to_warning_not_unexpected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog
 ) -> None:
@@ -812,12 +825,10 @@ async def test_refresh_disk_write_oserror_maps_to_warning_not_unexpected(
     """
     import logging
     symbols_module.reset_state_for_tests()
-    monkeypatch.setenv("KRX_ID", "x")
-    monkeypatch.setenv("KRX_PW", "y")
 
     async def _ok():
         return [_make_hit("005930", "삼성전자")]
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _ok)
+    monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _ok)
 
     def _raise_disk_full(*_args, **_kwargs):
         raise OSError(28, "No space left on device")
@@ -845,78 +856,6 @@ async def test_refresh_disk_write_oserror_maps_to_warning_not_unexpected(
 
 
 @pytest.mark.asyncio
-async def test_refresh_skips_loading_state_when_creds_missing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """B4 regression: a missing-creds refresh must NOT flip _state to loading()
-    on its way to stale/unavailable. The previous flow set loading() inside
-    the coordinator's task factory before the credentials check ran, so a
-    concurrent GET /api/symbols/all could briefly observe status='loading'
-    and flash a spinner before the refresh task's typed handler reset it.
-
-    Spy SymbolCacheState.loading: if it's called during refresh(), the
-    transient flash is back.
-    """
-    symbols_module.reset_state_for_tests()
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
-    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
-
-    loading_calls = []
-    original_loading = symbols_module.SymbolCacheState.loading
-
-    def _spy_loading():
-        loading_calls.append(True)
-        return original_loading()
-
-    monkeypatch.setattr(symbols_module.SymbolCacheState, "loading", _spy_loading)
-
-    path = tmp_path / "sm.json"
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-    resp = await symbols_module.refresh(path=path, data_dir=data_dir)
-
-    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
-    assert loading_calls == [], (
-        "refresh() must short-circuit before flipping _state to loading() "
-        "when credentials are missing — otherwise a concurrent GET observes a "
-        "transient 'loading' status"
-    )
-
-
-@pytest.mark.asyncio
-async def test_refresh_short_circuits_before_pykrx_import_when_creds_missing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The credentials pre-check must run BEFORE the pykrx import in _fetch_from_pykrx.
-
-    Replaces sys.modules['pykrx.stock'] with a sentinel that raises on any
-    attribute access; missing-creds short-circuit must prevent any access.
-    """
-    import sys
-    symbols_module.reset_state_for_tests()
-    monkeypatch.delenv("KRX_ID", raising=False)
-    monkeypatch.delenv("KRX_PW", raising=False)
-    monkeypatch.setattr(symbols_module, "load_env", lambda *, override: None)
-
-    class _ForbiddenStock:
-        def __getattr__(self, name):
-            raise AssertionError(f"pykrx.stock.{name} accessed despite missing creds")
-
-    fake_pykrx = type(sys)("pykrx")
-    fake_pykrx.stock = _ForbiddenStock()  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "pykrx", fake_pykrx)
-    monkeypatch.setitem(sys.modules, "pykrx.stock", _ForbiddenStock())
-
-    path = tmp_path / "sm.json"
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-    resp = await symbols_module.refresh(path=path, data_dir=data_dir)
-
-    assert resp.reason == UpstreamCode.KRX_CREDENTIALS_MISSING
-
-
-@pytest.mark.asyncio
 async def test_refresh_back_to_back_flights_isolate_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -928,8 +867,6 @@ async def test_refresh_back_to_back_flights_isolate_state(
     design plus result-broadcast through the future prevents both.
     """
     symbols_module.reset_state_for_tests()
-    monkeypatch.setenv("KRX_ID", "u")
-    monkeypatch.setenv("KRX_PW", "p")
 
     call_count = 0
     async def _fetch():
@@ -938,7 +875,7 @@ async def test_refresh_back_to_back_flights_isolate_state(
         await asyncio.sleep(0.01)
         return [_make_hit(f"{call_count:06d}", f"name{call_count}")]
 
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _fetch)
+    monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _fetch)
     path = tmp_path / "sm.json"
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -971,14 +908,14 @@ async def test_refresh_unhandled_exception_recovers_to_terminal_state(
     """ImportError or other unexpected exceptions must NOT leave _state at loading().
 
     Regression guard for the narrowed-except-clauses bug: pre-fix, an
-    ImportError from a broken pykrx (or OSError from _build_all_captured_breakdowns)
-    would escape _do_refresh and strand _state at loading() forever.
+    ImportError or OSError from _build_all_captured_breakdowns would escape
+    _do_refresh and strand _state at loading() forever.
     """
     symbols_module.reset_state_for_tests()
 
     async def _explode():
-        raise ImportError("pykrx broken")
-    monkeypatch.setattr(symbols_module, "_fetch_from_pykrx", _explode)
+        raise ImportError("kis_master broken")
+    monkeypatch.setattr(symbols_module, "_fetch_symbol_master", _explode)
 
     path = tmp_path / "sm.json"
     data_dir = tmp_path / "data"
@@ -987,7 +924,7 @@ async def test_refresh_unhandled_exception_recovers_to_terminal_state(
 
     assert resp.status != "loading", "broad except must surface a terminal state"
     assert resp.status in ("stale", "unavailable")
-    assert resp.reason == UpstreamCode.KRX_FETCH_FAILED
+    assert resp.reason == UpstreamCode.KIS_MASTER_FETCH_FAILED
     assert symbols_module._state.status != "loading", \
         "module _state must not be stranded at loading() — /info would otherwise lie"
 

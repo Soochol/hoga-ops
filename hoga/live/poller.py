@@ -54,20 +54,20 @@ def _should_poll_now(t_ms: int) -> bool:
     """Calendar + clock gate: True only when KRX is *probably* trading right now.
 
     ADR-0064: the trading-day check uses :func:`calendar.is_trading_session_today`
-    (backed by the KRX business-day *calendar*), NOT :func:`calendar.is_trading_day`
-    (backed by daily OHLCV). The OHLCV proxy returns False for a live trading day
-    early in the session — today's bar isn't published yet — and once that False
-    was cached the poller silently halted capture for the whole process. The
-    business-day calendar marks today as a session from the open.
+    (backed by the KIS chk-holiday calendar, which lists today from the session
+    open), NOT a daily-OHLCV proxy. The old proxy returned False for a live
+    trading day early in the session — today's bar wasn't published yet — and
+    once that False was cached the poller silently halted capture for the
+    whole process.
 
-    Weekends are short-circuited by the clock/weekday before any KRX call, so a
-    weekend stays closed even when KRX is unreachable (a None verdict is treated
+    Weekends are short-circuited by the clock/weekday before any KIS call, so a
+    weekend stays closed even when KIS is unreachable (a None verdict is treated
     leniently below and would otherwise poll).
 
     Lenient on missing calendar data — when ``is_trading_session_today`` returns
-    None (KRX creds missing, pykrx flaked), defer to the clock alone. Losing live
-    capture for a transient KRX outage is a worse failure than the noise from a
-    brief burst of empty fetches on a stale day.
+    None (KIS creds missing, chk-holiday flaked), defer to the clock alone.
+    Losing live capture for a transient outage is a worse failure than the
+    noise from a brief burst of empty fetches on a stale day.
     """
     if _market_phase(t_ms) == "closed":
         return False
@@ -234,7 +234,11 @@ class LivePoller:
         while True:
             start = _now_ms()
             try:
-                if not _should_poll_now(start):
+                # to_thread: the gate's session check can trigger a cold-month
+                # KIS chk-holiday fetch (blocking sync HTTP, seconds) — never
+                # run it on the event loop this poller shares with every route
+                # and SSE stream. Warm cache hits cost only the thread hop.
+                if not await asyncio.to_thread(_should_poll_now, start):
                     await asyncio.sleep(1.0)
                     continue
                 await self.run_one_cycle()

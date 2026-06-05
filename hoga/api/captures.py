@@ -20,10 +20,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 import hoga
-from hoga.api.calendar import KrxUnavailableError
+from hoga.api.calendar import TradingDayUnavailableError
 from hoga.api.captures_persistence import load_manifest, manifest_path, save_manifest
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
 from hoga.api.error_codes import CaptureErrorCode, UpstreamCode
+from hoga.api.params import CODE_PATTERN
 from hoga.api.models import (
     BlockedItem,
     CaptureDismissedEvent,
@@ -1113,10 +1114,10 @@ from hoga.collector.orchestrator import now_kst as _now_kst  # noqa: E402
 
 
 def _expand_to_trading_days(start: str, end: str) -> list[str]:
-    """Return YYYYMMDD strings for each KRX trading day in [start, end].
+    """Return YYYYMMDD strings for each KIS trading day in [start, end].
 
     Delegates to hoga.api.calendar.trading_days_in_range which owns the
-    pykrx-backed cache (Task 15). Late import so tests can monkeypatch
+    KIS-backed cache (Task 15). Late import so tests can monkeypatch
     the calendar function source.
     """
     from hoga.api.calendar import trading_days_in_range
@@ -1265,7 +1266,7 @@ async def enqueue_items_core(
         candidate_dates = list(req.dates)
     elif req.start_date and req.end_date:
         try:
-            # Offload the pykrx-backed cold-month fetch to a threadpool
+            # Offload the KIS-backed cold-month fetch to a threadpool
             # so it doesn't block the event loop. Warm cache hit returns
             # in microseconds; cold hit can be 1-3 s of network.
             loop = asyncio.get_running_loop()
@@ -1275,13 +1276,24 @@ async def enqueue_items_core(
                 req.start_date,
                 req.end_date,
             )
-        except KrxUnavailableError as e:
+        except TradingDayUnavailableError as e:
+            # Remediation differs by cause: missing creds need configuration
+            # (and a process restart picks up .env edits); a fetch failure with
+            # valid creds is a transient upstream problem — telling the user to
+            # reconfigure keys would be wrong and wasteful.
+            if e.code == UpstreamCode.KIS_CREDENTIALS_MISSING:
+                message = (
+                    "Trading-day list unavailable (KIS). Configure KIS_APP_KEY / "
+                    "KIS_APP_SECRET in repo-root .env and try again."
+                )
+            else:
+                message = (
+                    "Trading-day list unavailable (KIS upstream error). "
+                    "Credentials look configured — retry in a minute."
+                )
             raise HTTPException(status_code=503, detail={
                 "code": e.code,
-                "message": (
-                    "KRX trading-day list unavailable. Configure KRX_ID / KRX_PW "
-                    "in repo-root .env and try again."
-                ),
+                "message": message,
             }) from e
     else:
         raise HTTPException(status_code=400, detail={
@@ -1456,7 +1468,7 @@ def build_router(
 
     @router.post("/items/{code}/{date}/unblock", status_code=200)
     async def unblock_item(
-        code: str = FPath(pattern=r"^\d{6}$"),
+        code: str = FPath(pattern=CODE_PATTERN),
         date: str = FPath(pattern=r"^\d{8}$"),
     ) -> dict:
         """ADR-0042: zero the fail_streak counter for (code, date).

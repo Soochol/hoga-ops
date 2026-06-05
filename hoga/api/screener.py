@@ -22,7 +22,7 @@ from hoga.api.models import (
 )
 from hoga.api.symbols import _RefreshCoordinator
 from hoga.collector.orchestrator import next_kst_day, now_kst
-from hoga.live import lifecycle
+from hoga.live import kis_runtime
 from hoga.live.kis_client import KIS_KST
 
 log = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ _update_coordinator: _RefreshCoordinator[int] = _RefreshCoordinator()
 
 def _gap_trading_days(last_raw_date: str, today: str) -> list[str]:
     """last_raw_date 다음날부터 today(KST)까지의 거래일 목록. 갭 없으면 [].
-    trading_days_in_range 예외(KRX 먹통)는 전파 — 호출자가 0/None 으로 다르게 매핑한다.
+    trading_days_in_range 예외(KIS 거래일 먹통)는 전파 — 호출자가 0/None 으로 다르게 매핑한다.
     trigger_update(갭 캐치업)와 status(days_behind)가 공유하는 단일 갭 규칙."""
     start = next_kst_day(last_raw_date)
     if start > today:
@@ -69,8 +69,10 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
 
     today = now_kst().strftime("%Y%m%d")
     try:
-        days = _gap_trading_days(last, today)
-    except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
+        # to_thread: 콜드 월이면 KIS chk-holiday sync HTTP — duckdb read 와 같은
+        # 규칙으로 이벤트 루프 밖에서.
+        days = await asyncio.to_thread(_gap_trading_days, last, today)
+    except Exception:  # noqa: BLE001 — TradingDayUnavailableError or worse
         log.warning("screener update: trading-day list unavailable")
         return 0
     if not days:
@@ -79,7 +81,7 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
     stocks_df = await asyncio.to_thread(pl.read_parquet, sdir / "stocks.parquet")
     codes = stocks_df["code"].to_list()   # 무거운 read 는 스레드로; 인메모리 추출만 루프
 
-    client = lifecycle.ensure_kis_client_from_env(data_dir)
+    client = kis_runtime.ensure_kis_client_from_env(data_dir)
     if client is None:
         log.warning("screener update: KIS creds missing, skipping")
         return 0
@@ -133,7 +135,7 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
         else:
             try:
                 days_behind = len(_gap_trading_days(s.last_raw_date, today))
-            except Exception:  # noqa: BLE001 — KrxUnavailableError or worse
+            except Exception:  # noqa: BLE001 — TradingDayUnavailableError or worse
                 days_behind = None
         return {**s.model_dump(), "status": "ok", "days_behind": days_behind}
 

@@ -32,11 +32,11 @@ from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
 from hoga.live.api import build_router as build_live_router
+from hoga.live.kis_runtime import aclose_kis_client
+from hoga.live.kis_runtime import get_kis_client as live_get_kis_client
 from hoga.live.lifecycle import get_buffer as live_get_buffer
-from hoga.live.lifecycle import get_kis_client as live_get_kis_client
 from hoga.live.lifecycle import get_status as live_get_status
 from hoga.live.lifecycle import (
-    aclose_kis_client,
     get_active_codes,
     start_live_poller,
     start_live_poller_watchdog,
@@ -98,7 +98,7 @@ def create_app(data_dir: Path) -> FastAPI:
         _scheduler_tasks = start_scheduler(data_dir)
         # Screener startup recovery: catch up any EOD gap the scheduler missed
         # while the process was down. Spawned (NOT awaited) so it never blocks
-        # boot and a KrxUnavailable inside it can't abort startup. Tracked in
+        # boot and a calendar error inside it can't abort startup. Tracked in
         # _scheduler_tasks so the `finally` block cancels/awaits it on shutdown.
         _scheduler_tasks.append(
             asyncio.create_task(
@@ -127,11 +127,28 @@ def create_app(data_dir: Path) -> FastAPI:
                 get_active_codes=get_active_codes,
                 interval_s=today_promote_interval_s,
             )
-        # Tier 1 of the pykrx 3-tier cache policy: load Symbol Master from disk
-        # at boot so GET /api/symbols/all is immediately warm without a network call.
+        # Symbol Master warm-load: read the KIS .mst disk cache at boot so
+        # GET /api/symbols/all is immediately warm without a network call.
         _symbols_module.load_disk_state(
             path=resolve_symbol_master_path(), data_dir=data_dir
         )
+        # §4.4: .mst is fast + no-auth, so an empty/legacy cache auto-refreshes
+        # in the background (does NOT block startup; load_disk_state already
+        # ran). The fire/skip condition lives in symbols.needs_boot_refresh()
+        # — one owner instead of a status string-compare at this call site.
+        # Routed through refresh()/coordinator → single-flight, so a concurrent
+        # manual click won't double-download. Tracked in _scheduler_tasks (same
+        # as screener-recovery) so the `finally` block cancels+awaits it at
+        # shutdown instead of leaking an in-flight download.
+        if _symbols_module.needs_boot_refresh():
+            _scheduler_tasks.append(
+                asyncio.create_task(
+                    _symbols_module.refresh(
+                        path=resolve_symbol_master_path(), data_dir=data_dir
+                    ),
+                    name="symbols-boot-refresh",
+                )
+            )
         try:
             yield
         finally:
@@ -232,8 +249,8 @@ def default_app() -> FastAPI:
     raw-TSV downloads aren't duplicated.
 
     Also loads .env so ``uvicorn --reload`` (which bypasses
-    ``hoga.cli.serve``) still picks up KRX_ID / KRX_PW. The CLI entry
-    point calls ``load_env()`` too; the discovery cache makes the
+    ``hoga.cli.serve``) still picks up KIS_APP_KEY / KIS_APP_SECRET. The CLI
+    entry point calls ``load_env()`` too; the discovery cache makes the
     second call a no-op.
     """
     load_env()

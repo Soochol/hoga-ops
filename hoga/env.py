@@ -12,8 +12,8 @@ under the asyncio Lock in symbols.refresh() without blocking the event
 loop on subprocess I/O.
 
 Loaded keys (all optional — missing keys fall back to other sources):
-    KRX_ID, KRX_PW         pykrx login (Symbol Master fetch)
-    HOGAPLAY_COOKIE        hogaplay session cookie
+    KIS_APP_KEY, KIS_APP_SECRET  KIS Open API credentials (/live, 거래일 조회)
+    HOGAPLAY_COOKIE              hogaplay session cookie
 
 Precedence: shell env > .env > .cookie file (legacy, for HOGAPLAY_COOKIE only).
 """
@@ -111,8 +111,3 @@ def reset_discovery_for_tests() -> None:
     """
     global _discovered  # noqa: PLW0603
     _discovered = _NOT_DISCOVERED
-
-
-def krx_creds_present() -> bool:
-    """True iff KRX_ID and KRX_PW are set to non-empty strings in os.environ."""
-    return bool(os.environ.get("KRX_ID")) and bool(os.environ.get("KRX_PW"))
