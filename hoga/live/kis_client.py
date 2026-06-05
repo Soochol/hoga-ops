@@ -289,6 +289,29 @@ class KisClient:
 
         return await self._issue_token()
 
+    async def get_approval_key(self) -> str:
+        """WS 접속키 발급 (POST /oauth2/Approval). ADR-0050 단일 ingress —
+        WS 클라이언트도 KIS HTTP는 이 클라이언트를 경유한다.
+
+        연결할 때마다 1회 발급(공식 샘플과 동일). 데이터 호출이 아니므로
+        15/s 토큰버킷은 통과하지 않는다(토큰 발급과 같은 취급).
+        주의: KIS가 이 엔드포인트만 필드명을 ``secretkey``로 받는다.
+        """
+        resp = await self._client.post(
+            "/oauth2/Approval",
+            json={
+                "grant_type": "client_credentials",
+                "appkey": self._creds.app_key,
+                "secretkey": self._creds.app_secret,
+            },
+            headers={"content-type": "application/json"},
+        )
+        resp.raise_for_status()
+        key = resp.json().get("approval_key")
+        if not key:
+            raise KisAuthError("approval_key missing in /oauth2/Approval response")
+        return str(key)
+
     async def _issue_token(self) -> str:
         """Issue a fresh access_token via /oauth2/tokenP.
 

@@ -520,6 +520,23 @@ async def test_get_retry_false_kwarg_disables_retry(tmp_path: Path, monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_get_approval_key(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/oauth2/Approval"
+        body = json.loads(request.content)
+        assert body == {"grant_type": "client_credentials",
+                        "appkey": "AK", "secretkey": "AS"}  # 필드명 secretkey!
+        return httpx.Response(200, json={"approval_key": "APPROVAL-123"})
+
+    kis = KisClient(
+        KisCredentials(app_key="AK", app_secret="AS"),
+        tmp_path / "token.json",
+        _transport=httpx.MockTransport(handler),
+    )
+    assert await kis.get_approval_key() == "APPROVAL-123"
+
+
+@pytest.mark.asyncio
 async def test_get_retry_re_acquires_rate_limiter_each_attempt(tmp_path: Path, monkeypatch) -> None:
     """Each retry passes through the token bucket again — a retry burst can't
     skip the per-API-key budget by reusing the previous attempt's token. This
