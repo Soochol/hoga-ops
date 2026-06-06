@@ -2118,7 +2118,7 @@ watchlist_routes.py: `refresh_live_stream as refresh_live_poller` alias. 포인�
 ruff check: 대상 4개 파일 신규 위반 0 (lifecycle.py noqa 처리 완료).
 
 ```bash
-# 실제 커밋: c5cd88c (buffer) + <commit2> (lifecycle + wiring)
+# 실제 커밋: c5cd88c (buffer) + 0c1c7ae (lifecycle + wiring)
 ```
 
 ---
