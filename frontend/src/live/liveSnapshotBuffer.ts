@@ -8,7 +8,22 @@
  * Pure class (no React) so it can be tested without rendering. The React
  * wrapper lives in `liveSeries.ts`.
  */
-export const MAX_BUFFER_PER_KIND = 2520;
+
+/** 봉합 사이징 불변식(spec §8): 보존 > 2× Today Promotion 주기(5분) → 15분.
+ *  백엔드 LiveBuffer(retention 900s)와 동일 원칙 — per-tick 유량에서 개수 캡이
+ *  pastMaxT까지의 꼬리를 자르면 지표 봉합에 구멍이 난다. */
+const RETENTION_MS = 15 * 60_000;
+
+function evictOld(arr: Array<{ t_ms: number }>, nowMs: number): void {
+  const cutoff = nowMs - RETENTION_MS;
+  let drop = 0;
+  while (drop < arr.length && arr[drop].t_ms < cutoff) drop += 1;
+  if (drop > 0) arr.splice(0, drop);
+}
+
+// Safety-pin cap raised to 60_000 (from 2520) — time eviction is now the
+// primary size bound; the count cap remains only as a runaway safeguard.
+export const MAX_BUFFER_PER_KIND = 60_000;
 
 export type SnapshotKind = 'ob' | 'trade' | 'broker';
 
@@ -48,8 +63,13 @@ export class LiveSnapshotBuffer {
     if (!KINDS.includes(k)) return;
     const arr = this.byKind[k];
     arr.push(entry);
+    // Time-based eviction: drop entries older than RETENTION_MS relative to
+    // the incoming entry. Array is t_ms-ascending (append-only), so a prefix
+    // scan suffices — same assumption as backend LiveBuffer.
+    evictOld(arr, entry.t_ms);
     if (arr.length > MAX_BUFFER_PER_KIND) {
-      // FIFO drop — splice mutates in place, faster than slice+reassign.
+      // FIFO count cap — safety-pin against runaway growth if time eviction
+      // assumption (ascending t_ms) is violated or retention is very wide.
       arr.splice(0, arr.length - MAX_BUFFER_PER_KIND);
     }
     this.invalidate(k);
@@ -58,7 +78,10 @@ export class LiveSnapshotBuffer {
   hydrate(initial: Partial<Record<SnapshotKind, RawSnapshot[]>>): void {
     for (const k of KINDS) {
       const arr = initial[k] ?? [];
-      // Apply cap on hydrate too — defensive against larger backend dumps.
+      // No time eviction on hydrate: the backend already applies retention
+      // (LiveBuffer 900s) before serialising the initial snapshot, so the
+      // data arriving here is already within the window. Any stale tail will
+      // be naturally evicted on the first push() that follows.
       this.byKind[k] = arr.slice(-MAX_BUFFER_PER_KIND);
       this.invalidate(k);
     }

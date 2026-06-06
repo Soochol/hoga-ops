@@ -50,6 +50,15 @@ describe('LiveSnapshotBuffer', () => {
     expect(buf.get('broker')).toHaveLength(0);
   });
 
+  it('evicts entries older than retention window on push', () => {
+    const buf = new LiveSnapshotBuffer();
+    const old = { t_ms: 1_000, kind: 'ob' };
+    const fresh = { t_ms: 16 * 60_000 + 1_000, kind: 'ob' };
+    buf.push(old);
+    buf.push(fresh); // fresh 기준 15분 컷오프 밖의 old는 제거
+    expect(buf.get('ob').map((e) => e.t_ms)).toEqual([fresh.t_ms]);
+  });
+
   it('get returns a frozen, stable reference until the kind is mutated', () => {
     const buf = new LiveSnapshotBuffer();
     buf.push({ t_ms: 1, kind: 'ob' });
