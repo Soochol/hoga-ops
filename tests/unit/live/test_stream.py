@@ -18,14 +18,14 @@ def _trade_tick(t_ms, qty, side):
     })
 
 
-async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path, monkeypatch):
+async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path):
     buf = LiveBuffer()
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    # 저장 경로 게이트는 실벽시계라 야간·주말·휴일엔 ingest를 건너뛴다 — 결정성
-    # 위해 게이트를 강제로 연다(리뷰 C1로 추가된 on_tick ingest 게이팅 때문).
-    monkeypatch.setattr(stream_mod, "ws_capture_window", lambda now_ms: True)
+    # 저장 경로 게이트는 flush 루프가 유지하는 플래그(리뷰 R2) — 루프 없이
+    # on_tick만 단위 테스트하므로 플래그를 직접 연다.
+    stream._gate_open = True
 
     now = int(time.time() * 1000)   # 벽시계 — buffer eviction 컷오프 안쪽
     await stream.on_tick(_trade_tick(now, qty=5, side=1))
@@ -39,14 +39,14 @@ async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path, mo
     assert '"kind": "trade"' not in jsonl            # 체결 raw는 JSONL에 안 감(Q4)
 
 
-async def test_on_tick_ingest_gated_off_skips_storage_but_still_displays(tmp_path, monkeypatch):
+async def test_on_tick_ingest_gated_off_skips_storage_but_still_displays(tmp_path):
     """게이트 False면 표시(buffer)는 들어가고 저장(다운샘플러)은 비어야 한다
     (리뷰 C1 벡터 1 — 15:30 이후 잔여 틱의 저장 누적 차단)."""
     buf = LiveBuffer()
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
-    monkeypatch.setattr(stream_mod, "ws_capture_window", lambda now_ms: False)
+    assert stream._gate_open is False   # 기본값: 루프 첫 판정 전엔 ingest 안 함(R2)
 
     now = int(time.time() * 1000)
     await stream.on_tick(_trade_tick(now, qty=5, side=1))
@@ -58,10 +58,22 @@ async def test_on_tick_ingest_gated_off_skips_storage_but_still_displays(tmp_pat
     assert not jsonl_path.exists()                   # 저장 경로엔 아무것도 안 감
 
 
-async def test_run_flush_loop_drains_and_resets_at_gate_close(tmp_path, monkeypatch):
-    """게이트 닫힘 전환 시 drain flush가 마감 당일 날짜로 합을 기록하고, 이후
-    reset로 carry가 소멸해 재개장 후에도 유령 fill이 안 생김을 확인(리뷰 C1·I1)."""
+def _ob_tick(t_ms, tot_ask):
+    return WsTick(code="005930", t_ms=t_ms, kind=SnapshotKind.OB, payload={
+        "code": "005930", "t_ms": t_ms, "asks": [], "bids": [],
+        "total_ask_qty": tot_ask, "total_bid_qty": 0,
+    })
+
+
+async def test_run_flush_loop_drains_resets_and_reopen_has_no_ghost_carry(
+    tmp_path, monkeypatch,
+):
+    """게이트 닫힘 전환 시 drain flush가 마감 당일 날짜로 합·carry를 1회 기록하고,
+    직후 reset로 상태가 소멸해 **재개장(reopen) 후 flush들이 stale carry(OB)를
+    다시 쓰지 않음**을 확인(리뷰 C1·I1·R3). OB는 상태형이라 flush가 비우지 않는
+    carry — reset 배선이 빠지면 reopen flush마다 어제 호가창이 유령 기록된다."""
     monkeypatch.setattr(stream_mod, "FLUSH_INTERVAL_S", 0.05)
+    monkeypatch.setattr(stream_mod, "IDLE_INTERVAL_S", 0.02)
 
     buf = LiveBuffer()
     writer = LiveWriter(tmp_path / "live")
@@ -69,10 +81,10 @@ async def test_run_flush_loop_drains_and_resets_at_gate_close(tmp_path, monkeypa
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
 
     now = int(time.time() * 1000)
-    trade = _trade_tick(now, qty=5, side=1)
 
-    # 게이트 스텁: call 1 open(빈 _codes flush) → call 2에서 ingest 후 closed로
-    # 전환(drain이 buy_qty=5를 유일한 fill로 기록) → 이후 항상 closed 유지.
+    # 게이트 스텁(루프 1iteration당 1콜): ①open(빈 flush) → ②ingest(OB+체결) 후
+    # closed 전환(drain: ob 1줄 + fill 1줄 기록 → reset) → ③~⑥closed 유지 →
+    # ⑦+ reopen — reset가 배선돼 있으면 빈 _ds라 아무것도 안 쓴다.
     # 시간 의존을 스텁 안에 가둬 '무엇이 쓰이는가'를 결정적으로 만든다.
     calls = {"n": 0}
 
@@ -81,28 +93,33 @@ async def test_run_flush_loop_drains_and_resets_at_gate_close(tmp_path, monkeypa
         if calls["n"] == 1:
             return True
         if calls["n"] == 2:
-            stream._ds.ingest(trade)   # 닫히기 직전 잔여 합
+            stream._ds.ingest(_ob_tick(now, tot_ask=111))   # 상태형 carry
+            stream._ds.ingest(_trade_tick(now, qty=5, side=1))  # 흐름 합
             return False
-        return False
+        return calls["n"] > 6                                # ⑦+ reopen
 
     monkeypatch.setattr(stream_mod, "ws_capture_window", gate)
 
     jsonl_path = tmp_path / "live" / "20260605" / "005930.jsonl"
     task = asyncio.create_task(stream.run_flush_loop())
     try:
-        # drain JSONL에 합이 기록될 때까지 폴링(else 분기 1s idle 안쪽).
-        for _ in range(40):
-            await asyncio.sleep(0.05)
+        # drain 기록까지 폴링.
+        for _ in range(60):
+            await asyncio.sleep(0.02)
             if jsonl_path.exists() and '"buy_qty": 5' in jsonl_path.read_text():
                 break
         text = jsonl_path.read_text()
-        assert '"kind": "fill"' in text
-        assert '"buy_qty": 5' in text
-        # reset로 코드 상태가 소멸 — 게이트가 닫힌 채 추가 fill 라인이 안 생긴다.
-        assert text.count('"kind": "fill"') == 1
-        for _ in range(40):                       # 1s idle보다 길게 대기(≥2s)
-            await asyncio.sleep(0.05)
-        assert jsonl_path.read_text().count('"kind": "fill"') == 1   # 유령 carry 없음
+        assert text.count('"kind": "fill"') == 1   # drain의 합 1회
+        assert text.count('"kind": "ob"') == 1     # drain의 carry 1회(정당)
+        # reopen 후 flush가 여러 번 돌 때까지 대기 — reset가 빠졌다면 여기서
+        # ob carry가 flush마다 다시 기록돼 count가 증가한다.
+        for _ in range(100):
+            await asyncio.sleep(0.02)
+            if calls["n"] >= 12:
+                break
+        final = jsonl_path.read_text()
+        assert final.count('"kind": "ob"') == 1    # 유령 carry 없음(R3 pin)
+        assert final.count('"kind": "fill"') == 1  # 유령 합도 없음
     finally:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):

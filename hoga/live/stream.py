@@ -24,6 +24,7 @@ from .ws_frames import WsTick
 _log = logging.getLogger(__name__)
 
 FLUSH_INTERVAL_S = 10.0
+IDLE_INTERVAL_S = 1.0  # 게이트 밖 폴링 주기 — 테스트에서 monkeypatch(리뷰 R3)
 
 
 def _now_ms() -> int:
@@ -46,6 +47,10 @@ class LiveStream:
         self._ds = TickDownsampler()
         self.ws: KisWsClient | None = None       # lifecycle이 주입
         self.last_flush_ms: int | None = None
+        self._last_flush_date: str | None = None  # R1: 미관측 일경계 백스톱
+        # R2: 게이트 판정은 flush 루프가 1Hz로 유지 — on_tick은 이 플래그만 읽는다
+        # (per-tick 달력 평가는 fetch 실패 모드에서 틱당 동기 네트워크 콜이 됨).
+        self._gate_open: bool = False
 
     def set_active_codes(self, codes: set[str]) -> None:
         """Live Set 변경 위임 — refresh_live_stream이 호출(advisor C)."""
@@ -63,8 +68,10 @@ class LiveStream:
         # 표시 경로는 §11에 따라 무게이트 — 항상 publish.
         await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
         # 저장 경로만 게이트 — 15:30 이후 잔여 틱이 다운샘플러에 누적돼 밤을
-        # 넘기는 것을 차단(리뷰 C1 벡터 1).
-        if ws_capture_window(_now_ms()):
+        # 넘기는 것을 차단(리뷰 C1 벡터 1). 판정은 flush 루프가 유지하는
+        # 플래그(리뷰 R2 — per-tick 달력 평가 금지); 닫힘 직후 ≤10s의 잔여
+        # ingest는 전환 drain이 마감 당일로 귀속한다.
+        if self._gate_open:
             self._ds.ingest(tick)
 
     async def flush_once(self, *, now_ms: int | None = None) -> None:
@@ -73,6 +80,14 @@ class LiveStream:
         # 날짜·위상으로 귀속된다(M2). 게이트 닫힘 전환 drain은 15:30:0x 수 초 내라
         # date_fn이 아직 당일이어서 마지막 부분 윈도가 올바른 날짜로 기록된다.
         date = self._date_fn()
+        if self._last_flush_date is not None and date != self._last_flush_date:
+            # 미관측 일경계(suspend/시계 점프 — 리뷰 R1): 어제 잔여 상태가
+            # 오늘 날짜로 기록되는 것을 차단. KRX 세션은 자정을 넘지 않으므로
+            # 날짜 변화 시 reset은 항상 안전하다(정상 경로에선 drain이 이미 비움).
+            self._ds.reset()
+            _log.warning("live.stream.stale_state_reset prev=%s now=%s",
+                         self._last_flush_date, date)
+        self._last_flush_date = date
         flushed = self._ds.flush(now_ms=now_ms, phase=self._phase_fn())
         for code, snaps in flushed.items():
             await self._writer.append(date, code, snaps)
@@ -89,6 +104,7 @@ class LiveStream:
         was_open = False
         while True:
             open_now = ws_capture_window(_now_ms())
+            self._gate_open = open_now  # R2: on_tick의 ingest 게이트 플래그 갱신
             if open_now:
                 started = time.monotonic()
                 try:
@@ -105,5 +121,5 @@ class LiveStream:
                         _log.exception("live.stream.drain_flush_failed")
                     self._ds.reset()
                     _log.info("live.stream.gate_closed_drained")
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(IDLE_INTERVAL_S)
             was_open = open_now
