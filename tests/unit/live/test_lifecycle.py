@@ -379,3 +379,282 @@ def test_reset_for_tests_clears_today_promote_dict() -> None:
     lifecycle.record_today_promote_success("003490", 1779800000000)
     lifecycle.reset_for_tests()
     assert lifecycle.get_today_promote_last_ms() == {}
+
+
+# ── Live Set + display_ordered_codes 테스트 (Task 11 Step 1) ──────────────────
+
+def _make_doc(folders: list[dict], entries: list[dict]) -> "object":
+    """WatchlistDocument fixture 헬퍼."""
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+    return WatchlistDocument(
+        folders=[WatchlistFolder(**f) for f in folders],
+        entries=[WatchlistEntry(**e) for e in entries],
+    )
+
+def _entry(code: str, order: int, folder_id: str | None = None) -> dict:
+    return {
+        "code": code, "name": code,
+        "registered_at_kst_date": "20260101",
+        "last_success_date": None,
+        "folder_id": folder_id,
+        "order": order,
+    }
+
+def _folder(fid: str, order: int, name: str = "F") -> dict:
+    return {"id": fid, "order": order, "name": name}
+
+
+def test_live_set_is_watchlist_order_prefix() -> None:
+    """Live Set = 패널 표시 순서 상위 LIVE_SET_MAX_CODES 코드.
+
+    Step 0 확인: grouping.ts:28-43 + WatchlistDrawer.tsx:222,228
+    폴더들은 .order 오름차순, 미분류는 **마지막** — 백엔드 평탄화가 미러.
+
+    Fixture: 2개 폴더 + 미분류, entry order가 flat-array 삽입 순서와 어긋나게
+    구성 → 표시 순서 평탄화가 정확한지 + 13 절단이 맞는지 검증.
+    """
+    from hoga.live.lifecycle import LIVE_SET_MAX_CODES, live_set_codes, display_ordered_codes
+
+    assert LIVE_SET_MAX_CODES == 13  # 41 // 3 (spec §4·§5.1)
+
+    # 폴더 2개 (order=1이 앞, order=0이 뒤 — 삽입 순서와 반대)
+    # 실제 렌더 순서: folder_b(order=0) → folder_a(order=1) → 미분류
+    folders = [
+        _folder("f_aabbccdd", order=1, name="A"),   # 렌더 순서 2위
+        _folder("f_11223344", order=0, name="B"),   # 렌더 순서 1위
+    ]
+    # folder_b(order=0) 안 entries: order=1,2 → 코드 "000001","000002"
+    # folder_a(order=1) 안 entries: order=0,1 → 코드 "000010","000011"
+    # 미분류: order=0,1,...  → 코드 "000020","000021",...
+    entries = [
+        # folder_a entries (삽입 순서 앞이지만 렌더에선 뒤)
+        _entry("000010", order=0, folder_id="f_aabbccdd"),
+        _entry("000011", order=1, folder_id="f_aabbccdd"),
+        # folder_b entries
+        _entry("000001", order=1, folder_id="f_11223344"),
+        _entry("000002", order=0, folder_id="f_11223344"),
+        # 미분류 entries (마지막)
+        _entry("000020", order=0, folder_id=None),
+        _entry("000021", order=1, folder_id=None),
+    ]
+    doc = _make_doc(folders, entries)
+
+    # display_ordered_codes: folder_b(order=0) 먼저 → entry order 기준
+    # → folder_b: [000002(order=0), 000001(order=1)]
+    # → folder_a: [000010(order=0), 000011(order=1)]
+    # → 미분류: [000020(order=0), 000021(order=1)]
+    ordered = display_ordered_codes(doc)
+    assert ordered == ["000002", "000001", "000010", "000011", "000020", "000021"]
+
+    # live_set_codes: 상위 13 절단 — 6개뿐이므로 전부
+    assert live_set_codes(doc) == ordered
+
+
+def test_live_set_truncates_to_13() -> None:
+    """20개 항목이 있을 때 Live Set은 정확히 13개로 절단된다."""
+    from hoga.live.lifecycle import LIVE_SET_MAX_CODES, live_set_codes
+
+    # 폴더 없이 미분류 20개
+    entries = [_entry(f"{i:06d}", order=i) for i in range(20)]
+    doc = _make_doc([], entries)
+
+    result = live_set_codes(doc)
+    assert len(result) == LIVE_SET_MAX_CODES  # == 13
+    # 표시 순서(order 오름차순) 앞 13개
+    assert result == [f"{i:06d}" for i in range(13)]
+
+
+def test_live_set_fewer_than_13_returns_all() -> None:
+    """5개짜리 watchlist는 전부 반환 (절단 없음)."""
+    from hoga.live.lifecycle import live_set_codes
+
+    entries = [_entry(f"{i:06d}", order=i) for i in range(5)]
+    doc = _make_doc([], entries)
+    assert live_set_codes(doc) == [f"{i:06d}" for i in range(5)]
+
+
+def test_display_ordered_codes_uncategorized_last() -> None:
+    """미분류(folder_id=None) 그룹은 실폴더 뒤에 온다 (grouping.ts 미러)."""
+    from hoga.live.lifecycle import display_ordered_codes
+
+    folders = [_folder("f_aabbccdd", order=0, name="F")]
+    entries = [
+        _entry("000099", order=0, folder_id=None),      # 미분류 — 뒤로
+        _entry("000001", order=0, folder_id="f_aabbccdd"),  # 폴더 — 앞으로
+    ]
+    doc = _make_doc(folders, entries)
+    ordered = display_ordered_codes(doc)
+    assert ordered.index("000001") < ordered.index("000099")
+
+
+def test_display_ordered_codes_empty_doc() -> None:
+    """빈 문서는 빈 리스트를 반환한다."""
+    from hoga.live.lifecycle import display_ordered_codes
+    doc = _make_doc([], [])
+    assert display_ordered_codes(doc) == []
+
+
+# ── WS watchdog 테스트 ─────────────────────────────────────────────────────────
+
+@pytest.fixture
+def _spy_start_stream(monkeypatch):
+    """Replace start_live_stream with a spy that records calls (no real start)."""
+    from hoga.live import lifecycle
+    calls: list = []
+
+    async def _spy(*, data_dir):
+        calls.append(data_dir)
+        return True
+
+    monkeypatch.setattr(lifecycle, "start_live_stream", _spy)
+    return calls
+
+
+def _install_stream_state(monkeypatch, *, started_at_ms, ws_task, stream_task,
+                          last_tick_ms=None, last_flush_ms=None):
+    """Helper: inject a fake stream _State for watchdog tests."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+
+    class _FakeWs:
+        def __init__(self, tick_ms):
+            self.last_tick_ms = tick_ms
+            self.connected = tick_ms is not None
+
+    class _FakeStream:
+        def __init__(self, tick_ms, flush_ms):
+            self.ws = _FakeWs(tick_ms)
+            self.last_flush_ms = flush_ms
+
+    lifecycle._state = _State(
+        started_at_ms=started_at_ms,
+        watchlist_codes=("005930",),
+        ws_task=ws_task,
+        stream_task=stream_task,
+        stream_obj=_FakeStream(last_tick_ms, last_flush_ms),
+        live_set=("005930",),
+    )
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_restarts_dead_stream_during_capture_window(
+    monkeypatch, _spy_start_stream, tmp_path
+) -> None:
+    """WS watchdog: dead ws_task 중 캡처 윈도 → 재시작."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    # ws_capture_window를 True로 패치 (캡처 윈도 내)
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+
+    async def _done() -> None:
+        return
+    ws_task = asyncio.create_task(_done())
+    await ws_task  # done()
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+    stream_task = asyncio.create_task(_forever())
+
+    try:
+        _install_stream_state(
+            monkeypatch, started_at_ms=1_000, ws_task=ws_task,
+            stream_task=stream_task, last_tick_ms=None,
+        )
+        restarted = await lifecycle._ws_watchdog_check(
+            data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
+        )
+        assert restarted is True
+        assert _spy_start_stream == [tmp_path]
+    finally:
+        stream_task.cancel()
+        try:
+            await stream_task
+        except asyncio.CancelledError:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_noop_outside_capture_window(
+    monkeypatch, _spy_start_stream, tmp_path
+) -> None:
+    """WS watchdog: 캡처 윈도 밖(15:30 이후 등) → 재시작 안 함."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    # ws_capture_window를 False로 패치
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: False)
+
+    async def _done() -> None:
+        return
+    ws_task = asyncio.create_task(_done())
+    await ws_task
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+    stream_task = asyncio.create_task(_forever())
+    try:
+        _install_stream_state(
+            monkeypatch, started_at_ms=1_000, ws_task=ws_task,
+            stream_task=stream_task,
+        )
+        restarted = await lifecycle._ws_watchdog_check(
+            data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
+        )
+        assert restarted is False
+        assert _spy_start_stream == []
+    finally:
+        stream_task.cancel()
+        try:
+            await stream_task
+        except asyncio.CancelledError:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_noop_when_healthy(
+    monkeypatch, _spy_start_stream, tmp_path
+) -> None:
+    """WS watchdog: 두 task 모두 alive + 최근 틱 → 재시작 안 함."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+
+    ws_task = asyncio.create_task(_forever())
+    stream_task = asyncio.create_task(_forever())
+    try:
+        _install_stream_state(
+            monkeypatch, started_at_ms=1_000, ws_task=ws_task,
+            stream_task=stream_task, last_tick_ms=9_950_000,
+        )
+        restarted = await lifecycle._ws_watchdog_check(
+            data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
+        )
+        assert restarted is False
+        assert _spy_start_stream == []
+    finally:
+        for t in (ws_task, stream_task):
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
+
+
+# ── get_status WS 키 테스트 ────────────────────────────────────────────────────
+
+def test_get_status_includes_ws_transport_keys() -> None:
+    """LiveStatus에 transport/ws_connected/live_set 키가 포함된다."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    status = lifecycle.get_status()
+    assert status.transport == "ws"
+    assert isinstance(status.ws_connected, bool)
+    assert isinstance(status.live_set, list)

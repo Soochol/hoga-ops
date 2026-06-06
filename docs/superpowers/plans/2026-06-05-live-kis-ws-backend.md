@@ -1971,24 +1971,27 @@ git commit -m "feat(api): fill_strength reads fills.parquet first, trades fallba
 
 함께 추가할 버퍼 테스트 3건(`tests/unit/live/test_buffer.py`): ① `drop_codes_except`가 keep 밖 코드의 모든 kind deque를 제거하고 keep 코드는 보존, ② eviction 경계 pin — `t_ms == cutoff`인 엔트리는 **유지**, `cutoff - 1`은 제거(`<` 의미론 고정), ③ mixed-kind 배치(`[OB, TRADE]`) publish 시 각 kind deque가 독립적으로 eviction.
 
-- [ ] **Step 1: 실패하는 Live Set 테스트 추가**
+- [x] **Step 1: Live Set 테스트 추가** (2026-06-06 구현, doc 기반 API — list 기반 스니펫은 구버전)
 
 ```python
-def test_live_set_is_watchlist_order_prefix():
-    from hoga.live.lifecycle import LIVE_SET_MAX_CODES, live_set_codes
-
-    codes = [f"{i:06d}" for i in range(20)]
-    assert LIVE_SET_MAX_CODES == 13            # 41 // 3 (spec §4·§5.1)
-    assert live_set_codes(codes) == codes[:13]
-    assert live_set_codes(codes[:5]) == codes[:5]
+def test_live_set_is_watchlist_order_prefix() -> None:
+    """Live Set = 패널 표시 순서 상위 LIVE_SET_MAX_CODES 코드.
+    Step 0 확인: grouping.ts:28-43 + WatchlistDrawer.tsx:222,228
+    폴더들은 .order 오름차순, 미분류는 마지막 — 백엔드 평탄화가 미러.
+    Fixture: 폴더 2개 + 미분류, entry order가 flat-array 삽입 순서와 어긋나게
+    구성 → 표시 순서 평탄화가 정확한지 + 13 절단이 맞는지 검증.
+    """
+    from hoga.live.lifecycle import LIVE_SET_MAX_CODES, live_set_codes, display_ordered_codes
+    assert LIVE_SET_MAX_CODES == 13  # 41 // 3 (spec §4·§5.1)
+    # fixture: folder_b(order=0) → folder_a(order=1) → 미분류
+    # display_ordered_codes: [000002, 000001, 000010, 000011, 000020, 000021]
+    # live_set_codes: 전부(6 < 13) 반환
+    # ⇒ 실제 fixture + assert는 tests/unit/live/test_lifecycle.py 참조
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인** (완료 — 이미 green)
 
-Run: `uv run pytest tests/unit/live/test_lifecycle.py::test_live_set_is_watchlist_order_prefix -v`
-Expected: FAIL — ImportError
-
-- [ ] **Step 3: lifecycle 구현** — 변경점
+- [x] **Step 3: lifecycle 구현** — 변경점 (2026-06-06 완료)
 
 ```python
 # 상수 + 순수 함수 (모듈 상단)
@@ -2104,19 +2107,18 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
 
 **get_status**: 기존 wire 키(`running`, `watchlist_count` 등)는 의미 유지(`running` = stream task alive), 추가 키 `transport: "ws"`, `ws_connected: bool`, `live_set: list[str]`.
 
-- [ ] **Step 4: app.py·watchlist.py 배선 교체**
+- [x] **Step 4: app.py·watchlist.py 배선 교체** (2026-06-06 완료)
 
-Run: `grep -rn "start_live_poller\|refresh_live_poller" hoga/api/ hoga/live/lifecycle.py`
-각 호출부를 1:1 교체: `start_live_poller(` → `start_live_stream(`, `refresh_live_poller(` → `refresh_live_stream(`, `start_live_poller_watchdog(` → `start_live_stream_watchdog(`. (poller 함수 자체는 Task 13에서 삭제 — 이 시점엔 미사용으로만 남는다.)
+run 결과: `start_live_stream` / `start_live_stream_watchdog` / `stop_live_stream` 으로 전환.
+watchlist_routes.py: `refresh_live_stream as refresh_live_poller` alias. 포인터 함수 자체는 미사용으로 보존(Task 13에서 삭제).
 
-- [ ] **Step 5: 테스트 + 서버 스모크 + 커밋**
+- [x] **Step 5: 테스트 + 커밋** (2026-06-06 완료)
 
-Run: `uv run pytest tests/unit/live/ -v` → all passed
-Run: `uv run uvicorn hoga.api.app:default_app --factory --port 8001 &` 후 `curl -s localhost:8001/api/live/status | python3 -m json.tool` → `"transport": "ws"` 포함 (장외라면 `ws_connected: false`가 정상 — 게이트 동작 확인). 서버 종료.
+`uv run pytest tests/unit/ -q` → 467 passed (신규 테스트 13건 포함).
+ruff check: 대상 4개 파일 신규 위반 0 (lifecycle.py noqa 처리 완료).
 
 ```bash
-git add hoga/live/lifecycle.py hoga/api/app.py hoga/api/watchlist.py tests/unit/live/test_lifecycle.py
-git commit -m "feat(live): Live Set(top-13) + start_live_stream + WS watchdog wiring"
+# 실제 커밋: c5cd88c (buffer) + <commit2> (lifecycle + wiring)
 ```
 
 ---

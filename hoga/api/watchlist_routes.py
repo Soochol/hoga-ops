@@ -57,7 +57,7 @@ from hoga.api.watchlist import (
     reorder_folders,
 )
 from hoga.collector.orchestrator import now_kst
-from hoga.live.lifecycle import refresh_live_poller
+from hoga.live.lifecycle import refresh_live_stream as refresh_live_poller  # Task 11: WS path
 
 
 def _next_run_at_ms(now: dt.datetime) -> int:

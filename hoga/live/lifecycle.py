@@ -1,10 +1,16 @@
 """Live Capture lifecycle singleton.
 
-Owns the single in-process LivePoller instance and exposes a stable
-`get_status()` callable for the API layer. The poller is driven through
-`start_live_poller` / `stop_live_poller` (wired into FastAPI's lifespan);
-`get_status()` is always safe to call and returns defaults before the
-poller starts so `/api/live/status` works at any time.
+Owns the single in-process LivePoller / LiveStream instance and exposes a
+stable `get_status()` callable for the API layer.
+
+Lifecycle variants:
+  - ``start_live_poller`` / ``stop_live_poller`` — REST-polling path (retained,
+    deletion deferred to Task 13).
+  - ``start_live_stream`` / ``stop_live_stream`` / ``refresh_live_stream`` —
+    KIS WebSocket path (Task 11, 2026-06-06).
+
+``get_status()`` is always safe to call and returns defaults before anything
+starts so ``/api/live/status`` works at any time.
 
 Single-worker invariant: see ADR-0038. The module-level singleton is
 safe because hoga/live/__init__.py asserts UVICORN_WORKERS == 1 at
@@ -15,9 +21,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from hoga.api.models import WatchlistDocument
 
 from pydantic import BaseModel, Field
 
@@ -27,6 +36,41 @@ from .promote import promote_today
 
 _log = logging.getLogger(__name__)
 
+
+# ── Live Set constants (spec §4·§5.1) ─────────────────────────────────────────
+
+KIS_WS_MAX_REGISTRATIONS = 41   # appkey당, (tr_id, code) 쌍 기준 — spec §4 검증 완료
+TRS_PER_CODE = 3                # 호가 + 체결 + 회원사(H0STMBC0)
+LIVE_SET_MAX_CODES = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # = 13
+
+
+def display_ordered_codes(doc: WatchlistDocument) -> list[str]:
+    """Watchlist Panel 표시 순서로 코드 평탄화 (2026-06-06 결정, watchlist v2 폴더화).
+
+    Step 0 확인 (grouping.ts:28-43 + WatchlistDrawer.tsx:222,228):
+    - folders[]를 `.order` 오름차순으로 정렬 → 각 폴더의 entry를 `.order` 오름차순
+    - 미분류(folder_id=None) 그룹은 **폴더들 뒤** (groupByFolder가 push로 마지막에 추가)
+    - 빈 미분류는 WatchlistDrawer가 숨기지만 코드 수집에는 영향 없음
+
+    정렬 키: (folder rank — 미분류는 len(folders), entry.order)
+    """
+    sorted_folders = sorted(doc.folders, key=lambda f: f.order)
+    folder_rank = {f.id: i for i, f in enumerate(sorted_folders)}
+    n_folders = len(sorted_folders)
+
+    def _key(entry):  # type: ignore[no-untyped-def]
+        rank = folder_rank[entry.folder_id] if entry.folder_id is not None else n_folders
+        return (rank, entry.order)
+
+    return [e.code for e in sorted(doc.entries, key=_key)]
+
+
+def live_set_codes(doc: WatchlistDocument) -> list[str]:
+    """Live Set = 패널 표시 순서 상위 13 (CONTEXT.md 'Live Set', 그릴링 Q3 + 2026-06-06 개정)."""
+    return display_ordered_codes(doc)[:LIVE_SET_MAX_CODES]
+
+
+# ── Wire model ─────────────────────────────────────────────────────────────────
 
 class LiveStatus(BaseModel):
     """Wire model for GET /api/live/status (spec §6)."""
@@ -41,19 +85,28 @@ class LiveStatus(BaseModel):
     # ADR-0043 / design-review B2 — last successful Today Promotion per code (epoch ms).
     # Empty dict means no promotion has occurred yet this session.
     today_promote_last_ms: dict[str, int] = Field(default_factory=dict)
+    # Task 11 additions — WS transport info (unknown keys are safely ignored by frontend)
+    transport: str = "ws"
+    ws_connected: bool = False
+    live_set: list[str] = Field(default_factory=list)
 
+
+# ── State ──────────────────────────────────────────────────────────────────────
 
 @dataclass
 class _State:
-    """In-process state of the live poller. Mutated only via this module."""
+    """In-process state of the live poller/stream. Mutated only via this module."""
 
     started_at_ms: int | None = None
     watchlist_codes: tuple[str, ...] = field(default_factory=tuple)
-    poller_task: Optional[asyncio.Task] = None  # type: ignore[type-arg]
-    # Reference to the underlying poller so get_status can read its counters.
-    # Typed as `object` here to avoid circular import with poller.py; the few
-    # call sites that need the concrete type can isinstance-check.
+    # Poller path (retained — Task 13 will delete):
+    poller_task: asyncio.Task | None = None  # type: ignore[type-arg]
     poller_obj: object | None = None
+    # Stream (WS) path (Task 11):
+    stream_task: asyncio.Task | None = None   # type: ignore[type-arg]
+    stream_obj: object | None = None          # LiveStream — typed `object` to avoid cycle
+    ws_task: asyncio.Task | None = None       # type: ignore[type-arg]
+    live_set: tuple[str, ...] = field(default_factory=tuple)
 
 
 _state = _State()
@@ -76,18 +129,16 @@ def get_today_promote_last_ms() -> dict[str, int]:
 
 
 def get_active_codes() -> list[str]:
-    """Return currently active watchlist codes the poller is iterating.
+    """Return currently active watchlist codes the poller/stream is iterating.
 
-    Empty list if the poller hasn't started or has stopped.
+    Empty list if nothing has started or all stopped.
 
     Contract (eng-review Blocker 2): readers receive a snapshot at call time —
     `_state.watchlist_codes` is read synchronously. `start_today_promoter`
     (ADR-0043) calls this each cycle (every `interval_s` seconds), so
-    watchlist mutations through `start_live_poller` (which rebuilds `_state`)
-    propagate immediately to the next cycle — no caching, no stale closure.
-
-    If the watchlist changes mid-cycle and you don't want to wait, call
-    `start_live_poller` again — it's idempotent and restarts the poller task.
+    watchlist mutations through `start_live_poller`/`start_live_stream`
+    (which rebuild `_state`) propagate immediately to the next cycle —
+    no caching, no stale closure.
     """
     return list(_state.watchlist_codes)
 
@@ -101,23 +152,45 @@ def _now_ms() -> int:
 
 
 def get_status() -> LiveStatus:
-    """Read the current live status. Always safe to call."""
-    # ADR-0064: `running` reflects TASK LIVENESS, not merely that start was once
-    # called. The old `started_at_ms is not None` proxy reported running=true even
-    # after the poller task had silently died, masking a dead capture loop (and
-    # giving the watchdog/UI no honest signal). A task is "running" when it exists
-    # and has not finished (a gated, idle-between-cycles task is still not done()).
-    task = _state.poller_task
+    """Read the current live status. Always safe to call.
+
+    ADR-0064: `running` reflects TASK LIVENESS. Dual-source: stream_task
+    (WS path) takes priority when set; else falls back to poller_task (poller
+    path). This keeps existing poller tests green while the WS path is active
+    in production.
+    """
+    # Prefer stream tasks; fall back to poller for backward compat.
+    task = _state.stream_task if _state.stream_task is not None else _state.poller_task
     running = task is not None and not task.done()
+
+    # WS-specific attributes (stream path)
+    stream = _state.stream_obj
+    ws_connected = False
+    last_tick_ms: int | None = None
+    if stream is not None:
+        ws = getattr(stream, "ws", None)
+        if ws is not None:
+            ws_connected = getattr(ws, "connected", False)
+            last_tick_ms = getattr(ws, "last_tick_ms", None)
+        # also check stream.last_flush_ms as secondary last-activity indicator
+        if last_tick_ms is None:
+            last_tick_ms = getattr(stream, "last_flush_ms", None)
+    else:
+        # Poller path fallback
+        last_tick_ms = _read_poller_attr("last_tick_ms")
+
     return LiveStatus(
         running=running,
         started_at_ms=_state.started_at_ms,
-        last_tick_ms=_read_poller_attr("last_tick_ms"),
+        last_tick_ms=last_tick_ms,
         cycle_lag_ms=_read_poller_attr("last_cycle_lag_ms") or 0,
         watchlist_count=len(_state.watchlist_codes),
         kis_calls_today=_read_poller_attr("kis_calls_today") or 0,
         kis_rate_limit_remaining=None,  # KIS doesn't expose this header
         today_promote_last_ms=get_today_promote_last_ms(),
+        transport="ws",
+        ws_connected=ws_connected,
+        live_set=list(_state.live_set),
     )
 
 
@@ -131,13 +204,16 @@ def _read_poller_attr(name: str) -> int | None:
 def reset_for_tests() -> None:
     """Test-only hook. Resets module state without raising."""
     global _state, _buffer
-    if _state.poller_task is not None and not _state.poller_task.done():
-        _state.poller_task.cancel()
+    for task in (_state.poller_task, _state.stream_task, _state.ws_task):
+        if task is not None and not task.done():
+            task.cancel()
     _state = _State()
     _buffer = LiveBuffer()
     kis_runtime.reset_for_tests()
     _today_promote_last_ms.clear()
 
+
+# ── Today Promoter ─────────────────────────────────────────────────────────────
 
 async def start_today_promoter(
     *,
@@ -186,6 +262,8 @@ async def stop_today_promoter(task: asyncio.Task | None) -> None:
     except asyncio.CancelledError:
         pass
 
+
+# ── Poller path (retained — deletion deferred to Task 13) ─────────────────────
 
 async def start_live_poller(*, data_dir: Path) -> bool:
     """Start the Live Capture poller singleton.
@@ -389,3 +467,214 @@ async def start_live_poller_watchdog(
             await asyncio.sleep(check_interval_s)
 
     return asyncio.create_task(loop(), name="live-poller-watchdog")
+
+
+# ── Stream (WS) path — Task 11 ─────────────────────────────────────────────────
+
+async def start_live_stream(*, data_dir: Path) -> bool:
+    """start_live_poller의 WS 대체 — 구조 동일(creds/watchlist 가드 → 기동).
+
+    poller와 같은 가드: KIS creds 없거나 watchlist 비면 False.
+    symbol-master 필터를 먼저 적용한 뒤 live_set_codes로 상위 13 절단.
+    ⚠️ 머지(v0.6.1.0) 후: load_document로 폴더 포함 문서를 받아
+    display_ordered_codes → symbol-master filter → [:13] 순서를 지킨다.
+    KisClient 싱글턴 접근은 `hoga.live.kis_runtime`에서 수행.
+    """
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from hoga.api import symbols as _symbols  # noqa: PLC0415
+    from hoga.api.watchlist import load_document  # noqa: PLC0415
+
+    from .stream import LiveStream  # noqa: PLC0415
+    from .writer import LiveWriter  # noqa: PLC0415
+    from .ws_client import KisWsClient  # noqa: PLC0415
+
+    # 1. 문서 로드 → 표시 순서 평탄화
+    doc = load_document(data_dir)
+    ordered_codes = display_ordered_codes(doc)
+    if not ordered_codes:
+        return False
+
+    # 2. symbol-master 필터(cold cache → 무필터 폴백, poller와 동일 정책)
+    _known = {h.code for h in _symbols.search("", limit=10_000)}
+    if _known:
+        _dropped = [c for c in ordered_codes if c not in _known]
+        if _dropped:
+            _log.warning("live.stream.codes_unknown dropped=%r", _dropped)
+        ordered_codes = [c for c in ordered_codes if c in _known]
+        if not ordered_codes:
+            return False
+
+    # 3. Live Set = 상위 13
+    codes = ordered_codes[:LIVE_SET_MAX_CODES]
+
+    # 4. 기존 stream 정지
+    await stop_live_stream()
+
+    # 5. KIS 싱글턴
+    kis = kis_runtime.ensure_kis_client_from_env(data_dir)
+    if kis is None:
+        return False
+
+    def _today_kst() -> str:
+        return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
+
+    # 6. stream + ws 조립
+    stream = LiveStream(
+        buffer=_buffer,
+        writer=LiveWriter(data_dir / "live"),
+        date_fn=_today_kst,
+    )
+    from .session_gate import ws_capture_window  # noqa: PLC0415
+
+    ws = KisWsClient(
+        approval_key_fn=kis.get_approval_key,
+        on_tick=stream.on_tick,
+        date_fn=_today_kst,
+        gate_fn=lambda: ws_capture_window(_now_ms()),
+    )
+    stream.ws = ws
+
+    global _state  # noqa: PLW0603
+    _state = _State(
+        started_at_ms=_now_ms(),
+        watchlist_codes=tuple(codes),
+        live_set=tuple(codes),
+        stream_obj=stream,
+        ws_task=asyncio.create_task(ws.run(codes), name="live-ws"),
+        stream_task=asyncio.create_task(stream.run_flush_loop(), name="live-flush"),
+    )
+    return True
+
+
+async def stop_live_stream() -> None:
+    """stop_live_poller와 동일 패턴 — KisClient 싱글턴은 건드리지 않는다."""
+    global _state  # noqa: PLW0603
+    for task in (_state.ws_task, _state.stream_task):
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:  # noqa: BLE001
+                pass
+    _state = _State()
+
+
+async def refresh_live_stream(*, data_dir: Path) -> None:
+    """watchlist 변경(추가/삭제/reorder) 후크 — Live Set diff를 WS에 반영.
+
+    load_document → 표시 순서 평탄화 → symbol-master 필터 → 상위 13 절단.
+    start_live_stream과 동일 파이프라인으로 Live Set을 재계산한다.
+    """
+    global _state  # noqa: PLW0603 — declared first; _state is both read and reassigned
+
+    from hoga.api import symbols as _symbols  # noqa: PLC0415
+    from hoga.api.watchlist import load_document  # noqa: PLC0415
+
+    stream = _state.stream_obj
+    if stream is None or stream.ws is None:  # type: ignore[union-attr]
+        return
+
+    doc = load_document(data_dir)
+    ordered_codes = display_ordered_codes(doc)
+
+    _known = {h.code for h in _symbols.search("", limit=10_000)}
+    if _known:
+        ordered_codes = [c for c in ordered_codes if c in _known]
+
+    codes = ordered_codes[:LIVE_SET_MAX_CODES]
+
+    await stream.ws.update_codes(codes)  # type: ignore[union-attr]
+    stream.set_active_codes(set(codes))  # type: ignore[union-attr]  # advisor C: 밀려난 코드 carry 즉시 제거
+    await _buffer.drop_codes_except(set(codes))  # Task 4 리뷰: 떠난 코드 ring 해제
+
+    _state = replace(_state, live_set=tuple(codes), watchlist_codes=tuple(codes))
+
+
+# ADR-0064 이식 — WS 스트림 watchdog
+async def _ws_watchdog_check(
+    *, data_dir: Path, now_ms: int, stale_after_ms: int
+) -> bool:
+    """One WS watchdog pass. Returns True iff it restarted the stream.
+
+    _live_watchdog_check를 stream 계열로 복제·수정:
+    - dead = ws_task OR stream_task 중 done()
+    - last_tick = stream_obj.ws.last_tick_ms + stream_obj.last_flush_ms 중 max
+    - 재시작은 start_live_stream
+    - 게이트 판정은 ws_capture_window (advisor B — 15:30 이후엔 재시작 금지)
+    - 세션-open 기준 grace 로직은 _live_watchdog_check와 동일
+    """
+    from datetime import datetime  # noqa: PLC0415
+
+    from .kis_client import KIS_KST  # noqa: PLC0415
+    from .session_gate import ws_capture_window  # noqa: PLC0415
+
+    if not ws_capture_window(now_ms):
+        return False
+    started = _state.started_at_ms
+    if started is None:
+        return False
+
+    # stream_task 또는 ws_task 중 하나라도 done이면 dead
+    ws_task = _state.ws_task
+    stream_task = _state.stream_task
+    dead = (
+        (ws_task is None or ws_task.done()) or
+        (stream_task is None or stream_task.done())
+    )
+
+    # 세션 기준 grace — _live_watchdog_check와 동일 로직
+    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
+    session_open_ms = int(
+        kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
+    )
+    ref_ms = max(started, session_open_ms)
+
+    stream = _state.stream_obj
+    ws = getattr(stream, "ws", None) if stream is not None else None
+    ws_last_tick = getattr(ws, "last_tick_ms", None) if ws is not None else None
+    flush_last = getattr(stream, "last_flush_ms", None) if stream is not None else None
+    candidates = [t for t in (ws_last_tick, flush_last) if t is not None]
+    last_tick = max(candidates) if candidates else None
+
+    grace_elapsed = (now_ms - ref_ms) > stale_after_ms
+    tick_fresh = (
+        last_tick is not None
+        and last_tick >= session_open_ms
+        and (now_ms - last_tick) <= stale_after_ms
+    )
+    stale = (not dead) and grace_elapsed and (not tick_fresh)
+    if dead or stale:
+        _log.warning(
+            "live.stream.watchdog_restart dead=%s stale=%s last_tick_ms=%s",
+            dead, stale, last_tick,
+        )
+        await start_live_stream(data_dir=data_dir)
+        return True
+    return False
+
+
+async def start_live_stream_watchdog(
+    *,
+    data_dir: Path,
+    check_interval_s: float = _WATCHDOG_CHECK_INTERVAL_S,
+    stale_after_ms: int = _WATCHDOG_STALE_AFTER_MS,
+) -> asyncio.Task:
+    """Spawn the WS stream watchdog loop. Caller (lifespan) cancels on shutdown.
+    The loop is self-supervised — a bad pass logs and continues."""
+
+    async def loop() -> None:
+        while True:
+            try:
+                await _ws_watchdog_check(
+                    data_dir=data_dir,
+                    now_ms=_now_ms(),
+                    stale_after_ms=stale_after_ms,
+                )
+            except Exception:  # noqa: BLE001 — watchdog must outlive any single pass
+                _log.exception("live.stream.watchdog_cycle_failed")
+            await asyncio.sleep(check_interval_s)
+
+    return asyncio.create_task(loop(), name="live-stream-watchdog")
