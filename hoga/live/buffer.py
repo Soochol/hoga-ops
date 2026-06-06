@@ -131,6 +131,18 @@ class LiveBuffer:
             "brokers": _strip_meta(latest_br),
         }
 
+    async def drop_codes_except(self, keep: set[str]) -> None:
+        """Live Set 축출 코드의 deque 해제(Task 4 리뷰 Minor 3) —
+        다운샘플러 set_active_codes와 동일 원칙(떠난 종목은 ring에서도 제거).
+
+        조용한 deque(틱이 없는 코드)는 publish 경로의 eviction이 도달하지
+        않아 per-tick 유량에서 종목당 ~수십 MB가 영구 잔존할 수 있다.
+        명시 해제로 Live Set 축출 즉시 메모리를 회수한다.
+        """
+        async with self._lock:
+            for key in [k for k in self._buf if k[0] not in keep]:
+                del self._buf[key]
+
     async def get_series(self, code: str) -> dict:
         """All buffered snapshots for `code` as parallel arrays."""
         async with self._lock:
