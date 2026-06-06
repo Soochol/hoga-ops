@@ -12,8 +12,8 @@ from pathlib import Path
 
 import duckdb
 import pyarrow as pa
-import pyarrow.parquet as pq
 
+from hoga.api._atomic_write import atomic_write_parquet_table
 from hoga.api.timeenc import hhmmssms_to_intra_ms_sql
 from hoga.tables.trades import FillStrengthRow
 
@@ -36,11 +36,12 @@ class Fill:
 
 
 def write_fills_parquet(rows: list[Fill], path: Path) -> None:
+    rows = sorted(rows, key=lambda r: r.ts_ms)
     cols = {
         field.name: pa.array([getattr(r, field.name) for r in rows], type=field.type)
         for field in PARQUET_SCHEMA
     }
-    pq.write_table(pa.table(cols, schema=PARQUET_SCHEMA), path)
+    atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
 def query_fill_strength(

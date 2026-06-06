@@ -23,3 +23,14 @@ def test_roundtrip_and_bucket_reaggregation(tmp_path: Path):
         (32_400_000, 15, 5),
         (32_460_000, 7, 1),
     ]
+
+
+def test_query_fill_strength_empty_parquet_returns_no_rows(tmp_path: Path):
+    # trades 미러: atomic_write_parquet_table은 빈 테이블도 파일로 쓴다
+    # (atomic_write_parquet의 빈-삭제와 다름) — zero-row parquet → [].
+    path = tmp_path / "fills.parquet"
+    write_fills_parquet([], path)
+    assert path.exists()
+
+    con = duckdb.connect()
+    assert query_fill_strength(con, path=path, bucket_ms=60_000) == []

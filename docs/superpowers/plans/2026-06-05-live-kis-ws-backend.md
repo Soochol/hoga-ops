@@ -1712,8 +1712,8 @@ from pathlib import Path
 
 import duckdb
 import pyarrow as pa
-import pyarrow.parquet as pq
 
+from hoga.api._atomic_write import atomic_write_parquet_table
 from hoga.api.timeenc import hhmmssms_to_intra_ms_sql
 from hoga.tables.trades import FillStrengthRow
 
@@ -1734,12 +1734,12 @@ class Fill:
 
 
 def write_fills_parquet(rows: list[Fill], path: Path) -> None:
-    table = pa.Table.from_pylist(
-        [{"ts_ms": r.ts_ms, "seq": r.seq,
-          "buy_qty": r.buy_qty, "sell_qty": r.sell_qty} for r in rows],
-        schema=PARQUET_SCHEMA,
-    )
-    pq.write_table(table, path)
+    rows = sorted(rows, key=lambda r: r.ts_ms)   # siblings와 동일한 pre-write sort
+    cols = {
+        field.name: pa.array([getattr(r, field.name) for r in rows], type=field.type)
+        for field in PARQUET_SCHEMA
+    }
+    atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
 def query_fill_strength(
@@ -1763,7 +1763,7 @@ def query_fill_strength(
     ]
 ```
 
-(`write_trades_parquet`가 별도 atomic 헬퍼/옵션을 쓰면 그 형식을 그대로 따른다 — Step 3 시작 전에 `hoga/tables/trades.py`의 writer를 열어 동일 패턴으로 맞출 것. 원자성은 promote의 `_atomic_write_table`이 책임지므로 이 함수는 단순 write여도 된다.)
+(`write_trades_parquet`가 별도 atomic 헬퍼/옵션을 쓰면 그 형식을 그대로 따른다 — Step 3 시작 전에 `hoga/tables/trades.py`의 writer를 열어 동일 패턴으로 맞출 것. 원자 쓰기는 테이블 writer가 소유한다(`hoga/api/_atomic_write.py`의 `atomic_write_parquet_table` 계약: "Use from `hoga.tables.*.write_parquet` so today_promoter's overwrite during a polling cycle never leaves a partial file visible to readers") — `atomic_write_parquet_table`을 사용할 것. promote의 `_atomic_write_table`은 빈-삭제 브리지일 뿐, 원자성을 책임지지 않는다.)
 
 - [ ] **Step 4: 통과 확인 + 커밋**
 
