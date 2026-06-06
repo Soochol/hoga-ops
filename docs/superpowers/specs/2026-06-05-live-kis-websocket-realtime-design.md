@@ -118,7 +118,7 @@ KIS 공유 토큰버킷이 **15콜/초**(`_RATE_LIMIT_CALLS_PER_SEC=15.0`)다. 1
 
 ### 5.5 구독 집합(Live Set) · poller 완전 은퇴 (그릴링 Q2·Q3 결정 2026-06-05)
 
-- **구독 집합 = watchlist 순서 상위 13** = **Live Set** (정식 용어, CONTEXT.md 등재 — 그릴링 Q5). Watchlist Panel의 기존 드래그 reorder(`PUT /api/watchlist/order`)가 곧 우선순위 UI — 패널에 13번째 아래 **WS 경계선**을 표시하고, 드래그로 경계를 넘기면 구독 스왑. 장중 스왑 시 밀려난 종목의 디스크 10초에 갭 발생 — 사용자 의도적 행위라 수용.
+- **구독 집합 = Watchlist Panel "UI 표시 순서" 상위 13** = **Live Set** (정식 용어, CONTEXT.md 등재 — 그릴링 Q5). 드래그 reorder가 곧 우선순위 UI — 패널에 13번째 아래 **WS 경계선**을 표시하고, 드래그로 경계를 넘기면 구독 스왑. 장중 스왑 시 밀려난 종목의 디스크 10초에 갭 발생 — 사용자 의도적 행위라 수용. **(2026-06-06 결정, watchlist v2 폴더화 #26/#34 반영)**: "순서"는 평탄 저장 배열이 아니라 **패널 표시 순서**(`folders[].order` 순 → 폴더 내 `entry.order` 순 평탄화) — 사용자가 보는 그대로가 우선순위라는 Q3의 정신 유지. 평탄화 헬퍼는 프론트 WatchlistDrawer의 실제 렌더 순서와 일치 검증(plan Task 11).
 - **WS 밖 watchlist 종목(14+)**: 장중 kis_live 캡처 **없음**. Daily Scheduler의 hogaplay 17:00 일배치는 전 종목 유지되므로 과거 데이터는 무손실.
 - **poller 완전 은퇴**: REST 호가/체결/거래원 폴링(`FHKST01010200`/`FHPST01060000`/`FHKST01010600`) 소멸. **ADR-0064의 watchdog 교훈(silent-death 감지·honest health·calendar gate)은 KIS WS 클라이언트 감독으로 이식**(§7).
 - **activeCode 동적 스왑은 기각**: 차트 탐색이 저장 셋을 바꾸면 캡처 일관성이 깨짐. watchlist 밖 activeCode는 현행과 동일하게 라이브 데이터 없음(REST 캔들 시드만) — poller도 watchlist만 폴링했으므로(`lifecycle.py:79-93`) 후퇴 아님.

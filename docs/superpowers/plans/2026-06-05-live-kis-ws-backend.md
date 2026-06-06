@@ -1994,9 +1994,19 @@ TRS_PER_CODE = 3                # 호가 + 체결 + 회원사(H0STMBC0)
 LIVE_SET_MAX_CODES = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # = 13
 
 
-def live_set_codes(watchlist_codes: list[str]) -> list[str]:
-    """Live Set = watchlist 순서 상위 13 (CONTEXT.md 'Live Set', 그릴링 Q3)."""
-    return list(watchlist_codes)[:LIVE_SET_MAX_CODES]
+def display_ordered_codes(doc: "WatchlistDocument") -> list[str]:
+    """Watchlist Panel 표시 순서로 평탄화(2026-06-06 결정, watchlist v2 폴더화):
+    `folders[].order` 오름차순으로 폴더를 돌며 각 폴더의 entry를 `order` 오름차순으로,
+    미분류(folder_id=None) 그룹은 프론트 WatchlistDrawer의 렌더 위치와 동일하게 배치.
+    ⚠️ Task 11 Step 0: 구현 전에 `frontend/src/` WatchlistDrawer(또는 폴더 렌더 컴포넌트)를
+    읽어 미분류 그룹이 폴더들보다 앞인지 뒤인지 확인하고 그대로 미러할 것 — 백엔드
+    가정이 아니라 사용자가 보는 순서가 진실이다."""
+    ...  # Step 0 확인 결과에 따라 구현 (정렬 키: (folder rank, entry.order, flat index))
+
+
+def live_set_codes(doc: "WatchlistDocument") -> list[str]:
+    """Live Set = 패널 표시 순서 상위 13 (CONTEXT.md 'Live Set', 그릴링 Q3 + 2026-06-06 개정)."""
+    return display_ordered_codes(doc)[:LIVE_SET_MAX_CODES]
 
 
 # _State 확장: poller_task/poller_obj 대신
@@ -2009,6 +2019,9 @@ async def start_live_stream(*, data_dir: Path) -> bool:
 
     poller와 같은 가드: KIS creds 없거나 watchlist 비면 False.
     symbol-master 필터도 동일 적용 후 live_set_codes로 상위 13 절단.
+    ⚠️ 머지(9b73a91) 후 개정 필요: load_watchlist 대신 load_document로 폴더 포함
+    문서를 받아 live_set_codes(doc)에 전달. KisClient 싱글턴 접근은 lifecycle이 아닌
+    `hoga.live.kis_runtime`(ensure_kis_client_from_env 등)로 이동했음 — import 경로 주의.
     """
     import os
     from hoga.api.watchlist import load_watchlist
