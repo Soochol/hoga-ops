@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from hoga.live import lifecycle, api as live_api
+from hoga.live import kis_runtime, lifecycle, api as live_api
 from hoga.live.api import build_router, _quote_phase, _KST
 from hoga.live.kis_client import KisQuote
 
@@ -73,7 +73,7 @@ def test_quotes_lazy_inits_kis_when_singleton_absent(monkeypatch, tmp_path):
     # instead of silently returning empty quotes (code-review #2).
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
     fake = _FakeKis(QUOTES)
-    monkeypatch.setattr(lifecycle, "ensure_kis_client_from_env", lambda data_dir: fake)
+    monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda data_dir: fake)
     app = FastAPI()
     app.include_router(build_router(
         get_status=lifecycle.get_status,
@@ -94,7 +94,7 @@ def test_quotes_no_lazy_init_without_data_dir(monkeypatch):
     def _resolver(data_dir):
         calls["n"] += 1
 
-    monkeypatch.setattr(lifecycle, "ensure_kis_client_from_env", _resolver)
+    monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", _resolver)
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, get_kis_client=lambda: None))
     r = TestClient(app).get("/api/live/quotes", params={"codes": "005930"})

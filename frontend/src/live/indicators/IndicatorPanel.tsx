@@ -4,6 +4,7 @@ import MovingAverageConfig from './MovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
 import InvestorNetConfig from './InvestorNetConfig';
 import { ModalShell } from '../../ui/ModalShell';
+import { CheckIcon } from '../../ui/CheckIcon';
 
 type CategoryId =
   | 'moving-average'
@@ -29,46 +30,6 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; active: boolean
   { id: 'envelope',       label: '엔벨로프',    active: false },
   { id: 'williams',       label: '윌리엄스 프랙탈', active: false },
 ];
-
-/** Filled-circle check icon — used by the active category to show
- *  "applied" state. Disabled categories render a hollow gray ring. */
-function CheckIcon({ filled }: { filled: boolean }) {
-  if (filled) {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="10" fill="var(--accent)" />
-        <path
-          d="M7.5 12.5l3 3 6-6"
-          stroke="var(--accent-fg, #0A0A12)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          fill="none"
-        />
-      </svg>
-    );
-  }
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-      <circle
-        cx="12"
-        cy="12"
-        r="10"
-        fill="none"
-        stroke="var(--fg-dimmer)"
-        strokeWidth="1.5"
-      />
-      <path
-        d="M7.5 12.5l3 3 6-6"
-        stroke="var(--fg-dimmer)"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </svg>
-  );
-}
 
 type Props = {
   onClose: () => void;

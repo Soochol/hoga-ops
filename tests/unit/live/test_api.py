@@ -173,16 +173,16 @@ def _past_app(tmp_path, fake_kis):
     so the past-candles cache writes into the test sandbox.
     """
     from fastapi import FastAPI
-    from hoga.live import lifecycle
+    from hoga.live import kis_runtime, lifecycle
     from hoga.live.api import build_router
 
     lifecycle.reset_for_tests()
-    lifecycle.set_kis_client(fake_kis)  # type: ignore[arg-type]
+    kis_runtime.set_kis_client(fake_kis)  # type: ignore[arg-type]
     app = FastAPI()
     app.include_router(
         build_router(
             get_status=lifecycle.get_status,
-            get_kis_client=lifecycle.get_kis_client,
+            get_kis_client=kis_runtime.get_kis_client,
             data_dir=tmp_path,
         )
     )
@@ -584,16 +584,16 @@ class _FakeKisForDaily:
 
 def _daily_app(tmp_path, fake_kis):
     from fastapi import FastAPI
-    from hoga.live import lifecycle
+    from hoga.live import kis_runtime, lifecycle
     from hoga.live.api import build_router
 
     lifecycle.reset_for_tests()
-    lifecycle.set_kis_client(fake_kis)
+    kis_runtime.set_kis_client(fake_kis)
     app = FastAPI()
     app.include_router(
         build_router(
             get_status=lifecycle.get_status,
-            get_kis_client=lifecycle.get_kis_client,
+            get_kis_client=kis_runtime.get_kis_client,
             data_dir=tmp_path,
         )
     )
@@ -697,15 +697,15 @@ def test_past_daily_dedupes_and_sorts_overlapping_batches(tmp_path) -> None:
 
 def test_past_daily_validation_404_when_kis_not_wired(tmp_path) -> None:
     from fastapi import FastAPI
-    from hoga.live import lifecycle
+    from hoga.live import kis_runtime, lifecycle
     from hoga.live.api import build_router
 
     lifecycle.reset_for_tests()
-    lifecycle.set_kis_client(None)
+    kis_runtime.set_kis_client(None)
     app = FastAPI()
     app.include_router(build_router(
         get_status=lifecycle.get_status,
-        get_kis_client=lifecycle.get_kis_client,
+        get_kis_client=kis_runtime.get_kis_client,
         data_dir=tmp_path,
     ))
     with TestClient(app) as c:
@@ -821,15 +821,15 @@ class _FakeKisForInvestor:
 
 def _investor_app(tmp_path, fake_kis):
     from fastapi import FastAPI
-    from hoga.live import lifecycle
+    from hoga.live import kis_runtime, lifecycle
     from hoga.live.api import build_router
 
     lifecycle.reset_for_tests()
-    lifecycle.set_kis_client(fake_kis)
+    kis_runtime.set_kis_client(fake_kis)
     app = FastAPI()
     app.include_router(build_router(
         get_status=lifecycle.get_status,
-        get_kis_client=lifecycle.get_kis_client,
+        get_kis_client=kis_runtime.get_kis_client,
         data_dir=tmp_path,
     ))
     return app
@@ -889,15 +889,15 @@ def test_past_investor_net_rejects_invalid_code(tmp_path) -> None:
 
 def test_past_investor_net_503_when_kis_not_wired(tmp_path) -> None:
     from fastapi import FastAPI
-    from hoga.live import lifecycle
+    from hoga.live import kis_runtime, lifecycle
     from hoga.live.api import build_router
 
     lifecycle.reset_for_tests()
-    lifecycle.set_kis_client(None)
+    kis_runtime.set_kis_client(None)
     app = FastAPI()
     app.include_router(build_router(
         get_status=lifecycle.get_status,
-        get_kis_client=lifecycle.get_kis_client,
+        get_kis_client=kis_runtime.get_kis_client,
         data_dir=tmp_path,
     ))
     with TestClient(app) as c:

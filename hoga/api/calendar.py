@@ -1,6 +1,6 @@
 """GET /api/inventory/calendar — per-symbol month status map.
 
-Composes disk_state.check_disk_state with the KRX trading-day list and a
+Composes disk_state.check_disk_state with the KIS trading-day list and a
 today/17-KST overlay. Pure read-side; no mutation. See spec §5.3, §11 Q21.
 """
 from __future__ import annotations
@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import calendar as stdlib_calendar
 import datetime as dt
+import logging
 import time
 from pathlib import Path
 
@@ -16,13 +17,14 @@ from fastapi import APIRouter, Query
 from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import CalendarCell, CalendarResponse
+from hoga.api.params import CODE_PATTERN
 # Single Clock seam: KST + now_kst + is_today_too_early all live on
 # orchestrator.py per Refactor 3. The today_locked overlay below reuses
 # the same predicate that captures.py's enqueue guard uses — keeps the
 # 17-KST cutoff in one place.
 from hoga.collector.orchestrator import is_today_too_early, now_kst as _now_kst
-from hoga.env import krx_creds_present
 
+log = logging.getLogger(__name__)
 
 # Module-level cache: (year, month) → set of YYYYMMDD trading-day strings.
 # KRX trading days for past months are stable (holidays don't reschedule retro-
@@ -31,15 +33,25 @@ from hoga.env import krx_creds_present
 # rare enough that bouncing the server fixes it.
 _month_cache: dict[tuple[int, int], set[str]] = {}
 
+# Negative cache: (year, month) → monotonic time of the last FAILED fetch.
+# Without it, the live poller's calendar gate re-ran the full blocking fetch
+# every ~20s cycle for the whole session during a chk-holiday outage. Within
+# the TTL we return None (weekday fallback) instantly instead of re-fetching.
+_failure_cache: dict[tuple[int, int], float] = {}
+_FAILURE_TTL_SECONDS = 60.0
+
 # ADR-0064 — "is TODAY a KRX session?" cache, kept SEPARATE from _month_cache.
-# `_session_confirmed` holds YYYYMMDD strings proven to be trading sessions by
-# the business-day calendar; a positive verdict is stable for the day, so it is
-# cached and never re-fetched. A *negative* verdict is deliberately NOT cached
-# permanently — only its last fetch time is recorded, so a transient calendar
-# miss for today (which would otherwise silently halt live capture for the rest
-# of the process, the way the get_market_ohlcv proxy did) self-heals on the next
+# `_session_confirmed` holds YYYYMMDD strings proven to be trading sessions;
+# a positive verdict is stable for the day, so it is cached and never
+# re-fetched. A *negative* verdict is deliberately NOT cached permanently —
+# only its last check time is recorded, so a transient calendar miss for today
+# (which would otherwise silently halt live capture for the rest of the
+# process, the way the old get_market_ohlcv proxy did) self-heals on the next
 # re-check instead of needing a process restart. Re-checks are throttled to
-# avoid hammering KRX on a real holiday.
+# avoid hammering the upstream on a real holiday. (Post KRX→KIS migration the
+# data source is KIS chk-holiday via _trading_days_for, which adds its own
+# month cache + failure TTL underneath — the per-day session semantics here
+# are unchanged.)
 _session_confirmed: set[str] = set()
 _session_last_miss_ms: dict[str, float] = {}
 _SESSION_MISS_RECHECK_S = 60.0
@@ -48,23 +60,25 @@ _last_failure_reason: UpstreamCode | None = None
 
 
 def last_failure_reason() -> UpstreamCode | None:
-    """Public accessor for the most recent KRX-availability failure."""
+    """Public accessor for the most recent KIS-availability failure."""
     return _last_failure_reason
 
 
-class KrxUnavailableError(RuntimeError):
-    """KRX trading-day data unavailable. Carries an UpstreamCode for HTTP surfacing."""
+class TradingDayUnavailableError(RuntimeError):
+    """Trading-day data unavailable (KIS chk-holiday failed).
+    Carries an UpstreamCode for HTTP surfacing."""
     def __init__(self, code: UpstreamCode) -> None:
-        super().__init__(f"KRX unavailable: {code.value}")
+        super().__init__(f"trading days unavailable: {code.value}")
         self.code = code
 
 
 def _trading_days_for(year: int, month: int) -> set[str] | None:
-    """Return YYYYMMDD strings for KRX trading days in (year, month).
-
-    Returns None when KRX data cannot be obtained (no creds, or pykrx failed).
-    The most recent failure reason is exposed via :func:`last_failure_reason`.
-    Cached results from earlier successful fetches stay valid.
+    """Return YYYYMMDD strings for trading days in (year, month) via KIS
+    chk-holiday (opnd_yn). Returns None when the fetch fails (creds missing,
+    network, rt_cd) — most recent reason via :func:`last_failure_reason`.
+    Cached results from earlier successful fetches stay valid; failures are
+    negative-cached for ``_FAILURE_TTL_SECONDS`` so hot callers (poller gate)
+    don't re-run the blocking fetch every cycle during an outage.
     """
     global _last_failure_reason  # noqa: PLW0603
 
@@ -73,22 +87,28 @@ def _trading_days_for(year: int, month: int) -> set[str] | None:
     if cached is not None:
         return cached
 
-    if not krx_creds_present():
-        _last_failure_reason = UpstreamCode.KRX_CREDENTIALS_MISSING
-        return None
+    failed_at = _failure_cache.get(key)
+    if failed_at is not None and (time.monotonic() - failed_at) < _FAILURE_TTL_SECONDS:
+        return None  # recent failure — keep the fallback, don't re-fetch yet
 
-    start = f"{year:04d}{month:02d}01"
-    last_day = stdlib_calendar.monthrange(year, month)[1]
-    end = f"{year:04d}{month:02d}{last_day:02d}"
+    # Late import (per call) keeps the documented monkeypatch seam: tests patch
+    # hoga.api.kis_holidays.fetch_month_trading_days as a module attribute.
+    from hoga.api.kis_holidays import KisCredentialsMissing, fetch_month_trading_days
+
     try:
-        from pykrx import stock
-        df = stock.get_market_ohlcv(start, end, "005930")
-    except Exception:  # noqa: BLE001
-        _last_failure_reason = UpstreamCode.KRX_FETCH_FAILED
+        result = fetch_month_trading_days(year, month)
+    except Exception as e:  # noqa: BLE001 — KisHolidayFetchError or worse
+        _last_failure_reason = (
+            UpstreamCode.KIS_CREDENTIALS_MISSING
+            if isinstance(e, KisCredentialsMissing)
+            else UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+        )
+        _failure_cache[key] = time.monotonic()
+        # The cause never reached operators before (no logger here) — keep it.
+        log.warning("calendar: KIS trading-day fetch failed for %04d-%02d: %s", year, month, e)
         return None
-
-    result = {d.strftime("%Y%m%d") for d in df.index}
     _month_cache[key] = result
+    _failure_cache.pop(key, None)
     _last_failure_reason = None
     return result
 
@@ -98,47 +118,45 @@ def is_trading_session_today(
 ) -> bool | None:
     """Is ``today`` a live KRX trading session right now? (ADR-0064)
 
-    Lag-free: backed by the KRX business-day *calendar*
-    (``pykrx.stock.get_previous_business_days``), which lists today as a
-    business day from the session open. This is the gate the live poller must
-    use — ``is_trading_day`` proxies "trading day" via daily OHLCV, whose bar
-    for today is not published until intraday/after close, so it misreads a
-    live trading day as non-trading early in the session and (once cached)
-    silently halts capture for the whole process.
+    Lag-free: backed by the KIS chk-holiday *calendar* (via
+    :func:`_trading_days_for`), which lists the whole month — today included —
+    upfront. This is the gate the live poller must use; the old daily-OHLCV
+    proxy misread a live trading day as non-trading early in the session and
+    (once cached) silently halted capture for the whole process.
 
-    Returns True/False, or None when KRX data is unavailable (the poller stays
-    lenient on None — losing capture for a transient KRX outage is worse than a
+    Returns True/False, or None when KIS data is unavailable (the poller stays
+    lenient on None — losing capture for a transient outage is worse than a
     brief burst of empty fetches). A True verdict is cached for the day; a
     False is re-checked (throttled) so a transient miss self-heals without a
-    restart.
+    restart. Underneath, ``_trading_days_for`` adds its own month cache and
+    60s failure TTL, and the fetch raises on an empty month — so a cached
+    wrong-False for a real session would require KIS itself answering a
+    non-empty month that omits today.
 
     ``_now_s`` is a monotonic-seconds seam for tests; production passes None.
     """
-    global _last_failure_reason  # noqa: PLW0603
-
     if today_yyyymmdd in _session_confirmed:
         return True
 
     now = _now_s if _now_s is not None else time.monotonic()
+    year, month = int(today_yyyymmdd[:4]), int(today_yyyymmdd[4:6])
     last_miss = _session_last_miss_ms.get(today_yyyymmdd)
-    if last_miss is not None and (now - last_miss) < _SESSION_MISS_RECHECK_S:
-        return False  # recently fetched; today genuinely absent (holiday) — throttle
+    if last_miss is not None:
+        if (now - last_miss) < _SESSION_MISS_RECHECK_S:
+            return False  # recently checked; today genuinely absent (holiday) — throttle
+        # Throttle expired: this is a deliberate RE-CHECK of a negative.
+        # Evict the month so the verdict comes from a FRESH fetch — otherwise
+        # the permanent month cache would pin a transient miss for the whole
+        # process, which is exactly the silent-halt ADR-0064 exists to prevent.
+        # Cost: one extra KIS fetch per minute, only on days the calendar says
+        # holiday during market hours (rare), and off-loop at the call sites.
+        _month_cache.pop((year, month), None)
 
-    if not krx_creds_present():
-        _last_failure_reason = UpstreamCode.KRX_CREDENTIALS_MISSING
+    days = _trading_days_for(year, month)
+    if days is None:
+        # Fetch failed — reason (creds vs upstream) already recorded by
+        # _trading_days_for; its failure TTL throttles the retry cadence.
         return None
-
-    year = int(today_yyyymmdd[:4])
-    month = int(today_yyyymmdd[4:6])
-    try:
-        from pykrx import stock
-        business_days = stock.get_previous_business_days(year=year, month=month)
-    except Exception:  # noqa: BLE001
-        _last_failure_reason = UpstreamCode.KRX_FETCH_FAILED
-        return None
-
-    days = {d.strftime("%Y%m%d") for d in business_days}
-    _last_failure_reason = None
     if today_yyyymmdd in days:
         _session_confirmed.add(today_yyyymmdd)
         return True
@@ -150,13 +168,13 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
     """Public helper used by captures.py Task 7. Returns YYYYMMDD trading days
     in [start, end] inclusive, sorted.
 
-    Raises :class:`KrxUnavailableError` when KRX data is unavailable for any
-    month spanned by the range — fail-fast on the enqueue path so the user
+    Raises :class:`TradingDayUnavailableError` when KIS data is unavailable for
+    any month spanned by the range — fail-fast on the enqueue path so the user
     can't proceed with a guessed day list.
 
-    Tests should monkeypatch this function (or pre-populate ``_month_cache``)
-    rather than rely on live KRX access — KRX endpoints require KRX_ID / KRX_PW
-    env vars.
+    Tests should monkeypatch or pre-populate ``_month_cache`` rather than rely
+    on live KIS chk-holiday; tests should monkeypatch
+    ``hoga.api.kis_holidays.fetch_month_trading_days`` to raise for error paths.
     """
     start_d = dt.date(int(start[:4]), int(start[4:6]), int(start[6:8]))
     end_d = dt.date(int(end[:4]), int(end[4:6]), int(end[6:8]))
@@ -167,7 +185,7 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
     while cur <= end_d:
         days = _trading_days_for(cur.year, cur.month)
         if days is None:
-            raise KrxUnavailableError(last_failure_reason() or UpstreamCode.KRX_FETCH_FAILED)
+            raise TradingDayUnavailableError(last_failure_reason() or UpstreamCode.KIS_HOLIDAY_FETCH_FAILED)
         for d in sorted(days):
             if start <= d <= end:
                 out.append(d)
@@ -180,12 +198,12 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
 
 
 def is_trading_day(date_yyyymmdd: str) -> bool | None:
-    """Return True/False for ``date``, or None when KRX data is unavailable.
+    """Return True/False for ``date``, or None when KIS data is unavailable.
 
     Policy on None is the caller's: cold-path schedulers fail-fast
     (``trading_days_in_range`` raises), live-path callers fall back to a
     permissive default (e.g. don't gate polling so capture stays up when
-    KRX is briefly unreachable). Keeping the data accessor and the policy
+    KIS is briefly unreachable). Keeping the data accessor and the policy
     separate avoids embedding either stance in the module.
     """
     year = int(date_yyyymmdd[:4])
@@ -200,6 +218,7 @@ def reset_cache_for_tests() -> None:
     """Test helper — clears the trading-day cache between tests."""
     global _last_failure_reason  # noqa: PLW0603
     _month_cache.clear()
+    _failure_cache.clear()
     _session_confirmed.clear()
     _session_last_miss_ms.clear()
     _last_failure_reason = None
@@ -288,10 +307,10 @@ def build_router(*, data_dir: Path) -> APIRouter:
     router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 
     @router.get("/calendar")
-    async def calendar_route(code: str = Query(..., pattern=r"^\d{6}$"),
+    async def calendar_route(code: str = Query(..., pattern=CODE_PATTERN),
                               year: int = Query(..., ge=2000, le=2100),
                               month: int = Query(..., ge=1, le=12)) -> CalendarResponse:
-        # Offload the entire build to a threadpool so the cold-month pykrx
+        # Offload the entire build to a threadpool so the cold-month KIS
         # HTTP fetch inside _trading_days_for doesn't block the event loop.
         # Warm calls (cache hit) still incur the round-trip; overhead is
         # negligible (~microseconds) vs the per-stall (seconds) we avoid.

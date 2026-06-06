@@ -189,7 +189,11 @@ class LivePoller:
         while True:
             start = _now_ms()
             try:
-                if not _should_poll_now(start):
+                # to_thread: the gate's session check can trigger a cold-month
+                # KIS chk-holiday fetch (blocking sync HTTP, seconds) — never
+                # run it on the event loop this poller shares with every route
+                # and SSE stream. Warm cache hits cost only the thread hop.
+                if not await asyncio.to_thread(_should_poll_now, start):
                     await asyncio.sleep(1.0)
                     continue
                 await self.run_one_cycle()

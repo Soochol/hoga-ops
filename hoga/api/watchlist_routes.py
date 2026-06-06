@@ -11,33 +11,50 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path as PathParam
 
+from hoga.api.params import CODE_PATTERN
+
 log = logging.getLogger(__name__)
 
-# 6-digit numeric KRX code — see models.WatchlistEntry.code, which uses the
-# same pattern on the body/response shape. Centralised here so the four
-# routes that take {code} in the path don't each re-implement isdigit/len.
-CodePathParam = Annotated[str, PathParam(pattern=r"^\d{6}$")]
+# KRX code — params.CODE_PATTERN is the single source of the ticker grammar
+# (6-char alphanumeric + 7-char Q-prefixed ETN). models.WatchlistEntry.code
+# uses the same pattern on the body/response shape.
+CodePathParam = Annotated[str, PathParam(pattern=CODE_PATTERN)]
 
 from hoga.api import symbols
 from hoga.api.models import (
     EnqueueResponse,
+    EntriesMoveRequest,
+    EntriesRemoveRequest,
+    EntriesReorderRequest,
+    FolderCreateRequest,
+    FolderRenameRequest,
+    FolderReorderRequest,
     ManualCatchupAllEntryResult,
     ManualCatchupAllResponse,
     ManualCatchupError,
     WatchlistAddRequest,
     WatchlistEntry,
-    WatchlistReorderRequest,
+    WatchlistFolder,
     WatchlistResponse,
 )
-from hoga.api.calendar import KrxUnavailableError
+from hoga.api.calendar import TradingDayUnavailableError
 from hoga.api.scheduler import catchup_one_entry, seconds_until_next_17_kst
 from hoga.api.watchlist import (
     AlreadyInWatchlistError,
+    FolderNotFoundError,
     NotInWatchlistError,
+    WatchlistSetMismatchError,
     add_entry,
+    create_folder,
+    delete_folder,
+    load_document,
     load_watchlist,
+    move_entries,
+    remove_entries,
     remove_entry,
+    rename_folder,
     reorder_entries,
+    reorder_folders,
 )
 from hoga.collector.orchestrator import now_kst
 from hoga.live.lifecycle import refresh_live_poller
@@ -54,8 +71,10 @@ def build_router(*, data_dir: Path) -> APIRouter:
 
     @router.get("", response_model=WatchlistResponse)
     async def get_watchlist() -> WatchlistResponse:
+        doc = load_document(data_dir)
         return WatchlistResponse(
-            entries=load_watchlist(data_dir),
+            folders=doc.folders,
+            entries=doc.entries,
             next_run_at_ms=_next_run_at_ms(now_kst()),
         )
 
@@ -103,15 +122,15 @@ def build_router(*, data_dir: Path) -> APIRouter:
                     deduped_count=len(resp.deduped),
                     error=None,
                 ))
-            except KrxUnavailableError as e:
+            except TradingDayUnavailableError as e:
                 # Map known upstream failures to a stable code the panel
-                # can branch on (e.g. show a 'configure KRX_ID/KRX_PW' hint).
+                # can branch on (e.g. show a 'configure KIS_APP_KEY/KIS_APP_SECRET' hint).
                 results.append(ManualCatchupAllEntryResult(
                     code=entry.code, name=entry.name,
                     enqueued_count=0, deduped_count=0,
                     error=ManualCatchupError(
                         code=e.code,
-                        message="KRX trading-day list unavailable.",
+                        message="Trading-day list unavailable (KIS).",
                     ),
                 ))
             except Exception:  # noqa: BLE001 — one bad entry mustn't kill the run
@@ -154,16 +173,72 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "code": "not_in_watchlist",
                 "message": f"Code {code} is not in the Watchlist.",
             })
-        return await catchup_one_entry(
-            match, data_dir=data_dir, now=now_kst(),
-        )
+        try:
+            return await catchup_one_entry(
+                match, data_dir=data_dir, now=now_kst(),
+            )
+        except TradingDayUnavailableError as e:
+            raise HTTPException(status_code=503, detail={
+                "code": e.code,
+                "message": "Trading-day list unavailable (KIS).",
+            }) from e
 
-    @router.put("/order", response_model=WatchlistResponse)
-    async def reorder_watchlist(req: WatchlistReorderRequest) -> WatchlistResponse:
-        entries = await reorder_entries(data_dir, codes=req.codes)
-        return WatchlistResponse(
-            entries=entries,
-            next_run_at_ms=_next_run_at_ms(now_kst()),
-        )
+    @router.post("/folders", status_code=201, response_model=WatchlistFolder)
+    async def create_watchlist_folder(req: FolderCreateRequest) -> WatchlistFolder:
+        return await create_folder(data_dir, name=req.name)
+
+    @router.put("/folders/order", status_code=204)
+    async def reorder_watchlist_folders(req: FolderReorderRequest) -> None:
+        try:
+            await reorder_folders(data_dir, ordered_ids=req.ordered_ids)
+        except WatchlistSetMismatchError as e:
+            log.info("watchlist folder reorder set mismatch: %s", e)
+            raise HTTPException(status_code=409, detail={
+                "code": "folder_set_mismatch",
+                "message": "Folder order list does not match the current folder set."}) from e
+
+    @router.patch("/folders/{folder_id}", status_code=204)
+    async def rename_watchlist_folder(folder_id: str, req: FolderRenameRequest) -> None:
+        try:
+            await rename_folder(data_dir, folder_id=folder_id, name=req.name)
+        except FolderNotFoundError as e:
+            raise HTTPException(status_code=404, detail={
+                "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
+
+    @router.delete("/folders/{folder_id}", status_code=204)
+    async def delete_watchlist_folder(folder_id: str) -> None:
+        try:
+            await delete_folder(data_dir, folder_id=folder_id)
+        except FolderNotFoundError as e:
+            raise HTTPException(status_code=404, detail={
+                "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
+
+    @router.post("/move", status_code=204)
+    async def move_watchlist_entries(req: EntriesMoveRequest) -> None:
+        try:
+            await move_entries(data_dir, codes=req.codes, folder_id=req.folder_id)
+        except FolderNotFoundError as e:
+            raise HTTPException(status_code=404, detail={
+                "code": "folder_not_found",
+                "message": f"Folder {req.folder_id} not found."}) from e
+
+    @router.put("/reorder", status_code=204)
+    async def reorder_watchlist_entries(req: EntriesReorderRequest) -> None:
+        try:
+            await reorder_entries(data_dir, folder_id=req.folder_id,
+                                  ordered_codes=req.ordered_codes)
+        except WatchlistSetMismatchError as e:
+            log.info("watchlist entry reorder set mismatch: %s", e)
+            raise HTTPException(status_code=409, detail={
+                "code": "reorder_set_mismatch",
+                "message": "Reorder list does not match the folder's current members."}) from e
+
+    @router.post("/remove", status_code=204)
+    async def bulk_remove_watchlist_entries(req: EntriesRemoveRequest) -> None:
+        await remove_entries(data_dir, codes=req.codes)
+        try:
+            await refresh_live_poller(data_dir=data_dir)
+        except Exception:  # noqa: BLE001 — best-effort, mutation already succeeded
+            log.exception("watchlist.bulk_remove: refresh_live_poller failed")
 
     return router

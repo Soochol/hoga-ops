@@ -239,11 +239,11 @@ async def run_backfill(data_dir: Path) -> dict:
     """프로덕션 진입: KIS 클라이언트로 fetch_adj/fetch_raw 를 묶어 run_backfill_with 실행."""
     from datetime import datetime
 
-    from hoga.live import lifecycle
+    from hoga.live import kis_runtime
     from hoga.live.kis_client import KIS_KST
 
     sdir = data_dir / "screener"
-    client = lifecycle.ensure_kis_client_from_env(data_dir)
+    client = kis_runtime.ensure_kis_client_from_env(data_dir)
     if client is None:
         raise RuntimeError("KIS creds missing (KIS_APP_KEY/SECRET) — cannot backfill")
 
