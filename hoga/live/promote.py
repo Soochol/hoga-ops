@@ -80,10 +80,11 @@ def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
     fills: list[Fill] = []
     broker_snapshot_count = 0
     # Monotonic per stock-date counters; KIS has no native seq, but the
-    # parquet schemas (snapshots/trades/brokers) require an int seq column
+    # parquet schemas (snapshots/trades/brokers/fills) require an int seq column
     # so readers (snapshots.query_at, trades selectors) can SELECT it
     # without DuckDB BinderException. Each `kind` gets its own counter so
     # ts_ms-collision tie-breaks are unambiguous within a kind.
+    # fills의 seq는 reader가 없고 스키마 균일성 목적(PARQUET_SCHEMA 일관성 유지).
     snap_seq = 0
     trade_seq = 0
     broker_seq = 0
@@ -259,7 +260,7 @@ async def promote_today(data_dir: Path, *, code: str) -> None:
       - 그 시점 이후 자정이 지나도 이 사이클은 "yesterday" jsonl을 처리.
       - 다음 사이클(5분 후)이 새 today_kst를 picking → 어제는 Daily Promotion 담당.
 
-    Candles invariant (ADR-0040): snapshots/trades/brokers.parquet만 생성.
+    Candles invariant (ADR-0040): snapshots/trades/brokers/fills.parquet만 생성.
     candles는 Live Candle Backfill의 별도 캐시가 담당하므로 절대 생성하지 않는다.
     """
     from hoga.api._atomic_write import atomic_write_json

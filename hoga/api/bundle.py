@@ -40,6 +40,7 @@ from hoga.api.timeenc import (
     ms_from_midnight_to_unix_ms,
 )
 from hoga.tables import candles as candles_tbl
+from hoga.tables import fills as fills_tbl
 from hoga.tables import snapshots as snapshots_tbl
 from hoga.tables import trades as trades_tbl
 from hoga.tables.candles import ApiCandle
@@ -284,16 +285,26 @@ def build_fill_strength_slice(
     bucket_ms: int = 60_000,
     source: str = "hogaplay",
 ) -> FillStrength:
-    # ADR-0001: the bucketing SQL + trades schema knowledge (side/qty columns,
-    # the HHMMSSmmm-linearization rationale) now lives in
-    # trades_tbl.query_fill_strength. bundle stays the coordinator: it owns the
-    # path layout + the no-data guard, and re-bases the native ms-from-midnight
-    # bucket into Unix ms (the table query is date-agnostic, so it cannot).
-    path_obj = engine.parquet_dir(date, code, source) / "trades.parquet"
-    if not path_obj.exists():
-        # ADR-0043: missing trades parquet is the valid "no trades yet" state.
-        return FillStrength(bucket_ms=bucket_ms, points=[])
-    rows = trades_tbl.query_fill_strength(engine.conn, path=path_obj, bucket_ms=bucket_ms)
+    # ADR-0001: the bucketing SQL + schema knowledge now lives in the table
+    # modules. bundle stays the coordinator: it owns the path layout + the
+    # no-data guard, and re-bases the native ms-from-midnight bucket into
+    # Unix ms (the table queries are date-agnostic, so they cannot).
+    #
+    # 그릴링 Q4: kis_live 신형은 fills.parquet(10초 구간합)이 체결강도 소스.
+    # fills가 있으면 우선, 없으면(=hogaplay·레거시 kis_live) trades 폴백.
+    fills_path = engine.parquet_dir(date, code, source) / "fills.parquet"
+    if fills_path.exists():
+        rows = fills_tbl.query_fill_strength(
+            engine.conn, path=fills_path, bucket_ms=bucket_ms
+        )
+    else:
+        path_obj = engine.parquet_dir(date, code, source) / "trades.parquet"
+        if not path_obj.exists():
+            # ADR-0043: missing parquet is the valid "no trades yet" state.
+            return FillStrength(bucket_ms=bucket_ms, points=[])
+        rows = trades_tbl.query_fill_strength(
+            engine.conn, path=path_obj, bucket_ms=bucket_ms
+        )
     return FillStrength(
         bucket_ms=bucket_ms,
         points=[

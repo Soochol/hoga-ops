@@ -12,13 +12,14 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from hoga.api.bundle import build_quote_ratio_slice, build_fill_strength_slice
+from hoga.api.bundle import build_fill_strength_slice, build_quote_ratio_slice
 from hoga.api.queries import QueryEngine
+
 # NOTE: per Task 1 code review, tests do NOT import the private
 # _date_unix_ms_at_kst_midnight. Use hhmmssms_to_unix_ms(date, 0) instead
 # (= 00:00:00.000 KST = day start), a stable public contract.
 from hoga.api.timeenc import hhmmssms_to_unix_ms, unix_ms_to_hhmmssms
-
+from hoga.tables.fills import Fill, write_fills_parquet
 
 DATE = "20260529"
 CODE = "005930"
@@ -159,3 +160,45 @@ def test_quote_ratio_breaks_when_writer_skips_encoding(tmp_path: Path) -> None:
         "Bug-simulation fixture should produce out-of-window t values. "
         "If this assertion fails, the day-window guard isn't actually catching the bug."
     )
+
+
+def test_fill_strength_prefers_fills_parquet(kis_live_fixture: Path) -> None:
+    """fills.parquet이 있으면 trades.parquet 대신 fills 기준 집계를 반환한다.
+
+    kis_live_fixture에는 이미 trades.parquet(side=1, qty=10, 3행)이 있다.
+    그 위에 fills.parquet(buy 15/sell 5, ts=09:00:00) 1장을 추가로 쓴다.
+    build_fill_strength_slice가 fills를 우선해야 하므로
+    결과는 trades 기반 합산(buy 30 / sell 0)이 아닌 fills 기반(buy 15 / sell 5).
+    """
+    code_dir = kis_live_fixture / "parquet" / DATE / CODE / "kis_live"
+    # Fill의 ts_ms는 HHMMSSmmm 인코딩 — 09:00:00.000 = 90000000
+    fill = Fill(ts_ms=90000000, seq=1, buy_qty=15, sell_qty=5)
+    write_fills_parquet([fill], code_dir / "fills.parquet")
+
+    engine = QueryEngine(kis_live_fixture)
+    fs = build_fill_strength_slice(
+        engine, code=CODE, date=DATE, bucket_ms=60_000, source="kis_live",
+    )
+    assert len(fs.points) > 0, "fills.parquet이 있으므로 최소 1 포인트"
+    buy_sell = [(p.buy_qty, p.sell_qty) for p in fs.points]
+    # fills 기준: buy=15, sell=5 (trades 기준이면 buy=30, sell=0 이 나온다)
+    assert buy_sell[0] == (15, 5), (
+        f"fills 우선 분기가 동작하지 않음: got {buy_sell}, expected first bucket (15, 5)"
+    )
+
+
+def test_fill_strength_falls_back_to_trades_when_no_fills(kis_live_fixture: Path) -> None:
+    """fills.parquet이 없으면 trades.parquet 기반 집계로 폴백한다(회귀 가드).
+
+    kis_live_fixture는 fills.parquet 없이 trades.parquet만 갖는다.
+    결과에 포인트가 있어야 하고 t 값이 day window 안에 있어야 한다.
+    """
+    engine = QueryEngine(kis_live_fixture)
+    fs = build_fill_strength_slice(
+        engine, code=CODE, date=DATE, bucket_ms=60_000, source="kis_live",
+    )
+    assert len(fs.points) > 0, "trades.parquet 폴백도 포인트를 반환해야 한다"
+    for p in fs.points:
+        assert DAY_START <= p.t < DAY_END, (
+            f"폴백 경로의 t={p.t}가 day window [{DAY_START}, {DAY_END}) 밖"
+        )

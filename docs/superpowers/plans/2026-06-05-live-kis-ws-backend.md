@@ -1866,6 +1866,7 @@ fill_seq = 0
             _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
 #     ※ fills가 비면 파일을 만들지 않는다 — 레거시 JSONL 재프로모트가
 #       빈 fills.parquet으로 bundle의 fills-우선 분기를 가리는 사고 방지.
+# 구현은 기존 브리지 무조건 호출로 동일 계약(빈→파일 부재) 달성 — 3종 테이블과 균일.
 ```
 
 호출부( `_parse_jsonl_to_records`를 부르는 promote_one/promote_today의 언패킹)도 5-튜플로 맞춘다.
