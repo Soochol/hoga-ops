@@ -1478,6 +1478,23 @@ async def test_run_flush_loop_drains_resets_and_reopen_has_no_ghost_carry(
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+
+
+async def test_flush_date_change_resets_stale_state(tmp_path):
+    """R1 백스톱 pin — suspend/시계 점프(미관측 일경계) 시 어제 carry가 오늘
+    날짜 JSONL로 새는 것을 flush_once의 date-latch가 차단한다. 이 백스톱은
+    해당 경로의 유일한 가드라 mutation-survivable이면 안 된다."""
+    date = {"v": "20260605"}
+    stream = LiveStream(buffer=LiveBuffer(), writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: date["v"], phase_fn=lambda: "regular")
+    stream._gate_open = True
+    now = int(time.time() * 1000)
+    await stream.on_tick(_ob_tick(now, tot_ask=111))     # 상태형 carry 스테이징
+    await stream.flush_once(now_ms=now)                  # D일: ob 기록 + carry 보존
+    assert (tmp_path / "live" / "20260605" / "005930.jsonl").exists()
+    date["v"] = "20260606"                               # 미관측 일경계 시뮬레이션
+    await stream.flush_once(now_ms=now + 1_000)          # 백스톱: 기록 전 reset
+    assert not (tmp_path / "live" / "20260606" / "005930.jsonl").exists()
 ```
 
 - [ ] **Step 3: 실패 확인**
