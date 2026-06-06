@@ -2181,7 +2181,7 @@ git commit -m "feat(frontend): time-based eviction for live snapshot buffer"
 
 ### Task 13: poller 완전 은퇴 (청소)
 
-**Task 11 리뷰 이월** — lifecycle 모듈 락(start/refresh 경합), watchlist_count 의미 재정의 문서화, _compute_live_set 추출(start/refresh 중복 — refresh에 dropped 경고 로그도), display_ordered_codes 위치(watchlist.py 이동) 검토, refresh_live_poller alias·로그 문구 정리.
+**Task 11 리뷰 이월** — lifecycle 모듈 락(start/refresh 경합), watchlist_count 의미 재정의 문서화, _compute_live_set 추출(start/refresh 중복 — refresh에 dropped 경고 로그도), display_ordered_codes 위치(watchlist.py 이동) 검토, refresh_live_poller alias·로그 문구 정리, watchdog PINGPONG-only no-restart 직접 pin(`test_ws_watchdog_noop_when_healthy`의 `last_tick_ms`를 None으로 — 재리뷰 Minor).
 
 **Files:**
 - Delete: `hoga/live/poller.py`, `tests/unit/live/test_poller.py`
