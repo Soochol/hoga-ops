@@ -17,13 +17,17 @@ import json
 import logging
 import shutil
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 from hoga.api.timeenc import unix_ms_to_hhmmssms
-from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers_parquet
-from hoga.tables.snapshots import Orderbook, write_parquet as write_snapshots_parquet
-from hoga.tables.trades import Trade, write_parquet as write_trades_parquet
+from hoga.tables.brokers import BrokerRow
+from hoga.tables.brokers import write_parquet as write_brokers_parquet
+from hoga.tables.fills import Fill, write_fills_parquet
+from hoga.tables.snapshots import Orderbook
+from hoga.tables.snapshots import write_parquet as write_snapshots_parquet
+from hoga.tables.trades import Trade
+from hoga.tables.trades import write_parquet as write_trades_parquet
 
 _ZERO_LEVELS: tuple[int, ...] = (0,) * 10
 
@@ -45,19 +49,19 @@ def _atomic_write_table(writer, records, path: Path) -> None:
         path.unlink(missing_ok=True)
 
 
-def _parse_jsonl_to_records(
+def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
     jsonl_path: Path,
     *,
     code: str,
     date: str,
-) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], dict]:
+) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], dict]:
     """Parse one Live Capture JSONL into typed table records + meta.
 
     Shared by promote_one (ADR-0038 daily batch) and promote_today
     (ADR-0043 in-session N-minute overwrite). Torn last lines are skipped
     with a `live.promote.partial_line` warn log.
 
-    Returns canonical dataclasses (Orderbook / Trade / BrokerRow), not
+    Returns canonical dataclasses (Orderbook / Trade / BrokerRow / Fill), not
     dicts — the table writers enforce PARQUET_SCHEMA at construction time,
     so a missing column or wrong dtype fails fast here instead of as a
     DuckDB BinderException in a downstream reader.
@@ -73,6 +77,7 @@ def _parse_jsonl_to_records(
     snapshots: list[Orderbook] = []
     trades: list[Trade] = []
     broker_rows: list[BrokerRow] = []
+    fills: list[Fill] = []
     broker_snapshot_count = 0
     # Monotonic per stock-date counters; KIS has no native seq, but the
     # parquet schemas (snapshots/trades/brokers) require an int seq column
@@ -82,10 +87,11 @@ def _parse_jsonl_to_records(
     snap_seq = 0
     trade_seq = 0
     broker_seq = 0
+    fill_seq = 0
 
     if not jsonl_path.exists():
-        meta = _build_meta(code, date, snapshots, trades, broker_snapshot_count)
-        return snapshots, trades, broker_rows, meta
+        meta = _build_meta(code, date, snapshots, trades, broker_snapshot_count, fill_count=0)
+        return snapshots, trades, broker_rows, fills, meta
 
     with jsonl_path.open("r", encoding="utf-8") as f:
         for raw in f:
@@ -199,23 +205,35 @@ def _parse_jsonl_to_records(
                         qty_today=int(e.get("qty") or 0),
                         qty_delta=0,
                     ))
+            elif kind == "fill":
+                # 그릴링 Q4: 10초 체결강도 구간합 → fills.parquet.
+                # side 분류는 다운샘플러가 write-time에 적용 완료(±1만, side=0 제외).
+                fill_seq += 1
+                fills.append(Fill(
+                    ts_ms=ts_ms_encoded,
+                    seq=fill_seq,
+                    buy_qty=int(p.get("buy_qty") or 0),
+                    sell_qty=int(p.get("sell_qty") or 0),
+                ))
 
-    meta = _build_meta(code, date, snapshots, trades, broker_snapshot_count)
-    return snapshots, trades, broker_rows, meta
+    meta = _build_meta(code, date, snapshots, trades, broker_snapshot_count, fill_count=len(fills))
+    return snapshots, trades, broker_rows, fills, meta
 
 
 def _build_meta(
     code: str, date: str, snapshots: list, trades: list, broker_snapshot_count: int,
+    fill_count: int = 0,
 ) -> dict:
     return {
         "source": "kis_live",
         "code": code,
         "date": date,
-        "promoted_at": datetime.now(timezone.utc).isoformat(),
+        "promoted_at": datetime.now(UTC).isoformat(),
         "row_counts": {
             "snapshots": len(snapshots),
             "trades": len(trades),
             "brokers": broker_snapshot_count,
+            "fills": fill_count,
         },
         # ADR-0003 HHMMSSmmm encoding.
         "regular_session_open_ms": 90000000,    # 09:00:00.000
@@ -259,7 +277,7 @@ async def promote_today(data_dir: Path, *, code: str) -> None:
     _log.info("live.today_promote.start code=%s date=%s", code, today)
 
     try:
-        snapshots, trades, broker_rows, meta = _parse_jsonl_to_records(
+        snapshots, trades, broker_rows, fills, meta = _parse_jsonl_to_records(
             jsonl_path, code=code, date=today,
         )
     except Exception:
@@ -273,6 +291,7 @@ async def promote_today(data_dir: Path, *, code: str) -> None:
         _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
         _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
         _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
+        _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
         atomic_write_json(target / "meta.json", meta, indent=2)
     except OSError as e:
         _log.warning(
@@ -322,7 +341,7 @@ async def promote_one(
     if not jsonl_path.exists():
         return
 
-    snapshots, trades, broker_rows, meta = _parse_jsonl_to_records(
+    snapshots, trades, broker_rows, fills, meta = _parse_jsonl_to_records(
         jsonl_path, code=code, date=date,
     )
 
@@ -330,6 +349,7 @@ async def promote_one(
     _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
     _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
     _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
+    _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
     meta_path.write_text(json.dumps(meta, indent=2))
     _log.info(
         "live.promote.done code=%s date=%s row_counts=%s",
