@@ -33,14 +33,14 @@ def should_run_now(t_ms: int) -> bool:
     """Calendar + clock gate: True only when KRX is *probably* trading right now.
 
     ADR-0064: the trading-day check uses :func:`calendar.is_trading_session_today`
-    (backed by the KRX business-day *calendar*), NOT :func:`calendar.is_trading_day`
-    (backed by daily OHLCV). The OHLCV proxy returns False for a live trading day
+    (backed by the KIS chk-holiday calendar, which lists today from the session
+    open), NOT a daily-OHLCV proxy. The old proxy returned False for a live trading day
     early in the session — today's bar isn't published yet — and once that False
     was cached the poller silently halted capture for the whole process. The
     business-day calendar marks today as a session from the open.
 
-    Weekends are short-circuited by the clock/weekday before any KRX call, so a
-    weekend stays closed even when KRX is unreachable (a None verdict is treated
+    Weekends are short-circuited by the clock/weekday before any KIS call, so a
+    weekend stays closed even when KIS is unreachable (a None verdict is treated
     leniently below and would otherwise poll).
 
     Lenient on missing calendar data — when ``is_trading_session_today`` returns

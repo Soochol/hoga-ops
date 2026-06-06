@@ -13,8 +13,10 @@ import json
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
+
+if TYPE_CHECKING:
+    from hoga.live.kis_token_provider import KisTokenProvider
 
 import httpx
 
@@ -30,7 +32,12 @@ from hoga.live.kis_models import (
 
 KIS_KST = timezone(timedelta(hours=9))
 _BASE_REAL = "https://openapi.koreainvestment.com:9443"
-_REISSUE_COOLDOWN_MS = 60_000  # KIS: 1 issuance per minute
+
+# KIS auth-failure msg_cds that mean "this TOKEN is bad" (expired/invalid) as
+# opposed to "this request is bad". On these, `_get` invalidates the provider
+# cache and retries once — without it a server-side revocation had no recovery
+# path: the dead token was served from memory+disk until expires_at (~24h).
+_TOKEN_INVALID_MSG_CDS = ("EGW00121", "EGW00123")
 
 # KIS market-division code for KOSPI/KOSDAQ stocks (single value covers both).
 # Justified by the watchlist boundary in `lifecycle.start_live_poller`, which
@@ -243,26 +250,20 @@ class KisClient:
     def __init__(
         self,
         credentials: KisCredentials,
-        token_cache_path: Path,
+        token_provider: "KisTokenProvider",
         *,
         _transport: Optional[httpx.AsyncBaseTransport] = None,
         _rate_limit_per_sec: float = _RATE_LIMIT_CALLS_PER_SEC,
         _rate_limit_backoff: tuple[float, ...] = _RATE_LIMIT_BACKOFF,
     ):
         self._creds = credentials
-        self._cache_path = token_cache_path
+        self._token_provider = token_provider
         self._client = httpx.AsyncClient(
             base_url=credentials.base_url, transport=_transport, timeout=10.0
         )
-        self._token: Optional[str] = None
-        self._token_expires_at: Optional[datetime] = None
-        # Audit-3: track last issuance to enforce 1-per-minute cool-down.
-        # monotonic clock so we don't get confused by NTP step or daylight changes.
-        self._last_issued_monotonic_ms: Optional[int] = None
         # Single rate limiter shared by all data calls — `_get` acquires
-        # one token per HTTP request. Token issuance (`_issue_token`)
-        # bypasses this since it uses its own 1/min cool-down endpoint
-        # and KIS scopes the rate budget per data endpoint, not per app.
+        # one token per HTTP request. Token issuance lives in the injected
+        # KisTokenProvider (ADR-0050 amendment) and bypasses this bucket.
         self._rate_limiter = _TokenBucket(rate=_rate_limit_per_sec)
         # Tests pass (0.0, 0.0, 0.0) here to exercise the retry shape without
         # paying the real wall-clock sleeps; production callers leave the
@@ -271,23 +272,6 @@ class KisClient:
 
     async def aclose(self) -> None:
         await self._client.aclose()
-
-    async def get_access_token(self) -> str:
-        # in-memory hit
-        if (
-            self._token
-            and self._token_expires_at
-            and datetime.now(KIS_KST) < self._token_expires_at - timedelta(minutes=10)
-        ):
-            return self._token
-
-        # disk cache hit
-        cached = self._read_cache()
-        if cached:
-            self._token, self._token_expires_at = cached
-            return self._token
-
-        return await self._issue_token()
 
     async def get_approval_key(self) -> str:
         """WS 접속키 발급 (POST /oauth2/Approval). ADR-0050 단일 ingress —
@@ -305,7 +289,7 @@ class KisClient:
                 "secretkey": self._creds.app_secret,
             },
         )
-        if resp.status_code != 200:  # noqa: PLR2004 — HTTP OK, same shape as _issue_token
+        if resp.status_code != 200:  # noqa: PLR2004 — HTTP 상수
             raise KisAuthError(
                 f"/oauth2/Approval HTTP {resp.status_code}: {resp.text[:200]}"
             )
@@ -316,63 +300,6 @@ class KisClient:
             )
         return str(key)
 
-    async def _issue_token(self) -> str:
-        """Issue a fresh access_token via /oauth2/tokenP.
-
-        KIS limits issuance to 1 per minute (Audit-3). Additionally, KIS
-        returns the same token for any reissue request within 6 hours of the
-        previous issue — disk caching is therefore essential and a `_issue`
-        call is rarely the right answer in steady-state.
-        """
-        now_ms = int(time.monotonic() * 1000)
-        if (
-            self._last_issued_monotonic_ms is not None
-            and now_ms - self._last_issued_monotonic_ms < _REISSUE_COOLDOWN_MS
-        ):
-            raise KisAuthError(
-                "token reissue cooldown: KIS allows 1 issuance per minute"
-            )
-        resp = await self._client.post(
-            "/oauth2/tokenP",
-            json={
-                "grant_type": "client_credentials",
-                "appkey": self._creds.app_key,
-                "appsecret": self._creds.app_secret,
-            },
-        )
-        if resp.status_code != 200:
-            raise KisAuthError(
-                f"token issue failed: HTTP {resp.status_code} {resp.text[:200]}"
-            )
-        body = resp.json()
-        token: str = body["access_token"]
-        expires_in = int(body.get("expires_in", 86400))
-        expires_at = datetime.now(KIS_KST) + timedelta(seconds=expires_in)
-        self._token = token
-        self._token_expires_at = expires_at
-        self._last_issued_monotonic_ms = now_ms
-        self._write_cache(token, expires_at)
-        return token
-
-    def _read_cache(self) -> Optional[tuple[str, datetime]]:
-        if not self._cache_path.exists():
-            return None
-        try:
-            data = json.loads(self._cache_path.read_text())
-            exp = datetime.fromisoformat(data["expires_at"])
-            if datetime.now(KIS_KST) >= exp - timedelta(minutes=10):
-                return None
-            return data["access_token"], exp
-        except (json.JSONDecodeError, KeyError, ValueError):
-            return None
-
-    def _write_cache(self, token: str, expires_at: datetime) -> None:
-        self._cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self._cache_path.write_text(
-            json.dumps({"access_token": token, "expires_at": expires_at.isoformat()})
-        )
-        self._cache_path.chmod(0o600)
-
     async def _get(
         self,
         path: str,
@@ -381,17 +308,37 @@ class KisClient:
         *,
         retry: bool = True,
     ) -> dict:
-        """Authenticated GET to KIS API with built-in EGW00201 retry.
+        """Authenticated GET to KIS API with built-in EGW00201 retry and a
+        single invalidate-and-retry on token-invalid responses.
 
         Contract: returns a validated body or raises a typed Kis*Error.
         ``KisRateLimitError`` is retried in-place per ``self._rate_limit_backoff``
-        (see ADR-0050); ``KisAuthError`` and ``KisApiError`` propagate on the
-        first attempt. Pass ``retry=False`` for diagnostic callers that want
-        the raw single-shot behavior (e.g. a probe that measures whether KIS
-        is currently rate-limiting). The retry loop wraps the whole
-        acquire+send+unwrap sequence, so each attempt re-acquires a token
-        from the shared bucket — replays of the same call don't get a free
-        ride past the rate limiter.
+        (see ADR-0050); ``KisAuthError`` and non-token ``KisApiError`` propagate
+        on the first attempt. A token-invalid ``KisApiError`` (EGW00121/00123 —
+        revoked or expired server-side) invalidates the provider's cached token
+        and retries ONCE with a fresh one; repeating failures propagate.
+        Pass ``retry=False`` for diagnostic callers that want the raw
+        single-shot behavior.
+        """
+        try:
+            return await self._get_with_rate_retry(path, tr_id, params, retry=retry)
+        except KisApiError as e:
+            if not any(cd in e.msg_cd for cd in _TOKEN_INVALID_MSG_CDS):
+                raise
+            await asyncio.to_thread(self._token_provider.invalidate)
+            return await self._get_with_rate_retry(path, tr_id, params, retry=retry)
+
+    async def _get_with_rate_retry(
+        self,
+        path: str,
+        tr_id: str,
+        params: dict[str, Any],
+        *,
+        retry: bool,
+    ) -> dict:
+        """EGW00201 retry loop. The loop wraps the whole acquire+send+unwrap
+        sequence, so each attempt re-acquires a token from the shared bucket —
+        replays of the same call don't get a free ride past the rate limiter.
         """
         backoff = self._rate_limit_backoff if retry else ()
         attempts = len(backoff) + 1
@@ -426,7 +373,11 @@ class KisClient:
         budget, not on KIS response time.
         """
         await self._rate_limiter.acquire()
-        token = await self.get_access_token()
+        # to_thread: get_token() is sync-blocking by design (threading.Lock +
+        # disk I/O + up to a 10s POST on cache miss). Calling it bare here
+        # froze the entire event loop at every issuance boundary (~daily) and
+        # whenever an executor thread held the provider lock mid-issuance.
+        token = await asyncio.to_thread(self._token_provider.get_token)
         headers = {
             "authorization": f"Bearer {token}",
             "appkey": self._creds.app_key,
