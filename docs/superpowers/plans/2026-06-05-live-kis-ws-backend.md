@@ -2132,28 +2132,29 @@ ruff check: 대상 파일 신규 위반 0 — ws_client 0건, lifecycle 잔여 1
 - Modify: `frontend/src/live/liveSnapshotBuffer.ts`
 - Test: `frontend/src/live/liveSnapshotBuffer.test.ts` (기존 파일에 추가; 없으면 신설)
 
-- [ ] **Step 1: 실패하는 테스트 추가**
+- [x] **Step 1: 실패하는 테스트 추가** (2026-06-06 완료 — 실제 API는 `buf.get('ob')` 접근자; `LiveSnapshotEntry` 캐스트 불필요, push가 구조적 `{t_ms, kind}` 수용)
 
 ```ts
 it('evicts entries older than retention window on push', () => {
   const buf = new LiveSnapshotBuffer();
-  const old = { t_ms: 1_000, kind: 'ob' } as LiveSnapshotEntry;
-  const fresh = { t_ms: 16 * 60_000 + 1_000, kind: 'ob' } as LiveSnapshotEntry;
+  const old = { t_ms: 1_000, kind: 'ob' };
+  const fresh = { t_ms: 16 * 60_000 + 1_000, kind: 'ob' };
   buf.push(old);
   buf.push(fresh); // fresh 기준 15분 컷오프 밖의 old는 제거
-  expect(buf.ob.map((e) => e.t_ms)).toEqual([fresh.t_ms]);
+  expect(buf.get('ob').map((e) => e.t_ms)).toEqual([fresh.t_ms]);
 });
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인** (2026-06-06 완료 — FAIL: `[1000, 961000]` ≠ `[961000]`, old 잔존)
 
 Run: `cd frontend && npx vitest run src/live/liveSnapshotBuffer.test.ts`
-Expected: FAIL (old가 남아 있음)
 
-- [ ] **Step 3: 구현** — push/hydrate에 시간 eviction 추가
+- [x] **Step 3: 구현** — push에 시간 eviction 추가 (2026-06-06 완료)
 
 ```ts
-/** 봉합 사이징 불변식(spec §8): 보존 > 2× Today Promotion 주기(5분) → 15분. */
+/** 봉합 사이징 불변식(spec §8): 보존 > 2× Today Promotion 주기(5분) → 15분.
+ *  백엔드 LiveBuffer(retention 900s)와 동일 원칙 — per-tick 유량에서 개수 캡이
+ *  pastMaxT까지의 꼬리를 자르면 지표 봉합에 구멍이 난다. */
 const RETENTION_MS = 15 * 60_000;
 
 function evictOld(arr: Array<{ t_ms: number }>, nowMs: number): void {
@@ -2162,19 +2163,22 @@ function evictOld(arr: Array<{ t_ms: number }>, nowMs: number): void {
   while (drop < arr.length && arr[drop].t_ms < cutoff) drop += 1;
   if (drop > 0) arr.splice(0, drop);
 }
+
+// Safety-pin cap raised to 60_000 (from 2520) — time eviction is now the
+// primary size bound; the count cap remains only as a runaway safeguard.
+export const MAX_BUFFER_PER_KIND = 60_000;
 ```
 
-`push(entry)` 말미에 해당 kind 배열에 `evictOld(arr, entry.t_ms)` 호출(배열은 t_ms 오름차순 append라 prefix-drop으로 충분). 기존 `MAX_BUFFER_PER_KIND` 개수 캡은 폭주 안전핀으로 유지하되 60_000으로 상향.
+`push(entry)` 말미에 해당 kind 배열에 `evictOld(arr, entry.t_ms)` 호출(배열은 t_ms 오름차순 append라 prefix-drop으로 충분 — 백엔드와 동일 가정), 이어서 기존 개수 캡(60_000 안전핀) splice 유지. hydrate는 시간 eviction 무처리 — 백엔드 eviction은 publish 경로(LiveBuffer.publish)에서 수행되어 활성 코드의 ring은 상시 정리됨(get_series 자체는 무필터); 잔존 stale tail은 직후 첫 push()의 evictOld가 정리(주석으로 명시).
 
-- [ ] **Step 4: 통과 + 프론트 전체 테스트**
+- [x] **Step 4: 통과 + 프론트 전체 테스트** (2026-06-06 완료 — liveSnapshotBuffer 7/7, `src/live/` 36파일 314 테스트 all passed, fixture 보정 0건)
 
 Run: `cd frontend && npx vitest run src/live/` → all passed
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋** (2026-06-06 완료)
 
 ```bash
-git add frontend/src/live/liveSnapshotBuffer.ts frontend/src/live/liveSnapshotBuffer.test.ts
-git commit -m "feat(frontend): time-based eviction for live snapshot buffer"
+# 실제 커밋: 67c6719 (feat(frontend): time-based eviction for live snapshot buffer)
 ```
 
 ---

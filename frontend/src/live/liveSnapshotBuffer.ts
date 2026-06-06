@@ -78,10 +78,11 @@ export class LiveSnapshotBuffer {
   hydrate(initial: Partial<Record<SnapshotKind, RawSnapshot[]>>): void {
     for (const k of KINDS) {
       const arr = initial[k] ?? [];
-      // No time eviction on hydrate: the backend already applies retention
-      // (LiveBuffer 900s) before serialising the initial snapshot, so the
-      // data arriving here is already within the window. Any stale tail will
-      // be naturally evicted on the first push() that follows.
+      // No time eviction on hydrate: backend eviction runs on the publish
+      // path (LiveBuffer.publish, retention 900s) — get_series itself does
+      // not filter — so an actively-published code's ring is continuously
+      // pruned (active Live Set codes publish every ~10s). Any residual
+      // stale tail is cleaned up by evictOld on the first push() that follows.
       this.byKind[k] = arr.slice(-MAX_BUFFER_PER_KIND);
       this.invalidate(k);
     }
