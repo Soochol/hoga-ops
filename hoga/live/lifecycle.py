@@ -21,9 +21,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from hoga.api.models import WatchlistDocument
@@ -171,10 +172,10 @@ def get_status() -> LiveStatus:
         ws = getattr(stream, "ws", None)
         if ws is not None:
             ws_connected = getattr(ws, "connected", False)
+            # 데이터 프레임 전용 신호만 노출(리뷰 Important 1-3): last_flush_ms는
+            # 틱 0건이어도 10초마다 갱신되므로 폴백하면 '마지막 데이터 활동'으로
+            # 오인된다. 틱이 아직 없으면 정직하게 None (wire 모델은 nullable).
             last_tick_ms = getattr(ws, "last_tick_ms", None)
-        # also check stream.last_flush_ms as secondary last-activity indicator
-        if last_tick_ms is None:
-            last_tick_ms = getattr(stream, "last_flush_ms", None)
     else:
         # Poller path fallback
         last_tick_ms = _read_poller_attr("last_tick_ms")
@@ -203,7 +204,7 @@ def _read_poller_attr(name: str) -> int | None:
 
 def reset_for_tests() -> None:
     """Test-only hook. Resets module state without raising."""
-    global _state, _buffer
+    global _state, _buffer  # noqa: PLW0603 — test-only reset of module singletons
     for task in (_state.poller_task, _state.stream_task, _state.ws_task):
         if task is not None and not task.done():
             task.cancel()
@@ -257,7 +258,7 @@ async def stop_today_promoter(task: asyncio.Task | None) -> None:
     if task is None or task.done():
         return
     task.cancel()
-    try:
+    try:  # noqa: SIM105 — 파일 전체가 명시적 try/except 패턴(스타일 통일)
         await task
     except asyncio.CancelledError:
         pass
@@ -601,7 +602,11 @@ async def _ws_watchdog_check(
 
     _live_watchdog_check를 stream 계열로 복제·수정:
     - dead = ws_task OR stream_task 중 done()
-    - last_tick = stream_obj.ws.last_tick_ms + stream_obj.last_flush_ms 중 max
+    - stale 신호 = stream_obj.ws.last_recv_ms (리뷰 Important 1):
+      last_flush_ms는 틱 0건이어도 10초마다 갱신되고 last_tick_ms는 데이터
+      프레임 전용 — half-open TCP에서 recv()가 영구 블록하는 silent stall은
+      모든 수신 프레임(KIS 주기 PINGPONG 포함)에 스탬프되는 last_recv_ms로만
+      감지된다. 연결 후 무수신이면 None → grace 경과 시 stale.
     - 재시작은 start_live_stream
     - 게이트 판정은 ws_capture_window (advisor B — 15:30 이후엔 재시작 금지)
     - 세션-open 기준 grace 로직은 _live_watchdog_check와 동일
@@ -634,22 +639,19 @@ async def _ws_watchdog_check(
 
     stream = _state.stream_obj
     ws = getattr(stream, "ws", None) if stream is not None else None
-    ws_last_tick = getattr(ws, "last_tick_ms", None) if ws is not None else None
-    flush_last = getattr(stream, "last_flush_ms", None) if stream is not None else None
-    candidates = [t for t in (ws_last_tick, flush_last) if t is not None]
-    last_tick = max(candidates) if candidates else None
+    last_recv = getattr(ws, "last_recv_ms", None) if ws is not None else None
 
     grace_elapsed = (now_ms - ref_ms) > stale_after_ms
-    tick_fresh = (
-        last_tick is not None
-        and last_tick >= session_open_ms
-        and (now_ms - last_tick) <= stale_after_ms
+    recv_fresh = (
+        last_recv is not None
+        and last_recv >= session_open_ms
+        and (now_ms - last_recv) <= stale_after_ms
     )
-    stale = (not dead) and grace_elapsed and (not tick_fresh)
+    stale = (not dead) and grace_elapsed and (not recv_fresh)
     if dead or stale:
         _log.warning(
-            "live.stream.watchdog_restart dead=%s stale=%s last_tick_ms=%s",
-            dead, stale, last_tick,
+            "live.stream.watchdog_restart dead=%s stale=%s last_recv_ms=%s",
+            dead, stale, last_recv,
         )
         await start_live_stream(data_dir=data_dir)
         return True

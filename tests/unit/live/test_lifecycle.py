@@ -511,19 +511,26 @@ def _spy_start_stream(monkeypatch):
 
 
 def _install_stream_state(monkeypatch, *, started_at_ms, ws_task, stream_task,
-                          last_tick_ms=None, last_flush_ms=None):
-    """Helper: inject a fake stream _State for watchdog tests."""
+                          last_tick_ms=None, last_flush_ms=None,
+                          last_recv_ms=None):
+    """Helper: inject a fake stream _State for watchdog tests.
+
+    last_recv_ms가 watchdog의 stale 신호(리뷰 Important 1) — last_tick_ms는
+    데이터 프레임 전용(표시), last_flush_ms는 틱 0건이어도 갱신되므로 watchdog이
+    더 이상 읽지 않는다.
+    """
     from hoga.live import lifecycle
     from hoga.live.lifecycle import _State
 
     class _FakeWs:
-        def __init__(self, tick_ms):
+        def __init__(self, tick_ms, recv_ms):
             self.last_tick_ms = tick_ms
-            self.connected = tick_ms is not None
+            self.last_recv_ms = recv_ms
+            self.connected = recv_ms is not None
 
     class _FakeStream:
-        def __init__(self, tick_ms, flush_ms):
-            self.ws = _FakeWs(tick_ms)
+        def __init__(self, tick_ms, flush_ms, recv_ms):
+            self.ws = _FakeWs(tick_ms, recv_ms)
             self.last_flush_ms = flush_ms
 
     lifecycle._state = _State(
@@ -531,7 +538,7 @@ def _install_stream_state(monkeypatch, *, started_at_ms, ws_task, stream_task,
         watchlist_codes=("005930",),
         ws_task=ws_task,
         stream_task=stream_task,
-        stream_obj=_FakeStream(last_tick_ms, last_flush_ms),
+        stream_obj=_FakeStream(last_tick_ms, last_flush_ms, last_recv_ms),
         live_set=("005930",),
     )
 
@@ -616,7 +623,7 @@ async def test_ws_watchdog_noop_outside_capture_window(
 async def test_ws_watchdog_noop_when_healthy(
     monkeypatch, _spy_start_stream, tmp_path
 ) -> None:
-    """WS watchdog: 두 task 모두 alive + 최근 틱 → 재시작 안 함."""
+    """WS watchdog: 두 task 모두 alive + 최근 수신(last_recv_ms) → 재시작 안 함."""
     from hoga.live import lifecycle
 
     lifecycle.reset_for_tests()
@@ -632,6 +639,7 @@ async def test_ws_watchdog_noop_when_healthy(
         _install_stream_state(
             monkeypatch, started_at_ms=1_000, ws_task=ws_task,
             stream_task=stream_task, last_tick_ms=9_950_000,
+            last_recv_ms=9_950_000,
         )
         restarted = await lifecycle._ws_watchdog_check(
             data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
@@ -645,6 +653,141 @@ async def test_ws_watchdog_noop_when_healthy(
                 await t
             except asyncio.CancelledError:
                 pass
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_restarts_on_silent_stall(
+    monkeypatch, _spy_start_stream, tmp_path
+) -> None:
+    """리뷰 Important 1 — half-open TCP silent stall 감지.
+
+    두 task 모두 alive(예외를 전부 잡아 cancel 외엔 done() 안 됨) +
+    last_flush_ms 신선(flush 루프는 틱 0건이어도 10초마다 갱신) 상황에서
+    last_recv_ms가 stale threshold를 넘기면 → restart. ping_interval=None이라
+    half-open 소켓의 recv()는 영구 블록 — 정확히 ADR-0064가 막을 시나리오.
+    """
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+
+    ws_task = asyncio.create_task(_forever())
+    stream_task = asyncio.create_task(_forever())
+    try:
+        # last_recv 10분 전(>2분 threshold), flush는 5초 전(신선) — flush
+        # 신선도가 stall을 가리지 못함을 고정.
+        _install_stream_state(
+            monkeypatch, started_at_ms=1_000, ws_task=ws_task,
+            stream_task=stream_task, last_recv_ms=9_400_000,
+            last_flush_ms=9_995_000,
+        )
+        restarted = await lifecycle._ws_watchdog_check(
+            data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
+        )
+        assert restarted is True
+        assert _spy_start_stream == [tmp_path]
+    finally:
+        for t in (ws_task, stream_task):
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
+
+
+# ── refresh_live_stream 테스트 (리뷰 Important 2) ──────────────────────────────
+
+@pytest.mark.asyncio
+async def test_refresh_live_stream_updates_ws_and_buffer(
+    monkeypatch, tmp_path
+) -> None:
+    """정상 경로: update_codes/set_active_codes/drop_codes_except 3종이
+    표시 순서 상위 13 코드로 호출되고 _state.live_set이 갱신된다."""
+    import json
+
+    from hoga.api import symbols
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr(symbols, "_cache", [])  # cold cache → 무필터 폴백
+
+    # v1 watchlist 15개 — display order = 삽입 순서(order=index 시드)
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "version": 1,
+        "entries": [
+            {"code": f"{i:06d}", "name": f"{i:06d}",
+             "registered_at_kst_date": "20260101", "last_success_date": None}
+            for i in range(15)
+        ],
+    }))
+
+    calls: dict = {}
+
+    class _FakeWs:
+        async def update_codes(self, codes):
+            calls["update_codes"] = list(codes)
+
+    class _FakeStream:
+        def __init__(self):
+            self.ws = _FakeWs()
+
+        def set_active_codes(self, codes):
+            calls["set_active_codes"] = set(codes)
+
+    drop_calls: list = []
+
+    async def _fake_drop(keep):
+        drop_calls.append(set(keep))
+
+    monkeypatch.setattr(lifecycle._buffer, "drop_codes_except", _fake_drop)
+    lifecycle._state = _State(
+        started_at_ms=1, watchlist_codes=("999999",),
+        stream_obj=_FakeStream(), live_set=("999999",),
+    )
+
+    await lifecycle.refresh_live_stream(data_dir=tmp_path)
+
+    expected = [f"{i:06d}" for i in range(13)]  # 15 → 상위 13 절단
+    assert calls["update_codes"] == expected
+    assert calls["set_active_codes"] == set(expected)
+    assert drop_calls == [set(expected)]
+    assert lifecycle._state.live_set == tuple(expected)
+    assert lifecycle._state.watchlist_codes == tuple(expected)
+
+
+@pytest.mark.asyncio
+async def test_refresh_live_stream_early_returns_without_stream(tmp_path) -> None:
+    """stream 또는 ws가 None이면 예외 없이 early-return (상태 불변)."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+
+    lifecycle.reset_for_tests()
+    # ① stream_obj 자체가 None (기동 전)
+    await lifecycle.refresh_live_stream(data_dir=tmp_path)
+    assert lifecycle._state.live_set == ()
+
+    # ② stream은 있으나 ws가 None (조립 중간 상태)
+    class _WsLess:
+        ws = None
+
+    lifecycle._state = _State(stream_obj=_WsLess(), live_set=("005930",))
+    await lifecycle.refresh_live_stream(data_dir=tmp_path)
+    assert lifecycle._state.live_set == ("005930",)  # 변경 없음
+
+
+# ── 상수 drift 가드 ─────────────────────────────────────────────────────────────
+
+def test_trs_per_code_matches_ws_client_subscriptions() -> None:
+    """TRS_PER_CODE(Live Set 13 산정의 분모)가 ws_client의 실제 구독 TR 수와
+    동기 — TR 추가/삭제 시 41-등록 한도 산식이 조용히 틀어지는 것을 차단."""
+    from hoga.live import lifecycle, ws_client
+
+    assert len(ws_client._TRS) == lifecycle.TRS_PER_CODE
 
 
 # ── get_status WS 키 테스트 ────────────────────────────────────────────────────

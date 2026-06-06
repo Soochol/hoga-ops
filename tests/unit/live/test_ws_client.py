@@ -57,6 +57,25 @@ async def test_recv_loop_dispatches_ticks_and_echoes_pingpong():
     assert len(got) == 1 and got[0].code == "005930"
 
 
+async def test_recv_loop_stamps_last_recv_ms_on_control_frames():
+    """리뷰 Important 1 — PINGPONG(비데이터)만 수신해도 last_recv_ms가 찍힌다.
+
+    watchdog liveness의 유일한 신호가 이 스탬프다: 깨지면(영구 None) grace
+    경과 후 매 패스 stale → 장중 재시작 폭풍. 데이터 프레임이 없으므로
+    last_tick_ms는 None 유지(의미 분리: tick=데이터 전용, recv=모든 프레임).
+    """
+    ping = '{"header":{"tr_id":"PINGPONG","datetime":"x"}}'
+    fake = FakeWs([ping])
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    assert client.last_recv_ms is None
+    with pytest.raises(ConnectionError):
+        await client._recv_loop(fake)
+    assert client.last_recv_ms is not None   # PINGPONG도 liveness
+    assert client.last_tick_ms is None       # 데이터 프레임은 없었다
+
+
 async def test_subscribe_sends_three_trs_per_code():
     fake = FakeWs([])
     client = KisWsClient(approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605")

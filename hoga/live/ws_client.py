@@ -51,7 +51,12 @@ class KisWsClient:
         self._ws: object | None = None
         self._approval: str | None = None  # 연결 시 발급분 캐시 — update_codes가 재사용
         self._sub_lock = asyncio.Lock()    # 구독 전송 직렬화 — wire ≠ _codes 발산 방지
-        self.last_tick_ms: int | None = None   # stream watchdog이 읽음
+        # 의미 분리(리뷰 Important 1): last_tick_ms = 데이터 프레임 전용(표시용,
+        # get_status), last_recv_ms = 모든 수신 프레임(PINGPONG·컨트롤 포함) —
+        # watchdog liveness 신호. PINGPONG은 KIS가 주기 송신하므로 시장 활동과
+        # 무관하게 도착한다 → half-open TCP(silent stall)에서만 끊긴다.
+        self.last_tick_ms: int | None = None
+        self.last_recv_ms: int | None = None
         self.connected: bool = False
 
     async def run(self, codes: list[str]) -> None:
@@ -123,12 +128,16 @@ class KisWsClient:
     async def _recv_loop(self, ws) -> None:
         while True:
             raw = await ws.recv()
+            now_ms = int(time.time() * 1000)
+            # liveness 스탬프 — 모든 수신 프레임(데이터+PINGPONG+기타 컨트롤,
+            # 파싱 실패분 포함): 바이트 수신 자체가 소켓 생존의 증거다.
+            # ADR-0064 watchdog이 이 값으로 silent stall을 감지한다.
+            self.last_recv_ms = now_ms
             if raw and raw[0] in ("0", "1"):
-                now_ms = int(time.time() * 1000)
                 # 메시지마다 조회 — 자정을 넘긴 연결에서 어제 날짜 스탬프 방지.
                 date = self._date_fn()
                 for tick in parse_message(raw, date=date, now_ms=now_ms):
-                    self.last_tick_ms = now_ms
+                    self.last_tick_ms = now_ms  # 데이터 프레임 전용(표시용)
                     if self._on_tick is not None:
                         await self._on_tick(tick)
             else:

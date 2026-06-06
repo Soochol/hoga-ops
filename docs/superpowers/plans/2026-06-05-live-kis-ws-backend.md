@@ -2103,7 +2103,7 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
     _state = replace(_state, live_set=tuple(codes), watchlist_codes=tuple(codes))
 ```
 
-**watchdog**(ADR-0064 이식): `_live_watchdog_check`(381-437행)를 `_ws_watchdog_check`로 복제·수정 — `dead = ws_task/stream_task 중 done()`, `last_tick = stream_obj.ws.last_tick_ms` + `stream_obj.last_flush_ms` 중 max, 재시작은 `start_live_stream`. 세션-open 기준 grace 로직(주석 포함)은 **그대로 유지**하되, 게이트 판정은 `_should_poll_now` 대신 **`ws_capture_window`**(advisor B — 15:30 이후엔 재시작 금지). `start_live_poller_watchdog`(440-461)도 동일 패턴으로 `start_live_stream_watchdog` 신설.
+**watchdog**(ADR-0064 이식): `_live_watchdog_check`(381-437행)를 `_ws_watchdog_check`로 복제·수정 — `dead = ws_task/stream_task 중 done()`, stale 신호는 **`stream_obj.ws.last_recv_ms`**(품질 리뷰 Important 1 개정: `last_flush_ms`는 틱 0건이어도 10초마다 갱신되고 `last_tick_ms`는 데이터 프레임 전용이라 half-open TCP silent stall을 못 잡는다 — `last_recv_ms`는 모든 수신 프레임(KIS 주기 PINGPONG 포함)에 스탬프), 재시작은 `start_live_stream`. 세션-open 기준 grace 로직(주석 포함)은 **그대로 유지**하되, 게이트 판정은 `_should_poll_now` 대신 **`ws_capture_window`**(advisor B — 15:30 이후엔 재시작 금지). `start_live_poller_watchdog`(440-461)도 동일 패턴으로 `start_live_stream_watchdog` 신설.
 
 **get_status**: 기존 wire 키(`running`, `watchlist_count` 등)는 의미 유지(`running` = stream task alive), 추가 키 `transport: "ws"`, `ws_connected: bool`, `live_set: list[str]`.
 
@@ -2114,8 +2114,9 @@ watchlist_routes.py: `refresh_live_stream as refresh_live_poller` alias. 포인�
 
 - [x] **Step 5: 테스트 + 커밋** (2026-06-06 완료)
 
-`uv run pytest tests/unit/ -q` → 467 passed (신규 테스트 13건 포함).
-ruff check: 대상 4개 파일 신규 위반 0 (lifecycle.py noqa 처리 완료).
+`uv run pytest tests/unit/ -q` → 472 passed (신규 테스트 17건: buffer 3 + lifecycle 13 + ws_client 1 — 품질 리뷰 후 silent-stall watchdog 1 + refresh 2 + TRS drift 가드 1 + last_recv_ms 스탬프 1 포함).
+ruff check: 대상 파일 신규 위반 0 — ws_client 0건, lifecycle 잔여 11건은 전부 Task 13 삭제 대상(poller 계열) 라인. pyright lifecycle/ws_client 0 errors.
+⚠️ 운영 전제(리뷰 메모): silent-stall 감지는 KIS PINGPONG 주기 < stale_after_ms(120s)를 전제 — Task 0 녹화로 실측 검증 후 prod 의존.
 
 ```bash
 # 실제 커밋: c5cd88c (buffer) + 0c1c7ae (lifecycle + wiring)
@@ -2179,6 +2180,8 @@ git commit -m "feat(frontend): time-based eviction for live snapshot buffer"
 ---
 
 ### Task 13: poller 완전 은퇴 (청소)
+
+**Task 11 리뷰 이월** — lifecycle 모듈 락(start/refresh 경합), watchlist_count 의미 재정의 문서화, _compute_live_set 추출(start/refresh 중복 — refresh에 dropped 경고 로그도), display_ordered_codes 위치(watchlist.py 이동) 검토, refresh_live_poller alias·로그 문구 정리.
 
 **Files:**
 - Delete: `hoga/live/poller.py`, `tests/unit/live/test_poller.py`
