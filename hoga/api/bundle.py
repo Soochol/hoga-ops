@@ -292,13 +292,14 @@ def build_fill_strength_slice(
     #
     # 그릴링 Q4: kis_live 신형은 fills.parquet(10초 구간합)이 체결강도 소스.
     # fills가 있으면 우선, 없으면(=hogaplay·레거시 kis_live) trades 폴백.
-    fills_path = engine.parquet_dir(date, code, source) / "fills.parquet"
+    code_dir = engine.parquet_dir(date, code, source)
+    fills_path = code_dir / "fills.parquet"
     if fills_path.exists():
         rows = fills_tbl.query_fill_strength(
             engine.conn, path=fills_path, bucket_ms=bucket_ms
         )
     else:
-        path_obj = engine.parquet_dir(date, code, source) / "trades.parquet"
+        path_obj = code_dir / "trades.parquet"
         if not path_obj.exists():
             # ADR-0043: missing parquet is the valid "no trades yet" state.
             return FillStrength(bucket_ms=bucket_ms, points=[])

@@ -1955,6 +1955,8 @@ git commit -m "feat(api): fill_strength reads fills.parquet first, trades fallba
 - Modify: `hoga/api/watchlist.py` (reorder/add/remove 후크 — `grep -n "refresh_live_poller" hoga/`로 호출부 확인)
 - Test: `tests/unit/live/test_lifecycle.py` (추가), `tests/unit/live/test_buffer.py` (추가)
 
+⚠️ 배선 컷오버는 **세션 밖(09:00–15:30 외)에 배포**할 것: 장중 전환 시 같은 JSONL에 poller의 kind=trade와 WS의 kind=fill이 혼합돼 promote가 두 파일을 모두 만들고 fills-우선이 오전 trades 집계를 wire에서 가리는 1일성 아티팩트 발생(데이터는 디스크에 보존).
+
 **buffer.py 추가분 (Task 4 리뷰 이월):** 떠난 코드의 deque는 publish-경로 eviction이 못 치우므로(조용한 deque는 동결) Live Set 축출 시 명시 해제가 필요 — per-tick 유량에선 종목당 ~수십 MB가 영구 잔존할 수 있다.
 
 ```python
@@ -2225,6 +2227,7 @@ Run: `uv run uvicorn hoga.api.app:default_app --factory --host 127.0.0.1 --port 
 `cd frontend && npm run dev` 후 CLAUDE.md의 `/browse` 스킬로 `http://localhost:5173/live` 접속, watchlist 1번 종목 차트에서:
 - 호가창(10호가)·총잔량·호가비·체결강도가 **1초 미만 간격으로 갱신**되는지 (`$B js` 로 `window.__liveAxisGet()` 또는 DOM 텍스트 2회 샘플 비교)
 - `$B console --errors` 빈 출력
+- FillStrength pane에서 kis_live 신형의 **밀집 (0,0) 점**(조용한 버킷도 0 방출 — trades 경로는 버킷 생략) 렌더가 시각적으로 수용 가능한지 확인(빈 vs 0 차이).
 
 - [ ] **Step 3: 저장 경로 검증**
 
