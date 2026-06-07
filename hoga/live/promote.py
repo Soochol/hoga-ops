@@ -2,7 +2,7 @@
 
 This module IS allowed to import polars/pyarrow — it's the cold-path
 converter that runs at 17:00 KST after Live Session ends, not the hot
-write path. The hot path (writer.py, poller.py) must stay polars-free.
+write path. The hot path (writer.py, stream.py) must stay polars-free.
 
 Idempotency: presence of {target}/meta.json marks this (date, code) as
 already promoted; subsequent calls skip silently.

@@ -22,12 +22,7 @@ import httpx
 
 from hoga.live.kis_models import (
     InvestorNetPoint,
-    KisBrokerEntry,
-    KisBrokers,
     KisCandle,
-    KisOrderbook,
-    KisTrade,
-    OrderbookLevel,
 )
 
 KIS_KST = timezone(timedelta(hours=9))
@@ -40,13 +35,13 @@ _BASE_REAL = "https://openapi.koreainvestment.com:9443"
 _TOKEN_INVALID_MSG_CDS = ("EGW00121", "EGW00123")
 
 # KIS market-division code for KOSPI/KOSDAQ stocks (single value covers both).
-# Justified by the watchlist boundary in `lifecycle.start_live_poller`, which
+# Justified by the watchlist boundary in `lifecycle.start_live_stream`, which
 # filters codes through `symbols._cache` — only KOSPI/KOSDAQ stocks reach the
-# poller. Supporting ETF/ETN/ELW would require lifting this to a per-call
+# stream. Supporting ETF/ETN/ELW would require lifting this to a per-call
 # argument derived from the symbol-master entry's `market`/`asset_class`.
 _STOCK_MRKT_DIV = "J"
 
-# Conservative cap on KIS data calls per second across all callers (poller +
+# Conservative cap on KIS data calls per second across all callers (backfill +
 # backfill + future). KIS doesn't publish an exact retail limit — 20/sec is
 # the commonly-cited figure; 15 gives ~25% headroom so we stay clear of the
 # EGW00201 boundary under burst.
@@ -55,7 +50,7 @@ _RATE_LIMIT_CALLS_PER_SEC = 15.0
 # Exponential backoff sequence on EGW00201 — applied inside ``_get`` so EVERY
 # KIS call gets retry-on-rate-limit for free. Centralised here (instead of in
 # each caller) because the previous caller-by-caller policy let asymmetries
-# slip in (e.g. `_get_past_candles` aborted after one error while the poller
+# slip in (e.g. `_get_past_candles` aborted after one error while another caller
 # retried, turning a single transient EGW00201 into a wall of cascading
 # "rate_limit_aborted" warnings for ~50 dates). 4 attempts total: 1 immediate
 # + 3 retries with 1s/2s/4s waits between attempts. KisAuthError and
@@ -66,7 +61,7 @@ _RATE_LIMIT_BACKOFF: tuple[float, ...] = (1.0, 2.0, 4.0)
 class _TokenBucket:
     """Leaky-bucket rate limiter shared by all KIS data callers.
 
-    Single instance per ``KisClient`` so the poller, on-demand backfill,
+    Single instance per ``KisClient`` so on-demand backfill, quote overlay,
     and any future caller draw from one budget — matching KIS's per-API-
     key quota model. The bucket starts full so short bursts under
     capacity don't pay an artificial penalty; once drained, ``acquire``
@@ -102,29 +97,6 @@ class _TokenBucket:
                     return
                 wait = (1.0 - self._tokens) / self._rate
             await asyncio.sleep(wait)
-
-
-def classify_side(
-    t_ms: int, prpr: int, askp: int, bidp: int
-) -> tuple[Literal[-1, 0, 1, 2], Literal["inferred", "auction"]]:
-    """Lee-Ready trade direction inference + auction window guard.
-
-    Returns (side, side_source). See Deep Sample Audit §B (Audit-2) and §H (Audit-5).
-    side: -1=sell, 0=mid, 1=buy, 2=auction
-    side_source: "inferred" | "auction"
-    """
-    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
-    h, m = kst.hour, kst.minute
-    in_open_auction = (h == 8 and m >= 50) or (h == 9 and m == 0)
-    in_close_auction = h == 15 and 20 <= m < 30
-    if in_open_auction or in_close_auction:
-        return 2, "auction"
-    if prpr >= askp:
-        return 1, "inferred"
-    if prpr <= bidp:
-        return -1, "inferred"
-    return 0, "inferred"
-
 
 class KisAuthError(RuntimeError):
     """Token issue failed or cool-down breached."""
@@ -362,13 +334,13 @@ class KisClient:
         Normalizes upstream HTTP errors into domain exceptions so callers
         don't have to know about httpx. Without this normalization a
         transient KIS 500 (common per-code) bubbles up as httpx.HTTPStatusError
-        and forces the poller to log a full traceback at `unexpected_error`
+        and forces the caller to log a full traceback at `unexpected_error`
         level, drowning real bugs in noise. Found by /qa: KIS regularly
         returns 500 for codes outside the regular session window — expected,
         not a defect.
 
         Rate limit: passes through ``self._rate_limiter`` so the per-API-key
-        budget is honoured across all callers (poller + backfill). Acquire
+        budget is honoured across all callers (quote + backfill). Acquire
         happens before the HTTP send so token waiters block on the rate
         budget, not on KIS response time.
         """
@@ -389,7 +361,7 @@ class KisClient:
             resp = await self._client.get(path, params=params, headers=headers)
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
-            # 4xx/5xx from KIS — surface as KisApiError so the poller can
+            # 4xx/5xx from KIS — surface as KisApiError so the caller can
             # log it once at WARN/INFO without a full traceback. When KIS
             # ships a JSON body on 5xx (it sometimes does — e.g. session-
             # window or temporarily-suspended-stock cases), preserve the
@@ -427,124 +399,6 @@ class KisClient:
                 raise KisRateLimitError(f"rate limit: {msg1}")
             raise KisApiError(msg_cd=msg_cd, msg1=msg1)
         return body
-
-    # ------------------------------------------------------------------
-    # Task 2.1: fetch_orderbook (FHKST01010200)
-    # ------------------------------------------------------------------
-
-    async def fetch_orderbook(self, code: str) -> KisOrderbook:
-        """Fetch 10-level real-time orderbook for *code* (e.g. '005930')."""
-        body = await self._get(
-            path="/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
-            tr_id="FHKST01010200",
-            params={
-                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
-                "fid_input_iscd": code,
-            },
-        )
-        out1 = body["output1"]
-        asks = [
-            OrderbookLevel(price=int(out1[f"askp{i}"]), qty=int(out1[f"askp_rsqn{i}"]))
-            for i in range(1, 11)
-        ]
-        bids = [
-            OrderbookLevel(price=int(out1[f"bidp{i}"]), qty=int(out1[f"bidp_rsqn{i}"]))
-            for i in range(1, 11)
-        ]
-        return KisOrderbook(
-            code=code,
-            asks=asks,
-            bids=bids,
-            total_ask_qty=int(out1["total_askp_rsqn"]),
-            total_bid_qty=int(out1["total_bidp_rsqn"]),
-            t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
-        )
-
-    # ------------------------------------------------------------------
-    # Task 2.2: fetch_trades (FHPST01060000, inquire-time-itemconclusion)
-    # ------------------------------------------------------------------
-
-    async def fetch_trades(self, code: str) -> list[KisTrade]:
-        """Fetch per-trade history via inquire-time-itemconclusion (FHPST01060000).
-
-        Uses Lee-Ready side classification. Auction window trades get side=2.
-        """
-        body = await self._get(
-            path="/uapi/domestic-stock/v1/quotations/inquire-time-itemconclusion",
-            tr_id="FHPST01060000",
-            params={
-                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
-                "fid_input_iscd": code,
-                "fid_input_hour_1": "153000",
-            },
-        )
-        today_kst = datetime.now(KIS_KST).date()
-        trades: list[KisTrade] = []
-        for row in body["output2"]:
-            hhmmss = row["stck_cntg_hour"]
-            hh = int(hhmmss[:2])
-            mm = int(hhmmss[2:4])
-            ss = int(hhmmss[4:6])
-            dt = datetime(
-                today_kst.year, today_kst.month, today_kst.day,
-                hh, mm, ss, tzinfo=KIS_KST
-            )
-            t_ms = int(dt.timestamp() * 1000)
-            prpr = int(row["stck_prpr"])
-            askp = int(row.get("askp", "0") or "0")
-            bidp = int(row.get("bidp", "0") or "0")
-            side, side_source = classify_side(t_ms, prpr, askp, bidp)
-            trades.append(KisTrade(
-                price=prpr,
-                qty=int(row["cnqn"]),
-                side=side,
-                side_source=side_source,
-                t_ms=t_ms,
-            ))
-        return trades
-
-    # ------------------------------------------------------------------
-    # Task 2.3: fetch_brokers (FHKST01010600)
-    # ------------------------------------------------------------------
-
-    async def fetch_brokers(self, code: str) -> KisBrokers:
-        """Fetch top-5 buy/sell broker breakdown for *code*.
-
-        Broker names are canonicalized at the boundary so the buffer / SSE /
-        JSONL / promoted parquet downstream all see the same canonical KRX
-        member-firm name (see ``hoga.broker_names`` and CONTEXT.md).
-        """
-        from hoga.broker_names import canonical
-
-        body = await self._get(
-            path="/uapi/domestic-stock/v1/quotations/inquire-member",
-            tr_id="FHKST01010600",
-            params={
-                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
-                "fid_input_iscd": code,
-            },
-        )
-        out = body["output"][0]  # KIS returns a 1-element list (Audit-3)
-        buy_top = [
-            KisBrokerEntry(
-                name=canonical(out[f"shnu_mbcr_name{i}"]),
-                qty=int(out[f"total_shnu_qty{i}"]),
-            )
-            for i in range(1, 6)
-        ]
-        sell_top = [
-            KisBrokerEntry(
-                name=canonical(out[f"seln_mbcr_name{i}"]),
-                qty=int(out[f"total_seln_qty{i}"]),
-            )
-            for i in range(1, 6)
-        ]
-        return KisBrokers(code=code, buy_top=buy_top, sell_top=sell_top)
-
-    # ------------------------------------------------------------------
-    # fetch_past_minute_candles (FHKST03010230, 주식일별분봉조회)
-    # ------------------------------------------------------------------
-
     async def fetch_past_minute_candles(self, code: str, date_yyyymmdd: str) -> list[KisCandle]:
         """Fetch 1-minute candles for *code* on *date_yyyymmdd* (KST).
 
@@ -871,99 +725,6 @@ class KisClient:
 
         points.sort(key=lambda p: p.t_ms)
         return InvestorNetFetchResult(points=points, violations=violations)
-
-    # ------------------------------------------------------------------
-    # Task 2.5: fetch_overtime_orderbook (FHPST02300400)
-    # ------------------------------------------------------------------
-
-    async def fetch_overtime_orderbook(self, code: str) -> KisOrderbook:
-        """Fetch 10-level after-hours orderbook for *code* (FHPST02300400)."""
-        body = await self._get(
-            path="/uapi/domestic-stock/v1/quotations/inquire-overtime-asking-price",
-            tr_id="FHPST02300400",
-            params={
-                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
-                "fid_input_iscd": code,
-            },
-        )
-        out = body["output"]  # single dict (not a list)
-        asks = [
-            OrderbookLevel(
-                price=int(out[f"ovtm_untp_askp{i}"]),
-                qty=int(out[f"ovtm_untp_askp_rsqn{i}"]),
-            )
-            for i in range(1, 11)
-        ]
-        bids = [
-            OrderbookLevel(
-                price=int(out[f"ovtm_untp_bidp{i}"]),
-                qty=int(out[f"ovtm_untp_bidp_rsqn{i}"]),
-            )
-            for i in range(1, 11)
-        ]
-        return KisOrderbook(
-            code=code,
-            asks=asks,
-            bids=bids,
-            total_ask_qty=int(out["ovtm_total_askp_rsqn"]),
-            total_bid_qty=int(out["ovtm_total_bidp_rsqn"]),
-            t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
-        )
-
-    # ------------------------------------------------------------------
-    # Task 2.6: fetch_overtime_trades (FHPST02310000)
-    # ------------------------------------------------------------------
-
-    async def fetch_overtime_trades(self, code: str) -> list[KisTrade]:
-        """Fetch after-hours per-trade data for *code* (FHPST02310000).
-
-        If askp/bidp not present in response, defaults side=0 / side_source="inferred".
-        """
-        body = await self._get(
-            path="/uapi/domestic-stock/v1/quotations/inquire-time-overtimeconclusion",
-            tr_id="FHPST02310000",
-            params={
-                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
-                "fid_input_iscd": code,
-                "fid_hour_cls_code": "1",
-            },
-        )
-        today_kst = datetime.now(KIS_KST).date()
-        trades: list[KisTrade] = []
-        for row in body["output2"]:
-            hhmmss = row["stck_cntg_hour"]
-            hh = int(hhmmss[:2])
-            mm = int(hhmmss[2:4])
-            ss = int(hhmmss[4:6])
-            dt = datetime(
-                today_kst.year, today_kst.month, today_kst.day,
-                hh, mm, ss, tzinfo=KIS_KST
-            )
-            t_ms = int(dt.timestamp() * 1000)
-            prpr = int(row["stck_prpr"])
-            askp_str = row.get("askp")
-            bidp_str = row.get("bidp")
-            if askp_str and bidp_str:
-                askp = int(askp_str)
-                bidp = int(bidp_str)
-                side, side_source = classify_side(t_ms, prpr, askp, bidp)
-            else:
-                side: Literal[-1, 0, 1, 2] = 0
-                side_source: Literal["inferred", "auction"] = "inferred"
-            trades.append(KisTrade(
-                price=prpr,
-                qty=int(row["cnqn"]),
-                side=side,
-                side_source=side_source,
-                t_ms=t_ms,
-            ))
-        return trades
-
-
-# ---------------------------------------------------------------------------
-# intstock-multprice helpers (FHKST11300006)
-# ---------------------------------------------------------------------------
-
 _MULTI_PRICE_CHUNK = 30  # intstock-multprice: 최대 30종목/콜 (FHKST11300006)
 
 

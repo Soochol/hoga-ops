@@ -198,7 +198,7 @@ def test_recorded_member_plausible():
 Run: `uv run pytest tests/unit/live/test_ws_frames_recorded.py -v`
 Expected: 녹화 전 SKIP ×3 / 녹화 후 3 passed
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add scripts/record_kis_ws_frames.py tests/fixtures/kis_ws/ tests/unit/live/test_ws_frames_recorded.py
@@ -557,7 +557,7 @@ class SnapshotKind(str, Enum):
 Run: `uv run pytest tests/unit/live/test_snapshot.py -v`
 Expected: all passed (기존 빌더 byte-pin 테스트 포함)
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add hoga/live/snapshot.py tests/unit/live/test_snapshot.py
@@ -774,7 +774,7 @@ class TickDownsampler:
 Run: `uv run pytest tests/unit/live/test_downsampler.py -v`
 Expected: 8 passed
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add hoga/live/downsampler.py tests/unit/live/test_downsampler.py
@@ -857,7 +857,7 @@ async def publish(
 Run: `uv run pytest tests/unit/live/test_buffer.py -v`
 Expected: all passed
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add hoga/live/buffer.py tests/unit/live/test_buffer.py
@@ -971,7 +971,7 @@ Expected: FAIL — `AttributeError: 'KisClient' object has no attribute 'get_app
 Run: `uv run pytest tests/unit/live/test_kis_client.py -v`
 Expected: all passed
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add hoga/live/kis_client.py tests/unit/live/test_kis_client.py
@@ -1876,7 +1876,7 @@ fill_seq = 0
 Run: `uv run pytest tests/unit/live/test_promote.py tests/unit/live/test_promote_today.py -v`
 Expected: all passed (기존 테스트의 `row_counts` 어서션은 dict 전체 비교라면 `"fills": 0` 추가로 보정)
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add hoga/live/promote.py tests/unit/live/test_promote.py
@@ -1937,7 +1937,7 @@ Expected: 신규 1 FAIL (trades 값이 반환됨)
 Run: `uv run pytest tests/unit/api/ -v`
 Expected: all passed
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add hoga/api/bundle.py tests/unit/api/
@@ -2226,26 +2226,26 @@ pastMaxQrT를 전진(spec §6 "경계 우측 전진"의 프론트 구현):
 - Modify: `hoga/live/lifecycle.py` — `start_live_poller`/`stop_live_poller`/`refresh_live_poller`/`_live_watchdog_check`/`start_live_poller_watchdog` 삭제
 - Test: 관련 테스트 파일에서 삭제 대상 케이스 제거 (`tests/unit/live/test_snapshot.py`의 빌더 byte-pin은 ws_frames payload-shape 테스트가 대체)
 
-- [ ] **Step 1: 죽은 참조 전수 조사**
+- [x] **Step 1: 죽은 참조 전수 조사** (2026-06-06 완료)
 
 Run: `grep -rn "poller\|from_orderbook\|from_trades\|from_brokers\|fetch_orderbook\|fetch_trades\|fetch_brokers\|fetch_overtime" hoga/ tests/ --include='*.py' | grep -v session_gate`
 Expected: 삭제 대상 정의·테스트만 출력 (다른 소비자가 나오면 **삭제 보류하고 그 소비자를 먼저 처리**)
 
-- [ ] **Step 2: 삭제 실행 + import 정리**
+- [x] **Step 2: 삭제 실행 + import 정리** (2026-06-06 완료)
 
 위 Files 목록대로 삭제. `session_gate.py`는 이미 분리(Task 7)되어 무사.
 
-- [ ] **Step 3: 전체 테스트**
+- [x] **Step 3: 전체 테스트** — 1283 passed, 1 skipped(녹화 fixture 대기)
 
 Run: `uv run pytest tests/ -x -q`
 Expected: all passed, 0 errors (ImportError 없음)
 
-- [ ] **Step 4: ruff/pyright**
+- [x] **Step 4: ruff/pyright** — 신규 위반 0(base 대비 33건 소멸·고아 import 2건 즉시 수정), pyright 0 errors
 
 Run: `uv run ruff check hoga/ && uv run pyright`
 Expected: clean (미사용 import 잔재 없음)
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add -A
@@ -2253,6 +2253,10 @@ git commit -m "refactor(live)!: retire REST poller (WS replaces capture path)"
 ```
 
 ---
+
+**실행 내역(2026-06-06, 커밋 2개)**:
+- 커밋 ①(45fae95): 리뷰 이월 — _lifecycle_lock(재진입은 _stop_live_stream_locked), _compute_live_set 추출(+refresh dropped 경고), watchlist_count/kis_calls_today 의미 문서화, watchdog PINGPONG-only pin(last_tick_ms=None), watchlist_routes alias·로그 정리. display_ordered_codes는 lifecycle 유지(유일 소비자+Live Set 상수 응집).
+- 커밋 ②: poller.py·test_poller.py 삭제, kis_client fetch 5종+classify_side 삭제(probe는 _get 직접 호출로 교체), snapshot 빌더 3종+kis_models 4모델 삭제, lifecycle poller 5함수+_read_poller_attr+_State 슬롯+get_status 분기 삭제(reset_for_tests는 stream-only로 적응 복원), test_lifecycle_start를 stream 가드 포트 5건으로 재작성, test_kis_rest_methods에서 poller fetch 테스트만 제거(중간 import/헬퍼 복원), 문서성 잔재 4곳 현행화.
 
 ### Task 14: 장중 통합 스모크 + 문서 마감
 

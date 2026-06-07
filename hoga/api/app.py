@@ -107,8 +107,7 @@ def create_app(data_dir: Path) -> FastAPI:
         )
         # Task 11: Start the live WS stream (graceful degradation: no-op if
         # KIS_APP_KEY/SECRET missing or watchlist is empty).
-        # poller path (start_live_poller) retained but no longer wired here —
-        # deletion deferred to Task 13.
+        # REST poller는 Task 13에서 완전 은퇴 — 수집은 WS stream 단독.
         await start_live_stream(data_dir=data_dir)
         # ADR-0064: WS watchdog that restarts the stream if it dies or stops
         # ticking during market hours (defense-in-depth self-heal). Spawned

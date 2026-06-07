@@ -130,7 +130,7 @@ def save_document(data_dir: Path, doc: WatchlistDocument) -> None:
 
 def load_watchlist(data_dir: Path) -> list[WatchlistEntry]:
     """Read-only convenience for callers that only need the entry list
-    (Daily Scheduler, catch-up routes, live poller). Writers MUST use
+    (Daily Scheduler, catch-up routes, live stream). Writers MUST use
     load_document/save_document to preserve folders."""
     return load_document(data_dir).entries
 

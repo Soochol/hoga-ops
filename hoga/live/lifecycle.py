@@ -1,13 +1,10 @@
 """Live Capture lifecycle singleton.
 
-Owns the single in-process LivePoller / LiveStream instance and exposes a
-stable `get_status()` callable for the API layer.
+Owns the single in-process LiveStream instance and exposes a stable
+`get_status()` callable for the API layer.
 
-Lifecycle variants:
-  - ``start_live_poller`` / ``stop_live_poller`` — REST-polling path (retained,
-    deletion deferred to Task 13).
-  - ``start_live_stream`` / ``stop_live_stream`` / ``refresh_live_stream`` —
-    KIS WebSocket path (Task 11, 2026-06-06).
+Lifecycle: ``start_live_stream`` / ``stop_live_stream`` / ``refresh_live_stream``
+— KIS WebSocket path (Task 11; REST poller는 Task 13에서 은퇴, 2026-06-06).
 
 ``get_status()`` is always safe to call and returns defaults before anything
 starts so ``/api/live/status`` works at any time.
@@ -31,7 +28,7 @@ if TYPE_CHECKING:
 
 from pydantic import BaseModel, Field
 
-from . import kis_runtime  # needed by reset_for_tests() + start_live_poller
+from . import kis_runtime  # needed by reset_for_tests() + start_live_stream
 from .buffer import LiveBuffer
 from .promote import promote_today
 
@@ -120,14 +117,11 @@ class LiveStatus(BaseModel):
 
 @dataclass
 class _State:
-    """In-process state of the live poller/stream. Mutated only via this module."""
+    """In-process state of the live stream. Mutated only via this module."""
 
     started_at_ms: int | None = None
     watchlist_codes: tuple[str, ...] = field(default_factory=tuple)
-    # Poller path (retained — Task 13 will delete):
-    poller_task: asyncio.Task | None = None  # type: ignore[type-arg]
-    poller_obj: object | None = None
-    # Stream (WS) path (Task 11):
+    # Stream (WS) path (Task 11; poller 슬롯은 Task 13에서 은퇴):
     stream_task: asyncio.Task | None = None   # type: ignore[type-arg]
     stream_obj: object | None = None          # LiveStream — typed `object` to avoid cycle
     ws_task: asyncio.Task | None = None       # type: ignore[type-arg]
@@ -159,14 +153,14 @@ def get_today_promote_last_ms() -> dict[str, int]:
 
 
 def get_active_codes() -> list[str]:
-    """Return currently active watchlist codes the poller/stream is iterating.
+    """Return currently active Live Set codes the stream is capturing.
 
     Empty list if nothing has started or all stopped.
 
     Contract (eng-review Blocker 2): readers receive a snapshot at call time —
     `_state.watchlist_codes` is read synchronously. `start_today_promoter`
     (ADR-0043) calls this each cycle (every `interval_s` seconds), so
-    watchlist mutations through `start_live_poller`/`start_live_stream`
+    watchlist mutations through `start_live_stream`
     (which rebuild `_state`) propagate immediately to the next cycle —
     no caching, no stale closure.
     """
@@ -184,13 +178,9 @@ def _now_ms() -> int:
 def get_status() -> LiveStatus:
     """Read the current live status. Always safe to call.
 
-    ADR-0064: `running` reflects TASK LIVENESS. Dual-source: stream_task
-    (WS path) takes priority when set; else falls back to poller_task (poller
-    path). This keeps existing poller tests green while the WS path is active
-    in production.
+    ADR-0064: `running` reflects TASK LIVENESS (stream task).
     """
-    # Prefer stream tasks; fall back to poller for backward compat.
-    task = _state.stream_task if _state.stream_task is not None else _state.poller_task
+    task = _state.stream_task
     running = task is not None and not task.done()
 
     # WS-specific attributes (stream path)
@@ -205,36 +195,24 @@ def get_status() -> LiveStatus:
             # 틱 0건이어도 10초마다 갱신되므로 폴백하면 '마지막 데이터 활동'으로
             # 오인된다. 틱이 아직 없으면 정직하게 None (wire 모델은 nullable).
             last_tick_ms = getattr(ws, "last_tick_ms", None)
-    else:
-        # Poller path fallback
-        last_tick_ms = _read_poller_attr("last_tick_ms")
 
     return LiveStatus(
         running=running,
         started_at_ms=_state.started_at_ms,
         last_tick_ms=last_tick_ms,
-        cycle_lag_ms=_read_poller_attr("last_cycle_lag_ms") or 0,
+        cycle_lag_ms=0,  # poller-era — stream에선 무의미(별도 신호: ws_connected/last_recv)
         watchlist_count=len(_state.watchlist_codes),
-        kis_calls_today=_read_poller_attr("kis_calls_today") or 0,
+        kis_calls_today=0,  # poller-era — WS 캡처는 REST 비사용(LiveStatus 주석 참조)
         kis_rate_limit_remaining=None,  # KIS doesn't expose this header
         today_promote_last_ms=get_today_promote_last_ms(),
         transport="ws",
         ws_connected=ws_connected,
         live_set=list(_state.live_set),
     )
-
-
-def _read_poller_attr(name: str) -> int | None:
-    p = _state.poller_obj
-    if p is None:
-        return None
-    return getattr(p, name, None)
-
-
 def reset_for_tests() -> None:
     """Test-only hook. Resets module state without raising."""
     global _state, _buffer  # noqa: PLW0603 — test-only reset of module singletons
-    for task in (_state.poller_task, _state.stream_task, _state.ws_task):
+    for task in (_state.stream_task, _state.ws_task):
         if task is not None and not task.done():
             task.cancel()
     _state = _State()
@@ -291,216 +269,8 @@ async def stop_today_promoter(task: asyncio.Task | None) -> None:
         await task
     except asyncio.CancelledError:
         pass
-
-
-# ── Poller path (retained — deletion deferred to Task 13) ─────────────────────
-
-async def start_live_poller(*, data_dir: Path) -> bool:
-    """Start the Live Capture poller singleton.
-
-    Returns True if started successfully, False if preconditions weren't met
-    (missing KIS creds, empty watchlist). Subsequent calls to get_status()
-    will reflect the running state.
-
-    Idempotent: calling when already running stops the current task and
-    starts a fresh one. Watchlist changes are propagated immediately by
-    ``refresh_live_poller`` (below), which the add/remove watchlist routes
-    call after mutating — that is the auto-restart that was formerly deferred.
-    """
-    from datetime import datetime, timedelta, timezone
-
-    from hoga.api.watchlist import load_watchlist
-
-    from .poller import LivePoller, LivePollerConfig
-    from .writer import LiveWriter
-
-    # Creds-presence policy lives in kis_runtime (ensure_kis_client_from_env
-    # returns None below) — no duplicate os.environ guard here, so creds
-    # resolution can evolve in ONE place without silently disabling the poller.
-
-    entries = load_watchlist(data_dir)
-    codes = [e.code for e in entries]
-    if not codes:
-        return False
-
-    # Filter against the symbol master so codes that aren't (or are no longer)
-    # listed don't reach KIS — those calls 5xx and drown the error log in noise
-    # that masks real failures. Cold cache → fall back to unfiltered polling
-    # rather than silently halt capture for everyone.
-    from hoga.api import symbols as _symbols
-    _known = {h.code for h in _symbols.search("", limit=10_000)}
-    if _known:
-        _dropped = [c for c in codes if c not in _known]
-        if _dropped:
-            _log.warning("live.poller.codes_unknown dropped=%r", _dropped)
-        codes = [c for c in codes if c in _known]
-        if not codes:
-            return False
-
-    # If already running, stop first.
-    await stop_live_poller()
-
-    # Obtain the PROCESS-singleton KisClient (shared 15/s token bucket) via the
-    # single env→creds→path resolver — the same one the screener EOD update and
-    # the /quotes route use. Decoupled from poller start/stop: the singleton is
-    # reused if already set, so a stop→start cycle never creates a 2nd bucket.
-    kis = kis_runtime.ensure_kis_client_from_env(data_dir)
-    if kis is None:  # KIS creds absent — the single gate for this precondition
-        return False
-    writer = LiveWriter(data_dir / "live")
-
-    def _today_kst() -> str:
-        return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
-
-    cfg = LivePollerConfig(codes_fn=lambda: codes, date_fn=_today_kst)
-    poller = LivePoller(kis, writer, cfg, buffer=_buffer)
-
-    # Wire into global state
-    global _state
-    _state = _State(
-        started_at_ms=_now_ms(),
-        watchlist_codes=tuple(codes),
-        poller_task=asyncio.create_task(poller.run_forever(), name="live-poller"),
-        poller_obj=poller,
-    )
-    return True
-
-
-async def refresh_live_poller(*, data_dir: Path) -> None:
-    """Re-sync the running poller to the on-disk watchlist after a mutation.
-
-    Non-empty watchlist → ``start_live_poller`` (idempotent restart that rebuilds
-    ``_state`` from disk and *reuses* the module-global ``_buffer``, preserving
-    accumulated snapshots). Empty watchlist → ``stop_live_poller`` — calling
-    ``start_live_poller`` alone would early-return on the empty check *before* it
-    stops the existing task, leaving a stale poller iterating the old codes.
-
-    Cheap: no awaited network round-trip; ``KisClient`` reuses the on-disk token
-    cache. Off-hours/missing-creds are safe (start no-ops/idle-gates; stop is a
-    no-op when nothing runs).
-    """
-    from hoga.api.watchlist import load_watchlist
-
-    if load_watchlist(data_dir):
-        await start_live_poller(data_dir=data_dir)
-    else:
-        await stop_live_poller()
-
-
-async def stop_live_poller() -> None:
-    """Stop the running poller. No-op if already stopped.
-
-    Does NOT touch the KisClient singleton: the shared 15/s token bucket is a
-    PROCESS singleton (see ``ensure_kis_client``) that must survive a poller
-    stop so the screener's EOD update can reuse it and no second bucket is ever
-    created. The httpx client is closed only at process shutdown, via
-    ``aclose_kis_client`` (wired into the app's lifespan ``finally``).
-    """
-    global _state
-    if _state.poller_task is not None:
-        _state.poller_task.cancel()
-        try:
-            await _state.poller_task
-        except asyncio.CancelledError:
-            pass
-        except Exception:  # noqa: BLE001
-            pass  # don't let a buggy poller block shutdown
-    _state = _State()
-
-
-# ADR-0064 — poller watchdog. Defense-in-depth self-heal: even with the
-# supervised run_forever loop and the honest `running` flag, a poller task that
-# somehow exits (or stops ticking) during market hours must not leave capture
-# silently dead until someone restarts the process. The watchdog restarts it.
 _WATCHDOG_CHECK_INTERVAL_S = 30.0
 _WATCHDOG_STALE_AFTER_MS = 120_000  # ~2 min (≈6 cycles) without a completed tick
-
-
-async def _live_watchdog_check(
-    *, data_dir: Path, now_ms: int, stale_after_ms: int
-) -> bool:
-    """One watchdog pass. Returns True iff it restarted the poller.
-
-    Acts ONLY during market hours (same gate the poller uses). Restarts when:
-      - the poller was started this session but its task is missing/finished
-        (crashed or exited), or
-      - the task is alive but hasn't completed a cycle within ``stale_after_ms``
-        (and the startup grace window has elapsed) — "running but not working".
-
-    No-op off-hours, and no-op when the poller was never started this session
-    (e.g. empty watchlist / missing creds) — restarting then would just
-    re-hit the same precondition.
-    """
-    from datetime import datetime
-
-    from .kis_client import KIS_KST
-    from .poller import _should_poll_now
-
-    if not _should_poll_now(now_ms):
-        return False
-    started = _state.started_at_ms
-    if started is None:
-        return False
-
-    task = _state.poller_task
-    dead = task is None or task.done()
-
-    # Staleness is measured from TODAY's session open, not from poller start.
-    # A server running since before 09:00 carries yesterday's last_tick (set at
-    # ~15:59 close) across the boundary; measuring grace from `started` would
-    # flag it stale the instant the gate opens and restart the poller mid-opening
-    # cycle — destroying the opening data that fix ① exists to protect. So the
-    # grace clock starts at max(start, session-open), and a last_tick from BEFORE
-    # today's open does not count as fresh.
-    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
-    session_open_ms = int(
-        kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
-    )
-    ref_ms = max(started, session_open_ms)
-    last_tick = _read_poller_attr("last_tick_ms")
-    grace_elapsed = (now_ms - ref_ms) > stale_after_ms
-    tick_fresh = (
-        last_tick is not None
-        and last_tick >= session_open_ms
-        and (now_ms - last_tick) <= stale_after_ms
-    )
-    stale = (not dead) and grace_elapsed and (not tick_fresh)
-    if dead or stale:
-        _log.warning(
-            "live.poller.watchdog_restart dead=%s stale=%s last_tick_ms=%s",
-            dead, stale, last_tick,
-        )
-        await start_live_poller(data_dir=data_dir)
-        return True
-    return False
-
-
-async def start_live_poller_watchdog(
-    *,
-    data_dir: Path,
-    check_interval_s: float = _WATCHDOG_CHECK_INTERVAL_S,
-    stale_after_ms: int = _WATCHDOG_STALE_AFTER_MS,
-) -> asyncio.Task:
-    """Spawn the poller watchdog loop (ADR-0064). Caller (lifespan) cancels it
-    on shutdown. The loop is self-supervised — a bad pass logs and continues."""
-
-    async def loop() -> None:
-        while True:
-            try:
-                await _live_watchdog_check(
-                    data_dir=data_dir,
-                    now_ms=_now_ms(),
-                    stale_after_ms=stale_after_ms,
-                )
-            except Exception:  # noqa: BLE001 — watchdog must outlive any single pass
-                _log.exception("live.poller.watchdog_cycle_failed")
-            await asyncio.sleep(check_interval_s)
-
-    return asyncio.create_task(loop(), name="live-poller-watchdog")
-
-
-# ── Stream (WS) path — Task 11 ─────────────────────────────────────────────────
-
 async def start_live_stream(*, data_dir: Path) -> bool:
     """start_live_poller의 WS 대체 — 구조 동일(creds/watchlist 가드 → 기동).
 

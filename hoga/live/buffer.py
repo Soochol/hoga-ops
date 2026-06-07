@@ -1,6 +1,6 @@
 """In-memory ring buffer for live snapshots (Stage 7-β).
 
-The poller publishes per-cycle snapshots here; the /api/live/snapshot and
+The live stream publishes ticks/snapshots here; the /api/live/snapshot and
 /api/live/series endpoints read from it. ADR-0038: buffer.py is hot-path,
 no Parquet imports.
 
