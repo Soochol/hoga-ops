@@ -59,6 +59,33 @@ describe('LiveSnapshotBuffer', () => {
     expect(buf.get('ob').map((e) => e.t_ms)).toEqual([fresh.t_ms]);
   });
 
+  it('retains an entry exactly at the cutoff (strict <, off-by-one lock vs backend)', () => {
+    // cutoff = nowMs - 15min. evictOld drops only t_ms STRICTLY < cutoff, so the
+    // boundary entry survives — must stay in lockstep with backend buffer.py's
+    // `while d and d[0]["t_ms"] < cutoff`. A `<=` here would silently drop the
+    // seam-boundary bucket and reopen the hole at exactly pastMaxQrT+window.
+    const buf = new LiveSnapshotBuffer();
+    const fifteenMin = 15 * 60_000;
+    const atCutoff = { t_ms: 1_000, kind: 'ob' };
+    const fresh = { t_ms: 1_000 + fifteenMin, kind: 'ob' }; // cutoff === atCutoff.t_ms
+    buf.push(atCutoff);
+    buf.push(fresh);
+    expect(buf.get('ob').map((e) => e.t_ms)).toEqual([atCutoff.t_ms, fresh.t_ms]);
+  });
+
+  it('never drops a newer-than-cutoff entry on a retrograde t_ms push (fail-safe)', () => {
+    // If a stale tick arrives out of order (t_ms going backwards), evictOld uses
+    // the OLDER incoming t_ms as `now`, which moves the cutoff EARLIER. The guard
+    // is fail-safe: it can only over-retain, never evict a within-window entry.
+    const buf = new LiveSnapshotBuffer();
+    const recent = { t_ms: 20 * 60_000, kind: 'ob' };
+    const retrograde = { t_ms: 1_000, kind: 'ob' }; // far older than `recent`
+    buf.push(recent);
+    buf.push(retrograde);
+    // recent is newer than the retrograde push's cutoff → must remain.
+    expect(buf.get('ob').map((e) => e.t_ms)).toContain(recent.t_ms);
+  });
+
   it('get returns a frozen, stable reference until the kind is mutated', () => {
     const buf = new LiveSnapshotBuffer();
     buf.push({ t_ms: 1, kind: 'ob' });

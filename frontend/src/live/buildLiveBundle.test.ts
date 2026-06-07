@@ -261,6 +261,42 @@ describe('buildLiveBundle dedup (ADR-0043 plan Task 9)', () => {
     expect(bundle.quote_ratio.points.find((p) => p.t === pastTailT)?.bid_total).toBe(1000);
   });
 
+  it('advancing pastMaxQrT shrinks the incremental set with no gap or overlap (review C1)', () => {
+    // Models the 5-min /api/range refetch advancing the today seam: the same SSE
+    // tail merged against an OLD pastMaxQrT (only the first bucket is past) vs an
+    // ADVANCED pastMaxQrT (past now covers the second bucket too). The advanced
+    // boundary must take the bucket from `past` and drop it from incremental —
+    // exactly one source per t, contiguous, no hole. Locks that the strict-`>`
+    // dedup is correct at a non-zero AND a moved boundary.
+    const t0 = 1779926400000; // 5/28 09:00 KST
+    const t1 = t0 + 60_000;
+    const sseOb = [
+      { t_ms: t0 + 1000, total_bid_qty: 100, total_ask_qty: 200 },
+      { t_ms: t1 + 1000, total_bid_qty: 110, total_ask_qty: 210 },
+    ];
+    const build = (past: RangeBundle) =>
+      buildLiveBundle({
+        code: '003490', todayDate, todaySession,
+        pastBundle: past, sseOb, sseTrade: [], kisCandles: [], bucketMs: MINUTE_MS,
+      }).quote_ratio.points;
+
+    // Before refetch: past tail at t0, so t1 is incremental (from SSE).
+    const before = build(makeRangeBundle([{ t: t0, bid_total: 1, ask_total: 1 }]));
+    expect(before.map((p) => p.t)).toEqual([t0, t1]);
+    expect(before.find((p) => p.t === t1)?.bid_total).toBe(110); // SSE value
+
+    // After refetch: past tail advanced to t1 (disk promoted t1). t1 now comes
+    // from past, not SSE — no duplicate, no gap.
+    const after = build(
+      makeRangeBundle([
+        { t: t0, bid_total: 1, ask_total: 1 },
+        { t: t1, bid_total: 999, ask_total: 999 }, // promoted disk value
+      ]),
+    );
+    expect(after.map((p) => p.t)).toEqual([t0, t1]);
+    expect(after.find((p) => p.t === t1)?.bid_total).toBe(999); // past wins
+  });
+
   it('uses all SSE buckets when past bundle is empty', () => {
     const sseOb = [
       { t_ms: 1779926401000, total_bid_qty: 100, total_ask_qty: 200 },

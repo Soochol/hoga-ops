@@ -1,9 +1,15 @@
 /**
  * In-memory ring buffer for live snapshots arriving over SSE.
  *
- * Mirrors backend's LiveBuffer cap (Eng C5 / spec §10): each kind capped at
- * MAX_BUFFER_PER_KIND. At 10s polling that's ~7 hours of regular session
- * plus 30 min after-hours — comfortably covers a full Live Session.
+ * Sizing mirrors backend LiveBuffer (buffer.py): a 15-min sliding time window
+ * (RETENTION_MS) is the real bound; the count cap (MAX_BUFFER_PER_KIND) is only
+ * a runaway safety-pin. The 15-min window is NOT for "covering a whole session"
+ * — it exists to bridge the today-indicator seam: buildLiveBundle stitches
+ * [/api/range past (≤pastMaxQrT)] + [this buffer's incremental (>pastMaxQrT)],
+ * and /api/range refetches every 5 min (Today Promotion cadence, range.ts) to
+ * advance pastMaxQrT. The buffer must cover the worst-case lag of pastMaxQrT
+ * behind now — promotion_period + refetch_period ≈ 10min; 15min > 10min with
+ * margin, so the seam never opens a hole (spec §8 봉합 사이징 불변식 / review C1).
  *
  * Pure class (no React) so it can be tested without rendering. The React
  * wrapper lives in `liveSeries.ts`.
@@ -66,6 +72,10 @@ export class LiveSnapshotBuffer {
     // Time-based eviction: drop entries older than RETENTION_MS relative to
     // the incoming entry. Array is t_ms-ascending (append-only), so a prefix
     // scan suffices — same assumption as backend LiveBuffer.
+    // Quiet-kind caveat (mirrors buffer.py:138 drop_codes_except): eviction is
+    // driven by THIS kind's pushes, so a kind that stops ticking keeps its tail
+    // until its next push — a fail-safe over-retention bounded by the 60k
+    // count-cap pin, never an under-retention (no seam risk).
     evictOld(arr, entry.t_ms);
     if (arr.length > MAX_BUFFER_PER_KIND) {
       // FIFO count cap — safety-pin against runaway growth if time eviction
