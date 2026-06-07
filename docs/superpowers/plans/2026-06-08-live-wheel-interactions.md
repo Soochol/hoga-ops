@@ -459,12 +459,18 @@ Expected: PASS — 전체 스위트 통과 (e2e는 `vite.config.ts`의 exclude�
 Run: `npx tsc -b`
 Expected: 출력 없이 종료 코드 0
 
-- [ ] **Step 3: lint**
+- [ ] **Step 3: lint (변경 파일 스코프)**
 
-Run: `npm run lint`
-Expected: 에러 0 — 특히 `useWheelInteractions.ts`의 effect deps에서
-`react-hooks/exhaustive-deps` 경고가 없어야 한다 (deps `[chart, containerRef]`가
-이를 충족한다; `[chart]`만 쓰면 경고 발생)
+리포 전체에는 이번 작업과 무관한 기존 lint 에러가 다수 있으므로(Task 1+2 품질
+리뷰에서 167건 확인) 게이트는 **이번 플랜이 만들거나 수정한 파일로 한정**한다:
+
+Run: `npx eslint src/live/useWheelInteractions.ts src/live/useWheelInteractions.test.tsx src/live/LiveChartRoot.tsx src/live/LiveChartRoot.test.tsx`
+Expected: 이 4개 파일에서 에러·경고 0 — 특히 `useWheelInteractions.ts`의 effect
+deps에서 `react-hooks/exhaustive-deps` 경고가 없어야 한다 (deps
+`[chart, containerRef]`가 이를 충족한다; `[chart]`만 쓰면 경고 발생).
+단, `LiveChartRoot.tsx`에 이번 변경 **이전부터** 존재하던 에러는 게이트 실패로
+보지 않는다 (기준: `git stash` 후 같은 명령으로 비교하거나, 에러 라인이 이번
+diff 밖인지 확인).
 
 - [ ] **Step 4: 게이트에서 수정이 나왔다면 커밋**
 
