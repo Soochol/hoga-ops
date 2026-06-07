@@ -43,6 +43,17 @@ brainstorming 대화에서 확정한 결정들:
    `[chart, bundle]` 의존 재부착 안은 /live에 부적합 — /live는 SSE 푸시마다
    bundle이 교체되므로 초 단위 리스너 churn이 생긴다).
 
+grill 리뷰(스펙 심문)에서 추가 확정:
+
+5. **줌인 UX 캡 없음** — lwc 5.2가 줌인을 내장 `maxBarSpacing` 상한(옵션 미설정
+   시 차트 폭의 절반)으로 이미 클램프하므로 발산 위험이 없고, "캔들 최대 50px"
+   류의 UX 캡(`timeScale: { maxBarSpacing: 50 }` 한 줄)은 달지 않는다 — 현행
+   /live 동작과의 파리티 우선.
+6. **D/W/M 파리티 수용** — 백필 분봉 한정·초기 일봉 확장의 fitContent 1회 스냅
+   특성(아래 엣지 케이스)을 이번 범위에서 고치지 않는다.
+7. **Live Edge·Right Wall 용어를 CONTEXT.md에 등재** — 스펙 3건과 코드 주석에서
+   반복 사용되는 개념의 정식화.
+
 ## Invariants
 
 - **Mouse-anchor ratio preservation (ctrl/cmd 줌)**: 줌 전후로 앵커의 화면 비율
@@ -102,8 +113,10 @@ brainstorming 대화에서 확정한 결정들:
 - 수직(가격축) 휠 스크롤 없음.
 - modifier 매핑 사용자 설정 없음.
 - 줌인 캡(barSpacing 상한) 추가 없음 — 리플레이 ChartStage에 있던 `barSpacing > 50`
-  캡은 /live에 원래 없고, 이번 범위에도 넣지 않는다(YAGNI). 극단 줌아웃은
-  라이브러리 `minBarSpacing` 클램프가 받치고, 줌인 과다는 휠로 복구 가능.
+  캡은 /live에 원래 없고, 이번 범위에도 넣지 않는다(grill 결정 #5). 극단 줌은
+  양방향 모두 라이브러리가 받친다: 줌아웃은 `minBarSpacing`, 줌인은 내장
+  `maxBarSpacing` 상한(옵션 미설정 시 차트 폭의 절반)으로 클램프되어 발산하지
+  않는다 (lwc 5.2 `_private__correctBarSpacing` 확인).
 - `useViewportBackfill`·초기 뷰 effect 로직 변경 없음.
 
 ## Design
@@ -250,6 +263,17 @@ useEffect(() => {
   소스를 유지하고, 특정 플랫폼에서 shift+휠이 죽는 것이 확인되면 그때 `deltaX`
   폴백을 추가한다(선제 대응 안 함). 해당 케이스에서도 라이브러리 deltaX 팬(벽
   없음)이 동작하므로 완전히 죽지는 않는다. 폴백 추가 시의 제약은 Risks 참조.
+- **D/W/M (캘린더 타임프레임)**: 휠 세 분기는 동일하게 동작하지만 두 제약이
+  있다(grill 결정 #6 — 파리티 수용, 이번 범위에서 고치지 않음): ① 뷰포트 백필은
+  분봉 한정(`useViewportBackfill.ts`의 `isMinuteTimeframe` 게이트)이라 D/W/M에서
+  줌아웃/좌측 팬해도 과거 데이터를 추가 fetch하지 않고 로드된 범위 왼쪽은 빈
+  공간이다. ② 초기 로드 직후 일봉 확장(14→~250개)이 도착하면 D/W/M 분기의
+  `fitContent()` 재적용이 그 사이 휠로 만든 뷰포트를 1회 스냅할 수 있다. 둘 다
+  현재 라이브러리 줌과 동일한 기존 특성이다.
+- **오버레이 위 휠**: 차트 위 오버레이는 기본 `pointer-events: none`이고
+  DrawingOverlay만 도구 활성/드로잉 히트 시 `auto`로 전환되는데, 그 순간의 휠은
+  우리 리스너와 라이브러리 리스너(둘 다 `containerRef` 내부)를 **동등하게**
+  비켜간다 — 정확한 파리티, 별도 처리 없음.
 
 ## Testing
 
@@ -322,7 +346,8 @@ dev 서버(:5173) + `/browse` 스킬로 확인:
 
 ## Out of Scope (Backlog)
 
-- 줌인 캡(barSpacing 상한) — 리플레이 ChartStage에 있던 `> 50` 캡의 /live 이식.
+- 줌인 UX 캡 — 원하면 lwc 옵션 한 줄(`timeScale: { maxBarSpacing: 50 }`)로 충분
+  (리플레이 ChartStage의 커스텀 구독 캡 이식 불필요 — lwc 5.2 내장 클램프 확인).
 - 터치(모바일) 제스처 정책.
 - modifier 매핑 사용자 설정.
 - `maxTo` 공급원을 이벤트 시점 `ts.timeToIndex(마지막 캔들 virtual time, true)`로
