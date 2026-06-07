@@ -81,7 +81,7 @@ def _compute_live_set(data_dir: Path) -> list[str]:
 
 
 def live_set_codes(doc: WatchlistDocument) -> list[str]:
-    """Live Set = 패널 표시 순서 상위 13 (CONTEXT.md 'Live Set', 그릴링 Q3 + 2026-06-06 개정)."""
+    """Live Set = 패널 표시 순서 상위 13 (테스트 전용 헬퍼 — 실경로는 _compute_live_set) (CONTEXT.md 'Live Set', 그릴링 Q3 + 2026-06-06 개정)."""
     return display_ordered_codes(doc)[:LIVE_SET_MAX_CODES]
 
 

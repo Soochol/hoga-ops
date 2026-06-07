@@ -216,7 +216,7 @@ git commit -m "chore(live): record KIS WS frame fixtures + replay plausibility t
 - Create: `hoga/live/ws_frames.py`
 - Test: `tests/unit/live/test_ws_frames.py`
 
-- [ ] **Step 1: 필드 인덱스 상수 작성** (`hoga/live/ws_fields.py`)
+- [x] **Step 1: 필드 인덱스 상수 작성** (`hoga/live/ws_fields.py`)
 
 ```python
 """KIS WS TR별 필드 인덱스 — 공식 샘플(koreainvestment/open-trading-api
@@ -255,7 +255,7 @@ MBC_BUY_QTYS = range(16, 21)
 MBC_MIN_FIELDS = 21
 ```
 
-- [ ] **Step 2: 실패하는 파서 테스트 작성** (`tests/unit/live/test_ws_frames.py`)
+- [x] **Step 2: 실패하는 파서 테스트 작성** (`tests/unit/live/test_ws_frames.py`)
 
 합성 fixture는 본 문서 상단의 검증된 인덱스로 구성한다. Task 0 녹화본이 생기면 같은 테스트 클래스에 파일 로드 케이스를 추가.
 
@@ -351,12 +351,12 @@ def test_parse_control_pingpong():
     assert out == []  # 컨트롤은 빈 리스트 — 클라이언트가 raw로 직접 echo 판단
 ```
 
-- [ ] **Step 3: 실패 확인**
+- [x] **Step 3: 실패 확인**
 
 Run: `uv run pytest tests/unit/live/test_ws_frames.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'hoga.live.ws_frames'`
 
-- [ ] **Step 4: 파서 구현** (`hoga/live/ws_frames.py`)
+- [x] **Step 4: 파서 구현** (`hoga/live/ws_frames.py`)
 
 ```python
 """KIS WS 프레임 → Live Tick 순수 파서. I/O 없음 — fixture로 완전 테스트 가능.
@@ -490,7 +490,7 @@ def _parse_member(f: list[str], *, now_ms: int) -> list[WsTick]:
     return [WsTick(code=code, t_ms=now_ms, kind=SnapshotKind.BROKER, payload=payload)]
 ```
 
-- [ ] **Step 5: 통과 확인 + 커밋**
+- [x] **Step 5: 통과 확인 + 커밋**
 
 Run: `uv run pytest tests/unit/live/test_ws_frames.py -v`
 Expected: 5 passed
@@ -508,7 +508,7 @@ git commit -m "feat(live): KIS WS frame parser (H0STASP0/H0STCNT0/H0STMBC0)"
 - Modify: `hoga/live/snapshot.py` (enum은 21-26행, 빌더들 아래에 추가)
 - Test: `tests/unit/live/test_snapshot.py` (기존 파일에 추가)
 
-- [ ] **Step 1: 실패하는 테스트 추가**
+- [x] **Step 1: 실패하는 테스트 추가**
 
 ```python
 def test_from_fill_payload_shape():
@@ -521,12 +521,12 @@ def test_from_fill_payload_shape():
     assert '"kind": "fill"' in s.to_jsonl()
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `uv run pytest tests/unit/live/test_snapshot.py::test_from_fill_payload_shape -v`
 Expected: FAIL — `AttributeError: FILL`
 
-- [ ] **Step 3: 구현** (snapshot.py)
+- [x] **Step 3: 구현** (snapshot.py)
 
 ```python
 class SnapshotKind(str, Enum):
@@ -552,7 +552,7 @@ class SnapshotKind(str, Enum):
         )
 ```
 
-- [ ] **Step 4: 통과 확인 + 전체 스냅샷 테스트**
+- [x] **Step 4: 통과 확인 + 전체 스냅샷 테스트**
 
 Run: `uv run pytest tests/unit/live/test_snapshot.py -v`
 Expected: all passed (기존 빌더 byte-pin 테스트 포함)
@@ -574,7 +574,7 @@ git commit -m "feat(live): SnapshotKind.FILL + from_fill builder"
 - Create: `hoga/live/downsampler.py`
 - Test: `tests/unit/live/test_downsampler.py`
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [x] **Step 1: 실패하는 테스트 작성**
 
 ```python
 from hoga.live.downsampler import TickDownsampler
@@ -681,12 +681,12 @@ def test_multi_code_sums_are_isolated():
     assert (f2.payload["buy_qty"], f2.payload["sell_qty"]) == (0, 7)
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `uv run pytest tests/unit/live/test_downsampler.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'hoga.live.downsampler'`
 
-- [ ] **Step 3: 구현** (`hoga/live/downsampler.py`)
+- [x] **Step 3: 구현** (`hoga/live/downsampler.py`)
 
 ```python
 """Live Tick → 10초 Live Snapshot 다운샘플러 (spec §5.3 · §8).
@@ -769,7 +769,7 @@ class TickDownsampler:
         return out
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `uv run pytest tests/unit/live/test_downsampler.py -v`
 Expected: 8 passed
@@ -791,7 +791,7 @@ git commit -m "feat(live): 10s tick downsampler (state last-wins, flow sum, side
 - Modify: `hoga/live/buffer.py` (23행 `MAX_BUFFER_ENTRIES`, 60-88행 `publish`)
 - Test: `tests/unit/live/test_buffer.py` (추가)
 
-- [ ] **Step 1: 실패하는 테스트 추가**
+- [x] **Step 1: 실패하는 테스트 추가**
 
 ```python
 async def test_publish_evicts_by_time():
@@ -805,12 +805,12 @@ async def test_publish_evicts_by_time():
     assert 1_000 not in t_list and 2_000_000 in t_list
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `uv run pytest tests/unit/live/test_buffer.py::test_publish_evicts_by_time -v`
 Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'retention_ms'`
 
-- [ ] **Step 3: 구현** — buffer.py 변경점
+- [x] **Step 3: 구현** — buffer.py 변경점
 
 ```python
 # 상수 교체 (기존 MAX_BUFFER_ENTRIES = 2520):
@@ -852,7 +852,7 @@ async def publish(
 
 `import time`을 파일 상단에 추가. `LiveBuffer()` 생성 지점(lifecycle.py의 `_buffer` 모듈 전역)은 기본값이라 무변경.
 
-- [ ] **Step 4: 통과 + 기존 버퍼 테스트 회귀 확인**
+- [x] **Step 4: 통과 + 기존 버퍼 테스트 회귀 확인**
 
 Run: `uv run pytest tests/unit/live/test_buffer.py -v`
 Expected: all passed
@@ -872,7 +872,7 @@ git commit -m "feat(live): time-based LiveBuffer eviction (stitch sizing invaria
 - Modify: `hoga/live/kis_client.py` (242-270행 생성자 아래 메서드 추가)
 - Test: `tests/unit/live/test_kis_client.py` (추가)
 
-- [ ] **Step 1: 실패하는 테스트 추가** (기존 MockTransport 패턴 재사용)
+- [x] **Step 1: 실패하는 테스트 추가** (기존 MockTransport 패턴 재사용)
 
 ```python
 async def test_get_approval_key(tmp_path):
@@ -926,12 +926,12 @@ async def test_get_approval_key_non_200_raises_with_status(tmp_path):
     assert "HTTP 403" in str(exc_info.value)
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `uv run pytest tests/unit/live/test_kis_client.py::test_get_approval_key -v`
 Expected: FAIL — `AttributeError: 'KisClient' object has no attribute 'get_approval_key'`
 
-- [ ] **Step 3: 구현** (kis_client.py — `get_access_token` 아래)
+- [x] **Step 3: 구현** (kis_client.py — `get_access_token` 아래)
 
 ```python
     async def get_approval_key(self) -> str:
@@ -966,7 +966,7 @@ Expected: FAIL — `AttributeError: 'KisClient' object has no attribute 'get_app
 루프의 `err=%r` 로그가 운영 진단의 전부이므로 상태코드/본문을 메시지에 싣는다.
 `headers={"content-type": ...}`는 httpx가 `json=`으로 자동 설정하므로 생략.)
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `uv run pytest tests/unit/live/test_kis_client.py -v`
 Expected: all passed
@@ -987,12 +987,12 @@ git commit -m "feat(live): KisClient.get_approval_key for WS handshake"
 - Test: `tests/unit/live/test_ws_client.py`
 - Modify: `pyproject.toml` (의존성)
 
-- [ ] **Step 1: 의존성 추가**
+- [x] **Step 1: 의존성 추가**
 
 Run: `uv add websockets`
 Expected: pyproject.toml `[project] dependencies`에 `websockets>=...` 추가됨. (`uv run python -c "import websockets"` 통과.)
 
-- [ ] **Step 2: 실패하는 테스트 작성** — 가짜 ws 주입(덕 타이핑)
+- [x] **Step 2: 실패하는 테스트 작성** — 가짜 ws 주입(덕 타이핑)
 
 ```python
 import asyncio
@@ -1140,12 +1140,12 @@ async def test_run_does_not_connect_while_gate_closed(monkeypatch):
         await task
 ```
 
-- [ ] **Step 3: 실패 확인**
+- [x] **Step 3: 실패 확인**
 
 Run: `uv run pytest tests/unit/live/test_ws_client.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'hoga.live.ws_client'`
 
-- [ ] **Step 4: 구현** (`hoga/live/ws_client.py`)
+- [x] **Step 4: 구현** (`hoga/live/ws_client.py`)
 
 ```python
 """KIS WebSocket 클라이언트 — 연결·구독·PINGPONG·백오프 재연결 (spec §7).
@@ -1294,7 +1294,7 @@ class KisWsClient:
                               tr_id, str(msg.get("body", {}))[:200])
 ```
 
-- [ ] **Step 5: 통과 확인 + 커밋**
+- [x] **Step 5: 통과 확인 + 커밋**
 
 Run: `uv run pytest tests/unit/live/test_ws_client.py -v`
 Expected: 5 passed
@@ -1313,7 +1313,7 @@ git commit -m "feat(live): KIS WS client (subscribe/PINGPONG/backoff-reconnect)"
 - Create: `hoga/live/stream.py`
 - Test: `tests/unit/live/test_stream.py`
 
-- [ ] **Step 1: session_gate 이동(리팩터)**
+- [x] **Step 1: session_gate 이동(리팩터)**
 
 `hoga/live/session_gate.py` 신설 — poller.py의 `_market_phase`(34-50행)와 `_should_poll_now` 본문을 **그대로 옮기고** 공개 이름 부여:
 
@@ -1349,7 +1349,7 @@ git add hoga/live/session_gate.py hoga/live/poller.py
 git commit -m "refactor(live): extract session gate from poller (pre-retirement)"
 ```
 
-- [ ] **Step 2: 실패하는 LiveStream 테스트 작성**
+- [x] **Step 2: 실패하는 LiveStream 테스트 작성**
 
 ```python
 """Unit tests for LiveStream orchestrator."""
@@ -1497,12 +1497,12 @@ async def test_flush_date_change_resets_stale_state(tmp_path):
     assert not (tmp_path / "live" / "20260606" / "005930.jsonl").exists()
 ```
 
-- [ ] **Step 3: 실패 확인**
+- [x] **Step 3: 실패 확인**
 
 Run: `uv run pytest tests/unit/live/test_stream.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'hoga.live.stream'`
 
-- [ ] **Step 4: 구현** (`hoga/live/stream.py`)
+- [x] **Step 4: 구현** (`hoga/live/stream.py`)
 
 ```python
 """LiveStream — WS 수집 오케스트레이터 (spec §6·§7).
@@ -1641,7 +1641,7 @@ on_tick이 무게이트로 ingest를 계속해 합이 더 자람. 닫는 수단�
 **drain flush**(벡터 1의 좌초 합을 마감 당일 날짜로 비움), 직후 **reset**(벡터 2의
 carry 소멸). 표시 경로(buffer.publish)는 §11대로 무게이트 유지 — 게이트는 저장만.
 
-- [ ] **Step 5: 통과 확인 + 커밋**
+- [x] **Step 5: 통과 확인 + 커밋**
 
 Run: `uv run pytest tests/unit/live/test_stream.py -v`
 Expected: 3 passed
@@ -1659,7 +1659,7 @@ git commit -m "feat(live): LiveStream orchestrator (per-tick publish + 10s JSONL
 - Create: `hoga/tables/fills.py` (`hoga/tables/trades.py`의 스키마/writer/query 패턴을 그대로 미러)
 - Test: `tests/unit/tables/test_fills.py`
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [x] **Step 1: 실패하는 테스트 작성**
 
 ```python
 from pathlib import Path
@@ -1690,12 +1690,12 @@ def test_roundtrip_and_bucket_reaggregation(tmp_path: Path):
 
 (첫 어서션의 `32_400_000 // 1`은 09:00의 ms-from-midnight 값 — `trades.query_fill_strength`와 동일하게 `hhmmssms_to_intra_ms_sql`로 선형화 후 버킷.)
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `uv run pytest tests/unit/tables/test_fills.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'hoga.tables.fills'`
 
-- [ ] **Step 3: 구현** (`hoga/tables/fills.py`)
+- [x] **Step 3: 구현** (`hoga/tables/fills.py`)
 
 ```python
 """fills 테이블 — 10초 체결강도 구간합 (그릴링 Q4, spec §8).
@@ -1765,7 +1765,7 @@ def query_fill_strength(
 
 (`write_trades_parquet`가 별도 atomic 헬퍼/옵션을 쓰면 그 형식을 그대로 따른다 — Step 3 시작 전에 `hoga/tables/trades.py`의 writer를 열어 동일 패턴으로 맞출 것. 원자 쓰기는 테이블 writer가 소유한다(`hoga/api/_atomic_write.py`의 `atomic_write_parquet_table` 계약: "Use from `hoga.tables.*.write_parquet` so today_promoter's overwrite during a polling cycle never leaves a partial file visible to readers") — `atomic_write_parquet_table`을 사용할 것. promote의 `_atomic_write_table`은 빈-삭제 브리지일 뿐, 원자성을 책임지지 않는다.)
 
-- [ ] **Step 4: 통과 확인 + 커밋**
+- [x] **Step 4: 통과 확인 + 커밋**
 
 Run: `uv run pytest tests/unit/tables/test_fills.py -v`
 Expected: 1 passed
@@ -1783,7 +1783,7 @@ git commit -m "feat(tables): fills.parquet (10s fill-strength sums) + bucket rea
 - Modify: `hoga/live/promote.py` — `_parse_jsonl_to_records`(48-204행), `_build_meta`(207-223행), `promote_today`(231-299행)와 `promote_one`의 쓰기 블록
 - Test: `tests/unit/live/test_promote.py` (추가)
 
-- [ ] **Step 1: 실패하는 테스트 추가** (기존 `test_promote_one_writes_parquet_and_meta` 패턴)
+- [x] **Step 1: 실패하는 테스트 추가** (기존 `test_promote_one_writes_parquet_and_meta` 패턴)
 
 ```python
 async def test_promote_writes_fills_parquet_only_when_fill_lines_exist(tmp_path: Path):
@@ -1830,12 +1830,12 @@ async def test_promote_legacy_jsonl_without_fill_writes_no_fills_parquet(tmp_pat
     assert (target / "trades.parquet").exists()
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `uv run pytest tests/unit/live/test_promote.py -k fill -v`
 Expected: 2 FAIL (`KeyError: 'fills'` / fills.parquet 미생성)
 
-- [ ] **Step 3: 구현** — promote.py 변경점 4곳
+- [x] **Step 3: 구현** — promote.py 변경점 4곳
 
 ```python
 # (a) import 추가
@@ -1871,7 +1871,7 @@ fill_seq = 0
 
 호출부( `_parse_jsonl_to_records`를 부르는 promote_one/promote_today의 언패킹)도 5-튜플로 맞춘다.
 
-- [ ] **Step 4: 통과 + 기존 promote 테스트 회귀**
+- [x] **Step 4: 통과 + 기존 promote 테스트 회귀**
 
 Run: `uv run pytest tests/unit/live/test_promote.py tests/unit/live/test_promote_today.py -v`
 Expected: all passed (기존 테스트의 `row_counts` 어서션은 dict 전체 비교라면 `"fills": 0` 추가로 보정)
@@ -1891,7 +1891,7 @@ git commit -m "feat(live): promote kind=fill -> fills.parquet (skip when absent)
 - Modify: `hoga/api/bundle.py` — `build_fill_strength_slice`(279-296행)
 - Test: `tests/unit/api/test_bundle.py` (해당 테스트 파일 위치는 `grep -rn "build_fill_strength_slice" tests/`로 확인 후 같은 파일에 추가)
 
-- [ ] **Step 1: 실패하는 테스트 추가**
+- [x] **Step 1: 실패하는 테스트 추가**
 
 ```python
 def test_fill_strength_prefers_fills_parquet(tmp_path, ...):
@@ -1903,12 +1903,12 @@ def test_fill_strength_prefers_fills_parquet(tmp_path, ...):
 
 (기존 `build_fill_strength_slice` 테스트의 fixture 헬퍼 — engine/parquet_dir 구성 — 를 그대로 재사용해 fills.parquet만 추가로 쓴다. `write_fills_parquet`로 `Fill(ts_ms=90000000, seq=1, buy_qty=15, sell_qty=5)` 1장.)
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `uv run pytest tests/unit/api/ -k fill_strength -v`
 Expected: 신규 1 FAIL (trades 값이 반환됨)
 
-- [ ] **Step 3: 구현** — bundle.py 292-296행 교체
+- [x] **Step 3: 구현** — bundle.py 292-296행 교체
 
 ```python
     # 그릴링 Q4: kis_live 신형은 fills.parquet(10초 구간합)이 체결강도 소스.
@@ -1932,7 +1932,7 @@ Expected: 신규 1 FAIL (trades 값이 반환됨)
 
 (이후 rows → wire 변환 코드는 기존 그대로 — `FillStrengthRow` 동일 타입.)
 
-- [ ] **Step 4: 통과 + bundle 회귀**
+- [x] **Step 4: 통과 + bundle 회귀**
 
 Run: `uv run pytest tests/unit/api/ -v`
 Expected: all passed
@@ -2293,7 +2293,10 @@ Expected: JSONL에 `"kind": "fill"` 포함·10초 간격 / fills.parquet count >
 - [ ] **Step 5: 문서·커밋**
 
 - `CHANGELOG.md`에 항목 추가, spec §12의 시간외 수신 여부에 Task 0 관찰 결과 기록.
-- CONTEXT.md의 **Live Capture/Live Tick/Live Set** 항목에서 "(구현 전)" 이행 표기 제거.
+- **신규 ADR 작성**(spec 헤더 약속 — 최종 리뷰 I2): "KIS 수집 전송 REST 폴링 → WebSocket push 전환" — 옵션 A·Live Set 13·15:30 게이트·ADR-0064 부분 supersede(watchdog 이식) 기록.
+- **장중 검증 필수 목록(최종 리뷰 통합 — 12항목)**: ① 3 TR 녹화→재생 4테스트 통과 ② CNT stride 46×cnt 정확 ③ **ASP/MBC cnt=1 가정 관찰**(cnt>1이면 파서 보강) ④ MBC push 주기 ⑤ 체결구분 분포 ⑥ 시간외 수신 여부 ⑦ PINGPONG<120s ⑧ **구독 응답 rt_cd + 거부 메시지 형태**(로그 승격 판단) ⑨ **approval 재발급 빈도 한계**(재연결 반복) ⑩ 스모크 전체(status/sub-second/JSONL→fills→range/재시작 봉합/백오프/밀집 0점·플리커) ⑪ 15:30 전환 실관찰(drain 1회·append 정지·연결 유지) ⑫ 장중 13-경계 reorder→구독 스왑(C1 수정 검증).
+- **세션 시각 변동일 확인**(최종 리뷰 I3-d): Half-Day(12:30)·지연 개장일에 대한 ws_capture_window(순수 시계 09:00–15:30)의 거동 — CONTEXT.md L334의 "12:30 truncation" 주장과 코드의 괴리 해소(실재하면 코드 보강, 아니면 문서 정정).
+- CONTEXT.md 갱신(최종 리뷰 M2 — 이행 표기 3곳 외 추가 4곳): **Live Capture/Live Tick/Live Set** "(구현 전)" 제거, L191 "beside `start_live_poller`" 정정, L334 Live Session poller 서술 갱신, L346 Promotion 산출물에 fills.parquet 추가, L349 "appended by the poller" 정정.
 
 ```bash
 git add CHANGELOG.md CONTEXT.md docs/

@@ -1,4 +1,4 @@
-"""In-memory ring buffer for live snapshots (Stage 7-β).
+"""In-memory ring buffer for live ticks/snapshots (WS 전환 후 시간 기반 보존).
 
 The live stream publishes ticks/snapshots here; the /api/live/snapshot and
 /api/live/series endpoints read from it. ADR-0038: buffer.py is hot-path,

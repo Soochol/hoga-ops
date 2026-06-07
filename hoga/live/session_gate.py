@@ -44,7 +44,7 @@ def should_run_now(t_ms: int) -> bool:
     leniently below and would otherwise poll).
 
     Lenient on missing calendar data — when ``is_trading_session_today`` returns
-    None (KRX creds missing, pykrx flaked), defer to the clock alone. Losing live
+    None (KRX creds missing, chk-holiday flaked), defer to the clock alone. Losing live
     capture for a transient KRX outage is a worse failure than the noise from a
     brief burst of empty fetches on a stale day.
     """

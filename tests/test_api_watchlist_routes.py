@@ -434,3 +434,40 @@ def test_folder_rename_whitespace_name_returns_422(tmp_path: Path):
         fid = client.post("/api/watchlist/folders", json={"name": "A"}).json()["id"]
         r = client.patch(f"/api/watchlist/folders/{fid}", json={"name": "   "})
     assert r.status_code == 422
+
+
+# ── 최종 리뷰 C1: 순서 변경 4종도 Live Set refresh를 호출해야 한다 ────────────
+# (Live Set = 표시 순서 상위 13 — reorder/폴더 순서/이동/폴더 삭제 전부 표시
+#  순서를 바꾼다. intra-13 변경은 update_codes diff가 wire no-op으로 흡수.)
+
+def _order_change_app(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from hoga.api.app import create_app
+    return TestClient(create_app(tmp_path))
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "payload", "mutator"),
+    [
+        ("put", "/api/watchlist/reorder",
+         {"folder_id": None, "ordered_codes": []}, "reorder_entries"),
+        ("put", "/api/watchlist/folders/order",
+         {"ordered_ids": []}, "reorder_folders"),
+        ("post", "/api/watchlist/move",
+         {"codes": ["005930"], "folder_id": None}, "move_entries"),
+        ("delete", "/api/watchlist/folders/f_abc12345", None, "delete_folder"),
+    ],
+)
+def test_order_change_endpoints_refresh_live_stream(
+    tmp_path: Path, method: str, path: str, payload, mutator: str,
+):
+    with patch(f"hoga.api.watchlist_routes.{mutator}", new=AsyncMock()), \
+         patch("hoga.api.watchlist_routes.refresh_live_stream", new=AsyncMock()) as ref:
+        client = _order_change_app(tmp_path)
+        if method == "delete":
+            r = client.delete(path)
+        else:
+            r = getattr(client, method)(path, json=payload)
+        assert r.status_code in (200, 204)
+        ref.assert_awaited_once()
