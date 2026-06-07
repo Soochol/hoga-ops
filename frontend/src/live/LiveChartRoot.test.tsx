@@ -719,9 +719,12 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   });
 
   // Visible window the user is parked on, in virtual SECONDS (both within
-  // today's 6.5h session: 1h and 2h past open).
-  const VR_FROM_SEC = 3600;
-  const VR_TO_SEC = 7200;
+  // today's 6.5h session: 1h and 2h past open). The /live axis is
+  // real-anchored (origin = segments[0]'s real open — the stale-tick-label
+  // fix), so the today-only axis the chart is initially drawn with starts at
+  // TODAY_OPEN, not 0.
+  const VR_FROM_SEC = TODAY_OPEN_MS / 1000 + 3600;
+  const VR_TO_SEC = TODAY_OPEN_MS / 1000 + 7200;
   // Visible LOGICAL range (bar indices) the mock's getVisibleLogicalRange
   // returns — read by the settle-loop's planFillStep viewport gate.
   const LR_FROM = 100;
@@ -814,15 +817,20 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     );
 
     // Expected shift: refIdx = timeToIndex(VR_TO_SEC) = VR_TO_SEC (mock);
-    // refMs reprojects through old→new axis exactly as production does.
-    const oldAxis = createVirtualAxis([
-      { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
-    ]);
+    // refMs reprojects through old→new axis exactly as production does
+    // (real-anchored origins, mirroring LiveChartRoot's createVirtualAxis call).
+    const oldAxis = createVirtualAxis(
+      [{ date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS }],
+      TODAY_OPEN_MS,
+    );
     const refMs = oldAxis.toReal(VR_TO_SEC * 1000);
-    const newAxis = createVirtualAxis([
-      { date: '20260526', sessionOpenMs: YESTERDAY_OPEN_MS, sessionCloseMs: YESTERDAY_CLOSE_MS },
-      { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
-    ]);
+    const newAxis = createVirtualAxis(
+      [
+        { date: '20260526', sessionOpenMs: YESTERDAY_OPEN_MS, sessionCloseMs: YESTERDAY_CLOSE_MS },
+        { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
+      ],
+      YESTERDAY_OPEN_MS,
+    );
     const refVirtual = Math.round(newAxis.toVirtual(refMs) / 1000);
     const shift = refVirtual - VR_TO_SEC; // newIdx - refIdx
 
@@ -833,7 +841,14 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     // Width invariant → barSpacing (candle scale) does not move.
     const last = ts.setVisibleLogicalRange.mock.calls.at(-1)![0] as { from: number; to: number };
     expect(last.to - last.from).toBe(LR_TO - LR_FROM);
-    expect(shift).toBeGreaterThan(0);
+    // The mock's timeToIndex stand-in equates union index with virtual
+    // seconds, so under the real-anchored axis a prepend shifts the stand-in
+    // by (stride − real gap) = 23401 − 86400 < 0 — gap compression pulls the
+    // virtual value of an existing bar DOWN once the origin moves to the
+    // prepended day. Production's timeToIndex returns true union list
+    // indices (shift = +inserted count); only "a reposition happened with
+    // preserved width" is contract here, not the stand-in's sign.
+    expect(shift).not.toBe(0);
   });
 
   it('skips the reposition when lwc already landed on the target (live-edge case)', () => {
@@ -1072,14 +1087,18 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} />,
     );
 
-    const oldAxis = createVirtualAxis([
-      { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
-    ]);
+    const oldAxis = createVirtualAxis(
+      [{ date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS }],
+      TODAY_OPEN_MS,
+    );
     const refMs = oldAxis.toReal(B_VR_TO * 1000);
-    const newAxis = createVirtualAxis([
-      { date: '20260526', sessionOpenMs: YESTERDAY_OPEN_MS, sessionCloseMs: YESTERDAY_CLOSE_MS },
-      { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
-    ]);
+    const newAxis = createVirtualAxis(
+      [
+        { date: '20260526', sessionOpenMs: YESTERDAY_OPEN_MS, sessionCloseMs: YESTERDAY_CLOSE_MS },
+        { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
+      ],
+      YESTERDAY_OPEN_MS,
+    );
     const refVirtual = Math.round(newAxis.toVirtual(refMs) / 1000);
     const shiftB = refVirtual - B_VR_TO;
 
@@ -1291,12 +1310,14 @@ describe('LiveChartRoot x-axis tickMarkFormatter', () => {
     return opts.timeScale.tickMarkFormatter;
   }
 
-  // virtual second 43201 = segment[1].virtualStart (23401s) + 5.5h (19800s)
+  // The /live axis is real-anchored: virtual time starts at segments[0]'s
+  // REAL session open, not 0 (see createVirtualAxis's originMs — the
+  // stale-tick-label fix). So segment[0]'s open in virtual seconds IS its
+  // real open in seconds.
+  const FIRST_OPEN_SEC = YESTERDAY_OPEN_MS / 1000;
+  // origin + segment[1].virtualStart offset (23401s) + 5.5h (19800s)
   // → real today 14:30 KST (mid-session).
-  const MID_SESSION_SEC = 43201;
-  // virtual second 0 = segment[0] open = 2026-05-26 09:00 KST (TWO_SEGMENT_BUNDLE's
-  // first segment is yesterday; today is segment[1]).
-  const FIRST_OPEN_SEC = 0;
+  const MID_SESSION_SEC = FIRST_OPEN_SEC + 23401 + 19800;
 
   it('1m: Time tick renders HH:MM', () => {
     const fmt = captureTickFormatter('1m');

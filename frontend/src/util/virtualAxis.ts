@@ -95,13 +95,32 @@ export type VirtualAxis = Readonly<{
  * in order and accumulates `virtualStart` by stacking session lengths onto the
  * previous virtual end — collapsing inter-session gaps to zero.
  *
+ * `originMs` (default 0) anchors segments[0].virtualStart. /live passes the
+ * first session's REAL open ms ("real-anchored origin") to defeat a
+ * lightweight-charts staleness trap: lwc identifies time-scale points by
+ * their time VALUE across setData generations — points whose times match the
+ * previous data keep their old `timeWeight`s, tick marks before the first
+ * changed index are retained, and formatted tick labels are cached by
+ * (weight, time) via the behavior's `cacheKey`. A zero-based axis re-issues
+ * the SAME virtual times (the uniform n×23401s ladder for D/W/M; a
+ * value-identical prefix for prepends) for DIFFERENT real dates whenever the
+ * axis remaps (timeframe switch, leftward-pan backfill), so the x-axis kept
+ * rendering the previous generation's dates on the unchanged prefix — old
+ * region wrong, recent region fine. With a real-anchored origin the time at
+ * index 0 changes exactly when (and only when) the mapping changes:
+ * segments[0] moves on prepend/switch → lwc sees firstChangedPointIndex=0 →
+ * full weight/mark/label rebuild; right-edge SSE appends keep the origin →
+ * incremental update as before. Replay-viewer callers omit the param and are
+ * unaffected.
+ *
  * The returned object and its `segments` / `dayBoundaries` arrays are
  * `Object.freeze`-d so consumers cannot mutate axis state by accident.
  */
 export function createVirtualAxis(
   rawSegments: Array<{ date: string; sessionOpenMs: number; sessionCloseMs: number }>,
+  originMs = 0,
 ): VirtualAxis {
-  const segments = Object.freeze(buildSegments(rawSegments));
+  const segments = Object.freeze(buildSegments(rawSegments, originMs));
   const dayBoundaries = Object.freeze(
     segments.slice(1).map<DayBoundary>((seg) =>
       Object.freeze({ date: seg.date, virtualStart: seg.virtualStart }),
@@ -179,14 +198,15 @@ export function createVirtualAxis(
   /**
    * Edge-case decisions:
    *  - Empty axis → 0.
-   *  - virtualMs < 0 → clamped to first.sessionOpenMs.
+   *  - virtualMs at/below the origin (segments[0].virtualStart) → clamped to
+   *    first.sessionOpenMs.
    *  - virtualMs at a boundary (== next.virtualStart) → next.sessionOpenMs
    *    (the next segment owns its starting boundary).
    *  - virtualMs past the last virtual end → last.sessionCloseMs (clamped).
    */
   function toReal(virtualMs: number): number {
     if (segments.length === 0) return 0;
-    if (virtualMs <= 0) return segments[0].sessionOpenMs;
+    if (virtualMs <= segments[0].virtualStart) return segments[0].sessionOpenMs;
     const idx = findByVirtual(virtualMs);
     if (idx < 0) return segments[0].sessionOpenMs;
     const seg = segments[idx];

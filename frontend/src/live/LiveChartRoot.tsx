@@ -74,6 +74,15 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
 
   // Eng review C1: memoise VirtualAxis on the segments array reference so
   // an SSE push that doesn't change segments doesn't churn the axis identity.
+  //
+  // Real-anchored origin (2nd arg): virtual times start at the first
+  // session's real open instead of 0, so the candle `time` values lwc holds
+  // change at index 0 exactly when the axis remaps (timeframe switch /
+  // leftward-pan prepend) and stay stable otherwise. Without it, every
+  // remap re-issued the same n×23401s ladder for different real dates and
+  // lwc kept the previous generation's tick weights + cached labels on the
+  // value-identical prefix — the "old region shows last generation's dates"
+  // x-axis bug. See createVirtualAxis's doc comment for the mechanism.
   const axis: VirtualAxis = useMemo(() => {
     if (!bundle || bundle.segments.length === 0) return EMPTY_AXIS;
     return createVirtualAxis(
@@ -82,6 +91,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
         sessionOpenMs: s.session_open_ms,
         sessionCloseMs: s.session_close_ms,
       })),
+      bundle.segments[0].session_open_ms,
     );
   }, [bundle?.segments]);
 

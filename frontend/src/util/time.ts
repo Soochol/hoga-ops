@@ -44,14 +44,20 @@ export const INTER_SEGMENT_GAP_MS = 1000;
  * end. The synthetic gap keeps adjacent boundary candles on distinct virtual
  * timestamps; it is small enough to remain visually contiguous.
  *
+ * `originMs` shifts the whole virtual coordinate system: segments[0] starts
+ * at `originMs` instead of 0. See `createVirtualAxis` for why /live anchors
+ * the origin at the first session's real open (lightweight-charts treats
+ * time values as point identities across setData generations).
+ *
  * Production callers should construct a `VirtualAxis` via `createVirtualAxis`
  * (which calls this internally) rather than threading raw `Segment[]` arrays.
  */
 export function buildSegments(
   raw: { date: string; sessionOpenMs: number; sessionCloseMs: number }[],
+  originMs = 0,
 ): Segment[] {
   const out: Segment[] = [];
-  let cursor = 0;
+  let cursor = originMs;
   for (const r of raw) {
     out.push({
       date: r.date,
