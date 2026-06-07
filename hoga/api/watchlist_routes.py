@@ -57,7 +57,7 @@ from hoga.api.watchlist import (
     reorder_folders,
 )
 from hoga.collector.orchestrator import now_kst
-from hoga.live.lifecycle import refresh_live_stream as refresh_live_poller  # Task 11: WS path
+from hoga.live.lifecycle import refresh_live_stream
 
 
 def _next_run_at_ms(now: dt.datetime) -> int:
@@ -102,9 +102,9 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "message": f"Code {req.code} is already in the Watchlist.",
             }) from e
         try:
-            await refresh_live_poller(data_dir=data_dir)
+            await refresh_live_stream(data_dir=data_dir)
         except Exception:  # noqa: BLE001 — poller re-sync is best-effort; the watchlist mutation already succeeded
-            log.exception("watchlist.add: refresh_live_poller failed code=%s", req.code)
+            log.exception("watchlist.add: refresh_live_stream failed code=%s", req.code)
         return entry
 
     @router.post("/catchup", status_code=201, response_model=ManualCatchupAllResponse)
@@ -160,9 +160,9 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "message": f"Code {code} is not in the Watchlist.",
             }) from e
         try:
-            await refresh_live_poller(data_dir=data_dir)
+            await refresh_live_stream(data_dir=data_dir)
         except Exception:  # noqa: BLE001 — poller re-sync is best-effort; the watchlist mutation already succeeded
-            log.exception("watchlist.remove: refresh_live_poller failed code=%s", code)
+            log.exception("watchlist.remove: refresh_live_stream failed code=%s", code)
 
     @router.post("/{code}/catchup", status_code=201, response_model=EnqueueResponse)
     async def catchup_one(code: CodePathParam) -> EnqueueResponse:
@@ -237,8 +237,8 @@ def build_router(*, data_dir: Path) -> APIRouter:
     async def bulk_remove_watchlist_entries(req: EntriesRemoveRequest) -> None:
         await remove_entries(data_dir, codes=req.codes)
         try:
-            await refresh_live_poller(data_dir=data_dir)
+            await refresh_live_stream(data_dir=data_dir)
         except Exception:  # noqa: BLE001 — best-effort, mutation already succeeded
-            log.exception("watchlist.bulk_remove: refresh_live_poller failed")
+            log.exception("watchlist.bulk_remove: refresh_live_stream failed")
 
     return router

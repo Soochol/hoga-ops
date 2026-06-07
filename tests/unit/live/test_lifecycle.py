@@ -623,7 +623,11 @@ async def test_ws_watchdog_noop_outside_capture_window(
 async def test_ws_watchdog_noop_when_healthy(
     monkeypatch, _spy_start_stream, tmp_path
 ) -> None:
-    """WS watchdog: 두 task 모두 alive + 최근 수신(last_recv_ms) → 재시작 안 함."""
+    """WS watchdog: 두 task 모두 alive + 최근 수신(last_recv_ms) → 재시작 안 함.
+
+    last_tick_ms=None(데이터 틱 0건 — 한산 종목 13개의 PINGPONG-only 장중)을
+    명시해, watchdog이 데이터 틱이 아니라 last_recv_ms만으로 건강 판정함을
+    직접 pin한다(Task 11 재리뷰 Minor — 재시작 폭풍 방지)."""
     from hoga.live import lifecycle
 
     lifecycle.reset_for_tests()
@@ -638,7 +642,7 @@ async def test_ws_watchdog_noop_when_healthy(
     try:
         _install_stream_state(
             monkeypatch, started_at_ms=1_000, ws_task=ws_task,
-            stream_task=stream_task, last_tick_ms=9_950_000,
+            stream_task=stream_task, last_tick_ms=None,
             last_recv_ms=9_950_000,
         )
         restarted = await lifecycle._ws_watchdog_check(

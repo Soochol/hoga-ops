@@ -66,6 +66,23 @@ def display_ordered_codes(doc: WatchlistDocument) -> list[str]:
     return [e.code for e in sorted(doc.entries, key=_key)]
 
 
+def _compute_live_set(data_dir: Path) -> list[str]:
+    """Live Set 산출 파이프라인(start/refresh 공용 — Task 11 리뷰 이월):
+    load_document → 표시 순서 평탄화 → symbol-master 필터(cold cache 무필터
+    폴백 — poller 시절과 동일 정책, dropped 경고 포함) → 상위 13 절단."""
+    from hoga.api import symbols as _symbols  # noqa: PLC0415
+    from hoga.api.watchlist import load_document  # noqa: PLC0415
+
+    ordered = display_ordered_codes(load_document(data_dir))
+    known = {h.code for h in _symbols.search("", limit=10_000)}
+    if known:
+        dropped = [c for c in ordered if c not in known]
+        if dropped:
+            _log.warning("live.stream.codes_unknown dropped=%r", dropped)
+        ordered = [c for c in ordered if c in known]
+    return ordered[:LIVE_SET_MAX_CODES]
+
+
 def live_set_codes(doc: WatchlistDocument) -> list[str]:
     """Live Set = 패널 표시 순서 상위 13 (CONTEXT.md 'Live Set', 그릴링 Q3 + 2026-06-06 개정)."""
     return display_ordered_codes(doc)[:LIVE_SET_MAX_CODES]
@@ -80,7 +97,14 @@ class LiveStatus(BaseModel):
     started_at_ms: int | None
     last_tick_ms: int | None
     cycle_lag_ms: int
+    # WS 전환 후 의미(Task 11 리뷰 이월 문서화): "수집이 활성인 종목 수" =
+    # len(live_set) ≤ 13. 원의미("폴러가 순회하는 종목 수")의 자연 승계 —
+    # watchlist 전체 수가 아니다(그건 GET /api/watchlist). 프론트는 의도적으로
+    # 이 필드를 비소비(useLiveBannerState.ts 주석 참조).
     watchlist_count: int
+    # poller-era 필드(wire 호환 유지): WS 전환 후 캡처 경로는 REST를 쓰지
+    # 않으므로 0/None 고정. quote 오버레이·캔들 시드의 REST 콜은 비집계.
+    # 프론트 소비 0 — 차기 wire 정리 때 제거 후보.
     kis_calls_today: int
     kis_rate_limit_remaining: int | None
     # ADR-0043 / design-review B2 — last successful Today Promotion per code (epoch ms).
@@ -112,6 +136,11 @@ class _State:
 
 _state = _State()
 _buffer = LiveBuffer()
+
+# Task 11 리뷰 이월: start/stop/refresh의 await 경계에서 _state 교체가 interleave
+# 되지 않도록 직렬화. start가 내부에서 stop을 부르므로(재진입) 잠금 없는
+# `_stop_live_stream_locked`를 공유한다 — 공개 stop만 락을 잡는다.
+_lifecycle_lock = asyncio.Lock()
 
 # ADR-0043 / design-review B2 — in-memory dict of code → last successful
 # Today Promotion epoch_ms. Populated by promote_today via
@@ -483,73 +512,57 @@ async def start_live_stream(*, data_dir: Path) -> bool:
     """
     from datetime import datetime, timedelta, timezone  # noqa: PLC0415
 
-    from hoga.api import symbols as _symbols  # noqa: PLC0415
-    from hoga.api.watchlist import load_document  # noqa: PLC0415
-
     from .stream import LiveStream  # noqa: PLC0415
     from .writer import LiveWriter  # noqa: PLC0415
     from .ws_client import KisWsClient  # noqa: PLC0415
 
-    # 1. 문서 로드 → 표시 순서 평탄화
-    doc = load_document(data_dir)
-    ordered_codes = display_ordered_codes(doc)
-    if not ordered_codes:
-        return False
-
-    # 2. symbol-master 필터(cold cache → 무필터 폴백, poller와 동일 정책)
-    _known = {h.code for h in _symbols.search("", limit=10_000)}
-    if _known:
-        _dropped = [c for c in ordered_codes if c not in _known]
-        if _dropped:
-            _log.warning("live.stream.codes_unknown dropped=%r", _dropped)
-        ordered_codes = [c for c in ordered_codes if c in _known]
-        if not ordered_codes:
+    async with _lifecycle_lock:
+        # 1-3. Live Set 산출(공용 파이프라인)
+        codes = _compute_live_set(data_dir)
+        if not codes:
             return False
 
-    # 3. Live Set = 상위 13
-    codes = ordered_codes[:LIVE_SET_MAX_CODES]
+        # 4. 기존 stream 정지 (락 보유 중 — 잠금 없는 내부 헬퍼)
+        await _stop_live_stream_locked()
 
-    # 4. 기존 stream 정지
-    await stop_live_stream()
+        # 5. KIS 싱글턴
+        kis = kis_runtime.ensure_kis_client_from_env(data_dir)
+        if kis is None:
+            return False
 
-    # 5. KIS 싱글턴
-    kis = kis_runtime.ensure_kis_client_from_env(data_dir)
-    if kis is None:
-        return False
+        def _today_kst() -> str:
+            return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
 
-    def _today_kst() -> str:
-        return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
+        # 6. stream + ws 조립
+        stream = LiveStream(
+            buffer=_buffer,
+            writer=LiveWriter(data_dir / "live"),
+            date_fn=_today_kst,
+        )
+        from .session_gate import ws_capture_window  # noqa: PLC0415
 
-    # 6. stream + ws 조립
-    stream = LiveStream(
-        buffer=_buffer,
-        writer=LiveWriter(data_dir / "live"),
-        date_fn=_today_kst,
-    )
-    from .session_gate import ws_capture_window  # noqa: PLC0415
+        ws = KisWsClient(
+            approval_key_fn=kis.get_approval_key,
+            on_tick=stream.on_tick,
+            date_fn=_today_kst,
+            gate_fn=lambda: ws_capture_window(_now_ms()),
+        )
+        stream.ws = ws
 
-    ws = KisWsClient(
-        approval_key_fn=kis.get_approval_key,
-        on_tick=stream.on_tick,
-        date_fn=_today_kst,
-        gate_fn=lambda: ws_capture_window(_now_ms()),
-    )
-    stream.ws = ws
-
-    global _state  # noqa: PLW0603
-    _state = _State(
-        started_at_ms=_now_ms(),
-        watchlist_codes=tuple(codes),
-        live_set=tuple(codes),
-        stream_obj=stream,
-        ws_task=asyncio.create_task(ws.run(codes), name="live-ws"),
-        stream_task=asyncio.create_task(stream.run_flush_loop(), name="live-flush"),
-    )
-    return True
+        global _state  # noqa: PLW0603
+        _state = _State(
+            started_at_ms=_now_ms(),
+            watchlist_codes=tuple(codes),
+            live_set=tuple(codes),
+            stream_obj=stream,
+            ws_task=asyncio.create_task(ws.run(codes), name="live-ws"),
+            stream_task=asyncio.create_task(stream.run_flush_loop(), name="live-flush"),
+        )
+        return True
 
 
-async def stop_live_stream() -> None:
-    """stop_live_poller와 동일 패턴 — KisClient 싱글턴은 건드리지 않는다."""
+async def _stop_live_stream_locked() -> None:
+    """stop의 본체 — 호출자가 _lifecycle_lock을 보유한 상태에서만 부른다."""
     global _state  # noqa: PLW0603
     for task in (_state.ws_task, _state.stream_task):
         if task is not None:
@@ -563,35 +576,32 @@ async def stop_live_stream() -> None:
     _state = _State()
 
 
+async def stop_live_stream() -> None:
+    """stop_live_poller와 동일 패턴 — KisClient 싱글턴은 건드리지 않는다."""
+    async with _lifecycle_lock:
+        await _stop_live_stream_locked()
+
+
 async def refresh_live_stream(*, data_dir: Path) -> None:
     """watchlist 변경(추가/삭제/reorder) 후크 — Live Set diff를 WS에 반영.
 
-    load_document → 표시 순서 평탄화 → symbol-master 필터 → 상위 13 절단.
-    start_live_stream과 동일 파이프라인으로 Live Set을 재계산한다.
+    start_live_stream과 동일 파이프라인(_compute_live_set)으로 재계산하고,
+    _lifecycle_lock으로 start/stop과 직렬화한다(Task 11 리뷰 이월).
     """
     global _state  # noqa: PLW0603 — declared first; _state is both read and reassigned
 
-    from hoga.api import symbols as _symbols  # noqa: PLC0415
-    from hoga.api.watchlist import load_document  # noqa: PLC0415
+    async with _lifecycle_lock:
+        stream = _state.stream_obj
+        if stream is None or stream.ws is None:  # type: ignore[union-attr]
+            return
 
-    stream = _state.stream_obj
-    if stream is None or stream.ws is None:  # type: ignore[union-attr]
-        return
+        codes = _compute_live_set(data_dir)
 
-    doc = load_document(data_dir)
-    ordered_codes = display_ordered_codes(doc)
+        await stream.ws.update_codes(codes)  # type: ignore[union-attr]
+        stream.set_active_codes(set(codes))  # type: ignore[union-attr]  # advisor C: 밀려난 코드 carry 즉시 제거
+        await _buffer.drop_codes_except(set(codes))  # Task 4 리뷰: 떠난 코드 ring 해제
 
-    _known = {h.code for h in _symbols.search("", limit=10_000)}
-    if _known:
-        ordered_codes = [c for c in ordered_codes if c in _known]
-
-    codes = ordered_codes[:LIVE_SET_MAX_CODES]
-
-    await stream.ws.update_codes(codes)  # type: ignore[union-attr]
-    stream.set_active_codes(set(codes))  # type: ignore[union-attr]  # advisor C: 밀려난 코드 carry 즉시 제거
-    await _buffer.drop_codes_except(set(codes))  # Task 4 리뷰: 떠난 코드 ring 해제
-
-    _state = replace(_state, live_set=tuple(codes), watchlist_codes=tuple(codes))
+        _state = replace(_state, live_set=tuple(codes), watchlist_codes=tuple(codes))
 
 
 # ADR-0064 이식 — WS 스트림 watchdog

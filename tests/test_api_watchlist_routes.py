@@ -301,11 +301,11 @@ def test_catchup_all_empty_watchlist_returns_empty_results(tmp_path: Path):
     assert r.json()["results"] == []
 
 
-def test_post_add_refreshes_poller(tmp_path: Path):
+def test_post_add_refreshes_stream(tmp_path: Path):
     fake_now = dt.datetime(2026, 5, 26, 10, 0, tzinfo=KST)
     with patch("hoga.api.watchlist_routes.symbols.search", return_value=[_fake_hit()]), \
          patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
-         patch("hoga.api.watchlist_routes.refresh_live_poller", new=AsyncMock()) as ref:
+         patch("hoga.api.watchlist_routes.refresh_live_stream", new=AsyncMock()) as ref:
         client = TestClient(_app(tmp_path))
         r = client.post("/api/watchlist", json={"code": "003490"})
     assert r.status_code == 201
@@ -314,11 +314,11 @@ def test_post_add_refreshes_poller(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_delete_refreshes_poller(tmp_path: Path):
+async def test_delete_refreshes_stream(tmp_path: Path):
     from hoga.api import watchlist
     await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260526")
-    with patch("hoga.api.watchlist_routes.refresh_live_poller", new=AsyncMock()) as ref:
+    with patch("hoga.api.watchlist_routes.refresh_live_stream", new=AsyncMock()) as ref:
         client = TestClient(_app(tmp_path))
         r = client.delete("/api/watchlist/003490")
     assert r.status_code == 204
@@ -326,13 +326,13 @@ async def test_delete_refreshes_poller(tmp_path: Path):
     assert ref.await_args.kwargs["data_dir"] == tmp_path
 
 
-def test_post_add_survives_refresh_poller_failure(tmp_path: Path):
-    """If refresh_live_poller raises, the add still returns 201 — the disk
-    mutation already succeeded; poller re-sync is best-effort."""
+def test_post_add_survives_refresh_stream_failure(tmp_path: Path):
+    """If refresh_live_stream raises, the add still returns 201 — the disk
+    mutation already succeeded; stream re-sync is best-effort."""
     fake_now = dt.datetime(2026, 5, 26, 10, 0, tzinfo=KST)
     with patch("hoga.api.watchlist_routes.symbols.search", return_value=[_fake_hit()]), \
          patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
-         patch("hoga.api.watchlist_routes.refresh_live_poller",
+         patch("hoga.api.watchlist_routes.refresh_live_stream",
                new=AsyncMock(side_effect=OSError("boom"))):
         client = TestClient(_app(tmp_path))
         r = client.post("/api/watchlist", json={"code": "003490"})
@@ -342,12 +342,12 @@ def test_post_add_survives_refresh_poller_failure(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_delete_survives_refresh_poller_failure(tmp_path: Path):
-    """If refresh_live_poller raises, the delete still returns 204."""
+async def test_delete_survives_refresh_stream_failure(tmp_path: Path):
+    """If refresh_live_stream raises, the delete still returns 204."""
     from hoga.api import watchlist
     await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260526")
-    with patch("hoga.api.watchlist_routes.refresh_live_poller",
+    with patch("hoga.api.watchlist_routes.refresh_live_stream",
                new=AsyncMock(side_effect=OSError("boom"))):
         client = TestClient(_app(tmp_path))
         r = client.delete("/api/watchlist/003490")
@@ -360,7 +360,7 @@ async def test_delete_survives_refresh_poller_failure(tmp_path: Path):
 # The plan's reference tests assume `client` / `tmp_path_data` fixtures; this
 # file instead builds the client inline via `_app(tmp_path)` (the established
 # pattern above). Adding a code goes through POST /api/watchlist, which calls
-# symbols.search + refresh_live_poller, so each test stacks those patches the
+# symbols.search + refresh_live_stream, so each test stacks those patches the
 # same way test_post_adds_entry does. `_folder_client` centralises that setup.
 
 from contextlib import contextmanager
@@ -375,7 +375,7 @@ def _folder_client(tmp_path: Path):
 
     with patch("hoga.api.watchlist_routes.symbols.search", side_effect=_search), \
          patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now), \
-         patch("hoga.api.watchlist_routes.refresh_live_poller", new=AsyncMock()):
+         patch("hoga.api.watchlist_routes.refresh_live_stream", new=AsyncMock()):
         yield TestClient(_app(tmp_path))
 
 
