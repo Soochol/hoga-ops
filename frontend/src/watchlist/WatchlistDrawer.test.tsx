@@ -236,6 +236,19 @@ describe('WatchlistDrawer', () => {
     expect(screen.queryByText('SK하이닉스')).toBeNull();
   });
 
+  it('개수가 라벨 버튼 안에 인라인 — 접근성 이름이 "스윙 1"이고 클릭하면 접힌다', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    // 개수(1)가 라벨 버튼 내부 자식이면 접근성 이름은 "스윙 1"로 합성된다.
+    // 우측 정렬 mono 개수(가격 컬럼과 충돌)가 사라졌음을 보장하는 구조 단언.
+    fireEvent.click(screen.getByRole('button', { name: '스윙 1' }));
+    expect(screen.queryByText('삼성전자')).toBeNull();
+    // 미분류 그룹(SK하이닉스)은 영향 없음
+    expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
+  });
+
   it('그룹 추가하기 disables 추가 while the name is empty', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
