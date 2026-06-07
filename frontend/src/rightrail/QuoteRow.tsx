@@ -76,6 +76,8 @@ export function QuoteRow({
         ...(dragging ? { opacity: 0.6, cursor: 'grabbing', zIndex: 1, position: 'relative' } : {}),
       }}
     >
+      {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
+          종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분. */}
       <span className="flex-1 truncate text-xs text-fg">{name}</span>
       <span className="flex flex-col items-end leading-tight">
         <span className="font-mono tabular-nums text-sm text-fg">
