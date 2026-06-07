@@ -79,6 +79,7 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
       <button type="button" onClick={props.onToggle}
         className="flex-1 min-w-0 text-left flex items-baseline gap-1.5">
         <span className="truncate">{props.label}</span>
+        {' '/* 접근성 이름 단어 분리 — 없으면 "스윙1"로 합성 */}
         <span className="flex-none text-xs font-normal text-fg-dimmer">{props.count}</span>
       </button>
       {props.onRename && (
@@ -122,7 +123,7 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
   );
 ```
 
-변경 요점(기존 대비): ① 우측 끝 chevron 버튼 삭제 → 좌측 선두로 이동(`ChevronIcon collapsed=` 시그니처), ② 개수 span을 라벨 버튼 내부로 이동 + `font-mono tabular-nums` 제거, ③ 컨테이너 `text-xs` → `text-sm font-semibold`, `gap-1` → `gap-1.5`, ④ `sticky top-0 z-10/20 bg-bg-card` 추가. GroupHeader 상단 doc 주석의 "chevron만" 표현은 그대로 유효(미분류 = chevron+라벨만).
+변경 요점(기존 대비): ① 우측 끝 chevron 버튼 삭제 → 좌측 선두로 이동(`ChevronIcon collapsed=` 시그니처), ② 개수 span을 라벨 버튼 내부로 이동 + `font-mono tabular-nums` 제거, ③ 컨테이너 `text-xs` → `text-sm font-semibold`, `gap-1` → `gap-1.5`, ④ `sticky top-0 z-10/20 bg-bg-card` 추가. GroupHeader 상단 doc 주석의 "chevron만" 표현은 그대로 유효(미분류 = chevron+라벨만). ⑤ 라벨/개수 사이 `{' '}` — 접근성 이름 "스윙 1" 합성
 
 - [ ] **Step 5: 테스트 통과 확인**
 

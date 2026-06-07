@@ -78,7 +78,7 @@ function GroupHeader(props: {
       <button type="button" onClick={props.onToggle}
         className="flex-1 min-w-0 text-left flex items-baseline gap-1.5">
         <span className="truncate">{props.label}</span>
-        {' '}
+        {' '/* 접근성 이름 단어 분리 — 없으면 "스윙1"로 합성 */}
         <span className="flex-none text-xs font-normal text-fg-dimmer">{props.count}</span>
       </button>
       {props.onRename && (
