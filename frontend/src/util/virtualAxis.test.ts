@@ -308,6 +308,19 @@ describe('createVirtualAxis — real-anchored origin (originMs)', () => {
     expect(zero.toVirtual(DAY1_OPEN)).toBe(0);
   });
 
+  it('toVirtual edges under a non-zero origin: pre-axis clamp, gap snap, last-segment clamp', () => {
+    // realMs strictly BEFORE the first open → originMs (the shifted
+    // first.virtualStart), not 0.
+    expect(axis.toVirtual(DAY1_OPEN - 1)).toBe(ORIGIN);
+    // Gap times still snap forward to the NEXT segment's (shifted) virtualStart.
+    expect(axis.toVirtual(DAY1_CLOSE + 2 * 60 * 60 * 1000)).toBe(ORIGIN + SEG_STRIDE_MS);
+    // Past the final close → clamp to the last segment's virtual end (the
+    // `!next` branch of the binary-search rewrite — last-segment clamp).
+    const lastEnd = ORIGIN + 2 * SEG_STRIDE_MS + SESSION_LEN_MS;
+    expect(axis.toVirtual(DAY3_CLOSE + 1)).toBe(lastEnd);
+    expect(axis.toVirtual(DAY3_CLOSE + DAY_MS)).toBe(lastEnd);
+  });
+
   // Regression lock for the /live x-axis stale-label bug. lightweight-charts
   // identifies time-scale points by their time VALUE across setData
   // generations: points whose times match the previous data keep their old

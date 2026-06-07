@@ -291,8 +291,14 @@ describe('LiveChartRoot', () => {
 
   it('1m timeframe: code change re-applies setVisibleLogicalRange with new count', () => {
     useLivePageStore.setState({ historicalFromDate: null });
-    const { chart, ts } = buildChartMockWithStableTS();
-    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+    // A code switch is a viewKey change, which REMOUNTS the chart (cross-view
+    // staleness guard) — so the new count's viewport must land on the SECOND
+    // chart instance, while the first keeps only its own initial placement.
+    const first = buildChartMockWithStableTS();
+    const second = buildChartMockWithStableTS();
+    vi.mocked(createChartEx)
+      .mockImplementationOnce(() => first.chart as never)
+      .mockImplementationOnce(() => second.chart as never);
 
     const { rerender } = render(
       <LiveChartRoot
@@ -304,11 +310,11 @@ describe('LiveChartRoot', () => {
       />,
       { wrapper },
     );
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 105 });
+    expect(first.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 105 });
 
-    // Watchlist switch: new code, new (smaller-or-larger) bundle. Without
-    // resetting the ref on code change, the new code's latest candle would
-    // be pinned to the previous code's right edge.
+    // Watchlist switch: new code, new (smaller-or-larger) bundle. The fresh
+    // chart instance must receive the new code's 300-bar window — and the
+    // removed instance must NOT be touched again (keyed chart entry).
     rerender(
       <LiveChartRoot
         code="000660"
@@ -318,8 +324,8 @@ describe('LiveChartRoot', () => {
         isPastCandlesLoading={false}
       />,
     );
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 405 });
-    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(2);
+    expect(second.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 405 });
+    expect(first.ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1527,5 +1533,77 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
     );
     rerender(<LiveChartRoot {...chartProps('005930', '1m', { ...TODAY_ONLY_BUNDLE })} />);
     expect(vi.mocked(createChartEx)).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies the initial viewport to the NEW chart after a timeframe switch', () => {
+    // Regression (adversarial review F1): on a viewKey switch, the effects of
+    // the switch commit still close over the REMOVED chart. lwc viewport
+    // calls on a removed chart don't throw, so the one-shot initial-view
+    // effect used to fire against the dead instance — consuming
+    // lastAppliedCountRef and leaving the new chart at lwc's default ~60-bar
+    // view. The keyed chart entry derives `chart` as null for the mismatched
+    // commit; this test asserts the viewport lands on the new instance.
+    // (Default mock's timeScale() returns a fresh object per call, so build
+    // two charts with STABLE timeScale objects to accumulate assertions.)
+    useLivePageStore.setState({ historicalFromDate: null });
+    function stableChart() {
+      const ts = {
+        subscribeVisibleTimeRangeChange: vi.fn(),
+        unsubscribeVisibleTimeRangeChange: vi.fn(),
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+        applyOptions: vi.fn(),
+        fitContent: vi.fn(),
+        scrollToRealTime: vi.fn(),
+        scrollToPosition: vi.fn(),
+        setVisibleLogicalRange: vi.fn(),
+        getVisibleRange: vi.fn(() => null),
+        getVisibleLogicalRange: vi.fn(() => null),
+        setVisibleRange: vi.fn(),
+        timeToCoordinate: vi.fn(() => null),
+        timeToIndex: vi.fn(() => null),
+      };
+      const chart = {
+        addSeries: vi.fn(() => ({
+          setData: vi.fn(), update: vi.fn(), applyOptions: vi.fn(),
+          priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+          createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+          removePriceLine: vi.fn(), attachPrimitive: vi.fn(),
+          detachPrimitive: vi.fn(), setMarkers: vi.fn(),
+        })),
+        removeSeries: vi.fn(),
+        timeScale: vi.fn(() => ts),
+        panes: vi.fn(() => []),
+        remove: vi.fn(),
+        resize: vi.fn(),
+        applyOptions: vi.fn(),
+        subscribeCrosshairMove: vi.fn(),
+        unsubscribeCrosshairMove: vi.fn(),
+      };
+      return { ts, chart };
+    }
+    const a = stableChart();
+    const b = stableChart();
+    vi.mocked(createChartEx)
+      .mockImplementationOnce(() => a.chart as never)
+      .mockImplementationOnce(() => b.chart as never);
+
+    const withCandles: RangeBundle = {
+      ...TODAY_ONLY_BUNDLE,
+      candles: [
+        { ts_ms: TODAY_OPEN_MS + 60_000, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 },
+      ],
+    };
+    const { rerender } = render(
+      <LiveChartRoot {...chartProps('005930', '1m', withCandles)} />,
+      { wrapper },
+    );
+    // Minute initial view applied to chart A.
+    expect(a.ts.setVisibleLogicalRange).toHaveBeenCalled();
+
+    rerender(<LiveChartRoot {...chartProps('005930', 'D', withCandles)} />);
+    // The D/W/M fit must land on chart B — with the unkeyed chart state it
+    // fired on the removed chart A and B received ZERO viewport calls.
+    expect(b.ts.fitContent).toHaveBeenCalled();
   });
 });

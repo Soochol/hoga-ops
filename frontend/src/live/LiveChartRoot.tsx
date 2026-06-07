@@ -70,7 +70,23 @@ interface Props {
  * timeScale is shared across candle/volume/(hoga) panes. */
 export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCandlesLoading, isExtending = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [chart, setChart] = useState<IChartApi | null>(null);
+  // Load identity for the per-view chart remount and the reveal cover.
+  const viewKey = `${code ?? ''}|${timeframe}`;
+  // Chart identity is KEYED by the view it was created for. On a viewKey
+  // switch, React runs all cleanups then all setups within one commit, but
+  // effects created by THAT render still close over the previous chart state
+  // — which now references the chart the creation-effect cleanup already
+  // remove()d. lwc 5.2.0 viewport calls on a removed chart do not throw
+  // (they only queue an invalidation), so without this gate the initial-view
+  // effect would consume its one-shot `lastAppliedCountRef` against the dead
+  // instance, schedule the reveal early, and leave the NEW chart at lwc's
+  // default ~60-bar viewport (adversarial review F1, proven with a two-chart
+  // mock). Deriving `chart` as null whenever the entry's key disagrees with
+  // the current viewKey makes every consumer effect no-op for exactly that
+  // one mismatched commit; the creation effect then publishes the new
+  // instance under the new key.
+  const [chartEntry, setChartEntry] = useState<{ chart: IChartApi; key: string } | null>(null);
+  const chart = chartEntry !== null && chartEntry.key === viewKey ? chartEntry.chart : null;
 
   // Eng review C1: memoise VirtualAxis on the segments array reference so
   // an SSE push that doesn't change segments doesn't churn the axis identity.
@@ -166,14 +182,13 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // already at the final zoom. Warm switches reveal in ~2 frames, so the fade is
   // imperceptible there.
   //
-  // The reveal is keyed by load identity (`code|timeframe`): `chartReady` is
-  // DERIVED (revealedKey === viewKey), not reset in an effect, so a watchlist
-  // switch re-masks synchronously with the new props — no extra render and no
-  // one-frame glimpse of the previous code's candles. The key also makes the
-  // reveal scheduler idempotent across SSE bundle churn (revealedKey already
-  // === viewKey short-circuits). `revealRafRef` lets the key-change effect
-  // cancel a still-pending reveal.
-  const viewKey = `${code ?? ''}|${timeframe}`;
+  // The reveal is keyed by load identity (viewKey, declared at the top with
+  // the chart entry): `chartReady` is DERIVED (revealedKey === viewKey), not
+  // reset in an effect, so a watchlist switch re-masks synchronously with the
+  // new props — no extra render and no one-frame glimpse of the previous
+  // code's candles. The key also makes the reveal scheduler idempotent across
+  // SSE bundle churn (revealedKey already === viewKey short-circuits).
+  // `revealRafRef` lets the key-change effect cancel a still-pending reveal.
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const revealRafRef = useRef<number | null>(null);
   const chartReady = revealedKey === viewKey;
@@ -357,7 +372,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       rightPriceScale: { borderColor: tokens.border },
       autoSize: true,
     });
-    setChart(c as IChartApi);
+    setChartEntry({ chart: c as IChartApi, key: viewKey });
     // autoSize: true already attaches lightweight-charts' own ResizeObserver
     // to the container — an extra manual observer here just produces the
     // "Height and width values ignored because 'autoSize' option is enabled"
@@ -371,7 +386,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
 
     return () => {
       c.remove();
-      setChart(null);
+      setChartEntry(null);
     };
     // Recreate the chart per (code, timeframe) view. lightweight-charts keeps
     // per-instance caches keyed by time VALUE (tick weights, marks, formatted

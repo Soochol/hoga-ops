@@ -117,9 +117,10 @@ export type VirtualAxis = Readonly<{
  * /live recreates the chart instance per (code, timeframe) instead
  * (LiveChartRoot's per-viewKey effect), and the KST behavior's `cacheKey`
  * folds an axis generation into label-cache keys for cross-generation value
- * collisions at different indices. Replay-viewer callers omit the param and
- * keep zero-based coordinates: a replay mounts ONE static axis per viewer
- * lifetime, so the regeneration-collision class does not exist there.
+ * collisions at different indices. The zero-based default stays for callers
+ * with no regeneration-collision class: /live's pre-data EMPTY_AXIS, the
+ * projector/unit tests, and any future viewer that mounts ONE static axis
+ * per lifetime (the deleted replay viewer's shape).
  *
  * The returned object and its `segments` / `dayBoundaries` arrays are
  * `Object.freeze`-d so consumers cannot mutate axis state by accident.

@@ -56,6 +56,21 @@ export function buildSegments(
   raw: { date: string; sessionOpenMs: number; sessionCloseMs: number }[],
   originMs = 0,
 ): Segment[] {
+  // Dev guard: the whole axis assumes ascending, non-overlapping sessions.
+  // toVirtual's binary search and the old linear scan diverge silently on
+  // malformed input (e.g. a backend half-day session overlapping a
+  // client-synthesized regular session), so surface it loudly in dev rather
+  // than rendering subtly wrong conversions.
+  if (import.meta.env.DEV) {
+    for (let i = 1; i < raw.length; i++) {
+      if (raw[i].sessionOpenMs <= raw[i - 1].sessionCloseMs) {
+        console.warn(
+          `[virtualAxis] buildSegments: segment ${i} (${raw[i].date}) opens at or before ` +
+            `segment ${i - 1} (${raw[i - 1].date}) closes — axis conversions will be wrong`,
+        );
+      }
+    }
+  }
   const out: Segment[] = [];
   let cursor = originMs;
   for (const r of raw) {

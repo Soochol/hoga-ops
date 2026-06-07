@@ -36,6 +36,15 @@ function weightByKstDate(cur: Date, prev: Date): number {
   return 0; // LessThanSecond
 }
 
+/** Multiplier separating axis generations in `cacheKey`. The keyed value is
+ * the tick's virtual time RELATIVE to its axis origin — bounded by the axis
+ * span (< 2^33 ms even for 21 years of stitched sessions), never by the real
+ * epoch, so the stride cannot be outgrown by calendar time. Generations stay
+ * integer-exact up to 2^53 / 2^41 = 4096; with segments-identity kept stable
+ * across SSE pushes (useLiveBundle), the counter only moves on genuine
+ * remaps (prepends), far below that. */
+const CACHE_GEN_STRIDE = 2 ** 41;
+
 /**
  * A horizontal-scale behavior whose tick weights follow the REAL KST calendar
  * instead of the gap-compressed virtual-1970 calendar the library would infer
@@ -47,12 +56,6 @@ function weightByKstDate(cur: Date, prev: Date): number {
  * `timeWeight` field. Internal fields are minified (`_internal_timestamp` →
  * `.Sf` in the production bundle), so touching them would break `vite build`.
  */
-/** Multiplier separating axis generations in `cacheKey`. `super.cacheKey`
- * returns the tick's virtual time in ms (< 2^41 even for real-anchored
- * origins ≈ 1.8e12); generations stay integer-exact up to 2^53 / 2^41 = 4096,
- * far beyond any session's prepend count. */
-const CACHE_GEN_STRIDE = 2 ** 41;
-
 export function createKstHorzScaleBehavior(axisRef: MutableRefObject<VirtualAxis>) {
   const Base = defaultHorzScaleBehavior();
   // Axis generation for label-cache keying. lightweight-charts caches
@@ -72,7 +75,14 @@ export function createKstHorzScaleBehavior(axisRef: MutableRefObject<VirtualAxis
         cacheGenAxis = axis;
         cacheGen++;
       }
-      return cacheGen * CACHE_GEN_STRIDE + super.cacheKey(internalItem);
+      // Key on the ORIGIN-RELATIVE virtual ms, not the absolute value:
+      // real-anchored origins track the real epoch, so absolute values would
+      // cross CACHE_GEN_STRIDE in 2039 and cross-generation key ranges would
+      // overlap again. The relative offset is bounded by the axis span
+      // forever. (Within one generation the offset is unique per tick by
+      // construction; across generations the stride separates the ranges.)
+      const originMs = axis.segments.length > 0 ? axis.segments[0].virtualStart : 0;
+      return cacheGen * CACHE_GEN_STRIDE + (super.cacheKey(internalItem) - originMs);
     }
 
     // Narrow the options type to TimeChartOptions so createChartEx's options
