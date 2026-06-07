@@ -2269,6 +2269,7 @@ Run: `uv run uvicorn hoga.api.app:default_app --factory --host 127.0.0.1 --port 
 - 호가창(10호가)·총잔량·호가비·체결강도가 **1초 미만 간격으로 갱신**되는지 (`$B js` 로 `window.__liveAxisGet()` 또는 DOM 텍스트 2회 샘플 비교)
 - `$B console --errors` 빈 출력
 - FillStrength pane에서 kis_live 신형의 **밀집 (0,0) 점**(조용한 버킷도 0 방출 — trades 경로는 버킷 생략) 렌더가 시각적으로 수용 가능한지 확인(빈 vs 0 차이).
+- **경계 버킷 partial-sum 플리커**(Task 12 재리뷰 N1, by-design): 라이브 엣지 ~5-10분 뒤의 FillStrength 막대 하나가 5분 refetch 주기로 dip-recover하는 현상 — 실 세션에서 시각적으로 수용 가능한지 확인.
 
 - [ ] **Step 3: 저장 경로 검증**
 
