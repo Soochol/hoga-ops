@@ -340,7 +340,11 @@ async def _stop_live_stream_locked() -> None:
             try:
                 await task
             except asyncio.CancelledError:
-                pass
+                # M4: 외부에서 *우리*가 취소된 경우 흡수하면 shutdown hang —
+                # 자식 task의 취소만 삼키고, 현재 task의 취소는 전파한다.
+                cur = asyncio.current_task()
+                if cur is not None and cur.cancelling():
+                    raise
             except Exception:  # noqa: BLE001
                 pass
     _state = _State()
@@ -366,6 +370,8 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
             return
 
         codes = _compute_live_set(data_dir)
+        # M5: 빈 watchlist면 codes=[] → 전 종목 unsubscribe 후 0구독 idle 연결
+        # 유지(정지 아님 — poller와 의도적 차이). 재추가 시 즉시 재구독 가능.
 
         await stream.ws.update_codes(codes)  # type: ignore[union-attr]
         stream.set_active_codes(set(codes))  # type: ignore[union-attr]  # advisor C: 밀려난 코드 carry 즉시 제거

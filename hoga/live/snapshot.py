@@ -40,6 +40,7 @@ class LiveSnapshot:
     t_ms: int
     kind: SnapshotKind
     payload: dict[str, Any]
+
     @classmethod
     def from_fill(
         cls, *, t_ms: int, buy_qty: int, sell_qty: int, phase: str

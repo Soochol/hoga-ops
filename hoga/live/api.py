@@ -303,7 +303,7 @@ class LiveQuotesResponse(BaseModel):
 def _quote_phase(now: datetime) -> Literal["pre_open", "open"]:
     """/quotes 오버레이의 등락률 표시 게이트: 장전(09:00 이전)=숨김, 09:00 이후=표시.
     경계 하나로 충분(반장도 오픈 09:00 동일; 주말 이른 아침은 잠깐 숨김 — 무해).
-    poller._market_phase(16:00-aware 3-way 세션 phase)와 계약이 달라 이름을 분리한다."""
+    session_gate.market_phase(16:00-aware 3-way 세션 phase)와 계약이 달라 이름을 분리한다."""
     return "pre_open" if now.time() < time(9, 0) else "open"
 
 

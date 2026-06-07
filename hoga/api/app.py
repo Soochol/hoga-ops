@@ -153,8 +153,8 @@ def create_app(data_dir: Path) -> FastAPI:
         try:
             yield
         finally:
-            # ADR-0043: stop Today Promotion before live poller so the loop
-            # doesn't observe a half-cancelled poller state.
+            # ADR-0043: stop Today Promotion before the live stream so the loop
+            # doesn't observe a half-cancelled stream state.
             await stop_today_promoter(today_promoter_task)
             # ADR-0064: stop the watchdog before the stream so it can't race to
             # "restart" the stream we're deliberately shutting down. (reuses the

@@ -198,7 +198,7 @@ def test_recorded_member_plausible():
 Run: `uv run pytest tests/unit/live/test_ws_frames_recorded.py -v`
 Expected: 녹화 전 SKIP ×3 / 녹화 후 3 passed
 
-- [x] **Step 5: 커밋**
+- [ ] **Step 5: 커밋**
 
 ```bash
 git add scripts/record_kis_ws_frames.py tests/fixtures/kis_ws/ tests/unit/live/test_ws_frames_recorded.py
@@ -2235,7 +2235,7 @@ Expected: 삭제 대상 정의·테스트만 출력 (다른 소비자가 나오�
 
 위 Files 목록대로 삭제. `session_gate.py`는 이미 분리(Task 7)되어 무사.
 
-- [x] **Step 3: 전체 테스트** — 1283 passed, 1 skipped(녹화 fixture 대기)
+- [x] **Step 3: 전체 테스트** — 1283 passed, 1 skipped(ADR invariant의 poller.py 파라미터 — 후속 커밋에서 WS hot-path 모듈로 교체해 skip 해소)
 
 Run: `uv run pytest tests/ -x -q`
 Expected: all passed, 0 errors (ImportError 없음)

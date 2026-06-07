@@ -62,8 +62,10 @@ async def test_stop_live_stream_is_idempotent(tmp_path: Path) -> None:
     assert lifecycle.get_status().running is False
 
 
-def test_compute_live_set_filters_unknown_codes(tmp_path: Path, monkeypatch) -> None:
-    """symbol-master에 없는 코드는 drop(경고 로그) — poller 필터 정책 승계."""
+def test_compute_live_set_filters_unknown_codes(tmp_path: Path, monkeypatch, caplog) -> None:
+    """symbol-master에 없는 코드는 drop + 경고 로그 — poller 필터 정책 승계."""
+    import logging
+
     from hoga.api import symbols
     from hoga.live import lifecycle
 
@@ -72,7 +74,9 @@ def test_compute_live_set_filters_unknown_codes(tmp_path: Path, monkeypatch) -> 
         symbols, "search",
         lambda q, limit=10_000: [SimpleNamespace(code="005930")],
     )
-    assert lifecycle._compute_live_set(tmp_path) == ["005930"]
+    with caplog.at_level(logging.WARNING):
+        assert lifecycle._compute_live_set(tmp_path) == ["005930"]
+    assert any("codes_unknown" in r.message for r in caplog.records)  # I2 pin
 
 
 def test_compute_live_set_cold_cache_keeps_all(tmp_path: Path, monkeypatch) -> None:

@@ -1,4 +1,4 @@
-"""KIS REST 응답 정규화 (pydantic). Populated in Stage 2."""
+"""KIS REST 응답 정규화 (pydantic). Quote/candle/investor wire models (poller-era 시세 모델은 Task 13에서 은퇴)."""
 from __future__ import annotations
 
 from pydantic import BaseModel

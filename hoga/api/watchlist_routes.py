@@ -103,7 +103,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
             }) from e
         try:
             await refresh_live_stream(data_dir=data_dir)
-        except Exception:  # noqa: BLE001 — poller re-sync is best-effort; the watchlist mutation already succeeded
+        except Exception:  # noqa: BLE001 — stream re-sync is best-effort; the watchlist mutation already succeeded
             log.exception("watchlist.add: refresh_live_stream failed code=%s", req.code)
         return entry
 
@@ -161,7 +161,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
             }) from e
         try:
             await refresh_live_stream(data_dir=data_dir)
-        except Exception:  # noqa: BLE001 — poller re-sync is best-effort; the watchlist mutation already succeeded
+        except Exception:  # noqa: BLE001 — stream re-sync is best-effort; the watchlist mutation already succeeded
             log.exception("watchlist.remove: refresh_live_stream failed code=%s", code)
 
     @router.post("/{code}/catchup", status_code=201, response_model=EnqueueResponse)

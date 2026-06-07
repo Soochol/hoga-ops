@@ -557,3 +557,121 @@ def test_get_status_includes_ws_transport_keys() -> None:
     assert status.transport == "ws"
     assert isinstance(status.ws_connected, bool)
     assert isinstance(status.live_set, list)
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_no_restart_at_open_with_yesterday_recv(
+    monkeypatch, _spy_start_stream, tmp_path
+) -> None:
+    """ADR-0064 boundary(포팅): 어제부터 살아있는 서버의 last_recv가 어제 마감
+    무렵이어도, 오늘 개장 직후(grace 내)엔 stale로 찍지 않는다 — grace를
+    start가 아닌 오늘 세션 open 기준으로 재므로 개장 사이클 파괴 없음."""
+    from datetime import datetime
+
+    from hoga.live import lifecycle
+    from hoga.live.kis_client import KIS_KST
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+
+    def _ms(*a):
+        return int(datetime(*a, tzinfo=KIS_KST).timestamp() * 1000)
+
+    started = _ms(2026, 6, 4, 8, 57)
+    last_recv = _ms(2026, 6, 4, 15, 29)     # 어제 마감 무렵 수신
+    now = _ms(2026, 6, 5, 9, 1)             # 오늘 개장 +1분 (grace 내)
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+    ws_task = asyncio.create_task(_forever())
+    stream_task = asyncio.create_task(_forever())
+    try:
+        _install_stream_state(monkeypatch, started_at_ms=started, ws_task=ws_task,
+                              stream_task=stream_task, last_recv_ms=last_recv)
+        restarted = await lifecycle._ws_watchdog_check(
+            data_dir=tmp_path, now_ms=now, stale_after_ms=120_000
+        )
+        assert restarted is False
+        assert _spy_start_stream == []
+    finally:
+        for t in (ws_task, stream_task):
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_restarts_when_no_recv_since_open_past_grace(
+    monkeypatch, _spy_start_stream, tmp_path
+) -> None:
+    """같은 경계, grace를 한참 지나도 개장 이후 수신 0 → 진짜 stall → 재시작."""
+    from datetime import datetime
+
+    from hoga.live import lifecycle
+    from hoga.live.kis_client import KIS_KST
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+
+    def _ms(*a):
+        return int(datetime(*a, tzinfo=KIS_KST).timestamp() * 1000)
+
+    started = _ms(2026, 6, 4, 8, 57)
+    last_recv = _ms(2026, 6, 4, 15, 29)     # 여전히 어제 — 개장 후 수신 없음
+    now = _ms(2026, 6, 5, 9, 10)            # 개장 +10분 (grace 2분 초과)
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+    ws_task = asyncio.create_task(_forever())
+    stream_task = asyncio.create_task(_forever())
+    try:
+        _install_stream_state(monkeypatch, started_at_ms=started, ws_task=ws_task,
+                              stream_task=stream_task, last_recv_ms=last_recv)
+        restarted = await lifecycle._ws_watchdog_check(
+            data_dir=tmp_path, now_ms=now, stale_after_ms=120_000
+        )
+        assert restarted is True
+        assert _spy_start_stream == [tmp_path]
+    finally:
+        for t in (ws_task, stream_task):
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_grace_no_restart_right_after_start(
+    monkeypatch, _spy_start_stream, tmp_path
+) -> None:
+    """방금 시작 + 수신 0 + grace 내 → 조기 재시작 금지."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+    ws_task = asyncio.create_task(_forever())
+    stream_task = asyncio.create_task(_forever())
+    try:
+        _install_stream_state(monkeypatch, started_at_ms=9_999_000, ws_task=ws_task,
+                              stream_task=stream_task, last_recv_ms=None)
+        restarted = await lifecycle._ws_watchdog_check(
+            data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
+        )
+        assert restarted is False
+        assert _spy_start_stream == []
+    finally:
+        for t in (ws_task, stream_task):
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass

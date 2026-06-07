@@ -399,6 +399,7 @@ class KisClient:
                 raise KisRateLimitError(f"rate limit: {msg1}")
             raise KisApiError(msg_cd=msg_cd, msg1=msg1)
         return body
+
     async def fetch_past_minute_candles(self, code: str, date_yyyymmdd: str) -> list[KisCandle]:
         """Fetch 1-minute candles for *code* on *date_yyyymmdd* (KST).
 

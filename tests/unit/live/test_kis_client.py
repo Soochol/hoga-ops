@@ -303,8 +303,8 @@ async def test_get_retries_on_rate_limit_5xx_then_succeeds(monkeypatch) -> None:
         _rate_limit_backoff=(1.0, 2.0, 4.0),
     )
     try:
-        ob = await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
-        assert ob is not None
+        body = await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
+        assert body.get("rt_cd") == "0"
         # 3 data calls: 2 EGW00201 + 1 OK. Sleeps fired BETWEEN attempts.
         assert counter["data"] == 3
         assert sleeps == [1.0, 2.0]
