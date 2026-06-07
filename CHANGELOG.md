@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
-## [0.6.4.0] - 2026-06-08
+## [0.6.5.0] - 2026-06-08
 
 ### Changed
 - **관심종목 패널 그룹/종목 시각 구분 개선**: 그룹 헤더와 종목 행이 같은
@@ -18,6 +18,21 @@ The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
   `aria-expanded` 상태 노출 — 스크린리더가 접힘/펼침을 읽을 수 있음.
 - 디자인 시스템 문서에 "Watchlist group header" 패턴 기록(크기 위계·인라인
   개수·sticky 배경 트릭) 및 Decisions Log 정리.
+
+## [0.6.4.0] - 2026-06-08
+
+### Added
+- **/live 차트 마우스 휠 인터랙션**: TradingView 방식의 3가지 휠 동작 추가.
+  - 휠: 화면 오른쪽 끝을 고정한 줌인/줌아웃 — 라이브 엣지에서는 최신 캔들이
+    제자리에 머물고, 과거 구간을 보던 중에도 뷰가 "지금"으로 끌려가지 않음.
+  - Ctrl(Cmd)+휠: 마우스 커서 아래 지점을 고정한 줌 — 커서 위치의 캔들이
+    화면에서 움직이지 않음.
+  - Shift+휠: 줌 없이 x축 좌우 이동 — 오른쪽으로는 마지막 캔들에서 멈춤
+    (오른쪽 벽). 차트 위에서 휠을 굴려도 페이지는 스크롤되지 않음.
+  - Firefox 같은 라인 단위 휠 브라우저를 위한 deltaMode 정규화 포함 — 모든
+    브라우저에서 같은 줌 감도.
+  - 트랙패드 가로 스와이프 팬·핀치 줌·드래그 팬은 기존 그대로 동작.
+- 용어 정식화: **Live Edge**·**Right Wall**을 CONTEXT.md 용어집에 등재.
 
 ## [0.6.3.0] - 2026-06-08
 
