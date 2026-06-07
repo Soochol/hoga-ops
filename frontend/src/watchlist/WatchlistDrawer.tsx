@@ -44,7 +44,8 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
 
 /**
  * 그룹 헤더 행 — 라벨/chevron 클릭 = 접기 토글, 호버 시 ⋯ 메뉴(이름 변경/삭제;
- * 실폴더만 — 미분류는 onRename/onDelete 미전달 → chevron만). FolderRow(편집 모달)
+ * 실폴더만 — 미분류는 onRename/onDelete 미전달 → ⋯ 메뉴 없이 chevron+라벨 버튼만).
+ * FolderRow(편집 모달)
  * 처럼 button-in-button을 피해 div + 형제 버튼 구조이고, 메뉴 state/dismiss 훅을
  * 루프 밖에서 쓰기 위해 module-scope 컴포넌트로 분리했다(react-hooks 규칙).
  */
@@ -70,15 +71,18 @@ function GroupHeader(props: {
     // 헤더(z-10)가 이 헤더의 메뉴(z-30, 헤더 스태킹 컨텍스트 내부)를 덮지 않게 한다.
     <div className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg-card hover:bg-bg-input-hover`}>
       <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
+        aria-expanded={!props.collapsed}
         onClick={props.onToggle} className="px-1 leading-none text-fg-dimmer hover:text-fg">
         <ChevronIcon collapsed={props.collapsed} />
       </button>
       {/* 개수를 라벨 버튼 안에 — 우측 정렬 mono 개수가 가격 컬럼과 같은 x에 떨어져
-          종목 행처럼 읽히던 충돌을 해소하고(스펙 §문제 1), 클릭 타깃도 키운다. */}
+          종목 행처럼 읽히던 충돌을 해소하고(스펙 §문제 1), 클릭 타깃도 키운다.
+          aria-label 명시 — 콘텐츠 합성에 맡기면 인접 span 사이 공백 처리가
+          엔진(accname 구현)마다 갈려 "스윙1"로 붙을 수 있다(가시 텍스트와 동일 문구). */}
       <button type="button" onClick={props.onToggle}
+        aria-label={`${props.label} ${props.count}`} aria-expanded={!props.collapsed}
         className="flex-1 min-w-0 text-left flex items-baseline gap-1.5">
         <span className="truncate">{props.label}</span>
-        {' '/* 접근성 이름 단어 분리 — 없으면 "스윙1"로 합성 */}
         <span className="flex-none text-xs font-normal text-fg-dimmer">{props.count}</span>
       </button>
       {props.onRename && (

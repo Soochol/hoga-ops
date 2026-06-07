@@ -225,7 +225,9 @@ Every feature route except the chart workspace follows one shell:
 - 구조: `[chevron ▼(펼침)/▶(접힘), 좌측] [그룹명 + 개수 인라인] ··· [⋯ hover 메뉴, 우측]`
 - 그룹명: `sm`/600 — 종목명(`xs`/400)보다 크고 굵게. 색은 `--fg-dim` 유지(크기·굵기만으로 위계).
 - 개수: `xs` `--fg-dimmer`, **mono 금지** — 우측 정렬 mono 숫자는 종목 행의 가격 컬럼과
-  같은 x에 떨어져 행으로 오독되므로 라벨 옆 인라인 고정.
+  같은 x에 떨어져 행으로 오독되므로 라벨 옆 인라인 고정. (`--fg-dimmer`/`--bg-card` 대비
+  ≈3.9:1로 WCAG AA(4.5:1) 미달 — 3차 텍스트로 의도된 트레이드오프, 개수는 라벨 버튼
+  aria-label에 포함되어 AT에는 전달됨.)
 - sticky `top-0` + `--bg-card` 배경 — 패널과 동일색이라 평시엔 투명처럼 보이고
   스크롤 시에만 행을 가린다.
 - 종목 행(QuoteRow) 종목명은 `xs` — 가격(`sm` mono)이 1차 콘텐츠, 종목명은 식별자.
