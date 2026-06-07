@@ -78,7 +78,8 @@ describe('useWheelInteractions', () => {
   it('ctrl wheel: 커서 앵커 줌 — 양변이 앵커(50) 기준 확장', () => {
     const ts = makeTs({ coordinateToLogical: vi.fn(() => 50) });
     const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={null} />);
-    wheel(getByTestId('wheel-host'), { deltaY: 100, ctrlKey: true });
+    wheel(getByTestId('wheel-host'), { deltaY: 100, ctrlKey: true, clientX: 50 });
+    expect(ts.coordinateToLogical).toHaveBeenCalledWith(50);
     const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
     expect(arg.from).toBeCloseTo(50 - 50 * FACTOR, 6); // ≈ -5.259
     expect(arg.to).toBeCloseTo(50 + 50 * FACTOR, 6);   // ≈ 105.259
