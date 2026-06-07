@@ -2,7 +2,7 @@
 
 **Date**: 2026-06-07
 **Status**: Approved
-**Scope**: `frontend/src/live/useWheelInteractions.ts` (신규), `frontend/src/live/useWheelInteractions.test.tsx` (신규), `frontend/src/live/LiveChartRoot.tsx`, `frontend/src/util/wheelInteractions.ts` (무변경 재사용)
+**Scope**: `frontend/src/live/useWheelInteractions.ts` (신규), `frontend/src/live/useWheelInteractions.test.tsx` (신규), `frontend/src/live/LiveChartRoot.tsx`, `frontend/src/live/LiveChartRoot.test.tsx` (배선 회귀 추가), `frontend/src/util/wheelInteractions.ts` (무변경 재사용)
 
 ## Problem
 
