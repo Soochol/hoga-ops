@@ -44,20 +44,37 @@ export function useWheelInteractions(
     const ts = chart.timeScale();
 
     const onWheel = (e: WheelEvent) => {
-      const range = ts.getVisibleLogicalRange();
-      if (!range) return; // 데이터 로드 전 — 페이지 스크롤을 방해하지 않는다
-      e.preventDefault(); // 페이지 스크롤(특히 shift+휠 가로 스크롤)/브라우저 줌 차단
-      const rect = container.getBoundingClientRect();
-      const outcome = computeWheelOutcome({
-        range,
-        deltaY: e.deltaY,
-        shiftKey: e.shiftKey,
-        ctrlOrMetaKey: e.ctrlKey || e.metaKey,
-        mouseX: e.clientX - rect.left,
-        coordinateToLogical: (x) => ts.coordinateToLogical(x),
-        maxTo: maxToRef.current,
-      });
-      if (outcome) ts.setVisibleLogicalRange(outcome);
+      // chart teardown(뷰 전환 remount) 사이에 휠이 끼어드는 경합 방어 —
+      // 현재는 effect 선언 순서상 리스너가 c.remove()보다 먼저 해제되어
+      // 도달 불가지만, 레포의 다른 lwc viewport 호출부와 같은 관례적 가드.
+      try {
+        const range = ts.getVisibleLogicalRange();
+        if (!range) return; // 데이터 로드 전 — 페이지 스크롤을 방해하지 않는다
+        e.preventDefault(); // 페이지 스크롤(특히 shift+휠 가로 스크롤)/브라우저 줌 차단
+        // deltaMode 정규화 — 브라우저별 deltaY 단위 차이를 픽셀로 환산한다.
+        // Firefox는 휠을 LINE 단위(노치당 ±3)로 보내므로 환산 없이는 줌이
+        // ~35배 약해진다. 환산표는 우리가 끈 라이브러리 휠 핸들러
+        // (_determineWheelSpeedAdjustment)와 동일: LINE ×32, PAGE ×120.
+        // (lwc의 Windows-Chromium DPR 보정은 해당 플랫폼 한정 버그
+        // 워크어라운드라 채택하지 않음 — 필요 시 후속.)
+        const unit =
+          e.deltaMode === e.DOM_DELTA_LINE ? 32
+          : e.deltaMode === e.DOM_DELTA_PAGE ? 120
+          : 1;
+        const rect = container.getBoundingClientRect();
+        const outcome = computeWheelOutcome({
+          range,
+          deltaY: e.deltaY * unit,
+          shiftKey: e.shiftKey,
+          ctrlOrMetaKey: e.ctrlKey || e.metaKey,
+          mouseX: e.clientX - rect.left,
+          coordinateToLogical: (x) => ts.coordinateToLogical(x),
+          maxTo: maxToRef.current,
+        });
+        if (outcome) ts.setVisibleLogicalRange(outcome);
+      } catch {
+        // chart torn down between effect runs — 무시 (다음 차트에서 재부착)
+      }
     };
 
     // passive: false 필수 — 기본값(passive)이면 preventDefault()가 무시되어

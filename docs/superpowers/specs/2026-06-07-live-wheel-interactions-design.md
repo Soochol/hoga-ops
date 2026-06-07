@@ -54,6 +54,19 @@ grill 리뷰(스펙 심문)에서 추가 확정:
 7. **Live Edge·Right Wall 용어를 CONTEXT.md에 등재** — 스펙 3건과 코드 주석에서
    반복 사용되는 개념의 정식화.
 
+/ship 적대 리뷰(2026-06-08)에서 추가 확정:
+
+8. **deltaMode 정규화 추가** — lwc의 휠 핸들러는 Firefox의 LINE 단위
+   deltaY(노치당 ±3)를 ×32로, PAGE를 ×120으로 환산한다
+   (`_determineWheelSpeedAdjustment` — 1차 소스 확인). 이를 끄고 raw deltaY를
+   쓰면 Firefox에서 줌이 ~35배 약해지는 회귀이므로 훅에서 동일 환산표를
+   적용한다. lwc의 Windows-Chromium DPR 보정(해당 플랫폼 한정 버그
+   워크어라운드)과 per-event 캡(승인된 exp 커브와 다른 느낌)은 채택하지 않음.
+9. **휠 핸들러 try/catch 가드** — 현재는 effect 선언 순서상 리스너가
+   `c.remove()`보다 먼저 해제되어 도달 불가지만, 레포의 다른 lwc viewport
+   호출부 컨벤션과 정합하도록 핸들러 본문을 try/catch로 감싼다(향후 훅 순서
+   리팩토링 내성).
+
 ## Invariants
 
 - **Mouse-anchor ratio preservation (ctrl/cmd 줌)**: 줌 전후로 앵커의 화면 비율
@@ -165,20 +178,29 @@ useEffect(() => {
   const ts = chart.timeScale();
 
   const onWheel = (e: WheelEvent) => {
-    const range = ts.getVisibleLogicalRange();
-    if (!range) return;            // 데이터 로드 전 — 페이지 스크롤 방해 금지
-    e.preventDefault();            // 페이지 스크롤/브라우저 줌 차단
-    const rect = container.getBoundingClientRect();
-    const outcome = computeWheelOutcome({
-      range,
-      deltaY: e.deltaY,
-      shiftKey: e.shiftKey,
-      ctrlOrMetaKey: e.ctrlKey || e.metaKey,
-      mouseX: e.clientX - rect.left,
-      coordinateToLogical: (x) => ts.coordinateToLogical(x),
-      maxTo: maxToRef.current,
-    });
-    if (outcome) ts.setVisibleLogicalRange(outcome);
+    try {                          // 결정 #9 — teardown 경합 관례 가드
+      const range = ts.getVisibleLogicalRange();
+      if (!range) return;          // 데이터 로드 전 — 페이지 스크롤 방해 금지
+      e.preventDefault();          // 페이지 스크롤/브라우저 줌 차단
+      // 결정 #8 — deltaMode 정규화 (Firefox LINE ×32, PAGE ×120)
+      const unit =
+        e.deltaMode === e.DOM_DELTA_LINE ? 32
+        : e.deltaMode === e.DOM_DELTA_PAGE ? 120
+        : 1;
+      const rect = container.getBoundingClientRect();
+      const outcome = computeWheelOutcome({
+        range,
+        deltaY: e.deltaY * unit,
+        shiftKey: e.shiftKey,
+        ctrlOrMetaKey: e.ctrlKey || e.metaKey,
+        mouseX: e.clientX - rect.left,
+        coordinateToLogical: (x) => ts.coordinateToLogical(x),
+        maxTo: maxToRef.current,
+      });
+      if (outcome) ts.setVisibleLogicalRange(outcome);
+    } catch {
+      // chart torn down between effect runs — 무시
+    }
   };
 
   container.addEventListener('wheel', onWheel, { passive: false });
@@ -259,6 +281,11 @@ useEffect(() => {
   `coordinateToLogical`이 페인 폭 밖 x를 선형 외삽해 앵커가 `range.to`보다 몇 칸
   바깥에 잡힌다(라이브러리 내장 줌은 페인 안으로 클램프했음). 필드테스트된
   리플레이 ChartStage와 동일 배선에서 허용된 오차 — 클램프를 추가하지 않는다.
+- **deltaMode 정규화 (Firefox 등)**: 훅이 LINE(×32)/PAGE(×120) 단위 deltaY를
+  픽셀 상당으로 환산한다 — 우리가 끈 lwc 핸들러와 동일 환산표 (결정 #8).
+  Windows-Chromium의 DPR 과대 deltaY(Chromium 버그 1001735)는 보정하지 않음 —
+  해당 플랫폼에서 줌이 DPR배 빠르게 느껴지면 후속으로 lwc의
+  `1/devicePixelRatio` 보정을 이식한다.
 - **shift+휠이 `deltaX`로 오는 플랫폼**: 이전 스펙의 결정 승계 — `deltaY` 단일
   소스를 유지하고, 특정 플랫폼에서 shift+휠이 죽는 것이 확인되면 그때 `deltaX`
   폴백을 추가한다(선제 대응 안 함). 해당 케이스에서도 라이브러리 deltaX 팬(벽

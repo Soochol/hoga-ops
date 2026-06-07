@@ -117,6 +117,16 @@ describe('useWheelInteractions', () => {
     expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
+  it('Firefox 라인 단위 휠(deltaMode=LINE): deltaY를 ×32 환산해 픽셀 모드와 동일 줌', () => {
+    const ts = makeTs();
+    const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={null} />);
+    // 3.125 라인 × 32 = 100 픽셀 상당 → 픽셀 모드 deltaY=100과 동일 결과여야 한다.
+    wheel(getByTestId('wheel-host'), { deltaY: 3.125, deltaMode: WheelEvent.DOM_DELTA_LINE });
+    const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
+    expect(arg.to).toBe(100);
+    expect(arg.from).toBeCloseTo(100 - 100 * FACTOR, 6); // 환산 없으면 ≈ -0.31로 실패
+  });
+
   it('bundle 교체 시 maxTo는 ref로 갱신 — 리스너 재부착 없음', () => {
     const ts = makeTs();
     const chart = makeChart(ts); // 동일 chart identity 유지 — 리스너 effect 재실행 방지

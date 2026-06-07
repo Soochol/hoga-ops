@@ -569,6 +569,18 @@ JSON.stringify(window.__liveChart.timeScale().getVisibleLogicalRange())"
 
 ---
 
+## Post-plan amendments (2026-06-08 /ship 리뷰)
+
+플랜 5태스크 실행 완료 후 /ship 적대 리뷰에서 확정된 추가 변경 2건 — 위
+태스크들의 코드 블록은 실행 당시 기준이며, 최종 출하 코드는 다음이 더해진
+상태다 (스펙 결정 사항 #8·#9 참조):
+
+1. **deltaMode 정규화** (`useWheelInteractions.ts` onWheel): lwc가 하던
+   LINE ×32 / PAGE ×120 환산을 훅에서 재현 — Firefox 휠 줌 ~35배 약화 회귀
+   차단. 테스트 1케이스 추가 (`deltaMode=LINE` ×32 환산, 총 8케이스).
+2. **onWheel try/catch 가드**: 레포의 lwc viewport 호출 컨벤션 정합
+   (teardown 경합 — 현재 effect 순서상 도달 불가, 리팩토링 내성용).
+
 ## Self-Review 체크 (플랜 작성 시 수행 완료)
 
 - 스펙 커버리지: 훅(Task 1-2), LiveChartRoot 2곳(Task 3), 기존 22케이스 무변경
