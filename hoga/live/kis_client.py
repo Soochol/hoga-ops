@@ -98,6 +98,7 @@ class _TokenBucket:
                 wait = (1.0 - self._tokens) / self._rate
             await asyncio.sleep(wait)
 
+
 class KisAuthError(RuntimeError):
     """Token issue failed or cool-down breached."""
 

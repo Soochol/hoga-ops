@@ -209,6 +209,8 @@ def get_status() -> LiveStatus:
         ws_connected=ws_connected,
         live_set=list(_state.live_set),
     )
+
+
 def reset_for_tests() -> None:
     """Test-only hook. Resets module state without raising."""
     global _state, _buffer  # noqa: PLW0603 — test-only reset of module singletons
@@ -269,8 +271,12 @@ async def stop_today_promoter(task: asyncio.Task | None) -> None:
         await task
     except asyncio.CancelledError:
         pass
+
+
 _WATCHDOG_CHECK_INTERVAL_S = 30.0
 _WATCHDOG_STALE_AFTER_MS = 120_000  # ~2 min (≈6 cycles) without a completed tick
+
+
 async def start_live_stream(*, data_dir: Path) -> bool:
     """start_live_poller의 WS 대체 — 구조 동일(creds/watchlist 가드 → 기동).
 

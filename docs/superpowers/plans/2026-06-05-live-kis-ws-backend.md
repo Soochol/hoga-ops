@@ -2240,7 +2240,7 @@ Expected: 삭제 대상 정의·테스트만 출력 (다른 소비자가 나오�
 Run: `uv run pytest tests/ -x -q`
 Expected: all passed, 0 errors (ImportError 없음)
 
-- [x] **Step 4: ruff/pyright** — 신규 위반 0(base 대비 33건 소멸·고아 import 2건 즉시 수정), pyright 0 errors
+- [x] **Step 4: ruff/pyright** — 신규 위반 0(base 대비 ~20건 소멸·고아 import 2건 즉시 수정), pyright(hoga/live 스코프) 0 errors
 
 Run: `uv run ruff check hoga/ && uv run pyright`
 Expected: clean (미사용 import 잔재 없음)

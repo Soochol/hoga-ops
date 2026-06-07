@@ -675,3 +675,38 @@ async def test_ws_watchdog_grace_no_restart_right_after_start(
                 await t
             except asyncio.CancelledError:
                 pass
+
+
+@pytest.mark.asyncio
+async def test_stop_locked_propagates_outer_cancellation() -> None:
+    """M4 pin: _stop_live_stream_locked가 자식 task 취소만 삼키고, *자기 자신*의
+    취소는 전파해야 한다 — 삼키면 lifespan shutdown이 hang(무증상 재유입 방지)."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+
+    lifecycle.reset_for_tests()
+
+    async def _stubborn() -> None:
+        # cancel을 한 번 흡수해 stop의 await task를 오래 붙잡는 자식 흉내
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            await asyncio.sleep(60)  # 두 번째 cancel까지 버팀
+
+    child = asyncio.create_task(_stubborn())
+    await asyncio.sleep(0)
+    lifecycle._state = _State(started_at_ms=1, stream_task=child)
+
+    async def _runner() -> None:
+        await lifecycle._stop_live_stream_locked()
+
+    outer = asyncio.create_task(_runner())
+    await asyncio.sleep(0.01)        # stop이 child await에 진입할 시간
+    outer.cancel()                   # 외부 취소 — 삼켜지면 안 됨
+    with pytest.raises(asyncio.CancelledError):
+        await outer
+    child.cancel()
+    try:
+        await child
+    except asyncio.CancelledError:
+        pass
