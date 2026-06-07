@@ -67,4 +67,4 @@ async def main(code: str, seconds: int) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 60))
+    asyncio.run(main(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 60  # noqa: PLR2004 — argv 인덱스))
