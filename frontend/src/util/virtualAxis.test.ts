@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { createVirtualAxis } from './virtualAxis';
+import { INTER_SEGMENT_GAP_MS } from './time';
 
 // KST 09:00 — 15:30 = 6h30m = 23_400_000 ms.
 const SESSION_LEN_MS = 6.5 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-// Must mirror INTER_SEGMENT_GAP_MS in util/time.ts. The 1s synthetic gap
-// keeps day N's 15:30 candle and day N+1's 09:00 candle on distinct virtual
-// timestamps (otherwise lightweight-charts setData throws "asc ordered by
-// time" on the N-1 boundary collisions for multi-day ranges).
-const GAP_MS = 1000;
+// The 1s synthetic gap keeps day N's 15:30 candle and day N+1's 09:00 candle
+// on distinct virtual timestamps (otherwise lightweight-charts setData throws
+// "asc ordered by time" on the N-1 boundary collisions for multi-day ranges).
+const GAP_MS = INTER_SEGMENT_GAP_MS;
 // Virtual step between consecutive segments' virtualStart values.
 const SEG_STRIDE_MS = SESSION_LEN_MS + GAP_MS;
 

@@ -130,16 +130,19 @@ export default function RangeSeriesPane<Ctx>({
   // bundle/axis/ctx changes. Cheap (setData on a held handle), so it's
   // fine to run on every render where any of those changes.
   //
-  // `paneIndex` is in the deps because the lifecycle effect above RE-CREATES
-  // the series when paneIndex changes (a pane toggled off above this one shifts
-  // its index). The fresh series starts empty, so the data must be re-pushed in
-  // the same commit — otherwise the pane renders blank until a full remount.
+  // `paneIndex` and `chart` are in the deps because the lifecycle effect
+  // above RE-CREATES the series when either changes (a pane toggled off
+  // above this one shifts its index; /live remounts the chart instance per
+  // (code, timeframe) view — see LiveChartRoot's per-viewKey effect). The
+  // fresh series starts empty, so the data must be re-pushed in the same
+  // commit — otherwise the pane renders blank until the next bundle
+  // identity change (up to a 60s refetch on D/W/M).
   useEffect(() => {
     const seriesList = seriesRef.current;
     if (seriesList.length !== spec.series.length) return;
     spec.series.forEach((s, i) => {
       seriesList[i].setData(s.data(bundle, axis, ctx));
     });
-  }, [bundle, axis, ctx, spec, paneIndex]);
+  }, [chart, bundle, axis, ctx, spec, paneIndex]);
   return null;
 }

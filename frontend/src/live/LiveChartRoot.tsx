@@ -75,14 +75,12 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // Eng review C1: memoise VirtualAxis on the segments array reference so
   // an SSE push that doesn't change segments doesn't churn the axis identity.
   //
-  // Real-anchored origin (2nd arg): virtual times start at the first
-  // session's real open instead of 0, so the candle `time` values lwc holds
-  // change at index 0 exactly when the axis remaps (timeframe switch /
-  // leftward-pan prepend) and stay stable otherwise. Without it, every
-  // remap re-issued the same n×23401s ladder for different real dates and
-  // lwc kept the previous generation's tick weights + cached labels on the
-  // value-identical prefix — the "old region shows last generation's dates"
-  // x-axis bug. See createVirtualAxis's doc comment for the mechanism.
+  // Real-anchored origin (2nd arg): within this (code, timeframe) view, the
+  // candle `time` values lwc holds change at index 0 whenever segments[0]
+  // moves (leftward-pan prepend) and stay stable otherwise — defeating lwc's
+  // value-keyed tick weight/label retention. Mechanism + edge cases live on
+  // createVirtualAxis's originMs doc; cross-view collisions are handled by
+  // the per-viewKey chart remount below.
   const axis: VirtualAxis = useMemo(() => {
     if (!bundle || bundle.segments.length === 0) return EMPTY_AXIS;
     return createVirtualAxis(
@@ -375,7 +373,20 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       c.remove();
       setChart(null);
     };
-  }, []);
+    // Recreate the chart per (code, timeframe) view. lightweight-charts keeps
+    // per-instance caches keyed by time VALUE (tick weights, marks, formatted
+    // labels — see createVirtualAxis's originMs doc), and two different views
+    // can legitimately produce value-identical time ladders with DIFFERENT
+    // real-date mappings even under real-anchored origins: W↔M (or D↔W/M)
+    // when both windows clamp to the same first trading day (any stock whose
+    // history is shorter than both fetch windows), and code switches where
+    // per-stock missing dates change the mapping but not the gap-compressed
+    // ladder. No origin arithmetic can separate those — a fresh chart
+    // instance is the only state boundary that guarantees no cross-view
+    // carryover. Within one view, prepends are handled by the real-anchored
+    // origin (segments[0] moves → full lwc rebuild). The viewKey reveal cover
+    // already masks the swap, so remounting adds no visible flash.
+  }, [viewKey]);
 
   const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
   const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
