@@ -213,7 +213,7 @@ export function WatchlistDrawer() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div data-testid="watchlist-scroll" style={{ flex: 1, overflow: 'auto' }}>
         {isLoading && <div className="p-3 text-fg-dimmer text-sm">불러오는 중</div>}
         {error && <div className="p-3 text-error text-sm">관심종목을 불러올 수 없습니다</div>}
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (
