@@ -2181,6 +2181,38 @@ Run: `cd frontend && npx vitest run src/live/` → all passed
 # 실제 커밋: 67c6719 (feat(frontend): time-based eviction for live snapshot buffer)
 ```
 
+- [x] **Step 6: 품질 리뷰 C1 — pastMaxQrT 전진(봉합 구멍 닫기)** (2026-06-07 완료)
+
+C1(Critical): 15분 eviction + `/api/range` `staleTime: Infinity` 동결 = 오늘 지표
+seam에 자라는 구멍. `buildLiveBundle`의 오늘 지표 = [range past(≤pastMaxQrT)] +
+[버퍼 incremental(>pastMaxQrT)]인데 pastMaxQrT가 로드 시점에 동결되면
+`[pastMaxQrT … now−15분]`이 영구 공백(구버전 ~7h 버퍼가 이를 가렸음). 수정 =
+pastMaxQrT를 전진(spec §6 "경계 우측 전진"의 프론트 구현):
+
+- `frontend/src/api/range.ts`: `rangeFreshnessOptions(to, todayKst)` 순수 함수 추출
+  — 오늘-포함(`to >= todayKst`) 쿼리만 `staleTime`/`refetchInterval =
+  TODAY_RANGE_REFETCH_MS(5분, `HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S` 동기)`, 과거-전용은
+  `Infinity`/`false` 유지(capture/replay 백필에 refetch 누출 금지). `useRange`에
+  optional `todayKst` 6번째 인자 추가.
+- 게이팅 위치: 호출부 `useLiveBundle.ts`에서 `todayKstYyyymmdd` 전달(/live의
+  `minutePastTo`는 항상 오늘 → 항상 활성; 비-live 호출자는 인자 생략으로 동결).
+- 봉합 사이징 불변식 정정: 보존(15분) > promotion_period(5분) + refetch_period(5분)
+  ≈ 10분. `liveSnapshotBuffer.ts` 헤더·`range.ts` 주석에 명시(I1 stale 헤더 재작성 포함).
+- 부작용 점검: range refetch는 `quote_ratio`/`fill_strength`만 갱신, `bundle.candles`는
+  불변(`buildLiveBundle`이 `pastBundle.candles` 무시) → `useViewportBackfill`
+  repositioner(candles의 newEarliest로 트리거, `historicalFromDate != null` 게이트)
+  발화 불가. 동일 query key refetch라 `placeholderData` 스왑 없음 → `isExtending`
+  미설정 → 오늘 우측 edge는 append-only, prepend 경로와 무관(3중 안전).
+- 테스트: `rangeFreshnessOptions` 양 브랜치 5건(range.test.tsx), buildLiveBundle
+  advance-seam 1건(advanced pastMaxQrT에서 incremental 축소·무중복·무공백),
+  buffer M2 pin 2건(`t_ms === cutoff` 유지 / 역행 push fail-safe).
+  `useLiveBundle.test.tsx` useRange 인자 assertion 보정 1건(의미 보존). M1: quiet-kind
+  tail 잔존 주석(buffer.py:138 대칭). `src/live/ src/api/` 54파일 435 테스트 무회귀.
+
+```bash
+# 실제 커밋: d5913d9 (fix(frontend): advance pastMaxQrT via 5min range refetch — seam hole)
+```
+
 ---
 
 ### Task 13: poller 완전 은퇴 (청소)

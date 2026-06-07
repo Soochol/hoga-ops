@@ -164,7 +164,7 @@ KIS WebSocket (호가 H0STASP0 + 체결 H0STCNT0 + 회원사/거래원, ~13종�
 근거: `LiveBuffer maxlen=2520`은 현 poller(10초)엔 하루치지만 WS per-tick에선 몇 분치다. 메모리가 오늘 전체를 못 들으므로 오늘 지난 부분은 디스크/REST에서 읽는다(지표·호가=디스크 10초, 캔들=REST past-candles).
 
 **경계 전진은 지표·호가에만 해당 — 캔들과 비대칭(리뷰 지적)**:
-- **지표·호가**: Today Promotion(5분)이 promoted parquet을 갱신해 `pastMaxT`가 전진 → [디스크 10초] + [WS 꼬리(raw Live Tick ring, 최근 ~수 분)]의 경계가 우측으로 굳어간다(기존 `pastMaxQrT` 봉합 재사용).
+- **지표·호가**: Today Promotion(5분)이 promoted parquet을 갱신해 `pastMaxT`가 전진 → [디스크 10초] + [WS 꼬리(raw Live Tick ring, 최근 ~수 분)]의 경계가 우측으로 굳어간다(기존 `pastMaxQrT` 봉합 재사용). **프론트의 `pastMaxQrT` 전진은 오늘-포함 `/api/range` 쿼리의 5분 refetch(Today Promotion 주기 `HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S` 동기)로 구현** — 로드 시점 `staleTime: Infinity` 동결이면 프론트 버퍼(15분)가 `[동결 pastMaxQrT … now]`에 자라는 구멍을 남긴다(Task 12 리뷰 C1, `frontend/src/api/range.ts:rangeFreshnessOptions`).
 - **캔들(옵션 A)**: 캔들은 promotion되지 않고(ADR-0043 Inv 2) 장중 REST도 OFF → **경계가 load 시점의 REST 시드에 고정, 전진 없음**(§5.4와 일치). WS 집계가 만든 마감 분봉을 세션 내내 메모리에 누적 보관 — raw 틱 ring과 *다른* 메모리 모델(가벼운 append 배열, 하루 ~390개). 캔들 봉합 메커니즘은 신설 — §5.4·§12.
 
 ## 7. 신설 컴포넌트: KIS WS 클라이언트 (백엔드)
