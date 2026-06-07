@@ -136,7 +136,7 @@ export function ScreenerDrawer() {
       </div>
 
       {/* Results */}
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div data-testid="screener-scroll" className="flex-1 min-h-0 overflow-auto">
         {screener.isError ? (
           <div className="p-md text-sm">
             <div className="font-semibold" style={{ color: 'var(--error)' }}>조회 실패</div>

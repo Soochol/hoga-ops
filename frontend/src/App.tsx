@@ -25,7 +25,15 @@ export default function App() {
   return (
     <div
       className="grid h-screen w-screen overflow-hidden"
-      style={{ gridTemplateColumns: cols }}
+      style={{
+        gridTemplateColumns: cols,
+        // minmax(0, 1fr) — 행을 명시하지 않으면 암시적 auto 행이 패널(관심/스크리너)
+        // 콘텐츠 높이까지 자라 같은 행의 <main>(차트)이 뷰포트를 넘는다. 그룹
+        // 접기/펼치기마다 차트 높이가 출렁이던 버그의 근본 원인 (LivePage 워크
+        // 영역 행과 같은 계약). 주의: 직계 자식을 새로 추가해 2행이 되면 그 행은
+        // 다시 암시적 auto가 되므로 행 정의를 함께 갱신할 것.
+        gridTemplateRows: 'minmax(0, 1fr)',
+      }}
     >
       <LeftNav />
       <main className="overflow-hidden min-w-0"><Outlet /></main>

@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { createVirtualAxis } from './virtualAxis';
+import { INTER_SEGMENT_GAP_MS } from './time';
 
 // KST 09:00 — 15:30 = 6h30m = 23_400_000 ms.
 const SESSION_LEN_MS = 6.5 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-// Must mirror INTER_SEGMENT_GAP_MS in util/time.ts. The 1s synthetic gap
-// keeps day N's 15:30 candle and day N+1's 09:00 candle on distinct virtual
-// timestamps (otherwise lightweight-charts setData throws "asc ordered by
-// time" on the N-1 boundary collisions for multi-day ranges).
-const GAP_MS = 1000;
+// The 1s synthetic gap keeps day N's 15:30 candle and day N+1's 09:00 candle
+// on distinct virtual timestamps (otherwise lightweight-charts setData throws
+// "asc ordered by time" on the N-1 boundary collisions for multi-day ranges).
+const GAP_MS = INTER_SEGMENT_GAP_MS;
 // Virtual step between consecutive segments' virtualStart values.
 const SEG_STRIDE_MS = SESSION_LEN_MS + GAP_MS;
 
@@ -275,6 +275,101 @@ describe('createVirtualAxis — findByReal', () => {
 
   it('boundary: realMs exactly at sessionCloseMs belongs to that segment (not the gap)', () => {
     expect(axis.findByReal(2_000_000)).toBe(0);
+  });
+});
+
+describe('createVirtualAxis — real-anchored origin (originMs)', () => {
+  const ORIGIN = DAY1_OPEN; // /live passes segments[0].sessionOpenMs
+  const axis = createVirtualAxis(RAW_3, ORIGIN);
+
+  it('segments[0].virtualStart equals originMs; later segments stack from it', () => {
+    expect(axis.segments[0].virtualStart).toBe(ORIGIN);
+    expect(axis.segments[1].virtualStart).toBe(ORIGIN + SEG_STRIDE_MS);
+    expect(axis.segments[2].virtualStart).toBe(ORIGIN + 2 * SEG_STRIDE_MS);
+  });
+
+  it('toVirtual / toReal round-trip with a non-zero origin', () => {
+    const samples = [DAY1_OPEN, DAY1_OPEN + 1234567, DAY1_CLOSE, DAY2_OPEN, DAY3_CLOSE];
+    for (const realMs of samples) {
+      expect(axis.toReal(axis.toVirtual(realMs))).toBe(realMs);
+    }
+    expect(axis.toVirtual(DAY1_OPEN)).toBe(ORIGIN);
+    expect(axis.toReal(ORIGIN)).toBe(DAY1_OPEN);
+  });
+
+  it('toReal clamps at/below the origin to the first session open', () => {
+    expect(axis.toReal(ORIGIN - 1)).toBe(DAY1_OPEN);
+    expect(axis.toReal(0)).toBe(DAY1_OPEN);
+  });
+
+  it('omitting originMs preserves the legacy zero-based axis', () => {
+    const zero = createVirtualAxis(RAW_3);
+    expect(zero.segments[0].virtualStart).toBe(0);
+    expect(zero.toVirtual(DAY1_OPEN)).toBe(0);
+  });
+
+  it('toVirtual edges under a non-zero origin: pre-axis clamp, gap snap, last-segment clamp', () => {
+    // realMs strictly BEFORE the first open → originMs (the shifted
+    // first.virtualStart), not 0.
+    expect(axis.toVirtual(DAY1_OPEN - 1)).toBe(ORIGIN);
+    // Gap times still snap forward to the NEXT segment's (shifted) virtualStart.
+    expect(axis.toVirtual(DAY1_CLOSE + 2 * 60 * 60 * 1000)).toBe(ORIGIN + SEG_STRIDE_MS);
+    // Past the final close → clamp to the last segment's virtual end (the
+    // `!next` branch of the binary-search rewrite — last-segment clamp).
+    const lastEnd = ORIGIN + 2 * SEG_STRIDE_MS + SESSION_LEN_MS;
+    expect(axis.toVirtual(DAY3_CLOSE + 1)).toBe(lastEnd);
+    expect(axis.toVirtual(DAY3_CLOSE + DAY_MS)).toBe(lastEnd);
+  });
+
+  // Regression lock for the /live x-axis stale-label bug. lightweight-charts
+  // identifies time-scale points by their time VALUE across setData
+  // generations: points whose times match the previous data keep their old
+  // timeWeights, tick marks before the first changed index are retained, and
+  // formatted labels are cached by (weight, time). A zero-based axis re-issues
+  // the SAME virtual times for DIFFERENT real dates after a leftward-pan
+  // prepend (a uniform ladder prepended is value-identical to the old ladder
+  // extended at the end) and after D/W/M timeframe switches (all share the
+  // n×SEG_STRIDE ladder) — so the old region rendered the previous
+  // generation's dates. The real-anchored origin must change the index-0 bar
+  // time whenever segments[0] changes, forcing lwc's
+  // firstChangedPointIndex=0 full rebuild.
+  it('prepending an older segment changes every bar time (lwc full-rebuild trigger)', () => {
+    const day0Open = DAY1_OPEN - DAY_MS;
+    const day0 = {
+      date: '20260517',
+      sessionOpenMs: day0Open,
+      sessionCloseMs: day0Open + SESSION_LEN_MS,
+    };
+    const before = createVirtualAxis(RAW_3, RAW_3[0].sessionOpenMs);
+    const after = createVirtualAxis([day0, ...RAW_3], day0Open);
+
+    // Index 0 of the new generation (day0's open) must NOT collide with
+    // index 0 of the old generation (day1's open)…
+    expect(after.toVirtual(day0Open)).not.toBe(before.toVirtual(DAY1_OPEN));
+    // …and every bar that existed before the prepend gets a new time too.
+    for (const realMs of [DAY1_OPEN, DAY2_OPEN, DAY3_OPEN]) {
+      expect(after.toVirtual(realMs)).not.toBe(before.toVirtual(realMs));
+    }
+  });
+
+  it('axes with different first sessions never share bar times index-wise (timeframe switch)', () => {
+    // Model a D→W-like switch: same per-bar stride, different segments[0].
+    // Zero-based axes made these ladders value-identical (the proven M→W
+    // '07/'08 label repro); real-anchored origins must keep them disjoint
+    // from index 0.
+    const weekStarts = [
+      { date: '20260504', sessionOpenMs: DAY1_OPEN - 14 * DAY_MS, sessionCloseMs: DAY1_OPEN - 14 * DAY_MS + SESSION_LEN_MS },
+      { date: '20260511', sessionOpenMs: DAY1_OPEN - 7 * DAY_MS, sessionCloseMs: DAY1_OPEN - 7 * DAY_MS + SESSION_LEN_MS },
+      { date: '20260518', sessionOpenMs: DAY1_OPEN, sessionCloseMs: DAY1_CLOSE },
+    ];
+    const daily = createVirtualAxis(RAW_3, RAW_3[0].sessionOpenMs);
+    const weekly = createVirtualAxis(weekStarts, weekStarts[0].sessionOpenMs);
+    // Bar n's time = toVirtual(segment n's open). Compare index-wise.
+    for (let n = 0; n < 3; n++) {
+      expect(weekly.toVirtual(weekStarts[n].sessionOpenMs)).not.toBe(
+        daily.toVirtual(RAW_3[n].sessionOpenMs),
+      );
+    }
   });
 });
 

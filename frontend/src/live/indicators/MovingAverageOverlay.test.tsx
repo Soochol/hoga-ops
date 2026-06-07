@@ -168,6 +168,27 @@ describe('MovingAverageOverlay', () => {
     expect(useMaSeriesRegistry.getState().series.size).toBe(DEFAULT_LIVE_MAS.length);
   });
 
+  it('re-pushes SMA data into the new chart\'s series on a chart instance swap', () => {
+    // Regression: /live remounts the lwc chart per (code, timeframe) view.
+    // The reconcile + cleanup effects already re-create the series on the new
+    // chart (both keyed on `chart`), but the fresh series start EMPTY — the
+    // data-push effect must also have `chart` in its deps or nothing calls
+    // setData until an unrelated bundle/config change (blank MA lines).
+    const m1 = makeChartMock();
+    const { rerender } = render(
+      <MovingAverageOverlay chart={m1.chart as never} bundle={bundle} axis={axis} />,
+    );
+    const m2 = makeChartMock();
+    rerender(<MovingAverageOverlay chart={m2.chart as never} bundle={bundle} axis={axis} />);
+    // Series re-created on the new chart…
+    expect(m2.addSeries).toHaveBeenCalledTimes(DEFAULT_LIVE_MAS.length);
+    // …and each one received its data in the same commit (the shipped fix —
+    // without `chart` in the data-push deps these stay empty).
+    for (const [, s] of m2.seriesById) {
+      expect(s.setData).toHaveBeenCalled();
+    }
+  });
+
   it('unmount removes all series', () => {
     const m = makeChartMock();
     const { unmount } = render(

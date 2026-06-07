@@ -95,13 +95,41 @@ export type VirtualAxis = Readonly<{
  * in order and accumulates `virtualStart` by stacking session lengths onto the
  * previous virtual end — collapsing inter-session gaps to zero.
  *
+ * `originMs` (default 0) anchors segments[0].virtualStart. /live passes the
+ * first session's REAL open ms ("real-anchored origin") to defeat a
+ * lightweight-charts staleness trap: lwc identifies time-scale points by
+ * their time VALUE across setData generations — points whose times match the
+ * previous data keep their old `timeWeight`s, tick marks before the first
+ * changed index are retained, and formatted tick labels are cached by
+ * (weight, time) via the behavior's `cacheKey`. A zero-based axis re-issues
+ * the SAME virtual times (the uniform n×23401s ladder for D/W/M; a
+ * value-identical prefix for prepends) for DIFFERENT real dates whenever the
+ * axis remaps, so the x-axis kept rendering the previous generation's dates
+ * on the unchanged prefix — old region wrong, recent region fine.
+ *
+ * Scope of the guarantee: WITHIN one (code, timeframe) view, the time at
+ * index 0 changes whenever segments[0] moves (leftward-pan prepend) → lwc
+ * sees firstChangedPointIndex=0 → full weight/mark/label rebuild; right-edge
+ * SSE appends keep the origin → incremental update as before. ACROSS views
+ * the origin is NOT a sufficient discriminator — two views can share
+ * segments[0] yet differ in interior dates (W↔M windows clamped to the same
+ * first trading day; per-stock missing dates under gap compression) — so
+ * /live recreates the chart instance per (code, timeframe) instead
+ * (LiveChartRoot's per-viewKey effect), and the KST behavior's `cacheKey`
+ * folds an axis generation into label-cache keys for cross-generation value
+ * collisions at different indices. The zero-based default stays for callers
+ * with no regeneration-collision class: /live's pre-data EMPTY_AXIS, the
+ * projector/unit tests, and any future viewer that mounts ONE static axis
+ * per lifetime (the deleted replay viewer's shape).
+ *
  * The returned object and its `segments` / `dayBoundaries` arrays are
  * `Object.freeze`-d so consumers cannot mutate axis state by accident.
  */
 export function createVirtualAxis(
   rawSegments: Array<{ date: string; sessionOpenMs: number; sessionCloseMs: number }>,
+  originMs = 0,
 ): VirtualAxis {
-  const segments = Object.freeze(buildSegments(rawSegments));
+  const segments = Object.freeze(buildSegments(rawSegments, originMs));
   const dayBoundaries = Object.freeze(
     segments.slice(1).map<DayBoundary>((seg) =>
       Object.freeze({ date: seg.date, virtualStart: seg.virtualStart }),
@@ -150,43 +178,43 @@ export function createVirtualAxis(
   /**
    * Edge-case decisions (mirror the legacy free functions in `util/time.ts`):
    *  - Empty axis → 0 (safe sentinel for renderers).
-   *  - realMs before the first open → first.virtualStart (== 0).
+   *  - realMs before the first open → first.virtualStart (== originMs).
    *  - realMs inside a session → virtualStart + (realMs - sessionOpenMs).
    *  - realMs inside a between-day gap → snaps forward to the next segment's
    *    virtualStart (the gap is non-interactive; the cursor lands on next open).
    *  - realMs after the final close → final segment's virtual end.
+   *
+   * Binary search via findByReal — this is the per-point hot path (every
+   * projector maps every candle/point through it on each bundle commit).
    */
   function toVirtual(realMs: number): number {
     if (segments.length === 0) return 0;
     const first = segments[0];
     if (realMs <= first.sessionOpenMs) return first.virtualStart;
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
-      if (realMs >= seg.sessionOpenMs && realMs <= seg.sessionCloseMs) {
-        return seg.virtualStart + (realMs - seg.sessionOpenMs);
-      }
-      if (realMs > seg.sessionCloseMs) {
-        const next = segments[i + 1];
-        if (next && realMs < next.sessionOpenMs) {
-          return next.virtualStart;
-        }
-        if (!next) return virtualEnd(seg);
-      }
+    // realMs > first open ⇒ findByReal returns the last segment whose open
+    // ≤ realMs (never -1 here).
+    const idx = findByReal(realMs);
+    const seg = segments[idx];
+    if (realMs <= seg.sessionCloseMs) {
+      return seg.virtualStart + (realMs - seg.sessionOpenMs);
     }
-    return virtualEnd(segments[segments.length - 1]);
+    // In the gap after seg (snap forward), or past the final close (clamp).
+    const next = segments[idx + 1];
+    return next ? next.virtualStart : virtualEnd(seg);
   }
 
   /**
    * Edge-case decisions:
    *  - Empty axis → 0.
-   *  - virtualMs < 0 → clamped to first.sessionOpenMs.
+   *  - virtualMs at/below the origin (segments[0].virtualStart) → clamped to
+   *    first.sessionOpenMs.
    *  - virtualMs at a boundary (== next.virtualStart) → next.sessionOpenMs
    *    (the next segment owns its starting boundary).
    *  - virtualMs past the last virtual end → last.sessionCloseMs (clamped).
    */
   function toReal(virtualMs: number): number {
     if (segments.length === 0) return 0;
-    if (virtualMs <= 0) return segments[0].sessionOpenMs;
+    if (virtualMs <= segments[0].virtualStart) return segments[0].sessionOpenMs;
     const idx = findByVirtual(virtualMs);
     if (idx < 0) return segments[0].sessionOpenMs;
     const seg = segments[idx];
