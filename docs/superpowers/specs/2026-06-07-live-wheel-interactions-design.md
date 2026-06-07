@@ -36,6 +36,11 @@ brainstorming 대화에서 확정한 결정들:
    "/live 기본 뷰의 rightOffset 15칸 패딩 위치까지(+15)" 안은 기각 — 리플레이 때
    사용자가 직접 요청했던 동작("마지막 캔들이 보일때까지")이자 현재 헬퍼
    코드·테스트가 검증하는 상태를 그대로 쓴다.
+   **개정 (2026-06-08, v0.6.5.1)**: v0.6.4.0 필드 사용 후 사용자가 +15 버퍼안으로
+   전환 결정 — `maxTo = candles.length - 1 + rightOffset`. shift 팬으로 라이브
+   엣지에 복귀하면 기본 뷰(우측 여백 포함)와 정확히 같은 화면에서 멈추고, 첫
+   틱의 패딩 스냅 회수도 사라진다. right-wall 스펙(2026-05-24)이 예고했던 바로
+   그 한 줄 전환.
 3. **배선 = 전용 훅 `useWheelInteractions`** (LiveChartRoot 인라인 effect 안 기각).
    `useViewportBackfill`·`useLiveKeyboard`와 같은 훅 분리 패턴을 따르고, 576줄짜리
    `LiveChartRoot`를 더 키우지 않는다.
@@ -77,8 +82,9 @@ grill 리뷰(스펙 심문)에서 추가 확정:
   파일의 default 분기 (`return { from: to - span * factor, to }`).
 - **Pan span preservation (shift)**: shift 팬은 `to − from`을 바꾸지 않는다 — 벽에
   막혀도 스팬은 유지(`{ from: maxTo - span, to: maxTo }`). 근거: 같은 파일 shift 분기.
-- **Right wall (shift 한정)**: shift 오른쪽 팬은 `to`를 `maxTo`(마지막 캔들 인덱스)
-  너머로 밀지 않는다. shift+휠이 `deltaY`로 도착하는 플랫폼 기준 — 검증된 환경은
+- **Right wall (shift 한정)**: shift 오른쪽 팬은 `to`를 `maxTo`(마지막 캔들
+  인덱스 + rightOffset — 기본 라이브 뷰의 우측 여백 위치, 결정 #2 개정) 너머로
+  밀지 않는다. shift+휠이 `deltaY`로 도착하는 플랫폼 기준 — 검증된 환경은
   전부 해당하며, `deltaX`로 스왑하는 플랫폼에서는 라이브러리 deltaX 팬(벽 없음)이
   이벤트를 소유한다(Risks 참조). 근거: [2026-05-24-replay-wheel-right-wall-design.md](2026-05-24-replay-wheel-right-wall-design.md).
 - **초기 뷰 1회 적용**: 분봉 300-bar 윈도우 + `scrollToPosition(0)`은
@@ -139,7 +145,7 @@ grill 리뷰(스펙 심문)에서 추가 확정:
 | 입력 | 동작 | 오른쪽 벽 |
 |---|---|---|
 | 휠 | `range.to` 고정 줌 (`from = to − span × factor`) | 불필요 (`to` 불변) |
-| Shift+휠 | 스팬 유지 팬 (스팬의 10% × `sign(deltaY)`) | `to ≤ maxTo` 클램프, 스팬 보존 |
+| Shift+휠 | 스팬 유지 팬 (스팬의 10% × `sign(deltaY)`) | `to ≤ maxTo`(마지막 캔들 + rightOffset) 클램프, 스팬 보존 |
 | Ctrl/Cmd+휠 | `coordinateToLogical(mouseX)` 고정 줌 (null이면 `to` 폴백) | 없음 (앵커 불변식 우선) |
 
 `factor = Math.exp(deltaY * 0.001)`. Shift+Ctrl 동시 입력은 shift 우선(팬).
@@ -160,14 +166,14 @@ export function useWheelInteractions(
 
 ```ts
 // 1. maxTo ref — bundle 교체마다 값만 갱신 (리스너 재부착 없음)
+// 오른쪽 벽 = 마지막 캔들 + rightOffset (결정 #2 개정 — 기본 라이브 뷰 위치).
+// 빈 bundle 윈도우는 Infinity로 벽 비활성 (이전 스펙과 동일 가드;
+// maxTo를 읽는 분기는 shift 오른쪽 팬뿐).
 const maxToRef = useRef(Number.POSITIVE_INFINITY);
 useEffect(() => {
-  // candles.length === 0이면 maxTo = -1이 되어 shift 오른쪽 팬이 퇴화 범위
-  // ({from: -1 - span, to: -1})로 클램프된다 — 빈 bundle 윈도우는 Infinity로 벽
-  // 비활성 (이전 스펙과 동일 가드; maxTo를 읽는 분기는 shift 오른쪽 팬뿐).
   maxToRef.current =
     bundle && bundle.candles.length > 0
-      ? bundle.candles.length - 1
+      ? bundle.candles.length - 1 + (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0)
       : Number.POSITIVE_INFINITY;
 }, [bundle]);
 
@@ -328,7 +334,7 @@ dispatch(기본 `cancelable: false`면 `preventDefault()`가 no-op이라 단언 
 | preventDefault | range 존재 | `e.defaultPrevented === true` |
 | 로드 전 no-op | `getVisibleLogicalRange → null` | `setVisibleLogicalRange` 미호출, `defaultPrevented === false` |
 | 리스너 해제 | unmount | `removeEventListener` 호출 |
-| maxTo ref 갱신 | candles 100개 bundle로 rerender 후 50개 bundle로 교체, `deltaY=100, shiftKey` dispatch | `setVisibleLogicalRange({from:-51, to:49})` — `to=49`(교체 전 99로 클램프되면 실패), `addEventListener`는 rerender 전후 합산 1회 |
+| maxTo ref 갱신 | candles 100개 bundle로 rerender 후 50개 bundle로 교체, `deltaY=100, shiftKey` dispatch | `setVisibleLogicalRange({from:-36, to:64})` — `to=64`(=49+rightOffset 15; 교체 전 114가 스테일하면 클램프 미발동 {10,110}으로 실패), `addEventListener`는 rerender 전후 합산 1회 |
 
 **Invariant 회귀 테스트**: anchor ratio·right-edge pin·span preservation은 기존
 22케이스가 이미 검증한다(예: `'ctrl zoom preserves the anchor ratio'` 류). 신규
@@ -345,9 +351,9 @@ dev 서버(:5173) + `/browse` 스킬로 확인:
    구간으로 스크롤한 뒤에도 뷰포트 오른쪽 끝이 고정(뷰가 "지금"으로 끌려가지
    않음).
 2. **ctrl+wheel**: 커서 아래 캔들이 줌 중 같은 픽셀에 머무른다.
-3. **shift+wheel**: 스팬 불변으로 좌우 이동. 오른쪽으로는 마지막 캔들이 오른쪽
-   끝에 닿으면 멈춤(첫 틱에 rightOffset 15칸 패딩이 스냅으로 회수되는 것 포함).
-   페이지가 스크롤되지 않는다.
+3. **shift+wheel**: 스팬 불변으로 좌우 이동. 오른쪽으로는 기본 라이브 뷰
+   위치(마지막 캔들 + rightOffset 15칸 여백)에서 멈춤 — 라이브 엣지의 기본
+   화면과 동일한 모습으로 복귀(결정 #2 개정). 페이지가 스크롤되지 않는다.
 4. **전 페인 동기**: 캔들·거래량·호가 페인이 함께 줌/팬된다.
 5. **백필 연동**: 줌아웃/좌측 팬으로 가장 왼쪽 캔들을 넘어가면 과거 데이터가
    로드되고, 로드 후 보던 구간이 유지된다(텔레포트 없음). 연속 휠 중에도 시각적
