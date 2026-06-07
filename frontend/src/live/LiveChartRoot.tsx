@@ -26,6 +26,7 @@ import {
 import type { RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
 import { useViewportBackfill } from './useViewportBackfill';
+import { useWheelInteractions } from './useWheelInteractions';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
@@ -213,6 +214,9 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // historicalFromDate (null → initial-view owns the viewport; non-null →
   // repositioner), so their relative declaration order is immaterial.
   useViewportBackfill({ chart, axis, bundle, timeframe, isExtending, code: code ?? '' });
+  // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
+  // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
+  useWheelInteractions(chart, containerRef, bundle);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands
@@ -315,6 +319,11 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       layout: { background: { color: tokens.bgCard }, textColor: tokens.fg },
       grid: { vertLines: { color: tokens.grid }, horzLines: { color: tokens.grid } },
       crosshair: CHART_CROSSHAIR_OPTIONS,
+      // 라이브러리 내장 휠 줌(마우스 앵커) 비활성 — useWheelInteractions가 wheel을
+      // 단독 소유한다(이중 소유권 레이스 방지). handleScale의 나머지 sub-option
+      // (pinch, axisPressedMouseMove, axisDoubleClickReset)과 handleScroll(트랙패드
+      // deltaX 팬)은 기본값 유지.
+      handleScale: { mouseWheel: false },
       // Virtual axis: lightweight-charts treats time values as Unix seconds,
       // but our values are virtual-ms offsets from segments[0].sessionOpenMs.
       // Both formatters convert virtual → real ms via axisRef.current.toReal,
