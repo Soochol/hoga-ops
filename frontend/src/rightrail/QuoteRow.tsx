@@ -76,7 +76,7 @@ export function QuoteRow({
         ...(dragging ? { opacity: 0.6, cursor: 'grabbing', zIndex: 1, position: 'relative' } : {}),
       }}
     >
-      <span className="flex-1 truncate text-sm text-fg">{name}</span>
+      <span className="flex-1 truncate text-xs text-fg">{name}</span>
       <span className="flex flex-col items-end leading-tight">
         <span className="font-mono tabular-nums text-sm text-fg">
           {price != null ? `${price.toLocaleString('ko-KR')}원` : '—'}
