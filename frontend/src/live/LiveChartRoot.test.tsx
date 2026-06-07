@@ -17,6 +17,7 @@ import { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
 import { createChartEx, TickMarkType } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
+import { INTER_SEGMENT_GAP_MS } from '../util/time';
 import type { RangeBundle } from '../api/types';
 
 vi.mock('lightweight-charts', async () => {
@@ -290,8 +291,14 @@ describe('LiveChartRoot', () => {
 
   it('1m timeframe: code change re-applies setVisibleLogicalRange with new count', () => {
     useLivePageStore.setState({ historicalFromDate: null });
-    const { chart, ts } = buildChartMockWithStableTS();
-    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+    // A code switch is a viewKey change, which REMOUNTS the chart (cross-view
+    // staleness guard) — so the new count's viewport must land on the SECOND
+    // chart instance, while the first keeps only its own initial placement.
+    const first = buildChartMockWithStableTS();
+    const second = buildChartMockWithStableTS();
+    vi.mocked(createChartEx)
+      .mockImplementationOnce(() => first.chart as never)
+      .mockImplementationOnce(() => second.chart as never);
 
     const { rerender } = render(
       <LiveChartRoot
@@ -303,11 +310,11 @@ describe('LiveChartRoot', () => {
       />,
       { wrapper },
     );
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 105 });
+    expect(first.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 105 });
 
-    // Watchlist switch: new code, new (smaller-or-larger) bundle. Without
-    // resetting the ref on code change, the new code's latest candle would
-    // be pinned to the previous code's right edge.
+    // Watchlist switch: new code, new (smaller-or-larger) bundle. The fresh
+    // chart instance must receive the new code's 300-bar window — and the
+    // removed instance must NOT be touched again (keyed chart entry).
     rerender(
       <LiveChartRoot
         code="000660"
@@ -317,8 +324,8 @@ describe('LiveChartRoot', () => {
         isPastCandlesLoading={false}
       />,
     );
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 405 });
-    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(2);
+    expect(second.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 405 });
+    expect(first.ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -719,9 +726,12 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   });
 
   // Visible window the user is parked on, in virtual SECONDS (both within
-  // today's 6.5h session: 1h and 2h past open).
-  const VR_FROM_SEC = 3600;
-  const VR_TO_SEC = 7200;
+  // today's 6.5h session: 1h and 2h past open). The /live axis is
+  // real-anchored (origin = segments[0]'s real open — the stale-tick-label
+  // fix), so the today-only axis the chart is initially drawn with starts at
+  // TODAY_OPEN, not 0.
+  const VR_FROM_SEC = TODAY_OPEN_MS / 1000 + 3600;
+  const VR_TO_SEC = TODAY_OPEN_MS / 1000 + 7200;
   // Visible LOGICAL range (bar indices) the mock's getVisibleLogicalRange
   // returns — read by the settle-loop's planFillStep viewport gate.
   const LR_FROM = 100;
@@ -777,6 +787,27 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     candles: candleTsList.map((ts_ms) => ({ ts_ms, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 })),
   });
 
+  /** Mirror production's prepend reprojection (real-anchored origins, same
+   * axes LiveChartRoot builds): snapshot right edge (virtual sec on the
+   * today-only axis) → real ms → two-segment axis virtual sec (rounded).
+   * Returns the logical shift newIdx − refIdx under makeTs's
+   * index = virtual-second stand-in. */
+  function expectedPrependShift(rightEdgeSec: number): number {
+    const oldAxis = createVirtualAxis(
+      [{ date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS }],
+      TODAY_OPEN_MS,
+    );
+    const refMs = oldAxis.toReal(rightEdgeSec * 1000);
+    const newAxis = createVirtualAxis(
+      [
+        { date: '20260526', sessionOpenMs: YESTERDAY_OPEN_MS, sessionCloseMs: YESTERDAY_CLOSE_MS },
+        { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
+      ],
+      YESTERDAY_OPEN_MS,
+    );
+    return Math.round(newAxis.toVirtual(refMs) / 1000) - rightEdgeSec;
+  }
+
   it('repositions to the pre-swap view (same bars) after a historical prepend', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
@@ -815,16 +846,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     // Expected shift: refIdx = timeToIndex(VR_TO_SEC) = VR_TO_SEC (mock);
     // refMs reprojects through old→new axis exactly as production does.
-    const oldAxis = createVirtualAxis([
-      { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
-    ]);
-    const refMs = oldAxis.toReal(VR_TO_SEC * 1000);
-    const newAxis = createVirtualAxis([
-      { date: '20260526', sessionOpenMs: YESTERDAY_OPEN_MS, sessionCloseMs: YESTERDAY_CLOSE_MS },
-      { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
-    ]);
-    const refVirtual = Math.round(newAxis.toVirtual(refMs) / 1000);
-    const shift = refVirtual - VR_TO_SEC; // newIdx - refIdx
+    const shift = expectedPrependShift(VR_TO_SEC);
 
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({
       from: LR_FROM + shift,
@@ -833,7 +855,14 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     // Width invariant → barSpacing (candle scale) does not move.
     const last = ts.setVisibleLogicalRange.mock.calls.at(-1)![0] as { from: number; to: number };
     expect(last.to - last.from).toBe(LR_TO - LR_FROM);
-    expect(shift).toBeGreaterThan(0);
+    // The mock's timeToIndex stand-in equates union index with virtual
+    // seconds, so under the real-anchored axis a prepend shifts the stand-in
+    // by (stride − real gap) = 23401 − 86400 < 0 — gap compression pulls the
+    // virtual value of an existing bar DOWN once the origin moves to the
+    // prepended day. Production's timeToIndex returns true union list
+    // indices (shift = +inserted count); only "a reposition happened with
+    // preserved width" is contract here, not the stand-in's sign.
+    expect(shift).not.toBe(0);
   });
 
   it('skips the reposition when lwc already landed on the target (live-edge case)', () => {
@@ -1072,16 +1101,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} />,
     );
 
-    const oldAxis = createVirtualAxis([
-      { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
-    ]);
-    const refMs = oldAxis.toReal(B_VR_TO * 1000);
-    const newAxis = createVirtualAxis([
-      { date: '20260526', sessionOpenMs: YESTERDAY_OPEN_MS, sessionCloseMs: YESTERDAY_CLOSE_MS },
-      { date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS },
-    ]);
-    const refVirtual = Math.round(newAxis.toVirtual(refMs) / 1000);
-    const shiftB = refVirtual - B_VR_TO;
+    const shiftB = expectedPrependShift(B_VR_TO);
 
     // Target must be view B + shiftB. A trigger-time capture would have used
     // view A (LR_FROM..LR_TO, refIdx VR_TO_SEC) and produced different numbers.
@@ -1180,8 +1200,9 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
       chart.subscribeCrosshairMove.mock.calls.forEach(
         ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h(p),
       );
-    // Virtual second 0 → axis.toReal(0) = session_open_ms (virtualMs <= 0 clamps
-    // to segments[0].sessionOpenMs per virtualAxis.ts:185).
+    // Virtual second 0 → axis.toReal(0) = session_open_ms (virtualMs at/below
+    // the origin — segments[0].virtualStart — clamps to the first session
+    // open; with the real-anchored origin, 0 sits below it).
     const SESSION_OPEN = DEFAULT_BUNDLE.segments[0].session_open_ms;
     act(() => fire({ time: 0, point: { x: 1 } }));
     // rAF coalescing — flush one frame.
@@ -1291,12 +1312,16 @@ describe('LiveChartRoot x-axis tickMarkFormatter', () => {
     return opts.timeScale.tickMarkFormatter;
   }
 
-  // virtual second 43201 = segment[1].virtualStart (23401s) + 5.5h (19800s)
-  // → real today 14:30 KST (mid-session).
-  const MID_SESSION_SEC = 43201;
-  // virtual second 0 = segment[0] open = 2026-05-26 09:00 KST (TWO_SEGMENT_BUNDLE's
-  // first segment is yesterday; today is segment[1]).
-  const FIRST_OPEN_SEC = 0;
+  // The /live axis is real-anchored: virtual time starts at segments[0]'s
+  // REAL session open, not 0 (see createVirtualAxis's originMs — the
+  // stale-tick-label fix). So segment[0]'s open in virtual seconds IS its
+  // real open in seconds.
+  const FIRST_OPEN_SEC = YESTERDAY_OPEN_MS / 1000;
+  // One segment's stride on the virtual axis: session length + synthetic gap.
+  const SEG_STRIDE_SEC = (TODAY_CLOSE_MS - TODAY_OPEN_MS + INTER_SEGMENT_GAP_MS) / 1000;
+  // origin + segment[1].virtualStart offset + 5.5h → real today 14:30 KST
+  // (mid-session).
+  const MID_SESSION_SEC = FIRST_OPEN_SEC + SEG_STRIDE_SEC + 5.5 * 3600;
 
   it('1m: Time tick renders HH:MM', () => {
     const fmt = captureTickFormatter('1m');
@@ -1455,5 +1480,130 @@ describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
     // real time → all weights intraday (<50) → the calendar axis renders blank.
     const maxWeight = Math.max(0, ...weightCaptures.flat());
     expect(maxWeight).toBeGreaterThanOrEqual(50);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-view chart remount — cross-view staleness guard
+//
+// lightweight-charts caches tick weights/marks/labels by time VALUE per chart
+// instance, and two different (code, timeframe) views can produce
+// value-identical virtual-time ladders with different real-date mappings even
+// under real-anchored origins (same-first-trading-day W↔M windows; per-stock
+// missing dates under gap compression). The only safe state boundary is a
+// fresh chart instance per view — these tests lock that contract.
+// ---------------------------------------------------------------------------
+
+describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', () => {
+  beforeEach(() => {
+    vi.mocked(createChartEx).mockClear();
+  });
+
+  function chartProps(code: string, timeframe: '1m' | 'D', bundle: RangeBundle) {
+    return { code, timeframe, bundle, clampEngaged: false, isPastCandlesLoading: false } as const;
+  }
+
+  it('recreates the lwc chart on a timeframe switch and disposes the old one', () => {
+    const { rerender } = render(
+      <LiveChartRoot {...chartProps('005930', '1m', TODAY_ONLY_BUNDLE)} />,
+      { wrapper },
+    );
+    expect(vi.mocked(createChartEx)).toHaveBeenCalledTimes(1);
+    rerender(<LiveChartRoot {...chartProps('005930', 'D', TODAY_ONLY_BUNDLE)} />);
+    expect(vi.mocked(createChartEx)).toHaveBeenCalledTimes(2);
+    const first = vi.mocked(createChartEx).mock.results[0].value as {
+      remove: ReturnType<typeof vi.fn>;
+    };
+    expect(first.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('recreates the chart on a watchlist code switch', () => {
+    const { rerender } = render(
+      <LiveChartRoot {...chartProps('005930', '1m', TODAY_ONLY_BUNDLE)} />,
+      { wrapper },
+    );
+    rerender(<LiveChartRoot {...chartProps('000660', '1m', TODAY_ONLY_BUNDLE)} />);
+    expect(vi.mocked(createChartEx)).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the chart instance across bundle-only updates (SSE push)', () => {
+    const { rerender } = render(
+      <LiveChartRoot {...chartProps('005930', '1m', TODAY_ONLY_BUNDLE)} />,
+      { wrapper },
+    );
+    rerender(<LiveChartRoot {...chartProps('005930', '1m', { ...TODAY_ONLY_BUNDLE })} />);
+    expect(vi.mocked(createChartEx)).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies the initial viewport to the NEW chart after a timeframe switch', () => {
+    // Regression (adversarial review F1): on a viewKey switch, the effects of
+    // the switch commit still close over the REMOVED chart. lwc viewport
+    // calls on a removed chart don't throw, so the one-shot initial-view
+    // effect used to fire against the dead instance — consuming
+    // lastAppliedCountRef and leaving the new chart at lwc's default ~60-bar
+    // view. The keyed chart entry derives `chart` as null for the mismatched
+    // commit; this test asserts the viewport lands on the new instance.
+    // (Default mock's timeScale() returns a fresh object per call, so build
+    // two charts with STABLE timeScale objects to accumulate assertions.)
+    useLivePageStore.setState({ historicalFromDate: null });
+    function stableChart() {
+      const ts = {
+        subscribeVisibleTimeRangeChange: vi.fn(),
+        unsubscribeVisibleTimeRangeChange: vi.fn(),
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+        applyOptions: vi.fn(),
+        fitContent: vi.fn(),
+        scrollToRealTime: vi.fn(),
+        scrollToPosition: vi.fn(),
+        setVisibleLogicalRange: vi.fn(),
+        getVisibleRange: vi.fn(() => null),
+        getVisibleLogicalRange: vi.fn(() => null),
+        setVisibleRange: vi.fn(),
+        timeToCoordinate: vi.fn(() => null),
+        timeToIndex: vi.fn(() => null),
+      };
+      const chart = {
+        addSeries: vi.fn(() => ({
+          setData: vi.fn(), update: vi.fn(), applyOptions: vi.fn(),
+          priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+          createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+          removePriceLine: vi.fn(), attachPrimitive: vi.fn(),
+          detachPrimitive: vi.fn(), setMarkers: vi.fn(),
+        })),
+        removeSeries: vi.fn(),
+        timeScale: vi.fn(() => ts),
+        panes: vi.fn(() => []),
+        remove: vi.fn(),
+        resize: vi.fn(),
+        applyOptions: vi.fn(),
+        subscribeCrosshairMove: vi.fn(),
+        unsubscribeCrosshairMove: vi.fn(),
+      };
+      return { ts, chart };
+    }
+    const a = stableChart();
+    const b = stableChart();
+    vi.mocked(createChartEx)
+      .mockImplementationOnce(() => a.chart as never)
+      .mockImplementationOnce(() => b.chart as never);
+
+    const withCandles: RangeBundle = {
+      ...TODAY_ONLY_BUNDLE,
+      candles: [
+        { ts_ms: TODAY_OPEN_MS + 60_000, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 },
+      ],
+    };
+    const { rerender } = render(
+      <LiveChartRoot {...chartProps('005930', '1m', withCandles)} />,
+      { wrapper },
+    );
+    // Minute initial view applied to chart A.
+    expect(a.ts.setVisibleLogicalRange).toHaveBeenCalled();
+
+    rerender(<LiveChartRoot {...chartProps('005930', 'D', withCandles)} />);
+    // The D/W/M fit must land on chart B — with the unkeyed chart state it
+    // fired on the removed chart A and B received ZERO viewport calls.
+    expect(b.ts.fitContent).toHaveBeenCalled();
   });
 });

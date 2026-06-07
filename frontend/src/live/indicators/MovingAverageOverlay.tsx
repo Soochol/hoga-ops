@@ -96,7 +96,11 @@ export default function MovingAverageOverlay({ chart, bundle, axis }: Props) {
       });
       s.setData(data as never);
     }
-  }, [bundle, axis, configs, masterEnabled, hidden]);
+    // `chart` is a dep because the series-creation effect above re-creates
+    // every MA series when the chart instance changes (/live remounts the
+    // chart per (code, timeframe) view) — the fresh series start empty and
+    // must be re-pushed in the same commit.
+  }, [chart, bundle, axis, configs, masterEnabled, hidden]);
 
   return null;
 }

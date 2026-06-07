@@ -84,3 +84,26 @@ HH:MM으로 고정하고 날짜는 DayBoundaryOverlay 칩이 담당)는 줌 적�
   되어 있음).
 - Virtual Axis가 갭 압축 방식을 바꾸면(예: 실제 시간축 도입) 본 확장의 전제(가상 초 입력)가
   사라지므로 재검토.
+
+## Addendum (2026-06-07, v0.6.2.0) — real-anchored origin 도입 후에도 본 결정은 유효
+
+`/live`는 이제 `createVirtualAxis(rawSegments, originMs)`에 첫 세션의 실제 개장 ms
+(`segments[0].session_open_ms`)를 origin으로 넘긴다(**real-anchored origin**) — 가상 초가
+1970 epoch 근처가 아니라 실제 epoch 근처가 됐다(위 Why의 "≈1970" 서술은 당시 기준으로 정확).
+이는 본 ADR이 고친 버그(한 setData 세대 **안에서의** 가상-1970 달력 어긋남)와는 **다른**
+스테일니스를 고친 것이다: lightweight-charts는 tick weight/mark/포맷된 라벨을 setData 세대를
+넘어 time **값**으로 식별·보존하므로, zero-based 축이 재구성되면(leftward-pan prepend) 같은
+가상 시각이 다른 실제 날짜로 재발급되어 과거 구간의 날짜 라벨이 이전 세대 것으로 남았다.
+real-anchored origin은 prepend 시 인덱스 0의 time 값을 바꿔 lwc의 전체 rebuild를 강제한다.
+
+본 결정(`fillWeightsForPoints`의 실제 KST 환산)은 origin과 무관하게(`axis.toReal()` 경유)
+여전히 load-bearing이다: 갭 압축이 유지되는 한 segments[0] 이후의 세그먼트는 실제 시간 대비
+일당 ~17.5h씩 당겨져 weight 입력 달력이 실제 KST와 계속 어긋난다. 위 "Future signal to
+revisit"의 전제(가상 초 입력 — 내부 세그먼트에서 virtual ≠ real)는 사라지지 않았다.
+
+같은 수정의 일부로: `kstHorzScaleBehavior`는 `cacheKey`를 추가 오버라이드해 축 세대를 키에
+접어 넣어(origin-relative offset + `CACHE_GEN_STRIDE`) 세대 간 값 충돌이 라벨 LRU의 스테일
+항목을 적중하지 못하게 하고, 교차 (code, timeframe) 뷰 충돌은 origin으로 분리할 수 없으므로
+(예: W↔M이 같은 첫 거래일로 클램프) `LiveChartRoot`가 뷰마다 차트 인스턴스를 재생성하며,
+`useLiveBundle`은 content-equal SSE push에서 `segments` 배열 identity를 재사용해 무의미한
+축 세대 증가를 막는다.

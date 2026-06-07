@@ -145,6 +145,8 @@ export function useLiveBundle(
     return bars.map(kisBarToCandle);
   }, [isMinute, timeframe, pastCandlesQuery.data, pastDailyCandlesQuery.data]);
 
+  // Last content-distinct segments array — see the stabilization block below.
+  const prevSegmentsRef = useRef<RangeBundle['segments'] | null>(null);
   const computedBundle = useMemo<RangeBundle | null>(() => {
     if (!code) return null;
 
@@ -166,6 +168,32 @@ export function useLiveBundle(
       kisCandles,
       bucketMs,
     });
+
+    // Segments-identity stabilization (eng review C1, made real): every SSE
+    // push rebuilds the bundle, and buildLiveBundle allocates a fresh
+    // `segments` array each time even when no new trading date appeared.
+    // LiveChartRoot memoises the VirtualAxis on this array's REFERENCE, and
+    // the KST behavior's `cacheKey` bumps its label-cache generation on axis
+    // identity — so without reuse, a content-identical push every ~10s would
+    // churn the axis object and flush lwc's formatted-label cache for
+    // nothing. Reuse the previous array when content-equal; it only changes
+    // identity when the mapping genuinely changes (new date appended, or a
+    // leftward-pan prepend).
+    const prev = prevSegmentsRef.current;
+    const sameSegments =
+      prev !== null &&
+      prev.length === built.segments.length &&
+      built.segments.every(
+        (s, i) =>
+          s.date === prev[i].date &&
+          s.session_open_ms === prev[i].session_open_ms &&
+          s.session_close_ms === prev[i].session_close_ms,
+      );
+    if (sameSegments) {
+      built.segments = prev;
+    } else {
+      prevSegmentsRef.current = built.segments;
+    }
 
     return { ...built, investorPoints };
   }, [code, todayKstYyyymmdd, isMinute, live.initial, live.ob, live.trade, past.data, kisCandles, bucketMs, investorPoints]);
