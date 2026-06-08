@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.0.3] - 2026-06-08
+
+### Fixed
+- **드로잉 수평선을 차트 우측 빈 영역에서 드래그하면 안 움직이던 문제 수정**:
+  마지막 캔들 오른쪽의 빈 띠(rightOffset=15)에서는 시간축 좌표 변환
+  (`coordinateToTime`)이 null이라, X·Y를 함께 푸는 `pixelToData`가 통째로
+  실패해 드래그가 조용히 멈췄다. 수평선은 가격(Y)만 필요한데도 시간(X) 해석
+  실패가 이동을 막은 셈. 시간과 독립인 `canvasYToPrice`를 추가해 body-drag와
+  추세선 핸들 이동이 가격축을 단독으로 해석하도록 분리 — 이제 수평선을 빈 영역
+  어디에서 잡아도 드래그된다. 덤으로 추세선·연필 body-drag도 빈 영역에서 얼지
+  않고 수직 이동이 된다(기존엔 완전 정지).
+
 ## [0.7.0.1] - 2026-06-08
 
 ### Fixed
