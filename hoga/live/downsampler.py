@@ -81,7 +81,21 @@ class TickDownsampler:
             snaps.append(LiveSnapshot.from_fill(
                 t_ms=label_ms, buy_qty=st.buy_qty, sell_qty=st.sell_qty, phase=phase,
             ))
-            st.buy_qty = 0
-            st.sell_qty = 0
+            # 흐름 합은 여기서 리셋하지 않는다(spec 2026-06-08 flush-durability):
+            # stream.flush_once가 append 성공 후 commit_code로 '본 양'만 뺀다.
+            # await(append) 창에 도착한 틱이 손실되지 않고(subtract-on-commit),
+            # append 실패 시엔 commit이 안 불려 합이 다음 윈도로 롤된다(보존).
             out[code] = snaps
         return out
+
+    def commit_code(self, code: str, *, buy_qty: int, sell_qty: int) -> None:
+        """append 성공 후 flush가 본 흐름 합을 뺀다(spec flush-durability §2.2).
+
+        zero가 아니라 **빼기**인 이유: flush와 commit 사이 await 창에 도착한
+        틱(st.buy_qty 증가분)을 보존하기 위함 — 0으로 리셋하면 그 틱이 손실된다.
+        evict된(set_active_codes 후 사라진) 코드엔 no-op."""
+        st = self._codes.get(code)
+        if st is None:
+            return
+        st.buy_qty -= buy_qty
+        st.sell_qty -= sell_qty

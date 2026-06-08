@@ -269,3 +269,69 @@ async def test_drain_resets_day_state(tmp_path, monkeypatch):
     # drain 후 일경계 상태가 리셋됐는가(production 리셋 없으면 '20260605' 잔류 → FAIL)
     assert stream._last_flush_date is None
     assert stream.last_flush_ms is None
+
+
+async def test_flush_failure_preserves_window_sum(tmp_path, monkeypatch):
+    """spec 2026-06-08 flush-durability §2.3: append가 OSError로 실패하면 그
+    윈도의 흐름 합이 폐기되지 않고 다음 윈도로 롤된다(commit 미호출 → 보존).
+    현재(리셋-인-flush)는 합이 0이 돼 영구 소실 → 이 테스트가 RED."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True
+
+    fail = {"on": True}
+    orig_append = writer.append
+
+    async def flaky_append(date, code, snaps):
+        if fail["on"]:
+            raise OSError("disk full")
+        return await orig_append(date, code, snaps)
+
+    monkeypatch.setattr(writer, "append", flaky_append)
+
+    now = (int(time.time() * 1000) // 10_000) * 10_000
+    await stream.on_tick(_trade_tick(now + 100, qty=5, side=1))
+    await stream.flush_once(now_ms=now + 10_000)        # append 실패 → 합 보존
+    # 다음 윈도: append 정상화 → 보존된 5가 기록돼야(손실 0)
+    fail["on"] = False
+    await stream.flush_once(now_ms=now + 20_000)
+    import json as _json
+    jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    fills = [d for d in map(_json.loads, jsonl.splitlines()) if d["kind"] == "fill"]
+    assert any(f["payload"]["buy_qty"] == 5 for f in fills), \
+        f"실패 윈도의 합 5가 다음 윈도로 롤되지 않음: {[f['payload'] for f in fills]}"
+
+
+async def test_flush_preserves_tick_arriving_during_append(tmp_path, monkeypatch):
+    """spec flush-durability §2.1(핵심): append await 창에 도착한 틱은
+    commit이 '본 양'만 빼므로 보존된다. subtract가 아니라 zero-on-commit이면
+    이 틱이 손실 → 이 인터리브 테스트가 그 회귀를 잡는다(순차 테스트는 못 잡음)."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True
+
+    orig_append = writer.append
+
+    async def slow_append(date, code, snaps):
+        # append await 도중 새 틱 도착을 시뮬레이션(인터리브 강제).
+        await stream.on_tick(_trade_tick(now + 5000, qty=3, side=1))
+        return await orig_append(date, code, snaps)
+
+    monkeypatch.setattr(writer, "append", slow_append)
+
+    now = (int(time.time() * 1000) // 10_000) * 10_000
+    await stream.on_tick(_trade_tick(now + 100, qty=5, side=1))   # 윈도1 buy=5
+    await stream.flush_once(now_ms=now + 10_000)   # flush buy=5 → await 중 buy=8 → commit -5 → 3
+    # 다음 윈도: 보존된 3이 기록(await 창 틱 손실 없음)
+    import json as _json
+    jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    fills = [d for d in map(_json.loads, jsonl.splitlines()) if d["kind"] == "fill"]
+    await stream.flush_once(now_ms=now + 20_000)
+    jsonl2 = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    fills2 = [d for d in map(_json.loads, jsonl2.splitlines()) if d["kind"] == "fill"]
+    assert fills2[-1]["payload"]["buy_qty"] == 3, \
+        f"await 창에 도착한 틱(3) 손실됨: {[f['payload'] for f in fills2]}"

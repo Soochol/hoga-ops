@@ -16,7 +16,7 @@ from collections.abc import Callable
 from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
 from .session_gate import market_phase, ws_capture_window
-from .snapshot import LiveSnapshot
+from .snapshot import LiveSnapshot, SnapshotKind
 from .writer import LiveWriter
 from .ws_client import KisWsClient
 from .ws_frames import WsTick
@@ -117,8 +117,24 @@ class LiveStream:
                      else now_ms - int(FLUSH_INTERVAL_S * 1000))
         flushed = self._ds.flush(now_ms=now_ms, phase=self._phase_fn(),
                                  fill_t_ms=fill_t_ms)
+        # per-code 격리 + subtract-on-commit(spec 2026-06-08 flush-durability):
+        # append 성공한 코드만 commit_code로 '본 흐름 합'을 빼고, 실패한 코드는
+        # commit을 건너뛰어 합이 다음 윈도로 롤된다(데이터 보존). 한 코드의
+        # 디스크 오류가 다른 코드의 윈도를 폐기하지 않는다(현재는 첫 실패가
+        # flush_once 전체를 중단). flush는 더 이상 리셋하지 않으므로 commit이
+        # 유일한 합 차감 경로다.
         for code, snaps in flushed.items():
-            await self._writer.append(date, code, snaps)
+            try:
+                await self._writer.append(date, code, snaps)
+            except OSError:
+                _log.exception("live.stream.append_failed code=%s", code)
+                continue  # commit 안 함 → 합 보존 → 다음 윈도 롤
+            fill = next((s for s in snaps if s.kind is SnapshotKind.FILL), None)
+            if fill is not None:
+                self._ds.commit_code(
+                    code, buy_qty=fill.payload["buy_qty"],
+                    sell_qty=fill.payload["sell_qty"],
+                )
         await self._writer.fsync_all()
         self.last_flush_ms = now_ms
 

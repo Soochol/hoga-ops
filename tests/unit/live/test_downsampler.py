@@ -60,12 +60,51 @@ def test_state_carry_when_no_new_tick():
 
 
 def test_flow_resets_each_window():
+    """spec 2026-06-08 flush-durability: flush는 더 이상 리셋하지 않는다 —
+    commit_code(append 성공 후)가 본 양만큼 뺀다. 윈도별 리셋 동작은 flush +
+    commit_code 조합으로 유지(stream.flush_once가 이 순서로 호출)."""
     ds = TickDownsampler()
     ds.ingest(_tr("005930", 1000, qty=5, side=1))
     ds.flush(now_ms=10_000, phase="regular")
+    ds.commit_code("005930", buy_qty=5, sell_qty=0)    # append 성공 → 빼기
     out2 = ds.flush(now_ms=20_000, phase="regular")
     fill = next(s for s in out2["005930"] if s.kind is SnapshotKind.FILL)
-    assert fill.payload["buy_qty"] == 0                # 합은 리셋(강수량계)
+    assert fill.payload["buy_qty"] == 0                # commit 후 0 (강수량계)
+
+
+def test_flush_does_not_reset_until_commit():
+    """spec flush-durability §2.2: flush는 카운터를 mutate하지 않는다 —
+    commit_code만 뺀다. append 실패 시 commit 미호출 → 합 보존 → 다음 윈도 롤."""
+    ds = TickDownsampler()
+    ds.ingest(_tr("005930", 1000, qty=5, side=1))
+    out1 = ds.flush(now_ms=10_000, phase="regular")
+    assert next(s for s in out1["005930"]
+                if s.kind is SnapshotKind.FILL).payload["buy_qty"] == 5
+    # commit 안 함(append 실패 시뮬) → 다음 flush가 같은 합을 다시 본다(보존)
+    out2 = ds.flush(now_ms=20_000, phase="regular")
+    assert next(s for s in out2["005930"]
+                if s.kind is SnapshotKind.FILL).payload["buy_qty"] == 5
+
+
+def test_commit_code_subtracts_only_committed_amount():
+    """spec flush-durability §2.1: commit은 flush가 본 양만 뺀다 — flush와
+    commit 사이 도착한 틱(await 창)은 보존된다(zero-on-commit 회귀 방지)."""
+    ds = TickDownsampler()
+    ds.ingest(_tr("005930", 1000, qty=5, side=1))
+    ds.flush(now_ms=10_000, phase="regular")           # 스냅샷 buy=5
+    ds.ingest(_tr("005930", 1500, qty=3, side=1))      # await 창에 도착(buy=8)
+    ds.commit_code("005930", buy_qty=5, sell_qty=0)    # 본 5만 뺀다
+    out2 = ds.flush(now_ms=20_000, phase="regular")
+    fill = next(s for s in out2["005930"] if s.kind is SnapshotKind.FILL)
+    assert fill.payload["buy_qty"] == 3                # 8 − 5 = 3 (await 틱 보존)
+
+
+def test_commit_code_noop_for_evicted_code():
+    """commit_code가 evict된 코드에 안전(no-op) — set_active_codes 후 잔여 commit."""
+    ds = TickDownsampler()
+    ds.ingest(_tr("005930", 1000, qty=5, side=1))
+    ds.set_active_codes({"000660"})                    # 005930 제거
+    ds.commit_code("005930", buy_qty=5, sell_qty=0)    # 예외 없이 no-op
 
 
 def test_evicted_code_stops_emitting():
