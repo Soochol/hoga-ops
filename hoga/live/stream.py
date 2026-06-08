@@ -152,6 +152,14 @@ class LiveStream:
                     except Exception:  # noqa: BLE001
                         _log.exception("live.stream.drain_flush_failed")
                     self._ds.reset()
+                    # 일경계 상태 리셋(spec 2026-06-08 §2.4): _last_flush_date를
+                    # None으로 둬 다음 개장 첫 flush가 어제 날짜와 비교해 R1
+                    # 경고를 내지 않게(#15), last_flush_ms도 None으로 둬 재개방
+                    # 첫 윈도 fill 라벨이 now−FLUSH_INTERVAL로 폴백(ship 스킵분).
+                    # R1 백스톱은 보존: drain 없이 날짜가 바뀌는 진짜 케이스
+                    # (suspend/시계점프)에선 _last_flush_date가 남아 경고가 정상 발화.
+                    self._last_flush_date = None
+                    self.last_flush_ms = None
                     _log.info("live.stream.gate_closed_drained")
                 await asyncio.sleep(IDLE_INTERVAL_S)
             was_open = open_now

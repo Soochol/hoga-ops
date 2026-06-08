@@ -236,3 +236,36 @@ async def test_flush_date_change_resets_stale_state(tmp_path):
     date["v"] = "20260606"                               # 미관측 일경계 시뮬레이션
     await stream.flush_once(now_ms=now + 1_000)          # 백스톱: 기록 전 reset
     assert not (tmp_path / "live" / "20260606" / "005930.jsonl").exists()
+
+
+async def test_drain_resets_day_state(tmp_path, monkeypatch):
+    """spec 2026-06-08 §2.4: open→closed drain이 _last_flush_date/last_flush_ms를
+    리셋 → 다음 개장 첫 flush가 R1 경고 미발화(#15) + 재개방 fill 라벨 폴백
+    (ship 스킵분). drain을 run_flush_loop 전환으로 실제 트리거."""
+    monkeypatch.setattr(stream_mod, "FLUSH_INTERVAL_S", 0.05)
+    monkeypatch.setattr(stream_mod, "IDLE_INTERVAL_S", 0.02)
+    buf = LiveBuffer(); writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    now = int(time.time() * 1000)
+    calls = {"n": 0}
+    def gate(now_ms):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            stream._ds.ingest(_ob_tick(now, tot_ask=111))
+            return True            # ①open: flush로 _last_flush_date 래치
+        return False               # ②+ closed: drain 후 리셋
+    monkeypatch.setattr(stream_mod, "ws_capture_window", gate)
+    task = asyncio.create_task(stream.run_flush_loop())
+    try:
+        for _ in range(80):
+            await asyncio.sleep(0.02)
+            if calls["n"] >= 3:
+                break
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    # drain 후 일경계 상태가 리셋됐는가(production 리셋 없으면 '20260605' 잔류 → FAIL)
+    assert stream._last_flush_date is None
+    assert stream.last_flush_ms is None
