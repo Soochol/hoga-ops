@@ -285,9 +285,10 @@ export function WatchlistDrawer() {
   const onDragEnd = (ev: DragEndEvent) => {
     if (!ev.over) return;
     if (ev.active.data.current?.type === 'folder') {
-      // over가 폴더 노드면 그 id, 대상 그룹의 *행*이면 행의 folderId로 정규화한다 —
-      // closestCenter가 폴더 드래그 중 행을 최근접으로 고를 수 있어 over.id가 code일 수
-      // 있다(그대로 두면 indexOf=-1 → no-op). 미분류(null) 위면 폴더 순서 변경 없음.
+      // 현재 typeAwareCollision이 폴더 드래그의 over를 항상 폴더 컨테이너로 보장하므로
+      // 정상 경로에선 over가 폴더 id다. over.folderId fallback과 null 가드는 collision
+      // 전략이 바뀔 때를 대비한 defense-in-depth(미분류는 useSortable 노드가 아니라
+      // over로 등장하지 않음).
       const over = ev.over.data.current;
       const overFolderId = over?.type === 'folder'
         ? String(ev.over.id)

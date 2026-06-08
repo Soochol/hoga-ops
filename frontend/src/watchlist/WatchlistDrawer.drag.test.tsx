@@ -88,4 +88,18 @@ describe('WatchlistDrawer drag wiring', () => {
     });
     await waitFor(() => expect(spy).toHaveBeenCalledWith(['f_0000000b', 'f_0000000a']));
   });
+
+  it("folder-drag over an entry row resolves to that row's folder", async () => {
+    const spy = vi.spyOn(watchlistApi, 'reorderFolders').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    // f_0000000a 폴더를 f_0000000b 소속 행 위로 드롭 → over.folderId=f_0000000b로 정규화.
+    // (DATA의 ENTRIES는 둘 다 f_0000000a이므로, over 이벤트의 folderId를 직접 지정한다.)
+    h.onDragEnd!({
+      active: { id: 'f_0000000a', data: { current: { type: 'folder' } } },
+      over: { id: '999999', data: { current: { type: 'entry', folderId: 'f_0000000b' } } },
+    });
+    await waitFor(() => expect(spy).toHaveBeenCalledWith(['f_0000000b', 'f_0000000a']));
+  });
 });
