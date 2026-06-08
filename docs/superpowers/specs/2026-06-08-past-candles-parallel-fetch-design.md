@@ -1,7 +1,7 @@
 # past-candles 미캐시 날짜 병렬 fetch 설계
 
 - **Date**: 2026-06-08
-- **Status**: Approved (brainstorming 완료 2026-06-08 — 접근 평가·동시수 산정은 코드 실측 기반)
+- **Status**: Implemented (2026-06-08) — 성능 목표(3.3s→~0.7s)는 실서버 콜드 캐시 1회 실측 후 PR 본문에 기록
 - **Scope**: `backend` — `hoga/live/api.py`의 `/api/live/past-candles` 핸들러 단일 변경
 - **Topic slug**: `past-candles-parallel-fetch`
 - **관련 ADR**: [ADR-0040](../../adr/0040-live-candle-backfill-separate-cache.md) (캔들=별도 REST 캐시), [ADR-0050](../../adr/0050-kis-rate-limit-retry-in-client.md) (EGW00201 백오프는 `KisClient._get` 중앙화), [ADR-0038](../../adr/0038-live-jsonl-then-promote.md) (단일 uvicorn 워커 불변식 — 싱글플라이트의 전제)
