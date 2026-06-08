@@ -621,6 +621,11 @@ class KisClient:
                 # No new valid candle to anchor cursor walk-back; rely on the
                 # next iteration's empty/no-progress check to terminate.
                 continue
+            if page_earliest <= from_yyyymmdd:
+                # 요청 시작일까지 도달 — 즉시 종료(스펙 2026-06-08 ⑦,
+                # fetch_investor_net과 동일 분기). 이 분기가 없으면 빈 응답을
+                # 받는 헛 콜이 1회 더 나간다.
+                break
             cursor_to = _prev_day_yyyymmdd(page_earliest)
 
         all_candles.sort(key=lambda c: c.t_ms)

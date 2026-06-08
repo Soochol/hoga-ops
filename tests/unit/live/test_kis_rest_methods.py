@@ -194,6 +194,31 @@ async def test_fetch_past_daily_clean_response(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_past_daily_stops_at_from_without_extra_call(tmp_path) -> None:
+    """스펙 2026-06-08 ⑦: 페이지가 요청 시작일(from)까지 도달하면 즉시 종료 —
+    형제 fetch_investor_net과 동일 분기. 없으면 빈 응답을 받는 헛 KIS 콜이
+    1회 더 나간다(콜드 갭마다 +1, 일봉 차트 열어둔 동안 today 프로브 분당 +1)."""
+    calls = {"data": 0}
+    rows = [_daily_row(d) for d in ("20240103", "20240102", "20240101")]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/oauth2/tokenP"):
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        calls["data"] += 1
+        # 한 페이지로 from(20240101)까지 전부 커버 — 더 부를 이유가 없다.
+        return httpx.Response(200, json=_ok_daily_body(rows))
+
+    client = KisClient(
+        KisCredentials(app_key="k", app_secret="s"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    result = await client.fetch_past_daily_candles("005930", "20240101", "20240103")
+    assert len(result.candles) == 3
+    assert calls["data"] == 1, "from 도달 후 헛 KIS 콜 발생"
+
+
+@pytest.mark.asyncio
 async def test_fetch_past_daily_drops_close_nonpositive_row(tmp_path) -> None:
     rows = [_daily_row("20240101"), _daily_row("20240102", c=0), _daily_row("20240103")]
 
@@ -295,6 +320,8 @@ async def test_fetch_past_daily_paginates_walk_back(tmp_path) -> None:
     page_responses = [
         _ok_daily_body([_daily_row(f"2024010{i}") for i in [5, 4, 3]]),
         _ok_daily_body([_daily_row(f"2024010{i}") for i in [2, 1]]),
+        # 3번째(빈) 페이지: 스펙 2026-06-08 ⑦의 조기 종료로 더는 요청되지 않는다
+        # — 페이지 2의 earliest(0101)가 from(0101)에 도달하므로 즉시 break.
         _ok_daily_body([]),
     ]
     call_count = {"n": 0}
@@ -314,7 +341,7 @@ async def test_fetch_past_daily_paginates_walk_back(tmp_path) -> None:
     result = await client.fetch_past_daily_candles("005930", "20240101", "20240105")
     assert len(result.candles) == 5
     assert all(result.candles[i].t_ms < result.candles[i + 1].t_ms for i in range(4))
-    assert call_count["n"] == 3
+    assert call_count["n"] == 2  # 구 3콜 — 빈 확인 콜은 조기 종료(⑦)로 소멸
 
 
 # ----------------------------------------------------------------------
