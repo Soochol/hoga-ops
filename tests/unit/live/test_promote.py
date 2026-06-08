@@ -6,7 +6,7 @@ import asyncio
 import json
 import os
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import polars as pl
@@ -58,7 +58,7 @@ async def test_promote_one_writes_parquet_and_meta(tmp_path: Path) -> None:
     assert meta["source"] == "kis_live"
     assert meta["code"] == "005930"
     assert meta["date"] == "20260527"
-    assert meta["row_counts"] == {"snapshots": 2, "trades": 2, "brokers": 2}
+    assert meta["row_counts"] == {"snapshots": 2, "trades": 2, "brokers": 2, "fills": 0}
     # ADR-0003 HHMMSSmmm session bounds — required so build_range_bundle can
     # compose RangeSegments from kis_live promoted Parquet without KeyError.
     # Discovered via /investigate 2026-05-28 against /api/range 003490 fallback.
@@ -124,7 +124,7 @@ def test_parse_jsonl_converts_t_ms_to_hhmmssms(tmp_path: Path) -> None:
                     "total_bid_qty": 0, "total_ask_qty": 0},
     }) + "\n")
 
-    snapshots, trades, broker_rows, meta = _parse_jsonl_to_records(
+    snapshots, trades, broker_rows, fills, meta = _parse_jsonl_to_records(
         jsonl, code="005930", date=date,
     )
 
@@ -167,7 +167,7 @@ def test_parse_jsonl_converts_t_ms_for_trade_and_broker(tmp_path: Path) -> None:
     ]
     jsonl.write_text("\n".join(lines) + "\n")
 
-    _snapshots, trades, broker_rows, _meta = _parse_jsonl_to_records(
+    _snapshots, trades, broker_rows, _fills, _meta = _parse_jsonl_to_records(
         jsonl, code="005930", date=date,
     )
     assert len(trades) == 1
@@ -204,7 +204,7 @@ def test_parse_jsonl_skips_row_outside_date_window(tmp_path: Path, caplog) -> No
     }) + "\n")
 
     with caplog.at_level(logging.WARNING, logger="hoga.live.promote"):
-        snapshots, trades, broker_rows, _meta = _parse_jsonl_to_records(
+        snapshots, trades, broker_rows, _fills, _meta = _parse_jsonl_to_records(
             jsonl, code="005930", date=date,
         )
 
@@ -350,6 +350,52 @@ async def test_cleanup_archive_noop_when_dir_missing(tmp_path: Path) -> None:
     await cleanup_archive(tmp_path)
 
 
+@pytest.mark.asyncio
+async def test_promote_writes_fills_parquet_only_when_fill_lines_exist(tmp_path: Path):
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.live.promote import promote_one
+
+    live_root = tmp_path / "live"
+    jsonl_path = live_root / "20260605" / "005930.jsonl"
+    jsonl_path.parent.mkdir(parents=True)
+    base_t = hhmmssms_to_unix_ms("20260605", 90000000)
+    lines = [
+        json.dumps({"t_ms": base_t, "kind": "fill",
+                    "payload": {"buy_qty": 12, "sell_qty": 8, "phase": "regular"}}),
+        json.dumps({"t_ms": base_t + 10_000, "kind": "fill",
+                    "payload": {"buy_qty": 0, "sell_qty": 4, "phase": "regular"}}),
+    ]
+    jsonl_path.write_text("\n".join(lines) + "\n")
+
+    parquet_root = tmp_path / "parquet"
+    await promote_one(jsonl_path, parquet_root, code="005930", date="20260605")
+    target = parquet_root / "20260605" / "005930" / "kis_live"
+    assert (target / "fills.parquet").exists()
+    meta = json.loads((target / "meta.json").read_text())
+    assert meta["row_counts"]["fills"] == 2
+
+
+@pytest.mark.asyncio
+async def test_promote_legacy_jsonl_without_fill_writes_no_fills_parquet(tmp_path: Path):
+    """레거시(trade kind만 있는) JSONL 재프로모트 시 빈 fills.parquet이 생기면
+    bundle의 fills-우선 분기가 진짜 trades 데이터를 가리게 됨 — 금지."""
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.live.promote import promote_one
+
+    jsonl_path = tmp_path / "live" / "20260527" / "005930.jsonl"
+    jsonl_path.parent.mkdir(parents=True)
+    base_t = hhmmssms_to_unix_ms("20260527", 90000000)
+    jsonl_path.write_text(json.dumps({"t_ms": base_t, "kind": "trade", "payload": {
+        "trades": [{"t_ms": base_t, "price": 100, "qty": 1, "side": 1,
+                    "side_source": "inferred"}], "phase": "regular"}}) + "\n")
+
+    parquet_root = tmp_path / "parquet"
+    await promote_one(jsonl_path, parquet_root, code="005930", date="20260527")
+    target = parquet_root / "20260527" / "005930" / "kis_live"
+    assert not (target / "fills.parquet").exists()
+    assert (target / "trades.parquet").exists()
+
+
 # ---------------------------------------------------------------------------
 # Task 2: _parse_jsonl_to_records helper tests
 # ---------------------------------------------------------------------------
@@ -377,7 +423,7 @@ def test_parse_jsonl_to_records_basic(tmp_path: Path) -> None:
     ]
     jsonl.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
 
-    snapshots, trades, broker_rows, meta = _parse_jsonl_to_records(
+    snapshots, trades, broker_rows, fills, meta = _parse_jsonl_to_records(
         jsonl, code="003490", date="20260528",
     )
 
@@ -425,7 +471,7 @@ def test_parse_jsonl_synthesizes_monotonic_seq_per_kind(tmp_path: Path) -> None:
     jsonl = tmp_path / "in.jsonl"
     jsonl.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
 
-    snapshots, trades, broker_rows, _ = _parse_jsonl_to_records(
+    snapshots, trades, broker_rows, _, _ = _parse_jsonl_to_records(
         jsonl, code="003490", date=date,
     )
 
@@ -488,7 +534,7 @@ def test_parse_jsonl_to_records_skips_torn_line(tmp_path: Path, caplog) -> None:
     jsonl.write_text(good + "\n{ malformed\n")
 
     with caplog.at_level("WARNING"):
-        snapshots, _, _, meta = _parse_jsonl_to_records(
+        snapshots, _, _, _, meta = _parse_jsonl_to_records(
             jsonl, code="003490", date="20260528",
         )
 

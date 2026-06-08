@@ -84,20 +84,27 @@ export function sessionPhaseAt(segments: readonly SessionSegment[], realMs: numb
   const first = segments[0];
   if (realMs < first.sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS) return 'pre-axis';
 
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    const preOpenStart = seg.sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS;
-    if (realMs < preOpenStart) {
-      // Between this segment's pre-open and the previous segment — that's a gap.
-      return 'gap';
+  // preOpenStart(= open − 30min) ≤ realMs 인 마지막 세그먼트를 이진 탐색 —
+  // findByReal(virtualAxis.ts)과 같은 lower-bound 패턴, 키만 preOpenStart.
+  // 전제: 세그먼트 정렬·비중첩(buildSegments 불변식). projector 핫패스가
+  // 캔들마다 contains/inClosingAuctionWindow로 2회 부르므로 선형 워크는
+  // 250일 스크롤에서 projection당 수천만 비교가 된다(스펙 2026-06-08).
+  let lo = 0;
+  let hi = segments.length - 1;
+  let idx = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    if (segments[mid].sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS <= realMs) {
+      idx = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
     }
-    if (realMs <= seg.sessionCloseMs) {
-      return classifyWithinSegment(seg, realMs);
-    }
-    // realMs > sessionCloseMs of this segment — keep walking unless this was
-    // the last segment, in which case we're post-axis.
   }
-  return 'post-axis';
+  const seg = segments[idx];
+  if (realMs <= seg.sessionCloseMs) return classifyWithinSegment(seg, realMs);
+  // seg 마감 뒤 ~ 다음 세그먼트 pre-open 시작 전 구간. idx가 마지막이면 post-axis.
+  return idx === segments.length - 1 ? 'post-axis' : 'gap';
 }
 
 /**

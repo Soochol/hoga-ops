@@ -7,7 +7,7 @@ writer. JSONL → Parquet conversion happens later in `hoga/live/promote.py`
 
 Concurrency: per-code asyncio.Lock serializes appends to the same
 (date, code) file. Cross-code appends run concurrently. fsync is
-deferred to `fsync_all()` which the Poller calls once per cycle.
+deferred to `fsync_all()` which the stream's flush loop calls once per 10s window.
 """
 from __future__ import annotations
 

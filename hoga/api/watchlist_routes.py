@@ -57,7 +57,7 @@ from hoga.api.watchlist import (
     reorder_folders,
 )
 from hoga.collector.orchestrator import now_kst
-from hoga.live.lifecycle import refresh_live_poller
+from hoga.live.lifecycle import refresh_live_stream
 
 
 def _next_run_at_ms(now: dt.datetime) -> int:
@@ -102,9 +102,9 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "message": f"Code {req.code} is already in the Watchlist.",
             }) from e
         try:
-            await refresh_live_poller(data_dir=data_dir)
-        except Exception:  # noqa: BLE001 — poller re-sync is best-effort; the watchlist mutation already succeeded
-            log.exception("watchlist.add: refresh_live_poller failed code=%s", req.code)
+            await refresh_live_stream(data_dir=data_dir)
+        except Exception:  # noqa: BLE001 — stream re-sync is best-effort; the watchlist mutation already succeeded
+            log.exception("watchlist.add: refresh_live_stream failed code=%s", req.code)
         return entry
 
     @router.post("/catchup", status_code=201, response_model=ManualCatchupAllResponse)
@@ -160,9 +160,9 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "message": f"Code {code} is not in the Watchlist.",
             }) from e
         try:
-            await refresh_live_poller(data_dir=data_dir)
-        except Exception:  # noqa: BLE001 — poller re-sync is best-effort; the watchlist mutation already succeeded
-            log.exception("watchlist.remove: refresh_live_poller failed code=%s", code)
+            await refresh_live_stream(data_dir=data_dir)
+        except Exception:  # noqa: BLE001 — stream re-sync is best-effort; the watchlist mutation already succeeded
+            log.exception("watchlist.remove: refresh_live_stream failed code=%s", code)
 
     @router.post("/{code}/catchup", status_code=201, response_model=EnqueueResponse)
     async def catchup_one(code: CodePathParam) -> EnqueueResponse:
@@ -196,6 +196,12 @@ def build_router(*, data_dir: Path) -> APIRouter:
             raise HTTPException(status_code=409, detail={
                 "code": "folder_set_mismatch",
                 "message": "Folder order list does not match the current folder set."}) from e
+        # Live Set = 표시 순서 상위 13 — 폴더 순서 변경은 표시 순서를 바꾼다
+        # (최종 리뷰 C1: spec §5.5 '경계 넘기면 구독 스왑'의 누락 후크).
+        try:
+            await refresh_live_stream(data_dir=data_dir)
+        except Exception:  # noqa: BLE001 — best-effort, mutation already succeeded
+            log.exception("watchlist.folders_order: refresh_live_stream failed")
 
     @router.patch("/folders/{folder_id}", status_code=204)
     async def rename_watchlist_folder(folder_id: str, req: FolderRenameRequest) -> None:
@@ -212,6 +218,11 @@ def build_router(*, data_dir: Path) -> APIRouter:
         except FolderNotFoundError as e:
             raise HTTPException(status_code=404, detail={
                 "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
+        # 폴더 삭제 → 소속 엔트리가 미분류로 이동 = 표시 순서 변경 (리뷰 C1).
+        try:
+            await refresh_live_stream(data_dir=data_dir)
+        except Exception:  # noqa: BLE001 — best-effort, mutation already succeeded
+            log.exception("watchlist.folder_delete: refresh_live_stream failed")
 
     @router.post("/move", status_code=204)
     async def move_watchlist_entries(req: EntriesMoveRequest) -> None:
@@ -221,6 +232,11 @@ def build_router(*, data_dir: Path) -> APIRouter:
             raise HTTPException(status_code=404, detail={
                 "code": "folder_not_found",
                 "message": f"Folder {req.folder_id} not found."}) from e
+        # 폴더 간 이동 = 표시 순서 변경 (리뷰 C1).
+        try:
+            await refresh_live_stream(data_dir=data_dir)
+        except Exception:  # noqa: BLE001 — best-effort, mutation already succeeded
+            log.exception("watchlist.move: refresh_live_stream failed")
 
     @router.put("/reorder", status_code=204)
     async def reorder_watchlist_entries(req: EntriesReorderRequest) -> None:
@@ -232,13 +248,20 @@ def build_router(*, data_dir: Path) -> APIRouter:
             raise HTTPException(status_code=409, detail={
                 "code": "reorder_set_mismatch",
                 "message": "Reorder list does not match the folder's current members."}) from e
+        # 엔트리 드래그 reorder = spec §5.5의 핵심 상호작용 — 13 경계를 넘으면
+        # 구독 스왑이 일어나야 한다 (리뷰 C1; intra-13 reorder는 update_codes의
+        # diff early-return으로 wire no-op).
+        try:
+            await refresh_live_stream(data_dir=data_dir)
+        except Exception:  # noqa: BLE001 — best-effort, mutation already succeeded
+            log.exception("watchlist.reorder: refresh_live_stream failed")
 
     @router.post("/remove", status_code=204)
     async def bulk_remove_watchlist_entries(req: EntriesRemoveRequest) -> None:
         await remove_entries(data_dir, codes=req.codes)
         try:
-            await refresh_live_poller(data_dir=data_dir)
+            await refresh_live_stream(data_dir=data_dir)
         except Exception:  # noqa: BLE001 — best-effort, mutation already succeeded
-            log.exception("watchlist.bulk_remove: refresh_live_poller failed")
+            log.exception("watchlist.bulk_remove: refresh_live_stream failed")
 
     return router

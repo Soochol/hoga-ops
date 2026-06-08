@@ -21,6 +21,8 @@ describe('useLiveStatus', () => {
       started_at_ms: 1_000_000,
       last_tick_ms: 1_000_500,
       cycle_lag_ms: 200,
+      capture_healthy: true,
+      capture_reason: 'healthy',
       watchlist_count: 3,
       kis_calls_today: 12,
       kis_rate_limit_remaining: null,
@@ -44,8 +46,8 @@ describe('useLiveStatus', () => {
     expect(result.current.isLoading).toBe(true);
     resolve!({
       running: false, started_at_ms: null, last_tick_ms: null,
-      cycle_lag_ms: 0, watchlist_count: 0, kis_calls_today: 0,
-      kis_rate_limit_remaining: null,
+      cycle_lag_ms: 0, capture_healthy: false, capture_reason: 'offline',
+      watchlist_count: 0, kis_calls_today: 0, kis_rate_limit_remaining: null,
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
   });
