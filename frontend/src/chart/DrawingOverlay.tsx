@@ -22,6 +22,7 @@ import {
 import {
   pixelToData as projPixelToData,
   priceToCanvasY as projPriceToCanvasY,
+  canvasYToPrice as projCanvasYToPrice,
   realMsToCanvasX as projRealMsToCanvasX,
   paneIdToIndex,
   paneIdAtY as projPaneIdAtY,
@@ -225,6 +226,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
   const realMsToCanvasX = (realMs: number) => projRealMsToCanvasX(chart, axis, realMs);
   const priceToCanvasY = (price: number, paneId: PaneId) =>
     projPriceToCanvasY(chart, paneSeries, paneId, price);
+  const canvasYToPrice = (py: number, paneId: PaneId) =>
+    projCanvasYToPrice(chart, paneSeries, paneId, py);
   const paneIdAtY = (py: number) => projPaneIdAtY(chart, paneSeries, py);
   const clampYToPane = (paneId: PaneId, py: number) =>
     projClampYToPane(chart, paneSeries, paneId, py);
@@ -267,6 +270,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
       pixelToData,
       realMsToCanvasX,
       priceToCanvasY,
+      canvasYToPrice,
       hitTestAt,
       paneIdAtY,
       clampYToPane,
