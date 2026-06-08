@@ -43,26 +43,14 @@ sessionTime.ts는 half-day-ready(과거 parser TSV close_ms), kis_live 실시간
 **Priority:** P1 (배포 게이트)
 **Depends on:** PR #43 배포 타이밍
 
-### 코드리뷰 잔여 — cleanup 잔여 (#3·#10·#13 완료, #9·seam 남음)
+### #9 거래원 궤적 15분 절단 — 디스크 seam 신설 (cleanup 잔여, 큼)
 
-**What:** #9 거래원 궤적 15분 절단(ADR-0023 row-churn 재발 — 디스크 seam 신설 필요, 큼), 크로스 스택 seam 상수(range.ts 5min/15min/promote env 동기화 검증). #3(개장 sleep)·#10(브로커 canonical)·#13(refresh 순서)은 2026-06-08 완료(Completed 참조).
+**What:** 거래원 day-trajectory가 15분 창으로 절단(ADR-0023 row-churn 재발). 영구 보존하려면 디스크 seam 신설이 필요. #3·#10·#13·seam 상수는 2026-06-08 완료(Completed 참조).
 
-**Why:** #9는 디스크 seam이 필요해 작은 묶음에서 분리. seam 상수는 검증 위주.
+**Why:** 디스크 seam이 필요해 작은 묶음(#45)에서 분리 — 별도 spec/브랜치.
 
-**Effort:** L (#9) / S (seam 검증)
+**Effort:** L
 **Priority:** P2
-**Depends on:** None
-
-### 캡처 헬스 pill 라벨 중복 (가시화 묶음 후속)
-
-**What:** /live 상태바에 SSE 연결 span('LIVE●')과 캡처 헬스 pill('LIVE●')이 healthy 시 동일 문자열을 나란히 표시('LIVE● · LIVE●') — 글리치처럼 보임. pill 라벨을 구분(예: '캡처 LIVE●')하거나 두 표시를 한 컴포넌트로 통합.
-
-**Why:** 두 신호는 다른 레이어(SSE = 브라우저↔백엔드, pill = 백엔드↔KIS 캡처)라 공존 의미는 있으나 동일 라벨이 혼동. 비차단 코스메틱(ch-review-5 Minor).
-
-**Context:** SSE span은 LiveStatusBar.tsx:113, pill은 captureHealthPill.ts. SSE span 유지 정책과 얽힌 설계 판단.
-
-**Effort:** S
-**Priority:** P3
 **Depends on:** None
 
 ## Frontend
@@ -123,3 +111,8 @@ sessionTime.ts는 half-day-ready(과거 parser TSV close_ms), kis_live 실시간
 - #10 _parse_member 거래원명 canonical — live=replay 식별자 통일(읽기 canonical 양방향 확정), unknown_alias 계측 복원
 - #13 refresh_live_stream failure-domain 순서 — durable _state·carry 정리 먼저, ws send/drop best-effort
 - 백엔드 1334 + 프론트 330(live) 통과. #9 거래원 궤적·seam 상수는 P2 잔여
+
+### seam 사이징 가드 + pill 라벨 (2026-06-08, 리뷰 seam·#ch-5, #45에 흡수)
+- seam: lifecycle.resolve_today_promote_interval — promote 주기 ≥600초(보존−refetch)면 경고 후 기본 300초 폴백(today 봉합 hole 차단). buffer.py 주석 '2×promote' 근사를 실식(promote+refetch)으로 일원화, range.ts 상호참조. 판별 테스트 5건(480/599 통과·600 폴백)
+- pill: captureHealthLabel healthy 'LIVE●'→'수신●' — SSE span과 중복 글리치 해소('수신 끊김'과 도메인 쌍)
+- #8 반장일 게이트는 WONTFIX(사용자 수용). #9 거래원 궤적만 P2 잔여(별도 spec)
