@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 from pydantic import BaseModel, Field
 
 from . import kis_runtime  # needed by reset_for_tests() + start_live_stream
-from .buffer import LiveBuffer
+from .buffer import DEFAULT_RETENTION_MS, LiveBuffer, max_safe_promote_interval_s
 from .promote import promote_today
 
 _log = logging.getLogger(__name__)
@@ -303,11 +303,37 @@ def reset_for_tests() -> None:
 
 # ── Today Promoter ─────────────────────────────────────────────────────────────
 
+_DEFAULT_TODAY_PROMOTE_INTERVAL_S = 300.0  # ADR-0043 기본 promote 주기(5분)
+
+
+def resolve_today_promote_interval(requested_s: float) -> float:
+    """봉합 사이징 가드: promote 주기가 버퍼 보존을 넘어 today 봉합에 hole을
+    내지 않도록 강제(코드리뷰 seam 잔여, range.ts:18-22 불변식).
+
+    안전 상한(buffer.max_safe_promote_interval_s = 보존 − refetch) '이상'이면
+    promote+refetch ≥ 보존 → [pastMaxQrT … now] 구간을 버퍼가 못 메워 무음
+    hole. promoter는 optional(HOGA_LIVE_TODAY_PROMOTE_ENABLED)이고 실패가
+    today 봉합에 국소적이라 startup을 죽이지 않고 경고 후 기본값으로 폴백한다.
+    """
+    limit = max_safe_promote_interval_s()
+    if requested_s >= limit:
+        _log.warning(
+            "live.seam.promote_interval_unsafe requested=%.0fs safe_max<%.0fs — "
+            "기본 %.0fs 폴백 (보존 %.0fs > promote+refetch라야 today 봉합 hole 없음)",
+            requested_s,
+            limit,
+            _DEFAULT_TODAY_PROMOTE_INTERVAL_S,
+            DEFAULT_RETENTION_MS / 1000.0,
+        )
+        return _DEFAULT_TODAY_PROMOTE_INTERVAL_S
+    return requested_s
+
+
 async def start_today_promoter(
     *,
     data_dir: Path,
     get_active_codes: Callable[[], list[str]],
-    interval_s: float = 300.0,
+    interval_s: float = _DEFAULT_TODAY_PROMOTE_INTERVAL_S,
 ) -> asyncio.Task:
     """Start the ADR-0043 Today Promotion loop.
 

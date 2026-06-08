@@ -20,10 +20,31 @@ from typing import Iterable
 
 from .snapshot import LiveSnapshot, SnapshotKind
 
-# Eng C5 → WS 전환: 개수 캡은 폭주 안전핀으로만. 실 보존은 시간 기반
-# (spec §8 봉합 사이징 불변식: 보존 > 2× HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S).
+# Eng C5 → WS 전환: 개수 캡은 폭주 안전핀으로만. 실 보존은 시간 기반.
+#
+# spec §8 봉합 사이징 불변식: pastMaxQrT는 now보다 (promote 주기 + refetch 주기)
+# 만큼 뒤처질 수 있고, 버퍼가 그 [pastMaxQrT … now] 구간을 메워야 today 봉합에
+# hole이 없다 → 보존 > promote_주기 + refetch_주기 (range.ts:18-22와 동일 식).
+# promote는 env(HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S) 가변, refetch는 프론트
+# 하드코딩(range.ts:24, 5분)이라 둘이 desync할 수 있다 → 유일한 가변점인 promote를
+# lifecycle.resolve_today_promote_interval가 런타임 클램프해 강제한다.
+# (예전 주석의 "보존 > 2× promote"는 refetch==promote 가정일 때만 같은 값을 내는
+#  과보수적 근사였다 — 실식은 promote+refetch.)
 MAX_BUFFER_ENTRIES = 60_000
 DEFAULT_RETENTION_MS = 900_000  # 15분
+# range.ts:24 TODAY_RANGE_REFETCH_MS(5분)의 백엔드 미러. 동기화 기구 대신
+# 중복+상호참조(가드가 백엔드에 살아서 프론트 상수를 import할 수 없음).
+TODAY_RANGE_REFETCH_S = 300
+
+
+def max_safe_promote_interval_s(
+    *,
+    retention_ms: int = DEFAULT_RETENTION_MS,
+    refetch_s: int = TODAY_RANGE_REFETCH_S,
+) -> float:
+    """봉합 안전 상한(초): 이 값 '이상'의 promote 주기는 promote+refetch ≥ 보존이
+    되어 today 봉합에 무음 hole을 낸다. = 보존 − refetch (기본 900−300 = 600)."""
+    return retention_ms / 1000.0 - refetch_s
 
 
 class LiveBuffer:

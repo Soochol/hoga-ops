@@ -38,6 +38,7 @@ from hoga.live.lifecycle import get_buffer as live_get_buffer
 from hoga.live.lifecycle import get_status as live_get_status
 from hoga.live.lifecycle import (
     get_active_codes,
+    resolve_today_promote_interval,
     start_live_stream,
     start_live_stream_watchdog,
     start_today_promoter,
@@ -120,8 +121,10 @@ def create_app(data_dir: Path) -> FastAPI:
         # HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S (default 300 = 5 min).
         today_promoter_task: asyncio.Task | None = None
         if os.environ.get("HOGA_LIVE_TODAY_PROMOTE_ENABLED", "true").lower() != "false":
-            today_promote_interval_s = float(
-                os.environ.get("HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S", "300")
+            # 봉합 사이징 가드: 보존 < promote+refetch면 today 봉합 hole →
+            # 경고 후 기본값 폴백(resolve_today_promote_interval).
+            today_promote_interval_s = resolve_today_promote_interval(
+                float(os.environ.get("HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S", "300"))
             )
             today_promoter_task = await start_today_promoter(
                 data_dir=data_dir,

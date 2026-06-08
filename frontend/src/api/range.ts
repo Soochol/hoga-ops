@@ -20,6 +20,12 @@ import { useSourcePreferenceStore } from '../state/sourcePreference';
  * pastMaxQrT, which lags `now` by up to promotion_period + refetch_period
  * (data promoted ≤5min ago, read ≤5min ago = ~10min). 15min > 5+5 with margin,
  * so the [pastMaxQrT … now] window is always bridged by the buffer — no hole.
+ *
+ * Backend enforces this same invariant at runtime: `promotion_period` is
+ * env-tunable (HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S) while this `refetch_period`
+ * is hardcoded, so they can desync. `lifecycle.resolve_today_promote_interval`
+ * clamps an over-long promote interval (≥ retention − refetch = 600s) back to
+ * the default with a warning. Backend mirrors this 5min as `buffer.TODAY_RANGE_REFETCH_S`.
  */
 export const TODAY_RANGE_REFETCH_MS = 5 * 60_000;
 
