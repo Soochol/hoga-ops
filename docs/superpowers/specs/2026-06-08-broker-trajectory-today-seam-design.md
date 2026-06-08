@@ -1,7 +1,7 @@
 # 거래원 궤적 today-aware 디스크 seam (#9)
 
 - **Date**: 2026-06-08
-- **Status**: Designed (2026-06-08)
+- **Status**: Implemented (2026-06-08) — 백엔드+프론트 유닛 완료, 브라우저 실측만 장중 이월
 - **Scope**: `both` — `hoga/tables/brokers.py`, `hoga/api/routes.py`(백엔드), `frontend/src/api/brokerSeries.ts`, `frontend/src/live/LiveSidebar.tsx`(프론트)
 - **Topic slug**: `broker-trajectory-today-seam`
 - **관련**: ADR-0023(거래원 day-anchored), ADR-0013(RangeBundle 단일 read 경로 선례), ADR-0043(Today Promotion), spec 2026-05-24-broker-day-trajectory-design, spec 2026-06-08(seam 사이징 가드 — retention>promote+refetch)
