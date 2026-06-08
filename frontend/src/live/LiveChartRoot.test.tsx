@@ -1655,6 +1655,9 @@ describe('LiveChartRoot wheel interactions wiring', () => {
       // 줌아웃 플로어(maxSpan = width/minBarSpacing = 2000) — 이 테스트의
       // 요청 span(≈110.5)에는 발동하지 않는 값.
       width: vi.fn(() => 1000),
+      // DEFAULT_BUNDLE은 candles 빈 배열이라 lastMs undefined → timeToIndex 미호출,
+      // plain 앵커는 to-고정 폴백(to=100 유지). 방어적으로 둔다.
+      timeToIndex: vi.fn(() => null),
     };
     const chart = {
       addSeries: vi.fn(() => ({

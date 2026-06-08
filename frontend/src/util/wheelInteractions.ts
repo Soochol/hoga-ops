@@ -5,13 +5,16 @@
  * Three branches, selected by modifiers:
  *  - `shiftKey` → pan: translate the range, span unchanged.
  *  - `ctrlOrMetaKey` → zoom anchored at the mouse coordinate.
- *  - default → zoom anchored at `range.to` (rightmost visible candle).
+ *  - default → zoom anchored at the latest candle (`lastBarIndex`) when it is
+ *    at/inside the right edge, else at `range.to` (the viewport right edge,
+ *    when scrolled into history).
  *
  * Right wall: only the shift branch clamps when rightward motion would
  * push `to` past `maxTo` (typically the last candle's logical index).
- * The ctrl branch preserves the mouse-anchor invariant unconditionally and
- * lets `to` extend past `maxTo` — clamping it would warp the anchor's
- * screen position. Plain wheel is unaffected because it never increases `to`.
+ * The ctrl and plain branches preserve their anchor's screen position
+ * unconditionally and let `to` extend past `maxTo` — clamping `to` while
+ * leaving `from` at the formula value would warp the anchor. `maxTo` only
+ * bounds shift-pan.
  *
  * No DOM, no chart library — separated so the branching logic is
  * unit-testable without mounting a chart.
@@ -30,12 +33,27 @@ export interface WheelInput {
   /** Chart `timeScale.coordinateToLogical(x)` callback (may return null). */
   coordinateToLogical: (x: number) => number | null;
   /**
-   * Upper bound for the result's `to`. Typically `bundle.candles.length - 1`
-   * — the logical index of the last candle in the active RangeBundle.
-   * Pass `Number.POSITIVE_INFINITY` to disable the wall (e.g., before data
-   * loads).
+   * Upper bound for the result's `to` — the latest candle's logical index plus
+   * `rightOffset` (the default live-view position). The hook derives the index
+   * via `ts.timeToIndex(latestCandleTime)`, NOT `bundle.candles.length - 1`:
+   * the shared timeScale indexes the union of all panes' time points, so quote
+   * panes add points and `candles.length - 1` understates the true index
+   * (observed skew ~273). Pass `Number.POSITIVE_INFINITY` to disable the wall
+   * (e.g., before data loads).
    */
   maxTo: number;
+  /**
+   * Logical index of the latest candle, used as the plain-wheel zoom anchor
+   * when it sits at/inside the right edge. Keeps the latest candle pixel-fixed
+   * on zoom IN as well as OUT — anchoring on `range.to` (which includes the
+   * `rightOffset` padding) let the candle drift left on zoom-in as the
+   * padding's pixel share grew. Source: `ts.timeToIndex(latestCandleTime)` in
+   * the hook (same union-index reason as `maxTo` — `candles.length - 1` is
+   * skewed). When omitted, or when the view is scrolled into history
+   * (`range.to < lastBarIndex`), the anchor falls back to `range.to`
+   * (right-edge-fixed, per design decision #1).
+   */
+  lastBarIndex?: number;
   /**
    * Upper bound for the result's span (visible bar count). Typically
    * `timeScale.width() / minBarSpacing` — the library's zoom-out floor.
@@ -85,8 +103,15 @@ export function computeWheelOutcome(i: WheelInput): WheelOutcome {
     return clampSpanAroundAnchor(newFrom, newTo, anchor, i.maxSpan);
   }
 
-  // Default: right-edge-anchored zoom — `to` stays fixed (anchor = to).
-  return clampSpanAroundAnchor(to - span * factor, to, to, i.maxSpan);
+  // Default: anchor at the latest candle when it's at/inside the right edge
+  // (live-edge zoom keeps the last candle pixel-fixed on zoom in AND out),
+  // else at `to` (scrolled into history → pin the viewport right edge, per
+  // decision #1). `Math.min(to, lastBarIndex)` selects between the two; with
+  // lastBarIndex omitted it degrades to the old `anchor = to` behavior.
+  const anchor = Math.min(to, i.lastBarIndex ?? to);
+  const newFrom = anchor - (anchor - from) * factor;
+  const newTo = anchor + (to - anchor) * factor;
+  return clampSpanAroundAnchor(newFrom, newTo, anchor, i.maxSpan);
 }
 
 /**

@@ -3,17 +3,21 @@ import { render } from '@testing-library/react';
 import { useRef } from 'react';
 import type { IChartApi } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
+import type { VirtualAxis } from '../util/virtualAxis';
 import { useWheelInteractions } from './useWheelInteractions';
 
 // 훅이 실제로 사용하는 timeScale 표면만 흉내 낸다. 테스트별로 필요한
 // 메서드만 override. width 1000 × minBarSpacing 0.5 → maxSpan 2000:
 // 기본 케이스들의 요청 span(≤111)에는 플로어 클램프가 발동하지 않는다.
+// timeToIndex 기본값 null → trueLast undefined → plain 앵커는 to-고정 폴백
+// (lastBarIndex를 검증하는 테스트만 timeToIndex를 override한다).
 function makeTs(over: Record<string, unknown> = {}) {
   return {
     getVisibleLogicalRange: vi.fn(() => ({ from: 0, to: 100 })),
     setVisibleLogicalRange: vi.fn(),
     coordinateToLogical: vi.fn(() => null),
     width: vi.fn(() => 1000),
+    timeToIndex: vi.fn(() => null),
     ...over,
   };
 }
@@ -23,6 +27,16 @@ function makeChart(ts: ReturnType<typeof makeTs>): IChartApi {
     timeScale: () => ts,
     options: () => ({ timeScale: { minBarSpacing: 0.5 } }),
   } as unknown as IChartApi;
+}
+
+// 최소 가짜 axis — 훅은 segments.length(>0 게이트)와 toVirtual만 쓴다.
+// toVirtual은 항등(ms→virtual)으로 두고, 실제 인덱스 변환은 ts.timeToIndex
+// mock이 결정한다(단위 테스트는 변환 합성이 아니라 배선 계약만 검증).
+function makeAxis(hasSegments: boolean): VirtualAxis {
+  return {
+    segments: hasSegments ? [{}] : [],
+    toVirtual: (ms: number) => ms,
+  } as unknown as VirtualAxis;
 }
 
 // RangeBundle 최소 픽스처 — candles 길이만 의미 있다 (maxTo = length - 1).
@@ -52,9 +66,17 @@ function makeBundle(candleCount: number): RangeBundle {
   };
 }
 
-function Harness({ chart, bundle }: { chart: IChartApi | null; bundle: RangeBundle | null }) {
+function Harness({
+  chart,
+  bundle,
+  axis = makeAxis(false),
+}: {
+  chart: IChartApi | null;
+  bundle: RangeBundle | null;
+  axis?: VirtualAxis;
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  useWheelInteractions(chart, ref, bundle);
+  useWheelInteractions(chart, ref, bundle, axis);
   return <div data-testid="wheel-host" ref={ref} />;
 }
 
@@ -70,7 +92,7 @@ function wheel(el: Element, init: WheelEventInit): WheelEvent {
 const FACTOR = Math.exp(100 * 0.001);
 
 describe('useWheelInteractions', () => {
-  it('plain wheel: 오른쪽 끝 고정 줌 — to 유지, from만 왼쪽으로', () => {
+  it('plain wheel: 오른쪽 끝 고정 줌 — to 유지, from만 왼쪽으로 (bundle 없음)', () => {
     const ts = makeTs();
     const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={null} />);
     wheel(getByTestId('wheel-host'), { deltaY: 100 });
@@ -78,6 +100,23 @@ describe('useWheelInteractions', () => {
     const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
     expect(arg.to).toBe(100);
     expect(arg.from).toBeCloseTo(100 - 100 * FACTOR, 6); // ≈ -10.517
+  });
+
+  it('plain wheel 줌인: 마지막 캔들의 합집합 인덱스(ts.timeToIndex)를 앵커로 전달', () => {
+    // 훅은 마지막 캔들 ts_ms를 ts.timeToIndex로 변환해 trueLast를 얻는다
+    // (candles.length-1이 아님 — 호가 합집합 skew 회피). timeToIndex가 85를
+    // 돌려주면 range {0,100} 기준 anchor=min(100,85)=85. 줌인 factor=exp(-0.1):
+    // from=85·(1−f)≈8.09, to=85+15·f≈98.57. to가 100으로 고정되지 않음 = 회귀 해소.
+    const f = Math.exp(-0.1);
+    const ts = makeTs({ timeToIndex: vi.fn(() => 85) });
+    const { getByTestId } = render(
+      <Harness chart={makeChart(ts)} bundle={makeBundle(86)} axis={makeAxis(true)} />,
+    );
+    wheel(getByTestId('wheel-host'), { deltaY: -100 });
+    expect(ts.timeToIndex).toHaveBeenCalled(); // candles.length-1 대신 변환을 거쳤다
+    const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
+    expect(arg.from).toBeCloseTo(85 * (1 - f), 6); // ≈ 8.089
+    expect(arg.to).toBeCloseTo(85 + 15 * f, 6); // ≈ 98.573 (100 고정 아님)
   });
 
   it('ctrl wheel: 커서 앵커 줌 — 양변이 앵커(50) 기준 확장', () => {
@@ -144,19 +183,27 @@ describe('useWheelInteractions', () => {
     expect(arg.to).toBeCloseTo(102.5, 9);
   });
 
-  it('bundle 교체 시 maxTo는 ref로 갱신 — 리스너 재부착 없음', () => {
-    const ts = makeTs();
+  it('bundle 교체 시 마지막 캔들 ms는 ref로 갱신 — 리스너 재부착 없음', () => {
+    // timeToIndex mock = makeBundle의 ts_ms 공식 역산 → 캔들 인덱스(100개→99,
+    // 50개→49). maxTo = trueLast + rightOffset(15). bundle 교체가 lastMsRef를
+    // 갱신하므로 이벤트 시점 변환이 새 캔들(49)을 반영해야 한다.
+    const BASE = 1_780_000_000_000;
+    const ts = makeTs({
+      timeToIndex: vi.fn((vt: number) => Math.round((vt * 1000 - BASE) / 60_000)),
+    });
     const chart = makeChart(ts); // 동일 chart identity 유지 — 리스너 effect 재실행 방지
-    const { getByTestId, rerender } = render(<Harness chart={chart} bundle={makeBundle(100)} />);
+    const axis = makeAxis(true);
+    const { getByTestId, rerender } = render(
+      <Harness chart={chart} bundle={makeBundle(100)} axis={axis} />,
+    );
     const host = getByTestId('wheel-host');
     const addSpy = vi.spyOn(host, 'addEventListener');
-    rerender(<Harness chart={chart} bundle={makeBundle(50)} />); // maxTo 114 → 64 (49 + rightOffset 15)
+    rerender(<Harness chart={chart} bundle={makeBundle(50)} axis={axis} />); // trueLast 99 → 49
     // 재부착 없음: bundle 교체가 addEventListener('wheel', ...)를 다시 부르지 않는다.
     expect(addSpy.mock.calls.filter(([type]) => type === 'wheel')).toHaveLength(0);
-    // 이벤트 시점에 ref에서 새 maxTo(64 = 49 + rightOffset 15)를 읽는다:
-    // range {0,100}, step +10 → newTo 110 > 64 → 클램프 {from: 64-100, to: 64}.
-    // 교체 전 maxTo(114 = 99+15)가 스테일하게 남았다면 110 < 114라 클램프가
-    // 발동하지 않아 {from: 10, to: 110}이 되어 실패한다.
+    // 이벤트 시점 변환: trueLast 49 → maxTo 64(=49+15). range {0,100}, step +10 →
+    // newTo 110 > 64 → 클램프 {from: -36, to: 64}. 교체 전 trueLast(99→maxTo 114)가
+    // 스테일하면 110 < 114라 클램프 미발동 {from:10, to:110}으로 실패한다.
     wheel(host, { deltaY: 100, shiftKey: true });
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledWith({ from: -36, to: 64 });
   });

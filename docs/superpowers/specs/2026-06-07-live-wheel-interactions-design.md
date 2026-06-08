@@ -32,6 +32,12 @@ brainstorming 대화에서 확정한 결정들:
    과거 구간으로 스크롤한
    상태에서는 보던 구간의 오른쪽 끝이 고정된다 — 뷰가 "지금"으로 끌려가지 않음.
    기존 스펙(2026-05-24)과 같은 해석.
+   **개정 (2026-06-08, v0.7.0.1 — 결정 #11 참조)**: "±수 px"는 사실 ±수십 px이었다.
+   줌인 시 패딩(rightOffset 15칸)이 화면에서 차지하는 픽셀이 커지며 최신 캔들이
+   왼쪽으로 눈에 띄게 밀렸다(사용자 보고: "줌인하면 마지막 캔들 앵커가 풀려").
+   plain wheel 앵커를 `min(to, lastBarIndex)`로 변경 — 라이브 엣지에서는 마지막
+   캔들 고정(줌인·줌아웃 양쪽 픽셀 고정), 과거 스크롤 시에는 여전히 `to` 고정
+   (이 결정의 원래 의도 유지). 브라우저 검증: 마지막 캔들 픽셀 407→404.9(서브픽셀).
 2. **오른쪽 벽 = 마지막 캔들에서 타이트** (`maxTo = bundle.candles.length - 1`).
    "/live 기본 뷰의 rightOffset 15칸 패딩 위치까지(+15)" 안은 기각 — 리플레이 때
    사용자가 직접 요청했던 동작("마지막 캔들이 보일때까지")이자 현재 헬퍼
@@ -41,6 +47,13 @@ brainstorming 대화에서 확정한 결정들:
    엣지에 복귀하면 기본 뷰(우측 여백 포함)와 정확히 같은 화면에서 멈추고, 첫
    틱의 패딩 스냅 회수도 사라진다. right-wall 스펙(2026-05-24)이 예고했던 바로
    그 한 줄 전환.
+   **재개정 (2026-06-08, v0.7.0.1 — 결정 #11)**: 인덱스 공급원을
+   `candles.length - 1`에서 이벤트 시점 `ts.timeToIndex(마지막 캔들 virtual time)`로
+   교체. `candles.length - 1`은 공유 timeScale의 합집합 인덱스보다 ~273칸 작아
+   (호가 페인 skew) shift 벽이 마지막 캔들 한참 오른쪽 빈 공간에서 멈추던 것을
+   정상화. `maxTo = trueLast + rightOffset` (정의: 마지막 *캔들* + 여백; 장 마감 후
+   호가 꼬리가 캔들 뒤로 이어지면 벽이 기본 뷰보다 꼬리 길이만큼 오른쪽 — 라이브
+   중엔 0, 빈 공간이라 무해).
 3. **배선 = 전용 훅 `useWheelInteractions`** (LiveChartRoot 인라인 effect 안 기각).
    `useViewportBackfill`·`useLiveKeyboard`와 같은 훅 분리 패턴을 따르고, 576줄짜리
    `LiveChartRoot`를 더 키우지 않는다.
@@ -85,14 +98,30 @@ grill 리뷰(스펙 심문)에서 추가 확정:
     `ts.width() / options().timeScale.minBarSpacing`을 전달(리사이즈 대응).
     플로어에서 줌아웃은 깨끗한 no-op이 된다. shift 팬은 span 불변이라 무관.
 
+추가 개선(2026-06-08, v0.7.0.1):
+
+11. **plain wheel 마지막 캔들 앵커 + trueLast(timeToIndex) 인덱스 공급** — 두 건을
+    한 번에. ① plain wheel 앵커를 `range.to`(우측 패딩 끝)에서
+    `min(to, lastBarIndex)`로 변경 — 줌인 시 패딩 픽셀 확대로 마지막 캔들이
+    왼쪽으로 밀리던 회귀(사용자 보고) 해소, 라이브 엣지에서 줌인·줌아웃 모두
+    마지막 캔들 픽셀 고정(브라우저: 407→404.9 서브픽셀), 과거 스크롤 시 `to` 고정은
+    유지(결정 #1). ② 마지막 캔들 인덱스를 `candles.length - 1`이 아니라 이벤트 시점
+    `ts.timeToIndex(axis.toVirtual(마지막 캔들 ts_ms)/1000, true)`로 구함 —
+    공유 timeScale 합집합 인덱스가 호가 페인 때문에 candles 배열보다 ~273칸 크던
+    skew(결정 #2 재개정·아래 엣지 케이스의 backlog 항목)를 닫음. 이 trueLast를
+    plain 앵커와 shift 벽(`maxTo`) 양쪽에 공급. useViewportBackfill의 변환과 동일
+    패턴, staleness-free. 헬퍼는 `lastBarIndex?` 선택 입력만 추가(분기 수식 불변).
+
 ## Invariants
 
 - **Mouse-anchor ratio preservation (ctrl/cmd 줌)**: 줌 전후로 앵커의 화면 비율
   `p = (anchor − from)/(to − from)`이 보존된다 — 마우스 아래 캔들이 같은 픽셀에
   머무른다. 근거: [wheelInteractions.ts](../../../frontend/src/util/wheelInteractions.ts)
   ctrl 분기(클램프 없음 — 2026-05-28 right-wall spec 업데이트에서 확정).
-- **Right-edge pin (plain wheel)**: plain wheel 줌은 `to`를 바꾸지 않는다. 근거: 같은
-  파일의 default 분기 (`return { from: to - span * factor, to }`).
+- **Latest-candle pin (plain wheel)**: plain wheel 줌은 라이브 엣지에서 마지막
+  캔들의 화면 픽셀을 고정한다(앵커 = `min(to, lastBarIndex)`). 과거 스크롤
+  상태(`to < lastBarIndex`)에서는 `to`(우측 끝)를 고정한다. 근거: 같은 파일
+  default 분기(결정 #11 — 이전에는 무조건 `to` 고정이었고 줌인 시 캔들이 밀렸다).
 - **Pan span preservation (shift)**: shift 팬은 `to − from`을 바꾸지 않는다 — 벽에
   막혀도 스팬은 유지(`{ from: maxTo - span, to: maxTo }`). 근거: 같은 파일 shift 분기.
 - **Right wall (shift 한정)**: shift 오른쪽 팬은 `to`를 `maxTo`(마지막 캔들
@@ -118,10 +147,10 @@ grill 리뷰(스펙 심문)에서 추가 확정:
 
 | Invariant | 영향 | 비고 |
 |-----------|------|------|
-| Mouse-anchor ratio preservation | preserves | 헬퍼 무변경 — ctrl 분기에 클램프 없음 |
-| Right-edge pin (plain wheel) | preserves | 헬퍼 무변경 |
-| Pan span preservation (shift) | preserves | 헬퍼 무변경 |
-| Right wall (shift 한정) | preserves | `maxTo`를 /live bundle에서 공급. deltaY 도착 플랫폼 조건부(위 invariant 정의 참조) |
+| Mouse-anchor ratio preservation | preserves | ctrl 분기 무클램프 (단 maxSpan 플로어에서는 비율 보존 클램프 — 결정 #10) |
+| Latest-candle pin (plain wheel) | intentionally changes | 결정 #11 — `to`-고정 → `min(to, lastBarIndex)`. 줌인 캔들 드리프트(사용자 보고) 해소; 과거 스크롤 시 `to` 고정은 유지 |
+| Pan span preservation (shift) | preserves | 헬퍼 shift 분기 수식 무변경 |
+| Right wall (shift 한정) | preserves | `maxTo` 공급원이 `candles.length-1`→`timeToIndex` trueLast로 정밀화(결정 #11). deltaY 도착 플랫폼 조건부(위 invariant 정의 참조) |
 | 초기 뷰 1회 적용 | preserves | 휠은 `lastAppliedCountRef`를 건드리지 않음 — 초기 뷰 effect 재실행 조건과 무관 |
 | 백필 트리거·repositioner 계약 | preserves | 휠의 `setVisibleLogicalRange`는 현재 라이브러리 휠 줌과 같은 구독 경로를 탄다 — 동작 동등성, 새 경로 없음 |
 | 데이터 로드된 차트 위 휠 페이지 스크롤 차단 | preserves | 라이브러리 핸들러 대신 우리 핸들러가 `preventDefault()`. 로드 전 구간은 invariant 정의상 범위 밖 — 빈 차트가 페이지 스크롤을 막지 않는 것이 의도된 UX |
@@ -130,9 +159,9 @@ grill 리뷰(스펙 심문)에서 추가 확정:
 
 - 세 가지 휠 동작이 `/live` 차트(전 페인 공유 timeScale)에서 동작한다.
 - `computeWheelOutcome`과 그 테스트 22케이스를 무변경 재사용한다.
-  *(개정 v0.6.5.3: 헬퍼에 선택 입력 `maxSpan`이 추가됨 — 결정 #10. "무변경
-  재사용"은 최초 출하 시점의 목표였고, 이후 헬퍼는 이 기능의 살아있는 소유
-  코드로서 진화한다. 기존 22케이스는 여전히 무변경 통과.)*
+  *(개정 v0.6.5.3·v0.7.0.1: 헬퍼에 선택 입력 `maxSpan`(#10)·`lastBarIndex`(#11)가
+  추가됨. "무변경 재사용"은 최초 출하 시점의 목표였고, 이후 헬퍼는 이 기능의
+  살아있는 소유 코드로서 진화한다. 분기 수식과 기존 22케이스는 여전히 무변경.)*
 - 휠 리스너는 chart 인스턴스당 1회 부착 — SSE 푸시(bundle 교체)에 재부착하지 않는다.
 - 기존 뷰포트 시스템(초기 뷰, 백필, repositioner)과 새 경로 없이 통합된다.
 - 데이터가 로드된 차트 위에서 휠·shift+휠이 페이지를 스크롤시키지 않는다
@@ -160,7 +189,7 @@ grill 리뷰(스펙 심문)에서 추가 확정:
 
 | 입력 | 동작 | 오른쪽 벽 |
 |---|---|---|
-| 휠 | `range.to` 고정 줌 (`from = to − span × factor`) | 불필요 (`to` 불변) |
+| 휠 | `min(to, lastBarIndex)` 고정 줌 (라이브 엣지=마지막 캔들, 과거=`to`; 결정 #11) | 없음 (앵커 불변식 우선) |
 | Shift+휠 | 스팬 유지 팬 (스팬의 10% × `sign(deltaY)`) | `to ≤ maxTo`(마지막 캔들 + rightOffset) 클램프, 스팬 보존 |
 | Ctrl/Cmd+휠 | `coordinateToLogical(mouseX)` 고정 줌 (null이면 `to` 폴백) | 없음 (앵커 불변식 우선) |
 
@@ -175,23 +204,38 @@ export function useWheelInteractions(
   chart: IChartApi | null,
   containerRef: RefObject<HTMLDivElement | null>,
   bundle: RangeBundle | null,
+  axis: VirtualAxis,
 ): void;
 ```
 
 내부 구조:
 
 ```ts
-// 1. maxTo ref — bundle 교체마다 값만 갱신 (리스너 재부착 없음)
-// 오른쪽 벽 = 마지막 캔들 + rightOffset (결정 #2 개정 — 기본 라이브 뷰 위치).
-// 빈 bundle 윈도우는 Infinity로 벽 비활성 (이전 스펙과 동일 가드;
-// maxTo를 읽는 분기는 shift 오른쪽 팬뿐).
-const maxToRef = useRef(Number.POSITIVE_INFINITY);
+// 1. 마지막 캔들 ms + 현재 axis를 ref로 — 이벤트 시점에 합집합 논리 인덱스
+//    (trueLast)로 변환한다(결정 #11). candles.length-1은 호가 페인 skew로
+//    실제 인덱스보다 작다. ref인 이유: bundle/axis를 리스너 deps에 넣으면
+//    SSE 푸시마다 리스너가 재부착됨.
+const lastMsRef = useRef<number | undefined>(undefined);
+const axisRef = useRef<VirtualAxis>(axis);
 useEffect(() => {
-  maxToRef.current =
+  lastMsRef.current =
     bundle && bundle.candles.length > 0
-      ? bundle.candles.length - 1 + (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0)
-      : Number.POSITIVE_INFINITY;
+      ? bundle.candles[bundle.candles.length - 1].ts_ms
+      : undefined;
 }, [bundle]);
+useEffect(() => { axisRef.current = axis; }, [axis]);
+
+// 이벤트 시점:
+//   const lastMs = lastMsRef.current, ax = axisRef.current;
+//   let lastBarIndex; // undefined면 헬퍼가 plain=to-고정, shift=Infinity로 폴백
+//   if (lastMs != null && ax.segments.length > 0) {
+//     const vt = Math.round(ax.toVirtual(lastMs) / 1000);
+//     const idx = ts.timeToIndex(vt, true);
+//     if (Number.isFinite(idx)) lastBarIndex = idx;       // = trueLast
+//   }
+//   const maxTo = lastBarIndex != null
+//     ? lastBarIndex + (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0)
+//     : Number.POSITIVE_INFINITY;
 
 // 2. 휠 리스너 — chart당 1회 부착
 useEffect(() => {
@@ -210,6 +254,8 @@ useEffect(() => {
         : e.deltaMode === e.DOM_DELTA_PAGE ? 120
         : 1;
       const rect = container.getBoundingClientRect();
+      // maxSpan(결정 #10): 줌아웃 플로어 = width()/minBarSpacing.
+      // lastBarIndex·maxTo(결정 #11): 위 "이벤트 시점" 블록의 trueLast 변환.
       const outcome = computeWheelOutcome({
         range,
         deltaY: e.deltaY * unit,
@@ -217,7 +263,10 @@ useEffect(() => {
         ctrlOrMetaKey: e.ctrlKey || e.metaKey,
         mouseX: e.clientX - rect.left,
         coordinateToLogical: (x) => ts.coordinateToLogical(x),
-        maxTo: maxToRef.current,
+        maxTo,                 // trueLast + rightOffset (또는 Infinity)
+        lastBarIndex,          // trueLast (또는 undefined → to-고정 폴백)
+        maxSpan: ts.width() > 0 && minBarSpacing > 0
+          ? ts.width() / minBarSpacing : Number.POSITIVE_INFINITY,
       });
       if (outcome) ts.setVisibleLogicalRange(outcome);
     } catch {
@@ -232,9 +281,10 @@ useEffect(() => {
 
 - `{ passive: false }` 필수 — shift+휠을 브라우저가 가로 페이지 스크롤로
   처리하는 것을 `preventDefault()`로 막아야 한다.
-- 이벤트 시점에 `maxToRef.current`를 읽으므로 stale-closure 없음. 리플레이 스펙의
-  `[chart, bundle]` 재부착과 동작은 동일하고, /live의 초 단위 bundle 교체에서
-  리스너 churn만 제거된다.
+- 이벤트 시점에 `lastMsRef`/`axisRef`를 읽어 trueLast를 계산하므로 stale-closure
+  없음(prepend 후에도 현재 axis로 재변환). 리플레이 스펙의 `[chart, bundle]`
+  재부착과 결과는 동등하고, /live의 초 단위 bundle 교체에서 리스너 churn만
+  제거된다.
 - `containerRef.current`는 effect 실행 시점 캡처 — `LiveChartRoot`의 container
   `<div>`는 컴포넌트 수명 동안 동일 엘리먼트이고, chart 생성 effect(빈 deps)와
   같은 수명이므로 안전.
@@ -290,15 +340,15 @@ useEffect(() => {
 - **`deltaY === 0`** (가로 전용 트랙패드 스와이프 등): plain 분기는
   `factor = 1`로 범위 무변경 반환, shift 분기는 `null` — 어느 쪽도 시각적 변화
   없음. deltaX 팬은 라이브러리 `handleScroll.mouseWheel`(기본 on)이 처리.
-- **`maxTo` 인덱스 오차 (양방향)**: 공유 timeScale의 논리 인덱스는 전 페인
-  시리즈 time point의 합집합 기준이다. ① `RangeSeriesPane`의 projection이
-  `axis.contains` 밖 캔들을 버리면 실제 마지막 인덱스가 `candles.length − 1`보다
-  작아져 벽이 느슨해지고, ② 체결 없는 분에 호가 스냅샷만 있으면(유동성 낮은
-  종목) 호가 페인이 캔들 없는 time slot을 합집합에 추가해 마지막 캔들의 인덱스가
-  `candles.length − 1`보다 커져 벽이 타이트해질 수 있다(shift 팬이 라이브 엣지
-  직전에 멈춤). 두 방향 모두 몇 칸 수준의 오차이고, 같은 공급원이 같은 페인
-  구조의 리플레이에서 필드테스트를 통과했으므로 그대로 쓴다. 체감 문제 확인 시
-  이벤트 시점 `ts.timeToIndex(마지막 캔들 virtual time, true)`로 교체(Backlog).
+- **~~`maxTo` 인덱스 오차 (양방향)~~ — 해결됨 (v0.7.0.1, 결정 #11)**: 공유
+  timeScale의 논리 인덱스는 전 페인 시리즈 time point의 합집합 기준이라
+  `candles.length − 1`이 실제 마지막 캔들 인덱스와 어긋났다(관측: 호가 페인이
+  캔들 없는 분에 점을 추가해 ~273칸). 이 skew가 plain 앵커(마지막 캔들이 화면
+  왼쪽으로 밀림)에서 크게 드러나 backlog를 앞당겨 닫음 — 인덱스를 이벤트 시점
+  `ts.timeToIndex(axis.toVirtual(마지막 캔들 ts_ms)/1000, true)`로 구해 plain
+  앵커·shift 벽 양쪽에 공급. 잔여: 장 마감 후 호가 꼬리가 마지막 캔들 뒤로
+  이어지면 wall(=캔들+rightOffset)이 기본 뷰보다 꼬리 길이만큼 오른쪽 — 빈
+  공간이라 무해하고 라이브 중엔 0.
 - **가격축 스트립 위 ctrl+휠**: 커서가 오른쪽 가격축 위에 있으면
   `coordinateToLogical`이 페인 폭 밖 x를 선형 외삽해 앵커가 `range.to`보다 몇 칸
   바깥에 잡힌다(라이브러리 내장 줌은 페인 안으로 클램프했음). 필드테스트된
@@ -402,6 +452,4 @@ dev 서버(:5173) + `/browse` 스킬로 확인:
   (리플레이 ChartStage의 커스텀 구독 캡 이식 불필요 — lwc 5.2 내장 클램프 확인).
 - 터치(모바일) 제스처 정책.
 - modifier 매핑 사용자 설정.
-- `maxTo` 공급원을 이벤트 시점 `ts.timeToIndex(마지막 캔들 virtual time, true)`로
-  교체 — 유동성 낮은 종목에서 벽이 타이트해지는 체감 문제(엣지 케이스
-  "`maxTo` 인덱스 오차 (양방향)"의 ②)가 확인될 때.
+- ~~`maxTo` 공급원을 timeToIndex로 교체~~ — 완료(v0.7.0.1, 결정 #11).
