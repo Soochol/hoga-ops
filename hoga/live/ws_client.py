@@ -58,6 +58,12 @@ class KisWsClient:
         self.last_tick_ms: int | None = None
         self.last_recv_ms: int | None = None
         self.connected: bool = False
+        # 구독 확인 추적(spec 2026-06-08 §2.1): 이번 연결의 초기 구독 ACK.
+        # 헬스 술어가 '기대 ACK의 부재'(sub_acked < sub_expected)로 구독
+        # 거부/상실을 감지한다. update_codes diff는 범위 밖(초기 구독만).
+        self.sub_expected: int = 0
+        self.sub_acked: int = 0
+        self.sub_rejected: int = 0
 
     async def run(self, codes: list[str]) -> None:
         """끊겨도 살아남는 메인 루프 — 호출자(stream)가 task로 돌리고 cancel로 끝낸다."""
@@ -83,6 +89,10 @@ class KisWsClient:
                         self.connected = True
                         attempt = 0
                         codes_now = list(self._codes)
+                        # 연결별 구독 확인 카운터 리셋(spec §2.1) — 초기 구독 수가 기대치.
+                        self.sub_expected = len(codes_now) * len(_TRS)
+                        self.sub_acked = 0
+                        self.sub_rejected = 0
                         await self._send_subscriptions(
                             ws, approval, codes_now, tr_type="1"
                         )
@@ -157,5 +167,13 @@ class KisWsClient:
                 if tr_id == "PINGPONG":
                     await ws.send(raw)  # 공식 규약: 받은 메시지 그대로 echo
                 else:
-                    _log.info("live.ws.control tr_id=%s msg=%s",
-                              tr_id, str(msg.get("body", {}))[:200])
+                    # 구독 ACK 카운트(spec §2.1): rt_cd=="0" 성공, 그 외 거부.
+                    # 거부 형태는 미관측이라 '0이 아닌 모든 control'을 거부로 본다.
+                    rt_cd = msg.get("body", {}).get("rt_cd")
+                    if rt_cd == "0":
+                        self.sub_acked += 1
+                        _log.info("live.ws.subscribed tr_id=%s", tr_id)
+                    else:
+                        self.sub_rejected += 1
+                        _log.warning("live.ws.sub_rejected tr_id=%s msg=%s",
+                                     tr_id, str(msg.get("body", {}))[:200])

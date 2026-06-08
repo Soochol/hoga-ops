@@ -96,6 +96,33 @@ async def test_recv_loop_stamps_last_recv_ms_on_control_frames():
     assert client.last_tick_ms is None       # 데이터 프레임은 없었다
 
 
+async def test_recv_loop_counts_subscription_acks():
+    """spec 2026-06-08 §2.1: control 프레임의 body.rt_cd로 구독 확인을 센다 —
+    rt_cd=='0'은 sub_acked, 그 외는 sub_rejected(+WARNING). watchdog/pill의
+    헬스 술어가 '기대 ACK의 부재'로 구독 거부를 감지하는 입력."""
+    ok = '{"header":{"tr_id":"H0STASP0","tr_key":"005930"},"body":{"rt_cd":"0","msg_cd":"OPSP0000","msg1":"SUBSCRIBE SUCCESS"}}'
+    ok2 = '{"header":{"tr_id":"H0STCNT0","tr_key":"005930"},"body":{"rt_cd":"0","msg_cd":"OPSP0000"}}'
+    reject = '{"header":{"tr_id":"H0STMBC0","tr_key":"005930"},"body":{"rt_cd":"1","msg_cd":"OPSP0002","msg1":"ALREADY IN SUBSCRIBE"}}'
+    fake = FakeWs([ok, ok2, reject])
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    with pytest.raises(ConnectionError):
+        await client._recv_loop(fake)
+    assert client.sub_acked == 2
+    assert client.sub_rejected == 1
+
+
+async def test_subscription_counters_reset_fields_exist():
+    """연결 전 기본값 — sub_expected/acked/rejected는 0에서 시작."""
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    assert client.sub_expected == 0
+    assert client.sub_acked == 0
+    assert client.sub_rejected == 0
+
+
 async def test_subscribe_sends_three_trs_per_code():
     fake = FakeWs([])
     client = KisWsClient(approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605")
@@ -141,6 +168,7 @@ async def test_run_reconnects_and_resubscribes_after_failure(monkeypatch):
         if len(fake.sent) >= 6:
             break
         await asyncio.sleep(0)
+    assert client.sub_expected == 6   # 2종목 × 3TR — 연결 시 설정 핀(line 93)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
@@ -157,6 +185,38 @@ async def test_run_reconnects_and_resubscribes_after_failure(monkeypatch):
         for code in ("005930", "000660")
     }
     assert all(json.loads(s)["header"]["tr_type"] == "1" for s in fake.sent)
+
+
+async def test_reconnect_resets_subscription_counters(monkeypatch):
+    """spec §4.1: 재연결 시 sub_acked/rejected가 0으로 리셋된다(연결별 카운트).
+    이전 연결의 잔여 카운트가 헬스 술어를 오염시키면 안 된다."""
+    fake = FakeWs([])
+    calls = {"n": 0}
+
+    def fake_connect(url, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            return _FakeConnectCM(fake)
+        raise ConnectionError("refused")
+
+    monkeypatch.setattr(ws_client_mod.websockets, "connect", fake_connect)
+    monkeypatch.setattr(ws_client_mod, "_BACKOFF_S", (0,))
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    client.sub_acked = 99      # 이전 연결의 잔여 오염
+    client.sub_rejected = 7
+    task = asyncio.create_task(client.run(["005930", "000660"]))
+    for _ in range(100):
+        if len(fake.sent) >= 6:
+            break
+        await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert client.sub_acked == 0       # 재연결 시 리셋(line 94)
+    assert client.sub_rejected == 0    # (line 95)
+    assert client.sub_expected == 6    # (line 93)
 
 
 async def test_run_does_not_connect_while_gate_closed(monkeypatch):
