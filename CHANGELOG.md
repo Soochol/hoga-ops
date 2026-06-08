@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.6.5.2] - 2026-06-08
+
+### Changed
+- **관심종목 패널 종목 행 들여쓰기**: 종목명이 그룹명 첫 글자보다 오른쪽에서
+  시작하도록 종목 행 왼쪽 여백을 확대(15→50px) — chevron 좌측 이동(v0.6.5.0)
+  이후 종목이 부모 그룹보다 왼쪽에 있던 위계 역전을 교정. 그룹이 없는
+  스크리너 목록은 기존 여백 그대로.
+
 ## [0.6.5.1] - 2026-06-08
 
 ### Changed
