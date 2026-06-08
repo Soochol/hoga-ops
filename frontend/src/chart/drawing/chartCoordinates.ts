@@ -109,6 +109,32 @@ export function priceToCanvasY(
 }
 
 /**
+ * Chart-global pixel Y → price for the pane identified by `paneId` — the
+ * time-independent inverse of `priceToCanvasY` and the Y-half of
+ * `pixelToData`. Subtracts the pane offset before calling
+ * `series.coordinateToPrice` because that API expects pane-local Y.
+ *
+ * Unlike `pixelToData` this never touches the time axis, so it resolves
+ * everywhere the pane's price scale is mounted — including the chart's empty
+ * band to the right of the last candle, where `coordinateToTime` (and thus
+ * `pixelToData`) returns null. The body-drag path uses it so a price-only
+ * drawing (hline) keeps dragging in that band. Returns null only when the
+ * pane's series isn't registered or the Y is off the price scale.
+ */
+export function canvasYToPrice(
+  chart: IChartApi,
+  paneSeries: PaneSeriesMap,
+  paneId: PaneId,
+  py: number,
+): number | null {
+  const series = paneSeries.get(paneId);
+  if (!series) return null;
+  const yLocal = py - paneTopY(chart, paneSeries, paneId);
+  const price = series.coordinateToPrice(yLocal);
+  return price == null ? null : Number(price);
+}
+
+/**
  * Chart-global pixel (px, py) → domain Point (realMs, price) for the
  * pane identified by `paneId`. Subtracts the pane offset before calling
  * `series.coordinateToPrice` because that API expects pane-local Y.

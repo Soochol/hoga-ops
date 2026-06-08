@@ -59,7 +59,13 @@ export type DragMode =
   | {
       kind: 'body';
       id: string;
-      lastRealMs: number;
+      /** Last cursor realMs, or null when the drag is over the chart's empty
+       *  right band where the time axis can't resolve a coordinate. Only used
+       *  to derive the horizontal (Δms) shift for trendline/pencil; hline
+       *  ignores it (see translateHline). Stays frozen at the last resolvable
+       *  value while the cursor is in the empty band so vertical drag still
+       *  works there. */
+      lastRealMs: number | null;
       lastPrice: number;
       pointerId: number;
       paneId: PaneId;
@@ -97,6 +103,14 @@ export type ToolCtx = {
   realMsToCanvasX(realMs: number): number | null;
   /** Convert a stored price to a canvas Y using `paneId`'s price scale. */
   priceToCanvasY(price: number, paneId: PaneId): number | null;
+  /** Convert a canvas Y to a price using `paneId`'s price scale — the
+   *  time-independent half of `pixelToData`. Resolves everywhere the price
+   *  scale is mounted, including the chart's empty right band where
+   *  `coordinateToTime` (and thus `pixelToData`) returns null. The body-drag
+   *  path uses this so a price-only drawing (hline) keeps dragging in the
+   *  empty band instead of freezing. Returns null only when the pane's price
+   *  scale is genuinely unavailable. */
+  canvasYToPrice(py: number, paneId: PaneId): number | null;
   /** Hit-test all drawings (reverse / topmost-first). */
   hitTestAt(px: number, py: number): Drawing | null;
 
@@ -206,13 +220,19 @@ export const selectTool: DrawingToolSpec = {
     const hit = ctx.hitTestAt(ctx.px, ctx.py);
     ctx.setSelected(hit?.id ?? null);
     if (hit) {
+      // Body drag runs off the price axis alone: resolve price (works in the
+      // empty right band too, where the time axis can't) and best-effort
+      // realMs (null in that band). Bail only if the price scale itself can't
+      // resolve — without this guard a grab in the empty band froze (the old
+      // `if (!pixelToData) return` killed the drag before it started).
+      const price = ctx.canvasYToPrice(ctx.py, hit.paneId);
+      if (price == null) return;
       const data = ctx.pixelToData(ctx.px, ctx.py, hit.paneId);
-      if (!data) return;
       ctx.dragRef.current = {
         kind: 'body',
         id: hit.id,
-        lastRealMs: data.realMs,
-        lastPrice: data.price,
+        lastRealMs: data?.realMs ?? null,
+        lastPrice: price,
         pointerId: ctx.pointerId,
         paneId: hit.paneId,
       };
@@ -223,18 +243,32 @@ export const selectTool: DrawingToolSpec = {
     const drag = ctx.dragRef.current;
     if (!drag || drag.pointerId !== ctx.pointerId) return;
     const clampedY = ctx.clampYToPane(drag.paneId, ctx.py);
+    // Price resolves off the Y axis everywhere the pane is mounted; realMs is
+    // null in the empty right band (coordinateToTime can't resolve a coordinate
+    // past the last candle). Decoupling them is what lets an hline keep
+    // dragging there instead of freezing.
+    const price = ctx.canvasYToPrice(clampedY, drag.paneId);
+    if (price == null) return;
     const data = ctx.pixelToData(ctx.px, clampedY, drag.paneId);
-    if (!data) return;
+    const curRealMs = data?.realMs ?? null;
     const target = ctx.drawings.find((d) => d.id === drag.id);
     if (!target) return;
     if (drag.kind === 'handle' && target.kind === 'trendline') {
-      const patch = drag.endpoint === 'a' ? { a: data } : { b: data };
+      // In the empty band keep the endpoint's realMs (X unresolvable) and move
+      // it vertically; over data, move both axes.
+      const endpoint = drag.endpoint === 'a' ? target.a : target.b;
+      const moved: Point = { realMs: curRealMs ?? endpoint.realMs, price };
+      const patch = drag.endpoint === 'a' ? { a: moved } : { b: moved };
       ctx.update(target.id, patch as Partial<Drawing>);
       return;
     }
     if (drag.kind === 'body') {
-      const dMs = data.realMs - drag.lastRealMs;
-      const rawDPrice = data.price - drag.lastPrice;
+      // Horizontal shift only when both ends resolve; otherwise 0 — hline
+      // discards Δms anyway, and trendline/pencil degrade to vertical-only in
+      // the band rather than freezing.
+      const dMs =
+        curRealMs != null && drag.lastRealMs != null ? curRealMs - drag.lastRealMs : 0;
+      const rawDPrice = price - drag.lastPrice;
       // Shape-preserving cap: compute the largest |dPrice| that keeps every
       // vertex inside the pane, then translate once. Post-translate per-vertex
       // clamping would have collapsed a trendline/pencil that touched the
@@ -244,8 +278,10 @@ export const selectTool: DrawingToolSpec = {
         ? clampDPriceForDrawing(target, rawDPrice, paneBounds)
         : rawDPrice;
       ctx.update(target.id, translateDrawing(target, dMs, dPrice));
-      drag.lastRealMs = data.realMs;
-      drag.lastPrice = data.price;
+      // Advance the horizontal anchor only when X resolved, so re-entering the
+      // data area computes Δms from the last real position (no jump for hline).
+      if (curRealMs != null) drag.lastRealMs = curRealMs;
+      drag.lastPrice = price;
     }
   },
   onPointerUp(ctx) {
