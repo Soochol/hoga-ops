@@ -22,6 +22,12 @@ _log = logging.getLogger(__name__)
 WS_URL_REAL = "ws://ops.koreainvestment.com:21000"
 _TRS = (F.TR_ORDERBOOK, F.TR_TRADE, F.TR_MEMBER)
 _BACKOFF_S = (1, 2, 4, 8, 16, 32, 60)
+# 게이트 닫힘(장외·개장 전) 대기 주기(spec 2026-06-08 P2 #3): 09:00 개장 시
+# ~1초 내 연결되도록 짧게. 30초였을 땐 매 거래일 개장 직후 최대 30초(최대
+# 체결 밀도 구간)를 유실했다. 한밤중에도 1Hz이지만 should_run_now가
+# market_phase=="closed"에서 시계만 보고 즉시 False라(캘린더 호출 0) 부하는
+# 무시 가능 — 동적 'open까지_초'는 코드·테스트만 늘려 의식적으로 고정 선택.
+_GATE_CLOSED_POLL_S = 1.0
 
 
 def build_request(approval_key: str, tr_type: str, tr_id: str, tr_key: str) -> str:
@@ -76,7 +82,7 @@ class KisWsClient:
             # 루프를 동결시키지 않도록 — 구 poller의 to_thread 가드 승계.
             if self._gate_fn is not None and not await asyncio.to_thread(self._gate_fn):
                 self.connected = False
-                await asyncio.sleep(30)   # 장외/15:30 이후 — 연결 시도 보류
+                await asyncio.sleep(_GATE_CLOSED_POLL_S)   # 개장 ~1초 내 진입(P2 #3)
                 continue
             try:
                 approval = await self._approval_key_fn()

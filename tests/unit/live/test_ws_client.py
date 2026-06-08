@@ -242,6 +242,28 @@ async def test_run_does_not_connect_while_gate_closed(monkeypatch):
         await task
 
 
+async def test_gate_closed_poll_interval_is_short(monkeypatch):
+    """spec 2026-06-08 P2 #3: 게이트 닫힘 폴링 주기가 짧아야 개장(09:00) 시
+    ~주기 내 연결된다 — 30초면 매 거래일 개장 직후 최대 30초(최대 체결 밀도
+    구간)를 유실. 닫힘→열림 전환 시 짧은 sleep 후 연결 시도를 핀한다."""
+    sleeps: list[float] = []
+
+    async def fake_sleep(s: float) -> None:
+        sleeps.append(s)
+        # 첫 닫힘 sleep 후 게이트를 열어 연결 경로로 진입하게 둔다.
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(ws_client_mod.asyncio, "sleep", fake_sleep)
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None,
+        date_fn=lambda: "20260605", gate_fn=lambda: False,
+    )
+    with pytest.raises(asyncio.CancelledError):
+        await client.run(["005930"])
+    # 게이트 닫힘 대기 sleep은 ≤ 2초여야(개장 빠른 진입). 30초 금지.
+    assert sleeps and sleeps[0] <= 2.0, f"게이트 닫힘 sleep이 너무 김: {sleeps[0]}s"
+
+
 async def test_gate_fn_runs_off_event_loop():
     """gate_fn(ws_capture_window)은 콜드/네거티브 캐시에서 동기 KIS HTTP
     (timeout 15s)를 부를 수 있다 — run()은 이벤트 루프에서 직접 부르지 말고
