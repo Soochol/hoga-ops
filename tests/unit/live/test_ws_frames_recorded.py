@@ -12,7 +12,7 @@ import pytest
 from hoga.live.ws_frames import parse_message
 
 FIX = Path("tests/fixtures/kis_ws")
-RECORD_DATE = "20260605"  # 녹화 후 tests/fixtures/kis_ws/README.md의 녹화일과 일치시킬 것
+RECORD_DATE = "20260608"  # 녹화 후 tests/fixtures/kis_ws/README.md의 녹화일과 일치시킬 것
 
 requires_recording = pytest.mark.skipif(
     not (FIX / "h0stasp0.txt").exists(),
