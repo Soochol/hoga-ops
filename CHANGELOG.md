@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.6.5.1] - 2026-06-08
+
+### Changed
+- **Shift+휠 오른쪽 벽에 기본 뷰 여백(+15칸) 적용**: 오른쪽으로 팬하면 이제
+  마지막 캔들에 딱 붙는 대신 평소 기본 뷰와 같은 우측 여백(rightOffset 15칸)
+  위치에서 멈춤 — 팬으로 라이브 엣지에 돌아왔을 때 차트가 처음 열었을 때와
+  정확히 같은 화면이 됨. 첫 틱에 여백이 스냅으로 회수되던 동작도 사라짐
+  (v0.6.4.0 필드 사용 후 개정).
+
 ## [0.6.5.0] - 2026-06-08
 
 ### Changed
