@@ -2,9 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { captureHealthLabel, captureHealthSeverity } from './captureHealthPill';
 
 describe('captureHealthPill', () => {
-  it('healthy → ok, 라벨 LIVE', () => {
+  it('healthy → ok, 라벨은 SSE "LIVE●"와 구분되는 "수신●"', () => {
     expect(captureHealthSeverity(true, 'healthy')).toBe('ok');
-    expect(captureHealthLabel(true, 'healthy')).toMatch(/LIVE|실시간/);
+    // SSE 연결 span이 이미 'LIVE●'를 표시하므로(LiveStatusBar) 캡처 pill이
+    // 같은 글자면 'LIVE● · LIVE●' 중복 글리치 → 도메인어 '수신●'으로 분리.
+    expect(captureHealthLabel(true, 'healthy')).toBe('수신●');
+    expect(captureHealthLabel(true, 'healthy')).not.toBe('LIVE●');
+    // healthy '수신●' ↔ stale '수신 끊김' 도메인 쌍 일관.
+    expect(captureHealthLabel(false, 'stale')).toBe('수신 끊김');
   });
   it('sub_failed/stale → error (캡처 죽음, 빨강)', () => {
     expect(captureHealthSeverity(false, 'sub_failed')).toBe('error');

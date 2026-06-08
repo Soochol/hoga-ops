@@ -20,7 +20,10 @@ export function captureHealthSeverity(
 }
 
 export function captureHealthLabel(healthy: boolean, reason: string): string {
-  if (healthy) return 'LIVE●';
+  // SSE 연결 span(LiveStatusBar)이 이미 'LIVE●'를 표시 — 캡처 pill이 같은
+  // 글자면 'LIVE● · LIVE●' 중복 글리치. 캡처는 '틱 수신' 신호이므로 도메인어
+  // '수신●'으로 분리(장애 상태 '수신 끊김'과 쌍).
+  if (healthy) return '수신●';
   switch (reason) {
     case 'offline': return '오프라인';
     case 'closed': return '장 마감';
