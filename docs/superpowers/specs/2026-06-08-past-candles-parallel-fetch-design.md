@@ -1,7 +1,13 @@
 # past-candles 미캐시 날짜 병렬 fetch 설계
 
 - **Date**: 2026-06-08
-- **Status**: Implemented (2026-06-08) — 성능 목표(3.3s→~0.7s)는 실서버 콜드 캐시 1회 실측 후 PR 본문에 기록
+- **Status**: Implemented + 실측 완료 (2026-06-08)
+- **실측 (2026-06-08 정규장, 005930/000660, 장중 WS 트래픽이 토큰버킷 공유하는 보수적 조건)**:
+  - A/B 8거래일 미캐시: **순차(동시1) 5.03s → 병렬(동시5) 2.87s — 1.75배 단축**
+  - 콜드 36거래일(페이지네이션 ~126콜): 8.0s = 토큰버킷 15콜/초 천장 (병렬 무관, 스펙 §2 예측대로)
+  - 웜(캐시 히트): 0.02s
+  - 부수 검증: EGW00201 재시도 가시화(스펙 ⑤)가 장중 버킷 경합에서 첫 재시도 WARNING으로 정상 출력
+  - 주의: 스펙 목표 3.3s→0.7s(5배)는 RTT 순수 지배 + 버킷 여유 가정. 실측은 WS가 버킷을 나눠 쓰는 장중 조건이라 1.75배 — poller 은퇴로 REST 경합이 줄어든 비장중/저트래픽에선 더 큰 배수 기대.
 - **Scope**: `backend` — `hoga/live/api.py`의 `/api/live/past-candles` 핸들러 단일 변경
 - **Topic slug**: `past-candles-parallel-fetch`
 - **관련 ADR**: [ADR-0040](../../adr/0040-live-candle-backfill-separate-cache.md) (캔들=별도 REST 캐시), [ADR-0050](../../adr/0050-kis-rate-limit-retry-in-client.md) (EGW00201 백오프는 `KisClient._get` 중앙화), [ADR-0038](../../adr/0038-live-jsonl-then-promote.md) (단일 uvicorn 워커 불변식 — 싱글플라이트의 전제)
