@@ -218,8 +218,10 @@ function SortableQuoteRow(props: {
  * and click → activeCode + /live jump. The 편집 control opens a small menu
  * (관심 편집 → WatchlistEditModal, 새 그룹 만들기 → GroupNameModal); group
  * headers carry a hover ⋯ menu (이름 변경/순서/삭제), and the row context menu
- * does quick-remove + 그룹으로 이동. Entry add/multi-delete/drag-reorder live
- * in the edit modal. Collapse state persists via localStorage.
+ * does quick-remove + 그룹으로 이동. Entry add/multi-delete and cross-folder
+ * move live in the edit modal; quick within-group reorder (drag a row) and
+ * folder reorder (drag a group via its ⠿ handle) happen in-panel via dnd-kit
+ * (ADR-0066). Collapse state persists via localStorage.
  */
 export function WatchlistDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
