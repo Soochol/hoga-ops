@@ -2,17 +2,17 @@
 
 ## Live (WS 파이프라인)
 
-### 장중 녹화 + 통합 스모크 (WS plan Task 0b / Task 14)
+### 시간외 녹화 + 모의 appkey 검증 (Task 0b 잔여)
 
-**What:** 평일 장중 `scripts/record_kis_ws_frames.py` 1회 실행으로 fixture 커밋(스킵 테스트 4건 활성화) + 장중 통합 스모크(WS 연결·sub-second 표시·저장 경로 JSONL→fills.parquet·재연결·경계 분 플리커 확인).
+**What:** 15:35 KST에 `record_kis_ws_frames.py` 재실행으로 시간외 프레임 수신 여부 확인 + 모의투자 appkey 시세를 실전과 비교(동일·무지연이면 13→26종목 무료 확장 — spec §11).
 
-**Why:** H0STCNT0 stride 46, CCLD_DVSN='3' 단일가 제외, ASP/MBC cnt=1 가정이 모두 와이어 미검증 — fills.parquet에 비가역으로 구워지는 가정들이다. 합성 fixture는 파서와 같은 상수로 생성돼 동어반복.
+**Why:** 정규장 녹화·스모크는 2026-06-08에 완료(P0 해소). 시간외 거동과 모의 세션 신뢰성은 미검증 잔여.
 
-**Context:** `tests/unit/live/test_ws_frames_recorded.py` 4건이 `tests/fixtures/kis_ws/` 부재로 skipif. 같은 장중 세션에서 모의투자 appkey 시세 검증(+41등록 무료 확장, 13→26종목 — spec §11)도 함께 실측 가능. 녹화 후 fixture README + RECORD_DATE 동기화.
+**Context:** 정규장 fixture는 커밋됨(`tests/fixtures/kis_ws/`, recorded 테스트 4건 활성). 한산한 종목의 PINGPONG 간격(watchdog 120s 전제)도 이때 함께 관측.
 
 **Effort:** S
-**Priority:** P0
-**Depends on:** 평일 09:00–15:30 KST
+**Priority:** P2
+**Depends on:** 평일 15:35 KST / 모의투자 appkey 발급
 
 ### 코드리뷰 잔여 11건
 
@@ -25,16 +25,6 @@
 **Effort:** M
 **Priority:** P1
 **Depends on:** None
-
-### past-candles 성능 실측
-
-**What:** 실서버 콜드 캐시 차트 1회 로드 측정 → spec/PR에 수치 기록.
-
-**Why:** 3.3초 → ~0.7초는 산식 기반 예상치 — spec(2026-06-08-past-candles-parallel-fetch)이 실측 기록을 요구.
-
-**Effort:** S
-**Priority:** P1
-**Depends on:** None (장외 가능 — 과거 날짜 REST는 24시간 동작)
 
 ## Frontend
 
@@ -70,3 +60,8 @@
 - past-candles 병렬 fetch + 싱글플라이트
 - 안정성 3건 (EGW00201 가시화·워크백 조기 종료·장외 quotes 게이트)
 - sessionPhaseAt 이진 탐색화
+
+### 장중 녹화 + 통합 스모크 + 실측 (2026-06-08 정규장)
+- Task 0b 녹화: fixture 커밋, recorded 테스트 4건 활성(stride 46 cnt=20까지 검증)
+- Task 14 스모크: WS 연결→틱→JSONL→promote→parquet end-to-end 실계좌 확인
+- past-candles 실측: A/B 8일 순차 5.03s→병렬 2.87s (1.75배), spec/PR 반영
