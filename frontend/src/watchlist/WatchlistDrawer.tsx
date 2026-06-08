@@ -5,6 +5,7 @@ import { useLivePageStore } from '../state/livePage';
 import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
   useCreateFolder, useRenameFolder, useDeleteFolder, useReorderFolders, useMoveEntries,
+  useReorderEntries,
 } from './useWatchlist';
 import { persistJson, readJsonObject } from '../state/persist';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
@@ -18,6 +19,14 @@ import { useDismissablePopover } from '../util/useDismissablePopover';
 import { TrashIcon } from '../ui/TrashIcon';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
+import {
+  DndContext, PointerSensor, useSensor, useSensors, closestCenter,
+  type DragEndEvent, type CollisionDetection,
+} from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import type { WatchlistEntry } from '../api/watchlist';
+import { resolveDrag } from './dragHandlers';
 
 /** 우측 정렬 앵커드 메뉴 셸 — dim 라벨 헤더 + menuitem children. 패널의 두 메뉴
  *  (헤더 편집 메뉴, 그룹 ⋯ 메뉴)가 공유해 컨테이너/헤더 스타일 드리프트를 막는다. */
@@ -126,6 +135,49 @@ function GroupHeader(props: {
   );
 }
 
+/** 액티브 드래그와 같은 data.type(='entry'|'folder')의 droppable만 closestCenter에 넘긴다 —
+ *  중첩 SortableContext의 cross-talk(폴더 컨테이너가 행 위로 끼어드는) 차단. */
+const typeAwareCollision: CollisionDetection = (args) => {
+  const type = args.active.data.current?.type;
+  const same = args.droppableContainers.filter((c) => c.data.current?.type === type);
+  return closestCenter({ ...args, droppableContainers: same });
+};
+
+/** 패널 종목 행 — 행 전체가 드래그 표면(listeners on <li>). PointerSensor distance:5
+ *  임계가 클릭(차트 이동)과 드래그를 구분한다. data.type='entry' + folderId 태깅으로
+ *  onDragEnd가 폴더 드래그와 구분한다. */
+function SortableQuoteRow(props: {
+  entry: WatchlistEntry;
+  price: number | null; pct: number | null; changeWon: number | null;
+  active: boolean;
+  onPick: () => void;
+  onContextMenu: (e: React.MouseEvent<HTMLLIElement>) => void;
+  onDelete: () => void;
+}) {
+  const { entry } = props;
+  const { setNodeRef, listeners, transform, transition, isDragging } =
+    useSortable({ id: entry.code, data: { type: 'entry', folderId: entry.folder_id } });
+  return (
+    <QuoteRow
+      name={entry.name}
+      price={props.price}
+      pct={props.pct}
+      changeWon={props.changeWon}
+      active={props.active}
+      ariaLabel={`${entry.name} ${entry.code} 차트 열기`}
+      testId={`watchlist-row-${entry.code}`}
+      onClick={props.onPick}
+      onContextMenu={props.onContextMenu}
+      onDelete={props.onDelete}
+      indented
+      sortableRef={setNodeRef}
+      sortableStyle={{ transform: CSS.Transform.toString(transform), transition }}
+      dragListeners={listeners}
+      dragging={isDragging}
+    />
+  );
+}
+
 /**
  * Watchlist Panel (CONTEXT.md), app-wide via the Right Rail (ADR-0052).
  * Folder-grouped read+navigate: rows show the KIS live quote overlay (ADR-0056)
@@ -192,6 +244,22 @@ export function WatchlistDrawer() {
     if (ids) reorderFoldersM.mutate(ids);
   };
 
+  const reorderEntriesM = useReorderEntries();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Task 4에서 폴더 분기가 앞에 추가된다.
+  const onDragEnd = (ev: DragEndEvent) => {
+    if (!ev.over) return;
+    const folderId = (ev.active.data.current?.folderId ?? null) as string | null;
+    // 액티브 행이 속한 그룹의 종목만 넘긴다 — over가 다른 그룹 행이면 resolveDrag가
+    // findIndex=-1 → {kind:'none'}을 반환해 그룹 간 이동이 구조적으로 차단된다.
+    const group = (data?.entries ?? [])
+      .filter((e) => e.folder_id === folderId)
+      .sort((a, b) => a.order - b.order);
+    const r = resolveDrag(group, folderId, String(ev.active.id), String(ev.over.id));
+    if (r.kind === 'reorder') reorderEntriesM.mutate({ folderId: r.folderId, orderedCodes: r.orderedCodes });
+  };
+
   return (
     <div id="right-rail-watchlist-panel" data-testid="watchlist-panel"
       style={{ width: 'var(--watchlist-panel-w)', height: '100%', background: 'var(--bg-card)',
@@ -232,49 +300,49 @@ export function WatchlistDrawer() {
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (
           <div className="p-3 text-fg-dimmer text-sm">관심종목이 없습니다</div>
         )}
-        {groups.map((g, gi) => {
-          const key = g.folder?.id ?? '__uncat__';
-          const label = g.folder?.name ?? '미분류';
-          if (g.entries.length === 0 && g.folder === null) return null; // 빈 미분류는 숨김
-          const isCollapsed = collapsed.has(key);
-          const folder = g.folder;
-          // groupByFolder는 실폴더를 order 순으로 앞에 두므로 gi == 폴더 인덱스.
-          return (
-            <div key={key}>
-              <GroupHeader label={label} count={g.entries.length} collapsed={isCollapsed}
-                onToggle={() => toggle(key)}
-                onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
-                onDelete={folder ? () => deleteM.mutate(folder.id) : undefined}
-                onMoveUp={folder ? () => moveFolder(folder.id, -1) : undefined}
-                onMoveDown={folder ? () => moveFolder(folder.id, +1) : undefined}
-                canMoveUp={gi > 0}
-                canMoveDown={gi < folderCount - 1} />
-              {!isCollapsed && (
-                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  {g.entries.map((entry) => {
-                    const q = quoteByCode.get(entry.code);
-                    return (
-                      <QuoteRow
-                        key={entry.code}
-                        name={entry.name}
-                        price={q?.price ?? null}
-                        pct={q?.change_pct ?? null}
-                        changeWon={q?.change_won ?? null}
-                        active={entry.code === activeCode}
-                        ariaLabel={`${entry.name} ${entry.code} 차트 열기`}
-                        testId={`watchlist-row-${entry.code}`}
-                        onClick={() => onPick(entry.code)}
-                        onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
-                        onDelete={() => removeM.mutate(entry.code)}
-                        indented
-                      />
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          );
-        })}
+        <DndContext sensors={sensors} collisionDetection={typeAwareCollision} onDragEnd={onDragEnd}>
+          {groups.map((g, gi) => {
+            const key = g.folder?.id ?? '__uncat__';
+            const label = g.folder?.name ?? '미분류';
+            if (g.entries.length === 0 && g.folder === null) return null; // 빈 미분류는 숨김
+            const isCollapsed = collapsed.has(key);
+            const folder = g.folder;
+            return (
+              <div key={key}>
+                <GroupHeader label={label} count={g.entries.length} collapsed={isCollapsed}
+                  onToggle={() => toggle(key)}
+                  onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
+                  onDelete={folder ? () => deleteM.mutate(folder.id) : undefined}
+                  onMoveUp={folder ? () => moveFolder(folder.id, -1) : undefined}
+                  onMoveDown={folder ? () => moveFolder(folder.id, +1) : undefined}
+                  canMoveUp={gi > 0}
+                  canMoveDown={gi < folderCount - 1} />
+                {!isCollapsed && (
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                    <SortableContext items={g.entries.map((e) => e.code)} strategy={verticalListSortingStrategy}>
+                      {g.entries.map((entry) => {
+                        const q = quoteByCode.get(entry.code);
+                        return (
+                          <SortableQuoteRow
+                            key={entry.code}
+                            entry={entry}
+                            price={q?.price ?? null}
+                            pct={q?.change_pct ?? null}
+                            changeWon={q?.change_won ?? null}
+                            active={entry.code === activeCode}
+                            onPick={() => onPick(entry.code)}
+                            onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
+                            onDelete={() => removeM.mutate(entry.code)}
+                          />
+                        );
+                      })}
+                    </SortableContext>
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </DndContext>
       </div>
 
       {/* 푸터: 전체수집 결과 배너 + 다음 수집 카운트다운 + 전체 수집 */}
