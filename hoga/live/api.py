@@ -413,6 +413,36 @@ def build_router(
     # 앱 생성 시점(루프 밖) 생성이 안전하다.
     _past_fetch_sem = asyncio.Semaphore(_PAST_CANDLES_CONCURRENCY)
 
+    # 싱글플라이트(spec 2026-06-08 §4.3): 같은 (code, date)의 동시 fetch를 한
+    # KIS 콜로 공유 — 두 탭/60초 refetch 경합의 쿼터 절약(파일 안전성은
+    # atomic_write_json이 이미 보장하므로 목적이 아님). ADR-0038 단일 워커라
+    # in-process dict로 충분. done_callback이 항상 entry를 회수한다.
+    _past_inflight: dict[tuple[str, str], asyncio.Task[tuple[list[dict], str | None]]] = {}
+
+    async def _fetch_past_shared(
+        kis: KisClient, code: str, date_s: str
+    ) -> tuple[list[dict], str | None]:
+        """(bars, cache_write_failed_msg) 반환. 진행 중인 동일 키 fetch가 있으면
+        그 결과를 공유한다. 예외(KisRateLimitError 등)는 공유자 전원에 동일
+        전파 — 각 요청의 except 분기가 각자 warning을 만든다. 리더 요청이
+        취소돼도 create_task로 분리된 공유 task는 완주한다."""
+        key = (code, date_s)
+        task = _past_inflight.get(key)
+        if task is None:
+            async def _do() -> tuple[list[dict], str | None]:
+                raw = await kis.fetch_past_minute_candles(code, date_s)
+                bars = [_candle_to_dict(c) for c in raw]
+                try:
+                    cache_instance.store_past(code, date_s, bars)  # type: ignore[union-attr]
+                except OSError as e:
+                    return bars, str(e)
+                return bars, None
+
+            task = asyncio.create_task(_do())
+            _past_inflight[key] = task
+            task.add_done_callback(lambda _t, k=key: _past_inflight.pop(k, None))
+        return await task
+
     cache_instance: PastCandlesCache | None = (
         PastCandlesCache(data_dir=data_dir) if data_dir is not None else None
     )
@@ -479,7 +509,7 @@ def build_router(
                     }
                     return
                 try:
-                    raw = await kis.fetch_past_minute_candles(code, date_s)
+                    bars, write_err = await _fetch_past_shared(kis, code, date_s)
                 except KisRateLimitError as e:
                     blocked.set()
                     warnings_by_date[date_s] = {
@@ -491,16 +521,14 @@ def build_router(
                         "date": date_s, "reason": "kis_api_error", "msg": e.msg_cd,
                     }
                     return
-                bars = [_candle_to_dict(c) for c in raw]
                 rows[date_s] = bars
                 fresh.add(date_s)
-                try:
-                    cache.store_past(code, date_s, bars)
-                except OSError as e:
+                if write_err is not None:
                     # 디스크 쓰기 실패(가득참/권한 등): bars는 메모리로 서빙하되
-                    # warning으로 표면화(기존 의미론 유지).
+                    # warning으로 표면화(기존 의미론 유지 — 공유 fetch라 공유자
+                    # 전원이 같은 warning을 받는다).
                     warnings_by_date[date_s] = {
-                        "date": date_s, "reason": "cache_write_failed", "msg": str(e),
+                        "date": date_s, "reason": "cache_write_failed", "msg": write_err,
                     }
 
         await asyncio.gather(*(_one(d) for d in pending))

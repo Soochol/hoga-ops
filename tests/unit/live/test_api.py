@@ -345,6 +345,37 @@ async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_past_candles_singleflight_dedups_concurrent_same_date(tmp_path) -> None:
+    """spec 2026-06-08 §4.3: 같은 (code, date)의 동시 요청 2건 → KIS 콜 1회
+    공유(두 탭/60초 refetch 경합의 쿼터 절약). 두 응답 모두 동일 bars를 받고
+    후발 요청도 fresh로 보고한다(캐시가 아니라 공유 fetch 결과이므로)."""
+    import asyncio as _asyncio
+
+    import httpx
+
+    class _SlowFakeKis:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+            self.calls.append(date_yyyymmdd)
+            await _asyncio.sleep(0.05)   # 두 요청의 fetch 창을 겹치게 한다
+            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105,
+                              volume=10)]
+
+    fake = _SlowFakeKis()
+    app = _past_app(tmp_path, fake)
+    transport = httpx.ASGITransport(app=app)
+    url = "/api/live/past-candles?code=005930&from=20260501&to=20260501"
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+        r1, r2 = await _asyncio.gather(ac.get(url), ac.get(url))
+    assert r1.status_code == 200 and r2.status_code == 200
+    assert fake.calls == ["20260501"], "싱글플라이트 미동작 — 같은 날짜 중복 KIS 콜"
+    assert r1.json()["candles"] == r2.json()["candles"]
+    assert r1.json()["fresh_dates"] == r2.json()["fresh_dates"] == ["20260501"]
+
+
+@pytest.mark.asyncio
 async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path) -> None:
     """병렬화(spec 2026-06-08 §4.4) 이후의 kis_blocked 계약: 레이트리밋 소진 시
     '아직 시작 안 한' fetch는 KIS를 더 두드리지 않고(rate_limit_aborted),
