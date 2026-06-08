@@ -216,7 +216,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   useViewportBackfill({ chart, axis, bundle, timeframe, isExtending, code: code ?? '' });
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
-  useWheelInteractions(chart, containerRef, bundle);
+  useWheelInteractions(chart, containerRef, bundle, axis);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands
