@@ -1,7 +1,7 @@
 # 안정성 원포인트 3건 — EGW00201 가시화 · 일봉 워크백 조기 종료 · 장외 quotes 게이트
 
 - **Date**: 2026-06-08
-- **Status**: Approved (brainstorming 2026-06-08 — 검증 에이전트 코드 대조 + 사용자 결정 3건 반영)
+- **Status**: Implemented (2026-06-08)
 - **Scope**: `both` — backend 2파일(`hoga/live/kis_client.py`, `hoga/live/api.py`) + frontend 1파일(`frontend/src/api/liveQuotes.ts`)
 - **Topic slug**: `stability-one-pointers`
 - **관련 ADR**: [ADR-0050](../../adr/0050-kis-rate-limit-retry-in-client.md) (EGW00201 재시도 중앙화 — ⑤가 가시화하는 대상), [ADR-0056](../../adr/0056-live-quote-overlay.md) (quote 오버레이 = 표시 전용 — ⑧의 캐시도 표시 전용)
