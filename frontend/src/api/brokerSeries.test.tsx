@@ -58,7 +58,7 @@ describe('useBrokerSeriesForDay', () => {
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(spy).toHaveBeenCalledWith(
-      '/api/brokers/series?code=005930&date=20260519',
+      '/api/brokers/series?code=005930&date=20260519&source_pref=hogaplay',
     );
     expect(result.current.data).toEqual(fakeResponse);
   });

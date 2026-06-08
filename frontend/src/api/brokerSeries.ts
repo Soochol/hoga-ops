@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
 import type { BrokerSeriesResponse } from './types';
+import { useSourcePreferenceStore } from '../state/sourcePreference';
 
 /**
  * Freshness for a day-anchored broker-series query, gated on whether `date`
@@ -31,6 +32,11 @@ export function brokerSeriesFreshness(
  * backend today-seam tail advances (#9 — `brokerSeriesFreshness`). Deliberately
  * NOT useSpot — that hook is the cursor-keyed 10호가 debouncer. Day-scope data
  * lives next to useRange for visual clustering of the day-scope read paths.
+ *
+ * ADR-0039: threads `source_pref` from the global sourcePreference store into
+ * the query string and key (mirroring useRange) so the 거래원 card resolves to
+ * the SAME source as the chart on the same page — and so the backend today-seam
+ * merge fires only when the resolved source is the live-capture source (#9).
  */
 export function useBrokerSeriesForDay(
   code: string | null,
@@ -38,11 +44,12 @@ export function useBrokerSeriesForDay(
   todayKst: string | null = null,
 ) {
   const { staleTime, refetchInterval } = brokerSeriesFreshness(date, todayKst);
+  const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
   return useQuery({
-    queryKey: ['brokers/series', code, date] as const,
+    queryKey: ['brokers/series', code, date, sourcePref] as const,
     queryFn: () =>
       apiCall<BrokerSeriesResponse>(
-        `/api/brokers/series?code=${code}&date=${date}`,
+        `/api/brokers/series?code=${code}&date=${date}&source_pref=${sourcePref}`,
       ),
     enabled: code !== null && date !== null,
     staleTime,

@@ -177,8 +177,12 @@ def _client(engine: QueryEngine, get_buffer) -> TestClient:
     return TestClient(app)
 
 
-def test_route_today_kis_live_merges_buffer_tail(tmp_path: Path, monkeypatch) -> None:
-    # now_kst를 DATE로 고정 → date==today. kis_live 소스 + 버퍼 꼬리 → 병합.
+def test_route_today_default_pref_falls_back_to_kis_live_and_merges(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # 실제 프론트 경로(advisor): 기본 source_pref=hogaplay지만 today엔 hogaplay
+    # 디렉터리가 없어 resolve_source가 kis_live로 폴백 → 게이트 통과 → 꼬리 병합.
+    # source_pref를 명시하지 않아 프론트 기본값과 동일.
     monkeypatch.setattr("hoga.api.routes.now_kst",
                         lambda: datetime(2026, 6, 8, 10, 0, tzinfo=_KST))
     engine = _kis_live_engine(tmp_path, [BrokerRow(ts_ms=ENC_0930, seq=1, side="buy",
@@ -187,13 +191,40 @@ def test_route_today_kis_live_merges_buffer_tail(tmp_path: Path, monkeypatch) ->
     buf = _FakeBuffer([{"t_ms": unix_0930 + 300_000,
                         "buy_top": [{"name": "키움증권", "qty": 150}], "sell_top": []}])
     r = _client(engine, lambda: buf).get(
-        "/api/brokers/series", params={"code": CODE, "date": DATE, "source_pref": "kis_live"})
+        "/api/brokers/series", params={"code": CODE, "date": DATE})  # 기본 hogaplay
     assert r.status_code == 200
     body = r.json()
-    assert body["source"] == "kis_live"
+    assert body["source"] == "kis_live"  # 폴백 확인
     pts = {e["broker"]: e["points"] for e in body["brokers"]}["키움증권"]
     assert pts[0] == {"ts_ms": unix_0930, "net": 100}            # parquet, unix-ms
     assert pts[-1] == {"ts_ms": unix_0930 + 300_000, "net": 150}  # 버퍼 꼬리(이중변환 아님)
+
+
+def test_route_today_hogaplay_present_serves_hogaplay_no_tail(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # advisor 경고 케이스: today에 hogaplay 디렉터리도 있으면 source_pref=hogaplay가
+    # hogaplay로 resolve → 게이트(source==kis_live) 실패 → 버퍼 꼬리 미병합(소스 혼합
+    # 방지). hogaplay parquet만 서빙. (실무상 today intraday엔 hogaplay 미존재라 드묾.)
+    monkeypatch.setattr("hoga.api.routes.now_kst",
+                        lambda: datetime(2026, 6, 8, 10, 0, tzinfo=_KST))
+    engine = _kis_live_engine(tmp_path, [BrokerRow(ts_ms=ENC_0930, seq=1, side="buy",
+                              rank=1, broker="키움증권", qty_today=100, qty_delta=0)])
+    hg = tmp_path / "parquet" / DATE / CODE / "hogaplay"
+    hg.mkdir(parents=True, exist_ok=True)
+    (hg / "meta.json").write_text(json.dumps({"source": "hogaplay", "row_counts": {"brokers": 1}}))
+    write_parquet([BrokerRow(ts_ms=ENC_0930, seq=1, side="buy", rank=1,
+                             broker="키움증권", qty_today=50, qty_delta=0)], hg / "brokers.parquet")
+    unix_0930 = hhmmssms_to_unix_ms(DATE, ENC_0930)
+    buf = _FakeBuffer([{"t_ms": unix_0930 + 300_000,
+                        "buy_top": [{"name": "키움증권", "qty": 150}], "sell_top": []}])
+    r = _client(engine, lambda: buf).get(
+        "/api/brokers/series", params={"code": CODE, "date": DATE, "source_pref": "hogaplay"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["source"] == "hogaplay"
+    pts = body["brokers"][0]["points"]
+    assert pts == [{"ts_ms": unix_0930, "net": 50}]  # hogaplay parquet만, 버퍼 꼬리 없음
 
 
 def test_route_no_buffer_is_parquet_only(tmp_path: Path, monkeypatch) -> None:
