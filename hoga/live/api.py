@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Callable, Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from hoga.api.params import CODE_PATTERN
-from hoga.live.kis_client import KisApiError, KisRateLimitError
+from hoga.live.kis_client import KisApiError, KisQuote, KisRateLimitError
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
@@ -306,15 +306,25 @@ class LiveQuote(BaseModel):
 
 
 class LiveQuotesResponse(BaseModel):
-    phase: Literal["pre_open", "open"]
+    phase: Literal["pre_open", "open", "closed"]
     quotes: list[LiveQuote]
 
 
-def _quote_phase(now: datetime) -> Literal["pre_open", "open"]:
-    """/quotes 오버레이의 등락률 표시 게이트: 장전(09:00 이전)=숨김, 09:00 이후=표시.
-    경계 하나로 충분(반장도 오픈 09:00 동일; 주말 이른 아침은 잠깐 숨김 — 무해).
-    session_gate.market_phase(16:00-aware 3-way 세션 phase)와 계약이 달라 이름을 분리한다."""
-    return "pre_open" if now.time() < time(9, 0) else "open"
+def _quote_phase(now: datetime) -> Literal["pre_open", "open", "closed"]:
+    """/quotes 오버레이의 폴링·표시 게이트(스펙 2026-06-08 ⑧).
+
+    closed: 주말 또는 평일 08:50 이전·16:00 이후 — 프론트가 폴링을 600s로
+    줄이고 백엔드는 마지막 시세 캐시로 응답한다('마지막 시세 유지' 결정).
+    pre_open: 08:50–09:00 동시호가(KRX 08:50 시작) — 등락률 숨김(기존 계약).
+    시계 기반 — 평일 공휴일의 드문 낭비는 수용(캘린더 게이트는 동기 KIS HTTP
+    재도입이라 배제). session_gate.market_phase(16:00-aware 3-way 세션
+    phase)와 계약이 달라 이름을 분리한다."""
+    if now.weekday() >= 5:  # noqa: PLR2004 — 토/일
+        return "closed"
+    t = now.time()
+    if t < time(8, 50) or t >= time(16, 0):
+        return "closed"
+    return "pre_open" if t < time(9, 0) else "open"
 
 
 class ControlRequest(BaseModel):
@@ -378,6 +388,10 @@ def build_router(
             "is_open": True,
         }
 
+    # 장중 마지막 quotes — closed 서빙용(스펙 2026-06-08 ⑧ '마지막 시세 유지',
+    # ADR-0056 결: 표시 전용·디스크 미영속). ADR-0038 단일 워커라 dict로 충분.
+    _last_quotes: dict[str, KisQuote] = {}
+
     @router.get("/quotes", response_model=LiveQuotesResponse)
     async def _get_quotes(codes: str = Query(...)) -> LiveQuotesResponse:
         phase = _quote_phase(datetime.now(_KST))
@@ -392,6 +406,24 @@ def build_router(
             kis = kis_runtime.ensure_kis_client_from_env(data_dir)
         if kis is None:
             return LiveQuotesResponse(phase=phase, quotes=[])
+        if phase == "closed":
+            # 장외: 마지막 시세 서빙. 캐시 미스(재시작 직후)면 1회만 KIS를 불러
+            # 채운다 — KIS는 장외에도 종가를 반환. 프론트는 closed에 600s
+            # 하트비트라 이 경로의 KIS 콜은 사실상 드로어 마운트 시 1회뿐.
+            missing = [c for c in code_list if c not in _last_quotes]
+            if missing:
+                try:
+                    for q in await kis.fetch_multi_price(code_list):
+                        _last_quotes[q.code] = q
+                except Exception as e:  # noqa: BLE001 — 오버레이는 절대 500 금지
+                    log.warning("live quotes cold fetch failed (%d codes): %s",
+                                len(code_list), e)
+            return LiveQuotesResponse(phase=phase, quotes=[
+                LiveQuote(code=q.code, price=q.price,
+                          change_pct=q.change_pct, change_won=q.change_won)
+                for c in code_list
+                if (q := _last_quotes.get(c)) is not None
+            ])
         try:
             quotes = await kis.fetch_multi_price(code_list)
         except Exception as e:  # noqa: BLE001 — 10초 폴링 오버레이는 절대 500 금지;
@@ -399,6 +431,8 @@ def build_router(
             # (프론트는 '—' 표시). retry-exhausted 신호는 warning 으로만 남긴다.
             log.warning("live quotes fetch failed (%d codes): %s", len(code_list), e)
             return LiveQuotesResponse(phase=phase, quotes=[])
+        for q in quotes:
+            _last_quotes[q.code] = q
         pre = phase == "pre_open"
         return LiveQuotesResponse(phase=phase, quotes=[
             LiveQuote(code=q.code, price=q.price,
