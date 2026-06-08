@@ -84,6 +84,23 @@ def test_parse_member_frame_uses_now_ms():
     assert t.payload["buy_top"][4] == {"name": "매수사5", "qty": 2004}
 
 
+def test_parse_member_canonicalizes_broker_names():
+    """spec 2026-06-08 P2 #10: live 거래원명이 정규명으로 방출돼야 replay
+    (brokers.parquet 읽기 canonical)와 식별자가 일치한다. KIS raw '신한증권'
+    → '신한투자증권', '미래에셋' → '미래에셋증권'. (canonical은 _unknown_seen
+    dedup이라 미지 별칭도 경보 1회뿐.)"""
+    f = ["0"] * 80
+    f[0] = "005930"
+    f[1] = "신한증권"        # sell_top[0] 별칭 (raw)
+    f[6] = "미래에셋"        # buy_top[0] 별칭 (raw)
+    for idx in range(11, 21):
+        f[idx] = str(1000 + idx)   # qty 필드 정수
+    raw = "0|H0STMBC0|001|" + "^".join(f)
+    t = parse_message(raw, date="20260605", now_ms=1)[0]
+    assert t.payload["sell_top"][0]["name"] == "신한투자증권"   # 정규명
+    assert t.payload["buy_top"][0]["name"] == "미래에셋증권"     # 정규명
+
+
 def test_parse_control_pingpong():
     raw = '{"header":{"tr_id":"PINGPONG","datetime":"20260605093000"}}'
     out = parse_message(raw, date="20260605", now_ms=0)

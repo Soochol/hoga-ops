@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from hoga.api.timeenc import hhmmssms_to_unix_ms
+from hoga.broker_names import canonical
 
 from . import ws_fields as F
 from .snapshot import SnapshotKind
@@ -146,12 +147,17 @@ def _parse_member(f: list[str], *, now_ms: int) -> list[WsTick]:
         payload = {
             "code": code,
             "t_ms": now_ms,  # H0STMBC0엔 시간 필드 없음(spec §12) — 수신 시각 사용
+            # canonical(spec 2026-06-08 P2 #10): 삭제된 REST fetch_brokers가
+            # 경계에서 하던 정규화 승계 — live(raw '신한증권')와 replay
+            # (brokers.parquet 읽기 canonical '신한투자증권')의 거래원 식별자를
+            # 통일. _unknown_seen dedup이라 미지 별칭 경보는 1회뿐 + unknown_alias
+            # 계측이 캡처 경로에 복원된다.
             "sell_top": [
-                {"name": f[n].strip(), "qty": int(f[q])}
+                {"name": canonical(f[n].strip()), "qty": int(f[q])}
                 for n, q in zip(F.MBC_SELL_NAMES, F.MBC_SELL_QTYS, strict=True)
             ],
             "buy_top": [
-                {"name": f[n].strip(), "qty": int(f[q])}
+                {"name": canonical(f[n].strip()), "qty": int(f[q])}
                 for n, q in zip(F.MBC_BUY_NAMES, F.MBC_BUY_QTYS, strict=True)
             ],
         }
