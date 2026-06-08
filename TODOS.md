@@ -14,17 +14,22 @@
 **Priority:** P2
 **Depends on:** 모의투자 appkey 발급 + 평일 09:00–15:30 KST
 
-### #8 반장일 12:30 게이트 — 12/30 전 처리 (carry-timeout 권장, defer)
+### #8 반장일 12:30 게이트 — WONTFIX (수용, 2026-06-08 사용자 결정)
 
-**What:** ws_capture_window가 반장일(12/30·설/추석 전 영업일 — CONTEXT.md Half-Day)에도 15:30까지 열려 12:30~15:30 유령 carry를 parquet에 기록. 권장 해법은 **carry-timeout 백스톱**: "Live Set 전체 N분(예: 5분) 무틱 → carry 중단". KRX 점심 휴장 없어(연속매매) 정상 장중엔 전 종목 동시 무틱 불가 → 마감 후에만 발화. 캘린더·갱신 불요, 예고없는 장애까지 범용 차단. 대안: 수동 dict 캘린더(KRX 공지 입력, 갱신 의존).
+**결정:** 고치지 않는다. 반장일(12/30·설/추석 전 영업일) 12:30~15:30 구간에
+호가/거래원 평선 + 체결강도 0 carry가 parquet에 기록되지만 — 연 2~4일,
+**장 마감 후 미관측 구간**, 데이터 *오염*(손실 아님, 캔들 가격은 정상), replay
+사후 분석 시에만 보임 — 수용 가능하다고 사용자가 판단(2026-06-08).
 
-**Why (재평가 2026-06-08 defer):** 심각도 낮음 — 연 2~4일, **장 마감 후(12:30~15:30) 미관측 구간**의 데이터 *오염*(손실 아님). #11·가시화와 급이 다름. 다음 반장일 12/30이라 반년 여유.
+**되살릴 트리거:** 반장일 12:30~15:30 보조지표를 사후 분석하거나, 자동매매/알림이
+그 구간 데이터를 신뢰하게 되면 재개. 그때 해법 = **carry-timeout**("Live Set 전체
+N분 무틱→carry 중단", 작은 수정·캘린더 불요).
 
-**조사 결론(재조사 불요):** KIS chk-holiday 6필드 전부 binary — 조기마감 시각 없음(공식 koreainvestment/open-trading-api 예제 confirm). 자동 소스 불가. 프론트 sessionTime.ts는 half-day-ready(과거 parser TSV close_ms), kis_live 실시간 게이트만 미인지.
+**조사 결론(재조사 불요):** KIS chk-holiday 6필드 전부 binary — 조기마감 시각
+없음(공식 koreainvestment/open-trading-api 예제 confirm). 자동 소스 불가. 프론트
+sessionTime.ts는 half-day-ready(과거 parser TSV close_ms), kis_live 실시간 게이트만 미인지.
 
-**Effort:** M (carry-timeout) / S (dict 캘린더)
-**Priority:** P2
-**Depends on:** None — 12/30 전
+**Priority:** WONTFIX (트리거 시 재평가)
 
 ### #14 mixed-day fills — deploy 체크리스트 (코드 아님)
 
