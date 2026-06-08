@@ -6,18 +6,23 @@ import type { RangeBundle } from '../api/types';
 import { useWheelInteractions } from './useWheelInteractions';
 
 // 훅이 실제로 사용하는 timeScale 표면만 흉내 낸다. 테스트별로 필요한
-// 메서드만 override.
+// 메서드만 override. width 1000 × minBarSpacing 0.5 → maxSpan 2000:
+// 기본 케이스들의 요청 span(≤111)에는 플로어 클램프가 발동하지 않는다.
 function makeTs(over: Record<string, unknown> = {}) {
   return {
     getVisibleLogicalRange: vi.fn(() => ({ from: 0, to: 100 })),
     setVisibleLogicalRange: vi.fn(),
     coordinateToLogical: vi.fn(() => null),
+    width: vi.fn(() => 1000),
     ...over,
   };
 }
 
 function makeChart(ts: ReturnType<typeof makeTs>): IChartApi {
-  return { timeScale: () => ts } as unknown as IChartApi;
+  return {
+    timeScale: () => ts,
+    options: () => ({ timeScale: { minBarSpacing: 0.5 } }),
+  } as unknown as IChartApi;
 }
 
 // RangeBundle 최소 픽스처 — candles 길이만 의미 있다 (maxTo = length - 1).
@@ -125,6 +130,18 @@ describe('useWheelInteractions', () => {
     const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
     expect(arg.to).toBe(100);
     expect(arg.from).toBeCloseTo(100 - 100 * FACTOR, 6); // 환산 없으면 ≈ -0.31로 실패
+  });
+
+  it('줌아웃 플로어: maxSpan(=width/minBarSpacing) 초과 요청은 앵커 보존 클램프로 전달', () => {
+    // width 52.5 × minBarSpacing 0.5 → maxSpan 105. ctrl 줌아웃 요청 span
+    // ≈110.5 > 105 → 앵커(50, 비율 0.5) 보존 클램프 {-2.5, 102.5}.
+    // 클램프가 없으면 {≈-5.26, ≈105.26}이 그대로 전달되어 실패한다.
+    const ts = makeTs({ width: vi.fn(() => 52.5), coordinateToLogical: vi.fn(() => 50) });
+    const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={null} />);
+    wheel(getByTestId('wheel-host'), { deltaY: 100, ctrlKey: true, clientX: 50 });
+    const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
+    expect(arg.from).toBeCloseTo(-2.5, 9);
+    expect(arg.to).toBeCloseTo(102.5, 9);
   });
 
   it('bundle 교체 시 maxTo는 ref로 갱신 — 리스너 재부착 없음', () => {

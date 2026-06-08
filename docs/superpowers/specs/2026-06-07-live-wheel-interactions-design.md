@@ -72,6 +72,19 @@ grill 리뷰(스펙 심문)에서 추가 확정:
    호출부 컨벤션과 정합하도록 핸들러 본문을 try/catch로 감싼다(향후 훅 순서
    리팩토링 내성).
 
+/diagnose(2026-06-08, v0.6.5.3)에서 추가 확정:
+
+10. **줌아웃 플로어 maxSpan 클램프** — lwc는 `barSpacing < minBarSpacing`이
+    되는 줌 요청의 span을 거부하면서 오른쪽 끝(rightOffset)만 적용한다.
+    무클램프 ctrl 줌아웃이 플로어에 도달하면 요청이 **우측 팬으로 변질**되어
+    커서 앵커가 풀리는 버그가 필드에서 발견됨(브라우저 루프로 재현: 틱당
+    +18바 드리프트, span 고정, dTo=0 — 플로어 수학 `width()/minBarSpacing`과
+    정확히 일치). 수정: 헬퍼에 `maxSpan` 선택 입력을 추가하고, 줌 분기 결과
+    span이 maxSpan을 넘으면 **앵커 비율을 보존한 채** span을 클램프(ctrl:
+    앵커 기준 재계산, plain: `to` 고정 유지). 훅은 이벤트 시점에
+    `ts.width() / options().timeScale.minBarSpacing`을 전달(리사이즈 대응).
+    플로어에서 줌아웃은 깨끗한 no-op이 된다. shift 팬은 span 불변이라 무관.
+
 ## Invariants
 
 - **Mouse-anchor ratio preservation (ctrl/cmd 줌)**: 줌 전후로 앵커의 화면 비율
@@ -117,6 +130,9 @@ grill 리뷰(스펙 심문)에서 추가 확정:
 
 - 세 가지 휠 동작이 `/live` 차트(전 페인 공유 timeScale)에서 동작한다.
 - `computeWheelOutcome`과 그 테스트 22케이스를 무변경 재사용한다.
+  *(개정 v0.6.5.3: 헬퍼에 선택 입력 `maxSpan`이 추가됨 — 결정 #10. "무변경
+  재사용"은 최초 출하 시점의 목표였고, 이후 헬퍼는 이 기능의 살아있는 소유
+  코드로서 진화한다. 기존 22케이스는 여전히 무변경 통과.)*
 - 휠 리스너는 chart 인스턴스당 1회 부착 — SSE 푸시(bundle 교체)에 재부착하지 않는다.
 - 기존 뷰포트 시스템(초기 뷰, 백필, repositioner)과 새 경로 없이 통합된다.
 - 데이터가 로드된 차트 위에서 휠·shift+휠이 페이지를 스크롤시키지 않는다

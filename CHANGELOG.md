@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.6.5.3] - 2026-06-08
+
+### Fixed
+- **Ctrl+휠 줌아웃 시 커서 앵커 풀림 수정**: 차트를 깊게 줌아웃해 캔들 폭이
+  라이브러리 하한(0.5px)에 닿으면, 이후의 Ctrl+휠 줌아웃이 줌 대신 차트를
+  오른쪽으로 밀어내며 커서 아래 캔들이 화면에서 흘러가던 버그. 이제 줌아웃은
+  하한에서 커서 앵커를 유지한 채 깨끗하게 멈춘다 (휠 줌·기본 줌 모두 적용).
+
 ## [0.6.5.2] - 2026-06-08
 
 ### Changed
