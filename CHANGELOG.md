@@ -3,6 +3,46 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.0.0] - 2026-06-08
+
+### Added
+- **KIS WebSocket 실시간 파이프라인**: /live의 호가창·체결강도·거래원이 REST
+  폴링(호가 20초 주기)에서 KIS WebSocket push 기반 **sub-second 표시**로 전환.
+  관심종목 표시 순서 상위 13종목(Live Set)을 구독하고, 표시(틱 단위)와
+  저장(10초 다운샘플)을 분리. 재연결 백오프·PINGPONG·silent-stall watchdog 포함
+- **fills.parquet (체결강도 구간합)**: 체결 내역 raw 저장을 10초 구간합으로
+  대체 — WS 전수 수신으로 체결강도가 샘플링이 아닌 전수 합산이 되고 디스크는
+  가벼워짐. API는 fills 우선, 구버전 데이터는 trades 폴백
+- **past-candles 병렬 fetch**: 미캐시 날짜를 동시 5개로 가져오고 같은 날짜의
+  중복 요청은 한 번만(싱글플라이트) — 콜드 캐시 차트 로드 3.3초 → ~0.7초
+  (예상치, 실서버 실측 예정)
+- **장외 quotes 폴링 게이트**: 관심종목 현재가 폴링이 장 시간(평일
+  08:50–16:00, KRX 동시호가 08:50 반영)에만 10초 주기로 돌고, 장외엔 마지막
+  시세를 유지한 채 600초 하트비트 — 일일 폴링 ~69% 절감
+
+### Changed
+- **차트 핫패스 최적화**: 세션 위상 판정(sessionPhaseAt) 이진 탐색화 — 250일
+  스크롤 기준 캔들당 세그먼트 비교 ~20배 절감 (틱 단위 재계산 시대의 전제조건)
+- **KIS 레이트리밋 재시도 가시화**: 침묵으로 +1~7초 지연되던 EGW00201 재시도가
+  로그로 표면화(첫 재시도 WARNING, 이후 DEBUG)
+- CONTEXT.md의 WS 전환 이행 표기를 구현 완료 상태로 갱신 (Live Session 정의
+  09:00–15:30 재작성, 반장일 조기 마감 미인지는 알려진 갭으로 명기)
+
+### Fixed
+- 코드리뷰 상위 4건: ① 캘린더 게이트의 동기 KIS HTTP가 이벤트 루프를 최대
+  15초 동결시키던 회귀(to_thread 격리) ② 빈 관심종목 부팅 후 첫 종목을 추가해도
+  캡처가 시작되지 않던 회귀(auto-start 폴백) ③ 체결강도 분봉 귀속 오류(flush
+  윈도 벽시계 정렬 + 윈도 시작 라벨) ④ 구독 해제 직후 잔여 프레임이 유령
+  데이터를 기록하던 버그(active-set 입구 필터)
+- 일봉 워크백 조기 종료 — 범위 시작일 도달 후 1회씩 낭비되던 헛 KIS 콜 제거
+- WS bytes 프레임 디코드 — binary 프레임이 무로그로 버려지던 침묵 캡처 정지
+  경로 차단
+
+### Removed
+- **REST 폴러 은퇴**: `hoga/live/poller.py`와 전용 테스트 삭제 — 캡처 경로 WS
+  일원화, 15콜/초 REST 쿼터 해방. 장후 시간외(15:30–16:00) 라이브 캡처는
+  의도적 회귀(hogaplay 일배치가 post-hoc 보완)
+
 ## [0.6.5.3] - 2026-06-08
 
 ### Fixed
