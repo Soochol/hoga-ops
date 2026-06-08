@@ -335,3 +335,43 @@ async def test_flush_preserves_tick_arriving_during_append(tmp_path, monkeypatch
     fills2 = [d for d in map(_json.loads, jsonl2.splitlines()) if d["kind"] == "fill"]
     assert fills2[-1]["payload"]["buy_qty"] == 3, \
         f"await 창에 도착한 틱(3) 손실됨: {[f['payload'] for f in fills2]}"
+
+
+async def test_flush_per_code_isolation_on_append_failure(tmp_path, monkeypatch):
+    """spec 2026-06-08 flush-durability §2.3: 한 코드(A)의 append OSError가 다른
+    코드(B)의 윈도를 폐기하지 않는다 — old(whole-flush_once 중단)와의 headline
+    차이. A 합은 보존(다음 윈도 롤), B는 기록+commit(buy→0). try를 루프 밖으로
+    되돌리는 회귀를 잡는 가드."""
+    import json as _json
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True
+
+    orig_append = writer.append
+
+    async def selective_append(date, code, snaps):
+        if code == "005930":            # A만 실패
+            raise OSError("disk full for A")
+        return await orig_append(date, code, snaps)   # B 성공
+
+    monkeypatch.setattr(writer, "append", selective_append)
+
+    now = (int(time.time() * 1000) // 10_000) * 10_000
+    await stream.on_tick(_trade_tick(now + 100, qty=5, side=1))            # A=005930 buy=5
+    await stream.on_tick(WsTick(code="000660", t_ms=now + 100,
+                                kind=SnapshotKind.TRADE, payload={
+        "trades": [{"t_ms": now + 100, "price": 100, "qty": 7, "side": 1,
+                    "side_source": "kis_ws"}]}))                            # B=000660 buy=7
+    await stream.flush_once(now_ms=now + 10_000)   # A append 실패, B 성공
+
+    # B는 기록됨(A 실패가 B를 안 버림)
+    b_jsonl = tmp_path / "live" / "20260605" / "000660.jsonl"
+    assert b_jsonl.exists()
+    b_fills = [d for d in map(_json.loads, b_jsonl.read_text().splitlines())
+               if d["kind"] == "fill"]
+    assert b_fills[-1]["payload"]["buy_qty"] == 7
+    # B는 commit돼 합이 0으로(다음 윈도 새 합), A는 보존(5)
+    assert stream._ds._codes["000660"].buy_qty == 0
+    assert stream._ds._codes["005930"].buy_qty == 5   # A 보존 → 다음 윈도 롤

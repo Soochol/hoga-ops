@@ -1,7 +1,7 @@
 # flush 내구성 — subtract-on-commit + per-code 격리
 
 - **Date**: 2026-06-08
-- **Status**: Approved (조사+advisor 검증 2026-06-08)
+- **Status**: Implemented (2026-06-08)
 - **Scope**: `backend` — `hoga/live/downsampler.py` + `hoga/live/stream.py`
 - **Topic slug**: `flush-durability`
 - **관련 리뷰**: 2026-06-07 멀티에이전트 리뷰 #11 (flush 내구성). 같은 P1 데이터손실 클래스의 #8(반장일)·#14(mixed-day)는 본 묶음에서 제외 — 아래 §5.

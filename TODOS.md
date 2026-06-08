@@ -14,17 +14,29 @@
 **Priority:** P2
 **Depends on:** 모의투자 appkey 발급 + 평일 09:00–15:30 KST
 
-### 코드리뷰 잔여 — 데이터 손실 클래스 (다음 묶음, severity 우선)
+### #8 반장일 12:30 게이트 — 수동 반장일 캘린더 (self-contained)
 
-**What:** 미수정 중 데이터 손실/정합 3건 우선 — #8 반장일 12:30 게이트(12:30~15:30 유령 carry가 parquet 영구화), #11 flush 내구성(OSError 시 10초 윈도 체결 합 영구 소실), #14 mixed-day fills 마스킹(컷오버일 오전 체결강도 미조회).
+**What:** ws_capture_window가 반장일(연말 등 12:30 조기 마감)에도 15:30까지 열려 12:30~15:30 유령 carry를 parquet에 영구화. **수동 반장일 캘린더**(KRX 반장일 = 연 몇 일, 사전 공지되는 짧은 목록)를 하드코딩/설정해 게이트 마감 시각을 당기는 작은 작업.
 
-**Why:** 가시화 묶음(#4 rt_cd·#7 cycle_lag·#15 R1)이 끝나 캡처 장애가 화면에 보이므로, 이제 조용한 데이터 손실 클래스가 최우선. advisor가 severity 순서로 지목.
+**Why:** KIS chk-holiday는 binary opnd_yn만 주고 조기마감 시각 데이터 소스가 없음(조사 2026-06-08 확정). 새 KIS 엔드포인트(blocked)가 아니라 수동 캘린더(medium·self-contained)가 정답 — advisor 재프레임.
 
-**Context:** findings 전문은 /home/dev/.claude/jobs 리뷰 기록 + v0.7.0.0 PR.
+**Context:** session_gate.py ws_capture_window/market_phase. 대안: 데이터소스-free 우회로 "전 코드 N분 무틱 시 carry 중단"(별도 설계). 프론트 sessionTime.ts는 이미 sessionCloseMs per-Stock-Date 수용(half-day-ready) — kis_live 게이트만 미인지.
 
 **Effort:** M
 **Priority:** P1
-**Depends on:** None
+**Depends on:** 반장일 목록 소스 결정(하드코딩 vs 설정파일)
+
+### #14 mixed-day fills — deploy 체크리스트 (코드 아님)
+
+**What:** 컷오버일(오전 poller trades.parquet + 오후 WS fills.parquet 공존) bundle.py가 fills 단독 선택 → 오전 체결강도 미조회. **영구 read-path 병합 대신** off-hours 배포로 회피 + (발생 시) 일회성 trades→fills backfill.
+
+**Why:** poller가 이 브랜치에서 삭제돼 post-merge엔 kis_live trades.parquet 쓰는 경로가 없음 → 비재발. 유일 발화점은 PR #43 장중 배포일. 영구 병합은 일회성·회피가능 transient에 과한 복잡도(advisor).
+
+**Action:** PR #43을 **15:30 이후 또는 09:00 이전 배포**(머지 체크리스트). 만약 장중 머지됐으면 그날 trades→fills 일회성 backfill.
+
+**Effort:** S (체크리스트) / 발생 시 backfill 스크립트
+**Priority:** P1 (머지 게이트)
+**Depends on:** PR #43 머지 타이밍
 
 ### 코드리뷰 잔여 — cleanup 클래스 (그 다음)
 
@@ -94,3 +106,9 @@
 - drain 일경계 리셋(R1 데일리 경고 제거 + 재개방 fill 라벨)
 - 프론트 captureHealthPill(캡처 죽으면 빨강, closed 회색) — cycleLagPill 대체
 - subagent-driven 6 Task, 백엔드 1325 + 프론트 1509 통과
+
+### #11 flush 내구성 (2026-06-08, 리뷰 #11)
+- flush가 흐름 합을 리셋 안 함 → commit_code(append 성공 후)가 '본 양'만 빼기
+- subtract-on-commit: await 창 도착 틱 보존(zero-on-commit 회귀 방지)
+- per-code 격리: 한 코드 OSError가 다른 코드 윈도 안 버림, 실패 합은 다음 윈도 롤
+- 백엔드 1330 통과(await-창·실패보존·per-code 격리 인터리브 테스트)
