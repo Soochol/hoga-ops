@@ -57,6 +57,26 @@ async def test_recv_loop_dispatches_ticks_and_echoes_pingpong():
     assert len(got) == 1 and got[0].code == "005930"
 
 
+async def test_recv_loop_decodes_bytes_data_frames():
+    """ship 리뷰: websockets는 BINARY 프레임을 bytes로 전달한다 — str 가정이면
+    raw[0]이 int라 데이터 분기가 절대 매칭 안 되고 json.loads 실패 → 무로그
+    드롭(침묵 캡처 정지, last_recv_ms는 갱신돼 watchdog도 못 본다). 녹화
+    스크립트(record_kis_ws_frames.py:53)와 동일하게 디코드해 방어한다."""
+    asp = "0|H0STASP0|001|" + "^".join(["005930", "093015", "0"] + ["1"] * 56)
+    fake = FakeWs([asp.encode("utf-8")])  # bytes 프레임
+    got: list = []
+
+    async def on_tick(tick):
+        got.append(tick)
+
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=on_tick, date_fn=lambda: "20260605"
+    )
+    with pytest.raises(ConnectionError):
+        await client._recv_loop(fake)
+    assert len(got) == 1 and got[0].code == "005930"
+
+
 async def test_recv_loop_stamps_last_recv_ms_on_control_frames():
     """리뷰 Important 1 — PINGPONG(비데이터)만 수신해도 last_recv_ms가 찍힌다.
 

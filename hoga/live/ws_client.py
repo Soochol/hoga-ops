@@ -135,6 +135,12 @@ class KisWsClient:
             # 파싱 실패분 포함): 바이트 수신 자체가 소켓 생존의 증거다.
             # ADR-0064 watchdog이 이 값으로 silent stall을 감지한다.
             self.last_recv_ms = now_ms
+            # BINARY 프레임 방어(ship 리뷰): websockets는 binary를 bytes로
+            # 전달한다 — str 가정이면 raw[0]이 int라 데이터 분기가 매칭되지
+            # 않고 json 분기에서 무로그 드롭된다(침묵 캡처 정지). 녹화
+            # 스크립트(record_kis_ws_frames.py)와 동일하게 디코드.
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8", errors="replace")
             if raw and raw[0] in ("0", "1"):
                 # 메시지마다 조회 — 자정을 넘긴 연결에서 어제 날짜 스탬프 방지.
                 date = self._date_fn()
