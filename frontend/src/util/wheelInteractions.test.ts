@@ -285,3 +285,77 @@ describe('computeWheelOutcome', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// maxSpan — 라이브러리 barSpacing 플로어와의 앵커 보존 합성
+// (/diagnose 2026-06-08: 플로어 도달 후 ctrl 줌아웃이 우측 팬으로 변질되어
+//  커서 앵커가 풀리던 회귀. maxSpan = timeScale.width() / minBarSpacing.)
+// ---------------------------------------------------------------------------
+
+describe('computeWheelOutcome — maxSpan (zoom-out floor, anchor-preserving)', () => {
+  it('ctrl 줌아웃: 결과 span이 maxSpan을 넘으면 앵커 비율을 보존하며 span을 클램프', () => {
+    // range {0,100}, anchor 80 (ratio 0.8), deltaY=100 → 요청 span ≈110.52 > 105.
+    // 클램프: span=105, from = 80 − 0.8×105 = −4, to = 101 — 앵커 비율 0.8 유지.
+    const out = computeWheelOutcome(
+      baseInput({
+        deltaY: 100,
+        ctrlOrMetaKey: true,
+        coordinateToLogical: () => 80,
+        maxSpan: 105,
+      }),
+    );
+    expect(out).not.toBeNull();
+    expect(out!.to - out!.from).toBeCloseTo(105, 9);
+    expect(out!.from).toBeCloseTo(-4, 9);
+    expect(out!.to).toBeCloseTo(101, 9);
+    // 앵커 비율 불변식: (anchor − from)/span === 요청 범위에서의 비율
+    expect((80 - out!.from) / (out!.to - out!.from)).toBeCloseTo(0.8, 9);
+  });
+
+  it('ctrl 줌아웃: maxSpan 여유가 있으면 수식 결과 그대로 (클램프 미발동)', () => {
+    const f = Math.exp(0.1);
+    const out = computeWheelOutcome(
+      baseInput({ deltaY: 100, ctrlOrMetaKey: true, coordinateToLogical: () => 50, maxSpan: 200 }),
+    );
+    expect(out!.from).toBeCloseTo(50 - 50 * f, 9);
+    expect(out!.to).toBeCloseTo(50 + 50 * f, 9);
+  });
+
+  it('ctrl 줌아웃: maxSpan === 현재 span이면 정확히 no-op (플로어에서 멈춤, 팬 변질 없음)', () => {
+    const out = computeWheelOutcome(
+      baseInput({ deltaY: 100, ctrlOrMetaKey: true, coordinateToLogical: () => 80, maxSpan: 100 }),
+    );
+    expect(out!.from).toBeCloseTo(0, 9);
+    expect(out!.to).toBeCloseTo(100, 9);
+  });
+
+  it('ctrl 줌인: 이미 플로어를 넘긴 상태(span > maxSpan)에서도 앵커 보존 클램프', () => {
+    // 리사이즈 등으로 현재 span 100 > maxSpan 50인 상태에서 줌인(요청 span ≈90.5)
+    // → 여전히 > 50 → 앵커 비율 보존하며 span 50으로.
+    const out = computeWheelOutcome(
+      baseInput({ deltaY: -100, ctrlOrMetaKey: true, coordinateToLogical: () => 50, maxSpan: 50 }),
+    );
+    expect(out!.to - out!.from).toBeCloseTo(50, 9);
+    expect((50 - out!.from) / (out!.to - out!.from)).toBeCloseTo(0.5, 9);
+  });
+
+  it('plain 줌아웃: maxSpan 클램프 시에도 to(오른쪽 끝) 고정 유지', () => {
+    const out = computeWheelOutcome(baseInput({ deltaY: 100, maxSpan: 105 }));
+    expect(out!.to).toBe(100);
+    expect(out!.from).toBeCloseTo(-5, 9);
+  });
+
+  it('shift 팬: maxSpan과 무관 — span이 maxSpan보다 커도 그대로 평행이동', () => {
+    const out = computeWheelOutcome(baseInput({ deltaY: 100, shiftKey: true, maxSpan: 50 }));
+    expect(out).toEqual({ from: 10, to: 110 });
+  });
+
+  it('maxSpan 미지정: 기존 동작 그대로 (무클램프)', () => {
+    const f = Math.exp(0.1);
+    const out = computeWheelOutcome(
+      baseInput({ deltaY: 100, ctrlOrMetaKey: true, coordinateToLogical: () => 50 }),
+    );
+    expect(out!.from).toBeCloseTo(50 - 50 * f, 9);
+    expect(out!.to).toBeCloseTo(50 + 50 * f, 9);
+  });
+});

@@ -56,6 +56,26 @@ describe('RangeSeriesPane', () => {
     expect(created[1].setData).toHaveBeenCalledTimes(1); // data re-pushed into the new series
   });
 
+  it('re-pushes data after a chart change re-creates the series (per-view remount)', () => {
+    // Regression: /live remounts the lwc chart per (code, timeframe) view
+    // (LiveChartRoot's per-viewKey effect). The lifecycle effect re-creates
+    // the series on the new chart instance; the data effect must re-run in
+    // the same commit (chart is in its deps) or the pane renders blank until
+    // the next bundle identity change (up to a 60s refetch on D/W/M).
+    const first = makeChart();
+    const { rerender } = render(
+      <RangeSeriesPane chart={first.chart} bundle={bundle} axis={axis} paneIndex={1} spec={SPEC} />,
+    );
+    expect(first.created).toHaveLength(1);
+
+    const second = makeChart();
+    rerender(
+      <RangeSeriesPane chart={second.chart} bundle={bundle} axis={axis} paneIndex={1} spec={SPEC} />,
+    );
+    expect(second.created).toHaveLength(1);
+    expect(second.created[0].setData).toHaveBeenCalledTimes(1); // data re-pushed into the new chart's series
+  });
+
   it('does NOT re-create the series when only bundle data changes', () => {
     // The MA-edit optimization: data churn must not churn series handles.
     const { chart, created } = makeChart();

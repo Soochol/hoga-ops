@@ -36,6 +36,16 @@ export interface WheelInput {
    * loads).
    */
   maxTo: number;
+  /**
+   * Upper bound for the result's span (visible bar count). Typically
+   * `timeScale.width() / minBarSpacing` — the library's zoom-out floor.
+   * Without this clamp, a zoom request past the floor gets its barSpacing
+   * rejected by lightweight-charts while the right edge still applies,
+   * degenerating the zoom into a rightward PAN that breaks the ctrl
+   * anchor (/diagnose 2026-06-08). Clamping here preserves the anchor
+   * ratio at the floor instead. Omit (or pass Infinity) to disable.
+   */
+  maxSpan?: number;
 }
 
 export type WheelOutcome = { from: number; to: number } | null;
@@ -72,9 +82,30 @@ export function computeWheelOutcome(i: WheelInput): WheelOutcome {
     // under the mouse to drift on screen. The library renders empty space
     // past the last candle by design, so letting `to` exceed `maxTo` on
     // ctrl-zoom-out is acceptable. `maxTo` still constrains shift-pan.
-    return { from: newFrom, to: newTo };
+    return clampSpanAroundAnchor(newFrom, newTo, anchor, i.maxSpan);
   }
 
-  // Default: right-edge-anchored zoom — `to` stays fixed.
-  return { from: to - span * factor, to };
+  // Default: right-edge-anchored zoom — `to` stays fixed (anchor = to).
+  return clampSpanAroundAnchor(to - span * factor, to, to, i.maxSpan);
+}
+
+/**
+ * Clamp a zoom result's span to `maxSpan` while keeping the anchor's
+ * RATIO inside the range unchanged — so the bar under the cursor stays at
+ * the same pixel even when the library's barSpacing floor is in play.
+ * Shift-pan never calls this: its span is unchanged by construction.
+ */
+function clampSpanAroundAnchor(
+  from: number,
+  to: number,
+  anchor: number,
+  maxSpan: number | undefined,
+): { from: number; to: number } {
+  const span = to - from;
+  const max = maxSpan ?? Number.POSITIVE_INFINITY;
+  // !(max > 0): 0/NaN 가드 — 폭 미측정(width()=0) 등에서는 클램프 비활성.
+  if (!(max > 0) || span <= max) return { from, to };
+  const ratio = (anchor - from) / span;
+  const clampedFrom = anchor - ratio * max;
+  return { from: clampedFrom, to: clampedFrom + max };
 }

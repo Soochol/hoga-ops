@@ -36,6 +36,15 @@ function weightByKstDate(cur: Date, prev: Date): number {
   return 0; // LessThanSecond
 }
 
+/** Multiplier separating axis generations in `cacheKey`. The keyed value is
+ * the tick's virtual time RELATIVE to its axis origin — bounded by the axis
+ * span (< 2^33 ms even for 21 years of stitched sessions), never by the real
+ * epoch, so the stride cannot be outgrown by calendar time. Generations stay
+ * integer-exact up to 2^53 / 2^41 = 4096; with segments-identity kept stable
+ * across SSE pushes (useLiveBundle), the counter only moves on genuine
+ * remaps (prepends), far below that. */
+const CACHE_GEN_STRIDE = 2 ** 41;
+
 /**
  * A horizontal-scale behavior whose tick weights follow the REAL KST calendar
  * instead of the gap-compressed virtual-1970 calendar the library would infer
@@ -49,7 +58,33 @@ function weightByKstDate(cur: Date, prev: Date): number {
  */
 export function createKstHorzScaleBehavior(axisRef: MutableRefObject<VirtualAxis>) {
   const Base = defaultHorzScaleBehavior();
+  // Axis generation for label-cache keying. lightweight-charts caches
+  // formatted tick labels per (weight, cacheKey(time)) in an LRU that
+  // SURVIVES setData, and two axis generations can place bars on the SAME
+  // virtual time at different real dates even with real-anchored origins
+  // (origins differ by whole days; ladders step 23,401s — cross-index value
+  // collisions are exact, e.g. 16 days × 86,400s = 60 × 23,401s − 21,660s).
+  // Folding a per-axis generation into the key makes stale entries
+  // unreachable; the LRU evicts them.
+  let cacheGen = 0;
+  let cacheGenAxis: VirtualAxis | null = null;
   class KstHorzScaleBehavior extends Base {
+    override cacheKey(internalItem: Parameters<InstanceType<typeof Base>['cacheKey']>[0]): number {
+      const axis = axisRef.current;
+      if (axis !== cacheGenAxis) {
+        cacheGenAxis = axis;
+        cacheGen++;
+      }
+      // Key on the ORIGIN-RELATIVE virtual ms, not the absolute value:
+      // real-anchored origins track the real epoch, so absolute values would
+      // cross CACHE_GEN_STRIDE in 2039 and cross-generation key ranges would
+      // overlap again. The relative offset is bounded by the axis span
+      // forever. (Within one generation the offset is unique per tick by
+      // construction; across generations the stride separates the ranges.)
+      const originMs = axis.segments.length > 0 ? axis.segments[0].virtualStart : 0;
+      return cacheGen * CACHE_GEN_STRIDE + (super.cacheKey(internalItem) - originMs);
+    }
+
     // Narrow the options type to TimeChartOptions so createChartEx's options
     // param (DeepPartial<ReturnType<behavior["options"]>>) carries
     // `timeScale.tickMarkFormatter`. The base's options() returns
@@ -85,8 +120,18 @@ export function createKstHorzScaleBehavior(axisRef: MutableRefObject<VirtualAxis
           : (p: { readonly originalTime: unknown }): Date =>
               new Date(axis.toReal((p.originalTime as number) * 1000) + KST_OFFSET_MS);
 
-      for (let i = Math.max(startIndex, 1); i < pts.length; i++) {
-        pts[i].timeWeight = weightByKstDate(toDate(pts[i]), toDate(pts[i - 1]));
+      // Carry the previous point's Date across iterations — toDate runs a
+      // binary search + Date allocation, so converting each point once (not
+      // once as `cur` and again as next iteration's `prev`) halves the cost
+      // of a full-history refill (~5,000 points on 1m).
+      const start = Math.max(startIndex, 1);
+      if (pts.length > start) {
+        let prev = toDate(pts[start - 1]);
+        for (let i = start; i < pts.length; i++) {
+          const cur = toDate(pts[i]);
+          pts[i].timeWeight = weightByKstDate(cur, prev);
+          prev = cur;
+        }
       }
       // R4: points[0] has no predecessor. Estimate its tier from the NEXT
       // point's delta (symmetric) rather than the library's virtual-space

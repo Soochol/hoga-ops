@@ -31,19 +31,21 @@ function AnchoredMenu({ label, children }: { label: string; children: React.Reac
   );
 }
 
-/** 접기 chevron — 펼침=∧(클릭하면 접기), 접힘=∨. 유니코드 대신 SVG(폰트별 렌더 불일치 회피). */
-function ChevronIcon({ up }: { up: boolean }) {
+/** 접기 chevron — 펼침=▼(클릭하면 접기), 접힘=▶. 폴더 관용구(VS Code·TradingView),
+ *  좌측 배치와 세트. 유니코드 대신 SVG(폰트별 렌더 불일치 회피). */
+function ChevronIcon({ collapsed }: { collapsed: boolean }) {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {up ? <path d="M6 15l6-6 6 6" /> : <path d="M6 9l6 6 6-6" />}
+      {collapsed ? <path d="M9 6l6 6-6 6" /> : <path d="M6 9l6 6 6-6" />}
     </svg>
   );
 }
 
 /**
  * 그룹 헤더 행 — 라벨/chevron 클릭 = 접기 토글, 호버 시 ⋯ 메뉴(이름 변경/삭제;
- * 실폴더만 — 미분류는 onRename/onDelete 미전달 → chevron만). FolderRow(편집 모달)
+ * 실폴더만 — 미분류는 onRename/onDelete 미전달 → ⋯ 메뉴 없이 chevron+라벨 버튼만).
+ * FolderRow(편집 모달)
  * 처럼 button-in-button을 피해 div + 형제 버튼 구조이고, 메뉴 state/dismiss 훅을
  * 루프 밖에서 쓰기 위해 module-scope 컴포넌트로 분리했다(react-hooks 규칙).
  */
@@ -63,11 +65,26 @@ function GroupHeader(props: {
   const itemClass =
     'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent';
   return (
-    <div className="group flex items-center gap-1 px-3 py-1.5 text-xs text-fg-dim hover:bg-bg-input-hover">
-      <button type="button" onClick={props.onToggle} className="flex-1 min-w-0 text-left truncate">
-        {props.label}
+    // sticky + bg-bg-card: 패널 배경과 동일색이라 평시엔 투명처럼 보이고, 스크롤
+    // 시에만 불투명이 드러나 행을 가린다(스펙 §1). 각 그룹 div가 컨테이닝 블록이라
+    // 헤더는 자기 그룹 범위에서만 고정된다. 메뉴가 열리면 z를 올려 다음 sticky
+    // 헤더(z-10)가 이 헤더의 메뉴(z-30, 헤더 스태킹 컨텍스트 내부)를 덮지 않게 한다.
+    <div className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg-card hover:bg-bg-input-hover`}>
+      <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
+        aria-expanded={!props.collapsed}
+        onClick={props.onToggle} className="px-1 leading-none text-fg-dimmer hover:text-fg">
+        <ChevronIcon collapsed={props.collapsed} />
       </button>
-      <span className="font-mono tabular-nums text-fg-dimmer">{props.count}</span>
+      {/* 개수를 라벨 버튼 안에 — 우측 정렬 mono 개수가 가격 컬럼과 같은 x에 떨어져
+          종목 행처럼 읽히던 충돌을 해소하고(스펙 §문제 1), 클릭 타깃도 키운다.
+          aria-label 명시 — 콘텐츠 합성에 맡기면 인접 span 사이 공백 처리가
+          엔진(accname 구현)마다 갈려 "스윙1"로 붙을 수 있다(가시 텍스트와 동일 문구). */}
+      <button type="button" onClick={props.onToggle}
+        aria-label={`${props.label} ${props.count}`} aria-expanded={!props.collapsed}
+        className="flex-1 min-w-0 text-left flex items-baseline gap-1.5">
+        <span className="truncate">{props.label}</span>
+        <span className="flex-none text-xs font-normal text-fg-dimmer">{props.count}</span>
+      </button>
       {props.onRename && (
         <div className="relative" ref={menuRef}>
           {/* opacity(레이아웃 유지)로 숨겨 Tab 포커스가 닿게 한다 — display:none이면
@@ -105,10 +122,6 @@ function GroupHeader(props: {
           )}
         </div>
       )}
-      <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
-        onClick={props.onToggle} className="px-1 leading-none text-fg-dimmer hover:text-fg">
-        <ChevronIcon up={!props.collapsed} />
-      </button>
     </div>
   );
 }
@@ -213,7 +226,7 @@ export function WatchlistDrawer() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div data-testid="watchlist-scroll" style={{ flex: 1, overflow: 'auto' }}>
         {isLoading && <div className="p-3 text-fg-dimmer text-sm">불러오는 중</div>}
         {error && <div className="p-3 text-error text-sm">관심종목을 불러올 수 없습니다</div>}
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (
@@ -253,6 +266,7 @@ export function WatchlistDrawer() {
                         onClick={() => onPick(entry.code)}
                         onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                         onDelete={() => removeM.mutate(entry.code)}
+                        indented
                       />
                     );
                   })}

@@ -70,3 +70,38 @@ describe('createKstHorzScaleBehavior — fillWeightsForPoints', () => {
     expect(pts[1].timeWeight).not.toBe(-1);
   });
 });
+
+describe('createKstHorzScaleBehavior — cacheKey axis generation', () => {
+  // lwc's FormattedLabelsCache survives setData and keys label strings by
+  // cacheKey(time). Two axis generations (prepend rebuilds) can place bars on
+  // the SAME virtual time at different real dates, so the key must fold in an
+  // axis generation: stable while the axis identity is stable, disjoint after
+  // it swaps — even for identical time values.
+  it('is stable for repeated calls under one axis, disjoint across axis swaps', () => {
+    const axisRef = ref(createVirtualAxis(RAW));
+    const behavior = createKstHorzScaleBehavior(axisRef);
+    const item = behavior.convertHorzItemToInternal(12345 as never);
+
+    const k1 = behavior.cacheKey(item);
+    expect(behavior.cacheKey(item)).toBe(k1);
+
+    // New generation — same CONTENT, new identity (what a prepend commit or
+    // SSE-rebuilt axis looks like to the behavior).
+    axisRef.current = createVirtualAxis(RAW);
+    const k2 = behavior.cacheKey(item);
+    expect(k2).not.toBe(k1);
+    expect(behavior.cacheKey(item)).toBe(k2);
+  });
+
+  it('never collides across generations even for different times', () => {
+    const axisRef = ref(createVirtualAxis(RAW));
+    const behavior = createKstHorzScaleBehavior(axisRef);
+    // Largest plausible real-anchored virtual second vs a small one: the
+    // generation stride (2^41 ms) dominates any in-range time value, so a
+    // gen-1 key of ANY time stays below a gen-2 key of any time.
+    const big = behavior.cacheKey(behavior.convertHorzItemToInternal(2_000_000_000 as never));
+    axisRef.current = createVirtualAxis(RAW);
+    const small = behavior.cacheKey(behavior.convertHorzItemToInternal(0 as never));
+    expect(small).toBeGreaterThan(big);
+  });
+});
