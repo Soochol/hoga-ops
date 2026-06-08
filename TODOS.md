@@ -14,16 +14,38 @@
 **Priority:** P2
 **Depends on:** 모의투자 appkey 발급 + 평일 09:00–15:30 KST
 
-### 코드리뷰 잔여 11건
+### 코드리뷰 잔여 — 데이터 손실 클래스 (다음 묶음, severity 우선)
 
-**What:** 2026-06-07 멀티에이전트 리뷰 15건 중 미수정 11건 처리 (반장일 12:30 게이트, 30초 개장 지연, cycle_lag_ms UI 블라인드, 구독 ACK rt_cd 무검사, 브로커명 canonical, 거래원 궤적 15분 절단, flush 내구성, mixed-day fills 마스킹, R1 데일리 경고, update_codes 예외 동기화, 크로스 스택 seam 상수).
+**What:** 미수정 중 데이터 손실/정합 3건 우선 — #8 반장일 12:30 게이트(12:30~15:30 유령 carry가 parquet 영구화), #11 flush 내구성(OSError 시 10초 윈도 체결 합 영구 소실), #14 mixed-day fills 마스킹(컷오버일 오전 체결강도 미조회).
 
-**Why:** 대부분 medium 심각도 — 관측 가능성·데이터 정합 클래스. 상위 4건은 0a67a3e로 수정 완료.
+**Why:** 가시화 묶음(#4 rt_cd·#7 cycle_lag·#15 R1)이 끝나 캡처 장애가 화면에 보이므로, 이제 조용한 데이터 손실 클래스가 최우선. advisor가 severity 순서로 지목.
 
-**Context:** findings 전문은 v0.7.0.0 PR 본문 및 리뷰 잡 기록 참조.
+**Context:** findings 전문은 /home/dev/.claude/jobs 리뷰 기록 + v0.7.0.0 PR.
 
 **Effort:** M
 **Priority:** P1
+**Depends on:** None
+
+### 코드리뷰 잔여 — cleanup 클래스 (그 다음)
+
+**What:** #3 30초 개장 sleep(게이트 닫힘 폴링 주기 단축), #10 브로커명 canonical(live/replay 식별자 분기), #9 거래원 궤적 15분 절단(ADR-0023 row-churn 재발 — 디스크 seam 필요), #13 update_codes 예외 동기화, 크로스 스택 seam 상수.
+
+**Why:** 정합·UX cleanup — 데이터 손실 클래스보다 후순위.
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** 데이터 손실 클래스 먼저
+
+### 캡처 헬스 pill 라벨 중복 (가시화 묶음 후속)
+
+**What:** /live 상태바에 SSE 연결 span('LIVE●')과 캡처 헬스 pill('LIVE●')이 healthy 시 동일 문자열을 나란히 표시('LIVE● · LIVE●') — 글리치처럼 보임. pill 라벨을 구분(예: '캡처 LIVE●')하거나 두 표시를 한 컴포넌트로 통합.
+
+**Why:** 두 신호는 다른 레이어(SSE = 브라우저↔백엔드, pill = 백엔드↔KIS 캡처)라 공존 의미는 있으나 동일 라벨이 혼동. 비차단 코스메틱(ch-review-5 Minor).
+
+**Context:** SSE span은 LiveStatusBar.tsx:113, pill은 captureHealthPill.ts. SSE span 유지 정책과 얽힌 설계 판단.
+
+**Effort:** S
+**Priority:** P3
 **Depends on:** None
 
 ## Frontend
@@ -65,3 +87,10 @@
 - Task 0b 녹화: fixture 커밋, recorded 테스트 4건 활성(stride 46 cnt=20까지 검증)
 - Task 14 스모크: WS 연결→틱→JSONL→promote→parquet end-to-end 실계좌 확인
 - past-candles 실측: A/B 8일 순차 5.03s→병렬 2.87s (1.75배), spec/PR 반영
+
+### 캡처 헬스 가시화 (2026-06-08, 리뷰 #4·#7·#15 + ship 스킵분)
+- ws_client 구독 ACK 추적 + _capture_health 단일 술어(7상태, recv-먼저)
+- watchdog 공유(dead/stale만 재시작, sub_failed 가시화) + get_status capture_healthy/reason
+- drain 일경계 리셋(R1 데일리 경고 제거 + 재개방 fill 라벨)
+- 프론트 captureHealthPill(캡처 죽으면 빨강, closed 회색) — cycleLagPill 대체
+- subagent-driven 6 Task, 백엔드 1325 + 프론트 1509 통과

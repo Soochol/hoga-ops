@@ -1,7 +1,7 @@
 # 캡처 헬스 가시화 — 단일 술어 + 구독 ACK 추적 + 일경계 상태 리셋
 
 - **Date**: 2026-06-08
-- **Status**: Approved (brainstorming 2026-06-08 — findings·코드·advisor 검증)
+- **Status**: Implemented (2026-06-08)
 - **Scope**: `both` — `hoga/live/{ws_client,lifecycle,stream}.py` + `frontend/src/live/*` (pill)
 - **Topic slug**: `capture-health-visibility`
 - **관련 리뷰**: 2026-06-07 멀티에이전트 리뷰 #4(watchdog rt_cd 무검사)·#7(cycle_lag UI 블라인드)·#15(R1 데일리 경고) + ship 스킵분(stream.py:116 재개방 fill 라벨)
