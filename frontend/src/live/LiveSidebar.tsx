@@ -4,10 +4,9 @@ import OrderbookTable from '../sidebar/OrderbookTable';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
 import type { LiveSeriesData } from '../api/liveSeries';
-import {
-  aggregateBrokerSeries,
-  latestOrderbookSnapshot,
-} from './liveSidebarAdapters';
+import { latestOrderbookSnapshot } from './liveSidebarAdapters';
+import { todayKstYyyymmdd } from './liveDateTime';
+import { useBrokerSeriesForDay } from '../api/brokerSeries';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import { useLivePageStore } from '../state/livePage';
@@ -56,9 +55,15 @@ export function LiveSidebar({ code, live }: Props) {
   // cursorMs is null, no extra fetches.
   const { ob, broker } = live;
   const latestOrderbook = useMemo(() => latestOrderbookSnapshot(ob), [ob]);
-  const latestBrokerSeries = useMemo(() => aggregateBrokerSeries(broker), [broker]);
   const latestBrokerTs =
     broker.length > 0 ? (broker[broker.length - 1].t_ms as number) : Date.now();
+
+  // #9: latest-mode 거래원 궤적은 당일 전체 — /api/brokers/series?date=today를
+  // 60초 refetch로(백엔드 today-seam이 parquet+라이브 버퍼 꼬리를 합침). 예전엔
+  // SSE 버퍼(aggregateBrokerSeries)만 집계해 최근 15분만 보였다. spot 모드에선
+  // date=null로 비활성(useLiveBrokersAtCursor가 커서 날짜의 day-series를 담당).
+  const today = todayKstYyyymmdd();
+  const todayBrokers = useBrokerSeriesForDay(code, isSpot ? null : today, today);
 
   // Spot-mode data (dormant when cursorMs null).
   const spotTimeframe: MinuteTimeframe | null =
@@ -74,9 +79,7 @@ export function LiveSidebar({ code, live }: Props) {
   const spotSnap = spotOrderbook?.snapshot ?? null;
   const spotAvailableFrom = spotOrderbook?.available_from ?? null;
   const orderbookForCard = isSpot ? spotSnap : latestOrderbook;
-  const brokerSeriesForCard = isSpot
-    ? spotBrokers
-    : (broker.length === 0 ? undefined : latestBrokerSeries);
+  const brokerSeriesForCard = isSpot ? spotBrokers : todayBrokers.data?.brokers;
   const brokerCursorMs = isSpot ? (cursorMs ?? latestBrokerTs) : latestBrokerTs;
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook
