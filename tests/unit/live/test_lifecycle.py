@@ -1,6 +1,7 @@
 """Live Capture lifecycle singleton — status + today-promote accessors."""
 
 import asyncio
+import contextlib
 
 import pytest
 
@@ -783,3 +784,69 @@ async def test_stop_locked_propagates_outer_cancellation() -> None:
         await child
     except asyncio.CancelledError:
         pass
+
+
+def test_capture_health_branches():
+    """spec 2026-06-08 §2.2: 단일 헬스 술어 7상태. recv 체크가 sub보다 먼저 —
+    sub 미확인+recv stale은 dead socket→'stale'(재시작), recv 신선+sub 미확인은
+    'sub_failed'(거부류, 가시화만)로 갈린다(advisor B)."""
+    from types import SimpleNamespace
+    from hoga.live.lifecycle import _capture_health
+    GRACE = 120_000
+    NOW = 10_000_000
+    REF = NOW - 200_000
+    def ws(connected, expected, acked, last_recv):
+        return SimpleNamespace(connected=connected, sub_expected=expected,
+                               sub_acked=acked, last_recv_ms=last_recv)
+    assert _capture_health(running=False, ws=None, now_ms=NOW, ref_ms=REF,
+                           stale_after_ms=GRACE, market_closed=False) == (False, "offline")
+    assert _capture_health(running=True, ws=ws(False, 39, 0, None), now_ms=NOW,
+                           ref_ms=REF, stale_after_ms=GRACE, market_closed=True) == (False, "closed")
+    assert _capture_health(running=True, ws=ws(False, 39, 0, None), now_ms=NOW,
+                           ref_ms=REF, stale_after_ms=GRACE, market_closed=False) == (False, "reconnecting")
+    assert _capture_health(running=True, ws=ws(True, 39, 10, NOW - 1000),
+                           now_ms=NOW, ref_ms=NOW - 1000, stale_after_ms=GRACE,
+                           market_closed=False) == (False, "subscribing")
+    assert _capture_health(running=True, ws=ws(True, 39, 10, NOW - 1000),
+                           now_ms=NOW, ref_ms=REF, stale_after_ms=GRACE,
+                           market_closed=False) == (False, "sub_failed")
+    assert _capture_health(running=True, ws=ws(True, 39, 10, NOW - 200_000),
+                           now_ms=NOW, ref_ms=REF, stale_after_ms=GRACE,
+                           market_closed=False) == (False, "stale")
+    assert _capture_health(running=True, ws=ws(True, 39, 39, NOW - 1000),
+                           now_ms=NOW, ref_ms=REF, stale_after_ms=GRACE,
+                           market_closed=False) == (True, "healthy")
+
+
+@pytest.mark.asyncio
+async def test_get_status_exposes_capture_health(monkeypatch, tmp_path) -> None:
+    """get_status가 capture_healthy/capture_reason를 노출 — 정상 ws."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+    lifecycle.reset_for_tests()
+    class _FakeWs:
+        connected = True
+        sub_expected = 3
+        sub_acked = 3
+        last_tick_ms = None
+        last_recv_ms = lifecycle._now_ms()
+    class _FakeStream:
+        ws = _FakeWs()
+    async def _forever():
+        await asyncio.sleep(60)
+    task = asyncio.create_task(_forever())
+    try:
+        lifecycle._state = _State(
+            started_at_ms=lifecycle._now_ms() - 200_000,
+            watchlist_codes=("005930",), stream_task=task,
+            stream_obj=_FakeStream(), live_set=("005930",),
+        )
+        monkeypatch.setattr(lifecycle, "_market_clock_closed_for_capture",
+                            lambda _now: False)
+        st = lifecycle.get_status()
+        assert st.capture_healthy is True
+        assert st.capture_reason == "healthy"
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task

@@ -111,6 +111,9 @@ class LiveStatus(BaseModel):
     transport: str = "ws"
     ws_connected: bool = False
     live_set: list[str] = Field(default_factory=list)
+    # 캡처 헬스(spec 2026-06-08 §2.2) — cycle_lag_ms를 대체하는 정직한 신호.
+    capture_healthy: bool = True
+    capture_reason: str = "offline"
 
 
 # ── State ──────────────────────────────────────────────────────────────────────
@@ -175,6 +178,59 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _market_clock_closed_for_capture(now_ms: int) -> bool:
+    """캡처 게이트(ws_capture_window)의 순수-시계 근사 — 주말 또는 정규장
+    (09:00–15:30 KST) 밖이면 True. get_status는 sync 라우트라 캘린더 HTTP
+    (is_trading_session_today)를 못 쓴다(0a67a3e가 to_thread로 격리한 그 블록).
+    그래서 순수 weekday+clock으로 'closed'를 판정해 밤·주말 pill 거짓-앰버를
+    막는다. 평일 공휴일 장중은 'closed'로 안 잡혀 reconnecting 앰버로 보이나
+    드물어 수용(quote 게이트와 동일 트레이드오프)."""
+    from datetime import datetime  # noqa: PLC0415
+
+    from .kis_client import KIS_KST  # noqa: PLC0415
+    from .session_gate import market_phase  # noqa: PLC0415
+
+    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
+    if kst.weekday() >= 5:  # noqa: PLR2004 — 토/일
+        return True
+    return market_phase(now_ms) != "regular"  # regular = 09:00–15:30
+
+
+def _capture_health(
+    *, running: bool, ws: object | None, now_ms: int, ref_ms: int,
+    stale_after_ms: int, market_closed: bool,
+) -> tuple[bool, str]:
+    """캡처 헬스 단일 술어(spec 2026-06-08 §2.2) — watchdog과 get_status가 공유.
+
+    last_recv 단독은 구독이 죽어도 PINGPONG이 갱신해 거짓-그린(리뷰 #4),
+    last_tick 단독은 한산한 종목을 거짓-레드로 만든다. 그래서 '구독 확인 +
+    수신 신선도'를 결합한다. ref_ms = max(started, session_open) — 세션 기준
+    grace 시작점(watchdog과 동일).
+
+    체크 순서가 핵심(advisor B): recv(stale)를 sub보다 먼저 본다 — sub 미확인
+    이어도 수신이 끊겼으면 dead socket이라 'stale'(watchdog 재시작), 수신이
+    신선하면 'sub_failed'(appkey 거부류 — 재연결 불응, 가시화만)로 갈린다.
+    """
+    if not running or ws is None:
+        return (False, "offline")
+    if market_closed:
+        return (False, "closed")
+    if not getattr(ws, "connected", False):
+        return (False, "reconnecting")
+    grace_elapsed = (now_ms - ref_ms) > stale_after_ms
+    last_recv = getattr(ws, "last_recv_ms", None)
+    recv_stale = grace_elapsed and (
+        last_recv is None or (now_ms - last_recv) > stale_after_ms
+    )
+    if recv_stale:
+        return (False, "stale")
+    expected = getattr(ws, "sub_expected", 0)
+    acked = getattr(ws, "sub_acked", 0)
+    if expected > 0 and acked < expected:
+        return (False, "sub_failed" if grace_elapsed else "subscribing")
+    return (True, "healthy")
+
+
 def get_status() -> LiveStatus:
     """Read the current live status. Always safe to call.
 
@@ -185,16 +241,36 @@ def get_status() -> LiveStatus:
 
     # WS-specific attributes (stream path)
     stream = _state.stream_obj
+    ws = getattr(stream, "ws", None) if stream is not None else None
     ws_connected = False
     last_tick_ms: int | None = None
-    if stream is not None:
-        ws = getattr(stream, "ws", None)
-        if ws is not None:
-            ws_connected = getattr(ws, "connected", False)
-            # 데이터 프레임 전용 신호만 노출(리뷰 Important 1-3): last_flush_ms는
-            # 틱 0건이어도 10초마다 갱신되므로 폴백하면 '마지막 데이터 활동'으로
-            # 오인된다. 틱이 아직 없으면 정직하게 None (wire 모델은 nullable).
-            last_tick_ms = getattr(ws, "last_tick_ms", None)
+    if ws is not None:
+        ws_connected = getattr(ws, "connected", False)
+        # 데이터 프레임 전용 신호만 노출(리뷰 Important 1-3): last_flush_ms는
+        # 틱 0건이어도 10초마다 갱신되므로 폴백하면 '마지막 데이터 활동'으로
+        # 오인된다. 틱이 아직 없으면 정직하게 None (wire 모델은 nullable).
+        last_tick_ms = getattr(ws, "last_tick_ms", None)
+
+    # 캡처 헬스(spec 2026-06-08 §2.2) — watchdog과 공유하는 단일 술어
+    from datetime import datetime  # noqa: PLC0415
+
+    from .kis_client import KIS_KST  # noqa: PLC0415
+
+    now_ms = _now_ms()
+    started = _state.started_at_ms
+    if started is None:
+        cap_healthy, cap_reason = (False, "offline")
+    else:
+        kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
+        session_open_ms = int(
+            kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
+        )
+        ref_ms = max(started, session_open_ms)
+        cap_healthy, cap_reason = _capture_health(
+            running=running, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
+            stale_after_ms=_WATCHDOG_STALE_AFTER_MS,
+            market_closed=_market_clock_closed_for_capture(now_ms),
+        )
 
     return LiveStatus(
         running=running,
@@ -208,6 +284,8 @@ def get_status() -> LiveStatus:
         transport="ws",
         ws_connected=ws_connected,
         live_set=list(_state.live_set),
+        capture_healthy=cap_healthy,
+        capture_reason=cap_reason,
     )
 
 
