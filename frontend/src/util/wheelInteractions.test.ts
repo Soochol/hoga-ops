@@ -359,3 +359,59 @@ describe('computeWheelOutcome — maxSpan (zoom-out floor, anchor-preserving)', 
     expect(out!.to).toBeCloseTo(50 + 50 * f, 9);
   });
 });
+
+// ---------------------------------------------------------------------------
+// plain wheel — latest-candle anchor (lastBarIndex)
+// (개선 2026-06-08: range.to(우측 패딩 끝) 고정은 줌인 시 마지막 캔들을 화면
+//  왼쪽으로 밀어내 앵커가 풀렸다. 라이브 엣지에서는 마지막 캔들을 앵커하고,
+//  과거로 스크롤한 상태(to < lastBarIndex)에서는 기존대로 to를 고정한다.)
+// ---------------------------------------------------------------------------
+
+describe('computeWheelOutcome — plain wheel latest-candle anchor', () => {
+  it('라이브 엣지 줌인: 마지막 캔들(lastBarIndex)을 앵커 — to 고정 아님, 캔들 비율 보존', () => {
+    // range {0,115}, lastBarIndex 100 (to = lastBar + 15 패딩). 줌인 factor=exp(-0.1).
+    const f = Math.exp(-0.1);
+    const out = computeWheelOutcome(
+      baseInput({ range: { from: 0, to: 115 }, deltaY: -100, lastBarIndex: 100 }),
+    );
+    expect(out).not.toBeNull();
+    expect(out!.from).toBeCloseTo(100 - 100 * f, 9); // ≈ 9.52
+    expect(out!.to).toBeCloseTo(100 + 15 * f, 9); // ≈ 113.57 (to가 줄어듦 — 고정 아님)
+    // 마지막 캔들 화면 비율 불변식: (lastBar − from)/span === 줌 전 비율(100/115)
+    expect((100 - out!.from) / (out!.to - out!.from)).toBeCloseTo(100 / 115, 9);
+  });
+
+  it('라이브 엣지 줌아웃: 마지막 캔들 앵커 — 캔들 비율 보존', () => {
+    const f = Math.exp(0.1);
+    const out = computeWheelOutcome(
+      baseInput({ range: { from: 0, to: 115 }, deltaY: 100, lastBarIndex: 100 }),
+    );
+    expect(out!.from).toBeCloseTo(100 - 100 * f, 9);
+    expect(out!.to).toBeCloseTo(100 + 15 * f, 9);
+    expect((100 - out!.from) / (out!.to - out!.from)).toBeCloseTo(100 / 115, 9);
+  });
+
+  it('과거로 스크롤(to < lastBarIndex): 오른쪽 끝(to) 고정 — 기존 결정 #1 유지', () => {
+    // 마지막 캔들이 화면 밖 오른쪽 → anchor = min(to, lastBar) = to.
+    const out = computeWheelOutcome(
+      baseInput({ range: { from: 0, to: 100 }, deltaY: -100, lastBarIndex: 300 }),
+    );
+    expect(out!.to).toBe(100); // 우측 끝 고정
+    expect(out!.from).toBeGreaterThan(0);
+  });
+
+  it('lastBarIndex 미지정: 기존 to-고정 동작 (하위호환)', () => {
+    const out = computeWheelOutcome(baseInput({ range: { from: 0, to: 100 }, deltaY: -100 }));
+    expect(out!.to).toBe(100);
+  });
+
+  it('마지막 캔들 앵커 + maxSpan 플로어: 캔들 비율 보존하며 클램프', () => {
+    // 줌아웃이 플로어를 넘으면 마지막 캔들(앵커) 비율을 보존하며 span 클램프.
+    // range {0,115}, lastBar 100 (비율 100/115), maxSpan 120.
+    const out = computeWheelOutcome(
+      baseInput({ range: { from: 0, to: 115 }, deltaY: 100, lastBarIndex: 100, maxSpan: 120 }),
+    );
+    expect(out!.to - out!.from).toBeCloseTo(120, 9);
+    expect((100 - out!.from) / (out!.to - out!.from)).toBeCloseTo(100 / 115, 9);
+  });
+});
