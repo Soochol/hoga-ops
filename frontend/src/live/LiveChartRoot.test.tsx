@@ -1652,6 +1652,9 @@ describe('LiveChartRoot wheel interactions wiring', () => {
       timeToCoordinate: vi.fn(() => null),
       getVisibleLogicalRange: vi.fn(() => ({ from: 0, to: 100 })),
       coordinateToLogical: vi.fn(() => null),
+      // 줌아웃 플로어(maxSpan = width/minBarSpacing = 2000) — 이 테스트의
+      // 요청 span(≈110.5)에는 발동하지 않는 값.
+      width: vi.fn(() => 1000),
     };
     const chart = {
       addSeries: vi.fn(() => ({
@@ -1667,6 +1670,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
       remove: vi.fn(),
       resize: vi.fn(),
       applyOptions: vi.fn(),
+      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
     };

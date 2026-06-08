@@ -66,6 +66,18 @@ export function useWheelInteractions(
           : e.deltaMode === e.DOM_DELTA_PAGE ? 120
           : 1;
         const rect = container.getBoundingClientRect();
+        // 줌아웃 플로어 합성: 라이브러리는 barSpacing < minBarSpacing이 되는
+        // span을 거부하면서 오른쪽 끝(rightOffset)만 적용한다 — 무클램프 줌
+        // 요청이 플로어에서 우측 팬으로 변질되어 ctrl 앵커가 풀린다
+        // (/diagnose 2026-06-08). 요청 span을 플로어 한계로 미리 클램프하면
+        // 앵커 비율이 보존된다. width()는 리사이즈 대응을 위해 이벤트 시점에
+        // 읽는다 (plot 폭 px / minBarSpacing px = 최대 표시 바 수).
+        const plotWidth = ts.width();
+        const minBarSpacing = chart.options().timeScale.minBarSpacing;
+        const maxSpan =
+          plotWidth > 0 && minBarSpacing > 0
+            ? plotWidth / minBarSpacing
+            : Number.POSITIVE_INFINITY;
         const outcome = computeWheelOutcome({
           range,
           deltaY: e.deltaY * unit,
@@ -74,6 +86,7 @@ export function useWheelInteractions(
           mouseX: e.clientX - rect.left,
           coordinateToLogical: (x) => ts.coordinateToLogical(x),
           maxTo: maxToRef.current,
+          maxSpan,
         });
         if (outcome) ts.setVisibleLogicalRange(outcome);
       } catch {
