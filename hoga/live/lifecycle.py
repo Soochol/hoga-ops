@@ -472,11 +472,26 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
         # M5: 빈 watchlist면 codes=[] → 전 종목 unsubscribe 후 0구독 idle 연결
         # 유지(정지 아님 — poller와 의도적 차이). 재추가 시 즉시 재구독 가능.
 
-        await stream.ws.update_codes(codes)  # type: ignore[union-attr]
-        stream.set_active_codes(set(codes))  # type: ignore[union-attr]  # advisor C: 밀려난 코드 carry 즉시 제거
-        await _buffer.drop_codes_except(set(codes))  # Task 4 리뷰: 떠난 코드 ring 해제
-
+        # failure-domain 순서(spec 2026-06-08 P2 #13): durable·raise-없는 로컬
+        # 상태를 먼저 확정한다 — _state(today-promoter가 읽는 권위)와
+        # set_active_codes(downsampler carry 정리). 이전엔 _state 갱신이 마지막
+        # 줄이라 ws send/drop 예외 시 stale로 남아 promote가 옛 Live Set을
+        # 계속 승격했다.
+        codes_set = set(codes)
+        stream.set_active_codes(codes_set)  # type: ignore[union-attr]  # sync, carry 정리(advisor C)
         _state = replace(_state, live_set=tuple(codes), watchlist_codes=tuple(codes))
+
+        # 아래 둘은 best-effort: 실패해도 위 durable 상태는 이미 확정됐고, ws는
+        # 재연결 시 update_codes가 send 전 갱신한 self._codes로 전체 재구독해
+        # 자가치유한다(Task 11). drop 실패는 ring에 떠난 코드 잔존(다음 정리까지).
+        try:
+            await _buffer.drop_codes_except(codes_set)  # 떠난 코드 ring 해제(Task 4)
+        except Exception:  # noqa: BLE001
+            _log.exception("live.stream.drop_codes_failed")
+        try:
+            await stream.ws.update_codes(codes)  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001
+            _log.exception("live.stream.update_codes_failed")
 
 
 # ADR-0064 이식 — WS 스트림 watchdog

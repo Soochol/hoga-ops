@@ -547,6 +547,64 @@ async def test_refresh_live_stream_updates_ws_and_buffer(
 
 
 @pytest.mark.asyncio
+async def test_refresh_live_stream_durable_state_survives_ws_failure(
+    monkeypatch, tmp_path
+) -> None:
+    """spec 2026-06-08 P2 #13: ws.update_codes(또는 drop_codes_except)가 raise해도
+    durable 상태(_state.watchlist_codes — today-promoter가 읽는 권위)와
+    set_active_codes(downsampler carry 정리)는 새 codes로 확정돼야 한다. 현재는
+    _state 갱신이 마지막 줄이라 ws send 실패 시 stale로 남아 promote가 옛 Live
+    Set을 계속 승격한다(failure-domain 순서 재배치)."""
+    import json
+
+    from hoga.api import symbols
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr(symbols, "_cache", [])
+
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "version": 1,
+        "entries": [
+            {"code": f"{i:06d}", "name": f"{i:06d}",
+             "registered_at_kst_date": "20260101", "last_success_date": None}
+            for i in range(3)
+        ],
+    }))
+
+    set_active: dict = {}
+
+    class _FailingWs:
+        async def update_codes(self, codes):
+            raise ConnectionError("ws send failed mid-refresh")
+
+    class _FakeStream:
+        def __init__(self):
+            self.ws = _FailingWs()
+
+        def set_active_codes(self, codes):
+            set_active["codes"] = set(codes)
+
+    async def _fake_drop(keep):
+        return None
+
+    monkeypatch.setattr(lifecycle._buffer, "drop_codes_except", _fake_drop)
+    lifecycle._state = _State(
+        started_at_ms=1, watchlist_codes=("999999",),
+        stream_obj=_FakeStream(), live_set=("999999",),
+    )
+
+    # ws send가 실패해도 refresh는 예외를 던지지 않고 durable 상태를 확정한다.
+    await lifecycle.refresh_live_stream(data_dir=tmp_path)
+
+    expected = tuple(f"{i:06d}" for i in range(3))
+    assert lifecycle._state.watchlist_codes == expected  # promote 권위 — 확정됨
+    assert lifecycle._state.live_set == expected
+    assert set_active["codes"] == set(expected)           # carry 정리 — 적용됨
+
+
+@pytest.mark.asyncio
 async def test_refresh_live_stream_early_returns_without_stream(tmp_path) -> None:
     """stream/ws가 None이면 기동 폴백(_start_live_stream_locked)으로 위임 —
     그 가드(빈 watchlist → False)가 막으면 예외 없이 no-op (상태 불변).
