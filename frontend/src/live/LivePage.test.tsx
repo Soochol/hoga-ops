@@ -87,6 +87,8 @@ describe('LivePage shell', () => {
         started_at_ms: 1,
         last_tick_ms: 1,
         cycle_lag_ms: 100,
+        capture_healthy: true,
+        capture_reason: 'healthy',
         watchlist_count: 1,
         kis_calls_today: 0,
         kis_rate_limit_remaining: null,

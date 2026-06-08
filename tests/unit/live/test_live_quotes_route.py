@@ -108,3 +108,69 @@ def test_quote_phase_boundary_at_0900_kst():
     assert _quote_phase(datetime(2026, 6, 1, 8, 59, tzinfo=_KST)) == "pre_open"
     assert _quote_phase(datetime(2026, 6, 1, 9, 0, tzinfo=_KST)) == "open"
     assert _quote_phase(datetime(2026, 6, 1, 15, 30, tzinfo=_KST)) == "open"
+
+
+def test_quote_phase_clock_boundaries_closed():
+    """스펙 2026-06-08 ⑧: 평일 08:50–16:00만 폴링 가치 구간. KRX 동시호가
+    08:50 시작(사용자 정정 — 구 08:30 아님). 2026-06-08은 월요일."""
+    mk = lambda h, m: datetime(2026, 6, 8, h, m, tzinfo=_KST)  # noqa: E731
+    assert _quote_phase(mk(8, 49)) == "closed"
+    assert _quote_phase(mk(8, 50)) == "pre_open"
+    assert _quote_phase(mk(9, 0)) == "open"
+    assert _quote_phase(mk(15, 59)) == "open"
+    assert _quote_phase(mk(16, 0)) == "closed"
+    # 토요일(2026-06-13) 장중 시각도 closed
+    assert _quote_phase(datetime(2026, 6, 13, 10, 0, tzinfo=_KST)) == "closed"
+
+
+class _CountingFakeKis:
+    def __init__(self, quotes):
+        self._quotes = quotes
+        self.calls = 0
+
+    async def fetch_multi_price(self, codes):
+        self.calls += 1
+        return self._quotes
+
+
+def _counting_app(fake):
+    app = FastAPI()
+    app.include_router(build_router(
+        get_status=lifecycle.get_status,
+        get_kis_client=(lambda: fake),
+    ))
+    return app
+
+
+def test_quotes_closed_serves_last_seen_without_kis(monkeypatch):
+    """closed에는 장중 마지막 시세를 KIS 무호출로 서빙('마지막 시세 유지' 결정,
+    스펙 2026-06-08 ⑧). 등락률은 open과 동일하게 표시(종가+등락 — pre_open과
+    다름)."""
+    fake = _CountingFakeKis(QUOTES)
+    c = TestClient(_counting_app(fake))
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    r1 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
+    assert r1.json()["quotes"][0]["price"] == 72400
+    assert fake.calls == 1
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "closed")
+    r2 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
+    body = r2.json()
+    assert fake.calls == 1, "closed에서 캐시 보유 코드에 KIS 호출 발생"
+    assert body["phase"] == "closed"
+    assert body["quotes"][0]["price"] == 72400
+    assert body["quotes"][0]["change_pct"] == 1.2   # closed는 등락률 유지
+    assert body["quotes"][1]["change_won"] == -1500
+
+
+def test_quotes_closed_cold_start_fetches_once(monkeypatch):
+    """closed 콜드 스타트(서버 재시작 직후): 캐시 미스면 정확히 1회만 KIS를
+    불러 채우고(KIS는 장외에도 종가 반환), 이후 요청은 캐시 서빙."""
+    fake = _CountingFakeKis(QUOTES)
+    c = TestClient(_counting_app(fake))
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "closed")
+    r1 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
+    assert fake.calls == 1
+    assert r1.json()["quotes"][0]["price"] == 72400
+    r2 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
+    assert fake.calls == 1, "콜드 스타트 이후에도 KIS 재호출"
+    assert r2.json()["quotes"][1]["price"] == 183500

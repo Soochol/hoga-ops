@@ -1,5 +1,10 @@
-"""Stage 1 / Task 1.1 + 1.2 — KIS HTTP client tests."""
+"""Stage 1 / Task 1.1 + 1.2 — KIS HTTP client tests.
+
+Task 13: `_get` 의미론(재시도/에러 정규화/율리미터) 테스트의 probe는
+poller fetch가 은퇴하며 `client._get(...)` 직접 호출로 교체 — 검증 대상이
+_get 계약 자체이므로 wrapper 메서드는 불필요하다."""
 import asyncio
+import json
 import time
 
 import httpx
@@ -70,7 +75,7 @@ async def test_5xx_with_json_body_preserves_upstream_msg_cd() -> None:
     )
     try:
         with pytest.raises(KisApiError) as exc_info:
-            await client.fetch_orderbook("003490")
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
         err = exc_info.value
         assert err.msg_cd == "HTTP_500/OPSQ2000"
         assert err.msg1 == "장시간이 아닙니다"
@@ -92,7 +97,7 @@ async def test_5xx_with_egw00201_raises_rate_limit_error() -> None:
     )
     try:
         with pytest.raises(KisRateLimitError) as exc_info:
-            await client.fetch_orderbook("003490")
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
         # Surface both the HTTP status and the upstream code so the
         # rate_limited log can name the precise upstream signal.
         assert "HTTP_500/EGW00201" in str(exc_info.value)
@@ -110,7 +115,7 @@ async def test_5xx_with_non_json_body_falls_back_to_text() -> None:
     )
     try:
         with pytest.raises(KisApiError) as exc_info:
-            await client.fetch_orderbook("003490")
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
         err = exc_info.value
         assert err.msg_cd == "HTTP_502"
         assert "Bad Gateway" in err.msg1
@@ -222,7 +227,7 @@ async def test_kis_client_get_goes_through_rate_limiter() -> None:
 
     client._rate_limiter.acquire = counting_acquire  # type: ignore[method-assign]
     try:
-        await client.fetch_orderbook("003490")
+        await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
         assert calls["n"] == 1
     finally:
         await client.aclose()
@@ -298,13 +303,44 @@ async def test_get_retries_on_rate_limit_5xx_then_succeeds(monkeypatch) -> None:
         _rate_limit_backoff=(1.0, 2.0, 4.0),
     )
     try:
-        ob = await client.fetch_orderbook("003490")
-        assert ob is not None
+        body = await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
+        assert body.get("rt_cd") == "0"
         # 3 data calls: 2 EGW00201 + 1 OK. Sleeps fired BETWEEN attempts.
         assert counter["data"] == 3
         assert sleeps == [1.0, 2.0]
     finally:
         await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_retry_is_logged(monkeypatch, caplog) -> None:
+    """스펙 2026-06-08 ⑤: 재시도는 +1~7s의 침묵 지연이었다 — 첫 재시도는
+    WARNING(운영 신호), 이후 재시도는 DEBUG(병렬 fetch 동시 재시도 로그 벽 방지)."""
+    import logging
+
+    async def fake_sleep(s: float) -> None:
+        return
+
+    monkeypatch.setattr("hoga.live.kis_client.asyncio.sleep", fake_sleep)
+    client, _counter = _make_attempt_counting_client(
+        responses=[
+            (500, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "too fast"}),
+            (500, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "too fast"}),
+            (200, _ok_orderbook_body()),
+        ],
+        _rate_limit_backoff=(1.0, 2.0, 4.0),
+    )
+    try:
+        with caplog.at_level(logging.DEBUG, logger="hoga.live.kis_client"):
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
+    finally:
+        await client.aclose()
+    retry_logs = [r for r in caplog.records if "EGW00201" in r.getMessage()]
+    assert len(retry_logs) == 2
+    assert retry_logs[0].levelno == logging.WARNING
+    assert "/uapi/probe" in retry_logs[0].getMessage()
+    assert "1/3" in retry_logs[0].getMessage()
+    assert retry_logs[1].levelno == logging.DEBUG
 
 
 @pytest.mark.asyncio
@@ -325,7 +361,7 @@ async def test_get_retries_on_rt_cd_egw00201_then_raises(monkeypatch) -> None:
     )
     try:
         with pytest.raises(KisRateLimitError):
-            await client.fetch_orderbook("003490")
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
         # 4 attempts = 1 initial + 3 retries; 3 sleeps between them.
         assert counter["data"] == 4
         assert sleeps == [1.0, 2.0, 4.0]
@@ -351,7 +387,7 @@ async def test_get_does_not_retry_on_api_error(monkeypatch) -> None:
     )
     try:
         with pytest.raises(KisApiError):
-            await client.fetch_orderbook("003490")
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
         assert counter["data"] == 1
         assert sleeps == []
     finally:
@@ -372,7 +408,7 @@ async def test_token_invalid_invalidates_and_retries_once() -> None:
     )
     provider = client._token_provider
     try:
-        await client.fetch_orderbook("003490")  # must not raise
+        await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})  # must not raise
         assert counter["data"] == 2
         assert provider.invalidated == 1
     finally:
@@ -388,7 +424,7 @@ async def test_token_invalid_twice_propagates() -> None:
     provider = client._token_provider
     try:
         with pytest.raises(KisApiError):
-            await client.fetch_orderbook("003490")
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
         assert counter["data"] == 2  # original + one retry
         assert provider.invalidated == 1  # invalidated once, not in a loop
     finally:
@@ -414,7 +450,7 @@ async def test_get_does_not_retry_on_auth_error() -> None:
     )
     try:
         with pytest.raises(KisAuthError):
-            await client.fetch_orderbook("003490")
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
         # Data endpoint never reached — auth failed first.
         assert data_calls["n"] == 0
     finally:
@@ -453,6 +489,64 @@ async def test_get_retry_false_kwarg_disables_retry(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_approval_key() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/oauth2/Approval"
+        body = json.loads(request.content)
+        assert body == {"grant_type": "client_credentials",
+                        "appkey": "AK", "secretkey": "AS"}  # 필드명 secretkey!
+        return httpx.Response(200, json={"approval_key": "APPROVAL-123"})
+
+    kis = KisClient(
+        KisCredentials(app_key="AK", app_secret="AS"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    try:
+        assert await kis.get_approval_key() == "APPROVAL-123"
+    finally:
+        await kis.aclose()
+
+
+async def test_get_approval_key_missing_key_raises_with_body() -> None:
+    """200 without approval_key (KIS error envelope) — the error message must
+    carry the response body, since the WS reconnect loop's `err=%r` log is the
+    operator's only diagnostic surface (Task 6)."""
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(200, json={"error_description": "bad appkey"})
+    )
+    kis = KisClient(
+        KisCredentials(app_key="AK", app_secret="AS"),
+        token_provider=FakeTokenProvider(),
+        _transport=transport,
+    )
+    try:
+        with pytest.raises(KisAuthError) as exc_info:
+            await kis.get_approval_key()
+        assert "bad appkey" in str(exc_info.value)
+    finally:
+        await kis.aclose()
+
+
+async def test_get_approval_key_non_200_raises_with_status() -> None:
+    """Non-200 → KisAuthError naming the HTTP status (same pattern as
+    token issuance) instead of a bare httpx.HTTPStatusError traceback."""
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(403, json={"error_description": "forbidden"})
+    )
+    kis = KisClient(
+        KisCredentials(app_key="AK", app_secret="AS"),
+        token_provider=FakeTokenProvider(),
+        _transport=transport,
+    )
+    try:
+        with pytest.raises(KisAuthError) as exc_info:
+            await kis.get_approval_key()
+        assert "HTTP 403" in str(exc_info.value)
+    finally:
+        await kis.aclose()
+
+
 async def test_get_retry_re_acquires_rate_limiter_each_attempt(monkeypatch) -> None:
     """Each retry passes through the token bucket again — a retry burst can't
     skip the per-API-key budget by reusing the previous attempt's token. This
@@ -478,7 +572,7 @@ async def test_get_retry_re_acquires_rate_limiter_each_attempt(monkeypatch) -> N
     client._rate_limiter.acquire = counting_acquire  # type: ignore[method-assign]
     try:
         with pytest.raises(KisRateLimitError):
-            await client.fetch_orderbook("003490")
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
         # 4 attempts ⇒ 4 token acquires (no re-use across retries).
         assert acquires["n"] == 4
     finally:

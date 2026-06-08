@@ -1,11 +1,11 @@
-"""In-memory ring buffer for live snapshots (Stage 7-β).
+"""In-memory ring buffer for live ticks/snapshots (WS 전환 후 시간 기반 보존).
 
-The poller publishes per-cycle snapshots here; the /api/live/snapshot and
+The live stream publishes ticks/snapshots here; the /api/live/snapshot and
 /api/live/series endpoints read from it. ADR-0038: buffer.py is hot-path,
 no Parquet imports.
 
-Capacity: MAX_BUFFER_ENTRIES per (code, kind) — at 10s polling that's
-roughly 7 hours of regular session + 30 min after-hours buffer.
+Capacity: time-based eviction (DEFAULT_RETENTION_MS = 15 min) with a
+MAX_BUFFER_ENTRIES hard cap as a flood safety pin.
 
 Concurrency: a single asyncio.Lock guards all mutations and reads.
 Readers grab a frozen tuple snapshot of the deque under the lock, then
@@ -14,13 +14,16 @@ release before processing — keeps the critical section short.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections import deque
 from typing import Iterable
 
 from .snapshot import LiveSnapshot, SnapshotKind
 
-# Eng C5: cap unbounded growth at ~7h of polling per (code, kind).
-MAX_BUFFER_ENTRIES = 2520
+# Eng C5 → WS 전환: 개수 캡은 폭주 안전핀으로만. 실 보존은 시간 기반
+# (spec §8 봉합 사이징 불변식: 보존 > 2× HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S).
+MAX_BUFFER_ENTRIES = 60_000
+DEFAULT_RETENTION_MS = 900_000  # 15분
 
 
 class LiveBuffer:
@@ -30,7 +33,8 @@ class LiveBuffer:
     API layer can serialize directly without an extra conversion step.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, retention_ms: int = DEFAULT_RETENTION_MS) -> None:
+        self._retention_ms = retention_ms
         self._lock = asyncio.Lock()
         # Keyed by (code, kind.value) → deque[dict]. deque(maxlen=...) handles
         # FIFO drop automatically when the cap is exceeded.
@@ -57,7 +61,16 @@ class LiveBuffer:
             if not subs:
                 self._subscribers.pop(code, None)
 
-    async def publish(self, code: str, snapshots: Iterable[LiveSnapshot]) -> None:
+    async def publish(
+        self,
+        code: str,
+        snapshots: Iterable[LiveSnapshot],
+        *,
+        now_ms: int | None = None,
+    ) -> None:
+        if now_ms is None:
+            now_ms = int(time.time() * 1000)
+        cutoff = now_ms - self._retention_ms
         entries: list[dict] = []
         async with self._lock:
             for s in snapshots:
@@ -72,6 +85,8 @@ class LiveBuffer:
                 entry = {"t_ms": s.t_ms, "kind": s.kind.value, **s.payload}
                 d.append(entry)
                 entries.append(entry)
+                while d and d[0]["t_ms"] < cutoff:  # 시간 기반 eviction
+                    d.popleft()
 
         # Notify subscribers AFTER releasing the lock so slow consumers don't
         # block the publisher. Bounded queues drop on overflow.
@@ -115,6 +130,18 @@ class LiveBuffer:
             "recent_trades": _trades_list(latest_tr),
             "brokers": _strip_meta(latest_br),
         }
+
+    async def drop_codes_except(self, keep: set[str]) -> None:
+        """Live Set 축출 코드의 deque 해제(Task 4 리뷰 Minor 3) —
+        다운샘플러 set_active_codes와 동일 원칙(떠난 종목은 ring에서도 제거).
+
+        조용한 deque(틱이 없는 코드)는 publish 경로의 eviction이 도달하지
+        않아 per-tick 유량에서 종목당 ~수십 MB가 영구 잔존할 수 있다.
+        명시 해제로 Live Set 축출 즉시 메모리를 회수한다.
+        """
+        async with self._lock:
+            for key in [k for k in self._buf if k[0] not in keep]:
+                del self._buf[key]
 
     async def get_series(self, code: str) -> dict:
         """All buffered snapshots for `code` as parallel arrays."""

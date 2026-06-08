@@ -33,7 +33,11 @@ _FORBIDDEN_RE = re.compile(r"^(pyarrow|polars)(\..*)?$")
 _HOT_PATH_MODULES = (
     "hoga/live/__init__.py",
     "hoga/live/writer.py",
-    "hoga/live/poller.py",
+    "hoga/live/stream.py",
+    "hoga/live/ws_client.py",
+    "hoga/live/ws_frames.py",
+    "hoga/live/downsampler.py",
+    "hoga/live/session_gate.py",
     "hoga/live/snapshot.py",
     "hoga/live/buffer.py",
     "hoga/live/api.py",

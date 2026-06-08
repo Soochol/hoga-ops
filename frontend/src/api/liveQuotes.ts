@@ -12,8 +12,16 @@ export interface LiveQuote {
 }
 
 export interface LiveQuotesResponse {
-  phase: 'pre_open' | 'open';
+  phase: 'pre_open' | 'open' | 'closed';
   quotes: LiveQuote[];
+}
+
+/** closed(평일 08:50–16:00 밖·주말)면 600s 하트비트 — `false`로 완전히 끄면
+ *  React Query가 재평가할 계기가 없어 다음 개장에 폴링이 재개되지 않는다.
+ *  600s는 08:50 후 최대 10분 내 자동 복귀하면서 일일 폴링 ~69% 절감
+ *  (스펙 2026-06-08 ⑧ — 백엔드는 closed에 마지막 시세를 서빙하므로 셀 공백 없음). */
+export function quotesRefetchInterval(phase: string | undefined): number {
+  return phase === 'closed' ? 600_000 : 10_000;
 }
 
 export function getQuotes(codes: string[]): Promise<LiveQuotesResponse> {
@@ -31,7 +39,7 @@ export function useQuotes(codes: string[]) {
     queryFn: () => getQuotes(codes),
     enabled: codes.length > 0,
     staleTime: 10_000,
-    refetchInterval: 10_000,
+    refetchInterval: (q) => quotesRefetchInterval(q.state.data?.phase),
     // codes 집합이 바뀌면 새 queryKey라 data가 잠시 undefined → 전 셀이 '—'로
     // 깜빡인다. 직전 결과를 유지해 겹치는 코드는 그대로 두고 새 코드만 채워지게
     // 한다(형제 훅 range.ts·livePastCandles.ts 와 동일 패턴).

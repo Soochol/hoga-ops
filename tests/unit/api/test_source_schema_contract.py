@@ -65,7 +65,7 @@ def test_kis_live_promote_snapshot_columns_match_read_path(tmp_path: Path) -> No
 
     from hoga.tables.snapshots import write_parquet as write_snapshots_parquet
 
-    snapshots, _, _, _ = _parse_jsonl_to_records(
+    snapshots, _, _, _, _ = _parse_jsonl_to_records(
         jsonl, code="003490", date=_DATE,
     )
     assert len(snapshots) == 1
@@ -99,7 +99,7 @@ def test_kis_live_promote_trade_columns_match_read_path(tmp_path: Path) -> None:
 
     from hoga.tables.trades import write_parquet as write_trades_parquet
 
-    _, trades, _, _ = _parse_jsonl_to_records(
+    _, trades, _, _, _ = _parse_jsonl_to_records(
         jsonl, code="003490", date=_DATE,
     )
     assert len(trades) == 1
@@ -147,7 +147,7 @@ def test_hogaplay_and_kis_live_share_read_path_columns(tmp_path: Path) -> None:
         "t_ms": _T_MS_AT_OPEN, "kind": "ob",
         "payload": {"bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0},
     }) + "\n")
-    snapshots, _, _, _ = _parse_jsonl_to_records(
+    snapshots, _, _, _, _ = _parse_jsonl_to_records(
         jsonl, code="003490", date=_DATE,
     )
     out = tmp_path / "snapshots.parquet"
@@ -278,7 +278,7 @@ def test_read_path_columns_round_trip_through_kis_live_parquet(tmp_path: Path) -
             "phase": "regular",
         },
     }) + "\n")
-    snapshots, _, _, _ = _parse_jsonl_to_records(
+    snapshots, _, _, _, _ = _parse_jsonl_to_records(
         jsonl, code="003490", date=_DATE,
     )
 

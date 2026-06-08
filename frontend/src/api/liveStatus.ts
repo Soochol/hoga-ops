@@ -6,6 +6,9 @@ export interface LiveStatus {
   started_at_ms: number | null;
   last_tick_ms: number | null;
   cycle_lag_ms: number;
+  /** 캡처 헬스(spec 2026-06-08 §2.2). cycle_lag_ms(0 고정)를 대체하는 신호. */
+  capture_healthy: boolean;
+  capture_reason: string;
   /**
    * Codes the live poller is *actively iterating* — a poller-health metric,
    * NOT the watchlist inventory size. It is 0 whenever the poller isn't
