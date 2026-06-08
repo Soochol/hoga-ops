@@ -231,6 +231,9 @@ Every feature route except the chart workspace follows one shell:
 - sticky `top-0` + `--bg-card` 배경 — 패널과 동일색이라 평시엔 투명처럼 보이고
   스크롤 시에만 행을 가린다.
 - 종목 행(QuoteRow) 종목명은 `xs` — 가격(`sm` mono)이 1차 콘텐츠, 종목명은 식별자.
+- 종목 행 들여쓰기: 관심종목 패널에서만 `pl-10`(50px) — 그룹명 첫 글자(≈46px)보다
+  오른쪽에서 시작해 부모-자식 위계를 들여쓰기로도 표현(`QuoteRow indented`).
+  그룹 없는 스크리너는 평면 목록이라 미적용(기본 `pl-md`).
 
 ### Status dot (general)
 - 6px circle, glow via `box-shadow` for active states only

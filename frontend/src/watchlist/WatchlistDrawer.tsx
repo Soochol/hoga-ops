@@ -266,6 +266,7 @@ export function WatchlistDrawer() {
                         onClick={() => onPick(entry.code)}
                         onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                         onDelete={() => removeM.mutate(entry.code)}
+                        indented
                       />
                     );
                   })}
