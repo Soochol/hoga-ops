@@ -98,6 +98,20 @@ def test_broker_state_last_wins_and_carries():
     assert br2.t_ms == 20_000
 
 
+def test_fill_stamped_with_window_start_label():
+    """리뷰 #5: fill 스냅샷은 윈도 시작 라벨(fill_t_ms)로 스탬프 — 마감 시각
+    스탬프는 분 경계를 걸친 윈도의 합 전체를 다음 분봉으로 귀속시켜 trades
+    폴백·SSE per-trade 버킷팅과 체계적으로 어긋난다. 상태형(ob/broker)은
+    '마감 순간의 상태'이므로 now_ms 유지."""
+    ds = TickDownsampler()
+    ds.ingest(_ob("005930", 1000, tot_ask=111))
+    ds.ingest(_tr("005930", 1500, qty=5, side=1))
+    out = ds.flush(now_ms=20_000, phase="regular", fill_t_ms=10_000)
+    snaps = {s.kind: s for s in out["005930"]}
+    assert snaps[SnapshotKind.FILL].t_ms == 10_000   # 윈도 시작
+    assert snaps[SnapshotKind.OB].t_ms == 20_000     # 상태형은 마감 시각
+
+
 def test_multi_code_sums_are_isolated():
     ds = TickDownsampler()
     ds.ingest(_tr("005930", 1000, qty=5, side=1))

@@ -372,6 +372,33 @@ async def test_ws_watchdog_noop_outside_capture_window(
 
 
 @pytest.mark.asyncio
+async def test_ws_watchdog_gate_runs_off_event_loop(
+    monkeypatch, _spy_start_stream, tmp_path
+) -> None:
+    """watchdog의 ws_capture_window 평가는 이벤트 루프 스레드 밖에서 —
+    캘린더 게이트가 콜드/네거티브 캐시에서 동기 KIS HTTP를 부르므로 루프에서
+    직접 부르면 30초마다 전체 백엔드가 동결될 수 있다(리뷰 #2)."""
+    import threading
+
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    seen: list[bool] = []
+
+    def fake_gate(now_ms: int) -> bool:
+        seen.append(threading.current_thread() is threading.main_thread())
+        return False
+
+    monkeypatch.setattr("hoga.live.session_gate.ws_capture_window", fake_gate)
+    restarted = await lifecycle._ws_watchdog_check(
+        data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
+    )
+    assert restarted is False
+    assert seen, "게이트가 한 번도 평가되지 않음"
+    assert not any(seen), "watchdog 게이트가 이벤트 루프(메인 스레드)에서 실행됨"
+
+
+@pytest.mark.asyncio
 async def test_ws_watchdog_noop_when_healthy(
     monkeypatch, _spy_start_stream, tmp_path
 ) -> None:
@@ -518,7 +545,9 @@ async def test_refresh_live_stream_updates_ws_and_buffer(
 
 @pytest.mark.asyncio
 async def test_refresh_live_stream_early_returns_without_stream(tmp_path) -> None:
-    """stream 또는 ws가 None이면 예외 없이 early-return (상태 불변)."""
+    """stream/ws가 None이면 기동 폴백(_start_live_stream_locked)으로 위임 —
+    그 가드(빈 watchlist → False)가 막으면 예외 없이 no-op (상태 불변).
+    여기선 watchlist.json이 없어 codes=[]이므로 기동이 거부된다(리뷰 #1)."""
     from hoga.live import lifecycle
     from hoga.live.lifecycle import _State
 
@@ -534,6 +563,50 @@ async def test_refresh_live_stream_early_returns_without_stream(tmp_path) -> Non
     lifecycle._state = _State(stream_obj=_WsLess(), live_set=("005930",))
     await lifecycle.refresh_live_stream(data_dir=tmp_path)
     assert lifecycle._state.live_set == ("005930",)  # 변경 없음
+
+
+@pytest.mark.asyncio
+async def test_refresh_live_stream_starts_never_started_stream(
+    monkeypatch, tmp_path
+) -> None:
+    """빈 watchlist 부팅(기동 실패) 후 첫 종목 추가 → refresh가 스트림을 기동
+    한다(리뷰 #1 — 구 refresh_live_poller의 auto-start 승계). 폴백이 없으면
+    watchdog도 no-op(started_at_ms None)이고 프런트엔드에 /api/live/control
+    start 호출 경로가 없어, 재시작 전까지 캡처가 조용히 죽어 있게 된다."""
+    import json
+
+    from hoga.api import symbols
+    from hoga.live import lifecycle, session_gate
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setenv("KIS_APP_KEY", "K")
+    monkeypatch.setenv("KIS_APP_SECRET", "S")
+    # 게이트 폐쇄 고정 — KisWsClient.run이 네트워크 없이 sleep만 하게
+    # (test_lifespan_starts_and_stops_stream_gracefully와 동일 기법).
+    monkeypatch.setattr(session_gate, "should_run_now", lambda _t: False)
+    monkeypatch.setattr(symbols, "_cache", [])  # cold cache → 무필터 폴백
+
+    (tmp_path / "watchlist.json").write_text(
+        json.dumps({"version": 1, "entries": []})
+    )
+    assert not await lifecycle.start_live_stream(data_dir=tmp_path)  # 빈 부팅
+    assert lifecycle.get_status().running is False
+
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "version": 1,
+        "entries": [{"code": "005930", "name": "삼성전자",
+                     "registered_at_kst_date": "20260101",
+                     "last_success_date": None}],
+    }))
+    try:
+        await lifecycle.refresh_live_stream(data_dir=tmp_path)  # 첫 종목 추가 훅
+        assert lifecycle.get_status().running is True
+        assert lifecycle._state.live_set == ("005930",)
+        # 기동 시 활성 집합 배선(리뷰 #6) — on_tick 필터가 t0부터 동작해야
+        # 퇴출 코드의 in-flight 프레임 부활을 막는다.
+        assert lifecycle._state.stream_obj._active_codes == {"005930"}
+    finally:
+        await lifecycle.stop_live_stream()
 
 
 # ── 상수 drift 가드 ─────────────────────────────────────────────────────────────

@@ -57,9 +57,18 @@ class TickDownsampler:
         넘겨 다음 거래일 첫 flush를 어제 종가 호가창으로 오염시키는 것을 막는다."""
         self._codes.clear()
 
-    def flush(self, *, now_ms: int, phase: str) -> dict[str, list[LiveSnapshot]]:
+    def flush(
+        self, *, now_ms: int, phase: str, fill_t_ms: int | None = None
+    ) -> dict[str, list[LiveSnapshot]]:
         """윈도 마감 — 코드별 [ob?, broker?, fill] 반환. 흐름 합은 리셋,
-        상태(last_ob/last_broker)는 다음 윈도 carry를 위해 보존."""
+        상태(last_ob/last_broker)는 다음 윈도 carry를 위해 보존.
+
+        fill_t_ms(리뷰 #5): 흐름형(fill)은 **윈도 시작** 라벨 — 마감 시각으로
+        스탬프하면 분 경계를 걸친 윈도의 합 전체가 다음 분봉으로 귀속돼
+        trades 폴백·SSE per-trade 버킷팅과 어긋난다. 상태형(ob/broker)은
+        '마감 순간의 상태'이므로 now_ms 유지. None이면 now_ms 폴백(직접 호출
+        테스트 호환)."""
+        label_ms = fill_t_ms if fill_t_ms is not None else now_ms
         out: dict[str, list[LiveSnapshot]] = {}
         for code, st in self._codes.items():
             snaps: list[LiveSnapshot] = []
@@ -70,7 +79,7 @@ class TickDownsampler:
                 payload = {**st.last_broker, "phase": phase}
                 snaps.append(LiveSnapshot(t_ms=now_ms, kind=SnapshotKind.BROKER, payload=payload))
             snaps.append(LiveSnapshot.from_fill(
-                t_ms=now_ms, buy_qty=st.buy_qty, sell_qty=st.sell_qty, phase=phase,
+                t_ms=label_ms, buy_qty=st.buy_qty, sell_qty=st.sell_qty, phase=phase,
             ))
             st.buy_qty = 0
             st.sell_qty = 0

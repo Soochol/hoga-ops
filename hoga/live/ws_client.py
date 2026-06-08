@@ -66,7 +66,9 @@ class KisWsClient:
         while True:
             # 게이트는 "새 연결 수립"만 막는다 — 이미 살아있는 연결은 게이트가
             # 닫혀도 서버 drop까지 의도적으로 유지(쓰기는 flush 게이트가 차단).
-            if self._gate_fn is not None and not self._gate_fn():
+            # to_thread 격리(리뷰 #2): 캘린더 게이트의 동기 KIS HTTP가 이벤트
+            # 루프를 동결시키지 않도록 — 구 poller의 to_thread 가드 승계.
+            if self._gate_fn is not None and not await asyncio.to_thread(self._gate_fn):
                 self.connected = False
                 await asyncio.sleep(30)   # 장외/15:30 이후 — 연결 시도 보류
                 continue

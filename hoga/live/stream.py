@@ -31,6 +31,16 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _next_window_delay_s(now_s: float, interval_s: float) -> float:
+    """다음 벽시계 윈도 경계까지의 지연(초) — 리뷰 #5.
+
+    flush 윈도를 벽시계 경계(k·interval)에 정렬해 fills.py의 '10초는 모든
+    bucket_ms(60s~1800s)에 정확히 중첩' 전제를 실제로 보장한다. 고정 주기
+    sleep은 게이트 개방 시각에 위상이 박혀 분 경계를 걸치는 윈도를 만든다.
+    경계 정각이면 한 윈도 전체를 기다린다(0 sleep 재진입 방지)."""
+    return interval_s - (now_s % interval_s)
+
+
 class LiveStream:
     def __init__(
         self,
@@ -45,6 +55,10 @@ class LiveStream:
         self._date_fn = date_fn
         self._phase_fn = phase_fn or (lambda: market_phase(_now_ms()))
         self._ds = TickDownsampler()
+        # 리뷰 #6: on_tick 입구 필터용 활성 집합. None = 미설정(무필터 —
+        # set_active_codes 전 부분 조립·단위 테스트 호환); 실경로는
+        # start(_start_live_stream_locked)와 refresh가 항상 설정한다.
+        self._active_codes: set[str] | None = None
         self.ws: KisWsClient | None = None       # lifecycle이 주입
         self.last_flush_ms: int | None = None
         self._last_flush_date: str | None = None  # R1: 미관측 일경계 백스톱
@@ -53,11 +67,19 @@ class LiveStream:
         self._gate_open: bool = False
 
     def set_active_codes(self, codes: set[str]) -> None:
-        """Live Set 변경 위임 — refresh_live_stream이 호출(advisor C)."""
+        """Live Set 변경 위임 — start/refresh_live_stream이 호출(advisor C)."""
+        self._active_codes = set(codes)
         self._ds.set_active_codes(codes)
 
     async def on_tick(self, tick: WsTick) -> None:
         """ws_client 콜백 — 표시 경로(즉시·무게이트) + 저장 경로(누적·게이트)."""
+        # 활성 집합 필터(리뷰 #6): unsubscribe 직후 도착한 in-flight 잔여
+        # 프레임이 ingest의 setdefault로 퇴출 코드 상태를 부활시키면, 매 10초
+        # flush가 게이트 마감까지 유령 carry/zero-fill을 쓰고 promote가
+        # parquet으로 영구화한다. 표시 ring(buffer)도 drop_codes_except 후
+        # 재생성되므로 표시·저장 모두 입구에서 드롭.
+        if self._active_codes is not None and tick.code not in self._active_codes:
+            return
         # phase 이중 스탬프(M1): 여기 phase는 **표시 스냅샷 전용** — 수신 벽시계
         # 기준 위상을 buffer 스냅에 박는다(tick.t_ms 거래소 시각이 아니라 도착
         # 시점). 저장 경로의 위상은 별개로 flush 시점에 _ds.flush(phase=...)가
@@ -88,7 +110,13 @@ class LiveStream:
             _log.warning("live.stream.stale_state_reset prev=%s now=%s",
                          self._last_flush_date, date)
         self._last_flush_date = date
-        flushed = self._ds.flush(now_ms=now_ms, phase=self._phase_fn())
+        # fill 윈도 시작 라벨(리뷰 #5): 직전 flush 시각이 곧 이번 윈도의 시작.
+        # 첫 flush는 직전 시각이 없어 now − FLUSH_INTERVAL 폴백(루프 첫 회는
+        # 다운샘플러가 비어 있어 라벨이 행에 붙을 일도 없다).
+        fill_t_ms = (self.last_flush_ms if self.last_flush_ms is not None
+                     else now_ms - int(FLUSH_INTERVAL_S * 1000))
+        flushed = self._ds.flush(now_ms=now_ms, phase=self._phase_fn(),
+                                 fill_t_ms=fill_t_ms)
         for code, snaps in flushed.items():
             await self._writer.append(date, code, snaps)
         await self._writer.fsync_all()
@@ -103,16 +131,20 @@ class LiveStream:
         거래일 JSONL을 오염시키지 않게 한다(리뷰 C1)."""
         was_open = False
         while True:
-            open_now = ws_capture_window(_now_ms())
+            # to_thread 격리(리뷰 #2): 캘린더 게이트는 콜드/네거티브 캐시에서
+            # 동기 KIS HTTP(timeout 15s)를 부른다 — 구 poller의 to_thread 가드 승계.
+            open_now = await asyncio.to_thread(ws_capture_window, _now_ms())
             self._gate_open = open_now  # R2: on_tick의 ingest 게이트 플래그 갱신
             if open_now:
-                started = time.monotonic()
                 try:
                     await self.flush_once()
                 except Exception:  # noqa: BLE001
                     _log.exception("live.stream.flush_failed")
-                elapsed = time.monotonic() - started
-                await asyncio.sleep(max(0.0, FLUSH_INTERVAL_S - elapsed))
+                # 벽시계 경계 정렬(리뷰 #5) — 고정 주기 드리프트 제거: 윈도
+                # [k·10s, (k+1)·10s)가 분봉 경계에 정확히 중첩되게 한다.
+                await asyncio.sleep(
+                    _next_window_delay_s(time.time(), FLUSH_INTERVAL_S)
+                )
             else:
                 if was_open:  # open→closed 전환: drain + 상태 초기화
                     try:

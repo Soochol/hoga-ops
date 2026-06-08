@@ -281,60 +281,70 @@ async def start_live_stream(*, data_dir: Path) -> bool:
     """start_live_poller의 WS 대체 — 구조 동일(creds/watchlist 가드 → 기동).
 
     poller와 같은 가드: KIS creds 없거나 watchlist 비면 False.
-    symbol-master 필터를 먼저 적용한 뒤 live_set_codes로 상위 13 절단.
+    symbol-master 필터를 먼저 적용한 뒤 _compute_live_set으로 상위 13 절단.
     ⚠️ 머지(v0.6.1.0) 후: load_document로 폴더 포함 문서를 받아
     display_ordered_codes → symbol-master filter → [:13] 순서를 지킨다.
     KisClient 싱글턴 접근은 `hoga.live.kis_runtime`에서 수행.
     """
+    async with _lifecycle_lock:
+        return await _start_live_stream_locked(data_dir=data_dir)
+
+
+async def _start_live_stream_locked(*, data_dir: Path) -> bool:
+    """start의 본체 — 호출자가 _lifecycle_lock을 보유한 상태에서만 부른다
+    (_stop_live_stream_locked와 동일 패턴). refresh_live_stream의
+    never-started 폴백이 공유한다(리뷰 #1)."""
     from datetime import datetime, timedelta, timezone  # noqa: PLC0415
 
     from .stream import LiveStream  # noqa: PLC0415
     from .writer import LiveWriter  # noqa: PLC0415
     from .ws_client import KisWsClient  # noqa: PLC0415
 
-    async with _lifecycle_lock:
-        # 1-3. Live Set 산출(공용 파이프라인)
-        codes = _compute_live_set(data_dir)
-        if not codes:
-            return False
+    # 1-3. Live Set 산출(공용 파이프라인)
+    codes = _compute_live_set(data_dir)
+    if not codes:
+        return False
 
-        # 4. 기존 stream 정지 (락 보유 중 — 잠금 없는 내부 헬퍼)
-        await _stop_live_stream_locked()
+    # 4. 기존 stream 정지 (락 보유 중 — 잠금 없는 내부 헬퍼)
+    await _stop_live_stream_locked()
 
-        # 5. KIS 싱글턴
-        kis = kis_runtime.ensure_kis_client_from_env(data_dir)
-        if kis is None:
-            return False
+    # 5. KIS 싱글턴
+    kis = kis_runtime.ensure_kis_client_from_env(data_dir)
+    if kis is None:
+        return False
 
-        def _today_kst() -> str:
-            return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
+    def _today_kst() -> str:
+        return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
 
-        # 6. stream + ws 조립
-        stream = LiveStream(
-            buffer=_buffer,
-            writer=LiveWriter(data_dir / "live"),
-            date_fn=_today_kst,
-        )
-        from .session_gate import ws_capture_window  # noqa: PLC0415
+    # 6. stream + ws 조립
+    stream = LiveStream(
+        buffer=_buffer,
+        writer=LiveWriter(data_dir / "live"),
+        date_fn=_today_kst,
+    )
+    # on_tick 활성 집합 필터를 t0부터 배선(리뷰 #6) — refresh 이전에도
+    # 비구독 코드의 잔여 프레임이 다운샘플러 상태를 만들지 못하게 한다.
+    stream.set_active_codes(set(codes))
+    from .session_gate import ws_capture_window  # noqa: PLC0415
 
-        ws = KisWsClient(
-            approval_key_fn=kis.get_approval_key,
-            on_tick=stream.on_tick,
-            date_fn=_today_kst,
-            gate_fn=lambda: ws_capture_window(_now_ms()),
-        )
-        stream.ws = ws
+    ws = KisWsClient(
+        approval_key_fn=kis.get_approval_key,
+        on_tick=stream.on_tick,
+        date_fn=_today_kst,
+        gate_fn=lambda: ws_capture_window(_now_ms()),
+    )
+    stream.ws = ws
 
-        global _state  # noqa: PLW0603
-        _state = _State(
-            started_at_ms=_now_ms(),
-            watchlist_codes=tuple(codes),
-            live_set=tuple(codes),
-            stream_obj=stream,
-            ws_task=asyncio.create_task(ws.run(codes), name="live-ws"),
-            stream_task=asyncio.create_task(stream.run_flush_loop(), name="live-flush"),
-        )
-        return True
+    global _state  # noqa: PLW0603
+    _state = _State(
+        started_at_ms=_now_ms(),
+        watchlist_codes=tuple(codes),
+        live_set=tuple(codes),
+        stream_obj=stream,
+        ws_task=asyncio.create_task(ws.run(codes), name="live-ws"),
+        stream_task=asyncio.create_task(stream.run_flush_loop(), name="live-flush"),
+    )
+    return True
 
 
 async def _stop_live_stream_locked() -> None:
@@ -373,6 +383,11 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
     async with _lifecycle_lock:
         stream = _state.stream_obj
         if stream is None or stream.ws is None:  # type: ignore[union-attr]
+            # never-started 폴백(리뷰 #1): 빈 watchlist 부팅 등으로 기동하지
+            # 못한 스트림은 첫 watchlist 변경이 곧 기동 신호다 — 구
+            # refresh_live_poller의 auto-start 승계. 가드(빈 코드·creds 없음)는
+            # _start_live_stream_locked가 그대로 수행하므로 무해하게 no-op된다.
+            await _start_live_stream_locked(data_dir=data_dir)
             return
 
         codes = _compute_live_set(data_dir)
@@ -408,7 +423,9 @@ async def _ws_watchdog_check(
     from .kis_client import KIS_KST  # noqa: PLC0415
     from .session_gate import ws_capture_window  # noqa: PLC0415
 
-    if not ws_capture_window(now_ms):
+    # to_thread 격리(리뷰 #2): 캘린더 게이트의 동기 KIS HTTP가 30초 주기
+    # watchdog pass마다 이벤트 루프를 동결시키지 않도록.
+    if not await asyncio.to_thread(ws_capture_window, now_ms):
         return False
     started = _state.started_at_ms
     if started is None:

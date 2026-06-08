@@ -160,3 +160,33 @@ async def test_run_does_not_connect_while_gate_closed(monkeypatch):
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+async def test_gate_fn_runs_off_event_loop():
+    """gate_fn(ws_capture_window)은 콜드/네거티브 캐시에서 동기 KIS HTTP
+    (timeout 15s)를 부를 수 있다 — run()은 이벤트 루프에서 직접 부르지 말고
+    스레드로 격리해야 한다(구 poller의 to_thread 가드 승계, 리뷰 #2)."""
+    import threading
+
+    seen: list[bool] = []
+
+    def gate() -> bool:
+        seen.append(threading.current_thread() is threading.main_thread())
+        return False
+
+    client = KisWsClient(
+        approval_key_fn=_fake_approval,
+        on_tick=None,
+        date_fn=lambda: "20260605",
+        gate_fn=gate,
+    )
+    task = asyncio.create_task(client.run(["005930"]))
+    for _ in range(50):
+        await asyncio.sleep(0.01)
+        if seen:
+            break
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert seen, "게이트가 한 번도 평가되지 않음"
+    assert not any(seen), "gate_fn이 이벤트 루프(메인 스레드)에서 실행됨"
