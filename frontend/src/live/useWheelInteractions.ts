@@ -2,12 +2,13 @@ import { useEffect, useRef, type RefObject } from 'react';
 import type { IChartApi } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import { computeWheelOutcome } from '../util/wheelInteractions';
+import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 
 /**
  * /live 차트의 modifier-aware 휠 인터랙션 배선.
  *
  *  - 휠: 뷰포트 오른쪽 끝(`range.to`) 고정 줌
- *  - shift+휠: 스팬 유지 팬 (오른쪽 벽 = 마지막 캔들에서 클램프)
+ *  - shift+휠: 스팬 유지 팬 (오른쪽 벽 = 마지막 캔들 + rightOffset에서 클램프)
  *  - ctrl/cmd+휠: 커서 고정 줌 (클램프 없음 — 앵커 불변식 보존)
  *
  * 분기 수식은 `util/wheelInteractions.ts`의 순수 함수가 소유한다. 이 훅은
@@ -24,14 +25,17 @@ export function useWheelInteractions(
   bundle: RangeBundle | null,
 ): void {
   // maxTo ref — bundle 교체(SSE 푸시 포함)마다 값만 갱신, 리스너는 재부착하지
-  // 않는다. candles.length === 0이면 maxTo = -1이 되어 shift 오른쪽 팬이 퇴화
-  // 범위({from: -1 - span, to: -1})로 클램프되므로 빈 bundle 윈도우는 Infinity로
-  // 벽을 비활성화한다 (maxTo를 읽는 분기는 shift 오른쪽 팬뿐).
+  // 않는다. 오른쪽 벽 = 마지막 캔들 + rightOffset: shift 팬으로 라이브 엣지에
+  // 복귀하면 기본 뷰(우측 여백 포함)와 정확히 같은 화면에서 멈춘다. 처음엔
+  // 마지막 캔들 타이트(length - 1)였으나 필드 사용 후 버퍼안으로 개정 —
+  // 스펙 결정 #2 개정(2026-06-08) 참조. 빈 bundle 윈도우는 Infinity로 벽을
+  // 비활성화한다 (length === 0이면 벽이 여백 안쪽으로 파고들어 퇴화 클램프 발생;
+  // maxTo를 읽는 분기는 shift 오른쪽 팬뿐).
   const maxToRef = useRef(Number.POSITIVE_INFINITY);
   useEffect(() => {
     maxToRef.current =
       bundle && bundle.candles.length > 0
-        ? bundle.candles.length - 1
+        ? bundle.candles.length - 1 + (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0)
         : Number.POSITIVE_INFINITY;
   }, [bundle]);
 

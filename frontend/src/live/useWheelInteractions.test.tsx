@@ -133,13 +133,14 @@ describe('useWheelInteractions', () => {
     const { getByTestId, rerender } = render(<Harness chart={chart} bundle={makeBundle(100)} />);
     const host = getByTestId('wheel-host');
     const addSpy = vi.spyOn(host, 'addEventListener');
-    rerender(<Harness chart={chart} bundle={makeBundle(50)} />); // maxTo 99 → 49
+    rerender(<Harness chart={chart} bundle={makeBundle(50)} />); // maxTo 114 → 64 (49 + rightOffset 15)
     // 재부착 없음: bundle 교체가 addEventListener('wheel', ...)를 다시 부르지 않는다.
     expect(addSpy.mock.calls.filter(([type]) => type === 'wheel')).toHaveLength(0);
-    // 이벤트 시점에 ref에서 새 maxTo(49)를 읽는다: range {0,100}, step +10 →
-    // newTo 110 > 49 → 클램프 {from: 49-100, to: 49}. 교체 전 maxTo(99)로
-    // 클램프되면 {from: -1, to: 99}가 되어 실패한다.
+    // 이벤트 시점에 ref에서 새 maxTo(64 = 49 + rightOffset 15)를 읽는다:
+    // range {0,100}, step +10 → newTo 110 > 64 → 클램프 {from: 64-100, to: 64}.
+    // 교체 전 maxTo(114 = 99+15)가 스테일하게 남았다면 110 < 114라 클램프가
+    // 발동하지 않아 {from: 10, to: 110}이 되어 실패한다.
     wheel(host, { deltaY: 100, shiftKey: true });
-    expect(ts.setVisibleLogicalRange).toHaveBeenCalledWith({ from: -51, to: 49 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledWith({ from: -36, to: 64 });
   });
 });
