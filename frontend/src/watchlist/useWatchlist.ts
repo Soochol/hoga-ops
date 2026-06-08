@@ -110,8 +110,15 @@ function applyMove(data: WatchlistResponse, v: MoveVars): WatchlistResponse {
       set.has(e.code) ? { ...e, folder_id: v.folderId, order: base + v.codes.indexOf(e.code) } : e),
   };
 }
+function applyFolderReorder(data: WatchlistResponse, orderedIds: string[]): WatchlistResponse {
+  const rank = new Map(orderedIds.map((id, i) => [id, i] as const));
+  return {
+    ...data,
+    folders: data.folders.map((f) => (rank.has(f.id) ? { ...f, order: rank.get(f.id)! } : f)),
+  };
+}
 
-function useOptimisticEntryMutation<V>(
+function useOptimisticWatchlistMutation<V>(
   mutationFn: (v: V) => Promise<void>,
   apply: (d: WatchlistResponse, v: V) => WatchlistResponse,
 ) {
@@ -130,23 +137,19 @@ function useOptimisticEntryMutation<V>(
 }
 
 export function useReorderEntries() {
-  return useOptimisticEntryMutation<ReorderVars>(
+  return useOptimisticWatchlistMutation<ReorderVars>(
     (v) => reorderEntries(v.folderId, v.orderedCodes), applyReorder);
 }
 export function useMoveEntries() {
-  return useOptimisticEntryMutation<MoveVars>(
+  return useOptimisticWatchlistMutation<MoveVars>(
     (v) => moveEntries(v.codes, v.folderId), applyMove);
 }
 
-// --- folder reorder + bulk remove: invalidate-only (no optimistic path yet) ---
-// folder reorder is intentionally NOT optimistic; when folder-DnD lands it may need a
-// parallel data.folders path to stay smooth, but that's deferred to a later F-task.
+// --- folder reorder + bulk remove ---
+// folder reorder: optimistic + rollback (folder-DnD 부드러움). 엔트리와 같은 제네릭 경로.
 export function useReorderFolders() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (orderedIds: string[]) => reorderFolders(orderedIds),
-    onSuccess: () => qc.invalidateQueries({ queryKey: WATCHLIST_KEY }),
-  });
+  return useOptimisticWatchlistMutation<string[]>(
+    (orderedIds) => reorderFolders(orderedIds), applyFolderReorder);
 }
 export function useRemoveEntries() {
   const qc = useQueryClient();
