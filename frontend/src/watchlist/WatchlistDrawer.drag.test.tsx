@@ -76,4 +76,16 @@ describe('WatchlistDrawer drag wiring', () => {
     });
     await waitFor(() => expect(spy).toHaveBeenCalledWith('f_0000000a', ['000660', '005930']));
   });
+
+  it('folder-drag onDragEnd → reorderFolders(orderedIds)', async () => {
+    const spy = vi.spyOn(watchlistApi, 'reorderFolders').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    h.onDragEnd!({
+      active: { id: 'f_0000000a', data: { current: { type: 'folder' } } },
+      over: { id: 'f_0000000b', data: { current: { type: 'folder' } } },
+    });
+    await waitFor(() => expect(spy).toHaveBeenCalledWith(['f_0000000b', 'f_0000000a']));
+  });
 });
