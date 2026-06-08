@@ -1,7 +1,7 @@
 # P2 cleanup 3건 — 개장 sleep · 브로커 canonical · refresh 상태 순서
 
 - **Date**: 2026-06-08
-- **Status**: Approved (조사+advisor 검증 2026-06-08)
+- **Status**: Implemented (2026-06-08)
 - **Scope**: `both` — `hoga/live/ws_client.py`(#3), `hoga/live/ws_frames.py`(#10), `hoga/live/lifecycle.py`(#13)
 - **Topic slug**: `p2-cleanup`
 - **관련 리뷰**: 2026-06-07 멀티에이전트 리뷰 #3·#10·#13 (cleanup 클래스). 작고 독립적인 3건을 한 묶음으로.

@@ -605,6 +605,51 @@ async def test_refresh_live_stream_durable_state_survives_ws_failure(
 
 
 @pytest.mark.asyncio
+async def test_refresh_durable_state_survives_drop_failure(
+    monkeypatch, tmp_path
+) -> None:
+    """spec P2 #13: drop_codes_except가 raise해도 durable 상태가 확정된다 —
+    _state/set_active_codes가 drop보다 *먼저*임을 핀(미래 리팩터가 _state를
+    drop 아래로 옮기면 이 테스트가 잡는다). update_codes는 정상."""
+    import json
+
+    from hoga.api import symbols
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr(symbols, "_cache", [])
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "version": 1,
+        "entries": [{"code": "000001", "name": "000001",
+                     "registered_at_kst_date": "20260101", "last_success_date": None}],
+    }))
+
+    class _FakeWs:
+        async def update_codes(self, codes):
+            return None
+
+    class _FakeStream:
+        def __init__(self):
+            self.ws = _FakeWs()
+        def set_active_codes(self, codes):
+            pass
+
+    async def _failing_drop(keep):
+        raise RuntimeError("ring purge failed")
+
+    monkeypatch.setattr(lifecycle._buffer, "drop_codes_except", _failing_drop)
+    lifecycle._state = _State(
+        started_at_ms=1, watchlist_codes=("999999",),
+        stream_obj=_FakeStream(), live_set=("999999",),
+    )
+
+    await lifecycle.refresh_live_stream(data_dir=tmp_path)   # drop raise해도 무예외
+
+    assert lifecycle._state.watchlist_codes == ("000001",)   # drop 실패와 무관하게 확정
+
+
+@pytest.mark.asyncio
 async def test_refresh_live_stream_early_returns_without_stream(tmp_path) -> None:
     """stream/ws가 None이면 기동 폴백(_start_live_stream_locked)으로 위임 —
     그 가드(빈 watchlist → False)가 막으면 예외 없이 no-op (상태 불변).

@@ -14,17 +14,17 @@
 **Priority:** P2
 **Depends on:** 모의투자 appkey 발급 + 평일 09:00–15:30 KST
 
-### #8 반장일 12:30 게이트 — 수동 반장일 캘린더 (self-contained)
+### #8 반장일 12:30 게이트 — 12/30 전 처리 (carry-timeout 권장, defer)
 
-**What:** ws_capture_window가 반장일(연말 등 12:30 조기 마감)에도 15:30까지 열려 12:30~15:30 유령 carry를 parquet에 영구화. **수동 반장일 캘린더**(KRX 반장일 = 연 몇 일, 사전 공지되는 짧은 목록)를 하드코딩/설정해 게이트 마감 시각을 당기는 작은 작업.
+**What:** ws_capture_window가 반장일(12/30·설/추석 전 영업일 — CONTEXT.md Half-Day)에도 15:30까지 열려 12:30~15:30 유령 carry를 parquet에 기록. 권장 해법은 **carry-timeout 백스톱**: "Live Set 전체 N분(예: 5분) 무틱 → carry 중단". KRX 점심 휴장 없어(연속매매) 정상 장중엔 전 종목 동시 무틱 불가 → 마감 후에만 발화. 캘린더·갱신 불요, 예고없는 장애까지 범용 차단. 대안: 수동 dict 캘린더(KRX 공지 입력, 갱신 의존).
 
-**Why:** KIS chk-holiday는 binary opnd_yn만 주고 조기마감 시각 데이터 소스가 없음(조사 2026-06-08 확정). 새 KIS 엔드포인트(blocked)가 아니라 수동 캘린더(medium·self-contained)가 정답 — advisor 재프레임.
+**Why (재평가 2026-06-08 defer):** 심각도 낮음 — 연 2~4일, **장 마감 후(12:30~15:30) 미관측 구간**의 데이터 *오염*(손실 아님). #11·가시화와 급이 다름. 다음 반장일 12/30이라 반년 여유.
 
-**Context:** session_gate.py ws_capture_window/market_phase. 대안: 데이터소스-free 우회로 "전 코드 N분 무틱 시 carry 중단"(별도 설계). 프론트 sessionTime.ts는 이미 sessionCloseMs per-Stock-Date 수용(half-day-ready) — kis_live 게이트만 미인지.
+**조사 결론(재조사 불요):** KIS chk-holiday 6필드 전부 binary — 조기마감 시각 없음(공식 koreainvestment/open-trading-api 예제 confirm). 자동 소스 불가. 프론트 sessionTime.ts는 half-day-ready(과거 parser TSV close_ms), kis_live 실시간 게이트만 미인지.
 
-**Effort:** M
-**Priority:** P1
-**Depends on:** 반장일 목록 소스 결정(하드코딩 vs 설정파일)
+**Effort:** M (carry-timeout) / S (dict 캘린더)
+**Priority:** P2
+**Depends on:** None — 12/30 전
 
 ### #14 mixed-day fills — deploy 체크리스트 (코드 아님)
 
@@ -32,21 +32,21 @@
 
 **Why:** poller가 이 브랜치에서 삭제돼 post-merge엔 kis_live trades.parquet 쓰는 경로가 없음 → 비재발. 유일 발화점은 PR #43 장중 배포일. 영구 병합은 일회성·회피가능 transient에 과한 복잡도(advisor).
 
-**Action:** PR #43을 **15:30 이후 또는 09:00 이전 배포**(머지 체크리스트). 만약 장중 머지됐으면 그날 trades→fills 일회성 backfill.
+**Action:** PR #43은 2026-06-08 **장중(15:01) 머지됨**(사용자 결정 — 머지≠배포). **배포는 off-hours(15:30 후/09:00 전) 필수.** ⚠️ 오늘 운영 서버가 오전에 구 poller(v0.6.5.3)로 돌았다면 그날 kis_live에 오전 trades.parquet + (배포 후)오후 fills.parquet 공존 → trades→fills 일회성 backfill 확인.
 
 **Effort:** S (체크리스트) / 발생 시 backfill 스크립트
-**Priority:** P1 (머지 게이트)
-**Depends on:** PR #43 머지 타이밍
+**Priority:** P1 (배포 게이트)
+**Depends on:** PR #43 배포 타이밍
 
-### 코드리뷰 잔여 — cleanup 클래스 (그 다음)
+### 코드리뷰 잔여 — cleanup 잔여 (#3·#10·#13 완료, #9·seam 남음)
 
-**What:** #3 30초 개장 sleep(게이트 닫힘 폴링 주기 단축), #10 브로커명 canonical(live/replay 식별자 분기), #9 거래원 궤적 15분 절단(ADR-0023 row-churn 재발 — 디스크 seam 필요), #13 update_codes 예외 동기화, 크로스 스택 seam 상수.
+**What:** #9 거래원 궤적 15분 절단(ADR-0023 row-churn 재발 — 디스크 seam 신설 필요, 큼), 크로스 스택 seam 상수(range.ts 5min/15min/promote env 동기화 검증). #3(개장 sleep)·#10(브로커 canonical)·#13(refresh 순서)은 2026-06-08 완료(Completed 참조).
 
-**Why:** 정합·UX cleanup — 데이터 손실 클래스보다 후순위.
+**Why:** #9는 디스크 seam이 필요해 작은 묶음에서 분리. seam 상수는 검증 위주.
 
-**Effort:** M
+**Effort:** L (#9) / S (seam 검증)
 **Priority:** P2
-**Depends on:** 데이터 손실 클래스 먼저
+**Depends on:** None
 
 ### 캡처 헬스 pill 라벨 중복 (가시화 묶음 후속)
 
@@ -112,3 +112,9 @@
 - subtract-on-commit: await 창 도착 틱 보존(zero-on-commit 회귀 방지)
 - per-code 격리: 한 코드 OSError가 다른 코드 윈도 안 버림, 실패 합은 다음 윈도 롤
 - 백엔드 1330 통과(await-창·실패보존·per-code 격리 인터리브 테스트)
+
+### P2 cleanup 3건 (2026-06-08, 리뷰 #3·#10·#13)
+- #3 게이트 닫힘 폴링 30초→1초(_GATE_CLOSED_POLL_S) — 매 거래일 개장 30초 유실 제거
+- #10 _parse_member 거래원명 canonical — live=replay 식별자 통일(읽기 canonical 양방향 확정), unknown_alias 계측 복원
+- #13 refresh_live_stream failure-domain 순서 — durable _state·carry 정리 먼저, ws send/drop best-effort
+- 백엔드 1334 + 프론트 330(live) 통과. #9 거래원 궤적·seam 상수는 P2 잔여
