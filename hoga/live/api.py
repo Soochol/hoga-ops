@@ -1,6 +1,7 @@
 """FastAPI router for Live Capture endpoints (spec §6)."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from collections.abc import Awaitable
@@ -28,6 +29,15 @@ ControlAction = Literal["start", "stop", "pause"]
 log = logging.getLogger(__name__)
 
 _PAST_MAX_DAYS = 250
+
+# past-candles 미캐시 날짜 병렬 fetch 동시 상한 (spec 2026-06-08 §4.1).
+# 산식: RTT ~200ms → 슬롯당 ~5콜/초 → 3슬롯이 토큰버킷(15콜/초, kis_client.
+# _TokenBucket — 동시 acquirer 안전 설계) 포화점, +2는 RTT 변동 흡수 여유.
+# 6+는 처리량 무이득(버킷이 천장)이고 EGW00201 시 동시 재시도(최대 동시수×4,
+# ADR-0050)만 증폭. 운용: 로그에 kis_rate_limit/rate_limit_aborted가 자주
+# 보이면 3으로 하향. 8 초과 금지 — 버킷 가득 시작이라 첫 순간 15콜 버스트
+# 가능, KIS 통상 한도(인용 20/초) 대비 여유 25% 보존.
+_PAST_CANDLES_CONCURRENCY = 5
 _CODE_RE = re.compile(CODE_PATTERN)
 _KST = timezone(timedelta(hours=9))
 
@@ -397,6 +407,12 @@ def build_router(
             for q in quotes
         ])
 
+    # past-candles 병렬 fetch의 총량 제어 — 라우터(=프로세스, ADR-0038 단일
+    # 워커) 수준 공유: 동시 요청 2건이 떠도 KIS in-flight 합계 ≤ 5.
+    # py3.11의 asyncio.Semaphore는 첫 acquire에서 루프를 lazy-bind하므로
+    # 앱 생성 시점(루프 밖) 생성이 안전하다.
+    _past_fetch_sem = asyncio.Semaphore(_PAST_CANDLES_CONCURRENCY)
+
     cache_instance: PastCandlesCache | None = (
         PastCandlesCache(data_dir=data_dir) if data_dir is not None else None
     )
@@ -426,63 +442,109 @@ def build_router(
             raise HTTPException(503, "past-candles cache not wired (data_dir missing)")
         cache = cache_instance
 
-        candles_all: list[dict] = []
+        # ── 1차 패스(동기, KIS 콜 없음): 캐시 히트 수집 + 병렬 fetch 대상 분류.
+        # 레이트리밋이 떠도 캐시 히트는 항상 서빙된다("차트 빈 화면" 방어가
+        # KIS 경로와 분리된 이 패스에서 구조적으로 보존됨 — `past.data.segments`
+        # 는 풀 커버리지인데 `kisCandles`만 쪼그라들던 회귀의 원 수정 의도).
+        rows: dict[str, list[dict]] = {}
         cached_dates: list[str] = []
-        fresh_dates: list[str] = []
-        warnings: list[dict] = []
-        # When KIS rate-limits, stop calling KIS for the rest of the range to
-        # avoid hammering the remote — but keep serving cache hits. Skipping
-        # cached dates broke the frontend's chart: `past.data.segments`
-        # (hogaplay parquet, independent of KIS) kept full coverage while
-        # `kisCandles` shrank, leaving the candle pane empty over a wide axis.
-        kis_blocked = False
+        pending: list[str] = []           # 과거 미캐시 — 2차 패스(병렬) 대상
+        warnings_by_date: dict[str, dict] = {}
+        fresh: set[str] = set()
 
         for date_s in _date_iter(frm, too):
+            if date_s >= today_s:
+                continue  # today는 3차 패스에서 기존 의미론(순차 tri-state) 유지
+            bars = cache.get_past(code, date_s)
+            if bars is None:
+                pending.append(date_s)
+            else:
+                rows[date_s] = bars
+                cached_dates.append(date_s)
+
+        # ── 2차 패스(병렬): Semaphore(5) + gather (spec 2026-06-08 §4) ──
+        blocked = asyncio.Event()  # per-request — 레이트리밋 후 미시작 fetch 차단
+
+        async def _one(date_s: str) -> None:
+            async with _past_fetch_sem:
+                # 슬롯 획득 후 확인: 레이트리밋 소진 시 '아직 시작 안 한' fetch는
+                # KIS를 더 두드리지 않는다(구 kis_blocked의 병렬 번역, spec §4.4).
+                # 이미 나간(in-flight) fetch는 완주 — 회수 불가한 요청이고 결과를
+                # 버리는 것이 낭비다(spec §6). blocked.set()은 semaphore 해제보다
+                # 먼저 실행되므로 후속 슬롯 획득자는 반드시 set 상태를 본다.
+                if blocked.is_set():
+                    warnings_by_date[date_s] = {
+                        "date": date_s, "reason": "rate_limit_aborted",
+                        "msg": "previous date hit rate limit",
+                    }
+                    return
+                try:
+                    raw = await kis.fetch_past_minute_candles(code, date_s)
+                except KisRateLimitError as e:
+                    blocked.set()
+                    warnings_by_date[date_s] = {
+                        "date": date_s, "reason": "kis_rate_limit", "msg": str(e),
+                    }
+                    return
+                except KisApiError as e:
+                    warnings_by_date[date_s] = {
+                        "date": date_s, "reason": "kis_api_error", "msg": e.msg_cd,
+                    }
+                    return
+                bars = [_candle_to_dict(c) for c in raw]
+                rows[date_s] = bars
+                fresh.add(date_s)
+                try:
+                    cache.store_past(code, date_s, bars)
+                except OSError as e:
+                    # 디스크 쓰기 실패(가득참/권한 등): bars는 메모리로 서빙하되
+                    # warning으로 표면화(기존 의미론 유지).
+                    warnings_by_date[date_s] = {
+                        "date": date_s, "reason": "cache_write_failed", "msg": str(e),
+                    }
+
+        await asyncio.gather(*(_one(d) for d in pending))
+
+        # ── 3차 패스: 날짜순 조립 + today(기존 코드 그대로 — 순차·tri-state) ──
+        candles_all: list[dict] = []
+        fresh_dates: list[str] = []
+        warnings: list[dict] = []
+        kis_blocked = blocked.is_set()
+
+        for date_s in _date_iter(frm, too):
+            if date_s < today_s:
+                if date_s in rows:
+                    candles_all.extend(rows[date_s])
+                    if date_s in fresh:
+                        fresh_dates.append(date_s)
+                if date_s in warnings_by_date:
+                    warnings.append(warnings_by_date[date_s])
+                continue
+            # today (date_s == today_s) — 과거 날짜의 레이트리밋이 막는 것 포함
+            # 기존 의미론 그대로.
             try:
-                if date_s < today_s:
-                    bars = cache.get_past(code, date_s)
-                    if bars is None:
-                        if kis_blocked:
-                            warnings.append({"date": date_s, "reason": "rate_limit_aborted", "msg": "previous date hit rate limit"})
-                            continue
-                        raw = await kis.fetch_past_minute_candles(code, date_s)
-                        bars = [_candle_to_dict(c) for c in raw]
-                        try:
-                            cache.store_past(code, date_s, bars)
-                        except OSError as e:
-                            # Disk write failure (full disk, permission, etc.):
-                            # serve the bars in-memory but surface as warning.
-                            warnings.append({
-                                "date": date_s,
-                                "reason": "cache_write_failed",
-                                "msg": str(e),
-                            })
+                state, today_bars = cache.get_today_tri(code)
+                if state == "hit":
+                    # tri-state invariant: "hit" implies today_bars is not None
+                    assert today_bars is not None
+                    bars = today_bars
+                    cached_dates.append(date_s)
+                elif state == "negative":
+                    # Known non-trading day; skip KIS, no row to add.
+                    bars = []
+                else:  # miss
+                    if kis_blocked:
+                        warnings.append({"date": date_s, "reason": "rate_limit_aborted", "msg": "previous date hit rate limit"})
+                        continue
+                    raw = await kis.fetch_past_minute_candles(code, date_s)
+                    bars = [_candle_to_dict(c) for c in raw]
+                    if bars:
+                        cache.store_today(code, bars)
                         fresh_dates.append(date_s)
                     else:
-                        cached_dates.append(date_s)
-                else:  # date_s == today_s
-                    state, today_bars = cache.get_today_tri(code)
-                    if state == "hit":
-                        # tri-state invariant: "hit" implies today_bars is not None
-                        assert today_bars is not None
-                        bars = today_bars
-                        cached_dates.append(date_s)
-                    elif state == "negative":
-                        # Known non-trading day; skip KIS, no row to add.
-                        bars = []
-                    else:  # miss
-                        if kis_blocked:
-                            warnings.append({"date": date_s, "reason": "rate_limit_aborted", "msg": "previous date hit rate limit"})
-                            continue
-                        raw = await kis.fetch_past_minute_candles(code, date_s)
-                        bars = [_candle_to_dict(c) for c in raw]
-                        if bars:
-                            cache.store_today(code, bars)
-                            fresh_dates.append(date_s)
-                        else:
-                            # Negative cache: known non-trading day for today.
-                            # Skip KIS for the TTL window.
-                            cache.store_today(code, None)
+                        # Negative cache: known non-trading day for today.
+                        # Skip KIS for the TTL window.
+                        cache.store_today(code, None)
                 candles_all.extend(bars)
             except KisRateLimitError as e:
                 warnings.append({"date": date_s, "reason": "kis_rate_limit", "msg": str(e)})

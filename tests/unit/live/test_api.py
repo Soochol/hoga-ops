@@ -303,37 +303,95 @@ async def test_past_candles_partial_failure_kis_api_error(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_past_candles_rate_limit_aborts_remaining(tmp_path) -> None:
-    """Post-ADR-0049: retry is centralized in ``KisClient._get``. From the
-    handler's perspective, a single ``KisRateLimitError`` from the fake means
-    "client has exhausted retries" — the handler marks the range kis_blocked
-    and warns on remaining dates. The retry mechanics themselves are covered
-    by client-level tests in test_kis_client.py.
-    """
+async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path) -> None:
+    """spec 2026-06-08 §4: 미캐시 과거 날짜는 동시 fetch(상한 5) — 순차 구현은
+    max_inflight==1이라 실패한다. 완료 순서를 의도적으로 뒤섞어(늦은 날짜가
+    빨리 응답) 응답 candles의 날짜 오름차순 보장(§5 테스트 4)도 함께 핀한다."""
+    import asyncio as _asyncio
+
+    class _SlowFakeKis:
+        def __init__(self):
+            self.inflight = 0
+            self.max_inflight = 0
+            self.calls: list[str] = []
+
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+            self.calls.append(date_yyyymmdd)
+            self.inflight += 1
+            self.max_inflight = max(self.max_inflight, self.inflight)
+            try:
+                # 늦은 날짜일수록 빨리 응답 → 완료 순서 ≠ 날짜 순서
+                await _asyncio.sleep(0.05 - 0.005 * int(date_yyyymmdd[-1]))
+                kst = datetime.timezone(datetime.timedelta(hours=9))
+                y, m, d = (int(date_yyyymmdd[:4]), int(date_yyyymmdd[4:6]),
+                           int(date_yyyymmdd[6:8]))
+                t_ms = int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000)
+                return [KisCandle(t_ms=t_ms, open=100, high=110, low=95,
+                                  close=105, volume=10)]
+            finally:
+                self.inflight -= 1
+
+    fake = _SlowFakeKis()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-candles?code=005930&from=20260501&to=20260508")
+        assert r.status_code == 200
+        body = r.json()
+    assert fake.max_inflight >= 2, "병렬화 안 됨 — 순차 fetch"
+    assert fake.max_inflight <= 5, "동시 상한(_PAST_CANDLES_CONCURRENCY=5) 초과"
+    t_list = [cd["t_ms"] for cd in body["candles"]]
+    assert t_list == sorted(t_list), "응답 candles가 날짜 오름차순이 아님"
+    assert body["fresh_dates"] == [f"2026050{i}" for i in range(1, 9)]
+
+
+@pytest.mark.asyncio
+async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path) -> None:
+    """병렬화(spec 2026-06-08 §4.4) 이후의 kis_blocked 계약: 레이트리밋 소진 시
+    '아직 시작 안 한' fetch는 KIS를 더 두드리지 않고(rate_limit_aborted),
+    이미 나간(in-flight) fetch는 완주해 결과를 서빙한다.
+    (구 순차 계약 test_past_candles_rate_limit_aborts_remaining의 병렬 번역 —
+    "실패 이후 날짜 KIS 콜 0"은 in-flight 회수가 불가능한 병렬에선 성립하지
+    않으므로 "미시작 콜 0"으로 대체. '레이트리밋된 원격을 더 때리지 않는다'는
+    원 의도는 보존된다.)
+
+    결정성: 8날짜·슬롯 5 → D1-D5 동시 진입, D2가 0.01s에 실패(Event set은
+    semaphore 해제보다 먼저 실행됨) → D6-D8은 슬롯 획득 시점에 Event를 보고
+    스킵. D1·D3-D5는 0.1s sleep 중(in-flight)이라 완주."""
+    import asyncio as _asyncio
+
     from hoga.live.kis_client import KisRateLimitError
 
-    class _RateLimitedFakeKis:
+    class _RateLimitedSlowKis:
         def __init__(self):
             self.calls: list[str] = []
 
         async def fetch_past_minute_candles(self, code, date_yyyymmdd):
             self.calls.append(date_yyyymmdd)
             if date_yyyymmdd == "20260502":
+                await _asyncio.sleep(0.01)   # 첫 배치 중 가장 먼저 실패
                 raise KisRateLimitError("EGW00201 rate limited")
-            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
+            await _asyncio.sleep(0.1)        # 나머지 첫 배치는 실패 시점에 in-flight
+            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105,
+                              volume=10)]
 
-    fake = _RateLimitedFakeKis()
+    fake = _RateLimitedSlowKis()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
-        r = c.get("/api/live/past-candles?code=005930&from=20260501&to=20260503")
+        r = c.get("/api/live/past-candles?code=005930&from=20260501&to=20260508")
         assert r.status_code == 200
         body = r.json()
-        # Fake raises once on 20260502 (client retry is opaque to the fake).
-        # 20260503 is skipped — kis_blocked path is unchanged.
-        assert fake.calls == ["20260501", "20260502"]
-        reasons = [w["reason"] for w in body["data_warnings"]]
-        assert "kis_rate_limit" in reasons
-        assert "rate_limit_aborted" in reasons
+    # 미시작(D6-D8)은 KIS에 도달하지 않는다 — 원 방어의 핵심.
+    assert sorted(fake.calls) == [
+        "20260501", "20260502", "20260503", "20260504", "20260505",
+    ]
+    # in-flight 완주: 실패한 D2를 제외한 첫 배치 4건은 서빙된다.
+    assert body["fresh_dates"] == [
+        "20260501", "20260503", "20260504", "20260505",
+    ]
+    assert len(body["candles"]) == 4
+    warns = {w["date"]: w["reason"] for w in body["data_warnings"]}
+    assert warns["20260502"] == "kis_rate_limit"
+    assert warns["20260506"] == warns["20260507"] == warns["20260508"] == "rate_limit_aborted"
 
 
 @pytest.mark.asyncio
