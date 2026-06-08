@@ -74,6 +74,36 @@ test.describe('Watchlist panel drag', () => {
     await expect.poll(codesInDom).toEqual(['000660', '005930']);
   });
 
+  test('행을 드래그 없이 클릭하면 차트가 열리고 reorder를 PUT하지 않는다', async ({ page }) => {
+    // 행 전체가 드래그 표면(listeners on <li>)이라도, distance:5 임계 미만의 단순 클릭은
+    // 드래그로 변질되지 않고 onPick(차트 이동)으로 흘러야 한다 — 헤드라인 불변식.
+    await installLiveMocks(page);
+    let reorderCalled = false;
+    const entries: Entry[] = [
+      { code: '005930', name: '삼성전자', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_a', order: 0 },
+      { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_a', order: 1 },
+    ];
+    await page.route(`${API}/api/live/quotes*`, (r) => json(r, { phase: 'open', quotes: [] }));
+    await page.route(`${API}/api/watchlist/reorder`, async (route) => {
+      reorderCalled = true;
+      return route.fulfill({ status: 204, body: '' });
+    });
+    await page.route(`${API}/api/watchlist`, (r) =>
+      json(r, { folders: [{ id: 'f_a', name: '스윙', order: 0 }], entries, next_run_at_ms: 0 }));
+
+    await openPanel(page);
+    const row = page.getByTestId('watchlist-row-000660');
+    await expect(row).toBeVisible();
+    await row.click();                                   // 이동 없는 단순 클릭
+
+    // 클릭 행이 활성(aria-current)으로 표시되고, reorder PUT은 발사되지 않는다.
+    await expect(row).toHaveAttribute('aria-current', 'true');
+    // 드래그로 오인됐다면 5px 임계를 넘지 않았으니 reorder는 어차피 안 떴겠지만,
+    // 클릭이 드래그 시작으로 먹혀 onPick이 죽는 회귀를 함께 잡는다.
+    await page.waitForTimeout(200);
+    expect(reorderCalled).toBe(false);
+  });
+
   test('그룹 헤더 ⠿ 드래그가 folders/order를 PUT하고 그룹을 재배치한다', async ({ page }) => {
     await installLiveMocks(page);
     let folderOrder = ['f_a', 'f_b'];
