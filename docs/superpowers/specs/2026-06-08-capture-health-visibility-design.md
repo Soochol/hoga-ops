@@ -37,19 +37,24 @@ KIS 구독 ACK는 control 프레임의 `body.rt_cd`로 온다 (2026-06-08 녹화
 
 ### 2.2 단일 헬스 술어 (`lifecycle.py`) — watchdog·pill 공유
 
-순수 함수 `_capture_health(*, running, ws, now_ms, ref_ms, stale_after_ms) -> tuple[bool, str]` → `(healthy, reason)`:
+순수 함수 `_capture_health(*, running, ws, now_ms, ref_ms, stale_after_ms, market_closed) -> tuple[bool, str]` → `(healthy, reason)`. **체크 순서가 의미를 만든다** — recv(stale)를 sub보다 먼저 본다:
 
 ```
 running=False(미기동/creds 없음)         → (False, "offline")
+market_closed(순수 시계: 주말 or 정규장 밖)→ (False, "closed")        # 밤·주말 — 장애 아님(회색)
 ws.connected=False                       → (False, "reconnecting")   # 백오프 중 — 정상 자가치유
+recv_stale(grace 경과 AND now-recv>grace)→ (False, "stale")          # silent stall / dead socket
 sub_acked < sub_expected:
-    grace 내(now-ref ≤ stale_after)      → (False, "subscribing")    # 연결 직후 ACK 대기 — 정상
-    grace 경과                           → (False, "sub_failed")     # 구독 미확인 — 이상(거부/상실)
-last_recv 없음 or now-last_recv > grace  → (False, "stale")          # silent stall
+    grace 내                             → (False, "subscribing")    # 연결 직후 ACK 대기 — 정상
+    grace 경과                           → (False, "sub_failed")     # 구독 미확인+수신 신선 = 거부류
 else                                     → (True,  "healthy")
 ```
 
-`get_status`가 `capture_healthy: bool` + `capture_reason: str`을 LiveStatus에 추가 노출. `cycle_lag_ms=0`은 wire 호환 위해 유지(차기 정리 후보, 주석).
+**recv-먼저 순서의 이유**(advisor): sub 미확인이어도 **수신이 끊겼으면 dead socket** → "stale"(재시작). 수신이 신선한데 sub만 미확인이면 **appkey 거부류**(PINGPONG은 흐름) → "sub_failed"(재연결 불응, 가시화만). sub를 먼저 보면 dead socket이 sub_failed로 오분류돼 watchdog이 복구를 멈춘다.
+
+**`market_closed`의 출처**(advisor): `get_status`는 sync 라우트라 `ws_capture_window`(캘린더 HTTP, 0a67a3e가 to_thread로 격리한 블록)를 못 쓴다. 그래서 `_market_clock_closed_for_capture(now_ms)` = 순수 weekday+clock(`_quote_phase` 패턴, `market_phase != "regular"` or 주말)로 "closed"를 판정해 밤·주말 pill 거짓-앰버를 막는다. 평일 공휴일 장중은 closed로 안 잡혀 reconnecting 앰버로 보이나 드물어 수용. watchdog은 이미 `ws_capture_window`로 게이트하므로 `market_closed=False`로 호출(closed 단락 우회).
+
+`get_status`가 `capture_healthy: bool` + `capture_reason: str`(plain str — `Literal` 금지, response_model 재검증 500 회피)을 LiveStatus에 추가 노출. `cycle_lag_ms=0`은 wire 호환 위해 유지(차기 정리 후보, 주석).
 
 ### 2.3 watchdog 재시작 정책 (`_ws_watchdog_check`)
 
@@ -86,7 +91,7 @@ KIS control 프레임 ──rt_cd──▶ ws_client(sub_acked/rejected/expected
 ## 4. 테스트 전략 (TDD)
 
 1. **ws_client 구독 카운트**: FakeWs로 성공 ACK 2건+거부 1건 재생 → `sub_acked==2, sub_rejected==1`; 재연결 시 0 리셋.
-2. **_capture_health 분기**: 6개 reason 각각 (offline/reconnecting/subscribing/sub_failed/stale/healthy) 단위 테스트 — ws 스텁 + now/ref/grace 주입.
+2. **_capture_health 분기**: 7개 reason 각각 (offline/closed/reconnecting/stale/subscribing/sub_failed/healthy) 단위 테스트 — ws 스텁 + now/ref/grace/market_closed 주입. recv-먼저 순서 핀: sub 미확인+recv stale→stale, sub 미확인+recv fresh→sub_failed.
 3. **watchdog 정책**: `stale`→재시작(`_spy_start_stream` 호출), `sub_failed`→재시작 안 함+WARNING, `subscribing`→무동작.
 4. **get_status 노출**: healthy/unhealthy 상태에서 capture_healthy/capture_reason 값.
 5. **stream 일경계**: drain 후 개장 첫 flush에 R1 경고 미발화(caplog) + 재개방 fill 라벨이 now−FLUSH_INTERVAL.
