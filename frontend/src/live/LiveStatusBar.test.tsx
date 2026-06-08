@@ -27,7 +27,7 @@ const EMPTY_BUNDLE: RangeBundle = {
 };
 
 function renderBar(
-  props: { activeCode: string | null; cycleLagMs: number; bundle: RangeBundle | null },
+  props: { activeCode: string | null; captureHealthy: boolean; captureReason: string; bundle: RangeBundle | null },
   watchlistCodes: string[] = [],
   quote?: { price: number; change_pct: number | null; change_won: number | null },
 ) {
@@ -56,17 +56,17 @@ describe('LiveStatusBar', () => {
   });
 
   it('shows em-dash when activeCode is null', () => {
-    renderBar({ activeCode: null, cycleLagMs: 0, bundle: null });
+    renderBar({ activeCode: null, captureHealthy: true, captureReason: 'healthy', bundle: null });
     expect(screen.getByTestId('live-status-bar').textContent).toContain('—');
   });
 
   it('shows the activeCode when set', () => {
-    renderBar({ activeCode: '005930', cycleLagMs: 0, bundle: EMPTY_BUNDLE });
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE });
     expect(screen.getByTestId('live-status-bar').textContent).toContain('005930');
   });
 
   it('shows 대기 중 price placeholder when candle data is not yet available', () => {
-    renderBar({ activeCode: '005930', cycleLagMs: 100, bundle: EMPTY_BUNDLE });
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE });
     expect(screen.getByTestId('live-status-bar').textContent).toContain('대기 중');
   });
 
@@ -78,13 +78,13 @@ describe('LiveStatusBar', () => {
         { ts_ms: 2000, open: 70500, high: 72000, low: 70000, close: 71200, vol_a: 1500, vol_b: 0 },
       ],
     };
-    renderBar({ activeCode: '005930', cycleLagMs: 50, bundle });
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle });
     expect(screen.getByTestId('live-current-price').textContent).toContain('71,200');
   });
 
   it('shows 등락률(%) next to price from the live quote (등락액은 헤더에서 생략)', () => {
     renderBar(
-      { activeCode: '005930', cycleLagMs: 0, bundle: EMPTY_BUNDLE },
+      { activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE },
       ['005930'],
       { price: 361000, change_pct: 0.29, change_won: 1000 },
     );
@@ -92,31 +92,31 @@ describe('LiveStatusBar', () => {
   });
 
   it('omits the change cell when no live quote is available', () => {
-    renderBar({ activeCode: '005930', cycleLagMs: 0, bundle: EMPTY_BUNDLE });
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE });
     expect(screen.queryByTestId('live-change')).toBeNull();
   });
 
   it('renders the kis_live source chip (ADR-0039 compliance)', () => {
-    renderBar({ activeCode: '005930', cycleLagMs: 0, bundle: EMPTY_BUNDLE });
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE });
     expect(screen.getByTestId('source-chip-kis_live')).toBeTruthy();
   });
 
   it('shows a filled heart + no historical-only hint for a watchlist member', () => {
-    renderBar({ activeCode: '005930', cycleLagMs: 0, bundle: EMPTY_BUNDLE }, ['005930']);
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE }, ['005930']);
     const btn = screen.getByRole('button', { name: '관심종목 해제' });
     expect(btn.getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByText(/실시간 ✕/)).toBeNull();
   });
 
   it('shows a filled gray heart + historical-only hint for a non-member', () => {
-    renderBar({ activeCode: '000660', cycleLagMs: 0, bundle: EMPTY_BUNDLE }, ['005930']);
+    renderBar({ activeCode: '000660', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE }, ['005930']);
     expect(screen.getByRole('button', { name: '관심종목 추가' }).getAttribute('aria-pressed')).toBe('false');
     expect(screen.getByText(/실시간 ✕/)).toBeInTheDocument();
   });
 
   it('clicking the heart of a member calls removeFromWatchlist', async () => {
     const spy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined as never);
-    renderBar({ activeCode: '005930', cycleLagMs: 0, bundle: EMPTY_BUNDLE }, ['005930']);
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE }, ['005930']);
     fireEvent.click(screen.getByRole('button', { name: '관심종목 해제' }));
     await waitFor(() => expect(spy).toHaveBeenCalledWith('005930'));
     spy.mockRestore();

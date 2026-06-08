@@ -99,7 +99,8 @@ export function LivePage() {
       />
       <LiveStatusBar
         activeCode={activeCode}
-        cycleLagMs={status?.cycle_lag_ms ?? 0}
+        captureHealthy={status?.capture_healthy ?? false}
+        captureReason={status?.capture_reason ?? 'offline'}
         bundle={bundle}
       />
       <LiveToolbar
