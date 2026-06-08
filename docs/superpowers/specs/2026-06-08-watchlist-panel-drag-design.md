@@ -210,7 +210,7 @@ stateful `page.route` mock으로:
 ## Risks / Open questions
 
 - **sticky 헤더 ↔ 폴더 드래그 transform**: 그룹 컨테이너 transform 중 내부 `sticky top-0` 헤더가 어색하게 보일 수 있음. 실검증 후 필요 시 드래그 중 sticky 해제 또는 DragOverlay 도입 검토.
-- **중첩 SortableContext 충돌 검출 cross-talk**: `closestCenter`가 폴더 드래그 중 행 노드를, 행 드래그 중 폴더 노드를 최근접으로 고를 수 있음. 폴더 분기는 `over.data.folderId`로 정규화해 흡수(행 위 드롭도 그 그룹으로 처리), 행 분기는 액티브 그룹 한정 `resolveDrag`가 다른 그룹 over를 no-op 처리. 거동이 어색하면 커스텀 collision(폴더/행 레이어 분리)으로 후속 개선.
+- **중첩 SortableContext 충돌 검출 cross-talk** *(해결: type-aware collision)*: `useSortable`는 그룹 컨테이너를 큰 droppable로 등록하므로, 면적 기반 `closestCenter`가 행 드래그 중 폴더 컨테이너를(또는 그 반대) 최근접으로 골라 재정렬이 조용히 no-op이 될 수 있음(가드로 "흡수"되는 게 아니라 기능 실패). → `DndContext`에 충돌 후보를 액티브와 같은 `data.type`으로 선필터하는 `typeAwareCollision`을 적용해 entry는 entry끼리, folder는 folder 컨테이너끼리만 보게 함(구현 계획 Task 3 Step 4). 폴더 분기의 `over.data.folderId` 정규화는 belt-and-suspenders로 잔존. jsdom wiring 테스트는 이 층을 모킹으로 비껴가므로 **e2e가 유일 실검증**.
 - **ADR-0057 stale**: 거기 적힌 `PUT /api/watchlist/order`(현재 `/reorder`)와 "WatchlistDrawer.test.tsx가 DndContext를 모킹한다"(현재는 그룹 렌더 테스트)는 모두 과거 제거된 패널 드래그 서술. 이 spec과 함께 갱신.
 
 ## Out of Scope (Backlog)

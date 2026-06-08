@@ -372,7 +372,7 @@ Expected: FAIL — `h.onDragEnd` 가 null(아직 DndContext 미배선) → `h.on
 ```ts
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter,
-  type DragEndEvent,
+  type DragEndEvent, type CollisionDetection,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -391,10 +391,24 @@ import {
 import { resolveDrag } from './dragHandlers';
 ```
 
-- [ ] **Step 4: 구현 — `SortableQuoteRow` 모듈 컴포넌트 추가**
+- [ ] **Step 4: 구현 — `typeAwareCollision` + `SortableQuoteRow` 모듈 컴포넌트 추가**
 
-`WatchlistDrawer` 함수 정의 바로 위(모듈 스코프)에 추가:
+`WatchlistDrawer` 함수 정의 바로 위(모듈 스코프)에 추가. **type-aware collision이 핵심**:
+중첩 sortable에서 `useSortable`는 그룹 컨테이너(SortableGroup, Task 4)를 큰 droppable로
+등록한다. 면적 기반 `closestCenter`는 작은 형제 행보다 이 큰 폴더 컨테이너(또는 타 그룹
+행)를 더 가깝다고 골라, entry 재정렬이 조용히 no-op이 될 수 있다(dnd-kit 중첩 sortable의
+흔한 실패 모드). 충돌 후보를 *액티브와 같은 `data.type`*으로 선필터해 entry는 entry끼리,
+folder는 folder 컨테이너끼리만 보게 한다. (Task 3 시점엔 entry만 있어 동작 동일하지만,
+Task 4의 폴더 컨테이너 도입에 대비해 처음부터 깐다.)
 ```tsx
+/** 액티브 드래그와 같은 data.type(='entry'|'folder')의 droppable만 closestCenter에 넘긴다 —
+ *  중첩 SortableContext의 cross-talk(폴더 컨테이너가 행 위로 끼어드는) 차단. */
+const typeAwareCollision: CollisionDetection = (args) => {
+  const type = args.active.data.current?.type;
+  const same = args.droppableContainers.filter((c) => c.data.current?.type === type);
+  return closestCenter({ ...args, droppableContainers: same });
+};
+
 /** 패널 종목 행 — 행 전체가 드래그 표면(listeners on <li>). PointerSensor distance:5
  *  임계가 클릭(차트 이동)과 드래그를 구분한다. data.type='entry' + folderId 태깅으로
  *  onDragEnd가 폴더 드래그와 구분한다. */
@@ -460,7 +474,7 @@ function SortableQuoteRow(props: {
 
 `{groups.map(...)}` 를 다음으로 교체:
 ```tsx
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={typeAwareCollision} onDragEnd={onDragEnd}>
           {groups.map((g, gi) => {
             const key = g.folder?.id ?? '__uncat__';
             const label = g.folder?.name ?? '미분류';
@@ -566,11 +580,11 @@ Expected: FAIL — onDragEnd에 folder 분기가 없어 `reorderFolders`가 호�
 ```ts
 import { resolveDrag, resolveFolderDrag } from './dragHandlers';
 ```
-`@dnd-kit/core` import 블록에 타입 추가:
+`@dnd-kit/core` import 블록에 `DraggableSyntheticListeners` 타입 추가(Task 3의 `CollisionDetection` 유지):
 ```ts
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter,
-  type DragEndEvent, type DraggableSyntheticListeners,
+  type DragEndEvent, type CollisionDetection, type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
 ```
 
@@ -657,9 +671,9 @@ props 타입 선언부에 추가(52–61행 props 객체 타입 안):
 
 - [ ] **Step 7: 구현 — 폴더 그룹을 SortableGroup으로, 바깥 SortableContext로 감싸기**
 
-Task 3에서 만든 `<DndContext>` 내부의 `{groups.map(...)}` 를 바깥 `SortableContext`로 감싸고, 실폴더 그룹은 `SortableGroup`으로 렌더한다. `<DndContext>` 내부를 다음으로 교체:
+Task 3에서 만든 `<DndContext>` 내부의 `{groups.map(...)}` 를 바깥 `SortableContext`로 감싸고, 실폴더 그룹은 `SortableGroup`으로 렌더한다. `<DndContext>` 내부를 다음으로 교체(collision은 Task 3의 `typeAwareCollision` 유지):
 ```tsx
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={typeAwareCollision} onDragEnd={onDragEnd}>
           <SortableContext items={realFolderIds} strategy={verticalListSortingStrategy}>
             {groups.map((g, gi) => {
               const key = g.folder?.id ?? '__uncat__';
@@ -1005,6 +1019,7 @@ $B console --errors
 - 미분류 핸들 제외/항상 끝 → Task 4 Step 7(미분류 plain div) ✓
 - 드래그 affordance(행 전체 / 헤더 ⠿) → Task 3 SortableQuoteRow + Task 4 GroupHeader 핸들 ✓
 - onDragEnd over 정규화 → Task 4 Step 6 ✓
+- 중첩 sortable cross-talk 차단(type-aware collision) → Task 3 Step 4 `typeAwareCollision` ✓ (e2e 행 재정렬 no-op 실패 방지; jsdom wiring은 이 층을 못 잡으므로 Task 5 e2e가 유일 실검증)
 - 테스트(단위/jsdom wiring/e2e) → Task 1·2·3·4·5 ✓
 - 문서(ADR-0066/0057, 도크스트링, CONTEXT) → Task 6 ✓
 
