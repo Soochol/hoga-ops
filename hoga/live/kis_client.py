@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,8 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
     from hoga.live.kis_token_provider import KisTokenProvider
+
+log = logging.getLogger(__name__)
 
 import httpx
 
@@ -321,6 +324,12 @@ class KisClient:
             except KisRateLimitError:
                 if attempt + 1 >= attempts:
                     raise
+                # 가시화(스펙 2026-06-08 ⑤): 첫 재시도만 WARNING — 지속 장애 시
+                # 병렬 fetch(동시 5)의 동시 재시도가 로그 벽이 되지 않게 이후는
+                # DEBUG. 소진 후엔 호출부의 kis_rate_limit data_warning이 최종 신호.
+                log_fn = log.warning if attempt == 0 else log.debug
+                log_fn("KIS rate-limited (EGW00201) path=%s — retry %d/%d in %.0fs",
+                       path, attempt + 1, attempts - 1, backoff[attempt])
                 await asyncio.sleep(backoff[attempt])
         # Unreachable: loop either returns or re-raises on the final iteration.
         raise AssertionError("unreachable")

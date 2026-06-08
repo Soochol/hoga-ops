@@ -313,6 +313,37 @@ async def test_get_retries_on_rate_limit_5xx_then_succeeds(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_rate_limit_retry_is_logged(monkeypatch, caplog) -> None:
+    """스펙 2026-06-08 ⑤: 재시도는 +1~7s의 침묵 지연이었다 — 첫 재시도는
+    WARNING(운영 신호), 이후 재시도는 DEBUG(병렬 fetch 동시 재시도 로그 벽 방지)."""
+    import logging
+
+    async def fake_sleep(s: float) -> None:
+        return
+
+    monkeypatch.setattr("hoga.live.kis_client.asyncio.sleep", fake_sleep)
+    client, _counter = _make_attempt_counting_client(
+        responses=[
+            (500, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "too fast"}),
+            (500, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "too fast"}),
+            (200, _ok_orderbook_body()),
+        ],
+        _rate_limit_backoff=(1.0, 2.0, 4.0),
+    )
+    try:
+        with caplog.at_level(logging.DEBUG, logger="hoga.live.kis_client"):
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
+    finally:
+        await client.aclose()
+    retry_logs = [r for r in caplog.records if "EGW00201" in r.getMessage()]
+    assert len(retry_logs) == 2
+    assert retry_logs[0].levelno == logging.WARNING
+    assert "/uapi/probe" in retry_logs[0].getMessage()
+    assert "1/3" in retry_logs[0].getMessage()
+    assert retry_logs[1].levelno == logging.DEBUG
+
+
+@pytest.mark.asyncio
 async def test_get_retries_on_rt_cd_egw00201_then_raises(monkeypatch) -> None:
     """200/rt_cd!=0/EGW00201 path: the JSON-envelope flavour of rate limit.
     Same exception type as the 5xx-EGW00201 path, so the same retry loop
