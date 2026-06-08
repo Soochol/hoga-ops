@@ -133,3 +133,92 @@ def test_today_empty_buffer_equals_parquet_only(tmp_path: Path) -> None:
     entries = query_day_series_today(con, pq, date=DATE, buffer_snapshots=[])
     assert entries[0].points[0].ts_ms == hhmmssms_to_unix_ms(DATE, ENC_0930)  # unix 변환
     assert entries[0].final_net == 100
+
+
+# ── Task 4: 라우트 today 봉합 배선 ────────────────────────────────────────────
+
+import json  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from fastapi import FastAPI  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from hoga.api.queries import QueryEngine  # noqa: E402
+from hoga.api.routes import build_router  # noqa: E402
+
+CODE = "005930"
+_KST = timezone(timedelta(hours=9))
+
+
+class _FakeBuffer:
+    """라이브 버퍼 스텁 — get_series(code)["brokers"]만 노출."""
+
+    def __init__(self, brokers: list[dict]) -> None:
+        self._brokers = brokers
+
+    async def get_series(self, code: str) -> dict:
+        return {"code": code, "snapshots": [], "trades": [], "brokers": self._brokers}
+
+
+def _kis_live_engine(tmp_path: Path, rows: list[BrokerRow]) -> QueryEngine:
+    # parquet_dir는 존재 검증(없으면 raise)이라 디렉터리를 직접 만든다.
+    sd = tmp_path / "parquet" / DATE / CODE / "kis_live"
+    sd.mkdir(parents=True, exist_ok=True)
+    (sd / "meta.json").write_text(
+        json.dumps({"source": "kis_live", "row_counts": {"brokers": len(rows)}})
+    )
+    write_parquet(rows, sd / "brokers.parquet")
+    return QueryEngine(tmp_path)
+
+
+def _client(engine: QueryEngine, get_buffer) -> TestClient:
+    app = FastAPI()
+    app.include_router(build_router(engine, get_buffer=get_buffer))
+    return TestClient(app)
+
+
+def test_route_today_kis_live_merges_buffer_tail(tmp_path: Path, monkeypatch) -> None:
+    # now_kst를 DATE로 고정 → date==today. kis_live 소스 + 버퍼 꼬리 → 병합.
+    monkeypatch.setattr("hoga.api.routes.now_kst",
+                        lambda: datetime(2026, 6, 8, 10, 0, tzinfo=_KST))
+    engine = _kis_live_engine(tmp_path, [BrokerRow(ts_ms=ENC_0930, seq=1, side="buy",
+                              rank=1, broker="키움증권", qty_today=100, qty_delta=0)])
+    unix_0930 = hhmmssms_to_unix_ms(DATE, ENC_0930)
+    buf = _FakeBuffer([{"t_ms": unix_0930 + 300_000,
+                        "buy_top": [{"name": "키움증권", "qty": 150}], "sell_top": []}])
+    r = _client(engine, lambda: buf).get(
+        "/api/brokers/series", params={"code": CODE, "date": DATE, "source_pref": "kis_live"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["source"] == "kis_live"
+    pts = {e["broker"]: e["points"] for e in body["brokers"]}["키움증권"]
+    assert pts[0] == {"ts_ms": unix_0930, "net": 100}            # parquet, unix-ms
+    assert pts[-1] == {"ts_ms": unix_0930 + 300_000, "net": 150}  # 버퍼 꼬리(이중변환 아님)
+
+
+def test_route_no_buffer_is_parquet_only(tmp_path: Path, monkeypatch) -> None:
+    # 버퍼 미배선(get_buffer=None) → today라도 parquet-only, unix 변환, 500 안 남.
+    monkeypatch.setattr("hoga.api.routes.now_kst",
+                        lambda: datetime(2026, 6, 8, 10, 0, tzinfo=_KST))
+    engine = _kis_live_engine(tmp_path, [BrokerRow(ts_ms=ENC_0930, seq=1, side="buy",
+                              rank=1, broker="키움증권", qty_today=100, qty_delta=0)])
+    r = _client(engine, None).get(
+        "/api/brokers/series", params={"code": CODE, "date": DATE, "source_pref": "kis_live"})
+    assert r.status_code == 200
+    pts = r.json()["brokers"][0]["points"]
+    assert pts == [{"ts_ms": hhmmssms_to_unix_ms(DATE, ENC_0930), "net": 100}]  # 꼬리 없음
+
+
+def test_route_past_date_ignores_buffer(tmp_path: Path, monkeypatch) -> None:
+    # now_kst가 DATE보다 미래 → DATE는 과거 → 버퍼 있어도 parquet-only.
+    monkeypatch.setattr("hoga.api.routes.now_kst",
+                        lambda: datetime(2026, 6, 9, 10, 0, tzinfo=_KST))
+    engine = _kis_live_engine(tmp_path, [BrokerRow(ts_ms=ENC_0930, seq=1, side="buy",
+                              rank=1, broker="키움증권", qty_today=100, qty_delta=0)])
+    buf = _FakeBuffer([{"t_ms": 9_999_999_999_999,
+                        "buy_top": [{"name": "키움증권", "qty": 150}], "sell_top": []}])
+    r = _client(engine, lambda: buf).get(
+        "/api/brokers/series", params={"code": CODE, "date": DATE, "source_pref": "kis_live"})
+    assert r.status_code == 200
+    pts = r.json()["brokers"][0]["points"]
+    assert pts == [{"ts_ms": hhmmssms_to_unix_ms(DATE, ENC_0930), "net": 100}]  # 꼬리 미병합

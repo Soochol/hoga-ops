@@ -121,7 +121,7 @@ def write_parquet(rows: Iterable[BrokerRow], path: Path) -> None:
 
 def series_entries_from_rows(
     rows: Iterable[tuple[str, int, int]],
-) -> list["BrokerSeriesEntry"]:
+) -> list[BrokerSeriesEntry]:
     """`(broker_raw, ts_ms, signed_net)` 행 → BrokerSeriesEntry top-10.
 
     canonical 정규화 후 같은 (firm, ts_ms)를 합산하고(별칭 2개가 한 점으로),
@@ -187,7 +187,7 @@ def broker_rows_from_snapshots(
 
 def query_day_series(
     con: duckdb.DuckDBPyConnection, *, path: Path
-) -> list["BrokerSeriesEntry"]:
+) -> list[BrokerSeriesEntry]:
     """Per-broker signed-net trajectories for the whole parquet file.
 
     Aggregates qty_today * sign(side) per (broker, ts_ms), then groups via
@@ -214,7 +214,7 @@ def query_day_series_today(
     *,
     date: str,
     buffer_snapshots: Iterable[dict],
-) -> list["BrokerSeriesEntry"]:
+) -> list[BrokerSeriesEntry]:
     """today 봉합: parquet(승격분, ts≤seam) + 라이브 버퍼 꼬리(ts>seam)를
     **unix-ms 공간에서** 합쳐 당일 전체 시리즈 반환(#9, 접근 B).
 

@@ -5,7 +5,11 @@ This file is the thin glue layer.
 
 from __future__ import annotations
 
+import asyncio
+import logging
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -29,9 +33,16 @@ from hoga.api.timeenc import (
     ms_from_midnight_to_unix_ms,
     unix_ms_to_hhmmssms,
 )
+from hoga.collector.orchestrator import now_kst
 from hoga.tables import brokers as brokers_tbl
 from hoga.tables import candles as candles_tbl
 from hoga.tables import snapshots as snapshots_tbl
+
+_log = logging.getLogger(__name__)
+
+# 라이브 버퍼가 대표하는 캡처 소스. /api/brokers/series의 today 봉합은 이 소스일
+# 때만 버퍼 꼬리를 합친다(hogaplay 소스엔 라이브 버퍼 없음). #9.
+_LIVE_CAPTURE_SOURCE: SourceName = "kis_live"
 
 
 def _parquet_path(
@@ -87,7 +98,14 @@ def _cursor_to_native(date: str, unix_ms: int) -> int:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def build_router(engine: QueryEngine) -> APIRouter:
+def build_router(
+    engine: QueryEngine,
+    *,
+    get_buffer: Callable[[], Any] | None = None,
+) -> APIRouter:
+    """`get_buffer`: 라이브 버퍼 접근자(() -> LiveBuffer | None). 주어지면
+    /api/brokers/series가 today & kis_live에서 버퍼 꼬리를 봉합한다(#9). None이면
+    parquet-only(기존 동작·라우트 테스트 호환)."""
     router = APIRouter(prefix="/api")
 
     @router.get("/stock-dates", response_model=list[StockDateModel])
@@ -190,7 +208,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         return CandlesResponse(candles=rows)
 
     @router.get("/brokers/series", response_model=BrokerSeriesResponse)
-    def brokers_series(
+    async def brokers_series(
         code: Code,
         date: StockDate,
         source_pref: SourceName = Query("hogaplay"),
@@ -202,22 +220,51 @@ def build_router(engine: QueryEngine) -> APIRouter:
         if sd_dir is None:
             return BrokerSeriesResponse(date=date, brokers=[], source=source)
         path = sd_dir / "brokers.parquet"
-        raw_entries = brokers_tbl.query_day_series(engine.conn, path=path)
-        # Convert each point's ts_ms from HH:MM:SS.ms-encoded to Unix ms,
-        # mirroring the /api/brokers and /api/candles handlers.
-        entries = [
-            e.model_copy(
-                update={
-                    "points": [
-                        p.model_copy(
-                            update={"ts_ms": hhmmssms_to_unix_ms(date, p.ts_ms)}
-                        )
-                        for p in e.points
-                    ],
-                }
-            )
-            for e in raw_entries
-        ]
+
+        # #9 today 봉합: date==오늘(KST) & 라이브 캡처 소스 & 버퍼 배선됨이면
+        # 라이브 버퍼의 미승격 꼬리를 합쳐 당일 전체 궤적을 반환. 그 외(과거·
+        # hogaplay·버퍼 미배선)는 기존 parquet-only.
+        use_tail = (
+            date == now_kst().strftime("%Y%m%d")
+            and source == _LIVE_CAPTURE_SOURCE
+            and get_buffer is not None
+            and get_buffer() is not None
+        )
+        buffer_snapshots: list[dict] = []
+        if use_tail:
+            try:
+                series = await get_buffer().get_series(code)  # type: ignore[misc]
+                buffer_snapshots = series.get("brokers") or []
+            except Exception:  # noqa: BLE001 — 버퍼 일시 오류는 parquet-only 폴백(500 금지)
+                _log.exception("brokers.series.buffer_read_failed code=%s", code)
+                use_tail = False
+
+        def _compute() -> list[Any]:
+            if use_tail:
+                # query_day_series_today는 unix-ms로 반환 — 재변환 금지(이중변환 방지).
+                return brokers_tbl.query_day_series_today(
+                    engine.conn, path, date=date, buffer_snapshots=buffer_snapshots
+                )
+            # parquet-only: HHMMSSmmm → Unix ms 변환(/api/brokers·candles와 동일).
+            raw_entries = brokers_tbl.query_day_series(engine.conn, path=path)
+            return [
+                e.model_copy(
+                    update={
+                        "points": [
+                            p.model_copy(
+                                update={"ts_ms": hhmmssms_to_unix_ms(date, p.ts_ms)}
+                            )
+                            for p in e.points
+                        ],
+                    }
+                )
+                for e in raw_entries
+            ]
+
+        # DuckDB는 동기(블로킹) — async 핸들러에서 to_thread로 루프 비차단(기존
+        # 동기 핸들러가 threadpool에서 돌던 것과 동일 속성 유지). 버퍼 읽기는
+        # 위에서 await 완료(plain dict)라 스레드엔 conn 동시성 없음.
+        entries = await asyncio.to_thread(_compute)
         return BrokerSeriesResponse(date=date, brokers=entries, source=source)
 
     @router.get("/range", response_model=RangeBundle)
