@@ -526,22 +526,22 @@ async def _ws_watchdog_check(
 
     stream = _state.stream_obj
     ws = getattr(stream, "ws", None) if stream is not None else None
-    last_recv = getattr(ws, "last_recv_ms", None) if ws is not None else None
-
-    grace_elapsed = (now_ms - ref_ms) > stale_after_ms
-    recv_fresh = (
-        last_recv is not None
-        and last_recv >= session_open_ms
-        and (now_ms - last_recv) <= stale_after_ms
+    # watchdog은 위(ws_capture_window)에서 이미 게이트했으므로 여기선 항상
+    # 장중 — market_closed=False(헬스 술어의 closed 단락 우회).
+    _healthy, reason = _capture_health(
+        running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
+        stale_after_ms=stale_after_ms, market_closed=False,
     )
-    stale = (not dead) and grace_elapsed and (not recv_fresh)
-    if dead or stale:
-        _log.warning(
-            "live.stream.watchdog_restart dead=%s stale=%s last_recv_ms=%s",
-            dead, stale, last_recv,
-        )
+    # 재시작은 소켓 문제만(dead/stale) — 구독 거부(sub_failed)는 재연결로 안
+    # 풀려 폭풍만 유발하므로 가시화(capture_healthy=False)에 맡기고 WARNING만
+    # 남긴다(spec §2.3). subscribing/reconnecting은 정상 진행 — 무동작.
+    if dead or reason == "stale":
+        _log.warning("live.stream.watchdog_restart dead=%s reason=%s", dead, reason)
         await start_live_stream(data_dir=data_dir)
         return True
+    if reason == "sub_failed":
+        _log.warning("live.stream.sub_failed acked=%s expected=%s — 재시작 안 함(가시화)",
+                     getattr(ws, "sub_acked", 0), getattr(ws, "sub_expected", 0))
     return False
 
 

@@ -280,6 +280,8 @@ def _install_stream_state(monkeypatch, *, started_at_ms, ws_task, stream_task,
             self.last_tick_ms = tick_ms
             self.last_recv_ms = recv_ms
             self.connected = recv_ms is not None
+            self.sub_expected = 3      # 헬스 술어용 기본값(확인 완료 상태)
+            self.sub_acked = 3
 
     class _FakeStream:
         def __init__(self, tick_ms, flush_ms, recv_ms):
@@ -850,3 +852,67 @@ async def test_get_status_exposes_capture_health(monkeypatch, tmp_path) -> None:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+
+
+@pytest.mark.asyncio
+async def test_watchdog_does_not_restart_on_sub_failed_when_recv_fresh(
+    monkeypatch, _spy_start_stream, tmp_path
+) -> None:
+    """spec §2.3: 구독 미확인이지만 수신 신선(appkey 거부류 — PINGPONG은 흐름)
+    → 재시작 안 함(재연결 불응, 가시화만)."""
+    from hoga.live import lifecycle
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.ws_capture_window", lambda _t: True)
+    async def _forever():
+        await asyncio.sleep(60)
+    ws_task = asyncio.create_task(_forever())
+    stream_task = asyncio.create_task(_forever())
+    try:
+        _install_stream_state(
+            monkeypatch, started_at_ms=1_000, ws_task=ws_task,
+            stream_task=stream_task, last_tick_ms=None, last_recv_ms=9_950_000,
+        )
+        lifecycle._state.stream_obj.ws.sub_expected = 39
+        lifecycle._state.stream_obj.ws.sub_acked = 10   # 미확인
+        restarted = await lifecycle._ws_watchdog_check(
+            data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
+        )
+        assert restarted is False
+        assert _spy_start_stream == []
+    finally:
+        for t in (ws_task, stream_task):
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
+
+
+@pytest.mark.asyncio
+async def test_watchdog_restarts_when_sub_unacked_and_recv_stale(
+    monkeypatch, _spy_start_stream, tmp_path
+) -> None:
+    """spec §2.3 + advisor: 구독 미확인 AND 수신 끊김 = dead socket → 재시작.
+    recv 체크가 sub보다 먼저라 'stale'로 분류(old 순차 코드와 동일하게 재시작)."""
+    from hoga.live import lifecycle
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.ws_capture_window", lambda _t: True)
+    async def _forever():
+        await asyncio.sleep(60)
+    ws_task = asyncio.create_task(_forever())
+    stream_task = asyncio.create_task(_forever())
+    try:
+        _install_stream_state(
+            monkeypatch, started_at_ms=1_000, ws_task=ws_task,
+            stream_task=stream_task, last_tick_ms=None, last_recv_ms=9_000_000,
+        )
+        lifecycle._state.stream_obj.ws.sub_expected = 39
+        lifecycle._state.stream_obj.ws.sub_acked = 10
+        restarted = await lifecycle._ws_watchdog_check(
+            data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
+        )
+        assert restarted is True
+        assert _spy_start_stream == [tmp_path]
+    finally:
+        for t in (ws_task, stream_task):
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
