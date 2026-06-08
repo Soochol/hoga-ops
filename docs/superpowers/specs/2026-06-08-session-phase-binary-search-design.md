@@ -1,7 +1,7 @@
 # sessionPhaseAt 이진 탐색화 — 차트 projector 핫패스 선형 스캔 제거
 
 - **Date**: 2026-06-08
-- **Status**: Approved (brainstorming 2026-06-08 — main v0.6.5.3 머지 후 재산정)
+- **Status**: Implemented (2026-06-08)
 - **Scope**: `frontend` — `frontend/src/util/sessionTime.ts` 단일 함수
 - **Topic slug**: `session-phase-binary-search`
 
