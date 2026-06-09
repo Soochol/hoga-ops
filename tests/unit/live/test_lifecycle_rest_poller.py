@@ -326,3 +326,81 @@ def test_sync_exclusion_no_poller_noop() -> None:
     from hoga.live.lifecycle import _sync_exclusion
 
     _sync_exclusion(None, ("005930", "000660"))  # 예외 안 남
+
+
+# ── Task 11: rest_poller 분리 회귀 + C4 보는종목 (스펙 §3·C4) ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_view_subscription_survives_stream_restart(tmp_path, monkeypatch):
+    """잠복 버그 회귀(§3): conn(스트림) 재시작이 보는종목 구독을 날리면 안 된다."""
+    import hoga.live.kis_runtime as kis_runtime
+    import hoga.live.lifecycle as lifecycle
+    from hoga.live import session_gate
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr(session_gate, "should_run_now", lambda _t: False)
+    monkeypatch.setenv("KIS_APP_KEY", "K")
+    monkeypatch.setenv("KIS_APP_SECRET", "S")
+
+    class _FakeKis:
+        _creds = type("C", (), {"app_key": "k0"})()
+        async def get_approval_key(self):
+            return "A"
+        async def aclose(self):
+            pass
+        async def fetch_orderbook(self, code):
+            raise RuntimeError("offline")
+        async def fetch_trades(self, code):
+            return []
+        async def fetch_brokers(self, code):
+            raise RuntimeError("offline")
+
+    monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda d: _FakeKis())
+    monkeypatch.setattr(kis_runtime, "ensure_kis_client_for_account", lambda a, d: _FakeKis())
+
+    from hoga.api import symbols
+    from tests.unit.live.test_lifecycle_start import _write_watchlist
+    monkeypatch.setattr(symbols, "search", lambda q, limit=10_000: [])
+    _write_watchlist(tmp_path, ["005930"])
+    await lifecycle.start_live_stream(data_dir=tmp_path)
+
+    # 보는종목(관심 밖) 구독
+    lifecycle.on_view_subscribe("999999")
+    assert "999999" in lifecycle._state.rest_poller._subscribed
+
+    # 전체 재시작(watchdog 전체 재시작 경로와 동일하게 poller 보존)
+    await lifecycle.start_live_stream(data_dir=tmp_path)
+    assert lifecycle._state.rest_poller is not None
+    assert "999999" in lifecycle._state.rest_poller._subscribed  # ★ 구독 보존
+    await lifecycle.stop_live_stream()
+
+
+@pytest.mark.asyncio
+async def test_empty_watchlist_view_subscribe_polls(tmp_path, monkeypatch):
+    """C4: 빈 watchlist여도 보는종목 on_view_subscribe가 폴링 대상에 들어간다."""
+    import hoga.live.kis_runtime as kis_runtime
+    import hoga.live.lifecycle as lifecycle
+    from hoga.live import session_gate
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr(session_gate, "should_run_now", lambda _t: False)
+    monkeypatch.setenv("KIS_APP_KEY", "K")
+    monkeypatch.setenv("KIS_APP_SECRET", "S")
+
+    class _FakeKis:
+        _creds = type("C", (), {"app_key": "k0"})()
+        async def get_approval_key(self):
+            return "A"
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda d: _FakeKis())
+
+    from tests.unit.live.test_lifecycle_start import _write_watchlist
+    _write_watchlist(tmp_path, [])
+    assert await lifecycle.start_live_stream(data_dir=tmp_path) is True
+    assert lifecycle._state.streams == {}                       # WS 연결 0 (C4)
+    lifecycle.on_view_subscribe("005930")
+    assert "005930" in lifecycle._state.rest_poller._subscribed  # 폴링 대상(빈 화면 아님)
+    await lifecycle.stop_live_stream()
