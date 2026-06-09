@@ -19,6 +19,8 @@ export interface LiveStatus {
   watchlist_count: number;
   kis_calls_today: number;
   kis_rate_limit_remaining: number | null;
+  /** Codes the backend is *actively collecting* in the current cycle. Used for collection-status badge visibility. */
+  live_set: string[];
 }
 
 /**
