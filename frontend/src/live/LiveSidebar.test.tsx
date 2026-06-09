@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { act } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveSidebar } from './LiveSidebar';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveCursorStore } from './useLiveCursorStore';
@@ -30,6 +31,36 @@ vi.mock('../sidebar/TotalQtyBar', () => ({
 import * as cursorHooks from '../api/useLiveCursor';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
 
+/** Build a QueryClient with ['live','status'] pre-seeded so useLiveStatus() resolves synchronously. */
+function makeQc(liveSet: string[] = []) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(['live', 'status'], {
+    running: true,
+    started_at_ms: 1,
+    last_tick_ms: 1,
+    cycle_lag_ms: 0,
+    capture_healthy: true,
+    capture_reason: 'healthy',
+    watchlist_count: liveSet.length,
+    kis_calls_today: 0,
+    kis_rate_limit_remaining: null,
+    live_set: liveSet,
+  });
+  return qc;
+}
+
+function renderSidebar(
+  props: { code: string | null; live?: LiveSeriesData },
+  liveSet: string[] = [],
+) {
+  const qc = makeQc(liveSet);
+  return render(
+    <QueryClientProvider client={qc}>
+      <LiveSidebar code={props.code} live={props.live ?? emptyLive} />
+    </QueryClientProvider>,
+  );
+}
+
 describe('LiveSidebar', () => {
   beforeEach(() => {
     (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
@@ -41,7 +72,7 @@ describe('LiveSidebar', () => {
   afterEach(() => cleanup());
 
   it('renders the sidebar shell when code is null (waiting state)', () => {
-    render(<LiveSidebar code={null} live={emptyLive} />);
+    renderSidebar({ code: null });
     expect(screen.getByTestId('live-sidebar')).toBeInTheDocument();
   });
 
@@ -62,14 +93,14 @@ describe('LiveSidebar', () => {
         },
       ],
     };
-    render(<LiveSidebar code="005930" live={liveWithData} />);
+    renderSidebar({ code: '005930', live: liveWithData });
     // OrderbookTable renders price-level rows (not the "호가 데이터 없음" empty state)
     // when latestOrderbookSnapshot returns non-null.
     expect(screen.queryByText('호가 데이터 없음')).toBeNull();
   });
 
   it('shows the LIVE pulse badge in header (Design C1)', () => {
-    render(<LiveSidebar code="005930" live={emptyLive} />);
+    renderSidebar({ code: '005930' });
     expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
   });
 });
@@ -85,13 +116,13 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
   afterEach(() => cleanup());
 
   it('shows LIVE● header when cursorMs is null', () => {
-    render(<LiveSidebar code="005930" live={emptyLive} />);
+    renderSidebar({ code: '005930' });
     expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
     expect(screen.getByText('LIVE')).toBeInTheDocument();
   });
 
   it('swaps to "과거 시점" + KST timestamp when cursor is set', () => {
-    render(<LiveSidebar code="005930" live={emptyLive} />);
+    renderSidebar({ code: '005930' });
     // 2026-05-28T04:42:17Z → KST 13:42:17
     const t = new Date('2026-05-28T04:42:17Z').getTime();
     act(() => useLiveCursorStore.getState().setCursor(t));
@@ -102,7 +133,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
   });
 
   it('does not call cursor hooks when cursorMs null', () => {
-    render(<LiveSidebar code="005930" live={emptyLive} />);
+    renderSidebar({ code: '005930' });
     // The hooks are imported and rendered, but their inner useSpot
     // does not fetch — verified separately in useLiveCursor.test.ts.
     // Here we just confirm they were called with code='005930' so
@@ -114,7 +145,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
 
   it('TotalQtyBar maskRatio=true when cursorMs in closing auction window', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => true } as never });
-    render(<LiveSidebar code="005930" live={emptyLive} />);
+    renderSidebar({ code: '005930' });
     act(() => useLiveCursorStore.getState().setCursor(1_748_400_900_000));
     expect(TotalQtyBar).toHaveBeenCalledWith(
       expect.objectContaining({ maskRatio: true }),
@@ -124,7 +155,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
 
   it('TotalQtyBar maskRatio=false when cursorMs outside window', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => false } as never });
-    render(<LiveSidebar code="005930" live={emptyLive} />);
+    renderSidebar({ code: '005930' });
     act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
     expect(TotalQtyBar).toHaveBeenCalledWith(
       expect.objectContaining({ maskRatio: false }),
@@ -134,7 +165,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
 
   it('TotalQtyBar maskRatio=false when cursorMs null (preserves existing behavior)', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => true } as never });
-    render(<LiveSidebar code="005930" live={emptyLive} />);
+    renderSidebar({ code: '005930' });
     // No setCursor — cursorMs stays null. maskRatio must be false despite
     // the axis predicate returning true, because we don't engage mask in
     // latest mode (existing behavior).
@@ -148,7 +179,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
     // Pane Legend publishes cursorMs on D, but spot mode is minute-only
     // (ADR-0044). Cursor on D must NOT blank the orderbook / flip the header.
     useLivePageStore.setState({ candleTimeframe: 'D' });
-    render(<LiveSidebar code="005930" live={emptyLive} />);
+    renderSidebar({ code: '005930' });
     act(() => useLiveCursorStore.getState().setCursor(new Date('2026-05-28T04:42:17Z').getTime()));
     expect(screen.queryByText('과거 시점')).toBeNull();
     expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
@@ -173,7 +204,7 @@ describe('LiveSidebar — empty spot orderbook with available_from hint (T14b)',
       source: 'hogaplay',
     });
     act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
-    render(<LiveSidebar code="005930" live={emptyLive} />);
+    renderSidebar({ code: '005930' });
     expect(screen.getByText(/다음 가용: 12:42/)).toBeInTheDocument();
   });
 
@@ -184,7 +215,36 @@ describe('LiveSidebar — empty spot orderbook with available_from hint (T14b)',
       source: 'hogaplay',
     });
     act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
-    render(<LiveSidebar code="005930" live={emptyLive} />);
+    renderSidebar({ code: '005930' });
     expect(screen.queryByText(/다음 가용/)).toBeNull();
+  });
+});
+
+// ADR-0067: REST 준실시간 안내 — activeCode가 live_set 밖이면 안내 배너 표시
+describe('LiveSidebar — REST 준실시간 안내 (ADR-0067)', () => {
+  beforeEach(() => {
+    (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+    (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+    useLiveCursorStore.getState().clearCursor();
+    useLiveAxisStore.setState({ axis: null });
+    vi.mocked(TotalQtyBar).mockClear();
+  });
+  afterEach(() => cleanup());
+
+  it('(a) shows REST notice when code is NOT in live_set', () => {
+    // 005930 is not in live_set (only 000660 is)
+    renderSidebar({ code: '005930' }, ['000660']);
+    expect(screen.getByTestId('live-sidebar-rest-notice')).toBeInTheDocument();
+  });
+
+  it('(b) hides REST notice when code IS in live_set (실시간 수집 중)', () => {
+    // 005930 is in live_set → real-time WS collection, no notice
+    renderSidebar({ code: '005930' }, ['005930', '000660']);
+    expect(screen.queryByTestId('live-sidebar-rest-notice')).toBeNull();
+  });
+
+  it('hides REST notice when code is null', () => {
+    renderSidebar({ code: null }, ['000660']);
+    expect(screen.queryByTestId('live-sidebar-rest-notice')).toBeNull();
   });
 });
