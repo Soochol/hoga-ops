@@ -284,3 +284,31 @@ async def test_start_no_poller_when_creds_missing(
     ok = await lifecycle.start_live_stream(data_dir=tmp_path)
     assert ok is False
     assert lifecycle._state.rest_poller is None
+
+
+# ── _sync_and_live_set 헬퍼 단위 테스트 (ADR-0067 배타 단일화) ──────────────────
+
+
+def test_sync_and_live_set_calls_set_excluded_and_returns_tuple() -> None:
+    """_sync_and_live_set(codes, poller)가 set_excluded_codes(set(codes))를 호출하고
+    tuple(codes)를 반환한다."""
+    from hoga.live.lifecycle import _sync_and_live_set
+
+    poller = _FakePoller()
+    codes = ["005930", "000660"]
+    result = _sync_and_live_set(codes, poller)
+
+    assert result == tuple(codes), "_sync_and_live_set은 tuple(codes)를 반환해야 함"
+    assert poller.excluded == set(codes), (
+        "_sync_and_live_set은 set_excluded_codes(set(codes))를 호출해야 함"
+    )
+
+
+def test_sync_and_live_set_no_poller_returns_tuple() -> None:
+    """_sync_and_live_set(codes, None)은 예외 없이 tuple(codes)를 반환한다(오프라인 폴백)."""
+    from hoga.live.lifecycle import _sync_and_live_set
+
+    codes = ["005930", "000660"]
+    result = _sync_and_live_set(codes, None)
+
+    assert result == tuple(codes), "rest_poller 없이도 tuple(codes)를 반환해야 함"

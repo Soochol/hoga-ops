@@ -86,6 +86,22 @@ def live_set_codes(doc: WatchlistDocument) -> list[str]:
     return display_ordered_codes(doc)[:LIVE_SET_MAX_CODES]
 
 
+def _sync_and_live_set(
+    codes: list[str],
+    rest_poller: LiveRestPoller | None,
+) -> tuple[str, ...]:
+    """live_set 값을 얻는 유일한 경로 = 배타 동기화 지점.
+
+    rest_poller가 있으면 WS 수집 종목을 폴러 배제로 동기화하고,
+    live_set 튜플을 반환한다. 순서: excluded 먼저, live_set 나중.
+
+    ADR-0067: set_excluded_codes 누락에 의한 WS/REST 이중수집을 구조적으로 차단.
+    """
+    if rest_poller is not None:
+        rest_poller.set_excluded_codes(set(codes))
+    return tuple(codes)
+
+
 # ── Wire model ─────────────────────────────────────────────────────────────────
 
 class LiveStatus(BaseModel):
@@ -419,14 +435,14 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
 
     # 7. ADR-0067: REST 표시폴러 생성 — WS live_set 배타 설정 후 기동
     rest_poller = LiveRestPoller(kis, _buffer)
-    rest_poller.set_excluded_codes(set(codes))  # 배타: WS 수집 종목은 폴러 skip
+    live_set = _sync_and_live_set(codes, rest_poller)  # 배타 동기화 지점
     rest_poller.start()
 
     global _state  # noqa: PLW0603
     _state = _State(
         started_at_ms=_now_ms(),
         watchlist_codes=tuple(codes),
-        live_set=tuple(codes),
+        live_set=live_set,
         stream_obj=stream,
         ws_task=asyncio.create_task(ws.run(codes), name="live-ws"),
         stream_task=asyncio.create_task(stream.run_flush_loop(), name="live-flush"),
@@ -513,11 +529,10 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
         await stream.ws.update_codes(codes)  # type: ignore[union-attr]
         stream.set_active_codes(set(codes))  # type: ignore[union-attr]  # advisor C: 밀려난 코드 carry 즉시 제거
         # ADR-0067: live_set 갱신마다 배타 동기화 — WS 수집 종목 폴러 skip
-        if _state.rest_poller is not None:
-            _state.rest_poller.set_excluded_codes(set(codes))
+        live_set = _sync_and_live_set(codes, _state.rest_poller)  # 배타 동기화 지점
         await _buffer.drop_codes_except(set(codes))  # Task 4 리뷰: 떠난 코드 ring 해제
 
-        _state = replace(_state, live_set=tuple(codes), watchlist_codes=tuple(codes))
+        _state = replace(_state, live_set=live_set, watchlist_codes=tuple(codes))
 
 
 # ADR-0064 이식 — WS 스트림 watchdog
