@@ -1,0 +1,341 @@
+"""Unit tests for LiveRestPoller (ADR-0067 보는종목 REST 표시폴러).
+
+ADR-0067: activeCode가 WS live_set 밖이면 2초 주기 REST 폴링 → buffer.publish.
+ADR-0064: 루프 예외 격리 + alive = task.done() 기반(거짓 health 금지).
+저장 경로(writer/promote/to_jsonl) 호출 금지.
+"""
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import time
+
+import pytest
+
+from hoga.live.buffer import LiveBuffer
+from hoga.live.kis_models import KisBrokerEntry, KisBrokers, KisOrderbook, KisTrade, OrderbookLevel
+from hoga.live.rest_poller import LiveRestPoller
+
+
+# ── Fake KIS client ────────────────────────────────────────────────────────────
+
+class FakeKisClient:
+    """Minimal fake for LiveRestPoller tests.
+
+    - Returns minimal valid models for each fetch method.
+    - If a code is in `raise_for`, all three fetch methods raise RuntimeError.
+    - Records per-method call counts via `calls` dict.
+    """
+
+    def __init__(self, *, raise_for: set[str] | None = None) -> None:
+        self.raise_for: set[str] = raise_for or set()
+        self.calls: dict[str, list[str]] = {
+            "fetch_orderbook": [],
+            "fetch_trades": [],
+            "fetch_brokers": [],
+        }
+
+    async def fetch_orderbook(self, code: str) -> KisOrderbook:
+        self.calls["fetch_orderbook"].append(code)
+        if code in self.raise_for:
+            raise RuntimeError(f"fake fetch_orderbook error for {code}")
+        now_ms = int(time.time() * 1000)
+        return KisOrderbook(
+            code=code,
+            asks=[OrderbookLevel(price=70000, qty=100)],
+            bids=[OrderbookLevel(price=69900, qty=200)],
+            total_ask_qty=100,
+            total_bid_qty=200,
+            t_ms=now_ms,
+        )
+
+    async def fetch_trades(self, code: str) -> list[KisTrade]:
+        self.calls["fetch_trades"].append(code)
+        if code in self.raise_for:
+            raise RuntimeError(f"fake fetch_trades error for {code}")
+        now_ms = int(time.time() * 1000)
+        return [
+            KisTrade(price=70000, qty=10, side=1, side_source="inferred", t_ms=now_ms),
+        ]
+
+    async def fetch_brokers(self, code: str) -> KisBrokers:
+        self.calls["fetch_brokers"].append(code)
+        if code in self.raise_for:
+            raise RuntimeError(f"fake fetch_brokers error for {code}")
+        return KisBrokers(
+            code=code,
+            buy_top=[KisBrokerEntry(name="미래에셋", qty=500)],
+            sell_top=[KisBrokerEntry(name="키움", qty=300)],
+        )
+
+
+# ── Helper ─────────────────────────────────────────────────────────────────────
+
+def _make_poller(
+    *,
+    raise_for: set[str] | None = None,
+    interval_s: float = 0.02,
+) -> tuple[FakeKisClient, LiveBuffer, LiveRestPoller]:
+    kis = FakeKisClient(raise_for=raise_for)
+    buf = LiveBuffer()
+    poller = LiveRestPoller(
+        kis,
+        buf,
+        interval_s=interval_s,
+        phase_fn=lambda: "regular",
+    )
+    return kis, buf, poller
+
+
+# ── Tests ──────────────────────────────────────────────────────────────────────
+
+
+async def test_on_subscribe_adds_code():
+    """on_subscribe(code)가 구독 목록에 추가된다."""
+    _, _, poller = _make_poller()
+    poller.on_subscribe("005930")
+    poller.on_subscribe("000660")
+    assert "005930" in poller._subscribed
+    assert "000660" in poller._subscribed
+
+
+async def test_on_unsubscribe_removes_code():
+    """on_unsubscribe(code)가 구독 목록에서 제거된다."""
+    _, _, poller = _make_poller()
+    poller.on_subscribe("005930")
+    poller.on_subscribe("000660")
+    poller.on_unsubscribe("005930")
+    assert "005930" not in poller._subscribed
+    assert "000660" in poller._subscribed
+
+
+async def test_set_excluded_codes():
+    """set_excluded_codes로 WS-active 종목이 제외 집합에 설정된다."""
+    _, _, poller = _make_poller()
+    poller.set_excluded_codes({"005930", "000660"})
+    assert "005930" in poller._excluded
+    assert "000660" in poller._excluded
+
+
+async def test_excluded_code_skipped_in_poll_cycle():
+    """WS live_set에 있는 종목은 폴링에서 skip — fetch/publish 안 함."""
+    kis, buf, poller = _make_poller()
+    poller.on_subscribe("005930")
+    poller.on_subscribe("000660")
+    poller.set_excluded_codes({"005930"})  # 005930은 WS 수집 중 → skip
+
+    await poller._poll_once()
+
+    # 005930은 fetch 호출 없어야 함
+    assert "005930" not in kis.calls["fetch_orderbook"]
+    assert "005930" not in kis.calls["fetch_trades"]
+    assert "005930" not in kis.calls["fetch_brokers"]
+    # 000660은 fetch 됐어야 함
+    assert "000660" in kis.calls["fetch_orderbook"]
+    assert "000660" in kis.calls["fetch_trades"]
+    assert "000660" in kis.calls["fetch_brokers"]
+
+
+async def test_poll_cycle_calls_fetch_and_publishes_to_buffer():
+    """한 사이클에서 fetch_* 호출 → B3 변환 → buffer.publish 호출 (저장 없음)."""
+    kis, buf, poller = _make_poller()
+    poller.on_subscribe("005930")
+
+    await poller._poll_once()
+
+    # fetch 세 개 모두 호출됨
+    assert "005930" in kis.calls["fetch_orderbook"]
+    assert "005930" in kis.calls["fetch_trades"]
+    assert "005930" in kis.calls["fetch_brokers"]
+
+    # buffer에 publish됐는지 확인 — get_latest가 None이 아니어야 함
+    result = await buf.get_latest("005930")
+    assert result is not None
+    assert result["code"] == "005930"
+
+
+async def test_poll_publishes_ob_trade_broker_kinds():
+    """buffer에 ob/trade/broker 세 kind가 모두 publish된다."""
+    from hoga.live.snapshot import SnapshotKind
+
+    _, buf, poller = _make_poller()
+    poller.on_subscribe("005930")
+
+    await poller._poll_once()
+
+    series = await buf.get_series("005930")
+    # 각 kind에 항목이 있어야 함
+    assert len(series["snapshots"]) >= 1     # ob
+    assert len(series["trades"]) >= 1        # trade
+    assert len(series["brokers"]) >= 1       # broker
+
+
+async def test_no_fetch_when_subscribed_set_empty():
+    """구독 종목 없으면 fetch가 전혀 호출되지 않는다."""
+    kis, buf, poller = _make_poller()
+    # 아무것도 구독 안 함
+
+    await poller._poll_once()
+
+    assert kis.calls["fetch_orderbook"] == []
+    assert kis.calls["fetch_trades"] == []
+    assert kis.calls["fetch_brokers"] == []
+
+
+async def test_poll_multiple_codes():
+    """여러 종목이 구독되어 있으면 모두 폴링된다."""
+    kis, buf, poller = _make_poller()
+    poller.on_subscribe("005930")
+    poller.on_subscribe("000660")
+
+    await poller._poll_once()
+
+    assert "005930" in kis.calls["fetch_orderbook"]
+    assert "000660" in kis.calls["fetch_orderbook"]
+
+
+async def test_exception_isolation_per_code_does_not_kill_poller():
+    """ADR-0064: 한 종목 fetch가 raise해도 다른 종목 처리가 계속된다.
+    poller 태스크가 죽지 않고 alive = True를 유지한다."""
+    kis, buf, poller = _make_poller(
+        raise_for={"005930"},   # 005930 fetch → raise
+        interval_s=0.02,
+    )
+    poller.on_subscribe("005930")   # 실패 종목
+    poller.on_subscribe("000660")   # 성공 종목
+
+    poller.start()
+    try:
+        # 몇 사이클 돌려서 살아있음을 확인
+        for _ in range(50):
+            await asyncio.sleep(0.01)
+            if "000660" in kis.calls["fetch_orderbook"]:
+                break
+
+        # 살아있어야 함(ADR-0064: 거짓 health 금지)
+        assert poller.alive is True
+
+        # 005930는 fetch 시도했으나 실패, 000660는 성공해서 buffer에 들어감
+        assert "000660" in kis.calls["fetch_orderbook"]
+        result = await buf.get_latest("000660")
+        assert result is not None
+
+    finally:
+        await poller.stop()
+
+
+async def test_alive_false_after_stop():
+    """stop() 후 alive == False (ADR-0064: 사망 감지 정직 노출)."""
+    _, _, poller = _make_poller(interval_s=0.02)
+    poller.on_subscribe("005930")
+    poller.start()
+    await asyncio.sleep(0.05)
+    assert poller.alive is True
+
+    await poller.stop()
+    assert poller.alive is False
+
+
+async def test_alive_derives_from_task_not_flag():
+    """ADR-0064: alive는 task.done() 기반이어야 함 — 내부 플래그 아님.
+
+    task가 외부에서 취소되어도 alive가 False를 정직하게 반환해야 한다.
+    """
+    _, _, poller = _make_poller(interval_s=0.02)
+    poller.on_subscribe("005930")
+    poller.start()
+    await asyncio.sleep(0.02)
+    assert poller.alive is True
+
+    # 태스크를 직접 취소 (외부 교란 시뮬레이션)
+    if poller._task is not None:
+        poller._task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await poller._task
+
+    # alive는 task 상태를 반영해야 함
+    assert poller.alive is False
+
+
+async def test_last_cycle_ms_updated_on_successful_cycle():
+    """성공한 사이클 후 last_cycle_ms가 갱신된다 (stall 감지용)."""
+    _, _, poller = _make_poller(interval_s=0.02)
+    poller.on_subscribe("005930")
+
+    assert poller.last_cycle_ms is None  # 시작 전
+
+    await poller._poll_once()
+
+    assert poller.last_cycle_ms is not None
+    assert isinstance(poller.last_cycle_ms, int)
+
+
+async def test_last_cycle_ms_not_updated_when_all_fail():
+    """모든 코드가 실패해도 사이클 자체가 돌았으면 last_cycle_ms가 갱신된다."""
+    _, _, poller = _make_poller(raise_for={"005930"}, interval_s=0.02)
+    poller.on_subscribe("005930")
+
+    # 실패하는 코드만 있어도 사이클은 완료됨 → last_cycle_ms 갱신
+    await poller._poll_once()
+
+    # 예외가 격리되므로 사이클은 완료 → cycle_ms 갱신됨
+    assert poller.last_cycle_ms is not None
+
+
+async def test_no_writer_calls_only_publish():
+    """저장 경로(writer) 미사용 확인: buffer.publish만 호출.
+
+    LiveRestPoller는 writer를 받지 않으므로 구조적으로 저장 불가.
+    임시로 LiveWriter를 import해 monkeypatch로 append를 raise-on-call로 막고
+    poller가 이를 건드리지 않음을 확인한다.
+    """
+    from hoga.live.writer import LiveWriter
+    import unittest.mock as mock
+
+    _, buf, poller = _make_poller()
+    poller.on_subscribe("005930")
+
+    # LiveWriter.append를 raise하도록 패치 (호출 시 테스트 실패)
+    with mock.patch.object(LiveWriter, "append", side_effect=AssertionError("writer.append should not be called")):
+        # 예외가 터지지 않으면 writer를 건드리지 않은 것
+        await poller._poll_once()
+
+    result = await buf.get_latest("005930")
+    assert result is not None
+
+
+async def test_start_stop_lifecycle():
+    """start() → asyncio task 생성, stop() → task 취소 + 정리."""
+    _, _, poller = _make_poller(interval_s=0.02)
+    poller.on_subscribe("005930")
+
+    assert poller._task is None
+    poller.start()
+    assert poller._task is not None
+    assert not poller._task.done()
+
+    await poller.stop()
+    assert poller._task.done()
+
+
+async def test_excluded_codes_updated_mid_run():
+    """run 중에 set_excluded_codes를 호출하면 다음 사이클에 반영된다."""
+    kis, buf, poller = _make_poller(interval_s=0.02)
+    poller.on_subscribe("005930")
+    poller.on_subscribe("000660")
+
+    # 처음엔 모두 폴링
+    await poller._poll_once()
+    initial_count = len(kis.calls["fetch_orderbook"])
+    assert "005930" in kis.calls["fetch_orderbook"]
+    assert "000660" in kis.calls["fetch_orderbook"]
+
+    # 005930을 excluded에 추가
+    poller.set_excluded_codes({"005930"})
+
+    # 다음 사이클: 005930 skip
+    await poller._poll_once()
+    # 000660은 한 번 더 호출됨
+    assert kis.calls["fetch_orderbook"].count("000660") == 2
+    # 005930은 추가 호출 없음
+    assert kis.calls["fetch_orderbook"].count("005930") == 1

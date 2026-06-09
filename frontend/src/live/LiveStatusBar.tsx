@@ -6,9 +6,12 @@ import { SourceChip } from '../chart/SourceChip';
 import { useSymbols } from '../capture/useSymbols';
 import type { RangeBundle } from '../api/types';
 import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
+import { useWatchlist } from '../watchlist/useWatchlist';
 import { HeartIcon } from '../ui/HeartIcon';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { QuoteChange } from '../rightrail/QuoteChange';
+import { useLiveStatus } from '../api/liveStatus';
+import { deriveCollectionStatus } from './collectionStatus';
 
 interface Props {
   activeCode: string | null;
@@ -35,6 +38,18 @@ export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundl
 
   const { isMember, toggle } = useWatchlistMembership();
   const member = !!activeCode && isMember(activeCode);
+
+  // ADR-0067: collection-status badge — activeCode가 보이는 중이므로 viewedCodes=[activeCode]
+  const { data: watchlistData } = useWatchlist();
+  const watchlistCodes = watchlistData?.entries.map((e) => e.code) ?? [];
+  const { data: liveStatusData } = useLiveStatus();
+  const liveSet = liveStatusData?.live_set ?? [];
+  const collectionStatus = deriveCollectionStatus(
+    activeCode,
+    liveSet,
+    watchlistCodes,
+    activeCode ? [activeCode] : [],
+  );
 
   // 종목명·현재가 옆 전일대비(등락액·등락률) — 관심/스크리너 패널과 동일한
   // 라이브 quote 단일 출처(ADR-0056). 현재가는 bundle(WS) 이라 별개.
@@ -128,6 +143,24 @@ export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundl
             }}
           >
             {captureHealthLabel(captureHealthy, captureReason)}
+          </span>
+        );
+      })()}
+      {activeCode && (collectionStatus === 'realtime' || collectionStatus === 'polling') && (() => {
+        // TODO(label): 배지 문구 확정
+        const isRealtime = collectionStatus === 'realtime';
+        return (
+          <span
+            data-testid="collection-status-badge"
+            className="font-mono px-2 py-0.5 rounded"
+            style={{
+              background: isRealtime ? 'var(--tint-success)' : 'transparent',
+              border: `1px solid ${isRealtime ? 'var(--tint-success-border)' : 'var(--border)'}`,
+              color: isRealtime ? 'var(--success)' : 'var(--fg-dimmer)',
+              fontSize: 'var(--text-xs)',
+            }}
+          >
+            {isRealtime ? '실시간' : '준실시간'}
           </span>
         );
       })()}

@@ -30,6 +30,7 @@ function renderBar(
   props: { activeCode: string | null; captureHealthy: boolean; captureReason: string; bundle: RangeBundle | null },
   watchlistCodes: string[] = [],
   quote?: { price: number; change_pct: number | null; change_won: number | null },
+  liveSet: string[] = [],
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(['watchlist'], {
@@ -43,6 +44,18 @@ function renderBar(
       phase: 'open', quotes: [{ code: props.activeCode, ...quote }],
     });
   }
+  qc.setQueryData(['live', 'status'], {
+    running: true,
+    started_at_ms: 1,
+    last_tick_ms: 1,
+    cycle_lag_ms: 0,
+    capture_healthy: props.captureHealthy,
+    capture_reason: props.captureReason,
+    watchlist_count: watchlistCodes.length,
+    kis_calls_today: 0,
+    kis_rate_limit_remaining: null,
+    live_set: liveSet,
+  });
   return render(
     <QueryClientProvider client={qc}>
       <LiveStatusBar {...props} />
@@ -120,5 +133,31 @@ describe('LiveStatusBar', () => {
     fireEvent.click(screen.getByRole('button', { name: '관심종목 해제' }));
     await waitFor(() => expect(spy).toHaveBeenCalledWith('005930'));
     spy.mockRestore();
+  });
+
+  // ADR-0067: collection-status badge — realtime vs polling
+  it('shows "실시간" badge when activeCode is in live_set (WS 실시간)', () => {
+    renderBar(
+      { activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE },
+      ['005930'],
+      undefined,
+      ['005930', '000660'],
+    );
+    expect(screen.getByTestId('collection-status-badge').textContent).toBe('실시간');
+  });
+
+  it('shows "준실시간" badge when activeCode is outside live_set (REST 준실시간)', () => {
+    renderBar(
+      { activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE },
+      [],
+      undefined,
+      ['000660'],
+    );
+    expect(screen.getByTestId('collection-status-badge').textContent).toBe('준실시간');
+  });
+
+  it('omits collection-status badge when activeCode is null', () => {
+    renderBar({ activeCode: null, captureHealthy: true, captureReason: 'healthy', bundle: null });
+    expect(screen.queryByTestId('collection-status-badge')).toBeNull();
   });
 });

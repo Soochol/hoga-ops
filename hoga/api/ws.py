@@ -32,6 +32,9 @@ def build_ws_router(
     @router.websocket("/api/ws")
     async def _ws(websocket: WebSocket) -> None:
         await websocket.accept()
+        # ADR-0067: local import to avoid circular imports at module level.
+        # Placed here so both receiver() closure and finally block can access it.
+        from hoga.live import lifecycle  # noqa: PLC0415
         out: asyncio.Queue[dict] = asyncio.Queue(maxsize=2048)
         bus_q = bus.subscribe()
         code_subs: dict[str, tuple[asyncio.Queue[dict], asyncio.Task[None]]] = {}
@@ -73,6 +76,8 @@ def build_ws_router(
                             continue
                         q = buf.subscribe(code)
                         code_subs[code] = (q, asyncio.create_task(pump_live(code, q)))
+                        # ADR-0067: forward to REST poller lifecycle.
+                        lifecycle.on_view_subscribe(code)
                     emit({"ch": "subscribed", "code": code})
                 elif action == "unsubscribe" and isinstance(code, str) and code in code_subs:
                     q, task = code_subs.pop(code)
@@ -80,6 +85,8 @@ def build_ws_router(
                     buf = get_buffer()
                     if buf is not None:
                         buf.unsubscribe(code, q)
+                    # ADR-0067: forward to REST poller lifecycle.
+                    lifecycle.on_view_unsubscribe(code)
 
         send_task = asyncio.create_task(sender())
         recv_task = asyncio.create_task(receiver())
@@ -108,6 +115,10 @@ def build_ws_router(
             if buf is not None:
                 for code, (q, _task) in subs:
                     buf.unsubscribe(code, q)
+            # ADR-0067: ghost-polling prevention — unsubscribe all subscribed codes
+            # from the REST poller lifecycle on disconnect.
+            for code, (_q, _task) in subs:
+                lifecycle.on_view_unsubscribe(code)
             bus.unsubscribe(bus_q)
 
     return router

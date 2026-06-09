@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
+import { useLiveStatus } from '../api/liveStatus';
+import { deriveCollectionStatus } from '../live/collectionStatus';
 import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
   useCreateFolder, useRenameFolder, useDeleteFolder, useReorderFolders, useMoveEntries,
@@ -187,6 +189,7 @@ function SortableQuoteRow(props: {
   onPick: () => void;
   onContextMenu: (e: React.MouseEvent<HTMLLIElement>) => void;
   onDelete: () => void;
+  collectionBadge?: React.ReactNode;
 }) {
   const { entry } = props;
   const { setNodeRef, listeners, transform, transition, isDragging } =
@@ -208,6 +211,7 @@ function SortableQuoteRow(props: {
       sortableStyle={{ transform: CSS.Transform.toString(transform), transition }}
       dragListeners={listeners}
       dragging={isDragging}
+      trailingAction={props.collectionBadge}
     />
   );
 }
@@ -252,6 +256,11 @@ export function WatchlistDrawer() {
 
   const codes = useMemo(() => data?.entries.map((e) => e.code) ?? [], [data]);
   const quoteByCode = useQuoteByCode(codes);
+
+  // ADR-0067: 행별 수집상태 배지 — live_set을 한 번 읽어 공유 (행마다 재계산 없음).
+  const { data: liveStatusData } = useLiveStatus();
+  const liveSet = liveStatusData?.live_set ?? [];
+  const viewedCodes = activeCode ? [activeCode] : [];
 
   // 함수형 업데이터 — 같은 배치의 다중 toggle도 최신 Set 위에서 계산된다.
   const toggle = (key: string) =>
@@ -361,6 +370,22 @@ export function WatchlistDrawer() {
                   <SortableContext items={g.entries.map((e) => e.code)} strategy={verticalListSortingStrategy}>
                     {g.entries.map((entry) => {
                       const q = quoteByCode.get(entry.code);
+                      const status = deriveCollectionStatus(entry.code, liveSet, codes, viewedCodes);
+                      const badge = status === 'uncollected' ? null : (
+                        <span
+                          className="font-mono px-1.5 py-0.5 rounded"
+                          style={{
+                            background: status === 'realtime' ? 'var(--tint-success)' : 'transparent',
+                            border: `1px solid ${status === 'realtime' ? 'var(--tint-success-border)' : 'var(--border)'}`,
+                            color: status === 'realtime' ? 'var(--success)' : 'var(--fg-dimmer)',
+                            fontSize: 'var(--text-xs)',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {/* TODO(label): 배지 문구 확정 */}
+                          {status === 'realtime' ? '실시간' : status === 'polling' ? '준실시간' : '저녁대기'}
+                        </span>
+                      );
                       return (
                         <SortableQuoteRow
                           key={entry.code}
@@ -372,6 +397,7 @@ export function WatchlistDrawer() {
                           onPick={() => onPick(entry.code)}
                           onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                           onDelete={() => removeM.mutate(entry.code)}
+                          collectionBadge={badge}
                         />
                       );
                     })}

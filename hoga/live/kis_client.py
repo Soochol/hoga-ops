@@ -25,7 +25,12 @@ import httpx
 
 from hoga.live.kis_models import (
     InvestorNetPoint,
+    KisBrokerEntry,
+    KisBrokers,
     KisCandle,
+    KisOrderbook,
+    KisTrade,
+    OrderbookLevel,
 )
 
 KIS_KST = timezone(timedelta(hours=9))
@@ -100,6 +105,28 @@ class _TokenBucket:
                     return
                 wait = (1.0 - self._tokens) / self._rate
             await asyncio.sleep(wait)
+
+
+def classify_side(
+    t_ms: int, prpr: int, askp: int, bidp: int
+) -> tuple[Literal[-1, 0, 1, 2], Literal["inferred", "auction"]]:
+    """Lee-Ready trade direction inference + auction window guard.
+
+    Returns (side, side_source). See Deep Sample Audit §B (Audit-2) and §H (Audit-5).
+    side: -1=sell, 0=mid, 1=buy, 2=auction
+    side_source: "inferred" | "auction"
+    """
+    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
+    h, m = kst.hour, kst.minute
+    in_open_auction = (h == 8 and m >= 50) or (h == 9 and m == 0)
+    in_close_auction = h == 15 and 20 <= m < 30
+    if in_open_auction or in_close_auction:
+        return 2, "auction"
+    if prpr >= askp:
+        return 1, "inferred"
+    if prpr <= bidp:
+        return -1, "inferred"
+    return 0, "inferred"
 
 
 class KisAuthError(RuntimeError):
@@ -741,6 +768,124 @@ class KisClient:
 
         points.sort(key=lambda p: p.t_ms)
         return InvestorNetFetchResult(points=points, violations=violations)
+
+    # ------------------------------------------------------------------
+    # fetch_orderbook (FHKST01010200, inquire-asking-price-exp-ccn)
+    # ------------------------------------------------------------------
+
+    async def fetch_orderbook(self, code: str) -> KisOrderbook:
+        """Fetch 10-level real-time orderbook for *code* (e.g. '005930').
+
+        ADR-0067 보는종목 표시폴러용. _get_with_rate_retry·토큰버킷 재사용.
+        """
+        body = await self._get(
+            path="/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
+            tr_id="FHKST01010200",
+            params={
+                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
+                "fid_input_iscd": code,
+            },
+        )
+        out1 = body["output1"]
+        asks = [
+            OrderbookLevel(price=int(out1[f"askp{i}"]), qty=int(out1[f"askp_rsqn{i}"]))
+            for i in range(1, 11)
+        ]
+        bids = [
+            OrderbookLevel(price=int(out1[f"bidp{i}"]), qty=int(out1[f"bidp_rsqn{i}"]))
+            for i in range(1, 11)
+        ]
+        return KisOrderbook(
+            code=code,
+            asks=asks,
+            bids=bids,
+            total_ask_qty=int(out1["total_askp_rsqn"]),
+            total_bid_qty=int(out1["total_bidp_rsqn"]),
+            t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
+        )
+
+    # ------------------------------------------------------------------
+    # fetch_trades (FHPST01060000, inquire-time-itemconclusion)
+    # ------------------------------------------------------------------
+
+    async def fetch_trades(self, code: str) -> list[KisTrade]:
+        """Fetch per-trade history via inquire-time-itemconclusion (FHPST01060000).
+
+        ADR-0067 보는종목 표시폴러용. Lee-Ready side 분류 적용.
+        Auction window trades get side=2.
+        """
+        body = await self._get(
+            path="/uapi/domestic-stock/v1/quotations/inquire-time-itemconclusion",
+            tr_id="FHPST01060000",
+            params={
+                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
+                "fid_input_iscd": code,
+                "fid_input_hour_1": "153000",
+            },
+        )
+        today_kst = datetime.now(KIS_KST).date()
+        trades: list[KisTrade] = []
+        for row in body["output2"]:
+            hhmmss = row["stck_cntg_hour"]
+            hh = int(hhmmss[:2])
+            mm = int(hhmmss[2:4])
+            ss = int(hhmmss[4:6])
+            dt = datetime(
+                today_kst.year, today_kst.month, today_kst.day,
+                hh, mm, ss, tzinfo=KIS_KST
+            )
+            t_ms = int(dt.timestamp() * 1000)
+            prpr = int(row["stck_prpr"])
+            askp = int(row.get("askp", "0") or "0")
+            bidp = int(row.get("bidp", "0") or "0")
+            side, side_source = classify_side(t_ms, prpr, askp, bidp)
+            trades.append(KisTrade(
+                price=prpr,
+                qty=int(row["cnqn"]),
+                side=side,
+                side_source=side_source,
+                t_ms=t_ms,
+            ))
+        return trades
+
+    # ------------------------------------------------------------------
+    # fetch_brokers (FHKST01010600, inquire-member)
+    # ------------------------------------------------------------------
+
+    async def fetch_brokers(self, code: str) -> KisBrokers:
+        """Fetch top-5 buy/sell broker breakdown for *code*.
+
+        ADR-0067 보는종목 표시폴러용. Broker names are canonicalized at the
+        boundary so downstream sees the same canonical KRX member-firm name
+        (see ``hoga.broker_names`` and CONTEXT.md).
+        """
+        from hoga.broker_names import canonical
+
+        body = await self._get(
+            path="/uapi/domestic-stock/v1/quotations/inquire-member",
+            tr_id="FHKST01010600",
+            params={
+                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
+                "fid_input_iscd": code,
+            },
+        )
+        out = body["output"][0]  # KIS returns a 1-element list (Audit-3)
+        buy_top = [
+            KisBrokerEntry(
+                name=canonical(out[f"shnu_mbcr_name{i}"]),
+                qty=int(out[f"total_shnu_qty{i}"]),
+            )
+            for i in range(1, 6)
+        ]
+        sell_top = [
+            KisBrokerEntry(
+                name=canonical(out[f"seln_mbcr_name{i}"]),
+                qty=int(out[f"total_seln_qty{i}"]),
+            )
+            for i in range(1, 6)
+        ]
+        return KisBrokers(code=code, buy_top=buy_top, sell_top=sell_top)
+
 _MULTI_PRICE_CHUNK = 30  # intstock-multprice: 최대 30종목/콜 (FHKST11300006)
 
 
