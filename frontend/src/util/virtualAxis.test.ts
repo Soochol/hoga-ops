@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createVirtualAxis } from './virtualAxis';
 import { INTER_SEGMENT_GAP_MS } from './time';
+import { AUCTION_WINDOW_LENGTH_MS } from './sessionTime';
 
 // KST 09:00 — 15:30 = 6h30m = 23_400_000 ms.
 const SESSION_LEN_MS = 6.5 * 60 * 60 * 1000;
@@ -369,6 +370,50 @@ describe('createVirtualAxis — real-anchored origin (originMs)', () => {
       expect(weekly.toVirtual(weekStarts[n].sessionOpenMs)).not.toBe(
         daily.toVirtual(RAW_3[n].sessionOpenMs),
       );
+    }
+  });
+});
+
+describe('classifyAndProject == contains+inAuction+toVirtual', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const FULL = 6.5 * 60 * 60 * 1000;
+  const base = 1_779_062_400_000;
+  const axis = createVirtualAxis([
+    { date: '20260518', sessionOpenMs: base, sessionCloseMs: base + FULL },
+    { date: '20260519', sessionOpenMs: base + DAY, sessionCloseMs: base + DAY + FULL },
+    { date: '20260522', sessionOpenMs: base + 4 * DAY, sessionCloseMs: base + 4 * DAY + FULL },
+  ]);
+
+  it('agrees with the legacy three-call path on random + boundary timestamps', () => {
+    const samples: number[] = [];
+    let seed = 99;
+    const lo = base - DAY;
+    const hi = base + 4 * DAY + FULL + DAY;
+    for (let i = 0; i < 5000; i++) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      samples.push(lo + (seed % (hi - lo)));
+    }
+    for (const s of axis.segments) {
+      samples.push(
+        s.sessionOpenMs - 1,
+        s.sessionOpenMs,
+        s.sessionOpenMs + 1,
+        s.sessionCloseMs - AUCTION_WINDOW_LENGTH_MS - 1,
+        s.sessionCloseMs - AUCTION_WINDOW_LENGTH_MS,
+        s.sessionCloseMs - 1,
+        s.sessionCloseMs,
+        s.sessionCloseMs + 1,
+      );
+    }
+    // 첫 세그먼트 open 클램프 경계도 명시
+    samples.push(axis.segments[0].sessionOpenMs - 1, axis.segments[0].sessionOpenMs);
+    for (const t of samples) {
+      const got = axis.classifyAndProject(t);
+      expect(got.contained).toBe(axis.contains(t));
+      expect(got.inAuction).toBe(axis.inClosingAuctionWindow(t));
+      if (got.contained) {
+        expect(got.virtual).toBe(axis.toVirtual(t)); // kept 캔들만 virtual 일치
+      }
     }
   });
 });

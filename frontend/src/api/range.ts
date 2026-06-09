@@ -85,10 +85,11 @@ export function useRange(
       priceRange?.max,
       sourcePref,
     ] as const,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiCall<RangeBundle>(
         `/api/range?code=${code}&from=${from}&to=${to}&bucket_ms=${bucketMs}` +
           `${priceQs}&source_pref=${sourcePref}`,
+        { signal },
       ),
     enabled,
     staleTime,
