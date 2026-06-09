@@ -221,6 +221,66 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _today_kst() -> str:
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
+
+
+def _build_conn(account_id: int, codes: list[str], data_dir: Path) -> _StreamConn:
+    """한 계좌의 WS 연결 묶음 생성 (스펙 §5.2). 호출자(start/refresh/watchdog)는
+    account_id ∈ configured_account_ids 임을 보장하므로 client는 non-None.
+
+    각 conn은 자체 LiveStream+LiveWriter(code-disjoint라 (date,code) 충돌 없음).
+    공유: 단일 _buffer. KisClient는 kis_runtime의 account별 싱글톤(재사용)."""
+    from .stream import LiveStream  # noqa: PLC0415
+    from .writer import LiveWriter  # noqa: PLC0415
+    from .ws_client import KisWsClient  # noqa: PLC0415
+    from .session_gate import ws_capture_window  # noqa: PLC0415
+
+    kis = kis_runtime.ensure_kis_client_for_account(account_id, data_dir)
+    if kis is None:  # configured 보장 위반 — 방어적
+        raise RuntimeError(f"no KIS client for account {account_id}")
+
+    stream = LiveStream(
+        buffer=_buffer,
+        writer=LiveWriter(data_dir / "live"),
+        date_fn=_today_kst,
+    )
+    stream.set_active_codes(set(codes))
+    ws = KisWsClient(
+        approval_key_fn=kis.get_approval_key,
+        on_tick=stream.on_tick,
+        date_fn=_today_kst,
+        gate_fn=lambda: ws_capture_window(_now_ms()),
+    )
+    stream.ws = ws
+    return _StreamConn(
+        account_id=account_id,
+        stream_obj=stream,
+        ws_task=asyncio.create_task(ws.run(codes), name=f"live-ws-{account_id}"),
+        flush_task=asyncio.create_task(stream.run_flush_loop(), name=f"live-flush-{account_id}"),
+        codes=tuple(codes),
+    )
+
+
+async def _teardown_conn(conn: _StreamConn) -> None:
+    """conn의 ws/flush task만 cancel+await. ★ R1: KisClient는 닫지 않는다
+    (account 싱글톤은 kis_runtime dict에 남아 다음 _build_conn이 재사용)."""
+    for task in (conn.ws_task, conn.flush_task):
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                # M4: 외부에서 우리가 취소된 경우만 전파, 자식 취소는 흡수.
+                cur = asyncio.current_task()
+                if cur is not None and cur.cancelling():
+                    raise
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def _market_clock_closed_for_capture(now_ms: int) -> bool:
     """캡처 게이트(ws_capture_window)의 순수-시계 근사 — 주말 또는 정규장
     (09:00–15:30 KST) 밖이면 True. get_status는 sync 라우트라 캘린더 HTTP
