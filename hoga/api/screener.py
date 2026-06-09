@@ -23,7 +23,7 @@ from hoga.api.models import (
 from hoga.api.symbols import _RefreshCoordinator
 from hoga.collector.orchestrator import next_kst_day, now_kst
 from hoga.live import kis_runtime
-from hoga.live.kis_client import KIS_KST, KisAuthError
+from hoga.live.kis_client import KIS_KST
 
 log = logging.getLogger(__name__)
 
@@ -90,22 +90,11 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
         return 0
 
     async def fetch_one(c: str, f: str, t: str) -> list[DailyBar]:
-        # FM5: account 1 토큰 발급 실패 시 첫 코드에서 provider 콜백이 latch를 켜고
-        # KisAuthError가 난다. run_update는 gather(return_exceptions 없음)라 한 코드
-        # 실패가 배치 전체를 중단시키므로, 여기서 account 0로 재해결해 재시도한다(latch
-        # 덕에 재해결이 account 0을 반환 → 배치가 끝까지 진행). account 0 자체가 실패하거나
-        # N=1(재해결이 동일 client)이면 전파해 run_update가 실패를 표면화(침묵 사망 금지).
-        client = kis_runtime.kis_for_role("background", data_dir)
-        if client is None:
-            raise KisAuthError("screener: no background KIS client available")
-        try:
-            return await _kis_fetch_one(client, c, f, t)
-        except KisAuthError:
-            client0 = kis_runtime.kis_for_role("background", data_dir)
-            if client0 is None or client0 is client:
-                raise
-            log.warning("screener update: background account auth failed, retrying on account 0")
-            return await _kis_fetch_one(client0, c, f, t)
+        # background 계정으로 fetch, account 1 토큰 실패 시 account 0 폴백(FM5 — 공유 헬퍼).
+        # run_update는 gather(return_exceptions 없음)라 한 코드 실패가 배치 전체를 중단시키므로,
+        # 첫 코드가 acct1 latch를 켜고 이 호출이 account 0로 살린다(이후 코드는 곧장 account 0).
+        return await kis_runtime.fetch_background_with_auth_fallback(
+            data_dir, lambda client: _kis_fetch_one(client, c, f, t))
 
     async def _do() -> int:
         n = await screener_store.run_update(

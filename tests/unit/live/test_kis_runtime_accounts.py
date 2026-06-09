@@ -198,3 +198,57 @@ def test_ensure_token_provider_wires_account_bound_auth_callback(tmp_path):
     assert kis_runtime._account_degraded(1) is False
     prov._on_issue_failure()  # 토큰 발급 실패 시 provider가 호출하는 콜백
     assert kis_runtime._account_degraded(1) is True
+
+
+# ── fetch_background_with_auth_fallback: 스크리너 배치 FM5 폴백 헬퍼 ───────────────
+
+
+async def test_fetch_background_fallback_retries_on_account0(tmp_path, monkeypatch):
+    """N=2: account 1 fetch가 KisAuthError면 account 0로 재해결해 재시도(latch가 켜진 뒤
+    재해결이 account 0 반환). 스크리너 배치가 acct1 토큰 실패에도 끝까지 진행하는 경로."""
+    from hoga.live.kis_client import KisAuthError
+    _set_two_accounts(monkeypatch)
+    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: set())
+    c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
+    c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
+    seen = []
+
+    async def fetch_fn(client):
+        seen.append(client)
+        if client is c1:
+            kis_runtime._mark_rest_auth_degraded(1)  # provider 콜백이 하는 일(시뮬레이션)
+            raise KisAuthError("acct1 token fail")
+        return "ok"
+
+    result = await kis_runtime.fetch_background_with_auth_fallback(tmp_path, fetch_fn)
+    assert result == "ok"
+    assert seen == [c1, c0]  # account 1 시도 → 폴백 → account 0 성공
+
+
+async def test_fetch_background_fallback_reraises_when_account0_also_fails(tmp_path, monkeypatch):
+    """N=1(또는 account 0 자체 실패): 재해결이 동일 client → 무한재시도 없이 전파."""
+    from hoga.live.kis_client import KisAuthError
+    _set_one_account(monkeypatch)
+    kis_runtime.ensure_kis_client_for_account(0, tmp_path)
+    calls = {"n": 0}
+
+    async def fetch_fn(client):
+        calls["n"] += 1
+        raise KisAuthError("acct0 fail")
+
+    with pytest.raises(KisAuthError):
+        await kis_runtime.fetch_background_with_auth_fallback(tmp_path, fetch_fn)
+    assert calls["n"] == 1  # 동일 client 재시도 안 함
+
+
+async def test_fetch_background_fallback_raises_when_no_client(tmp_path, monkeypatch):
+    """creds 전무 → background client None → KisAuthError로 표면화(침묵 사망 금지)."""
+    from hoga.live.kis_client import KisAuthError
+    for _k in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_APP_KEY_2", "KIS_APP_SECRET_2"):
+        monkeypatch.delenv(_k, raising=False)
+
+    async def fetch_fn(client):  # 도달하면 안 됨
+        raise AssertionError("fetch_fn should not be called when no client")
+
+    with pytest.raises(KisAuthError):
+        await kis_runtime.fetch_background_with_auth_fallback(tmp_path, fetch_fn)

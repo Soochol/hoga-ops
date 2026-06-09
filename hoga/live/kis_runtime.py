@@ -18,10 +18,14 @@ from __future__ import annotations
 
 import os
 import threading
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import TypeVar
 
-from .kis_client import KisClient, KisCredentials
+from .kis_client import KisAuthError, KisClient, KisCredentials
 from .kis_token_provider import KisTokenProvider
+
+_T = TypeVar("_T")
 
 _kis_clients: dict[int, KisClient] = {}
 _kis_token_providers: dict[int, KisTokenProvider] = {}
@@ -258,6 +262,31 @@ def kis_for_role(role: str, data_dir: Path) -> KisClient | None:
     if existing is not None:
         return existing
     return ensure_kis_client_from_env(data_dir)
+
+
+async def fetch_background_with_auth_fallback(
+    data_dir: Path, fetch_fn: Callable[[KisClient], Awaitable[_T]]
+) -> _T:
+    """background 계정으로 fetch_fn(client)을 실행하되, account 1 REST 토큰 실패
+    (KisAuthError)면 account 0로 재해결해 1회 재시도한다(FM5).
+
+    스크리너 배치(EOD 갭 캐치업·전체 백필)용 — 이들은 client를 한 번 해결해 여러 코드에
+    재사용하므로, 토큰 실패 시 첫 코드에서 provider 콜백이 acct1을 latch한 뒤 *이* 호출이
+    account 0로 재해결해 그 코드를 살린다(이후 코드는 latch로 곧장 account 0). 폴러/quotes/
+    investor는 매 사이클/요청 재해결이라 latch만으로 self-heal → 이 헬퍼 불필요.
+
+    client 미해결(creds 전무) 또는 account 0 자체 실패(재해결이 동일 client = N=1/이미
+    account 0)면 KisAuthError를 전파한다 — 호출부가 침묵 사망 없이 실패를 표면화하도록."""
+    client = kis_for_role("background", data_dir)
+    if client is None:
+        raise KisAuthError("no background KIS client available (creds missing)")
+    try:
+        return await fetch_fn(client)
+    except KisAuthError:
+        client0 = kis_for_role("background", data_dir)  # latch 후 → account 0
+        if client0 is None or client0 is client:
+            raise
+        return await fetch_fn(client0)
 
 
 async def aclose_kis_client() -> None:
