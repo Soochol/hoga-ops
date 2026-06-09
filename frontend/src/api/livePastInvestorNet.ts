@@ -34,9 +34,10 @@ export function useLivePastInvestorNet(
   const enabled = !!(code && from && to && from <= to);
   return useQuery({
     queryKey: ['live', 'past-investor-net', code, from, to] as const,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiCall<LivePastInvestorNetResponse>(
         `/api/live/past-investor-net?code=${code}&from=${from}&to=${to}`,
+        { signal },
       ),
     enabled,
     staleTime: 60_000,

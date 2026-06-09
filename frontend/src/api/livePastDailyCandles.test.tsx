@@ -33,6 +33,7 @@ describe('useLivePastDailyCandles', () => {
     await waitFor(() => expect(result.current.data?.candles).toHaveLength(1));
     expect(spy).toHaveBeenCalledWith(
       '/api/live/past-daily-candles?code=005930&from=20240101&to=20240105',
+      { signal: expect.any(AbortSignal) },
     );
   });
 

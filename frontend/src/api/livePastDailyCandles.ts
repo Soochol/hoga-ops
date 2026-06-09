@@ -38,9 +38,10 @@ export function useLivePastDailyCandles(
   const enabled = !!(code && from && to && from <= to);
   return useQuery({
     queryKey: ['live', 'past-daily-candles', code, from, to] as const,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiCall<LivePastDailyCandlesResponse>(
         `/api/live/past-daily-candles?code=${code}&from=${from}&to=${to}`,
+        { signal },
       ),
     enabled,
     staleTime: 60_000,

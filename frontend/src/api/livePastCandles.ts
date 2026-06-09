@@ -35,9 +35,10 @@ export function useLivePastCandles(
   const enabled = !!(code && from && to && from <= to);
   return useQuery({
     queryKey: ['live', 'past-candles', code, from, to] as const,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiCall<LivePastCandlesResponse>(
         `/api/live/past-candles?code=${code}&from=${from}&to=${to}`,
+        { signal },
       ),
     enabled,
     staleTime: 60_000,
