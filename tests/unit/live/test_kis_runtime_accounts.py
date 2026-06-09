@@ -131,3 +131,26 @@ def test_account_degraded_swallows_lifecycle_errors(monkeypatch):
         raise RuntimeError("lifecycle not ready")
     monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", boom)
     assert kis_runtime._account_degraded(1) is False
+
+
+def test_kis_for_role_account0_prefers_injected_singleton_over_env(tmp_path, monkeypatch):
+    """account 0 폴백은 env 없이도 주입/부팅된 dict 싱글톤을 우선 반환한다 — api 라우트가
+    get_kis_client=set_kis_client(fake)로 주입하는 패턴을 지탱(env-ensure는 그 다음)."""
+    monkeypatch.delenv("KIS_APP_KEY", raising=False)
+    monkeypatch.delenv("KIS_APP_SECRET", raising=False)
+    monkeypatch.delenv("KIS_APP_KEY_2", raising=False)
+    sentinel = object()
+    kis_runtime.set_kis_client(sentinel, 0)  # type: ignore[arg-type]
+    # env 부재 → ensure_kis_client_for_account(0)는 None이지만 dict 우선이라 sentinel 반환.
+    assert kis_runtime.kis_for_role("foreground", tmp_path) is sentinel
+    assert kis_runtime.kis_for_role("background", tmp_path) is sentinel
+
+
+def test_kis_for_role_account0_lazy_ensures_when_dict_empty(tmp_path, monkeypatch):
+    """dict 미생성(빈 관심목록) + N=1 → env에서 지연 생성(ensure_kis_client_from_env 경유,
+    /quotes lazy-init 승계)."""
+    _set_one_account(monkeypatch)
+    created = object()
+    monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda data_dir: created)
+    assert kis_runtime.get_kis_client(0) is None  # dict 비어있음
+    assert kis_runtime.kis_for_role("background", tmp_path) is created

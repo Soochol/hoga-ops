@@ -4,6 +4,17 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_kis_env(monkeypatch):
+    """배경 라우트(quotes·investor-net)는 kis_runtime.kis_for_role → configured_account_ids
+    로 ambient os.environ을 읽는다(계정 분리 2026-06-09). 개발 셸이 실제 KIS creds를
+    export하거나 다른 테스트의 create_app→load_env가 os.environ을 오염시키면 background가
+    실제 account 1 클라이언트를 만들려 한다(비결정 + 네트워크). 기본을 N=0(전부 account 0
+    주입 fake로 폴백)으로 격리한다 — N=2 라우팅을 검증하는 테스트만 명시적으로 setenv."""
+    for _k in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_APP_KEY_2", "KIS_APP_SECRET_2"):
+        monkeypatch.delenv(_k, raising=False)
+
+
 def _make_test_app(get_status_fn=None, control_fn=None):
     """Mount the live router on a bare FastAPI for isolated testing."""
     from hoga.live import lifecycle
@@ -922,6 +933,51 @@ def _investor_app(tmp_path, fake_kis):
         data_dir=tmp_path,
     ))
     return app
+
+
+def _two_account_investor_app(tmp_path, monkeypatch, fake0, fake1):
+    """N=2 라우팅 검증용: account 0/1에 서로 다른 fake를 주입하고 env 2종을 세팅한다.
+    배경 라우트(investor-net)가 account 1을 쓰는지 spy로 검증(계정 분리 2026-06-09)."""
+    from hoga.live import kis_runtime, lifecycle
+    from hoga.live.api import build_router
+    monkeypatch.setenv("KIS_APP_KEY", "k0")
+    monkeypatch.setenv("KIS_APP_SECRET", "s0")
+    monkeypatch.setenv("KIS_APP_KEY_2", "k1")
+    monkeypatch.setenv("KIS_APP_SECRET_2", "s1")
+    lifecycle.reset_for_tests()
+    kis_runtime.set_kis_client(fake0, 0)
+    kis_runtime.set_kis_client(fake1, 1)
+    app = FastAPI()
+    app.include_router(build_router(
+        get_status=lifecycle.get_status,
+        get_kis_client=kis_runtime.get_kis_client,
+        data_dir=tmp_path,
+    ))
+    return app
+
+
+def test_past_investor_net_routes_background_to_account1(tmp_path, monkeypatch) -> None:
+    """N=2 정상: 배경 라우트가 account 1(유휴였던 REST 버킷)을 쓴다 — account 0은 무호출."""
+    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: set())
+    fake0, fake1 = _FakeKisForInvestor(), _FakeKisForInvestor()
+    app = _two_account_investor_app(tmp_path, monkeypatch, fake0, fake1)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
+        assert r.status_code == 200
+        assert len(fake1.calls) == 1, "background가 account 1을 쓰지 않음"
+        assert len(fake0.calls) == 0, "account 0(foreground 전용)이 background에 침범"
+
+
+def test_past_investor_net_account1_degraded_falls_back_to_account0(tmp_path, monkeypatch) -> None:
+    """N=2이지만 account 1 WS 저하 → 배경 라우트가 account 0로 폴백(②우선순위 보호)."""
+    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: {1})
+    fake0, fake1 = _FakeKisForInvestor(), _FakeKisForInvestor()
+    app = _two_account_investor_app(tmp_path, monkeypatch, fake0, fake1)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
+        assert r.status_code == 200
+        assert len(fake0.calls) == 1, "degraded인데 account 0로 폴백 안 됨"
+        assert len(fake1.calls) == 0, "degraded account 1을 그대로 사용"
 
 
 def test_past_investor_net_miss_calls_kis(tmp_path) -> None:
