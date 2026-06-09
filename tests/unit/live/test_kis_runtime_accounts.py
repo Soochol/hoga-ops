@@ -154,3 +154,47 @@ def test_kis_for_role_account0_lazy_ensures_when_dict_empty(tmp_path, monkeypatc
     monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda data_dir: created)
     assert kis_runtime.get_kis_client(0) is None  # dict 비어있음
     assert kis_runtime.kis_for_role("background", tmp_path) is created
+
+
+# ── FM5: REST 토큰 실패 latch → background account 0 폴백 (2026-06-09) ────────────
+
+
+def test_background_routes_to_account0_after_rest_auth_latch(tmp_path, monkeypatch):
+    """FM5: account 1 REST 토큰 발급 실패가 latch되면 background가 account 0로 폴백한다
+    (이후 영구 — 재시작 전까지). foreground는 영향 없음(원래 account 0)."""
+    _set_two_accounts(monkeypatch)
+    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: set())
+    c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
+    c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
+    assert kis_runtime.kis_for_role("background", tmp_path) is c1  # 평상시 account 1
+    kis_runtime._mark_rest_auth_degraded(1)  # 토큰 provider 콜백이 호출하는 것
+    assert kis_runtime._account_degraded(1) is True
+    assert kis_runtime.kis_for_role("background", tmp_path) is c0  # latch 후 account 0
+    assert kis_runtime.kis_for_role("foreground", tmp_path) is c0  # foreground 불변
+
+
+def test_mark_rest_auth_degraded_noops_for_account0(monkeypatch):
+    """account 0은 폴백 대상 자체 → 마킹해도 degraded 아님(자기 자신으로 폴백 불가)."""
+    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: set())
+    kis_runtime._mark_rest_auth_degraded(0)
+    assert kis_runtime._account_degraded(0) is False
+
+
+def test_rest_auth_latch_cleared_by_reset_for_tests(tmp_path, monkeypatch):
+    """latch는 reset_for_tests로 초기화(테스트 격리)."""
+    kis_runtime._mark_rest_auth_degraded(1)
+    assert kis_runtime._account_degraded(1) is True
+    kis_runtime.reset_for_tests()
+    assert kis_runtime._account_degraded(1) is False
+
+
+def test_ensure_token_provider_wires_account_bound_auth_callback(tmp_path):
+    """end-to-end 배선: ensure_kis_token_provider가 account_id에 바인딩된 on_issue_failure를
+    주입한다 — 호출 시 그 account를 REST-degraded latch(토큰 chokepoint→kis_runtime)."""
+    from hoga.live.kis_client import KisCredentials
+    creds = KisCredentials(app_key="k1", app_secret="s1", env="real")
+    prov = kis_runtime.ensure_kis_token_provider(tmp_path / "t1.json", creds, 1)
+    assert prov._on_issue_failure is not None
+    assert kis_runtime._account_degraded(1) is False
+    prov._on_issue_failure()  # 토큰 발급 실패 시 provider가 호출하는 콜백
+    assert kis_runtime._account_degraded(1) is True

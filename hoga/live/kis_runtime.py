@@ -27,6 +27,21 @@ _kis_clients: dict[int, KisClient] = {}
 _kis_token_providers: dict[int, KisTokenProvider] = {}
 _lock = threading.Lock()
 
+# FM5(계정 분리 2026-06-09): REST bearer 토큰 발급이 실패한 account_id 집합. background
+# 계정(account 1)이 처음 REST 토큰을 발급하다 실패하면(오설정 KIS_APP_KEY_2 등) 토큰
+# provider 콜백이 여기에 추가한다 → _account_degraded가 True를 반환 → kis_for_role가
+# 이후 background를 account 0로 폴백(침묵 사망 방지, ADR-0064). 프로세스 latch: 재시작
+# 전까지 유지(의도적 'safe over-degradation' — 토큰은 ~24h 디스크 캐시라 발급 실패는
+# 드물고, transient 재탐색은 v1 비범위). set.add/in은 CPython GIL로 원자적이라 무락.
+_rest_auth_degraded: set[int] = set()
+
+
+def _mark_rest_auth_degraded(account_id: int) -> None:
+    """account의 REST 토큰 발급 실패를 latch(FM5). account 0은 폴백 대상 자체라 제외
+    (마킹해도 폴백할 곳이 없고, kis_for_role의 최종 폴백이 account 0이므로 무의미)."""
+    if account_id != 0:
+        _rest_auth_degraded.add(account_id)
+
 
 def _account_env(account_id: int) -> tuple[str, str]:
     """account_id(0-based) → (KEY 환경변수명, SECRET 환경변수명).
@@ -72,7 +87,13 @@ def ensure_kis_token_provider(
     with _lock:
         prov = _kis_token_providers.get(account_id)
         if prov is None:
-            prov = KisTokenProvider(creds, token_cache_path)
+            # on_issue_failure: REST 토큰 발급 실패 시 이 account를 REST-degraded latch
+            # (FM5). account_id를 클로저로 바인딩 → 토큰 chokepoint가 어느 계정인지 안다.
+            prov = KisTokenProvider(
+                creds,
+                token_cache_path,
+                on_issue_failure=lambda: _mark_rest_auth_degraded(account_id),
+            )
             _kis_token_providers[account_id] = prov
         return prov
 
@@ -198,6 +219,10 @@ def _account_degraded(account_id: int) -> bool:
     프리엠티브 폴백 신호(#53 degraded 신호 재사용). lifecycle을 late import해 순환을
     피한다(lifecycle→kis_runtime이 정방향 의존). 신호를 못 얻으면 보수적으로 False
     (저하 아님으로 간주 — 최종 가드는 ensure 단계의 None 체크와 호출부 격리)."""
+    # FM5 REST-auth latch를 먼저 본다(late import 불필요·즉시). REST 토큰이 죽은 계정은
+    # WS health와 무관하게 background에서 빼야 한다.
+    if account_id in _rest_auth_degraded:
+        return True
     try:
         from . import lifecycle  # noqa: PLC0415 — late import: 순환 회피
         return account_id in lifecycle.degraded_account_ids()
@@ -263,3 +288,4 @@ def reset_for_tests() -> None:
             pass
     _kis_clients = {}
     _kis_token_providers = {}
+    _rest_auth_degraded.clear()  # FM5 latch도 초기화(테스트 격리)
