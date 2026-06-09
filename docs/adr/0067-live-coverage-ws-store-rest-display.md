@@ -1,6 +1,6 @@
 # 0067 — 라이브 커버리지: 관심종목 2계좌 WS(저장) + 보는종목 REST(표시전용) 하이브리드
 
-**Status:** accepted (2026-06-09) — 구현은 spec/plan에서 추적
+**Status:** accepted (2026-06-09); **출시2 구현완료 (2026-06-09)** — 부품1(2계좌 인증)·부품2(이중 WS dynamic-N)·C4. 위험 #1(동일-IP 2소켓) 스모크 통과로 해소, 위험 #3(2계좌 토큰 경합) 소멸(account k>0 = approval key 전용, bearer 토큰 미사용). 실-KIS 장중 2계좌 enable 검증은 plan "수동 검증" 단계 대기. spec `2026-06-09-live-2account-ws-design.md`, plan `2026-06-09-live-2account-ws.md`.
 
 **Related:**
 - ADR-0053 — Live push 단일 WebSocket (브라우저↔백엔드; 본 ADR의 KIS↔백엔드 업스트림 WS와 **다른 층위**)

@@ -56,7 +56,7 @@ async def test_aclose_closes_and_nulls_both_singletons(tmp_path: Path) -> None:
     creds = KisCredentials(app_key="K", app_secret="S", env="real")
     provider = kis_runtime.ensure_kis_token_provider(tmp_path / ".local" / "kis-token.json", creds)
     client = kis_runtime.ensure_kis_client(creds, provider)
-    assert kis_runtime._kis_client is client
+    assert kis_runtime._kis_clients[0] is client
     await kis_runtime.aclose_kis_client()
-    assert kis_runtime._kis_client is None
-    assert kis_runtime._kis_token_provider is None
+    assert kis_runtime._kis_clients == {}
+    assert kis_runtime._kis_token_providers == {}

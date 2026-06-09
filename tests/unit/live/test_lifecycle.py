@@ -21,6 +21,28 @@ def test_get_status_returns_not_running_initially() -> None:
     assert status.kis_rate_limit_remaining is None
 
 
+def _conn_state(*, started_at_ms, ws_task, flush_task, stream_obj=None,
+                watchlist_codes=("005930",), live_set=("005930",),
+                n_configured=1, account_id=0):
+    """dynamic-N _State 헬퍼: 단일 conn(account 0)을 streams dict에 넣는다."""
+    from hoga.live.lifecycle import _State, _StreamConn
+
+    conn = _StreamConn(
+        account_id=account_id,
+        stream_obj=stream_obj if stream_obj is not None else object(),
+        ws_task=ws_task,
+        flush_task=flush_task,
+        codes=tuple(watchlist_codes),
+    )
+    return _State(
+        started_at_ms=started_at_ms,
+        n_configured=n_configured,
+        watchlist_codes=tuple(watchlist_codes),
+        streams={account_id: conn},
+        live_set=tuple(live_set),
+    )
+
+
 @pytest.mark.asyncio
 async def test_get_status_running_false_when_task_finished() -> None:
     """ADR-0064: running must reflect TASK LIVENESS, not just that start was
@@ -30,7 +52,6 @@ async def test_get_status_running_false_when_task_finished() -> None:
     the task had silently died, masking a dead live-capture loop.
     """
     from hoga.live import lifecycle
-    from hoga.live.lifecycle import _State
 
     lifecycle.reset_for_tests()
 
@@ -40,19 +61,16 @@ async def test_get_status_running_false_when_task_finished() -> None:
     task = asyncio.create_task(_done_immediately())
     await task  # task.done() is now True (simulates a stream task that exited)
 
-    lifecycle._state = _State(
-        started_at_ms=123,
-        watchlist_codes=("005930",),
-        stream_task=task,
+    lifecycle._state = _conn_state(
+        started_at_ms=123, ws_task=task, flush_task=task,
     )
     assert lifecycle.get_status().running is False
 
 
 @pytest.mark.asyncio
 async def test_get_status_running_true_when_task_alive() -> None:
-    """A live (not-done) stream task with started_at_ms set → running=True."""
+    """A live (not-done) ws task with started_at_ms set → running=True."""
     from hoga.live import lifecycle
-    from hoga.live.lifecycle import _State
 
     lifecycle.reset_for_tests()
 
@@ -60,10 +78,8 @@ async def test_get_status_running_true_when_task_alive() -> None:
         await asyncio.sleep(60)
 
     task = asyncio.create_task(_forever())
-    lifecycle._state = _State(
-        started_at_ms=123,
-        watchlist_codes=("005930",),
-        stream_task=task,
+    lifecycle._state = _conn_state(
+        started_at_ms=123, ws_task=task, flush_task=task,
     )
     try:
         assert lifecycle.get_status().running is True
@@ -248,32 +264,24 @@ def test_display_ordered_codes_empty_doc() -> None:
 
 
 # ── WS watchdog 테스트 ─────────────────────────────────────────────────────────
-
-@pytest.fixture
-def _spy_start_stream(monkeypatch):
-    """Replace start_live_stream with a spy that records calls (no real start)."""
-    from hoga.live import lifecycle
-    calls: list = []
-
-    async def _spy(*, data_dir):
-        calls.append(data_dir)
-        return True
-
-    monkeypatch.setattr(lifecycle, "start_live_stream", _spy)
-    return calls
+#
+# dynamic-N 컷오버(스펙 §5.6): watchdog은 start_live_stream 전체 재시작 대신
+# _restart_conn으로 죽은 conn만 격리 복구한다. 따라서 옛 _spy_start_stream
+# (start_live_stream 스파이) 기반 단언은 더 이상 유효하지 않다 —
+# 재시작 여부는 conn의 ws_task 객체 교체(is / is not)로 판정한다.
 
 
 def _install_stream_state(monkeypatch, *, started_at_ms, ws_task, stream_task,
                           last_tick_ms=None, last_flush_ms=None,
                           last_recv_ms=None):
-    """Helper: inject a fake stream _State for watchdog tests.
+    """Helper: inject a single-conn dynamic-N _State for watchdog tests.
 
     last_recv_ms가 watchdog의 stale 신호(리뷰 Important 1) — last_tick_ms는
     데이터 프레임 전용(표시), last_flush_ms는 틱 0건이어도 갱신되므로 watchdog이
-    더 이상 읽지 않는다.
+    더 이상 읽지 않는다. ws_task/stream_task는 conn.ws_task/conn.flush_task로 매핑.
     """
     from hoga.live import lifecycle
-    from hoga.live.lifecycle import _State
+    from hoga.live.lifecycle import _State, _StreamConn
 
     class _FakeWs:
         def __init__(self, tick_ms, recv_ms):
@@ -288,27 +296,78 @@ def _install_stream_state(monkeypatch, *, started_at_ms, ws_task, stream_task,
             self.ws = _FakeWs(tick_ms, recv_ms)
             self.last_flush_ms = flush_ms
 
+    conn = _StreamConn(
+        account_id=0,
+        stream_obj=_FakeStream(last_tick_ms, last_flush_ms, last_recv_ms),
+        ws_task=ws_task,
+        flush_task=stream_task,
+        codes=("005930",),
+    )
     lifecycle._state = _State(
         started_at_ms=started_at_ms,
+        n_configured=1,
         watchlist_codes=("005930",),
-        ws_task=ws_task,
-        stream_task=stream_task,
-        stream_obj=_FakeStream(last_tick_ms, last_flush_ms, last_recv_ms),
+        streams={0: conn},
         live_set=("005930",),
     )
 
 
+def _install_restart_env(monkeypatch, tmp_path):
+    """restart-경로 watchdog 테스트용 환경: watchdog 게이트는 **열고**(그래야
+    재시작을 판정), rebuild된 conn의 ws.run이 실제 KIS 소켓을 치지 않게
+    websockets.connect를 모킹(raise → run()이 backoff sleep). fake KIS +
+    무필터 + watchlist.json.
+
+    ★ 게이트가 닫혀 있으면 watchdog가 ws_capture_window에서 early-return False라
+    재시작 자체를 안 한다 → should_run_now는 True여야 한다(닫으면 noop 테스트가 됨).
+    ★ watchlist.json이 없으면 _compute_live_set이 []를 반환 → _restart_conn이
+    conn을 rebuild 대신 pop한다(plan T9 주석) — 그러면 ws_task 교체 단언이 깨진다.
+    """
+    import json
+
+    from hoga.api import symbols
+    from hoga.live import kis_runtime, session_gate, ws_client
+    from hoga.live import lifecycle  # noqa: F401
+
+    monkeypatch.setattr(session_gate, "should_run_now", lambda _t: True)
+    monkeypatch.setattr(symbols, "search", lambda q, limit=10_000: [])
+    monkeypatch.setenv("KIS_APP_KEY", "K")
+    monkeypatch.setenv("KIS_APP_SECRET", "S")
+
+    # 게이트가 열려 있어 rebuild된 ws.run이 connect를 시도한다 — 실제 소켓 대신
+    # raise로 막아 run()이 backoff sleep만 하게 한다(테스트 네트워크 0).
+    def _no_connect(*_a, **_k):
+        raise ConnectionError("mocked — no real WS in tests")
+    monkeypatch.setattr(ws_client.websockets, "connect", _no_connect)
+
+    class _FakeKis:
+        async def get_approval_key(self) -> str:
+            return "APPROVAL"
+
+    monkeypatch.setattr(
+        kis_runtime, "ensure_kis_client_for_account",
+        lambda account_id, data_dir: _FakeKis(),
+    )
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "version": 1,
+        "entries": [{"code": "005930", "name": "삼성전자",
+                     "registered_at_kst_date": "20260101",
+                     "last_success_date": None}],
+    }))
+
+
 @pytest.mark.asyncio
 async def test_ws_watchdog_restarts_dead_stream_during_capture_window(
-    monkeypatch, _spy_start_stream, tmp_path
+    monkeypatch, tmp_path
 ) -> None:
-    """WS watchdog: dead ws_task 중 캡처 윈도 → 재시작."""
+    """WS watchdog: dead ws_task 중 캡처 윈도 → 해당 conn만 격리 재시작."""
     from hoga.live import lifecycle
 
     lifecycle.reset_for_tests()
     # ws_capture_window를 True로 패치 (캡처 윈도 내)
     monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
     monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+    _install_restart_env(monkeypatch, tmp_path)
 
     async def _done() -> None:
         return
@@ -328,18 +387,20 @@ async def test_ws_watchdog_restarts_dead_stream_during_capture_window(
             data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
         )
         assert restarted is True
-        assert _spy_start_stream == [tmp_path]
+        # conn-0가 새 ws_task로 교체됨(격리 복구)
+        assert lifecycle._state.streams[0].ws_task is not ws_task
     finally:
         stream_task.cancel()
         try:
             await stream_task
         except asyncio.CancelledError:
             pass
+        await lifecycle.stop_live_stream()
 
 
 @pytest.mark.asyncio
 async def test_ws_watchdog_noop_outside_capture_window(
-    monkeypatch, _spy_start_stream, tmp_path
+    monkeypatch, tmp_path
 ) -> None:
     """WS watchdog: 캡처 윈도 밖(15:30 이후 등) → 재시작 안 함."""
     from hoga.live import lifecycle
@@ -365,7 +426,7 @@ async def test_ws_watchdog_noop_outside_capture_window(
             data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
         )
         assert restarted is False
-        assert _spy_start_stream == []
+        assert lifecycle._state.streams[0].ws_task is ws_task  # 불변
     finally:
         stream_task.cancel()
         try:
@@ -376,7 +437,7 @@ async def test_ws_watchdog_noop_outside_capture_window(
 
 @pytest.mark.asyncio
 async def test_ws_watchdog_gate_runs_off_event_loop(
-    monkeypatch, _spy_start_stream, tmp_path
+    monkeypatch, tmp_path
 ) -> None:
     """watchdog의 ws_capture_window 평가는 이벤트 루프 스레드 밖에서 —
     캘린더 게이트가 콜드/네거티브 캐시에서 동기 KIS HTTP를 부르므로 루프에서
@@ -403,7 +464,7 @@ async def test_ws_watchdog_gate_runs_off_event_loop(
 
 @pytest.mark.asyncio
 async def test_ws_watchdog_noop_when_healthy(
-    monkeypatch, _spy_start_stream, tmp_path
+    monkeypatch, tmp_path
 ) -> None:
     """WS watchdog: 두 task 모두 alive + 최근 수신(last_recv_ms) → 재시작 안 함.
 
@@ -431,7 +492,7 @@ async def test_ws_watchdog_noop_when_healthy(
             data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
         )
         assert restarted is False
-        assert _spy_start_stream == []
+        assert lifecycle._state.streams[0].ws_task is ws_task  # 불변
     finally:
         for t in (ws_task, stream_task):
             t.cancel()
@@ -443,7 +504,7 @@ async def test_ws_watchdog_noop_when_healthy(
 
 @pytest.mark.asyncio
 async def test_ws_watchdog_restarts_on_silent_stall(
-    monkeypatch, _spy_start_stream, tmp_path
+    monkeypatch, tmp_path
 ) -> None:
     """리뷰 Important 1 — half-open TCP silent stall 감지.
 
@@ -457,6 +518,7 @@ async def test_ws_watchdog_restarts_on_silent_stall(
     lifecycle.reset_for_tests()
     monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
     monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+    _install_restart_env(monkeypatch, tmp_path)
 
     async def _forever() -> None:
         await asyncio.sleep(60)
@@ -475,7 +537,7 @@ async def test_ws_watchdog_restarts_on_silent_stall(
             data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
         )
         assert restarted is True
-        assert _spy_start_stream == [tmp_path]
+        assert lifecycle._state.streams[0].ws_task is not ws_task  # 교체됨
     finally:
         for t in (ws_task, stream_task):
             t.cancel()
@@ -483,6 +545,7 @@ async def test_ws_watchdog_restarts_on_silent_stall(
                 await t
             except asyncio.CancelledError:
                 pass
+        await lifecycle.stop_live_stream()  # 격리 복구로 생긴 새 conn 정리
 
 
 # ── refresh_live_stream 테스트 (리뷰 Important 2) ──────────────────────────────
@@ -491,13 +554,13 @@ async def test_ws_watchdog_restarts_on_silent_stall(
 async def test_refresh_live_stream_updates_ws_and_buffer(
     monkeypatch, tmp_path
 ) -> None:
-    """정상 경로: update_codes/set_active_codes/drop_codes_except 3종이
-    표시 순서 상위 13 코드로 호출되고 _state.live_set이 갱신된다."""
+    """정상 경로(dynamic-N, 단일 conn): update_codes/set_active_codes/
+    drop_codes_except 3종이 표시 순서 상위 13 코드로 호출되고 _state가 갱신된다."""
     import json
 
     from hoga.api import symbols
     from hoga.live import lifecycle
-    from hoga.live.lifecycle import _State
+    from hoga.live.lifecycle import _State, _StreamConn
 
     lifecycle.reset_for_tests()
     monkeypatch.setattr(symbols, "_cache", [])  # cold cache → 무필터 폴백
@@ -531,51 +594,63 @@ async def test_refresh_live_stream_updates_ws_and_buffer(
         drop_calls.append(set(keep))
 
     monkeypatch.setattr(lifecycle._buffer, "drop_codes_except", _fake_drop)
-    lifecycle._state = _State(
-        started_at_ms=1, watchlist_codes=("999999",),
-        stream_obj=_FakeStream(), live_set=("999999",),
+
+    async def _forever():
+        await asyncio.sleep(60)
+    ws_task = asyncio.create_task(_forever())
+    flush_task = asyncio.create_task(_forever())
+    conn = _StreamConn(
+        account_id=0, stream_obj=_FakeStream(),
+        ws_task=ws_task, flush_task=flush_task, codes=("999999",),
     )
+    lifecycle._state = _State(
+        started_at_ms=1, n_configured=1, watchlist_codes=("999999",),
+        streams={0: conn}, live_set=("999999",),
+    )
+    try:
+        await lifecycle.refresh_live_stream(data_dir=tmp_path)
 
-    await lifecycle.refresh_live_stream(data_dir=tmp_path)
-
-    expected = [f"{i:06d}" for i in range(13)]  # 15 → 상위 13 절단
-    assert calls["update_codes"] == expected
-    assert calls["set_active_codes"] == set(expected)
-    assert drop_calls == [set(expected)]
-    assert lifecycle._state.live_set == tuple(expected)
-    assert lifecycle._state.watchlist_codes == tuple(expected)
+        # n_configured=1 → 단일 파티션 = 상위 13 (15개 절단)
+        expected = [f"{i:06d}" for i in range(13)]
+        assert calls["update_codes"] == expected
+        assert calls["set_active_codes"] == set(expected)
+        assert drop_calls == [set(expected)]
+        assert lifecycle._state.live_set == tuple(expected)
+        assert lifecycle._state.watchlist_codes == tuple(expected)
+        # 기존 conn은 task를 보존하며 codes만 갱신(diff 경로 — 재빌드 아님)
+        assert lifecycle._state.streams[0].ws_task is ws_task
+        assert lifecycle._state.streams[0].codes == tuple(expected)
+    finally:
+        for t in (ws_task, flush_task):
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
 
 
 @pytest.mark.asyncio
-async def test_refresh_live_stream_early_returns_without_stream(tmp_path) -> None:
-    """stream/ws가 None이면 기동 폴백(_start_live_stream_locked)으로 위임 —
-    그 가드(빈 watchlist → False)가 막으면 예외 없이 no-op (상태 불변).
-    여기선 watchlist.json이 없어 codes=[]이므로 기동이 거부된다(리뷰 #1)."""
+async def test_refresh_live_stream_early_returns_when_never_started(tmp_path) -> None:
+    """streams=={} 이고 poller 없음(기동 전)이면 기동 폴백
+    (_start_live_stream_locked)으로 위임 — 그 가드(creds 없음)가 막으면 예외 없이
+    no-op (상태 불변). 여기선 KIS creds가 없어 기동이 거부된다(리뷰 #1)."""
     from hoga.live import lifecycle
-    from hoga.live.lifecycle import _State
 
     lifecycle.reset_for_tests()
-    # ① stream_obj 자체가 None (기동 전)
+    # streams={} + rest_poller=None → never-started 폴백, creds 없어 no-op
     await lifecycle.refresh_live_stream(data_dir=tmp_path)
     assert lifecycle._state.live_set == ()
-
-    # ② stream은 있으나 ws가 None (조립 중간 상태)
-    class _WsLess:
-        ws = None
-
-    lifecycle._state = _State(stream_obj=_WsLess(), live_set=("005930",))
-    await lifecycle.refresh_live_stream(data_dir=tmp_path)
-    assert lifecycle._state.live_set == ("005930",)  # 변경 없음
+    assert lifecycle._state.streams == {}
 
 
 @pytest.mark.asyncio
 async def test_refresh_live_stream_starts_never_started_stream(
     monkeypatch, tmp_path
 ) -> None:
-    """빈 watchlist 부팅(기동 실패) 후 첫 종목 추가 → refresh가 스트림을 기동
+    """빈 watchlist 부팅(C4 poller-only) 후 첫 종목 추가 → refresh가 conn을 기동
     한다(리뷰 #1 — 구 refresh_live_poller의 auto-start 승계). 폴백이 없으면
-    watchdog도 no-op(started_at_ms None)이고 프런트엔드에 /api/live/control
-    start 호출 경로가 없어, 재시작 전까지 캡처가 조용히 죽어 있게 된다."""
+    프런트엔드에 /api/live/control start 호출 경로가 없어, 재추가 전까지
+    WS 연결이 조용히 안 생긴다."""
     import json
 
     from hoga.api import symbols
@@ -592,8 +667,10 @@ async def test_refresh_live_stream_starts_never_started_stream(
     (tmp_path / "watchlist.json").write_text(
         json.dumps({"version": 1, "entries": []})
     )
-    assert not await lifecycle.start_live_stream(data_dir=tmp_path)  # 빈 부팅
-    assert lifecycle.get_status().running is False
+    # C4: 빈 watchlist + creds → poller-only로 기동(streams 비고 running=True)
+    assert await lifecycle.start_live_stream(data_dir=tmp_path) is True
+    assert lifecycle._state.streams == {}
+    assert lifecycle.get_status().running is True  # poller alive
 
     (tmp_path / "watchlist.json").write_text(json.dumps({
         "version": 1,
@@ -605,9 +682,10 @@ async def test_refresh_live_stream_starts_never_started_stream(
         await lifecycle.refresh_live_stream(data_dir=tmp_path)  # 첫 종목 추가 훅
         assert lifecycle.get_status().running is True
         assert lifecycle._state.live_set == ("005930",)
+        assert set(lifecycle._state.streams.keys()) == {0}
         # 기동 시 활성 집합 배선(리뷰 #6) — on_tick 필터가 t0부터 동작해야
         # 퇴출 코드의 in-flight 프레임 부활을 막는다.
-        assert lifecycle._state.stream_obj._active_codes == {"005930"}
+        assert lifecycle._state.streams[0].stream_obj._active_codes == {"005930"}
     finally:
         await lifecycle.stop_live_stream()
 
@@ -637,7 +715,7 @@ def test_get_status_includes_ws_transport_keys() -> None:
 
 @pytest.mark.asyncio
 async def test_ws_watchdog_no_restart_at_open_with_yesterday_recv(
-    monkeypatch, _spy_start_stream, tmp_path
+    monkeypatch, tmp_path
 ) -> None:
     """ADR-0064 boundary(포팅): 어제부터 살아있는 서버의 last_recv가 어제 마감
     무렵이어도, 오늘 개장 직후(grace 내)엔 stale로 찍지 않는다 — grace를
@@ -669,7 +747,7 @@ async def test_ws_watchdog_no_restart_at_open_with_yesterday_recv(
             data_dir=tmp_path, now_ms=now, stale_after_ms=120_000
         )
         assert restarted is False
-        assert _spy_start_stream == []
+        assert lifecycle._state.streams[0].ws_task is ws_task  # 불변
     finally:
         for t in (ws_task, stream_task):
             t.cancel()
@@ -681,7 +759,7 @@ async def test_ws_watchdog_no_restart_at_open_with_yesterday_recv(
 
 @pytest.mark.asyncio
 async def test_ws_watchdog_restarts_when_no_recv_since_open_past_grace(
-    monkeypatch, _spy_start_stream, tmp_path
+    monkeypatch, tmp_path
 ) -> None:
     """같은 경계, grace를 한참 지나도 개장 이후 수신 0 → 진짜 stall → 재시작."""
     from datetime import datetime
@@ -692,6 +770,7 @@ async def test_ws_watchdog_restarts_when_no_recv_since_open_past_grace(
     lifecycle.reset_for_tests()
     monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
     monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+    _install_restart_env(monkeypatch, tmp_path)
 
     def _ms(*a):
         return int(datetime(*a, tzinfo=KIS_KST).timestamp() * 1000)
@@ -711,7 +790,7 @@ async def test_ws_watchdog_restarts_when_no_recv_since_open_past_grace(
             data_dir=tmp_path, now_ms=now, stale_after_ms=120_000
         )
         assert restarted is True
-        assert _spy_start_stream == [tmp_path]
+        assert lifecycle._state.streams[0].ws_task is not ws_task  # 교체됨
     finally:
         for t in (ws_task, stream_task):
             t.cancel()
@@ -719,11 +798,12 @@ async def test_ws_watchdog_restarts_when_no_recv_since_open_past_grace(
                 await t
             except asyncio.CancelledError:
                 pass
+        await lifecycle.stop_live_stream()
 
 
 @pytest.mark.asyncio
 async def test_ws_watchdog_grace_no_restart_right_after_start(
-    monkeypatch, _spy_start_stream, tmp_path
+    monkeypatch, tmp_path
 ) -> None:
     """방금 시작 + 수신 0 + grace 내 → 조기 재시작 금지."""
     from hoga.live import lifecycle
@@ -743,7 +823,7 @@ async def test_ws_watchdog_grace_no_restart_right_after_start(
             data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
         )
         assert restarted is False
-        assert _spy_start_stream == []
+        assert lifecycle._state.streams[0].ws_task is ws_task  # 불변
     finally:
         for t in (ws_task, stream_task):
             t.cancel()
@@ -755,10 +835,11 @@ async def test_ws_watchdog_grace_no_restart_right_after_start(
 
 @pytest.mark.asyncio
 async def test_stop_locked_propagates_outer_cancellation() -> None:
-    """M4 pin: _stop_live_stream_locked가 자식 task 취소만 삼키고, *자기 자신*의
-    취소는 전파해야 한다 — 삼키면 lifespan shutdown이 hang(무증상 재유입 방지)."""
+    """M4 pin: _stop_live_stream_locked가 자식 conn task 취소만 삼키고, *자기
+    자신*의 취소는 전파해야 한다 — 삼키면 lifespan shutdown이 hang(무증상 재유입
+    방지)."""
     from hoga.live import lifecycle
-    from hoga.live.lifecycle import _State
+    from hoga.live.lifecycle import _State, _StreamConn
 
     lifecycle.reset_for_tests()
 
@@ -770,8 +851,11 @@ async def test_stop_locked_propagates_outer_cancellation() -> None:
             await asyncio.sleep(60)  # 두 번째 cancel까지 버팀
 
     child = asyncio.create_task(_stubborn())
+    done = asyncio.create_task(_stubborn())
     await asyncio.sleep(0)
-    lifecycle._state = _State(started_at_ms=1, stream_task=child)
+    conn = _StreamConn(account_id=0, stream_obj=object(),
+                       ws_task=child, flush_task=done, codes=("005930",))
+    lifecycle._state = _State(started_at_ms=1, n_configured=1, streams={0: conn})
 
     async def _runner() -> None:
         await lifecycle._stop_live_stream_locked()
@@ -781,11 +865,12 @@ async def test_stop_locked_propagates_outer_cancellation() -> None:
     outer.cancel()                   # 외부 취소 — 삼켜지면 안 됨
     with pytest.raises(asyncio.CancelledError):
         await outer
-    child.cancel()
-    try:
-        await child
-    except asyncio.CancelledError:
-        pass
+    for t in (child, done):
+        t.cancel()
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
 
 def test_capture_health_branches():
@@ -824,7 +909,7 @@ def test_capture_health_branches():
 async def test_get_status_exposes_capture_health(monkeypatch, tmp_path) -> None:
     """get_status가 capture_healthy/capture_reason를 노출 — 정상 ws."""
     from hoga.live import lifecycle
-    from hoga.live.lifecycle import _State
+    from hoga.live.lifecycle import _State, _StreamConn
     lifecycle.reset_for_tests()
     class _FakeWs:
         connected = True
@@ -838,10 +923,12 @@ async def test_get_status_exposes_capture_health(monkeypatch, tmp_path) -> None:
         await asyncio.sleep(60)
     task = asyncio.create_task(_forever())
     try:
+        conn = _StreamConn(account_id=0, stream_obj=_FakeStream(),
+                           ws_task=task, flush_task=task, codes=("005930",))
         lifecycle._state = _State(
             started_at_ms=lifecycle._now_ms() - 200_000,
-            watchlist_codes=("005930",), stream_task=task,
-            stream_obj=_FakeStream(), live_set=("005930",),
+            n_configured=1, watchlist_codes=("005930",),
+            streams={0: conn}, live_set=("005930",),
         )
         monkeypatch.setattr(lifecycle, "_market_clock_closed_for_capture",
                             lambda _now: False)
@@ -856,7 +943,7 @@ async def test_get_status_exposes_capture_health(monkeypatch, tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_watchdog_does_not_restart_on_sub_failed_when_recv_fresh(
-    monkeypatch, _spy_start_stream, tmp_path
+    monkeypatch, tmp_path
 ) -> None:
     """spec §2.3: 구독 미확인이지만 수신 신선(appkey 거부류 — PINGPONG은 흐름)
     → 재시작 안 함(재연결 불응, 가시화만)."""
@@ -872,13 +959,13 @@ async def test_watchdog_does_not_restart_on_sub_failed_when_recv_fresh(
             monkeypatch, started_at_ms=1_000, ws_task=ws_task,
             stream_task=stream_task, last_tick_ms=None, last_recv_ms=9_950_000,
         )
-        lifecycle._state.stream_obj.ws.sub_expected = 39
-        lifecycle._state.stream_obj.ws.sub_acked = 10   # 미확인
+        lifecycle._state.streams[0].stream_obj.ws.sub_expected = 39
+        lifecycle._state.streams[0].stream_obj.ws.sub_acked = 10   # 미확인
         restarted = await lifecycle._ws_watchdog_check(
             data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
         )
         assert restarted is False
-        assert _spy_start_stream == []
+        assert lifecycle._state.streams[0].ws_task is ws_task  # 불변
     finally:
         for t in (ws_task, stream_task):
             t.cancel()
@@ -888,13 +975,14 @@ async def test_watchdog_does_not_restart_on_sub_failed_when_recv_fresh(
 
 @pytest.mark.asyncio
 async def test_watchdog_restarts_when_sub_unacked_and_recv_stale(
-    monkeypatch, _spy_start_stream, tmp_path
+    monkeypatch, tmp_path
 ) -> None:
     """spec §2.3 + advisor: 구독 미확인 AND 수신 끊김 = dead socket → 재시작.
     recv 체크가 sub보다 먼저라 'stale'로 분류(old 순차 코드와 동일하게 재시작)."""
     from hoga.live import lifecycle
     lifecycle.reset_for_tests()
     monkeypatch.setattr("hoga.live.session_gate.ws_capture_window", lambda _t: True)
+    _install_restart_env(monkeypatch, tmp_path)
     async def _forever():
         await asyncio.sleep(60)
     ws_task = asyncio.create_task(_forever())
@@ -904,15 +992,16 @@ async def test_watchdog_restarts_when_sub_unacked_and_recv_stale(
             monkeypatch, started_at_ms=1_000, ws_task=ws_task,
             stream_task=stream_task, last_tick_ms=None, last_recv_ms=9_000_000,
         )
-        lifecycle._state.stream_obj.ws.sub_expected = 39
-        lifecycle._state.stream_obj.ws.sub_acked = 10
+        lifecycle._state.streams[0].stream_obj.ws.sub_expected = 39
+        lifecycle._state.streams[0].stream_obj.ws.sub_acked = 10
         restarted = await lifecycle._ws_watchdog_check(
             data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
         )
         assert restarted is True
-        assert _spy_start_stream == [tmp_path]
+        assert lifecycle._state.streams[0].ws_task is not ws_task  # 교체됨
     finally:
         for t in (ws_task, stream_task):
             t.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await t
+        await lifecycle.stop_live_stream()

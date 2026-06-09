@@ -163,12 +163,14 @@ async def test_start_sets_excluded_codes_to_live_set(
 async def test_refresh_updates_excluded_codes(
     monkeypatch, tmp_path
 ) -> None:
-    """refresh 후 rest_poller.set_excluded_codes가 새 live_set으로 갱신된다."""
+    """refresh 후 rest_poller.set_excluded_codes가 새 live_set으로 갱신된다
+    (dynamic-N 단일 conn — diff 경로에서 배제 동기화)."""
+    import asyncio
     import json as _json
 
     from hoga.api import symbols
     from hoga.live import lifecycle
-    from hoga.live.lifecycle import _State
+    from hoga.live.lifecycle import _State, _StreamConn
 
     lifecycle.reset_for_tests()
     monkeypatch.setattr(symbols, "_cache", [])  # cold cache → 무필터 폴백
@@ -193,10 +195,19 @@ async def test_refresh_updates_excluded_codes(
 
     monkeypatch.setattr(lifecycle._buffer, "drop_codes_except", _fake_drop)
 
+    async def _forever():
+        await asyncio.sleep(60)
+    ws_task = asyncio.create_task(_forever())
+    flush_task = asyncio.create_task(_forever())
+    conn = _StreamConn(
+        account_id=0, stream_obj=_FakeStream(),
+        ws_task=ws_task, flush_task=flush_task, codes=("999999",),
+    )
     lifecycle._state = _State(
         started_at_ms=1,
+        n_configured=1,
         watchlist_codes=("999999",),
-        stream_obj=_FakeStream(),
+        streams={0: conn},
         live_set=("999999",),
         rest_poller=fake_poller,
     )
@@ -210,12 +221,20 @@ async def test_refresh_updates_excluded_codes(
         ],
     }))
 
-    await lifecycle.refresh_live_stream(data_dir=tmp_path)
+    try:
+        await lifecycle.refresh_live_stream(data_dir=tmp_path)
 
-    expected = {f"{i:06d}" for i in range(5)}
-    assert fake_poller.excluded == expected, (
-        "refresh 후 set_excluded_codes(new_live_set)이 호출되어야 함(배타 갱신)"
-    )
+        expected = {f"{i:06d}" for i in range(5)}
+        assert fake_poller.excluded == expected, (
+            "refresh 후 set_excluded_codes(new_live_set)이 호출되어야 함(배타 갱신)"
+        )
+    finally:
+        for t in (ws_task, flush_task):
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
 
 
 @pytest.mark.asyncio
@@ -286,29 +305,102 @@ async def test_start_no_poller_when_creds_missing(
     assert lifecycle._state.rest_poller is None
 
 
-# ── _sync_and_live_set 헬퍼 단위 테스트 (ADR-0067 배타 단일화) ──────────────────
+# ── _sync_exclusion 헬퍼 단위 테스트 (ADR-0067 배타; 컷오버로 _sync_and_live_set 대체) ──
 
 
-def test_sync_and_live_set_calls_set_excluded_and_returns_tuple() -> None:
-    """_sync_and_live_set(codes, poller)가 set_excluded_codes(set(codes))를 호출하고
-    tuple(codes)를 반환한다."""
-    from hoga.live.lifecycle import _sync_and_live_set
+def test_sync_exclusion_calls_set_excluded() -> None:
+    """_sync_exclusion(poller, live_set)이 set_excluded_codes(set(live_set))를 호출한다."""
+    from hoga.live.lifecycle import _sync_exclusion
 
     poller = _FakePoller()
-    codes = ["005930", "000660"]
-    result = _sync_and_live_set(codes, poller)
+    live_set = ("005930", "000660")
+    _sync_exclusion(poller, live_set)
 
-    assert result == tuple(codes), "_sync_and_live_set은 tuple(codes)를 반환해야 함"
-    assert poller.excluded == set(codes), (
-        "_sync_and_live_set은 set_excluded_codes(set(codes))를 호출해야 함"
+    assert poller.excluded == set(live_set), (
+        "_sync_exclusion은 set_excluded_codes(set(live_set))를 호출해야 함"
     )
 
 
-def test_sync_and_live_set_no_poller_returns_tuple() -> None:
-    """_sync_and_live_set(codes, None)은 예외 없이 tuple(codes)를 반환한다(오프라인 폴백)."""
-    from hoga.live.lifecycle import _sync_and_live_set
+def test_sync_exclusion_no_poller_noop() -> None:
+    """_sync_exclusion(None, live_set)은 예외 없이 no-op(오프라인 폴백)."""
+    from hoga.live.lifecycle import _sync_exclusion
 
-    codes = ["005930", "000660"]
-    result = _sync_and_live_set(codes, None)
+    _sync_exclusion(None, ("005930", "000660"))  # 예외 안 남
 
-    assert result == tuple(codes), "rest_poller 없이도 tuple(codes)를 반환해야 함"
+
+# ── Task 11: rest_poller 분리 회귀 + C4 보는종목 (스펙 §3·C4) ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_view_subscription_survives_stream_restart(tmp_path, monkeypatch):
+    """잠복 버그 회귀(§3): conn(스트림) 재시작이 보는종목 구독을 날리면 안 된다."""
+    import hoga.live.kis_runtime as kis_runtime
+    import hoga.live.lifecycle as lifecycle
+    from hoga.live import session_gate
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr(session_gate, "should_run_now", lambda _t: False)
+    monkeypatch.setenv("KIS_APP_KEY", "K")
+    monkeypatch.setenv("KIS_APP_SECRET", "S")
+
+    class _FakeKis:
+        _creds = type("C", (), {"app_key": "k0"})()
+        async def get_approval_key(self):
+            return "A"
+        async def aclose(self):
+            pass
+        async def fetch_orderbook(self, code):
+            raise RuntimeError("offline")
+        async def fetch_trades(self, code):
+            return []
+        async def fetch_brokers(self, code):
+            raise RuntimeError("offline")
+
+    monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda d: _FakeKis())
+    monkeypatch.setattr(kis_runtime, "ensure_kis_client_for_account", lambda a, d: _FakeKis())
+
+    from hoga.api import symbols
+    from tests.unit.live.test_lifecycle_start import _write_watchlist
+    monkeypatch.setattr(symbols, "search", lambda q, limit=10_000: [])
+    _write_watchlist(tmp_path, ["005930"])
+    await lifecycle.start_live_stream(data_dir=tmp_path)
+
+    # 보는종목(관심 밖) 구독
+    lifecycle.on_view_subscribe("999999")
+    assert "999999" in lifecycle._state.rest_poller._subscribed
+
+    # 전체 재시작(watchdog 전체 재시작 경로와 동일하게 poller 보존)
+    await lifecycle.start_live_stream(data_dir=tmp_path)
+    assert lifecycle._state.rest_poller is not None
+    assert "999999" in lifecycle._state.rest_poller._subscribed  # ★ 구독 보존
+    await lifecycle.stop_live_stream()
+
+
+@pytest.mark.asyncio
+async def test_empty_watchlist_view_subscribe_polls(tmp_path, monkeypatch):
+    """C4: 빈 watchlist여도 보는종목 on_view_subscribe가 폴링 대상에 들어간다."""
+    import hoga.live.kis_runtime as kis_runtime
+    import hoga.live.lifecycle as lifecycle
+    from hoga.live import session_gate
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr(session_gate, "should_run_now", lambda _t: False)
+    monkeypatch.setenv("KIS_APP_KEY", "K")
+    monkeypatch.setenv("KIS_APP_SECRET", "S")
+
+    class _FakeKis:
+        _creds = type("C", (), {"app_key": "k0"})()
+        async def get_approval_key(self):
+            return "A"
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda d: _FakeKis())
+
+    from tests.unit.live.test_lifecycle_start import _write_watchlist
+    _write_watchlist(tmp_path, [])
+    assert await lifecycle.start_live_stream(data_dir=tmp_path) is True
+    assert lifecycle._state.streams == {}                       # WS 연결 0 (C4)
+    lifecycle.on_view_subscribe("005930")
+    assert "005930" in lifecycle._state.rest_poller._subscribed  # 폴링 대상(빈 화면 아님)
+    await lifecycle.stop_live_stream()

@@ -3,6 +3,32 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.6.0] - 2026-06-09
+
+### Added
+- **/live 관심종목 실시간 수집이 13종목 → 26종목으로 늘었습니다 — 2계좌 WebSocket (ADR-0067 출시2)**:
+  KIS는 appkey당 41등록(종목당 3등록: 호가+체결+거래원)이라 1계좌로는 13종목이 한계였습니다.
+  이제 2번째 KIS 계좌(`KIS_APP_KEY_2`/`KIS_APP_SECRET_2`)를 설정하면 관심종목 상위 26개를
+  **두 WebSocket 연결로 나눠(13/13) 실시간 수집·저장**합니다. 1계좌만 설정돼 있으면 기존
+  13종목 동작 그대로입니다(무변경 폴백). *(실-KIS 장중 2계좌 enable 검증은 키 등록 후 1회
+  수동 스모크로 확정 — `scripts/smoke_2account_ws.py`.)*
+- **빈 관심종목에서도 보는 종목 호가가 표시됩니다 (C4)**: 관심종목이 0개여도 보는종목 REST
+  표시폴러가 살아 있어, 검색·차트로 연 종목의 호가창이 백지가 아니라 즉시 표시됩니다.
+
+### Changed
+- **연결 생명주기 = dynamic-N**: 코드가 있는 계좌의 연결만 만들고(빈 파티션은 연결 없음),
+  watchdog가 죽은 연결만 격리 복구합니다 — 한 계좌가 끊겨도 다른 계좌·보는종목 표시는 유지.
+  일부 연결만 저하되면 전체 배너로 정직하게 알리고 `degraded_accounts`(GET /api/live/status)로
+  어느 계좌인지 노출합니다(종목별 표시는 후속 deepening).
+
+### Internal
+- `kis_runtime` KIS 리소스 싱글톤을 `account_id`별 dict로 일반화(account k>0 = WS approval key
+  전용, bearer 토큰·15콜/초 버킷 미사용; account 0 경로는 backcompat 무변경).
+- `lifecycle` `_State`를 N-스트림 dict로, refresh·watchdog가 공유하는 `_build_conn`/`_teardown_conn`
+  프리미티브 + 연결별 `_restart_conn`. cross-boundary 재정렬 이중-write 방지(2-pass 원자 active 스왑).
+  rest_poller를 stream 생명주기에서 분리(빈 watchlist poller-only + 재시작 시 보는종목 구독 보존).
+- 선결: 동일 IP에서 appkey 2개로 WS 2소켓 동시 유지 스모크 통과(ADR-0067 위험 #1 해소).
+
 ## [0.7.5.0] - 2026-06-09
 
 ### Added
