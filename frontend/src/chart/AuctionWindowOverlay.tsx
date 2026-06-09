@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
@@ -20,7 +20,7 @@ type Props = {
  * + ResizeObserver path as DayBoundaryOverlay so pan/zoom/resize stay
  * smooth.
  */
-export default function AuctionWindowOverlay({ chart, axis }: Props) {
+function AuctionWindowOverlay({ chart, axis }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
   const auctionWindowMask = useActivePrefs((p) => p.auctionWindowMask);
@@ -82,3 +82,7 @@ export default function AuctionWindowOverlay({ chart, axis }: Props) {
     </div>
   );
 }
+
+// memo: depends only on chart + axis (stable across SSE ticks on /live), so the
+// parent's per-tick re-render no longer reaches this overlay (2026-06-09 Phase B).
+export default memo(AuctionWindowOverlay);

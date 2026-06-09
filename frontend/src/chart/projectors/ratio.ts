@@ -104,6 +104,7 @@ const useRatioContext = (): RatioPaneContext =>
 
 export const RATIO_SPEC = {
   name: 'ratio' as const,
+  live: true, // reads quote_ratio (SSE-derived) → fed the live bundle on /live
   stretch: 0.4,
   useContext: useRatioContext,
   series: [

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { LineSeries, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
@@ -18,7 +18,7 @@ type LineApi = ISeriesApi<'Line'>;
  *  분리된 가변 슬롯 모델 (ADR-0046). 슬롯 id 기준 series Map을 유지하며
  *  configs 변경 시 add/remove/applyOptions를 reconcile한다. period/source
  *  같은 데이터 patch는 setData만 호출 — series identity churn 없음. */
-export default function MovingAverageOverlay({ chart, bundle, axis }: Props) {
+function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   const configs = useLivePageStore((s) => s.movingAverages);
   const masterEnabled = useLivePageStore((s) => s.movingAverageEnabled);
   const hidden = useLivePageStore((s) => s.movingAverageHidden);
@@ -104,3 +104,7 @@ export default function MovingAverageOverlay({ chart, bundle, axis }: Props) {
 
   return null;
 }
+
+// memo: on /live this overlay is fed the stable chartBundle + axis, so an SSE
+// tick (hoga-only) no longer re-renders it via the parent (2026-06-09 Phase B).
+export default memo(MovingAverageOverlay);

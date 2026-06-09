@@ -79,6 +79,7 @@ const useQuoteTotalsContext = (): boolean => useActivePrefs((p) => p.auctionWind
 // makes 총잔량 consistent with 호가비.
 export const QUOTE_TOTALS_SPEC = {
   name: 'quote-totals' as const,
+  live: true, // reads quote_ratio (SSE-derived) → fed the live bundle on /live
   stretch: 0.4,
   useContext: useQuoteTotalsContext,
   series: [

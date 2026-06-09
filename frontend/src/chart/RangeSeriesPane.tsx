@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import {
   type IChartApi,
   type ISeriesApi,
@@ -50,6 +50,11 @@ export type PaneSpec<Ctx = void> = {
   stretch: number;
   series: SeriesSpec<Ctx>[];
   useContext?: () => Ctx;
+  /** /live bundle-split routing (2026-06-09): `true` = this pane's projectors
+   * read SSE-derived hoga series (quote_ratio / fill_strength), so LiveChartRoot
+   * feeds it the live `bundle`. Unset/false = candle-path pane fed the stable
+   * `chartBundle` (no re-setData on an SSE tick). Inert outside /live. */
+  live?: boolean;
 };
 
 type Props<Ctx> = {
@@ -59,13 +64,41 @@ type Props<Ctx> = {
   paneIndex: number;
   spec: PaneSpec<Ctx>;
   /** Fired after the primary series (spec.series[0]) is added to the chart.
-   *  ChartStage uses this to populate its PaneId→ISeriesApi registry that
-   *  DrawingOverlay consumes for pane-aware coordinate conversion. */
-  onPrimarySeriesReady?: (series: ISeriesApi<any>) => void;
+   *  The caller populates its PaneId→ISeriesApi registry that DrawingOverlay
+   *  consumes for pane-aware coordinate conversion. `paneName` (= spec.name) is
+   *  passed back so the caller can use ONE stable callback for all panes instead
+   *  of a per-pane closure — required for React.memo on this component to skip
+   *  re-renders when only the live bundle (hoga panes) changed. */
+  onPrimarySeriesReady?: (series: ISeriesApi<any>, paneName: string) => void;
   /** Fired right before the primary series is removed from the chart
-   *  (component unmount or spec change). */
-  onPrimarySeriesGone?: () => void;
+   *  (component unmount or spec change). `paneName` = spec.name (see above). */
+  onPrimarySeriesGone?: (paneName: string) => void;
 };
+
+/**
+ * Content signature for a projected series-data array, used to skip a
+ * `setData` call whose result is identical to the last one already pushed to
+ * that series (see the data effect below). Folds length + every item's
+ * time and primary value (close → value → high) into one int32 — O(n), but
+ * the projection that produced `data` is already O(n), so this adds no order.
+ *
+ * Why it MUST hash the whole array (not just first/last): a live tick mutates
+ * only the last bar (same time, new close), which length+endpoints would
+ * catch — but a partial-bar correction or a mid-array fill would slip through
+ * a first/last-only check and freeze the chart. Hashing every item's value
+ * means any genuine change re-pushes, while a byte-identical re-render (the
+ * churn this guards against) matches and is skipped.
+ */
+function seriesDataSignature(data: readonly SeriesDataItemTypeMap[SeriesType][]): string {
+  let h = 0;
+  for (let i = 0; i < data.length; i++) {
+    const item = data[i] as { time?: unknown; close?: number; value?: number; high?: number };
+    const t = typeof item.time === 'number' ? item.time : 0;
+    const v = item.close ?? item.value ?? item.high ?? 0;
+    h = (Math.imul(h, 31) + t + (v | 0)) | 0;
+  }
+  return `${data.length}:${h}`;
+}
 
 /**
  * RangeSeriesPane — the deep module that owns chart-pane lifecycle for
@@ -74,7 +107,7 @@ type Props<Ctx> = {
  * docs/superpowers/specs/2026-05-23-range-series-pane-design.md for the
  * full design.
  */
-export default function RangeSeriesPane<Ctx>({
+function RangeSeriesPaneInner<Ctx>({
   chart,
   bundle,
   axis,
@@ -90,6 +123,15 @@ export default function RangeSeriesPane<Ctx>({
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const ctx = spec.useContext ? spec.useContext() : (undefined as Ctx);
   const seriesRef = useRef<ISeriesApi<any>[]>([]);
+  // Signature of the last data array pushed to each series (by index). Lets the
+  // data effect skip a redundant setData whose projected result is identical to
+  // what the series already holds — the parent re-renders ~24× during a
+  // timeframe switch (a fresh `bundle` object each time, same `bundle.candles`
+  // reference), and lightweight-charts re-runs price autoscale + viewport
+  // settle on EVERY setData, so those identical re-pushes visibly re-fit the
+  // chart after the reveal cover has lifted. Reset in the lifecycle effect when
+  // the series are (re)created so a fresh handle always gets its first push.
+  const lastSigRef = useRef<(string | null)[]>([]);
   // Lifecycle effect: create LineSeries once per (chart, paneIndex, spec)
   // tuple and tear them down on unmount. Does NOT depend on ctx/bundle/axis,
   // so prefs edits (e.g. Moving Average period bump) don't churn series
@@ -102,9 +144,12 @@ export default function RangeSeriesPane<Ctx>({
       return series;
     });
     seriesRef.current = seriesList;
-    if (seriesList.length > 0) onPrimarySeriesReady?.(seriesList[0]);
+    // Fresh handles hold no data — clear cached signatures so the data effect's
+    // first run after (re)creation always pushes (null !== any real signature).
+    lastSigRef.current = seriesList.map(() => null);
+    if (seriesList.length > 0) onPrimarySeriesReady?.(seriesList[0], spec.name);
     return () => {
-      if (seriesList.length > 0) onPrimarySeriesGone?.();
+      if (seriesList.length > 0) onPrimarySeriesGone?.(spec.name);
       // Guard: when a sibling pane throws and ChartErrorBoundary unmounts
       // ChartStage, the parent's chart.remove() may run before this
       // cleanup, leaving the series handle dangling. lightweight-charts
@@ -141,8 +186,27 @@ export default function RangeSeriesPane<Ctx>({
     const seriesList = seriesRef.current;
     if (seriesList.length !== spec.series.length) return;
     spec.series.forEach((s, i) => {
-      seriesList[i].setData(s.data(bundle, axis, ctx));
+      const data = s.data(bundle, axis, ctx);
+      // Skip a setData whose result is byte-identical to the last push: lwc
+      // re-autoscales the price axis and re-settles the viewport on every
+      // setData, so a redundant identical push (the timeframe-switch render
+      // churn) would visibly re-fit the chart. A live tick changes the last
+      // bar → its signature changes → it still flows through.
+      const sig = seriesDataSignature(data);
+      if (lastSigRef.current[i] === sig) return;
+      lastSigRef.current[i] = sig;
+      seriesList[i].setData(data);
     });
   }, [chart, bundle, axis, ctx, spec, paneIndex]);
   return null;
 }
+
+/** Memoised (2026-06-09 bundle-split, Phase B): skips re-render when props are
+ * shallow-equal. On /live a candle/volume pane is fed the STABLE `chartBundle`
+ * + stable axis + stable callbacks, so an SSE tick (which only changes the hoga
+ * panes' `bundle`) no longer re-renders the candle panes via the parent. Hoga
+ * panes still re-render (their `bundle` prop changes). The
+ * `as typeof RangeSeriesPaneInner` cast restores the generic call signature that
+ * React.memo's type drops. */
+const RangeSeriesPane = memo(RangeSeriesPaneInner) as typeof RangeSeriesPaneInner;
+export default RangeSeriesPane;
