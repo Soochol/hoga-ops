@@ -154,7 +154,7 @@ class _FakeKisForPast:
     def __init__(self):
         self.calls: list[str] = []  # records date arg per call
 
-    async def fetch_past_minute_candles(self, code: str, date_yyyymmdd: str) -> list[KisCandle]:
+    async def fetch_past_minute_candles(self, code: str, date_yyyymmdd: str, **_kw) -> list[KisCandle]:
         self.calls.append(date_yyyymmdd)
         # KST 09:00 of the requested date — matches the real KIS shape so
         # PastCandlesCache's date-match guard (the "evict stale" check from
@@ -284,7 +284,7 @@ async def test_past_candles_partial_failure_kis_api_error(tmp_path) -> None:
     from hoga.live.kis_client import KisApiError
 
     class _PartialFakeKis:
-        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             if date_yyyymmdd == "20260502":
                 raise KisApiError(msg_cd="HTTP_500", msg1="server error")
             return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
@@ -315,7 +315,7 @@ async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path) -> Non
             self.max_inflight = 0
             self.calls: list[str] = []
 
-        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             self.calls.append(date_yyyymmdd)
             self.inflight += 1
             self.max_inflight = max(self.max_inflight, self.inflight)
@@ -357,7 +357,7 @@ async def test_past_candles_singleflight_dedups_concurrent_same_date(tmp_path) -
         def __init__(self):
             self.calls: list[str] = []
 
-        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             self.calls.append(date_yyyymmdd)
             await _asyncio.sleep(0.05)   # 두 요청의 fetch 창을 겹치게 한다
             return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105,
@@ -396,7 +396,7 @@ async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path) -> Non
         def __init__(self):
             self.calls: list[str] = []
 
-        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             self.calls.append(date_yyyymmdd)
             if date_yyyymmdd == "20260502":
                 await _asyncio.sleep(0.01)   # 첫 배치 중 가장 먼저 실패
@@ -451,7 +451,7 @@ async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -
         def __init__(self):
             self.calls: list[str] = []
 
-        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             self.calls.append(date_yyyymmdd)
             if date_yyyymmdd == "20260502":
                 raise KisRateLimitError("EGW00201 rate limited")
@@ -486,7 +486,7 @@ async def test_past_candles_weekend_empty_response(tmp_path) -> None:
     should accept that as a normal zero-candle date — no warning."""
 
     class _EmptyFakeKis:
-        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             return []
 
     app = _past_app(tmp_path, _EmptyFakeKis())
@@ -532,7 +532,7 @@ def test_minute_today_non_trading_day_negative_caches(tmp_path) -> None:
         def __init__(self):
             self.calls = 0
 
-        async def fetch_past_minute_candles(self, code, date_yyyymmdd):
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             self.calls += 1
             return []  # simulate Saturday / holiday today
 
@@ -647,7 +647,7 @@ class _FakeKisForDaily:
         self.raise_rate_limit_on_call: int | None = None
 
     async def fetch_past_daily_candles(
-        self, code: str, from_yyyymmdd: str, to_yyyymmdd: str
+        self, code: str, from_yyyymmdd: str, to_yyyymmdd: str, **_kw
     ) -> DailyCandleFetchResult:
         idx = len(self.calls)
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
@@ -808,7 +808,7 @@ def test_past_daily_empty_gap_caches_and_does_not_refetch(tmp_path) -> None:
     instead of re-calling KIS. Prevents infinite re-fetch on holiday ranges."""
 
     class _EmptyKis(_FakeKisForDaily):
-        async def fetch_past_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd):
+        async def fetch_past_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd, **_kw):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
             from hoga.live.kis_client import DailyCandleFetchResult
             return DailyCandleFetchResult(candles=[], violations=[])
@@ -854,7 +854,7 @@ def test_past_daily_today_only_request_skips_gap_branch(tmp_path) -> None:
 
 def test_past_daily_today_negative_cache_skips_kis_within_ttl(tmp_path) -> None:
     class _EmptyTodayKis(_FakeKisForDaily):
-        async def fetch_past_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd):
+        async def fetch_past_daily_candles(self, code, from_yyyymmdd, to_yyyymmdd, **_kw):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
             from hoga.live.kis_client import DailyCandleFetchResult
             return DailyCandleFetchResult(candles=[], violations=[])

@@ -69,6 +69,9 @@ class LiveRestPoller:
 
         self._subscribed: set[str] = set()
         self._excluded: set[str] = set()
+        # 장 마감(phase=='closed') 중 1회 종가 스냅샷을 이미 받은 종목 — 마감엔
+        # 시세가 불변이라 반복 폴링이 무의미(KIS 쿼터 낭비). 재개장 시 비워 정상 복원.
+        self._snapshotted_once: set[str] = set()
 
         self._task: asyncio.Task | None = None  # type: ignore[type-arg]
         self.last_cycle_ms: int | None = None
@@ -82,6 +85,8 @@ class LiveRestPoller:
     def on_unsubscribe(self, code: str) -> None:
         """폴링 대상에서 제거."""
         self._subscribed.discard(code)
+        # 재구독 시(마감 중이라도) 새 1회 스냅샷을 받도록 표식 제거.
+        self._snapshotted_once.discard(code)
 
     def set_excluded_codes(self, codes: set[str]) -> None:
         """WS live_set(수집 중) 종목 — 폴링에서 배타 skip."""
@@ -134,9 +139,23 @@ class LiveRestPoller:
         # 사이클 시작 시 target 스냅샷 — await 중 외부 변경이 안전하도록
         targets = self._subscribed - self._excluded
 
+        # 장 마감 게이트(ADR-0067 후속, 2026-06-09): phase=='closed'면 시세가
+        # 불변이라 반복 폴링이 KIS 쿼터만 낭비한다. 아직 스냅샷 안 받은 종목만
+        # 1회 받아 마지막(종가) 상태를 표시하고, 그 외는 skip. 정규장/장전이면
+        # 표식을 비워 모든 종목이 다시 주기 폴링되도록 복원한다.
+        # phase_fn은 사이클마다 호출(프레시) — 15:30 경계 전환은 다음 사이클에 반영.
+        closed = self._phase_fn() == "closed"
+        if closed:
+            targets = targets - self._snapshotted_once
+        else:
+            self._snapshotted_once.clear()
+
         for code in targets:
             try:
                 await self._fetch_and_publish(code)
+                # 성공한 종목만 1회-표식에 추가(실패는 다음 사이클 재시도).
+                if closed:
+                    self._snapshotted_once.add(code)
             except Exception:  # noqa: BLE001 — 종목별 격리
                 _log.exception("live.rest_poller.code_failed code=%s", code)
 
