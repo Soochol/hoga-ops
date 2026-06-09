@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.7.0] - 2026-06-09
+
+### Changed
+- **/live KIS REST 호출에 foreground 우선순위 레인 추가 — 사용자가 보는 차트 fetch가 백그라운드 부하 앞으로**:
+  단일 15/s KIS 토큰버킷을 여러 소비자(rest_poller·투자자·screener·사용자 분봉/일봉 fetch)가
+  우선순위 없이 공유해, 방금 누른 종목의 과거 캔들 fetch가 백그라운드 폴링 뒤로 밀렸습니다. 이제
+  사용자가 기다리는 fetch(past-candles/daily)에 우선순위를 줘, 백그라운드는 사용자 대기자가 있는
+  동안 토큰을 양보합니다(벽시계 기아 백스톱으로 백그라운드 영구 기아 방지). 단일 15/s 예산은
+  그대로 — 순서만 바뀝니다.
+
+### Fixed
+- **장 마감 후 보는종목 REST 폴러가 KIS를 무의미하게 계속 호출하던 문제 차단**: rest_poller가 장
+  마감(closed) 시 시세 불변 종목을 2초마다 폴링하던 것을, 구독 직후 1회 종가 스냅샷만 받고
+  멈추도록 했습니다(재개장 시 정상 복원). KIS 초당 호출 쿼터 낭비 제거.
+
 ## [0.7.6.0] - 2026-06-09
 
 ### Added

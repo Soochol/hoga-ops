@@ -65,9 +65,17 @@ _RATE_LIMIT_CALLS_PER_SEC = 15.0
 # KisApiError are NOT retried — those are caller-actionable. See ADR-0050.
 _RATE_LIMIT_BACKOFF: tuple[float, ...] = (1.0, 2.0, 4.0)
 
+# 우선순위 레인 기본값 (2026-06-09). 백그라운드가 foreground 대기자에게 토큰을
+# 양보할 때 재확인 간격(busy-loop 방지) + 기아 방지 상한(누적 양보가 이를 넘으면
+# 백그라운드도 강제 획득). foreground 버스트는 본질상 짧으므로(전환 1회 ~20콜 ≈
+# 1.5s@15/s) 상한 1.5s면 실제 기아는 드물고, 폭주가 길어도 백그라운드가 영구히 굶지 않음.
+_FG_YIELD_S = 0.02
+_BG_MAX_YIELD_S = 1.5
+
 
 class _TokenBucket:
-    """Leaky-bucket rate limiter shared by all KIS data callers.
+    """Leaky-bucket rate limiter shared by all KIS data callers, with a
+    foreground priority lane.
 
     Single instance per ``KisClient`` so on-demand backfill, quote overlay,
     and any future caller draw from one budget — matching KIS's per-API-
@@ -75,36 +83,96 @@ class _TokenBucket:
     capacity don't pay an artificial penalty; once drained, ``acquire``
     sleeps just long enough for one token to replenish.
 
+    Priority (2026-06-09): ``acquire(foreground=True)`` marks the call as
+    user-visible (the chart the user is waiting on — past-candles/daily).
+    A BACKGROUND acquirer (rest_poller / periodic refetch / investor walk,
+    the default) YIELDS its turn while any foreground acquirer is waiting:
+    it declines an available token and re-checks after ``_yield_s`` until
+    the foreground burst drains. The single 15/s budget is unchanged — this
+    only reorders who spends it, so a user-facing fetch jumps ahead of the
+    continuous background load instead of queueing behind it. A starvation
+    backstop (``_bg_max_yield_s`` wall-clock from first yield) lets a
+    long-blocked background caller stop yielding and fairly compete for the
+    next token, so sustained foreground load can't starve it (even when the
+    bucket is drained and the background caller never observes a free token).
+
     Concurrency: token bookkeeping happens under ``_lock`` so concurrent
-    acquirers see consistent state. The ``await asyncio.sleep`` is
-    intentionally OUTSIDE the lock so other tasks can recompute their
-    own wait while one task sleeps. CancelledError during sleep is safe
-    — the token is only deducted after the lock confirms availability,
-    never before the sleep, so cancellation never leaks tokens.
+    acquirers see consistent state. ``_fg_waiters`` is mutated only between
+    awaits (atomic on the single-threaded event loop). The ``await
+    asyncio.sleep`` is intentionally OUTSIDE the lock so other tasks can
+    recompute their own wait while one task sleeps. CancelledError during
+    sleep is safe — the token is only deducted after the lock confirms
+    availability, never before the sleep, so cancellation never leaks tokens;
+    the ``finally`` always releases the foreground-waiter count.
     """
 
-    def __init__(self, rate: float):
+    def __init__(
+        self,
+        rate: float,
+        *,
+        yield_s: float = _FG_YIELD_S,
+        bg_max_yield_s: float = _BG_MAX_YIELD_S,
+    ):
         if rate <= 0:
             raise ValueError("rate must be positive")
+        # yield_s는 양보 중 재확인 간격이자 sleep 길이 — 0/음수면 양보 모드가
+        # CPU busy-spin(라이브락)이 된다. bg_max_yield_s는 기아 백스톱 상한이라
+        # 음수면 background가 즉시 강제 획득해 우선순위 자체가 무력화된다.
+        if yield_s <= 0:
+            raise ValueError("yield_s must be positive")
+        if bg_max_yield_s < 0:
+            raise ValueError("bg_max_yield_s must be non-negative")
         self._rate = float(rate)
         self._tokens = float(rate)
         self._last = time.monotonic()
         self._lock = asyncio.Lock()
+        self._fg_waiters = 0
+        self._yield_s = float(yield_s)
+        self._bg_max_yield_s = float(bg_max_yield_s)
 
-    async def acquire(self) -> None:
-        while True:
-            async with self._lock:
-                now = time.monotonic()
-                self._tokens = min(
-                    self._rate,
-                    self._tokens + (now - self._last) * self._rate,
-                )
-                self._last = now
-                if self._tokens >= 1.0:
-                    self._tokens -= 1.0
-                    return
-                wait = (1.0 - self._tokens) / self._rate
-            await asyncio.sleep(wait)
+    async def acquire(self, *, foreground: bool = False) -> None:
+        # Register as a foreground waiter so concurrent background acquirers
+        # yield to us. Released in `finally` even on CancelledError.
+        if foreground:
+            self._fg_waiters += 1
+        # 기아 방지 백스톱은 '실제 경과시간'(벽시계) 기준이다. 양보-분기 sleep을
+        # 누적하던 이전 방식은 토큰 드레인 상태(tokens<1)에서 진전하지 않아, 지속
+        # foreground 부하가 모든 리필 토큰을 가져가면 background가 토큰을 한 번도
+        # 보지 못해 누적이 0에 머물러 영구 기아했다(적대리뷰 L2 P1). deadline은
+        # background가 처음 양보해야 하는 순간 스탬프되고, 그 시각을 넘으면 토큰
+        # 가용 여부와 무관하게 양보를 중단해 다음 토큰을 공정 경쟁으로 가져간다.
+        deadline: float | None = None
+        try:
+            while True:
+                async with self._lock:
+                    now = time.monotonic()
+                    self._tokens = min(
+                        self._rate,
+                        self._tokens + (now - self._last) * self._rate,
+                    )
+                    self._last = now
+                    if not foreground and self._fg_waiters > 0:
+                        # 양보 필요 — 첫 양보 시 벽시계 데드라인을 건다.
+                        if deadline is None:
+                            deadline = now + self._bg_max_yield_s
+                        yield_to_fg = now < deadline
+                    else:
+                        # foreground 없음 → 양보 불필요, 다음 양보 에피소드 위해 리셋.
+                        deadline = None
+                        yield_to_fg = False
+                    if self._tokens >= 1.0 and not yield_to_fg:
+                        self._tokens -= 1.0
+                        return
+                    if self._tokens >= 1.0:
+                        # 토큰은 있으나 foreground에 양보(데드라인 전) → 짧게 재확인.
+                        wait = self._yield_s
+                    else:
+                        # 토큰 없음 → 보충 대기.
+                        wait = (1.0 - self._tokens) / self._rate
+                await asyncio.sleep(wait)
+        finally:
+            if foreground:
+                self._fg_waiters -= 1
 
 
 def classify_side(
@@ -310,6 +378,7 @@ class KisClient:
         params: dict[str, Any],
         *,
         retry: bool = True,
+        foreground: bool = False,
     ) -> dict:
         """Authenticated GET to KIS API with built-in EGW00201 retry and a
         single invalidate-and-retry on token-invalid responses.
@@ -321,15 +390,17 @@ class KisClient:
         revoked or expired server-side) invalidates the provider's cached token
         and retries ONCE with a fresh one; repeating failures propagate.
         Pass ``retry=False`` for diagnostic callers that want the raw
-        single-shot behavior.
+        single-shot behavior. ``foreground=True`` marks the call as user-visible
+        (the chart the user is waiting on) so it takes priority over background
+        callers at the shared rate limiter (2026-06-09).
         """
         try:
-            return await self._get_with_rate_retry(path, tr_id, params, retry=retry)
+            return await self._get_with_rate_retry(path, tr_id, params, retry=retry, foreground=foreground)
         except KisApiError as e:
             if not any(cd in e.msg_cd for cd in _TOKEN_INVALID_MSG_CDS):
                 raise
             await asyncio.to_thread(self._token_provider.invalidate)
-            return await self._get_with_rate_retry(path, tr_id, params, retry=retry)
+            return await self._get_with_rate_retry(path, tr_id, params, retry=retry, foreground=foreground)
 
     async def _get_with_rate_retry(
         self,
@@ -338,6 +409,7 @@ class KisClient:
         params: dict[str, Any],
         *,
         retry: bool,
+        foreground: bool = False,
     ) -> dict:
         """EGW00201 retry loop. The loop wraps the whole acquire+send+unwrap
         sequence, so each attempt re-acquires a token from the shared bucket —
@@ -347,7 +419,7 @@ class KisClient:
         attempts = len(backoff) + 1
         for attempt in range(attempts):
             try:
-                return await self._do_get_once(path, tr_id, params)
+                return await self._do_get_once(path, tr_id, params, foreground=foreground)
             except KisRateLimitError:
                 if attempt + 1 >= attempts:
                     raise
@@ -362,7 +434,7 @@ class KisClient:
         raise AssertionError("unreachable")
 
     async def _do_get_once(
-        self, path: str, tr_id: str, params: dict[str, Any]
+        self, path: str, tr_id: str, params: dict[str, Any], *, foreground: bool = False
     ) -> dict:
         """One unretried KIS GET. Extracted from ``_get`` so the retry loop
         sees a single call site; do not call directly from non-test code —
@@ -379,9 +451,10 @@ class KisClient:
         Rate limit: passes through ``self._rate_limiter`` so the per-API-key
         budget is honoured across all callers (quote + backfill). Acquire
         happens before the HTTP send so token waiters block on the rate
-        budget, not on KIS response time.
+        budget, not on KIS response time. ``foreground`` routes to the
+        priority lane so a user-visible fetch jumps ahead of background load.
         """
-        await self._rate_limiter.acquire()
+        await self._rate_limiter.acquire(foreground=foreground)
         # to_thread: get_token() is sync-blocking by design (threading.Lock +
         # disk I/O + up to a 10s POST on cache miss). Calling it bare here
         # froze the entire event loop at every issuance boundary (~daily) and
@@ -437,7 +510,9 @@ class KisClient:
             raise KisApiError(msg_cd=msg_cd, msg1=msg1)
         return body
 
-    async def fetch_past_minute_candles(self, code: str, date_yyyymmdd: str) -> list[KisCandle]:
+    async def fetch_past_minute_candles(
+        self, code: str, date_yyyymmdd: str, *, foreground: bool = False
+    ) -> list[KisCandle]:
         """Fetch 1-minute candles for *code* on *date_yyyymmdd* (KST).
 
         KIS endpoint `inquire-time-dailychartprice` returns at most 120 rows
@@ -467,7 +542,7 @@ class KisClient:
                 "FID_PW_DATA_INCU_YN": "N",
                 "FID_FAKE_TICK_INCU_YN": "",
             }
-            body = await self._get(path=path, tr_id=tr_id, params=params)
+            body = await self._get(path=path, tr_id=tr_id, params=params, foreground=foreground)
             rows = body.get("output2") or []
             page_candles: list[KisCandle] = []
             for row in rows:
@@ -532,6 +607,7 @@ class KisClient:
         to_yyyymmdd: str,
         *,
         adjust: bool = True,
+        foreground: bool = False,
     ) -> DailyCandleFetchResult:
         """Fetch daily OHLCV for *code* across [from, to] (KST).
 
@@ -566,7 +642,7 @@ class KisClient:
                 # 0=수정주가(/live 기본·ADR-0048), 1=원주가(스크리너)
                 "FID_ORG_ADJ_PRC": "0" if adjust else "1",
             }
-            body = await self._get(path=path, tr_id=tr_id, params=params)
+            body = await self._get(path=path, tr_id=tr_id, params=params, foreground=foreground)
             rows = body.get("output2") or []
             page_candles: list[KisCandle] = []
             page_earliest: str | None = None

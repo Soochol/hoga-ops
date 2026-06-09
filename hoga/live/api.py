@@ -464,7 +464,7 @@ def build_router(
         task = _past_inflight.get(key)
         if task is None:
             async def _do() -> tuple[list[dict], str | None]:
-                raw = await kis.fetch_past_minute_candles(code, date_s)
+                raw = await kis.fetch_past_minute_candles(code, date_s, foreground=True)
                 bars = [_candle_to_dict(c) for c in raw]
                 try:
                     cache_instance.store_past(code, date_s, bars)  # type: ignore[union-attr]
@@ -598,7 +598,7 @@ def build_router(
                     if kis_blocked:
                         warnings.append({"date": date_s, "reason": "rate_limit_aborted", "msg": "previous date hit rate limit"})
                         continue
-                    raw = await kis.fetch_past_minute_candles(code, date_s)
+                    raw = await kis.fetch_past_minute_candles(code, date_s, foreground=True)
                     bars = [_candle_to_dict(c) for c in raw]
                     if bars:
                         cache.store_today(code, bars)
@@ -640,7 +640,9 @@ def build_router(
             raise HTTPException(503, "past-daily-candles cache not wired (data_dir missing)")
 
         async def fetch_batch(code_: str, from_s: str, to_s: str):
-            result = await kis.fetch_past_daily_candles(code_, from_s, to_s)
+            # foreground=True: 사용자 일봉 차트 백필 (우선순위 레인). 스크리너 EOD
+            # 배치(screener*.py)는 default background로 사용자 fetch에 양보.
+            result = await kis.fetch_past_daily_candles(code_, from_s, to_s, foreground=True)
             return [_candle_to_dict(c) for c in result.candles], result.violations
 
         return await batched_daily_walkback(
