@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from hoga.api.models import WatchlistDocument
+    from .rest_poller import LiveRestPoller
 
 from pydantic import BaseModel, Field
 
@@ -129,6 +130,8 @@ class _State:
     stream_obj: object | None = None          # LiveStream — typed `object` to avoid cycle
     ws_task: asyncio.Task | None = None       # type: ignore[type-arg]
     live_set: tuple[str, ...] = field(default_factory=tuple)
+    # ADR-0067: REST 표시폴러 — WS 수집 밖 보는종목에 대한 REST 폴링
+    rest_poller: LiveRestPoller | None = None
 
 
 _state = _State()
@@ -374,6 +377,7 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
     never-started 폴백이 공유한다(리뷰 #1)."""
     from datetime import datetime, timedelta, timezone  # noqa: PLC0415
 
+    from .rest_poller import LiveRestPoller  # noqa: PLC0415
     from .stream import LiveStream  # noqa: PLC0415
     from .writer import LiveWriter  # noqa: PLC0415
     from .ws_client import KisWsClient  # noqa: PLC0415
@@ -413,6 +417,11 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
     )
     stream.ws = ws
 
+    # 7. ADR-0067: REST 표시폴러 생성 — WS live_set 배타 설정 후 기동
+    rest_poller = LiveRestPoller(kis, _buffer)
+    rest_poller.set_excluded_codes(set(codes))  # 배타: WS 수집 종목은 폴러 skip
+    rest_poller.start()
+
     global _state  # noqa: PLW0603
     _state = _State(
         started_at_ms=_now_ms(),
@@ -421,6 +430,7 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
         stream_obj=stream,
         ws_task=asyncio.create_task(ws.run(codes), name="live-ws"),
         stream_task=asyncio.create_task(stream.run_flush_loop(), name="live-flush"),
+        rest_poller=rest_poller,
     )
     return True
 
@@ -428,6 +438,8 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
 async def _stop_live_stream_locked() -> None:
     """stop의 본체 — 호출자가 _lifecycle_lock을 보유한 상태에서만 부른다."""
     global _state  # noqa: PLW0603
+    # ADR-0067: _state 교체 전에 rest_poller 참조를 캡처
+    rest_poller = _state.rest_poller
     for task in (_state.ws_task, _state.stream_task):
         if task is not None:
             task.cancel()
@@ -441,6 +453,8 @@ async def _stop_live_stream_locked() -> None:
                     raise
             except Exception:  # noqa: BLE001
                 pass
+    if rest_poller is not None:
+        await rest_poller.stop()
     _state = _State()
 
 
@@ -448,6 +462,30 @@ async def stop_live_stream() -> None:
     """stop_live_poller와 동일 패턴 — KisClient 싱글턴은 건드리지 않는다."""
     async with _lifecycle_lock:
         await _stop_live_stream_locked()
+
+
+# ── ADR-0067: 보는종목 view 진입점 ─────────────────────────────────────────────
+
+def on_view_subscribe(code: str) -> None:
+    """보는종목 구독 신호 — rest_poller.on_subscribe(code)로 위임.
+
+    ws.py(Task B5)가 호출하는 진입점. rest_poller가 없으면(오프라인/start 전)
+    예외 없이 no-op — get_active_codes()의 동일 snapshot 패턴 사용.
+    """
+    poller = _state.rest_poller
+    if poller is not None:
+        poller.on_subscribe(code)
+
+
+def on_view_unsubscribe(code: str) -> None:
+    """보는종목 구독 해제 신호 — rest_poller.on_unsubscribe(code)로 위임.
+
+    ws.py(Task B5)가 호출하는 진입점. rest_poller가 없으면(오프라인/start 전)
+    예외 없이 no-op.
+    """
+    poller = _state.rest_poller
+    if poller is not None:
+        poller.on_unsubscribe(code)
 
 
 async def refresh_live_stream(*, data_dir: Path) -> None:
@@ -474,6 +512,9 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
 
         await stream.ws.update_codes(codes)  # type: ignore[union-attr]
         stream.set_active_codes(set(codes))  # type: ignore[union-attr]  # advisor C: 밀려난 코드 carry 즉시 제거
+        # ADR-0067: live_set 갱신마다 배타 동기화 — WS 수집 종목 폴러 skip
+        if _state.rest_poller is not None:
+            _state.rest_poller.set_excluded_codes(set(codes))
         await _buffer.drop_codes_except(set(codes))  # Task 4 리뷰: 떠난 코드 ring 해제
 
         _state = replace(_state, live_set=tuple(codes), watchlist_codes=tuple(codes))
