@@ -31,6 +31,7 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     pixelToData: vi.fn(() => defaultPoint),
     realMsToCanvasX: vi.fn(() => 100),
     priceToCanvasY: vi.fn(() => 200),
+    canvasYToPrice: vi.fn(() => defaultPoint.price),
     hitTestAt: vi.fn(() => null),
     paneIdAtY: vi.fn(() => 'candle' as const),
     clampYToPane: vi.fn((_id, py) => py),
@@ -277,6 +278,105 @@ describe('selectTool', () => {
     expect(ctx.setSelected).toHaveBeenCalledWith('h1');
     expect(ctx.dragRef.current?.kind).toBe('body');
     expect(ctx.capturePointer).toHaveBeenCalledOnce();
+  });
+});
+
+// ─── empty right band (rightOffset whitespace) ────────────────────────────────
+//
+// In the chart's empty band to the right of the last candle the time axis can't
+// resolve a coordinate, so pixelToData → null. The price scale spans the full
+// height regardless of X, so canvasYToPrice still resolves. These tests pin the
+// fix: a body drag must run off the price axis alone there, so a price-only
+// drawing (hline) keeps dragging instead of freezing. See ADR-0030/0032 area
+// and the hoga-ops "hline drag empty area" diagnosis.
+describe('selectTool — body drag in the empty right band (pixelToData → null)', () => {
+  const hline = (price: number): Drawing => ({
+    id: 'h1', kind: 'hline', price, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+  });
+
+  it('starts an hline body drag even where the time axis is unresolvable', () => {
+    const target = hline(100);
+    const ctx = makeCtx({
+      hitTestAt: vi.fn(() => target),       // hline hit-test ignores X → hits in the band
+      pixelToData: vi.fn(() => null),       // empty band: coordinateToTime → null
+      canvasYToPrice: vi.fn(() => 100),     // price still resolves off the Y axis
+    });
+    selectTool.onPointerDown!(ctx);
+    expect(ctx.setSelected).toHaveBeenCalledWith('h1');
+    expect(ctx.dragRef.current?.kind).toBe('body');
+    expect((ctx.dragRef.current as { lastRealMs: number | null }).lastRealMs).toBeNull();
+    expect((ctx.dragRef.current as { lastPrice: number }).lastPrice).toBe(100);
+    expect(ctx.capturePointer).toHaveBeenCalledOnce();
+  });
+
+  it('moves an hline by price when dragged into the empty band', () => {
+    const target = hline(100);
+    const ctx = makeCtx({
+      drawings: [target],
+      dragRef: { current: { kind: 'body', id: 'h1', lastRealMs: 1_700_000_000_000, lastPrice: 100, pointerId: 1, paneId: 'candle' } },
+      pixelToData: vi.fn(() => null),       // pointer now over the empty band
+      canvasYToPrice: vi.fn(() => 105),     // cursor Y maps to price 105
+      clampYToPane: vi.fn((_id, py) => py),
+      priceBoundsForPane: vi.fn(() => ({ top: 200, bottom: 0 })),
+    });
+    selectTool.onPointerMove!(ctx);
+    expect(ctx.update).toHaveBeenCalledWith('h1', { price: 105 });
+    // Horizontal stays frozen while X is unresolvable: lastRealMs is preserved,
+    // lastPrice advances to the cursor price.
+    const drag = ctx.dragRef.current as { lastRealMs: number | null; lastPrice: number };
+    expect(drag.lastRealMs).toBe(1_700_000_000_000);
+    expect(drag.lastPrice).toBe(105);
+  });
+
+  it('moves an hline by price even when the drag started in the empty band (lastRealMs null)', () => {
+    const target = hline(100);
+    const ctx = makeCtx({
+      drawings: [target],
+      dragRef: { current: { kind: 'body', id: 'h1', lastRealMs: null, lastPrice: 100, pointerId: 1, paneId: 'candle' } },
+      pixelToData: vi.fn(() => null),
+      canvasYToPrice: vi.fn(() => 90),
+      clampYToPane: vi.fn((_id, py) => py),
+      priceBoundsForPane: vi.fn(() => ({ top: 200, bottom: 0 })),
+    });
+    selectTool.onPointerMove!(ctx);
+    expect(ctx.update).toHaveBeenCalledWith('h1', { price: 90 });
+  });
+
+  it('still drags normally over candles (regression guard for the data area)', () => {
+    const target = hline(100);
+    const ctx = makeCtx({
+      drawings: [target],
+      dragRef: { current: { kind: 'body', id: 'h1', lastRealMs: 1_700_000_000_000, lastPrice: 100, pointerId: 1, paneId: 'candle' } },
+      // pixelToData resolves over data (realMs + price); canvasYToPrice agrees on price.
+      pixelToData: vi.fn(() => ({ realMs: 1_700_000_060_000, price: 110 })),
+      canvasYToPrice: vi.fn(() => 110),
+      clampYToPane: vi.fn((_id, py) => py),
+      priceBoundsForPane: vi.fn(() => ({ top: 200, bottom: 0 })),
+    });
+    selectTool.onPointerMove!(ctx);
+    expect(ctx.update).toHaveBeenCalledWith('h1', { price: 110 });
+    const drag = ctx.dragRef.current as { lastRealMs: number | null };
+    expect(drag.lastRealMs).toBe(1_700_000_060_000); // advances when X resolves
+  });
+
+  it('moves a trendline endpoint by price in the empty band, preserving its realMs', () => {
+    const target: Drawing = {
+      id: 't1', kind: 'trendline',
+      a: { realMs: 1_700_000_000_000, price: 100 },
+      b: { realMs: 1_700_000_600_000, price: 120 },
+      color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+    };
+    const ctx = makeCtx({
+      drawings: [target],
+      dragRef: { current: { kind: 'handle', id: 't1', endpoint: 'b', pointerId: 1, paneId: 'candle' } },
+      pixelToData: vi.fn(() => null),     // empty band
+      canvasYToPrice: vi.fn(() => 130),
+      clampYToPane: vi.fn((_id, py) => py),
+    });
+    selectTool.onPointerMove!(ctx);
+    expect(ctx.update).toHaveBeenCalledWith('t1', {
+      b: { realMs: 1_700_000_600_000, price: 130 },
+    });
   });
 });
 
