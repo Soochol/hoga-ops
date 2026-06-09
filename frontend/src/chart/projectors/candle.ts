@@ -24,22 +24,23 @@ const priceFormat = {
 };
 
 export function projectCandle(bundle: RangeBundle, axis: VirtualAxis): CandlestickData<Time>[] {
-  return bundle.candles
-    .filter((c) => axis.contains(c.ts_ms))
-    .map((c): CandlestickData<Time> => {
-      const inClosingAuction = axis.inClosingAuctionWindow(c.ts_ms);
-      const color = inClosingAuction ? muted : c.close >= c.open ? up : down;
-      return {
-        time: (axis.toVirtual(c.ts_ms) / 1000) as UTCTimestamp,
-        open: c.open,
-        close: c.close,
-        high: c.high,
-        low: c.low,
-        color,
-        borderColor: color,
-        wickColor: color,
-      };
+  const out: CandlestickData<Time>[] = [];
+  for (const c of bundle.candles) {
+    const { contained, inAuction, virtual } = axis.classifyAndProject(c.ts_ms);
+    if (!contained) continue;
+    const color = inAuction ? muted : c.close >= c.open ? up : down;
+    out.push({
+      time: (virtual / 1000) as UTCTimestamp,
+      open: c.open,
+      close: c.close,
+      high: c.high,
+      low: c.low,
+      color,
+      borderColor: color,
+      wickColor: color,
     });
+  }
+  return out;
 }
 
 export const CANDLE_SPEC = {

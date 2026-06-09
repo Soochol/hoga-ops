@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
 import type { InvestorNetPoint } from './types';
+import { isKrxRegularSessionNow } from '../live/liveDateTime';
 
 export interface LivePastInvestorNetWarning {
   batch: string;
@@ -34,13 +35,14 @@ export function useLivePastInvestorNet(
   const enabled = !!(code && from && to && from <= to);
   return useQuery({
     queryKey: ['live', 'past-investor-net', code, from, to] as const,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiCall<LivePastInvestorNetResponse>(
         `/api/live/past-investor-net?code=${code}&from=${from}&to=${to}`,
+        { signal },
       ),
     enabled,
     staleTime: 60_000,
-    refetchInterval: 60_000,
+    refetchInterval: () => (isKrxRegularSessionNow() ? 60_000 : false),
     placeholderData: (prev) => (prev && prev.code === code ? prev : undefined),
   });
 }

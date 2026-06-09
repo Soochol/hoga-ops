@@ -68,6 +68,55 @@ export function classifyWithinSegment(seg: SessionSegment, realMs: number): Sess
   return realMs >= auctionStart ? 'auction' : 'regular';
 }
 
+/** Last index whose pre-open band start (`sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS`)
+ *  is ≤ realMs. -1 when realMs precedes the first segment's pre-open band.
+ *  Equivalent to `sessionOpenMs ≤ realMs + PRE_OPEN_WINDOW_LENGTH_MS`. */
+function lowerBoundOwning(segments: readonly SessionSegment[], realMs: number): number {
+  const key = realMs + PRE_OPEN_WINDOW_LENGTH_MS;
+  let lo = 0;
+  let hi = segments.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    if (segments[mid].sessionOpenMs <= key) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return ans;
+}
+
+export interface SegmentLocation {
+  /** Owning/candidate segment index, or -1 when realMs is pre-axis. */
+  idx: number;
+  phase: SessionPhase;
+}
+
+/**
+ * Binary-search variant of phase classification. Returns both the owning
+ * segment index (for callers that also need the segment, e.g. virtual-coord
+ * projection) and the phase. Owning segment = last whose pre-open band has
+ * started. Assumes inter-session gaps exceed PRE_OPEN_WINDOW_LENGTH_MS (true
+ * for daily KRX sessions); the prior linear implementation made the same
+ * assumption.
+ */
+export function locateSegment(
+  segments: readonly SessionSegment[],
+  realMs: number,
+): SegmentLocation {
+  if (segments.length === 0) return { idx: -1, phase: 'pre-axis' };
+  const idx = lowerBoundOwning(segments, realMs);
+  if (idx < 0) return { idx: -1, phase: 'pre-axis' };
+  const seg = segments[idx];
+  if (realMs <= seg.sessionCloseMs) {
+    return { idx, phase: classifyWithinSegment(seg, realMs) };
+  }
+  // Past this segment's close: gap if another segment follows, else post-axis.
+  return { idx, phase: idx === segments.length - 1 ? 'post-axis' : 'gap' };
+}
+
 /**
  * Classify `realMs` across an ordered array of segments. Inputs MUST be sorted
  * by `sessionOpenMs` ascending (the same invariant `buildSegments` enforces).
@@ -79,32 +128,7 @@ export function classifyWithinSegment(seg: SessionSegment, realMs: number): Sess
  *   - `'pre-open'` / `'regular'` / `'auction'` — within a segment
  */
 export function sessionPhaseAt(segments: readonly SessionSegment[], realMs: number): SessionPhase {
-  if (segments.length === 0) return 'pre-axis';
-
-  const first = segments[0];
-  if (realMs < first.sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS) return 'pre-axis';
-
-  // preOpenStart(= open − 30min) ≤ realMs 인 마지막 세그먼트를 이진 탐색 —
-  // findByReal(virtualAxis.ts)과 같은 lower-bound 패턴, 키만 preOpenStart.
-  // 전제: 세그먼트 정렬·비중첩(buildSegments 불변식). projector 핫패스가
-  // 캔들마다 contains/inClosingAuctionWindow로 2회 부르므로 선형 워크는
-  // 250일 스크롤에서 projection당 수천만 비교가 된다(스펙 2026-06-08).
-  let lo = 0;
-  let hi = segments.length - 1;
-  let idx = 0;
-  while (lo <= hi) {
-    const mid = (lo + hi) >>> 1;
-    if (segments[mid].sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS <= realMs) {
-      idx = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  const seg = segments[idx];
-  if (realMs <= seg.sessionCloseMs) return classifyWithinSegment(seg, realMs);
-  // seg 마감 뒤 ~ 다음 세그먼트 pre-open 시작 전 구간. idx가 마지막이면 post-axis.
-  return idx === segments.length - 1 ? 'post-axis' : 'gap';
+  return locateSegment(segments, realMs).phase;
 }
 
 /**

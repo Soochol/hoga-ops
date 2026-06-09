@@ -33,7 +33,19 @@ describe('useLivePastCandles', () => {
       { wrapper: wrap(qc) },
     );
     await waitFor(() => expect(result.current.data?.candles).toHaveLength(1));
-    expect(spy).toHaveBeenCalledWith('/api/live/past-candles?code=005930&from=20260501&to=20260502');
+    expect(spy).toHaveBeenCalledWith(
+      '/api/live/past-candles?code=005930&from=20260501&to=20260502',
+      { signal: expect.any(AbortSignal) },
+    );
+  });
+
+  it('passes an AbortSignal to apiCall', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(RESPONSE);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(() => useLivePastCandles('005930', '20260501', '20260502'), { wrapper: wrap(qc) });
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    const secondArg = spy.mock.calls[0][1] as RequestInit | undefined;
+    expect(secondArg?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('does not fetch when code is null', async () => {

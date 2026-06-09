@@ -73,6 +73,29 @@ export function regularSessionCloseMs(yyyymmdd: string): number {
   return regularSessionOpenMs(yyyymmdd) + 6.5 * 3600 * 1000;
 }
 
+/** KST 요일(0=일 … 6=토)을 YYYYMMDD에서 계산. 달력 날짜는 tz 무관이라
+ *  Date.UTC 기준 getUTCDay로 안전하게 구한다. */
+function kstWeekday(yyyymmdd: string): number {
+  const y = parseInt(yyyymmdd.slice(0, 4), 10);
+  const m = parseInt(yyyymmdd.slice(4, 6), 10);
+  const d = parseInt(yyyymmdd.slice(6, 8), 10);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/**
+ * True iff `nowMs` falls within the KRX Regular Session wall-clock window —
+ * a weekday between 09:00 and 15:30 KST. **Holiday-unaware by design**: a
+ * weekday public holiday still reads true (holiday gating is the backend
+ * calendar's responsibility, not this frontend predicate). Used to gate the
+ * 60s past-data refetch so it stops outside trading hours.
+ */
+export function isKrxRegularSessionNow(nowMs: number = Date.now()): boolean {
+  const today = realMsToYyyymmdd(nowMs);
+  const wd = kstWeekday(today);
+  if (wd === 0 || wd === 6) return false; // 주말
+  return nowMs >= regularSessionOpenMs(today) && nowMs <= regularSessionCloseMs(today);
+}
+
 /** Convert a candle count to a calendar-day window large enough to fetch
  * ~that many candles at the given timeframe. Uses KRX 09:00–15:30 (390
  * trading minutes/day) and 5-trading-days-per-7-calendar-day density.

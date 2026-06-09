@@ -51,6 +51,7 @@ describe('useRange', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(spy).toHaveBeenCalledWith(
       expect.stringContaining('/api/range?code=005930&from=20260512&to=20260512&bucket_ms=300000'),
+      { signal: expect.any(AbortSignal) },
     );
   });
 

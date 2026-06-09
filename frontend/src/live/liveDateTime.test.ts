@@ -7,6 +7,7 @@ import {
   PAST_CANDLES_MAX_DAYS,
   stepChunkDays,
   planFillStep,
+  isKrxRegularSessionNow,
 } from './liveDateTime';
 import { unixMsToKSTDate } from '../util/time';
 
@@ -148,5 +149,29 @@ describe('planFillStep', () => {
     expect(
       planFillStep({ ...base, visibleFrom: -50, stepCount: 60 }),
     ).toEqual({ action: 'stop' });
+  });
+});
+
+// 2026-05-18은 월요일. 09:00 KST = 2026-05-18 00:00 UTC = 1_779_062_400_000.
+const MON_OPEN_MS = 1_779_062_400_000;
+const HOUR = 3_600_000;
+
+describe('isKrxRegularSessionNow', () => {
+  it('true during weekday regular session (10:00 KST Mon)', () => {
+    expect(isKrxRegularSessionNow(MON_OPEN_MS + 1 * HOUR)).toBe(true);
+  });
+  it('true at exact open and close boundaries', () => {
+    expect(isKrxRegularSessionNow(MON_OPEN_MS)).toBe(true);
+    expect(isKrxRegularSessionNow(MON_OPEN_MS + 6.5 * HOUR)).toBe(true);
+  });
+  it('false after close (18:00 KST Mon)', () => {
+    expect(isKrxRegularSessionNow(MON_OPEN_MS + 9 * HOUR)).toBe(false);
+  });
+  it('false before open (08:00 KST Mon)', () => {
+    expect(isKrxRegularSessionNow(MON_OPEN_MS - 1 * HOUR)).toBe(false);
+  });
+  it('false on weekend (Sat 10:00 KST)', () => {
+    const SAT_OPEN_MS = MON_OPEN_MS + 5 * 24 * HOUR; // +5 days → Saturday
+    expect(isKrxRegularSessionNow(SAT_OPEN_MS + 1 * HOUR)).toBe(false);
   });
 });
