@@ -193,6 +193,135 @@ async def test_token_bucket_invalid_rate_rejected() -> None:
         _TokenBucket(rate=-1.0)
 
 
+# ── 우선순위 레인 (2026-06-09): foreground(사용자 차트 대기)가 background(폴러/
+# refetch/투자자)보다 토큰을 먼저 받는다. 단일 15/s 예산은 그대로 — 순서만 바뀜. ──
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_foreground_served_before_background() -> None:
+    """드레인된 버킷에서 background는 foreground 대기자에게 토큰을 양보한다.
+
+    bg 3개가 먼저 대기하더라도, fg 대기자가 있는 동안 bg는 토큰을 양보하므로
+    리필되는 토큰은 전부 fg가 먼저 가져간다 → 모든 fg가 모든 bg보다 앞선다.
+    이게 핵심 계약: '방금 누른 차트' fetch가 연속 백그라운드 부하 앞으로 점프.
+    """
+    bucket = _TokenBucket(rate=20.0, yield_s=0.002, bg_max_yield_s=100.0)
+    # 드레인: 이후 acquire는 리필을 기다려야 함.
+    bucket._tokens = 0.0
+    bucket._last = time.monotonic()
+    order: list[str] = []
+
+    async def acq(tag: str, fg: bool) -> None:
+        await bucket.acquire(foreground=fg)
+        order.append(tag)
+
+    tasks = [asyncio.create_task(acq(f"bg{i}", False)) for i in range(3)]
+    await asyncio.sleep(0.01)  # bg들이 먼저 대기 시작 (리필 1토큰=0.05s라 아직 0개 부여)
+    tasks += [asyncio.create_task(acq(f"fg{i}", True)) for i in range(3)]
+    await asyncio.gather(*tasks)
+
+    fg_pos = [i for i, t in enumerate(order) if t.startswith("fg")]
+    bg_pos = [i for i, t in enumerate(order) if t.startswith("bg")]
+    assert max(fg_pos) < min(bg_pos), f"fg가 bg보다 먼저여야 함: {order}"
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_background_normal_without_foreground() -> None:
+    """foreground 대기자가 없으면 background는 평소처럼 즉시 토큰을 받는다."""
+    bucket = _TokenBucket(rate=100.0)
+    # 토큰 충분 + fg 없음 → 즉시 (양보 없음).
+    await asyncio.wait_for(bucket.acquire(foreground=False), timeout=0.1)
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_starvation_backstop() -> None:
+    """누적 양보가 상한을 넘으면 background도 강제 획득(영구 기아 방지).
+
+    fg 대기자가 계속 있어도(여기선 인위로 _fg_waiters=1 유지) bg_max_yield_s
+    경과 후 bg가 토큰을 가져간다.
+    """
+    bucket = _TokenBucket(rate=50.0, yield_s=0.01, bg_max_yield_s=0.05)
+    bucket._tokens = 10.0  # 토큰은 있음 — 막는 건 오직 양보 규칙
+    bucket._fg_waiters = 1  # 사라지지 않는 fg 대기자 시뮬
+    # bg는 ~0.05s 양보 후 백스톱으로 강제 획득 → timeout 안에 완료.
+    await asyncio.wait_for(bucket.acquire(foreground=False), timeout=1.0)
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_foreground_still_respects_rate_cap() -> None:
+    """foreground도 토큰 없이는 못 간다 — 우선순위는 순서일 뿐 15/s 천장은 불변."""
+    bucket = _TokenBucket(rate=10.0)
+    bucket._tokens = 0.0
+    bucket._last = time.monotonic()
+    start = time.monotonic()
+    await bucket.acquire(foreground=True)
+    elapsed = time.monotonic() - start
+    # rate=10 → 1토큰 리필 ~0.1s. foreground라도 기다림.
+    assert elapsed >= 0.05
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_foreground_waiter_count_released_on_cancel() -> None:
+    """취소돼도 _fg_waiters는 finally로 복구 — 이후 background가 영구 양보하지 않게."""
+    bucket = _TokenBucket(rate=10.0)
+    bucket._tokens = 0.0
+    bucket._last = time.monotonic()
+    task = asyncio.create_task(bucket.acquire(foreground=True))
+    await asyncio.sleep(0.01)  # fg가 대기 진입 → _fg_waiters=1
+    assert bucket._fg_waiters == 1
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert bucket._fg_waiters == 0  # finally 복구
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_background_not_starved_under_sustained_foreground() -> None:
+    """지속 foreground가 모든 리필 토큰을 가져가도 background는 백스톱 안에 진전.
+
+    적대리뷰 L2 P1 회귀: 드레인된 버킷 + 끊임없는 foreground flood에서, background는
+    토큰을 한 번도 '가용'으로 보지 못한다(fg가 즉시 소비). 양보-sleep 누적 방식은
+    이때 진전이 0이라 영구 기아했다. 벽시계 데드라인 방식은 bg_max_yield_s 경과 후
+    양보를 멈추고 공정 경쟁에 합류하므로 bounded 시간 안에 토큰을 얻는다.
+    """
+    bucket = _TokenBucket(rate=50.0, yield_s=0.005, bg_max_yield_s=0.1)
+    bucket._tokens = 0.0
+    bucket._last = time.monotonic()
+    stop = False
+
+    async def fg_flood() -> None:
+        while not stop:
+            await bucket.acquire(foreground=True)
+
+    floods = [asyncio.create_task(fg_flood()) for _ in range(3)]
+    try:
+        # flood에도 불구하고 background는 BOUNDED 시간에 완료한다(과거 코드는 무한 대기).
+        # 고정 코드는 backstop(0.1s) 후 FIFO lock으로 공정 경쟁해 보통 ~0.2s에 완료하나,
+        # lock 경쟁 스케줄링 변동으로 1s를 넘을 수 있다(분산 큼). 타임아웃은 '무한 vs
+        # 유한'을 가르는 용도라 넉넉히 둔다 — 5s는 관측 최악(~1.2s)의 4배 여유.
+        await asyncio.wait_for(bucket.acquire(foreground=False), timeout=5.0)
+    finally:
+        stop = True
+        for t in floods:
+            t.cancel()
+        await asyncio.gather(*floods, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_invalid_yield_params_rejected() -> None:
+    """yield_s<=0(라이브락/busy-spin) / bg_max_yield_s<0(우선순위 무력화)은 거부.
+
+    적대리뷰 L2 P3: yield_s=0이면 양보 분기가 wait=0 busy-spin이 되어 영구 기아 +
+    이벤트루프 소진. 생성 시점에 막는다(rate 검증과 동일 정책).
+    """
+    with pytest.raises(ValueError):
+        _TokenBucket(rate=10.0, yield_s=0.0)
+    with pytest.raises(ValueError):
+        _TokenBucket(rate=10.0, yield_s=-0.01)
+    with pytest.raises(ValueError):
+        _TokenBucket(rate=10.0, bg_max_yield_s=-1.0)
+
+
 @pytest.mark.asyncio
 async def test_kis_client_get_goes_through_rate_limiter() -> None:
     """`_get` must route every call through `_rate_limiter.acquire()`.
@@ -221,14 +350,55 @@ async def test_kis_client_get_goes_through_rate_limiter() -> None:
     calls = {"n": 0}
     real_acquire = client._rate_limiter.acquire
 
-    async def counting_acquire() -> None:
+    async def counting_acquire(*, foreground: bool = False) -> None:
         calls["n"] += 1
-        await real_acquire()
+        await real_acquire(foreground=foreground)
 
     client._rate_limiter.acquire = counting_acquire  # type: ignore[method-assign]
     try:
         await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
         assert calls["n"] == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_foreground_flag_threads_to_rate_limiter() -> None:
+    """foreground 인자가 _get·공개 fetch_*를 거쳐 _rate_limiter.acquire까지 전파.
+
+    past-candles/daily 라우트는 foreground=True로 호출(사용자 차트 대기) → 우선순위
+    레인. 폴러/스크리너 등 기본값은 False(배경). acquire가 본 flag를 기록해 검증.
+    """
+    def handler(req: httpx.Request) -> httpx.Response:
+        # output2 빈 배열 → fetch_past_minute_candles가 한 번 _get 후 즉시 종료.
+        return httpx.Response(200, json={"rt_cd": "0", "output2": []})
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    seen: list[bool] = []
+    real_acquire = client._rate_limiter.acquire
+
+    async def spy_acquire(*, foreground: bool = False) -> None:
+        seen.append(foreground)
+        await real_acquire(foreground=foreground)
+
+    client._rate_limiter.acquire = spy_acquire  # type: ignore[method-assign]
+    try:
+        await client._get(path="/uapi/probe", tr_id="P", params={}, foreground=True)
+        assert seen[-1] is True
+        await client._get(path="/uapi/probe", tr_id="P", params={})
+        assert seen[-1] is False
+        # 공개 메서드: past-candles는 foreground=True (라우트가 그렇게 호출).
+        seen.clear()
+        await client.fetch_past_minute_candles("005930", "20260609", foreground=True)
+        assert seen and all(f is True for f in seen)
+        # 기본값(폴러/스크리너 경로) = background.
+        seen.clear()
+        await client.fetch_past_minute_candles("005930", "20260609")
+        assert seen and all(f is False for f in seen)
     finally:
         await client.aclose()
 
@@ -565,9 +735,9 @@ async def test_get_retry_re_acquires_rate_limiter_each_attempt(monkeypatch) -> N
     acquires = {"n": 0}
     real_acquire = client._rate_limiter.acquire
 
-    async def counting_acquire() -> None:
+    async def counting_acquire(*, foreground: bool = False) -> None:
         acquires["n"] += 1
-        await real_acquire()
+        await real_acquire(foreground=foreground)
 
     client._rate_limiter.acquire = counting_acquire  # type: ignore[method-assign]
     try:

@@ -75,6 +75,7 @@ def _make_poller(
     *,
     raise_for: set[str] | None = None,
     interval_s: float = 0.02,
+    phase_fn=None,
 ) -> tuple[FakeKisClient, LiveBuffer, LiveRestPoller]:
     kis = FakeKisClient(raise_for=raise_for)
     buf = LiveBuffer()
@@ -82,7 +83,7 @@ def _make_poller(
         kis,
         buf,
         interval_s=interval_s,
-        phase_fn=lambda: "regular",
+        phase_fn=phase_fn or (lambda: "regular"),
     )
     return kis, buf, poller
 
@@ -339,3 +340,72 @@ async def test_excluded_codes_updated_mid_run():
     assert kis.calls["fetch_orderbook"].count("000660") == 2
     # 005930은 추가 호출 없음
     assert kis.calls["fetch_orderbook"].count("005930") == 1
+
+
+# ── 장 마감 게이트 (2026-06-09): phase=='closed'면 시세 불변 → 반복 폴링 skip,
+# 구독 직후 1회 종가 스냅샷만. 재개장 시 정상 복원. ──
+
+
+@pytest.mark.asyncio
+async def test_poll_closed_one_snapshot_then_skips():
+    """장 마감: 구독 종목을 1회만 스냅샷하고 이후 반복 폴링 skip(KIS 낭비 방지)."""
+    kis, _buf, poller = _make_poller(phase_fn=lambda: "closed")
+    poller.on_subscribe("005930")
+    await poller._poll_once()
+    assert kis.calls["fetch_orderbook"].count("005930") == 1  # 1회 스냅샷
+    await poller._poll_once()
+    await poller._poll_once()
+    assert kis.calls["fetch_orderbook"].count("005930") == 1  # 반복 없음
+    # trades/brokers도 동일하게 1회만.
+    assert kis.calls["fetch_trades"].count("005930") == 1
+    assert kis.calls["fetch_brokers"].count("005930") == 1
+
+
+@pytest.mark.asyncio
+async def test_poll_closed_new_subscribe_gets_one_snapshot():
+    """마감 중 새로 구독한 종목도 1회 스냅샷(기존 종목은 재폴링 안 함)."""
+    kis, _buf, poller = _make_poller(phase_fn=lambda: "closed")
+    poller.on_subscribe("005930")
+    await poller._poll_once()
+    poller.on_subscribe("000660")
+    await poller._poll_once()
+    assert kis.calls["fetch_orderbook"].count("005930") == 1
+    assert kis.calls["fetch_orderbook"].count("000660") == 1
+
+
+@pytest.mark.asyncio
+async def test_poll_closed_resubscribe_gets_fresh_snapshot():
+    """마감 중 구독해제→재구독하면 새 스냅샷(1회 표식 제거)."""
+    kis, _buf, poller = _make_poller(phase_fn=lambda: "closed")
+    poller.on_subscribe("005930")
+    await poller._poll_once()
+    assert kis.calls["fetch_orderbook"].count("005930") == 1
+    poller.on_unsubscribe("005930")
+    poller.on_subscribe("005930")
+    await poller._poll_once()
+    assert kis.calls["fetch_orderbook"].count("005930") == 2  # 재구독 → 새 스냅샷
+
+
+@pytest.mark.asyncio
+async def test_poll_reopen_resumes_periodic_polling():
+    """마감→재개장 전환 시 정상 주기 폴링 복원(1회 표식 clear)."""
+    phase = {"v": "closed"}
+    kis, _buf, poller = _make_poller(phase_fn=lambda: phase["v"])
+    poller.on_subscribe("005930")
+    await poller._poll_once()  # closed: 1회
+    await poller._poll_once()  # closed: skip
+    assert kis.calls["fetch_orderbook"].count("005930") == 1
+    phase["v"] = "regular"
+    await poller._poll_once()  # regular: 재개
+    await poller._poll_once()
+    assert kis.calls["fetch_orderbook"].count("005930") == 3  # 1(closed) + 2(regular)
+
+
+@pytest.mark.asyncio
+async def test_poll_regular_polls_every_cycle_regression():
+    """정규장: 매 사이클 폴링(게이트 도입 후 기존 동작 회귀가드)."""
+    kis, _buf, poller = _make_poller(phase_fn=lambda: "regular")
+    poller.on_subscribe("005930")
+    await poller._poll_once()
+    await poller._poll_once()
+    assert kis.calls["fetch_orderbook"].count("005930") == 2
