@@ -36,6 +36,13 @@ export interface LiveSeriesData {
   broker: ReadonlyArray<Record<string, unknown>>;
 }
 
+/** Trailing-throttle window for coalescing live WS pushes into one buffer
+ * re-read (and thus one /live re-render). ~6–7Hz cap: fast enough that hoga
+ * indicators (bucketMs 1–30min) and the sidebar LATEST orderbook feel live,
+ * slow enough to bound re-render cost when intraday push rates spike to
+ * dozens–hundreds/s. See the subscribe effect for the trade-off note. */
+const LIVE_FLUSH_MS = 150;
+
 /**
  * useLiveSeries — initial REST fetch + WebSocket subscription for live snapshots.
  *
@@ -75,19 +82,29 @@ export function useLiveSeries(code: string): LiveSeriesData {
     setTick((t) => t + 1);
   }, [initial.data]);
 
-  // Subscribe to live snapshots over the shared WebSocket (ADR-0053). Buffer +
-  // rAF coalescing stay tab-side; only the transport changed.
+  // Subscribe to live snapshots over the shared WebSocket (ADR-0053). Pushes are
+  // coalesced to one re-read per LIVE_FLUSH_MS window (trailing throttle): every
+  // bump re-renders the whole /live consumer tree (LivePage → chart hoga panes +
+  // sidebar orderbook + watchlist), so an unthrottled push rate (dozens–hundreds/s
+  // intraday) would re-render the page that often. A bucketMs (1–30min) hoga
+  // indicator and the sidebar LATEST view don't need sub-150ms freshness, so we
+  // batch. (2026-06-09 bundle-split Phase C — coalescing; the heavier store split
+  // was deliberately skipped as high-risk/low-marginal after Phase A/B memoised
+  // the candle path.) Buffer accumulates every push; only the re-READ is throttled,
+  // so no snapshot is dropped — the next flush sees them all. Trade-off: ≤150ms
+  // display latency on live hoga + sidebar (current-price line uses useQuotes, not
+  // this path, so it's unaffected).
   useEffect(() => {
     if (!code) return;
-    let rafId: number | null = null;
-    const flush = () => { rafId = null; setTick((t) => t + 1); };
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => { timer = null; setTick((t) => t + 1); };
     const unsub = subscribeLive(code, (entry: LiveSnapshotEntry) => {
       bufferRef.current.push(entry);
-      if (rafId === null) rafId = requestAnimationFrame(flush);
+      if (timer === null) timer = setTimeout(flush, LIVE_FLUSH_MS);
     });
     return () => {
       unsub();
-      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+      if (timer !== null) { clearTimeout(timer); timer = null; }
       bufferRef.current.clear();
       setTick(0);
     };

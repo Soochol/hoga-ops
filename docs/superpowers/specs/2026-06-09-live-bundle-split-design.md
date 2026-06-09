@@ -1,7 +1,7 @@
 # Live Bundle Split (candle vs hoga) — Design
 
 **Date**: 2026-06-09
-**Status**: Phase A 구현 완료 (branch `fix-tf-churn`) · Phase B/C 백로그
+**Status**: Phase A·B 구현 완료, Phase C는 coalescing만 구현 (store 리팩터는 의도적 제외) · branch `fix-tf-churn`
 **Scope**: `frontend/src/live/useLiveBundle.ts`, `frontend/src/live/buildLiveBundle.ts`, `frontend/src/live/LiveChartRoot.tsx`, `frontend/src/live/LivePage.tsx`, `frontend/src/live/LiveWorkarea.tsx`, `frontend/src/live/LiveStatusBar.tsx`, `frontend/src/chart/RangeSeriesPane.tsx`, `frontend/src/chart/paneSpecs.ts`, `frontend/src/chart/useDrawingHost.ts`
 
 ## Problem
@@ -144,7 +144,28 @@ export type PaneSpec<Ctx = void> = { name; stretch; series; useContext?; live?: 
 - **hogaBundle spread 비용**: 틱마다 얕은 객체 생성(저렴). 단 spread가 candle 패널로 새 ref를 흘리지 않도록 candle 패널은 반드시 `chartBundle`을 받아야 함(라우팅 정확성).
 - **LiveChartRoot 자체 재렌더 잔존(Phase A/B)**: hogaBundle prop으로 LiveChartRoot는 틱마다 렌더(맵핑+axis useMemo 안정이라 저렴, 패널/오버레이는 memo로 skip). 완전 제거는 Phase C(store).
 
+## Phase C — coalescing 구현 / store 의도적 제외 (2026-06-09)
+
+**구현됨: tick coalescing.** `useLiveSeries`의 WS push flush를 trailing-throttle
+(`LIVE_FLUSH_MS=150`)로 묶음 — push마다 /live 소비 트리 전체(LivePage → hoga 패널 +
+사이드바 + 관심종목)가 재렌더되므로, push 빈도(장중 수십~수백/s)와 무관하게 재렌더를
+≤~6.7Hz로 바운드. 버퍼는 모든 push를 누적(재-READ만 throttle → 유실 없음). 트레이드오프:
+라이브 hoga·사이드바 표시에 ≤150ms 지연(현재가선은 useQuotes 경로라 무관). 검증: 커밋률
+~5.2Hz(avgGap 203ms), 5패널 정상.
+
+**제외됨: store 리팩터.** 분석 결과 risky/marginal로 판단(stronger-reviewer 합의 + 사용자
+결정 2026-06-09):
+- 앱 전역 재렌더의 지배 요인은 **틱 빈도**이지 wrapper가 아니다. live-data를 *표시*하는
+  컴포넌트(hoga 패널·OrderbookTable·관심종목 Row)는 store를 써도 틱마다 재렌더된다(새
+  데이터를 그려야 하므로). store가 제거하는 건 LivePage/LiveChartRoot/LiveStatusBar 같은
+  wrapper 재렌더뿐인데, **Phase B 이후 자식이 전부 memo라 이 wrapper 재렌더는 이미 싸다**
+  (함수 본문 + bail되는 reconciliation).
+- 따라서 큰 이득은 coalescing(위)에 있고, store는 고위험(단일 WS 불변식, 차트↔사이드바
+  동기화)·저한계이득. coalescing이 같은 목표(앱 전역 재렌더 절감)를 더 안전하게 달성.
+
 ## Out of Scope (Backlog)
 
-- **Phase C — live 소스 store 격리 + coalescing**: ob/trade(및 hogaSeries)를 zustand store로 빼고 hoga 패널·`LiveSidebar`·관심종목이 selector로 구독 + rAF/Nms coalesce. → `LiveChartRoot`가 hogaBundle prop을 안 받아 틱에 완전 안정, **앱 전역 ~9Hz 재렌더 근본 해소**(①+② 결합). 별 PR 권장.
+- **store 리팩터 (재고 시)**: ob/trade를 zustand store로 빼 wrapper(LivePage/LiveChartRoot/
+  StatusBar) 재렌더까지 제거. 위 분석대로 한계이득이라 보류. 진행 시 단일 WS 불변식 + 차트↔
+  사이드바 동기화가 핵심 리스크.
 - 사이드바/관심종목 틱 재렌더 격리(같은 store 기반).
