@@ -214,3 +214,30 @@ async def test_status_idle_when_poller_only(tmp_path, monkeypatch):
     assert st.capture_reason == "idle"
     assert st.degraded_accounts == []
     await lifecycle.stop_live_stream()
+
+
+@pytest.mark.asyncio
+async def test_refresh_cross_boundary_move_single_active(tmp_path, monkeypatch):
+    """cross-boundary 이동(13-경계 넘는 재정렬): 이동 코드가 정확히 한 conn에만
+    active/구독되어야 한다 — 두 conn 동시-write(혼합 JSONL) 방지(리뷰 fix, 2-pass).
+    14종목에서 마지막(000013, conn1)을 맨 앞으로 재정렬 → 000013→conn0, 000012→conn1.
+    """
+    codes14 = [f"{i:06d}" for i in range(14)]
+    await _start_two_accounts(tmp_path, monkeypatch, codes14)
+    assert lifecycle._state.streams[1].codes == ("000013",)   # 시작: conn1 = [000013]
+
+    reordered = ["000013"] + codes14[:13]   # [000013, 000000..000012]
+    from tests.unit.live.test_lifecycle_start import _write_watchlist
+    _write_watchlist(tmp_path, reordered)
+    await lifecycle.refresh_live_stream(data_dir=tmp_path)
+
+    conn0_active = lifecycle._state.streams[0].stream_obj._active_codes  # type: ignore[union-attr]
+    conn1_active = lifecycle._state.streams[1].stream_obj._active_codes  # type: ignore[union-attr]
+    # 000013은 conn0에만(이동 완료), conn1엔 없음 — 정확히 한 conn
+    assert "000013" in conn0_active and "000013" not in conn1_active
+    # 000012는 conn1로 밀려남 — 정확히 한 conn
+    assert "000012" in conn1_active and "000012" not in conn0_active
+    # codes 튜플 일관
+    assert "000013" in lifecycle._state.streams[0].codes
+    assert lifecycle._state.streams[1].codes == ("000012",)
+    await lifecycle.stop_live_stream()

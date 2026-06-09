@@ -608,11 +608,23 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
         # exclude-then-subscribe: build/update 전에 배제 동기화(스펙 §5.5)
         _sync_exclusion(_state.rest_poller, live_set)
 
+        # Pass 0 (동기, await 없음): 기존 conn들의 on_tick 활성집합을 새 파티션으로
+        # **원자 스왑**. cross-boundary 이동(코드가 13-경계를 넘어 conn↔conn 이동)
+        # 시, 옛 conn 활성집합에서 빠진 뒤 새 conn에 들어가야 두 writer가 같은
+        # {date}/{code}.jsonl에 동시 append하는 이중-write 창이 안 생긴다.
+        # set_active_codes는 동기라 이 루프 중엔 틱이 처리되지 않아 스왑이 원자적.
+        # (Pass 1의 async WS 재구독에서 코드가 잠시 양쪽 WS에 구독돼도 on_tick 활성
+        #  필터가 이미 정확하므로 write는 한 conn으로만 간다 — WS 이중구독 무해.)
+        for account_id, part in enumerate(parts):
+            conn = _state.streams.get(account_id)
+            if conn is not None:
+                conn.stream_obj.set_active_codes(set(part))   # type: ignore[union-attr]
+
+        # Pass 1 (async): WS 구독 diff + build/teardown.
         for account_id, part in enumerate(parts):
             conn = _state.streams.get(account_id)
             if part and conn is not None:
                 await conn.stream_obj.ws.update_codes(part)      # type: ignore[union-attr]
-                conn.stream_obj.set_active_codes(set(part))      # type: ignore[union-attr]
                 _state.streams[account_id] = _StreamConn(
                     account_id=account_id, stream_obj=conn.stream_obj,
                     ws_task=conn.ws_task, flush_task=conn.flush_task,
