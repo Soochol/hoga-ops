@@ -282,4 +282,39 @@ describe('WatchlistDrawer', () => {
     await screen.findByRole('dialog', { name: '그룹 추가하기' });
     expect(screen.getByRole('button', { name: '추가' })).toBeDisabled();
   });
+
+  // ADR-0067: 관심종목 행 수집상태 배지
+  it('행 종목이 live_set에 있으면 그 행에 "실시간" 배지를 표시한다', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(['live', 'status'], {
+      running: true, started_at_ms: 1, last_tick_ms: 1, cycle_lag_ms: 0,
+      capture_healthy: true, capture_reason: 'healthy',
+      watchlist_count: 2, kis_calls_today: 0, kis_rate_limit_remaining: null,
+      live_set: ['005930', '000660'],
+    });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    const row005930 = screen.getByTestId('watchlist-row-005930');
+    expect(row005930.textContent).toContain('실시간');
+  });
+
+  it('live_set 밖 + watchlist에 있고 안 보는 중이면 "저녁대기" 배지를 표시한다 (waiting_eod)', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(['live', 'status'], {
+      running: true, started_at_ms: 1, last_tick_ms: 1, cycle_lag_ms: 0,
+      capture_healthy: true, capture_reason: 'healthy',
+      watchlist_count: 2, kis_calls_today: 0, kis_rate_limit_remaining: null,
+      live_set: [],  // 둘 다 live_set 밖
+    });
+    // activeCode = null → viewedCodes = [] → 둘 다 waiting_eod
+    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    const row005930 = screen.getByTestId('watchlist-row-005930');
+    expect(row005930.textContent).toContain('저녁대기');
+    const row000660 = screen.getByTestId('watchlist-row-000660');
+    expect(row000660.textContent).toContain('저녁대기');
+  });
 });
