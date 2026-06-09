@@ -30,7 +30,7 @@
  */
 
 import { buildSegments, type Segment } from './time';
-import { isClosingAuction, isRegularSession } from './sessionTime';
+import { isClosingAuction, isRegularSession, locateSegment } from './sessionTime';
 
 export type DayBoundary = Readonly<{
   /** YYYYMMDD KST trading date of the segment that opens at this boundary. */
@@ -87,7 +87,15 @@ export type VirtualAxis = Readonly<{
    * accumulation makes data non-informative.
    */
   inClosingAuctionWindow(realMs: number): boolean;
-}>;
+  /**
+   * Single-lookup projection for the candle hot path: one `locateSegment`
+   * binary search yields all three of `contains` / `inClosingAuctionWindow` /
+   * `toVirtual` for `realMs`. `virtual` is meaningful only when `contained`
+   * is true (dropped candles never read it). Equivalent to calling the three
+   * methods separately — see virtualAxis.test.ts equivalence test.
+   */
+  classifyAndProject(realMs: number): { contained: boolean; inAuction: boolean; virtual: number };
+}>;;
 
 /**
  * Construct a `VirtualAxis` from raw session open/close pairs. The input is
@@ -256,6 +264,18 @@ export function createVirtualAxis(
     return isClosingAuction(segments, realMs);
   }
 
+  function classifyAndProject(realMs: number): { contained: boolean; inAuction: boolean; virtual: number } {
+    const { idx, phase } = locateSegment(segments, realMs);
+    const contained = phase === 'regular' || phase === 'auction';
+    if (!contained) return { contained: false, inAuction: false, virtual: 0 };
+    const seg = segments[idx];
+    return {
+      contained: true,
+      inAuction: phase === 'auction',
+      virtual: seg.virtualStart + (realMs - seg.sessionOpenMs),
+    };
+  }
+
   return Object.freeze({
     segments,
     dayBoundaries,
@@ -264,6 +284,7 @@ export function createVirtualAxis(
     findByReal,
     findByVirtual,
     inClosingAuctionWindow,
+    classifyAndProject,
     contains,
     isInGap,
   });

@@ -373,6 +373,36 @@ describe('createVirtualAxis — real-anchored origin (originMs)', () => {
   });
 });
 
+describe('classifyAndProject == contains+inAuction+toVirtual', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const FULL = 6.5 * 60 * 60 * 1000;
+  const base = 1_779_062_400_000;
+  const axis = createVirtualAxis([
+    { date: '20260518', sessionOpenMs: base, sessionCloseMs: base + FULL },
+    { date: '20260519', sessionOpenMs: base + DAY, sessionCloseMs: base + DAY + FULL },
+    { date: '20260522', sessionOpenMs: base + 4 * DAY, sessionCloseMs: base + 4 * DAY + FULL },
+  ]);
+
+  it('agrees with the legacy three-call path on random + boundary timestamps', () => {
+    const samples: number[] = [];
+    let seed = 99;
+    const lo = base - DAY;
+    const hi = base + 4 * DAY + FULL + DAY;
+    for (let i = 0; i < 5000; i++) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      samples.push(lo + (seed % (hi - lo)));
+    }
+    for (const t of samples) {
+      const got = axis.classifyAndProject(t);
+      expect(got.contained).toBe(axis.contains(t));
+      expect(got.inAuction).toBe(axis.inClosingAuctionWindow(t));
+      if (got.contained) {
+        expect(got.virtual).toBe(axis.toVirtual(t)); // kept 캔들만 virtual 일치
+      }
+    }
+  });
+});
+
 describe('createVirtualAxis — findByVirtual', () => {
   it('binary search across 12 segments', () => {
     const raw = Array.from({ length: 12 }, (_, i) => ({
