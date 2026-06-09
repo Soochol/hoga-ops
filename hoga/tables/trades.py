@@ -227,6 +227,51 @@ def validate(trades: list[Trade], *, lenient: bool = False) -> None:
         )
 
 
+def dedup_overlap_resends(trades: list[Trade]) -> list[Trade]:
+    """Drop hogaplay page re-send duplicates among continuous trades.
+
+    hogaplay occasionally re-sends an overlapping trade page with FRESH ``seq``
+    numbers (and slightly shifted ``ts_ms``), so the parser's seq-dedup
+    (:func:`_collect_events`) lets both copies through. The re-send surfaces as a
+    ``cum_vol`` regression — the later copy restarts at a lower cum_vol than the
+    first copy's tail and re-traverses the same values — which trips
+    ``series.cum_vol_monotonic`` and double-counts the repeated rows' ``qty`` in
+    the 체결강도 (fill-strength) bucket they land in.
+
+    Rule (verified 2026-06-08 against all 67 affected Stock-Dates): for
+    continuous trades (``side != 0``, ``qty > 0``) ``cum_vol`` is the exchange's
+    strictly-increasing cumulative volume, so it is a UNIQUE per-trade key — a
+    repeated cum_vol can only be a re-sent copy. Keep the LAST occurrence (max
+    ``seq``) and drop earlier copies: a page re-send carries the rows in the
+    order that restores cum_vol monotonicity under an (ts_ms, seq) sort, so
+    keep-LAST clears the regression where keep-FIRST does not.
+
+    Scope guards (both load-bearing):
+      - ``side == 0`` (Auction Cross) rows carry ``cum_vol = 0`` and legitimately
+        share it — NEVER deduped here.
+      - ``qty == 0`` continuous rows would not increment cum_vol, so cum_vol
+        would no longer be unique among them — excluded from the key and kept
+        as-is. (No such rows exist in the current corpus; this is defensive.)
+
+    Pure: returns the input list minus dropped earlier-copies, original order
+    preserved. A clean Stock-Date (no repeated cum_vol) is returned unchanged.
+    """
+    max_seq_by_cum: dict[int, int] = {}
+    for t in trades:
+        if t.side != 0 and t.qty > 0:
+            cur = max_seq_by_cum.get(t.cum_vol)
+            if cur is None or t.seq > cur:
+                max_seq_by_cum[t.cum_vol] = t.seq
+    out: list[Trade] = []
+    for t in trades:
+        if t.side == 0 or t.qty == 0:
+            out.append(t)
+        elif t.seq == max_seq_by_cum[t.cum_vol]:
+            out.append(t)
+        # else: an earlier-seq copy of a re-sent cum_vol — drop it.
+    return out
+
+
 # === Query helpers (return native-time rows; callers own time/wire conversion) ===
 
 
