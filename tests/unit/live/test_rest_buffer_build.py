@@ -30,6 +30,7 @@ from hoga.live.rest_buffer_build import (
     brokers_to_snapshot,
 )
 from hoga.live.snapshot import SnapshotKind
+from hoga.live.ws_frames import parse_message
 
 
 # ---------------------------------------------------------------------------
@@ -229,3 +230,117 @@ class TestBrokersToSnapshot:
         entry = {"t_ms": snap.t_ms, "kind": snap.kind.value, **snap.payload}
         expected_keys = {"t_ms", "kind", "code", "buy_top", "sell_top", "phase"}
         assert set(entry.keys()) == expected_keys
+
+
+# ---------------------------------------------------------------------------
+# WS-anchored parity tests: entry keys from builder == entry keys from WS path
+# on_tick formula: entry = {"t_ms": tick.t_ms, "kind": tick.kind.value,
+#                           **tick.payload, "phase": phase}
+# Values differ legitimately (side_source, t_ms, phase); key structure must be =.
+# ---------------------------------------------------------------------------
+
+def _ws_entry(tick_payload: dict, t_ms: int, kind_value: str, phase: str = "regular") -> set[str]:
+    """Replicate on_tick's formula for the buffer entry key set."""
+    entry = {"t_ms": t_ms, "kind": kind_value, **tick_payload, "phase": phase}
+    return set(entry.keys())
+
+
+def _asp_frame(code: str = "005930", hhmmss: str = "093015") -> str:
+    """Minimal synthetic ASP frame (mirrors test_ws_frames.py fixture)."""
+    f = ["0"] * 59
+    f[0], f[1], f[2] = code, hhmmss, "0"
+    for i, idx in enumerate(range(3, 13)):
+        f[idx] = str(75000 + i * 10)
+    for i, idx in enumerate(range(13, 23)):
+        f[idx] = str(74990 - i * 10)
+    for i, idx in enumerate(range(23, 33)):
+        f[idx] = str(100 + i)
+    for i, idx in enumerate(range(33, 43)):
+        f[idx] = str(200 + i)
+    f[43], f[44] = "1500", "2500"
+    return "0|H0STASP0|001|" + "^".join(f)
+
+
+def _cnt_frame(n: int = 1) -> str:
+    recs = []
+    for k in range(n):
+        f = ["0"] * 46
+        f[0], f[1], f[2] = "005930", "093015", "75000"
+        f[12] = str(5 + k)
+        f[21] = "1"
+        recs.append("^".join(f))
+    return f"0|H0STCNT0|{n:03d}|" + "^".join(recs)
+
+
+def _mbc_frame() -> str:
+    f = ["0"] * 80
+    f[0] = "005930"
+    for i, idx in enumerate(range(1, 6)):
+        f[idx] = f"매도사{i + 1}"
+    for i, idx in enumerate(range(6, 11)):
+        f[idx] = f"매수사{i + 1}"
+    for i, idx in enumerate(range(11, 16)):
+        f[idx] = str(1000 + i)
+    for i, idx in enumerate(range(16, 21)):
+        f[idx] = str(2000 + i)
+    return "0|H0STMBC0|001|" + "^".join(f)
+
+
+class TestWsKeyParity:
+    """Builder entry keys must equal the keys that on_tick would put in buffer."""
+
+    def test_ob_key_parity_with_ws_path(self):
+        ticks = parse_message(_asp_frame(), date="20260605", now_ms=0)
+        ws_tick = ticks[0]
+        ws_keys = _ws_entry(ws_tick.payload, ws_tick.t_ms, ws_tick.kind.value)
+
+        ob = _make_orderbook()
+        snap = ob_to_snapshot(ob, phase="regular")
+        rest_keys = set({"t_ms": snap.t_ms, "kind": snap.kind.value, **snap.payload}.keys())
+
+        assert rest_keys == ws_keys, (
+            f"ob key mismatch — REST has {rest_keys - ws_keys} extra, "
+            f"WS has {ws_keys - rest_keys} extra"
+        )
+
+    def test_trade_key_parity_with_ws_path(self):
+        ticks = parse_message(_cnt_frame(1), date="20260605", now_ms=0)
+        ws_tick = ticks[0]
+        ws_keys = _ws_entry(ws_tick.payload, ws_tick.t_ms, ws_tick.kind.value)
+
+        trade = _make_trades()[0]
+        snaps = trades_to_snapshots([trade], phase="regular")
+        snap = snaps[0]
+        rest_keys = set({"t_ms": snap.t_ms, "kind": snap.kind.value, **snap.payload}.keys())
+
+        assert rest_keys == ws_keys, (
+            f"trade key mismatch — REST has {rest_keys - ws_keys} extra, "
+            f"WS has {ws_keys - rest_keys} extra"
+        )
+
+    def test_trade_record_key_parity_with_ws_path(self):
+        """trades 리스트 안의 레코드 키도 WS와 동일해야."""
+        ticks = parse_message(_cnt_frame(1), date="20260605", now_ms=0)
+        ws_trade_rec_keys = set(ticks[0].payload["trades"][0].keys())
+
+        trade = _make_trades()[0]
+        snap = trades_to_snapshots([trade], phase="regular")[0]
+        rest_trade_rec_keys = set(snap.payload["trades"][0].keys())
+
+        assert rest_trade_rec_keys == ws_trade_rec_keys, (
+            f"trade record key mismatch — REST has {rest_trade_rec_keys - ws_trade_rec_keys} extra, "
+            f"WS has {ws_trade_rec_keys - rest_trade_rec_keys} extra"
+        )
+
+    def test_broker_key_parity_with_ws_path(self):
+        ticks = parse_message(_mbc_frame(), date="20260605", now_ms=1_770_000_000_000)
+        ws_tick = ticks[0]
+        ws_keys = _ws_entry(ws_tick.payload, ws_tick.t_ms, ws_tick.kind.value)
+
+        snap = brokers_to_snapshot(_make_brokers(), now_ms=1_770_000_000_000, phase="regular")
+        rest_keys = set({"t_ms": snap.t_ms, "kind": snap.kind.value, **snap.payload}.keys())
+
+        assert rest_keys == ws_keys, (
+            f"broker key mismatch — REST has {rest_keys - ws_keys} extra, "
+            f"WS has {ws_keys - rest_keys} extra"
+        )
