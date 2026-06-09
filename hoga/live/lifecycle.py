@@ -76,10 +76,10 @@ def display_ordered_codes(doc: WatchlistDocument) -> list[str]:
     return [e.code for e in sorted(doc.entries, key=_key)]
 
 
-def _compute_live_set(data_dir: Path) -> list[str]:
-    """Live Set 산출 파이프라인(start/refresh 공용 — Task 11 리뷰 이월):
+def _compute_live_set(data_dir: Path, n_configured: int = 1) -> list[str]:
+    """Live Set 산출 파이프라인(start/refresh 공용):
     load_document → 표시 순서 평탄화 → symbol-master 필터(cold cache 무필터
-    폴백 — poller 시절과 동일 정책, dropped 경고 포함) → 상위 13 절단."""
+    폴백) → 상위 (13 * n_configured) 절단."""
     from hoga.api import symbols as _symbols  # noqa: PLC0415
     from hoga.api.watchlist import load_document  # noqa: PLC0415
 
@@ -90,7 +90,7 @@ def _compute_live_set(data_dir: Path) -> list[str]:
         if dropped:
             _log.warning("live.stream.codes_unknown dropped=%r", dropped)
         ordered = [c for c in ordered if c in known]
-    return ordered[:LIVE_SET_MAX_CODES]
+    return ordered[: _PER_ACCOUNT_MAX * n_configured]
 
 
 def live_set_codes(doc: WatchlistDocument) -> list[str]:
@@ -148,18 +148,30 @@ class LiveStatus(BaseModel):
 # ── State ──────────────────────────────────────────────────────────────────────
 
 @dataclass
+class _StreamConn:
+    """한 KIS 계좌의 WS 연결 묶음 (dynamic-N: codes 항상 비어있지 않음)."""
+    account_id: int
+    stream_obj: object            # LiveStream — 자체 writer 소유, code-disjoint
+    ws_task: "asyncio.Task"       # type: ignore[type-arg]
+    flush_task: "asyncio.Task"    # type: ignore[type-arg]
+    codes: tuple[str, ...]
+
+
+@dataclass
 class _State:
     """In-process state of the live stream. Mutated only via this module."""
 
     started_at_ms: int | None = None
+    n_configured: int = 0                          # start에 1회 산출·캐시(Q5)
     watchlist_codes: tuple[str, ...] = field(default_factory=tuple)
-    # Stream (WS) path (Task 11; poller 슬롯은 Task 13에서 은퇴):
-    stream_task: asyncio.Task | None = None   # type: ignore[type-arg]
-    stream_obj: object | None = None          # LiveStream — typed `object` to avoid cycle
-    ws_task: asyncio.Task | None = None       # type: ignore[type-arg]
+    # dynamic-N: account_id 키 연결 dict (Task 7이 채움)
+    streams: dict[int, _StreamConn] = field(default_factory=dict)
     live_set: tuple[str, ...] = field(default_factory=tuple)
-    # ADR-0067: REST 표시폴러 — WS 수집 밖 보는종목에 대한 REST 폴링
-    rest_poller: LiveRestPoller | None = None
+    rest_poller: "LiveRestPoller | None" = None
+    # ── 레거시 단일 경로(Task 10에서 제거) — 컷오버 적용 전까지 컴파일 호환 ──
+    stream_task: "asyncio.Task | None" = None      # type: ignore[type-arg]
+    stream_obj: object | None = None
+    ws_task: "asyncio.Task | None" = None          # type: ignore[type-arg]
 
 
 _state = _State()
