@@ -28,6 +28,26 @@ _kis_token_provider: KisTokenProvider | None = None
 _lock = threading.Lock()
 
 
+def _account_env(account_id: int) -> tuple[str, str]:
+    """account_id(0-based) → (KEY 환경변수명, SECRET 환경변수명).
+
+    0 = KIS_APP_KEY/SECRET(접미 없음, 기존). k>0 = 접미 (k+1) = '사람이 세는
+    번호' → account_id=1 ↔ KIS_APP_KEY_2/KIS_APP_SECRET_2 (사장님 '2번째 키').
+    스펙 §4 단일 정의 (위험 #6).
+    """
+    if account_id == 0:
+        return "KIS_APP_KEY", "KIS_APP_SECRET"
+    suffix = account_id + 1
+    return f"KIS_APP_KEY_{suffix}", f"KIS_APP_SECRET_{suffix}"
+
+
+def _token_cache_path(data_dir: Path, account_id: int) -> Path:
+    """토큰 캐시 경로. account 0 = 기존 kis-token.json(backcompat — 기존 배포가
+    토큰 재발급 강제당하지 않음), k>0 = kis-token-{k}.json (스펙 §2 결정 B)."""
+    name = "kis-token.json" if account_id == 0 else f"kis-token-{account_id}.json"
+    return data_dir / ".local" / name
+
+
 def get_kis_client() -> KisClient | None:
     return _kis_client
 
