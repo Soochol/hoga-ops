@@ -122,6 +122,23 @@ describe('useLiveBundle', () => {
   it('returns null bundle when code is null', () => {
     const { result } = renderHook(() => useLiveBundle(null, '1m', '20260527', liveFixture), { wrapper });
     expect(result.current.bundle).toBeNull();
+    expect(result.current.chartBundle).toBeNull();
+  });
+
+  it('splits the candle side (chartBundle) from the live hoga overlay (bundle)', () => {
+    // Bundle-split (2026-06-09, Phase A): candle/volume/axis read `chartBundle`
+    // (no ob/trade deps → stable across SSE ticks); hoga panes read the full
+    // `bundle`. Both share candles + segments refs so the VirtualAxis stays
+    // single-build; chartBundle carries only an empty hoga stub.
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+    const { bundle, chartBundle } = result.current;
+    expect(bundle).not.toBeNull();
+    expect(chartBundle).not.toBeNull();
+    expect(bundle!.candles).toBe(chartBundle!.candles); // shared ref
+    expect(bundle!.segments).toBe(chartBundle!.segments); // shared ref
+    expect(chartBundle!.quote_ratio.points).toEqual([]); // empty stub
+    expect(chartBundle!.fill_strength.points).toEqual([]); // empty stub
+    expect(bundle!.quote_ratio.points.length).toBe(1); // live overlay carries the point
   });
 
   it('clamps pastFrom to 249 days before today when historicalFromDate is older', () => {
@@ -228,27 +245,31 @@ describe('useLiveBundle extension atomization gate', () => {
     ob: [{ t_ms: tMs, total_ask_qty: 100, total_bid_qty: 80, kind: 'ob' }],
   });
 
-  it('HOLDS the last-settled bundle while a re-keyed past query is placeholder+fetching', () => {
+  it('HOLDS the last-settled chartBundle while a re-keyed past query is placeholder+fetching', () => {
+    // Post bundle-split (2026-06-09): the gate holds the CHART side (candle/
+    // segment prepend atomicity drives the viewport). The full `bundle` reflects
+    // the live hoga overlay even mid-extension, so assert on `chartBundle` —
+    // that is what the gate freezes for the one-commit prepend.
     useLivePageStore.setState({ historicalFromDate: '20260420' }); // genuine extension
     const { result, rerender } = renderHook(
       ({ live }) => useLiveBundle('005930', '1m', '20260527', live),
       { wrapper, initialProps: { live: liveWithOb(1779840060000) } },
     );
-    const settled = result.current.bundle; // both fresh → computedBundle, now last-settled
+    const settled = result.current.chartBundle; // both fresh → computedChartBundle, now last-settled
     expect(settled).not.toBeNull();
 
-    // Mid-extension: hoga still placeholder+fetching AND a new SSE tick would
-    // rebuild computedBundle — the gate must mask it and keep the prior object.
+    // Mid-extension: hoga still placeholder+fetching AND a re-keyed candle query
+    // would rebuild computedChartBundle — the gate must mask it and keep the prior object.
     rangeMock.isPlaceholderData = true;
     rangeMock.isFetching = true;
     rerender({ live: liveWithOb(1779840120000) });
-    expect(result.current.bundle).toBe(settled); // HELD
+    expect(result.current.chartBundle).toBe(settled); // HELD
 
-    // Both fresh again → released to the fresh computedBundle (a new object).
+    // Both fresh again → released to the fresh computedChartBundle (a new object).
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
     rerender({ live: liveWithOb(1779840120000) });
-    expect(result.current.bundle).not.toBe(settled); // RELEASED
+    expect(result.current.chartBundle).not.toBe(settled); // RELEASED
   });
 
   it('does NOT gate a same-key periodic refetch (isFetching true but not placeholder)', () => {

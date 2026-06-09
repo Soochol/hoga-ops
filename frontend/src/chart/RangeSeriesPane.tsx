@@ -50,6 +50,11 @@ export type PaneSpec<Ctx = void> = {
   stretch: number;
   series: SeriesSpec<Ctx>[];
   useContext?: () => Ctx;
+  /** /live bundle-split routing (2026-06-09): `true` = this pane's projectors
+   * read SSE-derived hoga series (quote_ratio / fill_strength), so LiveChartRoot
+   * feeds it the live `bundle`. Unset/false = candle-path pane fed the stable
+   * `chartBundle` (no re-setData on an SSE tick). Inert outside /live. */
+  live?: boolean;
 };
 
 type Props<Ctx> = {

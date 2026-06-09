@@ -12,7 +12,7 @@ import {
   type Candle,
   type InvestorNetPoint,
 } from '../api/types';
-import { buildLiveBundle } from './buildLiveBundle';
+import { buildChartBundle, buildHogaSeries, type HogaSeries } from './buildLiveBundle';
 import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
 import {
   regularSessionOpenMs,
@@ -39,7 +39,15 @@ function kisBarToCandle(b: { t_ms: number; open: number; high: number; low: numb
 }
 
 export interface UseLiveBundleResult {
+  /** Full bundle = stable chart side + live hoga overlay. Consumed by hoga
+   * panes (ratio/quoteTotals/fillStrength), LiveStatusBar, LiveSidebar. New ref
+   * on every SSE tick. */
   bundle: RangeBundle | null;
+  /** Chart side only (candles + segments + investor), STABLE across SSE ticks.
+   * Consumed by the candle/volume panes + axis + candle overlays so a tick
+   * doesn't churn the candle path (2026-06-09 bundle-split, Phase A). Shares
+   * `bundle`'s segments/candles refs (bundle spreads it). */
+  chartBundle: RangeBundle | null;
   isLoading: boolean;
   error: unknown;
   clampEngaged: boolean;
@@ -152,40 +160,45 @@ export function useLiveBundle(
     return bars.map(kisBarToCandle);
   }, [isMinute, timeframe, pastCandlesQuery.data, pastDailyCandlesQuery.data]);
 
-  // Last content-distinct segments array — see the stabilization block below.
-  const prevSegmentsRef = useRef<RangeBundle['segments'] | null>(null);
-  const computedBundle = useMemo<RangeBundle | null>(() => {
-    if (!code) return null;
-
-    const todaySession =
+  // Session bounds — shared by both bundle halves. Depends only on live.initial
+  // (stable across SSE ticks), so it never drives a tick-time rebuild.
+  const todaySession = useMemo(
+    () =>
       live.initial != null
         ? { open_ms: live.initial.session_open_ms, close_ms: live.initial.session_close_ms ?? regularSessionCloseMs(todayKstYyyymmdd) }
-        : { open_ms: regularSessionOpenMs(todayKstYyyymmdd), close_ms: regularSessionCloseMs(todayKstYyyymmdd) };
+        : { open_ms: regularSessionOpenMs(todayKstYyyymmdd), close_ms: regularSessionCloseMs(todayKstYyyymmdd) },
+    [live.initial, todayKstYyyymmdd],
+  );
 
-    const sseOb = isMinute ? live.ob : [];
-    const sseTrade = isMinute ? live.trade : [];
-
-    const built = buildLiveBundle({
+  // CHART side (candles + segments + investor). Deps deliberately EXCLUDE the
+  // ob/trade arrays — the only today-signal input is the `hasTodayObSignal`
+  // boolean, which flips false→true once on the first push and then stays put.
+  // So an SSE tick (new live.ob ref, same length>0) does NOT re-run this memo →
+  // `chartBundle` ref stays STABLE across ticks → the candle/volume panes + axis
+  // never re-setData on a tick (2026-06-09 bundle-split design, Phase A).
+  const hasTodayObSignal = isMinute && live.ob.length > 0;
+  // Last content-distinct segments array — see the stabilization block below.
+  const prevSegmentsRef = useRef<RangeBundle['segments'] | null>(null);
+  const computedChartBundle = useMemo<RangeBundle | null>(() => {
+    if (!code) return null;
+    const built = buildChartBundle({
       code,
       todayDate: todayKstYyyymmdd,
       todaySession,
       pastBundle: past.data ?? null,
-      sseOb,
-      sseTrade,
       kisCandles,
       bucketMs,
+      hasTodayObSignal,
+      investorPoints,
     });
 
-    // Segments-identity stabilization (eng review C1, made real): every SSE
-    // push rebuilds the bundle, and buildLiveBundle allocates a fresh
-    // `segments` array each time even when no new trading date appeared.
-    // LiveChartRoot memoises the VirtualAxis on this array's REFERENCE, and
-    // the KST behavior's `cacheKey` bumps its label-cache generation on axis
-    // identity — so without reuse, a content-identical push every ~10s would
-    // churn the axis object and flush lwc's formatted-label cache for
-    // nothing. Reuse the previous array when content-equal; it only changes
-    // identity when the mapping genuinely changes (new date appended, or a
-    // leftward-pan prepend).
+    // Segments-identity stabilization (eng review C1): buildChartBundle allocates
+    // a fresh `segments` array each call even when no trading date changed.
+    // LiveChartRoot memoises the VirtualAxis on this array's REFERENCE and the
+    // KST behavior's `cacheKey` bumps its label-cache generation on axis
+    // identity — so reuse the previous array when content-equal; it only changes
+    // identity on a genuine mapping change (new date appended / leftward-pan
+    // prepend).
     const prev = prevSegmentsRef.current;
     const sameSegments =
       prev !== null &&
@@ -202,8 +215,22 @@ export function useLiveBundle(
       prevSegmentsRef.current = built.segments;
     }
 
-    return { ...built, investorPoints };
-  }, [code, todayKstYyyymmdd, isMinute, live.initial, live.ob, live.trade, past.data, kisCandles, bucketMs, investorPoints]);
+    return built;
+  }, [code, todayKstYyyymmdd, todaySession, past.data, kisCandles, bucketMs, hasTodayObSignal, investorPoints]);
+
+  // HOGA side (quote_ratio / fill_strength). Deps INCLUDE ob/trade — this is the
+  // ONLY half that rebuilds on an SSE tick.
+  const hogaSeries = useMemo<HogaSeries>(
+    () =>
+      buildHogaSeries({
+        todaySession,
+        pastBundle: past.data ?? null,
+        sseOb: isMinute ? live.ob : [],
+        sseTrade: isMinute ? live.trade : [],
+        bucketMs,
+      }),
+    [todaySession, past.data, isMinute, live.ob, live.trade, bucketMs],
+  );
 
   // Atomize the historical-prepend across the two independent past sources.
   // A leftward pan changes `historicalFromDate`, which re-keys BOTH past
@@ -247,13 +274,29 @@ export function useLiveBundle(
     ? (past.isPlaceholderData && past.isFetching) ||
       (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching)
     : pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching);
-  const lastSettledBundleRef = useRef<RangeBundle | null>(null);
-  const bundle = extending && lastSettledBundleRef.current
-    ? lastSettledBundleRef.current
-    : computedBundle;
+  // The gate holds the CHART side (candle/segment prepend atomicity is what it
+  // protects — the viewport shift is candle-index-based). The hoga overlay
+  // follows via the spread below; its points don't drive the viewport, so
+  // letting them settle a beat later than the held chart is harmless.
+  const lastSettledChartRef = useRef<RangeBundle | null>(null);
+  const chartBundle = extending && lastSettledChartRef.current
+    ? lastSettledChartRef.current
+    : computedChartBundle;
   useEffect(() => {
-    if (!extending) lastSettledBundleRef.current = computedBundle;
-  }, [extending, computedBundle]);
+    if (!extending) lastSettledChartRef.current = computedChartBundle;
+  }, [extending, computedChartBundle]);
+
+  // Full bundle = stable chart side + live hoga overlay. Spreading chartBundle
+  // shares its segments/candles refs, so the VirtualAxis stays single-build and
+  // hoga panes (which read bundle.segments / bundle.bucket_ms in fillStrength)
+  // see the same coordinate system as the candle path.
+  const bundle = useMemo<RangeBundle | null>(
+    () =>
+      chartBundle
+        ? { ...chartBundle, quote_ratio: hogaSeries.quote_ratio, fill_strength: hogaSeries.fill_strength }
+        : null,
+    [chartBundle, hogaSeries],
+  );
 
   // Clamp is a minute-path concern only; the daily endpoint has no 250d cap.
   const clampEngaged = isMinute
@@ -262,6 +305,7 @@ export function useLiveBundle(
 
   return {
     bundle,
+    chartBundle,
     isLoading: live.isLoading || past.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
     error: live.error ?? past.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? null,
     clampEngaged,

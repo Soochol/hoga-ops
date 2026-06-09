@@ -252,6 +252,7 @@ const useFillStrengthContext = (): FillStrengthPaneContext =>
 
 export const FILL_STRENGTH_SPEC = {
   name: 'fill-strength' as const,
+  live: true, // reads fill_strength (SSE-derived) → fed the live bundle on /live
   stretch: 0.4,
   useContext: useFillStrengthContext,
   series: [

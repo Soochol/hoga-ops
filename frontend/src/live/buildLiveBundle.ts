@@ -1,4 +1,4 @@
-import type { RangeBundle, RangeSegment, Candle, VolumeProfile } from '../api/types';
+import type { RangeBundle, RangeSegment, Candle, VolumeProfile, QuoteRatio, FillStrength, InvestorNetPoint } from '../api/types';
 import {
   bucketHogaSeries,
   type ObSnapshot,
@@ -38,19 +38,26 @@ export interface BuildLiveBundleInput {
   bucketMs: number;
 }
 
-export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
-  const {
-    code,
-    todayDate,
-    todaySession,
-    pastBundle,
-    sseOb,
-    sseTrade,
-    kisCandles,
-    bucketMs,
-  } = input;
+/** ob/trade-derived hoga series — the ONLY part of the bundle that changes on
+ * an SSE snapshot push. Split out so the candle/segment side (buildChartBundle)
+ * can be memoised WITHOUT the ob/trade array deps, so a live tick doesn't churn
+ * the candle path (2026-06-09 bundle-split design). */
+export interface BuildHogaSeriesInput {
+  todaySession: { open_ms: number; close_ms: number };
+  pastBundle: RangeBundle | null;
+  sseOb: readonly ObSnapshot[];
+  sseTrade: readonly TradeSnapshot[];
+  bucketMs: number;
+}
 
-  const pastSegments = pastBundle?.segments ?? [];
+export interface HogaSeries {
+  quote_ratio: QuoteRatio;
+  fill_strength: FillStrength;
+}
+
+export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
+  const { todaySession, pastBundle, sseOb, sseTrade, bucketMs } = input;
+
   const pastQRPoints = pastBundle?.quote_ratio.points ?? [];
   const pastFSPoints = pastBundle?.fill_strength.points ?? [];
 
@@ -68,12 +75,8 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
   const AFTER_HOURS_END_MS = todaySession.close_ms + 30 * 60 * 1000;
   const validPastQR = pastQRPoints.filter((p) => p.t <= AFTER_HOURS_END_MS);
   const validPastFS = pastFSPoints.filter((p) => p.t <= AFTER_HOURS_END_MS);
-  const pastMaxQrT = validPastQR.length > 0
-    ? validPastQR[validPastQR.length - 1].t
-    : 0;
-  const pastMaxFsT = validPastFS.length > 0
-    ? validPastFS[validPastFS.length - 1].t
-    : 0;
+  const pastMaxQrT = validPastQR.length > 0 ? validPastQR[validPastQR.length - 1].t : 0;
+  const pastMaxFsT = validPastFS.length > 0 ? validPastFS[validPastFS.length - 1].t : 0;
 
   // Today's straddle/auction buckets must not pull the closing-auction (3-level)
   // book into 호가비·총잔량. bucketHogaSeries detects the auction structurally
@@ -86,14 +89,54 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
   const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > pastMaxQrT);
   const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > pastMaxFsT);
 
+  return {
+    quote_ratio: { bucket_ms: bucketMs, points: [...validPastQR, ...incrementalQR] },
+    fill_strength: { bucket_ms: bucketMs, points: [...validPastFS, ...incrementalFS] },
+  };
+}
+
+/** Candle/segment side of the bundle — independent of SSE ob/trade. `quote_ratio`
+ * /`fill_strength` are stubbed empty here; the caller overlays the live
+ * `buildHogaSeries` output (see buildLiveBundle). */
+export interface BuildChartBundleInput {
+  code: string;
+  todayDate: string;
+  todaySession: { open_ms: number; close_ms: number };
+  pastBundle: RangeBundle | null;
+  kisCandles: Candle[];
+  bucketMs: number;
+  /** True if today has ANY SSE orderbook signal. Passed as a boolean (not the
+   * ob array) so this builder's memo stays stable across ob/trade pushes —
+   * the value only flips false→true once on the first push. Subsumes the old
+   * `incrementalQR.length > 0` check (incrementalQR derives from sseOb, so
+   * `sseOb.length > 0` already covers it). */
+  hasTodayObSignal: boolean;
+  /** Merged by useLiveBundle; candle-path data (investor pane). */
+  investorPoints?: InvestorNetPoint[];
+}
+
+export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
+  const {
+    code,
+    todayDate,
+    todaySession,
+    pastBundle,
+    kisCandles,
+    bucketMs,
+    hasTodayObSignal,
+    investorPoints = [],
+  } = input;
+
+  const pastSegments = pastBundle?.segments ?? [];
+  const pastQRPoints = pastBundle?.quote_ratio.points ?? [];
+
   // Today segment marker — present if we have any signal for today.
   const todaySegments: RangeSegment[] = [];
   const pastHasTodaySegment = pastSegments.some((s) => s.date === todayDate);
   if (!pastHasTodaySegment) {
     const hasTodaySignal =
       pastQRPoints.some((p) => realMsToYyyymmdd(p.t) === todayDate) ||
-      incrementalQR.length > 0 ||
-      sseOb.length > 0 ||
+      hasTodayObSignal ||
       kisCandles.some((c) => c.ts_ms >= todaySession.open_ms);
     if (hasTodaySignal) {
       todaySegments.push({
@@ -147,18 +190,32 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
     bucket_ms: bucketMs,
     segments,
     candles: kisCandles,
-    quote_ratio: {
-      bucket_ms: bucketMs,
-      points: [...validPastQR, ...incrementalQR],
-    },
-    fill_strength: {
-      bucket_ms: bucketMs,
-      points: [...validPastFS, ...incrementalFS],
-    },
+    // Hoga series stubbed empty — buildLiveBundle / useLiveBundle overlays the
+    // live buildHogaSeries output. Candle/volume/investor projectors never read
+    // these, so the empty stub is invisible to the candle path.
+    quote_ratio: { bucket_ms: bucketMs, points: [] },
+    fill_strength: { bucket_ms: bucketMs, points: [] },
     volume_profile_range: EMPTY_VOLUME_PROFILE,
     volume_profile_by_day: [],
-    // Investor net-buy is fetched separately and merged by useLiveBundle; this
-    // builder never sees it, so default to empty and let the caller override.
-    investorPoints: [],
+    investorPoints,
   };
+}
+
+/** Compose the chart side (candles + segments) with the live hoga series into a
+ * single RangeBundle. Retained as the one-shot builder for tests and any caller
+ * that wants the full bundle in one call; useLiveBundle instead memoises the two
+ * halves separately so an SSE tick only rebuilds the hoga half. */
+export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
+  const { code, todayDate, todaySession, pastBundle, sseOb, sseTrade, kisCandles, bucketMs } = input;
+  const hoga = buildHogaSeries({ todaySession, pastBundle, sseOb, sseTrade, bucketMs });
+  const chart = buildChartBundle({
+    code,
+    todayDate,
+    todaySession,
+    pastBundle,
+    kisCandles,
+    bucketMs,
+    hasTodayObSignal: sseOb.length > 0,
+  });
+  return { ...chart, quote_ratio: hoga.quote_ratio, fill_strength: hoga.fill_strength };
 }

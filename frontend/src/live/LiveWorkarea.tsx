@@ -8,8 +8,12 @@ import type { LiveSeriesData } from '../api/liveSeries';
 interface Props {
   activeCode: string | null;
   /** The Live Candle Backfill bundle, owned by LivePage. ADR-0040 — single
-   * useLiveBundle call site per page. */
+   * useLiveBundle call site per page. Full bundle (chart + live hoga overlay). */
   bundle: RangeBundle | null;
+  /** Chart side only, stable across SSE ticks (2026-06-09 bundle-split). Threaded
+   * to LiveChartRoot for the candle path. Optional → LiveChartRoot falls back to
+   * `bundle`. */
+  chartBundle?: RangeBundle | null;
   clampEngaged: boolean;
   isPastCandlesLoading: boolean;
   /** useLiveBundle.isExtending — 진행 루프 settle-effect 구동용. LiveChartRoot로 전달. */
@@ -22,6 +26,7 @@ interface Props {
 export function LiveWorkarea({
   activeCode,
   bundle,
+  chartBundle,
   clampEngaged,
   isPastCandlesLoading,
   isExtending,
@@ -58,6 +63,7 @@ export function LiveWorkarea({
           code={activeCode}
           timeframe={timeframe}
           bundle={bundle}
+          chartBundle={chartBundle}
           clampEngaged={clampEngaged}
           isPastCandlesLoading={isPastCandlesLoading}
           isExtending={isExtending}

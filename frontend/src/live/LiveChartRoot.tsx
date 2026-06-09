@@ -59,7 +59,14 @@ const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 interface Props {
   code: string | null;
   timeframe: LiveTimeframe;
+  /** Full bundle = chart side + live hoga overlay (new ref each SSE tick).
+   * Only the hoga panes (spec.live) consume it. */
   bundle: RangeBundle | null;
+  /** Chart side only, STABLE across SSE ticks (2026-06-09 bundle-split, Phase A).
+   * The candle/volume panes, axis, and candle overlays read this so an SSE tick
+   * doesn't churn the candle path. Optional + falls back to `bundle` so existing
+   * single-bundle callers/tests keep working unchanged. */
+  chartBundle?: RangeBundle | null;
   clampEngaged: boolean;
   isPastCandlesLoading: boolean;
   /** useLiveBundle.isExtending. false-edge = 한 스텝 settle → 진행 루프 다음 스텝 판정. */
@@ -69,8 +76,14 @@ interface Props {
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCandlesLoading, isExtending = false }: Props) {
+export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // Candle-path bundle: stable `chartBundle` when provided (the /live split),
+  // else the single `bundle` (pre-split callers / tests). Axis, viewport,
+  // candle/volume panes, and candle overlays all read THIS — never the live
+  // `bundle` — so an SSE tick (which only changes the hoga overlay) leaves the
+  // candle path's props referentially identical.
+  const cb = chartBundle ?? bundle;
   // Load identity for the per-view chart remount and the reveal cover.
   const viewKey = `${code ?? ''}|${timeframe}`;
   // Chart identity is KEYED by the view it was created for. On a viewKey
@@ -99,16 +112,16 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // createVirtualAxis's originMs doc; cross-view collisions are handled by
   // the per-viewKey chart remount below.
   const axis: VirtualAxis = useMemo(() => {
-    if (!bundle || bundle.segments.length === 0) return EMPTY_AXIS;
+    if (!cb || cb.segments.length === 0) return EMPTY_AXIS;
     return createVirtualAxis(
-      bundle.segments.map((s) => ({
+      cb.segments.map((s) => ({
         date: s.date,
         sessionOpenMs: s.session_open_ms,
         sessionCloseMs: s.session_close_ms,
       })),
-      bundle.segments[0].session_open_ms,
+      cb.segments[0].session_open_ms,
     );
-  }, [bundle?.segments]);
+  }, [cb?.segments]);
 
   // Drawing-host concerns (paneSeries registry, activeCode binding,
   // panel-anchor computation) live in their own hook so this file stays
@@ -213,10 +226,10 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   // repositioner and the initial-view effect below are mutually exclusive via
   // historicalFromDate (null → initial-view owns the viewport; non-null →
   // repositioner), so their relative declaration order is immaterial.
-  useViewportBackfill({ chart, axis, bundle, timeframe, isExtending, code: code ?? '' });
+  useViewportBackfill({ chart, axis, bundle: cb, timeframe, isExtending, code: code ?? '' });
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
-  useWheelInteractions(chart, containerRef, bundle, axis);
+  useWheelInteractions(chart, containerRef, cb, axis);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands
@@ -232,7 +245,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
         });
       });
     };
-    if (!chart || !bundle) {
+    if (!chart || !cb) {
       // No chart/bundle to position yet. If the past-candle fetch has SETTLED
       // with no bundle to show (no active code / null bundle), reveal anyway so
       // the cover can't wedge opaque over a chartless surface; while still
@@ -241,7 +254,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       if (chart && !isPastCandlesLoading) reveal();
       return;
     }
-    if (bundle.candles.length === 0) {
+    if (cb.candles.length === 0) {
       // No candles yet. If the past-candle fetch has settled (empty result, or
       // D/W/M with no history), reveal the empty chart so the cover doesn't
       // linger; while it's still loading, keep the cover up.
@@ -260,7 +273,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       return;
     }
     const ts = chart.timeScale();
-    const totalBars = bundle.candles.length;
+    const totalBars = cb.candles.length;
     const applied = lastAppliedCountRef.current;
     try {
       if (isMinuteTimeframe(timeframe)) {
@@ -299,7 +312,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, bundle, timeframe, isPastCandlesLoading, viewKey, revealedKey]);
+  }, [chart, cb, timeframe, isPastCandlesLoading, viewKey, revealedKey]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -417,7 +430,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
   const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
 
   useEffect(() => {
-    if (!chart || !bundle) return;
+    if (!chart || !cb) return;
     const specs = paneSpecsForTimeframe(timeframe, {
       foreignNet: foreignNetEnabled,
       institutionNet: institutionNetEnabled,
@@ -447,7 +460,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, bundle, timeframe, foreignNetEnabled, institutionNetEnabled, volumeEnabled]);
+  }, [chart, cb, timeframe, foreignNetEnabled, institutionNetEnabled, volumeEnabled]);
 
   // ADR-0044: hover → cursor store. Only mount on minute timeframes —
   // calendar timeframes (D/W/M) don't have backing parquet on /live.
@@ -498,7 +511,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
         ref={containerRef}
         style={{ width: '100%', height: '100%', background: 'var(--bg-card)' }}
       />
-      {chart && bundle && axis.segments.length > 0 && (
+      {chart && cb && axis.segments.length > 0 && (
         <>
           {paneSpecsForTimeframe(timeframe, {
             foreignNet: foreignNetEnabled,
@@ -508,7 +521,9 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
             <RangeSeriesPane
               key={spec.name}
               chart={chart}
-              bundle={bundle}
+              // hoga panes (spec.live) get the live bundle; candle/volume/investor
+              // panes get the stable chartBundle so an SSE tick doesn't re-setData them.
+              bundle={spec.live ? (bundle ?? cb) : cb}
               axis={axis}
               paneIndex={i}
               spec={spec}
@@ -516,14 +531,14 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
               onPrimarySeriesGone={() => unregisterPaneSeries(spec.name as PaneId)}
             />
           ))}
-          <MovingAverageOverlay chart={chart} bundle={bundle} axis={axis} />
-          <LiveCurrentPriceLine paneSeries={paneSeries} bundle={bundle} code={code} />
+          <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
+          <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} />
           <DrawingOverlay chart={chart} axis={axis} paneSeries={paneSeries} />
           {/* After DrawingOverlay so the legend's ✕/eye buttons paint above the
               drawing canvas; the container is pointer-transparent so the
               crosshair + drawing hover still work underneath it. */}
           <PaneLegendOverlay chart={chart} timeframe={timeframe} paneSeries={paneSeries} />
-          <CandleTooltip chart={chart} bundle={bundle} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
+          <CandleTooltip chart={chart} bundle={cb} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
           <DrawingPropertyPanel computeAnchor={computeAnchor} />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a
@@ -585,7 +600,7 @@ export function LiveChartRoot({ code, timeframe, bundle, clampEngaged, isPastCan
           라이브 지표는 분봉에서 표시됩니다
         </div>
       )}
-      {isPastCandlesLoading && (!bundle || bundle.candles.length === 0) && (
+      {isPastCandlesLoading && (!cb || cb.candles.length === 0) && (
         <div
           data-testid="past-candles-loading-note"
           style={{
