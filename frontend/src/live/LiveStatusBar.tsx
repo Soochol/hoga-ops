@@ -1,7 +1,7 @@
 import { useLivePageStore } from '../state/livePage';
 import { useConnectionLiveness } from '../api/useConnectionLiveness';
 import { LIVE_STALE_MS } from '../api/liveness';
-import { cycleLagSeverity, cycleLagPillColor } from './cycleLagPill';
+import { captureHealthSeverity, captureHealthLabel, captureHealthPillColor } from './captureHealthPill';
 import { SourceChip } from '../chart/SourceChip';
 import { useSymbols } from '../capture/useSymbols';
 import type { RangeBundle } from '../api/types';
@@ -12,13 +12,14 @@ import { QuoteChange } from '../rightrail/QuoteChange';
 
 interface Props {
   activeCode: string | null;
-  cycleLagMs: number;
+  captureHealthy: boolean;
+  captureReason: string;
   /** The Live Candle Backfill bundle, owned by LivePage. ADR-0040 — single
    * useLiveBundle call site per page. */
   bundle: RangeBundle | null;
 }
 
-export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
+export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundle }: Props) {
   // Threshold MUST exceed the 30s server ping so a connected-but-idle
   // socket (e.g. market closed) stays "LIVE●"; only a real disconnect
   // (no frame for >35s) flips it. (plan-review cross-task flag)
@@ -39,9 +40,6 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
   // 라이브 quote 단일 출처(ADR-0056). 현재가는 bundle(WS) 이라 별개.
   const quoteByCode = useQuoteByCode(activeCode ? [activeCode] : []);
   const quote = activeCode ? quoteByCode.get(activeCode) : undefined;
-
-  const severity = cycleLagSeverity(cycleLagMs);
-  const pill = cycleLagPillColor(severity);
 
   // ADR-0039: surface the active source through the last segment's tag.
   const lastCandle = bundle && bundle.candles.length > 0
@@ -116,19 +114,23 @@ export function LiveStatusBar({ activeCode, cycleLagMs, bundle }: Props) {
         </span>
       )}
       <span aria-hidden>·</span>
-      <span
-        data-testid="cycle-lag-pill"
-        title={`cycle_lag_ms = ${cycleLagMs}`}
-        className="font-mono px-2 py-0.5 rounded"
-        style={{
-          background: pill.bg,
-          border: `1px solid ${pill.border}`,
-          color: pill.fg,
-          fontSize: 'var(--text-xs)',
-        }}
-      >
-        lag {cycleLagMs}ms
-      </span>
+      {(() => {
+        const sev = captureHealthSeverity(captureHealthy, captureReason);
+        const capPill = captureHealthPillColor(sev);
+        return (
+          <span
+            data-testid="capture-health-pill"
+            title={`capture_reason = ${captureReason}`}
+            className="font-mono px-2 py-0.5 rounded"
+            style={{
+              background: capPill.bg, border: `1px solid ${capPill.border}`,
+              color: capPill.fg, fontSize: 'var(--text-xs)',
+            }}
+          >
+            {captureHealthLabel(captureHealthy, captureReason)}
+          </span>
+        );
+      })()}
     </div>
   );
 }

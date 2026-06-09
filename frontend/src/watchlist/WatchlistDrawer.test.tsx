@@ -236,6 +236,42 @@ describe('WatchlistDrawer', () => {
     expect(screen.queryByText('SK하이닉스')).toBeNull();
   });
 
+  it('개수가 라벨 버튼 안에 인라인 — 접근성 이름이 "스윙 1"이고 클릭하면 접힌다', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    // 개수(1)가 라벨 버튼 내부 자식이면 접근성 이름은 "스윙 1"로 합성된다.
+    // 우측 정렬 mono 개수(가격 컬럼과 충돌)가 사라졌음을 보장하는 구조 단언.
+    fireEvent.click(screen.getByRole('button', { name: '스윙 1' }));
+    expect(screen.queryByText('삼성전자')).toBeNull();
+    // 미분류 그룹(SK하이닉스)은 영향 없음
+    expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
+  });
+
+  it('실폴더의 chevron 버튼으로도 접힌다 (라벨 버튼과 별개 토글 경로)', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('스윙 접기'));
+    expect(screen.queryByText('삼성전자')).toBeNull();
+    expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
+  });
+
+  it('엔트리가 없는 실폴더도 개수 0으로 렌더된다 (빈 미분류만 숨김)', async () => {
+    // 스윙 폴더는 존재하나 소속 엔트리 없음 — groupByFolder가 실폴더를 항상 노출.
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
+      folders: FOLDERS,
+      entries: [{ code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 }],
+      next_run_at_ms: 0,
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '스윙 0' })).toBeInTheDocument();
+  });
+
   it('그룹 추가하기 disables 추가 while the name is empty', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

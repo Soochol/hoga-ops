@@ -14,6 +14,7 @@ import {
   paneIdAtY,
   clampYToPane,
   paneTopY,
+  canvasYToPrice,
   type PaneSeriesMap,
 } from './chartCoordinates';
 import type { PaneId } from './types';
@@ -139,5 +140,51 @@ describe('paneTopY (runtime)', () => {
     const ps = paneSeriesFor(NO_VOLUME);
     // quote-totals now sits directly under candle.
     expect(paneTopY(chartWithHeights(noVolHeights), ps, 'quote-totals')).toBe(400);
+  });
+});
+
+describe('canvasYToPrice (time-independent Y → price)', () => {
+  const heights = [400, 80, 80, 80, 80];
+  const chart = chartWithHeights(heights);
+
+  /** paneSeries whose series record the pane-local Y handed to
+   *  coordinateToPrice, so we can assert the paneTopY offset was subtracted. */
+  function recordingPaneSeries(paneIds: PaneId[], priceFn: (yLocal: number) => number | null) {
+    const seen: Record<string, number> = {};
+    const m = new Map<PaneId, ISeriesApi<'Line'>>();
+    paneIds.forEach((id, i) => {
+      m.set(id, {
+        getPane: () => ({ paneIndex: () => i }),
+        coordinateToPrice: (y: number) => {
+          seen[id] = y;
+          return priceFn(y);
+        },
+      } as unknown as ISeriesApi<'Line'>);
+    });
+    return { ps: m as PaneSeriesMap, seen };
+  }
+
+  it('passes the chart-global Y straight through for the candle pane (offset 0)', () => {
+    const { ps, seen } = recordingPaneSeries(FULL, (y) => 100_000 - y);
+    expect(canvasYToPrice(chart, ps, 'candle', 120)).toBe(100_000 - 120);
+    expect(seen.candle).toBe(120); // no offset on pane 0
+  });
+
+  it('subtracts paneTopY before resolving an indicator-pane price', () => {
+    // volume sits at chart-global y=400..480; a click at global y=440 must
+    // resolve as pane-local y=40.
+    const { ps, seen } = recordingPaneSeries(FULL, (y) => 5_000 - y);
+    expect(canvasYToPrice(chart, ps, 'volume', 440)).toBe(5_000 - 40);
+    expect(seen.volume).toBe(40);
+  });
+
+  it('returns null when the series is off its price scale', () => {
+    const { ps } = recordingPaneSeries(FULL, () => null);
+    expect(canvasYToPrice(chart, ps, 'candle', 200)).toBeNull();
+  });
+
+  it('returns null when the pane is not mounted', () => {
+    const { ps } = recordingPaneSeries(['candle'], (y) => y);
+    expect(canvasYToPrice(chart, ps, 'volume', 200)).toBeNull();
   });
 });

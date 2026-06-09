@@ -108,3 +108,37 @@ archive 항목은 skip(read-path-hot helper crash 방지).
 툴(ADR-0036)이라 운영상 충분 — version-gate self-healing은 분산 배포에서나 필요(미채택).
 
 reopen 아님 — §4.6이 의도한 "archived field trust" 계약을 read-path에서 *이행*한 것.
+
+## Amendment (2026-06-08) — `series.cum_vol_monotonic` 은 error 가 아니라 warn
+
+§5의 severity 계약: **error = 데이터 *형태*가 깨져 segment 조립 불가**(예: `close < open`,
+candles `ts_ms` 비단조 → lightweight-charts `setData` assert), **warn = 형태는 맞지만
+신뢰도 낮음 → 포함하되 surface**. 2026-06-03 amendment가 series-error를 read-path INVALID
+게이트로 *이행*하면서, `series.cum_vol_monotonic`도 `series.candles_ts_monotonic`과 같은
+`error`로 등록돼 있었다 — 그러나 둘의 성격이 다르다.
+
+**증상:** `(003490, 20260506)`에서 hogaplay 가 10:06:56 에 겹치는 trade 페이지를 재전송해
+(새 `seq`·미세하게 다른 `ts_ms` 탓에 dedup 미적중) `cum_vol`이 한 번 역행(465068→452839).
+단일 위반인데 read-path가 **날짜 전체를 INVALID 로 제외** → `/api/range` 가 segments·candles·
+quote_ratio·fill_strength 를 전부 빈 배열로 반환 → 총잔량·호가비·체결강도 pane 백지. 같은 날
+10호가·거래원 사이드바는 per-cursor 엔드포인트(invariant 게이트 없음)라 정상 렌더 →
+"일부 지표만 안 보인다"는 비대칭. 저장소 전역 67개 Stock-Date가 이 한 invariant 만으로 제외됨.
+
+**결정:** `series.cum_vol_monotonic` severity 를 `error` → **`warn`** 으로 정정. 근거:
+1. **형태 불변이 아니다.** read-path 의 어떤 렌더 시리즈도 `cum_vol`을 소비하지 않는다 — candles
+   는 자체 `vol_a/vol_b` 컬럼, fill_strength 는 `SUM(qty) WHERE side!=0`, quote_ratio 는 스냅샷
+   파생. cum_vol 역행이 있어도 segment·candles·세 pane 모두 정상 조립된다. cum_vol 단조성은
+   *형태*가 아니라 *신뢰* 신호 — §5 정의상 정확히 `warn` 군.
+2. **캡처 경로와의 정합.** 캡처는 이미 같은 역행을 `warn` 으로 surface 한다
+   (`captures._validation_error_to_warning`, severity="warn"; ADR-0020 lenient fallback —
+   단일 페이지 리베이스로 10분 캡처를 버리는 건 잘못된 트레이드). 정정 전에는 parser archival 이
+   같은 이상을 `error` 로 박아, 캡처 UI 는 "관용 가능 경고"라 부르는 사이 read-path 는 날짜를
+   통째로 버리는 **자기모순**이었다.
+3. `series.candles_ts_monotonic` 은 `error` 유지 — 그건 `setData` 크래시를 직접 유발하는 진짜
+   형태 파손이다. 두 series-invariant 의 severity 가 갈리는 게 옳다.
+
+`trades.validate()` strict raise 는 severity 와 무관(이진)하므로 lenient fallback 는 그대로
+작동한다. 기존 archive 의 stale `error` 는 §4·위 stale-archive 정책대로 `hoga validate --deep
+--fix` 1회 sweep 으로 `warn` 재기록(데이터 자체는 불변, archival 필드만). 근본 원인인
+페이지-오버랩 중복 자체의 파서 dedup 은 별도 follow-up(해당 분(分) 버킷의 체결강도가 소폭
+이중계상되나, 빈 화면보다 낫고 `warn` 으로 surface 됨).

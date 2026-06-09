@@ -173,6 +173,37 @@ def test_classify_from_meta_archived_series_warn_does_not_invalidate() -> None:
     assert any(v.invariant_id == "series.snapshots_no_gaps" for v in result.warnings)
 
 
+def test_classify_from_meta_archived_cum_vol_regression_is_warn_not_invalid() -> None:
+    """Regression for the 003490/20260506 blank-호가-panes bug (2026-06-08):
+    a single hogaplay page-overlap rebase produces ONE ``series.cum_vol_monotonic``
+    violation. cum_vol is a forensic trust signal — nothing on the read path
+    consumes it (candles carry vol_a/vol_b, fill_strength is SUM(qty), quote_ratio
+    is snapshot-derived) — so the Stock-Date must be INCLUDED with a data_warning,
+    NOT excluded. Before the fix it archived as ``error`` and ``build_range_bundle``
+    dropped the whole date, leaving 총잔량·호가비·체결강도 panes blank while the
+    10호가·거래원 sidebar (per-cursor endpoints, no invariant gate) still rendered.
+    ctx values are the literal regression captured for 003490/20260506."""
+    meta = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": True,
+        "is_partial": False,
+        "invariant_violations": [
+            {
+                "invariant_id": "series.cum_vol_monotonic",
+                "severity": "warn",
+                "message": "cum_vol regressed across continuous-trade rows",
+                "ctx": {"index": 3459, "prev_cum": 465068,
+                        "curr_cum": 452839, "ts_ms": 100656387},
+            },
+        ],
+    }
+    result = classify_from_meta(meta)
+    assert result.state == DiskState.COMPLETE
+    assert result.errors == []
+    assert any(v.invariant_id == "series.cum_vol_monotonic" for v in result.warnings)
+
+
 def test_classify_from_meta_ignores_archived_meta_violations() -> None:
     """The archived field holds BOTH meta and series violations (parser archives
     the union). Meta invariants are re-checked live above, so classify must take

@@ -1607,3 +1607,96 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
     expect(b.ts.fitContent).toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Wheel interactions wiring (spec 2026-06-07-live-wheel-interactions)
+// ---------------------------------------------------------------------------
+
+describe('LiveChartRoot wheel interactions wiring', () => {
+  beforeEach(() => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    vi.mocked(createChartEx).mockClear();
+  });
+
+  it('disables the library wheel zoom via handleScale.mouseWheel: false', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    // createChartEx(el, behavior, options) — options는 3번째 인자.
+    const options = vi.mocked(createChartEx).mock.calls.at(-1)![2] as Record<string, unknown>;
+    expect(options).toMatchObject({ handleScale: { mouseWheel: false } });
+  });
+
+  it('container wheel → right-edge-anchored zoom via setVisibleLogicalRange', () => {
+    // useWheelInteractions가 읽는 getVisibleLogicalRange / coordinateToLogical을
+    // 갖춘 ts mock (기본 모듈 mock에는 둘 다 없다).
+    const ts = {
+      subscribeVisibleTimeRangeChange: vi.fn(),
+      unsubscribeVisibleTimeRangeChange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      applyOptions: vi.fn(),
+      fitContent: vi.fn(),
+      scrollToRealTime: vi.fn(),
+      scrollToPosition: vi.fn(),
+      setVisibleLogicalRange: vi.fn(),
+      getVisibleRange: vi.fn(() => null),
+      setVisibleRange: vi.fn(),
+      timeToCoordinate: vi.fn(() => null),
+      getVisibleLogicalRange: vi.fn(() => ({ from: 0, to: 100 })),
+      coordinateToLogical: vi.fn(() => null),
+      // 줌아웃 플로어(maxSpan = width/minBarSpacing = 2000) — 이 테스트의
+      // 요청 span(≈110.5)에는 발동하지 않는 값.
+      width: vi.fn(() => 1000),
+      // DEFAULT_BUNDLE은 candles 빈 배열이라 lastMs undefined → timeToIndex 미호출,
+      // plain 앵커는 to-고정 폴백(to=100 유지). 방어적으로 둔다.
+      timeToIndex: vi.fn(() => null),
+    };
+    const chart = {
+      addSeries: vi.fn(() => ({
+        setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(),
+        applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+        removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
+        setMarkers: vi.fn(),
+      })),
+      removeSeries: vi.fn(),
+      timeScale: vi.fn(() => ts),
+      panes: vi.fn(() => []),
+      remove: vi.fn(),
+      resize: vi.fn(),
+      applyOptions: vi.fn(),
+      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      subscribeCrosshairMove: vi.fn(),
+      unsubscribeCrosshairMove: vi.fn(),
+    };
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    // containerRef div = live-chart-root의 첫 번째 자식 (chart 슬롯).
+    const container = screen.getByTestId('live-chart-root').firstElementChild!;
+    container.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, cancelable: true }));
+
+    // 마지막 호출이 휠 결과여야 한다 (초기 뷰 effect의 호출이 선행할 수 있음).
+    const last = ts.setVisibleLogicalRange.mock.calls.at(-1)![0] as { from: number; to: number };
+    expect(last.to).toBe(100);
+    expect(last.from).toBeCloseTo(100 - 100 * Math.exp(0.1), 6); // ≈ -10.517
+  });
+});

@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
 
-import { useRange } from './range';
+import { useRange, rangeFreshnessOptions, TODAY_RANGE_REFETCH_MS } from './range';
 import * as client from './client';
 import type { RangeBundle } from './types';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
@@ -86,5 +86,46 @@ describe('useRange', () => {
     await waitFor(() => expect(client.apiCall).toHaveBeenCalled());
     const calledWith = (client.apiCall as ReturnType<typeof vi.spyOn>).mock.calls[0][0] as string;
     expect(calledWith).toContain('source_pref=kis_live');
+  });
+});
+
+describe('rangeFreshnessOptions (review C1 — pastMaxQrT advance)', () => {
+  const today = '20260607';
+
+  it('sets the 5-min refetch when the range includes today (to === today)', () => {
+    // /live always requests `to = today`, so this is the live-call branch.
+    expect(rangeFreshnessOptions(today, today)).toEqual({
+      staleTime: TODAY_RANGE_REFETCH_MS,
+      refetchInterval: TODAY_RANGE_REFETCH_MS,
+    });
+  });
+
+  it('sets the 5-min refetch when the range extends past today (to > today)', () => {
+    expect(rangeFreshnessOptions('20260610', today)).toEqual({
+      staleTime: TODAY_RANGE_REFETCH_MS,
+      refetchInterval: TODAY_RANGE_REFETCH_MS,
+    });
+  });
+
+  it('freezes (Infinity, no refetch) for a past-only range (to < today)', () => {
+    expect(rangeFreshnessOptions('20260606', today)).toEqual({
+      staleTime: Infinity,
+      refetchInterval: false,
+    });
+  });
+
+  it('freezes when no todayKst is given — non-live callers stay frozen', () => {
+    // capture/replay backfill omit todayKst entirely; the refetch must not leak.
+    expect(rangeFreshnessOptions('20260606', null)).toEqual({
+      staleTime: Infinity,
+      refetchInterval: false,
+    });
+  });
+
+  it('freezes when to is null (query disabled)', () => {
+    expect(rangeFreshnessOptions(null, today)).toEqual({
+      staleTime: Infinity,
+      refetchInterval: false,
+    });
   });
 });

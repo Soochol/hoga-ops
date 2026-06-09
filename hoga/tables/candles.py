@@ -14,6 +14,7 @@ from pathlib import Path
 
 import duckdb
 import pyarrow as pa
+import pyarrow.parquet as pq
 from pydantic import BaseModel
 
 from hoga.tables.dispatch import FieldCountError, split_row
@@ -91,6 +92,33 @@ def write_parquet(candles: Iterable[Candle], path: Path) -> None:
     from hoga.api._atomic_write import atomic_write_parquet_table
 
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
+
+
+def read_parquet(path: Path) -> list[Candle]:
+    """Symmetric inverse of :func:`write_parquet` — reassemble ``Candle``
+    rows from the parquet table.
+
+    Load-bearing column remap: the on-disk columns are ``open`` / ``close``
+    (the natural OHLCV names, see ``PARQUET_SCHEMA``) but the ``Candle``
+    dataclass fields are ``open_`` / ``close_`` (``open`` shadows the builtin).
+    A naive ``Candle(**row)`` therefore raises ``unexpected keyword argument
+    'open'`` — which silently degraded ``hoga validate --deep`` (candles never
+    loaded, so ``series.candles_ts_monotonic`` was never evaluated) and made
+    ``--deep --fix`` actively dangerous (a recompute that skips the candle
+    check would CLEAR archived ``candles_ts_monotonic`` errors, re-including
+    chart-crashing Stock-Dates). Lives here (not in ``cli.py``'s
+    ``_run_series_for``) for the same reason as ``snapshots.read_parquet``:
+    reading is the inverse of writing, so the write↔read round-trip stays the
+    single test surface for the schema and cannot drift.
+    """
+    rows = pq.read_table(path).to_pylist()
+    return [
+        Candle(
+            ts_ms=r["ts_ms"], open_=r["open"], close_=r["close"],
+            high=r["high"], low=r["low"], vol_a=r["vol_a"], vol_b=r["vol_b"],
+        )
+        for r in rows
+    ]
 
 
 # === API representation ===

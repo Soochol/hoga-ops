@@ -38,10 +38,10 @@ from hoga.live.lifecycle import get_buffer as live_get_buffer
 from hoga.live.lifecycle import get_status as live_get_status
 from hoga.live.lifecycle import (
     get_active_codes,
-    start_live_poller,
-    start_live_poller_watchdog,
+    start_live_stream,
+    start_live_stream_watchdog,
     start_today_promoter,
-    stop_live_poller,
+    stop_live_stream,
     stop_today_promoter,
 )
 from hoga.live.migrate import migrate_to_v2_layout
@@ -72,13 +72,13 @@ def create_app(data_dir: Path) -> FastAPI:
     async def _live_control(action: str) -> None:
         """Dispatch POST /api/live/control actions to the lifecycle layer."""
         if action == "start":
-            await start_live_poller(data_dir=data_dir)
+            await start_live_stream(data_dir=data_dir)
         elif action == "stop":
-            await stop_live_poller()
+            await stop_live_stream()
         elif action == "pause":
             # Stage 8: treat pause as stop. Future: true pause (freeze loop
             # but keep buffer + status alive).
-            await stop_live_poller()
+            await stop_live_stream()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -105,13 +105,14 @@ def create_app(data_dir: Path) -> FastAPI:
                 _screener_module.trigger_update(data_dir), name="screener-recovery"
             )
         )
-        # Stage 8: Start the live poller (graceful degradation: no-op if
+        # Task 11: Start the live WS stream (graceful degradation: no-op if
         # KIS_APP_KEY/SECRET missing or watchlist is empty).
-        await start_live_poller(data_dir=data_dir)
-        # ADR-0064: watchdog that restarts the poller if it dies or stops
+        # REST poller는 Task 13에서 완전 은퇴 — 수집은 WS stream 단독.
+        await start_live_stream(data_dir=data_dir)
+        # ADR-0064: WS watchdog that restarts the stream if it dies or stops
         # ticking during market hours (defense-in-depth self-heal). Spawned
-        # unconditionally — it no-ops when the poller wasn't started.
-        live_watchdog_task = await start_live_poller_watchdog(data_dir=data_dir)
+        # unconditionally — it no-ops when the stream wasn't started.
+        live_watchdog_task = await start_live_stream_watchdog(data_dir=data_dir)
         # ADR-0043: Today Promotion task — overwrite today's jsonl to parquet
         # every N minutes so /api/range covers today without waiting for the
         # 17:00 Daily Promotion batch. Optional kill-switch via
@@ -152,16 +153,16 @@ def create_app(data_dir: Path) -> FastAPI:
         try:
             yield
         finally:
-            # ADR-0043: stop Today Promotion before live poller so the loop
-            # doesn't observe a half-cancelled poller state.
+            # ADR-0043: stop Today Promotion before the live stream so the loop
+            # doesn't observe a half-cancelled stream state.
             await stop_today_promoter(today_promoter_task)
-            # ADR-0064: stop the watchdog before the poller so it can't race to
-            # "restart" the poller we're deliberately shutting down. (reuses the
+            # ADR-0064: stop the watchdog before the stream so it can't race to
+            # "restart" the stream we're deliberately shutting down. (reuses the
             # generic cancel-and-await helper.)
             await stop_today_promoter(live_watchdog_task)
-            # Stop the live poller before scheduler to avoid new ticks being
+            # Stop the live stream before scheduler to avoid new ticks being
             # written while the scheduler is shutting down.
-            await stop_live_poller()
+            await stop_live_stream()
             # Cancel scheduler tasks BEFORE stopping the worker pool: the
             # scheduler enqueues to the workers, so kill the trigger first
             # and then let the workers drain.

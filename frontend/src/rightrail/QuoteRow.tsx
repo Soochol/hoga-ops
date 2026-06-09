@@ -25,12 +25,16 @@ export interface QuoteRowProps {
   // --- 관심종목 패널 전용 우클릭/Delete (미전달 시 무동작) ---
   onContextMenu?: (e: React.MouseEvent<HTMLLIElement>) => void;
   onDelete?: () => void;
+  // --- 관심종목 패널 전용 들여쓰기: 그룹 헤더의 chevron-left 구조에서 종목명이
+  // 그룹명 첫 글자(≈46px)보다 왼쪽에서 시작해 위계가 역전되는 것을 교정.
+  // pl-10(50px) > 라벨 시작. 그룹 없는 스크리너는 미전달(평면 목록, 폭 절약). ---
+  indented?: boolean;
 }
 
 export function QuoteRow({
   name, price, pct, changeWon, active, ariaLabel, testId, onClick, trailingAction,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragging,
-  onContextMenu, onDelete,
+  onContextMenu, onDelete, indented,
 }: QuoteRowProps) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLLIElement>) => {
     // 중첩 버튼(trailingAction)에서 올라온 keydown 은 무시 — 행이 직접
@@ -68,7 +72,7 @@ export function QuoteRow({
       onClick={onClick}
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
-      className="group cursor-pointer px-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover"
+      className={`group cursor-pointer ${indented ? 'pl-10' : 'pl-md'} pr-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover`}
       style={{
         background: active ? 'var(--tint-selection)' : 'transparent',
         borderLeft: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
@@ -76,7 +80,9 @@ export function QuoteRow({
         ...(dragging ? { opacity: 0.6, cursor: 'grabbing', zIndex: 1, position: 'relative' } : {}),
       }}
     >
-      <span className="flex-1 truncate text-sm text-fg">{name}</span>
+      {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
+          종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분. */}
+      <span className="flex-1 truncate text-xs text-fg">{name}</span>
       <span className="flex flex-col items-end leading-tight">
         <span className="font-mono tabular-nums text-sm text-fg">
           {price != null ? `${price.toLocaleString('ko-KR')}원` : '—'}

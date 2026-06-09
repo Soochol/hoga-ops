@@ -90,6 +90,13 @@ export function useLiveBundle(
     enableMinute ? minutePastFrom : null,
     enableMinute ? minutePastTo : null,
     enableMinute ? (timeframe as Timeframe) : null,
+    undefined,
+    // /live's minutePastTo is always today (line 83), so this enables the
+    // 5-min refetch that advances pastMaxQrT (review C1 — seam hole). The gate
+    // lives in rangeFreshnessOptions: past-only callers (no todayKst) stay
+    // frozen. A periodic refetch keeps the same query key → no placeholderData
+    // swap → does not set isExtending, so today's right edge is untouched.
+    todayKstYyyymmdd,
   );
   const pastCandlesQuery = useLivePastCandles(
     enableMinute ? code : null,

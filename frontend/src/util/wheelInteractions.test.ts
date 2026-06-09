@@ -285,3 +285,133 @@ describe('computeWheelOutcome', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// maxSpan — 라이브러리 barSpacing 플로어와의 앵커 보존 합성
+// (/diagnose 2026-06-08: 플로어 도달 후 ctrl 줌아웃이 우측 팬으로 변질되어
+//  커서 앵커가 풀리던 회귀. maxSpan = timeScale.width() / minBarSpacing.)
+// ---------------------------------------------------------------------------
+
+describe('computeWheelOutcome — maxSpan (zoom-out floor, anchor-preserving)', () => {
+  it('ctrl 줌아웃: 결과 span이 maxSpan을 넘으면 앵커 비율을 보존하며 span을 클램프', () => {
+    // range {0,100}, anchor 80 (ratio 0.8), deltaY=100 → 요청 span ≈110.52 > 105.
+    // 클램프: span=105, from = 80 − 0.8×105 = −4, to = 101 — 앵커 비율 0.8 유지.
+    const out = computeWheelOutcome(
+      baseInput({
+        deltaY: 100,
+        ctrlOrMetaKey: true,
+        coordinateToLogical: () => 80,
+        maxSpan: 105,
+      }),
+    );
+    expect(out).not.toBeNull();
+    expect(out!.to - out!.from).toBeCloseTo(105, 9);
+    expect(out!.from).toBeCloseTo(-4, 9);
+    expect(out!.to).toBeCloseTo(101, 9);
+    // 앵커 비율 불변식: (anchor − from)/span === 요청 범위에서의 비율
+    expect((80 - out!.from) / (out!.to - out!.from)).toBeCloseTo(0.8, 9);
+  });
+
+  it('ctrl 줌아웃: maxSpan 여유가 있으면 수식 결과 그대로 (클램프 미발동)', () => {
+    const f = Math.exp(0.1);
+    const out = computeWheelOutcome(
+      baseInput({ deltaY: 100, ctrlOrMetaKey: true, coordinateToLogical: () => 50, maxSpan: 200 }),
+    );
+    expect(out!.from).toBeCloseTo(50 - 50 * f, 9);
+    expect(out!.to).toBeCloseTo(50 + 50 * f, 9);
+  });
+
+  it('ctrl 줌아웃: maxSpan === 현재 span이면 정확히 no-op (플로어에서 멈춤, 팬 변질 없음)', () => {
+    const out = computeWheelOutcome(
+      baseInput({ deltaY: 100, ctrlOrMetaKey: true, coordinateToLogical: () => 80, maxSpan: 100 }),
+    );
+    expect(out!.from).toBeCloseTo(0, 9);
+    expect(out!.to).toBeCloseTo(100, 9);
+  });
+
+  it('ctrl 줌인: 이미 플로어를 넘긴 상태(span > maxSpan)에서도 앵커 보존 클램프', () => {
+    // 리사이즈 등으로 현재 span 100 > maxSpan 50인 상태에서 줌인(요청 span ≈90.5)
+    // → 여전히 > 50 → 앵커 비율 보존하며 span 50으로.
+    const out = computeWheelOutcome(
+      baseInput({ deltaY: -100, ctrlOrMetaKey: true, coordinateToLogical: () => 50, maxSpan: 50 }),
+    );
+    expect(out!.to - out!.from).toBeCloseTo(50, 9);
+    expect((50 - out!.from) / (out!.to - out!.from)).toBeCloseTo(0.5, 9);
+  });
+
+  it('plain 줌아웃: maxSpan 클램프 시에도 to(오른쪽 끝) 고정 유지', () => {
+    const out = computeWheelOutcome(baseInput({ deltaY: 100, maxSpan: 105 }));
+    expect(out!.to).toBe(100);
+    expect(out!.from).toBeCloseTo(-5, 9);
+  });
+
+  it('shift 팬: maxSpan과 무관 — span이 maxSpan보다 커도 그대로 평행이동', () => {
+    const out = computeWheelOutcome(baseInput({ deltaY: 100, shiftKey: true, maxSpan: 50 }));
+    expect(out).toEqual({ from: 10, to: 110 });
+  });
+
+  it('maxSpan 미지정: 기존 동작 그대로 (무클램프)', () => {
+    const f = Math.exp(0.1);
+    const out = computeWheelOutcome(
+      baseInput({ deltaY: 100, ctrlOrMetaKey: true, coordinateToLogical: () => 50 }),
+    );
+    expect(out!.from).toBeCloseTo(50 - 50 * f, 9);
+    expect(out!.to).toBeCloseTo(50 + 50 * f, 9);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// plain wheel — latest-candle anchor (lastBarIndex)
+// (개선 2026-06-08: range.to(우측 패딩 끝) 고정은 줌인 시 마지막 캔들을 화면
+//  왼쪽으로 밀어내 앵커가 풀렸다. 라이브 엣지에서는 마지막 캔들을 앵커하고,
+//  과거로 스크롤한 상태(to < lastBarIndex)에서는 기존대로 to를 고정한다.)
+// ---------------------------------------------------------------------------
+
+describe('computeWheelOutcome — plain wheel latest-candle anchor', () => {
+  it('라이브 엣지 줌인: 마지막 캔들(lastBarIndex)을 앵커 — to 고정 아님, 캔들 비율 보존', () => {
+    // range {0,115}, lastBarIndex 100 (to = lastBar + 15 패딩). 줌인 factor=exp(-0.1).
+    const f = Math.exp(-0.1);
+    const out = computeWheelOutcome(
+      baseInput({ range: { from: 0, to: 115 }, deltaY: -100, lastBarIndex: 100 }),
+    );
+    expect(out).not.toBeNull();
+    expect(out!.from).toBeCloseTo(100 - 100 * f, 9); // ≈ 9.52
+    expect(out!.to).toBeCloseTo(100 + 15 * f, 9); // ≈ 113.57 (to가 줄어듦 — 고정 아님)
+    // 마지막 캔들 화면 비율 불변식: (lastBar − from)/span === 줌 전 비율(100/115)
+    expect((100 - out!.from) / (out!.to - out!.from)).toBeCloseTo(100 / 115, 9);
+  });
+
+  it('라이브 엣지 줌아웃: 마지막 캔들 앵커 — 캔들 비율 보존', () => {
+    const f = Math.exp(0.1);
+    const out = computeWheelOutcome(
+      baseInput({ range: { from: 0, to: 115 }, deltaY: 100, lastBarIndex: 100 }),
+    );
+    expect(out!.from).toBeCloseTo(100 - 100 * f, 9);
+    expect(out!.to).toBeCloseTo(100 + 15 * f, 9);
+    expect((100 - out!.from) / (out!.to - out!.from)).toBeCloseTo(100 / 115, 9);
+  });
+
+  it('과거로 스크롤(to < lastBarIndex): 오른쪽 끝(to) 고정 — 기존 결정 #1 유지', () => {
+    // 마지막 캔들이 화면 밖 오른쪽 → anchor = min(to, lastBar) = to.
+    const out = computeWheelOutcome(
+      baseInput({ range: { from: 0, to: 100 }, deltaY: -100, lastBarIndex: 300 }),
+    );
+    expect(out!.to).toBe(100); // 우측 끝 고정
+    expect(out!.from).toBeGreaterThan(0);
+  });
+
+  it('lastBarIndex 미지정: 기존 to-고정 동작 (하위호환)', () => {
+    const out = computeWheelOutcome(baseInput({ range: { from: 0, to: 100 }, deltaY: -100 }));
+    expect(out!.to).toBe(100);
+  });
+
+  it('마지막 캔들 앵커 + maxSpan 플로어: 캔들 비율 보존하며 클램프', () => {
+    // 줌아웃이 플로어를 넘으면 마지막 캔들(앵커) 비율을 보존하며 span 클램프.
+    // range {0,115}, lastBar 100 (비율 100/115), maxSpan 120.
+    const out = computeWheelOutcome(
+      baseInput({ range: { from: 0, to: 115 }, deltaY: 100, lastBarIndex: 100, maxSpan: 120 }),
+    );
+    expect(out!.to - out!.from).toBeCloseTo(120, 9);
+    expect((100 - out!.from) / (out!.to - out!.from)).toBeCloseTo(100 / 115, 9);
+  });
+});

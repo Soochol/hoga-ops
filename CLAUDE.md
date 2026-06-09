@@ -75,7 +75,7 @@ Set `KIS_APP_KEY` / `KIS_APP_SECRET` (and optionally `HOGAPLAY_COOKIE`) per `.en
 Symbol search uses the static KIS `.mst` files — no credentials required.
 거래일 조회는 KIS Open API를 사용하며, 자격증명이 없으면 `kis_holiday_fetch_failed`가
 기록되고 평일 폴백으로 전환됩니다 (캡처 동작에 영향 없음).
-`/live` 실시간 폴러는 `KIS_APP_KEY`/`KIS_APP_SECRET` 미설정 시 오프라인으로 시작하며
+`/live` 실시간 스트림(KIS WebSocket)은 `KIS_APP_KEY`/`KIS_APP_SECRET` 미설정 시 오프라인으로 시작하며
 프론트엔드에 "KIS 자격증명이 설정되지 않았습니다" 배너를 표시합니다.
 
 **Frontend** — Vite's HMR is on by default:

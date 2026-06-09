@@ -1,0 +1,2312 @@
+# Live KIS WebSocket 백엔드 전환 — 구현 계획 (Plan 1/3)
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Live Capture의 수집 전송을 REST poller(10~20초)에서 KIS WebSocket push(sub-second)로 전환 — 호가창·3지표·거래원이 sub-second가 되고, 저장은 10초 다운샘플(JSONL→Promotion)로 유지된다.
+
+**Architecture:** 순수 파서(`ws_frames`) → WS 클라이언트(`ws_client`: approval_key·구독·PINGPONG·재연결) → 오케스트레이터(`stream`: Live Tick → LiveBuffer per-tick publish + 10초 다운샘플 → JSONL). 다운스트림(브라우저 WS ADR-0053, Promotion ADR-0038/0043)은 그대로 재사용하되 체결 저장만 `kind=fill` → `fills.parquet`으로 축소(그릴링 Q4). 구독 집합 = **Live Set**(watchlist 순서 상위 13, 3 TR/종목 = 39등록). poller는 완전 은퇴(§5.5), watchdog 교훈(ADR-0064)은 stream 감독으로 이식.
+
+**Tech Stack:** Python 3.11+ / asyncio / `websockets` 라이브러리(신규 의존성) / httpx(기존) / pyarrow+duckdb(기존) / pytest(asyncio_mode=auto) / 프론트는 Task 12 한 곳만(TypeScript+vitest).
+
+**관련 문서:** spec `docs/superpowers/specs/2026-06-05-live-kis-websocket-realtime-design.md` (§5.1, §5.5, §7, §8, §12), CONTEXT.md 용어 **Live Tick / Live Snapshot / Live Set**.
+
+**검증된 프로토콜 사실** (공식 repo `koreainvestment/open-trading-api` 직접 확인, 2026-06-05):
+- 실전 WS URL: `ws://ops.koreainvestment.com:21000`
+- approval_key: `POST https://openapi.koreainvestment.com:9443/oauth2/Approval`, body `{"grant_type":"client_credentials","appkey":...,"secretkey":...}` (필드명이 `secretkey`임 — `appsecret` 아님)
+- 구독 메시지: `{"header":{"approval_key":K,"custtype":"P","tr_type":"1"|"2","content-type":"utf-8"},"body":{"input":{"tr_id":T,"tr_key":code}}}` (tr_type 1=등록 2=해제)
+- 데이터 프레임: `암호화플래그|tr_id|건수|필드1^필드2^...` (첫 글자 `0`=평문, `1`=암호문 — 시세 3종은 평문). 컨트롤은 JSON(`PINGPONG`은 받은 raw 그대로 echo).
+- H0STASP0(호가): idx 0=종목코드, 1=영업시간(HHMMSS), 매도호가1~10=idx 3~12, 매수호가1~10=idx 13~22, 매도잔량=23~32, 매수잔량=33~42, 총매도호가잔량=43, 총매수호가잔량=44
+- H0STCNT0(체결): 46필드, idx 0=종목코드, 1=체결시간(HHMMSS), 2=현재가, 12=체결거래량, 21=체결구분(`1`=매수, `5`=매도, `3`=장전)
+- H0STMBC0(회원사): idx 0=종목코드, 매도회원사명1~5=idx 1~5, 매수회원사명1~5=idx 6~10, 총매도수량1~5=idx 11~15, 총매수수량1~5=idx 16~20. **시간 필드 없음** → t_ms는 수신 시각.
+
+---
+
+## 파일 구조
+
+| 파일 | 책임 |
+|---|---|
+| Create `hoga/live/ws_fields.py` | TR별 필드 인덱스 상수 (공식 샘플에서 옮긴 단일 진실원) |
+| Create `hoga/live/ws_frames.py` | 순수 프레임 파서: raw str → `WsTick`/컨트롤. I/O 없음 |
+| Create `hoga/live/downsampler.py` | 10초 다운샘플러: 상태형 last-wins, 흐름형 sum(side=0 제외) |
+| Create `hoga/live/ws_client.py` | KIS WS 연결·구독·PINGPONG·백오프 재연결 |
+| Create `hoga/live/stream.py` | 오케스트레이터: tick→buffer publish + 10초 flush→JSONL |
+| Create `hoga/live/session_gate.py` | `_market_phase`/`_should_poll_now`를 poller에서 이주(은퇴 전 분리) |
+| Create `hoga/tables/fills.py` | Fill entity + fills.parquet writer + bucket 재집계 쿼리 |
+| Create `scripts/record_kis_ws_frames.py` | 장중 실연결 프레임 녹화(fixture 생산) |
+| Modify `hoga/live/snapshot.py` | `SnapshotKind.FILL` + `from_fill` |
+| Modify `hoga/live/buffer.py` | 시간 기반 eviction(봉합 사이징 불변식) |
+| Modify `hoga/live/kis_client.py` | `get_approval_key()` 추가 |
+| Modify `hoga/live/promote.py` | `kind=="fill"` → fills.parquet |
+| Modify `hoga/api/bundle.py` | fill_strength: fills.parquet 우선, trades 폴백 |
+| Modify `hoga/live/lifecycle.py` | Live Set(상위 13)·start_live_stream·watchdog 이식 |
+| Modify `hoga/api/app.py` | lifespan 배선 교체 |
+| Modify `frontend/src/live/liveSnapshotBuffer.ts` | 브라우저 버퍼도 시간 기반 eviction |
+| Delete (Task 13) `hoga/live/poller.py` 등 | poller 완전 은퇴 |
+
+---
+
+### Task 0: 장중 실연결 스파이크 — 프레임 fixture 녹화
+
+**목적:** 3개 TR의 실제 프레임을 녹화해 파서 fixture로 영구 보존 + 3가지 실증: ① H0STMBC0 push 주기, ② 체결구분 값 분포(1/5/3), ③ 15:30–16:00 시간외에 H0STCNT0/H0STASP0가 계속 오는지(안 오면 장후 데이터는 kis_live에서 소실 — 결과를 spec §12에 기록).
+
+**제약:** KRX 장중에만 의미 있음. `KIS_APP_KEY`/`KIS_APP_SECRET` 필요. **다른 태스크를 막지 않는다** — Task 1은 본 문서의 검증된 인덱스로 합성 fixture를 먼저 쓰고, 녹화본이 생기면 같은 테스트에 추가한다. 단 **Task 14(통합 스모크) 전엔 필수**.
+
+**Files:**
+- Create: `scripts/record_kis_ws_frames.py`
+- Create: `tests/fixtures/kis_ws/README.md` (+ 녹화 산출물 `h0stasp0.txt`, `h0stcnt0.txt`, `h0stmbc0.txt`, `control.txt`)
+
+- [ ] **Step 1: 녹화 스크립트 작성**
+
+```python
+"""장중 KIS WS 프레임 녹화 — 파서 fixture 생산용 (1회성 스파이크).
+
+사용:  KIS_APP_KEY=.. KIS_APP_SECRET=.. uv run python scripts/record_kis_ws_frames.py 005930 60
+출력:  tests/fixtures/kis_ws/{h0stasp0,h0stcnt0,h0stmbc0,control}.txt
+"""
+import asyncio
+import json
+import os
+import sys
+from pathlib import Path
+
+import httpx
+import websockets
+
+REST = "https://openapi.koreainvestment.com:9443"
+WS = "ws://ops.koreainvestment.com:21000"
+TRS = ("H0STASP0", "H0STCNT0", "H0STMBC0")
+OUT = Path("tests/fixtures/kis_ws")
+
+
+async def main(code: str, seconds: int) -> None:
+    key, secret = os.environ["KIS_APP_KEY"], os.environ["KIS_APP_SECRET"]
+    async with httpx.AsyncClient() as c:
+        r = await c.post(f"{REST}/oauth2/Approval", json={
+            "grant_type": "client_credentials", "appkey": key, "secretkey": secret,
+        })
+        r.raise_for_status()
+        approval = r.json()["approval_key"]
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    files = {tr: (OUT / f"{tr.lower()}.txt").open("a", encoding="utf-8") for tr in TRS}
+    control = (OUT / "control.txt").open("a", encoding="utf-8")
+    counts: dict[str, int] = {}
+
+    async with websockets.connect(WS, ping_interval=None) as ws:
+        for tr in TRS:
+            await ws.send(json.dumps({
+                "header": {"approval_key": approval, "custtype": "P",
+                           "tr_type": "1", "content-type": "utf-8"},
+                "body": {"input": {"tr_id": tr, "tr_key": code}},
+            }))
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + seconds
+        while loop.time() < deadline:
+            raw = await asyncio.wait_for(ws.recv(), timeout=max(1.0, deadline - loop.time()))
+            if raw[0] in ("0", "1"):
+                tr = raw.split("|", 3)[1]
+                files.get(tr, control).write(raw + "\n")
+                counts[tr] = counts.get(tr, 0) + 1
+            else:
+                control.write(raw + "\n")
+                msg = json.loads(raw)
+                if msg.get("header", {}).get("tr_id") == "PINGPONG":
+                    await ws.send(raw)  # PINGPONG echo
+    for f in [*files.values(), control]:
+        f.close()
+    print("recorded:", counts)
+
+
+if __name__ == "__main__":
+    asyncio.run(main(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 60))
+```
+
+- [ ] **Step 2: 장중 실행 (정규장 1회 + 15:35경 1회)**
+
+Run: `KIS_APP_KEY=... KIS_APP_SECRET=... uv run python scripts/record_kis_ws_frames.py 005930 60`
+Expected: `recorded: {'H0STASP0': N, 'H0STCNT0': M, 'H0STMBC0': K}` (N,M > 0; K ≥ 0 — K=0이면 H0STMBC0 push 주기가 60초보다 길다는 뜻이니 300초로 재시도). 15:35 실행 결과(시간외 수신 여부)를 `tests/fixtures/kis_ws/README.md`에 기록. (녹화본에 cnt≥2 H0STCNT0 프레임이 포함되는지 확인 — 멀티레코드 stride의 유일한 실검증. 추가 게이트(리뷰 잔여 조건): 각 H0STCNT0 프레임에서 `len(body.split('^')) == cnt*46`이 **정확히**(trailing 원소 0개) 성립하는지 확인 — exact-equality stride 가드가 "trailing 구분자 없음" 가정에 의존하므로, padding이 관찰되면 가드를 하한+per-record 슬라이스로 완화)
+
+- [ ] **Step 3: README 작성**
+
+`tests/fixtures/kis_ws/README.md`에 녹화 일시(`RECORD_DATE`)·종목·관찰 결과(체결구분 값 분포, MBC 주기, 시간외 수신 여부)를 기록.
+
+- [ ] **Step 4: 녹화 재생 plausibility 테스트 작성 — 인덱스의 유일한 진실 검증**
+
+⚠️ **(advisor A)** Task 1의 합성 테스트는 파서와 **같은 인덱스 상수로 fixture를 만들므로 레이아웃에 대해 동어반복** — green이어도 실제 KIS 레이아웃과 어긋날 수 있다. 실 레이아웃 검증은 이 재생 테스트가 유일하다. 녹화본 없으면 skip(다른 태스크 비차단), **Task 14 전 필수 통과**.
+
+`tests/unit/live/test_ws_frames_recorded.py`:
+
+```python
+"""Task 0 녹화본 재생 — 합성 테스트가 못 잡는 '실제 필드 레이아웃' 검증."""
+from pathlib import Path
+
+import pytest
+
+from hoga.live.ws_frames import parse_message
+
+FIX = Path("tests/fixtures/kis_ws")
+RECORD_DATE = "20260605"  # README.md의 녹화일과 일치시킬 것
+
+requires_recording = pytest.mark.skipif(
+    not (FIX / "h0stasp0.txt").exists(),
+    reason="Task 0 녹화본 없음 — 장중 1회 실행 필요",
+)
+
+
+@requires_recording
+def test_recorded_orderbook_plausible():
+    best_asks = []
+    for raw in (FIX / "h0stasp0.txt").read_text().splitlines():
+        for t in parse_message(raw, date=RECORD_DATE, now_ms=0):
+            p = t.payload
+            asks = [lv["price"] for lv in p["asks"] if lv["price"] > 0]
+            bids = [lv["price"] for lv in p["bids"] if lv["price"] > 0]
+            assert asks == sorted(asks), "매도호가 1→10은 오름차순이어야"
+            assert bids == sorted(bids, reverse=True), "매수호가 1→10은 내림차순"
+            if asks and bids:
+                assert bids[0] < asks[0], "최우선 매수 < 최우선 매도"
+                best_asks.append(asks[0])
+            assert p["total_ask_qty"] > 0 and p["total_bid_qty"] > 0
+    assert best_asks, "유효 호가 프레임 0개 — 녹화/인덱스 점검"
+    assert max(best_asks) / min(best_asks) < 1.3, "가격 산포 30%+ — 인덱스 어긋남 의심"
+
+
+@requires_recording
+def test_recorded_trades_plausible():
+    sides: set[int] = set()
+    for raw in (FIX / "h0stcnt0.txt").read_text().splitlines():
+        for t in parse_message(raw, date=RECORD_DATE, now_ms=0):
+            for tr in t.payload["trades"]:
+                assert tr["price"] > 0 and tr["qty"] > 0
+                sides.add(tr["side"])
+    assert sides <= {-1, 0, 1}
+    assert {1, -1} <= sides, "매수/매도 양쪽이 관찰돼야 — side 인덱스(21) 점검"
+
+
+@requires_recording
+def test_recorded_member_plausible():
+    seen = False
+    for raw in (FIX / "h0stmbc0.txt").read_text().splitlines():
+        for t in parse_message(raw, date=RECORD_DATE, now_ms=1):
+            seen = True
+            tops = t.payload["sell_top"] + t.payload["buy_top"]
+            assert any(e["name"] for e in tops), "회원사명 전부 빈 문자열 — 인덱스 점검"
+            assert all(e["qty"] >= 0 for e in tops)
+    assert seen or True  # MBC 주기가 길어 0개일 수 있음 — README에 기록
+```
+
+Run: `uv run pytest tests/unit/live/test_ws_frames_recorded.py -v`
+Expected: 녹화 전 SKIP ×3 / 녹화 후 3 passed
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add scripts/record_kis_ws_frames.py tests/fixtures/kis_ws/ tests/unit/live/test_ws_frames_recorded.py
+git commit -m "chore(live): record KIS WS frame fixtures + replay plausibility tests"
+```
+
+---
+
+### Task 1: `ws_fields.py` + `ws_frames.py` — 순수 프레임 파서
+
+> ⚠️ **인덱스 미검증 주의(advisor A):** 본 태스크의 합성 fixture는 파서와 같은 인덱스 상수로 생성되므로 **레이아웃에 대해 동어반복**이다 — green을 "파서 정확"으로 읽지 말 것. 실제 레이아웃의 진실 검증은 Task 0 Step 4의 녹화 재생 테스트가 유일하며 Task 14 전 필수.
+
+**Files:**
+- Create: `hoga/live/ws_fields.py`
+- Create: `hoga/live/ws_frames.py`
+- Test: `tests/unit/live/test_ws_frames.py`
+
+- [x] **Step 1: 필드 인덱스 상수 작성** (`hoga/live/ws_fields.py`)
+
+```python
+"""KIS WS TR별 필드 인덱스 — 공식 샘플(koreainvestment/open-trading-api
+legacy/websocket/python/ws_domestic_stock.py · ws_domestic_overseas_all.py)에서
+옮긴 단일 진실원. 인덱스가 KIS 쪽에서 바뀌면 여기 한 곳만 고친다."""
+
+TR_ORDERBOOK = "H0STASP0"   # 호가
+TR_TRADE = "H0STCNT0"       # 체결
+TR_MEMBER = "H0STMBC0"      # 회원사(거래원)
+
+# --- H0STASP0 (호가) — 위치 기반 ---
+ASP_CODE = 0
+ASP_TIME_HHMMSS = 1
+ASP_ASK_P = range(3, 13)     # 매도호가 1~10
+ASP_BID_P = range(13, 23)    # 매수호가 1~10
+ASP_ASK_Q = range(23, 33)    # 매도잔량 1~10
+ASP_BID_Q = range(33, 43)    # 매수잔량 1~10
+ASP_TOT_ASK_Q = 43
+ASP_TOT_BID_Q = 44
+ASP_MIN_FIELDS = 45
+
+# --- H0STCNT0 (체결) — 46필드(마지막 idx 45 = 정적VI발동기준가) ---
+CNT_FIELDS = 46
+CNT_CODE = 0
+CNT_TIME_HHMMSS = 1
+CNT_PRICE = 2
+CNT_QTY = 12                 # 체결거래량
+CNT_SIDE = 21                # 체결구분: '1'=매수, '5'=매도, '3'=장전
+
+# --- H0STMBC0 (회원사) — 시간 필드 없음 ---
+MBC_CODE = 0
+MBC_SELL_NAMES = range(1, 6)
+MBC_BUY_NAMES = range(6, 11)
+MBC_SELL_QTYS = range(11, 16)
+MBC_BUY_QTYS = range(16, 21)
+MBC_MIN_FIELDS = 21
+```
+
+- [x] **Step 2: 실패하는 파서 테스트 작성** (`tests/unit/live/test_ws_frames.py`)
+
+합성 fixture는 본 문서 상단의 검증된 인덱스로 구성한다. Task 0 녹화본이 생기면 같은 테스트 클래스에 파일 로드 케이스를 추가.
+
+```python
+"""ws_frames 파서 단위 테스트 — 합성 프레임은 공식 샘플 인덱스 기준."""
+from hoga.live.snapshot import SnapshotKind
+from hoga.live.ws_frames import parse_message
+
+
+def _asp_frame(code: str = "005930", hhmmss: str = "093015") -> str:
+    f = ["0"] * 59
+    f[0], f[1], f[2] = code, hhmmss, "0"
+    for i, idx in enumerate(range(3, 13)):
+        f[idx] = str(75000 + i * 10)        # 매도호가 1~10
+    for i, idx in enumerate(range(13, 23)):
+        f[idx] = str(74990 - i * 10)        # 매수호가 1~10
+    for i, idx in enumerate(range(23, 33)):
+        f[idx] = str(100 + i)               # 매도잔량
+    for i, idx in enumerate(range(33, 43)):
+        f[idx] = str(200 + i)               # 매수잔량
+    f[43], f[44] = "1500", "2500"
+    return "0|H0STASP0|001|" + "^".join(f)
+
+
+def _cnt_frame(n: int = 1) -> str:
+    recs = []
+    for k in range(n):
+        f = ["0"] * 46
+        f[0], f[1], f[2] = "005930", "093015", "75000"
+        f[12] = str(5 + k)                  # 체결거래량
+        f[21] = "1" if k % 2 == 0 else "5"  # 매수/매도 교대
+        recs.append("^".join(f))
+    return f"0|H0STCNT0|{n:03d}|" + "^".join(recs)
+
+
+def _mbc_frame() -> str:
+    f = ["0"] * 80
+    f[0] = "005930"
+    for i, idx in enumerate(range(1, 6)):
+        f[idx] = f"매도사{i + 1}"
+    for i, idx in enumerate(range(6, 11)):
+        f[idx] = f"매수사{i + 1}"
+    for i, idx in enumerate(range(11, 16)):
+        f[idx] = str(1000 + i)
+    for i, idx in enumerate(range(16, 21)):
+        f[idx] = str(2000 + i)
+    return "0|H0STMBC0|001|" + "^".join(f)
+
+
+def test_parse_orderbook_frame():
+    ticks = parse_message(_asp_frame(), date="20260605", now_ms=0)
+    assert len(ticks) == 1
+    t = ticks[0]
+    assert t.code == "005930"
+    assert t.kind is SnapshotKind.OB
+    assert t.payload["asks"][0] == {"price": 75000, "qty": 100}
+    assert t.payload["bids"][9] == {"price": 74900, "qty": 209}
+    assert t.payload["total_ask_qty"] == 1500
+    assert t.payload["total_bid_qty"] == 2500
+    # 09:30:15 KST → t_ms 검증 (timeenc 왕복)
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    assert t.t_ms == hhmmssms_to_unix_ms("20260605", 93015000)
+
+
+def test_parse_trade_frame_side_mapping():
+    ticks = parse_message(_cnt_frame(2), date="20260605", now_ms=0)
+    assert len(ticks) == 2
+    assert ticks[0].kind is SnapshotKind.TRADE
+    assert ticks[0].payload["trades"][0]["side"] == 1     # 체결구분 '1' = 매수
+    assert ticks[1].payload["trades"][0]["side"] == -1    # '5' = 매도
+    assert ticks[0].payload["trades"][0]["qty"] == 5
+
+
+def test_parse_trade_side3_is_auction_zero():
+    raw = _cnt_frame(1).split("^")
+    raw[21] = "3"  # 장전(단일가) → side 0
+    ticks = parse_message("^".join(raw), date="20260605", now_ms=0)
+    assert ticks[0].payload["trades"][0]["side"] == 0
+
+
+def test_parse_member_frame_uses_now_ms():
+    ticks = parse_message(_mbc_frame(), date="20260605", now_ms=1_770_000_000_000)
+    t = ticks[0]
+    assert t.kind is SnapshotKind.BROKER
+    assert t.t_ms == 1_770_000_000_000          # MBC엔 시간 필드 없음
+    assert t.payload["sell_top"][0] == {"name": "매도사1", "qty": 1000}
+    assert t.payload["buy_top"][4] == {"name": "매수사5", "qty": 2004}
+
+
+def test_parse_control_pingpong():
+    raw = '{"header":{"tr_id":"PINGPONG","datetime":"20260605093000"}}'
+    out = parse_message(raw, date="20260605", now_ms=0)
+    assert out == []  # 컨트롤은 빈 리스트 — 클라이언트가 raw로 직접 echo 판단
+```
+
+- [x] **Step 3: 실패 확인**
+
+Run: `uv run pytest tests/unit/live/test_ws_frames.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'hoga.live.ws_frames'`
+
+- [x] **Step 4: 파서 구현** (`hoga/live/ws_frames.py`)
+
+```python
+"""KIS WS 프레임 → Live Tick 순수 파서. I/O 없음 — fixture로 완전 테스트 가능.
+
+payload 형태는 poller 시절 JSONL payload와 동일 모양(byte-compat)을 유지해
+promote._parse_jsonl_to_records 와 프론트 bucketHogaSeries 가 무변경으로 동작한다.
+"""
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass
+from typing import Any
+
+from hoga.api.timeenc import hhmmssms_to_unix_ms
+
+from . import ws_fields as F
+from .snapshot import SnapshotKind
+
+_log = logging.getLogger(__name__)
+
+_SIDE_MAP = {"1": 1, "5": -1}  # 그 외('3' 장전 등) → 0 (Auction Cross 규약과 동일)
+
+
+@dataclass(frozen=True)
+class WsTick:
+    """Live Tick — WS 1메시지에서 나온 1개 도메인 이벤트 (CONTEXT.md 'Live Tick')."""
+
+    code: str
+    t_ms: int
+    kind: SnapshotKind
+    payload: dict[str, Any]
+
+
+def _hhmmss_to_unix_ms(date: str, hhmmss: str) -> int:
+    return hhmmssms_to_unix_ms(date, int(hhmmss) * 1000)
+
+
+def parse_message(raw: str, *, date: str, now_ms: int) -> list[WsTick]:
+    """raw 1수신 → WsTick 목록. 컨트롤(JSON)·미지원 TR·암호화 프레임은 [].
+
+    호출자(ws_client)는 JSON 컨트롤의 PINGPONG echo를 raw 첫 글자로 직접 판단한다
+    — 파서는 데이터 프레임만 책임진다.
+    """
+    if not raw or raw[0] not in ("0", "1"):
+        return []
+    if raw[0] == "1":
+        # 시세 3종은 평문. 암호문이 오면 구독 구성 오류 — 버리고 경고.
+        _log.warning("live.ws.unexpected_encrypted_frame head=%s", raw[:32])
+        return []
+    try:
+        _, tr_id, cnt_s, body = raw.split("|", 3)
+        cnt = int(cnt_s)
+        fields = body.split("^")
+    except ValueError:
+        _log.warning("live.ws.malformed_frame head=%s", raw[:64])
+        return []
+
+    if tr_id == F.TR_ORDERBOOK:
+        return _parse_orderbook(fields, date=date)
+    if tr_id == F.TR_TRADE:
+        return _parse_trades(fields, cnt=cnt, date=date)
+    if tr_id == F.TR_MEMBER:
+        return _parse_member(fields, now_ms=now_ms)
+    return []
+
+
+def _parse_orderbook(f: list[str], *, date: str) -> list[WsTick]:
+    if len(f) < F.ASP_MIN_FIELDS:
+        _log.warning("live.ws.asp_short_frame n=%d", len(f))
+        return []
+    t_ms = _hhmmss_to_unix_ms(date, f[F.ASP_TIME_HHMMSS])
+    code = f[F.ASP_CODE]
+    payload = {
+        "code": code,
+        "t_ms": t_ms,
+        "asks": [
+            {"price": int(f[p]), "qty": int(f[q])}
+            for p, q in zip(F.ASP_ASK_P, F.ASP_ASK_Q)
+        ],
+        "bids": [
+            {"price": int(f[p]), "qty": int(f[q])}
+            for p, q in zip(F.ASP_BID_P, F.ASP_BID_Q)
+        ],
+        "total_ask_qty": int(f[F.ASP_TOT_ASK_Q]),
+        "total_bid_qty": int(f[F.ASP_TOT_BID_Q]),
+    }
+    return [WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.OB, payload=payload)]
+
+
+def _parse_trades(f: list[str], *, cnt: int, date: str) -> list[WsTick]:
+    ticks: list[WsTick] = []
+    for i in range(cnt):
+        rec = f[i * F.CNT_FIELDS : (i + 1) * F.CNT_FIELDS]
+        if len(rec) < F.CNT_FIELDS:
+            _log.warning("live.ws.cnt_short_record i=%d n=%d", i, len(rec))
+            break
+        t_ms = _hhmmss_to_unix_ms(date, rec[F.CNT_TIME_HHMMSS])
+        code = rec[F.CNT_CODE]
+        trade = {
+            "t_ms": t_ms,
+            "price": int(rec[F.CNT_PRICE]),
+            "qty": int(rec[F.CNT_QTY]),
+            "side": _SIDE_MAP.get(rec[F.CNT_SIDE], 0),
+            "side_source": "kis_ws",
+        }
+        ticks.append(WsTick(
+            code=code, t_ms=t_ms, kind=SnapshotKind.TRADE,
+            payload={"trades": [trade]},
+        ))
+    return ticks
+
+
+def _parse_member(f: list[str], *, now_ms: int) -> list[WsTick]:
+    if len(f) < F.MBC_MIN_FIELDS:
+        _log.warning("live.ws.mbc_short_frame n=%d", len(f))
+        return []
+    code = f[F.MBC_CODE]
+    payload = {
+        "code": code,
+        "t_ms": now_ms,  # H0STMBC0엔 시간 필드 없음(spec §12) — 수신 시각 사용
+        "sell_top": [
+            {"name": f[n].strip(), "qty": int(f[q])}
+            for n, q in zip(F.MBC_SELL_NAMES, F.MBC_SELL_QTYS)
+        ],
+        "buy_top": [
+            {"name": f[n].strip(), "qty": int(f[q])}
+            for n, q in zip(F.MBC_BUY_NAMES, F.MBC_BUY_QTYS)
+        ],
+    }
+    return [WsTick(code=code, t_ms=now_ms, kind=SnapshotKind.BROKER, payload=payload)]
+```
+
+- [x] **Step 5: 통과 확인 + 커밋**
+
+Run: `uv run pytest tests/unit/live/test_ws_frames.py -v`
+Expected: 5 passed
+
+```bash
+git add hoga/live/ws_fields.py hoga/live/ws_frames.py tests/unit/live/test_ws_frames.py
+git commit -m "feat(live): KIS WS frame parser (H0STASP0/H0STCNT0/H0STMBC0)"
+```
+
+---
+
+### Task 2: `SnapshotKind.FILL` + `LiveSnapshot.from_fill`
+
+**Files:**
+- Modify: `hoga/live/snapshot.py` (enum은 21-26행, 빌더들 아래에 추가)
+- Test: `tests/unit/live/test_snapshot.py` (기존 파일에 추가)
+
+- [x] **Step 1: 실패하는 테스트 추가**
+
+```python
+def test_from_fill_payload_shape():
+    from hoga.live.snapshot import LiveSnapshot, SnapshotKind
+
+    s = LiveSnapshot.from_fill(t_ms=1_770_000_000_000, buy_qty=120, sell_qty=80, phase="regular")
+    assert s.kind is SnapshotKind.FILL
+    assert s.t_ms == 1_770_000_000_000
+    assert s.payload == {"buy_qty": 120, "sell_qty": 80, "phase": "regular"}
+    assert '"kind": "fill"' in s.to_jsonl()
+```
+
+- [x] **Step 2: 실패 확인**
+
+Run: `uv run pytest tests/unit/live/test_snapshot.py::test_from_fill_payload_shape -v`
+Expected: FAIL — `AttributeError: FILL`
+
+- [x] **Step 3: 구현** (snapshot.py)
+
+```python
+class SnapshotKind(str, Enum):
+    """The kinds of Live Snapshot. ob/broker/trade는 poller 시절부터,
+    fill은 WS 전환(그릴링 Q4)의 10초 체결강도 구간합."""
+
+    OB = "ob"
+    TRADE = "trade"   # 저장 경로에선 fill로 대체; 메모리(buffer) 전용으로 존속
+    BROKER = "broker"
+    FILL = "fill"
+```
+
+```python
+    @classmethod
+    def from_fill(
+        cls, *, t_ms: int, buy_qty: int, sell_qty: int, phase: str
+    ) -> "LiveSnapshot":
+        """10초 체결강도 구간합 — side==±1만 합산된 값을 받는다(분류는 다운샘플러 책임)."""
+        return cls(
+            t_ms=t_ms,
+            kind=SnapshotKind.FILL,
+            payload={"buy_qty": buy_qty, "sell_qty": sell_qty, "phase": phase},
+        )
+```
+
+- [x] **Step 4: 통과 확인 + 전체 스냅샷 테스트**
+
+Run: `uv run pytest tests/unit/live/test_snapshot.py -v`
+Expected: all passed (기존 빌더 byte-pin 테스트 포함)
+
+- [x] **Step 5: 커밋**
+
+```bash
+git add hoga/live/snapshot.py tests/unit/live/test_snapshot.py
+git commit -m "feat(live): SnapshotKind.FILL + from_fill builder"
+```
+
+---
+
+### Task 3: `TickDownsampler` — 10초 다운샘플러
+
+**핵심 규칙(spec §5.3·§10):** 상태형(ob/broker)=버킷 내 마지막 값, 없으면 직전값 carry(§9). 흐름형(fill)=`side==±1`만 합산, **`side==0`(Auction Cross·장전) 제외** — `trades.query_fill_strength`의 `WHERE side != 0`과 동일 분류(비가역적으로 구워지므로 여기서 검증).
+
+**Files:**
+- Create: `hoga/live/downsampler.py`
+- Test: `tests/unit/live/test_downsampler.py`
+
+- [x] **Step 1: 실패하는 테스트 작성**
+
+```python
+from hoga.live.downsampler import TickDownsampler
+from hoga.live.snapshot import SnapshotKind
+from hoga.live.ws_frames import WsTick
+
+
+def _ob(code, t_ms, tot_ask):
+    return WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.OB, payload={
+        "code": code, "t_ms": t_ms, "asks": [], "bids": [],
+        "total_ask_qty": tot_ask, "total_bid_qty": 0,
+    })
+
+
+def _tr(code, t_ms, qty, side):
+    return WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.TRADE, payload={
+        "trades": [{"t_ms": t_ms, "price": 100, "qty": qty, "side": side,
+                    "side_source": "kis_ws"}],
+    })
+
+
+def test_state_last_wins_and_flow_sums():
+    ds = TickDownsampler()
+    ds.ingest(_ob("005930", 1000, tot_ask=111))
+    ds.ingest(_ob("005930", 2000, tot_ask=222))      # 마지막 ob가 이김
+    ds.ingest(_tr("005930", 1500, qty=5, side=1))
+    ds.ingest(_tr("005930", 1600, qty=3, side=-1))
+    ds.ingest(_tr("005930", 1700, qty=4, side=1))
+    out = ds.flush(now_ms=10_000, phase="regular")
+    snaps = {s.kind: s for s in out["005930"]}
+    assert snaps[SnapshotKind.OB].payload["total_ask_qty"] == 222
+    assert snaps[SnapshotKind.FILL].payload == {
+        "buy_qty": 9, "sell_qty": 3, "phase": "regular",
+    }
+
+
+def test_side_zero_excluded_from_fill():
+    """§10 fills 분류 동등성 — side==0(단일가/장전)은 합산 금지."""
+    ds = TickDownsampler()
+    ds.ingest(_tr("005930", 1000, qty=100, side=0))
+    out = ds.flush(now_ms=10_000, phase="regular")
+    fill = next(s for s in out["005930"] if s.kind is SnapshotKind.FILL)
+    assert fill.payload["buy_qty"] == 0 and fill.payload["sell_qty"] == 0
+
+
+def test_state_carry_when_no_new_tick():
+    """§9: 빈 구간 상태형은 직전값 carry (t_ms는 flush 시각으로 갱신)."""
+    ds = TickDownsampler()
+    ds.ingest(_ob("005930", 1000, tot_ask=111))
+    ds.flush(now_ms=10_000, phase="regular")
+    out2 = ds.flush(now_ms=20_000, phase="regular")   # 새 tick 없음
+    ob = next(s for s in out2["005930"] if s.kind is SnapshotKind.OB)
+    assert ob.payload["total_ask_qty"] == 111
+    assert ob.t_ms == 20_000
+
+
+def test_flow_resets_each_window():
+    ds = TickDownsampler()
+    ds.ingest(_tr("005930", 1000, qty=5, side=1))
+    ds.flush(now_ms=10_000, phase="regular")
+    out2 = ds.flush(now_ms=20_000, phase="regular")
+    fill = next(s for s in out2["005930"] if s.kind is SnapshotKind.FILL)
+    assert fill.payload["buy_qty"] == 0                # 합은 리셋(강수량계)
+
+
+def test_evicted_code_stops_emitting():
+    """advisor C: Live Set에서 밀려난 종목의 carry가 유령 스냅샷을 쓰면 안 됨."""
+    ds = TickDownsampler()
+    ds.ingest(_ob("005930", 1000, tot_ask=111))
+    ds.set_active_codes({"000660"})                    # 005930 구독 해제됨
+    assert ds.flush(now_ms=10_000, phase="regular") == {}
+
+
+def _broker(code, t_ms, top_name):
+    return WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.BROKER, payload={
+        "code": code, "t_ms": t_ms,
+        "sell_top": [{"name": top_name, "qty": 10}], "buy_top": [],
+    })
+
+
+def test_broker_state_last_wins_and_carries():
+    """리뷰 follow-up: BROKER 분기도 last-wins + carry — OB 미러."""
+    ds = TickDownsampler()
+    ds.ingest(_broker("005930", 1000, "A증권"))
+    ds.ingest(_broker("005930", 2000, "B증권"))      # 마지막이 이김
+    out = ds.flush(now_ms=10_000, phase="regular")
+    br = next(s for s in out["005930"] if s.kind is SnapshotKind.BROKER)
+    assert br.payload["sell_top"][0]["name"] == "B증권"
+    out2 = ds.flush(now_ms=20_000, phase="regular")  # carry
+    br2 = next(s for s in out2["005930"] if s.kind is SnapshotKind.BROKER)
+    assert br2.payload["sell_top"][0]["name"] == "B증권"
+    assert br2.t_ms == 20_000
+
+
+def test_multi_code_sums_are_isolated():
+    """리뷰 follow-up: 같은 윈도의 두 종목 buy/sell 합이 섞이면 안 됨."""
+    ds = TickDownsampler()
+    ds.ingest(_tr("005930", 1000, qty=5, side=1))
+    ds.ingest(_tr("000660", 1100, qty=7, side=-1))
+    out = ds.flush(now_ms=10_000, phase="regular")
+    f1 = next(s for s in out["005930"] if s.kind is SnapshotKind.FILL)
+    f2 = next(s for s in out["000660"] if s.kind is SnapshotKind.FILL)
+    assert (f1.payload["buy_qty"], f1.payload["sell_qty"]) == (5, 0)
+    assert (f2.payload["buy_qty"], f2.payload["sell_qty"]) == (0, 7)
+```
+
+- [x] **Step 2: 실패 확인**
+
+Run: `uv run pytest tests/unit/live/test_downsampler.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'hoga.live.downsampler'`
+
+- [x] **Step 3: 구현** (`hoga/live/downsampler.py`)
+
+```python
+"""Live Tick → 10초 Live Snapshot 다운샘플러 (spec §5.3 · §8).
+
+상태형(ob/broker): 윈도 내 마지막 payload가 살아남고, 윈도가 비면 직전값을
+flush 시각 t_ms로 carry(§9). 흐름형(fill): side==±1 qty 합 — side==0
+(Auction Cross/장전)은 trades.query_fill_strength 의 ``WHERE side != 0``과
+동일하게 제외한다. 집계 시점에 분류가 비가역적으로 구워지므로(그릴링 advisor
+Finding 2) 이 모듈의 테스트가 분류 동등성의 단일 검증 지점이다.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from .snapshot import LiveSnapshot, SnapshotKind
+from .ws_frames import WsTick
+
+
+@dataclass
+class _CodeState:
+    last_ob: dict | None = None
+    last_broker: dict | None = None
+    buy_qty: int = 0
+    sell_qty: int = 0
+
+
+class TickDownsampler:
+    """모든 메서드는 sync(no await)여야 한다 — LiveStream의 윈도 경계 원자성
+    (materialize-then-reset)이 단일 이벤트 루프에서의 무중단 실행에 의존한다."""
+
+    def __init__(self) -> None:
+        self._codes: dict[str, _CodeState] = {}
+
+    def ingest(self, tick: WsTick) -> None:
+        st = self._codes.setdefault(tick.code, _CodeState())
+        if tick.kind is SnapshotKind.OB:
+            st.last_ob = tick.payload
+        elif tick.kind is SnapshotKind.BROKER:
+            st.last_broker = tick.payload
+        elif tick.kind is SnapshotKind.TRADE:
+            for tr in tick.payload.get("trades", ()):
+                side = tr.get("side", 0)
+                if side == 1:
+                    st.buy_qty += int(tr.get("qty", 0))
+                elif side == -1:
+                    st.sell_qty += int(tr.get("qty", 0))
+
+    def set_active_codes(self, codes: set[str]) -> None:
+        """Live Set 밖으로 밀려난 코드의 carry 상태 제거(advisor C) —
+        구독 해제된 종목이 유령 10초 스냅샷을 계속 쓰는 사고 방지.
+        carry(§9)는 '조용하지만 살아있는' 종목용이지 '떠난' 종목용이 아니다."""
+        for code in list(self._codes):
+            if code not in codes:
+                del self._codes[code]
+
+    def reset(self) -> None:
+        """일경계 초기화 — carry는 '같은 날 조용한 종목'용이지 익일용이 아니다
+        (리뷰 C1 벡터 2). 게이트가 닫히는 순간 호출해 last_ob/last_broker가 밤을
+        넘겨 다음 거래일 첫 flush를 어제 종가 호가창으로 오염시키는 것을 막는다."""
+        self._codes.clear()
+
+    def flush(self, *, now_ms: int, phase: str) -> dict[str, list[LiveSnapshot]]:
+        """윈도 마감 — 코드별 [ob?, broker?, fill] 반환. 흐름 합은 리셋,
+        상태(last_ob/last_broker)는 다음 윈도 carry를 위해 보존."""
+        out: dict[str, list[LiveSnapshot]] = {}
+        for code, st in self._codes.items():
+            snaps: list[LiveSnapshot] = []
+            if st.last_ob is not None:
+                payload = {**st.last_ob, "phase": phase}
+                snaps.append(LiveSnapshot(t_ms=now_ms, kind=SnapshotKind.OB, payload=payload))
+            if st.last_broker is not None:
+                payload = {**st.last_broker, "phase": phase}
+                snaps.append(LiveSnapshot(t_ms=now_ms, kind=SnapshotKind.BROKER, payload=payload))
+            snaps.append(LiveSnapshot.from_fill(
+                t_ms=now_ms, buy_qty=st.buy_qty, sell_qty=st.sell_qty, phase=phase,
+            ))
+            st.buy_qty = 0
+            st.sell_qty = 0
+            out[code] = snaps
+        return out
+```
+
+- [x] **Step 4: 통과 확인**
+
+Run: `uv run pytest tests/unit/live/test_downsampler.py -v`
+Expected: 8 passed
+
+- [x] **Step 5: 커밋**
+
+```bash
+git add hoga/live/downsampler.py tests/unit/live/test_downsampler.py
+git commit -m "feat(live): 10s tick downsampler (state last-wins, flow sum, side=0 excluded)"
+```
+
+---
+
+### Task 4: LiveBuffer 시간 기반 eviction
+
+**근거(spec §8 봉합 사이징 불변식):** ring 보존 기간 > 2× Today Promotion 주기(300s) → 기본 900s(15분). 개수 maxlen은 폭주 안전핀으로만 상향(60,000).
+
+**Files:**
+- Modify: `hoga/live/buffer.py` (23행 `MAX_BUFFER_ENTRIES`, 60-88행 `publish`)
+- Test: `tests/unit/live/test_buffer.py` (추가)
+
+- [x] **Step 1: 실패하는 테스트 추가**
+
+```python
+async def test_publish_evicts_by_time():
+    buf = LiveBuffer(retention_ms=900_000)
+    old = LiveSnapshot(t_ms=1_000, kind=SnapshotKind.OB, payload={"code": "005930"})
+    new = LiveSnapshot(t_ms=2_000_000, kind=SnapshotKind.OB, payload={"code": "005930"})
+    await buf.publish("005930", [old], now_ms=1_000)        # deterministic: cutoff=1_000-900_000 < 0
+    await buf.publish("005930", [new], now_ms=2_000_000)   # old(1초)는 컷오프 밖 → evicted
+    series = await buf.get_series("005930")
+    t_list = [e["t_ms"] for e in series["snapshots"]]
+    assert 1_000 not in t_list and 2_000_000 in t_list
+```
+
+- [x] **Step 2: 실패 확인**
+
+Run: `uv run pytest tests/unit/live/test_buffer.py::test_publish_evicts_by_time -v`
+Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'retention_ms'`
+
+- [x] **Step 3: 구현** — buffer.py 변경점
+
+```python
+# 상수 교체 (기존 MAX_BUFFER_ENTRIES = 2520):
+# Eng C5 → WS 전환: 개수 캡은 폭주 안전핀으로만. 실 보존은 시간 기반
+# (spec §8 봉합 사이징 불변식: 보존 > 2× HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S).
+MAX_BUFFER_ENTRIES = 60_000
+DEFAULT_RETENTION_MS = 900_000  # 15분
+
+
+# __init__ 변경:
+def __init__(self, *, retention_ms: int = DEFAULT_RETENTION_MS) -> None:
+    self._retention_ms = retention_ms
+    self._buf: dict[tuple[str, str], deque[dict]] = {}
+    ...  # 기존 lock/subscribers 초기화 그대로
+
+
+# publish 시그니처/본문 변경 (60-88행) — append 후 시간 eviction 추가:
+async def publish(
+    self, code: str, snapshots: Iterable[LiveSnapshot], *, now_ms: int | None = None
+) -> None:
+    if now_ms is None:
+        now_ms = int(time.time() * 1000)
+    cutoff = now_ms - self._retention_ms
+    entries: list[dict] = []
+    async with self._lock:
+        for s in snapshots:
+            key = (code, s.kind.value)
+            d = self._buf.get(key)
+            if d is None:
+                d = deque(maxlen=MAX_BUFFER_ENTRIES)
+                self._buf[key] = d
+            entry = {"t_ms": s.t_ms, "kind": s.kind.value, **s.payload}
+            d.append(entry)
+            entries.append(entry)
+            while d and d[0]["t_ms"] < cutoff:   # 시간 기반 eviction
+                d.popleft()
+    # (이하 subscriber 통지 블록은 기존 그대로)
+```
+
+`import time`을 파일 상단에 추가. `LiveBuffer()` 생성 지점(lifecycle.py의 `_buffer` 모듈 전역)은 기본값이라 무변경.
+
+- [x] **Step 4: 통과 + 기존 버퍼 테스트 회귀 확인**
+
+Run: `uv run pytest tests/unit/live/test_buffer.py -v`
+Expected: all passed
+
+- [x] **Step 5: 커밋**
+
+```bash
+git add hoga/live/buffer.py tests/unit/live/test_buffer.py
+git commit -m "feat(live): time-based LiveBuffer eviction (stitch sizing invariant)"
+```
+
+---
+
+### Task 5: `KisClient.get_approval_key()`
+
+**Files:**
+- Modify: `hoga/live/kis_client.py` (242-270행 생성자 아래 메서드 추가)
+- Test: `tests/unit/live/test_kis_client.py` (추가)
+
+- [x] **Step 1: 실패하는 테스트 추가** (기존 MockTransport 패턴 재사용)
+
+```python
+async def test_get_approval_key(tmp_path):
+    import httpx
+    from hoga.live.kis_client import KisClient, KisCredentials
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/oauth2/Approval"
+        body = json.loads(request.content)
+        assert body == {"grant_type": "client_credentials",
+                        "appkey": "AK", "secretkey": "AS"}  # 필드명 secretkey!
+        return httpx.Response(200, json={"approval_key": "APPROVAL-123"})
+
+    kis = KisClient(
+        KisCredentials(app_key="AK", app_secret="AS"),
+        tmp_path / "token.json",
+        _transport=httpx.MockTransport(handler),
+    )
+    assert await kis.get_approval_key() == "APPROVAL-123"
+
+
+async def test_get_approval_key_missing_key_raises_with_body(tmp_path):
+    """200인데 approval_key가 없는 KIS 에러 envelope — Task 6 재연결 루프의
+    `err=%r` 로그가 운영 진단의 전부이므로 에러 메시지에 응답 본문이 실려야 한다."""
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(200, json={"error_description": "bad appkey"})
+    )
+    kis = KisClient(
+        KisCredentials(app_key="AK", app_secret="AS"),
+        tmp_path / "token.json",
+        _transport=transport,
+    )
+    with pytest.raises(KisAuthError) as exc_info:
+        await kis.get_approval_key()
+    assert "bad appkey" in str(exc_info.value)
+
+
+async def test_get_approval_key_non_200_raises_with_status(tmp_path):
+    """비-200 → httpx.HTTPStatusError traceback이 아니라 HTTP 상태를 담은
+    KisAuthError (_issue_token과 동일 패턴)."""
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(403, json={"error_description": "forbidden"})
+    )
+    kis = KisClient(
+        KisCredentials(app_key="AK", app_secret="AS"),
+        tmp_path / "token.json",
+        _transport=transport,
+    )
+    with pytest.raises(KisAuthError) as exc_info:
+        await kis.get_approval_key()
+    assert "HTTP 403" in str(exc_info.value)
+```
+
+- [x] **Step 2: 실패 확인**
+
+Run: `uv run pytest tests/unit/live/test_kis_client.py::test_get_approval_key -v`
+Expected: FAIL — `AttributeError: 'KisClient' object has no attribute 'get_approval_key'`
+
+- [x] **Step 3: 구현** (kis_client.py — `get_access_token` 아래)
+
+```python
+    async def get_approval_key(self) -> str:
+        """WS 접속키 발급 (POST /oauth2/Approval). ADR-0050 단일 ingress —
+        WS 클라이언트도 KIS HTTP는 이 클라이언트를 경유한다.
+
+        연결할 때마다 1회 발급(공식 샘플과 동일). 데이터 호출이 아니므로
+        15/s 토큰버킷은 통과하지 않는다(토큰 발급과 같은 취급).
+        주의: KIS가 이 엔드포인트만 필드명을 ``secretkey``로 받는다.
+        """
+        resp = await self._client.post(
+            "/oauth2/Approval",
+            json={
+                "grant_type": "client_credentials",
+                "appkey": self._creds.app_key,
+                "secretkey": self._creds.app_secret,
+            },
+        )
+        if resp.status_code != 200:  # noqa: PLR2004 — HTTP OK, same shape as _issue_token
+            raise KisAuthError(
+                f"/oauth2/Approval HTTP {resp.status_code}: {resp.text[:200]}"
+            )
+        key = resp.json().get("approval_key")
+        if not key:
+            raise KisAuthError(
+                f"approval_key missing in /oauth2/Approval response: {resp.text[:200]}"
+            )
+        return str(key)
+```
+
+(비-200은 `_issue_token`과 동일하게 명시 검사로 KisAuthError 정규화 — Task 6 재연결
+루프의 `err=%r` 로그가 운영 진단의 전부이므로 상태코드/본문을 메시지에 싣는다.
+`headers={"content-type": ...}`는 httpx가 `json=`으로 자동 설정하므로 생략.)
+
+- [x] **Step 4: 통과 확인**
+
+Run: `uv run pytest tests/unit/live/test_kis_client.py -v`
+Expected: all passed
+
+- [x] **Step 5: 커밋**
+
+```bash
+git add hoga/live/kis_client.py tests/unit/live/test_kis_client.py
+git commit -m "feat(live): KisClient.get_approval_key for WS handshake"
+```
+
+---
+
+### Task 6: `KisWsClient` — 연결·구독·PINGPONG·재연결
+
+**Files:**
+- Create: `hoga/live/ws_client.py`
+- Test: `tests/unit/live/test_ws_client.py`
+- Modify: `pyproject.toml` (의존성)
+
+- [x] **Step 1: 의존성 추가**
+
+Run: `uv add websockets`
+Expected: pyproject.toml `[project] dependencies`에 `websockets>=...` 추가됨. (`uv run python -c "import websockets"` 통과.)
+
+- [x] **Step 2: 실패하는 테스트 작성** — 가짜 ws 주입(덕 타이핑)
+
+```python
+import asyncio
+import json
+
+import pytest
+
+import hoga.live.ws_client as ws_client_mod
+from hoga.live.ws_client import KisWsClient, build_request
+
+
+def test_build_request_shape():
+    msg = json.loads(build_request("APPR", "1", "H0STASP0", "005930"))
+    assert msg == {
+        "header": {"approval_key": "APPR", "custtype": "P",
+                   "tr_type": "1", "content-type": "utf-8"},
+        "body": {"input": {"tr_id": "H0STASP0", "tr_key": "005930"}},
+    }
+
+
+async def _fake_approval() -> str:
+    return "APPR"
+
+
+class FakeWs:
+    """recv 스크립트 재생 + send 기록. 스크립트 소진 시 ConnectionClosed 흉내."""
+
+    def __init__(self, script: list[str]):
+        self._script = list(script)
+        self.sent: list[str] = []
+
+    async def recv(self) -> str:
+        if not self._script:
+            raise ConnectionError("closed")
+        await asyncio.sleep(0)
+        return self._script.pop(0)
+
+    async def send(self, data: str) -> None:
+        self.sent.append(data)
+
+
+async def test_recv_loop_dispatches_ticks_and_echoes_pingpong():
+    asp = "0|H0STASP0|001|" + "^".join(
+        ["005930", "093015", "0"] + ["1"] * 56
+    )
+    ping = '{"header":{"tr_id":"PINGPONG","datetime":"x"}}'
+    fake = FakeWs([ping, asp])
+    got: list = []
+
+    async def on_tick(tick):
+        got.append(tick)
+
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=on_tick, date_fn=lambda: "20260605"
+    )
+    with pytest.raises(ConnectionError):
+        await client._recv_loop(fake)          # 스크립트 소진 → closed
+    assert any("PINGPONG" in s for s in fake.sent)  # echo
+    assert len(got) == 1 and got[0].code == "005930"
+
+
+async def test_subscribe_sends_three_trs_per_code():
+    fake = FakeWs([])
+    client = KisWsClient(approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605")
+    await client._send_subscriptions(fake, "APPR", ["005930", "000660"], tr_type="1")
+    assert len(fake.sent) == 6                  # 2종목 × 3TR
+    trs = {json.loads(s)["body"]["input"]["tr_id"] for s in fake.sent}
+    assert trs == {"H0STASP0", "H0STCNT0", "H0STMBC0"}
+
+
+class _FakeConnectCM:
+    """websockets.connect 대체 — __aenter__가 FakeWs를 반환하는 async CM."""
+
+    def __init__(self, ws: FakeWs):
+        self._ws = ws
+
+    async def __aenter__(self) -> FakeWs:
+        return self._ws
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+
+async def test_run_reconnects_and_resubscribes_after_failure(monkeypatch):
+    # 2회차 connect만 성공(FakeWs) — 1회차/3회차+는 예외 → fake.sent는 정확히
+    # 6에서 안정되어 cancel 시점과 무관하게 단언이 결정적이다(spec §10).
+    fake = FakeWs([])  # recv 즉시 ConnectionError → 두 번째 연결도 곧 종료
+    calls = {"n": 0}
+
+    def fake_connect(url, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            return _FakeConnectCM(fake)
+        raise ConnectionError("refused")
+
+    monkeypatch.setattr(ws_client_mod.websockets, "connect", fake_connect)
+    monkeypatch.setattr(ws_client_mod, "_BACKOFF_S", (0,))
+
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    task = asyncio.create_task(client.run(["005930", "000660"]))
+    for _ in range(100):
+        if len(fake.sent) >= 6:
+            break
+        await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert calls["n"] >= 2  # 1회차 실패 후 백오프 → 재연결
+    # 재연결 성공 시 전 종목 × 3TR 재구독 (tr_type="1")
+    sent = {
+        (json.loads(s)["body"]["input"]["tr_id"], json.loads(s)["body"]["input"]["tr_key"])
+        for s in fake.sent
+    }
+    assert sent == {
+        (tr, code)
+        for tr in ("H0STASP0", "H0STCNT0", "H0STMBC0")
+        for code in ("005930", "000660")
+    }
+    assert all(json.loads(s)["header"]["tr_type"] == "1" for s in fake.sent)
+
+
+async def test_run_does_not_connect_while_gate_closed(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_connect(url, **kwargs):
+        calls["n"] += 1
+        raise AssertionError("must not connect while gate closed")
+
+    monkeypatch.setattr(ws_client_mod.websockets, "connect", fake_connect)
+    client = KisWsClient(
+        approval_key_fn=_fake_approval,
+        on_tick=None,
+        date_fn=lambda: "20260605",
+        gate_fn=lambda: False,
+    )
+    task = asyncio.create_task(client.run(["005930"]))
+    await asyncio.sleep(0.01)
+    assert calls["n"] == 0
+    assert client.connected is False
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+```
+
+- [x] **Step 3: 실패 확인**
+
+Run: `uv run pytest tests/unit/live/test_ws_client.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'hoga.live.ws_client'`
+
+- [x] **Step 4: 구현** (`hoga/live/ws_client.py`)
+
+```python
+"""KIS WebSocket 클라이언트 — 연결·구독·PINGPONG·백오프 재연결 (spec §7).
+
+순수 파싱은 ws_frames에 위임. 이 모듈은 소켓 수명만 책임진다.
+재연결: (1,2,4,8,16,32,60)s 백오프 + 성공 시 전 종목 재구독.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import time
+from collections.abc import Awaitable, Callable
+
+import websockets
+
+from . import ws_fields as F
+from .kis_client import KisAuthError
+from .ws_frames import WsTick, parse_message
+
+_log = logging.getLogger(__name__)
+
+WS_URL_REAL = "ws://ops.koreainvestment.com:21000"
+_TRS = (F.TR_ORDERBOOK, F.TR_TRADE, F.TR_MEMBER)
+_BACKOFF_S = (1, 2, 4, 8, 16, 32, 60)
+
+
+def build_request(approval_key: str, tr_type: str, tr_id: str, tr_key: str) -> str:
+    return json.dumps({
+        "header": {"approval_key": approval_key, "custtype": "P",
+                   "tr_type": tr_type, "content-type": "utf-8"},
+        "body": {"input": {"tr_id": tr_id, "tr_key": tr_key}},
+    })
+
+
+class KisWsClient:
+    def __init__(
+        self,
+        *,
+        approval_key_fn: Callable[[], Awaitable[str]],
+        on_tick: Callable[[WsTick], Awaitable[None]] | None,
+        date_fn: Callable[[], str],
+        url: str = WS_URL_REAL,
+        gate_fn: Callable[[], bool] | None = None,
+    ) -> None:
+        self._approval_key_fn = approval_key_fn
+        self._on_tick = on_tick
+        self._date_fn = date_fn
+        self._url = url
+        self._gate_fn = gate_fn   # advisor B: 게이트 밖에선 (재)연결 시도 안 함
+        self._codes: list[str] = []
+        self._ws: object | None = None
+        self._approval: str | None = None  # 연결 시 발급분 캐시 — update_codes가 재사용
+        self._sub_lock = asyncio.Lock()    # 구독 전송 직렬화 — wire ≠ _codes 발산 방지
+        self.last_tick_ms: int | None = None   # stream watchdog이 읽음
+        self.connected: bool = False
+
+    async def run(self, codes: list[str]) -> None:
+        """끊겨도 살아남는 메인 루프 — 호출자(stream)가 task로 돌리고 cancel로 끝낸다."""
+        self._codes = list(codes)
+        attempt = 0
+        while True:
+            # 게이트는 "새 연결 수립"만 막는다 — 이미 살아있는 연결은 게이트가
+            # 닫혀도 서버 drop까지 의도적으로 유지(쓰기는 flush 게이트가 차단).
+            if self._gate_fn is not None and not self._gate_fn():
+                self.connected = False
+                await asyncio.sleep(30)   # 장외/15:30 이후 — 연결 시도 보류
+                continue
+            try:
+                approval = await self._approval_key_fn()
+                async with websockets.connect(self._url, ping_interval=None) as ws:
+                    async with self._sub_lock:
+                        # lock 안에서 ws 공개 + _codes 스냅샷 — update_codes와
+                        # 직렬화되어 초기 구독과 diff 전송이 interleave하지 않는다.
+                        self._ws = ws
+                        self._approval = approval
+                        self.connected = True
+                        attempt = 0
+                        codes_now = list(self._codes)
+                        await self._send_subscriptions(
+                            ws, approval, codes_now, tr_type="1"
+                        )
+                    _log.info("live.ws.connected codes=%d regs=%d",
+                              len(codes_now), len(codes_now) * len(_TRS))
+                    await self._recv_loop(ws)
+            except asyncio.CancelledError:
+                self.connected = False
+                raise
+            except Exception as e:  # noqa: BLE001 — 연결 오류는 전부 재시도 대상
+                self.connected = False
+                self._ws = None
+                self._approval = None
+                delay = _BACKOFF_S[min(attempt, len(_BACKOFF_S) - 1)]
+                attempt += 1
+                # 인증 오류는 영구성(키 폐기 등) 가능성 — error로 승격해 가시화.
+                log = _log.error if isinstance(e, KisAuthError) else _log.warning
+                log("live.ws.reconnect attempt=%d delay=%ds err=%r", attempt, delay, e)
+                await asyncio.sleep(delay)
+
+    async def update_codes(self, codes: list[str]) -> None:
+        """Live Set 변경(watchlist reorder) — diff만 구독/해제."""
+        async with self._sub_lock:
+            new, old = set(codes), set(self._codes)
+            added = [c for c in codes if c not in old]
+            removed = [c for c in old if c not in new]
+            self._codes = list(codes)
+            if not added and not removed:
+                return
+            ws, approval = self._ws, self._approval
+            if ws is None or approval is None:
+                return  # 다음 (재)연결 때 전체 구독
+            if removed:
+                await self._send_subscriptions(ws, approval, removed, tr_type="2")
+            if added:
+                await self._send_subscriptions(ws, approval, added, tr_type="1")
+
+    async def _send_subscriptions(
+        self, ws, approval_key: str, codes: list[str], *, tr_type: str
+    ) -> None:
+        for code in codes:
+            for tr in _TRS:
+                await ws.send(build_request(approval_key, tr_type, tr, code))
+
+    async def _recv_loop(self, ws) -> None:
+        while True:
+            raw = await ws.recv()
+            if raw and raw[0] in ("0", "1"):
+                now_ms = int(time.time() * 1000)
+                # 메시지마다 조회 — 자정을 넘긴 연결에서 어제 날짜 스탬프 방지.
+                date = self._date_fn()
+                for tick in parse_message(raw, date=date, now_ms=now_ms):
+                    self.last_tick_ms = now_ms
+                    if self._on_tick is not None:
+                        await self._on_tick(tick)
+            else:
+                try:
+                    msg = json.loads(raw)
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                tr_id = msg.get("header", {}).get("tr_id")
+                if tr_id == "PINGPONG":
+                    await ws.send(raw)  # 공식 규약: 받은 메시지 그대로 echo
+                else:
+                    _log.info("live.ws.control tr_id=%s msg=%s",
+                              tr_id, str(msg.get("body", {}))[:200])
+```
+
+- [x] **Step 5: 통과 확인 + 커밋**
+
+Run: `uv run pytest tests/unit/live/test_ws_client.py -v`
+Expected: 5 passed
+
+```bash
+git add pyproject.toml uv.lock hoga/live/ws_client.py tests/unit/live/test_ws_client.py
+git commit -m "feat(live): KIS WS client (subscribe/PINGPONG/backoff-reconnect)"
+```
+
+---
+
+### Task 7: `session_gate.py` 분리 + `LiveStream` 오케스트레이터
+
+**Files:**
+- Create: `hoga/live/session_gate.py` (poller.py에서 `_market_phase`·`_should_poll_now` **이동** — poller는 import로 위임해 기존 테스트 그대로 통과)
+- Create: `hoga/live/stream.py`
+- Test: `tests/unit/live/test_stream.py`
+
+- [x] **Step 1: session_gate 이동(리팩터)**
+
+`hoga/live/session_gate.py` 신설 — poller.py의 `_market_phase`(34-50행)와 `_should_poll_now` 본문을 **그대로 옮기고** 공개 이름 부여:
+
+```python
+"""KRX 세션 게이트 — poller에서 이주(은퇴 대비, 그릴링 Q2).
+market_phase: 시계 기반 위상. should_run_now: 캘린더 게이트 포함(ADR-0064)."""
+# (poller.py의 _market_phase / _should_poll_now 본문을 그대로 복사 —
+#  이름만 market_phase / should_run_now 로 공개)
+
+
+def ws_capture_window(now_ms: int) -> bool:
+    """WS 수집 게이트(advisor B 결정 2026-06-05): 거래일 && 정규장(09:00–15:30)만.
+
+    poller 시절의 장후 시간외(15:30–16:00, overtime TR) 캡처는 **의도적 회귀** —
+    가격 고정 구간이라 정보가치 낮고 hogaplay 일배치가 post-hoc per-tick 보완
+    (spec §11). 정규 TR만 구독하므로 15:30 이후엔 틱이 없어, 게이트를 열어두면
+    다운샘플러 carry가 유령 스냅샷만 쓴다 — 그래서 15:30에 닫는다.
+    """
+    return should_run_now(now_ms) and market_phase(now_ms) == "regular"
+```
+
+poller.py에는 하위호환 alias를 남긴다:
+
+```python
+from .session_gate import market_phase as _market_phase
+from .session_gate import should_run_now as _should_poll_now
+```
+
+Run: `uv run pytest tests/unit/live/test_poller.py -v` → all passed (이동 무손상 확인)
+
+```bash
+git add hoga/live/session_gate.py hoga/live/poller.py
+git commit -m "refactor(live): extract session gate from poller (pre-retirement)"
+```
+
+- [x] **Step 2: 실패하는 LiveStream 테스트 작성**
+
+```python
+"""Unit tests for LiveStream orchestrator."""
+import asyncio
+import contextlib
+import time
+
+import hoga.live.stream as stream_mod
+from hoga.live.buffer import LiveBuffer
+from hoga.live.snapshot import SnapshotKind
+from hoga.live.stream import LiveStream
+from hoga.live.writer import LiveWriter
+from hoga.live.ws_frames import WsTick
+
+
+def _trade_tick(t_ms, qty, side):
+    return WsTick(code="005930", t_ms=t_ms, kind=SnapshotKind.TRADE, payload={
+        "trades": [{"t_ms": t_ms, "price": 100, "qty": qty, "side": side,
+                    "side_source": "kis_ws"}],
+    })
+
+
+async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path):
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    # 저장 경로 게이트는 flush 루프가 유지하는 플래그(리뷰 R2) — 루프 없이
+    # on_tick만 단위 테스트하므로 플래그를 직접 연다.
+    stream._gate_open = True
+
+    now = int(time.time() * 1000)   # 벽시계 — buffer eviction 컷오프 안쪽
+    await stream.on_tick(_trade_tick(now, qty=5, side=1))
+    series = await buf.get_series("005930")          # per-tick: 즉시 buffer에
+    assert len(series["trades"]) == 1
+
+    await stream.flush_once(now_ms=now + 10_000)     # 10초 경계 flush
+    jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    assert '"kind": "fill"' in jsonl
+    assert '"buy_qty": 5' in jsonl
+    assert '"kind": "trade"' not in jsonl            # 체결 raw는 JSONL에 안 감(Q4)
+
+
+async def test_on_tick_ingest_gated_off_skips_storage_but_still_displays(tmp_path):
+    """게이트 False면 표시(buffer)는 들어가고 저장(다운샘플러)은 비어야 한다
+    (리뷰 C1 벡터 1 — 15:30 이후 잔여 틱의 저장 누적 차단)."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    assert stream._gate_open is False   # 기본값: 루프 첫 판정 전엔 ingest 안 함(R2)
+
+    now = int(time.time() * 1000)
+    await stream.on_tick(_trade_tick(now, qty=5, side=1))
+    series = await buf.get_series("005930")          # 표시는 무게이트 — 들어간다
+    assert len(series["trades"]) == 1
+
+    await stream.flush_once(now_ms=now + 10_000)     # 다운샘플러 비어 있음
+    jsonl_path = tmp_path / "live" / "20260605" / "005930.jsonl"
+    assert not jsonl_path.exists()                   # 저장 경로엔 아무것도 안 감
+
+
+def _ob_tick(t_ms, tot_ask):
+    return WsTick(code="005930", t_ms=t_ms, kind=SnapshotKind.OB, payload={
+        "code": "005930", "t_ms": t_ms, "asks": [], "bids": [],
+        "total_ask_qty": tot_ask, "total_bid_qty": 0,
+    })
+
+
+async def test_run_flush_loop_drains_resets_and_reopen_has_no_ghost_carry(
+    tmp_path, monkeypatch,
+):
+    """게이트 닫힘 전환 시 drain flush가 마감 당일 날짜로 합·carry를 1회 기록하고,
+    직후 reset로 상태가 소멸해 **재개장(reopen) 후 flush들이 stale carry(OB)를
+    다시 쓰지 않음**을 확인(리뷰 C1·I1·R3). OB는 상태형이라 flush가 비우지 않는
+    carry — reset 배선이 빠지면 reopen flush마다 어제 호가창이 유령 기록된다."""
+    monkeypatch.setattr(stream_mod, "FLUSH_INTERVAL_S", 0.05)
+    monkeypatch.setattr(stream_mod, "IDLE_INTERVAL_S", 0.02)
+
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+
+    now = int(time.time() * 1000)
+
+    # 게이트 스텁(루프 1iteration당 1콜): ①open(빈 flush) → ②ingest(OB+체결) 후
+    # closed 전환(drain: ob 1줄 + fill 1줄 기록 → reset) → ③~⑥closed 유지 →
+    # ⑦+ reopen — reset가 배선돼 있으면 빈 _ds라 아무것도 안 쓴다.
+    # 시간 의존을 스텁 안에 가둬 '무엇이 쓰이는가'를 결정적으로 만든다.
+    calls = {"n": 0}
+
+    def gate(now_ms):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return True
+        if calls["n"] == 2:
+            stream._ds.ingest(_ob_tick(now, tot_ask=111))   # 상태형 carry
+            stream._ds.ingest(_trade_tick(now, qty=5, side=1))  # 흐름 합
+            return False
+        return calls["n"] > 6                                # ⑦+ reopen
+
+    monkeypatch.setattr(stream_mod, "ws_capture_window", gate)
+
+    jsonl_path = tmp_path / "live" / "20260605" / "005930.jsonl"
+    task = asyncio.create_task(stream.run_flush_loop())
+    try:
+        # drain 기록까지 폴링.
+        for _ in range(60):
+            await asyncio.sleep(0.02)
+            if jsonl_path.exists() and '"buy_qty": 5' in jsonl_path.read_text():
+                break
+        text = jsonl_path.read_text()
+        assert text.count('"kind": "fill"') == 1   # drain의 합 1회
+        assert text.count('"kind": "ob"') == 1     # drain의 carry 1회(정당)
+        # reopen 후 flush가 여러 번 돌 때까지 대기 — reset가 빠졌다면 여기서
+        # ob carry가 flush마다 다시 기록돼 count가 증가한다.
+        for _ in range(100):
+            await asyncio.sleep(0.02)
+            if calls["n"] >= 12:
+                break
+        final = jsonl_path.read_text()
+        assert final.count('"kind": "ob"') == 1    # 유령 carry 없음(R3 pin)
+        assert final.count('"kind": "fill"') == 1  # 유령 합도 없음
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+async def test_flush_date_change_resets_stale_state(tmp_path):
+    """R1 백스톱 pin — suspend/시계 점프(미관측 일경계) 시 어제 carry가 오늘
+    날짜 JSONL로 새는 것을 flush_once의 date-latch가 차단한다. 이 백스톱은
+    해당 경로의 유일한 가드라 mutation-survivable이면 안 된다."""
+    date = {"v": "20260605"}
+    stream = LiveStream(buffer=LiveBuffer(), writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: date["v"], phase_fn=lambda: "regular")
+    stream._gate_open = True
+    now = int(time.time() * 1000)
+    await stream.on_tick(_ob_tick(now, tot_ask=111))     # 상태형 carry 스테이징
+    await stream.flush_once(now_ms=now)                  # D일: ob 기록 + carry 보존
+    assert (tmp_path / "live" / "20260605" / "005930.jsonl").exists()
+    date["v"] = "20260606"                               # 미관측 일경계 시뮬레이션
+    await stream.flush_once(now_ms=now + 1_000)          # 백스톱: 기록 전 reset
+    assert not (tmp_path / "live" / "20260606" / "005930.jsonl").exists()
+```
+
+- [x] **Step 3: 실패 확인**
+
+Run: `uv run pytest tests/unit/live/test_stream.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'hoga.live.stream'`
+
+- [x] **Step 4: 구현** (`hoga/live/stream.py`)
+
+```python
+"""LiveStream — WS 수집 오케스트레이터 (spec §6·§7).
+
+per-tick: LiveBuffer.publish (표시, sub-second / ADR-0053 다운스트림 무변경)
+10초:    TickDownsampler.flush → LiveWriter.append (저장; ADR-0038 hot-path
+         invariant — JSONL만 쓴다)
+게이팅:  session_gate.ws_capture_window(09:00–15:30, advisor B) — 밖에선
+         flush 안 함 + WS (재)연결 보류. 장후 시간외는 의도적 회귀(spec §11).
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from collections.abc import Callable
+
+from .buffer import LiveBuffer
+from .downsampler import TickDownsampler
+from .session_gate import market_phase, ws_capture_window
+from .snapshot import LiveSnapshot
+from .writer import LiveWriter
+from .ws_client import KisWsClient
+from .ws_frames import WsTick
+
+_log = logging.getLogger(__name__)
+
+FLUSH_INTERVAL_S = 10.0
+IDLE_INTERVAL_S = 1.0  # 게이트 밖 폴링 주기 — 테스트에서 monkeypatch(리뷰 R3)
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+class LiveStream:
+    def __init__(
+        self,
+        *,
+        buffer: LiveBuffer,
+        writer: LiveWriter,
+        date_fn: Callable[[], str],
+        phase_fn: Callable[[], str] | None = None,
+    ) -> None:
+        self._buffer = buffer
+        self._writer = writer
+        self._date_fn = date_fn
+        self._phase_fn = phase_fn or (lambda: market_phase(_now_ms()))
+        self._ds = TickDownsampler()
+        self.ws: KisWsClient | None = None       # lifecycle이 주입
+        self.last_flush_ms: int | None = None
+        self._last_flush_date: str | None = None  # R1: 미관측 일경계 백스톱
+        # R2: 게이트 판정은 flush 루프가 1Hz로 유지 — on_tick은 이 플래그만 읽는다
+        # (per-tick 달력 평가는 fetch 실패 모드에서 틱당 동기 네트워크 콜이 됨).
+        self._gate_open: bool = False
+
+    def set_active_codes(self, codes: set[str]) -> None:
+        """Live Set 변경 위임 — refresh_live_stream이 호출(advisor C)."""
+        self._ds.set_active_codes(codes)
+
+    async def on_tick(self, tick: WsTick) -> None:
+        """ws_client 콜백 — 표시 경로(즉시·무게이트) + 저장 경로(누적·게이트)."""
+        # phase 이중 스탬프(M1): 여기 phase는 **표시 스냅샷 전용** — 수신 벽시계
+        # 기준 위상을 buffer 스냅에 박는다(tick.t_ms 거래소 시각이 아니라 도착
+        # 시점). 저장 경로의 위상은 별개로 flush 시점에 _ds.flush(phase=...)가
+        # 박는다(M2 참고) — ingest는 raw tick만 받으므로 이 phase를 안 본다.
+        phase = self._phase_fn()
+        snap = LiveSnapshot(t_ms=tick.t_ms, kind=tick.kind,
+                            payload={**tick.payload, "phase": phase})
+        # 표시 경로는 §11에 따라 무게이트 — 항상 publish.
+        await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
+        # 저장 경로만 게이트 — 15:30 이후 잔여 틱이 다운샘플러에 누적돼 밤을
+        # 넘기는 것을 차단(리뷰 C1 벡터 1). 판정은 flush 루프가 유지하는
+        # 플래그(리뷰 R2 — per-tick 달력 평가 금지); 닫힘 직후 ≤10s의 잔여
+        # ingest는 전환 drain이 마감 당일로 귀속한다.
+        if self._gate_open:
+            self._ds.ingest(tick)
+
+    async def flush_once(self, *, now_ms: int | None = None) -> None:
+        now_ms = now_ms if now_ms is not None else _now_ms()
+        # date/phase는 flush 호출 시점의 샘플 — 윈도 내 틱들이 아니라 마감 순간의
+        # 날짜·위상으로 귀속된다(M2). 게이트 닫힘 전환 drain은 15:30:0x 수 초 내라
+        # date_fn이 아직 당일이어서 마지막 부분 윈도가 올바른 날짜로 기록된다.
+        date = self._date_fn()
+        if self._last_flush_date is not None and date != self._last_flush_date:
+            # 미관측 일경계(suspend/시계 점프 — 리뷰 R1): 어제 잔여 상태가
+            # 오늘 날짜로 기록되는 것을 차단. KRX 세션은 자정을 넘지 않으므로
+            # 날짜 변화 시 reset은 항상 안전하다(정상 경로에선 drain이 이미 비움).
+            self._ds.reset()
+            _log.warning("live.stream.stale_state_reset prev=%s now=%s",
+                         self._last_flush_date, date)
+        self._last_flush_date = date
+        flushed = self._ds.flush(now_ms=now_ms, phase=self._phase_fn())
+        for code, snaps in flushed.items():
+            await self._writer.append(date, code, snaps)
+        await self._writer.fsync_all()
+        self.last_flush_ms = now_ms
+
+    async def run_flush_loop(self) -> None:
+        """10초 flush 루프 — lifecycle이 task로 돌린다. 게이트 밖(장외·15:30 이후)엔
+        1초 idle — advisor B: 15:30 이후 쓰기를 막아 유령 carry를 차단한다.
+
+        게이트가 닫히는 전환 순간 drain flush 1회(마지막 부분 윈도를 **마감 당일**
+        날짜로 기록) 후 다운샘플러를 reset — 흐름 합·carry가 밤을 넘겨 다음
+        거래일 JSONL을 오염시키지 않게 한다(리뷰 C1)."""
+        was_open = False
+        while True:
+            open_now = ws_capture_window(_now_ms())
+            self._gate_open = open_now  # R2: on_tick의 ingest 게이트 플래그 갱신
+            if open_now:
+                started = time.monotonic()
+                try:
+                    await self.flush_once()
+                except Exception:  # noqa: BLE001
+                    _log.exception("live.stream.flush_failed")
+                elapsed = time.monotonic() - started
+                await asyncio.sleep(max(0.0, FLUSH_INTERVAL_S - elapsed))
+            else:
+                if was_open:  # open→closed 전환: drain + 상태 초기화
+                    try:
+                        await self.flush_once()
+                    except Exception:  # noqa: BLE001
+                        _log.exception("live.stream.drain_flush_failed")
+                    self._ds.reset()
+                    _log.info("live.stream.gate_closed_drained")
+                await asyncio.sleep(IDLE_INTERVAL_S)
+            was_open = open_now
+```
+
+**Drain 설계 (리뷰 C1).** 일경계 오염은 세 갈래다 — (1) 15:29:5x 마지막 flush
+후 닫힘까지 ingest된 **좌초된 흐름 합**이 미flush로 밤을 넘겨 익일 첫 flush에
+다음날 date_fn으로 기록, (2) `_ds`의 last_ob/last_broker **carry가 월경**해 익일
+아침 어제 종가 호가창을 오늘 스냅샷으로 기록, (3) 연결이 살아있는 15:30~16:00에
+on_tick이 무게이트로 ingest를 계속해 합이 더 자람. 닫는 수단도 셋: on_tick의
+**ingest 게이팅**(벡터 3·1의 추가 누적 차단), run_flush_loop의 open→closed
+**drain flush**(벡터 1의 좌초 합을 마감 당일 날짜로 비움), 직후 **reset**(벡터 2의
+carry 소멸). 표시 경로(buffer.publish)는 §11대로 무게이트 유지 — 게이트는 저장만.
+
+- [x] **Step 5: 통과 확인 + 커밋**
+
+Run: `uv run pytest tests/unit/live/test_stream.py -v`
+Expected: 3 passed
+
+```bash
+git add hoga/live/stream.py tests/unit/live/test_stream.py
+git commit -m "feat(live): LiveStream orchestrator (per-tick publish + 10s JSONL flush)"
+```
+
+---
+
+### Task 8: `hoga/tables/fills.py` — Fill entity·writer·재집계 쿼리
+
+**Files:**
+- Create: `hoga/tables/fills.py` (`hoga/tables/trades.py`의 스키마/writer/query 패턴을 그대로 미러)
+- Test: `tests/unit/tables/test_fills.py`
+
+- [x] **Step 1: 실패하는 테스트 작성**
+
+```python
+from pathlib import Path
+
+import duckdb
+
+from hoga.tables.fills import Fill, query_fill_strength, write_fills_parquet
+
+
+def test_roundtrip_and_bucket_reaggregation(tmp_path: Path):
+    # 10초 구간합 3장: 09:00:00 / 09:00:10 / 09:01:00 (HHMMSSmmm 인코딩)
+    rows = [
+        Fill(ts_ms=90000000, seq=1, buy_qty=10, sell_qty=2),
+        Fill(ts_ms=90010000, seq=2, buy_qty=5, sell_qty=3),
+        Fill(ts_ms=90100000, seq=3, buy_qty=7, sell_qty=1),
+    ]
+    path = tmp_path / "fills.parquet"
+    write_fills_parquet(rows, path)
+
+    con = duckdb.connect()
+    out = query_fill_strength(con, path=path, bucket_ms=60_000)
+    # 09:00 버킷 = 두 장의 합(합의 합), 09:01 버킷 = 한 장
+    assert [(r.bucket_intra_ms, r.buy_qty, r.sell_qty) for r in out] == [
+        (32_400_000 // 1, 15, 5),   # 09:00 = 9h*3600*1000 ms-from-midnight
+        (32_460_000, 7, 1),         # 09:01
+    ]
+```
+
+(첫 어서션의 `32_400_000 // 1`은 09:00의 ms-from-midnight 값 — `trades.query_fill_strength`와 동일하게 `hhmmssms_to_intra_ms_sql`로 선형화 후 버킷.)
+
+- [x] **Step 2: 실패 확인**
+
+Run: `uv run pytest tests/unit/tables/test_fills.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'hoga.tables.fills'`
+
+- [x] **Step 3: 구현** (`hoga/tables/fills.py`)
+
+```python
+"""fills 테이블 — 10초 체결강도 구간합 (그릴링 Q4, spec §8).
+
+trades.parquet(개별 체결) 저장 중단의 대체 artifact. side 분류(±1만,
+Auction Cross 제외)는 다운샘플러가 write-time에 이미 적용했으므로 이 쿼리는
+시간 재버킷(합의 합)만 한다 — 10초는 모든 Timeframe bucket_ms(60s~1800s)에
+정확히 중첩된다.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+import duckdb
+import pyarrow as pa
+
+from hoga.api._atomic_write import atomic_write_parquet_table
+from hoga.api.timeenc import hhmmssms_to_intra_ms_sql
+from hoga.tables.trades import FillStrengthRow
+
+PARQUET_SCHEMA = pa.schema([
+    ("ts_ms", pa.int64()),    # HHMMSSmmm packed-decimal (ADR-0010/0049)
+    ("seq", pa.int64()),
+    ("buy_qty", pa.int64()),
+    ("sell_qty", pa.int64()),
+])
+
+
+@dataclass(frozen=True)
+class Fill:
+    ts_ms: int
+    seq: int
+    buy_qty: int
+    sell_qty: int
+
+
+def write_fills_parquet(rows: list[Fill], path: Path) -> None:
+    rows = sorted(rows, key=lambda r: r.ts_ms)   # siblings와 동일한 pre-write sort
+    cols = {
+        field.name: pa.array([getattr(r, field.name) for r in rows], type=field.type)
+        for field in PARQUET_SCHEMA
+    }
+    atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
+
+
+def query_fill_strength(
+    con: duckdb.DuckDBPyConnection, *, path: Path, bucket_ms: int
+) -> list[FillStrengthRow]:
+    """trades.query_fill_strength 와 동일 반환형 — bundle이 분기 없이 재사용."""
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    rows = con.execute(
+        f"""
+        SELECT (({intra_ms_expr} // {bucket_ms}) * {bucket_ms}) AS bucket,
+               SUM(buy_qty) AS buy_qty,
+               SUM(sell_qty) AS sell_qty
+        FROM read_parquet(?)
+        GROUP BY 1 ORDER BY 1
+        """,
+        [str(path)],
+    ).fetchall()
+    return [
+        FillStrengthRow(bucket_intra_ms=int(r[0]), buy_qty=int(r[1]), sell_qty=int(r[2]))
+        for r in rows
+    ]
+```
+
+(`write_trades_parquet`가 별도 atomic 헬퍼/옵션을 쓰면 그 형식을 그대로 따른다 — Step 3 시작 전에 `hoga/tables/trades.py`의 writer를 열어 동일 패턴으로 맞출 것. 원자 쓰기는 테이블 writer가 소유한다(`hoga/api/_atomic_write.py`의 `atomic_write_parquet_table` 계약: "Use from `hoga.tables.*.write_parquet` so today_promoter's overwrite during a polling cycle never leaves a partial file visible to readers") — `atomic_write_parquet_table`을 사용할 것. promote의 `_atomic_write_table`은 빈-삭제 브리지일 뿐, 원자성을 책임지지 않는다.)
+
+- [x] **Step 4: 통과 확인 + 커밋**
+
+Run: `uv run pytest tests/unit/tables/test_fills.py -v`
+Expected: 1 passed
+
+```bash
+git add hoga/tables/fills.py tests/unit/tables/test_fills.py
+git commit -m "feat(tables): fills.parquet (10s fill-strength sums) + bucket reaggregation"
+```
+
+---
+
+### Task 9: Promotion에 `kind=="fill"` 분기
+
+**Files:**
+- Modify: `hoga/live/promote.py` — `_parse_jsonl_to_records`(48-204행), `_build_meta`(207-223행), `promote_today`(231-299행)와 `promote_one`의 쓰기 블록
+- Test: `tests/unit/live/test_promote.py` (추가)
+
+- [x] **Step 1: 실패하는 테스트 추가** (기존 `test_promote_one_writes_parquet_and_meta` 패턴)
+
+```python
+async def test_promote_writes_fills_parquet_only_when_fill_lines_exist(tmp_path: Path):
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.live.promote import promote_one
+
+    live_root = tmp_path / "live"
+    jsonl_path = live_root / "20260605" / "005930.jsonl"
+    jsonl_path.parent.mkdir(parents=True)
+    base_t = hhmmssms_to_unix_ms("20260605", 90000000)
+    lines = [
+        json.dumps({"t_ms": base_t, "kind": "fill",
+                    "payload": {"buy_qty": 12, "sell_qty": 8, "phase": "regular"}}),
+        json.dumps({"t_ms": base_t + 10_000, "kind": "fill",
+                    "payload": {"buy_qty": 0, "sell_qty": 4, "phase": "regular"}}),
+    ]
+    jsonl_path.write_text("\n".join(lines) + "\n")
+
+    parquet_root = tmp_path / "parquet"
+    await promote_one(jsonl_path, parquet_root, code="005930", date="20260605")
+    target = parquet_root / "20260605" / "005930" / "kis_live"
+    assert (target / "fills.parquet").exists()
+    meta = json.loads((target / "meta.json").read_text())
+    assert meta["row_counts"]["fills"] == 2
+
+
+async def test_promote_legacy_jsonl_without_fill_writes_no_fills_parquet(tmp_path: Path):
+    """레거시(trade kind만 있는) JSONL 재프로모트 시 빈 fills.parquet이 생기면
+    bundle의 fills-우선 분기가 진짜 trades 데이터를 가리게 됨 — 금지."""
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.live.promote import promote_one
+
+    jsonl_path = tmp_path / "live" / "20260527" / "005930.jsonl"
+    jsonl_path.parent.mkdir(parents=True)
+    base_t = hhmmssms_to_unix_ms("20260527", 90000000)
+    jsonl_path.write_text(json.dumps({"t_ms": base_t, "kind": "trade", "payload": {
+        "trades": [{"t_ms": base_t, "price": 100, "qty": 1, "side": 1,
+                    "side_source": "inferred"}], "phase": "regular"}}) + "\n")
+
+    parquet_root = tmp_path / "parquet"
+    await promote_one(jsonl_path, parquet_root, code="005930", date="20260527")
+    target = parquet_root / "20260527" / "005930" / "kis_live"
+    assert not (target / "fills.parquet").exists()
+    assert (target / "trades.parquet").exists()
+```
+
+- [x] **Step 2: 실패 확인**
+
+Run: `uv run pytest tests/unit/live/test_promote.py -k fill -v`
+Expected: 2 FAIL (`KeyError: 'fills'` / fills.parquet 미생성)
+
+- [x] **Step 3: 구현** — promote.py 변경점 4곳
+
+```python
+# (a) import 추가
+from hoga.tables.fills import Fill, write_fills_parquet
+
+# (b) _parse_jsonl_to_records: 반환 5-튜플로 확장
+#     시그니처: -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], dict]
+#     함수 머리에 누적자/카운터 추가:
+fills: list[Fill] = []
+fill_seq = 0
+#     kind 분기에 추가 (elif kind == "broker": 블록 다음):
+            elif kind == "fill":
+                # 그릴링 Q4: 10초 체결강도 구간합 → fills.parquet.
+                # side 분류는 다운샘플러가 write-time에 적용 완료(±1만, side=0 제외).
+                fill_seq += 1
+                fills.append(Fill(
+                    ts_ms=ts_ms_encoded,
+                    seq=fill_seq,
+                    buy_qty=int(p.get("buy_qty") or 0),
+                    sell_qty=int(p.get("sell_qty") or 0),
+                ))
+#     말미: meta = _build_meta(..., fill_count=len(fills)); return에 fills 포함
+
+# (c) _build_meta: 파라미터 fill_count: int = 0 추가, row_counts에 "fills": fill_count
+
+# (d) promote_today / promote_one 쓰기 블록 — 3종 _atomic_write_table 다음에:
+        if fills:
+            _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
+#     ※ fills가 비면 파일을 만들지 않는다 — 레거시 JSONL 재프로모트가
+#       빈 fills.parquet으로 bundle의 fills-우선 분기를 가리는 사고 방지.
+# 구현은 기존 브리지 무조건 호출로 동일 계약(빈→파일 부재) 달성 — 3종 테이블과 균일.
+```
+
+호출부( `_parse_jsonl_to_records`를 부르는 promote_one/promote_today의 언패킹)도 5-튜플로 맞춘다.
+
+- [x] **Step 4: 통과 + 기존 promote 테스트 회귀**
+
+Run: `uv run pytest tests/unit/live/test_promote.py tests/unit/live/test_promote_today.py -v`
+Expected: all passed (기존 테스트의 `row_counts` 어서션은 dict 전체 비교라면 `"fills": 0` 추가로 보정)
+
+- [x] **Step 5: 커밋**
+
+```bash
+git add hoga/live/promote.py tests/unit/live/test_promote.py
+git commit -m "feat(live): promote kind=fill -> fills.parquet (skip when absent)"
+```
+
+---
+
+### Task 10: bundle의 fill_strength — fills 우선, trades 폴백
+
+**Files:**
+- Modify: `hoga/api/bundle.py` — `build_fill_strength_slice`(279-296행)
+- Test: `tests/unit/api/test_bundle.py` (해당 테스트 파일 위치는 `grep -rn "build_fill_strength_slice" tests/`로 확인 후 같은 파일에 추가)
+
+- [x] **Step 1: 실패하는 테스트 추가**
+
+```python
+def test_fill_strength_prefers_fills_parquet(tmp_path, ...):
+    # 준비: kis_live 디렉토리에 fills.parquet(buy 15/sell 5)와
+    #       trades.parquet(전혀 다른 값)을 둘 다 둔다.
+    # 검증: build_fill_strength_slice 결과가 fills 기준(15/5)인지.
+    ...
+```
+
+(기존 `build_fill_strength_slice` 테스트의 fixture 헬퍼 — engine/parquet_dir 구성 — 를 그대로 재사용해 fills.parquet만 추가로 쓴다. `write_fills_parquet`로 `Fill(ts_ms=90000000, seq=1, buy_qty=15, sell_qty=5)` 1장.)
+
+- [x] **Step 2: 실패 확인**
+
+Run: `uv run pytest tests/unit/api/ -k fill_strength -v`
+Expected: 신규 1 FAIL (trades 값이 반환됨)
+
+- [x] **Step 3: 구현** — bundle.py 292-296행 교체
+
+```python
+    # 그릴링 Q4: kis_live 신형은 fills.parquet(10초 구간합)이 체결강도 소스.
+    # fills가 있으면 우선, 없으면(=hogaplay·레거시 kis_live) trades 폴백.
+    from hoga.tables import fills as fills_tbl
+
+    fills_path = engine.parquet_dir(date, code, source) / "fills.parquet"
+    if fills_path.exists():
+        rows = fills_tbl.query_fill_strength(
+            engine.conn, path=fills_path, bucket_ms=bucket_ms
+        )
+    else:
+        path_obj = engine.parquet_dir(date, code, source) / "trades.parquet"
+        if not path_obj.exists():
+            # ADR-0043: missing parquet is the valid "no trades yet" state.
+            return []
+        rows = trades_tbl.query_fill_strength(
+            engine.conn, path=path_obj, bucket_ms=bucket_ms
+        )
+```
+
+(이후 rows → wire 변환 코드는 기존 그대로 — `FillStrengthRow` 동일 타입.)
+
+- [x] **Step 4: 통과 + bundle 회귀**
+
+Run: `uv run pytest tests/unit/api/ -v`
+Expected: all passed
+
+- [x] **Step 5: 커밋**
+
+```bash
+git add hoga/api/bundle.py tests/unit/api/
+git commit -m "feat(api): fill_strength reads fills.parquet first, trades fallback"
+```
+
+---
+
+### Task 11: lifecycle 전환 — Live Set·start_live_stream·watchdog·app 배선
+
+**Files:**
+- Modify: `hoga/live/lifecycle.py`
+- Modify: `hoga/live/buffer.py` (`drop_codes_except` — Task 4 리뷰 Minor 3)
+- Modify: `hoga/api/app.py` (lifespan)
+- Modify: `hoga/api/watchlist.py` (reorder/add/remove 후크 — `grep -n "refresh_live_poller" hoga/`로 호출부 확인)
+- Test: `tests/unit/live/test_lifecycle.py` (추가), `tests/unit/live/test_buffer.py` (추가)
+
+⚠️ 배선 컷오버는 **세션 밖(09:00–15:30 외)에 배포**할 것: 장중 전환 시 같은 JSONL에 poller의 kind=trade와 WS의 kind=fill이 혼합돼 promote가 두 파일을 모두 만들고 fills-우선이 오전 trades 집계를 wire에서 가리는 1일성 아티팩트 발생(데이터는 디스크에 보존).
+
+**buffer.py 추가분 (Task 4 리뷰 이월):** 떠난 코드의 deque는 publish-경로 eviction이 못 치우므로(조용한 deque는 동결) Live Set 축출 시 명시 해제가 필요 — per-tick 유량에선 종목당 ~수십 MB가 영구 잔존할 수 있다.
+
+```python
+# hoga/live/buffer.py에 추가:
+    async def drop_codes_except(self, keep: set[str]) -> None:
+        """Live Set 축출 코드의 deque 해제(Task 4 리뷰 Minor 3) —
+        다운샘플러 set_active_codes와 동일 원칙(떠난 종목은 ring에서도 제거)."""
+        async with self._lock:
+            for key in [k for k in self._buf if k[0] not in keep]:
+                del self._buf[key]
+```
+
+함께 추가할 버퍼 테스트 3건(`tests/unit/live/test_buffer.py`): ① `drop_codes_except`가 keep 밖 코드의 모든 kind deque를 제거하고 keep 코드는 보존, ② eviction 경계 pin — `t_ms == cutoff`인 엔트리는 **유지**, `cutoff - 1`은 제거(`<` 의미론 고정), ③ mixed-kind 배치(`[OB, TRADE]`) publish 시 각 kind deque가 독립적으로 eviction.
+
+- [x] **Step 1: Live Set 테스트 추가** (2026-06-06 구현, doc 기반 API — list 기반 스니펫은 구버전)
+
+```python
+def test_live_set_is_watchlist_order_prefix() -> None:
+    """Live Set = 패널 표시 순서 상위 LIVE_SET_MAX_CODES 코드.
+    Step 0 확인: grouping.ts:28-43 + WatchlistDrawer.tsx:222,228
+    폴더들은 .order 오름차순, 미분류는 마지막 — 백엔드 평탄화가 미러.
+    Fixture: 폴더 2개 + 미분류, entry order가 flat-array 삽입 순서와 어긋나게
+    구성 → 표시 순서 평탄화가 정확한지 + 13 절단이 맞는지 검증.
+    """
+    from hoga.live.lifecycle import LIVE_SET_MAX_CODES, live_set_codes, display_ordered_codes
+    assert LIVE_SET_MAX_CODES == 13  # 41 // 3 (spec §4·§5.1)
+    # fixture: folder_b(order=0) → folder_a(order=1) → 미분류
+    # display_ordered_codes: [000002, 000001, 000010, 000011, 000020, 000021]
+    # live_set_codes: 전부(6 < 13) 반환
+    # ⇒ 실제 fixture + assert는 tests/unit/live/test_lifecycle.py 참조
+```
+
+- [x] **Step 2: 실패 확인** (완료 — 이미 green)
+
+- [x] **Step 3: lifecycle 구현** — 변경점 (2026-06-06 완료)
+
+```python
+# 상수 + 순수 함수 (모듈 상단)
+KIS_WS_MAX_REGISTRATIONS = 41   # appkey당, (tr_id, code) 쌍 기준 — spec §4 검증 완료
+TRS_PER_CODE = 3                # 호가 + 체결 + 회원사(H0STMBC0)
+LIVE_SET_MAX_CODES = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # = 13
+
+
+def display_ordered_codes(doc: "WatchlistDocument") -> list[str]:
+    """Watchlist Panel 표시 순서로 평탄화(2026-06-06 결정, watchlist v2 폴더화):
+    `folders[].order` 오름차순으로 폴더를 돌며 각 폴더의 entry를 `order` 오름차순으로,
+    미분류(folder_id=None) 그룹은 프론트 WatchlistDrawer의 렌더 위치와 동일하게 배치.
+    ⚠️ Task 11 Step 0: 구현 전에 `frontend/src/` WatchlistDrawer(또는 폴더 렌더 컴포넌트)를
+    읽어 미분류 그룹이 폴더들보다 앞인지 뒤인지 확인하고 그대로 미러할 것 — 백엔드
+    가정이 아니라 사용자가 보는 순서가 진실이다."""
+    ...  # Step 0 확인 결과에 따라 구현 (정렬 키: (folder rank, entry.order, flat index))
+
+
+def live_set_codes(doc: "WatchlistDocument") -> list[str]:
+    """Live Set = 패널 표시 순서 상위 13 (CONTEXT.md 'Live Set', 그릴링 Q3 + 2026-06-06 개정)."""
+    return display_ordered_codes(doc)[:LIVE_SET_MAX_CODES]
+
+
+# _State 확장: poller_task/poller_obj 대신
+#   stream_task: Optional[asyncio.Task]  /  stream_obj: Optional[LiveStream]
+#   ws_task: Optional[asyncio.Task]      /  live_set: tuple[str, ...]
+
+
+async def start_live_stream(*, data_dir: Path) -> bool:
+    """start_live_poller의 WS 대체 — 구조 동일(creds/watchlist 가드 → 기동).
+
+    poller와 같은 가드: KIS creds 없거나 watchlist 비면 False.
+    symbol-master 필터도 동일 적용 후 live_set_codes로 상위 13 절단.
+    ⚠️ 머지(9b73a91) 후 개정 필요: load_watchlist 대신 load_document로 폴더 포함
+    문서를 받아 live_set_codes(doc)에 전달. KisClient 싱글턴 접근은 lifecycle이 아닌
+    `hoga.live.kis_runtime`(ensure_kis_client_from_env 등)로 이동했음 — import 경로 주의.
+    """
+    import os
+    from hoga.api.watchlist import load_watchlist
+    from .stream import LiveStream
+    from .writer import LiveWriter
+    from .ws_client import KisWsClient
+
+    if not os.environ.get("KIS_APP_KEY") or not os.environ.get("KIS_APP_SECRET"):
+        return False
+    entries = load_watchlist(data_dir)
+    codes = [e.code for e in entries]
+    # (start_live_poller의 symbol-master 필터 블록을 그대로 재사용)
+    ...
+    codes = live_set_codes(codes)
+    if not codes:
+        return False
+
+    await stop_live_stream()
+    kis = ensure_kis_client_from_env(data_dir)
+    if kis is None:
+        return False
+
+    def _today_kst() -> str:
+        from datetime import datetime, timedelta, timezone
+        return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
+
+    stream = LiveStream(buffer=_buffer, writer=LiveWriter(data_dir / "live"),
+                        date_fn=_today_kst)
+    from .session_gate import ws_capture_window
+
+    ws = KisWsClient(approval_key_fn=kis.get_approval_key,
+                     on_tick=stream.on_tick, date_fn=_today_kst,
+                     gate_fn=lambda: ws_capture_window(_now_ms()))
+    stream.ws = ws
+
+    global _state
+    _state = _State(
+        started_at_ms=_now_ms(),
+        watchlist_codes=tuple(codes),
+        live_set=tuple(codes),
+        stream_obj=stream,
+        ws_task=asyncio.create_task(ws.run(codes), name="live-ws"),
+        stream_task=asyncio.create_task(stream.run_flush_loop(), name="live-flush"),
+    )
+    return True
+
+
+async def stop_live_stream() -> None:
+    """stop_live_poller와 동일 패턴 — KisClient 싱글턴은 건드리지 않는다."""
+    global _state
+    for task in (_state.ws_task, _state.stream_task):
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+    _state = _State()
+
+
+async def refresh_live_stream(*, data_dir: Path) -> None:
+    """watchlist 변경(추가/삭제/reorder) 후크 — Live Set diff를 WS에 반영."""
+    from hoga.api.watchlist import load_watchlist
+
+    stream = _state.stream_obj
+    if stream is None or stream.ws is None:
+        return
+    codes = live_set_codes([e.code for e in load_watchlist(data_dir)])
+    await stream.ws.update_codes(codes)
+    stream.set_active_codes(set(codes))   # advisor C: 밀려난 코드 carry 즉시 제거
+    await _buffer.drop_codes_except(set(codes))  # Task 4 리뷰: 떠난 코드 ring 해제
+    global _state
+    _state = replace(_state, live_set=tuple(codes), watchlist_codes=tuple(codes))
+```
+
+**watchdog**(ADR-0064 이식): `_live_watchdog_check`(381-437행)를 `_ws_watchdog_check`로 복제·수정 — `dead = ws_task/stream_task 중 done()`, stale 신호는 **`stream_obj.ws.last_recv_ms`**(품질 리뷰 Important 1 개정: `last_flush_ms`는 틱 0건이어도 10초마다 갱신되고 `last_tick_ms`는 데이터 프레임 전용이라 half-open TCP silent stall을 못 잡는다 — `last_recv_ms`는 모든 수신 프레임(KIS 주기 PINGPONG 포함)에 스탬프), 재시작은 `start_live_stream`. 세션-open 기준 grace 로직(주석 포함)은 **그대로 유지**하되, 게이트 판정은 `_should_poll_now` 대신 **`ws_capture_window`**(advisor B — 15:30 이후엔 재시작 금지). `start_live_poller_watchdog`(440-461)도 동일 패턴으로 `start_live_stream_watchdog` 신설.
+
+**get_status**: 기존 wire 키(`running`, `watchlist_count` 등)는 의미 유지(`running` = stream task alive), 추가 키 `transport: "ws"`, `ws_connected: bool`, `live_set: list[str]`.
+
+- [x] **Step 4: app.py·watchlist.py 배선 교체** (2026-06-06 완료)
+
+run 결과: `start_live_stream` / `start_live_stream_watchdog` / `stop_live_stream` 으로 전환.
+watchlist_routes.py: `refresh_live_stream as refresh_live_poller` alias. 포인터 함수 자체는 미사용으로 보존(Task 13에서 삭제).
+
+- [x] **Step 5: 테스트 + 커밋** (2026-06-06 완료)
+
+`uv run pytest tests/unit/ -q` → 472 passed (신규 테스트 17건: buffer 3 + lifecycle 13 + ws_client 1 — 품질 리뷰 후 silent-stall watchdog 1 + refresh 2 + TRS drift 가드 1 + last_recv_ms 스탬프 1 포함).
+ruff check: 대상 파일 신규 위반 0 — ws_client 0건, lifecycle 잔여 11건은 전부 Task 13 삭제 대상(poller 계열) 라인. pyright lifecycle/ws_client 0 errors.
+⚠️ 운영 전제(리뷰 메모): silent-stall 감지는 KIS PINGPONG 주기 < stale_after_ms(120s)를 전제 — Task 0 녹화로 실측 검증 후 prod 의존.
+
+```bash
+# 실제 커밋: c5cd88c (buffer) + 0c1c7ae (lifecycle + wiring)
+```
+
+---
+
+### Task 12: 프론트 LiveSnapshotBuffer 시간 기반 eviction
+
+**근거:** 백엔드 ring과 동일한 봉합 사이징 불변식(spec §8·§12) — per-tick 유량에서 개수 캡이 `pastMaxT`까지의 꼬리를 자르면 지표 봉합에 구멍.
+
+**Files:**
+- Modify: `frontend/src/live/liveSnapshotBuffer.ts`
+- Test: `frontend/src/live/liveSnapshotBuffer.test.ts` (기존 파일에 추가; 없으면 신설)
+
+- [x] **Step 1: 실패하는 테스트 추가** (2026-06-06 완료 — 실제 API는 `buf.get('ob')` 접근자; `LiveSnapshotEntry` 캐스트 불필요, push가 구조적 `{t_ms, kind}` 수용)
+
+```ts
+it('evicts entries older than retention window on push', () => {
+  const buf = new LiveSnapshotBuffer();
+  const old = { t_ms: 1_000, kind: 'ob' };
+  const fresh = { t_ms: 16 * 60_000 + 1_000, kind: 'ob' };
+  buf.push(old);
+  buf.push(fresh); // fresh 기준 15분 컷오프 밖의 old는 제거
+  expect(buf.get('ob').map((e) => e.t_ms)).toEqual([fresh.t_ms]);
+});
+```
+
+- [x] **Step 2: 실패 확인** (2026-06-06 완료 — FAIL: `[1000, 961000]` ≠ `[961000]`, old 잔존)
+
+Run: `cd frontend && npx vitest run src/live/liveSnapshotBuffer.test.ts`
+
+- [x] **Step 3: 구현** — push에 시간 eviction 추가 (2026-06-06 완료)
+
+```ts
+/** 봉합 사이징 불변식(spec §8): 보존 > 2× Today Promotion 주기(5분) → 15분.
+ *  백엔드 LiveBuffer(retention 900s)와 동일 원칙 — per-tick 유량에서 개수 캡이
+ *  pastMaxT까지의 꼬리를 자르면 지표 봉합에 구멍이 난다. */
+const RETENTION_MS = 15 * 60_000;
+
+function evictOld(arr: Array<{ t_ms: number }>, nowMs: number): void {
+  const cutoff = nowMs - RETENTION_MS;
+  let drop = 0;
+  while (drop < arr.length && arr[drop].t_ms < cutoff) drop += 1;
+  if (drop > 0) arr.splice(0, drop);
+}
+
+// Safety-pin cap raised to 60_000 (from 2520) — time eviction is now the
+// primary size bound; the count cap remains only as a runaway safeguard.
+export const MAX_BUFFER_PER_KIND = 60_000;
+```
+
+`push(entry)` 말미에 해당 kind 배열에 `evictOld(arr, entry.t_ms)` 호출(배열은 t_ms 오름차순 append라 prefix-drop으로 충분 — 백엔드와 동일 가정), 이어서 기존 개수 캡(60_000 안전핀) splice 유지. hydrate는 시간 eviction 무처리 — 백엔드 eviction은 publish 경로(LiveBuffer.publish)에서 수행되어 활성 코드의 ring은 상시 정리됨(get_series 자체는 무필터); 잔존 stale tail은 직후 첫 push()의 evictOld가 정리(주석으로 명시).
+
+- [x] **Step 4: 통과 + 프론트 전체 테스트** (2026-06-06 완료 — liveSnapshotBuffer 7/7, `src/live/` 36파일 314 테스트 all passed, fixture 보정 0건)
+
+Run: `cd frontend && npx vitest run src/live/` → all passed
+
+- [x] **Step 5: 커밋** (2026-06-06 완료)
+
+```bash
+# 실제 커밋: 67c6719 (feat(frontend): time-based eviction for live snapshot buffer)
+```
+
+- [x] **Step 6: 품질 리뷰 C1 — pastMaxQrT 전진(봉합 구멍 닫기)** (2026-06-07 완료)
+
+C1(Critical): 15분 eviction + `/api/range` `staleTime: Infinity` 동결 = 오늘 지표
+seam에 자라는 구멍. `buildLiveBundle`의 오늘 지표 = [range past(≤pastMaxQrT)] +
+[버퍼 incremental(>pastMaxQrT)]인데 pastMaxQrT가 로드 시점에 동결되면
+`[pastMaxQrT … now−15분]`이 영구 공백(구버전 ~7h 버퍼가 이를 가렸음). 수정 =
+pastMaxQrT를 전진(spec §6 "경계 우측 전진"의 프론트 구현):
+
+- `frontend/src/api/range.ts`: `rangeFreshnessOptions(to, todayKst)` 순수 함수 추출
+  — 오늘-포함(`to >= todayKst`) 쿼리만 `staleTime`/`refetchInterval =
+  TODAY_RANGE_REFETCH_MS(5분, `HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S` 동기)`, 과거-전용은
+  `Infinity`/`false` 유지(capture/replay 백필에 refetch 누출 금지). `useRange`에
+  optional `todayKst` 6번째 인자 추가.
+- 게이팅 위치: 호출부 `useLiveBundle.ts`에서 `todayKstYyyymmdd` 전달(/live의
+  `minutePastTo`는 항상 오늘 → 항상 활성; 비-live 호출자는 인자 생략으로 동결).
+- 봉합 사이징 불변식 정정: 보존(15분) > promotion_period(5분) + refetch_period(5분)
+  ≈ 10분. `liveSnapshotBuffer.ts` 헤더·`range.ts` 주석에 명시(I1 stale 헤더 재작성 포함).
+- 부작용 점검: range refetch는 `quote_ratio`/`fill_strength`만 갱신, `bundle.candles`는
+  불변(`buildLiveBundle`이 `pastBundle.candles` 무시) → `useViewportBackfill`
+  repositioner(candles의 newEarliest로 트리거, `historicalFromDate != null` 게이트)
+  발화 불가. 동일 query key refetch라 `placeholderData` 스왑 없음 → `isExtending`
+  미설정 → 오늘 우측 edge는 append-only, prepend 경로와 무관(3중 안전).
+- 테스트: `rangeFreshnessOptions` 양 브랜치 5건(range.test.tsx), buildLiveBundle
+  advance-seam 1건(advanced pastMaxQrT에서 incremental 축소·무중복·무공백),
+  buffer M2 pin 2건(`t_ms === cutoff` 유지 / 역행 push fail-safe).
+  `useLiveBundle.test.tsx` useRange 인자 assertion 보정 1건(의미 보존). M1: quiet-kind
+  tail 잔존 주석(buffer.py:138 대칭). `src/live/ src/api/` 54파일 435 테스트 무회귀.
+
+```bash
+# 실제 커밋: d5913d9 (fix(frontend): advance pastMaxQrT via 5min range refetch — seam hole)
+```
+
+---
+
+### Task 13: poller 완전 은퇴 (청소)
+
+**Task 11 리뷰 이월** — lifecycle 모듈 락(start/refresh 경합), watchlist_count 의미 재정의 문서화, _compute_live_set 추출(start/refresh 중복 — refresh에 dropped 경고 로그도), display_ordered_codes 위치(watchlist.py 이동) 검토, refresh_live_poller alias·로그 문구 정리, watchdog PINGPONG-only no-restart 직접 pin(`test_ws_watchdog_noop_when_healthy`의 `last_tick_ms`를 None으로 — 재리뷰 Minor).
+
+**Files:**
+- Delete: `hoga/live/poller.py`, `tests/unit/live/test_poller.py`
+- Modify: `hoga/live/kis_client.py` — `fetch_orderbook`/`fetch_trades`/`fetch_brokers`/`fetch_overtime_orderbook`/`fetch_overtime_trades` 메서드 삭제 (quote/candles/investor용 `fetch_multi_price`·`fetch_past_*`·investor는 **유지**)
+- Modify: `hoga/live/snapshot.py` — poller 전용 빌더 `from_orderbook`/`from_trades`/`from_brokers` 및 `KisOrderbook` 등 import 삭제 (`from_fill`과 본체는 유지); `hoga/live/kis_models.py`에서 이로 인해 미사용이 된 모델 삭제
+- Modify: `hoga/live/lifecycle.py` — `start_live_poller`/`stop_live_poller`/`refresh_live_poller`/`_live_watchdog_check`/`start_live_poller_watchdog` 삭제
+- Test: 관련 테스트 파일에서 삭제 대상 케이스 제거 (`tests/unit/live/test_snapshot.py`의 빌더 byte-pin은 ws_frames payload-shape 테스트가 대체)
+
+- [x] **Step 1: 죽은 참조 전수 조사** (2026-06-06 완료)
+
+Run: `grep -rn "poller\|from_orderbook\|from_trades\|from_brokers\|fetch_orderbook\|fetch_trades\|fetch_brokers\|fetch_overtime" hoga/ tests/ --include='*.py' | grep -v session_gate`
+Expected: 삭제 대상 정의·테스트만 출력 (다른 소비자가 나오면 **삭제 보류하고 그 소비자를 먼저 처리**)
+
+- [x] **Step 2: 삭제 실행 + import 정리** (2026-06-06 완료)
+
+위 Files 목록대로 삭제. `session_gate.py`는 이미 분리(Task 7)되어 무사.
+
+- [x] **Step 3: 전체 테스트** — 1283 passed, 1 skipped(ADR invariant의 poller.py 파라미터 — 후속 커밋에서 WS hot-path 모듈로 교체해 skip 해소)
+
+Run: `uv run pytest tests/ -x -q`
+Expected: all passed, 0 errors (ImportError 없음)
+
+- [x] **Step 4: ruff/pyright** — 신규 위반 0(base 대비 ~20건 소멸·고아 import 2건 즉시 수정), pyright(hoga/live 스코프) 0 errors
+
+Run: `uv run ruff check hoga/ && uv run pyright`
+Expected: clean (미사용 import 잔재 없음)
+
+- [x] **Step 5: 커밋**
+
+```bash
+git add -A
+git commit -m "refactor(live)!: retire REST poller (WS replaces capture path)"
+```
+
+---
+
+**실행 내역(2026-06-06, 커밋 2개)**:
+- 커밋 ①(45fae95): 리뷰 이월 — _lifecycle_lock(재진입은 _stop_live_stream_locked), _compute_live_set 추출(+refresh dropped 경고), watchlist_count/kis_calls_today 의미 문서화, watchdog PINGPONG-only pin(last_tick_ms=None), watchlist_routes alias·로그 정리. display_ordered_codes는 lifecycle 유지(유일 소비자+Live Set 상수 응집).
+- 커밋 ②: poller.py·test_poller.py 삭제, kis_client fetch 5종+classify_side 삭제(probe는 _get 직접 호출로 교체), snapshot 빌더 3종+kis_models 4모델 삭제, lifecycle poller 5함수+_read_poller_attr+_State 슬롯+get_status 분기 삭제(reset_for_tests는 stream-only로 적응 복원), test_lifecycle_start를 stream 가드 포트 5건으로 재작성, test_kis_rest_methods에서 poller fetch 테스트만 제거(중간 import/헬퍼 복원), 문서성 잔재 4곳 현행화.
+
+### Task 14: 장중 통합 스모크 + 문서 마감
+
+**전제:** Task 0 녹화 완료(특히 시간외 수신 여부 기록), KRX 장중.
+
+- [ ] **Step 1: 백엔드 기동 + WS 연결 확인**
+
+Run: `uv run uvicorn hoga.api.app:default_app --factory --host 127.0.0.1 --port 8000 --reload --reload-dir hoga`
+확인: `curl -s localhost:8000/api/live/status` → `"transport": "ws", "ws_connected": true, "live_set": [...]` (≤13개)
+
+- [ ] **Step 2: sub-second 표시 확인 (브라우저)**
+
+`cd frontend && npm run dev` 후 CLAUDE.md의 `/browse` 스킬로 `http://localhost:5173/live` 접속, watchlist 1번 종목 차트에서:
+- 호가창(10호가)·총잔량·호가비·체결강도가 **1초 미만 간격으로 갱신**되는지 (`$B js` 로 `window.__liveAxisGet()` 또는 DOM 텍스트 2회 샘플 비교)
+- `$B console --errors` 빈 출력
+- FillStrength pane에서 kis_live 신형의 **밀집 (0,0) 점**(조용한 버킷도 0 방출 — trades 경로는 버킷 생략) 렌더가 시각적으로 수용 가능한지 확인(빈 vs 0 차이).
+- **경계 버킷 partial-sum 플리커**(Task 12 재리뷰 N1, by-design): 라이브 엣지 ~5-10분 뒤의 FillStrength 막대 하나가 5분 refetch 주기로 dip-recover하는 현상 — 실 세션에서 시각적으로 수용 가능한지 확인.
+
+- [ ] **Step 3: 저장 경로 검증**
+
+```bash
+DATE=$(TZ=Asia/Seoul date +%Y%m%d); CODE=$(curl -s localhost:8000/api/live/status | python3 -c "import sys,json;print(json.load(sys.stdin)['live_set'][0])")
+tail -3 ~/.local/share/hoga-ops/live/$DATE/$CODE.jsonl   # kind fill/ob/broker, 10초 간격
+sleep 360  # Today Promotion 1주기 대기
+python3 -c "import duckdb;print(duckdb.sql(\"select count(*) from read_parquet('$HOME/.local/share/hoga-ops/parquet/$DATE/$CODE/kis_live/fills.parquet')\"))"
+curl -s "localhost:8000/api/range?code=$CODE&from=$DATE&to=$DATE&bucket_ms=60000&source_pref=kis_live" | python3 -c "import sys,json;d=json.load(sys.stdin);print('fill_strength points:',len(d['fill_strength']['points']))"
+```
+Expected: JSONL에 `"kind": "fill"` 포함·10초 간격 / fills.parquet count > 0 / fill_strength points > 0
+
+- [ ] **Step 4: 재연결 복원 확인**
+
+백엔드 프로세스 재시작 → `/live` 새로고침 → 지표 과거 구간(디스크 10초)과 꼬리(WS)가 이어지는지, `live.ws.reconnect` 로그에 백오프가 찍히는지.
+
+- [ ] **Step 5: 문서·커밋**
+
+- `CHANGELOG.md`에 항목 추가, spec §12의 시간외 수신 여부에 Task 0 관찰 결과 기록.
+- **신규 ADR 작성**(spec 헤더 약속 — 최종 리뷰 I2): "KIS 수집 전송 REST 폴링 → WebSocket push 전환" — 옵션 A·Live Set 13·15:30 게이트·ADR-0064 부분 supersede(watchdog 이식) 기록.
+- **장중 검증 필수 목록(최종 리뷰 통합 — 12항목)**: ① 3 TR 녹화→재생 4테스트 통과 ② CNT stride 46×cnt 정확 ③ **ASP/MBC cnt=1 가정 관찰**(cnt>1이면 파서 보강) ④ MBC push 주기 ⑤ 체결구분 분포 ⑥ 시간외 수신 여부 ⑦ PINGPONG<120s ⑧ **구독 응답 rt_cd + 거부 메시지 형태**(로그 승격 판단) ⑨ **approval 재발급 빈도 한계**(재연결 반복) ⑩ 스모크 전체(status/sub-second/JSONL→fills→range/재시작 봉합/백오프/밀집 0점·플리커) ⑪ 15:30 전환 실관찰(drain 1회·append 정지·연결 유지) ⑫ 장중 13-경계 reorder→구독 스왑(C1 수정 검증).
+- **세션 시각 변동일 확인**(최종 리뷰 I3-d): Half-Day(12:30)·지연 개장일에 대한 ws_capture_window(순수 시계 09:00–15:30)의 거동 — CONTEXT.md L334의 "12:30 truncation" 주장과 코드의 괴리 해소(실재하면 코드 보강, 아니면 문서 정정).
+- CONTEXT.md 갱신(최종 리뷰 M2 — 이행 표기 3곳 외 추가 4곳): **Live Capture/Live Tick/Live Set** "(구현 전)" 제거, L191 "beside `start_live_poller`" 정정, L334 Live Session poller 서술 갱신, L346 Promotion 산출물에 fills.parquet 추가, L349 "appended by the poller" 정정.
+
+```bash
+git add CHANGELOG.md CONTEXT.md docs/
+git commit -m "docs: live KIS WS transition shipped (plan 1/3 complete)"
+```
+
+---
+
+## Self-Review 결과 (작성자 점검)
+
+- **Spec coverage:** §5.1(3TR·13종목)→T6/T11, §5.5(Live Set·poller 은퇴)→T11/T13, §7(핸드셰이크/구독/파싱/heartbeat/재연결/감독/게이팅)→T5/T6/T7/T11, §8(10초 저장·fills·시간 eviction·복원)→T3/T4/T8/T9/T12, §9(끊김·갭)→T6/T14, §10(파싱 fixture·다운샘플 경계·분류 동등성·저장 정합)→T1/T3/T8/T9, §12(필드 매핑·사이징·렌더 비용 측정)→T0/T1/T4/T12. **§5.4 캔들(옵션 A)·경계 분·경계선 UI는 Plan 2/3 범위** — 본 plan에서 캔들은 현행 REST 60초가 그대로 유지된다(무회귀).
+- **Placeholder scan:** Task 10 Step 1과 Task 11 Step 3 일부가 기존 fixture 재사용을 지시하는 축약 코드(`...`)를 포함 — 해당 스텝에 "기존 패턴 grep 후 미러" 지시와 대상 위치를 명시했으므로 실행 가능으로 판단. 그 외 TBD 없음.
+- **Type consistency:** `WsTick`(T1)을 T3/T6/T7이 동일 시그니처로 소비, `FillStrengthRow`(trades 기존)를 T8이 재사용해 T10 분기가 무캐스트, `LiveSnapshot.from_fill`(T2)→T3 flush→T9 promote의 payload 키(`buy_qty`/`sell_qty`) 일치 확인.

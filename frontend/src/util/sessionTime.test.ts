@@ -8,6 +8,8 @@ import {
   sessionPhaseAt,
   AUCTION_WINDOW_LENGTH_MS,
   PRE_OPEN_WINDOW_LENGTH_MS,
+  type SessionPhase,
+  type SessionSegment,
 } from './sessionTime';
 
 // 2026-05-18 09:00 KST = 1779062400000 ms.
@@ -204,5 +206,73 @@ describe('sessionPhaseAt binary == linear reference', () => {
       idx: last,
       phase: 'post-axis',
     });
+  });
+});
+
+describe('sessionPhaseAt — O(log n) 접근 횟수 (스펙 2026-06-08)', () => {
+  it('200세그먼트에서 콜당 배열 인덱스 접근 ≤ 24 (선형이면 ~200)', () => {
+    const segs = Array.from({ length: 200 }, (_, i) => ({
+      sessionOpenMs: DAY1_OPEN + i * DAY_MS,
+      sessionCloseMs: DAY1_OPEN + i * DAY_MS + FULL_SESSION_MS,
+    }));
+    let reads = 0;
+    const counted = new Proxy(segs, {
+      get(target, prop, recv) {
+        if (typeof prop === 'string' && /^\d+$/.test(prop)) reads += 1;
+        return Reflect.get(target, prop, recv);
+      },
+    });
+    // 마지막 세그먼트 한가운데 — 선형 워크는 전 구간을 훑는다.
+    const t = segs[199].sessionOpenMs + 60 * 60 * 1000;
+    reads = 0;
+    expect(sessionPhaseAt(counted, t)).toBe('regular');
+    expect(reads).toBeLessThanOrEqual(24);
+  });
+});
+
+describe('sessionPhaseAt — 선형 reference 동치 (스펙 2026-06-08)', () => {
+  // 교체 전 선형 구현의 보존 사본 — 이진 구현의 의미론 가드. 세그먼트
+  // 정렬·비중첩(buildSegments 불변식) 하에서 두 구현은 동치다.
+  function linearReference(
+    segments: readonly SessionSegment[],
+    realMs: number,
+  ): SessionPhase {
+    if (segments.length === 0) return 'pre-axis';
+    const first = segments[0];
+    if (realMs < first.sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS) return 'pre-axis';
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      if (realMs < seg.sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS) return 'gap';
+      if (realMs <= seg.sessionCloseMs) return classifyWithinSegment(seg, realMs);
+    }
+    return 'post-axis';
+  }
+
+  it('다중 세그먼트(반장 포함) 축에서 경계 ±1ms·1분 스윕 전수 일치', () => {
+    const segs = [
+      { sessionOpenMs: DAY1_OPEN, sessionCloseMs: DAY1_CLOSE },
+      { sessionOpenMs: DAY2_OPEN, sessionCloseMs: DAY2_OPEN + 3.5 * 60 * 60 * 1000 },
+      {
+        sessionOpenMs: DAY1_OPEN + 2 * DAY_MS,
+        sessionCloseMs: DAY1_OPEN + 2 * DAY_MS + FULL_SESSION_MS,
+      },
+    ];
+    const probes: number[] = [];
+    for (const s of segs) {
+      for (const b of [
+        s.sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS,
+        s.sessionOpenMs,
+        s.sessionCloseMs - AUCTION_WINDOW_LENGTH_MS,
+        s.sessionCloseMs,
+      ]) {
+        probes.push(b - 1, b, b + 1);
+      }
+    }
+    for (let t = DAY1_OPEN - DAY_MS; t <= DAY1_OPEN + 3 * DAY_MS; t += 60_000) {
+      probes.push(t);
+    }
+    for (const t of probes) {
+      expect(sessionPhaseAt(segs, t), `t=${t}`).toBe(linearReference(segs, t));
+    }
   });
 });

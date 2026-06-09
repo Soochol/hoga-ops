@@ -26,7 +26,7 @@ This spec **adds a second invariant catalog** (`SERIES_INVARIANTS`) for Stock-Da
 | Series invariant 시그니처 | `Callable[[StockDateArtifacts], list[Violation]]` (한 invariant가 0~N 위반 반환 가능) |
 | `StockDateArtifacts` | `(meta, candles?, snapshots?, trades?)` 데이터클래스 — Optional 필드라 부분 로드 가능 |
 | 새 진입점 | `check_series(artifacts) -> list[Violation]` ; 기존 `check(meta)`는 변경 없음 |
-| 카탈로그 등록 invariants | `series.candles_ts_monotonic` (error), `series.snapshots_no_gaps` (warn), `series.cum_vol_monotonic` (error) |
+| 카탈로그 등록 invariants | `series.candles_ts_monotonic` (error), `series.snapshots_no_gaps` (warn), `series.cum_vol_monotonic` (~~error~~ → **warn**, 정정: ADR-0020 amendment 2026-06-08 — cum_vol 은 형태 불변이 아닌 신뢰 신호) |
 | 기존 validator 통합 | `has_meaningful_gaps`/`trades.validate` 함수는 유지, 내부 로직을 추출해서 invariant가 재사용 |
 | `trades.find_cum_vol_violations` 신규 헬퍼 | pure function, `validate(strict)`도 이를 호출하여 raise |
 | `hoga validate --deep` | 기본은 meta-only (빠름), `--deep`이면 series 카탈로그 적용 + parquet 로드 |

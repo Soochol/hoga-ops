@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useQuoteByCode } from './liveQuotes';
+import { useQuoteByCode, quotesRefetchInterval } from './liveQuotes';
 import * as client from './client';
 
 function wrap() {
@@ -59,5 +59,17 @@ describe('useQuoteByCode', () => {
     act(() => rerender(['000660']));
     // Previous data is retained during the new key's in-flight window.
     expect(result.current.get('005930')?.price).toBe(72400);
+  });
+});
+
+describe('quotesRefetchInterval', () => {
+  it('closed면 600s 하트비트 — false 금지(다음 개장에 폴링 재개 불가)', () => {
+    expect(quotesRefetchInterval('closed')).toBe(600_000);
+  });
+
+  it('open/pre_open/미도착(undefined)은 10s 유지', () => {
+    expect(quotesRefetchInterval('open')).toBe(10_000);
+    expect(quotesRefetchInterval('pre_open')).toBe(10_000);
+    expect(quotesRefetchInterval(undefined)).toBe(10_000);
   });
 });

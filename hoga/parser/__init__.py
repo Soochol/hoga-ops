@@ -123,6 +123,12 @@ def parse_stock_date(
     trades_list, snapshots_list, brokers_list, seen_seqs, skipped = _collect_events(
         raw_dir, lenient=lenient
     )
+    # Drop hogaplay page re-send duplicates (continuous trades re-sent with fresh
+    # seqs, so seq-dedup misses them). Runs BEFORE validate so the strict cum_vol
+    # check passes for dates whose only anomaly was the overlap — no lenient
+    # fallback needed — and before write_parquet so the 체결강도 bucket isn't
+    # double-counted. No-op for clean dates. See trades.dedup_overlap_resends.
+    trades_list = trades.dedup_overlap_resends(trades_list)
 
     candles_list = _collect_candles(raw_dir, skipped=skipped, lenient=lenient)
 
