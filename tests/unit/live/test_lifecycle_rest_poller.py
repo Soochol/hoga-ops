@@ -163,12 +163,14 @@ async def test_start_sets_excluded_codes_to_live_set(
 async def test_refresh_updates_excluded_codes(
     monkeypatch, tmp_path
 ) -> None:
-    """refresh 후 rest_poller.set_excluded_codes가 새 live_set으로 갱신된다."""
+    """refresh 후 rest_poller.set_excluded_codes가 새 live_set으로 갱신된다
+    (dynamic-N 단일 conn — diff 경로에서 배제 동기화)."""
+    import asyncio
     import json as _json
 
     from hoga.api import symbols
     from hoga.live import lifecycle
-    from hoga.live.lifecycle import _State
+    from hoga.live.lifecycle import _State, _StreamConn
 
     lifecycle.reset_for_tests()
     monkeypatch.setattr(symbols, "_cache", [])  # cold cache → 무필터 폴백
@@ -193,10 +195,19 @@ async def test_refresh_updates_excluded_codes(
 
     monkeypatch.setattr(lifecycle._buffer, "drop_codes_except", _fake_drop)
 
+    async def _forever():
+        await asyncio.sleep(60)
+    ws_task = asyncio.create_task(_forever())
+    flush_task = asyncio.create_task(_forever())
+    conn = _StreamConn(
+        account_id=0, stream_obj=_FakeStream(),
+        ws_task=ws_task, flush_task=flush_task, codes=("999999",),
+    )
     lifecycle._state = _State(
         started_at_ms=1,
+        n_configured=1,
         watchlist_codes=("999999",),
-        stream_obj=_FakeStream(),
+        streams={0: conn},
         live_set=("999999",),
         rest_poller=fake_poller,
     )
@@ -210,12 +221,20 @@ async def test_refresh_updates_excluded_codes(
         ],
     }))
 
-    await lifecycle.refresh_live_stream(data_dir=tmp_path)
+    try:
+        await lifecycle.refresh_live_stream(data_dir=tmp_path)
 
-    expected = {f"{i:06d}" for i in range(5)}
-    assert fake_poller.excluded == expected, (
-        "refresh 후 set_excluded_codes(new_live_set)이 호출되어야 함(배타 갱신)"
-    )
+        expected = {f"{i:06d}" for i in range(5)}
+        assert fake_poller.excluded == expected, (
+            "refresh 후 set_excluded_codes(new_live_set)이 호출되어야 함(배타 갱신)"
+        )
+    finally:
+        for t in (ws_task, flush_task):
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
 
 
 @pytest.mark.asyncio
@@ -286,29 +305,24 @@ async def test_start_no_poller_when_creds_missing(
     assert lifecycle._state.rest_poller is None
 
 
-# ── _sync_and_live_set 헬퍼 단위 테스트 (ADR-0067 배타 단일화) ──────────────────
+# ── _sync_exclusion 헬퍼 단위 테스트 (ADR-0067 배타; 컷오버로 _sync_and_live_set 대체) ──
 
 
-def test_sync_and_live_set_calls_set_excluded_and_returns_tuple() -> None:
-    """_sync_and_live_set(codes, poller)가 set_excluded_codes(set(codes))를 호출하고
-    tuple(codes)를 반환한다."""
-    from hoga.live.lifecycle import _sync_and_live_set
+def test_sync_exclusion_calls_set_excluded() -> None:
+    """_sync_exclusion(poller, live_set)이 set_excluded_codes(set(live_set))를 호출한다."""
+    from hoga.live.lifecycle import _sync_exclusion
 
     poller = _FakePoller()
-    codes = ["005930", "000660"]
-    result = _sync_and_live_set(codes, poller)
+    live_set = ("005930", "000660")
+    _sync_exclusion(poller, live_set)
 
-    assert result == tuple(codes), "_sync_and_live_set은 tuple(codes)를 반환해야 함"
-    assert poller.excluded == set(codes), (
-        "_sync_and_live_set은 set_excluded_codes(set(codes))를 호출해야 함"
+    assert poller.excluded == set(live_set), (
+        "_sync_exclusion은 set_excluded_codes(set(live_set))를 호출해야 함"
     )
 
 
-def test_sync_and_live_set_no_poller_returns_tuple() -> None:
-    """_sync_and_live_set(codes, None)은 예외 없이 tuple(codes)를 반환한다(오프라인 폴백)."""
-    from hoga.live.lifecycle import _sync_and_live_set
+def test_sync_exclusion_no_poller_noop() -> None:
+    """_sync_exclusion(None, live_set)은 예외 없이 no-op(오프라인 폴백)."""
+    from hoga.live.lifecycle import _sync_exclusion
 
-    codes = ["005930", "000660"]
-    result = _sync_and_live_set(codes, None)
-
-    assert result == tuple(codes), "rest_poller 없이도 tuple(codes)를 반환해야 함"
+    _sync_exclusion(None, ("005930", "000660"))  # 예외 안 남

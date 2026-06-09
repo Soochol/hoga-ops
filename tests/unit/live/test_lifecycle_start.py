@@ -39,17 +39,23 @@ async def test_start_live_stream_returns_falsy_when_creds_missing(
 
 
 @pytest.mark.asyncio
-async def test_start_live_stream_returns_falsy_when_watchlist_empty(
+async def test_start_live_stream_poller_only_when_watchlist_empty(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    from hoga.live import lifecycle
+    """C4: 빈 watchlist여도 creds 있으면 poller-only로 시작(보는종목 표시 살림)."""
+    from hoga.live import lifecycle, session_gate
 
     lifecycle.reset_for_tests()
+    monkeypatch.setattr(session_gate, "should_run_now", lambda _t: False)
     monkeypatch.setenv("KIS_APP_KEY", "K")
     monkeypatch.setenv("KIS_APP_SECRET", "S")
     _write_watchlist(tmp_path, [])
-    assert not await lifecycle.start_live_stream(data_dir=tmp_path)
-    assert lifecycle.get_status().running is False
+    assert await lifecycle.start_live_stream(data_dir=tmp_path) is True
+    st = lifecycle.get_status()
+    assert st.running is True          # poller alive = 서비스 중
+    assert st.live_set == []           # WS 연결 0
+    assert lifecycle._state.rest_poller is not None
+    await lifecycle.stop_live_stream()
 
 
 @pytest.mark.asyncio

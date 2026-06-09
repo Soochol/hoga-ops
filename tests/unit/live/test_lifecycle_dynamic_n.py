@@ -63,3 +63,154 @@ async def test_teardown_conn_idempotent(tmp_path, monkeypatch):
     conn = lifecycle._build_conn(0, ["005930"], tmp_path)
     await lifecycle._teardown_conn(conn)
     await lifecycle._teardown_conn(conn)  # 두 번째도 무해(done task cancel = no-op)
+
+
+# ── refresh dynamic-N create/teardown (Task 8) ─────────────────────────────────
+
+async def _start_two_accounts(tmp_path, monkeypatch, codes):
+    """헬퍼: 2계좌 환경 + 가짜 client로 start (WS는 게이트 닫힘이라 무네트워크)."""
+    from hoga.live import session_gate
+    monkeypatch.setattr(session_gate, "should_run_now", lambda _t: False)
+    monkeypatch.setenv("KIS_APP_KEY", "k0")
+    monkeypatch.setenv("KIS_APP_SECRET", "s0")
+    monkeypatch.setenv("KIS_APP_KEY_2", "k1")
+    monkeypatch.setenv("KIS_APP_SECRET_2", "s1")
+    monkeypatch.setattr(
+        kis_runtime, "ensure_kis_client_for_account",
+        lambda account_id, data_dir: _FakeKis(account_id),
+    )
+    monkeypatch.setattr(
+        kis_runtime, "ensure_kis_client_from_env",
+        lambda data_dir: _FakeKis(0),
+    )
+    from tests.unit.live.test_lifecycle_start import _write_watchlist
+    _write_watchlist(tmp_path, codes)
+    # symbol-master 필터 무력화(모든 코드 통과)
+    from hoga.api import symbols
+    monkeypatch.setattr(symbols, "search", lambda q, limit=10_000: [])
+    assert await lifecycle.start_live_stream(data_dir=tmp_path) is True
+
+
+@pytest.mark.asyncio
+async def test_refresh_builds_second_conn_when_crossing_13(tmp_path, monkeypatch):
+    codes13 = [f"{i:06d}" for i in range(13)]
+    await _start_two_accounts(tmp_path, monkeypatch, codes13)
+    assert set(lifecycle._state.streams.keys()) == {0}   # conn-1 아직 없음
+
+    # 14번째 추가 → conn-1 신규 생성(연결 생성 분기)
+    from tests.unit.live.test_lifecycle_start import _write_watchlist
+    _write_watchlist(tmp_path, codes13 + ["000013"])
+    await lifecycle.refresh_live_stream(data_dir=tmp_path)
+    assert set(lifecycle._state.streams.keys()) == {0, 1}
+    assert lifecycle._state.streams[1].codes == ("000013",)
+    await lifecycle.stop_live_stream()
+
+
+@pytest.mark.asyncio
+async def test_refresh_tears_down_second_conn_when_dropping_to_13(tmp_path, monkeypatch):
+    codes14 = [f"{i:06d}" for i in range(14)]
+    await _start_two_accounts(tmp_path, monkeypatch, codes14)
+    assert set(lifecycle._state.streams.keys()) == {0, 1}
+
+    from tests.unit.live.test_lifecycle_start import _write_watchlist
+    _write_watchlist(tmp_path, codes14[:13])
+    await lifecycle.refresh_live_stream(data_dir=tmp_path)
+    assert set(lifecycle._state.streams.keys()) == {0}   # conn-1 해체(빈 소켓 안 남김)
+    await lifecycle.stop_live_stream()
+
+
+# ── watchdog 연결별 격리 복구 (Task 9) ─────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_watchdog_restarts_only_dead_conn(tmp_path, monkeypatch):
+    codes26 = [f"{i:06d}" for i in range(26)]
+    await _start_two_accounts(tmp_path, monkeypatch, codes26)
+    s = lifecycle._state.streams
+    assert set(s.keys()) == {0, 1}
+    conn0_ws_task, conn1 = s[0].ws_task, s[1]
+
+    # conn-1의 ws_task만 죽인다(dead)
+    s[1].ws_task.cancel()
+    try:
+        await s[1].ws_task
+    except asyncio.CancelledError:
+        pass
+    assert s[1].ws_task.done()
+
+    # 게이트를 열어 watchdog가 재시작 판정하도록 + start_live_stream 전체 재시작 금지 확인
+    monkeypatch.setattr(lifecycle, "_now_ms", lambda: 0)
+    import hoga.live.session_gate as sg
+    monkeypatch.setattr(sg, "ws_capture_window", lambda _t: True)
+
+    restarted = await lifecycle._ws_watchdog_check(
+        data_dir=tmp_path, now_ms=0, stale_after_ms=120_000,
+    )
+    assert restarted is True
+    # conn-0는 그대로(같은 ws_task 객체), conn-1만 새 task
+    assert lifecycle._state.streams[0].ws_task is conn0_ws_task
+    assert lifecycle._state.streams[1].ws_task is not conn1.ws_task
+    await lifecycle.stop_live_stream()
+
+
+# ── get_status 집계 + degraded_accounts (Task 10) ──────────────────────────────
+
+@pytest.mark.asyncio
+async def test_status_degraded_accounts_lists_unhealthy(tmp_path, monkeypatch):
+    codes26 = [f"{i:06d}" for i in range(26)]
+    await _start_two_accounts(tmp_path, monkeypatch, codes26)
+
+    # conn-1의 ws를 not-connected로(가짜) → capture_health "reconnecting"
+    class _DeadWs:
+        connected = False
+        sub_expected = 39
+        sub_acked = 0
+        sub_rejected = 0
+        last_recv_ms = None
+        last_tick_ms = None
+    lifecycle._state.streams[1].stream_obj.ws = _DeadWs()        # type: ignore[union-attr]
+    # conn-0는 connected
+    class _LiveWs(_DeadWs):
+        connected = True
+        sub_acked = 39
+    lifecycle._state.streams[0].stream_obj.ws = _LiveWs()        # type: ignore[union-attr]
+
+    # 장중 + grace 경과 가정
+    monkeypatch.setattr(lifecycle, "_market_clock_closed_for_capture", lambda _n: False)
+    st = lifecycle.get_status()
+    assert st.capture_healthy is False
+    assert st.degraded_accounts == [1]
+    assert ":" not in st.capture_reason       # Q10: 값 재포맷 금지(prefix 없음)
+    await lifecycle.stop_live_stream()
+
+
+@pytest.mark.asyncio
+async def test_status_market_closed_is_not_per_account_degraded(tmp_path, monkeypatch):
+    """야간/주말(market_closed)은 전역 상태 — 계좌별 degraded로 잡지 않는다
+    (advisor 버그 회귀: _capture_health의 closed 단락이 모든 conn을 degraded로
+    만들면 안 됨)."""
+    codes26 = [f"{i:06d}" for i in range(26)]
+    await _start_two_accounts(tmp_path, monkeypatch, codes26)
+    monkeypatch.setattr(lifecycle, "_market_clock_closed_for_capture", lambda _n: True)
+    st = lifecycle.get_status()
+    assert st.capture_reason == "closed"
+    assert st.degraded_accounts == []
+    assert st.capture_healthy is False
+    await lifecycle.stop_live_stream()
+
+
+@pytest.mark.asyncio
+async def test_status_idle_when_poller_only(tmp_path, monkeypatch):
+    from hoga.live import session_gate
+    monkeypatch.setattr(session_gate, "should_run_now", lambda _t: False)
+    monkeypatch.setenv("KIS_APP_KEY", "K")
+    monkeypatch.setenv("KIS_APP_SECRET", "S")
+    monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda d: _FakeKis(0))
+    from tests.unit.live.test_lifecycle_start import _write_watchlist
+    _write_watchlist(tmp_path, [])
+    await lifecycle.start_live_stream(data_dir=tmp_path)
+    st = lifecycle.get_status()
+    assert st.running is True              # poller alive
+    assert st.capture_healthy is True
+    assert st.capture_reason == "idle"
+    assert st.degraded_accounts == []
+    await lifecycle.stop_live_stream()
