@@ -37,3 +37,19 @@ export function resolveDrag(
   const orderedCodes = arrayMove(visibleSorted, from, to).map((e) => e.code);
   return { kind: 'reorder', folderId: selectedFolder, orderedCodes };
 }
+
+export type FolderDragResult = { kind: 'reorder'; orderedIds: string[] } | { kind: 'none' };
+
+/** activeId 폴더를 overId 폴더 위치로 옮긴 전체 id 순서. arrayMove 기반(임의 위치 이동).
+ *  기존 swapFolderOrder(grouping.ts)는 ⋯ 메뉴의 한 칸 swap 전용이라 드래그엔 부적합 —
+ *  드래그는 임의 거리이므로 resolveDrag(엔트리)와 대칭인 arrayMove 헬퍼를 따로 둔다. */
+export function resolveFolderDrag(
+  orderedIds: string[],
+  activeId: string,
+  overId: string,
+): FolderDragResult {
+  const from = orderedIds.indexOf(activeId);
+  const to = orderedIds.indexOf(overId);
+  if (from < 0 || to < 0 || from === to) return { kind: 'none' };
+  return { kind: 'reorder', orderedIds: arrayMove(orderedIds, from, to) };
+}
