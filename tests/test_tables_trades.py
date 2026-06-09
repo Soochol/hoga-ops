@@ -471,3 +471,75 @@ def test_query_volume_profile_zero_width_guard(tmp_path: Path) -> None:
     assert res.bin_width == 1  # floored at 1 (mirrors query_volume_profile_range)
     bins = dict(res.bins)
     assert bins.get(0) == 10  # all qty in bin 0
+
+
+# ---------------------------------------------------------------------------
+# dedup_overlap_resends — drop hogaplay page re-send duplicates (keep-LAST)
+# ---------------------------------------------------------------------------
+
+
+def _ct(*, seq: int, cum_vol: int, side: int = -1, qty: int = 1, ts_ms: int = 100_656_387) -> Trade:
+    """Continuous trade with a controllable cum_vol / seq for dedup fixtures."""
+    from hoga.tables.trades import Trade
+    return Trade(
+        ts_ms=ts_ms, seq=seq, price=24_600, change_pct=0.0, qty=qty, side=side,
+        cum_vol=cum_vol, cum_trades=0, low_so_far=0, high_so_far=0, net_pressure=0,
+        unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0,
+    )
+
+
+def test_dedup_overlap_resends_keeps_last_copy_and_restores_monotonicity() -> None:
+    """Models the 003490/20260506 page re-send: a continuous-trade burst is sent
+    twice with FRESH seqs, so the later copy restarts at a lower cum_vol and the
+    stream regresses. Keep-LAST (max seq per cum_vol) drops the earlier copies;
+    sorting the survivors by (ts_ms, seq) is then monotonic."""
+    from hoga.tables.trades import dedup_overlap_resends, find_cum_vol_violations
+    # First copy seq 10-12 (cum 100,110,120), then a re-send seq 13-15 of the
+    # SAME cum_vols (the overlap) plus genuine continuation seq 16 (cum 130).
+    trades = [
+        _ct(seq=10, cum_vol=100), _ct(seq=11, cum_vol=110), _ct(seq=12, cum_vol=120),
+        _ct(seq=13, cum_vol=100), _ct(seq=14, cum_vol=110), _ct(seq=15, cum_vol=120),
+        _ct(seq=16, cum_vol=130),
+    ]
+    # Pre-dedup the set has duplicate cum_vols (the double-count source).
+    assert sum(1 for t in trades if t.cum_vol == 100) == 2
+    out = dedup_overlap_resends(trades)
+    # One survivor per cum_vol, and it's the LAST (max seq) copy.
+    assert [t.seq for t in out] == [13, 14, 15, 16]
+    assert [t.cum_vol for t in out] == [100, 110, 120, 130]
+    # Sorted by (ts_ms, seq) the survivors are monotonic — regression gone.
+    ordered = sorted(out, key=lambda t: (t.ts_ms, t.seq))
+    assert find_cum_vol_violations(ordered) == []
+
+
+def test_dedup_overlap_resends_is_noop_for_clean_data() -> None:
+    from hoga.tables.trades import dedup_overlap_resends
+    trades = [_ct(seq=1, cum_vol=10), _ct(seq=2, cum_vol=20), _ct(seq=3, cum_vol=30)]
+    assert dedup_overlap_resends(trades) == trades
+
+
+def test_dedup_overlap_resends_never_drops_auction_cross_rows() -> None:
+    """side=0 rows all carry cum_vol=0 — they legitimately share it and must
+    survive (dropping them would lose Auction Cross volume)."""
+    from hoga.tables.trades import dedup_overlap_resends
+    trades = [
+        _ct(seq=1, cum_vol=0, side=0, qty=100),
+        _ct(seq=2, cum_vol=0, side=0, qty=200),
+        _ct(seq=3, cum_vol=50, side=1),
+    ]
+    out = dedup_overlap_resends(trades)
+    assert [t.seq for t in out] == [1, 2, 3]
+
+
+def test_dedup_overlap_resends_excludes_zero_qty_from_cum_vol_key() -> None:
+    """Defensive: a qty=0 continuous row does not increment cum_vol, so cum_vol
+    is no longer unique among such rows — they are kept as-is, never deduped."""
+    from hoga.tables.trades import dedup_overlap_resends
+    trades = [
+        _ct(seq=1, cum_vol=100, qty=0),
+        _ct(seq=2, cum_vol=100, qty=0),
+        _ct(seq=3, cum_vol=100, qty=5),
+    ]
+    out = dedup_overlap_resends(trades)
+    # Both qty=0 rows survive; the qty>0 row is the sole keep-LAST for cum 100.
+    assert [t.seq for t in out] == [1, 2, 3]

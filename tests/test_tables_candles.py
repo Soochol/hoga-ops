@@ -11,6 +11,7 @@ from hoga.tables.candles import (
     Candle,
     parse_row,
     query_all,
+    read_parquet,
     write_parquet,
 )
 
@@ -107,6 +108,48 @@ def test_query_all_returns_ascending_api_models(tmp_path: Path) -> None:
     assert [r.ts_ms for r in rows] == [30600000, 30660000]
     assert rows[0].open == 2  # ascending sort moves second-inserted to first
     assert rows[1].open == 1
+
+
+# ---------------------------------------------------------------------------
+# read_parquet — symmetric inverse of write_parquet (Candle round-trip)
+# ---------------------------------------------------------------------------
+
+
+def test_read_parquet_round_trips_write_parquet(tmp_path: Path) -> None:
+    """write_parquet ↔ read_parquet must round-trip Candles exactly (ASC by ts).
+
+    Single test surface for the parquet column schema — if the columns drift,
+    this breaks rather than a caller silently re-deriving them.
+    """
+    candles = [
+        Candle(ts_ms=30600000, open_=281000, close_=281500, high=282000, low=280500, vol_a=119, vol_b=3),
+        Candle(ts_ms=30660000, open_=281500, close_=281200, high=281900, low=281000, vol_a=42, vol_b=7),
+    ]
+    out = tmp_path / "candles.parquet"
+    write_parquet(candles, out)
+    assert read_parquet(out) == candles
+
+
+def test_read_parquet_maps_open_close_columns_to_underscored_fields(tmp_path: Path) -> None:
+    """Regression for the validate --deep candle-load break (2026-06-08): the
+    parquet columns are ``open``/``close`` but the Candle fields are
+    ``open_``/``close_``. A naive ``Candle(**row)`` raised
+    ``unexpected keyword argument 'open'``, so cli._run_series_for loaded NO
+    candles and series.candles_ts_monotonic was never evaluated under --deep —
+    making --deep --fix able to CLEAR archived candles_ts errors (re-including
+    chart-crashing dates). read_parquet owns the remap; assert the field values
+    survive it."""
+    out = tmp_path / "candles.parquet"
+    write_parquet([Candle(ts_ms=1, open_=100, close_=200, high=250, low=90, vol_a=5, vol_b=6)], out)
+    [c] = read_parquet(out)
+    assert (c.open_, c.close_) == (100, 200)
+    assert (c.high, c.low, c.vol_a, c.vol_b) == (250, 90, 5, 6)
+
+
+def test_read_parquet_empty_table_returns_empty_list(tmp_path: Path) -> None:
+    out = tmp_path / "candles.parquet"
+    write_parquet([], out)
+    assert read_parquet(out) == []
 
 
 # ---------------------------------------------------------------------------

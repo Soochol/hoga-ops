@@ -98,22 +98,23 @@ def test_validate_fix_is_idempotent(tmp_path, monkeypatch):
 
 
 def _seed_with_candles(data_dir, date, code, meta, candle_ts_list):
-    """Seed parquet with meta.json + candles.parquet (no snapshots/trades)."""
-    import pyarrow as pa
-    import pyarrow.parquet as pq
+    """Seed parquet with meta.json + candles.parquet (no snapshots/trades).
+
+    Uses the PRODUCTION candles.write_parquet so the on-disk columns match
+    exactly what read_parquet / _run_series_for see in production
+    (``open``/``close``, NOT ``open_``/``close_``). An earlier hand-rolled
+    pa.table here wrote ``open_``/``close_`` columns, which accidentally
+    matched a buggy ``Candle(**row)`` loader and MASKED the validate --deep
+    candle-load break (2026-06-08): the test was green while real captures
+    couldn't load candles at all. Routing through write_parquet keeps the
+    fixture honest to the schema."""
+    from hoga.tables.candles import Candle, write_parquet
     d = data_dir / "parquet" / date / code
     d.mkdir(parents=True, exist_ok=True)
     (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
-    pq.write_table(
-        pa.table({
-            "ts_ms": pa.array(candle_ts_list, type=pa.int64()),
-            "open_": pa.array([100] * len(candle_ts_list), type=pa.int64()),
-            "close_": pa.array([100] * len(candle_ts_list), type=pa.int64()),
-            "high": pa.array([100] * len(candle_ts_list), type=pa.int64()),
-            "low": pa.array([100] * len(candle_ts_list), type=pa.int64()),
-            "vol_a": pa.array([0] * len(candle_ts_list), type=pa.int64()),
-            "vol_b": pa.array([0] * len(candle_ts_list), type=pa.int64()),
-        }),
+    write_parquet(
+        [Candle(ts_ms=t, open_=100, close_=100, high=100, low=100, vol_a=0, vol_b=0)
+         for t in candle_ts_list],
         d / "candles.parquet",
     )
 
