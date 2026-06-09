@@ -15,7 +15,7 @@ from collections.abc import Callable
 
 from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
-from .session_gate import market_phase, ws_capture_window
+from .session_gate import market_phase, ws_capture_window_async
 from .snapshot import LiveSnapshot, SnapshotKind
 from .writer import LiveWriter
 from .ws_client import KisWsClient
@@ -147,9 +147,9 @@ class LiveStream:
         거래일 JSONL을 오염시키지 않게 한다(리뷰 C1)."""
         was_open = False
         while True:
-            # to_thread 격리(리뷰 #2): 캘린더 게이트는 콜드/네거티브 캐시에서
-            # 동기 KIS HTTP(timeout 15s)를 부른다 — 구 poller의 to_thread 가드 승계.
-            open_now = await asyncio.to_thread(ws_capture_window, _now_ms())
+            # 캘린더 게이트는 콜드/네거티브 캐시에서 동기 KIS HTTP(timeout 15s)를
+            # 부른다 — async 진입점이 to_thread 격리를 봉인(blocking 계약이 시그니처에).
+            open_now = await ws_capture_window_async(_now_ms())
             self._gate_open = open_now  # R2: on_tick의 ingest 게이트 플래그 갱신
             if open_now:
                 try:

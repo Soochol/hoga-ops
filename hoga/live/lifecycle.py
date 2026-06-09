@@ -219,6 +219,8 @@ def _build_conn(account_id: int, codes: list[str], data_dir: Path) -> _StreamCon
     from .stream import LiveStream  # noqa: PLC0415
     from .writer import LiveWriter  # noqa: PLC0415
     from .ws_client import KisWsClient  # noqa: PLC0415
+    # sync ws_capture_window을 의도적으로 씀(아래 gate_fn): KisWsClient가 gate_fn을
+    # `await to_thread(gate_fn)`로 감싸 blocking을 격리한다 — 유일한 합법적 sync 사용처.
     from .session_gate import ws_capture_window  # noqa: PLC0415
 
     kis = kis_runtime.ensure_kis_client_for_account(account_id, data_dir)
@@ -710,9 +712,9 @@ async def _ws_watchdog_check(
     from datetime import datetime  # noqa: PLC0415
 
     from .kis_client import KIS_KST  # noqa: PLC0415
-    from .session_gate import ws_capture_window  # noqa: PLC0415
+    from .session_gate import ws_capture_window_async  # noqa: PLC0415
 
-    if not await asyncio.to_thread(ws_capture_window, now_ms):
+    if not await ws_capture_window_async(now_ms):  # async 진입점이 to_thread 봉인(blocking 계약)
         return False
     started = _state.started_at_ms
     if started is None:
