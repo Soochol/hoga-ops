@@ -184,4 +184,25 @@ describe('sessionPhaseAt binary == linear reference', () => {
     const mid = segments[2].sessionOpenMs + 60_000;
     expect(locateSegment(segments, mid)).toEqual({ idx: 2, phase: 'regular' });
   });
+
+  it('returns idx -1 for non-empty pre-axis timestamp', () => {
+    expect(locateSegment(segments, segments[0].sessionOpenMs - 2 * DAY)).toEqual({
+      idx: -1,
+      phase: 'pre-axis',
+    });
+  });
+
+  it('returns preceding segment idx for an inter-session gap', () => {
+    // seg0 닫힘(base+FULL) 이후, seg1 pre-open(base+1DAY-30m) 이전 → 갭, owning idx=0
+    const inGap = segments[0].sessionCloseMs + 60 * 60 * 1000;
+    expect(locateSegment(segments, inGap)).toEqual({ idx: 0, phase: 'gap' });
+  });
+
+  it('returns last segment idx for a post-axis timestamp', () => {
+    const last = segments.length - 1;
+    expect(locateSegment(segments, segments[last].sessionCloseMs + DAY)).toEqual({
+      idx: last,
+      phase: 'post-axis',
+    });
+  });
 });
