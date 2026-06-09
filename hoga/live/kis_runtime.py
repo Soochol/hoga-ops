@@ -16,6 +16,7 @@ critical section is microseconds.
 """
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from collections.abc import Awaitable, Callable
@@ -24,6 +25,8 @@ from typing import TypeVar
 
 from .kis_client import KisAuthError, KisClient, KisCredentials
 from .kis_token_provider import KisTokenProvider
+
+log = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 
@@ -42,9 +45,21 @@ _rest_auth_degraded: set[int] = set()
 
 def _mark_rest_auth_degraded(account_id: int) -> None:
     """account의 REST 토큰 발급 실패를 latch(FM5). account 0은 폴백 대상 자체라 제외
-    (마킹해도 폴백할 곳이 없고, kis_for_role의 최종 폴백이 account 0이므로 무의미)."""
-    if account_id != 0:
+    (마킹해도 폴백할 곳이 없고, kis_for_role의 최종 폴백이 account 0이므로 무의미).
+
+    전환(미latch→latch) 시 1회만 WARNING — 이 latch가 없으면 오설정 KIS_APP_KEY_N이
+    잠깐 깜빡인 뒤 시스템이 영구히 account 0(15/s)로 조용히 강등되면서 30/s로 착각한다
+    (silent capacity degradation, ADR-0064/FM5가 막으려던 바로 그것). 모든 background
+    경로가 이 단일 chokepoint(provider 콜백)를 거치므로 여기 한 줄이 전부를 커버한다.
+    콜백은 to_thread 워커에서 provider 락 보유 중 호출되나 logging은 스레드안전이고
+    provider 락과 무관해 데드락 없음."""
+    if account_id != 0 and account_id not in _rest_auth_degraded:
         _rest_auth_degraded.add(account_id)
+        log.warning(
+            "KIS account %d REST token issuance failed — REST-degraded; background now "
+            "routes to account 0 until restart (check KIS_APP_KEY_%d/KIS_APP_SECRET_%d)",
+            account_id, account_id + 1, account_id + 1,  # env 접미 = account_id+1 (_account_env)
+        )
 
 
 def _account_env(account_id: int) -> tuple[str, str]:

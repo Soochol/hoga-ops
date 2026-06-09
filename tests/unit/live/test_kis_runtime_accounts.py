@@ -159,15 +159,21 @@ def test_kis_for_role_account0_lazy_ensures_when_dict_empty(tmp_path, monkeypatc
 # ── FM5: REST 토큰 실패 latch → background account 0 폴백 (2026-06-09) ────────────
 
 
-def test_background_routes_to_account0_after_rest_auth_latch(tmp_path, monkeypatch):
+def test_background_routes_to_account0_after_rest_auth_latch(tmp_path, monkeypatch, caplog):
     """FM5: account 1 REST 토큰 발급 실패가 latch되면 background가 account 0로 폴백한다
-    (이후 영구 — 재시작 전까지). foreground는 영향 없음(원래 account 0)."""
+    (이후 영구 — 재시작 전까지). foreground는 영향 없음(원래 account 0). latch 전환 시
+    운영자가 grep할 1회성 WARNING을 남긴다(silent capacity degradation 방지)."""
+    import logging
     _set_two_accounts(monkeypatch)
     monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: set())
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
     c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
     assert kis_runtime.kis_for_role("background", tmp_path) is c1  # 평상시 account 1
-    kis_runtime._mark_rest_auth_degraded(1)  # 토큰 provider 콜백이 호출하는 것
+    with caplog.at_level(logging.WARNING, logger="hoga.live.kis_runtime"):
+        kis_runtime._mark_rest_auth_degraded(1)  # 토큰 provider 콜백이 호출하는 것
+        kis_runtime._mark_rest_auth_degraded(1)  # 멱등 — 로그는 1회만
+    auth_warnings = [r for r in caplog.records if "REST-degraded" in r.message]
+    assert len(auth_warnings) == 1, "latch 전환 로그가 1회(once-only)가 아님"
     assert kis_runtime._account_degraded(1) is True
     assert kis_runtime.kis_for_role("background", tmp_path) is c0  # latch 후 account 0
     assert kis_runtime.kis_for_role("foreground", tmp_path) is c0  # foreground 불변
