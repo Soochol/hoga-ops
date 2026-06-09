@@ -8,6 +8,8 @@ import {
   stepChunkDays,
   planFillStep,
   isKrxRegularSessionNow,
+  initialCandleTargetFor,
+  initialHistoricalDaysFor,
 } from './liveDateTime';
 import { unixMsToKSTDate } from '../util/time';
 
@@ -173,5 +175,36 @@ describe('isKrxRegularSessionNow', () => {
   it('false on weekend (Sat 10:00 KST)', () => {
     const SAT_OPEN_MS = MON_OPEN_MS + 5 * 24 * HOUR; // +5 days → Saturday
     expect(isKrxRegularSessionNow(SAT_OPEN_MS + 1 * HOUR)).toBe(false);
+  });
+});
+
+// (a) /diagnose 2026-06-09 후속: 초기 분봉 fetch 창을 5거래일로 축소(첫 그림 속도).
+// 화면 초기 뷰포트는 ~300바만 보이고 나머지는 lazy-fetch가 채우므로, 콜드로드마다
+// 40일치(~115 KIS 호출)를 받던 것을 5거래일치(~20 호출)로 줄인다.
+describe('initialCandleTargetFor — 초기 분봉 창 (5거래일)', () => {
+  it('1m: 5거래일 = 1,950봉 (= 5 × 390분/일)', () => {
+    expect(initialCandleTargetFor('1m')).toBe(1950);
+  });
+  it('봉 크기에 비례 축소: 3m=650, 5m=390, 10m=195, 15m=130, 30m=65', () => {
+    expect(initialCandleTargetFor('3m')).toBe(650);
+    expect(initialCandleTargetFor('5m')).toBe(390);
+    expect(initialCandleTargetFor('10m')).toBe(195);
+    expect(initialCandleTargetFor('15m')).toBe(130);
+    expect(initialCandleTargetFor('30m')).toBe(65);
+  });
+  it('D/W/M은 불변(250봉)', () => {
+    expect(initialCandleTargetFor('D')).toBe(250);
+    expect(initialCandleTargetFor('W')).toBe(250);
+    expect(initialCandleTargetFor('M')).toBe(250);
+  });
+  it('모든 분봉 TF의 초기 캘린더창 = 7일 (5거래일을 5/7 밀도로 환산)', () => {
+    // useLiveBundle.seedFrom = today − initialHistoricalDaysFor(tf). 봉 크기와
+    // 무관하게 5거래일이므로 전부 7캘린더일. 과거(40일)에서 대폭 축소.
+    for (const tf of ['1m', '3m', '5m', '10m', '15m', '30m'] as const) {
+      expect(initialHistoricalDaysFor(tf)).toBe(7);
+    }
+  });
+  it('D는 기존 1년(350캘린더일) 유지', () => {
+    expect(initialHistoricalDaysFor('D')).toBe(350);
   });
 });

@@ -4,6 +4,7 @@ import { LiveEmptyState } from './LiveEmptyState';
 import { LiveSidebar } from './LiveSidebar';
 import type { RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
+import type { LiveDataWarning } from './liveDataWarnings';
 
 interface Props {
   activeCode: string | null;
@@ -18,6 +19,8 @@ interface Props {
   isPastCandlesLoading: boolean;
   /** useLiveBundle.isExtending — 진행 루프 settle-effect 구동용. LiveChartRoot로 전달. */
   isExtending: boolean;
+  /** 활성 경로 과거 fetch 경고(rate-limit 등). LiveChartRoot의 빈칸 문구·부분로딩 칩용. */
+  pastDataWarnings?: LiveDataWarning[];
   /** Owned by LivePage's single useLiveSeries call. Threaded to LiveSidebar
    * so the LATEST mode reads the same SSE buffer that feeds useLiveBundle. */
   live: LiveSeriesData;
@@ -30,6 +33,7 @@ export function LiveWorkarea({
   clampEngaged,
   isPastCandlesLoading,
   isExtending,
+  pastDataWarnings,
   live,
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
@@ -67,6 +71,7 @@ export function LiveWorkarea({
           clampEngaged={clampEngaged}
           isPastCandlesLoading={isPastCandlesLoading}
           isExtending={isExtending}
+          pastDataWarnings={pastDataWarnings}
         />
       </div>
       <div

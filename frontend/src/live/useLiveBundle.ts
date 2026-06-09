@@ -13,6 +13,7 @@ import {
   type InvestorNetPoint,
 } from '../api/types';
 import { buildChartBundle, buildHogaSeries, type HogaSeries } from './buildLiveBundle';
+import type { LiveDataWarning } from './liveDataWarnings';
 import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
 import {
   regularSessionOpenMs,
@@ -55,6 +56,10 @@ export interface UseLiveBundleResult {
   /** 좌측 팬 한 스텝이 진행 중(placeholderData+isFetching). false-edge = 스텝 settle.
    * LiveChartRoot 진행 루프가 이 falling edge에 반응해 다음 스텝을 dispatch한다. */
   isExtending: boolean;
+  /** 활성 타임프레임 경로(분봉=past-candles, D/W/M=past-daily-candles)의 fetch 경고.
+   * 백엔드가 KIS rate-limit 등으로 일부/전체 날짜를 못 받으면 채운다. LiveChartRoot가
+   * 빈칸 문구 전환 + 부분 로딩 칩에 쓴다(2026-06-09). 무경고면 빈 배열. */
+  pastDataWarnings: LiveDataWarning[];
 }
 
 /** Orchestrate live SSE + KIS past-candles + /api/range hoga indicators into a
@@ -303,6 +308,12 @@ export function useLiveBundle(
     && historicalFromDate != null
     && historicalFromDate <= earliestAllowedMinute;
 
+  // 활성 타임프레임 경로의 fetch 경고만 노출 — 분봉은 past-candles, D/W/M은
+  // past-daily-candles. (다른 경로 쿼리는 enabled=false라 data가 없거나 스테일.)
+  const pastDataWarnings: LiveDataWarning[] = isMinute
+    ? pastCandlesQuery.data?.data_warnings ?? []
+    : pastDailyCandlesQuery.data?.data_warnings ?? [];
+
   return {
     bundle,
     chartBundle,
@@ -311,5 +322,6 @@ export function useLiveBundle(
     clampEngaged,
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
     isExtending: extending,
+    pastDataWarnings,
   };
 }
