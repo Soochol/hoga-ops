@@ -4,6 +4,7 @@ import {
   isClosingAuction,
   isPreOpen,
   isRegularSession,
+  locateSegment,
   sessionPhaseAt,
   AUCTION_WINDOW_LENGTH_MS,
   PRE_OPEN_WINDOW_LENGTH_MS,
@@ -110,5 +111,77 @@ describe('predicates — convenience wrappers', () => {
     expect(isPreOpen(segments, DAY1_OPEN - PRE_OPEN_WINDOW_LENGTH_MS)).toBe(true);
     expect(isPreOpen(segments, DAY1_OPEN)).toBe(false); // session has started
     expect(isPreOpen(segments, DAY1_OPEN - PRE_OPEN_WINDOW_LENGTH_MS - 1)).toBe(false); // pre-axis
+  });
+});
+
+// --- 항목 2a: 선형 레퍼런스 대비 등가성 ---
+
+// Task 1 이전의 선형 sessionPhaseAt을 그대로 복제한 레퍼런스 구현.
+function sessionPhaseAtLinear(
+  segments: readonly { sessionOpenMs: number; sessionCloseMs: number }[],
+  realMs: number,
+): string {
+  if (segments.length === 0) return 'pre-axis';
+  const first = segments[0];
+  if (realMs < first.sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS) return 'pre-axis';
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const preOpenStart = seg.sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS;
+    if (realMs < preOpenStart) return 'gap';
+    if (realMs <= seg.sessionCloseMs) return classifyWithinSegment(seg, realMs);
+  }
+  return 'post-axis';
+}
+
+describe('sessionPhaseAt binary == linear reference', () => {
+  // 5거래일치 세그먼트(full-day + half-day 혼합), 현실적 야간 갭(24h 간격).
+  const DAY = 24 * 60 * 60 * 1000;
+  const FULL = 6.5 * 60 * 60 * 1000;
+  const HALF = 3.5 * 60 * 60 * 1000;
+  const base = 1_779_062_400_000; // 2026-05-18 09:00 KST
+  const segments = [
+    { sessionOpenMs: base + 0 * DAY, sessionCloseMs: base + 0 * DAY + FULL },
+    { sessionOpenMs: base + 1 * DAY, sessionCloseMs: base + 1 * DAY + HALF },
+    { sessionOpenMs: base + 2 * DAY, sessionCloseMs: base + 2 * DAY + FULL },
+    { sessionOpenMs: base + 5 * DAY, sessionCloseMs: base + 5 * DAY + FULL }, // 주말 갭
+    { sessionOpenMs: base + 6 * DAY, sessionCloseMs: base + 6 * DAY + FULL },
+  ];
+
+  // 경계 정확값 + 무작위 샘플.
+  const boundaries: number[] = [];
+  for (const s of segments) {
+    boundaries.push(
+      s.sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS - 1,
+      s.sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS,
+      s.sessionOpenMs - 1,
+      s.sessionOpenMs,
+      s.sessionCloseMs - AUCTION_WINDOW_LENGTH_MS - 1,
+      s.sessionCloseMs - AUCTION_WINDOW_LENGTH_MS,
+      s.sessionCloseMs,
+      s.sessionCloseMs + 1,
+    );
+  }
+  const lo = segments[0].sessionOpenMs - 2 * DAY;
+  const hi = segments[segments.length - 1].sessionCloseMs + 2 * DAY;
+  const random: number[] = [];
+  let seed = 12345;
+  for (let i = 0; i < 5000; i++) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff; // 결정적 LCG
+    random.push(lo + (seed % (hi - lo)));
+  }
+
+  it('agrees on every boundary and random sample', () => {
+    for (const t of [...boundaries, ...random]) {
+      expect(locateSegment(segments, t).phase).toBe(sessionPhaseAtLinear(segments, t));
+    }
+  });
+
+  it('empty segments → pre-axis, idx -1', () => {
+    expect(locateSegment([], 0)).toEqual({ idx: -1, phase: 'pre-axis' });
+  });
+
+  it('returns owning index for contained timestamps', () => {
+    const mid = segments[2].sessionOpenMs + 60_000;
+    expect(locateSegment(segments, mid)).toEqual({ idx: 2, phase: 'regular' });
   });
 });
