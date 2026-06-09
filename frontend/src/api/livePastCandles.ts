@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
+import { isKrxRegularSessionNow } from '../live/liveDateTime';
 
 export interface LivePastCandle {
   t_ms: number;
@@ -42,7 +43,7 @@ export function useLivePastCandles(
       ),
     enabled,
     staleTime: 60_000,
-    refetchInterval: 60_000,
+    refetchInterval: () => (isKrxRegularSessionNow() ? 60_000 : false),
     // Code-aware placeholder: keep previous data only when the code matches.
     // Same-code refetches (lazy from/to extension, refetchInterval) keep the
     // previous render to avoid blanking. Code switches drop the placeholder

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
+import { isKrxRegularSessionNow } from '../live/liveDateTime';
 
 export interface LivePastDailyCandle {
   t_ms: number;
@@ -45,7 +46,7 @@ export function useLivePastDailyCandles(
       ),
     enabled,
     staleTime: 60_000,
-    refetchInterval: 60_000,
+    refetchInterval: () => (isKrxRegularSessionNow() ? 60_000 : false),
     // See livePastCandles.ts for the rationale — code-aware placeholder
     // prevents the previous code's candle count from leaking into
     // LiveChartRoot's initial-view effect on watchlist switches.

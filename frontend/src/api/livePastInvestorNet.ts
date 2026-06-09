@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
 import type { InvestorNetPoint } from './types';
+import { isKrxRegularSessionNow } from '../live/liveDateTime';
 
 export interface LivePastInvestorNetWarning {
   batch: string;
@@ -41,7 +42,7 @@ export function useLivePastInvestorNet(
       ),
     enabled,
     staleTime: 60_000,
-    refetchInterval: 60_000,
+    refetchInterval: () => (isKrxRegularSessionNow() ? 60_000 : false),
     placeholderData: (prev) => (prev && prev.code === code ? prev : undefined),
   });
 }
