@@ -56,13 +56,18 @@ class LiveRestPoller:
 
     def __init__(
         self,
-        kis: _KisRestProto,
+        kis_resolver: Callable[[], _KisRestProto | None],
         buffer: LiveBuffer,
         *,
         interval_s: float = 2.0,
         phase_fn: Callable[[], str] | None = None,
     ) -> None:
-        self._kis: _KisRestProto = kis
+        # 고정 client가 아니라 resolver를 받는다(계정 분리 2026-06-09): 매 사이클
+        # 호출해 현재 background 계정의 KisClient를 동적 선택한다 — account 1 WS
+        # 저하 시 다음 사이클에 account 0로 폴백(별도 상태 동기화 불필요). None을
+        # 반환하면(creds 소실 등) 그 사이클을 우아하게 skip. 구조적 타입(_KisRestProto)
+        # 유지 → 테스트는 lambda: fake로 주입(env 불필요).
+        self._resolve_kis = kis_resolver
         self._buffer = buffer
         self._interval_s = interval_s
         self._phase_fn = phase_fn or (lambda: market_phase(_now_ms()))
@@ -136,6 +141,13 @@ class LiveRestPoller:
         각 종목 처리를 try/except로 감싸 한 실패가 다른 종목 처리를 막지 않게 함.
         last_cycle_ms는 사이클 완료 후 갱신 (ADR-0064: 성공 신호, finally 아님).
         """
+        # 사이클 시작 시 background 계정 KisClient를 동적 선택(계정 분리). None이면
+        # (creds 소실 등) 이 사이클은 폴링 불가 → 우아하게 skip(다음 사이클 재시도).
+        kis = self._resolve_kis()
+        if kis is None:
+            self.last_cycle_ms = _now_ms()  # 사이클은 정상 완료(폴링할 client 부재일 뿐)
+            return
+
         # 사이클 시작 시 target 스냅샷 — await 중 외부 변경이 안전하도록
         targets = self._subscribed - self._excluded
 
@@ -152,7 +164,7 @@ class LiveRestPoller:
 
         for code in targets:
             try:
-                await self._fetch_and_publish(code)
+                await self._fetch_and_publish(code, kis)
                 # 성공한 종목만 1회-표식에 추가(실패는 다음 사이클 재시도).
                 if closed:
                     self._snapshotted_once.add(code)
@@ -162,18 +174,20 @@ class LiveRestPoller:
         # 사이클이 정상 완료됐음을 기록 (stall 감지용 신호)
         self.last_cycle_ms = _now_ms()
 
-    async def _fetch_and_publish(self, code: str) -> None:
+    async def _fetch_and_publish(self, code: str, kis: _KisRestProto) -> None:
         """단일 종목: fetch_* 3개 → B3 변환 → buffer.publish.
 
+        kis는 _poll_once가 사이클 시작에 resolve한 background 계정 client(계정 분리) —
+        한 사이클 내 모든 종목이 동일 client를 공유해 일관성 유지.
         - 저장 함수(writer.append / promote / to_jsonl) 절대 불호출.
         - now_ms를 한 번 계산해 brokers_to_snapshot(now_ms=...) + publish(now_ms=...) 공유.
         """
         now_ms = _now_ms()
         phase = self._phase_fn()
 
-        ob = await self._kis.fetch_orderbook(code)
-        trades = await self._kis.fetch_trades(code)
-        brokers = await self._kis.fetch_brokers(code)
+        ob = await kis.fetch_orderbook(code)
+        trades = await kis.fetch_trades(code)
+        brokers = await kis.fetch_brokers(code)
 
         ob_snap = ob_to_snapshot(ob, phase=phase)
         trade_snaps = trades_to_snapshots(trades, phase=phase)

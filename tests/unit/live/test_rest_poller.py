@@ -80,7 +80,7 @@ def _make_poller(
     kis = FakeKisClient(raise_for=raise_for)
     buf = LiveBuffer()
     poller = LiveRestPoller(
-        kis,
+        lambda: kis,  # resolver: 매 사이클 동일 fake 반환(계정 분리 2026-06-09)
         buf,
         interval_s=interval_s,
         phase_fn=phase_fn or (lambda: "regular"),
@@ -409,3 +409,43 @@ async def test_poll_regular_polls_every_cycle_regression():
     await poller._poll_once()
     await poller._poll_once()
     assert kis.calls["fetch_orderbook"].count("005930") == 2
+
+
+# ── 계정 분리: background resolver 동적 라우팅 (2026-06-09) ──────────────────────
+
+
+@pytest.mark.asyncio
+async def test_poll_resolves_background_client_each_cycle():
+    """resolver를 매 사이클 호출해 현재 background 계정 client를 동적 선택한다 —
+    account 1(healthy)→account 0(degraded) 전환이 다음 사이클에 반영(별도 동기화 불필요).
+    여기선 resolver가 사이클마다 다른 fake를 반환하게 해 시점-평가를 검증한다."""
+    acct1 = FakeKisClient()  # N=2 healthy: background = account 1
+    acct0 = FakeKisClient()  # degraded 폴백: background = account 0
+    current = {"kis": acct1}
+    buf = LiveBuffer()
+    poller = LiveRestPoller(
+        lambda: current["kis"], buf, interval_s=0.02, phase_fn=lambda: "regular"
+    )
+    poller.on_subscribe("005930")
+    await poller._poll_once()  # account 1로 폴링
+    assert acct1.calls["fetch_orderbook"] == ["005930"]
+    assert acct0.calls["fetch_orderbook"] == []
+    # account 1 저하 → resolver가 account 0 반환(시뮬레이션)
+    current["kis"] = acct0
+    await poller._poll_once()  # 이제 account 0로 폴링(고정 캐시 아님)
+    assert acct1.calls["fetch_orderbook"] == ["005930"], "저하 후에도 account 1 계속 사용"
+    assert acct0.calls["fetch_orderbook"] == ["005930"], "account 0로 폴백 안 됨"
+
+
+@pytest.mark.asyncio
+async def test_poll_skips_cycle_when_resolver_returns_none():
+    """resolver가 None 반환(creds 소실/완전 저하) → 그 사이클을 우아하게 skip(크래시
+    없음), last_cycle_ms는 갱신(사이클 정상 완료 — stall 오탐 방지)."""
+    buf = LiveBuffer()
+    poller = LiveRestPoller(
+        lambda: None, buf, interval_s=0.02, phase_fn=lambda: "regular"
+    )
+    poller.on_subscribe("005930")
+    await poller._poll_once()  # raise 없이 통과
+    assert poller.last_cycle_ms is not None  # 사이클 완료 신호 갱신
+    assert await buf.get_latest("005930") is None  # 폴링 안 됨(publish 없음)

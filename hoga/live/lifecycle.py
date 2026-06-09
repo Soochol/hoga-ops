@@ -512,10 +512,16 @@ def _ensure_poller(data_dir: Path) -> "LiveRestPoller | None":
 
     if _state.rest_poller is not None:
         return _state.rest_poller
-    kis = kis_runtime.ensure_kis_client_from_env(data_dir)  # account 0
-    if kis is None:
+    # account 0 creds 게이트: 없으면 폴러 미생성(완전 오프라인). 있으면 account 0
+    # client를 미리 확보(부팅 비용·재사용)하되, 폴러엔 *고정* client가 아니라 background
+    # resolver를 준다(계정 분리 2026-06-09): 매 사이클 kis_for_role('background')로 account
+    # 1(유휴 REST 버킷)을 동적 선택, 저하 시 account 0 폴백. 폴러는 1회 생성·재사용이라
+    # resolver 클로저가 라우팅을 시점-평가하므로 재시작/저하 전환에 별도 동기화 불필요.
+    if kis_runtime.ensure_kis_client_from_env(data_dir) is None:  # account 0
         return None
-    poller = LiveRestPoller(kis, _buffer)
+    poller = LiveRestPoller(
+        lambda: kis_runtime.kis_for_role("background", data_dir), _buffer
+    )
     poller.start()
     return poller
 
