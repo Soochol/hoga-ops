@@ -33,6 +33,23 @@ const SPEC: PaneSpec = {
 const bundle = { candles: [] } as never;
 const axis = { contains: () => true, toVirtual: (t: number) => t } as never;
 
+// Projects candle rows so a test can vary the setData RESULT via the bundle.
+// The production bug: a new bundle object carrying identical candles re-ran
+// setData; the fix skips it by content signature.
+type CandleBundle = { candles: Array<{ time: number; close: number }> };
+const PROJECT_SPEC: PaneSpec = {
+  name: 'candle',
+  stretch: 1,
+  series: [
+    {
+      type: {} as never,
+      options: {} as never,
+      data: (b) => (b as unknown as CandleBundle).candles.map((c) => ({ time: c.time, close: c.close })) as never,
+    },
+  ],
+};
+const candleBundle = (rows: Array<{ time: number; close: number }>) => ({ candles: rows }) as never;
+
 describe('RangeSeriesPane', () => {
   afterEach(cleanup);
 
@@ -86,8 +103,48 @@ describe('RangeSeriesPane', () => {
     rerender(
       <RangeSeriesPane chart={chart} bundle={{ candles: [] } as never} axis={axis} paneIndex={1} spec={SPEC} />,
     );
-    // New bundle ref → data effect re-runs (setData twice) but series NOT re-created.
+    // New bundle ref → data effect re-runs, but series NOT re-created.
     expect(created).toHaveLength(1);
+  });
+
+  it('SKIPS a redundant setData when the projected data is unchanged', () => {
+    // /live remounts + re-renders ~24× during a timeframe switch, handing down a
+    // fresh `bundle` object each time while `bundle.candles` stays identical.
+    // lwc re-runs price autoscale + viewport settle on EVERY setData, so those
+    // identical re-pushes visibly re-fit the chart after the reveal cover lifts.
+    // The data effect must skip a push whose result matches the last one.
+    const { chart, created } = makeChart();
+    const rows = [{ time: 1, close: 100 }, { time: 2, close: 110 }];
+    const { rerender } = render(
+      <RangeSeriesPane chart={chart} bundle={candleBundle(rows)} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+    );
+    expect(created[0].setData).toHaveBeenCalledTimes(1); // initial push
+    // New bundle OBJECT, identical candle CONTENT → setData must be skipped.
+    rerender(
+      <RangeSeriesPane chart={chart} bundle={candleBundle([...rows])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+    );
+    expect(created).toHaveLength(1); // series not re-created
+    expect(created[0].setData).toHaveBeenCalledTimes(1); // redundant push SKIPPED
+  });
+
+  it('re-pushes when the last bar changes (live tick) — not over-skipping', () => {
+    // Safety: a live tick mutates the last bar (same time, new close). Its
+    // signature changes, so the push MUST flow through — over-aggressive
+    // skipping would freeze the chart mid-session.
+    const { chart, created } = makeChart();
+    const { rerender } = render(
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+    );
+    expect(created[0].setData).toHaveBeenCalledTimes(1);
+    // Last bar's close changed → new content → must re-push.
+    rerender(
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 105 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+    );
     expect(created[0].setData).toHaveBeenCalledTimes(2);
+    // A new bar appended → length changed → must re-push.
+    rerender(
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 105 }, { time: 2, close: 108 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+    );
+    expect(created[0].setData).toHaveBeenCalledTimes(3);
   });
 });
