@@ -17,8 +17,10 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
+from typing import Protocol, runtime_checkable
 
 from .buffer import LiveBuffer
+from .kis_models import KisBrokers, KisOrderbook, KisTrade
 from .rest_buffer_build import brokers_to_snapshot, ob_to_snapshot, trades_to_snapshots
 from .session_gate import market_phase
 
@@ -27,6 +29,19 @@ _log = logging.getLogger(__name__)
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+@runtime_checkable
+class _KisRestProto(Protocol):
+    """최소 프로토콜 — LiveRestPoller가 KisClient에서 쓰는 메서드만 정의.
+
+    KisClient도 FakeKisClient도 이 구조적 타입을 만족하므로 테스트에서
+    fake를 주입할 수 있고 프로덕션에서 KisClient 실체를 주입할 수 있다.
+    """
+
+    async def fetch_orderbook(self, code: str) -> KisOrderbook: ...
+    async def fetch_trades(self, code: str) -> list[KisTrade]: ...
+    async def fetch_brokers(self, code: str) -> KisBrokers: ...
 
 
 class LiveRestPoller:
@@ -41,13 +56,13 @@ class LiveRestPoller:
 
     def __init__(
         self,
-        kis: object,
+        kis: _KisRestProto,
         buffer: LiveBuffer,
         *,
         interval_s: float = 2.0,
         phase_fn: Callable[[], str] | None = None,
     ) -> None:
-        self._kis = kis
+        self._kis: _KisRestProto = kis
         self._buffer = buffer
         self._interval_s = interval_s
         self._phase_fn = phase_fn or (lambda: market_phase(_now_ms()))
