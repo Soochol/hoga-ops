@@ -1,7 +1,7 @@
 # Live Bundle Split (candle vs hoga) — Design
 
 **Date**: 2026-06-09
-**Status**: Draft
+**Status**: Phase A 구현 완료 (branch `fix-tf-churn`) · Phase B/C 백로그
 **Scope**: `frontend/src/live/useLiveBundle.ts`, `frontend/src/live/buildLiveBundle.ts`, `frontend/src/live/LiveChartRoot.tsx`, `frontend/src/live/LivePage.tsx`, `frontend/src/live/LiveWorkarea.tsx`, `frontend/src/live/LiveStatusBar.tsx`, `frontend/src/chart/RangeSeriesPane.tsx`, `frontend/src/chart/paneSpecs.ts`, `frontend/src/chart/useDrawingHost.ts`
 
 ## Problem
