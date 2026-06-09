@@ -185,6 +185,43 @@ def configured_account_ids(data_dir: Path) -> list[int]:
     return ids
 
 
+# ── Role-based account routing (2026-06-09 account-split) ──────────────────────
+# #53이 2계좌 인증을 깔면서 account 1의 REST 15/s 버킷이 통째로 유휴였다(WS approval
+# 전용). 이 라우터는 사용자가 차트 그려지길 기다리는 foreground REST(past-candles/
+# daily)를 account 0 전용으로, 백그라운드 REST(rest_poller·quotes·investor·screener)를
+# account 1로 보내 — 사용자 fetch가 백그라운드와 아예 경합하지 않게 하고 총 REST를
+# 30/s로 만든다. N=1(키 1개)이거나 account 1이 저하/미설정이면 account 0로 폴백하며,
+# 이때는 ②(_TokenBucket foreground 우선순위)가 공유 버킷에서 foreground를 보호한다.
+
+def _account_degraded(account_id: int) -> bool:
+    """account_id의 WS 연결이 저하 상태인가 — background를 그 계정으로 보내기 전
+    프리엠티브 폴백 신호(#53 degraded 신호 재사용). lifecycle을 late import해 순환을
+    피한다(lifecycle→kis_runtime이 정방향 의존). 신호를 못 얻으면 보수적으로 False
+    (저하 아님으로 간주 — 최종 가드는 ensure 단계의 None 체크와 호출부 격리)."""
+    try:
+        from . import lifecycle  # noqa: PLC0415 — late import: 순환 회피
+        return account_id in lifecycle.degraded_account_ids()
+    except Exception:  # noqa: BLE001 — 신호 조회 실패는 라우팅을 막지 않는다
+        return False
+
+
+def kis_for_role(role: str, data_dir: Path) -> KisClient | None:
+    """role('foreground'|'background')에 따라 account별 KisClient를 반환한다(호출
+    시점 평가 → degraded 동적 폴백, 별도 상태 동기화 불필요).
+
+    - foreground: 항상 account 0(사용자 전용 15/s, 백그라운드와 경합 없음).
+    - background: N≥2 & account 1 비-degraded면 account 1(ensure로 WS 유무와 무관하게
+      REST 버킷 확보), 아니면 account 0 폴백.
+
+    N=2 정상 분리에선 acct0=foreground만·acct1=background만이라 ② foreground 우선순위는
+    dormant. N=1/degraded 폴백 시 공유 버킷이 되어 ②가 활성화된다."""
+    if role == "background" and 1 in configured_account_ids(data_dir) and not _account_degraded(1):
+        client = ensure_kis_client_for_account(1, data_dir)
+        if client is not None:
+            return client
+    return ensure_kis_client_for_account(0, data_dir)
+
+
 async def aclose_kis_client() -> None:
     """Close and drop ALL per-account KisClient + KisTokenProvider singletons —
     PROCESS shutdown only. A stream/conn stop must not call this (R1)."""

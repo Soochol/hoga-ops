@@ -317,6 +317,39 @@ def _capture_health(
     return (True, "healthy")
 
 
+def degraded_account_ids() -> set[int]:
+    """현재 WS 연결이 저하된 account_id 집합 — kis_runtime.kis_for_role의 background
+    REST 프리엠티브 폴백 신호(late import로 호출). get_status의 degraded 계산과 동일
+    의미론: streams 없거나 전역 장 마감이면 빈 집합(closed는 계좌별 결함이 아님,
+    line 357-362의 advisor 버그 회피), 정규장에 conn별 health 체크. 안전 호출.
+
+    get_status가 cap_healthy/reason까지 같은 루프로 계산하는 것과 약간 중복되나,
+    #53의 get_status(공유 코드)를 건드리지 않으려는 의도적 선택(루프 ~6줄)."""
+    from datetime import datetime  # noqa: PLC0415
+    from .kis_client import KIS_KST  # noqa: PLC0415
+
+    streams = _state.streams
+    started = _state.started_at_ms
+    now_ms = _now_ms()
+    if started is None or not streams or _market_clock_closed_for_capture(now_ms):
+        return set()
+    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
+    session_open_ms = int(
+        kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
+    )
+    ref_ms = max(started, session_open_ms)
+    degraded: set[int] = set()
+    for account_id, conn in streams.items():
+        ws = getattr(conn.stream_obj, "ws", None)
+        healthy, _reason = _capture_health(
+            running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
+            stale_after_ms=_WATCHDOG_STALE_AFTER_MS, market_closed=False,
+        )
+        if not healthy:
+            degraded.add(account_id)
+    return degraded
+
+
 def get_status() -> LiveStatus:
     """Read the current live status. Always safe to call. dynamic-N 집계(스펙 §5.7)."""
     from datetime import datetime  # noqa: PLC0415
