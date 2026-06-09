@@ -40,7 +40,19 @@ _log = logging.getLogger(__name__)
 
 KIS_WS_MAX_REGISTRATIONS = 41   # appkey당, (tr_id, code) 쌍 기준 — spec §4 검증 완료
 TRS_PER_CODE = 3                # 호가 + 체결 + 회원사(H0STMBC0)
-LIVE_SET_MAX_CODES = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # = 13
+_PER_ACCOUNT_MAX = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # = 13 (계좌당 한도)
+# 동적 상한: 13 * n_configured. start에서 n_configured를 곱해 _compute_live_set이 사용.
+LIVE_SET_MAX_CODES = _PER_ACCOUNT_MAX  # 1계좌 기본(_compute_live_set이 n_configured로 동적 절단)
+
+
+def partition_live_set(codes: list[str], n: int) -> list[list[str]]:
+    """display-order 연속 배정: account k = codes[k*13:(k+1)*13] (스펙 §5.3, Q4).
+
+    n개 리스트를 항상 반환(후행은 빈 리스트일 수 있음). 연속 슬라이스라
+    13-경계를 안 넘는 코드는 계좌 고정 → 재정렬 churn 최소(위험 #4). 해시 배정
+    대신 연속을 택한 이유: CONTEXT.md 'top-13=경계' 모델 일치 + explicit>clever.
+    """
+    return [codes[k * _PER_ACCOUNT_MAX:(k + 1) * _PER_ACCOUNT_MAX] for k in range(n)]
 
 
 def display_ordered_codes(doc: WatchlistDocument) -> list[str]:
