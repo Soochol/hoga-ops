@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createVirtualAxis } from './virtualAxis';
 import { INTER_SEGMENT_GAP_MS } from './time';
+import { AUCTION_WINDOW_LENGTH_MS } from './sessionTime';
 
 // KST 09:00 — 15:30 = 6h30m = 23_400_000 ms.
 const SESSION_LEN_MS = 6.5 * 60 * 60 * 1000;
@@ -392,6 +393,20 @@ describe('classifyAndProject == contains+inAuction+toVirtual', () => {
       seed = (seed * 1103515245 + 12345) & 0x7fffffff;
       samples.push(lo + (seed % (hi - lo)));
     }
+    for (const s of axis.segments) {
+      samples.push(
+        s.sessionOpenMs - 1,
+        s.sessionOpenMs,
+        s.sessionOpenMs + 1,
+        s.sessionCloseMs - AUCTION_WINDOW_LENGTH_MS - 1,
+        s.sessionCloseMs - AUCTION_WINDOW_LENGTH_MS,
+        s.sessionCloseMs - 1,
+        s.sessionCloseMs,
+        s.sessionCloseMs + 1,
+      );
+    }
+    // 첫 세그먼트 open 클램프 경계도 명시
+    samples.push(axis.segments[0].sessionOpenMs - 1, axis.segments[0].sessionOpenMs);
     for (const t of samples) {
       const got = axis.classifyAndProject(t);
       expect(got.contained).toBe(axis.contains(t));

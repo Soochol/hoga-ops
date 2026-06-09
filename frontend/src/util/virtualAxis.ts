@@ -95,7 +95,7 @@ export type VirtualAxis = Readonly<{
    * methods separately — see virtualAxis.test.ts equivalence test.
    */
   classifyAndProject(realMs: number): { contained: boolean; inAuction: boolean; virtual: number };
-}>;;
+}>;
 
 /**
  * Construct a `VirtualAxis` from raw session open/close pairs. The input is
