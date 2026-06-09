@@ -190,8 +190,8 @@ def _run_series_for(stock_date_dir, meta):
     import pyarrow.parquet as _pq
 
     from hoga.api.invariants import StockDateArtifacts, check_series
+    from hoga.tables import candles as _candles
     from hoga.tables import snapshots as _snapshots
-    from hoga.tables.candles import Candle
     from hoga.tables.trades import Trade
 
     def _read(path, loader):
@@ -213,8 +213,11 @@ def _run_series_for(stock_date_dir, meta):
     def _read_dataclass(path, ctor):
         return [ctor(**row) for row in _pq.read_table(path).to_pylist()]
 
-    candles = _read(stock_date_dir / "candles.parquet",
-                    lambda p: _read_dataclass(p, Candle))
+    # Candles use the dedicated reader (not _read_dataclass): the parquet
+    # columns are open/close but the Candle fields are open_/close_, so
+    # Candle(**row) raises. candles.read_parquet owns that remap — see its
+    # docstring for why a naive loader silently broke validate --deep.
+    candles = _read(stock_date_dir / "candles.parquet", _candles.read_parquet)
     # Orderbook flat-schema round-trip lives in the snapshots module so the
     # write/read pair stays symmetric (ADR-0020 §3c — see snapshots.read_parquet).
     snapshots = _read(stock_date_dir / "snapshots.parquet",

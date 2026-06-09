@@ -1,7 +1,8 @@
 """Series-level invariants — checks over candles/snapshots/trades artifacts.
 
 Plan tasks 3, 4, 5 combined: catalog entries for candles_ts_monotonic
-(error), snapshots_no_gaps (warn), cum_vol_monotonic (error)."""
+(error), snapshots_no_gaps (warn), cum_vol_monotonic (warn — forensic
+trust signal, not broken shape; see ADR-0020 §5 + invariants.py)."""
 from __future__ import annotations
 
 from hoga.api.invariants import (
@@ -162,7 +163,10 @@ def test_snapshots_no_gaps_skips_when_meta_lacks_session_close() -> None:
     assert fired == []
 
 
-# === series.cum_vol_monotonic (error) ===
+# === series.cum_vol_monotonic (warn) ===
+# WARN, not error: a cum_vol regression (single hogaplay page-overlap rebase)
+# leaves the segment shape intact — the read path consumes no cum_vol — so the
+# date is INCLUDED with a data_warning rather than excluded. See ADR-0020 §5.
 
 def test_cum_vol_monotonic_passes_for_clean_data() -> None:
     arts = StockDateArtifacts(meta={}, trades=[
@@ -185,7 +189,7 @@ def test_cum_vol_monotonic_fires_one_violation_per_regression() -> None:
     fired = [v for v in check_series(arts)
              if v.invariant_id == "series.cum_vol_monotonic"]
     assert len(fired) == 2
-    assert all(v.severity == Severity.error for v in fired)
+    assert all(v.severity == Severity.warn for v in fired)
     ctx_pairs = [(v.ctx["prev_cum"], v.ctx["curr_cum"]) for v in fired]
     assert (10, 8) in ctx_pairs
     assert (8, 5) in ctx_pairs

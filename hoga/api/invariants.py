@@ -334,11 +334,29 @@ def _series_snapshots_no_gaps(a: "StockDateArtifacts") -> list[Violation]:
     )]
 
 
-# --- error: cum_vol non-decreasing across continuous-trade rows ---
-# Wraps the trades.find_cum_vol_violations helper (extracted in Task 1)
-# so the same scan that parser's strict TradeValidationError uses also
-# flows into the catalog — but with one Violation per regression instead
-# of first-only.
+# --- warn: cum_vol non-decreasing across continuous-trade rows ---
+# Severity is WARN, not error. Per ADR-0020 §5, `error` means the data *shape*
+# is broken so a segment cannot be assembled (e.g. candles ts_ms non-monotonic
+# → lightweight-charts setData assert, the 5/18/003490 crash). A cum_vol
+# regression does NOT break shape: nothing on the read path consumes cum_vol —
+# candles carry their own vol_a/vol_b columns, fill_strength is SUM(qty) over
+# side!=0 rows, and quote_ratio is snapshot-derived — so the segment, candles,
+# and the 총잔량·호가비·체결강도 panes all assemble fine. cum_vol monotonicity
+# is a forensic *trust* signal, which is exactly ADR-0020's `warn` class
+# ("shape fine, trust low → include + surface via data_warnings").
+#
+# This also makes the ARCHIVAL severity consistent with the capture path, which
+# already surfaces the same regression as `warn` (captures._validation_error_to_warning,
+# severity="warn"): a single hogaplay page-overlap rebase should not reject a
+# whole Stock-Date (ADR-0020 lenient fallback, captures.py). Before this fix the
+# parser archived the violation as `error`, so the read-path INVALID gate dropped
+# the ENTIRE date (blank 호가 indicator panes) while the capture UI called the
+# same anomaly a tolerable warning — a self-contradiction. See ADR-0020
+# amendment 2026-06-08.
+#
+# Wraps trades.find_cum_vol_violations: one Violation per regression (the catalog
+# archives the full list; the parser's strict TradeValidationError still raises on
+# the first regression to drive the lenient fallback, independent of severity).
 
 def _series_cum_vol_monotonic(a: "StockDateArtifacts") -> list[Violation]:
     if a.trades is None:
@@ -348,7 +366,7 @@ def _series_cum_vol_monotonic(a: "StockDateArtifacts") -> list[Violation]:
     for v in find_cum_vol_violations(a.trades):
         out.append(Violation(
             "series.cum_vol_monotonic",
-            Severity.error,
+            Severity.warn,
             "cum_vol regressed across continuous-trade rows",
             {"index": v.index, "prev_cum": v.prev_cum,
              "curr_cum": v.curr_cum, "ts_ms": v.ts_ms},
@@ -370,8 +388,12 @@ SERIES_INVARIANTS: tuple[SeriesInvariant, ...] = (
         check=_series_snapshots_no_gaps,
     ),
     SeriesInvariant(
+        # WARN, not error: a cum_vol regression is a forensic trust signal, not a
+        # broken-shape signal — the read path consumes none of cum_vol, so the
+        # segment still assembles. Aligns archival severity with the capture
+        # path's existing `warn`. See _series_cum_vol_monotonic + ADR-0020 §5.
         id="series.cum_vol_monotonic",
-        severity=Severity.error,
+        severity=Severity.warn,
         description="cum_vol non-decreasing across continuous-trade rows",
         check=_series_cum_vol_monotonic,
     ),
