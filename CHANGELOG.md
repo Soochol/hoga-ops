@@ -3,6 +3,24 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.4.0] - 2026-06-09
+
+### Fixed
+- **분봉(타임프레임) 전환 시 캔들이 "그려진 뒤 다시 fitting되며 재생성"되던 플리커
+  제거**: 전환 직후 차트가 동일한 캔들 데이터를 여러 번 setData하면서
+  lightweight-charts가 가격축을 다시 오토스케일하고 화면을 재배치하던 것이 원인.
+  같은 내용이면 setData를 건너뛰도록 가드를 추가해, 전환 시 캔들이 한 번에 최종
+  위치로 그려집니다.
+
+### Changed
+- **/live 차트가 실시간 호가 갱신(SSE)마다 화면 전체를 다시 그리던 부담 감소**:
+  호가 지표(quote_ratio/fill_strength)만 실시간 데이터에 의존하는데도 SSE 틱마다
+  캔들·이동평균·툴팁·현재가선까지 함께 재렌더되던 구조를 분리했습니다(번들을
+  candle/hoga로 나누고 candle 경로 컴포넌트를 memo화). 또한 SSE 푸시를 ~150ms로
+  묶어(coalescing) 장중 고빈도 갱신에도 재렌더 빈도를 ~6.7Hz로 제한합니다. 라이브
+  호가·사이드바 표시에 최대 150ms 지연이 더해지지만(현재가선 제외), 차트가 눈에
+  띄게 부드러워집니다.
+
 ## [0.7.3.0] - 2026-06-09
 
 ### Changed
