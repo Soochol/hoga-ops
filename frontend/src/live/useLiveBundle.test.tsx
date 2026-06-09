@@ -37,6 +37,7 @@ const candlesMock = {
   candles: [DEFAULT_CANDLE] as Array<typeof DEFAULT_CANDLE>,
   isPlaceholderData: false,
   isFetching: false,
+  warnings: [] as Array<{ date?: string; reason: string; msg: string }>,
 };
 const livePastCandlesSpy = vi.fn(() => ({
   data: {
@@ -46,7 +47,7 @@ const livePastCandlesSpy = vi.fn(() => ({
     candles: candlesMock.candles,
     cached_dates: [],
     fresh_dates: [],
-    data_warnings: [],
+    data_warnings: candlesMock.warnings,
   },
   isLoading: false,
   error: null,
@@ -101,6 +102,7 @@ describe('useLiveBundle', () => {
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
+    candlesMock.warnings = [];
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
     useLivePageStore.setState({
@@ -164,6 +166,26 @@ describe('useLiveBundle', () => {
     expect(c).not.toHaveProperty('t_ms');
     expect(c).not.toHaveProperty('volume');
   });
+
+  // (c) /diagnose 2026-06-09 후속: 백엔드가 내려준 past-candles 경고를 결과로 노출
+  // (이전엔 페치만 하고 버려서 화면에 rate-limit 지연을 못 알렸음).
+  it('무경고면 pastDataWarnings는 빈 배열', () => {
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+    expect(result.current.pastDataWarnings).toEqual([]);
+  });
+  it('분봉: past-candles 경고를 pastDataWarnings로 노출', () => {
+    candlesMock.warnings = [{ date: '20260609', reason: 'kis_rate_limit', msg: 'rate limit' }];
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+    expect(result.current.pastDataWarnings).toEqual([
+      { date: '20260609', reason: 'kis_rate_limit', msg: 'rate limit' },
+    ]);
+  });
+  it('D/W/M: past-candles(분봉) 경고가 아닌 past-daily 경고를 노출', () => {
+    // 분봉 경로 경고가 세팅돼 있어도 D에선 daily 경로 경고(여기선 빈 배열)를 본다.
+    candlesMock.warnings = [{ date: '20260609', reason: 'kis_rate_limit', msg: 'minute path' }];
+    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
+    expect(result.current.pastDataWarnings).toEqual([]); // daily spy의 data_warnings=[]
+  });
 });
 
 describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
@@ -174,6 +196,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
+    candlesMock.warnings = [];
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
     useLivePageStore.setState({
@@ -234,6 +257,7 @@ describe('useLiveBundle extension atomization gate', () => {
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
+    candlesMock.warnings = [];
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
     useLivePageStore.setState({ activeCode: '005930', candleTimeframe: '1m', historicalFromDate: null });
@@ -310,6 +334,7 @@ describe('useLiveBundle isExtending', () => {
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
+    candlesMock.warnings = [];
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
     useLivePageStore.setState({

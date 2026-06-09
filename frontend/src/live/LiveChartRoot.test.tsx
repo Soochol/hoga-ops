@@ -453,6 +453,71 @@ describe('LiveChartRoot', () => {
     // Still loading → hold the cover so the candles can't appear at the wrong zoom.
     expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
   });
+
+  // (c) /diagnose 2026-06-09 후속: rate-limit/부분로딩 상태 표시. 백엔드 data_warnings를
+  // 살려 빈칸 문구 전환 + 부분로딩 칩으로 "고장?" 오해를 없앤다.
+  const RL_WARNINGS = [{ reason: 'kis_rate_limit', msg: 'rate limit' }];
+
+  it('캔들 없음 + rate-limit 경고 → 빈칸 노트가 한도 문구로 전환', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(0)}
+        clampEngaged={false} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('past-candles-loading-note').textContent).toContain('호출 한도');
+  });
+
+  it('캔들 없음 + 로딩 중 + 경고 없음 → 기존 "분봉 불러오는 중…"', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(0)}
+        clampEngaged={false} isPastCandlesLoading={true} />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('past-candles-loading-note').textContent).toContain('분봉 불러오는 중');
+  });
+
+  it('캔들 없음 + 로딩 아님 + 경고 없음 → 노트 없음(정말 데이터 없음)', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(0)}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    expect(screen.queryByTestId('past-candles-loading-note')).toBeNull();
+  });
+
+  it('캔들 있음 + 경고 있음 → 부분로딩 칩 표시', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
+        clampEngaged={false} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('partial-load-chip').textContent).toContain('일부 과거구간');
+  });
+
+  it('캔들 있음 + 경고 없음 → 부분로딩 칩 미표시(회귀가드)', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
+        clampEngaged={false} isPastCandlesLoading={false} pastDataWarnings={[]} />,
+      { wrapper },
+    );
+    expect(screen.queryByTestId('partial-load-chip')).toBeNull();
+  });
+
+  it('clamp + 부분로딩 동시 → 두 칩 모두 표시(bottom-left 스택)', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
+        clampEngaged={true} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('partial-load-chip')).toBeTruthy();
+    expect(screen.getByTestId('clamp-engaged-chip')).toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -465,6 +530,11 @@ const TODAY_CLOSE_MS = TODAY_OPEN_MS + 6.5 * 3600 * 1000;
 const YESTERDAY_OPEN_MS = TODAY_OPEN_MS - 86_400_000;
 const YESTERDAY_CLOSE_MS = YESTERDAY_OPEN_MS + 6.5 * 3600 * 1000;
 
+// NOTE: these two fixtures carry a candle each. The lazy-fetch trigger (3b) and
+// settle-loop (3a) only run once data has loaded (candleCountRef guard, /diagnose
+// 2026-06-09) — pan/fill are behaviors of a POPULATED chart. An empty-candle
+// bundle exercises the cold-load guard instead; the dedicated "no candles loaded
+// yet" tests below use { ...BUNDLE, candles: [] } for that.
 const TODAY_ONLY_BUNDLE: RangeBundle = {
   code: '005930',
   from_date: '20260527',
@@ -473,7 +543,7 @@ const TODAY_ONLY_BUNDLE: RangeBundle = {
   segments: [
     { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kis_live' },
   ],
-  candles: [],
+  candles: [{ ts_ms: TODAY_OPEN_MS + 60_000, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 }],
   quote_ratio: { bucket_ms: 60_000, points: [] },
   fill_strength: { bucket_ms: 60_000, points: [] },
   volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
@@ -490,7 +560,10 @@ const TWO_SEGMENT_BUNDLE: RangeBundle = {
     { date: '20260526', session_open_ms: YESTERDAY_OPEN_MS, session_close_ms: YESTERDAY_CLOSE_MS, source: 'kis_live' },
     { date: '20260527', session_open_ms: TODAY_OPEN_MS, session_close_ms: TODAY_CLOSE_MS, source: 'kis_live' },
   ],
-  candles: [],
+  candles: [
+    { ts_ms: YESTERDAY_OPEN_MS + 60_000, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 },
+    { ts_ms: TODAY_OPEN_MS + 60_000, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 },
+  ],
   quote_ratio: { bucket_ms: 60_000, points: [] },
   fill_strength: { bucket_ms: 60_000, points: [] },
   volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
@@ -588,6 +661,67 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     });
 
     // currentEarliest = '20260526', minus stepChunkDays('1m')=5 → '20260521'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521');
+  });
+
+  it('does NOT fire extendHistoricalRange before any candle has loaded (cold-load empty chart)', () => {
+    // Regression (/diagnose 2026-06-09): a still-loading chart has zero candles
+    // but a today-session axis, so lwc reports a NEGATIVE visible logical `from`
+    // (no bars to clamp the origin). Without the candleCountRef guard the trigger
+    // misreads this as "panned past the leftmost bar" and walks
+    // historicalFromDate to the 250-day clamp, spamming uncached past-candles
+    // fetches that never settle → permanent blank chart. With data loaded the
+    // SAME `from` legitimately extends (test above); with NO data it must not.
+    const emptyBundle = { ...TWO_SEGMENT_BUNDLE, candles: [] };
+    const handlers: Array<(r: unknown) => void> = [];
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={emptyBundle}
+        clampEngaged={false}
+        isPastCandlesLoading={true}
+      />,
+      { wrapper },
+    );
+
+    expect(handlers.length).toBeGreaterThan(0);
+    act(() => {
+      handlers.forEach((h) => h({ from: -50.3, to: 100.7 }));
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+  });
+
+  it('(auto-fill 불변식) 캔들 로드 후 초기 빈영역(from<0)은 사용자 팬 없이 자동 백필 — small-window 보장', () => {
+    // (a) 초기 창 5거래일 축소(/diagnose 2026-06-09 후속)의 안전성 고정: 받아둔 양이
+    // 적어도, 화면에 빈영역이 보이면 사용자 액션 없이 채워진다. 여기선 그 시작점인 3b
+    // 트리거가 candles>0(데이터 도착) + from<0(빈영역)에 자동 dispatch함을 잠근다.
+    // 연속 스텝(settle-loop)은 'dispatches the next step ... while whitespace remains'가 커버.
+    const handlers: Array<(r: unknown) => void> = [];
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    // 사용자 입력 없음 — 초기 커밋의 visibleLogicalRangeChange가 빈영역(from<0)을 보고.
+    act(() => {
+      handlers.forEach((h) => h({ from: -50.3, to: 100.7 }));
+      vi.advanceTimersByTime(200);
+    });
+
+    // candles>0(TWO_SEGMENT_BUNDLE) → 가드 통과 → 자동으로 한 청크 백필.
     expect(useLivePageStore.getState().historicalFromDate).toBe('20260521');
   });
 
@@ -917,6 +1051,33 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     });
     // cur '20260521' − stepChunkDays('1m')=5 → '20260516'.
     expect(useLivePageStore.getState().historicalFromDate).toBe('20260516');
+  });
+
+  it('does NOT dispatch a fill step before candles load, even with historicalFromDate set', () => {
+    // Defense-in-depth companion to 3b's guard: if historicalFromDate is
+    // non-null (e.g. persisted from a prior pan, then a reload) while the chart
+    // is still cold (zero candles), the settle-loop must NOT keep stepping —
+    // same runaway as the trigger. candleCountRef===0 stops it (/diagnose
+    // 2026-06-09). With candles present this same setup DOES step (test above).
+    useLivePageStore.setState({ historicalFromDate: '20260521' });
+    const emptyBundle = { ...TWO_SEGMENT_BUNDLE, candles: [] };
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 })); // 빈영역 남음
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" bundle={emptyBundle}
+        clampEngaged={false} isPastCandlesLoading={true} isExtending={true} />,
+      { wrapper },
+    );
+    act(() => {
+      rerender(
+        <LiveChartRoot code="005930" timeframe="1m" bundle={emptyBundle}
+          clampEngaged={false} isPastCandlesLoading={true} isExtending={false} />,
+      );
+    });
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // 불변
   });
 
   it('does NOT dispatch a next step when the viewport is full (visibleFrom >= 0)', () => {

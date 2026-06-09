@@ -132,23 +132,31 @@ export function stepChunkDays(tf: LiveTimeframe): number {
   return candleTargetToCalendarDays(120, tf); // W, M
 }
 
-/** Target candle count for the initial fetch on (code, timeframe) mount.
+/** 초기 분봉 fetch 폭(거래일). 콜드로드마다 받는 분봉 과거창의 크기를 정한다.
  *
- * - Minute timeframes: 2× of the previous 20-calendar-day window. At 1m
- *   that's ~11,143 candles ≈ 40 calendar days ≈ ~28.6 trading days.
- *   PAST_CANDLES_MAX_DAYS=250 in useLiveBundle still caps the eventual
- *   scroll-back depth at 250 calendar days; the initial 40-day window is
- *   well below it.
- * - D/W/M: flat 250 candles per user spec. D ≈ 1 year, W ≈ 4.8 years,
- *   M ≈ 21 years (most KRX stocks return less; backend serves whatever
- *   exists). The daily endpoint has no 250-day cap so the wide M window
- *   passes through unclamped. */
+ * 화면의 초기 뷰포트는 최근 ~300바(<1거래일)만 보여주고, 그 왼쪽은 사용자가 좌측
+ * 끝을 넘어 팬하면 lazy-fetch(stepChunkDays=5캘린더일)가 자동으로 채운다
+ * (useViewportBackfill 3a/3b — 빈영역이 보이는 동안 settle-loop가 사용자 액션 없이
+ * 화면 가득 찰 때까지 스텝 단위로 진행). 따라서 초기엔 "보이는 양 + 약간의 헤드룸"만
+ * 받으면 충분하다.
+ *
+ * 과거엔 40캘린더일(=20cal×2 ≈ 28.6거래일 ≈ 11,143바)을 콜드로드마다 받아, 완전
+ * uncached 종목 + KIS rate-limit(EGW00201) 상황에서 첫 fetch가 ~115 KIS 호출로
+ * 90초+ 걸려 "분봉 불러오는 중…"이 길게 떴다(/diagnose 2026-06-09). 5거래일로 줄이면
+ * 1m 기준 1,950바(≈7캘린더일) → KIS 호출 ~115→~20(≈6배↓)로 첫 그림이 빨라진다.
+ * PAST_CANDLES_MAX_DAYS=250 클램프는 scroll-back 상한으로 그대로 유효.
+ */
+const INITIAL_MINUTE_TRADING_DAYS = 5;
 export function initialCandleTargetFor(tf: LiveTimeframe): number {
   if (isMinuteTimeframe(tf)) {
+    // 거래일 × (거래분/일 ÷ 봉분) = 그 거래일 수만큼의 봉 개수. 1m=1950, 5m=390, 30m=65.
     const tfMinutes = TIMEFRAME_TO_MS[tf] / 60_000;
-    const candlesPerCalendarDay = (TRADING_DAYS_PER_CALENDAR_DAYS * TRADING_MINUTES_PER_DAY) / tfMinutes;
-    return Math.round(20 * candlesPerCalendarDay * 2);
+    const candlesPerTradingDay = TRADING_MINUTES_PER_DAY / tfMinutes;
+    return Math.round(INITIAL_MINUTE_TRADING_DAYS * candlesPerTradingDay);
   }
+  // D/W/M: flat 250 candles per user spec. D ≈ 1 year, W ≈ 4.8 years, M ≈ 21 years
+  // (most KRX stocks return less; backend serves whatever exists). 일봉 엔드포인트는
+  // 250일 클램프가 없어 넓은 M 창도 그대로 통과.
   return 250;
 }
 

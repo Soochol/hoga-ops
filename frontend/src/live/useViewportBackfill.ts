@@ -87,6 +87,18 @@ export function useViewportBackfill({
   // 진행 루프: 현재 fill에서 dispatch한 스텝 수(백스톱용) + isExtending 직전값(falling edge 검출).
   const fillStepCountRef = useRef(0);
   const prevExtendingRef = useRef(false);
+  // Candle count of the CURRENT render, mirrored into a ref so the lazy-fetch
+  // trigger (3b) and settle-loop (3a) can read it without `bundle` in their
+  // deps (3b would re-subscribe every SSE tick). NEITHER may run before the
+  // first candle has loaded: a still-empty chart reports a NEGATIVE visible
+  // logical `from` (no bars to clamp the origin against), which 3b misreads as
+  // "user panned past the leftmost bar" and auto-extends historicalFromDate one
+  // chunk per render all the way to the 250-day clamp — firing ~50 re-keyed
+  // past-candles requests that, for an uncached code, never settle, so the
+  // chart stays blank forever (/diagnose 2026-06-09). Effect 2 (reposition)
+  // already guards `candles.length === 0`; this brings 3a/3b to parity.
+  const candleCountRef = useRef(0);
+  candleCountRef.current = bundle ? bundle.candles.length : 0;
 
   useEffect(() => {
     preSwapRef.current = null;
@@ -188,6 +200,8 @@ export function useViewportBackfill({
     if (!chart) return;
     if (!isMinuteTimeframe(timeframe)) return;
     if (!(wasExtending && !isExtending)) return; // falling edge만
+    // 초기 캔들 미로드(빈 차트)면 백필 폭주 금지 — candleCountRef 주석 참조.
+    if (candleCountRef.current === 0) return;
     const cur = useLivePageStore.getState().historicalFromDate;
     if (cur === null) return;
     if (axis.segments.length === 0) return;
@@ -242,6 +256,10 @@ export function useViewportBackfill({
       // client. Without this, D/W/M users dragging past the leftmost bar
       // saw nothing happen.
       if (axis.segments.length === 0) return;
+      // 초기 캔들이 아직 0개면 트리거 금지: 빈 차트도 logical.from<0을 보고하지만
+      // 그건 "팬"이 아니라 "데이터 미도착"이다. 가드 없으면 historicalFromDate가
+      // 250일 클램프까지 폭주해 거대 uncached fetch가 영구 pending → 빈 차트.
+      if (candleCountRef.current === 0) return;
       const r = range as { from?: number | null; to?: number | null } | null;
       if (!r || r.from == null) return;
       // logical.from is a fractional bar index; negative = past the leftmost

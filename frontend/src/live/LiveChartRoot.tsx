@@ -26,6 +26,7 @@ import {
 } from '../state/livePage';
 import type { RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
+import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
 import { useWheelInteractions } from './useWheelInteractions';
 import { useLiveCursorStore } from './useLiveCursorStore';
@@ -72,13 +73,29 @@ interface Props {
   isPastCandlesLoading: boolean;
   /** useLiveBundle.isExtending. false-edge = 한 스텝 settle → 진행 루프 다음 스텝 판정. */
   isExtending?: boolean;
+  /** 활성 경로 과거 fetch 경고(rate-limit 등, useLiveBundle). 캔들 없으면 빈칸 문구를
+   * "호출 한도로 지연"으로 전환, 캔들 있으면 비차단 "일부 과거구간 로딩 지연" 칩. 옵셔널
+   * (기존 단일-번들 호출부/테스트 보존). */
+  pastDataWarnings?: LiveDataWarning[];
 }
 
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false }: Props) {
+export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
+  // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
+  const warnSummary = summarizeWarnings(pastDataWarnings);
+  // bottom-left 상태 칩 공유 스타일 (부분로딩 칩 + 클램프 칩 동일 형태, DRY).
+  const chipStyle = {
+    padding: 'var(--space-xs) var(--space-md)',
+    background: 'var(--bg-subtle)', color: 'var(--fg-dimmer)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-md)',
+    fontSize: 'var(--text-xs)',
+    pointerEvents: 'none' as const,
+  };
   // Candle-path bundle: stable `chartBundle` when provided (the /live split),
   // else the single `bundle` (pre-split callers / tests). Axis, viewport,
   // candle/volume panes, and candle overlays all read THIS — never the live
@@ -614,7 +631,10 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
           라이브 지표는 분봉에서 표시됩니다
         </div>
       )}
-      {isPastCandlesLoading && (!cb || cb.candles.length === 0) && (
+      {/* 빈칸 중앙 노트: 캔들이 아직 없을 때. 로딩 중이거나 rate-limit 지연이면 표시.
+          rate-limit이면 "고장?" 오해를 막는 명시 문구로 전환(데이터는 결국 도착). 캔들 0인데
+          로딩도 경고도 아니면(정말 데이터 없음) 노트 없이 빈 차트만. */}
+      {(!cb || cb.candles.length === 0) && (isPastCandlesLoading || warnSummary.hasRateLimit) && (
         <div
           data-testid="past-candles-loading-note"
           style={{
@@ -624,23 +644,30 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
             fontSize: 'var(--text-sm)',
           }}
         >
-          분봉 불러오는 중…
+          {warnSummary.hasRateLimit ? 'KIS 호출 한도로 지연 중 — 잠시 후 재시도…' : '분봉 불러오는 중…'}
         </div>
       )}
-      {clampEngaged && (
+      {/* bottom-left 상태 칩 스택: 부분로딩(rate-limit, 위) + 클램프(아래). 둘 다
+          하단-좌측이라 한 flex 컬럼으로 묶어 겹침을 막는다(드물게 동시 발생). */}
+      {(clampEngaged || (cb !== null && cb.candles.length > 0 && warnSummary.count > 0)) && (
         <div
-          data-testid="clamp-engaged-chip"
           style={{
             position: 'absolute', bottom: 'var(--space-md)', left: 'var(--space-md)',
-            padding: 'var(--space-xs) var(--space-md)',
-            background: 'var(--bg-subtle)', color: 'var(--fg-dimmer)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-md)',
-            fontSize: 'var(--text-xs)',
+            display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)',
             pointerEvents: 'none',
           }}
         >
-          최대 {PAST_CANDLES_MAX_DAYS}일까지 표시됩니다
+          {/* 캔들은 있는데 일부 과거구간이 rate-limit 등으로 누락 → 비차단 안내. */}
+          {cb !== null && cb.candles.length > 0 && warnSummary.count > 0 && (
+            <div data-testid="partial-load-chip" style={chipStyle}>
+              {warnSummary.hasRateLimit ? '일부 과거구간 로딩 지연 (호출 한도)' : '일부 과거구간 로딩 실패'}
+            </div>
+          )}
+          {clampEngaged && (
+            <div data-testid="clamp-engaged-chip" style={chipStyle}>
+              최대 {PAST_CANDLES_MAX_DAYS}일까지 표시됩니다
+            </div>
+          )}
         </div>
       )}
     </div>
