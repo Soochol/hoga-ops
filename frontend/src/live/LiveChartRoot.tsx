@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   createChartEx,
   TickMarkType,
   type IChartApi,
+  type ISeriesApi,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
@@ -128,6 +129,19 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
   // focused on chart bootstrap, viewport policy, and overlay mounts.
   const { paneSeries, registerPaneSeries, unregisterPaneSeries, computeAnchor } =
     useDrawingHost(chart, axis, code, containerRef);
+  // Stable per-(un)register callbacks so RangeSeriesPane's React.memo (Phase B)
+  // can skip candle/volume panes on an SSE tick. RangeSeriesPane passes the
+  // pane name back, so one callback serves all panes (vs a per-pane closure that
+  // would be a fresh function every render and defeat memo). register/unregister
+  // are already stable (useCallback in useDrawingHost).
+  const handleSeriesReady = useCallback(
+    (s: ISeriesApi<any>, name: string) => registerPaneSeries(name as PaneId, s),
+    [registerPaneSeries],
+  );
+  const handleSeriesGone = useCallback(
+    (name: string) => unregisterPaneSeries(name as PaneId),
+    [unregisterPaneSeries],
+  );
 
   // axisRef / timeframeRef bridge the latest axis + timeframe to the
   // once-mounted chart's imperative callbacks (the timeFormatter +
@@ -527,8 +541,8 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
               axis={axis}
               paneIndex={i}
               spec={spec}
-              onPrimarySeriesReady={(s) => registerPaneSeries(spec.name as PaneId, s)}
-              onPrimarySeriesGone={() => unregisterPaneSeries(spec.name as PaneId)}
+              onPrimarySeriesReady={handleSeriesReady}
+              onPrimarySeriesGone={handleSeriesGone}
             />
           ))}
           <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />

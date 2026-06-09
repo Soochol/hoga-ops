@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import type { IPriceLine, PriceLineOptions } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
@@ -28,7 +28,7 @@ type Props = {
  * 컨벤션을 보존한다. 형제 패턴: DrawingOverlay / indicators/MovingAverageOverlay.
  * 설계 근거: docs/superpowers/specs/2026-06-03-live-current-price-line-design.md.
  */
-export default function LiveCurrentPriceLine({ paneSeries, bundle, code }: Props) {
+function LiveCurrentPriceLine({ paneSeries, bundle, code }: Props) {
   const series = paneSeries.get('candle' as PaneId);
   const quote = useQuoteByCode(code ? [code] : []).get(code ?? '');
   const model = deriveCurrentPriceLine(bundle, quote, TOKENS);
@@ -86,3 +86,7 @@ export default function LiveCurrentPriceLine({ paneSeries, bundle, code }: Props
 
   return null;
 }
+
+// memo: fed the stable chartBundle (price derives from candles, not hoga), so an
+// SSE tick no longer re-renders it via the parent (2026-06-09 Phase B).
+export default memo(LiveCurrentPriceLine);

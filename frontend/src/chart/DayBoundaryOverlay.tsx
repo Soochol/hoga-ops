@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { resolveTokens } from '../util/tokens';
@@ -20,7 +20,7 @@ type Props = {
  *
  * N segments → N-1 boundaries (no boundary at the start of segment[0]).
  */
-export default function DayBoundaryOverlay({ chart, axis }: Props) {
+function DayBoundaryOverlay({ chart, axis }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
 
@@ -71,3 +71,7 @@ export default function DayBoundaryOverlay({ chart, axis }: Props) {
     </div>
   );
 }
+
+// memo: depends only on chart + axis (both stable across SSE ticks on /live), so
+// the parent's per-tick re-render no longer reaches this overlay (2026-06-09 Phase B).
+export default memo(DayBoundaryOverlay);

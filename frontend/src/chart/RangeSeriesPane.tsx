@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import {
   type IChartApi,
   type ISeriesApi,
@@ -64,12 +64,15 @@ type Props<Ctx> = {
   paneIndex: number;
   spec: PaneSpec<Ctx>;
   /** Fired after the primary series (spec.series[0]) is added to the chart.
-   *  ChartStage uses this to populate its PaneId→ISeriesApi registry that
-   *  DrawingOverlay consumes for pane-aware coordinate conversion. */
-  onPrimarySeriesReady?: (series: ISeriesApi<any>) => void;
+   *  The caller populates its PaneId→ISeriesApi registry that DrawingOverlay
+   *  consumes for pane-aware coordinate conversion. `paneName` (= spec.name) is
+   *  passed back so the caller can use ONE stable callback for all panes instead
+   *  of a per-pane closure — required for React.memo on this component to skip
+   *  re-renders when only the live bundle (hoga panes) changed. */
+  onPrimarySeriesReady?: (series: ISeriesApi<any>, paneName: string) => void;
   /** Fired right before the primary series is removed from the chart
-   *  (component unmount or spec change). */
-  onPrimarySeriesGone?: () => void;
+   *  (component unmount or spec change). `paneName` = spec.name (see above). */
+  onPrimarySeriesGone?: (paneName: string) => void;
 };
 
 /**
@@ -104,7 +107,7 @@ function seriesDataSignature(data: readonly SeriesDataItemTypeMap[SeriesType][])
  * docs/superpowers/specs/2026-05-23-range-series-pane-design.md for the
  * full design.
  */
-export default function RangeSeriesPane<Ctx>({
+function RangeSeriesPaneInner<Ctx>({
   chart,
   bundle,
   axis,
@@ -144,9 +147,9 @@ export default function RangeSeriesPane<Ctx>({
     // Fresh handles hold no data — clear cached signatures so the data effect's
     // first run after (re)creation always pushes (null !== any real signature).
     lastSigRef.current = seriesList.map(() => null);
-    if (seriesList.length > 0) onPrimarySeriesReady?.(seriesList[0]);
+    if (seriesList.length > 0) onPrimarySeriesReady?.(seriesList[0], spec.name);
     return () => {
-      if (seriesList.length > 0) onPrimarySeriesGone?.();
+      if (seriesList.length > 0) onPrimarySeriesGone?.(spec.name);
       // Guard: when a sibling pane throws and ChartErrorBoundary unmounts
       // ChartStage, the parent's chart.remove() may run before this
       // cleanup, leaving the series handle dangling. lightweight-charts
@@ -197,3 +200,13 @@ export default function RangeSeriesPane<Ctx>({
   }, [chart, bundle, axis, ctx, spec, paneIndex]);
   return null;
 }
+
+/** Memoised (2026-06-09 bundle-split, Phase B): skips re-render when props are
+ * shallow-equal. On /live a candle/volume pane is fed the STABLE `chartBundle`
+ * + stable axis + stable callbacks, so an SSE tick (which only changes the hoga
+ * panes' `bundle`) no longer re-renders the candle panes via the parent. Hoga
+ * panes still re-render (their `bundle` prop changes). The
+ * `as typeof RangeSeriesPaneInner` cast restores the generic call signature that
+ * React.memo's type drops. */
+const RangeSeriesPane = memo(RangeSeriesPaneInner) as typeof RangeSeriesPaneInner;
+export default RangeSeriesPane;

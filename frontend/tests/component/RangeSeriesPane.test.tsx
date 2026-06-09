@@ -1,4 +1,5 @@
-import { render } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
+import { useSyncExternalStore } from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { LineSeries } from 'lightweight-charts';
 import RangeSeriesPane, { type PaneSpec } from '../../src/chart/RangeSeriesPane';
@@ -78,14 +79,27 @@ describe('RangeSeriesPane', () => {
     expect(afterAdd).toHaveBeenCalledWith(seriesList[0]);
   });
 
-  it('does not recreate series when only ctx changes — setData runs instead', () => {
-    // Regression guard for the Moving Average flicker: ctx (movingAverages
-    // array) gets a fresh reference on every setMovingAverage call. The
-    // previous implementation listed ctx in the lifecycle effect's deps,
-    // so each MA edit tore down all 5 LineSeries and re-added them.
-    // After the lifecycle/data split, ctx changes only re-run setData on
-    // existing handles.
+  it('does not recreate series when ctx changes via subscription — setData runs instead', () => {
+    // Regression guard for the Moving Average flicker: ctx gets a fresh
+    // reference on every config change. The lifecycle/data split keeps ctx OUT
+    // of the lifecycle effect deps, so a ctx change re-runs setData on existing
+    // handles WITHOUT tearing down + re-adding series.
+    //
+    // Bundle-split Phase B (2026-06-09): RangeSeriesPane is now React.memo'd.
+    // In production ctx changes arrive via the useContext hook's OWN store
+    // subscription (zustand / useSyncExternalStore), which re-renders the
+    // component THROUGH memo (memo only blocks parent-prop-driven re-renders,
+    // never a component's own subscription). This test mirrors that path: a tiny
+    // external store drives ctx, and bumping it must re-run setData while leaving
+    // the series handles intact.
     const { chart, seriesList } = makeMockChart();
+    let period = 5;
+    const listeners = new Set<() => void>();
+    const store = {
+      get: () => period,
+      set: (v: number) => { period = v; listeners.forEach((l) => l()); },
+      subscribe: (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; },
+    };
     const dataFn = vi.fn((_b: any, _ax: any, ctx: { period: number }) => [
       { time: 0, value: ctx.period },
     ]);
@@ -93,27 +107,23 @@ describe('RangeSeriesPane', () => {
       name: 'test-ctx-stability',
       stretch: 0.4,
       series: [{ type: LineSeries, options: {}, data: dataFn }],
-      useContext: () => ({ period: 5 }),
+      // useContext subscribes to the store → store change re-renders the memo'd
+      // RangeSeriesPane (subscription bypasses memo), yielding a fresh ctx.
+      useContext: () => ({ period: useSyncExternalStore(store.subscribe, store.get) }),
     };
-    const { rerender } = render(
-      <RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={0} spec={spec} />,
-    );
+    render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={0} spec={spec} />);
     expect(chart.addSeries).toHaveBeenCalledTimes(1);
     const setDataCallsBefore = seriesList[0].setData.mock.calls.length;
 
-    // Same spec identity but a fresh useContext closure returning new ctx.
-    const spec2: PaneSpec<{ period: number }> = { ...spec, useContext: () => ({ period: 10 }) };
-    // Use the same spec reference to isolate ctx churn from spec churn.
-    spec.useContext = () => ({ period: 10 });
-    void spec2;
-    rerender(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={0} spec={spec} />);
+    // ctx changes via the store subscription (NOT a parent re-render).
+    act(() => store.set(10));
 
-    // Lifecycle effect must not have re-run — addSeries/removeSeries
-    // counts are unchanged.
+    // Lifecycle effect must not have re-run — addSeries/removeSeries unchanged.
     expect(chart.addSeries).toHaveBeenCalledTimes(1);
     expect(chart.removeSeries).not.toHaveBeenCalled();
-    // Data effect re-ran on the existing handle.
+    // Data effect re-ran on the existing handle with the new ctx.
     expect(seriesList[0].setData.mock.calls.length).toBeGreaterThan(setDataCallsBefore);
+    expect(dataFn).toHaveBeenLastCalledWith(baseBundle, axis, { period: 10 });
   });
 
   it('removes every series on unmount via try/catch-guarded removeSeries', () => {

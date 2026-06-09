@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -72,7 +72,7 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
   );
 }
 
-export default function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
+function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
   const enabled = useActivePrefs((p) => p.candleTooltipEnabled);
   const tipRef = useRef<HTMLDivElement>(null);
   // 호버 "키"는 절대 ts_ms 로 저장한다(가상시각 X). 가상시각은 axis 리베이스(과거 거래일
@@ -169,3 +169,8 @@ export default function CandleTooltip({ chart, bundle, axis, paneSeries, timefra
     </div>
   );
 }
+
+// memo: fed the stable chartBundle + axis; the tooltip reads candle data + the
+// hover cursor (its own store), neither tied to hoga, so an SSE tick no longer
+// re-renders this DOM via the parent (2026-06-09 Phase B).
+export default memo(CandleTooltip);
