@@ -2,6 +2,8 @@
 
 **Status:** accepted (2026-06-09); **출시2 구현완료 (2026-06-09)** — 부품1(2계좌 인증)·부품2(이중 WS dynamic-N)·C4. 위험 #1(동일-IP 2소켓) 스모크 통과로 해소, 위험 #3(2계좌 토큰 경합) 소멸(account k>0 = approval key 전용, bearer 토큰 미사용). 실-KIS 장중 2계좌 enable 검증은 plan "수동 검증" 단계 대기. spec `2026-06-09-live-2account-ws-design.md`, plan `2026-06-09-live-2account-ws.md`.
 
+**Amended (2026-06-10 — KIS 계정 분리 / account-split):** 본 ADR의 **"account k>0 = WS approval key 발급 전용(bearer 토큰·15콜/초 버킷 미사용)" 전제는 폐기됨.** account 1이 이제 background REST(REST 폴러·quotes·investor-net·Screener EOD/backfill)를 담당해, #53에서 유휴였던 account 1의 REST 15/s 버킷을 활용한다(role→account 라우팅 `kis_runtime.kis_for_role`: foreground=account 0 전용 / background=account 1, 총 30/s). 위험 #3(토큰 경합)은 "account k>0 bearer 미발급"이 아니라 **계정 분리(foreground/background를 다른 account로) + FM5 폴백**(account 1 REST 토큰 실패 → account 0, `_rest_auth_degraded` latch)으로 관리한다. 보는종목 REST(Viewed-Code Poll)의 "account 0 공유 버킷"도 background로 재배치돼 account 1을 쓴다(N=1/저하 시 account 0 폴백). 상세: CONTEXT.md "KisClient", `kis_runtime.kis_for_role`.
+
 **Related:**
 - ADR-0053 — Live push 단일 WebSocket (브라우저↔백엔드; 본 ADR의 KIS↔백엔드 업스트림 WS와 **다른 층위**)
 - ADR-0064 — Live poller 침묵 사망 (REST 폴러 부활 시 감독 필수의 근거)
