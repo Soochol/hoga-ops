@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+import hoga.live.account_health as account_health
 import hoga.live.kis_runtime as kis_runtime
 
 
@@ -101,7 +102,7 @@ def test_kis_for_role_n1_all_account0(tmp_path, monkeypatch):
 def test_kis_for_role_n2_split(tmp_path, monkeypatch):
     """N=2: foreground→account 0(전용), background→account 1(유휴 버킷 활용)."""
     _set_two_accounts(monkeypatch)
-    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: set())
+    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
     c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
     assert c0 is not c1
@@ -112,7 +113,7 @@ def test_kis_for_role_n2_split(tmp_path, monkeypatch):
 def test_kis_for_role_n2_background_degraded_falls_back(tmp_path, monkeypatch):
     """N=2이지만 account 1 WS 저하 → background가 account 0로 폴백(②우선순위로 보호)."""
     _set_two_accounts(monkeypatch)
-    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: {1})
+    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: {1})
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
     assert kis_runtime.kis_for_role("background", tmp_path) is c0
 
@@ -120,17 +121,17 @@ def test_kis_for_role_n2_background_degraded_falls_back(tmp_path, monkeypatch):
 def test_kis_for_role_foreground_never_uses_account1(tmp_path, monkeypatch):
     """foreground는 account 1이 healthy여도 항상 account 0(전용 15/s 보장)."""
     _set_two_accounts(monkeypatch)
-    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: set())
+    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
     assert kis_runtime.kis_for_role("foreground", tmp_path) is c0
 
 
-def test_account_degraded_swallows_lifecycle_errors(monkeypatch):
-    """degraded 신호 조회 실패 시 보수적으로 False(라우팅을 막지 않는다)."""
+def test_is_degraded_swallows_probe_errors(monkeypatch):
+    """WS probe 조회 실패 시 보수적으로 False(라우팅을 막지 않는다)."""
     def boom():
-        raise RuntimeError("lifecycle not ready")
-    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", boom)
-    assert kis_runtime._account_degraded(1) is False
+        raise RuntimeError("probe not ready")
+    monkeypatch.setattr("hoga.live.account_health._ws_probe", boom)
+    assert account_health.is_degraded(1) is False
 
 
 def test_kis_for_role_account0_prefers_injected_singleton_over_env(tmp_path, monkeypatch):
@@ -165,33 +166,33 @@ def test_background_routes_to_account0_after_rest_auth_latch(tmp_path, monkeypat
     운영자가 grep할 1회성 WARNING을 남긴다(silent capacity degradation 방지)."""
     import logging
     _set_two_accounts(monkeypatch)
-    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: set())
+    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
     c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
     assert kis_runtime.kis_for_role("background", tmp_path) is c1  # 평상시 account 1
-    with caplog.at_level(logging.WARNING, logger="hoga.live.kis_runtime"):
-        kis_runtime._mark_rest_auth_degraded(1)  # 토큰 provider 콜백이 호출하는 것
-        kis_runtime._mark_rest_auth_degraded(1)  # 멱등 — 로그는 1회만
+    with caplog.at_level(logging.WARNING, logger="hoga.live.account_health"):
+        account_health.mark_rest_auth_degraded(1)  # 토큰 provider 콜백이 호출하는 것
+        account_health.mark_rest_auth_degraded(1)  # 멱등 — 로그는 1회만
     auth_warnings = [r for r in caplog.records if "REST-degraded" in r.message]
     assert len(auth_warnings) == 1, "latch 전환 로그가 1회(once-only)가 아님"
-    assert kis_runtime._account_degraded(1) is True
+    assert account_health.is_degraded(1) is True
     assert kis_runtime.kis_for_role("background", tmp_path) is c0  # latch 후 account 0
     assert kis_runtime.kis_for_role("foreground", tmp_path) is c0  # foreground 불변
 
 
 def test_mark_rest_auth_degraded_noops_for_account0(monkeypatch):
     """account 0은 폴백 대상 자체 → 마킹해도 degraded 아님(자기 자신으로 폴백 불가)."""
-    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: set())
-    kis_runtime._mark_rest_auth_degraded(0)
-    assert kis_runtime._account_degraded(0) is False
+    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
+    account_health.mark_rest_auth_degraded(0)
+    assert account_health.is_degraded(0) is False
 
 
 def test_rest_auth_latch_cleared_by_reset_for_tests(tmp_path, monkeypatch):
     """latch는 reset_for_tests로 초기화(테스트 격리)."""
-    kis_runtime._mark_rest_auth_degraded(1)
-    assert kis_runtime._account_degraded(1) is True
+    account_health.mark_rest_auth_degraded(1)
+    assert account_health.is_degraded(1) is True
     kis_runtime.reset_for_tests()
-    assert kis_runtime._account_degraded(1) is False
+    assert account_health.is_degraded(1) is False
 
 
 def test_ensure_token_provider_wires_account_bound_auth_callback(tmp_path):
@@ -201,9 +202,9 @@ def test_ensure_token_provider_wires_account_bound_auth_callback(tmp_path):
     creds = KisCredentials(app_key="k1", app_secret="s1", env="real")
     prov = kis_runtime.ensure_kis_token_provider(tmp_path / "t1.json", creds, 1)
     assert prov._on_issue_failure is not None
-    assert kis_runtime._account_degraded(1) is False
+    assert account_health.is_degraded(1) is False
     prov._on_issue_failure()  # 토큰 발급 실패 시 provider가 호출하는 콜백
-    assert kis_runtime._account_degraded(1) is True
+    assert account_health.is_degraded(1) is True
 
 
 # ── fetch_background_with_auth_fallback: 스크리너 배치 FM5 폴백 헬퍼 ───────────────
@@ -214,7 +215,7 @@ async def test_fetch_background_fallback_retries_on_account0(tmp_path, monkeypat
     재해결이 account 0 반환). 스크리너 배치가 acct1 토큰 실패에도 끝까지 진행하는 경로."""
     from hoga.live.kis_client import KisAuthError
     _set_two_accounts(monkeypatch)
-    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: set())
+    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
     c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
     seen = []
@@ -222,7 +223,7 @@ async def test_fetch_background_fallback_retries_on_account0(tmp_path, monkeypat
     async def fetch_fn(client):
         seen.append(client)
         if client is c1:
-            kis_runtime._mark_rest_auth_degraded(1)  # provider 콜백이 하는 일(시뮬레이션)
+            account_health.mark_rest_auth_degraded(1)  # provider 콜백이 하는 일(시뮬레이션)
             raise KisAuthError("acct1 token fail")
         return "ok"
 

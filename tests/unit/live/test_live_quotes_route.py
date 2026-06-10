@@ -208,7 +208,7 @@ def _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1):
 def test_quotes_routes_background_to_account1(monkeypatch, tmp_path):
     """N=2 정상: /quotes(배경 폴링)가 account 1(유휴였던 REST 버킷)을 쓴다 — account 0 무호출."""
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
-    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: set())
+    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     fake0, fake1 = _CountingFakeKis(QUOTES), _CountingFakeKis(QUOTES)
     app = _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1)
     r = TestClient(app).get("/api/live/quotes", params={"codes": "005930,000660"})
@@ -220,7 +220,7 @@ def test_quotes_routes_background_to_account1(monkeypatch, tmp_path):
 def test_quotes_account1_degraded_falls_back_to_account0(monkeypatch, tmp_path):
     """N=2이지만 account 1 저하 → /quotes가 account 0로 폴백."""
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
-    monkeypatch.setattr("hoga.live.lifecycle.degraded_account_ids", lambda: {1})
+    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: {1})
     fake0, fake1 = _CountingFakeKis(QUOTES), _CountingFakeKis(QUOTES)
     app = _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1)
     r = TestClient(app).get("/api/live/quotes", params={"codes": "005930,000660"})

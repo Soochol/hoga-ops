@@ -16,17 +16,15 @@ critical section is microseconds.
 """
 from __future__ import annotations
 
-import logging
 import os
 import threading
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TypeVar
 
+from . import account_health
 from .kis_client import KisAuthError, KisClient, KisCredentials
 from .kis_token_provider import KisTokenProvider
-
-log = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 
@@ -34,32 +32,9 @@ _kis_clients: dict[int, KisClient] = {}
 _kis_token_providers: dict[int, KisTokenProvider] = {}
 _lock = threading.Lock()
 
-# FM5(계정 분리 2026-06-09): REST bearer 토큰 발급이 실패한 account_id 집합. background
-# 계정(account 1)이 처음 REST 토큰을 발급하다 실패하면(오설정 KIS_APP_KEY_2 등) 토큰
-# provider 콜백이 여기에 추가한다 → _account_degraded가 True를 반환 → kis_for_role가
-# 이후 background를 account 0로 폴백(침묵 사망 방지, ADR-0064). 프로세스 latch: 재시작
-# 전까지 유지(의도적 'safe over-degradation' — 토큰은 ~24h 디스크 캐시라 발급 실패는
-# 드물고, transient 재탐색은 v1 비범위). set.add/in은 CPython GIL로 원자적이라 무락.
-_rest_auth_degraded: set[int] = set()
-
-
-def _mark_rest_auth_degraded(account_id: int) -> None:
-    """account의 REST 토큰 발급 실패를 latch(FM5). account 0은 폴백 대상 자체라 제외
-    (마킹해도 폴백할 곳이 없고, kis_for_role의 최종 폴백이 account 0이므로 무의미).
-
-    전환(미latch→latch) 시 1회만 WARNING — 이 latch가 없으면 오설정 KIS_APP_KEY_N이
-    잠깐 깜빡인 뒤 시스템이 영구히 account 0(15/s)로 조용히 강등되면서 30/s로 착각한다
-    (silent capacity degradation, ADR-0064/FM5가 막으려던 바로 그것). 모든 background
-    경로가 이 단일 chokepoint(provider 콜백)를 거치므로 여기 한 줄이 전부를 커버한다.
-    콜백은 to_thread 워커에서 provider 락 보유 중 호출되나 logging은 스레드안전이고
-    provider 락과 무관해 데드락 없음."""
-    if account_id != 0 and account_id not in _rest_auth_degraded:
-        _rest_auth_degraded.add(account_id)
-        log.warning(
-            "KIS account %d REST token issuance failed — REST-degraded; background now "
-            "routes to account 0 until restart (check KIS_APP_KEY_%d/KIS_APP_SECRET_%d)",
-            account_id, account_id + 1, account_id + 1,  # env 접미 = account_id+1 (_account_env)
-        )
+# FM5 REST-auth latch + WS-degraded 통합 신호는 account_health(leaf)로 추출됨(2026-06-10).
+# 토큰 provider 콜백이 account_health.mark_rest_auth_degraded를, kis_for_role가
+# account_health.is_degraded를 쓴다 — kis_runtime은 더는 lifecycle을 late import하지 않는다.
 
 
 def _account_env(account_id: int) -> tuple[str, str]:
@@ -111,7 +86,7 @@ def ensure_kis_token_provider(
             prov = KisTokenProvider(
                 creds,
                 token_cache_path,
-                on_issue_failure=lambda: _mark_rest_auth_degraded(account_id),
+                on_issue_failure=lambda: account_health.mark_rest_auth_degraded(account_id),
             )
             _kis_token_providers[account_id] = prov
         return prov
@@ -233,22 +208,6 @@ def configured_account_ids(data_dir: Path) -> list[int]:
 # 30/s로 만든다. N=1(키 1개)이거나 account 1이 저하/미설정이면 account 0로 폴백하며,
 # 이때는 ②(_TokenBucket foreground 우선순위)가 공유 버킷에서 foreground를 보호한다.
 
-def _account_degraded(account_id: int) -> bool:
-    """account_id의 WS 연결이 저하 상태인가 — background를 그 계정으로 보내기 전
-    프리엠티브 폴백 신호(#53 degraded 신호 재사용). lifecycle을 late import해 순환을
-    피한다(lifecycle→kis_runtime이 정방향 의존). 신호를 못 얻으면 보수적으로 False
-    (저하 아님으로 간주 — 최종 가드는 ensure 단계의 None 체크와 호출부 격리)."""
-    # FM5 REST-auth latch를 먼저 본다(late import 불필요·즉시). REST 토큰이 죽은 계정은
-    # WS health와 무관하게 background에서 빼야 한다.
-    if account_id in _rest_auth_degraded:
-        return True
-    try:
-        from . import lifecycle  # noqa: PLC0415 — late import: 순환 회피
-        return account_id in lifecycle.degraded_account_ids()
-    except Exception:  # noqa: BLE001 — 신호 조회 실패는 라우팅을 막지 않는다
-        return False
-
-
 def kis_for_role(role: str, data_dir: Path) -> KisClient | None:
     """role('foreground'|'background')에 따라 account별 KisClient를 반환한다(호출
     시점 평가 → degraded 동적 폴백, 별도 상태 동기화 불필요).
@@ -267,7 +226,8 @@ def kis_for_role(role: str, data_dir: Path) -> KisClient | None:
     무관하게(관심목록 크기와 무관하게) acct1 버킷을 확보한다. 첫 REST bearer 토큰
     발급은 ensure/get 무관하게 첫 호출에서 일어나므로(FM5) 'REST 선접촉 회피' 논거는
     적용되지 않는다."""
-    if role == "background" and 1 in configured_account_ids(data_dir) and not _account_degraded(1):
+    if (role == "background" and 1 in configured_account_ids(data_dir)
+            and not account_health.is_degraded(1)):
         client = ensure_kis_client_for_account(1, data_dir)
         if client is not None:
             return client
@@ -332,4 +292,4 @@ def reset_for_tests() -> None:
             pass
     _kis_clients = {}
     _kis_token_providers = {}
-    _rest_auth_degraded.clear()  # FM5 latch도 초기화(테스트 격리)
+    account_health.reset_for_tests()  # FM5 latch + WS probe 초기화(테스트 격리)

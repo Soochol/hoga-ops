@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 from pydantic import BaseModel, Field
 
-from . import kis_runtime  # needed by reset_for_tests() + start_live_stream
+from . import account_health, kis_runtime  # account_health: WS probe 등록 / kis_runtime: reset·start
 from .buffer import LiveBuffer
 from .promote import promote_today
 
@@ -319,45 +319,58 @@ def _capture_health(
     return (True, "healthy")
 
 
-def degraded_account_ids() -> set[int]:
-    """현재 WS 연결이 저하된 account_id 집합 — kis_runtime.kis_for_role의 background
-    REST 프리엠티브 폴백 신호(late import로 호출). get_status의 degraded 계산과 동일
-    의미론: streams 없거나 전역 장 마감이면 빈 집합(closed는 계좌별 결함이 아님,
-    line 357-362의 advisor 버그 회피), 정규장에 conn별 health 체크. 안전 호출.
+def _capture_status(now_ms: int) -> tuple[bool, str, list[int]]:
+    """WS 연결집합의 캡처 헬스 — (cap_healthy, cap_reason, degraded account_id list 정렬).
 
-    get_status가 cap_healthy/reason까지 같은 루프로 계산하는 것과 약간 중복되나,
-    #53의 get_status(공유 코드)를 건드리지 않으려는 의도적 선택(루프 ~6줄)."""
-    from datetime import datetime  # noqa: PLC0415
-    from .kis_client import KIS_KST  # noqa: PLC0415
-
+    **단일 계산** — get_status(표시: cap_healthy/reason/degraded)와 account_health WS-probe
+    (라우팅: degraded 집합)가 공유한다(중복 제거, 2026-06-10). 의미론:
+    - streams 없음 → (False, "no_streams", []) — 호출자(get_status)가 poller-only running과
+      결합해 idle/offline로 해석.
+    - 전역 장 마감 → (False, "closed", []). market_closed는 전역 상태(계좌별 결함 아님)라
+      per-conn 루프 밖에서 단락 — 안 그러면 밤/주말마다 모든 conn이 degraded로 잡혀
+      거짓 신호(advisor 버그 회피).
+    - 정규장 → conn별 _capture_health 집계. cap_reason = worst(마지막 비정상)."""
     streams = _state.streams
     started = _state.started_at_ms
-    now_ms = _now_ms()
-    if started is None or not streams or _market_clock_closed_for_capture(now_ms):
-        return set()
+    if started is None or not streams:
+        return (False, "no_streams", [])
+    if _market_clock_closed_for_capture(now_ms):
+        return (False, "closed", [])
+    from datetime import datetime  # noqa: PLC0415
+    from .kis_client import KIS_KST  # noqa: PLC0415
     kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
     session_open_ms = int(
         kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
     )
     ref_ms = max(started, session_open_ms)
-    degraded: set[int] = set()
+    cap_healthy, cap_reason, degraded = True, "healthy", []
     for account_id, conn in streams.items():
         ws = getattr(conn.stream_obj, "ws", None)
-        healthy, _reason = _capture_health(
+        healthy, reason = _capture_health(
             running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
             stale_after_ms=_WATCHDOG_STALE_AFTER_MS, market_closed=False,
         )
         if not healthy:
-            degraded.add(account_id)
-    return degraded
+            cap_healthy = False
+            cap_reason = reason     # worst(마지막 비정상). 값 불변(Q10).
+            degraded.append(account_id)
+    degraded.sort()
+    return (cap_healthy, cap_reason, degraded)
+
+
+def _ws_degraded_probe() -> set[int]:
+    """account_health가 등록받는 WS-degraded probe(의존 역전 — leaf가 lifecycle을 import
+    안 하게). 호출 시점에 현재 WS-저하 account 집합 반환."""
+    return set(_capture_status(_now_ms())[2])
+
+
+# 모듈 로드 시 1회 push 등록 — probe는 _state(reset로 비워짐)를 시점-평가하므로 stateless,
+# reset_for_tests가 따로 해제할 필요 없음(빈 _state → 빈 집합).
+account_health.register_ws_probe(_ws_degraded_probe)
 
 
 def get_status() -> LiveStatus:
     """Read the current live status. Always safe to call. dynamic-N 집계(스펙 §5.7)."""
-    from datetime import datetime  # noqa: PLC0415
-
-    from .kis_client import KIS_KST  # noqa: PLC0415
-
     streams = _state.streams
     poller = _state.rest_poller
     now_ms = _now_ms()
@@ -379,35 +392,15 @@ def get_status() -> LiveStatus:
         last_tick_ms = max(ticks)
 
     # 캡처 헬스 — 존재 conn 기준 AND(Q11). conn 0(C4 poller-only)이면 idle.
+    # streams 있을 때의 cap_healthy/reason/degraded는 _capture_status가 단일 계산
+    # (account_health WS-probe와 공유, 2026-06-10 dedup). poller-only(streams 없음)는
+    # running과 결합해 idle/offline 판정(여기 전용).
     if started is None or not streams:
         cap_healthy = bool(running)        # poller-only면 서비스 중 → healthy/idle
         cap_reason = "idle" if running else "offline"
         degraded: list[int] = []
     else:
-        kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
-        session_open_ms = int(
-            kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
-        )
-        ref_ms = max(started, session_open_ms)
-        # market_closed는 전역 상태(계좌별 결함 아님) → per-conn 루프 밖에서 단락.
-        # ★ advisor 버그: _capture_health는 market_closed면 소켓을 보기 전에
-        # (False,"closed")를 반환 → 루프 안에서 쓰면 밤/주말마다 모든 conn이
-        # degraded로 잡혀 degraded_accounts=[0,1] 거짓 신호(Q10 목적과 정반대).
-        if _market_clock_closed_for_capture(now_ms):
-            cap_healthy, cap_reason, degraded = False, "closed", []
-        else:
-            cap_healthy, cap_reason, degraded = True, "healthy", []
-            for account_id, conn in streams.items():
-                ws = getattr(conn.stream_obj, "ws", None)
-                healthy, reason = _capture_health(
-                    running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
-                    stale_after_ms=_WATCHDOG_STALE_AFTER_MS, market_closed=False,
-                )
-                if not healthy:
-                    cap_healthy = False
-                    cap_reason = reason     # worst(마지막 비정상). 값 불변(Q10).
-                    degraded.append(account_id)
-            degraded.sort()
+        cap_healthy, cap_reason, degraded = _capture_status(now_ms)
 
     return LiveStatus(
         running=running,
