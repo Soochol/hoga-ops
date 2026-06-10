@@ -505,14 +505,18 @@ def _sync_exclusion(poller: LiveRestPoller | None, live_set: tuple[str, ...]) ->
 
 
 async def _start_live_stream_locked(*, data_dir: Path) -> bool:
-    """start의 본체(락 보유 중). dynamic-N + poller 분리 + C4 (스펙 §5.4)."""
+    """start의 본체(락 보유 중). dynamic-N + poller 분리 + C4 (스펙 §5.4).
+
+    exclude-then-subscribe 순서를 lifecycle이 봉인(C3 ①): stop → ensure_poller →
+    _sync_exclusion → session.start(conn build). poller는 WS 세션 밖이라 lifecycle 소유.
+    """
     # 1. account 0 creds 게이트(완전 오프라인이면 stop만)
     n_configured = len(kis_runtime.configured_account_ids(data_dir))
     if n_configured == 0:
         return False
 
     # 2. 기존 conn 정지(poller는 보존)
-    await _stop_streams_locked()
+    await _state.session.stop(_teardown_conn)
 
     # 3. poller 보장(없으면 생성, 있으면 _subscribed 보존)
     poller = _ensure_poller(data_dir)
@@ -521,42 +525,29 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
 
     # 4. Live Set 산출(동적 절단)
     codes = _compute_live_set(data_dir, n_configured)
-    parts = partition_live_set(codes, n_configured)
 
-    # 5. exclude-then-subscribe: 먼저 배제 동기화, 그 다음 conn build
-    live_set = tuple(codes)
-    _sync_exclusion(poller, live_set)
+    # 5. exclude-then-subscribe: 먼저 배제 동기화, 그 다음 conn build(session.start)
+    _sync_exclusion(poller, tuple(codes))
 
-    # 6. 코드 있는 파티션만 conn 생성(dynamic-N; 빈 part = 연결 없음 → C4)
-    streams: dict[int, _StreamConn] = {}
-    for account_id, part in enumerate(parts):
-        if part:
-            streams[account_id] = _build_conn(account_id, part, data_dir)
-
-    global _state  # noqa: PLW0603
-    _state = _State(
-        started_at_ms=_now_ms(),
-        n_configured=n_configured,
-        watchlist_codes=live_set,
-        streams=streams,
-        live_set=live_set,
-        rest_poller=poller,
+    # 6. 코드 있는 파티션만 conn 생성(session이 dynamic-N 빌드 — 빈 part=연결 없음 → C4)
+    await _state.session.start(
+        codes=codes, n_configured=n_configured, data_dir=data_dir,
+        now_ms=_now_ms(), build_conn=_build_conn,
     )
+    _state.rest_poller = poller
     return True
 
 
 async def _stop_streams_locked() -> None:
-    """현재 conn들만 teardown(poller·_state.rest_poller는 보존)."""
-    for conn in list(_state.streams.values()):
-        await _teardown_conn(conn)
-    _state.streams.clear()
+    """현재 conn들만 teardown(poller·_state.rest_poller는 보존) — session에 위임."""
+    await _state.session.stop(_teardown_conn)
 
 
 async def _stop_live_stream_locked() -> None:
     """완전 정지 — conn teardown + poller stop + _state 리셋."""
     global _state  # noqa: PLW0603
     poller = _state.rest_poller
-    await _stop_streams_locked()
+    await _state.session.stop(_teardown_conn)
     if poller is not None:
         await poller.stop()
     _state = _State()
@@ -608,64 +599,29 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
             await _start_live_stream_locked(data_dir=data_dir)
             return
 
-        n = _state.n_configured
-        codes = _compute_live_set(data_dir, n)
-        parts = partition_live_set(codes, n)
-        live_set = tuple(codes)
+        codes = _compute_live_set(data_dir, _state.n_configured)
 
-        # exclude-then-subscribe: build/update 전에 배제 동기화(스펙 §5.5)
-        _sync_exclusion(_state.rest_poller, live_set)
+        # exclude-then-subscribe: build/update 전에 배제 동기화(스펙 §5.5, C3 ①).
+        _sync_exclusion(_state.rest_poller, tuple(codes))
 
-        # Pass 0 (동기, await 없음): 기존 conn들의 on_tick 활성집합을 새 파티션으로
-        # **원자 스왑**. cross-boundary 이동(코드가 13-경계를 넘어 conn↔conn 이동)
-        # 시, 옛 conn 활성집합에서 빠진 뒤 새 conn에 들어가야 두 writer가 같은
-        # {date}/{code}.jsonl에 동시 append하는 이중-write 창이 안 생긴다.
-        # set_active_codes는 동기라 이 루프 중엔 틱이 처리되지 않아 스왑이 원자적.
-        # (Pass 1의 async WS 재구독에서 코드가 잠시 양쪽 WS에 구독돼도 on_tick 활성
-        #  필터가 이미 정확하므로 write는 한 conn으로만 간다 — WS 이중구독 무해.)
-        for account_id, part in enumerate(parts):
-            conn = _state.streams.get(account_id)
-            if conn is not None:
-                conn.stream_obj.set_active_codes(set(part))   # type: ignore[union-attr]
-
-        # Pass 1 (async): WS 구독 diff + build/teardown.
-        for account_id, part in enumerate(parts):
-            conn = _state.streams.get(account_id)
-            if part and conn is not None:
-                await conn.stream_obj.ws.update_codes(part)      # type: ignore[union-attr]
-                _state.streams[account_id] = _StreamConn(
-                    account_id=account_id, stream_obj=conn.stream_obj,
-                    ws_task=conn.ws_task, flush_task=conn.flush_task,
-                    codes=tuple(part),
-                )
-            elif part and conn is None:
-                _state.streams[account_id] = _build_conn(account_id, part, data_dir)
-            elif not part and conn is not None:
-                await _teardown_conn(conn)
-                _state.streams.pop(account_id, None)
-
+        # 원자 활성집합 스왑(Pass 0) + WS 재구독 diff·build/teardown(Pass 1) +
+        # live_set/watchlist 갱신은 session.refresh가 소유(이중-write 방지 불변식 봉인).
+        await _state.session.refresh(
+            codes=codes, data_dir=data_dir,
+            build_conn=_build_conn, teardown_conn=_teardown_conn,
+        )
         await _buffer.drop_codes_except(set(codes))  # 떠난 코드 ring 해제
-        # 같은 세션 유지(refresh는 세션을 끝내지 않음) — live_set/watchlist만 갱신.
-        _state.session.live_set = live_set
-        _state.session.watchlist_codes = live_set
 
 
 # ADR-0064 이식 — WS 스트림 watchdog
 async def _restart_conn(account_id: int, *, data_dir: Path) -> None:
-    """죽은 conn 하나만 격리 복구(스펙 §5.6, Q6). lock 안 재검증 → teardown+build.
-    R1: KisClient는 보존. 현재 파티션으로 재계산해 그 사이 watchlist 변화 흡수."""
+    """죽은 conn 하나만 격리 복구 — session.restart에 위임(락 보유). teardown+build(R1
+    KisClient 보존)·현재 파티션 재계산은 session이 소유(스펙 §5.6, Q6)."""
     async with _lifecycle_lock:
-        conn = _state.streams.get(account_id)
-        if conn is None:
-            return
-        n = _state.n_configured
-        parts = partition_live_set(_compute_live_set(data_dir, n), n)
-        codes = parts[account_id] if account_id < len(parts) else []
-        await _teardown_conn(conn)
-        if codes:
-            _state.streams[account_id] = _build_conn(account_id, codes, data_dir)
-        else:
-            _state.streams.pop(account_id, None)   # 그 사이 watchlist 축소됨
+        await _state.session.restart(
+            account_id, data_dir=data_dir,
+            build_conn=_build_conn, teardown_conn=_teardown_conn,
+        )
 
 
 async def _ws_watchdog_check(

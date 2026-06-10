@@ -22,8 +22,12 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import asyncio
+    from collections.abc import Awaitable, Callable
 
     from hoga.api.models import WatchlistDocument
+
+    _BuildConn = Callable[[int, list[str], Path], "_StreamConn"]
+    _TeardownConn = Callable[["_StreamConn"], Awaitable[None]]
 
 _log = logging.getLogger(__name__)
 
@@ -110,13 +114,17 @@ class _StreamConn:
 class LiveSession:
     """KIS WS 연결집합(dynamic-N)의 상태 — streams + 세션 스코프 불변식 소유.
 
-    streams 키 ∈ [0, n_configured). lifecycle의 _state.session이 보유하며,
-    start가 새 세션으로 교체한다(started_at_ms·streams 리셋). refresh/restart는
-    같은 세션을 변이한다.
+    streams 키 ∈ [0, n_configured). lifecycle의 _state.session이 보유. 전이는 메서드:
+    start(빈 streams 전제로 파티션별 conn 빌드) / refresh(원자 활성집합 스왑 + WS 재구독
+    diff) / restart(죽은 conn 1개 격리 복구) / stop(전체 teardown).
 
-    step 2(이 커밋): 상태 컨테이너만. 전이(start/refresh/restart/stop)·
-    health(degraded_set/status_fields)는 후속 step에서 메서드로 이전한다 —
-    현재는 lifecycle 오케스트레이션이 streams를 직접 변이(_state.streams 위임 경유).
+    의존성 주입: conn 빌드/teardown은 lifecycle이 _buffer·_now_ms·_today_kst 등 프로세스
+    리소스로 만드는 I/O 프리미티브라, 메서드 파라미터로 주입한다(build_conn/teardown_conn).
+    이로써 LiveSession은 lifecycle 전역에 의존하지 않는다(순환·모듈 로드 순서 회피).
+
+    exclude-then-subscribe 순서(ADR-0067 §5.5)는 poller가 lifecycle 소유라 lifecycle의
+    락 메서드가 _sync_exclusion(poller) 후 start/refresh를 호출해 봉인한다(C3 설계 ①).
+    step 3(이 커밋): start/refresh/restart/stop 이전. degraded_set/status_fields는 step 4.
     """
 
     def __init__(self) -> None:
@@ -125,3 +133,101 @@ class LiveSession:
         self.n_configured: int = 0
         self.live_set: tuple[str, ...] = ()
         self.watchlist_codes: tuple[str, ...] = ()
+
+    async def stop(self, teardown_conn: _TeardownConn) -> None:
+        """현재 conn들만 teardown(R1: KisClient는 보존). streams 비움."""
+        for conn in list(self.streams.values()):
+            await teardown_conn(conn)
+        self.streams.clear()
+
+    async def start(
+        self,
+        *,
+        codes: list[str],
+        n_configured: int,
+        data_dir: Path,
+        now_ms: int,
+        build_conn: _BuildConn,
+    ) -> None:
+        """코드 있는 파티션만 conn 생성(dynamic-N; 빈 part=연결 없음 → C4).
+
+        호출 전 stop()으로 streams가 비어 있어야 한다 — lifecycle이 exclude-then-
+        subscribe 순서(stop → ensure_poller → _sync_exclusion → start)로 보장한다.
+        """
+        parts = partition_live_set(list(codes), n_configured)
+        streams: dict[int, _StreamConn] = {}
+        for account_id, part in enumerate(parts):
+            if part:
+                streams[account_id] = build_conn(account_id, part, data_dir)
+        self.streams = streams
+        self.started_at_ms = now_ms
+        self.n_configured = n_configured
+        self.live_set = tuple(codes)
+        self.watchlist_codes = tuple(codes)
+
+    async def refresh(
+        self,
+        *,
+        codes: list[str],
+        data_dir: Path,
+        build_conn: _BuildConn,
+        teardown_conn: _TeardownConn,
+    ) -> None:
+        """watchlist 변경 후 dynamic-N create/update/teardown (스펙 §5.5).
+
+        Pass 0(동기, await 없음): 기존 conn들의 on_tick 활성집합을 새 파티션으로 **원자
+        스왑**. cross-boundary 이동(코드가 13-경계를 넘어 conn↔conn 이동) 시, 옛 conn
+        활성집합에서 빠진 뒤 새 conn에 들어가야 두 writer가 같은 {date}/{code}.jsonl에
+        동시 append하는 이중-write 창이 안 생긴다. set_active_codes는 동기라 이 루프 중엔
+        틱이 처리되지 않아 스왑이 원자적. (Pass 1의 async WS 재구독에서 코드가 잠시 양쪽
+        WS에 구독돼도 on_tick 활성 필터가 이미 정확하므로 write는 한 conn으로만 간다.)
+        """
+        parts = partition_live_set(list(codes), self.n_configured)
+
+        # Pass 0 (동기): 활성집합 원자 스왑
+        for account_id, part in enumerate(parts):
+            conn = self.streams.get(account_id)
+            if conn is not None:
+                conn.stream_obj.set_active_codes(set(part))   # type: ignore[attr-defined]
+
+        # Pass 1 (async): WS 구독 diff + build/teardown
+        for account_id, part in enumerate(parts):
+            conn = self.streams.get(account_id)
+            if part and conn is not None:
+                await conn.stream_obj.ws.update_codes(part)      # type: ignore[attr-defined]
+                self.streams[account_id] = _StreamConn(
+                    account_id=account_id, stream_obj=conn.stream_obj,
+                    ws_task=conn.ws_task, flush_task=conn.flush_task,
+                    codes=tuple(part),
+                )
+            elif part and conn is None:
+                self.streams[account_id] = build_conn(account_id, part, data_dir)
+            elif not part and conn is not None:
+                await teardown_conn(conn)
+                self.streams.pop(account_id, None)
+
+        live_set = tuple(codes)
+        self.live_set = live_set
+        self.watchlist_codes = live_set
+
+    async def restart(
+        self,
+        account_id: int,
+        *,
+        data_dir: Path,
+        build_conn: _BuildConn,
+        teardown_conn: _TeardownConn,
+    ) -> None:
+        """죽은 conn 하나만 격리 복구(스펙 §5.6, Q6). R1: KisClient 보존. 현재 파티션으로
+        재계산해 그 사이 watchlist 변화 흡수(축소됐으면 conn을 rebuild 대신 pop)."""
+        conn = self.streams.get(account_id)
+        if conn is None:
+            return
+        n = self.n_configured
+        parts = partition_live_set(_compute_live_set(data_dir, n), n)
+        codes = parts[account_id] if account_id < len(parts) else []
+        await teardown_conn(conn)
+        if codes:
+            self.streams[account_id] = build_conn(account_id, codes, data_dir)
+        else:
+            self.streams.pop(account_id, None)   # 그 사이 watchlist 축소됨
