@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { heatBg, sortEntries, avgPct } from './heat';
+import { heatBg, sortEntries, avgPct, HEAT_CHIP_MAX_ALPHA } from './heat';
 import type { WatchlistEntry } from '../api/watchlist';
 
 const E = (code: string, order: number): WatchlistEntry => ({
@@ -20,6 +20,10 @@ describe('heatBg', () => {
     expect(heatBg(8)).toBe('rgba(220,38,38,0.420)');
     expect(heatBg(30)).toBe('rgba(220,38,38,0.420)');
     expect(heatBg(4)).toBe('rgba(220,38,38,0.210)');
+  });
+  it('maxAlpha 인자로 칩 농도(0.72) 적용', () => {
+    expect(heatBg(8, HEAT_CHIP_MAX_ALPHA)).toBe('rgba(220,38,38,0.720)');
+    expect(heatBg(-4, HEAT_CHIP_MAX_ALPHA)).toBe('rgba(37,99,235,0.360)');
   });
 });
 

@@ -13,10 +13,10 @@ export interface HeatmapBoardProps {
 
 /** 신문형 멀티칼럼 보드. 빈 폴더·미분류(folder===null) 제외. columnWidth 로
  *  가용 폭만큼 칼럼 수가 자동 결정된다(순수 CSS 메이슨리, 레이아웃 JS 없음).
- *  columnWidth 는 행 그리드의 최소폭(이름 4rem + 현재가 3.2rem + 등락률 2.8rem +
- *  갭·패딩 ≈ 12rem)에 맞춘 rem 값 — 이보다 좁으면 행 그리드가 칼럼을 넘쳐 이름이
- *  짜부되므로 floor 역할. 화면이 넓어지면 multicol 이 칼럼 수를 늘리고, 남는 폭은
- *  각 행의 minmax(...,1fr) 종목명으로 흘러가 이름이 더 길게 보인다(반응형). */
+ *  columnWidth 는 행 그리드의 최소폭(이름 4rem + 현재가 3.2rem + 등락률 칩 4.25rem +
+ *  갭·패딩, 실측 카드 min-content ≈ 12.3rem)에 맞춘 12rem floor — multicol 이 깨지지
+ *  않는 카드(break-inside-avoid)를 칼럼에 맞춰 키우므로 1100~1820px 전 구간 오버플로
+ *  없음(실측). 넓어지면 칼럼 수↑, 남는 폭은 minmax(...,1fr) 종목명으로(반응형). */
 export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick }: HeatmapBoardProps) {
   const visible = visibleFolderGroups(groups);
   return (
