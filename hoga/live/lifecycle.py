@@ -19,7 +19,6 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -30,11 +29,12 @@ from pydantic import BaseModel, Field
 
 from . import account_health, kis_access, kis_runtime  # health probe / role 라우팅 / 리소스
 from .buffer import LiveBuffer
-from .live_session import (  # noqa: F401 — C3 step 1 재export(호출부·테스트 호환)
+from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 호환) + LiveSession 사용
     _PER_ACCOUNT_MAX,
     KIS_WS_MAX_REGISTRATIONS,
     LIVE_SET_MAX_CODES,
     TRS_PER_CODE,
+    LiveSession,
     _compute_live_set,
     _StreamConn,
     display_ordered_codes,
@@ -82,17 +82,54 @@ class LiveStatus(BaseModel):
 
 # ── State ──────────────────────────────────────────────────────────────────────
 
-@dataclass
 class _State:
-    """In-process state of the live stream. Mutated only via this module."""
+    """In-process live state. streams + 세션 스코프 상태(started_at_ms·n_configured·
+    watchlist_codes·live_set)는 LiveSession이 소유하고, 여기선 위임 property로 노출한다
+    (C3 step 2 — 기존 호출부·테스트의 `_state.streams`/`started_at_ms` 등 접근 호환).
+    rest_poller는 WS 세션 밖(REST)이라 lifecycle이 직접 소유. Mutated only via this module."""
 
-    started_at_ms: int | None = None
-    n_configured: int = 0                          # start에 1회 산출·캐시(Q5)
-    watchlist_codes: tuple[str, ...] = field(default_factory=tuple)
-    # dynamic-N: account_id 키 연결 dict (Task 7이 채움)
-    streams: dict[int, _StreamConn] = field(default_factory=dict)
-    live_set: tuple[str, ...] = field(default_factory=tuple)
-    rest_poller: LiveRestPoller | None = None
+    def __init__(
+        self,
+        *,
+        started_at_ms: int | None = None,
+        n_configured: int = 0,
+        watchlist_codes: tuple[str, ...] = (),
+        streams: dict[int, _StreamConn] | None = None,
+        live_set: tuple[str, ...] = (),
+        rest_poller: LiveRestPoller | None = None,
+        session: LiveSession | None = None,
+    ) -> None:
+        if session is None:
+            session = LiveSession()
+            session.started_at_ms = started_at_ms
+            session.n_configured = n_configured
+            session.watchlist_codes = tuple(watchlist_codes)
+            session.live_set = tuple(live_set)
+            if streams is not None:
+                session.streams = streams
+        self.session = session
+        self.rest_poller = rest_poller
+
+    # 위임 property — 기존 `_state.X` 접근 호환(streams dict의 in-place 변이도 그대로 통과).
+    @property
+    def streams(self) -> dict[int, _StreamConn]:
+        return self.session.streams
+
+    @property
+    def started_at_ms(self) -> int | None:
+        return self.session.started_at_ms
+
+    @property
+    def n_configured(self) -> int:
+        return self.session.n_configured
+
+    @property
+    def watchlist_codes(self) -> tuple[str, ...]:
+        return self.session.watchlist_codes
+
+    @property
+    def live_set(self) -> tuple[str, ...]:
+        return self.session.live_set
 
 
 _state = _State()
@@ -561,8 +598,6 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
     streams=={}면(부팅·C4 poller-only) start로 위임. 아니면 account별로:
     part 차면 build, 비면 teardown, 둘 다 있으면 update_codes diff.
     """
-    global _state  # noqa: PLW0603
-
     async with _lifecycle_lock:
         if not _state.streams and _state.rest_poller is None:
             # 한 번도 시작 안 됨 → start가 가드(creds/빈 watchlist) 수행
@@ -610,7 +645,9 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
                 _state.streams.pop(account_id, None)
 
         await _buffer.drop_codes_except(set(codes))  # 떠난 코드 ring 해제
-        _state = replace(_state, live_set=live_set, watchlist_codes=live_set)
+        # 같은 세션 유지(refresh는 세션을 끝내지 않음) — live_set/watchlist만 갱신.
+        _state.session.live_set = live_set
+        _state.session.watchlist_codes = live_set
 
 
 # ADR-0064 이식 — WS 스트림 watchdog

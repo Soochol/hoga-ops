@@ -103,3 +103,25 @@ class _StreamConn:
     ws_task: asyncio.Task       # type: ignore[type-arg]
     flush_task: asyncio.Task    # type: ignore[type-arg]
     codes: tuple[str, ...]
+
+
+# ── Live Session (WS 연결집합 상태기계) ─────────────────────────────────────────
+
+class LiveSession:
+    """KIS WS 연결집합(dynamic-N)의 상태 — streams + 세션 스코프 불변식 소유.
+
+    streams 키 ∈ [0, n_configured). lifecycle의 _state.session이 보유하며,
+    start가 새 세션으로 교체한다(started_at_ms·streams 리셋). refresh/restart는
+    같은 세션을 변이한다.
+
+    step 2(이 커밋): 상태 컨테이너만. 전이(start/refresh/restart/stop)·
+    health(degraded_set/status_fields)는 후속 step에서 메서드로 이전한다 —
+    현재는 lifecycle 오케스트레이션이 streams를 직접 변이(_state.streams 위임 경유).
+    """
+
+    def __init__(self) -> None:
+        self.streams: dict[int, _StreamConn] = {}
+        self.started_at_ms: int | None = None
+        self.n_configured: int = 0
+        self.live_set: tuple[str, ...] = ()
+        self.watchlist_codes: tuple[str, ...] = ()
