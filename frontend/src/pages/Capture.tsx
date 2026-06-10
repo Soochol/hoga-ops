@@ -76,7 +76,10 @@ export default function Capture() {
         onReset={() => setLeftPct(DEFAULT_LEFT_PCT)}
         onNudge={onNudge}
       />
-      <section className="bg-bg-card border rounded-lg p-3 flex flex-col min-h-0">
+      {/* min-w-0: grid item 의 기본 min-width:auto(=콘텐츠 min-content) 를 풀어,
+          큐 행의 최소폭이 패널 축소를 막지 않게 한다. 패널이 행보다 좁아지면
+          큐 리스트(overflow-x:auto)가 가로 스크롤로 받아낸다 — 페이지 오버플로 방지. */}
+      <section className="bg-bg-card border rounded-lg p-3 flex flex-col min-h-0 min-w-0">
         <CaptureQueue />
       </section>
     </PageContainer>
