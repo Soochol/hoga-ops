@@ -3,6 +3,38 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.12.0] - 2026-06-10
+
+### Internal
+- **Live Session 상태기계 추출(아키텍처 deepening C3) — strangler 5단계**: lifecycle.py(772줄·
+  7관심사)의 KIS WS 연결집합 상태기계(streams + start/refresh/restart/stop + degraded + status)를
+  신규 `LiveSession` 객체(`hoga/live/live_session.py`)로 추출했습니다. 이제 관심종목 변경 1회가
+  4개 하위시스템을 튕기는 대신 한 객체의 `refresh()`에 집중되고, 불변식(streams 키 ∈ [0,N)·
+  이중-write 방지·R1 KisClient 보존·dynamic-N)이 주석이 아닌 코드로 봉인됩니다. lifecycle은
+  lifespan 오케스트레이션(poller·today-promoter·watchdog 트리거·get_status 합성)만 남습니다.
+  load-bearing(장중 캡처 핵심) 작업이라 Beck "make the change easy" 원칙대로 진행했습니다:
+  (0) 공개-seam characterization 테스트 10건 선행(`test_live_session_characterization.py`) —
+  `_state` 내부를 안 찌르고 get_status 관측만 검증해 추출 내내 byte-identical로 살아남는 독립
+  회귀 앵커. (1) 순수 헬퍼·_StreamConn 이동 → (2) LiveSession이 streams + 세션 스코프 상태 소유
+  (lifecycle._state는 위임 facade) → (3) start/refresh/restart/stop을 메서드로(conn 빌드/teardown
+  은 의존성 주입) → (4) degraded_set/status_fields 노출 + get_status 단일 계산 dedup + account_health
+  WS-probe 합류. ADR-0064(예외격리·watchdog dead/stale·거짓health 금지)·ADR-0067(exclude-then-
+  subscribe 순서, lifecycle 봉인) 정확 승계. 그려지는 결과·라우트 동작 동일(순수 내부 정리).
+  기존 lifecycle 테스트는 compat facade로 *무수정* green(회귀 신호), 백엔드 1492 통과.
+  ⚠️ **머지 게이트**: load-bearing이라 실-2계좌 KIS 장중 1세션 수동 카나리가 머지 전 필요.
+
+## [0.7.11.0] - 2026-06-10
+
+### Internal
+- **KIS build_router seam 통일(아키텍처 deepening C1b)**: /api/live 라우터가 KIS
+  클라이언트를 얻는 길이 둘이던 shallow seam(`build_router(get_kis_client=...)` 주입 +
+  `_kis_for_background`의 else 폴백)을 제거하고, 모든 라우트가 `kis_access.kis_for_role(
+  role, data_dir)` 단일 seam을 경유하도록 접었습니다(foreground=과거 분봉/일봉은 account
+  0 전용, background=시세/투자자 순매수는 account 1, 1개 키·저하 시 account 0 폴백).
+  테스트 fake 주입도 6가지 형태에서 `set_kis_client(fake, account)` 단일 메커니즘으로
+  통일했습니다. 그려지는 결과·동작은 종전과 동일한 순수 내부 정리이며, 백엔드 테스트
+  1482 무회귀입니다. 다음 차례: Live Session 상태기계 추출(C3).
+
 ## [0.7.10.0] - 2026-06-10
 
 ### Changed

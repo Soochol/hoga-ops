@@ -19,83 +19,32 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from hoga.api.models import WatchlistDocument
     from .rest_poller import LiveRestPoller
 
 from pydantic import BaseModel, Field
 
 from . import account_health, kis_access, kis_runtime  # health probe / role 라우팅 / 리소스
 from .buffer import LiveBuffer
+from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 호환) + LiveSession 사용
+    _PER_ACCOUNT_MAX,
+    KIS_WS_MAX_REGISTRATIONS,
+    LIVE_SET_MAX_CODES,
+    TRS_PER_CODE,
+    LiveSession,
+    _capture_health,
+    _compute_live_set,
+    _StreamConn,
+    display_ordered_codes,
+    live_set_codes,
+    partition_live_set,
+)
 from .promote import promote_today
 
 _log = logging.getLogger(__name__)
-
-
-# ── Live Set constants (spec §4·§5.1) ─────────────────────────────────────────
-
-KIS_WS_MAX_REGISTRATIONS = 41   # appkey당, (tr_id, code) 쌍 기준 — spec §4 검증 완료
-TRS_PER_CODE = 3                # 호가 + 체결 + 회원사(H0STMBC0)
-_PER_ACCOUNT_MAX = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # = 13 (계좌당 한도)
-# 동적 상한: 13 * n_configured. start에서 n_configured를 곱해 _compute_live_set이 사용.
-LIVE_SET_MAX_CODES = _PER_ACCOUNT_MAX  # 1계좌 기본(_compute_live_set이 n_configured로 동적 절단)
-
-
-def partition_live_set(codes: list[str], n: int) -> list[list[str]]:
-    """display-order 연속 배정: account k = codes[k*13:(k+1)*13] (스펙 §5.3, Q4).
-
-    n개 리스트를 항상 반환(후행은 빈 리스트일 수 있음). 연속 슬라이스라
-    13-경계를 안 넘는 코드는 계좌 고정 → 재정렬 churn 최소(위험 #4). 해시 배정
-    대신 연속을 택한 이유: CONTEXT.md 'top-13=경계' 모델 일치 + explicit>clever.
-    """
-    return [codes[k * _PER_ACCOUNT_MAX:(k + 1) * _PER_ACCOUNT_MAX] for k in range(n)]
-
-
-def display_ordered_codes(doc: WatchlistDocument) -> list[str]:
-    """Watchlist Panel 표시 순서로 코드 평탄화 (2026-06-06 결정, watchlist v2 폴더화).
-
-    Step 0 확인 (grouping.ts:28-43 + WatchlistDrawer.tsx:222,228):
-    - folders[]를 `.order` 오름차순으로 정렬 → 각 폴더의 entry를 `.order` 오름차순
-    - 미분류(folder_id=None) 그룹은 **폴더들 뒤** (groupByFolder가 push로 마지막에 추가)
-    - 빈 미분류는 WatchlistDrawer가 숨기지만 코드 수집에는 영향 없음
-
-    정렬 키: (folder rank — 미분류는 len(folders), entry.order)
-    """
-    sorted_folders = sorted(doc.folders, key=lambda f: f.order)
-    folder_rank = {f.id: i for i, f in enumerate(sorted_folders)}
-    n_folders = len(sorted_folders)
-
-    def _key(entry):  # type: ignore[no-untyped-def]
-        rank = folder_rank[entry.folder_id] if entry.folder_id is not None else n_folders
-        return (rank, entry.order)
-
-    return [e.code for e in sorted(doc.entries, key=_key)]
-
-
-def _compute_live_set(data_dir: Path, n_configured: int = 1) -> list[str]:
-    """Live Set 산출 파이프라인(start/refresh 공용):
-    load_document → 표시 순서 평탄화 → symbol-master 필터(cold cache 무필터
-    폴백) → 상위 (13 * n_configured) 절단."""
-    from hoga.api import symbols as _symbols  # noqa: PLC0415
-    from hoga.api.watchlist import load_document  # noqa: PLC0415
-
-    ordered = display_ordered_codes(load_document(data_dir))
-    known = {h.code for h in _symbols.search("", limit=10_000)}
-    if known:
-        dropped = [c for c in ordered if c not in known]
-        if dropped:
-            _log.warning("live.stream.codes_unknown dropped=%r", dropped)
-        ordered = [c for c in ordered if c in known]
-    return ordered[: _PER_ACCOUNT_MAX * n_configured]
-
-
-def live_set_codes(doc: WatchlistDocument) -> list[str]:
-    """Live Set = 패널 표시 순서 상위 13 (테스트 전용 헬퍼 — 실경로는 _compute_live_set) (CONTEXT.md 'Live Set', 그릴링 Q3 + 2026-06-06 개정)."""
-    return display_ordered_codes(doc)[:LIVE_SET_MAX_CODES]
 
 
 # ── Wire model ─────────────────────────────────────────────────────────────────
@@ -134,27 +83,54 @@ class LiveStatus(BaseModel):
 
 # ── State ──────────────────────────────────────────────────────────────────────
 
-@dataclass
-class _StreamConn:
-    """한 KIS 계좌의 WS 연결 묶음 (dynamic-N: codes 항상 비어있지 않음)."""
-    account_id: int
-    stream_obj: object            # LiveStream — 자체 writer 소유, code-disjoint
-    ws_task: "asyncio.Task"       # type: ignore[type-arg]
-    flush_task: "asyncio.Task"    # type: ignore[type-arg]
-    codes: tuple[str, ...]
-
-
-@dataclass
 class _State:
-    """In-process state of the live stream. Mutated only via this module."""
+    """In-process live state. streams + 세션 스코프 상태(started_at_ms·n_configured·
+    watchlist_codes·live_set)는 LiveSession이 소유하고, 여기선 위임 property로 노출한다
+    (C3 step 2 — 기존 호출부·테스트의 `_state.streams`/`started_at_ms` 등 접근 호환).
+    rest_poller는 WS 세션 밖(REST)이라 lifecycle이 직접 소유. Mutated only via this module."""
 
-    started_at_ms: int | None = None
-    n_configured: int = 0                          # start에 1회 산출·캐시(Q5)
-    watchlist_codes: tuple[str, ...] = field(default_factory=tuple)
-    # dynamic-N: account_id 키 연결 dict (Task 7이 채움)
-    streams: dict[int, _StreamConn] = field(default_factory=dict)
-    live_set: tuple[str, ...] = field(default_factory=tuple)
-    rest_poller: "LiveRestPoller | None" = None
+    def __init__(
+        self,
+        *,
+        started_at_ms: int | None = None,
+        n_configured: int = 0,
+        watchlist_codes: tuple[str, ...] = (),
+        streams: dict[int, _StreamConn] | None = None,
+        live_set: tuple[str, ...] = (),
+        rest_poller: LiveRestPoller | None = None,
+        session: LiveSession | None = None,
+    ) -> None:
+        if session is None:
+            session = LiveSession()
+            session.started_at_ms = started_at_ms
+            session.n_configured = n_configured
+            session.watchlist_codes = tuple(watchlist_codes)
+            session.live_set = tuple(live_set)
+            if streams is not None:
+                session.streams = streams
+        self.session = session
+        self.rest_poller = rest_poller
+
+    # 위임 property — 기존 `_state.X` 접근 호환(streams dict의 in-place 변이도 그대로 통과).
+    @property
+    def streams(self) -> dict[int, _StreamConn]:
+        return self.session.streams
+
+    @property
+    def started_at_ms(self) -> int | None:
+        return self.session.started_at_ms
+
+    @property
+    def n_configured(self) -> int:
+        return self.session.n_configured
+
+    @property
+    def watchlist_codes(self) -> tuple[str, ...]:
+        return self.session.watchlist_codes
+
+    @property
+    def live_set(self) -> tuple[str, ...]:
+        return self.session.live_set
 
 
 _state = _State()
@@ -216,12 +192,12 @@ def _build_conn(account_id: int, codes: list[str], data_dir: Path) -> _StreamCon
 
     각 conn은 자체 LiveStream+LiveWriter(code-disjoint라 (date,code) 충돌 없음).
     공유: 단일 _buffer. KisClient는 kis_runtime의 account별 싱글톤(재사용)."""
-    from .stream import LiveStream  # noqa: PLC0415
-    from .writer import LiveWriter  # noqa: PLC0415
-    from .ws_client import KisWsClient  # noqa: PLC0415
     # sync ws_capture_window을 의도적으로 씀(아래 gate_fn): KisWsClient가 gate_fn을
     # `await to_thread(gate_fn)`로 감싸 blocking을 격리한다 — 유일한 합법적 sync 사용처.
     from .session_gate import ws_capture_window  # noqa: PLC0415
+    from .stream import LiveStream  # noqa: PLC0415
+    from .writer import LiveWriter  # noqa: PLC0415
+    from .ws_client import KisWsClient  # noqa: PLC0415
 
     kis = kis_runtime.ensure_kis_client_for_account(account_id, data_dir)
     if kis is None:  # configured 보장 위반 — 방어적
@@ -284,84 +260,17 @@ def _market_clock_closed_for_capture(now_ms: int) -> bool:
     return market_phase(now_ms) != "regular"  # regular = 09:00–15:30
 
 
-def _capture_health(
-    *, running: bool, ws: object | None, now_ms: int, ref_ms: int,
-    stale_after_ms: int, market_closed: bool,
-) -> tuple[bool, str]:
-    """캡처 헬스 단일 술어(spec 2026-06-08 §2.2) — watchdog과 get_status가 공유.
-
-    last_recv 단독은 구독이 죽어도 PINGPONG이 갱신해 거짓-그린(리뷰 #4),
-    last_tick 단독은 한산한 종목을 거짓-레드로 만든다. 그래서 '구독 확인 +
-    수신 신선도'를 결합한다. ref_ms = max(started, session_open) — 세션 기준
-    grace 시작점(watchdog과 동일).
-
-    체크 순서가 핵심(advisor B): recv(stale)를 sub보다 먼저 본다 — sub 미확인
-    이어도 수신이 끊겼으면 dead socket이라 'stale'(watchdog 재시작), 수신이
-    신선하면 'sub_failed'(appkey 거부류 — 재연결 불응, 가시화만)로 갈린다.
-    """
-    if not running or ws is None:
-        return (False, "offline")
-    if market_closed:
-        return (False, "closed")
-    if not getattr(ws, "connected", False):
-        return (False, "reconnecting")
-    grace_elapsed = (now_ms - ref_ms) > stale_after_ms
-    last_recv = getattr(ws, "last_recv_ms", None)
-    recv_stale = grace_elapsed and (
-        last_recv is None or (now_ms - last_recv) > stale_after_ms
-    )
-    if recv_stale:
-        return (False, "stale")
-    expected = getattr(ws, "sub_expected", 0)
-    acked = getattr(ws, "sub_acked", 0)
-    if expected > 0 and acked < expected:
-        return (False, "sub_failed" if grace_elapsed else "subscribing")
-    return (True, "healthy")
-
-
-def _capture_status(now_ms: int) -> tuple[bool, str, list[int]]:
-    """WS 연결집합의 캡처 헬스 — (cap_healthy, cap_reason, degraded account_id list 정렬).
-
-    **단일 계산** — get_status(표시: cap_healthy/reason/degraded)와 account_health WS-probe
-    (라우팅: degraded 집합)가 공유한다(중복 제거, 2026-06-10). 의미론:
-    - streams 없음 → (False, "no_streams", []) — 호출자(get_status)가 poller-only running과
-      결합해 idle/offline로 해석.
-    - 전역 장 마감 → (False, "closed", []). market_closed는 전역 상태(계좌별 결함 아님)라
-      per-conn 루프 밖에서 단락 — 안 그러면 밤/주말마다 모든 conn이 degraded로 잡혀
-      거짓 신호(advisor 버그 회피).
-    - 정규장 → conn별 _capture_health 집계. cap_reason = worst(마지막 비정상)."""
-    streams = _state.streams
-    started = _state.started_at_ms
-    if started is None or not streams:
-        return (False, "no_streams", [])
-    if _market_clock_closed_for_capture(now_ms):
-        return (False, "closed", [])
-    from datetime import datetime  # noqa: PLC0415
-    from .kis_client import KIS_KST  # noqa: PLC0415
-    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
-    session_open_ms = int(
-        kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
-    )
-    ref_ms = max(started, session_open_ms)
-    cap_healthy, cap_reason, degraded = True, "healthy", []
-    for account_id, conn in streams.items():
-        ws = getattr(conn.stream_obj, "ws", None)
-        healthy, reason = _capture_health(
-            running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
-            stale_after_ms=_WATCHDOG_STALE_AFTER_MS, market_closed=False,
-        )
-        if not healthy:
-            cap_healthy = False
-            cap_reason = reason     # worst(마지막 비정상). 값 불변(Q10).
-            degraded.append(account_id)
-    degraded.sort()
-    return (cap_healthy, cap_reason, degraded)
-
-
 def _ws_degraded_probe() -> set[int]:
     """account_health가 등록받는 WS-degraded probe(의존 역전 — leaf가 lifecycle을 import
-    안 하게). 호출 시점에 현재 WS-저하 account 집합 반환."""
-    return set(_capture_status(_now_ms())[2])
+    안 하게). 호출 시점의 `_state.session`에서 평가 — start가 session을 통째 교체해도 항상
+    *현재* 세션을 읽는다(bound method `_state.session.degraded_set` 등록이면 죽은 인스턴스를
+    잡음, C3 trap). market_closed(전역 장 마감)는 lifecycle이 계산해 전달."""
+    now_ms = _now_ms()
+    return _state.session.degraded_set(
+        now_ms=now_ms,
+        market_closed=_market_clock_closed_for_capture(now_ms),
+        stale_after_ms=_WATCHDOG_STALE_AFTER_MS,
+    )
 
 
 # 모듈 로드 시 1회 push 등록 — probe는 _state(reset로 비워짐)를 시점-평가하므로 stateless,
@@ -370,50 +279,42 @@ account_health.register_ws_probe(_ws_degraded_probe)
 
 
 def get_status() -> LiveStatus:
-    """Read the current live status. Always safe to call. dynamic-N 집계(스펙 §5.7)."""
-    streams = _state.streams
+    """Read the current live status. Always safe to call. dynamic-N 집계(스펙 §5.7).
+
+    streams-파생 필드(running의 streams-항·ws_connected·last_tick·cap_healthy/reason/degraded)는
+    session.status_fields가 단일 계산(account_health WS-probe와 공유, dedup). poller.alive OR-항·
+    idle/offline·today-promote 합성은 여기 전용. market_closed는 lifecycle이 계산해 전달."""
     poller = _state.rest_poller
     now_ms = _now_ms()
-    started = _state.started_at_ms
-
-    running = any(not c.ws_task.done() for c in streams.values()) or (
-        poller is not None and poller.alive
+    sf = _state.session.status_fields(
+        now_ms=now_ms,
+        market_closed=_market_clock_closed_for_capture(now_ms),
+        stale_after_ms=_WATCHDOG_STALE_AFTER_MS,
     )
-    ws_connected = bool(streams) and all(
-        getattr(getattr(c.stream_obj, "ws", None), "connected", False)
-        for c in streams.values()
-    )
-    last_tick_ms: int | None = None
-    ticks = [
-        t for c in streams.values()
-        if (t := getattr(getattr(c.stream_obj, "ws", None), "last_tick_ms", None)) is not None
-    ]
-    if ticks:
-        last_tick_ms = max(ticks)
+    running = sf["streams_running"] or (poller is not None and poller.alive)
 
-    # 캡처 헬스 — 존재 conn 기준 AND(Q11). conn 0(C4 poller-only)이면 idle.
-    # streams 있을 때의 cap_healthy/reason/degraded는 _capture_status가 단일 계산
-    # (account_health WS-probe와 공유, 2026-06-10 dedup). poller-only(streams 없음)는
-    # running과 결합해 idle/offline 판정(여기 전용).
-    if started is None or not streams:
+    # 캡처 헬스 — 존재 conn 기준(Q11). capture=None(conn 0, C4 poller-only)이면 running과
+    # 결합해 idle/offline 판정(streams 있을 때의 셋은 session이 계산).
+    capture = sf["capture"]
+    if capture is None:
         cap_healthy = bool(running)        # poller-only면 서비스 중 → healthy/idle
         cap_reason = "idle" if running else "offline"
         degraded: list[int] = []
     else:
-        cap_healthy, cap_reason, degraded = _capture_status(now_ms)
+        cap_healthy, cap_reason, degraded = capture
 
     return LiveStatus(
         running=running,
-        started_at_ms=started,
-        last_tick_ms=last_tick_ms,
+        started_at_ms=sf["started_at_ms"],
+        last_tick_ms=sf["last_tick_ms"],
         cycle_lag_ms=0,
-        watchlist_count=len(_state.watchlist_codes),
+        watchlist_count=sf["watchlist_count"],
         kis_calls_today=0,
         kis_rate_limit_remaining=None,
         today_promote_last_ms=get_today_promote_last_ms(),
         transport="ws",
-        ws_connected=ws_connected,
-        live_set=list(_state.live_set),
+        ws_connected=sf["ws_connected"],
+        live_set=sf["live_set"],
         degraded_accounts=degraded,
         capture_healthy=cap_healthy,
         capture_reason=cap_reason,
@@ -500,7 +401,7 @@ async def start_live_stream(*, data_dir: Path) -> bool:
         return await _start_live_stream_locked(data_dir=data_dir)
 
 
-def _ensure_poller(data_dir: Path) -> "LiveRestPoller | None":
+def _ensure_poller(data_dir: Path) -> LiveRestPoller | None:
     """rest_poller를 1회 생성·재사용(§3 분리). creds(account 0) 없으면 None.
     이미 있으면 그대로 반환 → _subscribed(보는종목) 보존(잠복 버그 수정)."""
     from .rest_poller import LiveRestPoller  # noqa: PLC0415
@@ -521,7 +422,7 @@ def _ensure_poller(data_dir: Path) -> "LiveRestPoller | None":
     return poller
 
 
-def _sync_exclusion(poller: "LiveRestPoller | None", live_set: tuple[str, ...]) -> None:
+def _sync_exclusion(poller: LiveRestPoller | None, live_set: tuple[str, ...]) -> None:
     """배타 동기화: WS 수집 종목(live_set)을 poller 배제로(ADR-0067 §5).
     exclude-then-subscribe 순서를 위해 conn build/update 전에 호출(스펙 §5.5)."""
     if poller is not None:
@@ -529,14 +430,18 @@ def _sync_exclusion(poller: "LiveRestPoller | None", live_set: tuple[str, ...]) 
 
 
 async def _start_live_stream_locked(*, data_dir: Path) -> bool:
-    """start의 본체(락 보유 중). dynamic-N + poller 분리 + C4 (스펙 §5.4)."""
+    """start의 본체(락 보유 중). dynamic-N + poller 분리 + C4 (스펙 §5.4).
+
+    exclude-then-subscribe 순서를 lifecycle이 봉인(C3 ①): stop → ensure_poller →
+    _sync_exclusion → session.start(conn build). poller는 WS 세션 밖이라 lifecycle 소유.
+    """
     # 1. account 0 creds 게이트(완전 오프라인이면 stop만)
     n_configured = len(kis_runtime.configured_account_ids(data_dir))
     if n_configured == 0:
         return False
 
     # 2. 기존 conn 정지(poller는 보존)
-    await _stop_streams_locked()
+    await _state.session.stop(_teardown_conn)
 
     # 3. poller 보장(없으면 생성, 있으면 _subscribed 보존)
     poller = _ensure_poller(data_dir)
@@ -545,42 +450,29 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
 
     # 4. Live Set 산출(동적 절단)
     codes = _compute_live_set(data_dir, n_configured)
-    parts = partition_live_set(codes, n_configured)
 
-    # 5. exclude-then-subscribe: 먼저 배제 동기화, 그 다음 conn build
-    live_set = tuple(codes)
-    _sync_exclusion(poller, live_set)
+    # 5. exclude-then-subscribe: 먼저 배제 동기화, 그 다음 conn build(session.start)
+    _sync_exclusion(poller, tuple(codes))
 
-    # 6. 코드 있는 파티션만 conn 생성(dynamic-N; 빈 part = 연결 없음 → C4)
-    streams: dict[int, _StreamConn] = {}
-    for account_id, part in enumerate(parts):
-        if part:
-            streams[account_id] = _build_conn(account_id, part, data_dir)
-
-    global _state  # noqa: PLW0603
-    _state = _State(
-        started_at_ms=_now_ms(),
-        n_configured=n_configured,
-        watchlist_codes=live_set,
-        streams=streams,
-        live_set=live_set,
-        rest_poller=poller,
+    # 6. 코드 있는 파티션만 conn 생성(session이 dynamic-N 빌드 — 빈 part=연결 없음 → C4)
+    await _state.session.start(
+        codes=codes, n_configured=n_configured, data_dir=data_dir,
+        now_ms=_now_ms(), build_conn=_build_conn,
     )
+    _state.rest_poller = poller
     return True
 
 
 async def _stop_streams_locked() -> None:
-    """현재 conn들만 teardown(poller·_state.rest_poller는 보존)."""
-    for conn in list(_state.streams.values()):
-        await _teardown_conn(conn)
-    _state.streams.clear()
+    """현재 conn들만 teardown(poller·_state.rest_poller는 보존) — session에 위임."""
+    await _state.session.stop(_teardown_conn)
 
 
 async def _stop_live_stream_locked() -> None:
     """완전 정지 — conn teardown + poller stop + _state 리셋."""
     global _state  # noqa: PLW0603
     poller = _state.rest_poller
-    await _stop_streams_locked()
+    await _state.session.stop(_teardown_conn)
     if poller is not None:
         await poller.stop()
     _state = _State()
@@ -622,8 +514,6 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
     streams=={}면(부팅·C4 poller-only) start로 위임. 아니면 account별로:
     part 차면 build, 비면 teardown, 둘 다 있으면 update_codes diff.
     """
-    global _state  # noqa: PLW0603
-
     async with _lifecycle_lock:
         if not _state.streams and _state.rest_poller is None:
             # 한 번도 시작 안 됨 → start가 가드(creds/빈 watchlist) 수행
@@ -634,62 +524,29 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
             await _start_live_stream_locked(data_dir=data_dir)
             return
 
-        n = _state.n_configured
-        codes = _compute_live_set(data_dir, n)
-        parts = partition_live_set(codes, n)
-        live_set = tuple(codes)
+        codes = _compute_live_set(data_dir, _state.n_configured)
 
-        # exclude-then-subscribe: build/update 전에 배제 동기화(스펙 §5.5)
-        _sync_exclusion(_state.rest_poller, live_set)
+        # exclude-then-subscribe: build/update 전에 배제 동기화(스펙 §5.5, C3 ①).
+        _sync_exclusion(_state.rest_poller, tuple(codes))
 
-        # Pass 0 (동기, await 없음): 기존 conn들의 on_tick 활성집합을 새 파티션으로
-        # **원자 스왑**. cross-boundary 이동(코드가 13-경계를 넘어 conn↔conn 이동)
-        # 시, 옛 conn 활성집합에서 빠진 뒤 새 conn에 들어가야 두 writer가 같은
-        # {date}/{code}.jsonl에 동시 append하는 이중-write 창이 안 생긴다.
-        # set_active_codes는 동기라 이 루프 중엔 틱이 처리되지 않아 스왑이 원자적.
-        # (Pass 1의 async WS 재구독에서 코드가 잠시 양쪽 WS에 구독돼도 on_tick 활성
-        #  필터가 이미 정확하므로 write는 한 conn으로만 간다 — WS 이중구독 무해.)
-        for account_id, part in enumerate(parts):
-            conn = _state.streams.get(account_id)
-            if conn is not None:
-                conn.stream_obj.set_active_codes(set(part))   # type: ignore[union-attr]
-
-        # Pass 1 (async): WS 구독 diff + build/teardown.
-        for account_id, part in enumerate(parts):
-            conn = _state.streams.get(account_id)
-            if part and conn is not None:
-                await conn.stream_obj.ws.update_codes(part)      # type: ignore[union-attr]
-                _state.streams[account_id] = _StreamConn(
-                    account_id=account_id, stream_obj=conn.stream_obj,
-                    ws_task=conn.ws_task, flush_task=conn.flush_task,
-                    codes=tuple(part),
-                )
-            elif part and conn is None:
-                _state.streams[account_id] = _build_conn(account_id, part, data_dir)
-            elif not part and conn is not None:
-                await _teardown_conn(conn)
-                _state.streams.pop(account_id, None)
-
+        # 원자 활성집합 스왑(Pass 0) + WS 재구독 diff·build/teardown(Pass 1) +
+        # live_set/watchlist 갱신은 session.refresh가 소유(이중-write 방지 불변식 봉인).
+        await _state.session.refresh(
+            codes=codes, data_dir=data_dir,
+            build_conn=_build_conn, teardown_conn=_teardown_conn,
+        )
         await _buffer.drop_codes_except(set(codes))  # 떠난 코드 ring 해제
-        _state = replace(_state, live_set=live_set, watchlist_codes=live_set)
 
 
 # ADR-0064 이식 — WS 스트림 watchdog
 async def _restart_conn(account_id: int, *, data_dir: Path) -> None:
-    """죽은 conn 하나만 격리 복구(스펙 §5.6, Q6). lock 안 재검증 → teardown+build.
-    R1: KisClient는 보존. 현재 파티션으로 재계산해 그 사이 watchlist 변화 흡수."""
+    """죽은 conn 하나만 격리 복구 — session.restart에 위임(락 보유). teardown+build(R1
+    KisClient 보존)·현재 파티션 재계산은 session이 소유(스펙 §5.6, Q6)."""
     async with _lifecycle_lock:
-        conn = _state.streams.get(account_id)
-        if conn is None:
-            return
-        n = _state.n_configured
-        parts = partition_live_set(_compute_live_set(data_dir, n), n)
-        codes = parts[account_id] if account_id < len(parts) else []
-        await _teardown_conn(conn)
-        if codes:
-            _state.streams[account_id] = _build_conn(account_id, codes, data_dir)
-        else:
-            _state.streams.pop(account_id, None)   # 그 사이 watchlist 축소됨
+        await _state.session.restart(
+            account_id, data_dir=data_dir,
+            build_conn=_build_conn, teardown_conn=_teardown_conn,
+        )
 
 
 async def _ws_watchdog_check(
