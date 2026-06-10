@@ -180,11 +180,17 @@ def test_live_set_is_watchlist_order_prefix() -> None:
     폴더들은 .order 오름차순, 미분류는 **마지막** — 백엔드 평탄화가 미러.
 
     Fixture: 2개 폴더 + 미분류, entry order가 flat-array 삽입 순서와 어긋나게
-    구성 → 표시 순서 평탄화가 정확한지 + 13 절단이 맞는지 검증.
+    구성 → 표시 순서 평탄화가 정확한지 + LIVE_SET_MAX_CODES 절단이 맞는지 검증.
     """
-    from hoga.live.lifecycle import LIVE_SET_MAX_CODES, live_set_codes, display_ordered_codes
+    from hoga.live.lifecycle import (
+        LIVE_SET_MAX_CODES,
+        _PER_ACCOUNT_MAX,
+        live_set_codes,
+        display_ordered_codes,
+    )
 
-    assert LIVE_SET_MAX_CODES == 13  # 41 // 3 (spec §4·§5.1)
+    # 계좌당 한도 = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE (30 // 3 = 10), spec §4·§5.1
+    assert LIVE_SET_MAX_CODES == _PER_ACCOUNT_MAX
 
     # 폴더 2개 (order=1이 앞, order=0이 뒤 — 삽입 순서와 반대)
     # 실제 렌더 순서: folder_b(order=0) → folder_a(order=1) → 미분류
@@ -215,22 +221,22 @@ def test_live_set_is_watchlist_order_prefix() -> None:
     ordered = display_ordered_codes(doc)
     assert ordered == ["000002", "000001", "000010", "000011", "000020", "000021"]
 
-    # live_set_codes: 상위 13 절단 — 6개뿐이므로 전부
+    # live_set_codes: 상위 LIVE_SET_MAX_CODES 절단 — 6개뿐이므로 전부
     assert live_set_codes(doc) == ordered
 
 
-def test_live_set_truncates_to_13() -> None:
-    """20개 항목이 있을 때 Live Set은 정확히 13개로 절단된다."""
+def test_live_set_truncates_to_max() -> None:
+    """20개 항목이 있을 때 Live Set은 정확히 LIVE_SET_MAX_CODES개로 절단된다."""
     from hoga.live.lifecycle import LIVE_SET_MAX_CODES, live_set_codes
 
-    # 폴더 없이 미분류 20개
+    # 폴더 없이 미분류 20개 (LIVE_SET_MAX_CODES=10 초과 → 절단 발동)
     entries = [_entry(f"{i:06d}", order=i) for i in range(20)]
     doc = _make_doc([], entries)
 
     result = live_set_codes(doc)
-    assert len(result) == LIVE_SET_MAX_CODES  # == 13
-    # 표시 순서(order 오름차순) 앞 13개
-    assert result == [f"{i:06d}" for i in range(13)]
+    assert len(result) == LIVE_SET_MAX_CODES
+    # 표시 순서(order 오름차순) 앞 LIVE_SET_MAX_CODES개
+    assert result == [f"{i:06d}" for i in range(LIVE_SET_MAX_CODES)]
 
 
 def test_live_set_fewer_than_13_returns_all() -> None:
@@ -555,7 +561,8 @@ async def test_refresh_live_stream_updates_ws_and_buffer(
     monkeypatch, tmp_path
 ) -> None:
     """정상 경로(dynamic-N, 단일 conn): update_codes/set_active_codes/
-    drop_codes_except 3종이 표시 순서 상위 13 코드로 호출되고 _state가 갱신된다."""
+    drop_codes_except 3종이 표시 순서 상위 LIVE_SET_MAX_CODES 코드로 호출되고
+    _state가 갱신된다."""
     import json
 
     from hoga.api import symbols
@@ -610,8 +617,8 @@ async def test_refresh_live_stream_updates_ws_and_buffer(
     try:
         await lifecycle.refresh_live_stream(data_dir=tmp_path)
 
-        # n_configured=1 → 단일 파티션 = 상위 13 (15개 절단)
-        expected = [f"{i:06d}" for i in range(13)]
+        # n_configured=1 → 단일 파티션 = 상위 LIVE_SET_MAX_CODES (15개 → 절단)
+        expected = [f"{i:06d}" for i in range(lifecycle.LIVE_SET_MAX_CODES)]
         assert calls["update_codes"] == expected
         assert calls["set_active_codes"] == set(expected)
         assert drop_calls == [set(expected)]

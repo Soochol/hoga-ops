@@ -92,28 +92,32 @@ async def _start_two_accounts(tmp_path, monkeypatch, codes):
 
 
 @pytest.mark.asyncio
-async def test_refresh_builds_second_conn_when_crossing_13(tmp_path, monkeypatch):
-    codes13 = [f"{i:06d}" for i in range(13)]
-    await _start_two_accounts(tmp_path, monkeypatch, codes13)
+async def test_refresh_builds_second_conn_when_crossing_per_account_max(tmp_path, monkeypatch):
+    # 경계 = lifecycle._PER_ACCOUNT_MAX (계좌당 종목 한도). W종목이면 1계좌(conn0)에 꽉 참.
+    W = lifecycle._PER_ACCOUNT_MAX
+    codes_w = [f"{i:06d}" for i in range(W)]
+    await _start_two_accounts(tmp_path, monkeypatch, codes_w)
     assert set(lifecycle._state.streams.keys()) == {0}   # conn-1 아직 없음
 
-    # 14번째 추가 → conn-1 신규 생성(연결 생성 분기)
+    # W+1번째 추가 → 경계 초과 → conn-1 신규 생성(연결 생성 분기)
+    overflow = f"{W:06d}"
     from tests.unit.live.test_lifecycle_start import _write_watchlist
-    _write_watchlist(tmp_path, codes13 + ["000013"])
+    _write_watchlist(tmp_path, codes_w + [overflow])
     await lifecycle.refresh_live_stream(data_dir=tmp_path)
     assert set(lifecycle._state.streams.keys()) == {0, 1}
-    assert lifecycle._state.streams[1].codes == ("000013",)
+    assert lifecycle._state.streams[1].codes == (overflow,)
     await lifecycle.stop_live_stream()
 
 
 @pytest.mark.asyncio
-async def test_refresh_tears_down_second_conn_when_dropping_to_13(tmp_path, monkeypatch):
-    codes14 = [f"{i:06d}" for i in range(14)]
-    await _start_two_accounts(tmp_path, monkeypatch, codes14)
+async def test_refresh_tears_down_second_conn_when_dropping_to_per_account_max(tmp_path, monkeypatch):
+    W = lifecycle._PER_ACCOUNT_MAX
+    codes_w1 = [f"{i:06d}" for i in range(W + 1)]   # W+1종목 → 2계좌
+    await _start_two_accounts(tmp_path, monkeypatch, codes_w1)
     assert set(lifecycle._state.streams.keys()) == {0, 1}
 
     from tests.unit.live.test_lifecycle_start import _write_watchlist
-    _write_watchlist(tmp_path, codes14[:13])
+    _write_watchlist(tmp_path, codes_w1[:W])   # 경계로 복귀 → conn-1 불필요
     await lifecycle.refresh_live_stream(data_dir=tmp_path)
     assert set(lifecycle._state.streams.keys()) == {0}   # conn-1 해체(빈 소켓 안 남김)
     await lifecycle.stop_live_stream()
@@ -218,26 +222,29 @@ async def test_status_idle_when_poller_only(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_refresh_cross_boundary_move_single_active(tmp_path, monkeypatch):
-    """cross-boundary 이동(13-경계 넘는 재정렬): 이동 코드가 정확히 한 conn에만
-    active/구독되어야 한다 — 두 conn 동시-write(혼합 JSONL) 방지(리뷰 fix, 2-pass).
-    14종목에서 마지막(000013, conn1)을 맨 앞으로 재정렬 → 000013→conn0, 000012→conn1.
+    """cross-boundary 이동(per-account-max 경계 넘는 재정렬): 이동 코드가 정확히 한
+    conn에만 active/구독되어야 한다 — 두 conn 동시-write(혼합 JSONL) 방지(리뷰 fix, 2-pass).
+    W+1종목에서 마지막(moved, conn1)을 맨 앞으로 재정렬 → moved→conn0, displaced(W-1)→conn1.
     """
-    codes14 = [f"{i:06d}" for i in range(14)]
-    await _start_two_accounts(tmp_path, monkeypatch, codes14)
-    assert lifecycle._state.streams[1].codes == ("000013",)   # 시작: conn1 = [000013]
+    W = lifecycle._PER_ACCOUNT_MAX
+    moved = f"{W:06d}"          # 초기 conn1의 유일 코드(index W, 경계 직후)
+    displaced = f"{W - 1:06d}"  # 재정렬 후 conn0에서 밀려나는 코드(index W-1, 경계 직전)
+    codes_w1 = [f"{i:06d}" for i in range(W + 1)]
+    await _start_two_accounts(tmp_path, monkeypatch, codes_w1)
+    assert lifecycle._state.streams[1].codes == (moved,)   # 시작: conn1 = [moved]
 
-    reordered = ["000013"] + codes14[:13]   # [000013, 000000..000012]
+    reordered = [moved] + codes_w1[:W]   # moved를 맨 앞으로 → 경계 넘어 conn0로 이동
     from tests.unit.live.test_lifecycle_start import _write_watchlist
     _write_watchlist(tmp_path, reordered)
     await lifecycle.refresh_live_stream(data_dir=tmp_path)
 
     conn0_active = lifecycle._state.streams[0].stream_obj._active_codes  # type: ignore[union-attr]
     conn1_active = lifecycle._state.streams[1].stream_obj._active_codes  # type: ignore[union-attr]
-    # 000013은 conn0에만(이동 완료), conn1엔 없음 — 정확히 한 conn
-    assert "000013" in conn0_active and "000013" not in conn1_active
-    # 000012는 conn1로 밀려남 — 정확히 한 conn
-    assert "000012" in conn1_active and "000012" not in conn0_active
+    # moved는 conn0에만(이동 완료), conn1엔 없음 — 정확히 한 conn
+    assert moved in conn0_active and moved not in conn1_active
+    # displaced는 conn1로 밀려남 — 정확히 한 conn
+    assert displaced in conn1_active and displaced not in conn0_active
     # codes 튜플 일관
-    assert "000013" in lifecycle._state.streams[0].codes
-    assert lifecycle._state.streams[1].codes == ("000012",)
+    assert moved in lifecycle._state.streams[0].codes
+    assert lifecycle._state.streams[1].codes == (displaced,)
     await lifecycle.stop_live_stream()

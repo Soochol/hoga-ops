@@ -6,6 +6,11 @@ TR_ORDERBOOK = "H0STASP0"  # 호가
 TR_TRADE = "H0STCNT0"  # 체결
 TR_MEMBER = "H0STMBC0"  # 회원사(거래원)
 
+# 종목당 구독하는 실시간 TR 집합 — 사이징(live_session._PER_ACCOUNT_MAX)과 구독수
+# (ws_client.sub_expected)의 단일 진실원. 한 곳만 고치면 양쪽이 동기화돼 드리프트 불가.
+# TR을 빼면 연결당 등록 수가 줄어 더 많은 종목을 담을 수 있다(연결당 한도 ~32, 2026-06-10 실측).
+TRS = (TR_ORDERBOOK, TR_TRADE, TR_MEMBER)
+
 # --- H0STASP0 (호가) — 위치 기반 ---
 ASP_CODE = 0
 ASP_TIME_HHMMSS = 1

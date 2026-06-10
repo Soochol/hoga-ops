@@ -20,7 +20,7 @@ from .ws_frames import WsTick, parse_message
 _log = logging.getLogger(__name__)
 
 WS_URL_REAL = "ws://ops.koreainvestment.com:21000"
-_TRS = (F.TR_ORDERBOOK, F.TR_TRADE, F.TR_MEMBER)
+_TRS = F.TRS  # 종목당 구독 TR — ws_fields 단일진실원(사이징=구독수, 드리프트 불가)
 _BACKOFF_S = (1, 2, 4, 8, 16, 32, 60)
 
 
