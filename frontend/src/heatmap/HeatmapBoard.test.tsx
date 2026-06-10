@@ -1,3 +1,5 @@
+import { vi } from 'vitest';
+vi.mock('./FolderAddButton', () => ({ FolderAddButton: () => null }));
 import { render, screen } from '@testing-library/react';
 import { it, expect } from 'vitest';
 import { HeatmapBoard } from './HeatmapBoard';

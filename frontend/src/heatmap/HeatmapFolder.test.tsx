@@ -1,5 +1,7 @@
+import { vi } from 'vitest';
+vi.mock('./FolderAddButton', () => ({ FolderAddButton: () => null }));
 import { render, screen, fireEvent } from '@testing-library/react';
-import { it, expect, vi } from 'vitest';
+import { it, expect } from 'vitest';
 import { HeatmapFolder } from './HeatmapFolder';
 import type { WatchlistEntry, WatchlistFolder } from '../api/watchlist';
 import type { LiveQuote } from '../api/liveQuotes';
