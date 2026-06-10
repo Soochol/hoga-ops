@@ -7,7 +7,7 @@ import { deriveBannerState } from '../live/useLiveBannerState';
 import { LiveStateBanner } from '../live/LiveStateBanner';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
-import { HeatmapBoard } from '../heatmap/HeatmapBoard';
+import { HeatmapBoard, visibleFolderGroups } from '../heatmap/HeatmapBoard';
 
 const PHASE_LABEL: Record<string, string> = { pre_open: '장전', open: '● 장중', closed: '장마감' };
 
@@ -31,8 +31,7 @@ export function Heatmap() {
   const phase = quotesQ.data?.phase;
   const updated = quotesQ.dataUpdatedAt
     ? new Date(quotesQ.dataUpdatedAt).toLocaleTimeString('ko-KR') : '—';
-  const visibleCount = groups
-    .filter((g) => g.folder !== null && g.entries.length > 0)
+  const visibleCount = visibleFolderGroups(groups)
     .reduce((n, g) => n + g.entries.length, 0);
   // eng-review Q4: 자격증명 없음/오프라인 배너는 /live 와 동일 신호 재사용(DRY).
   // watchlist_empty 는 아래 빈-상태가 처리하므로 여기선 kis_credentials_missing 만 뜬다.
