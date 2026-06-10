@@ -33,7 +33,6 @@ from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
 from hoga.live.api import build_router as build_live_router
 from hoga.live.kis_runtime import aclose_kis_client
-from hoga.live.kis_runtime import get_kis_client as live_get_kis_client
 from hoga.live.lifecycle import get_buffer as live_get_buffer
 from hoga.live.lifecycle import get_status as live_get_status
 from hoga.live.lifecycle import (
@@ -231,7 +230,6 @@ def create_app(data_dir: Path) -> FastAPI:
             get_status=live_get_status,
             get_buffer=live_get_buffer,
             on_control=_live_control,
-            get_kis_client=live_get_kis_client,
             data_dir=data_dir,
         )
     )

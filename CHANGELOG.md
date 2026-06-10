@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.11.0] - 2026-06-10
+
+### Internal
+- **KIS build_router seam 통일(아키텍처 deepening C1b)**: /api/live 라우터가 KIS
+  클라이언트를 얻는 길이 둘이던 shallow seam(`build_router(get_kis_client=...)` 주입 +
+  `_kis_for_background`의 else 폴백)을 제거하고, 모든 라우트가 `kis_access.kis_for_role(
+  role, data_dir)` 단일 seam을 경유하도록 접었습니다(foreground=과거 분봉/일봉은 account
+  0 전용, background=시세/투자자 순매수는 account 1, 1개 키·저하 시 account 0 폴백).
+  테스트 fake 주입도 6가지 형태에서 `set_kis_client(fake, account)` 단일 메커니즘으로
+  통일했습니다. 그려지는 결과·동작은 종전과 동일한 순수 내부 정리이며, 백엔드 테스트
+  1482 무회귀입니다. 다음 차례: Live Session 상태기계 추출(C3).
+
 ## [0.7.10.0] - 2026-06-10
 
 ### Changed
