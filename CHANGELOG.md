@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.12.0] - 2026-06-10
+
+### Internal
+- **Live Session 추출 토대 — 공개-seam characterization 테스트(아키텍처 deepening C3 step 0)**:
+  C3는 lifecycle.py의 WS 연결집합 상태기계(streams + start/refresh/restart/stop + degraded +
+  status)를 신규 `LiveSession` 객체로 strangler 추출하는 load-bearing 작업입니다. 그 추출이
+  장중 캡처 핵심이라, 동작을 먼저 잠그는 characterization 테스트 10건을 선행 추가했습니다
+  (`test_live_session_characterization.py`). 기존 lifecycle 테스트는 `_state.streams` 내부를
+  찔러 추출 시 함께 수정되면 회귀 신호를 잃지만, 이 테스트들은 공개 seam(get_status·start·
+  refresh·stop·watchdog)의 관측 가능한 출력만 검증해 추출 후에도 그대로 살아남아 진짜 회귀를
+  잡습니다. 프로덕션 코드는 변경하지 않았습니다(순수 테스트 토대). 다음 차례: LiveSession
+  실추출(steps 1-4) — 실-KIS 장중 카나리가 머지 게이트.
+
 ## [0.7.10.0] - 2026-06-10
 
 ### Changed
