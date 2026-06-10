@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.13.1] - 2026-06-10
+
+### Fixed
+- **캡처 폼 — Start Capture 성공 후 날짜 범위·버튼 리셋**: `/capture`에서 캡처를 큐에 넣은 뒤
+  날짜/기간 선택이 그대로 남아 같은 범위를 실수로 재제출(중복 enqueue)할 수 있던 문제를 수정.
+  `CaptureForm.onStart` 성공 경로에서 `setRange(null)`로 날짜 범위를 초기화해 달력 하이라이트가
+  사라지고 Start 버튼이 다시 비활성화됩니다(`valid = symbol && range && range.end`). 종목은
+  의도적으로 유지해 같은 종목으로 다른 기간을 바로 이어서 캡처할 수 있습니다. 실패 경로(409 전체
+  차단·업스트림 에러)는 `catch`에서 early-return하여 선택을 보존해 재시도가 쉽습니다. 기존 "보존"
+  단위 테스트를 새 동작(종목 유지·범위 초기화·버튼 비활성)으로 뒤집어 TDD.
+
 ## [0.7.13.0] - 2026-06-10
 
 ### Added
