@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useWatchlist, useCreateFolder } from '../watchlist/useWatchlist';
 import { groupByFolder } from '../watchlist/grouping';
-import { useQuotes, type LiveQuote } from '../api/liveQuotes';
+import { useLiveQuoteOverlay } from '../api/liveQuotes';
 import { useLiveStatus } from '../api/liveStatus';
 import { deriveBannerState } from '../live/useLiveBannerState';
 import { LiveStateBanner } from '../live/LiveStateBanner';
@@ -20,12 +20,8 @@ export function Heatmap() {
   const folders = useMemo(() => data?.folders ?? [], [data]);
   const codes = useMemo(() => entries.map((e) => e.code), [entries]);
 
-  const quotesQ = useQuotes(codes);
+  const { quoteByCode, phase, dataUpdatedAt } = useLiveQuoteOverlay(codes);
   const statusQ = useLiveStatus();
-  const quoteByCode = useMemo(
-    () => new Map<string, LiveQuote>((quotesQ.data?.quotes ?? []).map((q) => [q.code, q])),
-    [quotesQ.data],
-  );
   const groups = useMemo(() => groupByFolder(folders, entries), [folders, entries]);
   const onPick = useJumpToLive();
   const sortMode = useHeatmapPrefsStore((s) => s.sortMode);
@@ -33,9 +29,8 @@ export function Heatmap() {
   const [showNewGroup, setShowNewGroup] = useState(false);
   const createFolderM = useCreateFolder();
 
-  const phase = quotesQ.data?.phase;
-  const updated = quotesQ.dataUpdatedAt
-    ? new Date(quotesQ.dataUpdatedAt).toLocaleTimeString('ko-KR') : '—';
+  const updated = dataUpdatedAt
+    ? new Date(dataUpdatedAt).toLocaleTimeString('ko-KR') : '—';
   const visibleCount = visibleFolderGroups(groups)
     .reduce((n, g) => n + g.entries.length, 0);
   // eng-review Q4: 자격증명 없음/오프라인 배너는 /live 와 동일 신호 재사용(DRY).

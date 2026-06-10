@@ -16,13 +16,15 @@ vi.mock('../api/watchlist', async (orig) => ({
 }));
 
 // 005930(order0) -2%, 000660(order1) +5% — manual≠change 라 토글이 관측 가능.
+// 005930(order0) -2%, 000660(order1) +5% — manual≠change 라 토글이 관측 가능.
 vi.mock('../api/liveQuotes', async (orig) => ({
   ...(await orig<typeof import('../api/liveQuotes')>()),
-  useQuotes: vi.fn(() => ({
-    data: { phase: 'open', quotes: [
-      { code: '005930', price: 70000, change_pct: -2, change_won: -1400 },
-      { code: '000660', price: 200000, change_pct: 5, change_won: 10000 },
-    ] },
+  useLiveQuoteOverlay: vi.fn(() => ({
+    quoteByCode: new Map([
+      ['005930', { code: '005930', price: 70000, change_pct: -2, change_won: -1400 }],
+      ['000660', { code: '000660', price: 200000, change_pct: 5, change_won: 10000 }],
+    ]),
+    phase: 'open',
     dataUpdatedAt: 0,
   })),
 }));
