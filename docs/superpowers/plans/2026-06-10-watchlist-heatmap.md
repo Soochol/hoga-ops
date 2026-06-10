@@ -179,16 +179,16 @@ import type { SortMode } from '../heatmap/heat';
 describe('useHeatmapPrefsStore', () => {
   beforeEach(() => {
     localStorage.clear();
-    useHeatmapPrefsStore.setState({ sortMode: 'change' });
+    useHeatmapPrefsStore.setState({ sortMode: 'manual' });
   });
 
-  it('기본값 change', () => {
-    expect(useHeatmapPrefsStore.getState().sortMode).toBe('change');
+  it('기본값 manual (eng-review D2: 안정 보드·큐레이션 순서 유지, change는 옵트인)', () => {
+    expect(useHeatmapPrefsStore.getState().sortMode).toBe('manual');
   });
   it('setSortMode 갱신 + 영속', () => {
-    useHeatmapPrefsStore.getState().setSortMode('manual');
-    expect(useHeatmapPrefsStore.getState().sortMode).toBe('manual');
-    expect(localStorage.getItem('heatmap.sortMode.v1')).toContain('manual');
+    useHeatmapPrefsStore.getState().setSortMode('change');
+    expect(useHeatmapPrefsStore.getState().sortMode).toBe('change');
+    expect(localStorage.getItem('heatmap.sortMode.v1')).toContain('change');
   });
   it('알 수 없는 값 무시', () => {
     const before = useHeatmapPrefsStore.getState().sortMode;
@@ -239,7 +239,9 @@ function persist(sortMode: SortMode): void {
 }
 
 export const useHeatmapPrefsStore = create<Store>((set) => ({
-  sortMode: readStorage() ?? 'change',
+  // 기본 manual (eng-review D2): 로드 시 안정 보드 + 사용자 큐레이션(주도주 우선)
+  // 순서 유지. change(등락률↓)는 옵트인 — 그 모드에선 매 폴링 라이브 재정렬 허용.
+  sortMode: readStorage() ?? 'manual',
   setSortMode: (value) => {
     if (!SORT_MODES.includes(value)) return;
     set({ sortMode: value });
@@ -551,17 +553,23 @@ export interface HeatmapBoardProps {
 export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick }: HeatmapBoardProps) {
   const visible = groups.filter((g) => g.folder !== null && g.entries.length > 0);
   return (
-    <div className="flex-1 overflow-y-auto p-2" style={{ columnWidth: '228px', columnGap: '8px' }}>
-      {visible.map((g) => (
-        <HeatmapFolder
-          key={g.folder!.id}
-          folder={g.folder!}
-          entries={g.entries}
-          quoteByCode={quoteByCode}
-          sortMode={sortMode}
-          onPick={onPick}
-        />
-      ))}
+    // eng-review Q6: 스크롤 컨테이너(바깥, 높이 한정)와 multicol 블록(안쪽, height
+    // auto)을 분리한다. 같은 요소에 overflow-y-auto + column-width 를 두면 높이
+    // 고정 multicol 이 칼럼을 세로로 꽉 채우다 가로 오버플로/단일 칼럼으로 깨진다.
+    // 바깥이 세로 스크롤, 안쪽이 콘텐츠 높이 기준 신문형 균형 패킹.
+    <div className="flex-1 overflow-y-auto p-2">
+      <div style={{ columnWidth: '228px', columnGap: '8px' }}>
+        {visible.map((g) => (
+          <HeatmapFolder
+            key={g.folder!.id}
+            folder={g.folder!}
+            entries={g.entries}
+            quoteByCode={quoteByCode}
+            sortMode={sortMode}
+            onPick={onPick}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -609,15 +617,22 @@ vi.mock('../api/watchlist', async (orig) => ({
   })),
 }));
 
+// 005930(order0) -2%, 000660(order1) +5% — manual≠change 라 토글이 관측 가능.
 vi.mock('../api/liveQuotes', async (orig) => ({
   ...(await orig<typeof import('../api/liveQuotes')>()),
   useQuotes: vi.fn(() => ({
     data: { phase: 'open', quotes: [
-      { code: '005930', price: 70000, change_pct: 5, change_won: 3000 },
-      { code: '000660', price: 200000, change_pct: -2, change_won: -4000 },
+      { code: '005930', price: 70000, change_pct: -2, change_won: -1400 },
+      { code: '000660', price: 200000, change_pct: 5, change_won: 10000 },
     ] },
     dataUpdatedAt: 0,
   })),
+}));
+
+// liveStatus: 기본 running:true → 배너 없음. 자격증명 배너 테스트에서만 override.
+vi.mock('../api/liveStatus', async (orig) => ({
+  ...(await orig<typeof import('../api/liveStatus')>()),
+  useLiveStatus: vi.fn(() => ({ data: { running: true, started_at_ms: 1, cycle_lag_ms: 0 } })),
 }));
 
 const { setActiveCode } = vi.hoisted(() => ({ setActiveCode: vi.fn() }));
@@ -626,13 +641,21 @@ vi.mock('../state/livePage', () => ({
 }));
 
 import { Heatmap } from './Heatmap';
+import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
+import { useLiveStatus } from '../api/liveStatus';
 
 function renderPage() {
   const qc = new QueryClient();
   return render(<QueryClientProvider client={qc}><MemoryRouter><Heatmap /></MemoryRouter></QueryClientProvider>);
 }
 
-beforeEach(() => { setActiveCode.mockClear(); });
+beforeEach(() => {
+  setActiveCode.mockClear();
+  useHeatmapPrefsStore.setState({ sortMode: 'manual' });   // eng-review D2: 기본 manual
+  vi.mocked(useLiveStatus).mockReturnValue(
+    { data: { running: true, started_at_ms: 1, cycle_lag_ms: 0 } } as ReturnType<typeof useLiveStatus>,
+  );
+});
 
 it('폴더·종목·phase 배지 렌더', async () => {
   renderPage();
@@ -647,12 +670,22 @@ it('행 클릭 → activeCode 설정(jump-to-live)', async () => {
   expect(setActiveCode).toHaveBeenCalledWith('005930');
 });
 
-it('정렬 토글 수동 클릭 시 order 순서로', async () => {
+it('기본 manual=order 순, 등락률↓ 토글 시 등락률 내림차순', async () => {
   renderPage();
   await screen.findByText('반도체');
-  fireEvent.click(screen.getByRole('button', { name: '수동' }));
-  const names = screen.getAllByText(/삼성전자|SK하이닉스/).map((n) => n.textContent);
-  expect(names).toEqual(['삼성전자', 'SK하이닉스']); // order 0,1
+  const manual = screen.getAllByText(/삼성전자|SK하이닉스/).map((n) => n.textContent);
+  expect(manual).toEqual(['삼성전자', 'SK하이닉스']);          // order 0,1
+  fireEvent.click(screen.getByRole('button', { name: '등락률 ↓' }));
+  const change = screen.getAllByText(/삼성전자|SK하이닉스/).map((n) => n.textContent);
+  expect(change).toEqual(['SK하이닉스', '삼성전자']);          // +5% 먼저
+});
+
+it('관심종목 있는데 KIS 자격증명 없으면(poller 미기동) 배너', async () => {
+  vi.mocked(useLiveStatus).mockReturnValue(
+    { data: { running: false, started_at_ms: null, cycle_lag_ms: 0 } } as ReturnType<typeof useLiveStatus>,
+  );
+  renderPage();
+  expect(await screen.findByText('KIS 자격증명이 설정되지 않았습니다')).toBeInTheDocument();
 });
 ```
 
@@ -669,6 +702,9 @@ import { useMemo } from 'react';
 import { useWatchlist } from '../watchlist/useWatchlist';
 import { groupByFolder } from '../watchlist/grouping';
 import { useQuotes, type LiveQuote } from '../api/liveQuotes';
+import { useLiveStatus } from '../api/liveStatus';
+import { deriveBannerState } from '../live/useLiveBannerState';
+import { LiveStateBanner } from '../live/LiveStateBanner';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
 import { HeatmapBoard } from '../heatmap/HeatmapBoard';
@@ -682,6 +718,7 @@ export function Heatmap() {
   const codes = useMemo(() => entries.map((e) => e.code), [entries]);
 
   const quotesQ = useQuotes(codes);
+  const statusQ = useLiveStatus();
   const quoteByCode = useMemo(
     () => new Map<string, LiveQuote>((quotesQ.data?.quotes ?? []).map((q) => [q.code, q])),
     [quotesQ.data],
@@ -697,6 +734,9 @@ export function Heatmap() {
   const visibleCount = groups
     .filter((g) => g.folder !== null && g.entries.length > 0)
     .reduce((n, g) => n + g.entries.length, 0);
+  // eng-review Q4: 자격증명 없음/오프라인 배너는 /live 와 동일 신호 재사용(DRY).
+  // watchlist_empty 는 아래 빈-상태가 처리하므로 여기선 kis_credentials_missing 만 뜬다.
+  const banner = deriveBannerState({ status: statusQ.data ?? null, watchlistSize: entries.length });
 
   if (isLoading) return <div className="p-4 text-fg-dim">관심종목 불러오는 중…</div>;
   if (error) return <div className="p-4 text-error">관심종목을 불러오지 못했습니다.</div>;
@@ -720,6 +760,7 @@ export function Heatmap() {
           >수동</button>
         </div>
       </header>
+      <LiveStateBanner primary={banner.primary} stack={banner.stack} />
       <HeatmapBoard groups={groups} quoteByCode={quoteByCode} sortMode={sortMode} onPick={onPick} />
     </div>
   );
@@ -747,7 +788,7 @@ import { Heatmap } from './pages/Heatmap';
 - [ ] **Step 6: 통과 확인 + 타입 체크**
 
 Run: `cd frontend && npx vitest run src/pages/Heatmap.test.tsx`
-Expected: PASS (3 it).
+Expected: PASS (4 it — 렌더·jump·정렬토글·자격증명배너).
 Run: `cd frontend && npx tsc -b`
 Expected: 에러 없음.
 
@@ -1136,10 +1177,10 @@ git commit -m "feat(heatmap): ＋새 그룹 인라인 생성"
 
 ---
 
-## Task 10: DESIGN.md 노트 + 전체 회귀 + 수동 스모크
+## Task 10: DESIGN.md/CONTEXT.md 노트 + 전체 회귀 + 수동 스모크
 
 **Files:**
-- Modify: `DESIGN.md`
+- Modify: `DESIGN.md`, `CONTEXT.md`
 
 - [ ] **Step 1: DESIGN.md 히트 램프 노트 추가**
 
@@ -1151,19 +1192,39 @@ git commit -m "feat(heatmap): ＋새 그룹 인라인 생성"
   유지해 배경+숫자+부호 삼중 표현(색약 보조).
 ```
 
-- [ ] **Step 2: 전체 히트맵 테스트 회귀**
+- [ ] **Step 2: CONTEXT.md 용어 등재 — 관심맵 (eng-review Q7·Q1)**
+
+`CONTEXT.md` 의 **Watchlist Edit Modal** 항목 바로 뒤에 새 용어를 추가한다(글로서리 일관성). `＋종목`/`＋새 그룹` 인라인 추가가 **Watchlist Panel** 의 2026-06-05 "추가는 편집 모달로만" 결정과 모순돼 보이지 않도록, 그 결정은 **패널 한정**임을 _Avoid_ 에 명시:
+```markdown
+**관심맵 (Watchlist Heatmap)**:
+`/heatmap` 풀페이지 보드 — 한 **Watchlist** 의 모든 **Watchlist Folder**(섹터) 종목을 동시에
+신문형 멀티칼럼(CSS multi-column)으로 펼쳐 **Live Quote**(현재가·전일대비·등락률) 를 등락률
+히트(±8% 포화 가변 알파, `--price-up`/`--price-down`; `heat.ts::heatBg`)로 칠한 시장-온도 스캔
+화면. 행 클릭 → **activeCode** 설정 + `/live` 점프(**Watchlist Panel**·**Screener Panel** 과 같은
+jump-to-chart). 정렬 토글 manual(=`entry.order`, **기본** — 안정 보드·큐레이션 순서)↔change(등락률↓,
+**옵트인** 라이브 재정렬). 폴더 헤더에 **인라인 ＋종목**(SymbolSearch 팝오버 → add 후 move 2-콜),
+상단 **＋새 그룹**(GroupNameModal). `useWatchlist`+`useQuotes`(10s)+`useLiveStatus` 재사용,
+백엔드 무변경. KIS 자격증명 없음/오프라인은 **Live Quote** 미도착으로 셀이 `—`, `LiveStateBanner`
+재사용으로 자격증명 배너 표시. Implemented as `pages/Heatmap.tsx` + `heatmap/*`.
+_Avoid_: **Watchlist Panel** 과 혼동(패널은 우측 레일의 한 폴더 read+navigate 스트립; 관심맵은 전
+폴더 동시 풀페이지 보드); 관심맵의 인라인 추가를 "패널 빠른추가 부활"로 읽기 — 패널의 추가-일원화
+(2026-06-05, 추가는 **Watchlist Edit Modal** 로만)는 **패널 한정** 결정이고, 관심맵(넓은 보드)은
+별도 표면이라 자체 인라인 추가를 가진다.
+```
+
+- [ ] **Step 3: 전체 히트맵 테스트 회귀**
 
 Run: `cd frontend && npx vitest run src/heatmap src/state/heatmapPrefs.test.ts src/pages/Heatmap.test.tsx src/pages/Heatmap.newgroup.test.tsx`
 Expected: 전부 PASS.
 
-- [ ] **Step 3: 린트 + 타입**
+- [ ] **Step 4: 린트 + 타입**
 
 Run: `cd frontend && npx tsc -b`
 Expected: 에러 없음.
 Run: `cd frontend && npm run lint`
 Expected: heatmap 관련 신규 파일에 에러 없음.
 
-- [ ] **Step 4: 수동 브라우저 스모크**
+- [ ] **Step 5: 수동 브라우저 스모크**
 
 백엔드 + 프론트 dev 서버 기동(루트 CLAUDE.md 참고) 후 `/browse` 로:
 ```bash
@@ -1172,13 +1233,13 @@ $B goto http://localhost:5173/heatmap
 $B console --errors      # 0건 기대
 $B text                  # 폴더명·종목·등락률 보이는지
 ```
-확인 항목: ① 25개 폴더가 신문형 칼럼으로 한 화면, ② 등락률 배경 틴트(상승 빨강/하락 파랑), ③ 정렬 토글 등락률↔수동 동작, ④ 행 클릭 → /live 차트 전환, ⑤ ＋새 그룹·＋종목 동작(테스트 후 추가분은 드로어에서 정리), ⑥ phase 배지·갱신 시각.
+확인 항목: ① 25개 폴더가 신문형 칼럼으로 한 화면(가로 오버플로/단일칼럼 깨짐 없음 — Q6), ② 등락률 배경 틴트(상승 빨강/하락 파랑), ③ 정렬 토글 manual(기본)↔등락률↓ 동작, ④ 행 클릭 → /live 차트 전환, ⑤ ＋새 그룹·＋종목 동작(테스트 후 추가분은 드로어에서 정리), ⑥ phase 배지·갱신 시각, ⑦ (가능하면) KIS 자격증명 미설정 시 배너.
 
-- [ ] **Step 5: 커밋**
+- [ ] **Step 6: 커밋**
 
 ```bash
-git add DESIGN.md
-git commit -m "docs(design): 가격 방향 히트 램프 노트(히트맵 보드)"
+git add DESIGN.md CONTEXT.md
+git commit -m "docs: 히트 램프(DESIGN) + 관심맵 용어(CONTEXT) 등재"
 ```
 
 ---
@@ -1198,3 +1259,19 @@ git commit -m "docs(design): 가격 방향 히트 램프 노트(히트맵 보드
 3. **(risky, 보류) `FolderAddButton.test` 의 SymbolHit 목 불완전** — 목 팩토리 내부라 컴파일/런타임 무해(`.code` 만 사용). 수정 불요.
 
 나머지 45건(임포트·시그니처·tailwind 토큰·react-query 반환·테스트 하네스·heatBg 산술·sortEntries null 처리)은 실제 코드와 일치 확인.
+
+## 엔지니어링 리뷰(plan-eng-review) 반영 — 7개 열린 질문 결정
+
+그릴링에서 식별한 7개를 eng 리뷰로 해소(코드 근거 포함). 반영 위치 명시:
+
+| # | 질문 | 결정 | 반영 |
+|---|---|---|---|
+| Q1 | 인라인 ＋종목 vs 2026-06-05 "추가는 편집모달로만"(패널) | **인라인 팝오버 유지**(D1) — 패널 결정은 패널 한정, 히트맵은 별도 표면. SymbolSearch 재사용(DRY) | T8 유지, CONTEXT.md _Avoid_ 스코프(T10 Step2) |
+| Q2 | change 정렬 churn / 기본 모드 | **기본 manual**(D2) — 안정·큐레이션 순서. change는 옵트인 라이브 재정렬 | T2 기본값 manual, T6 토글 테스트 |
+| Q3 | 120종목 폴링 cadence | **10s 유지** — 30개×4청크=0.4 req/s vs 15/s 공유버킷(`kis_client.py:56`), /heatmap선 /live 언마운트로 경합 없음 | 변경 없음 |
+| Q4 | 오프라인/자격증명 배너 | **`deriveBannerState`+`LiveStateBanner` 재사용**(DRY) — `kis_credentials_missing` 배너 | T6 페이지+테스트 |
+| Q5 | 히트 채도 고정 vs 적응 | **고정 ±8%** — 절대 의미 보존(boring by default), `HEAT_SAT` 튜너블 | 변경 없음 |
+| Q6 | CSS multi-column 패킹 | **스크롤 컨테이너↔multicol 블록 분리**(실 버그) — 같은 요소 overflow+column-width는 깨짐 | T5 HeatmapBoard 수정 |
+| Q7 | phase 배지 색 + 용어 | **중립 회색 유지**(가격색 오용 아님) + **"관심맵" CONTEXT.md 등재** | T10 Step2 |
+
+eng-manager 렌즈: Q2/Q6은 systems-over-heroes(안정 보드·3am 클릭)·reversibility, Q3/Q5는 boring-by-default, Q4는 DRY 재사용, Q1은 surface-difference로 모순 해소.

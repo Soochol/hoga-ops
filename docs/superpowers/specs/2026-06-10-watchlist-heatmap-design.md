@@ -1,7 +1,7 @@
 # 관심종목 히트맵 페이지 (관심맵) — 설계
 
 - **Date**: 2026-06-10
-- **Status**: Designed — 시각 목업 + 결정 확정. 사장님 최종 검토 대기.
+- **Status**: Designed — 시각 목업 + 결정 확정 + **plan-eng-review 7개 질문 반영(§14)**. 사장님 최종 검토 대기.
 - **Topic slug**: `watchlist-heatmap`
 - **Branch**: `watchlist-heatmap-design` (worktree)
 - **Scope (코드)**: 신규 `frontend/src/pages/Heatmap.tsx` + `frontend/src/heatmap/*` + `frontend/src/state/heatmapPrefs.ts`. 변경: `frontend/src/main.tsx`(라우트 1줄), `frontend/src/nav/LeftNav.tsx`(NavItem 1줄). **백엔드 무변경.**
@@ -26,7 +26,7 @@
 |---|---|---|
 | 레이아웃 | 멀티그룹 그리드 (섹터 폴더 = 블록, 신문형 칼럼 패킹) | 참고 이미지가 최강 신호. 데이터 모델(폴더=섹터, 단일 레벨)과 1:1 |
 | 히트 색칠 | 하이브리드 — 은은한 배경 틴트 + 색 숫자 | 색 면적으로 온도 + 숫자 색으로 정확도(색약 이중표현) |
-| 정렬 | 토글: 등락률↓(기본) ↔ 수동(`entry.order`) | "히트맵=주도주 부각" + 사용자 큐레이션 존중 |
+| 정렬 | 토글: 수동(`entry.order`, **기본**) ↔ 등락률↓(옵트인) | eng-review D2: 안정 보드·큐레이션 순서가 기본, 무버 헌팅은 옵트인(그 모드만 라이브 재정렬 churn 허용) |
 | 행 내용 | 종목명 · 현재가 · 대비(등락액) · 등락률 | 참고 이미지 그대로, 정보 완전성 |
 | 헤더 | 최소 — 제목 · phase 배지 · 갱신 시각 · 종목 수 · 정렬 토글 · 색 범례 | 화면을 종목에 최대 양보 |
 | 클릭 | 행 클릭 → `useJumpToLive(code)` → /live | 관심종목·스크리너 패널과 동일 동작 |
@@ -56,8 +56,8 @@ useWatchlist()  →  { folders, entries }  →  groupByFolder()  →  FolderGrou
 
 | 파일 | 책임 | 의존 |
 |---|---|---|
-| `pages/Heatmap.tsx` | 셸: 헤더(§8) + `HeatmapBoard`. `useWatchlist`+`useQuoteByCode` 조회, 로딩/에러/빈 상태 | useWatchlist, useQuoteByCode, heatmapPrefs |
-| `heatmap/HeatmapBoard.tsx` | CSS multi-column(`column-width`) 신문형 패킹, `break-inside:avoid`. **레이아웃 JS 없음**(순수 CSS 메이슨리) | HeatmapFolder |
+| `pages/Heatmap.tsx` | 셸: 헤더(§8) + 배너(§8 Q4) + `HeatmapBoard`. `useWatchlist`+`useQuotes`+`useLiveStatus` 조회, 로딩/에러/빈 상태 | useWatchlist, useQuotes, useLiveStatus, deriveBannerState/LiveStateBanner, heatmapPrefs |
+| `heatmap/HeatmapBoard.tsx` | 신문형 패킹. **바깥 div = 세로 스크롤(높이 한정), 안쪽 div = CSS multi-column(`column-width`, height auto)** — 분리 필수(eng-review Q6: 같은 요소 overflow+column-width는 가로 오버플로/단일칼럼으로 깨짐). `break-inside:avoid`, **레이아웃 JS 없음** | HeatmapFolder |
 | `heatmap/HeatmapFolder.tsx` | 폴더 블록: 헤더(폴더명 + 평균 등락률 + `＋종목`) + 정렬된 행들 | HeatmapRow, useAddToFolder |
 
 > **평균 등락률** = 그 폴더에서 시세가 도착한(`change_pct !== null`) 종목들의 **단순 평균**(비가중). 시세가 하나도 없으면 숨김. 섹터 온도 요약일 뿐 지수 가중치 아님.
@@ -85,7 +85,8 @@ export function heatBg(pct: number | null): string {
 
 ## 7. 정렬 토글 (`heatmapPrefs.ts`)
 
-- 두 모드: `'change'`(등락률 내림차순, 기본) / `'manual'`(`entry.order` 오름차순).
+- 두 모드: `'manual'`(`entry.order` 오름차순, **기본**) / `'change'`(등락률 내림차순, 옵트인).
+- **기본 manual** (eng-review D2): 로드 시 안정 보드 + 사용자 큐레이션(주도주 우선) 순서 유지. 120행 보드에서 10초 폴링마다 행이 재배치되는 churn(클릭 목표 흔들림)을 기본에서 회피. `change`로 토글하면 무버가 위로 올라오는 라이브 랭킹(매 폴링 재정렬)을 옵트인 — 사용자가 움직임을 감수하고 선택. 색·숫자는 두 모드 모두 10초 라이브.
 - `change` 모드에서 등락률 `null`(장전·결측)은 **항상 맨 아래**(NaN 정렬 오염 방지).
 - 헤더 세그먼트 버튼 `[등락률 ↓ | 수동]`, 선택은 localStorage 영속.
 - 비교자는 `heat.ts` 순수 함수 → 단위테스트 용이.
@@ -101,6 +102,7 @@ export function heatBg(pct: number | null): string {
 | `closed` | 장마감 | 마지막 시세 + 정상 히트, 600초 하트비트 |
 
 - 시세 **결측** 종목(KIS 미스): 행 유지, 가격·등락 `—`, 중립 배경. (시세 폴링은 절대 500 금지 — 빈 결과 graceful, 기존 계약)
+- **자격증명 없음/오프라인 배너 (eng-review Q4 — DRY 재사용)**: `useLiveStatus()` + 순수 `deriveBannerState({status, watchlistSize})` + `LiveStateBanner`(전부 `live/*` 기존 자산)를 헤더 아래에 그대로 사용. 관심종목이 있는데 poller가 안 떴으면(자격증명 미설정) "KIS 자격증명이 설정되지 않았습니다" + `/settings` 링크(/live와 동일 신호·코피). `watchlist_empty`는 §아래 빈-상태가 처리하므로 배너로는 `kis_credentials_missing`만 노출. 새 배너 컴포넌트 만들지 않음.
 
 ## 9. 인라인 편집 (경량 추가만)
 
@@ -137,3 +139,14 @@ export function heatBg(pct: number | null): string {
 ## 13. 비범위 / YAGNI
 
 거래대금/등락액 히트 모드, 폴더 필터, 행 가상화(120행 불필요), 트리맵 비중 시각화, 우측 레일 미니정보, 멀티칼럼 인라인 드래그, 관심그룹-of-폴더 2단 계층 — 전부 v1 제외.
+
+## 14. 엔지니어링 리뷰(plan-eng-review) 반영
+
+그릴링 7개 열린 질문을 eng 리뷰로 해소(코드 근거 포함):
+- **Q1 인라인 ＋종목 vs 패널 추가-일원화** → 인라인 팝오버 유지(D1). 2026-06-05 "추가는 편집모달로만"은 **패널 한정** 결정, 관심맵(넓은 보드)은 별도 표면이라 자체 인라인 추가. SymbolSearch 재사용으로 DRY. CONTEXT.md _Avoid_에 스코프 명시.
+- **Q2 정렬 churn** → 기본 **manual**(D2, §2·§7). change는 옵트인 라이브 재정렬. 안정 보드·큐레이션 순서가 기본.
+- **Q3 폴링 cadence** → **10s 유지**. 120종목=30개×4청크=0.4 req/s vs 15/s 공유 토큰버킷(`kis_client.py:56`), /heatmap선 /live 언마운트라 경합 무시 가능.
+- **Q4 오프라인 배너** → `deriveBannerState`+`LiveStateBanner` 재사용(§8).
+- **Q5 히트 채도** → **고정 ±8%**. 적응형은 색이 크기를 거짓말함; 고정은 절대 의미 보존(`HEAT_SAT` 튜너블).
+- **Q6 멀티칼럼** → 스크롤 컨테이너↔multicol 블록 **분리**(§5, 실 레이아웃 버그 예방).
+- **Q7 phase 배지 + 용어** → 배지 중립 회색(가격색 오용 아님) + "관심맵" CONTEXT.md 등재.
