@@ -30,7 +30,8 @@ _lock = threading.Lock()
 
 # FM5 REST-auth latch + WS-degraded 통합 신호는 account_health(leaf)로 추출됨(2026-06-10).
 # 토큰 provider 콜백이 account_health.mark_rest_auth_degraded를, kis_for_role가
-# account_health.is_degraded를 쓴다 — kis_runtime은 더는 lifecycle을 late import하지 않는다.
+# account_health.is_rest_degraded를 쓴다(REST 라우팅은 REST latch만 — WS저하와 직교, 2026-06-10)
+# — kis_runtime은 더는 lifecycle을 late import하지 않는다.
 
 
 def _account_env(account_id: int) -> tuple[str, str]:

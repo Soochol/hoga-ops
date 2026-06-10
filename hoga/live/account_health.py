@@ -68,6 +68,16 @@ def is_degraded(account_id: int) -> bool:
     return account_id in _rest_auth_degraded or account_id in _ws_degraded()
 
 
+def is_rest_degraded(account_id: int) -> bool:
+    """REST 토큰 발급 실패만 본다(WS 저하 제외) — background REST 라우팅 전용.
+
+    캡처(WS) 건강과 REST 라우팅 건강은 직교다(2026-06-10): 한 계좌의 WS가 sub_failed라고
+    그 계좌를 REST 라우팅에서 빼면 두 독립 관심사가 엉킨다(WS 오버슈트 1회가 REST 용량까지
+    축소). REST 라우팅은 REST 토큰 latch만 봐야 한다. (이 분리로 is_degraded/degraded_account_ids
+    의 WS-for-routing 경로는 의도적으로 폐기됨 — 현재 프로덕션 호출자 없음, 테스트만 사용.)"""
+    return account_id in _rest_auth_degraded
+
+
 def reset_for_tests() -> None:
     """테스트 격리 — REST latch만 초기화한다. WS probe는 lifecycle가 모듈 로드 시 1회
     등록한 stateless 함수(_state를 시점-평가)라, reset가 _state를 비우면 자연히 빈 집합을

@@ -21,30 +21,39 @@ from .kis_client import KisAuthError, KisClient
 
 _T = TypeVar("_T")
 
+# background 라운드로빈 커서 — account 1..N-1을 per-call 회전(부하 분산). 단일워커
+# (ADR-0038)라 프로세스 전역 가변상태가 안전. N=2면 후보 1개라 항상 account 1(불변).
+_bg_round_robin: int = 0
+
 
 def kis_for_role(role: str, data_dir: Path) -> KisClient | None:
     """role('foreground'|'background')에 따라 account별 KisClient를 반환한다(호출 시점
     평가 → degraded 동적 폴백, 별도 상태 동기화 불필요).
 
     - foreground: 항상 account 0(사용자 전용 15/s, 백그라운드와 경합 없음).
-    - background: N≥2 & account 1 비-degraded면 account 1(ensure로 WS 유무와 무관하게
-      REST 버킷 확보), 아니면 account 0 폴백.
+    - background: account 1..N-1을 라운드로빈(N계좌 확장 — 인덱스 고정 탈피, 2026-06-10).
+      REST-degraded(토큰 발급 실패)만 스킵한다 — **WS 저하(sub_failed)는 무관**(캡처 건강과
+      REST 라우팅은 직교; account_health.is_rest_degraded). 후보가 비면 account 0 폴백.
 
-    N=2 정상 분리에선 acct0=foreground만·acct1=background만이라 ② foreground 우선순위는
-    dormant. N=1/degraded 폴백 시 공유 버킷이 되어 ②가 활성화된다.
+    N=2 정상 분리에선 background 후보가 [1] 하나라 항상 account 1(기존 동작 보존). N≥3에서만
+    1,2,…를 회전해 추가 계좌의 유휴 REST 버킷(15/s)을 활용한다.
 
-    background가 ensure_kis_client_for_account(1)로 acct1 REST 버킷을 *직접* 확보하는
-    이유: lifecycle은 작은 관심목록(≤13종목)에서 conn[1]을 안 만든다(빈 파티션 →
-    연결 없음, lifecycle §6). get_kis_client(1)에 의존하면 그 흔한 경우에 acct1이
-    None이라 조용히 acct0로 폴백 → 30/s 이득이 무효가 된다. ensure는 WS conn 유무와
-    무관하게(관심목록 크기와 무관하게) acct1 버킷을 확보한다. 첫 REST bearer 토큰
-    발급은 ensure/get 무관하게 첫 호출에서 일어나므로(FM5) 'REST 선접촉 회피' 논거는
-    적용되지 않는다."""
-    if (role == "background" and 1 in kis_runtime.configured_account_ids(data_dir)
-            and not account_health.is_degraded(1)):
-        client = kis_runtime.ensure_kis_client_for_account(1, data_dir)
-        if client is not None:
-            return client
+    ensure_kis_client_for_account로 후보 REST 버킷을 *직접* 확보하는 이유: lifecycle은 작은
+    관심목록에서 그 계좌의 WS conn을 안 만들 수 있다(빈 파티션). get_kis_client 의존이면
+    조용히 acct0로 폴백해 다계좌 이득이 무효가 된다. ensure는 WS conn 유무와 무관하게 버킷을
+    확보한다(첫 REST bearer 토큰 발급은 첫 호출에서 일어나므로 'REST 선접촉' 논거 무관, FM5)."""
+    if role == "background":
+        candidates = [
+            a for a in kis_runtime.configured_account_ids(data_dir)
+            if a >= 1 and not account_health.is_rest_degraded(a)
+        ]
+        if candidates:
+            global _bg_round_robin  # noqa: PLW0603
+            pick = candidates[_bg_round_robin % len(candidates)]
+            _bg_round_robin += 1
+            client = kis_runtime.ensure_kis_client_for_account(pick, data_dir)
+            if client is not None:
+                return client
     # account 0 폴백: 이미 생성/주입된 싱글톤 우선(부팅 생성 + 라우트 fake 주입), 없으면
     # env에서 지연 생성(빈 관심목록·무갭일 등 싱글톤 미생성 상태 — /quotes lazy-init 승계).
     existing = kis_runtime.get_kis_client(0)

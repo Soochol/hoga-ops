@@ -89,26 +89,29 @@ def _codes(n: int) -> list[str]:
 # ── start: Live Set 산출 + N계좌 분배(공개 관측 = live_set + running) ─────────────
 
 @pytest.mark.asyncio
-async def test_start_n1_truncates_live_set_to_13_and_runs(tmp_path, monkeypatch):
-    """N=1, 20종목 → Live Set은 표시순서 상위 13으로 절단, 수집 활성."""
-    _wire(monkeypatch, tmp_path, n=1, codes=_codes(20))
+async def test_start_n1_truncates_live_set_to_per_account_max_and_runs(tmp_path, monkeypatch):
+    """N=1, 초과 종목 → Live Set은 표시순서 상위 _PER_ACCOUNT_MAX로 절단, 수집 활성."""
+    m = lifecycle._PER_ACCOUNT_MAX
+    _wire(monkeypatch, tmp_path, n=1, codes=_codes(2 * m))   # 상한의 2배 입력 → 절단 검증
     assert await lifecycle.start_live_stream(data_dir=tmp_path) is True
     st = lifecycle.get_status()
     assert st.running is True
-    assert st.live_set == _codes(13)        # 상위 13 절단(13*n_configured, n=1)
-    assert st.watchlist_count == 13
+    assert st.live_set == _codes(m)         # 상위 m 절단(_PER_ACCOUNT_MAX * n_configured, n=1)
+    assert st.watchlist_count == m
     await lifecycle.stop_live_stream()
 
 
 @pytest.mark.asyncio
-async def test_start_n2_keeps_full_26_live_set(tmp_path, monkeypatch):
-    """N=2, 26종목 → Live Set 26 전부 수집(동적 상한 13*2)."""
-    _wire(monkeypatch, tmp_path, n=2, codes=_codes(26))
+async def test_start_n2_keeps_full_double_live_set(tmp_path, monkeypatch):
+    """N=2, 2*_PER_ACCOUNT_MAX 종목 → Live Set 전부 수집(동적 상한 m*2)."""
+    m = lifecycle._PER_ACCOUNT_MAX
+    full = 2 * m
+    _wire(monkeypatch, tmp_path, n=2, codes=_codes(full))
     assert await lifecycle.start_live_stream(data_dir=tmp_path) is True
     st = lifecycle.get_status()
     assert st.running is True
-    assert st.live_set == _codes(26)
-    assert st.watchlist_count == 26
+    assert st.live_set == _codes(full)
+    assert st.watchlist_count == full
     await lifecycle.stop_live_stream()
 
 
@@ -141,34 +144,36 @@ async def test_poller_only_when_watchlist_empty_is_idle(tmp_path, monkeypatch):
     await lifecycle.stop_live_stream()
 
 
-# ── refresh: 13-경계 넘는 grow/shrink (공개 관측 = live_set 변화) ─────────────────
+# ── refresh: _PER_ACCOUNT_MAX-경계 넘는 grow/shrink (공개 관측 = live_set 변화) ────
 
 @pytest.mark.asyncio
-async def test_refresh_grows_live_set_across_13_boundary(tmp_path, monkeypatch):
-    """13종목(1 conn)에서 14번째 추가 → Live Set이 14로 성장(2nd conn 영역)."""
-    _wire(monkeypatch, tmp_path, n=2, codes=_codes(13))
+async def test_refresh_grows_live_set_across_per_account_boundary(tmp_path, monkeypatch):
+    """m종목(1 conn)에서 m+1번째 추가 → Live Set이 m+1로 성장(2nd conn 영역)."""
+    m = lifecycle._PER_ACCOUNT_MAX
+    _wire(monkeypatch, tmp_path, n=2, codes=_codes(m))
     await lifecycle.start_live_stream(data_dir=tmp_path)
-    assert lifecycle.get_status().live_set == _codes(13)
+    assert lifecycle.get_status().live_set == _codes(m)
 
-    _write_watchlist(tmp_path, _codes(14))
+    _write_watchlist(tmp_path, _codes(m + 1))
     await lifecycle.refresh_live_stream(data_dir=tmp_path)
     st = lifecycle.get_status()
-    assert st.live_set == _codes(14)
+    assert st.live_set == _codes(m + 1)
     assert st.running is True
     await lifecycle.stop_live_stream()
 
 
 @pytest.mark.asyncio
-async def test_refresh_shrinks_live_set_across_13_boundary(tmp_path, monkeypatch):
-    """14종목(2 conn)에서 13으로 축소 → Live Set 13(2nd conn 영역 비워짐)."""
-    _wire(monkeypatch, tmp_path, n=2, codes=_codes(14))
+async def test_refresh_shrinks_live_set_across_per_account_boundary(tmp_path, monkeypatch):
+    """m+1종목(2 conn)에서 m으로 축소 → Live Set m(2nd conn 영역 비워짐)."""
+    m = lifecycle._PER_ACCOUNT_MAX
+    _wire(monkeypatch, tmp_path, n=2, codes=_codes(m + 1))
     await lifecycle.start_live_stream(data_dir=tmp_path)
-    assert lifecycle.get_status().live_set == _codes(14)
+    assert lifecycle.get_status().live_set == _codes(m + 1)
 
-    _write_watchlist(tmp_path, _codes(13))
+    _write_watchlist(tmp_path, _codes(m))
     await lifecycle.refresh_live_stream(data_dir=tmp_path)
     st = lifecycle.get_status()
-    assert st.live_set == _codes(13)
+    assert st.live_set == _codes(m)
     assert st.running is True
     await lifecycle.stop_live_stream()
 
@@ -193,7 +198,7 @@ async def test_stop_clears_running_and_live_set(tmp_path, monkeypatch):
 async def test_market_closed_is_not_per_account_degraded(tmp_path, monkeypatch):
     """야간/주말(market_closed)은 전역 상태 — conn들이 있어도 per-account degraded로
     잡지 않는다(advisor 버그 회귀 가드: closed 단락이 모든 conn을 degraded로 만들면 안 됨)."""
-    _wire(monkeypatch, tmp_path, n=2, codes=_codes(26))
+    _wire(monkeypatch, tmp_path, n=2, codes=_codes(2 * lifecycle._PER_ACCOUNT_MAX))
     await lifecycle.start_live_stream(data_dir=tmp_path)
     monkeypatch.setattr(lifecycle, "_market_clock_closed_for_capture", lambda _n: True)
     st = lifecycle.get_status()
@@ -207,7 +212,7 @@ async def test_market_closed_is_not_per_account_degraded(tmp_path, monkeypatch):
 async def test_market_open_unconnected_conns_are_per_account_degraded(tmp_path, monkeypatch):
     """장중(market open)인데 conn들의 ws가 미연결(게이트 닫힘 → sleep) → 각 account가
     degraded로 집계되고 capture_healthy False. per-account 집계의 공개-seam 잠금."""
-    _wire(monkeypatch, tmp_path, n=2, codes=_codes(26))
+    _wire(monkeypatch, tmp_path, n=2, codes=_codes(2 * lifecycle._PER_ACCOUNT_MAX))
     await lifecycle.start_live_stream(data_dir=tmp_path)
     monkeypatch.setattr(lifecycle, "_market_clock_closed_for_capture", lambda _n: False)
     st = lifecycle.get_status()

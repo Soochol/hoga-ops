@@ -392,7 +392,7 @@ async def start_live_stream(*, data_dir: Path) -> bool:
     """start_live_poller의 WS 대체 — 구조 동일(creds/watchlist 가드 → 기동).
 
     poller와 같은 가드: KIS creds 없거나 watchlist 비면 False.
-    symbol-master 필터를 먼저 적용한 뒤 _compute_live_set으로 상위 13 절단.
+    symbol-master 필터를 먼저 적용한 뒤 _compute_live_set으로 상위 (_PER_ACCOUNT_MAX×N) 절단.
     ⚠️ 머지(v0.6.1.0) 후: load_document로 폴더 포함 문서를 받아
     display_ordered_codes → symbol-master filter → [:13] 순서를 지킨다.
     KisClient 싱글턴 접근은 `hoga.live.kis_runtime`에서 수행.

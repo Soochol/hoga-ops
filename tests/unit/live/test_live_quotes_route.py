@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from hoga.live import kis_runtime, lifecycle, api as live_api
+from hoga.live import account_health, kis_runtime, lifecycle, api as live_api
 from hoga.live.api import build_router, _quote_phase, _KST
 from hoga.live.kis_client import KisQuote
 
@@ -223,11 +223,15 @@ def test_quotes_routes_background_to_account1(monkeypatch, tmp_path):
 
 
 def test_quotes_account1_degraded_falls_back_to_account0(monkeypatch, tmp_path):
-    """N=2이지만 account 1 저하 → /quotes가 account 0로 폴백."""
+    """N=2이지만 account 1 REST 토큰 저하 → /quotes가 account 0로 폴백.
+
+    REST 라우팅은 REST 토큰 latch(is_rest_degraded)만 본다(WS sub_failed는 직교 — 폴백 무관,
+    2026-06-10). 그래서 degraded를 mark_rest_auth_degraded(1)로 위조한다. _two_account_quotes_app가
+    내부에서 reset_for_tests로 latch를 비우므로 app 구성 *후*에 마킹한다."""
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
-    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: {1})
     fake0, fake1 = _CountingFakeKis(QUOTES), _CountingFakeKis(QUOTES)
     app = _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1)
+    account_health.mark_rest_auth_degraded(1)
     r = TestClient(app).get("/api/live/quotes", params={"codes": "005930,000660"})
     assert r.status_code == 200
     assert fake0.calls == 1, "degraded인데 account 0로 폴백 안 됨"

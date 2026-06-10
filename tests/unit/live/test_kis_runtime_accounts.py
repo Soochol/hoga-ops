@@ -112,11 +112,55 @@ def test_kis_for_role_n2_split(tmp_path, monkeypatch):
 
 
 def test_kis_for_role_n2_background_degraded_falls_back(tmp_path, monkeypatch):
-    """N=2이지만 account 1 WS 저하 → background가 account 0로 폴백(②우선순위로 보호)."""
+    """N=2이지만 account 1 REST 토큰 저하 → background가 account 0로 폴백(②우선순위로 보호).
+
+    REST 라우팅은 REST 토큰 latch(is_rest_degraded)만 본다(WS sub_failed는 직교 — 폴백 무관,
+    2026-06-10). 그래서 degraded를 mark_rest_auth_degraded(1)로 위조한다."""
     _set_two_accounts(monkeypatch)
-    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: {1})
+    account_health.mark_rest_auth_degraded(1)
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
     assert kis_access.kis_for_role("background", tmp_path) is c0
+
+
+def _set_three_accounts(monkeypatch):
+    _set_two_accounts(monkeypatch)
+    monkeypatch.setenv("KIS_APP_KEY_3", "k2")
+    monkeypatch.setenv("KIS_APP_SECRET_3", "s2")
+
+
+def test_kis_for_role_n3_background_round_robins(tmp_path, monkeypatch):
+    """N≥3: background가 account 1·2를 라운드로빈(유휴 REST 버킷 분산 — 인덱스고정 탈피,
+    2026-06-10 N계좌 확장). foreground는 여전히 account 0."""
+    _set_three_accounts(monkeypatch)
+    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
+    monkeypatch.setattr(kis_access, "_bg_round_robin", 0)   # 결정적 회전
+    c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
+    c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
+    c2 = kis_runtime.ensure_kis_client_for_account(2, tmp_path)
+    picks = [kis_access.kis_for_role("background", tmp_path) for _ in range(4)]
+    assert picks == [c1, c2, c1, c2]                        # 1↔2 회전
+    assert kis_access.kis_for_role("foreground", tmp_path) is c0
+
+
+def test_kis_for_role_background_ignores_ws_degraded(tmp_path, monkeypatch):
+    """핵심 직교성(2026-06-10): account 1의 WS가 저하(sub_failed)여도 background는 여전히
+    account 1을 쓴다 — REST 라우팅은 REST 토큰 저하(is_rest_degraded)만 본다. (옛 is_degraded
+    면 WS저하만으로 account 0 폴백돼 캡처 문제 1회가 REST 용량까지 깎였음.)"""
+    _set_two_accounts(monkeypatch)
+    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: {1})  # account 1 WS 저하
+    c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
+    assert kis_access.kis_for_role("background", tmp_path) is c1            # 폴백 안 함
+
+
+def test_kis_for_role_n3_round_robin_skips_rest_degraded(tmp_path, monkeypatch):
+    """N=3에서 account 1 REST 토큰 저하면 background 후보는 [2]만 → account 2로 회전(저하 스킵)."""
+    _set_three_accounts(monkeypatch)
+    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
+    monkeypatch.setattr(kis_access, "_bg_round_robin", 0)
+    account_health.mark_rest_auth_degraded(1)
+    c2 = kis_runtime.ensure_kis_client_for_account(2, tmp_path)
+    picks = [kis_access.kis_for_role("background", tmp_path) for _ in range(3)]
+    assert picks == [c2, c2, c2]
 
 
 def test_kis_for_role_foreground_never_uses_account1(tmp_path, monkeypatch):

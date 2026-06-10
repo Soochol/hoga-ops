@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .ws_fields import TRS  # 종목당 구독 TR 집합 — 사이징·구독수 단일진실원(경량 leaf)
+
 if TYPE_CHECKING:
     import asyncio
     from collections.abc import Awaitable, Callable
@@ -34,19 +36,22 @@ _log = logging.getLogger(__name__)
 
 # ── Live Set constants (spec §4·§5.1) ─────────────────────────────────────────
 
-KIS_WS_MAX_REGISTRATIONS = 41   # appkey당, (tr_id, code) 쌍 기준 — spec §4 검증 완료
-TRS_PER_CODE = 3                # 호가 + 체결 + 회원사(H0STMBC0)
-_PER_ACCOUNT_MAX = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # = 13 (계좌당 한도)
+KIS_WS_MAX_REGISTRATIONS = 30   # 연결(appkey)당 실시간 등록 안전 한도. 실측 ~32(가변
+                                # 32~39, 2026-06-10 라이브 — 3계좌 78등록 전부ACK로 연결당
+                                # 한도 확정, 고객공유 아님) 아래 마진. 옛 41(KIS 문서 가정)은
+                                # 실측 불일치 → 폐기. 깨끗한 재측정 후 상향 가능(최대 ~32).
+TRS_PER_CODE = len(TRS)         # 사이징=구독수 단일진실원(ws_fields.TRS). 드리프트 불가.
+_PER_ACCOUNT_MAX = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # 3TR→10, 2TR→15 (계좌당 종목)
 # 동적 상한: 13 * n_configured. start에서 n_configured를 곱해 _compute_live_set이 사용.
 LIVE_SET_MAX_CODES = _PER_ACCOUNT_MAX  # 1계좌 기본(_compute_live_set이 n_configured로 동적 절단)
 
 
 def partition_live_set(codes: list[str], n: int) -> list[list[str]]:
-    """display-order 연속 배정: account k = codes[k*13:(k+1)*13] (스펙 §5.3, Q4).
+    """display-order 연속 배정: account k = codes[k*W:(k+1)*W], W=_PER_ACCOUNT_MAX (스펙 §5.3, Q4).
 
     n개 리스트를 항상 반환(후행은 빈 리스트일 수 있음). 연속 슬라이스라
-    13-경계를 안 넘는 코드는 계좌 고정 → 재정렬 churn 최소(위험 #4). 해시 배정
-    대신 연속을 택한 이유: CONTEXT.md 'top-13=경계' 모델 일치 + explicit>clever.
+    W-경계를 안 넘는 코드는 계좌 고정 → 재정렬 churn 최소(위험 #4). 해시 배정
+    대신 연속을 택한 이유: CONTEXT.md 'top-W=경계' 모델 일치 + explicit>clever.
     """
     return [codes[k * _PER_ACCOUNT_MAX:(k + 1) * _PER_ACCOUNT_MAX] for k in range(n)]
 
@@ -90,7 +95,7 @@ def _compute_live_set(data_dir: Path, n_configured: int = 1) -> list[str]:
 
 
 def live_set_codes(doc: WatchlistDocument) -> list[str]:
-    """Live Set = 패널 표시 순서 상위 13 (테스트 전용 헬퍼 — 실경로는 _compute_live_set).
+    """Live Set = 표시 순서 상위 LIVE_SET_MAX_CODES(=W) (테스트 전용 — 실경로는 _compute_live_set).
 
     CONTEXT.md 'Live Set', 그릴링 Q3 + 2026-06-06 개정.
     """

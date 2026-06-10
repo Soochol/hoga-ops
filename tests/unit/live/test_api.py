@@ -966,10 +966,15 @@ def test_past_investor_net_routes_background_to_account1(tmp_path, monkeypatch) 
 
 
 def test_past_investor_net_account1_degraded_falls_back_to_account0(tmp_path, monkeypatch) -> None:
-    """N=2이지만 account 1 WS 저하 → 배경 라우트가 account 0로 폴백(②우선순위 보호)."""
-    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: {1})
+    """N=2이지만 account 1 REST 토큰 저하 → 배경 라우트가 account 0로 폴백(②우선순위 보호).
+
+    REST 라우팅은 REST 토큰 latch(is_rest_degraded)만 본다(WS sub_failed는 직교 — 폴백 무관,
+    2026-06-10). 그래서 degraded를 mark_rest_auth_degraded(1)로 위조한다. _two_account_app가
+    내부에서 reset_for_tests로 latch를 비우므로 app 구성 *후*에 마킹한다."""
+    from hoga.live import account_health
     fake0, fake1 = _FakeKisForInvestor(), _FakeKisForInvestor()
     app = _two_account_app(tmp_path, monkeypatch, fake0, fake1)
+    account_health.mark_rest_auth_degraded(1)
     with TestClient(app) as c:
         r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         assert r.status_code == 200
