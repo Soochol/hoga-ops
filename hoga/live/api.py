@@ -335,7 +335,6 @@ def build_router(
     get_status: Callable[[], LiveStatus],
     get_buffer: Callable[[], LiveBuffer] | None = None,
     on_control: Callable[[str], Awaitable[None]] | None = None,
-    get_kis_client: "Callable[[], KisClient | None] | None" = None,
     *,
     data_dir: Path | None = None,
 ) -> APIRouter:
@@ -396,11 +395,12 @@ def build_router(
         """배경 REST(quotes·investor-net)용 KisClient — N=2면 account 1(직전엔 유휴였던
         REST 버킷), 아니면 account 0 폴백(kis_access.kis_for_role, 계정 분리 2026-06-09).
         foreground(past-candles/daily)는 account 0 전용이라 이 헬퍼를 쓰지 않는다.
-        data_dir 미배선(베어 단위테스트)이면 주입된 get_kis_client로 폴백한다 — kis_for_role은
-        env/싱글톤(프로세스 전역)을 보므로 data_dir이 라우팅 활성화 신호."""
-        if data_dir is not None:
-            return kis_access.kis_for_role("background", data_dir)
-        return get_kis_client() if get_kis_client is not None else None
+        data_dir 미배선(베어 단위테스트)이면 None — kis_for_role은 env/싱글톤(프로세스
+        전역)을 보므로 data_dir이 client 라우팅 활성화 신호다(C1b 2026-06-10: 이중 주입
+        seam을 role 하나로 접어 get_kis_client else 폴백 잔재 소멸)."""
+        if data_dir is None:
+            return None
+        return kis_access.kis_for_role("background", data_dir)
 
     @router.get("/quotes", response_model=LiveQuotesResponse)
     async def _get_quotes(codes: str = Query(...)) -> LiveQuotesResponse:
@@ -503,9 +503,11 @@ def build_router(
     ) -> dict:
         frm, too, today_d = _validate_past_request(code, from_, to)
         today_s = today_d.strftime("%Y%m%d")
-        if get_kis_client is None:
+        # foreground(사용자 차트 백필): account 0 전용(15/s, 배경과 비경합). C1b 2026-06-10:
+        # get_kis_client 주입 대신 kis_access 단일 seam 경유(data_dir이 라우팅 신호).
+        if data_dir is None:
             raise HTTPException(503, "KIS client not wired")
-        kis = get_kis_client()
+        kis = kis_access.kis_for_role("foreground", data_dir)
         if kis is None:
             raise HTTPException(503, "KIS client not initialized")
         if cache_instance is None:
@@ -637,9 +639,10 @@ def build_router(
         to: str = Query(...),
     ) -> dict:
         frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
-        if get_kis_client is None:
+        # foreground(사용자 일봉 백필): account 0 전용. C1b 2026-06-10: kis_access 단일 seam.
+        if data_dir is None:
             raise HTTPException(503, "KIS client not wired")
-        kis = get_kis_client()
+        kis = kis_access.kis_for_role("foreground", data_dir)
         if kis is None:
             raise HTTPException(503, "KIS client not initialized")
         if daily_cache_instance is None:

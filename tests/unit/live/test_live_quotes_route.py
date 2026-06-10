@@ -24,12 +24,16 @@ class _FakeKis:
     async def fetch_multi_price(self, codes): return self._quotes
 
 
-def _app(quotes, kis=True):
-    fake = _FakeKis(quotes) if kis else None
+def _app(quotes, tmp_path, kis=True):
+    # C1b 2026-06-10: get_kis_client 주입 제거 → 프로세스 dict에 account 0로 주입하고
+    # data_dir 배선(client 라우팅 활성화 신호). 배경 /quotes는 N=0(hermetic env)이라
+    # account 0 폴백으로 이 fake를 집어든다. kis=False면 미주입 → creds 부재로 빈 결과.
+    if kis:
+        kis_runtime.set_kis_client(_FakeKis(quotes), 0)  # type: ignore[arg-type]
     app = FastAPI()
     app.include_router(build_router(
         get_status=lifecycle.get_status,
-        get_kis_client=(lambda: fake),
+        data_dir=tmp_path,
     ))
     return app
 
@@ -37,9 +41,9 @@ def _app(quotes, kis=True):
 QUOTES = [KisQuote("005930", 72400, 1.2, 750), KisQuote("000660", 183500, -0.8, -1500)]
 
 
-def test_quotes_open_returns_change_pct(monkeypatch):
+def test_quotes_open_returns_change_pct(monkeypatch, tmp_path):
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
-    c = TestClient(_app(QUOTES))
+    c = TestClient(_app(QUOTES, tmp_path))
     r = c.get("/api/live/quotes", params={"codes": "005930,000660"})
     assert r.status_code == 200
     body = r.json()
@@ -49,9 +53,9 @@ def test_quotes_open_returns_change_pct(monkeypatch):
     assert body["quotes"][1]["change_won"] == -1500
 
 
-def test_quotes_pre_open_nulls_change_pct(monkeypatch):
+def test_quotes_pre_open_nulls_change_pct(monkeypatch, tmp_path):
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "pre_open")
-    c = TestClient(_app(QUOTES))
+    c = TestClient(_app(QUOTES, tmp_path))
     r = c.get("/api/live/quotes", params={"codes": "005930,000660"})
     body = r.json()
     assert body["phase"] == "pre_open"
@@ -60,21 +64,22 @@ def test_quotes_pre_open_nulls_change_pct(monkeypatch):
     assert body["quotes"][0]["price"] == 72400
 
 
-def test_quotes_no_kis_graceful_empty(monkeypatch):
+def test_quotes_no_kis_graceful_empty(monkeypatch, tmp_path):
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
-    c = TestClient(_app(QUOTES, kis=False))
+    c = TestClient(_app(QUOTES, tmp_path, kis=False))
     r = c.get("/api/live/quotes", params={"codes": "005930"})
     assert r.status_code == 200
     assert r.json()["quotes"] == []
 
 
-def test_quotes_filters_invalid_codes(monkeypatch):
+def test_quotes_filters_invalid_codes(monkeypatch, tmp_path):
     seen = {}
     class _Rec(_FakeKis):
         async def fetch_multi_price(self, codes): seen["codes"] = codes; return []
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    kis_runtime.set_kis_client(_Rec([]), 0)  # type: ignore[arg-type]
     app = FastAPI()
-    app.include_router(build_router(get_status=lifecycle.get_status, get_kis_client=lambda: _Rec([])))
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
     TestClient(app).get("/api/live/quotes", params={"codes": "005930,BADCODE,00066"})
     assert seen["codes"] == ["005930"]
 
@@ -87,9 +92,10 @@ def test_quotes_lazy_inits_kis_when_singleton_absent(monkeypatch, tmp_path):
     fake = _FakeKis(QUOTES)
     monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda data_dir: fake)
     app = FastAPI()
+    # 싱글톤 미주입(autouse hermetic 리셋이 dict를 비움) + data_dir 배선 → kis_for_role이
+    # env에서 지연 생성(C1b: get_kis_client 주입 없이도 동일 lazy-init 경로).
     app.include_router(build_router(
         get_status=lifecycle.get_status,
-        get_kis_client=lambda: None,   # singleton absent
         data_dir=tmp_path,
     ))
     r = TestClient(app).get("/api/live/quotes", params={"codes": "005930,000660"})
@@ -97,22 +103,19 @@ def test_quotes_lazy_inits_kis_when_singleton_absent(monkeypatch, tmp_path):
     assert [q["code"] for q in r.json()["quotes"]] == ["005930", "000660"]
 
 
-def test_quotes_no_lazy_init_without_data_dir(monkeypatch):
-    # Without data_dir wired, a None singleton stays graceful-empty and the
-    # resolver is never invoked (no accidental client construction).
+def test_quotes_creds_absent_graceful_empty(monkeypatch, tmp_path):
+    # C1b 안전 의도 이전: 구 'data_dir 없음 → 빈 결과' 경로는 사라졌으나(data_dir이
+    # 이제 필수), 'creds 부재 → 빈 결과 + client 미생성' graceful 불변식은 이 실제
+    # seam으로 옮긴다. ensure_kis_client_from_env를 monkeypatch하지 *않고* 실제로 돌려
+    # hermetic env(creds delenv'd)에서 None을 반환하게 한다 — 동작이 깨지면 client 생성
+    # (dict 비어있지 않음)·500·비빈 결과 중 하나로 실패하는 진짜 가드(green ≠ 검증).
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
-    calls = {"n": 0}
-
-    def _resolver(data_dir):
-        calls["n"] += 1
-
-    monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", _resolver)
     app = FastAPI()
-    app.include_router(build_router(get_status=lifecycle.get_status, get_kis_client=lambda: None))
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
     r = TestClient(app).get("/api/live/quotes", params={"codes": "005930"})
     assert r.status_code == 200
     assert r.json()["quotes"] == []
-    assert calls["n"] == 0  # data_dir None → resolver never called
+    assert kis_runtime.get_kis_client(0) is None  # 우발적 client 생성 없음
 
 
 def test_quote_phase_boundary_at_0900_kst():
@@ -145,21 +148,24 @@ class _CountingFakeKis:
         return self._quotes
 
 
-def _counting_app(fake):
+def _counting_app(fake, tmp_path):
+    # C1b: account 0에 fake 주입 + data_dir 배선. 배경 /quotes는 N=0(hermetic)이라
+    # account 0 폴백으로 이 fake를 집어든다(호출 카운트가 그대로 유효).
+    kis_runtime.set_kis_client(fake, 0)  # type: ignore[arg-type]
     app = FastAPI()
     app.include_router(build_router(
         get_status=lifecycle.get_status,
-        get_kis_client=(lambda: fake),
+        data_dir=tmp_path,
     ))
     return app
 
 
-def test_quotes_closed_serves_last_seen_without_kis(monkeypatch):
+def test_quotes_closed_serves_last_seen_without_kis(monkeypatch, tmp_path):
     """closed에는 장중 마지막 시세를 KIS 무호출로 서빙('마지막 시세 유지' 결정,
     스펙 2026-06-08 ⑧). 등락률은 open과 동일하게 표시(종가+등락 — pre_open과
     다름)."""
     fake = _CountingFakeKis(QUOTES)
-    c = TestClient(_counting_app(fake))
+    c = TestClient(_counting_app(fake, tmp_path))
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
     r1 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
     assert r1.json()["quotes"][0]["price"] == 72400
@@ -174,11 +180,11 @@ def test_quotes_closed_serves_last_seen_without_kis(monkeypatch):
     assert body["quotes"][1]["change_won"] == -1500
 
 
-def test_quotes_closed_cold_start_fetches_once(monkeypatch):
+def test_quotes_closed_cold_start_fetches_once(monkeypatch, tmp_path):
     """closed 콜드 스타트(서버 재시작 직후): 캐시 미스면 정확히 1회만 KIS를
     불러 채우고(KIS는 장외에도 종가 반환), 이후 요청은 캐시 서빙."""
     fake = _CountingFakeKis(QUOTES)
-    c = TestClient(_counting_app(fake))
+    c = TestClient(_counting_app(fake, tmp_path))
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "closed")
     r1 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
     assert fake.calls == 1
@@ -199,7 +205,6 @@ def _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1):
     app = FastAPI()
     app.include_router(build_router(
         get_status=lifecycle.get_status,
-        get_kis_client=kis_runtime.get_kis_client,
         data_dir=tmp_path,
     ))
     return app
