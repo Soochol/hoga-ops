@@ -4,12 +4,13 @@ import {
   type UTCTimestamp,
   type Time,
 } from 'lightweight-charts';
-import type { RangeBundle } from '../../api/types';
+import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { isAuctionHidden, LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
+import { makePastCachedProjector } from './pastCachedProjector';
 
 const TOKEN_SPEC = {
   bid: ['--price-up', '#DC2626'],   // 매수 호가 총합 (KRX 빨강)
@@ -29,8 +30,19 @@ export function projectBid(
   axis: VirtualAxis,
   auctionWindowMask: boolean,
 ): LineData<Time>[] {
+  return projectBidPoints(bundle.quote_ratio.points, axis, auctionWindowMask);
+}
+
+/** Points-array variant of {@link projectBid} — see projectRatioPoints /
+ * makePastCachedProjector for the /live past-cache rationale and the day-boundary
+ * equivalence invariant. */
+export function projectBidPoints(
+  points: readonly QuoteRatioPoint[],
+  axis: VirtualAxis,
+  auctionWindowMask: boolean,
+): LineData<Time>[] {
   const out: LineData<Time>[] = [];
-  for (const p of bundle.quote_ratio.points) {
+  for (const p of points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
     // Auction-window hide (ADR-0029, util/auctionHide.ts). Break the connector
@@ -50,8 +62,17 @@ export function projectAsk(
   axis: VirtualAxis,
   auctionWindowMask: boolean,
 ): LineData<Time>[] {
+  return projectAskPoints(bundle.quote_ratio.points, axis, auctionWindowMask);
+}
+
+/** Points-array variant of {@link projectAsk}. */
+export function projectAskPoints(
+  points: readonly QuoteRatioPoint[],
+  axis: VirtualAxis,
+  auctionWindowMask: boolean,
+): LineData<Time>[] {
   const out: LineData<Time>[] = [];
-  for (const p of bundle.quote_ratio.points) {
+  for (const p of points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
     if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
@@ -77,6 +98,10 @@ const useQuoteTotalsContext = (): boolean => useActivePrefs((p) => p.auctionWind
 // while keeping the line/fill hidden. BaselineSeries (RatioPane) already gets
 // this for free because its marker color is series-level, not per-point — this
 // makes 총잔량 consistent with 호가비.
+// P0 과거/당일 분리 캐시 — 틱당 풀 재투영 제거. 출력은 projectBid/projectAsk와 동일.
+const bidCachedData = makePastCachedProjector(projectBidPoints, (b) => b.quote_ratio.points);
+const askCachedData = makePastCachedProjector(projectAskPoints, (b) => b.quote_ratio.points);
+
 export const QUOTE_TOTALS_SPEC = {
   name: 'quote-totals' as const,
   live: true, // reads quote_ratio (SSE-derived) → fed the live bundle on /live
@@ -89,7 +114,7 @@ export const QUOTE_TOTALS_SPEC = {
         color: bid, lineWidth: 1, priceFormat, priceLineVisible: false,
         lastValueVisible: false, crosshairMarkerBackgroundColor: bid,
       },
-      data: projectBid,
+      data: bidCachedData,
     },
     {
       type: LineSeries,
@@ -97,7 +122,7 @@ export const QUOTE_TOTALS_SPEC = {
         color: ask, lineWidth: 1, priceFormat, priceLineVisible: false,
         lastValueVisible: false, crosshairMarkerBackgroundColor: ask,
       },
-      data: projectAsk,
+      data: askCachedData,
     },
   ],
 } satisfies PaneSpec<boolean>;

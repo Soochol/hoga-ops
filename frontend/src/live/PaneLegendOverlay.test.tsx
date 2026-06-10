@@ -55,6 +55,31 @@ describe('PaneLegendOverlay', () => {
     expect(screen.getByText('5')).toBeInTheDocument(); // MA period swatch label
   });
 
+  it('memo(P1): 같은 props 부모 재렌더(SSE 호가 틱)에는 series.data() 재호출 안 함; dataEpoch 변경(캔들 갱신)엔 재호출', () => {
+    let dataCalls = 0;
+    const spy = {
+      data: () => {
+        dataCalls += 1;
+        return [{ time: 1, value: 100 }, { time: 2, value: 200 }];
+      },
+    } as never;
+    useMaSeriesRegistry.getState().register('ma-1', spy);
+    // 안정 참조 props (LiveChartRoot가 SSE 틱 간 유지하는 것들)
+    const chart = makeChart([120]);
+    const paneSeries = new Map() as never;
+    const { rerender } = render(
+      <PaneLegendOverlay chart={chart} timeframe="D" paneSeries={paneSeries} dataEpoch={1} />,
+    );
+    const afterFirst = dataCalls;
+    expect(afterFirst).toBeGreaterThan(0);
+    // SSE 호가 틱 = 부모 재렌더, props 동일 → memo가 차단 → data() 추가 호출 없음
+    rerender(<PaneLegendOverlay chart={chart} timeframe="D" paneSeries={paneSeries} dataEpoch={1} />);
+    expect(dataCalls).toBe(afterFirst);
+    // 캔들 갱신 = dataEpoch 증가 → 재렌더 → latest 값 신선화(data() 재호출)
+    rerender(<PaneLegendOverlay chart={chart} timeframe="D" paneSeries={paneSeries} dataEpoch={2} />);
+    expect(dataCalls).toBeGreaterThan(afterFirst);
+  });
+
   it('✕ on the MA row turns the moving-average master off', () => {
     useMaSeriesRegistry.getState().register('ma-1', seriesWithValue(100));
     render(

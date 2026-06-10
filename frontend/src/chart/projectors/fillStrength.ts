@@ -9,12 +9,13 @@ import {
 } from 'lightweight-charts';
 import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
-import type { RangeBundle } from '../../api/types';
+import type { RangeBundle, FillStrengthPoint } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
 import { isAuctionHidden, LINE_HIDDEN_COLOR } from '../util/auctionHide';
+import { makePastCachedProjector, lowerBoundT } from './pastCachedProjector';
 
 const TOKEN_SPEC = {
   buy: ['--price-up', '#DC2626'],          // 체결 매수 (KRX 빨강)
@@ -54,8 +55,18 @@ export function projectBuy(
   axis: VirtualAxis,
   auctionWindowMask: boolean,
 ): (HistogramData<Time> | WhitespaceData<Time>)[] {
+  return projectBuyPoints(bundle.fill_strength.points, axis, auctionWindowMask);
+}
+
+/** Points-array variant of {@link projectBuy} — per-point (auction = whitespace,
+ * no retroactive rewrite), so the /live past-cache split is trivially correct. */
+export function projectBuyPoints(
+  points: readonly FillStrengthPoint[],
+  axis: VirtualAxis,
+  auctionWindowMask: boolean,
+): (HistogramData<Time> | WhitespaceData<Time>)[] {
   const out: (HistogramData<Time> | WhitespaceData<Time>)[] = [];
-  for (const p of bundle.fill_strength.points) {
+  for (const p of points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
     if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
@@ -72,8 +83,17 @@ export function projectSell(
   axis: VirtualAxis,
   auctionWindowMask: boolean,
 ): (HistogramData<Time> | WhitespaceData<Time>)[] {
+  return projectSellPoints(bundle.fill_strength.points, axis, auctionWindowMask);
+}
+
+/** Points-array variant of {@link projectSell}. */
+export function projectSellPoints(
+  points: readonly FillStrengthPoint[],
+  axis: VirtualAxis,
+  auctionWindowMask: boolean,
+): (HistogramData<Time> | WhitespaceData<Time>)[] {
   const out: (HistogramData<Time> | WhitespaceData<Time>)[] = [];
-  for (const p of bundle.fill_strength.points) {
+  for (const p of points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
     if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
@@ -140,96 +160,170 @@ export function projectCumulativeNetFill(
 ): (LineData<Time> | WhitespaceData<Time>)[] {
   const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
   bundle.segments.forEach((seg, segIdx) => {
-    let runningSum = 0;
-    let firstEmittedInSeg = true;
-    // Index into `out` of the most recent non-hidden emission for this
-    // segment. Used after the source-points loop to paint its outgoing
-    // segment transparent so the line doesn't visibly slope into the
-    // value=0 auction anchor at 15:20.
-    let lastPreAuctionIdx = -1;
-    for (const p of bundle.fill_strength.points) {
-      if (p.t < seg.session_open_ms || p.t > seg.session_close_ms) continue;
-      runningSum += p.buy_qty - p.sell_qty;
-      if (!axis.contains(p.t)) continue;
-      const thisVirtual = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
-
-      // In-window source points are intentionally NOT emitted here: the
-      // per-bucket transparent anchor synthesis below covers the same slot,
-      // and emitting both would push two entries at identical virtual
-      // seconds (backend bucket_ms grid aligns source points with anchor
-      // slots), which lightweight-charts rejects with "data must be asc
-      // ordered by time". `runningSum` has already accumulated above, so
-      // the "hide is rendering, not data" invariant from ADR-0029 holds.
-      if (isAuctionHidden(axis, auctionWindowMask, p.t)) continue;
-
-      if (firstEmittedInSeg) {
-        const segOpenVirtual = (axis.toVirtual(seg.session_open_ms) / 1000) as UTCTimestamp;
-        if (segIdx > 0) {
-          // Break the cumulative line so the prior day's last value doesn't
-          // visually continue into this day. Whitespace point: time only.
-          // Day-boundary breaks work because we follow up with a value=0
-          // anchor at segOpenVirtual — lightweight-charts v5 does NOT
-          // break LineSeries at WhitespaceData on its own, so the visible
-          // "break" you see at day boundaries is actually the line ramping
-          // from prior cumulative down to 0. See ADR-0029.
-          out.push({ time: ((segOpenVirtual as number) - 1) as UTCTimestamp });
-        }
-        // Suppress the zero anchor when the first visible point falls inside
-        // the closing Auction Window: a 6h flat-zero pre-auction baseline
-        // before the first cumulative reading is more misleading than useful.
-        if (
-          axis.contains(seg.session_open_ms) &&
-          (segOpenVirtual as number) < (thisVirtual as number) &&
-          !axis.inClosingAuctionWindow(p.t)
-        ) {
-          out.push({ time: segOpenVirtual, value: 0 });
-        }
-        firstEmittedInSeg = false;
-      }
-
-      out.push({ time: thisVirtual, value: runningSum });
-      lastPreAuctionIdx = out.length - 1;
-    }
-
-    // Paint the last pre-auction emission's outgoing segment transparent.
-    // lightweight-charts uses each point's `color` for its OUTGOING segment,
-    // so without this patch the connector from (e.g.) 15:19's gray cumulative
-    // value to the value=0 synthesized anchor at 15:20 stays visible — the
-    // line bends toward zero at the auction boundary instead of disappearing
-    // cleanly. Skipped when there's no pre-auction emission to attach to
-    // (viewport starts inside the auction window): the synthesized anchors
-    // alone cover the visible region.
-    if (auctionWindowMask && lastPreAuctionIdx >= 0) {
-      out[lastPreAuctionIdx] = {
-        ...(out[lastPreAuctionIdx] as LineData<Time>),
-        ...LINE_HIDDEN_COLOR,
-      };
-    }
-
-    // Synthesize transparent-color anchors across the auction window even
-    // though `fill_strength.points` carries none (backend filters Auction Cross
-    // rows). Without anchors the cumulative line would draw a direct segment
-    // from this segment's last cumulative value to the next segment's first —
-    // the exact diagonal-across-the-band bug ADR-0029 documents for the
-    // line/baseline projectors. Same fix shape (transparent per-point color
-    // at every in-window bar) applied here at bucket resolution.
-    if (auctionWindowMask) {
-      const auctionStart = seg.session_close_ms - 10 * 60 * 1000;
-      // Stop strictly before session_close — the next segment's day-boundary
-      // whitespace lands at `segOpenVirtual - 1` which converts back to the
-      // current segment's session_close virtual second, so emitting an anchor
-      // at session_close would collide (setData requires strictly ascending
-      // unique times). The 15:29 anchor is sufficient: its outgoing segment
-      // (transparent) covers the gap into the next-day whitespace + zero
-      // anchor.
-      for (let t = auctionStart; t < seg.session_close_ms; t += bundle.bucket_ms) {
-        if (!axis.contains(t)) continue;
-        const time = (axis.toVirtual(t) / 1000) as UTCTimestamp;
-        out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
-      }
-    }
+    const segOut = projectCumulativeSegment(
+      seg,
+      segIdx,
+      bundle.fill_strength.points,
+      axis,
+      auctionWindowMask,
+      bundle.bucket_ms,
+    );
+    for (const e of segOut) out.push(e);
   });
   return out;
+}
+
+/** One Stock-Date segment's worth of {@link projectCumulativeNetFill} emissions.
+ * Extracted so the /live tick path can cache past segments (immutable intra-
+ * session) and recompute only today's segment per tick (makeCumulativeCached-
+ * Projector). Each segment is self-contained: runningSum resets to 0, the
+ * day-boundary break/zero-anchor only read the absolute `segIdx`/`segOpenVirtual`
+ * (not prior `out` state), and lastPreAuctionIdx indexes this segment's local
+ * `out`. So flat-mapping segments reproduces the original single-`out` loop
+ * byte-for-byte (pastCachedProjector.test.ts). `points` may be the whole array
+ * (the bound check filters) or a pre-sliced segment window. */
+export function projectCumulativeSegment(
+  seg: RangeBundle['segments'][number],
+  segIdx: number,
+  points: readonly FillStrengthPoint[],
+  axis: VirtualAxis,
+  auctionWindowMask: boolean,
+  bucketMs: number,
+): (LineData<Time> | WhitespaceData<Time>)[] {
+  const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
+  let runningSum = 0;
+  let firstEmittedInSeg = true;
+  // Index into `out` of the most recent non-hidden emission for this
+  // segment. Used after the source-points loop to paint its outgoing
+  // segment transparent so the line doesn't visibly slope into the
+  // value=0 auction anchor at 15:20.
+  let lastPreAuctionIdx = -1;
+  for (const p of points) {
+    if (p.t < seg.session_open_ms || p.t > seg.session_close_ms) continue;
+    runningSum += p.buy_qty - p.sell_qty;
+    if (!axis.contains(p.t)) continue;
+    const thisVirtual = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+
+    // In-window source points are intentionally NOT emitted here: the
+    // per-bucket transparent anchor synthesis below covers the same slot,
+    // and emitting both would push two entries at identical virtual
+    // seconds (backend bucket_ms grid aligns source points with anchor
+    // slots), which lightweight-charts rejects with "data must be asc
+    // ordered by time". `runningSum` has already accumulated above, so
+    // the "hide is rendering, not data" invariant from ADR-0029 holds.
+    if (isAuctionHidden(axis, auctionWindowMask, p.t)) continue;
+
+    if (firstEmittedInSeg) {
+      const segOpenVirtual = (axis.toVirtual(seg.session_open_ms) / 1000) as UTCTimestamp;
+      if (segIdx > 0) {
+        // Break the cumulative line so the prior day's last value doesn't
+        // visually continue into this day. Whitespace point: time only.
+        // Day-boundary breaks work because we follow up with a value=0
+        // anchor at segOpenVirtual — lightweight-charts v5 does NOT
+        // break LineSeries at WhitespaceData on its own, so the visible
+        // "break" you see at day boundaries is actually the line ramping
+        // from prior cumulative down to 0. See ADR-0029.
+        out.push({ time: ((segOpenVirtual as number) - 1) as UTCTimestamp });
+      }
+      // Suppress the zero anchor when the first visible point falls inside
+      // the closing Auction Window: a 6h flat-zero pre-auction baseline
+      // before the first cumulative reading is more misleading than useful.
+      if (
+        axis.contains(seg.session_open_ms) &&
+        (segOpenVirtual as number) < (thisVirtual as number) &&
+        !axis.inClosingAuctionWindow(p.t)
+      ) {
+        out.push({ time: segOpenVirtual, value: 0 });
+      }
+      firstEmittedInSeg = false;
+    }
+
+    out.push({ time: thisVirtual, value: runningSum });
+    lastPreAuctionIdx = out.length - 1;
+  }
+
+  // Paint the last pre-auction emission's outgoing segment transparent.
+  // lightweight-charts uses each point's `color` for its OUTGOING segment,
+  // so without this patch the connector from (e.g.) 15:19's gray cumulative
+  // value to the value=0 synthesized anchor at 15:20 stays visible — the
+  // line bends toward zero at the auction boundary instead of disappearing
+  // cleanly. Skipped when there's no pre-auction emission to attach to
+  // (viewport starts inside the auction window): the synthesized anchors
+  // alone cover the visible region.
+  if (auctionWindowMask && lastPreAuctionIdx >= 0) {
+    out[lastPreAuctionIdx] = {
+      ...(out[lastPreAuctionIdx] as LineData<Time>),
+      ...LINE_HIDDEN_COLOR,
+    };
+  }
+
+  // Synthesize transparent-color anchors across the auction window even
+  // though `fill_strength.points` carries none (backend filters Auction Cross
+  // rows). Without anchors the cumulative line would draw a direct segment
+  // from this segment's last cumulative value to the next segment's first —
+  // the exact diagonal-across-the-band bug ADR-0029 documents for the
+  // line/baseline projectors. Same fix shape (transparent per-point color
+  // at every in-window bar) applied here at bucket resolution.
+  if (auctionWindowMask) {
+    const auctionStart = seg.session_close_ms - 10 * 60 * 1000;
+    // Stop strictly before session_close — the next segment's day-boundary
+    // whitespace lands at `segOpenVirtual - 1` which converts back to the
+    // current segment's session_close virtual second, so emitting an anchor
+    // at session_close would collide (setData requires strictly ascending
+    // unique times). The 15:29 anchor is sufficient: its outgoing segment
+    // (transparent) covers the gap into the next-day whitespace + zero
+    // anchor.
+    for (let t = auctionStart; t < seg.session_close_ms; t += bucketMs) {
+      if (!axis.contains(t)) continue;
+      const time = (axis.toVirtual(t) / 1000) as UTCTimestamp;
+      out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
+    }
+  }
+  return out;
+}
+
+/** P0 과거/당일 분리 캐시 — 누적 체결강도 전용(세그먼트 단위). 일반
+ * makePastCachedProjector를 못 쓰는 이유: runningSum이 그 세그먼트의 후속 emit
+ * 전부에 의존(마지막 버킷 변동 → 당일 라인 전체 갱신)하고, 경매 anchor가 라이브 점과
+ * 시간순으로 뒤섞여 단순 tail-append가 불가하다. 대신 세그먼트별로 쪼개 — 과거
+ * 세그먼트(0..N-2)는 불변이라 캐시, 당일 세그먼트(N-1)만 매 틱 재투영. 당일 segIdx>0를
+ * 그대로 넘겨 일경계 break/zero anchor 불변식을 보존한다. */
+export function makeCumulativeCachedProjector(): (
+  bundle: RangeBundle,
+  axis: VirtualAxis,
+  auctionWindowMask: boolean,
+) => (LineData<Time> | WhitespaceData<Time>)[] {
+  const cache = new WeakMap<
+    VirtualAxis,
+    { mask: boolean; pastLen: number; pastLastT: number; pastData: (LineData<Time> | WhitespaceData<Time>)[] }
+  >();
+  return (bundle, axis, mask) => {
+    const segs = bundle.segments;
+    if (segs.length < 2) return projectCumulativeNetFill(bundle, axis, mask);
+
+    const points = bundle.fill_strength.points;
+    const bucketMs = bundle.bucket_ms;
+    const todayIdx = segs.length - 1;
+    const todaySeg = segs[todayIdx];
+    const splitIdx = lowerBoundT(points, todaySeg.session_open_ms);
+    const pastPoints = points.slice(0, splitIdx);
+    const todayPoints = points.slice(splitIdx);
+    const pastLastT = splitIdx > 0 ? pastPoints[splitIdx - 1].t : 0;
+
+    let entry = cache.get(axis);
+    if (!entry || entry.mask !== mask || entry.pastLen !== splitIdx || entry.pastLastT !== pastLastT) {
+      const pastData: (LineData<Time> | WhitespaceData<Time>)[] = [];
+      for (let i = 0; i < todayIdx; i++) {
+        const segOut = projectCumulativeSegment(segs[i], i, pastPoints, axis, mask, bucketMs);
+        for (const e of segOut) pastData.push(e);
+      }
+      entry = { mask, pastLen: splitIdx, pastLastT, pastData };
+      cache.set(axis, entry);
+    }
+    return entry.pastData.concat(
+      projectCumulativeSegment(todaySeg, todayIdx, todayPoints, axis, mask, bucketMs),
+    );
+  };
 }
 
 export type FillStrengthPaneContext = {
@@ -250,6 +344,13 @@ const useFillStrengthContext = (): FillStrengthPaneContext =>
     })),
   );
 
+// P0 과거/당일 분리 캐시 (매수/매도 히스토그램만 — per-point라 분리 안전). 캐시 키는
+// auctionWindowMask boolean(cumulativeEnabled는 이 시리즈에 영향 없음). 누적 라인은
+// runningSum이 후속 전부에 의존해 분리 불가 → 아래 cumulative 캐시를 별도로 쓴다.
+const buyCachedData = makePastCachedProjector(projectBuyPoints, (b) => b.fill_strength.points);
+const sellCachedData = makePastCachedProjector(projectSellPoints, (b) => b.fill_strength.points);
+const cumulativeCachedData = makeCumulativeCachedProjector();
+
 export const FILL_STRENGTH_SPEC = {
   name: 'fill-strength' as const,
   live: true, // reads fill_strength (SSE-derived) → fed the live bundle on /live
@@ -259,12 +360,12 @@ export const FILL_STRENGTH_SPEC = {
     {
       type: HistogramSeries,
       options: { color: buy, ...histOpts },
-      data: (bundle, axis, ctx) => projectBuy(bundle, axis, ctx.auctionWindowMask),
+      data: (bundle, axis, ctx) => buyCachedData(bundle, axis, ctx.auctionWindowMask),
     },
     {
       type: HistogramSeries,
       options: { color: sell, ...histOpts },
-      data: (bundle, axis, ctx) => projectSell(bundle, axis, ctx.auctionWindowMask),
+      data: (bundle, axis, ctx) => sellCachedData(bundle, axis, ctx.auctionWindowMask),
     },
     {
       type: LineSeries,
@@ -278,7 +379,7 @@ export const FILL_STRENGTH_SPEC = {
         priceFormat: cumulativePriceFormat,
       },
       data: (bundle, axis, ctx) =>
-        ctx.cumulativeEnabled ? projectCumulativeNetFill(bundle, axis, ctx.auctionWindowMask) : [],
+        ctx.cumulativeEnabled ? cumulativeCachedData(bundle, axis, ctx.auctionWindowMask) : [],
       afterAdd: (series) => addZeroBaselineGuide(series, cumulativeBaseline),
     },
   ],

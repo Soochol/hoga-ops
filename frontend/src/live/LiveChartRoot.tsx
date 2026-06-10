@@ -568,7 +568,10 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
           {/* After DrawingOverlay so the legend's ✕/eye buttons paint above the
               drawing canvas; the container is pointer-transparent so the
               crosshair + drawing hover still work underneath it. */}
-          <PaneLegendOverlay chart={chart} timeframe={timeframe} paneSeries={paneSeries} />
+          {/* P1: `cb`(캔들 경로 번들)를 memo 신선화 신호로 전달. SSE 호가 틱엔 `cb`
+              식별자가 안정(2026-06-09 bundle-split)이라 레전드 재렌더가 차단되고, 캔들
+              갱신 때만 새 ref가 돼 latest 값을 신선화한다. ref-during-render 불필요. */}
+          <PaneLegendOverlay chart={chart} timeframe={timeframe} paneSeries={paneSeries} dataEpoch={cb} />
           <CandleTooltip chart={chart} bundle={cb} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
           <DrawingPropertyPanel computeAnchor={computeAnchor} />
           {/* Day boundary lines only make sense on intraday timeframes —
