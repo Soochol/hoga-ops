@@ -75,6 +75,13 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
       if (resp.blocked && resp.blocked.length > 0) {
         setBlockedMessage(formatBlockedMessage(resp.blocked));
       }
+      // On a successful enqueue, clear the date range so the picker returns to a
+      // fresh slate and Start re-disables (valid = symbol && range.end). This
+      // prevents an accidental double-submit of the same range; the symbol is
+      // kept so the user can immediately queue another range for the same stock.
+      // Failure paths (409 all-blocked, upstream errors) return early in catch,
+      // preserving the selection for retry.
+      setRange(null);
     } catch (err: unknown) {
       const apiErr = err as ApiError;
       // ADR-0042: 409 all-blocked path — the entire request body is the
