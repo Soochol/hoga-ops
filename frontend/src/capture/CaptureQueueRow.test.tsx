@@ -13,12 +13,14 @@ const base: QueueItem = {
 };
 
 describe('CaptureQueueRow', () => {
-  it('renders date / code / phase chip', () => {
-    render(<CaptureQueueRow item={base} symbolName="삼성전자" onCancel={() => {}} onRetry={() => {}} />);
+  it('renders date / name / phase chip (code is in aria-label, not a column)', () => {
+    const { container } = render(<CaptureQueueRow item={base} symbolName="삼성전자" onCancel={() => {}} onRetry={() => {}} />);
     expect(screen.getByText('20260518')).toBeTruthy();
-    expect(screen.getByText('005930')).toBeTruthy();
     expect(screen.getByText(/queued/i)).toBeTruthy();
     expect(screen.getByText('삼성전자')).toBeTruthy();
+    // 종목코드 칼럼은 제거됐지만 스크린리더용 aria-label 에는 남아 있다.
+    expect(container.querySelector('[data-testid="queue-row-i1"]')!.getAttribute('aria-label'))
+      .toContain('005930');
   });
 
   it('Q16: shows ⚠ force chip when force_retry=true', () => {

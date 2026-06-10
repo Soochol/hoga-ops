@@ -40,7 +40,6 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick }
             name={e.name}
             price={q?.price ?? null}
             pct={q?.change_pct ?? null}
-            changeWon={q?.change_won ?? null}
             onClick={() => onPick(e.code)}
             ariaLabel={`${e.name} ${e.code} 차트 열기`}
             testId={`heatmap-row-${e.code}`}

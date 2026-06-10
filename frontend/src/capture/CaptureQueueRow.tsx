@@ -49,24 +49,29 @@ export function CaptureQueueRow({
         aria-label={`Capture row ${item.code} ${item.date} ${item.phase}. Press Enter to ${expanded ? 'collapse' : 'expand'} details.`}
         onClick={() => setExpanded((v) => !v)}
         onKeyDown={onKeyDown}
-        className="grid grid-cols-[1rem_2.6rem_4.5rem_3rem_1fr_4.5rem_2.5rem_2.5rem_6rem_1.2rem] items-center gap-2 h-capture-row px-sm border-b font-medium text-sm font-mono tabular-nums text-fg cursor-pointer outline-none"
+        className="grid grid-cols-[1rem_2.6rem_4.5rem_7rem_4.5rem_2.5rem_2.5rem_minmax(6rem,1fr)_1.2rem] items-center gap-2 h-capture-row px-sm border-b font-medium text-sm font-mono tabular-nums text-fg cursor-pointer outline-none"
       >
+        {/* 반응형 폭 배분: 종목명 칼럼은 고정 7rem — 행마다 균일해야 뒤 칼럼들이
+            행 간 정렬된다(각 행이 독립 grid 라 max-content 로 두면 이름 길이·배지에
+            따라 트랙이 들쭉날쭉해져 어긋난다). 셀 안에서 이름은 truncate, 배지는
+            flex-none 으로 분리 → 긴 이름만 잘리고 배지는 항상 보인다. 남는 패널
+            폭은 진행률 칼럼 minmax(6rem,1fr) 의 1fr 이 흡수해 휑함을 없앤다.
+            종목코드 칼럼은 제거(요청). 아주 좁으면 리스트가 가로 스크롤. */}
         <span>{descriptor.icon}</span>
         <span data-testid="queue-row-full-capture-count">
           <FullCaptureCountBadge n={fullCaptureCount} />
         </span>
         <span>{item.date}</span>
-        <span>{item.code}</span>
-        <span className="font-normal text-sm text-fg-dim">
-          {symbolName}
+        <span className="flex items-center gap-1.5 min-w-0 font-normal text-sm text-fg-dim">
+          <span className="truncate min-w-0">{symbolName}</span>
           {item.force_retry && (
-            <StatusBadge tone="warn" title="Force re-capture" className="ml-1.5">⚠ force</StatusBadge>
+            <StatusBadge tone="warn" title="Force re-capture" className="flex-none">⚠ force</StatusBadge>
           )}
           {item.attempt > 1 && (
-            <StatusBadge tone="dim" title={`Attempt ${item.attempt}`} className="ml-1.5">×{item.attempt}</StatusBadge>
+            <StatusBadge tone="dim" title={`Attempt ${item.attempt}`} className="flex-none">×{item.attempt}</StatusBadge>
           )}
           {isFromInventory && (
-            <StatusBadge tone="dim" title="Triggered from inventory re-capture" className="ml-1.5">inventory</StatusBadge>
+            <StatusBadge tone="dim" title="Triggered from inventory re-capture" className="flex-none">inventory</StatusBadge>
           )}
         </span>
         <span style={{ background: descriptor.chipColor }} className="py-[0.1rem] px-xs rounded-md text-fg-dim">
