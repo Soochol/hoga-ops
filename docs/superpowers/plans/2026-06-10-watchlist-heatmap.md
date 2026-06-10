@@ -803,7 +803,12 @@ it('추가 후 해당 폴더로 이동', async () => {
 });
 
 it('이미 관심종목(409)이면 add 건너뛰고 move만', async () => {
-  vi.mocked(addToWatchlist).mockRejectedValueOnce(new Error('already_in_watchlist'));
+  // 실제 ApiError 형태로 모킹 — .code 가 핵심(message 가 아님).
+  vi.mocked(addToWatchlist).mockRejectedValueOnce(
+    Object.assign(new Error('Code 005930 is already in the Watchlist.'), {
+      code: 'already_in_watchlist', status: 409,
+    }),
+  );
   const { result } = renderHook(() => useAddToFolder(), { wrapper });
   await act(async () => { await result.current.addToFolder('005930', 'f1'); });
   expect(moveEntries).toHaveBeenCalledWith(['005930'], 'f1');
@@ -829,9 +834,13 @@ Expected: FAIL — `Failed to resolve import "./useAddToFolder"`.
 `frontend/src/heatmap/useAddToFolder.ts`:
 ```ts
 import { useAddToWatchlist, useMoveEntries } from '../watchlist/useWatchlist';
+import type { ApiError } from '../api/client';
 
+// 주의: apiCall(client.ts)은 안정 코드를 ApiError.code 에 둔다 — err.message 는
+// 사람용 문구('Code ... is already in the Watchlist.')라 code 문자열을 안 담는다.
+// 따라서 message.includes 가 아니라 .code 로 판정해야 한다(검증으로 확인된 버그).
 function isAlreadyInWatchlist(e: unknown): boolean {
-  return e instanceof Error && e.message.includes('already_in_watchlist');
+  return (e as ApiError | null)?.code === 'already_in_watchlist';
 }
 
 /** 폴더 지정 추가 = addToWatchlist(미분류 진입) → moveEntries(폴더로).
@@ -992,15 +1001,32 @@ import { FolderAddButton } from './FolderAddButton';
       </div>
 ```
 
-- [ ] **Step 5: 통과 확인 + 회귀**
+- [ ] **Step 5: 컴포넌트 테스트에 FolderAddButton 목 추가 (필수 — 안 하면 회귀 실패)**
 
-Run: `cd frontend && npx vitest run src/heatmap/FolderAddButton.test.tsx src/heatmap/HeatmapFolder.test.tsx`
-Expected: PASS (2 + 2 it). HeatmapFolder 테스트는 `../capture/SymbolSearch` 를 import하나 렌더 시 팝오버 닫힘 상태라 SymbolSearch는 마운트되지 않아 그대로 통과.
+이제 `HeatmapFolder` 가 `FolderAddButton` 을 렌더한다. `FolderAddButton` → `useAddToFolder` → `useAddToWatchlist`(useMutation) → `useQueryClient` 라, **QueryClientProvider 없이 bare render 하는** `HeatmapFolder.test.tsx`·`HeatmapBoard.test.tsx`(Task 4·5)가 "No QueryClient set" 로 깨진다. 두 테스트를 폴더/보드 로직에 집중시키기 위해 FolderAddButton 을 stub 으로 목한다.
 
-- [ ] **Step 6: 커밋**
+`frontend/src/heatmap/HeatmapFolder.test.tsx` 상단 import 위(파일 맨 위)에 추가:
+```tsx
+import { vi } from 'vitest';
+vi.mock('./FolderAddButton', () => ({ FolderAddButton: () => null }));
+```
+(이미 `vi` 를 import 중이면 `import { vi }` 줄은 중복 추가하지 말 것 — `vi.mock(...)` 한 줄만 최상단에 둔다. vitest 는 `vi.mock` 을 파일 상단으로 호이스트한다.)
+
+`frontend/src/heatmap/HeatmapBoard.test.tsx` 에도 동일하게 최상단에 추가:
+```tsx
+import { vi } from 'vitest';
+vi.mock('./FolderAddButton', () => ({ FolderAddButton: () => null }));
+```
+
+- [ ] **Step 6: 통과 확인 + 회귀**
+
+Run: `cd frontend && npx vitest run src/heatmap/FolderAddButton.test.tsx src/heatmap/HeatmapFolder.test.tsx src/heatmap/HeatmapBoard.test.tsx`
+Expected: PASS (2 + 2 + 1 it). 페이지 테스트(`Heatmap.test.tsx`)는 QueryClientProvider 로 감싸므로 목 없이도 그대로 통과(확인용으로 함께 돌려도 됨).
+
+- [ ] **Step 7: 커밋**
 
 ```bash
-git add frontend/src/heatmap/FolderAddButton.tsx frontend/src/heatmap/FolderAddButton.test.tsx frontend/src/heatmap/HeatmapFolder.tsx
+git add frontend/src/heatmap/FolderAddButton.tsx frontend/src/heatmap/FolderAddButton.test.tsx frontend/src/heatmap/HeatmapFolder.tsx frontend/src/heatmap/HeatmapFolder.test.tsx frontend/src/heatmap/HeatmapBoard.test.tsx
 git commit -m "feat(heatmap): 폴더별 ＋종목 인라인 추가"
 ```
 
@@ -1163,3 +1189,12 @@ git commit -m "docs(design): 가격 방향 히트 램프 노트(히트맵 보드
 - **Placeholder 스캔**: 모든 스텝에 실제 코드·명령·기대 출력. TBD/TODO 없음.
 - **타입 일관성**: `SortMode`(heat.ts) ← heatmapPrefs·HeatmapFolder·HeatmapBoard·Heatmap 동일 import. `heatBg`/`sortEntries`/`avgPct` 시그니처 호출부와 일치. `useAddToFolder().addToFolder(code, folderId)` 호출부(FolderAddButton)와 일치. `LiveQuote`/`WatchlistEntry`/`WatchlistFolder`/`FolderGroup` 전부 기존 export.
 - **출시 분할**: T1–6 = read-only 보드(단독 동작), T7–9 = 인라인 추가, T10 = 문서·검증. 각 태스크 커밋 시 테스트 green.
+
+## 대조 검증 결과 (코드베이스 4-슬라이스 병렬, 49건 중 45 OK)
+
+실행 전 임베드 코드를 실제 코드베이스와 대조해 3건을 수정 반영했다:
+1. **(wrong, 2개 에이전트 독립 검출) T7 `useAddToFolder` 409 우회** — `apiCall` 의 `ApiError` 는 안정 코드를 `.code` 에 두고 `.message` 는 사람용 문구다. `message.includes('already_in_watchlist')` 는 항상 false → 409에서 move 미실행. `.code === 'already_in_watchlist'` 로 수정 + 테스트 모킹을 `ApiError` 형태로 교체.
+2. **(risky) T8 후 `HeatmapFolder.test`·`HeatmapBoard.test` 회귀 실패** — `FolderAddButton`(→`useQueryClient`)이 두 bare-render 테스트를 깬다. 두 테스트에 `vi.mock('./FolderAddButton', () => ({ FolderAddButton: () => null }))` 추가(Step 5 신설).
+3. **(risky, 보류) `FolderAddButton.test` 의 SymbolHit 목 불완전** — 목 팩토리 내부라 컴파일/런타임 무해(`.code` 만 사용). 수정 불요.
+
+나머지 45건(임포트·시그니처·tailwind 토큰·react-query 반환·테스트 하네스·heatBg 산술·sortEntries null 처리)은 실제 코드와 일치 확인.
