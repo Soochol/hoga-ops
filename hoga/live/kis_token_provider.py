@@ -21,6 +21,7 @@ import os
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -67,6 +68,7 @@ class KisTokenProvider:
         token_cache_path: Path,
         *,
         _transport: Optional[httpx.BaseTransport] = None,
+        on_issue_failure: Optional[Callable[[], None]] = None,
     ):
         self._creds = credentials
         self._cache_path = token_cache_path
@@ -78,6 +80,11 @@ class KisTokenProvider:
         # monotonic clock so NTP steps / DST don't confuse the cooldown.
         self._last_issued_monotonic_ms: Optional[int] = None
         self._lock = threading.Lock()
+        # FM5(계정 분리 2026-06-09): REST bearer 토큰 발급 실패 시 호출되는 콜백.
+        # kis_runtime이 account_id에 바인딩해 주입 → background 계정 토큰이 처음
+        # 발급 실패하면 그 계정을 REST-degraded로 latch(이후 kis_for_role가 account 0
+        # 폴백). 토큰 발급 chokepoint에서 감지하므로 호출부는 account를 몰라도 된다.
+        self._on_issue_failure = on_issue_failure
 
     def close(self) -> None:
         self._client.close()
@@ -96,7 +103,19 @@ class KisTokenProvider:
             if cached:
                 self._token, self._token_expires_at = cached
                 return self._token
-            return self._issue_token()
+            # 캐시 미스 → 신규 발급. 실패(KisAuthError 등) 시 on_issue_failure를 1회
+            # 호출하고 에러를 그대로 전파한다(FM5 latch). 첫 시도는 cooldown을 건너뛰므로
+            # 첫 실패는 항상 실제 POST 실패 → latch가 실제 장애에서 켜진다. 콜백 자체의
+            # 예외는 토큰 에러를 가리지 않도록 삼킨다.
+            try:
+                return self._issue_token()
+            except Exception:
+                if self._on_issue_failure is not None:
+                    try:
+                        self._on_issue_failure()
+                    except Exception:  # noqa: BLE001 — 콜백 실패가 토큰 에러를 못 가리게
+                        log.warning("kis token on_issue_failure callback raised", exc_info=True)
+                raise
 
     def invalidate(self) -> None:
         """Drop the cached token (memory + disk) after KIS rejected it.

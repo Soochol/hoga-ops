@@ -16,7 +16,7 @@ from hoga.live.kis_client import KisApiError, KisQuote, KisRateLimitError
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
-from . import kis_runtime
+from . import kis_access
 from . import lifecycle
 from .buffer import LiveBuffer
 from .lifecycle import LiveStatus
@@ -392,18 +392,24 @@ def build_router(
     # ADR-0056 결: 표시 전용·디스크 미영속). ADR-0038 단일 워커라 dict로 충분.
     _last_quotes: dict[str, KisQuote] = {}
 
+    def _kis_for_background() -> "KisClient | None":
+        """배경 REST(quotes·investor-net)용 KisClient — N=2면 account 1(직전엔 유휴였던
+        REST 버킷), 아니면 account 0 폴백(kis_access.kis_for_role, 계정 분리 2026-06-09).
+        foreground(past-candles/daily)는 account 0 전용이라 이 헬퍼를 쓰지 않는다.
+        data_dir 미배선(베어 단위테스트)이면 주입된 get_kis_client로 폴백한다 — kis_for_role은
+        env/싱글톤(프로세스 전역)을 보므로 data_dir이 라우팅 활성화 신호."""
+        if data_dir is not None:
+            return kis_access.kis_for_role("background", data_dir)
+        return get_kis_client() if get_kis_client is not None else None
+
     @router.get("/quotes", response_model=LiveQuotesResponse)
     async def _get_quotes(codes: str = Query(...)) -> LiveQuotesResponse:
         phase = _quote_phase(datetime.now(_KST))
         code_list = [c for c in codes.split(",") if _CODE_RE.match(c)]
         if not code_list:
             return LiveQuotesResponse(phase=phase, quotes=[])
-        kis = get_kis_client() if get_kis_client is not None else None
-        if kis is None and data_dir is not None:
-            # 싱글턴이 아직 없으면(빈 관심목록 + 무갭일 등 흔한 상태) env-creds 로
-            # 지연 생성한다 — poller/EOD 업데이트와 같은 단일 리졸버를 공유하므로
-            # 15/s 버킷이 1개로 유지된다. creds 없으면 None → graceful empty.
-            kis = kis_runtime.ensure_kis_client_from_env(data_dir)
+        # 배경 라우트: N=2면 account 1, 아니면 account 0(env 지연 생성 포함, kis_for_role).
+        kis = _kis_for_background()
         if kis is None:
             return LiveQuotesResponse(phase=phase, quotes=[])
         if phase == "closed":
@@ -664,9 +670,8 @@ def build_router(
         signed (+ buy / − sell). Today's row is provisional until ~15:40 (가집계).
         """
         frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
-        if get_kis_client is None:
-            raise HTTPException(503, "KIS client not wired")
-        kis = get_kis_client()
+        # 배경 라우트(2차 오버레이): N=2면 account 1, 아니면 account 0 폴백.
+        kis = _kis_for_background()
         if kis is None:
             raise HTTPException(503, "KIS client not initialized")
         if investor_cache_instance is None:

@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import time
 
+import hoga.live.session_gate as session_gate_mod
 import hoga.live.stream as stream_mod
 from hoga.live.buffer import LiveBuffer
 from hoga.live.snapshot import SnapshotKind
@@ -98,7 +99,7 @@ async def test_run_flush_loop_drains_resets_and_reopen_has_no_ghost_carry(
             return False
         return calls["n"] > 6                                # ⑦+ reopen
 
-    monkeypatch.setattr(stream_mod, "ws_capture_window", gate)
+    monkeypatch.setattr(session_gate_mod, "ws_capture_window", gate)
 
     jsonl_path = tmp_path / "live" / "20260605" / "005930.jsonl"
     task = asyncio.create_task(stream.run_flush_loop())
@@ -204,7 +205,7 @@ async def test_run_flush_loop_evaluates_gate_off_event_loop(tmp_path, monkeypatc
         seen.append(threading.current_thread() is threading.main_thread())
         return False
 
-    monkeypatch.setattr(stream_mod, "ws_capture_window", gate)
+    monkeypatch.setattr(session_gate_mod, "ws_capture_window", gate)
     stream = LiveStream(buffer=LiveBuffer(), writer=LiveWriter(tmp_path / "live"),
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
     task = asyncio.create_task(stream.run_flush_loop())
@@ -255,7 +256,7 @@ async def test_drain_resets_day_state(tmp_path, monkeypatch):
             stream._ds.ingest(_ob_tick(now, tot_ask=111))
             return True            # ①open: flush로 _last_flush_date 래치
         return False               # ②+ closed: drain 후 리셋
-    monkeypatch.setattr(stream_mod, "ws_capture_window", gate)
+    monkeypatch.setattr(session_gate_mod, "ws_capture_window", gate)
     task = asyncio.create_task(stream.run_flush_loop())
     try:
         for _ in range(80):

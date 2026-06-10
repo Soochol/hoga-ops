@@ -20,12 +20,17 @@ import os
 import threading
 from pathlib import Path
 
+from . import account_health
 from .kis_client import KisClient, KisCredentials
 from .kis_token_provider import KisTokenProvider
 
 _kis_clients: dict[int, KisClient] = {}
 _kis_token_providers: dict[int, KisTokenProvider] = {}
 _lock = threading.Lock()
+
+# FM5 REST-auth latch + WS-degraded 통합 신호는 account_health(leaf)로 추출됨(2026-06-10).
+# 토큰 provider 콜백이 account_health.mark_rest_auth_degraded를, kis_for_role가
+# account_health.is_degraded를 쓴다 — kis_runtime은 더는 lifecycle을 late import하지 않는다.
 
 
 def _account_env(account_id: int) -> tuple[str, str]:
@@ -72,7 +77,13 @@ def ensure_kis_token_provider(
     with _lock:
         prov = _kis_token_providers.get(account_id)
         if prov is None:
-            prov = KisTokenProvider(creds, token_cache_path)
+            # on_issue_failure: REST 토큰 발급 실패 시 이 account를 REST-degraded latch
+            # (FM5). account_id를 클로저로 바인딩 → 토큰 chokepoint가 어느 계정인지 안다.
+            prov = KisTokenProvider(
+                creds,
+                token_cache_path,
+                on_issue_failure=lambda: account_health.mark_rest_auth_degraded(account_id),
+            )
             _kis_token_providers[account_id] = prov
         return prov
 
@@ -185,6 +196,10 @@ def configured_account_ids(data_dir: Path) -> list[int]:
     return ids
 
 
+# role→account 라우팅(kis_for_role) + FM5 폴백(fetch_for_role)은 kis_access 모듈로 추출됨
+# (2026-06-10). kis_runtime은 리소스 소유(account별 싱글톤·ensure_*·env creds)만 담당한다.
+
+
 async def aclose_kis_client() -> None:
     """Close and drop ALL per-account KisClient + KisTokenProvider singletons —
     PROCESS shutdown only. A stream/conn stop must not call this (R1)."""
@@ -213,3 +228,4 @@ def reset_for_tests() -> None:
             pass
     _kis_clients = {}
     _kis_token_providers = {}
+    account_health.reset_for_tests()  # FM5 latch + WS probe 초기화(테스트 격리)

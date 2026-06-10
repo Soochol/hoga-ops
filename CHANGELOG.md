@@ -3,6 +3,30 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.9.0] - 2026-06-10
+
+### Changed
+- **/live KIS REST가 2번째 계좌 키를 활용해 사용자 fetch와 백그라운드를 분리 — 체감 더 빠른 차트
+  로딩**: 사용자가 차트 그려지길 기다리는 분봉·일봉(foreground)은 account 0 전용 15콜/초를, 백그라운드
+  작업(보는종목 폴러·시세·투자자 순매수·스크리너 일배치/백필)은 그동안 WS 접속키 발급에만 쓰여 통째로
+  놀던 account 1의 REST 15콜/초를 쓰도록 분리했습니다. 사용자 fetch가 백그라운드 부하와 같은 버킷을
+  다투지 않아(총 30콜/초) 분봉/일봉이 더 빨리 뜹니다. 키가 1개거나 2번째 계좌가 저하되면 account 0로
+  자동 폴백합니다.
+
+### Fixed
+- **2번째 계좌 키 오설정 시 조용한 성능 저하 방지**: account 1이 REST 토큰 발급에 실패하면(예: 잘못된
+  KIS_APP_KEY_2) 백그라운드를 account 0로 자동 폴백하고, 전환 시 운영자가 grep할 1회성 경고를 남깁니다
+  (이게 없으면 30콜/초로 착각한 채 영구히 15콜/초로 조용히 강등됩니다). 스크리너 배치는 코드별 재시도로
+  토큰 실패에도 끝까지 진행합니다.
+
+### Internal
+- **KIS 리소스 레이어 아키텍처 정리(deepening)**: role→account 라우팅을 `kis_access`, 계정 health(REST
+  토큰 latch ∪ WS 저하)를 leaf `account_health` 모듈로 추출해 이전의 5가지 흩어진 클라이언트 해결
+  방식과 late-import 순환을 제거했습니다. WS 캡처 게이트(`ws_capture_window`)의 blocking 계약을
+  `*_async` 진입점으로 명시화(이벤트 루프 동결 방지). 후속 정리(build_router seam 통일, Live Session
+  상태기계 추출)는 다음 차례. 백엔드 테스트 1481 무회귀.
+- ADR-0067·CONTEXT.md를 계정 분리 현실로 갱신(account k>0 = WS approval 전용 전제 폐기).
+
 ## [0.7.8.0] - 2026-06-09
 
 ### Fixed

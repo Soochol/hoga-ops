@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 from pydantic import BaseModel, Field
 
-from . import kis_runtime  # needed by reset_for_tests() + start_live_stream
+from . import account_health, kis_access, kis_runtime  # health probe / role 라우팅 / 리소스
 from .buffer import LiveBuffer
 from .promote import promote_today
 
@@ -219,6 +219,8 @@ def _build_conn(account_id: int, codes: list[str], data_dir: Path) -> _StreamCon
     from .stream import LiveStream  # noqa: PLC0415
     from .writer import LiveWriter  # noqa: PLC0415
     from .ws_client import KisWsClient  # noqa: PLC0415
+    # sync ws_capture_window을 의도적으로 씀(아래 gate_fn): KisWsClient가 gate_fn을
+    # `await to_thread(gate_fn)`로 감싸 blocking을 격리한다 — 유일한 합법적 sync 사용처.
     from .session_gate import ws_capture_window  # noqa: PLC0415
 
     kis = kis_runtime.ensure_kis_client_for_account(account_id, data_dir)
@@ -317,12 +319,58 @@ def _capture_health(
     return (True, "healthy")
 
 
+def _capture_status(now_ms: int) -> tuple[bool, str, list[int]]:
+    """WS 연결집합의 캡처 헬스 — (cap_healthy, cap_reason, degraded account_id list 정렬).
+
+    **단일 계산** — get_status(표시: cap_healthy/reason/degraded)와 account_health WS-probe
+    (라우팅: degraded 집합)가 공유한다(중복 제거, 2026-06-10). 의미론:
+    - streams 없음 → (False, "no_streams", []) — 호출자(get_status)가 poller-only running과
+      결합해 idle/offline로 해석.
+    - 전역 장 마감 → (False, "closed", []). market_closed는 전역 상태(계좌별 결함 아님)라
+      per-conn 루프 밖에서 단락 — 안 그러면 밤/주말마다 모든 conn이 degraded로 잡혀
+      거짓 신호(advisor 버그 회피).
+    - 정규장 → conn별 _capture_health 집계. cap_reason = worst(마지막 비정상)."""
+    streams = _state.streams
+    started = _state.started_at_ms
+    if started is None or not streams:
+        return (False, "no_streams", [])
+    if _market_clock_closed_for_capture(now_ms):
+        return (False, "closed", [])
+    from datetime import datetime  # noqa: PLC0415
+    from .kis_client import KIS_KST  # noqa: PLC0415
+    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
+    session_open_ms = int(
+        kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
+    )
+    ref_ms = max(started, session_open_ms)
+    cap_healthy, cap_reason, degraded = True, "healthy", []
+    for account_id, conn in streams.items():
+        ws = getattr(conn.stream_obj, "ws", None)
+        healthy, reason = _capture_health(
+            running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
+            stale_after_ms=_WATCHDOG_STALE_AFTER_MS, market_closed=False,
+        )
+        if not healthy:
+            cap_healthy = False
+            cap_reason = reason     # worst(마지막 비정상). 값 불변(Q10).
+            degraded.append(account_id)
+    degraded.sort()
+    return (cap_healthy, cap_reason, degraded)
+
+
+def _ws_degraded_probe() -> set[int]:
+    """account_health가 등록받는 WS-degraded probe(의존 역전 — leaf가 lifecycle을 import
+    안 하게). 호출 시점에 현재 WS-저하 account 집합 반환."""
+    return set(_capture_status(_now_ms())[2])
+
+
+# 모듈 로드 시 1회 push 등록 — probe는 _state(reset로 비워짐)를 시점-평가하므로 stateless,
+# reset_for_tests가 따로 해제할 필요 없음(빈 _state → 빈 집합).
+account_health.register_ws_probe(_ws_degraded_probe)
+
+
 def get_status() -> LiveStatus:
     """Read the current live status. Always safe to call. dynamic-N 집계(스펙 §5.7)."""
-    from datetime import datetime  # noqa: PLC0415
-
-    from .kis_client import KIS_KST  # noqa: PLC0415
-
     streams = _state.streams
     poller = _state.rest_poller
     now_ms = _now_ms()
@@ -344,35 +392,15 @@ def get_status() -> LiveStatus:
         last_tick_ms = max(ticks)
 
     # 캡처 헬스 — 존재 conn 기준 AND(Q11). conn 0(C4 poller-only)이면 idle.
+    # streams 있을 때의 cap_healthy/reason/degraded는 _capture_status가 단일 계산
+    # (account_health WS-probe와 공유, 2026-06-10 dedup). poller-only(streams 없음)는
+    # running과 결합해 idle/offline 판정(여기 전용).
     if started is None or not streams:
         cap_healthy = bool(running)        # poller-only면 서비스 중 → healthy/idle
         cap_reason = "idle" if running else "offline"
         degraded: list[int] = []
     else:
-        kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
-        session_open_ms = int(
-            kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
-        )
-        ref_ms = max(started, session_open_ms)
-        # market_closed는 전역 상태(계좌별 결함 아님) → per-conn 루프 밖에서 단락.
-        # ★ advisor 버그: _capture_health는 market_closed면 소켓을 보기 전에
-        # (False,"closed")를 반환 → 루프 안에서 쓰면 밤/주말마다 모든 conn이
-        # degraded로 잡혀 degraded_accounts=[0,1] 거짓 신호(Q10 목적과 정반대).
-        if _market_clock_closed_for_capture(now_ms):
-            cap_healthy, cap_reason, degraded = False, "closed", []
-        else:
-            cap_healthy, cap_reason, degraded = True, "healthy", []
-            for account_id, conn in streams.items():
-                ws = getattr(conn.stream_obj, "ws", None)
-                healthy, reason = _capture_health(
-                    running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
-                    stale_after_ms=_WATCHDOG_STALE_AFTER_MS, market_closed=False,
-                )
-                if not healthy:
-                    cap_healthy = False
-                    cap_reason = reason     # worst(마지막 비정상). 값 불변(Q10).
-                    degraded.append(account_id)
-            degraded.sort()
+        cap_healthy, cap_reason, degraded = _capture_status(now_ms)
 
     return LiveStatus(
         running=running,
@@ -479,10 +507,16 @@ def _ensure_poller(data_dir: Path) -> "LiveRestPoller | None":
 
     if _state.rest_poller is not None:
         return _state.rest_poller
-    kis = kis_runtime.ensure_kis_client_from_env(data_dir)  # account 0
-    if kis is None:
+    # account 0 creds 게이트: 없으면 폴러 미생성(완전 오프라인). 있으면 account 0
+    # client를 미리 확보(부팅 비용·재사용)하되, 폴러엔 *고정* client가 아니라 background
+    # resolver를 준다(계정 분리 2026-06-09): 매 사이클 kis_for_role('background')로 account
+    # 1(유휴 REST 버킷)을 동적 선택, 저하 시 account 0 폴백. 폴러는 1회 생성·재사용이라
+    # resolver 클로저가 라우팅을 시점-평가하므로 재시작/저하 전환에 별도 동기화 불필요.
+    if kis_runtime.ensure_kis_client_from_env(data_dir) is None:  # account 0
         return None
-    poller = LiveRestPoller(kis, _buffer)
+    poller = LiveRestPoller(
+        lambda: kis_access.kis_for_role("background", data_dir), _buffer
+    )
     poller.start()
     return poller
 
@@ -671,9 +705,9 @@ async def _ws_watchdog_check(
     from datetime import datetime  # noqa: PLC0415
 
     from .kis_client import KIS_KST  # noqa: PLC0415
-    from .session_gate import ws_capture_window  # noqa: PLC0415
+    from .session_gate import ws_capture_window_async  # noqa: PLC0415
 
-    if not await asyncio.to_thread(ws_capture_window, now_ms):
+    if not await ws_capture_window_async(now_ms):  # async 진입점이 to_thread 봉인(blocking 계약)
         return False
     started = _state.started_at_ms
     if started is None:

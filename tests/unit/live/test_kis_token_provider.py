@@ -54,6 +54,40 @@ def test_issue_token_failure_raises(tmp_path: Path) -> None:
         provider.close()
 
 
+def test_issue_failure_invokes_on_issue_failure_callback(tmp_path: Path) -> None:
+    """FM5(계정 분리): 토큰 발급 실패 시 on_issue_failure 콜백을 1회 호출하고 에러를
+    전파한다 — kis_runtime이 이 콜백으로 background 계정을 REST-degraded latch한다."""
+    transport = httpx.MockTransport(lambda req: httpx.Response(500, text="boom"))
+    fired = {"n": 0}
+    provider = KisTokenProvider(
+        _creds(), tmp_path / "token.json",
+        _transport=transport, on_issue_failure=lambda: fired.__setitem__("n", fired["n"] + 1),
+    )
+    try:
+        with pytest.raises(KisAuthError):
+            provider.get_token()
+        assert fired["n"] == 1  # 콜백 발화
+    finally:
+        provider.close()
+
+
+def test_on_issue_failure_not_called_on_success(tmp_path: Path) -> None:
+    """발급 성공 시 콜백 미발화(정상 background 계정을 잘못 degraded 하지 않는다)."""
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(200, json={"access_token": "OK", "expires_in": 86400})
+    )
+    fired = {"n": 0}
+    provider = KisTokenProvider(
+        _creds(), tmp_path / "token.json",
+        _transport=transport, on_issue_failure=lambda: fired.__setitem__("n", fired["n"] + 1),
+    )
+    try:
+        assert provider.get_token() == "OK"
+        assert fired["n"] == 0
+    finally:
+        provider.close()
+
+
 def test_token_near_expiry_triggers_reissue(tmp_path: Path) -> None:
     near_expiry = (datetime.now(KIS_KST) + timedelta(minutes=5)).isoformat()
     cache = tmp_path / "token.json"
