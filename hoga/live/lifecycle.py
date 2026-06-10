@@ -24,78 +24,26 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from hoga.api.models import WatchlistDocument
     from .rest_poller import LiveRestPoller
 
 from pydantic import BaseModel, Field
 
 from . import account_health, kis_access, kis_runtime  # health probe / role 라우팅 / 리소스
 from .buffer import LiveBuffer
+from .live_session import (  # noqa: F401 — C3 step 1 재export(호출부·테스트 호환)
+    _PER_ACCOUNT_MAX,
+    KIS_WS_MAX_REGISTRATIONS,
+    LIVE_SET_MAX_CODES,
+    TRS_PER_CODE,
+    _compute_live_set,
+    _StreamConn,
+    display_ordered_codes,
+    live_set_codes,
+    partition_live_set,
+)
 from .promote import promote_today
 
 _log = logging.getLogger(__name__)
-
-
-# ── Live Set constants (spec §4·§5.1) ─────────────────────────────────────────
-
-KIS_WS_MAX_REGISTRATIONS = 41   # appkey당, (tr_id, code) 쌍 기준 — spec §4 검증 완료
-TRS_PER_CODE = 3                # 호가 + 체결 + 회원사(H0STMBC0)
-_PER_ACCOUNT_MAX = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # = 13 (계좌당 한도)
-# 동적 상한: 13 * n_configured. start에서 n_configured를 곱해 _compute_live_set이 사용.
-LIVE_SET_MAX_CODES = _PER_ACCOUNT_MAX  # 1계좌 기본(_compute_live_set이 n_configured로 동적 절단)
-
-
-def partition_live_set(codes: list[str], n: int) -> list[list[str]]:
-    """display-order 연속 배정: account k = codes[k*13:(k+1)*13] (스펙 §5.3, Q4).
-
-    n개 리스트를 항상 반환(후행은 빈 리스트일 수 있음). 연속 슬라이스라
-    13-경계를 안 넘는 코드는 계좌 고정 → 재정렬 churn 최소(위험 #4). 해시 배정
-    대신 연속을 택한 이유: CONTEXT.md 'top-13=경계' 모델 일치 + explicit>clever.
-    """
-    return [codes[k * _PER_ACCOUNT_MAX:(k + 1) * _PER_ACCOUNT_MAX] for k in range(n)]
-
-
-def display_ordered_codes(doc: WatchlistDocument) -> list[str]:
-    """Watchlist Panel 표시 순서로 코드 평탄화 (2026-06-06 결정, watchlist v2 폴더화).
-
-    Step 0 확인 (grouping.ts:28-43 + WatchlistDrawer.tsx:222,228):
-    - folders[]를 `.order` 오름차순으로 정렬 → 각 폴더의 entry를 `.order` 오름차순
-    - 미분류(folder_id=None) 그룹은 **폴더들 뒤** (groupByFolder가 push로 마지막에 추가)
-    - 빈 미분류는 WatchlistDrawer가 숨기지만 코드 수집에는 영향 없음
-
-    정렬 키: (folder rank — 미분류는 len(folders), entry.order)
-    """
-    sorted_folders = sorted(doc.folders, key=lambda f: f.order)
-    folder_rank = {f.id: i for i, f in enumerate(sorted_folders)}
-    n_folders = len(sorted_folders)
-
-    def _key(entry):  # type: ignore[no-untyped-def]
-        rank = folder_rank[entry.folder_id] if entry.folder_id is not None else n_folders
-        return (rank, entry.order)
-
-    return [e.code for e in sorted(doc.entries, key=_key)]
-
-
-def _compute_live_set(data_dir: Path, n_configured: int = 1) -> list[str]:
-    """Live Set 산출 파이프라인(start/refresh 공용):
-    load_document → 표시 순서 평탄화 → symbol-master 필터(cold cache 무필터
-    폴백) → 상위 (13 * n_configured) 절단."""
-    from hoga.api import symbols as _symbols  # noqa: PLC0415
-    from hoga.api.watchlist import load_document  # noqa: PLC0415
-
-    ordered = display_ordered_codes(load_document(data_dir))
-    known = {h.code for h in _symbols.search("", limit=10_000)}
-    if known:
-        dropped = [c for c in ordered if c not in known]
-        if dropped:
-            _log.warning("live.stream.codes_unknown dropped=%r", dropped)
-        ordered = [c for c in ordered if c in known]
-    return ordered[: _PER_ACCOUNT_MAX * n_configured]
-
-
-def live_set_codes(doc: WatchlistDocument) -> list[str]:
-    """Live Set = 패널 표시 순서 상위 13 (테스트 전용 헬퍼 — 실경로는 _compute_live_set) (CONTEXT.md 'Live Set', 그릴링 Q3 + 2026-06-06 개정)."""
-    return display_ordered_codes(doc)[:LIVE_SET_MAX_CODES]
 
 
 # ── Wire model ─────────────────────────────────────────────────────────────────
@@ -135,16 +83,6 @@ class LiveStatus(BaseModel):
 # ── State ──────────────────────────────────────────────────────────────────────
 
 @dataclass
-class _StreamConn:
-    """한 KIS 계좌의 WS 연결 묶음 (dynamic-N: codes 항상 비어있지 않음)."""
-    account_id: int
-    stream_obj: object            # LiveStream — 자체 writer 소유, code-disjoint
-    ws_task: "asyncio.Task"       # type: ignore[type-arg]
-    flush_task: "asyncio.Task"    # type: ignore[type-arg]
-    codes: tuple[str, ...]
-
-
-@dataclass
 class _State:
     """In-process state of the live stream. Mutated only via this module."""
 
@@ -154,7 +92,7 @@ class _State:
     # dynamic-N: account_id 키 연결 dict (Task 7이 채움)
     streams: dict[int, _StreamConn] = field(default_factory=dict)
     live_set: tuple[str, ...] = field(default_factory=tuple)
-    rest_poller: "LiveRestPoller | None" = None
+    rest_poller: LiveRestPoller | None = None
 
 
 _state = _State()
@@ -216,12 +154,12 @@ def _build_conn(account_id: int, codes: list[str], data_dir: Path) -> _StreamCon
 
     각 conn은 자체 LiveStream+LiveWriter(code-disjoint라 (date,code) 충돌 없음).
     공유: 단일 _buffer. KisClient는 kis_runtime의 account별 싱글톤(재사용)."""
-    from .stream import LiveStream  # noqa: PLC0415
-    from .writer import LiveWriter  # noqa: PLC0415
-    from .ws_client import KisWsClient  # noqa: PLC0415
     # sync ws_capture_window을 의도적으로 씀(아래 gate_fn): KisWsClient가 gate_fn을
     # `await to_thread(gate_fn)`로 감싸 blocking을 격리한다 — 유일한 합법적 sync 사용처.
     from .session_gate import ws_capture_window  # noqa: PLC0415
+    from .stream import LiveStream  # noqa: PLC0415
+    from .writer import LiveWriter  # noqa: PLC0415
+    from .ws_client import KisWsClient  # noqa: PLC0415
 
     kis = kis_runtime.ensure_kis_client_for_account(account_id, data_dir)
     if kis is None:  # configured 보장 위반 — 방어적
@@ -337,6 +275,7 @@ def _capture_status(now_ms: int) -> tuple[bool, str, list[int]]:
     if _market_clock_closed_for_capture(now_ms):
         return (False, "closed", [])
     from datetime import datetime  # noqa: PLC0415
+
     from .kis_client import KIS_KST  # noqa: PLC0415
     kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
     session_open_ms = int(
@@ -500,7 +439,7 @@ async def start_live_stream(*, data_dir: Path) -> bool:
         return await _start_live_stream_locked(data_dir=data_dir)
 
 
-def _ensure_poller(data_dir: Path) -> "LiveRestPoller | None":
+def _ensure_poller(data_dir: Path) -> LiveRestPoller | None:
     """rest_poller를 1회 생성·재사용(§3 분리). creds(account 0) 없으면 None.
     이미 있으면 그대로 반환 → _subscribed(보는종목) 보존(잠복 버그 수정)."""
     from .rest_poller import LiveRestPoller  # noqa: PLC0415
@@ -521,7 +460,7 @@ def _ensure_poller(data_dir: Path) -> "LiveRestPoller | None":
     return poller
 
 
-def _sync_exclusion(poller: "LiveRestPoller | None", live_set: tuple[str, ...]) -> None:
+def _sync_exclusion(poller: LiveRestPoller | None, live_set: tuple[str, ...]) -> None:
     """배타 동기화: WS 수집 종목(live_set)을 poller 배제로(ADR-0067 §5).
     exclude-then-subscribe 순서를 위해 conn build/update 전에 호출(스펙 §5.5)."""
     if poller is not None:
