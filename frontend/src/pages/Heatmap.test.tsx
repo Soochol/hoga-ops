@@ -55,11 +55,12 @@ beforeEach(() => {
   );
 });
 
-it('폴더·종목·phase 배지 렌더', async () => {
+it('폴더·종목·phase 배지·색 범례 렌더', async () => {
   renderPage();
   expect(await screen.findByText('반도체')).toBeInTheDocument();
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
   expect(screen.getByText(/장중/)).toBeInTheDocument();
+  expect(screen.getByLabelText(/색 범례/)).toBeInTheDocument();   // spec §8 색 범례 바
 });
 
 it('행 클릭 → activeCode 설정(jump-to-live)', async () => {

@@ -28,3 +28,14 @@ it('미선택 시 추가 버튼 비활성', () => {
   fireEvent.click(screen.getByRole('button', { name: '종목 추가' }));
   expect(screen.getByRole('button', { name: '추가' })).toBeDisabled();
 });
+
+it('addToFolder 실패 시 unhandled rejection 없이 팝오버 유지(재시도 가능)', async () => {
+  addToFolder.mockRejectedValueOnce(new Error('boom'));
+  render(<FolderAddButton folderId="f1" />);
+  fireEvent.click(screen.getByRole('button', { name: '종목 추가' }));
+  fireEvent.click(screen.getByTestId('pick'));
+  fireEvent.click(screen.getByRole('button', { name: '추가' }));
+  await waitFor(() => expect(addToFolder).toHaveBeenCalledWith('005930', 'f1'));
+  // 실패 후에도 팝오버(추가 버튼)가 닫히지 않고 남아 재시도 가능.
+  expect(screen.getByRole('button', { name: '추가' })).toBeInTheDocument();
+});

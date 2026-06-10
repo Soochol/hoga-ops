@@ -13,7 +13,14 @@ export function FolderAddButton({ folderId }: { folderId: string }) {
   const close = () => { setOpen(false); setPicked(null); };
   const submit = async () => {
     if (!picked) return;
-    await addToFolder(picked.code, folderId);
+    // fire-and-forget 핸들러라 실패를 삼켜 unhandled rejection 을 막고, 팝오버를 열어
+    // 둬 재시도/다른 종목 선택을 가능케 한다(GroupNameModal.submit·EntryPane.doMove 패턴).
+    // add 의 비-409 에러(404 unknown_code/네트워크)나 move 실패가 여기로 온다.
+    try {
+      await addToFolder(picked.code, folderId);
+    } catch {
+      return;
+    }
     close();
   };
 

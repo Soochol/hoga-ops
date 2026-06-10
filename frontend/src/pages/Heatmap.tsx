@@ -9,6 +9,7 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
 import { HeatmapBoard } from '../heatmap/HeatmapBoard';
 import { visibleFolderGroups } from '../heatmap/visibleGroups';
+import { HEAT_SAT } from '../heatmap/heat';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
 
 const PHASE_LABEL: Record<string, string> = { pre_open: '장전', open: '● 장중', closed: '장마감' };
@@ -54,6 +55,16 @@ export function Heatmap() {
         <div className="flex-1" />
         <button className="text-xs px-2 py-1 rounded border border-border text-fg-dim hover:text-accent"
           onClick={() => setShowNewGroup(true)}>＋ 새 그룹</button>
+        {/* 색 범례 (spec §8): 등락률 히트 농도 키. 라벨은 HEAT_SAT(포화점)에서 파생돼
+            heat.ts 와 절대 어긋나지 않는다. 색은 --price-down(파랑·하락)↔--price-up(빨강·상승). */}
+        <div className="flex items-center gap-1.5 text-xs font-mono text-fg-dimmer"
+             aria-label={`색 범례 -${HEAT_SAT}% ~ +${HEAT_SAT}%`}>
+          <span>-{HEAT_SAT}%</span>
+          <span className="h-2 w-20 rounded-sm" style={{
+            background: 'linear-gradient(90deg, rgba(37,99,235,0.42), rgba(37,99,235,0.10), transparent, rgba(220,38,38,0.10), rgba(220,38,38,0.42))',
+          }} />
+          <span>+{HEAT_SAT}%</span>
+        </div>
         <div className="flex border border-border rounded overflow-hidden text-xs">
           <button
             className={sortMode === 'change' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
