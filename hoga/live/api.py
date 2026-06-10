@@ -16,7 +16,7 @@ from hoga.live.kis_client import KisApiError, KisQuote, KisRateLimitError
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
-from . import kis_runtime
+from . import kis_access
 from . import lifecycle
 from .buffer import LiveBuffer
 from .lifecycle import LiveStatus
@@ -394,12 +394,12 @@ def build_router(
 
     def _kis_for_background() -> "KisClient | None":
         """배경 REST(quotes·investor-net)용 KisClient — N=2면 account 1(직전엔 유휴였던
-        REST 버킷), 아니면 account 0 폴백(kis_runtime.kis_for_role, 계정 분리 2026-06-09).
+        REST 버킷), 아니면 account 0 폴백(kis_access.kis_for_role, 계정 분리 2026-06-09).
         foreground(past-candles/daily)는 account 0 전용이라 이 헬퍼를 쓰지 않는다.
         data_dir 미배선(베어 단위테스트)이면 주입된 get_kis_client로 폴백한다 — kis_for_role은
         env/싱글톤(프로세스 전역)을 보므로 data_dir이 라우팅 활성화 신호."""
         if data_dir is not None:
-            return kis_runtime.kis_for_role("background", data_dir)
+            return kis_access.kis_for_role("background", data_dir)
         return get_kis_client() if get_kis_client is not None else None
 
     @router.get("/quotes", response_model=LiveQuotesResponse)

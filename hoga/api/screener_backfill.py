@@ -239,13 +239,13 @@ async def run_backfill(data_dir: Path) -> dict:
     """프로덕션 진입: KIS 클라이언트로 fetch_adj/fetch_raw 를 묶어 run_backfill_with 실행."""
     from datetime import datetime
 
-    from hoga.live import kis_runtime
+    from hoga.live import kis_access
     from hoga.live.kis_client import KIS_KST
 
     sdir = data_dir / "screener"
     # 전체 백필도 배경 배치(계정 분리 2026-06-09): background 계정으로 라우팅 → 마감 후
     # 사용자 차트(account 0 foreground)와 경합 제거. creds 게이트만 먼저(없으면 loud raise).
-    if kis_runtime.kis_for_role("background", data_dir) is None:
+    if kis_access.kis_for_role("background", data_dir) is None:
         raise RuntimeError("KIS creds missing (KIS_APP_KEY/SECRET) — cannot backfill")
 
     # FM5: client를 한 번 캡처하면 acct1 토큰 실패 시 reconcile/factor의 per-code except가
@@ -256,7 +256,7 @@ async def run_backfill(data_dir: Path) -> dict:
             res = await client.fetch_past_daily_candles(code, frm, to, adjust=True)   # 수정주가
             return [(datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(), float(c.close))
                     for c in res.candles]
-        return await kis_runtime.fetch_background_with_auth_fallback(data_dir, _do)
+        return await kis_access.fetch_for_role("background", data_dir, _do)
 
     async def fetch_raw(code: str, frm: str, to: str):
         async def _do(client):
@@ -264,6 +264,6 @@ async def run_backfill(data_dir: Path) -> dict:
             return [DailyBar(code, datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(),
                              float(c.open), float(c.high), float(c.low), float(c.close), c.volume)
                     for c in res.candles]
-        return await kis_runtime.fetch_background_with_auth_fallback(data_dir, _do)
+        return await kis_access.fetch_for_role("background", data_dir, _do)
 
     return await run_backfill_with(sdir, fetch_adj=fetch_adj, fetch_raw=fetch_raw)

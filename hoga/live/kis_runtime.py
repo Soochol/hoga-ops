@@ -18,15 +18,11 @@ from __future__ import annotations
 
 import os
 import threading
-from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TypeVar
 
 from . import account_health
-from .kis_client import KisAuthError, KisClient, KisCredentials
+from .kis_client import KisClient, KisCredentials
 from .kis_token_provider import KisTokenProvider
-
-_T = TypeVar("_T")
 
 _kis_clients: dict[int, KisClient] = {}
 _kis_token_providers: dict[int, KisTokenProvider] = {}
@@ -200,68 +196,8 @@ def configured_account_ids(data_dir: Path) -> list[int]:
     return ids
 
 
-# ── Role-based account routing (2026-06-09 account-split) ──────────────────────
-# #53이 2계좌 인증을 깔면서 account 1의 REST 15/s 버킷이 통째로 유휴였다(WS approval
-# 전용). 이 라우터는 사용자가 차트 그려지길 기다리는 foreground REST(past-candles/
-# daily)를 account 0 전용으로, 백그라운드 REST(rest_poller·quotes·investor·screener)를
-# account 1로 보내 — 사용자 fetch가 백그라운드와 아예 경합하지 않게 하고 총 REST를
-# 30/s로 만든다. N=1(키 1개)이거나 account 1이 저하/미설정이면 account 0로 폴백하며,
-# 이때는 ②(_TokenBucket foreground 우선순위)가 공유 버킷에서 foreground를 보호한다.
-
-def kis_for_role(role: str, data_dir: Path) -> KisClient | None:
-    """role('foreground'|'background')에 따라 account별 KisClient를 반환한다(호출
-    시점 평가 → degraded 동적 폴백, 별도 상태 동기화 불필요).
-
-    - foreground: 항상 account 0(사용자 전용 15/s, 백그라운드와 경합 없음).
-    - background: N≥2 & account 1 비-degraded면 account 1(ensure로 WS 유무와 무관하게
-      REST 버킷 확보), 아니면 account 0 폴백.
-
-    N=2 정상 분리에선 acct0=foreground만·acct1=background만이라 ② foreground 우선순위는
-    dormant. N=1/degraded 폴백 시 공유 버킷이 되어 ②가 활성화된다.
-
-    background가 ensure_kis_client_for_account(1)로 acct1 REST 버킷을 *직접* 확보하는
-    이유: lifecycle은 작은 관심목록(≤13종목)에서 conn[1]을 안 만든다(빈 파티션 →
-    연결 없음, lifecycle §6). get_kis_client(1)에 의존하면 그 흔한 경우에 acct1이
-    None이라 조용히 acct0로 폴백 → 30/s 이득이 무효가 된다. ensure는 WS conn 유무와
-    무관하게(관심목록 크기와 무관하게) acct1 버킷을 확보한다. 첫 REST bearer 토큰
-    발급은 ensure/get 무관하게 첫 호출에서 일어나므로(FM5) 'REST 선접촉 회피' 논거는
-    적용되지 않는다."""
-    if (role == "background" and 1 in configured_account_ids(data_dir)
-            and not account_health.is_degraded(1)):
-        client = ensure_kis_client_for_account(1, data_dir)
-        if client is not None:
-            return client
-    # account 0 폴백: 이미 생성/주입된 싱글톤 우선(부팅 생성 + 라우트 fake 주입), 없으면
-    # env에서 지연 생성(빈 관심목록·무갭일 등 싱글톤 미생성 상태 — /quotes lazy-init 승계).
-    existing = get_kis_client(0)
-    if existing is not None:
-        return existing
-    return ensure_kis_client_from_env(data_dir)
-
-
-async def fetch_background_with_auth_fallback(
-    data_dir: Path, fetch_fn: Callable[[KisClient], Awaitable[_T]]
-) -> _T:
-    """background 계정으로 fetch_fn(client)을 실행하되, account 1 REST 토큰 실패
-    (KisAuthError)면 account 0로 재해결해 1회 재시도한다(FM5).
-
-    스크리너 배치(EOD 갭 캐치업·전체 백필)용 — 이들은 client를 한 번 해결해 여러 코드에
-    재사용하므로, 토큰 실패 시 첫 코드에서 provider 콜백이 acct1을 latch한 뒤 *이* 호출이
-    account 0로 재해결해 그 코드를 살린다(이후 코드는 latch로 곧장 account 0). 폴러/quotes/
-    investor는 매 사이클/요청 재해결이라 latch만으로 self-heal → 이 헬퍼 불필요.
-
-    client 미해결(creds 전무) 또는 account 0 자체 실패(재해결이 동일 client = N=1/이미
-    account 0)면 KisAuthError를 전파한다 — 호출부가 침묵 사망 없이 실패를 표면화하도록."""
-    client = kis_for_role("background", data_dir)
-    if client is None:
-        raise KisAuthError("no background KIS client available (creds missing)")
-    try:
-        return await fetch_fn(client)
-    except KisAuthError:
-        client0 = kis_for_role("background", data_dir)  # latch 후 → account 0
-        if client0 is None or client0 is client:
-            raise
-        return await fetch_fn(client0)
+# role→account 라우팅(kis_for_role) + FM5 폴백(fetch_for_role)은 kis_access 모듈로 추출됨
+# (2026-06-10). kis_runtime은 리소스 소유(account별 싱글톤·ensure_*·env creds)만 담당한다.
 
 
 async def aclose_kis_client() -> None:

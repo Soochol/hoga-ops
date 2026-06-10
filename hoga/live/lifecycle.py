@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 from pydantic import BaseModel, Field
 
-from . import account_health, kis_runtime  # account_health: WS probe 등록 / kis_runtime: reset·start
+from . import account_health, kis_access, kis_runtime  # health probe / role 라우팅 / 리소스
 from .buffer import LiveBuffer
 from .promote import promote_today
 
@@ -515,7 +515,7 @@ def _ensure_poller(data_dir: Path) -> "LiveRestPoller | None":
     if kis_runtime.ensure_kis_client_from_env(data_dir) is None:  # account 0
         return None
     poller = LiveRestPoller(
-        lambda: kis_runtime.kis_for_role("background", data_dir), _buffer
+        lambda: kis_access.kis_for_role("background", data_dir), _buffer
     )
     poller.start()
     return poller

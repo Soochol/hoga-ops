@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 import hoga.live.account_health as account_health
+import hoga.live.kis_access as kis_access
 import hoga.live.kis_runtime as kis_runtime
 
 
@@ -95,8 +96,8 @@ def test_kis_for_role_n1_all_account0(tmp_path, monkeypatch):
     """N=1(키 1개): foreground·background 모두 account 0(공유 버킷, ②가 우선순위 보호)."""
     _set_one_account(monkeypatch)
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
-    assert kis_runtime.kis_for_role("foreground", tmp_path) is c0
-    assert kis_runtime.kis_for_role("background", tmp_path) is c0
+    assert kis_access.kis_for_role("foreground", tmp_path) is c0
+    assert kis_access.kis_for_role("background", tmp_path) is c0
 
 
 def test_kis_for_role_n2_split(tmp_path, monkeypatch):
@@ -106,8 +107,8 @@ def test_kis_for_role_n2_split(tmp_path, monkeypatch):
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
     c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
     assert c0 is not c1
-    assert kis_runtime.kis_for_role("foreground", tmp_path) is c0
-    assert kis_runtime.kis_for_role("background", tmp_path) is c1
+    assert kis_access.kis_for_role("foreground", tmp_path) is c0
+    assert kis_access.kis_for_role("background", tmp_path) is c1
 
 
 def test_kis_for_role_n2_background_degraded_falls_back(tmp_path, monkeypatch):
@@ -115,7 +116,7 @@ def test_kis_for_role_n2_background_degraded_falls_back(tmp_path, monkeypatch):
     _set_two_accounts(monkeypatch)
     monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: {1})
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
-    assert kis_runtime.kis_for_role("background", tmp_path) is c0
+    assert kis_access.kis_for_role("background", tmp_path) is c0
 
 
 def test_kis_for_role_foreground_never_uses_account1(tmp_path, monkeypatch):
@@ -123,7 +124,7 @@ def test_kis_for_role_foreground_never_uses_account1(tmp_path, monkeypatch):
     _set_two_accounts(monkeypatch)
     monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
-    assert kis_runtime.kis_for_role("foreground", tmp_path) is c0
+    assert kis_access.kis_for_role("foreground", tmp_path) is c0
 
 
 def test_is_degraded_swallows_probe_errors(monkeypatch):
@@ -143,8 +144,8 @@ def test_kis_for_role_account0_prefers_injected_singleton_over_env(tmp_path, mon
     sentinel = object()
     kis_runtime.set_kis_client(sentinel, 0)  # type: ignore[arg-type]
     # env 부재 → ensure_kis_client_for_account(0)는 None이지만 dict 우선이라 sentinel 반환.
-    assert kis_runtime.kis_for_role("foreground", tmp_path) is sentinel
-    assert kis_runtime.kis_for_role("background", tmp_path) is sentinel
+    assert kis_access.kis_for_role("foreground", tmp_path) is sentinel
+    assert kis_access.kis_for_role("background", tmp_path) is sentinel
 
 
 def test_kis_for_role_account0_lazy_ensures_when_dict_empty(tmp_path, monkeypatch):
@@ -154,7 +155,7 @@ def test_kis_for_role_account0_lazy_ensures_when_dict_empty(tmp_path, monkeypatc
     created = object()
     monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda data_dir: created)
     assert kis_runtime.get_kis_client(0) is None  # dict 비어있음
-    assert kis_runtime.kis_for_role("background", tmp_path) is created
+    assert kis_access.kis_for_role("background", tmp_path) is created
 
 
 # ── FM5: REST 토큰 실패 latch → background account 0 폴백 (2026-06-09) ────────────
@@ -169,15 +170,15 @@ def test_background_routes_to_account0_after_rest_auth_latch(tmp_path, monkeypat
     monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
     c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
-    assert kis_runtime.kis_for_role("background", tmp_path) is c1  # 평상시 account 1
+    assert kis_access.kis_for_role("background", tmp_path) is c1  # 평상시 account 1
     with caplog.at_level(logging.WARNING, logger="hoga.live.account_health"):
         account_health.mark_rest_auth_degraded(1)  # 토큰 provider 콜백이 호출하는 것
         account_health.mark_rest_auth_degraded(1)  # 멱등 — 로그는 1회만
     auth_warnings = [r for r in caplog.records if "REST-degraded" in r.message]
     assert len(auth_warnings) == 1, "latch 전환 로그가 1회(once-only)가 아님"
     assert account_health.is_degraded(1) is True
-    assert kis_runtime.kis_for_role("background", tmp_path) is c0  # latch 후 account 0
-    assert kis_runtime.kis_for_role("foreground", tmp_path) is c0  # foreground 불변
+    assert kis_access.kis_for_role("background", tmp_path) is c0  # latch 후 account 0
+    assert kis_access.kis_for_role("foreground", tmp_path) is c0  # foreground 불변
 
 
 def test_mark_rest_auth_degraded_noops_for_account0(monkeypatch):
@@ -227,7 +228,7 @@ async def test_fetch_background_fallback_retries_on_account0(tmp_path, monkeypat
             raise KisAuthError("acct1 token fail")
         return "ok"
 
-    result = await kis_runtime.fetch_background_with_auth_fallback(tmp_path, fetch_fn)
+    result = await kis_access.fetch_for_role("background", tmp_path, fetch_fn)
     assert result == "ok"
     assert seen == [c1, c0]  # account 1 시도 → 폴백 → account 0 성공
 
@@ -244,7 +245,7 @@ async def test_fetch_background_fallback_reraises_when_account0_also_fails(tmp_p
         raise KisAuthError("acct0 fail")
 
     with pytest.raises(KisAuthError):
-        await kis_runtime.fetch_background_with_auth_fallback(tmp_path, fetch_fn)
+        await kis_access.fetch_for_role("background", tmp_path, fetch_fn)
     assert calls["n"] == 1  # 동일 client 재시도 안 함
 
 
@@ -258,4 +259,4 @@ async def test_fetch_background_fallback_raises_when_no_client(tmp_path, monkeyp
         raise AssertionError("fetch_fn should not be called when no client")
 
     with pytest.raises(KisAuthError):
-        await kis_runtime.fetch_background_with_auth_fallback(tmp_path, fetch_fn)
+        await kis_access.fetch_for_role("background", tmp_path, fetch_fn)

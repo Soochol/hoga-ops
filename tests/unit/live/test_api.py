@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture(autouse=True)
 def _hermetic_kis_env(monkeypatch):
-    """배경 라우트(quotes·investor-net)는 kis_runtime.kis_for_role → configured_account_ids
+    """배경 라우트(quotes·investor-net)는 kis_access.kis_for_role → configured_account_ids
     로 ambient os.environ을 읽는다(계정 분리 2026-06-09). 개발 셸이 실제 KIS creds를
     export하거나 다른 테스트의 create_app→load_env가 os.environ을 오염시키면 background가
     실제 account 1 클라이언트를 만들려 한다(비결정 + 네트워크). 기본을 N=0(전부 account 0
