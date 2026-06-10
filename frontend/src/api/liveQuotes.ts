@@ -47,13 +47,31 @@ export function useQuotes(codes: string[]) {
   });
 }
 
-/** codes 의 Live Quote 를 코드→quote 조회 Map 으로 묶는다. useQuotes + Map 빌드
- *  + null-가드(quotes 미도착 시 빈 Map)를 한 곳에 캡슐화 — 관심종목/스크리너
- *  패널이 복제하던 패턴의 단일 출처. 없는 코드는 .get → undefined. */
-export function useQuoteByCode(codes: string[]) {
-  const { data } = useQuotes(codes);
-  return useMemo(
-    () => new Map((data?.quotes ?? []).map((q) => [q.code, q])),
-    [data],
+export interface LiveQuoteOverlay {
+  /** 코드→Live Quote 조회. 없는 코드는 .get → undefined. */
+  quoteByCode: Map<string, LiveQuote>;
+  /** 시세 단계(pre_open/open/closed). 미도착 시 undefined. */
+  phase: LiveQuotesResponse['phase'] | undefined;
+  /** react-query dataUpdatedAt(ms). 미도착 시 0. */
+  dataUpdatedAt: number;
+}
+
+/** Live Quote 오버레이(ADR-0056 단일 merge seam)의 deep 접근자: codes 의 현재가
+ *  오버레이를 {quoteByCode, phase, dataUpdatedAt} 한 인터페이스로 노출한다. Map 조립
+ *  + null-가드 + 쿼리 메타(phase·신선도)를 한 곳에 모아, 셋 다 필요한 소비자(관심맵)가
+ *  인라인으로 Map 을 다시 만들지 않게 한다. Map 만 필요하면 useQuoteByCode(thin view). */
+export function useLiveQuoteOverlay(codes: string[]): LiveQuoteOverlay {
+  const q = useQuotes(codes);
+  const quoteByCode = useMemo(
+    () => new Map<string, LiveQuote>((q.data?.quotes ?? []).map((x) => [x.code, x])),
+    [q.data],
   );
+  return { quoteByCode, phase: q.data?.phase, dataUpdatedAt: q.dataUpdatedAt };
+}
+
+/** codes 의 Live Quote 를 코드→quote 조회 Map 으로 묶는다 — useLiveQuoteOverlay 의
+ *  thin view. Map 만 필요한 관심종목/스크리너 패널·라이브 상태바가 쓴다(시그니처·
+ *  동작·메모 안정성 불변). 없는 코드는 .get → undefined. */
+export function useQuoteByCode(codes: string[]): Map<string, LiveQuote> {
+  return useLiveQuoteOverlay(codes).quoteByCode;
 }

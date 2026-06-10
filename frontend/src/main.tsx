@@ -7,6 +7,7 @@ import Inventory from './pages/Inventory';
 import { Screener } from './pages/Screener';
 import Capture from './pages/Capture';
 import Settings from './pages/Settings';
+import { Heatmap } from './pages/Heatmap';
 import './styles/global.css';
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, retry: 1 } } });
@@ -18,6 +19,7 @@ createRoot(document.getElementById('root')!).render(
         <Route element={<App />}>
           <Route path="/" element={<Navigate to="/live" replace />} />
           <Route path="live" element={<LivePage />} />
+          <Route path="heatmap" element={<Heatmap />} />
           <Route path="inventory" element={<Inventory />} />
           <Route path="screener" element={<Screener />} />
           <Route path="capture" element={<Capture />} />

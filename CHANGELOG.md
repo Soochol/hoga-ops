@@ -3,6 +3,34 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.13.0] - 2026-06-10
+
+### Added
+- **관심맵 (`/heatmap`) — 관심종목 히트맵 보드**: 한 화면에 모든 섹터 폴더(미분류·빈 폴더 제외)의
+  관심종목을 신문형 CSS multi-column으로 펼쳐 **Live Quote**(현재가·전일대비·등락률)를 등락률
+  히트로 칠하는 풀페이지 보드. 하이브리드 히트(은은한 배경 틴트 ±8% 포화·max α0.42 + KRX 색 숫자,
+  색약 삼중 표현), 정렬 토글(기본 manual=큐레이션 순서 ↔ change=등락률↓ 옵트인 라이브 재정렬),
+  폴더 헤더 평균 등락률 + 인라인 **＋종목**(SymbolSearch 팝오버 → add 후 move), 상단 **＋새 그룹**,
+  색 범례 바, KIS 자격증명 없음/오프라인 배너(`deriveBannerState`+`LiveStateBanner` 재사용). 행 클릭
+  → activeCode + `/live` 점프. 좌측 내비에 Heatmap 추가, 라우트 `/heatmap`. `useWatchlist`+
+  `useQuotes`(10s)+`useLiveStatus` 재사용, **백엔드 무변경**. 신규 `pages/Heatmap.tsx` +
+  `heatmap/*`(Board/Folder/Row/FolderAddButton/heat/visibleGroups/useAddToFolder) + `state/heatmapPrefs`.
+  TDD 10태스크 + plan-eng-review 7개 결정 + 최종 리뷰 SHIP-WITH-MINORS 2건(색 범례·제출 에러가드) 수정.
+
+### Internal
+- **Live Quote 오버레이 deepening(아키텍처 후보1)**: 흩어진 "Live Quote 오버레이"(코드→시세 Map +
+  phase + 갱신시각)를 단일 deep 훅 `useLiveQuoteOverlay(codes)`로 모으고, `useQuoteByCode`를 그
+  thin view(`.quoteByCode`)로 축약했습니다(시그니처·메모 안정성·동작 불변 → 관심종목/스크리너
+  패널·라이브 상태바 무영향). 관심맵을 오버레이 훅으로 전환해 인라인 Map 중복 제거. 후보2(등락률
+  포맷 통합)는 CandleTooltip의 색/텍스트 불일치 "버그"가 `PriceRow`에서 이미 반올림-후-채색으로
+  해결돼 있어(1차 자료 확인) 정당화가 사라지고 표면별 합성이 의도적으로 달라 over-engineering
+  위험 → **드롭**. 후보3(`visibleFolderGroups`)은 히트맵 표시 정책이라 grouping.ts로 안 옮김(no-op).
+  프론트 1658 테스트 통과.
+
+### Docs
+- 관심맵 스펙/플랜(`docs/superpowers/specs|plans/2026-06-10-*`), DESIGN.md 가격 방향 히트 램프 노트,
+  CONTEXT.md "관심맵" 용어 등재.
+
 ## [0.7.12.0] - 2026-06-10
 
 ### Internal

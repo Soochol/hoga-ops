@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useQuoteByCode, quotesRefetchInterval } from './liveQuotes';
+import { useQuoteByCode, useLiveQuoteOverlay, quotesRefetchInterval } from './liveQuotes';
 import * as client from './client';
 
 function wrap() {
@@ -59,6 +59,29 @@ describe('useQuoteByCode', () => {
     act(() => rerender(['000660']));
     // Previous data is retained during the new key's in-flight window.
     expect(result.current.get('005930')?.price).toBe(72400);
+  });
+});
+
+describe('useLiveQuoteOverlay', () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  it('quoteByCode + phase + dataUpdatedAt 를 한 인터페이스로 노출', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      phase: 'open',
+      quotes: [{ code: '005930', price: 70000, change_pct: 5, change_won: 3000 }],
+    });
+    const { result } = renderHook(() => useLiveQuoteOverlay(['005930']), { wrapper: wrap() });
+    await waitFor(() => expect(result.current.quoteByCode.size).toBe(1));
+    expect(result.current.quoteByCode.get('005930')?.price).toBe(70000);
+    expect(result.current.phase).toBe('open');
+    expect(typeof result.current.dataUpdatedAt).toBe('number');
+  });
+
+  it('미도착 시 빈 Map · phase undefined (null-safe)', () => {
+    vi.spyOn(client, 'apiCall').mockReturnValue(new Promise<never>(() => {}));
+    const { result } = renderHook(() => useLiveQuoteOverlay(['005930']), { wrapper: wrap() });
+    expect(result.current.quoteByCode.size).toBe(0);
+    expect(result.current.phase).toBeUndefined();
   });
 });
 

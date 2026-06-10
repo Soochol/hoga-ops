@@ -109,6 +109,11 @@ The design system has a **single density dial** at `:root font-size`.
   - Warning: `--warn` (#F59E0B, amber)
   - Info: `--accent` (teal)
 
+- **Price-direction heat ramp (히트맵 보드 전용):** `frontend/src/heatmap/heat.ts::heatBg()` 가
+  `--price-up`/`--price-down` 을 |등락률| 비례 가변 알파(±8% 포화, max 0.42)로 배경에 사용한다.
+  단일 0.10 칩 토큰의 확장이며 색상 카테고리(가격 방향)는 준수. 숫자는 `priceDirClass()` 색을
+  유지해 배경+숫자+부호 삼중 표현(색약 보조).
+
 - **Dark mode:** Only mode in v1. Light mode is out of scope.
 
 ## Spacing
