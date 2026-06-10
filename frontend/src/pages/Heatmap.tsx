@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useWatchlist } from '../watchlist/useWatchlist';
+import { useWatchlist, useCreateFolder } from '../watchlist/useWatchlist';
 import { groupByFolder } from '../watchlist/grouping';
 import { useQuotes, type LiveQuote } from '../api/liveQuotes';
 import { useLiveStatus } from '../api/liveStatus';
@@ -7,8 +7,8 @@ import { deriveBannerState } from '../live/useLiveBannerState';
 import { LiveStateBanner } from '../live/LiveStateBanner';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
-import { HeatmapBoard, visibleFolderGroups } from '../heatmap/HeatmapBoard';
-import { useCreateFolder } from '../watchlist/useWatchlist';
+import { HeatmapBoard } from '../heatmap/HeatmapBoard';
+import { visibleFolderGroups } from '../heatmap/visibleGroups';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
 
 const PHASE_LABEL: Record<string, string> = { pre_open: '장전', open: '● 장중', closed: '장마감' };
