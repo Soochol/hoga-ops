@@ -5,10 +5,14 @@ import RangeSeriesPane, { type PaneSpec } from './RangeSeriesPane';
 // Each addSeries returns a fresh stub so we can assert which series instance
 // received setData after a re-create.
 function makeChart() {
-  const created: Array<{ setData: ReturnType<typeof vi.fn>; paneIndex: number }> = [];
+  const created: Array<{
+    setData: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    paneIndex: number;
+  }> = [];
   const chart = {
     addSeries: vi.fn((_type: unknown, _opts: unknown, paneIndex: number) => {
-      const series = { setData: vi.fn(), paneIndex };
+      const series = { setData: vi.fn(), update: vi.fn(), paneIndex };
       created.push(series);
       return series;
     }),
@@ -127,24 +131,47 @@ describe('RangeSeriesPane', () => {
     expect(created[0].setData).toHaveBeenCalledTimes(1); // redundant push SKIPPED
   });
 
-  it('re-pushes when the last bar changes (live tick) — not over-skipping', () => {
-    // Safety: a live tick mutates the last bar (same time, new close). Its
-    // signature changes, so the push MUST flow through — over-aggressive
-    // skipping would freeze the chart mid-session.
+  it('uses update(tail) when only the last bar changes / one bar appends — not over-skipping', () => {
+    // A live tick mutates the last bar (same time, new close) or appends one new
+    // bar. The change MUST flow through — over-aggressive skipping would freeze
+    // the chart mid-session — but as series.update(tail), not a full setData, so
+    // lwc doesn't re-ingest + re-autoscale the whole array every 150ms tick.
     const { chart, created } = makeChart();
     const { rerender } = render(
-      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 110 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+    );
+    expect(created[0].setData).toHaveBeenCalledTimes(1); // initial full push
+    expect(created[0].update).toHaveBeenCalledTimes(0);
+    // Last bar's close changed → update(last), NOT setData.
+    rerender(
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 112 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+    );
+    expect(created[0].setData).toHaveBeenCalledTimes(1); // no full re-push
+    expect(created[0].update).toHaveBeenCalledTimes(1);
+    expect(created[0].update).toHaveBeenLastCalledWith({ time: 2, close: 112 });
+    // A new bar appended (length +1, prefix identical) → update(appended).
+    rerender(
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 112 }, { time: 3, close: 108 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
     );
     expect(created[0].setData).toHaveBeenCalledTimes(1);
-    // Last bar's close changed → new content → must re-push.
-    rerender(
-      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 105 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+    expect(created[0].update).toHaveBeenCalledTimes(2);
+    expect(created[0].update).toHaveBeenLastCalledWith({ time: 3, close: 108 });
+  });
+
+  it('falls back to setData when an earlier bar changes (auction-mask retroactive recolor pattern)', () => {
+    // classifyDataChange must NOT update(tail) when a non-tail element changed —
+    // that is the maskOutgoingConnector / cumulative-rewrite case where the whole
+    // array must be re-pushed. Earlier-element change → full setData.
+    const { chart, created } = makeChart();
+    const { rerender } = render(
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 110 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
     );
-    expect(created[0].setData).toHaveBeenCalledTimes(2);
-    // A new bar appended → length changed → must re-push.
+    expect(created[0].setData).toHaveBeenCalledTimes(1);
+    // First (non-tail) bar changed → setData fallback, not update.
     rerender(
-      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 105 }, { time: 2, close: 108 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 999 }, { time: 2, close: 110 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} />,
     );
-    expect(created[0].setData).toHaveBeenCalledTimes(3);
+    expect(created[0].setData).toHaveBeenCalledTimes(2); // full re-push
+    expect(created[0].update).toHaveBeenCalledTimes(0);
   });
 });

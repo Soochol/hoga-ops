@@ -6,11 +6,15 @@ import RangeSeriesPane, { type PaneSpec } from '../../src/chart/RangeSeriesPane'
 import { createVirtualAxis } from '../../src/util/virtualAxis';
 
 const makeMockChart = () => {
-  const seriesList: Array<{ setData: ReturnType<typeof vi.fn>; createPriceLine: ReturnType<typeof vi.fn> }> = [];
+  const seriesList: Array<{
+    setData: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    createPriceLine: ReturnType<typeof vi.fn>;
+  }> = [];
   return {
     chart: {
       addSeries: vi.fn(() => {
-        const s = { setData: vi.fn(), createPriceLine: vi.fn() };
+        const s = { setData: vi.fn(), update: vi.fn(), createPriceLine: vi.fn() };
         seriesList.push(s);
         return s;
       }),
@@ -79,7 +83,7 @@ describe('RangeSeriesPane', () => {
     expect(afterAdd).toHaveBeenCalledWith(seriesList[0]);
   });
 
-  it('does not recreate series when ctx changes via subscription — setData runs instead', () => {
+  it('does not recreate series when ctx changes via subscription — data effect re-runs instead', () => {
     // Regression guard for the Moving Average flicker: ctx gets a fresh
     // reference on every config change. The lifecycle/data split keeps ctx OUT
     // of the lifecycle effect deps, so a ctx change re-runs setData on existing
@@ -100,8 +104,13 @@ describe('RangeSeriesPane', () => {
       set: (v: number) => { period = v; listeners.forEach((l) => l()); },
       subscribe: (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; },
     };
+    // Two bars so a ctx bump changes only the LAST bar's value → the data effect
+    // takes the update(tail) path. The intent under test is "ctx change re-runs
+    // the data effect on the existing handle (no recreate)", independent of
+    // whether that push is a setData or an update.
     const dataFn = vi.fn((_b: any, _ax: any, ctx: { period: number }) => [
-      { time: 0, value: ctx.period },
+      { time: 0, value: 1 },
+      { time: 1, value: ctx.period },
     ]);
     const spec: PaneSpec<{ period: number }> = {
       name: 'test-ctx-stability',
@@ -113,7 +122,8 @@ describe('RangeSeriesPane', () => {
     };
     render(<RangeSeriesPane chart={chart} bundle={baseBundle} axis={axis} paneIndex={0} spec={spec} />);
     expect(chart.addSeries).toHaveBeenCalledTimes(1);
-    const setDataCallsBefore = seriesList[0].setData.mock.calls.length;
+    const pushesBefore =
+      seriesList[0].setData.mock.calls.length + seriesList[0].update.mock.calls.length;
 
     // ctx changes via the store subscription (NOT a parent re-render).
     act(() => store.set(10));
@@ -121,8 +131,12 @@ describe('RangeSeriesPane', () => {
     // Lifecycle effect must not have re-run — addSeries/removeSeries unchanged.
     expect(chart.addSeries).toHaveBeenCalledTimes(1);
     expect(chart.removeSeries).not.toHaveBeenCalled();
-    // Data effect re-ran on the existing handle with the new ctx.
-    expect(seriesList[0].setData.mock.calls.length).toBeGreaterThan(setDataCallsBefore);
+    // Data effect re-ran on the existing handle with the new ctx (a last-bar-only
+    // change → update(tail), no recreate, no full setData).
+    const pushesAfter =
+      seriesList[0].setData.mock.calls.length + seriesList[0].update.mock.calls.length;
+    expect(pushesAfter).toBeGreaterThan(pushesBefore);
+    expect(seriesList[0].update).toHaveBeenLastCalledWith({ time: 1, value: 10 });
     expect(dataFn).toHaveBeenLastCalledWith(baseBundle, axis, { period: 10 });
   });
 

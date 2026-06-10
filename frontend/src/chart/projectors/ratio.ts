@@ -5,7 +5,7 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
-import type { RangeBundle } from '../../api/types';
+import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { quoteImbalance } from '../../util/imbalance';
 import { resolveTokens } from '../../util/tokens';
@@ -14,6 +14,7 @@ import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
 import { isAuctionHidden, BASELINE_HIDDEN_COLORS, maskOutgoingConnector } from '../util/auctionHide';
+import { makePastCachedProjector } from './pastCachedProjector';
 
 const TOKEN_SPEC = {
   // KRX 컨벤션: 매수=상승=빨강, 매도=하락=파랑. RatioPane은 price-direction
@@ -57,8 +58,25 @@ export function projectRatio(
   axis: VirtualAxis,
   ctx: RatioPaneContext,
 ): BaselineData<Time>[] {
+  return projectRatioPoints(bundle.quote_ratio.points, axis, ctx);
+}
+
+/** Points-array variant of {@link projectRatio} — projects an arbitrary slice
+ * of quote_ratio points (not the whole bundle). Extracted so the /live tick
+ * path can project the immutable past slice once (cached) and only the live
+ * today slice per tick — `projectRatioPoints(past) ++ projectRatioPoints(today)`
+ * is byte-identical to `projectRatioPoints(all)` because the only cross-point
+ * state (maskOutgoingConnector's 1-point lookback) never crosses a day boundary:
+ * the closing-auction run is intra-day and today's first emitted point (09:00)
+ * is never auction-hidden, so it issues no retroactive connector mask. See
+ * makePastCachedProjector + pastCachedProjector.test.ts. */
+export function projectRatioPoints(
+  points: readonly QuoteRatioPoint[],
+  axis: VirtualAxis,
+  ctx: RatioPaneContext,
+): BaselineData<Time>[] {
   const out: BaselineData<Time>[] = [];
-  for (const p of bundle.quote_ratio.points) {
+  for (const p of points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
     // Auction-window hide (ADR-0029, util/auctionHide.ts). Skipping the
@@ -102,6 +120,11 @@ const useRatioContext = (): RatioPaneContext =>
     })),
   );
 
+// 틱당 풀-배열 재투영 제거(P0): 과거 슬라이스 투영은 캐시, 당일만 재투영. 출력은
+// projectRatio와 바이트 동일(pastCachedProjector.test.ts). 모듈 레벨 1개 인스턴스 —
+// 내부 캐시는 axis 식별자별 WeakMap이라 /live 단일 차트에서 안전.
+const ratioCachedData = makePastCachedProjector(projectRatioPoints, (b) => b.quote_ratio.points);
+
 export const RATIO_SPEC = {
   name: 'ratio' as const,
   live: true, // reads quote_ratio (SSE-derived) → fed the live bundle on /live
@@ -136,7 +159,7 @@ export const RATIO_SPEC = {
         lastValueVisible: false,
         priceFormat,
       },
-      data: projectRatio,
+      data: ratioCachedData,
       afterAdd: (series) => {
         // 0-baseline reference line. Drawn explicitly because BaselineSeries
         // switches color at baseValue but does not paint a visible line there.

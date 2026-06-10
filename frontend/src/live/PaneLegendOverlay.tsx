@@ -13,7 +13,7 @@
 //
 // See docs/superpowers/specs/2026-05-31-chart-indicator-legend-design.md.
 
-import { useEffect, useReducer, useRef, type CSSProperties } from 'react';
+import { memo, useEffect, useReducer, useRef, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
@@ -27,6 +27,13 @@ type Props = {
   chart: IChartApi;
   timeframe: LiveTimeframe;
   paneSeries: PaneSeriesMap;
+  /** P1: 캔들-경로 데이터 신선화 토큰. /live가 SSE 호가 틱마다 부모(LiveChartRoot)를
+   *  재렌더하지만 이 레전드의 값(MA/거래량/투자자 = 캔들 경로)은 그때 안 바뀐다.
+   *  memo + 이 prop으로 호가 틱 재렌더는 차단하고, 캔들 갱신(chartBundle 식별자 변경)
+   *  때만 latest 값을 신선화한다. /live는 chartBundle ref를 그대로 넘긴다(호가 틱엔
+   *  안정, 캔들 갱신 땐 새 ref). 본문에서 읽지 않고 memo 얕은 비교 신호로만 쓴다
+   *  (크로스헤어/스토어 재렌더는 내부 구독이라 memo와 무관). */
+  dataEpoch?: unknown;
 };
 
 // Worst-case width `-9,999,999` (~11 glyphs) reserved so the value cell never
@@ -208,7 +215,7 @@ function SingleLegendRow({ row }: { row: Exclude<LegendRow, { paneId: 'candle' }
   );
 }
 
-export default function PaneLegendOverlay({ chart, timeframe, paneSeries }: Props) {
+function PaneLegendOverlay({ chart, timeframe, paneSeries }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Last crosshair param (null = cursor away → latest-fallback). Mutated by the
   // subscription, read during render; a tick (below) re-renders after each
@@ -327,3 +334,9 @@ export default function PaneLegendOverlay({ chart, timeframe, paneSeries }: Prop
     </div>
   );
 }
+
+// P1: memo로 부모(LiveChartRoot)의 SSE 호가 틱 재렌더를 차단 — props(chart/timeframe/
+// paneSeries/dataEpoch)가 동일하면 재렌더 안 함. 호가 틱엔 이 넷이 모두 안 바뀌므로
+// 틱당 series.data() O(N) 리드백이 사라진다. 캔들 갱신 땐 dataEpoch가 바뀌어 신선화되고,
+// 크로스헤어/스토어 변경은 내부 구독/셀렉터가 재렌더하므로 memo와 무관하게 동작한다.
+export default memo(PaneLegendOverlay);
