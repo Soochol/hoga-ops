@@ -789,8 +789,8 @@ import { Heatmap } from './pages/Heatmap';
 
 Run: `cd frontend && npx vitest run src/pages/Heatmap.test.tsx`
 Expected: PASS (4 it — 렌더·jump·정렬토글·자격증명배너).
-Run: `cd frontend && npx tsc -b`
-Expected: 에러 없음.
+Run: `cd frontend && npx tsc -b 2>&1 | grep -E "heatmap|pages/Heatmap|state/heatmapPrefs" || echo CLEAN`
+Expected: `CLEAN` — 우리 파일(heatmap/·pages/Heatmap·state/heatmapPrefs)에 타입 에러 없음. (주의: `tsc -b` 는 기존 무관 파일 `src/chart/seriesDataDiff.test.ts` 등의 **pre-existing** 에러를 함께 출력하므로 위 grep 으로 우리 파일만 본다.)
 
 - [ ] **Step 7: 커밋**
 
@@ -1165,8 +1165,8 @@ import { GroupNameModal } from '../watchlist/GroupNameModal';
 
 Run: `cd frontend && npx vitest run src/pages/Heatmap.newgroup.test.tsx src/pages/Heatmap.test.tsx`
 Expected: PASS (1 + 3 it).
-Run: `cd frontend && npx tsc -b`
-Expected: 에러 없음.
+Run: `cd frontend && npx tsc -b 2>&1 | grep -E "heatmap|pages/Heatmap|state/heatmapPrefs" || echo CLEAN`
+Expected: `CLEAN` — 우리 파일(heatmap/·pages/Heatmap·state/heatmapPrefs)에 타입 에러 없음. (주의: `tsc -b` 는 기존 무관 파일 `src/chart/seriesDataDiff.test.ts` 등의 **pre-existing** 에러를 함께 출력하므로 위 grep 으로 우리 파일만 본다.)
 
 - [ ] **Step 5: 커밋**
 
@@ -1219,8 +1219,8 @@ Expected: 전부 PASS.
 
 - [ ] **Step 4: 린트 + 타입**
 
-Run: `cd frontend && npx tsc -b`
-Expected: 에러 없음.
+Run: `cd frontend && npx tsc -b 2>&1 | grep -E "heatmap|pages/Heatmap|state/heatmapPrefs" || echo CLEAN`
+Expected: `CLEAN` — 우리 파일(heatmap/·pages/Heatmap·state/heatmapPrefs)에 타입 에러 없음. (주의: `tsc -b` 는 기존 무관 파일 `src/chart/seriesDataDiff.test.ts` 등의 **pre-existing** 에러를 함께 출력하므로 위 grep 으로 우리 파일만 본다.)
 Run: `cd frontend && npm run lint`
 Expected: heatmap 관련 신규 파일에 에러 없음.
 
