@@ -35,6 +35,7 @@ from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 
     LIVE_SET_MAX_CODES,
     TRS_PER_CODE,
     LiveSession,
+    _capture_health,
     _compute_live_set,
     _StreamConn,
     display_ordered_codes,
@@ -259,85 +260,17 @@ def _market_clock_closed_for_capture(now_ms: int) -> bool:
     return market_phase(now_ms) != "regular"  # regular = 09:00–15:30
 
 
-def _capture_health(
-    *, running: bool, ws: object | None, now_ms: int, ref_ms: int,
-    stale_after_ms: int, market_closed: bool,
-) -> tuple[bool, str]:
-    """캡처 헬스 단일 술어(spec 2026-06-08 §2.2) — watchdog과 get_status가 공유.
-
-    last_recv 단독은 구독이 죽어도 PINGPONG이 갱신해 거짓-그린(리뷰 #4),
-    last_tick 단독은 한산한 종목을 거짓-레드로 만든다. 그래서 '구독 확인 +
-    수신 신선도'를 결합한다. ref_ms = max(started, session_open) — 세션 기준
-    grace 시작점(watchdog과 동일).
-
-    체크 순서가 핵심(advisor B): recv(stale)를 sub보다 먼저 본다 — sub 미확인
-    이어도 수신이 끊겼으면 dead socket이라 'stale'(watchdog 재시작), 수신이
-    신선하면 'sub_failed'(appkey 거부류 — 재연결 불응, 가시화만)로 갈린다.
-    """
-    if not running or ws is None:
-        return (False, "offline")
-    if market_closed:
-        return (False, "closed")
-    if not getattr(ws, "connected", False):
-        return (False, "reconnecting")
-    grace_elapsed = (now_ms - ref_ms) > stale_after_ms
-    last_recv = getattr(ws, "last_recv_ms", None)
-    recv_stale = grace_elapsed and (
-        last_recv is None or (now_ms - last_recv) > stale_after_ms
-    )
-    if recv_stale:
-        return (False, "stale")
-    expected = getattr(ws, "sub_expected", 0)
-    acked = getattr(ws, "sub_acked", 0)
-    if expected > 0 and acked < expected:
-        return (False, "sub_failed" if grace_elapsed else "subscribing")
-    return (True, "healthy")
-
-
-def _capture_status(now_ms: int) -> tuple[bool, str, list[int]]:
-    """WS 연결집합의 캡처 헬스 — (cap_healthy, cap_reason, degraded account_id list 정렬).
-
-    **단일 계산** — get_status(표시: cap_healthy/reason/degraded)와 account_health WS-probe
-    (라우팅: degraded 집합)가 공유한다(중복 제거, 2026-06-10). 의미론:
-    - streams 없음 → (False, "no_streams", []) — 호출자(get_status)가 poller-only running과
-      결합해 idle/offline로 해석.
-    - 전역 장 마감 → (False, "closed", []). market_closed는 전역 상태(계좌별 결함 아님)라
-      per-conn 루프 밖에서 단락 — 안 그러면 밤/주말마다 모든 conn이 degraded로 잡혀
-      거짓 신호(advisor 버그 회피).
-    - 정규장 → conn별 _capture_health 집계. cap_reason = worst(마지막 비정상)."""
-    streams = _state.streams
-    started = _state.started_at_ms
-    if started is None or not streams:
-        return (False, "no_streams", [])
-    if _market_clock_closed_for_capture(now_ms):
-        return (False, "closed", [])
-    from datetime import datetime  # noqa: PLC0415
-
-    from .kis_client import KIS_KST  # noqa: PLC0415
-    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
-    session_open_ms = int(
-        kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
-    )
-    ref_ms = max(started, session_open_ms)
-    cap_healthy, cap_reason, degraded = True, "healthy", []
-    for account_id, conn in streams.items():
-        ws = getattr(conn.stream_obj, "ws", None)
-        healthy, reason = _capture_health(
-            running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
-            stale_after_ms=_WATCHDOG_STALE_AFTER_MS, market_closed=False,
-        )
-        if not healthy:
-            cap_healthy = False
-            cap_reason = reason     # worst(마지막 비정상). 값 불변(Q10).
-            degraded.append(account_id)
-    degraded.sort()
-    return (cap_healthy, cap_reason, degraded)
-
-
 def _ws_degraded_probe() -> set[int]:
     """account_health가 등록받는 WS-degraded probe(의존 역전 — leaf가 lifecycle을 import
-    안 하게). 호출 시점에 현재 WS-저하 account 집합 반환."""
-    return set(_capture_status(_now_ms())[2])
+    안 하게). 호출 시점의 `_state.session`에서 평가 — start가 session을 통째 교체해도 항상
+    *현재* 세션을 읽는다(bound method `_state.session.degraded_set` 등록이면 죽은 인스턴스를
+    잡음, C3 trap). market_closed(전역 장 마감)는 lifecycle이 계산해 전달."""
+    now_ms = _now_ms()
+    return _state.session.degraded_set(
+        now_ms=now_ms,
+        market_closed=_market_clock_closed_for_capture(now_ms),
+        stale_after_ms=_WATCHDOG_STALE_AFTER_MS,
+    )
 
 
 # 모듈 로드 시 1회 push 등록 — probe는 _state(reset로 비워짐)를 시점-평가하므로 stateless,
@@ -346,50 +279,42 @@ account_health.register_ws_probe(_ws_degraded_probe)
 
 
 def get_status() -> LiveStatus:
-    """Read the current live status. Always safe to call. dynamic-N 집계(스펙 §5.7)."""
-    streams = _state.streams
+    """Read the current live status. Always safe to call. dynamic-N 집계(스펙 §5.7).
+
+    streams-파생 필드(running의 streams-항·ws_connected·last_tick·cap_healthy/reason/degraded)는
+    session.status_fields가 단일 계산(account_health WS-probe와 공유, dedup). poller.alive OR-항·
+    idle/offline·today-promote 합성은 여기 전용. market_closed는 lifecycle이 계산해 전달."""
     poller = _state.rest_poller
     now_ms = _now_ms()
-    started = _state.started_at_ms
-
-    running = any(not c.ws_task.done() for c in streams.values()) or (
-        poller is not None and poller.alive
+    sf = _state.session.status_fields(
+        now_ms=now_ms,
+        market_closed=_market_clock_closed_for_capture(now_ms),
+        stale_after_ms=_WATCHDOG_STALE_AFTER_MS,
     )
-    ws_connected = bool(streams) and all(
-        getattr(getattr(c.stream_obj, "ws", None), "connected", False)
-        for c in streams.values()
-    )
-    last_tick_ms: int | None = None
-    ticks = [
-        t for c in streams.values()
-        if (t := getattr(getattr(c.stream_obj, "ws", None), "last_tick_ms", None)) is not None
-    ]
-    if ticks:
-        last_tick_ms = max(ticks)
+    running = sf["streams_running"] or (poller is not None and poller.alive)
 
-    # 캡처 헬스 — 존재 conn 기준 AND(Q11). conn 0(C4 poller-only)이면 idle.
-    # streams 있을 때의 cap_healthy/reason/degraded는 _capture_status가 단일 계산
-    # (account_health WS-probe와 공유, 2026-06-10 dedup). poller-only(streams 없음)는
-    # running과 결합해 idle/offline 판정(여기 전용).
-    if started is None or not streams:
+    # 캡처 헬스 — 존재 conn 기준(Q11). capture=None(conn 0, C4 poller-only)이면 running과
+    # 결합해 idle/offline 판정(streams 있을 때의 셋은 session이 계산).
+    capture = sf["capture"]
+    if capture is None:
         cap_healthy = bool(running)        # poller-only면 서비스 중 → healthy/idle
         cap_reason = "idle" if running else "offline"
         degraded: list[int] = []
     else:
-        cap_healthy, cap_reason, degraded = _capture_status(now_ms)
+        cap_healthy, cap_reason, degraded = capture
 
     return LiveStatus(
         running=running,
-        started_at_ms=started,
-        last_tick_ms=last_tick_ms,
+        started_at_ms=sf["started_at_ms"],
+        last_tick_ms=sf["last_tick_ms"],
         cycle_lag_ms=0,
-        watchlist_count=len(_state.watchlist_codes),
+        watchlist_count=sf["watchlist_count"],
         kis_calls_today=0,
         kis_rate_limit_remaining=None,
         today_promote_last_ms=get_today_promote_last_ms(),
         transport="ws",
-        ws_connected=ws_connected,
-        live_set=list(_state.live_set),
+        ws_connected=sf["ws_connected"],
+        live_set=sf["live_set"],
         degraded_accounts=degraded,
         capture_healthy=cap_healthy,
         capture_reason=cap_reason,

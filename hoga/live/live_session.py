@@ -109,6 +109,43 @@ class _StreamConn:
     codes: tuple[str, ...]
 
 
+# ── 캡처 헬스 단일 술어 (watchdog + status 공유) ────────────────────────────────
+
+def _capture_health(
+    *, running: bool, ws: object | None, now_ms: int, ref_ms: int,
+    stale_after_ms: int, market_closed: bool,
+) -> tuple[bool, str]:
+    """캡처 헬스 단일 술어(spec 2026-06-08 §2.2) — watchdog과 status_fields가 공유.
+
+    last_recv 단독은 구독이 죽어도 PINGPONG이 갱신해 거짓-그린(리뷰 #4),
+    last_tick 단독은 한산한 종목을 거짓-레드로 만든다. 그래서 '구독 확인 +
+    수신 신선도'를 결합한다. ref_ms = max(started, session_open) — 세션 기준
+    grace 시작점(watchdog과 동일).
+
+    체크 순서가 핵심(advisor B): recv(stale)를 sub보다 먼저 본다 — sub 미확인
+    이어도 수신이 끊겼으면 dead socket이라 'stale'(watchdog 재시작), 수신이
+    신선하면 'sub_failed'(appkey 거부류 — 재연결 불응, 가시화만)로 갈린다.
+    """
+    if not running or ws is None:
+        return (False, "offline")
+    if market_closed:
+        return (False, "closed")
+    if not getattr(ws, "connected", False):
+        return (False, "reconnecting")
+    grace_elapsed = (now_ms - ref_ms) > stale_after_ms
+    last_recv = getattr(ws, "last_recv_ms", None)
+    recv_stale = grace_elapsed and (
+        last_recv is None or (now_ms - last_recv) > stale_after_ms
+    )
+    if recv_stale:
+        return (False, "stale")
+    expected = getattr(ws, "sub_expected", 0)
+    acked = getattr(ws, "sub_acked", 0)
+    if expected > 0 and acked < expected:
+        return (False, "sub_failed" if grace_elapsed else "subscribing")
+    return (True, "healthy")
+
+
 # ── Live Session (WS 연결집합 상태기계) ─────────────────────────────────────────
 
 class LiveSession:
@@ -231,3 +268,79 @@ class LiveSession:
             self.streams[account_id] = build_conn(account_id, codes, data_dir)
         else:
             self.streams.pop(account_id, None)   # 그 사이 watchlist 축소됨
+
+    # ── 캡처 헬스 / status (get_status·account_health WS-probe 공유) ──────────────
+
+    def _capture_status(
+        self, *, now_ms: int, market_closed: bool, stale_after_ms: int,
+    ) -> tuple[bool, str, list[int]] | None:
+        """WS 연결집합 캡처 헬스 — (cap_healthy, cap_reason, degraded id 정렬) | None(streams
+        없음). market_closed(전역 장 마감)는 per-conn 루프 밖에서 단락 — 계좌별 결함이 아니라
+        전역 상태라, 안 그러면 밤/주말마다 모든 conn이 degraded로 잡히는 거짓 신호(advisor 버그
+        회피). 정규장이면 conn별 _capture_health 집계, cap_reason=worst(마지막 비정상, Q10 값 불변).
+
+        get_status(표시: cap_healthy/reason/degraded)와 account_health WS-probe(라우팅: degraded
+        집합)가 이 단일 계산을 공유한다(중복 제거)."""
+        if self.started_at_ms is None or not self.streams:
+            return None
+        if market_closed:
+            return (False, "closed", [])
+        from datetime import datetime  # noqa: PLC0415
+
+        from .kis_client import KIS_KST  # noqa: PLC0415
+        kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
+        session_open_ms = int(
+            kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
+        )
+        ref_ms = max(self.started_at_ms, session_open_ms)
+        cap_healthy, cap_reason, degraded = True, "healthy", []
+        for account_id, conn in self.streams.items():
+            ws = getattr(conn.stream_obj, "ws", None)
+            healthy, reason = _capture_health(
+                running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
+                stale_after_ms=stale_after_ms, market_closed=False,
+            )
+            if not healthy:
+                cap_healthy = False
+                cap_reason = reason
+                degraded.append(account_id)
+        degraded.sort()
+        return (cap_healthy, cap_reason, degraded)
+
+    def degraded_set(
+        self, *, now_ms: int, market_closed: bool, stale_after_ms: int,
+    ) -> set[int]:
+        """WS-저하 account 집합 — account_health WS-probe의 구현체(C2 합류 귀착점).
+        streams 없음/전역 장 마감 → 빈 집합(라우팅 안 막음)."""
+        cap = self._capture_status(
+            now_ms=now_ms, market_closed=market_closed, stale_after_ms=stale_after_ms,
+        )
+        return set() if cap is None else set(cap[2])
+
+    def status_fields(
+        self, *, now_ms: int, market_closed: bool, stale_after_ms: int,
+    ) -> dict:
+        """get_status용 streams-파생 필드(dict). running의 poller.alive OR-항·idle/offline·
+        today-promote 합성은 lifecycle.get_status가 담당. capture=None이면 streams 없음
+        (get_status가 poller-only running과 결합해 idle/offline 해석)."""
+        streams = self.streams
+        streams_running = any(not c.ws_task.done() for c in streams.values())
+        ws_connected = bool(streams) and all(
+            getattr(getattr(c.stream_obj, "ws", None), "connected", False)
+            for c in streams.values()
+        )
+        ticks = [
+            t for c in streams.values()
+            if (t := getattr(getattr(c.stream_obj, "ws", None), "last_tick_ms", None)) is not None
+        ]
+        return {
+            "streams_running": streams_running,
+            "ws_connected": ws_connected,
+            "last_tick_ms": max(ticks) if ticks else None,
+            "started_at_ms": self.started_at_ms,
+            "watchlist_count": len(self.watchlist_codes),
+            "live_set": list(self.live_set),
+            "capture": self._capture_status(
+                now_ms=now_ms, market_closed=market_closed, stale_after_ms=stale_after_ms,
+            ),
+        }
