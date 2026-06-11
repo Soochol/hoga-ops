@@ -22,10 +22,15 @@ type TabsStore = {
   reorderTabs: (from: number, to: number) => void;
 };
 
-// Module guard: when true, the active-tab→page write is in progress, so the
-// page→tab mirror (below) must not write back (prevents the historicalFromDate
-// reset inside setActiveCode/setCandleTimeframe from clobbering the tab).
-// Module-private: the in-file mirror is the reader of `applyingTab`.
+// Module guard: true while the active-tab→page write (applyTabToPage) runs.
+// NOT loop-prevention — the mirror reads useLivePageStore and writes
+// useLiveTabsStore, so store separation already closes any loop, and
+// applyTabToPage's final page write self-heals the active tab regardless.
+// The guard is DEFENSIVE: it (1) suppresses the 2-3 redundant tab-array
+// rewrites the transient setActiveCode/setCandleTimeframe resets would
+// otherwise trigger mid-push, and (2) future-proofs against a reordering of
+// applyTabToPage's setters that would make the last page write no longer equal
+// the tab's true value. Module-private: the in-file mirror is its only reader.
 let applyingTab = false;
 function setApplyingTab(v: boolean): void { applyingTab = v; }
 
@@ -180,8 +185,9 @@ const _unsubscribePersist = attachPersistence(useLiveTabsStore, {
 if (import.meta.hot) import.meta.hot.dispose(_unsubscribePersist);
 
 // page→tab mirror: user-initiated tf/pan changes flow into the active tab.
-// Guarded by applyingTab so the focus-push's setActiveCode/setCandleTimeframe
-// resets don't write a transient null back into the tab.
+// The early-return on unchanged tf+hfd also skips indicator-only page changes
+// (MA/volume toggles fire this unselectored subscribe). The applyingTab guard
+// is defensive (see its declaration) — not required for correctness here.
 const _unsubscribeMirror = useLivePageStore.subscribe((state, prev) => {
   if (applyingTab) return;
   if (state.candleTimeframe === prev.candleTimeframe && state.historicalFromDate === prev.historicalFromDate) return;
