@@ -8,6 +8,9 @@ import { LiveStatusBar } from './LiveStatusBar';
 import { LiveToolbar } from './LiveToolbar';
 import { LiveWorkarea } from './LiveWorkarea';
 import { LiveStateBanner } from './LiveStateBanner';
+import { LiveTabBar } from './LiveTabBar';
+import { useLiveTabsStore, TABS_SOFT_CAP } from '../state/liveTabs';
+import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
@@ -36,22 +39,21 @@ import { useDocumentTitle } from '../util/useDocumentTitle';
 export function LivePage() {
   const [params] = useSearchParams();
   const queryCode = params.get('code');
-  const storedCode = useLivePageStore((s) => s.activeCode);
-  const setActiveCode = useLivePageStore((s) => s.setActiveCode);
+  const tabs = useLiveTabsStore((s) => s.tabs);
+  const activeTabId = useLiveTabsStore((s) => s.activeTabId);
+  const openOrFocusTab = useLiveTabsStore((s) => s.openOrFocusTab);
+  const focusTab = useLiveTabsStore((s) => s.focusTab);
+  const closeTab = useLiveTabsStore((s) => s.closeTab);
+  const reorderTabs = useLiveTabsStore((s) => s.reorderTabs);
 
-  // The livePage store is the single source of truth for the active code
-  // (CONTEXT.md / ADR-0052). `?code=` is a one-shot deep-link SEED: adopted into
-  // the store once on first mount, after which search / ♥ / Watchlist Panel
-  // writes win and are never reverted by the URL. (The former `queryCode ??
-  // storedCode` + resync effect made the URL a permanent master and silently
-  // erased store writes — and corrupted persisted localStorage — on a ?code=
-  // deep link.)
+  // 1회: URL ?code= 시드는 복원된 탭 위에 open-or-focus, 없으면 복원된 활성 탭을 page에 적용.
   const seeded = useRef(false);
   useEffect(() => {
     if (seeded.current) return;
     seeded.current = true;
-    if (queryCode && queryCode !== storedCode) setActiveCode(queryCode);
-  }, [queryCode, storedCode, setActiveCode]);
+    if (queryCode) openOrFocusTab(queryCode);
+    else if (activeTabId) focusTab(activeTabId); // 복원된 활성 탭 → page 동기화
+  }, [queryCode, activeTabId, openOrFocusTab, focusTab]);
 
   const { data: status } = useLiveStatus();
   const banner = useLiveBannerState(status);
@@ -61,7 +63,7 @@ export function LivePage() {
   // panel is wired up; for now they're no-ops.
   useLiveKeyboard({});
 
-  const activeCode = storedCode;
+  const activeCode = useLivePageStore((s) => s.activeCode);
   useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -89,10 +91,20 @@ export function LivePage() {
         // minmax(0, 1fr) on the workarea row prevents the chart canvas's
         // intrinsic size from pushing the row past viewport height.
         gridTemplateRows:
-          'var(--h-live-header) auto var(--h-pricestrip) var(--h-toolbar) minmax(0, 1fr)',
+          'var(--h-live-header) 40px auto var(--h-pricestrip) var(--h-toolbar) minmax(0, 1fr)',
       }}
     >
       <LiveHeader />
+      <LiveTabBar
+        tabs={tabs}
+        activeTabId={activeTabId}
+        activeLoading={isPastCandlesLoading}
+        atCap={tabs.length >= TABS_SOFT_CAP}
+        onFocus={focusTab}
+        onClose={closeTab}
+        onReorder={reorderTabs}
+        onNewTab={focusLiveSearch}
+      />
       <LiveStateBanner
         primary={activeCode && banner.primary === 'watchlist_empty' ? null : banner.primary}
         stack={banner.stack}
