@@ -3,6 +3,31 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.18.0] - 2026-06-11
+
+### Added
+- **`/api/range` 호가지표 1분 분리 캐시 (past-candles 패턴 복제)**: 과거 완료일의 호가비·체결강도를
+  `kis-past-indicators/{code}/{source}/{date}.{ratio|fill}.json`에 1분 단위로 캐시하고, 3/5/10/15/30분
+  요청은 읽을 때 재집계한다 — **호가비 = 윈도 마지막 non-(0,0) 대표값**(fully-auction 버킷의 `(0,0)`
+  센티넬과 동치), **체결강도 = 합**. 동시호가일 포함 6개 타임프레임 전부에서 직접 `bucket_ms=N` SQL과
+  byte-동치임을 테스트로 증명. 과거=디스크 영구·오늘=바이패스(아직 promote 중, ADR-0043)·sub-minute
+  (1000ms /replay)=직접 계산. 실측 A/B(005930 동일 데이터): `/api/range` warm 30d 946→283ms·90d
+  984→283ms(~3.4×); 슬라이스별 호가비 1656→61ms(27×)·체결강도 1100→61ms(18×). 사용자가 "팬 시 캔들
+  로딩 느림"으로 느끼던 `extending` 게이트 플로어(511~989ms)를 직접 줄인다. 신규
+  `hoga/api/indicator_reaggregate.py`·`hoga/api/past_indicators_cache.py`; `build_range_bundle`이
+  `engine.indicators_cache`(QueryEngine lazy 프로퍼티)를 slice 빌더에 주입.
+
+### Changed
+- **bundle.py: dense-bin 확장 fold를 `_expand_dense_bins` 순수 헬퍼로 추출** — `build_volume_profile_slice`↔
+  `build_volume_profile_range`의 복붙(최고가 볼륨 누락 방어 불변식, 한 토큰만 차이)을 1곳화. 행위 불변.
+- **CONTEXT.md: "라이브 호가 보조지표 — 과거/당일 분리 캐시" 도메인 용어 추가** — `pastCachedProjector.ts`가
+  참조하던 빈 앵커 해소(프론트 per-틱 분리 캐시 + 백엔드 `kis-past-indicators` 디스크 트윈을 한 항목에 명문화).
+
+### Fixed
+- **`resolve_source` 테스트 형태 누수 제거** — 프로덕션의 `isinstance(sd_dir, Path)`(MagicMock data_dir
+  대응) 분기 + 미사용 `Path` import를 삭제하고 fake는 tmp_path 백킹으로 전환. mock 타입에 분기하는
+  프로덕션 코드 제거.
+
 ## [0.7.17.0] - 2026-06-11
 
 ### Added

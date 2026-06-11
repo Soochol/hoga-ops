@@ -14,11 +14,13 @@ Why the engine instead of ``(conn, data_dir)``:
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
 
 from hoga.api.disk_state import DiskState, classify_from_meta
+from hoga.api.indicator_reaggregate import reaggregate_fill, reaggregate_ratio
 from hoga.api.invariants import normalize_session_bounds
 from hoga.api.models import (
     DateWarning,
@@ -44,6 +46,49 @@ from hoga.tables import fills as fills_tbl
 from hoga.tables import snapshots as snapshots_tbl
 from hoga.tables import trades as trades_tbl
 from hoga.tables.candles import ApiCandle
+from hoga.tables.trades import FillStrengthRow
+
+if TYPE_CHECKING:
+    from hoga.api.past_indicators_cache import PastIndicatorsCache
+
+_KST = timezone(timedelta(hours=9))
+
+# /api/range minute timeframes are multiples of this; the indicator cache stores
+# 1m and re-aggregates up. A request whose bucket_ms is NOT a 1m multiple (the
+# 1000 ms /replay default, sub-minute callers) bypasses the cache and queries
+# directly — re-aggregation cannot synthesize a finer grain than the cache.
+_ONE_MINUTE_MS = 60_000
+
+
+def _today_kst_yyyymmdd() -> str:
+    return datetime.now(_KST).strftime("%Y%m%d")
+
+
+def _indicator_cacheable(
+    cache: PastIndicatorsCache | None, today_kst: str | None, date: str, bucket_ms: int
+) -> bool:
+    """Serve from the 1m indicator cache only for a COMPLETED past day at a
+    minute-multiple bucket. Today is still being promoted (ADR-0043) → recompute
+    live; sub-minute buckets have no 1m cache to re-aggregate from."""
+    return (
+        cache is not None
+        and today_kst is not None
+        and date < today_kst
+        and bucket_ms % _ONE_MINUTE_MS == 0
+    )
+
+
+def _query_fill_rows(engine: QueryEngine, code_dir, bucket_ms: int) -> list[FillStrengthRow] | None:
+    """fills.parquet (10s 구간합) preferred, else trades.parquet fallback (그릴링
+    Q4). Returns None when NEITHER source exists (ADR-0043 empty cycle) so the
+    caller can emit an empty slice without caching a non-result."""
+    fills_path = code_dir / "fills.parquet"
+    if fills_path.exists():
+        return fills_tbl.query_fill_strength(engine.conn, path=fills_path, bucket_ms=bucket_ms)
+    trades_path = code_dir / "trades.parquet"
+    if not trades_path.exists():
+        return None
+    return trades_tbl.query_fill_strength(engine.conn, path=trades_path, bucket_ms=bucket_ms)
 
 
 def downsample_candles(candles: list[ApiCandle], *, bucket_ms: int) -> list[ApiCandle]:
@@ -122,6 +167,8 @@ def build_quote_ratio_slice(
     bucket_ms: int = 1000,
     source: str = "hogaplay",
     session_close_ms: int | None = None,
+    cache: PastIndicatorsCache | None = None,
+    today_kst: str | None = None,
 ) -> QuoteRatio:
     # ADR-0001: the bucketing SQL + snapshots schema knowledge (the per-level
     # ask/bid quantity columns, the last-in-bucket selection, the closing-auction
@@ -136,9 +183,24 @@ def build_quote_ratio_slice(
         # ADR-0043: promote_today writes empty records as unlink → missing file
         # is the valid "no data" state, not an error.
         return QuoteRatio(bucket_ms=bucket_ms, points=[])
-    rows = snapshots_tbl.query_bucketed_ratio(
-        engine.conn, path=path_obj, bucket_ms=bucket_ms, session_close_ms=session_close_ms
-    )
+    if _indicator_cacheable(cache, today_kst, date, bucket_ms):
+        # Past day + minute bucket: cache the 1-minute representatives once and
+        # re-aggregate up (reaggregate_ratio == a direct bucket_ms query, proven
+        # in test_indicator_reaggregate). The 1m rows carry the SAME
+        # session_close_ms auction boundary, so the (0,0) auction sentinel is
+        # preserved across re-aggregation.
+        rows_1m = cache.get_ratio(code, date, source)  # type: ignore[union-attr]
+        if rows_1m is None:
+            rows_1m = snapshots_tbl.query_bucketed_ratio(
+                engine.conn, path=path_obj, bucket_ms=_ONE_MINUTE_MS,
+                session_close_ms=session_close_ms,
+            )
+            cache.store_ratio(code, date, source, rows_1m)  # type: ignore[union-attr]
+        rows = reaggregate_ratio(rows_1m, bucket_ms)
+    else:
+        rows = snapshots_tbl.query_bucketed_ratio(
+            engine.conn, path=path_obj, bucket_ms=bucket_ms, session_close_ms=session_close_ms
+        )
     return QuoteRatio(
         bucket_ms=bucket_ms,
         points=[
@@ -152,6 +214,31 @@ def build_quote_ratio_slice(
             for r in rows
         ],
     )
+
+
+def _expand_dense_bins(
+    price_min: float, bin_width: float, sparse_bins: list[tuple[int, int]], vp_bins: int
+) -> list[VolumeProfileBin]:
+    """Expand sparse ``(bin_idx, qty)`` rows into a dense ``VolumeProfileBin``
+    array of length ``vp_bins`` (shared by both volume-profile builders).
+
+    ``price_low`` for bin ``i`` is ``floor(price_min + i*bin_width)`` — computed
+    from the raw float ``bin_width`` so fractional widths don't shift the grid.
+    The top-edge bin (``FLOOR(price_max) == vp_bins``) is folded into the last
+    valid bin (``vp_bins-1``): without this clamp the highest-price volume is
+    silently dropped. GROUP BY upstream guarantees at most one row per ``idx``,
+    so accumulating with ``+=`` is safe (and equals ``=`` for non-folded bins).
+    """
+    bins_arr = [
+        VolumeProfileBin(price_low=int(price_min + i * bin_width), qty=0)
+        for i in range(vp_bins)
+    ]
+    for idx, qty in sparse_bins:
+        if idx < 0:
+            continue
+        b = min(idx, vp_bins - 1)
+        bins_arr[b] = VolumeProfileBin(price_low=bins_arr[b].price_low, qty=bins_arr[b].qty + qty)
+    return bins_arr
 
 
 def build_volume_profile_slice(
@@ -188,21 +275,7 @@ def build_volume_profile_slice(
         engine.conn, path=trades_path_obj,
         price_lo=price_min, price_hi=price_max, bins=vp_bins,
     )
-    bins_arr = [
-        VolumeProfileBin(price_low=int(price_min + i * binning.bin_width), qty=0)
-        for i in range(vp_bins)
-    ]
-    for idx, qty in binning.bins:
-        if idx < 0:
-            continue
-        # Clamp the top-edge bin (FLOOR of price_max == vp_bins) into the last
-        # valid bin (vp_bins-1). Without this fold, the highest-price volume is
-        # silently dropped. GROUP BY guarantees at most one row per idx, so
-        # accumulating with += is safe; for non-folded bins += equals =.
-        b = min(idx, vp_bins - 1)
-        bins_arr[b] = VolumeProfileBin(
-            price_low=bins_arr[b].price_low, qty=bins_arr[b].qty + qty,
-        )
+    bins_arr = _expand_dense_bins(price_min, binning.bin_width, binning.bins, vp_bins)
     return VolumeProfile(
         bin_count=vp_bins, price_min=price_min, price_max=price_max,
         # int() the float bin_width only for the wire value — price_low above is
@@ -250,22 +323,7 @@ def build_volume_profile_range(
     if binning is None:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
 
-    bins_arr = [
-        VolumeProfileBin(price_low=int(binning.price_min + i * binning.bin_width), qty=0)
-        for i in range(vp_bins)
-    ]
-    for idx, qty in binning.bins:
-        if idx < 0:
-            continue
-        # Clamp the top-edge bin (FLOOR of price_max == vp_bins) into the last
-        # valid bin (vp_bins-1). Without this fold, the highest-price volume is
-        # silently dropped. GROUP BY guarantees at most one row per idx, so
-        # accumulating with += is safe; for non-folded bins += equals =.
-        b = min(idx, vp_bins - 1)
-        bins_arr[b] = VolumeProfileBin(
-            price_low=bins_arr[b].price_low, qty=bins_arr[b].qty + qty,
-        )
-
+    bins_arr = _expand_dense_bins(binning.price_min, binning.bin_width, binning.bins, vp_bins)
     return VolumeProfile(
         bin_count=vp_bins,
         price_min=binning.price_min,
@@ -284,6 +342,8 @@ def build_fill_strength_slice(
     date: str,
     bucket_ms: int = 60_000,
     source: str = "hogaplay",
+    cache: PastIndicatorsCache | None = None,
+    today_kst: str | None = None,
 ) -> FillStrength:
     # ADR-0001: the bucketing SQL + schema knowledge now lives in the table
     # modules. bundle stays the coordinator: it owns the path layout + the
@@ -291,21 +351,24 @@ def build_fill_strength_slice(
     # Unix ms (the table queries are date-agnostic, so they cannot).
     #
     # 그릴링 Q4: kis_live 신형은 fills.parquet(10초 구간합)이 체결강도 소스.
-    # fills가 있으면 우선, 없으면(=hogaplay·레거시 kis_live) trades 폴백.
+    # fills가 있으면 우선, 없으면(=hogaplay·레거시 kis_live) trades 폴백
+    # (_query_fill_rows). fill_strength is a pure SUM GROUP BY, so re-aggregating
+    # the cached 1m sums up to bucket_ms is exact (reaggregate_fill).
     code_dir = engine.parquet_dir(date, code, source)
-    fills_path = code_dir / "fills.parquet"
-    if fills_path.exists():
-        rows = fills_tbl.query_fill_strength(
-            engine.conn, path=fills_path, bucket_ms=bucket_ms
-        )
+    if _indicator_cacheable(cache, today_kst, date, bucket_ms):
+        rows_1m = cache.get_fill(code, date, source)  # type: ignore[union-attr]
+        if rows_1m is None:
+            rows_1m = _query_fill_rows(engine, code_dir, _ONE_MINUTE_MS)
+            if rows_1m is None:
+                return FillStrength(bucket_ms=bucket_ms, points=[])
+            cache.store_fill(code, date, source, rows_1m)  # type: ignore[union-attr]
+        rows = reaggregate_fill(rows_1m, bucket_ms)
     else:
-        path_obj = code_dir / "trades.parquet"
-        if not path_obj.exists():
-            # ADR-0043: missing parquet is the valid "no trades yet" state.
+        direct = _query_fill_rows(engine, code_dir, bucket_ms)
+        if direct is None:
+            # ADR-0043: neither fills nor trades parquet — valid "no trades" state.
             return FillStrength(bucket_ms=bucket_ms, points=[])
-        rows = trades_tbl.query_fill_strength(
-            engine.conn, path=path_obj, bucket_ms=bucket_ms
-        )
+        rows = direct
     return FillStrength(
         bucket_ms=bucket_ms,
         points=[
@@ -402,6 +465,11 @@ def build_range_bundle(
     fill_pts: list[FillStrengthPoint] = []
     profiles_by_day: list[VolumeProfile] = []
 
+    # Indicator cache (호가비·체결강도): completed past days are computed once and
+    # re-aggregated on later pans; today_kst gates today out (still promoting).
+    indicators_cache = engine.indicators_cache
+    today_kst = _today_kst_yyyymmdd()
+
     for d in dates:
         source = _resolve_source(engine, d, code, source_pref)
         try:
@@ -426,8 +494,12 @@ def build_range_bundle(
         qr_d = build_quote_ratio_slice(
             engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
             session_close_ms=meta["regular_session_close_ms"],
+            cache=indicators_cache, today_kst=today_kst,
         )
-        fs_d = build_fill_strength_slice(engine, code=code, date=d, bucket_ms=bucket_ms, source=source)
+        fs_d = build_fill_strength_slice(
+            engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
+            cache=indicators_cache, today_kst=today_kst,
+        )
         vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source)
 
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)

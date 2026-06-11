@@ -43,14 +43,6 @@ def test_returns_pref_when_no_source_exists(tmp_path: Path) -> None:
     assert resolve_source(engine, "20260528", "005930", "kis_live") == "kis_live"
 
 
-def test_mock_engine_data_dir_returns_pref(tmp_path: Path) -> None:
-    # MagicMock data_dir (used in many unit tests) is not a real Path —
-    # function must short-circuit to pref rather than blow up on Path ops.
-    engine = MagicMock()
-    engine.data_dir = MagicMock()  # not a real Path
-    assert resolve_source(engine, "20260528", "005930", "hogaplay") == "hogaplay"
-
-
 @pytest.mark.parametrize("bad", ["", "kis_ws", "HOGAPLAY"])
 def test_source_name_literal_excludes_unknown(bad: str) -> None:
     # Static-typing guard. Runtime check is at the FastAPI layer (422).

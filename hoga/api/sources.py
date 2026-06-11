@@ -10,7 +10,6 @@ documents the /live hover-spot boundary that motivated this promotion.
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
@@ -26,15 +25,13 @@ def resolve_source(engine: "QueryEngine", date: str, code: str, pref: SourceName
     source that does. Returns ``pref`` even if nothing exists so the
     downstream StockDateNotFound surfaces naturally.
 
-    MagicMock engines (used in unit tests) have a non-Path ``data_dir`` —
-    fall back to ``pref`` immediately in that case to avoid blowing up on
-    Path operations.
+    Reads only ``engine.data_dir`` (a real ``Path`` in production and in tests,
+    which back the engine with a ``tmp_path`` data_dir) — no other engine state,
+    so tests need no full QueryEngine, just an object carrying ``data_dir``.
     """
     from hoga.api.disk_state import classify_stock_date
 
     sd_dir = engine.data_dir / "parquet" / date / code
-    if not isinstance(sd_dir, Path):
-        return pref
     per_source = classify_stock_date(sd_dir)
     if pref in per_source:
         return pref
