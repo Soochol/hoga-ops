@@ -4,6 +4,7 @@ export type SortMode = 'change' | 'manual';
 export const HEAT_SAT = 8;          // 포화 임계(%)
 export const HEAT_MAX_ALPHA = 0.42; // 기본 최대 알파(폴백 기본값)
 export const HEAT_CHIP_MAX_ALPHA = 0.72; // 등락률 칩용 — 작은 면적이라 더 진하게 칠해야 색이 또렷
+export const HEAT_HEADER_MAX_ALPHA = 0.2; // 그룹 헤더 밴드용 — 섹터 온도를 아주 옅게(배경 워시)
 
 /** 등락률 → 배경 rgba. null/0 = 투명(카드 배경 노출). ±HEAT_SAT% 포화.
  *  maxAlpha 로 면적별 농도 조절: 등락률 칩은 HEAT_CHIP_MAX_ALPHA(0.72)로 호출한다. */
