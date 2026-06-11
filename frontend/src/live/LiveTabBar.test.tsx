@@ -5,8 +5,8 @@ import { LiveTabBar } from './LiveTabBar';
 import type { LiveTab } from '../state/liveTabs';
 
 const tabs: LiveTab[] = [
-  { id: 'a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
-  { id: 'b', code: '000660', label: 'SK하이닉스', timeframe: '1m', historicalFromDate: null },
+  { id: 'a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null },
+  { id: 'b', code: '000660', label: 'SK하이닉스', timeframe: '1m', historicalFromDate: null, viewport: null },
 ];
 
 function setup(over: Partial<ComponentProps<typeof LiveTabBar>> = {}) {
@@ -27,7 +27,7 @@ it('renders the stock name only (code hidden when the name is known)', () => {
 
 it('falls back to the code when the name is unknown (label === code)', () => {
   setup({
-    tabs: [{ id: 'x', code: '123456', label: '123456', timeframe: '1m', historicalFromDate: null }],
+    tabs: [{ id: 'x', code: '123456', label: '123456', timeframe: '1m', historicalFromDate: null, viewport: null }],
     activeTabId: 'x',
   });
   expect(screen.getByText('123456')).toBeInTheDocument();
