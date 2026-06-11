@@ -25,10 +25,10 @@ it('폴더명 + 평균 등락률 표시, change 모드는 등락률 내림차순
   expect(names).toEqual(['SK하이닉스', '삼성전자']); // 8% 먼저
 });
 
-it('행 클릭 시 onPick(code)', () => {
+it('행 클릭 시 onPick(code, name) — 종목명을 탭 라벨로 전달', () => {
   const onPick = vi.fn();
   render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
     sortMode="manual" onPick={onPick} />);
   fireEvent.click(screen.getByTestId('heatmap-row-005930'));
-  expect(onPick).toHaveBeenCalledWith('005930');
+  expect(onPick).toHaveBeenCalledWith('005930', '삼성전자');
 });

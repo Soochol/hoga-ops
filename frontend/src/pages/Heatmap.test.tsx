@@ -87,7 +87,7 @@ it('폴더·종목·phase 배지·색 범례 렌더', async () => {
 it('행 클릭 → 종목 탭 open-or-focus(jump-to-live)', async () => {
   renderPage();
   fireEvent.click(await screen.findByTestId('heatmap-row-005930'));
-  expect(openOrFocusTab).toHaveBeenCalledWith('005930', undefined);
+  expect(openOrFocusTab).toHaveBeenCalledWith('005930', '삼성전자');
 });
 
 it('기본 manual=order 순, 등락률↓ 토글 시 등락률 내림차순', async () => {

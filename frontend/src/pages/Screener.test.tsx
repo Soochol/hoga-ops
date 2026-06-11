@@ -77,7 +77,7 @@ it('runs scan and renders row; click opens-or-focuses a tab', async () => {
   fireEvent.click(screen.getByText('조회'));
   await waitFor(() => screen.getByText('삼성전자'));
   fireEvent.click(screen.getByText('삼성전자'));
-  expect(openOrFocusTab).toHaveBeenCalledWith('005930', undefined);
+  expect(openOrFocusTab).toHaveBeenCalledWith('005930', '삼성전자');
 });
 
 it('row is keyboard-activatable', async () => {
@@ -85,7 +85,7 @@ it('row is keyboard-activatable', async () => {
   fireEvent.click(screen.getByText('조회'));
   const row = await screen.findByText('삼성전자');
   fireEvent.keyDown(row.closest('[role="button"]')!, { key: 'Enter' });
-  expect(openOrFocusTab).toHaveBeenCalledWith('005930', undefined);
+  expect(openOrFocusTab).toHaveBeenCalledWith('005930', '삼성전자');
 });
 
 it('surfaces a scan error instead of a silent dead-end', async () => {
