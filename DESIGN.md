@@ -114,6 +114,12 @@ The design system has a **single density dial** at `:root font-size`.
   단일 0.10 칩 토큰의 확장이며 색상 카테고리(가격 방향)는 준수. 숫자는 `priceDirClass()` 색을
   유지해 배경+숫자+부호 삼중 표현(색약 보조).
 
+- **Price-direction sparkline (관심맵 행 전용):** `frontend/src/heatmap/Sparkline.tsx` 가
+  `heat.ts` 의 히트 램프를 *1px stroke* 로 확장한다(배경 확장의 선 버전). stroke 색 =
+  since-open 시계열 기울기 부호 — 상승 `--price-up`(적)·하락 `--price-down`(청)·평탄
+  `--fg-dim`. 이 색은 *연 이후* 추세라 *일간* 등락칩 색과 다를 수 있다(서로 다른 시간창 =
+  의도된 모멘텀 신호). 가격 방향 카테고리 준수(새 색 없음).
+
 - **Dark mode:** Only mode in v1. Light mode is out of scope.
 
 ## Spacing

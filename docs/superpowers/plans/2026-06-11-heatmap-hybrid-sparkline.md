@@ -738,7 +738,7 @@ Expected: FAIL — 스트립 미구현(`반도체 평균 …` 버튼 없음).
 
 (a) import 변경 — `useEffect` 추가 + 신규 모듈:
 ```tsx
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 ```
 ```tsx
 import { HeatmapBoard } from '../heatmap/HeatmapBoard';
@@ -752,18 +752,22 @@ import { useSparklineSeries } from '../heatmap/useSparklineSeries';
   const appendBatch = useSparklineStore((s) => s.appendBatch);
   const seriesByCode = useSparklineSeries();
 
-  // 매 폴(dataUpdatedAt 변경)마다 전 종목 등락률을 누적 — phase==='open'에만(eng-review).
-  // closed는 _last_quotes를 600s 하트비트로 동일 non-null change_pct 재서빙(liveQuotes 주석)
-  // → null 필터로 못 막아 평탄점이 쌓인다. phase 게이트가 spec §4 "closed: 신규 점 없음"을 보장.
-  // 결측(null)은 store가 carry-forward(기존 시계열 보존). filter 없이 전 codes를 넘겨,
-  // watchlist에 있으면 보존·빠지면 store가 prune(전치 #3 결정). deps=dataUpdatedAt만(phase는
-  // 동일 useQuotes 결과라 항상 동시 변경 → stale closure 불가).
+  // 폴마다 전 종목 등락률을 누적 — phase==='open'에만(eng-review). closed는 _last_quotes를
+  // 600s 하트비트로 동일 non-null change_pct 재서빙 → null 필터로 못 막아 평탄점이 쌓인다.
+  // phase 게이트가 spec §4 "closed: 신규 점 없음"을 보장. 결측(null)은 store가 carry-forward.
+  // deps에 codes도 둔다 — watchlist가 quote보다 늦게 로드되는 갭(첫 폴 후 codes 도착, dataUpdatedAt
+  // 불변)을 [dataUpdatedAt]만으론 놓친다(실행 중 페이지 통합 테스트가 잡음). ref 가드로 같은 폴
+  // 중복 append 방지 → "폴당 1점"(codes만 바뀐 종목 추가는 다음 폴에 첫 점). filter 없이 전 codes를
+  // 넘겨 watchlist 잔존=보존·이탈=prune(#3 결정).
+  const lastAppendedRef = useRef(0);
   useEffect(() => {
-    if (phase !== 'open' || !dataUpdatedAt) return;
+    if (phase !== 'open' || !dataUpdatedAt || codes.length === 0) return;
+    if (dataUpdatedAt === lastAppendedRef.current) return;
+    lastAppendedRef.current = dataUpdatedAt;
     const points = codes.map((code) => ({ code, value: quoteByCode.get(code)?.change_pct ?? null }));
-    if (points.length) appendBatch(points, dataUpdatedAt);
+    appendBatch(points, dataUpdatedAt);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataUpdatedAt]);
+  }, [dataUpdatedAt, codes]);
 
   const scrollToFolder = (folderId: string) => {
     document.getElementById(`heatmap-folder-${folderId}`)
