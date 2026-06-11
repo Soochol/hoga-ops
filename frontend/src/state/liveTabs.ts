@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import { useLivePageStore, LIVE_TIMEFRAMES, type LiveTimeframe } from './livePage';
 import { attachPersistence } from './persistentSubscriber';
+import type { TabViewport } from '../live/viewportAnchor';
 
 export const TABS_SOFT_CAP = 8;
 
@@ -11,7 +12,42 @@ export type LiveTab = {
   label: string;
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
+  /** Saved chart viewport (줌+스크롤) for cold-restore on tab switch (ADR-0069
+   *  A안). Captured on switch-AWAY via the registered viewport capture; null
+   *  until first captured, and cleared on timeframe change (the bar span is
+   *  meaningless across timeframes). See [[viewportAnchor]]. */
+  viewport: TabViewport | null;
 };
+
+// Viewport capture registry. LiveChartRoot registers a reader over the LIVE
+// chart instance; the store calls it on switch-AWAY (focusTab / openOrFocusTab
+// new-tab) to snapshot the OUTGOING tab's view before applyTabToPage swaps the
+// code and the per-viewKey chart remounts. Module-level (mirrors the applyingTab
+// guard pattern): the store can't reach the chart on its own. The capture runs
+// synchronously inside the click handler, so chartRef still points at the
+// outgoing chart and getVisibleRange() returns the real outgoing viewport — no
+// staleness window (unlike useViewportBackfill's snapshot, which needs a layout
+// effect precisely because it runs across a data swap).
+let viewportCapture: (() => TabViewport | null) | null = null;
+export function registerViewportCapture(fn: () => TabViewport | null): () => void {
+  viewportCapture = fn;
+  return () => {
+    if (viewportCapture === fn) viewportCapture = null;
+  };
+}
+
+/** Snapshot the live chart's current viewport onto the active (outgoing) tab.
+ *  No-op when there's no active tab or no registered capture (e.g. tests, or
+ *  the empty-state with no chart). */
+function snapshotActiveViewport(): void {
+  const { tabs, activeTabId } = useLiveTabsStore.getState();
+  if (!activeTabId || !viewportCapture) return;
+  const vp = viewportCapture();
+  if (!vp) return;
+  useLiveTabsStore.setState({
+    tabs: tabs.map((t) => (t.id === activeTabId ? { ...t, viewport: vp } : t)),
+  });
+}
 
 type TabsStore = {
   tabs: LiveTab[];
@@ -52,11 +88,29 @@ export function applyTabToPage(tab: LiveTab | null): void {
 
 const STORAGE_KEY = 'live.tabs.v1';
 
-type TabSnapshot = { code: string; timeframe: LiveTimeframe; historicalFromDate: string | null; label: string };
+type TabSnapshot = {
+  code: string;
+  timeframe: LiveTimeframe;
+  historicalFromDate: string | null;
+  label: string;
+  viewport: TabViewport | null;
+};
 type TabsSnapshot = { version: 1; activeIndex: number; tabs: TabSnapshot[] };
 
 function isTimeframe(v: unknown): v is LiveTimeframe {
   return typeof v === 'string' && (LIVE_TIMEFRAMES as readonly string[]).includes(v);
+}
+
+/** Defensive parse: a persisted viewport must be a finite-numbers + boolean
+ *  shape, else drop to null (older snapshots predate the field → undefined). */
+function isViewport(v: unknown): v is TabViewport {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.rightEdgeMs === 'number' && Number.isFinite(o.rightEdgeMs) &&
+    typeof o.barSpan === 'number' && Number.isFinite(o.barSpan) && o.barSpan > 0 &&
+    typeof o.atLiveEdge === 'boolean'
+  );
 }
 
 export function toTabsSnapshot(state: Pick<TabsStore, 'tabs' | 'activeTabId'>): TabsSnapshot {
@@ -65,7 +119,8 @@ export function toTabsSnapshot(state: Pick<TabsStore, 'tabs' | 'activeTabId'>): 
     version: 1,
     activeIndex: i < 0 ? 0 : i,
     tabs: state.tabs.map((t) => ({
-      code: t.code, timeframe: t.timeframe, historicalFromDate: t.historicalFromDate, label: t.label,
+      code: t.code, timeframe: t.timeframe, historicalFromDate: t.historicalFromDate,
+      label: t.label, viewport: t.viewport,
     })),
   };
 }
@@ -91,6 +146,7 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
             label: typeof t.label === 'string' && t.label ? t.label : t.code,
             timeframe: isTimeframe(t.timeframe) ? t.timeframe : '1m',
             historicalFromDate: typeof t.historicalFromDate === 'string' ? t.historicalFromDate : null,
+            viewport: isViewport(t.viewport) ? t.viewport : null,
           }));
         if (tabs.length > 0) {
           // findIndex=-1 (active entry was dropped) → first-tab fallback.
@@ -113,6 +169,7 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
           label: p.activeCode,
           timeframe: isTimeframe(p.candleTimeframe) ? p.candleTimeframe : '1m',
           historicalFromDate: typeof p.historicalFromDate === 'string' ? p.historicalFromDate : null,
+          viewport: null,
         };
         return { tabs: [tab], activeTabId: tab.id };
       }
@@ -127,32 +184,36 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
   ...loadTabs(),
 
   openOrFocusTab: (code, label) => {
-    const { tabs } = get();
-    const hit = tabs.find((t) => t.code === code);
+    const hit = get().tabs.find((t) => t.code === code);
     if (hit) {
       // Refresh a stale label (e.g. a migrated tab where label===code) when the
       // caller re-opens the same code with a real name from search.
       if (label && label !== hit.label) {
-        set({ tabs: tabs.map((t) => (t.id === hit.id ? { ...t, label } : t)) });
+        set({ tabs: get().tabs.map((t) => (t.id === hit.id ? { ...t, label } : t)) });
       }
-      get().focusTab(hit.id);
+      get().focusTab(hit.id); // focusTab snapshots the outgoing active viewport
       return;
     }
-    if (tabs.length >= TABS_SOFT_CAP) return;
+    if (get().tabs.length >= TABS_SOFT_CAP) return;
+    // Capture the outgoing tab's viewport BEFORE adding the new one, then read
+    // tabs FRESH so the snapshot's write isn't clobbered by a stale spread.
+    snapshotActiveViewport();
     const tab: LiveTab = {
       id: nanoid(8),
       code,
       label: label ?? code,
       timeframe: useLivePageStore.getState().candleTimeframe,
       historicalFromDate: null,
+      viewport: null,
     };
-    set({ tabs: [...tabs, tab], activeTabId: tab.id });
+    set({ tabs: [...get().tabs, tab], activeTabId: tab.id });
     applyTabToPage(tab);
   },
 
   focusTab: (id) => {
     const tab = get().tabs.find((t) => t.id === id);
     if (!tab) return;
+    snapshotActiveViewport(); // save the OUTGOING active tab's view before swap
     set({ activeTabId: id });
     applyTabToPage(tab);
   },
@@ -200,10 +261,21 @@ export function initLiveTabsSync(): () => void {
     if (state.candleTimeframe === prev.candleTimeframe && state.historicalFromDate === prev.historicalFromDate) return;
     const { tabs, activeTabId } = useLiveTabsStore.getState();
     if (!activeTabId) return;
+    // A timeframe change invalidates the saved viewport — its barSpan is in the
+    // OLD timeframe's bars, meaningless after re-aggregation (mirrors how
+    // setCandleTimeframe resets historicalFromDate). A pure pan (tf unchanged)
+    // leaves viewport alone; it's only read on switch-back and re-captured on
+    // the next switch-away.
+    const tfChanged = state.candleTimeframe !== prev.candleTimeframe;
     useLiveTabsStore.setState({
       tabs: tabs.map((t) =>
         t.id === activeTabId
-          ? { ...t, timeframe: state.candleTimeframe, historicalFromDate: state.historicalFromDate }
+          ? {
+              ...t,
+              timeframe: state.candleTimeframe,
+              historicalFromDate: state.historicalFromDate,
+              ...(tfChanged ? { viewport: null } : {}),
+            }
           : t,
       ),
     });

@@ -5,6 +5,7 @@ import { LiveSidebar } from './LiveSidebar';
 import type { RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
 import type { LiveDataWarning } from './liveDataWarnings';
+import type { TabViewport } from './viewportAnchor';
 
 interface Props {
   activeCode: string | null;
@@ -21,6 +22,9 @@ interface Props {
   isExtending: boolean;
   /** 활성 경로 과거 fetch 경고(rate-limit 등). LiveChartRoot의 빈칸 문구·부분로딩 칩용. */
   pastDataWarnings?: LiveDataWarning[];
+  /** 활성 탭의 저장된 viewport(ADR-0069 A안). cold 전환 복귀 시 보던 위치 복원용으로
+   * LiveChartRoot에 전달. */
+  restoreViewport?: TabViewport | null;
   /** Owned by LivePage's single useLiveSeries call. Threaded to LiveSidebar
    * so the LATEST mode reads the same SSE buffer that feeds useLiveBundle. */
   live: LiveSeriesData;
@@ -34,6 +38,7 @@ export function LiveWorkarea({
   isPastCandlesLoading,
   isExtending,
   pastDataWarnings,
+  restoreViewport,
   live,
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
@@ -72,6 +77,7 @@ export function LiveWorkarea({
           isPastCandlesLoading={isPastCandlesLoading}
           isExtending={isExtending}
           pastDataWarnings={pastDataWarnings}
+          restoreViewport={restoreViewport}
         />
       </div>
       <div
