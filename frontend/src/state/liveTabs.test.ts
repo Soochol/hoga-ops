@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { useLiveTabsStore, TABS_SOFT_CAP, loadTabs, toTabsSnapshot } from './liveTabs';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { useLiveTabsStore, TABS_SOFT_CAP, loadTabs, toTabsSnapshot, initLiveTabsSync } from './liveTabs';
 import { useLivePageStore } from './livePage';
 
 beforeEach(() => {
@@ -194,11 +194,14 @@ describe('liveTabs persistence', () => {
 });
 
 describe('liveTabs ↔ page mirror', () => {
+  let _disposeMirror: (() => void) | null = null;
   beforeEach(() => {
     localStorage.clear();
     useLiveTabsStore.setState({ tabs: [], activeTabId: null });
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
+    _disposeMirror = initLiveTabsSync();
   });
+  afterEach(() => { _disposeMirror?.(); _disposeMirror = null; });
 
   it('toolbar timeframe change writes into the active tab', () => {
     useLiveTabsStore.getState().openOrFocusTab('005930', '삼성전자');
@@ -222,5 +225,28 @@ describe('liveTabs ↔ page mirror', () => {
     useLiveTabsStore.getState().openOrFocusTab('005930', '삼성전자');
     useLivePageStore.getState().extendHistoricalRange('20260601');
     expect(useLiveTabsStore.getState().tabs[0].historicalFromDate).toBe('20260601');
+  });
+});
+
+describe('initLiveTabsSync', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useLiveTabsStore.setState({ tabs: [], activeTabId: null });
+    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
+  });
+
+  it('is idempotent — a second call returns the same dispose (no double-subscribe)', () => {
+    const d1 = initLiveTabsSync();
+    const d2 = initLiveTabsSync();
+    expect(d1).toBe(d2);
+    d1();
+  });
+
+  it('dispose stops the page→tab mirror', () => {
+    const dispose = initLiveTabsSync();
+    useLiveTabsStore.getState().openOrFocusTab('005930', '삼성전자');
+    dispose();
+    useLivePageStore.getState().setCandleTimeframe('5m'); // after dispose — must NOT mirror
+    expect(useLiveTabsStore.getState().tabs[0].timeframe).toBe('1m'); // unchanged
   });
 });

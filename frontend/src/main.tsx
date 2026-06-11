@@ -8,7 +8,11 @@ import { Screener } from './pages/Screener';
 import Capture from './pages/Capture';
 import Settings from './pages/Settings';
 import { Heatmap } from './pages/Heatmap';
+import { initLiveTabsSync } from './state/liveTabs';
 import './styles/global.css';
+
+const _disposeLiveTabsSync = initLiveTabsSync();
+if (import.meta.hot) import.meta.hot.dispose(_disposeLiveTabsSync);
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, retry: 1 } } });
 

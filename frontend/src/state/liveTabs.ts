@@ -178,27 +178,36 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
   },
 }));
 
-const _unsubscribePersist = attachPersistence(useLiveTabsStore, {
-  storageKey: STORAGE_KEY,
-  toSnapshot: (s) => toTabsSnapshot(s),
-});
-if (import.meta.hot) import.meta.hot.dispose(_unsubscribePersist);
+// Live wiring (persistence + page→tab mirror) is OPT-IN via initLiveTabsSync(),
+// called once at app entry (main.tsx). Importing this module no longer subscribes
+// to anything — tests that only need the store/loadTabs don't inherit the
+// useLivePageStore mirror subscription. Idempotent: a second call returns the
+// existing dispose (StrictMode / HMR / test-beforeEach safe).
+let _syncDispose: (() => void) | null = null;
 
-// page→tab mirror: user-initiated tf/pan changes flow into the active tab.
-// The early-return on unchanged tf+hfd also skips indicator-only page changes
-// (MA/volume toggles fire this unselectored subscribe). The applyingTab guard
-// is defensive (see its declaration) — not required for correctness here.
-const _unsubscribeMirror = useLivePageStore.subscribe((state, prev) => {
-  if (applyingTab) return;
-  if (state.candleTimeframe === prev.candleTimeframe && state.historicalFromDate === prev.historicalFromDate) return;
-  const { tabs, activeTabId } = useLiveTabsStore.getState();
-  if (!activeTabId) return;
-  useLiveTabsStore.setState({
-    tabs: tabs.map((t) =>
-      t.id === activeTabId
-        ? { ...t, timeframe: state.candleTimeframe, historicalFromDate: state.historicalFromDate }
-        : t,
-    ),
+export function initLiveTabsSync(): () => void {
+  if (_syncDispose) return _syncDispose;
+  const unsubPersist = attachPersistence(useLiveTabsStore, {
+    storageKey: STORAGE_KEY,
+    toSnapshot: (s) => toTabsSnapshot(s),
   });
-});
-if (import.meta.hot) import.meta.hot.dispose(_unsubscribeMirror);
+  // page→tab mirror: user-initiated tf/pan changes flow into the active tab.
+  // The early-return on unchanged tf+hfd also skips indicator-only page changes
+  // (MA/volume toggles fire this unselectored subscribe). The applyingTab guard
+  // is defensive (see its declaration) — not required for correctness here.
+  const unsubMirror = useLivePageStore.subscribe((state, prev) => {
+    if (applyingTab) return;
+    if (state.candleTimeframe === prev.candleTimeframe && state.historicalFromDate === prev.historicalFromDate) return;
+    const { tabs, activeTabId } = useLiveTabsStore.getState();
+    if (!activeTabId) return;
+    useLiveTabsStore.setState({
+      tabs: tabs.map((t) =>
+        t.id === activeTabId
+          ? { ...t, timeframe: state.candleTimeframe, historicalFromDate: state.historicalFromDate }
+          : t,
+      ),
+    });
+  });
+  _syncDispose = () => { unsubPersist(); unsubMirror(); _syncDispose = null; };
+  return _syncDispose;
+}
