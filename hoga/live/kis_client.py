@@ -249,11 +249,15 @@ class DailyCandleFetchResult:
 
 @dataclass(frozen=True)
 class KisQuote:
-    """One row of intstock-multprice (현재가 + 등락률 + 전일대비 등락액) for a Code."""
+    """One row of intstock-multprice (현재가 + 등락률 + 전일대비 등락액 + 당일 OHLC) for a Code."""
     code: str
     price: int
     change_pct: float | None
     change_won: int | None = None
+    # 당일 OHLC(inter2_oprc/hgpr/lwpr). 기본 None — positional 생성자/동등성 테스트 보존.
+    open: int | None = None
+    high: int | None = None
+    low: int | None = None
 
 
 @dataclass(frozen=True)
@@ -974,6 +978,36 @@ def _build_multi_price_params(codes_chunk: list[str]) -> dict[str, str]:
     return params
 
 
+def _parse_ohlc_field(raw: object) -> int | None:
+    """당일 OHLC 한 필드 → int|None. price 파서와 달리 0으로 위조하지 않는다
+    (0 은 양봉/음봉 판정·[low,high] 스케일 분모를 오염). 빈값/파싱실패/<=0 → None."""
+    if raw in (None, ""):
+        return None
+    try:
+        v = int(float(raw))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
+
+
+def _parse_change(row: dict) -> tuple[float | None, int | None]:
+    """(change_pct, change_won). prdy_ctrt 빈값/파싱실패·미인식 부호코드면 (None, None)
+    — 절대값 필드라 부호 없으면 양수 위조 금지(#11)."""
+    raw_ctrt = row.get("prdy_ctrt")
+    if raw_ctrt in (None, ""):
+        return None, None
+    try:
+        mag = abs(float(raw_ctrt))
+    except (TypeError, ValueError):
+        return None, None
+    sign = str(row.get("prdy_vrss_sign", ""))
+    mult = {"1": 1.0, "2": 1.0, "4": -1.0, "5": -1.0, "3": 0.0}.get(sign)
+    if mult is None:
+        return None, None
+    change_won = _parse_change_won(row.get("inter2_prdy_vrss") or row.get("prdy_vrss"), mult)
+    return mult * mag, change_won
+
+
 def _parse_quote(row: dict) -> KisQuote | None:
     """multprice output 한 항목 → KisQuote.
 
@@ -995,21 +1029,14 @@ def _parse_quote(row: dict) -> KisQuote | None:
         price = int(float(row.get("inter2_prpr") or "0"))
     except (TypeError, ValueError):
         price = 0
-    raw_ctrt = row.get("prdy_ctrt")
-    if raw_ctrt in (None, ""):
-        return KisQuote(code=code, price=price, change_pct=None, change_won=None)
-    try:
-        mag = abs(float(raw_ctrt))
-    except (TypeError, ValueError):
-        return KisQuote(code=code, price=price, change_pct=None, change_won=None)
-    # 부호코드 → 멀티플라이어. 등락률·등락액에 공통 적용. 미인식 코드(1·2·3·4·5 밖)는
-    # 방향 불명 → None(절대값 필드라 부호를 못 붙임 → 양수 위조 금지).
-    sign = str(row.get("prdy_vrss_sign", ""))
-    mult = {"1": 1.0, "2": 1.0, "4": -1.0, "5": -1.0, "3": 0.0}.get(sign)
-    if mult is None:
-        return KisQuote(code=code, price=price, change_pct=None, change_won=None)
-    change_won = _parse_change_won(row.get("inter2_prdy_vrss") or row.get("prdy_vrss"), mult)
-    return KisQuote(code=code, price=price, change_pct=mult * mag, change_won=change_won)
+    # change 와 OHLC 는 독립 필드군 — 끝에서 한 번만 생성해 어느 쪽 결측에도 다른 쪽 누락 없게.
+    change_pct, change_won = _parse_change(row)
+    return KisQuote(
+        code=code, price=price, change_pct=change_pct, change_won=change_won,
+        open=_parse_ohlc_field(row.get("inter2_oprc")),
+        high=_parse_ohlc_field(row.get("inter2_hgpr")),
+        low=_parse_ohlc_field(row.get("inter2_lwpr")),
+    )
 
 
 def _parse_change_won(raw: str | None, mult: float) -> int | None:

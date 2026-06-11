@@ -55,6 +55,34 @@ def test_parse_quote_nonnumeric_price_is_safe():
     assert q is not None and q.price == 0 and q.change_pct is None
 
 
+def test_parse_quote_includes_today_ohlc():
+    q = _parse_quote({"inter_shrn_iscd": "005930", "inter2_prpr": "298000",
+                      "prdy_ctrt": "1.50", "prdy_vrss_sign": "2",
+                      "inter2_oprc": "290500", "inter2_hgpr": "306500", "inter2_lwpr": "287500"})
+    assert q is not None
+    assert (q.open, q.high, q.low) == (290500, 306500, 287500)
+    assert q.price == 298000 and q.change_pct == 1.50  # 기존 로직 불변
+
+
+def test_parse_quote_ohlc_kept_when_change_bails_out():
+    # 빈 prdy_ctrt → change=None 이어도 OHLC는 채워진다(단일 return 검증; 4-return 함정 방지).
+    q = _parse_quote({"inter_shrn_iscd": "005930", "inter2_prpr": "298000",
+                      "prdy_ctrt": "", "inter2_oprc": "290500",
+                      "inter2_hgpr": "306500", "inter2_lwpr": "287500"})
+    assert q is not None
+    assert q.change_pct is None and q.change_won is None
+    assert (q.open, q.high, q.low) == (290500, 306500, 287500)
+
+
+def test_parse_quote_ohlc_missing_or_zero_is_none():
+    # 빈값/0/비숫자 → None (0 위조 금지 — 스케일·양봉판정 오염 방지).
+    q = _parse_quote({"inter_shrn_iscd": "005930", "inter2_prpr": "298000",
+                      "prdy_ctrt": "1.5", "prdy_vrss_sign": "2",
+                      "inter2_oprc": "0", "inter2_hgpr": "", "inter2_lwpr": "N/A"})
+    assert q is not None
+    assert (q.open, q.high, q.low) == (None, None, None)
+
+
 def test_parse_quote_includes_signed_change_won():
     # inter2_prdy_vrss(전일대비 등락액, 절대값) 에 prdy_vrss_sign 을 등락률과 공통 적용
     up = _parse_quote({"inter_shrn_iscd": "005930", "inter2_prpr": "72400",
