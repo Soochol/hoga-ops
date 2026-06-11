@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { useSymbolSearch } from '../capture/useSymbols';
 import { useCombobox } from '../util/useCombobox';
 import { useLivePageStore } from '../state/livePage';
-import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 import { shouldIgnoreEvent } from './useLiveKeyboard';
-import { WatchlistToggleButton } from '../watchlist/WatchlistToggleButton';
+import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import type { SymbolHit } from '../api/types';
 
 export function LiveSymbolSearch() {
@@ -15,8 +14,6 @@ export function LiveSymbolSearch() {
   // focus-then-Enter on an empty input would invisibly select rawItems[0]
   // (the dropdown is hidden when the query is empty). Mirrors capture/SymbolSearch.
   const items = query.trim().length >= 1 ? rawItems : [];
-
-  const { isMember, toggle } = useWatchlistMembership();
 
   const selectHit = (hit: SymbolHit) => { setActiveCode(hit.code); setQuery(''); };
 
@@ -90,24 +87,21 @@ export function LiveSymbolSearch() {
           {items.length === 0 ? (
             <div className="py-3 px-2.5 text-sm text-fg-dim">검색 결과가 없습니다.</div>
           ) : (
-            items.map((hit, i) => {
-              const member = isMember(hit.code);
-              return (
-                <div
-                  key={hit.code}
-                  role="option"
-                  {...getOptionProps(i)}
-                  onClick={() => { selectHit(hit); setOpen(false); }}
-                  style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'transparent' }}
-                  className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center py-2 px-2.5 cursor-pointer"
-                >
-                  <span className="text-sm text-fg">{hit.name}</span>
-                  <span className="text-sm font-mono text-fg-dim tabular-nums">{hit.code}</span>
-                  <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">{hit.market}</span>
-                  <WatchlistToggleButton isMember={member} onToggle={() => toggle(hit.code)} />
-                </div>
-              );
-            })
+            items.map((hit, i) => (
+              <div
+                key={hit.code}
+                role="option"
+                {...getOptionProps(i)}
+                onClick={() => { selectHit(hit); setOpen(false); }}
+                style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'transparent' }}
+                className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center py-2 px-2.5 cursor-pointer"
+              >
+                <span className="text-sm text-fg">{hit.name}</span>
+                <span className="text-sm font-mono text-fg-dim tabular-nums">{hit.code}</span>
+                <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">{hit.market}</span>
+                <WatchlistHeartButton code={hit.code} name={hit.name} />
+              </div>
+            ))
           )}
         </div>
       )}

@@ -9,8 +9,7 @@ import { useScreenerUpdate } from './useScreenerUpdate';
 import { StalenessChip } from './StalenessChip';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useScreenerRowsLive } from './useScreenerRowsLive';
-import { WatchlistToggleButton } from '../watchlist/WatchlistToggleButton';
-import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
+import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 
 /**
  * Screener panel (ADR-0052) — app-wide sibling of the Watchlist Panel. Pick a
@@ -22,7 +21,6 @@ import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 export function ScreenerDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
   const openLive = useJumpToLive();
-  const { isMember, toggle } = useWatchlistMembership();
 
   const selectedSavedId = useScreenerPanelStore((s) => s.selectedSavedId);
   const setSelectedSavedId = useScreenerPanelStore((s) => s.setSelectedSavedId);
@@ -158,23 +156,20 @@ export function ScreenerDrawer() {
               <div className="p-md text-fg-dim text-sm">조건에 맞는 종목이 없습니다.</div>
             ) : (
               <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                {liveRows.map((r) => {
-                  const member = isMember(r.code);
-                  return (
-                    <QuoteRow
-                      key={r.code}
-                      name={r.name}
-                      price={r.price}
-                      pct={r.change_pct}
-                      changeWon={r.change_won}
-                      active={r.code === activeCode}
-                      ariaLabel={`${r.name} ${r.code} 차트 열기`}
-                      testId={`screener-row-${r.code}`}
-                      onClick={() => openLive(r.code)}
-                      trailingAction={<WatchlistToggleButton isMember={member} onToggle={() => toggle(r.code)} variant="row" />}
-                    />
-                  );
-                })}
+                {liveRows.map((r) => (
+                  <QuoteRow
+                    key={r.code}
+                    name={r.name}
+                    price={r.price}
+                    pct={r.change_pct}
+                    changeWon={r.change_won}
+                    active={r.code === activeCode}
+                    ariaLabel={`${r.name} ${r.code} 차트 열기`}
+                    testId={`screener-row-${r.code}`}
+                    onClick={() => openLive(r.code)}
+                    trailingAction={<WatchlistHeartButton code={r.code} name={r.name} variant="row" />}
+                  />
+                ))}
               </ul>
             )}
           </>

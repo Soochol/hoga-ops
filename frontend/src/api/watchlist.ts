@@ -14,8 +14,9 @@ export interface WatchlistEntry {
   name: string;
   registered_at_kst_date: string;  // YYYYMMDD
   last_success_date: string | null;
-  folder_id: string | null;        // null = 미분류
-  order: number;                   // 0-based, per-folder
+  folder_id: string | null;        // watchlist v3 와이어는 항상 실폴더(null 없음, ADR-0069);
+                                   // null은 heatmap(v2, 공유 타입)의 미분류용으로만 존재
+  order: number;                   // 0-based, 폴더 내 인덱스
 }
 
 export interface WatchlistResponse {
@@ -28,14 +29,20 @@ export function getWatchlist(): Promise<WatchlistResponse> {
   return apiCall<WatchlistResponse>('/api/watchlist');
 }
 
-export function addToWatchlist(code: string): Promise<WatchlistEntry> {
-  return apiCall<WatchlistEntry>('/api/watchlist', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+/** v3 멤버십(ADR-0069): code를 folderId의 멤버로 추가. entry 없으면 백엔드가 생성. */
+export function addMember(folderId: string, code: string): Promise<WatchlistEntry> {
+  return apiCall<WatchlistEntry>(`/api/watchlist/folders/${folderId}/members`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),
   });
 }
 
+/** v3 멤버십: code를 folderId에서 제거. 어느 폴더에도 없으면 백엔드가 entry 삭제. */
+export function removeMember(folderId: string, code: string): Promise<void> {
+  return apiAction(`/api/watchlist/folders/${folderId}/members/${code}`, { method: 'DELETE' });
+}
+
+/** 관심종목에서 코드 전체 제거(모든 폴더에서 빼고 entry 삭제). 드로어 quick-remove. */
 export function removeFromWatchlist(code: string): Promise<void> {
   return apiAction(`/api/watchlist/${code}`, { method: 'DELETE' });
 }
@@ -63,13 +70,7 @@ export function reorderFolders(orderedIds: string[]): Promise<void> {
     body: JSON.stringify({ ordered_ids: orderedIds }),
   });
 }
-export function moveEntries(codes: string[], folderId: string | null): Promise<void> {
-  return apiAction('/api/watchlist/move', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ codes, folder_id: folderId }),
-  });
-}
-export function reorderEntries(folderId: string | null, orderedCodes: string[]): Promise<void> {
+export function reorderEntries(folderId: string, orderedCodes: string[]): Promise<void> {
   return apiAction('/api/watchlist/reorder', {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ folder_id: folderId, ordered_codes: orderedCodes }),
