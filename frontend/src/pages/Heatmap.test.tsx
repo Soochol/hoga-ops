@@ -3,15 +3,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../api/watchlist', async (orig) => ({
-  ...(await orig<typeof import('../api/watchlist')>()),
-  getWatchlist: vi.fn(() => Promise.resolve({
+// 독립 스토어(ADR-0068): 페이지는 useHeatmap → getHeatmap('/api/heatmap')을 부른다.
+vi.mock('../api/heatmap', async (orig) => ({
+  ...(await orig<typeof import('../api/heatmap')>()),
+  getHeatmap: vi.fn(() => Promise.resolve({
     folders: [{ id: 'f1', name: '반도체', order: 0 }],
     entries: [
-      { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f1', order: 0 },
-      { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f1', order: 1 },
+      { code: '005930', name: '삼성전자', folder_id: 'f1', order: 0 },
+      { code: '000660', name: 'SK하이닉스', folder_id: 'f1', order: 1 },
     ],
-    next_run_at_ms: 0,
   })),
 }));
 

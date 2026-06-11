@@ -1,5 +1,7 @@
 # 관심종목 히트맵 페이지 (관심맵) — 설계
 
+> **⚠️ 부분 SUPERSEDED (2026-06-11, ADR-0068):** 이 스펙의 **데이터 소스 결정**("백엔드 무변경", `useWatchlist` 재사용, 히트맵 = 한 Watchlist 의 뷰)은 **`2026-06-11-heatmap-watchlist-separation.md` + ADR-0068 로 반전**되었다 — 히트맵은 이제 watchlist 와 독립된 자체 스토어(`heatmap.json`/`/api/heatmap`/`['heatmap']`)다. 아래 **렌더링 설계**(레이아웃 §2, 히트 색 §6, 정렬 토글 §7, 헤더 §8, 테스트 전략 §11)는 **그대로 유효**하다.
+
 - **Date**: 2026-06-10
 - **Status**: Designed — 시각 목업 + 결정 확정 + **plan-eng-review 7개 질문 반영(§14)**. 사장님 최종 검토 대기.
 - **Topic slug**: `watchlist-heatmap`

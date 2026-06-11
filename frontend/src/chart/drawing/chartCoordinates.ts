@@ -135,6 +135,33 @@ export function canvasYToPrice(
 }
 
 /**
+ * Domain price at the top and bottom edges of `paneId`'s pane, read from the
+ * registered series' `coordinateToPrice` at the pane-local top (0) and bottom
+ * (pane height). Pane-local because `coordinateToPrice` expects pane-local Y.
+ *
+ * The shape-preserving translate cap (selectTool body-drag) needs the pane's
+ * full price span to clamp a whole Drawing without collapsing it; this is the
+ * price-axis sibling of `clampYToPane` (which clamps in pixels). Returns null
+ * when the pane or its series isn't mounted, or the price scale can't resolve.
+ */
+export function priceBoundsForPane(
+  chart: IChartApi,
+  paneSeries: PaneSeriesMap,
+  paneId: PaneId,
+): { top: number; bottom: number } | null {
+  const series = paneSeries.get(paneId);
+  if (!series) return null;
+  const idx = paneIdToIndex(paneSeries, paneId);
+  const panes = chart.panes();
+  if (idx < 0 || idx >= panes.length) return null;
+  const paneH = panes[idx].getHeight();
+  const topPrice = series.coordinateToPrice(0);
+  const bottomPrice = series.coordinateToPrice(paneH);
+  if (topPrice == null || bottomPrice == null) return null;
+  return { top: Number(topPrice), bottom: Number(bottomPrice) };
+}
+
+/**
  * Chart-global pixel (px, py) → domain Point (realMs, price) for the
  * pane identified by `paneId`. Subtracts the pane offset before calling
  * `series.coordinateToPrice` because that API expects pane-local Y.

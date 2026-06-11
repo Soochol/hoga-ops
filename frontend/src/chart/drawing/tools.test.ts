@@ -84,8 +84,27 @@ describe('hlineTool.onPointerDown', () => {
     }
   });
 
-  it('does nothing when pixelToData returns null (price scale unavailable)', () => {
-    const ctx = makeCtx({ pixelToData: vi.fn(() => null) });
+  // Empty right band past the last candle: coordinateToTime → null so
+  // pixelToData → null, but the price scale spans the full chart width, so
+  // canvasYToPrice still resolves. hline is price-only (no realMs), so creation
+  // must succeed there off the Y axis alone. Regression: the old code routed
+  // creation through pixelToData and aborted in the band — the user could add an
+  // hline over candles but not in the empty area. Mirrors the shipped body-drag
+  // fix (selectTool block below). See chartCoordinates.ts canvasYToPrice.
+  it('adds an hline in the empty band where pixelToData is null but canvasYToPrice resolves', () => {
+    const ctx = makeCtx({
+      pixelToData: vi.fn(() => null),
+      canvasYToPrice: vi.fn(() => 70_000),
+    });
+    hlineTool.onPointerDown!(ctx);
+    expect(ctx.add).toHaveBeenCalledOnce();
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    expect(added.kind).toBe('hline');
+    if (added.kind === 'hline') expect(added.price).toBe(70_000);
+  });
+
+  it('does nothing when canvasYToPrice returns null (price scale unavailable)', () => {
+    const ctx = makeCtx({ canvasYToPrice: vi.fn(() => null) });
     hlineTool.onPointerDown!(ctx);
     expect(ctx.add).not.toHaveBeenCalled();
   });

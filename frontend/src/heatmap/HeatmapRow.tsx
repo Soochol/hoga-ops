@@ -14,6 +14,8 @@ export interface HeatmapRowProps {
   sortableStyle?: React.CSSProperties;
   dragListeners?: DraggableSyntheticListeners;
   dragging?: boolean;
+  /** 우클릭 컨텍스트 메뉴(삭제·폴더이동, ADR-0068 G3). 미전달이면 기본 컨텍스트 메뉴. */
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 /** 칼럼형 행: 종목명 │ 현재가 │ 등락률 칩. 히트색은 등락률 칩 배경에만 적용한다
@@ -26,7 +28,7 @@ export interface HeatmapRowProps {
  *  PointerSensor distance:5 가 둘을 가른다 — drawer SortableQuoteRow 와 동일 계약). */
 export function HeatmapRow({
   name, price, pct, onClick, ariaLabel, testId,
-  sortableRef, sortableStyle, dragListeners, dragging,
+  sortableRef, sortableStyle, dragListeners, dragging, onContextMenu,
 }: HeatmapRowProps) {
   const glyph = pct === null ? '' : pct > 0 ? '▲' : pct < 0 ? '▼' : '';
   const sign = (n: number) => (n > 0 ? '+' : '');
@@ -43,24 +45,26 @@ export function HeatmapRow({
       // 도입 시에도 Enter/Space 가 드래그가 아닌 차트 열기로 유지되도록 하는 방어).
       {...dragListeners}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       style={dragging ? { ...sortableStyle, opacity: 0.5 } : sortableStyle}
       className={`grid grid-cols-[minmax(4rem,1fr)_3.2rem_4.25rem] gap-1.5 px-2 py-0.5 items-center text-sm border-b border-border outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
     >
-      {/* 종목명은 text-fg-dim(중간 회색) — 현재가·등락률 칩보다 한 단계 낮춰, 흰 글자
-          일색으로 너무 밝던 행에 위계를 준다(라벨=이름 < 값=가격 < 신호=등락률 칩). */}
-      <span className="truncate text-fg-dim">{name}</span>
+      {/* 종목명은 text-fg-dim(중간 회색) + text-xs(행 text-sm 보다 한 단계 작게) — 현재가·
+          등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}
+      <span className="truncate text-xs text-fg-dim">{name}</span>
       <span className="text-right font-mono tabular-nums text-fg">
         {price === null ? '—' : price.toLocaleString('ko-KR')}
       </span>
-      {/* 히트는 등락률 칩 배경에만: 농도=등락폭(heatBg, 칩 전용 알파), 흰 글자 + ▲▼ + 부호.
+      {/* 히트는 등락률 칩 배경에만: 농도=등락폭(heatBg, 칩 전용 알파) + ▲▼ + 부호.
           칸을 꽉 채우는 둥근 칩이라 한 칼럼이 통째로 히트색 띠처럼 보이고 행 간 정렬도 유지된다.
-          글자는 순백(text-white) + semibold — 채도 높은 칩 배경에서 회백색(text-fg)보다 또렷하다. */}
+          글자는 종목명과 동일하게 text-fg-dim·기본 두께 — 칩의 색(방향·농도)이 신호를 지고
+          숫자는 한 단계 물러난 디테일로 둔다(사용자 선호: 굵은 흰 글자 톤다운). */}
       {pct === null ? (
         <span className="text-right font-mono tabular-nums text-fg-dim">—</span>
       ) : (
         <span
-          className="rounded px-1.5 text-right font-mono tabular-nums font-semibold text-white"
+          className="rounded px-1.5 text-right font-mono tabular-nums text-fg-dim"
           style={{ background: heatBg(pct, HEAT_CHIP_MAX_ALPHA) }}
         >
           {glyph}{sign(pct)}{pct.toFixed(2)}
