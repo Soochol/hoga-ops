@@ -6,7 +6,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { WatchlistFolder, WatchlistEntry } from '../api/watchlist';
 import type { LiveQuote } from '../api/liveQuotes';
 import { HeatmapRow } from './HeatmapRow';
-import { sortEntries, avgPct, heatBg, HEAT_CHIP_MAX_ALPHA, type SortMode } from './heat';
+import { sortEntries, avgPct, heatHeaderBg, type SortMode } from './heat';
 import { resolveDrag } from '../watchlist/dragHandlers';
 import { FolderAddButton } from './FolderAddButton';
 
@@ -74,22 +74,20 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
 
   return (
     <div id={folderId ? `heatmap-folder-${folderId}` : undefined} className="break-inside-avoid border-l-2 border-border-strong mb-2 overflow-hidden">
-      {/* 그룹 헤더 밴드 = bg-bg-input(폴더 본문보다 한 단계 밝게 = 그룹 앵커). 폴더는 투명·평면
-          (카드 배경/테두리 없음)이고 좌측 border-strong 스파인 + 이 헤더로 그룹을 구분한다.
-          섹터 온도는 밴드 전체 틴트 대신 헤더의 평균 등락칩으로만 표현(L1: 헤더 워시 제거). */}
-      <div className="flex justify-between items-center gap-2 bg-bg-input px-2 py-1 border-b border-border-strong">
+      {/* 그룹 헤더 밴드 = heatHeaderBg(avg) — 평균 등락 비례 히트 틴트(섹터 온도). 미분류 포함
+          무분기(가드 없음, G8): 미분류 avg 채색은 칩→밴드 정보 이동(회귀 아님). 폴더 본문은
+          투명·평면이고 좌측 border-strong 스파인 + 이 틴트 밴드로 그룹을 구분한다. 평균 % 는
+          평면 text-fg-dim 텍스트(색=밴드가 짊어짐, 숫자=보조; G4). */}
+      <div className="flex justify-between items-center gap-2 px-2 py-1 border-b border-border-strong"
+        style={{ background: heatHeaderBg(avg) }}>
         {/* 폴더(섹터)명 = 보드의 1차 앵커. 글자 크기 text-xs(가독성, origin/main).
             실폴더는 text-fg(밝게), 미분류는 한 단계 낮춰(text-fg-dim) 구분. */}
         <span className={`text-xs font-semibold truncate ${folder ? 'text-fg' : 'text-fg-dim'}`}>
           {folder?.name ?? '미분류'}
         </span>
         <span className="flex items-center gap-2 flex-none">
-          {/* 평균 등락률을 행과 같은 히트 칩으로(heatBg) — 섹터 온도를 일별하게 하면서
-              "히트색은 칩에만" 설계를 그대로 따른다. 글자는 행 칩과 동일하게 text-fg-dim·
-              기본 두께(사용자 선호: 굵은 흰 글자 톤다운). */}
           {avg !== null && (
-            <span className="text-xs font-mono tabular-nums text-fg-dim rounded px-1"
-              style={{ background: heatBg(avg, HEAT_CHIP_MAX_ALPHA) }}>
+            <span className="text-xs font-mono tabular-nums text-fg-dim">
               {avg > 0 ? '+' : ''}{avg.toFixed(1)}%
             </span>
           )}
