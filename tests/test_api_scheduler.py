@@ -12,6 +12,15 @@ import pytest
 KST = ZoneInfo("Asia/Seoul")
 
 
+async def _seed(tmp_path, *, code: str, name: str, today_kst_date: str):
+    """v3 seed (add_entry 폐지): ensure a '기본' folder, add the code as a member."""
+    from hoga.api.watchlist import create_folder, add_member, load_document
+    doc = load_document(tmp_path)
+    fid = doc.folders[0].id if doc.folders else (await create_folder(tmp_path, name="기본")).id
+    return await add_member(tmp_path, code=code, name=name,
+                            today_kst_date=today_kst_date, folder_id=fid)
+
+
 def _at(h: int, m: int = 0, day: int = 26) -> dt.datetime:
     return dt.datetime(2026, 5, day, h, m, 0, tzinfo=KST)
 
@@ -44,9 +53,9 @@ def test_midnight_returns_17h():
 @pytest.mark.asyncio
 async def test_daily_run_enqueues_each_watchlist_entry_on_trading_day(tmp_path: Path):
     from hoga.api import scheduler, watchlist
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+    await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
-    await watchlist.add_entry(tmp_path, code="005930", name="삼성전자",
+    await _seed(tmp_path, code="005930", name="삼성전자",
                               today_kst_date="20260520")
     fake_now = dt.datetime(2026, 5, 26, 18, 0, 0, tzinfo=KST)  # Tuesday
 
@@ -67,7 +76,7 @@ async def test_daily_run_enqueues_each_watchlist_entry_on_trading_day(tmp_path: 
 @pytest.mark.asyncio
 async def test_daily_run_skips_non_trading_day(tmp_path: Path):
     from hoga.api import scheduler, watchlist
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+    await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     fake_now = dt.datetime(2026, 5, 24, 18, 0, 0, tzinfo=KST)  # Sunday
 
@@ -85,9 +94,9 @@ async def test_daily_run_per_entry_failure_does_not_abort_loop(tmp_path: Path):
     """One bad entry must not stop later entries from being enqueued."""
     from fastapi import HTTPException
     from hoga.api import scheduler, watchlist
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+    await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
-    await watchlist.add_entry(tmp_path, code="005930", name="삼성전자",
+    await _seed(tmp_path, code="005930", name="삼성전자",
                               today_kst_date="20260520")
     fake_now = dt.datetime(2026, 5, 26, 18, 0, 0, tzinfo=KST)
 
@@ -117,7 +126,7 @@ async def test_daily_run_logs_blocked_watchlist_date(tmp_path: Path, caplog):
     import logging
     from hoga.api import scheduler, watchlist
     from hoga.api.models import BlockedItem, EnqueueResponse
-    await watchlist.add_entry(tmp_path, code="180640", name="한진칼",
+    await _seed(tmp_path, code="180640", name="한진칼",
                               today_kst_date="20260520")
     fake_now = dt.datetime(2026, 5, 26, 18, 0, 0, tzinfo=KST)
     blocked = EnqueueResponse(
@@ -147,7 +156,7 @@ async def test_daily_run_logs_blocked_watchlist_date(tmp_path: Path, caplog):
 async def test_catchup_enqueues_gap_since_last_success(tmp_path: Path):
     from hoga.api import scheduler, watchlist
     from hoga.api.models import EnqueueResponse
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+    await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     await watchlist.bump_last_success(tmp_path, code="003490", date="20260522")
     fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)  # after 17
@@ -172,7 +181,7 @@ async def test_catchup_pretrims_today_when_too_early(tmp_path: Path):
     """When now < 17:00, today must be removed before calling core."""
     from hoga.api import scheduler, watchlist
     from hoga.api.models import EnqueueResponse
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+    await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     await watchlist.bump_last_success(tmp_path, code="003490", date="20260522")
     fake_now = dt.datetime(2026, 5, 26, 10, 0, 0, tzinfo=KST)  # before 17
@@ -195,7 +204,7 @@ async def test_catchup_pretrims_today_when_too_early(tmp_path: Path):
 async def test_catchup_uses_registered_at_when_no_last_success(tmp_path: Path):
     from hoga.api import scheduler, watchlist
     from hoga.api.models import EnqueueResponse
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+    await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)
 
@@ -217,7 +226,7 @@ async def test_catchup_uses_registered_at_when_no_last_success(tmp_path: Path):
 async def test_catchup_skips_entry_with_empty_range(tmp_path: Path):
     """If last_success >= today, the gap is empty — no enqueue."""
     from hoga.api import scheduler, watchlist
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+    await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260526")
     await watchlist.bump_last_success(tmp_path, code="003490", date="20260526")
     fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)
@@ -274,7 +283,7 @@ async def test_catchup_reconcile_is_noop_when_disk_has_nothing(tmp_path: Path):
     nothing, preserves null markers and existing catch-up behavior."""
     from hoga.api import scheduler, watchlist
     from hoga.api.models import EnqueueResponse
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+    await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)
     # Note: NOT patching latest_complete_date — real call must return None
@@ -304,7 +313,7 @@ async def test_catchup_reconcile_regresses_stale_marker_to_disk_truth(tmp_path: 
     repair path for any stale-too-high markers left from before the gate."""
     from hoga.api import scheduler, watchlist
     from hoga.api.models import EnqueueResponse
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+    await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     await watchlist.bump_last_success(tmp_path, code="003490", date="20260525")
     fake_now = dt.datetime(2026, 5, 26, 19, 0, 0, tzinfo=KST)
@@ -378,7 +387,7 @@ async def test_catchup_one_entry_reconciles_then_backfills(tmp_path: Path):
     """If disk has newer COMPLETE date, marker advances first, then backfill uses new floor."""
     from hoga.api import scheduler, watchlist
     from hoga.api.models import EnqueueResponse, WatchlistEntry
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+    await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     # Persisted entry has last_success_date=None (but add_entry might have seeded it
     # from the disk-reconcile flow; for this test we pass the entry with None
@@ -519,7 +528,7 @@ async def test_daily_run_swallows_trading_day_lookup_failure(tmp_path: Path):
     must log + return; downstream enqueue_items_core must NOT be called.
     Pins the silent-failure branch at scheduler.py:48 in the diff."""
     from hoga.api import scheduler, watchlist
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
+    await _seed(tmp_path, code="003490", name="대한항공",
                               today_kst_date="20260520")
     fake_now = dt.datetime(2026, 5, 27, 18, 0, tzinfo=KST)
     with patch("hoga.api.scheduler.now_kst", return_value=fake_now), \
