@@ -95,4 +95,8 @@ describe('orderFolderGroups', () => {
     expect(ids(orderFolderGroups(gs, 'desc', avgMap({ a: 3, b: null, c: 1 }))))
       .toEqual(['a', 'c', 'b', '__uncat__']);
   });
+  it('전부 null-avg → 원순서 보존, 미분류 맨 끝', () => {
+    const gs = [FG('a'), FG('b'), FG(null), FG('c')];
+    expect(ids(orderFolderGroups(gs, 'desc', () => null))).toEqual(['a', 'b', 'c', '__uncat__']);
+  });
 });

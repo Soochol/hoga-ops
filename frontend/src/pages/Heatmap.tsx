@@ -18,6 +18,8 @@ import { avgPct, orderFolderGroups } from '../heatmap/heat';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
 
 const PHASE_LABEL: Record<string, string> = { pre_open: '장전', open: '● 장중', closed: '장마감' };
+const segBtn = (active: boolean) =>
+  active ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim';
 
 type RowMenu = { x: number; y: number; code: string; name: string; folderId: string | null };
 
@@ -37,7 +39,9 @@ export function Heatmap() {
   const groupSort = useHeatmapPrefsStore((s) => s.groupSort);
   const setGroupSort = useHeatmapPrefsStore((s) => s.setGroupSort);
   // 그룹 순서 = orderFolderGroups(직교 축). groupSort≠manual 이면 quoteByCode 가 폴마다
-  // 새 Map → 매 폴 라이브 재정렬(행 change 모드와 동형). manual 이면 입력(folder.order) 그대로.
+  // 새 Map → 매 폴 라이브 재정렬. ⚠️ 이는 행 'change' 모드와 "동형"이 아니다(거짓 등가):
+  // change 는 드래그를 끄지만 (manual행, desc그룹)은 드래그를 켠 채 그룹을 재배치한다
+  // → 행 드래그 중 그룹 텔레포트 리스크(스펙 G1, 미검증 — 실측 후 동결 가드 조건부 추가).
   const orderedGroups = useMemo(() => {
     const pctOf = (code: string): number | null => quoteByCode.get(code)?.change_pct ?? null;
     return orderFolderGroups(groups, groupSort, (g) => avgPct(g.entries, pctOf));
@@ -87,11 +91,11 @@ export function Heatmap() {
           <span className="text-fg-dim">행</span>
           <span className="flex border border-border rounded overflow-hidden">
             <button
-              className={sortMode === 'change' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
+              className={segBtn(sortMode === 'change')}
               onClick={() => setSortMode('change')}
             >등락률 ↓</button>
             <button
-              className={sortMode === 'manual' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
+              className={segBtn(sortMode === 'manual')}
               onClick={() => setSortMode('manual')}
             >수동</button>
           </span>
@@ -102,17 +106,17 @@ export function Heatmap() {
           <span className="flex border border-border rounded overflow-hidden">
             <button
               aria-label="그룹을 평균 등락률 높은 순으로"
-              className={groupSort === 'desc' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
+              className={segBtn(groupSort === 'desc')}
               onClick={() => setGroupSort('desc')}
             >등락률 ↓</button>
             <button
               aria-label="그룹을 평균 등락률 낮은 순으로"
-              className={groupSort === 'asc' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
+              className={segBtn(groupSort === 'asc')}
               onClick={() => setGroupSort('asc')}
             >등락률 ↑</button>
             <button
               aria-label="그룹 수동 순서"
-              className={groupSort === 'manual' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
+              className={segBtn(groupSort === 'manual')}
               onClick={() => setGroupSort('manual')}
             >수동</button>
           </span>

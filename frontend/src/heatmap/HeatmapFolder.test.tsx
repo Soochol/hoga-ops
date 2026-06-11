@@ -37,6 +37,18 @@ it('행 클릭 시 onPick(code, name) — 종목명을 탭 라벨로 전달', ()
   expect(onPick).toHaveBeenCalledWith('005930', '삼성전자');
 });
 
+it('미분류(folder=null) 헤더도 자체 평균 틴트(무분기, G8)', () => {
+  const uncatEntries = [E('111111', '에이', 0), E('222222', '비이', 1)];
+  const uncatQuotes = new Map<string, LiveQuote>([
+    ['111111', { code: '111111', price: 1000, change_pct: -2, change_won: -20 }],
+    ['222222', { code: '222222', price: 2000, change_pct: -4, change_won: -80 }],
+  ]);
+  render(<HeatmapFolder folder={null} entries={uncatEntries} quoteByCode={uncatQuotes}
+    sortMode="manual" onPick={() => {}} />);
+  const header = screen.getByText('미분류').parentElement as HTMLElement;
+  expect(header.style.background).toBe(heatHeaderBg(-3)); // (−2−4)/2
+});
+
 it('평면 보드(L3-B) 좌측 스파인 + 헤더 평균 틴트(#3): 폴더는 카드 대신 좌측 스파인, 헤더는 평균 등락 비례 배경', () => {
   const { container } = render(
     <HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
