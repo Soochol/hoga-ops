@@ -1374,6 +1374,49 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     expect(useLiveCursorStore.getState().cursorMs).toBeNull();
   });
 
+  it('crosshair into the right-offset whitespace (numeric time past the last candle) → clearCursor, reverting order book to LIVE', async () => {
+    // Real mechanism (verified 2026-06-11 — supersedes the original #69
+    // assumption of `time: undefined`): with CrosshairMode.Normal lwc does NOT
+    // report an empty time in the whitespace; it extrapolates the gap-compressed
+    // virtual axis forward, so param.time is a NUMBER that maps PAST the last
+    // candle (onto the session tail). The handler must treat "realMs > last
+    // candle" as not-on-a-bar → clear (→ LIVE WS), not pin the cursor to a
+    // future no-data slot (which is what left the sidebar blank). TODAY_ONLY_
+    // BUNDLE carries one candle so lastCandleMsRef is populated.
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TODAY_ONLY_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const chart = vi.mocked(createChartEx).mock.results[0].value;
+    const fire = (p: { time?: unknown; point?: { x: number } | null }) =>
+      chart.subscribeCrosshairMove.mock.calls.forEach(
+        ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h(p),
+      );
+    const flush = () => act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+    const SESSION_OPEN = TODAY_ONLY_BUNDLE.segments[0].session_open_ms;
+    const lastCandleMs = TODAY_ONLY_BUNDLE.candles[TODAY_ONLY_BUNDLE.candles.length - 1].ts_ms;
+    expect(lastCandleMs).toBeGreaterThan(SESSION_OPEN); // fixture premise guard
+    // On/before the last candle (virtual 0 → session open ≤ last candle) → spot.
+    act(() => fire({ time: 0, point: { x: 1 } }));
+    await flush();
+    expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
+    // Whitespace: param.time is virtual-axis seconds on a REAL-ANCHORED origin
+    // (virtualStart = session_open_ms), so toReal(t·1000) = t·1000 inside the
+    // session. Pick a time 10 min past the open — well past the single candle at
+    // open+60s → realMs > last candle → revert to LIVE (cursor cleared), NOT
+    // pinned to a future no-data slot.
+    const whitespaceTimeSec = (TODAY_OPEN_MS + 600_000) / 1000;
+    act(() => fire({ time: whitespaceTimeSec, point: { x: 9999 } }));
+    await flush();
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
+  });
+
   it('clears cursor when timeframe switches from minute to calendar', () => {
     const { rerender } = render(
       <LiveChartRoot
