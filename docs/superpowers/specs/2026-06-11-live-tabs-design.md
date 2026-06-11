@@ -1,9 +1,13 @@
 # /live 탭 기능 — 설계 스펙
 
 **작성일:** 2026-06-11
-**상태:** 승인됨 (브레인스토밍 합의)
+**상태:** v2 — eng-review(plan-eng-review) 8개 포크 판정 반영
 **범위:** 프론트엔드 `/live` 페이지에 멀티 종목 탭 추가
-**관련:** DESIGN.md §Tabs, ADR-0052(URL seed), ADR-0067(rest_poller), ADR-0038/0040/0043(capture 경로), `frontend/src/live/collectionStatus.ts`
+**관련:** DESIGN.md §Tabs, ADR-0052(activeCode/URL seed), ADR-0067(rest_poller/Live Set), ADR-0038/0040/0043(capture 경로), `frontend/src/live/collectionStatus.ts`
+**선행 작업(prior art):** `/replay`에 동일 기능이 구현돼 있었고 `/replay`→`/live` 통합(2026-05-29) 때 페이지째 삭제됨 — 탭 설계 기각이 아니라 페이지 통합의 부수효과. 복원 시 옛 자산을 Layer-1 레퍼런스로 사용:
+- 데이터 모델: 삭제된 `frontend/src/state/tabs.ts` (`Tab={id:nanoid8, selection:{code,timeframe}, ...}`, `prefs:Map<tabId,ChartViewPrefs>`)
+- 영속화 설계: `docs/superpowers/specs/2026-05-24-replay-tab-persistence-design.md` (`replay.tabs.v1`)
+- 삭제 커밋: `7193684`(state 모듈), `1f6643f`(페이지), `50749f5`(스펙) — git에서 회수 가능
 
 ---
 
@@ -86,29 +90,34 @@ cold-swap에서 배경 탭이 Live Set 종목이면 백엔드가 계속 수집�
 이미 공유 상태인 prefs는 그대로 둔다(과분리 금지).
 
 ```
-useLiveTabsStore  (신규)                useLivePageStore  (기존 — prefs만 잔류)
-├─ tabs: Tab[]                           ├─ candleTimeframe      ← 전역 공유
+useLiveTabsStore  (신규)                useLivePageStore  (기존 — 전역 prefs 잔류)
+├─ tabs: Tab[]                           ├─ activeCode  ← 활성 탭이 write (읽기 15곳 무수정)
 ├─ activeTabId: string                   ├─ movingAverages[]     ← 전역 공유
 └─ actions:                              ├─ movingAverageEnabled ← 전역 공유
    openOrFocusTab(code, label?)          ├─ volumeEnabled        ← 전역 공유
-   closeTab(id)                          └─ foreignNetEnabled    ← 전역 공유
-   focusTab(id)
+   closeTab(id) / focusTab(id)           └─ foreignNetEnabled    ← 전역 공유
    reorderTabs(from, to)
-   setHistoricalFromDate(id, date)
+   setTimeframe(id, tf)                  useChartPrefsStore (기존 — 전역 ChartViewPrefs)
+   setHistoricalFromDate(id, date)         auctionWindowMask·ratioOutlierFilter·
+                                           fillStrengthCumulative … ← 전역(탭별 아님)
 
 Tab = {
-  id: string            // 안정적 고유 id (code 아님 — 재정렬/중복관리용)
-  code: string          // 종목코드
-  label: string         // 종목명 (symbol-master)
+  id: string                 // 안정적 고유 id (nanoid8; code 아님 — 재정렬/중복관리용)
+  code: string               // 종목코드
+  label: string              // 종목명 (symbol-master)
+  timeframe: LiveTimeframe   // 탭별 (옛 TabSelection 모델 복원)
   historicalFromDate: string | null   // 탭별 좌측 팬 위치
-  pinned?: boolean      // (later) 수동 핀 = Live Set 편입
+  pinned?: boolean           // (later) 수동 핀 = Live Set 편입
 }
 ```
 
-- **`activeCode`는 파생값**: `tabs.find(t => t.id === activeTabId)?.code`. 별도 저장 안 함.
-  기존 `useLivePageStore.activeCode` 소비처는 이 파생 셀렉터로 전환.
-- **`historicalFromDate`는 탭별로 이동**(현재는 `livePage.ts:85` 전역). 종목별 팬 위치 유지.
-- **타임프레임·지표 토글은 전역 공유 유지** — 탭 전환해도 동일 차트 설정 적용.
+- **D4 — `activeCode`는 `useLivePageStore`에 유지** (파생값 아님). 활성 탭(`focusTab`/`openOrFocusTab`)이
+  `setActiveCode`로 써주는 **단일 writer**. 읽기 15곳 무수정(blast radius ~0), ADR-0052 SSOT 계약 유지.
+  글로서리 정의만 "활성 **Live Tab**의 code 투영"으로 갱신.
+- **D1 — `timeframe`·`historicalFromDate`는 탭별**. `candleTimeframe`을 `useLivePageStore`→Tab으로 이동
+  (옛 `TabSelection` 복원). 탭마다 보던 분봉·팬 위치 유지.
+- **D1 — 차트 prefs(ChartViewPrefs)·MA·거래량 토글은 전역 유지**. 통합 때 삭제한 `prefs: Map<tabId>`
+  인디렉션을 되살리지 않음(essential-vs-accidental). 탭별 승격은 나중에 reversible.
 
 ---
 
@@ -121,7 +130,8 @@ Tab = {
 | `LiveChartRoot` (`viewKey=code\|tf`) | 자동 리마운트 (기존) | 자동 |
 | `useLiveSeries(code)` | code별 SSE 버퍼 (기존) | 이전 구독 해제 + 새 구독 (cold-swap) |
 | `useDrawingsStore[code]` | code-keyed (기존) | 자동 |
-| 타임프레임·지표 토글 | **전역** | 유지 |
+| `timeframe` | **탭별** (D1) | 그 탭 보던 분봉으로 스냅 |
+| 차트 prefs(ChartViewPrefs)·MA·거래량 | **전역** (D1) | 유지 |
 
 차트/시리즈/드로잉은 이미 code 격리돼 있어 추가 작업이 최소. 탭은 그 위 얇은 "code 선택기".
 
@@ -145,9 +155,13 @@ openOrFocusTab(code, label?):
 | 히트맵 종목 클릭 (`Heatmap`) | `setActiveCode` | `openOrFocusTab` |
 | URL `?code=` seed (`LivePage` 초기화) | activeCode adopt | 초기 탭 1개로 seed |
 
-- **추가**: `＋` 버튼 → 검색 팝오버 → 종목 선택. 또는 위 진입점들.
-- **삭제**: 탭 hover 시 `×`. 활성 탭 닫으면 인접 탭으로 focus 이동.
-- **마지막 탭 닫기**: **빈 상태(＋만 표시)** 로. (직전 종목 유지 안 함 — 명확성 우선)
+- **D5 — 추가**: `＋` 버튼은 **기존 헤더 `LiveSymbolSearch`를 재사용** — 기존 "/" 포커스 경로로 검색 입력창에
+  포커스를 준다. 검색 결과 선택 = `openOrFocusTab`(재배선 후). **새 팝오버 컴포넌트 안 만듦**(DRY; 검색 UI 2개 금지).
+  나중에 ＋앵커 팝오버는 reversible 개선.
+- **D2 — 삭제**: 탭 hover 시 `×` + 미들클릭. **활성 탭 닫으면 오른쪽 이웃으로 focus 이동(없으면 왼쪽)** — 옛 모델 규칙.
+  비활성 탭 닫기는 `activeTabId` 불변.
+- **D2 — 소프트캡 8 초과**: 토스트 "최대 8개" 후 무시. **침묵 축출 안 함**(opened 탭 손실 방지; 옛 `confirmEvictOldest`도 확인 후였음).
+- **D7 — 마지막 탭 닫기**: 기존 `LiveEmptyState`(cause=`no_active_code`) 재사용 — 추가 개발 0.
 - **라벨**: `label`은 symbol-master(code→name). 검색/관심종목이 이미 name 보유.
 
 ---
@@ -196,14 +210,25 @@ openOrFocusTab(code, label?):
 
 ---
 
-## 9. 저장 (Persistence)
+## 9. 저장 (Persistence) — D3: 옛 `replay.tabs.v1` 패턴 복원
 
-- **`localStorage['live.tabs.v1']`**: `{ tabs: [{id, code, label, historicalFromDate, pinned}], activeTabId }`.
-  새로고침 시 탭 복원.
-- 기존 `live.page.v1`의 `activeCode`/`historicalFromDate` 항목 → tabs store로 마이그레이션
-  (기존 activeCode를 탭 1개로 seed).
-- 백엔드 저장 불필요(단일 사용자·로컬 도구 — localStorage 충분).
-- URL `?code=`는 **초기 시드**로 유지(딥링크 호환). 탭 전체 상태를 URL에 넣지 않음.
+옛 `docs/superpowers/specs/2026-05-24-replay-tab-persistence-design.md` 결정을 그대로 재사용
+(검증된 prior art; 새 스키마 발명 안 함). 패턴: `replayLayout.ts`형 — 로드 시 `loadPersisted()`→검증→
+fallback, 스토어 `subscribe()` 1회 + 변경마다 `savePersisted()`(**디바운스 250ms**), 버전은 **키에 포함**.
+
+- **`localStorage['live.tabs.v1']`** payload:
+  ```ts
+  { version: 1, savedAt: number,
+    activeIndex: number,                 // id 아닌 인덱스 (재발급 안전; 범위 밖 → 0 clamp)
+    tabs: { code, timeframe, historicalFromDate, label }[] }
+  ```
+- **저장**: code·timeframe·historicalFromDate·label. **저장 안 함**: `Tab.id`(로드 시 nanoid 재발급)·
+  bundles(백엔드가 진실, 재fetch)·status·cursor(런타임 derived).
+- **마이그레이션**: 기존 `live.page.v1`의 `{activeCode, candleTimeframe, historicalFromDate}` →
+  `live.tabs.v1` 탭 1개로 시드(`readStorage()`에 병렬 로직; 현재 persist엔 version/migrate 함수 없음 — 신규 키라 충돌 없음).
+- 백엔드 저장 불필요(단일 사용자·로컬 도구).
+- **D8 — URL `?code=`**: localStorage 탭 복원 **후**, `?code=` 있으면 그 위에 `openOrFocusTab`(1회 시드,
+  ADR-0052 유지). 옛 `?tabs=` 전체 직렬화는 폐기.
 
 ---
 
@@ -212,12 +237,15 @@ openOrFocusTab(code, label?):
 | 기능 | 설명 | 범위 |
 |---|---|---|
 | 드래그 재정렬 | 탭 순서 변경 (관심종목 드래그 패턴 재사용) | **MVP** |
-| 키보드 전환 | `Ctrl+Tab`/`Ctrl+1~9` 이동, `Ctrl+W` 닫기, `Ctrl+T` 새 탭 | **MVP** |
+| **키보드 전환 (D6)** | `[`/`]`(또는 j/k 스텁 재활용)=이전/다음, 평키 `1`~`9`=N번 탭(입력 포커스 가드). **닫기=×버튼+미들클릭**. `useLiveKeyboard` 확장 | **MVP** |
 | 중복 방지 | 열린 종목 = focus (§6 openOrFocus 내장) | **MVP** |
-| 미들클릭 닫기 | 탭 휠클릭 닫기 (브라우저 관습) | 선택(저비용) |
+| 미들클릭 닫기 | 탭 휠클릭 닫기 (브라우저 관습) | **MVP** (D2 닫기 수단) |
 | 수동 핀 | 탭 → Live Set 편입(캡처 시작) | **later** |
-| 탭별 타임프레임 | 탭마다 다른 분봉 | **later** (per-tab 승격 쉬움) |
 | 배경 폴링(가격 칩 갱신) | — | **제외** (YAGNI) |
+
+> **D6 — Ctrl 단축키 전면 폐기**: 이 앱은 브라우저에서 돈다 — `Ctrl+W`=브라우저 탭 닫힘(참사), `Ctrl+T`=브라우저
+> 새 탭, `Ctrl+Tab`=브라우저 탭 전환. `useLiveKeyboard`(L34)는 **일부러 ctrl/meta/alt를 early-return**해 충돌을
+> 피해왔다 → 비수정자 키만 사용. (탭별 타임프레임은 D1에서 본 설계로 승격됨 — 더 이상 later 아님)
 
 ---
 
@@ -226,9 +254,10 @@ openOrFocusTab(code, label?):
 - **소프트캡 8 초과**: 9번째 시도 → 토스트 "최대 8개" 후 무시 (자동 닫기 안 함 — 데이터 손실 방지).
 - **중복 종목**: openOrFocus가 focus로 흡수.
 - **잘못된/상장폐지 code**: 탭은 열되 차트 빈 상태 + 기존 에러 배너 재사용.
-- **마지막 탭 닫기**: 빈 상태로.
+- **마지막 탭 닫기**: 기존 `LiveEmptyState`(cause=`no_active_code`) 재사용 (D7).
 - **복원 시 stale code**: localStorage 복원 후 symbol-master에 없는 code 드롭 + 경고
   (기존 `codes_unknown` 패턴).
+- **활성 탭 닫기 focus**: 오른쪽 이웃 우선(없으면 왼쪽) — 옛 `closeTab` 규칙 (D2).
 
 ---
 
@@ -244,9 +273,10 @@ openOrFocusTab(code, label?):
 
 ## 13. 범위 요약
 
-**MVP:** 상태 store 분리 · 탭 CRUD · 4진입점 재배선 · 탭바 UI(승인 명세) · 종목명 라벨 ·
-localStorage 복원 · 파킹 처리 · 소프트캡 8 · 드래그 재정렬 · 키보드 전환 · 중복 방지
+**MVP:** 상태 store 분리(activeCode 유지+동기화) · 탭 CRUD · 4진입점 재배선 · 탭바 UI(승인 명세) ·
+종목명 라벨 · **탭별 timeframe**(D1) · localStorage 복원(`live.tabs.v1`, replay 패턴) · 파킹 처리 ·
+소프트캡 8(토스트) · 드래그 재정렬 · 비수정자 키보드 전환(D6) · 중복 방지 · 미들클릭 닫기
 
-**later:** 수동 핀(Live Set 편입) · 탭별 타임프레임 · 백엔드 탭 저장
+**later:** 수동 핀(Live Set 편입) · 탭별 ChartViewPrefs(인디렉션 부활 — reversible) · 백엔드 탭 저장 · ＋앵커 팝오버
 
-**제외:** 배경 탭 폴링 · 탭 전체 상태 URL 직렬화
+**제외:** 배경 탭 폴링 · 탭 전체 상태 URL 직렬화 · Ctrl 단축키(브라우저 충돌)
