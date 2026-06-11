@@ -31,8 +31,13 @@ it('폴더 카드에 스크롤 앵커 id가 있다(스트립 점프 대상)', ()
   expect(document.getElementById('heatmap-folder-f1')).toBeTruthy();
 });
 
-it('seriesByCode를 전달하면 해당 종목 행에 스파크라인이 그려진다', () => {
-  render(<HeatmapBoard groups={groups} quoteByCode={new Map<string, LiveQuote>()}
-    sortMode="change" onPick={() => {}} seriesByCode={new Map([['005930', [1, 2, 3]]])} />);
-  expect(document.querySelector('.srow-spark path')?.getAttribute('stroke')).toBe('var(--price-up)');
+it('quote 의 OHLC 로 행에 캔들이 그려진다(양봉=적)', () => {
+  const qbc = new Map<string, LiveQuote>([
+    ['005930', { code: '005930', price: 115, change_pct: 1, change_won: 7,
+                 open: 100, high: 120, low: 95 }],  // close=115>open=100 → 양봉
+  ]);
+  render(<HeatmapBoard groups={groups} quoteByCode={qbc}
+    sortMode="change" onPick={() => {}} />);
+  expect(document.querySelector('.candle-glyph rect:last-child')?.getAttribute('fill'))
+    .toBe('var(--price-up)');
 });
