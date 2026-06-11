@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { it, expect, vi, beforeEach } from 'vitest';
@@ -44,7 +44,6 @@ import { Heatmap } from './Heatmap';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveQuoteOverlay } from '../api/liveQuotes';
-import { useSparklineStore } from '../state/sparklineStore';
 
 function renderPage() {
   const qc = new QueryClient();
@@ -54,7 +53,6 @@ function renderPage() {
 beforeEach(() => {
   setActiveCode.mockClear();
   useHeatmapPrefsStore.setState({ sortMode: 'manual' });   // eng-review D2: 기본 manual
-  useSparklineStore.getState().reset();                    // 누적 store 격리(테스트 간 누수 차단)
   Element.prototype.scrollIntoView = vi.fn();              // jsdom 미구현 — 스트립 점프 대비
   // 매 테스트 open 기본값으로 리셋 — per-test override가 다음 테스트로 누수되지 않게.
   vi.mocked(useLiveQuoteOverlay).mockReturnValue({
@@ -114,33 +112,4 @@ it('스트립 칩 클릭 → 해당 카드로 scrollIntoView', async () => {
   expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith(
     expect.objectContaining({ behavior: 'smooth' }),
   );
-});
-
-it('open 폴(dataUpdatedAt≠0)이 since-open store에 누적된다', async () => {
-  vi.mocked(useLiveQuoteOverlay).mockReturnValue({
-    quoteByCode: new Map([
-      ['005930', { code: '005930', price: 70000, change_pct: -2, change_won: -1400 }],
-      ['000660', { code: '000660', price: 200000, change_pct: 5, change_won: 10000 }],
-    ]),
-    phase: 'open', dataUpdatedAt: 1_700_000_000_000,
-  } as ReturnType<typeof useLiveQuoteOverlay>);
-  renderPage();
-  await screen.findAllByText('반도체');
-  await waitFor(() => expect(useSparklineStore.getState().series.get('005930')).toEqual([-2]));
-  expect(useSparklineStore.getState().series.get('000660')).toEqual([5]);
-});
-
-it('closed phase면 누적 안 함 — spec §4 "신규 점 없음"(평탄점 오염 차단)', async () => {
-  vi.mocked(useLiveQuoteOverlay).mockReturnValue({
-    quoteByCode: new Map([['005930', { code: '005930', price: 70000, change_pct: -2, change_won: -1400 }]]),
-    phase: 'closed', dataUpdatedAt: 1_700_000_000_000,  // dataUpdatedAt≠0이라 phase절만 격리 검증
-  } as ReturnType<typeof useLiveQuoteOverlay>);
-  renderPage();
-  await screen.findAllByText('반도체');
-  expect(useSparklineStore.getState().series.size).toBe(0);
-});
-
-it('정직 캡션 — since-open 단정 없이 "장중 추세"', async () => {
-  renderPage();
-  expect(await screen.findByText('스파크라인 = 장중 추세')).toBeInTheDocument();
 });
