@@ -120,6 +120,12 @@ The design system has a **single density dial** at `:root font-size`.
   *당일 시가 대비* 흐름으로 *전일대비* 등락칩(`change_pct`)과 다른 기준(다른 시간창). 가격
   방향 카테고리 준수(새 색 없음) — `heat.ts` 배경 확장의 캔들 버전.
 
+- **Heatmap 폴더 surface 예외 (관심맵 보드 전용):** 신문형 멀티칼럼 고밀도 보드라 폴더 블록은
+  `--bg-card` 카드(채움+테두리+라운드) 대신 **투명·평면**으로 둔다 — 그룹 경계는 `--bg-input`
+  헤더 밴드(폴더 본문보다 한 단계 밝게) + `--border-strong` 좌측 스파인(`border-l-2`) + 여백으로
+  잡는다. 헤더 밴드 히트 틴트(평균 등락 배경 워시)는 쓰지 않는다 — 섹터 온도는 헤더의 평균
+  등락칩으로만. 이 예외는 **히트맵 폴더 한정**이며 드로어·차트·툴바 등 다른 카드는 `--bg-card` 유지.
+
 - **Dark mode:** Only mode in v1. Light mode is out of scope.
 
 ## Spacing
