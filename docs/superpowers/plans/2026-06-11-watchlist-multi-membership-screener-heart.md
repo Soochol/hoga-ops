@@ -4,7 +4,7 @@
 
 **Goal:** 스크리너 하트 클릭 시 관심 그룹을 고르는 팝업을 띄우고, 한 종목이 여러 그룹에 동시에 속할 수 있게 한다.
 
-**Architecture:** watchlist 저장소를 v2(종목당 폴더 1개 `folder_id`)에서 v3(폴더가 정렬된 `member_codes` 리스트 소유)로 전환. API 응답도 member_codes 네이티브(저장소=와이어). 프론트는 `useWatchlist`의 단일 `select` 어댑터로 기존 `(code, folder_id, order)` 레거시 형태로 펼쳐 기존 컴포넌트를 재사용. 멤버십은 1급 API(`POST/DELETE .../members`)로 토글. heatmap은 별도 저장소(ADR-0068)라 무관.
+**Architecture:** watchlist 저장소를 v2(종목당 폴더 1개 `folder_id`)에서 v3(폴더가 정렬된 `member_codes` 리스트 소유)로 전환. **API 응답은 펼친 entries `(code, folder_id, order)`(= v2 와이어 shape)로 백엔드 라우트가 투영**(저장소 Entity ≠ 와이어, ADR-0004; 클라 어댑터 없음 — 옵션 B). 프론트 데이터 계층(타입·`useWatchlist`·`grouping`)은 무변경. 멤버십은 1급 API(`POST/DELETE .../members`)로 토글. heatmap은 별도 저장소(ADR-0068)라 무관. **이 계획의 권위 설계는 ADR-0069**(grill-with-docs 정정 반영) — 아래 "개정 배너"가 커밋된 본문보다 우선.
 
 **Tech Stack:** Python/FastAPI/Pydantic v2 + pytest (백엔드), React/TypeScript/@tanstack/react-query/@dnd-kit/Tailwind + vitest/testing-library (프론트).
 
@@ -13,6 +13,43 @@
 **불변식(전 구현 관통):** `{e.code for e in entries} == ⋃ folder.member_codes`. 멤버십·정렬은 폴더가, 백필 메타(name·dates)는 entry가 소유. entry 생성은 write 경로에서만(디스크 시드 필요). read 경로에서 drift 발견 시 prune 금지·loud log(ADR-0065).
 
 **커밋 규율:** 메모리의 block-no-verify 훅 회피 — `&&` 체이닝/heredoc git commit 금지. 메시지 파일 작성 후 단독 `git commit -F <file>`.
+
+---
+
+## ⚠️ 개정 배너 (grill-with-docs / ADR-0069) — 본문보다 우선 적용
+
+이 계획은 커밋 후 grill-with-docs로 ADR·CONTEXT와 교차검증해 정정되었다. 아래 델타가
+해당 태스크의 커밋된 본문을 **대체**한다(본문은 옵션 C·top-13 등 폐기된 초안을 담고 있음):
+
+1. **옵션 C(클라 어댑터) → 옵션 B(백엔드 투영).** ADR-0004(wire-model-no-adapter) 준수.
+   - **Task 6**: `WatchlistResponse`/`WatchlistFolder`/`WatchlistEntry` **TS 타입은 v2 그대로 유지**
+     (entries는 `folder_id`+`order` 보유, 와이어=펼친 shape). `WatchlistView`/`WatchlistEntryView`
+     타입 **만들지 않음**. `addToWatchlist` 제거, `addMember`/`removeMember` 추가만.
+   - **Task 7 (watchlistAdapter.ts) 전체 삭제** — 클라 어댑터 없음. `useWatchlist`에 `select` 없음.
+   - **백엔드 투영**은 Task 4의 `get_watchlist` 라우트에서: member_codes 문서 → 펼친
+     `WatchlistResponse`(폴더 `{id,name,order}` + entries `{...,folder_id,order}` 폴더×코드 한 행).
+     저장소 `WatchlistFolder`는 member_codes 보유하되, **와이어 폴더는 member_codes drop**
+     (응답 모델 `WatchlistFolderView{id,name,order}` 별도 — Entity≠Wire, ADR-0004).
+   - **Task 8**: 낙관적 캐시는 **와이어(펼친 entries)** 그대로 조작 — `applyAddMember`=펼친 행 삽입
+     `{code,name,'',null,folder_id,order:last}`, `applyRemoveMember`=그 폴더 행 삭제(+다른 폴더에도
+     없으면 그 코드 전체 행 삭제), `applyReorder`=**기존 applyReorder(folder_id 기준) 그대로**.
+     `useWatchlistMembership`: 펼친 entries에서 `code→folder_id 집합` 도출(본문대로).
+
+2. **Live Set W=10 (Task 5).** 본문의 "top-13×n" → **top-W×n, W=`_PER_ACCOUNT_MAX`(=10)**.
+   "13-경계" → "W-경계". (CONTEXT.md Live Set _Avoid_: "top-13" 금지.)
+
+3. **하트 5곳 전부 GroupPicker (Task 10 확장, P7).** 스크리너 페이지(`ResultTable`) 외에
+   **스크리너 패널(`ScreenerDrawer`)·라이브 상태바(`LiveStatusBar`)·라이브 검색(`LiveSymbolSearch`)·
+   편집모달 추가폼(`WatchlistAddForm`)** 의 하트/추가도 GroupPicker를 연다. 각 호출처의
+   `useWatchlistMembership.toggle`/`addToWatchlist` 의존을 GroupPicker 오픈으로 교체(미분류 추가 대상
+   소멸). `useWatchlistMembership`의 `toggle`은 제거(GroupPicker가 멤버십 관리). 호출처별 1태스크씩.
+
+4. **폴더 삭제 고아 확인 (P6, Task 12/13 영역).** `WatchlistDrawer`의 `deleteM.mutate(folder.id)`
+   호출 전, 그 폴더에만 있는 코드(다른 폴더 member 아님)가 있으면 확인 다이얼로그
+   ("이 N종목이 관심종목에서 빠집니다 — 계속?"). 고아 코드 수는 프론트가 `data.entries`(펼친)에서
+   `folder_id===fid 인데 그 code가 다른 folder_id 행에 없음`으로 계산. 신규 태스크로 추가.
+
+5. **ADR-0069** 가 권위 설계. 본문이 ADR-0069와 어긋나면 ADR-0069·이 배너를 따른다.
 
 ---
 

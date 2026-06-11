@@ -2,9 +2,10 @@
 
 - 날짜: 2026-06-11
 - 상태: 설계 (구현 전)
-- 관련: `2026-05-26-watchlist-daily-scheduler-design.md`(폴더 v2), `2026-05-31` 폴더 CRUD,
-  ADR-0065(watchlist = 대체 불가 사용자 데이터, read 경로에서 wipe 금지),
-  ADR-0068(heatmap은 watchlist와 별도 저장소 — 본 변경과 무관)
+- 관련: **ADR-0069(이 설계를 확정·기록 — grill-with-docs 정정 반영)**,
+  `2026-05-26-watchlist-daily-scheduler-design.md`(폴더 v2), `2026-05-31` 폴더 CRUD,
+  ADR-0004(wire-model-no-adapter — 옵션 B의 근거), ADR-0065(watchlist = 대체 불가 사용자 데이터,
+  read 경로에서 wipe 금지), ADR-0068(heatmap은 watchlist와 별도 저장소 — 본 변경과 무관)
 - 영향 없음: heatmap (독립 저장소)
 
 ## 1. 문제
@@ -25,6 +26,8 @@
 | P3 | 하트 동작 | **채움 표시 + 항상 팝업** — watchlist(≥1 그룹)에 있으면 ♥, 없으면 ♡. 빈/채움 무관 클릭=팝업 |
 | P4 | 마이그레이션 보존 폴더 이름 | **"기본"** — 기존 `folder_id=null` 종목을 담음(가역: renameFolder로 변경 가능) |
 | P5 | 드로어 행 메뉴 | **그룹 피커 재사용** — 단일 멤버십 primitive를 스크리너 하트 + 드로어 행 두 곳에 마운트 |
+| P6 | 폴더 삭제 안전망 | **고아 발생 시 확인** — 폴더 삭제로 watchlist에서 빠지는 종목이 있으면 "이 N종목이 관심종목에서 빠집니다 — 계속?" 확인(ADR-0065 정신, grill #2) |
+| P7 | 하트 적용 범위 | **5곳 모두 GroupPicker** — 스크리너 페이지·스크리너 패널·라이브 상태바·라이브 검색·편집모달 추가폼. 미분류 폐지로 단일 추가 대상이 없어졌으므로 모든 하트가 그룹을 고른다(grill #3) |
 
 ## 2. 핵심 아키텍처 결정: 폴더가 정렬된 코드 리스트를 소유
 
@@ -58,27 +61,29 @@ WatchlistEntry  (code로 유일)            WatchlistEntry  (code로 유일, 순
 - `entry`가 순수 백필 레코드가 되어 백필 루프(`load_watchlist` → 스케줄러/catch-up)는
   코드 리스트만 보면 되고 폴더와 독립적으로 유지된다.
 
-### 와이어 형식: 네이티브 + 클라 어댑터 (옵션 C, 2026-06-11 정련)
+### 와이어 형식: 펼친 entries = 소비자 shape, 백엔드 투영 (옵션 B, ADR-0004·ADR-0069 / grill-with-docs 정정)
 
-API 응답도 **저장소와 동일한 member_codes 네이티브**로 보낸다(저장소=와이어, 거짓 없음).
-프론트엔드는 `useWatchlist`의 **단일 `select` 어댑터**로 네이티브를 기존 레거시 형태
-`(code, folder_id, order)`로 펼쳐 레거시 컴포넌트(`grouping.ts`·`WatchlistDrawer`·
-`WatchlistEntryPane`·`WatchlistEditModal`)에 그대로 공급한다.
+> ⚠️ **정정(2026-06-11 grill-with-docs):** 직전 초안의 옵션 C(클라 `useWatchlist.select` 어댑터)는
+> **ADR-0004(wire-model-no-adapter)를 위반**한다(API 경계 pass-through 어댑터·two-shapes). 폐기하고
+> **옵션 B**로 확정 — 펼치기를 **백엔드 라우트**에서 한다(어댑터 아님, 모든 라우트가 하는 producer-owns-shape).
+
+저장소(Entity)와 와이어(Wire Model)를 분리한다(ADR-0004 Entity≠Wire 명시 승인):
+- **저장소**: 폴더가 `member_codes` 소유 + per-code slim `WatchlistEntry`(code·name·dates).
+- **와이어 `WatchlistResponse`**: 폴더 `{id,name,order}`(member_codes는 와이어에서 drop) +
+  **펼친 entries** `{code,name,dates,folder_id,order}`(폴더×코드 한 행씩; N폴더 코드는 N행,
+  order=member_codes 인덱스). **= v2 와이어와 같은 shape**(코드 중복 가능, folder_id=null 행 없음).
 
 ```
-wire(native)                          adapter(useWatchlist.select)        legacy(컴포넌트가 보는 형태)
-folders:[{id,name,order,             ──projectToLegacy()──▶              folders:[{id,name,order}]
-          member_codes:[c..]}]                                          entries:[{code,name,dates,
-entries:[{code,name,dates}]                                              folder_id, order}]  ← 폴더×코드로 펼침
-                                                                        (한 코드 N폴더 → N행, order=member_codes 인덱스)
+store(Entity)                         backend route(get_watchlist)        wire = 소비자 shape (= v2 형태)
+folders:[{id,name,order,             ──project_to_wire()──▶              folders:[{id,name,order}]
+          member_codes:[c..]}]        (라우트가 WatchlistResponse        entries:[{code,name,dates,
+entries:[{code,name,dates}]            를 만들 때 펼침)                    folder_id, order}]  ← 폴더×코드
 ```
 
-- 변환은 **삭제 가능한 단일 순수 함수**에 격리(향후 컴포넌트를 네이티브로 점진 이주 시 제거).
-- react-query 캐시는 **네이티브**를 보관, `select`가 파생. 낙관적 mutation은 네이티브 캐시
-  (member_codes 배열)를 조작 → `select` 재파생. 폴더 내 reorder = member_codes 배열 재정렬
-  (기존 `reorderFolders(ordered_ids)`와 동형, order-필드 juggling보다 깔끔).
-- (기각된 옵션 A: 와이어도 네이티브 + 모든 컴포넌트를 member_codes로 재작성 — 디프·blast
-  radius 큼. 기각된 옵션 B: 백엔드가 펼친 응답 — API가 denormalize "거짓말".)
+귀결: **프론트 데이터 계층 무변경** — `WatchlistResponse`/`WatchlistFolder`/`WatchlistEntry` TS 타입,
+`useWatchlist`, `grouping.ts`가 v2 그대로 동작(소비자가 보는 shape가 안 바뀜). 클라 어댑터·새 뷰
+타입 없음. 낙관적 캐시는 펼친 entries를 보관 — add-member=펼친 행 삽입, remove-member=행 삭제(+고아면
+전부 삭제), reorder=기존 `applyReorder`(folder_id 기준) 그대로.
 
 ### 구현 함정 (반드시 지킬 것)
 
@@ -181,7 +186,7 @@ _migrate(raw):
              emit(code)                          # ⚠️ N폴더 코드는 N번 등장
 dedup:   첫 등장만 유지(= 코드의 "가장 위 폴더"에서의 위치가 rank)
 필터:    symbol-master에 있는 코드만(cold cache면 무필터 폴백 — 기존 동작)
-절단:    상위 (LIVE_SET_MAX_CODES * n_configured)   # =13×n, KIS 연결당 ~32 한도
+절단:    상위 (LIVE_SET_MAX_CODES * n_configured)   # =W×n (W=_PER_ACCOUNT_MAX=10), KIS 연결당 ~32 한도
 ```
 
 규칙 한 줄: **"코드 rank = 가장 위(최상위 폴더·그 안 최상위 위치) 등장 지점."**
@@ -228,8 +233,8 @@ dedup:   첫 등장만 유지(= 코드의 "가장 위 폴더"에서의 위치가
 - 멤버십: add(신규 entry 생성·last_success 시드 / 기존 entry 재사용), remove(마지막 폴더 →
   entry 삭제 / 잔여 폴더 → entry 유지), 중복 add(409/no-op), 없는 폴더(404).
 - 불변식: 임의 mutation 후 `{e.code} == ⋃ member_codes`. read 경로 orphan = loud log·무변경.
-- `display_ordered_codes`: N폴더 코드 dedup, rank=최상위 등장, top-13×n 절단,
-  13-경계 넘는 멤버십 변경 시 구독 스왑(기존 live 테스트 회귀).
+- `display_ordered_codes`: N폴더 코드 dedup, rank=최상위 등장, top-W×n 절단(W=10),
+  W-경계 넘는 멤버십 변경 시 구독 스왑(기존 live 테스트 회귀).
 - 격리 e2e: `HOGA_DATA_DIR=temp` + KIS creds 비움 + 알트포트(메모리 패턴).
 
 프론트엔드:
