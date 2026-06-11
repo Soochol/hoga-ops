@@ -41,54 +41,88 @@ class UnsupportedWatchlistSchema(Exception):
     """
 
 
-def _migrate(raw: dict) -> dict:
-    """Normalise any on-disk shape to a v2 dict, repairing (not wiping) drift.
+# 마이그레이션 보존 폴더의 결정적 id — random mint 를 피해 v2 파일을 매 load 마다
+# 같은 id 로 접는다(미persist 상태에서 collapse-state/localStorage thrash 방지).
+_DEFAULT_FOLDER_ID = "f_00000000"
+_DEFAULT_FOLDER_NAME = "기본"
 
-    - v1 (`{version:1, entries:[...]}`) or field-less legacy → seed
-      `folder_id=null`, `order` by index, `folders=[]`.
-    - Dangling `folder_id` (references a missing folder) → repaired to null
-      rather than rejected (watchlist = irreplaceable user data, ADR-0065).
+
+def _slim(e: dict) -> dict:
+    """Wire/legacy entry dict → v3 slim store entry dict (백필 마커만)."""
+    return {"code": e["code"], "name": e["name"],
+            "registered_at_kst_date": e["registered_at_kst_date"],
+            "last_success_date": e.get("last_success_date")}
+
+
+def _migrate(raw: dict) -> dict:
+    """어떤 on-disk 모양이든 v3 dict 로 정규화(데이터 보존, ADR-0065/0069).
+
+    - v3: 방어적 통과(member_codes 보장, entry slim).
+    - v1/v2: folder_id/order 를 폴더별 member_codes 로 접고, 어느 폴더에도 없던
+      (folder_id=null) 종목은 신규 '기본' 폴더로 보존(안 옮기면 0폴더=유실).
+    - schema_version>3: UnsupportedWatchlistSchema(loud halt, ADR-0065 rule 1).
     Genuine corruption (bad JSON / field-pattern violations) is NOT handled
     here — it surfaces as ValidationError to load_document's backup path.
     """
     version = raw.get("schema_version", raw.get("version", 1))
-    if version > 2:
-        # ADR-0065 rule 1: an unrecognised FUTURE version must RAISE, not be
-        # silently downgraded — never clobber data a newer build wrote. A
-        # dedicated (non-ValueError) type so load_document's corruption catch
-        # doesn't swallow it; it propagates loudly.
+    if version > 3:
         raise UnsupportedWatchlistSchema(f"unsupported watchlist schema_version {version}")
-    folders = raw.get("folders", []) if version >= 2 else []
-    valid_ids = {f.get("id") for f in folders}
-    entries: list[dict] = []
+    if version >= 3:
+        return {
+            "schema_version": 3,
+            "folders": [{"id": f["id"], "name": f["name"], "order": f.get("order", i),
+                         "member_codes": list(f.get("member_codes", []))}
+                        for i, f in enumerate(raw.get("folders", []))],
+            "entries": [_slim(e) for e in raw.get("entries", [])],
+        }
+    # v1/legacy/v2 → v2-shaped (folder_id, order) 행 먼저
+    folders_v2 = raw.get("folders", []) if version >= 2 else []
+    valid_ids = {f.get("id") for f in folders_v2}
+    v2_entries: list[dict] = []
     for i, e in enumerate(raw.get("entries", [])):
         e = dict(e)
         fid = e.get("folder_id")
         e["folder_id"] = fid if fid in valid_ids else None
         e["order"] = e.get("order", i)
-        entries.append(e)
-    return {"schema_version": 2, "folders": folders, "entries": entries}
+        v2_entries.append(e)
+    # v2 → v3: 폴더별 member_codes(order순), null → '기본'
+    by_fid: dict[str | None, list[dict]] = {}
+    for e in v2_entries:
+        by_fid.setdefault(e["folder_id"], []).append(e)
+
+    def codes_in(fid: str | None) -> list[str]:
+        return [e["code"] for e in sorted(by_fid.get(fid, []), key=lambda r: r["order"])]
+
+    folders_v3 = [{"id": f["id"], "name": f["name"], "order": f.get("order", i),
+                   "member_codes": codes_in(f["id"])}
+                  for i, f in enumerate(folders_v2)]
+    nulls = codes_in(None)
+    if nulls:
+        folders_v3.append({"id": _DEFAULT_FOLDER_ID, "name": _DEFAULT_FOLDER_NAME,
+                           "order": len(folders_v3), "member_codes": nulls})
+    return {"schema_version": 3, "folders": folders_v3,
+            "entries": [_slim(e) for e in v2_entries]}
 
 
 def _reindex(doc: WatchlistDocument) -> WatchlistDocument:
-    """Reassign entry.order to 0..N-1 within each folder group (incl. null),
-    ranking by current order then flat position; folders[].order to 0..N-1.
-    Flat list order is preserved. Idempotent."""
-    groups: dict[str | None, list[int]] = {}
-    for idx, e in enumerate(doc.entries):
-        groups.setdefault(e.folder_id, []).append(idx)
-    order_for: dict[int, int] = {}
-    for idxs in groups.values():
-        for rank, i in enumerate(sorted(idxs, key=lambda i: (doc.entries[i].order, i))):
-            order_for[i] = rank
-    new_entries = [e.model_copy(update={"order": order_for[i]})
-                   for i, e in enumerate(doc.entries)]
-    fsorted = sorted(range(len(doc.folders)),
-                     key=lambda i: (doc.folders[i].order, i))
+    """folders[].order 를 0..N-1 로 정규화(현재 order 후 위치순; 물리 리스트 순서는
+    보존 — reorder_folders 계약). 각 폴더 member_codes 중복 제거(첫 등장 유지).
+    entry 는 손대지 않음(불변식은 write/마이그레이션 책임, ADR-0069). Idempotent."""
+    fsorted = sorted(range(len(doc.folders)), key=lambda i: (doc.folders[i].order, i))
     fo = {orig: rank for rank, orig in enumerate(fsorted)}
-    new_folders = [f.model_copy(update={"order": fo[i]})
+
+    def dedupe(codes: list[str]) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for c in codes:
+            if c not in seen:
+                seen.add(c)
+                out.append(c)
+        return out
+
+    new_folders = [f.model_copy(update={"order": fo[i], "member_codes": dedupe(f.member_codes)})
                    for i, f in enumerate(doc.folders)]
-    return doc.model_copy(update={"folders": new_folders, "entries": new_entries})
+    return doc.model_copy(update={"folders": new_folders})
 
 
 def load_document(data_dir: Path) -> WatchlistDocument:
