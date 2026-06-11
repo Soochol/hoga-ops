@@ -1,7 +1,7 @@
 # 관심맵(히트맵) — 히트 무게중심 재배치 + 그룹 정렬 축 — 설계
 
 - **Date**: 2026-06-11
-- **Status**: Draft — 브레인스토밍 승인 + plan-eng-review 그릴링 8건(G1–G8) 반영. 사장님 스펙 검토 대기.
+- **Status**: **Approved** (2026-06-12) — 브레인스토밍 승인 + plan-eng-review 그릴링 8건(G1–G8) 반영 + 사장님 스펙 검토 승인. G4=헤더 평균 텍스트 흐림(`text-fg-dim`) 확정. → writing-plans.
 - **Topic slug**: `heatmap-heat-redistribution`
 - **Branch**: `worktree-heatmap-heat-redistribution` (worktree; base = local `main` `1686aaa` "등락률 칩 배경 임계 방식" — origin/main보다 6커밋 앞선 평면-헤더 L1+L3-B 디자인)
 - **Scope (코드)**: 변경 `frontend/src/heatmap/{heat.ts, HeatmapRow.tsx, HeatmapFolder.tsx}`, `frontend/src/pages/Heatmap.tsx`, `frontend/src/state/heatmapPrefs.ts`; 규칙 갱신 `DESIGN.md`(§Color L112–127). **기존 테스트 변경 동반**(이전 설계를 못박은 회귀 가드 반전): `heatmap/heat.test.ts`·`heatmap/HeatmapRow.test.tsx`·`heatmap/HeatmapFolder.test.tsx`·`pages/Heatmap.test.tsx`(+ `heat.test.ts`·`heatmapPrefs.test.ts`에 신규 단언). 인벤토리는 §Testing "무효화되는 기존 테스트" 참조. **HeatmapBoard.tsx·SectorTempStrip.tsx는 미변경**(아래 D 참조).
