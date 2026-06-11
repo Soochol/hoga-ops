@@ -1,13 +1,15 @@
 import type { DraggableSyntheticListeners } from '@dnd-kit/core';
 import { heatBg, HEAT_CHIP_MAX_ALPHA } from './heat';
-import { Sparkline } from './Sparkline';
+import { CandleGlyph } from './CandleGlyph';
 
 export interface HeatmapRowProps {
   name: string;
   price: number | null;
   pct: number | null;
-  /** since-open 시계열(없으면 빈 스파크 셀). 부모가 seriesByCode.get(code)로 주입. */
-  series?: number[];
+  /** 당일 OHLC(없으면 빈 캔들 셀). close 는 기존 price. 부모가 quote 에서 주입. */
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
   onClick: () => void;
   ariaLabel: string;
   testId: string;
@@ -30,7 +32,7 @@ export interface HeatmapRowProps {
  *  sortable* props 가 오면 행 루트가 dnd-kit 드래그 표면이 된다(클릭=차트, 드래그=재정렬;
  *  PointerSensor distance:5 가 둘을 가른다 — drawer SortableQuoteRow 와 동일 계약). */
 export function HeatmapRow({
-  name, price, pct, series, onClick, ariaLabel, testId,
+  name, price, pct, open, high, low, onClick, ariaLabel, testId,
   sortableRef, sortableStyle, dragListeners, dragging, onContextMenu,
 }: HeatmapRowProps) {
   const glyph = pct === null ? '' : pct > 0 ? '▲' : pct < 0 ? '▼' : '';
@@ -51,13 +53,13 @@ export function HeatmapRow({
       onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       style={dragging ? { ...sortableStyle, opacity: 0.5 } : sortableStyle}
-      className={`grid grid-cols-[minmax(4rem,1fr)_3.5rem_3.2rem_4.25rem] gap-1.5 px-2 py-0.5 items-center text-sm border-b border-border outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
+      className={`grid grid-cols-[minmax(4rem,1fr)_2.5rem_3.2rem_4.25rem] gap-1.5 px-2 py-0.5 items-center text-sm border-b border-border outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
     >
       {/* 종목명은 text-fg-dim(중간 회색) + text-xs(행 text-sm 보다 한 단계 작게) — 현재가·
           등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}
       <span className="truncate text-xs text-fg-dim">{name}</span>
-      {/* 스파크라인 셀 — Sparkline이 null이어도 이 span이 칼럼을 점유해 정렬 유지. */}
-      <span className="flex items-center justify-center overflow-hidden"><Sparkline series={series} /></span>
+      {/* 당일 캔들 셀 — CandleGlyph 가 null 이어도 이 span 이 칼럼을 점유해 정렬 유지. */}
+      <span className="flex items-center justify-center overflow-hidden"><CandleGlyph open={open} high={high} low={low} close={price} /></span>
       <span className="text-right font-mono tabular-nums text-fg">
         {price === null ? '—' : price.toLocaleString('ko-KR')}
       </span>

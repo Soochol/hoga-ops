@@ -61,14 +61,14 @@ it('정적(클릭 전용) 모드: dragListeners 없으면 cursor-pointer, grab �
   expect(rowEl).not.toHaveClass('cursor-grab');
 });
 
-it('series 있으면 스파크라인 셀 렌더(상승=적)', () => {
-  row({ series: [1, 2, 3] });
-  const path = document.querySelector('.srow-spark path');
-  expect(path?.getAttribute('stroke')).toBe('var(--price-up)');
+it('OHLC 있으면 캔들 셀 렌더(양봉=적)', () => {
+  row({ price: 115, open: 100, high: 120, low: 95 }); // close=115>open=100 → 양봉
+  const fill = document.querySelector('.candle-glyph rect:last-child')?.getAttribute('fill');
+  expect(fill).toBe('var(--price-up)');
 });
 
-it('series 없으면 스파크라인 svg 없음(칸은 유지, 결측 — 개수 불변)', () => {
-  row({ price: null, pct: null });
-  expect(document.querySelector('.srow-spark')).toBeNull();
-  expect(screen.getAllByText('—').length).toBe(2); // 빈 스파크 셀이 '—'를 만들지 않는다
+it('OHLC 결측이면 캔들 없음(칸 유지, 결측 — 개수 불변)', () => {
+  row({ price: null, pct: null }); // open/high/low 미전달 → null
+  expect(document.querySelector('.candle-glyph')).toBeNull();
+  expect(screen.getAllByText('—').length).toBe(2); // 빈 캔들 셀이 '—'를 만들지 않는다
 });
