@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { heatBg, heatChipBg, sortEntries, avgPct, HEAT_CHIP_MAX_ALPHA, heatHeaderBg, orderFolderGroups } from './heat';
+import { heatBg, sortEntries, avgPct, heatHeaderBg, orderFolderGroups } from './heat';
 import type { FolderGroup } from '../watchlist/grouping';
 import type { WatchlistEntry } from '../api/watchlist';
 
@@ -22,27 +22,12 @@ describe('heatBg', () => {
     expect(heatBg(30)).toBe('rgba(220,38,38,0.420)');
     expect(heatBg(4)).toBe('rgba(220,38,38,0.210)');
   });
-  it('maxAlpha 인자로 칩 농도(0.72) 적용', () => {
-    expect(heatBg(8, HEAT_CHIP_MAX_ALPHA)).toBe('rgba(220,38,38,0.720)');
-    expect(heatBg(-4, HEAT_CHIP_MAX_ALPHA)).toBe('rgba(37,99,235,0.360)');
+  it('maxAlpha 인자로 임의 농도 적용', () => {
+    expect(heatBg(8, 0.72)).toBe('rgba(220,38,38,0.720)');
+    expect(heatBg(-4, 0.72)).toBe('rgba(37,99,235,0.360)');
   });
 });
 
-describe('heatChipBg (그라데이션 없음 — |등락률| ≥ 8%만 평면색)', () => {
-  it('null/0/±8% 미만 → transparent (배경 없음)', () => {
-    expect(heatChipBg(null)).toBe('transparent');
-    expect(heatChipBg(0)).toBe('transparent');
-    expect(heatChipBg(5)).toBe('transparent');
-    expect(heatChipBg(-7.99)).toBe('transparent');
-  });
-  it('±8% 이상 → 평면 0.72 (그라데이션 없이 단일 농도)', () => {
-    expect(heatChipBg(8)).toBe('rgba(220,38,38,0.720)');   // 정확히 8%도 포함(이상)
-    expect(heatChipBg(9.9)).toBe('rgba(220,38,38,0.720)');
-    expect(heatChipBg(30)).toBe('rgba(220,38,38,0.720)');  // 8%↑ 전부 동일(평면)
-    expect(heatChipBg(-8)).toBe('rgba(37,99,235,0.720)');
-    expect(heatChipBg(-15)).toBe('rgba(37,99,235,0.720)');
-  });
-});
 
 describe('heatHeaderBg (헤더 밴드 — 선형 램프 max α 0.5, bg-input 합성)', () => {
   it('null/0 → 순수 var(--bg-input)', () => {
