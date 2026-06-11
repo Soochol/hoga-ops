@@ -147,6 +147,36 @@ describe('liveTabs persistence', () => {
     expect(tabs[0].id).not.toBe('');
   });
 
+  it('keeps the active tab (by code) when a malformed entry is filtered out', () => {
+    // Malformed entry at raw index 0 makes the raw activeIndex (1 → '000660')
+    // shift down a slot after filtering. Index-based selection would pick
+    // '035420'; code-based selection must still land on '000660'.
+    localStorage.setItem('live.tabs.v1', JSON.stringify({
+      version: 1, activeIndex: 1, // points at '000660' in the *raw* list
+      tabs: [
+        { timeframe: '1m', historicalFromDate: null, label: 'malformed (no code)' },
+        { code: '000660', timeframe: 'D', historicalFromDate: '20260101', label: 'SK하이닉스' },
+        { code: '035420', timeframe: '1m', historicalFromDate: null, label: 'NAVER' },
+      ],
+    }));
+    const { tabs, activeTabId } = loadTabs();
+    expect(tabs.map((t) => t.code)).toEqual(['000660', '035420']); // malformed dropped
+    expect(tabs.find((t) => t.id === activeTabId)?.code).toBe('000660');
+  });
+
+  it('does not discard valid tabs when activeIndex is non-integer (falls back to first)', () => {
+    localStorage.setItem('live.tabs.v1', JSON.stringify({
+      version: 1, activeIndex: 'x',
+      tabs: [
+        { code: '005930', timeframe: '1m', historicalFromDate: null, label: '삼성전자' },
+        { code: '000660', timeframe: 'D', historicalFromDate: '20260101', label: 'SK하이닉스' },
+      ],
+    }));
+    const { tabs, activeTabId } = loadTabs();
+    expect(tabs.map((t) => t.code)).toEqual(['005930', '000660']);
+    expect(activeTabId).toBe(tabs[0].id);
+  });
+
   it('returns empty when neither key exists', () => {
     expect(loadTabs()).toEqual({ tabs: [], activeTabId: null });
   });

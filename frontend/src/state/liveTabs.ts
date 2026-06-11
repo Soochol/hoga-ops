@@ -73,7 +73,13 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
     if (raw) {
       const snap = JSON.parse(raw) as Partial<TabsSnapshot>;
       if (snap && Array.isArray(snap.tabs) && snap.tabs.length > 0) {
-        const tabs: LiveTab[] = snap.tabs
+        const rawTabs = snap.tabs;
+        // Resolve the active tab by code on the *unfiltered* list (and only for
+        // an integer index) so dropping malformed entries below can't shift the
+        // selection, and a string/NaN index can't throw away the whole payload.
+        const ai = Number.isInteger(snap.activeIndex) ? (snap.activeIndex as number) : 0;
+        const activeCodeRaw = rawTabs[Math.min(Math.max(0, ai), rawTabs.length - 1)]?.code;
+        const tabs: LiveTab[] = rawTabs
           .filter((t) => t && typeof t.code === 'string')
           .map((t) => ({
             id: nanoid(8),
@@ -83,8 +89,9 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
             historicalFromDate: typeof t.historicalFromDate === 'string' ? t.historicalFromDate : null,
           }));
         if (tabs.length > 0) {
-          const idx = Math.min(Math.max(0, snap.activeIndex ?? 0), tabs.length - 1);
-          return { tabs, activeTabId: tabs[idx].id };
+          // findIndex=-1 (active entry was dropped) → first-tab fallback.
+          const activeIdx = Math.max(0, tabs.findIndex((t) => t.code === activeCodeRaw));
+          return { tabs, activeTabId: tabs[activeIdx].id };
         }
       }
     }
