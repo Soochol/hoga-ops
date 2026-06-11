@@ -62,3 +62,20 @@ it('disables the new-tab button at the cap', () => {
   setup({ atCap: true });
   expect(screen.getByLabelText('새 탭')).toBeDisabled();
 });
+
+it('drag-and-drop reorders via onReorder(from, to)', () => {
+  const p = setup();
+  const elA = screen.getByText('삼성전자').closest('[data-tab-id]')!;
+  const elB = screen.getByText('SK하이닉스').closest('[data-tab-id]')!;
+  // jsdom DragEvent.dataTransfer is null — provide a stub that round-trips the index.
+  const store: Record<string, string> = {};
+  const dataTransfer = {
+    setData: (k: string, v: string) => { store[k] = v; },
+    getData: (k: string) => store[k] ?? '',
+    effectAllowed: '',
+  };
+  fireEvent.dragStart(elA, { dataTransfer });
+  fireEvent.dragOver(elB, { dataTransfer });
+  fireEvent.drop(elB, { dataTransfer });
+  expect(p.onReorder).toHaveBeenCalledWith(0, 1);
+});

@@ -20,10 +20,10 @@ function statusDotStyle(active: boolean, loading: boolean): CSSProperties {
   return { background: 'transparent', border: '1px solid var(--fg-dimmer)' };
 }
 
-export function LiveTabBar({ tabs, activeTabId, activeLoading, atCap, onFocus, onClose, onNewTab }: Props) {
+export function LiveTabBar({ tabs, activeTabId, activeLoading, atCap, onFocus, onClose, onReorder, onNewTab }: Props) {
   return (
     <div role="tablist" className="flex items-end gap-0.5 h-full px-2 font-ui" style={{ background: 'var(--bg-subtle)' }}>
-      {tabs.map((t) => {
+      {tabs.map((t, idx) => {
         const active = t.id === activeTabId;
         return (
           <div
@@ -33,6 +33,14 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, atCap, onFocus, o
             aria-selected={active}
             onClick={() => onFocus(t.id)}
             onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(t.id); } }}
+            draggable
+            onDragStart={(e) => { e.dataTransfer.setData('text/tab-index', String(idx)); e.dataTransfer.effectAllowed = 'move'; }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const from = Number(e.dataTransfer.getData('text/tab-index'));
+              if (Number.isInteger(from) && from !== idx) onReorder(from, idx);
+            }}
             // 비활성 배경은 inline이 아닌 className으로 둔다: inline style은 specificity로
             // hover: 클래스를 이겨 hover 배경이 silent no-op이 되기 때문(DESIGN.md §Tabs Hover).
             className={`relative flex items-center gap-1.5 h-8 px-2.5 rounded-t-md cursor-pointer select-none group ${
