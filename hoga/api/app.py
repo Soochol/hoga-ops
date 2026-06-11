@@ -26,6 +26,8 @@ from hoga.api.ws import build_ws_router
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
+from hoga.api.heatmap_routes import build_router as build_heatmap_router
+from hoga.api.heatmap import seed_from_watchlist_if_absent
 from hoga.api import screener as _screener_module
 from hoga.api.screener import build_router as build_screener_router
 from hoga.collector.client import HogaplayClient
@@ -82,6 +84,11 @@ def create_app(data_dir: Path) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         migrate_to_v2_layout(data_dir)
+        # ADR-0068: one-time seed of the independent heatmap.json from the
+        # watchlist (folders+entries, capture fields stripped) the first boot
+        # it's absent AND the watchlist is non-empty. Idempotent; reads the
+        # watchlist read-only so it's never at risk. Sync, pre-task-spawn.
+        seed_from_watchlist_if_absent(data_dir)
         loop = asyncio.get_running_loop()
         inv_handler.loop = loop  # ADR-0053: route no longer binds this
         observer.start()
@@ -224,6 +231,7 @@ def create_app(data_dir: Path) -> FastAPI:
     )
     app.include_router(build_calendar_router(data_dir=data_dir))
     app.include_router(build_watchlist_router(data_dir=data_dir))
+    app.include_router(build_heatmap_router(data_dir=data_dir))
     app.include_router(build_screener_router(data_dir=data_dir, bus=bus))
     app.include_router(
         build_live_router(

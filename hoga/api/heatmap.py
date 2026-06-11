@@ -1,0 +1,280 @@
+"""Heatmap persistence + async-safe mutations.
+
+The Heatmap is an INDEPENDENT monitoring list, separate from the Watchlist
+(ADR-0068). It mirrors the watchlist store's folder/entry CRUD but WITHOUT
+capture semantics: no ``last_success_date`` / ``registered_at_kst_date``, no
+``bump_last_success`` / ``set_last_success``, and its routes never refresh the
+live stream.
+
+Cloned from ``watchlist.py`` rather than generalized (ADR-0068 / grilling G2):
+the watchlist store is entangled with the capture finalize hook + daily
+scheduler, so cloning keeps this additive and zero-risk to that hot path. Only
+the genuinely capture-agnostic, type-free helper ``_mint_folder_id`` is shared.
+
+Own ``_lock`` — NOT the watchlist lock — so heatmap UI mutations never
+serialize behind the capture finalize hook (ADR-0068 rule 1).
+"""
+from __future__ import annotations
+
+import asyncio
+import datetime as dt
+import json
+import logging
+from pathlib import Path
+
+from pydantic import ValidationError
+
+from hoga.api._atomic_write import atomic_write_json
+from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
+from hoga.api.watchlist import _mint_folder_id  # shared pure helper (ADR-0068 G2)
+
+log = logging.getLogger(__name__)
+
+# Own lock — serializes load → mutate → save across heatmap writers only.
+# Deliberately NOT watchlist._lock: the heatmap must never block (or be blocked
+# by) the capture finalize hook / daily scheduler (ADR-0068 rule 1).
+_lock = asyncio.Lock()
+
+
+def _path(data_dir: Path) -> Path:
+    return data_dir / "heatmap.json"
+
+
+class UnsupportedHeatmapSchema(Exception):
+    """An unrecognised FUTURE schema_version (>2). NOT a ValueError so
+    load_document's corruption catch does not swallow it — an unknown future
+    version must halt loudly, never be downgraded (ADR-0065)."""
+
+
+def _migrate(raw: dict) -> dict:
+    """Normalise any on-disk shape to a v2 dict, repairing (not wiping) drift.
+    Mirrors watchlist._migrate (ADR-0065 governance applied independently)."""
+    version = raw.get("schema_version", raw.get("version", 1))
+    if version > 2:
+        raise UnsupportedHeatmapSchema(f"unsupported heatmap schema_version {version}")
+    folders = raw.get("folders", []) if version >= 2 else []
+    valid_ids = {f.get("id") for f in folders}
+    entries: list[dict] = []
+    for i, e in enumerate(raw.get("entries", [])):
+        e = dict(e)
+        fid = e.get("folder_id")
+        e["folder_id"] = fid if fid in valid_ids else None
+        e["order"] = e.get("order", i)
+        entries.append(e)
+    return {"schema_version": 2, "folders": folders, "entries": entries}
+
+
+def _reindex(doc: HeatmapDocument) -> HeatmapDocument:
+    """Reassign entry.order to 0..N-1 within each folder group (incl. null),
+    folders[].order to 0..N-1. Flat list order preserved. Idempotent."""
+    groups: dict[str | None, list[int]] = {}
+    for idx, e in enumerate(doc.entries):
+        groups.setdefault(e.folder_id, []).append(idx)
+    order_for: dict[int, int] = {}
+    for idxs in groups.values():
+        for rank, i in enumerate(sorted(idxs, key=lambda i: (doc.entries[i].order, i))):
+            order_for[i] = rank
+    new_entries = [e.model_copy(update={"order": order_for[i]})
+                   for i, e in enumerate(doc.entries)]
+    fsorted = sorted(range(len(doc.folders)),
+                     key=lambda i: (doc.folders[i].order, i))
+    fo = {orig: rank for rank, orig in enumerate(fsorted)}
+    new_folders = [f.model_copy(update={"order": fo[i]})
+                   for i, f in enumerate(doc.folders)]
+    return doc.model_copy(update={"folders": new_folders, "entries": new_entries})
+
+
+def load_document(data_dir: Path) -> HeatmapDocument:
+    """Read heatmap.json as a v2 HeatmapDocument. Missing → empty doc.
+    Genuine corruption → backup + empty (never crash/wipe on read, ADR-0065);
+    an unrecognised future version raises UnsupportedHeatmapSchema (loud)."""
+    p = _path(data_dir)
+    if not p.exists():
+        return HeatmapDocument()
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        doc = HeatmapDocument.model_validate(_migrate(raw))
+    except (json.JSONDecodeError, ValidationError, TypeError, AttributeError, ValueError) as e:
+        stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S")
+        backup = p.with_name(f"heatmap.json.corrupt-{stamp}")
+        try:
+            p.rename(backup)
+        except OSError:
+            log.exception("could not back up corrupt heatmap.json")
+        log.warning("heatmap.json was corrupt (%s); backed up to %s", e, backup)
+        return HeatmapDocument()
+    return _reindex(doc)
+
+
+def save_document(data_dir: Path, doc: HeatmapDocument) -> None:
+    """Atomic write of the WHOLE v2 document. The only write path."""
+    atomic_write_json(_path(data_dir), _reindex(doc).model_dump())
+
+
+def load_heatmap(data_dir: Path) -> list[HeatmapEntry]:
+    """Read-only convenience for callers that only need the entry list."""
+    return load_document(data_dir).entries
+
+
+def seed_from_watchlist_if_absent(data_dir: Path) -> None:
+    """One-time seed (ADR-0068 rule 3 / grilling G6).
+
+    Copy the watchlist's folders + entries into heatmap.json (capture fields
+    stripped) the FIRST time heatmap.json is absent AND the watchlist is
+    non-empty. Idempotent: a present heatmap.json (even empty) skips. An empty
+    watchlist also skips — so a fresh machine retries on the next boot rather
+    than creating a permanently-empty heatmap that never re-seeds. Reads the
+    watchlist READ-ONLY (never writes it), so the watchlist is never at risk.
+
+    folder_id is copied verbatim (folder ids are document-scoped, no
+    cross-store registry, so the same id in both files is safe — grilling G5).
+    """
+    if _path(data_dir).exists():
+        return
+    # Local import: avoids any chance of an import cycle at module load.
+    from hoga.api import watchlist as _watchlist
+    wl = _watchlist.load_document(data_dir)
+    if not wl.entries:
+        return  # nothing to seed yet; retry next boot
+    folders = [WatchlistFolder(id=f.id, name=f.name, order=f.order) for f in wl.folders]
+    entries = [
+        HeatmapEntry(code=e.code, name=e.name, folder_id=e.folder_id, order=e.order)
+        for e in wl.entries
+    ]
+    save_document(data_dir, HeatmapDocument(folders=folders, entries=entries))
+    log.info("seeded heatmap.json from watchlist: %d folders, %d entries",
+             len(folders), len(entries))
+
+
+class AlreadyInHeatmapError(Exception):
+    """Raised by add_entry when the Code is already present."""
+
+
+class NotInHeatmapError(Exception):
+    """Raised by remove_entry when the Code is absent."""
+
+
+class HeatmapSetMismatchError(Exception):
+    """Raised by reorder_folders / reorder_entries when the authoritative
+    ordered set the client sent does not match the current set. Routes map
+    this to 409 (stale/inconsistent client list), not 404."""
+
+
+class FolderNotFoundError(Exception):
+    """Raised when a folder_id is absent from the Heatmap."""
+
+
+async def add_entry(data_dir: Path, *, code: str, name: str) -> HeatmapEntry:
+    async with _lock:
+        doc = load_document(data_dir)
+        if any(e.code == code for e in doc.entries):
+            raise AlreadyInHeatmapError(code)
+        # Seed beyond any existing per-group order so the new Code sorts LAST in
+        # 미분류; _reindex (ranks by `order` first) compresses it to the final
+        # slot. len(entries) is a safe upper bound (per-group orders are 0..k-1).
+        entry = HeatmapEntry(code=code, name=name, folder_id=None, order=len(doc.entries))
+        save_document(data_dir, doc.model_copy(update={"entries": [*doc.entries, entry]}))
+        return entry
+
+
+async def remove_entry(data_dir: Path, *, code: str) -> None:
+    async with _lock:
+        doc = load_document(data_dir)
+        if not any(e.code == code for e in doc.entries):
+            raise NotInHeatmapError(code)
+        save_document(data_dir, doc.model_copy(
+            update={"entries": [e for e in doc.entries if e.code != code]}))
+
+
+async def create_folder(data_dir: Path, *, name: str) -> WatchlistFolder:
+    async with _lock:
+        doc = load_document(data_dir)
+        folder = WatchlistFolder(id=_mint_folder_id(), name=name.strip(),
+                                 order=len(doc.folders))
+        save_document(data_dir, doc.model_copy(update={"folders": [*doc.folders, folder]}))
+        return folder
+
+
+async def rename_folder(data_dir: Path, *, folder_id: str, name: str) -> None:
+    async with _lock:
+        doc = load_document(data_dir)
+        if not any(f.id == folder_id for f in doc.folders):
+            raise FolderNotFoundError(folder_id)
+        # Reconstruct through WatchlistFolder so the stripped name is VALIDATED
+        # (model_copy skips validation; a blank/over-length name would otherwise
+        # be persisted unchecked and quarantine the whole doc on next load).
+        new = [WatchlistFolder(id=f.id, name=name.strip(), order=f.order)
+               if f.id == folder_id else f
+               for f in doc.folders]
+        save_document(data_dir, doc.model_copy(update={"folders": new}))
+
+
+async def delete_folder(data_dir: Path, *, folder_id: str) -> None:
+    """Delete the folder and reparent its members to 미분류 (folder_id=null)."""
+    async with _lock:
+        doc = load_document(data_dir)
+        if not any(f.id == folder_id for f in doc.folders):
+            raise FolderNotFoundError(folder_id)
+        new_folders = [f for f in doc.folders if f.id != folder_id]
+        new_entries = [e.model_copy(update={"folder_id": None}) if e.folder_id == folder_id else e
+                       for e in doc.entries]
+        save_document(data_dir, doc.model_copy(
+            update={"folders": new_folders, "entries": new_entries}))
+
+
+async def reorder_folders(data_dir: Path, *, ordered_ids: list[str]) -> None:
+    """Set folders[].order to match ordered_ids. Unknown / missing ids are
+    rejected so client and server can't drift."""
+    async with _lock:
+        doc = load_document(data_dir)
+        current = {f.id for f in doc.folders}
+        if len(ordered_ids) != len(current) or set(ordered_ids) != current:
+            raise HeatmapSetMismatchError(f"ordered_ids {ordered_ids} != {current}")
+        by_id = {f.id: f for f in doc.folders}
+        new = [by_id[fid].model_copy(update={"order": i})
+               for i, fid in enumerate(ordered_ids)]
+        save_document(data_dir, doc.model_copy(update={"folders": new}))
+
+
+async def move_entries(data_dir: Path, *, codes: list[str], folder_id: str | None) -> None:
+    """Move codes into folder_id (null = 미분류), appended after the target's
+    current members, preserving caller order. A code already in folder_id is a
+    no-op; absent codes are ignored. _reindex compacts order to 0..N-1."""
+    async with _lock:
+        doc = load_document(data_dir)
+        if folder_id is not None and not any(f.id == folder_id for f in doc.folders):
+            raise FolderNotFoundError(folder_id)
+        by_code = {e.code: e for e in doc.entries}
+        moving = [c for c in codes if c in by_code and by_code[c].folder_id != folder_id]
+        base = max((e.order for e in doc.entries if e.folder_id == folder_id), default=-1) + 1
+        pos = {c: i for i, c in enumerate(moving)}
+        new = [
+            e.model_copy(update={"folder_id": folder_id, "order": base + pos[e.code]})
+            if e.code in pos else e
+            for e in doc.entries
+        ]
+        save_document(data_dir, doc.model_copy(update={"entries": new}))
+
+
+async def reorder_entries(data_dir: Path, *, folder_id: str | None,
+                          ordered_codes: list[str]) -> None:
+    """Authoritative reorder within one folder: ordered_codes must be exactly
+    the codes currently in folder_id. Server reassigns order = position."""
+    async with _lock:
+        doc = load_document(data_dir)
+        in_folder = {e.code for e in doc.entries if e.folder_id == folder_id}
+        if len(ordered_codes) != len(in_folder) or set(ordered_codes) != in_folder:
+            raise HeatmapSetMismatchError(
+                f"reorder set {ordered_codes} != folder {folder_id} members {in_folder}")
+        rank = {c: i for i, c in enumerate(ordered_codes)}
+        new = [e.model_copy(update={"order": rank[e.code]}) if e.folder_id == folder_id else e
+               for e in doc.entries]
+        save_document(data_dir, doc.model_copy(update={"entries": new}))
+
+
+async def remove_entries(data_dir: Path, *, codes: list[str]) -> None:
+    """Bulk remove. Absent codes are ignored (idempotent bulk delete)."""
+    async with _lock:
+        doc = load_document(data_dir)
+        keep = [e for e in doc.entries if e.code not in set(codes)]
+        save_document(data_dir, doc.model_copy(update={"entries": keep}))
