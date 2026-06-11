@@ -7,7 +7,9 @@ import type { LiveSeriesData } from '../api/liveSeries';
 import {
   aggregateBrokerSeries,
   latestOrderbookSnapshot,
+  orderbookSnapshotAtCursor,
 } from './liveSidebarAdapters';
+import { TIMEFRAME_TO_MS, type Timeframe } from '../api/types';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import { useLivePageStore } from '../state/livePage';
@@ -79,16 +81,39 @@ export function LiveSidebar({ code, live }: Props) {
   // Branch on spot vs latest.
   const spotSnap = spotOrderbook?.snapshot ?? null;
   const spotAvailableFrom = spotOrderbook?.available_from ?? null;
-  const orderbookForCard = isSpot ? spotSnap : latestOrderbook;
+  // ADR-0044 amendment (2026-06-11): the promoted-parquet spot path lags the
+  // live edge by ~2–5 min (Today Promotion cadence, ADR-0043), so hovering a
+  // recent candle returned a null snapshot → an empty sidebar (reported bug).
+  // The SSE buffer (`ob`) already holds the last ~15 min of books, covering that
+  // lag, so when parquet has nothing for the hovered bucket we derive that
+  // candle's REAL book from the buffer client-side (bucket-representative parity
+  // in liveSidebarAdapters). Parquet stays authoritative — this runs only when
+  // spotSnap is null, so the two sources never answer for the same time. The
+  // hover FETCHER stays parquet-only (ADR-0044 invariant intact); the fallback
+  // is composed here at the LiveSidebar layer.
+  const bufferSnap = useMemo(
+    () =>
+      isSpot && spotSnap === null && spotTimeframe !== null && cursorMs !== null
+        ? orderbookSnapshotAtCursor(ob, cursorMs, TIMEFRAME_TO_MS[spotTimeframe as Timeframe])
+        : null,
+    [isSpot, spotSnap, spotTimeframe, cursorMs, ob],
+  );
+  const orderbookForCard = isSpot ? (spotSnap ?? bufferSnap) : latestOrderbook;
   const brokerSeriesForCard = isSpot
     ? spotBrokers
     : (broker.length === 0 ? undefined : latestBrokerSeries);
   const brokerCursorMs = isSpot ? (cursorMs ?? latestBrokerTs) : latestBrokerTs;
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook
-  // has no snapshot yet but backend knows when the first row arrives.
+  // has no snapshot yet AND the SSE buffer can't fill it either (a genuine gap,
+  // not the recent lag the buffer now covers) but backend knows when the first
+  // row arrives.
   const showAvailableHint =
-    isSpot && spotOrderbook !== undefined && spotSnap === null && spotAvailableFrom !== null;
+    isSpot &&
+    spotOrderbook !== undefined &&
+    spotSnap === null &&
+    bufferSnap === null &&
+    spotAvailableFrom !== null;
 
   return (
     <div

@@ -2,7 +2,19 @@ import { describe, it, expect } from 'vitest';
 import {
   latestOrderbookSnapshot,
   aggregateBrokerSeries,
+  orderbookSnapshotAtCursor,
 } from './liveSidebarAdapters';
+import type { ObSnapshot } from './bucketHogaSeries';
+
+// A continuous-trading book shows depth beyond level 3 (isContinuousBook).
+const deepBook = (base = 100) =>
+  Array.from({ length: 10 }, (_, i) => ({ price: base + i, qty: i + 1 }));
+// The closing auction collapses every book to exactly 3 levels.
+const auctionBook = () => [
+  { price: 100, qty: 5 },
+  { price: 101, qty: 3 },
+  { price: 102, qty: 1 },
+];
 
 describe('latestOrderbookSnapshot', () => {
   it('returns null for empty input', () => {
@@ -100,6 +112,59 @@ describe('aggregateBrokerSeries', () => {
     expect(series).toHaveLength(10);
     // First entry has largest abs(final_net)
     expect(Math.abs(series[0].final_net)).toBeGreaterThanOrEqual(Math.abs(series[1].final_net));
+  });
+});
+
+describe('orderbookSnapshotAtCursor (ADR-0044 amendment — SSE buffer fallback)', () => {
+  const buf: ObSnapshot[] = [
+    { t_ms: 60_000, asks: deepBook(100), bids: deepBook(99), total_ask_qty: 10, total_bid_qty: 20 },
+    { t_ms: 90_000, asks: deepBook(200), bids: deepBook(199), total_ask_qty: 30, total_bid_qty: 40 },
+    { t_ms: 130_000, asks: deepBook(300), bids: deepBook(299), total_ask_qty: 50, total_bid_qty: 60 },
+  ];
+
+  it('returns the last continuous book in the cursor bucket', () => {
+    const snap = orderbookSnapshotAtCursor(buf, 95_000, 60_000); // bucket [60000, 120000)
+    expect(snap).not.toBeNull();
+    expect(snap!.ts_ms).toBe(90_000);
+    expect(snap!.ask[0]).toEqual({ price: 200, qty: 1 });
+    expect(snap!.tot_ask).toBe(30);
+    expect(snap!.ask).toHaveLength(10);
+  });
+
+  it('aligns cursorMs to the bucket floor (mid-bucket cursor → same bucket)', () => {
+    expect(orderbookSnapshotAtCursor(buf, 119_999, 60_000)!.ts_ms).toBe(90_000);
+    expect(orderbookSnapshotAtCursor(buf, 60_000, 60_000)!.ts_ms).toBe(90_000);
+  });
+
+  it('returns null when no book falls in the cursor bucket (genuine gap → caller keeps empty state)', () => {
+    expect(orderbookSnapshotAtCursor(buf, 200_000, 60_000)).toBeNull(); // bucket [180000, 240000)
+    expect(orderbookSnapshotAtCursor([], 90_000, 60_000)).toBeNull();
+  });
+
+  it('excludes the closing-auction (3-level) book, preferring the last continuous book', () => {
+    const ob: ObSnapshot[] = [
+      { t_ms: 70_000, asks: deepBook(100), bids: deepBook(99), total_ask_qty: 10, total_bid_qty: 20 },
+      { t_ms: 90_000, asks: auctionBook(), bids: auctionBook(), total_ask_qty: 99, total_bid_qty: 99 },
+    ];
+    // last-in-bucket would be the 90_000 auction book; bucket-representative
+    // semantics pick the last *continuous* book (matches backend).
+    expect(orderbookSnapshotAtCursor(ob, 95_000, 60_000)!.ts_ms).toBe(70_000);
+  });
+
+  it('falls back to the last book when none in the bucket is structurally continuous', () => {
+    const ob: ObSnapshot[] = [
+      { t_ms: 70_000, asks: auctionBook(), bids: auctionBook(), total_ask_qty: 1, total_bid_qty: 1 },
+      { t_ms: 90_000, asks: auctionBook(), bids: auctionBook(), total_ask_qty: 2, total_bid_qty: 2 },
+    ];
+    expect(orderbookSnapshotAtCursor(ob, 95_000, 60_000)!.ts_ms).toBe(90_000);
+  });
+
+  it('skips totals-only frames that carry no book', () => {
+    const ob: ObSnapshot[] = [
+      { t_ms: 70_000, total_ask_qty: 1, total_bid_qty: 1 }, // no asks/bids
+      { t_ms: 80_000, asks: deepBook(), bids: deepBook(), total_ask_qty: 5, total_bid_qty: 5 },
+    ];
+    expect(orderbookSnapshotAtCursor(ob, 95_000, 60_000)!.ts_ms).toBe(80_000);
   });
 });
 

@@ -4,6 +4,7 @@ import type {
   OrderbookLevel,
   OrderbookSnapshot,
 } from '../api/types';
+import { isContinuousBook, type ObSnapshot } from './bucketHogaSeries';
 
 type RawSnapshot = Record<string, unknown>;
 
@@ -42,6 +43,59 @@ export function latestOrderbookSnapshot(ob: readonly RawSnapshot[]): OrderbookSn
     bid: padLevels(latest.bids),
     tot_ask: (latest.total_ask_qty as number) ?? 0,
     tot_bid: (latest.total_bid_qty as number) ?? 0,
+  };
+}
+
+/**
+ * ADR-0044 amendment (2026-06-11) — derive the bucket-representative orderbook
+ * snapshot for `cursorMs` from the in-memory SSE buffer (`live.ob`), CLIENT-SIDE.
+ *
+ * Why: promoted parquet lags the live edge by ~2–5 min (Today Promotion cadence,
+ * ADR-0043), so hovering a recent candle made the parquet spot path (ADR-0044)
+ * return null → an empty sidebar (the reported bug). The SSE buffer already
+ * holds the last ~15 min of books (RETENTION_MS, liveSnapshotBuffer.ts), which
+ * covers that lag. LiveSidebar tries the parquet spot FIRST and only falls back
+ * here when it has nothing for the bucket — so parquet stays authoritative and
+ * the two sources never answer for the same time (defusing ADR-0044 alt-C's
+ * "which one is real?" objection). The hover FETCHER stays parquet-only; this
+ * fallback is composed at the LiveSidebar layer (ADR-0044 invariant intact).
+ *
+ * Bucket-representative semantics MATCH the backend `query_bucket_representative`
+ * (routes.py): the last *continuous-trading* book in [bucketStart,
+ * bucketStart + bucketMs) — closing-auction 3-level books excluded via
+ * `isContinuousBook` — with bucketStart = floor(cursorMs / bucketMs) * bucketMs
+ * (the candle-start convention the cursor's `alignedT` already uses). Falls back
+ * to the last book in the bucket if none is structurally continuous (matches the
+ * backend's representative pick on totals-only frames). Returns null when no book
+ * sits in that bucket (cursor outside the buffer window = a genuine gap → caller
+ * keeps the empty state + "다음 가용" hint, preserving ADR-0044 there).
+ *
+ * Assumes `ob` is ascending by t_ms (the buffer maintains arrival order).
+ */
+export function orderbookSnapshotAtCursor(
+  ob: readonly ObSnapshot[],
+  cursorMs: number,
+  bucketMs: number,
+): OrderbookSnapshot | null {
+  const lo = Math.floor(cursorMs / bucketMs) * bucketMs;
+  const hi = lo + bucketMs; // [lo, hi)
+  let continuous: ObSnapshot | null = null;
+  let anyBook: ObSnapshot | null = null;
+  for (const s of ob) {
+    if (s.t_ms < lo || s.t_ms >= hi) continue;
+    if (!s.asks && !s.bids) continue; // need a real book to render
+    anyBook = s; // last book in bucket (ascending → overwrite keeps the latest)
+    if (isContinuousBook(s)) continuous = s;
+  }
+  const pick = continuous ?? anyBook;
+  if (pick === null) return null;
+  return {
+    ts_ms: pick.t_ms,
+    seq: 0,
+    ask: padLevels(pick.asks),
+    bid: padLevels(pick.bids),
+    tot_ask: pick.total_ask_qty ?? 0,
+    tot_bid: pick.total_bid_qty ?? 0,
   };
 }
 
