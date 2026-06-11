@@ -14,7 +14,7 @@ import { HeatmapBoard } from '../heatmap/HeatmapBoard';
 import { SectorTempStrip } from '../heatmap/SectorTempStrip';
 import { HeatmapRowMenu } from '../heatmap/HeatmapRowMenu';
 import { visibleFolderGroups } from '../heatmap/visibleGroups';
-import { HEAT_SAT } from '../heatmap/heat';
+import { avgPct, orderFolderGroups } from '../heatmap/heat';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
 
 const PHASE_LABEL: Record<string, string> = { pre_open: '장전', open: '● 장중', closed: '장마감' };
@@ -34,6 +34,14 @@ export function Heatmap() {
   const onPick = useJumpToLive();
   const sortMode = useHeatmapPrefsStore((s) => s.sortMode);
   const setSortMode = useHeatmapPrefsStore((s) => s.setSortMode);
+  const groupSort = useHeatmapPrefsStore((s) => s.groupSort);
+  const setGroupSort = useHeatmapPrefsStore((s) => s.setGroupSort);
+  // 그룹 순서 = orderFolderGroups(직교 축). groupSort≠manual 이면 quoteByCode 가 폴마다
+  // 새 Map → 매 폴 라이브 재정렬(행 change 모드와 동형). manual 이면 입력(folder.order) 그대로.
+  const orderedGroups = useMemo(() => {
+    const pctOf = (code: string): number | null => quoteByCode.get(code)?.change_pct ?? null;
+    return orderFolderGroups(groups, groupSort, (g) => avgPct(g.entries, pctOf));
+  }, [groups, groupSort, quoteByCode]);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [menu, setMenu] = useState<RowMenu | null>(null);
   const createFolderM = useCreateHeatmapFolder();
@@ -74,26 +82,41 @@ export function Heatmap() {
         <div className="flex-1" />
         <button className="text-xs px-2 py-1 rounded border border-border text-fg-dim hover:text-accent"
           onClick={() => setShowNewGroup(true)}>＋ 새 그룹</button>
-        {/* 색 범례 (spec §8): 등락률 히트 농도 키. 라벨은 HEAT_SAT(포화점)에서 파생돼
-            heat.ts 와 절대 어긋나지 않는다. 색은 --price-down(파랑·하락)↔--price-up(빨강·상승). */}
-        <div className="flex items-center gap-1.5 text-xs font-mono text-fg-dimmer"
-             aria-label={`색 범례 -${HEAT_SAT}% ~ +${HEAT_SAT}%`}>
-          <span>-{HEAT_SAT}%</span>
-          <span className="h-2 w-20 rounded-sm" style={{
-            background: 'linear-gradient(90deg, rgba(37,99,235,0.42), rgba(37,99,235,0.10), transparent, rgba(220,38,38,0.10), rgba(220,38,38,0.42))',
-          }} />
-          <span>+{HEAT_SAT}%</span>
-        </div>
-        <div className="flex border border-border rounded overflow-hidden text-xs">
-          <button
-            className={sortMode === 'change' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
-            onClick={() => setSortMode('change')}
-          >등락률 ↓</button>
-          <button
-            className={sortMode === 'manual' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
-            onClick={() => setSortMode('manual')}
-          >수동</button>
-        </div>
+        {/* 행 정렬(그룹 내 종목 순서). 스코프어 '행'은 버튼 밖 span — 버튼 accessible name 보존. */}
+        <span className="flex items-center gap-1 text-xs">
+          <span className="text-fg-dim">행</span>
+          <span className="flex border border-border rounded overflow-hidden">
+            <button
+              className={sortMode === 'change' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
+              onClick={() => setSortMode('change')}
+            >등락률 ↓</button>
+            <button
+              className={sortMode === 'manual' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
+              onClick={() => setSortMode('manual')}
+            >수동</button>
+          </span>
+        </span>
+        {/* 그룹 정렬(폴더 순서) — 행 정렬과 직교. 버튼 의미는 aria-label(visible '등락률 ↓' 가 행과 겹침). */}
+        <span className="flex items-center gap-1 text-xs">
+          <span className="text-fg-dim">그룹</span>
+          <span className="flex border border-border rounded overflow-hidden">
+            <button
+              aria-label="그룹을 평균 등락률 높은 순으로"
+              className={groupSort === 'desc' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
+              onClick={() => setGroupSort('desc')}
+            >등락률 ↓</button>
+            <button
+              aria-label="그룹을 평균 등락률 낮은 순으로"
+              className={groupSort === 'asc' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
+              onClick={() => setGroupSort('asc')}
+            >등락률 ↑</button>
+            <button
+              aria-label="그룹 수동 순서"
+              className={groupSort === 'manual' ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim'}
+              onClick={() => setGroupSort('manual')}
+            >수동</button>
+          </span>
+        </span>
       </header>
       <LiveStateBanner primary={banner.primary} stack={banner.stack} />
       <SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={scrollToFolder} />
@@ -106,7 +129,7 @@ export function Heatmap() {
           onClose={() => setShowNewGroup(false)}
         />
       )}
-      <HeatmapBoard groups={groups} quoteByCode={quoteByCode}
+      <HeatmapBoard groups={orderedGroups} quoteByCode={quoteByCode}
         sortMode={sortMode} onPick={onPick} onReorder={onReorder} onRowMenu={onRowMenu} />
       {menu && (
         <HeatmapRowMenu
