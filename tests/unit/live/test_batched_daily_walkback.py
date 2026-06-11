@@ -11,8 +11,10 @@ from __future__ import annotations
 import asyncio
 from datetime import date, datetime
 
+import httpx
+
 from hoga.live.api import batched_daily_walkback, _KST
-from hoga.live.kis_client import KisApiError, KisRateLimitError
+from hoga.live.kis_client import KisApiError, KisRateLimitError, KisTransportError
 
 
 def _t_ms(d: date, hour: int = 9) -> int:
@@ -112,6 +114,30 @@ def test_api_error_continues_with_warning() -> None:
     ))
 
     assert any(w["reason"] == "kis_api_error" for w in out["data_warnings"])
+
+
+def test_transport_error_continues_with_distinct_warning() -> None:
+    """A KisTransportError (TCP disconnect mid-backfill) must NOT propagate out
+    of the walk-back as a 500 — it degrades like an api error (skip the batch,
+    keep going) but records a DISTINCT ``kis_transport`` reason so operators
+    can tell a network blip from a KIS rejection (different remediation).
+    Regression: 2026-06-11 foreground daily-candle backfill 500, where
+    ``httpx.RemoteProtocolError`` escaped the client uncaught."""
+    cache = _FakeCache()
+
+    async def fetch_batch(code, from_s, to_s):
+        raise KisTransportError(httpx.RemoteProtocolError("server disconnected"))
+
+    # Must return normally (no raise) — that is what closes the 500.
+    out = _run(batched_daily_walkback(
+        cache=cache, fetch_batch=fetch_batch, output_key="candles",
+        code="005930", frm=date(2024, 1, 1), too=date(2024, 1, 5), today_d=date(2024, 2, 1),
+    ))
+
+    assert out["candles"] == []
+    assert any(w["reason"] == "kis_transport" for w in out["data_warnings"])
+    # Not misreported as a generic api error.
+    assert not any(w["reason"] == "kis_api_error" for w in out["data_warnings"])
 
 
 def test_output_key_is_parameterized() -> None:

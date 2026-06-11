@@ -12,7 +12,12 @@ from typing import TYPE_CHECKING, Callable, Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from hoga.api.params import CODE_PATTERN
-from hoga.live.kis_client import KisApiError, KisQuote, KisRateLimitError
+from hoga.live.kis_client import (
+    KisApiError,
+    KisQuote,
+    KisRateLimitError,
+    KisTransportError,
+)
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
@@ -235,6 +240,14 @@ async def batched_daily_walkback(
             except KisRateLimitError as e:
                 warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), label))
                 break
+            except KisTransportError as e:
+                # Subtype of KisApiError — must precede the generic arm so a
+                # network blip (TCP disconnect) carries its own reason and an
+                # operator can tell it apart from a KIS rejection (different
+                # remediation). Skip this batch, keep walking back. The client
+                # already retried connection-level failures once (ADR-0050).
+                warnings.append(_kis_error_to_warning("kis_transport", e.msg_cd, label))
+                continue
             except KisApiError as e:
                 warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, label))
                 continue
@@ -271,6 +284,8 @@ async def batched_daily_walkback(
                     warnings.append(_violation_to_warning(v, today_label))
             except KisRateLimitError as e:
                 warnings.append(_kis_error_to_warning("kis_rate_limit", str(e), today_label))
+            except KisTransportError as e:
+                warnings.append(_kis_error_to_warning("kis_transport", e.msg_cd, today_label))
             except KisApiError as e:
                 warnings.append(_kis_error_to_warning("kis_api_error", e.msg_cd, today_label))
 

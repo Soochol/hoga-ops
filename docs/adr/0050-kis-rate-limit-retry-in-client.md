@@ -173,3 +173,50 @@ async 화를 요구하므로 cold-path feed 에 비해 과도하다. 따라서 �
 밖이었고(코드 주석 참조: issuance bypasses the bucket), `chk-holiday` 는 cold-month
 저빈도 순차 호출이라 네트워크 RTT 로 self-throttle 된다. EGW00201 backoff 는
 *데이터 fetch* 전용이라 두 보조 경로와 무관하다 — 본 ADR 의 retry 본문은 불변.
+
+---
+
+## Amendment (2026-06-11) — transport 에러 정규화 + 선별 재시도
+
+**계기.** foreground 일봉 백필 중 `/past-daily-candles` 가 500 을 던졌다. KIS 가
+응답 헤더조차 보내기 전 TCP 연결을 끊어 `httpx.RemoteProtocolError` 가 발생했는데,
+이는 `TransportError` 계열로 `_do_get_once` 의 `except httpx.HTTPStatusError`(상태코드
+전용) 의 **형제 가지**라 정규화를 빠져나갔다. `KisRateLimitError`/`KisApiError` 어느
+것도 아니므로 `batched_daily_walkback` 의 degrade arm 도 못 잡아 미처리 500 으로 직행.
+(EGW00201 율리밋과는 무관한 별개 현상 — 그쪽은 retry 가 흡수해 200 으로 끝났다.)
+
+**결정.**
+
+1. **전수 정규화 (500 불가 불변식).** `_do_get_once` 에 `except httpx.TransportError`
+   를 추가해 **모든** transport 실패를 `KisTransportError` 로 변환한다. 어떤 httpx
+   전송 예외도 클라이언트를 미처리 상태로 탈출하지 못한다.
+
+2. **`KisTransportError(KisApiError)` 서브타입.** 기존 `except KisApiError` 사이트
+   5곳(walk-back degrade arm 들 + `_get` 토큰무효 분기)이 **무수정**으로 흡수한다 —
+   호출자가 새 catch 를 "잊을 수 있는 표면" 자체를 제거(본 ADR 의 비대칭 방지 원칙).
+   합성 `msg_cd='TRANSPORT/<httpx 클래스>'` 는 EGW 토큰코드와 충돌하지 않아 토큰무효
+   재발급 분기를 오발하지 않는다.
+
+3. **선별 재시도 (연결-레벨만).** 멱등 GET 의 연결-레벨 실패(`RemoteProtocolError`/
+   `ConnectError`/`ConnectTimeout`/`ReadError`/`PoolTimeout` = `_RETRYABLE_TRANSPORT`)
+   는 새 연결로 1회 ~즉시(`_TRANSPORT_RETRY_BACKOFF=(0.1,)`) 재시도한다. read/write
+   **타임아웃**은 정규화하되 재시도 안 함 — 이미 10s 대기했고, 느린 upstream 에
+   재시도는 부하만 더한다(brownout 증폭 방지).
+
+4. **Invariant-50.2 (신규).** `_get` 은 `KisRateLimitError` + 연결-레벨 transport
+   집합을 재시도한다. 재시도 루프는 가장 안쪽(`_send_with_transport_retry`)에 두어
+   EGW00201 루프와 합성한다. 각 재시도는 `_do_get_once` 재호출로 rate 토큰을 재획득
+   한다(50.1 의 "replay 는 공짜 통과 없음" 과 동형 — 재시도 버스트가 예산 우회 불가).
+
+```
+_get                         token-invalid(EGW00121/123) 1회 재발급   [불변]
+  └─ _get_with_rate_retry    EGW00201 backoff (1,2,4)s                [불변]
+       └─ _send_with_transport_retry   ★신규: 연결-레벨 1회 ~즉시 재시도
+            └─ _do_get_once            1 물리 GET · 상태+전송 전수 정규화
+                 └─ httpx AsyncClient.get
+```
+
+**범위 밖 (별도 후속).** keepalive_expiry 튜닝·`AsyncHTTPTransport(retries=)` 같은
+풀 위생은 *확률적 완화*일 뿐이고(끊긴 이유는 미확정·일시적), `retries=` 는
+`ConnectError` 만 잡아 앱-레벨 재시도와 중복되므로 채택하지 않았다. 본 수정의
+normalize+retry+degrade 가 500 의 완전한 해법이다.

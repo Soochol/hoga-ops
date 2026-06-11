@@ -16,6 +16,7 @@ from hoga.live.kis_client import (
     KisClient,
     KisCredentials,
     KisRateLimitError,
+    KisTransportError,
     _TokenBucket,
 )
 from tests.unit.live._fakes import FakeTokenProvider
@@ -745,5 +746,175 @@ async def test_get_retry_re_acquires_rate_limiter_each_attempt(monkeypatch) -> N
             await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
         # 4 attempts ⇒ 4 token acquires (no re-use across retries).
         assert acquires["n"] == 4
+    finally:
+        await client.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Transport-error normalization + selective retry (regression: 2026-06-11
+# foreground daily-candle backfill 500 — httpx.RemoteProtocolError escaped
+# _do_get_once's HTTPStatusError-only catch and bubbled to a 500). See
+# ADR-0050 amendment. Design decisions D1–D8 locked via /plan-eng-review.
+# ---------------------------------------------------------------------------
+def _make_client_for_transport(
+    handler,
+    *,
+    _transport_retry_backoff: tuple[float, ...] = (0.0,),
+    _rate_limit_backoff: tuple[float, ...] = (),
+) -> KisClient:
+    """Build a client whose mock transport runs ``handler`` — which may RAISE
+    an httpx transport exception to simulate a TCP disconnect / connect failure.
+
+    ``_transport_retry_backoff`` mirrors ``_rate_limit_backoff``: a tuple of
+    sleeps between transport retries (``len`` = retry count). Defaults to one
+    instant retry; pass ``()`` to assert raise-shape without retry.
+    """
+    return KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+        _rate_limit_backoff=_rate_limit_backoff,
+        _transport_retry_backoff=_transport_retry_backoff,
+    )
+
+
+@pytest.mark.asyncio
+async def test_remote_protocol_error_normalized_to_kis_transport_error() -> None:
+    """KIS closing the TCP connection without a response (httpx
+    RemoteProtocolError) must NOT escape as a bare httpx error — it surfaces
+    as KisTransportError, a KisApiError SUBTYPE so every existing
+    ``except KisApiError`` site degrades it instead of 500ing.
+    """
+    def handler(req: httpx.Request) -> httpx.Response:
+        raise httpx.RemoteProtocolError(
+            "Server disconnected without sending a response."
+        )
+
+    client = _make_client_for_transport(handler, _transport_retry_backoff=())
+    try:
+        with pytest.raises(KisTransportError) as exc_info:
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
+        err = exc_info.value
+        # Subtype contract: degrades at any `except KisApiError` boundary.
+        assert isinstance(err, KisApiError)
+        # Synthetic msg_cd names the transport class; NEVER an EGW token code,
+        # so _get's token-invalid branch can't false-trigger on it.
+        assert err.msg_cd == "TRANSPORT/RemoteProtocolError"
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_transport_error_retried_then_recovers() -> None:
+    """One disconnect is transient (stale keepalive) — a single near-immediate
+    retry on a fresh connection recovers it, so the user's chart backfill
+    succeeds instead of the batch dropping to a data_warning."""
+    calls = {"n": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.RemoteProtocolError(
+                "Server disconnected without sending a response."
+            )
+        return httpx.Response(200, json={"rt_cd": "0", "msg_cd": "OK", "msg1": "ok"})
+
+    client = _make_client_for_transport(handler, _transport_retry_backoff=(0.0,))
+    try:
+        body = await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
+        assert body["rt_cd"] == "0"
+        assert calls["n"] == 2  # failed once, retried once, succeeded
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_read_timeout_normalized_but_not_retried() -> None:
+    """A ReadTimeout means KIS received the request but is slow to answer —
+    replaying just doubles the 10s wait and piles load on an already-slow
+    upstream. So it is normalized (no 500 escapes) but NOT retried; only
+    connection-level failures (RemoteProtocolError/ConnectError/...) replay.
+    Asserts the upstream is hit exactly once despite a retry being configured."""
+    calls = {"n": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        raise httpx.ReadTimeout("timed out")
+
+    client = _make_client_for_transport(handler, _transport_retry_backoff=(0.0,))
+    try:
+        with pytest.raises(KisTransportError) as exc_info:
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
+        assert exc_info.value.msg_cd == "TRANSPORT/ReadTimeout"
+        assert calls["n"] == 1  # normalized, NOT retried
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_connection_error_retries_are_bounded() -> None:
+    """A persistent connection-level failure replays per the backoff tuple then
+    gives up — it does not loop forever. With a 2-entry backoff the upstream is
+    hit exactly 3 times (1 initial + 2 retries) before KisTransportError."""
+    calls = {"n": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        raise httpx.ConnectError("connection refused")
+
+    client = _make_client_for_transport(handler, _transport_retry_backoff=(0.0, 0.0))
+    try:
+        with pytest.raises(KisTransportError):
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
+        assert calls["n"] == 3  # 1 + 2 retries, bounded
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_transport_error_does_not_invalidate_token() -> None:
+    """Regression guard for the subtype decision: KisTransportError IS a
+    KisApiError, so _get's `except KisApiError` sees it — but its synthetic
+    msg_cd ('TRANSPORT/...') carries no EGW00121/00123 token code, so the
+    invalidate-and-retry path must NOT fire. A network blip must never nuke a
+    valid cached token (a needless re-issue, and a retry storm if it loops)."""
+    provider = FakeTokenProvider()
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        raise httpx.RemoteProtocolError("server disconnected")
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=provider,
+        _transport=httpx.MockTransport(handler),
+        _rate_limit_backoff=(),
+        _transport_retry_backoff=(),
+    )
+    try:
+        with pytest.raises(KisTransportError):
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
+        assert provider.invalidated == 0
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_retry_false_disables_transport_retry_too() -> None:
+    """``retry=False`` means raw single-shot (ADR-0050 invariant 3) — it must
+    disable the transport replay as well, not just the EGW00201 backoff, so a
+    diagnostic probe sees exactly one wire attempt."""
+    calls = {"n": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        raise httpx.ConnectError("connection refused")
+
+    client = _make_client_for_transport(handler, _transport_retry_backoff=(0.0,))
+    try:
+        with pytest.raises(KisTransportError):
+            await client._get(
+                path="/uapi/probe", tr_id="PROBE0000", params={}, retry=False
+            )
+        assert calls["n"] == 1  # single-shot: no transport replay under retry=False
     finally:
         await client.aclose()

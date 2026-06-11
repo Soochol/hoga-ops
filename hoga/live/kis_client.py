@@ -65,6 +65,32 @@ _RATE_LIMIT_CALLS_PER_SEC = 15.0
 # KisApiError are NOT retried — those are caller-actionable. See ADR-0050.
 _RATE_LIMIT_BACKOFF: tuple[float, ...] = (1.0, 2.0, 4.0)
 
+# Transport-error retry (distinct from EGW00201 above). A connection-level
+# failure on an idempotent GET — most often ``RemoteProtocolError`` ("server
+# disconnected", a stale-keepalive / load-shed symptom) — is fixed by a fresh
+# pooled connection, so ONE near-immediate retry recovers it. Kept tiny (not
+# the (1,2,4)s rate sequence): the wait is to avoid hammering a shedding
+# server, not to clear a quota. ``len`` = retry count. NOT all transport
+# errors retry — only the connection-level set (``_RETRYABLE_TRANSPORT``);
+# read-timeouts normalize-but-don't-retry to avoid doubling latency into an
+# already-slow upstream. See ADR-0050 amendment (2026-06-11).
+_TRANSPORT_RETRY_BACKOFF: tuple[float, ...] = (0.1,)
+
+# Which transport failures are worth replaying. The connection-level set:
+# the request either never reached KIS or the socket broke, so a fresh
+# connection is likely to succeed and a replay is cheap. Deliberately EXCLUDES
+# read/write *timeouts* (KIS got the request but is slow — replaying doubles
+# the 10s wait and adds load to a struggling upstream) and LocalProtocolError
+# (our bug, not transient). Non-retryable transport errors still normalize to
+# KisTransportError — they just skip the replay and degrade immediately.
+_RETRYABLE_TRANSPORT: tuple[type[httpx.TransportError], ...] = (
+    httpx.RemoteProtocolError,
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadError,
+    httpx.PoolTimeout,
+)
+
 # 우선순위 레인 기본값 (2026-06-09). 백그라운드가 foreground 대기자에게 토큰을
 # 양보할 때 재확인 간격(busy-loop 방지) + 기아 방지 상한(누적 양보가 이를 넘으면
 # 백그라운드도 강제 획득). foreground 버스트는 본질상 짧으므로(전환 1회 ~20콜 ≈
@@ -221,6 +247,27 @@ class KisApiError(RuntimeError):
         super().__init__(f"KIS api error {msg_cd}: {msg1}")
 
 
+class KisTransportError(KisApiError):
+    """An httpx ``TransportError`` (TCP disconnect, connect failure, read
+    timeout) normalized into the KIS domain. KIS closing the connection
+    without a response surfaces as ``httpx.RemoteProtocolError``, which is a
+    ``TransportError`` *sibling* of ``HTTPStatusError`` — so ``_do_get_once``'s
+    status-only catch let it escape as an unhandled 500 (2026-06-11 daily
+    backfill regression). Subtyping ``KisApiError`` is deliberate: every
+    existing ``except KisApiError`` site (the walk-back orchestrator's
+    degrade-and-continue arms) absorbs it without modification, so no caller
+    can forget to handle it (ADR-0050's anti-asymmetry principle). The
+    synthetic ``msg_cd`` ('TRANSPORT/<httpx class>') names the failure without
+    colliding with EGW token codes, so ``_get``'s token-invalid branch never
+    false-triggers on it."""
+
+    def __init__(self, exc: httpx.TransportError):
+        # Classified at raise time so the retry loop stays dumb: connection-
+        # level failures replay, timeouts/local-protocol errors degrade.
+        self.retryable = isinstance(exc, _RETRYABLE_TRANSPORT)
+        super().__init__(msg_cd=f"TRANSPORT/{type(exc).__name__}", msg1=str(exc)[:200])
+
+
 @dataclass(frozen=True)
 class DailyInvariantViolation:
     """A row dropped by fetch_past_daily_candles boundary defense.
@@ -330,6 +377,7 @@ class KisClient:
         _transport: Optional[httpx.AsyncBaseTransport] = None,
         _rate_limit_per_sec: float = _RATE_LIMIT_CALLS_PER_SEC,
         _rate_limit_backoff: tuple[float, ...] = _RATE_LIMIT_BACKOFF,
+        _transport_retry_backoff: tuple[float, ...] = _TRANSPORT_RETRY_BACKOFF,
     ):
         self._creds = credentials
         self._token_provider = token_provider
@@ -344,6 +392,9 @@ class KisClient:
         # paying the real wall-clock sleeps; production callers leave the
         # default. See ADR-0050.
         self._rate_limit_backoff = _rate_limit_backoff
+        # Transport retry sleeps (default one ~immediate retry). Tests pass
+        # () to assert the no-retry raise shape or (0.0,) for instant retry.
+        self._transport_retry_backoff = _transport_retry_backoff
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -423,7 +474,9 @@ class KisClient:
         attempts = len(backoff) + 1
         for attempt in range(attempts):
             try:
-                return await self._do_get_once(path, tr_id, params, foreground=foreground)
+                return await self._send_with_transport_retry(
+                    path, tr_id, params, retry=retry, foreground=foreground
+                )
             except KisRateLimitError:
                 if attempt + 1 >= attempts:
                     raise
@@ -433,6 +486,44 @@ class KisClient:
                 log_fn = log.warning if attempt == 0 else log.debug
                 log_fn("KIS rate-limited (EGW00201) path=%s — retry %d/%d in %.0fs",
                        path, attempt + 1, attempts - 1, backoff[attempt])
+                await asyncio.sleep(backoff[attempt])
+        # Unreachable: loop either returns or re-raises on the final iteration.
+        raise AssertionError("unreachable")
+
+    async def _send_with_transport_retry(
+        self,
+        path: str,
+        tr_id: str,
+        params: dict[str, Any],
+        *,
+        retry: bool = True,
+        foreground: bool = False,
+    ) -> dict:
+        """Innermost retry layer: replays a connection-level transport failure
+        on a fresh pooled connection. Nested BELOW the EGW00201 loop so the two
+        concerns compose cleanly — a replay that then hits a rate limit is
+        handled by the outer loop; a rate-limited call never enters here twice.
+
+        Each replay re-calls ``_do_get_once`` (re-acquiring a rate token), so a
+        retry burst can't skip the per-API-key budget — same invariant as the
+        EGW00201 loop. ``_do_get_once`` already normalized the failure to
+        ``KisTransportError``; on exhaustion it propagates and, being a
+        ``KisApiError`` subtype, degrades at the caller's ``except KisApiError``
+        boundary instead of 500ing. ``retry=False`` (raw single-shot diagnostic
+        callers) disables the replay too, not just the EGW00201 backoff. See
+        ADR-0050 amendment (2026-06-11)."""
+        backoff = self._transport_retry_backoff if retry else ()
+        attempts = len(backoff) + 1
+        for attempt in range(attempts):
+            try:
+                return await self._do_get_once(path, tr_id, params, foreground=foreground)
+            except KisTransportError as e:
+                if not e.retryable or attempt + 1 >= attempts:
+                    raise
+                log.warning(
+                    "KIS transport error (%s) path=%s — retry %d/%d in %.1fs",
+                    e.msg_cd, path, attempt + 1, attempts - 1, backoff[attempt],
+                )
                 await asyncio.sleep(backoff[attempt])
         # Unreachable: loop either returns or re-raises on the final iteration.
         raise AssertionError("unreachable")
@@ -501,6 +592,16 @@ class KisClient:
             if upstream_msg_cd == "EGW00201":
                 raise KisRateLimitError(f"rate limit ({msg_cd}): {upstream_msg1}") from e
             raise KisApiError(msg_cd=msg_cd, msg1=upstream_msg1) from e
+        except httpx.TransportError as e:
+            # Connection-level failure BEFORE any HTTP status: KIS closed the
+            # socket without a response (RemoteProtocolError), a connect/read
+            # failure, etc. This is a TransportError, a *sibling* of
+            # HTTPStatusError above — the status-only catch used to let it
+            # escape ``_do_get_once`` as a bare httpx error and bubble to a
+            # 500 (2026-06-11). Normalize ALL of them so no transport failure
+            # can ever surface uncaught; the caller's retry loop decides which
+            # to replay. See ADR-0050 amendment.
+            raise KisTransportError(e) from e
         return self._unwrap(resp.json())
 
     def _unwrap(self, body: dict) -> dict:

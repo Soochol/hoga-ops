@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import httpx
 import pytest
 
-from hoga.live.kis_client import KisClient, KisCredentials
+from hoga.live.api import _candle_to_dict, batched_daily_walkback
+from hoga.live.kis_client import KisClient, KisCredentials, KisTransportError
 from tests.unit.live._fakes import FakeTokenProvider
 
 FIXTURES = Path("tests/fixtures/kis_mock/responses")
@@ -644,3 +645,95 @@ async def test_fetch_investor_net_rate_limit_propagates(tmp_path) -> None:
     client = _make_client(handler, tmp_path)
     with pytest.raises(KisRateLimitError):
         await client.fetch_investor_net("005930", "20240101", "20240105")
+
+
+# ---------------------------------------------------------------------------
+# Transport-error full chain (regression: 2026-06-11 foreground daily-candle
+# backfill 500). The unit tests in test_kis_client.py prove _do_get_once
+# normalizes and the loop retries; these prove the REAL fetch methods (with
+# their own paging loops) propagate KisTransportError cleanly — no broad
+# except swallows it — and that the route's walk-back closure degrades it to a
+# data_warning instead of a 500. fetch_investor_net is a SEPARATE method
+# (ADR-0060) so it gets its own propagation test, not symmetry-by-assumption.
+# ---------------------------------------------------------------------------
+def _disconnecting_client() -> KisClient:
+    def handler(req: httpx.Request) -> httpx.Response:
+        raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
+
+    return KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+        _transport_retry_backoff=(0.0,),  # instant retry, then exhaust
+    )
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_daily_candles_propagates_transport_error() -> None:
+    """The real daily paging loop must let KisTransportError out — a broad
+    except here would re-bury the 500 the client just fixed."""
+    client = _disconnecting_client()
+    try:
+        with pytest.raises(KisTransportError) as exc_info:
+            await client.fetch_past_daily_candles("005930", "20240101", "20240105")
+        assert exc_info.value.msg_cd == "TRANSPORT/RemoteProtocolError"
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_fetch_investor_net_propagates_transport_error() -> None:
+    """Investor walk-back is a distinct method (ADR-0060) and the original
+    EGW00201s were on its endpoint — verify it propagates the same, not by
+    assuming symmetry with the daily path."""
+    client = _disconnecting_client()
+    try:
+        with pytest.raises(KisTransportError) as exc_info:
+            await client.fetch_investor_net("005930", "20240101", "20240105")
+        assert exc_info.value.msg_cd == "TRANSPORT/RemoteProtocolError"
+    finally:
+        await client.aclose()
+
+
+class _NoCache:
+    """Minimal cache: no batches, today skipped. Exercises only the gap loop."""
+
+    def list_batches(self, code: str):
+        return []
+
+    def append_batch(self, code, frm, to, rows) -> None:
+        pass
+
+    def get_today(self, code: str):
+        return ("negative", None)
+
+    def store_today(self, code, bar) -> None:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_transport_error_full_chain_degrades_in_walkback() -> None:
+    """End-to-end of the user's symptom: mock transport disconnects → real
+    fetch_past_daily_candles → the route's real fetch_batch closure →
+    batched_daily_walkback. Must return normally with a kis_transport
+    data_warning, NOT raise (which is what surfaced as the route 500)."""
+    client = _disconnecting_client()
+
+    # Faithful replica of _get_past_daily_candles' closure (api.py).
+    async def fetch_batch(code_: str, from_s: str, to_s: str):
+        result = await client.fetch_past_daily_candles(
+            code_, from_s, to_s, foreground=True
+        )
+        return [_candle_to_dict(c) for c in result.candles], result.violations
+
+    try:
+        out = await batched_daily_walkback(
+            cache=_NoCache(), fetch_batch=fetch_batch, output_key="candles",
+            code="005930", frm=date(2024, 1, 1), too=date(2024, 1, 5),
+            today_d=date(2024, 2, 1),
+        )
+    finally:
+        await client.aclose()
+
+    assert out["candles"] == []
+    assert any(w["reason"] == "kis_transport" for w in out["data_warnings"])
