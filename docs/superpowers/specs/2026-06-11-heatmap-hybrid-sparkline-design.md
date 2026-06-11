@@ -1,7 +1,7 @@
 # 관심맵 리디자인 — 섹터 온도 스트립 + 종목 스파크라인 (Hybrid + Sparkline) — 설계
 
 - **Date**: 2026-06-11
-- **Status**: Draft — 시각 목업 + 방향/데이터 결정 확정. 사장님 검토 대기.
+- **Status**: Approved — 사장님 검토 완료(2026-06-11). 데이터=옵션 a, 색 규칙=대안 A(기울기색) 확정. → 구현계획.
 - **Topic slug**: `heatmap-hybrid-sparkline`
 - **Branch**: `worktree-heatmap-hybrid-sparkline` (worktree)
 - **Base spec**: 이 설계는 [`2026-06-10-watchlist-heatmap-design.md`](./2026-06-10-watchlist-heatmap-design.md)(현행 `/heatmap` 보드)의 **레이아웃·행 표현을 진화**시킨다. 데이터 모델·라우팅·정렬 토글·jump-to-live 계약은 그대로 계승한다.
@@ -129,7 +129,7 @@ useSparklineSeries(code) → number[]  →  <Sparkline series={...} />
 
 ### 6. 스파크라인 색 규칙 (결정)
 
-- **채택(대안 A)**: stroke 색 = `sign(series[last] − series[first])` — 연 이후 기울기 부호. 상승→`--price-up`, 하락→`--price-down`, 평탄(|Δ|<ε)→`--fg-dim`. 1px, fill 없음, 끝점 1.2r 점(목업과 동일). 각 선이 *자기일관적*이고 칩과의 괴리는 정보(Invariant impact 참조).
+- **채택(대안 A) — 확정(2026-06-11 사장님 승인)**: stroke 색 = `sign(series[last] − series[first])` — 연 이후 기울기 부호. 상승→`--price-up`, 하락→`--price-down`, 평탄(|Δ|<ε)→`--fg-dim`. 1px, fill 없음, 끝점 1.2r 점(목업과 동일). 각 선이 *자기일관적*이고 칩과의 괴리는 정보(Invariant impact 참조).
 - **대안 B(거부권)**: 중립 단일색(`--fg-dim`) — 칩이 유일 방향신호. 단일-신호 규율 최우선이지만 사용자가 방금 승인한 "색 있는 선" 룩을 잃음.
 - **DESIGN.md 추가(1줄)**: "Price-direction sparkline — `heat.ts`가 가격방향을 *배경*으로 확장하듯, `Sparkline`은 *1px stroke*로 확장한다. 색 = since-open 기울기 부호(상승 적·하락 청·평탄 dim); 일간 등락칩과 다를 수 있다(다른 시간창 = 의도)."
 
