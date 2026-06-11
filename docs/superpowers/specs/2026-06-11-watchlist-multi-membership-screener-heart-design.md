@@ -58,6 +58,28 @@ WatchlistEntry  (code로 유일)            WatchlistEntry  (code로 유일, 순
 - `entry`가 순수 백필 레코드가 되어 백필 루프(`load_watchlist` → 스케줄러/catch-up)는
   코드 리스트만 보면 되고 폴더와 독립적으로 유지된다.
 
+### 와이어 형식: 네이티브 + 클라 어댑터 (옵션 C, 2026-06-11 정련)
+
+API 응답도 **저장소와 동일한 member_codes 네이티브**로 보낸다(저장소=와이어, 거짓 없음).
+프론트엔드는 `useWatchlist`의 **단일 `select` 어댑터**로 네이티브를 기존 레거시 형태
+`(code, folder_id, order)`로 펼쳐 레거시 컴포넌트(`grouping.ts`·`WatchlistDrawer`·
+`WatchlistEntryPane`·`WatchlistEditModal`)에 그대로 공급한다.
+
+```
+wire(native)                          adapter(useWatchlist.select)        legacy(컴포넌트가 보는 형태)
+folders:[{id,name,order,             ──projectToLegacy()──▶              folders:[{id,name,order}]
+          member_codes:[c..]}]                                          entries:[{code,name,dates,
+entries:[{code,name,dates}]                                              folder_id, order}]  ← 폴더×코드로 펼침
+                                                                        (한 코드 N폴더 → N행, order=member_codes 인덱스)
+```
+
+- 변환은 **삭제 가능한 단일 순수 함수**에 격리(향후 컴포넌트를 네이티브로 점진 이주 시 제거).
+- react-query 캐시는 **네이티브**를 보관, `select`가 파생. 낙관적 mutation은 네이티브 캐시
+  (member_codes 배열)를 조작 → `select` 재파생. 폴더 내 reorder = member_codes 배열 재정렬
+  (기존 `reorderFolders(ordered_ids)`와 동형, order-필드 juggling보다 깔끔).
+- (기각된 옵션 A: 와이어도 네이티브 + 모든 컴포넌트를 member_codes로 재작성 — 디프·blast
+  radius 큼. 기각된 옵션 B: 백엔드가 펼친 응답 — API가 denormalize "거짓말".)
+
 ### 구현 함정 (반드시 지킬 것)
 
 1. **entry 생성은 write 경로에서만.** 새 entry의 `last_success_date`는 디스크
@@ -170,8 +192,12 @@ dedup:   첫 등장만 유지(= 코드의 "가장 위 폴더"에서의 위치가
 - 한 종목이 N폴더에 있으면 드로어에 **N번 표시**(각 폴더 그룹 아래). 의도된 동작.
 - 드로어 "제거" 의미 분리: 폴더 컨텍스트에서 제거 = 그 폴더에서만 빼기(타 폴더 잔류).
   마지막 폴더면 entry 삭제 = watchlist 탈락.
-- `grouping.ts` / `WatchlistDrawer` / `WatchlistEntryPane`는 `folder_id` 읽기를 버리고
-  `member_codes` 기반 그룹핑으로 적응(빈 그룹 표시 규칙은 기존 유지).
+- **옵션 C 덕에 `grouping.ts`/`WatchlistEntryPane`/`WatchlistEditModal`은 거의 무수정**
+  (어댑터가 레거시 `(code, folder_id, order)` 형태로 공급). `WatchlistDrawer`만 다중 소속
+  고정 비용 2개를 흡수: ① **composite sortable id** — 같은 코드가 N그룹이면 한 `DndContext`에
+  `useSortable({id: code})`가 N번 → 충돌. id를 `${folderId}:${code}`로, `onDragEnd`·`resolveDrag`·
+  `dragHandlers` 파싱을 그에 맞게. ② **미분류 제거** — `groupByFolder`의 null 그룹 push와
+  `WatchlistEntryPane`/`WatchlistRowMenu`의 "미분류 이동" 옵션 삭제(P2로 null 엔트리 없음).
 
 ## 8. 영향 받는 파일 (구현 지도)
 
@@ -183,12 +209,16 @@ dedup:   첫 등장만 유지(= 코드의 "가장 위 폴더"에서의 위치가
 - `hoga/live/live_session.py` — `display_ordered_codes` 다중 소속 dedup
 
 프론트엔드:
-- `frontend/src/api/watchlist.ts` — 타입(member_codes), `addMember`/`removeMember`
-- `frontend/src/watchlist/useWatchlist.ts` — 멤버십 mutation 훅(낙관적)
-- `frontend/src/watchlist/WatchlistGroupPicker.tsx` — 신규 캐논 컴포넌트
-- `frontend/src/screener/ResultTable.tsx` + `pages/Screener.tsx` — 하트 채움·팝업
-- `frontend/src/watchlist/WatchlistRowMenu.tsx` + `grouping.ts` + `WatchlistDrawer.tsx`
-  + `WatchlistEntryPane.tsx` — member_codes 적응, "그룹 편집" 피커
+- `frontend/src/api/watchlist.ts` — 와이어 타입(folders+member_codes, entries 슬림), `WatchlistEntryView`
+  (어댑터 산출 레거시 형태), `addMember`/`removeMember` API
+- `frontend/src/watchlist/watchlistAdapter.ts` — **신규** `projectToLegacy()` 순수 어댑터(member_codes→펼친 entries)
+- `frontend/src/watchlist/useWatchlist.ts` — `select: projectToLegacy` + 멤버십 mutation 훅(네이티브 캐시 낙관적)
+- `frontend/src/watchlist/WatchlistGroupPicker.tsx` — **신규** 캐논 멤버십 컴포넌트
+- `frontend/src/screener/ResultTable.tsx` + `pages/Screener.tsx` — 하트 채움(useWatchlistMembership)·GroupPicker 팝업
+- `frontend/src/watchlist/WatchlistRowMenu.tsx` — "그룹으로 이동" → "그룹 편집"(GroupPicker 마운트), 미분류 옵션 제거
+- `frontend/src/watchlist/WatchlistDrawer.tsx` — composite sortable id(`${folderId}:${code}`), 미분류 그룹 제거
+- `frontend/src/watchlist/grouping.ts` + `dragHandlers.ts` — composite id 파싱 보조, null 그룹 push 제거(소폭)
+- `frontend/src/watchlist/WatchlistEntryPane.tsx` — "미분류 이동" 옵션 제거(소폭)
 
 ## 9. 테스트 (잘 테스트된 코드 = 비협상)
 
