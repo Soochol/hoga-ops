@@ -79,16 +79,17 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
         style={avg !== null && avg !== 0
           ? { boxShadow: `inset 0 0 0 9999px ${heatBg(avg, HEAT_HEADER_MAX_ALPHA)}` }
           : undefined}>
-        {/* 폴더(섹터)명 = 보드의 1차 앵커라 text-fg(밝게). 미분류는 한 단계 낮춰(text-fg-dim)
-            실제 섹터와 시각적으로 구분한다. */}
-        <span className={`text-sm font-semibold truncate ${folder ? 'text-fg' : 'text-fg-dim'}`}>
+        {/* 폴더(섹터)명 = 보드의 1차 앵커. 글자 크기 text-xs(가독성, origin/main).
+            실폴더는 text-fg(밝게), 미분류는 한 단계 낮춰(text-fg-dim) 구분. */}
+        <span className={`text-xs font-semibold truncate ${folder ? 'text-fg' : 'text-fg-dim'}`}>
           {folder?.name ?? '미분류'}
         </span>
         <span className="flex items-center gap-2 flex-none">
-          {/* 평균 등락률을 행과 같은 히트 칩으로(흰 글자 + heatBg) — 섹터 온도를 일별하게
-              하면서 "히트색은 칩에만" 설계를 그대로 따른다(헤더 배경 워시 아님). */}
+          {/* 평균 등락률을 행과 같은 히트 칩으로(heatBg) — 섹터 온도를 일별하게 하면서
+              "히트색은 칩에만" 설계를 그대로 따른다. 글자는 행 칩과 동일하게 text-fg-dim·
+              기본 두께(사용자 선호: 굵은 흰 글자 톤다운). */}
           {avg !== null && (
-            <span className="text-xs font-mono tabular-nums font-semibold text-white rounded px-1"
+            <span className="text-xs font-mono tabular-nums text-fg-dim rounded px-1"
               style={{ background: heatBg(avg, HEAT_CHIP_MAX_ALPHA) }}>
               {avg > 0 ? '+' : ''}{avg.toFixed(1)}%
             </span>
