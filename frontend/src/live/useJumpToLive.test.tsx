@@ -1,8 +1,18 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, renderHook } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { useJumpToLive } from './useJumpToLive';
+import { useLiveTabsStore } from '../state/liveTabs';
 import { useLivePageStore } from '../state/livePage';
+
+// Unified isolation: every jump now creates a persisted tab (module-singleton
+// store + localStorage), so each test must reset both stores AND storage —
+// otherwise tab/persistence state leaks across tests in file order.
+beforeEach(() => {
+  localStorage.clear();
+  useLiveTabsStore.setState({ tabs: [], activeTabId: null });
+  useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
+});
 
 function Probe() {
   const jump = useJumpToLive();
@@ -16,10 +26,6 @@ function Probe() {
 }
 
 describe('useJumpToLive', () => {
-  beforeEach(() => {
-    useLivePageStore.setState({ activeCode: null });
-  });
-
   it('sets activeCode and navigates to /live when elsewhere', async () => {
     render(
       <MemoryRouter initialEntries={['/inventory']}>
@@ -41,5 +47,14 @@ describe('useJumpToLive', () => {
     fireEvent.click(screen.getByText('jump'));
     expect(useLivePageStore.getState().activeCode).toBe('005930');
     expect(screen.getByTestId('path').textContent).toBe('/live');
+  });
+
+  it('jump opens-or-focuses a tab instead of only setting activeCode', () => {
+    const { result } = renderHook(() => useJumpToLive(), {
+      wrapper: ({ children }) => <MemoryRouter initialEntries={['/live']}>{children}</MemoryRouter>,
+    });
+    result.current('005930');
+    expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(['005930']);
+    expect(useLivePageStore.getState().activeCode).toBe('005930');
   });
 });

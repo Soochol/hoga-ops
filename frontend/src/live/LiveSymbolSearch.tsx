@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useSymbolSearch } from '../capture/useSymbols';
 import { useCombobox } from '../util/useCombobox';
-import { useLivePageStore } from '../state/livePage';
+import { useLiveTabsStore } from '../state/liveTabs';
 import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 import { shouldIgnoreEvent } from './useLiveKeyboard';
 import { WatchlistToggleButton } from '../watchlist/WatchlistToggleButton';
 import type { SymbolHit } from '../api/types';
 
 export function LiveSymbolSearch() {
-  const setActiveCode = useLivePageStore((s) => s.setActiveCode);
+  const openOrFocusTab = useLiveTabsStore((s) => s.openOrFocusTab);
   const [query, setQuery] = useState('');
   const rawItems = useSymbolSearch(query, 20);
   // `filterSymbols('')` returns ALL symbols (not []), so without this gate a
@@ -18,7 +18,7 @@ export function LiveSymbolSearch() {
 
   const { isMember, toggle } = useWatchlistMembership();
 
-  const selectHit = (hit: SymbolHit) => { setActiveCode(hit.code); setQuery(''); };
+  const selectHit = (hit: SymbolHit) => { openOrFocusTab(hit.code, hit.name); setQuery(''); };
 
   const combo = useCombobox<SymbolHit>({
     query,
@@ -27,7 +27,7 @@ export function LiveSymbolSearch() {
     onSelect: selectHit,
     onEnterEmpty: (q) => {
       const t = q.trim();
-      if (/^\d{6}$/.test(t)) { setActiveCode(t); setQuery(''); return true; }
+      if (/^\d{6}$/.test(t)) { openOrFocusTab(t); setQuery(''); return true; }
       return false;
     },
   });
