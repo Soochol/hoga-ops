@@ -1,12 +1,34 @@
 import { create } from 'zustand';
-import type { SortMode } from '../heatmap/heat';
+import type { SortMode, GroupSort } from '../heatmap/heat';
 
 export const SORT_MODES = ['change', 'manual'] as const;
 const STORAGE_KEY = 'heatmap.sortMode.v1';
 
+export const GROUP_SORTS = ['manual', 'desc', 'asc'] as const;
+const STORAGE_KEY_GROUP = 'heatmap.groupSort.v1';
+
+function readGroupSort(): GroupSort | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_GROUP);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { groupSort: string };
+    return GROUP_SORTS.includes(parsed.groupSort as GroupSort)
+      ? (parsed.groupSort as GroupSort) : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistGroupSort(groupSort: GroupSort): void {
+  try { localStorage.setItem(STORAGE_KEY_GROUP, JSON.stringify({ groupSort })); }
+  catch { /* localStorage 미가용 — 무시 */ }
+}
+
 interface Store {
   sortMode: SortMode;
   setSortMode: (value: SortMode) => void;
+  groupSort: GroupSort;
+  setGroupSort: (value: GroupSort) => void;
 }
 
 function readStorage(): SortMode | null {
@@ -34,5 +56,12 @@ export const useHeatmapPrefsStore = create<Store>((set) => ({
     if (!SORT_MODES.includes(value)) return;
     set({ sortMode: value });
     persist(value);
+  },
+  // 그룹(폴더) 정렬 — 행 정렬(sortMode)과 직교. 기본 manual = folder.order(현행 보드 순서 보존).
+  groupSort: readGroupSort() ?? 'manual',
+  setGroupSort: (value) => {
+    if (!GROUP_SORTS.includes(value)) return;
+    set({ groupSort: value });
+    persistGroupSort(value);
   },
 }));
