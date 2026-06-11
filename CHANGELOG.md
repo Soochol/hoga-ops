@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.14.1] - 2026-06-11
+
+### Changed
+- **`seriesDataDiff` — 결정·적용·캐시를 `syncSeriesData` 한 seam으로 (아키텍처 deepening)**:
+  `RangeSeriesPane` 의 데이터 effect 가 (1) `classifyDataChange` 결정, (2) 실제
+  `series.update/setData` 적용, (3) `lastDataRef` 캐시 갱신을 한 곳에 섞고 있었다. 결정은
+  순수·테스트됐지만 적용·캐시는 React effect 안이라 브라우저 전용 증거였다. `syncSeriesData(sink,
+  prev, next)` 를 추가해 셋을 한 seam 뒤로 모으고(effect 는 한 줄), fake sink 로 "어느 lwc
+  메서드가 어떤 인자로 호출됐는가 + 다음 캐시 값"을 직접 검증한다. 행위 동일. 덤으로
+  `seriesDataDiff.test.ts` 의 lightweight-charts `Time` 브랜드 타입에러를 typed 헬퍼로 해소 —
+  `npm run build`(`tsc -b`) 가 다시 그린이 된다.
+- **`/quotes` 시세 fetch+캐시+게이팅을 `LiveQuoteFetcher` 모듈로 (아키텍처 deepening)**:
+  `_get_quotes` 라우트가 phase 게이팅(business)과 캐시·청킹(infra)을 불투명하게 합성해
+  FastAPI 없이 테스트할 수 없었다. `LiveQuoteFetcher` 로 마지막-시세 캐시 + phase 게이팅 +
+  graceful-fallback 을 추출(청킹은 그대로 `kis_client`). 라우트는 `fetch_and_gate(kis, codes,
+  phase)` 한 번 호출. fake kis 로 캐시·게이팅 단독 검증(7케이스). 행위 동일.
+
 ## [0.7.14.0] - 2026-06-11
 
 ### Added
