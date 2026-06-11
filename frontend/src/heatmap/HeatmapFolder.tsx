@@ -27,6 +27,8 @@ export interface HeatmapFolderProps {
   onReorder?: (folderId: string | null, orderedCodes: string[]) => void;
   /** 행 우클릭 메뉴(삭제·폴더이동) 오프너. 미전달이면 메뉴 비활성. */
   onRowMenu?: RowMenuOpener;
+  /** 행 드래그 시작/끝을 페이지로 전파(그룹순서 동결용, G1). manual 모드에서만 발화. */
+  onRowDragState?: (dragging: boolean) => void;
 }
 
 /** 그룹 블록: 헤더(폴더명 또는 '미분류' + 평균 등락률 칩) + 정렬된 행들. break-inside-avoid
@@ -38,7 +40,7 @@ export interface HeatmapFolderProps {
  *  미분류 그룹(folder=null)은 폴더명 대신 '미분류'를 보이고 ＋종목(폴더 지정 추가)을
  *  숨긴다 — 미분류엔 지정할 폴더가 없기 때문(드로어와 동일 패턴). 삭제·다른 폴더로 이동은
  *  행 우클릭 메뉴로 가능. */
-export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onReorder, onRowMenu }: HeatmapFolderProps) {
+export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onReorder, onRowMenu, onRowDragState }: HeatmapFolderProps) {
   // distance:5 — 클릭(차트 이동)과 드래그(재정렬)를 가르는 임계. drawer 와 동일 계약.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const pctOf = (code: string): number | null => quoteByCode.get(code)?.change_pct ?? null;
@@ -96,7 +98,12 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
         </span>
       </div>
       {draggable ? (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={() => onRowDragState?.(true)}
+          onDragEnd={(ev) => { onDragEnd(ev); onRowDragState?.(false); }}
+        >
           <SortableContext items={sorted.map((e) => e.code)} strategy={verticalListSortingStrategy}>
             {rows}
           </SortableContext>

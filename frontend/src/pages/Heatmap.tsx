@@ -15,6 +15,7 @@ import { SectorTempStrip } from '../heatmap/SectorTempStrip';
 import { HeatmapRowMenu } from '../heatmap/HeatmapRowMenu';
 import { visibleFolderGroups } from '../heatmap/visibleGroups';
 import { avgPct, orderFolderGroups } from '../heatmap/heat';
+import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
 
 const PHASE_LABEL: Record<string, string> = { pre_open: '장전', open: '● 장중', closed: '장마감' };
@@ -42,10 +43,13 @@ export function Heatmap() {
   // 새 Map → 매 폴 라이브 재정렬. ⚠️ 이는 행 'change' 모드와 "동형"이 아니다(거짓 등가):
   // change 는 드래그를 끄지만 (manual행, desc그룹)은 드래그를 켠 채 그룹을 재배치한다
   // → 행 드래그 중 그룹 텔레포트 리스크(스펙 G1, 미검증 — 실측 후 동결 가드 조건부 추가).
-  const orderedGroups = useMemo(() => {
+  const liveOrderedGroups = useMemo(() => {
     const pctOf = (code: string): number | null => quoteByCode.get(code)?.change_pct ?? null;
     return orderFolderGroups(groups, groupSort, (g) => avgPct(g.entries, pctOf));
   }, [groups, groupSort, quoteByCode]);
+  const [isRowDragging, setIsRowDragging] = useState(false);
+  // G1: 행 드래그 중 그룹 순서 동결(텔레포트 방지), drag-end 에 최신 적용.
+  const orderedGroups = useFrozenWhileDragging(liveOrderedGroups, isRowDragging);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [menu, setMenu] = useState<RowMenu | null>(null);
   const createFolderM = useCreateHeatmapFolder();
@@ -134,7 +138,8 @@ export function Heatmap() {
         />
       )}
       <HeatmapBoard groups={orderedGroups} quoteByCode={quoteByCode}
-        sortMode={sortMode} onPick={onPick} onReorder={onReorder} onRowMenu={onRowMenu} />
+        sortMode={sortMode} onPick={onPick} onReorder={onReorder} onRowMenu={onRowMenu}
+        onRowDragState={setIsRowDragging} />
       {menu && (
         <HeatmapRowMenu
           x={menu.x} y={menu.y} name={menu.name}
