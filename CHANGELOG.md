@@ -3,6 +3,27 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.20.0] - 2026-06-12
+
+### Added
+- **`/live` 탭별 차트 viewport 유지** (ADR-0069 A안): 탭을 전환했다가 돌아와도 **보던 줌·스크롤
+  위치가 그대로 복원**된다. 멀티탭(v0.7.17.0) 도입 후 탭별로 보존되던 건 종목코드·타임프레임·
+  `historicalFromDate`(데이터 fetch 깊이)뿐이라, 전환 시 차트가 항상 기본뷰(분봉=최신 300봉 snap /
+  일·주·월=fitContent)로 리셋되던 문제를 해소한다. **시간 앵커 방식** — 논리 인덱스가 아니라 우측
+  엣지의 real-ms + 봉 스팬(줌)을 저장하므로, cold-swap 재페치로 축이 재구성돼도 새 축에 재투영해
+  같은 위치로 복귀한다(기존 `useViewportBackfill`의 prepend 재투영 프리미티브 재사용). 라이브 엣지에
+  있던 탭은 복귀 후에도 최신 봉을 추종(한 봉 뒤로 밀리지 않음). 신규 `LiveTab.viewport{rightEdgeMs,
+  barSpan,atLiveEdge}` + 순수 헬퍼 `viewportAnchor.ts`(`viewportFromRanges`·`computeRestoreRange`·
+  `realMsToVirtualSeconds`); 캡처는 `registerViewportCapture` 콜백으로 전환 직전 outgoing 탭에 동기
+  스냅샷, 복원은 `LiveChartRoot` initial-view effect의 새 분기. 타임프레임 변경 시 viewport 클리어
+  (봉 스팬이 타임프레임 간 무의미), `live.tabs.v1` 영속화에 viewport 포함(구버전 스냅샷은 null 폴백).
+
+### Fixed
+- **`/live` 과거-팬 탭 복귀 시 reveal cover 잔류 가능성 해소**: 초기-뷰 effect의 `historicalFromDate`
+  게이트가 `reveal()` 없이 early-return해, 과거로 팬한(hfd≠null) 탭으로 cold 복귀할 때 불투명
+  cover가 차트 위에 남을 수 있던 잠재 버그를 무조건 reveal(idempotent)로 닫는다. 세션 내 팬은 이미
+  노출된 상태라 no-op.
+
 ## [0.7.19.0] - 2026-06-11
 
 ### Changed
