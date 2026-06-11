@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>/live 탭 — 디자인 미리보기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:#0E0E14; --bg-card:#13131C; --bg-subtle:#0A0A12; --bg-input:#1A1A26; --bg-input-hover:#22222F;
+    --border:#1F1F2A; --border-strong:#2A2A38;
+    --fg:#E2E8F0; --fg-dim:#94A3B8; --fg-dimmer:#64748B;
+    --accent:#14B8A6; --success:#22C55E; --error:#F43F5E;
+    --price-up:#DC2626; --price-down:#2563EB; --grid:#1A1A26;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--fg); font-family:'Geist',sans-serif; padding:28px 32px; }
+  .mono { font-family:'Geist Mono',monospace; font-variant-numeric:tabular-nums; }
+  h1 { font-size:15px; font-weight:600; margin-bottom:4px; }
+  .sub { font-size:11.5px; color:var(--fg-dim); margin-bottom:20px; }
+  .label { font-size:10.5px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--fg-dimmer); margin:22px 0 8px; }
+
+  /* ── /live shell ── */
+  .live { width:1180px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--bg); }
+
+  /* header row: search on the right */
+  .header { height:40px; display:flex; align-items:center; justify-content:flex-end; padding:0 12px; background:var(--bg-subtle); border-bottom:1px solid var(--border); }
+  .search { display:flex; align-items:center; gap:8px; height:28px; width:300px; padding:0 10px; background:var(--bg-input); border:1px solid var(--border-strong); border-radius:6px; }
+  .search svg { width:14px; height:14px; color:var(--fg-dimmer); flex-shrink:0; }
+  .search input { flex:1; background:transparent; border:0; outline:0; color:var(--fg); font-size:14px; font-family:inherit; }
+  .search input::placeholder { color:var(--fg-dimmer); }
+  .kbd { font-family:'Geist Mono',monospace; font-size:11px; min-width:17px; height:17px; display:inline-flex; align-items:center; justify-content:center; padding:0 4px; border:1px solid var(--border-strong); border-radius:4px; background:var(--bg-input); color:var(--fg-dimmer); }
+
+  /* ── tab bar (the feature) ── */
+  .tabbar { display:flex; align-items:flex-end; gap:2px; height:40px; padding:0 8px; background:var(--bg-subtle); }
+  .tab { position:relative; display:flex; align-items:center; gap:6px; height:32px; padding:0 10px; border-radius:6px 6px 0 0; cursor:pointer; user-select:none; }
+  .tab.inactive { background:var(--bg-input); border:1px solid var(--border); border-bottom:none; }
+  .tab.active { background:var(--bg-card); }
+  .tab.active::before { content:''; position:absolute; left:0; right:0; top:0; height:2px; background:var(--accent); border-radius:6px 6px 0 0; }
+  .dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .dot.loaded { background:var(--success); box-shadow:0 0 4px rgba(34,197,94,0.5); }
+  .dot.loading { background:var(--accent); animation:pulse 1.5s ease-in-out infinite; }
+  .dot.empty { background:transparent; border:1px solid var(--fg-dimmer); }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+  .code { font-family:'Geist Mono',monospace; font-size:13px; flex-shrink:0; }
+  .tab.active .code { color:var(--fg-dim); }
+  .tab.inactive .code { color:var(--fg-dimmer); }
+  .name { font-size:13px; flex-shrink:0; }
+  .tab.active .name { color:var(--fg); }
+  .tab.inactive .name { color:var(--fg-dim); }
+  .x { width:18px; height:18px; display:flex; align-items:center; justify-content:center; border-radius:4px; color:var(--fg-dimmer); }
+  .tab.active .x { opacity:0.9; }
+  .tab.inactive .x { opacity:0.35; }
+  .x svg { width:11px; height:11px; }
+  .add { margin-left:4px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:6px; border:1px solid var(--border); color:var(--fg-dim); }
+  .add.disabled { opacity:0.4; }
+  .add svg { width:13px; height:13px; }
+  .counter { margin-left:auto; align-self:center; font-family:'Geist Mono',monospace; font-size:11px; color:var(--fg-dimmer); }
+  .counter.cap { color:var(--error); }
+
+  /* toolbar + chart stub */
+  .toolbar { height:34px; display:flex; align-items:center; gap:6px; padding:0 12px; background:var(--bg-card); border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+  .tf { font-family:'Geist Mono',monospace; font-size:11px; padding:3px 8px; border-radius:4px; color:var(--fg-dimmer); }
+  .tf.on { background:var(--accent); color:var(--bg-subtle); font-weight:600; }
+  .stage { height:200px; display:flex; }
+  .chart { flex:1; position:relative; background:var(--bg); overflow:hidden; }
+  .chart .candles { position:absolute; inset:18px 12px; display:flex; align-items:flex-end; gap:3px; }
+  .candle { width:6px; border-radius:1px; }
+  .sidebar { width:190px; border-left:1px solid var(--border); background:var(--bg-card); padding:10px; }
+  .obrow { display:flex; justify-content:space-between; font-family:'Geist Mono',monospace; font-size:11px; height:18px; align-items:center; padding:0 4px; }
+
+  .callouts { margin-top:14px; display:grid; grid-template-columns:repeat(2,1fr); gap:8px 22px; max-width:1100px; }
+  .callout { font-size:12px; color:var(--fg-dim); line-height:1.5; }
+  .callout b { color:var(--fg); font-weight:600; }
+  .pill { display:inline-block; font-family:'Geist Mono',monospace; font-size:10px; padding:1px 5px; border-radius:3px; background:var(--bg-input); color:var(--fg-dim); }
+
+  .legend { display:flex; gap:20px; margin-top:6px; font-size:12px; color:var(--fg-dim); align-items:center; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .row2 { display:flex; flex-direction:column; gap:16px; align-items:flex-start; }
+  .mini { width:1180px; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .mini .tabbar { background:var(--bg-subtle); }
+  .empty { height:120px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:6px; background:var(--bg); color:var(--fg-dimmer); }
+  .empty .big { font-size:14px; color:var(--fg-dim); }
+</style>
+</head>
+<body>
+  <h1>/live 멀티 종목 탭 — 디자인 미리보기</h1>
+  <div class="sub mono">DESIGN.md §Tabs 토큰 · ADR-0069 · LiveTabBar.tsx 마크업 그대로 (구현 전 목업)</div>
+
+  <div class="label">기본 상태 — 3개 탭 열림</div>
+  <div class="live">
+    <!-- header -->
+    <div class="header">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input placeholder="종목명 또는 코드 검색…" />
+        <span class="kbd">/</span>
+      </div>
+    </div>
+    <!-- TAB BAR -->
+    <div class="tabbar">
+      <div class="tab active">
+        <span class="dot loaded"></span>
+        <span class="name">삼성전자</span>
+        <span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+      </div>
+      <div class="tab inactive">
+        <span class="dot empty"></span>
+        <span class="name">SK하이닉스</span>
+        <span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+      </div>
+      <div class="tab inactive">
+        <span class="dot loading"></span>
+        <span class="name">NAVER</span>
+        <span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+      </div>
+      <div class="add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+      <span class="counter">3/8 open</span>
+    </div>
+    <!-- toolbar -->
+    <div class="toolbar">
+      <span class="tf on">1m</span><span class="tf">5m</span><span class="tf">15m</span><span class="tf">D</span><span class="tf">W</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--fg-dimmer)" class="mono">활성 탭: 005930 삼성전자 · 실시간</span>
+    </div>
+    <!-- chart + sidebar stub -->
+    <div class="stage">
+      <div class="chart">
+        <div class="candles" id="candles"></div>
+      </div>
+      <div class="sidebar">
+        <div class="obrow"><span style="color:var(--price-down)">71,400</span><span style="color:var(--fg-dim)">12,304</span></div>
+        <div class="obrow"><span style="color:var(--price-down)">71,300</span><span style="color:var(--fg-dim)">8,910</span></div>
+        <div class="obrow" style="background:rgba(20,184,166,0.06)"><span style="color:var(--accent)">스프레드</span><span></span></div>
+        <div class="obrow"><span style="color:var(--price-up)">71,200</span><span style="color:var(--fg-dim)">15,002</span></div>
+        <div class="obrow"><span style="color:var(--price-up)">71,100</span><span style="color:var(--fg-dim)">9,540</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    상태점:
+    <span><span class="dot loaded"></span> 실시간(WS 수신)</span>
+    <span><span class="dot loading"></span> 로딩/준실시간</span>
+    <span><span class="dot empty"></span> 파킹(배경 비-Live-Set)</span>
+  </div>
+
+  <div class="callouts">
+    <div class="callout"><b>활성 탭</b> = <span class="pill">bg-card</span> + 2px 틸 상단 액센트. 비활성 = <span class="pill">bg-input</span> + dim + 보더. (DESIGN.md §Tabs)</div>
+    <div class="callout"><b>라벨 = 종목명만</b> (코드는 숨김 — 이름 모를 때만 폴백). 탭 전환 시 타임프레임도 탭별로 스냅(D1).</div>
+    <div class="callout"><b>닫기</b> = hover 시 × + 미들클릭. 활성 탭 닫으면 오른쪽 이웃 포커스(D2).</div>
+    <div class="callout"><b>＋</b> = 헤더 검색에 포커스(새 팝오버 없음, D5). 키보드 <span class="pill">[ ]</span> <span class="pill">1-9</span> 전환(D6).</div>
+  </div>
+
+  <div class="label">소프트캡 (8/8) — ＋ disabled · 카운터 error색 &nbsp;·&nbsp; 빈 상태 (마지막 탭 닫음)</div>
+  <div class="row2">
+    <div class="mini">
+      <div class="tabbar">
+        <div class="tab active"><span class="dot loaded"></span><span class="name">삼성전자</span></div>
+        <div class="tab inactive"><span class="dot empty"></span><span class="name">SK하이닉스</span></div>
+        <div class="tab inactive"><span class="dot empty"></span><span class="name">NAVER</span></div>
+        <div class="tab inactive"><span class="dot empty"></span><span class="name">기아</span></div>
+        <div class="tab inactive"><span class="dot empty"></span><span class="name">현대차</span></div>
+        <div class="tab inactive"><span class="dot empty"></span><span class="name">LG화학</span></div>
+        <div class="tab inactive"><span class="dot empty"></span><span class="name">삼성SDI</span></div>
+        <div class="tab inactive"><span class="dot empty"></span><span class="name">셀트리온</span></div>
+        <div class="add disabled"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+        <span class="counter cap">8/8 open</span>
+      </div>
+    </div>
+    <div class="mini">
+      <div class="tabbar">
+        <div class="add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+        <span class="counter">0/8 open</span>
+      </div>
+      <div class="empty">
+        <div class="big"><span class="kbd">/</span> 를 눌러 종목을 검색하세요</div>
+        <div class="mono" style="font-size:11px">최근 본 종목이 있으면 자동으로 불러옵니다</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // faux candlesticks
+  const up='#DC2626', down='#2563EB';
+  let p=120, html='';
+  for(let i=0;i<70;i++){ const d=(Math.sin(i*0.5)+Math.cos(i*0.23))*8; const o=p; p=Math.max(40,Math.min(170,p+d)); const c=p; const col=c>=o?up:down; const h=Math.abs(c-o)+6; const bot=Math.min(o,c); html+=`<div class="candle" style="height:${h}px;margin-bottom:${bot-40}px;background:${col}"></div>`; }
+  document.getElementById('candles').innerHTML=html;
+</script>
+</body>
+</html>

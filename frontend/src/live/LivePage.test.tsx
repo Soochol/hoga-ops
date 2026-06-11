@@ -4,6 +4,7 @@ import { MemoryRouter, Routes, Route } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LivePage } from './LivePage';
 import { useLivePageStore } from '../state/livePage';
+import { useLiveTabsStore } from '../state/liveTabs';
 import * as liveStatus from '../api/liveStatus';
 
 // jsdom does not implement ResizeObserver — provide a no-op stub.
@@ -77,6 +78,11 @@ function renderWithRouter(initial = '/live') {
 describe('LivePage shell', () => {
   beforeEach(() => {
     localStorage.clear();
+    // The tabs store is a module singleton (loaded once at import). The new
+    // LivePage tab-bar wiring makes the mount-seed effect read its activeTabId,
+    // so reset it per-test to keep tests isolated — without this, a tab opened
+    // by one test's ?code= leaks into the next test's restored-active-tab path.
+    useLiveTabsStore.setState({ tabs: [], activeTabId: null });
     useLivePageStore.setState({
       activeCode: null,
       candleTimeframe: '1m',

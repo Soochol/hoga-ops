@@ -3,6 +3,30 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.17.0] - 2026-06-11
+
+### Added
+- **`/live` 멀티 종목 탭** (ADR-0069): 여러 종목을 탭으로 열어두고 전환하며 본다 — `/replay`→`/live`
+  통합(2026-05-29) 때 제거됐던 멀티탭 모델의 복원. 신규 `useLiveTabsStore`가 탭 목록을 소유하고
+  활성 탭이 기존 `useLivePageStore.{activeCode, candleTimeframe, historicalFromDate}`의 **단일 writer**가
+  된다(읽기 소비처 15곳 무수정). **cold-swap 뷰어** — 활성 탭만 프론트 구독, 백그라운드 warm·디스크
+  캡처는 기존 **Live Set**(ADR-0067)이 자동 책임하므로 탭은 KIS 구독 한도와 무관. 탭 라벨=종목명
+  (코드 폴백), **타임프레임·팬 위치는 탭별(per-tab)** / 지표 prefs는 전역(삭제했던 `Map<tabId>`
+  인디렉션 부활 안 함). 신규 `LiveTabBar`(DESIGN.md §Tabs 명세 — 활성 2px teal 액센트·상태점·종목명·
+  × 닫기+미들클릭·＋·`N/8` 카운터). 진입점(헤더 검색·관심종목·스크리너·히트맵)은 공통 `useJumpToLive`로
+  탭 열기/포커스 재배선. localStorage `live.tabs.v1` 복원 + `live.page.v1` 마이그레이션. 비수정자
+  키보드 전환(`[`/`]`·`1`-`9`, 브라우저 예약 Ctrl 회피), 네이티브 HTML5 드래그 재정렬. 설계·계획·결정:
+  `docs/superpowers/{specs,plans}/2026-06-11-live-tabs*`, `docs/adr/0069-live-multi-tab-reintroduction.md`.
+
+### Changed
+- **`liveTabs` 라이브 와이어링을 `initLiveTabsSync()` seam으로** (C2 아키텍처 deepening): import 시점에
+  실행되던 `attachPersistence` + page→tab 미러 구독을 명시적 멱등 init(`main.tsx`에서 1회 호출, HMR
+  dispose)으로 이동 — import 부작용 제거로 liveTabs를 transitive import하는 무관 테스트가 구독을
+  상속하지 않는다.
+- **CONTEXT.md stale "per-tab" → "global" 정정**: 멀티탭 제거 후 안 치워진 지표 토글 표현
+  (`auctionWindowMask`·`ratioOutlierFilter`·`fillStrengthCumulative`)을 실제 저장소(전역 `ChartViewPrefs`)에
+  맞게 정정. `activeCode` 글로서리에 "활성 Live Tab 투영" 추가.
+
 ## [0.7.16.0] - 2026-06-11
 
 ### Changed

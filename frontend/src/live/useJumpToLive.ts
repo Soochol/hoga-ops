@@ -1,15 +1,16 @@
 import { useNavigate, useLocation } from 'react-router';
-import { useLivePageStore } from '../state/livePage';
+import { useLiveTabsStore } from '../state/liveTabs';
 
-/** 차트로 점프: activeCode(SSOT)를 code 로 설정하고, /live 가 아니면 이동한다.
- *  관심종목/스크리너 패널 행 클릭의 공통 jump-to-chart 동작(CONTEXT.md)을 한 곳에
- *  모은다 — 두 패널에서 router 보일러플레이트(useNavigate/useLocation)를 제거. */
+/** 차트로 점프: 종목 탭을 열거나 포커스하고, /live 가 아니면 이동한다.
+ *  관심종목/스크리너/히트맵 행 클릭의 공통 jump-to-chart 동작(CONTEXT.md).
+ *  탭 도입(ADR-0069) 이후 setActiveCode 직접 호출 대신 openOrFocusTab을 쓴다 —
+ *  활성 탭이 useLivePageStore.activeCode의 단일 writer(D4). */
 export function useJumpToLive() {
-  const setActiveCode = useLivePageStore((s) => s.setActiveCode);
+  const openOrFocusTab = useLiveTabsStore((s) => s.openOrFocusTab);
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  return (code: string) => {
-    setActiveCode(code);
+  return (code: string, label?: string) => {
+    openOrFocusTab(code, label);
     if (pathname !== '/live') navigate('/live');
   };
 }

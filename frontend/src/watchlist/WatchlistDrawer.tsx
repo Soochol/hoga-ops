@@ -394,7 +394,7 @@ export function WatchlistDrawer() {
                           pct={q?.change_pct ?? null}
                           changeWon={q?.change_won ?? null}
                           active={entry.code === activeCode}
-                          onPick={() => onPick(entry.code)}
+                          onPick={() => onPick(entry.code, entry.name)}
                           onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                           onDelete={() => removeM.mutate(entry.code)}
                           collectionBadge={badge}

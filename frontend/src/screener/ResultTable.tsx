@@ -4,7 +4,7 @@ import { ChangeCell } from './ChangeCell';
 interface Props {
   /** Live Quote 가 이미 머지된 결과 행(useScreenerRowsLive). 표시만 하면 된다. */
   rows: ScreenerRowLive[];
-  onActivate: (code: string) => void;
+  onActivate: (code: string, name?: string) => void;
   onWatch: (code: string) => void;
   onCapture: (code: string) => void;
 }
@@ -27,11 +27,11 @@ export function ResultTable({ rows, onActivate, onWatch, onCapture }: Props) {
           <div className="p-md text-fg-dim text-sm">조건에 맞는 종목이 없습니다.</div>
         ) : rows.map((r) => {
           const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(r.code); }
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(r.code, r.name); }
           };
           return (
             <div key={r.code} role="button" tabIndex={0} aria-label={`${r.name} ${r.code} 호가창 열기`}
-              onClick={() => onActivate(r.code)} onKeyDown={onKeyDown}
+              onClick={() => onActivate(r.code, r.name)} onKeyDown={onKeyDown}
               className={`grid ${COLS} items-center gap-2 px-sm h-orderbook-row border-b text-sm text-fg cursor-pointer outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover`}>
               <span className="font-mono tabular-nums text-fg-dim">{r.code}</span>
               <span className="truncate">{r.name}</span>

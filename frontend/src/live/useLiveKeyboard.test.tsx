@@ -3,13 +3,31 @@ import { render, fireEvent, cleanup } from '@testing-library/react';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useRightRailStore } from '../state/rightRail';
 
-function Harness({ onNextCode, onPrevCode }: { onNextCode?: () => void; onPrevCode?: () => void }) {
-  useLiveKeyboard({ onNextCode, onPrevCode });
+function Harness({
+  onNextCode,
+  onPrevCode,
+  onNextTab,
+  onPrevTab,
+  onSelectTabIndex,
+}: {
+  onNextCode?: () => void;
+  onPrevCode?: () => void;
+  onNextTab?: () => void;
+  onPrevTab?: () => void;
+  onSelectTabIndex?: (index: number) => void;
+}) {
+  useLiveKeyboard({ onNextCode, onPrevCode, onNextTab, onPrevTab, onSelectTabIndex });
   return <div data-testid="harness" tabIndex={0} />;
 }
 
-function HarnessWithInput({ onNextCode }: { onNextCode?: () => void }) {
-  useLiveKeyboard({ onNextCode });
+function HarnessWithInput({
+  onNextCode,
+  onSelectTabIndex,
+}: {
+  onNextCode?: () => void;
+  onSelectTabIndex?: (index: number) => void;
+}) {
+  useLiveKeyboard({ onNextCode, onSelectTabIndex });
   return <input data-testid="input" />;
 }
 
@@ -91,5 +109,37 @@ describe('useLiveKeyboard', () => {
     fireEvent.keyDown(window, { key: 'j', ctrlKey: true });
     fireEvent.keyDown(window, { key: 'j', metaKey: true });
     expect(next).not.toHaveBeenCalled();
+  });
+
+  it('] triggers onNextTab, [ triggers onPrevTab', () => {
+    const onNextTab = vi.fn();
+    const onPrevTab = vi.fn();
+    render(<Harness onNextTab={onNextTab} onPrevTab={onPrevTab} />);
+    fireEvent.keyDown(window, { key: ']' });
+    expect(onNextTab).toHaveBeenCalledOnce();
+    fireEvent.keyDown(window, { key: '[' });
+    expect(onPrevTab).toHaveBeenCalledOnce();
+  });
+
+  it('digit keys call onSelectTabIndex with a 0-based index', () => {
+    const onSelectTabIndex = vi.fn();
+    render(<Harness onSelectTabIndex={onSelectTabIndex} />);
+    fireEvent.keyDown(window, { key: '3' });
+    expect(onSelectTabIndex).toHaveBeenCalledWith(2);
+  });
+
+  it('ignores Ctrl-modified tab keys (browser-reserved)', () => {
+    const onNextTab = vi.fn();
+    render(<Harness onNextTab={onNextTab} />);
+    fireEvent.keyDown(window, { key: ']', ctrlKey: true });
+    expect(onNextTab).not.toHaveBeenCalled();
+  });
+
+  it('does not switch tabs when a digit is typed into an input (e.g. 005930)', () => {
+    const onSelectTabIndex = vi.fn();
+    const { getByTestId } = render(<HarnessWithInput onSelectTabIndex={onSelectTabIndex} />);
+    const input = getByTestId('input');
+    fireEvent.keyDown(input, { key: '5' });
+    expect(onSelectTabIndex).not.toHaveBeenCalled();
   });
 });
