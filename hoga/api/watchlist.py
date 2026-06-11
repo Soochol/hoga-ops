@@ -184,47 +184,67 @@ class WatchlistSetMismatchError(Exception):
     routes map this to 409 (a stale/inconsistent client list), not 404."""
 
 
-async def add_entry(
+async def add_member(
     data_dir: Path,
     *,
     code: str,
     name: str,
     today_kst_date: str,
+    folder_id: str,
 ) -> WatchlistEntry:
+    """code 를 folder_id 의 멤버로 추가(v3, ADR-0069). entry 가 없으면 생성하고
+    last_success 를 디스크에서 시드(첫 Watchlist 진입). 이미 멤버면 멱등 no-op.
+    폴더 없으면 FolderNotFoundError. 불변식 {e.code}==⋃member_codes 유지."""
     # Local import: disk_state -> watchlist would cycle if at module top.
     from hoga.api.disk_state import latest_complete_date
     async with _lock:
         doc = load_document(data_dir)
-        if any(e.code == code for e in doc.entries):
-            raise AlreadyInWatchlistError(code)
-        # Seed from disk: if the Code already has captured data, the marker
-        # reflects the latest existing Stock-Date instead of starting null.
-        # See CONTEXT.md ("last_success_date") — the marker tracks "latest
-        # COMPLETE on disk", not "latest done since registration".
-        entry = WatchlistEntry(
-            code=code,
-            name=name,
-            registered_at_kst_date=today_kst_date,
-            last_success_date=latest_complete_date(data_dir, code),
-            folder_id=None,
-            # Seed beyond any existing per-group order so the new Code sorts
-            # LAST in 미분류; _reindex (which ranks by `order` first) then
-            # compresses it to the final slot. Seeding 0 would tie the first
-            # existing entry and mis-rank the new one second. len(entries) is a
-            # safe upper bound: per-group orders are 0..k-1 for k entries.
-            order=len(doc.entries),
-        )
-        save_document(data_dir, doc.model_copy(update={"entries": [*doc.entries, entry]}))
+        folder = next((f for f in doc.folders if f.id == folder_id), None)
+        if folder is None:
+            raise FolderNotFoundError(folder_id)
+        entries = list(doc.entries)
+        entry = next((e for e in entries if e.code == code), None)
+        if entry is None:
+            # Seed from disk: the marker tracks "latest COMPLETE on disk"
+            # (CONTEXT.md last_success_date), not "latest since registration".
+            entry = WatchlistEntry(
+                code=code, name=name, registered_at_kst_date=today_kst_date,
+                last_success_date=latest_complete_date(data_dir, code),
+            )
+            entries.append(entry)
+        new_folders = doc.folders
+        if code not in folder.member_codes:  # idempotent: already a member → no-op
+            new_folders = [f.model_copy(update={"member_codes": [*f.member_codes, code]})
+                           if f.id == folder_id else f for f in doc.folders]
+        save_document(data_dir, doc.model_copy(update={"folders": new_folders, "entries": entries}))
         return entry
 
 
+async def remove_member(data_dir: Path, *, code: str, folder_id: str) -> None:
+    """code 를 folder_id 에서 제거(v3). 제거 후 어느 폴더에도 없으면 entry 삭제
+    (Watchlist 탈락). 폴더 없으면 FolderNotFoundError. 멤버 아니면 멱등 no-op."""
+    async with _lock:
+        doc = load_document(data_dir)
+        if not any(f.id == folder_id for f in doc.folders):
+            raise FolderNotFoundError(folder_id)
+        new_folders = [f.model_copy(update={"member_codes": [c for c in f.member_codes if c != code]})
+                       if f.id == folder_id else f for f in doc.folders]
+        still_member = any(code in f.member_codes for f in new_folders)
+        new_entries = doc.entries if still_member else [e for e in doc.entries if e.code != code]
+        save_document(data_dir, doc.model_copy(update={"folders": new_folders, "entries": new_entries}))
+
+
 async def remove_entry(data_dir: Path, *, code: str) -> None:
+    """code 를 Watchlist 에서 완전 제거(모든 폴더 member_codes 에서 빼고 entry 삭제)."""
     async with _lock:
         doc = load_document(data_dir)
         if not any(e.code == code for e in doc.entries):
             raise NotInWatchlistError(code)
+        new_folders = [f.model_copy(update={"member_codes": [c for c in f.member_codes if c != code]})
+                       for f in doc.folders]
+        new_entries = [e for e in doc.entries if e.code != code]
         save_document(data_dir, doc.model_copy(
-            update={"entries": [e for e in doc.entries if e.code != code]}))
+            update={"folders": new_folders, "entries": new_entries}))
 
 
 async def bump_last_success(
@@ -330,14 +350,16 @@ async def rename_folder(data_dir: Path, *, folder_id: str, name: str) -> None:
 
 
 async def delete_folder(data_dir: Path, *, folder_id: str) -> None:
-    """Delete the folder and reparent its members to 미분류 (folder_id=null)."""
+    """폴더 삭제(v3, ADR-0069). 그 폴더에만 있던 코드는 orphan → entry 삭제
+    (Watchlist 탈락, 파괴적); 다른 폴더에도 있으면 entry 유지. UI 는 고아가 생기는
+    삭제 전 사용자에게 확인한다(P6) — 이 함수 자체는 확정 삭제."""
     async with _lock:
         doc = load_document(data_dir)
         if not any(f.id == folder_id for f in doc.folders):
             raise FolderNotFoundError(folder_id)
         new_folders = [f for f in doc.folders if f.id != folder_id]
-        new_entries = [e.model_copy(update={"folder_id": None}) if e.folder_id == folder_id else e
-                       for e in doc.entries]
+        survivors = {c for f in new_folders for c in f.member_codes}
+        new_entries = [e for e in doc.entries if e.code in survivors]
         save_document(data_dir, doc.model_copy(
             update={"folders": new_folders, "entries": new_entries}))
 
@@ -360,48 +382,30 @@ async def reorder_folders(data_dir: Path, *, ordered_ids: list[str]) -> None:
         save_document(data_dir, doc.model_copy(update={"folders": new}))
 
 
-async def move_entries(data_dir: Path, *, codes: list[str], folder_id: str | None) -> None:
-    """Move the given codes into folder_id (null = 미분류), appended after the
-    target folder's current members, preserving caller order. A code already in
-    folder_id is a **no-op** (it is NOT bumped to the bottom); absent codes are
-    ignored. _reindex compacts order to 0..N-1."""
-    async with _lock:
-        doc = load_document(data_dir)
-        if folder_id is not None and not any(f.id == folder_id for f in doc.folders):
-            raise FolderNotFoundError(folder_id)
-        by_code = {e.code: e for e in doc.entries}
-        # Only codes that actually change folder move; a code already in the
-        # target folder stays in place (moving onto your own folder = no-op).
-        moving = [c for c in codes if c in by_code and by_code[c].folder_id != folder_id]
-        base = max((e.order for e in doc.entries if e.folder_id == folder_id), default=-1) + 1
-        pos = {c: i for i, c in enumerate(moving)}
-        new = [
-            e.model_copy(update={"folder_id": folder_id, "order": base + pos[e.code]})
-            if e.code in pos else e
-            for e in doc.entries
-        ]
-        save_document(data_dir, doc.model_copy(update={"entries": new}))
-
-
-async def reorder_entries(data_dir: Path, *, folder_id: str | None,
+async def reorder_entries(data_dir: Path, *, folder_id: str,
                           ordered_codes: list[str]) -> None:
-    """Authoritative reorder within one folder: ordered_codes must be exactly
-    the codes currently in folder_id. Server reassigns order = position."""
+    """folder_id 의 member_codes 를 ordered_codes 로 재배열(v3). ordered_codes 는
+    현재 멤버 집합과 정확히 일치해야 함(아니면 WatchlistSetMismatchError → 409)."""
     async with _lock:
         doc = load_document(data_dir)
-        in_folder = {e.code for e in doc.entries if e.folder_id == folder_id}
-        if len(ordered_codes) != len(in_folder) or set(ordered_codes) != in_folder:
+        folder = next((f for f in doc.folders if f.id == folder_id), None)
+        if folder is None:
+            raise FolderNotFoundError(folder_id)
+        if len(ordered_codes) != len(folder.member_codes) or set(ordered_codes) != set(folder.member_codes):
             raise WatchlistSetMismatchError(
-                f"reorder set {ordered_codes} != folder {folder_id} members {in_folder}")
-        rank = {c: i for i, c in enumerate(ordered_codes)}
-        new = [e.model_copy(update={"order": rank[e.code]}) if e.folder_id == folder_id else e
-               for e in doc.entries]
-        save_document(data_dir, doc.model_copy(update={"entries": new}))
+                f"reorder set {ordered_codes} != folder {folder_id} members {folder.member_codes}")
+        new_folders = [f.model_copy(update={"member_codes": list(ordered_codes)})
+                       if f.id == folder_id else f for f in doc.folders]
+        save_document(data_dir, doc.model_copy(update={"folders": new_folders}))
 
 
 async def remove_entries(data_dir: Path, *, codes: list[str]) -> None:
-    """Bulk remove. Absent codes are ignored (idempotent bulk delete)."""
+    """Bulk remove from the Watchlist (v3): drop the codes from every folder's
+    member_codes and delete their entries. Absent codes ignored (idempotent)."""
     async with _lock:
         doc = load_document(data_dir)
-        keep = [e for e in doc.entries if e.code not in set(codes)]
-        save_document(data_dir, doc.model_copy(update={"entries": keep}))
+        drop = set(codes)
+        new_folders = [f.model_copy(update={"member_codes": [c for c in f.member_codes if c not in drop]})
+                       for f in doc.folders]
+        new_entries = [e for e in doc.entries if e.code not in drop]
+        save_document(data_dir, doc.model_copy(update={"folders": new_folders, "entries": new_entries}))

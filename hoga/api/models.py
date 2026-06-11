@@ -612,6 +612,11 @@ class WatchlistAddRequest(BaseModel):
     code: str = Field(pattern=CODE_PATTERN)
 
 
+class MemberAddRequest(BaseModel):
+    """Body for POST /api/watchlist/folders/{folder_id}/members (v3, ADR-0069)."""
+    code: str = Field(pattern=CODE_PATTERN)
+
+
 class _FolderNameBody(BaseModel):
     """Shared request body for folder create/rename — one validated folder name."""
 
@@ -653,7 +658,7 @@ class EntriesMoveRequest(BaseModel):
 
 
 class EntriesReorderRequest(BaseModel):
-    folder_id: str | None = None
+    folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")  # v3: reorder is within one real folder
     ordered_codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
 
 

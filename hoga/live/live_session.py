@@ -57,24 +57,19 @@ def partition_live_set(codes: list[str], n: int) -> list[list[str]]:
 
 
 def display_ordered_codes(doc: WatchlistDocument) -> list[str]:
-    """Watchlist Panel 표시 순서로 코드 평탄화 (2026-06-06 결정, watchlist v2 폴더화).
+    """Watchlist Panel 표시 순서로 코드 평탄화 (v3 다중 소속, 2026-06-11 / ADR-0069).
 
-    Step 0 확인 (grouping.ts:28-43 + WatchlistDrawer.tsx:222,228):
-    - folders[]를 `.order` 오름차순으로 정렬 → 각 폴더의 entry를 `.order` 오름차순
-    - 미분류(folder_id=None) 그룹은 **폴더들 뒤** (groupByFolder가 push로 마지막에 추가)
-    - 빈 미분류는 WatchlistDrawer가 숨기지만 코드 수집에는 영향 없음
-
-    정렬 키: (folder rank — 미분류는 len(folders), entry.order)
+    폴더 `.order` 오름차순 → 각 폴더 `member_codes` 순 → **첫 등장으로 dedup**
+    (다중 소속 Code 의 rank = 가장 위 폴더에서의 등장 위치). 미분류 개념 폐지(v3).
     """
-    sorted_folders = sorted(doc.folders, key=lambda f: f.order)
-    folder_rank = {f.id: i for i, f in enumerate(sorted_folders)}
-    n_folders = len(sorted_folders)
-
-    def _key(entry):  # type: ignore[no-untyped-def]
-        rank = folder_rank[entry.folder_id] if entry.folder_id is not None else n_folders
-        return (rank, entry.order)
-
-    return [e.code for e in sorted(doc.entries, key=_key)]
+    seen: set[str] = set()
+    out: list[str] = []
+    for folder in sorted(doc.folders, key=lambda f: f.order):
+        for code in folder.member_codes:
+            if code not in seen:
+                seen.add(code)
+                out.append(code)
+    return out
 
 
 def _compute_live_set(data_dir: Path, n_configured: int = 1) -> list[str]:
