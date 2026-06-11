@@ -3,6 +3,24 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.15.0] - 2026-06-11
+
+### Added
+- **관심맵 리디자인 — 섹터 온도 스트립 + 종목 since-open 스파크라인**: `/heatmap` 보드 상단에
+  가시 섹터 평균 등락을 히트칩으로 압축한 **섹터 온도 스트립**(뜨거운 순·표시 전용, 칩 클릭 →
+  해당 카드로 스크롤)을 추가하고, 각 종목 행에 **1px SVG 스파크라인**을 더했다. 스파크라인 색은
+  보드를 연 이후(since-open) 추세 기울기 부호(상승 적·하락 청·평탄 dim)로, 일간 등락칩과 다른
+  시간창을 보여준다(모멘텀 신호). 데이터는 기존 10초 시세 폴을 모듈 store(`sparklineStore`)에
+  누적해 만든다 — 백엔드 무변경, `phase==='open'`에만 누적, KST 날짜롤오버 리셋, 결측은
+  carry-forward(transient null이 누적 이력을 날리던 버그 방지). 신규:
+  `frontend/src/heatmap/{Sparkline,SectorTempStrip,useSparklineSeries}.tsx`,
+  `frontend/src/state/sparklineStore.ts`. 설계/계획:
+  `docs/superpowers/{specs,plans}/2026-06-11-heatmap-hybrid-sparkline*`.
+
+### Changed
+- `HeatmapRow` 그리드 3→4칼럼(종목명·스파크라인·현재가·등락칩). `DESIGN.md`에 "방향성 스파크라인
+  선" 규칙 추가 — 가격 방향 카테고리를 1px stroke로 확장(`heat.ts` 배경 확장과 동형, 새 색 없음).
+
 ## [0.7.14.1] - 2026-06-11
 
 ### Changed

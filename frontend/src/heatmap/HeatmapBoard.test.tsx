@@ -24,3 +24,15 @@ it('빈 폴더는 제외, 비어있지 않은 미분류는 포함(별도 그룹)
   expect(screen.getByText('미분류')).toBeInTheDocument();
   expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
 });
+
+it('폴더 카드에 스크롤 앵커 id가 있다(스트립 점프 대상)', () => {
+  render(<HeatmapBoard groups={groups} quoteByCode={new Map<string, LiveQuote>()}
+    sortMode="change" onPick={() => {}} />);
+  expect(document.getElementById('heatmap-folder-f1')).toBeTruthy();
+});
+
+it('seriesByCode를 전달하면 해당 종목 행에 스파크라인이 그려진다', () => {
+  render(<HeatmapBoard groups={groups} quoteByCode={new Map<string, LiveQuote>()}
+    sortMode="change" onPick={() => {}} seriesByCode={new Map([['005930', [1, 2, 3]]])} />);
+  expect(document.querySelector('.srow-spark path')?.getAttribute('stroke')).toBe('var(--price-up)');
+});

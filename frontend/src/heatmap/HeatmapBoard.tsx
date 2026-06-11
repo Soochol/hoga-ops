@@ -7,6 +7,8 @@ import type { SortMode } from './heat';
 export interface HeatmapBoardProps {
   groups: FolderGroup[];
   quoteByCode: Map<string, LiveQuote>;
+  /** 코드→since-open 시계열. 페이지가 useSparklineSeries로 주입. */
+  seriesByCode?: Map<string, number[]>;
   sortMode: SortMode;
   onPick: (code: string) => void;
   /** 그룹 내 드래그 재정렬 커밋(manual 모드). folderId=null 은 미분류 그룹.
@@ -22,7 +24,7 @@ export interface HeatmapBoardProps {
  *  갭·패딩, 실측 카드 min-content ≈ 12.3rem)에 맞춘 12rem floor — multicol 이 깨지지
  *  않는 카드(break-inside-avoid)를 칼럼에 맞춰 키우므로 1100~1820px 전 구간 오버플로
  *  없음(실측). 넓어지면 칼럼 수↑, 남는 폭은 minmax(...,1fr) 종목명으로(반응형). */
-export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder, onRowMenu }: HeatmapBoardProps) {
+export function HeatmapBoard({ groups, quoteByCode, seriesByCode, sortMode, onPick, onReorder, onRowMenu }: HeatmapBoardProps) {
   const visible = visibleFolderGroups(groups);
   return (
     // eng-review Q6: 스크롤 컨테이너(바깥, 높이 한정)와 multicol 블록(안쪽, height
@@ -37,6 +39,7 @@ export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder,
             folder={g.folder}
             entries={g.entries}
             quoteByCode={quoteByCode}
+            seriesByCode={seriesByCode}
             sortMode={sortMode}
             onPick={onPick}
             onReorder={onReorder}

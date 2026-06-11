@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   useHeatmap, useCreateHeatmapFolder, useReorderHeatmapEntries,
   useRemoveFromHeatmap, useMoveHeatmapEntries,
@@ -11,6 +11,9 @@ import { LiveStateBanner } from '../live/LiveStateBanner';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
 import { HeatmapBoard } from '../heatmap/HeatmapBoard';
+import { SectorTempStrip } from '../heatmap/SectorTempStrip';
+import { useSparklineStore } from '../state/sparklineStore';
+import { useSparklineSeries } from '../heatmap/useSparklineSeries';
 import { HeatmapRowMenu } from '../heatmap/HeatmapRowMenu';
 import { visibleFolderGroups } from '../heatmap/visibleGroups';
 import { HEAT_SAT } from '../heatmap/heat';
@@ -45,6 +48,30 @@ export function Heatmap() {
   const onRowMenu = (e: React.MouseEvent, code: string, name: string, folderId: string | null) => {
     e.preventDefault();
     setMenu({ x: e.clientX, y: e.clientY, code, name, folderId });
+  };
+
+  const appendBatch = useSparklineStore((s) => s.appendBatch);
+  const seriesByCode = useSparklineSeries();
+
+  // 폴마다 전 종목 등락률을 누적 — phase==='open'에만. closed는 600s 하트비트로 동일
+  // non-null change_pct를 재서빙하므로 null 필터로 못 막아 평탄점이 쌓인다
+  // (spec §4 "closed: 신규 점 없음"). 결측(null)은 store가 carry-forward로 보존.
+  // deps에 codes도 둬, watchlist가 quote보다 늦게 로드되는 갭(첫 폴 후 codes 도착)을 잡는다.
+  // ref 가드로 같은 폴(dataUpdatedAt 불변) 중복 append 방지 → "폴당 1점" 유지(codes만 바뀐
+  // 종목 추가는 다음 폴에 첫 점). filter 없이 전 codes를 넘겨 watchlist 잔존=보존·이탈=prune.
+  const lastAppendedRef = useRef(0);
+  useEffect(() => {
+    if (phase !== 'open' || !dataUpdatedAt || codes.length === 0) return;
+    if (dataUpdatedAt === lastAppendedRef.current) return;
+    lastAppendedRef.current = dataUpdatedAt;
+    const points = codes.map((code) => ({ code, value: quoteByCode.get(code)?.change_pct ?? null }));
+    appendBatch(points, dataUpdatedAt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataUpdatedAt, codes]);
+
+  const scrollToFolder = (folderId: string) => {
+    document.getElementById(`heatmap-folder-${folderId}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const updated = dataUpdatedAt
@@ -90,6 +117,8 @@ export function Heatmap() {
         </div>
       </header>
       <LiveStateBanner primary={banner.primary} stack={banner.stack} />
+      <div className="px-3 py-1 text-xs text-fg-dim flex-none">스파크라인 = 장중 추세</div>
+      <SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={scrollToFolder} />
       {showNewGroup && (
         <GroupNameModal
           title="새 그룹 만들기"
@@ -99,8 +128,8 @@ export function Heatmap() {
           onClose={() => setShowNewGroup(false)}
         />
       )}
-      <HeatmapBoard groups={groups} quoteByCode={quoteByCode} sortMode={sortMode}
-        onPick={onPick} onReorder={onReorder} onRowMenu={onRowMenu} />
+      <HeatmapBoard groups={groups} quoteByCode={quoteByCode} seriesByCode={seriesByCode}
+        sortMode={sortMode} onPick={onPick} onReorder={onReorder} onRowMenu={onRowMenu} />
       {menu && (
         <HeatmapRowMenu
           x={menu.x} y={menu.y} name={menu.name}
