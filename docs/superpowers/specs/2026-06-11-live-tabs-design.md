@@ -280,3 +280,69 @@ fallback, 스토어 `subscribe()` 1회 + 변경마다 `savePersisted()`(**디바
 **later:** 수동 핀(Live Set 편입) · 탭별 ChartViewPrefs(인디렉션 부활 — reversible) · 백엔드 탭 저장 · ＋앵커 팝오버
 
 **제외:** 배경 탭 폴링 · 탭 전체 상태 URL 직렬화 · Ctrl 단축키(브라우저 충돌)
+
+---
+
+## 14. 구현 출발점 — prior-art 복원 가이드 (핵심 발견 #1 반영)
+
+옛 `frontend/src/state/tabs.ts`(삭제 커밋 `7193684`, `git show 7193684~1:frontend/src/state/tabs.ts`로 회수)를
+**재발명 말고 복원**한다. 단 `/replay`→`/live` 차이 + 본 스펙 결정(D1/D3/D4)에 맞춰 가감한다.
+
+### 그대로 가져오는 것 (검증된 로직)
+
+```ts
+export const TABS_SOFT_CAP = 8;
+const fresh = (): Tab => ({ id: nanoid(8), ... });
+
+// D2와 정확히 일치: 캡 도달 시 새 탭 안 만들고 현 active 반환(= 토스트 무시)
+newTab: (opts) => {
+  let { tabs } = get();
+  if (tabs.length >= TABS_SOFT_CAP) return get().activeTabId;  // (옛 confirmEvictOldest 분기 제거)
+  const t = fresh(); set({ tabs: [...tabs, t], activeTabId: t.id }); return t.id;
+},
+
+// D2와 정확히 일치: 활성 탭 닫으면 오른쪽 이웃 → 없으면 왼쪽 → 없으면 0
+closeTab: (id) => {
+  const { tabs, activeTabId } = get();
+  const idx = tabs.findIndex((t) => t.id === id);
+  if (idx === -1) return;
+  const next = tabs.filter((t) => t.id !== id);
+  const nextActive = activeTabId === id
+    ? (next[idx]?.id ?? next[idx - 1]?.id ?? next[0]?.id)   // 마지막 탭이면 undefined → 빈 상태(D7)
+    : activeTabId;
+  set({ tabs: next, activeTabId: nextActive });
+},
+// setActive / reorderTabs / nanoid(8) id / fresh() 시드 패턴 동일
+```
+
+영속화도 옛 `tabsPersistence.ts`(`loadPersisted`/`fromSnapshot`/`toSnapshot` + `attachPersistence` subscribe)
+패턴 복원 → §9(D3).
+
+### 떼어내는 것 (D1 / non-goal — 인디렉션 부활 금지)
+
+| 옛 코드 | 제거 이유 |
+|---|---|
+| `prefs: Map<tabId, ChartViewPrefs>` + `getPrefs/setToggle/setNumericPref/setMovingAverage/setVolumeProfileMode` | **D1**: ChartViewPrefs는 전역(`useChartPrefsStore`) 유지. 이 Map이 곧 삭제한 인디렉션 |
+| `bundles: Map<string, RangeBundle>` + `putBundle` | non-goal: 데이터는 백엔드/`useLiveBundle`이 진실, 재fetch |
+| `cursorMs` + `setCursor` | non-goal: 커서 위치 저장 안 함 |
+| `selection.fromDate/toDate` | /live는 라이브(날짜 범위 아님) → `historicalFromDate`로 대체 |
+| `useToolbarDraftStore` 연동 | /live 미해당 |
+
+### 더하는 것 (본 스펙 신규)
+
+```ts
+type Tab = { id, code, label, timeframe, historicalFromDate, pinned? };  // selection 평탄화 + label/timeframe
+
+// 4진입점 통일자 (옛 모델엔 없던 신규 — newTab+setSelection 합침)
+openOrFocusTab: (code, label?) => {
+  const hit = get().tabs.find((t) => t.code === code);
+  if (hit) { get().focusTab(hit.id); return; }              // 중복 흡수
+  if (get().tabs.length >= TABS_SOFT_CAP) { toast('최대 8개'); return; }  // D2
+  const t = { id: nanoid(8), code, label: label ?? code, timeframe: DEFAULT_TF, historicalFromDate: null };
+  set((s) => ({ tabs: [...s.tabs, t], activeTabId: t.id }));
+},
+focusTab: (id) => { set({ activeTabId: id }); syncActiveCode(); },  // D4: 활성 탭이 setActiveCode write
+```
+
+> **D4 단일 writer**: `focusTab`/`openOrFocusTab`/`closeTab` 후 활성 탭의 code를 `useLivePageStore.setActiveCode`로
+> 반영하는 `syncActiveCode()` 한 곳. 읽기 15곳은 무수정.
