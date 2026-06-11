@@ -16,13 +16,13 @@ interface Props {
 /** 상태점: 활성+로딩=accent pulse(◌), 활성+로드=success(●), 비활성=dimmer outline(○). */
 function statusDotStyle(active: boolean, loading: boolean): CSSProperties {
   if (active && loading) return { background: 'var(--accent)', animation: 'tab-pulse 1.5s ease-in-out infinite' };
-  if (active) return { background: 'var(--success)', boxShadow: '0 0 4px rgba(34,197,94,0.5)' };
+  if (active) return { background: 'var(--success)', boxShadow: '0 0 4px color-mix(in srgb, var(--success) 50%, transparent)' };
   return { background: 'transparent', border: '1px solid var(--fg-dimmer)' };
 }
 
 export function LiveTabBar({ tabs, activeTabId, activeLoading, atCap, onFocus, onClose, onNewTab }: Props) {
   return (
-    <div className="flex items-end gap-0.5 h-full px-2 font-ui" style={{ background: 'var(--bg-subtle)' }}>
+    <div role="tablist" className="flex items-end gap-0.5 h-full px-2 font-ui" style={{ background: 'var(--bg-subtle)' }}>
       {tabs.map((t) => {
         const active = t.id === activeTabId;
         return (
@@ -33,9 +33,12 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, atCap, onFocus, o
             aria-selected={active}
             onClick={() => onFocus(t.id)}
             onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(t.id); } }}
-            className="relative flex items-center gap-1.5 h-8 px-2.5 rounded-t-md cursor-pointer select-none group"
+            // 비활성 배경은 inline이 아닌 className으로 둔다: inline style은 specificity로
+            // hover: 클래스를 이겨 hover 배경이 silent no-op이 되기 때문(DESIGN.md §Tabs Hover).
+            className={`relative flex items-center gap-1.5 h-8 px-2.5 rounded-t-md cursor-pointer select-none group ${
+              active ? 'bg-bg-card' : 'bg-bg-input hover:bg-bg-input-hover'
+            }`}
             style={{
-              background: active ? 'var(--bg-card)' : 'var(--bg-input)',
               border: active ? 'none' : '1px solid var(--border)',
               borderBottom: 'none',
             }}
@@ -46,7 +49,7 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, atCap, onFocus, o
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={statusDotStyle(active, activeLoading)} />
             {/* 종목명만 표시 (확정 2026-06-11). label은 종목명이며, 이름을 모르는 탭(마이그레이션 등)만
                 label===code 폴백으로 코드가 보인다. 긴 이름은 말줄임. */}
-            <span className="text-sm shrink-0 max-w-[160px] truncate" title={t.label} style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>{t.label}</span>
+            <span className="text-sm shrink-0 max-w-40 truncate" title={t.label} style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>{t.label}</span>
             <button
               type="button"
               aria-label={`${t.code} 닫기`}

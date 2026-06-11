@@ -43,6 +43,7 @@ it('clicking the close button calls onClose, not onFocus', () => {
   const p = setup();
   fireEvent.click(screen.getByLabelText('005930 닫기'));
   expect(p.onClose).toHaveBeenCalledWith('a');
+  expect(p.onFocus).not.toHaveBeenCalled();
 });
 
 it('middle-click closes the tab', () => {
