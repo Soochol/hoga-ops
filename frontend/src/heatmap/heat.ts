@@ -1,4 +1,5 @@
 import type { WatchlistEntry } from '../api/watchlist';
+import type { FolderGroup } from '../watchlist/grouping';
 
 export type SortMode = 'change' | 'manual';
 export const HEAT_SAT = 8;          // 포화 임계(%)
@@ -61,4 +62,28 @@ export function avgPct(
   const vals = entries.map((e) => pctOf(e.code)).filter((v): v is number => v !== null);
   if (vals.length === 0) return null;
   return vals.reduce((s, v) => s + v, 0) / vals.length;
+}
+
+export type GroupSort = 'manual' | 'desc' | 'asc';
+
+/** 그룹(폴더) 순서. 'manual'=입력 순서 그대로(folder.order, 미분류 맨 끝).
+ *  'desc'/'asc'=실폴더를 평균 등락(avgOf)으로 정렬, avg=null인 실폴더는 실폴더 구간
+ *  끝에(원순서 안정), 미분류(folder=null)는 **항상 맨 끝** 고정. 비파괴(복사). */
+export function orderFolderGroups(
+  groups: FolderGroup[],
+  mode: GroupSort,
+  avgOf: (g: FolderGroup) => number | null,
+): FolderGroup[] {
+  if (mode === 'manual') return groups;
+  const real = groups.map((g, i) => ({ g, i })).filter((x) => x.g.folder !== null);
+  const uncat = groups.filter((g) => g.folder === null);
+  real.sort((a, b) => {
+    const pa = avgOf(a.g);
+    const pb = avgOf(b.g);
+    if (pa === null && pb === null) return a.i - b.i; // 원순서 안정
+    if (pa === null) return 1;
+    if (pb === null) return -1;
+    return mode === 'desc' ? pb - pa : pa - pb;
+  });
+  return [...real.map((x) => x.g), ...uncat];
 }
