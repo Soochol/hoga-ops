@@ -48,9 +48,19 @@ def test_quotes_open_returns_change_pct(monkeypatch, tmp_path):
     assert r.status_code == 200
     body = r.json()
     assert body["phase"] == "open"
-    assert body["quotes"][0] == {"code": "005930", "price": 72400, "change_pct": 1.2, "change_won": 750}
+    assert body["quotes"][0] == {"code": "005930", "price": 72400, "change_pct": 1.2,
+                                 "change_won": 750, "open": None, "high": None, "low": None}
     assert body["quotes"][1]["change_pct"] == -0.8
     assert body["quotes"][1]["change_won"] == -1500
+
+
+def test_quotes_open_serves_today_ohlc(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    quotes = [KisQuote("005930", 72400, 1.2, 750, open=72000, high=73000, low=71500)]
+    c = TestClient(_app(quotes, tmp_path))
+    r = c.get("/api/live/quotes", params={"codes": "005930"})
+    q0 = r.json()["quotes"][0]
+    assert (q0["open"], q0["high"], q0["low"]) == (72000, 73000, 71500)
 
 
 def test_quotes_pre_open_nulls_change_pct(monkeypatch, tmp_path):

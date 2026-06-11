@@ -20,8 +20,6 @@ export interface HeatmapFolderProps {
   folder: WatchlistFolder | null;
   entries: WatchlistEntry[];
   quoteByCode: Map<string, LiveQuote>;
-  /** 코드→since-open 시계열. 행에 그대로 흘려보낸다(없으면 빈 스파크 셀). */
-  seriesByCode?: Map<string, number[]>;
   sortMode: SortMode;
   onPick: (code: string) => void;
   /** 그룹 내 드래그 재정렬을 커밋한다(manual 모드 전용). folderId=null 이면 미분류 그룹.
@@ -40,7 +38,7 @@ export interface HeatmapFolderProps {
  *  미분류 그룹(folder=null)은 폴더명 대신 '미분류'를 보이고 ＋종목(폴더 지정 추가)을
  *  숨긴다 — 미분류엔 지정할 폴더가 없기 때문(드로어와 동일 패턴). 삭제·다른 폴더로 이동은
  *  행 우클릭 메뉴로 가능. */
-export function HeatmapFolder({ folder, entries, quoteByCode, seriesByCode, sortMode, onPick, onReorder, onRowMenu }: HeatmapFolderProps) {
+export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onReorder, onRowMenu }: HeatmapFolderProps) {
   // distance:5 — 클릭(차트 이동)과 드래그(재정렬)를 가르는 임계. drawer 와 동일 계약.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const pctOf = (code: string): number | null => quoteByCode.get(code)?.change_pct ?? null;
@@ -63,11 +61,12 @@ export function HeatmapFolder({ folder, entries, quoteByCode, seriesByCode, sort
     const q = quoteByCode.get(e.code);
     return draggable ? (
       <SortableHeatmapRow key={e.code} code={e.code} name={e.name}
-        price={q?.price ?? null} pct={q?.change_pct ?? null} series={seriesByCode?.get(e.code)}
+        price={q?.price ?? null} pct={q?.change_pct ?? null}
+        open={q?.open ?? null} high={q?.high ?? null} low={q?.low ?? null}
         onPick={() => onPick(e.code)} onContextMenu={ctxFor?.(e.code, e.name)} />
     ) : (
       <HeatmapRow key={e.code} name={e.name} price={q?.price ?? null} pct={q?.change_pct ?? null}
-        series={seriesByCode?.get(e.code)}
+        open={q?.open ?? null} high={q?.high ?? null} low={q?.low ?? null}
         onClick={() => onPick(e.code)} ariaLabel={`${e.name} ${e.code} 차트 열기`}
         testId={`heatmap-row-${e.code}`} onContextMenu={ctxFor?.(e.code, e.name)} />
     );
@@ -116,7 +115,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, seriesByCode, sort
  *  drawer SortableQuoteRow 와 동일 패턴(행 전체가 드래그 표면, 핸들 없음). */
 function SortableHeatmapRow(props: {
   code: string; name: string; price: number | null; pct: number | null;
-  series?: number[]; onPick: () => void;
+  open?: number | null; high?: number | null; low?: number | null; onPick: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id: props.code });
@@ -125,7 +124,9 @@ function SortableHeatmapRow(props: {
       name={props.name}
       price={props.price}
       pct={props.pct}
-      series={props.series}
+      open={props.open}
+      high={props.high}
+      low={props.low}
       onClick={props.onPick}
       ariaLabel={`${props.name} ${props.code} 차트 열기`}
       testId={`heatmap-row-${props.code}`}

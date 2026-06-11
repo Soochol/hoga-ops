@@ -5,7 +5,8 @@ from __future__ import annotations
 from hoga.live.api import LiveQuoteFetcher
 from hoga.live.kis_client import KisQuote
 
-Q = [KisQuote("005930", 72400, 1.2, 750), KisQuote("000660", 183500, -0.8, -1500)]
+Q = [KisQuote("005930", 72400, 1.2, 750, open=72000, high=73000, low=71500),
+     KisQuote("000660", 183500, -0.8, -1500, open=184000, high=185000, low=182000)]
 
 
 class _FakeKis:
@@ -28,6 +29,7 @@ async def test_open_returns_live_and_caches() -> None:
     kis = _FakeKis(Q)
     out = await f.fetch_and_gate(kis, ["005930", "000660"], "open")  # type: ignore[arg-type]
     assert {q.code: q.change_pct for q in out} == {"005930": 1.2, "000660": -0.8}
+    assert (out[0].open, out[0].high, out[0].low) == (72000, 73000, 71500)  # open 경로 OHLC 통과
     # 캐시에 적재됨(closed 서빙용).
     assert f._last_quotes["005930"].price == 72400
 
@@ -37,6 +39,7 @@ async def test_pre_open_hides_change_keeps_price() -> None:
     out = await f.fetch_and_gate(_FakeKis(Q), ["005930"], "pre_open")  # type: ignore[arg-type]
     assert out[0].price == 72400
     assert out[0].change_pct is None and out[0].change_won is None
+    assert out[0].open is None and out[0].high is None and out[0].low is None  # pre 게이트가 OHLC도 None
 
 
 async def test_closed_cold_fetches_once_then_serves_cache() -> None:

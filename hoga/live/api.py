@@ -303,6 +303,9 @@ class LiveQuote(BaseModel):
     price: int
     change_pct: float | None
     change_won: int | None
+    open: int | None = None
+    high: int | None = None
+    low: int | None = None
 
 
 class LiveQuotesResponse(BaseModel):
@@ -363,7 +366,8 @@ class LiveQuoteFetcher:
                                 len(code_list), e)
             return [
                 LiveQuote(code=q.code, price=q.price,
-                          change_pct=q.change_pct, change_won=q.change_won)
+                          change_pct=q.change_pct, change_won=q.change_won,
+                          open=q.open, high=q.high, low=q.low)
                 for c in code_list
                 if (q := self._last_quotes.get(c)) is not None
             ]
@@ -380,7 +384,10 @@ class LiveQuoteFetcher:
         return [
             LiveQuote(code=q.code, price=q.price,
                       change_pct=(None if pre else q.change_pct),
-                      change_won=(None if pre else q.change_won))
+                      change_won=(None if pre else q.change_won),
+                      open=(None if pre else q.open),
+                      high=(None if pre else q.high),
+                      low=(None if pre else q.low))
             for q in quotes
         ]
 
