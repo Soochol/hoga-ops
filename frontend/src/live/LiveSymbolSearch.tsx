@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSymbolSearch } from '../capture/useSymbols';
 import { useCombobox } from '../util/useCombobox';
 import { useLiveTabsStore } from '../state/liveTabs';
+import { onFocusLiveSearch } from './liveSearchFocus';
 import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 import { shouldIgnoreEvent } from './useLiveKeyboard';
 import { WatchlistToggleButton } from '../watchlist/WatchlistToggleButton';
@@ -51,6 +52,8 @@ export function LiveSymbolSearch() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [inputRef]);
+
+  useEffect(() => onFocusLiveSearch(() => inputRef.current?.focus()), [inputRef]);
 
   const dropdownVisible = open && query.trim().length >= 1;
 
