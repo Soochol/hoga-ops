@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { heatBg, heatChipBg, sortEntries, avgPct, HEAT_CHIP_MAX_ALPHA } from './heat';
+import { heatBg, heatChipBg, sortEntries, avgPct, HEAT_CHIP_MAX_ALPHA, heatHeaderBg } from './heat';
 import type { WatchlistEntry } from '../api/watchlist';
 
 const E = (code: string, order: number): WatchlistEntry => ({
@@ -40,6 +40,23 @@ describe('heatChipBg (그라데이션 없음 — |등락률| ≥ 8%만 평면색
     expect(heatChipBg(30)).toBe('rgba(220,38,38,0.720)');  // 8%↑ 전부 동일(평면)
     expect(heatChipBg(-8)).toBe('rgba(37,99,235,0.720)');
     expect(heatChipBg(-15)).toBe('rgba(37,99,235,0.720)');
+  });
+});
+
+describe('heatHeaderBg (헤더 밴드 — 선형 램프 max α 0.5, bg-input 합성)', () => {
+  it('null/0 → 순수 var(--bg-input)', () => {
+    expect(heatHeaderBg(null)).toBe('var(--bg-input)');
+    expect(heatHeaderBg(0)).toBe('var(--bg-input)');
+  });
+  it('+8% 포화 → 빨강 max α 0.5 동색 2-stop 합성', () => {
+    expect(heatHeaderBg(8)).toBe(
+      'linear-gradient(0deg, rgba(220,38,38,0.500), rgba(220,38,38,0.500)), var(--bg-input)',
+    );
+    expect(heatHeaderBg(30)).toContain('0.500'); // ±8% 초과 클램프
+  });
+  it('+4% → α 0.25, -8% → 파랑', () => {
+    expect(heatHeaderBg(4)).toContain('rgba(220,38,38,0.250)');
+    expect(heatHeaderBg(-8)).toContain('rgba(37,99,235,0.500)');
   });
 });
 
