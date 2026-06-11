@@ -192,3 +192,35 @@ describe('liveTabs persistence', () => {
     });
   });
 });
+
+describe('liveTabs ↔ page mirror', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useLiveTabsStore.setState({ tabs: [], activeTabId: null });
+    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
+  });
+
+  it('toolbar timeframe change writes into the active tab', () => {
+    useLiveTabsStore.getState().openOrFocusTab('005930', '삼성전자');
+    useLivePageStore.getState().setCandleTimeframe('5m'); // user toolbar action
+    const active = useLiveTabsStore.getState().tabs[0];
+    expect(active.timeframe).toBe('5m');
+  });
+
+  it('switching tabs restores each tab timeframe', () => {
+    const s = useLiveTabsStore.getState();
+    s.openOrFocusTab('005930', '삼성전자');
+    useLivePageStore.getState().setCandleTimeframe('5m'); // tab A → 5m
+    s.openOrFocusTab('000660', 'SK하이닉스');             // tab B (inherits 5m)
+    useLivePageStore.getState().setCandleTimeframe('D');  // tab B → D
+    const tabA = useLiveTabsStore.getState().tabs[0].id;
+    s.focusTab(tabA);
+    expect(useLivePageStore.getState().candleTimeframe).toBe('5m'); // A restored
+  });
+
+  it('pan (historicalFromDate) persists per tab', () => {
+    useLiveTabsStore.getState().openOrFocusTab('005930', '삼성전자');
+    useLivePageStore.getState().extendHistoricalRange('20260601');
+    expect(useLiveTabsStore.getState().tabs[0].historicalFromDate).toBe('20260601');
+  });
+});

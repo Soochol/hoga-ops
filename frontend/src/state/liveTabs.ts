@@ -23,12 +23,11 @@ type TabsStore = {
 };
 
 // Module guard: when true, the active-tab→page write is in progress, so the
-// page→tab mirror (Task 3) must not write back (prevents the historicalFromDate
+// page→tab mirror (below) must not write back (prevents the historicalFromDate
 // reset inside setActiveCode/setCandleTimeframe from clobbering the tab).
-// Exported to satisfy noUnusedLocals until the Task 3 mirror (the reader of
-// `applyingTab`) lands in-file; make these module-private then.
-export let applyingTab = false;
-export function setApplyingTab(v: boolean): void { applyingTab = v; }
+// Module-private: the in-file mirror is the reader of `applyingTab`.
+let applyingTab = false;
+function setApplyingTab(v: boolean): void { applyingTab = v; }
 
 /** Push the active tab's view-state into useLivePageStore in the order that
  *  survives the historicalFromDate resets baked into the page setters. */
@@ -179,3 +178,21 @@ const _unsubscribePersist = attachPersistence(useLiveTabsStore, {
   toSnapshot: (s) => toTabsSnapshot(s),
 });
 if (import.meta.hot) import.meta.hot.dispose(_unsubscribePersist);
+
+// page→tab mirror: user-initiated tf/pan changes flow into the active tab.
+// Guarded by applyingTab so the focus-push's setActiveCode/setCandleTimeframe
+// resets don't write a transient null back into the tab.
+const _unsubscribeMirror = useLivePageStore.subscribe((state, prev) => {
+  if (applyingTab) return;
+  if (state.candleTimeframe === prev.candleTimeframe && state.historicalFromDate === prev.historicalFromDate) return;
+  const { tabs, activeTabId } = useLiveTabsStore.getState();
+  if (!activeTabId) return;
+  useLiveTabsStore.setState({
+    tabs: tabs.map((t) =>
+      t.id === activeTabId
+        ? { ...t, timeframe: state.candleTimeframe, historicalFromDate: state.historicalFromDate }
+        : t,
+    ),
+  });
+});
+if (import.meta.hot) import.meta.hot.dispose(_unsubscribeMirror);
