@@ -1,7 +1,7 @@
 # 관심맵(히트맵) — 히트 무게중심 재배치 + 그룹 정렬 축 — 설계
 
 - **Date**: 2026-06-11
-- **Status**: Draft — 브레인스토밍 설계 승인("진행"). 사장님 스펙 검토 대기.
+- **Status**: Draft — 브레인스토밍 승인 + plan-eng-review 그릴링 8건(G1–G8) 반영. 사장님 스펙 검토 대기.
 - **Topic slug**: `heatmap-heat-redistribution`
 - **Branch**: `worktree-heatmap-heat-redistribution` (worktree; base = local `main` `1686aaa` "등락률 칩 배경 임계 방식" — origin/main보다 6커밋 앞선 평면-헤더 L1+L3-B 디자인)
 - **Scope (코드)**: 변경 `frontend/src/heatmap/{heat.ts, HeatmapRow.tsx, HeatmapFolder.tsx}`, `frontend/src/pages/Heatmap.tsx`, `frontend/src/state/heatmapPrefs.ts`; 규칙 갱신 `DESIGN.md`(§Color L112–127). **기존 테스트 변경 동반**(이전 설계를 못박은 회귀 가드 반전): `heatmap/heat.test.ts`·`heatmap/HeatmapRow.test.tsx`·`heatmap/HeatmapFolder.test.tsx`·`pages/Heatmap.test.tsx`(+ `heat.test.ts`·`heatmapPrefs.test.ts`에 신규 단언). 인벤토리는 §Testing "무효화되는 기존 테스트" 참조. **HeatmapBoard.tsx·SectorTempStrip.tsx는 미변경**(아래 D 참조).
@@ -48,7 +48,7 @@
 | Invariant | 영향 | 비고 |
 |-----------|------|------|
 | 히트색 = 가격방향 카테고리 | **preserves** | 헤더 틴트·행 텍스트 모두 `--price-up`/`--price-down`만. 새 색 0. |
-| 색약 이중 인코딩 | **preserves (인코딩 변경)** | 행: `▲▼` 제거하지만 **방향 색(`priceDirClass` 텍스트) + 부호** 2중 — 색을 칩 배경(현)→텍스트(신)로 옮겨 오히려 DESIGN L114–115 "숫자 색 + 부호" 의도에 더 부합. 헤더: 색(밴드) + 부호 포함 평균 숫자 2중. |
+| 색약 이중 인코딩 | **preserves (인코딩 변경)** | 행: `▲▼` 제거하지만 **방향 색(`priceDirClass` 텍스트) + 부호** 2중. 선례 — `QuoteChange`가 이미 "부호값이 색맹 보조 → ▲▼ 불필요"([QuoteChange.tsx](../../../frontend/src/rightrail/QuoteChange.tsx))로 동일 인코딩 채택. 행이 `ChangeCell`(▲▼ 유지) 아닌 `QuoteChange`(▲▼ 없음)를 따르는 건 사장님 명시 요청(#4). 헤더: 색(밴드) + 부호 포함 평균 숫자 2중. |
 | teal UI 전용 | preserves | 정렬 토글 active 상태만 teal — UI 상태라 규율 일치. 데이터엔 teal 없음. |
 | 헤더 밴드 히트 틴트 미사용 (L1) | **intentionally breaks** | 헤더 밴드에 평균 등락 비례 틴트 도입(#3). 정당화 ↓. |
 | 행 등락칩 임계 | **intentionally removes** | 행 칩 배경(`heatChipBg`) 폐지 → 방향은 컬러 텍스트로(#4/#5). ⚠️ 칩이 지던 **개별 종목 강도(`|≥8%|` 강조)**는 텍스트 색으론 보전 안 됨(Risks 참조). 정당화 ↓. |
@@ -59,10 +59,11 @@
 | 숫자 = mono tabular-nums | preserves | 등락 텍스트·평균 모두 mono tabular-nums 유지. |
 | prefs localStorage 영속 | **preserves (additive)** | `groupSort` 별도 키(`heatmap.groupSort.v1`) 추가, `sortMode` 키 불변. |
 | SectorTempStrip 표시 전용 | preserves | 스트립 미변경. `groupSort`는 **보드 그룹 순서**만 바꾸고 `sortMode`/entry `order`는 불변. |
+| 능동 행 드래그 중 그룹 순서 불변 (신규, G1) | **신규 invariant** | `groupSort` 직교성이 (`sortMode='manual'`, `groupSort='desc'`) 충돌 셀을 만든다 → 행 드래그 active 동안 그룹 순서 동결, drag-end 적용(§D 가드). 행 인바리언트 "능동 조작 중 재정렬 금지"의 그룹 축 확장. |
 
 **의도적 변경 — 헤더 틴트 도입 + 행 칩 제거 (히트 무게중심 이동, #3/#4/#5)**: L1에서 헤더 틴트를 제거하고 히트색을 칩 배경에만 모은 것은 "행 워시로 인한 가독성 저하"를 피하기 위함이었다. 이번 설계는 그 의도를 **반전이 아니라 재배치**로 해결한다 — 행에서는 색을 **텍스트로만**(배경 워시 없음) 써 가독성을 지키고, 섹터 온도(평균 등락)는 **헤더 밴드 한 곳**으로 모은다. 결과적으로 "한 행/헤더 맥락당 색을 지는 요소는 하나"라는 규율이 생긴다(행=등락 텍스트, 헤더=밴드). 색약 보조는 행 부호와 헤더 평균 숫자가 유지하므로 손상되지 않는다. 사장님이 명시적으로 요청한 변경이며 DESIGN.md를 이에 맞춰 갱신한다(§F).
 
-**의도적 확장 — 직교 `groupSort` 축 (#7)**: 기존 `sortMode`('change'|'manual')는 **그룹 내 행 순서**만 제어했고 그룹 순서는 `folder.order` 고정이었다. 신규 `groupSort`('manual'|'desc'|'asc')는 **그룹(폴더) 순서**를 평균 등락률로 제어하는 **직교 축**이다. 기본값 `'manual'`은 현행 `folder.order`와 동일하므로 **기본 groupSort에선 그룹 순서가 불변**이다(#3/#4/#5의 시각 변경은 groupSort와 무관하게 적용 — "보드 픽셀 불변"은 그룹 *순서*에 한정). desc/asc는 opt-in. 이로써 "행은 수동 순서 유지·그룹만 뜨거운 순"이 가능 — 사장님 표현 "수동 중에 등락률을 누르면 그룹도 정렬"의 *기능적* 요구를 충족한다. **컨트롤 표면 주의**: 원문은 (a) 기존 등락률 토글이 그룹 정렬까지 겸하는 *맥락형 단일 컨트롤*로도 읽힐 수 있으나, 브레인스토밍 Q1에서 사장님이 **(b) 행과 분리된 독립 그룹 토글**(추천안)을 명시 선택했다 — 본 설계는 (b)다.
+**의도적 확장 — 직교 `groupSort` 축 (#7)**: 기존 `sortMode`('change'|'manual')는 **그룹 내 행 순서**만 제어했고 그룹 순서는 `folder.order` 고정이었다. 신규 `groupSort`('manual'|'desc'|'asc')는 **그룹(폴더) 순서**를 평균 등락률로 제어하는 **직교 축**이다(단, 이 직교성이 `(sortMode='manual', groupSort='desc')` 셀을 만들어 드래그×그룹재정렬 충돌을 유발 — §D 동결 가드로 해소, G1). 기본값 `'manual'`은 현행 `folder.order`와 동일하므로 **기본 groupSort에선 그룹 순서가 불변**이다(#3/#4/#5의 시각 변경은 groupSort와 무관하게 적용 — "보드 픽셀 불변"은 그룹 *순서*에 한정). desc/asc는 opt-in. 이로써 "행은 수동 순서 유지·그룹만 뜨거운 순"이 가능 — 사장님 표현 "수동 중에 등락률을 누르면 그룹도 정렬"의 *기능적* 요구를 충족한다. **컨트롤 표면 주의**: 원문은 (a) 기존 등락률 토글이 그룹 정렬까지 겸하는 *맥락형 단일 컨트롤*로도 읽힐 수 있으나, 브레인스토밍 Q1에서 사장님이 **(b) 행과 분리된 독립 그룹 토글**(추천안)을 명시 선택했다 — 본 설계는 (b)다.
 
 ## Goals
 
@@ -76,7 +77,7 @@
 
 - **#2 그룹 내 드래그**: 이미 manual 모드에 구현·동작(@dnd-kit) → **변경 없음**(사장님 "이건 넘기자").
 - **그룹 간 드래그 이동**: 우클릭 메뉴(`HeatmapRowMenu`) 유지.
-- **SectorTempStrip 제거/재설계**: 유지(헤더 틴트와 정보 일부 중복 — backlog 재검토).
+- **SectorTempStrip 제거/재설계**: 유지(헤더 틴트와 색 축·`desc` 조건부 부분 중복 — backlog 재검토; 점프 내비·상시 가시는 직교라 대체 불가).
 - **그룹 정렬 키 확장**(이름·시총 등): 등락률만(YAGNI).
 - **헤더 틴트 부재 보완 범례**: 도입 안 함.
 
@@ -137,7 +138,8 @@ export function orderFolderGroups(
 ### C. `HeatmapFolder.tsx` — 헤더 (#3)
 
 - 헤더 밴드: `bg-bg-input` 클래스 제거하고 `style={{ background: heatHeaderBg(avg) }}` 적용(나머지 `border-b border-border-strong px-2 py-1 flex...` 유지). avg=null/0이면 `var(--bg-input)`라 현행 평면과 동일. *("그라데이션" 해석: 면 내 공간 그라데이션이 아니라 평균 등락 비례 **단색 틴트** — 섹터 간 농도 차로 온도를 표현. `heatHeaderBg`는 동색 2-stop이라 시각상 단색.)*
-- 평균 표시: 칩 배경(`heatBg`) **제거** → 평면 텍스트. 색은 **중립 `text-fg`**(틴트 밴드 위 가독성 — 동색 적/청 텍스트는 대비 저하라 색 안 입힘). mono tabular-nums·`{avg>0?'+':''}{avg.toFixed(1)}%` 유지.
+- **미분류 헤더도 실폴더와 동일한 무분기 `heatHeaderBg(avg)` 경로**(folder===null 가드 없음, G8) — 미분류 avg 채색은 현행 평균칩(HeatmapFolder.tsx:90)이 이미 하던 정보의 칩→밴드 이동(회귀 아님)이다. ⚠️ 미래 리뷰어가 가드를 "추가"해 미분류 틴트를 끄지 말 것. "섹터 아님"은 이미 4중 인코딩(text-fg-dim명·맨 끝 고정·스트립 제외·＋종목 부재)이라 밴드 색이 5번째일 필요 없음.
+- 평균 표시: 칩 배경(`heatBg`) **제거** → 평면 텍스트. 색은 **기존 평균칩과 동일 `text-fg-dim` 유지**(칩 배경만 제거; 동색 적/청 텍스트는 밴드 위 대비 저하라 컬러 안 입힘 — 동일 토큰이 이미 *더 진한* 0.72 칩 위에서 수용됐고 신규 밴드는 0.5라 대비 더 좋음; "색=신호·숫자=보조" 위계 유지). mono tabular-nums·`{avg>0?'+':''}{avg.toFixed(1)}%` 유지. (G4: 초안의 `text-fg`를 `text-fg-dim`으로 정정.)
 - `import`에서 `heatBg`·`HEAT_CHIP_MAX_ALPHA` 제거, `heatHeaderBg` 추가.
 
 ### D. 페이지 배선 — `Heatmap.tsx` (#6, #7)
@@ -153,12 +155,13 @@ export function orderFolderGroups(
     [groups, groupSort, quoteByCode],
   );
   ```
-  `HeatmapBoard`에 **`orderedGroups`** 전달. `SectorTempStrip`·`visibleCount`는 기존 `groups` 유지(스트립은 자체 정렬, 카운트는 순서 무관). → **HeatmapBoard.tsx 시그니처 변경 불필요**(이미 `visibleFolderGroups(groups)`로 빈 그룹만 필터, 순서 보존).
+  `HeatmapBoard`에 **`orderedGroups`** 전달. `SectorTempStrip`·`visibleCount`는 기존 `groups` 유지(스트립은 자체 정렬, 카운트는 순서 무관). HeatmapBoard는 이미 `visibleFolderGroups(groups)`로 빈 그룹만 필터하고 순서를 보존하므로 **orderedGroups 전달만으로 동작**한다.
+- **드래그 중 그룹순서 동결 가드 (G1)**: `groupSort≠manual`에서 폴마다 그룹이 재배치되면 **manual 행 드래그 도중 그룹 컨테이너가 멀티칼럼을 가로질러 텔레포트**할 수 있다. 행 인바리언트("능동 조작 중 재정렬 금지")를 그룹 축으로 확장 — **행 드래그 active 동안 `orderedGroups` 동결, drag-end에 최신 순서 적용**. 구현: HeatmapFolder가 `onDragStart`(현재 `onDragEnd`만, :50)를 노출 → HeatmapBoard 경유 페이지의 `isAnyRowDragging` 상태(폴더별 독립 DndContext라 OR-집계)로 `orderedGroups`를 동결. ⚠️ 이 가드는 **신규 상태 1개 + Board 시그니처 1필드 + onDragStart 배선**을 추가하므로 위 "시그니처 불변"은 가드 채택 시 일부 무효. **구현 순서**: 먼저 가드 *없이* 빌드 후 playwright(드래그 시뮬+10초 폴 펌프)로 dnd-kit이 텔레포트를 견디는지 실측 → 깨지면 가드 추가, 견디면 "order만 동결, DOM 유지"로 축소.
 - **그룹 정렬 컨트롤**(범례 자리): 행 토글 옆 3-state 세그먼트. 라벨 시안:
   ```
-  히트맵  ● 장중  11:15 갱신·236종목   [＋ 새 그룹]   행 [등락률↓│수동]   그룹 [등락↓│등락↑│수동]
+  히트맵  ● 장중  11:15 갱신·236종목   [＋ 새 그룹]   행 [등락률 ↓│수동]   그룹 [등락률 ↓│등락률 ↑│수동]
   ```
-  - `등락↓`=desc(뜨거운 섹터 먼저)·`등락↑`=asc·`수동`=folder.order. active = `bg-tint-selection text-accent`(행 토글과 동일 스타일·UI 상태 색). 각 버튼 `aria-label`로 의미 명시("그룹을 평균 등락률 높은 순으로").
+  - `등락률 ↓`=desc(뜨거운 섹터 먼저)·`등락률 ↑`=asc·`수동`=folder.order. 표면 규칙(G2): ① 스코프어 `행`/`그룹`은 세그먼트 **바깥** 별도 `<span class="text-fg-dim text-xs">`(버튼 accessible name 비포함 → 기존 행 토글 테스트 `getByRole('button',{name:'등락률 ↓'})` 보존). ② 두 세그먼트 active 스타일은 행 토글과 동일 `bg-tint-selection text-accent font-medium` 재사용. ③ 그룹 3버튼에 의미 풀이 `aria-label`("그룹을 평균 등락률 높은 순으로"/"낮은 순으로"/"수동 순서") 부여 → **신규 그룹 토글 테스트는 visible text가 아닌 aria로 쿼리**(선례 SectorTempStrip.tsx:39 + Heatmap.test.tsx); 행 토글엔 aria 신규 부여 금지. ④ 미분류는 컨트롤 옵션 비노출·항상 맨 끝.
 
 ### E. `state/heatmapPrefs.ts` — 영속
 
@@ -169,8 +172,8 @@ export function orderFolderGroups(
 
 §Color L112–127를 이번 결정에 맞춰 갱신(미갱신 시 코드리뷰가 신규 코드를 off-system으로 표시):
 
-- **Heatmap 폴더 surface 예외**(L123–127): "헤더 밴드 히트 틴트는 쓰지 않는다" → **헤더 밴드는 평균 등락 비례 히트 틴트(`heatHeaderBg`, max α 0.5)를 진다; 평균값은 평면 `text-fg` 숫자**로 표기. 좌측 스파인·투명 폴더 본문은 유지.
-- **Price-direction heat ramp**(L112–115): (1) "배경+숫자+부호 삼중" → **이중(배경 워시 없는 `priceDirClass` 텍스트 색 + 부호)**으로 정정 — 행 등락은 칩 배경이 아니라 컬러 텍스트, `▲▼` 폐지. (2) 신규 `heatHeaderBg`(헤더 밴드 전용, max α 0.5, **평균** 등락 기준)를 ramp 항목에 추가 문서화. `heatChipBg` 임계 칩 서술 삭제.
+- **Heatmap 폴더 surface 예외**(L123–127): "헤더 밴드 히트 틴트는 쓰지 않는다" → **헤더 밴드는 평균 등락 비례 히트 틴트(`heatHeaderBg`, heatBg와 동일 형태의 선형 램프, max α 0.5)를 진다; 평균값은 평면 `text-fg-dim` 숫자**로 표기. 좌측 스파인·투명 폴더 본문은 유지. 미분류 헤더도 동일 무분기 경로로 자체 평균 틴트(G8); 고-α 밴드 위 미분류명(`text-fg-dim`) 대비가 최악 코너지만 수용(다종목 희석으로 보통 옅음) — 필요 시 fix는 밴드가 아니라 이름 톤(실폴더 `text-fg`와 동일 케이스).
+- **Price-direction heat ramp**(L112–115): (1) "배경+숫자+부호 삼중" → **이중(배경 워시 없는 `priceDirClass` 텍스트 색 + 부호)**으로 정정 — 행 등락은 칩 배경이 아니라 컬러 텍스트, `▲▼` 폐지. (2) 신규 `heatHeaderBg`(헤더 밴드 전용, **선형** 램프, max α 0.5, **평균** 등락 기준)를 ramp 항목에 추가 문서화. `heatChipBg` 임계 칩 서술 삭제. (3) **DESIGN.md:35 "no gradients" 규율과 화해**(G7): `heatHeaderBg`의 `linear-gradient(0deg, heat, heat)`는 동색 2-stop 합성 idiom(시각상 단색)이라 L35의 *장식* gradient 금지와 무충돌 — L35는 장식 한정이고 기능적 gradient 선례 = depth bar(DESIGN.md:238). 사용자 요청 "그라데이션"은 면 내 공간 페이드가 아니라 평균 등락 비례 flat 틴트(섹터 간 농도차)다.
 - 색 범례(spec §8 코멘트가 참조하던 UI) 제거 반영.
 - 한 줄 근거 기록: 이는 L1/L3-B "헤더 틴트 제거·칩 전용 색" 결정을 *히트 무게중심 재배치*로 의도적으로 갱신한 것(사장님 승인 2026-06-11).
 
@@ -191,10 +194,11 @@ export function orderFolderGroups(
 | `orderFolderGroups` 전부 null | avg 모두 null | 원순서 보존 + 미분류 맨 끝 |
 | HeatmapRow 화살표 제거 | pct=+2.59 | 출력에 `▲`/`▼` 없음; 텍스트 `+2.59` |
 | HeatmapRow 색 | +/−/0/null | span class `text-price-up`/`text-price-down`/`text-fg-dim`/`—`; **inline background 없음** |
-| HeatmapFolder 헤더 틴트 | avg=+4 | 헤더 `style.background === heatHeaderBg(4)`; 평균 텍스트 `+4.0%` 칩 배경 없음 |
+| HeatmapFolder 헤더 틴트 | avg=+4 | 헤더 `style.background === heatHeaderBg(4)`; 평균 span `+4.0%`·칩 배경 없음·`text-fg-dim` 보유(`text-price-*` 미보유) |
+| HeatmapFolder 미분류 틴트 | folder=null, avg=−3 | 미분류 헤더도 `style.background === heatHeaderBg(−3)`(가드로 안 꺼짐) |
 | heatmapPrefs groupSort | 기본 | `'manual'`; `setGroupSort('desc')` → `heatmap.groupSort.v1` 영속; 잘못된 값 무시; `sortMode` 불변 |
 | Heatmap 범례 제거 | 렌더 | `aria-label^=색 범례` 요소 없음 |
-| Heatmap 그룹 토글 | 클릭 | 3옵션 렌더; 클릭 시 store/`orderedGroups` 순서 반영 |
+| Heatmap 그룹 토글 | 클릭 | 3옵션 렌더; 클릭 시 store/`orderedGroups` 순서 반영. **버튼 쿼리는 aria-label 기준**(visible text 아님) |
 
 ### 무효화되는 기존 테스트 (갱신/삭제 대상)
 
@@ -213,26 +217,28 @@ export function orderFolderGroups(
 - **색 카테고리**: 행·헤더 색이 `price-up`/`price-down`/`fg-dim`·`--bg-input`만(데이터에 teal 없음) — 스냅샷/클래스 단언.
 - **색약 이중 인코딩**: 화살표 없이도 등락 텍스트가 부호(`+`/`−`) 유지.
 - **`groupSort`가 `sortMode`/entry order 불변**: groupSort 변경 후에도 그룹 내 행 순서·`sortMode`·드래그 재정렬 동작 불변(manual 행 순서 보존).
+- **드래그 중 그룹순서 동결 (G1)**: 행 드래그 active 동안 `groupSort='desc'`여도 그룹 순서 불변, drag-end 후 재정렬(가드 채택 시). 가드 없이 출시하면 playwright 실측(드래그+폴 펌프)으로 텔레포트 부재를 확인.
 
 ### Manual verification (`/heatmap`)
 
 - 헤더 틴트가 평균 등락에 비례(중립 섹터 옅음·급등락 진함); 행 등락=화살표 없는 적/청 텍스트·배경 없음; 상단 범례 사라짐.
-- 그룹 토글 `등락↓` → 폴더가 뜨거운 순 재배치, **행은 수동 순서 유지**, 미분류 맨 끝; `등락↑` 역순; `수동` 복귀.
-- 새로고침 후 `groupSort` 유지(localStorage). 수동 모드에서 그룹 내 드래그 재정렬 여전히 동작.
-- 고알파(±8%↑) 밴드 위 평균 `text-fg` 대비 확인. teal은 토글 active에만.
+- 그룹 토글 `등락률 ↓` → 폴더가 뜨거운 순 재배치, **행은 수동 순서 유지**, 미분류 맨 끝; `등락률 ↑` 역순; `수동` 복귀.
+- 새로고침 후 `groupSort` 유지(localStorage). 수동 모드에서 그룹 내 드래그 재정렬 여전히 동작. **그룹 `등락률 ↓` 상태에서 행 드래그 중 그룹이 튀지 않는지(동결)** 실측(G1 — playwright 드래그+폴 펌프).
+- 고알파(±8%↑) 밴드 위 평균·종목명 `text-fg-dim` 가독성 확인(특히 **미분류명** — `text-fg-dim` 최악 대비 코너 ~3.9). teal은 토글 active에만.
 
 ## Risks / Open questions
 
-- **groupSort≠manual 시 매 폴(~10s) 그룹 라이브 재배치** — 점프감 발생, manual 행 드래그 중 그룹이 움직일 수 있음. 큐레이션 시 사용자가 `수동`으로 둠. 행 `change` 모드와 동일 성격의 수용된 트레이드오프.
-- **헤더 틴트 α=0.5** 시작값 — 작은 avg(±1~2%)는 매우 옅음(의도: 중립=옅게). 검토에서 미세조정 가능.
-- **개별 종목 등락 강도 시각 강조 상실** — `heatChipBg`(`|≥8%|` 칩)가 지던 "급등락 강조"가 사라진다. 대체 `priceDirClass`는 *방향 전용*이라 +1%와 +15%가 동일 색이고, 헤더 틴트는 *평균*이라 단일 급등락이 희석되며(예: 10종목 중 1종목 +15% → avg≈+1.5% → α≈0.09 거의 안 보임), `CandleGlyph`는 종가-시가 기준이라 무관 — 즉 변경 후 보드에서 *개별 change_pct 강도*를 보이는 요소가 0이 된다. 사장님이 "배경색은 지금처럼 없음"을 명시 요청했으므로 **의도된 트레이드오프**. 보전이 필요하면 행 텍스트 굵기/톤을 `|등락|` 비례 변조(backlog).
-- **SectorTempStrip 정보 중복**(헤더 틴트와) — 유지하되 backlog 재검토.
+- **groupSort≠manual 시 매 폴(~10s) 그룹 라이브 재배치** — 점프감 발생, **manual 행 드래그 중 그룹 컨테이너가 멀티칼럼을 가로질러 텔레포트할 수 있다**. 해법: **행 드래그 active 동안 그룹 순서 동결, drag-end에 최신 순서 적용**(§D 가드, G1). ⚠️ "행 `change` 모드와 동일 성격"이라는 비유는 **거짓 등가** — change 모드는 드래그를 *끄므로* 깨질 드래그가 없지만, (`sortMode='manual'`, `groupSort='desc'`)는 드래그를 *켠 채* 컨테이너를 재배치한다. groupSort↔sortMode 직교성이 바로 이 충돌 셀을 만든다.
+- **헤더 틴트 α=0.5** 시작값 — 작은 avg(±1~2%)는 매우 옅음(의도: 중립=옅게). ⚠️ **후속 미세조정 시 α 상향 금지**(G3) — 미분류 헤더명이 `text-fg-dim`([HeatmapFolder.tsx:83])이라 틴트 밴드 위 대비가 α0.5에서 이미 ~3.9(AA 4.5 미달), α0.55면 ~3.65로 악화. 가시성 부족 시 α 상향·sqrt 곡선보다 **미분류명 색을 `text-fg`로 올리는 안**을 먼저 검토(실폴더는 이미 `text-fg`).
+- **개별 종목 등락 강도 시각 강조 상실** — `heatChipBg`(`|≥8%|` 칩)가 지던 **글랜서블한 색-채도 강조**가 사라진다(`priceDirClass`는 방향 전용이라 +1%와 +15%가 동일 색). 단 **부호 있는 등락 숫자(`{sign}{pct.toFixed(2)}`, §B)가 모든 행에 정밀 강도값으로 남고**, change 정렬이 위치 랭킹을·헤더 틴트가 섹터 온도를 회수하므로 손실은 *pre-attentive 색 팝*에 한정(강도 신호가 "0"이 되는 게 아님 — G5 정정). 사장님이 "배경색은 지금처럼 없음"을 명시 요청했으므로 **의도된 트레이드오프**. 보전이 필요하면 행 텍스트 굵기/톤을 `|등락|` 비례 변조(backlog).
+- **SectorTempStrip vs 헤더 틴트 — 조건부·부분 중복**(G6): 겹침은 (a)색 카테고리 한 축(평균을 적/청)뿐이고 (b)hot-first 개요는 `groupSort='desc'` 옵트인 때만 성립(기본 manual에선 비중복). 스트립 고유 기능 2종 — 스크롤 무관 상시 가시(`flex-none`, 보드 `overflow-y-auto` 바깥)·클릭 점프 내비(`onJump→scrollToFolder`)는 헤더 틴트가 대체 못 함. 이번 PR 유지·미변경, 실사용 통증 확인 시 별도 작은 PR로 제거 재검토.
 
 ## Out of Scope (Backlog)
 
-- SectorTempStrip vs 헤더 틴트 중복 재검토(스트립 제거 또는 축약).
+- SectorTempStrip vs 헤더 틴트 중복 재검토(스트립 제거 또는 축약) — 단 점프 내비(`scrollToFolder`) 대체 수단 확보 후에만. 제거 시 동반: `SectorTempStrip.{tsx,test.tsx}`, `Heatmap.tsx`(import/render/scrollToFolder), `Heatmap.test.tsx`, `CONTEXT.md` 히트맵 항목.
 - 그룹 정렬 키 다양화(이름·시총).
-- 헤더 틴트 α 사용자 설정.
+- 헤더 틴트 α 사용자 설정 / 비선형(sqrt) 램프 — 단 α 상향·곡선 변경 전 미분류명 대비(현 ~3.9) 먼저 해결(G3).
+- 미분류 헤더 평균 *숫자* 색(text-fg vs text-fg-dim) 미세 통일 — G8 범위 밖 마이크로 질문.
 - **행 등락 텍스트 굵기/톤을 `|등락|` 비례 변조** — 칩 제거로 잃은 개별 강도 신호 보전(Risks 참조).
 - **등락 칼럼 폭 축소**(4.25rem → ~3.75rem) — 화살표 제거로 여유 생김(정렬 안정성 재검증 필요).
 - 운영 메모: `EnterWorktree` 기본 baseRef(`fresh`=origin/main)가 local main보다 뒤처질 때 워크트리 베이스 스테일 — 작업 전 `git reset --hard main` 확인.
