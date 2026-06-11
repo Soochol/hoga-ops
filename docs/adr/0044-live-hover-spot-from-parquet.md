@@ -90,3 +90,31 @@ vs spot 조회)를 다루기 때문.
   확장될 다른 요구(예: live replay scrub)가 정당화될 때.
 - Today Promotion 주기가 1분 이하로 짧아져서 갭 자체가 무의미해질 때(역방향
   완화 — ADR이 무용해지면 그때 superseded 표시).
+
+## Amendment (2026-06-11) — 최근 캔들 갭은 프론트 SSE 버퍼로 봉합
+
+**트리거:** 위 "Future signal to revisit" 첫 줄(최근 캔들의 빈 sidebar가 사용자
+보고로 올라올 때) 발생. blessp 보고 — /live 1분봉에서 최근 캔들(전/전전)에 hover하면
+10호가가 빈칸. 실측(2026-06-11 장중): kis_live parquet은 직전 ~2분을 아직 안 들고
+있어 `/api/orderbook` 가 `snapshot=null` 반환. = 본 ADR이 명시적으로 예고한 trade-off.
+
+**개정:** 거부됐던 **대안 C(parquet 우선 + 버퍼 폴백 하이브리드)를 좁은 형태로 채택**한다.
+
+- spot **fetcher**(`useLiveOrderbookAtCursor` 등)는 **여전히 parquet-only** — 위
+  invariant 그대로 유효. 하이브리드는 fetcher가 아니라 **`LiveSidebar` 합성 레이어**에
+  산다(테스트가 요구한 "새 seam"). `live.ob`(SSE 15분 슬라이딩 버퍼,
+  `liveSnapshotBuffer.ts`)는 이미 페이지가 들고 있으므로 새 fetch/연결 없음.
+- 우선순위: **parquet authoritative.** `LiveSidebar` 는 parquet spot 을 먼저 보고,
+  그게 `null` 일 때만 `orderbookSnapshotAtCursor(ob, cursorMs, bucketMs)` 로 버퍼에서
+  **버킷 대표값**(백엔드 `query_bucket_representative` 와 동일 의미론 — 버킷 내 마지막
+  연속거래 book, 동시호가 3단 제외)을 뽑아 채운다.
+- **대안 C 반론("어느 게 진짜?")의 무력화:** 두 소스가 시간대를 **공유하지 않는다**.
+  parquet 은 승격된 과거, 버퍼는 미승격 최근 꼬리 — 한 시점에 대해 정확히 하나만
+  답한다. 둘 다 없을 때만(= 버퍼 윈도우 밖 진짜 갭) 기존 빈 상태 + "다음 가용" 힌트
+  유지.
+
+**별개 수정(같은 PR):** rightOffset whitespace(마지막 캔들 오른쪽 빈 띠) hover 시 lwc 는
+`CrosshairMode.Normal` 에서 빈 time 이 아니라 가상축을 외삽한 **미래 시각(세션 꼬리
+15:20–15:30)** 을 준다. 그대로 두면 커서가 미래 무데이터 슬롯에 고정돼 빈칸. `LiveChartRoot`
+crosshair 핸들러가 `realMs > 마지막 캔들 ts_ms` 면 "캔들 위 아님"으로 보고 커서를 비워
+LIVE 로 복귀시킨다(이건 spot 데이터 소스와 무관 — 빈 띠는 과거 시점이 아니다).

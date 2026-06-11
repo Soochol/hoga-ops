@@ -1,9 +1,16 @@
 /**
- * ADR-0044 invariant guard — hover hooks must not import LiveBuffer / SSE
- * modules. Static grep on source; fails if any forbidden import appears.
+ * ADR-0044 invariant guard — the hover spot FETCHERS must not import LiveBuffer
+ * / SSE modules. Static grep on source; fails if any forbidden import appears.
  *
- * If a future feature genuinely needs a hybrid path, create a NEW hook with
- * its own ADR amendment — do not quietly add an import here.
+ * Scope note (ADR-0044 amendment, 2026-06-11): the hover path is now a sanctioned
+ * hybrid — parquet stays authoritative, but when it has no snapshot for a recent
+ * candle (Today-Promotion lag) LiveSidebar fills that gap from the in-memory SSE
+ * buffer (`live.ob`) CLIENT-SIDE via `orderbookSnapshotAtCursor`. That hybrid
+ * lives at the LiveSidebar composition layer, NOT in this fetcher: the fetcher
+ * stays parquet-only and parquet takes precedence (the two never answer for the
+ * same time), which is exactly the "new seam + ADR amendment" the guard below
+ * asks for. So this fetcher invariant remains intact and this test stays green —
+ * do not quietly add an SSE import HERE; extend the LiveSidebar layer instead.
  *
  * Uses vite's `?raw` import (filename suffix) so the source text is inlined
  * at bundle time. Avoids node:fs / process (not in tsconfig.app.json types)

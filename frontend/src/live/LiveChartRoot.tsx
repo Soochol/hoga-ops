@@ -181,6 +181,13 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
   axisRef.current = axis;
   const timeframeRef: MutableRefObject<LiveTimeframe> = useRef<LiveTimeframe>(timeframe);
   timeframeRef.current = timeframe;
+  // Last real candle's real-ms, read by the crosshair handler to detect the
+  // right-offset whitespace (cursor past the last bar) without making the
+  // handler effect depend on every SSE bundle. Written during render (like
+  // axisRef) so it's current before any child effect; null when no candles.
+  const lastCandleMsRef = useRef<number | null>(null);
+  lastCandleMsRef.current =
+    cb && cb.candles.length > 0 ? cb.candles[cb.candles.length - 1].ts_ms : null;
 
   // Publish axis to the shared store so LiveSidebar can read
   // axis.inClosingAuctionWindow(cursorMs) for TotalQtyBar mask.
@@ -505,6 +512,9 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
     }
     let pending: number | null = null;
     const handler = (param: { time?: unknown; point?: { x: number } | null }) => {
+      // Cursor left the chart pane entirely (mouse-leave) → revert to LIVE.
+      // Cancel any pending valid-hover write so a queued rAF can't re-set the
+      // cursor after we've cleared.
       if (param.point == null) {
         if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
         useLiveCursorStore.getState().clearCursor();
@@ -513,14 +523,30 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
       if (pending !== null) cancelAnimationFrame(pending);
       pending = requestAnimationFrame(() => {
         pending = null;
+        const store = useLiveCursorStore.getState();
         const t = param.time;
-        if (typeof t !== 'number') return;
+        // No usable time (defensive) → not on a bar → LIVE.
+        if (typeof t !== 'number' || axis.segments.length === 0) {
+          store.clearCursor();
+          return;
+        }
         // ChartStage.tsx:197 pattern — param.time is virtual-axis seconds.
         // Convert to virtual-ms, then real Unix-ms via axis.toReal().
-        if (axis.segments.length === 0) return;
-        const virtualMs = t * 1000;
-        const realMs = axis.toReal(virtualMs);
-        useLiveCursorStore.getState().setCursor(realMs);
+        const realMs = axis.toReal(t * 1000);
+        // Right-offset whitespace past the last candle: with CrosshairMode.Normal
+        // lwc does NOT report an empty time there — it extrapolates the (gap-
+        // compressed) virtual axis forward, so `realMs` lands on the session tail
+        // (15:20–15:30 closing-auction window), a FUTURE no-data time. Left as a
+        // cursor it pinned the sidebar to a slot parquet/SSE can't serve → blank.
+        // Treat "cursor past the last real candle" as not-on-a-bar → LIVE
+        // (verified 2026-06-11: coordinateToTime jumps 14:53 → 15:20 across the
+        // whitespace boundary while the live edge was 14:54).
+        const lastMs = lastCandleMsRef.current;
+        if (lastMs !== null && realMs > lastMs) {
+          store.clearCursor();
+          return;
+        }
+        store.setCursor(realMs);
       });
     };
     chart.subscribeCrosshairMove(handler);

@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.15.1] - 2026-06-11
+
+### Fixed
+- **`/live` 호가 hover — 빈 차트 영역은 실시간(WS) 복귀, 최근 캔들은 진짜 호가 표시**: 두
+  증상을 함께 고친다. (1) **빈 띠(rightOffset whitespace)로 나가면 빈칸/고정** — `CrosshairMode.
+  Normal` 에서 lwc 는 빈 띠에서 빈 time 이 아니라 **가상축을 외삽한 미래 시각**(세션 꼬리
+  15:20–15:30)을 주므로 커서가 미래 무데이터 슬롯에 고정됐다. `LiveChartRoot` crosshair 핸들러가
+  `realMs > 마지막 캔들 ts_ms`(= 캔들 위 아님)면 커서를 비워 LIVE 로 복귀한다. (2) **최근 캔들
+  (전/전전) hover 시 빈칸** — 승격 parquet 이 라이브 엣지를 ~2–5분 뒤따르므로(Today Promotion,
+  ADR-0043) `/api/orderbook` 가 `snapshot=null` → 빈 sidebar 였다. 페이지가 이미 들고 있는 SSE
+  15분 버퍼(`live.ob`)에서 그 시점의 **버킷 대표값**(백엔드 `query_bucket_representative` 와 동일
+  의미론 — 마지막 연속거래 book, 동시호가 3단 제외)을 클라이언트-사이드로 뽑아 **진짜 그 순간
+  호가**를 채운다. parquet 이 우선이고 그게 없을 때만 버퍼를 쓰므로 두 소스가 한 시점을 두고
+  충돌하지 않는다(둘 다 없는 진짜 갭만 기존 빈 상태 + "다음 가용" 힌트 유지). ADR-0044 의
+  "사용자 시그널 시 재검토" 조건 충족 → ADR-0044 Amendment(2026-06-11) 로 기록. spot **fetcher**
+  는 여전히 parquet-only(invariant 유지) — 하이브리드는 `LiveSidebar` 합성 레이어에 둔다.
+
 ## [0.7.15.0] - 2026-06-11
 
 ### Added

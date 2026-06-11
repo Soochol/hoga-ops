@@ -32,7 +32,7 @@ export interface TradeSnapshot {
  * book to exactly 3 levels. If neither asks nor bids rode along (minute-chart
  * totals-only path) we cannot tell structurally → treat as continuous so the
  * series falls back to legacy last-in-bucket (no spurious masking). */
-function isContinuousBook(s: ObSnapshot): boolean {
+export function isContinuousBook(s: ObSnapshot): boolean {
   const hasDeep = (lv: OrderbookLevel[] | undefined): boolean =>
     !!lv && lv.slice(3).some((l) => l.qty > 0);
   if (!s.asks && !s.bids) return true;
