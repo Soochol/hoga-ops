@@ -9,7 +9,7 @@ import {
 } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
-import { classifyDataChange } from './seriesDataDiff';
+import { syncSeriesData } from './seriesDataDiff';
 
 /**
  * One series inside a `PaneSpec`. Each field is typed to the lightweight-charts
@@ -162,21 +162,14 @@ function RangeSeriesPaneInner<Ctx>({
     if (seriesList.length !== spec.series.length) return;
     spec.series.forEach((s, i) => {
       const data = s.data(bundle, axis, ctx);
-      // Diff the new projection against the last push to avoid a full setData
-      // when only the live tail changed. lwc re-ingests + re-autoscales the
-      // whole array on every setData (measured: 6 series × 35k points ≈ 66ms
-      // synchronous JS/tick at 90-day deep scroll), so on a live tick that only
-      // mutates today's last bucket we call series.update(tail) instead (~1ms).
-      // classifyDataChange falls back to setData on ANY earlier-element change —
-      // auction-mask retroactive recolor, day-boundary anchors, pan/timeframe/ctx
-      // change — so update() is only ever used when it is exactly equivalent to
-      // setData. An identical re-projection (timeframe-switch render churn) is a
-      // 'skip'.
-      const decision = classifyDataChange(lastDataRef.current[i] ?? null, data);
-      if (decision.kind === 'skip') return;
-      if (decision.kind === 'update') seriesList[i].update(decision.point);
-      else seriesList[i].setData(data);
-      lastDataRef.current[i] = data;
+      // The decision (skip / update(tail) / setData(full)), the series mutation,
+      // and the cache update all live behind syncSeriesData's seam — so the
+      // invariant "lastDataRef equals what the series holds" can't drift across
+      // this effect. Rationale for the tail-diff (lwc re-ingests + re-autoscales
+      // the whole array on every setData, ≈66ms/tick at 90-day deep scroll vs
+      // ~1ms for update(tail)) and its safety (update only when exactly
+      // equivalent to setData) live in seriesDataDiff.ts.
+      lastDataRef.current[i] = syncSeriesData(seriesList[i], lastDataRef.current[i] ?? null, data);
     });
   }, [chart, bundle, axis, ctx, spec, paneIndex]);
   return null;
