@@ -24,6 +24,8 @@ type TabsStore = {
 // Module guard: when true, the active-tab→page write is in progress, so the
 // page→tab mirror (Task 3) must not write back (prevents the historicalFromDate
 // reset inside setActiveCode/setCandleTimeframe from clobbering the tab).
+// Exported to satisfy noUnusedLocals until the Task 3 mirror (the reader of
+// `applyingTab`) lands in-file; make these module-private then.
 export let applyingTab = false;
 export function setApplyingTab(v: boolean): void { applyingTab = v; }
 
@@ -31,13 +33,16 @@ export function setApplyingTab(v: boolean): void { applyingTab = v; }
  *  survives the historicalFromDate resets baked into the page setters. */
 export function applyTabToPage(tab: LiveTab | null): void {
   setApplyingTab(true);
-  const page = useLivePageStore.getState();
-  page.setActiveCode(tab?.code ?? null);
-  if (tab) {
-    page.setCandleTimeframe(tab.timeframe);
-    if (tab.historicalFromDate) page.extendHistoricalRange(tab.historicalFromDate);
+  try {
+    const page = useLivePageStore.getState();
+    page.setActiveCode(tab?.code ?? null);
+    if (tab) {
+      page.setCandleTimeframe(tab.timeframe);
+      if (tab.historicalFromDate) page.extendHistoricalRange(tab.historicalFromDate);
+    }
+  } finally {
+    setApplyingTab(false);
   }
-  setApplyingTab(false);
 }
 
 export const useLiveTabsStore = create<TabsStore>((set, get) => ({
@@ -47,7 +52,15 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
   openOrFocusTab: (code, label) => {
     const { tabs } = get();
     const hit = tabs.find((t) => t.code === code);
-    if (hit) { get().focusTab(hit.id); return; }
+    if (hit) {
+      // Refresh a stale label (e.g. a migrated tab where label===code) when the
+      // caller re-opens the same code with a real name from search.
+      if (label && label !== hit.label) {
+        set({ tabs: tabs.map((t) => (t.id === hit.id ? { ...t, label } : t)) });
+      }
+      get().focusTab(hit.id);
+      return;
+    }
     if (tabs.length >= TABS_SOFT_CAP) return;
     const tab: LiveTab = {
       id: nanoid(8),

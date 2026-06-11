@@ -28,6 +28,16 @@ describe('useLiveTabsStore', () => {
     expect(tabs.find((t) => t.id === activeTabId)?.code).toBe('005930');
   });
 
+  it('openOrFocusTab refreshes a stale label when re-opening a code with a name', () => {
+    const s = useLiveTabsStore.getState();
+    s.openOrFocusTab('005930'); // migrated tab: label defaults to code
+    expect(useLiveTabsStore.getState().tabs[0].label).toBe('005930');
+    s.openOrFocusTab('005930', '삼성전자'); // re-opened from search with a real name
+    const { tabs } = useLiveTabsStore.getState();
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0].label).toBe('삼성전자');
+  });
+
   it('writes the active tab code into useLivePageStore (single writer)', () => {
     useLiveTabsStore.getState().openOrFocusTab('035420', 'NAVER');
     expect(useLivePageStore.getState().activeCode).toBe('035420');
@@ -63,10 +73,46 @@ describe('useLiveTabsStore', () => {
     expect(useLiveTabsStore.getState().tabs.some((t) => t.code === 'Z99999')).toBe(false);
   });
 
+  it('closeTab on the rightmost active tab focuses the left neighbor', () => {
+    const s = useLiveTabsStore.getState();
+    s.openOrFocusTab('A00001');
+    s.openOrFocusTab('B00002');
+    s.openOrFocusTab('C00003'); // C is active (rightmost)
+    s.closeTab(useLiveTabsStore.getState().tabs[2].id);
+    const { tabs, activeTabId } = useLiveTabsStore.getState();
+    expect(tabs.map((t) => t.code)).toEqual(['A00001', 'B00002']);
+    expect(tabs.find((t) => t.id === activeTabId)?.code).toBe('B00002');
+  });
+
+  it('closing a non-active tab leaves activeTabId unchanged', () => {
+    const s = useLiveTabsStore.getState();
+    s.openOrFocusTab('A00001');
+    s.openOrFocusTab('B00002');
+    s.openOrFocusTab('C00003'); // C is active
+    const activeBefore = useLiveTabsStore.getState().activeTabId;
+    s.closeTab(useLiveTabsStore.getState().tabs[0].id); // close inactive A
+    const { tabs, activeTabId } = useLiveTabsStore.getState();
+    expect(tabs.map((t) => t.code)).toEqual(['B00002', 'C00003']);
+    expect(activeTabId).toBe(activeBefore);
+    expect(tabs.find((t) => t.id === activeTabId)?.code).toBe('C00003');
+  });
+
   it('reorderTabs moves a tab', () => {
     const s = useLiveTabsStore.getState();
     s.openOrFocusTab('A00001'); s.openOrFocusTab('B00002'); s.openOrFocusTab('C00003');
     s.reorderTabs(0, 2);
     expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(['B00002', 'C00003', 'A00001']);
+  });
+
+  it('reorderTabs is a no-op when from===to or out of range', () => {
+    const s = useLiveTabsStore.getState();
+    s.openOrFocusTab('A00001'); s.openOrFocusTab('B00002'); s.openOrFocusTab('C00003');
+    const original = ['A00001', 'B00002', 'C00003'];
+    s.reorderTabs(1, 1); // from === to
+    expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(original);
+    s.reorderTabs(-1, 2); // from out of range
+    expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(original);
+    s.reorderTabs(0, 5); // to out of range
+    expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(original);
   });
 });
