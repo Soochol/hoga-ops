@@ -27,6 +27,7 @@ import {
   paneIdToIndex,
   paneIdAtY as projPaneIdAtY,
   clampYToPane as projClampYToPane,
+  priceBoundsForPane as projPriceBoundsForPane,
   type PaneSeriesMap,
 } from './drawing/chartCoordinates';
 
@@ -232,20 +233,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
   const clampYToPane = (paneId: PaneId, py: number) =>
     projClampYToPane(chart, paneSeries, paneId, py);
 
-  const priceBoundsForPane = (paneId: PaneId) => {
-    const series = paneSeries.get(paneId);
-    if (!series) return null;
-    const idx = paneIdToIndex(paneSeries, paneId);
-    const panes = chart.panes();
-    if (idx < 0 || idx >= panes.length) return null;
-    // coordinateToPrice expects pane-local Y; the pane's top in its own
-    // local frame is 0, the bottom is its height.
-    const paneH = panes[idx].getHeight();
-    const topPrice = series.coordinateToPrice(0);
-    const bottomPrice = series.coordinateToPrice(paneH);
-    if (topPrice == null || bottomPrice == null) return null;
-    return { top: Number(topPrice), bottom: Number(bottomPrice) };
-  };
+  const priceBoundsForPane = (paneId: PaneId) =>
+    projPriceBoundsForPane(chart, paneSeries, paneId);
 
   // SR-5: the kind-dispatch hit geometry lives in the pure hitTestDrawings
   // kernel (hitTest.ts, unit-tested with stub coords). This wrapper just binds

@@ -301,13 +301,19 @@ export const hlineTool: DrawingToolSpec = {
   shortcut: { alt: true, key: 'h' },
   onPointerDown(ctx) {
     const paneId = ctx.paneIdAtY(ctx.py);
-    const data = ctx.pixelToData(ctx.px, ctx.py, paneId);
-    if (!data) return;
+    // hline is price-only, so resolve the level off the Y axis alone via
+    // canvasYToPrice. Routing through pixelToData (the old code) coupled
+    // creation to the time axis and aborted in the chart's empty right band,
+    // where coordinateToTime — and thus pixelToData — returns null: the user
+    // could add an hline over candles but not in the empty area. This mirrors
+    // the body-drag fix in selectTool, which already decoupled the same way.
+    const price = ctx.canvasYToPrice(ctx.py, paneId);
+    if (price == null) return;
     const id = nanoid(8);
     ctx.add({
       id,
       kind: 'hline',
-      price: data.price,
+      price,
       color: ctx.defaults.color,
       width: ctx.defaults.width,
       lineStyle: ctx.defaults.lineStyle,

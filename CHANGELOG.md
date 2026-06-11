@@ -3,6 +3,24 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.13.4] - 2026-06-11
+
+### Fixed
+- **`/live` 그리기 — 빈 차트 영역에서 수평선 추가 안 되던 버그 수정**: 마지막 캔들 우측 빈 띠
+  (`rightOffset`)에서 수평선을 추가하려 하면 생성되지 않던 문제. 원인은 `hlineTool` 생성 경로가
+  시간·가격 양축을 함께 변환하는 `pixelToData`를 호출했는데, 빈 띠에서는 `timeScale.coordinateToTime`이
+  null을 반환해(그 구간엔 시간값이 없음) 가격까지 통째로 null이 되어 생성이 중단된 것. 수평선은 가격만
+  필요하므로(`Hline` 타입에 `realMs` 없음) 가격 전용 변환기 `canvasYToPrice`로 교체해 빈 띠에서도
+  추가되게 했다. 이미 같은 방식으로 축이 분리돼 있던 드래그 경로(`selectTool`)와 일관성을 맞춘 것
+  (v0.7.0.3에서 드래그만 고쳐졌고 생성 경로가 누락돼 있었다). 추세선·연필은 양 끝점에 시간 앵커가
+  본질적으로 필요해 `pixelToData`를 유지(빈 띠 생성은 의도적으로 불가). 빈 띠 생성 회귀 테스트 2종 추가.
+
+### Changed
+- **그리기 좌표 변환 locality 정리**: 팬의 가격 상/하한을 조회하는 `priceBoundsForPane`를
+  `DrawingOverlay.tsx` 인라인 클로저에서 좌표 변환 모듈 `chartCoordinates.ts`로 이동. 동작은 동일하며
+  (시그니처를 형제 함수와 같은 `(chart, paneSeries, paneId)` 형태로 맞춤), 픽셀↔데이터 변환 지식을 한
+  모듈에 응집해 탐색성을 높였다.
+
 ## [0.7.13.3] - 2026-06-11
 
 ### Changed
