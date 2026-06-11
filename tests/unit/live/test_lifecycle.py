@@ -160,27 +160,24 @@ def _make_doc(folders: list[dict], entries: list[dict]) -> "object":
         entries=[WatchlistEntry(**e) for e in entries],
     )
 
-def _entry(code: str, order: int, folder_id: str | None = None) -> dict:
+def _entry(code: str) -> dict:
     return {
         "code": code, "name": code,
         "registered_at_kst_date": "20260101",
         "last_success_date": None,
-        "folder_id": folder_id,
-        "order": order,
     }
 
-def _folder(fid: str, order: int, name: str = "F") -> dict:
-    return {"id": fid, "order": order, "name": name}
+def _folder(fid: str, order: int, member_codes: list[str], name: str = "F") -> dict:
+    return {"id": fid, "order": order, "name": name, "member_codes": member_codes}
 
 
 def test_live_set_is_watchlist_order_prefix() -> None:
-    """Live Set = 패널 표시 순서 상위 LIVE_SET_MAX_CODES 코드.
+    """Live Set = 패널 표시 순서 상위 LIVE_SET_MAX_CODES 코드 (v3, ADR-0069).
 
-    Step 0 확인: grouping.ts:28-43 + WatchlistDrawer.tsx:222,228
-    폴더들은 .order 오름차순, 미분류는 **마지막** — 백엔드 평탄화가 미러.
+    폴더들은 .order 오름차순, 각 폴더 member_codes 순으로 평탄화 — 백엔드가 미러.
 
-    Fixture: 2개 폴더 + 미분류, entry order가 flat-array 삽입 순서와 어긋나게
-    구성 → 표시 순서 평탄화가 정확한지 + LIVE_SET_MAX_CODES 절단이 맞는지 검증.
+    Fixture: 2개 폴더(order가 삽입 순서와 반대) → 표시 순서 평탄화가 정확한지 +
+    LIVE_SET_MAX_CODES 절단이 맞는지 검증.
     """
     from hoga.live.lifecycle import (
         LIVE_SET_MAX_CODES,
@@ -192,36 +189,20 @@ def test_live_set_is_watchlist_order_prefix() -> None:
     # 계좌당 한도 = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE (30 // 3 = 10), spec §4·§5.1
     assert LIVE_SET_MAX_CODES == _PER_ACCOUNT_MAX
 
-    # 폴더 2개 (order=1이 앞, order=0이 뒤 — 삽입 순서와 반대)
-    # 실제 렌더 순서: folder_b(order=0) → folder_a(order=1) → 미분류
+    # 폴더 2개 (order=1이 삽입 앞, order=0이 삽입 뒤 — 렌더는 order 기준)
+    # 렌더 순서: folder_b(order=0) → folder_a(order=1)
     folders = [
-        _folder("f_aabbccdd", order=1, name="A"),   # 렌더 순서 2위
-        _folder("f_11223344", order=0, name="B"),   # 렌더 순서 1위
+        _folder("f_aabbccdd", order=1, member_codes=["000010", "000011"], name="A"),  # 렌더 2위
+        _folder("f_11223344", order=0, member_codes=["000002", "000001"], name="B"),  # 렌더 1위
     ]
-    # folder_b(order=0) 안 entries: order=1,2 → 코드 "000001","000002"
-    # folder_a(order=1) 안 entries: order=0,1 → 코드 "000010","000011"
-    # 미분류: order=0,1,...  → 코드 "000020","000021",...
-    entries = [
-        # folder_a entries (삽입 순서 앞이지만 렌더에선 뒤)
-        _entry("000010", order=0, folder_id="f_aabbccdd"),
-        _entry("000011", order=1, folder_id="f_aabbccdd"),
-        # folder_b entries
-        _entry("000001", order=1, folder_id="f_11223344"),
-        _entry("000002", order=0, folder_id="f_11223344"),
-        # 미분류 entries (마지막)
-        _entry("000020", order=0, folder_id=None),
-        _entry("000021", order=1, folder_id=None),
-    ]
+    entries = [_entry(c) for c in ("000010", "000011", "000002", "000001")]
     doc = _make_doc(folders, entries)
 
-    # display_ordered_codes: folder_b(order=0) 먼저 → entry order 기준
-    # → folder_b: [000002(order=0), 000001(order=1)]
-    # → folder_a: [000010(order=0), 000011(order=1)]
-    # → 미분류: [000020(order=0), 000021(order=1)]
+    # display_ordered_codes: folder_b(order=0) member_codes 먼저 → folder_a
     ordered = display_ordered_codes(doc)
-    assert ordered == ["000002", "000001", "000010", "000011", "000020", "000021"]
+    assert ordered == ["000002", "000001", "000010", "000011"]
 
-    # live_set_codes: 상위 LIVE_SET_MAX_CODES 절단 — 6개뿐이므로 전부
+    # live_set_codes: 상위 LIVE_SET_MAX_CODES 절단 — 4개뿐이므로 전부
     assert live_set_codes(doc) == ordered
 
 
@@ -229,13 +210,13 @@ def test_live_set_truncates_to_max() -> None:
     """20개 항목이 있을 때 Live Set은 정확히 LIVE_SET_MAX_CODES개로 절단된다."""
     from hoga.live.lifecycle import LIVE_SET_MAX_CODES, live_set_codes
 
-    # 폴더 없이 미분류 20개 (LIVE_SET_MAX_CODES=10 초과 → 절단 발동)
-    entries = [_entry(f"{i:06d}", order=i) for i in range(20)]
-    doc = _make_doc([], entries)
+    codes = [f"{i:06d}" for i in range(20)]
+    folders = [_folder("f_aabbccdd", order=0, member_codes=codes)]
+    doc = _make_doc(folders, [_entry(c) for c in codes])
 
     result = live_set_codes(doc)
     assert len(result) == LIVE_SET_MAX_CODES
-    # 표시 순서(order 오름차순) 앞 LIVE_SET_MAX_CODES개
+    # 표시 순서(member_codes 순) 앞 LIVE_SET_MAX_CODES개
     assert result == [f"{i:06d}" for i in range(LIVE_SET_MAX_CODES)]
 
 
@@ -243,23 +224,10 @@ def test_live_set_fewer_than_13_returns_all() -> None:
     """5개짜리 watchlist는 전부 반환 (절단 없음)."""
     from hoga.live.lifecycle import live_set_codes
 
-    entries = [_entry(f"{i:06d}", order=i) for i in range(5)]
-    doc = _make_doc([], entries)
+    codes = [f"{i:06d}" for i in range(5)]
+    folders = [_folder("f_aabbccdd", order=0, member_codes=codes)]
+    doc = _make_doc(folders, [_entry(c) for c in codes])
     assert live_set_codes(doc) == [f"{i:06d}" for i in range(5)]
-
-
-def test_display_ordered_codes_uncategorized_last() -> None:
-    """미분류(folder_id=None) 그룹은 실폴더 뒤에 온다 (grouping.ts 미러)."""
-    from hoga.live.lifecycle import display_ordered_codes
-
-    folders = [_folder("f_aabbccdd", order=0, name="F")]
-    entries = [
-        _entry("000099", order=0, folder_id=None),      # 미분류 — 뒤로
-        _entry("000001", order=0, folder_id="f_aabbccdd"),  # 폴더 — 앞으로
-    ]
-    doc = _make_doc(folders, entries)
-    ordered = display_ordered_codes(doc)
-    assert ordered.index("000001") < ordered.index("000099")
 
 
 def test_display_ordered_codes_empty_doc() -> None:
