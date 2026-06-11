@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.13.3] - 2026-06-11
+
+### Changed
+- **관심맵 (`/heatmap`) — 등락률 히트 칩으로 색 가독성 개선**: 기존엔 행 전체를 등락률 히트색으로
+  칠하고 숫자도 같은 계열색이라, 등락이 큰 셀일수록(가장 중요한 종목일수록) 숫자가 배경에 묻혔다
+  (WCAG 대비 ~2:1, AA 4.5 미달). 히트색을 **등락률 셀에만 모은 둥근 칩**으로 옮기고
+  (`heatBg(pct, HEAT_CHIP_MAX_ALPHA=0.72)` 배경 + 흰 글자 + ▲▼ + 부호), 종목명·현재가는 카드
+  배경 위 흰 글자(`text-fg`, 대비 ~9:1)로 바꿔 항상 또렷하게 했다. 색·방향·등락폭(칩 농도)은 칩에
+  보존(색약 보조). `heatBg`는 면적별 농도 조절을 위해 `maxAlpha` 인자를 받도록 일반화(행 워시 기본
+  0.42 / 칩 0.72). 등락률 칼럼은 칩 패딩을 위해 2.8rem→4.25rem로 넓혔고, 보드 `columnWidth`
+  12rem은 실측상(1100~1820px) 전 구간 오버플로가 없어 유지했다.
+
 ## [0.7.13.2] - 2026-06-10
 
 ### Fixed

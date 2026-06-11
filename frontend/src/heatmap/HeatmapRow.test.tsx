@@ -12,11 +12,22 @@ function row(props: Partial<React.ComponentProps<typeof HeatmapRow>> = {}) {
   );
 }
 
-it('등락률·현재가 렌더, 상승=price-up 색', () => {
-  row();
+it('등락률 칩에 히트 배경(상승=빨강) + 행 자체엔 워시 없음', () => {
+  row(); // pct=5 → 상승
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
   expect(screen.getByText('70,000')).toBeInTheDocument();
-  expect(screen.getByText('▲+5.00')).toHaveClass('text-price-up');
+  // 등락률 칩 = 빨강 히트 배경, 흰 글자(text-price-up 아님)
+  const chip = screen.getByText('▲+5.00');
+  expect(chip.getAttribute('style') ?? '').toMatch(/220,\s*38,\s*38/);
+  expect(chip).not.toHaveClass('text-price-up');
+  // 행 전체 워시 제거 → 행 요소엔 background 인라인 스타일이 없다
+  expect(screen.getByTestId('heatmap-row-005930').getAttribute('style') ?? '')
+    .not.toMatch(/background/);
+});
+
+it('하락 등락률 칩은 파랑 히트', () => {
+  row({ pct: -3 });
+  expect(screen.getByText('▼-3.00').getAttribute('style') ?? '').toMatch(/37,\s*99,\s*235/);
 });
 
 it('시세 결측(null) → 가격·등락 모두 —', () => {
