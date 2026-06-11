@@ -65,8 +65,9 @@ async def test_finalize_does_not_bump_marker_on_client_incomplete(tmp_path: Path
     because the worker returned cleanly with an abort_reason set."""
     from hoga.api import captures, watchlist
 
-    await watchlist.add_entry(tmp_path, code="098460", name="고영",
-                              today_kst_date="20260520")
+    _fid = (await watchlist.create_folder(tmp_path, name="기본")).id
+    await watchlist.add_member(tmp_path, code="098460", name="고영",
+                               today_kst_date="20260520", folder_id=_fid)
     await watchlist.bump_last_success(tmp_path, code="098460", date="20260522")
 
     # 5/26 capture aborted mid-stream → meta.json reflects partial state.
@@ -92,8 +93,9 @@ async def test_finalize_bumps_marker_on_complete(tmp_path: Path):
     MUST advance. This guards the fix from being too restrictive."""
     from hoga.api import captures, watchlist
 
-    await watchlist.add_entry(tmp_path, code="098460", name="고영",
-                              today_kst_date="20260520")
+    _fid = (await watchlist.create_folder(tmp_path, name="기본")).id
+    await watchlist.add_member(tmp_path, code="098460", name="고영",
+                               today_kst_date="20260520", folder_id=_fid)
     await watchlist.bump_last_success(tmp_path, code="098460", date="20260522")
 
     # Normal finalize: full collection, not partial.

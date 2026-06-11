@@ -1,4 +1,4 @@
-"""Watchlist persistence + mutation tests. See spec 2026-05-26."""
+"""Watchlist persistence + mutation tests (v3, ADR-0069). See spec 2026-05-26."""
 from __future__ import annotations
 
 import json
@@ -6,6 +6,16 @@ import time
 from pathlib import Path
 
 import pytest
+
+
+async def _seed(tmp_path: Path, *, code: str, name: str, today_kst_date: str):
+    """v3 seed: ensure a default folder exists, then add the code as a member.
+    (v2 add_entry는 폐지 — 멤버십이 entry 존재를 정의한다, ADR-0069.)"""
+    from hoga.api.watchlist import create_folder, add_member, load_document
+    doc = load_document(tmp_path)
+    fid = doc.folders[0].id if doc.folders else (await create_folder(tmp_path, name="기본")).id
+    return await add_member(tmp_path, code=code, name=name,
+                            today_kst_date=today_kst_date, folder_id=fid)
 
 
 def test_load_returns_empty_when_file_missing(tmp_path: Path):
@@ -55,10 +65,9 @@ def test_corrupted_pydantic_validation_is_also_backed_up(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_add_entry_inserts(tmp_path: Path):
-    from hoga.api.watchlist import add_entry, load_watchlist
-    await add_entry(tmp_path, code="003490", name="대한항공",
-                    today_kst_date="20260526")
+async def test_add_member_inserts(tmp_path: Path):
+    from hoga.api.watchlist import load_watchlist
+    await _seed(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
     wl = load_watchlist(tmp_path)
     assert [e.code for e in wl] == ["003490"]
     assert wl[0].registered_at_kst_date == "20260526"
@@ -66,20 +75,9 @@ async def test_add_entry_inserts(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_add_entry_duplicate_raises(tmp_path: Path):
-    from hoga.api.watchlist import add_entry, AlreadyInWatchlistError
-    await add_entry(tmp_path, code="003490", name="대한항공",
-                    today_kst_date="20260526")
-    with pytest.raises(AlreadyInWatchlistError):
-        await add_entry(tmp_path, code="003490", name="대한항공",
-                        today_kst_date="20260527")
-
-
-@pytest.mark.asyncio
 async def test_remove_entry(tmp_path: Path):
-    from hoga.api.watchlist import add_entry, remove_entry, load_watchlist
-    await add_entry(tmp_path, code="003490", name="대한항공",
-                    today_kst_date="20260526")
+    from hoga.api.watchlist import remove_entry, load_watchlist
+    await _seed(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
     await remove_entry(tmp_path, code="003490")
     assert load_watchlist(tmp_path) == []
 
@@ -93,18 +91,16 @@ async def test_remove_entry_missing_raises(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_bump_last_success_advances_marker(tmp_path: Path):
-    from hoga.api.watchlist import add_entry, bump_last_success, load_watchlist
-    await add_entry(tmp_path, code="003490", name="대한항공",
-                    today_kst_date="20260526")
+    from hoga.api.watchlist import bump_last_success, load_watchlist
+    await _seed(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
     await bump_last_success(tmp_path, code="003490", date="20260527")
     assert load_watchlist(tmp_path)[0].last_success_date == "20260527"
 
 
 @pytest.mark.asyncio
 async def test_bump_last_success_does_not_regress(tmp_path: Path):
-    from hoga.api.watchlist import add_entry, bump_last_success, load_watchlist
-    await add_entry(tmp_path, code="003490", name="대한항공",
-                    today_kst_date="20260526")
+    from hoga.api.watchlist import bump_last_success, load_watchlist
+    await _seed(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
     await bump_last_success(tmp_path, code="003490", date="20260528")
     await bump_last_success(tmp_path, code="003490", date="20260527")  # older
     assert load_watchlist(tmp_path)[0].last_success_date == "20260528"
@@ -122,11 +118,9 @@ async def test_bump_last_success_ignores_unwatched_code(tmp_path: Path):
 async def test_concurrent_bumps_serialize(tmp_path: Path):
     """Two simultaneous bumps must not clobber each other."""
     import asyncio
-    from hoga.api.watchlist import add_entry, bump_last_success, load_watchlist
-    await add_entry(tmp_path, code="003490", name="대한항공",
-                    today_kst_date="20260526")
-    await add_entry(tmp_path, code="005930", name="삼성전자",
-                    today_kst_date="20260526")
+    from hoga.api.watchlist import bump_last_success, load_watchlist
+    await _seed(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
+    await _seed(tmp_path, code="005930", name="삼성전자", today_kst_date="20260526")
     await asyncio.gather(
         bump_last_success(tmp_path, code="003490", date="20260527"),
         bump_last_success(tmp_path, code="005930", date="20260527"),
@@ -137,33 +131,31 @@ async def test_concurrent_bumps_serialize(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_add_entry_seeds_last_success_from_disk(tmp_path: Path, monkeypatch):
-    """When the Code already has complete captures on disk, add_entry
-    initializes last_success_date with the latest of them. Fixes the
-    "마지막 성공: 아직 없음" UX for Codes registered after data already
-    landed (e.g., 098460 with 30+ trading days on disk)."""
-    from hoga.api import disk_state, watchlist
+async def test_add_member_seeds_last_success_from_disk(tmp_path: Path, monkeypatch):
+    """When the Code already has complete captures on disk, add_member
+    initializes last_success_date with the latest of them."""
+    from hoga.api import disk_state
     monkeypatch.setattr(
         disk_state, "latest_complete_date",
         lambda _dir, code: "20260524" if code == "003490" else None,
     )
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
-                              today_kst_date="20260526")
-    [entry] = watchlist.load_watchlist(tmp_path)
+    await _seed(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
+    from hoga.api.watchlist import load_watchlist
+    [entry] = load_watchlist(tmp_path)
     assert entry.last_success_date == "20260524"
 
 
 @pytest.mark.asyncio
-async def test_add_entry_no_disk_data_leaves_marker_null(tmp_path: Path, monkeypatch):
+async def test_add_member_no_disk_data_leaves_marker_null(tmp_path: Path, monkeypatch):
     """No prior captures → marker stays null, preserves "first capture"
     catch-up behavior driven by registered_at_kst_date."""
-    from hoga.api import disk_state, watchlist
+    from hoga.api import disk_state
     monkeypatch.setattr(
         disk_state, "latest_complete_date", lambda _dir, _code: None,
     )
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
-                              today_kst_date="20260526")
-    [entry] = watchlist.load_watchlist(tmp_path)
+    await _seed(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
+    from hoga.api.watchlist import load_watchlist
+    [entry] = load_watchlist(tmp_path)
     assert entry.last_success_date is None
 
 
@@ -196,17 +188,11 @@ def test_load_watchlist_propagates_oserror_not_corruption(tmp_path: Path, monkey
 
 @pytest.mark.asyncio
 async def test_lock_prevents_lost_update_on_same_code(tmp_path: Path, monkeypatch):
-    """The existing test_concurrent_bumps_serialize exercises bumps on
-    DIFFERENT codes (mutating distinct list elements, which would succeed
-    even without the lock). This pins the real race: two bumps targeting
-    the SAME code with different dates — without the lock, one would
-    clobber the other's read-modify-write."""
+    """Two bumps targeting the SAME code with different dates — without the
+    lock, one would clobber the other's read-modify-write."""
     from hoga.api import watchlist
     import asyncio as _asyncio
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
-                              today_kst_date="20260520")
-    # Drive the two bumps concurrently. The lock must serialize them so
-    # the newer date wins regardless of scheduling order.
+    await _seed(tmp_path, code="003490", name="대한항공", today_kst_date="20260520")
     await _asyncio.gather(
         watchlist.bump_last_success(tmp_path, code="003490", date="20260527"),
         watchlist.bump_last_success(tmp_path, code="003490", date="20260526"),
@@ -218,11 +204,10 @@ async def test_lock_prevents_lost_update_on_same_code(tmp_path: Path, monkeypatc
 @pytest.mark.asyncio
 async def test_bump_last_success_same_date_is_noop_no_write(tmp_path: Path, monkeypatch):
     """`date == last_success_date` boundary: the comparison is strict `>`,
-    so equal dates must produce no save_watchlist call (avoid needless
+    so equal dates must produce no save_document call (avoid needless
     atomic-write churn under steady-state catch-up loops)."""
     from hoga.api import watchlist
-    await watchlist.add_entry(tmp_path, code="003490", name="대한항공",
-                              today_kst_date="20260520")
+    await _seed(tmp_path, code="003490", name="대한항공", today_kst_date="20260520")
     await watchlist.bump_last_success(tmp_path, code="003490", date="20260527")
 
     save_calls = 0
