@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
-import { useLivePageStore, type LiveTimeframe } from './livePage';
+import { useLivePageStore, LIVE_TIMEFRAMES, type LiveTimeframe } from './livePage';
+import { attachPersistence } from './persistentSubscriber';
 
 export const TABS_SOFT_CAP = 8;
 
@@ -45,9 +46,74 @@ export function applyTabToPage(tab: LiveTab | null): void {
   }
 }
 
+const STORAGE_KEY = 'live.tabs.v1';
+
+type TabSnapshot = { code: string; timeframe: LiveTimeframe; historicalFromDate: string | null; label: string };
+type TabsSnapshot = { version: 1; activeIndex: number; tabs: TabSnapshot[] };
+
+function isTimeframe(v: unknown): v is LiveTimeframe {
+  return typeof v === 'string' && (LIVE_TIMEFRAMES as readonly string[]).includes(v);
+}
+
+export function toTabsSnapshot(state: Pick<TabsStore, 'tabs' | 'activeTabId'>): TabsSnapshot {
+  const i = state.tabs.findIndex((t) => t.id === state.activeTabId);
+  return {
+    version: 1,
+    activeIndex: i < 0 ? 0 : i,
+    tabs: state.tabs.map((t) => ({
+      code: t.code, timeframe: t.timeframe, historicalFromDate: t.historicalFromDate, label: t.label,
+    })),
+  };
+}
+
+export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
+  // 1) live.tabs.v1
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const snap = JSON.parse(raw) as Partial<TabsSnapshot>;
+      if (snap && Array.isArray(snap.tabs) && snap.tabs.length > 0) {
+        const tabs: LiveTab[] = snap.tabs
+          .filter((t) => t && typeof t.code === 'string')
+          .map((t) => ({
+            id: nanoid(8),
+            code: t.code,
+            label: typeof t.label === 'string' && t.label ? t.label : t.code,
+            timeframe: isTimeframe(t.timeframe) ? t.timeframe : '1m',
+            historicalFromDate: typeof t.historicalFromDate === 'string' ? t.historicalFromDate : null,
+          }));
+        if (tabs.length > 0) {
+          const idx = Math.min(Math.max(0, snap.activeIndex ?? 0), tabs.length - 1);
+          return { tabs, activeTabId: tabs[idx].id };
+        }
+      }
+    }
+  } catch { /* fall through to migration */ }
+
+  // 2) migrate live.page.v1 → single tab
+  try {
+    const raw = localStorage.getItem('live.page.v1');
+    if (raw) {
+      const p = JSON.parse(raw) as { activeCode?: string | null; candleTimeframe?: unknown; historicalFromDate?: unknown };
+      if (p && typeof p.activeCode === 'string' && p.activeCode) {
+        const tab: LiveTab = {
+          id: nanoid(8),
+          code: p.activeCode,
+          label: p.activeCode,
+          timeframe: isTimeframe(p.candleTimeframe) ? p.candleTimeframe : '1m',
+          historicalFromDate: typeof p.historicalFromDate === 'string' ? p.historicalFromDate : null,
+        };
+        return { tabs: [tab], activeTabId: tab.id };
+      }
+    }
+  } catch { /* fall through to empty */ }
+
+  // 3) empty
+  return { tabs: [], activeTabId: null };
+}
+
 export const useLiveTabsStore = create<TabsStore>((set, get) => ({
-  tabs: [],
-  activeTabId: null,
+  ...loadTabs(),
 
   openOrFocusTab: (code, label) => {
     const { tabs } = get();
@@ -100,3 +166,9 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
     set({ tabs: next });
   },
 }));
+
+const _unsubscribePersist = attachPersistence(useLiveTabsStore, {
+  storageKey: STORAGE_KEY,
+  toSnapshot: (s) => toTabsSnapshot(s),
+});
+if (import.meta.hot) import.meta.hot.dispose(_unsubscribePersist);

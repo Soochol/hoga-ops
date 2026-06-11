@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useLiveTabsStore, TABS_SOFT_CAP } from './liveTabs';
+import { useLiveTabsStore, TABS_SOFT_CAP, loadTabs, toTabsSnapshot } from './liveTabs';
 import { useLivePageStore } from './livePage';
 
 beforeEach(() => {
@@ -114,5 +114,51 @@ describe('useLiveTabsStore', () => {
     expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(original);
     s.reorderTabs(0, 5); // to out of range
     expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(original);
+  });
+});
+
+describe('liveTabs persistence', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('migrates live.page.v1 into a single tab when live.tabs.v1 is absent', () => {
+    localStorage.setItem('live.page.v1', JSON.stringify({
+      activeCode: '005930', candleTimeframe: '5m', historicalFromDate: '20260601',
+    }));
+    const { tabs, activeTabId } = loadTabs();
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0].code).toBe('005930');
+    expect(tabs[0].timeframe).toBe('5m');
+    expect(tabs[0].historicalFromDate).toBe('20260601');
+    expect(activeTabId).toBe(tabs[0].id);
+  });
+
+  it('loads live.tabs.v1 with activeIndex clamp and reissued ids', () => {
+    localStorage.setItem('live.tabs.v1', JSON.stringify({
+      version: 1, activeIndex: 9,
+      tabs: [
+        { code: '005930', timeframe: '1m', historicalFromDate: null, label: '삼성전자' },
+        { code: '000660', timeframe: 'D', historicalFromDate: '20260101', label: 'SK하이닉스' },
+      ],
+    }));
+    const { tabs, activeTabId } = loadTabs();
+    expect(tabs.map((t) => t.code)).toEqual(['005930', '000660']);
+    expect(tabs[1].timeframe).toBe('D');
+    expect(activeTabId).toBe(tabs[1].id);
+    expect(tabs[0].id).not.toBe('');
+  });
+
+  it('returns empty when neither key exists', () => {
+    expect(loadTabs()).toEqual({ tabs: [], activeTabId: null });
+  });
+
+  it('toTabsSnapshot drops runtime-only fields', () => {
+    const snap = toTabsSnapshot({
+      tabs: [{ id: 'abc', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null }],
+      activeTabId: 'abc',
+    } as never);
+    expect(snap).toEqual({
+      version: 1, activeIndex: 0,
+      tabs: [{ code: '005930', timeframe: '1m', historicalFromDate: null, label: '삼성전자' }],
+    });
   });
 });
