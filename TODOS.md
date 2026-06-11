@@ -86,6 +86,18 @@
 **Priority:** P3
 **Depends on:** 쿼리 재설계와 함께
 
+### /live 탭 keep-alive (B안) — 즉시·무플래시 전환
+
+**What:** 탭마다 `LiveChartRoot` 인스턴스를 mount 유지(비활성 `display:none`), SSE는 활성 탭만 구독. 탭 전환을 show/hide로 만들어 viewport·줌·스크롤·그림을 네이티브로 보존하고 콜드 fetch 대기(cover)를 없앤다.
+
+**Why:** A안(탭별 viewport 시간앵커 저장, plan-eng-review 2026-06-11 채택)이 "보던 위치 복원"은 이미 해결하지만, 전환마다 `/api/range`+past-candles 콜드 fetch 대기(cover ~0.5~2.5s)가 남는다. 여러 종목을 빠르게 오가는 감시 워크플로에서 이 대기가 실사용에 거슬리면 즉시전환 가치가 메모리 비용을 넘어선다 — **그 신호가 확인된 뒤에** 승격(reversibility).
+
+**Context:** ADR-0069가 "탭 = cold-swap 뷰어"(차트 1개, 종목코드만 갈아끼움)를 의도적으로 택했고 warm 멀티구독을 기각했다. B는 구독은 active만 유지(ADR의 KIS 한도 제약 무위반)하되 **차트 DOM/인스턴스만 warm**으로 바꾸는 부분 이탈. 비용: 차트 N개(≤소프트캡 8, 각 lwc 캔버스 수MB) 메모리, `display:none` 차트의 0-size 측정 함정(복귀 시 resize 필요), reveal/cover·useViewportBackfill 머신을 ×N 인스턴스로 복제. 1커밋 전(#72) 머지된 ADR을 재개봉하므로 blast radius 큼.
+
+**Effort:** L
+**Priority:** P3
+**Depends on:** A안(탭별 viewport 앵커) 출시 + 실사용에서 전환 대기 체감 확인
+
 ## Completed
 
 ### v0.7.0.0 (2026-06-08) — KIS WS 전환 스냅샷
