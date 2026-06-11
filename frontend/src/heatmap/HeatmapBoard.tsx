@@ -1,6 +1,6 @@
 import type { FolderGroup } from '../watchlist/grouping';
 import type { LiveQuote } from '../api/liveQuotes';
-import { HeatmapFolder } from './HeatmapFolder';
+import { HeatmapFolder, type RowMenuOpener } from './HeatmapFolder';
 import { visibleFolderGroups } from './visibleGroups';
 import type { SortMode } from './heat';
 
@@ -11,17 +11,20 @@ export interface HeatmapBoardProps {
   seriesByCode?: Map<string, number[]>;
   sortMode: SortMode;
   onPick: (code: string) => void;
-  /** 그룹 내 드래그 재정렬 커밋(manual 모드). 페이지에서 useReorderEntries 로 주입. */
-  onReorder?: (folderId: string, orderedCodes: string[]) => void;
+  /** 그룹 내 드래그 재정렬 커밋(manual 모드). folderId=null 은 미분류 그룹.
+   *  페이지에서 useReorderHeatmapEntries 로 주입. */
+  onReorder?: (folderId: string | null, orderedCodes: string[]) => void;
+  /** 행 우클릭 메뉴(삭제·폴더이동) 오프너. 페이지에서 주입. */
+  onRowMenu?: RowMenuOpener;
 }
 
-/** 신문형 멀티칼럼 보드. 빈 폴더·미분류(folder===null) 제외. columnWidth 로
+/** 신문형 멀티칼럼 보드. 빈 그룹만 제외(미분류 포함 — ADR-0068 G3). columnWidth 로
  *  가용 폭만큼 칼럼 수가 자동 결정된다(순수 CSS 메이슨리, 레이아웃 JS 없음).
  *  columnWidth 는 행 그리드의 최소폭(이름 4rem + 현재가 3.2rem + 등락률 칩 4.25rem +
  *  갭·패딩, 실측 카드 min-content ≈ 12.3rem)에 맞춘 12rem floor — multicol 이 깨지지
  *  않는 카드(break-inside-avoid)를 칼럼에 맞춰 키우므로 1100~1820px 전 구간 오버플로
  *  없음(실측). 넓어지면 칼럼 수↑, 남는 폭은 minmax(...,1fr) 종목명으로(반응형). */
-export function HeatmapBoard({ groups, quoteByCode, seriesByCode, sortMode, onPick, onReorder }: HeatmapBoardProps) {
+export function HeatmapBoard({ groups, quoteByCode, seriesByCode, sortMode, onPick, onReorder, onRowMenu }: HeatmapBoardProps) {
   const visible = visibleFolderGroups(groups);
   return (
     // eng-review Q6: 스크롤 컨테이너(바깥, 높이 한정)와 multicol 블록(안쪽, height
@@ -32,14 +35,15 @@ export function HeatmapBoard({ groups, quoteByCode, seriesByCode, sortMode, onPi
       <div style={{ columnWidth: '12rem', columnGap: '0.5rem' }}>
         {visible.map((g) => (
           <HeatmapFolder
-            key={g.folder!.id}
-            folder={g.folder!}
+            key={g.folder?.id ?? '__uncat__'}
+            folder={g.folder}
             entries={g.entries}
             quoteByCode={quoteByCode}
             seriesByCode={seriesByCode}
             sortMode={sortMode}
             onPick={onPick}
             onReorder={onReorder}
+            onRowMenu={onRowMenu}
           />
         ))}
       </div>

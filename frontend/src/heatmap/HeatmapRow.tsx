@@ -17,6 +17,8 @@ export interface HeatmapRowProps {
   sortableStyle?: React.CSSProperties;
   dragListeners?: DraggableSyntheticListeners;
   dragging?: boolean;
+  /** 우클릭 컨텍스트 메뉴(삭제·폴더이동, ADR-0068 G3). 미전달이면 기본 컨텍스트 메뉴. */
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 /** 칼럼형 행: 종목명 │ 현재가 │ 등락률 칩. 히트색은 등락률 칩 배경에만 적용한다
@@ -29,7 +31,7 @@ export interface HeatmapRowProps {
  *  PointerSensor distance:5 가 둘을 가른다 — drawer SortableQuoteRow 와 동일 계약). */
 export function HeatmapRow({
   name, price, pct, series, onClick, ariaLabel, testId,
-  sortableRef, sortableStyle, dragListeners, dragging,
+  sortableRef, sortableStyle, dragListeners, dragging, onContextMenu,
 }: HeatmapRowProps) {
   const glyph = pct === null ? '' : pct > 0 ? '▲' : pct < 0 ? '▼' : '';
   const sign = (n: number) => (n > 0 ? '+' : '');
@@ -46,6 +48,7 @@ export function HeatmapRow({
       // 도입 시에도 Enter/Space 가 드래그가 아닌 차트 열기로 유지되도록 하는 방어).
       {...dragListeners}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       style={dragging ? { ...sortableStyle, opacity: 0.5 } : sortableStyle}
       className={`grid grid-cols-[minmax(4rem,1fr)_3.5rem_3.2rem_4.25rem] gap-1.5 px-2 py-0.5 items-center text-sm border-b border-border outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}

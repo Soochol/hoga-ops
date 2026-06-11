@@ -95,3 +95,35 @@ export function classifyDataChange(
   // 길이 축소, 2개+ append, 그 외 모든 변화 → 안전하게 전체 교체.
   return { kind: 'setData' };
 }
+
+/** syncSeriesData 가 구동하는 최소 sink — 호출하는 lwc 메서드 딱 둘. 전체
+ *  `ISeriesApi<SeriesType>` 로 타이핑하지 않는 이유: lightweight-charts 의 union-typed
+ *  `setData` 가 `SeriesType` 분배 하에서 파라미터가 `never` 로 붕괴한다(차트 시리즈
+ *  타입 결함). 호출자의 `ISeriesApi<any>` 는 이 구조적 모양을 만족하므로 그대로 넘긴다. */
+export interface SeriesDataSink {
+  setData(data: SeriesItem[]): void;
+  update(point: SeriesItem): void;
+}
+
+/**
+ * 새 투영을 가장 싼 올바른 방법으로 시리즈에 적용하고, 다음 diff 를 위해 캐시할 값을
+ * 돌려준다. 이 함수가 데이터 effect 가 건너는 **seam** 이다 — skip/update/setData
+ * **결정**(classifyDataChange), 시리즈 **변경**, **캐시 갱신**이 전부 여기 모여,
+ * "캐시 배열 == 시리즈가 현재 들고 있는 데이터" 불변식이 React effect 에 흩어지지 않고
+ * 한 곳에서 강제·테스트된다. skip 이면 `prev` 를 그대로 돌려준다(시리즈가 이미 그 값을
+ * 들고 있으므로 캐시 불변), update/setData 후엔 `next` 를 돌려준다.
+ *
+ * 적용은 classifyDataChange 의 안전성 보증을 그대로 물려받는다: update 는 이전 원소가
+ * 하나도 안 바뀐 게 증명될 때만 호출되므로 setData 와 동치, 틀린 차트는 구조상 불가능.
+ */
+export function syncSeriesData(
+  sink: SeriesDataSink,
+  prev: readonly SeriesItem[] | null,
+  next: SeriesItem[],
+): readonly SeriesItem[] | null {
+  const decision = classifyDataChange(prev, next);
+  if (decision.kind === 'skip') return prev;
+  if (decision.kind === 'update') sink.update(decision.point);
+  else sink.setData(next);
+  return next;
+}

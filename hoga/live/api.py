@@ -331,6 +331,60 @@ class ControlRequest(BaseModel):
     action: ControlAction
 
 
+class LiveQuoteFetcher:
+    """`/quotes` 오버레이의 시세 fetch + 마지막-시세 캐시 + phase 게이팅을 한 곳에 모은
+    모듈. 라우트는 phase 계산·코드 파싱·KisClient 획득만 하고 이 모듈을 호출한다 —
+    캐시·게이팅·graceful-fallback 의 business logic 이 라우트(infra)에서 분리된다.
+
+    청킹(최대 30종목/콜, FHKST11300006)은 그대로 `kis.fetch_multi_price` 내부에 둔다
+    (여기선 캐시·게이팅만 소유). 마지막-시세는 표시 전용·디스크 미영속(ADR-0056),
+    단일 워커라 dict 로 충분(ADR-0038). FastAPI 없이 fake kis 로 단독 테스트 가능."""
+
+    def __init__(self) -> None:
+        # 장중 마지막 quotes — closed 서빙용(스펙 2026-06-08 ⑧ '마지막 시세 유지').
+        self._last_quotes: dict[str, KisQuote] = {}
+
+    async def fetch_and_gate(
+        self, kis: KisClient, code_list: list[str], phase: str,
+    ) -> list[LiveQuote]:
+        """code_list 의 시세를 phase 에 맞춰 반환. closed=마지막 시세(캐시 미스면 1회 채움),
+        open=라이브, pre_open=등락률 숨김. KIS 실패는 절대 전파하지 않는다(오버레이는 500 금지)."""
+        if phase == "closed":
+            # 장외: 마지막 시세 서빙. 캐시 미스(재시작 직후)면 1회만 KIS를 불러
+            # 채운다 — KIS는 장외에도 종가를 반환. 프론트는 closed에 600s
+            # 하트비트라 이 경로의 KIS 콜은 사실상 드로어 마운트 시 1회뿐.
+            missing = [c for c in code_list if c not in self._last_quotes]
+            if missing:
+                try:
+                    for q in await kis.fetch_multi_price(code_list):
+                        self._last_quotes[q.code] = q
+                except Exception as e:  # noqa: BLE001 — 오버레이는 절대 500 금지
+                    log.warning("live quotes cold fetch failed (%d codes): %s",
+                                len(code_list), e)
+            return [
+                LiveQuote(code=q.code, price=q.price,
+                          change_pct=q.change_pct, change_won=q.change_won)
+                for c in code_list
+                if (q := self._last_quotes.get(c)) is not None
+            ]
+        try:
+            quotes = await kis.fetch_multi_price(code_list)
+        except Exception as e:  # noqa: BLE001 — 10초 폴링 오버레이는 절대 500 금지;
+            # KIS rate-limit/api-error/네트워크 타임아웃 등 무엇이든 빈 결과로 graceful
+            # (프론트는 '—' 표시). retry-exhausted 신호는 warning 으로만 남긴다.
+            log.warning("live quotes fetch failed (%d codes): %s", len(code_list), e)
+            return []
+        for q in quotes:
+            self._last_quotes[q.code] = q
+        pre = phase == "pre_open"
+        return [
+            LiveQuote(code=q.code, price=q.price,
+                      change_pct=(None if pre else q.change_pct),
+                      change_won=(None if pre else q.change_won))
+            for q in quotes
+        ]
+
+
 def build_router(
     get_status: Callable[[], LiveStatus],
     get_buffer: Callable[[], LiveBuffer] | None = None,
@@ -387,9 +441,9 @@ def build_router(
             "is_open": True,
         }
 
-    # 장중 마지막 quotes — closed 서빙용(스펙 2026-06-08 ⑧ '마지막 시세 유지',
-    # ADR-0056 결: 표시 전용·디스크 미영속). ADR-0038 단일 워커라 dict로 충분.
-    _last_quotes: dict[str, KisQuote] = {}
+    # 시세 오버레이 fetch+캐시+게이팅은 LiveQuoteFetcher 가 소유. build_router 호출마다
+    # 새 인스턴스라 마지막-시세 캐시 스코프는 종전(per-router 클로저)과 동일.
+    _quote_fetcher = LiveQuoteFetcher()
 
     def _kis_for_background() -> "KisClient | None":
         """배경 REST(quotes·investor-net)용 KisClient — N=2면 account 1(직전엔 유휴였던
@@ -412,40 +466,10 @@ def build_router(
         kis = _kis_for_background()
         if kis is None:
             return LiveQuotesResponse(phase=phase, quotes=[])
-        if phase == "closed":
-            # 장외: 마지막 시세 서빙. 캐시 미스(재시작 직후)면 1회만 KIS를 불러
-            # 채운다 — KIS는 장외에도 종가를 반환. 프론트는 closed에 600s
-            # 하트비트라 이 경로의 KIS 콜은 사실상 드로어 마운트 시 1회뿐.
-            missing = [c for c in code_list if c not in _last_quotes]
-            if missing:
-                try:
-                    for q in await kis.fetch_multi_price(code_list):
-                        _last_quotes[q.code] = q
-                except Exception as e:  # noqa: BLE001 — 오버레이는 절대 500 금지
-                    log.warning("live quotes cold fetch failed (%d codes): %s",
-                                len(code_list), e)
-            return LiveQuotesResponse(phase=phase, quotes=[
-                LiveQuote(code=q.code, price=q.price,
-                          change_pct=q.change_pct, change_won=q.change_won)
-                for c in code_list
-                if (q := _last_quotes.get(c)) is not None
-            ])
-        try:
-            quotes = await kis.fetch_multi_price(code_list)
-        except Exception as e:  # noqa: BLE001 — 10초 폴링 오버레이는 절대 500 금지;
-            # KIS rate-limit/api-error/네트워크 타임아웃 등 무엇이든 빈 결과로 graceful
-            # (프론트는 '—' 표시). retry-exhausted 신호는 warning 으로만 남긴다.
-            log.warning("live quotes fetch failed (%d codes): %s", len(code_list), e)
-            return LiveQuotesResponse(phase=phase, quotes=[])
-        for q in quotes:
-            _last_quotes[q.code] = q
-        pre = phase == "pre_open"
-        return LiveQuotesResponse(phase=phase, quotes=[
-            LiveQuote(code=q.code, price=q.price,
-                      change_pct=(None if pre else q.change_pct),
-                      change_won=(None if pre else q.change_won))
-            for q in quotes
-        ])
+        return LiveQuotesResponse(
+            phase=phase,
+            quotes=await _quote_fetcher.fetch_and_gate(kis, code_list, phase),
+        )
 
     # past-candles 병렬 fetch의 총량 제어 — 라우터(=프로세스, ADR-0038 단일
     # 워커) 수준 공유: 동시 요청 2건이 떠도 KIS in-flight 합계 ≤ 5.

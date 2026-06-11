@@ -10,16 +10,19 @@ const groups: FolderGroup[] = [
   { folder: { id: 'f1', name: '반도체', order: 0 }, entries: [
     { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f1', order: 0 }] },
   { folder: { id: 'f2', name: '빈폴더', order: 1 }, entries: [] },     // 빈 → 제외
-  { folder: null, entries: [                                            // 미분류 → 제외
+  { folder: null, entries: [                                            // 비어있지 않은 미분류 → 포함(ADR-0068 G3)
     { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 }] },
 ];
 
-it('빈 폴더와 미분류는 보드에서 제외', () => {
+it('빈 폴더는 제외, 비어있지 않은 미분류는 포함(별도 그룹)', () => {
   render(<HeatmapBoard groups={groups} quoteByCode={new Map<string, LiveQuote>()}
     sortMode="change" onPick={() => {}} />);
   expect(screen.getByText('반도체')).toBeInTheDocument();
   expect(screen.queryByText('빈폴더')).not.toBeInTheDocument();
-  expect(screen.queryByText('SK하이닉스')).not.toBeInTheDocument();
+  // ADR-0068 G3: 미분류 그룹이 '미분류' 라벨로 표시되고 소속 종목이 보인다
+  // (분리 후 새로 추가한 종목은 항상 미분류로 먼저 들어가므로 숨기면 안 됨).
+  expect(screen.getByText('미분류')).toBeInTheDocument();
+  expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
 });
 
 it('폴더 카드에 스크롤 앵커 id가 있다(스트립 점프 대상)', () => {

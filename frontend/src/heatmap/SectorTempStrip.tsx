@@ -19,6 +19,7 @@ export interface SectorTempStripProps {
 export function SectorTempStrip({ groups, quoteByCode, onJump }: SectorTempStripProps) {
   const pctOf = (code: string) => quoteByCode.get(code)?.change_pct ?? null;
   const chips = visibleFolderGroups(groups)
+    .filter((g) => g.folder !== null) // 미분류(folder=null)는 섹터 온도/점프 대상 아님(ADR-0068)
     .map((g) => ({ folder: g.folder!, avg: avgPct(g.entries, pctOf) }))
     .filter((c): c is { folder: NonNullable<FolderGroup['folder']>; avg: number } => c.avg !== null)
     .sort((a, b) => b.avg - a.avg);

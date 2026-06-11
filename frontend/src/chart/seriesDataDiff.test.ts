@@ -1,9 +1,18 @@
-import { describe, it, expect } from 'vitest';
-import { classifyDataChange } from './seriesDataDiff';
+import { describe, it, expect, vi } from 'vitest';
+import type { SeriesDataItemTypeMap, SeriesType, UTCTimestamp } from 'lightweight-charts';
+import { classifyDataChange, syncSeriesData, type SeriesDataSink } from './seriesDataDiff';
 
-const L = (time: number, value: number, color?: string) =>
-  color === undefined ? { time, value } : { time, value, color };
-const W = (time: number) => ({ time }); // whitespace
+type SeriesItem = SeriesDataItemTypeMap[SeriesType];
+
+// lightweight-charts brands `time` (UTCTimestamp = number & {…}); the runtime
+// value is a plain number. Cast small integers through `t()` so the literals
+// satisfy the SeriesItem union without `any`.
+const t = (n: number) => n as UTCTimestamp;
+const L = (time: number, value: number, color?: string): SeriesItem =>
+  (color === undefined ? { time: t(time), value } : { time: t(time), value, color }) as SeriesItem;
+const W = (time: number): SeriesItem => ({ time: t(time) }) as SeriesItem; // whitespace
+const C = (time: number, c: number): SeriesItem =>
+  ({ time: t(time), open: 1, high: 2, low: 0, close: c }) as SeriesItem;
 
 describe('classifyDataChange — generic tail-diff (P2: setData vs update 결정)', () => {
   it('이전 배열 없음(첫 push) → setData', () => {
@@ -88,9 +97,70 @@ describe('classifyDataChange — generic tail-diff (P2: setData vs update 결정
   });
 
   it('candle: OHLC 중 하나만(마지막) 바뀜 → update', () => {
-    const C = (time: number, c: number) => ({ time, open: 1, high: 2, low: 0, close: c });
     const a = [C(1, 1), C(2, 2)];
     const b = [C(1, 1), C(2, 3)];
     expect(classifyDataChange(a, b)).toEqual({ kind: 'update', point: C(2, 3) });
+  });
+});
+
+// syncSeriesData 는 결정 + 적용 + 캐시를 한 seam에 모은다. 예전엔 적용/캐시가
+// RangeSeriesPane 의 effect 안에 있어 브라우저 전용 증거였으나, fake sink 로 "어느
+// lwc 메서드가 어떤 인자로 호출됐는가 + 다음 캐시 값"을 직접 검증한다.
+describe('syncSeriesData — 결정·적용·캐시 한 seam', () => {
+  function fakeSink() {
+    const sink: SeriesDataSink = { setData: vi.fn(), update: vi.fn() };
+    return sink as SeriesDataSink & { setData: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+  }
+
+  it('skip: sink 미호출 + 캐시는 prev 그대로(시리즈가 이미 들고 있음)', () => {
+    const sink = fakeSink();
+    const prev = [L(1, 10), L(2, 20)];
+    const next = [L(1, 10), L(2, 20)];
+    const cached = syncSeriesData(sink, prev, next);
+    expect(sink.setData).not.toHaveBeenCalled();
+    expect(sink.update).not.toHaveBeenCalled();
+    expect(cached).toBe(prev); // next 가 아니라 prev — 캐시 불변
+  });
+
+  it('update(tail): sink.update(마지막) 호출 + 캐시는 next', () => {
+    const sink = fakeSink();
+    const prev = [L(1, 10), L(2, 20), L(3, 30)];
+    const next = [L(1, 10), L(2, 20), L(3, 31)];
+    const cached = syncSeriesData(sink, prev, next);
+    expect(sink.update).toHaveBeenCalledTimes(1);
+    expect(sink.update).toHaveBeenCalledWith(L(3, 31));
+    expect(sink.setData).not.toHaveBeenCalled();
+    expect(cached).toBe(next);
+  });
+
+  it('setData(첫 push, prev=null): sink.setData(next) 호출 + 캐시는 next', () => {
+    const sink = fakeSink();
+    const next = [L(1, 10)];
+    const cached = syncSeriesData(sink, null, next);
+    expect(sink.setData).toHaveBeenCalledTimes(1);
+    expect(sink.setData).toHaveBeenCalledWith(next);
+    expect(sink.update).not.toHaveBeenCalled();
+    expect(cached).toBe(next);
+  });
+
+  it('setData(폴백, 이전 원소 변경): sink.setData(next) 호출 + 캐시는 next', () => {
+    const sink = fakeSink();
+    const prev = [L(1, 10), L(2, 20), L(3, 30)];
+    const next = [L(1, 10), L(2, 20, 'transparent'), L(3, 30)]; // 직전 color 변경
+    const cached = syncSeriesData(sink, prev, next);
+    expect(sink.setData).toHaveBeenCalledWith(next);
+    expect(sink.update).not.toHaveBeenCalled();
+    expect(cached).toBe(next);
+  });
+
+  it('연속 호출: update 후 또 skip이면 캐시가 update의 next 를 유지', () => {
+    const sink = fakeSink();
+    const a = [L(1, 10), L(2, 20)];
+    const b = [L(1, 10), L(2, 21)];
+    let cache = syncSeriesData(sink, a, b);       // update → cache=b
+    expect(cache).toBe(b);
+    cache = syncSeriesData(sink, cache ?? null, b); // 동일 → skip → cache=b 유지
+    expect(cache).toBe(b);
+    expect(sink.update).toHaveBeenCalledTimes(1);
   });
 });
