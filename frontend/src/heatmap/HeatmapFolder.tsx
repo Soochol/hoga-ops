@@ -14,6 +14,8 @@ export interface HeatmapFolderProps {
   folder: WatchlistFolder;
   entries: WatchlistEntry[];
   quoteByCode: Map<string, LiveQuote>;
+  /** 코드→since-open 시계열. 행에 그대로 흘려보낸다(없으면 빈 스파크 셀). */
+  seriesByCode?: Map<string, number[]>;
   sortMode: SortMode;
   onPick: (code: string) => void;
   /** 그룹 내 드래그 재정렬을 커밋한다(manual 모드 전용). 페이지가 useReorderEntries 로
@@ -27,7 +29,7 @@ export interface HeatmapFolderProps {
  *  DndContext — multicol 칼럼이 다른 폴더 간 cross-talk 을 구조적으로 차단하고,
  *  드래그가 "그룹 내"로 한정된다). change 모드는 매 폴링 라이브 재정렬이라 드래그가
  *  즉시 덮어쓰이므로 정적 행으로 렌더(드래그 비활성). */
-export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onReorder }: HeatmapFolderProps) {
+export function HeatmapFolder({ folder, entries, quoteByCode, seriesByCode, sortMode, onPick, onReorder }: HeatmapFolderProps) {
   // distance:5 — 클릭(차트 이동)과 드래그(재정렬)를 가르는 임계. drawer 와 동일 계약.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const pctOf = (code: string): number | null => quoteByCode.get(code)?.change_pct ?? null;
@@ -45,16 +47,18 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
     const q = quoteByCode.get(e.code);
     return draggable ? (
       <SortableHeatmapRow key={e.code} code={e.code} name={e.name}
-        price={q?.price ?? null} pct={q?.change_pct ?? null} onPick={() => onPick(e.code)} />
+        price={q?.price ?? null} pct={q?.change_pct ?? null} series={seriesByCode?.get(e.code)}
+        onPick={() => onPick(e.code)} />
     ) : (
       <HeatmapRow key={e.code} name={e.name} price={q?.price ?? null} pct={q?.change_pct ?? null}
+        series={seriesByCode?.get(e.code)}
         onClick={() => onPick(e.code)} ariaLabel={`${e.name} ${e.code} 차트 열기`}
         testId={`heatmap-row-${e.code}`} />
     );
   });
 
   return (
-    <div className="break-inside-avoid bg-bg-card border border-border rounded mb-2 overflow-hidden">
+    <div id={`heatmap-folder-${folder.id}`} className="break-inside-avoid bg-bg-card border border-border rounded mb-2 overflow-hidden">
       {/* 그룹 헤더 밴드 = bg-bg-subtle 위에 섹터 평균 등락률 기반 아주 옅은 히트 틴트를
           inset box-shadow 로 레이어(배경색을 약하게 더한다 — 카드 본문 대비 밴드를
           구분하고 섹터 온도를 일별). 결측/0% 면 틴트 없이 bg-bg-subtle 그대로. */}
@@ -92,7 +96,8 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
 /** manual 모드 행 래퍼 — useSortable 의 ref/transform/listeners 를 HeatmapRow 에 전달한다.
  *  drawer SortableQuoteRow 와 동일 패턴(행 전체가 드래그 표면, 핸들 없음). */
 function SortableHeatmapRow(props: {
-  code: string; name: string; price: number | null; pct: number | null; onPick: () => void;
+  code: string; name: string; price: number | null; pct: number | null;
+  series?: number[]; onPick: () => void;
 }) {
   const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id: props.code });
   return (
@@ -100,6 +105,7 @@ function SortableHeatmapRow(props: {
       name={props.name}
       price={props.price}
       pct={props.pct}
+      series={props.series}
       onClick={props.onPick}
       ariaLabel={`${props.name} ${props.code} 차트 열기`}
       testId={`heatmap-row-${props.code}`}
