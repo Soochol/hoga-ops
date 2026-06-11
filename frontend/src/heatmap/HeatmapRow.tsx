@@ -47,9 +47,9 @@ export function HeatmapRow({
       style={dragging ? { ...sortableStyle, opacity: 0.5 } : sortableStyle}
       className={`grid grid-cols-[minmax(4rem,1fr)_3.2rem_4.25rem] gap-1.5 px-2 py-0.5 items-center text-sm border-b border-border outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
     >
-      {/* 종목명은 text-fg-dim(중간 회색) — 현재가·등락률 칩보다 한 단계 낮춰, 흰 글자
-          일색으로 너무 밝던 행에 위계를 준다(라벨=이름 < 값=가격 < 신호=등락률 칩). */}
-      <span className="truncate text-fg-dim">{name}</span>
+      {/* 종목명은 text-fg-dim(중간 회색) + text-xs(행 text-sm 보다 한 단계 작게) — 현재가·
+          등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}
+      <span className="truncate text-xs text-fg-dim">{name}</span>
       <span className="text-right font-mono tabular-nums text-fg">
         {price === null ? '—' : price.toLocaleString('ko-KR')}
       </span>

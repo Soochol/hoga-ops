@@ -64,7 +64,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
           : undefined}>
         {/* 폴더(섹터)명 = 보드의 1차 앵커라 text-fg(밝게) — 기존 text-fg-dim 은 섹터명이
             뒤로 물러나 스캔이 어려웠다(가독성 개선). */}
-        <span className="text-sm font-semibold text-fg truncate">{folder.name}</span>
+        <span className="text-xs font-semibold text-fg truncate">{folder.name}</span>
         <span className="flex items-center gap-2 flex-none">
           {/* 평균 등락률을 행과 같은 히트 칩으로(heatBg) — 섹터 온도를 일별하게 하면서
               "히트색은 칩에만" 설계를 그대로 따른다. 글자는 행 칩과 동일하게 text-fg-dim·
