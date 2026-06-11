@@ -545,48 +545,66 @@ class BrokerSeriesResponse(BaseModel):
 
 
 class WatchlistFolder(BaseModel):
-    """A named, ordered grouping of WatchlistEntries. See CONTEXT.md
-    "Watchlist Folder". `id` is backend-minted and stable across renames."""
+    """A named, ordered grouping that OWNS its ordered member Codes (v3,
+    ADR-0069). `member_codes` order = the folder's in-display order. `id` is
+    backend-minted and stable across renames. STORE model — the wire ships
+    WatchlistFolderView (member_codes dropped, ADR-0004 Entity≠Wire)."""
 
     id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
     name: str = Field(min_length=1, max_length=40)
     order: int = Field(ge=0)
+    member_codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]] = Field(default_factory=list)
 
 
 class WatchlistEntry(BaseModel):
-    """One Code in the Watchlist. See CONTEXT.md WatchlistEntry."""
+    """One Code's backfill record (v3). Folder membership + ordering live on
+    WatchlistFolder.member_codes — the entry holds only capture markers.
+    STORE model; the wire ships the exploded WatchlistEntryView."""
 
     code: str = Field(pattern=CODE_PATTERN)
     name: str
     registered_at_kst_date: str = Field(pattern=r"^\d{8}$")
     last_success_date: str | None = Field(default=None, pattern=r"^\d{8}$")
-    folder_id: str | None = Field(default=None, pattern=r"^f_[0-9a-f]{8}$")
-    order: int = Field(default=0, ge=0)
 
 
 class WatchlistDocument(BaseModel):
-    """On-disk watchlist.json (v2). Typed envelope, validated on load via
+    """On-disk watchlist.json (v3). Typed envelope, validated on load via
     model_validate. Every writer round-trips the WHOLE document under one
-    lock so folders survive a capture-success write (ADR-0065)."""
+    lock so folders survive a capture-success write (ADR-0065). The invariant
+    {e.code} == ⋃ folder.member_codes is a write-path/migration concern — NOT
+    a raising validator (read path must not crash/wipe on drift, ADR-0065)."""
 
-    schema_version: int = 2
+    schema_version: int = 3
     folders: list[WatchlistFolder] = Field(default_factory=list)
     entries: list[WatchlistEntry] = Field(default_factory=list)
 
-    @model_validator(mode="after")
-    def _no_dangling_folder_id(self) -> "WatchlistDocument":
-        valid = {f.id for f in self.folders}
-        for e in self.entries:
-            if e.folder_id is not None and e.folder_id not in valid:
-                raise ValueError(
-                    f"entry {e.code} references unknown folder {e.folder_id}"
-                )
-        return self
+
+# --- Wire (Wire Model = consumer shape; ADR-0004) --------------------------
+# The store keeps member_codes on folders + slim per-Code entries; the wire
+# ships the shape the frontend consumes verbatim: folders {id,name,order} and
+# entries EXPLODED to one (folder, code) row each (a multi-folder Code appears
+# once per folder). The backend route builds these from the document — no
+# client adapter (ADR-0069 option B).
+
+
+class WatchlistFolderView(BaseModel):
+    id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
+    name: str = Field(min_length=1, max_length=40)
+    order: int = Field(ge=0)
+
+
+class WatchlistEntryView(BaseModel):
+    code: str = Field(pattern=CODE_PATTERN)
+    name: str
+    registered_at_kst_date: str = Field(pattern=r"^\d{8}$")
+    last_success_date: str | None = Field(default=None, pattern=r"^\d{8}$")
+    folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")  # v3: never null
+    order: int = Field(default=0, ge=0)                  # index within the folder's member_codes
 
 
 class WatchlistResponse(BaseModel):
-    folders: list[WatchlistFolder] = Field(default_factory=list)
-    entries: list[WatchlistEntry]
+    folders: list[WatchlistFolderView] = Field(default_factory=list)
+    entries: list[WatchlistEntryView]
     next_run_at_ms: int  # Unix-ms of next KST 17:00 boundary (ADR-0003)
 
 
