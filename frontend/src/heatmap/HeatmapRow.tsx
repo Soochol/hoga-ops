@@ -53,14 +53,15 @@ export function HeatmapRow({
       <span className="text-right font-mono tabular-nums text-fg">
         {price === null ? '—' : price.toLocaleString('ko-KR')}
       </span>
-      {/* 히트는 등락률 칩 배경에만: 농도=등락폭(heatBg, 칩 전용 알파), 흰 글자 + ▲▼ + 부호.
+      {/* 히트는 등락률 칩 배경에만: 농도=등락폭(heatBg, 칩 전용 알파) + ▲▼ + 부호.
           칸을 꽉 채우는 둥근 칩이라 한 칼럼이 통째로 히트색 띠처럼 보이고 행 간 정렬도 유지된다.
-          글자는 순백(text-white) + semibold — 채도 높은 칩 배경에서 회백색(text-fg)보다 또렷하다. */}
+          글자는 종목명과 동일하게 text-fg-dim·기본 두께 — 칩의 색(방향·농도)이 신호를 지고
+          숫자는 한 단계 물러난 디테일로 둔다(사용자 선호: 굵은 흰 글자 톤다운). */}
       {pct === null ? (
         <span className="text-right font-mono tabular-nums text-fg-dim">—</span>
       ) : (
         <span
-          className="rounded px-1.5 text-right font-mono tabular-nums font-semibold text-white"
+          className="rounded px-1.5 text-right font-mono tabular-nums text-fg-dim"
           style={{ background: heatBg(pct, HEAT_CHIP_MAX_ALPHA) }}
         >
           {glyph}{sign(pct)}{pct.toFixed(2)}

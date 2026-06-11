@@ -16,12 +16,13 @@ it('등락률 칩에 히트 배경(상승=빨강) + 행 자체엔 워시 없음'
   row(); // pct=5 → 상승
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
   expect(screen.getByText('70,000')).toBeInTheDocument();
-  // 등락률 칩 = 빨강 히트 배경, 순백 + semibold 글자(가독성; text-price-up 아님)
+  // 등락률 칩 = 빨강 히트 배경, 글자는 종목명과 동일하게 text-fg-dim·기본 두께
+  // (방향색 텍스트 아님 — text-price-up 금지; 굵은 흰 글자 톤다운).
   const chip = screen.getByText('▲+5.00');
   expect(chip.getAttribute('style') ?? '').toMatch(/220,\s*38,\s*38/);
   expect(chip).not.toHaveClass('text-price-up');
-  expect(chip).toHaveClass('text-white');
-  expect(chip).toHaveClass('font-semibold');
+  expect(chip).toHaveClass('text-fg-dim');
+  expect(chip).not.toHaveClass('font-semibold');
   // 행 전체 워시 제거 → 행 요소엔 background 인라인 스타일이 없다
   expect(screen.getByTestId('heatmap-row-005930').getAttribute('style') ?? '')
     .not.toMatch(/background/);
