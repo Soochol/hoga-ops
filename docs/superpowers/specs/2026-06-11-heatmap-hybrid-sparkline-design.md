@@ -68,7 +68,7 @@
 ```
 ┌ pages/Heatmap (flex col, h-full) ─────────────────────────────┐
 │ header  관심맵 · HH:MM 갱신 · N종목 · [정렬 토글] · [범례]      │ flex-none
-│ caption 스파크라인 = 장중(개장 이후) 추세                        │ flex-none, fg-dim/xs
+│ caption 스파크라인 = 장중 추세                                  │ flex-none, fg-dim/xs
 │ ┌ SectorTempStrip ────────────────────────────────────────┐   │ flex-none
 │ │ [반도체+4.3%][로봇+2.5%]…[통신-3.0%]  (히트칩, 뜨거운 순)  │   │  (wrap)
 │ └──────────────────────────────────────────────────────────┘   │
@@ -113,7 +113,7 @@ useSparklineSeries(code) → number[]  →  <Sparkline series={...} />
 ### 4. 스파크라인 누적 store (옵션 a — since-open) ★유일한 신규 상태 단위
 
 - **저장**: `Map<code, number[]>` 모듈 레벨(Zustand). 컴포넌트 state가 **아니다** — `/heatmap`↔다른 탭 인앱 네비게이션에 살아남아야 한다.
-- **append**: `pages/Heatmap`의 effect가 `dataUpdatedAt` 변경마다 현재 `quoteByCode`를 순회, 코드별로 마지막 점과 다르면(또는 새 폴이면) push. cap = 최근 **40점**(≈10초×40 = 6.7분 창; plan에서 조정 가능).
+- **append**: `pages/Heatmap`의 effect가 **`phase==='open'`일 때만** `dataUpdatedAt` 변경마다 `quoteByCode` 전 종목 값(=`change_pct`)을 push. **closed는 600s 하트비트로 동일 non-null 시세를 재서빙**하므로 phase 게이트로 막는다(평탄점 오염 방지 + closed "신규 점 없음" 보장). 값 결측(null)인 코드는 **carry-forward**(점 안 늘리고 기존 시계열 보존), 이번 폴에서 빠진 코드만 prune(transient null이 이력을 통째로 날리던 버그 방지). cap = 롤링 최근 **40점**(≈10초×40 = 6.7분 창; QA 튜닝 대상).
 - **리셋(since-open의 올바른 동작, 버그 아님)**:
   - **풀 페이지 리로드** → 인메모리라 자연 초기화("이번에 연 이후").
   - **KST 날짜 롤오버** → append 시 직전 점의 KST 날짜와 다르면 해당 코드 시계열 clear.
@@ -129,7 +129,7 @@ useSparklineSeries(code) → number[]  →  <Sparkline series={...} />
 
 ### 6. 스파크라인 색 규칙 (결정)
 
-- **채택(대안 A) — 확정(2026-06-11 사장님 승인)**: stroke 색 = `sign(series[last] − series[first])` — 연 이후 기울기 부호. 상승→`--price-up`, 하락→`--price-down`, 평탄(|Δ|<ε)→`--fg-dim`. 1px, fill 없음, 끝점 1.2r 점(목업과 동일). 각 선이 *자기일관적*이고 칩과의 괴리는 정보(Invariant impact 참조).
+- **채택(대안 A) — 확정(2026-06-11 사장님 승인)**: stroke 색 = `sign(series[last] − series[first])` — 연 이후 기울기 부호. 상승→`--price-up`, 하락→`--price-down`, 평탄(|Δ|<EPS_PP, **EPS_PP=0.05%p** — series가 change_pct라 slope 단위는 %p)→`--fg-dim`. 1px, fill 없음, 끝점 1.2r 점(목업과 동일). 각 선이 *자기일관적*이고 칩과의 괴리는 정보(Invariant impact 참조).
 - **대안 B(거부권)**: 중립 단일색(`--fg-dim`) — 칩이 유일 방향신호. 단일-신호 규율 최우선이지만 사용자가 방금 승인한 "색 있는 선" 룩을 잃음.
 - **DESIGN.md 추가(1줄)**: "Price-direction sparkline — `heat.ts`가 가격방향을 *배경*으로 확장하듯, `Sparkline`은 *1px stroke*로 확장한다. 색 = since-open 기울기 부호(상승 적·하락 청·평탄 dim); 일간 등락칩과 다를 수 있다(다른 시간창 = 의도)."
 
@@ -168,10 +168,10 @@ useSparklineSeries(code) → number[]  →  <Sparkline series={...} />
 
 ## Risks / Open questions
 
-- **since-open 초기 공백**: 새로 열면 선이 비어 보임 — 캡션으로 완화. (Open: 첫 점을 즉시 찍어 1점 dot이라도 보일지 → plan에서 결정.)
-- **칩↔선 색 괴리**: §6 — 사용자 거부권 항목. 검토에서 확정.
-- **cap 창 길이(40점≈6.7분)**: 너무 짧으면 추세가 평탄해 보임. plan에서 보존창 튜닝(시간 기반 vs 개수 기반).
-- **재렌더 비용**: 236행×SVG를 10초마다 — `Sparkline`을 (마지막점+길이) 시그니처로 `memo`. 가상화 불필요(YAGNI).
+- **초기 공백(결정)**: 새로 열면 첫 폴~다음 폴(~10s) 선 없음(점<2 → 미렌더). 1점 dot 시드는 **거부**(eng-review) — 빈 셀 유지가 더 단순·정직, 캡션이 완화.
+- **칩↔선 색 괴리(확정)**: §6 — 색=A(기울기) 채택, 2026-06-11 승인.
+- **cap 창 길이(40 유지)**: 40점≈6.7분은 승인 목업 밀도(16점)와 충돌하는 taste 항목이라 코드 전 강제 대신 **QA 튜닝**(eng-review window). 캡션은 거짓이 되는 "개장 이후"를 떼고 "장중 추세"로(cap 재튜닝에도 항상 참).
+- **재렌더 비용**: 매 폴 새 Map→전 행 재렌더(기존 quote 폴과 동일·10초라 무해). `Sparkline` memo는 series가 매 폴 새 참조라 사실상 항상 재계산 — *원하는 동작*. per-code 구독은 효과가 작아 **불필요(unnecessary, not ineffective)** → prop-drill 유지(YAGNI). 가상화 불필요.
 
 ## Out of Scope (Backlog)
 

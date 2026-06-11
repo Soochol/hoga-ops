@@ -84,6 +84,19 @@ it('prune: 이번 배치에 없는 코드는 사라진다(watchlist 축소)', ()
   expect(s.has('A')).toBe(true);
   expect(s.has('B')).toBe(false);
 });
+
+it('carry-forward: 값 null이면 점은 안 늘리고 기존 시계열 보존', () => {
+  const { appendBatch } = useSparklineStore.getState();
+  appendBatch([{ code: 'A', value: 1 }], DAY1);
+  appendBatch([{ code: 'A', value: null }], DAY1);  // 일시적 결측(여전히 watchlist)
+  expect(useSparklineStore.getState().series.get('A')).toEqual([1]); // [1,1] 아님
+});
+
+it('carry-forward: 첫 폴부터 null이면 빈 배열로 Map을 오염시키지 않는다', () => {
+  const { appendBatch } = useSparklineStore.getState();
+  appendBatch([{ code: 'A', value: null }], DAY1);
+  expect(useSparklineStore.getState().series.has('A')).toBe(false);
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -99,10 +112,12 @@ import { create } from 'zustand';
 import { unixMsToKSTDate } from '../util/time';
 
 /** since-open 시계열 누적 store. 풀 리로드(인메모리)·KST 날짜롤오버에 리셋된다 —
- *  "보드를 연 이후" 의미상 올바른 동작(spec 2026-06-11 §4). cap=최근 MAX_POINTS점. */
+ *  "보드를 연 이후"에 가까운 롤링 동작(spec 2026-06-11 §4). cap=롤링 최근 MAX_POINTS점
+ *  (=10초폴×40≈6.7분): 개장 후 cap분까지는 글자그대로 since-open, 이후 트레일링 창.
+ *  점수는 QA 튜닝 대상(spec §Risks). 진짜 풀 since-open은 서버 옵션 b(Out-of-Scope). */
 export const MAX_POINTS = 40;
 
-export interface SparkPoint { code: string; value: number; }
+export interface SparkPoint { code: string; value: number | null; }
 
 interface Store {
   series: Map<string, number[]>;
@@ -125,6 +140,13 @@ export const useSparklineStore = create<Store>((set, get) => ({
     const next = new Map<string, number[]>();
     for (const { code, value } of points) {
       const arr = base.get(code) ?? [];
+      if (value === null) {
+        // carry-forward: 이번 폴에 값 결측이어도 기존 시계열을 보존(점은 안 늘림).
+        // 빈 배열은 set하지 않아 Map 오염을 막는다(rollover/첫 폴 결측). watchlist에
+        // 남아 있으면 보존되고, 배치에서 빠진 코드만 prune된다(아래 next 미포함).
+        if (arr.length > 0) next.set(code, arr);
+        continue;
+      }
       const grown = arr.length >= MAX_POINTS
         ? [...arr.slice(arr.length - MAX_POINTS + 1), value]
         : [...arr, value];
@@ -225,8 +247,10 @@ export interface SparklineProps {
   height?: number;
 }
 
-/** 평탄 임계: 연 이후 |Δ| < EPS 면 중립색(noise를 방향신호로 오독 방지). */
-const EPS = 0.02;
+/** 평탄 임계(단위 %p — series가 change_pct이므로 slope = Δ일간등락 %p).
+ *  |Δ| < EPS_PP 면 중립색. 0.05%p ≈ 롤링 창의 '추세 없음' 바닥선(1틱 ≈0.1~0.3%p
+ *  미만의 미동을 방향신호로 오독 방지). closed 시 series 평탄 → slope 0 < EPS_PP → 중립 정지(의도). */
+const EPS_PP = 0.05;
 
 /** since-open 시계열 → 1px SVG 스파크라인. 색 = 기울기(last−first) 부호:
  *  상승 --price-up(적) · 하락 --price-down(청) · 평탄 --fg-dim.
@@ -235,7 +259,7 @@ const EPS = 0.02;
 export const Sparkline = memo(function Sparkline({ series, width = 56, height = 16 }: SparklineProps) {
   if (!series || series.length < 2) return null;
   const slope = series[series.length - 1] - series[0];
-  const stroke = Math.abs(slope) < EPS
+  const stroke = Math.abs(slope) < EPS_PP
     ? 'var(--fg-dim)'
     : slope > 0 ? 'var(--price-up)' : 'var(--price-down)';
   const min = Math.min(...series);
@@ -514,7 +538,7 @@ const quoteByCode = new Map<string, LiveQuote>([
 
 it('가시 섹터를 뜨거운 순(avg 내림차순)으로, 빈/결측 섹터는 제외', () => {
   render(<SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={() => {}} />);
-  const chips = screen.getAllByRole('listitem').map((c) => c.textContent ?? '');
+  const chips = screen.getAllByRole('button').map((c) => c.textContent ?? '');
   expect(chips.length).toBe(3);
   expect(chips[0]).toMatch(/로봇/);   // +4
   expect(chips[1]).toMatch(/반도체/); // +1
@@ -524,14 +548,14 @@ it('가시 섹터를 뜨거운 순(avg 내림차순)으로, 빈/결측 섹터는
 it('칩 클릭 → onJump(folderId)', () => {
   const onJump = vi.fn();
   render(<SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={onJump} />);
-  fireEvent.click(screen.getAllByRole('listitem')[0]); // 로봇 = f2
+  fireEvent.click(screen.getAllByRole('button')[0]); // 로봇 = f2
   expect(onJump).toHaveBeenCalledWith('f2');
 });
 
 it('상승 칩 배경 = 적(--price-up rgb), 하락 칩 = 청', () => {
   render(<SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={() => {}} />);
-  const up = screen.getAllByRole('listitem')[0];   // 로봇 +4
-  const down = screen.getAllByRole('listitem')[2]; // 통신 -2
+  const up = screen.getAllByRole('button')[0];   // 로봇 +4
+  const down = screen.getAllByRole('button')[2]; // 통신 -2
   expect(up.getAttribute('style') ?? '').toMatch(/220,\s*38,\s*38/);
   expect(down.getAttribute('style') ?? '').toMatch(/37,\s*99,\s*235/);
 });
@@ -573,12 +597,13 @@ export function SectorTempStrip({ groups, quoteByCode, onJump }: SectorTempStrip
   if (chips.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1 px-2 py-1.5 bg-bg-subtle border-b border-border-strong flex-none"
-      role="list" aria-label="섹터 온도">
+      aria-label="섹터 온도">
+      {/* 칩 = 점프 버튼. role="list/listitem"을 button에 얹지 않는다(role 충돌) —
+          접근성은 각 버튼의 aria-label(섹터명+평균)로 충분하고, 테스트는 role 'button'으로 쿼리. */}
       {chips.map(({ folder, avg }) => (
         <button
           key={folder.id}
           type="button"
-          role="listitem"
           onClick={() => onJump(folder.id)}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-fg-dim hover:text-fg outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--accent)]"
           style={{ background: heatBg(avg, STRIP_ALPHA) }}
@@ -632,17 +657,29 @@ it('폴더·종목·phase 배지·색 범례 렌더', async () => {
 ```
 (같은 테스트의 나머지 줄 — 삼성전자·/장중/·색 범례 — 불변.)
 
+(a2) **세 번째 테스트(`기본 manual=order 순…`)도 76행 `await screen.findByText('반도체');`가 스트립 칩+헤더로 중복 폭발** → `await screen.findAllByText('반도체');`로 변경(이 줄은 단지 렌더 완료 대기용이라 개수 단정 불필요). 같은 테스트의 `getAllByText(/삼성전자|SK하이닉스/)`는 스트립이 섹터명만 칩으로 쓰므로 영향 없음(불변).
+
 (b) `beforeEach`에 jsdom 미구현 `scrollIntoView` 스텁 추가(스트립 점프가 호출):
 ```tsx
 beforeEach(() => {
   setActiveCode.mockClear();
   useHeatmapPrefsStore.setState({ sortMode: 'manual' });
-  Element.prototype.scrollIntoView = vi.fn();   // jsdom 미구현 — 스트립 점프 호출 대비
+  useSparklineStore.getState().reset();              // 누적 store 격리(테스트 간 누수 차단)
+  Element.prototype.scrollIntoView = vi.fn();         // jsdom 미구현 — 스트립 점프 호출 대비
+  // 매 테스트 open 기본값으로 리셋 — per-test mockReturnValue 가 다음 테스트로 누수되지 않게.
+  vi.mocked(useLiveQuoteOverlay).mockReturnValue({
+    quoteByCode: new Map([
+      ['005930', { code: '005930', price: 70000, change_pct: -2, change_won: -1400 }],
+      ['000660', { code: '000660', price: 200000, change_pct: 5, change_won: 10000 }],
+    ]),
+    phase: 'open', dataUpdatedAt: 0,
+  } as ReturnType<typeof useLiveQuoteOverlay>);
   vi.mocked(useLiveStatus).mockReturnValue(
     { data: { running: true, started_at_ms: 1, cycle_lag_ms: 0 } } as ReturnType<typeof useLiveStatus>,
   );
 });
 ```
+(import 추가: `import { useSparklineStore } from '../state/sparklineStore';`, `import { useLiveQuoteOverlay } from '../api/liveQuotes';`, 그리고 RTL에서 `waitFor` 추가 — `import { render, screen, fireEvent, waitFor } from '@testing-library/react';`. 기존 `vi.mock('../api/liveQuotes', …)`의 `useLiveQuoteOverlay: vi.fn(...)`는 그대로 두면 `vi.mocked(...).mockReturnValue`가 동작.)
 
 (c) 파일 끝에 스트립 테스트 2개 추가:
 ```tsx
@@ -658,6 +695,35 @@ it('스트립 칩 클릭 → 해당 카드로 scrollIntoView', async () => {
   expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith(
     expect.objectContaining({ behavior: 'smooth' }),
   );
+});
+
+it('open 폴(dataUpdatedAt≠0)이 since-open store에 누적된다', async () => {
+  vi.mocked(useLiveQuoteOverlay).mockReturnValue({
+    quoteByCode: new Map([
+      ['005930', { code: '005930', price: 70000, change_pct: -2, change_won: -1400 }],
+      ['000660', { code: '000660', price: 200000, change_pct: 5, change_won: 10000 }],
+    ]),
+    phase: 'open', dataUpdatedAt: 1_700_000_000_000,
+  } as ReturnType<typeof useLiveQuoteOverlay>);
+  renderPage();
+  await screen.findAllByText('반도체');
+  await waitFor(() => expect(useSparklineStore.getState().series.get('005930')).toEqual([-2]));
+  expect(useSparklineStore.getState().series.get('000660')).toEqual([5]);
+});
+
+it('closed phase면 누적 안 함 — spec §4 "신규 점 없음"(평탄점 오염 차단)', async () => {
+  vi.mocked(useLiveQuoteOverlay).mockReturnValue({
+    quoteByCode: new Map([['005930', { code: '005930', price: 70000, change_pct: -2, change_won: -1400 }]]),
+    phase: 'closed', dataUpdatedAt: 1_700_000_000_000,  // dataUpdatedAt≠0이라 phase절만 격리 검증
+  } as ReturnType<typeof useLiveQuoteOverlay>);
+  renderPage();
+  await screen.findAllByText('반도체');
+  expect(useSparklineStore.getState().series.size).toBe(0);
+});
+
+it('정직 캡션 — since-open 단정 없이 "장중 추세"', async () => {
+  renderPage();
+  expect(await screen.findByText('스파크라인 = 장중 추세')).toBeInTheDocument();
 });
 ```
 
@@ -686,16 +752,15 @@ import { useSparklineSeries } from '../heatmap/useSparklineSeries';
   const appendBatch = useSparklineStore((s) => s.appendBatch);
   const seriesByCode = useSparklineSeries();
 
-  // 매 폴(dataUpdatedAt 변경)마다 전 종목 등락률을 since-open 시계열에 누적.
-  // 의존성은 dataUpdatedAt만 — 폴마다 1회만 돌고 재렌더로는 안 돈다(중복 점 방지).
+  // 매 폴(dataUpdatedAt 변경)마다 전 종목 등락률을 누적 — phase==='open'에만(eng-review).
+  // closed는 _last_quotes를 600s 하트비트로 동일 non-null change_pct 재서빙(liveQuotes 주석)
+  // → null 필터로 못 막아 평탄점이 쌓인다. phase 게이트가 spec §4 "closed: 신규 점 없음"을 보장.
+  // 결측(null)은 store가 carry-forward(기존 시계열 보존). filter 없이 전 codes를 넘겨,
+  // watchlist에 있으면 보존·빠지면 store가 prune(전치 #3 결정). deps=dataUpdatedAt만(phase는
+  // 동일 useQuotes 결과라 항상 동시 변경 → stale closure 불가).
   useEffect(() => {
-    if (!dataUpdatedAt) return;
-    const points = codes
-      .map((code) => {
-        const v = quoteByCode.get(code)?.change_pct ?? null;
-        return v === null ? null : { code, value: v };
-      })
-      .filter((p): p is { code: string; value: number } => p !== null);
+    if (phase !== 'open' || !dataUpdatedAt) return;
+    const points = codes.map((code) => ({ code, value: quoteByCode.get(code)?.change_pct ?? null }));
     if (points.length) appendBatch(points, dataUpdatedAt);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataUpdatedAt]);
@@ -709,7 +774,7 @@ import { useSparklineSeries } from '../heatmap/useSparklineSeries';
 (c) 렌더 — `<LiveStateBanner .../>` 다음, 정직 캡션 + 스트립 추가하고 `HeatmapBoard`에 `seriesByCode` 전달:
 ```tsx
       <LiveStateBanner primary={banner.primary} stack={banner.stack} />
-      <div className="px-3 py-1 text-xs text-fg-dim flex-none">스파크라인 = 장중(개장 이후) 추세</div>
+      <div className="px-3 py-1 text-xs text-fg-dim flex-none">스파크라인 = 장중 추세</div>
       <SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={scrollToFolder} />
       {showNewGroup && (
 ```
@@ -787,4 +852,26 @@ Expected: 타입 에러 0, lint 0, 빌드 성공.
 
 **Placeholder scan:** TBD/TODO/"적절히 처리" 없음 — 모든 코드·테스트·명령 완전 기술.
 
-**Type consistency:** `appendBatch(points: SparkPoint[], nowMs)` (Task1) ↔ 호출 `appendBatch(points, dataUpdatedAt)` (Task6) 일치. `series?: number[]`/`seriesByCode?: Map<string,number[]>` 명칭 Task3·4·6 일관. `useSparklineSeries(): Map<string,number[]>` (Task1) ↔ 사용 (Task6) 일치. `SectorTempStripProps{groups,quoteByCode,onJump}` (Task5) ↔ 호출 (Task6) 일치. `Sparkline` className `srow-spark` (Task2) ↔ 쿼리 (Task3·4) 일치.
+**Type consistency:** `appendBatch(points: SparkPoint[], nowMs)` (Task1, `SparkPoint.value: number|null`) ↔ 호출 `appendBatch(points, dataUpdatedAt)` (Task6) 일치. `series?: number[]`/`seriesByCode?: Map<string,number[]>` 명칭 Task3·4·6 일관. `useSparklineSeries(): Map<string,number[]>` (Task1) ↔ 사용 (Task6) 일치. `SectorTempStripProps{groups,quoteByCode,onJump}` (Task5) ↔ 호출 (Task6) 일치. `Sparkline` className `srow-spark` (Task2) ↔ 쿼리 (Task3·4) 일치. `EPS_PP`(Task2) 단일 정의.
+
+---
+
+## 🔒 Eng-Review Lock-in (2026-06-11) — 9개 그릴링 결정 반영 완료
+
+`/grill-with-docs` + `/plan-eng-review`(코드기반 리뷰 + 반론검증 2단계, 18 에이전트)로 9개 결정을 확정해 위 태스크에 **이미 인라인 반영**했다. 추적용 요약:
+
+| # | 결정 | 반영 위치 |
+|---|---|---|
+| 1 window | 롤링 cap **MAX_POINTS=40 유지**(48 기각), 캡션 "장중 추세"(거짓 "개장 이후" 제거) | Task1 주석·Task6 캡션·캡션 테스트 |
+| 2 phase-gating | 누적 effect `if (phase!=='open' \|\| !dataUpdatedAt) return;` (closed 600s 재서빙·spec §4) | Task6 Step3(b) + closed 회귀 테스트 |
+| 3 prune-null | **버그 수정** — `SparkPoint.value: number\|null`, null→carry-forward(빈 배열 set 금지), 폴 누락 코드만 prune | Task1 appendBatch + store 테스트 2건 |
+| 4 value-source | **change_pct** 확정(price 금지), prune 동반수정 필수(#3) | Task1·Task6 |
+| 5 empty-first | 점<2 → 미렌더 유지, dot 시드 거부 | Task2 (불변) |
+| 6 flat-eps | `EPS 0.02 → EPS_PP 0.05` (%p 단위 명시) | Task2 |
+| 7 perf | prop-drill 유지(per-code 구독 불필요·YAGNI), 근거 "unnecessary(≠ineffective)"로 정정 | spec §Risks |
+| 8 strip | role="list/listitem" 충돌 제거(버튼 aria-label로 a11y), **test3 L76 `findByText('반도체')` 중복도 수정** | Task5 컴포넌트·Task6 Step1(a2)·스트립 테스트 쿼리 |
+| 9 test-coverage | store단위 + 페이지 통합(누적 와이어·closed 게이트) 추가, 와이어는 폴 간 값 변화/빈배열 set 금지 | Task1·Task6 Step1 |
+
+**충돌 정합화**: #3(conf5, 전용 결정)의 `appendBatch(points, nowMs)` **2-인자 + value:number|null** 형이, #9가 인용한 3-인자(liveCodes) 형을 **대체**한다(null carry-forward가 liveCodes 역할을 흡수). 모든 태스크는 2-인자 형으로 통일.
+
+**실패 1건(무해)**: `final:flat-eps` 에이전트가 API Stream idle timeout으로 실패 → 동일 항목의 1차 REVIEW(conf4) 결과를 채택(EPS_PP=0.05). 별개로, 한 리뷰 에이전트가 워크트리 `frontend/`에 node_modules가 없어 임시 `__roleprobe.test.tsx`로 vitest 실행을 시도하다 실패(자가 정리 완료, 잔존 없음) — **실제 구현 전 `cd frontend && npm install` 필요**(Task 실행 전제).
