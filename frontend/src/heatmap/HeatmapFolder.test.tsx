@@ -32,3 +32,23 @@ it('행 클릭 시 onPick(code, name) — 종목명을 탭 라벨로 전달', ()
   fireEvent.click(screen.getByTestId('heatmap-row-005930'));
   expect(onPick).toHaveBeenCalledWith('005930', '삼성전자');
 });
+
+it('평면 보드(L3-B)+헤더 틴트 없음(L1): 폴더는 카드 대신 좌측 스파인, 헤더는 bg-input·틴트 없음', () => {
+  const { container } = render(
+    <HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
+      sortMode="change" onPick={() => {}} />,
+  );
+  // L3-B: 폴더 루트 — 카드 배경·외곽 테두리 제거, 좌측 중립 스파인
+  const root = container.querySelector('#heatmap-folder-f1') as HTMLElement;
+  expect(root).toBeInTheDocument();
+  expect(root).toHaveClass('border-l-2', 'border-border-strong');
+  expect(root).not.toHaveClass('bg-bg-card');
+  expect(root).not.toHaveClass('border-border'); // 외곽 박스 테두리 제거
+  // 헤더 밴드 = 폴더명 span 의 부모 div
+  const header = screen.getByText('반도체').parentElement as HTMLElement;
+  // L3-B: 헤더를 폴더 본문보다 한 단계 밝게(그룹 앵커)
+  expect(header).toHaveClass('bg-bg-input');
+  expect(header).not.toHaveClass('bg-bg-subtle');
+  // L1: 헤더 히트 틴트(box-shadow) 없음 — 평균 +5%여도 배경 워시 없음
+  expect(header.style.boxShadow).toBe('');
+});
