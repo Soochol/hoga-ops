@@ -1,9 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveStatusBar } from './LiveStatusBar';
 import type { RangeBundle } from '../api/types';
-import * as watchlistApi from '../api/watchlist';
 
 const EMPTY_BUNDLE: RangeBundle = {
   code: '005930',
@@ -114,25 +113,23 @@ describe('LiveStatusBar', () => {
     expect(screen.getByTestId('source-chip-kis_live')).toBeTruthy();
   });
 
-  it('shows a filled heart + no historical-only hint for a watchlist member', () => {
+  it('shows a filled heart (aria-pressed) for a watchlist member', () => {
     renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE }, ['005930']);
-    const btn = screen.getByRole('button', { name: '관심종목 해제' });
+    const btn = screen.getByRole('button', { name: '관심 그룹 편집' });
     expect(btn.getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByText(/실시간 ✕/)).toBeNull();
   });
 
-  it('shows a filled gray heart + historical-only hint for a non-member', () => {
+  it('shows an empty heart + historical-only hint for a non-member', () => {
     renderBar({ activeCode: '000660', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE }, ['005930']);
-    expect(screen.getByRole('button', { name: '관심종목 추가' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: '관심 그룹 편집' }).getAttribute('aria-pressed')).toBe('false');
     expect(screen.getByText(/실시간 ✕/)).toBeInTheDocument();
   });
 
-  it('clicking the heart of a member calls removeFromWatchlist', async () => {
-    const spy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined as never);
+  it('clicking the heart opens the group picker (v3)', () => {
     renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE }, ['005930']);
-    fireEvent.click(screen.getByRole('button', { name: '관심종목 해제' }));
-    await waitFor(() => expect(spy).toHaveBeenCalledWith('005930'));
-    spy.mockRestore();
+    fireEvent.click(screen.getByRole('button', { name: '관심 그룹 편집' }));
+    expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
   });
 
   // ADR-0067: collection-status badge — realtime vs polling

@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveSymbolSearch } from './LiveSymbolSearch';
 import { useLivePageStore } from '../state/livePage';
-import * as watchlistApi from '../api/watchlist';
 import type { SymbolHit } from '../api/types';
 
 const HIT: SymbolHit = {
@@ -52,15 +51,13 @@ describe('LiveSymbolSearch', () => {
     expect(useLivePageStore.getState().activeCode).toBe('005930');
   });
 
-  it('clicking a result row heart adds it to the watchlist', async () => {
-    const spy = vi.spyOn(watchlistApi, 'addToWatchlist').mockResolvedValue({} as never);
+  it('clicking a result row heart opens the group picker (v3)', () => {
     renderSearch();
     const input = screen.getByRole('combobox');
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: '삼성' } });
-    fireEvent.click(screen.getByRole('button', { name: '관심종목 추가' }));
-    await waitFor(() => expect(spy).toHaveBeenCalledWith('005930'));
-    spy.mockRestore();
+    fireEvent.click(screen.getByRole('button', { name: '관심 그룹 편집' }));
+    expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
   });
 
   it('Enter on a focused empty input does not select an arbitrary symbol', () => {

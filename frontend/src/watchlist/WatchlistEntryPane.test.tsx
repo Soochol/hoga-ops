@@ -50,7 +50,9 @@ describe('WatchlistEntryPane', () => {
       ],
       next_run_at_ms: 0,
     });
-    const mv = vi.spyOn(api, 'moveEntries').mockResolvedValue();
+    // v3 이동 = 대상 추가 후 출처 제거(멤버십). add/remove를 각각 스파이.
+    const add = vi.spyOn(api, 'addMember').mockResolvedValue({} as never);
+    const rm = vi.spyOn(api, 'removeMember').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
     await screen.findByText('삼성전자');
@@ -59,8 +61,12 @@ describe('WatchlistEntryPane', () => {
     fireEvent.click(screen.getByLabelText('005930 선택'));
     fireEvent.click(screen.getByRole('button', { name: /이동/ }));
     fireEvent.click(await screen.findByRole('menuitem', { name: '장기' }));
-    // visual order is 005930 before 000660 → codes must follow that, not click order
-    await waitFor(() => expect(mv).toHaveBeenCalledWith(['005930', '000660'], 'f_b'));
+    // visual order is 005930 before 000660 → add/remove codes must follow that order,
+    // add into the target(f_b), remove from the source(f_a).
+    await waitFor(() => expect(add.mock.calls.map((c) => c[1])).toEqual(['005930', '000660']));
+    expect(add.mock.calls.every((c) => c[0] === 'f_b')).toBe(true);
+    expect(rm.mock.calls.map((c) => c[1])).toEqual(['005930', '000660']);
+    expect(rm.mock.calls.every((c) => c[0] === 'f_a')).toBe(true);
   });
 
   it('clears the multi-select when the viewed folder changes', async () => {
@@ -80,18 +86,6 @@ describe('WatchlistEntryPane', () => {
     rerender(<WatchlistEntryPane selected="f_a" />);   // … and back: the selection must have cleared
     await waitFor(() =>
       expect(screen.getByLabelText('005930 선택')).toHaveAttribute('aria-checked', 'false'));
-  });
-
-  it('bulk-moves checked rows to a chosen folder', async () => {
-    vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
-    const mv = vi.spyOn(api, 'moveEntries').mockResolvedValue();
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<WatchlistEntryPane selected={null} />, { wrapper: wrap(qc) });
-    await screen.findByText('SK하이닉스');
-    fireEvent.click(screen.getByLabelText('000660 선택'));
-    fireEvent.click(screen.getByRole('button', { name: /이동/ }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: '스윙' }));
-    await waitFor(() => expect(mv).toHaveBeenCalledWith(['000660'], 'f_a'));
   });
 
   it('move-menu dismisses on outside mousedown and on Escape', async () => {

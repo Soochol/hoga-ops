@@ -186,22 +186,18 @@ describe('ScreenerDrawer', () => {
     expect(screen.getByTestId('screener-row-005930')).toBeInTheDocument();        // testid preserved (regression)
   });
 
-  it('clicking a non-member row heart adds it to the watchlist', async () => {
+  it('clicking a row heart opens the group picker (v3)', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
-    const addSpy = vi.spyOn(watchlistApi, 'addToWatchlist').mockResolvedValue({
-      code: '005930', name: '삼성전자', registered_at_kst_date: '20260602', last_success_date: null,
-      folder_id: null, order: 0,
-    });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
       lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    const heart = within(screen.getByTestId('screener-row-005930')).getByRole('button', { name: '관심종목 추가' });
+    const heart = within(screen.getByTestId('screener-row-005930')).getByRole('button', { name: '관심 그룹 편집' });
     fireEvent.click(heart);
-    await waitFor(() => expect(addSpy).toHaveBeenCalledWith('005930'));
-    expect(useLivePageStore.getState().activeCode).toBeNull();
+    expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
+    expect(useLivePageStore.getState().activeCode).toBeNull();   // 하트는 행 활성화와 무관
   });
 
   it('falls back to the corpus price when a row has no live quote (no —)', async () => {
@@ -229,24 +225,25 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(screen.getByText(/갱신 실패/)).toBeInTheDocument());
   });
 
-  it('clicking a member row heart removes it from the watchlist', async () => {
+  it('a member row shows a filled heart; clicking opens the group picker (v3)', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
-      folders: [],
-      entries: [{ code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 }],
+      folders: [{ id: 'f_a', name: '스윙', order: 0 }],
+      entries: [{ code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 }],
       next_run_at_ms: 0,
     });
-    const removeSpy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined);
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
       lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
-    const heart = await waitFor(() =>
-      within(screen.getByTestId('screener-row-005930')).getByRole('button', { name: '관심종목 해제' }),
-    );
-    fireEvent.click(heart);
-    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('005930'));
+    // 멤버십은 watchlist 쿼리(비동기) 로드 후 반영 → aria-pressed를 waitFor.
+    await waitFor(() => {
+      const h = within(screen.getByTestId('screener-row-005930')).getByRole('button', { name: '관심 그룹 편집' });
+      expect(h.getAttribute('aria-pressed')).toBe('true');   // member → filled
+    });
+    fireEvent.click(within(screen.getByTestId('screener-row-005930')).getByRole('button', { name: '관심 그룹 편집' }));
+    expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
   });
 
   it('overlays live quotes on ALL result rows, not just the top 30 (cap removed)', async () => {
