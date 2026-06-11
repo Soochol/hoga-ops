@@ -35,10 +35,12 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, atCap, onFocus, o
             onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(t.id); } }}
             draggable
             onDragStart={(e) => { e.dataTransfer.setData('text/tab-index', String(idx)); e.dataTransfer.effectAllowed = 'move'; }}
-            onDragOver={(e) => e.preventDefault()}
+            onDragOver={(e) => { if (e.dataTransfer.types.includes('text/tab-index')) e.preventDefault(); }}
             onDrop={(e) => {
               e.preventDefault();
-              const from = Number(e.dataTransfer.getData('text/tab-index'));
+              const raw = e.dataTransfer.getData('text/tab-index');
+              if (raw === '') return; // 외부 드래그(텍스트/링크/파일) — 우리 탭 아님
+              const from = Number(raw);
               if (Number.isInteger(from) && from !== idx) onReorder(from, idx);
             }}
             // 비활성 배경은 inline이 아닌 className으로 둔다: inline style은 specificity로
@@ -60,6 +62,7 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, atCap, onFocus, o
             <span className="text-sm shrink-0 max-w-40 truncate" title={t.label} style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>{t.label}</span>
             <button
               type="button"
+              draggable={false}
               aria-label={`${t.code} 닫기`}
               onClick={(e) => { e.stopPropagation(); onClose(t.id); }}
               className="ml-1 w-[18px] h-[18px] flex items-center justify-center rounded opacity-0 group-hover:opacity-100"

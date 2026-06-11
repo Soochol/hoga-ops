@@ -72,10 +72,20 @@ it('drag-and-drop reorders via onReorder(from, to)', () => {
   const dataTransfer = {
     setData: (k: string, v: string) => { store[k] = v; },
     getData: (k: string) => store[k] ?? '',
+    types: ['text/tab-index'],
     effectAllowed: '',
   };
   fireEvent.dragStart(elA, { dataTransfer });
   fireEvent.dragOver(elB, { dataTransfer });
   fireEvent.drop(elB, { dataTransfer });
   expect(p.onReorder).toHaveBeenCalledWith(0, 1);
+});
+
+it('ignores a foreign drop (no tab-index payload)', () => {
+  const p = setup();
+  const elB = screen.getByText('SK하이닉스').closest('[data-tab-id]')!; // idx 1
+  const dataTransfer = { setData: () => {}, getData: () => '', types: [] as string[], effectAllowed: '' };
+  fireEvent.dragOver(elB, { dataTransfer });
+  fireEvent.drop(elB, { dataTransfer });
+  expect(p.onReorder).not.toHaveBeenCalled();
 });
