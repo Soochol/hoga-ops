@@ -1,5 +1,5 @@
 import type { DraggableSyntheticListeners } from '@dnd-kit/core';
-import { heatBg, HEAT_CHIP_MAX_ALPHA } from './heat';
+import { heatChipBg } from './heat';
 import { CandleGlyph } from './CandleGlyph';
 
 export interface HeatmapRowProps {
@@ -72,7 +72,7 @@ export function HeatmapRow({
       ) : (
         <span
           className="rounded px-1.5 text-right font-mono tabular-nums text-fg-dim"
-          style={{ background: heatBg(pct, HEAT_CHIP_MAX_ALPHA) }}
+          style={{ background: heatChipBg(pct) }}
         >
           {glyph}{sign(pct)}{pct.toFixed(2)}
         </span>

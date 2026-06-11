@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.19.0] - 2026-06-11
+
+### Changed
+- **관심맵 색 가독성 — 평면 보드 + 색 정돈** (heatmap-flat-color, ADR-0068 영역): 같은 빨강·파랑이
+  4개 표면(섹터 스트립·헤더 틴트·캔들 글리프·등락칩)에 깔려 "잉크 밀도"가 높던 가독성 문제를 두 축으로
+  정돈한다. **(L1) 폴더 헤더 밴드 틴트 제거**(`HEAT_HEADER_MAX_ALPHA` 삭제) — 섹터 온도는 섹터
+  스트립이 이미 표현하므로 중복 레이어 제거. **(L3-B) 폴더 평면화**: 카드 박스·테두리 격자 대신
+  투명 + `--border-strong` 좌측 스파인 + `--bg-input` 헤더로 chrome 소거(그룹은 여전히 보드 1차 앵커).
+  **등락칩 임계 채색**: 연속 그라데이션 → 신규 `heat.ts::heatChipBg`로 **|등락률| ≥ 8%일 때만 평면색**
+  (급등락 종목만 배경 채색, 0~8%는 투명). **L2(캔들 회색화)는 미채택** — v0.7.16.0 캔들 글리프의
+  적/청(종가 vs 시가) 색 규칙을 그대로 유지(공존, supersede 아님). 색약 보조 다중 인코딩(농도+▲▼+부호+
+  숫자)·"히트색=가격방향 카테고리"·새 hue 금지 불변식 준수(DESIGN.md §Color). 설계/계획:
+  `docs/superpowers/{specs,plans}/2026-06-11-heatmap-flat-color*`.
+
 ## [0.7.18.0] - 2026-06-11
 
 ### Added

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { heatBg, sortEntries, avgPct, HEAT_CHIP_MAX_ALPHA } from './heat';
+import { heatBg, heatChipBg, sortEntries, avgPct, HEAT_CHIP_MAX_ALPHA } from './heat';
 import type { WatchlistEntry } from '../api/watchlist';
 
 const E = (code: string, order: number): WatchlistEntry => ({
@@ -24,6 +24,22 @@ describe('heatBg', () => {
   it('maxAlpha 인자로 칩 농도(0.72) 적용', () => {
     expect(heatBg(8, HEAT_CHIP_MAX_ALPHA)).toBe('rgba(220,38,38,0.720)');
     expect(heatBg(-4, HEAT_CHIP_MAX_ALPHA)).toBe('rgba(37,99,235,0.360)');
+  });
+});
+
+describe('heatChipBg (그라데이션 없음 — |등락률| ≥ 8%만 평면색)', () => {
+  it('null/0/±8% 미만 → transparent (배경 없음)', () => {
+    expect(heatChipBg(null)).toBe('transparent');
+    expect(heatChipBg(0)).toBe('transparent');
+    expect(heatChipBg(5)).toBe('transparent');
+    expect(heatChipBg(-7.99)).toBe('transparent');
+  });
+  it('±8% 이상 → 평면 0.72 (그라데이션 없이 단일 농도)', () => {
+    expect(heatChipBg(8)).toBe('rgba(220,38,38,0.720)');   // 정확히 8%도 포함(이상)
+    expect(heatChipBg(9.9)).toBe('rgba(220,38,38,0.720)');
+    expect(heatChipBg(30)).toBe('rgba(220,38,38,0.720)');  // 8%↑ 전부 동일(평면)
+    expect(heatChipBg(-8)).toBe('rgba(37,99,235,0.720)');
+    expect(heatChipBg(-15)).toBe('rgba(37,99,235,0.720)');
   });
 });
 

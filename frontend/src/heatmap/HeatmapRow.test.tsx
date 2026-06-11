@@ -12,13 +12,13 @@ function row(props: Partial<React.ComponentProps<typeof HeatmapRow>> = {}) {
   );
 }
 
-it('등락률 칩에 히트 배경(상승=빨강) + 행 자체엔 워시 없음', () => {
-  row(); // pct=5 → 상승
+it('±8%↑ 등락률 칩에 히트 배경(상승=빨강) + 행 자체엔 워시 없음', () => {
+  row({ pct: 9 }); // 9 ≥ 8 → 상승 색
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
   expect(screen.getByText('70,000')).toBeInTheDocument();
   // 등락률 칩 = 빨강 히트 배경, 글자는 종목명과 동일하게 text-fg-dim·기본 두께
   // (방향색 텍스트 아님 — text-price-up 금지; 굵은 흰 글자 톤다운).
-  const chip = screen.getByText('▲+5.00');
+  const chip = screen.getByText('▲+9.00');
   expect(chip.getAttribute('style') ?? '').toMatch(/220,\s*38,\s*38/);
   expect(chip).not.toHaveClass('text-price-up');
   expect(chip).toHaveClass('text-fg-dim');
@@ -28,9 +28,17 @@ it('등락률 칩에 히트 배경(상승=빨강) + 행 자체엔 워시 없음'
     .not.toMatch(/background/);
 });
 
-it('하락 등락률 칩은 파랑 히트', () => {
-  row({ pct: -3 });
-  expect(screen.getByText('▼-3.00').getAttribute('style') ?? '').toMatch(/37,\s*99,\s*235/);
+it('하락 ±8%↑ 등락률 칩은 파랑 히트', () => {
+  row({ pct: -8 }); // -8 ≤ -8 → 하락 색(정확히 8%도 포함)
+  expect(screen.getByText('▼-8.00').getAttribute('style') ?? '').toMatch(/37,\s*99,\s*235/);
+});
+
+it('±8% 미만은 배경색 없음(그라데이션 삭제 — 투명)', () => {
+  row({ pct: 5 }); // 5 < 8 → 색 없음(이전엔 옅은 빨강이었음)
+  const chip = screen.getByText('▲+5.00');
+  // 색(rgba/방향 RGB)이 칩 배경에 없어야 한다 — transparent
+  expect(chip.getAttribute('style') ?? '').not.toMatch(/rgba|220,\s*38,\s*38|37,\s*99,\s*235/);
+  expect(chip).toBeInTheDocument(); // ▲·부호·숫자 표기는 유지(색만 빠짐)
 });
 
 it('시세 결측(null) → 가격·등락 모두 —', () => {
