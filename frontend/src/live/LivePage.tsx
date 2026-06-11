@@ -22,19 +22,22 @@ import { useDocumentTitle } from '../util/useDocumentTitle';
 /**
  * /live page — KIS-based real-time indicator chart.
  *
- * Five-row grid (Stage 9-β adds LiveStateBanner as auto-sized row 2):
- *   1. LiveHeader      (var(--h-live-header))  — title + ⭐ toggle
- *   2. LiveStateBanner (auto)                  — empty/error state matrix
- *   3. LiveStatusBar   (var(--h-pricestrip))   — code/price/source/timeframe + cycle_lag pill
- *   4. LiveToolbar     (var(--h-toolbar))      — timeframe selector
- *   5. LiveWorkarea    (1fr)                   — chart + sidebar (filled by 9-γ + 11)
+ * Six-row grid (Stage 9-β added LiveStateBanner; ADR-0069 adds the tab bar as row 2):
+ *   1. LiveHeader      (var(--h-live-header))  — title + ⭐ toggle + symbol search
+ *   2. LiveTabBar      (40px)                  — open stock tabs (ADR-0069)
+ *   3. LiveStateBanner (auto)                  — empty/error state matrix
+ *   4. LiveStatusBar   (var(--h-pricestrip))   — code/price/source/timeframe + cycle_lag pill
+ *   5. LiveToolbar     (var(--h-toolbar))      — timeframe selector
+ *   6. LiveWorkarea    (1fr)                   — chart + sidebar
  *
- * Active code resolution (CONTEXT.md / ADR-0052):
- *   The `livePage` store is the single source of truth for activeCode. `?code=`
- *   is a one-shot deep-link SEED — adopted into the store once on first mount,
- *   after which search / ♥ / Watchlist Panel writes always win and are never
- *   reverted by the URL. (Future, Stage 11) first watchlist entry; empty state
- *   otherwise.
+ * Active code resolution (CONTEXT.md / ADR-0052 / ADR-0069):
+ *   useLivePageStore remains the single source of truth that all read sites
+ *   consume for activeCode. The active *tab* (useLiveTabsStore → applyTabToPage)
+ *   is now the single WRITER of that value. `?code=` is a one-shot deep-link
+ *   SEED: on first mount it open-or-focuses a tab (which writes activeCode);
+ *   thereafter search / ♥ / Watchlist writes flow through the tabs store and the
+ *   URL never reverts them. With no `?code=`, the restored active tab is applied
+ *   to the page on mount; with no tabs at all, LiveWorkarea shows the empty state.
  */
 export function LivePage() {
   const [params] = useSearchParams();
