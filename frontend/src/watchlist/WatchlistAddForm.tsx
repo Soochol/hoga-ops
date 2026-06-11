@@ -1,20 +1,23 @@
 import { useState } from 'react';
 import { SymbolSearch } from '../capture/SymbolSearch';
 import type { SymbolHit } from '../api/types';
-import { useAddToWatchlist } from './useWatchlist';
+import { useAddMember } from './useWatchlist';
 import { Banner } from './Banner';
 
-/** Shared add-form: SymbolSearch + submit + 409 already_in_watchlist banner.
+/** Shared add-form (v3): SymbolSearch + submit → 선택된 폴더의 멤버로 추가(ADR-0069).
  *  onAdded fires after a successful add (caller drives feedback/highlight). */
-export function WatchlistAddForm({ onAdded }: { onAdded: (hit: { code: string; name: string }) => void }) {
-  const addM = useAddToWatchlist();
+export function WatchlistAddForm({ folderId, onAdded }: {
+  folderId: string;
+  onAdded: (hit: { code: string; name: string }) => void;
+}) {
+  const addM = useAddMember();
   const [picked, setPicked] = useState<SymbolHit | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!picked) return;
     try {
-      await addM.mutateAsync(picked.code);
+      await addM.mutateAsync({ folderId, code: picked.code, name: picked.name });
       onAdded({ code: picked.code, name: picked.name });
       setPicked(null);
     } catch {

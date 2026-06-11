@@ -17,6 +17,17 @@ export function folderDroppableId(folderId: string | null): string {
   return FOLDER_DROP_PREFIX + (folderId ?? UNCAT_SENTINEL);
 }
 
+/** 다중 소속(v3, ADR-0069): 한 코드가 여러 폴더 행으로 등장 → 한 DndContext 안에서
+ *  sortable id 충돌. 폴더 스코프 composite id 로 유일화한다(null=미분류는 heatmap 공유용). */
+export function entrySortableId(folderId: string | null, code: string): string {
+  return `${folderId ?? UNCAT_SENTINEL}:${code}`;
+}
+export function parseEntrySortableId(id: string): { folderId: string | null; code: string } {
+  const i = id.indexOf(':');
+  const f = id.slice(0, i);
+  return { folderId: f === UNCAT_SENTINEL ? null : f, code: id.slice(i + 1) };
+}
+
 /** activeCode dragged; `over` is either a folder droppable id (see folderDroppableId)
  *  = cross-folder move, or another row code = reorder. */
 export function resolveDrag(

@@ -154,6 +154,19 @@ export function useRemoveMember() {
     (v) => removeMember(v.folderId, v.code), applyRemoveMember);
 }
 
+/** v3: 코드를 from→to 폴더로 이동 = 대상 폴더에 추가 후 출처 폴더에서 제거(둘 다 멤버십).
+ *  "이동"은 단일 소속 idiom의 잔재이지만 편집모달 드래그·다중선택 이동 UX를 보존한다. */
+export function useMoveMember() {
+  const add = useAddMember();
+  const remove = useRemoveMember();
+  return async ({ code, from, to, name = '' }:
+    { code: string; from: string; to: string; name?: string }) => {
+    if (from === to) return;
+    await add.mutateAsync({ folderId: to, code, name });
+    await remove.mutateAsync({ folderId: from, code });
+  };
+}
+
 // --- folder reorder + bulk remove ---
 // folder reorder: optimistic + rollback (folder-DnD 부드러움). 엔트리와 같은 제네릭 경로.
 export function useReorderFolders() {

@@ -6,7 +6,7 @@ import { useLiveStatus } from '../api/liveStatus';
 import { deriveCollectionStatus } from '../live/collectionStatus';
 import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
-  useCreateFolder, useRenameFolder, useDeleteFolder, useReorderFolders, useMoveEntries,
+  useCreateFolder, useRenameFolder, useDeleteFolder, useReorderFolders,
   useReorderEntries,
 } from './useWatchlist';
 import { persistJson, readJsonObject } from '../state/persist';
@@ -17,6 +17,7 @@ import { Banner } from './Banner';
 import { WatchlistEditModal } from './WatchlistEditModal';
 import { GroupNameModal } from './GroupNameModal';
 import { WatchlistRowMenu } from './WatchlistRowMenu';
+import { WatchlistGroupPicker } from './WatchlistGroupPicker';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { TrashIcon } from '../ui/TrashIcon';
 import { QuoteRow } from '../rightrail/QuoteRow';
@@ -28,7 +29,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { WatchlistEntry } from '../api/watchlist';
-import { resolveDrag, resolveFolderDrag } from './dragHandlers';
+import { resolveDrag, resolveFolderDrag, entrySortableId, parseEntrySortableId } from './dragHandlers';
 
 /** 우측 정렬 앵커드 메뉴 셸 — dim 라벨 헤더 + menuitem children. 패널의 두 메뉴
  *  (헤더 편집 메뉴, 그룹 ⋯ 메뉴)가 공유해 컨테이너/헤더 스타일 드리프트를 막는다. */
@@ -193,7 +194,7 @@ function SortableQuoteRow(props: {
 }) {
   const { entry } = props;
   const { setNodeRef, listeners, transform, transition, isDragging } =
-    useSortable({ id: entry.code, data: { type: 'entry', folderId: entry.folder_id } });
+    useSortable({ id: entrySortableId(entry.folder_id, entry.code), data: { type: 'entry', folderId: entry.folder_id } });
   return (
     <QuoteRow
       name={entry.name}
@@ -237,7 +238,6 @@ export function WatchlistDrawer() {
   const renameM = useRenameFolder();
   const deleteM = useDeleteFolder();
   const reorderFoldersM = useReorderFolders();
-  const moveM = useMoveEntries();
   const { recentAction, setRecentAction } = useWatchlistFeedback();
   // 접기 상태는 localStorage 영속 — 패널을 닫았다 열어도(언마운트) 유지된다.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
@@ -253,8 +253,12 @@ export function WatchlistDrawer() {
   useDismissablePopover(editMenu, editMenuRef, () => setEditMenu(false));
   const [menu, setMenu] =
     useState<{ x: number; y: number; code: string; name: string; folderId: string | null } | null>(null);
+  // v3 "그룹 편집" — 행 메뉴/하트가 여는 멤버십 피커(ADR-0069 P5).
+  const [groupPicker, setGroupPicker] =
+    useState<{ code: string; name: string; x: number; y: number } | null>(null);
 
-  const codes = useMemo(() => data?.entries.map((e) => e.code) ?? [], [data]);
+  // 다중 소속이라 한 코드가 여러 폴더 행으로 등장 → quote 폴링용 코드는 dedup.
+  const codes = useMemo(() => [...new Set(data?.entries.map((e) => e.code) ?? [])], [data]);
   const quoteByCode = useQuoteByCode(codes);
 
   // ADR-0067: 행별 수집상태 배지 — live_set을 한 번 읽어 공유 (행마다 재계산 없음).
@@ -290,6 +294,20 @@ export function WatchlistDrawer() {
     if (ids) reorderFoldersM.mutate(ids);
   };
 
+  // v3 폴더 삭제는 파괴적(ADR-0069 P6): 이 폴더에만 있는 코드는 관심종목에서 빠진다.
+  // 고아가 생기면 명시적으로 확인(ADR-0065 정신 — 조용한 유실 금지).
+  const deleteFolderWithConfirm = (folderId: string) => {
+    const entries = data?.entries ?? [];
+    const inThis = new Set(entries.filter((e) => e.folder_id === folderId).map((e) => e.code));
+    const inOthers = new Set(entries.filter((e) => e.folder_id !== folderId).map((e) => e.code));
+    const orphans = [...inThis].filter((c) => !inOthers.has(c));
+    if (orphans.length > 0 &&
+        !window.confirm(`이 폴더에만 있는 ${orphans.length}종목이 관심종목에서 빠집니다(데이터 수집 중단). 계속할까요?`)) {
+      return;
+    }
+    deleteM.mutate(folderId);
+  };
+
   const reorderEntriesM = useReorderEntries();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -309,12 +327,16 @@ export function WatchlistDrawer() {
       if (fr.kind === 'reorder') reorderFoldersM.mutate(fr.orderedIds);
       return;
     }
-    const folderId = (ev.active.data.current?.folderId ?? null) as string | null;
+    // v3 composite id: `${folderId}:${code}` — 같은 코드가 N폴더면 N행이라 폴더 스코프로 파싱.
+    const { folderId, code: activeCode } = parseEntrySortableId(String(ev.active.id));
+    const { code: overCode } = parseEntrySortableId(String(ev.over.id));
     const group = (data?.entries ?? [])
       .filter((e) => e.folder_id === folderId)
       .sort((a, b) => a.order - b.order);
-    const r = resolveDrag(group, folderId, String(ev.active.id), String(ev.over.id));
-    if (r.kind === 'reorder') reorderEntriesM.mutate({ folderId: r.folderId, orderedCodes: r.orderedCodes });
+    const r = resolveDrag(group, folderId, activeCode, overCode);
+    if (r.kind === 'reorder' && r.folderId !== null) {
+      reorderEntriesM.mutate({ folderId: r.folderId, orderedCodes: r.orderedCodes });
+    }
   };
 
   return (
@@ -367,7 +389,7 @@ export function WatchlistDrawer() {
               const folder = g.folder;
               const entriesList = !isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  <SortableContext items={g.entries.map((e) => e.code)} strategy={verticalListSortingStrategy}>
+                  <SortableContext items={g.entries.map((e) => entrySortableId(e.folder_id, e.code))} strategy={verticalListSortingStrategy}>
                     {g.entries.map((entry) => {
                       const q = quoteByCode.get(entry.code);
                       const status = deriveCollectionStatus(entry.code, liveSet, codes, viewedCodes);
@@ -388,7 +410,7 @@ export function WatchlistDrawer() {
                       );
                       return (
                         <SortableQuoteRow
-                          key={entry.code}
+                          key={entrySortableId(entry.folder_id, entry.code)}
                           entry={entry}
                           price={q?.price ?? null}
                           pct={q?.change_pct ?? null}
@@ -408,7 +430,7 @@ export function WatchlistDrawer() {
                 <GroupHeader label={label} count={g.entries.length} collapsed={isCollapsed}
                   onToggle={() => toggle(key)}
                   onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
-                  onDelete={folder ? () => deleteM.mutate(folder.id) : undefined}
+                  onDelete={folder ? () => deleteFolderWithConfirm(folder.id) : undefined}
                   onMoveUp={folder ? () => moveFolder(folder.id, -1) : undefined}
                   onMoveDown={folder ? () => moveFolder(folder.id, +1) : undefined}
                   canMoveUp={gi > 0}
@@ -462,10 +484,12 @@ export function WatchlistDrawer() {
 
       {menu && (
         <WatchlistRowMenu x={menu.x} y={menu.y} name={menu.name}
-          folders={[...(data?.folders ?? [])].sort((a, b) => a.order - b.order)}
-          currentFolderId={menu.folderId}
-          onMove={(folderId) => moveM.mutate({ codes: [menu.code], folderId })}
+          onEditGroups={() => setGroupPicker({ code: menu.code, name: menu.name, x: menu.x, y: menu.y })}
           onRemove={() => removeM.mutate(menu.code)} onClose={() => setMenu(null)} />
+      )}
+      {groupPicker && (
+        <WatchlistGroupPicker code={groupPicker.code} name={groupPicker.name}
+          x={groupPicker.x} y={groupPicker.y} onClose={() => setGroupPicker(null)} />
       )}
       {editOpen && <WatchlistEditModal onClose={() => setEditOpen(false)} />}
       {addGroupOpen && (
