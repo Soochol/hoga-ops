@@ -6,7 +6,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { WatchlistFolder, WatchlistEntry } from '../api/watchlist';
 import type { LiveQuote } from '../api/liveQuotes';
 import { HeatmapRow } from './HeatmapRow';
-import { sortEntries, avgPct, heatBg, HEAT_CHIP_MAX_ALPHA, HEAT_HEADER_MAX_ALPHA, type SortMode } from './heat';
+import { sortEntries, avgPct, heatBg, HEAT_CHIP_MAX_ALPHA, type SortMode } from './heat';
 import { resolveDrag } from '../watchlist/dragHandlers';
 import { FolderAddButton } from './FolderAddButton';
 
@@ -73,14 +73,11 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, 
   });
 
   return (
-    <div id={folderId ? `heatmap-folder-${folderId}` : undefined} className="break-inside-avoid bg-bg-card border border-border rounded mb-2 overflow-hidden">
-      {/* 그룹 헤더 밴드 = bg-bg-subtle 위에 섹터 평균 등락률 기반 아주 옅은 히트 틴트를
-          inset box-shadow 로 레이어(배경색을 약하게 더한다 — 카드 본문 대비 밴드를
-          구분하고 섹터 온도를 일별). 결측/0% 면 틴트 없이 bg-bg-subtle 그대로. */}
-      <div className="flex justify-between items-center gap-2 bg-bg-subtle px-2 py-1 border-b border-border-strong"
-        style={avg !== null && avg !== 0
-          ? { boxShadow: `inset 0 0 0 9999px ${heatBg(avg, HEAT_HEADER_MAX_ALPHA)}` }
-          : undefined}>
+    <div id={folderId ? `heatmap-folder-${folderId}` : undefined} className="break-inside-avoid border-l-2 border-border-strong mb-2 overflow-hidden">
+      {/* 그룹 헤더 밴드 = bg-bg-input(폴더 본문보다 한 단계 밝게 = 그룹 앵커). 폴더는 투명·평면
+          (카드 배경/테두리 없음)이고 좌측 border-strong 스파인 + 이 헤더로 그룹을 구분한다.
+          섹터 온도는 밴드 전체 틴트 대신 헤더의 평균 등락칩으로만 표현(L1: 헤더 워시 제거). */}
+      <div className="flex justify-between items-center gap-2 bg-bg-input px-2 py-1 border-b border-border-strong">
         {/* 폴더(섹터)명 = 보드의 1차 앵커. 글자 크기 text-xs(가독성, origin/main).
             실폴더는 text-fg(밝게), 미분류는 한 단계 낮춰(text-fg-dim) 구분. */}
         <span className={`text-xs font-semibold truncate ${folder ? 'text-fg' : 'text-fg-dim'}`}>
