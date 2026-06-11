@@ -12,6 +12,7 @@ import duckdb
 from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.invariants import normalize_session_bounds
 from hoga.api.models import StockDate
+from hoga.api.past_indicators_cache import PastIndicatorsCache
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.tables import snapshots
 
@@ -78,6 +79,19 @@ class QueryEngine:
         # callers can read in parallel without contention. Cursors are
         # cheap and GC'd as soon as the call expression ends.
         return self._conn.cursor()
+
+    @property
+    def indicators_cache(self) -> PastIndicatorsCache:
+        """Disk cache of 1-minute /api/range indicators (호가비·체결강도), keyed by
+        (code, date, source). Past days only — `build_range_bundle` gates today
+        out. Mirrors the past-candles cache so a completed day's indicator slice
+        is computed once, not on every leftward-pan fetch. Built lazily (first
+        /range request) and memoised for the engine's lifetime."""
+        cache = getattr(self, "_indicators_cache", None)
+        if cache is None:
+            cache = PastIndicatorsCache(self.data_dir)
+            self._indicators_cache = cache
+        return cache
 
     def parquet_dir(self, date: str, code: str, source: str = "hogaplay") -> Path:
         sd_dir = self.data_dir / "parquet" / date / code
