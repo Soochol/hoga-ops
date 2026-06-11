@@ -3,6 +3,29 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.16.0] - 2026-06-11
+
+### Changed
+- **관심맵 행: since-open 스파크라인(v0.7.15.0) → 당일 캔들 글리프로 교체**: 행마다 당일 1봉
+  캔들(고-저 심지 + 시-종 몸통)을 그린다. 색 = **종가 vs 시가**(strict): 양봉 `--price-up`(적)·
+  음봉 `--price-down`(청)·도지 `--fg-dim`. 데이터는 누적·히스토리 없이 현재 시세만으로 완전히
+  결정돼 새로고침·기기 무관(매 폴이 최신 O/H/L/C). 멀티시세 응답이 **이미 주는** 당일 OHLC를
+  쓰므로 추가 호출·서버 엔드포인트 0. 신규 `frontend/src/heatmap/CandleGlyph.tsx`; 삭제
+  `Sparkline.tsx`·`useSparklineSeries.ts`·`state/sparklineStore.ts`(+테스트) — since-open 누적
+  스택 제거. 설계/계획: `docs/superpowers/{specs,plans}/2026-06-11-heatmap-candle-glyph*`.
+
+### Added
+- **`/api/live/quotes` 응답에 당일 OHLC**(`open`/`high`/`low`, additive): `KisQuote`·`LiveQuote`가
+  멀티시세 `inter2_oprc/hgpr/lwpr`를 노출. `pre_open`은 OHLC도 숨김(당일 시가 09:00 단일가 전
+  미존재 — change_pct와 동일 게이트), `closed`는 마지막 시세 무가드 서빙. `_parse_quote`는 단일
+  return으로 리팩터해 change 파싱 바일아웃 종목도 OHLC를 보존.
+
+### Fixed
+- **관심맵 멀티칼럼 등락칩 클리핑**: 글리프 칼럼이 카드 min-content를 12rem 플로어 위로 올려
+  특정 board 폭 밴드에서 등락칩이 `overflow-hidden`으로 잘리던 잠재 버그(v0.7.15.0부터)를
+  `columnWidth 12rem→16.5rem`(플로어 ≥ 행 min-content)로 수정. 합성 하니스로 board
+  1044/1498px clip=0 실증.
+
 ## [0.7.15.1] - 2026-06-11
 
 ### Fixed
