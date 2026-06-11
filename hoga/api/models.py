@@ -643,6 +643,52 @@ class EntriesRemoveRequest(BaseModel):
     codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
 
 
+# --- Heatmap (independent monitoring store, ADR-0068) ----------------------
+# Parallel to the Watchlist but WITHOUT capture fields: the heatmap is a
+# monitoring board, not a capture target. Folders + the folder/entry request
+# bodies above (FolderCreateRequest, EntriesMoveRequest, ...) and
+# WatchlistAddRequest are SHARED. Seeded once from the watchlist at first boot,
+# then fully independent (no continuous sync).
+
+
+class HeatmapEntry(BaseModel):
+    """One Code on the Heatmap. Mirrors WatchlistEntry MINUS the capture
+    markers (registered_at_kst_date / last_success_date) — the heatmap drives
+    no captures (ADR-0068)."""
+
+    code: str = Field(pattern=CODE_PATTERN)
+    name: str
+    folder_id: str | None = Field(default=None, pattern=r"^f_[0-9a-f]{8}$")
+    order: int = Field(default=0, ge=0)
+
+
+class HeatmapDocument(BaseModel):
+    """On-disk heatmap.json (v2). Same envelope discipline as
+    WatchlistDocument (ADR-0065 applied independently); entries are
+    HeatmapEntry (no capture fields). Folders reuse WatchlistFolder."""
+
+    schema_version: int = 2
+    folders: list[WatchlistFolder] = Field(default_factory=list)
+    entries: list[HeatmapEntry] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _no_dangling_folder_id(self) -> "HeatmapDocument":
+        valid = {f.id for f in self.folders}
+        for e in self.entries:
+            if e.folder_id is not None and e.folder_id not in valid:
+                raise ValueError(
+                    f"entry {e.code} references unknown folder {e.folder_id}"
+                )
+        return self
+
+
+class HeatmapResponse(BaseModel):
+    """GET /api/heatmap. No next_run_at_ms — the heatmap has no scheduler."""
+
+    folders: list[WatchlistFolder] = Field(default_factory=list)
+    entries: list[HeatmapEntry]
+
+
 # --- Watchlist manual catch-up (see spec 2026-05-27) -----------------------
 
 

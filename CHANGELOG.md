@@ -3,6 +3,28 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.14.0] - 2026-06-11
+
+### Added
+- **히트맵 ↔ 관심종목 분리 — 독립 스토어 (ADR-0068)**: `/heatmap`을 관심종목(watchlist)의 한
+  뷰에서 떼어내, 자체 영속 파일 `heatmap.json`(`api/heatmap.py`) · 자체 REST `/api/heatmap/*`
+  (`heatmap_routes.py`) · 자체 React Query 키 `['heatmap']`(`heatmap/useHeatmap.ts`)를 가진
+  **독립 리스트**로 만들었다. 히트맵(모니터링용)과 관심종목(캡처용)은 이제 서로 다른 집합이라, 한쪽에
+  종목·그룹을 추가·삭제·이동해도 다른 쪽은 변하지 않는다. 첫 부팅 시 watchlist 가 비어있지 않으면
+  folders+entries 를 **1회 시드 복사**(캡처 필드 제거)한 뒤 영구 독립한다(`seed_from_watchlist_if_absent`,
+  watchlist 는 읽기만 — 무손상·멱등). `HeatmapEntry`는 캡처 필드(`registered_at_kst_date`/
+  `last_success_date`)가 없고, 히트맵 라우트는 `refresh_live_stream`을 호출하지 않는다(KIS WS 구독·
+  일일 캡처는 watchlist 전속 유지). 선행 스펙 `2026-06-10`의 "백엔드 무변경" 결정을 반전.
+- **히트맵 보드 편집 (그릴링 G3)**: 분리로 관심종목 드로어가 더는 히트맵을 편집하지 않으므로, 보드에
+  **행 우클릭 메뉴**(삭제·다른 폴더로 이동, `HeatmapRowMenu`)를 추가했다. 그룹 내 드래그 재정렬·
+  ＋종목·＋새 그룹은 기존대로 히트맵 스토어에 작동한다.
+
+### Changed
+- **비어있지 않은 미분류를 히트맵에 표시 (그릴링 G3)**: 분리 후 새로 추가한 종목은 항상 미분류
+  (folder_id=null)로 먼저 들어가는데, 기존 `visibleGroups`는 미분류를 숨겨 "추가했는데 안 보임"
+  사일런트 버그가 된다. 비어있지 않은 미분류를 별도 '미분류' 그룹으로 표시하도록 바꿨다(빈 그룹만 제외).
+- 페이지 명칭·문구를 "관심맵"→"히트맵"으로 통일(CONTEXT.md 용어 갱신).
+
 ## [0.7.13.3] - 2026-06-11
 
 ### Changed
