@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useWatchlist, useCreateFolder } from '../watchlist/useWatchlist';
+import { useWatchlist, useCreateFolder, useReorderEntries } from '../watchlist/useWatchlist';
 import { groupByFolder } from '../watchlist/grouping';
 import { useLiveQuoteOverlay } from '../api/liveQuotes';
 import { useLiveStatus } from '../api/liveStatus';
@@ -28,6 +28,9 @@ export function Heatmap() {
   const setSortMode = useHeatmapPrefsStore((s) => s.setSortMode);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const createFolderM = useCreateFolder();
+  const reorderEntriesM = useReorderEntries();
+  const onReorder = (folderId: string, orderedCodes: string[]) =>
+    reorderEntriesM.mutate({ folderId, orderedCodes });
 
   const updated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString('ko-KR') : '—';
@@ -81,7 +84,7 @@ export function Heatmap() {
           onClose={() => setShowNewGroup(false)}
         />
       )}
-      <HeatmapBoard groups={groups} quoteByCode={quoteByCode} sortMode={sortMode} onPick={onPick} />
+      <HeatmapBoard groups={groups} quoteByCode={quoteByCode} sortMode={sortMode} onPick={onPick} onReorder={onReorder} />
     </div>
   );
 }

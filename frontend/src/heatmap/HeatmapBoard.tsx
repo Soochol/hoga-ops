@@ -9,6 +9,8 @@ export interface HeatmapBoardProps {
   quoteByCode: Map<string, LiveQuote>;
   sortMode: SortMode;
   onPick: (code: string) => void;
+  /** 그룹 내 드래그 재정렬 커밋(manual 모드). 페이지에서 useReorderEntries 로 주입. */
+  onReorder?: (folderId: string, orderedCodes: string[]) => void;
 }
 
 /** 신문형 멀티칼럼 보드. 빈 폴더·미분류(folder===null) 제외. columnWidth 로
@@ -17,7 +19,7 @@ export interface HeatmapBoardProps {
  *  갭·패딩, 실측 카드 min-content ≈ 12.3rem)에 맞춘 12rem floor — multicol 이 깨지지
  *  않는 카드(break-inside-avoid)를 칼럼에 맞춰 키우므로 1100~1820px 전 구간 오버플로
  *  없음(실측). 넓어지면 칼럼 수↑, 남는 폭은 minmax(...,1fr) 종목명으로(반응형). */
-export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick }: HeatmapBoardProps) {
+export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder }: HeatmapBoardProps) {
   const visible = visibleFolderGroups(groups);
   return (
     // eng-review Q6: 스크롤 컨테이너(바깥, 높이 한정)와 multicol 블록(안쪽, height
@@ -34,6 +36,7 @@ export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick }: HeatmapB
             quoteByCode={quoteByCode}
             sortMode={sortMode}
             onPick={onPick}
+            onReorder={onReorder}
           />
         ))}
       </div>

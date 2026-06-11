@@ -29,6 +29,16 @@ it('미선택 시 추가 버튼 비활성', () => {
   expect(screen.getByRole('button', { name: '추가' })).toBeDisabled();
 });
 
+it('팝오버는 createPortal 로 body 직속 — 카드 overflow-hidden/multicol 클리핑 회피', () => {
+  const { container } = render(<FolderAddButton folderId="f1" />);
+  fireEvent.click(screen.getByRole('button', { name: '종목 추가' }));
+  const dialog = screen.getByRole('dialog', { name: '종목 추가' });
+  // 포털 대상이 document.body 라 폴더 카드의 overflow-hidden 경계 밖에 산다(클리핑 회피).
+  expect(dialog.parentElement).toBe(document.body);
+  // 트리거가 사는 컴포넌트 서브트리(실사용 시 overflow-hidden 카드 안)엔 팝오버가 없다.
+  expect(container.querySelector('[role="dialog"]')).toBeNull();
+});
+
 it('addToFolder 실패 시 unhandled rejection 없이 팝오버 유지(재시도 가능)', async () => {
   addToFolder.mockRejectedValueOnce(new Error('boom'));
   render(<FolderAddButton folderId="f1" />);
