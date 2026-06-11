@@ -64,7 +64,13 @@ export function LivePage() {
   // Keyboard shortcuts (Addendum 9.y / Design B7).
   // j/k traversal callbacks will be supplied by Stage 11 when the watchlist
   // panel is wired up; for now they're no-ops.
-  useLiveKeyboard({});
+  // Tab switching (ADR-0069 / D6): ] next, [ prev, 1-9 jump to tab N.
+  const activeIdx = tabs.findIndex((t) => t.id === activeTabId);
+  useLiveKeyboard({
+    onNextTab: () => { if (tabs.length) focusTab(tabs[(activeIdx + 1 + tabs.length) % tabs.length].id); },
+    onPrevTab: () => { if (tabs.length) focusTab(tabs[(activeIdx - 1 + tabs.length) % tabs.length].id); },
+    onSelectTabIndex: (i) => { if (i < tabs.length) focusTab(tabs[i].id); },
+  });
 
   const activeCode = useLivePageStore((s) => s.activeCode);
   useDocumentTitle(activeCode);

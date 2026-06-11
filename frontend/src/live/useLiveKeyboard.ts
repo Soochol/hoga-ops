@@ -16,6 +16,9 @@ import { useRightRailStore } from '../state/rightRail';
 export interface UseLiveKeyboardOpts {
   onNextCode?: () => void;
   onPrevCode?: () => void;
+  onNextTab?: () => void;
+  onPrevTab?: () => void;
+  onSelectTabIndex?: (index: number) => void;
 }
 
 export function shouldIgnoreEvent(target: EventTarget | null): boolean {
@@ -42,6 +45,14 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
           opts.onPrevCode?.();
           e.preventDefault();
           break;
+        case ']':
+          opts.onNextTab?.();
+          e.preventDefault();
+          break;
+        case '[':
+          opts.onPrevTab?.();
+          e.preventDefault();
+          break;
         case 'w':
           useRightRailStore.getState().togglePanel('watchlist');
           e.preventDefault();
@@ -57,9 +68,15 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
             e.preventDefault();
           }
           break;
+        default:
+          if (e.key >= '1' && e.key <= '9' && opts.onSelectTabIndex) {
+            opts.onSelectTabIndex(Number(e.key) - 1);
+            e.preventDefault();
+          }
+          break;
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [opts.onNextCode, opts.onPrevCode]);
+  }, [opts.onNextCode, opts.onPrevCode, opts.onNextTab, opts.onPrevTab, opts.onSelectTabIndex]);
 }
