@@ -11,10 +11,7 @@ import {
 describe('livePage store', () => {
   beforeEach(() => {
     localStorage.clear();
-    useLivePageStore.setState({
-      activeCode: null,
-      candleTimeframe: '1m',
-    });
+    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
   });
 
   it('starts with sensible defaults', () => {
@@ -27,6 +24,34 @@ describe('livePage store', () => {
     useLivePageStore.getState().setActiveCode('005930');
     expect(useLivePageStore.getState().activeCode).toBe('005930');
     expect(localStorage.getItem('live.page.v1')).toContain('005930');
+  });
+
+  it('projectActiveView sets code + timeframe + historicalFromDate atomically and persists', () => {
+    useLivePageStore.getState().projectActiveView({
+      code: '005930', timeframe: '5m', historicalFromDate: '20260601',
+    });
+    const s = useLivePageStore.getState();
+    expect(s.activeCode).toBe('005930');
+    expect(s.candleTimeframe).toBe('5m');
+    expect(s.historicalFromDate).toBe('20260601');
+    const raw = JSON.parse(localStorage.getItem('live.page.v1') ?? '{}');
+    expect(raw.activeCode).toBe('005930');
+    expect(raw.candleTimeframe).toBe('5m');
+    expect(raw.historicalFromDate).toBe('20260601');
+  });
+
+  it('projectActiveView with a null pan clears historicalFromDate (no leftover from a prior code)', () => {
+    useLivePageStore.getState().projectActiveView({ code: 'A', timeframe: '1m', historicalFromDate: '20260101' });
+    useLivePageStore.getState().projectActiveView({ code: 'B', timeframe: '1m', historicalFromDate: null });
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+  });
+
+  it('projectActiveView falls back to the current timeframe when given an invalid one', () => {
+    useLivePageStore.getState().setCandleTimeframe('5m');
+    // @ts-expect-error — deliberately invalid timeframe to test the clamp
+    useLivePageStore.getState().projectActiveView({ code: 'A', timeframe: 'NOPE', historicalFromDate: null });
+    expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
+    expect(useLivePageStore.getState().activeCode).toBe('A');
   });
 
   it('setCandleTimeframe rejects unknown values', () => {

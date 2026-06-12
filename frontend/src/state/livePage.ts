@@ -102,7 +102,18 @@ type PersistedIndicators = {
   movingAverageHidden: boolean;
 };
 
+/** The full active-view tuple the page renders. Written atomically by the active
+ *  Live Tab (applyTabToPage → projectActiveView) so there is no setter ordering to
+ *  get wrong (setActiveCode/setCandleTimeframe each reset historicalFromDate; an
+ *  atomic write has nothing to reset-then-restore). */
+export type ActiveViewProjection = {
+  code: string | null;
+  timeframe: LiveTimeframe;
+  historicalFromDate: string | null;
+};
+
 type Store = Persisted & PersistedIndicators & {
+  projectActiveView: (view: ActiveViewProjection) => void;
   setActiveCode: (code: string | null) => void;
   setCandleTimeframe: (tf: LiveTimeframe) => void;
   extendHistoricalRange: (date: string) => void;
@@ -277,6 +288,15 @@ export const useLivePageStore = create<Store>((set, get) => ({
   setMovingAverageHidden: (hidden) => {
     set({ movingAverageHidden: hidden });
     persistIndicators(snapshotIndicators(get));
+  },
+
+  projectActiveView: ({ code, timeframe, historicalFromDate }) => {
+    // One atomic write — no reset-then-restore. tf is clamped like setCandleTimeframe
+    // (belt-and-suspenders; tabs already carry validated timeframes).
+    const tf = LIVE_TIMEFRAMES.includes(timeframe) ? timeframe : get().candleTimeframe;
+    const next = { activeCode: code, candleTimeframe: tf, historicalFromDate };
+    set(next);
+    persist({ ...get(), ...next });
   },
 
   setActiveCode: (code) => {
