@@ -181,18 +181,17 @@ def test_post_heatmap_does_not_touch_watchlist(tmp_path: Path):
 # --- one-time seed ----------------------------------------------------------
 
 def _seed_watchlist(tmp_path: Path) -> None:
-    """Write a watchlist.json directly (folder + foldered entry + 미분류 entry)."""
+    """Write a watchlist.json directly (v3: folder owns member_codes)."""
     from hoga.api import watchlist
     from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
     doc = WatchlistDocument(
-        folders=[WatchlistFolder(id="f_0000000a", name="반도체", order=0)],
+        folders=[WatchlistFolder(id="f_0000000a", name="반도체", order=0,
+                                 member_codes=["005930", "035720"])],
         entries=[
             WatchlistEntry(code="005930", name="삼성전자",
-                           registered_at_kst_date="20260601",
-                           last_success_date="20260610", folder_id="f_0000000a", order=0),
+                           registered_at_kst_date="20260601", last_success_date="20260610"),
             WatchlistEntry(code="035720", name="카카오",
-                           registered_at_kst_date="20260601",
-                           last_success_date=None, folder_id=None, order=0),
+                           registered_at_kst_date="20260601", last_success_date=None),
         ],
     )
     watchlist.save_document(tmp_path, doc)
@@ -205,10 +204,11 @@ def test_seed_copies_watchlist_stripping_capture_fields(tmp_path: Path):
     doc = load_document(tmp_path)
     assert {f.name for f in doc.folders} == {"반도체"}
     assert {e.code for e in doc.entries} == {"005930", "035720"}
-    # folder_id copied verbatim (grilling G5); 미분류 entry preserved as null.
+    # folder_id derived from the watchlist folder's member_codes (v3, ADR-0070):
+    # both Codes are members of 반도체, so both land in f_0000000a.
     by_code = {e.code: e for e in doc.entries}
     assert by_code["005930"].folder_id == "f_0000000a"
-    assert by_code["035720"].folder_id is None
+    assert by_code["035720"].folder_id == "f_0000000a"
     # No capture fields carried.
     assert not hasattr(by_code["005930"], "last_success_date")
 

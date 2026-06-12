@@ -2,7 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { WATCHLIST_KEY } from './watchlistKeys';
 import {
   getWatchlist,
-  addToWatchlist,
+  addMember,
+  removeMember,
   removeFromWatchlist,
   catchupNow,
   catchupAll,
@@ -10,7 +11,6 @@ import {
   renameFolder,
   deleteFolder,
   reorderFolders,
-  moveEntries,
   reorderEntries,
   removeEntries,
   type WatchlistResponse,
@@ -23,15 +23,6 @@ export function useWatchlist() {
     queryKey: WATCHLIST_KEY,
     queryFn: getWatchlist,
     refetchInterval: 60_000,  // refresh the countdown source minute-ly
-  });
-}
-
-export function useAddToWatchlist() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationKey: ['watchlist', 'add'],
-    mutationFn: (code: string) => addToWatchlist(code),
-    onSuccess: () => qc.invalidateQueries({ queryKey: WATCHLIST_KEY }),
   });
 }
 
@@ -85,9 +76,10 @@ export function useDeleteFolder() {
   });
 }
 
-// --- move / reorder: optimistic + rollback (DnD smoothness) ---
-type ReorderVars = { folderId: string | null; orderedCodes: string[] };
-type MoveVars = { codes: string[]; folderId: string | null };
+// --- membership / reorder: optimistic + rollback (DnD smoothness) ---
+type ReorderVars = { folderId: string; orderedCodes: string[] };
+type AddMemberVars = { folderId: string; code: string; name: string };
+type RemoveMemberVars = { folderId: string; code: string };
 
 // no-jump invariant: 서버가 target 그룹을 0..N-1로 compact 유지하므로(_reindex), 아래 낙관적
 // order는 invalidate 후 서버 값과 같은 *상대순서*에 안착 → 화면 jump 없음. 렌더는 .order로
@@ -101,13 +93,26 @@ function applyReorder(data: WatchlistResponse, v: ReorderVars): WatchlistRespons
         ? { ...e, order: rank.get(e.code)! } : e),
   };
 }
-function applyMove(data: WatchlistResponse, v: MoveVars): WatchlistResponse {
+// v3 멤버십(펼친 와이어): 한 코드가 N폴더면 N행. add=대상 폴더에 행 1개 추가(다른 폴더
+// 행 보존), remove=그 폴더 행만 제거. 백엔드가 entry 생성/삭제·order compact를 확정한다.
+function applyAddMember(data: WatchlistResponse, v: AddMemberVars): WatchlistResponse {
+  if (data.entries.some((e) => e.folder_id === v.folderId && e.code === v.code)) return data;
   const base = Math.max(-1, ...data.entries.filter((e) => e.folder_id === v.folderId).map((e) => e.order)) + 1;
-  const set = new Set(v.codes);
+  const existing = data.entries.find((e) => e.code === v.code);
+  const row: WatchlistResponse['entries'][number] = {
+    code: v.code,
+    name: existing?.name ?? v.name,
+    registered_at_kst_date: existing?.registered_at_kst_date ?? '',
+    last_success_date: existing?.last_success_date ?? null,
+    folder_id: v.folderId,
+    order: base,
+  };
+  return { ...data, entries: [...data.entries, row] };
+}
+function applyRemoveMember(data: WatchlistResponse, v: RemoveMemberVars): WatchlistResponse {
   return {
     ...data,
-    entries: data.entries.map((e) =>
-      set.has(e.code) ? { ...e, folder_id: v.folderId, order: base + v.codes.indexOf(e.code) } : e),
+    entries: data.entries.filter((e) => !(e.folder_id === v.folderId && e.code === v.code)),
   };
 }
 function applyFolderReorder(data: WatchlistResponse, orderedIds: string[]): WatchlistResponse {
@@ -140,9 +145,26 @@ export function useReorderEntries() {
   return useOptimisticWatchlistMutation<ReorderVars>(
     (v) => reorderEntries(v.folderId, v.orderedCodes), applyReorder);
 }
-export function useMoveEntries() {
-  return useOptimisticWatchlistMutation<MoveVars>(
-    (v) => moveEntries(v.codes, v.folderId), applyMove);
+export function useAddMember() {
+  return useOptimisticWatchlistMutation<AddMemberVars>(
+    (v) => addMember(v.folderId, v.code).then(() => undefined), applyAddMember);
+}
+export function useRemoveMember() {
+  return useOptimisticWatchlistMutation<RemoveMemberVars>(
+    (v) => removeMember(v.folderId, v.code), applyRemoveMember);
+}
+
+/** v3: 코드를 from→to 폴더로 이동 = 대상 폴더에 추가 후 출처 폴더에서 제거(둘 다 멤버십).
+ *  "이동"은 단일 소속 idiom의 잔재이지만 편집모달 드래그·다중선택 이동 UX를 보존한다. */
+export function useMoveMember() {
+  const add = useAddMember();
+  const remove = useRemoveMember();
+  return async ({ code, from, to, name = '' }:
+    { code: string; from: string; to: string; name?: string }) => {
+    if (from === to) return;
+    await add.mutateAsync({ folderId: to, code, name });
+    await remove.mutateAsync({ folderId: from, code });
+  };
 }
 
 // --- folder reorder + bulk remove ---

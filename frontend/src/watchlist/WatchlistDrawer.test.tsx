@@ -166,28 +166,29 @@ describe('WatchlistDrawer', () => {
       expect(screen.queryByRole('dialog', { name: '그룹 이름 변경' })).toBeNull());
   });
 
-  it('그룹 헤더 ⋯ → 그룹 삭제 deletes the folder', async () => {
+  it('그룹 헤더 ⋯ → 그룹 삭제 deletes the folder (고아 확인 후, v3)', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const deleteSpy = vi.spyOn(watchlistApi, 'deleteFolder').mockResolvedValue();
+    // v3 파괴적 삭제(ADR-0070 P6): 고아가 생기면 확인 — 테스트는 확인 수락.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
     fireEvent.click(await screen.findByRole('menuitem', { name: /그룹 삭제/ }));
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith('f_0000000a'));
+    confirmSpy.mockRestore();
   });
 
-  it('우클릭 → 그룹으로 이동 moves the entry to the chosen folder', async () => {
+  it('우클릭 → 그룹 편집 opens the group picker (v3)', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
-    const moveSpy = vi.spyOn(watchlistApi, 'moveEntries').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
-    // 미분류 소속 000660 → 스윙(f_0000000a)으로 이동
     fireEvent.contextMenu(screen.getByTestId('watchlist-row-000660'));
-    fireEvent.click(screen.getByTestId('watchlist-menu-move-f_0000000a'));
-    await waitFor(() => expect(moveSpy).toHaveBeenCalledWith(['000660'], 'f_0000000a'));
-    expect(screen.queryByTestId('watchlist-row-menu')).toBeNull();   // 메뉴 닫힘
+    fireEvent.click(screen.getByTestId('watchlist-menu-edit-groups'));
+    expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
+    expect(screen.queryByTestId('watchlist-row-menu')).toBeNull();   // 행 메뉴 닫힘
   });
 
   it('접기 상태가 localStorage에 영속되어 리마운트에도 유지된다', async () => {

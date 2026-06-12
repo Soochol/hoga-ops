@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   getWatchlist,
-  addToWatchlist,
+  addMember,
+  removeMember,
   removeFromWatchlist,
-  moveEntries,
   type WatchlistResponse,
 } from './watchlist';
 
@@ -28,14 +28,14 @@ describe('watchlist api client', () => {
     expect(r).toEqual(fake);
   });
 
-  it('addToWatchlist POSTs JSON body with the code', async () => {
+  it('addMember POSTs code to /folders/{fid}/members', async () => {
     vi.mocked(apiCall).mockResolvedValueOnce({
       code: '003490', name: '대한항공',
       registered_at_kst_date: '20260526', last_success_date: null,
     });
-    await addToWatchlist('003490');
+    await addMember('f_0000000a', '003490');
     const [path, init] = vi.mocked(apiCall).mock.calls[0];
-    expect(path).toBe('/api/watchlist');
+    expect(path).toBe('/api/watchlist/folders/f_0000000a/members');
     expect(init?.method).toBe('POST');
     expect(JSON.parse(init?.body as string)).toEqual({ code: '003490' });
   });
@@ -49,13 +49,13 @@ describe('watchlist api client', () => {
     );
   });
 
-  it('moveEntries POSTs codes + folder_id to /api/watchlist/move', async () => {
+  it('removeMember DELETEs /folders/{fid}/members/{code}', async () => {
     vi.mocked(apiAction).mockResolvedValueOnce(undefined);
-    await moveEntries(['005930', '003490'], 'f_0000000a');
-    const [path, init] = vi.mocked(apiAction).mock.calls[0];
-    expect(path).toBe('/api/watchlist/move');
-    expect(init?.method).toBe('POST');
-    expect(JSON.parse(init?.body as string)).toEqual({ codes: ['005930', '003490'], folder_id: 'f_0000000a' });
+    await removeMember('f_0000000a', '005930');
+    expect(apiAction).toHaveBeenCalledWith(
+      '/api/watchlist/folders/f_0000000a/members/005930',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
   });
 });
 

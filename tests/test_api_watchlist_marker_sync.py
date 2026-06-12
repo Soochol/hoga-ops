@@ -65,8 +65,9 @@ async def test_finalize_does_not_bump_marker_on_client_incomplete(tmp_path: Path
     because the worker returned cleanly with an abort_reason set."""
     from hoga.api import captures, watchlist
 
-    await watchlist.add_entry(tmp_path, code="098460", name="고영",
-                              today_kst_date="20260520")
+    _fid = (await watchlist.create_folder(tmp_path, name="기본")).id
+    await watchlist.add_member(tmp_path, code="098460", name="고영",
+                               today_kst_date="20260520", folder_id=_fid)
     await watchlist.bump_last_success(tmp_path, code="098460", date="20260522")
 
     # 5/26 capture aborted mid-stream → meta.json reflects partial state.
@@ -92,8 +93,9 @@ async def test_finalize_bumps_marker_on_complete(tmp_path: Path):
     MUST advance. This guards the fix from being too restrictive."""
     from hoga.api import captures, watchlist
 
-    await watchlist.add_entry(tmp_path, code="098460", name="고영",
-                              today_kst_date="20260520")
+    _fid = (await watchlist.create_folder(tmp_path, name="기본")).id
+    await watchlist.add_member(tmp_path, code="098460", name="고영",
+                               today_kst_date="20260520", folder_id=_fid)
     await watchlist.bump_last_success(tmp_path, code="098460", date="20260522")
 
     # Normal finalize: full collection, not partial.
@@ -127,7 +129,9 @@ async def test_catchup_regresses_stale_marker_to_disk_truth(tmp_path: Path):
         registered_at_kst_date="20260520",
         last_success_date="20260526",
     )]
-    watchlist.save_document(tmp_path, watchlist.WatchlistDocument(entries=stale))
+    # v3 불변식: entry 는 폴더 member 여야 save 가 보존한다(orphan prune, ADR-0070).
+    folder = watchlist.WatchlistFolder(id="f_0000000a", name="기본", order=0, member_codes=["098460"])
+    watchlist.save_document(tmp_path, watchlist.WatchlistDocument(folders=[folder], entries=stale))
 
     fake_now = dt.datetime(2026, 5, 27, 11, 0, 0, tzinfo=KST)
     with patch("hoga.api.scheduler.latest_complete_date",

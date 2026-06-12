@@ -4,7 +4,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import {
-  useWatchlist, useCreateFolder, useReorderEntries, useMoveEntries,
+  useWatchlist, useCreateFolder, useReorderEntries, useMoveMember,
   useRenameFolder, useDeleteFolder, useReorderFolders,
 } from './useWatchlist';
 import { WatchlistEntryPane } from './WatchlistEntryPane';
@@ -68,30 +68,11 @@ function FolderRow(props: {
   );
 }
 
-/** 미분류 의사폴더 버튼 — FolderRow와 같은 행 스타일이되 액션/드래그핸들 없는 단순
- *  선택 버튼. FolderRow처럼 모듈 스코프(stable identity)로 둬 render마다 재생성되지
- *  않게 한다(react-hooks/static-components). */
-function FolderButton(props: {
-  sel: Selected; label: string; count: number | null;
-  selected: Selected; onSelect: (sel: Selected) => void;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id: folderDroppableId(props.sel) });
-  return (
-    <button ref={setNodeRef} type="button" onClick={() => props.onSelect(props.sel)}
-      className={`w-full flex items-center justify-between pl-3 pr-2 py-1.5 rounded text-sm ${
-        props.selected === props.sel ? 'bg-bg-input text-fg' : 'text-fg-dim hover:bg-bg-input-hover'} ${
-        isOver ? 'ring-1 ring-accent bg-bg-input-hover' : ''}`}>
-      <span className="truncate">{props.label}</span>
-      {props.count !== null && <span className="font-mono tabular-nums text-fg-dimmer text-xs">{props.count}</span>}
-    </button>
-  );
-}
-
 export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
   const { data } = useWatchlist();
   const createM = useCreateFolder();
   const reorderM = useReorderEntries();
-  const moveM = useMoveEntries();
+  const moveMember = useMoveMember();
   const renameM = useRenameFolder();
   const deleteM = useDeleteFolder();
   const reorderFoldersM = useReorderFolders();
@@ -114,8 +95,13 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
   const onDragEnd = (ev: DragEndEvent) => {
     if (!ev.over) return;
     const r = resolveDrag(visible, selected, String(ev.active.id), String(ev.over.id));
-    if (r.kind === 'reorder') reorderM.mutate({ folderId: r.folderId, orderedCodes: r.orderedCodes });
-    else if (r.kind === 'move') moveM.mutate({ codes: r.codes, folderId: r.folderId });
+    if (r.kind === 'reorder' && r.folderId !== null) {
+      reorderM.mutate({ folderId: r.folderId, orderedCodes: r.orderedCodes });
+    } else if (r.kind === 'move' && selected !== null && r.folderId !== null) {
+      // v3: 폴더 간 드래그 = 멤버십 이동(대상 추가 후 출처 제거).
+      const target = r.folderId;
+      for (const code of r.codes) void moveMember({ code, from: selected, to: target });
+    }
   };
 
   const submitFolder = async (e: React.FormEvent) => {
@@ -185,7 +171,6 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
                   onCommit={() => commitRename(f.id)}
                   onCancelEdit={() => setEditingId(null)} />
               ))}
-              <FolderButton sel={null} label="미분류" count={countIn(null)} selected={selected} onSelect={setSelected} />
             </div>
           </div>
 

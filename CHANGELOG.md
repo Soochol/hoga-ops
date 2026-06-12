@@ -3,6 +3,42 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.21.0] - 2026-06-12
+
+### Added
+- **관심종목 다중 소속 + 스크리너 하트 그룹 피커** (watchlist v3, ADR-0070): 스크리너·드로어·
+  라이브 검색 등 **모든 하트(5곳)**가 누르면 **그룹 선택 팝업(`WatchlistGroupPicker`)**을 띄워
+  종목을 **여러 폴더에 동시에** 넣고 뺄 수 있다(체크박스 토글 + "새 그룹 만들기"). 하트 채움 =
+  그 종목이 **1개 이상 폴더에 소속**. 단일 멤버십 primitive 하나를 5곳에 마운트 —
+  스크리너 결과표(`ResultTable`)·스크리너 패널(`ScreenerDrawer`)·라이브 종목검색
+  (`LiveSymbolSearch`)·드로어 행 메뉴(`WatchlistRowMenu` "그룹 편집")·추가폼(`WatchlistAddForm`).
+- **데이터 모델 v2→v3 전환**: 폴더가 정렬된 `member_codes` 리스트를 **소유**하고(이전엔 entry가
+  `folder_id` 1개를 들고 있었음), `WatchlistEntry`는 종목당 백필 마커(`code, name,
+  registered_at_kst_date, last_success_date`)만 갖는 슬림 레코드가 된다. 불변식:
+  `{entry.code} == ⋃ folder.member_codes`를 **쓰기 경로(`save_document`) 단일 seam**에서 강제
+  (deepening 1) — read는 절대 prune하지 않는다(ADR-0065). 멤버십은 1급 API
+  (`POST/DELETE /api/watchlist/folders/{id}/members[/{code}]`)로 토글.
+- **표시 순서 계약 골든 픽스처** (deepening 2): 백엔드 `display_ordered_codes`(Live Set = KIS WS
+  구독 경계)와 프론트 `grouping.ts`(렌더)가 같은 픽스처 하나를 읽어 — 폴더 `.order` 순 → 각 폴더
+  `member_codes` 순 → 첫 등장으로 dedup — 한쪽 정렬 키만 바뀌어도 다른 쪽 테스트가 깨지도록
+  계약을 코드로 박는다(화면 상단과 실제 구독 종목이 조용히 어긋나는 capture-critical 회귀 방지).
+
+### Changed
+- **미분류(unfiled) 폐지** (watchlist 한정): 관심종목 소속 = 폴더의 합집합이므로, **0개 폴더에 든
+  종목은 관심종목에서 빠진다**(캡처 중단). `folder_id=null` 버킷 없음. 독립 히트맵 저장소
+  (ADR-0068)는 v2 단일 `folder_id` 모델을 그대로 유지 — 미분류는 히트맵에만 존재.
+- **폴더 삭제는 멤버십에 파괴적**(v3): 그 폴더에만 있던 종목은 관심종목에서 빠지므로, 고아가
+  생기는 삭제 전 UI가 **확인**한다("이 N종목이 관심종목에서 빠집니다"). ADR-0065 무손실 정신 유지.
+- **와이어 모델은 v2 shape 유지(옵션 B, ADR-0004)**: API 응답(`WatchlistResponse`)은 폴더
+  `{id,name,order}` + entries를 `(code, folder_id, order)` 1행/(폴더,종목)으로 **펼쳐서** 보내고,
+  투영은 백엔드 라우트가 한다(저장소 Entity ≠ 와이어, 클라 어댑터 없음). 프론트 데이터 계층
+  (타입·`useWatchlist`·`grouping`)은 사실상 무변경.
+
+### Migration
+- **v1→v2→v3 in-place 포워드 마이그레이션**(격리 없음, ADR-0065): v2→v3는 각 entry의 `folder_id`/
+  `order`를 폴더 `member_codes`로 접고, 과거 미분류(unfiled) 종목은 새로 만든 **"기본"** 폴더로
+  보존한다.
+
 ## [0.7.20.0] - 2026-06-12
 
 ### Added
