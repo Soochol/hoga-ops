@@ -3,6 +3,32 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.22.0] - 2026-06-12
+
+### Changed
+- **관심맵 히트 무게중심 재배치 — 행 → 그룹 헤더** (heatmap-heat-redistribution, ADR-0068 영역):
+  등락 히트(색)를 행 등락칩에서 **그룹 헤더 밴드 틴트**로 옮겼다. 헤더 밴드가 그룹 평균 등락률에
+  비례한 적/청 히트 틴트(`heatHeaderBg`, `heatBg`와 동일 선형 램프 max α 0.5, 미분류 포함 무분기)를
+  져서 섹터 온도를 헤더에서 바로 읽는다. 행 등락은 화살표(`▲▼`)·칩 배경 없이 **`priceDirClass` 컬러
+  텍스트**(+적/−청, 보합 중립)로 — 우측 패널 `QuoteChange`와 동일 컨벤션(색+부호 2중, 색약 보조).
+  헤더 평균 %는 평면 `text-fg-dim` 숫자(색은 밴드가 짊어지고 숫자는 보조). 상단 `-8/+8` 색 범례 삭제.
+  옛 `heatChipBg`·`HEAT_CHIP_MAX_ALPHA` 제거. DESIGN.md §Color 규율 갱신(헤더 틴트 채택·행 컬러텍스트).
+
+### Added
+- **관심맵 그룹 정렬 축** (`groupSort`): 행 정렬(`sortMode` 등락률↓/수동)과 **직교**하는 그룹(폴더)
+  정렬 — 평균 등락률 내림(`등락률 ↓`)/오름(`등락률 ↑`)/수동. 헤더에 `행`/`그룹` 두 세그먼트 토글
+  (그룹 버튼은 `aria-label`로 식별해 행 토글과 어휘 충돌 회피), `heatmap.groupSort.v1` 별도 키 영속,
+  미분류 항상 맨 끝(`orderFolderGroups`). **G1 드래그 동결 가드**(`useFrozenWhileDragging`):
+  `(수동 행 + 그룹 등락률↓)`에서 행 드래그 중 매-폴 그룹 재정렬이 컨테이너를 멀티칼럼 너머로
+  텔레포트시키는 것을 방지 — 드래그 active 동안 그룹 순서 동결, drag-end에 최신 적용. dnd
+  passthrough-mock으로 jsdom 단위 테스트 검증.
+
+### Internal
+- 아키텍처 deepening(plan-eng-review): `heatmapPrefs` read/persist를 기존 `state/persist.ts` 커널
+  (`persistJson`/`readJsonObject`, 2소비자)로 수렴(중복 try/catch+파싱 가드 제거), `makePctOf(quoteByCode)`
+  팩토리로 등락 접근 null 정책을 3곳에서 한 곳으로 통합. 설계 파이프라인: brainstorming → 스펙 →
+  plan-eng-review 그릴링(G1–G8) → writing-plans → subagent-driven 실행.
+
 ## [0.7.21.0] - 2026-06-12
 
 ### Added

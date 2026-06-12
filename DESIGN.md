@@ -109,10 +109,12 @@ The design system has a **single density dial** at `:root font-size`.
   - Warning: `--warn` (#F59E0B, amber)
   - Info: `--accent` (teal)
 
-- **Price-direction heat ramp (히트맵 보드 전용):** `frontend/src/heatmap/heat.ts::heatBg()` 가
-  `--price-up`/`--price-down` 을 |등락률| 비례 가변 알파(±8% 포화, max 0.42)로 배경에 사용한다.
-  단일 0.10 칩 토큰의 확장이며 색상 카테고리(가격 방향)는 준수. 숫자는 `priceDirClass()` 색을
-  유지해 배경+숫자+부호 삼중 표현(색약 보조).
+- **Price-direction heat ramp (히트맵 보드 전용):** `--price-up`/`--price-down` 을 |등락률| 비례
+  가변 알파로 쓴다. **행 등락은 칩 배경이 아니라 `priceDirClass()` 텍스트 색 + 부호**로 표현한다
+  (배경 워시 없음, `▲▼` 없음 — 색약 보조는 색+부호 2중; 우측 패널 `QuoteChange` 와 동일 컨벤션).
+  **헤더 밴드는 `heatHeaderBg()`**(선형 램프, max α 0.5, 그룹 평균 등락 기준)로 틴트한다.
+  `heatHeaderBg` 의 `linear-gradient(0deg, heat, heat)` 는 동색 2-stop 합성 idiom(시각상 단색)이라
+  위 "no gradients"(장식 한정) 규율과 무충돌 — 기능적 gradient 선례 = depth bar.
 
 - **Price-direction candle glyph (관심맵 행 전용):** `frontend/src/heatmap/CandleGlyph.tsx` 가
   당일 시·고·저·종을 1봉으로 그린다(고-저 심지 + 시-종 몸통). 색 = **종가 vs 시가**(strict):
@@ -121,10 +123,11 @@ The design system has a **single density dial** at `:root font-size`.
   방향 카테고리 준수(새 색 없음) — `heat.ts` 배경 확장의 캔들 버전.
 
 - **Heatmap 폴더 surface 예외 (관심맵 보드 전용):** 신문형 멀티칼럼 고밀도 보드라 폴더 블록은
-  `--bg-card` 카드(채움+테두리+라운드) 대신 **투명·평면**으로 둔다 — 그룹 경계는 `--bg-input`
-  헤더 밴드(폴더 본문보다 한 단계 밝게) + `--border-strong` 좌측 스파인(`border-l-2`) + 여백으로
-  잡는다. 헤더 밴드 히트 틴트(평균 등락 배경 워시)는 쓰지 않는다 — 섹터 온도는 헤더의 평균
-  등락칩으로만. 이 예외는 **히트맵 폴더 한정**이며 드로어·차트·툴바 등 다른 카드는 `--bg-card` 유지.
+  `--bg-card` 카드(채움+테두리+라운드) 대신 **투명·평면**으로 둔다 — 그룹 경계는 헤더 밴드 +
+  `--border-strong` 좌측 스파인(`border-l-2`) + 여백으로 잡는다. **헤더 밴드는 그룹 평균 등락 비례
+  히트 틴트(`heatHeaderBg`, 선형 램프 max α 0.5)를 진다**(미분류 포함 무분기); 평균값은 평면
+  `text-fg-dim` 숫자. α 상향 금지(미분류명 `text-fg-dim` 의 틴트 밴드 위 대비 보호). 이 예외는
+  **히트맵 폴더 한정**이며 드로어·차트·툴바 등 다른 카드는 `--bg-card` 유지.
 
 - **Dark mode:** Only mode in v1. Light mode is out of scope.
 
