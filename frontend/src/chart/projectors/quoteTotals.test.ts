@@ -169,10 +169,11 @@ describe('급증 마커 (askSurgeMarkers) — 근접 95% + 재무장 85%', () =>
     segments: [{ session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000 }],
   };
 
-  it('직전 고가 96% 재접근 지점에 마커(text=도달률, position, time)', () => {
+  it('직전 고가 96% 재접근 지점에 라벨 없는 점 마커(position, time, text 없음)', () => {
     const m = askSurgeMarkers(bundle, axis, ctx);
     expect(m).toHaveLength(1);
-    expect(m[0].text).toBe('96%'); // value/prevPeak = 96/100
+    expect(m[0].text).toBeUndefined(); // 도달률(%) 텍스트 미표시 — 점만 (사용자 요청)
+    expect(m[0].shape).toBe('circle');
     expect(m[0].position).toBe('aboveBar');
     expect(m[0].time).toBe(2); // toVirtual(+2000ms)/1000 = 2초
   });
