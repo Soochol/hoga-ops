@@ -26,11 +26,15 @@ const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const tradingDayOf = (t: number): number => Math.floor((t + KST_OFFSET_MS) / 86_400_000);
 
 /**
- * 한 side(ask|bid)의 급증 마커 — **근접(re-approach) + 히스테리시스** 방식.
+ * 한 side(ask|bid)의 급증 마커 — **근접(re-approach) + 히스테리시스 + 꼭대기 추적** 방식.
  * 벽이 당일 running peak의 `approachRatio`(기본 95%)까지 차오르면 1회 발사하고, `rearmRatio`(기본 85%)
  * 아래로 빠져야 다시 발사 가능. 즉 "벽이 자기 직전 고가에 다시 도전하는 순간"을 한 번씩 잡는다.
- * 거래일마다 running peak·무장 리셋, 마감 동시호가 제외. quiet-start: 무장은 false로 시작(첫 고가가
- * 세워지고 한 번 빠진 뒤부터 발사 — 비교할 직전 고가가 생긴 뒤).
+ * **꼭대기 추적**: 한 번 발사한 뒤(disarm) 재무장 전까지 더 큰 신고가가 계속 나오면, 그 마커를 새 꼭대기
+ * 봉으로 *이동*시킨다 — 단조 상승 구간에서 동그라미가 "첫 돌파 봉"이 아니라 "그 구간의 최종 꼭대기"에
+ * 자리잡게 한다(첫 돌파 봉에 찍고 disarm되어 진짜 꼭대기를 놓치던 동작을 교정). `rearmRatio` 아래로
+ * 빠지면 사이클 종료 → 다음 발사는 새 마커.
+ * 거래일마다 running peak·무장·활성마커 리셋, 마감 동시호가 제외. quiet-start: 무장은 false로 시작
+ * (첫 고가가 세워지고 한 번 빠진 뒤부터 발사 — 비교할 직전 고가가 생긴 뒤).
  */
 export function detectSurgeSide(
   points: readonly QuoteRatioPoint[],
@@ -40,6 +44,10 @@ export function detectSurgeSide(
   const out: SurgeMarker[] = [];
   let runningMax = 0;
   let armed = false;
+  // 현재 발사 사이클의 마커 인덱스(-1 = 사이클 없음). disarm 상태에서 신고가 갱신 시 이 마커를 이동.
+  // 거래일 경계에서 -1로 리셋 → today 청크가 과거 거래일 마커를 건드리지 않아 Split Cache 불변식
+  // (cachedPast ++ today === all)이 유지된다.
+  let activeIdx = -1;
   let curDay = Number.NaN;
   for (const p of points) {
     const day = tradingDayOf(p.t);
@@ -47,14 +55,24 @@ export function detectSurgeSide(
       curDay = day;
       runningMax = 0; // 거래일 경계 리셋
       armed = false;
+      activeIdx = -1;
     }
     if (o.isClosingAuction(p.t)) continue; // 마감 동시호가 누적 제외
     const v = p[FIELD[side]];
     if (runningMax > 0) {
-      if (v < o.rearmRatio * runningMax) armed = true; // 빠짐 → 재무장
+      if (v < o.rearmRatio * runningMax) {
+        armed = true; // 빠짐 → 재무장
+        activeIdx = -1; // 사이클 종료 — 다음 발사는 새 마커
+      }
       if (armed && v >= o.approachRatio * runningMax) {
         out.push({ t: p.t, prevPeak: runningMax, value: v, pctOfPeak: v / runningMax });
+        activeIdx = out.length - 1;
         armed = false; // 한 번 발사 후 disarm (재무장 전까지 도배 방지)
+      } else if (activeIdx >= 0 && v > runningMax) {
+        // 발사 후(disarm) 재무장 전까지 진짜 신고가 → 마커를 이 꼭대기로 이동.
+        // prevPeak는 발사 시점 직전 고가를 유지(pctOfPeak = 꼭대기/발사직전고가, 미표시 데이터 — #83).
+        const prevPeak = out[activeIdx].prevPeak;
+        out[activeIdx] = { t: p.t, prevPeak, value: v, pctOfPeak: v / prevPeak };
       }
     }
     if (v > runningMax) runningMax = v; // 래칫
