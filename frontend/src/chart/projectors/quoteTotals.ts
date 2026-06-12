@@ -3,7 +3,9 @@ import {
   type LineData,
   type UTCTimestamp,
   type Time,
+  type SeriesMarker,
 } from 'lightweight-charts';
+import { useShallow } from 'zustand/react/shallow';
 import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
@@ -11,6 +13,7 @@ import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { isAuctionHidden, LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
+import { detectSurges } from '../surge/detectSurges';
 
 const TOKEN_SPEC = {
   bid: ['--price-up', '#DC2626'],   // 매수 호가 총합 (KRX 빨강)
@@ -85,7 +88,50 @@ export function projectAskPoints(
   return out;
 }
 
-const useQuoteTotalsContext = (): boolean => useActivePrefs((p) => p.auctionWindowMask);
+export type QuoteTotalsCtx = { auctionMask: boolean; surgeEnabled: boolean; surgeMarginPct: number };
+
+// useShallow: object literal reference stays stable when the three fields don't
+// change → makePastCachedProjector's ctx-identity cache key (via bidCachedData's
+// ctx.auctionMask) and React.memo both hold. Same pattern as ratio.ts / fillStrength.ts.
+const useQuoteTotalsContext = (): QuoteTotalsCtx =>
+  useActivePrefs(
+    useShallow((p) => ({
+      auctionMask: p.auctionWindowMask,
+      surgeEnabled: p.surgeMarkerEnabled,
+      surgeMarginPct: p.surgeMarginPct,
+    })),
+  );
+
+/** 한 side의 급증 마커. detectSurges(전 구간 단일패스)로 산출 후 보이는 구간만 SeriesMarker로 투영
+ *  (라인과 동일한 axis.toVirtual/1000 시간좌표). 마감 동시호가는 항상 제외(그릴링 Q4). */
+function surgeMarkersFor(
+  side: 'ask' | 'bid',
+  bundle: RangeBundle,
+  axis: VirtualAxis,
+  ctx: QuoteTotalsCtx,
+): SeriesMarker<Time>[] {
+  if (!ctx.surgeEnabled) return [];
+  const result = detectSurges(bundle.quote_ratio.points, {
+    margin: ctx.surgeMarginPct / 100,
+    sessionOpens: bundle.segments.map((s) => s.session_open_ms),
+    isClosingAuction: (t) => axis.inClosingAuctionWindow(t),
+  });
+  const color = side === 'ask' ? ask : bid;
+  return result[side]
+    .filter((m) => axis.contains(m.t))
+    .map((m) => ({
+      time: (axis.toVirtual(m.t) / 1000) as UTCTimestamp,
+      position: 'aboveBar' as const,
+      shape: 'circle' as const,
+      color,
+      text: `+${Math.round(m.pctOver * 100)}%`,
+    }));
+}
+
+export const askSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) =>
+  surgeMarkersFor('ask', b, a, c);
+export const bidSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) =>
+  surgeMarkersFor('bid', b, a, c);
 
 // crosshairMarkerBackgroundColor pins the hover marker to a solid series color
 // so it survives the Auction Mask connector-break. maskOutgoingConnector
@@ -99,8 +145,11 @@ const useQuoteTotalsContext = (): boolean => useActivePrefs((p) => p.auctionWind
 // this for free because its marker color is series-level, not per-point — this
 // makes 총잔량 consistent with 호가비.
 // P0 과거/당일 분리 캐시 — 틱당 풀 재투영 제거. 출력은 projectBid/projectAsk와 동일.
-const bidCachedData = makePastCachedProjector(projectBidPoints, (b) => b.quote_ratio.points);
-const askCachedData = makePastCachedProjector(projectAskPoints, (b) => b.quote_ratio.points);
+const bidCachedRaw = makePastCachedProjector(projectBidPoints, (b) => b.quote_ratio.points);
+const askCachedRaw = makePastCachedProjector(projectAskPoints, (b) => b.quote_ratio.points);
+// ctx 객체에서 auctionMask(값-안정 boolean)만 내부 캐시에 전달 → Split Cache 캐시키 안정 유지.
+const bidCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => bidCachedRaw(b, a, c.auctionMask);
+const askCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => askCachedRaw(b, a, c.auctionMask);
 
 export const QUOTE_TOTALS_SPEC = {
   name: 'quote-totals' as const,
@@ -115,6 +164,7 @@ export const QUOTE_TOTALS_SPEC = {
         lastValueVisible: false, crosshairMarkerBackgroundColor: bid,
       },
       data: bidCachedData,
+      markers: bidSurgeMarkers,
     },
     {
       type: LineSeries,
@@ -123,6 +173,7 @@ export const QUOTE_TOTALS_SPEC = {
         lastValueVisible: false, crosshairMarkerBackgroundColor: ask,
       },
       data: askCachedData,
+      markers: askSurgeMarkers,
     },
   ],
-} satisfies PaneSpec<boolean>;
+} satisfies PaneSpec<QuoteTotalsCtx>;

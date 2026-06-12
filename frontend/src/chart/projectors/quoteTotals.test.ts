@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectBid, projectAsk, QUOTE_TOTALS_SPEC } from './quoteTotals';
+import { projectBid, projectAsk, QUOTE_TOTALS_SPEC, askSurgeMarkers } from './quoteTotals';
 import { createVirtualAxis } from '../../util/virtualAxis';
 
 const sessionOpenMs = 1_779_062_400_000;
@@ -153,5 +153,30 @@ describe('QUOTE_TOTALS_SPEC crosshair marker', () => {
       expect(c).toBeTruthy();
       expect(c).not.toBe('rgba(0,0,0,0)');
     }
+  });
+});
+
+describe('급증 마커 (askSurgeMarkers)', () => {
+  const ctx = { auctionMask: false, surgeEnabled: true, surgeMarginPct: 50 };
+  const bundle: any = {
+    quote_ratio: {
+      points: [
+        { t: sessionOpenMs, bid_total: 0, ask_total: 100 },
+        { t: sessionOpenMs + 1000, bid_total: 0, ask_total: 160 }, // +60% > 50%
+      ],
+    },
+    segments: [{ session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000 }],
+  };
+
+  it('직전 고가 +60% 지점에 마커(text/position/time)', () => {
+    const m = askSurgeMarkers(bundle, axis, ctx);
+    expect(m).toHaveLength(1);
+    expect(m[0].text).toBe('+60%');
+    expect(m[0].position).toBe('aboveBar');
+    expect(m[0].time).toBe(1); // toVirtual(+1000ms)/1000 = 1초
+  });
+
+  it('surgeEnabled=false면 마커 없음', () => {
+    expect(askSurgeMarkers(bundle, axis, { ...ctx, surgeEnabled: false })).toEqual([]);
   });
 });
