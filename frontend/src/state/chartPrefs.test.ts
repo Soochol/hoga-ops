@@ -88,10 +88,20 @@ describe('총잔량 급증 설정', () => {
     expect(re?.max).toBe(95);
   });
 
+  it('surgeStartHHMM(기본 900, 900–1520) enabledBy surgeMarkerEnabled', () => {
+    expect(DEFAULT_PREFS.surgeStartHHMM).toBe(900);
+    const st = CHART_NUMERIC_PREFS.find((p) => p.key === 'surgeStartHHMM');
+    expect(st?.enabledBy).toBe('surgeMarkerEnabled');
+    expect(st?.min).toBe(900);
+    expect(st?.max).toBe(1520);
+  });
+
   it('persist 된 surge 값 보존 + 범위 밖은 폴백', () => {
     expect(mergePrefs({ surgeMarkerEnabled: false }).surgeMarkerEnabled).toBe(false);
     expect(mergePrefs({ surgeApproachPct: 90 }).surgeApproachPct).toBe(90);
     expect(mergePrefs({ surgeApproachPct: 999 }).surgeApproachPct).toBe(DEFAULT_PREFS.surgeApproachPct);
     expect(mergePrefs({ surgeRearmPct: 70 }).surgeRearmPct).toBe(70);
+    expect(mergePrefs({ surgeStartHHMM: 930 }).surgeStartHHMM).toBe(930);
+    expect(mergePrefs({ surgeStartHHMM: 800 }).surgeStartHHMM).toBe(DEFAULT_PREFS.surgeStartHHMM);
   });
 });

@@ -216,7 +216,7 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
   it('G) 총잔량 급증 마커 — 틱당 비용 (Split Cache seam vs 전구간 재계산, days 스윕)', async () => {
     const { QUOTE_TOTALS_SPEC } = await import('./quoteTotals');
     const { detectSurgeSide } = await import('../surge/detectSurges');
-    const ctx = { auctionMask: true, surgeEnabled: true, surgeApproachPct: 95, surgeRearmPct: 85 };
+    const ctx = { auctionMask: true, surgeEnabled: true, surgeApproachPct: 95, surgeRearmPct: 85, surgeStartHHMM: 900 };
     for (const days of [1, 5, 30, 90]) {
       const { bundle, axis, pointCount } = makeBundle(days);
       // 캐시 경로(현 구현): markers 프로젝터가 makePastCachedProjector를 거쳐 과거 동결.

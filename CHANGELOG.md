@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.27.0] - 2026-06-12
+
+### Added
+- **총잔량 급증 마커 — 표시 시작 시각 설정** (`/live`, 사용자 요청): "09:30 이후부터 보겠다"처럼
+  지정한 시각 이후에 발생한 급증만 마커로 표시한다. 설정창 '총잔량 급증' 카테고리에
+  **`급증 마커 시작 시각 (HHMM)`(기본 900, 900~1520)** 으로 노출 — HHMM 형식(예 930=09:30, 1000=10:00).
+  - **표시 전용 필터**: 직전 고가 추적·재무장은 장 시작(09:00)부터 그대로 진행하고, 가려지는 건
+    시작 시각 이전에 발사된 마커의 *표시*뿐. 알고리즘 상태(`detectSurgeSide`)는 손대지 않고
+    프로젝터(`surgeMarkerPoints`)의 KST 분-of-day 게이트로 처리 — `axis.contains` 표시 필터와 같은 계층.
+  - **Split Cache 안전**: 마커별 `t`의 무상태 순수 필터라 `cachedPast ++ today === all` 불변식 유지
+    (perf 테스트 [G]로 회귀 방지). 장 초반 변동성 구간의 마커 도배를 가리는 용도.
+
+### Changed
+- 총잔량 급증 마커 토글 설명을 현행 동작(근접 95%+히스테리시스 85%)에 맞게 정정 (초과-방식 잔존 문구 제거).
+
 ## [0.7.26.0] - 2026-06-12
 
 ### Changed

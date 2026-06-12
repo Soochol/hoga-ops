@@ -38,7 +38,7 @@ export const CHART_TOGGLES = [
   {
     key: 'surgeMarkerEnabled',
     label: '총잔량 급증 마커',
-    description: '매도/매수총잔량이 당일 직전 고가를 크게(기본 +50%) 넘어서는 순간 총잔량 라인에 마커를 표시합니다.',
+    description: '매도/매수총잔량이 당일 직전 고가에 다시 근접(기본 95%)하는 순간 총잔량 라인에 마커를 표시합니다. 한 번 표시 후 직전 고가의 85% 아래로 빠져야 재표시(히스테리시스).',
     default: true,
     category: 'surge',
   },
@@ -123,6 +123,17 @@ export const CHART_NUMERIC_PREFS = [
     default: 85,
     min: 50,
     max: 95,
+    enabledBy: 'surgeMarkerEnabled',
+  },
+  {
+    key: 'surgeStartHHMM',
+    label: '급증 마커 시작 시각 (HHMM)',
+    description: '이 시각 이후에 발생한 급증만 마커로 표시합니다. HHMM 형식 — 예: 930 = 09:30, 1000 = 10:00. 기본 900(장 시작 09:00, 전체 표시). 직전 고가 추적·재무장은 장 시작부터 계속되며, 가려지는 건 표시뿐입니다(장 초반 변동성 마커 숨김용).',
+    default: 900,
+    // HHMM 정수. 900(09:00, 정규장 시작)~1520(15:20, 마감 동시호가 시작 — 그 뒤는 어차피 마커 없음).
+    // 분 자리(00–59)를 벗어난 값(예 960)은 hhmmToMinute에서 10:00으로 자연 환산되어 무해.
+    min: 900,
+    max: 1520,
     enabledBy: 'surgeMarkerEnabled',
   },
 ] as const satisfies readonly NumericPrefDef[];
