@@ -34,9 +34,9 @@ const OPTS = { margin: 0.5, sessionOpens: [0], isClosingAuction: () => false };
 
 describe('detectSurges', () => {
   it('직전 고가를 +50% 초과하면 발사(ask)', () => {
-    const pts = [P(1, 100, 0), P(2, 120, 0), P(3, 160, 0)]; // 160 = 100×1.6 > 1.5
+    const pts = [P(1, 100, 0), P(2, 160, 0)]; // 160 = 100×1.6 > 1.5
     const r = detectSurges(pts, OPTS);
-    expect(r.ask).toEqual([{ t: 3, prevPeak: 120, value: 160, pctOver: expect.closeTo(0.333, 2) }]);
+    expect(r.ask).toEqual([{ t: 2, prevPeak: 100, value: 160, pctOver: expect.closeTo(0.6, 2) }]);
     expect(r.bid).toEqual([]);
   });
 
@@ -68,7 +68,7 @@ describe('detectSurges', () => {
   });
 
   it('마감 동시호가 구간은 발사·peak갱신 모두 제외', () => {
-    const isClosingAuction = (t: number) => t >= 50; // 50 이후가 동시호가라 가정
+    const isClosingAuction = (t: number) => t >= 50 && t < 65; // 60만 동시호가
     const pts = [P(1, 100, 0), P(60, 1000, 0), P(70, 160, 0)]; // 60은 제외(peak 갱신 X), 70은 100 기준 +60% 발사
     const r = detectSurges(pts, { margin: 0.5, sessionOpens: [0], isClosingAuction });
     expect(r.ask).toEqual([{ t: 70, prevPeak: 100, value: 160, pctOver: expect.closeTo(0.6, 2) }]);
