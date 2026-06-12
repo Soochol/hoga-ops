@@ -17,14 +17,14 @@ describe('useReorderEntries (optimistic)', () => {
     qc.setQueryData(WATCHLIST_KEY, {
       folders: [], next_run_at_ms: 0,
       entries: [
-        { code: '005930', name: '삼성', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 },
-        { code: '000660', name: 'SK', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 1 },
+        { code: '005930', name: '삼성', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
+        { code: '000660', name: 'SK', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 1 },
       ],
     });
     let resolve!: () => void;
     vi.spyOn(api, 'reorderEntries').mockReturnValue(new Promise<void>((r) => { resolve = () => r(); }));
     const { result } = renderHook(() => useReorderEntries(), { wrapper: wrap(qc) });
-    result.current.mutate({ folderId: null, orderedCodes: ['000660', '005930'] });
+    result.current.mutate({ folderId: 'f_a', orderedCodes: ['000660', '005930'] });
     await waitFor(() => {
       const data = qc.getQueryData(WATCHLIST_KEY) as api.WatchlistResponse;
       const byOrder = [...data.entries].sort((a, b) => a.order - b.order);
@@ -38,13 +38,13 @@ describe('useReorderEntries (optimistic)', () => {
     qc.setQueryData(WATCHLIST_KEY, {
       folders: [], next_run_at_ms: 0,
       entries: [
-        { code: '005930', name: '삼성', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 },
-        { code: '000660', name: 'SK', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 1 },
+        { code: '005930', name: '삼성', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
+        { code: '000660', name: 'SK', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 1 },
       ],
     });
     vi.spyOn(api, 'reorderEntries').mockRejectedValue(new Error('boom'));
     const { result } = renderHook(() => useReorderEntries(), { wrapper: wrap(qc) });
-    result.current.mutate({ folderId: null, orderedCodes: ['000660', '005930'] });
+    result.current.mutate({ folderId: 'f_a', orderedCodes: ['000660', '005930'] });
     // optimistic flips to 000660,005930 then onError restores ctx.prev (005930,000660)
     await waitFor(() => {
       const data = qc.getQueryData(WATCHLIST_KEY) as api.WatchlistResponse;
