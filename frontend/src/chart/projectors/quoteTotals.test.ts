@@ -156,24 +156,25 @@ describe('QUOTE_TOTALS_SPEC crosshair marker', () => {
   });
 });
 
-describe('급증 마커 (askSurgeMarkers)', () => {
-  const ctx = { auctionMask: false, surgeEnabled: true, surgeMarginPct: 50 };
+describe('급증 마커 (askSurgeMarkers) — 근접 95% + 재무장 85%', () => {
+  const ctx = { auctionMask: false, surgeEnabled: true, surgeApproachPct: 95, surgeRearmPct: 85 };
   const bundle: any = {
     quote_ratio: {
       points: [
-        { t: sessionOpenMs, bid_total: 0, ask_total: 100 },
-        { t: sessionOpenMs + 1000, bid_total: 0, ask_total: 160 }, // +60% > 50%
+        { t: sessionOpenMs, bid_total: 0, ask_total: 100 },           // 고가 100
+        { t: sessionOpenMs + 1000, bid_total: 0, ask_total: 80 },      // 80 < 85% → 재무장
+        { t: sessionOpenMs + 2000, bid_total: 0, ask_total: 96 },      // 96 ≥ 95% → 발사
       ],
     },
     segments: [{ session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000 }],
   };
 
-  it('직전 고가 +60% 지점에 마커(text/position/time)', () => {
+  it('직전 고가 96% 재접근 지점에 마커(text=도달률, position, time)', () => {
     const m = askSurgeMarkers(bundle, axis, ctx);
     expect(m).toHaveLength(1);
-    expect(m[0].text).toBe('+60%');
+    expect(m[0].text).toBe('96%'); // value/prevPeak = 96/100
     expect(m[0].position).toBe('aboveBar');
-    expect(m[0].time).toBe(1); // toVirtual(+1000ms)/1000 = 1초
+    expect(m[0].time).toBe(2); // toVirtual(+2000ms)/1000 = 2초
   });
 
   it('surgeEnabled=false면 마커 없음', () => {

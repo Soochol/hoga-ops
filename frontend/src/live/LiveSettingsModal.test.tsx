@@ -35,13 +35,13 @@ describe('LiveSettingsModal (2단)', () => {
     expect(useChartPrefsStore.getState().ratioOutlierThreshold).toBe(50);
   });
 
-  it('급증 감도 numeric commits on Enter (총잔량 급증 카테고리)', () => {
+  it('급증 근접 문턱 numeric commits on Enter (총잔량 급증 카테고리)', () => {
     render(<LiveSettingsModal onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('settings-nav-surge'));
-    const input = screen.getByTestId('settings-numeric-surgeMarginPct') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: '80' } });
+    const input = screen.getByTestId('settings-numeric-surgeApproachPct') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '90' } });
     fireEvent.keyDown(input, { key: 'Enter' });
-    expect(useChartPrefsStore.getState().surgeMarginPct).toBe(80);
+    expect(useChartPrefsStore.getState().surgeApproachPct).toBe(90);
   });
 
   it('데이터소스 nav 클릭 후 source radio 두 옵션이 보인다', () => {
