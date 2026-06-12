@@ -39,8 +39,8 @@ interface Props {
  *   - /live uses useLiveSeries (initial REST + SSE) in latest mode
  *   - /live uses useLiveCursor hooks in spot mode (cursor set via hover)
  *
- * Per ADR-0044 and Design C1: header toggles between LIVE● pulse (latest
- * mode) and "과거 시점" + pinned timestamp (spot mode) when cursor is set.
+ * Per ADR-0044 and Design C1: header toggles between "최신" pulse (latest
+ * mode) and "과거" + pinned timestamp (spot mode) when cursor is set.
  *
  * The third "체결" card was removed 2026-05-28 (ADR-0047). The chart's
  * 체결강도 pane provides equivalent information in compact form.
@@ -162,7 +162,7 @@ function SidebarHeader({
 }) {
   // Design review B2: keep the timestamp pinned right in BOTH modes so it
   // doesn't jump columns on mouse leave/enter. Left slot carries the mode
-  // label only. C4: 한글 카피로 "과거 시점" 사용 (DESIGN.md Copy Tone).
+  // label only. C4: 한글 카피로 "과거" 사용 (DESIGN.md Copy Tone).
   const isSpot = cursorMs !== null && isMinuteTimeframe(timeframe);
   const rightTs = isSpot ? cursorMs : latestOrderbookTs;
   return (
