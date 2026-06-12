@@ -45,6 +45,9 @@ const VALID_LINE_WIDTHS = new Set([1, 2, 3, 4]);
 const VALID_SOURCES = new Set(['close', 'open', 'high', 'low', 'hl2', 'hlc3', 'ohlc4']);
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
+export const ASK_PEAK_DEFAULT_COLOR = '#1D4ED8';
+export const ASK_PEAK_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
+
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
   movingAverageEnabled: boolean;
@@ -56,6 +59,12 @@ export type PersistedIndicators = {
   volumeEnabled: boolean;
   /** Pane Legend: MA lines temporarily hidden (눈), config preserved. Default FALSE. */
   movingAverageHidden: boolean;
+  /** 당일 매도 최대벽 토글. opt-in(기본 false). */
+  askPeakEnabled: boolean;
+  /** 매도 최대벽 선 색(hex). 기본 #1D4ED8(파랑). */
+  askPeakColor: string;
+  /** 매도 최대벽 선 두께. 기본 2. */
+  askPeakLineWidth: 1 | 2 | 3 | 4;
 };
 
 function isValidEntry(m: unknown): m is LiveMAConfig {
@@ -87,6 +96,16 @@ export function mergeLiveIndicatorPrefs(
   raw: PersistedIndicators | undefined | null | unknown,
 ): PersistedIndicators {
   const defaults = DEFAULT_LIVE_MAS.map((m) => ({ ...m }));
+  // Resolve obj once so askPeak fields can be computed before build() for all branches.
+  const obj = (raw && typeof raw === 'object' && !Array.isArray(raw))
+    ? raw as Record<string, unknown>
+    : undefined;
+  // askPeak fields — opt-in (default false/ASK_PEAK_DEFAULT_COLOR/ASK_PEAK_DEFAULT_WIDTH).
+  const apEnabled = obj?.askPeakEnabled === true;
+  const apColor = typeof obj?.askPeakColor === 'string' && HEX_COLOR.test(obj.askPeakColor as string)
+    ? (obj.askPeakColor as string) : ASK_PEAK_DEFAULT_COLOR;
+  const apWidth = VALID_LINE_WIDTHS.has(obj?.askPeakLineWidth as number)
+    ? (obj!.askPeakLineWidth as 1 | 2 | 3 | 4) : ASK_PEAK_DEFAULT_WIDTH;
   const build = (
     mas: LiveMAConfig[], enabled: boolean, fNet: boolean, iNet: boolean,
     vol: boolean, hidden: boolean,
@@ -97,19 +116,23 @@ export function mergeLiveIndicatorPrefs(
     institutionNetEnabled: iNet,
     volumeEnabled: vol,
     movingAverageHidden: hidden,
+    askPeakEnabled: apEnabled,
+    askPeakColor: apColor,
+    askPeakLineWidth: apWidth,
   });
   if (!raw || typeof raw !== 'object') return build(defaults, true, false, false, true, false);
-  const obj = raw as Record<string, unknown>;
-  const enabled = obj.movingAverageEnabled === false ? false : true;
+  // obj is guaranteed non-null here (same condition checked above)
+  const o = obj!;
+  const enabled = o.movingAverageEnabled === false ? false : true;
   // New indicators are opt-in: default false unless explicitly persisted true,
   // so legacy stores (written before these fields existed) stay hidden.
-  const fNet = obj.foreignNetEnabled === true;
-  const iNet = obj.institutionNetEnabled === true;
+  const fNet = o.foreignNetEnabled === true;
+  const iNet = o.institutionNetEnabled === true;
   // volumeEnabled defaults TRUE (mirror movingAverageEnabled); movingAverageHidden
   // defaults FALSE (mirror foreignNetEnabled).
-  const vol = obj.volumeEnabled === false ? false : true;
-  const hidden = obj.movingAverageHidden === true;
-  const arr = obj.movingAverages;
+  const vol = o.volumeEnabled === false ? false : true;
+  const hidden = o.movingAverageHidden === true;
+  const arr = o.movingAverages;
   if (!Array.isArray(arr)) return build(defaults, enabled, fNet, iNet, vol, hidden);
   const kept = arr.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[];
   if (kept.length === 0) return build(defaults, enabled, fNet, iNet, vol, hidden);
