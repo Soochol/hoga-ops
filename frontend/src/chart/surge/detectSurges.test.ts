@@ -22,10 +22,36 @@ describe('detectSurges (근접 + 히스테리시스)', () => {
     expect(detectSurges(pts, OPTS).ask).toEqual([]);
   });
 
-  it('도배 방지 — 85% 아래로 안 빠지면 한 번만', () => {
-    // 100 → 80(arm) → 96(발사,disarm) → 97 → 96 → 98 (모두 ≥85, 재무장 X)
+  it('도배 방지 — 85% 아래로 안 빠지고 직전 고가도 안 넘으면 발사 지점 고정', () => {
+    // 100 → 80(arm) → 96(발사,disarm) → 97 → 96 → 98 (모두 직전고가 100 미만 & ≥85, 재무장 X)
+    // 97·96·98 은 신고가(>100)가 아니므로 마커 이동도 없어야 한다 — 발사 지점 t3/96 에 고정.
+    // (잘못된 이동 조건 `v > 발사값`이면 마커가 98로 끌려가며 이 단언이 깨진다.)
     const pts = [P(1, 100, 0), P(2, 80, 0), P(3, 96, 0), P(4, 97, 0), P(5, 96, 0), P(6, 98, 0)];
-    expect(detectSurges(pts, OPTS).ask).toHaveLength(1);
+    const r = detectSurges(pts, OPTS).ask;
+    expect(r).toHaveLength(1);
+    expect(r[0].t).toBe(3);
+    expect(r[0].value).toBe(96);
+  });
+
+  it('발사 후 재무장 없이 신고가가 계속되면 마커를 마지막 꼭대기로 이동', () => {
+    // 100 → 80(arm) → 96(발사 t3) → 110(신고가→이동 t4) → 120(이동 t5) → 100(<85%*120 재무장)
+    // 같은 상승 구간이라 동그라미 1개가 그 구간 최종 꼭대기(120, t5)에 자리잡는다.
+    const pts = [P(1, 100, 0), P(2, 80, 0), P(3, 96, 0), P(4, 110, 0), P(5, 120, 0), P(6, 100, 0)];
+    const r = detectSurges(pts, OPTS).ask;
+    expect(r).toHaveLength(1);
+    expect(r[0].t).toBe(5);
+    expect(r[0].value).toBe(120);
+  });
+
+  it('이동 후 85% 아래로 빠졌다 다시 도달하면 새 마커(이동과 재발사 구분)', () => {
+    // 100 → 80(arm) → 96(발사 t3) → 110(이동 t4) → 80(<85%*110 재무장) → 105(≥95%*110 재발사 t6)
+    const pts = [P(1, 100, 0), P(2, 80, 0), P(3, 96, 0), P(4, 110, 0), P(5, 80, 0), P(6, 105, 0)];
+    const r = detectSurges(pts, OPTS).ask;
+    expect(r).toHaveLength(2);
+    expect(r[0].t).toBe(4); // 첫 사이클: 이동된 꼭대기 110
+    expect(r[0].value).toBe(110);
+    expect(r[1].t).toBe(6); // 둘째 사이클: 재발사
+    expect(r[1].value).toBe(105);
   });
 
   it('재무장 후 재발사 — 85% 아래로 빠졌다 다시 95% 도달', () => {
@@ -41,12 +67,14 @@ describe('detectSurges (근접 + 히스테리시스)', () => {
     expect(r.ask).toEqual([{ t: 3, prevPeak: 100, value: 150, pctOfPeak: expect.closeTo(1.5, 2) }]);
   });
 
-  it('알려진 트레이드오프 — 작은 재접근이 disarm시키면 직후 폭발적 신고가는 재무장 전까지 미발사', () => {
-    // 100 → 80(arm) → 96(발사,disarm) → 300(신고가지만 그 사이 85% 아래로 안 빠져 armed=false → 미발사)
+  it('작은 재접근으로 발사 후 폭발적 신고가가 나오면 마커가 그 꼭대기로 이동', () => {
+    // 100 → 80(arm) → 96(발사,disarm) → 300(신고가). 예전엔 재무장 전이라 미발사 트레이드오프였으나,
+    // 이제 disarm 상태에서 신고가가 나오면 마커를 그 봉으로 이동 → 동그라미가 폭발 꼭대기 300(t4)에 앉는다.
     const pts = [P(1, 100, 0), P(2, 80, 0), P(3, 96, 0), P(4, 300, 0)];
     const r = detectSurges(pts, OPTS);
     expect(r.ask).toHaveLength(1);
-    expect(r.ask[0].t).toBe(3);
+    expect(r.ask[0].t).toBe(4);
+    expect(r.ask[0].value).toBe(300);
   });
 
   it('멀티데이 — 거래일(KST) 경계마다 running peak·무장 리셋', () => {
