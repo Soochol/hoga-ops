@@ -19,12 +19,15 @@ type Props = {
   color: string;
   lineWidth: 1 | 2 | 3 | 4;
   onChange: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
+  /** aria-label 접두어. 기본 'MA' — 기존 호출부 불변. 매도벽 등 재활용 시 지정. */
+  label?: string;
 };
 
 /** MA 슬롯의 color + lineWidth 를 한 popover에서 동시에 고른다.
  *  trigger는 현재 색을 보여주는 작은 swatch. 클릭하면 32색 grid +
  *  4개 굵기 카드가 같이 뜬다. ColorSwatchButton + LineWidthSelect 합본. */
-export default function MAStylePicker({ color, lineWidth, onChange }: Props) {
+export default function MAStylePicker({ color, lineWidth, onChange, label }: Props) {
+  const lbl = label ?? 'MA';
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +44,7 @@ export default function MAStylePicker({ color, lineWidth, onChange }: Props) {
          않고도 빠르게 확인 가능. */}
       <button
         type="button"
-        aria-label="MA 스타일 선택"
+        aria-label={`${lbl} 스타일 선택`}
         onClick={() => setOpen((o) => !o)}
         style={{
           display: 'inline-flex',
@@ -77,7 +80,7 @@ export default function MAStylePicker({ color, lineWidth, onChange }: Props) {
       {open && (
         <div
           role="dialog"
-          aria-label="MA 스타일 팔레트"
+          aria-label={`${lbl} 스타일 팔레트`}
           className="absolute top-7 left-0 z-50 p-3 rounded shadow-lg"
           style={{
             background: 'var(--bg-card)',
@@ -103,7 +106,7 @@ export default function MAStylePicker({ color, lineWidth, onChange }: Props) {
                     <button
                       key={c}
                       type="button"
-                      aria-label={`MA 색상 ${c}`}
+                      aria-label={`${lbl} 색상 ${c}`}
                       aria-pressed={selected}
                       onClick={() => {
                         onChange({ color: c });
@@ -142,7 +145,7 @@ export default function MAStylePicker({ color, lineWidth, onChange }: Props) {
                 <button
                   key={w}
                   type="button"
-                  aria-label={`MA 굵기 ${w}px`}
+                  aria-label={`${lbl} 굵기 ${w}px`}
                   aria-pressed={selected}
                   onClick={() => {
                     onChange({ lineWidth: w });
