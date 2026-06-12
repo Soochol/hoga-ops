@@ -28,6 +28,13 @@ import type { RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
+import { registerViewportCapture } from '../state/liveTabs';
+import {
+  viewportFromRanges,
+  computeRestoreRange,
+  realMsToVirtualSeconds,
+  type TabViewport,
+} from './viewportAnchor';
 import { useWheelInteractions } from './useWheelInteractions';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
@@ -77,12 +84,15 @@ interface Props {
    * "호출 한도로 지연"으로 전환, 캔들 있으면 비차단 "일부 과거구간 로딩 지연" 칩. 옵셔널
    * (기존 단일-번들 호출부/테스트 보존). */
   pastDataWarnings?: LiveDataWarning[];
+  /** 활성 탭의 저장된 viewport(ADR-0069 A안). cold 전환 복귀 시 보던 위치(줌+스크롤)로
+   *  복원한다. optional + 기본 null이라 기존 단일-번들 호출부/테스트는 무변경으로 동작. */
+  restoreViewport?: TabViewport | null;
 }
 
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings }: Props) {
+export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -188,6 +198,34 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
   const lastCandleMsRef = useRef<number | null>(null);
   lastCandleMsRef.current =
     cb && cb.candles.length > 0 ? cb.candles[cb.candles.length - 1].ts_ms : null;
+
+  // chartRef bridges the live chart instance to the viewport-capture callback
+  // (registered once, reads refs) so the tabs store can snapshot the OUTGOING
+  // tab's view synchronously on switch-away, before the per-viewKey remount.
+  // Written during render (like axisRef) so it's current before any effect.
+  const chartRef = useRef<IChartApi | null>(chart);
+  chartRef.current = chart;
+
+  // Viewport capture (ADR-0069 A안): read the live chart's visible range + zoom
+  // and pin them to a real-time anchor. The tabs store calls this on switch-away
+  // (focusTab / openOrFocusTab) to save the outgoing tab's view. Stable identity
+  // (refs only) so the registration effect runs once.
+  const captureViewport = useCallback((): TabViewport | null => {
+    const c = chartRef.current;
+    if (!c) return null;
+    try {
+      const ts = c.timeScale();
+      return viewportFromRanges(
+        ts.getVisibleLogicalRange(),
+        ts.getVisibleRange(),
+        axisRef.current,
+        lastCandleMsRef.current,
+      );
+    } catch {
+      return null;
+    }
+  }, []);
+  useEffect(() => registerViewportCapture(captureViewport), [captureViewport]);
 
   // Publish axis to the shared store so LiveSidebar can read
   // axis.inClosingAuctionWindow(cursorMs) for TotalQtyBar mask.
@@ -299,15 +337,61 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
       if (!isPastCandlesLoading) reveal();
       return;
     }
+    // A안 (ADR-0069): a tab carrying a saved viewport restores its exact view on
+    // cold switch-back. Reproject the time anchor through the REBUILT axis →
+    // logical index, re-apply the saved zoom (computeRestoreRange clamps the
+    // applied from to >= 0). One-shot via lastAppliedCountRef (like the minute
+    // branch) so SSE pushes don't re-snap. Runs BEFORE the historicalFromDate
+    // gate so a scrolled-back tab (hfd != null) also restores and reveals here.
+    if (restoreViewport && lastAppliedCountRef.current === null) {
+      const tsR = chart.timeScale();
+      const totalBarsR = cb.candles.length;
+      try {
+        // Anchor older than the earliest LOADED bar (a deep scrollback whose
+        // backfill hasn't landed yet at this first-candle commit): lwc's
+        // timeToIndex(findNearest=true) CLAMPS to bar 0 rather than returning
+        // null (verified vs lwc 5.2.0), which would make computeRestoreRange
+        // pin a degenerate {from:0,to:0} window. Gate the lookup on the anchor
+        // being within loaded data so an off-left anchor yields idx=null →
+        // null range → fall through to the default view. (cb.candles is
+        // ascending, so [0] is the earliest.)
+        const anchorInRange =
+          !restoreViewport.atLiveEdge &&
+          restoreViewport.rightEdgeMs >= cb.candles[0].ts_ms;
+        const idx = anchorInRange
+          ? tsR.timeToIndex(
+              realMsToVirtualSeconds(axisRef.current, restoreViewport.rightEdgeMs) as Time,
+              true,
+            )
+          : null;
+        const range = computeRestoreRange(restoreViewport, totalBarsR, idx);
+        if (range) {
+          tsR.setVisibleLogicalRange({ from: range.from, to: range.to });
+          if (range.scrollToRight) tsR.scrollToPosition(0, false);
+          lastAppliedCountRef.current = totalBarsR;
+          reveal();
+          return;
+        }
+        // range null (anchor fell outside the rebuilt axis, not live-edge) →
+        // fall through to the default initial view below.
+      } catch {
+        // chart torn down / API threw → fall through to default initial view.
+      }
+    }
     if (useLivePageStore.getState().historicalFromDate !== null) {
-      // User-driven extension owns the viewport (prepend-restore); the chart was
-      // already revealed on the initial load, so nothing to schedule here.
+      // User-driven extension owns the viewport (prepend-restore is handled by
+      // useViewportBackfill). REVEAL so the cover lifts: on an IN-SESSION pan the
+      // chart was already revealed (reveal() no-ops via the revealedKey guard);
+      // on a COLD restore of a scrolled-back tab WITHOUT a saved viewport
+      // (migrated tab, or viewport cleared by a timeframe change) the restore
+      // branch above didn't run, so this is the only reveal — without it the
+      // opaque cover wedges over the chart (the historicalFromDate-gate bug).
       //
       // historicalFromDate is read via getState() (not an effect dep) on purpose:
-      // it only flips non-null AFTER the initial reveal (a leftward pan), and
-      // setActiveCode / setCandleTimeframe reset it to null — so a fresh
-      // (code, timeframe) load always passes this gate and reveals. The reveal is
-      // therefore never gated behind a value that's missing from the deps.
+      // setActiveCode / setCandleTimeframe reset it to null, so a fresh
+      // (code, timeframe) load always passes this gate; it only flips non-null
+      // after a pan, when the chart is already revealed.
+      reveal();
       return;
     }
     const ts = chart.timeScale();
@@ -350,7 +434,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, cb, timeframe, isPastCandlesLoading, viewKey, revealedKey]);
+  }, [chart, cb, timeframe, isPastCandlesLoading, viewKey, revealedKey, restoreViewport]);
 
   useEffect(() => {
     const el = containerRef.current;

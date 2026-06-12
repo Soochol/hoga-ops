@@ -16,13 +16,13 @@ const DATA = {
 
 describe('WatchlistEditModal', () => {
   beforeEach(() => { cleanup(); vi.restoreAllMocks(); });
-  it('renders dialog with folder list + member counts (folders + 미분류, no 모든 종목)', async () => {
+  it('renders dialog with folder list (v3: no 미분류, no 모든 종목)', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
     expect(await screen.findByRole('dialog', { name: '관심종목 편집' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('스윙')).toBeInTheDocument());
-    expect(screen.getByText('미분류')).toBeInTheDocument();
+    expect(screen.queryByText('미분류')).not.toBeInTheDocument();   // v3: 미분류 폐지
     expect(screen.queryByText('모든 종목')).not.toBeInTheDocument();
   });
   it('creates a folder via 그룹 추가', async () => {

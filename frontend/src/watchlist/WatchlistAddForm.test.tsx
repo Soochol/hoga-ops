@@ -17,16 +17,16 @@ function wrap(qc: QueryClient) {
 
 describe('WatchlistAddForm', () => {
   beforeEach(() => { cleanup(); vi.restoreAllMocks(); });
-  it('adds the picked code and fires onAdded', async () => {
-    const add = vi.spyOn(api, 'addToWatchlist').mockResolvedValue({
+  it('adds the picked code to the target folder and fires onAdded', async () => {
+    const add = vi.spyOn(api, 'addMember').mockResolvedValue({
       code: '005930', name: '삼성전자', registered_at_kst_date: '20260101',
-      last_success_date: null, folder_id: null, order: 0 });
+      last_success_date: null } as never);
     const onAdded = vi.fn();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<WatchlistAddForm onAdded={onAdded} />, { wrapper: wrap(qc) });
+    render(<WatchlistAddForm folderId="f_a" onAdded={onAdded} />, { wrapper: wrap(qc) });
     fireEvent.click(screen.getByText('pick'));
     fireEvent.click(screen.getByRole('button', { name: /추가/ }));
-    await waitFor(() => expect(add).toHaveBeenCalledWith('005930'));
+    await waitFor(() => expect(add).toHaveBeenCalledWith('f_a', '005930'));
     await waitFor(() => expect(onAdded).toHaveBeenCalledWith({ code: '005930', name: '삼성전자' }));
   });
 });

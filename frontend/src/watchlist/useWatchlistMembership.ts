@@ -1,24 +1,27 @@
 import { useMemo } from 'react';
-import { useWatchlist, useAddToWatchlist, useRemoveFromWatchlist } from './useWatchlist';
+import { useWatchlist } from './useWatchlist';
 
 /**
- * Single owner of watchlist membership + toggle policy. Call ONCE per component
- * (not per row): returns an O(1) `isMember` predicate and a `toggle` that adds
- * when absent / removes when present. Used by both the single-code status bar
- * heart and the per-row search hearts.
+ * Single owner of watchlist membership (v3, ADR-0070). Call ONCE per component
+ * (not per row). Derives a Code → set-of-folder-ids map from the exploded wire
+ * entries (a multi-folder Code appears once per folder). Returns an O(1)
+ * `isMember` (in ≥1 folder → heart filled) and `folderIdsOf` (the WatchlistGroupPicker's
+ * check-state source). Membership is edited via the picker (useAddMember/useRemoveMember),
+ * not a single toggle — there is no "미분류" add target in v3.
  */
 export function useWatchlistMembership() {
   const { data } = useWatchlist();
-  const addM = useAddToWatchlist();
-  const removeM = useRemoveFromWatchlist();
-  const memberCodes = useMemo(
-    () => new Set(data?.entries.map((e) => e.code) ?? []),
-    [data],
-  );
-  const isMember = (code: string) => memberCodes.has(code);
-  const toggle = (code: string) => {
-    if (memberCodes.has(code)) removeM.mutate(code);
-    else addM.mutate(code);
-  };
-  return { isMember, toggle };
+  const foldersByCode = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const e of data?.entries ?? []) {
+      if (e.folder_id === null) continue;  // v3 watchlist 와이어엔 null 없음(방어)
+      let s = m.get(e.code);
+      if (!s) { s = new Set(); m.set(e.code, s); }
+      s.add(e.folder_id);
+    }
+    return m;
+  }, [data]);
+  const isMember = (code: string) => (foldersByCode.get(code)?.size ?? 0) > 0;
+  const folderIdsOf = (code: string): Set<string> => foldersByCode.get(code) ?? new Set<string>();
+  return { isMember, folderIdsOf };
 }

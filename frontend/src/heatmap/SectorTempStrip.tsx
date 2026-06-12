@@ -1,6 +1,6 @@
 import type { FolderGroup } from '../watchlist/grouping';
 import type { LiveQuote } from '../api/liveQuotes';
-import { avgPct, heatBg } from './heat';
+import { avgPct, heatBg, makePctOf } from './heat';
 import { visibleFolderGroups } from './visibleGroups';
 
 /** 스트립 칩 배경 농도(작은 칩이라 행 칩보다 옅게, 헤더 밴드보단 진하게). */
@@ -17,7 +17,7 @@ export interface SectorTempStripProps {
  *  정렬은 **뜨거운 순(avg 내림차순) · 표시 전용**이며 카드 본문 sortMode/order를
  *  바꾸지 않는다(spec invariant: 정렬 계약 보존). 빈 폴더·avg 결측 섹터는 제외. */
 export function SectorTempStrip({ groups, quoteByCode, onJump }: SectorTempStripProps) {
-  const pctOf = (code: string) => quoteByCode.get(code)?.change_pct ?? null;
+  const pctOf = makePctOf(quoteByCode);
   const chips = visibleFolderGroups(groups)
     .filter((g) => g.folder !== null) // 미분류(folder=null)는 섹터 온도/점프 대상 아님(ADR-0068)
     .map((g) => ({ folder: g.folder!, avg: avgPct(g.entries, pctOf) }))

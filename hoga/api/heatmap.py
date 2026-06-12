@@ -128,6 +128,11 @@ def seed_from_watchlist_if_absent(data_dir: Path) -> None:
 
     folder_id is copied verbatim (folder ids are document-scoped, no
     cross-store registry, so the same id in both files is safe — grilling G5).
+
+    v3 (ADR-0070): the watchlist now stores membership on folder.member_codes
+    (entries are slim), and a Code may be in several folders. The heatmap is a
+    single-folder board, so each Code is seeded into the FIRST folder it appears
+    in (display order) — a one-time snapshot, thereafter independent.
     """
     if _path(data_dir).exists():
         return
@@ -137,9 +142,16 @@ def seed_from_watchlist_if_absent(data_dir: Path) -> None:
     if not wl.entries:
         return  # nothing to seed yet; retry next boot
     folders = [WatchlistFolder(id=f.id, name=f.name, order=f.order) for f in wl.folders]
+    # Derive each Code's (folder_id, order) from the first folder it appears in.
+    placement: dict[str, tuple[str, int]] = {}
+    for f in sorted(wl.folders, key=lambda f: f.order):
+        for order, code in enumerate(f.member_codes):
+            placement.setdefault(code, (f.id, order))
+    name_by_code = {e.code: e.name for e in wl.entries}
     entries = [
-        HeatmapEntry(code=e.code, name=e.name, folder_id=e.folder_id, order=e.order)
-        for e in wl.entries
+        HeatmapEntry(code=code, name=name_by_code.get(code, code),
+                     folder_id=fid, order=order)
+        for code, (fid, order) in placement.items()
     ]
     save_document(data_dir, HeatmapDocument(folders=folders, entries=entries))
     log.info("seeded heatmap.json from watchlist: %d folders, %d entries",

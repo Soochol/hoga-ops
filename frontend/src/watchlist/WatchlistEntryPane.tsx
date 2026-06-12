@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useWatchlist, useRemoveEntries, useMoveEntries, useCatchupOne } from './useWatchlist';
+import { useWatchlist, useRemoveEntries, useMoveMember, useCatchupOne } from './useWatchlist';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { CheckIcon } from '../ui/CheckIcon';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
@@ -15,7 +15,7 @@ import type { WatchlistEntry } from '../api/watchlist';
 export function WatchlistEntryPane({ selected }: { selected: Selected }) {
   const { data } = useWatchlist();
   const removeM = useRemoveEntries();
-  const moveM = useMoveEntries();
+  const moveMember = useMoveMember();
   const catchupOneM = useCatchupOne();
   const { recentAction, setRecentAction } = useWatchlistFeedback();
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -48,16 +48,16 @@ export function WatchlistEntryPane({ selected }: { selected: Selected }) {
   // the on-screen relative order of the moved rows.
   const selectedCodes = entries.filter((e) => checked.has(e.code)).map((e) => e.code);
 
-  const doMove = async (folderId: string | null) => {
+  const doMove = async (targetId: string) => {
+    if (selected === null) return;       // v3: 미분류 뷰 없음 — selected는 실폴더
     const codes = selectedCodes;
     setMoveMenu(false);
     try {
-      await moveM.mutateAsync({ codes, folderId });
+      // v3 이동 = 대상 추가 후 출처 제거(멤버십). 선택 순서대로 순차 실행.
+      for (const code of codes) await moveMember({ code, from: selected, to: targetId });
       setChecked(new Set());
     } catch {
-      // useMoveEntries.onError already rolled the optimistic cache back; keep the
-      // selection so the user can retry, and swallow so this fire-and-forget
-      // onClick doesn't surface as an unhandled promise rejection.
+      // 멤버십 mutation이 onError로 낙관적 캐시를 롤백; 선택은 유지해 재시도 가능.
     }
   };
   const doDelete = async () => {
@@ -87,10 +87,6 @@ export function WatchlistEntryPane({ selected }: { selected: Selected }) {
                 <button key={f.id} role="menuitem" onClick={() => doMove(f.id)}
                   className="block w-full text-left px-3 py-1.5 text-sm hover:bg-bg-input-hover">{f.name}</button>
               ))}
-              {selected !== null && (
-                <button role="menuitem" onClick={() => doMove(null)}
-                  className="block w-full text-left px-3 py-1.5 text-sm text-fg-dim hover:bg-bg-input-hover">미분류</button>
-              )}
             </div>
           )}
         </div>
@@ -100,10 +96,13 @@ export function WatchlistEntryPane({ selected }: { selected: Selected }) {
         <span className="text-xs text-fg-dimmer">직접 설정한 순</span>
       </div>
 
-      {/* add form */}
-      <div className="px-3 py-2 border-b border-border">
-        <WatchlistAddForm onAdded={(hit) => setRecentAction({ kind: 'added', code: hit.code, name: hit.name })} />
-      </div>
+      {/* add form — v3: 실폴더 선택 시에만(미분류 추가 대상 없음) */}
+      {selected !== null && (
+        <div className="px-3 py-2 border-b border-border">
+          <WatchlistAddForm folderId={selected}
+            onAdded={(hit) => setRecentAction({ kind: 'added', code: hit.code, name: hit.name })} />
+        </div>
+      )}
 
       {/* feedback banner (added / caught_up_one) — modal owns this feedback instance */}
       {recentAction?.kind === 'added' && (

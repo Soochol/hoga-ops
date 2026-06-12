@@ -3,6 +3,89 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.22.0] - 2026-06-12
+
+### Changed
+- **관심맵 히트 무게중심 재배치 — 행 → 그룹 헤더** (heatmap-heat-redistribution, ADR-0068 영역):
+  등락 히트(색)를 행 등락칩에서 **그룹 헤더 밴드 틴트**로 옮겼다. 헤더 밴드가 그룹 평균 등락률에
+  비례한 적/청 히트 틴트(`heatHeaderBg`, `heatBg`와 동일 선형 램프 max α 0.5, 미분류 포함 무분기)를
+  져서 섹터 온도를 헤더에서 바로 읽는다. 행 등락은 화살표(`▲▼`)·칩 배경 없이 **`priceDirClass` 컬러
+  텍스트**(+적/−청, 보합 중립)로 — 우측 패널 `QuoteChange`와 동일 컨벤션(색+부호 2중, 색약 보조).
+  헤더 평균 %는 평면 `text-fg-dim` 숫자(색은 밴드가 짊어지고 숫자는 보조). 상단 `-8/+8` 색 범례 삭제.
+  옛 `heatChipBg`·`HEAT_CHIP_MAX_ALPHA` 제거. DESIGN.md §Color 규율 갱신(헤더 틴트 채택·행 컬러텍스트).
+
+### Added
+- **관심맵 그룹 정렬 축** (`groupSort`): 행 정렬(`sortMode` 등락률↓/수동)과 **직교**하는 그룹(폴더)
+  정렬 — 평균 등락률 내림(`등락률 ↓`)/오름(`등락률 ↑`)/수동. 헤더에 `행`/`그룹` 두 세그먼트 토글
+  (그룹 버튼은 `aria-label`로 식별해 행 토글과 어휘 충돌 회피), `heatmap.groupSort.v1` 별도 키 영속,
+  미분류 항상 맨 끝(`orderFolderGroups`). **G1 드래그 동결 가드**(`useFrozenWhileDragging`):
+  `(수동 행 + 그룹 등락률↓)`에서 행 드래그 중 매-폴 그룹 재정렬이 컨테이너를 멀티칼럼 너머로
+  텔레포트시키는 것을 방지 — 드래그 active 동안 그룹 순서 동결, drag-end에 최신 적용. dnd
+  passthrough-mock으로 jsdom 단위 테스트 검증.
+
+### Internal
+- 아키텍처 deepening(plan-eng-review): `heatmapPrefs` read/persist를 기존 `state/persist.ts` 커널
+  (`persistJson`/`readJsonObject`, 2소비자)로 수렴(중복 try/catch+파싱 가드 제거), `makePctOf(quoteByCode)`
+  팩토리로 등락 접근 null 정책을 3곳에서 한 곳으로 통합. 설계 파이프라인: brainstorming → 스펙 →
+  plan-eng-review 그릴링(G1–G8) → writing-plans → subagent-driven 실행.
+
+## [0.7.21.0] - 2026-06-12
+
+### Added
+- **관심종목 다중 소속 + 스크리너 하트 그룹 피커** (watchlist v3, ADR-0070): 스크리너·드로어·
+  라이브 검색 등 **모든 하트(5곳)**가 누르면 **그룹 선택 팝업(`WatchlistGroupPicker`)**을 띄워
+  종목을 **여러 폴더에 동시에** 넣고 뺄 수 있다(체크박스 토글 + "새 그룹 만들기"). 하트 채움 =
+  그 종목이 **1개 이상 폴더에 소속**. 단일 멤버십 primitive 하나를 5곳에 마운트 —
+  스크리너 결과표(`ResultTable`)·스크리너 패널(`ScreenerDrawer`)·라이브 종목검색
+  (`LiveSymbolSearch`)·드로어 행 메뉴(`WatchlistRowMenu` "그룹 편집")·추가폼(`WatchlistAddForm`).
+- **데이터 모델 v2→v3 전환**: 폴더가 정렬된 `member_codes` 리스트를 **소유**하고(이전엔 entry가
+  `folder_id` 1개를 들고 있었음), `WatchlistEntry`는 종목당 백필 마커(`code, name,
+  registered_at_kst_date, last_success_date`)만 갖는 슬림 레코드가 된다. 불변식:
+  `{entry.code} == ⋃ folder.member_codes`를 **쓰기 경로(`save_document`) 단일 seam**에서 강제
+  (deepening 1) — read는 절대 prune하지 않는다(ADR-0065). 멤버십은 1급 API
+  (`POST/DELETE /api/watchlist/folders/{id}/members[/{code}]`)로 토글.
+- **표시 순서 계약 골든 픽스처** (deepening 2): 백엔드 `display_ordered_codes`(Live Set = KIS WS
+  구독 경계)와 프론트 `grouping.ts`(렌더)가 같은 픽스처 하나를 읽어 — 폴더 `.order` 순 → 각 폴더
+  `member_codes` 순 → 첫 등장으로 dedup — 한쪽 정렬 키만 바뀌어도 다른 쪽 테스트가 깨지도록
+  계약을 코드로 박는다(화면 상단과 실제 구독 종목이 조용히 어긋나는 capture-critical 회귀 방지).
+
+### Changed
+- **미분류(unfiled) 폐지** (watchlist 한정): 관심종목 소속 = 폴더의 합집합이므로, **0개 폴더에 든
+  종목은 관심종목에서 빠진다**(캡처 중단). `folder_id=null` 버킷 없음. 독립 히트맵 저장소
+  (ADR-0068)는 v2 단일 `folder_id` 모델을 그대로 유지 — 미분류는 히트맵에만 존재.
+- **폴더 삭제는 멤버십에 파괴적**(v3): 그 폴더에만 있던 종목은 관심종목에서 빠지므로, 고아가
+  생기는 삭제 전 UI가 **확인**한다("이 N종목이 관심종목에서 빠집니다"). ADR-0065 무손실 정신 유지.
+- **와이어 모델은 v2 shape 유지(옵션 B, ADR-0004)**: API 응답(`WatchlistResponse`)은 폴더
+  `{id,name,order}` + entries를 `(code, folder_id, order)` 1행/(폴더,종목)으로 **펼쳐서** 보내고,
+  투영은 백엔드 라우트가 한다(저장소 Entity ≠ 와이어, 클라 어댑터 없음). 프론트 데이터 계층
+  (타입·`useWatchlist`·`grouping`)은 사실상 무변경.
+
+### Migration
+- **v1→v2→v3 in-place 포워드 마이그레이션**(격리 없음, ADR-0065): v2→v3는 각 entry의 `folder_id`/
+  `order`를 폴더 `member_codes`로 접고, 과거 미분류(unfiled) 종목은 새로 만든 **"기본"** 폴더로
+  보존한다.
+
+## [0.7.20.0] - 2026-06-12
+
+### Added
+- **`/live` 탭별 차트 viewport 유지** (ADR-0069 A안): 탭을 전환했다가 돌아와도 **보던 줌·스크롤
+  위치가 그대로 복원**된다. 멀티탭(v0.7.17.0) 도입 후 탭별로 보존되던 건 종목코드·타임프레임·
+  `historicalFromDate`(데이터 fetch 깊이)뿐이라, 전환 시 차트가 항상 기본뷰(분봉=최신 300봉 snap /
+  일·주·월=fitContent)로 리셋되던 문제를 해소한다. **시간 앵커 방식** — 논리 인덱스가 아니라 우측
+  엣지의 real-ms + 봉 스팬(줌)을 저장하므로, cold-swap 재페치로 축이 재구성돼도 새 축에 재투영해
+  같은 위치로 복귀한다(기존 `useViewportBackfill`의 prepend 재투영 프리미티브 재사용). 라이브 엣지에
+  있던 탭은 복귀 후에도 최신 봉을 추종(한 봉 뒤로 밀리지 않음). 신규 `LiveTab.viewport{rightEdgeMs,
+  barSpan,atLiveEdge}` + 순수 헬퍼 `viewportAnchor.ts`(`viewportFromRanges`·`computeRestoreRange`·
+  `realMsToVirtualSeconds`); 캡처는 `registerViewportCapture` 콜백으로 전환 직전 outgoing 탭에 동기
+  스냅샷, 복원은 `LiveChartRoot` initial-view effect의 새 분기. 타임프레임 변경 시 viewport 클리어
+  (봉 스팬이 타임프레임 간 무의미), `live.tabs.v1` 영속화에 viewport 포함(구버전 스냅샷은 null 폴백).
+
+### Fixed
+- **`/live` 과거-팬 탭 복귀 시 reveal cover 잔류 가능성 해소**: 초기-뷰 effect의 `historicalFromDate`
+  게이트가 `reveal()` 없이 early-return해, 과거로 팬한(hfd≠null) 탭으로 cold 복귀할 때 불투명
+  cover가 차트 위에 남을 수 있던 잠재 버그를 무조건 reveal(idempotent)로 닫는다. 세션 내 팬은 이미
+  노출된 상태라 no-op.
+
 ## [0.7.19.0] - 2026-06-11
 
 ### Changed

@@ -7,6 +7,7 @@ import { useSymbols } from '../capture/useSymbols';
 import type { RangeBundle } from '../api/types';
 import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 import { useWatchlist } from '../watchlist/useWatchlist';
+import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import { HeartIcon } from '../ui/HeartIcon';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { QuoteChange } from '../rightrail/QuoteChange';
@@ -36,7 +37,7 @@ export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundl
     ? (symbolName ? `${symbolName}(${activeCode})` : activeCode)
     : '—';
 
-  const { isMember, toggle } = useWatchlistMembership();
+  const { isMember } = useWatchlistMembership();
   const member = !!activeCode && isMember(activeCode);
 
   // ADR-0067: collection-status badge — activeCode가 보이는 중이므로 viewedCodes=[activeCode]
@@ -82,15 +83,7 @@ export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundl
         {symbolLabel}
       </span>
       {activeCode && (
-        <button
-          type="button"
-          aria-label={member ? '관심종목 해제' : '관심종목 추가'}
-          aria-pressed={member}
-          onClick={() => { if (activeCode) toggle(activeCode); }}
-          className={`leading-none ${member ? 'text-error' : 'text-fg-dimmer hover:text-fg'}`}
-        >
-          <HeartIcon filled className="w-[1em] h-[1em]" />
-        </button>
+        <WatchlistHeartButton code={activeCode} name={symbolName} variant="status" />
       )}
       <span aria-hidden>·</span>
       {currentPrice !== null ? (

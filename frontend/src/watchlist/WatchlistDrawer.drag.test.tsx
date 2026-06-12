@@ -71,9 +71,10 @@ describe('WatchlistDrawer drag wiring', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    // v3 composite sortable id: `${folderId}:${code}` (다중 소속 충돌 방지, ADR-0070).
     h.onDragEnd!({
-      active: { id: '005930', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
-      over: { id: '000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
+      active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
+      over: { id: 'f_0000000a:000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
     });
     await waitFor(() => expect(spy).toHaveBeenCalledWith('f_0000000a', ['000660', '005930']));
   });
@@ -115,8 +116,9 @@ describe('WatchlistDrawer drag wiring', () => {
       render(<WatchlistDrawer />, { wrapper: wrap(qc) });
       await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
       // 드롭 지점 = activator(900,300) + delta(-500,0) = (400,300) → 술어 true.
+      // id는 v3 복합(folderId:code); 차트-드롭 분기는 data.current.code를 쓴다.
       h.onDragEnd!({
-        active: { id: '005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
+        active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
         over: null,
         activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
         delta: { x: -500, y: 0 },
@@ -138,9 +140,10 @@ describe('WatchlistDrawer drag wiring', () => {
       render(<WatchlistDrawer />, { wrapper: wrap(qc) });
       await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
       // 드롭 지점 = activator(900,300) + delta(0,0) = (900,300) → 술어 false → 재정렬 경로.
+      // v3 복합 id로 over/active를 지정해야 parseEntrySortableId가 folderId/code를 푼다.
       h.onDragEnd!({
-        active: { id: '005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
-        over: { id: '000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
+        active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
+        over: { id: 'f_0000000a:000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
         activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
         delta: { x: 0, y: 0 },
       });

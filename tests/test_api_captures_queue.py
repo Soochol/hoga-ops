@@ -1579,9 +1579,11 @@ async def test_finalize_item_done_bumps_watchlist_last_success(tmp_path):
     from hoga.api import captures, watchlist
     captures.reset_state_for_tests()
     captures._data_dir = tmp_path
-    # Register the Code in the Watchlist so the bump has somewhere to land.
-    await watchlist.add_entry(tmp_path, code="005930", name="삼성전자",
-                              today_kst_date="20260526")
+    # Register the Code in the Watchlist so the bump has somewhere to land (v3:
+    # membership defines the entry — add into a freshly created folder).
+    _fid = (await watchlist.create_folder(tmp_path, name="기본")).id
+    await watchlist.add_member(tmp_path, code="005930", name="삼성전자",
+                               today_kst_date="20260526", folder_id=_fid)
     # Disk fixture: a COMPLETE Stock-Date so the gate lets the bump through.
     meta = tmp_path / "parquet" / "20260526" / "005930" / "meta.json"
     meta.parent.mkdir(parents=True, exist_ok=True)

@@ -126,7 +126,7 @@ describe('LivePage shell', () => {
     // 아니라 탭이 진실). 마운트 시드가 focusTab → applyTabToPage 로 동기화한다.
     const id = 'restored';
     useLiveTabsStore.setState({
-      tabs: [{ id, code: '035720', label: '035720', timeframe: '1m', historicalFromDate: null }],
+      tabs: [{ id, code: '035720', label: '035720', timeframe: '1m', historicalFromDate: null, viewport: null }],
       activeTabId: id,
     });
     renderWithRouter();

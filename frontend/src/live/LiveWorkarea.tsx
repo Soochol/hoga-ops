@@ -7,6 +7,7 @@ import { LiveSidebar } from './LiveSidebar';
 import type { RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
 import type { LiveDataWarning } from './liveDataWarnings';
+import type { TabViewport } from './viewportAnchor';
 
 /** 관심종목 행을 차트로 드래그할 때 워크에어리어 위에 뜨는 드롭 타깃 오버레이.
  *  드래그 고스트는 패널 overflow 경계에서 잘리므로 워크에어리어 자체를 어포던스로 쓴다.
@@ -59,6 +60,9 @@ interface Props {
   isExtending: boolean;
   /** 활성 경로 과거 fetch 경고(rate-limit 등). LiveChartRoot의 빈칸 문구·부분로딩 칩용. */
   pastDataWarnings?: LiveDataWarning[];
+  /** 활성 탭의 저장된 viewport(ADR-0069 A안). cold 전환 복귀 시 보던 위치 복원용으로
+   * LiveChartRoot에 전달. */
+  restoreViewport?: TabViewport | null;
   /** Owned by LivePage's single useLiveSeries call. Threaded to LiveSidebar
    * so the LATEST mode reads the same SSE buffer that feeds useLiveBundle. */
   live: LiveSeriesData;
@@ -72,6 +76,7 @@ export function LiveWorkarea({
   isPastCandlesLoading,
   isExtending,
   pastDataWarnings,
+  restoreViewport,
   live,
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
@@ -128,6 +133,7 @@ export function LiveWorkarea({
               isPastCandlesLoading={isPastCandlesLoading}
               isExtending={isExtending}
               pastDataWarnings={pastDataWarnings}
+              restoreViewport={restoreViewport}
             />
           </div>
           <div

@@ -14,6 +14,8 @@ export interface HeatmapBoardProps {
   onReorder?: (folderId: string | null, orderedCodes: string[]) => void;
   /** 행 우클릭 메뉴(삭제·폴더이동) 오프너. 페이지에서 주입. */
   onRowMenu?: RowMenuOpener;
+  /** 행 드래그 시작/끝을 페이지로 전파(그룹순서 동결용, G1). manual 모드에서만 발화. */
+  onRowDragState?: (dragging: boolean) => void;
 }
 
 /** 신문형 멀티칼럼 보드. 빈 그룹만 제외(미분류 포함 — ADR-0068 G3). columnWidth 로 가용 폭만큼
@@ -25,7 +27,7 @@ export interface HeatmapBoardProps {
  *  이 12rem 에 미반영돼 생기던 잠재 버그. 플로어 ≥ 행 min-content 로 그 클리핑 밴드를 제거. (board
  *  자체가 ~16rem 미만 — 관심목록 패널+좁은 뷰포트 → 단일칼럼 — 이면 어떤 플로어로도 클립 불가피;
  *  레이아웃 붕괴는 아님.) 넓어지면 칼럼 수↑, 남는 폭은 minmax(...,1fr) 종목명으로(반응형). */
-export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder, onRowMenu }: HeatmapBoardProps) {
+export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder, onRowMenu, onRowDragState }: HeatmapBoardProps) {
   const visible = visibleFolderGroups(groups);
   return (
     // eng-review Q6: 스크롤 컨테이너(바깥, 높이 한정)와 multicol 블록(안쪽, height
@@ -44,6 +46,7 @@ export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder,
             onPick={onPick}
             onReorder={onReorder}
             onRowMenu={onRowMenu}
+            onRowDragState={onRowDragState}
           />
         ))}
       </div>

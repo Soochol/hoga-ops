@@ -77,6 +77,10 @@ export function LivePage() {
   });
 
   const activeCode = useLivePageStore((s) => s.activeCode);
+  // Active tab's saved viewport (ADR-0069 A안) → LiveChartRoot restores it on
+  // cold switch-back. Stable reference (the tab object's viewport field) across
+  // SSE renders; only rewritten on switch-away, so it doesn't thrash the chart.
+  const restoreViewport = tabs.find((t) => t.id === activeTabId)?.viewport ?? null;
   useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -142,6 +146,7 @@ export function LivePage() {
         isPastCandlesLoading={isPastCandlesLoading}
         isExtending={isExtending}
         pastDataWarnings={pastDataWarnings}
+        restoreViewport={restoreViewport}
         live={live}
       />
       {indicatorPanelOpen && (

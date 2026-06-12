@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { useLiveTabsStore, TABS_SOFT_CAP, loadTabs, toTabsSnapshot, initLiveTabsSync } from './liveTabs';
+import {
+  useLiveTabsStore, TABS_SOFT_CAP, loadTabs, toTabsSnapshot, initLiveTabsSync,
+  registerViewportCapture,
+} from './liveTabs';
 import { useLivePageStore } from './livePage';
+import type { TabViewport } from '../live/viewportAnchor';
+
+const VP_A: TabViewport = { rightEdgeMs: 1748275200000, barSpan: 300, atLiveEdge: false };
 
 beforeEach(() => {
   localStorage.clear();
@@ -241,15 +247,43 @@ describe('liveTabs persistence', () => {
     expect(loadTabs()).toEqual({ tabs: [], activeTabId: null });
   });
 
-  it('toTabsSnapshot drops runtime-only fields', () => {
+  it('toTabsSnapshot keeps persisted fields (incl. viewport), drops runtime-only id', () => {
     const snap = toTabsSnapshot({
-      tabs: [{ id: 'abc', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null }],
+      tabs: [{ id: 'abc', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: VP_A }],
       activeTabId: 'abc',
     } as never);
     expect(snap).toEqual({
       version: 1, activeIndex: 0,
-      tabs: [{ code: '005930', timeframe: '1m', historicalFromDate: null, label: '삼성전자' }],
+      tabs: [{ code: '005930', timeframe: '1m', historicalFromDate: null, label: '삼성전자', viewport: VP_A }],
     });
+  });
+
+  it('round-trips a saved viewport through save → load', () => {
+    localStorage.setItem('live.tabs.v1', JSON.stringify({
+      version: 1, activeIndex: 0,
+      tabs: [{ code: '005930', timeframe: '1m', historicalFromDate: null, label: '삼성전자', viewport: VP_A }],
+    }));
+    const { tabs } = loadTabs();
+    expect(tabs[0].viewport).toEqual(VP_A);
+  });
+
+  it('drops a malformed/absent viewport to null on load (forward + backward compat)', () => {
+    localStorage.setItem('live.tabs.v1', JSON.stringify({
+      version: 1, activeIndex: 0,
+      tabs: [
+        { code: '005930', timeframe: '1m', historicalFromDate: null, label: 'no viewport field' },
+        { code: '000660', timeframe: '1m', historicalFromDate: null, label: 'bad viewport', viewport: { rightEdgeMs: 'x', barSpan: -1, atLiveEdge: 1 } },
+      ],
+    }));
+    const { tabs } = loadTabs();
+    expect(tabs[0].viewport).toBeNull();
+    expect(tabs[1].viewport).toBeNull();
+  });
+
+  it('migrated live.page.v1 tab has a null viewport', () => {
+    localStorage.setItem('live.page.v1', JSON.stringify({ activeCode: '005930', candleTimeframe: '1m' }));
+    const { tabs } = loadTabs();
+    expect(tabs[0].viewport).toBeNull();
   });
 });
 
@@ -296,6 +330,78 @@ describe('liveTabs ↔ page mirror', () => {
     expect(after.timeframe).toBe('5m');
     expect(after.historicalFromDate).toBe(before.historicalFromDate);
     expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
+  });
+
+  it('timeframe change clears the active tab viewport (barSpan invalid across timeframes)', () => {
+    openTab('005930', '삼성전자');
+    useLiveTabsStore.setState({
+      tabs: useLiveTabsStore.getState().tabs.map((t) => ({ ...t, viewport: VP_A })),
+    });
+    useLivePageStore.getState().setCandleTimeframe('5m'); // toolbar tf change → mirror clears viewport
+    expect(useLiveTabsStore.getState().tabs[0].viewport).toBeNull();
+  });
+
+  it('a pure pan (historicalFromDate change, tf unchanged) leaves the saved viewport intact', () => {
+    openTab('005930', '삼성전자');
+    useLiveTabsStore.setState({
+      tabs: useLiveTabsStore.getState().tabs.map((t) => ({ ...t, viewport: VP_A })),
+    });
+    useLivePageStore.getState().extendHistoricalRange('20260601'); // pan, same tf
+    expect(useLiveTabsStore.getState().tabs[0].viewport).toEqual(VP_A);
+  });
+});
+
+describe('liveTabs viewport capture', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useLiveTabsStore.setState({ tabs: [], activeTabId: null });
+    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
+  });
+
+  // 단일-탭 모델: openOrFocusTab 제거 → openTab(addBlankTab+setActiveTabCode) 헬퍼로 탭을 만든다.
+  // addBlankTab이 나가는 탭 viewport를 스냅샷하므로 #75 viewport 캡처 시맨틱은 동일하게 검증된다.
+  it('snapshots the OUTGOING active tab viewport on switch', () => {
+    const dispose = registerViewportCapture(() => VP_A);
+    openTab('005930', '삼성전자'); // A active; nothing to snapshot yet
+    openTab('000660', 'SK하이닉스'); // switch → A's viewport captured
+    const tabs = useLiveTabsStore.getState().tabs;
+    expect(tabs.find((t) => t.code === '005930')?.viewport).toEqual(VP_A);
+    expect(tabs.find((t) => t.code === '000660')?.viewport).toBeNull(); // new tab clean
+    dispose();
+  });
+
+  it('new-tab creation reads tabs FRESH so the snapshot is not clobbered by the spread', () => {
+    const dispose = registerViewportCapture(() => VP_A);
+    openTab('005930');
+    openTab('000660'); // new-tab path: snapshot A, THEN [...get().tabs, B]
+    expect(useLiveTabsStore.getState().tabs[0].viewport).toEqual(VP_A);
+    dispose();
+  });
+
+  it('focusTab snapshots the outgoing tab but leaves the target tab viewport untouched', () => {
+    // Capture is one-directional: the store SAVES viewport on switch-away;
+    // restore happens in LiveChartRoot via the restoreViewport prop, not here.
+    const dispose = registerViewportCapture(() => VP_A);
+    openTab('005930');
+    openTab('000660'); // leaving A → A.viewport = VP_A
+    const aId = useLiveTabsStore.getState().tabs[0].id;
+    useLiveTabsStore.getState().focusTab(aId); // leaving B → B.viewport = VP_A; A unchanged
+    expect(useLiveTabsStore.getState().tabs[0].viewport).toEqual(VP_A);
+    dispose();
+  });
+
+  it('no registered capture → switch leaves viewport null (tests / empty chart)', () => {
+    openTab('005930');
+    openTab('000660');
+    expect(useLiveTabsStore.getState().tabs[0].viewport).toBeNull();
+  });
+
+  it('a null capture result is not written (degenerate / torn-down chart)', () => {
+    const dispose = registerViewportCapture(() => null);
+    openTab('005930');
+    openTab('000660');
+    expect(useLiveTabsStore.getState().tabs[0].viewport).toBeNull();
+    dispose();
   });
 });
 

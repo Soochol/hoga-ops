@@ -1,10 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { heatBg, heatChipBg, sortEntries, avgPct, HEAT_CHIP_MAX_ALPHA } from './heat';
+import { heatBg, sortEntries, avgPct, heatHeaderBg, orderFolderGroups, makePctOf } from './heat';
+import type { FolderGroup } from '../watchlist/grouping';
 import type { WatchlistEntry } from '../api/watchlist';
+import type { LiveQuote } from '../api/liveQuotes';
 
 const E = (code: string, order: number): WatchlistEntry => ({
   code, name: code, registered_at_kst_date: '20260101',
   last_success_date: null, folder_id: 'f1', order,
+});
+
+describe('makePctOf', () => {
+  const q = (pct: number | null): LiveQuote => ({ code: 'x', price: 0, change_pct: pct, change_won: 0 });
+  it('Map miss → null, 값 있으면 change_pct, change_pct=null → null', () => {
+    const m = new Map<string, LiveQuote>([['a', q(3.5)], ['b', q(null)]]);
+    const pctOf = makePctOf(m);
+    expect(pctOf('a')).toBe(3.5);
+    expect(pctOf('b')).toBeNull();   // present-but-null
+    expect(pctOf('zzz')).toBeNull(); // map miss
+  });
 });
 
 describe('heatBg', () => {
@@ -21,25 +34,27 @@ describe('heatBg', () => {
     expect(heatBg(30)).toBe('rgba(220,38,38,0.420)');
     expect(heatBg(4)).toBe('rgba(220,38,38,0.210)');
   });
-  it('maxAlpha 인자로 칩 농도(0.72) 적용', () => {
-    expect(heatBg(8, HEAT_CHIP_MAX_ALPHA)).toBe('rgba(220,38,38,0.720)');
-    expect(heatBg(-4, HEAT_CHIP_MAX_ALPHA)).toBe('rgba(37,99,235,0.360)');
+  it('maxAlpha 인자로 임의 농도 적용', () => {
+    expect(heatBg(8, 0.72)).toBe('rgba(220,38,38,0.720)');
+    expect(heatBg(-4, 0.72)).toBe('rgba(37,99,235,0.360)');
   });
 });
 
-describe('heatChipBg (그라데이션 없음 — |등락률| ≥ 8%만 평면색)', () => {
-  it('null/0/±8% 미만 → transparent (배경 없음)', () => {
-    expect(heatChipBg(null)).toBe('transparent');
-    expect(heatChipBg(0)).toBe('transparent');
-    expect(heatChipBg(5)).toBe('transparent');
-    expect(heatChipBg(-7.99)).toBe('transparent');
+
+describe('heatHeaderBg (헤더 밴드 — 선형 램프 max α 0.5, bg-input 합성)', () => {
+  it('null/0 → 순수 var(--bg-input)', () => {
+    expect(heatHeaderBg(null)).toBe('var(--bg-input)');
+    expect(heatHeaderBg(0)).toBe('var(--bg-input)');
   });
-  it('±8% 이상 → 평면 0.72 (그라데이션 없이 단일 농도)', () => {
-    expect(heatChipBg(8)).toBe('rgba(220,38,38,0.720)');   // 정확히 8%도 포함(이상)
-    expect(heatChipBg(9.9)).toBe('rgba(220,38,38,0.720)');
-    expect(heatChipBg(30)).toBe('rgba(220,38,38,0.720)');  // 8%↑ 전부 동일(평면)
-    expect(heatChipBg(-8)).toBe('rgba(37,99,235,0.720)');
-    expect(heatChipBg(-15)).toBe('rgba(37,99,235,0.720)');
+  it('+8% 포화 → 빨강 max α 0.5 동색 2-stop 합성', () => {
+    expect(heatHeaderBg(8)).toBe(
+      'linear-gradient(0deg, rgba(220,38,38,0.500), rgba(220,38,38,0.500)), var(--bg-input)',
+    );
+    expect(heatHeaderBg(30)).toContain('0.500'); // ±8% 초과 클램프
+  });
+  it('+4% → α 0.25, -8% → 파랑', () => {
+    expect(heatHeaderBg(4)).toContain('rgba(220,38,38,0.250)');
+    expect(heatHeaderBg(-8)).toContain('rgba(37,99,235,0.500)');
   });
 });
 
@@ -61,5 +76,39 @@ describe('avgPct', () => {
     const p = (c: string): number | null => ({ a: 2, b: 4, c: null } as Record<string, number | null>)[c] ?? null;
     expect(avgPct(entries, p)).toBe(3);
     expect(avgPct(entries, () => null)).toBeNull();
+  });
+});
+
+const FG = (id: string | null): FolderGroup => ({
+  folder: id === null ? null : { id, name: id, order: 0 },
+  entries: [],
+});
+const avgMap = (m: Record<string, number | null>) => (g: FolderGroup): number | null =>
+  g.folder ? (m[g.folder.id] ?? null) : (m.__uncat__ ?? null);
+const ids = (gs: FolderGroup[]) => gs.map((x) => x.folder?.id ?? '__uncat__');
+
+describe('orderFolderGroups', () => {
+  it('manual = 입력 순서 그대로(동일 참조)', () => {
+    const gs = [FG('a'), FG('b'), FG(null)];
+    expect(orderFolderGroups(gs, 'manual', () => 0)).toBe(gs);
+  });
+  it('desc = 평균 내림차순, 미분류 항상 맨 끝', () => {
+    const gs = [FG('a'), FG('b'), FG('c'), FG(null)];
+    expect(ids(orderFolderGroups(gs, 'desc', avgMap({ a: 1, b: 5, c: -2 }))))
+      .toEqual(['b', 'a', 'c', '__uncat__']);
+  });
+  it('asc = 평균 오름차순, 미분류 항상 맨 끝', () => {
+    const gs = [FG('a'), FG('b'), FG('c'), FG(null)];
+    expect(ids(orderFolderGroups(gs, 'asc', avgMap({ a: 1, b: 5, c: -2 }))))
+      .toEqual(['c', 'a', 'b', '__uncat__']);
+  });
+  it('null-avg 실폴더는 실폴더 구간 끝(원순서 안정), 미분류 더 끝', () => {
+    const gs = [FG('a'), FG('b'), FG('c'), FG(null)];
+    expect(ids(orderFolderGroups(gs, 'desc', avgMap({ a: 3, b: null, c: 1 }))))
+      .toEqual(['a', 'c', 'b', '__uncat__']);
+  });
+  it('전부 null-avg → 원순서 보존, 미분류 맨 끝', () => {
+    const gs = [FG('a'), FG('b'), FG(null), FG('c')];
+    expect(ids(orderFolderGroups(gs, 'desc', () => null))).toEqual(['a', 'b', 'c', '__uncat__']);
   });
 });

@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { useMutation } from '@tanstack/react-query';
 import { PageContainer } from '../layout/PageContainer';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useScreener } from '../screener/useScreener';
@@ -12,7 +11,6 @@ import { ResultTable } from '../screener/ResultTable';
 import { StalenessChip } from '../screener/StalenessChip';
 import { useSavedScreenerEditor } from '../screener/useSavedScreenerEditor';
 import { useScreenerRowsLive } from '../screener/useScreenerRowsLive';
-import { addToWatchlist } from '../api/watchlist';
 
 export function Screener() {
   const navigate = useNavigate();   // 캡처 deep-link(/capture?code=…)용
@@ -21,9 +19,6 @@ export function Screener() {
 
   const screener = useScreener();
   const { data: status } = useScreenerStatus();
-  // Side-effect actions on a result row. Lazy — only fire on click, never at
-  // render, so the screener API mock that omits these stays valid.
-  const watch = useMutation({ mutationFn: (code: string) => addToWatchlist(code) });
   const update = useScreenerUpdate();
 
   // 결과 행에 Live Quote 오버레이(현재가·등락률)를 적용 — 드로어와 공유하는 단일
@@ -78,7 +73,6 @@ export function Screener() {
         </div>
       ) : (
         <ResultTable rows={liveRows} onActivate={openLive}
-          onWatch={(code) => watch.mutate(code)}
           onCapture={(code) => navigate(`/capture?code=${encodeURIComponent(code)}`)} />
       )}
     </PageContainer>

@@ -60,7 +60,7 @@ function renderPage() {
 beforeEach(() => {
   setActiveCode.mockClear();
   setActiveTabCode.mockClear();
-  useHeatmapPrefsStore.setState({ sortMode: 'manual' });   // eng-review D2: 기본 manual
+  useHeatmapPrefsStore.setState({ sortMode: 'manual', groupSort: 'manual' });   // eng-review D2: 기본 manual
   Element.prototype.scrollIntoView = vi.fn();              // jsdom 미구현 — 스트립 점프 대비
   // 매 테스트 open 기본값으로 리셋 — per-test override가 다음 테스트로 누수되지 않게.
   vi.mocked(useLiveQuoteOverlay).mockReturnValue({
@@ -75,13 +75,12 @@ beforeEach(() => {
   );
 });
 
-it('폴더·종목·phase 배지·색 범례 렌더', async () => {
+it('폴더·종목·phase 배지 렌더 + 색 범례 제거됨(#6)', async () => {
   renderPage();
-  // 스트립 칩 + 폴더 헤더 둘 다 '반도체' → 2개 이상
   expect((await screen.findAllByText('반도체')).length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
-  expect(screen.getByText('● 장중')).toBeInTheDocument();  // phase 배지(캡션 '장중 추세'와 구분)
-  expect(screen.getByLabelText(/색 범례/)).toBeInTheDocument();   // spec §8 색 범례 바
+  expect(screen.getByText('● 장중')).toBeInTheDocument();
+  expect(screen.queryByLabelText(/색 범례/)).toBeNull();   // #6: 범례 삭제
 });
 
 it('행 클릭 → 종목 탭 open-or-focus(jump-to-live)', async () => {
@@ -120,4 +119,15 @@ it('스트립 칩 클릭 → 해당 카드로 scrollIntoView', async () => {
   expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith(
     expect.objectContaining({ behavior: 'smooth' }),
   );
+});
+
+it('그룹 정렬 토글: aria로 쿼리, 클릭 시 store.groupSort 갱신(#7)', async () => {
+  renderPage();
+  await screen.findAllByText('반도체');
+  expect(useHeatmapPrefsStore.getState().groupSort).toBe('manual');
+  // 그룹 버튼은 aria-label 로 식별(visible text '등락률 ↓' 는 행 토글과 겹치므로)
+  fireEvent.click(screen.getByRole('button', { name: '그룹을 평균 등락률 높은 순으로' }));
+  expect(useHeatmapPrefsStore.getState().groupSort).toBe('desc');
+  fireEvent.click(screen.getByRole('button', { name: '그룹 수동 순서' }));
+  expect(useHeatmapPrefsStore.getState().groupSort).toBe('manual');
 });
