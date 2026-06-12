@@ -1,8 +1,11 @@
-# 총잔량 Peak 돌파 감지기 (Breakout Detector) — Design
+# 총잔량 급증 (Quote Totals Surge) 감지기 — Design
+
+> 용어: 신호 = **총잔량 급증(Quote Totals Surge)**, CONTEXT.md 등재. "돌파/Breakout"은 Screener EOD
+> 신고가 조건 전용이라 백엔드 모듈·타입·엔드포인트 전부 `surge` 네이밍을 쓴다(realm 충돌 회피, Q1).
 
 **Date**: 2026-06-12
 **Status**: Draft
-**Scope**: `hoga/live/breakout.py`(신규 감지 코어), `hoga/live/breakout_seed.py`(신규 시딩, cold path), `hoga/live/buffer.py`(LiveBuffer 구독), `hoga/live/lifecycle.py`(서비스 기동), `hoga/api/breakout_routes.py`(신규 라우트), `hoga/live/breakout_store.py`(신규 이벤트 로그), `frontend/src/live/`(알림 피드 패널·토스트·소리)
+**Scope**: `hoga/live/surge.py`(신규 감지 코어), `hoga/live/surge_seed.py`(신규 시딩, cold path), `hoga/live/buffer.py`(LiveBuffer 구독), `hoga/live/lifecycle.py`(서비스 기동), `hoga/api/surge_routes.py`(신규 라우트), `hoga/live/surge_store.py`(신규 이벤트 로그), `frontend/src/live/`(알림 피드 패널·토스트·소리)
 
 ## Problem
 
@@ -12,14 +15,14 @@
 > 더 큰 수치가 나오는 순간**을 잡는 알고리즘을 개발하고 싶어."
 
 현재 시스템은 단일 `/live` 종목의 호가 패널에서 총잔량을 *표시*할 뿐, 관심종목을
-가로질러 "총잔량이 기록을 돌파하는 순간"을 **감지·알림**하는 수단이 없다. 매도/매수벽이
+가로질러 "총잔량이 직전 최고치를 크게 넘어서는(급증) 순간"을 **감지·알림**하는 수단이 없다. 매도/매수벽이
 당일 최고치를 크게 갱신하는 순간은 트레이딩 시그널이 될 수 있는데, 사람이 234개
 종목의 호가를 동시에 눈으로 좇는 것은 불가능하다.
 
 대화 + 2026-06-12 실데이터 검증(§Validation)으로 확정된 트리거:
 
 - **래칫(단조증가) 고가를 유의미한 마진(기본 +50%)만큼 초과**하는 순간 발사. 사용자의 "이전 peak 고가를
-  돌파, 신고가가 나오면 기준 고가를 갱신" 직관(래칫)을 그대로 쓰되, 트리거는 "초과"로 둔다.
+  넘어서고, 신고가가 나오면 기준 고가를 갱신" 직관(래칫)을 그대로 쓰되, 트리거는 마진 초과로 둔다.
 - (검토 중 폐기) "이전 peak의 90% 재접근" 안 — 노이즈 과다 + 폭발적 신고가를 disarm으로 놓침이 실증돼 폐기.
 
 ## Invariants
@@ -44,8 +47,8 @@
 
 | Invariant | 영향 | 비고 |
 |-----------|------|------|
-| ADR-0038 hot-path 순수성 | preserves | 감지 코어(`breakout.py`)는 순수 파이썬(dict·int 4필드 상태)만 사용, import 금지 목록 준수. 시딩 조회(`breakout_seed.py`)만 cold path(저장소 읽기)로 분리. |
-| ADR-0067 폴러 디스크 미저장 | preserves | Phase 2 `WatchlistBreakoutPoller`는 호가를 메모리로만 읽어 감지기에 주입, 디스크 저장 없음. 이벤트 로그(`breakout_store`)는 폴러가 아닌 감지기 출력이며 별도 경로. |
+| ADR-0038 hot-path 순수성 | preserves | 감지 코어(`surge.py`)는 순수 파이썬(dict·int 4필드 상태)만 사용, import 금지 목록 준수. 시딩 조회(`surge_seed.py`)만 cold path(저장소 읽기)로 분리. |
+| ADR-0067 폴러 디스크 미저장 | preserves | Phase 2 `WatchlistSurgePoller`는 호가를 메모리로만 읽어 감지기에 주입, 디스크 저장 없음. 이벤트 로그(`surge_store`)는 폴러가 아닌 감지기 출력이며 별도 경로. |
 | KIS REST 15/sec 버킷 | preserves (Phase 2에서 공유 부하 ↑) | Phase 2 폴러는 같은 버킷을 공유 — 스크리너 백필·range 조회와 쿼터 경쟁. 폴러는 양보 가능한 background 우선순위로 설계(아래 §Design Phase 2). |
 | LiveBuffer 구독 분리 | preserves | 감지기는 기존 구독 큐 계약으로 붙는 또 하나의 소비자. 새 계약 추가 없음. |
 | 총잔량 정의 일관성 | preserves | 기존 필드를 읽기만 함. |
@@ -62,8 +65,8 @@
 ## Non-Goals
 
 - 멀티데이(전일 이월) peak — **당일만**. 자정/세션 경계에서 상태 리셋.
-- 총잔량 외 지표(호가비·체결강도 등)의 돌파 — 이번 범위 밖.
-- 돌파 이후 가격 움직임의 백테스트·승률 분석 — 이벤트 로그를 남겨 후속 가능하게만 함(§Backlog).
+- 총잔량 외 지표(호가비·체결강도 등)의 급증 — 이번 범위 밖.
+- 급증 이후 가격 움직임의 백테스트·승률 분석 — 이벤트 로그를 남겨 후속 가능하게만 함(§Backlog).
 - 매매 자동 주문 연동 — 알림까지만.
 
 ## Design
@@ -72,7 +75,7 @@
 
 - **Phase 1**: `LiveBuffer`(tick) 구독으로 **Live Set**(실시간 상위 종목)만 감지 + 전체 출력 레이어.
   새 폴링 인프라 없음. 정밀(tick) 데이터로 알고리즘을 먼저 검증.
-- **Phase 2**: `WatchlistBreakoutPoller`(신규)로 Live Set 밖 관심종목까지 커버리지 확장. 같은 감지 코어 재사용.
+- **Phase 2**: `WatchlistSurgePoller`(신규)로 Live Set 밖 관심종목까지 커버리지 확장. 같은 감지 코어 재사용.
 
 각 단계는 독립적으로 동작·배포 가능.
 
@@ -80,14 +83,14 @@
 
 ```
 Phase 1:  KIS WS → ws_frames(total_ask/bid_qty) → LiveBuffer(tick) ─┐
-                                                                     ├─► BreakoutDetector
-Phase 2:  + WatchlistBreakoutPoller(~5~16s, REST) ───────────────────┘        │
-                                                                  (seed/warmup/hysteresis/cooldown)
-                                                                              │ 돌파 이벤트
+                                                                     ├─► SurgeDetector
+Phase 2:  + WatchlistSurgePoller(~5~16s, REST) ───────────────────┘        │
+                                                                  (seed/warmup/margin/cooldown)
+                                                                              │ 급증 이벤트
                                                                               ▼
-                                                              BreakoutStore(JSONL 이벤트 로그)
+                                                              SurgeStore(JSONL 이벤트 로그)
                                                                               │
-                                                          GET /api/live/breakouts?since=<cursor>
+                                                          GET /api/live/surges?since=<cursor>
                                                                               │ 프론트 폴링
                                                                               ▼
                                                        알림 피드 패널 + 토스트 + 소리
@@ -96,7 +99,7 @@ Phase 2:  + WatchlistBreakoutPoller(~5~16s, REST) ──────────
 프론트는 기존 라이브 데이터와 동일하게 **주기적 폴링**(TanStack Query)으로 알림을 받는다 —
 SSE 인프라를 새로 만들지 않는다(기존 패턴 일치).
 
-### 감지 코어 (`breakout.py`) — 핵심 deliverable
+### 감지 코어 (`surge.py`) — 핵심 deliverable
 
 > **2026-06-12 실데이터 검증으로 트리거 확정**: 17종목 bake-off(아래 §Validation)에서
 > "90% 재접근 + 히스테리시스"(이전 초안)는 (a) 종목당 ~32건으로 과다하고 (b) peak 근처
@@ -145,7 +148,7 @@ SymbolSideState:
 90% 재접근 방식의 까다로운 "시작 시 존 안이면?" 엣지케이스가 **사라졌다**. "고가를 마진만큼 초과"는
 *사건 자체가 startup 상태와 무관*하기 때문:
 
-- **시딩(상황 A — 장중 재시작)**: 기동 시 `breakout_seed.py`(cold path)가 오늘 저장된 WS 스냅샷에서
+- **시딩(상황 A — 장중 재시작)**: 기동 시 `surge_seed.py`(cold path)가 오늘 저장된 WS 스냅샷에서
   종목·side별 당일 최고 `total_ask/bid_qty`를 읽어 `session_peak` 시드, `seeded = True`. → 재시작 후
   시드된 고가를 `margin` 초과하는 진짜 사건이 올 때만 발사. **스퓨리어스 startup 발사가 구조적으로 불가.**
 - **워밍업(상황 B — 저장 이력 없는 종목, Phase 2 폴링 종목)**: `seeded = False` → 처음 `warmup_k`개는
@@ -161,19 +164,19 @@ SymbolSideState:
 > 프론트가 이미 가진 `quote_ratio.points`로 클라이언트 계산 → 백엔드 없이 종목 전환하며 평가 가능.
 > 아래 피드/토스트/소리/로그는 그 평가 후 프로덕션 단계.
 
-- **`BreakoutStore`** (`breakout_store.py`): 당일 돌파 이벤트를 JSONL append(후속 분석·백테스트용).
+- **`SurgeStore`** (`surge_store.py`): 당일 급증 이벤트를 JSONL append(후속 분석·백테스트용).
   레코드: `{ts_ms, code, name, side, prev_peak, value, pct_over, strength}`.
   당일 파일, 자정 롤오버.
-- **`GET /api/live/breakouts?since=<cursor_ms>`** (`breakout_routes.py`): 커서 이후 신규 이벤트를 시간순 반환.
+- **`GET /api/live/surges?since=<cursor_ms>`** (`surge_routes.py`): 커서 이후 신규 이벤트를 시간순 반환.
   프론트가 폴링.
 - **프론트** (`frontend/src/live/`):
   - **알림 피드 패널**: 시간 역순 이벤트 리스트(종목·방향·신호종류·이전peak·현재값·peak대비%). DESIGN.md 토큰 준수.
   - **토스트**: 신규 이벤트 도착 시 일시 알림.
   - **소리**: 신규 이벤트 시 비프(설정 토글, 기본 off로 안전).
 
-### Phase 2 — `WatchlistBreakoutPoller`
+### Phase 2 — `WatchlistSurgePoller`
 
-- Live Set 제외 관심종목을 호가 조회로 순회, `total_ask/bid_qty`만 추출해 같은 `BreakoutDetector`에 주입.
+- Live Set 제외 관심종목을 호가 조회로 순회, `total_ask/bid_qty`만 추출해 같은 `SurgeDetector`에 주입.
 - 사이클 시간: 1계좌 ~16s, 3계좌 분산 ~5s(15/sec 버킷 공유). 폴링 종목은 **시드 불가** → 워밍업 억제 의존.
 - 쿼터 경쟁 완화: background 우선순위(스크리너 백필·foreground range 조회에 양보), 사이클 시간을 status로 노출.
 
@@ -183,7 +186,7 @@ SymbolSideState:
 
 | Case | Setup | Expected |
 |------|-------|----------|
-| 단순 돌파 | peak=100 시드, v=160(=+60%) | 발사 1회, prev_peak=100, pct_over=60% |
+| 단순 급증 | peak=100 시드, v=160(=+60%) | 발사 1회, prev_peak=100, pct_over=60% |
 | 마진 미달 | peak=100, v=140(=+40%, margin=0.50) | 발사 없음 |
 | 래칫 디바운스 | peak=100, v=160(발사,래칫→160)→180→150 | 발사 1회만(다음 발사는 160×1.5=240 필요) |
 | 연속 에스컬레이션 | peak=100, v=160(발사)→250(=160×1.56) | 발사 2회(각각 직전 고가 50%↑ 초과) |
@@ -195,13 +198,13 @@ SymbolSideState:
 | ask/bid 독립 | 같은 종목 ask 발사, bid 무관 | 트랙 분리 — bid 상태 불변 |
 
 **Invariant 회귀 테스트**:
-- ADR-0038: `tests/test_adr_invariants.py`의 `_HOT_PATH_MODULES`에 `breakout`(코어) 등재, import 금지 검증.
+- ADR-0038: `tests/test_adr_invariants.py`의 `_HOT_PATH_MODULES`에 `surge`(코어) 등재, import 금지 검증.
 - 래칫 단조성: `session_peak`가 어떤 입력 시퀀스에도 비감소(monotonic non-decreasing) 프로퍼티 테스트.
 
 ### Manual verification
 
-- `/live` 실장중: Live Set 종목 매도/매수벽이 직전 고가를 크게 돌파할 때 피드/토스트/소리 동작 확인.
-- 백엔드 장중 재시작: 재시작 직후 알림 피드에 **스퓨리어스 돌파가 쏟아지지 않음** 확인(시딩).
+- `/live` 실장중: Live Set 종목 매도/매수벽이 직전 고가 대비 크게 급증할 때 피드/토스트/소리 동작 확인.
+- 백엔드 장중 재시작: 재시작 직후 알림 피드에 **스퓨리어스 급증이 쏟아지지 않음** 확인(시딩).
 - Phase 2 배포 후: Live Set 밖 종목도 ~사이클 지연 내 감지되는지 + KIS rate-limit 경고 미발생 확인.
 
 ## Risks / Open questions
@@ -219,14 +222,14 @@ SymbolSideState:
 
 ## Validation (2026-06-12, 오늘 live 17종목)
 
-throwaway 하네스(`$CLAUDE_JOB_DIR/tmp/`의 strategies.py·causal_breakout.py·prominence.py 등)로
+throwaway 하네스(`$CLAUDE_JOB_DIR/tmp/`의 strategies.py·causal_surge.py·prominence.py 등)로
 같은 실데이터에 다수 전략 bake-off:
 
 | 전략 | 종목당 발사 | 테크윙 14:28 매도벽 277k |
 |------|------------|-------------------------|
 | 신고가(마진0) | 21.7 | 잡음(다수에 묻힘) |
 | 90% 재접근+히스(폐기) | 35.8 | **놓침**(폭발 직전 disarm) |
-| 돌출도 산-돌파(causal, 폐기) | 3.8~26 | 잡되 작은벽 노이즈 + disarm 함정 재현 |
+| 돌출도(prominence) 산-경신(causal, 폐기) | 3.8~26 | 잡되 작은벽 노이즈 + disarm 함정 재현 |
 | **running max + 마진 50% (채택)** | **1.9** | **잡음(onset 14:27:39, +125%)** |
 | running max + 마진 80% | 1.1 | 잡음 |
 
@@ -244,7 +247,7 @@ throwaway 하네스(`$CLAUDE_JOB_DIR/tmp/`의 strategies.py·causal_breakout.py�
   "벽이 갑자기 나타나는 순간"에 강함. 마진 방식이 놓치는 완만한 빌드업 보완용으로 병행 검토.
 - **롤링 윈도우(30분) 재접근 신호**: 이전 초안의 ②. 노이즈 주범으로 코어에서 제외. 종목별 관점에서
   유용할 여지가 있으면 옵션으로 재도입 검토.
-- 돌파 이벤트 → 이후 N분 가격/수익률 라벨링(이벤트 로그 기반 신호 품질 백테스트).
+- 급증 이벤트 → 이후 N분 가격/수익률 라벨링(이벤트 로그 기반 신호 품질 백테스트).
 - 폴링 universe 적응형 축소(당일 활성 종목 우선) — Phase 2 쿼터 압박 시.
 - 총잔량 외 지표(호가비·체결강도)로 같은 감지 프레임워크 일반화.
 - 종목·그룹별 파라미터 오버라이드(주도주는 더 민감하게 등).
