@@ -24,12 +24,14 @@ import { QuoteRow } from '../rightrail/QuoteRow';
 import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter,
-  type DragEndEvent, type CollisionDetection, type DraggableSyntheticListeners,
+  type DragStartEvent, type DragMoveEvent, type DragEndEvent,
+  type CollisionDetection, type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { WatchlistEntry } from '../api/watchlist';
 import { resolveDrag, resolveFolderDrag, entrySortableId, parseEntrySortableId } from './dragHandlers';
+import { useEntryDragStore, isPointOnChart } from '../state/entryDrag';
 
 /** 우측 정렬 앵커드 메뉴 셸 — dim 라벨 헤더 + menuitem children. 패널의 두 메뉴
  *  (헤더 편집 메뉴, 그룹 ⋯ 메뉴)가 공유해 컨테이너/헤더 스타일 드리프트를 막는다. */
@@ -156,6 +158,17 @@ const typeAwareCollision: CollisionDetection = (args) => {
   return closestCenter({ ...args, droppableContainers: same });
 };
 
+/** "차트로 드롭" 판정: dnd-kit 드래그의 최종 포인터 위치를 활성화 이벤트의 시작 좌표 +
+ *  누적 delta로 복원한다(dnd-kit이 droppable 등록 없이도 좌표는 항상 제공). activatorEvent가
+ *  없으면(합성 이벤트 등) null을 돌려 차트-드롭을 건너뛰고 일반 재정렬로 폴백한다. 이 좌표가
+ *  차트 위인지는 entryDrag의 isPointOnChart(LiveWorkarea 등록 술어)가 판정한다 — 패널은
+ *  차트 DOM·rect를 모른다. */
+function dropPoint(ev: { activatorEvent: Event | null; delta: { x: number; y: number } }): { x: number; y: number } | null {
+  const a = ev.activatorEvent as (MouseEvent | PointerEvent) | null;
+  if (!a || typeof a.clientX !== 'number' || typeof a.clientY !== 'number') return null;
+  return { x: a.clientX + ev.delta.x, y: a.clientY + ev.delta.y };
+}
+
 /** 그룹 헤더에 부착할 드래그 핸들 — listeners만(포인터 전용; KeyboardSensor 미도입,
  *  편집 모달 ⠿ 핸들과 동일 계약). */
 type GroupDragHandle = { listeners: DraggableSyntheticListeners };
@@ -194,7 +207,7 @@ function SortableQuoteRow(props: {
 }) {
   const { entry } = props;
   const { setNodeRef, listeners, transform, transition, isDragging } =
-    useSortable({ id: entrySortableId(entry.folder_id, entry.code), data: { type: 'entry', folderId: entry.folder_id } });
+    useSortable({ id: entrySortableId(entry.folder_id, entry.code), data: { type: 'entry', folderId: entry.folder_id, code: entry.code, name: entry.name } });
   return (
     <QuoteRow
       name={entry.name}
@@ -311,7 +324,30 @@ export function WatchlistDrawer() {
   const reorderEntriesM = useReorderEntries();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  // "차트로 드롭" 공유 상태 — LiveWorkarea가 구독해 드롭 타깃 오버레이를 띄운다.
+  const startEntryDrag = useEntryDragStore((s) => s.startDrag);
+  const setOverChart = useEntryDragStore((s) => s.setOverChart);
+  const endEntryDrag = useEntryDragStore((s) => s.endDrag);
+
+  const onDragStart = (ev: DragStartEvent) => {
+    if (ev.active.data.current?.type === 'entry') startEntryDrag(String(ev.active.id));
+  };
+  const onDragMove = (ev: DragMoveEvent) => {
+    if (ev.active.data.current?.type !== 'entry') return;
+    setOverChart(isPointOnChart(dropPoint(ev)));
+  };
+  const onDragCancel = () => endEntryDrag();
+
   const onDragEnd = (ev: DragEndEvent) => {
+    const wasEntry = ev.active.data.current?.type === 'entry';
+    endEntryDrag();
+    // 종목 행을 차트 위에 드롭 → 현재 탭 종목 교체(재정렬 대신). 클릭과 같은 onPick 경로를
+    // 재사용한다(/live 위라 navigate는 no-op). 차트 밖 드롭이면 아래 재정렬로 폴백.
+    if (wasEntry && isPointOnChart(dropPoint(ev))) {
+      const d = ev.active.data.current as { code?: string; name?: string } | undefined;
+      onPick(d?.code ?? parseEntrySortableId(String(ev.active.id)).code, d?.name);
+      return;
+    }
     if (!ev.over) return;
     if (ev.active.data.current?.type === 'folder') {
       // 현재 typeAwareCollision이 폴더 드래그의 over를 항상 폴더 컨테이너로 보장하므로
@@ -379,7 +415,8 @@ export function WatchlistDrawer() {
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (
           <div className="p-3 text-fg-dimmer text-sm">관심종목이 없습니다</div>
         )}
-        <DndContext sensors={sensors} collisionDetection={typeAwareCollision} onDragEnd={onDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={typeAwareCollision}
+          onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
           <SortableContext items={realFolderIds} strategy={verticalListSortingStrategy}>
             {groups.map((g, gi) => {
               const key = g.folder?.id ?? '__uncat__';

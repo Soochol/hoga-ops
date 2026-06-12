@@ -44,19 +44,23 @@ export function LivePage() {
   const queryCode = params.get('code');
   const tabs = useLiveTabsStore((s) => s.tabs);
   const activeTabId = useLiveTabsStore((s) => s.activeTabId);
-  const openOrFocusTab = useLiveTabsStore((s) => s.openOrFocusTab);
+  const setActiveTabCode = useLiveTabsStore((s) => s.setActiveTabCode);
+  const addBlankTab = useLiveTabsStore((s) => s.addBlankTab);
   const focusTab = useLiveTabsStore((s) => s.focusTab);
   const closeTab = useLiveTabsStore((s) => s.closeTab);
   const reorderTabs = useLiveTabsStore((s) => s.reorderTabs);
 
-  // 1회: URL ?code= 시드는 복원된 탭 위에 open-or-focus, 없으면 복원된 활성 탭을 page에 적용.
+  // 1회: URL ?code= 시드는 현재 탭에 적용, 없으면 복원된 활성 탭을 page에 동기화,
+  // 복원된 탭이 하나도 없으면 기본 빈 탭 1개를 만든다 — 항상 현재 탭이 존재해
+  // 관심종목 클릭이 교체할 대상을 보장한다(단일-탭 내비게이션 모델, ADR-0069 개정).
   const seeded = useRef(false);
   useEffect(() => {
     if (seeded.current) return;
     seeded.current = true;
-    if (queryCode) openOrFocusTab(queryCode);
+    if (queryCode) setActiveTabCode(queryCode);
     else if (activeTabId) focusTab(activeTabId); // 복원된 활성 탭 → page 동기화
-  }, [queryCode, activeTabId, openOrFocusTab, focusTab]);
+    else addBlankTab();                          // 기본 탭 1개
+  }, [queryCode, activeTabId, setActiveTabCode, addBlankTab, focusTab]);
 
   const { data: status } = useLiveStatus();
   const banner = useLiveBannerState(status);
@@ -116,7 +120,9 @@ export function LivePage() {
         onFocus={focusTab}
         onClose={closeTab}
         onReorder={reorderTabs}
-        onNewTab={focusLiveSearch}
+        // + 버튼: 빈 탭을 만들고 검색창에 포커스 → 사용자가 바로 종목을 타이핑해 채운다(spec D5).
+        // 마운트 시 기본 탭(위 시드)은 의도적으로 검색 포커스를 주지 않는다(로드마다 포커스 탈취 방지).
+        onNewTab={() => { addBlankTab(); focusLiveSearch(); }}
       />
       <LiveStateBanner
         primary={activeCode && banner.primary === 'watchlist_empty' ? null : banner.primary}

@@ -3,6 +3,32 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.23.0] - 2026-06-12
+
+### Changed
+- **/live 단일-탭 내비게이션** (ADR-0069 개정): 관심종목·스크리너·히트맵 행 클릭, 헤더 검색 선택이
+  **새 탭을 열지 않고 현재(활성) 탭의 종목을 교체**한다(`openOrFocusTab` 제거 → `setActiveTabCode`).
+  새 탭은 탭바 **`+` 버튼만**으로 생기고(빈 탭 + 검색창 자동 포커스, `addBlankTab`), 마운트 시
+  복원된 탭이 없으면 기본 빈 탭 1개를 시드한다(항상 "현재 탭"이 존재 → 클릭이 교체할 대상 보장).
+  같은 코드가 다른 탭에 있어도 포커스하지 않고 현재 탭을 교체한다(중복 허용). 브라우저 탭과 같은
+  직관: 링크 클릭=현재 탭 이동, 새 탭은 +만.
+
+### Added
+- **관심종목 → 차트 드래그-드롭**: 관심종목 행을 `/live` 차트 워크에어리어로 드래그해 놓으면 현재
+  탭의 종목이 바뀐다. 패널 재정렬과 **같은 dnd-kit 제스처를 공유** — 리스트에 놓으면 재정렬,
+  차트에 놓으면 종목 변경(`onDragEnd`가 드롭 좌표를 워크에어리어 히트테스트로 판정). 드래그 중
+  차트에 "여기에 놓아 종목 변경" 오버레이. 차트 드롭-타깃 seam은 `state/entryDrag.ts`가 단일
+  소유(LiveWorkarea가 히트테스트 술어를 등록, 패널은 차트 DOM·rect를 모름).
+
+### Internal
+- 아키텍처 deepening(improve-codebase-architecture + plan-eng-review 렌즈): (1) **활성 Live Tab →
+  페이지 투영**을 원자적 `projectActiveView` write 하나로 — `setActiveCode/setCandleTimeframe`가
+  `historicalFromDate`를 리셋하던 순서 의존 invariant를 제거하고, 그 부수효과를 억제하던 모듈 전역
+  `applyingTab` 방어 가드를 삭제(원자적 write가 page→tab 미러를 idempotent 1회로 축소). (2) **차트
+  드롭-타깃**을 `data-testid` querySelector 결합에서 `entryDrag` 등록 술어 seam으로 — 패널이 차트
+  지오메트리를 모른 채 질의, 테스트도 DOM stub 없이 술어 등록만으로. 설계 파이프라인:
+  brainstorming → plan-eng-review 포크 판정 → writing-plans → subagent-driven 실행.
+
 ## [0.7.22.0] - 2026-06-12
 
 ### Changed

@@ -49,7 +49,7 @@ describe('useJumpToLive', () => {
     expect(screen.getByTestId('path').textContent).toBe('/live');
   });
 
-  it('jump opens-or-focuses a tab instead of only setting activeCode', () => {
+  it('jump sets the active tab code (creating the first tab) instead of only setting activeCode', () => {
     const { result } = renderHook(() => useJumpToLive(), {
       wrapper: ({ children }) => <MemoryRouter initialEntries={['/live']}>{children}</MemoryRouter>,
     });

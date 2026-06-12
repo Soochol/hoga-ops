@@ -20,14 +20,13 @@ export type LiveTab = {
 };
 
 // Viewport capture registry. LiveChartRoot registers a reader over the LIVE
-// chart instance; the store calls it on switch-AWAY (focusTab / openOrFocusTab
+// chart instance; the store calls it on switch-AWAY (focusTab / addBlankTab
 // new-tab) to snapshot the OUTGOING tab's view before applyTabToPage swaps the
-// code and the per-viewKey chart remounts. Module-level (mirrors the applyingTab
-// guard pattern): the store can't reach the chart on its own. The capture runs
-// synchronously inside the click handler, so chartRef still points at the
-// outgoing chart and getVisibleRange() returns the real outgoing viewport — no
-// staleness window (unlike useViewportBackfill's snapshot, which needs a layout
-// effect precisely because it runs across a data swap).
+// code and the per-viewKey chart remounts. Module-level: the store can't reach
+// the chart on its own. The capture runs synchronously inside the click handler,
+// so chartRef still points at the outgoing chart and getVisibleRange() returns
+// the real outgoing viewport — no staleness window (unlike useViewportBackfill's
+// snapshot, which needs a layout effect precisely because it runs across a data swap).
 let viewportCapture: (() => TabViewport | null) | null = null;
 export function registerViewportCapture(fn: () => TabViewport | null): () => void {
   viewportCapture = fn;
@@ -52,38 +51,31 @@ function snapshotActiveViewport(): void {
 type TabsStore = {
   tabs: LiveTab[];
   activeTabId: string | null;
-  openOrFocusTab: (code: string, label?: string) => void;
+  /** 활성 탭의 종목을 제자리 교체한다(관심종목/검색/스크리너/히트맵 클릭·드롭의 공통 동작).
+   *  활성 탭이 없으면(첫 진입·전체 닫힘) 이 종목으로 첫 탭을 만든다. 단일-탭 내비게이션
+   *  모델(ADR-0069 개정): 새 탭은 addBlankTab(=+ 버튼)로만 생기고, 클릭은 현재 탭을 바꾼다.
+   *  같은 코드가 다른 탭에 있어도 포커스하지 않고 현재 탭을 교체한다(중복 허용). */
+  setActiveTabCode: (code: string, label?: string) => void;
+  /** 빈 탭을 만들어 포커스한다(+ 버튼). 종목 선택 전까지 빈 상태(검색 안내)를 보인다.
+   *  소프트캡 도달 시 no-op. */
+  addBlankTab: () => void;
   focusTab: (id: string) => void;
   closeTab: (id: string) => void;
   reorderTabs: (from: number, to: number) => void;
 };
 
-// Module guard: true while the active-tab→page write (applyTabToPage) runs.
-// NOT loop-prevention — the mirror reads useLivePageStore and writes
-// useLiveTabsStore, so store separation already closes any loop, and
-// applyTabToPage's final page write self-heals the active tab regardless.
-// The guard is DEFENSIVE: it (1) suppresses the 2-3 redundant tab-array
-// rewrites the transient setActiveCode/setCandleTimeframe resets would
-// otherwise trigger mid-push, and (2) future-proofs against a reordering of
-// applyTabToPage's setters that would make the last page write no longer equal
-// the tab's true value. Module-private: the in-file mirror is its only reader.
-let applyingTab = false;
-function setApplyingTab(v: boolean): void { applyingTab = v; }
-
-/** Push the active tab's view-state into useLivePageStore in the order that
- *  survives the historicalFromDate resets baked into the page setters. */
+/** Project the active Live Tab's view-state onto the page in one atomic write.
+ *  The active tab is the single writer of useLivePageStore.activeCode (ADR-0052/0069);
+ *  projectActiveView sets code+timeframe+pan together so there is no setter ordering
+ *  to get wrong. tab=null (last tab closed) clears the code and pan, keeping the
+ *  current timeframe. */
 export function applyTabToPage(tab: LiveTab | null): void {
-  setApplyingTab(true);
-  try {
-    const page = useLivePageStore.getState();
-    page.setActiveCode(tab?.code ?? null);
-    if (tab) {
-      page.setCandleTimeframe(tab.timeframe);
-      if (tab.historicalFromDate) page.extendHistoricalRange(tab.historicalFromDate);
-    }
-  } finally {
-    setApplyingTab(false);
-  }
+  const page = useLivePageStore.getState();
+  page.projectActiveView({
+    code: tab?.code ?? null,
+    timeframe: tab?.timeframe ?? page.candleTimeframe,
+    historicalFromDate: tab?.historicalFromDate ?? null,
+  });
 }
 
 const STORAGE_KEY = 'live.tabs.v1';
@@ -183,31 +175,48 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
 export const useLiveTabsStore = create<TabsStore>((set, get) => ({
   ...loadTabs(),
 
-  openOrFocusTab: (code, label) => {
-    const hit = get().tabs.find((t) => t.code === code);
-    if (hit) {
-      // Refresh a stale label (e.g. a migrated tab where label===code) when the
-      // caller re-opens the same code with a real name from search.
-      if (label && label !== hit.label) {
-        set({ tabs: get().tabs.map((t) => (t.id === hit.id ? { ...t, label } : t)) });
-      }
-      get().focusTab(hit.id); // focusTab snapshots the outgoing active viewport
+  setActiveTabCode: (code, label) => {
+    const { tabs, activeTabId } = get();
+    const active = tabs.find((t) => t.id === activeTabId);
+    if (!active) {
+      // 활성 탭이 없으면(첫 진입·전체 닫힘) 이 종목으로 첫 탭을 만든다. cap은 빈 목록이라
+      // 항상 통과한다(활성 탭이 없다 = 탭이 0개).
+      const tab: LiveTab = {
+        id: nanoid(8),
+        code,
+        label: label ?? code,
+        timeframe: useLivePageStore.getState().candleTimeframe,
+        historicalFromDate: null,
+        viewport: null,
+      };
+      set({ tabs: [...tabs, tab], activeTabId: tab.id });
+      applyTabToPage(tab);
       return;
     }
+    // 활성 탭의 종목을 제자리 교체 — timeframe은 유지(같은 분봉으로 종목만 전환),
+    // pan(historicalFromDate)·viewport는 새 종목의 기본 뷰를 위해 초기화한다(다른 종목의
+    // 저장 뷰를 복원하면 안 됨; ADR-0069 A안 viewport는 탭 전환 복귀용). projectActiveView에
+    // historicalFromDate: null을 직접 전달하므로 page와 tab 양쪽이 일관된다.
+    const updated: LiveTab = { ...active, code, label: label ?? code, historicalFromDate: null, viewport: null };
+    set({ tabs: tabs.map((t) => (t.id === active.id ? updated : t)) });
+    applyTabToPage(updated);
+  },
+
+  addBlankTab: () => {
     if (get().tabs.length >= TABS_SOFT_CAP) return;
-    // Capture the outgoing tab's viewport BEFORE adding the new one, then read
-    // tabs FRESH so the snapshot's write isn't clobbered by a stale spread.
+    // 나가는 탭의 viewport를 새 탭 추가 전에 스냅샷(ADR-0069 A안), 그 후 tabs를 FRESH로 읽어
+    // 스냅샷 쓰기가 stale spread에 덮이지 않게 한다.
     snapshotActiveViewport();
     const tab: LiveTab = {
       id: nanoid(8),
-      code,
-      label: label ?? code,
+      code: '',
+      label: '새 탭',
       timeframe: useLivePageStore.getState().candleTimeframe,
       historicalFromDate: null,
       viewport: null,
     };
     set({ tabs: [...get().tabs, tab], activeTabId: tab.id });
-    applyTabToPage(tab);
+    applyTabToPage(tab); // code='' → activeCode 비움 → 빈 상태(종목 검색 안내)
   },
 
   focusTab: (id) => {
@@ -253,11 +262,10 @@ export function initLiveTabsSync(): () => void {
     toSnapshot: (s) => toTabsSnapshot(s),
   });
   // page→tab mirror: user-initiated tf/pan changes flow into the active tab.
-  // The early-return on unchanged tf+hfd also skips indicator-only page changes
-  // (MA/volume toggles fire this unselectored subscribe). The applyingTab guard
-  // is defensive (see its declaration) — not required for correctness here.
+  // The early-return on unchanged tf+hfd skips indicator-only page changes
+  // (MA/volume toggles fire this unselectored subscribe) AND makes the projection's
+  // own atomic write a no-op here when the active tab already holds those values.
   const unsubMirror = useLivePageStore.subscribe((state, prev) => {
-    if (applyingTab) return;
     if (state.candleTimeframe === prev.candleTimeframe && state.historicalFromDate === prev.historicalFromDate) return;
     const { tabs, activeTabId } = useLiveTabsStore.getState();
     if (!activeTabId) return;
