@@ -117,13 +117,14 @@ describe('LiveStatusBar', () => {
     renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE }, ['005930']);
     const btn = screen.getByRole('button', { name: '관심 그룹 편집' });
     expect(btn.getAttribute('aria-pressed')).toBe('true');
-    expect(screen.queryByText(/실시간 ✕/)).toBeNull();
+    // 관심종목 멤버는 CTA("관심 추가 시 실시간")가 없어야 함
+    expect(screen.queryByText('관심 추가 시 실시간')).toBeNull();
   });
 
-  it('shows an empty heart + historical-only hint for a non-member', () => {
+  it('shows an empty heart + realtime-CTA for a non-member', () => {
     renderBar({ activeCode: '000660', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE }, ['005930']);
     expect(screen.getByRole('button', { name: '관심 그룹 편집' }).getAttribute('aria-pressed')).toBe('false');
-    expect(screen.getByText(/실시간 ✕/)).toBeInTheDocument();
+    expect(screen.getByText('관심 추가 시 실시간')).toBeInTheDocument();
   });
 
   it('clicking the heart opens the group picker (v3)', () => {
@@ -132,29 +133,33 @@ describe('LiveStatusBar', () => {
     expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
   });
 
-  // ADR-0067: collection-status badge — realtime vs polling
-  it('shows "실시간" badge when activeCode is in live_set (WS 실시간)', () => {
+  // ADR-0067: collection-status dot — realtime vs polling
+  // Note: 테스트 환경에서 useConnectionLiveness는 WS 모듈 레벨 _lastHeartbeatMs=0이라
+  // live=false. live_set에 있는 종목은 deriveDisplayStatus → 'disconnected' (연결 재시도).
+  it('shows disconnected dot when activeCode is in live_set but WS not connected', () => {
     renderBar(
       { activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE },
       ['005930'],
       undefined,
       ['005930', '000660'],
     );
-    expect(screen.getByTestId('collection-status-badge').textContent).toBe('실시간');
+    expect(screen.getByTestId('collection-dot-disconnected')).toBeInTheDocument();
   });
 
-  it('shows "준실시간" badge when activeCode is outside live_set (REST 준실시간)', () => {
+  it('shows polling dot when activeCode is outside live_set (REST 준실시간)', () => {
     renderBar(
       { activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE },
       [],
       undefined,
       ['000660'],
     );
-    expect(screen.getByTestId('collection-status-badge').textContent).toBe('준실시간');
+    expect(screen.getByTestId('collection-dot-polling')).toBeInTheDocument();
   });
 
-  it('omits collection-status badge when activeCode is null', () => {
+  it('omits collection dot when activeCode is null (uncollected)', () => {
     renderBar({ activeCode: null, captureHealthy: true, captureReason: 'healthy', bundle: null });
-    expect(screen.queryByTestId('collection-status-badge')).toBeNull();
+    expect(screen.queryByTestId('collection-dot-realtime')).toBeNull();
+    expect(screen.queryByTestId('collection-dot-polling')).toBeNull();
+    expect(screen.queryByTestId('collection-dot-disconnected')).toBeNull();
   });
 });

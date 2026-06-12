@@ -12,7 +12,8 @@ import { HeartIcon } from '../ui/HeartIcon';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { QuoteChange } from '../rightrail/QuoteChange';
 import { useLiveStatus } from '../api/liveStatus';
-import { deriveCollectionStatus } from './collectionStatus';
+import { deriveCollectionStatus, deriveDisplayStatus } from './collectionStatus';
+import { CollectionDot } from './CollectionDot';
 
 interface Props {
   activeCode: string | null;
@@ -25,8 +26,8 @@ interface Props {
 
 export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundle }: Props) {
   // Threshold MUST exceed the 30s server ping so a connected-but-idle
-  // socket (e.g. market closed) stays "LIVE●"; only a real disconnect
-  // (no frame for >35s) flips it. (plan-review cross-task flag)
+  // socket (e.g. market closed) stays realtime; only a real disconnect
+  // (no frame for >35s) flips it to disconnected. (plan-review cross-task flag)
   const live = useConnectionLiveness(LIVE_STALE_MS);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const { data: symbolsData } = useSymbols();
@@ -79,6 +80,7 @@ export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundl
         fontVariantNumeric: 'tabular-nums',
       }}
     >
+      <CollectionDot status={deriveDisplayStatus(live, collectionStatus)} />
       <span className="font-mono" style={{ color: 'var(--fg)' }}>
         {symbolLabel}
       </span>
@@ -108,22 +110,31 @@ export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundl
       <span>{timeframe}</span>
       <span aria-hidden>·</span>
       <SourceChip source={lastSegmentSource} />
-      <span aria-hidden>·</span>
-      {activeCode && !member ? (
-        <span style={{ color: 'var(--fg-dimmer)' }}>
-          과거 차트 · 실시간 ✕
-          <span className="ml-2 inline-flex items-center gap-1" style={{ color: 'var(--accent)' }}>
-            <HeartIcon filled={false} className="w-[1em] h-[1em]" /> 눌러 실시간 추적
+      {activeCode && !member && (
+        <>
+          <span aria-hidden>·</span>
+          <span className="inline-flex items-center gap-1" style={{ color: 'var(--accent)' }}>
+            <HeartIcon filled={false} className="w-[1em] h-[1em]" /> 관심 추가 시 실시간
           </span>
-        </span>
-      ) : (
-        <span style={{ color: live ? 'var(--success)' : 'var(--warn)' }}>
-          {live ? 'LIVE●' : '재연결 중…'}
-        </span>
+        </>
       )}
       <span aria-hidden>·</span>
       {(() => {
         const sev = captureHealthSeverity(captureHealthy, captureReason);
+        if (captureHealthy && sev === 'ok') {
+          return (
+            <span
+              data-testid="capture-health-dot"
+              title={`capture_reason = ${captureReason}`}
+              aria-label="캡처 정상"
+              className="inline-block rounded-full"
+              style={{
+                width: '6px', height: '6px',
+                background: 'var(--success)', boxShadow: '0 0 4px var(--success)',
+              }}
+            />
+          );
+        }
         const capPill = captureHealthPillColor(sev);
         return (
           <span
@@ -136,24 +147,6 @@ export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundl
             }}
           >
             {captureHealthLabel(captureHealthy, captureReason)}
-          </span>
-        );
-      })()}
-      {activeCode && (collectionStatus === 'realtime' || collectionStatus === 'polling') && (() => {
-        // TODO(label): 배지 문구 확정
-        const isRealtime = collectionStatus === 'realtime';
-        return (
-          <span
-            data-testid="collection-status-badge"
-            className="font-mono px-2 py-0.5 rounded"
-            style={{
-              background: isRealtime ? 'var(--tint-success)' : 'transparent',
-              border: `1px solid ${isRealtime ? 'var(--tint-success-border)' : 'var(--border)'}`,
-              color: isRealtime ? 'var(--success)' : 'var(--fg-dimmer)',
-              fontSize: 'var(--text-xs)',
-            }}
-          >
-            {isRealtime ? '실시간' : '준실시간'}
           </span>
         );
       })()}
