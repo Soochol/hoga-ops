@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.27.1] - 2026-06-12
+
+### Changed
+- **총잔량 급증 마커 — 도달률(%) 텍스트 제거** (사용자 요청): 마커를 라벨 없는 점(circle)만으로 표시한다.
+  직전 고가 대비 도달률(예 `96%`) 라벨을 더는 찍지 않는다. 트리거 로직·`pctOfPeak` 계산은 불변 —
+  프로젝터 `surgeMarkerPoints`에서 `text` 필드만 빼고, 회귀 방지로 `text === undefined`를 테스트에 lock.
+
 ## [0.7.27.0] - 2026-06-12
 
 ### Added

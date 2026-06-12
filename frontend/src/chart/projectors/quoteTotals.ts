@@ -121,9 +121,9 @@ const useQuoteTotalsContext = (): QuoteTotalsCtx =>
 
 /** 한 side의 급증 마커 프로젝터(per-side, 거래일 self-reset이라 점-청크에만 의존). detectSurgeSide로
  *  근접(95%)+히스테리시스(85%) 발사 지점을 산출 후 보이는 구간만 SeriesMarker로 투영(라인과 동일한
- *  axis.toVirtual/1000 좌표). 텍스트는 직전 고가 대비 도달률(예: 96%, 신고가면 ≥100%). 마감 동시호가는
- *  항상 제외(그릴링 Q4). makePastCachedProjector가 과거/당일 청크별로 호출·concat하므로 틱당 비용이
- *  히스토리 깊이와 무관해진다(라인과 동일한 Past/Today Split Cache seam — #56 P0). */
+ *  axis.toVirtual/1000 좌표). 라벨 없는 점(circle)만 — 도달률(%) 텍스트는 사용자 요청으로 미표시.
+ *  마감 동시호가는 항상 제외(그릴링 Q4). makePastCachedProjector가 과거/당일 청크별로 호출·concat하므로
+ *  틱당 비용이 히스토리 깊이와 무관해진다(라인과 동일한 Past/Today Split Cache seam — #56 P0). */
 function surgeMarkerPoints(side: 'ask' | 'bid', color: string) {
   return (points: readonly QuoteRatioPoint[], axis: VirtualAxis, ctx: QuoteTotalsCtx): SeriesMarker<Time>[] => {
     if (!ctx.surgeEnabled) return [];
@@ -141,7 +141,6 @@ function surgeMarkerPoints(side: 'ask' | 'bid', color: string) {
         position: 'aboveBar' as const,
         shape: 'circle' as const,
         color,
-        text: `${Math.round(m.pctOfPeak * 100)}%`,
       }));
   };
 }
