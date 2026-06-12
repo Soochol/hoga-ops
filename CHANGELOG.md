@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.29.0] - 2026-06-13
+
+### Added
+- **`/live` 고저 극값 라벨**: 현재 보이는 캔들 차트 범위의 **최고가 봉(빨강)·최저가 봉(파랑)** 에
+  작은 점 + `38,800원 (-4.38%, 06.12 09:51)` 형식 라벨을 표시한다. 팬·줌으로 보이는 범위가 바뀌면
+  극값·라벨이 따라 갱신되고, 종목·타임프레임 전환에도 갱신된다. 설정창 "차트"에 `고저 극값 라벨`
+  토글(기본 켬)로 끌 수 있다.
+  - **지표 = 극값 대비율(Extreme Gap)** = `(현재가 − 가시 극값) / 극값 × 100`. 현재가는 마지막 캔들
+    종가(현재가 라인과 동일 출처). 글로서리의 **등락률**(vs 전일종가)·**봉대비**(vs 직전봉)와 구별되는
+    제3의 viewport-상대 기준으로 CONTEXT.md에 신규 등재. 분봉은 `MM.DD HH:MM`, 일/주/월은 날짜만 표시.
+  - **구현**: 순수 함수 `visibleExtremes`(가시 캔들 극값 — 동시호가 봉 포함, 거래일별 리셋 없음) +
+    `formatExtremeLabel`(KST 시각은 축·툴팁과 동일 `+9h` 규칙) + `HighLowAnnotationOverlay`(PaneLegendOverlay
+    형제 DOM 오버레이 — `subscribeVisibleLogicalRangeChange` + `ResizeObserver` rAF throttle, 차트 teardown
+    좌표 가드). 설정 토글은 `CHART_TOGGLES` 레지스트리 1줄(타입·기본값·설정 UI·persistence 자동 파생).
+  - 설계 spec + `/grill-with-docs` 그릴링(용어 충돌 해소), 순수함수 TDD, 1842 테스트 그린. ⚠️ 실 브라우저
+    육안검증은 사용자 `/live` 확인 대기.
+
 ## [0.7.28.1] - 2026-06-12
 
 ### Fixed
