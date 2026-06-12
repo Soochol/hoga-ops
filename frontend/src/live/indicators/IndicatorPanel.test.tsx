@@ -1,12 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import IndicatorPanel from './IndicatorPanel';
+import { useLivePageStore } from '../../state/livePage';
 
 describe('IndicatorPanel', () => {
   it('lists 10 category checkboxes with MA/거래량/외국인/기관 active', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(10);
+    expect(checkboxes).toHaveLength(11);
     // 6 placeholders remain disabled (indicators not yet supported).
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(6);
     // 이동평균선 is enabled and checked by default.
@@ -121,5 +122,19 @@ describe('IndicatorPanel', () => {
     const navLabel = screen.getAllByText('이동평균선')[0];
     fireEvent.click(navLabel.parentElement!);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('당일 매도 최대벽 카테고리 토글', () => {
+    useLivePageStore.setState({ askPeakEnabled: false } as any);
+    render(<IndicatorPanel onClose={() => {}} />);
+    const cb = screen.getByRole('checkbox', { name: '당일 매도 최대벽' });
+    fireEvent.click(cb);
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
+  });
+
+  it('매도 최대벽 선택 시 스타일 pane(MAStylePicker) 표시', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽' }));
+    expect(screen.getByRole('button', { name: '매도벽 스타일 선택' })).toBeTruthy();
   });
 });

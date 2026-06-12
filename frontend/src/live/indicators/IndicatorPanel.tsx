@@ -3,6 +3,7 @@ import { useLivePageStore } from '../../state/livePage';
 import MovingAverageConfig from './MovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
 import InvestorNetConfig from './InvestorNetConfig';
+import AskPeakConfig from './AskPeakConfig';
 import { ModalShell } from '../../ui/ModalShell';
 import { CheckIcon } from '../../ui/CheckIcon';
 
@@ -11,6 +12,7 @@ type CategoryId =
   | 'volume'
   | 'foreign-net'
   | 'institution-net'
+  | 'ask-peak'
   | 'ichimoku'
   | 'bollinger'
   | 'supertrend'
@@ -23,6 +25,7 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; active: boolean
   { id: 'volume',          label: '거래량',           active: true  },
   { id: 'foreign-net',     label: '외국인 순매수량',  active: true  },
   { id: 'institution-net', label: '기관 순매수량',    active: true  },
+  { id: 'ask-peak',        label: '당일 매도 최대벽', active: true  },
   { id: 'ichimoku',       label: '일목균형표',  active: false },
   { id: 'bollinger',      label: '볼린저밴드',  active: false },
   { id: 'supertrend',     label: '슈퍼트렌드',  active: false },
@@ -44,6 +47,8 @@ export default function IndicatorPanel({ onClose }: Props) {
   const setInstitutionNet = useLivePageStore((s) => s.setInstitutionNetEnabled);
   const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
   const setVolumeEnabled = useLivePageStore((s) => s.setVolumeEnabled);
+  const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
+  const setAskPeakEnabled = useLivePageStore((s) => s.setAskPeakEnabled);
 
   // Which category's detail pane shows on the right. Clicking a category label
   // navigates here; the checkbox icon toggles its master switch separately.
@@ -59,6 +64,7 @@ export default function IndicatorPanel({ onClose }: Props) {
       case 'foreign-net': return foreignNet;
       case 'institution-net': return institutionNet;
       case 'volume': return volumeEnabled;
+      case 'ask-peak': return askPeakEnabled;
       default: return false;
     }
   };
@@ -68,6 +74,7 @@ export default function IndicatorPanel({ onClose }: Props) {
       case 'foreign-net': return () => setForeignNet(!foreignNet);
       case 'institution-net': return () => setInstitutionNet(!institutionNet);
       case 'volume': return () => setVolumeEnabled(!volumeEnabled);
+      case 'ask-peak': return () => setAskPeakEnabled(!askPeakEnabled);
       default: return null;
     }
   };
@@ -135,6 +142,7 @@ export default function IndicatorPanel({ onClose }: Props) {
           {selected === 'volume' && <VolumeConfig />}
           {selected === 'foreign-net' && <InvestorNetConfig which="foreign" />}
           {selected === 'institution-net' && <InvestorNetConfig which="institution" />}
+          {selected === 'ask-peak' && <AskPeakConfig />}
         </div>
       </div>
       {/* Footer — mirrors SettingsModal pattern for cross-modal visual
