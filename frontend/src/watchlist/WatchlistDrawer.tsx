@@ -3,7 +3,8 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
-import { deriveCollectionStatus } from '../live/collectionStatus';
+import { deriveCollectionStatus, deriveDisplayStatus } from '../live/collectionStatus';
+import { CollectionDot } from '../live/CollectionDot';
 import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
   useCreateFolder, useRenameFolder, useDeleteFolder, useReorderFolders,
@@ -430,21 +431,7 @@ export function WatchlistDrawer() {
                     {g.entries.map((entry) => {
                       const q = quoteByCode.get(entry.code);
                       const status = deriveCollectionStatus(entry.code, liveSet, codes, viewedCodes);
-                      const badge = status === 'uncollected' ? null : (
-                        <span
-                          className="font-mono px-1.5 py-0.5 rounded"
-                          style={{
-                            background: status === 'realtime' ? 'var(--tint-success)' : 'transparent',
-                            border: `1px solid ${status === 'realtime' ? 'var(--tint-success-border)' : 'var(--border)'}`,
-                            color: status === 'realtime' ? 'var(--success)' : 'var(--fg-dimmer)',
-                            fontSize: 'var(--text-xs)',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {/* TODO(label): 배지 문구 확정 */}
-                          {status === 'realtime' ? '실시간' : status === 'polling' ? '준실시간' : '저녁대기'}
-                        </span>
-                      );
+                      const badge = <CollectionDot status={deriveDisplayStatus(true, status)} />;
                       return (
                         <SortableQuoteRow
                           key={entrySortableId(entry.folder_id, entry.code)}

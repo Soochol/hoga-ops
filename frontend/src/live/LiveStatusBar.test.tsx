@@ -1,8 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveStatusBar } from './LiveStatusBar';
 import type { RangeBundle } from '../api/types';
+
+// useConnectionLiveness reads module-level WS state (_lastHeartbeatMs=0 in tests),
+// so live=false by default. Hoist a mock so tests can control liveness.
+const { mockLiveness } = vi.hoisted(() => ({ mockLiveness: vi.fn().mockReturnValue(false) }));
+vi.mock('../api/useConnectionLiveness', () => ({ useConnectionLiveness: () => mockLiveness() }));
 
 const EMPTY_BUNDLE: RangeBundle = {
   code: '005930',
@@ -65,6 +70,7 @@ function renderBar(
 describe('LiveStatusBar', () => {
   beforeEach(() => {
     cleanup();
+    mockLiveness.mockReturnValue(false);
   });
 
   it('shows em-dash when activeCode is null', () => {
@@ -117,13 +123,14 @@ describe('LiveStatusBar', () => {
     renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE }, ['005930']);
     const btn = screen.getByRole('button', { name: '관심 그룹 편집' });
     expect(btn.getAttribute('aria-pressed')).toBe('true');
-    expect(screen.queryByText(/실시간 ✕/)).toBeNull();
+    // 관심종목 멤버는 CTA("관심 추가 시 실시간")가 없어야 함
+    expect(screen.queryByText('관심 추가 시 실시간')).toBeNull();
   });
 
-  it('shows an empty heart + historical-only hint for a non-member', () => {
+  it('shows an empty heart + realtime-CTA for a non-member', () => {
     renderBar({ activeCode: '000660', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE }, ['005930']);
     expect(screen.getByRole('button', { name: '관심 그룹 편집' }).getAttribute('aria-pressed')).toBe('false');
-    expect(screen.getByText(/실시간 ✕/)).toBeInTheDocument();
+    expect(screen.getByText('관심 추가 시 실시간')).toBeInTheDocument();
   });
 
   it('clicking the heart opens the group picker (v3)', () => {
@@ -132,29 +139,56 @@ describe('LiveStatusBar', () => {
     expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
   });
 
-  // ADR-0067: collection-status badge — realtime vs polling
-  it('shows "실시간" badge when activeCode is in live_set (WS 실시간)', () => {
+  // ADR-0067: collection-status dot — realtime vs polling
+  it('shows realtime dot when activeCode is in live_set and WS connected', () => {
+    mockLiveness.mockReturnValue(true);
     renderBar(
       { activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE },
       ['005930'],
       undefined,
       ['005930', '000660'],
     );
-    expect(screen.getByTestId('collection-status-badge').textContent).toBe('실시간');
+    expect(screen.getByTestId('collection-dot-realtime')).toBeInTheDocument();
   });
 
-  it('shows "준실시간" badge when activeCode is outside live_set (REST 준실시간)', () => {
+  it('shows disconnected dot when activeCode is in live_set but WS not connected', () => {
+    // live=false (default mock): realtime code → disconnected display status
+    renderBar(
+      { activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE },
+      ['005930'],
+      undefined,
+      ['005930', '000660'],
+    );
+    expect(screen.getByTestId('collection-dot-disconnected')).toBeInTheDocument();
+  });
+
+  it('shows polling dot when activeCode is outside live_set (REST 준실시간)', () => {
     renderBar(
       { activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE },
       [],
       undefined,
       ['000660'],
     );
-    expect(screen.getByTestId('collection-status-badge').textContent).toBe('준실시간');
+    expect(screen.getByTestId('collection-dot-polling')).toBeInTheDocument();
   });
 
-  it('omits collection-status badge when activeCode is null', () => {
+  it('omits collection dot when activeCode is null (uncollected)', () => {
     renderBar({ activeCode: null, captureHealthy: true, captureReason: 'healthy', bundle: null });
-    expect(screen.queryByTestId('collection-status-badge')).toBeNull();
+    expect(screen.queryByTestId('collection-dot-realtime')).toBeNull();
+    expect(screen.queryByTestId('collection-dot-polling')).toBeNull();
+    expect(screen.queryByTestId('collection-dot-disconnected')).toBeNull();
+  });
+
+  // 캡처 헬스 dot/pill 분기 — healthy(ok)면 dot, 비정상이면 텍스트 pill 유지.
+  it('shows capture-health dot (no pill) when the capture daemon is healthy', () => {
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE });
+    expect(screen.getByTestId('capture-health-dot')).toBeInTheDocument();
+    expect(screen.queryByTestId('capture-health-pill')).toBeNull();
+  });
+
+  it('keeps the capture-health text pill (no dot) when the capture daemon is unhealthy', () => {
+    renderBar({ activeCode: '005930', captureHealthy: false, captureReason: 'sub_failed', bundle: EMPTY_BUNDLE });
+    expect(screen.getByTestId('capture-health-pill').textContent).toBe('구독 실패');
+    expect(screen.queryByTestId('capture-health-dot')).toBeNull();
   });
 });

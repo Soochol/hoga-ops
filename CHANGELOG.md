@@ -3,6 +3,36 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.24.0] - 2026-06-12
+
+### Changed
+- **/live 헤더 "실시간/LIVE" 디클러터**: 정상 상태에서 화면에 동시에 떠 있던 "실시간/LIVE/live"
+  표시를 0개로 줄였다. 핵심은 *기능이 아니라 표현*을 정리한 것 — 6개 신호(① 브라우저↔백엔드 WS
+  연결 ② 종목 수집방식 ③ 데이터 소스칩 ④ 차트 커서모드 ⑤ 관심종목 행 상태 ⑥ 캡처 데몬 건강)는
+  의미가 모두 다른데 같은 "실시간·LIVE" 어휘로 라벨링되어 중복으로 인지됐다. **정상은 색점, 예외만
+  텍스트** 원칙으로 재정리:
+  - **LiveStatusBar**: 연결(①)+수집(②)을 종목명 앞 **상태 점 하나**로 통합(정상=초록 점, 준실시간=
+    `◐ 준실시간`, WS끊김=`⚠ 재연결 중`). 우측 `LIVE●`(연결) 텍스트와 수집 배지 제거 — 사용자가 본
+    "LIVE● 2개"의 정체는 ①연결 pill과 ⑥캡처 healthy 라벨이 **둘 다 `LIVE●`**였던 것. 캡처 데몬은
+    healthy면 점, 비정상(`구독 실패`·`수신 끊김`·`장 마감` 등)일 때만 텍스트 pill 유지.
+  - **LiveSidebar**: 차트 커서모드 어휘를 `LIVE`→`최신`, `과거 시점`→`과거`로 분리(영문 `LIVE`
+    제거). 비관심종목 REST 안내 배너는 상태바 CTA와 중복이라 제거.
+  - **WatchlistDrawer**: 관심종목 행 배지를 공유 `CollectionDot`으로 교체(realtime=점만, 예외만
+    텍스트). connection 미참조 유지(collection-only — WS 끊김이 전 행을 뒤집지 않음).
+
+### Added
+- **`CollectionDot`** (`frontend/src/live/CollectionDot.tsx`): 수집/연결 상태를 점(정상) 또는
+  점+라벨(예외)로 그리는 공유 표현 컴포넌트. `aria-label`/`title`로 점만 표시되는 정상 상태의 의미도
+  전달. LiveStatusBar(종목 앞)·WatchlistDrawer(행)가 공유해 인라인 배지 중복 2곳을 제거.
+
+### Internal
+- **`deriveDisplayStatus(live, status)`** + **`DISPLAY_PRESENTATION`** (`collectionStatus.ts`):
+  표시상태 도출 + 점/라벨/색/aria 단일 매핑. `realtime`일 때만 WS 연결(`!live`)을 `disconnected`로
+  반영하고 `polling`(REST 독립 전송로)·`waiting_eod`는 그대로 통과 — WS 끊김이 REST 종목을 거짓
+  "재연결 중"으로 오표시하지 않는다. 색 규율(success/warn/error/fg-dimmer/accent 재사용) 준수,
+  새 색 0건. `captureHealthPill.ts`는 함수 불변(호출부만 분기). 스펙·계획·invariant 분석은
+  `docs/superpowers/specs/2026-06-12-live-header-declutter-design.md`.
+
 ## [0.7.23.0] - 2026-06-12
 
 ### Changed

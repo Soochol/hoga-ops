@@ -20,7 +20,6 @@ import {
 } from '../api/useLiveCursor';
 import type { MinuteTimeframe, LiveTimeframe } from '../state/livePage';
 import { isMinuteTimeframe } from '../state/livePage';
-import { useLiveStatus } from '../api/liveStatus';
 
 interface Props {
   code: string | null;
@@ -40,8 +39,8 @@ interface Props {
  *   - /live uses useLiveSeries (initial REST + SSE) in latest mode
  *   - /live uses useLiveCursor hooks in spot mode (cursor set via hover)
  *
- * Per ADR-0044 and Design C1: header toggles between LIVE● pulse (latest
- * mode) and "과거 시점" + pinned timestamp (spot mode) when cursor is set.
+ * Per ADR-0044 and Design C1: header toggles between "최신" pulse (latest
+ * mode) and "과거" + pinned timestamp (spot mode) when cursor is set.
  *
  * The third "체결" card was removed 2026-05-28 (ADR-0047). The chart's
  * 체결강도 pane provides equivalent information in compact form.
@@ -50,10 +49,6 @@ export function LiveSidebar({ code, live }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
 
-  // ADR-0067: REST 준실시간 안내 — code가 live_set(WS 실시간 수집) 밖이면 안내 표시.
-  const { data: liveStatusData } = useLiveStatus();
-  const liveSet = liveStatusData?.live_set ?? [];
-  const showRestNotice = !!code && !liveSet.includes(code);
   // Spot mode is minute-only (ADR-0044): D/W/M have no per-cursor parquet. The
   // chart still publishes cursorMs on D for the Pane Legend, so gate spot entry
   // on the timeframe here — NOT on cursorMs alone.
@@ -125,21 +120,6 @@ export function LiveSidebar({ code, live }: Props) {
         background: 'var(--bg-card)',
       }}
     >
-      {showRestNotice && (
-        // TODO(label): 안내 문구 확정
-        <div
-          data-testid="live-sidebar-rest-notice"
-          style={{
-            padding: 'var(--space-xs) var(--space-md)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--fg-dimmer)',
-            borderBottom: '1px solid var(--border)',
-            fontFamily: 'var(--font-mono)',
-          }}
-        >
-          관심종목 밖 · 준실시간(REST) 표시 · 관심종목에 추가하면 실시간
-        </div>
-      )}
       <SidebarHeader cursorMs={cursorMs} latestOrderbookTs={latestOrderbook?.ts_ms ?? null} timeframe={timeframe} />
       <div style={{ flex: 1, overflow: 'auto' }}>
         <CursorSidebar
@@ -182,7 +162,7 @@ function SidebarHeader({
 }) {
   // Design review B2: keep the timestamp pinned right in BOTH modes so it
   // doesn't jump columns on mouse leave/enter. Left slot carries the mode
-  // label only. C4: 한글 카피로 "과거 시점" 사용 (DESIGN.md Copy Tone).
+  // label only. C4: 한글 카피로 "과거" 사용 (DESIGN.md Copy Tone).
   const isSpot = cursorMs !== null && isMinuteTimeframe(timeframe);
   const rightTs = isSpot ? cursorMs : latestOrderbookTs;
   return (
@@ -201,7 +181,7 @@ function SidebarHeader({
     >
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
         {isSpot ? (
-          <span>과거 시점</span>
+          <span>과거</span>
         ) : (
           <>
             <span
@@ -216,7 +196,7 @@ function SidebarHeader({
                 animation: 'live-pulse 1.5s ease-in-out infinite',
               }}
             />
-            <span>LIVE</span>
+            <span>최신</span>
           </>
         )}
       </span>
