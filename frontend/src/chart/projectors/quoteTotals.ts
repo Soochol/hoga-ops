@@ -13,7 +13,7 @@ import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { isAuctionHidden, LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
-import { detectSurges } from '../surge/detectSurges';
+import { detectSurgeSide } from '../surge/detectSurges';
 
 const TOKEN_SPEC = {
   bid: ['--price-up', '#DC2626'],   // 매수 호가 총합 (KRX 빨강)
@@ -102,36 +102,32 @@ const useQuoteTotalsContext = (): QuoteTotalsCtx =>
     })),
   );
 
-/** 한 side의 급증 마커. detectSurges(전 구간 단일패스)로 산출 후 보이는 구간만 SeriesMarker로 투영
- *  (라인과 동일한 axis.toVirtual/1000 시간좌표). 마감 동시호가는 항상 제외(그릴링 Q4). */
-function surgeMarkersFor(
-  side: 'ask' | 'bid',
-  bundle: RangeBundle,
-  axis: VirtualAxis,
-  ctx: QuoteTotalsCtx,
-): SeriesMarker<Time>[] {
-  if (!ctx.surgeEnabled) return [];
-  const result = detectSurges(bundle.quote_ratio.points, {
-    margin: ctx.surgeMarginPct / 100,
-    sessionOpens: bundle.segments.map((s) => s.session_open_ms),
-    isClosingAuction: (t) => axis.inClosingAuctionWindow(t),
-  });
-  const color = side === 'ask' ? ask : bid;
-  return result[side]
-    .filter((m) => axis.contains(m.t))
-    .map((m) => ({
-      time: (axis.toVirtual(m.t) / 1000) as UTCTimestamp,
-      position: 'aboveBar' as const,
-      shape: 'circle' as const,
-      color,
-      text: `+${Math.round(m.pctOver * 100)}%`,
-    }));
+/** 한 side의 급증 마커 프로젝터(per-side, 거래일 self-reset이라 점-청크에만 의존). detectSurgeSide로
+ *  마진 초과 지점을 산출 후 보이는 구간만 SeriesMarker로 투영(라인과 동일한 axis.toVirtual/1000 좌표).
+ *  마감 동시호가는 항상 제외(그릴링 Q4). makePastCachedProjector가 과거/당일 청크별로 호출·concat하므로
+ *  틱당 비용이 히스토리 깊이와 무관해진다(라인과 동일한 Past/Today Split Cache seam — #56 P0). */
+function surgeMarkerPoints(side: 'ask' | 'bid', color: string) {
+  return (points: readonly QuoteRatioPoint[], axis: VirtualAxis, ctx: QuoteTotalsCtx): SeriesMarker<Time>[] => {
+    if (!ctx.surgeEnabled) return [];
+    return detectSurgeSide(points, side, {
+      margin: ctx.surgeMarginPct / 100,
+      isClosingAuction: (t) => axis.inClosingAuctionWindow(t),
+    })
+      .filter((m) => axis.contains(m.t))
+      .map((m) => ({
+        time: (axis.toVirtual(m.t) / 1000) as UTCTimestamp,
+        position: 'aboveBar' as const,
+        shape: 'circle' as const,
+        color,
+        text: `+${Math.round(m.pctOver * 100)}%`,
+      }));
+}
 }
 
-export const askSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) =>
-  surgeMarkersFor('ask', b, a, c);
-export const bidSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) =>
-  surgeMarkersFor('bid', b, a, c);
+const askSurgeCached = makePastCachedProjector(surgeMarkerPoints('ask', ask), (b) => b.quote_ratio.points);
+const bidSurgeCached = makePastCachedProjector(surgeMarkerPoints('bid', bid), (b) => b.quote_ratio.points);
+export const askSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => askSurgeCached(b, a, c);
+export const bidSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => bidSurgeCached(b, a, c);
 
 // crosshairMarkerBackgroundColor pins the hover marker to a solid series color
 // so it survives the Auction Mask connector-break. maskOutgoingConnector
