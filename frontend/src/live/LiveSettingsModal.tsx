@@ -4,6 +4,7 @@ import {
   CHART_TOGGLES,
   CHART_NUMERIC_PREFS,
   categoryOf,
+  type NumericPrefDef,
 } from '../state/chartPrefs';
 import { SOURCE_OPTIONS } from '../state/sourcePreference';
 import ToggleRow from './settings/ToggleRow';
@@ -48,7 +49,7 @@ export default function LiveSettingsModal({ onClose }: Props) {
           );
         })}
         {/* Ungated numerics (none today) would render here without indentation */}
-        {CHART_NUMERIC_PREFS.filter((p) => p.enabledBy === undefined).map((def) => (
+        {(CHART_NUMERIC_PREFS as readonly NumericPrefDef[]).filter((p) => p.enabledBy === undefined).map((def) => (
           <NumericPrefRow key={def.key} def={def} />
         ))}
         <div className="border-b border-border my-2" />
