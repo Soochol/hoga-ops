@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.29.3] - 2026-06-13
+
+### Fixed
+- **고저 극값 라벨 — 기준가를 "보이는 범위의 우측 끝(가장 최근) 캔들 종가"로 변경**: 등락률 기준이 전체
+  데이터의 마지막 캔들 종가(라이브 끝 고정)였던 것을, **현재 보이는 차트 뷰의 우측 끝 캔들 종가**로
+  바꿨다. 이제 차트를 좌측으로 팬하면 우측 끝 캔들이 바뀌며 기준 종가도 따라 바뀌어 모든 극값 대비율이
+  재계산된다(라이브 끝에선 마지막 캔들과 일치). `computeVisibleExtremes`가 가시 캔들 중 max virtualSec
+  봉의 close를 기준가로 내부 산출하도록 수정(`currentPrice` 인자 제거). 팬 시 기준 변경 회귀 테스트 추가,
+  CONTEXT.md `극값 대비율` 정의 정정.
+
 ## [0.7.29.2] - 2026-06-13
 
 ### Fixed
