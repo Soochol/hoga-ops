@@ -118,16 +118,16 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
   it('shows LIVE● header when cursorMs is null', () => {
     renderSidebar({ code: '005930' });
     expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
-    expect(screen.getByText('LIVE')).toBeInTheDocument();
+    expect(screen.getByText('최신')).toBeInTheDocument();
   });
 
-  it('swaps to "과거 시점" + KST timestamp when cursor is set', () => {
+  it('swaps to "과거" + KST timestamp when cursor is set', () => {
     renderSidebar({ code: '005930' });
     // 2026-05-28T04:42:17Z → KST 13:42:17
     const t = new Date('2026-05-28T04:42:17Z').getTime();
     act(() => useLiveCursorStore.getState().setCursor(t));
     expect(screen.queryByTestId('live-sidebar-pulse')).toBeNull();
-    expect(screen.getByText('과거 시점')).toBeInTheDocument();
+    expect(screen.getByText('과거')).toBeInTheDocument();
     // formatTime uses Asia/Seoul — always produces KST regardless of machine tz
     expect(screen.getByText('13:42:17')).toBeInTheDocument();
   });
@@ -181,7 +181,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
     useLivePageStore.setState({ candleTimeframe: 'D' });
     renderSidebar({ code: '005930' });
     act(() => useLiveCursorStore.getState().setCursor(new Date('2026-05-28T04:42:17Z').getTime()));
-    expect(screen.queryByText('과거 시점')).toBeNull();
+    expect(screen.queryByText('과거')).toBeNull();
     expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
     useLivePageStore.setState({ candleTimeframe: '1m' });
   });
@@ -220,8 +220,8 @@ describe('LiveSidebar — empty spot orderbook with available_from hint (T14b)',
   });
 });
 
-// ADR-0067: REST 준실시간 안내 — activeCode가 live_set 밖이면 안내 배너 표시
-describe('LiveSidebar — REST 준실시간 안내 (ADR-0067)', () => {
+// ADR-0067: REST 준실시간 안내 배너는 LiveStatusBar CTA와 중복으로 제거됨 (Task 4)
+describe('LiveSidebar — REST 준실시간 안내 배너 제거 확인', () => {
   beforeEach(() => {
     (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
@@ -231,19 +231,18 @@ describe('LiveSidebar — REST 준실시간 안내 (ADR-0067)', () => {
   });
   afterEach(() => cleanup());
 
-  it('(a) shows REST notice when code is NOT in live_set', () => {
-    // 005930 is not in live_set (only 000660 is)
+  it('(a) REST notice banner is gone even when code is NOT in live_set', () => {
+    // Banner removed — LiveStatusBar CTA handles this context now.
     renderSidebar({ code: '005930' }, ['000660']);
-    expect(screen.getByTestId('live-sidebar-rest-notice')).toBeInTheDocument();
+    expect(screen.queryByTestId('live-sidebar-rest-notice')).toBeNull();
   });
 
-  it('(b) hides REST notice when code IS in live_set (실시간 수집 중)', () => {
-    // 005930 is in live_set → real-time WS collection, no notice
+  it('(b) REST notice banner absent when code IS in live_set', () => {
     renderSidebar({ code: '005930' }, ['005930', '000660']);
     expect(screen.queryByTestId('live-sidebar-rest-notice')).toBeNull();
   });
 
-  it('hides REST notice when code is null', () => {
+  it('REST notice banner absent when code is null', () => {
     renderSidebar({ code: null }, ['000660']);
     expect(screen.queryByTestId('live-sidebar-rest-notice')).toBeNull();
   });

@@ -297,7 +297,7 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     const row005930 = screen.getByTestId('watchlist-row-005930');
-    expect(row005930.textContent).toContain('실시간');
+    expect(row005930.querySelector('[data-testid="collection-dot-realtime"]')).toBeInTheDocument();
   });
 
   it('live_set 밖 + watchlist에 있고 안 보는 중이면 "저녁대기" 배지를 표시한다 (waiting_eod)', async () => {
