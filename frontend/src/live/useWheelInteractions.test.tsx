@@ -80,10 +80,38 @@ function Harness({
   return <div data-testid="wheel-host" ref={ref} />;
 }
 
+// 실제 /live DOM 구조 재현: 차트 컨테이너와 DrawingOverlay는 live-chart-root의
+// 형제다(LiveChartRoot.tsx). 그리기 도구 활성 / 그려진 선 hover 시 오버레이가
+// pointer-events:auto가 되어 그 위 휠 이벤트를 가로챈다. 리스너가 차트 컨테이너
+// 에만 붙으면 형제 오버레이의 휠은 도달하지 못한다(형제는 버블링 경로 밖) →
+// preventDefault 누락 → 브라우저 페이지 줌. 리스너를 공통 부모에 붙여야 도달한다.
+function OverlayHarness({
+  chart,
+  bundle,
+  axis = makeAxis(false),
+}: {
+  chart: IChartApi | null;
+  bundle: RangeBundle | null;
+  axis?: VirtualAxis;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useWheelInteractions(chart, ref, bundle, axis);
+  return (
+    <div data-testid="chart-root">
+      <div data-testid="wheel-host" ref={ref} />
+      <div data-testid="drawing-overlay" />
+    </div>
+  );
+}
+
 // 주의: cancelable: true가 없으면 jsdom에서 preventDefault()가 no-op이라
 // defaultPrevented를 단언할 수 없다 (스펙 Testing 절의 공통 Setup).
+// bubbles: true — 실제 브라우저 wheel 이벤트는 버블링한다. 리스너는 차트
+// 컨테이너의 부모(live-chart-root)에 붙으므로(형제 DrawingOverlay의 휠도 받기
+// 위함), 자식 엘리먼트에서 dispatch한 이벤트가 부모 리스너에 도달하려면
+// 버블링이 필요하다 (jsdom 합성 이벤트의 bubbles 기본값은 false).
 function wheel(el: Element, init: WheelEventInit): WheelEvent {
-  const e = new WheelEvent('wheel', { cancelable: true, ...init });
+  const e = new WheelEvent('wheel', { cancelable: true, bubbles: true, ...init });
   el.dispatchEvent(e);
   return e;
 }
@@ -142,6 +170,20 @@ describe('useWheelInteractions', () => {
     const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={null} />);
     const e = wheel(getByTestId('wheel-host'), { deltaY: 100 });
     expect(e.defaultPrevented).toBe(true);
+  });
+
+  it('형제 DrawingOverlay 위 휠도 차트 줌으로 처리 — 브라우저 줌 방지 (회귀: 리스너 부모 부착)', () => {
+    // 그리기 도구 활성 / 그려진 선 hover로 오버레이가 pointer-events:auto일 때
+    // 그 위에서 휠을 돌리면, 오버레이는 차트 컨테이너의 형제이므로 리스너가
+    // 컨테이너에만 붙어 있으면 이벤트가 도달하지 못해 preventDefault도
+    // setVisibleLogicalRange도 일어나지 않고 브라우저 페이지 줌이 발동한다.
+    // 리스너를 공통 부모에 부착하면 버블링으로 도달한다. setVisibleLogicalRange
+    // 호출까지 단언해, preventDefault만 하고 차트 줌이 죽는 '죽은 구역'도 막는다.
+    const ts = makeTs();
+    const { getByTestId } = render(<OverlayHarness chart={makeChart(ts)} bundle={null} />);
+    const e = wheel(getByTestId('drawing-overlay'), { deltaY: 100 });
+    expect(e.defaultPrevented).toBe(true); // 브라우저 줌 차단
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1); // 차트 줌 동작
   });
 
   it('로드 전(visible range null): no-op + 페이지 스크롤 미차단', () => {

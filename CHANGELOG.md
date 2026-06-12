@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.29.2] - 2026-06-13
+
+### Fixed
+- **`/live` 그리기(수평선 등) 위에서 마우스 휠 시 차트 대신 브라우저가 줌됨 수정** (사용자 제보):
+  그리기 도구가 활성이거나 그려진 선 위에 커서를 올린 상태에서 차트 휠을 돌리면, 차트가 아니라
+  브라우저 페이지가 줌인/줌아웃됐다. 원인: 휠 리스너가 차트 컨테이너에만 부착돼 있는데,
+  `DrawingOverlay`는 그 컨테이너의 **형제**로 위에 겹쳐 있고(`z-20, inset-0`) 그리기 모드·선 hover 시
+  `pointer-events:auto`가 되어 휠 이벤트를 가로챈다. 형제는 이벤트 버블링 경로 밖이라 오버레이 위
+  휠이 컨테이너 리스너에 도달하지 못해 `preventDefault()`가 누락되고 브라우저 기본 줌이 발동했다.
+  - **fix**: 휠 리스너를 차트 컨테이너가 아닌 공통 부모(`live-chart-root`)에 부착 — 컨테이너·오버레이
+    어느 쪽에서 발생한 휠도 버블링으로 한 번에 잡힌다(실제 wheel은 `bubbles:true`). 기존 줌 로직
+    (deltaMode 정규화·maxSpan 클램프·ctrl 앵커)은 한 줄도 건드리지 않고 재사용하며, 부모·컨테이너·
+    오버레이가 모두 동일 크기(`100%·inset-0`)라 좌표 계산도 불변. 형제 오버레이 구조를 재현한 회귀
+    테스트로 박제(헤드리스 `defaultPrevented` 프록시). 진단: 실DOM에서 오버레이가 차트 컨테이너의
+    형제이고 휠이 `preventDefault`되지 않음을 확인해 근본을 확정.
+
 ## [0.7.29.1] - 2026-06-13
 
 ### Fixed
