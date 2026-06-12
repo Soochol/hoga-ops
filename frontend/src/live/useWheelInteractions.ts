@@ -129,7 +129,19 @@ export function useWheelInteractions(
 
     // passive: false 필수 — 기본값(passive)이면 preventDefault()가 무시되어
     // shift+휠이 페이지 가로 스크롤을 함께 일으킨다.
-    container.addEventListener('wheel', onWheel, { passive: false });
-    return () => container.removeEventListener('wheel', onWheel);
+    //
+    // 부착 타겟은 container가 아니라 그 부모(live-chart-root)다. DrawingOverlay는
+    // container의 형제로 그 위에 겹쳐 있고(z-20, inset-0), 그리기 도구 활성 또는
+    // 그려진 선 위 hover 시 pointer-events:auto가 되어 휠 이벤트를 가로챈다.
+    // 형제는 버블링 경로 밖이라 container 리스너에 도달하지 못해 preventDefault가
+    // 누락되고 브라우저 페이지 줌이 발동했다(/diagnose 2026-06-13). 공통 부모에
+    // 부착하면 container·overlay 어느 쪽에서 발생한 휠도 버블링으로 한 번 잡힌다
+    // (실제 wheel 이벤트는 bubbles:true). rect·ts.width()는 container 기준 그대로
+    // 읽는다 — 부모·container·overlay가 모두 동일 크기(100%·inset-0)라
+    // clientX-rect.left 좌표가 동일하다. 형제 오버레이들(DrawingPropertyPanel·
+    // PaneLegendOverlay 등)은 스크롤 컨테이너가 아니므로 stopPropagation 불필요.
+    const wheelTarget = container.parentElement ?? container;
+    wheelTarget.addEventListener('wheel', onWheel, { passive: false });
+    return () => wheelTarget.removeEventListener('wheel', onWheel);
   }, [chart, containerRef]);
 }
