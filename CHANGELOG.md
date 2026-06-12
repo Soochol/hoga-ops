@@ -3,6 +3,38 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.25.0] - 2026-06-12
+
+### Added
+- **총잔량 급증(Quote Totals Surge) 마커** (`/live`): 매도/매수총잔량이 당일 직전 고가를 유의미한
+  마진(기본 +50%) 넘어서는 순간을 총잔량 패널 라인 위에 `+N%` 마커로 표시. 매도/매수 독립 트랙,
+  거래일(KST) 경계 self-reset, 마감 동시호가(15:20–15:30) 제외. 트리거는 오늘 실데이터(17종목) bake-off로
+  확정 — "running max를 마진만큼 초과"가 "90% 재접근+히스테리시스"(종목당 ~32건 과다 + 폭발적 신고가를
+  disarm으로 놓침)·"돌출도 산 선별"(봉우리 크기가 연속체라 자동 임계 불안정)보다 적고(종목당 ~2건/일)
+  큰 벽을 안 놓친다. margin은 비율이라 종목 규모 130배(3,895~514,127)에 종목별 튜닝 0, 조용한 날 0건.
+  용어=**급증(Quote Totals Surge)**, CONTEXT.md 등재 — "돌파/Breakout"은 Screener EOD 신고가 조건
+  전용이라 회피(realm 충돌). 이번은 프론트 평가-우선 슬라이스(백엔드 감지기·관심종목 폴러·알림 피드는 Backlog).
+  - `chart/surge/detectSurges.ts`: 순수 감지(`detectSurgeSide` per-side + `detectSurges` wrapper). lwc 비의존, 단위 테스트.
+  - `chart/RangeSeriesPane.tsx`: 선택적 per-series `markers` 프로젝터 seam(lwc v5 `createSeriesMarkers`).
+  - `state/chartPrefs.ts`: `surgeMarkerEnabled`(기본 ON)·`surgeMarginPct`(기본 50, 30~100), category `'surge'`.
+
+### Changed
+- **라이브 설정창 2단 재구성**: `LiveSettingsModal`을 `IndicatorPanel`과 동일한 "왼쪽 카테고리 nav +
+  오른쪽 상세" 레이아웃(`LiveSettingsSections`)으로 바꿨다. 카테고리: 보조지표·총잔량 급증·차트·데이터소스.
+  급증 마커 토글·감도가 '총잔량 급증' 섹션. 레지스트리(`CHART_TOGGLES`/`CHART_NUMERIC_PREFS`) 기반이라
+  항목 추가 = 한 줄. 기존 토글 행/numeric 입력 컴포넌트 그대로 재사용(신규 디자인 없음).
+
+### Internal
+- **마커를 Past/Today Split Cache seam에 라우팅** (perf): 마커 전구간 재계산이 90일 딥스크롤에서
+  6.17ms/틱(틱당 비용의 지배 항)으로 #56 P0 회귀를 부분 재유입함을 perf 벤치(`hogaIndicators.perf.test` G)로
+  확인 → `makePastCachedProjector`에 태웠다. `detectSurges`를 거래일 self-reset으로 만들어 세그먼트 독립
+  (`cachedPast++today===all`)이 성립. seam 캐시경로 ~0.13ms(깊이 무관, 25× 절감). side별 `detectSurgeSide`로
+  2× 중복 계산도 제거.
+- **ADR-0071**: 카테고리 2단 패널(IndicatorPanel·설정)을 공유 셸로 추출하지 않는다(공유 표면 작고 가변
+  표면 큼 — premature abstraction; 세 번째 패널 생기면 재검토).
+- 설계: `docs/superpowers/specs/2026-06-12-chongjanryang-{peak-breakout,breakout-live-marker}-design.md`,
+  `docs/superpowers/plans/2026-06-12-quote-totals-surge-markers.md`. CONTEXT.md에 **총잔량 급증** 용어 등재.
+
 ## [0.7.24.0] - 2026-06-12
 
 ### Changed
