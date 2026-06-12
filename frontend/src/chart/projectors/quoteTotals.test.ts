@@ -157,7 +157,7 @@ describe('QUOTE_TOTALS_SPEC crosshair marker', () => {
 });
 
 describe('급증 마커 (askSurgeMarkers) — 근접 95% + 재무장 85%', () => {
-  const ctx = { auctionMask: false, surgeEnabled: true, surgeApproachPct: 95, surgeRearmPct: 85 };
+  const ctx = { auctionMask: false, surgeEnabled: true, surgeApproachPct: 95, surgeRearmPct: 85, surgeStartHHMM: 900 };
   const bundle: any = {
     quote_ratio: {
       points: [
@@ -179,5 +179,13 @@ describe('급증 마커 (askSurgeMarkers) — 근접 95% + 재무장 85%', () =>
 
   it('surgeEnabled=false면 마커 없음', () => {
     expect(askSurgeMarkers(bundle, axis, { ...ctx, surgeEnabled: false })).toEqual([]);
+  });
+
+  it('surgeStartHHMM 시작 시각 이전 급증은 표시에서 가린다 (알고리즘은 그대로 진행)', () => {
+    // sessionOpenMs = 09:00 KST → 발사 시점 09:00:02 = 자정 기준 540분.
+    // 시작 시각 09:30(=930, 570분)으로 올리면 540 < 570 이라 표시 제외.
+    expect(askSurgeMarkers(bundle, axis, { ...ctx, surgeStartHHMM: 930 })).toEqual([]);
+    // 09:00(=900, 540분)이면 540 >= 540 경계 포함 — 그대로 표시.
+    expect(askSurgeMarkers(bundle, axis, { ...ctx, surgeStartHHMM: 900 })).toHaveLength(1);
   });
 });

@@ -93,7 +93,17 @@ export type QuoteTotalsCtx = {
   surgeEnabled: boolean;
   surgeApproachPct: number;
   surgeRearmPct: number;
+  /** 마커 표시 시작 시각(HHMM, 예 930=09:30). 이 시각 이전의 급증은 표시만 가린다 — 알고리즘(running
+   *  peak·재무장)은 장 시작부터 계속 진행하므로 detectSurgeSide에는 넘기지 않고 프로젝터에서 필터링. */
+  surgeStartHHMM: number;
 };
+
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+/** t(ms epoch)의 KST 자정 기준 분(0–1439). 거래일 경계와 무관한 순수 함수라 과거/당일 청크별로 따로
+ *  적용해도 `cachedPast ++ today === all` 불변식이 유지된다(Split Cache seam 안전). */
+const kstMinuteOfDay = (t: number): number => Math.floor((t + KST_OFFSET_MS) / 60_000) % 1440;
+/** HHMM 정수(예 930)를 자정 기준 분으로. 분 자리(00–59) 벗어난 값은 자연 환산(960→10:00). */
+const hhmmToMinute = (hhmm: number): number => Math.floor(hhmm / 100) * 60 + (hhmm % 100);
 
 // useShallow: object literal reference stays stable when the fields don't change
 // → makePastCachedProjector's ctx-identity cache key (via bidCachedData's
@@ -105,6 +115,7 @@ const useQuoteTotalsContext = (): QuoteTotalsCtx =>
       surgeEnabled: p.surgeMarkerEnabled,
       surgeApproachPct: p.surgeApproachPct,
       surgeRearmPct: p.surgeRearmPct,
+      surgeStartHHMM: p.surgeStartHHMM,
     })),
   );
 
@@ -116,12 +127,15 @@ const useQuoteTotalsContext = (): QuoteTotalsCtx =>
 function surgeMarkerPoints(side: 'ask' | 'bid', color: string) {
   return (points: readonly QuoteRatioPoint[], axis: VirtualAxis, ctx: QuoteTotalsCtx): SeriesMarker<Time>[] => {
     if (!ctx.surgeEnabled) return [];
+    const startMinute = hhmmToMinute(ctx.surgeStartHHMM);
     return detectSurgeSide(points, side, {
       approachRatio: ctx.surgeApproachPct / 100,
       rearmRatio: ctx.surgeRearmPct / 100,
       isClosingAuction: (t) => axis.inClosingAuctionWindow(t),
     })
-      .filter((m) => axis.contains(m.t))
+      // 표시 필터: 보이는 구간(axis.contains) + 시작 시각 이후(KST 분). 알고리즘 상태는
+      // detectSurgeSide가 장 시작부터 전부 굴린 뒤, 발사된 마커만 여기서 가린다.
+      .filter((m) => axis.contains(m.t) && kstMinuteOfDay(m.t) >= startMinute)
       .map((m) => ({
         time: (axis.toVirtual(m.t) / 1000) as UTCTimestamp,
         position: 'aboveBar' as const,
