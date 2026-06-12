@@ -76,25 +76,27 @@
 `(side ∈ {ask, bid})` 각각 **독립** 트랙. 순수 함수:
 
 ```
-detectSurges(points: QuoteRatioPoint[], segments: Segment[], margin=0.50)
-  → { ask: Marker[], bid: Marker[] }
+detectSurgeSide(points: QuoteRatioPoint[], side, { margin=0.50, isClosingAuction })
+  → Marker[]            # side별로 호출(detectSurges는 양 side wrapper)
 
-각 side(value = ask_total 또는 bid_total)에 대해 시간순:
-  running_max = 0
-  for p in points:
-    if inClosingAuctionWindow(p.t):       # ← 마감 동시호가(15:20–15:30) 항상 제외
-        continue                          #    (발사·peak갱신 모두 skip; 시각 마스크 토글과 무관)
-    if p.t가 새 세션(Stock-Date) 진입:   # ← 멀티데이 리셋 (정확성)
-        running_max = 0
+running_max = 0; cur_day = NaN
+for p in points (시간순):
+    day = ⌊(p.t + 9h) / 24h⌋            # KST 거래일
+    if day != cur_day:                   # ← 거래일(세션) 경계 자기-리셋 (멀티데이 정확성)
+        cur_day = day; running_max = 0
+    if isClosingAuction(p.t):            # ← 마감 동시호가(15:20–15:30) 항상 제외(토글 무관)
+        continue
     v = p[side]
     if running_max > 0 and v > running_max * (1 + margin):
         emit marker(t=p.t, prev=running_max, pct=v/running_max - 1)
     running_max = max(running_max, v)   # 래칫
 ```
 
-- **세션 경계 리셋 (필수)**: `quote_ratio.points`는 과거 팬 시 여러 **Stock-Date**를 concat한다
-  (RangeBundle). running_max를 **세션마다 0으로 리셋**(`segments[*].session_open_ms` 기준)해, 전일의 큰
-  벽이 오늘의 기준이 되는 오염을 막는다. 마커는 보이는 모든 날에 찍히되 **날짜별 독립**.
+- **거래일 경계 self-reset (필수)**: `quote_ratio.points`는 과거 팬 시 여러 **Stock-Date**를 concat한다
+  (RangeBundle). running_max를 **거래일(KST 날짜)마다 0으로 리셋**해 전일의 큰 벽이 오늘 기준이 되는 오염을
+  막는다. sessionOpens를 따로 받지 않고 점의 `t`에서 날짜를 도출 → 어느 청크(과거/당일)든 자기-완결적으로
+  리셋 → **각 거래일 마커가 그 거래일 점에만 의존** → Past/Today Split Cache의 `cachedPast++today===all`
+  불변식 성립(아래 §배선). 마커는 보이는 모든 날에 찍히되 날짜별 독립.
 - **워밍업 불필요**: running_max=0에서 시작 → 세션 첫 관측은 비교 대상이 없어(`running_max > 0` 가드) 발사
   불가, 단지 래칫만. 즉 마진 방식이 "첫 관측 가짜 발사"를 구조적으로 막아 별도 warmup 카운터가 필요 없다.
 - **마진이 곧 디바운스**: 발사 후 running_max가 v로 올라가 다음 발사는 더 높은 고가를 또 +margin 초과해야 함.
@@ -111,14 +113,17 @@ detectSurges(points: QuoteRatioPoint[], segments: Segment[], margin=0.50)
 
 ### 배선 (seam)
 
-- **신규 순수 모듈** `chart/surge/detectSurges.ts` — 입력 `QuoteRatioPoint[]`+`segments`+margin, 출력
-  세그먼트별 마커. lightweight-charts 비의존(좌표 투영은 호출부에서). 단위 테스트 대상.
-- `quoteTotals.ts`(또는 `RangeSeriesPane` 마커 seam)에서, 패널이 받은 동일 `points`로
-  `detectSurges` 호출 → ask/bid 시리즈에 마커 set. 시리즈 재생성 라이프사이클(파괴/재추가)과
-  같은 effect에 묶어 leak·stale 마커 방지(기존 LineSeries 라이프사이클 패턴 재사용).
-- **실시간 갱신 (Past/Today Split 준수)**: running peak가 세션마다 리셋되어 **각 세그먼트 마커는 그 세그먼트
-  포인트에만 의존** → 과거 세그먼트 마커는 메모이즈(동결), **오늘 세그먼트만 라이브 틱마다 재계산** 후 concat.
-  비용이 히스토리 깊이와 무관(기존 `makePastCachedProjector` 정신; 전체 재계산 금지 — CONTEXT.md L65, #56 P0).
+- **신규 순수 모듈** `chart/surge/detectSurges.ts` — 입력 `QuoteRatioPoint[]`+`{margin, isClosingAuction}`,
+  출력 마커. `detectSurgeSide(points, side, opts)`(per-side, 거래일 self-reset) + `detectSurges`(양 side wrapper).
+  lightweight-charts 비의존(좌표 투영은 호출부). 단위 테스트 대상.
+- `RangeSeriesPane`에 선택적 `markers` 프로젝터 seam 추가(lwc v5 `createSeriesMarkers`); `quoteTotals.ts`의
+  ask/bid 시리즈가 그 seam에 마커 프로젝터를 단다. 시리즈 라이프사이클(생성/파괴)과 같은 effect에 묶어
+  leak·stale 방지(기존 LineSeries 패턴 재사용).
+- **실시간 갱신 (Past/Today Split 준수 — 구현 완료)**: 마커 프로젝터를 라인과 **동일한 `makePastCachedProjector`
+  seam**에 태운다(per-side). 거래일 self-reset이라 각 거래일 마커가 그 거래일 점에만 의존 →
+  `cachedPast++today===all` 성립 → 과거 동결 + 당일만 재계산. **검증(perf G)**: seam 캐시경로 ~0.13ms(깊이
+  무관) vs 전구간 재계산 90일 3.15ms → **25× 절감**, #56 P0 불변식 유지. (초기 평가-우선 구현은 전구간
+  재계산이었으나 perf 게이트에서 6.17ms/틱(지배 항) 확인 후 seam 라우팅으로 전환.)
   동일 입력→동일 마커(결정론적).
 - **margin 설정**: `chartPrefs`(ChartViewPrefs)에 `surgeMargin`(기본 0.50) 추가, 아래 사이드 메뉴에 노출.
 
