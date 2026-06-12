@@ -8,9 +8,18 @@ beforeEach(() => {
   useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
 });
 
+// 단일-탭 내비게이션 모델(ADR-0069 개정): 새 탭은 addBlankTab(=+ 버튼)로만 생기고,
+// 클릭/검색/드롭은 setActiveTabCode로 현재 탭을 바꾼다. 다중 탭 셋업 헬퍼 — 빈 탭을
+// 추가하고(=새 탭) 그 탭에 종목을 채운다.
+function openTab(code: string, label?: string) {
+  const s = useLiveTabsStore.getState();
+  s.addBlankTab();
+  s.setActiveTabCode(code, label);
+}
+
 describe('useLiveTabsStore', () => {
-  it('openOrFocusTab creates a tab and focuses it', () => {
-    useLiveTabsStore.getState().openOrFocusTab('005930', '삼성전자');
+  it('setActiveTabCode creates the first tab when none exists', () => {
+    useLiveTabsStore.getState().setActiveTabCode('005930', '삼성전자');
     const { tabs, activeTabId } = useLiveTabsStore.getState();
     expect(tabs).toHaveLength(1);
     expect(tabs[0].code).toBe('005930');
@@ -18,36 +27,78 @@ describe('useLiveTabsStore', () => {
     expect(activeTabId).toBe(tabs[0].id);
   });
 
-  it('openOrFocusTab on an existing code focuses, does not duplicate', () => {
+  it('setActiveTabCode replaces the active tab in place (same id, no new tab)', () => {
     const s = useLiveTabsStore.getState();
-    s.openOrFocusTab('005930', '삼성전자');
-    s.openOrFocusTab('000660', 'SK하이닉스');
-    s.openOrFocusTab('005930', '삼성전자');
+    s.setActiveTabCode('005930', '삼성전자');
+    const firstId = useLiveTabsStore.getState().activeTabId;
+    s.setActiveTabCode('000660', 'SK하이닉스');
+    const { tabs, activeTabId } = useLiveTabsStore.getState();
+    expect(tabs).toHaveLength(1);
+    expect(activeTabId).toBe(firstId);          // 같은 탭을 교체
+    expect(tabs[0].code).toBe('000660');
+    expect(tabs[0].label).toBe('SK하이닉스');
+  });
+
+  it('setActiveTabCode changes only the active tab and allows a duplicate code', () => {
+    openTab('005930', '삼성전자');   // 탭 A
+    openTab('000660', 'SK하이닉스'); // 탭 B (활성)
+    // 같은 코드가 A에 있어도 포커스하지 않고 현재 탭(B)을 교체 → 중복 허용.
+    useLiveTabsStore.getState().setActiveTabCode('005930', '삼성전자');
     const { tabs, activeTabId } = useLiveTabsStore.getState();
     expect(tabs).toHaveLength(2);
+    expect(tabs.map((t) => t.code)).toEqual(['005930', '005930']);
     expect(tabs.find((t) => t.id === activeTabId)?.code).toBe('005930');
   });
 
-  it('openOrFocusTab refreshes a stale label when re-opening a code with a name', () => {
-    const s = useLiveTabsStore.getState();
-    s.openOrFocusTab('005930'); // migrated tab: label defaults to code
-    expect(useLiveTabsStore.getState().tabs[0].label).toBe('005930');
-    s.openOrFocusTab('005930', '삼성전자'); // re-opened from search with a real name
-    const { tabs } = useLiveTabsStore.getState();
-    expect(tabs).toHaveLength(1);
-    expect(tabs[0].label).toBe('삼성전자');
+  it('setActiveTabCode keeps the tab timeframe but resets pan (historicalFromDate)', () => {
+    openTab('005930', '삼성전자');
+    // 활성 탭에 tf + pan을 직접 부여(미러 없이) 한 뒤 종목만 바꾼다.
+    useLiveTabsStore.setState((st) => ({
+      tabs: st.tabs.map((t) =>
+        t.id === st.activeTabId ? { ...t, timeframe: '5m', historicalFromDate: '20260601' } : t,
+      ),
+    }));
+    useLiveTabsStore.getState().setActiveTabCode('000660');
+    const { tabs, activeTabId } = useLiveTabsStore.getState();
+    const active = tabs.find((t) => t.id === activeTabId)!;
+    expect(active.code).toBe('000660');
+    expect(active.timeframe).toBe('5m');          // 유지
+    expect(active.historicalFromDate).toBeNull(); // 초기화
   });
 
   it('writes the active tab code into useLivePageStore (single writer)', () => {
-    useLiveTabsStore.getState().openOrFocusTab('035420', 'NAVER');
+    useLiveTabsStore.getState().setActiveTabCode('035420', 'NAVER');
     expect(useLivePageStore.getState().activeCode).toBe('035420');
+  });
+
+  it('addBlankTab adds a focused blank tab and clears the page active code', () => {
+    useLivePageStore.setState({ activeCode: '005930' });
+    useLiveTabsStore.getState().addBlankTab();
+    const { tabs, activeTabId } = useLiveTabsStore.getState();
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0].code).toBe('');
+    expect(tabs[0].label).toBe('새 탭');
+    expect(activeTabId).toBe(tabs[0].id);
+    expect(useLivePageStore.getState().activeCode).toBe(''); // 빈 탭 → 빈 상태(검색 안내)
+  });
+
+  it('setActiveTabCode fills the active blank tab in place (no new tab)', () => {
+    const s = useLiveTabsStore.getState();
+    s.addBlankTab();
+    const blankId = useLiveTabsStore.getState().activeTabId;
+    s.setActiveTabCode('005930', '삼성전자');
+    const { tabs, activeTabId } = useLiveTabsStore.getState();
+    expect(tabs).toHaveLength(1);
+    expect(activeTabId).toBe(blankId);  // 같은(빈) 탭을 채움
+    expect(tabs[0].code).toBe('005930');
+    expect(tabs[0].label).toBe('삼성전자');
   });
 
   it('closeTab on active tab focuses the right neighbor (else left)', () => {
     const s = useLiveTabsStore.getState();
-    s.openOrFocusTab('A00001');
-    s.openOrFocusTab('B00002');
-    s.openOrFocusTab('C00003');
+    openTab('A00001');
+    openTab('B00002');
+    openTab('C00003');
     const mid = useLiveTabsStore.getState().tabs[1].id;
     s.focusTab(mid);
     s.closeTab(mid);
@@ -57,40 +108,36 @@ describe('useLiveTabsStore', () => {
   });
 
   it('closing the last tab clears activeTabId and activeCode', () => {
-    const s = useLiveTabsStore.getState();
-    s.openOrFocusTab('A00001');
-    s.closeTab(useLiveTabsStore.getState().tabs[0].id);
+    openTab('A00001');
+    useLiveTabsStore.getState().closeTab(useLiveTabsStore.getState().tabs[0].id);
     expect(useLiveTabsStore.getState().tabs).toHaveLength(0);
     expect(useLiveTabsStore.getState().activeTabId).toBeNull();
     expect(useLivePageStore.getState().activeCode).toBeNull();
   });
 
-  it('openOrFocusTab is a no-op at the soft cap', () => {
-    const s = useLiveTabsStore.getState();
-    for (let i = 0; i < TABS_SOFT_CAP; i++) s.openOrFocusTab(`C${String(i).padStart(5, '0')}`);
-    s.openOrFocusTab('Z99999');
+  it('addBlankTab is a no-op at the soft cap', () => {
+    for (let i = 0; i < TABS_SOFT_CAP; i++) openTab(`C${String(i).padStart(5, '0')}`);
     expect(useLiveTabsStore.getState().tabs).toHaveLength(TABS_SOFT_CAP);
-    expect(useLiveTabsStore.getState().tabs.some((t) => t.code === 'Z99999')).toBe(false);
+    useLiveTabsStore.getState().addBlankTab();
+    expect(useLiveTabsStore.getState().tabs).toHaveLength(TABS_SOFT_CAP); // 캡 유지
   });
 
   it('closeTab on the rightmost active tab focuses the left neighbor', () => {
-    const s = useLiveTabsStore.getState();
-    s.openOrFocusTab('A00001');
-    s.openOrFocusTab('B00002');
-    s.openOrFocusTab('C00003'); // C is active (rightmost)
-    s.closeTab(useLiveTabsStore.getState().tabs[2].id);
+    openTab('A00001');
+    openTab('B00002');
+    openTab('C00003'); // C가 활성(우측 끝)
+    useLiveTabsStore.getState().closeTab(useLiveTabsStore.getState().tabs[2].id);
     const { tabs, activeTabId } = useLiveTabsStore.getState();
     expect(tabs.map((t) => t.code)).toEqual(['A00001', 'B00002']);
     expect(tabs.find((t) => t.id === activeTabId)?.code).toBe('B00002');
   });
 
   it('closing a non-active tab leaves activeTabId unchanged', () => {
-    const s = useLiveTabsStore.getState();
-    s.openOrFocusTab('A00001');
-    s.openOrFocusTab('B00002');
-    s.openOrFocusTab('C00003'); // C is active
+    openTab('A00001');
+    openTab('B00002');
+    openTab('C00003'); // C가 활성
     const activeBefore = useLiveTabsStore.getState().activeTabId;
-    s.closeTab(useLiveTabsStore.getState().tabs[0].id); // close inactive A
+    useLiveTabsStore.getState().closeTab(useLiveTabsStore.getState().tabs[0].id); // 비활성 A 닫기
     const { tabs, activeTabId } = useLiveTabsStore.getState();
     expect(tabs.map((t) => t.code)).toEqual(['B00002', 'C00003']);
     expect(activeTabId).toBe(activeBefore);
@@ -98,15 +145,14 @@ describe('useLiveTabsStore', () => {
   });
 
   it('reorderTabs moves a tab', () => {
-    const s = useLiveTabsStore.getState();
-    s.openOrFocusTab('A00001'); s.openOrFocusTab('B00002'); s.openOrFocusTab('C00003');
-    s.reorderTabs(0, 2);
+    openTab('A00001'); openTab('B00002'); openTab('C00003');
+    useLiveTabsStore.getState().reorderTabs(0, 2);
     expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(['B00002', 'C00003', 'A00001']);
   });
 
   it('reorderTabs is a no-op when from===to or out of range', () => {
+    openTab('A00001'); openTab('B00002'); openTab('C00003');
     const s = useLiveTabsStore.getState();
-    s.openOrFocusTab('A00001'); s.openOrFocusTab('B00002'); s.openOrFocusTab('C00003');
     const original = ['A00001', 'B00002', 'C00003'];
     s.reorderTabs(1, 1); // from === to
     expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(original);
@@ -114,6 +160,20 @@ describe('useLiveTabsStore', () => {
     expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(original);
     s.reorderTabs(0, 5); // to out of range
     expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(original);
+  });
+
+  it('switching to a tab projects its code+timeframe+pan onto the page in one shot (pan survives)', () => {
+    openTab('005930', '삼성전자');
+    useLiveTabsStore.setState((st) => ({
+      tabs: st.tabs.map((t) => (t.id === st.activeTabId ? { ...t, timeframe: '5m', historicalFromDate: '20260601' } : t)),
+    }));
+    const tabA = useLiveTabsStore.getState().activeTabId!;
+    openTab('000660', 'SK하이닉스'); // switch to B
+    useLiveTabsStore.getState().focusTab(tabA); // back to A
+    const page = useLivePageStore.getState();
+    expect(page.activeCode).toBe('005930');
+    expect(page.candleTimeframe).toBe('5m');
+    expect(page.historicalFromDate).toBe('20260601'); // pan survived the projection (no reset leak)
   });
 });
 
@@ -204,7 +264,7 @@ describe('liveTabs ↔ page mirror', () => {
   afterEach(() => { _disposeMirror?.(); _disposeMirror = null; });
 
   it('toolbar timeframe change writes into the active tab', () => {
-    useLiveTabsStore.getState().openOrFocusTab('005930', '삼성전자');
+    openTab('005930', '삼성전자');
     useLivePageStore.getState().setCandleTimeframe('5m'); // user toolbar action
     const active = useLiveTabsStore.getState().tabs[0];
     expect(active.timeframe).toBe('5m');
@@ -212,9 +272,9 @@ describe('liveTabs ↔ page mirror', () => {
 
   it('switching tabs restores each tab timeframe', () => {
     const s = useLiveTabsStore.getState();
-    s.openOrFocusTab('005930', '삼성전자');
+    openTab('005930', '삼성전자');
     useLivePageStore.getState().setCandleTimeframe('5m'); // tab A → 5m
-    s.openOrFocusTab('000660', 'SK하이닉스');             // tab B (inherits 5m)
+    openTab('000660', 'SK하이닉스');                       // tab B (inherits 5m)
     useLivePageStore.getState().setCandleTimeframe('D');  // tab B → D
     const tabA = useLiveTabsStore.getState().tabs[0].id;
     s.focusTab(tabA);
@@ -222,9 +282,20 @@ describe('liveTabs ↔ page mirror', () => {
   });
 
   it('pan (historicalFromDate) persists per tab', () => {
-    useLiveTabsStore.getState().openOrFocusTab('005930', '삼성전자');
+    openTab('005930', '삼성전자');
     useLivePageStore.getState().extendHistoricalRange('20260601');
     expect(useLiveTabsStore.getState().tabs[0].historicalFromDate).toBe('20260601');
+  });
+
+  it('projecting a tab is idempotent on the active tab and does not churn its fields (mirror works without the guard)', () => {
+    openTab('005930', '삼성전자');
+    useLivePageStore.getState().setCandleTimeframe('5m'); // mirror → tab A.timeframe = 5m
+    const before = useLiveTabsStore.getState().tabs[0];
+    useLiveTabsStore.getState().focusTab(before.id); // re-project the SAME active tab
+    const after = useLiveTabsStore.getState().tabs[0];
+    expect(after.timeframe).toBe('5m');
+    expect(after.historicalFromDate).toBe(before.historicalFromDate);
+    expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
   });
 });
 
@@ -244,7 +315,7 @@ describe('initLiveTabsSync', () => {
 
   it('dispose stops the page→tab mirror', () => {
     const dispose = initLiveTabsSync();
-    useLiveTabsStore.getState().openOrFocusTab('005930', '삼성전자');
+    openTab('005930', '삼성전자');
     dispose();
     useLivePageStore.getState().setCandleTimeframe('5m'); // after dispose — must NOT mirror
     expect(useLiveTabsStore.getState().tabs[0].timeframe).toBe('1m'); // unchanged
