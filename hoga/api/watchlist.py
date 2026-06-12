@@ -125,6 +125,22 @@ def _reindex(doc: WatchlistDocument) -> WatchlistDocument:
     return doc.model_copy(update={"folders": new_folders})
 
 
+def _prune_orphans(doc: WatchlistDocument) -> WatchlistDocument:
+    """불변식 강제(ADR-0069): entry 존재 ⟺ 어떤 폴더 member_codes 에 있음. 어느 폴더에도
+    없는 entry(orphan)를 제거한다. **write 경로(save_document)에서만** — read 경로(load)는
+    drift를 보존·loud-log해야 한다(ADR-0065: read 에서 wipe 금지). 생성 절반(모든 member 에
+    entry 존재)은 disk-seed 가 필요해 add_member(write 경로)가 책임진다. 순수·idempotent.
+
+    이 한 곳이 prune 의 단일 소유자라, 멤버십을 줄이는 mutation(remove_member/remove_entry/
+    remove_entries/delete_folder)은 member_codes 만 손대면 entry 정리는 자동이다.
+    """
+    members = {c for f in doc.folders for c in f.member_codes}
+    kept = [e for e in doc.entries if e.code in members]
+    if len(kept) == len(doc.entries):
+        return doc
+    return doc.model_copy(update={"entries": kept})
+
+
 def load_document(data_dir: Path) -> WatchlistDocument:
     """Read watchlist.json as a v2 WatchlistDocument. Missing → empty doc.
     Forward-migrates v1 in place (never quarantines — ADR-0065). Genuine
@@ -158,8 +174,11 @@ def load_document(data_dir: Path) -> WatchlistDocument:
 
 
 def save_document(data_dir: Path, doc: WatchlistDocument) -> None:
-    """Atomic write of the WHOLE v2 document. The only write path."""
-    atomic_write_json(_path(data_dir), _reindex(doc).model_dump())
+    """Atomic write of the WHOLE v3 document. The only write path — so it is the
+    single seam that ENFORCES the invariant: _reindex normalizes folder order +
+    dedupes member_codes, then _prune_orphans drops entries no longer in any
+    folder. Mutations need only adjust member_codes; orphan cleanup is automatic."""
+    atomic_write_json(_path(data_dir), _prune_orphans(_reindex(doc)).model_dump())
 
 
 def load_watchlist(data_dir: Path) -> list[WatchlistEntry]:
@@ -229,22 +248,20 @@ async def remove_member(data_dir: Path, *, code: str, folder_id: str) -> None:
             raise FolderNotFoundError(folder_id)
         new_folders = [f.model_copy(update={"member_codes": [c for c in f.member_codes if c != code]})
                        if f.id == folder_id else f for f in doc.folders]
-        still_member = any(code in f.member_codes for f in new_folders)
-        new_entries = doc.entries if still_member else [e for e in doc.entries if e.code != code]
-        save_document(data_dir, doc.model_copy(update={"folders": new_folders, "entries": new_entries}))
+        # member_codes 만 손댄다 — code 가 어느 폴더에도 없게 되면 save_document 가 orphan
+        # entry 를 자동 prune 한다(불변식 단일 소유, ADR-0069).
+        save_document(data_dir, doc.model_copy(update={"folders": new_folders}))
 
 
 async def remove_entry(data_dir: Path, *, code: str) -> None:
-    """code 를 Watchlist 에서 완전 제거(모든 폴더 member_codes 에서 빼고 entry 삭제)."""
+    """code 를 Watchlist 에서 완전 제거(모든 폴더 member_codes 에서 뺀다 → save 가 entry prune)."""
     async with _lock:
         doc = load_document(data_dir)
         if not any(e.code == code for e in doc.entries):
             raise NotInWatchlistError(code)
         new_folders = [f.model_copy(update={"member_codes": [c for c in f.member_codes if c != code]})
                        for f in doc.folders]
-        new_entries = [e for e in doc.entries if e.code != code]
-        save_document(data_dir, doc.model_copy(
-            update={"folders": new_folders, "entries": new_entries}))
+        save_document(data_dir, doc.model_copy(update={"folders": new_folders}))
 
 
 async def bump_last_success(
@@ -357,11 +374,9 @@ async def delete_folder(data_dir: Path, *, folder_id: str) -> None:
         doc = load_document(data_dir)
         if not any(f.id == folder_id for f in doc.folders):
             raise FolderNotFoundError(folder_id)
+        # 폴더만 제거 — 그 폴더에만 있던 코드는 save_document 가 orphan 으로 prune 한다.
         new_folders = [f for f in doc.folders if f.id != folder_id]
-        survivors = {c for f in new_folders for c in f.member_codes}
-        new_entries = [e for e in doc.entries if e.code in survivors]
-        save_document(data_dir, doc.model_copy(
-            update={"folders": new_folders, "entries": new_entries}))
+        save_document(data_dir, doc.model_copy(update={"folders": new_folders}))
 
 
 async def reorder_folders(data_dir: Path, *, ordered_ids: list[str]) -> None:
@@ -405,7 +420,7 @@ async def remove_entries(data_dir: Path, *, codes: list[str]) -> None:
     async with _lock:
         doc = load_document(data_dir)
         drop = set(codes)
+        # member_codes 에서만 빼면 save_document 가 orphan entry 들을 prune 한다.
         new_folders = [f.model_copy(update={"member_codes": [c for c in f.member_codes if c not in drop]})
                        for f in doc.folders]
-        new_entries = [e for e in doc.entries if e.code not in drop]
-        save_document(data_dir, doc.model_copy(update={"folders": new_folders, "entries": new_entries}))
+        save_document(data_dir, doc.model_copy(update={"folders": new_folders}))

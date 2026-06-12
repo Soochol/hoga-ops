@@ -129,7 +129,9 @@ async def test_catchup_regresses_stale_marker_to_disk_truth(tmp_path: Path):
         registered_at_kst_date="20260520",
         last_success_date="20260526",
     )]
-    watchlist.save_document(tmp_path, watchlist.WatchlistDocument(entries=stale))
+    # v3 불변식: entry 는 폴더 member 여야 save 가 보존한다(orphan prune, ADR-0069).
+    folder = watchlist.WatchlistFolder(id="f_0000000a", name="기본", order=0, member_codes=["098460"])
+    watchlist.save_document(tmp_path, watchlist.WatchlistDocument(folders=[folder], entries=stale))
 
     fake_now = dt.datetime(2026, 5, 27, 11, 0, 0, tzinfo=KST)
     with patch("hoga.api.scheduler.latest_complete_date",
