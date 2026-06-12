@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.29.1] - 2026-06-13
+
+### Fixed
+- **총잔량 급증 마커 — 과거 팬 백필 시 마커 전체 밀림 수정** (사용자 제보): `/live`에서 차트를 과거로
+  팬해 추가 캔들(이전 거래일)을 불러오면 동그라미 마커가 통째로 엉뚱한 위치로 밀렸다(라인은 정상,
+  분봉 변경 시 복구). 원인: lwc 기본 `createSeriesMarkers`는 마커 위치를 **공유 timeScale의 logical
+  index**로 잡는데(`series.dataByIndex(timeScale.timeToIndex(marker.time))`), 총잔량(quote_ratio) series가
+  과거 quote_ratio 부족으로 캔들(timeScale dominant)보다 짧으면 마커 index가 series 범위를 넘어(실측
+  idx 4285 vs seriesLen 388) 밀린다. 첫 로드·분봉 변경은 chart/series를 새로 만들어 정상이었다.
+  - **fix**: 커스텀 series primitive(`SurgeMarkersPrimitive`)로 `timeScale.timeToCoordinate(time)`(x) +
+    `series.priceToCoordinate(price)`(y) 직접 렌더 — 라인이 그려지는 방식과 동일해 **series 길이 불일치에
+    면역**. 마커 데이터는 `{time, price(그 시점 총잔량), color}`로 단순화. 진단: 단위 하니스로 setMarkers
+    순서/primitive 재생성 가설을 반증한 뒤, 사용자 런타임 데이터(`idx` vs `seriesLen`)로 근본을 확정.
+
 ## [0.7.29.0] - 2026-06-13
 
 ### Added

@@ -1,19 +1,16 @@
 import { memo, useEffect, useRef } from 'react';
 import {
-  createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
-  type ISeriesMarkersPluginApi,
   type SeriesDataItemTypeMap,
   type SeriesDefinition,
-  type SeriesMarker,
   type SeriesPartialOptionsMap,
   type SeriesType,
-  type Time,
 } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { syncSeriesData } from './seriesDataDiff';
+import { SurgeMarkersPrimitive, type SurgeMarkerPoint } from './SurgeMarkersPrimitive';
 
 /**
  * One series inside a `PaneSpec`. Each field is typed to the lightweight-charts
@@ -37,8 +34,12 @@ export type SeriesSpec<Ctx = void> = {
   options: SeriesPartialOptionsMap[SeriesType];
   data: (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => SeriesDataItemTypeMap[SeriesType][];
   /** Optional: markers to overlay on this series, recomputed in the data effect
-   *  (same cadence as `data`) via lightweight-charts v5 `createSeriesMarkers`. */
-  markers?: (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => SeriesMarker<Time>[];
+   *  (same cadence as `data`). Rendered by `SurgeMarkersPrimitive` (a custom
+   *  series primitive) rather than lwc's `createSeriesMarkers` — the latter
+   *  positions markers via the shared timeScale's logical index, which desyncs
+   *  when this series is shorter than the timeScale (sparse past quote_ratio vs
+   *  candles). The primitive draws by `timeToCoordinate`, immune to that. */
+  markers?: (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => SurgeMarkerPoint[];
   afterAdd?: (series: ISeriesApi<SeriesType>) => void;
 };
 
@@ -114,10 +115,10 @@ function RangeSeriesPaneInner<Ctx>({
   // via `===`. Reset in the lifecycle effect when series are (re)created so a
   // fresh handle always gets a full setData first push.
   const lastDataRef = useRef<(readonly SeriesDataItemTypeMap[SeriesType][] | null)[]>([]);
-  // Per-series markers plugin handle (null for series without a `markers` projector).
-  // Created/torn down alongside the series in the lifecycle effect; updated in the
-  // data effect via setMarkers (same cadence as data).
-  const markersRef = useRef<(ISeriesMarkersPluginApi<Time> | null)[]>([]);
+  // Per-series surge-markers primitive (null for series without a `markers`
+  // projector). Attached/detached alongside the series in the lifecycle effect;
+  // updated in the data effect via setMarkers (same cadence as data).
+  const markersRef = useRef<(SurgeMarkersPrimitive | null)[]>([]);
   // Lifecycle effect: create LineSeries once per (chart, paneIndex, spec)
   // tuple and tear them down on unmount. Does NOT depend on ctx/bundle/axis,
   // so prefs edits (e.g. Moving Average period bump) don't churn series
@@ -133,20 +134,25 @@ function RangeSeriesPaneInner<Ctx>({
     // Fresh handles hold no data — clear cached arrays so the data effect's first
     // run after (re)creation classifies as setData (prev === null) and full-pushes.
     lastDataRef.current = seriesList.map(() => null);
-    // Markers plugin handle per series that declares a `markers` projector.
-    markersRef.current = spec.series.map((s, i) =>
-      s.markers ? createSeriesMarkers(seriesList[i], []) : null,
-    );
+    // Custom surge-markers primitive per series that declares a `markers` projector.
+    markersRef.current = spec.series.map((s, i) => {
+      if (!s.markers) return null;
+      const prim = new SurgeMarkersPrimitive();
+      seriesList[i].attachPrimitive(prim);
+      return prim;
+    });
     if (seriesList.length > 0) onPrimarySeriesReady?.(seriesList[0], spec.name);
     return () => {
       if (seriesList.length > 0) onPrimarySeriesGone?.(spec.name);
-      for (const m of markersRef.current) {
+      seriesList.forEach((series, i) => {
+        const prim = markersRef.current[i];
+        if (!prim) return;
         try {
-          m?.detach();
+          series.detachPrimitive(prim);
         } catch {
           // chart already torn down
         }
-      }
+      });
       markersRef.current = [];
       // Guard: when a sibling pane throws and ChartErrorBoundary unmounts
       // ChartStage, the parent's chart.remove() may run before this
@@ -193,6 +199,8 @@ function RangeSeriesPaneInner<Ctx>({
       // ~1ms for update(tail)) and its safety (update only when exactly
       // equivalent to setData) live in seriesDataDiff.ts.
       lastDataRef.current[i] = syncSeriesData(seriesList[i], lastDataRef.current[i] ?? null, data);
+      // Markers: order vs setData is irrelevant — SurgeMarkersPrimitive draws by
+      // timeToCoordinate at render time, not by a snapshotted series index.
       if (s.markers) markersRef.current[i]?.setMarkers(s.markers(bundle, axis, ctx));
     });
   }, [chart, bundle, axis, ctx, spec, paneIndex]);

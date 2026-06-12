@@ -3,7 +3,6 @@ import {
   type LineData,
   type UTCTimestamp,
   type Time,
-  type SeriesMarker,
 } from 'lightweight-charts';
 import { useShallow } from 'zustand/react/shallow';
 import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
@@ -11,6 +10,7 @@ import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
+import type { SurgeMarkerPoint } from '../SurgeMarkersPrimitive';
 import { isAuctionHidden, LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
 import { detectSurgeSide } from '../surge/detectSurges';
@@ -120,12 +120,13 @@ const useQuoteTotalsContext = (): QuoteTotalsCtx =>
   );
 
 /** 한 side의 급증 마커 프로젝터(per-side, 거래일 self-reset이라 점-청크에만 의존). detectSurgeSide로
- *  근접(95%)+히스테리시스(85%) 발사 지점을 산출 후 보이는 구간만 SeriesMarker로 투영(라인과 동일한
- *  axis.toVirtual/1000 좌표). 라벨 없는 점(circle)만 — 도달률(%) 텍스트는 사용자 요청으로 미표시.
- *  마감 동시호가는 항상 제외(그릴링 Q4). makePastCachedProjector가 과거/당일 청크별로 호출·concat하므로
- *  틱당 비용이 히스토리 깊이와 무관해진다(라인과 동일한 Past/Today Split Cache seam — #56 P0). */
+ *  근접(95%)+히스테리시스(85%) 발사 지점을 산출 후 보이는 구간만 SurgeMarkerPoint로 투영(라인과 동일한
+ *  axis.toVirtual/1000 좌표 + 그 시점 총잔량 값 price). 라벨 없는 점(circle)만 — 도달률(%) 텍스트는
+ *  사용자 요청으로 미표시. 마감 동시호가는 항상 제외(그릴링 Q4). makePastCachedProjector가 과거/당일
+ *  청크별로 호출·concat하므로 틱당 비용이 히스토리 깊이와 무관해진다(라인과 동일한 Split Cache seam — #56 P0).
+ *  렌더는 SurgeMarkersPrimitive(timeToCoordinate 기반)가 맡아 series 길이 불일치에 면역. */
 function surgeMarkerPoints(side: 'ask' | 'bid', color: string) {
-  return (points: readonly QuoteRatioPoint[], axis: VirtualAxis, ctx: QuoteTotalsCtx): SeriesMarker<Time>[] => {
+  return (points: readonly QuoteRatioPoint[], axis: VirtualAxis, ctx: QuoteTotalsCtx): SurgeMarkerPoint[] => {
     if (!ctx.surgeEnabled) return [];
     const startMinute = hhmmToMinute(ctx.surgeStartHHMM);
     return detectSurgeSide(points, side, {
@@ -138,8 +139,7 @@ function surgeMarkerPoints(side: 'ask' | 'bid', color: string) {
       .filter((m) => axis.contains(m.t) && kstMinuteOfDay(m.t) >= startMinute)
       .map((m) => ({
         time: (axis.toVirtual(m.t) / 1000) as UTCTimestamp,
-        position: 'aboveBar' as const,
-        shape: 'circle' as const,
+        price: m.value, // 그 시점 총잔량 값(라인 값) — priceToCoordinate 입력, aboveBar 배치
         color,
       }));
   };
