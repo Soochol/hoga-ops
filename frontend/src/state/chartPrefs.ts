@@ -36,6 +36,13 @@ export const CHART_TOGGLES = [
     default: true,
   },
   {
+    key: 'highLowLabelsEnabled',
+    label: '고저 극값 라벨',
+    description:
+      '현재 보이는 차트 범위의 최고가·최저가 봉에 현재가의 극값 대비율(가격·%·시각) 라벨을 표시합니다. (고가=빨강, 저가=파랑)',
+    default: true,
+  },
+  {
     key: 'surgeMarkerEnabled',
     label: '총잔량 급증 마커',
     description: '매도/매수총잔량이 당일 직전 고가에 다시 근접(기본 95%)하는 순간 총잔량 라인에 마커를 표시합니다. 한 번 표시 후 직전 고가의 85% 아래로 빠져야 재표시(히스테리시스).',

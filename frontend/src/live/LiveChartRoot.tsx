@@ -45,6 +45,7 @@ import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
 import PaneLegendOverlay from './PaneLegendOverlay';
 import CandleTooltip from './CandleTooltip';
+import HighLowAnnotationOverlay from './HighLowAnnotationOverlay';
 import type { PaneId } from '../chart/drawing/types';
 import { useDrawingHost } from '../chart/useDrawingHost';
 
@@ -742,6 +743,9 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
               갱신 때만 새 ref가 돼 latest 값을 신선화한다. ref-during-render 불필요. */}
           <PaneLegendOverlay chart={chart} timeframe={timeframe} paneSeries={paneSeries} dataEpoch={cb} />
           <CandleTooltip chart={chart} bundle={cb} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
+          {/* 고저 극값 라벨 — 보이는 범위의 최고/최저봉에 극값 대비율 라벨. cb(안정)·viewport
+              구독이라 SSE 틱엔 미재렌더, 팬/줌·캔들 갱신 시에만 재계산. 토글 self-gate. */}
+          <HighLowAnnotationOverlay chart={chart} bundle={cb} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
           <DrawingPropertyPanel computeAnchor={computeAnchor} />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a
