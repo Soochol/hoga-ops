@@ -364,7 +364,7 @@ def query_bucketed_ratio(
     # continuous-trading book (depth beyond level 3) at/before the session close;
     # everything after it is the auction. None (no session bound / no continuous
     # snapshot) -> TRUE predicate == legacy last-in-bucket.
-    deep_book_sql = f"(({_ASK_DEEP_SUM}) > 0 OR ({_BID_DEEP_SUM}) > 0)"
+    deep_book_sql = _DEEP_BOOK_SQL  # SSOT — same predicate as query_day_ask_peak & client isContinuousBook
     last_continuous_ms: int | None = None
     if session_close_ms is not None:
         close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
@@ -441,7 +441,7 @@ def query_bucket_representative(
     if session_close_ms is None:
         pre_auction_pred = "TRUE"
     else:
-        deep_book_sql = f"(({_ASK_DEEP_SUM}) > 0 OR ({_BID_DEEP_SUM}) > 0)"
+        deep_book_sql = _DEEP_BOOK_SQL  # SSOT — same predicate as query_day_ask_peak & client isContinuousBook
         close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
         thr = con.execute(
             f"SELECT max({intra_ms_expr}) FROM read_parquet(?) "

@@ -191,8 +191,10 @@ foldAskPeak(prev: RatchetState, seed: AskPeak | null,
   (`bundle.snapshots`는 존재하지 않음 — 최초 스펙 가정 오류, 교정). ob 레벨은 raw 엔트리의 `asks`(복수형)를
   `latestOrderbookSnapshot`/`padLevels` 방식으로 읽는다.
 - **`useDayAskPeak` 훅(상태)**: useRef 래칫 보유. 마운트 시 `seed` + `live.ob` 현재 버퍼(≤15분) 1회 fold →
-  첫 프레임부터 정확. 이후 **증분**(마지막 fold한 `tMs` ref 기억, 그보다 새 엔트리만 fold; 틱당 O(10), 이력 깊이
-  무관 — Split Cache 철학). `code` 변경 시 ref 리셋·재시드(remount 비의존). 반환 `dayAskPeak: AskPeak | null`.
+  첫 프레임부터 정확. 이후 매 틱 `live.ob`를 순회하되 `foldAskPeak`의 `lastTMs` 가드로 이미 본 봉은 즉시
+  early-return(저렴한 비교 N≈버퍼길이; 실질 반영은 신규 봉만). 추가로, 매 틱 `seed`가 현재 peak보다 크면 명시적
+  래칫(오후 진입·range 재fetch로 오전 최대벽이 seed에 늦게 들어온 경우 mid-day 반영; 동률 비교체 strict>).
+  `code` 변경 시 ref 리셋·재시드(remount 비의존). 반환 `dayAskPeak: AskPeak | null`.
 
 ### 프론트 — 렌더 (`LiveAskPeakLine.tsx`) — 멍청한 컴포넌트
 

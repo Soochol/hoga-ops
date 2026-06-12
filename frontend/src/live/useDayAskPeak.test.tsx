@@ -32,4 +32,18 @@ describe('useDayAskPeak', () => {
     rerender({ code: 'B', ob: [], seed: seedB });
     expect(result.current).toEqual(seedB); // A의 12000 안 새어나옴
   });
+
+  it('mid-day에 더 큰 seed가 늦게 와도 래칫(range 재fetch), 작은 seed는 안 내림', () => {
+    const t0 = Date.now();
+    const { result, rerender } = renderHook(
+      ({ seed, ob }: { seed: any; ob: ObSnapshot[] }) => useDayAskPeak(ob, seed, '005930'),
+      { initialProps: { seed: { price: 25100, qty: 5000, t_ms: t0 }, ob: [deep(t0 + 1000, 6000)] } },
+    );
+    expect(result.current!.qty).toBe(6000); // 라이브 틱이 seed 초과
+    // 오전 최대벽(9000)이 늦게 seed로 도착(같은 거래일·code, ob 변화 없음=같은 tMs).
+    rerender({ seed: { price: 24000, qty: 9000, t_ms: t0 - 3_600_000 }, ob: [deep(t0 + 1000, 6000)] });
+    expect(result.current!.qty).toBe(9000); // 더 큰 seed 래칫됨
+    rerender({ seed: { price: 1, qty: 10, t_ms: t0 }, ob: [deep(t0 + 1000, 6000)] });
+    expect(result.current!.qty).toBe(9000); // 더 작은 seed는 내리지 않음(단조)
+  });
 });

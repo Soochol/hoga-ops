@@ -521,7 +521,7 @@ def build_range_bundle(
         )
         vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source)
 
-        if d == today_kst and c.state != DiskState.INVALID:
+        if d == today_kst:  # INVALID dates already `continue`d above
             ask_peak_today = build_ask_peak_slice(engine, code=code, date=d, source=source)
 
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
