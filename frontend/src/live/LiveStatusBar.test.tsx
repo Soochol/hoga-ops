@@ -178,4 +178,17 @@ describe('LiveStatusBar', () => {
     expect(screen.queryByTestId('collection-dot-polling')).toBeNull();
     expect(screen.queryByTestId('collection-dot-disconnected')).toBeNull();
   });
+
+  // 캡처 헬스 dot/pill 분기 — healthy(ok)면 dot, 비정상이면 텍스트 pill 유지.
+  it('shows capture-health dot (no pill) when the capture daemon is healthy', () => {
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE });
+    expect(screen.getByTestId('capture-health-dot')).toBeInTheDocument();
+    expect(screen.queryByTestId('capture-health-pill')).toBeNull();
+  });
+
+  it('keeps the capture-health text pill (no dot) when the capture daemon is unhealthy', () => {
+    renderBar({ activeCode: '005930', captureHealthy: false, captureReason: 'sub_failed', bundle: EMPTY_BUNDLE });
+    expect(screen.getByTestId('capture-health-pill').textContent).toBe('구독 실패');
+    expect(screen.queryByTestId('capture-health-dot')).toBeNull();
+  });
 });
