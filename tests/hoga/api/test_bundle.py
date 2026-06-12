@@ -557,3 +557,19 @@ def test_build_range_bundle_excludes_real_5_18_003490_case():
     assert [s.date for s in rb.segments] == ["20260520"]
     assert len(rb.excluded_dates) == 1
     assert rb.excluded_dates[0].date == "20260518"
+
+
+def test_range_bundle_ask_peak_field_defaults_none() -> None:
+    from hoga.api.models import AskPeak, RangeBundle
+    from hoga.api.models import QuoteRatio, FillStrength, VolumeProfile
+    b = RangeBundle(
+        code="005930", from_date="20260613", to_date="20260613", bucket_ms=60000,
+        segments=[], candles=[],
+        quote_ratio=QuoteRatio(bucket_ms=60000, points=[]),
+        fill_strength=FillStrength(bucket_ms=60000, points=[]),
+        volume_profile_range=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
+        volume_profile_by_day=[],
+    )
+    assert b.ask_peak is None  # 기본 None — 기존 클라 무영향
+    b2 = b.model_copy(update={"ask_peak": AskPeak(price=25100, qty=5000, t_ms=1)})
+    assert b2.ask_peak.price == 25100 and b2.ask_peak.t_ms == 1
