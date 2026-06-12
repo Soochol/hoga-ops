@@ -6,7 +6,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { WatchlistFolder, WatchlistEntry } from '../api/watchlist';
 import type { LiveQuote } from '../api/liveQuotes';
 import { HeatmapRow } from './HeatmapRow';
-import { sortEntries, avgPct, heatHeaderBg, type SortMode } from './heat';
+import { sortEntries, avgPct, heatHeaderBg, makePctOf, type SortMode } from './heat';
 import { resolveDrag } from '../watchlist/dragHandlers';
 import { FolderAddButton } from './FolderAddButton';
 
@@ -43,7 +43,7 @@ export interface HeatmapFolderProps {
 export function HeatmapFolder({ folder, entries, quoteByCode, sortMode, onPick, onReorder, onRowMenu, onRowDragState }: HeatmapFolderProps) {
   // distance:5 — 클릭(차트 이동)과 드래그(재정렬)를 가르는 임계. drawer 와 동일 계약.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-  const pctOf = (code: string): number | null => quoteByCode.get(code)?.change_pct ?? null;
+  const pctOf = makePctOf(quoteByCode);
   const sorted = sortEntries(entries, sortMode, pctOf);
   const avg = avgPct(entries, pctOf);
   const draggable = sortMode === 'manual' && !!onReorder;

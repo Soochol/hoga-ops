@@ -1,11 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { heatBg, sortEntries, avgPct, heatHeaderBg, orderFolderGroups } from './heat';
+import { heatBg, sortEntries, avgPct, heatHeaderBg, orderFolderGroups, makePctOf } from './heat';
 import type { FolderGroup } from '../watchlist/grouping';
 import type { WatchlistEntry } from '../api/watchlist';
+import type { LiveQuote } from '../api/liveQuotes';
 
 const E = (code: string, order: number): WatchlistEntry => ({
   code, name: code, registered_at_kst_date: '20260101',
   last_success_date: null, folder_id: 'f1', order,
+});
+
+describe('makePctOf', () => {
+  const q = (pct: number | null): LiveQuote => ({ code: 'x', price: 0, change_pct: pct, change_won: 0 });
+  it('Map miss → null, 값 있으면 change_pct, change_pct=null → null', () => {
+    const m = new Map<string, LiveQuote>([['a', q(3.5)], ['b', q(null)]]);
+    const pctOf = makePctOf(m);
+    expect(pctOf('a')).toBe(3.5);
+    expect(pctOf('b')).toBeNull();   // present-but-null
+    expect(pctOf('zzz')).toBeNull(); // map miss
+  });
 });
 
 describe('heatBg', () => {

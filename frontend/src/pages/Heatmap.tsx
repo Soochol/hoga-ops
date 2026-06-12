@@ -14,7 +14,7 @@ import { HeatmapBoard } from '../heatmap/HeatmapBoard';
 import { SectorTempStrip } from '../heatmap/SectorTempStrip';
 import { HeatmapRowMenu } from '../heatmap/HeatmapRowMenu';
 import { visibleFolderGroups } from '../heatmap/visibleGroups';
-import { avgPct, orderFolderGroups } from '../heatmap/heat';
+import { avgPct, orderFolderGroups, makePctOf } from '../heatmap/heat';
 import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
 
@@ -44,7 +44,7 @@ export function Heatmap() {
   // change 는 드래그를 끄지만 (manual행, desc그룹)은 드래그를 켠 채 그룹을 재배치한다
   // → 행 드래그 중 그룹 텔레포트 리스크(스펙 G1, 미검증 — 실측 후 동결 가드 조건부 추가).
   const liveOrderedGroups = useMemo(() => {
-    const pctOf = (code: string): number | null => quoteByCode.get(code)?.change_pct ?? null;
+    const pctOf = makePctOf(quoteByCode);
     return orderFolderGroups(groups, groupSort, (g) => avgPct(g.entries, pctOf));
   }, [groups, groupSort, quoteByCode]);
   const [isRowDragging, setIsRowDragging] = useState(false);

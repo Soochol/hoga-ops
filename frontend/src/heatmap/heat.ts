@@ -1,5 +1,6 @@
 import type { WatchlistEntry } from '../api/watchlist';
 import type { FolderGroup } from '../watchlist/grouping';
+import type { LiveQuote } from '../api/liveQuotes';
 
 export type SortMode = 'change' | 'manual';
 export const HEAT_SAT = 8;          // 포화 임계(%)
@@ -25,6 +26,13 @@ export function heatHeaderBg(pct: number | null): string {
   const rgb = pct > 0 ? '220,38,38' : '37,99,235'; // --price-up / --price-down
   const heat = `rgba(${rgb},${a.toFixed(3)})`;
   return `linear-gradient(0deg, ${heat}, ${heat}), var(--bg-input)`;
+}
+
+/** quoteByCode → (code → 등락률|null) 접근자 팩토리. Map miss·change_pct=null 둘 다 null로
+ *  접는 정책을 한 곳에 모은다(헤더 틴트·strip 칩·그룹 정렬이 공유). sortEntries/avgPct/
+ *  orderFolderGroups의 pctOf 파라미터와 동형. */
+export function makePctOf(quoteByCode: Map<string, LiveQuote>): (code: string) => number | null {
+  return (code) => quoteByCode.get(code)?.change_pct ?? null;
 }
 
 /** 폴더 내 정렬. change=등락률 내림차순(null 맨 아래), manual=entry.order. 비파괴(복사). */
