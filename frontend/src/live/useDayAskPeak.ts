@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AskPeak } from '../api/types';
 import type { ObSnapshot } from './bucketHogaSeries';
-import { foldAskPeak, FRESH_RATCHET, type RatchetState } from './computeDayAskPeak';
+import { reduceDayAskPeak, FRESH_RATCHET, type RatchetState } from './computeDayAskPeak';
 
 /** 당일 매도 최대벽 ratchet. LivePage에서 **1회** 호출(기존 live.ob 재사용 —
  *  useLiveSeries를 다시 부르지 않아 2차 SSE 연결을 만들지 않는다).
@@ -21,16 +21,10 @@ export function useDayAskPeak(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  // ob 틱마다 fold(foldAskPeak의 lastTMs 가드로 이미 본 봉은 즉시 건너뜀). 그리고 seed가
-  // 현재 peak보다 크면 명시적으로 래칫한다 — foldAskPeak은 거래일 리셋 때만 seed를 후보로
-  // 쓰므로, 오후 진입·range 재fetch로 오전 최대벽이 seed에 늦게 들어온 경우를 mid-day에도
-  // 반영하기 위함. 동률은 먼저 것 유지(strict >).
+  // ob 틱마다 당일 매도 최대벽 규칙(루프 + seed 하한)을 reduceDayAskPeak에 위임 — 그 순수
+  // 모듈이 규칙을 소유하고, 훅은 ratchet 상태를 ref에 들고 구동만 한다(얇은 adapter).
   useEffect(() => {
-    let s = stateRef.current;
-    for (const snap of ob) s = foldAskPeak(s, seed, snap);
-    if (seed && (s.peak === null || seed.qty > s.peak.qty)) {
-      s = { ...s, peak: seed };
-    }
+    const s = reduceDayAskPeak(stateRef.current, seed, ob);
     stateRef.current = s;
     setPeak(s.peak ?? seed);
   }, [ob, seed]);

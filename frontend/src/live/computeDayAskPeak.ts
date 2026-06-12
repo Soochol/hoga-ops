@@ -35,3 +35,21 @@ export function foldAskPeak(
   }
   return { peak: best, tradingDay: day, lastTMs: ob.t_ms };
 }
+
+/** "당일 매도 최대벽" 규칙 전체를 소유하는 공개 reducer: prev 상태에 ob 스냅샷 배치를 폴드하고
+ *  seed 하한을 보장한 새 ratchet 상태를 반환한다 — 즉 당일 peak = max(seed, 본 연속거래 ask 레벨들).
+ *  훅(useDayAskPeak)은 이걸 구동만 한다(얇은 adapter). seed 하한은 **배치당 1회** 적용한다(스냅샷당이
+ *  아님 — foldAskPeak은 거래일 리셋 때만 seed를 후보로 쓰므로): 오후 진입·range 재fetch로 더 큰 seed가
+ *  늦게 들어와도 mid-day에 반영하되 동률은 먼저 것 유지(strict >). */
+export function reduceDayAskPeak(
+  prev: RatchetState,
+  seed: AskPeak | null,
+  obs: ReadonlyArray<ObSnapshot>,
+): RatchetState {
+  let s = prev;
+  for (const ob of obs) s = foldAskPeak(s, seed, ob);
+  if (seed && (s.peak === null || seed.qty > s.peak.qty)) {
+    s = { ...s, peak: seed };
+  }
+  return s;
+}

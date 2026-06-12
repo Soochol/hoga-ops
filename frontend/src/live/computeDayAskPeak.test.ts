@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { foldAskPeak, type RatchetState } from './computeDayAskPeak';
+import { foldAskPeak, reduceDayAskPeak, type RatchetState } from './computeDayAskPeak';
 import type { ObSnapshot } from './bucketHogaSeries';
 
 const t = (h: number, m = 0) => Date.UTC(2026, 5, 13, h - 9, m); // KST 시각의 unix ms
@@ -72,6 +72,39 @@ describe('foldAskPeak', () => {
     const ob = deepOb(t(10), [[26000, 9000], ...Array(9).fill([1, 1])] as Array<[number, number]>);
     let s = foldAskPeak(FRESH, seed, ob);
     s = foldAskPeak(s, seed, ob); // 같은 tMs
+    expect(s.peak!.qty).toBe(9000);
+  });
+});
+
+describe('reduceDayAskPeak (배치 reducer — 당일 peak 규칙 전체 소유)', () => {
+  const mk = (tMs: number, price: number, qty: number): ObSnapshot =>
+    deepOb(tMs, [[price, qty], ...Array(9).fill([1, 1])] as Array<[number, number]>);
+
+  it('빈 배치: seed가 하한 → peak=seed', () => {
+    const seed = { price: 25100, qty: 5000, t_ms: t(9) };
+    expect(reduceDayAskPeak(FRESH, seed, []).peak).toEqual(seed);
+    expect(reduceDayAskPeak(FRESH, null, []).peak).toBeNull();
+  });
+
+  it('배치 내 최대 단계를 집계', () => {
+    const obs = [mk(t(10), 26000, 3000), mk(t(10, 1), 25500, 8000), mk(t(10, 2), 25800, 4000)];
+    expect(reduceDayAskPeak(FRESH, null, obs).peak).toEqual({ price: 25500, qty: 8000, t_ms: t(10, 1) });
+  });
+
+  it('seed 하한: 배치보다 큰 seed가 늦게 와도 반영', () => {
+    const seed = { price: 24000, qty: 9000, t_ms: t(9) };
+    expect(reduceDayAskPeak(FRESH, seed, [mk(t(10), 26000, 6000)]).peak).toEqual(seed); // 9000 > 6000
+  });
+
+  it('seed 동률은 더 이른 seed 유지(strict >)', () => {
+    const seed = { price: 24000, qty: 6000, t_ms: t(9) };
+    // seed(09:00)와 배치(10:00) qty 동률 → 먼저 도달한 seed 유지
+    expect(reduceDayAskPeak(FRESH, seed, [mk(t(10), 26000, 6000)]).peak!.price).toBe(24000);
+  });
+
+  it('배치 간 단조: 이전 상태 이어받아 더 작은 후속 배치는 무시', () => {
+    let s = reduceDayAskPeak(FRESH, null, [mk(t(10), 26000, 9000)]);
+    s = reduceDayAskPeak(s, null, [mk(t(11), 25000, 100)]);
     expect(s.peak!.qty).toBe(9000);
   });
 });
