@@ -70,7 +70,7 @@ describe('WatchlistDrawer drag wiring', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    // v3 composite sortable id: `${folderId}:${code}` (다중 소속 충돌 방지, ADR-0069).
+    // v3 composite sortable id: `${folderId}:${code}` (다중 소속 충돌 방지, ADR-0070).
     h.onDragEnd!({
       active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
       over: { id: 'f_0000000a:000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },

@@ -8,6 +8,9 @@ import { LiveStatusBar } from './LiveStatusBar';
 import { LiveToolbar } from './LiveToolbar';
 import { LiveWorkarea } from './LiveWorkarea';
 import { LiveStateBanner } from './LiveStateBanner';
+import { LiveTabBar } from './LiveTabBar';
+import { useLiveTabsStore, TABS_SOFT_CAP } from '../state/liveTabs';
+import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
@@ -19,39 +22,41 @@ import { useDocumentTitle } from '../util/useDocumentTitle';
 /**
  * /live page — KIS-based real-time indicator chart.
  *
- * Five-row grid (Stage 9-β adds LiveStateBanner as auto-sized row 2):
- *   1. LiveHeader      (var(--h-live-header))  — title + ⭐ toggle
- *   2. LiveStateBanner (auto)                  — empty/error state matrix
- *   3. LiveStatusBar   (var(--h-pricestrip))   — code/price/source/timeframe + cycle_lag pill
- *   4. LiveToolbar     (var(--h-toolbar))      — timeframe selector
- *   5. LiveWorkarea    (1fr)                   — chart + sidebar (filled by 9-γ + 11)
+ * Six-row grid (Stage 9-β added LiveStateBanner; ADR-0069 adds the tab bar as row 2):
+ *   1. LiveHeader      (var(--h-live-header))  — title + ⭐ toggle + symbol search
+ *   2. LiveTabBar      (40px)                  — open stock tabs (ADR-0069)
+ *   3. LiveStateBanner (auto)                  — empty/error state matrix
+ *   4. LiveStatusBar   (var(--h-pricestrip))   — code/price/source/timeframe + cycle_lag pill
+ *   5. LiveToolbar     (var(--h-toolbar))      — timeframe selector
+ *   6. LiveWorkarea    (1fr)                   — chart + sidebar
  *
- * Active code resolution (CONTEXT.md / ADR-0052):
- *   The `livePage` store is the single source of truth for activeCode. `?code=`
- *   is a one-shot deep-link SEED — adopted into the store once on first mount,
- *   after which search / ♥ / Watchlist Panel writes always win and are never
- *   reverted by the URL. (Future, Stage 11) first watchlist entry; empty state
- *   otherwise.
+ * Active code resolution (CONTEXT.md / ADR-0052 / ADR-0069):
+ *   useLivePageStore remains the single source of truth that all read sites
+ *   consume for activeCode. The active *tab* (useLiveTabsStore → applyTabToPage)
+ *   is now the single WRITER of that value. `?code=` is a one-shot deep-link
+ *   SEED: on first mount it open-or-focuses a tab (which writes activeCode);
+ *   thereafter search / ♥ / Watchlist writes flow through the tabs store and the
+ *   URL never reverts them. With no `?code=`, the restored active tab is applied
+ *   to the page on mount; with no tabs at all, LiveWorkarea shows the empty state.
  */
 export function LivePage() {
   const [params] = useSearchParams();
   const queryCode = params.get('code');
-  const storedCode = useLivePageStore((s) => s.activeCode);
-  const setActiveCode = useLivePageStore((s) => s.setActiveCode);
+  const tabs = useLiveTabsStore((s) => s.tabs);
+  const activeTabId = useLiveTabsStore((s) => s.activeTabId);
+  const openOrFocusTab = useLiveTabsStore((s) => s.openOrFocusTab);
+  const focusTab = useLiveTabsStore((s) => s.focusTab);
+  const closeTab = useLiveTabsStore((s) => s.closeTab);
+  const reorderTabs = useLiveTabsStore((s) => s.reorderTabs);
 
-  // The livePage store is the single source of truth for the active code
-  // (CONTEXT.md / ADR-0052). `?code=` is a one-shot deep-link SEED: adopted into
-  // the store once on first mount, after which search / ♥ / Watchlist Panel
-  // writes win and are never reverted by the URL. (The former `queryCode ??
-  // storedCode` + resync effect made the URL a permanent master and silently
-  // erased store writes — and corrupted persisted localStorage — on a ?code=
-  // deep link.)
+  // 1회: URL ?code= 시드는 복원된 탭 위에 open-or-focus, 없으면 복원된 활성 탭을 page에 적용.
   const seeded = useRef(false);
   useEffect(() => {
     if (seeded.current) return;
     seeded.current = true;
-    if (queryCode && queryCode !== storedCode) setActiveCode(queryCode);
-  }, [queryCode, storedCode, setActiveCode]);
+    if (queryCode) openOrFocusTab(queryCode);
+    else if (activeTabId) focusTab(activeTabId); // 복원된 활성 탭 → page 동기화
+  }, [queryCode, activeTabId, openOrFocusTab, focusTab]);
 
   const { data: status } = useLiveStatus();
   const banner = useLiveBannerState(status);
@@ -59,9 +64,19 @@ export function LivePage() {
   // Keyboard shortcuts (Addendum 9.y / Design B7).
   // j/k traversal callbacks will be supplied by Stage 11 when the watchlist
   // panel is wired up; for now they're no-ops.
-  useLiveKeyboard({});
+  // Tab switching (ADR-0069 / D6): ] next, [ prev, 1-9 jump to tab N.
+  const activeIdx = tabs.findIndex((t) => t.id === activeTabId);
+  useLiveKeyboard({
+    onNextTab: () => { if (tabs.length) focusTab(tabs[(activeIdx + 1 + tabs.length) % tabs.length].id); },
+    onPrevTab: () => { if (tabs.length) focusTab(tabs[(activeIdx - 1 + tabs.length) % tabs.length].id); },
+    onSelectTabIndex: (i) => { if (i < tabs.length) focusTab(tabs[i].id); },
+  });
 
-  const activeCode = storedCode;
+  const activeCode = useLivePageStore((s) => s.activeCode);
+  // Active tab's saved viewport (ADR-0069 A안) → LiveChartRoot restores it on
+  // cold switch-back. Stable reference (the tab object's viewport field) across
+  // SSE renders; only rewritten on switch-away, so it doesn't thrash the chart.
+  const restoreViewport = tabs.find((t) => t.id === activeTabId)?.viewport ?? null;
   useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -89,10 +104,20 @@ export function LivePage() {
         // minmax(0, 1fr) on the workarea row prevents the chart canvas's
         // intrinsic size from pushing the row past viewport height.
         gridTemplateRows:
-          'var(--h-live-header) auto var(--h-pricestrip) var(--h-toolbar) minmax(0, 1fr)',
+          'var(--h-live-header) 40px auto var(--h-pricestrip) var(--h-toolbar) minmax(0, 1fr)',
       }}
     >
       <LiveHeader />
+      <LiveTabBar
+        tabs={tabs}
+        activeTabId={activeTabId}
+        activeLoading={isPastCandlesLoading}
+        atCap={tabs.length >= TABS_SOFT_CAP}
+        onFocus={focusTab}
+        onClose={closeTab}
+        onReorder={reorderTabs}
+        onNewTab={focusLiveSearch}
+      />
       <LiveStateBanner
         primary={activeCode && banner.primary === 'watchlist_empty' ? null : banner.primary}
         stack={banner.stack}
@@ -115,6 +140,7 @@ export function LivePage() {
         isPastCandlesLoading={isPastCandlesLoading}
         isExtending={isExtending}
         pastDataWarnings={pastDataWarnings}
+        restoreViewport={restoreViewport}
         live={live}
       />
       {indicatorPanelOpen && (

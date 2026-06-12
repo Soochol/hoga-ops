@@ -546,7 +546,7 @@ class BrokerSeriesResponse(BaseModel):
 
 class WatchlistFolder(BaseModel):
     """A named, ordered grouping that OWNS its ordered member Codes (v3,
-    ADR-0069). `member_codes` order = the folder's in-display order. `id` is
+    ADR-0070). `member_codes` order = the folder's in-display order. `id` is
     backend-minted and stable across renames. STORE model — the wire ships
     WatchlistFolderView (member_codes dropped, ADR-0004 Entity≠Wire)."""
 
@@ -584,7 +584,7 @@ class WatchlistDocument(BaseModel):
 # ships the shape the frontend consumes verbatim: folders {id,name,order} and
 # entries EXPLODED to one (folder, code) row each (a multi-folder Code appears
 # once per folder). The backend route builds these from the document — no
-# client adapter (ADR-0069 option B).
+# client adapter (ADR-0070 option B).
 
 
 class WatchlistFolderView(BaseModel):
@@ -613,7 +613,7 @@ class WatchlistAddRequest(BaseModel):
 
 
 class MemberAddRequest(BaseModel):
-    """Body for POST /api/watchlist/folders/{folder_id}/members (v3, ADR-0069)."""
+    """Body for POST /api/watchlist/folders/{folder_id}/members (v3, ADR-0070)."""
     code: str = Field(pattern=CODE_PATTERN)
 
 

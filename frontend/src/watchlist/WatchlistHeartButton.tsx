@@ -4,7 +4,7 @@ import { useWatchlistMembership } from './useWatchlistMembership';
 import { WatchlistGroupPicker } from './WatchlistGroupPicker';
 
 /**
- * 공용 관심종목 하트 (v3, ADR-0069). 채움 = code가 ≥1 그룹에 소속. 클릭하면 그룹 선택
+ * 공용 관심종목 하트 (v3, ADR-0070). 채움 = code가 ≥1 그룹에 소속. 클릭하면 그룹 선택
  * 팝업(WatchlistGroupPicker)을 자기 위치에 연다 — "미분류" 단일 추가 대상이 없어진 v3에선
  * 모든 하트가 "어디에 넣을지"를 고른다. 5곳(스크리너 페이지·패널·라이브 상태바·라이브 검색·
  * 편집모달)이 이 컴포넌트를 공유한다.

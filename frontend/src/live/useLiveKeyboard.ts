@@ -16,6 +16,9 @@ import { useRightRailStore } from '../state/rightRail';
 export interface UseLiveKeyboardOpts {
   onNextCode?: () => void;
   onPrevCode?: () => void;
+  onNextTab?: () => void;
+  onPrevTab?: () => void;
+  onSelectTabIndex?: (index: number) => void;
 }
 
 export function shouldIgnoreEvent(target: EventTarget | null): boolean {
@@ -42,6 +45,14 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
           opts.onPrevCode?.();
           e.preventDefault();
           break;
+        case ']':
+          opts.onNextTab?.();
+          e.preventDefault();
+          break;
+        case '[':
+          opts.onPrevTab?.();
+          e.preventDefault();
+          break;
         case 'w':
           useRightRailStore.getState().togglePanel('watchlist');
           e.preventDefault();
@@ -57,9 +68,18 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
             e.preventDefault();
           }
           break;
+        default:
+          // 1~9 → 0-based 탭 인덱스. '9'→index 8은 의도적으로 도달 가능하나
+          // 소프트캡 8(TABS_SOFT_CAP)에선 실재하는 탭이 없어 LivePage가 무시한다.
+          // 정규식은 자기설명적이고 다중문자 key(예: 'F1')의 NaN 경로를 원천 차단.
+          if (/^[1-9]$/.test(e.key) && opts.onSelectTabIndex) {
+            opts.onSelectTabIndex(Number(e.key) - 1);
+            e.preventDefault();
+          }
+          break;
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [opts.onNextCode, opts.onPrevCode]);
+  }, [opts.onNextCode, opts.onPrevCode, opts.onNextTab, opts.onPrevTab, opts.onSelectTabIndex]);
 }

@@ -204,7 +204,7 @@ def test_seed_copies_watchlist_stripping_capture_fields(tmp_path: Path):
     doc = load_document(tmp_path)
     assert {f.name for f in doc.folders} == {"반도체"}
     assert {e.code for e in doc.entries} == {"005930", "035720"}
-    # folder_id derived from the watchlist folder's member_codes (v3, ADR-0069):
+    # folder_id derived from the watchlist folder's member_codes (v3, ADR-0070):
     # both Codes are members of 반도체, so both land in f_0000000a.
     by_code = {e.code: e for e in doc.entries}
     assert by_code["005930"].folder_id == "f_0000000a"

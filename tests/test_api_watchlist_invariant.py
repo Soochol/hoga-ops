@@ -1,4 +1,4 @@
-"""불변식 단일 소유(ADR-0069): save_document 가 orphan entry 를 prune; read 는 안 함."""
+"""불변식 단일 소유(ADR-0070): save_document 가 orphan entry 를 prune; read 는 안 함."""
 from __future__ import annotations
 import json
 

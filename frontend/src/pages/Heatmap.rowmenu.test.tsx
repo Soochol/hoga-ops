@@ -28,6 +28,12 @@ const { setActiveCode } = vi.hoisted(() => ({ setActiveCode: vi.fn() }));
 vi.mock('../state/livePage', () => ({
   useLivePageStore: (sel: (s: { setActiveCode: typeof setActiveCode }) => unknown) => sel({ setActiveCode }),
 }));
+// 탭 도입(D5): useJumpToLive가 실제 liveTabs를 import → 로드 시 useLivePageStore.subscribe
+// 호출. 위 livePage 모킹은 selector만 제공하므로 liveTabs도 모킹해 모듈 로드 crash를 막는다.
+const { openOrFocusTab } = vi.hoisted(() => ({ openOrFocusTab: vi.fn() }));
+vi.mock('../state/liveTabs', () => ({
+  useLiveTabsStore: (sel: (s: { openOrFocusTab: typeof openOrFocusTab }) => unknown) => sel({ openOrFocusTab }),
+}));
 
 import { Heatmap } from './Heatmap';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';

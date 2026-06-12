@@ -3,6 +3,90 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.20.0] - 2026-06-12
+
+### Added
+- **`/live` 탭별 차트 viewport 유지** (ADR-0069 A안): 탭을 전환했다가 돌아와도 **보던 줌·스크롤
+  위치가 그대로 복원**된다. 멀티탭(v0.7.17.0) 도입 후 탭별로 보존되던 건 종목코드·타임프레임·
+  `historicalFromDate`(데이터 fetch 깊이)뿐이라, 전환 시 차트가 항상 기본뷰(분봉=최신 300봉 snap /
+  일·주·월=fitContent)로 리셋되던 문제를 해소한다. **시간 앵커 방식** — 논리 인덱스가 아니라 우측
+  엣지의 real-ms + 봉 스팬(줌)을 저장하므로, cold-swap 재페치로 축이 재구성돼도 새 축에 재투영해
+  같은 위치로 복귀한다(기존 `useViewportBackfill`의 prepend 재투영 프리미티브 재사용). 라이브 엣지에
+  있던 탭은 복귀 후에도 최신 봉을 추종(한 봉 뒤로 밀리지 않음). 신규 `LiveTab.viewport{rightEdgeMs,
+  barSpan,atLiveEdge}` + 순수 헬퍼 `viewportAnchor.ts`(`viewportFromRanges`·`computeRestoreRange`·
+  `realMsToVirtualSeconds`); 캡처는 `registerViewportCapture` 콜백으로 전환 직전 outgoing 탭에 동기
+  스냅샷, 복원은 `LiveChartRoot` initial-view effect의 새 분기. 타임프레임 변경 시 viewport 클리어
+  (봉 스팬이 타임프레임 간 무의미), `live.tabs.v1` 영속화에 viewport 포함(구버전 스냅샷은 null 폴백).
+
+### Fixed
+- **`/live` 과거-팬 탭 복귀 시 reveal cover 잔류 가능성 해소**: 초기-뷰 effect의 `historicalFromDate`
+  게이트가 `reveal()` 없이 early-return해, 과거로 팬한(hfd≠null) 탭으로 cold 복귀할 때 불투명
+  cover가 차트 위에 남을 수 있던 잠재 버그를 무조건 reveal(idempotent)로 닫는다. 세션 내 팬은 이미
+  노출된 상태라 no-op.
+
+## [0.7.19.0] - 2026-06-11
+
+### Changed
+- **관심맵 색 가독성 — 평면 보드 + 색 정돈** (heatmap-flat-color, ADR-0068 영역): 같은 빨강·파랑이
+  4개 표면(섹터 스트립·헤더 틴트·캔들 글리프·등락칩)에 깔려 "잉크 밀도"가 높던 가독성 문제를 두 축으로
+  정돈한다. **(L1) 폴더 헤더 밴드 틴트 제거**(`HEAT_HEADER_MAX_ALPHA` 삭제) — 섹터 온도는 섹터
+  스트립이 이미 표현하므로 중복 레이어 제거. **(L3-B) 폴더 평면화**: 카드 박스·테두리 격자 대신
+  투명 + `--border-strong` 좌측 스파인 + `--bg-input` 헤더로 chrome 소거(그룹은 여전히 보드 1차 앵커).
+  **등락칩 임계 채색**: 연속 그라데이션 → 신규 `heat.ts::heatChipBg`로 **|등락률| ≥ 8%일 때만 평면색**
+  (급등락 종목만 배경 채색, 0~8%는 투명). **L2(캔들 회색화)는 미채택** — v0.7.16.0 캔들 글리프의
+  적/청(종가 vs 시가) 색 규칙을 그대로 유지(공존, supersede 아님). 색약 보조 다중 인코딩(농도+▲▼+부호+
+  숫자)·"히트색=가격방향 카테고리"·새 hue 금지 불변식 준수(DESIGN.md §Color). 설계/계획:
+  `docs/superpowers/{specs,plans}/2026-06-11-heatmap-flat-color*`.
+
+## [0.7.18.0] - 2026-06-11
+
+### Added
+- **`/api/range` 호가지표 1분 분리 캐시 (past-candles 패턴 복제)**: 과거 완료일의 호가비·체결강도를
+  `kis-past-indicators/{code}/{source}/{date}.{ratio|fill}.json`에 1분 단위로 캐시하고, 3/5/10/15/30분
+  요청은 읽을 때 재집계한다 — **호가비 = 윈도 마지막 non-(0,0) 대표값**(fully-auction 버킷의 `(0,0)`
+  센티넬과 동치), **체결강도 = 합**. 동시호가일 포함 6개 타임프레임 전부에서 직접 `bucket_ms=N` SQL과
+  byte-동치임을 테스트로 증명. 과거=디스크 영구·오늘=바이패스(아직 promote 중, ADR-0043)·sub-minute
+  (1000ms /replay)=직접 계산. 실측 A/B(005930 동일 데이터): `/api/range` warm 30d 946→283ms·90d
+  984→283ms(~3.4×); 슬라이스별 호가비 1656→61ms(27×)·체결강도 1100→61ms(18×). 사용자가 "팬 시 캔들
+  로딩 느림"으로 느끼던 `extending` 게이트 플로어(511~989ms)를 직접 줄인다. 신규
+  `hoga/api/indicator_reaggregate.py`·`hoga/api/past_indicators_cache.py`; `build_range_bundle`이
+  `engine.indicators_cache`(QueryEngine lazy 프로퍼티)를 slice 빌더에 주입.
+
+### Changed
+- **bundle.py: dense-bin 확장 fold를 `_expand_dense_bins` 순수 헬퍼로 추출** — `build_volume_profile_slice`↔
+  `build_volume_profile_range`의 복붙(최고가 볼륨 누락 방어 불변식, 한 토큰만 차이)을 1곳화. 행위 불변.
+- **CONTEXT.md: "라이브 호가 보조지표 — 과거/당일 분리 캐시" 도메인 용어 추가** — `pastCachedProjector.ts`가
+  참조하던 빈 앵커 해소(프론트 per-틱 분리 캐시 + 백엔드 `kis-past-indicators` 디스크 트윈을 한 항목에 명문화).
+
+### Fixed
+- **`resolve_source` 테스트 형태 누수 제거** — 프로덕션의 `isinstance(sd_dir, Path)`(MagicMock data_dir
+  대응) 분기 + 미사용 `Path` import를 삭제하고 fake는 tmp_path 백킹으로 전환. mock 타입에 분기하는
+  프로덕션 코드 제거.
+
+## [0.7.17.0] - 2026-06-11
+
+### Added
+- **`/live` 멀티 종목 탭** (ADR-0069): 여러 종목을 탭으로 열어두고 전환하며 본다 — `/replay`→`/live`
+  통합(2026-05-29) 때 제거됐던 멀티탭 모델의 복원. 신규 `useLiveTabsStore`가 탭 목록을 소유하고
+  활성 탭이 기존 `useLivePageStore.{activeCode, candleTimeframe, historicalFromDate}`의 **단일 writer**가
+  된다(읽기 소비처 15곳 무수정). **cold-swap 뷰어** — 활성 탭만 프론트 구독, 백그라운드 warm·디스크
+  캡처는 기존 **Live Set**(ADR-0067)이 자동 책임하므로 탭은 KIS 구독 한도와 무관. 탭 라벨=종목명
+  (코드 폴백), **타임프레임·팬 위치는 탭별(per-tab)** / 지표 prefs는 전역(삭제했던 `Map<tabId>`
+  인디렉션 부활 안 함). 신규 `LiveTabBar`(DESIGN.md §Tabs 명세 — 활성 2px teal 액센트·상태점·종목명·
+  × 닫기+미들클릭·＋·`N/8` 카운터). 진입점(헤더 검색·관심종목·스크리너·히트맵)은 공통 `useJumpToLive`로
+  탭 열기/포커스 재배선. localStorage `live.tabs.v1` 복원 + `live.page.v1` 마이그레이션. 비수정자
+  키보드 전환(`[`/`]`·`1`-`9`, 브라우저 예약 Ctrl 회피), 네이티브 HTML5 드래그 재정렬. 설계·계획·결정:
+  `docs/superpowers/{specs,plans}/2026-06-11-live-tabs*`, `docs/adr/0069-live-multi-tab-reintroduction.md`.
+
+### Changed
+- **`liveTabs` 라이브 와이어링을 `initLiveTabsSync()` seam으로** (C2 아키텍처 deepening): import 시점에
+  실행되던 `attachPersistence` + page→tab 미러 구독을 명시적 멱등 init(`main.tsx`에서 1회 호출, HMR
+  dispose)으로 이동 — import 부작용 제거로 liveTabs를 transitive import하는 무관 테스트가 구독을
+  상속하지 않는다.
+- **CONTEXT.md stale "per-tab" → "global" 정정**: 멀티탭 제거 후 안 치워진 지표 토글 표현
+  (`auctionWindowMask`·`ratioOutlierFilter`·`fillStrengthCumulative`)을 실제 저장소(전역 `ChartViewPrefs`)에
+  맞게 정정. `activeCode` 글로서리에 "활성 Live Tab 투영" 추가.
+
 ## [0.7.16.0] - 2026-06-11
 
 ### Changed

@@ -18,6 +18,7 @@ import { useLivePageStore } from '../state/livePage';
 import { createChartEx, TickMarkType } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { INTER_SEGMENT_GAP_MS } from '../util/time';
+import { realMsToVirtualSeconds } from './viewportAnchor';
 import type { RangeBundle } from '../api/types';
 
 vi.mock('lightweight-charts', async () => {
@@ -452,6 +453,29 @@ describe('LiveChartRoot', () => {
     await flushFrames(3);
     // Still loading → hold the cover so the candles can't appear at the wrong zoom.
     expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
+  });
+
+  it('reveals on a cold restore of a scrolled-back tab without a saved viewport (historicalFromDate gate)', async () => {
+    // Regression (ADR-0069 A안 side-fix): the historicalFromDate gate in the
+    // initial-view effect used to `return` WITHOUT reveal(). Switching back to a
+    // tab that had panned past history (hfd != null) but carries NO saved
+    // viewport — a migrated tab, or one whose viewport was cleared by a
+    // timeframe change — left the opaque cover wedged over a fully-drawn chart.
+    // The fix reveals unconditionally on that gate (reveal() is idempotent, so an
+    // in-session pan where the chart is already revealed is a harmless no-op).
+    useLivePageStore.setState({ historicalFromDate: '20260601' }); // scrolled-back tab
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
   });
 
   // (c) /diagnose 2026-06-09 후속: rate-limit/부분로딩 상태 표시. 백엔드 data_warnings를
@@ -1025,6 +1049,91 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} />,
     );
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
+  });
+
+  // ── 탭 viewport 복원 (ADR-0069 A안) ──
+  // The restore branch runs in the initial-view effect BEFORE the
+  // historicalFromDate gate / default minute window. Seam limit (same as the
+  // reposition tests above): setData is a no-op so we lock the CALL CONTRACT
+  // (the reprojected target / live-edge pin), not the rendered pixels.
+  it('restore: a scrolled-back tab reprojects its saved time anchor to a logical range', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const rightEdgeMs = TODAY_OPEN_MS + 2 * 3600_000; // 2h past open, mid-session
+    const barSpan = 120;
+    render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={{ rightEdgeMs, barSpan, atLiveEdge: false }} />,
+      { wrapper },
+    );
+    // The component builds a today-only real-anchored axis (origin = today open).
+    // idx = mock timeToIndex(realMsToVirtualSeconds(axis, rightEdgeMs)) (round of
+    // an already-integer value). Computed here with the same axis math.
+    const axis = createVirtualAxis(
+      [{ date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS }],
+      TODAY_OPEN_MS,
+    );
+    const idx = realMsToVirtualSeconds(axis, rightEdgeMs);
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: idx - barSpan, to: idx });
+    // NOT a live-edge restore → no scrollToPosition snap.
+    expect(ts.scrollToPosition).not.toHaveBeenCalled();
+  });
+
+  it('restore: a live-edge tab pins the latest bar with the saved zoom + scrollToPosition', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    // 100 candles + saved span 50 → from max(0,100-50)=50, to 105. Distinct from
+    // the default 300-window ({from:0,to:105}) so this proves the live-edge branch.
+    render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={{ rightEdgeMs: TODAY_OPEN_MS + 100 * 60_000, barSpan: 50, atLiveEdge: true }} />,
+      { wrapper },
+    );
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 50, to: 105 });
+    expect(ts.scrollToPosition).toHaveBeenCalledWith(0, false);
+  });
+
+  it('restore: no saved viewport → the default 300-bar minute window (regression)', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false} /> /* restoreViewport omitted */,
+      { wrapper },
+    );
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 105 });
+  });
+
+  it('restore: an anchor older than the earliest loaded bar falls through to default (no degenerate {0,0})', () => {
+    // Pre-landing review P2: lwc timeToIndex(findNearest) CLAMPS a too-early
+    // anchor to bar 0 (does NOT return null), which would pin a degenerate
+    // {from:0,to:0} window. The earliest-bar guard must instead fall through to
+    // the default view. Candles start at TODAY_OPEN+60s; anchor at TODAY_OPEN
+    // (before the first bar).
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={{ rightEdgeMs: TODAY_OPEN_MS, barSpan: 120, atLiveEdge: false }} />,
+      { wrapper },
+    );
+    // Default minute window, NOT {from:0,to:0}.
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 105 });
   });
 
   // ── 진행 루프(스텝 2..N): isExtending falling edge + 빈영역 → 다음 스텝 자가 dispatch ──

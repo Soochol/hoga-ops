@@ -166,7 +166,7 @@ export function ScreenerDrawer() {
                     active={r.code === activeCode}
                     ariaLabel={`${r.name} ${r.code} 차트 열기`}
                     testId={`screener-row-${r.code}`}
-                    onClick={() => openLive(r.code)}
+                    onClick={() => openLive(r.code, r.name)}
                     trailingAction={<WatchlistHeartButton code={r.code} name={r.name} variant="row" />}
                   />
                 ))}

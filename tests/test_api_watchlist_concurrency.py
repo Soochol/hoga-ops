@@ -1,6 +1,6 @@
 """Every watchlist writer round-trips the WHOLE document, so folders (and their
 member_codes) survive a sequence of writers. See ADR-0055 rule 2 ("the whole
-document is the unit of read and write") and ADR-0069 (folders own member_codes);
+document is the unit of read and write") and ADR-0070 (folders own member_codes);
 the design spec's Blocker #1 (entries-only saves would let the Scheduler wipe
 folders on every capture success).
 
@@ -44,6 +44,6 @@ def test_folders_survive_multi_writer_document_roundtrip(tmp_path: Path):
     assert set(doc.folders[0].member_codes) == {"005930", "000660", "035720"}
     marks = {e.code: e.last_success_date for e in doc.entries}
     assert marks["005930"] == "20260102"
-    # invariant: every entry code is a member of some folder (ADR-0069)
+    # invariant: every entry code is a member of some folder (ADR-0070)
     members = {c for f in doc.folders for c in f.member_codes}
     assert {e.code for e in doc.entries} == members

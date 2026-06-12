@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useWatchlist } from './useWatchlist';
 
 /**
- * Single owner of watchlist membership (v3, ADR-0069). Call ONCE per component
+ * Single owner of watchlist membership (v3, ADR-0070). Call ONCE per component
  * (not per row). Derives a Code → set-of-folder-ids map from the exploded wire
  * entries (a multi-folder Code appears once per folder). Returns an O(1)
  * `isMember` (in ≥1 folder → heart filled) and `folderIdsOf` (the WatchlistGroupPicker's

@@ -17,7 +17,7 @@ function wrapper(rows: { code: string; folder_id: string }[]) {
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
-describe('useWatchlistMembership (v3, ADR-0069)', () => {
+describe('useWatchlistMembership (v3, ADR-0070)', () => {
   it('isMember reflects whether the code is in ≥1 folder', () => {
     const { result } = renderHook(() => useWatchlistMembership(),
       { wrapper: wrapper([{ code: '005930', folder_id: 'f_a' }]) });

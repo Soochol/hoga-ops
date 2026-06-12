@@ -3,7 +3,7 @@ import { groupByFolder } from './grouping';
 import type { WatchlistEntry } from '../api/watchlist';
 import fx from './__fixtures__/watchlistDisplayOrder.json';
 
-// 표시 순서 계약(ADR-0069, deepening 2): 백엔드 display_ordered_codes 와 같은 공유 골든
+// 표시 순서 계약(ADR-0070, deepening 2): 백엔드 display_ordered_codes 와 같은 공유 골든
 // 픽스처를 읽어, groupByFolder 평탄화 + 첫등장 dedup 이 백엔드 display_order 와 일치함을
 // 검증한다. 한쪽 정렬 규칙만 바뀌어도 한쪽 테스트가 깨지도록 계약을 코드로 박는다.
 // (fx.folders 는 store shape — member_codes 보유; 와이어 WatchlistFolder 는 {id,name,order}.)

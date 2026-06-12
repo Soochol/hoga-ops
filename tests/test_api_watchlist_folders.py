@@ -121,7 +121,7 @@ def test_rename_folder_keeps_id(tmp_path):
 
 
 def test_delete_folder_drops_sole_members_keeps_shared(tmp_path):
-    """v3 (ADR-0069): deleting a folder drops a Code that was only in it
+    """v3 (ADR-0070): deleting a folder drops a Code that was only in it
     (entry deleted), but a Code also in another folder survives."""
     from hoga.api.watchlist import create_folder, delete_folder, load_document
     f1 = asyncio.run(create_folder(tmp_path, name="스윙"))

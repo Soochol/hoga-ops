@@ -2,7 +2,7 @@
 
 - 날짜: 2026-06-11
 - 상태: 설계 (구현 전)
-- 관련: **ADR-0069(이 설계를 확정·기록 — grill-with-docs 정정 반영)**,
+- 관련: **ADR-0070(이 설계를 확정·기록 — grill-with-docs 정정 반영)**,
   `2026-05-26-watchlist-daily-scheduler-design.md`(폴더 v2), `2026-05-31` 폴더 CRUD,
   ADR-0004(wire-model-no-adapter — 옵션 B의 근거), ADR-0065(watchlist = 대체 불가 사용자 데이터,
   read 경로에서 wipe 금지), ADR-0068(heatmap은 watchlist와 별도 저장소 — 본 변경과 무관)
@@ -61,7 +61,7 @@ WatchlistEntry  (code로 유일)            WatchlistEntry  (code로 유일, 순
 - `entry`가 순수 백필 레코드가 되어 백필 루프(`load_watchlist` → 스케줄러/catch-up)는
   코드 리스트만 보면 되고 폴더와 독립적으로 유지된다.
 
-### 와이어 형식: 펼친 entries = 소비자 shape, 백엔드 투영 (옵션 B, ADR-0004·ADR-0069 / grill-with-docs 정정)
+### 와이어 형식: 펼친 entries = 소비자 shape, 백엔드 투영 (옵션 B, ADR-0004·ADR-0070 / grill-with-docs 정정)
 
 > ⚠️ **정정(2026-06-11 grill-with-docs):** 직전 초안의 옵션 C(클라 `useWatchlist.select` 어댑터)는
 > **ADR-0004(wire-model-no-adapter)를 위반**한다(API 경계 pass-through 어댑터·two-shapes). 폐기하고

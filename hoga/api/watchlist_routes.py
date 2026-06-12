@@ -1,4 +1,4 @@
-"""FastAPI router for /api/watchlist (v3, ADR-0069).
+"""FastAPI router for /api/watchlist (v3, ADR-0070).
 
 See spec docs/superpowers/specs/2026-06-11-watchlist-multi-membership-screener-heart-design.md
 and 2026-05-26-watchlist-daily-scheduler-design.md.
@@ -70,7 +70,7 @@ def _project(doc: WatchlistDocument, *, next_run_at_ms: int) -> WatchlistRespons
     """Store doc (folders own member_codes + slim entries) → wire WatchlistResponse
     (folders {id,name,order} + entries EXPLODED to one (folder, code) row each;
     a multi-folder Code appears once per folder). Backend projection, no client
-    adapter (ADR-0004/0069 option B). Drift (a member with no entry) is logged
+    adapter (ADR-0004/0070 option B). Drift (a member with no entry) is logged
     loudly and skipped — never crashes the read (ADR-0065)."""
     by_code = {e.code: e for e in doc.entries}
     entries: list[WatchlistEntryView] = []
@@ -187,7 +187,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
 
     @router.delete("/folders/{folder_id}", status_code=204)
     async def delete_watchlist_folder(folder_id: str) -> None:
-        # v3: destructive — a Code only in this folder leaves the Watchlist (ADR-0069).
+        # v3: destructive — a Code only in this folder leaves the Watchlist (ADR-0070).
         # The UI confirms before an orphaning delete (P6); the server here is the
         # confirmed delete.
         try:

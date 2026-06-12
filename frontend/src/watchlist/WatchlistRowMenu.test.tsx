@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { WatchlistRowMenu } from './WatchlistRowMenu';
 
-describe('WatchlistRowMenu (v3, ADR-0069)', () => {
+describe('WatchlistRowMenu (v3, ADR-0070)', () => {
   it('renders 그룹 편집 + 관심 해제 (no legacy 그룹으로 이동)', () => {
     render(<WatchlistRowMenu x={10} y={20} name="삼성전자"
       onEditGroups={vi.fn()} onRemove={vi.fn()} onClose={vi.fn()} />);

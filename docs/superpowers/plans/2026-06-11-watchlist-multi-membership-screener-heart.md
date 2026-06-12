@@ -4,7 +4,7 @@
 
 **Goal:** 스크리너 하트 클릭 시 관심 그룹을 고르는 팝업을 띄우고, 한 종목이 여러 그룹에 동시에 속할 수 있게 한다.
 
-**Architecture:** watchlist 저장소를 v2(종목당 폴더 1개 `folder_id`)에서 v3(폴더가 정렬된 `member_codes` 리스트 소유)로 전환. **API 응답은 펼친 entries `(code, folder_id, order)`(= v2 와이어 shape)로 백엔드 라우트가 투영**(저장소 Entity ≠ 와이어, ADR-0004; 클라 어댑터 없음 — 옵션 B). 프론트 데이터 계층(타입·`useWatchlist`·`grouping`)은 무변경. 멤버십은 1급 API(`POST/DELETE .../members`)로 토글. heatmap은 별도 저장소(ADR-0068)라 무관. **이 계획의 권위 설계는 ADR-0069**(grill-with-docs 정정 반영) — 아래 "개정 배너"가 커밋된 본문보다 우선.
+**Architecture:** watchlist 저장소를 v2(종목당 폴더 1개 `folder_id`)에서 v3(폴더가 정렬된 `member_codes` 리스트 소유)로 전환. **API 응답은 펼친 entries `(code, folder_id, order)`(= v2 와이어 shape)로 백엔드 라우트가 투영**(저장소 Entity ≠ 와이어, ADR-0004; 클라 어댑터 없음 — 옵션 B). 프론트 데이터 계층(타입·`useWatchlist`·`grouping`)은 무변경. 멤버십은 1급 API(`POST/DELETE .../members`)로 토글. heatmap은 별도 저장소(ADR-0068)라 무관. **이 계획의 권위 설계는 ADR-0070**(grill-with-docs 정정 반영) — 아래 "개정 배너"가 커밋된 본문보다 우선.
 
 **Tech Stack:** Python/FastAPI/Pydantic v2 + pytest (백엔드), React/TypeScript/@tanstack/react-query/@dnd-kit/Tailwind + vitest/testing-library (프론트).
 
@@ -16,7 +16,7 @@
 
 ---
 
-## ⚠️ 개정 배너 (grill-with-docs / ADR-0069) — 본문보다 우선 적용
+## ⚠️ 개정 배너 (grill-with-docs / ADR-0070) — 본문보다 우선 적용
 
 이 계획은 커밋 후 grill-with-docs로 ADR·CONTEXT와 교차검증해 정정되었다. 아래 델타가
 해당 태스크의 커밋된 본문을 **대체**한다(본문은 옵션 C·top-13 등 폐기된 초안을 담고 있음):
@@ -49,7 +49,7 @@
    ("이 N종목이 관심종목에서 빠집니다 — 계속?"). 고아 코드 수는 프론트가 `data.entries`(펼친)에서
    `folder_id===fid 인데 그 code가 다른 folder_id 행에 없음`으로 계산. 신규 태스크로 추가.
 
-5. **ADR-0069** 가 권위 설계. 본문이 ADR-0069와 어긋나면 ADR-0069·이 배너를 따른다.
+5. **ADR-0070** 가 권위 설계. 본문이 ADR-0070와 어긋나면 ADR-0070·이 배너를 따른다.
 
 ---
 

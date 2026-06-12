@@ -1,4 +1,4 @@
-"""Watchlist HTTP route tests (v3, ADR-0069). See spec 2026-05-26 / 2026-06-11."""
+"""Watchlist HTTP route tests (v3, ADR-0070). See spec 2026-05-26 / 2026-06-11."""
 from __future__ import annotations
 
 import datetime as dt

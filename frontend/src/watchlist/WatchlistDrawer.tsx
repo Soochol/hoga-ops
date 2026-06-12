@@ -253,7 +253,7 @@ export function WatchlistDrawer() {
   useDismissablePopover(editMenu, editMenuRef, () => setEditMenu(false));
   const [menu, setMenu] =
     useState<{ x: number; y: number; code: string; name: string; folderId: string | null } | null>(null);
-  // v3 "그룹 편집" — 행 메뉴/하트가 여는 멤버십 피커(ADR-0069 P5).
+  // v3 "그룹 편집" — 행 메뉴/하트가 여는 멤버십 피커(ADR-0070 P5).
   const [groupPicker, setGroupPicker] =
     useState<{ code: string; name: string; x: number; y: number } | null>(null);
 
@@ -294,7 +294,7 @@ export function WatchlistDrawer() {
     if (ids) reorderFoldersM.mutate(ids);
   };
 
-  // v3 폴더 삭제는 파괴적(ADR-0069 P6): 이 폴더에만 있는 코드는 관심종목에서 빠진다.
+  // v3 폴더 삭제는 파괴적(ADR-0070 P6): 이 폴더에만 있는 코드는 관심종목에서 빠진다.
   // 고아가 생기면 명시적으로 확인(ADR-0065 정신 — 조용한 유실 금지).
   const deleteFolderWithConfirm = (folderId: string) => {
     const entries = data?.entries ?? [];
@@ -416,7 +416,7 @@ export function WatchlistDrawer() {
                           pct={q?.change_pct ?? null}
                           changeWon={q?.change_won ?? null}
                           active={entry.code === activeCode}
-                          onPick={() => onPick(entry.code)}
+                          onPick={() => onPick(entry.code, entry.name)}
                           onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                           onDelete={() => removeM.mutate(entry.code)}
                           collectionBadge={badge}

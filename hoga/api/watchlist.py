@@ -55,7 +55,7 @@ def _slim(e: dict) -> dict:
 
 
 def _migrate(raw: dict) -> dict:
-    """어떤 on-disk 모양이든 v3 dict 로 정규화(데이터 보존, ADR-0065/0069).
+    """어떤 on-disk 모양이든 v3 dict 로 정규화(데이터 보존, ADR-0065/0070).
 
     - v3: 방어적 통과(member_codes 보장, entry slim).
     - v1/v2: folder_id/order 를 폴더별 member_codes 로 접고, 어느 폴더에도 없던
@@ -107,7 +107,7 @@ def _migrate(raw: dict) -> dict:
 def _reindex(doc: WatchlistDocument) -> WatchlistDocument:
     """folders[].order 를 0..N-1 로 정규화(현재 order 후 위치순; 물리 리스트 순서는
     보존 — reorder_folders 계약). 각 폴더 member_codes 중복 제거(첫 등장 유지).
-    entry 는 손대지 않음(불변식은 write/마이그레이션 책임, ADR-0069). Idempotent."""
+    entry 는 손대지 않음(불변식은 write/마이그레이션 책임, ADR-0070). Idempotent."""
     fsorted = sorted(range(len(doc.folders)), key=lambda i: (doc.folders[i].order, i))
     fo = {orig: rank for rank, orig in enumerate(fsorted)}
 
@@ -126,7 +126,7 @@ def _reindex(doc: WatchlistDocument) -> WatchlistDocument:
 
 
 def _prune_orphans(doc: WatchlistDocument) -> WatchlistDocument:
-    """불변식 강제(ADR-0069): entry 존재 ⟺ 어떤 폴더 member_codes 에 있음. 어느 폴더에도
+    """불변식 강제(ADR-0070): entry 존재 ⟺ 어떤 폴더 member_codes 에 있음. 어느 폴더에도
     없는 entry(orphan)를 제거한다. **write 경로(save_document)에서만** — read 경로(load)는
     drift를 보존·loud-log해야 한다(ADR-0065: read 에서 wipe 금지). 생성 절반(모든 member 에
     entry 존재)은 disk-seed 가 필요해 add_member(write 경로)가 책임진다. 순수·idempotent.
@@ -211,7 +211,7 @@ async def add_member(
     today_kst_date: str,
     folder_id: str,
 ) -> WatchlistEntry:
-    """code 를 folder_id 의 멤버로 추가(v3, ADR-0069). entry 가 없으면 생성하고
+    """code 를 folder_id 의 멤버로 추가(v3, ADR-0070). entry 가 없으면 생성하고
     last_success 를 디스크에서 시드(첫 Watchlist 진입). 이미 멤버면 멱등 no-op.
     폴더 없으면 FolderNotFoundError. 불변식 {e.code}==⋃member_codes 유지."""
     # Local import: disk_state -> watchlist would cycle if at module top.
@@ -249,7 +249,7 @@ async def remove_member(data_dir: Path, *, code: str, folder_id: str) -> None:
         new_folders = [f.model_copy(update={"member_codes": [c for c in f.member_codes if c != code]})
                        if f.id == folder_id else f for f in doc.folders]
         # member_codes 만 손댄다 — code 가 어느 폴더에도 없게 되면 save_document 가 orphan
-        # entry 를 자동 prune 한다(불변식 단일 소유, ADR-0069).
+        # entry 를 자동 prune 한다(불변식 단일 소유, ADR-0070).
         save_document(data_dir, doc.model_copy(update={"folders": new_folders}))
 
 
@@ -367,7 +367,7 @@ async def rename_folder(data_dir: Path, *, folder_id: str, name: str) -> None:
 
 
 async def delete_folder(data_dir: Path, *, folder_id: str) -> None:
-    """폴더 삭제(v3, ADR-0069). 그 폴더에만 있던 코드는 orphan → entry 삭제
+    """폴더 삭제(v3, ADR-0070). 그 폴더에만 있던 코드는 orphan → entry 삭제
     (Watchlist 탈락, 파괴적); 다른 폴더에도 있으면 entry 유지. UI 는 고아가 생기는
     삭제 전 사용자에게 확인한다(P6) — 이 함수 자체는 확정 삭제."""
     async with _lock:

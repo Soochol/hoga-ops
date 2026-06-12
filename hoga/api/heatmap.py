@@ -129,7 +129,7 @@ def seed_from_watchlist_if_absent(data_dir: Path) -> None:
     folder_id is copied verbatim (folder ids are document-scoped, no
     cross-store registry, so the same id in both files is safe — grilling G5).
 
-    v3 (ADR-0069): the watchlist now stores membership on folder.member_codes
+    v3 (ADR-0070): the watchlist now stores membership on folder.member_codes
     (entries are slim), and a Code may be in several folders. The heatmap is a
     single-folder board, so each Code is seeded into the FIRST folder it appears
     in (display order) — a one-time snapshot, thereafter independent.

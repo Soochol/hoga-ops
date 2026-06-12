@@ -1,4 +1,4 @@
-"""Watchlist persistence + mutation tests (v3, ADR-0069). See spec 2026-05-26."""
+"""Watchlist persistence + mutation tests (v3, ADR-0070). See spec 2026-05-26."""
 from __future__ import annotations
 
 import json
@@ -10,7 +10,7 @@ import pytest
 
 async def _seed(tmp_path: Path, *, code: str, name: str, today_kst_date: str):
     """v3 seed: ensure a default folder exists, then add the code as a member.
-    (v2 add_entry는 폐지 — 멤버십이 entry 존재를 정의한다, ADR-0069.)"""
+    (v2 add_entry는 폐지 — 멤버십이 entry 존재를 정의한다, ADR-0070.)"""
     from hoga.api.watchlist import create_folder, add_member, load_document
     doc = load_document(tmp_path)
     fid = doc.folders[0].id if doc.folders else (await create_folder(tmp_path, name="기본")).id
@@ -27,7 +27,7 @@ def test_load_returns_empty_when_file_missing(tmp_path: Path):
 def test_save_then_load_round_trip(tmp_path: Path):
     from hoga.api.watchlist import load_watchlist, save_document
     from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
-    # v3 불변식(ADR-0069): entry 는 어떤 폴더 member 여야 save 라운드트립에서 살아남는다
+    # v3 불변식(ADR-0070): entry 는 어떤 폴더 member 여야 save 라운드트립에서 살아남는다
     # (어느 폴더에도 없으면 save_document 가 orphan 으로 prune — 단일 소유 강제).
     entry = WatchlistEntry(
         code="003490",

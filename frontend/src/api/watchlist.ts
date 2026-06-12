@@ -14,7 +14,7 @@ export interface WatchlistEntry {
   name: string;
   registered_at_kst_date: string;  // YYYYMMDD
   last_success_date: string | null;
-  folder_id: string | null;        // watchlist v3 와이어는 항상 실폴더(null 없음, ADR-0069);
+  folder_id: string | null;        // watchlist v3 와이어는 항상 실폴더(null 없음, ADR-0070);
                                    // null은 heatmap(v2, 공유 타입)의 미분류용으로만 존재
   order: number;                   // 0-based, 폴더 내 인덱스
 }
@@ -29,7 +29,7 @@ export function getWatchlist(): Promise<WatchlistResponse> {
   return apiCall<WatchlistResponse>('/api/watchlist');
 }
 
-/** v3 멤버십(ADR-0069): code를 folderId의 멤버로 추가. entry 없으면 백엔드가 생성. */
+/** v3 멤버십(ADR-0070): code를 folderId의 멤버로 추가. entry 없으면 백엔드가 생성. */
 export function addMember(folderId: string, code: string): Promise<WatchlistEntry> {
   return apiCall<WatchlistEntry>(`/api/watchlist/folders/${folderId}/members`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

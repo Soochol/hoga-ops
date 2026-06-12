@@ -57,7 +57,7 @@ def partition_live_set(codes: list[str], n: int) -> list[list[str]]:
 
 
 def display_ordered_codes(doc: WatchlistDocument) -> list[str]:
-    """Watchlist Panel 표시 순서로 코드 평탄화 (v3 다중 소속, 2026-06-11 / ADR-0069).
+    """Watchlist Panel 표시 순서로 코드 평탄화 (v3 다중 소속, 2026-06-11 / ADR-0070).
 
     폴더 `.order` 오름차순 → 각 폴더 `member_codes` 순 → **첫 등장으로 dedup**
     (다중 소속 Code 의 rank = 가장 위 폴더에서의 등장 위치). 미분류 개념 폐지(v3).

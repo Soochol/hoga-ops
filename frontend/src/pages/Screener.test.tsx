@@ -28,6 +28,14 @@ vi.mock('../state/livePage', () => ({
   useLivePageStore: (sel: (s: { setActiveCode: typeof setActiveCode }) => unknown) =>
     sel({ setActiveCode }),
 }));
+// 탭 도입(D5): 행 클릭은 useJumpToLive → openOrFocusTab(code, label?)로 흐른다.
+// 실제 liveTabs 모듈은 import 시 useLivePageStore.subscribe를 부르는데, 위 livePage
+// 모킹은 selector만 제공하므로 모킹하지 않으면 모듈 로드가 crash 한다.
+const { openOrFocusTab } = vi.hoisted(() => ({ openOrFocusTab: vi.fn() }));
+vi.mock('../state/liveTabs', () => ({
+  useLiveTabsStore: (sel: (s: { openOrFocusTab: typeof openOrFocusTab }) => unknown) =>
+    sel({ openOrFocusTab }),
+}));
 
 import { Screener } from './Screener';
 import { runScan } from '../api/screener';
@@ -64,12 +72,12 @@ it('캡처 버튼은 코드를 prefill 한 캡처 페이지로 이동한다 (날
   expect(screen.getByTestId('loc').textContent).toBe('/capture?code=005930');
 });
 
-it('runs scan and renders row; click sets activeCode', async () => {
+it('runs scan and renders row; click opens-or-focuses a tab', async () => {
   renderPage();
   fireEvent.click(screen.getByText('조회'));
   await waitFor(() => screen.getByText('삼성전자'));
   fireEvent.click(screen.getByText('삼성전자'));
-  expect(setActiveCode).toHaveBeenCalledWith('005930');
+  expect(openOrFocusTab).toHaveBeenCalledWith('005930', '삼성전자');
 });
 
 it('row is keyboard-activatable', async () => {
@@ -77,7 +85,7 @@ it('row is keyboard-activatable', async () => {
   fireEvent.click(screen.getByText('조회'));
   const row = await screen.findByText('삼성전자');
   fireEvent.keyDown(row.closest('[role="button"]')!, { key: 'Enter' });
-  expect(setActiveCode).toHaveBeenCalledWith('005930');
+  expect(openOrFocusTab).toHaveBeenCalledWith('005930', '삼성전자');
 });
 
 it('surfaces a scan error instead of a silent dead-end', async () => {

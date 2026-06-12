@@ -169,7 +169,7 @@ describe('WatchlistDrawer', () => {
   it('그룹 헤더 ⋯ → 그룹 삭제 deletes the folder (고아 확인 후, v3)', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const deleteSpy = vi.spyOn(watchlistApi, 'deleteFolder').mockResolvedValue();
-    // v3 파괴적 삭제(ADR-0069 P6): 고아가 생기면 확인 — 테스트는 확인 수락.
+    // v3 파괴적 삭제(ADR-0070 P6): 고아가 생기면 확인 — 테스트는 확인 수락.
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });

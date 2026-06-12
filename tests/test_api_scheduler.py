@@ -260,7 +260,7 @@ async def test_catchup_reconciles_marker_from_disk(tmp_path: Path):
         registered_at_kst_date="20260527",
         last_success_date=None,
     )]
-    # v3 불변식: entry 는 폴더 member 여야 save 가 보존(orphan prune, ADR-0069).
+    # v3 불변식: entry 는 폴더 member 여야 save 가 보존(orphan prune, ADR-0070).
     folder = watchlist.WatchlistFolder(id="f_0000000a", name="기본", order=0, member_codes=["098460"])
     watchlist.save_document(tmp_path, watchlist.WatchlistDocument(folders=[folder], entries=forced))
 

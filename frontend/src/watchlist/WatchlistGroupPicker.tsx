@@ -6,7 +6,7 @@ import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { CheckIcon } from '../ui/CheckIcon';
 
 /**
- * 단일 멤버십 primitive (v3, ADR-0069). code의 그룹 소속을 체크박스로 토글 + 새 그룹
+ * 단일 멤버십 primitive (v3, ADR-0070). code의 그룹 소속을 체크박스로 토글 + 새 그룹
  * 생성. "미분류" 단일 추가 대상이 없어진 v3에서 모든 하트(스크리너 페이지·패널·라이브
  * 상태바·라이브 검색·편집모달)와 드로어 행 메뉴 "그룹 편집"이 이 컴포넌트를 연다. 호출처는
  * 앵커 (x,y)만 넘기고, 위치 클램프·디스미스·멤버십 토글은 이 컴포넌트가 책임진다.

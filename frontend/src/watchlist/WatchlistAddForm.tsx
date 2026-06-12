@@ -4,7 +4,7 @@ import type { SymbolHit } from '../api/types';
 import { useAddMember } from './useWatchlist';
 import { Banner } from './Banner';
 
-/** Shared add-form (v3): SymbolSearch + submit → 선택된 폴더의 멤버로 추가(ADR-0069).
+/** Shared add-form (v3): SymbolSearch + submit → 선택된 폴더의 멤버로 추가(ADR-0070).
  *  onAdded fires after a successful add (caller drives feedback/highlight). */
 export function WatchlistAddForm({ folderId, onAdded }: {
   folderId: string;

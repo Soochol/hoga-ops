@@ -133,3 +133,5 @@
   --rail-w: 3rem; /* 60px @ default; 48px base intent — Right Rail icon column width (fixed) */
 /* END AUTO-GENERATED */
 }
+
+@keyframes tab-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
