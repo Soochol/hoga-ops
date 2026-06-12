@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.28.1] - 2026-06-12
+
+### Fixed
+- **`/live` 탭·페이지 전환 시 차트 화면(줌·스크롤) 리셋 수정**: 보던 viewport가 두 경로에서 유실되던
+  문제를 고쳤다(탭별 viewport 저장 A안 자체는 정상 — 같은 분봉 탭 전환은 이미 잘 복원됐다).
+  - **다른 분봉 탭끼리 전환**: page↔tab 미러가 *탭 전환에 의한* 분봉 변경을 "사용자의 분봉 변경"으로
+    오인해, 막 복원하려던 탭의 저장 viewport를 `null`로 지웠다. 미러의 무효화를 stateless
+    discriminator(`page tf ≠ 활성 탭 tf`일 때만)로 바꿔, 탭 전환에선 보존하고 사용자가 분봉 버튼을
+    직접 누른 경우에만 무효화한다.
+  - **다른 페이지 갔다 복귀 / 새로고침**: viewport 캡처가 탭 전환(`focusTab`)에만 묶여 있어 라우트
+    이탈·리로드 경로에선 저장되지 않았다. `LiveChartRoot`가 visible-range 변경을 250ms 디바운스로
+    활성 탭에 연속 저장하고, 언마운트 시 pending을 flush한다. 장중 forming-bar 틱 storm은
+    `atLiveEdge`·`barSpan` 동일 시 skip하는 dedup으로 0비용 차단.
+  - 버그 회귀 유닛 테스트 추가(미러 cross-tf 보존), 실 브라우저 4시나리오(같은-tf·cross-tf·라우트·리로드) 검증.
+
 ## [0.7.28.0] - 2026-06-12
 
 ### Changed

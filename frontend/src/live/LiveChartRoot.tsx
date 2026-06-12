@@ -28,7 +28,7 @@ import type { RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
-import { registerViewportCapture } from '../state/liveTabs';
+import { registerViewportCapture, saveViewportToActiveTab } from '../state/liveTabs';
 import {
   viewportFromRanges,
   computeRestoreRange,
@@ -226,6 +226,65 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
     }
   }, []);
   useEffect(() => registerViewportCapture(captureViewport), [captureViewport]);
+
+  // Continuous viewport capture (ADR-0069 A안 보강). focusTab/addBlankTab snapshot
+  // the OUTGOING tab synchronously on a tab switch, but route navigation (leaving
+  // /live) and a full reload never go through those — so the last-seen zoom/scroll
+  // was lost on switch-back from another page. Subscribing to visible-range changes
+  // and persisting (debounced) to the active tab backstops EVERY exit path.
+  //
+  // Trailing timeout debounce (NOT rAF): a save rewrites the active tab's `viewport`
+  // (a new ref on LivePage's `tabs.find().viewport` → LiveChartRoot re-render) and
+  // wakes attachPersistence's own 250ms localStorage write. rAF-frequency would do
+  // that every frame mid-zoom; one save per gesture-settle is enough — tab switches
+  // are already captured synchronously, so this only needs to cover route-nav/reload
+  // where ~1 gesture of staleness is imperceptible.
+  //
+  // Guard: lastAppliedCountRef===null means the initial-view / restore effect hasn't
+  // applied yet (the chart still sits at lightweight-charts' default ~60-bar fit) —
+  // skip so that cold-load garbage isn't persisted as the user's view. After
+  // application the first range-change saves the applied (restored/default) view
+  // itself, which is idempotent and harmless.
+  useEffect(() => {
+    if (!chart) return;
+    const ts = chart.timeScale();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let lastSaved: { barSpan: number; atLiveEdge: boolean } | null = null;
+    const save = () => {
+      const vp = captureViewport();
+      if (!vp) return;
+      // Dedup the live-edge tick storm. During market hours a forming bar's setData
+      // can fire range-change many times/sec; at the live edge that only drifts
+      // rightEdgeMs while barSpan/atLiveEdge hold — and an atLiveEdge restore IGNORES
+      // rightEdgeMs (it pins the latest bar), so persisting it is a pure store-write +
+      // re-render with no recoverable information. Skip only that case. A zoom/scroll
+      // changes barSpan; leaving/returning to the live edge flips atLiveEdge; a
+      // scrolled-back pan keeps atLiveEdge=false so it always saves (its rightEdgeMs
+      // IS the restore anchor) — all still captured.
+      if (lastSaved && vp.atLiveEdge && lastSaved.atLiveEdge && lastSaved.barSpan === vp.barSpan) return;
+      lastSaved = { barSpan: vp.barSpan, atLiveEdge: vp.atLiveEdge };
+      saveViewportToActiveTab(vp);
+    };
+    const onRangeChange = () => {
+      if (lastAppliedCountRef.current === null) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; save(); }, 250);
+    };
+    ts.subscribeVisibleLogicalRangeChange(onRangeChange);
+    return () => {
+      ts.unsubscribeVisibleLogicalRangeChange(onRangeChange);
+      // Flush a pending capture on unmount (route-nav leaving /live) so the last
+      // gesture isn't lost inside the debounce window — the route-nav reset bug.
+      // captureViewport() directly (not the registry) so it can't race the
+      // registerViewportCapture teardown; a removed chart try/catches to null →
+      // saveViewportToActiveTab no-ops. This cleanup runs before the chart-create
+      // effect's c.remove() (declared earlier), so the chart is still alive here.
+      if (timer) {
+        clearTimeout(timer);
+        save();
+      }
+    };
+  }, [chart, captureViewport]);
 
   // Publish axis to the shared store so LiveSidebar can read
   // axis.inClosingAuctionWindow(cursorMs) for TotalQtyBar mask.

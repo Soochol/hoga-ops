@@ -181,6 +181,31 @@ describe('useLiveTabsStore', () => {
     expect(page.candleTimeframe).toBe('5m');
     expect(page.historicalFromDate).toBe('20260601'); // pan survived the projection (no reset leak)
   });
+
+  it('cross-timeframe tab switch-back preserves the saved viewport (mirror must not null it)', () => {
+    // The page→tab mirror is what nulls a viewport on a tf change — it only runs
+    // when sync is active, so this bug is invisible without initLiveTabsSync().
+    const dispose = initLiveTabsSync();
+    try {
+      openTab('005930', '삼성전자'); // tab A (1m)
+      const tabA = useLiveTabsStore.getState().activeTabId!;
+      // A carries a saved viewport (normally written by focusTab / continuous capture).
+      useLiveTabsStore.setState((st) => ({
+        tabs: st.tabs.map((t) => (t.id === tabA ? { ...t, viewport: VP_A } : t)),
+      }));
+      openTab('000660', 'SK하이닉스'); // tab B (1m)
+      // User changes B's timeframe to 5m: page tf 1m→5m → mirror nulls B.viewport, B.tf=5m.
+      useLivePageStore.getState().setCandleTimeframe('5m');
+      // Switch back to A (1m): page tf 5m→1m. A NAIVE "tf changed → null viewport" mirror
+      // would wipe A's viewport here (the cross-tf reset bug); the stateless tf-match
+      // discriminator preserves it because page tf now equals A's own tf.
+      useLiveTabsStore.getState().focusTab(tabA);
+      const restoredA = useLiveTabsStore.getState().tabs.find((t) => t.id === tabA);
+      expect(restoredA?.viewport).toEqual(VP_A);
+    } finally {
+      dispose();
+    }
+  });
 });
 
 describe('liveTabs persistence', () => {
