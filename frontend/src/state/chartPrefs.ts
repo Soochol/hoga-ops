@@ -35,6 +35,13 @@ export const CHART_TOGGLES = [
     description: '캔들에 마우스를 올리면 시·고·저·종·직전대비·거래량·거래량비를 툴팁으로 표시합니다.',
     default: true,
   },
+  {
+    key: 'surgeMarkerEnabled',
+    label: '총잔량 급증 마커',
+    description: '매도/매수총잔량이 당일 직전 고가를 크게(기본 +50%) 넘어서는 순간 총잔량 라인에 마커를 표시합니다.',
+    default: true,
+    category: 'surge',
+  },
 ] as const;
 
 export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];
@@ -42,7 +49,7 @@ export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];
 /** UI surface a toggle belongs to. Unset entries default to 'chart' (the
  *  SettingsModal's "차트" category). New indicator-scoped toggles set
  *  'indicators' so IndicatorsSection picks them up automatically. */
-export type ChartToggleCategory = 'chart' | 'indicators';
+export type ChartToggleCategory = 'chart' | 'indicators' | 'surge';
 
 /** Resolve a CHART_TOGGLES entry's category, defaulting to 'chart' when
  *  the field is absent. Direct `t.category` access on the registry union
@@ -99,6 +106,15 @@ export const CHART_NUMERIC_PREFS = [
     min: 2,
     max: 10_000,
     enabledBy: 'ratioOutlierFilterEnabled',
+  },
+  {
+    key: 'surgeMarginPct',
+    label: '급증 감도 — 직전 고가 대비(%)',
+    description: '총잔량이 직전 고가보다 이 비율(%) 이상 클 때 급증 마커를 표시합니다. 높일수록 더 드물고 큰 급증만 잡습니다.',
+    default: 50,
+    min: 30,
+    max: 100,
+    enabledBy: 'surgeMarkerEnabled',
   },
 ] as const satisfies readonly NumericPrefDef[];
 

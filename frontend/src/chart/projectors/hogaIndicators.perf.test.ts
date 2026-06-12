@@ -213,6 +213,30 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
     console.log(`[F] END-TO-END 90일 워밍 후 틱당=${warmed.toFixed(2)}ms → /초=${(warmed * FLUSH_HZ).toFixed(0)}ms (비교: [A]90일=~35ms/틱)`);
   });
 
+  it('G) 총잔량 급증 마커 — 틱당 비용 (Split Cache seam vs 전구간 재계산, days 스윕)', async () => {
+    const { QUOTE_TOTALS_SPEC } = await import('./quoteTotals');
+    const { detectSurgeSide } = await import('../surge/detectSurges');
+    const ctx = { auctionMask: true, surgeEnabled: true, surgeMarginPct: 50 };
+    for (const days of [1, 5, 30, 90]) {
+      const { bundle, axis, pointCount } = makeBundle(days);
+      // 캐시 경로(현 구현): markers 프로젝터가 makePastCachedProjector를 거쳐 과거 동결.
+      // 동일 번들 재호출 → 과거 캐시 적중(=틱당 비용이 깊이 무관함을 보임).
+      QUOTE_TOTALS_SPEC.series.forEach((s) => s.markers?.(bundle, axis, ctx as any)); // warm
+      const tSeam = median(() => QUOTE_TOTALS_SPEC.series.forEach((s) => s.markers?.(bundle, axis, ctx as any)));
+      // 비교용: seam 없이 detectSurgeSide를 ask+bid 전구간 직접 호출(=리팩터 전 경로).
+      const tFull = median(() => {
+        detectSurgeSide(bundle.quote_ratio.points, 'ask', { margin: 0.5, isClosingAuction: (t) => axis.inClosingAuctionWindow(t) });
+        detectSurgeSide(bundle.quote_ratio.points, 'bid', { margin: 0.5, isClosingAuction: (t) => axis.inClosingAuctionWindow(t) });
+      });
+      // eslint-disable-next-line no-console
+      console.log(
+        `[G] days=${String(days).padStart(2)} pts=${String(pointCount).padStart(5)} | ` +
+        `seam(캐시)=${tSeam.toFixed(3)}ms vs 전구간=${tFull.toFixed(3)}ms → seam /초=${(tSeam * FLUSH_HZ).toFixed(1)}ms ` +
+        `(${(tFull / Math.max(tSeam, 0.001)).toFixed(0)}× 절감, 깊이무관)`,
+      );
+    }
+  });
+
   it('D) 참고: 이동평균(MA) — 안정 chartBundle 경로(틱당 아님), config개수 스윕', () => {
     const days = 90;
     const { axis } = makeAxisAndSegments(days);

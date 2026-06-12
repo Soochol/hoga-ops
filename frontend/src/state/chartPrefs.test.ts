@@ -64,3 +64,28 @@ describe('candleTooltipEnabled 토글', () => {
     expect(mergePrefs({}).candleTooltipEnabled).toBe(true);
   });
 });
+
+import { CHART_TOGGLES, CHART_NUMERIC_PREFS, categoryOf } from './chartPrefs';
+
+describe('총잔량 급증 설정', () => {
+  it('surgeMarkerEnabled 토글 기본 ON · category surge', () => {
+    expect(DEFAULT_PREFS.surgeMarkerEnabled).toBe(true);
+    const t = CHART_TOGGLES.find((t) => t.key === 'surgeMarkerEnabled');
+    expect(t).toBeDefined();
+    expect(categoryOf(t!)).toBe('surge');
+  });
+
+  it('surgeMarginPct numeric 기본 50, 30–100, enabledBy surgeMarkerEnabled', () => {
+    expect(DEFAULT_PREFS.surgeMarginPct).toBe(50);
+    const p = CHART_NUMERIC_PREFS.find((p) => p.key === 'surgeMarginPct');
+    expect(p?.enabledBy).toBe('surgeMarkerEnabled');
+    expect(p?.min).toBe(30);
+    expect(p?.max).toBe(100);
+  });
+
+  it('persist 된 surge 값 보존 + 범위 밖은 폴백', () => {
+    expect(mergePrefs({ surgeMarkerEnabled: false }).surgeMarkerEnabled).toBe(false);
+    expect(mergePrefs({ surgeMarginPct: 80 }).surgeMarginPct).toBe(80);
+    expect(mergePrefs({ surgeMarginPct: 999 }).surgeMarginPct).toBe(DEFAULT_PREFS.surgeMarginPct);
+  });
+});

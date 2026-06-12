@@ -2,6 +2,17 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import RangeSeriesPane, { type PaneSpec } from './RangeSeriesPane';
 
+// RangeSeriesPane uses lightweight-charts only for the `createSeriesMarkers`
+// runtime import (all other imports are type-only, erased). Mock just that one
+// runtime export; `markerSetCalls` records every setMarkers payload for assertion.
+const { markerSetCalls } = vi.hoisted(() => ({ markerSetCalls: [] as unknown[][] }));
+vi.mock('lightweight-charts', () => ({
+  createSeriesMarkers: () => ({
+    setMarkers: (m: unknown[]) => { markerSetCalls.push(m); },
+    detach: () => {},
+  }),
+}));
+
 // Each addSeries returns a fresh stub so we can assert which series instance
 // received setData after a re-create.
 function makeChart() {
@@ -173,5 +184,28 @@ describe('RangeSeriesPane', () => {
     );
     expect(created[0].setData).toHaveBeenCalledTimes(2); // full re-push
     expect(created[0].update).toHaveBeenCalledTimes(0);
+  });
+
+  it('markers 프로젝터가 있으면 createSeriesMarkers().setMarkers로 마커를 갱신한다', () => {
+    markerSetCalls.length = 0;
+    const { chart } = makeChart();
+    const markerSpec: PaneSpec = {
+      name: 'with-markers',
+      stretch: 1,
+      series: [
+        {
+          type: {} as never,
+          options: {} as never,
+          data: () => [{ time: 1, value: 10 }] as never,
+          markers: () => [{ time: 1, position: 'aboveBar', shape: 'circle', color: '#fff' }] as never,
+        },
+      ],
+    };
+    render(
+      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0} spec={markerSpec} />,
+    );
+    expect(markerSetCalls.at(-1)).toEqual([
+      { time: 1, position: 'aboveBar', shape: 'circle', color: '#fff' },
+    ]);
   });
 });

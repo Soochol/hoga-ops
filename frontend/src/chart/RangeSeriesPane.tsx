@@ -1,11 +1,15 @@
 import { memo, useEffect, useRef } from 'react';
 import {
+  createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   type SeriesDataItemTypeMap,
   type SeriesDefinition,
+  type SeriesMarker,
   type SeriesPartialOptionsMap,
   type SeriesType,
+  type Time,
 } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
@@ -32,6 +36,9 @@ export type SeriesSpec<Ctx = void> = {
   type: SeriesDefinition<SeriesType>;
   options: SeriesPartialOptionsMap[SeriesType];
   data: (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => SeriesDataItemTypeMap[SeriesType][];
+  /** Optional: markers to overlay on this series, recomputed in the data effect
+   *  (same cadence as `data`) via lightweight-charts v5 `createSeriesMarkers`. */
+  markers?: (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => SeriesMarker<Time>[];
   afterAdd?: (series: ISeriesApi<SeriesType>) => void;
 };
 
@@ -107,6 +114,10 @@ function RangeSeriesPaneInner<Ctx>({
   // via `===`. Reset in the lifecycle effect when series are (re)created so a
   // fresh handle always gets a full setData first push.
   const lastDataRef = useRef<(readonly SeriesDataItemTypeMap[SeriesType][] | null)[]>([]);
+  // Per-series markers plugin handle (null for series without a `markers` projector).
+  // Created/torn down alongside the series in the lifecycle effect; updated in the
+  // data effect via setMarkers (same cadence as data).
+  const markersRef = useRef<(ISeriesMarkersPluginApi<Time> | null)[]>([]);
   // Lifecycle effect: create LineSeries once per (chart, paneIndex, spec)
   // tuple and tear them down on unmount. Does NOT depend on ctx/bundle/axis,
   // so prefs edits (e.g. Moving Average period bump) don't churn series
@@ -122,9 +133,21 @@ function RangeSeriesPaneInner<Ctx>({
     // Fresh handles hold no data — clear cached arrays so the data effect's first
     // run after (re)creation classifies as setData (prev === null) and full-pushes.
     lastDataRef.current = seriesList.map(() => null);
+    // Markers plugin handle per series that declares a `markers` projector.
+    markersRef.current = spec.series.map((s, i) =>
+      s.markers ? createSeriesMarkers(seriesList[i], []) : null,
+    );
     if (seriesList.length > 0) onPrimarySeriesReady?.(seriesList[0], spec.name);
     return () => {
       if (seriesList.length > 0) onPrimarySeriesGone?.(spec.name);
+      for (const m of markersRef.current) {
+        try {
+          m?.detach();
+        } catch {
+          // chart already torn down
+        }
+      }
+      markersRef.current = [];
       // Guard: when a sibling pane throws and ChartErrorBoundary unmounts
       // ChartStage, the parent's chart.remove() may run before this
       // cleanup, leaving the series handle dangling. lightweight-charts
@@ -170,6 +193,7 @@ function RangeSeriesPaneInner<Ctx>({
       // ~1ms for update(tail)) and its safety (update only when exactly
       // equivalent to setData) live in seriesDataDiff.ts.
       lastDataRef.current[i] = syncSeriesData(seriesList[i], lastDataRef.current[i] ?? null, data);
+      if (s.markers) markersRef.current[i]?.setMarkers(s.markers(bundle, axis, ctx));
     });
   }, [chart, bundle, axis, ctx, spec, paneIndex]);
   return null;

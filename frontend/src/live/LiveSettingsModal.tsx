@@ -1,71 +1,19 @@
-import { Fragment } from 'react';
-import {
-  useChartPrefsStore,
-  CHART_TOGGLES,
-  CHART_NUMERIC_PREFS,
-  categoryOf,
-} from '../state/chartPrefs';
-import { SOURCE_OPTIONS } from '../state/sourcePreference';
-import ToggleRow from './settings/ToggleRow';
-import NumericPrefRow from './settings/NumericPrefRow';
-import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
 import { ModalShell } from '../ui/ModalShell';
+import LiveSettingsSections from './LiveSettingsSections';
 
 type Props = {
   onClose: () => void;
 };
 
+/**
+ * 차트/보조지표/총잔량 급증/데이터소스 설정 모달. `IndicatorPanel`과 동일한 2단
+ * (왼쪽 카테고리 nav + 오른쪽 상세) 레이아웃을 `LiveSettingsSections`로 렌더하고,
+ * ModalShell(백드롭·Escape·✕·title)로 감싼다.
+ */
 export default function LiveSettingsModal({ onClose }: Props) {
-  const prefs = useChartPrefsStore();
-  const setToggle = useChartPrefsStore((s) => s.setToggle);
-
   return (
-    <ModalShell ariaLabel="설정" title="차트 설정" onClose={onClose}>
-      <div className="px-5 py-4">
-        {/* Each chart-category toggle is its own group; numeric prefs gated by
-            `enabledBy` render indented under their parent toggle (registry-driven —
-            adding a new toggle is one entry in CHART_TOGGLES). */}
-        {CHART_TOGGLES.filter((t) => categoryOf(t) === 'chart').map((toggle, idx) => {
-          const gatedNumerics = CHART_NUMERIC_PREFS.filter((p) => p.enabledBy === toggle.key);
-          return (
-            <Fragment key={toggle.key}>
-              {idx > 0 && <div className="border-b border-border my-2" />}
-              <ToggleRow
-                label={toggle.label}
-                description={toggle.description}
-                checked={prefs[toggle.key]}
-                onToggle={() => setToggle(toggle.key, !prefs[toggle.key])}
-                testId={`settings-toggle-${toggle.key}`}
-              />
-              {gatedNumerics.length > 0 && (
-                <div className="ml-4">
-                  {gatedNumerics.map((def) => (
-                    <NumericPrefRow key={def.key} def={def} />
-                  ))}
-                </div>
-              )}
-            </Fragment>
-          );
-        })}
-        {/* Ungated numerics (none today) would render here without indentation */}
-        {CHART_NUMERIC_PREFS.filter((p) => p.enabledBy === undefined).map((def) => (
-          <NumericPrefRow key={def.key} def={def} />
-        ))}
-        <div className="border-b border-border my-2" />
-        <div style={{ marginTop: 'var(--space-md)' }}>
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
-            기본 데이터 소스 <span style={{ color: 'var(--fg-dimmer)' }}>(모든 차트 공통)</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
-            {SOURCE_OPTIONS.map((opt) => (
-              <SourcePreferenceRadio key={opt} value={opt} />
-            ))}
-          </div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-dimmer)', marginTop: 'var(--space-xs)' }}>
-            현재 source는 차트 상단 칩에 표시됩니다.
-          </div>
-        </div>
-      </div>
+    <ModalShell ariaLabel="설정" title="설정" onClose={onClose}>
+      <LiveSettingsSections />
       <div className="flex justify-end px-4 py-3 border-t border-border">
         <button
           type="button"
