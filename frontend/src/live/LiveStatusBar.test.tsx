@@ -1,8 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveStatusBar } from './LiveStatusBar';
 import type { RangeBundle } from '../api/types';
+
+// useConnectionLiveness reads module-level WS state (_lastHeartbeatMs=0 in tests),
+// so live=false by default. Hoist a mock so tests can control liveness.
+const { mockLiveness } = vi.hoisted(() => ({ mockLiveness: vi.fn().mockReturnValue(false) }));
+vi.mock('../api/useConnectionLiveness', () => ({ useConnectionLiveness: () => mockLiveness() }));
 
 const EMPTY_BUNDLE: RangeBundle = {
   code: '005930',
@@ -65,6 +70,7 @@ function renderBar(
 describe('LiveStatusBar', () => {
   beforeEach(() => {
     cleanup();
+    mockLiveness.mockReturnValue(false);
   });
 
   it('shows em-dash when activeCode is null', () => {
@@ -134,9 +140,19 @@ describe('LiveStatusBar', () => {
   });
 
   // ADR-0067: collection-status dot — realtime vs polling
-  // Note: 테스트 환경에서 useConnectionLiveness는 WS 모듈 레벨 _lastHeartbeatMs=0이라
-  // live=false. live_set에 있는 종목은 deriveDisplayStatus → 'disconnected' (연결 재시도).
+  it('shows realtime dot when activeCode is in live_set and WS connected', () => {
+    mockLiveness.mockReturnValue(true);
+    renderBar(
+      { activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE },
+      ['005930'],
+      undefined,
+      ['005930', '000660'],
+    );
+    expect(screen.getByTestId('collection-dot-realtime')).toBeInTheDocument();
+  });
+
   it('shows disconnected dot when activeCode is in live_set but WS not connected', () => {
+    // live=false (default mock): realtime code → disconnected display status
     renderBar(
       { activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE },
       ['005930'],
