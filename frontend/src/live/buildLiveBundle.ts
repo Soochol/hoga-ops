@@ -198,6 +198,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     volume_profile_range: EMPTY_VOLUME_PROFILE,
     volume_profile_by_day: [],
     investorPoints,
+    ask_peak: null,
   };
 }
 

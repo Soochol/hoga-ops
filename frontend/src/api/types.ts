@@ -433,6 +433,10 @@ export interface LiveSnapshotEntry {
  *  − = net sell. t_ms anchors at 09:00 KST — the same anchor as daily candles. */
 export type InvestorNetPoint = { t_ms: number; foreign_net: number; institution_net: number };
 
+/** 당일 매도 최대벽 — 연속거래 중 단일 매도 호가단계 최대 물량·가격.
+ *  hoga/api/models.py::AskPeak 미러. t_ms는 unix ms(KST). */
+export type AskPeak = { price: number; qty: number; t_ms: number };
+
 export type RangeBundle = {
   code: string;
   from_date: string;
@@ -449,4 +453,7 @@ export type RangeBundle = {
    *  Empty on minute timeframes (KIS provides investor data for D/W/M only).
    *  Separate array (not on Candle) so minute candles never carry null. */
   investorPoints: InvestorNetPoint[];
+  /** 당일 매도 최대벽 seed(오늘 slice 연속거래만). 오늘 미포함/D·W·M/무데이터 → null.
+   *  라이브 ratchet(useDayAskPeak)의 시드. */
+  ask_peak: AskPeak | null;
 };
