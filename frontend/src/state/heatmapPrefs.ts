@@ -1,28 +1,12 @@
 import { create } from 'zustand';
 import type { SortMode, GroupSort } from '../heatmap/heat';
+import { persistJson, readJsonObject } from './persist';
 
 export const SORT_MODES = ['change', 'manual'] as const;
 const STORAGE_KEY = 'heatmap.sortMode.v1';
 
 export const GROUP_SORTS = ['manual', 'desc', 'asc'] as const;
 const STORAGE_KEY_GROUP = 'heatmap.groupSort.v1';
-
-function readGroupSort(): GroupSort | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_GROUP);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { groupSort: string };
-    return GROUP_SORTS.includes(parsed.groupSort as GroupSort)
-      ? (parsed.groupSort as GroupSort) : null;
-  } catch {
-    return null;
-  }
-}
-
-function persistGroupSort(groupSort: GroupSort): void {
-  try { localStorage.setItem(STORAGE_KEY_GROUP, JSON.stringify({ groupSort })); }
-  catch { /* localStorage 미가용 — 무시 */ }
-}
 
 interface Store {
   sortMode: SortMode;
@@ -32,20 +16,13 @@ interface Store {
 }
 
 function readStorage(): SortMode | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { sortMode: string };
-    return SORT_MODES.includes(parsed.sortMode as SortMode)
-      ? (parsed.sortMode as SortMode) : null;
-  } catch {
-    return null;
-  }
+  const p = readJsonObject(STORAGE_KEY);
+  return SORT_MODES.includes(p.sortMode as SortMode) ? (p.sortMode as SortMode) : null;
 }
 
-function persist(sortMode: SortMode): void {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ sortMode })); }
-  catch { /* localStorage 미가용 — 무시 */ }
+function readGroupSort(): GroupSort | null {
+  const p = readJsonObject(STORAGE_KEY_GROUP);
+  return GROUP_SORTS.includes(p.groupSort as GroupSort) ? (p.groupSort as GroupSort) : null;
 }
 
 export const useHeatmapPrefsStore = create<Store>((set) => ({
@@ -55,13 +32,13 @@ export const useHeatmapPrefsStore = create<Store>((set) => ({
   setSortMode: (value) => {
     if (!SORT_MODES.includes(value)) return;
     set({ sortMode: value });
-    persist(value);
+    persistJson(STORAGE_KEY, { sortMode: value });
   },
   // 그룹(폴더) 정렬 — 행 정렬(sortMode)과 직교. 기본 manual = folder.order(현행 보드 순서 보존).
   groupSort: readGroupSort() ?? 'manual',
   setGroupSort: (value) => {
     if (!GROUP_SORTS.includes(value)) return;
     set({ groupSort: value });
-    persistGroupSort(value);
+    persistJson(STORAGE_KEY_GROUP, { groupSort: value });
   },
 }));
