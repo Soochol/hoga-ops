@@ -80,9 +80,11 @@ export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundl
         fontVariantNumeric: 'tabular-nums',
       }}
     >
-      <CollectionDot status={deriveDisplayStatus(live, collectionStatus)} />
-      <span className="font-mono" style={{ color: 'var(--fg)' }}>
-        {symbolLabel}
+      <span className="inline-flex items-center gap-1">
+        <CollectionDot status={deriveDisplayStatus(live, collectionStatus)} />
+        <span className="font-mono" style={{ color: 'var(--fg)' }}>
+          {symbolLabel}
+        </span>
       </span>
       {activeCode && (
         <WatchlistHeartButton code={activeCode} name={symbolName} variant="status" />
