@@ -64,3 +64,26 @@
   L301 `_Avoid_ "per-tab prefs"`는 **유효**(탭이 돌아와도 prefs는 전역) — 본 ADR 포인터 추가.
 - 글로서리 용어 추가/정정은 **구현 PR에서** 반영(CONTEXT.md는 현재 상태를 기술하므로 탭 구현 전 선반영 금지). 본 ADR의 L301 포인터·stale 정정만 선행.
 - 옛 `state/tabs.ts`/`replay.tabs.v1` spec이 Layer-1 레퍼런스 — 구현은 재발명이 아니라 복원.
+
+## Addendum — 단일-탭 내비게이션 모델 (2026-06-12)
+
+원안의 클릭 동작 `openOrFocusTab`("같은 Code 탭 있으면 포커스, 없으면 새 탭 생성, 소프트캡 도달 시 무시")을
+**`setActiveTabCode`("활성 탭의 Code를 제자리 교체, 활성 탭 없으면 첫 탭 생성")**로 개정한다. 사용자 피드백:
+관심종목 클릭마다 탭이 늘고 캡 도달 시 침묵 무시되는 것보다, **브라우저 탭처럼 "링크 클릭=현재 탭 이동,
+새 탭은 `+`로만"** 모델이 직관적이다.
+
+- **클릭/검색/드롭 = 현재 탭 교체**: 관심종목·스크리너·히트맵 행 클릭, 헤더 검색 선택, **관심종목 행을 차트로
+  드래그-드롭** — 모두 `setActiveTabCode`로 활성 탭의 Code를 바꾼다(공용 `useJumpToLive`). 같은 Code가 다른
+  탭에 있어도 포커스하지 않고 현재 탭을 교체한다(**중복 허용**). 새 탭은 만들지 않는다.
+- **새 탭 = `+`만**: 탭바 `+`는 `addBlankTab`으로 빈 탭(`code=''`, 빈 상태 = 검색 안내)을 만들고 검색창에
+  포커스를 준다. 소프트캡(8)은 `+`(수동 추가)에만 적용. 마운트 시 복원된 탭이 없으면 기본 빈 탭 1개를 시드해
+  항상 "현재 탭"이 존재하게 한다(클릭이 교체할 대상 보장).
+- **activeCode 단일 writer(D4) 불변**: 여전히 활성 탭이 `applyTabToPage`로 `useLivePageStore.activeCode`를
+  쓰는 유일 writer. 종목 교체 시 `timeframe`은 유지, `historicalFromDate`(pan)는 새 종목 기본 뷰로 초기화.
+- **드래그-드롭 구현**: 관심종목 행의 dnd-kit 재정렬 제스처를 **그대로 재사용**한다(별도 네이티브 draggable을
+  얹으면 pointermove 충돌로 재정렬이 깨짐). `onDragEnd`에서 드롭 좌표(`activatorEvent`+`delta`)가 차트 위인지를
+  **LiveWorkarea가 `entryDrag`에 등록한 히트테스트 술어**로 판정해(패널은 차트 DOM·rect를 모른다 — DndContext가
+  다른 트리라 useDroppable 등록 불가) 현재 탭 교체, 밖이면 기존 재정렬. 드래그 중 워크에어리어에 "여기에 놓아
+  종목 변경" 오버레이(드래그 고스트는 패널 overflow에서 잘리므로 워크에어리어 자체가 어포던스). `state/entryDrag.ts`가
+  차트-드롭 seam의 단일 소유자(드래그 상태 + 차트 히트테스트 등록 + `isPointOnChart`).
+- **제거**: `openOrFocusTab`(스토어·콜러·테스트 전부 `setActiveTabCode`/`addBlankTab`로 대체).

@@ -121,8 +121,14 @@ describe('LivePage shell', () => {
     expect(screen.getByTestId('live-status-bar').textContent).toContain('000660');
   });
 
-  it('falls back to localStorage activeCode when no query param', () => {
-    useLivePageStore.setState({ activeCode: '035720' } as any);
+  it('falls back to the restored active tab when no query param', () => {
+    // 단일-탭 모델: 복원된 활성 탭이 page.activeCode의 단일 writer다(stray activeCode가
+    // 아니라 탭이 진실). 마운트 시드가 focusTab → applyTabToPage 로 동기화한다.
+    const id = 'restored';
+    useLiveTabsStore.setState({
+      tabs: [{ id, code: '035720', label: '035720', timeframe: '1m', historicalFromDate: null }],
+      activeTabId: id,
+    });
     renderWithRouter();
     expect(screen.getByTestId('live-status-bar').textContent).toContain('035720');
   });

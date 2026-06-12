@@ -9,7 +9,7 @@ import { WatchlistToggleButton } from '../watchlist/WatchlistToggleButton';
 import type { SymbolHit } from '../api/types';
 
 export function LiveSymbolSearch() {
-  const openOrFocusTab = useLiveTabsStore((s) => s.openOrFocusTab);
+  const setActiveTabCode = useLiveTabsStore((s) => s.setActiveTabCode);
   const [query, setQuery] = useState('');
   const rawItems = useSymbolSearch(query, 20);
   // `filterSymbols('')` returns ALL symbols (not []), so without this gate a
@@ -19,7 +19,7 @@ export function LiveSymbolSearch() {
 
   const { isMember, toggle } = useWatchlistMembership();
 
-  const selectHit = (hit: SymbolHit) => { openOrFocusTab(hit.code, hit.name); setQuery(''); };
+  const selectHit = (hit: SymbolHit) => { setActiveTabCode(hit.code, hit.name); setQuery(''); };
 
   const combo = useCombobox<SymbolHit>({
     query,
@@ -28,7 +28,7 @@ export function LiveSymbolSearch() {
     onSelect: selectHit,
     onEnterEmpty: (q) => {
       const t = q.trim();
-      if (/^\d{6}$/.test(t)) { openOrFocusTab(t); setQuery(''); return true; }
+      if (/^\d{6}$/.test(t)) { setActiveTabCode(t); setQuery(''); return true; }
       return false;
     },
   });

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import * as watchlistApi from '../api/watchlist';
 import * as client from '../api/client';
 import { useLivePageStore } from '../state/livePage';
+import { useEntryDragStore } from '../state/entryDrag';
 
 // ADR-0057: 패널 드래그의 wiring contract만 검증 — 실제 dnd-kit 포인터/충돌은 e2e가 담당.
 // DndContext를 passthrough로 모킹해 주입된 onDragEnd를 캡처하고, useSortable은 no-op으로 둔다.
@@ -101,5 +102,52 @@ describe('WatchlistDrawer drag wiring', () => {
       over: { id: '999999', data: { current: { type: 'entry', folderId: 'f_0000000b' } } },
     });
     await waitFor(() => expect(spy).toHaveBeenCalledWith(['f_0000000b', 'f_0000000a']));
+  });
+
+  // 차트 드롭-타깃 seam: LiveWorkarea가 등록하는 히트테스트 술어를 가짜로 등록해 테스트한다 —
+  // DOM 노드 append·getBoundingClientRect stub·테스트ID 없이 seam만 직접 검증(딥닝의 증거).
+  it('entry-drag dropped over the chart drop-target changes the active tab (no reorder)', async () => {
+    const hitTest = (clientX: number) => clientX < 800; // 드롭 지점 x=400 < 800 → 차트 위
+    useEntryDragStore.getState().registerChartTarget(hitTest);
+    try {
+      const reorderSpy = vi.spyOn(watchlistApi, 'reorderEntries').mockResolvedValue();
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+      render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+      await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+      // 드롭 지점 = activator(900,300) + delta(-500,0) = (400,300) → 술어 true.
+      h.onDragEnd!({
+        active: { id: '005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
+        over: null,
+        activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+        delta: { x: -500, y: 0 },
+      });
+      // 클릭과 같은 onPick 경로 → 현재 탭 종목 교체(useLivePageStore.activeCode), 재정렬은 미발생.
+      expect(useLivePageStore.getState().activeCode).toBe('005930');
+      expect(reorderSpy).not.toHaveBeenCalled();
+    } finally {
+      useEntryDragStore.getState().clearChartTarget(hitTest);
+    }
+  });
+
+  it('entry-drag dropped OUTSIDE the chart drop-target still reorders (no jump)', async () => {
+    const hitTest = (clientX: number) => clientX < 800; // 드롭 지점 x=900 → 차트 밖
+    useEntryDragStore.getState().registerChartTarget(hitTest);
+    try {
+      const reorderSpy = vi.spyOn(watchlistApi, 'reorderEntries').mockResolvedValue();
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+      render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+      await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+      // 드롭 지점 = activator(900,300) + delta(0,0) = (900,300) → 술어 false → 재정렬 경로.
+      h.onDragEnd!({
+        active: { id: '005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
+        over: { id: '000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
+        activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+        delta: { x: 0, y: 0 },
+      });
+      await waitFor(() => expect(reorderSpy).toHaveBeenCalledWith('f_0000000a', ['000660', '005930']));
+      expect(useLivePageStore.getState().activeCode).toBeNull();
+    } finally {
+      useEntryDragStore.getState().clearChartTarget(hitTest);
+    }
   });
 });
