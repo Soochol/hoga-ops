@@ -1,0 +1,14 @@
+{
+  "_contract": "Watchlist Panel 표시 순서 계약(ADR-0069). 백엔드 hoga/live/live_session.py::display_ordered_codes (Live Set = KIS WS 구독 경계 산출)와 프론트 grouping.ts::groupByFolder (렌더)가 반드시 일치: 폴더 .order 오름차순 -> 각 폴더 member_codes 순 -> 첫 등장으로 dedup. 양쪽 테스트가 이 한 파일을 읽어, 한쪽 정렬 키만 바뀌어도 다른 쪽 테스트가 깨지도록 계약을 코드로 박는다. 깨지면 화면 상단과 실제 구독 종목이 조용히 어긋난다(capture-critical).",
+  "folders": [
+    { "id": "f_0000000a", "name": "A", "order": 1, "member_codes": ["005930", "000660"] },
+    { "id": "f_0000000b", "name": "B", "order": 0, "member_codes": ["000660", "035720"] },
+    { "id": "f_0000000c", "name": "C", "order": 2, "member_codes": ["005930"] }
+  ],
+  "entries": [
+    { "code": "005930", "name": "삼성", "registered_at_kst_date": "20260101", "last_success_date": null },
+    { "code": "000660", "name": "SK", "registered_at_kst_date": "20260101", "last_success_date": null },
+    { "code": "035720", "name": "카카오", "registered_at_kst_date": "20260101", "last_success_date": null }
+  ],
+  "display_order": ["000660", "035720", "005930"]
+}
