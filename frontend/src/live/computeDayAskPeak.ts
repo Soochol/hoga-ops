@@ -1,5 +1,6 @@
 import type { AskPeak } from '../api/types';
 import { isContinuousBook, type ObSnapshot } from './bucketHogaSeries';
+import { tradingDayOf } from '../util/tradingDay';
 
 export type RatchetState = {
   peak: AskPeak | null;
@@ -8,12 +9,6 @@ export type RatchetState = {
 };
 
 export const FRESH_RATCHET: RatchetState = { peak: null, tradingDay: -1, lastTMs: -1 };
-
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
-/** KST 자정 기준 거래일 번호(급증 마커 detectSurges와 동일 규칙). */
-export function tradingDayOf(tMs: number): number {
-  return Math.floor((tMs + KST_OFFSET_MS) / 86_400_000);
-}
 
 /** seed로 시작한 단조 ratchet에 한 ObSnapshot을 폴드. 연속거래(isContinuousBook)만,
  *  거래일 경계에서 리셋·재시드, 동률 비교체(먼저 도달 유지), 이미 본 tMs는 멱등.
