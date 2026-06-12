@@ -35,17 +35,28 @@ export function registerViewportCapture(fn: () => TabViewport | null): () => voi
   };
 }
 
-/** Snapshot the live chart's current viewport onto the active (outgoing) tab.
- *  No-op when there's no active tab or no registered capture (e.g. tests, or
- *  the empty-state with no chart). */
-function snapshotActiveViewport(): void {
-  const { tabs, activeTabId } = useLiveTabsStore.getState();
-  if (!activeTabId || !viewportCapture) return;
-  const vp = viewportCapture();
+/** Write an already-captured viewport onto the active tab. No-op without an active
+ *  tab or with a null viewport. LiveChartRoot's continuous capture calls this
+ *  DIRECTLY with its own captureViewport() result (bypassing the registry below) so
+ *  its unmount flush can't lose to the registry's own teardown — on route-nav the
+ *  registerViewportCapture cleanup may null `viewportCapture` before the capture
+ *  effect's cleanup runs, which would make a registry-routed flush a no-op. */
+export function saveViewportToActiveTab(vp: TabViewport | null): void {
   if (!vp) return;
+  const { tabs, activeTabId } = useLiveTabsStore.getState();
+  if (!activeTabId) return;
   useLiveTabsStore.setState({
     tabs: tabs.map((t) => (t.id === activeTabId ? { ...t, viewport: vp } : t)),
   });
+}
+
+/** Snapshot the live chart's current viewport onto the active tab via the registered
+ *  capture. Called on switch-AWAY (focusTab / addBlankTab) — a synchronous moment
+ *  where the chart is alive and the registry is current. No-op without an active tab
+ *  or a registered capture (tests / empty-state). */
+function snapshotActiveViewport(): void {
+  if (!viewportCapture) return;
+  saveViewportToActiveTab(viewportCapture());
 }
 
 type TabsStore = {
@@ -269,12 +280,20 @@ export function initLiveTabsSync(): () => void {
     if (state.candleTimeframe === prev.candleTimeframe && state.historicalFromDate === prev.historicalFromDate) return;
     const { tabs, activeTabId } = useLiveTabsStore.getState();
     if (!activeTabId) return;
-    // A timeframe change invalidates the saved viewport — its barSpan is in the
-    // OLD timeframe's bars, meaningless after re-aggregation (mirrors how
-    // setCandleTimeframe resets historicalFromDate). A pure pan (tf unchanged)
-    // leaves viewport alone; it's only read on switch-back and re-captured on
-    // the next switch-away.
-    const tfChanged = state.candleTimeframe !== prev.candleTimeframe;
+    // Invalidate the saved viewport ONLY when the USER changed the timeframe
+    // (its barSpan is in the OLD timeframe's bars, meaningless after re-aggregation
+    // — mirrors how setCandleTimeframe resets historicalFromDate). Discriminate the
+    // user-tf-change from a TAB SWITCH statelessly via the tab's own tf:
+    //   • user clicks a tf button → setCandleTimeframe writes page first, the active
+    //     tab still holds the OLD tf → page tf ≠ tab tf → null (correct).
+    //   • tab switch → focusTab does set({activeTabId}) BEFORE projectActiveView, so
+    //     by the time this mirror fires activeTabId is already the NEW tab and that
+    //     tab already carries its own tf → page tf == tab tf → PRESERVE the viewport
+    //     we are about to restore (ADR-0069 A안 cross-timeframe switch-back fix).
+    // A pure pan (tf unchanged) leaves viewport alone; it's re-captured continuously
+    // by LiveChartRoot's debounced range subscription.
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    const userChangedTimeframe = !!activeTab && state.candleTimeframe !== activeTab.timeframe;
     useLiveTabsStore.setState({
       tabs: tabs.map((t) =>
         t.id === activeTabId
@@ -282,7 +301,7 @@ export function initLiveTabsSync(): () => void {
               ...t,
               timeframe: state.candleTimeframe,
               historicalFromDate: state.historicalFromDate,
-              ...(tfChanged ? { viewport: null } : {}),
+              ...(userChangedTimeframe ? { viewport: null } : {}),
             }
           : t,
       ),
