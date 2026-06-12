@@ -81,7 +81,7 @@ function renderPage() {
   return render(<QueryClientProvider client={qc}><MemoryRouter><Heatmap /></MemoryRouter></QueryClientProvider>);
 }
 // 보드에 렌더된 폴더 div(id=heatmap-folder-*)의 DOM 순서 = orderedGroups 순서. (스트립 칩엔 id 없음)
-const folderOrder = () => [...document.querySelectorAll('[id^="heatmap-folder-"]')].map((el) => el.id);
+const folderOrder = () => Array.from(document.querySelectorAll('[id^="heatmap-folder-"]')).map((el) => el.id);
 
 beforeEach(() => {
   useHeatmapPrefsStore.setState({ sortMode: 'manual', groupSort: 'manual' });
