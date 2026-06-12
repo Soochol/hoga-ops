@@ -172,7 +172,7 @@ def _folder(fid: str, order: int, member_codes: list[str], name: str = "F") -> d
 
 
 def test_live_set_is_watchlist_order_prefix() -> None:
-    """Live Set = 패널 표시 순서 상위 LIVE_SET_MAX_CODES 코드 (v3, ADR-0069).
+    """Live Set = 패널 표시 순서 상위 LIVE_SET_MAX_CODES 코드 (v3, ADR-0070).
 
     폴더들은 .order 오름차순, 각 폴더 member_codes 순으로 평탄화 — 백엔드가 미러.
 
