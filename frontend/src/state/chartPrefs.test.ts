@@ -75,17 +75,23 @@ describe('총잔량 급증 설정', () => {
     expect(categoryOf(t!)).toBe('surge');
   });
 
-  it('surgeMarginPct numeric 기본 50, 30–100, enabledBy surgeMarkerEnabled', () => {
-    expect(DEFAULT_PREFS.surgeMarginPct).toBe(50);
-    const p = CHART_NUMERIC_PREFS.find((p) => p.key === 'surgeMarginPct');
-    expect(p?.enabledBy).toBe('surgeMarkerEnabled');
-    expect(p?.min).toBe(30);
-    expect(p?.max).toBe(100);
+  it('surgeApproachPct(기본 95, 80–100)·surgeRearmPct(기본 85, 50–95) enabledBy surgeMarkerEnabled', () => {
+    expect(DEFAULT_PREFS.surgeApproachPct).toBe(95);
+    expect(DEFAULT_PREFS.surgeRearmPct).toBe(85);
+    const ap = CHART_NUMERIC_PREFS.find((p) => p.key === 'surgeApproachPct');
+    expect(ap?.enabledBy).toBe('surgeMarkerEnabled');
+    expect(ap?.min).toBe(80);
+    expect(ap?.max).toBe(100);
+    const re = CHART_NUMERIC_PREFS.find((p) => p.key === 'surgeRearmPct');
+    expect(re?.enabledBy).toBe('surgeMarkerEnabled');
+    expect(re?.min).toBe(50);
+    expect(re?.max).toBe(95);
   });
 
   it('persist 된 surge 값 보존 + 범위 밖은 폴백', () => {
     expect(mergePrefs({ surgeMarkerEnabled: false }).surgeMarkerEnabled).toBe(false);
-    expect(mergePrefs({ surgeMarginPct: 80 }).surgeMarginPct).toBe(80);
-    expect(mergePrefs({ surgeMarginPct: 999 }).surgeMarginPct).toBe(DEFAULT_PREFS.surgeMarginPct);
+    expect(mergePrefs({ surgeApproachPct: 90 }).surgeApproachPct).toBe(90);
+    expect(mergePrefs({ surgeApproachPct: 999 }).surgeApproachPct).toBe(DEFAULT_PREFS.surgeApproachPct);
+    expect(mergePrefs({ surgeRearmPct: 70 }).surgeRearmPct).toBe(70);
   });
 });

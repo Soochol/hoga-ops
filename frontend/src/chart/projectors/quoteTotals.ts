@@ -88,29 +88,37 @@ export function projectAskPoints(
   return out;
 }
 
-export type QuoteTotalsCtx = { auctionMask: boolean; surgeEnabled: boolean; surgeMarginPct: number };
+export type QuoteTotalsCtx = {
+  auctionMask: boolean;
+  surgeEnabled: boolean;
+  surgeApproachPct: number;
+  surgeRearmPct: number;
+};
 
-// useShallow: object literal reference stays stable when the three fields don't
-// change → makePastCachedProjector's ctx-identity cache key (via bidCachedData's
+// useShallow: object literal reference stays stable when the fields don't change
+// → makePastCachedProjector's ctx-identity cache key (via bidCachedData's
 // ctx.auctionMask) and React.memo both hold. Same pattern as ratio.ts / fillStrength.ts.
 const useQuoteTotalsContext = (): QuoteTotalsCtx =>
   useActivePrefs(
     useShallow((p) => ({
       auctionMask: p.auctionWindowMask,
       surgeEnabled: p.surgeMarkerEnabled,
-      surgeMarginPct: p.surgeMarginPct,
+      surgeApproachPct: p.surgeApproachPct,
+      surgeRearmPct: p.surgeRearmPct,
     })),
   );
 
 /** 한 side의 급증 마커 프로젝터(per-side, 거래일 self-reset이라 점-청크에만 의존). detectSurgeSide로
- *  마진 초과 지점을 산출 후 보이는 구간만 SeriesMarker로 투영(라인과 동일한 axis.toVirtual/1000 좌표).
- *  마감 동시호가는 항상 제외(그릴링 Q4). makePastCachedProjector가 과거/당일 청크별로 호출·concat하므로
- *  틱당 비용이 히스토리 깊이와 무관해진다(라인과 동일한 Past/Today Split Cache seam — #56 P0). */
+ *  근접(95%)+히스테리시스(85%) 발사 지점을 산출 후 보이는 구간만 SeriesMarker로 투영(라인과 동일한
+ *  axis.toVirtual/1000 좌표). 텍스트는 직전 고가 대비 도달률(예: 96%, 신고가면 ≥100%). 마감 동시호가는
+ *  항상 제외(그릴링 Q4). makePastCachedProjector가 과거/당일 청크별로 호출·concat하므로 틱당 비용이
+ *  히스토리 깊이와 무관해진다(라인과 동일한 Past/Today Split Cache seam — #56 P0). */
 function surgeMarkerPoints(side: 'ask' | 'bid', color: string) {
   return (points: readonly QuoteRatioPoint[], axis: VirtualAxis, ctx: QuoteTotalsCtx): SeriesMarker<Time>[] => {
     if (!ctx.surgeEnabled) return [];
     return detectSurgeSide(points, side, {
-      margin: ctx.surgeMarginPct / 100,
+      approachRatio: ctx.surgeApproachPct / 100,
+      rearmRatio: ctx.surgeRearmPct / 100,
       isClosingAuction: (t) => axis.inClosingAuctionWindow(t),
     })
       .filter((m) => axis.contains(m.t))
@@ -119,9 +127,9 @@ function surgeMarkerPoints(side: 'ask' | 'bid', color: string) {
         position: 'aboveBar' as const,
         shape: 'circle' as const,
         color,
-        text: `+${Math.round(m.pctOver * 100)}%`,
+        text: `${Math.round(m.pctOfPeak * 100)}%`,
       }));
-}
+  };
 }
 
 const askSurgeCached = makePastCachedProjector(surgeMarkerPoints('ask', ask), (b) => b.quote_ratio.points);
