@@ -14,6 +14,7 @@ import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
+import { useDayAskPeak } from './useDayAskPeak';
 import { todayKstYyyymmdd } from './liveDateTime';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import LiveSettingsModal from './LiveSettingsModal';
@@ -100,6 +101,11 @@ export function LivePage() {
     today,
     live,
   );
+  const dayAskPeak = useDayAskPeak(
+    live.ob,
+    (chartBundle ?? bundle)?.ask_peak ?? null,
+    activeCode,
+  );
 
   return (
     <div
@@ -148,6 +154,7 @@ export function LivePage() {
         pastDataWarnings={pastDataWarnings}
         restoreViewport={restoreViewport}
         live={live}
+        dayAskPeak={dayAskPeak}
       />
       {indicatorPanelOpen && (
         <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />

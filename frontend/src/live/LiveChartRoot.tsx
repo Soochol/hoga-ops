@@ -24,7 +24,7 @@ import {
   isMinuteTimeframe,
   isCalendarTimeframe,
 } from '../state/livePage';
-import type { RangeBundle } from '../api/types';
+import type { AskPeak, RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
@@ -40,6 +40,7 @@ import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
+import LiveAskPeakLine from './LiveAskPeakLine';
 import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
@@ -88,12 +89,14 @@ interface Props {
   /** 활성 탭의 저장된 viewport(ADR-0069 A안). cold 전환 복귀 시 보던 위치(줌+스크롤)로
    *  복원한다. optional + 기본 null이라 기존 단일-번들 호출부/테스트는 무변경으로 동작. */
   restoreViewport?: TabViewport | null;
+  /** LivePage의 useDayAskPeak 결과 — LiveAskPeakLine에 전달. */
+  dayAskPeak?: AskPeak | null;
 }
 
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null }: Props) {
+export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeak = null }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -734,6 +737,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
           ))}
           <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} />
+          <LiveAskPeakLine paneSeries={paneSeries} peak={dayAskPeak} />
           <DrawingOverlay chart={chart} axis={axis} paneSeries={paneSeries} />
           {/* After DrawingOverlay so the legend's ✕/eye buttons paint above the
               drawing canvas; the container is pointer-transparent so the
