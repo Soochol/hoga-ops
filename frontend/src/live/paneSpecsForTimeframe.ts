@@ -1,121 +1,89 @@
 import { type LiveTimeframe, isCalendarTimeframe } from '../state/livePage';
 import { PANE_SPECS, type BoundPaneSpec } from '../chart/paneSpecs';
-import { CANDLE_SPEC } from '../chart/projectors/candle';
-import { VOLUME_SPEC } from '../chart/projectors/volume';
 import {
   INVESTOR_FOREIGN_SPEC,
   INVESTOR_INSTITUTION_SPEC,
 } from '../chart/projectors/investorNet';
 
-/**
- * Module-frozen "calendar" pane set: D/W/M timeframes mount only candle +
- * volume because the three hoga panes (RatioPane, QuoteTotalsPane,
- * FillStrength) have no source data outside the minute timeframes — `/live`
- * never calls `/api/range` for D/W/M (see useLiveBundle's `enableRange`
- * gate). Empty stripes squeezed the candle pane vertically; removing them
- * also restores the candle's apparent horizontal width under `fitContent`.
- *
- * See ADR-0041 — `/live` calendar timeframes mount candle + volume only.
- */
-const CALENDAR_PANE_SPECS: readonly BoundPaneSpec[] = Object.freeze([
-  CANDLE_SPEC,
-  VOLUME_SPEC,
-]) as readonly BoundPaneSpec[];
-
-// Volume-off variant for calendar frames — frozen once so the returned
-// reference stays stable across renders (RangeSeriesPane's spec-keyed effect
-// doesn't churn on an unchanged toggle). Dropping the volume pane is safe for
-// drawing pane-binding because chartCoordinates now resolves pane index at
-// runtime (getPane().paneIndex()), so panes below volume self-correct when it's
-// removed.
-const CALENDAR_PANE_SPECS_NO_VOLUME: readonly BoundPaneSpec[] = Object.freeze(
-  CALENDAR_PANE_SPECS.filter((s) => s.name !== 'volume'),
-) as readonly BoundPaneSpec[];
-
+/** Indicator toggles that gate which panes mount. The two investor flags are
+ *  required (default off); the rest are optional and default ON when omitted
+ *  (volume + the three hoga panes were always-on before they became togglable). */
 export type PaneToggles = {
   foreignNet: boolean;
   institutionNet: boolean;
-  /** Volume pane mount. Omitted/true → mounted; false → removed entirely
-   *  (matches the investor panes' on/off behavior, not an empty stripe). */
   volumeEnabled?: boolean;
-  /** 총잔량 pane mount. 누락/true → mount; false → 제거. */
   quoteTotalsEnabled?: boolean;
-  /** 호가비 pane mount. 누락/true → mount; false → 제거. */
   ratioEnabled?: boolean;
-  /** 체결강도 pane mount. 누락/true → mount; false → 제거. */
   fillStrengthEnabled?: boolean;
 };
 
 const NO_TOGGLES: PaneToggles = { foreignNet: false, institutionNet: false };
 
-// 분봉 pane 조합 캐시 — 동일 토글 조합은 동일(frozen) 배열을 반환해
-// RangeSeriesPane의 spec-keyed reconciliation이 churn하지 않게 한다.
-// (반환 배열은 어떤 dep 배열에도 안 들어가 load-bearing은 아니나, 기존
-//  frozen 관행과 일관성·미래 방어 목적.)
-const minutePaneCache = new Map<string, readonly BoundPaneSpec[]>();
+const isMinute = (tf: LiveTimeframe): boolean => !isCalendarTimeframe(tf);
 
-function minutePanes(
-  volumeOn: boolean, qtOn: boolean, ratioOn: boolean, fillOn: boolean,
-): readonly BoundPaneSpec[] {
-  const key = `${volumeOn ? 1 : 0}${qtOn ? 1 : 0}${ratioOn ? 1 : 0}${fillOn ? 1 : 0}`;
-  const cached = minutePaneCache.get(key);
-  if (cached) return cached;
-  const drop = new Set<string>();
-  if (!volumeOn) drop.add('volume');
-  if (!qtOn) drop.add('quote-totals');
-  if (!ratioOn) drop.add('ratio');
-  if (!fillOn) drop.add('fill-strength');
-  // All panes on → return PANE_SPECS directly to preserve reference identity
-  // (existing tests rely on toBe(PANE_SPECS) for the default all-on case).
-  const built: readonly BoundPaneSpec[] = drop.size === 0
-    ? PANE_SPECS
-    : Object.freeze(PANE_SPECS.filter((s) => !drop.has(s.name))) as readonly BoundPaneSpec[];
-  minutePaneCache.set(key, built);
-  return built;
-}
+/** A pane's mount gate: does this pane mount at this timeframe under these
+ *  toggles? */
+type PaneGate = (tf: LiveTimeframe, t: PaneToggles) => boolean;
+
+/**
+ * Declarative gate per pane — the single source of "which panes, gated how".
+ * Adding a togglable pane = its `PANE_SPECS` entry (or an append in `GATED`) +
+ * one gate here; no `PaneToggles` plumbing branch, no hand-built cache key.
+ *
+ * The two domain rules are gates, not control flow:
+ *  - **Calendar/minute split (ADR-0041)**: the three hoga panes have no source
+ *    data on D/W/M (`/live` never calls `/api/range` there), so they gate on
+ *    `isMinute`. Candle + volume carry no timeframe gate.
+ *  - **Investor panes are D-only (ADR-0055)**: daily-anchored points (09:00)
+ *    wouldn't align to W/M aggregate segments, so they gate on `tf === 'D'`.
+ *
+ * Unlisted panes (candle) default to always-on.
+ */
+const GATE_BY_NAME: Partial<Record<string, PaneGate>> = {
+  volume: (_tf, t) => t.volumeEnabled !== false,
+  'quote-totals': (tf, t) => isMinute(tf) && t.quoteTotalsEnabled !== false,
+  ratio: (tf, t) => isMinute(tf) && t.ratioEnabled !== false,
+  'fill-strength': (tf, t) => isMinute(tf) && t.fillStrengthEnabled !== false,
+};
+
+/**
+ * The ordered candidate list: canonical `PANE_SPECS` plus the investor panes
+ * appended in canonical order (foreign before institution). `paneSpecsForTimeframe`
+ * keeps a pane iff its gate passes — gating, not membership, decides what mounts,
+ * so canonical order is preserved with no hole left by an absent pane.
+ */
+const GATED: ReadonlyArray<{ spec: BoundPaneSpec; gate: PaneGate }> = [
+  ...PANE_SPECS.map((spec) => ({ spec, gate: GATE_BY_NAME[spec.name] ?? ((): boolean => true) })),
+  { spec: INVESTOR_FOREIGN_SPEC, gate: (tf, t): boolean => tf === 'D' && t.foreignNet },
+  { spec: INVESTOR_INSTITUTION_SPEC, gate: (tf, t): boolean => tf === 'D' && t.institutionNet },
+];
+
+/**
+ * Reference-stability cache keyed by the actual output determinant — the set
+ * of kept pane names. Same kept set → same frozen array, so `RangeSeriesPane`'s
+ * spec-keyed reconciliation doesn't churn. The key is DERIVED from the kept
+ * specs (not hand-built from toggle bits), so a new pane or toggle can never
+ * silently collide on a stale key. The all-base (minute, all-on) entry is
+ * seeded with `PANE_SPECS` itself so that common case keeps `=== PANE_SPECS`
+ * identity (callers/tests rely on it).
+ */
+const ALL_BASE_KEY = PANE_SPECS.map((s) => s.name).join(',');
+const paneCache = new Map<string, readonly BoundPaneSpec[]>([[ALL_BASE_KEY, PANE_SPECS]]);
 
 /**
  * Pick the pane spec list to mount in `LiveChartRoot` for a given
- * **LiveTimeframe**. Minute frames always get `PANE_SPECS`; calendar frames
- * (D/W/M) get candle + volume. Two opt-in adjustments:
- *
- *  - `volumeEnabled === false` removes the volume pane on every timeframe
- *    (the popover ✕ / toggle should hide the pane, not leave an empty stripe).
- *  - foreign / institution net-buy panes are appended in canonical order, but
- *    only on **'D'** (ADR-0055): investor points are daily-anchored (09:00),
- *    whereas W/M aggregate candles into week/month segments, so daily points
- *    wouldn't align (they'd be filtered by `axis.contains`).
- *
- * Each spec is a module-level constant (stable ref) and the four base arrays
- * are frozen, so an unchanged toggle returns the SAME array reference and
- * `RangeSeriesPane`'s `spec`-keyed effect doesn't churn. lightweight-charts v5
- * clamps an out-of-range `paneIndex` and auto-removes a pane once its last
- * series is gone, so appending/removing specs mounts and tears down panes
- * cleanly; canonical order keeps volume above the investor panes regardless of
- * toggle order.
+ * **LiveTimeframe** + indicator toggles. Each pane's gate decides whether it
+ * mounts; the result is memoized by its kept-name set.
  */
 export function paneSpecsForTimeframe(
   tf: LiveTimeframe,
   toggles: PaneToggles = NO_TOGGLES,
 ): readonly BoundPaneSpec[] {
-  const volumeOn = toggles.volumeEnabled !== false; // default true
-  if (!isCalendarTimeframe(tf)) {
-    return minutePanes(
-      volumeOn,
-      toggles.quoteTotalsEnabled !== false,
-      toggles.ratioEnabled !== false,
-      toggles.fillStrengthEnabled !== false,
-    );
-  }
-  const base = volumeOn ? CALENDAR_PANE_SPECS : CALENDAR_PANE_SPECS_NO_VOLUME;
-  // Investor panes are daily-only; W/M aggregate candles so daily points
-  // wouldn't align to their segments.
-  const investorAllowed = tf === 'D';
-  if (!investorAllowed || (!toggles.foreignNet && !toggles.institutionNet)) {
-    return base;
-  }
-  const extra: BoundPaneSpec[] = [];
-  if (toggles.foreignNet) extra.push(INVESTOR_FOREIGN_SPEC);
-  if (toggles.institutionNet) extra.push(INVESTOR_INSTITUTION_SPEC);
-  return [...base, ...extra];
+  const kept = GATED.filter((g) => g.gate(tf, toggles)).map((g) => g.spec);
+  const key = kept.map((s) => s.name).join(',');
+  const cached = paneCache.get(key);
+  if (cached) return cached;
+  const frozen = Object.freeze(kept) as readonly BoundPaneSpec[];
+  paneCache.set(key, frozen);
+  return frozen;
 }

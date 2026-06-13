@@ -114,4 +114,12 @@ describe('paneSpecsForTimeframe — 호가 토글', () => {
     const t = { foreignNet: false, institutionNet: false, ratioEnabled: false };
     expect(paneSpecsForTimeframe('1m', t)).toBe(paneSpecsForTimeframe('1m', t));
   });
+  it('서로 다른 단일 드롭은 캐시 충돌 없이 다른 배열 (auto-derived 키)', () => {
+    // 수작업 비트 키였다면 새 토글 추가 시 충돌 가능 — kept-name 파생 키는
+    // 드롭 대상이 다르면 키도 달라 충돌 불가. (volume 드롭) ≠ (ratio 드롭).
+    const volOff = paneSpecsForTimeframe('1m', { foreignNet: false, institutionNet: false, volumeEnabled: false });
+    const ratioOff = paneSpecsForTimeframe('1m', { foreignNet: false, institutionNet: false, ratioEnabled: false });
+    expect(volOff.map((s) => s.name)).not.toEqual(ratioOff.map((s) => s.name));
+    expect(volOff).not.toBe(ratioOff);
+  });
 });
