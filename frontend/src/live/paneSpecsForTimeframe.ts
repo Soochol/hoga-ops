@@ -22,14 +22,12 @@ const CALENDAR_PANE_SPECS: readonly BoundPaneSpec[] = Object.freeze([
   VOLUME_SPEC,
 ]) as readonly BoundPaneSpec[];
 
-// Volume-off variants, frozen once so the returned reference stays stable
-// across renders (RangeSeriesPane's spec-keyed effect doesn't churn on an
-// unchanged toggle). Dropping the volume pane is safe for drawing pane-binding
-// because chartCoordinates now resolves pane index at runtime (getPane().
-// paneIndex()), so panes below volume self-correct when it's removed.
-const PANE_SPECS_NO_VOLUME: readonly BoundPaneSpec[] = Object.freeze(
-  PANE_SPECS.filter((s) => s.name !== 'volume'),
-) as readonly BoundPaneSpec[];
+// Volume-off variant for calendar frames — frozen once so the returned
+// reference stays stable across renders (RangeSeriesPane's spec-keyed effect
+// doesn't churn on an unchanged toggle). Dropping the volume pane is safe for
+// drawing pane-binding because chartCoordinates now resolves pane index at
+// runtime (getPane().paneIndex()), so panes below volume self-correct when it's
+// removed.
 const CALENDAR_PANE_SPECS_NO_VOLUME: readonly BoundPaneSpec[] = Object.freeze(
   CALENDAR_PANE_SPECS.filter((s) => s.name !== 'volume'),
 ) as readonly BoundPaneSpec[];
@@ -40,9 +38,41 @@ export type PaneToggles = {
   /** Volume pane mount. Omitted/true → mounted; false → removed entirely
    *  (matches the investor panes' on/off behavior, not an empty stripe). */
   volumeEnabled?: boolean;
+  /** 총잔량 pane mount. 누락/true → mount; false → 제거. */
+  quoteTotalsEnabled?: boolean;
+  /** 호가비 pane mount. 누락/true → mount; false → 제거. */
+  ratioEnabled?: boolean;
+  /** 체결강도 pane mount. 누락/true → mount; false → 제거. */
+  fillStrengthEnabled?: boolean;
 };
 
 const NO_TOGGLES: PaneToggles = { foreignNet: false, institutionNet: false };
+
+// 분봉 pane 조합 캐시 — 동일 토글 조합은 동일(frozen) 배열을 반환해
+// RangeSeriesPane의 spec-keyed reconciliation이 churn하지 않게 한다.
+// (반환 배열은 어떤 dep 배열에도 안 들어가 load-bearing은 아니나, 기존
+//  frozen 관행과 일관성·미래 방어 목적.)
+const minutePaneCache = new Map<string, readonly BoundPaneSpec[]>();
+
+function minutePanes(
+  volumeOn: boolean, qtOn: boolean, ratioOn: boolean, fillOn: boolean,
+): readonly BoundPaneSpec[] {
+  const key = `${volumeOn ? 1 : 0}${qtOn ? 1 : 0}${ratioOn ? 1 : 0}${fillOn ? 1 : 0}`;
+  const cached = minutePaneCache.get(key);
+  if (cached) return cached;
+  const drop = new Set<string>();
+  if (!volumeOn) drop.add('volume');
+  if (!qtOn) drop.add('quote-totals');
+  if (!ratioOn) drop.add('ratio');
+  if (!fillOn) drop.add('fill-strength');
+  // All panes on → return PANE_SPECS directly to preserve reference identity
+  // (existing tests rely on toBe(PANE_SPECS) for the default all-on case).
+  const built: readonly BoundPaneSpec[] = drop.size === 0
+    ? PANE_SPECS
+    : Object.freeze(PANE_SPECS.filter((s) => !drop.has(s.name))) as readonly BoundPaneSpec[];
+  minutePaneCache.set(key, built);
+  return built;
+}
 
 /**
  * Pick the pane spec list to mount in `LiveChartRoot` for a given
@@ -70,7 +100,12 @@ export function paneSpecsForTimeframe(
 ): readonly BoundPaneSpec[] {
   const volumeOn = toggles.volumeEnabled !== false; // default true
   if (!isCalendarTimeframe(tf)) {
-    return volumeOn ? PANE_SPECS : PANE_SPECS_NO_VOLUME;
+    return minutePanes(
+      volumeOn,
+      toggles.quoteTotalsEnabled !== false,
+      toggles.ratioEnabled !== false,
+      toggles.fillStrengthEnabled !== false,
+    );
   }
   const base = volumeOn ? CALENDAR_PANE_SPECS : CALENDAR_PANE_SPECS_NO_VOLUME;
   // Investor panes are daily-only; W/M aggregate candles so daily points

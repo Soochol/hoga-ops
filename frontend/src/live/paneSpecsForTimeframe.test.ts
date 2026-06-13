@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
+import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
+import { type LiveTimeframe } from '../state/livePage';
 import { PANE_SPECS } from '../chart/paneSpecs';
 import { CANDLE_SPEC } from '../chart/projectors/candle';
 import { VOLUME_SPEC } from '../chart/projectors/volume';
@@ -85,5 +86,32 @@ describe('paneSpecsForTimeframe', () => {
     const a = paneSpecsForTimeframe('1m', { foreignNet: false, institutionNet: false, volumeEnabled: false });
     const b = paneSpecsForTimeframe('5m', { foreignNet: false, institutionNet: false, volumeEnabled: false });
     expect(a).toBe(b);
+  });
+});
+
+describe('paneSpecsForTimeframe — 호가 토글', () => {
+  const names = (tf: LiveTimeframe, t: PaneToggles) => paneSpecsForTimeframe(tf, t).map((s) => s.name);
+
+  it('기본(토글 ON) 분봉 → 5 pane 유지', () => {
+    const n = names('1m', { foreignNet: false, institutionNet: false });
+    expect(n).toEqual(['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength']);
+  });
+  it('quoteTotalsEnabled=false → 총잔량 pane 제거', () => {
+    const n = names('1m', { foreignNet: false, institutionNet: false, quoteTotalsEnabled: false });
+    expect(n).not.toContain('quote-totals');
+    expect(n).toContain('ratio');
+    expect(n).toContain('fill-strength');
+  });
+  it('ratio·fill 동시 off → 둘 다 제거', () => {
+    const n = names('1m', { foreignNet: false, institutionNet: false, ratioEnabled: false, fillStrengthEnabled: false });
+    expect(n).toEqual(['candle', 'volume', 'quote-totals']);
+  });
+  it('calendar(D) → 호가 토글 무관(애초에 없음)', () => {
+    const n = names('D', { foreignNet: false, institutionNet: false, quoteTotalsEnabled: true });
+    expect(n).toEqual(['candle', 'volume']);
+  });
+  it('동일 토글 2회 호출 → 동일 배열 참조(참조 안정)', () => {
+    const t = { foreignNet: false, institutionNet: false, ratioEnabled: false };
+    expect(paneSpecsForTimeframe('1m', t)).toBe(paneSpecsForTimeframe('1m', t));
   });
 });
