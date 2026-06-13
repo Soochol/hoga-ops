@@ -138,6 +138,14 @@ def test_find_prunable_no_raw_root(tmp_data_dir: Path) -> None:
     assert find_prunable(tmp_data_dir, retention_days=3, now=_NOW) == []
 
 
+def test_find_prunable_cutoff_boundary_is_kept(tmp_data_dir: Path) -> None:
+    # cutoff(N=3, now=2026-06-13) == 20260610. date == cutoff는 strict <에서 보존.
+    _write_meta_flat(tmp_data_dir, "005930", "20260610",
+                     collection_complete=True, is_partial=False)
+    _make_raw(tmp_data_dir, "005930", "20260610")
+    assert find_prunable(tmp_data_dir, retention_days=3, now=_NOW) == []
+
+
 def test_prune_raw_dry_run_deletes_nothing(tmp_data_dir: Path) -> None:
     _write_meta_flat(tmp_data_dir, "005930", "20260605",
                      collection_complete=True, is_partial=False)
@@ -159,6 +167,7 @@ def test_prune_raw_execute_deletes_and_reclaims(tmp_data_dir: Path) -> None:
     assert not raw.exists()
     # parquet은 보존
     assert (tmp_data_dir / "parquet" / "20260605" / "005930" / "meta.json").exists()
+    assert result.scanned == 0  # 유일 raw가 삭제됨
 
 
 def test_prune_raw_execute_removes_empty_date_dir(tmp_data_dir: Path) -> None:

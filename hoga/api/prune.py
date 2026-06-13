@@ -115,8 +115,9 @@ def prune_raw(
     """find_prunable 후보를 (execute면) rmtree로 삭제하고 결과를 반환한다.
 
     dry-run(execute=False)이면 후보만 채운 PruneResult를 돌려준다(디스크 불변).
-    삭제 후 비어 버린 날짜 디렉터리도 정리한다. rmtree 도중 실패해도 멱등 —
-    다음 실행이 남은 후보를 이어서 지운다.
+    삭제 후 비어 버린 날짜 디렉터리도 정리한다. 단일 rmtree 실패 시 예외가
+    전파된다(loop 중단). 스케줄러는 이를 swallow하고 다음 일일 실행이 남은
+    후보를 재시도한다.
     """
     raw_root = data_dir / "raw"
     candidates = find_prunable(data_dir, retention_days=retention_days, now=now)
