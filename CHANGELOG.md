@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.31.2] - 2026-06-13
+
+### Changed
+- **매도 최대벽 — 물량 k/M 표기 + peak 발생 시점 점** (#94, 사용자 요청): 세그먼트 라벨을 `13.6k`/`153.1k`/`1.2M`
+  형식(k=천·M=백만)으로 바꾸고(기존 `만`/`억`), 각 세그먼트의 peak이 실제 걸린 시점(`t_ms`)에 점을 찍어
+  그날 언제 최대벽이었는지 표시한다(`formatQtyKo`→`formatQtyCompact`, `AskPeakSegment.peakTime` 추가).
+
 ## [0.7.31.1] - 2026-06-13
 
 ### Fixed
