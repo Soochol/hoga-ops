@@ -1,14 +1,11 @@
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import {
-  useChartPrefsStore,
   CHART_TOGGLES,
-  CHART_NUMERIC_PREFS,
   categoryOf,
   type ChartToggleCategory,
 } from '../state/chartPrefs';
 import { SOURCE_OPTIONS } from '../state/sourcePreference';
-import ToggleRow from './settings/ToggleRow';
-import NumericPrefRow from './settings/NumericPrefRow';
+import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
 
 /**
@@ -30,35 +27,10 @@ const LABEL: Record<NavId, string> = {
 };
 
 function CategoryDetail({ category }: { category: ChartToggleCategory }) {
-  const prefs = useChartPrefsStore();
-  const setToggle = useChartPrefsStore((s) => s.setToggle);
-  const toggles = CHART_TOGGLES.filter((t) => categoryOf(t) === category);
-  return (
-    <>
-      {toggles.map((toggle, idx) => {
-        const gatedNumerics = CHART_NUMERIC_PREFS.filter((p) => p.enabledBy === toggle.key);
-        return (
-          <Fragment key={toggle.key}>
-            {idx > 0 && <div className="border-b border-border my-2" />}
-            <ToggleRow
-              label={toggle.label}
-              description={toggle.description}
-              checked={prefs[toggle.key]}
-              onToggle={() => setToggle(toggle.key, !prefs[toggle.key])}
-              testId={`settings-toggle-${toggle.key}`}
-            />
-            {gatedNumerics.length > 0 && (
-              <div className="ml-4">
-                {gatedNumerics.map((def) => (
-                  <NumericPrefRow key={def.key} def={def} />
-                ))}
-              </div>
-            )}
-          </Fragment>
-        );
-      })}
-    </>
-  );
+  const keys = CHART_TOGGLES
+    .filter((t) => categoryOf(t) === category)
+    .map((t) => t.key);
+  return <IndicatorPrefRows toggleKeys={keys} />;
 }
 
 function DataSourceDetail() {
