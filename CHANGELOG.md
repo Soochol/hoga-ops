@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.31.1] - 2026-06-13
+
+### Fixed
+- **거래일별 매도 최대벽이 차트에 하나도 안 그려지던 문제** (#93): v0.7.31.0의 per-day 전환에서
+  `buildChartBundle`(라이브 번들 stitcher)이 `ask_peaks`를 `[]`로 하드코딩해 `/api/range`(pastBundle)의
+  거래일별 매도 최대벽을 전부 버렸다(per-day PR의 fixture 일괄치환이 이 실제 코드 라인까지 잘못 바꿈).
+  → 클라 `dayAskPeaks`가 항상 비어 세그먼트가 하나도 렌더되지 않았다. `pastBundle.ask_peaks`를 그대로
+  통과시키도록 수정 + 통과 회귀 테스트.
+
 ## [0.7.31.0] - 2026-06-13
 
 ### Changed
