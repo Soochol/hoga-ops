@@ -27,6 +27,13 @@ describe('selectSource', () => {
     // (10 + 14 + 6 + 12) / 4 = 10.5
     expect(selectSource(c, 'ohlc4')).toBe(10.5);
   });
+
+  it('accepts an OHLC-only object (daily candle shape — no ts_ms/vol_a)', () => {
+    const d = { open: 10, high: 14, low: 6, close: 12 };
+    expect(selectSource(d, 'close')).toBe(12);
+    expect(selectSource(d, 'hl2')).toBe(10);
+    expect(selectSource(d, 'ohlc4')).toBe(10.5);
+  });
 });
 
 describe('computeSMA', () => {

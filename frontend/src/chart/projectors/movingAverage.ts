@@ -5,7 +5,7 @@ import type { Candle } from '../../api/types';
  *  또는 가중 평균(HL2/HLC3/OHLC4)을 선호한다. */
 export type MASource = 'close' | 'open' | 'high' | 'low' | 'hl2' | 'hlc3' | 'ohlc4';
 
-export function selectSource(c: Candle, source: MASource): number {
+export function selectSource(c: Pick<Candle, 'open' | 'high' | 'low' | 'close'>, source: MASource): number {
   switch (source) {
     case 'close': return c.close;
     case 'open':  return c.open;
