@@ -155,9 +155,9 @@ ADR-0055의 D-only는 "W/M 집계 시 일별 점 정렬 탈락"이라는 mechani
 - **enabled 조건**: `dailyMovingAverageEnabled && isMinuteTimeframe(timeframe) && code != null`. (조건부 hook 금지 규칙상 항상 호출하되 비활성 시 `code=null` 전달 → 훅 내부 `enabled=false`.)
 - **`to`** = `todayKst` (오버레이 prop).
 - **`from`** = `subtractDaysKst(todayKst, lookbackCalendarDays)` — **`today` 기준 고정** (segments[0] 기준 ❌).
-  - `lookbackCalendarDays = PAST_CANDLES_MAX_DAYS + ceil(maxEnabledPeriod / TRADING_DAYS_PER_CALENDAR_DAYS) + margin` (grill Q3, eng-review 렌즈).
+  - `lookbackCalendarDays = PAST_CANDLES_MAX_DAYS + ceil(maxEnabledPeriod × 3/2) + margin` (grill Q3, eng-review 렌즈).
     - **`PAST_CANDLES_MAX_DAYS`(=250, `liveDateTime.ts`)** = 분봉 좌측 팬의 **문서화된 클램프 하한** — 분봉 차트는 `earliestAllowedMinuteDate`(오늘−249) 이전으로 못 간다(useLiveBundle 250일 클램프 + ADR-0059 점진 팬이 공유하는 상수). 매직넘버(`minuteBackfillSpanDays`) 대신 이 단일 출처에 고정 → 클램프 변경 시 자동 추종, drift 없음.
-    - **`ceil(maxEnabledPeriod / TRADING_DAYS_PER_CALENDAR_DAYS)`**(=period 거래일→캘린더일, ×7/5; 상수도 `liveDateTime.ts`) = 분봉 최저 가시일 이전에도 period개 일봉 종가 확보. `margin`(~15) = 휴장일 슬랙. `maxEnabledPeriod` = 활성 daily 슬롯 최대 period.
+    - **`ceil(maxEnabledPeriod × 3/2)`**(=period 거래일→캘린더일, ×1.5; KRX 실측 ≈1.48보다 보수적이라 최대 period=400까지 구조적 커버) = 분봉 최저 가시일 이전에도 period개 일봉 종가 확보. `margin`(~15) = 휴장일 슬랙. `maxEnabledPeriod` = 활성 daily 슬롯 최대 period.
   - 효과: `from ≤ (분봉 최저 가시일 − period거래일)`. 일봉 endpoint는 cap 없음(ADR-0048)이라 ~265~460행 받아도 무비용 → **분봉 가시 전 범위를 반드시 덮는 pre-cached superset** → candle prepend와 **진짜 lockstep**(추측 아님, 클램프로 상한 보증). 2-paint 깜빡임 회피.
 
 ### 투영 알고리즘 (오버레이)

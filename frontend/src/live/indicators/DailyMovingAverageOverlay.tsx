@@ -39,8 +39,9 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, today
     () => configs.reduce((mx, c) => (c.enabled ? Math.max(mx, c.period) : mx), 20),
     [configs],
   );
-  // period 거래일 → 캘린더일 (KRX ≈ 5 거래일 / 7 캘린더일) + 휴장 슬랙.
-  const lookbackDays = PAST_CANDLES_MAX_DAYS + Math.ceil((maxPeriod * 7) / 5) + 15;
+  // period 거래일 → 캘린더일 (KRX 실측 ≈ 1.48× — 휴장 포함; ×3/2로 상향해 대형
+  // period(최대 MA_PERIOD_MAX=400)에서도 분봉 가시 전 범위를 구조적으로 덮는다) + 슬랙.
+  const lookbackDays = PAST_CANDLES_MAX_DAYS + Math.ceil((maxPeriod * 3) / 2) + 15;
   const from = enabled ? subtractDaysKst(todayKst, lookbackDays) : null;
   const to = enabled ? todayKst : null;
   const dailyQuery = useLivePastDailyCandles(enabled ? code : null, from, to);

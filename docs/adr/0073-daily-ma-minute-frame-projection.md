@@ -59,7 +59,8 @@ split의 *범위*(프레임별 데이터경로)만 가로지른다.
 
 - **(채택) lockstep은 pan에 대해 구조적, cold-load만 1-fetch 지연.** lookback
   `from`을 `todayKst` 기준 `PAST_CANDLES_MAX_DAYS(=250, 분봉 클램프 하한) +
-  ceil(maxPeriod ÷ (5/7)) + margin`으로 **고정**한다. 분봉은 이 클램프보다 과거로
+  ceil(maxPeriod × 3/2) + margin`으로 **고정**한다 (거래일→캘린더일 1.5×는 KRX 실측
+  ≈1.48보다 보수적이라 최대 period=400까지 커버). 분봉은 이 클램프보다 과거로
   못 가므로(useLiveBundle 250일 클램프 + ADR-0059 점진 팬) 일봉 superset이 분봉
   가시 전 범위를 항상 덮는다. 결정적으로 이 `from/to`는 **좌측 팬에 불변**(today
   앵커) → react-query 키가 안 바뀜 → 팬 시 재fetch 없음 → 드러난 거래일의 MA값이
