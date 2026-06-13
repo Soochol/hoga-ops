@@ -255,6 +255,81 @@ def test_query_bucketed_ratio_empty_parquet_returns_no_rows(tmp_path: Path) -> N
     assert query_bucketed_ratio(con, path=out, bucket_ms=1000) == []
 
 
+def test_query_bucketed_ratio_intra_max_independent_sides(tmp_path: Path) -> None:
+    """한 버킷 내 bid 최댓값과 ask 최댓값이 서로 다른 시점이어도 각각 독립 포착
+    (캔들 고가가 시·종가와 무관하듯). 종가는 마지막 스냅샷 값으로 유지."""
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    # 모두 같은 1000ms 버킷. bid max@t1(seq1, bid=900), ask max@t2(seq2, ask=800),
+    # 종가=마지막(seq3, bid=10 ask=20).
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(1,), bid_q=(900,)),
+        _ob(ts_ms=90_000_500, seq=2, ask_q=(800,), bid_q=(1,)),
+        _ob(ts_ms=90_000_900, seq=3, ask_q=(20,), bid_q=(10,)),  # 종가
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_ratio(con, path=out, bucket_ms=1000)
+    assert len(rows) == 1
+    r = rows[0]
+    assert (r.bid_total, r.ask_total) == (10, 20)   # 종가 = 마지막 스냅샷
+    assert r.bid_max == 900                          # bid 독립 최댓값
+    assert r.ask_max == 800                          # ask 독립 최댓값
+    assert r.bid_max >= r.bid_total and r.ask_max >= r.ask_total  # 상계 invariant
+
+
+def test_query_bucketed_ratio_imb_max_picks_extreme_imbalance_snapshot(tmp_path: Path) -> None:
+    """호가비 Intra-Bar Max는 |imbalance| 최대 스냅샷의 (bid,ask) 쌍. max끼리 결합과
+    부호가 뒤집힌다(스펙 예시): A(bid100,ask2)=매수우위, B(bid10,ask300)=매도우위.
+    |imbalance| 극값 = A → imb_max_bid/ask = (100,2). (bid_max=100, ask_max=300 결합 아님.)"""
+    from hoga.tables.snapshots import query_bucketed_ratio
+    from hoga.api.timeenc import hhmmssms_to_unix_ms  # noqa: F401 (의도 명시용)
+
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(2,), bid_q=(100,)),   # A: |imb| = 100/2-1 = 49 (매수우위)
+        _ob(ts_ms=90_000_500, seq=2, ask_q=(300,), bid_q=(10,)),  # B: |imb| = 300/10-1 = 29 (매도우위)
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_ratio(con, path=out, bucket_ms=1000)
+    assert len(rows) == 1
+    r = rows[0]
+    assert (r.imb_max_bid, r.imb_max_ask) == (100, 2)  # A — 더 큰 |imbalance|
+    assert (r.bid_max, r.ask_max) == (100, 300)        # 독립 최댓값은 max끼리(부호 뒤집힘 증거)
+
+
+def test_query_bucketed_ratio_auction_bucket_zeroes_max_fields(tmp_path: Path) -> None:
+    """완전 동시호가 버킷(연속거래 스냅샷 없음)은 종가뿐 아니라 max 필드도 0 센티넬."""
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    # 3-레벨 붕괴 호가창(레벨4+ = 0) 2건이 한 버킷 → is_pre 없음 → 전부 0.
+    z = tuple([0] * 10)
+    collapsed1 = Orderbook(
+        ts_ms=152_058_000, seq=1,
+        ask_p=(101, 102, 103) + (0,) * 7, ask_q=(99, 98, 97) + (0,) * 7, ask_d=z,
+        bid_p=(100, 99, 98) + (0,) * 7, bid_q=(7, 7, 7) + (0,) * 7, bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    collapsed2 = Orderbook(
+        ts_ms=152_058_500, seq=2,
+        ask_p=(101, 102, 103) + (0,) * 7, ask_q=(50, 40, 30) + (0,) * 7, ask_d=z,
+        bid_p=(100, 99, 98) + (0,) * 7, bid_q=(5, 5, 5) + (0,) * 7, bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([collapsed1, collapsed2], out)
+    con = duckdb.connect()
+    # session_close_ms로 마감 동시호가 구간 진입을 명시(15:30:00 이전 연속거래 없음 → fully-auction).
+    rows = query_bucketed_ratio(con, path=out, bucket_ms=1000, session_close_ms=153000000)
+    assert len(rows) == 1
+    r = rows[0]
+    assert (r.bid_total, r.ask_total) == (0, 0)
+    assert (r.bid_max, r.ask_max) == (0, 0)
+    assert (r.imb_max_bid, r.imb_max_ask) == (0, 0)
+
+
 # ---------------------------------------------------------------------------
 # query_bucket_representative (ADR-0062): sidebar 10호가 = indicator's structural
 # representative. The orderbook endpoint must show the same snapshot the

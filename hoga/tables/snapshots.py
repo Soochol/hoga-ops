@@ -301,11 +301,20 @@ class QuoteRatioRow:
     the conversion needs the Stock-Date, which this table-level query does not
     take. ``ask_total`` / ``bid_total`` are the SUM of the 10 ask_q / bid_q
     level columns at the last snapshot in the bucket.
+
+    Intra-Bar Max 필드(ADR-0075): ``bid_max`` / ``ask_max`` = 버킷 내 연속거래
+    스냅샷의 bid_total / ask_total 독립 최댓값. ``imb_max_bid`` / ``imb_max_ask``
+    = 버킷 내 |imbalance|(= GREATEST/LEAST ratio 단조 대용)가 가장 컸던 연속거래
+    스냅샷의 (bid_total, ask_total) 쌍. 동시호가/완전-auction 버킷은 4필드 모두 0.
     """
 
     bucket_intra_ms: int
     bid_total: int
     ask_total: int
+    bid_max: int
+    ask_max: int
+    imb_max_bid: int
+    imb_max_ask: int
 
 
 @dataclass(frozen=True)
@@ -376,7 +385,13 @@ def query_bucketed_ratio(
         if row is not None and row[0] is not None:
             last_continuous_ms = int(row[0])
     if last_continuous_ms is None:
-        pre_auction_pred = "TRUE"
+        # No continuous-trading book at/before the session close. With no session
+        # bound (session_close_ms is None) this stays the legacy constant-TRUE
+        # last-in-bucket path. But when a close WAS given and the whole dataset is
+        # still 3-level auction books, the day is fully-auction → mark every row
+        # NOT pre-auction so the CASE WHEN is_pre zeroes totals AND Intra-Bar Max
+        # fields (ADR-0062 동시호가 decontamination; ADR-0075 max sentinel).
+        pre_auction_pred = "TRUE" if session_close_ms is None else "FALSE"
     else:
         pre_auction_pred = f"({intra_ms_expr} <= {last_continuous_ms})"
     rows = con.execute(
@@ -390,7 +405,33 @@ def query_bucketed_ratio(
                  ROW_NUMBER() OVER (
                    PARTITION BY ({intra_ms_expr} // {bucket_ms})
                    ORDER BY ({pre_auction_pred}) DESC, ts_ms DESC
-                 ) AS rn
+                 ) AS rn,
+                 -- Intra-Bar Max (ADR-0075): is_pre 게이트로 동시호가 스냅샷 배제.
+                 MAX(CASE WHEN ({pre_auction_pred}) THEN ({_BID_Q_SUM}) ELSE 0 END) OVER (
+                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
+                 ) AS bid_max,
+                 MAX(CASE WHEN ({pre_auction_pred}) THEN ({_ASK_Q_SUM}) ELSE 0 END) OVER (
+                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
+                 ) AS ask_max,
+                 -- |imbalance| 최대 스냅샷의 (bid,ask) 쌍 — GREATEST/LEAST ratio는
+                 -- |imbalance|+1 의 단조 대용. degenerate(한쪽 0)·동시호가는 0으로
+                 -- 밀려 후순위. 동률은 가장 이른 ts_ms.
+                 FIRST_VALUE(CASE WHEN ({pre_auction_pred}) THEN ({_BID_Q_SUM}) ELSE 0 END) OVER (
+                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
+                   ORDER BY (CASE WHEN ({pre_auction_pred}) AND ({_BID_Q_SUM}) > 0 AND ({_ASK_Q_SUM}) > 0
+                               THEN GREATEST(({_ASK_Q_SUM}), ({_BID_Q_SUM})) * 1.0
+                                    / LEAST(({_ASK_Q_SUM}), ({_BID_Q_SUM}))
+                               ELSE 0 END) DESC, ts_ms ASC
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                 ) AS imb_max_bid,
+                 FIRST_VALUE(CASE WHEN ({pre_auction_pred}) THEN ({_ASK_Q_SUM}) ELSE 0 END) OVER (
+                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
+                   ORDER BY (CASE WHEN ({pre_auction_pred}) AND ({_BID_Q_SUM}) > 0 AND ({_ASK_Q_SUM}) > 0
+                               THEN GREATEST(({_ASK_Q_SUM}), ({_BID_Q_SUM})) * 1.0
+                                    / LEAST(({_ASK_Q_SUM}), ({_BID_Q_SUM}))
+                               ELSE 0 END) DESC, ts_ms ASC
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                 ) AS imb_max_ask
           FROM read_parquet(?)
         )
         -- A fully-auction bucket (rn=1 row is NOT pre-auction = it had no
@@ -399,16 +440,25 @@ def query_bucketed_ratio(
         -- never enters the 호가비·총잔량 calculation regardless of the display
         -- Auction Mask toggle (ADR-0062). Straddle buckets keep their last
         -- continuous representative; intraday VI sits before the threshold
-        -- (is_pre TRUE) and is retained.
+        -- (is_pre TRUE) and is retained. Intra-Bar Max fields are likewise zeroed
+        -- on a fully-auction bucket so bid_max >= bid_total holds at the (0,0) sentinel.
         SELECT bucket * {bucket_ms},
                CASE WHEN is_pre THEN bid_total ELSE 0 END,
-               CASE WHEN is_pre THEN ask_total ELSE 0 END
+               CASE WHEN is_pre THEN ask_total ELSE 0 END,
+               CASE WHEN is_pre THEN bid_max ELSE 0 END,
+               CASE WHEN is_pre THEN ask_max ELSE 0 END,
+               CASE WHEN is_pre THEN imb_max_bid ELSE 0 END,
+               CASE WHEN is_pre THEN imb_max_ask ELSE 0 END
         FROM bucketed WHERE rn = 1 ORDER BY bucket
         """,
         [str(path)],
     ).fetchall()
     return [
-        QuoteRatioRow(bucket_intra_ms=int(r[0]), bid_total=int(r[1]), ask_total=int(r[2]))
+        QuoteRatioRow(
+            bucket_intra_ms=int(r[0]), bid_total=int(r[1]), ask_total=int(r[2]),
+            bid_max=int(r[3]), ask_max=int(r[4]),
+            imb_max_bid=int(r[5]), imb_max_ask=int(r[6]),
+        )
         for r in rows
     ]
 
