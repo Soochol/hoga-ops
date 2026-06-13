@@ -126,6 +126,14 @@ export type PaneToggles = {
 [이동] 동작설정 렌더: LiveSettingsSections ──삭제──►  *Config (chartPrefs 동일 store 읽기/쓰기)
 ```
 
+## Grill 결정 (2026-06-13 `/grill-with-docs`)
+
+- **Q1 토글 동작 = 제거(unmount)**: 거래량 토글과 동일하게 off → pane 통째 미마운트(빈 띠 아님). 👁 숨김(데이터 보존)은 호가 별도 pane엔 의미 모호 + 빈 띠 문제(ADR-0041) → 미채택.
+- **Q2 기본값 = 전부 ON**: 현행 자동표시 보존(업그레이드 사용자 화면 불변). 끄면 localStorage 저장.
+- **Q3 회색 placeholder 6개 삭제**: `일목균형표`·`볼린저밴드`·`슈퍼트렌드`·`매물대분석`·`엔벨로프`·`윌리엄스 프랙탈`(비활성 "추후 지원")을 `IndicatorPanel`에서 제거 → 전 항목 활성이 되어 `active` 필드·disabled 렌더 분기도 제거(단순화). 다른 참조 없음(안전).
+- **Q4 문서 갱신·ADR 생략**: CONTEXT.md의 (a) 총잔량 색상 stale("green=bid"→코드는 매수=빨강) 수정, (b) 호가비 극단값 필터 노출 위치("⚙️ 차트 카테고리"→「지표」 모달 호가비 Config) 갱신. 설정 위치 이동은 가역적·트레이드오프 작아 ADR 미작성.
+- **확인된 사실(코드 탐색)**: `chartPrefs`는 전역 단일 store(`hoga.chart.prefs.v1`, per-tab 아님) → Config가 직접 읽어도 기존 설정모달과 동일. `'indicators'`/`'surge'` 카테고리 소비자는 `chartPrefs.ts`·`LiveSettingsSections.tsx`뿐 → union 재분류 안전. 3 pane 색상 모두 매수=빨강·매도=파랑(KRX).
+
 ## Testing
 
 ### Unit tests

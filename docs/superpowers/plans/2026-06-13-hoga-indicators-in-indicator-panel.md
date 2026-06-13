@@ -35,7 +35,8 @@ cd frontend && npm install
 - `frontend/src/live/LiveChartRoot.tsx` — 3 토글 구독 + `paneSpecsForTimeframe` 호출 2곳에 전달 + stretch effect deps.
 - `frontend/src/state/chartPrefs.ts` — `ChartToggleCategory`에 `'indicator-modal'` 추가/`'indicators'`·`'surge'` 제거, 3 토글 `category` 재분류.
 - `frontend/src/live/LiveSettingsSections.tsx` — `CategoryDetail`을 공유 `IndicatorPrefRows`로 치환, `CATEGORY_ORDER`/`LABEL` 정리.
-- `frontend/src/live/indicators/IndicatorPanel.tsx` — `CategoryId`·`CATEGORIES`(group 필드)·"호가 지표" 서브헤더·`checkedFor`/`toggleFor`·디테일 분기.
+- `frontend/src/live/indicators/IndicatorPanel.tsx` — `CategoryId`·`CATEGORIES`(group 필드)·"호가 지표" 서브헤더·`checkedFor`/`toggleFor`·디테일 분기 + **회색 placeholder 6개 삭제·`active` 분기 제거**(grill Q3).
+- `CONTEXT.md`(repo 루트) — 호가 색상 stale 수정 + 동작설정 「지표」 모달 이동 반영(grill Q4).
 
 **신규:**
 - `frontend/src/live/settings/IndicatorPrefRows.tsx` — 토글 키 배열 → `ToggleRow` + gated `NumericPrefRow` 렌더(공유).
@@ -797,9 +798,9 @@ git commit -F <message-file>
 
 ---
 
-## Task 6: IndicatorPanel — 사이드 항목 3개 + "호가 지표" 서브헤더
+## Task 6: IndicatorPanel — 사이드 항목 3개 + "호가 지표" 서브헤더 + 회색 placeholder 삭제
 
-「지표」 모달 네비에 활성 항목 3개 추가, group 기반 서브헤더, 토글/디테일 배선. 이 시점에 호가 동작설정이 지표 모달에서 노출(설정 모달에도 아직 남아 있어 일시 중복 — Task 7에서 제거).
+「지표」 모달 네비에 활성 항목 3개 추가, group 기반 서브헤더, 토글/디테일 배선. **grill 결정(Q3): 회색 "추후 지원" placeholder 6개(`ichimoku`·`bollinger`·`supertrend`·`volume-profile`·`envelope`·`williams`) 전부 삭제** → 모든 항목이 활성이 되므로 `active` 필드와 비활성(disabled·opacity·title) 렌더 분기를 **함께 제거**해 컴포넌트를 단순화한다. 이 시점에 호가 동작설정이 지표 모달에서 노출(설정 모달에도 아직 남아 있어 일시 중복 — Task 7에서 제거).
 
 **Files:**
 - Modify: `frontend/src/live/indicators/IndicatorPanel.tsx`
@@ -810,15 +811,22 @@ git commit -F <message-file>
 `IndicatorPanel.test.tsx`의 첫 테스트(`lists ... category checkboxes`)를 갱신하고 신규 테스트 추가:
 
 ```tsx
-it('활성 8 + 비활성 6 = 14 체크박스, 호가 3종 활성', () => {
+it('활성 8개 체크박스(비활성 0), 호가 3종 포함', () => {
   render(<IndicatorPanel onClose={() => {}} />);
   const checkboxes = screen.getAllByRole('checkbox');
-  expect(checkboxes).toHaveLength(14);
-  expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(6);
+  expect(checkboxes).toHaveLength(8); // 상단 5 + 호가 3, 회색 placeholder 삭제됨
+  expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
   for (const name of ['총잔량', '호가비', '체결강도']) {
     const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
     expect(cb.disabled).toBe(false);
     expect(cb.getAttribute('aria-checked')).toBe('true'); // 기본 ON
+  }
+});
+
+it('삭제된 placeholder는 더 이상 렌더되지 않는다', () => {
+  render(<IndicatorPanel onClose={() => {}} />);
+  for (const name of ['일목균형표', '볼린저밴드', '슈퍼트렌드', '매물대분석', '엔벨로프', '윌리엄스 프랙탈']) {
+    expect(screen.queryByText(name)).toBeNull();
   }
 });
 
@@ -842,7 +850,7 @@ it('호가비 라벨 클릭 → 우측에 RatioConfig(극단값 필터 토글) �
 });
 ```
 
-(기존 `lists 10 category checkboxes ...` 테스트는 위 첫 테스트로 대체 — 삭제.)
+(기존 `lists 10 category checkboxes ...` 테스트는 위 첫 테스트로 대체 — 삭제. 비활성 placeholder를 단언하던 부분도 함께 제거.)
 
 - [ ] **Step 2: 실패 확인**
 
@@ -851,7 +859,7 @@ Expected: FAIL — 호가 항목/서브헤더/토글 미존재.
 
 - [ ] **Step 3: IndicatorPanel 구현**
 
-(a) `CategoryId` 유니온에 3개 추가:
+(a) `CategoryId` 유니온 — **활성 8개만**(비활성 6개 제거):
 
 ```ts
 type CategoryId =
@@ -862,36 +870,24 @@ type CategoryId =
   | 'ask-peak'
   | 'quote-totals'
   | 'ratio'
-  | 'fill-strength'
-  | 'ichimoku'
-  | 'bollinger'
-  | 'supertrend'
-  | 'volume-profile'
-  | 'envelope'
-  | 'williams';
+  | 'fill-strength';
 
 type GroupId = 'top' | 'hoga';
 const GROUP_LABEL: Record<GroupId, string> = { top: '상단 지표', hoga: '호가 지표' };
 ```
 
-(b) `CATEGORIES`에 `group` 필드 추가 + 호가 3항목(비활성군 뒤). 기존 항목에 `group: 'top'`:
+(b) `CATEGORIES` — **`active` 필드 제거**(전부 활성), `group` 추가, 호가 3항목 추가:
 
 ```ts
-const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; active: boolean; group: GroupId }> = [
-  { id: 'moving-average',  label: '이동평균선',       active: true,  group: 'top'  },
-  { id: 'volume',          label: '거래량',           active: true,  group: 'top'  },
-  { id: 'foreign-net',     label: '외국인 순매수량',  active: true,  group: 'top'  },
-  { id: 'institution-net', label: '기관 순매수량',    active: true,  group: 'top'  },
-  { id: 'ask-peak',        label: '당일 매도 최대벽', active: true,  group: 'top'  },
-  { id: 'ichimoku',       label: '일목균형표',  active: false, group: 'top' },
-  { id: 'bollinger',      label: '볼린저밴드',  active: false, group: 'top' },
-  { id: 'supertrend',     label: '슈퍼트렌드',  active: false, group: 'top' },
-  { id: 'volume-profile', label: '매물대분석',  active: false, group: 'top' },
-  { id: 'envelope',       label: '엔벨로프',    active: false, group: 'top' },
-  { id: 'williams',       label: '윌리엄스 프랙탈', active: false, group: 'top' },
-  { id: 'quote-totals',  label: '총잔량',   active: true, group: 'hoga' },
-  { id: 'ratio',         label: '호가비',   active: true, group: 'hoga' },
-  { id: 'fill-strength', label: '체결강도', active: true, group: 'hoga' },
+const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId }> = [
+  { id: 'moving-average',  label: '이동평균선',       group: 'top'  },
+  { id: 'volume',          label: '거래량',           group: 'top'  },
+  { id: 'foreign-net',     label: '외국인 순매수량',  group: 'top'  },
+  { id: 'institution-net', label: '기관 순매수량',    group: 'top'  },
+  { id: 'ask-peak',        label: '당일 매도 최대벽', group: 'top'  },
+  { id: 'quote-totals',    label: '총잔량',           group: 'hoga' },
+  { id: 'ratio',           label: '호가비',           group: 'hoga' },
+  { id: 'fill-strength',   label: '체결강도',         group: 'hoga' },
 ];
 ```
 
@@ -931,25 +927,16 @@ import { Fragment } from 'react';
 ```
 (`useState`는 이미 `react`에서 import 중 — `Fragment`를 같은 줄에 합쳐도 됨: `import { useState, Fragment } from 'react';`)
 
-(f) 네비 렌더 — 하드코딩 "상단 지표" 헤더 제거하고 group 경계마다 서브헤더 렌더. 현재:
-
-```tsx
-        <nav className="w-[200px] py-2 border-r border-border" aria-label="지표 카테고리">
-          <div className="text-fg-dimmer text-xs uppercase tracking-wider px-4 pb-2">상단 지표</div>
-          {CATEGORIES.map((c) => {
-```
-
-를:
+(f) 네비 렌더 — 하드코딩 "상단 지표" 헤더 제거, group 경계마다 서브헤더, **`active`/disabled 분기 전부 제거**(모든 항목 활성). `checkedFor`/`toggleFor` switch의 `default: return false`/`return null`은 유지(타입 안전). `nav` 블록 전체를 다음으로 교체:
 
 ```tsx
         <nav className="w-[200px] py-2 border-r border-border" aria-label="지표 카테고리">
           {CATEGORIES.map((c, i) => {
+            const checked = checkedFor(c.id);
+            const onToggle = toggleFor(c.id);
+            const isSelected = selected === c.id;
             const showHeader = i === 0 || CATEGORIES[i - 1].group !== c.group;
-```
-
-그리고 각 row의 최상위 `<div key={c.id} ...>`를 `<Fragment key={c.id}>`로 감싸 서브헤더를 앞에 렌더. 즉 map 콜백 return을:
-
-```tsx
+            const rowBase = 'flex w-full items-center justify-between pl-4 pr-2 text-sm';
             return (
               <Fragment key={c.id}>
                 {showHeader && (
@@ -957,20 +944,33 @@ import { Fragment } from 'react';
                     {GROUP_LABEL[c.group]}
                   </div>
                 )}
-                <div
-                  className={
-                    c.active
-                      ? `${rowBase} ${isSelected ? 'bg-bg-input' : 'hover:bg-bg-input'}`
-                      : `${rowBase} opacity-50`
-                  }
-                >
-                  {/* ...기존 라벨 버튼 + 체크박스 버튼 그대로... */}
+                <div className={`${rowBase} ${isSelected ? 'bg-bg-input' : 'hover:bg-bg-input'}`}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(c.id)}
+                    aria-current={isSelected ? 'true' : undefined}
+                    className="flex-1 text-left py-2 text-fg cursor-pointer"
+                  >
+                    {c.label}
+                  </button>
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={checked}
+                    aria-label={c.label}
+                    onClick={() => { onToggle?.(); setSelected(c.id); }}
+                    className="p-2 cursor-pointer"
+                  >
+                    <CheckIcon filled={checked} />
+                  </button>
                 </div>
               </Fragment>
             );
+          })}
+        </nav>
 ```
 
-(기존 `<div key={c.id} ...>`의 `key`는 `Fragment`로 이동했으므로 내부 `<div>`에서는 제거.)
+> 삭제되는 것(비활성 처리): `disabled={!c.active}`, `opacity-50`, `cursor-not-allowed`, `title="추후 지원 예정"`, `c.active && ...` 가드, `CheckIcon filled={c.active && checked}`의 `c.active &&`. 합병 노트 주석(82–85행)도 더는 정확치 않으면 갱신.
 
 (g) 우측 디테일 분기에 3줄 추가(`ask-peak` 뒤):
 
@@ -1095,7 +1095,59 @@ git commit -F <message-file>
 
 ---
 
-## Task 8: 통합 검증 — 빌드·전체 테스트·수동 확인
+## Task 8: 문서 갱신 — CONTEXT.md (grill 결정 Q4)
+
+코드/문서 충돌 수정 + 이번 변경으로 낡게 되는 서술 갱신. ADR은 생략(설정 위치 이동은 가역적·트레이드오프 작음). 코드 변경과 한 커밋으로 묶는다.
+
+**Files:**
+- Modify: `CONTEXT.md` (repo 루트)
+
+- [ ] **Step 1: 색상 stale 수정 (Quote Totals 정의)**
+
+`CONTEXT.md`의 **Quote Totals** 정의 문단에서 색상 서술이 코드(`quoteTotals.ts`: bid=`--price-up` 빨강, ask=`--price-down` 파랑)와 어긋남. 다음 문구를 찾아:
+
+> `as two `LineSeries` — green = bid total, red = ask total — sharing a single auto-scaled price axis`
+
+다음으로 교체:
+
+> `as two `LineSeries` — red = bid total (매수), blue = ask total (매도), KRX 컨벤션 — sharing a single auto-scaled price axis`
+
+- [ ] **Step 2: 설정 위치 서술 갱신 (호가비 Outlier Mask)**
+
+**Outlier Mask** 정의 문단의 다음 문구:
+
+> `The toggle + threshold pair are stored alongside `auctionWindowMask` in **ChartViewPrefs** and surfaced in the Settings modal's "차트" category;`
+
+를 다음으로 교체(저장 위치는 그대로 ChartViewPrefs, **UI 노출만** 지표 모달의 호가비 Config로 이동; `auctionWindowMask`는 ⚙️ 차트에 잔류):
+
+> `The toggle + threshold pair are stored in **ChartViewPrefs** (alongside `auctionWindowMask`, which remains in the ⚙️ Settings modal's "차트" category) but surfaced in the 「지표」 modal's 호가비 Config — 동작설정을 해당 지표 항목 아래로 통합(2026-06-13);`
+
+- [ ] **Step 3: 잔여 "설정 모달" 언급 스윕 (급증 마커·체결강도 누적)**
+
+다음 grep으로 surge marker / fill-strength cumulative의 설정 위치를 언급하는 다른 문장이 있는지 확인하고, 있으면 "⚙️ 설정 모달" → "「지표」 모달의 (총잔량|체결강도) Config"로 갱신:
+
+```bash
+grep -niE "설정 모달|settings modal|총잔량 급증|surgeMarker|fillStrengthCumulative|누적 매수|cumulative net fill" CONTEXT.md
+```
+
+발견된 각 문장에서 "Settings modal" 소속을 「지표」 모달 Config로 정정(없으면 이 step은 no-op — 색·outlier 외 추가 언급이 없을 수 있음).
+
+- [ ] **Step 4: 문서 일관성 확인**
+
+Run: `grep -niE "green = bid|차트.*카테고리.*극단값|outlier.*차트 category" CONTEXT.md`
+Expected: 빈 출력(stale 문구 잔존 없음).
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add CONTEXT.md
+git commit -F <message-file>
+```
+메시지: `docs(context): 호가 색상 stale 수정 + 동작설정 「지표」 모달 이동 반영`
+
+---
+
+## Task 9: 통합 검증 — 빌드·전체 테스트·수동 확인
 
 **Files:** (없음 — 검증/문서)
 
@@ -1148,6 +1200,10 @@ $B snapshot -i
 - 디자인 일치(IndicatorPrefRows 공유, SignColorLegend, 기존 row 마크업) → Task 4·5·6. ✅
 - calendar gate 보존·기본 ON 자동표시 보존 → Task 1(merge ON)·2(calendar 무변경) + 회귀 테스트. ✅
 - auctionWindowMask 차트 유지(Non-Goal) → Task 7에서 미이동(category 'chart' 유지). ✅
+- grill Q1 토글=제거(unmount) → Task 2·3(filter 후 미마운트, 빈 띠 아님). ✅
+- grill Q2 기본 ON → Task 1(merge ON). ✅
+- grill Q3 회색 placeholder 6개 삭제·`active` 제거 → Task 6. ✅
+- grill Q4 CONTEXT.md 갱신(색상 stale·설정 위치)·ADR 생략 → Task 8. ✅
 
 **2. Placeholder scan:** 모든 코드 스텝에 실제 코드/명령/기대출력 명시. Task 3 Step 5만 조건부(테스트 인프라 한계 시 생략 명시) — 플레이스홀더 아님(대안 경로 명시).
 
