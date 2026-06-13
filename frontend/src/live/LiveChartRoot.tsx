@@ -39,6 +39,7 @@ import { useWheelInteractions } from './useWheelInteractions';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
+import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import LiveAskPeakSegments from './LiveAskPeakSegments';
 import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
@@ -757,6 +758,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
             />
           ))}
           <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
+          <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} todayKst={todayKst} />
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} />
           <LiveAskPeakSegments
             paneSeries={paneSeries}
