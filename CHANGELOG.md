@@ -3,6 +3,24 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.30.0] - 2026-06-13
+
+### Added
+- **당일 매도 최대벽 (Day Ask Peak) 지표** (#90): `/live` 캔들 차트에 당일 매도 10호가 중 **연속거래 중 단일
+  호가단계에 가장 크게 걸렸던 물량**의 가격을 수평 실선으로 표시한다. 물량은 선 라벨(`12.3만`), 가격은 Y축
+  태그. 지표 모달 사이드메뉴에서 on/off + 색·두께 설정(이평선 `MAStylePicker` 재활용, 기본 파랑·2px).
+  - **연속거래만 집계**: 마감 동시호가(15:20–15:30)·장중 VI 단일가 누적은 호가창이 3-레벨로 붕괴하며 잔량이
+    누적되는 아티팩트라, 기존 `deep_book_sql`(백엔드)·`isContinuousBook`(클라) 공유 술어(ADR-0062)로 배제한다
+    — 총잔량·호가비·체결강도가 `auctionWindowMask`로 숨기는 것과 동일 이유. 선이 동시호가 누적이 아닌 실제
+    매도벽을 가리킨다.
+  - **당일 전체 정확성 = 백엔드 seed + 클라 ratchet**: 백엔드 `query_day_ask_peak`가 오늘 `snapshots.parquet`를
+    1패스 집계(`ts_ms` HHMMSSmmm→unix 변환, 동률은 이른 시각)해 `RangeBundle.ask_peak` seed 제공. 클라
+    `useDayAskPeak`이 기존 `live.ob`(SSE 버퍼)를 재사용한 단조 ratchet으로 전진(2차 SSE 연결 없음, 15분 버퍼
+    누락 방지, 거래일 KST 자정 리셋). 오후 진입·새로고침에도 오전 최대벽이 유지된다.
+  - **구조**: `reduceDayAskPeak` 순수 reducer가 "당일 peak = max(seed, 연속 ask 레벨)" 규칙 전체를 소유하고
+    훅은 얇은 adapter. 거래일 번호(`tradingDayOf`)는 `util/tradingDay`로 추출해 총잔량 급증 래칫과 단일 출처.
+  - 백엔드 1583 · 프론트 1875 테스트 그린. ⚠️ 실시간 육안 검증(장중 신기록 이동·동시호가 미튐)은 사용자 dev 확인 권장.
+
 ## [0.7.29.3] - 2026-06-13
 
 ### Fixed
