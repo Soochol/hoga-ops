@@ -106,6 +106,12 @@ type PersistedIndicators = {
   askPeakColor: string;
   /** 매도 최대벽 선 두께. 기본 2. */
   askPeakLineWidth: 1 | 2 | 3 | 4;
+  /** 총잔량 pane on/off. 기본 true. */
+  quoteTotalsEnabled: boolean;
+  /** 호가비 pane on/off. 기본 true. */
+  ratioEnabled: boolean;
+  /** 체결강도 pane on/off. 기본 true. */
+  fillStrengthEnabled: boolean;
 };
 
 /** The full active-view tuple the page renders. Written atomically by the active
@@ -135,6 +141,9 @@ type Store = Persisted & PersistedIndicators & {
   setMovingAverageHidden: (hidden: boolean) => void;
   setAskPeakEnabled: (enabled: boolean) => void;
   setAskPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
+  setQuoteTotalsEnabled: (enabled: boolean) => void;
+  setRatioEnabled: (enabled: boolean) => void;
+  setFillStrengthEnabled: (enabled: boolean) => void;
 };
 
 const DEFAULTS: Persisted = {
@@ -185,6 +194,9 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     askPeakEnabled: s.askPeakEnabled,
     askPeakColor: s.askPeakColor,
     askPeakLineWidth: s.askPeakLineWidth,
+    quoteTotalsEnabled: s.quoteTotalsEnabled,
+    ratioEnabled: s.ratioEnabled,
+    fillStrengthEnabled: s.fillStrengthEnabled,
   };
 }
 
@@ -311,6 +323,21 @@ export const useLivePageStore = create<Store>((set, get) => ({
       askPeakColor: patch.color ?? s.askPeakColor,
       askPeakLineWidth: patch.lineWidth ?? s.askPeakLineWidth,
     }));
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setQuoteTotalsEnabled: (enabled) => {
+    set({ quoteTotalsEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setRatioEnabled: (enabled) => {
+    set({ ratioEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setFillStrengthEnabled: (enabled) => {
+    set({ fillStrengthEnabled: enabled });
     persistIndicators(snapshotIndicators(get));
   },
 

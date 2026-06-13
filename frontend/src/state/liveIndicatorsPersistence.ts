@@ -65,6 +65,12 @@ export type PersistedIndicators = {
   askPeakColor: string;
   /** 매도 최대벽 선 두께. 기본 2. */
   askPeakLineWidth: 1 | 2 | 3 | 4;
+  /** 총잔량 pane on/off. Default TRUE(기존 자동표시 보존). */
+  quoteTotalsEnabled: boolean;
+  /** 호가비 pane on/off. Default TRUE. */
+  ratioEnabled: boolean;
+  /** 체결강도 pane on/off. Default TRUE. */
+  fillStrengthEnabled: boolean;
 };
 
 function isValidEntry(m: unknown): m is LiveMAConfig {
@@ -109,6 +115,7 @@ export function mergeLiveIndicatorPrefs(
   const build = (
     mas: LiveMAConfig[], enabled: boolean, fNet: boolean, iNet: boolean,
     vol: boolean, hidden: boolean,
+    qt: boolean, ratio: boolean, fill: boolean,
   ): PersistedIndicators => ({
     movingAverages: mas,
     movingAverageEnabled: enabled,
@@ -119,8 +126,11 @@ export function mergeLiveIndicatorPrefs(
     askPeakEnabled: apEnabled,
     askPeakColor: apColor,
     askPeakLineWidth: apWidth,
+    quoteTotalsEnabled: qt,
+    ratioEnabled: ratio,
+    fillStrengthEnabled: fill,
   });
-  if (!raw || typeof raw !== 'object') return build(defaults, true, false, false, true, false);
+  if (!raw || typeof raw !== 'object') return build(defaults, true, false, false, true, false, true, true, true);
   // obj is guaranteed non-null here (same condition checked above)
   const o = obj!;
   const enabled = o.movingAverageEnabled === false ? false : true;
@@ -132,9 +142,13 @@ export function mergeLiveIndicatorPrefs(
   // defaults FALSE (mirror foreignNetEnabled).
   const vol = o.volumeEnabled === false ? false : true;
   const hidden = o.movingAverageHidden === true;
+  // 호가 pane 토글: volumeEnabled와 동일 규약 — false 리터럴만 OFF, 나머지(누락 포함) ON.
+  const qt = o.quoteTotalsEnabled === false ? false : true;
+  const ratio = o.ratioEnabled === false ? false : true;
+  const fill = o.fillStrengthEnabled === false ? false : true;
   const arr = o.movingAverages;
-  if (!Array.isArray(arr)) return build(defaults, enabled, fNet, iNet, vol, hidden);
+  if (!Array.isArray(arr)) return build(defaults, enabled, fNet, iNet, vol, hidden, qt, ratio, fill);
   const kept = arr.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[];
-  if (kept.length === 0) return build(defaults, enabled, fNet, iNet, vol, hidden);
-  return build(kept, enabled, fNet, iNet, vol, hidden);
+  if (kept.length === 0) return build(defaults, enabled, fNet, iNet, vol, hidden, qt, ratio, fill);
+  return build(kept, enabled, fNet, iNet, vol, hidden, qt, ratio, fill);
 }

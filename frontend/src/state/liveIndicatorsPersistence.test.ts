@@ -14,6 +14,9 @@ describe('mergeLiveIndicatorPrefs', () => {
       askPeakEnabled: false,
       askPeakColor: '#1D4ED8',
       askPeakLineWidth: 2,
+      quoteTotalsEnabled: true,
+      ratioEnabled: true,
+      fillStrengthEnabled: true,
     });
   });
 
@@ -125,6 +128,27 @@ describe('mergeLiveIndicatorPrefs', () => {
       movingAverages: DEFAULT_LIVE_MAS.map((x) => ({ ...x })),
     } as unknown as PersistedIndicators);
     expect(m.movingAverageHidden).toBe(false);
+  });
+});
+
+describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
+  it('빈 입력 → 호가 3토글 기본 ON', () => {
+    const m = mergeLiveIndicatorPrefs(undefined);
+    expect(m.quoteTotalsEnabled).toBe(true);
+    expect(m.ratioEnabled).toBe(true);
+    expect(m.fillStrengthEnabled).toBe(true);
+  });
+  it('구버전 store(키 없음) → ON으로 머지', () => {
+    const m = mergeLiveIndicatorPrefs({ movingAverages: [], movingAverageEnabled: true });
+    expect(m.quoteTotalsEnabled).toBe(true);
+    expect(m.ratioEnabled).toBe(true);
+    expect(m.fillStrengthEnabled).toBe(true);
+  });
+  it('명시적 false 보존', () => {
+    const m = mergeLiveIndicatorPrefs({ ratioEnabled: false, fillStrengthEnabled: false });
+    expect(m.ratioEnabled).toBe(false);
+    expect(m.fillStrengthEnabled).toBe(false);
+    expect(m.quoteTotalsEnabled).toBe(true);
   });
 });
 
