@@ -3,6 +3,24 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.33.0] - 2026-06-13
+
+### Added
+- **/live 「지표」 모달에 「일봉 이동평균선」 신설**: 일봉 종가 SMA를 분봉 차트에 **거래일-계단**으로
+  투영하는 보조지표. 분봉(1/3/5/10/15/30분)을 바꿔도 동일한 일봉 MA가 유지되고(값이 일봉 단위라
+  분봉과 무관), 진행 중인 오늘은 현재가를 그날 종가 프록시로 써 장중 갱신. 기존 현재봉 이동평균선과
+  완전 분리된 별도 페이지(슬롯 기간/색/두께/소스 설정, `MovingAverageRow` 재사용), 기본 색 `#EAB308`.
+  분봉 전용(D/W/M 숨김). 일봉 데이터는 `/api/live/past-daily-candles`를 분봉 프레임에서도 독립 fetch하되
+  `useLiveBundle` 밖 self-contained 오버레이로 격리해 번들 split·Past/Today Split Cache invariant 보존.
+  (ADR-0073; CONTEXT.md 「일봉 이동평균선 (Daily MA)」 등재)
+
+### Changed
+- 일봉 MA 투영 입력계산(lookback 창·거래일↔캘린더일 환산·오늘 현재가 프록시)을 `dailyMaProjection`
+  deep module로 분리 — 이전엔 fetch mock 뒤라 테스트 불가했던 lookback 커버리지를 직접 검증(대형
+  period 회귀 테스트 포함). 두 MA 오버레이의 series-reconcile 공유 추출은 보류(ADR-0074).
+- `selectSource`(이동평균 projector) 파라미터를 `Pick<Candle, OHLC>`로 확장(backward-compatible) —
+  일봉/분봉 OHLC 필드명 동일성을 이용해 일봉 projector가 어댑터 없이 재사용.
+
 ## [0.7.32.1] - 2026-06-13
 
 ### Changed
