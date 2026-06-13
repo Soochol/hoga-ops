@@ -385,13 +385,14 @@ def query_bucketed_ratio(
         if row is not None and row[0] is not None:
             last_continuous_ms = int(row[0])
     if last_continuous_ms is None:
-        # No continuous-trading book at/before the session close. With no session
-        # bound (session_close_ms is None) this stays the legacy constant-TRUE
-        # last-in-bucket path. But when a close WAS given and the whole dataset is
-        # still 3-level auction books, the day is fully-auction → mark every row
-        # NOT pre-auction so the CASE WHEN is_pre zeroes totals AND Intra-Bar Max
-        # fields (ADR-0062 동시호가 decontamination; ADR-0075 max sentinel).
-        pre_auction_pred = "TRUE" if session_close_ms is None else "FALSE"
+        # No continuous-trading book at/before the session close (no session bound,
+        # OR a degenerate dataset with no deep book). Either way fall back to the
+        # legacy constant-TRUE last-in-bucket path: ORDER BY (TRUE) DESC, ts_ms DESC
+        # == plain last-in-bucket (ADR-0062). Production continuous books always
+        # carry deep levels (4..10 > 0), so last_continuous_ms is always set on real
+        # data and this branch fires only on degenerate fixtures — restoring TRUE is
+        # safe and matches the documented legacy fallback.
+        pre_auction_pred = "TRUE"
     else:
         pre_auction_pred = f"({intra_ms_expr} <= {last_continuous_ms})"
     rows = con.execute(

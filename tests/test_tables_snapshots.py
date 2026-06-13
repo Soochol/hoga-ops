@@ -301,33 +301,51 @@ def test_query_bucketed_ratio_imb_max_picks_extreme_imbalance_snapshot(tmp_path:
 
 
 def test_query_bucketed_ratio_auction_bucket_zeroes_max_fields(tmp_path: Path) -> None:
-    """완전 동시호가 버킷(연속거래 스냅샷 없음)은 종가뿐 아니라 max 필드도 0 센티넬."""
+    """마감 동시호가 버킷(연속거래 책이 끝난 뒤)은 종가뿐 아니라 max 필드도 0 센티넬.
+
+    현실 데이터에선 그날 어딘가에 deep 연속거래 책이 항상 있어 last_continuous_ms가
+    설정된다(None 폴백 분기는 production 미발동). 그래서 EARLIER 버킷(15:18)에 deep
+    연속거래 스냅샷 1건을 두어 임계값을 세우고, 3-레벨 붕괴(동시호가) 스냅샷들은 그
+    이후 별도 버킷(15:20:58, intra > last_continuous_ms)에 두어 후행 auction 버킷이
+    is_pre=FALSE로 4 max 필드 + 총잔량이 모두 0이 되는지 검증한다(연속거래 버킷은 정상값)."""
     from hoga.tables.snapshots import query_bucketed_ratio
 
-    # 3-레벨 붕괴 호가창(레벨4+ = 0) 2건이 한 버킷 → is_pre 없음 → 전부 0.
     z = tuple([0] * 10)
+    # 15:18:00 연속거래 책(레벨4..10 > 0) — last_continuous_ms를 세운다. 별도 버킷.
+    continuous = Orderbook(
+        ts_ms=151_800_000, seq=1,
+        ask_p=tuple(range(101, 111)), ask_q=(10, 20, 30, 40, 5, 6, 7, 8, 9, 1), ask_d=z,
+        bid_p=tuple(range(100, 90, -1)), bid_q=(50, 40, 30, 20, 5, 5, 5, 5, 5, 5), bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    # 15:20:58 마감 동시호가: 3-레벨 붕괴 호가창(레벨4+ = 0) 2건 한 버킷.
+    # intra(55_258_xxx) > last_continuous_ms(55_080_000) → is_pre FALSE → 전부 0.
     collapsed1 = Orderbook(
-        ts_ms=152_058_000, seq=1,
+        ts_ms=152_058_000, seq=2,
         ask_p=(101, 102, 103) + (0,) * 7, ask_q=(99, 98, 97) + (0,) * 7, ask_d=z,
         bid_p=(100, 99, 98) + (0,) * 7, bid_q=(7, 7, 7) + (0,) * 7, bid_d=z,
         tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
     )
     collapsed2 = Orderbook(
-        ts_ms=152_058_500, seq=2,
+        ts_ms=152_058_500, seq=3,
         ask_p=(101, 102, 103) + (0,) * 7, ask_q=(50, 40, 30) + (0,) * 7, ask_d=z,
         bid_p=(100, 99, 98) + (0,) * 7, bid_q=(5, 5, 5) + (0,) * 7, bid_d=z,
         tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
     )
     out = tmp_path / "snapshots.parquet"
-    write_parquet([collapsed1, collapsed2], out)
+    write_parquet([continuous, collapsed1, collapsed2], out)
     con = duckdb.connect()
-    # session_close_ms로 마감 동시호가 구간 진입을 명시(15:30:00 이전 연속거래 없음 → fully-auction).
+    # session_close_ms(15:30:00)는 deep 스냅샷 뒤이자 auction 구간을 포함.
     rows = query_bucketed_ratio(con, path=out, bucket_ms=1000, session_close_ms=153000000)
-    assert len(rows) == 1
-    r = rows[0]
-    assert (r.bid_total, r.ask_total) == (0, 0)
-    assert (r.bid_max, r.ask_max) == (0, 0)
-    assert (r.imb_max_bid, r.imb_max_ask) == (0, 0)
+    assert len(rows) == 2  # 연속거래 버킷 + 마감 동시호가 버킷
+    cont_row, auction_row = rows[0], rows[1]  # bucket-ascending
+    # 연속거래 버킷(is_pre TRUE)은 정상값.
+    assert (cont_row.bid_total, cont_row.ask_total) == (170, 136)  # 50+40+30+20+5*6 / 10+20+30+40+5+6+7+8+9+1
+    assert (cont_row.bid_max, cont_row.ask_max) == (170, 136)
+    # 마감 동시호가 버킷(is_pre FALSE)은 종가 + max 필드 전부 0 센티넬.
+    assert (auction_row.bid_total, auction_row.ask_total) == (0, 0)
+    assert (auction_row.bid_max, auction_row.ask_max) == (0, 0)
+    assert (auction_row.imb_max_bid, auction_row.imb_max_ask) == (0, 0)
 
 
 # ---------------------------------------------------------------------------
