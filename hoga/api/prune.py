@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
-import shutil  # noqa: F401
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -86,7 +86,51 @@ def find_prunable(data_dir: Path, *, retention_days: int, now: dt.datetime) -> l
     return out
 
 
+def _count_stock_dates(raw_root: Path) -> int:
+    """raw/에 현재 존재하는 (date,code) 총수."""
+    if not raw_root.is_dir():
+        return 0
+    n = 0
+    for date_dir in raw_root.iterdir():
+        if not date_dir.is_dir():
+            continue
+        for code_dir in date_dir.iterdir():
+            if code_dir.is_dir():
+                n += 1
+    return n
+
+
+def _remove_empty_date_dirs(raw_root: Path) -> None:
+    """비어 버린 raw/{date}/ 디렉터리를 제거한다(raw/ 루트는 유지)."""
+    if not raw_root.is_dir():
+        return
+    for date_dir in raw_root.iterdir():
+        if date_dir.is_dir() and not any(date_dir.iterdir()):
+            date_dir.rmdir()
+
+
 def prune_raw(
     data_dir: Path, *, retention_days: int, now: dt.datetime, execute: bool
 ) -> PruneResult:
-    raise NotImplementedError  # Task 4
+    """find_prunable 후보를 (execute면) rmtree로 삭제하고 결과를 반환한다.
+
+    dry-run(execute=False)이면 후보만 채운 PruneResult를 돌려준다(디스크 불변).
+    삭제 후 비어 버린 날짜 디렉터리도 정리한다. rmtree 도중 실패해도 멱등 —
+    다음 실행이 남은 후보를 이어서 지운다.
+    """
+    raw_root = data_dir / "raw"
+    candidates = find_prunable(data_dir, retention_days=retention_days, now=now)
+    deleted = 0
+    reclaimed = 0
+    if execute:
+        for c in candidates:
+            shutil.rmtree(c.raw_dir)
+            deleted += 1
+            reclaimed += c.size_bytes
+        _remove_empty_date_dirs(raw_root)
+    return PruneResult(
+        candidates=candidates,
+        deleted=deleted,
+        reclaimed_bytes=reclaimed,
+        scanned=_count_stock_dates(raw_root),
+    )

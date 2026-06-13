@@ -136,3 +136,49 @@ def test_find_prunable_old_but_partial_is_kept(tmp_data_dir: Path) -> None:
 
 def test_find_prunable_no_raw_root(tmp_data_dir: Path) -> None:
     assert find_prunable(tmp_data_dir, retention_days=3, now=_NOW) == []
+
+
+def test_prune_raw_dry_run_deletes_nothing(tmp_data_dir: Path) -> None:
+    _write_meta_flat(tmp_data_dir, "005930", "20260605",
+                     collection_complete=True, is_partial=False)
+    raw = _make_raw(tmp_data_dir, "005930", "20260605")
+    result = prune_raw(tmp_data_dir, retention_days=3, now=_NOW, execute=False)
+    assert result.deleted == 0
+    assert result.reclaimed_bytes == 0
+    assert len(result.candidates) == 1
+    assert raw.exists()  # 디스크 불변
+
+
+def test_prune_raw_execute_deletes_and_reclaims(tmp_data_dir: Path) -> None:
+    _write_meta_flat(tmp_data_dir, "005930", "20260605",
+                     collection_complete=True, is_partial=False)
+    raw = _make_raw(tmp_data_dir, "005930", "20260605")  # 200 bytes
+    result = prune_raw(tmp_data_dir, retention_days=3, now=_NOW, execute=True)
+    assert result.deleted == 1
+    assert result.reclaimed_bytes == 200
+    assert not raw.exists()
+    # parquet은 보존
+    assert (tmp_data_dir / "parquet" / "20260605" / "005930" / "meta.json").exists()
+
+
+def test_prune_raw_execute_removes_empty_date_dir(tmp_data_dir: Path) -> None:
+    _write_meta_flat(tmp_data_dir, "005930", "20260605",
+                     collection_complete=True, is_partial=False)
+    _make_raw(tmp_data_dir, "005930", "20260605")
+    prune_raw(tmp_data_dir, retention_days=3, now=_NOW, execute=True)
+    # 날짜 내 유일 code가 삭제됐으므로 빈 raw/{date}/도 제거
+    assert not (tmp_data_dir / "raw" / "20260605").exists()
+
+
+def test_prune_raw_execute_keeps_nonempty_date_dir(tmp_data_dir: Path) -> None:
+    # 같은 날짜에 COMPLETE(삭제)와 INCOMPLETE(보존)가 공존 → 날짜 디렉터리 유지
+    _write_meta_flat(tmp_data_dir, "005930", "20260605",
+                     collection_complete=True, is_partial=False)
+    _make_raw(tmp_data_dir, "005930", "20260605")
+    _make_raw(tmp_data_dir, "000660", "20260605")  # parquet 없음 → 보존
+    prune_raw(tmp_data_dir, retention_days=3, now=_NOW, execute=True)
+    assert (tmp_data_dir / "raw" / "20260605" / "000660").exists()
+    assert not (tmp_data_dir / "raw" / "20260605" / "005930").exists()
+    # 삭제 후 재스캔: 000660만 남아 scanned == 1
+    rescan = prune_raw(tmp_data_dir, retention_days=3, now=_NOW, execute=False)
+    assert rescan.scanned == 1
