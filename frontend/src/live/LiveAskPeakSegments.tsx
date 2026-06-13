@@ -5,7 +5,7 @@ import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useLivePageStore } from '../state/livePage';
-import { formatQtyKo } from '../util/formatQtyKo';
+import { formatQtyCompact } from '../util/formatQtyCompact';
 import {
   AskPeakSegmentsPrimitive,
   type AskPeakSegment,
@@ -34,8 +34,10 @@ export function buildAskPeakSegments(
     out.push({
       time0: (axis.toVirtual(seg.session_open_ms) / 1000) as Time,
       time1: (axis.toVirtual(endMs) / 1000) as Time,
+      // peak이 실제 걸린 시점 — 그 x에 점을 찍어 언제 최대벽이었는지 표시.
+      peakTime: (axis.toVirtual(p.t_ms) / 1000) as Time,
       price: p.price,
-      label: formatQtyKo(p.qty),
+      label: formatQtyCompact(p.qty),
       color,
       lineWidth,
       live: isToday,

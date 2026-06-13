@@ -29,7 +29,8 @@ describe('buildAskPeakSegments', () => {
     expect(today.time0).toBe(10); // 10000/1000
     expect(today.time1).toBe(12); // 마지막 캔들 12000/1000 (session_close 99999 아님)
     expect(today.live).toBe(true);
-    expect(today.label).toContain('만'); // formatQtyKo(153125) → "15.3만"
+    expect(today.label).toBe('153.1k'); // formatQtyCompact(153125)
+    expect(today.peakTime).toBe(2 / 1000); // axis.toVirtual(t_ms=2)/1000 — peak 발생 시점
     expect(today.color).toBe('#1D4ED8');
     expect(today.lineWidth).toBe(2);
   });

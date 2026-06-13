@@ -23,17 +23,19 @@ export interface AskPeakSegment {
   time0: Time;
   /** 그날 끝 — 과거일=close, 오늘=라이브 엣지(마지막 캔들). */
   time1: Time;
+  /** peak이 실제 걸린 시점 — 이 x에 점을 찍어 그 날 언제 최대벽이었는지 표시. */
+  peakTime: Time;
   /** 그날 최대 매도벽 가격(priceToCoordinate 입력). */
   price: number;
-  /** 물량 라벨(예: "12.3만"). 빈 문자열이면 라벨 생략. */
+  /** 물량 라벨(예: "12.3k"). 빈 문자열이면 라벨 생략. */
   label: string;
   color: string;
   lineWidth: number;
-  /** 오늘(라이브) 세그먼트면 끝에 점을 찍어 갱신 중임을 표시. */
+  /** 오늘(라이브) 세그먼트 여부(스타일 구분용). */
   live?: boolean;
 }
 
-const LIVE_DOT_RADIUS_PX = 3;
+const PEAK_DOT_RADIUS_PX = 3.5;
 const LABEL_GAP_PX = 3;
 const LABEL_FONT_PX = 11;
 
@@ -69,10 +71,11 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
         ctx.moveTo(px0, py);
         ctx.lineTo(px1, py);
         ctx.stroke();
-        // 라이브 끝점.
-        if (s.live) {
+        // peak 발생 시점 점(그 날 언제 최대벽이었는지). 세그먼트 x-구간 안에 있으면 찍는다.
+        const xPeak = timeScale.timeToCoordinate(s.peakTime);
+        if (xPeak !== null) {
           ctx.beginPath();
-          ctx.arc(px1, py, LIVE_DOT_RADIUS_PX * hr, 0, Math.PI * 2);
+          ctx.arc(xPeak * hr, py, PEAK_DOT_RADIUS_PX * hr, 0, Math.PI * 2);
           ctx.fillStyle = s.color;
           ctx.fill();
         }
