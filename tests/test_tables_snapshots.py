@@ -370,7 +370,7 @@ def test_query_day_ask_peak_basic(tmp_path) -> None:
     ]
     out = tmp_path / "snapshots.parquet"
     write_parquet(obs, out)
-    peak = query_day_ask_peak(_con_for(out), path=out)
+    peak = query_day_ask_peak(_con_for(out), path=out, bucket_ms=60_000)
     assert peak == AskPeakRow(price=25100, qty=5000, intra_ms=peak.intra_ms)
     assert peak.qty == 5000 and peak.price == 25100
 
@@ -384,7 +384,7 @@ def test_query_day_ask_peak_tie_earliest(tmp_path) -> None:
     ]
     out = tmp_path / "snapshots.parquet"
     write_parquet(obs, out)
-    peak = query_day_ask_peak(_con_for(out), path=out)
+    peak = query_day_ask_peak(_con_for(out), path=out, bucket_ms=60_000)
     assert peak is not None and peak.qty == 7000 and peak.price == 25500  # 이른 시각 채택
 
 
@@ -401,11 +401,73 @@ def test_query_day_ask_peak_excludes_single_price(tmp_path) -> None:
                      ask_p=[25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450])
     out = tmp_path / "snapshots.parquet"
     write_parquet([collapsed, continuous], out)
-    peak = query_day_ask_peak(_con_for(out), path=out)
+    peak = query_day_ask_peak(_con_for(out), path=out, bucket_ms=60_000)
     assert peak is not None and peak.qty == 300  # 붕괴행의 99999 무시, 연속행 최대
 
 
 def test_query_day_ask_peak_empty(tmp_path) -> None:
     out = tmp_path / "snapshots.parquet"
     write_parquet([], out)
-    assert query_day_ask_peak(_con_for(out), path=out) is None
+    assert query_day_ask_peak(_con_for(out), path=out, bucket_ms=60_000) is None
+
+
+def test_query_day_ask_peak_excludes_opening_auction(tmp_path) -> None:
+    """개장 동시호가(<09:00)는 10레벨 누적 호가라 _DEEP_BOOK_SQL을 통과하지만(레벨4+ >0),
+    session_open_ms 하한으로 배제 — 보통 그날 최대 누적이라 게이트 없으면 peak를 가로챈다."""
+    obs = [
+        # 08:55 개장 동시호가: 거대한 누적(level1=99999), 깊이도 채워 연속거래로 보임.
+        _ob_ap(85500000, [99999, 50000, 40000, 30000, 20, 10, 9, 8, 7, 6],
+            ask_p=[24000 + 50 * i for i in range(10)]),
+        # 09:10 연속거래: 실제 최대벽 level3=300.
+        _ob_ap(91000000, [10, 20, 300, 40, 5, 6, 7, 8, 9, 1],
+            ask_p=[25000 + 50 * i for i in range(10)]),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    peak = query_day_ask_peak(
+        _con_for(out), path=out, bucket_ms=60_000,
+        session_open_ms=90000000, session_close_ms=153000000,
+    )
+    assert peak is not None and peak.qty == 300 and peak.price == 25100  # 개장 99999 무시
+
+
+def test_query_day_ask_peak_excludes_post_cross_reexpansion(tmp_path) -> None:
+    """마감 교차 후(~15:30:14) 호가창이 재확장하면 _DEEP_BOOK_SQL을 통과하지만,
+    session_close_ms 상한(15:30:00)으로 배제."""
+    obs = [
+        _ob_ap(91000000, [10, 20, 300, 40, 5, 6, 7, 8, 9, 1],
+            ask_p=[25000 + 50 * i for i in range(10)]),  # 09:10 연속거래 최대벽 300
+        # 15:30:14 재확장: 거대한 벽이지만 마감 후라 배제.
+        _ob_ap(153014000, [88888, 7, 6, 5, 4, 3, 2, 1, 1, 1],
+            ask_p=[26000 + 50 * i for i in range(10)]),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    peak = query_day_ask_peak(
+        _con_for(out), path=out, bucket_ms=60_000,
+        session_open_ms=90000000, session_close_ms=153000000,
+    )
+    assert peak is not None and peak.qty == 300  # 15:30:14의 88888 무시
+
+
+def test_query_day_ask_peak_bucket_representative_not_tick_max(tmp_path) -> None:
+    """버킷 중간에 잠깐 솟았다 빠진 벽은 raw 틱 max로는 잡히지만, 버킷 대표(마지막 연속거래
+    스냅샷)에는 안 나타난다 → 사용자가 보는 분봉 호가창과 일치하도록 대표 위에서 집계."""
+    obs = [
+        # 3분 버킷 [09:00,09:03): 09:00:10 스파이크 5000(중간) → 09:02:55 1000(대표=마지막).
+        _ob_ap(90010000, [5000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[25000 + 50 * i for i in range(10)]),
+        _ob_ap(90255000, [1000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[25000 + 50 * i for i in range(10)]),
+        # 다음 3분 버킷 [09:03,09:06): 대표 level1=2000.
+        _ob_ap(90310000, [2000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[25000 + 50 * i for i in range(10)]),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    peak = query_day_ask_peak(
+        _con_for(out), path=out, bucket_ms=180_000,  # 3분
+        session_open_ms=90000000, session_close_ms=153000000,
+    )
+    # 틱 max였다면 5000. 버킷 대표라 max(1000, 2000) = 2000.
+    assert peak is not None and peak.qty == 2000

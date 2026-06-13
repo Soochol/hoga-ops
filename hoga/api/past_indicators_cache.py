@@ -56,8 +56,9 @@ class PastIndicatorsCache:
         self._mem_ratio: dict[tuple[str, str, str], list[QuoteRatioRow]] = {}
         self._mem_fill: dict[tuple[str, str, str], list[FillStrengthRow]] = {}
         # 매도 최대벽 — 값이 작고 과거일 불변이라 in-memory만(디스크 미사용). None도 유효한
-        # 캐시 값(데이터 없는 날)이라 has_/get_ 분리로 미스 구분.
-        self._mem_ask_peak: dict[tuple[str, str, str], "AskPeak | None"] = {}
+        # 캐시 값(데이터 없는 날)이라 has_/get_ 분리로 미스 구분. 키에 bucket_ms 포함 —
+        # 버킷 대표 위에서 집계하므로 분봉(bucket_ms)이 바뀌면 결과도 달라진다.
+        self._mem_ask_peak: dict[tuple[str, str, str, int], "AskPeak | None"] = {}
 
     def _path(self, code: str, date: str, source: str, kind: Kind) -> Path:
         return self._data_dir / "kis-past-indicators" / code / source / f"{date}.{kind}.json"
@@ -106,14 +107,16 @@ class PastIndicatorsCache:
 
     # ── ask_peak (매도 최대벽) — in-memory only ────────────────────────────────
 
-    def has_ask_peak(self, code: str, date: str, source: str) -> bool:
-        return (code, date, source) in self._mem_ask_peak
+    def has_ask_peak(self, code: str, date: str, source: str, bucket_ms: int) -> bool:
+        return (code, date, source, bucket_ms) in self._mem_ask_peak
 
-    def get_ask_peak(self, code: str, date: str, source: str) -> "AskPeak | None":
-        return self._mem_ask_peak.get((code, date, source))
+    def get_ask_peak(self, code: str, date: str, source: str, bucket_ms: int) -> "AskPeak | None":
+        return self._mem_ask_peak.get((code, date, source, bucket_ms))
 
-    def store_ask_peak(self, code: str, date: str, source: str, peak: "AskPeak | None") -> None:
-        self._mem_ask_peak[(code, date, source)] = peak
+    def store_ask_peak(
+        self, code: str, date: str, source: str, bucket_ms: int, peak: "AskPeak | None"
+    ) -> None:
+        self._mem_ask_peak[(code, date, source, bucket_ms)] = peak
 
     # ── disk I/O ──────────────────────────────────────────────────────────────
 

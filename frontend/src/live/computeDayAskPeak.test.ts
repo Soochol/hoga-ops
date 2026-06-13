@@ -52,6 +52,17 @@ describe('foldAskPeak', () => {
     expect(s.peak).toBeNull(); // 99999 무시
   });
 
+  it('개장 동시호가(<09:00)는 깊은 호가창이어도 배제', () => {
+    // 08:55 개장 동시호가: 10레벨 누적이라 isContinuousBook은 통과하지만(레벨4+ qty>0),
+    // 시각 게이트(isAfterRegularOpen)로 배제 — 보통 그날 최대 누적이라 게이트 없으면 가로챈다.
+    const preOpen = deepOb(t(8, 55), [[24000, 99999], ...Array(9).fill([1, 1])] as Array<[number, number]>);
+    const s = foldAskPeak(FRESH, null, preOpen);
+    expect(s.peak).toBeNull(); // 개장 99999 무시
+    // 이어지는 09:10 연속거래의 실제 벽은 반영.
+    const s2 = foldAskPeak(s, null, deepOb(t(9, 10), [[25000, 300], ...Array(9).fill([1, 1])] as Array<[number, number]>));
+    expect(s2.peak).toEqual({ price: 25000, qty: 300, t_ms: t(9, 10) });
+  });
+
   it('동률은 먼저 것 유지', () => {
     const seed = { price: 25500, qty: 7000, t_ms: t(9) };
     const ob = deepOb(t(10), [[26000, 7000], ...Array(9).fill([1, 1])] as Array<[number, number]>);
