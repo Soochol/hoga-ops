@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 from hoga.api.prune import (
     PruneCandidate,
@@ -15,6 +16,9 @@ from hoga.api.prune import (
     prune_raw,
     resolve_retention_days,
 )
+from hoga.cli import app
+
+_runner = CliRunner()
 
 # check_disk_state의 meta invariant를 통과하는 최소 필드 집합
 # (tests/test_api_disk_state.py:_write_meta와 동일 계열).
@@ -191,3 +195,37 @@ def test_prune_raw_execute_keeps_nonempty_date_dir(tmp_data_dir: Path) -> None:
     # 삭제 후 재스캔: 000660만 남아 scanned == 1
     rescan = prune_raw(tmp_data_dir, retention_days=3, now=_NOW, execute=False)
     assert rescan.scanned == 1
+
+
+def test_cli_prune_rejects_days_zero() -> None:
+    res = _runner.invoke(app, ["prune", "--days", "0"])
+    assert res.exit_code != 0
+    assert "must be >= 1" in res.output
+
+
+def test_cli_prune_dry_run_reports_without_deleting(
+    tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_meta_flat(tmp_data_dir, "005930", "20260605",
+                     collection_complete=True, is_partial=False)
+    raw = _make_raw(tmp_data_dir, "005930", "20260605")
+    monkeypatch.setattr("hoga.cli.resolve_data_dir", lambda: tmp_data_dir)
+    monkeypatch.setattr("hoga.api.prune.now_kst", lambda: _NOW)
+    res = _runner.invoke(app, ["prune", "--days", "3"])
+    assert res.exit_code == 0
+    assert "dry-run" in res.output
+    assert raw.exists()  # 삭제 안 됨
+
+
+def test_cli_prune_execute_deletes(
+    tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_meta_flat(tmp_data_dir, "005930", "20260605",
+                     collection_complete=True, is_partial=False)
+    raw = _make_raw(tmp_data_dir, "005930", "20260605")
+    monkeypatch.setattr("hoga.cli.resolve_data_dir", lambda: tmp_data_dir)
+    monkeypatch.setattr("hoga.api.prune.now_kst", lambda: _NOW)
+    res = _runner.invoke(app, ["prune", "--days", "3", "--execute"])
+    assert res.exit_code == 0
+    assert "pruned" in res.output
+    assert not raw.exists()

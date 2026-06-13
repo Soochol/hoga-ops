@@ -325,3 +325,42 @@ def validate(
 
     if fix:
         console.print(f"\n[blue]--fix: rewrote invariant_violations on {fix_count} files.[/blue]")
+
+
+@app.command()
+def prune(
+    days: int | None = typer.Option(
+        None, "--days",
+        help="Retention window in CALENDAR days (default: HOGA_RETENTION_DAYS or 3).",
+    ),
+    execute: bool = typer.Option(
+        False, "--execute",
+        help="Actually delete. Default is dry-run (report only).",
+    ),
+) -> None:
+    """Prune hogaplay raw older than the retention window when its parquet is COMPLETE.
+
+    Read-only by default — prints what WOULD be deleted. Pass ``--execute`` to
+    delete. Only hogaplay-source COMPLETE raw past the window is removed; resume
+    sources, partials, and sentinels are preserved (ADR-0075).
+    """
+    from hoga.api.prune import prune_default_now, prune_raw, resolve_retention_days
+
+    retention = days if days is not None else resolve_retention_days()
+    if retention < 1:
+        raise typer.BadParameter(
+            "--days must be >= 1 (a 0-day window would race in-flight captures)."
+        )
+
+    result = prune_raw(
+        resolve_data_dir(), retention_days=retention, now=prune_default_now(), execute=execute,
+    )
+    if execute:
+        gib = result.reclaimed_bytes / 1024**3
+        console.print(f"[green]pruned[/green] {result.deleted} dirs, {gib:.1f} GiB reclaimed")
+    else:
+        cand_gib = sum(c.size_bytes for c in result.candidates) / 1024**3
+        console.print(
+            f"[yellow]dry-run[/yellow]: would delete {len(result.candidates)} dirs, "
+            f"~{cand_gib:.1f} GiB (pass --execute to delete)"
+        )

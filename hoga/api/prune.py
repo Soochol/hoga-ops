@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from hoga.api.disk_state import DiskState, check_disk_state, classify_stock_date
+from hoga.collector.orchestrator import now_kst
 
 RETENTION_DAYS_DEFAULT = 3
 
@@ -135,3 +136,8 @@ def prune_raw(
         reclaimed_bytes=reclaimed,
         scanned=_count_stock_dates(raw_root),
     )
+
+
+def prune_default_now() -> dt.datetime:
+    """CLI/scheduler가 쓰는 기본 시각. 테스트는 hoga.api.prune.now_kst를 패치한다."""
+    return now_kst()
