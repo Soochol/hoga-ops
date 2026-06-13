@@ -164,6 +164,26 @@ describe('buildLiveBundle', () => {
     ]);
   });
 
+  it('pastBundle.ask_peaks(거래일별 매도 최대벽)를 그대로 통과시킨다 (회귀: []로 덮어쓰지 않음)', () => {
+    const past = emptyRangeBundle({
+      ask_peaks: [
+        { date: '20260611', price: 297000, qty: 32621, t_ms: 1 },
+        { date: '20260610', price: 302500, qty: 246495, t_ms: 2 },
+      ],
+    });
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: past,
+      sseOb: [],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+    expect(bundle.ask_peaks).toEqual(past.ask_peaks);
+  });
+
   it('synthesizes kis_live segments for past dates that KIS has but /api/range does not', () => {
     // /api/range only knows 5/20. KIS past-candles covers 5/8 + 5/20 + 5/26.
     // Without segment synthesis, VirtualAxis built from segments would only
