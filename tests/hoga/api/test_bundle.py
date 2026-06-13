@@ -742,22 +742,54 @@ def test_build_ask_peak_slice_caches_past_days(tmp_path) -> None:
     eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
     eng.conn = duckdb.connect()
 
-    p1 = build_ask_peak_slice(eng, code="005930", date="20260610", source="hogaplay",
-                              cache=cache, today_kst="20260613")
+    p1 = build_ask_peak_slice(eng, code="005930", date="20260610", bucket_ms=60_000,
+                              source="hogaplay", cache=cache, today_kst="20260613")
     assert p1 is not None and p1.qty == 5000 and p1.date == "20260610"
-    assert cache.has_ask_peak("005930", "20260610", "hogaplay")
+    assert cache.has_ask_peak("005930", "20260610", "hogaplay", 60_000)
 
     # 두번째 호출: parquet_dir이 깨져도 캐시에서 반환(재스캔 안 함).
     eng.parquet_dir.side_effect = AssertionError("should not recompute a cached past day")
-    p2 = build_ask_peak_slice(eng, code="005930", date="20260610", source="hogaplay",
-                              cache=cache, today_kst="20260613")
+    p2 = build_ask_peak_slice(eng, code="005930", date="20260610", bucket_ms=60_000,
+                              source="hogaplay", cache=cache, today_kst="20260613")
     assert p2 == p1
 
     # 오늘 날짜는 cacheable 아님 → 캐시에 저장하지 않는다(매번 재계산해 ratchet seed 갱신).
     eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
-    build_ask_peak_slice(eng, code="005930", date="20260613", source="hogaplay",
-                         cache=cache, today_kst="20260613")
-    assert not cache.has_ask_peak("005930", "20260613", "hogaplay")
+    build_ask_peak_slice(eng, code="005930", date="20260613", bucket_ms=60_000,
+                         source="hogaplay", cache=cache, today_kst="20260613")
+    assert not cache.has_ask_peak("005930", "20260613", "hogaplay", 60_000)
+
+
+def test_build_ask_peak_slice_cache_key_is_bucket_ms_aware(tmp_path) -> None:
+    """버킷 대표 위에서 집계하므로 분봉(bucket_ms)이 다르면 결과도 다를 수 있다 — 캐시 키에
+    bucket_ms가 포함돼야 60s 결과가 180s 조회에 잘못 재사용되지 않는다(회귀 가드)."""
+    from unittest.mock import MagicMock
+    from hoga.api.bundle import build_ask_peak_slice
+    from hoga.api.past_indicators_cache import PastIndicatorsCache
+    from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
+
+    z = tuple([0] * 10)
+    ob = Orderbook(
+        ts_ms=90100000, seq=1,
+        ask_p=(25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450),
+        ask_q=(100, 200, 5000, 40, 5, 6, 7, 8, 9, 1), ask_d=z,
+        bid_p=tuple([24950 - 50 * i for i in range(10)]), bid_q=tuple([100] * 10), bid_d=z,
+        tot_ask=5376, tot_ask_d=0, tot_bid=1000, tot_bid_d=0,
+    )
+    snapshots_write_parquet([ob], tmp_path / "snapshots.parquet")
+    cache = PastIndicatorsCache(tmp_path / "cachedir")
+    eng = MagicMock()
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.conn = duckdb.connect()
+
+    build_ask_peak_slice(eng, code="005930", date="20260610", bucket_ms=60_000,
+                         source="hogaplay", cache=cache, today_kst="20260613")
+    assert cache.has_ask_peak("005930", "20260610", "hogaplay", 60_000)
+    # 다른 bucket_ms는 별개 키 — 캐시 미스라 재계산해야 한다(parquet_dir 다시 호출됨).
+    assert not cache.has_ask_peak("005930", "20260610", "hogaplay", 180_000)
+    build_ask_peak_slice(eng, code="005930", date="20260610", bucket_ms=180_000,
+                         source="hogaplay", cache=cache, today_kst="20260613")
+    assert cache.has_ask_peak("005930", "20260610", "hogaplay", 180_000)
 
 
 def test_range_bundle_ask_peak_field_defaults_none() -> None:

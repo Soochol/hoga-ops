@@ -464,22 +464,60 @@ def query_bucket_representative(
 
 
 def query_day_ask_peak(
-    con: duckdb.DuckDBPyConnection, *, path: Path
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    bucket_ms: int,
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
 ) -> AskPeakRow | None:
-    """연속거래 호가창만 대상으로 당일 단일 매도 호가단계 최대 qty와 그 가격을 반환.
+    """당일 단일 매도 호가단계 최대 qty와 그 가격 — **총잔량 지표와 동일한 표현 위에서** 집계.
 
-    동시호가·VI 단일가(3-레벨 붕괴)는 ``_DEEP_BOOK_SQL``로 배제(ADR-0062). 동률이면
-    가장 이른 시각. 빈 parquet → None. 파일 부재 가드는 호출자(bundle) 책임."""
+    raw 틱이 아니라 ``bucket_ms`` 버킷 대표값에서 찾는다. 버킷 대표 = 그 버킷의 마지막
+    연속거래 스냅샷(``query_bucketed_ratio``의 ``ORDER BY ts_ms DESC`` rn=1과 동일 선택,
+    단 연속거래행만 사전 필터). 분봉 호가창에서 사용자가 실제로 보는 건 그 분의 마지막
+    연속거래 스냅샷이므로, raw 틱 max(분 사이 순간값)는 표시 호가창에 안 나타날 수 있다 —
+    버킷 대표 위에서 찾아야 "표시한 곳에 실제로 보이는" 벽이 된다.
+
+    동시호가는 세 경로 모두 배제(총잔량 지표와 동치):
+      * **개장 동시호가**(<09:00): 10레벨 누적 호가라 ``_DEEP_BOOK_SQL``을 통과한다 →
+        ``session_open_ms`` 하한으로 배제(총잔량의 surgeStartHHMM 시각 게이트에 대응하나,
+        여기선 표시 prefs가 아닌 구조적 세션 경계를 쓴다).
+      * **마감 동시호가 / 장중 VI**(3-레벨 단일가 붕괴): ``_DEEP_BOOK_SQL``이 구조적 배제.
+      * **마감 교차 후 호가창 재확장**(~15:30:14): ``_DEEP_BOOK_SQL``을 통과한다 →
+        ``session_close_ms`` 상한으로 배제(``query_bucketed_ratio``의 ``<= session_close``
+        경계와 동일 목적).
+
+    동률이면 가장 이른 시각. 빈 parquet(또는 세션 내 연속거래행 없음) → None. 파일 부재
+    가드는 호출자(bundle) 책임. ``bucket_ms``는 > 0 (호출자 validate_bucket_ms 책임)."""
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
+    bounds = [_DEEP_BOOK_SQL]
+    if session_open_ms is not None:
+        bounds.append(f"{intra} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
+    if session_close_ms is not None:
+        bounds.append(f"{intra} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
+    where = " AND ".join(bounds)
+    # 버킷별 대표 = 마지막 연속거래 스냅샷(rn=1 by ts_ms DESC). 연속거래행으로 사전 필터한 뒤
+    # 버킷팅하므로 완전-동시호가 버킷은 행이 없어 자연 탈락(총잔량의 (0,0) 센티넬 불필요).
     union = " UNION ALL ".join(
         f"SELECT ask_p{i} AS price, ask_q{i} AS qty, {intra} AS intra_ms "
-        f"FROM s WHERE ask_q{i} > 0"
+        f"FROM rep WHERE ask_q{i} > 0"
         for i in range(1, ORDERBOOK_LEVELS + 1)
     )
     row = con.execute(
-        f"WITH s AS (SELECT * FROM read_parquet(?) WHERE {_DEEP_BOOK_SQL}) "
-        f"SELECT price, qty, intra_ms FROM ({union}) "
-        f"ORDER BY qty DESC, intra_ms ASC LIMIT 1",
+        f"""
+        WITH cont AS (
+          SELECT *,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY ({intra} // {int(bucket_ms)})
+                   ORDER BY ts_ms DESC
+                 ) AS rn
+          FROM read_parquet(?) WHERE {where}
+        ),
+        rep AS (SELECT * FROM cont WHERE rn = 1)
+        SELECT price, qty, intra_ms FROM ({union})
+        ORDER BY qty DESC, intra_ms ASC LIMIT 1
+        """,
         [str(path)],
     ).fetchone()
     if row is None:

@@ -8,3 +8,21 @@ const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 export function tradingDayOf(ms: number): number {
   return Math.floor((ms + KST_OFFSET_MS) / 86_400_000);
 }
+
+/** epoch ms의 KST 자정 기준 분(0–1439). 거래일 경계와 무관한 순수 함수라 과거/당일 청크별로
+ *  따로 적용해도 불변식이 유지된다(Split Cache seam 안전 — quoteTotals 프로젝터와 동일 정의). */
+export function kstMinuteOfDay(ms: number): number {
+  return Math.floor((ms + KST_OFFSET_MS) / 60_000) % 1440;
+}
+
+/** KRX 정규장 개장(09:00) 분. */
+export const KRX_OPEN_MIN = 9 * 60;
+
+/** KRX 정규장 개장(09:00) 이후인가(KST). 개장 동시호가(<09:00)는 10레벨 누적 호가라
+ *  isContinuousBook을 통과하므로 구조적 배제가 안 된다 — 당일 매도 최대벽 래칫에서 이 게이트로
+ *  배제한다(백엔드 query_day_ask_peak의 session_open 하한과 동일 목적, 총잔량 지표 동치). 마감측은
+ *  isContinuousBook이 단일가 붕괴(3레벨)로 처리하고, 과거일 마감후 재확장(~15:30:14)은 백엔드
+ *  session_close 상한이 맡으므로 라이브 래칫엔 불필요. */
+export function isAfterRegularOpen(ms: number): boolean {
+  return kstMinuteOfDay(ms) >= KRX_OPEN_MIN;
+}
