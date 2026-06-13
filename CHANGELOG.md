@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.30.1] - 2026-06-13
+
+### Fixed
+- **당일 매도 최대벽 — 휴장·장 마감 후·과거일에 선이 안 보이던 문제** (#91, 사용자 제보 "설정에서
+  on 해도 지표가 어디 나오는지 안 보임"): `build_range_bundle`이 `ask_peak` seed를 **달력상 오늘**
+  (`d == today_kst`)일 때만 계산해, 토요일(휴장)·장 마감 후·과거일 차트에서는 항상 `null`이라 선이
+  렌더되지 않았다(`live.ob`가 비면 아무것도 안 보임). 브라우저 실증: 토요일 삼성전자 차트에서 번들
+  `ask_peak == None` 확인.
+  - **fix**: `ask_peak`를 **번들의 가장 최근 거래일**(마지막 세그먼트) 기준으로 계산한다. 차트가 보여주는
+    그날의 실제 최대 매도벽이 선으로 보이고("한 거래일 = 선 1개" 불변식 유지 — 이전 날 더 큰 벽이 있어도
+    최근일만), 그 날이 오늘이면 클라 ratchet이 `live.ob`로 라이브 갱신(장중 동작 불변).
+  - `build_ask_peak_slice`에 `StockDateNotFound`/`FileNotFoundError` 가드(경고·제외 세그먼트의 최근일에서도
+    안전한 best-effort seed). 설정 pane 설명 문구 "오늘"→"해당 거래일", "장중 실시간 갱신" 추가.
+
 ## [0.7.30.0] - 2026-06-13
 
 ### Added
