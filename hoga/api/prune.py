@@ -36,7 +36,7 @@ class PruneResult:
     candidates: list[PruneCandidate] = field(default_factory=list)
     deleted: int = 0
     reclaimed_bytes: int = 0
-    scanned: int = 0
+    scanned: int = 0  # 함수 종료 시점 raw/에 남은 (date,code) 수 (execute 후=생존자)
 
 
 def _is_complete_hogaplay(data_dir: Path, code: str, date: str) -> bool:
@@ -118,7 +118,8 @@ def prune_raw(
     dry-run(execute=False)이면 후보만 채운 PruneResult를 돌려준다(디스크 불변).
     삭제 후 비어 버린 날짜 디렉터리도 정리한다. 단일 rmtree 실패 시 예외가
     전파된다(loop 중단). 스케줄러는 이를 swallow하고 다음 일일 실행이 남은
-    후보를 재시도한다.
+    후보를 재시도한다. scanned는 함수 종료 시점 raw/에 남은 (date,code) 수다
+    (dry-run이면 전체, execute 후면 생존자).
     """
     raw_root = data_dir / "raw"
     candidates = find_prunable(data_dir, retention_days=retention_days, now=now)

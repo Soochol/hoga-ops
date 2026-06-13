@@ -98,6 +98,22 @@ def test_gate_no_parquet_is_false(tmp_data_dir: Path) -> None:
     assert _is_complete_hogaplay(tmp_data_dir, "005930", "20260605") is False
 
 
+def test_gate_invalid_is_false(tmp_data_dir: Path) -> None:
+    # regular_session_close_ms=0 trips an error-severity invariant → DiskState.INVALID
+    _write_meta_flat(tmp_data_dir, "005930", "20260605",
+                     collection_complete=True, is_partial=False,
+                     regular_session_close_ms=0)
+    assert _is_complete_hogaplay(tmp_data_dir, "005930", "20260605") is False
+
+
+def test_gate_no_upstream_sentinel_is_false(tmp_data_dir: Path) -> None:
+    # .no_upstream_data sentinel → DiskState.NO_UPSTREAM_DATA (not COMPLETE → keep)
+    raw = tmp_data_dir / "raw" / "20260605" / "005930"
+    raw.mkdir(parents=True)
+    (raw / ".no_upstream_data").write_text("", encoding="utf-8")
+    assert _is_complete_hogaplay(tmp_data_dir, "005930", "20260605") is False
+
+
 def test_resolve_retention_days_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HOGA_RETENTION_DAYS", raising=False)
     assert resolve_retention_days() == 3
