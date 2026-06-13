@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { buildLiveBundle } from './buildLiveBundle';
-import type { RangeBundle } from '../api/types';
+import type { QuoteRatioPoint, RangeBundle } from '../api/types';
+
+// buildLiveBundle dedupe/promote logic only reads t/bid_total/ask_total; the Intra-Bar Max
+// fields mirror close here so the fixtures satisfy the QuoteRatioPoint shape.
+const qp = (t: number, bid_total: number, ask_total: number): QuoteRatioPoint => ({
+  t, bid_total, ask_total,
+  bid_max: bid_total, ask_max: ask_total, imb_max_bid: bid_total, imb_max_ask: ask_total,
+});
 
 const TODAY = '20260527';
 const TODAY_OPEN = Date.UTC(2026, 4, 27, 0, 0, 0);
@@ -78,7 +85,7 @@ describe('buildLiveBundle', () => {
       candles: [
         { ts_ms: TODAY_OPEN, open: 70000, close: 70050, high: 70100, low: 69900, vol_a: 1000, vol_b: 0 },
       ],
-      quote_ratio: { bucket_ms: 60_000, points: [{ t: TODAY_OPEN, ask_total: 500, bid_total: 500 }] },
+      quote_ratio: { bucket_ms: 60_000, points: [qp(TODAY_OPEN, 500, 500)] },
       fill_strength: { bucket_ms: 60_000, points: [] },
     });
     const bundle = buildLiveBundle({
@@ -225,7 +232,7 @@ describe('buildLiveBundle', () => {
 
 const MINUTE_MS = 60_000;
 
-function makeRangeBundle(qrPoints: { t: number; bid_total: number; ask_total: number }[]): RangeBundle {
+function makeRangeBundle(qrPoints: QuoteRatioPoint[]): RangeBundle {
   return {
     code: '003490',
     from_date: '20260527',
@@ -254,7 +261,7 @@ describe('buildLiveBundle dedup (ADR-0043 plan Task 9)', () => {
   it('dedupes SSE buckets that share timestamp with parquet tail', () => {
     const pastTailT = 1779926400000;  // 5/28 09:00 KST
     const past = makeRangeBundle([
-      { t: pastTailT, bid_total: 1000, ask_total: 2000 },
+      qp(pastTailT, 1000, 2000),
     ]);
 
     const sseOb = [
@@ -303,7 +310,7 @@ describe('buildLiveBundle dedup (ADR-0043 plan Task 9)', () => {
       }).quote_ratio.points;
 
     // Before refetch: past tail at t0, so t1 is incremental (from SSE).
-    const before = build(makeRangeBundle([{ t: t0, bid_total: 1, ask_total: 1 }]));
+    const before = build(makeRangeBundle([qp(t0, 1, 1)]));
     expect(before.map((p) => p.t)).toEqual([t0, t1]);
     expect(before.find((p) => p.t === t1)?.bid_total).toBe(110); // SSE value
 
@@ -311,8 +318,8 @@ describe('buildLiveBundle dedup (ADR-0043 plan Task 9)', () => {
     // from past, not SSE — no duplicate, no gap.
     const after = build(
       makeRangeBundle([
-        { t: t0, bid_total: 1, ask_total: 1 },
-        { t: t1, bid_total: 999, ask_total: 999 }, // promoted disk value
+        qp(t0, 1, 1),
+        qp(t1, 999, 999), // promoted disk value
       ]),
     );
     expect(after.map((p) => p.t)).toEqual([t0, t1]);
@@ -342,7 +349,7 @@ describe('buildLiveBundle dedup (ADR-0043 plan Task 9)', () => {
   it('appends only timestamps strictly greater than past tail', () => {
     const pastTailT = 1779926400000;
     const past = makeRangeBundle([
-      { t: pastTailT, bid_total: 1000, ask_total: 2000 },
+      qp(pastTailT, 1000, 2000),
     ]);
 
     const sseOb = [
@@ -394,8 +401,8 @@ describe('buildLiveBundle session-end filter (ADR-0049 / spec §3)', () => {
       quote_ratio: {
         bucket_ms: 60_000,
         points: [
-          { t: TODAY_OPEN - 86_400_000 + 3600_000, bid_total: 10, ask_total: 10 },
-          { t: futureCorruptT, bid_total: 99, ask_total: 99 }, // corrupt tail
+          qp(TODAY_OPEN - 86_400_000 + 3600_000, 10, 10),
+          qp(futureCorruptT, 99, 99), // corrupt tail
         ],
       },
     });
@@ -434,7 +441,7 @@ describe('buildLiveBundle session-end filter (ADR-0049 / spec §3)', () => {
       }],
       quote_ratio: {
         bucket_ms: 60_000,
-        points: [{ t: pastTailT, bid_total: 10, ask_total: 10 }],
+        points: [qp(pastTailT, 10, 10)],
       },
     });
 
@@ -469,8 +476,8 @@ describe('buildLiveBundle session-end filter (ADR-0049 / spec §3)', () => {
       quote_ratio: {
         bucket_ms: 60_000,
         points: [
-          { t: TODAY_OPEN, bid_total: 5, ask_total: 5 },
-          { t: pastTailT, bid_total: 10, ask_total: 10 },
+          qp(TODAY_OPEN, 5, 5),
+          qp(pastTailT, 10, 10),
         ],
       },
     });

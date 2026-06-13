@@ -28,7 +28,15 @@ export type StockDate = {
 
 export type Candle = { ts_ms: number; open: number; close: number; high: number; low: number; vol_a: number; vol_b: number };
 
-export type QuoteRatioPoint = { t: number; bid_total: number; ask_total: number };
+export type QuoteRatioPoint = {
+  t: number;
+  bid_total: number;
+  ask_total: number;
+  bid_max: number;
+  ask_max: number;
+  imb_max_bid: number;
+  imb_max_ask: number;
+};
 export type QuoteRatio = { bucket_ms: number; points: QuoteRatioPoint[] };
 
 export type VolumeProfileBin = { price_low: number; qty: number };

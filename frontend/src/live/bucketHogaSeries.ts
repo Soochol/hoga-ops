@@ -84,12 +84,28 @@ export function bucketHogaSeries(
   for (const s of obSorted) {
     const t = Math.floor(s.t_ms / bucketMs) * bucketMs;
     if (s.t_ms <= lastContinuousMs) {
-      // pre-auction: last continuous wins.
-      quoteByBucket.set(t, { t, ask_total: s.total_ask_qty, bid_total: s.total_bid_qty });
+      // pre-auction: last continuous wins. (Intra-Bar Max 필드는 Task 2에서 산출 — 지금은 0.)
+      quoteByBucket.set(t, {
+        t,
+        ask_total: s.total_ask_qty,
+        bid_total: s.total_bid_qty,
+        bid_max: 0,
+        ask_max: 0,
+        imb_max_bid: 0,
+        imb_max_ask: 0,
+      });
       seenPre.add(t);
     } else if (!seenPre.has(t)) {
       // fully-auction bucket: exclude the auction book (emit 0, keep the slot).
-      quoteByBucket.set(t, { t, ask_total: 0, bid_total: 0 });
+      quoteByBucket.set(t, {
+        t,
+        ask_total: 0,
+        bid_total: 0,
+        bid_max: 0,
+        ask_max: 0,
+        imb_max_bid: 0,
+        imb_max_ask: 0,
+      });
     }
   }
   const quoteRatioPoints = Array.from(quoteByBucket.values()).sort((a, b) => a.t - b.t);
