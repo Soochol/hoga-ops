@@ -7,7 +7,7 @@ import {
   MA_PERIOD_MAX,
   MA_SLOT_LIMIT,
   type LiveMAConfig,
-  type PersistedIndicators as MergedIndicators,
+  type PersistedIndicators,
 } from './liveIndicatorsPersistence';
 export type { MASource };
 
@@ -85,34 +85,10 @@ type Persisted = {
   historicalFromDate: string | null;
 };
 
-type PersistedIndicators = {
-  movingAverages: LiveMAConfig[];
-  /** Master toggle for the moving-average indicator. When false the chart
-   *  hides every MA slot regardless of slot count or per-slot fields.
-   *  Controlled by the IndicatorPanel category checkbox; the per-slot
-   *  toggle UI was removed in favour of this single switch. */
-  movingAverageEnabled: boolean;
-  /** ADR-0055: foreign-investor net-buy bar pane (D/W/M only). Opt-in. */
-  foreignNetEnabled: boolean;
-  /** ADR-0055: institution net-buy bar pane (D/W/M only). Opt-in. */
-  institutionNetEnabled: boolean;
-  /** Pane Legend: volume pane on/off. Default true. */
-  volumeEnabled: boolean;
-  /** Pane Legend: MA lines temporarily hidden (눈), config preserved. Default false. */
-  movingAverageHidden: boolean;
-  /** 당일 매도 최대벽 토글. opt-in(기본 false). */
-  askPeakEnabled: boolean;
-  /** 매도 최대벽 선 색(hex). 기본 #1D4ED8(파랑). */
-  askPeakColor: string;
-  /** 매도 최대벽 선 두께. 기본 2. */
-  askPeakLineWidth: 1 | 2 | 3 | 4;
-  /** 총잔량 pane on/off. 기본 true. */
-  quoteTotalsEnabled: boolean;
-  /** 호가비 pane on/off. 기본 true. */
-  ratioEnabled: boolean;
-  /** 체결강도 pane on/off. 기본 true. */
-  fillStrengthEnabled: boolean;
-};
+// `PersistedIndicators` (the persisted indicator-prefs slice — MA config + the
+// per-indicator master toggles) is defined ONCE in ./liveIndicatorsPersistence
+// and imported above. Single source of truth (ADR-0046): adding an indicator
+// field touches one type, not two. The store's indicator slice IS that type.
 
 /** The full active-view tuple the page renders. Written atomically by the active
  *  Live Tab (applyTabToPage → projectActiveView) so there is no setter ordering to
@@ -200,7 +176,7 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
   };
 }
 
-function readIndicatorsStorage(): MergedIndicators {
+function readIndicatorsStorage(): PersistedIndicators {
   try {
     const raw = localStorage.getItem(INDICATORS_STORAGE_KEY);
     return mergeLiveIndicatorPrefs(raw ? JSON.parse(raw) : undefined);
