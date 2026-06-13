@@ -30,7 +30,7 @@
 |-----------|------|------|
 | MA series identity 안정성 | preserves | 신규 오버레이가 동일 id-reconcile 패턴을 그대로 미러링 |
 | Indicator-prefs 단일 출처 | preserves | `dailyMovingAverages`/토글을 `PersistedIndicators`에 추가, `snapshotIndicators`에 편입 |
-| 번들 prepend atomicity | preserves (조건부 주의) | 신규 일봉 fetch는 번들 게이트 **밖**이라, lookback `from`을 `today` 기준 고정·넉넉히 잡아 **항상 pre-cached superset**으로 만든다 → 팬으로 드러난 거래일도 일봉 값이 이미 캐시에 있어 candle prepend와 lockstep (아래 §데이터 흐름) |
+| 번들 prepend atomicity | preserves | 신규 일봉 fetch는 번들 게이트 **밖**(read-only)이라 게이트 미침투. lookback `from`을 `today`+`PAST_CANDLES_MAX_DAYS`에 고정 → react-query 키가 **좌측 팬에 불변** → 팬 시 재fetch 없이 드러난 거래일 MA가 이미 캐시에 = **구조적 lockstep**(확률적 추정 아님). 비-lockstep 창은 최초 fetch뿐(cold-load 1-fetch 지연, Risk 참조). 근거 ADR-0073 (아래 §데이터 흐름) |
 | Virtual axis 거래일 매핑 | preserves | 읽기만 함 (`segment.date`로 일봉 MA값 조회) |
 | chartBundle(cb) 안정성 | preserves | 신규 오버레이도 `cb`를 받고 `memo`로 감싸 SSE 틱에 미재렌더 |
 | 호가 indicator opt-in 규약 | preserves | `dailyMovingAverageEnabled` 기본 false(opt-in), `=== true`만 ON |
@@ -56,7 +56,15 @@
 
 ### 용어
 
-**일봉 이동평균선 (Daily Moving Average)** — 일봉 종가 시계열로 계산한 SMA를, 활성 분봉 차트의 시간축에 거래일 단위로 투영한 보조지표. 기존 "이동평균선"(현재봉 기준)과 구분되는 별도 지표.
+**일봉 이동평균선 (Daily MA)** — 일봉 종가 시계열로 계산한 SMA를, 활성 분봉 차트의 시간축에 거래일 단위로 **계단 투영**한 가격선 오버레이. 기존 "이동평균선"(현재봉 기준, ADR-0046)·Screener `이동평균(ma)` 조건과 구분되는 별도 지표. CONTEXT.md "일봉 이동평균선 (Daily MA)" 항목 등재(3개 MA 개념 구분 + `거래일 계단` 용어). 분봉↔calendar 데이터경로 split을 가로지르는 근거는 **ADR-0073**.
+
+### 분봉 투영의 정당성 — 단위 보존 원리 (ADR-0073, grill Q2 적대검증)
+
+지금까지 모든 일봉 파생 지표(투자자 순매수 ADR-0055)는 **D-only**였다. Daily MA는 이 경계를 처음 가로지른다. 적대검증(D-only 변호 ↔ 투영 변호 ↔ 독립 eng 판정) 결과 **투영 채택**, 원리:
+
+> **단위 보존**: y값이 그 자체로 의미를 보존하는 **가격/비율 시계열**은 x축 granularity(일봉↔분봉)를 바꿔도 왜곡되지 않아 **분봉 투영 가능**. y가 "그 날 집계 수량"인 **막대 히스토그램**(거래량·투자자 순매수)은 하루를 수백 분봉으로 펼치면 의미가 무너져 **D-only**.
+
+ADR-0055의 D-only는 "W/M 집계 시 일별 점 정렬 탈락"이라는 mechanism-specific 근거 — Daily MA는 per-candle `findByReal→segment.date` 매핑이라 그 실패가 구조적으로 불가. **Cap**: 신규 일봉 지표는 기본 D-only, 분봉 투영은 이 원리로 개별 정당화 필요(지표 홍수 방지). 데이터경로 split(ADR-0040/0041/0048)이 규율하는 건 번들에 실리는 wire-bucketed intraday 지표지 self-contained 가격선 오버레이가 아니다.
 
 ### 확정된 사실 (실데이터 검증, 2026-06-13)
 
@@ -147,9 +155,10 @@
 - **enabled 조건**: `dailyMovingAverageEnabled && isMinuteTimeframe(timeframe) && code != null`. (조건부 hook 금지 규칙상 항상 호출하되 비활성 시 `code=null` 전달 → 훅 내부 `enabled=false`.)
 - **`to`** = `todayKst` (오버레이 prop).
 - **`from`** = `subtractDaysKst(todayKst, lookbackCalendarDays)` — **`today` 기준 고정** (segments[0] 기준 ❌).
-  - `lookbackCalendarDays = ceil(maxEnabledPeriod × 1.6) + minuteBackfillSpanDays + margin`, 상한 캡(예: 800일).
-  - `maxEnabledPeriod` = 활성 daily 슬롯들의 최대 period. `minuteBackfillSpanDays` = 분봉 차트가 좌측 팬으로 도달 가능한 최대 과거 일수(보수적 상수).
-  - 효과: 일봉은 수백 행이라 넉넉히 받아도 사실상 무비용 → **항상 pre-cached superset**. 분봉 좌측 팬으로 새 거래일이 드러나도 일봉 MA값이 이미 캐시에 있어 candle prepend와 **lockstep** (2-paint 깜빡임 회피, advisor 지적).
+  - `lookbackCalendarDays = PAST_CANDLES_MAX_DAYS + ceil(maxEnabledPeriod / TRADING_DAYS_PER_CALENDAR_DAYS) + margin` (grill Q3, eng-review 렌즈).
+    - **`PAST_CANDLES_MAX_DAYS`(=250, `liveDateTime.ts`)** = 분봉 좌측 팬의 **문서화된 클램프 하한** — 분봉 차트는 `earliestAllowedMinuteDate`(오늘−249) 이전으로 못 간다(useLiveBundle 250일 클램프 + ADR-0059 점진 팬이 공유하는 상수). 매직넘버(`minuteBackfillSpanDays`) 대신 이 단일 출처에 고정 → 클램프 변경 시 자동 추종, drift 없음.
+    - **`ceil(maxEnabledPeriod / TRADING_DAYS_PER_CALENDAR_DAYS)`**(=period 거래일→캘린더일, ×7/5; 상수도 `liveDateTime.ts`) = 분봉 최저 가시일 이전에도 period개 일봉 종가 확보. `margin`(~15) = 휴장일 슬랙. `maxEnabledPeriod` = 활성 daily 슬롯 최대 period.
+  - 효과: `from ≤ (분봉 최저 가시일 − period거래일)`. 일봉 endpoint는 cap 없음(ADR-0048)이라 ~265~460행 받아도 무비용 → **분봉 가시 전 범위를 반드시 덮는 pre-cached superset** → candle prepend와 **진짜 lockstep**(추측 아님, 클램프로 상한 보증). 2-paint 깜빡임 회피.
 
 ### 투영 알고리즘 (오버레이)
 
@@ -236,7 +245,7 @@ series.setData(data)
 ## Risks / Open questions
 
 - **t_ms 시맨틱 회귀**: 검증 완료(09:00 KST 앵커)이나 백엔드가 t_ms 앵커를 바꾸면 키 매핑이 깨진다 → projector 단위테스트에 실데이터형 t_ms를 박아 회귀 검출.
-- **lookback 상수 튜닝**: `minuteBackfillSpanDays`/margin은 보수적 상수로 시작, 매우 긴 좌측 팬 + 큰 period 동시엔 일봉 미커버 거래일이 생길 수 있음(라인 해당 일만 빈칸) — 실사용 관찰 후 조정.
+- ~~**lookback 상수 튜닝**~~ → **해소(grill Q3)**: lookback을 `PAST_CANDLES_MAX_DAYS`(분봉 클램프 하한)에 고정해 분봉 가시 전 범위를 항상 덮음. 분봉이 그보다 과거로 못 가므로 미커버 거래일이 구조적으로 불가 — 튜닝 대상 아님.
 - **cold-load / enable-while-panned 1-fetch 지연**: 일봉 fetch가 번들 게이트 밖 독립 commit이라, 지표를 **처음 켜는 순간**(또는 cold-load)엔 일봉 응답이 candle보다 한 fetch 늦게 도착 → 일봉 라인이 한 박자 뒤 나타날 수 있다(깜빡임 아님, 단순 지연 등장). lockstep 보장은 superset이 캐시된 **이후의 팬**에 적용. 1회성·무해 → v1 수용.
 - **오늘 override 소스**: 오늘 segment 마지막 분봉 close를 현재가 프록시로 사용 → SSE 실시간 현재가선과 미세 lag 가능(분 단위). 20일 평균엔 무시 가능.
 
