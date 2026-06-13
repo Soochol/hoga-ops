@@ -12,8 +12,10 @@ CODE = "005930"
 DATE = "20260529"
 SRC = "kis_live"
 
-RATIO = [QuoteRatioRow(bucket_intra_ms=0, bid_total=10, ask_total=20),
-         QuoteRatioRow(bucket_intra_ms=60_000, bid_total=0, ask_total=0)]
+RATIO = [QuoteRatioRow(bucket_intra_ms=0, bid_total=10, ask_total=20,
+                       bid_max=900, ask_max=800, imb_max_bid=100, imb_max_ask=2),
+         QuoteRatioRow(bucket_intra_ms=60_000, bid_total=0, ask_total=0,
+                       bid_max=0, ask_max=0, imb_max_bid=0, imb_max_ask=0)]
 FILL = [FillStrengthRow(bucket_intra_ms=0, buy_qty=5, sell_qty=3)]
 
 
@@ -76,3 +78,26 @@ def test_empty_rows_roundtrip(tmp_path: Path) -> None:
     c = PastIndicatorsCache(tmp_path)
     c.store_ratio(CODE, DATE, SRC, [])
     assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) == []
+
+
+def test_ratio_disk_payload_is_seven_tuples(tmp_path: Path) -> None:
+    """디스크 직렬화는 [bucket_intra_ms, bid_total, ask_total, bid_max, ask_max,
+    imb_max_bid, imb_max_ask] 7-tuple — Intra-Bar Max 필드를 보존(ADR-0075)."""
+    PastIndicatorsCache(tmp_path).store_ratio(CODE, DATE, SRC, RATIO)
+    p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json"
+    body = json.loads(p.read_text())
+    assert body["rows"][0] == [0, 10, 20, 900, 800, 100, 2]
+    assert body["rows"][1] == [60_000, 0, 0, 0, 0, 0, 0]
+    # 콜드 인스턴스가 7-tuple을 동일 QuoteRatioRow로 복원.
+    assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) == RATIO
+
+
+def test_schema_version_bumped_to_2_invalidates_old_three_tuple(tmp_path: Path) -> None:
+    """SCHEMA_VERSION 1→2: max 필드 없는 구(舊) 3-tuple 캐시는 버전 미스로 무효."""
+    from hoga.api import past_indicators_cache as mod
+    assert mod.SCHEMA_VERSION == 2
+    p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"version": 1, "rows": [[0, 10, 20]], "fetched_at_ms": 0}),
+                 encoding="utf-8")
+    assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) is None
