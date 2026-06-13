@@ -12,7 +12,7 @@ import shutil  # noqa: F401
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from hoga.api.disk_state import DiskState, check_disk_state, classify_stock_date  # noqa: F401
+from hoga.api.disk_state import DiskState, check_disk_state, classify_stock_date
 
 RETENTION_DAYS_DEFAULT = 3
 
@@ -36,6 +36,22 @@ class PruneResult:
     deleted: int = 0
     reclaimed_bytes: int = 0
     scanned: int = 0
+
+
+def _is_complete_hogaplay(data_dir: Path, code: str, date: str) -> bool:
+    """이 (date,code)의 hogaplay raw를 삭제해도 되는가?
+
+    raw/는 hogaplay 전용이므로 aggregate가 아니라 hogaplay-source의 상태로
+    판정한다. per-source 레이아웃이면 hogaplay Classification이 COMPLETE인지
+    보고, legacy flat 레이아웃(source subdir 없음)이면 단일 hogaplay이므로
+    check_disk_state로 폴백한다. (ADR-0075, ADR-0039)
+    """
+    parquet_dir = data_dir / "parquet" / date / code
+    per_source = classify_stock_date(parquet_dir)
+    if per_source:
+        cls = per_source.get("hogaplay")
+        return cls is not None and cls.state == DiskState.COMPLETE
+    return check_disk_state(data_dir, code, date).state == DiskState.COMPLETE
 
 
 def find_prunable(data_dir: Path, *, retention_days: int, now: dt.datetime) -> list[PruneCandidate]:

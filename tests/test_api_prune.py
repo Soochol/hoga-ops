@@ -10,6 +10,7 @@ import pytest
 from hoga.api.prune import (
     PruneCandidate,
     PruneResult,
+    _is_complete_hogaplay,
     find_prunable,
     prune_raw,
     resolve_retention_days,
@@ -60,6 +61,37 @@ def _make_raw(data_dir: Path, code: str, date: str, *, pages: int = 2, content: 
     for i in range(1, pages + 1):
         (p / f"first_{i:05d}.tsv").write_text(content, encoding="utf-8")
     return p
+
+
+def test_gate_legacy_flat_complete(tmp_data_dir: Path) -> None:
+    _write_meta_flat(tmp_data_dir, "005930", "20260605",
+                     collection_complete=True, is_partial=False)
+    assert _is_complete_hogaplay(tmp_data_dir, "005930", "20260605") is True
+
+
+def test_gate_per_source_hogaplay_complete(tmp_data_dir: Path) -> None:
+    _write_meta_source(tmp_data_dir, "005930", "20260605", "hogaplay",
+                       collection_complete=True, is_partial=False)
+    assert _is_complete_hogaplay(tmp_data_dir, "005930", "20260605") is True
+
+
+def test_gate_per_source_hogaplay_partial_but_kis_complete(tmp_data_dir: Path) -> None:
+    """핵심: aggregate=COMPLETE(kis_live)여도 hogaplay가 partial이면 삭제 금지 (ADR-0075)."""
+    _write_meta_source(tmp_data_dir, "005930", "20260605", "hogaplay",
+                       collection_complete=True, is_partial=True)   # SOURCE_PARTIAL
+    _write_meta_source(tmp_data_dir, "005930", "20260605", "kis_live",
+                       collection_complete=True, is_partial=False)  # COMPLETE
+    assert _is_complete_hogaplay(tmp_data_dir, "005930", "20260605") is False
+
+
+def test_gate_client_incomplete_is_false(tmp_data_dir: Path) -> None:
+    _write_meta_flat(tmp_data_dir, "005930", "20260605", collection_complete=False)
+    assert _is_complete_hogaplay(tmp_data_dir, "005930", "20260605") is False
+
+
+def test_gate_no_parquet_is_false(tmp_data_dir: Path) -> None:
+    _make_raw(tmp_data_dir, "005930", "20260605")  # raw만, parquet 없음
+    assert _is_complete_hogaplay(tmp_data_dir, "005930", "20260605") is False
 
 
 def test_resolve_retention_days_default(monkeypatch: pytest.MonkeyPatch) -> None:
