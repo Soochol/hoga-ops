@@ -4,11 +4,11 @@ import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
 
 describe('IndicatorPanel', () => {
-  it('활성 8개 체크박스(비활성 0), 호가 3종 포함', () => {
+  it('활성 9개 체크박스(비활성 0), 호가 3종 포함', () => {
     useLivePageStore.setState({ quoteTotalsEnabled: true, ratioEnabled: true, fillStrengthEnabled: true });
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(8); // 상단 4 + 호가 4(당일 매도 최대벽 호가 그룹으로 이동), 회색 placeholder 삭제됨
+    expect(checkboxes).toHaveLength(9); // 상단 5(일봉 이평선 추가) + 호가 4(당일 매도 최대벽 호가 그룹으로 이동), 회색 placeholder 삭제됨
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
     for (const name of ['총잔량', '호가비', '체결강도']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
@@ -170,5 +170,20 @@ describe('IndicatorPanel', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽' }));
     expect(screen.getByRole('button', { name: '매도벽 스타일 선택' })).toBeTruthy();
+  });
+
+  it('일봉 이동평균선 체크박스 토글 → dailyMovingAverageEnabled 반전', async () => {
+    const { useLivePageStore } = await import('../../state/livePage');
+    useLivePageStore.setState({ dailyMovingAverageEnabled: false });
+    render(<IndicatorPanel onClose={() => {}} />);
+    const cb = screen.getByRole('checkbox', { name: '일봉 이동평균선' });
+    fireEvent.click(cb);
+    expect(useLivePageStore.getState().dailyMovingAverageEnabled).toBe(true);
+  });
+
+  it('일봉 이동평균선 라벨 클릭 → DailyMovingAverageConfig 노출', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '일봉 이동평균선' }));
+    expect(screen.getByText(/일봉 종가 기준 이평선을 분봉 차트에 투영/)).toBeTruthy();
   });
 });

@@ -1,6 +1,7 @@
 import { useState, Fragment } from 'react';
 import { useLivePageStore } from '../../state/livePage';
 import MovingAverageConfig from './MovingAverageConfig';
+import DailyMovingAverageConfig from './DailyMovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
 import InvestorNetConfig from './InvestorNetConfig';
 import AskPeakConfig from './AskPeakConfig';
@@ -12,6 +13,7 @@ import { CheckIcon } from '../../ui/CheckIcon';
 
 type CategoryId =
   | 'moving-average'
+  | 'daily-moving-average'
   | 'volume'
   | 'foreign-net'
   | 'institution-net'
@@ -25,6 +27,7 @@ const GROUP_LABEL: Record<GroupId, string> = { top: '상단 지표', hoga: '호�
 
 const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId }> = [
   { id: 'moving-average',  label: '이동평균선',       group: 'top'  },
+  { id: 'daily-moving-average', label: '일봉 이동평균선',  group: 'top'  },
   { id: 'volume',          label: '거래량',           group: 'top'  },
   { id: 'foreign-net',     label: '외국인 순매수량',  group: 'top'  },
   { id: 'institution-net', label: '기관 순매수량',    group: 'top'  },
@@ -41,6 +44,8 @@ type Props = {
 export default function IndicatorPanel({ onClose }: Props) {
   const maEnabled = useLivePageStore((s) => s.movingAverageEnabled);
   const setMaEnabled = useLivePageStore((s) => s.setMovingAverageEnabled);
+  const dailyMaEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
+  const setDailyMaEnabled = useLivePageStore((s) => s.setDailyMovingAverageEnabled);
   const foreignNet = useLivePageStore((s) => s.foreignNetEnabled);
   const setForeignNet = useLivePageStore((s) => s.setForeignNetEnabled);
   const institutionNet = useLivePageStore((s) => s.institutionNetEnabled);
@@ -66,6 +71,7 @@ export default function IndicatorPanel({ onClose }: Props) {
   const checkedFor = (id: CategoryId): boolean => {
     switch (id) {
       case 'moving-average': return maEnabled;
+      case 'daily-moving-average': return dailyMaEnabled;
       case 'foreign-net': return foreignNet;
       case 'institution-net': return institutionNet;
       case 'volume': return volumeEnabled;
@@ -79,6 +85,7 @@ export default function IndicatorPanel({ onClose }: Props) {
   const toggleFor = (id: CategoryId): (() => void) | null => {
     switch (id) {
       case 'moving-average': return () => setMaEnabled(!maEnabled);
+      case 'daily-moving-average': return () => setDailyMaEnabled(!dailyMaEnabled);
       case 'foreign-net': return () => setForeignNet(!foreignNet);
       case 'institution-net': return () => setInstitutionNet(!institutionNet);
       case 'volume': return () => setVolumeEnabled(!volumeEnabled);
@@ -137,6 +144,7 @@ export default function IndicatorPanel({ onClose }: Props) {
         </nav>
         <div className="flex-1 px-5 py-4">
           {selected === 'moving-average' && <MovingAverageConfig />}
+          {selected === 'daily-moving-average' && <DailyMovingAverageConfig />}
           {selected === 'volume' && <VolumeConfig />}
           {selected === 'foreign-net' && <InvestorNetConfig which="foreign" />}
           {selected === 'institution-net' && <InvestorNetConfig which="institution" />}
