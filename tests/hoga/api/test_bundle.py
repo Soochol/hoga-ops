@@ -258,8 +258,12 @@ def test_build_volume_profile_slice_top_edge_bin_not_dropped(tmp_path):
 # build_range_bundle (ADR-0013/0014): partial-inventory, segments
 # ---------------------------------------------------------------------------
 
-def _patch_slice_builders(bundle_mod, bucket_ms: int = 60_000):
-    """Return a list of context managers that stub every per-slice builder."""
+def _patch_slice_builders(bundle_mod, bucket_ms: int = 60_000, *, patch_ask_peak: bool = True):
+    """Return a list of context managers that stub every per-slice builder.
+
+    ``patch_ask_peak`` (default True) also stubs build_ask_peak_slice → None so the
+    general bundle tests (MagicMock engine, no real parquet/conn) don't exercise it.
+    The dedicated ask_peak tests pass False to run build_ask_peak_slice for real."""
     from unittest.mock import patch
     from hoga.api.models import (
         FillStrength, QuoteRatio, VolumeProfile,
@@ -267,13 +271,16 @@ def _patch_slice_builders(bundle_mod, bucket_ms: int = 60_000):
     qr = QuoteRatio(bucket_ms=bucket_ms, points=[])
     fs = FillStrength(bucket_ms=bucket_ms, points=[])
     vp = VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
-    return [
+    patches = [
         patch.object(bundle_mod, "build_candles_slice", return_value=[]),
         patch.object(bundle_mod, "downsample_candles", return_value=[]),
         patch.object(bundle_mod, "build_quote_ratio_slice", return_value=qr),
         patch.object(bundle_mod, "build_fill_strength_slice", return_value=fs),
         patch.object(bundle_mod, "build_volume_profile_slice", return_value=vp),
     ]
+    if patch_ask_peak:
+        patches.append(patch.object(bundle_mod, "build_ask_peak_slice", return_value=None))
+    return patches
 
 
 def _engine_with_meta_for_dates(dates):
@@ -596,8 +603,9 @@ def test_build_range_bundle_includes_ask_peak_for_today(monkeypatch, tmp_path) -
     eng = _engine_with_meta_for_dates([FIXTURE_DATE])
     eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
     eng.conn = duckdb.connect()
+    eng.indicators_cache = None  # ask_peak 캐시 미사용(MagicMock 회피); per-day 계산만 검증
 
-    patches = _patch_slice_builders(bundle_mod) + [
+    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=False) + [
         patch.object(bundle_mod, "build_volume_profile_range",
                      return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
     ]
@@ -606,16 +614,18 @@ def test_build_range_bundle_includes_ask_peak_for_today(monkeypatch, tmp_path) -
             stack.enter_context(pcm)
         bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000)
 
-    assert bundle.ask_peak is not None
-    assert bundle.ask_peak.qty == EXPECTED_QTY
-    assert bundle.ask_peak.price == EXPECTED_PRICE
+    assert len(bundle.ask_peaks) == 1
+    p = bundle.ask_peaks[0]
+    assert p.date == FIXTURE_DATE
+    assert p.qty == EXPECTED_QTY
+    assert p.price == EXPECTED_PRICE
     # t_ms is unix ms — must be positive and in a sane range
-    assert bundle.ask_peak.t_ms > 0
+    assert p.t_ms > 0
 
 
-def test_build_range_bundle_ask_peak_from_most_recent_day_even_when_not_today(monkeypatch, tmp_path) -> None:
-    """범위가 과거일만(오늘 미포함)이어도 ask_peak는 **가장 최근 거래일**의 값으로 채워진다.
-    (이전엔 '달력상 오늘'에만 계산해 휴장·과거일 조회 시 항상 None이라 선이 안 보였다 — 회귀 가드.)"""
+def test_build_range_bundle_ask_peaks_includes_past_day_even_when_not_today(monkeypatch, tmp_path) -> None:
+    """범위가 과거일만(오늘 미포함)이어도 그날 항목이 ask_peaks에 들어간다(per-day).
+    (이전엔 '달력상 오늘'에만 계산해 휴장·과거일 조회 시 항상 비어 선이 안 보였다 — 회귀 가드.)"""
     import contextlib
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
@@ -645,8 +655,9 @@ def test_build_range_bundle_ask_peak_from_most_recent_day_even_when_not_today(mo
     eng = _engine_with_meta_for_dates([FIXTURE_DATE])
     eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
     eng.conn = duckdb.connect()
+    eng.indicators_cache = None  # ask_peak 캐시 미사용(MagicMock 회피); per-day 계산만 검증
 
-    patches = _patch_slice_builders(bundle_mod) + [
+    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=False) + [
         patch.object(bundle_mod, "build_volume_profile_range",
                      return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
     ]
@@ -655,14 +666,15 @@ def test_build_range_bundle_ask_peak_from_most_recent_day_even_when_not_today(mo
             stack.enter_context(pcm)
         bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000)
 
-    # Most-recent (only) day's continuous max ask level — NOT None.
-    assert bundle.ask_peak is not None
-    assert bundle.ask_peak.qty == 5000
-    assert bundle.ask_peak.price == 25100
+    # 과거일도 그날 항목이 ask_peaks에 들어간다(거래일별).
+    assert len(bundle.ask_peaks) == 1
+    assert bundle.ask_peaks[0].date == FIXTURE_DATE
+    assert bundle.ask_peaks[0].qty == 5000
+    assert bundle.ask_peaks[0].price == 25100
 
 
-def test_build_range_bundle_ask_peak_uses_latest_day_not_global_max(monkeypatch, tmp_path) -> None:
-    """다일 범위: ask_peak는 **가장 최근 거래일**에서 — 이전 날 더 큰 매도벽이 있어도 무시(한 거래일=선 1개)."""
+def test_build_range_bundle_ask_peaks_per_day(monkeypatch, tmp_path) -> None:
+    """다일 범위: 각 거래일이 자기 최대벽을 ask_peaks에 가진다(per-day) — 날짜별 독립."""
     import contextlib
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
@@ -691,8 +703,9 @@ def test_build_range_bundle_ask_peak_uses_latest_day_not_global_max(monkeypatch,
     eng = _engine_with_meta_for_dates(["20260610", "20260611"])
     eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": dirs[d]
     eng.conn = duckdb.connect()
+    eng.indicators_cache = None  # ask_peak 캐시 미사용(MagicMock 회피); per-day 계산만 검증
 
-    patches = _patch_slice_builders(bundle_mod) + [
+    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=False) + [
         patch.object(bundle_mod, "build_volume_profile_range",
                      return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
     ]
@@ -701,10 +714,50 @@ def test_build_range_bundle_ask_peak_uses_latest_day_not_global_max(monkeypatch,
             stack.enter_context(pcm)
         bundle = build_range_bundle(eng, code="005930", from_date="20260610", to_date="20260611", bucket_ms=60000)
 
-    # 최근일(0611)의 3000@28000 — 이전일(0610)의 더 큰 9000@30000은 무시.
-    assert bundle.ask_peak is not None
-    assert bundle.ask_peak.price == 28000
-    assert bundle.ask_peak.qty == 3000
+    # 거래일별: 두 날 모두 각자의 최대벽이 ask_peaks에 — 06-10=9000@30000, 06-11=3000@28000.
+    by_date = {p.date: p for p in bundle.ask_peaks}
+    assert set(by_date) == {"20260610", "20260611"}
+    assert by_date["20260610"].price == 30000 and by_date["20260610"].qty == 9000
+    assert by_date["20260611"].price == 28000 and by_date["20260611"].qty == 3000
+
+
+def test_build_ask_peak_slice_caches_past_days(tmp_path) -> None:
+    """과거일은 indicators_cache로 1회만 계산(불변) — 두번째 호출은 재스캔 안 함. 오늘은 미캐시."""
+    from unittest.mock import MagicMock
+    from hoga.api.bundle import build_ask_peak_slice
+    from hoga.api.past_indicators_cache import PastIndicatorsCache
+    from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
+
+    z = tuple([0] * 10)
+    ob = Orderbook(
+        ts_ms=90100000, seq=1,
+        ask_p=(25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450),
+        ask_q=(100, 200, 5000, 40, 5, 6, 7, 8, 9, 1), ask_d=z,
+        bid_p=tuple([24950 - 50 * i for i in range(10)]), bid_q=tuple([100] * 10), bid_d=z,
+        tot_ask=5376, tot_ask_d=0, tot_bid=1000, tot_bid_d=0,
+    )
+    snapshots_write_parquet([ob], tmp_path / "snapshots.parquet")
+    cache = PastIndicatorsCache(tmp_path / "cachedir")
+    eng = MagicMock()
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.conn = duckdb.connect()
+
+    p1 = build_ask_peak_slice(eng, code="005930", date="20260610", source="hogaplay",
+                              cache=cache, today_kst="20260613")
+    assert p1 is not None and p1.qty == 5000 and p1.date == "20260610"
+    assert cache.has_ask_peak("005930", "20260610", "hogaplay")
+
+    # 두번째 호출: parquet_dir이 깨져도 캐시에서 반환(재스캔 안 함).
+    eng.parquet_dir.side_effect = AssertionError("should not recompute a cached past day")
+    p2 = build_ask_peak_slice(eng, code="005930", date="20260610", source="hogaplay",
+                              cache=cache, today_kst="20260613")
+    assert p2 == p1
+
+    # 오늘 날짜는 cacheable 아님 → 캐시에 저장하지 않는다(매번 재계산해 ratchet seed 갱신).
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    build_ask_peak_slice(eng, code="005930", date="20260613", source="hogaplay",
+                         cache=cache, today_kst="20260613")
+    assert not cache.has_ask_peak("005930", "20260613", "hogaplay")
 
 
 def test_range_bundle_ask_peak_field_defaults_none() -> None:
@@ -718,6 +771,6 @@ def test_range_bundle_ask_peak_field_defaults_none() -> None:
         volume_profile_range=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
         volume_profile_by_day=[],
     )
-    assert b.ask_peak is None  # 기본 None — 기존 클라 무영향
-    b2 = b.model_copy(update={"ask_peak": AskPeak(price=25100, qty=5000, t_ms=1)})
-    assert b2.ask_peak.price == 25100 and b2.ask_peak.t_ms == 1
+    assert b.ask_peaks == []  # 기본 빈 리스트 — 기존 클라 무영향
+    b2 = b.model_copy(update={"ask_peaks": [AskPeak(date="20260613", price=25100, qty=5000, t_ms=1)]})
+    assert b2.ask_peaks[0].price == 25100 and b2.ask_peaks[0].date == "20260613"

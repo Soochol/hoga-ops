@@ -1,9 +1,13 @@
-import type { AskPeak } from '../api/types';
 import { isContinuousBook, type ObSnapshot } from './bucketHogaSeries';
 import { tradingDayOf } from '../util/tradingDay';
 
+/** 래칫 내부 peak 값 — 날짜 없는 {price, qty, t_ms}. 래칫은 오늘 하루에만 적용되므로 date는
+ *  훅(useDayAskPeaks)이 todayKst로 부착해 와이어 `AskPeak`을 만든다. AskPeak은 구조적으로
+ *  DayPeak의 상위(추가 date 필드)라 seed로 그대로 넘길 수 있다. */
+export type DayPeak = { price: number; qty: number; t_ms: number };
+
 export type RatchetState = {
-  peak: AskPeak | null;
+  peak: DayPeak | null;
   tradingDay: number;
   lastTMs: number;
 };
@@ -15,7 +19,7 @@ export const FRESH_RATCHET: RatchetState = { peak: null, tradingDay: -1, lastTMs
  *  ob.asks가 없으면(totals-only) 후보는 seed뿐. */
 export function foldAskPeak(
   prev: RatchetState,
-  seed: AskPeak | null,
+  seed: DayPeak | null,
   ob: ObSnapshot,
 ): RatchetState {
   const day = tradingDayOf(ob.t_ms);
@@ -38,12 +42,12 @@ export function foldAskPeak(
 
 /** "당일 매도 최대벽" 규칙 전체를 소유하는 공개 reducer: prev 상태에 ob 스냅샷 배치를 폴드하고
  *  seed 하한을 보장한 새 ratchet 상태를 반환한다 — 즉 당일 peak = max(seed, 본 연속거래 ask 레벨들).
- *  훅(useDayAskPeak)은 이걸 구동만 한다(얇은 adapter). seed 하한은 **배치당 1회** 적용한다(스냅샷당이
+ *  훅(useDayAskPeaks)은 이걸 구동만 한다(얇은 adapter). seed 하한은 **배치당 1회** 적용한다(스냅샷당이
  *  아님 — foldAskPeak은 거래일 리셋 때만 seed를 후보로 쓰므로): 오후 진입·range 재fetch로 더 큰 seed가
  *  늦게 들어와도 mid-day에 반영하되 동률은 먼저 것 유지(strict >). */
 export function reduceDayAskPeak(
   prev: RatchetState,
-  seed: AskPeak | null,
+  seed: DayPeak | null,
   obs: ReadonlyArray<ObSnapshot>,
 ): RatchetState {
   let s = prev;

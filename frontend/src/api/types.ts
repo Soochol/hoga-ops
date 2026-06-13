@@ -433,9 +433,10 @@ export interface LiveSnapshotEntry {
  *  − = net sell. t_ms anchors at 09:00 KST — the same anchor as daily candles. */
 export type InvestorNetPoint = { t_ms: number; foreign_net: number; institution_net: number };
 
-/** 당일 매도 최대벽 — 연속거래 중 단일 매도 호가단계 최대 물량·가격.
- *  hoga/api/models.py::AskPeak 미러. t_ms는 unix ms(KST). */
-export type AskPeak = { price: number; qty: number; t_ms: number };
+/** 한 거래일 매도 최대벽 — 연속거래 중 단일 매도 호가단계 최대 물량·가격.
+ *  hoga/api/models.py::AskPeak 미러. date=거래일(YYYYMMDD, segment x-구간 매핑용),
+ *  t_ms=unix ms(KST, peak 발생 시점). */
+export type AskPeak = { date: string; price: number; qty: number; t_ms: number };
 
 export type RangeBundle = {
   code: string;
@@ -453,7 +454,8 @@ export type RangeBundle = {
    *  Empty on minute timeframes (KIS provides investor data for D/W/M only).
    *  Separate array (not on Candle) so minute candles never carry null. */
   investorPoints: InvestorNetPoint[];
-  /** 당일 매도 최대벽 seed(오늘 slice 연속거래만). 오늘 미포함/D·W·M/무데이터 → null.
-   *  라이브 ratchet(useDayAskPeak)의 시드. */
-  ask_peak: AskPeak | null;
+  /** 거래일별 매도 최대벽 — 데이터 있는 각 거래일당 1개. 프론트가 각 항목을 그날 segment
+   *  x-구간의 수평 세그먼트로 그린다. 오늘 항목은 클라 ratchet(useDayAskPeaks)이 live.ob로 갱신.
+   *  D·W·M/무데이터 → []. */
+  ask_peaks: AskPeak[];
 };

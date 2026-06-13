@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.31.0] - 2026-06-13
+
+### Changed
+- **당일 매도 최대벽 → 거래일별 수평 세그먼트 + 오늘 실시간 갱신** (#92, 사용자 요청): 한 거래일(앵커일)만
+  풀-너비 수평선으로 그리던 것을, **차트에 보이는 거래일마다 그 날의 최대 매도벽을 그날 구간에만 걸치는 짧은
+  수평 세그먼트**로 그린다(여러 날 동시 표시). 오늘 세그먼트는 라이브 엣지까지 연장되고 끝에 점을 찍어 실시간
+  갱신 중임을 표시한다.
+  - **백엔드**: `RangeBundle.ask_peak`(단일) → `ask_peaks`(거래일별 리스트, `AskPeak`에 `date` 추가).
+    `build_range_bundle`이 데이터 있는 각 세그먼트(거래일)마다 `query_day_ask_peak`. 과거일은 불변이라
+    `PastIndicatorsCache`(in-memory)로 1회 계산해 깊은 스크롤 시 N일 재스캔을 피하고, 오늘만 매 빌드 재계산
+    (클라 ratchet seed 갱신 겸).
+  - **프론트**: lwc 풀-너비 price line 대신 커스텀 **`AskPeakSegmentsPrimitive`**(canvas series primitive) —
+    `timeScale.timeToCoordinate`로 각 날 `[open, close/라이브엣지]` x-구간 × price 수평선 + 물량 라벨을 직접
+    그려 series 길이/timeScale index에 면역(좌측-팬 백필에도 안 밀림; 총잔량 급증 마커와 동일 근거).
+    `useDayAskPeaks`가 과거일 seed는 그대로 통과시키고 오늘 항목만 `live.ob`로 단조 ratchet(2차 SSE 없음).
+  - 색·두께는 그대로 지표 설정 pane에서 조절. 백엔드 1585 · 프론트 1874 테스트 그린.
+
 ## [0.7.30.1] - 2026-06-13
 
 ### Fixed
