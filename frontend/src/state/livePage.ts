@@ -3,6 +3,7 @@ import type { MASource } from '../chart/projectors/movingAverage';
 import {
   mergeLiveIndicatorPrefs,
   DEFAULT_LIVE_MAS,
+  DEFAULT_DAILY_MAS,
   MA_PERIOD_MIN,
   MA_PERIOD_MAX,
   MA_SLOT_LIMIT,
@@ -17,6 +18,7 @@ export type { MASource };
 // store module. ADR-0046.
 export {
   DEFAULT_LIVE_MAS,
+  DEFAULT_DAILY_MAS,
   MA_PERIOD_MIN,
   MA_PERIOD_MAX,
   MA_SLOT_LIMIT,
@@ -120,6 +122,11 @@ type Store = Persisted & PersistedIndicators & {
   setQuoteTotalsEnabled: (enabled: boolean) => void;
   setRatioEnabled: (enabled: boolean) => void;
   setFillStrengthEnabled: (enabled: boolean) => void;
+  setDailyMovingAverage: (id: string, patch: Partial<LiveMAConfig>) => void;
+  addDailyMovingAverage: () => void;
+  removeDailyMovingAverage: (id: string) => void;
+  setDailyMovingAverageEnabled: (enabled: boolean) => void;
+  setDailyMovingAverageHidden: (hidden: boolean) => void;
 };
 
 const DEFAULTS: Persisted = {
@@ -173,6 +180,9 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     quoteTotalsEnabled: s.quoteTotalsEnabled,
     ratioEnabled: s.ratioEnabled,
     fillStrengthEnabled: s.fillStrengthEnabled,
+    dailyMovingAverages: s.dailyMovingAverages,
+    dailyMovingAverageEnabled: s.dailyMovingAverageEnabled,
+    dailyMovingAverageHidden: s.dailyMovingAverageHidden,
   };
 }
 
@@ -189,15 +199,15 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
-function nextSlotId(existing: readonly LiveMAConfig[]): string {
+function nextSlotId(existing: readonly LiveMAConfig[], prefix = 'ma'): string {
   const used = new Set(existing.map((m) => m.id));
-  // Try fast path: ma-N for N up to MA_SLOT_LIMIT * 2.
+  // Try fast path: <prefix>-N for N up to MA_SLOT_LIMIT * 2.
   for (let i = 1; i <= MA_SLOT_LIMIT * 2; i++) {
-    const id = `ma-${i}`;
+    const id = `${prefix}-${i}`;
     if (!used.has(id)) return id;
   }
   // Fallback (should never hit given MA_SLOT_LIMIT cap).
-  return `ma-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
 /** 8색 hex palette — tokens.css의 --ma-1..--ma-8과 매칭. canvas는 CSS
@@ -314,6 +324,59 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   setFillStrengthEnabled: (enabled) => {
     set({ fillStrengthEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setDailyMovingAverage: (id, patch) => {
+    const current = get().dailyMovingAverages;
+    const idx = current.findIndex((m) => m.id === id);
+    if (idx === -1) return;
+    const cur = current[idx];
+    const next: LiveMAConfig = { ...cur, ...patch };
+    if (patch.period !== undefined) {
+      const p = Number(patch.period);
+      if (!Number.isFinite(p)) return;
+      next.period = clamp(Math.floor(p), MA_PERIOD_MIN, MA_PERIOD_MAX);
+    }
+    const nextArr = current.slice();
+    nextArr[idx] = next;
+    set({ dailyMovingAverages: nextArr });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  addDailyMovingAverage: () => {
+    const current = get().dailyMovingAverages;
+    if (current.length >= MA_SLOT_LIMIT) return;
+    const last = current[current.length - 1];
+    const period = last ? clamp(last.period * 2, MA_PERIOD_MIN, MA_PERIOD_MAX) : 20;
+    const next: LiveMAConfig = {
+      id: nextSlotId(current, 'dma'),
+      enabled: true,
+      period,
+      color: nextSlotColor(current),
+      lineWidth: 2,
+      source: 'close',
+    };
+    set({ dailyMovingAverages: [...current, next] });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  removeDailyMovingAverage: (id) => {
+    const current = get().dailyMovingAverages;
+    if (current.length <= 1) return;
+    const nextArr = current.filter((m) => m.id !== id);
+    if (nextArr.length === current.length) return;
+    set({ dailyMovingAverages: nextArr });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setDailyMovingAverageEnabled: (enabled) => {
+    set({ dailyMovingAverageEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setDailyMovingAverageHidden: (hidden) => {
+    set({ dailyMovingAverageHidden: hidden });
     persistIndicators(snapshotIndicators(get));
   },
 

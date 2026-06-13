@@ -41,6 +41,12 @@ export const DEFAULT_LIVE_MAS: readonly LiveMAConfig[] = Object.freeze([
   { id: 'ma-4', enabled: true, period: 120, color: '#F8FAFC', lineWidth: 1, source: 'close' },
 ]) as readonly LiveMAConfig[];
 
+/** 일봉 이동평균선 기본 슬롯 — period 20 단일. 색 #EAB308(--ma-7, yellow)은
+ *  현재봉 기본 슬롯(EC4899/F97316/22C55E/F8FAFC)과 구분된다(MA_PALETTE와 일치). */
+export const DEFAULT_DAILY_MAS: readonly LiveMAConfig[] = Object.freeze([
+  { id: 'dma-1', enabled: true, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' },
+]) as readonly LiveMAConfig[];
+
 const VALID_LINE_WIDTHS = new Set([1, 2, 3, 4]);
 const VALID_SOURCES = new Set(['close', 'open', 'high', 'low', 'hl2', 'hlc3', 'ohlc4']);
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
@@ -71,6 +77,12 @@ export type PersistedIndicators = {
   ratioEnabled: boolean;
   /** 체결강도 pane on/off. Default TRUE. */
   fillStrengthEnabled: boolean;
+  /** 일봉 이동평균선 슬롯(현재봉 movingAverages와 별개, ADR-0073). */
+  dailyMovingAverages: LiveMAConfig[];
+  /** 일봉 MA 마스터 토글. opt-in(기본 false). */
+  dailyMovingAverageEnabled: boolean;
+  /** 일봉 MA 눈(숨김), config 보존. 기본 false. */
+  dailyMovingAverageHidden: boolean;
 };
 
 function isValidEntry(m: unknown): m is LiveMAConfig {
@@ -112,6 +124,14 @@ export function mergeLiveIndicatorPrefs(
     ? (obj.askPeakColor as string) : ASK_PEAK_DEFAULT_COLOR;
   const apWidth = VALID_LINE_WIDTHS.has(obj?.askPeakLineWidth as number)
     ? (obj!.askPeakLineWidth as 1 | 2 | 3 | 4) : ASK_PEAK_DEFAULT_WIDTH;
+  // daily MA — opt-in(기본 false), 슬롯 검증·cap·기본값 전략 movingAverages와 동일.
+  const dEnabled = obj?.dailyMovingAverageEnabled === true;
+  const dHidden = obj?.dailyMovingAverageHidden === true;
+  const dRaw = obj?.dailyMovingAverages;
+  const dKept = Array.isArray(dRaw)
+    ? (dRaw.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[])
+    : [];
+  const dMas = dKept.length > 0 ? dKept : DEFAULT_DAILY_MAS.map((m) => ({ ...m }));
   const build = (
     mas: LiveMAConfig[], enabled: boolean, fNet: boolean, iNet: boolean,
     vol: boolean, hidden: boolean,
@@ -129,6 +149,9 @@ export function mergeLiveIndicatorPrefs(
     quoteTotalsEnabled: qt,
     ratioEnabled: ratio,
     fillStrengthEnabled: fill,
+    dailyMovingAverages: dMas,
+    dailyMovingAverageEnabled: dEnabled,
+    dailyMovingAverageHidden: dHidden,
   });
   if (!raw || typeof raw !== 'object') return build(defaults, true, false, false, true, false, true, true, true);
   // obj is guaranteed non-null here (same condition checked above)

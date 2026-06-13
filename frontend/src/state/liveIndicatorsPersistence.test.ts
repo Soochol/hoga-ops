@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeLiveIndicatorPrefs, type PersistedIndicators } from './liveIndicatorsPersistence';
+import { mergeLiveIndicatorPrefs, DEFAULT_DAILY_MAS, type PersistedIndicators } from './liveIndicatorsPersistence';
 import { DEFAULT_LIVE_MAS } from './livePage';
 
 describe('mergeLiveIndicatorPrefs', () => {
@@ -17,6 +17,9 @@ describe('mergeLiveIndicatorPrefs', () => {
       quoteTotalsEnabled: true,
       ratioEnabled: true,
       fillStrengthEnabled: true,
+      dailyMovingAverages: DEFAULT_DAILY_MAS.map((m) => ({ ...m })),
+      dailyMovingAverageEnabled: false,
+      dailyMovingAverageHidden: false,
     });
   });
 
@@ -169,5 +172,24 @@ describe('mergeLiveIndicatorPrefs — askPeak', () => {
     const m = mergeLiveIndicatorPrefs({ askPeakColor: 'red', askPeakLineWidth: 9 });
     expect(m.askPeakColor).toBe('#1D4ED8');
     expect(m.askPeakLineWidth).toBe(2);
+  });
+});
+
+describe('mergeLiveIndicatorPrefs — daily MA', () => {
+  it('빈 입력 → 1 슬롯(period 20) + enabled false(opt-in)', () => {
+    const m = mergeLiveIndicatorPrefs(undefined);
+    expect(m.dailyMovingAverages).toEqual(DEFAULT_DAILY_MAS.map((x) => ({ ...x })));
+    expect(m.dailyMovingAverageEnabled).toBe(false);
+    expect(m.dailyMovingAverageHidden).toBe(false);
+  });
+  it('enabled는 === true만 ON', () => {
+    expect(mergeLiveIndicatorPrefs({ dailyMovingAverageEnabled: true }).dailyMovingAverageEnabled).toBe(true);
+    expect(mergeLiveIndicatorPrefs({ dailyMovingAverageEnabled: 'yes' as unknown as boolean }).dailyMovingAverageEnabled).toBe(false);
+  });
+  it('손상 daily 슬롯 필터, 전부 무효면 기본값', () => {
+    const valid = { id: 'dma-1', enabled: true, period: 60, color: '#ffffff', lineWidth: 2, source: 'close' };
+    expect(mergeLiveIndicatorPrefs({ dailyMovingAverages: [valid, { id: 'x' }] } as never).dailyMovingAverages).toEqual([valid]);
+    expect(mergeLiveIndicatorPrefs({ dailyMovingAverages: [{}, { id: 1 }] } as never).dailyMovingAverages)
+      .toEqual(DEFAULT_DAILY_MAS.map((x) => ({ ...x })));
   });
 });
