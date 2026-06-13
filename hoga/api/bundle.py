@@ -388,8 +388,13 @@ def build_fill_strength_slice(
 def build_ask_peak_slice(
     engine: QueryEngine, *, code: str, date: str, source: str = "hogaplay",
 ) -> "AskPeak | None":
-    """당일(date) 연속거래 매도 최대벽 seed. 파일 부재(=무데이터, ADR-0043) → None."""
-    path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    """해당 거래일(date) 연속거래 매도 최대벽 seed. best-effort: 파일 부재(=무데이터, ADR-0043)나
+    미캐탈로그(StockDateNotFound — 경고/제외 시나리오의 최근 세그먼트에서 발생 가능) → None(선 미표시).
+    루프의 get_meta 예외 처리와 동일 철학."""
+    try:
+        path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    except (FileNotFoundError, StockDateNotFound):
+        return None
     if not path_obj.exists():
         return None
     row = snapshots_tbl.query_day_ask_peak(engine.conn, path=path_obj)
@@ -482,7 +487,6 @@ def build_range_bundle(
     ratio_pts: list[QuoteRatioPoint] = []
     fill_pts: list[FillStrengthPoint] = []
     profiles_by_day: list[VolumeProfile] = []
-    ask_peak_today: "AskPeak | None" = None
 
     # Indicator cache (호가비·체결강도): completed past days are computed once and
     # re-aggregated on later pans; today_kst gates today out (still promoting).
@@ -521,9 +525,6 @@ def build_range_bundle(
         )
         vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source)
 
-        if d == today_kst:  # INVALID dates already `continue`d above
-            ask_peak_today = build_ask_peak_slice(engine, code=code, date=d, source=source)
-
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
         segments.append(RangeSegment(
             date=d,
@@ -541,6 +542,13 @@ def build_range_bundle(
         # empty bundle with excluded_dates populated, so frontend can render
         # DataWarning UX without 404 round-trips.
         return _empty_range_bundle(code, from_date, to_date, bucket_ms, excluded=excluded)
+
+    # 당일 매도 최대벽 seed = 번들의 **가장 최근 거래일**(마지막 세그먼트)의 연속거래 최대 매도단계.
+    # "달력상 오늘"이 아니라 "차트가 보여주는 그날"을 기준으로 잡아야, 주말·장 마감 후·과거일 조회에서도
+    # 그날의 실제 최대 매도벽이 선으로 보인다(달력 오늘만 잡으면 휴장일엔 항상 null이라 안 보였다).
+    # 그 날이 오늘이면 클라 ratchet이 live.ob로 전진한다(라이브 동작 불변).
+    last_seg = segments[-1]
+    ask_peak = build_ask_peak_slice(engine, code=code, date=last_seg.date, source=last_seg.source)
 
     # The range-wide volume profile must aggregate only the dates we actually
     # included — using the unfiltered `dates` would pull trades.parquet for
@@ -562,5 +570,5 @@ def build_range_bundle(
         volume_profile_by_day=profiles_by_day,
         excluded_dates=excluded,
         data_warnings=warnings_list,
-        ask_peak=ask_peak_today,
+        ask_peak=ask_peak,
     )

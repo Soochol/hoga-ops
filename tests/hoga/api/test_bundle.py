@@ -572,7 +572,8 @@ def test_build_range_bundle_includes_ask_peak_for_today(monkeypatch, tmp_path) -
     EXPECTED_QTY = 5000
     EXPECTED_PRICE = 25100
 
-    # Pin today to fixture date so d == today_kst check fires.
+    # today-pin no longer gates ask_peak (computed from the most-recent segment);
+    # kept harmless (still used by the indicator cache, which is patched out here).
     monkeypatch.setattr(bundle_mod, "_today_kst_yyyymmdd", lambda: FIXTURE_DATE)
 
     # Build a real snapshots.parquet with continuous-trading rows.
@@ -612,17 +613,19 @@ def test_build_range_bundle_includes_ask_peak_for_today(monkeypatch, tmp_path) -
     assert bundle.ask_peak.t_ms > 0
 
 
-def test_build_range_bundle_ask_peak_none_when_no_today(monkeypatch, tmp_path) -> None:
-    """범위가 과거일만(오늘 미포함) → ask_peak None."""
+def test_build_range_bundle_ask_peak_from_most_recent_day_even_when_not_today(monkeypatch, tmp_path) -> None:
+    """범위가 과거일만(오늘 미포함)이어도 ask_peak는 **가장 최근 거래일**의 값으로 채워진다.
+    (이전엔 '달력상 오늘'에만 계산해 휴장·과거일 조회 시 항상 None이라 선이 안 보였다 — 회귀 가드.)"""
     import contextlib
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
     from hoga.api.models import VolumeProfile
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
 
-    FIXTURE_DATE = "20260612"  # a past date
+    FIXTURE_DATE = "20260612"  # a past date (NOT today)
 
-    # Pin today to a DIFFERENT date so d == today_kst never fires.
+    # Pin today to a DIFFERENT date — the new logic computes ask_peak from the
+    # most-recent SEGMENT, not from "today", so this no longer suppresses it.
     monkeypatch.setattr(bundle_mod, "_today_kst_yyyymmdd", lambda: "20260613")
 
     z = tuple([0] * 10)
@@ -652,7 +655,56 @@ def test_build_range_bundle_ask_peak_none_when_no_today(monkeypatch, tmp_path) -
             stack.enter_context(pcm)
         bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000)
 
-    assert bundle.ask_peak is None
+    # Most-recent (only) day's continuous max ask level — NOT None.
+    assert bundle.ask_peak is not None
+    assert bundle.ask_peak.qty == 5000
+    assert bundle.ask_peak.price == 25100
+
+
+def test_build_range_bundle_ask_peak_uses_latest_day_not_global_max(monkeypatch, tmp_path) -> None:
+    """다일 범위: ask_peak는 **가장 최근 거래일**에서 — 이전 날 더 큰 매도벽이 있어도 무시(한 거래일=선 1개)."""
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import VolumeProfile
+    from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
+
+    monkeypatch.setattr(bundle_mod, "_today_kst_yyyymmdd", lambda: "20260613")
+    z = tuple([0] * 10)
+    bp = tuple([24950 - 50 * i for i in range(10)])
+
+    def mk_ob(price_at_max: int, qty_at_max: int) -> Orderbook:
+        ask_p = (price_at_max, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450)
+        ask_q = (qty_at_max, 200, 30, 40, 5, 6, 7, 8, 9, 1)
+        return Orderbook(ts_ms=90100000, seq=1, ask_p=ask_p, ask_q=ask_q, ask_d=z,
+                         bid_p=bp, bid_q=tuple([100] * 10), bid_d=z,
+                         tot_ask=sum(ask_q), tot_ask_d=0, tot_bid=1000, tot_bid_d=0)
+
+    dirs = {}
+    for d, price, qty in (("20260610", 30000, 9000), ("20260611", 28000, 3000)):
+        dd = tmp_path / d
+        dd.mkdir()
+        snapshots_write_parquet([mk_ob(price, qty)], dd / "snapshots.parquet")
+        (dd / "candles.parquet").touch()
+        dirs[d] = dd
+
+    eng = _engine_with_meta_for_dates(["20260610", "20260611"])
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": dirs[d]
+    eng.conn = duckdb.connect()
+
+    patches = _patch_slice_builders(bundle_mod) + [
+        patch.object(bundle_mod, "build_volume_profile_range",
+                     return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
+    ]
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        bundle = build_range_bundle(eng, code="005930", from_date="20260610", to_date="20260611", bucket_ms=60000)
+
+    # 최근일(0611)의 3000@28000 — 이전일(0610)의 더 큰 9000@30000은 무시.
+    assert bundle.ask_peak is not None
+    assert bundle.ask_peak.price == 28000
+    assert bundle.ask_peak.qty == 3000
 
 
 def test_range_bundle_ask_peak_field_defaults_none() -> None:
