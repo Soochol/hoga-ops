@@ -617,6 +617,9 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
   const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
   const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
   const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
+  const quoteTotalsEnabled = useLivePageStore((s) => s.quoteTotalsEnabled);
+  const ratioEnabled = useLivePageStore((s) => s.ratioEnabled);
+  const fillStrengthEnabled = useLivePageStore((s) => s.fillStrengthEnabled);
 
   useEffect(() => {
     if (!chart || !cb) return;
@@ -624,6 +627,9 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
       foreignNet: foreignNetEnabled,
       institutionNet: institutionNetEnabled,
       volumeEnabled,
+      quoteTotalsEnabled,
+      ratioEnabled,
+      fillStrengthEnabled,
     });
     let cancelled = false;
     const apply = () => {
@@ -649,7 +655,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, cb, timeframe, foreignNetEnabled, institutionNetEnabled, volumeEnabled]);
+  }, [chart, cb, timeframe, foreignNetEnabled, institutionNetEnabled, volumeEnabled, quoteTotalsEnabled, ratioEnabled, fillStrengthEnabled]);
 
   // ADR-0044: hover → cursor store. Only mount on minute timeframes —
   // calendar timeframes (D/W/M) don't have backing parquet on /live.
@@ -725,6 +731,9 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
             foreignNet: foreignNetEnabled,
             institutionNet: institutionNetEnabled,
             volumeEnabled,
+            quoteTotalsEnabled,
+            ratioEnabled,
+            fillStrengthEnabled,
           }).map((spec, i) => (
             <RangeSeriesPane
               key={spec.name}
