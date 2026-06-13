@@ -102,3 +102,37 @@ def test_resolve_retention_days_default(monkeypatch: pytest.MonkeyPatch) -> None
 def test_resolve_retention_days_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOGA_RETENTION_DAYS", "7")
     assert resolve_retention_days() == 7
+
+
+# 모든 find_prunable/prune_raw 테스트의 고정 기준 시각: 2026-06-13.
+# cutoff(N=3) = 2026-06-10 → date < "20260610"이면 후보.
+_NOW = dt.datetime(2026, 6, 13)
+
+
+def test_find_prunable_old_complete_is_candidate(tmp_data_dir: Path) -> None:
+    _write_meta_flat(tmp_data_dir, "005930", "20260605",
+                     collection_complete=True, is_partial=False)
+    raw = _make_raw(tmp_data_dir, "005930", "20260605")
+    cands = find_prunable(tmp_data_dir, retention_days=3, now=_NOW)
+    assert [(c.date, c.code) for c in cands] == [("20260605", "005930")]
+    assert cands[0].raw_dir == raw
+    assert cands[0].size_bytes == 200  # 2 pages × 100 bytes
+
+
+def test_find_prunable_within_grace_is_kept(tmp_data_dir: Path) -> None:
+    # 20260612 >= cutoff 20260610 → 유예 내, 후보 아님
+    _write_meta_flat(tmp_data_dir, "005930", "20260612",
+                     collection_complete=True, is_partial=False)
+    _make_raw(tmp_data_dir, "005930", "20260612")
+    assert find_prunable(tmp_data_dir, retention_days=3, now=_NOW) == []
+
+
+def test_find_prunable_old_but_partial_is_kept(tmp_data_dir: Path) -> None:
+    _write_meta_flat(tmp_data_dir, "005930", "20260605",
+                     collection_complete=True, is_partial=True)  # SOURCE_PARTIAL
+    _make_raw(tmp_data_dir, "005930", "20260605")
+    assert find_prunable(tmp_data_dir, retention_days=3, now=_NOW) == []
+
+
+def test_find_prunable_no_raw_root(tmp_data_dir: Path) -> None:
+    assert find_prunable(tmp_data_dir, retention_days=3, now=_NOW) == []

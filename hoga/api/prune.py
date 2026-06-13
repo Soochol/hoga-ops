@@ -6,7 +6,7 @@ hogaplay-source가 DiskState.COMPLETE일 때만 삭제 (ADR-0075, ADR-0039).
 """
 from __future__ import annotations
 
-import datetime as dt  # noqa: F401
+import datetime as dt
 import os
 import shutil  # noqa: F401
 from dataclasses import dataclass, field
@@ -54,8 +54,36 @@ def _is_complete_hogaplay(data_dir: Path, code: str, date: str) -> bool:
     return check_disk_state(data_dir, code, date).state == DiskState.COMPLETE
 
 
+def _dir_size(path: Path) -> int:
+    """디렉터리 내 모든 파일 크기 합(바이트)."""
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
 def find_prunable(data_dir: Path, *, retention_days: int, now: dt.datetime) -> list[PruneCandidate]:
-    raise NotImplementedError  # Task 3
+    """raw/ 순회 → 날짜 컷오프 통과(date < today−N 달력일) + hogaplay-source
+    COMPLETE인 (date,code)만 PruneCandidate로 반환한다. 부작용 없음.
+    """
+    raw_root = data_dir / "raw"
+    if not raw_root.is_dir():
+        return []
+    cutoff = (now.date() - dt.timedelta(days=retention_days)).strftime("%Y%m%d")
+    out: list[PruneCandidate] = []
+    for date_dir in sorted(raw_root.iterdir()):
+        if not date_dir.is_dir():
+            continue
+        date = date_dir.name
+        if date >= cutoff:  # 유예 내 → 보존
+            continue
+        for code_dir in sorted(date_dir.iterdir()):
+            if not code_dir.is_dir():
+                continue
+            code = code_dir.name
+            if not _is_complete_hogaplay(data_dir, code, date):
+                continue
+            out.append(PruneCandidate(
+                date=date, code=code, raw_dir=code_dir, size_bytes=_dir_size(code_dir),
+            ))
+    return out
 
 
 def prune_raw(
