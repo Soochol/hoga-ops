@@ -1,4 +1,5 @@
 import type { QuoteRatioPoint, FillStrengthPoint, OrderbookLevel } from '../api/types';
+import { quoteImbalance } from '../util/imbalance';
 
 /** One live OB snapshot as it crosses the SSE seam (SR-1). The chart reads
  * t_ms + total_*_qty; LiveSidebar reads asks/bids too (optional because the
@@ -84,19 +85,39 @@ export function bucketHogaSeries(
   for (const s of obSorted) {
     const t = Math.floor(s.t_ms / bucketMs) * bucketMs;
     if (s.t_ms <= lastContinuousMs) {
-      // pre-auction: last continuous wins. (Intra-Bar Max 필드는 Task 2에서 산출 — 지금은 0.)
+      // pre-auction: last continuous wins (close = bid_total/ask_total). Intra-Bar
+      // Max fields accumulate over the SAME continuous-snapshot set (s.t_ms <=
+      // lastContinuousMs) so 동시호가 is excluded identically and bid_max ≥ bid_total
+      // holds by construction:
+      //   bid_max/ask_max — independent per-side Math.max (peaks may be at different
+      //     snapshots within the bucket, Q5).
+      //   imb_max_bid/imb_max_ask — the (bid,ask) of the snapshot with the largest
+      //     |quoteImbalance(bid,ask)| in the bucket; strict-`>` keeps the earliest on
+      //     ties ("동률 시 가장 먼저").
+      const prev = quoteByBucket.get(t);
+      const bid_max = Math.max(prev?.bid_max ?? 0, s.total_bid_qty);
+      const ask_max = Math.max(prev?.ask_max ?? 0, s.total_ask_qty);
+      let imb_max_bid = prev?.imb_max_bid ?? 0;
+      let imb_max_ask = prev?.imb_max_ask ?? 0;
+      const curMag = Math.abs(quoteImbalance(s.total_bid_qty, s.total_ask_qty));
+      const prevMag = prev ? Math.abs(quoteImbalance(imb_max_bid, imb_max_ask)) : -1;
+      if (curMag > prevMag) {
+        imb_max_bid = s.total_bid_qty;
+        imb_max_ask = s.total_ask_qty;
+      }
       quoteByBucket.set(t, {
         t,
         ask_total: s.total_ask_qty,
         bid_total: s.total_bid_qty,
-        bid_max: 0,
-        ask_max: 0,
-        imb_max_bid: 0,
-        imb_max_ask: 0,
+        bid_max,
+        ask_max,
+        imb_max_bid,
+        imb_max_ask,
       });
       seenPre.add(t);
     } else if (!seenPre.has(t)) {
-      // fully-auction bucket: exclude the auction book (emit 0, keep the slot).
+      // fully-auction bucket: exclude the auction book (emit 0, keep the slot). All
+      // Intra-Bar Max fields are 0 sentinels too (no continuous candidate).
       quoteByBucket.set(t, {
         t,
         ask_total: 0,

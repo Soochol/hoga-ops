@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { bucketHogaSeries } from './bucketHogaSeries';
+import { quoteImbalance } from '../util/imbalance';
 import type { OrderbookLevel } from '../api/types';
 
 // 10-level continuous book (deep levels populated).
@@ -32,8 +33,9 @@ describe('bucketHogaSeries', () => {
     const b0 = Math.floor(1700_000_000_000 / 60_000) * 60_000;
     const b1 = Math.floor(1700_000_070_000 / 60_000) * 60_000;
     expect(quoteRatioPoints).toEqual([
-      { t: b0, ask_total: 200, bid_total: 90 },
-      { t: b1, ask_total: 300, bid_total: 95 },
+      // b0: max over (a100,b80),(a200,b90) → bid_max90/ask_max200; |imb(90,200)|>|imb(80,90)| → imb_max=(90,200).
+      { t: b0, ask_total: 200, bid_total: 90, bid_max: 90, ask_max: 200, imb_max_bid: 90, imb_max_ask: 200 },
+      { t: b1, ask_total: 300, bid_total: 95, bid_max: 95, ask_max: 300, imb_max_bid: 95, imb_max_ask: 300 },
     ]);
   });
 
@@ -76,6 +78,55 @@ describe('bucketHogaSeries', () => {
     expect(quoteRatioPoints[1].t - quoteRatioPoints[0].t).toBe(300_000);
   });
 
+  it('quote-totals Intra-Bar Max takes each side independently (Q5)', () => {
+    // One bucket; bid peaks at t1 (snapshot A), ask peaks at t2 (snapshot B) — different snapshots.
+    const ob = [
+      { t_ms: 1700_000_000_000, total_ask_qty: 100, total_bid_qty: 900 }, // bid peak here
+      { t_ms: 1700_000_030_000, total_ask_qty: 800, total_bid_qty: 200 }, // ask peak here (close)
+    ];
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], 60_000);
+    const b0 = Math.floor(1700_000_000_000 / 60_000) * 60_000;
+    expect(quoteRatioPoints).toEqual([
+      // close = last snapshot (a800,b200); bid_max=900 (from A), ask_max=800 (from B) — independent times.
+      { t: b0, ask_total: 800, bid_total: 200, bid_max: 900, ask_max: 800, imb_max_bid: 900, imb_max_ask: 100 },
+    ]);
+  });
+
+  it('호가비 Intra-Bar Max keeps the max-|imbalance| snapshot — sign can flip vs side-max', () => {
+    // Spec example: A(bid100,ask2) → quoteImbalance=−49 (buy-heavy); B(bid10,ask300) → +29 (sell-heavy).
+    // |imb(A)|=48 > |imb(B)|=29 → imb_max=(bid100,ask2). NOT max-of-each-side (bid100,ask300 → +2).
+    const ob = [
+      { t_ms: 1700_000_000_000, total_ask_qty: 2, total_bid_qty: 100 },   // A: strong buy-heavy
+      { t_ms: 1700_000_030_000, total_ask_qty: 300, total_bid_qty: 10 },  // B: sell-heavy (close)
+    ];
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], 60_000);
+    const b0 = Math.floor(1700_000_000_000 / 60_000) * 60_000;
+    expect(quoteRatioPoints).toEqual([
+      { t: b0, ask_total: 300, bid_total: 10, bid_max: 100, ask_max: 300, imb_max_bid: 100, imb_max_ask: 2 },
+    ]);
+    // quoteImbalance(imb_max) = quoteImbalance(100, 2) = −(100/2−1) = −49 (buy-heavy);
+    // quoteImbalance(bid_max, ask_max) = quoteImbalance(100, 300) = 300/100−1 = +2 (sell-heavy) — opposite sign.
+    const p = quoteRatioPoints[0];
+    expect(quoteImbalance(p.imb_max_bid, p.imb_max_ask)).toBe(-49);
+    expect(quoteImbalance(p.bid_max, p.ask_max)).toBe(2);
+  });
+
+  it('fully-auction bucket emits 0 sentinel for all Intra-Bar Max fields', () => {
+    const BUCKET = 180_000;
+    const base = Math.floor(1_700_000_000_000 / BUCKET) * BUCKET;
+    const sessionCloseMs = base + 600_000;
+    const ob = [
+      cont(base + 60_000, 50, 60),      // continuous → defines lastContinuous in bucket `base`
+      auc(base + 180_000, 41, 31),      // [base+3m,..) fully-auction → excluded everywhere
+    ];
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
+    const aucBucket = quoteRatioPoints.find((p) => p.t === base + 180_000)!;
+    expect(aucBucket).toEqual({
+      t: base + 180_000, ask_total: 0, bid_total: 0,
+      bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0,
+    });
+  });
+
   it('out-of-order input is sorted before bucketing', () => {
     const ob = [
       { t_ms: 1700_000_070_000, total_ask_qty: 300, total_bid_qty: 95 },
@@ -86,8 +137,9 @@ describe('bucketHogaSeries', () => {
     const b0 = Math.floor(1700_000_000_000 / 60_000) * 60_000;
     const b1 = Math.floor(1700_000_070_000 / 60_000) * 60_000;
     expect(quoteRatioPoints).toEqual([
-      { t: b0, ask_total: 200, bid_total: 90 },
-      { t: b1, ask_total: 300, bid_total: 95 },
+      // b0: max over (a100,b80),(a200,b90) → bid_max90/ask_max200; |imb(90,200)|>|imb(80,90)| → imb_max=(90,200).
+      { t: b0, ask_total: 200, bid_total: 90, bid_max: 90, ask_max: 200, imb_max_bid: 90, imb_max_ask: 200 },
+      { t: b1, ask_total: 300, bid_total: 95, bid_max: 95, ask_max: 300, imb_max_bid: 95, imb_max_ask: 300 },
     ]);
   });
 
@@ -101,7 +153,10 @@ describe('bucketHogaSeries', () => {
       auc(base + 150_000, 98, 99),      // auction (3-level) → 제외
     ];
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
-    expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 22, bid_total: 12 }]);
+    // max over continuous (a21,b11),(a22,b12); |imb(11,21)|>|imb(12,22)| → imb_max=(11,21) (first wins).
+    expect(quoteRatioPoints).toEqual([
+      { t: base, ask_total: 22, bid_total: 12, bid_max: 12, ask_max: 22, imb_max_bid: 11, imb_max_ask: 21 },
+    ]);
   });
 
   it('excludes a fully-auction bucket (emits 0, keeps the slot)', () => {
@@ -115,9 +170,9 @@ describe('bucketHogaSeries', () => {
     ];
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
     expect(quoteRatioPoints).toEqual([
-      { t: base, ask_total: 50, bid_total: 60 },
-      // no pre-auction member → auction book excluded, slot kept at 0 (ADR-0062).
-      { t: base + 180_000, ask_total: 0, bid_total: 0 },
+      { t: base, ask_total: 50, bid_total: 60, bid_max: 60, ask_max: 50, imb_max_bid: 60, imb_max_ask: 50 },
+      // no pre-auction member → auction book excluded, slot kept at 0 (ADR-0062) — all Intra-Bar Max 0 too.
+      { t: base + 180_000, ask_total: 0, bid_total: 0, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0 },
     ]);
   });
 
@@ -131,8 +186,11 @@ describe('bucketHogaSeries', () => {
       cont(base + 90_000, 77, 88),                 // post-close continuous (> close)
     ];
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
-    // bucket represented by the base continuous, NOT the 60_000 auction.
-    expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 11, bid_total: 21 }]);
+    // bucket represented by the base continuous, NOT the 60_000 auction. Max candidates are only the
+    // base snapshot (t <= lastContinuousMs = base), so the post-close 90_000 book is excluded from max too.
+    expect(quoteRatioPoints).toEqual([
+      { t: base, ask_total: 11, bid_total: 21, bid_max: 21, ask_max: 11, imb_max_bid: 21, imb_max_ask: 11 },
+    ]);
   });
 
   it('treats totals-only snapshots (no asks/bids) as continuous → legacy last-in-bucket', () => {
@@ -146,7 +204,11 @@ describe('bucketHogaSeries', () => {
     // No asks/bids + default sessionCloseMs(+Infinity) → all continuous →
     // lastContinuous = last t_ms → legacy last-in-bucket.
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET);
-    expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 98, bid_total: 99 }]);
+    // All 3 continuous → max over (a21,b11),(a22,b12),(a98,b99): bid_max99/ask_max98;
+    // |imb(11,21)|>|imb(12,22)|>|imb(99,98)| → imb_max=(11,21) (first, largest magnitude).
+    expect(quoteRatioPoints).toEqual([
+      { t: base, ask_total: 98, bid_total: 99, bid_max: 99, ask_max: 98, imb_max_bid: 11, imb_max_ask: 21 },
+    ]);
   });
 
   it('asks/bids-absent guard keeps totals-only continuous under a close bound', () => {
@@ -163,7 +225,10 @@ describe('bucketHogaSeries', () => {
     // the 1st. WITHOUT the guard, no snapshot is continuous → lastContinuous=+Infinity
     // → the 2nd would win. So this asserts the guard's effect.
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
-    expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 11, bid_total: 21 }]);
+    // Only the base snapshot is a max candidate (t <= lastContinuousMs = base).
+    expect(quoteRatioPoints).toEqual([
+      { t: base, ask_total: 11, bid_total: 21, bid_max: 21, ask_max: 11, imb_max_bid: 21, imb_max_ask: 11 },
+    ]);
   });
 
   it('detects the auction from a live-shaped ob payload (asks/bids passthrough contract)', () => {
@@ -187,6 +252,9 @@ describe('bucketHogaSeries', () => {
       liveOb(base + 150_000, 98, 99, true),  // auction (3-level) → excluded
     ];
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
-    expect(quoteRatioPoints).toEqual([{ t: base, ask_total: 22, bid_total: 12 }]);
+    // Same shape as the structural straddle test — Intra-Bar Max over continuous (a21,b11),(a22,b12).
+    expect(quoteRatioPoints).toEqual([
+      { t: base, ask_total: 22, bid_total: 12, bid_max: 12, ask_max: 22, imb_max_bid: 11, imb_max_ask: 21 },
+    ]);
   });
 });
