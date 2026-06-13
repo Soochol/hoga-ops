@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.32.1] - 2026-06-13
+
+### Changed
+- **당일 매도 최대벽**을 「지표」 모달의 상단 지표 → **호가 지표 그룹**(체결강도 뒤)으로 이동.
+  매도 최대벽도 호가창 기반 지표라 총잔량·호가비·체결강도와 같은 그룹에 묶음. 동작·토글·Config 무변경.
+
 ## [0.7.32.0] - 2026-06-13
 
 ### Added
