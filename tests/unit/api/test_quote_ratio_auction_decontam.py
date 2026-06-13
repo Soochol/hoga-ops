@@ -199,6 +199,81 @@ def test_intraday_vi_run_retained(tmp_path: Path) -> None:
     assert vi_bucket, "intraday VI bucket must be retained (closing-only v1)"
 
 
+def _write_multi(path: Path, snaps: list[tuple[int, int, int]]) -> None:
+    """snaps: (unix_ms, bid_total, ask_total) — 전부 연속거래(10-레벨) 스냅샷.
+    bid_q1=total-1, bid_q4=1 로 deep level>0 (연속거래 구조)."""
+    rows = []
+    for unix_ms, bid_total, ask_total in snaps:
+        row: dict = {"ts_ms": unix_ms_to_hhmmssms(DATE, unix_ms), "phase": "regular"}
+        for i in range(1, 11):
+            row[f"bid_p{i}"] = 100
+            row[f"ask_p{i}"] = 101
+            row[f"bid_q{i}"] = 0
+            row[f"ask_q{i}"] = 0
+        row["bid_q1"] = bid_total - 1
+        row["bid_q4"] = 1
+        row["ask_q1"] = ask_total - 1
+        row["ask_q4"] = 1
+        row["total_bid_qty"] = bid_total
+        row["total_ask_qty"] = ask_total
+        rows.append(row)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(rows).write_parquet(path)
+
+
+def _engine_multi(tmp_path: Path, snaps: list[tuple[int, int, int]], close_ms: int) -> QueryEngine:
+    code_dir = tmp_path / "parquet" / DATE / CODE / "kis_live"
+    code_dir.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "source": "kis_live", "code": CODE, "date": DATE,
+        "regular_session_open_ms": 90000000,
+        "regular_session_close_ms": close_ms,
+        "collection_complete": True, "is_partial": False,
+    }
+    (code_dir / "meta.json").write_text(json.dumps(meta))
+    _write_multi(code_dir / "snapshots.parquet", snaps)
+    return QueryEngine(tmp_path)
+
+
+def test_quote_ratio_slice_carries_intra_max_fields(tmp_path: Path) -> None:
+    """슬라이스 QuoteRatioPoint가 종가 옆에 Intra-Bar Max 4필드를 싣는다(직접 쿼리 경로).
+    한 3m 버킷 안 bid max@t1, ask max@t2, 종가=마지막."""
+    snaps = [
+        (_hms_unix(9, 0, 10), 900, 100),  # bid max
+        (_hms_unix(9, 1, 10), 50, 800),   # ask max
+        (_hms_unix(9, 2, 10), 11, 21),    # 종가
+    ]
+    qr = _slice(_engine_multi(tmp_path, snaps, CLOSE_FULL), BUCKET_3M, CLOSE_FULL)
+    assert len(qr.points) == 1
+    p = qr.points[0]
+    assert (p.bid_total, p.ask_total) == (11, 21)  # 종가
+    assert p.bid_max == 900 and p.ask_max == 800   # 독립 max
+    # |imb| 극값 스냅샷: (900,100) mag=9, (50,800) mag=16, (11,21) mag≈1.9 → (50,800).
+    assert (p.imb_max_bid, p.imb_max_ask) == (50, 800)
+
+
+def test_quote_ratio_slice_intra_max_via_cache_reaggregation(tmp_path: Path) -> None:
+    """과거일 캐시 재집계 경로(today_kst != date)도 max 필드를 배선한다.
+    1m 캐시 → reaggregate_ratio → QuoteRatioPoint."""
+    from hoga.api.past_indicators_cache import PastIndicatorsCache
+    snaps = [
+        (_hms_unix(9, 0, 10), 900, 100),
+        (_hms_unix(9, 1, 10), 50, 800),
+        (_hms_unix(9, 2, 10), 11, 21),
+    ]
+    engine = _engine_multi(tmp_path, snaps, CLOSE_FULL)
+    cache = PastIndicatorsCache(tmp_path / "cache")
+    qr = build_quote_ratio_slice(
+        engine, code=CODE, date=DATE, bucket_ms=BUCKET_3M,
+        source="kis_live", session_close_ms=CLOSE_FULL,
+        cache=cache, today_kst="20260530",  # date != today → cacheable 재집계 경로
+    )
+    assert len(qr.points) == 1
+    p = qr.points[0]
+    assert p.bid_max == 900 and p.ask_max == 800
+    assert (p.imb_max_bid, p.imb_max_ask) == (50, 800)
+
+
 def test_no_continuous_snapshot_falls_back_legacy(tmp_path: Path) -> None:
     # Degenerate: every snapshot is 3-level (no continuous). last_continuous_ms is
     # undefined → legacy last-in-bucket (does NOT blank the series).

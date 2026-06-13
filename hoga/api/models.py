@@ -106,6 +106,11 @@ class QuoteRatioPoint(BaseModel):
     t: int          # Unix ms
     bid_total: int
     ask_total: int
+    # Intra-Bar Max (ADR-0075) — 종가 옆에 항상 동봉(순수 렌더 스위치; mode= 파라미터 없음).
+    bid_max: int        # 버킷 내 매수 총잔량 독립 최댓값
+    ask_max: int        # 버킷 내 매도 총잔량 독립 최댓값
+    imb_max_bid: int    # |imbalance| 최대 스냅샷의 bid_total
+    imb_max_ask: int    # |imbalance| 최대 스냅샷의 ask_total
 
 
 class QuoteRatio(BaseModel):
