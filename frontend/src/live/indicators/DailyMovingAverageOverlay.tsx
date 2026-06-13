@@ -5,8 +5,7 @@ import type { VirtualAxis } from '../../util/virtualAxis';
 import { useLivePageStore, isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
 import { useLivePastDailyCandles } from '../../api/livePastDailyCandles';
 import { computeDailyMaByDate } from '../../chart/projectors/dailyMovingAverage';
-import { unixMsToKSTDate } from '../../util/time';
-import { subtractDaysKst, PAST_CANDLES_MAX_DAYS } from '../liveDateTime';
+import { dailyMaFetchWindow, pickTodayLiveClose } from './dailyMaProjection';
 
 type Props = {
   chart: IChartApi;
@@ -32,19 +31,10 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, today
 
   const enabled = masterEnabled && isMinuteTimeframe(timeframe) && !!code && !!todayKst;
 
-  // 일봉 fetch 창 — today 앵커 + PAST_CANDLES_MAX_DAYS(분봉 팬 클램프 하한) + period
-  // headroom으로 분봉 가시 전 범위를 항상 덮는 superset. from/to가 좌측 팬에 불변이라
-  // 재fetch 없이 lockstep(ADR-0073).
-  const maxPeriod = useMemo(
-    () => configs.reduce((mx, c) => (c.enabled ? Math.max(mx, c.period) : mx), 20),
-    [configs],
-  );
-  // period 거래일 → 캘린더일 (KRX 실측 ≈ 1.48× — 휴장 포함; ×3/2로 상향해 대형
-  // period(최대 MA_PERIOD_MAX=400)에서도 분봉 가시 전 범위를 구조적으로 덮는다) + 슬랙.
-  const lookbackDays = PAST_CANDLES_MAX_DAYS + Math.ceil((maxPeriod * 3) / 2) + 15;
-  const from = enabled ? subtractDaysKst(todayKst, lookbackDays) : null;
-  const to = enabled ? todayKst : null;
-  const dailyQuery = useLivePastDailyCandles(enabled ? code : null, from, to);
+  // 일봉 fetch 창은 today 앵커라 좌측 팬에 불변 → react-query 키 안정 → 재fetch 없이
+  // candle prepend와 lockstep(ADR-0073). lookback 산식·거래일 환산은 dailyMaProjection(테스트됨).
+  const fetchWindow = enabled ? dailyMaFetchWindow(todayKst, configs) : null;
+  const dailyQuery = useLivePastDailyCandles(enabled ? code : null, fetchWindow?.from ?? null, fetchWindow?.to ?? null);
   const daily = dailyQuery.data?.candles ?? EMPTY_DAILY;
 
   // Reconcile series ↔ configs by id (MovingAverageOverlay와 동일).
@@ -87,13 +77,11 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, today
     };
   }, [chart]);
 
-  // 오늘 현재가 프록시 — 마지막 in-session 캔들이 오늘 거래일일 때만.
-  const todayLiveClose = useMemo(() => {
-    if (!enabled) return null;
-    const cs = bundle.candles;
-    const last = cs.length ? cs[cs.length - 1] : null;
-    return last && unixMsToKSTDate(last.ts_ms) === todayKst ? last.close : null;
-  }, [enabled, bundle, todayKst]);
+  // 오늘 현재가 프록시 (dailyMaProjection, 테스트됨).
+  const todayLiveClose = useMemo(
+    () => (enabled ? pickTodayLiveClose(bundle.candles, todayKst) : null),
+    [enabled, bundle, todayKst],
+  );
 
   // Project daily MA onto each in-session candle (day-anchored step).
   useEffect(() => {
