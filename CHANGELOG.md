@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.31.5] - 2026-06-13
+
+### Fixed
+- **매도 최대벽 peak 점이 1캔들 옆으로 밀리던 문제** (사용자 제보): 점을 peak의 원시 `t_ms`(= 그 버킷의
+  마지막 연속거래 스냅샷 시각, 버킷 끝 근처)로 찍었는데, 캔들은 버킷 *시작*에 놓여서(`downsample_candles`)
+  lwc가 가상시각을 다음 캔들 쪽으로 거의 보간 → 점이 1캔들 옆으로 밀렸다. 총잔량 급증 마커가 버킷정렬
+  시각(`bucket_intra_ms`)을 써서 안 밀리는 것과 동일하게, `buildAskPeakSegments`가 peak 시각을 **그 시각이
+  속한 캔들(버킷 시작)에 스냅**하도록 수정(`snapPeakMsToCandle`, 이진탐색으로 `t_ms` 이하 마지막 캔들).
+  와이어 데이터(`AskPeak.t_ms`)는 그대로 — 렌더링 좌표만 교정. 첫 캔들보다 앞선 미로드 구간은 원시 t_ms
+  폴백(primitive 보간 폴백이 처리).
+
 ## [0.7.31.4] - 2026-06-13
 
 ### Fixed

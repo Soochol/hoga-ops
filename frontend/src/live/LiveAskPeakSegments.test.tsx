@@ -35,6 +35,34 @@ describe('buildAskPeakSegments', () => {
     expect(today.lineWidth).toBe(2);
   });
 
+  it('peak 점은 그 시각이 속한 캔들(버킷 시작)에 스냅 — 1캔들 밀림 방지', () => {
+    // 캔들 = 버킷 시작(60s 간격): 60000, 120000, 180000. peak t_ms=175000은 [120000,180000) 버킷.
+    // 스냅 없으면 toVirtual(175000)=175 → lwc가 다음 캔들(180) 쪽으로 보간 → 1캔들 밀림.
+    // 스냅하면 120000(그 버킷 캔들)로 → peakTime=120.
+    const peaks: AskPeak[] = [{ date: '20260613', price: 100, qty: 50, t_ms: 175000 }];
+    const segments = [seg('20260613', 60000, 240000)];
+    const candles = [candle(60000), candle(120000), candle(180000)];
+    const out = buildAskPeakSegments(peaks, segments, candles, axis, '20260613', '#000', 1);
+    expect(out[0].peakTime).toBe(120); // 175000이 아니라 버킷 시작 120000/1000
+  });
+
+  it('peak이 마지막 캔들 버킷보다 뒤면(라이브 엣지) 마지막 캔들에 스냅', () => {
+    // 오늘 라이브: peak이 현재 형성 중 버킷(마지막 캔들 이후 시각)이면 마지막 캔들에 스냅.
+    const peaks: AskPeak[] = [{ date: '20260613', price: 100, qty: 50, t_ms: 185000 }];
+    const segments = [seg('20260613', 60000, 240000)];
+    const candles = [candle(60000), candle(120000), candle(180000)];
+    const out = buildAskPeakSegments(peaks, segments, candles, axis, '20260613', '#000', 1);
+    expect(out[0].peakTime).toBe(180); // 마지막 캔들 180000/1000
+  });
+
+  it('peak이 첫 캔들보다 앞서면(미로드 구간) 원시 t_ms 폴백', () => {
+    const peaks: AskPeak[] = [{ date: '20260613', price: 100, qty: 50, t_ms: 30000 }];
+    const segments = [seg('20260613', 60000, 240000)];
+    const candles = [candle(60000), candle(120000)];
+    const out = buildAskPeakSegments(peaks, segments, candles, axis, '20260613', '#000', 1);
+    expect(out[0].peakTime).toBe(30); // 스냅 대상 없음 → 원시 30000/1000 (primitive 보간 폴백이 처리)
+  });
+
   it('segment 없는 날은 건너뜀', () => {
     const out = buildAskPeakSegments(
       [{ date: '20260601', price: 1, qty: 1, t_ms: 1 }], [], [], axis, '20260613', '#000', 1,
