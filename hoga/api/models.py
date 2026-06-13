@@ -91,6 +91,15 @@ class Meta(BaseModel):
     parser_version: str
 
 
+class AskPeak(BaseModel):
+    """당일 연속거래 중 단일 매도 호가단계 최대 물량·가격(Day Ask Peak).
+
+    ``t_ms``는 unix ms(KST). 캔들 시각과 동일 좌표계."""
+    price: int
+    qty: int
+    t_ms: int
+
+
 class QuoteRatioPoint(BaseModel):
     t: int          # Unix ms
     bid_total: int
@@ -514,6 +523,9 @@ class RangeBundle(BaseModel):
     volume_profile_by_day: list[VolumeProfile]
     excluded_dates: list[ExcludedDate] = []
     data_warnings: list[DateWarning] = []
+    # 당일 매도 최대벽 seed(연속거래만). 오늘 slice에서만 채워지고, 그 외/D·W·M/무데이터는
+    # None. 기본 None이라 기존 클라 무영향. 라이브 ratchet이 이 값을 시드로 전진.
+    ask_peak: "AskPeak | None" = None
 
 
 # === Broker Day-Trajectory (ADR-0023) ===

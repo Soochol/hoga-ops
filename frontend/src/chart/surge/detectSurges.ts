@@ -1,4 +1,5 @@
 import type { QuoteRatioPoint } from '../../api/types';
+import { tradingDayOf } from '../../util/tradingDay';
 
 export type SurgeSide = 'ask' | 'bid';
 /** prevPeak = 발사 시점의 running peak(직전 고가). value = 그 순간 총잔량. pctOfPeak = value/prevPeak
@@ -21,9 +22,8 @@ const FIELD: Record<SurgeSide, 'ask_total' | 'bid_total'> = { ask: 'ask_total', 
 // 한 거래일이 한 KST 날짜에 들어가므로 "KST 날짜 변화 = 세션 경계". sessionOpens를 따로 받지 않고
 // 점의 t에서 직접 도출 → 한 청크(과거/당일 어느 쪽이든) 안에서 자기-완결적으로 리셋된다. 이 self-reset
 // 덕분에 각 거래일 마커는 그 거래일 점에만 의존 → makePastCachedProjector의 `cachedPast ++ today === all`
-// 불변식이 그대로 성립(과거 동결 + 당일만 재계산).
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
-const tradingDayOf = (t: number): number => Math.floor((t + KST_OFFSET_MS) / 86_400_000);
+// 불변식이 그대로 성립(과거 동결 + 당일만 재계산). 거래일 번호는 util/tradingDay에 공유
+// (당일 매도 최대벽 래칫과 동일 기준 — 경계 규칙 단일 출처).
 
 /**
  * 한 side(ask|bid)의 급증 마커 — **근접(re-approach) + 히스테리시스 + 꼭대기 추적** 방식.

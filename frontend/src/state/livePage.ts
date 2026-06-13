@@ -100,6 +100,12 @@ type PersistedIndicators = {
   volumeEnabled: boolean;
   /** Pane Legend: MA lines temporarily hidden (눈), config preserved. Default false. */
   movingAverageHidden: boolean;
+  /** 당일 매도 최대벽 토글. opt-in(기본 false). */
+  askPeakEnabled: boolean;
+  /** 매도 최대벽 선 색(hex). 기본 #1D4ED8(파랑). */
+  askPeakColor: string;
+  /** 매도 최대벽 선 두께. 기본 2. */
+  askPeakLineWidth: 1 | 2 | 3 | 4;
 };
 
 /** The full active-view tuple the page renders. Written atomically by the active
@@ -127,6 +133,8 @@ type Store = Persisted & PersistedIndicators & {
   setInstitutionNetEnabled: (enabled: boolean) => void;
   setVolumeEnabled: (enabled: boolean) => void;
   setMovingAverageHidden: (hidden: boolean) => void;
+  setAskPeakEnabled: (enabled: boolean) => void;
+  setAskPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
 };
 
 const DEFAULTS: Persisted = {
@@ -174,6 +182,9 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     institutionNetEnabled: s.institutionNetEnabled,
     volumeEnabled: s.volumeEnabled,
     movingAverageHidden: s.movingAverageHidden,
+    askPeakEnabled: s.askPeakEnabled,
+    askPeakColor: s.askPeakColor,
+    askPeakLineWidth: s.askPeakLineWidth,
   };
 }
 
@@ -287,6 +298,19 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   setMovingAverageHidden: (hidden) => {
     set({ movingAverageHidden: hidden });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setAskPeakEnabled: (enabled) => {
+    set({ askPeakEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setAskPeakStyle: (patch) => {
+    set((s) => ({
+      askPeakColor: patch.color ?? s.askPeakColor,
+      askPeakLineWidth: patch.lineWidth ?? s.askPeakLineWidth,
+    }));
     persistIndicators(snapshotIndicators(get));
   },
 

@@ -65,4 +65,9 @@ describe('MAStylePicker', () => {
     const flat = MA_COLOR_ROWS.flat();
     expect(new Set(flat).size).toBe(flat.length);
   });
+
+  it('label prop으로 aria 문구 일반화', () => {
+    render(<MAStylePicker color="#1D4ED8" lineWidth={2} onChange={() => {}} label="매도벽" />);
+    expect(screen.getByRole('button', { name: '매도벽 스타일 선택' })).toBeTruthy();
+  });
 });

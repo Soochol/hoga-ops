@@ -11,9 +11,11 @@ from hoga.tables.snapshots import (
     PARQUET_SCHEMA,
     PARSERS,
     ApiOrderbookSnapshot,
+    AskPeakRow,
     Orderbook,
     SnapshotValidationError,
     query_at,
+    query_day_ask_peak,
     query_first_ts,
     query_time_bounds,
     validate,
@@ -335,3 +337,75 @@ def test_query_bucket_representative_empty_window_returns_none(tmp_path: Path) -
         con, path=out, lo_native=160_000_000, hi_native=160_300_000, session_close_ms=153_000_000
     )
     assert snap is None
+
+
+# ---------------------------------------------------------------------------
+# query_day_ask_peak (Task 1): 당일 연속거래 매도 최대벽 집계
+# ---------------------------------------------------------------------------
+
+
+def _ob_ap(ts_ms: int, ask_q: list[int], ask_p: list[int] | None = None) -> "Orderbook":
+    """ask_q/ask_p는 길이 10. bid는 연속거래로 보이게 깊이 채움(레벨4+ >0)."""
+    ap = tuple(ask_p or [25000 + 50 * i for i in range(10)])
+    aq = tuple(ask_q)
+    bq = tuple([100] * 10)  # bid 깊이 충분 → 연속거래(_BID_DEEP_SUM>0)
+    bp = tuple([24950 - 50 * i for i in range(10)])
+    z = tuple([0] * 10)
+    return Orderbook(ts_ms=ts_ms, seq=1, ask_p=ap, ask_q=aq, ask_d=z,
+                     bid_p=bp, bid_q=bq, bid_d=z, tot_ask=sum(aq), tot_ask_d=0,
+                     tot_bid=sum(bq), tot_bid_d=0)
+
+
+def _con_for(path) -> "duckdb.DuckDBPyConnection":
+    return duckdb.connect()
+
+
+def test_query_day_ask_peak_basic(tmp_path) -> None:
+    # 가장 큰 단일 매도단계: ts 90100000, level3(가격 25100)에 5000
+    obs = [
+        _ob_ap(90000000, [10, 20, 30, 40, 5, 6, 7, 8, 9, 1]),
+        _ob_ap(90100000, [100, 200, 5000, 40, 5, 6, 7, 8, 9, 1],
+            ask_p=[25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450]),
+        _ob_ap(90200000, [10, 20, 30, 40, 5, 6, 7, 8, 9, 1]),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    peak = query_day_ask_peak(_con_for(out), path=out)
+    assert peak == AskPeakRow(price=25100, qty=5000, intra_ms=peak.intra_ms)
+    assert peak.qty == 5000 and peak.price == 25100
+
+
+def test_query_day_ask_peak_tie_earliest(tmp_path) -> None:
+    obs = [
+        _ob_ap(90200000, [7000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[26000] + [25000 + i for i in range(9)]),
+        _ob_ap(90100000, [7000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[25500] + [25000 + i for i in range(9)]),  # 더 이른 시각
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    peak = query_day_ask_peak(_con_for(out), path=out)
+    assert peak is not None and peak.qty == 7000 and peak.price == 25500  # 이른 시각 채택
+
+
+def test_query_day_ask_peak_excludes_single_price(tmp_path) -> None:
+    # 동시호가/VI 붕괴 호가창(레벨4..10 = 0 양측)이 더 큰 누적 qty를 가져도 배제.
+    z = tuple([0] * 10)
+    collapsed = Orderbook(
+        ts_ms=152100000, seq=1,
+        ask_p=(25000, 25050, 25100) + (0,) * 7, ask_q=(99999, 1, 1) + (0,) * 7, ask_d=z,
+        bid_p=(24950, 24900, 24850) + (0,) * 7, bid_q=(1, 1, 1) + (0,) * 7, bid_d=z,
+        tot_ask=100001, tot_ask_d=0, tot_bid=3, tot_bid_d=0,
+    )
+    continuous = _ob_ap(90100000, [10, 20, 300, 40, 5, 6, 7, 8, 9, 1],
+                     ask_p=[25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450])
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([collapsed, continuous], out)
+    peak = query_day_ask_peak(_con_for(out), path=out)
+    assert peak is not None and peak.qty == 300  # 붕괴행의 99999 무시, 연속행 최대
+
+
+def test_query_day_ask_peak_empty(tmp_path) -> None:
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([], out)
+    assert query_day_ask_peak(_con_for(out), path=out) is None

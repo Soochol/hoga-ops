@@ -286,6 +286,10 @@ _BID_DEEP_SUM: str = " + ".join(
     f"bid_q{i}" for i in range(_AUCTION_BOOK_DEPTH + 1, ORDERBOOK_LEVELS + 1)
 )
 
+# 연속거래 호가창 술어 — query_bucketed_ratio의 deep_book_sql과 동일(단일진실원).
+# 클라 isContinuousBook(bucketHogaSeries.ts)과도 글자 그대로 같은 정의.
+_DEEP_BOOK_SQL: str = f"(({_ASK_DEEP_SUM}) > 0 OR ({_BID_DEEP_SUM}) > 0)"
+
 
 @dataclass(frozen=True)
 class QuoteRatioRow:
@@ -302,6 +306,19 @@ class QuoteRatioRow:
     bucket_intra_ms: int
     bid_total: int
     ask_total: int
+
+
+@dataclass(frozen=True)
+class AskPeakRow:
+    """당일 연속거래 중 단일 매도 호가단계에 걸린 최대 물량과 가격.
+
+    ``intra_ms``는 LINEAR ms-from-midnight(NOT raw HHMMSSmmm, NOT unix ms) —
+    호출자가 ``ms_from_midnight_to_unix_ms(date, intra_ms)``로 unix 변환.
+    QuoteRatioRow.bucket_intra_ms와 동일 규약.
+    """
+    price: int
+    qty: int
+    intra_ms: int
 
 
 def query_bucketed_ratio(
@@ -347,7 +364,7 @@ def query_bucketed_ratio(
     # continuous-trading book (depth beyond level 3) at/before the session close;
     # everything after it is the auction. None (no session bound / no continuous
     # snapshot) -> TRUE predicate == legacy last-in-bucket.
-    deep_book_sql = f"(({_ASK_DEEP_SUM}) > 0 OR ({_BID_DEEP_SUM}) > 0)"
+    deep_book_sql = _DEEP_BOOK_SQL  # SSOT — same predicate as query_day_ask_peak & client isContinuousBook
     last_continuous_ms: int | None = None
     if session_close_ms is not None:
         close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
@@ -424,7 +441,7 @@ def query_bucket_representative(
     if session_close_ms is None:
         pre_auction_pred = "TRUE"
     else:
-        deep_book_sql = f"(({_ASK_DEEP_SUM}) > 0 OR ({_BID_DEEP_SUM}) > 0)"
+        deep_book_sql = _DEEP_BOOK_SQL  # SSOT — same predicate as query_day_ask_peak & client isContinuousBook
         close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
         thr = con.execute(
             f"SELECT max({intra_ms_expr}) FROM read_parquet(?) "
@@ -444,3 +461,27 @@ def query_bucket_representative(
         [str(path), lo_native, hi_native],
     ).fetchone()
     return _row_to_api_snapshot(row) if row is not None else None
+
+
+def query_day_ask_peak(
+    con: duckdb.DuckDBPyConnection, *, path: Path
+) -> AskPeakRow | None:
+    """연속거래 호가창만 대상으로 당일 단일 매도 호가단계 최대 qty와 그 가격을 반환.
+
+    동시호가·VI 단일가(3-레벨 붕괴)는 ``_DEEP_BOOK_SQL``로 배제(ADR-0062). 동률이면
+    가장 이른 시각. 빈 parquet → None. 파일 부재 가드는 호출자(bundle) 책임."""
+    intra = hhmmssms_to_intra_ms_sql("ts_ms")
+    union = " UNION ALL ".join(
+        f"SELECT ask_p{i} AS price, ask_q{i} AS qty, {intra} AS intra_ms "
+        f"FROM s WHERE ask_q{i} > 0"
+        for i in range(1, ORDERBOOK_LEVELS + 1)
+    )
+    row = con.execute(
+        f"WITH s AS (SELECT * FROM read_parquet(?) WHERE {_DEEP_BOOK_SQL}) "
+        f"SELECT price, qty, intra_ms FROM ({union}) "
+        f"ORDER BY qty DESC, intra_ms ASC LIMIT 1",
+        [str(path)],
+    ).fetchone()
+    if row is None:
+        return None
+    return AskPeakRow(price=int(row[0]), qty=int(row[1]), intra_ms=int(row[2]))

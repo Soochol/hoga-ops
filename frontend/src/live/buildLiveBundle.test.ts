@@ -19,6 +19,7 @@ function emptyRangeBundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_by_day: [],
     investorPoints: [],
+    ask_peak: null,
     ...overrides,
   };
 }
@@ -222,6 +223,7 @@ function makeRangeBundle(qrPoints: { t: number; bid_total: number; ask_total: nu
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_by_day: [],
     investorPoints: [],
+    ask_peak: null,
   };
 }
 

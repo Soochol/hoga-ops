@@ -11,6 +11,9 @@ describe('mergeLiveIndicatorPrefs', () => {
       institutionNetEnabled: false,
       volumeEnabled: true,
       movingAverageHidden: false,
+      askPeakEnabled: false,
+      askPeakColor: '#1D4ED8',
+      askPeakLineWidth: 2,
     });
   });
 
@@ -122,5 +125,25 @@ describe('mergeLiveIndicatorPrefs', () => {
       movingAverages: DEFAULT_LIVE_MAS.map((x) => ({ ...x })),
     } as unknown as PersistedIndicators);
     expect(m.movingAverageHidden).toBe(false);
+  });
+});
+
+describe('mergeLiveIndicatorPrefs — askPeak', () => {
+  it('레거시(필드 없음): 기본 off/#1D4ED8/2', () => {
+    const m = mergeLiveIndicatorPrefs(undefined);
+    expect(m.askPeakEnabled).toBe(false);
+    expect(m.askPeakColor).toBe('#1D4ED8');
+    expect(m.askPeakLineWidth).toBe(2);
+  });
+  it('유효값 보존', () => {
+    const m = mergeLiveIndicatorPrefs({ askPeakEnabled: true, askPeakColor: '#EF4444', askPeakLineWidth: 3 });
+    expect(m.askPeakEnabled).toBe(true);
+    expect(m.askPeakColor).toBe('#EF4444');
+    expect(m.askPeakLineWidth).toBe(3);
+  });
+  it('이상값 폴백', () => {
+    const m = mergeLiveIndicatorPrefs({ askPeakColor: 'red', askPeakLineWidth: 9 });
+    expect(m.askPeakColor).toBe('#1D4ED8');
+    expect(m.askPeakLineWidth).toBe(2);
   });
 });

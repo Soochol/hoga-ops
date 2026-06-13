@@ -4,7 +4,7 @@ import { useEntryDragStore } from '../state/entryDrag';
 import { LiveChartRoot } from './LiveChartRoot';
 import { LiveEmptyState } from './LiveEmptyState';
 import { LiveSidebar } from './LiveSidebar';
-import type { RangeBundle } from '../api/types';
+import type { AskPeak, RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TabViewport } from './viewportAnchor';
@@ -66,6 +66,8 @@ interface Props {
   /** Owned by LivePage's single useLiveSeries call. Threaded to LiveSidebar
    * so the LATEST mode reads the same SSE buffer that feeds useLiveBundle. */
   live: LiveSeriesData;
+  /** LivePage의 useDayAskPeak 결과 — LiveChartRoot → LiveAskPeakLine으로 전달. */
+  dayAskPeak?: AskPeak | null;
 }
 
 export function LiveWorkarea({
@@ -78,6 +80,7 @@ export function LiveWorkarea({
   pastDataWarnings,
   restoreViewport,
   live,
+  dayAskPeak = null,
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   // 관심종목 행을 차트로 드래그 중일 때만 드롭 오버레이를 띄운다(WatchlistDrawer가 갱신).
@@ -134,6 +137,7 @@ export function LiveWorkarea({
               isExtending={isExtending}
               pastDataWarnings={pastDataWarnings}
               restoreViewport={restoreViewport}
+              dayAskPeak={dayAskPeak}
             />
           </div>
           <div

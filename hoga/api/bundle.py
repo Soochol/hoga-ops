@@ -23,6 +23,7 @@ from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.indicator_reaggregate import reaggregate_fill, reaggregate_ratio
 from hoga.api.invariants import normalize_session_bounds
 from hoga.api.models import (
+    AskPeak,
     DateWarning,
     ExcludedDate,
     FillStrength,
@@ -384,6 +385,22 @@ def build_fill_strength_slice(
     )
 
 
+def build_ask_peak_slice(
+    engine: QueryEngine, *, code: str, date: str, source: str = "hogaplay",
+) -> "AskPeak | None":
+    """당일(date) 연속거래 매도 최대벽 seed. 파일 부재(=무데이터, ADR-0043) → None."""
+    path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    if not path_obj.exists():
+        return None
+    row = snapshots_tbl.query_day_ask_peak(engine.conn, path=path_obj)
+    if row is None:
+        return None
+    return AskPeak(
+        price=row.price, qty=row.qty,
+        t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
+    )
+
+
 def _empty_range_bundle(
     code: str,
     from_date: str,
@@ -409,6 +426,7 @@ def _empty_range_bundle(
         volume_profile_by_day=[],
         excluded_dates=excluded,
         data_warnings=[],
+        ask_peak=None,
     )
 
 
@@ -464,6 +482,7 @@ def build_range_bundle(
     ratio_pts: list[QuoteRatioPoint] = []
     fill_pts: list[FillStrengthPoint] = []
     profiles_by_day: list[VolumeProfile] = []
+    ask_peak_today: "AskPeak | None" = None
 
     # Indicator cache (호가비·체결강도): completed past days are computed once and
     # re-aggregated on later pans; today_kst gates today out (still promoting).
@@ -501,6 +520,9 @@ def build_range_bundle(
             cache=indicators_cache, today_kst=today_kst,
         )
         vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source)
+
+        if d == today_kst:  # INVALID dates already `continue`d above
+            ask_peak_today = build_ask_peak_slice(engine, code=code, date=d, source=source)
 
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
         segments.append(RangeSegment(
@@ -540,4 +562,5 @@ def build_range_bundle(
         volume_profile_by_day=profiles_by_day,
         excluded_dates=excluded,
         data_warnings=warnings_list,
+        ask_peak=ask_peak_today,
     )

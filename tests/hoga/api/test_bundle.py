@@ -557,3 +557,115 @@ def test_build_range_bundle_excludes_real_5_18_003490_case():
     assert [s.date for s in rb.segments] == ["20260520"]
     assert len(rb.excluded_dates) == 1
     assert rb.excluded_dates[0].date == "20260518"
+
+
+def test_build_range_bundle_includes_ask_peak_for_today(monkeypatch, tmp_path) -> None:
+    """오늘(today_kst) 날짜에 snapshots.parquet(연속거래 + 단일 큰 매도단계)를 깔고
+    build_range_bundle 호출. ask_peak가 그 최대단계 price/qty로 채워지는지."""
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import VolumeProfile
+    from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
+
+    FIXTURE_DATE = "20260613"
+    EXPECTED_QTY = 5000
+    EXPECTED_PRICE = 25100
+
+    # Pin today to fixture date so d == today_kst check fires.
+    monkeypatch.setattr(bundle_mod, "_today_kst_yyyymmdd", lambda: FIXTURE_DATE)
+
+    # Build a real snapshots.parquet with continuous-trading rows.
+    # Bids filled [100]*10 satisfies _BID_DEEP_SUM > 0 (continuous trading predicate).
+    z = tuple([0] * 10)
+    bp = tuple([24950 - 50 * i for i in range(10)])
+    ob = Orderbook(
+        ts_ms=90100000, seq=1,
+        ask_p=(25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450),
+        ask_q=(100, 200, 5000, 40, 5, 6, 7, 8, 9, 1),
+        ask_d=z,
+        bid_p=bp, bid_q=tuple([100] * 10), bid_d=z,
+        tot_ask=5376, tot_ask_d=0, tot_bid=1000, tot_bid_d=0,
+    )
+    snapshots_path = tmp_path / "snapshots.parquet"
+    snapshots_write_parquet([ob], snapshots_path)
+    # Also create a candles.parquet stub (needed by some guards).
+    (tmp_path / "candles.parquet").touch()
+
+    eng = _engine_with_meta_for_dates([FIXTURE_DATE])
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.conn = duckdb.connect()
+
+    patches = _patch_slice_builders(bundle_mod) + [
+        patch.object(bundle_mod, "build_volume_profile_range",
+                     return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
+    ]
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000)
+
+    assert bundle.ask_peak is not None
+    assert bundle.ask_peak.qty == EXPECTED_QTY
+    assert bundle.ask_peak.price == EXPECTED_PRICE
+    # t_ms is unix ms — must be positive and in a sane range
+    assert bundle.ask_peak.t_ms > 0
+
+
+def test_build_range_bundle_ask_peak_none_when_no_today(monkeypatch, tmp_path) -> None:
+    """범위가 과거일만(오늘 미포함) → ask_peak None."""
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import VolumeProfile
+    from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
+
+    FIXTURE_DATE = "20260612"  # a past date
+
+    # Pin today to a DIFFERENT date so d == today_kst never fires.
+    monkeypatch.setattr(bundle_mod, "_today_kst_yyyymmdd", lambda: "20260613")
+
+    z = tuple([0] * 10)
+    bp = tuple([24950 - 50 * i for i in range(10)])
+    ob = Orderbook(
+        ts_ms=90100000, seq=1,
+        ask_p=(25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450),
+        ask_q=(100, 200, 5000, 40, 5, 6, 7, 8, 9, 1),
+        ask_d=z,
+        bid_p=bp, bid_q=tuple([100] * 10), bid_d=z,
+        tot_ask=5376, tot_ask_d=0, tot_bid=1000, tot_bid_d=0,
+    )
+    snapshots_path = tmp_path / "snapshots.parquet"
+    snapshots_write_parquet([ob], snapshots_path)
+    (tmp_path / "candles.parquet").touch()
+
+    eng = _engine_with_meta_for_dates([FIXTURE_DATE])
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.conn = duckdb.connect()
+
+    patches = _patch_slice_builders(bundle_mod) + [
+        patch.object(bundle_mod, "build_volume_profile_range",
+                     return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
+    ]
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000)
+
+    assert bundle.ask_peak is None
+
+
+def test_range_bundle_ask_peak_field_defaults_none() -> None:
+    from hoga.api.models import AskPeak, RangeBundle
+    from hoga.api.models import QuoteRatio, FillStrength, VolumeProfile
+    b = RangeBundle(
+        code="005930", from_date="20260613", to_date="20260613", bucket_ms=60000,
+        segments=[], candles=[],
+        quote_ratio=QuoteRatio(bucket_ms=60000, points=[]),
+        fill_strength=FillStrength(bucket_ms=60000, points=[]),
+        volume_profile_range=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
+        volume_profile_by_day=[],
+    )
+    assert b.ask_peak is None  # 기본 None — 기존 클라 무영향
+    b2 = b.model_copy(update={"ask_peak": AskPeak(price=25100, qty=5000, t_ms=1)})
+    assert b2.ask_peak.price == 25100 and b2.ask_peak.t_ms == 1
