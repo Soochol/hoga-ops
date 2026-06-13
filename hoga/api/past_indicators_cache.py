@@ -28,11 +28,14 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from hoga.api._atomic_write import atomic_write_json
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
+
+if TYPE_CHECKING:
+    from hoga.api.models import AskPeak
 
 _log = logging.getLogger(__name__)
 
@@ -52,6 +55,9 @@ class PastIndicatorsCache:
         # In-memory hot cache (avoids re-reading disk within a process).
         self._mem_ratio: dict[tuple[str, str, str], list[QuoteRatioRow]] = {}
         self._mem_fill: dict[tuple[str, str, str], list[FillStrengthRow]] = {}
+        # 매도 최대벽 — 값이 작고 과거일 불변이라 in-memory만(디스크 미사용). None도 유효한
+        # 캐시 값(데이터 없는 날)이라 has_/get_ 분리로 미스 구분.
+        self._mem_ask_peak: dict[tuple[str, str, str], "AskPeak | None"] = {}
 
     def _path(self, code: str, date: str, source: str, kind: Kind) -> Path:
         return self._data_dir / "kis-past-indicators" / code / source / f"{date}.{kind}.json"
@@ -97,6 +103,17 @@ class PastIndicatorsCache:
         triples = [[r.bucket_intra_ms, r.buy_qty, r.sell_qty] for r in rows]
         self._write(code, date, source, "fill", triples)
         self._mem_fill[(code, date, source)] = rows
+
+    # ── ask_peak (매도 최대벽) — in-memory only ────────────────────────────────
+
+    def has_ask_peak(self, code: str, date: str, source: str) -> bool:
+        return (code, date, source) in self._mem_ask_peak
+
+    def get_ask_peak(self, code: str, date: str, source: str) -> "AskPeak | None":
+        return self._mem_ask_peak.get((code, date, source))
+
+    def store_ask_peak(self, code: str, date: str, source: str, peak: "AskPeak | None") -> None:
+        self._mem_ask_peak[(code, date, source)] = peak
 
     # ── disk I/O ──────────────────────────────────────────────────────────────
 

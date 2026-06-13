@@ -14,7 +14,11 @@ import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
-import { useDayAskPeak } from './useDayAskPeak';
+import { useDayAskPeaks } from './useDayAskPeaks';
+import type { AskPeak } from '../api/types';
+
+/** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
+const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 import { todayKstYyyymmdd } from './liveDateTime';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import LiveSettingsModal from './LiveSettingsModal';
@@ -101,9 +105,10 @@ export function LivePage() {
     today,
     live,
   );
-  const dayAskPeak = useDayAskPeak(
+  const dayAskPeaks = useDayAskPeaks(
     live.ob,
-    (chartBundle ?? bundle)?.ask_peak ?? null,
+    (chartBundle ?? bundle)?.ask_peaks ?? EMPTY_ASK_PEAKS,
+    today,
     activeCode,
   );
 
@@ -154,7 +159,8 @@ export function LivePage() {
         pastDataWarnings={pastDataWarnings}
         restoreViewport={restoreViewport}
         live={live}
-        dayAskPeak={dayAskPeak}
+        dayAskPeaks={dayAskPeaks}
+        todayKst={today}
       />
       {indicatorPanelOpen && (
         <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />

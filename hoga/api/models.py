@@ -92,9 +92,11 @@ class Meta(BaseModel):
 
 
 class AskPeak(BaseModel):
-    """당일 연속거래 중 단일 매도 호가단계 최대 물량·가격(Day Ask Peak).
+    """한 거래일 연속거래 중 단일 매도 호가단계 최대 물량·가격(Day Ask Peak).
 
-    ``t_ms``는 unix ms(KST). 캔들 시각과 동일 좌표계."""
+    ``date``는 이 peak이 속한 거래일(YYYYMMDD) — 프론트가 segment x-구간에 매핑.
+    ``t_ms``는 unix ms(KST), 캔들 시각과 동일 좌표계(peak 발생 시점)."""
+    date: str
     price: int
     qty: int
     t_ms: int
@@ -523,9 +525,10 @@ class RangeBundle(BaseModel):
     volume_profile_by_day: list[VolumeProfile]
     excluded_dates: list[ExcludedDate] = []
     data_warnings: list[DateWarning] = []
-    # 당일 매도 최대벽 seed(연속거래만). 오늘 slice에서만 채워지고, 그 외/D·W·M/무데이터는
-    # None. 기본 None이라 기존 클라 무영향. 라이브 ratchet이 이 값을 시드로 전진.
-    ask_peak: "AskPeak | None" = None
+    # 거래일별 매도 최대벽(연속거래만) — 범위 내 데이터 있는 각 거래일당 1개. 프론트가 각 항목을
+    # 그날 segment x-구간의 수평 세그먼트로 그린다. 오늘 항목은 클라 ratchet이 live.ob로 갱신.
+    # D·W·M/무데이터는 빈 리스트. 기본 []라 기존 클라 무영향.
+    ask_peaks: list["AskPeak"] = []
 
 
 # === Broker Day-Trajectory (ADR-0023) ===

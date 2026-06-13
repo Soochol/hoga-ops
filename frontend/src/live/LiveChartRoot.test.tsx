@@ -78,7 +78,7 @@ const DEFAULT_BUNDLE: RangeBundle = {
   volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
   volume_profile_by_day: [],
   investorPoints: [],
-  ask_peak: null,
+  ask_peaks: [],
 };
 
 const wrapper = ({ children }: { children: ReactNode }) => {
@@ -574,7 +574,7 @@ const TODAY_ONLY_BUNDLE: RangeBundle = {
   volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
   volume_profile_by_day: [],
   investorPoints: [],
-  ask_peak: null,
+  ask_peaks: [],
 };
 
 const TWO_SEGMENT_BUNDLE: RangeBundle = {
@@ -595,7 +595,7 @@ const TWO_SEGMENT_BUNDLE: RangeBundle = {
   volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
   volume_profile_by_day: [],
   investorPoints: [],
-  ask_peak: null,
+  ask_peaks: [],
 };
 
 describe('LiveChartRoot lazy fetch trigger', () => {
