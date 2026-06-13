@@ -2007,8 +2007,12 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     );
 
     // containerRef div = live-chart-root의 첫 번째 자식 (chart 슬롯).
+    // 휠 리스너는 container의 부모(live-chart-root)에 부착되므로(형제 DrawingOverlay
+    // 위 휠도 받기 위함 — useWheelInteractions 주석 참조), container에서 dispatch한
+    // 이벤트가 부모 리스너에 도달하려면 bubbles:true가 필요하다(실제 브라우저 wheel과
+    // 동일; jsdom 합성 이벤트의 bubbles 기본값은 false).
     const container = screen.getByTestId('live-chart-root').firstElementChild!;
-    container.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, cancelable: true }));
+    container.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, cancelable: true, bubbles: true }));
 
     // 마지막 호출이 휠 결과여야 한다 (초기 뷰 effect의 호출이 선행할 수 있음).
     const last = ts.setVisibleLogicalRange.mock.calls.at(-1)![0] as { from: number; to: number };

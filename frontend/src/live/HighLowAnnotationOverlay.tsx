@@ -104,8 +104,9 @@ function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe }
   const series = paneSeries.get('candle' as PaneId);
   const ts = chart.timeScale();
   const range = readVisibleRange(ts);
-  const currentPrice = bundle.candles.at(-1)?.close ?? null;
-  const ex = series ? computeVisibleExtremes(bundle.candles, axis, range, currentPrice) : null;
+  // 기준가는 computeVisibleExtremes 가 가시 범위의 우측 끝 캔들 close에서 내부 산출한다
+  // (전체 마지막 캔들이 아님 — 팬하면 기준이 바뀐다).
+  const ex = series ? computeVisibleExtremes(bundle.candles, axis, range) : null;
 
   const items = (ex
     ? [
