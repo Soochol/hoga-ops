@@ -3,6 +3,7 @@
 **Date**: 2026-06-13
 **Status**: Approved
 **Scope**: `hoga/api/prune.py` (신규), `hoga/cli.py`, `hoga/api/scheduler.py`, `hoga/api/disk_state.py` (재사용만), `tests/test_api_prune.py` (신규)
+**ADR**: ADR-0075 (이 설계의 결정 기록) — ADR-0036(무자동)·ADR-0039(Source Preference)와의 관계 포함
 
 ## Problem
 
@@ -42,6 +43,10 @@
 - **Capture-prune 시간 분리**: 일일 capture는 항상 `today`(KST)를 대상으로 하고
   (`hoga/api/scheduler.py:71-89`), prune은 `today − N`일 이전만 건드린다 → 진행 중인
   캡처/parse와 prune이 같은 (date,code)를 동시에 만지지 않는다.
+- **Catch-up 비재캡처**: catch-up(`scheduler.catchup_one_entry`)과 watchlist 마커는
+  `disk_state.latest_complete_date`(parquet COMPLETE 기준, raw 미참조)로 gap을 계산하므로,
+  prune이 COMPLETE raw를 지워도 그 Stock-Date는 "성공"으로 남아 **재캡처되지 않는다**.
+  근거: `hoga/api/disk_state.py:158`, CONTEXT.md "Catch-up Run".
 
 ## Invariant impact
 
@@ -51,9 +56,11 @@
 | Resume 소스 보존 | **preserves** | 게이트가 `COMPLETE`만 삭제 → `CLIENT_INCOMPLETE` raw는 보존 |
 | COMPLETE = source-of-truth | **preserves** | `SOURCE_PARTIAL`·`CLIENT_INCOMPLETE`·`INVALID`·`NO_UPSTREAM_DATA` 전부 보존 |
 | Capture-prune 시간 분리 | **preserves** | 유예 N(≥1)일이 곧 race guard. `--days 0`은 CLI 검증으로 차단 |
+| Catch-up 비재캡처 | **preserves** | 마커가 parquet COMPLETE 기준 → COMPLETE raw 부재가 gap을 만들지 않음 |
 
 이 spec은 기존 시스템 속성을 깨지 않는다 — 새 정리 분기를 **가장 보수적인 게이트**
-(`DiskState.COMPLETE` + `date < today−N`)로 추가하며, 모든 in-flight/불완전 상태를 보존한다.
+(hogaplay-source `DiskState.COMPLETE` + `date < today−N` 달력일)로 추가하며, 모든
+in-flight/불완전 상태를 보존한다.
 
 ## Goals
 
@@ -95,7 +102,7 @@ class PruneResult:
 def find_prunable(
     data_dir: Path, *, retention_days: int, now: datetime
 ) -> list[PruneCandidate]:
-    """raw/ 순회 → 날짜 컷오프 통과 + DiskState.COMPLETE인 (date,code)만 반환. 부작용 없음."""
+    """raw/ 순회 → 날짜 컷오프 통과 + hogaplay-source COMPLETE인 (date,code)만 반환. 부작용 없음."""
 
 def prune_raw(
     data_dir: Path, *, retention_days: int, now: datetime, execute: bool
@@ -110,12 +117,19 @@ def prune_raw(
 
 각 raw `(date, code)`에 대해:
 
-1. **날짜 컷오프**: `date < cutoff` where
+1. **날짜 컷오프 (달력일)**: `date < cutoff` where
    `cutoff = (now_kst().date() − timedelta(days=retention_days)).strftime("%Y%m%d")`.
-   YYYYMMDD lexical 비교 (선례: `disk_state.py:160`).
-2. **상태 게이트**: `check_disk_state(data_dir, code, date).state == DiskState.COMPLETE`.
-   `COMPLETE`만 통과 → `SOURCE_PARTIAL`/`CLIENT_INCOMPLETE`/`INVALID`/`NO_UPSTREAM_DATA`는
-   전부 보존. 이 한 줄로 sentinel·미완성·갭·손상이 모두 자동 제외된다.
+   YYYYMMDD lexical 비교 (선례: `disk_state.py:160`). **거래일이 아니라 달력일** — 거래일
+   계산은 KIS holiday API 의존(cold-month fetch 실패 위험)이라 회피한다. 주말이 끼면 실질
+   유예가 짧아지지만, 유예의 목적(사람이 parse 문제를 인지할 시간)은 달력 시간 기준이라 수용.
+2. **상태 게이트 (hogaplay-source, ADR-0075)**: raw/는 flat 레이아웃의 **hogaplay 전용**
+   (KIS live는 promote로 parquet 직행, raw/ 미경유)이므로, aggregate가 아니라 **hogaplay
+   source parquet이 `DiskState.COMPLETE`**일 때만 삭제한다. `classify_stock_date(parquet_dir)`로
+   per-source를 얻어 `hogaplay` Classification이 COMPLETE인지 확인(legacy flat 레이아웃 =
+   단일 hogaplay이므로 `check_disk_state` 폴백). **aggregate를 쓰면** kis_live=COMPLETE 때문에
+   hogaplay=SOURCE_PARTIAL인 raw가 오삭제될 수 있다 (ADR-0039 Source Preference). 결과적으로
+   `SOURCE_PARTIAL`/`CLIENT_INCOMPLETE`/`INVALID`/`NO_UPSTREAM_DATA`는 전부 보존 —
+   sentinel·미완성·갭·손상이 모두 자동 제외된다.
 
 두 조건 AND를 만족하는 `(date, code)`의 `raw/{date}/{code}/`만 삭제 대상.
 
@@ -147,6 +161,10 @@ except Exception:  # noqa: BLE001 — prune 실패가 enqueue를 막으면 안 �
 
 - **promotion 직후 배치 이유**: 거래일 체크 뒤에 두면 주말/휴장일에 skip되어 "매일 1회"가
   깨진다. promotion처럼 "scheduler 소유, 큐 무관" 작업이다 (ADR-0034 무충돌 — 큐 미접촉).
+  이로써 Daily Scheduler는 **2 step(promotion→enqueue)에서 3 step(promotion→prune→enqueue)**
+  으로 확장된다 (CONTEXT.md "Daily Scheduler" 갱신).
+- **ADR-0036 관계**: 자동 백엔드 삭제는 ADR-0036(무자동 원칙)과 긴장하나, 디스크 100% 사고
+  대응 + COMPLETE-only 무손실이라는 근거로 **ADR-0075**가 예외를 명문화한다.
 - `asyncio.to_thread`: `rmtree`는 blocking I/O이고 scheduler는 live poller와 이벤트 루프를
   공유하므로 절대 루프에서 직접 돌리지 않는다 (선례: `scheduler.py:74-76`).
 
