@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.31.3] - 2026-06-13
+
+### Fixed
+- **매도 최대벽 peak 점이 일부 세그먼트에만 보이던 문제** (#95, 사용자 제보): peak 점을
+  `timeToCoordinate(peakTime)`로만 그려, peak 발생 시각이 로드된 캔들 범위 밖이면 null을 내 점이
+  누락됐다. 세그먼트 끝점(x0~x1) 사이를 peakTime 위치로 선형 보간하는 폴백을 추가 — 선이 그려지는
+  세그먼트면 점도 항상 그려진다.
+
 ## [0.7.31.2] - 2026-06-13
 
 ### Changed
