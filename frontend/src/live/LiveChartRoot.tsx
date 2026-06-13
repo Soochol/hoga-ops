@@ -617,14 +617,35 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
   const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
   const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
   const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
+  const quoteTotalsEnabled = useLivePageStore((s) => s.quoteTotalsEnabled);
+  const ratioEnabled = useLivePageStore((s) => s.ratioEnabled);
+  const fillStrengthEnabled = useLivePageStore((s) => s.fillStrengthEnabled);
 
-  useEffect(() => {
-    if (!chart || !cb) return;
-    const specs = paneSpecsForTimeframe(timeframe, {
+  // Single source for the pane-mount toggles, consumed by BOTH the stretch
+  // effect and the render-side paneSpecsForTimeframe call. Building it once
+  // removes the risk of the two call sites drifting (one updated, one not).
+  const paneToggles = useMemo(
+    () => ({
       foreignNet: foreignNetEnabled,
       institutionNet: institutionNetEnabled,
       volumeEnabled,
-    });
+      quoteTotalsEnabled,
+      ratioEnabled,
+      fillStrengthEnabled,
+    }),
+    [
+      foreignNetEnabled,
+      institutionNetEnabled,
+      volumeEnabled,
+      quoteTotalsEnabled,
+      ratioEnabled,
+      fillStrengthEnabled,
+    ],
+  );
+
+  useEffect(() => {
+    if (!chart || !cb) return;
+    const specs = paneSpecsForTimeframe(timeframe, paneToggles);
     let cancelled = false;
     const apply = () => {
       if (cancelled) return;
@@ -649,7 +670,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, cb, timeframe, foreignNetEnabled, institutionNetEnabled, volumeEnabled]);
+  }, [chart, cb, timeframe, paneToggles]);
 
   // ADR-0044: hover → cursor store. Only mount on minute timeframes —
   // calendar timeframes (D/W/M) don't have backing parquet on /live.
@@ -721,11 +742,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
       />
       {chart && cb && axis.segments.length > 0 && (
         <>
-          {paneSpecsForTimeframe(timeframe, {
-            foreignNet: foreignNetEnabled,
-            institutionNet: institutionNetEnabled,
-            volumeEnabled,
-          }).map((spec, i) => (
+          {paneSpecsForTimeframe(timeframe, paneToggles).map((spec, i) => (
             <RangeSeriesPane
               key={spec.name}
               chart={chart}

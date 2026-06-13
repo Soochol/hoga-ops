@@ -4,20 +4,43 @@ import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
 
 describe('IndicatorPanel', () => {
-  it('lists 10 category checkboxes with MA/거래량/외국인/기관 active', () => {
+  it('활성 8개 체크박스(비활성 0), 호가 3종 포함', () => {
+    useLivePageStore.setState({ quoteTotalsEnabled: true, ratioEnabled: true, fillStrengthEnabled: true });
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(11);
-    // 6 placeholders remain disabled (indicators not yet supported).
-    expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(6);
-    // 이동평균선 is enabled and checked by default.
-    const ma = screen.getByRole('checkbox', { name: '이동평균선' }) as HTMLButtonElement;
-    expect(ma.disabled).toBe(false);
-    expect(ma.getAttribute('aria-checked')).toBe('true');
-    // Investor toggles are enabled but off by default (opt-in).
-    const fn = screen.getByRole('checkbox', { name: '외국인 순매수량' }) as HTMLButtonElement;
-    expect(fn.disabled).toBe(false);
-    expect(fn.getAttribute('aria-checked')).toBe('false');
+    expect(checkboxes).toHaveLength(8); // 상단 5 + 호가 3, 회색 placeholder 삭제됨
+    expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
+    for (const name of ['총잔량', '호가비', '체결강도']) {
+      const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
+      expect(cb.disabled).toBe(false);
+      expect(cb.getAttribute('aria-checked')).toBe('true'); // 기본 ON
+    }
+  });
+
+  it('삭제된 placeholder는 더 이상 렌더되지 않는다', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    for (const name of ['일목균형표', '볼린저밴드', '슈퍼트렌드', '매물대분석', '엔벨로프', '윌리엄스 프랙탈']) {
+      expect(screen.queryByText(name)).toBeNull();
+    }
+  });
+
+  it('"호가 지표" 서브헤더를 렌더', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    expect(screen.getByText('호가 지표')).toBeTruthy();
+    expect(screen.getByText('상단 지표')).toBeTruthy();
+  });
+
+  it('총잔량 토글 클릭 → quoteTotalsEnabled 반전', () => {
+    useLivePageStore.setState({ quoteTotalsEnabled: true });
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: '총잔량' }));
+    expect(useLivePageStore.getState().quoteTotalsEnabled).toBe(false);
+  });
+
+  it('호가비 라벨 클릭 → 우측에 RatioConfig(극단값 필터 토글) 노출', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '호가비' }));
+    expect(screen.getByTestId('settings-toggle-ratioOutlierFilterEnabled')).toBeTruthy();
   });
 
   it('clicking 외국인 순매수량 toggles foreignNetEnabled', async () => {

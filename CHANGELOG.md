@@ -3,6 +3,29 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.32.0] - 2026-06-13
+
+### Added
+- **/live 「지표」 모달에 호가 3종(총잔량·호가비·체결강도) 편입**: 각 항목 = on/off 토글(=pane mount) +
+  Config 디테일(범례 + 동작설정). "호가 지표" 서브헤더로 그룹핑. 기본 ON — 기존 분봉 자동표시 보존.
+- 호가 동작설정(총잔량 급증 마커·문턱, 호가비 극단값 필터, 체결강도 당일 누적선)을 ⚙️ 설정 모달 →
+  「지표」 모달의 해당 Config로 이동(`category: 'indicator-modal'`). ⚙️ 설정 모달은 차트·데이터소스만 남음.
+
+### Changed
+- 「지표」 모달의 회색 "추후 지원" placeholder 6종(일목균형표·볼린저밴드·슈퍼트렌드·매물대분석·엔벨로프·
+  윌리엄스 프랙탈) 삭제 → 전 항목 활성이 되어 `active` 분기·disabled 렌더 제거(IndicatorPanel 단순화).
+- CONTEXT.md: 총잔량 색상 stale 수정(코드대로 매수=빨강·매도=파랑) + 동작설정 노출 위치(⚙️→지표 모달) 갱신.
+
+### Internal
+- `paneSpecsForTimeframe`를 분봉/calendar 분기 + 투자자 append 특수처리 + 수작업 캐시키에서 **선언적
+  게이트 테이블**(`GATE_BY_NAME`)로 통합. 캐시키를 kept-name에서 자동 도출 → 새 토글 추가 시 수작업
+  비트키 미확장으로 인한 캐시 충돌 footgun을 구조 제거. ADR-0041(분봉 전용)·ADR-0055(투자자 D-only)는 게이트로 표현.
+- `IndicatorPrefRows` 공유 컴포넌트로 ⚙️ 설정·「지표」 모달이 동일 토글+숫자 행 디자인을 공유.
+- `livePage`의 `PersistedIndicators` 로컬 중복 정의 제거 → canonical 단일 소스(ADR-0046).
+- LiveChartRoot pane 토글 객체를 1회 생성해 effect·render 두 호출부 drift 제거 + 배선 end-to-end 테스트 추가.
+- **ADR-0072**: 지표 prefs 두 store(livePage·chartPrefs) 분리 유지 결정 기록.
+- Spec/Plan: `docs/superpowers/{specs,plans}/2026-06-13-hoga-indicators-in-indicator-panel*`.
+
 ## [0.7.31.5] - 2026-06-13
 
 ### Fixed

@@ -1,64 +1,34 @@
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import {
-  useChartPrefsStore,
   CHART_TOGGLES,
-  CHART_NUMERIC_PREFS,
   categoryOf,
   type ChartToggleCategory,
 } from '../state/chartPrefs';
 import { SOURCE_OPTIONS } from '../state/sourcePreference';
-import ToggleRow from './settings/ToggleRow';
-import NumericPrefRow from './settings/NumericPrefRow';
+import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
 
 /**
  * The live settings body — mirrors `IndicatorPanel`'s two-column layout (left
  * category nav `w-[200px]` + right detail pane). Categories come from the
- * `CHART_TOGGLES` registry (보조지표 / 총잔량 급증 / 차트) plus a 데이터소스 item;
- * the selected category's toggles + `enabledBy` numerics render on the right via
- * the same `ToggleRow`/`NumericPrefRow`/`SourcePreferenceRadio` as before. Adding
+ * `CHART_TOGGLES` registry (차트) plus a 데이터소스 item; 'indicator-modal'
+ * toggles are excluded (they live in the 「지표」 modal instead). Adding
  * a toggle/pref stays a one-line registry edit.
  */
 type NavId = ChartToggleCategory | 'data-source';
 
-const CATEGORY_ORDER: ChartToggleCategory[] = ['indicators', 'surge', 'chart'];
+const CATEGORY_ORDER: ChartToggleCategory[] = ['chart'];
 const LABEL: Record<NavId, string> = {
-  indicators: '보조지표',
-  surge: '총잔량 급증',
   chart: '차트',
+  'indicator-modal': '지표', // never rendered — not in CATEGORY_ORDER; kept for Record<NavId> exhaustiveness
   'data-source': '데이터소스',
 };
 
 function CategoryDetail({ category }: { category: ChartToggleCategory }) {
-  const prefs = useChartPrefsStore();
-  const setToggle = useChartPrefsStore((s) => s.setToggle);
-  const toggles = CHART_TOGGLES.filter((t) => categoryOf(t) === category);
-  return (
-    <>
-      {toggles.map((toggle, idx) => {
-        const gatedNumerics = CHART_NUMERIC_PREFS.filter((p) => p.enabledBy === toggle.key);
-        return (
-          <Fragment key={toggle.key}>
-            {idx > 0 && <div className="border-b border-border my-2" />}
-            <ToggleRow
-              label={toggle.label}
-              description={toggle.description}
-              checked={prefs[toggle.key]}
-              onToggle={() => setToggle(toggle.key, !prefs[toggle.key])}
-              testId={`settings-toggle-${toggle.key}`}
-            />
-            {gatedNumerics.length > 0 && (
-              <div className="ml-4">
-                {gatedNumerics.map((def) => (
-                  <NumericPrefRow key={def.key} def={def} />
-                ))}
-              </div>
-            )}
-          </Fragment>
-        );
-      })}
-    </>
-  );
+  const keys = CHART_TOGGLES
+    .filter((t) => categoryOf(t) === category)
+    .map((t) => t.key);
+  return <IndicatorPrefRows toggleKeys={keys} />;
 }
 
 function DataSourceDetail() {

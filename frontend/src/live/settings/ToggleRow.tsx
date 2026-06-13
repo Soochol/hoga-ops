@@ -1,7 +1,7 @@
-/** Single binary toggle row used inside Settings modal sections.
+/** Single binary toggle row for registry-driven prefs.
  *  Stateless — owner passes the current checked value and a click handler.
- *  Extracted from SettingsModal so both the "차트" auto-rendered loop and
- *  the "보조지표" IndicatorsSection can share one source. */
+ *  Shared (both via `IndicatorPrefRows`) by `LiveSettingsSections` (⚙️ Settings
+ *  modal) and the 「지표」 modal's hoga Configs, so one row style serves both. */
 export default function ToggleRow({
   label,
   description,
@@ -13,7 +13,7 @@ export default function ToggleRow({
   description: string;
   checked: boolean;
   onToggle: () => void;
-  /** Optional data-testid override. SettingsModal/IndicatorsSection pass
+  /** Optional data-testid override. `IndicatorPrefRows` passes
    *  `settings-toggle-{key}` for registry-driven rows. */
   testId?: string;
 }) {

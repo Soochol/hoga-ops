@@ -68,11 +68,11 @@ describe('candleTooltipEnabled 토글', () => {
 import { CHART_TOGGLES, CHART_NUMERIC_PREFS, categoryOf } from './chartPrefs';
 
 describe('총잔량 급증 설정', () => {
-  it('surgeMarkerEnabled 토글 기본 ON · category surge', () => {
+  it('surgeMarkerEnabled 토글 기본 ON · category indicator-modal', () => {
     expect(DEFAULT_PREFS.surgeMarkerEnabled).toBe(true);
     const t = CHART_TOGGLES.find((t) => t.key === 'surgeMarkerEnabled');
     expect(t).toBeDefined();
-    expect(categoryOf(t!)).toBe('surge');
+    expect(categoryOf(t!)).toBe('indicator-modal');
   });
 
   it('surgeApproachPct(기본 95, 80–100)·surgeRearmPct(기본 85, 50–95) enabledBy surgeMarkerEnabled', () => {

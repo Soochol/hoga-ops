@@ -12,7 +12,6 @@ describe('LiveSettingsModal (2단)', () => {
     render(<LiveSettingsModal onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('settings-nav-chart'));
     expect(screen.getByTestId('settings-toggle-auctionWindowMask')).toBeTruthy();
-    expect(screen.getByTestId('settings-toggle-ratioOutlierFilterEnabled')).toBeTruthy();
   });
 
   it('toggle click mutates chartPrefs store', () => {
@@ -26,22 +25,15 @@ describe('LiveSettingsModal (2단)', () => {
     expect(useChartPrefsStore.getState().auctionWindowMask).toBe(false);
   });
 
-  it('numeric input commits on Enter (차트 카테고리)', () => {
+  it('이동된 급증·극단값 prefs는 설정 모달에 없다 (지표 모달로 이동)', () => {
+    // surgeMarkerEnabled·ratioOutlierFilterEnabled가 'indicator-modal'로
+    // 재분류돼 surge nav와 그 gated numerics는 ⚙️ 설정에서 사라졌다.
+    // commit-on-Enter 동작은 IndicatorPrefRows.test.tsx가 커버한다.
     render(<LiveSettingsModal onClose={() => {}} />);
+    expect(screen.queryByTestId('settings-nav-surge')).toBeNull();
     fireEvent.click(screen.getByTestId('settings-nav-chart'));
-    const input = screen.getByTestId('settings-numeric-ratioOutlierThreshold') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: '50' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    expect(useChartPrefsStore.getState().ratioOutlierThreshold).toBe(50);
-  });
-
-  it('급증 근접 문턱 numeric commits on Enter (총잔량 급증 카테고리)', () => {
-    render(<LiveSettingsModal onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('settings-nav-surge'));
-    const input = screen.getByTestId('settings-numeric-surgeApproachPct') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: '90' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    expect(useChartPrefsStore.getState().surgeApproachPct).toBe(90);
+    expect(screen.queryByTestId('settings-numeric-ratioOutlierThreshold')).toBeNull();
+    expect(screen.queryByTestId('settings-numeric-surgeApproachPct')).toBeNull();
   });
 
   it('데이터소스 nav 클릭 후 source radio 두 옵션이 보인다', () => {
