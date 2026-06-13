@@ -28,10 +28,10 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'volume',          label: '거래량',           group: 'top'  },
   { id: 'foreign-net',     label: '외국인 순매수량',  group: 'top'  },
   { id: 'institution-net', label: '기관 순매수량',    group: 'top'  },
-  { id: 'ask-peak',        label: '당일 매도 최대벽', group: 'top'  },
   { id: 'quote-totals',    label: '총잔량',           group: 'hoga' },
   { id: 'ratio',           label: '호가비',           group: 'hoga' },
   { id: 'fill-strength',   label: '체결강도',         group: 'hoga' },
+  { id: 'ask-peak',        label: '당일 매도 최대벽', group: 'hoga' },
 ];
 
 type Props = {

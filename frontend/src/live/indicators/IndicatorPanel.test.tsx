@@ -8,7 +8,7 @@ describe('IndicatorPanel', () => {
     useLivePageStore.setState({ quoteTotalsEnabled: true, ratioEnabled: true, fillStrengthEnabled: true });
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(8); // 상단 5 + 호가 3, 회색 placeholder 삭제됨
+    expect(checkboxes).toHaveLength(8); // 상단 4 + 호가 4(당일 매도 최대벽 호가 그룹으로 이동), 회색 placeholder 삭제됨
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
     for (const name of ['총잔량', '호가비', '체결강도']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
@@ -28,6 +28,17 @@ describe('IndicatorPanel', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     expect(screen.getByText('호가 지표')).toBeTruthy();
     expect(screen.getByText('상단 지표')).toBeTruthy();
+  });
+
+  it('당일 매도 최대벽은 호가 지표 그룹(체결강도 뒤)에 위치', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    // 네비 라벨 버튼은 CATEGORIES 순서대로 렌더된다(체크박스는 role=checkbox라 제외).
+    const labels = screen.getAllByRole('button').map((b) => b.textContent);
+    const askPeak = labels.indexOf('당일 매도 최대벽');
+    const fill = labels.indexOf('체결강도');
+    const inst = labels.indexOf('기관 순매수량');
+    expect(askPeak).toBeGreaterThan(fill); // 호가 그룹 안, 체결강도 뒤
+    expect(askPeak).toBeGreaterThan(inst); // 상단 지표(기관 순매수량) 그룹 뒤
   });
 
   it('총잔량 토글 클릭 → quoteTotalsEnabled 반전', () => {
@@ -148,7 +159,7 @@ describe('IndicatorPanel', () => {
   });
 
   it('당일 매도 최대벽 카테고리 토글', () => {
-    useLivePageStore.setState({ askPeakEnabled: false } as any);
+    useLivePageStore.setState({ askPeakEnabled: false });
     render(<IndicatorPanel onClose={() => {}} />);
     const cb = screen.getByRole('checkbox', { name: '당일 매도 최대벽' });
     fireEvent.click(cb);
