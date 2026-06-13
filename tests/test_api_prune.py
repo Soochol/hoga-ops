@@ -229,3 +229,36 @@ def test_cli_prune_execute_deletes(
     assert res.exit_code == 0
     assert "pruned" in res.output
     assert not raw.exists()
+
+
+import asyncio
+
+
+def test_daily_run_calls_prune_before_trading_gate(
+    tmp_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hoga.api.scheduler as sched
+
+    calls: dict[str, bool] = {"pruned": False}
+
+    # promotion no-op
+    monkeypatch.setattr(sched, "load_watchlist", lambda _d: [])
+    # 비거래일로 만들어 enqueue 단계는 건너뛰게 함 → prune이 그 '전에' 불렸는지 본다
+    monkeypatch.setattr(sched, "trading_days_in_range", lambda _s, _e: set())
+
+    import hoga.api.prune as prune_mod
+    real_prune = prune_mod.prune_raw
+
+    def _spy(data_dir, **kw):
+        calls["pruned"] = True
+        return real_prune(data_dir, **kw)
+
+    monkeypatch.setattr(prune_mod, "prune_raw", _spy)
+
+    async def _fake_promote(_d):  # promotion no-op
+        return None
+    monkeypatch.setattr("hoga.live.promote.promote_pending", _fake_promote)
+    monkeypatch.setattr("hoga.live.promote.cleanup_archive", _fake_promote)
+
+    asyncio.run(sched._daily_run(tmp_data_dir))
+    assert calls["pruned"] is True
