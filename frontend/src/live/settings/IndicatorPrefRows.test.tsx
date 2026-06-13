@@ -26,4 +26,14 @@ describe('IndicatorPrefRows', () => {
     fireEvent.click(row.querySelector('[role="switch"]') as HTMLElement);
     expect(useChartPrefsStore.getState().ratioOutlierFilterEnabled).toBe(false);
   });
+
+  it('gated numeric input commits on Enter', () => {
+    useChartPrefsStore.getState().resetToDefaults();
+    useChartPrefsStore.setState({ surgeMarkerEnabled: true });
+    render(<IndicatorPrefRows toggleKeys={['surgeMarkerEnabled']} />);
+    const input = screen.getByTestId('settings-numeric-surgeApproachPct') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '90' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(useChartPrefsStore.getState().surgeApproachPct).toBe(90);
+  });
 });

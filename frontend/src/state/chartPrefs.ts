@@ -1,11 +1,13 @@
 /**
- * Declarative registry of boolean chart toggles surfaced in the Settings
- * modal. Each entry is the single source of truth for one toggle: its key
- * (used as a `ChartViewPrefs` field), default value, and UI strings.
+ * Declarative registry of boolean chart toggles. Each entry surfaces in the
+ * ⚙️ Settings modal OR (for `category: 'indicator-modal'` entries) the 「지표」
+ * modal's hoga Configs, depending on category. Each entry is the single source
+ * of truth for one toggle: its key (used as a `ChartViewPrefs` field), default
+ * value, and UI strings.
  *
  * Adding a toggle = one entry here. The type below (`ChartToggleKey`),
- * the `ChartViewPrefs` boolean fields, the default values, and the
- * `SettingsModal` row rendering all derive from this list.
+ * the `ChartViewPrefs` boolean fields, the default values, and the toggle row
+ * rendering all derive from this list.
  */
 export const CHART_TOGGLES = [
   {
@@ -20,6 +22,7 @@ export const CHART_TOGGLES = [
     description:
       '한쪽 호가가 임계 배수를 넘으면 그 시점의 호가비를 0 으로 마스킹합니다. (오토스케일을 잡아먹는 스파이크 제거)',
     default: true,
+    category: 'indicator-modal',
   },
   {
     key: 'fillStrengthCumulative',
@@ -27,7 +30,7 @@ export const CHART_TOGGLES = [
     description:
       '체결강도 pane에 당일 누적 매수−매도 라인(체결강도 누적)을 표시합니다. 거래일마다 0에서 다시 시작.',
     default: true,
-    category: 'indicators',
+    category: 'indicator-modal',
   },
   {
     key: 'candleTooltipEnabled',
@@ -47,24 +50,24 @@ export const CHART_TOGGLES = [
     label: '총잔량 급증 마커',
     description: '매도/매수총잔량이 당일 직전 고가에 다시 근접(기본 95%)하는 순간 총잔량 라인에 마커를 표시합니다. 한 번 표시 후 직전 고가의 85% 아래로 빠져야 재표시(히스테리시스).',
     default: true,
-    category: 'surge',
+    category: 'indicator-modal',
   },
 ] as const;
 
 export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];
 
-/** UI surface a toggle belongs to. Unset entries default to 'chart' (the
- *  SettingsModal's "차트" category). New indicator-scoped toggles set
- *  'indicators' so IndicatorsSection picks them up automatically. */
-export type ChartToggleCategory = 'chart' | 'indicators' | 'surge';
+/** UI surface a toggle belongs to. 'indicator-modal'은 「지표」 모달의
+ *  호가 Config로 이동했음을 뜻하며 ⚙️ 설정 모달에는 렌더되지 않는다
+ *  (LiveSettingsSections의 CATEGORY_ORDER가 포함하지 않음). Unset → 'chart'. */
+export type ChartToggleCategory = 'chart' | 'indicator-modal';
 
 /** Resolve a CHART_TOGGLES entry's category, defaulting to 'chart' when
  *  the field is absent. Direct `t.category` access on the registry union
  *  fails to compile on entries that omit the field — `as const` narrows
  *  each literal shape to exclude absent properties. The `'category' in t`
  *  predicate narrows the union so the access becomes safe. Consumers
- *  (SettingsModal, IndicatorsSection) call this instead of inlining the
- *  predicate so the narrowing trick lives in one place. */
+ *  (LiveSettingsSections, indicator Configs) call this instead of inlining
+ *  the predicate so the narrowing trick lives in one place. */
 export function categoryOf(
   t: (typeof CHART_TOGGLES)[number],
 ): ChartToggleCategory {

@@ -11,18 +11,16 @@ import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
 /**
  * The live settings body — mirrors `IndicatorPanel`'s two-column layout (left
  * category nav `w-[200px]` + right detail pane). Categories come from the
- * `CHART_TOGGLES` registry (보조지표 / 총잔량 급증 / 차트) plus a 데이터소스 item;
- * the selected category's toggles + `enabledBy` numerics render on the right via
- * the same `ToggleRow`/`NumericPrefRow`/`SourcePreferenceRadio` as before. Adding
+ * `CHART_TOGGLES` registry (차트) plus a 데이터소스 item; 'indicator-modal'
+ * toggles are excluded (they live in the 「지표」 modal instead). Adding
  * a toggle/pref stays a one-line registry edit.
  */
 type NavId = ChartToggleCategory | 'data-source';
 
-const CATEGORY_ORDER: ChartToggleCategory[] = ['indicators', 'surge', 'chart'];
+const CATEGORY_ORDER: ChartToggleCategory[] = ['chart'];
 const LABEL: Record<NavId, string> = {
-  indicators: '보조지표',
-  surge: '총잔량 급증',
   chart: '차트',
+  'indicator-modal': '지표', // never rendered — not in CATEGORY_ORDER; kept for Record<NavId> exhaustiveness
   'data-source': '데이터소스',
 };
 
