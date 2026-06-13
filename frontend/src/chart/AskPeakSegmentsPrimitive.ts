@@ -71,14 +71,22 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
         ctx.moveTo(px0, py);
         ctx.lineTo(px1, py);
         ctx.stroke();
-        // peak 발생 시점 점(그 날 언제 최대벽이었는지). 세그먼트 x-구간 안에 있으면 찍는다.
-        const xPeak = timeScale.timeToCoordinate(s.peakTime);
-        if (xPeak !== null) {
-          ctx.beginPath();
-          ctx.arc(xPeak * hr, py, PEAK_DOT_RADIUS_PX * hr, 0, Math.PI * 2);
-          ctx.fillStyle = s.color;
-          ctx.fill();
+        // peak 발생 시점 점(그 날 언제 최대벽이었는지). timeToCoordinate(peakTime)가 정확하지만,
+        // peak 시각이 로드된 캔들 범위 밖이면 null을 내 점이 누락된다(일부만 보이던 버그). 그럴 때는
+        // 세그먼트 끝점(x0~x1) 사이를 peakTime의 [time0,time1] 내 위치로 선형 보간해 폴백 — 선이
+        // 그려지는 한 점도 항상 그려진다(보간은 세션 내 가상시각이 x와 단조라 근사 정확).
+        let xPeak: number | null = timeScale.timeToCoordinate(s.peakTime);
+        if (xPeak === null) {
+          const t0 = s.time0 as unknown as number;
+          const t1 = s.time1 as unknown as number;
+          const tp = s.peakTime as unknown as number;
+          const frac = t1 > t0 ? Math.min(1, Math.max(0, (tp - t0) / (t1 - t0))) : 0;
+          xPeak = (x0 as number) + frac * ((x1 as number) - (x0 as number));
         }
+        ctx.beginPath();
+        ctx.arc(xPeak * hr, py, PEAK_DOT_RADIUS_PX * hr, 0, Math.PI * 2);
+        ctx.fillStyle = s.color;
+        ctx.fill();
         // 라벨(선 위, 오른쪽 끝 정렬).
         if (s.label) {
           ctx.font = `${LABEL_FONT_PX * vr}px sans-serif`;
