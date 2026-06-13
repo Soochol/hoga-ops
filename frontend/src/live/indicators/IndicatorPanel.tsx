@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { useLivePageStore } from '../../state/livePage';
 import MovingAverageConfig from './MovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
 import InvestorNetConfig from './InvestorNetConfig';
 import AskPeakConfig from './AskPeakConfig';
+import QuoteTotalsConfig from './QuoteTotalsConfig';
+import RatioConfig from './RatioConfig';
+import FillStrengthConfig from './FillStrengthConfig';
 import { ModalShell } from '../../ui/ModalShell';
 import { CheckIcon } from '../../ui/CheckIcon';
 
@@ -13,25 +16,22 @@ type CategoryId =
   | 'foreign-net'
   | 'institution-net'
   | 'ask-peak'
-  | 'ichimoku'
-  | 'bollinger'
-  | 'supertrend'
-  | 'volume-profile'
-  | 'envelope'
-  | 'williams';
+  | 'quote-totals'
+  | 'ratio'
+  | 'fill-strength';
 
-const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; active: boolean }> = [
-  { id: 'moving-average',  label: '이동평균선',       active: true  },
-  { id: 'volume',          label: '거래량',           active: true  },
-  { id: 'foreign-net',     label: '외국인 순매수량',  active: true  },
-  { id: 'institution-net', label: '기관 순매수량',    active: true  },
-  { id: 'ask-peak',        label: '당일 매도 최대벽', active: true  },
-  { id: 'ichimoku',       label: '일목균형표',  active: false },
-  { id: 'bollinger',      label: '볼린저밴드',  active: false },
-  { id: 'supertrend',     label: '슈퍼트렌드',  active: false },
-  { id: 'volume-profile', label: '매물대분석',  active: false },
-  { id: 'envelope',       label: '엔벨로프',    active: false },
-  { id: 'williams',       label: '윌리엄스 프랙탈', active: false },
+type GroupId = 'top' | 'hoga';
+const GROUP_LABEL: Record<GroupId, string> = { top: '상단 지표', hoga: '호가 지표' };
+
+const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId }> = [
+  { id: 'moving-average',  label: '이동평균선',       group: 'top'  },
+  { id: 'volume',          label: '거래량',           group: 'top'  },
+  { id: 'foreign-net',     label: '외국인 순매수량',  group: 'top'  },
+  { id: 'institution-net', label: '기관 순매수량',    group: 'top'  },
+  { id: 'ask-peak',        label: '당일 매도 최대벽', group: 'top'  },
+  { id: 'quote-totals',    label: '총잔량',           group: 'hoga' },
+  { id: 'ratio',           label: '호가비',           group: 'hoga' },
+  { id: 'fill-strength',   label: '체결강도',         group: 'hoga' },
 ];
 
 type Props = {
@@ -49,15 +49,20 @@ export default function IndicatorPanel({ onClose }: Props) {
   const setVolumeEnabled = useLivePageStore((s) => s.setVolumeEnabled);
   const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
   const setAskPeakEnabled = useLivePageStore((s) => s.setAskPeakEnabled);
+  const quoteTotals = useLivePageStore((s) => s.quoteTotalsEnabled);
+  const setQuoteTotals = useLivePageStore((s) => s.setQuoteTotalsEnabled);
+  const ratio = useLivePageStore((s) => s.ratioEnabled);
+  const setRatio = useLivePageStore((s) => s.setRatioEnabled);
+  const fillStrength = useLivePageStore((s) => s.fillStrengthEnabled);
+  const setFillStrength = useLivePageStore((s) => s.setFillStrengthEnabled);
 
   // Which category's detail pane shows on the right. Clicking a category label
   // navigates here; the checkbox icon toggles its master switch separately.
   const [selected, setSelected] = useState<CategoryId>('moving-average');
 
-  // Each active category maps to a master on/off toggle. Investor bars carry no
-  // per-slot config (sign-colored, daily), so the left checkbox is the whole
-  // control — the same popover "형식" as the MA category, just without a right
-  // detail pane.
+  // Each category maps to a master on/off toggle. Investor bars have an
+  // informational detail pane (legend + daily note) but no per-slot config,
+  // so the left checkbox is the whole control for them.
   const checkedFor = (id: CategoryId): boolean => {
     switch (id) {
       case 'moving-average': return maEnabled;
@@ -65,6 +70,9 @@ export default function IndicatorPanel({ onClose }: Props) {
       case 'institution-net': return institutionNet;
       case 'volume': return volumeEnabled;
       case 'ask-peak': return askPeakEnabled;
+      case 'quote-totals': return quoteTotals;
+      case 'ratio': return ratio;
+      case 'fill-strength': return fillStrength;
       default: return false;
     }
   };
@@ -75,6 +83,9 @@ export default function IndicatorPanel({ onClose }: Props) {
       case 'institution-net': return () => setInstitutionNet(!institutionNet);
       case 'volume': return () => setVolumeEnabled(!volumeEnabled);
       case 'ask-peak': return () => setAskPeakEnabled(!askPeakEnabled);
+      case 'quote-totals': return () => setQuoteTotals(!quoteTotals);
+      case 'ratio': return () => setRatio(!ratio);
+      case 'fill-strength': return () => setFillStrength(!fillStrength);
       default: return null;
     }
   };
@@ -87,53 +98,40 @@ export default function IndicatorPanel({ onClose }: Props) {
     <ModalShell ariaLabel="지표" title="지표" onClose={onClose}>
       <div className="flex">
         <nav className="w-[200px] py-2 border-r border-border" aria-label="지표 카테고리">
-          <div className="text-fg-dimmer text-xs uppercase tracking-wider px-4 pb-2">상단 지표</div>
-          {CATEGORIES.map((c) => {
-            // Each active row splits into a label button (navigates to that
-            // indicator's detail pane) and a checkbox icon (toggles its master
-            // switch). Inactive rows are placeholders for indicators we haven't
-            // shipped yet — disabled, no select, no toggle.
+          {CATEGORIES.map((c, i) => {
             const checked = checkedFor(c.id);
             const onToggle = toggleFor(c.id);
             const isSelected = selected === c.id;
-            const rowBase =
-              'flex w-full items-center justify-between pl-4 pr-2 text-sm';
+            const showHeader = i === 0 || CATEGORIES[i - 1].group !== c.group;
+            const rowBase = 'flex w-full items-center justify-between pl-4 pr-2 text-sm';
             return (
-              <div
-                key={c.id}
-                className={
-                  c.active
-                    ? `${rowBase} ${isSelected ? 'bg-bg-input' : 'hover:bg-bg-input'}`
-                    : `${rowBase} opacity-50`
-                }
-              >
-                <button
-                  type="button"
-                  disabled={!c.active}
-                  onClick={() => c.active && setSelected(c.id)}
-                  aria-current={isSelected ? 'true' : undefined}
-                  className={
-                    c.active
-                      ? 'flex-1 text-left py-2 text-fg cursor-pointer'
-                      : 'flex-1 text-left py-2 text-fg-dimmer cursor-not-allowed'
-                  }
-                  title={c.active ? undefined : '추후 지원 예정'}
-                >
-                  {c.label}
-                </button>
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={checked}
-                  aria-label={c.label}
-                  disabled={!c.active}
-                  onClick={() => { onToggle?.(); if (c.active) setSelected(c.id); }}
-                  className={c.active ? 'p-2 cursor-pointer' : 'p-2 cursor-not-allowed'}
-                  title={c.active ? undefined : '추후 지원 예정'}
-                >
-                  <CheckIcon filled={c.active && checked} />
-                </button>
-              </div>
+              <Fragment key={c.id}>
+                {showHeader && (
+                  <div className={`text-fg-dimmer text-xs uppercase tracking-wider px-4 pb-2${i !== 0 ? ' pt-2' : ''}`}>
+                    {GROUP_LABEL[c.group]}
+                  </div>
+                )}
+                <div className={`${rowBase} ${isSelected ? 'bg-bg-input' : 'hover:bg-bg-input'}`}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(c.id)}
+                    aria-current={isSelected ? 'true' : undefined}
+                    className="flex-1 text-left py-2 text-fg cursor-pointer"
+                  >
+                    {c.label}
+                  </button>
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={checked}
+                    aria-label={c.label}
+                    onClick={() => { onToggle?.(); setSelected(c.id); }}
+                    className="p-2 cursor-pointer"
+                  >
+                    <CheckIcon filled={checked} />
+                  </button>
+                </div>
+              </Fragment>
             );
           })}
         </nav>
@@ -143,6 +141,9 @@ export default function IndicatorPanel({ onClose }: Props) {
           {selected === 'foreign-net' && <InvestorNetConfig which="foreign" />}
           {selected === 'institution-net' && <InvestorNetConfig which="institution" />}
           {selected === 'ask-peak' && <AskPeakConfig />}
+          {selected === 'quote-totals' && <QuoteTotalsConfig />}
+          {selected === 'ratio' && <RatioConfig />}
+          {selected === 'fill-strength' && <FillStrengthConfig />}
         </div>
       </div>
       {/* Footer — mirrors SettingsModal pattern for cross-modal visual
