@@ -464,8 +464,12 @@ def test_query_day_ask_peak_basic(tmp_path) -> None:
     out = tmp_path / "snapshots.parquet"
     write_parquet(obs, out)
     peak = query_day_ask_peak(_con_for(out), path=out, bucket_ms=60_000)
-    assert peak == AskPeakRow(price=25100, qty=5000, intra_ms=peak.intra_ms)
+    assert peak == AskPeakRow(
+        price=25100, qty=5000, intra_ms=peak.intra_ms,
+        max_price=25100, max_qty=5000, max_intra_ms=peak.max_intra_ms,
+    )
     assert peak.qty == 5000 and peak.price == 25100
+    assert peak.max_qty == 5000 and peak.max_price == 25100
 
 
 def test_query_day_ask_peak_tie_earliest(tmp_path) -> None:
@@ -564,3 +568,50 @@ def test_query_day_ask_peak_bucket_representative_not_tick_max(tmp_path) -> None
     )
     # 틱 max였다면 5000. 버킷 대표라 max(1000, 2000) = 2000.
     assert peak is not None and peak.qty == 2000
+
+
+def test_query_day_ask_peak_intra_max_captures_mid_bucket_spike(tmp_path) -> None:
+    """버킷 중간에 잠깐 솟았다 빠진 매도벽: close 변종(버킷 대표=마지막 연속거래)에는
+    안 나타나지만, 틱-max 변종(max_*)은 연속거래 스냅샷 전체에서 잡아낸다."""
+    obs = [
+        _ob_ap(90010000, [5000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[25000 + 50 * i for i in range(10)]),
+        _ob_ap(90255000, [1000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[25000 + 50 * i for i in range(10)]),
+        _ob_ap(90310000, [2000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[25000 + 50 * i for i in range(10)]),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    peak = query_day_ask_peak(
+        _con_for(out), path=out, bucket_ms=180_000,
+        session_open_ms=90000000, session_close_ms=153000000,
+    )
+    assert peak is not None
+    assert peak.qty == 2000 and peak.price == 25000
+    assert peak.max_qty == 5000 and peak.max_price == 25000
+    assert peak.max_qty >= peak.qty
+
+
+def test_query_day_ask_peak_intra_max_excludes_single_price(tmp_path) -> None:
+    """틱-max도 close와 동일하게 동시호가/VI 붕괴 호가창을 배제한다."""
+    z = tuple([0] * 10)
+    collapsed = Orderbook(
+        ts_ms=152100000, seq=1,
+        ask_p=(25000, 25050, 25100) + (0,) * 7, ask_q=(99999, 1, 1) + (0,) * 7, ask_d=z,
+        bid_p=(24950, 24900, 24850) + (0,) * 7, bid_q=(1, 1, 1) + (0,) * 7, bid_d=z,
+        tot_ask=100001, tot_ask_d=0, tot_bid=3, tot_bid_d=0,
+    )
+    spike = _ob_ap(90010000, [700, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        ask_p=[25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450])
+    rep = _ob_ap(90055000, [10, 20, 300, 40, 5, 6, 7, 8, 9, 1],
+        ask_p=[25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450])
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([collapsed, spike, rep], out)
+    peak = query_day_ask_peak(
+        _con_for(out), path=out, bucket_ms=60_000,
+        session_open_ms=90000000, session_close_ms=153000000,
+    )
+    assert peak is not None
+    assert peak.qty == 300
+    assert peak.max_qty == 700

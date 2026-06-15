@@ -324,10 +324,17 @@ class AskPeakRow:
     ``intra_ms``는 LINEAR ms-from-midnight(NOT raw HHMMSSmmm, NOT unix ms) —
     호출자가 ``ms_from_midnight_to_unix_ms(date, intra_ms)``로 unix 변환.
     QuoteRatioRow.bucket_intra_ms와 동일 규약.
+
+    ``price``/``qty``/``intra_ms`` = 버킷 대표(마지막 연속거래 스냅샷)의
+    당일 매도벽 최댓값(#96 close 변종). ``max_*`` = 버킷 대표를 거치지 않고
+    연속거래 스냅샷 전체에서 찾은 단일 매도단계 당일 max(Intra-Bar Max, ADR-0075).
     """
     price: int
     qty: int
     intra_ms: int
+    max_price: int
+    max_qty: int
+    max_intra_ms: int
 
 
 def query_bucketed_ratio(
@@ -550,11 +557,13 @@ def query_day_ask_peak(
     where = " AND ".join(bounds)
     # 버킷별 대표 = 마지막 연속거래 스냅샷(rn=1 by ts_ms DESC). 연속거래행으로 사전 필터한 뒤
     # 버킷팅하므로 완전-동시호가 버킷은 행이 없어 자연 탈락(총잔량의 (0,0) 센티넬 불필요).
-    union = " UNION ALL ".join(
-        f"SELECT ask_p{i} AS price, ask_q{i} AS qty, {intra} AS intra_ms "
-        f"FROM rep WHERE ask_q{i} > 0"
-        for i in range(1, ORDERBOOK_LEVELS + 1)
-    )
+    def level_union(src: str) -> str:
+        return " UNION ALL ".join(
+            f"SELECT ask_p{i} AS price, ask_q{i} AS qty, {intra} AS intra_ms "
+            f"FROM {src} WHERE ask_q{i} > 0"
+            for i in range(1, ORDERBOOK_LEVELS + 1)
+        )
+
     row = con.execute(
         f"""
         WITH cont AS (
@@ -566,11 +575,22 @@ def query_day_ask_peak(
           FROM read_parquet(?) WHERE {where}
         ),
         rep AS (SELECT * FROM cont WHERE rn = 1)
-        SELECT price, qty, intra_ms FROM ({union})
+        SELECT price, qty, intra_ms FROM ({level_union("rep")})
         ORDER BY qty DESC, intra_ms ASC LIMIT 1
         """,
         [str(path)],
     ).fetchone()
     if row is None:
         return None
-    return AskPeakRow(price=int(row[0]), qty=int(row[1]), intra_ms=int(row[2]))
+    max_row = con.execute(
+        f"""
+        WITH src AS (SELECT * FROM read_parquet(?) WHERE {where})
+        SELECT price, qty, intra_ms FROM ({level_union("src")})
+        ORDER BY qty DESC, intra_ms ASC LIMIT 1
+        """,
+        [str(path)],
+    ).fetchone()
+    return AskPeakRow(
+        price=int(row[0]), qty=int(row[1]), intra_ms=int(row[2]),
+        max_price=int(max_row[0]), max_qty=int(max_row[1]), max_intra_ms=int(max_row[2]),
+    )
