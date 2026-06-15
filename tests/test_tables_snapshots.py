@@ -615,3 +615,72 @@ def test_query_day_ask_peak_intra_max_excludes_single_price(tmp_path) -> None:
     assert peak is not None
     assert peak.qty == 300
     assert peak.max_qty == 700
+
+
+# ---------------------------------------------------------------------------
+# P5 회귀: Intra-Bar Max 상계 불변식
+# ---------------------------------------------------------------------------
+
+
+def _imb(bid: int, ask: int) -> float:
+    """frontend/src/util/imbalance.ts quoteImbalance 미러(부호 규약 동일)."""
+    if bid <= 0 or ask <= 0:
+        return 0.0
+    return ask / bid - 1 if ask >= bid else -(bid / ask - 1)
+
+
+def test_quote_bucketed_ratio_intra_max_geq_close(tmp_path: Path) -> None:
+    """bid_max/ask_max는 각 변 독립 버킷 최댓값이므로 종가 대표값 이상이다."""
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(10, 20, 30, 40), bid_q=(900, 1, 1, 1)),
+        _ob(ts_ms=90_000_500, seq=2, ask_q=(50, 60, 70, 80), bid_q=(50, 1, 1, 1)),
+        _ob(ts_ms=90_000_900, seq=3, ask_q=(100, 110, 120, 130), bid_q=(20, 1, 1, 1)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    rows = query_bucketed_ratio(duckdb.connect(), path=out, bucket_ms=1000)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r.ask_total == 460 and r.bid_total == 23
+    assert r.ask_max >= r.ask_total
+    assert r.bid_max >= r.bid_total
+    assert r.ask_max == 460
+    assert r.bid_max == 903 and r.bid_max > r.bid_total
+
+
+def test_quote_bucketed_ratio_imbalance_magnitude_geq_close(tmp_path: Path) -> None:
+    """imb_max_*는 버킷 내 |imbalance| 최대 스냅샷 쌍이므로 종가의 |imbalance| 이상이다."""
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(10,), bid_q=(900, 1, 1, 1)),
+        _ob(ts_ms=90_000_900, seq=2, ask_q=(100, 110, 120, 130), bid_q=(20, 1, 1, 1)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    rows = query_bucketed_ratio(duckdb.connect(), path=out, bucket_ms=1000)
+    assert len(rows) == 1
+    r = rows[0]
+    close_mag = abs(_imb(r.bid_total, r.ask_total))
+    max_mag = abs(_imb(r.imb_max_bid, r.imb_max_ask))
+    assert max_mag >= close_mag
+    assert (r.imb_max_bid, r.imb_max_ask) == (903, 10)
+    assert max_mag > close_mag
+
+
+def test_day_ask_peak_max_qty_geq_close_qty(tmp_path: Path) -> None:
+    """ask-peak 틱-max 변종의 당일 max(max_qty)는 버킷 종가 대표의 당일 max(qty) 이상이다."""
+    obs = [
+        _ob_ap(90_000_000, [3000, 20, 30, 40, 5, 6, 7, 8, 9, 1]),
+        _ob_ap(90_000_500, [8000, 20, 30, 40, 5, 6, 7, 8, 9, 1]),
+        _ob_ap(90_000_900, [3000, 20, 30, 40, 5, 6, 7, 8, 9, 1]),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    peak = query_day_ask_peak(_con_for(out), path=out, bucket_ms=60_000)
+    assert peak is not None
+    assert peak.max_qty >= peak.qty
+    assert peak.qty == 3000
+    assert peak.max_qty == 8000 and peak.max_qty > peak.qty
