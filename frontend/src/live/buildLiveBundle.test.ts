@@ -174,8 +174,10 @@ describe('buildLiveBundle', () => {
   it('pastBundle.ask_peaks(거래일별 매도 최대벽)를 그대로 통과시킨다 (회귀: []로 덮어쓰지 않음)', () => {
     const past = emptyRangeBundle({
       ask_peaks: [
-        { date: '20260611', price: 297000, qty: 32621, t_ms: 1 },
-        { date: '20260610', price: 302500, qty: 246495, t_ms: 2 },
+        { date: '20260611', price: 297000, qty: 32621, t_ms: 1,
+          max_price: 297000, max_qty: 32621, max_t_ms: 1 },
+        { date: '20260610', price: 302500, qty: 246495, t_ms: 2,
+          max_price: 302500, max_qty: 246495, max_t_ms: 2 },
       ],
     });
     const bundle = buildLiveBundle({

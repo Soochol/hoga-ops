@@ -443,8 +443,18 @@ export type InvestorNetPoint = { t_ms: number; foreign_net: number; institution_
 
 /** 한 거래일 매도 최대벽 — 연속거래 중 단일 매도 호가단계 최대 물량·가격.
  *  hoga/api/models.py::AskPeak 미러. date=거래일(YYYYMMDD, segment x-구간 매핑용),
- *  t_ms=unix ms(KST, peak 발생 시점). */
-export type AskPeak = { date: string; price: number; qty: number; t_ms: number };
+ *  t_ms=unix ms(KST, peak 발생 시점).
+ *  price/qty/t_ms=버킷 종가 대표의 당일 max(#96 close 변종). max_*=버킷 틱-max의 당일 max
+ *  (분봉 내 최댓값 기준, Intra-Bar Max, ADR-0075). 과거일만 갈림(오늘은 ratchet 동일값). */
+export type AskPeak = {
+  date: string;
+  price: number;
+  qty: number;
+  t_ms: number;
+  max_price: number;
+  max_qty: number;
+  max_t_ms: number;
+};
 
 export type RangeBundle = {
   code: string;
