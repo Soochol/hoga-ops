@@ -1,6 +1,6 @@
 import { it, expect, vi } from 'vitest';
 import { type ComponentProps } from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { LiveTabBar } from './LiveTabBar';
 import type { LiveTab } from '../state/liveTabs';
 
@@ -11,7 +11,7 @@ const tabs: LiveTab[] = [
 
 function setup(over: Partial<ComponentProps<typeof LiveTabBar>> = {}) {
   const props: ComponentProps<typeof LiveTabBar> = {
-    tabs, activeTabId: 'a', activeLoading: false, atCap: false,
+    tabs, activeTabId: 'a', activeLoading: false,
     onFocus: vi.fn(), onClose: vi.fn(), onReorder: vi.fn(), onNewTab: vi.fn(),
     ...over,
   };
@@ -58,9 +58,50 @@ it('the new-tab button calls onNewTab', () => {
   expect(p.onNewTab).toHaveBeenCalled();
 });
 
-it('disables the new-tab button at the cap', () => {
-  setup({ atCap: true });
-  expect(screen.getByLabelText('새 탭')).toBeDisabled();
+it('shows an unlimited tab count and keeps the new-tab button enabled', () => {
+  setup();
+  expect(screen.getByText('2 open')).toBeInTheDocument();
+  expect(screen.getByLabelText('새 탭')).toBeEnabled();
+});
+
+it('selects a tab through the overflow menu', () => {
+  const p = setup();
+  fireEvent.click(screen.getByLabelText('열린 탭 목록'));
+  fireEvent.click(within(screen.getByRole('menu')).getByText('SK하이닉스'));
+  expect(p.onFocus).toHaveBeenCalledWith('b');
+});
+
+it('scrolls the active tab into view when activeTabId changes', () => {
+  const scrollIntoView = vi.fn();
+  const original = HTMLElement.prototype.scrollIntoView;
+  HTMLElement.prototype.scrollIntoView = scrollIntoView;
+  try {
+    const { rerender } = render(
+      <LiveTabBar
+        tabs={tabs}
+        activeTabId="a"
+        activeLoading={false}
+        onFocus={vi.fn()}
+        onClose={vi.fn()}
+        onReorder={vi.fn()}
+        onNewTab={vi.fn()}
+      />
+    );
+    rerender(
+      <LiveTabBar
+        tabs={tabs}
+        activeTabId="b"
+        activeLoading={false}
+        onFocus={vi.fn()}
+        onClose={vi.fn()}
+        onReorder={vi.fn()}
+        onNewTab={vi.fn()}
+      />
+    );
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+  } finally {
+    HTMLElement.prototype.scrollIntoView = original;
+  }
 });
 
 it('drag-and-drop reorders via onReorder(from, to)', () => {

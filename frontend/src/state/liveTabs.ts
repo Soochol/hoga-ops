@@ -4,8 +4,6 @@ import { useLivePageStore, LIVE_TIMEFRAMES, type LiveTimeframe } from './livePag
 import { attachPersistence } from './persistentSubscriber';
 import type { TabViewport } from '../live/viewportAnchor';
 
-export const TABS_SOFT_CAP = 8;
-
 export type LiveTab = {
   id: string;
   code: string;
