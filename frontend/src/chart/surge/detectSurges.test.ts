@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { detectSurges, detectSurgeSide } from './detectSurges';
 import type { QuoteRatioPoint } from '../../api/types';
 
-const P = (t: number, ask: number, bid: number): QuoteRatioPoint => ({ t, ask_total: ask, bid_total: bid });
+// detectSurges reads only ask_total/bid_total (close); the Intra-Bar Max fields mirror close here.
+const P = (t: number, ask: number, bid: number): QuoteRatioPoint => ({
+  t, ask_total: ask, bid_total: bid,
+  bid_max: bid, ask_max: ask, imb_max_bid: bid, imb_max_ask: ask,
+});
 const OPTS = { approachRatio: 0.95, rearmRatio: 0.85, isClosingAuction: () => false };
 const DAY = 86_400_000;
 const D0 = 1_779_062_400_000; // 어느 거래일 09:00 KST (테스트 기준점)

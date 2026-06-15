@@ -211,6 +211,10 @@ def build_quote_ratio_slice(
                 t=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
                 bid_total=r.bid_total,
                 ask_total=r.ask_total,
+                bid_max=r.bid_max,
+                ask_max=r.ask_max,
+                imb_max_bid=r.imb_max_bid,
+                imb_max_ask=r.imb_max_ask,
             )
             for r in rows
         ],
@@ -441,6 +445,8 @@ def _compute_ask_peak(
     return AskPeak(
         date=date, price=row.price, qty=row.qty,
         t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
+        max_price=row.max_price, max_qty=row.max_qty,
+        max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
     )
 
 

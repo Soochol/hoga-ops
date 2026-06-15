@@ -35,8 +35,18 @@ def _unix(h: int, m: int, s: int = 0) -> int:
 # ── Pure-logic tests (no parquet) ────────────────────────────────────────────
 
 
-def _qr(intra: int, bid: int, ask: int) -> QuoteRatioRow:
-    return QuoteRatioRow(bucket_intra_ms=intra, bid_total=bid, ask_total=ask)
+def _qr(
+    intra: int, bid: int, ask: int,
+    bid_max: int | None = None, ask_max: int | None = None,
+    imb_max_bid: int | None = None, imb_max_ask: int | None = None,
+) -> QuoteRatioRow:
+    return QuoteRatioRow(
+        bucket_intra_ms=intra, bid_total=bid, ask_total=ask,
+        bid_max=bid if bid_max is None else bid_max,
+        ask_max=ask if ask_max is None else ask_max,
+        imb_max_bid=bid if imb_max_bid is None else imb_max_bid,
+        imb_max_ask=ask if imb_max_ask is None else imb_max_ask,
+    )
 
 
 def _fs(intra: int, buy: int, sell: int) -> FillStrengthRow:
@@ -44,10 +54,12 @@ def _fs(intra: int, buy: int, sell: int) -> FillStrengthRow:
 
 
 def test_reaggregate_ratio_takes_last_in_window() -> None:
-    # 1m rows at minutes 0,1,2 → one 3m bucket; the LAST (minute 2) wins.
+    # 1m rows at minutes 0,1,2 → one 3m bucket; the LAST (minute 2) wins the rep.
+    # imb_max picks the strongest |imbalance| constituent: mag(10,20)=2.0 beats
+    # mag(11,21)≈1.91 and mag(12,22)≈1.83, so the pair is minute 0's (10,20).
     rows = [_qr(0, 10, 20), _qr(60_000, 11, 21), _qr(120_000, 12, 22)]
     out = reaggregate_ratio(rows, 180_000)
-    assert out == [_qr(0, 12, 22)]
+    assert out == [_qr(0, 12, 22, imb_max_bid=10, imb_max_ask=20)]
 
 
 def test_reaggregate_ratio_skips_trailing_auction_zeros() -> None:
@@ -56,7 +68,8 @@ def test_reaggregate_ratio_skips_trailing_auction_zeros() -> None:
     # last continuous representative and exclude the auction book.
     rows = [_qr(0, 10, 20), _qr(60_000, 11, 21), _qr(120_000, 0, 0)]
     out = reaggregate_ratio(rows, 180_000)
-    assert out == [_qr(0, 11, 21)]
+    # imb_max winner is minute 0 (mag 2.0); the (0,0) tail is degenerate (mag 1.0).
+    assert out == [_qr(0, 11, 21, imb_max_bid=10, imb_max_ask=20)]
 
 
 def test_reaggregate_ratio_all_auction_window_stays_zero() -> None:
@@ -71,7 +84,9 @@ def test_reaggregate_ratio_one_sided_book_is_not_a_zero_sentinel() -> None:
     # it must be eligible as the representative.
     rows = [_qr(0, 5, 5), _qr(60_000, 0, 9), _qr(120_000, 0, 0)]
     out = reaggregate_ratio(rows, 180_000)
-    assert out == [_qr(0, 0, 9)]
+    # All mags tie at 1.0 (degenerate one-sided / balanced), so the earliest
+    # constituent (minute 0, (5,5)) wins imb_max; bid_max=5 from that minute.
+    assert out == [_qr(0, 0, 9, bid_max=5, imb_max_bid=5, imb_max_ask=5)]
 
 
 def test_reaggregate_fill_sums_window() -> None:
@@ -85,6 +100,36 @@ def test_reaggregate_identity_at_one_minute() -> None:
     assert reaggregate_ratio(rows, 60_000) == rows
     frows = [_fs(0, 10, 1), _fs(60_000, 20, 2)]
     assert reaggregate_fill(frows, 60_000) == frows
+
+
+def test_reaggregate_ratio_propagates_max_as_window_max(tmp_path: Path) -> None:
+    """bid_max/ask_max = 구성 1m들의 max(종가의 last-in-window와 독립)."""
+    rows = [
+        _qr(0, 10, 20, bid_max=900, ask_max=100),
+        _qr(60_000, 11, 21, bid_max=50, ask_max=800),
+        _qr(120_000, 12, 22, bid_max=70, ask_max=70),  # 종가는 이 분
+    ]
+    out = reaggregate_ratio(rows, 180_000)
+    assert len(out) == 1
+    r = out[0]
+    assert (r.bid_total, r.ask_total) == (12, 22)  # last-in-window 불변
+    assert r.bid_max == 900 and r.ask_max == 800   # 구성 1m max
+
+
+def test_reaggregate_ratio_imb_max_from_strongest_constituent(tmp_path: Path) -> None:
+    """imb_max = 구성 1m 중 mag(imb_max_bid, imb_max_ask)가 최대인 1m의 쌍.
+    mag(b,a) = max(a,b)/min(a,b) (b>0 && a>0), degenerate=1."""
+    rows = [
+        # 1m#0: imb 쌍 (100, 2) → mag = 50
+        _qr(0, 10, 20, imb_max_bid=100, imb_max_ask=2),
+        # 1m#1: imb 쌍 (10, 300) → mag = 30 (더 약함)
+        _qr(60_000, 11, 21, imb_max_bid=10, imb_max_ask=300),
+        # 1m#2: degenerate (5, 0) → mag = 1 (최약)
+        _qr(120_000, 12, 22, imb_max_bid=5, imb_max_ask=0),
+    ]
+    out = reaggregate_ratio(rows, 180_000)
+    assert len(out) == 1
+    assert (out[0].imb_max_bid, out[0].imb_max_ask) == (100, 2)  # mag 최대 1m
 
 
 # ── Equivalence vs the real table queries (the cache's correctness contract) ──

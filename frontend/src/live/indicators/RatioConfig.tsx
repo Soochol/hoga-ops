@@ -14,7 +14,7 @@ export default function RatioConfig() {
       </p>
       <SignColorLegend up="매수 우위" down="매도 우위" />
       <div className="border-b border-border my-3" />
-      <IndicatorPrefRows toggleKeys={['ratioOutlierFilterEnabled']} />
+      <IndicatorPrefRows toggleKeys={['ratioOutlierFilterEnabled', 'ratioIntraMax']} />
     </div>
   );
 }

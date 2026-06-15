@@ -52,6 +52,29 @@ export const CHART_TOGGLES = [
     default: true,
     category: 'indicator-modal',
   },
+  {
+    key: 'quoteTotalsIntraMax',
+    label: '분봉 내 최댓값 기준',
+    description: '그 분의 마지막값(종가) 대신 분봉 내 최대 총잔량을 표시합니다. (캔들 고가와 같은 직관)',
+    default: false,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'ratioIntraMax',
+    label: '분봉 내 최댓값 기준',
+    description:
+      '그 분 중 |호가비|가 가장 컸던 순간값을 표시합니다(부호 유지). 극단값 필터가 켜져 있으면 스파이크는 0으로 가려질 수 있습니다 — 날것을 보려면 필터를 끄세요.',
+    default: false,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'askPeakIntraMax',
+    label: '분봉 내 최댓값 기준',
+    description:
+      '분봉 종가 호가창 대신 분봉 내 순간 최대 매도벽까지 포함해 당일 최대벽을 찾습니다(과거 거래일에만 효과 — 오늘은 항상 실시간 최댓값).',
+    default: false,
+    category: 'indicator-modal',
+  },
 ] as const;
 
 export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];

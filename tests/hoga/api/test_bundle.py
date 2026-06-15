@@ -745,6 +745,8 @@ def test_build_ask_peak_slice_caches_past_days(tmp_path) -> None:
     p1 = build_ask_peak_slice(eng, code="005930", date="20260610", bucket_ms=60_000,
                               source="hogaplay", cache=cache, today_kst="20260613")
     assert p1 is not None and p1.qty == 5000 and p1.date == "20260610"
+    assert p1.max_qty == 5000 and p1.max_price == 25100
+    assert p1.max_t_ms == p1.t_ms
     assert cache.has_ask_peak("005930", "20260610", "hogaplay", 60_000)
 
     # 두번째 호출: parquet_dir이 깨져도 캐시에서 반환(재스캔 안 함).
@@ -792,6 +794,35 @@ def test_build_ask_peak_slice_cache_key_is_bucket_ms_aware(tmp_path) -> None:
     assert cache.has_ask_peak("005930", "20260610", "hogaplay", 180_000)
 
 
+def test_build_ask_peak_slice_wires_intra_max(tmp_path) -> None:
+    """build_ask_peak_slice가 close 변종과 틱-max 변종(max_*)을 모두 배선한다."""
+    from unittest.mock import MagicMock
+    from hoga.api.bundle import build_ask_peak_slice
+    from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
+
+    z = tuple([0] * 10)
+    ap = tuple(25000 + 50 * i for i in range(10))
+    bp = tuple(24950 - 50 * i for i in range(10))
+    bq = tuple([100] * 10)
+    spike = Orderbook(ts_ms=90010000, seq=1, ask_p=ap, ask_q=(5000,) + (1,) * 9, ask_d=z,
+                      bid_p=bp, bid_q=bq, bid_d=z, tot_ask=5009, tot_ask_d=0, tot_bid=1000, tot_bid_d=0)
+    rep = Orderbook(ts_ms=90055000, seq=2, ask_p=ap, ask_q=(1000,) + (1,) * 9, ask_d=z,
+                    bid_p=bp, bid_q=bq, bid_d=z, tot_ask=1009, tot_ask_d=0, tot_bid=1000, tot_bid_d=0)
+    snapshots_write_parquet([spike, rep], tmp_path / "snapshots.parquet")
+    eng = MagicMock()
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.conn = duckdb.connect()
+
+    p = build_ask_peak_slice(
+        eng, code="005930", date="20260610", bucket_ms=60_000,
+        source="hogaplay", session_open_ms=90000000, session_close_ms=153000000,
+    )
+    assert p is not None
+    assert p.qty == 1000 and p.price == 25000
+    assert p.max_qty == 5000 and p.max_price == 25000
+    assert p.max_t_ms < p.t_ms
+
+
 def test_range_bundle_ask_peak_field_defaults_none() -> None:
     from hoga.api.models import AskPeak, RangeBundle
     from hoga.api.models import QuoteRatio, FillStrength, VolumeProfile
@@ -804,5 +835,8 @@ def test_range_bundle_ask_peak_field_defaults_none() -> None:
         volume_profile_by_day=[],
     )
     assert b.ask_peaks == []  # 기본 빈 리스트 — 기존 클라 무영향
-    b2 = b.model_copy(update={"ask_peaks": [AskPeak(date="20260613", price=25100, qty=5000, t_ms=1)]})
+    b2 = b.model_copy(update={"ask_peaks": [
+        AskPeak(date="20260613", price=25100, qty=5000, t_ms=1,
+                max_price=25100, max_qty=5000, max_t_ms=1)
+    ]})
     assert b2.ask_peaks[0].price == 25100 and b2.ask_peaks[0].date == "20260613"
