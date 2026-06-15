@@ -43,6 +43,7 @@ export function projectBidPoints(
   points: readonly QuoteRatioPoint[],
   axis: VirtualAxis,
   auctionWindowMask: boolean,
+  intraMax = false,
 ): LineData<Time>[] {
   const out: LineData<Time>[] = [];
   for (const p of points) {
@@ -55,7 +56,7 @@ export function projectBidPoints(
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
       continue;
     }
-    out.push({ time, value: p.bid_total });
+    out.push({ time, value: intraMax ? p.bid_max : p.bid_total });
   }
   return out;
 }
@@ -73,6 +74,7 @@ export function projectAskPoints(
   points: readonly QuoteRatioPoint[],
   axis: VirtualAxis,
   auctionWindowMask: boolean,
+  intraMax = false,
 ): LineData<Time>[] {
   const out: LineData<Time>[] = [];
   for (const p of points) {
@@ -83,13 +85,14 @@ export function projectAskPoints(
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
       continue;
     }
-    out.push({ time, value: p.ask_total });
+    out.push({ time, value: intraMax ? p.ask_max : p.ask_total });
   }
   return out;
 }
 
 export type QuoteTotalsCtx = {
   auctionMask: boolean;
+  intraMax: boolean;
   surgeEnabled: boolean;
   surgeApproachPct: number;
   surgeRearmPct: number;
@@ -112,6 +115,7 @@ const useQuoteTotalsContext = (): QuoteTotalsCtx =>
   useActivePrefs(
     useShallow((p) => ({
       auctionMask: p.auctionWindowMask,
+      intraMax: p.quoteTotalsIntraMax,
       surgeEnabled: p.surgeMarkerEnabled,
       surgeApproachPct: p.surgeApproachPct,
       surgeRearmPct: p.surgeRearmPct,
@@ -162,11 +166,19 @@ export const bidSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCt
 // this for free because its marker color is series-level, not per-point — this
 // makes 총잔량 consistent with 호가비.
 // P0 과거/당일 분리 캐시 — 틱당 풀 재투영 제거. 출력은 projectBid/projectAsk와 동일.
-const bidCachedRaw = makePastCachedProjector(projectBidPoints, (b) => b.quote_ratio.points);
-const askCachedRaw = makePastCachedProjector(projectAskPoints, (b) => b.quote_ratio.points);
-// ctx 객체에서 auctionMask(값-안정 boolean)만 내부 캐시에 전달 → Split Cache 캐시키 안정 유지.
-const bidCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => bidCachedRaw(b, a, c.auctionMask);
-const askCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => askCachedRaw(b, a, c.auctionMask);
+const bidCachedRaw = makePastCachedProjector(
+  (pts: readonly QuoteRatioPoint[], a: VirtualAxis, flags: number) =>
+    projectBidPoints(pts, a, (flags & 1) !== 0, (flags & 2) !== 0),
+  (b) => b.quote_ratio.points,
+);
+const askCachedRaw = makePastCachedProjector(
+  (pts: readonly QuoteRatioPoint[], a: VirtualAxis, flags: number) =>
+    projectAskPoints(pts, a, (flags & 1) !== 0, (flags & 2) !== 0),
+  (b) => b.quote_ratio.points,
+);
+const flagsOf = (c: QuoteTotalsCtx): number => (c.auctionMask ? 1 : 0) | (c.intraMax ? 2 : 0);
+const bidCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => bidCachedRaw(b, a, flagsOf(c));
+const askCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => askCachedRaw(b, a, flagsOf(c));
 
 export const QUOTE_TOTALS_SPEC = {
   name: 'quote-totals' as const,
