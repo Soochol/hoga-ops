@@ -3,6 +3,33 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.0.0] - 2026-06-16
+
+### Added
+- **/live 탭 8개 제한 해제**: 사용자가 필요한 만큼 Live Tab을 열 수 있고, 활성 탭만 실시간
+  데이터를 구독하는 기존 cold-swap 모델은 유지된다.
+- 열린 탭이 많아도 `+` 버튼, 탭 목록 버튼, 열린 탭 수가 항상 보이는 단일 행 탭 바를 추가했다.
+- 탭 목록 dialog에서 종목명이나 코드로 열린 탭을 검색하고 바로 전환할 수 있다.
+
+### Changed
+- 많은 탭이 열려도 탭 바는 활성 탭 주변만 렌더링하고, 목록 dialog도 검색 가능한 상위 결과만
+  렌더링해 `/live`가 대량 탭 상태에서도 멈추지 않게 했다.
+- Live Tab의 page projection과 page→tab mirror 정책을 `liveTabProjection` 모듈로 분리해
+  종목 교체, timeframe 변경, viewport 보존 규칙을 작은 단위로 검증한다.
+- 비정상적으로 큰 저장 탭 집합은 active-centered persistence window로 저장해 localStorage 한도에
+  걸려 reload 후 stale tab state로 돌아가는 위험을 줄였다.
+
+### Fixed
+- 탭 목록 검색 input의 keyboard focus outline을 복원해 키보드 사용자가 현재 focus 위치를 볼 수 있게 했다.
+- overflow popup을 검색 input을 포함하는 dialog semantics로 정리해 ARIA menu 안에 input이 들어가는
+  접근성 오류를 피했다.
+
+### Tests
+- 8개 초과 탭 생성, overflow 검색/선택/empty state, 활성 탭 scroll-into-view, 고탭수 렌더링
+  bound, persistence bound, projection/mirror ordering 회귀 테스트를 추가했다.
+- `/live`에서 11개 탭을 열고 overflow 검색과 선택, Escape 닫기, 고탭수 단일 행 레이아웃을 브라우저로
+  검증했다.
+
 ## [0.7.36.0] - 2026-06-15
 
 ### Fixed
