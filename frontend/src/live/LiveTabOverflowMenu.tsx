@@ -2,6 +2,8 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { LiveTab } from '../state/liveTabs';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 
+const MAX_RENDERED_RESULTS = 200;
+
 interface Props {
   tabs: LiveTab[];
   activeTabId: string | null;
@@ -23,6 +25,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus }: Props) {
       t.label.toLowerCase().includes(q) || t.code.toLowerCase().includes(q)
     );
   }, [query, tabs]);
+  const visible = filtered.slice(0, MAX_RENDERED_RESULTS);
 
   return (
     <div ref={rootRef} className="relative">
@@ -57,7 +60,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus }: Props) {
             style={{ background: 'var(--bg-input)', color: 'var(--fg)', border: '1px solid var(--border)' }}
           />
           <div className="mt-2 max-h-80 overflow-y-auto">
-            {filtered.map((t) => {
+            {visible.map((t) => {
               const active = t.id === activeTabId;
               return (
                 <button
@@ -79,6 +82,11 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus }: Props) {
                 </button>
               );
             })}
+            {filtered.length > visible.length && (
+              <div className="px-2 py-2 text-xs" style={{ color: 'var(--fg-dimmer)' }}>
+                {filtered.length}개 중 {visible.length}개 표시
+              </div>
+            )}
             {filtered.length === 0 && (
               <div className="px-2 py-3 text-sm" style={{ color: 'var(--fg-dimmer)' }}>일치하는 탭 없음</div>
             )}

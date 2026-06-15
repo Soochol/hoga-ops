@@ -287,6 +287,22 @@ describe('liveTabs persistence', () => {
     });
   });
 
+  it('toTabsSnapshot persists a bounded active-centered window for pathological tab counts', () => {
+    const tabs = Array.from({ length: 1005 }, (_, index) => ({
+      id: `tab-${index}`,
+      code: String(100000 + index),
+      label: `종목 ${index + 1}`,
+      timeframe: '1m' as const,
+      historicalFromDate: null,
+      viewport: null,
+    }));
+    const snap = toTabsSnapshot({ tabs, activeTabId: 'tab-1004' });
+    expect(snap.tabs).toHaveLength(1000);
+    expect(snap.tabs[0].code).toBe('100005');
+    expect(snap.tabs[999].code).toBe('101004');
+    expect(snap.activeIndex).toBe(999);
+  });
+
   it('round-trips a saved viewport through save → load', () => {
     localStorage.setItem('live.tabs.v1', JSON.stringify({
       version: 1, activeIndex: 0,

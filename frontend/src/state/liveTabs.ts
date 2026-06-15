@@ -84,6 +84,7 @@ export function applyTabToPage(tab: LiveTab | null): void {
 }
 
 const STORAGE_KEY = 'live.tabs.v1';
+const MAX_PERSISTED_TABS = 1000;
 
 type TabSnapshot = {
   code: string;
@@ -112,10 +113,18 @@ function isViewport(v: unknown): v is TabViewport {
 
 export function toTabsSnapshot(state: Pick<TabsStore, 'tabs' | 'activeTabId'>): TabsSnapshot {
   const i = state.tabs.findIndex((t) => t.id === state.activeTabId);
+  const activeIndex = i < 0 ? 0 : i;
+  const start = state.tabs.length <= MAX_PERSISTED_TABS
+    ? 0
+    : Math.min(
+        Math.max(0, activeIndex - Math.floor(MAX_PERSISTED_TABS / 2)),
+        state.tabs.length - MAX_PERSISTED_TABS,
+      );
+  const tabs = state.tabs.slice(start, start + MAX_PERSISTED_TABS);
   return {
     version: 1,
-    activeIndex: i < 0 ? 0 : i,
-    tabs: state.tabs.map((t) => ({
+    activeIndex: Math.max(0, activeIndex - start),
+    tabs: tabs.map((t) => ({
       code: t.code, timeframe: t.timeframe, historicalFromDate: t.historicalFromDate,
       label: t.label, viewport: t.viewport,
     })),

@@ -133,6 +133,25 @@ it('keeps fixed actions outside the scrollable tablist', () => {
   expect(tablist).not.toContainElement(tabCount);
 });
 
+it('bounds tab strip rendering while keeping the active tab visible', () => {
+  const manyTabs = Array.from({ length: 80 }, (_, index): LiveTab => ({
+    id: `tab-${index}`,
+    code: String(100000 + index),
+    label: `종목 ${index + 1}`,
+    timeframe: '1m',
+    historicalFromDate: null,
+    viewport: null,
+  }));
+  setup({ tabs: manyTabs, activeTabId: 'tab-70' });
+
+  const tablist = screen.getByRole('tablist');
+  expect(within(tablist).getAllByRole('tab')).toHaveLength(24);
+  expect(within(tablist).getByText('종목 71')).toBeInTheDocument();
+  expect(within(tablist).queryByText('종목 1')).toBeNull();
+  expect(screen.getByText('80 open')).toBeInTheDocument();
+});
+
+
 it('drag-and-drop reorders via onReorder(from, to)', () => {
   const p = setup();
   const elA = screen.getByText('삼성전자').closest('[data-tab-id]')!;

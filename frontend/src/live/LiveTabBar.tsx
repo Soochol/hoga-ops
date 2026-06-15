@@ -2,6 +2,8 @@ import { useEffect, useRef, type CSSProperties } from 'react';
 import type { LiveTab } from '../state/liveTabs';
 import { LiveTabOverflowMenu } from './LiveTabOverflowMenu';
 
+const MAX_RENDERED_TABS = 24;
+
 interface Props {
   tabs: LiveTab[];
   activeTabId: string | null;
@@ -22,6 +24,14 @@ function statusDotStyle(active: boolean, loading: boolean): CSSProperties {
 
 export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose, onReorder, onNewTab }: Props) {
   const activeElRef = useRef<HTMLDivElement | null>(null);
+  const activeIdx = Math.max(0, tabs.findIndex((t) => t.id === activeTabId));
+  const windowStart = tabs.length <= MAX_RENDERED_TABS
+    ? 0
+    : Math.min(
+        Math.max(0, activeIdx - Math.floor(MAX_RENDERED_TABS / 2)),
+        tabs.length - MAX_RENDERED_TABS,
+      );
+  const visibleTabs = tabs.slice(windowStart, windowStart + MAX_RENDERED_TABS);
 
   useEffect(() => {
     if (typeof activeElRef.current?.scrollIntoView === 'function') {
@@ -32,7 +42,13 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose,
   return (
     <div className="flex items-end gap-1 h-full px-2 font-ui min-w-0" style={{ background: 'var(--bg-subtle)' }}>
       <div role="tablist" aria-label="열린 탭" className="flex items-end gap-0.5 min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
-        {tabs.map((t, idx) => {
+        {windowStart > 0 && (
+          <div aria-hidden="true" className="h-8 px-1.5 flex items-center shrink-0 text-xs" style={{ color: 'var(--fg-dimmer)' }}>
+            …
+          </div>
+        )}
+        {visibleTabs.map((t, offset) => {
+          const idx = windowStart + offset;
           const active = t.id === activeTabId;
           return (
             <div
@@ -87,6 +103,11 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose,
             </div>
           );
         })}
+        {windowStart + visibleTabs.length < tabs.length && (
+          <div aria-hidden="true" className="h-8 px-1.5 flex items-center shrink-0 text-xs" style={{ color: 'var(--fg-dimmer)' }}>
+            …
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-1 self-center shrink-0">
         <button
