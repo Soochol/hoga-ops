@@ -39,6 +39,14 @@ from hoga.tables.trades import FillStrengthRow
 ONE_MINUTE_MS = 60_000
 
 
+def _imb_mag(bid: int, ask: int) -> float:
+    """|imbalance| 단조 대용(랭킹용). max(a,b)/min(a,b) (b>0 && a>0), degenerate=1.
+    snapshots.query_bucketed_ratio의 SQL mag와 동일 정의 — 큰 mag = 큰 |imbalance|."""
+    if bid > 0 and ask > 0:
+        return max(ask, bid) / min(ask, bid)
+    return 1.0
+
+
 def reaggregate_ratio(rows_1m: list[QuoteRatioRow], bucket_ms: int) -> list[QuoteRatioRow]:
     """Re-aggregate 1-minute quote_ratio rows to ``bucket_ms`` (a multiple of 1m).
 
@@ -46,21 +54,45 @@ def reaggregate_ratio(rows_1m: list[QuoteRatioRow], bucket_ms: int) -> list[Quot
     falling back to the last row overall (which is ``(0, 0)`` for a fully-auction
     window). ``rows_1m`` must be ascending by ``bucket_intra_ms`` (the query
     contract); the output is ascending too.
+
+    Intra-Bar Max (ADR-0076): ``bid_max`` / ``ask_max`` = the max across the
+    constituent 1m rows. ``imb_max_*`` = the (bid,ask) pair of the constituent 1m
+    with the largest ``_imb_mag(imb_max_bid, imb_max_ask)`` — direct-query
+    equivalence holds because the N-minute |imbalance| extreme is the max over the
+    constituent 1-minute extremes.
     """
     last_nonzero: dict[int, tuple[int, int]] = {}
     last_any: dict[int, tuple[int, int]] = {}
+    bid_max: dict[int, int] = {}
+    ask_max: dict[int, int] = {}
+    imb_best: dict[int, tuple[float, int, int]] = {}  # (mag, imb_max_bid, imb_max_ask)
     order: list[int] = []
     for r in rows_1m:
         tb = (r.bucket_intra_ms // bucket_ms) * bucket_ms
         if tb not in last_any:
             order.append(tb)
+            bid_max[tb] = 0
+            ask_max[tb] = 0
+            imb_best[tb] = (0.0, 0, 0)
         last_any[tb] = (r.bid_total, r.ask_total)
         if r.bid_total != 0 or r.ask_total != 0:
             last_nonzero[tb] = (r.bid_total, r.ask_total)
+        if r.bid_max > bid_max[tb]:
+            bid_max[tb] = r.bid_max
+        if r.ask_max > ask_max[tb]:
+            ask_max[tb] = r.ask_max
+        mag = _imb_mag(r.imb_max_bid, r.imb_max_ask)
+        if mag > imb_best[tb][0]:
+            imb_best[tb] = (mag, r.imb_max_bid, r.imb_max_ask)
     out: list[QuoteRatioRow] = []
     for tb in order:
         bid, ask = last_nonzero.get(tb, last_any[tb])
-        out.append(QuoteRatioRow(bucket_intra_ms=tb, bid_total=bid, ask_total=ask))
+        _, imb_b, imb_a = imb_best[tb]
+        out.append(QuoteRatioRow(
+            bucket_intra_ms=tb, bid_total=bid, ask_total=ask,
+            bid_max=bid_max[tb], ask_max=ask_max[tb],
+            imb_max_bid=imb_b, imb_max_ask=imb_a,
+        ))
     return out
 
 

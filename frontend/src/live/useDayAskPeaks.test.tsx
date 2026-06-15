@@ -15,8 +15,10 @@ const byDate = (peaks: readonly AskPeak[]) => Object.fromEntries(peaks.map((p) =
 describe('useDayAskPeaks', () => {
   it('과거일 seed는 그대로 통과, 오늘 항목만 live.ob로 ratchet', () => {
     const seeds: AskPeak[] = [
-      { date: '20260611', price: 297000, qty: 32621, t_ms: 1 },
-      { date: '20260613', price: 25100, qty: 5000, t_ms: 2 },
+      { date: '20260611', price: 297000, qty: 32621, t_ms: 1,
+        max_price: 300000, max_qty: 40000, max_t_ms: 11 },
+      { date: '20260613', price: 25100, qty: 5000, t_ms: 2,
+        max_price: 25100, max_qty: 5000, max_t_ms: 2 },
     ];
     const { result, rerender } = renderHook(
       ({ ob }: { ob: ObSnapshot[] }) => useDayAskPeaks(ob, seeds, '20260613', '005930'),
@@ -31,10 +33,14 @@ describe('useDayAskPeaks', () => {
     expect(m['20260611'].qty).toBe(32621); // 과거일 불변
     expect(m['20260613'].qty).toBe(9000); // 오늘 ratchet 전진
     expect(m['20260613'].date).toBe('20260613');
+    expect(m['20260611'].max_qty).toBe(40000); // 과거일 seed의 max_* 그대로 통과
   });
 
   it('오늘 seed 없어도 live.ob 신기록이면 오늘 항목 생성', () => {
-    const seeds: AskPeak[] = [{ date: '20260611', price: 297000, qty: 32621, t_ms: 1 }];
+    const seeds: AskPeak[] = [
+      { date: '20260611', price: 297000, qty: 32621, t_ms: 1,
+        max_price: 300000, max_qty: 40000, max_t_ms: 11 },
+    ];
     const { result, rerender } = renderHook(
       ({ ob }: { ob: ObSnapshot[] }) => useDayAskPeaks(ob, seeds, '20260613', '005930'),
       { initialProps: { ob: [] as ObSnapshot[] } },
@@ -42,5 +48,22 @@ describe('useDayAskPeaks', () => {
     expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
     rerender({ ob: [deep(Date.now(), 7000)] });
     expect(result.current.find((p) => p.date === '20260613')?.qty).toBe(7000);
+  });
+
+  it('오늘 entry는 close triple과 max triple이 동일(ratchet 동일값 — 토글 무효)', () => {
+    const seeds: AskPeak[] = [
+      { date: '20260613', price: 25100, qty: 5000, t_ms: 2,
+        max_price: 25100, max_qty: 5000, max_t_ms: 2 },
+    ];
+    const { result, rerender } = renderHook(
+      ({ ob }: { ob: ObSnapshot[] }) => useDayAskPeaks(ob, seeds, '20260613', '005930'),
+      { initialProps: { ob: [] as ObSnapshot[] } },
+    );
+    rerender({ ob: [deep(Date.now(), 9000, 26500)] });
+    const today = byDate(result.current)['20260613'];
+    expect(today.qty).toBe(9000);
+    expect(today.max_qty).toBe(today.qty);
+    expect(today.max_price).toBe(today.price);
+    expect(today.max_t_ms).toBe(today.t_ms);
   });
 });

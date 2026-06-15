@@ -301,11 +301,20 @@ class QuoteRatioRow:
     the conversion needs the Stock-Date, which this table-level query does not
     take. ``ask_total`` / ``bid_total`` are the SUM of the 10 ask_q / bid_q
     level columns at the last snapshot in the bucket.
+
+    Intra-Bar Max 필드(ADR-0076): ``bid_max`` / ``ask_max`` = 버킷 내 연속거래
+    스냅샷의 bid_total / ask_total 독립 최댓값. ``imb_max_bid`` / ``imb_max_ask``
+    = 버킷 내 |imbalance|(= GREATEST/LEAST ratio 단조 대용)가 가장 컸던 연속거래
+    스냅샷의 (bid_total, ask_total) 쌍. 동시호가/완전-auction 버킷은 4필드 모두 0.
     """
 
     bucket_intra_ms: int
     bid_total: int
     ask_total: int
+    bid_max: int
+    ask_max: int
+    imb_max_bid: int
+    imb_max_ask: int
 
 
 @dataclass(frozen=True)
@@ -315,10 +324,17 @@ class AskPeakRow:
     ``intra_ms``는 LINEAR ms-from-midnight(NOT raw HHMMSSmmm, NOT unix ms) —
     호출자가 ``ms_from_midnight_to_unix_ms(date, intra_ms)``로 unix 변환.
     QuoteRatioRow.bucket_intra_ms와 동일 규약.
+
+    ``price``/``qty``/``intra_ms`` = 버킷 대표(마지막 연속거래 스냅샷)의
+    당일 매도벽 최댓값(#96 close 변종). ``max_*`` = 버킷 대표를 거치지 않고
+    연속거래 스냅샷 전체에서 찾은 단일 매도단계 당일 max(Intra-Bar Max, ADR-0076).
     """
     price: int
     qty: int
     intra_ms: int
+    max_price: int
+    max_qty: int
+    max_intra_ms: int
 
 
 def query_bucketed_ratio(
@@ -376,6 +392,13 @@ def query_bucketed_ratio(
         if row is not None and row[0] is not None:
             last_continuous_ms = int(row[0])
     if last_continuous_ms is None:
+        # No continuous-trading book at/before the session close (no session bound,
+        # OR a degenerate dataset with no deep book). Either way fall back to the
+        # legacy constant-TRUE last-in-bucket path: ORDER BY (TRUE) DESC, ts_ms DESC
+        # == plain last-in-bucket (ADR-0062). Production continuous books always
+        # carry deep levels (4..10 > 0), so last_continuous_ms is always set on real
+        # data and this branch fires only on degenerate fixtures — restoring TRUE is
+        # safe and matches the documented legacy fallback.
         pre_auction_pred = "TRUE"
     else:
         pre_auction_pred = f"({intra_ms_expr} <= {last_continuous_ms})"
@@ -390,7 +413,33 @@ def query_bucketed_ratio(
                  ROW_NUMBER() OVER (
                    PARTITION BY ({intra_ms_expr} // {bucket_ms})
                    ORDER BY ({pre_auction_pred}) DESC, ts_ms DESC
-                 ) AS rn
+                 ) AS rn,
+                 -- Intra-Bar Max (ADR-0076): is_pre 게이트로 동시호가 스냅샷 배제.
+                 MAX(CASE WHEN ({pre_auction_pred}) THEN ({_BID_Q_SUM}) ELSE 0 END) OVER (
+                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
+                 ) AS bid_max,
+                 MAX(CASE WHEN ({pre_auction_pred}) THEN ({_ASK_Q_SUM}) ELSE 0 END) OVER (
+                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
+                 ) AS ask_max,
+                 -- |imbalance| 최대 스냅샷의 (bid,ask) 쌍 — GREATEST/LEAST ratio는
+                 -- |imbalance|+1 의 단조 대용. degenerate(한쪽 0)·동시호가는 0으로
+                 -- 밀려 후순위. 동률은 가장 이른 ts_ms.
+                 FIRST_VALUE(CASE WHEN ({pre_auction_pred}) THEN ({_BID_Q_SUM}) ELSE 0 END) OVER (
+                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
+                   ORDER BY (CASE WHEN ({pre_auction_pred}) AND ({_BID_Q_SUM}) > 0 AND ({_ASK_Q_SUM}) > 0
+                               THEN GREATEST(({_ASK_Q_SUM}), ({_BID_Q_SUM})) * 1.0
+                                    / LEAST(({_ASK_Q_SUM}), ({_BID_Q_SUM}))
+                               ELSE 0 END) DESC, ts_ms ASC
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                 ) AS imb_max_bid,
+                 FIRST_VALUE(CASE WHEN ({pre_auction_pred}) THEN ({_ASK_Q_SUM}) ELSE 0 END) OVER (
+                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
+                   ORDER BY (CASE WHEN ({pre_auction_pred}) AND ({_BID_Q_SUM}) > 0 AND ({_ASK_Q_SUM}) > 0
+                               THEN GREATEST(({_ASK_Q_SUM}), ({_BID_Q_SUM})) * 1.0
+                                    / LEAST(({_ASK_Q_SUM}), ({_BID_Q_SUM}))
+                               ELSE 0 END) DESC, ts_ms ASC
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                 ) AS imb_max_ask
           FROM read_parquet(?)
         )
         -- A fully-auction bucket (rn=1 row is NOT pre-auction = it had no
@@ -399,16 +448,25 @@ def query_bucketed_ratio(
         -- never enters the 호가비·총잔량 calculation regardless of the display
         -- Auction Mask toggle (ADR-0062). Straddle buckets keep their last
         -- continuous representative; intraday VI sits before the threshold
-        -- (is_pre TRUE) and is retained.
+        -- (is_pre TRUE) and is retained. Intra-Bar Max fields are likewise zeroed
+        -- on a fully-auction bucket so bid_max >= bid_total holds at the (0,0) sentinel.
         SELECT bucket * {bucket_ms},
                CASE WHEN is_pre THEN bid_total ELSE 0 END,
-               CASE WHEN is_pre THEN ask_total ELSE 0 END
+               CASE WHEN is_pre THEN ask_total ELSE 0 END,
+               CASE WHEN is_pre THEN bid_max ELSE 0 END,
+               CASE WHEN is_pre THEN ask_max ELSE 0 END,
+               CASE WHEN is_pre THEN imb_max_bid ELSE 0 END,
+               CASE WHEN is_pre THEN imb_max_ask ELSE 0 END
         FROM bucketed WHERE rn = 1 ORDER BY bucket
         """,
         [str(path)],
     ).fetchall()
     return [
-        QuoteRatioRow(bucket_intra_ms=int(r[0]), bid_total=int(r[1]), ask_total=int(r[2]))
+        QuoteRatioRow(
+            bucket_intra_ms=int(r[0]), bid_total=int(r[1]), ask_total=int(r[2]),
+            bid_max=int(r[3]), ask_max=int(r[4]),
+            imb_max_bid=int(r[5]), imb_max_ask=int(r[6]),
+        )
         for r in rows
     ]
 
@@ -499,11 +557,13 @@ def query_day_ask_peak(
     where = " AND ".join(bounds)
     # 버킷별 대표 = 마지막 연속거래 스냅샷(rn=1 by ts_ms DESC). 연속거래행으로 사전 필터한 뒤
     # 버킷팅하므로 완전-동시호가 버킷은 행이 없어 자연 탈락(총잔량의 (0,0) 센티넬 불필요).
-    union = " UNION ALL ".join(
-        f"SELECT ask_p{i} AS price, ask_q{i} AS qty, {intra} AS intra_ms "
-        f"FROM rep WHERE ask_q{i} > 0"
-        for i in range(1, ORDERBOOK_LEVELS + 1)
-    )
+    def level_union(src: str) -> str:
+        return " UNION ALL ".join(
+            f"SELECT ask_p{i} AS price, ask_q{i} AS qty, {intra} AS intra_ms "
+            f"FROM {src} WHERE ask_q{i} > 0"
+            for i in range(1, ORDERBOOK_LEVELS + 1)
+        )
+
     row = con.execute(
         f"""
         WITH cont AS (
@@ -515,11 +575,22 @@ def query_day_ask_peak(
           FROM read_parquet(?) WHERE {where}
         ),
         rep AS (SELECT * FROM cont WHERE rn = 1)
-        SELECT price, qty, intra_ms FROM ({union})
+        SELECT price, qty, intra_ms FROM ({level_union("rep")})
         ORDER BY qty DESC, intra_ms ASC LIMIT 1
         """,
         [str(path)],
     ).fetchone()
     if row is None:
         return None
-    return AskPeakRow(price=int(row[0]), qty=int(row[1]), intra_ms=int(row[2]))
+    max_row = con.execute(
+        f"""
+        WITH src AS (SELECT * FROM read_parquet(?) WHERE {where})
+        SELECT price, qty, intra_ms FROM ({level_union("src")})
+        ORDER BY qty DESC, intra_ms ASC LIMIT 1
+        """,
+        [str(path)],
+    ).fetchone()
+    return AskPeakRow(
+        price=int(row[0]), qty=int(row[1]), intra_ms=int(row[2]),
+        max_price=int(max_row[0]), max_qty=int(max_row[1]), max_intra_ms=int(max_row[2]),
+    )

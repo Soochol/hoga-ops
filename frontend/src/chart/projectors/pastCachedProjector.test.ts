@@ -11,19 +11,29 @@ const DAY = 24 * 60 * 60 * 1000;
 const SESSION = 23_400_000; // 6.5h
 const BASE = 1_779_062_400_000;
 
-function makeAxisAndBundle(nDays: number, extraTodayPoints: { t: number; bid_total: number; ask_total: number }[] = []) {
+type QRSeed = {
+  t: number;
+  bid_total: number;
+  ask_total: number;
+  bid_max: number;
+  ask_max: number;
+  imb_max_bid: number;
+  imb_max_ask: number;
+};
+
+function makeAxisAndBundle(nDays: number, extraTodayPoints: QRSeed[] = []) {
   const axisSegs = [];
   const snakeSegs = [];
-  const points: { t: number; bid_total: number; ask_total: number }[] = [];
+  const points: QRSeed[] = [];
   for (let d = 0; d < nDays; d++) {
     const open = BASE + d * DAY;
     const close = open + SESSION;
     axisSegs.push({ date: `d${d}`, sessionOpenMs: open, sessionCloseMs: close });
     snakeSegs.push({ date: `d${d}`, session_open_ms: open, session_close_ms: close, source: 'kis_live' as const });
-    points.push({ t: open, bid_total: 100, ask_total: 100 });
-    points.push({ t: open + 3_600_000, bid_total: 100, ask_total: 200 }); // sell-heavy
-    points.push({ t: open + 9000 * 1000, bid_total: 5000, ask_total: 50 }); // 극단값(outlier clamp 대상)
-    points.push({ t: close - 5 * 60_000, bid_total: 100, ask_total: 150 }); // 동시호가창 (mask 대상)
+    points.push({ t: open, bid_total: 100, ask_total: 100, bid_max: 120, ask_max: 130, imb_max_bid: 40, imb_max_ask: 160 });
+    points.push({ t: open + 3_600_000, bid_total: 100, ask_total: 200, bid_max: 150, ask_max: 260, imb_max_bid: 30, imb_max_ask: 300 }); // sell-heavy
+    points.push({ t: open + 9000 * 1000, bid_total: 5000, ask_total: 50, bid_max: 5200, ask_max: 90, imb_max_bid: 6000, imb_max_ask: 20 }); // 극단값(outlier clamp 대상)
+    points.push({ t: close - 5 * 60_000, bid_total: 100, ask_total: 150, bid_max: 110, ask_max: 170, imb_max_bid: 50, imb_max_ask: 220 }); // 동시호가창 (mask 대상)
   }
   const lastOpen = BASE + (nDays - 1) * DAY;
   for (const p of extraTodayPoints) points.push({ ...p, t: lastOpen + p.t });
@@ -56,7 +66,15 @@ describe('makePastCachedProjector — 과거/당일 분리 캐시가 풀 투영�
     const first = makeAxisAndBundle(3);
     cached(first.bundle, first.axis, CTX_MASKED); // 캐시 워밍
     // 같은 axis/ctx, 당일에 새 버킷 1개 추가된 새 번들
-    const tick = makeAxisAndBundle(3, [{ t: 2 * 3_600_000, bid_total: 100, ask_total: 300 }]);
+    const tick = makeAxisAndBundle(3, [{
+      t: 2 * 3_600_000,
+      bid_total: 100,
+      ask_total: 300,
+      bid_max: 100,
+      ask_max: 300,
+      imb_max_bid: 100,
+      imb_max_ask: 300,
+    }]);
     expect(cached(tick.bundle, first.axis, CTX_MASKED)).toEqual(
       projectRatio(tick.bundle, first.axis, CTX_MASKED),
     );
@@ -120,8 +138,70 @@ describe('makePastCachedProjector — 총잔량(bid/ask)·체결강도 히스토
     const cached = makePastCachedProjector(projectBuyPoints, getFS);
     const first = makeAxisAndBundle(3);
     cached(first.bundle, first.axis, MASK);
-    const tick = makeAxisAndBundle(3, [{ t: 2 * 3_600_000, bid_total: 640, ask_total: 480 }]);
+    const tick = makeAxisAndBundle(3, [{
+      t: 2 * 3_600_000,
+      bid_total: 640,
+      ask_total: 480,
+      bid_max: 640,
+      ask_max: 480,
+      imb_max_bid: 640,
+      imb_max_ask: 480,
+    }]);
     expect(cached(tick.bundle, first.axis, MASK)).toEqual(projectBuy(tick.bundle, first.axis, MASK));
+  });
+});
+
+describe('Split Cache 등가 — Intra-Bar Max 필드 포함, intraMax ON/OFF 양쪽 (P5 회귀)', () => {
+  const getQR = (b: any) => b.quote_ratio.points;
+  const bidProj = (im: boolean) => (pts: any, ax: any, mask: boolean) => projectBidPoints(pts, ax, mask, im);
+  const askProj = (im: boolean) => (pts: any, ax: any, mask: boolean) => projectAskPoints(pts, ax, mask, im);
+  const CTX_RATIO_OFF: RatioPaneContext = { auctionWindowMask: true, outlierFilterEnabled: true, outlierThreshold: 100, intraMax: false };
+  const CTX_RATIO_ON: RatioPaneContext = { auctionWindowMask: true, outlierFilterEnabled: true, outlierThreshold: 100, intraMax: true };
+
+  it.each([false, true])('projectBid 분리-캐시 == 풀 (intraMax=%s)', (im) => {
+    const { axis, bundle } = makeAxisAndBundle(3);
+    const cached = makePastCachedProjector(bidProj(im), getQR);
+    expect(cached(bundle, axis, true)).toEqual(bidProj(im)(getQR(bundle), axis, true));
+  });
+
+  it.each([false, true])('projectAsk 분리-캐시 == 풀 (intraMax=%s)', (im) => {
+    const { axis, bundle } = makeAxisAndBundle(3);
+    const cached = makePastCachedProjector(askProj(im), getQR);
+    expect(cached(bundle, axis, true)).toEqual(askProj(im)(getQR(bundle), axis, true));
+  });
+
+  it('projectRatio 분리-캐시 == 풀, mask+outlier ON (intraMax OFF=종가)', () => {
+    const { axis, bundle } = makeAxisAndBundle(3);
+    const cached = makePastCachedProjector(projectRatioPoints, getQR);
+    expect(cached(bundle, axis, CTX_RATIO_OFF)).toEqual(projectRatio(bundle, axis, CTX_RATIO_OFF));
+  });
+
+  it('projectRatio 분리-캐시 == 풀, mask+outlier ON (intraMax ON=imb_max)', () => {
+    const { axis, bundle } = makeAxisAndBundle(3);
+    const cached = makePastCachedProjector(projectRatioPoints, getQR);
+    expect(cached(bundle, axis, CTX_RATIO_ON)).toEqual(projectRatio(bundle, axis, CTX_RATIO_ON));
+  });
+
+  it('intraMax ON 투영 != OFF 투영', () => {
+    const { axis, bundle } = makeAxisAndBundle(3);
+    const pts = getQR(bundle);
+    expect(projectBidPoints(pts, axis, true, true)).not.toEqual(projectBidPoints(pts, axis, true, false));
+  });
+
+  it('틱 후에도 ON 경로 신선 — 스테일 캐시 아님', () => {
+    const cached = makePastCachedProjector(askProj(true), getQR);
+    const first = makeAxisAndBundle(3);
+    cached(first.bundle, first.axis, true);
+    const tick = makeAxisAndBundle(3, [{
+      t: 2 * 3_600_000,
+      bid_total: 100,
+      ask_total: 300,
+      bid_max: 130,
+      ask_max: 380,
+      imb_max_bid: 40,
+      imb_max_ask: 420,
+    }]);
+    expect(cached(tick.bundle, first.axis, true)).toEqual(askProj(true)(getQR(tick.bundle), first.axis, true));
   });
 });
 

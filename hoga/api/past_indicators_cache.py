@@ -41,7 +41,7 @@ _log = logging.getLogger(__name__)
 
 # Bump when the bucketing/representative semantics of the underlying table
 # queries change, so stale 1m caches are ignored rather than served wrong.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 Kind = Literal["ratio", "fill"]
 
@@ -70,18 +70,26 @@ class PastIndicatorsCache:
         hit = self._mem_ratio.get(key)
         if hit is not None:
             return hit
-        triples = self._read(code, date, source, "ratio")
-        if triples is None:
+        tuples = self._read(code, date, source, "ratio")
+        if tuples is None:
             return None
         rows = [
-            QuoteRatioRow(bucket_intra_ms=t[0], bid_total=t[1], ask_total=t[2]) for t in triples
+            QuoteRatioRow(
+                bucket_intra_ms=t[0], bid_total=t[1], ask_total=t[2],
+                bid_max=t[3], ask_max=t[4], imb_max_bid=t[5], imb_max_ask=t[6],
+            )
+            for t in tuples
         ]
         self._mem_ratio[key] = rows
         return rows
 
     def store_ratio(self, code: str, date: str, source: str, rows: list[QuoteRatioRow]) -> None:
-        triples = [[r.bucket_intra_ms, r.bid_total, r.ask_total] for r in rows]
-        self._write(code, date, source, "ratio", triples)
+        tuples = [
+            [r.bucket_intra_ms, r.bid_total, r.ask_total,
+             r.bid_max, r.ask_max, r.imb_max_bid, r.imb_max_ask]
+            for r in rows
+        ]
+        self._write(code, date, source, "ratio", tuples)
         self._mem_ratio[(code, date, source)] = rows
 
     # ── fill (체결강도) ────────────────────────────────────────────────────────

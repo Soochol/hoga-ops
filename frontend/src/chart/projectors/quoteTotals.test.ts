@@ -157,7 +157,7 @@ describe('QUOTE_TOTALS_SPEC crosshair marker', () => {
 });
 
 describe('급증 마커 (askSurgeMarkers) — 근접 95% + 재무장 85%', () => {
-  const ctx = { auctionMask: false, surgeEnabled: true, surgeApproachPct: 95, surgeRearmPct: 85, surgeStartHHMM: 900 };
+  const ctx = { auctionMask: false, intraMax: false, surgeEnabled: true, surgeApproachPct: 95, surgeRearmPct: 85, surgeStartHHMM: 900 };
   const bundle: any = {
     quote_ratio: {
       points: [

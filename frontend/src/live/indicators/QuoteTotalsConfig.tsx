@@ -14,7 +14,7 @@ export default function QuoteTotalsConfig() {
       </p>
       <SignColorLegend up="매수 총잔량" down="매도 총잔량" />
       <div className="border-b border-border my-3" />
-      <IndicatorPrefRows toggleKeys={['surgeMarkerEnabled']} />
+      <IndicatorPrefRows toggleKeys={['surgeMarkerEnabled', 'quoteTotalsIntraMax']} />
     </div>
   );
 }

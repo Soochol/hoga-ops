@@ -255,6 +255,99 @@ def test_query_bucketed_ratio_empty_parquet_returns_no_rows(tmp_path: Path) -> N
     assert query_bucketed_ratio(con, path=out, bucket_ms=1000) == []
 
 
+def test_query_bucketed_ratio_intra_max_independent_sides(tmp_path: Path) -> None:
+    """한 버킷 내 bid 최댓값과 ask 최댓값이 서로 다른 시점이어도 각각 독립 포착
+    (캔들 고가가 시·종가와 무관하듯). 종가는 마지막 스냅샷 값으로 유지."""
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    # 모두 같은 1000ms 버킷. bid max@t1(seq1, bid=900), ask max@t2(seq2, ask=800),
+    # 종가=마지막(seq3, bid=10 ask=20).
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(1,), bid_q=(900,)),
+        _ob(ts_ms=90_000_500, seq=2, ask_q=(800,), bid_q=(1,)),
+        _ob(ts_ms=90_000_900, seq=3, ask_q=(20,), bid_q=(10,)),  # 종가
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_ratio(con, path=out, bucket_ms=1000)
+    assert len(rows) == 1
+    r = rows[0]
+    assert (r.bid_total, r.ask_total) == (10, 20)   # 종가 = 마지막 스냅샷
+    assert r.bid_max == 900                          # bid 독립 최댓값
+    assert r.ask_max == 800                          # ask 독립 최댓값
+    assert r.bid_max >= r.bid_total and r.ask_max >= r.ask_total  # 상계 invariant
+
+
+def test_query_bucketed_ratio_imb_max_picks_extreme_imbalance_snapshot(tmp_path: Path) -> None:
+    """호가비 Intra-Bar Max는 |imbalance| 최대 스냅샷의 (bid,ask) 쌍. max끼리 결합과
+    부호가 뒤집힌다(스펙 예시): A(bid100,ask2)=매수우위, B(bid10,ask300)=매도우위.
+    |imbalance| 극값 = A → imb_max_bid/ask = (100,2). (bid_max=100, ask_max=300 결합 아님.)"""
+    from hoga.tables.snapshots import query_bucketed_ratio
+    from hoga.api.timeenc import hhmmssms_to_unix_ms  # noqa: F401 (의도 명시용)
+
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(2,), bid_q=(100,)),   # A: |imb| = 100/2-1 = 49 (매수우위)
+        _ob(ts_ms=90_000_500, seq=2, ask_q=(300,), bid_q=(10,)),  # B: |imb| = 300/10-1 = 29 (매도우위)
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_ratio(con, path=out, bucket_ms=1000)
+    assert len(rows) == 1
+    r = rows[0]
+    assert (r.imb_max_bid, r.imb_max_ask) == (100, 2)  # A — 더 큰 |imbalance|
+    assert (r.bid_max, r.ask_max) == (100, 300)        # 독립 최댓값은 max끼리(부호 뒤집힘 증거)
+
+
+def test_query_bucketed_ratio_auction_bucket_zeroes_max_fields(tmp_path: Path) -> None:
+    """마감 동시호가 버킷(연속거래 책이 끝난 뒤)은 종가뿐 아니라 max 필드도 0 센티넬.
+
+    현실 데이터에선 그날 어딘가에 deep 연속거래 책이 항상 있어 last_continuous_ms가
+    설정된다(None 폴백 분기는 production 미발동). 그래서 EARLIER 버킷(15:18)에 deep
+    연속거래 스냅샷 1건을 두어 임계값을 세우고, 3-레벨 붕괴(동시호가) 스냅샷들은 그
+    이후 별도 버킷(15:20:58, intra > last_continuous_ms)에 두어 후행 auction 버킷이
+    is_pre=FALSE로 4 max 필드 + 총잔량이 모두 0이 되는지 검증한다(연속거래 버킷은 정상값)."""
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    z = tuple([0] * 10)
+    # 15:18:00 연속거래 책(레벨4..10 > 0) — last_continuous_ms를 세운다. 별도 버킷.
+    continuous = Orderbook(
+        ts_ms=151_800_000, seq=1,
+        ask_p=tuple(range(101, 111)), ask_q=(10, 20, 30, 40, 5, 6, 7, 8, 9, 1), ask_d=z,
+        bid_p=tuple(range(100, 90, -1)), bid_q=(50, 40, 30, 20, 5, 5, 5, 5, 5, 5), bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    # 15:20:58 마감 동시호가: 3-레벨 붕괴 호가창(레벨4+ = 0) 2건 한 버킷.
+    # intra(55_258_xxx) > last_continuous_ms(55_080_000) → is_pre FALSE → 전부 0.
+    collapsed1 = Orderbook(
+        ts_ms=152_058_000, seq=2,
+        ask_p=(101, 102, 103) + (0,) * 7, ask_q=(99, 98, 97) + (0,) * 7, ask_d=z,
+        bid_p=(100, 99, 98) + (0,) * 7, bid_q=(7, 7, 7) + (0,) * 7, bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    collapsed2 = Orderbook(
+        ts_ms=152_058_500, seq=3,
+        ask_p=(101, 102, 103) + (0,) * 7, ask_q=(50, 40, 30) + (0,) * 7, ask_d=z,
+        bid_p=(100, 99, 98) + (0,) * 7, bid_q=(5, 5, 5) + (0,) * 7, bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([continuous, collapsed1, collapsed2], out)
+    con = duckdb.connect()
+    # session_close_ms(15:30:00)는 deep 스냅샷 뒤이자 auction 구간을 포함.
+    rows = query_bucketed_ratio(con, path=out, bucket_ms=1000, session_close_ms=153000000)
+    assert len(rows) == 2  # 연속거래 버킷 + 마감 동시호가 버킷
+    cont_row, auction_row = rows[0], rows[1]  # bucket-ascending
+    # 연속거래 버킷(is_pre TRUE)은 정상값.
+    assert (cont_row.bid_total, cont_row.ask_total) == (170, 136)  # 50+40+30+20+5*6 / 10+20+30+40+5+6+7+8+9+1
+    assert (cont_row.bid_max, cont_row.ask_max) == (170, 136)
+    # 마감 동시호가 버킷(is_pre FALSE)은 종가 + max 필드 전부 0 센티넬.
+    assert (auction_row.bid_total, auction_row.ask_total) == (0, 0)
+    assert (auction_row.bid_max, auction_row.ask_max) == (0, 0)
+    assert (auction_row.imb_max_bid, auction_row.imb_max_ask) == (0, 0)
+
+
 # ---------------------------------------------------------------------------
 # query_bucket_representative (ADR-0062): sidebar 10호가 = indicator's structural
 # representative. The orderbook endpoint must show the same snapshot the
@@ -371,8 +464,12 @@ def test_query_day_ask_peak_basic(tmp_path) -> None:
     out = tmp_path / "snapshots.parquet"
     write_parquet(obs, out)
     peak = query_day_ask_peak(_con_for(out), path=out, bucket_ms=60_000)
-    assert peak == AskPeakRow(price=25100, qty=5000, intra_ms=peak.intra_ms)
+    assert peak == AskPeakRow(
+        price=25100, qty=5000, intra_ms=peak.intra_ms,
+        max_price=25100, max_qty=5000, max_intra_ms=peak.max_intra_ms,
+    )
     assert peak.qty == 5000 and peak.price == 25100
+    assert peak.max_qty == 5000 and peak.max_price == 25100
 
 
 def test_query_day_ask_peak_tie_earliest(tmp_path) -> None:
@@ -471,3 +568,119 @@ def test_query_day_ask_peak_bucket_representative_not_tick_max(tmp_path) -> None
     )
     # 틱 max였다면 5000. 버킷 대표라 max(1000, 2000) = 2000.
     assert peak is not None and peak.qty == 2000
+
+
+def test_query_day_ask_peak_intra_max_captures_mid_bucket_spike(tmp_path) -> None:
+    """버킷 중간에 잠깐 솟았다 빠진 매도벽: close 변종(버킷 대표=마지막 연속거래)에는
+    안 나타나지만, 틱-max 변종(max_*)은 연속거래 스냅샷 전체에서 잡아낸다."""
+    obs = [
+        _ob_ap(90010000, [5000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[25000 + 50 * i for i in range(10)]),
+        _ob_ap(90255000, [1000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[25000 + 50 * i for i in range(10)]),
+        _ob_ap(90310000, [2000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[25000 + 50 * i for i in range(10)]),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    peak = query_day_ask_peak(
+        _con_for(out), path=out, bucket_ms=180_000,
+        session_open_ms=90000000, session_close_ms=153000000,
+    )
+    assert peak is not None
+    assert peak.qty == 2000 and peak.price == 25000
+    assert peak.max_qty == 5000 and peak.max_price == 25000
+    assert peak.max_qty >= peak.qty
+
+
+def test_query_day_ask_peak_intra_max_excludes_single_price(tmp_path) -> None:
+    """틱-max도 close와 동일하게 동시호가/VI 붕괴 호가창을 배제한다."""
+    z = tuple([0] * 10)
+    collapsed = Orderbook(
+        ts_ms=152100000, seq=1,
+        ask_p=(25000, 25050, 25100) + (0,) * 7, ask_q=(99999, 1, 1) + (0,) * 7, ask_d=z,
+        bid_p=(24950, 24900, 24850) + (0,) * 7, bid_q=(1, 1, 1) + (0,) * 7, bid_d=z,
+        tot_ask=100001, tot_ask_d=0, tot_bid=3, tot_bid_d=0,
+    )
+    spike = _ob_ap(90010000, [700, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        ask_p=[25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450])
+    rep = _ob_ap(90055000, [10, 20, 300, 40, 5, 6, 7, 8, 9, 1],
+        ask_p=[25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450])
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([collapsed, spike, rep], out)
+    peak = query_day_ask_peak(
+        _con_for(out), path=out, bucket_ms=60_000,
+        session_open_ms=90000000, session_close_ms=153000000,
+    )
+    assert peak is not None
+    assert peak.qty == 300
+    assert peak.max_qty == 700
+
+
+# ---------------------------------------------------------------------------
+# P5 회귀: Intra-Bar Max 상계 불변식
+# ---------------------------------------------------------------------------
+
+
+def _imb(bid: int, ask: int) -> float:
+    """frontend/src/util/imbalance.ts quoteImbalance 미러(부호 규약 동일)."""
+    if bid <= 0 or ask <= 0:
+        return 0.0
+    return ask / bid - 1 if ask >= bid else -(bid / ask - 1)
+
+
+def test_quote_bucketed_ratio_intra_max_geq_close(tmp_path: Path) -> None:
+    """bid_max/ask_max는 각 변 독립 버킷 최댓값이므로 종가 대표값 이상이다."""
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(10, 20, 30, 40), bid_q=(900, 1, 1, 1)),
+        _ob(ts_ms=90_000_500, seq=2, ask_q=(50, 60, 70, 80), bid_q=(50, 1, 1, 1)),
+        _ob(ts_ms=90_000_900, seq=3, ask_q=(100, 110, 120, 130), bid_q=(20, 1, 1, 1)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    rows = query_bucketed_ratio(duckdb.connect(), path=out, bucket_ms=1000)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r.ask_total == 460 and r.bid_total == 23
+    assert r.ask_max >= r.ask_total
+    assert r.bid_max >= r.bid_total
+    assert r.ask_max == 460
+    assert r.bid_max == 903 and r.bid_max > r.bid_total
+
+
+def test_quote_bucketed_ratio_imbalance_magnitude_geq_close(tmp_path: Path) -> None:
+    """imb_max_*는 버킷 내 |imbalance| 최대 스냅샷 쌍이므로 종가의 |imbalance| 이상이다."""
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(10,), bid_q=(900, 1, 1, 1)),
+        _ob(ts_ms=90_000_900, seq=2, ask_q=(100, 110, 120, 130), bid_q=(20, 1, 1, 1)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    rows = query_bucketed_ratio(duckdb.connect(), path=out, bucket_ms=1000)
+    assert len(rows) == 1
+    r = rows[0]
+    close_mag = abs(_imb(r.bid_total, r.ask_total))
+    max_mag = abs(_imb(r.imb_max_bid, r.imb_max_ask))
+    assert max_mag >= close_mag
+    assert (r.imb_max_bid, r.imb_max_ask) == (903, 10)
+    assert max_mag > close_mag
+
+
+def test_day_ask_peak_max_qty_geq_close_qty(tmp_path: Path) -> None:
+    """ask-peak 틱-max 변종의 당일 max(max_qty)는 버킷 종가 대표의 당일 max(qty) 이상이다."""
+    obs = [
+        _ob_ap(90_000_000, [3000, 20, 30, 40, 5, 6, 7, 8, 9, 1]),
+        _ob_ap(90_000_500, [8000, 20, 30, 40, 5, 6, 7, 8, 9, 1]),
+        _ob_ap(90_000_900, [3000, 20, 30, 40, 5, 6, 7, 8, 9, 1]),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    peak = query_day_ask_peak(_con_for(out), path=out, bucket_ms=60_000)
+    assert peak is not None
+    assert peak.max_qty >= peak.qty
+    assert peak.qty == 3000
+    assert peak.max_qty == 8000 and peak.max_qty > peak.qty

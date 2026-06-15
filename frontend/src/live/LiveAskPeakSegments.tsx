@@ -5,6 +5,7 @@ import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useLivePageStore } from '../state/livePage';
+import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
 import {
   AskPeakSegmentsPrimitive,
@@ -44,6 +45,7 @@ export function buildAskPeakSegments(
   todayKst: string,
   color: string,
   lineWidth: number,
+  intraMax: boolean,
 ): AskPeakSegment[] {
   const byDate = new Map(segments.map((s) => [s.date, s]));
   const lastCandleMs = candles.length > 0 ? candles[candles.length - 1].ts_ms : null;
@@ -53,15 +55,18 @@ export function buildAskPeakSegments(
     if (!seg) continue;
     const isToday = p.date === todayKst;
     const endMs = isToday && lastCandleMs !== null ? lastCandleMs : seg.session_close_ms;
+    const peakPrice = intraMax ? p.max_price : p.price;
+    const peakQty = intraMax ? p.max_qty : p.qty;
+    const peakTMs = intraMax ? p.max_t_ms : p.t_ms;
     // peak 점은 그 시각이 속한 캔들(버킷)에 스냅 → 점이 그 캔들 위에 정확히 놓인다(1캔들 밀림 방지).
-    const peakMs = snapPeakMsToCandle(p.t_ms, candles) ?? p.t_ms;
+    const peakMs = snapPeakMsToCandle(peakTMs, candles) ?? peakTMs;
     out.push({
       time0: (axis.toVirtual(seg.session_open_ms) / 1000) as Time,
       time1: (axis.toVirtual(endMs) / 1000) as Time,
       // peak이 실제 걸린 시점(속한 캔들에 스냅) — 그 x에 점을 찍어 언제 최대벽이었는지 표시.
       peakTime: (axis.toVirtual(peakMs) / 1000) as Time,
-      price: p.price,
-      label: formatQtyCompact(p.qty),
+      price: peakPrice,
+      label: formatQtyCompact(peakQty),
       color,
       lineWidth,
       live: isToday,
@@ -89,6 +94,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
   const enabled = useLivePageStore((s) => s.askPeakEnabled);
   const color = useLivePageStore((s) => s.askPeakColor);
   const lineWidth = useLivePageStore((s) => s.askPeakLineWidth);
+  const intraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
 
   // 생성: series 핸들당 1회(LiveCurrentPriceLine과 동일 — tf·종목 전환에도 핸들 유지).
@@ -113,10 +119,10 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
     if (!prim) return;
     prim.setSegments(
       enabled
-        ? buildAskPeakSegments(dayAskPeaks, segments, candles, axis, todayKst, color, lineWidth)
+        ? buildAskPeakSegments(dayAskPeaks, segments, candles, axis, todayKst, color, lineWidth, intraMax)
         : [],
     );
-  }, [dayAskPeaks, segments, candles, axis, todayKst, color, lineWidth, enabled, series]);
+  }, [dayAskPeaks, segments, candles, axis, todayKst, color, lineWidth, enabled, intraMax, series]);
 
   return null;
 }

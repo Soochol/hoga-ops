@@ -51,6 +51,8 @@ export type RatioPaneContext = {
   auctionWindowMask: boolean;
   outlierFilterEnabled: boolean;
   outlierThreshold: number;
+  /** ratioIntraMax — 호가비 분봉 내 |불균형| 극값(부호 유지) 기준. 미지정 = 종가. */
+  intraMax?: boolean;
 };
 
 export function projectRatio(
@@ -93,7 +95,9 @@ export function projectRatioPoints(
     // needed here: quoteImbalance returns 0 for a degenerate (≤0) book
     // (util/imbalance.ts), so an excluded bucket renders flat at 0 — matching
     // the 총잔량 pane — in both the mask-ON and mask-OFF views.
-    const raw = quoteImbalance(p.bid_total, p.ask_total);
+    const raw = ctx.intraMax
+      ? quoteImbalance(p.imb_max_bid, p.imb_max_ask)
+      : quoteImbalance(p.bid_total, p.ask_total);
     // Outlier clamp (ADR-0026): mask the value to 0 when the chart-label
     // magnitude crosses the user threshold. The point stays on the time
     // axis at value=0 — outliers are scattered and have no natural break.
@@ -117,6 +121,7 @@ const useRatioContext = (): RatioPaneContext =>
       auctionWindowMask: p.auctionWindowMask,
       outlierFilterEnabled: p.ratioOutlierFilterEnabled,
       outlierThreshold: p.ratioOutlierThreshold,
+      intraMax: p.ratioIntraMax,
     })),
   );
 

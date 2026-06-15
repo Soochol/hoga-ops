@@ -44,10 +44,19 @@ export function useDayAskPeaks(
   }, [ob, todaySeed]);
 
   // 과거일 seed(그대로) + 오늘 ratchet 결과(date 부착)를 합친 per-day 리스트.
+  // 오늘 entry는 live ratchet 값 하나만 추적하므로 close triple과 max triple을 동일하게 채운다.
   return useMemo(() => {
     const out: AskPeak[] = seeds.filter((p) => p.date !== todayKst);
     if (todayPeak) {
-      out.push({ date: todayKst, price: todayPeak.price, qty: todayPeak.qty, t_ms: todayPeak.t_ms });
+      out.push({
+        date: todayKst,
+        price: todayPeak.price,
+        qty: todayPeak.qty,
+        t_ms: todayPeak.t_ms,
+        max_price: todayPeak.price,
+        max_qty: todayPeak.qty,
+        max_t_ms: todayPeak.t_ms,
+      });
     }
     return out;
   }, [seeds, todayKst, todayPeak]);

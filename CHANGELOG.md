@@ -3,6 +3,30 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.35.0] - 2026-06-15
+
+### Added
+- **/live 호가 지표에 「분봉 내 최댓값 기준」 옵션 추가**: 「지표」 모달의 총잔량, 호가비,
+  당일 매도 최대벽에서 기본 종가 대표값 대신 분봉 내부 최대값(Intra-Bar Max)을 opt-in으로
+  표시할 수 있다. 토글은 즉시 반영되는 클라이언트 렌더 스위치라 재요청이나 `mode=` 파라미터가
+  없고, 기존 Past/Today Split Cache 성능 경로를 유지한다.
+- QuoteRatio 페이로드에 `bid_max`/`ask_max`/`imb_max_bid`/`imb_max_ask`를, AskPeak에
+  `max_price`/`max_qty`/`max_t_ms`를 추가해 과거 데이터, 라이브 SSE 버킷, 캐시, 재집계 경로가
+  모두 종가와 Intra-Bar Max 값을 함께 운반한다.
+
+### Changed
+- 총잔량 급증 마커는 발사 시점을 계속 종가 기준으로 유지하되, Intra-Bar Max 표시 모드에서는
+  마커 높이가 사용자가 보는 `ask_max`/`bid_max` 라인 위에 놓인다.
+- 호가비 Intra-Bar Max도 기존 극단값 필터를 그대로 통과한다. 기본 필터 ON에서는 과도한 스파이크가
+  종가 모드와 동일하게 0으로 마스킹되고, 필터 OFF에서 raw 극값을 확인할 수 있다.
+
+### Fixed
+- main의 Raw Prune ADR과 번호가 충돌하지 않도록 Intra-Bar Max 결정 기록을 ADR-0076으로 정리했다.
+
+### Tests
+- Split Cache 등가, Surge 감지 격리, 총잔량/호가비/AskPeak 상계 불변식, QuoteRatio 7-tuple 캐시,
+  bundle wire, 프론트 렌더 스위치와 Config UI 회귀 테스트를 추가했다.
+
 ## [0.7.34.0] - 2026-06-13
 
 ### Added
