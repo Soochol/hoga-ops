@@ -1,0 +1,50 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { it, expect, vi } from 'vitest';
+import { LiveTabOverflowMenu } from './LiveTabOverflowMenu';
+import type { LiveTab } from '../state/liveTabs';
+
+const tabs: LiveTab[] = [
+  { id: 'a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null },
+  { id: 'b', code: '000660', label: 'SK하이닉스', timeframe: '1m', historicalFromDate: null, viewport: null },
+  { id: 'c', code: '035420', label: 'NAVER', timeframe: 'D', historicalFromDate: null, viewport: null },
+];
+
+function setup() {
+  const onFocus = vi.fn();
+  render(<LiveTabOverflowMenu tabs={tabs} activeTabId="b" onFocus={onFocus} />);
+  return { onFocus };
+}
+
+it('opens a list of all tabs', () => {
+  setup();
+  fireEvent.click(screen.getByLabelText('열린 탭 목록'));
+  expect(screen.getByRole('menu')).toBeInTheDocument();
+  expect(screen.getByText('삼성전자')).toBeInTheDocument();
+  expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
+  expect(screen.getByText('NAVER')).toBeInTheDocument();
+});
+
+it('filters by label and code', () => {
+  setup();
+  fireEvent.click(screen.getByLabelText('열린 탭 목록'));
+  fireEvent.change(screen.getByPlaceholderText('탭 검색'), { target: { value: '005930' } });
+  expect(screen.getByText('삼성전자')).toBeInTheDocument();
+  expect(screen.queryByText('SK하이닉스')).toBeNull();
+  fireEvent.change(screen.getByPlaceholderText('탭 검색'), { target: { value: 'nav' } });
+  expect(screen.getByText('NAVER')).toBeInTheDocument();
+  expect(screen.queryByText('삼성전자')).toBeNull();
+});
+
+it('selects a tab and closes the menu', () => {
+  const { onFocus } = setup();
+  fireEvent.click(screen.getByLabelText('열린 탭 목록'));
+  fireEvent.click(screen.getByText('NAVER'));
+  expect(onFocus).toHaveBeenCalledWith('c');
+  expect(screen.queryByRole('menu')).toBeNull();
+});
+
+it('marks the active tab', () => {
+  setup();
+  fireEvent.click(screen.getByLabelText('열린 탭 목록'));
+  expect(screen.getByLabelText('활성 탭: SK하이닉스')).toBeInTheDocument();
+});
