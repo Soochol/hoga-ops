@@ -1,5 +1,6 @@
 import { useLivePageStore } from '../../state/livePage';
 import MAStylePicker from './MAStylePicker';
+import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 
 /** 당일 매도 최대벽 상세 설정 — 선 색·두께(MAStylePicker 재활용). */
 export default function AskPeakConfig() {
@@ -19,6 +20,8 @@ export default function AskPeakConfig() {
         <span className="text-sm text-fg">선 스타일</span>
         <MAStylePicker color={color} lineWidth={lineWidth} onChange={setStyle} label="매도벽" />
       </div>
+      <div className="border-b border-border my-3" />
+      <IndicatorPrefRows toggleKeys={['askPeakIntraMax']} />
     </div>
   );
 }
