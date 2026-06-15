@@ -53,7 +53,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus }: Props) {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="탭 검색"
             data-prevent-shortcuts
-            className="w-full h-8 px-2 rounded text-sm outline-none"
+            className="w-full h-8 px-2 rounded text-sm focus-visible:outline focus-visible:outline-2"
             style={{ background: 'var(--bg-input)', color: 'var(--fg)', border: '1px solid var(--border)' }}
           />
           <div className="mt-2 max-h-80 overflow-y-auto">
