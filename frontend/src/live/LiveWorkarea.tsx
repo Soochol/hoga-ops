@@ -4,7 +4,7 @@ import { useEntryDragStore } from '../state/entryDrag';
 import { LiveChartRoot } from './LiveChartRoot';
 import { LiveEmptyState } from './LiveEmptyState';
 import { LiveSidebar } from './LiveSidebar';
-import type { AskPeak, RangeBundle } from '../api/types';
+import type { AskPeakPoint, RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TabViewport } from './viewportAnchor';
@@ -66,14 +66,14 @@ interface Props {
   /** Owned by LivePage's single useLiveSeries call. Threaded to LiveSidebar
    * so the LATEST mode reads the same SSE buffer that feeds useLiveBundle. */
   live: LiveSeriesData;
-  /** LivePage의 useDayAskPeaks 결과(거래일별) — LiveChartRoot → LiveAskPeakSegments로 전달. */
-  dayAskPeaks?: readonly AskPeak[];
+  /** Prefix-aware ask peak series — LiveChartRoot selects by viewport right edge. */
+  askPeakPoints?: readonly AskPeakPoint[];
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
 }
 
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
-const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
+const EMPTY_ASK_PEAK_POINTS: readonly AskPeakPoint[] = [];
 
 export function LiveWorkarea({
   activeCode,
@@ -85,7 +85,7 @@ export function LiveWorkarea({
   pastDataWarnings,
   restoreViewport,
   live,
-  dayAskPeaks = EMPTY_ASK_PEAKS,
+  askPeakPoints = EMPTY_ASK_PEAK_POINTS,
   todayKst = '',
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
@@ -143,7 +143,7 @@ export function LiveWorkarea({
               isExtending={isExtending}
               pastDataWarnings={pastDataWarnings}
               restoreViewport={restoreViewport}
-              dayAskPeaks={dayAskPeaks}
+              askPeakPoints={askPeakPoints}
               todayKst={todayKst}
             />
           </div>

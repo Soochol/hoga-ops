@@ -8,16 +8,27 @@ import { useLiveTabsStore } from '../state/liveTabs';
 import * as liveStatus from '../api/liveStatus';
 
 const livePageMocks = vi.hoisted(() => {
+  const liveT = Date.UTC(2026, 5, 13, 0, 1, 0); // 2026-06-13 09:01 KST
   const liveOb = [{
-    t_ms: 1,
+    t_ms: liveT,
     total_ask_qty: 100,
     total_bid_qty: 90,
-    asks: [{ price: 1000, qty: 10 }],
-    bids: [{ price: 990, qty: 9 }],
+    asks: [
+      { price: 1000, qty: 10 },
+      { price: 1010, qty: 20 },
+      { price: 1020, qty: 30 },
+      { price: 1030, qty: 40 },
+    ],
+    bids: [
+      { price: 990, qty: 9 },
+      { price: 980, qty: 8 },
+      { price: 970, qty: 7 },
+      { price: 960, qty: 6 },
+    ],
   }];
   return {
     liveOb,
-    dayAskPeakObArgs: [] as unknown[],
+    askPeakPointsArgs: [] as unknown[],
   };
 });
 
@@ -34,7 +45,10 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 // activeCode is set. Mock LiveChartRoot so the shell tests stay unit-level
 // and don't have to model lightweight-charts' full v5 series/timeScale API.
 vi.mock('./LiveChartRoot', () => ({
-  LiveChartRoot: () => null,
+  LiveChartRoot: (props: { askPeakPoints?: unknown[] }) => {
+    livePageMocks.askPeakPointsArgs.push(props.askPeakPoints ?? []);
+    return null;
+  },
 }));
 
 // LiveSidebar reads live status via useLiveSeries (EventSource), which isn't
@@ -44,13 +58,6 @@ vi.mock('../api/liveSeries', () => ({
     initial: undefined, isLoading: false, error: null,
     ob: livePageMocks.liveOb, trade: [], broker: [],
   }),
-}));
-
-vi.mock('./useDayAskPeaks', () => ({
-  useDayAskPeaks: (ob: unknown, seeds: unknown) => {
-    livePageMocks.dayAskPeakObArgs.push(ob);
-    return seeds ?? [];
-  },
 }));
 
 // LiveSidebar now calls cursor hooks (ADR-0044) — mock them so the shell
@@ -99,7 +106,7 @@ function renderWithRouter(initial = '/live') {
 describe('LivePage shell', () => {
   beforeEach(() => {
     localStorage.clear();
-    livePageMocks.dayAskPeakObArgs.length = 0;
+    livePageMocks.askPeakPointsArgs.length = 0;
     // The tabs store is a module singleton (loaded once at import). The new
     // LivePage tab-bar wiring makes the mount-seed effect read its activeTabId,
     // so reset it per-test to keep tests isolated — without this, a tab opened
@@ -174,17 +181,17 @@ describe('LivePage shell', () => {
     await waitFor(() => expect(useLivePageStore.getState().activeCode).toBe('000660'));
   });
 
-  it('passes live orderbook snapshots to ask-peak ratchet on minute timeframes', () => {
+  it('passes live orderbook snapshots to ask-peak points on minute timeframes', () => {
     useLivePageStore.setState({ candleTimeframe: '1m' });
     renderWithRouter('/live?code=005930');
-    expect(livePageMocks.dayAskPeakObArgs.at(-1)).toBe(livePageMocks.liveOb);
+    expect(livePageMocks.askPeakPointsArgs.at(-1)).toEqual([
+      { t: Date.UTC(2026, 5, 13, 0, 1, 0), price: 1030, qty: 40 },
+    ]);
   });
 
-  it('does not feed live orderbook snapshots into ask-peak ratchet on calendar timeframes', () => {
+  it('does not feed live orderbook snapshots into ask-peak points on calendar timeframes', () => {
     useLivePageStore.setState({ candleTimeframe: 'D' });
     renderWithRouter('/live?code=005930');
-    const ob = livePageMocks.dayAskPeakObArgs.at(-1);
-    expect(ob).not.toBe(livePageMocks.liveOb);
-    expect(ob).toEqual([]);
+    expect(livePageMocks.askPeakPointsArgs.at(-1)).toEqual([]);
   });
 });

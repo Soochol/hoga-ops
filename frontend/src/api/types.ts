@@ -445,7 +445,8 @@ export type InvestorNetPoint = { t_ms: number; foreign_net: number; institution_
  *  hoga/api/models.py::AskPeak 미러. date=거래일(YYYYMMDD, segment x-구간 매핑용),
  *  t_ms=unix ms(KST, peak 발생 시점).
  *  price/qty/t_ms=버킷 종가 대표의 당일 max(#96 close 변종). max_*=버킷 틱-max의 당일 max
- *  (분봉 내 최댓값 기준, Intra-Bar Max, ADR-0076). 과거일만 갈림(오늘은 ratchet 동일값). */
+ *  (분봉 내 최댓값 기준, Intra-Bar Max, ADR-0076). Legacy summary; live rendering
+ *  consumes ask_peak_points. */
 export type AskPeak = {
   date: string;
   price: number;
@@ -454,6 +455,14 @@ export type AskPeak = {
   max_price: number;
   max_qty: number;
   max_t_ms: number;
+};
+
+/** Prefix point for the running ask-peak series. Buckets are day-scoped and
+ *  bucket-aligned in unix ms. */
+export type AskPeakPoint = {
+  t: number;
+  price: number;
+  qty: number;
 };
 
 export type RangeBundle = {
@@ -472,8 +481,10 @@ export type RangeBundle = {
    *  Empty on minute timeframes (KIS provides investor data for D/W/M only).
    *  Separate array (not on Candle) so minute candles never carry null. */
   investorPoints: InvestorNetPoint[];
-  /** 거래일별 매도 최대벽 — 데이터 있는 각 거래일당 1개. 프론트가 각 항목을 그날 segment
-   *  x-구간의 수평 세그먼트로 그린다. 오늘 항목은 클라 ratchet(useDayAskPeaks)이 live.ob로 갱신.
-   *  D·W·M/무데이터 → []. */
+  /** Legacy 거래일별 매도 최대벽 — kept while the viewport prefix series
+   *  replaces the old per-day segment renderer. */
   ask_peaks: AskPeak[];
+  /** Prefix ask-peak series across the requested range. The viewport-anchored
+   *  renderer consumes this as the canonical Day Ask Peak shape. */
+  ask_peak_points?: AskPeakPoint[];
 };

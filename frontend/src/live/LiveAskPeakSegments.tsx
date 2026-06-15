@@ -1,128 +1,80 @@
-import { memo, useEffect, useRef } from 'react';
-import type { ISeriesApi, SeriesType, Time } from 'lightweight-charts';
-import type { AskPeak, Candle, RangeSegment } from '../api/types';
+import { memo, useEffect, useMemo, useRef } from 'react';
+import type { IPriceLine, ISeriesApi, PriceLineOptions, SeriesType } from 'lightweight-charts';
+import type { AskPeakPoint, RangeSegment } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useLivePageStore } from '../state/livePage';
-import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
 import {
-  AskPeakSegmentsPrimitive,
-  type AskPeakSegment,
-} from '../chart/AskPeakSegmentsPrimitive';
-
-/** peak 시각(ms)을 그 시각이 속한 캔들(버킷)의 ts_ms로 스냅. 캔들은 버킷 시작에 놓이는데
- *  (downsample_candles: ts_ms = floor(ts_ms/bucket)*bucket), peak.t_ms는 그 버킷의 마지막
- *  연속거래 스냅샷(버킷 끝 근처)이라 그대로 두면 lwc가 가상시각을 다음 캔들 쪽으로 거의 보간해
- *  점이 1캔들 옆으로 밀린다(총잔량 급증 마커는 버킷정렬 bucket_intra_ms를 써서 안 밀림 — 동일하게 맞춤).
- *  candles는 ts_ms 오름차순 → tMs 이하 마지막 캔들이 그 버킷. tMs가 첫 캔들보다 앞서면(미로드 구간)
- *  null을 내 호출부가 원시 t_ms로 폴백(primitive의 보간 폴백이 처리). */
-function snapPeakMsToCandle(tMs: number, candles: readonly Candle[]): number | null {
-  let lo = 0;
-  let hi = candles.length - 1;
-  let ans = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (candles[mid].ts_ms <= tMs) {
-      ans = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return ans >= 0 ? candles[ans].ts_ms : null;
-}
-
-/** 거래일별 매도 최대벽(dayAskPeaks)을 그날 구간의 수평 세그먼트 좌표로 변환(순수). 각 peak.date를
- *  segment(session open/close)에 매핑 → x0=open, x1=close(과거일) 또는 라이브 엣지(오늘=마지막 캔들).
- *  segment 없는 날·축 빈 경우는 건너뛴다. 시각은 axis.toVirtual(ms)/1000(가상 초, 라인과 동일 좌표). */
-export function buildAskPeakSegments(
-  peaks: readonly AskPeak[],
-  segments: readonly RangeSegment[],
-  candles: readonly Candle[],
-  axis: VirtualAxis,
-  todayKst: string,
-  color: string,
-  lineWidth: number,
-  intraMax: boolean,
-): AskPeakSegment[] {
-  const byDate = new Map(segments.map((s) => [s.date, s]));
-  const lastCandleMs = candles.length > 0 ? candles[candles.length - 1].ts_ms : null;
-  const out: AskPeakSegment[] = [];
-  for (const p of peaks) {
-    const seg = byDate.get(p.date);
-    if (!seg) continue;
-    const isToday = p.date === todayKst;
-    const endMs = isToday && lastCandleMs !== null ? lastCandleMs : seg.session_close_ms;
-    const peakPrice = intraMax ? p.max_price : p.price;
-    const peakQty = intraMax ? p.max_qty : p.qty;
-    const peakTMs = intraMax ? p.max_t_ms : p.t_ms;
-    // peak 점은 그 시각이 속한 캔들(버킷)에 스냅 → 점이 그 캔들 위에 정확히 놓인다(1캔들 밀림 방지).
-    const peakMs = snapPeakMsToCandle(peakTMs, candles) ?? peakTMs;
-    out.push({
-      time0: (axis.toVirtual(seg.session_open_ms) / 1000) as Time,
-      time1: (axis.toVirtual(endMs) / 1000) as Time,
-      // peak이 실제 걸린 시점(속한 캔들에 스냅) — 그 x에 점을 찍어 언제 최대벽이었는지 표시.
-      peakTime: (axis.toVirtual(peakMs) / 1000) as Time,
-      price: peakPrice,
-      label: formatQtyCompact(peakQty),
-      color,
-      lineWidth,
-      live: isToday,
-    });
-  }
-  return out;
-}
+  computeViewportAskPeak,
+} from './viewportAskPeak';
+import type { VisibleTimeRange } from './viewportRightEdge';
 
 type Props = {
   paneSeries: PaneSeriesMap;
   axis: VirtualAxis;
-  /** LivePage의 useDayAskPeaks 결과 — 거래일별 매도 최대벽. */
-  dayAskPeaks: readonly AskPeak[];
+  /** Prefix ask-peak series; one viewport-anchored line is selected from this. */
+  askPeakPoints: readonly AskPeakPoint[];
+  visibleRange: VisibleTimeRange | null;
   segments: readonly RangeSegment[];
-  candles: readonly Candle[];
-  /** 오늘(KST YYYYMMDD) — 이 날 세그먼트만 라이브 엣지까지 연장·점 표시. */
-  todayKst: string;
 };
 
-/** 거래일별 매도 최대벽 오버레이. candle series에 커스텀 primitive를 걸어 각 날의 수평 세그먼트를
- *  그린다(풀-너비 price line이 아니라 그날 구간만 → 여러 날 동시 표시). 색·두께·on/off는 스토어.
- *  형제: LiveCurrentPriceLine(현재가 풀-너비 점선). */
-function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles, todayKst }: Props) {
+/** Viewport-anchored day ask peak overlay. The right edge of the visible chart
+ *  picks one prefix point from that trading day; the renderer owns exactly one
+ *  native price line. */
+function LiveAskPeakSegments({ paneSeries, axis, askPeakPoints, visibleRange, segments }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useLivePageStore((s) => s.askPeakEnabled);
   const color = useLivePageStore((s) => s.askPeakColor);
   const lineWidth = useLivePageStore((s) => s.askPeakLineWidth);
-  const intraMax = useActivePrefs((s) => s.askPeakIntraMax);
-  const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
+  const lineRef = useRef<IPriceLine | null>(null);
+  const peak = useMemo(
+    () => computeViewportAskPeak(askPeakPoints, visibleRange, axis, segments),
+    [askPeakPoints, visibleRange, axis, segments],
+  );
 
-  // 생성: series 핸들당 1회(LiveCurrentPriceLine과 동일 — tf·종목 전환에도 핸들 유지).
   useEffect(() => {
     if (!series) return;
-    const prim = new AskPeakSegmentsPrimitive();
-    series.attachPrimitive(prim);
-    primRef.current = prim;
+    const line = series.createPriceLine({
+      price: peak?.price ?? 0,
+      color,
+      lineWidth,
+      lineStyle: 0,
+      lineVisible: enabled && peak != null,
+      axisLabelVisible: enabled && peak != null,
+      axisLabelColor: color,
+      title: peak ? formatQtyCompact(peak.qty) : '',
+    } as PriceLineOptions);
+    lineRef.current = line;
     return () => {
       try {
-        series.detachPrimitive(prim);
+        series.removePriceLine(line);
       } catch {
         /* chart already torn down */
       }
-      primRef.current = null;
+      lineRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [series]);
 
-  // 갱신: dayAskPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.
   useEffect(() => {
-    const prim = primRef.current;
-    if (!prim) return;
-    prim.setSegments(
-      enabled
-        ? buildAskPeakSegments(dayAskPeaks, segments, candles, axis, todayKst, color, lineWidth, intraMax)
-        : [],
-    );
-  }, [dayAskPeaks, segments, candles, axis, todayKst, color, lineWidth, enabled, intraMax, series]);
+    const line = lineRef.current;
+    if (!line) return;
+    if (!enabled || peak == null) {
+      line.applyOptions({ lineVisible: false, axisLabelVisible: false, title: '' });
+      return;
+    }
+    line.applyOptions({
+      price: peak.price,
+      color,
+      lineWidth,
+      axisLabelColor: color,
+      lineVisible: true,
+      axisLabelVisible: true,
+      title: formatQtyCompact(peak.qty),
+    });
+  }, [enabled, peak, color, lineWidth]);
 
   return null;
 }

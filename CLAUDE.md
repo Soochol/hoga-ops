@@ -16,6 +16,28 @@ Five canonical triage roles map 1:1 to label strings (`needs-triage`, `needs-inf
 
 Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+## Documentation Index
+
+- `README.md` — project overview, quickstart, and top-level doc links.
+- `CONTEXT.md` — ubiquitous language, domain distinctions, and term collision notes.
+- `DESIGN.md` — frontend visual system and `/live` layout rules.
+- `frontend/README.md` — frontend setup, commands, runtime config, and source layout.
+- `docs/feature-development-workflow.md` — standard feature development chain.
+- `docs/architecture-review-2026-05-30.md` — architecture review findings and backlog.
+- `docs/adr/` — decision records. Check relevant ADRs before changing module boundaries, wire shapes, chart behavior, capture flows, or live-data semantics.
+
+## Project Structure
+
+- `hoga/` — Python backend package: FastAPI app, capture/parsing pipeline, KIS live integration, table modules, scheduler, and CLI.
+- `tests/` — backend pytest suite.
+- `frontend/` — React + TypeScript + Vite client for the browser UI.
+- `frontend/src/live/` — `/live` workspace state, bundle assembly, viewport math, and chart wiring.
+- `frontend/src/chart/` — chart primitives, projectors, drawing, and overlay helpers.
+- `frontend/src/state/` — shared Zustand stores.
+- `frontend/src/api/` — frontend wire types and HTTP/WebSocket clients.
+- `docs/` — ADRs, specs, plans, architecture review, and workflow docs.
+- `CONTEXT.md` — domain glossary; update it when a shipped feature changes the meaning of a named concept.
+
 ### Browser automation
 
 For any browser-driven check — opening a page, clicking, inspecting DOM/console/network,
