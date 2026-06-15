@@ -16,7 +16,7 @@ import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
 import { TIMEFRAME_TO_MS, type AskPeakPoint } from '../api/types';
 import type { ObSnapshot } from './bucketHogaSeries';
-import { todayKstYyyymmdd } from './liveDateTime';
+import { regularSessionCloseMs, todayKstYyyymmdd } from './liveDateTime';
 import { buildViewportAskPeakSeries } from './viewportAskPeak';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import LiveSettingsModal from './LiveSettingsModal';
@@ -109,6 +109,7 @@ export function LivePage() {
   );
   const askPeakBucketMs = isMinuteTimeframe(timeframe) ? TIMEFRAME_TO_MS[timeframe] : 60_000;
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
+  const askPeakSessionCloseMs = live.initial?.session_close_ms ?? regularSessionCloseMs(today);
   const prefixAskPeakPoints = (chartBundle ?? bundle)?.ask_peak_points ?? EMPTY_ASK_PEAK_POINTS;
   const askPeakPoints = useMemo(
     () => buildViewportAskPeakSeries({
@@ -116,8 +117,9 @@ export function LivePage() {
       liveOrderbooks: askPeakOb,
       bucketMs: askPeakBucketMs,
       todayKst: today,
+      sessionCloseMs: askPeakSessionCloseMs,
     }),
-    [prefixAskPeakPoints, askPeakOb, askPeakBucketMs, today],
+    [prefixAskPeakPoints, askPeakOb, askPeakBucketMs, today, askPeakSessionCloseMs],
   );
 
   return (

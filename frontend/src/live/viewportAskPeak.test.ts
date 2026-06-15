@@ -78,6 +78,52 @@ describe('buildLiveAskPeakPoints', () => {
     ]);
   });
 
+  it('uses each live bucket representative instead of sub-bucket transient spikes', () => {
+    const points = buildLiveAskPeakPoints([
+      {
+        t_ms: 90_010_000,
+        total_ask_qty: 0,
+        total_bid_qty: 0,
+        asks: [{ price: 25000, qty: 5000 }, { price: 25100, qty: 20 }, { price: 25200, qty: 30 }, { price: 25300, qty: 40 }],
+        bids: [{ price: 24900, qty: 1 }, { price: 24800, qty: 1 }, { price: 24700, qty: 1 }, { price: 24600, qty: 1 }],
+      },
+      {
+        t_ms: 90_055_000,
+        total_ask_qty: 0,
+        total_bid_qty: 0,
+        asks: [{ price: 25000, qty: 10 }, { price: 25100, qty: 300 }, { price: 25200, qty: 30 }, { price: 25300, qty: 40 }],
+        bids: [{ price: 24900, qty: 1 }, { price: 24800, qty: 1 }, { price: 24700, qty: 1 }, { price: 24600, qty: 1 }],
+      },
+    ], 60_000);
+
+    expect(points).toEqual([
+      { t: 90_000_000, price: 25100, qty: 300 },
+    ]);
+  });
+
+  it('excludes live snapshots after the regular session close', () => {
+    const points = buildLiveAskPeakPoints([
+      {
+        t_ms: 90_000_000,
+        total_ask_qty: 0,
+        total_bid_qty: 0,
+        asks: [{ price: 25000, qty: 10 }, { price: 25100, qty: 20 }, { price: 25200, qty: 30 }, { price: 25300, qty: 40 }],
+        bids: [{ price: 24900, qty: 1 }, { price: 24800, qty: 1 }, { price: 24700, qty: 1 }, { price: 24600, qty: 1 }],
+      },
+      {
+        t_ms: 90_060_000,
+        total_ask_qty: 0,
+        total_bid_qty: 0,
+        asks: [{ price: 25000, qty: 9000 }, { price: 25100, qty: 20 }, { price: 25200, qty: 30 }, { price: 25300, qty: 40 }],
+        bids: [{ price: 24900, qty: 1 }, { price: 24800, qty: 1 }, { price: 24700, qty: 1 }, { price: 24600, qty: 1 }],
+      },
+    ], 60_000, null, 90_000_000);
+
+    expect(points).toEqual([
+      { t: 90_000_000, price: 25300, qty: 40 },
+    ]);
+  });
+
   it('continues from the prefix seed instead of dropping below it', () => {
     const points = buildLiveAskPeakPoints([
       {

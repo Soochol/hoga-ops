@@ -27,37 +27,40 @@ export function buildLiveAskPeakPoints(
   obs: readonly ObSnapshot[],
   bucketMs: number,
   seed: AskPeakPoint | null = null,
+  sessionCloseMs: number = Number.POSITIVE_INFINITY,
 ): AskPeakPoint[] {
   if (bucketMs <= 0) return [];
   const sorted = [...obs].sort((a, b) => a.t_ms - b.t_ms);
   const out: AskPeakPoint[] = [];
   let currentBucket: number | null = null;
+  let bucketRepresentative: ObSnapshot | null = null;
   let runningBest: { price: number; qty: number } | null = seed
     ? { price: seed.price, qty: seed.qty }
     : null;
 
-  const emit = (bucket: number): void => {
+  const emit = (bucket: number, representative: ObSnapshot | null): void => {
+    const candidate = representative ? bestAskLevel(representative) : null;
+    if (candidate !== null && (runningBest === null || candidate.qty > runningBest.qty)) {
+      runningBest = candidate;
+    }
     if (runningBest === null) return;
     out.push({ t: bucket, price: runningBest.price, qty: runningBest.qty });
   };
 
   for (const ob of sorted) {
-    if (!isContinuousBook(ob) || !isAfterRegularOpen(ob.t_ms)) continue;
+    if (ob.t_ms > sessionCloseMs || !isContinuousBook(ob) || !isAfterRegularOpen(ob.t_ms)) continue;
     const bucket = Math.floor(ob.t_ms / bucketMs) * bucketMs;
     if (currentBucket === null) {
       currentBucket = bucket;
     } else if (bucket !== currentBucket) {
-      emit(currentBucket);
+      emit(currentBucket, bucketRepresentative);
       currentBucket = bucket;
+      bucketRepresentative = null;
     }
-
-    const candidate = bestAskLevel(ob);
-    if (candidate !== null && (runningBest === null || candidate.qty > runningBest.qty)) {
-      runningBest = candidate;
-    }
+    bucketRepresentative = ob;
   }
 
-  if (currentBucket !== null) emit(currentBucket);
+  if (currentBucket !== null) emit(currentBucket, bucketRepresentative);
   return out;
 }
 
@@ -92,6 +95,7 @@ export type ViewportAskPeakSeriesInput = {
   liveOrderbooks: readonly ObSnapshot[];
   bucketMs: number;
   todayKst: string;
+  sessionCloseMs?: number;
 };
 
 export function buildViewportAskPeakSeries({
@@ -99,6 +103,7 @@ export function buildViewportAskPeakSeries({
   liveOrderbooks,
   bucketMs,
   todayKst,
+  sessionCloseMs = regularSessionCloseMs(todayKst),
 }: ViewportAskPeakSeriesInput): AskPeakPoint[] {
   const firstLiveMs = liveOrderbooks.reduce<number | null>(
     (min, ob) => (min === null || ob.t_ms < min ? ob.t_ms : min),
@@ -114,7 +119,7 @@ export function buildViewportAskPeakSeries({
   }
   return mergeAskPeakSeries(
     prefixPoints,
-    buildLiveAskPeakPoints(liveOrderbooks, bucketMs, seed),
+    buildLiveAskPeakPoints(liveOrderbooks, bucketMs, seed, sessionCloseMs),
   );
 }
 
