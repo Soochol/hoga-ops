@@ -17,7 +17,7 @@
 
 **Date**: 2026-06-13
 **Status**: Draft
-**관련 결정**: ADR-0075 (Intra-Bar Max basis — Day Ask Peak #96 의도적 반전 + 대안/귀결)
+**관련 결정**: ADR-0076 (Intra-Bar Max basis — Day Ask Peak #96 의도적 반전 + 대안/귀결)
 **Scope**:
 - 백엔드: `hoga/tables/snapshots.py`(`query_bucketed_ratio`에 버킷별 MAX 및 imbalance-극값 행 추출 추가, `query_day_ask_peak`에 틱-max 변종 추가), `hoga/api/models.py`(`QuoteRatioPoint`·`AskPeak` 필드 **가산**), `hoga/api/bundle.py`(증강 필드 배선; `build_ask_peak_slice`·QuoteRatioPoint 변환부)
 - 프론트 타입/집계: `frontend/src/api/types.ts`(미러), `frontend/src/live/bucketHogaSeries.ts`(SSE 경로 최댓값 추적), `frontend/src/util/imbalance.ts`(프론트 극값 계산 재활용)
@@ -45,7 +45,7 @@
 |---|---|---|---|
 | **총잔량(quote-totals)** | 종가 스냅샷의 매수/매도 총잔량 | 분봉 내 각 변(side) 최댓값(독립 시점 허용 — 그릴링 Q5) | ✅ |
 | **호가비(ratio)** | 종가 스냅샷 총잔량의 불균형(±) | 분봉 내 \|불균형\|이 최대였던 스냅샷값(부호 유지) | ✅ |
-| **당일 매도 최대벽(ask-peak)** | 버킷 종가 스냅샷의 매도벽 중 당일 최댓값 | 버킷 내 전 연속스냅샷 틱-max로 대표값 교체 후 당일 최댓값 (#96 반전, ADR-0075) | ✅ |
+| **당일 매도 최대벽(ask-peak)** | 버킷 종가 스냅샷의 매도벽 중 당일 최댓값 | 버킷 내 전 연속스냅샷 틱-max로 대표값 교체 후 당일 최댓값 (#96 반전, ADR-0076) | ✅ |
 | **체결강도(fill-strength)** | 그 분 체결량 **합산**(flow, 종가 아님) | — 이미 분봉 전체 합산이라 'max' 개념이 적용되지 않음 | ❌ |
 
 핵심 해석:
@@ -67,7 +67,7 @@
 
 - **Q1 — ask-peak 포함**: #96의 "sub-bucket transient는 옳게 건너뜀" 원칙을 의도적으로 반전(opt-in, 기본
   종가). 종가="이 해상도에서 실제 보고 대응할 벽", Intra-Bar Max="찰나라도 가장 컸던 벽(스푸핑성 포함)" —
-  서로 다른 질문. ADR-0075로 문서화.
+  서로 다른 질문. ADR-0076로 문서화.
 - **Q2 — 호가비 × Outlier Mask = 직교 유지**: Intra-Bar Max 값도 종가와 동일하게 극단값 필터(기본 ON)를
   통과. 스파이크 극값이 임계 초과면 0(종가와 동일 규칙). **기본값에선 호가비 Intra-Bar Max가 스파이크
   지점에서 0으로 보일 수 있음** — 날것을 보려면 같은 호가비 Config의 필터 토글을 끈다. (필터 우회 거부:
@@ -136,12 +136,12 @@
 | ADR-0001 번들 코디네이터 분리 | **preserves** | 집계는 `snapshots.py`, `bundle.py`는 배선만. |
 | 행동 pref 등록 SSOT 패턴 | **preserves** | 토글 3종을 `CHART_TOGGLES`에 5필드로 추가, `default:false`·`category:'indicator-modal'`. 영속 자동. |
 | 호가비 Outlier Mask | **preserves (직교, Q2)** | Intra-Bar Max 값도 같은 마스크 통과. 스파이크 극값은 0(종가와 동일). 날것은 필터 OFF로. |
-| ask-peak 버킷 종가 대표(#96) | **intentionally breaks (Intra-Bar Max 모드 한정, opt-in)** | ADR-0075. 기본 종가 유지, 과거 거래일에서만 유효. |
+| ask-peak 버킷 종가 대표(#96) | **intentionally breaks (Intra-Bar Max 모드 한정, opt-in)** | ADR-0076. 기본 종가 유지, 과거 거래일에서만 유효. |
 | ask-peak 마커 x-스냅(#97) | **preserves (회귀 검증 필수)** | 최댓값 값으로도 `snapPeakMsToCandle`로 버킷 캔들 스냅 — max 경로 회귀 테스트. |
 | 거래일 self-reset | **preserves** | 오늘 ratchet 근사는 기존 KST 리셋 그대로. |
 | ask-peak 오늘 ratchet=running max | **preserves (토글 의미 제약)** | 오늘은 close 변종 라이브 미추적(Non-Goal) → **오늘 봉에선 ask-peak 토글이 시각적으로 무효**(ON/OFF 모두 ratchet). 토글은 **과거 거래일**에서만 close↔Intra-Bar Max를 가른다. 사용자 동의된 "오늘=근사". |
 
-**"intentionally breaks" 정당화 — ask-peak #96 재개**: ADR-0075 참조. 기본 종가가 #96 직관을 보존하므로
+**"intentionally breaks" 정당화 — ask-peak #96 재개**: ADR-0076 참조. 기본 종가가 #96 직관을 보존하므로
 회귀 위험은 opt-in 경로(그것도 과거 거래일)에 한정.
 
 **새로 도입하는 invariant**

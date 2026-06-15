@@ -55,7 +55,7 @@ def reaggregate_ratio(rows_1m: list[QuoteRatioRow], bucket_ms: int) -> list[Quot
     window). ``rows_1m`` must be ascending by ``bucket_intra_ms`` (the query
     contract); the output is ascending too.
 
-    Intra-Bar Max (ADR-0075): ``bid_max`` / ``ask_max`` = the max across the
+    Intra-Bar Max (ADR-0076): ``bid_max`` / ``ask_max`` = the max across the
     constituent 1m rows. ``imb_max_*`` = the (bid,ask) pair of the constituent 1m
     with the largest ``_imb_mag(imb_max_bid, imb_max_ask)`` — direct-query
     equivalence holds because the N-minute |imbalance| extreme is the max over the

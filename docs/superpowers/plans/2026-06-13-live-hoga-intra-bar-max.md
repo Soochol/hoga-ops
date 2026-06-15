@@ -4,7 +4,7 @@
 
 **Goal:** /live 「지표」 호가 그룹의 상태형 3종(총잔량·호가비·당일 매도 최대벽)에 분봉 대표값을 종가(close)→분봉 내 최댓값(Intra-Bar Max)으로 바꾸는 per-indicator opt-in 토글을 추가한다(기본 종가).
 
-**Architecture:** 백엔드·SSE 버킷터가 종가 필드 옆에 **Intra-Bar Max 필드를 항상 함께** 실어 보내고(`QuoteRatioPoint` += `bid_max/ask_max/imb_max_bid/imb_max_ask`, `AskPeak` += `max_price/max_qty/max_t_ms`), 토글은 projector가 어느 필드를 그릴지 고르는 **순수 클라이언트 렌더 스위치**다(재요청 없음, Past/Today Split Cache 보존, `mode=` 쿼리 파라미터 미사용). 총잔량 급증 감지는 종가 필드(`ask_total`/`bid_total`)를 하드코딩하므로 토글과 무관(표시 전용); 마커 높이만 보이는 라인을 따른다. 설계 근거·트레이드오프: `docs/superpowers/specs/2026-06-13-live-hoga-peak-basis-design.md`, ADR-0075.
+**Architecture:** 백엔드·SSE 버킷터가 종가 필드 옆에 **Intra-Bar Max 필드를 항상 함께** 실어 보내고(`QuoteRatioPoint` += `bid_max/ask_max/imb_max_bid/imb_max_ask`, `AskPeak` += `max_price/max_qty/max_t_ms`), 토글은 projector가 어느 필드를 그릴지 고르는 **순수 클라이언트 렌더 스위치**다(재요청 없음, Past/Today Split Cache 보존, `mode=` 쿼리 파라미터 미사용). 총잔량 급증 감지는 종가 필드(`ask_total`/`bid_total`)를 하드코딩하므로 토글과 무관(표시 전용); 마커 높이만 보이는 라인을 따른다. 설계 근거·트레이드오프: `docs/superpowers/specs/2026-06-13-live-hoga-peak-basis-design.md`, ADR-0076.
 
 **Tech Stack:** 백엔드 Python(DuckDB SQL, pydantic, pytest), 프론트 TypeScript/React(lightweight-charts, zustand, vitest, @testing-library/react).
 
@@ -24,7 +24,7 @@
 알려진 영향/주의:
 - **픽스처 churn**: `QuoteRatioPoint`의 4필드가 **필수**가 되면 손으로 만든 기존 `QuoteRatioPoint` 픽스처가 tsc에서 깨진다. P2가 producers·`detectSurges.test` 등을, P5가 `pastCachedProjector.test`를, P3 신규 테스트가 각자 4필드를 채운다. **Phase 2 직후 `cd frontend && npx tsc -p tsconfig.app.json --noEmit`를 돌려 남은 픽스처(예: `ratio.test.ts`/`quoteTotals.test.ts`)에 4필드를 추가**(max를 안 쓰는 테스트는 종가값 미러: `bid_max:bid_total` 등).
 - **ask_peak 캐시**는 in-memory 전용(`_mem_ask_peak`)이라 `AskPeak` 신규 필드를 투명하게 운반 — 캐시 코드 변경 불요. **`SCHEMA_VERSION` 1→2 범프(Phase 1)는 `QuoteRatioRow` 디스크 캐시 전용**(ask_peak 무관).
-- **오늘 봉 ask-peak 토글은 시각적으로 무효**(라이브 ratchet=running max라 close==max). 토글은 과거 거래일에서만 close↔Intra-Bar Max를 가른다(ADR-0075, 사용자 동의된 "오늘=근사").
+- **오늘 봉 ask-peak 토글은 시각적으로 무효**(라이브 ratchet=running max라 close==max). 토글은 과거 거래일에서만 close↔Intra-Bar Max를 가른다(ADR-0076, 사용자 동의된 "오늘=근사").
 - 커밋 스텝은 `git add`와 `git commit -m`을 **별도 스텝**으로 둔다(repo의 block-no-verify 훅 오탐 회피 — && 체이닝과 검증 우회 플래그를 쓰지 말 것).
 
 ---
@@ -135,7 +135,7 @@ class QuoteRatioRow:
     take. ``ask_total`` / ``bid_total`` are the SUM of the 10 ask_q / bid_q
     level columns at the last snapshot in the bucket.
 
-    Intra-Bar Max 필드(ADR-0075): ``bid_max`` / ``ask_max`` = 버킷 내 연속거래
+    Intra-Bar Max 필드(ADR-0076): ``bid_max`` / ``ask_max`` = 버킷 내 연속거래
     스냅샷의 bid_total / ask_total 독립 최댓값. ``imb_max_bid`` / ``imb_max_ask``
     = 버킷 내 |imbalance|(= GREATEST/LEAST ratio 단조 대용)가 가장 컸던 연속거래
     스냅샷의 (bid_total, ask_total) 쌍. 동시호가/완전-auction 버킷은 4필드 모두 0.
@@ -165,7 +165,7 @@ class QuoteRatioRow:
                    PARTITION BY ({intra_ms_expr} // {bucket_ms})
                    ORDER BY ({pre_auction_pred}) DESC, ts_ms DESC
                  ) AS rn,
-                 -- Intra-Bar Max (ADR-0075): is_pre 게이트로 동시호가 스냅샷 배제.
+                 -- Intra-Bar Max (ADR-0076): is_pre 게이트로 동시호가 스냅샷 배제.
                  MAX(CASE WHEN ({pre_auction_pred}) THEN ({_BID_Q_SUM}) ELSE 0 END) OVER (
                    PARTITION BY ({intra_ms_expr} // {bucket_ms})
                  ) AS bid_max,
@@ -227,7 +227,7 @@ class QuoteRatioRow:
 
 - [ ] **Step 5: 커밋**
   - `git add hoga/tables/snapshots.py tests/test_tables_snapshots.py`
-  - `git commit -m "feat(snapshots): QuoteRatioRow Intra-Bar Max 필드 + query_bucketed_ratio 윈도우 집계 (ADR-0075)"`
+  - `git commit -m "feat(snapshots): QuoteRatioRow Intra-Bar Max 필드 + query_bucketed_ratio 윈도우 집계 (ADR-0076)"`
 
 ---
 
@@ -309,7 +309,7 @@ def reaggregate_ratio(rows_1m: list[QuoteRatioRow], bucket_ms: int) -> list[Quot
     window). ``rows_1m`` must be ascending by ``bucket_intra_ms`` (the query
     contract); the output is ascending too.
 
-    Intra-Bar Max (ADR-0075): ``bid_max`` / ``ask_max`` = the max across the
+    Intra-Bar Max (ADR-0076): ``bid_max`` / ``ask_max`` = the max across the
     constituent 1m rows. ``imb_max_*`` = the (bid,ask) pair of the constituent 1m
     with the largest ``_imb_mag(imb_max_bid, imb_max_ask)`` — direct-query
     equivalence holds because the N-minute |imbalance| extreme is the max over the
@@ -381,7 +381,7 @@ RATIO = [QuoteRatioRow(bucket_intra_ms=0, bid_total=10, ask_total=20,
 ```python
 def test_ratio_disk_payload_is_seven_tuples(tmp_path: Path) -> None:
     """디스크 직렬화는 [bucket_intra_ms, bid_total, ask_total, bid_max, ask_max,
-    imb_max_bid, imb_max_ask] 7-tuple — Intra-Bar Max 필드를 보존(ADR-0075)."""
+    imb_max_bid, imb_max_ask] 7-tuple — Intra-Bar Max 필드를 보존(ADR-0076)."""
     PastIndicatorsCache(tmp_path).store_ratio(CODE, DATE, SRC, RATIO)
     p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json"
     body = json.loads(p.read_text())
@@ -553,7 +553,7 @@ class QuoteRatioPoint(BaseModel):
     t: int          # Unix ms
     bid_total: int
     ask_total: int
-    # Intra-Bar Max (ADR-0075) — 종가 옆에 항상 동봉(순수 렌더 스위치; mode= 파라미터 없음).
+    # Intra-Bar Max (ADR-0076) — 종가 옆에 항상 동봉(순수 렌더 스위치; mode= 파라미터 없음).
     bid_max: int        # 버킷 내 매수 총잔량 독립 최댓값
     ask_max: int        # 버킷 내 매도 총잔량 독립 최댓값
     imb_max_bid: int    # |imbalance| 최대 스냅샷의 bid_total
@@ -1040,7 +1040,7 @@ describe('Intra-Bar Max 토글 등록', () => {
 git add frontend/src/state/chartPrefs.ts frontend/src/state/chartPrefs.intramax.test.ts
 ```
 ```bash
-git commit -m "feat(live): chartPrefs에 Intra-Bar Max 토글 3종 등록 (ADR-0075)"
+git commit -m "feat(live): chartPrefs에 Intra-Bar Max 토글 3종 등록 (ADR-0076)"
 ```
 
 ---
@@ -1250,7 +1250,7 @@ const useRatioContext = (): RatioPaneContext =>
 git add frontend/src/chart/projectors/ratio.ts frontend/src/chart/projectors/ratio.intramax.test.ts
 ```
 ```bash
-git commit -m "feat(live): 호가비 Intra-Bar Max 렌더 스위치 (Outlier Mask 직교, ADR-0075)"
+git commit -m "feat(live): 호가비 Intra-Bar Max 렌더 스위치 (Outlier Mask 직교, ADR-0076)"
 ```
 
 ---
@@ -1522,7 +1522,7 @@ git commit -m "feat(live): 호가 3종 Config에 Intra-Bar Max 토글 행 (지�
 
       ``price``/``qty``/``intra_ms`` = 버킷 대표(마지막 연속거래 스냅샷)의 당일 매도벽
       최댓값(#96 close 변종). ``max_*`` = 버킷 대표를 거치지 않고 연속거래 스냅샷 전체에서
-      찾은 단일 매도단계 당일 max(틱-max 변종, Intra-Bar Max, ADR-0075). 같은 거래일에서
+      찾은 단일 매도단계 당일 max(틱-max 변종, Intra-Bar Max, ADR-0076). 같은 거래일에서
       ``max_qty >= qty``가 성립(연속거래 스냅샷 집합의 max >= 그 부분집합인 버킷 대표들).
       """
       price: int
@@ -1586,7 +1586,7 @@ git commit -m "feat(live): 호가 3종 Config에 Intra-Bar Max 토글 행 (지�
       ).fetchone()
       if row is None:
           return None
-      # 틱-max 변종(Intra-Bar Max, ADR-0075): 버킷 대표를 거치지 않고 연속거래 스냅샷 전체
+      # 틱-max 변종(Intra-Bar Max, ADR-0076): 버킷 대표를 거치지 않고 연속거래 스냅샷 전체
       # (src, where로 동시호가/세션 경계 동일 배제)에서 단일 매도단계 당일 max. src ⊇ rep
       # 이므로 close row가 non-None이면 max row도 non-None이고 max_qty >= qty가 성립.
       # 전 행(row)을 ORDER BY ... LIMIT 1로 원자 선택 — 동률(qty,intra_ms)에도 price가
@@ -1697,7 +1697,7 @@ git commit -m "feat(live): 호가 3종 Config에 Intra-Bar Max 토글 행 (지�
       ``t_ms``는 unix ms(KST), 캔들 시각과 동일 좌표계(peak 발생 시점).
 
       ``price``/``qty``/``t_ms`` = 버킷 종가 대표 위에서의 당일 max(#96 close 변종, 불변).
-      ``max_*`` = 버킷 틱-max 위에서의 당일 max(분봉 내 최댓값 기준, Intra-Bar Max, ADR-0075).
+      ``max_*`` = 버킷 틱-max 위에서의 당일 max(분봉 내 최댓값 기준, Intra-Bar Max, ADR-0076).
       과거 거래일에서만 두 변종이 갈린다 — 오늘 봉은 ratchet이라 어댑터가 동일 값으로 채운다."""
       date: str
       price: int
@@ -1774,7 +1774,7 @@ git commit -m "feat(live): 호가 3종 Config에 Intra-Bar Max 토글 행 (지�
    *  hoga/api/models.py::AskPeak 미러. date=거래일(YYYYMMDD, segment x-구간 매핑용),
    *  t_ms=unix ms(KST, peak 발생 시점).
    *  price/qty/t_ms=버킷 종가 대표의 당일 max(#96 close 변종). max_*=버킷 틱-max의 당일 max
-   *  (분봉 내 최댓값 기준, Intra-Bar Max, ADR-0075). 과거일만 갈림(오늘은 ratchet 동일값). */
+   *  (분봉 내 최댓값 기준, Intra-Bar Max, ADR-0076). 과거일만 갈림(오늘은 ratchet 동일값). */
   export type AskPeak = {
     date: string;
     price: number;
@@ -1876,7 +1876,7 @@ git commit -m "feat(live): 호가 3종 Config에 Intra-Bar Max 토글 행 (지�
   ```ts
     // 과거일 seed(그대로 — 백엔드가 close/max 둘 다 확정) + 오늘 ratchet 결과(date 부착)를
     // 합친 per-day 리스트. 오늘 entry는 close triple과 max triple을 동일 ratchet 값으로 채운다
-    // (Non-Goal: 오늘 봉 live close/max 이중 추적 — 오늘은 토글 무효, ADR-0075).
+    // (Non-Goal: 오늘 봉 live close/max 이중 추적 — 오늘은 토글 무효, ADR-0076).
     return useMemo(() => {
       const out: AskPeak[] = seeds.filter((p) => p.date !== todayKst);
       if (todayPeak) {
@@ -2048,7 +2048,7 @@ git commit -m "feat(live): 호가 3종 Config에 Intra-Bar Max 토글 행 (지�
       if (!seg) continue;
       const isToday = p.date === todayKst;
       const endMs = isToday && lastCandleMs !== null ? lastCandleMs : seg.session_close_ms;
-      // 분봉 내 최댓값 기준(Intra-Bar Max, ADR-0075): ON이면 close triple 대신 max triple을
+      // 분봉 내 최댓값 기준(Intra-Bar Max, ADR-0076): ON이면 close triple 대신 max triple을
       // 고른다. 세그먼트 바운드(open/close/live-edge)는 토글과 무관 — 점/라벨/점-시각만 바뀐다.
       // (오늘 entry는 어댑터가 max_*=close라 토글 무효.)
       const peakPrice = intraMax ? p.max_price : p.price;

@@ -82,7 +82,7 @@ def test_empty_rows_roundtrip(tmp_path: Path) -> None:
 
 def test_ratio_disk_payload_is_seven_tuples(tmp_path: Path) -> None:
     """디스크 직렬화는 [bucket_intra_ms, bid_total, ask_total, bid_max, ask_max,
-    imb_max_bid, imb_max_ask] 7-tuple — Intra-Bar Max 필드를 보존(ADR-0075)."""
+    imb_max_bid, imb_max_ask] 7-tuple — Intra-Bar Max 필드를 보존(ADR-0076)."""
     PastIndicatorsCache(tmp_path).store_ratio(CODE, DATE, SRC, RATIO)
     p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json"
     body = json.loads(p.read_text())

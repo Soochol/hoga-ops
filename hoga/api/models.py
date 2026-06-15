@@ -98,7 +98,7 @@ class AskPeak(BaseModel):
     ``t_ms``는 unix ms(KST), 캔들 시각과 동일 좌표계(peak 발생 시점).
 
     ``price``/``qty``/``t_ms`` = 버킷 종가 대표 위에서의 당일 max(#96 close 변종).
-    ``max_*`` = 버킷 틱-max 위에서의 당일 max(Intra-Bar Max, ADR-0075)."""
+    ``max_*`` = 버킷 틱-max 위에서의 당일 max(Intra-Bar Max, ADR-0076)."""
     date: str
     price: int
     qty: int
@@ -112,7 +112,7 @@ class QuoteRatioPoint(BaseModel):
     t: int          # Unix ms
     bid_total: int
     ask_total: int
-    # Intra-Bar Max (ADR-0075) — 종가 옆에 항상 동봉(순수 렌더 스위치; mode= 파라미터 없음).
+    # Intra-Bar Max (ADR-0076) — 종가 옆에 항상 동봉(순수 렌더 스위치; mode= 파라미터 없음).
     bid_max: int        # 버킷 내 매수 총잔량 독립 최댓값
     ask_max: int        # 버킷 내 매도 총잔량 독립 최댓값
     imb_max_bid: int    # |imbalance| 최대 스냅샷의 bid_total

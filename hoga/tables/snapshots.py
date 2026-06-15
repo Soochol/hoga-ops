@@ -302,7 +302,7 @@ class QuoteRatioRow:
     take. ``ask_total`` / ``bid_total`` are the SUM of the 10 ask_q / bid_q
     level columns at the last snapshot in the bucket.
 
-    Intra-Bar Max 필드(ADR-0075): ``bid_max`` / ``ask_max`` = 버킷 내 연속거래
+    Intra-Bar Max 필드(ADR-0076): ``bid_max`` / ``ask_max`` = 버킷 내 연속거래
     스냅샷의 bid_total / ask_total 독립 최댓값. ``imb_max_bid`` / ``imb_max_ask``
     = 버킷 내 |imbalance|(= GREATEST/LEAST ratio 단조 대용)가 가장 컸던 연속거래
     스냅샷의 (bid_total, ask_total) 쌍. 동시호가/완전-auction 버킷은 4필드 모두 0.
@@ -327,7 +327,7 @@ class AskPeakRow:
 
     ``price``/``qty``/``intra_ms`` = 버킷 대표(마지막 연속거래 스냅샷)의
     당일 매도벽 최댓값(#96 close 변종). ``max_*`` = 버킷 대표를 거치지 않고
-    연속거래 스냅샷 전체에서 찾은 단일 매도단계 당일 max(Intra-Bar Max, ADR-0075).
+    연속거래 스냅샷 전체에서 찾은 단일 매도단계 당일 max(Intra-Bar Max, ADR-0076).
     """
     price: int
     qty: int
@@ -414,7 +414,7 @@ def query_bucketed_ratio(
                    PARTITION BY ({intra_ms_expr} // {bucket_ms})
                    ORDER BY ({pre_auction_pred}) DESC, ts_ms DESC
                  ) AS rn,
-                 -- Intra-Bar Max (ADR-0075): is_pre 게이트로 동시호가 스냅샷 배제.
+                 -- Intra-Bar Max (ADR-0076): is_pre 게이트로 동시호가 스냅샷 배제.
                  MAX(CASE WHEN ({pre_auction_pred}) THEN ({_BID_Q_SUM}) ELSE 0 END) OVER (
                    PARTITION BY ({intra_ms_expr} // {bucket_ms})
                  ) AS bid_max,
