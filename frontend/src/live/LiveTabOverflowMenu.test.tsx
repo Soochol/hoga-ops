@@ -11,8 +11,9 @@ const tabs: LiveTab[] = [
 
 function setup() {
   const onFocus = vi.fn();
-  render(<LiveTabOverflowMenu tabs={tabs} activeTabId="b" onFocus={onFocus} />);
-  return { onFocus };
+  const onClose = vi.fn();
+  render(<LiveTabOverflowMenu tabs={tabs} activeTabId="b" onFocus={onFocus} onClose={onClose} />);
+  return { onFocus, onClose };
 }
 
 it('opens a list of all tabs', () => {
@@ -74,7 +75,8 @@ it('bounds the rendered result list and lets search reach later tabs', () => {
     viewport: null,
   }));
   const onFocus = vi.fn();
-  render(<LiveTabOverflowMenu tabs={manyTabs} activeTabId="tab-0" onFocus={onFocus} />);
+  const onClose = vi.fn();
+  render(<LiveTabOverflowMenu tabs={manyTabs} activeTabId="tab-0" onFocus={onFocus} onClose={onClose} />);
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
 
   expect(screen.queryByText('종목 250')).toBeNull();
@@ -90,4 +92,15 @@ it('marks the active tab', () => {
   setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
   expect(screen.getByLabelText('활성 탭: SK하이닉스')).toBeInTheDocument();
+});
+
+it('closes a tab from the list without selecting it or dismissing the dialog', () => {
+  const { onFocus, onClose } = setup();
+  fireEvent.click(screen.getByLabelText('열린 탭 목록'));
+
+  fireEvent.click(screen.getByLabelText('탭 닫기: 삼성전자'));
+
+  expect(onClose).toHaveBeenCalledWith('a');
+  expect(onFocus).not.toHaveBeenCalled();
+  expect(screen.getByRole('dialog', { name: '열린 탭' })).toBeInTheDocument();
 });

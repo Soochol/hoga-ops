@@ -121,7 +121,7 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose,
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </button>
-        <LiveTabOverflowMenu tabs={tabs} activeTabId={activeTabId} onFocus={onFocus} />
+        <LiveTabOverflowMenu tabs={tabs} activeTabId={activeTabId} onFocus={onFocus} onClose={onClose} />
         <span className="text-xs font-mono whitespace-nowrap" style={{ color: 'var(--fg-dimmer)' }}>
           {tabs.length} open
         </span>

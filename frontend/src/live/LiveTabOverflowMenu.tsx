@@ -8,9 +8,10 @@ interface Props {
   tabs: LiveTab[];
   activeTabId: string | null;
   onFocus: (id: string) => void;
+  onClose: (id: string) => void;
 }
 
-export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus }: Props) {
+export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus, onClose }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -63,23 +64,40 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus }: Props) {
             {visible.map((t) => {
               const active = t.id === activeTabId;
               return (
-                <button
+                <div
                   key={t.id}
-                  type="button"
-                  aria-label={active ? `활성 탭: ${t.label}` : undefined}
-                  onClick={() => {
-                    onFocus(t.id);
-                    setOpen(false);
-                  }}
                   className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
                   style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)', background: active ? 'var(--bg-input)' : 'transparent' }}
                 >
-                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? 'var(--success)' : 'transparent', border: active ? 'none' : '1px solid var(--fg-dimmer)' }} />
-                  <span className="min-w-0 flex-1 truncate" title={t.label}>{t.label}</span>
-                  {t.code && t.code !== t.label && (
-                    <span className="font-mono text-xs shrink-0" style={{ color: 'var(--fg-dimmer)' }}>{t.code}</span>
-                  )}
-                </button>
+                  <button
+                    type="button"
+                    aria-label={active ? `활성 탭: ${t.label}` : undefined}
+                    onClick={() => {
+                      onFocus(t.id);
+                      setOpen(false);
+                    }}
+                    className="min-w-0 flex flex-1 items-center gap-2 text-left"
+                    style={{ color: 'inherit' }}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? 'var(--success)' : 'transparent', border: active ? 'none' : '1px solid var(--fg-dimmer)' }} />
+                    <span className="min-w-0 flex-1 truncate" title={t.label}>{t.label}</span>
+                    {t.code && t.code !== t.label && (
+                      <span className="font-mono text-xs shrink-0" style={{ color: 'var(--fg-dimmer)' }}>{t.code}</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`탭 닫기: ${t.label}`}
+                    title="탭 닫기"
+                    onClick={() => onClose(t.id)}
+                    className="w-7 h-7 flex items-center justify-center rounded shrink-0"
+                    style={{ color: 'var(--fg-dimmer)' }}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-[11px] h-[11px]" aria-hidden="true">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
               );
             })}
             {filtered.length > visible.length && (
