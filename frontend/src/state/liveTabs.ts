@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { useLivePageStore, LIVE_TIMEFRAMES, type LiveTimeframe } from './livePage';
 import { attachPersistence } from './persistentSubscriber';
 import type { TabViewport } from '../live/viewportAnchor';
+import { mirrorPageViewToActiveTab, projectTabToActiveView } from './liveTabProjection';
 
 export type LiveTab = {
   id: string;
@@ -79,11 +80,7 @@ type TabsStore = {
  *  current timeframe. */
 export function applyTabToPage(tab: LiveTab | null): void {
   const page = useLivePageStore.getState();
-  page.projectActiveView({
-    code: tab?.code ?? null,
-    timeframe: tab?.timeframe ?? page.candleTimeframe,
-    historicalFromDate: tab?.historicalFromDate ?? null,
-  });
+  page.projectActiveView(projectTabToActiveView(tab, page.candleTimeframe));
 }
 
 const STORAGE_KEY = 'live.tabs.v1';
@@ -287,19 +284,8 @@ export function initLiveTabsSync(): () => void {
     //     we are about to restore (ADR-0069 A안 cross-timeframe switch-back fix).
     // A pure pan (tf unchanged) leaves viewport alone; it's re-captured continuously
     // by LiveChartRoot's debounced range subscription.
-    const activeTab = tabs.find((t) => t.id === activeTabId);
-    const userChangedTimeframe = !!activeTab && state.candleTimeframe !== activeTab.timeframe;
     useLiveTabsStore.setState({
-      tabs: tabs.map((t) =>
-        t.id === activeTabId
-          ? {
-              ...t,
-              timeframe: state.candleTimeframe,
-              historicalFromDate: state.historicalFromDate,
-              ...(userChangedTimeframe ? { viewport: null } : {}),
-            }
-          : t,
-      ),
+      tabs: mirrorPageViewToActiveTab(tabs, activeTabId, state),
     });
   });
   _syncDispose = () => { unsubPersist(); unsubMirror(); _syncDispose = null; };
