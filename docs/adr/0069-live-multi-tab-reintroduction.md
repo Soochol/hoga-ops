@@ -87,3 +87,21 @@
   종목 변경" 오버레이(드래그 고스트는 패널 overflow에서 잘리므로 워크에어리어 자체가 어포던스). `state/entryDrag.ts`가
   차트-드롭 seam의 단일 소유자(드래그 상태 + 차트 히트테스트 등록 + `isPointOnChart`).
 - **제거**: `openOrFocusTab`(스토어·콜러·테스트 전부 `setActiveTabCode`/`addBlankTab`로 대체).
+
+## Addendum — 무제한 탭 + bounded UI 투영 (2026-06-16)
+
+초기 소프트캡 8 정책은 `/live` 사용자가 여러 종목을 길게 열어두는 실제 워크플로와 맞지 않아 폐기한다.
+탭 생성은 논리적으로 무제한이며, 초과 탭을 조용히 버리거나 `+`를 막지 않는다. 대신 한 줄 탭바 오른쪽에
+`+`와 전체 탭 목록 버튼을 고정하고, 많은 탭은 검색 가능한 overflow dialog에서 찾는다.
+
+리소스 정책은 "무제한 데이터 구조를 전부 DOM/localStorage에 투영하지 않는다"이다.
+
+- **구독/차트 인스턴스는 여전히 active tab only**: D1의 cold-swap 결정은 유지한다. 백그라운드 탭은 KIS
+  구독이나 차트 DOM을 추가로 만들지 않는다.
+- **탭바 렌더링은 active-centered bounded window**: 실제 탭 배열은 보존하되, 한 줄 탭바는 활성 탭 주변
+  일부와 ellipsis marker만 렌더한다. `+`와 목록 버튼은 탭 수와 무관하게 고정 위치를 유지한다.
+- **overflow 목록도 bounded render + search**: 목록 dialog는 검색 결과를 제한된 수만 렌더한다. 검색은 전체
+  탭 배열에 대해 수행하므로 렌더 window 밖의 오래된 탭도 찾아갈 수 있다.
+- **영속화는 bounded snapshot**: 복원 가능한 탭 수를 실무적으로 충분히 큰 active-centered window로 제한해
+  localStorage quota와 reload freeze를 피한다. 이는 사용자-visible 탭 생성 제한이 아니라 browser storage
+  안전장치다.
