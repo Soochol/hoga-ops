@@ -445,6 +445,8 @@ def _compute_ask_peak(
     return AskPeak(
         date=date, price=row.price, qty=row.qty,
         t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
+        max_price=row.max_price, max_qty=row.max_qty,
+        max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
     )
 
 
