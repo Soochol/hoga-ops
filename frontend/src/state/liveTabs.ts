@@ -187,8 +187,7 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
     const { tabs, activeTabId } = get();
     const active = tabs.find((t) => t.id === activeTabId);
     if (!active) {
-      // 활성 탭이 없으면(첫 진입·전체 닫힘) 이 종목으로 첫 탭을 만든다. cap은 빈 목록이라
-      // 항상 통과한다(활성 탭이 없다 = 탭이 0개).
+      // 활성 탭이 없으면(첫 진입·전체 닫힘) 이 종목으로 첫 탭을 만든다.
       const tab: LiveTab = {
         id: nanoid(8),
         code,
