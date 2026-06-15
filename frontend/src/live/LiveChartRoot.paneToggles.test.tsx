@@ -88,7 +88,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 };
 
-function renderAt(timeframe: '1m' | 'D') {
+function renderAt(timeframe: '1m' | 'D' | 'W' | 'M') {
   render(
     <LiveChartRoot
       code="005930"
@@ -154,8 +154,8 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     expect(askPeakMounts).toEqual(['mounted']);
   });
 
-  it('calendar(D) → 당일 매도 최대벽 오버레이 미마운트', () => {
-    renderAt('D');
+  it.each(['D', 'W', 'M'] as const)('calendar(%s) → 당일 매도 최대벽 오버레이 미마운트', (timeframe) => {
+    renderAt(timeframe);
     expect(askPeakMounts).toEqual([]);
   });
 });
