@@ -261,9 +261,9 @@ def test_build_volume_profile_slice_top_edge_bin_not_dropped(tmp_path):
 def _patch_slice_builders(bundle_mod, bucket_ms: int = 60_000, *, patch_ask_peak: bool = True):
     """Return a list of context managers that stub every per-slice builder.
 
-    ``patch_ask_peak`` (default True) also stubs _compute_ask_peak_projection so the
+    ``patch_ask_peak`` (default True) also stubs build_ask_peak_slice → None so the
     general bundle tests (MagicMock engine, no real parquet/conn) don't exercise it.
-    The dedicated ask_peak tests pass False to run the projection path for real."""
+    The dedicated ask_peak tests pass False to run build_ask_peak_slice for real."""
     from unittest.mock import patch
     from hoga.api.models import (
         FillStrength, QuoteRatio, VolumeProfile,
@@ -279,7 +279,7 @@ def _patch_slice_builders(bundle_mod, bucket_ms: int = 60_000, *, patch_ask_peak
         patch.object(bundle_mod, "build_volume_profile_slice", return_value=vp),
     ]
     if patch_ask_peak:
-        patches.append(patch.object(bundle_mod, "_compute_ask_peak_projection", return_value=(None, [])))
+        patches.append(patch.object(bundle_mod, "build_ask_peak_slice", return_value=None))
     return patches
 
 
@@ -621,9 +621,6 @@ def test_build_range_bundle_includes_ask_peak_for_today(monkeypatch, tmp_path) -
     assert p.price == EXPECTED_PRICE
     # t_ms is unix ms — must be positive and in a sane range
     assert p.t_ms > 0
-    assert [(pt.price, pt.qty) for pt in bundle.ask_peak_points] == [
-        (EXPECTED_PRICE, EXPECTED_QTY),
-    ]
 
 
 def test_build_range_bundle_ask_peaks_includes_past_day_even_when_not_today(monkeypatch, tmp_path) -> None:
@@ -843,25 +840,3 @@ def test_range_bundle_ask_peak_field_defaults_none() -> None:
                 max_price=25100, max_qty=5000, max_t_ms=1)
     ]})
     assert b2.ask_peaks[0].price == 25100 and b2.ask_peaks[0].date == "20260613"
-
-
-def test_range_bundle_carries_ask_peak_points_and_legacy_summary() -> None:
-    from hoga.api.models import AskPeak, AskPeakPoint, FillStrength, QuoteRatio, RangeBundle, VolumeProfile
-
-    bundle = RangeBundle(
-        code="005930",
-        from_date="20260613",
-        to_date="20260613",
-        bucket_ms=60000,
-        segments=[],
-        candles=[],
-        quote_ratio=QuoteRatio(bucket_ms=60000, points=[]),
-        fill_strength=FillStrength(bucket_ms=60000, points=[]),
-        volume_profile_range=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
-        volume_profile_by_day=[],
-        ask_peaks=[],
-        ask_peak_points=[AskPeakPoint(t=1, price=25100, qty=5000)],
-    )
-
-    assert bundle.ask_peak_points[0].price == 25100
-    assert bundle.ask_peaks == []

@@ -3,29 +3,6 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
-## [0.7.37.0] - 2026-06-15
-
-### Added
-- **/live 당일 매도 최대벽이 사용자가 보고 있는 캔들 차트 시점을 따라간다**: 차트를 좌우로 이동하면
-  보이는 오른쪽 끝 거래일에서 그 시점까지 가장 컸던 매도벽을 선택해 표시한다. 과거일과 오늘 모두 같은
-  viewport 기준으로 동작한다.
-- RangeBundle에 `ask_peak_points` prefix series를 추가해 백엔드가 거래일별 누적 매도 최대벽 지점을
-  전달하고, 프론트는 실시간 호가 continuation과 병합해 현재 화면 기준 값을 고른다.
-
-### Changed
-- 기존 일자별 segment primitive 렌더링을 단일 native price line 렌더링으로 단순화해, 차트 viewport의
-  오른쪽 경계가 바뀔 때 한 개의 매도 최대벽 선만 갱신되도록 했다.
-- 실시간 매도 최대벽 continuation은 pre-open·collapsed book을 제외하고, 백엔드 prefix와 겹치는 구간에서도
-  누적 최대값이 뒤로 가며 낮아지지 않게 병합한다.
-
-### Removed
-- 더 이상 사용하지 않는 클라이언트 전용 `computeDayAskPeak`/`useDayAskPeaks` ratchet 경로와
-  `AskPeakSegmentsPrimitive`를 제거했다. legacy `ask_peaks` 응답 필드는 호환을 위해 유지한다.
-
-### Tests
-- 백엔드 `ask_peak_points` prefix, 버킷 대표값 회귀, RangeBundle wire, 프론트 viewport right-edge,
-  live continuation 병합, native price-line 렌더링 회귀 테스트를 추가했다.
-
 ## [0.7.36.0] - 2026-06-15
 
 ### Fixed

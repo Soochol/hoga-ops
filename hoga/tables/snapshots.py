@@ -337,125 +337,6 @@ class AskPeakRow:
     max_intra_ms: int
 
 
-@dataclass(frozen=True)
-class AskPeakPointRow:
-    """Prefix ask-peak point for one bucket boundary.
-
-    ``t_ms`` is the bucket-aligned linear ms-from-midnight boundary that the
-    prefix state applies to. ``price`` / ``qty`` are the best running maximum
-    seen at or before that boundary.
-    """
-
-    t_ms: int
-    price: int
-    qty: int
-
-
-@dataclass(frozen=True)
-class AskPeakProjectionRow:
-    """Day Ask Peak projection derived from one filtered snapshot stream."""
-
-    peak: AskPeakRow
-    points: list[AskPeakPointRow]
-
-
-_ASK_PEAK_LEVEL_SELECT: str = ", ".join(
-    ["ts_ms", hhmmssms_to_intra_ms_sql("ts_ms")]
-    + [f"ask_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1)]
-    + [f"ask_p{i}" for i in range(1, ORDERBOOK_LEVELS + 1)]
-)
-
-
-def _ask_peak_level_candidate(row: tuple[int, ...]) -> tuple[int, int] | None:
-    """Return the best ask level in one snapshot, earliest tie winning."""
-    best_price = 0
-    best_qty = 0
-    found = False
-    for i in range(ORDERBOOK_LEVELS):
-        qty = int(row[i])
-        if qty <= 0:
-            continue
-        price = int(row[i + ORDERBOOK_LEVELS])
-        if not found or qty > best_qty:
-            best_price = price
-            best_qty = qty
-            found = True
-    if not found:
-        return None
-    return best_price, best_qty
-
-
-def _ask_peak_where(
-    *,
-    session_open_ms: int | None,
-    session_close_ms: int | None,
-) -> str:
-    intra = hhmmssms_to_intra_ms_sql("ts_ms")
-    bounds = [_DEEP_BOOK_SQL]
-    if session_open_ms is not None:
-        bounds.append(f"{intra} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
-    if session_close_ms is not None:
-        bounds.append(f"{intra} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
-    return " AND ".join(bounds)
-
-
-def _ask_peak_projection_from_rows(
-    rows: list[tuple],
-    *,
-    bucket_ms: int,
-) -> AskPeakProjectionRow | None:
-    if not rows:
-        return None
-
-    close_best: tuple[int, int, int] | None = None
-    max_best: tuple[int, int, int] | None = None
-
-    def consider_best(
-        best: tuple[int, int, int] | None,
-        candidate: tuple[int, int] | None,
-        intra_ms: int,
-    ) -> tuple[int, int, int] | None:
-        if candidate is None:
-            return best
-        price, qty = candidate
-        if best is None or qty > best[1]:
-            return price, qty, intra_ms
-        return best
-
-    rep_by_bucket: dict[int, tuple] = {}
-    for row in rows:
-        intra_ms = int(row[1])
-        bucket_start = (intra_ms // int(bucket_ms)) * int(bucket_ms)
-        rep_by_bucket[bucket_start] = row
-
-        candidate = _ask_peak_level_candidate(tuple(int(v) for v in row[2:]))
-        max_best = consider_best(max_best, candidate, intra_ms)
-
-    points: list[AskPeakPointRow] = []
-    running_best: tuple[int, int] | None = None
-    for bucket_start in sorted(rep_by_bucket):
-        row = rep_by_bucket[bucket_start]
-        intra_ms = int(row[1])
-        candidate = _ask_peak_level_candidate(tuple(int(v) for v in row[2:]))
-        if candidate is not None and (running_best is None or candidate[1] > running_best[1]):
-            running_best = candidate
-        close_best = consider_best(close_best, candidate, intra_ms)
-        if running_best is not None:
-            points.append(
-                AskPeakPointRow(t_ms=bucket_start, price=running_best[0], qty=running_best[1])
-            )
-
-    if close_best is None or max_best is None:
-        return None
-    return AskPeakProjectionRow(
-        peak=AskPeakRow(
-            price=close_best[0], qty=close_best[1], intra_ms=close_best[2],
-            max_price=max_best[0], max_qty=max_best[1], max_intra_ms=max_best[2],
-        ),
-        points=points,
-    )
-
-
 def query_bucketed_ratio(
     con: duckdb.DuckDBPyConnection,
     *,
@@ -667,61 +548,49 @@ def query_day_ask_peak(
 
     동률이면 가장 이른 시각. 빈 parquet(또는 세션 내 연속거래행 없음) → None. 파일 부재
     가드는 호출자(bundle) 책임. ``bucket_ms``는 > 0 (호출자 validate_bucket_ms 책임)."""
-    projection = query_day_ask_peak_projection(
-        con,
-        path=path,
-        bucket_ms=bucket_ms,
-        session_open_ms=session_open_ms,
-        session_close_ms=session_close_ms,
-    )
-    return projection.peak if projection is not None else None
-
-
-def query_day_ask_peak_points(
-    con: duckdb.DuckDBPyConnection,
-    *,
-    path: Path,
-    bucket_ms: int,
-    session_open_ms: int | None = None,
-    session_close_ms: int | None = None,
-) -> list[AskPeakPointRow]:
-    """Return a prefix series of ask-peak points, bucket-aligned.
-
-    Each emitted row represents the running maximum ask-wall seen up to that
-    bucket boundary. Earliest tie wins both within a snapshot and across the
-    day. The filtered input is read once from parquet.
-    """
-    projection = query_day_ask_peak_projection(
-        con,
-        path=path,
-        bucket_ms=bucket_ms,
-        session_open_ms=session_open_ms,
-        session_close_ms=session_close_ms,
-    )
-    return projection.points if projection is not None else []
-
-
-def query_day_ask_peak_projection(
-    con: duckdb.DuckDBPyConnection,
-    *,
-    path: Path,
-    bucket_ms: int,
-    session_open_ms: int | None = None,
-    session_close_ms: int | None = None,
-) -> AskPeakProjectionRow | None:
-    """Return Day Ask Peak summary and prefix points from one filtered stream."""
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
-    where = _ask_peak_where(
-        session_open_ms=session_open_ms,
-        session_close_ms=session_close_ms,
-    )
-    rows = con.execute(
+    bounds = [_DEEP_BOOK_SQL]
+    if session_open_ms is not None:
+        bounds.append(f"{intra} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
+    if session_close_ms is not None:
+        bounds.append(f"{intra} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
+    where = " AND ".join(bounds)
+    # 버킷별 대표 = 마지막 연속거래 스냅샷(rn=1 by ts_ms DESC). 연속거래행으로 사전 필터한 뒤
+    # 버킷팅하므로 완전-동시호가 버킷은 행이 없어 자연 탈락(총잔량의 (0,0) 센티넬 불필요).
+    def level_union(src: str) -> str:
+        return " UNION ALL ".join(
+            f"SELECT ask_p{i} AS price, ask_q{i} AS qty, {intra} AS intra_ms "
+            f"FROM {src} WHERE ask_q{i} > 0"
+            for i in range(1, ORDERBOOK_LEVELS + 1)
+        )
+
+    row = con.execute(
         f"""
-        SELECT {_ASK_PEAK_LEVEL_SELECT}
-        FROM read_parquet(?)
-        WHERE {where}
-        ORDER BY {intra} ASC, ts_ms ASC
+        WITH cont AS (
+          SELECT *,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY ({intra} // {int(bucket_ms)})
+                   ORDER BY ts_ms DESC
+                 ) AS rn
+          FROM read_parquet(?) WHERE {where}
+        ),
+        rep AS (SELECT * FROM cont WHERE rn = 1)
+        SELECT price, qty, intra_ms FROM ({level_union("rep")})
+        ORDER BY qty DESC, intra_ms ASC LIMIT 1
         """,
         [str(path)],
-    ).fetchall()
-    return _ask_peak_projection_from_rows(rows, bucket_ms=bucket_ms)
+    ).fetchone()
+    if row is None:
+        return None
+    max_row = con.execute(
+        f"""
+        WITH src AS (SELECT * FROM read_parquet(?) WHERE {where})
+        SELECT price, qty, intra_ms FROM ({level_union("src")})
+        ORDER BY qty DESC, intra_ms ASC LIMIT 1
+        """,
+        [str(path)],
+    ).fetchone()
+    return AskPeakRow(
+        price=int(row[0]), qty=int(row[1]), intra_ms=int(row[2]),
+        max_price=int(max_row[0]), max_qty=int(max_row[1]), max_intra_ms=int(max_row[2]),
+    )

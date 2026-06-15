@@ -1,6 +1,5 @@
 import type { Time } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
-import { realMsFromVisibleRightEdge } from './viewportRightEdge';
 
 /**
  * Per-tab saved chart viewport (ADR-0069 A안 — 탭별 보던 위치 복원).
@@ -52,9 +51,9 @@ export function viewportFromRanges(
   lastCandleMs: number | null,
 ): TabViewport | null {
   if (!lr || !vr || axis.segments.length === 0) return null;
-  const rightEdgeMs = realMsFromVisibleRightEdge(vr, axis);
+  const rightEdgeMs = axis.toReal((vr.to as number) * 1000);
   const barSpan = lr.to - lr.from;
-  if (rightEdgeMs === null || !Number.isFinite(barSpan) || barSpan <= 0) return null;
+  if (!Number.isFinite(rightEdgeMs) || !Number.isFinite(barSpan) || barSpan <= 0) return null;
   // At-live-edge: right edge within ~1s of the last real candle. The 1s
   // tolerance absorbs the toReal round-trip; a scrolled-back view lands well
   // below lastCandleMs so the check is never borderline there.

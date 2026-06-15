@@ -24,7 +24,7 @@ import {
   isMinuteTimeframe,
   isCalendarTimeframe,
 } from '../state/livePage';
-import type { AskPeakPoint, RangeBundle } from '../api/types';
+import type { AskPeak, RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
@@ -42,7 +42,6 @@ import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import LiveAskPeakSegments from './LiveAskPeakSegments';
-import type { VisibleTimeRange } from './viewportRightEdge';
 import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
@@ -69,7 +68,7 @@ function pad(n: number): string {
  * something that doesn't crash. Mirrors ChartStage's `axisRef` pattern. */
 const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
-const EMPTY_ASK_PEAK_POINTS: readonly AskPeakPoint[] = [];
+const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 
 interface Props {
   code: string | null;
@@ -93,8 +92,8 @@ interface Props {
   /** 활성 탭의 저장된 viewport(ADR-0069 A안). cold 전환 복귀 시 보던 위치(줌+스크롤)로
    *  복원한다. optional + 기본 null이라 기존 단일-번들 호출부/테스트는 무변경으로 동작. */
   restoreViewport?: TabViewport | null;
-  /** Prefix-aware ask peak series — LiveAskPeakSegments selects by viewport right edge. */
-  askPeakPoints?: readonly AskPeakPoint[];
+  /** LivePage의 useDayAskPeaks 결과(거래일별) — LiveAskPeakSegments에 전달. */
+  dayAskPeaks?: readonly AskPeak[];
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
 }
@@ -102,7 +101,7 @@ interface Props {
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, askPeakPoints = EMPTY_ASK_PEAK_POINTS, todayKst = '' }: Props) {
+export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayKst = '' }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -139,7 +138,6 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
   // instance under the new key.
   const [chartEntry, setChartEntry] = useState<{ chart: IChartApi; key: string } | null>(null);
   const chart = chartEntry !== null && chartEntry.key === viewKey ? chartEntry.chart : null;
-  const [askPeakVisibleRange, setAskPeakVisibleRange] = useState<VisibleTimeRange | null>(null);
 
   // Eng review C1: memoise VirtualAxis on the segments array reference so
   // an SSE push that doesn't change segments doesn't churn the axis identity.
@@ -237,29 +235,6 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
     }
   }, []);
   useEffect(() => registerViewportCapture(captureViewport), [captureViewport]);
-
-  useEffect(() => {
-    if (!chart) {
-      setAskPeakVisibleRange(null);
-      return;
-    }
-    const ts = chart.timeScale();
-    const update = () => {
-      try {
-        const range = ts.getVisibleRange();
-        setAskPeakVisibleRange(range === null
-          ? null
-          : { from: Number(range.from), to: Number(range.to) });
-      } catch {
-        setAskPeakVisibleRange(null);
-      }
-    };
-    update();
-    ts.subscribeVisibleTimeRangeChange(update);
-    return () => {
-      ts.unsubscribeVisibleTimeRangeChange(update);
-    };
-  }, [chart]);
 
   // Continuous viewport capture (ADR-0069 A안 보강). focusTab/addBlankTab snapshot
   // the OUTGOING tab synchronously on a tab switch, but route navigation (leaving
@@ -789,9 +764,10 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
             <LiveAskPeakSegments
               paneSeries={paneSeries}
               axis={axis}
-              askPeakPoints={askPeakPoints}
-              visibleRange={askPeakVisibleRange}
+              dayAskPeaks={dayAskPeaks}
               segments={cb.segments}
+              candles={cb.candles}
+              todayKst={todayKst}
             />
           )}
           <DrawingOverlay chart={chart} axis={axis} paneSeries={paneSeries} />
