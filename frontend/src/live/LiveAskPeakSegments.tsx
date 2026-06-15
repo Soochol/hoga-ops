@@ -34,6 +34,11 @@ function snapPeakMsToCandle(tMs: number, candles: readonly Candle[]): number | n
   return ans >= 0 ? candles[ans].ts_ms : null;
 }
 
+function formatAskPeakLabel(price: number, qty: number): string {
+  const priceStr = Math.round(price).toLocaleString('ko-KR');
+  return `${priceStr}, ${formatQtyCompact(qty)}`;
+}
+
 /** 거래일별 매도 최대벽(dayAskPeaks)을 그날 구간의 수평 세그먼트 좌표로 변환(순수). 각 peak.date를
  *  segment(session open/close)에 매핑 → x0=open, x1=close(과거일) 또는 라이브 엣지(오늘=마지막 캔들).
  *  segment 없는 날·축 빈 경우는 건너뛴다. 시각은 axis.toVirtual(ms)/1000(가상 초, 라인과 동일 좌표). */
@@ -66,7 +71,7 @@ export function buildAskPeakSegments(
       // peak이 실제 걸린 시점(속한 캔들에 스냅) — 그 x에 점을 찍어 언제 최대벽이었는지 표시.
       peakTime: (axis.toVirtual(peakMs) / 1000) as Time,
       price: peakPrice,
-      label: formatQtyCompact(peakQty),
+      label: formatAskPeakLabel(peakPrice, peakQty),
       color,
       lineWidth,
       live: isToday,

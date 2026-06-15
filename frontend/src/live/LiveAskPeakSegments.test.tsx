@@ -35,7 +35,7 @@ describe('buildAskPeakSegments', () => {
     expect(today.time0).toBe(10); // 10000/1000
     expect(today.time1).toBe(12); // 마지막 캔들 12000/1000 (session_close 99999 아님)
     expect(today.live).toBe(true);
-    expect(today.label).toBe('153.1k'); // formatQtyCompact(153125)
+    expect(today.label).toBe('323,000, 153.1k'); // 가격 + formatQtyCompact(153125)
     expect(today.peakTime).toBe(2 / 1000); // axis.toVirtual(t_ms=2)/1000 — peak 발생 시점
     expect(today.color).toBe('#1D4ED8');
     expect(today.lineWidth).toBe(2);
@@ -98,12 +98,12 @@ describe('buildAskPeakSegments', () => {
     const candles = [candle(60000), candle(120000), candle(180000)];
 
     const off = buildAskPeakSegments(peaks, segments, candles, axis, '20260613', '#000', 1, false);
-    expect(off[0].label).toBe('300');
+    expect(off[0].label).toBe('25,100, 300');
     expect(off[0].peakTime).toBe(60);
 
     const on = buildAskPeakSegments(peaks, segments, candles, axis, '20260613', '#000', 1, true);
     expect(on[0].price).toBe(25200);
-    expect(on[0].label).toBe('900');
+    expect(on[0].label).toBe('25,200, 900');
     expect(on[0].peakTime).toBe(120);
     expect(on[0].time0).toBe(off[0].time0);
     expect(on[0].time1).toBe(off[0].time1);

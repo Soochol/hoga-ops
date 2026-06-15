@@ -27,7 +27,7 @@ export interface AskPeakSegment {
   peakTime: Time;
   /** 그날 최대 매도벽 가격(priceToCoordinate 입력). */
   price: number;
-  /** 물량 라벨(예: "12.3k"). 빈 문자열이면 라벨 생략. */
+  /** 가격·물량 라벨(예: "150,000, 16.5k"). 빈 문자열이면 라벨 생략. */
   label: string;
   color: string;
   lineWidth: number;
