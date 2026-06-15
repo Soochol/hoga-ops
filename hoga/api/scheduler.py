@@ -61,12 +61,28 @@ async def _daily_run(data_dir: Path) -> None:
     trading day. Per-entry exceptions are logged; the loop continues.
     """
     # Stage 8: Promote pending Live Capture JSONLs before hogaplay enqueue (ADR-0038).
-    from hoga.live.promote import cleanup_archive, promote_pending
+    from hoga.live.promote import cleanup_archive, promote_pending  # noqa: PLC0415
     try:
         await promote_pending(data_dir)
         await cleanup_archive(data_dir)
     except Exception:  # noqa: BLE001 — one source of failure mustn't block the other
         log.exception("daily run: live promotion failed; continuing to hogaplay enqueue")
+
+    # Stage 9: Prune COMPLETE hogaplay raw past the retention window (ADR-0075).
+    # Scheduler-owned, queue-untouching (like Promotion) — runs every day,
+    # before the trading-day gate, so weekends/holidays still reclaim disk.
+    from hoga.api.prune import prune_raw, resolve_retention_days  # noqa: PLC0415
+    try:
+        pruned = await asyncio.to_thread(
+            prune_raw, data_dir,
+            retention_days=resolve_retention_days(), now=now_kst(), execute=True,
+        )
+        log.info(
+            "daily prune: removed %d dirs, reclaimed %.2f GiB",
+            pruned.deleted, pruned.reclaimed_bytes / 1024**3,
+        )
+    except Exception:  # noqa: BLE001 — prune 실패가 enqueue를 막으면 안 됨
+        log.exception("daily run: prune failed; continuing")
 
     now = now_kst()
     today = now.strftime("%Y%m%d")
@@ -94,7 +110,7 @@ async def _daily_run(data_dir: Path) -> None:
     # Screener daily gap update (local import avoids an import cycle). A
     # screener failure must not kill the rest of the daily run.
     try:
-        from hoga.api import screener
+        from hoga.api import screener  # noqa: PLC0415
         await screener.trigger_update(data_dir)
     except Exception:  # noqa: BLE001
         log.exception("daily run: screener update failed; continuing")

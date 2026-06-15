@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.34.0] - 2026-06-13
+
+### Added
+- **raw 데이터 자동 정리 (Raw Prune)**: parse 완료된 hogaplay raw TSV를 유예 기간(기본 3 **달력일**)
+  경과 후 자동 삭제해 디스크 무한 누적을 막는다. `hoga prune` CLI(dry-run 기본, `--execute`로 삭제,
+  `--days N`로 유예 조정, `--days 0` 거부)와 **Daily Scheduler 일일 자동 prune**(promotion 직후·
+  거래일 게이트 전, `asyncio.to_thread`) 두 경로가 순수 모듈 `hoga/api/prune.py`를 공유한다.
+  삭제 게이트는 **hogaplay-source `DiskState.COMPLETE`만** 통과(aggregate 아님 — `kis_live`가 COMPLETE여도
+  hogaplay가 `SOURCE_PARTIAL`이면 그 raw를 보존, ADR-0039). resume 소스(`CLIENT_INCOMPLETE`)·미완성·
+  `INVALID`·`.no_upstream_data` sentinel은 전부 보존(무손실). `disk_state`의 parquet-우선 분류 덕에
+  raw 삭제는 캘린더/`catch-up`/UI에 투명(재캡처 유발 없음). 2026-06-13 디스크 100%(raw 704GB) 사고 대응.
+  (ADR-0075 = ADR-0036 「로컬 무자동」 원칙의 디스크 예외; CONTEXT.md 「Raw Prune」 등재; Daily Scheduler 2→3 step)
+
 ## [0.7.33.0] - 2026-06-13
 
 ### Added
