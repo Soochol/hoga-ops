@@ -18,7 +18,7 @@ function setup() {
 it('opens a list of all tabs', () => {
   setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
-  expect(screen.getByRole('menu')).toBeInTheDocument();
+  expect(screen.getByRole('dialog', { name: '열린 탭' })).toBeInTheDocument();
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
   expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
   expect(screen.getByText('NAVER')).toBeInTheDocument();
@@ -40,21 +40,21 @@ it('selects a tab and closes the menu', () => {
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
   fireEvent.click(screen.getByText('NAVER'));
   expect(onFocus).toHaveBeenCalledWith('c');
-  expect(screen.queryByRole('menu')).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
 
 it('closes the menu on Escape', () => {
   setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
   fireEvent.keyDown(window, { key: 'Escape' });
-  expect(screen.queryByRole('menu')).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
 
 it('closes the menu on outside mousedown', () => {
   setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
   fireEvent.mouseDown(document.body);
-  expect(screen.queryByRole('menu')).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
 
 it('shows an empty state when no tabs match the query', () => {

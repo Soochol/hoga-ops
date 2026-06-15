@@ -31,7 +31,7 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose,
 
   return (
     <div className="flex items-end gap-1 h-full px-2 font-ui min-w-0" style={{ background: 'var(--bg-subtle)' }}>
-      <div role="tablist" className="flex items-end gap-0.5 min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+      <div role="tablist" aria-label="열린 탭" className="flex items-end gap-0.5 min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
         {tabs.map((t, idx) => {
           const active = t.id === activeTabId;
           return (
@@ -101,7 +101,7 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose,
           </svg>
         </button>
         <LiveTabOverflowMenu tabs={tabs} activeTabId={activeTabId} onFocus={onFocus} />
-        <span className="text-xs font-mono" style={{ color: 'var(--fg-dimmer)' }}>
+        <span className="text-xs font-mono whitespace-nowrap" style={{ color: 'var(--fg-dimmer)' }}>
           {tabs.length} open
         </span>
       </div>

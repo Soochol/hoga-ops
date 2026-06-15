@@ -67,7 +67,7 @@ it('shows an unlimited tab count and keeps the new-tab button enabled', () => {
 it('selects a tab through the overflow menu', () => {
   const p = setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
-  fireEvent.click(within(screen.getByRole('menu')).getByText('SK하이닉스'));
+  fireEvent.click(within(screen.getByRole('dialog')).getByText('SK하이닉스'));
   expect(p.onFocus).toHaveBeenCalledWith('b');
 });
 
@@ -87,6 +87,7 @@ it('scrolls the active tab into view when activeTabId changes', () => {
         onNewTab={vi.fn()}
       />
     );
+    scrollIntoView.mockClear();
     rerender(
       <LiveTabBar
         tabs={tabs}
@@ -98,10 +99,38 @@ it('scrolls the active tab into view when activeTabId changes', () => {
         onNewTab={vi.fn()}
       />
     );
+    const activeTab = screen.getByText('SK하이닉스').closest('[data-tab-id]')!;
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(activeTab).toHaveAttribute('data-tab-id', 'b');
+    expect(activeTab).toHaveAttribute('aria-selected', 'true');
   } finally {
     HTMLElement.prototype.scrollIntoView = original;
   }
+});
+
+it('keeps fixed actions outside the scrollable tablist', () => {
+  const manyTabs = Array.from({ length: 24 }, (_, index): LiveTab => ({
+    id: `tab-${index}`,
+    code: String(100000 + index),
+    label: `종목 ${index + 1}`,
+    timeframe: '1m',
+    historicalFromDate: null,
+    viewport: null,
+  }));
+  setup({ tabs: manyTabs, activeTabId: 'tab-0' });
+
+  const tablist = screen.getByRole('tablist');
+  const newTabButton = screen.getByLabelText('새 탭');
+  const overflowButton = screen.getByLabelText('열린 탭 목록');
+  const tabCount = screen.getByText('24 open');
+
+  expect(within(tablist).queryByLabelText('새 탭')).toBeNull();
+  expect(within(tablist).queryByLabelText('열린 탭 목록')).toBeNull();
+  expect(within(tablist).queryByText('24 open')).toBeNull();
+  expect(tablist).not.toContainElement(newTabButton);
+  expect(tablist).not.toContainElement(overflowButton);
+  expect(tablist).not.toContainElement(tabCount);
 });
 
 it('drag-and-drop reorders via onReorder(from, to)', () => {

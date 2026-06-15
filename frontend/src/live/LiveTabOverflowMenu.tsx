@@ -29,7 +29,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus }: Props) {
       <button
         type="button"
         aria-label="열린 탭 목록"
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="w-7 h-7 flex items-center justify-center rounded-md"
@@ -43,7 +43,8 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus }: Props) {
       </button>
       {open && (
         <div
-          role="menu"
+          role="dialog"
+          aria-label="열린 탭"
           className="absolute right-0 top-8 z-50 w-72 rounded-md p-2 shadow-lg"
           style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
         >
@@ -62,7 +63,6 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus }: Props) {
                 <button
                   key={t.id}
                   type="button"
-                  role="menuitem"
                   aria-label={active ? `활성 탭: ${t.label}` : undefined}
                   onClick={() => {
                     onFocus(t.id);
