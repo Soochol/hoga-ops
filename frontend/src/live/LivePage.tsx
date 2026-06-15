@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
@@ -14,16 +14,16 @@ import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
-import { useDayAskPeaks } from './useDayAskPeaks';
-import type { AskPeak } from '../api/types';
+import { TIMEFRAME_TO_MS, type AskPeakPoint } from '../api/types';
 import type { ObSnapshot } from './bucketHogaSeries';
 import { todayKstYyyymmdd } from './liveDateTime';
+import { buildViewportAskPeakSeries } from './viewportAskPeak';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import LiveSettingsModal from './LiveSettingsModal';
 import { useDocumentTitle } from '../util/useDocumentTitle';
 
-/** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
-const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
+/** 안정 빈 배열 — 매 렌더 새 [] 가 메모 deps를 churn하지 않게. */
+const EMPTY_ASK_PEAK_POINTS: readonly AskPeakPoint[] = [];
 const EMPTY_OB_SNAPSHOTS: readonly ObSnapshot[] = [];
 
 /**
@@ -107,12 +107,17 @@ export function LivePage() {
     today,
     live,
   );
+  const askPeakBucketMs = isMinuteTimeframe(timeframe) ? TIMEFRAME_TO_MS[timeframe] : 60_000;
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
-  const dayAskPeaks = useDayAskPeaks(
-    askPeakOb,
-    (chartBundle ?? bundle)?.ask_peaks ?? EMPTY_ASK_PEAKS,
-    today,
-    activeCode,
+  const prefixAskPeakPoints = (chartBundle ?? bundle)?.ask_peak_points ?? EMPTY_ASK_PEAK_POINTS;
+  const askPeakPoints = useMemo(
+    () => buildViewportAskPeakSeries({
+      prefixPoints: prefixAskPeakPoints,
+      liveOrderbooks: askPeakOb,
+      bucketMs: askPeakBucketMs,
+      todayKst: today,
+    }),
+    [prefixAskPeakPoints, askPeakOb, askPeakBucketMs, today],
   );
 
   return (
@@ -162,7 +167,7 @@ export function LivePage() {
         pastDataWarnings={pastDataWarnings}
         restoreViewport={restoreViewport}
         live={live}
-        dayAskPeaks={dayAskPeaks}
+        askPeakPoints={askPeakPoints}
         todayKst={today}
       />
       {indicatorPanelOpen && (

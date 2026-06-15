@@ -24,6 +24,7 @@ from hoga.api.indicator_reaggregate import reaggregate_fill, reaggregate_ratio
 from hoga.api.invariants import normalize_session_bounds
 from hoga.api.models import (
     AskPeak,
+    AskPeakPoint,
     DateWarning,
     ExcludedDate,
     FillStrength,
@@ -411,7 +412,7 @@ def build_ask_peak_slice(
     cacheable = cache is not None and today_kst is not None and date != today_kst
     if cacheable and cache.has_ask_peak(code, date, source, bucket_ms):  # type: ignore[union-attr]
         return cache.get_ask_peak(code, date, source, bucket_ms)  # type: ignore[union-attr]
-    peak = _compute_ask_peak(
+    peak, _points = _compute_ask_peak_projection(
         engine, code=code, date=date, source=source, bucket_ms=bucket_ms,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
     )
@@ -419,8 +420,7 @@ def build_ask_peak_slice(
         cache.store_ask_peak(code, date, source, bucket_ms, peak)  # type: ignore[union-attr]
     return peak
 
-
-def _compute_ask_peak(
+def _compute_ask_peak_projection(
     engine: QueryEngine,
     *,
     code: str,
@@ -429,24 +429,40 @@ def _compute_ask_peak(
     bucket_ms: int,
     session_open_ms: int | None,
     session_close_ms: int | None,
-) -> "AskPeak | None":
+) -> tuple[AskPeak | None, list[AskPeakPoint]]:
     try:
         path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
     except (FileNotFoundError, StockDateNotFound):
-        return None
+        return None, []
     if not path_obj.exists():
-        return None
-    row = snapshots_tbl.query_day_ask_peak(
-        engine.conn, path=path_obj, bucket_ms=bucket_ms,
-        session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        return None, []
+
+    projection = snapshots_tbl.query_day_ask_peak_projection(
+        engine.conn,
+        path=path_obj,
+        bucket_ms=bucket_ms,
+        session_open_ms=session_open_ms,
+        session_close_ms=session_close_ms,
     )
-    if row is None:
-        return None
-    return AskPeak(
-        date=date, price=row.price, qty=row.qty,
-        t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
-        max_price=row.max_price, max_qty=row.max_qty,
-        max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
+    if projection is None:
+        return None, []
+
+    peak = projection.peak
+    return (
+        AskPeak(
+            date=date, price=peak.price, qty=peak.qty,
+            t_ms=ms_from_midnight_to_unix_ms(date, peak.intra_ms),
+            max_price=peak.max_price, max_qty=peak.max_qty,
+            max_t_ms=ms_from_midnight_to_unix_ms(date, peak.max_intra_ms),
+        ),
+        [
+            AskPeakPoint(
+                t=ms_from_midnight_to_unix_ms(date, p.t_ms),
+                price=p.price,
+                qty=p.qty,
+            )
+            for p in projection.points
+        ],
     )
 
 
@@ -476,6 +492,7 @@ def _empty_range_bundle(
         excluded_dates=excluded,
         data_warnings=[],
         ask_peaks=[],
+        ask_peak_points=[],
     )
 
 
@@ -531,10 +548,12 @@ def build_range_bundle(
     ratio_pts: list[QuoteRatioPoint] = []
     fill_pts: list[FillStrengthPoint] = []
     profiles_by_day: list[VolumeProfile] = []
-    # 거래일별 매도 최대벽 — 데이터 있는 각 거래일당 1개(프론트가 그날 구간 수평 세그먼트로 렌더).
-    # 루프 안에서 계산해 native HHMMSSmmm 세션 경계(meta)에 접근 → 총잔량 지표와 동일하게
-    # bucket_ms 버킷 대표 + 동시호가 배제. 과거일은 indicators_cache로 1회 계산(N일 재스캔 회피).
+    # Day Ask Peak — one projection per included Stock-Date. The table Module
+    # derives both the legacy summary and the prefix series from one filtered
+    # snapshot stream so bucket representative, running max, and auction
+    # exclusion rules stay local.
     ask_peaks: list[AskPeak] = []
+    ask_peak_points: list[AskPeakPoint] = []
 
     # Indicator cache (호가비·체결강도): completed past days are computed once and
     # re-aggregated on later pans; today_kst gates today out (still promoting).
@@ -574,12 +593,12 @@ def build_range_bundle(
         vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source)
 
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
-        ap_d = build_ask_peak_slice(
+        ap_d, ap_pts_d = _compute_ask_peak_projection(
             engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
             session_open_ms=norm_meta["regular_session_open_ms"],
             session_close_ms=meta["regular_session_close_ms"],
-            cache=indicators_cache, today_kst=today_kst,
         )
+        ask_peak_points.extend(ap_pts_d)
         segments.append(RangeSegment(
             date=d,
             session_open_ms=hhmmssms_to_unix_ms(d, norm_meta["regular_session_open_ms"]),
@@ -620,4 +639,5 @@ def build_range_bundle(
         excluded_dates=excluded,
         data_warnings=warnings_list,
         ask_peaks=ask_peaks,
+        ask_peak_points=ask_peak_points,
     )

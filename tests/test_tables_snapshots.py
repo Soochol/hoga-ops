@@ -617,6 +617,51 @@ def test_query_day_ask_peak_intra_max_excludes_single_price(tmp_path) -> None:
     assert peak.max_qty == 700
 
 
+def test_query_day_ask_peak_points_prefix_max_and_tie_break(tmp_path) -> None:
+    from hoga.tables.snapshots import query_day_ask_peak_projection
+
+    obs = [
+        _ob_ap(90000000, [10, 20, 30, 40, 5, 6, 7, 8, 9, 1]),
+        _ob_ap(90100000, [100, 200, 5000, 40, 5, 6, 7, 8, 9, 1]),
+        _ob_ap(90200000, [100, 200, 5000, 40, 5, 6, 7, 7, 8, 9, 1]),  # tie keeps first hit
+        _ob_ap(90300000, [10, 20, 30, 40, 5, 6, 7, 8, 9, 1]),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    projection = query_day_ask_peak_projection(duckdb.connect(), path=out, bucket_ms=60_000)
+    assert projection is not None
+    assert projection.peak.qty == 5000
+    assert projection.peak.price == 25100
+    rows = projection.points
+
+    assert [r.t_ms for r in rows] == [32_400_000, 32_460_000, 32_520_000, 32_580_000]
+    assert [r.qty for r in rows] == [40, 5000, 5000, 5000]
+    assert [r.price for r in rows] == [25150, 25100, 25100, 25100]
+
+
+def test_query_day_ask_peak_points_use_bucket_representative_not_tick_max(tmp_path) -> None:
+    from hoga.tables.snapshots import query_day_ask_peak_projection
+
+    spike = _ob_ap(90010000, [700, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        ask_p=[25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450])
+    rep = _ob_ap(90055000, [10, 20, 300, 40, 5, 6, 7, 8, 9, 1],
+        ask_p=[25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450])
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([spike, rep], out)
+
+    projection = query_day_ask_peak_projection(
+        duckdb.connect(), path=out, bucket_ms=60_000,
+        session_open_ms=90000000, session_close_ms=153000000,
+    )
+
+    assert projection is not None
+    assert [(p.t_ms, p.price, p.qty) for p in projection.points] == [
+        (32_400_000, 25_100, 300),
+    ]
+    assert projection.peak.qty == 300
+    assert projection.peak.max_qty == 700
+
+
 # ---------------------------------------------------------------------------
 # P5 회귀: Intra-Bar Max 상계 불변식
 # ---------------------------------------------------------------------------

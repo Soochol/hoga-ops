@@ -17,8 +17,8 @@ describe('호가 Config Intra-Bar Max 토글 행', () => {
     expect(screen.getByTestId('settings-toggle-ratioIntraMax')).toBeTruthy();
   });
 
-  it('AskPeakConfig에 askPeakIntraMax 토글', () => {
+  it('AskPeakConfig는 viewport 기준 단일선이라 askPeakIntraMax 토글을 노출하지 않는다', () => {
     render(<AskPeakConfig />);
-    expect(screen.getByTestId('settings-toggle-askPeakIntraMax')).toBeTruthy();
+    expect(screen.queryByTestId('settings-toggle-askPeakIntraMax')).toBeNull();
   });
 });
