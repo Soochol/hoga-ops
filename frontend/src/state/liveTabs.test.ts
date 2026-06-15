@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-  useLiveTabsStore, TABS_SOFT_CAP, loadTabs, toTabsSnapshot, initLiveTabsSync,
+  useLiveTabsStore, loadTabs, toTabsSnapshot, initLiveTabsSync,
   registerViewportCapture,
 } from './liveTabs';
 import { useLivePageStore } from './livePage';
@@ -121,11 +121,15 @@ describe('useLiveTabsStore', () => {
     expect(useLivePageStore.getState().activeCode).toBeNull();
   });
 
-  it('addBlankTab is a no-op at the soft cap', () => {
-    for (let i = 0; i < TABS_SOFT_CAP; i++) openTab(`C${String(i).padStart(5, '0')}`);
-    expect(useLiveTabsStore.getState().tabs).toHaveLength(TABS_SOFT_CAP);
-    useLiveTabsStore.getState().addBlankTab();
-    expect(useLiveTabsStore.getState().tabs).toHaveLength(TABS_SOFT_CAP); // 캡 유지
+  it('addBlankTab allows more than the old 8-tab cap', () => {
+    for (let i = 0; i < 9; i++) openTab(`C${String(i).padStart(5, '0')}`);
+    const { tabs, activeTabId } = useLiveTabsStore.getState();
+    expect(tabs).toHaveLength(9);
+    expect(tabs.map((t) => t.code)).toEqual([
+      'C00000', 'C00001', 'C00002', 'C00003', 'C00004',
+      'C00005', 'C00006', 'C00007', 'C00008',
+    ]);
+    expect(tabs.find((t) => t.id === activeTabId)?.code).toBe('C00008');
   });
 
   it('closeTab on the rightmost active tab focuses the left neighbor', () => {

@@ -67,8 +67,7 @@ type TabsStore = {
    *  모델(ADR-0069 개정): 새 탭은 addBlankTab(=+ 버튼)로만 생기고, 클릭은 현재 탭을 바꾼다.
    *  같은 코드가 다른 탭에 있어도 포커스하지 않고 현재 탭을 교체한다(중복 허용). */
   setActiveTabCode: (code: string, label?: string) => void;
-  /** 빈 탭을 만들어 포커스한다(+ 버튼). 종목 선택 전까지 빈 상태(검색 안내)를 보인다.
-   *  소프트캡 도달 시 no-op. */
+  /** 빈 탭을 만들어 포커스한다(+ 버튼). 종목 선택 전까지 빈 상태(검색 안내)를 보인다. */
   addBlankTab: () => void;
   focusTab: (id: string) => void;
   closeTab: (id: string) => void;
@@ -214,7 +213,6 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
   },
 
   addBlankTab: () => {
-    if (get().tabs.length >= TABS_SOFT_CAP) return;
     // 나가는 탭의 viewport를 새 탭 추가 전에 스냅샷(ADR-0069 A안), 그 후 tabs를 FRESH로 읽어
     // 스냅샷 쓰기가 stale spread에 덮이지 않게 한다.
     snapshotActiveViewport();
