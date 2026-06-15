@@ -33,12 +33,10 @@ npm install
 The backend is a FastAPI app served by uvicorn. From the repo root:
 
 ```bash
-uv run uvicorn hoga.api.app:default_app \
-  --factory --host 127.0.0.1 --port 8000 \
-  --reload --reload-dir hoga
+uv run uvicorn hoga.api.app:app --reload --port 8000
 ```
 
-This exposes the REST endpoints and WebSocket stream the frontend consumes. The app factory auto-loads `.env` from the repo root.
+This exposes the SSE replay stream the frontend consumes.
 
 ## Runtime configuration
 
@@ -52,22 +50,17 @@ no rebuild required.
 ```
 frontend/
   src/
+    components/      # presentational React components
+    hooks/           # data hooks (SSE, snapshots, etc.)
+    store/           # Zustand stores
     api/             # fetch + SSE clients
-    capture/         # capture queue UI and timing views
-    chart/           # chart projectors, overlays, drawing, primitives
-    heatmap/         # 관심맵 board
-    inventory/       # stock-date inventory views
-    live/            # /live workspace, bundle assembly, viewport indicators
-    pages/           # route-level pages
-    state/           # shared Zustand stores
-    ui/              # reusable UI primitives
-    util/            # shared utilities
-    watchlist/       # watchlist panel and persistence
-    test/            # vitest helpers
+    tests/           # vitest unit + component tests
   tests/e2e/         # Playwright specs (gated)
   public/config.json # runtime API base URL
 ```
 
 ## Status
 
-The shell, routing, `/live` chart workspace, watchlist/right-rail, screener, inventory, and capture queue are active. `/live` includes historical bundle loading, KIS realtime updates, viewport-aware overlays, and persisted chart indicator preferences.
+The shell, routing, URL state, and data hooks are wired. Several panes
+(Workarea, ChartStage, CursorSidebarConnected) exist as components but are
+not yet mounted in the live layout — they're scheduled for Phase 11.

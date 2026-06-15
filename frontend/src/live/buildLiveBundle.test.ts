@@ -193,26 +193,6 @@ describe('buildLiveBundle', () => {
     expect(bundle.ask_peaks).toEqual(past.ask_peaks);
   });
 
-  it('pastBundle.ask_peak_points(prefix series)를 그대로 통과시킨다', () => {
-    const past = emptyRangeBundle({
-      ask_peak_points: [
-        { t: TODAY_OPEN, price: 297000, qty: 32621 },
-        { t: TODAY_OPEN + 60_000, price: 302500, qty: 246495 },
-      ],
-    });
-    const bundle = buildLiveBundle({
-      code: '005930',
-      todayDate: TODAY,
-      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
-      pastBundle: past,
-      sseOb: [],
-      sseTrade: [],
-      kisCandles: [],
-      bucketMs: 60_000,
-    });
-    expect(bundle.ask_peak_points).toEqual(past.ask_peak_points);
-  });
-
   it('synthesizes kis_live segments for past dates that KIS has but /api/range does not', () => {
     // /api/range only knows 5/20. KIS past-candles covers 5/8 + 5/20 + 5/26.
     // Without segment synthesis, VirtualAxis built from segments would only

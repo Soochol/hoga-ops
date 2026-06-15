@@ -108,18 +108,6 @@ class AskPeak(BaseModel):
     max_t_ms: int
 
 
-class AskPeakPoint(BaseModel):
-    """Prefix point for the running ask-peak series.
-
-    ``t`` is bucket-aligned unix ms, so the frontend can binary-search visible
-    ranges against it without expanding the day summary again.
-    """
-
-    t: int
-    price: int
-    qty: int
-
-
 class QuoteRatioPoint(BaseModel):
     t: int          # Unix ms
     bid_total: int
@@ -548,13 +536,10 @@ class RangeBundle(BaseModel):
     volume_profile_by_day: list[VolumeProfile]
     excluded_dates: list[ExcludedDate] = []
     data_warnings: list[DateWarning] = []
-    # Legacy day summaries for compatibility. /live rendering uses
-    # ask_peak_points so the selected line follows the visible viewport edge.
+    # 거래일별 매도 최대벽(연속거래만) — 범위 내 데이터 있는 각 거래일당 1개. 프론트가 각 항목을
+    # 그날 segment x-구간의 수평 세그먼트로 그린다. 오늘 항목은 클라 ratchet이 live.ob로 갱신.
     # D·W·M/무데이터는 빈 리스트. 기본 []라 기존 클라 무영향.
     ask_peaks: list["AskPeak"] = []
-    # Bucket-aligned running max points. The frontend merges these with live.ob
-    # continuation points and binary-searches the chart's visible right edge.
-    ask_peak_points: list["AskPeakPoint"] = []
 
 
 # === Broker Day-Trajectory (ADR-0023) ===
