@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { useLivePageStore } from '../state/livePage';
+import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveBannerState } from './useLiveBannerState';
 import { LiveHeader } from './LiveHeader';
@@ -16,13 +16,15 @@ import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks } from './useDayAskPeaks';
 import type { AskPeak } from '../api/types';
-
-/** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
-const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
+import type { ObSnapshot } from './bucketHogaSeries';
 import { todayKstYyyymmdd } from './liveDateTime';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import LiveSettingsModal from './LiveSettingsModal';
 import { useDocumentTitle } from '../util/useDocumentTitle';
+
+/** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
+const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
+const EMPTY_OB_SNAPSHOTS: readonly ObSnapshot[] = [];
 
 /**
  * /live page — KIS-based real-time indicator chart.
@@ -105,8 +107,9 @@ export function LivePage() {
     today,
     live,
   );
+  const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
   const dayAskPeaks = useDayAskPeaks(
-    live.ob,
+    askPeakOb,
     (chartBundle ?? bundle)?.ask_peaks ?? EMPTY_ASK_PEAKS,
     today,
     activeCode,

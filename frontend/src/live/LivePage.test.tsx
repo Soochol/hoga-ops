@@ -7,6 +7,20 @@ import { useLivePageStore } from '../state/livePage';
 import { useLiveTabsStore } from '../state/liveTabs';
 import * as liveStatus from '../api/liveStatus';
 
+const livePageMocks = vi.hoisted(() => {
+  const liveOb = [{
+    t_ms: 1,
+    total_ask_qty: 100,
+    total_bid_qty: 90,
+    asks: [{ price: 1000, qty: 10 }],
+    bids: [{ price: 990, qty: 9 }],
+  }];
+  return {
+    liveOb,
+    dayAskPeakObArgs: [] as unknown[],
+  };
+});
+
 // jsdom does not implement ResizeObserver — provide a no-op stub.
 if (typeof window !== 'undefined' && !window.ResizeObserver) {
   window.ResizeObserver = class ResizeObserver {
@@ -28,8 +42,15 @@ vi.mock('./LiveChartRoot', () => ({
 vi.mock('../api/liveSeries', () => ({
   useLiveSeries: () => ({
     initial: undefined, isLoading: false, error: null,
-    ob: [], trade: [], broker: [],
+    ob: livePageMocks.liveOb, trade: [], broker: [],
   }),
+}));
+
+vi.mock('./useDayAskPeaks', () => ({
+  useDayAskPeaks: (ob: unknown, seeds: unknown) => {
+    livePageMocks.dayAskPeakObArgs.push(ob);
+    return seeds ?? [];
+  },
 }));
 
 // LiveSidebar now calls cursor hooks (ADR-0044) — mock them so the shell
@@ -78,6 +99,7 @@ function renderWithRouter(initial = '/live') {
 describe('LivePage shell', () => {
   beforeEach(() => {
     localStorage.clear();
+    livePageMocks.dayAskPeakObArgs.length = 0;
     // The tabs store is a module singleton (loaded once at import). The new
     // LivePage tab-bar wiring makes the mount-seed effect read its activeTabId,
     // so reset it per-test to keep tests isolated — without this, a tab opened
@@ -150,5 +172,19 @@ describe('LivePage shell', () => {
     expect(useLivePageStore.getState().activeCode).toBe('000660');
     // And it must not flip back across a re-render.
     await waitFor(() => expect(useLivePageStore.getState().activeCode).toBe('000660'));
+  });
+
+  it('passes live orderbook snapshots to ask-peak ratchet on minute timeframes', () => {
+    useLivePageStore.setState({ candleTimeframe: '1m' });
+    renderWithRouter('/live?code=005930');
+    expect(livePageMocks.dayAskPeakObArgs.at(-1)).toBe(livePageMocks.liveOb);
+  });
+
+  it('does not feed live orderbook snapshots into ask-peak ratchet on calendar timeframes', () => {
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+    renderWithRouter('/live?code=005930');
+    const ob = livePageMocks.dayAskPeakObArgs.at(-1);
+    expect(ob).not.toBe(livePageMocks.liveOb);
+    expect(ob).toEqual([]);
   });
 });
