@@ -69,8 +69,8 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
           }
           break;
         default:
-          // 1~9 → 0-based 탭 인덱스. '9'→index 8은 의도적으로 도달 가능하나
-          // 소프트캡 8(TABS_SOFT_CAP)에선 실재하는 탭이 없어 LivePage가 무시한다.
+          // 1~9 → 0-based 탭 인덱스. 무제한 탭이어도 숫자 단축키는
+          // 첫 9개 탭만 직접 선택한다. 그 이후 탭은 탭 목록/검색을 사용한다.
           // 정규식은 자기설명적이고 다중문자 key(예: 'F1')의 NaN 경로를 원천 차단.
           if (/^[1-9]$/.test(e.key) && opts.onSelectTabIndex) {
             opts.onSelectTabIndex(Number(e.key) - 1);

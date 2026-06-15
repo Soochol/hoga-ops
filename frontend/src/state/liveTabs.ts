@@ -3,8 +3,7 @@ import { nanoid } from 'nanoid';
 import { useLivePageStore, LIVE_TIMEFRAMES, type LiveTimeframe } from './livePage';
 import { attachPersistence } from './persistentSubscriber';
 import type { TabViewport } from '../live/viewportAnchor';
-
-export const TABS_SOFT_CAP = 8;
+import { mirrorPageViewToActiveTab, projectTabToActiveView } from './liveTabProjection';
 
 export type LiveTab = {
   id: string;
@@ -67,8 +66,7 @@ type TabsStore = {
    *  모델(ADR-0069 개정): 새 탭은 addBlankTab(=+ 버튼)로만 생기고, 클릭은 현재 탭을 바꾼다.
    *  같은 코드가 다른 탭에 있어도 포커스하지 않고 현재 탭을 교체한다(중복 허용). */
   setActiveTabCode: (code: string, label?: string) => void;
-  /** 빈 탭을 만들어 포커스한다(+ 버튼). 종목 선택 전까지 빈 상태(검색 안내)를 보인다.
-   *  소프트캡 도달 시 no-op. */
+  /** 빈 탭을 만들어 포커스한다(+ 버튼). 종목 선택 전까지 빈 상태(검색 안내)를 보인다. */
   addBlankTab: () => void;
   focusTab: (id: string) => void;
   closeTab: (id: string) => void;
@@ -82,14 +80,11 @@ type TabsStore = {
  *  current timeframe. */
 export function applyTabToPage(tab: LiveTab | null): void {
   const page = useLivePageStore.getState();
-  page.projectActiveView({
-    code: tab?.code ?? null,
-    timeframe: tab?.timeframe ?? page.candleTimeframe,
-    historicalFromDate: tab?.historicalFromDate ?? null,
-  });
+  page.projectActiveView(projectTabToActiveView(tab, page.candleTimeframe));
 }
 
 const STORAGE_KEY = 'live.tabs.v1';
+const MAX_PERSISTED_TABS = 1000;
 
 type TabSnapshot = {
   code: string;
@@ -118,10 +113,18 @@ function isViewport(v: unknown): v is TabViewport {
 
 export function toTabsSnapshot(state: Pick<TabsStore, 'tabs' | 'activeTabId'>): TabsSnapshot {
   const i = state.tabs.findIndex((t) => t.id === state.activeTabId);
+  const activeIndex = i < 0 ? 0 : i;
+  const start = state.tabs.length <= MAX_PERSISTED_TABS
+    ? 0
+    : Math.min(
+        Math.max(0, activeIndex - Math.floor(MAX_PERSISTED_TABS / 2)),
+        state.tabs.length - MAX_PERSISTED_TABS,
+      );
+  const tabs = state.tabs.slice(start, start + MAX_PERSISTED_TABS);
   return {
     version: 1,
-    activeIndex: i < 0 ? 0 : i,
-    tabs: state.tabs.map((t) => ({
+    activeIndex: Math.max(0, activeIndex - start),
+    tabs: tabs.map((t) => ({
       code: t.code, timeframe: t.timeframe, historicalFromDate: t.historicalFromDate,
       label: t.label, viewport: t.viewport,
     })),
@@ -190,8 +193,7 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
     const { tabs, activeTabId } = get();
     const active = tabs.find((t) => t.id === activeTabId);
     if (!active) {
-      // 활성 탭이 없으면(첫 진입·전체 닫힘) 이 종목으로 첫 탭을 만든다. cap은 빈 목록이라
-      // 항상 통과한다(활성 탭이 없다 = 탭이 0개).
+      // 활성 탭이 없으면(첫 진입·전체 닫힘) 이 종목으로 첫 탭을 만든다.
       const tab: LiveTab = {
         id: nanoid(8),
         code,
@@ -214,7 +216,6 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
   },
 
   addBlankTab: () => {
-    if (get().tabs.length >= TABS_SOFT_CAP) return;
     // 나가는 탭의 viewport를 새 탭 추가 전에 스냅샷(ADR-0069 A안), 그 후 tabs를 FRESH로 읽어
     // 스냅샷 쓰기가 stale spread에 덮이지 않게 한다.
     snapshotActiveViewport();
@@ -292,19 +293,8 @@ export function initLiveTabsSync(): () => void {
     //     we are about to restore (ADR-0069 A안 cross-timeframe switch-back fix).
     // A pure pan (tf unchanged) leaves viewport alone; it's re-captured continuously
     // by LiveChartRoot's debounced range subscription.
-    const activeTab = tabs.find((t) => t.id === activeTabId);
-    const userChangedTimeframe = !!activeTab && state.candleTimeframe !== activeTab.timeframe;
     useLiveTabsStore.setState({
-      tabs: tabs.map((t) =>
-        t.id === activeTabId
-          ? {
-              ...t,
-              timeframe: state.candleTimeframe,
-              historicalFromDate: state.historicalFromDate,
-              ...(userChangedTimeframe ? { viewport: null } : {}),
-            }
-          : t,
-      ),
+      tabs: mirrorPageViewToActiveTab(tabs, activeTabId, state),
     });
   });
   _syncDispose = () => { unsubPersist(); unsubMirror(); _syncDispose = null; };

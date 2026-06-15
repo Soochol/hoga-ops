@@ -1,6 +1,6 @@
 import { it, expect, vi } from 'vitest';
 import { type ComponentProps } from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { LiveTabBar } from './LiveTabBar';
 import type { LiveTab } from '../state/liveTabs';
 
@@ -11,7 +11,7 @@ const tabs: LiveTab[] = [
 
 function setup(over: Partial<ComponentProps<typeof LiveTabBar>> = {}) {
   const props: ComponentProps<typeof LiveTabBar> = {
-    tabs, activeTabId: 'a', activeLoading: false, atCap: false,
+    tabs, activeTabId: 'a', activeLoading: false,
     onFocus: vi.fn(), onClose: vi.fn(), onReorder: vi.fn(), onNewTab: vi.fn(),
     ...over,
   };
@@ -58,10 +58,99 @@ it('the new-tab button calls onNewTab', () => {
   expect(p.onNewTab).toHaveBeenCalled();
 });
 
-it('disables the new-tab button at the cap', () => {
-  setup({ atCap: true });
-  expect(screen.getByLabelText('새 탭')).toBeDisabled();
+it('shows an unlimited tab count and keeps the new-tab button enabled', () => {
+  setup();
+  expect(screen.getByText('2 open')).toBeInTheDocument();
+  expect(screen.getByLabelText('새 탭')).toBeEnabled();
 });
+
+it('selects a tab through the overflow menu', () => {
+  const p = setup();
+  fireEvent.click(screen.getByLabelText('열린 탭 목록'));
+  fireEvent.click(within(screen.getByRole('dialog')).getByText('SK하이닉스'));
+  expect(p.onFocus).toHaveBeenCalledWith('b');
+});
+
+it('scrolls the active tab into view when activeTabId changes', () => {
+  const scrollIntoView = vi.fn();
+  const original = HTMLElement.prototype.scrollIntoView;
+  HTMLElement.prototype.scrollIntoView = scrollIntoView;
+  try {
+    const { rerender } = render(
+      <LiveTabBar
+        tabs={tabs}
+        activeTabId="a"
+        activeLoading={false}
+        onFocus={vi.fn()}
+        onClose={vi.fn()}
+        onReorder={vi.fn()}
+        onNewTab={vi.fn()}
+      />
+    );
+    scrollIntoView.mockClear();
+    rerender(
+      <LiveTabBar
+        tabs={tabs}
+        activeTabId="b"
+        activeLoading={false}
+        onFocus={vi.fn()}
+        onClose={vi.fn()}
+        onReorder={vi.fn()}
+        onNewTab={vi.fn()}
+      />
+    );
+    const activeTab = screen.getByText('SK하이닉스').closest('[data-tab-id]')!;
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(activeTab).toHaveAttribute('data-tab-id', 'b');
+    expect(activeTab).toHaveAttribute('aria-selected', 'true');
+  } finally {
+    HTMLElement.prototype.scrollIntoView = original;
+  }
+});
+
+it('keeps fixed actions outside the scrollable tablist', () => {
+  const manyTabs = Array.from({ length: 24 }, (_, index): LiveTab => ({
+    id: `tab-${index}`,
+    code: String(100000 + index),
+    label: `종목 ${index + 1}`,
+    timeframe: '1m',
+    historicalFromDate: null,
+    viewport: null,
+  }));
+  setup({ tabs: manyTabs, activeTabId: 'tab-0' });
+
+  const tablist = screen.getByRole('tablist');
+  const newTabButton = screen.getByLabelText('새 탭');
+  const overflowButton = screen.getByLabelText('열린 탭 목록');
+  const tabCount = screen.getByText('24 open');
+
+  expect(within(tablist).queryByLabelText('새 탭')).toBeNull();
+  expect(within(tablist).queryByLabelText('열린 탭 목록')).toBeNull();
+  expect(within(tablist).queryByText('24 open')).toBeNull();
+  expect(tablist).not.toContainElement(newTabButton);
+  expect(tablist).not.toContainElement(overflowButton);
+  expect(tablist).not.toContainElement(tabCount);
+});
+
+it('bounds tab strip rendering while keeping the active tab visible', () => {
+  const manyTabs = Array.from({ length: 80 }, (_, index): LiveTab => ({
+    id: `tab-${index}`,
+    code: String(100000 + index),
+    label: `종목 ${index + 1}`,
+    timeframe: '1m',
+    historicalFromDate: null,
+    viewport: null,
+  }));
+  setup({ tabs: manyTabs, activeTabId: 'tab-70' });
+
+  const tablist = screen.getByRole('tablist');
+  expect(within(tablist).getAllByRole('tab')).toHaveLength(24);
+  expect(within(tablist).getByText('종목 71')).toBeInTheDocument();
+  expect(within(tablist).queryByText('종목 1')).toBeNull();
+  expect(screen.getByText('80 open')).toBeInTheDocument();
+});
+
 
 it('drag-and-drop reorders via onReorder(from, to)', () => {
   const p = setup();

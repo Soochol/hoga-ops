@@ -92,7 +92,7 @@
 
 **Why:** A안(탭별 viewport 시간앵커 저장, plan-eng-review 2026-06-11 채택)이 "보던 위치 복원"은 이미 해결하지만, 전환마다 `/api/range`+past-candles 콜드 fetch 대기(cover ~0.5~2.5s)가 남는다. 여러 종목을 빠르게 오가는 감시 워크플로에서 이 대기가 실사용에 거슬리면 즉시전환 가치가 메모리 비용을 넘어선다 — **그 신호가 확인된 뒤에** 승격(reversibility).
 
-**Context:** ADR-0069가 "탭 = cold-swap 뷰어"(차트 1개, 종목코드만 갈아끼움)를 의도적으로 택했고 warm 멀티구독을 기각했다. B는 구독은 active만 유지(ADR의 KIS 한도 제약 무위반)하되 **차트 DOM/인스턴스만 warm**으로 바꾸는 부분 이탈. 비용: 차트 N개(≤소프트캡 8, 각 lwc 캔버스 수MB) 메모리, `display:none` 차트의 0-size 측정 함정(복귀 시 resize 필요), reveal/cover·useViewportBackfill 머신을 ×N 인스턴스로 복제. 1커밋 전(#72) 머지된 ADR을 재개봉하므로 blast radius 큼.
+**Context:** ADR-0069가 "탭 = cold-swap 뷰어"(차트 1개, 종목코드만 갈아끼움)를 의도적으로 택했고 warm 멀티구독을 기각했다. B는 구독은 active만 유지(ADR의 KIS 한도 제약 무위반)하되 **차트 DOM/인스턴스만 warm**으로 바꾸는 부분 이탈. 비용: 탭 생성이 무제한이므로 차트 N개를 그대로 warm으로 두면 메모리 비용이 사용자 탭 수에 비례해 커진다. 별도 warm-window 정책 없이는 각 lwc 캔버스 수MB, `display:none` 차트의 0-size 측정 함정(복귀 시 resize 필요), reveal/cover·useViewportBackfill 머신을 ×N 인스턴스로 복제한다. 1커밋 전(#72) 머지된 ADR을 재개봉하므로 blast radius 큼.
 
 **Effort:** L
 **Priority:** P3

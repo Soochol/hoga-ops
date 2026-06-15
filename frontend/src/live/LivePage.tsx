@@ -9,7 +9,7 @@ import { LiveToolbar } from './LiveToolbar';
 import { LiveWorkarea } from './LiveWorkarea';
 import { LiveStateBanner } from './LiveStateBanner';
 import { LiveTabBar } from './LiveTabBar';
-import { useLiveTabsStore, TABS_SOFT_CAP } from '../state/liveTabs';
+import { useLiveTabsStore } from '../state/liveTabs';
 import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
@@ -130,7 +130,6 @@ export function LivePage() {
         tabs={tabs}
         activeTabId={activeTabId}
         activeLoading={isPastCandlesLoading}
-        atCap={tabs.length >= TABS_SOFT_CAP}
         onFocus={focusTab}
         onClose={closeTab}
         onReorder={reorderTabs}
