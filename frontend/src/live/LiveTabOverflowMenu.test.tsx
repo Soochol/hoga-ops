@@ -43,6 +43,27 @@ it('selects a tab and closes the menu', () => {
   expect(screen.queryByRole('menu')).toBeNull();
 });
 
+it('closes the menu on Escape', () => {
+  setup();
+  fireEvent.click(screen.getByLabelText('열린 탭 목록'));
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(screen.queryByRole('menu')).toBeNull();
+});
+
+it('closes the menu on outside mousedown', () => {
+  setup();
+  fireEvent.click(screen.getByLabelText('열린 탭 목록'));
+  fireEvent.mouseDown(document.body);
+  expect(screen.queryByRole('menu')).toBeNull();
+});
+
+it('shows an empty state when no tabs match the query', () => {
+  setup();
+  fireEvent.click(screen.getByLabelText('열린 탭 목록'));
+  fireEvent.change(screen.getByPlaceholderText('탭 검색'), { target: { value: 'no-match' } });
+  expect(screen.getByText('일치하는 탭 없음')).toBeInTheDocument();
+});
+
 it('marks the active tab', () => {
   setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));

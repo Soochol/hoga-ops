@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { LiveTab } from '../state/liveTabs';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 
@@ -13,7 +13,8 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus }: Props) {
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  useDismissablePopover(open, rootRef, () => setOpen(false));
+  const dismiss = useCallback(() => setOpen(false), []);
+  useDismissablePopover(open, rootRef, dismiss);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -28,6 +29,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus }: Props) {
       <button
         type="button"
         aria-label="열린 탭 목록"
+        aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="w-7 h-7 flex items-center justify-center rounded-md"
