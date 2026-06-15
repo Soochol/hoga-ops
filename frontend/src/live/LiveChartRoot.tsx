@@ -760,14 +760,16 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
           <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
           <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} todayKst={todayKst} />
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} />
-          <LiveAskPeakSegments
-            paneSeries={paneSeries}
-            axis={axis}
-            dayAskPeaks={dayAskPeaks}
-            segments={cb.segments}
-            candles={cb.candles}
-            todayKst={todayKst}
-          />
+          {isMinuteTimeframe(timeframe) && (
+            <LiveAskPeakSegments
+              paneSeries={paneSeries}
+              axis={axis}
+              dayAskPeaks={dayAskPeaks}
+              segments={cb.segments}
+              candles={cb.candles}
+              todayKst={todayKst}
+            />
+          )}
           <DrawingOverlay chart={chart} axis={axis} paneSeries={paneSeries} />
           {/* After DrawingOverlay so the legend's ✕/eye buttons paint above the
               drawing canvas; the container is pointer-transparent so the

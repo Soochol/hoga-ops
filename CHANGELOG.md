@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.7.36.0] - 2026-06-15
+
+### Fixed
+- **/live 당일 최대 매도벽 지표를 분봉 전용으로 제한**: 1분~30분 차트에서는 기존처럼 표시하고,
+  일봉·주봉·월봉에서는 당일 최대 매도벽 수평선이 더 이상 렌더링되지 않는다.
+- 일봉·주봉·월봉에서는 숨겨진 당일 최대 매도벽을 위해 실시간 호가 버퍼를 계속 스캔하지 않도록 막아,
+  calendar timeframe 전환 후에도 불필요한 ratchet 계산과 렌더 갱신이 발생하지 않는다.
+- 「지표」 모달 설명에 당일 최대 매도벽이 분봉 차트에서만 표시된다는 조건을 명시했다.
+
+### Tests
+- 당일 최대 매도벽 overlay가 1분봉에서만 mount되고 일봉·주봉·월봉에서는 mount되지 않는 회귀 테스트를
+  추가했다.
+- calendar timeframe에서 `useDayAskPeaks`가 실시간 호가 snapshot을 받지 않는지 검증하는 LivePage
+  테스트를 추가했다.
+
 ## [0.7.35.0] - 2026-06-15
 
 ### Added

@@ -17,10 +17,20 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 // "store toggle → paneToggles → the pane set that reaches RangeSeriesPane" was
 // never asserted end-to-end. RangeSeriesPane renders null in jsdom (imperative
 // lightweight-charts wrapper), so we replace it with a prop-capturing stub.
-const { mounted } = vi.hoisted(() => ({ mounted: [] as string[] }));
+const { mounted, askPeakMounts } = vi.hoisted(() => ({
+  mounted: [] as string[],
+  askPeakMounts: [] as string[],
+}));
 vi.mock('../chart/RangeSeriesPane', () => ({
   default: (props: { spec: { name: string } }) => {
     mounted.push(props.spec.name);
+    return null;
+  },
+}));
+
+vi.mock('./LiveAskPeakSegments', () => ({
+  default: () => {
+    askPeakMounts.push('mounted');
     return null;
   },
 }));
@@ -78,7 +88,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 };
 
-function renderAt(timeframe: '1m' | 'D') {
+function renderAt(timeframe: '1m' | 'D' | 'W' | 'M') {
   render(
     <LiveChartRoot
       code="005930"
@@ -94,6 +104,7 @@ function renderAt(timeframe: '1m' | 'D') {
 describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집합)', () => {
   beforeEach(() => {
     mounted.length = 0;
+    askPeakMounts.length = 0;
     // Deterministic baseline: all togglable panes ON, investor OFF.
     useLivePageStore.setState({
       historicalFromDate: null,
@@ -136,5 +147,15 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     useLivePageStore.setState({ quoteTotalsEnabled: true, ratioEnabled: true, fillStrengthEnabled: true });
     renderAt('D');
     expect(mounted).toEqual(['candle', 'volume']);
+  });
+
+  it('1m → 당일 매도 최대벽 오버레이 마운트', () => {
+    renderAt('1m');
+    expect(askPeakMounts).toEqual(['mounted']);
+  });
+
+  it.each(['D', 'W', 'M'] as const)('calendar(%s) → 당일 매도 최대벽 오버레이 미마운트', (timeframe) => {
+    renderAt(timeframe);
+    expect(askPeakMounts).toEqual([]);
   });
 });
