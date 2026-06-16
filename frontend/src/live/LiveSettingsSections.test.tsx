@@ -18,6 +18,16 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.getByTestId('settings-toggle-auctionWindowMask')).toBeTruthy();
   });
 
+  it('차트 설정에 날짜 구분선 토글이 보인다', () => {
+    render(<LiveSettingsSections />);
+    expect(screen.getByTestId('settings-toggle-dayBoundaryEnabled')).toBeTruthy();
+  });
+
+  it('차트 설정에 날짜 구분선 스타일 선택 버튼이 보인다', () => {
+    render(<LiveSettingsSections />);
+    expect(screen.getByRole('button', { name: '날짜 구분선 스타일 선택' })).toBeTruthy();
+  });
+
   it('이동된 토글은 설정 모달에 없다 (급증·누적·극단값필터)', () => {
     render(<LiveSettingsSections />);
     expect(screen.queryByTestId('settings-toggle-surgeMarkerEnabled')).toBeNull();

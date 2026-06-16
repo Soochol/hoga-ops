@@ -2,9 +2,11 @@ import { useState } from 'react';
 import {
   CHART_TOGGLES,
   categoryOf,
+  useChartPrefsStore,
   type ChartToggleCategory,
 } from '../state/chartPrefs';
 import { SOURCE_OPTIONS } from '../state/sourcePreference';
+import MAStylePicker from './indicators/MAStylePicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
 
@@ -28,7 +30,35 @@ function CategoryDetail({ category }: { category: ChartToggleCategory }) {
   const keys = CHART_TOGGLES
     .filter((t) => categoryOf(t) === category)
     .map((t) => t.key);
-  return <IndicatorPrefRows toggleKeys={keys} />;
+  return (
+    <>
+      <IndicatorPrefRows toggleKeys={keys} />
+      {category === 'chart' && (
+        <>
+          <div className="border-b border-border my-2" />
+          <DayBoundaryStyleRow />
+        </>
+      )}
+    </>
+  );
+}
+
+function DayBoundaryStyleRow() {
+  const color = useChartPrefsStore((s) => s.dayBoundaryColor);
+  const lineWidth = useChartPrefsStore((s) => s.dayBoundaryLineWidth);
+  const setStyle = useChartPrefsStore((s) => s.setDayBoundaryStyle);
+
+  return (
+    <div className="flex items-center justify-between py-2">
+      <div className="flex-1 pr-4">
+        <div className="text-fg text-sm">날짜 구분선 스타일</div>
+        <div className="text-fg-dim text-xs mt-0.5">
+          거래일 경계를 표시하는 세로 점선의 색상과 두께입니다.
+        </div>
+      </div>
+      <MAStylePicker color={color} lineWidth={lineWidth} onChange={setStyle} label="날짜 구분선" />
+    </div>
+  );
 }
 
 function DataSourceDetail() {
