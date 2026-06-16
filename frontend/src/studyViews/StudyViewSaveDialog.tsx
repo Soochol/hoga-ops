@@ -1,0 +1,67 @@
+import { useState } from 'react';
+
+export function StudyViewSaveDialog({
+  mode,
+  defaultName,
+  defaultMemo,
+  barCount,
+  sizeBytes,
+  onCancel,
+  onSubmit,
+}: {
+  mode: 'create' | 'overwrite';
+  defaultName: string;
+  defaultMemo: string;
+  barCount: number;
+  sizeBytes: number;
+  onCancel: () => void;
+  onSubmit: (v: { name: string; memo: string }) => void;
+}) {
+  const [name, setName] = useState(defaultName);
+  const [memo, setMemo] = useState(defaultMemo);
+  const valid = name.trim().length > 0;
+  const title = mode === 'overwrite' ? '저장뷰 덮어쓰기' : '저장뷰 만들기';
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 grid place-items-center bg-black/40">
+      <form
+        className="w-[360px] max-w-[calc(100vw-24px)] space-y-3 rounded border bg-bg p-4 shadow-lg"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (valid) onSubmit({ name: name.trim(), memo: memo.trim() });
+        }}
+      >
+        <h2 className="text-sm font-semibold">{mode === 'overwrite' ? '덮어쓰기' : '저장 뷰 만들기'}</h2>
+        {mode === 'overwrite' && (
+          <p className="text-xs text-fg-dim">기존 저장뷰를 현재 차트 스냅샷으로 덮어쓰기합니다.</p>
+        )}
+        <p className="text-xs text-fg-dim">{barCount}개 봉 · 약 {Math.ceil(sizeBytes / 1024)}KB</p>
+        <label className="block text-xs">
+          이름
+          <input
+            aria-label="이름"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="mt-1 w-full rounded border bg-bg-input px-2 py-1 text-sm"
+          />
+        </label>
+        <label className="block text-xs">
+          메모
+          <textarea
+            aria-label="메모"
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            className="mt-1 min-h-20 w-full rounded border bg-bg-input px-2 py-1 text-sm"
+          />
+        </label>
+        <p className="text-xs text-fg-dim">저장 학습뷰는 현재 화면의 계산된 차트 데이터를 스냅샷으로 저장합니다.</p>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onCancel} className="rounded border px-3 py-1 text-sm">취소</button>
+          <button type="submit" disabled={!valid} className="rounded border bg-accent px-3 py-1 text-sm text-white disabled:opacity-50">
+            저장
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}

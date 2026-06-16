@@ -1,8 +1,37 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'react-router';
+import type { RangeBundle } from '../api/types';
+import type { ParquetStudySnapshot } from '../api/studyViews';
 import { LiveChartRoot } from '../live/LiveChartRoot';
+import type { TabViewport } from '../live/viewportAnchor';
 import { useStudyViewSnapshot } from './useStudyViews';
 import { studySnapshotBundleToRangeBundle } from './studySnapshotAdapter';
+
+type CurrentStudySaveSource = {
+  viewId: string;
+  snapshot: ParquetStudySnapshot;
+  bundle: RangeBundle;
+  captureViewport: () => TabViewport | null;
+};
+
+let currentStudySaveSource: CurrentStudySaveSource | null = null;
+const studySaveSourceListeners = new Set<() => void>();
+
+function setCurrentStudySaveSource(next: CurrentStudySaveSource | null) {
+  currentStudySaveSource = next;
+  studySaveSourceListeners.forEach((listener) => listener());
+}
+
+export function useCurrentStudySaveSource() {
+  return useSyncExternalStore(
+    (listener) => {
+      studySaveSourceListeners.add(listener);
+      return () => studySaveSourceListeners.delete(listener);
+    },
+    () => currentStudySaveSource,
+    () => null,
+  );
+}
 
 export function StudyPage() {
   const [params] = useSearchParams();
@@ -13,6 +42,27 @@ export function StudyPage() {
     () => snapshot ? studySnapshotBundleToRangeBundle(snapshot.bundle) : null,
     [snapshot],
   );
+  const captureViewportRef = useRef<() => TabViewport | null>(() => null);
+  const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
+    captureViewportRef.current = capture;
+  }, []);
+
+  useEffect(() => {
+    if (!viewId || !snapshot || !bundle) {
+      setCurrentStudySaveSource(null);
+      return undefined;
+    }
+    const source: CurrentStudySaveSource = {
+      viewId,
+      snapshot,
+      bundle,
+      captureViewport: () => captureViewportRef.current(),
+    };
+    setCurrentStudySaveSource(source);
+    return () => {
+      if (currentStudySaveSource === source) setCurrentStudySaveSource(null);
+    };
+  }, [bundle, captureViewportRef, snapshot, viewId]);
 
   if (!viewId) {
     return (
@@ -78,6 +128,7 @@ export function StudyPage() {
           fillStrengthEnabled: snapshot.indicator_state.fill_strength_enabled,
         }}
         persistLiveViewport={false}
+        onViewportCaptureReady={handleViewportCaptureReady}
       />
     </section>
   );
