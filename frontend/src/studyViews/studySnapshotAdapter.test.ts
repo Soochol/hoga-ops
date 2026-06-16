@@ -32,8 +32,17 @@ describe('studySnapshotBundleToRangeBundle', () => {
       bucket_ms: 300_000,
     });
     expect(bundle.candles[0]).toMatchObject({ ts_ms: 1000, open: 1, close: 2, vol_a: 10, vol_b: 0 });
-    expect(bundle.quote_ratio.points[0]).toMatchObject({ t: 1000, bid_total: 100, ask_total: 90 });
+    expect(bundle.quote_ratio.points[0]).toEqual({
+      t: 1000,
+      bid_total: 100,
+      ask_total: 90,
+      bid_max: 0,
+      ask_max: 0,
+      imb_max_bid: 0,
+      imb_max_ask: 0,
+    });
     expect(bundle.quote_ratio.points).toHaveLength(1);
+    expect(bundle.study_ratio.points).toEqual([{ t: 1000, value: 0.2 }]);
     expect(bundle.fill_strength.points[0]).toMatchObject({ t: 1000, buy_qty: 5, sell_qty: 4 });
     expect(bundle.volume_profile_range).toEqual({ bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] });
     expect(bundle.volume_profile_by_day).toEqual([]);
@@ -59,12 +68,34 @@ describe('studySnapshotBundleToRangeBundle', () => {
       t: 1000,
       bid_total: 100,
       ask_total: 90,
-      bid_max: 100,
-      ask_max: 90,
-      imb_max_bid: 100,
-      imb_max_ask: 90,
+      bid_max: 0,
+      ask_max: 0,
+      imb_max_bid: 0,
+      imb_max_ask: 0,
     }]);
     expect(bundle.fill_strength.points).toEqual([{ t: 1000, buy_qty: 5, sell_qty: 4 }]);
+  });
+
+  it('preserves saved ratio display separately from quote totals', () => {
+    const bundle = studySnapshotBundleToRangeBundle(snapshot({
+      quote_totals: [{ t: 1000, bid_total: 100, ask_total: 90, visible: true }],
+      ratio: [
+        { t: 1000, value: -49, visible: true },
+        { t: 1100, visible: true },
+        { t: 1200, value: 2, visible: false },
+      ],
+    }));
+
+    expect(bundle.quote_ratio.points).toEqual([{
+      t: 1000,
+      bid_total: 100,
+      ask_total: 90,
+      bid_max: 0,
+      ask_max: 0,
+      imb_max_bid: 0,
+      imb_max_ask: 0,
+    }]);
+    expect(bundle.study_ratio.points).toEqual([{ t: 1000, value: -49 }]);
   });
 
   it('uses inert date defaults when a snapshot has no segments', () => {

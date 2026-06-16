@@ -2,6 +2,17 @@ import type { RangeBundle, VolumeProfile } from '../api/types';
 import type { StudySnapshotBundle } from '../api/studyViews';
 import { bucketSeconds } from '../state/livePage';
 
+export type StudySnapshotRatioPoint = { t: number; value: number };
+export type StudySnapshotRatio = { bucket_ms: number; points: StudySnapshotRatioPoint[] };
+export type StudySnapshotRangeBundle = RangeBundle & {
+  /**
+   * Display-locked ratio values saved with the study snapshot. Kept separate
+   * from RangeBundle.quote_ratio because quote totals and ratio display can be
+   * captured under different aggregation settings.
+   */
+  study_ratio: StudySnapshotRatio;
+};
+
 const EMPTY_VOLUME_PROFILE: VolumeProfile = {
   bin_count: 0,
   price_min: 0,
@@ -14,7 +25,7 @@ function bucketMsFor(snapshot: StudySnapshotBundle): number {
   return (bucketSeconds(snapshot.timeframe) ?? 60) * 1000;
 }
 
-export function studySnapshotBundleToRangeBundle(snapshot: StudySnapshotBundle): RangeBundle {
+export function studySnapshotBundleToRangeBundle(snapshot: StudySnapshotBundle): StudySnapshotRangeBundle {
   const bucket_ms = bucketMsFor(snapshot);
   const firstSegment = snapshot.segments[0];
   const lastSegment = snapshot.segments[snapshot.segments.length - 1];
@@ -42,11 +53,18 @@ export function studySnapshotBundleToRangeBundle(snapshot: StudySnapshotBundle):
           t: p.t,
           bid_total: p.bid_total,
           ask_total: p.ask_total,
-          bid_max: p.bid_total,
-          ask_max: p.ask_total,
-          imb_max_bid: p.bid_total,
-          imb_max_ask: p.ask_total,
+          bid_max: 0,
+          ask_max: 0,
+          imb_max_bid: 0,
+          imb_max_ask: 0,
         }];
+      }),
+    },
+    study_ratio: {
+      bucket_ms,
+      points: snapshot.ratio.flatMap((p) => {
+        if (!p.visible || p.value == null) return [];
+        return [{ t: p.t, value: p.value }];
       }),
     },
     fill_strength: {
