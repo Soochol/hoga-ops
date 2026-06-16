@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from hoga.api import study_views as sv
+from hoga.api.app import create_app
 from hoga.api.study_view_routes import build_router
 from hoga.api.models import (
     ParquetStudySnapshot,
@@ -228,6 +229,25 @@ def test_study_view_routes_missing_ids_return_study_specific_404(study_client):
     r = study_client.get("/api/study-views/saves/missing")
     assert r.status_code == 404
     assert r.json()["detail"]["code"] == "study_view_not_found"
+
+    r = study_client.get("/api/study-views/saves/missing/snapshot")
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "study_view_not_found"
+
+    r = study_client.put("/api/study-views/saves/missing", json=_req())
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "study_view_not_found"
+
+    r = study_client.delete("/api/study-views/saves/missing")
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "study_view_not_found"
+
+
+def test_study_view_routes_mounted_in_app_factory(tmp_path):
+    client = TestClient(create_app(tmp_path))
+    r = client.get("/api/study-views/saves")
+    assert r.status_code == 200
+    assert r.json() == {"schema_version": 1, "saves": []}
 
 
 def test_study_views_load_missing_returns_empty(tmp_path):
