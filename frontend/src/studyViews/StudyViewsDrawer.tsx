@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import type { ParquetStudyView, ParquetStudyViewWriteRequest, StudyViewport } from '../api/studyViews';
+import type { RangeBundle } from '../api/types';
+import { useCurrentLiveSaveSource } from '../live/LivePage';
 import { chooseSnapshotWindow } from './snapshotWindow';
 import { useCurrentStudySaveSource } from './StudyPage';
 import { StudyViewSaveDialog } from './StudyViewSaveDialog';
@@ -25,10 +27,22 @@ function defaultName(row: ParquetStudyView | undefined, label: string, timeframe
   return row?.name ?? `${label} ${timeframe} 저장뷰`;
 }
 
-function viewportFromSource(source: ReturnType<typeof useCurrentStudySaveSource>): StudyViewport | null {
-  if (!source) return null;
-  const captured = source.captureViewport();
-  if (!captured) return source.snapshot.viewport;
+function fallbackViewport(bundle: RangeBundle): StudyViewport | null {
+  const last = bundle.candles[bundle.candles.length - 1];
+  if (!last) return null;
+  return {
+    right_edge_ms: last.ts_ms,
+    bar_span: Math.max(1, Math.min(200, bundle.candles.length)),
+    at_live_edge: true,
+  };
+}
+
+function viewportFromCapture(
+  captureViewport: () => { rightEdgeMs: number; barSpan: number; atLiveEdge: boolean } | null,
+  fallback: StudyViewport | null,
+): StudyViewport | null {
+  const captured = captureViewport();
+  if (!captured) return fallback;
   return {
     right_edge_ms: captured.rightEdgeMs,
     bar_span: captured.barSpan,
@@ -36,8 +50,8 @@ function viewportFromSource(source: ReturnType<typeof useCurrentStudySaveSource>
   };
 }
 
-function visibleWindow(source: NonNullable<ReturnType<typeof useCurrentStudySaveSource>>, viewport: StudyViewport) {
-  const candles = source.bundle.candles;
+function visibleWindow(bundle: RangeBundle, viewport: StudyViewport) {
+  const candles = bundle.candles;
   if (candles.length === 0) return { fromIndex: 0, toIndex: -1 };
   const rightIndex = candles.reduce((best, candle, index) => (
     candle.ts_ms <= viewport.right_edge_ms ? index : best
@@ -50,6 +64,7 @@ function visibleWindow(source: NonNullable<ReturnType<typeof useCurrentStudySave
 export function StudyViewsDrawer() {
   const { data, isLoading, isError, refetch } = useStudyViews();
   const mutations = useStudyViewMutations();
+  const liveSource = useCurrentLiveSaveSource();
   const studySource = useCurrentStudySaveSource();
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<SaveDialogState | null>(null);
@@ -62,15 +77,36 @@ export function StudyViewsDrawer() {
     [data?.saves, location.search],
   );
   const canSaveStudy = location.pathname === '/study' && !!studySource;
-  const canSaveLive = false;
+  const canSaveLive = location.pathname === '/live' && !!liveSource;
   const canSave = canSaveStudy || canSaveLive;
 
   const openSaveDialog = (mode: 'create' | 'overwrite', id?: string) => {
+    if (location.pathname === '/live') {
+      if (!liveSource) return;
+      const viewport = viewportFromCapture(liveSource.captureViewport, fallbackViewport(liveSource.bundle));
+      if (!viewport) return;
+      const window = visibleWindow(liveSource.bundle, viewport);
+      const request = buildStudySnapshotRequest({
+        name: defaultName(undefined, liveSource.label, liveSource.timeframe),
+        memo: '',
+        route: '/live',
+        code: liveSource.code,
+        label: liveSource.label,
+        timeframe: liveSource.timeframe,
+        viewport,
+        indicatorState: liveSource.indicatorState,
+        bundle: liveSource.bundle,
+        fromIndex: window.fromIndex,
+        toIndex: window.toIndex,
+      });
+      setDialog({ mode: 'create', request });
+      return;
+    }
     if (!studySource) return;
     const row = id ? data?.saves.find((save) => save.id === id) : currentStudyRow;
-    const viewport = viewportFromSource(studySource);
+    const viewport = viewportFromCapture(studySource.captureViewport, studySource.snapshot.viewport);
     if (!viewport) return;
-    const window = visibleWindow(studySource, viewport);
+    const window = visibleWindow(studySource.bundle, viewport);
     const request = buildStudySnapshotRequest({
       name: defaultName(mode === 'overwrite' ? row : undefined, studySource.snapshot.label, studySource.snapshot.timeframe),
       memo: mode === 'overwrite' ? row?.memo ?? '' : '',
@@ -125,7 +161,7 @@ export function StudyViewsDrawer() {
             onChange={(e) => setQuery(e.target.value)}
             className="w-full bg-bg-input border rounded px-2 py-1 text-sm"
           />
-          {location.pathname === '/live' && <p className="mt-2 text-xs text-fg-dim">라이브 차트 저장 연결 준비 중입니다.</p>}
+          {location.pathname === '/live' && !liveSource && <p className="mt-2 text-xs text-fg-dim">차트를 불러온 뒤 저장할 수 있습니다.</p>}
           {location.pathname === '/study' && !studySource && <p className="mt-2 text-xs text-fg-dim">학습뷰를 불러온 뒤 저장할 수 있습니다.</p>}
           {location.pathname !== '/live' && location.pathname !== '/study' && (
             <p className="mt-2 text-xs text-fg-dim">차트 화면에서 저장할 수 있습니다.</p>

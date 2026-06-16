@@ -9,6 +9,7 @@ import { StudyViewsDrawer, filterStudyViews } from './StudyViewsDrawer';
 const createMutate = vi.fn();
 const updateMutate = vi.fn();
 const removeMutate = vi.fn();
+let liveSource: unknown = null;
 let studySource: unknown = null;
 
 const saves: ParquetStudyView[] = [
@@ -88,6 +89,10 @@ vi.mock('./StudyPage', () => ({
   useCurrentStudySaveSource: () => studySource,
 }));
 
+vi.mock('../live/LivePage', () => ({
+  useCurrentLiveSaveSource: () => liveSource,
+}));
+
 function snapshotFixture(): ParquetStudySnapshot {
   return {
     schema_version: 1,
@@ -161,6 +166,7 @@ beforeEach(() => {
   createMutate.mockReset();
   updateMutate.mockReset();
   removeMutate.mockReset();
+  liveSource = null;
   studySource = null;
 });
 
@@ -182,10 +188,30 @@ it('renders list and no-match state', async () => {
   expect(screen.getByText('차트 화면에서 저장할 수 있습니다.')).toBeTruthy();
 });
 
-it('keeps live save disabled until a live capture bridge exists', () => {
+it('opens create dialog on live and creates from the live source', async () => {
+  liveSource = {
+    code: '005930',
+    label: '삼성전자',
+    timeframe: '5m',
+    bundle: rangeBundleFixture(),
+    indicatorState: saves[0].indicator_state,
+    captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 2, atLiveEdge: true }),
+  };
   renderDrawer('/live');
-  expect(screen.getByRole('button', { name: '현재 뷰 저장' })).toBeDisabled();
-  expect(screen.getByText('라이브 차트 저장 연결 준비 중입니다.')).toBeTruthy();
+
+  await userEvent.click(screen.getByRole('button', { name: '현재 뷰 저장' }));
+  expect(screen.getByRole('dialog', { name: '저장뷰 만들기' })).toBeTruthy();
+  await userEvent.clear(screen.getByLabelText('이름'));
+  await userEvent.type(screen.getByLabelText('이름'), ' 라이브 저장 ');
+  await userEvent.click(screen.getByRole('button', { name: '저장' }));
+
+  expect(createMutate).toHaveBeenCalledTimes(1);
+  const body = createMutate.mock.calls[0][0];
+  expect(body.name).toBe('라이브 저장');
+  expect(body.code).toBe('005930');
+  expect(body.label).toBe('삼성전자');
+  expect(body.provenance.saved_from_route).toBe('/live');
+  expect(body.viewport.at_live_edge).toBe(true);
 });
 
 it('creates a new study save and navigates to the created view', async () => {
