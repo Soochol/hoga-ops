@@ -89,7 +89,7 @@ export function LivePage() {
   // cold switch-back. Stable reference (the tab object's viewport field) across
   // SSE renders; only rewritten on switch-away, so it doesn't thrash the chart.
   const restoreViewport = tabs.find((t) => t.id === activeTabId)?.viewport ?? null;
-  useDocumentTitle(activeCode, timeframe);
+  useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
