@@ -276,7 +276,7 @@ _BID_Q_SUM: str = " + ".join(f"bid_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1)
 # Single-price auction is detected by orderbook STRUCTURE, not a 15:20 clock
 # (ADR-0062). KRX single-price phases (closing auction, intraday VI) expose exactly
 # the top 3 levels per side; a continuous-trading book still has depth beyond level
-# 3. _ASK_DEEP_SUM / _BID_DEEP_SUM sum the deep (level 4..10) columns so
+# 3 on both sides. _ASK_DEEP_SUM / _BID_DEEP_SUM sum the deep (level 4..10) columns so
 # query_bucketed_ratio can test "is this a continuous-trading book?".
 _AUCTION_BOOK_DEPTH: int = 3
 _ASK_DEEP_SUM: str = " + ".join(
@@ -288,7 +288,7 @@ _BID_DEEP_SUM: str = " + ".join(
 
 # 연속거래 호가창 술어 — query_bucketed_ratio의 deep_book_sql과 동일(단일진실원).
 # 클라 isContinuousBook(bucketHogaSeries.ts)과도 글자 그대로 같은 정의.
-_DEEP_BOOK_SQL: str = f"(({_ASK_DEEP_SUM}) > 0 OR ({_BID_DEEP_SUM}) > 0)"
+_DEEP_BOOK_SQL: str = f"(({_ASK_DEEP_SUM}) > 0 AND ({_BID_DEEP_SUM}) > 0)"
 
 
 @dataclass(frozen=True)

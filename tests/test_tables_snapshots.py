@@ -696,6 +696,43 @@ def test_query_day_ask_peak_dual_excludes_collapsed_books_from_all_price(tmp_pat
     assert peak.all_qty == 2000 and peak.all_price == 26000
 
 
+def test_query_day_ask_peak_dual_excludes_one_sided_collapsed_ask_book(tmp_path) -> None:
+    """매도 쪽이 3호가로 붕괴했으면 bid 쪽 depth가 남아 있어도 미체결 peak에서 제외한다."""
+    z = tuple([0] * 10)
+    one_sided_collapsed = Orderbook(
+        ts_ms=100000000, seq=1,
+        ask_p=(25000, 25050, 25100) + (0,) * 7,
+        ask_q=(99999, 1, 1) + (0,) * 7,
+        ask_d=z,
+        bid_p=tuple(24950 - 50 * i for i in range(10)),
+        bid_q=tuple([100] * 10),
+        bid_d=z,
+        tot_ask=100001, tot_ask_d=0, tot_bid=1000, tot_bid_d=0,
+    )
+    continuous = _ob_ap(
+        100010000,
+        [300, 2000, 30, 40, 5, 6, 7, 8, 9, 1],
+        ask_p=[25000, 26000, 27000, 27100, 27200, 27300, 27400, 27500, 27600, 27700],
+    )
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    write_parquet([one_sided_collapsed, continuous], snapshots_path)
+    write_trades([_trade(100000500, 25000)], trades_path)
+
+    peak = query_day_ask_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90000000,
+        session_close_ms=153000000,
+    )
+
+    assert peak is not None
+    assert peak.all_qty == 2000 and peak.all_price == 26000
+    assert peak.all_max_qty == 2000 and peak.all_max_price == 26000
+
+
 # ---------------------------------------------------------------------------
 # P5 회귀: Intra-Bar Max 상계 불변식
 # ---------------------------------------------------------------------------

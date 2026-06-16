@@ -173,6 +173,32 @@ async def test_on_tick_ignores_auction_or_post_close_ask_peak_books(tmp_path):
     assert stream.ask_peak_snapshot("005930") is None
 
 
+async def test_on_tick_ignores_one_sided_collapsed_ask_peak_book(tmp_path):
+    buf = LiveBuffer()
+    stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: "20260616", phase_fn=lambda: "regular")
+
+    trade_t = _kst_ms(9, 10)
+    await stream.on_tick(WsTick(code="005930", t_ms=trade_t, kind=SnapshotKind.TRADE, payload={
+        "trades": [{"t_ms": trade_t, "price": 101, "qty": 5, "side": 1}],
+    }))
+
+    collapsed_t = _kst_ms(9, 11)
+    await stream.on_tick(WsTick(code="005930", t_ms=collapsed_t, kind=SnapshotKind.OB, payload={
+        "code": "005930", "t_ms": collapsed_t,
+        "asks": [
+            {"price": 101, "qty": 30_000},
+            {"price": 102, "qty": 20_000},
+            {"price": 103, "qty": 10_000},
+        ] + [{"price": 0, "qty": 0} for _ in range(7)],
+        "bids": [{"price": 100 - i, "qty": 100} for i in range(10)],
+        "total_ask_qty": 60_000,
+        "total_bid_qty": 1_000,
+    }))
+
+    assert stream.ask_peak_snapshot("005930") is None
+
+
 async def test_run_flush_loop_drains_resets_and_reopen_has_no_ghost_carry(
     tmp_path, monkeypatch,
 ):

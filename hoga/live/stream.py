@@ -37,7 +37,7 @@ def _is_continuous_book(
     asks: Sequence[Mapping[str, object]],
     bids: Sequence[Mapping[str, object]],
 ) -> bool:
-    return _has_deep_qty(asks) or _has_deep_qty(bids)
+    return _has_deep_qty(asks) and _has_deep_qty(bids)
 
 
 def _has_deep_qty(levels: Sequence[Mapping[str, object]]) -> bool:
