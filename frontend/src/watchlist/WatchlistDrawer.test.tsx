@@ -96,6 +96,65 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByText('-1,500원 (0.80%)')).toBeInTheDocument();
   });
 
+  it('opens a sort menu next to the edit menu with default, ascending, and descending choices', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+
+    await waitFor(() => expect(screen.getByLabelText('관심종목 정렬')).toBeInTheDocument());
+    expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+
+    expect(await screen.findByRole('menu', { name: '정렬' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitemradio', { name: '기본' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('menuitemradio', { name: '등락률 오름차순' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('menuitemradio', { name: '등락률 내림차순' })).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('sorts visible watchlist rows by live change rate and resets to default order', async () => {
+    const folder = { id: 'f_0000000a', name: '기본', order: 0 };
+    const threeEntries = {
+      folders: [folder],
+      entries: [
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 1 },
+        { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 2 },
+      ],
+      next_run_at_ms: 0,
+    };
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(threeEntries);
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      phase: 'open',
+      quotes: [
+        { code: '005930', price: 72400, change_pct: 1.2, change_won: 850 },
+        { code: '000660', price: 183500, change_pct: -0.8, change_won: -1500 },
+        { code: '035420', price: 211000, change_pct: 3.4, change_won: 6900 },
+      ],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+
+    await waitFor(() => expect(screen.getByText('NAVER')).toBeInTheDocument());
+
+    const rowCodes = () => screen.getAllByTestId(/^watchlist-row-/).map((el) =>
+      el.getAttribute('data-testid')?.replace('watchlist-row-', ''));
+
+    expect(rowCodes()).toEqual(['005930', '000660', '035420']);
+
+    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 오름차순' }));
+    expect(rowCodes()).toEqual(['000660', '005930', '035420']);
+
+    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' }));
+    expect(rowCodes()).toEqual(['035420', '005930', '000660']);
+
+    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: '기본' }));
+    expect(rowCodes()).toEqual(['005930', '000660', '035420']);
+  });
+
   it('right-click opens the context menu; 관심 해제 removes the entry and closes', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const removeSpy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined);
