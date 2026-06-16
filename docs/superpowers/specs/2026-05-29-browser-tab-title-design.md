@@ -24,7 +24,7 @@ The Replay Viewer and `/live` page already know which **Code** the user is looki
 |---|---|---|
 | Single writer | preserves (신설) | grill 단계에서 `git grep "document.title" frontend/src/` 결과 0건 확인 — 이 spec이 도입하는 호출이 유일한 writer가 된다 |
 | Default-on-unmount | preserves | cleanup 함수가 unconditional, 비-Code 페이지는 훅 미호출 → 값 유지 |
-| Precedence | preserves | 훅 내부 단일 `??` 체인; 변경 시 [edge cases](#edge-cases) 표 동시 갱신 |
+| Precedence | preserves | base resolution(name 우선, 없으면 code) + Live Quote suffix(price, change_pct) 순서가 유지된다. 변경 시 [edge cases](#edge-cases) 표와 함께 갱신 |
 
 기존 정적 `<title>frontend</title>` 값은 invariant가 아닌 단순 하드코딩 default이며, index.html 변경으로 `hoga-ops`로 치환된다 — 사용자 시각 가치를 위한 의도된 변경.
 
@@ -149,9 +149,12 @@ useLivePageStore → storedCode
 | `code` present, name resolved, Live Quote present | `name price change_pct` (e.g. `삼성전자 71,200 +1.23%`) |
 | `code` present, name resolved, Live Quote present but `change_pct=null` | `name price` (e.g. `삼성전자 71,200`) |
 | `code` present, name resolved, Live Quote missing | name (e.g. `삼성전자`) |
-| `code` present, `useSymbols` still loading | `code` (e.g. `005930`), updates to name on resolve |
-| `code` present, **Code** absent from **Symbol Master** (new IPO / delisted) | `code` |
-| `useSymbols` query in error state | `code` (data is `undefined`, so `name` is `undefined`) |
+| `code` present, `useSymbols` still loading, Live Quote present | `code price change_pct` (e.g. `005930 71,200 +1.23%`), updates to name on resolve |
+| `code` present, `useSymbols` still loading, Live Quote missing | `code` |
+| `code` present, **Code** absent from **Symbol Master**, Live Quote present (new IPO / delisted) | `code price change_pct` |
+| `code` present, **Code** absent from **Symbol Master**, Live Quote missing (new IPO / delisted) | `code` |
+| `code` present, `useSymbols` query in error state, Live Quote present | `code price change_pct` (e.g. `005930 71,200 +1.23%`) |
+| `code` present, `useSymbols` query in error state, Live Quote missing | `code` |
 | `/replay` new tab with `selection === null` | `hoga-ops` |
 | `/live` with no `?code=` and empty `activeCode` | `hoga-ops` |
 | Navigation from `/replay` → `/inventory` | Previous hook's cleanup writes `hoga-ops`; no hook runs on `/inventory`, so it stays |
@@ -160,20 +163,21 @@ useLivePageStore → storedCode
 
 ### Error handling
 
-The hook has no explicit error path. Every failure mode (loading, network error, missing symbol) degrades silently to the next fallback in the precedence list. This matches the existing pattern in `TabStrip` and `CaptureQueue`, which also fall back to showing the code when the name is unavailable.
+The hook has no explicit error path. Loading, network error, and missing symbol all degrade silently through the same precedence list: name if available, otherwise raw code, then Live Quote suffix if a quote is cached. This keeps the title stable while async data settles.
 
 ### Testing
 
 `useDocumentTitle.test.ts` — Vitest + `renderHook` from `@testing-library/react`:
 
-1. `code = null` → `document.title === 'hoga-ops'`.
-2. `code = null`, then re-render with `code = '005930'` and `useSymbols` data containing it → `document.title === '삼성전자'`.
-3. `code = '005930'`, `useSymbols` data empty → `document.title === '005930'`.
-4. `code = '005930'`, useSymbols transitions from empty → containing the symbol → title updates from `005930` to `삼성전자`.
-5. `code = '   '` (whitespace) → `document.title === 'hoga-ops'`.
-6. Unmount → `document.title === 'hoga-ops'`.
+1. `code = null` or blank/whitespace → `document.title === 'hoga-ops'`.
+2. Known **Code**, no quote → `document.title === 'name'`.
+3. Known **Code**, cached quote with positive / negative / zero / null `change_pct` → `document.title === 'name price change_pct'` or `document.title === 'name price'` when `change_pct=null`.
+4. Quote arriving after initial render updates the title.
+5. **Code** change does not attach the previous **Code**'s quote while the new quote is pending.
+6. Unknown **Code** with quote uses the raw **Code** as the title base.
+7. Unmount restores `hoga-ops`.
 
-`useSymbols()` will be mocked via `vi.mock` so the test doesn't depend on the TanStack Query client. The mock returns a typed `{ data: { symbols: [...] } }` shape that matches the real hook.
+`apiCall` is mocked in the pending quote path, and the React Query cache is seeded for symbols and quotes so the tests stay deterministic while still exercising the cache-backed lookup flow.
 
 No integration test on `ReplayViewer` or `LivePage` — both changes are a single `useDocumentTitle(...)` call, the regression surface is the hook itself, and the page-level wiring is shallow.
 
