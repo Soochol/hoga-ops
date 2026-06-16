@@ -30,11 +30,38 @@ afterEach(() => {
 });
 
 it('calls study view endpoints', async () => {
+  const fetchMock = vi.mocked(globalThis.fetch);
+
   await expect(listStudyViews()).resolves.toEqual({ schema_version: 1, saves: [] });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/study-views/saves');
+  expect(fetchMock.mock.calls[0][1]).toBeUndefined();
+
+  fetchMock.mockClear();
+
   await expect(getStudyViewSnapshot('view1')).resolves.toMatchObject({ code: '005930' });
-  await createStudyView({ name: '저장뷰' } as any);
-  await updateStudyView('view1', { name: '수정' } as any);
+  expect(fetchMock).toHaveBeenCalledWith('/api/study-views/saves/view1/snapshot', undefined);
+
+  fetchMock.mockClear();
+
+  const createBody = { name: '저장뷰' };
+  await createStudyView(createBody as any);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/study-views/saves');
+  expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  }));
+  expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(createBody);
+
+  fetchMock.mockClear();
+
+  const updateBody = { name: '수정' };
+  await updateStudyView('view1', updateBody as any);
+  expect(fetchMock).toHaveBeenCalledWith('/api/study-views/saves/view1', expect.objectContaining({ method: 'PUT' }));
+
+  fetchMock.mockClear();
+
   await deleteStudyView('view1');
-  expect(globalThis.fetch).toHaveBeenCalledWith('/api/study-views/saves', expect.anything());
-  expect(globalThis.fetch).toHaveBeenCalledWith('/api/study-views/saves/view1', expect.objectContaining({ method: 'PUT' }));
+  expect(fetchMock).toHaveBeenCalledWith('/api/study-views/saves/view1', expect.objectContaining({ method: 'DELETE' }));
 });
