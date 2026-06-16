@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { LiveTab } from '../state/liveTabs';
 import { useDismissablePopover } from '../util/useDismissablePopover';
+import { formatLiveViewLabel } from './liveViewLabel';
 
 const MAX_RENDERED_RESULTS = 200;
 
@@ -22,9 +23,10 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus, onClose }: Pro
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return tabs;
-    return tabs.filter((t) =>
-      t.label.toLowerCase().includes(q) || t.code.toLowerCase().includes(q)
-    );
+    return tabs.filter((t) => {
+      const displayLabel = formatLiveViewLabel(t.label, t.timeframe).toLowerCase();
+      return displayLabel.includes(q) || t.label.toLowerCase().includes(q) || t.code.toLowerCase().includes(q);
+    });
   }, [query, tabs]);
   const visible = filtered.slice(0, MAX_RENDERED_RESULTS);
 
@@ -63,6 +65,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus, onClose }: Pro
           <div className="mt-2 max-h-80 overflow-y-auto">
             {visible.map((t) => {
               const active = t.id === activeTabId;
+              const displayLabel = formatLiveViewLabel(t.label, t.timeframe);
               return (
                 <div
                   key={t.id}
@@ -71,7 +74,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus, onClose }: Pro
                 >
                   <button
                     type="button"
-                    aria-label={active ? `활성 탭: ${t.label}` : undefined}
+                    aria-label={active ? `활성 탭: ${displayLabel}` : undefined}
                     onClick={() => {
                       onFocus(t.id);
                       setOpen(false);
@@ -80,14 +83,14 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus, onClose }: Pro
                     style={{ color: 'inherit' }}
                   >
                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: active ? 'var(--success)' : 'transparent', border: active ? 'none' : '1px solid var(--fg-dimmer)' }} />
-                    <span className="min-w-0 flex-1 truncate" title={t.label}>{t.label}</span>
+                    <span className="min-w-0 flex-1 truncate" title={displayLabel}>{displayLabel}</span>
                     {t.code && t.code !== t.label && (
                       <span className="font-mono text-xs shrink-0" style={{ color: 'var(--fg-dimmer)' }}>{t.code}</span>
                     )}
                   </button>
                   <button
                     type="button"
-                    aria-label={`탭 닫기: ${t.label}`}
+                    aria-label={`탭 닫기: ${displayLabel}`}
                     title="탭 닫기"
                     onClick={() => onClose(t.id)}
                     className="w-7 h-7 flex items-center justify-center rounded shrink-0"

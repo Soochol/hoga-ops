@@ -84,11 +84,12 @@ export function LivePage() {
   });
 
   const activeCode = useLivePageStore((s) => s.activeCode);
+  const timeframe = useLivePageStore((s) => s.candleTimeframe);
   // Active tab's saved viewport (ADR-0069 A안) → LiveChartRoot restores it on
   // cold switch-back. Stable reference (the tab object's viewport field) across
   // SSE renders; only rewritten on switch-away, so it doesn't thrash the chart.
   const restoreViewport = tabs.find((t) => t.id === activeTabId)?.viewport ?? null;
-  useDocumentTitle(activeCode);
+  useDocumentTitle(activeCode, timeframe);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -98,7 +99,6 @@ export function LivePage() {
   // Two independent useLiveSeries calls would open two SSE connections and
   // two buffers — HMR re-mounts cleared one but not the other, leaving the
   // sidebar's LATEST mode stuck on the empty-buffer state.
-  const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const today = todayKstYyyymmdd();
   const live = useLiveSeries(activeCode ?? '');
   const { bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending, pastDataWarnings } = useLiveBundle(
