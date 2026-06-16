@@ -55,7 +55,8 @@ def load_saves(data_dir: Path) -> StudyViewsFile:
         return _quarantine(p, "badjson")
     if not isinstance(raw, dict):
         return _quarantine(p, "badshape")
-    if raw.get("schema_version", 0) > _CURRENT_VERSION:
+    schema_version = raw.get("schema_version", 0)
+    if isinstance(schema_version, int) and schema_version > _CURRENT_VERSION:
         return _quarantine(p, "future-version")
     try:
         return StudyViewsFile.model_validate(raw)

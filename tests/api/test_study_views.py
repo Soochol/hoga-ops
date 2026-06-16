@@ -220,6 +220,14 @@ def test_study_views_corrupt_manifest_quarantined(tmp_path):
     assert list(p.parent.glob("saves.json.corrupt-*-badjson"))
 
 
+def test_study_views_malformed_manifest_version_quarantined_as_schema(tmp_path):
+    p = tmp_path / "study_views" / "saves.json"
+    p.parent.mkdir(parents=True)
+    p.write_text(json.dumps({"schema_version": "bad", "saves": []}), encoding="utf-8")
+    assert sv.load_saves(tmp_path).saves == []
+    assert list(p.parent.glob("saves.json.corrupt-*-schema"))
+
+
 def test_study_views_delete_missing_snapshot_still_removes_manifest(tmp_path):
     sv.create_save_sync(tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10)
     (tmp_path / "study_views" / "snapshots" / "view1.json").unlink()
