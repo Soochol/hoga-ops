@@ -1165,6 +1165,43 @@ async def test_investor_estimate_full_history_replaces_latest_only_accumulator()
 
 
 @pytest.mark.asyncio
+async def test_investor_estimate_empty_success_clears_same_day_accumulator() -> None:
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    fake = _FakeKisForInvestorTrendEstimate([
+        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+        [],
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
+
+    await fetcher.fetch(fake, "005930")
+    response = await fetcher.fetch(fake, "005930")
+
+    assert response.status == "empty"
+    assert response.rows == []
+    assert response.latest is None
+    assert fetcher._accumulator[("20260616", "005930")] == {}
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_all_null_rows_are_empty() -> None:
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    fake = _FakeKisForInvestorTrendEstimate([
+        [InvestorTrendEstimateRow(slot="0900", foreign_qty=None, institution_qty=None, sum_qty=None)],
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
+
+    response = await fetcher.fetch(fake, "005930")
+
+    assert response.status == "empty"
+    assert response.latest is None
+    assert [(r.slot, r.foreign_qty, r.institution_qty, r.sum_qty) for r in response.rows] == [
+        ("0900", None, None, None)
+    ]
+
+
+@pytest.mark.asyncio
 async def test_investor_estimate_ttl_coalesces_calls() -> None:
     from hoga.live.api import LiveInvestorEstimateFetcher
 
@@ -1283,6 +1320,32 @@ async def test_investor_estimate_evicts_previous_day_state(monkeypatch) -> None:
     assert ("20260616", "005930") not in fetcher._accumulator
     assert ("20260616", "005930") not in fetcher._last_success_fetched_at_ms
     assert ("20260617", "000660") in fetcher._accumulator
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_bounds_codes_per_day(monkeypatch) -> None:
+    from hoga.live import api as live_api
+    from hoga.live.api import (
+        _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY,
+        LiveInvestorEstimateFetcher,
+    )
+
+    now = 100.0
+    monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
+    monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
+    fake = _FakeKisForInvestorTrendEstimate([
+        ([] if i % 2 == 0 else [InvestorTrendEstimateRow(slot="0900", foreign_qty=i, institution_qty=0, sum_qty=i)])
+        for i in range(_INVESTOR_ESTIMATE_MAX_CODES_PER_DAY + 1)
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=60, today_fn=lambda: "20260616")
+
+    for i in range(_INVESTOR_ESTIMATE_MAX_CODES_PER_DAY + 1):
+        now = 100.0 + i
+        await fetcher.fetch(fake, f"{i:06d}")
+
+    assert ("20260616", "000000") not in fetcher._cache
+    assert len(fetcher._cache) <= _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY
+    assert len(fetcher._accumulator) == _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY
 
 
 @pytest.mark.asyncio

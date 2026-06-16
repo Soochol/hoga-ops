@@ -48,6 +48,7 @@ _PAST_MAX_DAYS = 250
 _PAST_CANDLES_CONCURRENCY = 5
 _CODE_RE = re.compile(CODE_PATTERN)
 _KST = timezone(timedelta(hours=9))
+_INVESTOR_ESTIMATE_MAX_CODES_PER_DAY = 256
 
 # Rate-limit retry policy lives in ``KisClient._get`` (ADR-0050). Handlers
 # here just call ``kis.fetch_*`` directly; a ``KisRateLimitError`` that
@@ -572,6 +573,18 @@ class LiveInvestorEstimateFetcher:
             response = self._error_response(code, trading_day, "parse_error", str(e))
             return self._cache_response(key, response)
 
+        if not rows:
+            self._accumulator[key] = {}
+            response = self._response(
+                code=code,
+                trading_day=trading_day,
+                fetched_at_ms=int(monotonic_time.time() * 1000),
+                rows=[],
+                status="empty",
+                warning=None,
+            )
+            return self._cache_response(key, response)
+
         if len(rows) > 1:
             self._accumulator[key] = {row.slot: row for row in rows}
         else:
@@ -580,9 +593,12 @@ class LiveInvestorEstimateFetcher:
                 current[row.slot] = row
 
         merged = list(self._accumulator.get(key, {}).values())
-        status: Literal["ok", "empty"] = "ok" if merged else "empty"
+        status: Literal["ok", "empty"] = (
+            "ok" if any(_investor_estimate_has_quantity(row) for row in merged) else "empty"
+        )
         fetched_at_ms = int(monotonic_time.time() * 1000)
-        self._last_success_fetched_at_ms[key] = fetched_at_ms
+        if status == "ok":
+            self._last_success_fetched_at_ms[key] = fetched_at_ms
         response = self._response(
             code=code,
             trading_day=trading_day,
@@ -599,6 +615,7 @@ class LiveInvestorEstimateFetcher:
         response: LiveInvestorTrendEstimateResponse,
     ) -> LiveInvestorTrendEstimateResponse:
         self._cache[key] = (monotonic_time.monotonic() + self._ttl_seconds, response)
+        self._evict_over_capacity(trading_day=key[0])
         return response
 
     def _evict_stale(self, *, now: float, trading_day: str) -> None:
@@ -609,6 +626,27 @@ class LiveInvestorEstimateFetcher:
             for key in list(state):
                 if key[0] != trading_day:
                     state.pop(key, None)
+
+    def _evict_over_capacity(self, *, trading_day: str) -> None:
+        day_keys = [
+            key
+            for key in set(self._cache) | set(self._accumulator) | set(self._last_success_fetched_at_ms)
+            if key[0] == trading_day
+        ]
+        overflow = len(day_keys) - _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY
+        if overflow <= 0:
+            return
+        oldest = sorted(
+            day_keys,
+            key=lambda key: (
+                self._last_success_fetched_at_ms.get(key, -1),
+                self._cache.get(key, (0.0, None))[0],
+            ),
+        )[:overflow]
+        for key in oldest:
+            self._cache.pop(key, None)
+            self._accumulator.pop(key, None)
+            self._last_success_fetched_at_ms.pop(key, None)
 
     def _error_response(
         self,
