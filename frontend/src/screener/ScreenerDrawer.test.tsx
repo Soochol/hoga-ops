@@ -1,14 +1,67 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
-import { ScreenerDrawer } from './ScreenerDrawer';
 import { useLivePageStore } from '../state/livePage';
 import { useScreenerPanelStore } from '../state/screenerPanel';
+import { useEntryDragStore } from '../state/entryDrag';
 import * as savesApi from '../api/savedScreeners';
 import * as screenerApi from '../api/screener';
 import * as client from '../api/client';
 import * as watchlistApi from '../api/watchlist';
+
+type DndHandlers = {
+  onDragStart: null | ((e: unknown) => void);
+  onDragMove: null | ((e: unknown) => void);
+  onDragEnd: null | ((e: unknown) => void);
+  onDragCancel: null | (() => void);
+};
+
+const dnd = vi.hoisted<DndHandlers>(() => ({
+  onDragStart: null,
+  onDragMove: null,
+  onDragEnd: null,
+  onDragCancel: null,
+}));
+
+vi.mock('@dnd-kit/core', async (orig) => {
+  const actual = await orig<typeof import('@dnd-kit/core')>();
+  return {
+    ...actual,
+    DndContext: ({
+      children,
+      onDragStart,
+      onDragMove,
+      onDragEnd,
+      onDragCancel,
+    }: {
+      children: React.ReactNode;
+      onDragStart?: (e: unknown) => void;
+      onDragMove?: (e: unknown) => void;
+      onDragEnd?: (e: unknown) => void;
+      onDragCancel?: () => void;
+    }) => {
+      dnd.onDragStart = onDragStart ?? null;
+      dnd.onDragMove = onDragMove ?? null;
+      dnd.onDragEnd = onDragEnd ?? null;
+      dnd.onDragCancel = onDragCancel ?? null;
+      return <>{children}</>;
+    },
+    useDraggable: () => ({
+      setNodeRef: () => {},
+      listeners: {} as DraggableSyntheticListeners,
+      attributes: {} as DraggableAttributes,
+      transform: null,
+      isDragging: false,
+    }),
+    useSensor: () => ({}),
+    useSensors: () => [],
+    PointerSensor: class {},
+  };
+});
+
+import { ScreenerDrawer } from './ScreenerDrawer';
 
 function LocationProbe() {
   const { pathname } = useLocation();
@@ -46,6 +99,11 @@ describe('ScreenerDrawer', () => {
   beforeEach(() => {
     cleanup();
     localStorage.clear();
+    dnd.onDragStart = null;
+    dnd.onDragMove = null;
+    dnd.onDragEnd = null;
+    dnd.onDragCancel = null;
+    useEntryDragStore.setState({ draggingCode: null, overChart: false, hitTestChart: null });
     useLivePageStore.setState({ activeCode: null });
     useScreenerPanelStore.setState({ selectedSavedId: null, lastScan: null });
     vi.restoreAllMocks();
@@ -272,5 +330,91 @@ describe('ScreenerDrawer', () => {
     await waitFor(() =>
       expect(within(screen.getByTestId('screener-row-100030')).getByText('99,999원')).toBeInTheDocument(),
     );
+  });
+
+  it('dragging a screener row over the chart changes the active code', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+    const hitTest = (clientX: number) => clientX < 800;
+    useEntryDragStore.getState().registerChartTarget(hitTest);
+    try {
+      render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
+      await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+      dnd.onDragStart!({
+        active: { id: 'screener-entry:005930', data: { current: { type: 'screener-entry', code: '005930', name: '삼성전자' } } },
+      });
+      expect(useEntryDragStore.getState().draggingCode).toBe('005930');
+
+      dnd.onDragMove!({
+        active: { id: 'screener-entry:005930', data: { current: { type: 'screener-entry', code: '005930', name: '삼성전자' } } },
+        activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+        delta: { x: -500, y: 0 },
+      });
+      expect(useEntryDragStore.getState().overChart).toBe(true);
+
+      dnd.onDragEnd!({
+        active: { id: 'screener-entry:005930', data: { current: { type: 'screener-entry', code: '005930', name: '삼성전자' } } },
+        activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+        delta: { x: -500, y: 0 },
+      });
+
+      expect(useLivePageStore.getState().activeCode).toBe('005930');
+      expect(useEntryDragStore.getState().draggingCode).toBeNull();
+      await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
+    } finally {
+      useEntryDragStore.getState().clearChartTarget(hitTest);
+    }
+  });
+
+  it('dropping a screener row outside the chart is a no-op', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+    const hitTest = (clientX: number) => clientX < 800;
+    useEntryDragStore.getState().registerChartTarget(hitTest);
+    try {
+      render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+      await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+      dnd.onDragStart!({
+        active: { id: 'screener-entry:000660', data: { current: { type: 'screener-entry', code: '000660', name: 'SK하이닉스' } } },
+      });
+      dnd.onDragEnd!({
+        active: { id: 'screener-entry:000660', data: { current: { type: 'screener-entry', code: '000660', name: 'SK하이닉스' } } },
+        activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+        delta: { x: 0, y: 0 },
+      });
+
+      expect(useLivePageStore.getState().activeCode).toBeNull();
+      expect(useEntryDragStore.getState().draggingCode).toBeNull();
+      expect(screen.getByTestId('pathname').textContent).toBe('/live');
+    } finally {
+      useEntryDragStore.getState().clearChartTarget(hitTest);
+    }
+  });
+
+  it('cancelling a screener row drag clears the chart-drop state', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    dnd.onDragStart!({
+      active: { id: 'screener-entry:005930', data: { current: { type: 'screener-entry', code: '005930', name: '삼성전자' } } },
+    });
+    useEntryDragStore.getState().setOverChart(true);
+    dnd.onDragCancel!();
+
+    expect(useEntryDragStore.getState().draggingCode).toBeNull();
+    expect(useEntryDragStore.getState().overChart).toBe(false);
   });
 });
