@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.3.0] - 2026-06-16
+
+### Changed
+- `/live` 브라우저 탭 제목과 Live Tab 라벨에 현재 봉 타입을 함께 표시한다
+  (`삼성전자 일봉`, `삼성전자 5분봉` 등).
+- 열린 탭 목록에서도 동일한 라벨을 쓰고, 화면에 보이는 봉 타입 텍스트로 검색할 수 있다.
+
 ## [0.8.2.0] - 2026-06-16
 
 ### Added
