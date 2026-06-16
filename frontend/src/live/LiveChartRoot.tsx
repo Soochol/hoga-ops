@@ -110,6 +110,8 @@ interface Props {
   };
   /** /live persists viewport to active live tabs; snapshot study pages opt out. */
   persistLiveViewport?: boolean;
+  /** Save flows can read the current chart viewport without coupling to chart internals. */
+  onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
 }
 
 function withStudyRatioAsQuoteRatio(bundle: RangeBundle): RangeBundle {
@@ -139,7 +141,7 @@ function withStudyRatioAsQuoteRatio(bundle: RangeBundle): RangeBundle {
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true }: Props) {
+export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -278,6 +280,11 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
     if (!persistLiveViewport) return;
     return registerViewportCapture(captureViewport);
   }, [captureViewport, persistLiveViewport]);
+
+  useEffect(() => {
+    onViewportCaptureReady?.(captureViewport);
+    return () => onViewportCaptureReady?.(() => null);
+  }, [captureViewport, onViewportCaptureReady]);
 
   // Continuous viewport capture (ADR-0069 A안 보강). focusTab/addBlankTab snapshot
   // the OUTGOING tab synchronously on a tab switch, but route navigation (leaving

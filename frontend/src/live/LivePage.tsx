@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
@@ -17,6 +17,7 @@ import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks } from './useDayAskPeaks';
 import type { AskPeak } from '../api/types';
 import type { ObSnapshot } from './bucketHogaSeries';
+import type { TabViewport } from './viewportAnchor';
 import { todayKstYyyymmdd } from './liveDateTime';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import LiveSettingsModal from './LiveSettingsModal';
@@ -92,6 +93,10 @@ export function LivePage() {
   useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const viewportCaptureRef = useRef<() => TabViewport | null>(() => null);
+  const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
+    viewportCaptureRef.current = capture;
+  }, []);
 
   // Single live source for the page: useLiveSeries owns the SSE connection
   // and ring buffer; useLiveBundle composes it with KIS past-candles for the
@@ -163,6 +168,7 @@ export function LivePage() {
         live={live}
         dayAskPeaks={dayAskPeaks}
         todayKst={today}
+        onViewportCaptureReady={handleViewportCaptureReady}
       />
       {indicatorPanelOpen && (
         <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
