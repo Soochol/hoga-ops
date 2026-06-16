@@ -74,6 +74,8 @@ const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 interface Props {
   code: string | null;
   timeframe: LiveTimeframe;
+  /** Optional view-level identity for same-code/timeframe restores (for example `/study?view=...`). */
+  viewIdentity?: string;
   /** Full bundle = chart side + live hoga overlay (new ref each SSE tick).
    * Only the hoga panes (spec.live) consume it. */
   bundle: RangeBundle | null;
@@ -99,6 +101,15 @@ interface Props {
   todayKst?: string;
   /** Snapshot restore can carry hoga panes on calendar timeframes. /live keeps the default gate. */
   forceHogaPanes?: boolean;
+  /** Snapshot restore can pin pane mounts to saved indicator state. Omitted means read /live store. */
+  paneTogglesOverride?: {
+    volumeEnabled?: boolean;
+    quoteTotalsEnabled?: boolean;
+    ratioEnabled?: boolean;
+    fillStrengthEnabled?: boolean;
+  };
+  /** /live persists viewport to active live tabs; snapshot study pages opt out. */
+  persistLiveViewport?: boolean;
 }
 
 function withStudyRatioAsQuoteRatio(bundle: RangeBundle): RangeBundle {
@@ -128,7 +139,7 @@ function withStudyRatioAsQuoteRatio(bundle: RangeBundle): RangeBundle {
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayKst = '', forceHogaPanes = false }: Props) {
+export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -151,7 +162,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
   const hogaBundle = bundle ?? cb;
   const ratioBundle = useMemo(() => hogaBundle ? withStudyRatioAsQuoteRatio(hogaBundle) : hogaBundle, [hogaBundle]);
   // Load identity for the per-view chart remount and the reveal cover.
-  const viewKey = `${code ?? ''}|${timeframe}`;
+  const viewKey = viewIdentity ? `${code ?? ''}|${timeframe}|${viewIdentity}` : `${code ?? ''}|${timeframe}`;
   // Chart identity is KEYED by the view it was created for. On a viewKey
   // switch, React runs all cleanups then all setups within one commit, but
   // effects created by THAT render still close over the previous chart state
@@ -263,7 +274,10 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
       return null;
     }
   }, []);
-  useEffect(() => registerViewportCapture(captureViewport), [captureViewport]);
+  useEffect(() => {
+    if (!persistLiveViewport) return;
+    return registerViewportCapture(captureViewport);
+  }, [captureViewport, persistLiveViewport]);
 
   // Continuous viewport capture (ADR-0069 A안 보강). focusTab/addBlankTab snapshot
   // the OUTGOING tab synchronously on a tab switch, but route navigation (leaving
@@ -284,6 +298,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
   // application the first range-change saves the applied (restored/default) view
   // itself, which is idempotent and harmless.
   useEffect(() => {
+    if (!persistLiveViewport) return;
     if (!chart) return;
     const ts = chart.timeScale();
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -322,7 +337,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
         save();
       }
     };
-  }, [chart, captureViewport]);
+  }, [chart, captureViewport, persistLiveViewport]);
 
   // Publish axis to the shared store so LiveSidebar can read
   // axis.inClosingAuctionWindow(cursorMs) for TotalQtyBar mask.
@@ -385,7 +400,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
       cancelAnimationFrame(revealRafRef.current);
       revealRafRef.current = null;
     }
-  }, [code, timeframe]);
+  }, [viewKey]);
   // Cancel a pending reveal rAF on unmount so it can't setState after teardown.
   useEffect(() => () => {
     if (revealRafRef.current !== null) cancelAnimationFrame(revealRafRef.current);
@@ -650,6 +665,10 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
   const quoteTotalsEnabled = useLivePageStore((s) => s.quoteTotalsEnabled);
   const ratioEnabled = useLivePageStore((s) => s.ratioEnabled);
   const fillStrengthEnabled = useLivePageStore((s) => s.fillStrengthEnabled);
+  const effectiveVolumeEnabled = paneTogglesOverride?.volumeEnabled ?? volumeEnabled;
+  const effectiveQuoteTotalsEnabled = paneTogglesOverride?.quoteTotalsEnabled ?? quoteTotalsEnabled;
+  const effectiveRatioEnabled = paneTogglesOverride?.ratioEnabled ?? ratioEnabled;
+  const effectiveFillStrengthEnabled = paneTogglesOverride?.fillStrengthEnabled ?? fillStrengthEnabled;
 
   // Single source for the pane-mount toggles, consumed by BOTH the stretch
   // effect and the render-side paneSpecsForTimeframe call. Building it once
@@ -658,19 +677,19 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
     () => ({
       foreignNet: foreignNetEnabled,
       institutionNet: institutionNetEnabled,
-      volumeEnabled,
-      quoteTotalsEnabled,
-      ratioEnabled,
-      fillStrengthEnabled,
+      volumeEnabled: effectiveVolumeEnabled,
+      quoteTotalsEnabled: effectiveQuoteTotalsEnabled,
+      ratioEnabled: effectiveRatioEnabled,
+      fillStrengthEnabled: effectiveFillStrengthEnabled,
       forceHogaPanes,
     }),
     [
       foreignNetEnabled,
       institutionNetEnabled,
-      volumeEnabled,
-      quoteTotalsEnabled,
-      ratioEnabled,
-      fillStrengthEnabled,
+      effectiveVolumeEnabled,
+      effectiveQuoteTotalsEnabled,
+      effectiveRatioEnabled,
+      effectiveFillStrengthEnabled,
       forceHogaPanes,
     ],
   );

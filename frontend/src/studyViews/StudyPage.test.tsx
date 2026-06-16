@@ -45,9 +45,9 @@ const snapshot: ParquetStudySnapshot = {
   bucket_kind: 'D',
   viewport: { right_edge_ms: 2_000, bar_span: 120, at_live_edge: false },
   indicator_state: {
-    volume_enabled: true,
+    volume_enabled: false,
     quote_totals_enabled: true,
-    ratio_enabled: true,
+    ratio_enabled: false,
     fill_strength_enabled: true,
     aggregation_basis: 'close',
     auction_window_mask: true,
@@ -106,6 +106,7 @@ describe('StudyPage', () => {
     expect(props).toMatchObject({
       code: '005930',
       timeframe: 'D',
+      viewIdentity: 'view1',
       clampEngaged: false,
       isPastCandlesLoading: false,
       isExtending: false,
@@ -113,6 +114,13 @@ describe('StudyPage', () => {
       restoreViewport: { rightEdgeMs: 2_000, barSpan: 120, atLiveEdge: false },
       dayAskPeaks: [],
       forceHogaPanes: true,
+      paneTogglesOverride: {
+        volumeEnabled: false,
+        quoteTotalsEnabled: true,
+        ratioEnabled: false,
+        fillStrengthEnabled: true,
+      },
+      persistLiveViewport: false,
     });
     expect(props.bundle).toBe(props.chartBundle);
     expect(props.bundle).toMatchObject({

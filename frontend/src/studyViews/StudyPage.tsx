@@ -57,6 +57,7 @@ export function StudyPage() {
       <LiveChartRoot
         code={snapshot.code}
         timeframe={snapshot.timeframe}
+        viewIdentity={viewId}
         bundle={bundle}
         chartBundle={bundle}
         clampEngaged={false}
@@ -70,6 +71,13 @@ export function StudyPage() {
         }}
         dayAskPeaks={[]}
         forceHogaPanes
+        paneTogglesOverride={{
+          volumeEnabled: snapshot.indicator_state.volume_enabled,
+          quoteTotalsEnabled: snapshot.indicator_state.quote_totals_enabled,
+          ratioEnabled: snapshot.indicator_state.ratio_enabled,
+          fillStrengthEnabled: snapshot.indicator_state.fill_strength_enabled,
+        }}
+        persistLiveViewport={false}
       />
     </section>
   );
