@@ -1,9 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
-import { resolveTokens } from '../util/tokens';
-
-const TOKEN_SPEC = { boundary: ['--fg-dimmer', '#64748B'] } as const;
+import { useActivePrefs } from '../state/chartPrefs';
 
 type Props = {
   chart: IChartApi;
@@ -43,9 +41,13 @@ function DayBoundaryOverlay({ chart, axis }: Props) {
     };
   }, [chart]);
 
-  if (axis.segments.length < 2) return null;
+  const enabled = useActivePrefs((prefs) => prefs.dayBoundaryEnabled);
+  const color = useActivePrefs((prefs) => prefs.dayBoundaryColor);
+  const lineWidth = useActivePrefs((prefs) => prefs.dayBoundaryLineWidth);
 
-  const { boundary } = resolveTokens(TOKEN_SPEC);
+  if (!enabled) return null;
+
+  if (axis.segments.length < 2) return null;
 
   const ts = chart.timeScale();
   const boundaries = axis.dayBoundaries.map((b) => {
@@ -60,10 +62,12 @@ function DayBoundaryOverlay({ chart, axis }: Props) {
           <div
             key={b.date}
             data-day-boundary={b.date}
-            className="absolute top-0 bottom-0 w-px"
+            data-testid={`day-boundary-${b.date}`}
+            className="absolute top-0 bottom-0"
             style={{
+              width: `${lineWidth}px`,
               transform: `translateX(${b.x as number}px)`,
-              backgroundImage: `repeating-linear-gradient(to bottom, ${boundary} 0 3px, transparent 3px 6px)`,
+              backgroundImage: `repeating-linear-gradient(to bottom, ${color} 0 3px, transparent 3px 6px)`,
             }}
           />
         ),
