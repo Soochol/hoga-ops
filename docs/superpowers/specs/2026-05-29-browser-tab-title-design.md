@@ -169,7 +169,7 @@ The hook has no explicit error path. Loading, network error, and missing symbol 
 
 `apiCall` is mocked in the pending quote path, and the React Query cache is seeded for symbols and quotes so the tests stay deterministic while still exercising the cache-backed lookup flow.
 
-No integration test on `LivePage` — the page change is a single `useDocumentTitle(activeCode)` call, the regression surface is the hook itself, and the page-level wiring is shallow.
+`frontend/src/live/LivePage.test.tsx` keeps one shallow smoke test for `/live?code=005930` so page-level wiring proves it passes the active **Code** into the sole title writer. Rich formatting remains covered at the hook level.
 
 ## Rollout
 
