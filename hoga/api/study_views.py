@@ -35,6 +35,10 @@ def _snapshot_path(data_dir: Path, id: str) -> Path:
     return _root(data_dir) / "snapshots" / f"{id}.json"
 
 
+def _staged_snapshot_path(data_dir: Path, id: str) -> Path:
+    return _root(data_dir) / "snapshots" / f"{id}.json.staged"
+
+
 def _quarantine(p: Path, reason: str) -> StudyViewsFile:
     stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S")
     backup = p.with_name(f"saves.json.corrupt-{stamp}-{reason}")
@@ -82,9 +86,15 @@ def _view_from_req(
     id: str,
     created_at_ms: int,
     updated_at_ms: int,
+    snapshot_size_bytes: int | None = None,
 ) -> ParquetStudyView:
     snap_path = _snapshot_path(data_dir, id)
-    size = snap_path.stat().st_size if snap_path.exists() else 0
+    if snapshot_size_bytes is not None:
+        size = snapshot_size_bytes
+    elif snap_path.exists():
+        size = snap_path.stat().st_size
+    else:
+        size = 0
     return ParquetStudyView(
         id=id,
         name=req.name,
@@ -134,11 +144,24 @@ def update_save_sync(
     file = load_saves(data_dir)
     for idx, old in enumerate(file.saves):
         if old.id == id:
-            atomic_write_json(_snapshot_path(data_dir, id), req.snapshot.model_dump(mode="json"))
-            new = _view_from_req(data_dir, req=req, id=id, created_at_ms=old.created_at_ms, updated_at_ms=now_ms)
+            staged_path = _staged_snapshot_path(data_dir, id)
+            atomic_write_json(staged_path, req.snapshot.model_dump(mode="json"))
+            new = _view_from_req(
+                data_dir,
+                req=req,
+                id=id,
+                created_at_ms=old.created_at_ms,
+                updated_at_ms=now_ms,
+                snapshot_size_bytes=staged_path.stat().st_size,
+            )
             file.saves[idx] = new
             file.saves.sort(key=lambda s: s.updated_at_ms, reverse=True)
-            save_saves(data_dir, file)
+            try:
+                save_saves(data_dir, file)
+            except OSError:
+                staged_path.unlink(missing_ok=True)
+                raise
+            staged_path.replace(_snapshot_path(data_dir, id))
             return new
     raise StudyViewNotFoundError(id)
 
@@ -148,11 +171,11 @@ def delete_save_sync(data_dir: Path, *, id: str) -> None:
     if not any(s.id == id for s in file.saves):
         raise StudyViewNotFoundError(id)
     file.saves = [s for s in file.saves if s.id != id]
+    save_saves(data_dir, file)
     try:
         _snapshot_path(data_dir, id).unlink()
     except FileNotFoundError:
         pass
-    save_saves(data_dir, file)
 
 
 async def create_save(
