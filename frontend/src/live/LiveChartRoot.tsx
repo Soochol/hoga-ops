@@ -50,6 +50,7 @@ import CandleTooltip from './CandleTooltip';
 import HighLowAnnotationOverlay from './HighLowAnnotationOverlay';
 import type { PaneId } from '../chart/drawing/types';
 import { useDrawingHost } from '../chart/useDrawingHost';
+import type { StudySnapshotRangeBundle } from '../studyViews/studySnapshotAdapter';
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -96,12 +97,38 @@ interface Props {
   dayAskPeaks?: readonly AskPeak[];
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
+  /** Snapshot restore can carry hoga panes on calendar timeframes. /live keeps the default gate. */
+  forceHogaPanes?: boolean;
+}
+
+function withStudyRatioAsQuoteRatio(bundle: RangeBundle): RangeBundle {
+  const studyRatio = (bundle as Partial<StudySnapshotRangeBundle>).study_ratio;
+  if (!studyRatio || studyRatio.points.length === 0) return bundle;
+  return {
+    ...bundle,
+    quote_ratio: {
+      bucket_ms: studyRatio.bucket_ms,
+      points: studyRatio.points.map((p) => {
+        const bid_total = p.value >= 0 ? 1 : 1 - p.value;
+        const ask_total = p.value >= 0 ? 1 + p.value : 1;
+        return {
+          t: p.t,
+          bid_total,
+          ask_total,
+          bid_max: bid_total,
+          ask_max: ask_total,
+          imb_max_bid: bid_total,
+          imb_max_ask: ask_total,
+        };
+      }),
+    },
+  };
 }
 
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayKst = '' }: Props) {
+export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayKst = '', forceHogaPanes = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -121,6 +148,8 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
   // `bundle` — so an SSE tick (which only changes the hoga overlay) leaves the
   // candle path's props referentially identical.
   const cb = chartBundle ?? bundle;
+  const hogaBundle = bundle ?? cb;
+  const ratioBundle = useMemo(() => hogaBundle ? withStudyRatioAsQuoteRatio(hogaBundle) : hogaBundle, [hogaBundle]);
   // Load identity for the per-view chart remount and the reveal cover.
   const viewKey = `${code ?? ''}|${timeframe}`;
   // Chart identity is KEYED by the view it was created for. On a viewKey
@@ -633,6 +662,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
       quoteTotalsEnabled,
       ratioEnabled,
       fillStrengthEnabled,
+      forceHogaPanes,
     }),
     [
       foreignNetEnabled,
@@ -641,6 +671,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
       quoteTotalsEnabled,
       ratioEnabled,
       fillStrengthEnabled,
+      forceHogaPanes,
     ],
   );
 
@@ -730,7 +761,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
     };
   }, [chart, axis, timeframe]);
 
-  const dwDisabled = isCalendarTimeframe(timeframe);
+  const dwDisabled = isCalendarTimeframe(timeframe) && !forceHogaPanes;
 
   return (
     <div
@@ -749,7 +780,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
               chart={chart}
               // hoga panes (spec.live) get the live bundle; candle/volume/investor
               // panes get the stable chartBundle so an SSE tick doesn't re-setData them.
-              bundle={spec.live ? (bundle ?? cb) : cb}
+              bundle={spec.name === 'ratio' ? (ratioBundle ?? cb) : spec.live ? (bundle ?? cb) : cb}
               axis={axis}
               paneIndex={i}
               spec={spec}
