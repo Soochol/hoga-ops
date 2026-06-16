@@ -5,7 +5,6 @@ import {
   useDraggable,
   useSensor,
   useSensors,
-  type DragCancelEvent,
   type DragEndEvent,
   type DragMoveEvent,
   type DragStartEvent,
@@ -144,7 +143,7 @@ export function ScreenerDrawer() {
     setOverChart(isPointOnChart(dropPoint(ev)));
   };
 
-  const onDragCancel = (_ev: DragCancelEvent) => {
+  const onDragCancel = () => {
     endEntryDrag();
   };
 
