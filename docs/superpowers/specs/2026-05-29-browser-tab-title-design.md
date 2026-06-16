@@ -8,14 +8,14 @@
 
 `frontend/index.html` ships with a static `<title>frontend</title>` tag. When users have multiple browser tabs open, every hoga-ops tab is labelled "frontend", indistinguishable from each other and from any other Vite-default project the user may have running.
 
-The Replay Viewer and `/live` page already know which **Code** the user is looking at (the active Replay Tab's `TabSelection.code` on `/replay`, `useLivePageStore.activeCode` on `/live`). That information should reach the browser tab title so users can pick out a hoga-ops tab — and tell apart two hoga-ops tabs viewing different Codes — at a glance.
+The `/live` page already knows which **Code** the user is looking at through `useLivePageStore.activeCode`. That information should reach the browser tab title so users can pick out a hoga-ops tab — and tell apart two hoga-ops tabs viewing different Codes — at a glance.
 
 ## Invariants
 
 기존 시스템에 `document.title`을 쓰는 코드 경로는 없다 (정적 `<title>frontend</title>` 외). 이 spec이 *신설하는* invariant들:
 
 - **Single writer**: `useDocumentTitle` 훅만 `document.title`에 쓴다. 다른 컴포넌트가 직접 `document.title = …`를 호출하면 cleanup 기반 default 복원 가정이 깨진다. 근거: [frontend/src/util/useDocumentTitle.ts](frontend/src/util/useDocumentTitle.ts) (이 spec이 신설).
-- **Default-on-unmount**: Code 페이지(`/replay`, `/live`)에서 다른 페이지로 이동하면 `document.title === 'hoga-ops'`로 복원된다. 근거: 훅의 cleanup 함수가 무조건 `DEFAULT_TITLE`을 쓰며, 비-Code 페이지는 훅을 호출하지 않아 cleanup 후 값이 보존된다.
+- **Default-on-unmount**: Code 페이지(`/live`)에서 다른 페이지로 이동하면 `document.title === 'hoga-ops'`로 복원된다. 근거: 훅의 cleanup 함수가 무조건 `DEFAULT_TITLE`을 쓰며, 비-Code 페이지는 훅을 호출하지 않아 cleanup 후 값이 보존된다.
 - **Precedence**: 한 번의 `useDocumentTitle(code)` 호출이 결정하는 title은 `(name (Symbol Master에 있을 때) ?? code)`를 base로 삼고, 해당 **Code**의 **Live Quote**가 있으면 `price`와 `change_pct`를 뒤에 붙인다. base가 없으면 `hoga-ops`. Live Quote가 없거나 `change_pct=null`이면 없는 필드는 생략한다.
 
 ## Invariant impact
@@ -30,7 +30,7 @@ The Replay Viewer and `/live` page already know which **Code** the user is looki
 
 ## Goals
 
-- Browser tab title reflects the active **Code** on `/replay` and `/live`.
+- Browser tab title reflects the active **Code** on `/live`.
 - Pages without a single active-**Code** concept (`/inventory`, `/capture`, `/watchlist`, `/settings`) show the project name `hoga-ops`.
 - Direct entry to any page never shows the Vite default "frontend".
 
@@ -48,12 +48,10 @@ The Replay Viewer and `/live` page already know which **Code** the user is looki
 A single hook, `useDocumentTitle(code: string | null | undefined)`, owns all writes to `document.title`. Pages that have a current-**Code** concept call it with that Code; other pages do not call it at all. The hook's cleanup function restores the project-name default on unmount, so navigating from a Code page to a non-Code page automatically falls back to `hoga-ops` without any code in the destination page.
 
 ```
-ReplayViewer ─┐
-              ├─→ useDocumentTitle(code) ─→ useSymbols() name lookup ─┐
-LivePage    ──┘
-              └─→ useQuoteByCode(trimmed ? [trimmed] : []) Live Quote lookup
-                                                                   └─→ document.title = base + optional price/change_pct suffix
-                                                                       unmount cleanup → 'hoga-ops'
+LivePage ─→ useDocumentTitle(activeCode) ─→ useSymbols() name lookup ─┐
+             └─→ useQuoteByCode(trimmed ? [trimmed] : []) Live Quote lookup
+                                                                  └─→ document.title = base + optional price/change_pct suffix
+                                                                      unmount cleanup → 'hoga-ops'
 ```
 
 Why this shape:
@@ -72,8 +70,7 @@ Why this shape:
 **Modified:**
 
 - [`frontend/index.html`](frontend/index.html) — change `<title>frontend</title>` to `<title>hoga-ops</title>` so the very first paint (before React mounts) matches the default.
-- [`frontend/src/pages/ReplayViewer.tsx`](frontend/src/pages/ReplayViewer.tsx) — call `useDocumentTitle(activeTab?.selection?.code)`.
-- [`frontend/src/live/LivePage.tsx`](frontend/src/live/LivePage.tsx) — call `useDocumentTitle(activeCode)` reusing the already-computed `const activeCode = queryCode ?? storedCode;` on line 53. Reusing the variable means any future change to active-code resolution (e.g. Stage 11 watchlist-first fallback per the file's own header comment) flows into the title automatically.
+- [`frontend/src/live/LivePage.tsx`](frontend/src/live/LivePage.tsx) — call `useDocumentTitle(activeCode)` with the `activeCode` read from `useLivePageStore` after the live-tab synchronization path has applied the active tab to the page. Reusing that store value means the title follows the same active-Code source as the chart.
 
 ### Hook contract
 
@@ -120,24 +117,12 @@ Title resolution precedence (first non-empty wins, then quote augmentation if av
 
 ### Data flow
 
-**`/replay`:**
-
-```
-useTabsStore (activeTabId, tabs)
-  → tabs.find(t => t.id === activeTabId).selection?.code
-  → useDocumentTitle(code)
-  → useSymbols() (shared TanStack Query cache)
-  → useQuoteByCode(trimmed ? [trimmed] : [])
-  → quoteByCode.get(trimmed)
-  → document.title = base ? formatTitleBase(base, quote) : 'hoga-ops'
-```
-
 **`/live`:**
 
 ```
-useSearchParams() → queryCode
-useLivePageStore → storedCode
-  → activeCode = queryCode ?? storedCode  // already computed at LivePage.tsx:53
+useLiveTabsStore active tab
+  → applyTabToPage
+  → useLivePageStore.activeCode
   → useDocumentTitle(activeCode)
   → useSymbols()
   → useQuoteByCode(trimmed ? [trimmed] : [])
@@ -161,10 +146,9 @@ useLivePageStore → storedCode
 | `code` present, **Code** absent from **Symbol Master**, Live Quote missing (new IPO / delisted) | `code` |
 | `code` present, `useSymbols` query in error state, Live Quote present | `code price change_pct` (e.g. `005930 71,200 +1.23%`) |
 | `code` present, `useSymbols` query in error state, Live Quote missing | `code` |
-| `/replay` new tab with `selection === null` | `hoga-ops` |
 | `/live` with no `?code=` and empty `activeCode` | `hoga-ops` |
-| Navigation from `/replay` → `/inventory` | Previous hook's cleanup writes `hoga-ops`; no hook runs on `/inventory`, so it stays |
-| Reverse navigation `/inventory` → `/replay` | New hook runs on mount, writes resolved title |
+| Navigation from `/live` → `/inventory` | Previous hook's cleanup writes `hoga-ops`; no hook runs on `/inventory`, so it stays |
+| Reverse navigation `/inventory` → `/live` | New hook runs on mount, writes resolved title |
 | `code` unchanged across renders (e.g. unrelated re-render) | `useEffect` skips (dependency identity unchanged) |
 
 ### Error handling
@@ -185,7 +169,7 @@ The hook has no explicit error path. Loading, network error, and missing symbol 
 
 `apiCall` is mocked in the pending quote path, and the React Query cache is seeded for symbols and quotes so the tests stay deterministic while still exercising the cache-backed lookup flow.
 
-No integration test on `ReplayViewer` or `LivePage` — both changes are a single `useDocumentTitle(...)` call, the regression surface is the hook itself, and the page-level wiring is shallow.
+No integration test on `LivePage` — the page change is a single `useDocumentTitle(activeCode)` call, the regression surface is the hook itself, and the page-level wiring is shallow.
 
 ## Rollout
 
