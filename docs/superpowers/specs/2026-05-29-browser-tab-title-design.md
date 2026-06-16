@@ -49,14 +49,17 @@ A single hook, `useDocumentTitle(code: string | null | undefined)`, owns all wri
 
 ```
 ReplayViewer ─┐
-              ├─→ useDocumentTitle(code) ─→ useSymbols() name lookup ─→ document.title
+              ├─→ useDocumentTitle(code) ─→ useSymbols() name lookup ─┐
 LivePage    ──┘
-                                          unmount cleanup → 'hoga-ops'
+              └─→ useQuoteByCode(trimmed ? [trimmed] : []) Live Quote lookup
+                                                                   └─→ document.title = base + optional price/change_pct suffix
+                                                                       unmount cleanup → 'hoga-ops'
 ```
 
 Why this shape:
 - **Single writer.** Only the hook touches `document.title`. No other component should set it. This keeps the contract on what's allowed in the title in one place.
 - **Pull, not push.** The hook reads from `useSymbols()` (already cached via TanStack Query) instead of requiring each page to thread the resolved name through. Pages only need to know the code.
+- **Quote suffix in the hook.** The hook also reads the active **Code**'s **Live Quote** through `useQuoteByCode(trimmed ? [trimmed] : [])` and appends only `price` + `change_pct` to the resolved name/code base.
 - **Default via cleanup, not via every page.** Non-symbol pages do not need to opt in. The previous page's cleanup leaves `document.title === 'hoga-ops'` and that's what shows until something else calls the hook.
 
 ### Components
@@ -64,7 +67,7 @@ Why this shape:
 **New:**
 
 - [`frontend/src/util/useDocumentTitle.ts`](frontend/src/util/useDocumentTitle.ts) — the hook.
-- [`frontend/src/util/useDocumentTitle.test.ts`](frontend/src/util/useDocumentTitle.test.ts) — Vitest unit tests.
+- [`frontend/src/util/useDocumentTitle.test.tsx`](frontend/src/util/useDocumentTitle.test.tsx) — Vitest unit tests.
 
 **Modified:**
 
@@ -92,10 +95,11 @@ function formatTitleBase(base: string, quote: LiveQuote | undefined): string {
 }
 
 export function useDocumentTitle(code: string | null | undefined): void {
+  const trimmed = code?.trim() || null;
   const { data } = useSymbols();
-  const { data: quote } = useQuoteByCode(code);
+  const quoteByCode = useQuoteByCode(trimmed ? [trimmed] : []);
+  const quote = trimmed ? quoteByCode.get(trimmed) : undefined;
   useEffect(() => {
-    const trimmed = code?.trim() || null;
     const name = trimmed
       ? data?.symbols.find((s) => s.code === trimmed)?.name
       : undefined;
@@ -104,7 +108,7 @@ export function useDocumentTitle(code: string | null | undefined): void {
     return () => {
       document.title = DEFAULT_TITLE;
     };
-  }, [code, data, quote]);
+  }, [data, quote, trimmed]);
 }
 ```
 
@@ -123,7 +127,8 @@ useTabsStore (activeTabId, tabs)
   → tabs.find(t => t.id === activeTabId).selection?.code
   → useDocumentTitle(code)
   → useSymbols() (shared TanStack Query cache)
-  → useQuoteByCode(code)
+  → useQuoteByCode(trimmed ? [trimmed] : [])
+  → quoteByCode.get(trimmed)
   → document.title = base ? formatTitleBase(base, quote) : 'hoga-ops'
 ```
 
@@ -135,7 +140,8 @@ useLivePageStore → storedCode
   → activeCode = queryCode ?? storedCode  // already computed at LivePage.tsx:53
   → useDocumentTitle(activeCode)
   → useSymbols()
-  → useQuoteByCode(activeCode)
+  → useQuoteByCode(trimmed ? [trimmed] : [])
+  → quoteByCode.get(trimmed)
   → document.title = base ? formatTitleBase(base, quote) : 'hoga-ops'
 ```
 
@@ -167,7 +173,7 @@ The hook has no explicit error path. Loading, network error, and missing symbol 
 
 ### Testing
 
-`useDocumentTitle.test.ts` — Vitest + `renderHook` from `@testing-library/react`:
+`frontend/src/util/useDocumentTitle.test.tsx` — Vitest + `renderHook` from `@testing-library/react`:
 
 1. `code = null` or blank/whitespace → `document.title === 'hoga-ops'`.
 2. Known **Code**, no quote → `document.title === 'name'`.
