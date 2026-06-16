@@ -38,6 +38,7 @@ def test_global_events_auto_delivered():
         frame = ws.receive_json()
         assert frame["ch"] == "event"
         assert frame["data"]["type"] == "inventory_added"
+        ws.close()
 
 
 def test_subscribe_acks_then_delivers_code_tagged_live():
@@ -104,6 +105,7 @@ def test_unsubscribe_tears_down_code_subscription():
         # Exactly one live queue remains for the code — the unsubscribe removed
         # the old one before the re-subscribe added a new one.
         assert client.portal.call(lambda: len(buf._subscribers["005930"]) == 1)
+        ws.close()
 
 
 def test_frame_envelope_shapes():
@@ -234,6 +236,7 @@ def test_unsubscribe_forwards_to_lifecycle_on_view_unsubscribe(monkeypatch):
 
         # At this point "005930" is gone from code_subs; "000660" is there.
         # On exit: finally captures subs=[("000660", ...)], calls spy("000660").
+        ws.close()
 
     # Spy must have been called for 005930 (explicit) and possibly 000660 (disconnect).
     assert "005930" in calls, f"Expected on_view_unsubscribe('005930'); calls={calls!r}"

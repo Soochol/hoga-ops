@@ -17,6 +17,8 @@ export interface ObSnapshot {
 }
 
 export interface TradeEvent {
+  t_ms?: number;
+  price?: number;
   side: number; // KIS enum: -1 sell, 0 mid, 1 buy, 2 auction
   qty: number;
 }

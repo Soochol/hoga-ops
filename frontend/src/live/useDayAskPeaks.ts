@@ -1,12 +1,116 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AskPeak } from '../api/types';
-import type { ObSnapshot } from './bucketHogaSeries';
+import type { LiveTodayAskPeak } from '../api/liveSeries';
+import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import {
   reduceDayAskPeak,
   FRESH_RATCHET,
   type DayPeak,
   type RatchetState,
 } from './computeDayAskPeak';
+
+type TradePriceState = {
+  prices: Set<number>;
+};
+
+type BufferCursor<T> = {
+  tail: T | null;
+};
+
+function freshCursor<T>(): BufferCursor<T> {
+  return { tail: null };
+}
+
+function unreadSnapshots<T>(items: ReadonlyArray<T>, cursor: BufferCursor<T>): ReadonlyArray<T> {
+  if (items.length === 0) {
+    cursor.tail = null;
+    return [];
+  }
+  const prevTail = cursor.tail;
+  cursor.tail = items[items.length - 1] ?? null;
+  if (prevTail === null) return items;
+  const prevIndex = items.lastIndexOf(prevTail);
+  if (prevIndex < 0) return items;
+  return items.slice(prevIndex + 1);
+}
+
+function freshTradePriceState(seed: DayPeak | null, seededPrices: readonly number[] = []): TradePriceState {
+  const prices = new Set<number>();
+  for (const price of seededPrices) {
+    if (Number.isFinite(price)) prices.add(price);
+  }
+  if (seed) prices.add(seed.price);
+  return { prices };
+}
+
+function toDayPeak(peak: AskPeak | null): DayPeak | null {
+  if (!peak) return null;
+  return { price: peak.price, qty: peak.qty, t_ms: peak.t_ms };
+}
+
+function toAskPeak(date: string, peak: DayPeak | null): AskPeak | null {
+  if (!peak) return null;
+  return {
+    date,
+    price: peak.price,
+    qty: peak.qty,
+    t_ms: peak.t_ms,
+    max_price: peak.price,
+    max_qty: peak.qty,
+    max_t_ms: peak.t_ms,
+  };
+}
+
+function isEligibleTradeSide(side: number): boolean {
+  return side === 1 || side === -1;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function accumulateTradePrices(state: TradePriceState, trade: ReadonlyArray<TradeSnapshot>) {
+  for (const snapshot of trade) {
+    for (const ev of snapshot.trades) {
+      if (isEligibleTradeSide(ev.side) && isFiniteNumber(ev.price)) {
+        state.prices.add(ev.price);
+      }
+    }
+  }
+}
+
+export function buildTodayTradedAskPeak(todayAskPeak: LiveTodayAskPeak | null): AskPeak | null {
+  if (
+    !todayAskPeak
+    || todayAskPeak.traded_price === null
+    || todayAskPeak.traded_qty === null
+    || todayAskPeak.traded_t_ms === null
+  ) {
+    return null;
+  }
+  return {
+    date: todayAskPeak.date,
+    price: todayAskPeak.traded_price,
+    qty: todayAskPeak.traded_qty,
+    t_ms: todayAskPeak.traded_t_ms,
+    max_price: todayAskPeak.traded_price,
+    max_qty: todayAskPeak.traded_qty,
+    max_t_ms: todayAskPeak.traded_t_ms,
+  };
+}
+
+export function buildTodayAllPriceAskPeak(todayAskPeak: LiveTodayAskPeak | null): AskPeak | null {
+  if (!todayAskPeak) return null;
+  return {
+    date: todayAskPeak.date,
+    price: todayAskPeak.all_price,
+    qty: todayAskPeak.all_qty,
+    t_ms: todayAskPeak.all_t_ms,
+    max_price: todayAskPeak.all_price,
+    max_qty: todayAskPeak.all_qty,
+    max_t_ms: todayAskPeak.all_t_ms,
+  };
+}
 
 /** 거래일별 매도 최대벽 리스트. LivePage에서 **1회** 호출(기존 live.ob 재사용 — useLiveSeries를
  *  다시 부르지 않아 2차 SSE 연결을 만들지 않는다).
@@ -16,48 +120,95 @@ import {
  *  반환은 그날 segment 구간에 수평선으로 그릴 per-day AskPeak 배열. */
 export function useDayAskPeaks(
   ob: ReadonlyArray<ObSnapshot>,
+  trade: ReadonlyArray<TradeSnapshot>,
   seeds: readonly AskPeak[],
   todayKst: string,
   code: string | null,
+  todayAskPeak: LiveTodayAskPeak | null = null,
 ): AskPeak[] {
-  // 오늘 seed(있으면) — ratchet의 시드. AskPeak은 구조적으로 DayPeak이라 그대로 넘긴다.
-  const todaySeed: DayPeak | null = useMemo(
-    () => seeds.find((p) => p.date === todayKst) ?? null,
-    [seeds, todayKst],
+  const backendTodayPeak = useMemo(
+    () => buildTodayTradedAskPeak(todayAskPeak),
+    [todayAskPeak],
   );
+  const backendTodaySeed = useMemo(() => toDayPeak(backendTodayPeak), [backendTodayPeak]);
+  const backendTradedPrices = todayAskPeak?.traded_prices ?? [];
+
+  const liveSeed = backendTodaySeed;
 
   const stateRef = useRef<RatchetState>(FRESH_RATCHET);
-  const [todayPeak, setTodayPeak] = useState<DayPeak | null>(todaySeed);
+  const tradePriceRef = useRef<TradePriceState>(
+    freshTradePriceState(backendTodaySeed, backendTradedPrices),
+  );
+  const tradeCursorRef = useRef<BufferCursor<TradeSnapshot>>(freshCursor());
+  const obCursorRef = useRef<BufferCursor<ObSnapshot>>(freshCursor());
+  const [todayPeak, setTodayPeak] = useState<DayPeak | null>(liveSeed);
 
   // 종목 전환 → ratchet 리셋·재시드(remount 비의존).
   useEffect(() => {
     stateRef.current = FRESH_RATCHET;
-    setTodayPeak(todaySeed);
+    tradePriceRef.current = freshTradePriceState(backendTodaySeed, backendTradedPrices);
+    tradeCursorRef.current = freshCursor();
+    obCursorRef.current = freshCursor();
+    setTodayPeak(liveSeed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code]);
+  }, [code, todayKst, todayAskPeak]);
 
-  // ob 틱마다 오늘 ratchet 전진(루프+seed 하한은 reduceDayAskPeak이 소유). seed 변동도 반영.
+  // ob/trade 틱마다 오늘 ratchet 전진. REST todayAskPeak은 seed일 뿐, 이후 라이브를 계속 반영한다.
   useEffect(() => {
-    const s = reduceDayAskPeak(stateRef.current, todaySeed, ob);
+    const unreadTrade = unreadSnapshots(trade, tradeCursorRef.current);
+    accumulateTradePrices(tradePriceRef.current, unreadTrade);
+    const unreadOb = unreadSnapshots(ob, obCursorRef.current);
+    const allowPrice = (price: number) => tradePriceRef.current.prices.has(price);
+    const s = reduceDayAskPeak(stateRef.current, liveSeed, unreadOb, allowPrice);
     stateRef.current = s;
-    setTodayPeak(s.peak ?? todaySeed);
-  }, [ob, todaySeed]);
+    setTodayPeak(s.peak ?? liveSeed);
+  }, [ob, trade, liveSeed, todayAskPeak]);
 
   // 과거일 seed(그대로) + 오늘 ratchet 결과(date 부착)를 합친 per-day 리스트.
   // 오늘 entry는 live ratchet 값 하나만 추적하므로 close triple과 max triple을 동일하게 채운다.
   return useMemo(() => {
     const out: AskPeak[] = seeds.filter((p) => p.date !== todayKst);
-    if (todayPeak) {
-      out.push({
-        date: todayKst,
-        price: todayPeak.price,
-        qty: todayPeak.qty,
-        t_ms: todayPeak.t_ms,
-        max_price: todayPeak.price,
-        max_qty: todayPeak.qty,
-        max_t_ms: todayPeak.t_ms,
-      });
-    }
+    const peak = toAskPeak(todayKst, todayPeak);
+    if (peak) out.push(peak);
     return out;
   }, [seeds, todayKst, todayPeak]);
+}
+
+export function useTodayAllPriceAskPeak(
+  ob: ReadonlyArray<ObSnapshot>,
+  seeds: readonly AskPeak[],
+  todayKst: string,
+  code: string | null,
+  todayAskPeak: LiveTodayAskPeak | null = null,
+): AskPeak | null {
+  const backendTodayPeak = useMemo(
+    () => buildTodayAllPriceAskPeak(todayAskPeak),
+    [todayAskPeak],
+  );
+  const backendTodaySeed = useMemo(() => toDayPeak(backendTodayPeak), [backendTodayPeak]);
+  const todaySeed: DayPeak | null = useMemo(
+    () => seeds.find((p) => p.date === todayKst) ?? null,
+    [seeds, todayKst],
+  );
+  const liveSeed = todayAskPeak !== null ? backendTodaySeed : todaySeed;
+
+  const stateRef = useRef<RatchetState>(FRESH_RATCHET);
+  const obCursorRef = useRef<BufferCursor<ObSnapshot>>(freshCursor());
+  const [todayPeak, setTodayPeak] = useState<DayPeak | null>(liveSeed);
+
+  useEffect(() => {
+    stateRef.current = FRESH_RATCHET;
+    obCursorRef.current = freshCursor();
+    setTodayPeak(liveSeed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code, todayKst, todayAskPeak]);
+
+  useEffect(() => {
+    const unreadOb = unreadSnapshots(ob, obCursorRef.current);
+    const s = reduceDayAskPeak(stateRef.current, liveSeed, unreadOb);
+    stateRef.current = s;
+    setTodayPeak(s.peak ?? liveSeed);
+  }, [ob, liveSeed]);
+
+  return useMemo(() => toAskPeak(todayKst, todayPeak), [todayKst, todayPeak]);
 }

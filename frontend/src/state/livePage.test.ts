@@ -174,6 +174,33 @@ describe('useLivePageStore.movingAverages', () => {
   });
 });
 
+describe('useLivePageStore.askPeakAllPriceStyle', () => {
+  beforeEach(() => {
+    localStorage.removeItem('live.indicators.v1');
+    useLivePageStore.setState({
+      askPeakAllPriceColor: '#F97316',
+      askPeakAllPriceLineWidth: 1,
+    });
+  });
+
+  it('setAskPeakAllPriceStyle updates color and width independently', () => {
+    useLivePageStore.getState().setAskPeakAllPriceStyle({ color: '#22C55E' });
+    expect(useLivePageStore.getState().askPeakAllPriceColor).toBe('#22C55E');
+    expect(useLivePageStore.getState().askPeakAllPriceLineWidth).toBe(1);
+
+    useLivePageStore.getState().setAskPeakAllPriceStyle({ lineWidth: 4 });
+    expect(useLivePageStore.getState().askPeakAllPriceColor).toBe('#22C55E');
+    expect(useLivePageStore.getState().askPeakAllPriceLineWidth).toBe(4);
+  });
+
+  it('persists all-price style fields in the indicator snapshot', () => {
+    useLivePageStore.getState().setAskPeakAllPriceStyle({ color: '#22C55E', lineWidth: 3 });
+    const raw = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
+    expect(raw.askPeakAllPriceColor).toBe('#22C55E');
+    expect(raw.askPeakAllPriceLineWidth).toBe(3);
+  });
+});
+
 describe('LiveMAConfig constants', () => {
   it('exposes period bounds and slot limit', () => {
     expect(MA_PERIOD_MIN).toBe(2);

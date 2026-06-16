@@ -119,6 +119,71 @@ def test_get_active_codes_returns_watchlist_codes_after_start() -> None:
     assert lifecycle.get_active_codes() == ["003490", "058610"]
 
 
+def test_get_today_ask_peak_returns_matching_stream_snapshot() -> None:
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State, _StreamConn
+
+    lifecycle.reset_for_tests()
+
+    class _FakeStream:
+        def ask_peak_snapshot(self, code: str) -> dict | None:
+            return {"date": "20260616", "code": code, "all_qty": 9000}
+
+    conn = _StreamConn(
+        account_id=0,
+        stream_obj=_FakeStream(),
+        ws_task=None,
+        flush_task=None,
+        codes=("005930",),
+    )
+    lifecycle._state = _State(started_at_ms=1, n_configured=1, streams={0: conn})
+
+    assert lifecycle.get_today_ask_peak("005930") == {
+        "date": "20260616",
+        "code": "005930",
+        "all_qty": 9000,
+    }
+
+
+def test_get_today_ask_peak_skips_non_matching_or_legacy_streams() -> None:
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State, _StreamConn
+
+    lifecycle.reset_for_tests()
+
+    class _FakeStream:
+        def ask_peak_snapshot(self, code: str) -> dict | None:
+            return {"date": "20260616", "code": code, "all_qty": 9000}
+
+    legacy = _StreamConn(
+        account_id=0,
+        stream_obj=object(),
+        ws_task=None,
+        flush_task=None,
+        codes=("005930",),
+    )
+    current = _StreamConn(
+        account_id=1,
+        stream_obj=_FakeStream(),
+        ws_task=None,
+        flush_task=None,
+        codes=("000660",),
+    )
+    lifecycle._state = _State(
+        started_at_ms=1,
+        n_configured=2,
+        streams={0: legacy, 1: current},
+    )
+
+    assert lifecycle.get_today_ask_peak("005930") is None
+    assert lifecycle.get_today_ask_peak("000660") == {
+        "date": "20260616",
+        "code": "000660",
+        "all_qty": 9000,
+    }
+    assert lifecycle.get_today_ask_peak("373220") is None
+
+
 def test_record_today_promote_success_persists_per_code() -> None:
     """ADR-0043 — record_today_promote_success가 dict에 timestamp 보관."""
     from hoga.live import lifecycle

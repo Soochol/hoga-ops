@@ -14,9 +14,9 @@ import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
-import { useDayAskPeaks } from './useDayAskPeaks';
+import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import type { AskPeak } from '../api/types';
-import type { ObSnapshot } from './bucketHogaSeries';
+import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import { todayKstYyyymmdd } from './liveDateTime';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import LiveSettingsModal from './LiveSettingsModal';
@@ -25,6 +25,7 @@ import { useDocumentTitle } from '../util/useDocumentTitle';
 /** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 const EMPTY_OB_SNAPSHOTS: readonly ObSnapshot[] = [];
+const EMPTY_TRADE_SNAPSHOTS: readonly TradeSnapshot[] = [];
 
 /**
  * /live page — KIS-based real-time indicator chart.
@@ -108,11 +109,22 @@ export function LivePage() {
     live,
   );
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
+  const askPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
+  const askPeakSeeds = (chartBundle ?? bundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;
   const dayAskPeaks = useDayAskPeaks(
     askPeakOb,
-    (chartBundle ?? bundle)?.ask_peaks ?? EMPTY_ASK_PEAKS,
+    askPeakTrade,
+    askPeakSeeds,
     today,
     activeCode,
+    live.initial?.ask_peak_today ?? null,
+  );
+  const todayAllPriceAskPeak = useTodayAllPriceAskPeak(
+    askPeakOb,
+    askPeakSeeds,
+    today,
+    activeCode,
+    live.initial?.ask_peak_today ?? null,
   );
 
   return (
@@ -162,6 +174,7 @@ export function LivePage() {
         restoreViewport={restoreViewport}
         live={live}
         dayAskPeaks={dayAskPeaks}
+        todayAllPriceAskPeak={todayAllPriceAskPeak}
         todayKst={today}
       />
       {indicatorPanelOpen && (
