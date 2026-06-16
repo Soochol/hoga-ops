@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.2.0] - 2026-06-16
+
+### Added
+- **스크리너 결과를 차트로 바로 드래그**: 우측 패널의 스크리너 리스트에서도 관심종목과 동일하게
+  종목 행을 `/live` 차트 영역으로 끌어 놓아 해당 종목 차트를 열 수 있다.
+
+### Changed
+- 우측 패널의 관심종목과 스크리너가 같은 드래그 좌표 판정과 차트 hover 상태 처리를 공유하도록
+  정리했다.
+
+### Fixed
+- 스크리너 드래그가 차트 밖에서 끝나거나 좌표가 없는 이벤트로 끝날 때 현재 차트가 바뀌지 않고,
+  드래그 취소 시 전역 드래그 상태가 남지 않도록 검증했다.
+- 스크리너 행의 관심종목 하트 버튼을 누를 때 row drag가 같이 시작되지 않도록 pointer 이벤트를
+  격리했다.
+
 ## [0.8.1.0] - 2026-06-16
 
 ### Added
