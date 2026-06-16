@@ -1,6 +1,9 @@
+import json
+
 import pytest
 from pydantic import ValidationError
 
+from hoga.api import study_views as sv
 from hoga.api.models import (
     ParquetStudySnapshot,
     ParquetStudyView,
@@ -193,3 +196,37 @@ def test_parquet_study_view_rejects_invalid_manifest_metadata(overrides):
 def test_study_views_file_defaults_empty():
     assert StudyViewsFile().schema_version == 1
     assert StudyViewsFile().saves == []
+
+
+def test_study_views_load_missing_returns_empty(tmp_path):
+    assert sv.load_saves(tmp_path).saves == []
+
+
+def test_study_views_create_writes_manifest_and_snapshot(tmp_path):
+    created = sv.create_save_sync(
+        tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10
+    )
+    assert created.id == "view1"
+    assert (tmp_path / "study_views" / "saves.json").exists()
+    assert (tmp_path / "study_views" / "snapshots" / "view1.json").exists()
+    assert sv.load_snapshot(tmp_path, id="view1").code == "005930"
+
+
+def test_study_views_corrupt_manifest_quarantined(tmp_path):
+    p = tmp_path / "study_views" / "saves.json"
+    p.parent.mkdir(parents=True)
+    p.write_text("{ not json", encoding="utf-8")
+    assert sv.load_saves(tmp_path).saves == []
+    assert list(p.parent.glob("saves.json.corrupt-*-badjson"))
+
+
+def test_study_views_delete_missing_snapshot_still_removes_manifest(tmp_path):
+    sv.create_save_sync(tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10)
+    (tmp_path / "study_views" / "snapshots" / "view1.json").unlink()
+    sv.delete_save_sync(tmp_path, id="view1")
+    assert sv.load_saves(tmp_path).saves == []
+
+
+def test_study_views_missing_save_raises(tmp_path):
+    with pytest.raises(sv.StudyViewNotFoundError):
+        sv.get_save_sync(tmp_path, id="missing")
