@@ -1,6 +1,7 @@
 import type { WatchlistEntry } from '../api/watchlist';
 import type { FolderGroup } from '../watchlist/grouping';
 import type { LiveQuote } from '../api/liveQuotes';
+import { makeChangePctOf, sortEntriesByChangePct } from '../rightrail/quoteSort';
 
 export type SortMode = 'change' | 'manual';
 export const HEAT_SAT = 8;          // 포화 임계(%)
@@ -32,7 +33,7 @@ export function heatHeaderBg(pct: number | null): string {
  *  접는 정책을 한 곳에 모은다(헤더 틴트·strip 칩·그룹 정렬이 공유). sortEntries/avgPct/
  *  orderFolderGroups의 pctOf 파라미터와 동형. */
 export function makePctOf(quoteByCode: Map<string, LiveQuote>): (code: string) => number | null {
-  return (code) => quoteByCode.get(code)?.change_pct ?? null;
+  return makeChangePctOf(quoteByCode);
 }
 
 /** 폴더 내 정렬. change=등락률 내림차순(null 맨 아래), manual=entry.order. 비파괴(복사). */
@@ -41,15 +42,7 @@ export function sortEntries(
   mode: SortMode,
   pctOf: (code: string) => number | null,
 ): WatchlistEntry[] {
-  if (mode === 'manual') return [...entries].sort((a, b) => a.order - b.order);
-  return [...entries].sort((a, b) => {
-    const pa = pctOf(a.code);
-    const pb = pctOf(b.code);
-    if (pa === null && pb === null) return a.order - b.order;
-    if (pa === null) return 1;
-    if (pb === null) return -1;
-    return pb - pa;
-  });
+  return sortEntriesByChangePct(entries, pctOf, mode === 'manual' ? 'default' : 'change_pct_desc');
 }
 
 /** 섹터 온도 = 시세 도착 종목의 비가중 평균 등락률. 전부 결측이면 null. */

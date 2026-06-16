@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.5.0] - 2026-06-16
+
+### Added
+- **관심종목 등락률 정렬 추가**: 우측 관심종목 패널에서 정렬 아이콘을 눌러 `기본`,
+  `등락률 오름차순`, `등락률 내림차순`으로 폴더 안 종목을 볼 수 있다.
+
+### Changed
+- 관심종목과 Heatmap이 같은 live `change_pct` 정렬 정책을 공유해, 결측 등락률은 항상 아래로
+  보내고 같은 값은 기존 수동 순서를 유지한다.
+- 등락률 정렬 중에는 수동 row reorder가 저장되지 않도록 drag reorder 경로를 비활성화했다.
+
 ## [0.8.4.0] - 2026-06-16
 
 ### Added
