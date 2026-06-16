@@ -27,7 +27,7 @@ describe('foldAskPeak', () => {
 
   it('버퍼 신기록이 seed 초과 → 교체', () => {
     const seed = { price: 25100, qty: 5000, t_ms: t(9) };
-    const ob = deepOb(t(10), [[26000, 9000], [25000, 10], ...Array(8).fill([0, 0])] as Array<[number, number]>);
+    const ob = deepOb(t(10), [[26000, 9000], [25000, 10], ...Array(8).fill([1, 1])] as Array<[number, number]>);
     const s = foldAskPeak(FRESH, seed, ob);
     expect(s.peak).toEqual({ price: 26000, qty: 9000, t_ms: t(10) });
   });

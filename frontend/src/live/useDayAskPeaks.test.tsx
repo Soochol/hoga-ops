@@ -307,4 +307,32 @@ describe('useDayAskPeaks', () => {
       qty: 12000,
     });
   });
+
+  it('all-price peak ignores one-sided collapsed ask books even when bids remain deep', () => {
+    const restPeak = todayAskPeak();
+    const oneSidedCollapsed: ObSnapshot = {
+      t_ms: atKst(10, 0),
+      total_ask_qty: 100001,
+      total_bid_qty: 1000,
+      asks: [
+        { price: 29000, qty: 99999 },
+        { price: 29100, qty: 1 },
+        { price: 29200, qty: 1 },
+        ...Array.from({ length: 7 }, () => ({ price: 0, qty: 0 })),
+      ],
+      bids: Array.from({ length: 10 }, (_, i) => ({ price: 28900 - i * 100, qty: 100 })),
+    };
+    const { result, rerender } = renderHook(
+      ({ ob }: { ob: ObSnapshot[] }) =>
+        useTodayAllPriceAskPeak(ob, [], '20260613', '005930', restPeak),
+      { initialProps: { ob: [] as ObSnapshot[] } },
+    );
+
+    rerender({ ob: [oneSidedCollapsed] });
+
+    expect(result.current).toMatchObject({
+      price: 26000,
+      qty: 12000,
+    });
+  });
 });
