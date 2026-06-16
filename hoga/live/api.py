@@ -15,6 +15,7 @@ from pydantic import BaseModel, ValidationError
 from hoga.api.params import CODE_PATTERN
 from hoga.live.kis_client import (
     KisApiError,
+    KisAuthError,
     KisQuote,
     KisRateLimitError,
     KisTransportError,
@@ -547,14 +548,26 @@ class LiveInvestorEstimateFetcher:
         try:
             raw_rows = await kis.fetch_investor_trend_estimate(code)
             rows = [_investor_estimate_row_to_wire(r) for r in raw_rows]
+        except KisAuthError as e:
+            response = self._error_response(
+                code,
+                trading_day,
+                "kis_credentials_missing",
+                str(e),
+            )
+            return self._cache_response(key, response)
         except KisRateLimitError as e:
-            return self._error_response(code, trading_day, "kis_rate_limit", str(e))
+            response = self._error_response(code, trading_day, "kis_rate_limit", str(e))
+            return self._cache_response(key, response)
         except KisTransportError as e:
-            return self._error_response(code, trading_day, "kis_api_error", e.msg_cd)
+            response = self._error_response(code, trading_day, "kis_api_error", e.msg_cd)
+            return self._cache_response(key, response)
         except KisApiError as e:
-            return self._error_response(code, trading_day, "kis_api_error", e.msg_cd)
+            response = self._error_response(code, trading_day, "kis_api_error", e.msg_cd)
+            return self._cache_response(key, response)
         except ValidationError as e:
-            return self._error_response(code, trading_day, "parse_error", str(e))
+            response = self._error_response(code, trading_day, "parse_error", str(e))
+            return self._cache_response(key, response)
 
         if len(rows) > 1:
             self._accumulator[key] = {row.slot: row for row in rows}
@@ -573,6 +586,13 @@ class LiveInvestorEstimateFetcher:
             status=status,
             warning=None,
         )
+        return self._cache_response(key, response)
+
+    def _cache_response(
+        self,
+        key: tuple[str, str],
+        response: LiveInvestorTrendEstimateResponse,
+    ) -> LiveInvestorTrendEstimateResponse:
         self._cache[key] = (monotonic_time.monotonic() + self._ttl_seconds, response)
         return response
 

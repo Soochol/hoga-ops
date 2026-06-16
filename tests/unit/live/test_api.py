@@ -1240,6 +1240,56 @@ async def test_investor_estimate_kis_failure_returns_previous_same_day_rows() ->
 
 
 @pytest.mark.asyncio
+async def test_investor_estimate_auth_failure_returns_degraded_credentials_warning() -> None:
+    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live.kis_client import KisAuthError
+
+    fake = _FakeKisForInvestorTrendEstimate([
+        KisAuthError("token issue failed"),
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
+
+    response = await fetcher.fetch(fake, "005930")
+
+    assert response.status == "error"
+    assert response.data_warning
+    assert response.data_warning.reason == "kis_credentials_missing"
+    assert response.data_warning.msg == "token issue failed"
+    assert response.rows == []
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_degraded_failure_is_cached_with_previous_rows(monkeypatch) -> None:
+    from hoga.live import api as live_api
+    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live.kis_client import KisRateLimitError
+
+    now = 100.0
+    monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
+    monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
+
+    fake = _FakeKisForInvestorTrendEstimate([
+        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+        KisRateLimitError("rate limited"),
+        KisRateLimitError("rate limited again"),
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=60, today_fn=lambda: "20260616")
+
+    await fetcher.fetch(fake, "005930")
+    now = 161.0
+    first_degraded = await fetcher.fetch(fake, "005930")
+    now = 162.0
+    second_degraded = await fetcher.fetch(fake, "005930")
+
+    assert fake.calls == ["005930", "005930"]
+    assert first_degraded.status == "error"
+    assert second_degraded.status == "error"
+    assert [r.slot for r in second_degraded.rows] == ["0900"]
+    assert second_degraded.data_warning
+    assert second_degraded.data_warning.reason == "kis_rate_limit"
+
+
+@pytest.mark.asyncio
 async def test_investor_estimate_does_not_degrade_programming_errors() -> None:
     from hoga.live.api import LiveInvestorEstimateFetcher
 
