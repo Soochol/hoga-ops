@@ -64,6 +64,12 @@ describe('useDocumentTitle', () => {
     expect(document.title).toBe('삼성전자');
   });
 
+  it('appends the live timeframe label when provided', () => {
+    const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
+    renderHook(() => useDocumentTitle('005930', '5m'), { wrapper: wrap(qc) });
+    expect(document.title).toBe('삼성전자 5분봉');
+  });
+
   it('falls back to the raw code when Symbol Master has no match', () => {
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
     renderHook(() => useDocumentTitle('999999'), { wrapper: wrap(qc) });

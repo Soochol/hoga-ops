@@ -1,6 +1,7 @@
 import { useEffect, useRef, type CSSProperties } from 'react';
 import type { LiveTab } from '../state/liveTabs';
 import { LiveTabOverflowMenu } from './LiveTabOverflowMenu';
+import { formatLiveViewLabel } from './liveViewLabel';
 
 const MAX_RENDERED_TABS = 24;
 
@@ -50,6 +51,7 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose,
         {visibleTabs.map((t, offset) => {
           const idx = windowStart + offset;
           const active = t.id === activeTabId;
+          const displayLabel = formatLiveViewLabel(t.label, t.timeframe);
           return (
             <div
               key={t.id}
@@ -85,9 +87,7 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose,
                 <span className="absolute left-0 right-0 top-0 h-[2px]" style={{ background: 'var(--accent)' }} />
               )}
               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={statusDotStyle(active, activeLoading)} />
-              {/* 종목명만 표시 (확정 2026-06-11). label은 종목명이며, 이름을 모르는 탭(마이그레이션 등)만
-                  label===code 폴백으로 코드가 보인다. 긴 이름은 말줄임. */}
-              <span className="text-sm shrink-0 max-w-28 truncate" title={t.label} style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>{t.label}</span>
+              <span className="text-sm shrink-0 max-w-36 truncate" title={displayLabel} style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>{displayLabel}</span>
               <button
                 type="button"
                 draggable={false}
