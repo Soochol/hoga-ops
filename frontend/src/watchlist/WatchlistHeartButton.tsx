@@ -35,6 +35,7 @@ export function WatchlistHeartButton({ code, name, variant = 'default' }: {
         type="button"
         aria-label="관심 그룹 편집"
         aria-pressed={member}
+        onPointerDown={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => {
           e.stopPropagation();
