@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from hoga.api.params import CODE_PATTERN
 from hoga.live.kis_client import (
     KisApiError,
@@ -553,7 +553,7 @@ class LiveInvestorEstimateFetcher:
             return self._error_response(code, trading_day, "kis_api_error", e.msg_cd)
         except KisApiError as e:
             return self._error_response(code, trading_day, "kis_api_error", e.msg_cd)
-        except Exception as e:  # noqa: BLE001 — route should degrade, not 500, on malformed clients.
+        except ValidationError as e:
             return self._error_response(code, trading_day, "parse_error", str(e))
 
         if len(rows) > 1:

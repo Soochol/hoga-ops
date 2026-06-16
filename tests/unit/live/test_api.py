@@ -1182,6 +1182,45 @@ async def test_investor_estimate_ttl_coalesces_calls() -> None:
 
 
 @pytest.mark.asyncio
+async def test_investor_estimate_inflight_coalesces_concurrent_calls() -> None:
+    import asyncio
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    class _SlowKis:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def fetch_investor_trend_estimate(self, code: str):
+            self.calls += 1
+            self.started.set()
+            await self.release.wait()
+            return [
+                InvestorTrendEstimateRow(
+                    slot="0900",
+                    foreign_qty=10,
+                    institution_qty=20,
+                    sum_qty=30,
+                )
+            ]
+
+    fake = _SlowKis()
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=60, today_fn=lambda: "20260616")
+
+    first_task = asyncio.create_task(fetcher.fetch(fake, "005930"))
+    await fake.started.wait()
+    second_task = asyncio.create_task(fetcher.fetch(fake, "005930"))
+    fake.release.set()
+
+    first, second = await asyncio.gather(first_task, second_task)
+
+    assert fake.calls == 1
+    assert second.rows == first.rows
+    assert second.fetched_at_ms == first.fetched_at_ms
+
+
+@pytest.mark.asyncio
 async def test_investor_estimate_kis_failure_returns_previous_same_day_rows() -> None:
     from hoga.live.api import LiveInvestorEstimateFetcher
     from hoga.live.kis_client import KisRateLimitError
@@ -1198,6 +1237,17 @@ async def test_investor_estimate_kis_failure_returns_previous_same_day_rows() ->
     assert response.status == "error"
     assert response.data_warning and response.data_warning.reason == "kis_rate_limit"
     assert [r.slot for r in response.rows] == ["0900"]
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_does_not_degrade_programming_errors() -> None:
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    fake = _FakeKisForInvestorTrendEstimate([[object()]])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
+
+    with pytest.raises(AttributeError):
+        await fetcher.fetch(fake, "005930")
 
 
 def _investor_estimate_app(tmp_path, fake_kis=None):
