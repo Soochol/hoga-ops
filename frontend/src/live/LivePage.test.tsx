@@ -99,6 +99,7 @@ function renderWithRouter(initial = '/live') {
 describe('LivePage shell', () => {
   beforeEach(() => {
     localStorage.clear();
+    document.title = 'before-test';
     livePageMocks.dayAskPeakObArgs.length = 0;
     // The tabs store is a module singleton (loaded once at import). The new
     // LivePage tab-bar wiring makes the mount-seed effect read its activeTabId,
@@ -141,6 +142,11 @@ describe('LivePage shell', () => {
     renderWithRouter('/live?code=000660');
     // The status bar surfaces the code somewhere visible
     expect(screen.getByTestId('live-status-bar').textContent).toContain('000660');
+  });
+
+  it('sets the browser tab title from the active Code on /live', async () => {
+    renderWithRouter('/live?code=005930');
+    await waitFor(() => expect(document.title).toBe('005930'));
   });
 
   it('falls back to the restored active tab when no query param', () => {
