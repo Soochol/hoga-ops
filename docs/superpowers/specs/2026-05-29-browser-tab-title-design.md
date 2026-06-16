@@ -16,7 +16,7 @@ The Replay Viewer and `/live` page already know which **Code** the user is looki
 
 - **Single writer**: `useDocumentTitle` 훅만 `document.title`에 쓴다. 다른 컴포넌트가 직접 `document.title = …`를 호출하면 cleanup 기반 default 복원 가정이 깨진다. 근거: [frontend/src/util/useDocumentTitle.ts](frontend/src/util/useDocumentTitle.ts) (이 spec이 신설).
 - **Default-on-unmount**: Code 페이지(`/replay`, `/live`)에서 다른 페이지로 이동하면 `document.title === 'hoga-ops'`로 복원된다. 근거: 훅의 cleanup 함수가 무조건 `DEFAULT_TITLE`을 쓰며, 비-Code 페이지는 훅을 호출하지 않아 cleanup 후 값이 보존된다.
-- **Precedence**: 한 번의 `useDocumentTitle(code)` 호출이 결정하는 title은 `name (Symbol Master에 있을 때) ?? code ?? 'hoga-ops'` 순서. 근거: 훅 내 `??` 체인.
+- **Precedence**: 한 번의 `useDocumentTitle(code)` 호출이 결정하는 title은 `(name (Symbol Master에 있을 때) ?? code)`를 base로 삼고, 해당 **Code**의 **Live Quote**가 있으면 `price`와 `change_pct`를 뒤에 붙인다. base가 없으면 `hoga-ops`. Live Quote가 없거나 `change_pct=null`이면 없는 필드는 생략한다.
 
 ## Invariant impact
 
@@ -78,25 +78,37 @@ Why this shape:
 // frontend/src/util/useDocumentTitle.ts
 import { useEffect } from 'react';
 import { useSymbols } from '../capture/useSymbols';
+import { useQuoteByCode, type LiveQuote } from '../api/liveQuotes';
 
 const DEFAULT_TITLE = 'hoga-ops';
 
+function formatTitleBase(base: string, quote: LiveQuote | undefined): string {
+  if (!quote) return base;
+  const parts = [base, quote.price.toLocaleString('ko-KR')];
+  if (quote.change_pct !== null) {
+    parts.push(`${quote.change_pct > 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%`);
+  }
+  return parts.join(' ');
+}
+
 export function useDocumentTitle(code: string | null | undefined): void {
   const { data } = useSymbols();
+  const { data: quote } = useQuoteByCode(code);
   useEffect(() => {
     const trimmed = code?.trim() || null;
     const name = trimmed
       ? data?.symbols.find((s) => s.code === trimmed)?.name
       : undefined;
-    document.title = name ?? trimmed ?? DEFAULT_TITLE;
+    const base = name ?? trimmed;
+    document.title = base ? formatTitleBase(base, quote) : DEFAULT_TITLE;
     return () => {
       document.title = DEFAULT_TITLE;
     };
-  }, [code, data]);
+  }, [code, data, quote]);
 }
 ```
 
-Title resolution precedence (first non-empty wins):
+Title resolution precedence (first non-empty wins, then quote augmentation if available):
 
 1. Name from the **Symbol Master** (via `useSymbols()` cache), if `code` is provided and a match exists.
 2. The `code` itself, if provided but not yet resolved to a name.
@@ -111,7 +123,8 @@ useTabsStore (activeTabId, tabs)
   → tabs.find(t => t.id === activeTabId).selection?.code
   → useDocumentTitle(code)
   → useSymbols() (shared TanStack Query cache)
-  → document.title = name ?? code ?? 'hoga-ops'
+  → useQuoteByCode(code)
+  → document.title = base ? formatTitleBase(base, quote) : 'hoga-ops'
 ```
 
 **`/live`:**
@@ -122,7 +135,8 @@ useLivePageStore → storedCode
   → activeCode = queryCode ?? storedCode  // already computed at LivePage.tsx:53
   → useDocumentTitle(activeCode)
   → useSymbols()
-  → document.title = name ?? code ?? 'hoga-ops'
+  → useQuoteByCode(activeCode)
+  → document.title = base ? formatTitleBase(base, quote) : 'hoga-ops'
 ```
 
 `useSymbols()` is already called by `TabStrip`, `CaptureQueue`, `StockCombobox`, and others; calling it from the hook adds no network traffic, only a shared subscription to the cached value.
@@ -132,7 +146,9 @@ useLivePageStore → storedCode
 | Case | Title shown |
 |---|---|
 | `code` is `null`, `undefined`, empty, or whitespace-only | `hoga-ops` |
-| `code` present, name resolved | name (e.g. `삼성전자`) |
+| `code` present, name resolved, Live Quote present | `name price change_pct` (e.g. `삼성전자 71,200 +1.23%`) |
+| `code` present, name resolved, Live Quote present but `change_pct=null` | `name price` (e.g. `삼성전자 71,200`) |
+| `code` present, name resolved, Live Quote missing | name (e.g. `삼성전자`) |
 | `code` present, `useSymbols` still loading | `code` (e.g. `005930`), updates to name on resolve |
 | `code` present, **Code** absent from **Symbol Master** (new IPO / delisted) | `code` |
 | `useSymbols` query in error state | `code` (data is `undefined`, so `name` is `undefined`) |
