@@ -105,3 +105,43 @@ describe('총잔량 급증 설정', () => {
     expect(mergePrefs({ surgeStartHHMM: 800 }).surgeStartHHMM).toBe(DEFAULT_PREFS.surgeStartHHMM);
   });
 });
+
+describe('날짜 구분선 설정', () => {
+  it('defaults to current visual behavior', () => {
+    expect(DEFAULT_PREFS.dayBoundaryEnabled).toBe(true);
+    expect(DEFAULT_PREFS.dayBoundaryColor).toBe('#64748B');
+    expect(DEFAULT_PREFS.dayBoundaryLineWidth).toBe(1);
+  });
+
+  it('mergePrefs preserves valid day boundary style values', () => {
+    const merged = mergePrefs({
+      dayBoundaryEnabled: false,
+      dayBoundaryColor: '#EF4444',
+      dayBoundaryLineWidth: 3,
+    });
+
+    expect(merged.dayBoundaryEnabled).toBe(false);
+    expect(merged.dayBoundaryColor).toBe('#EF4444');
+    expect(merged.dayBoundaryLineWidth).toBe(3);
+  });
+
+  it('mergePrefs falls back for invalid day boundary style values', () => {
+    const merged = mergePrefs({
+      dayBoundaryColor: 'red',
+      dayBoundaryLineWidth: 9,
+    });
+
+    expect(merged.dayBoundaryColor).toBe(DEFAULT_PREFS.dayBoundaryColor);
+    expect(merged.dayBoundaryLineWidth).toBe(DEFAULT_PREFS.dayBoundaryLineWidth);
+  });
+
+  it('setDayBoundaryStyle updates color and width independently', () => {
+    useChartPrefsStore.getState().setDayBoundaryStyle({ color: '#22C55E' });
+    expect(useChartPrefsStore.getState().dayBoundaryColor).toBe('#22C55E');
+    expect(useChartPrefsStore.getState().dayBoundaryLineWidth).toBe(1);
+
+    useChartPrefsStore.getState().setDayBoundaryStyle({ lineWidth: 4 });
+    expect(useChartPrefsStore.getState().dayBoundaryColor).toBe('#22C55E');
+    expect(useChartPrefsStore.getState().dayBoundaryLineWidth).toBe(4);
+  });
+});

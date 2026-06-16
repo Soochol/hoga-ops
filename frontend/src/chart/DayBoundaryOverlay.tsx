@@ -1,9 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
-import { resolveTokens } from '../util/tokens';
-
-const TOKEN_SPEC = { boundary: ['--fg-dimmer', '#64748B'] } as const;
+import { useActivePrefs } from '../state/chartPrefs';
 
 type Props = {
   chart: IChartApi;
@@ -23,8 +21,13 @@ type Props = {
 function DayBoundaryOverlay({ chart, axis }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
+  const enabled = useActivePrefs((prefs) => prefs.dayBoundaryEnabled);
+  const color = useActivePrefs((prefs) => prefs.dayBoundaryColor);
+  const lineWidth = useActivePrefs((prefs) => prefs.dayBoundaryLineWidth);
 
   useEffect(() => {
+    if (!enabled) return;
+
     const ts = chart.timeScale();
     let raf = 0;
     const schedule = () => {
@@ -41,11 +44,11 @@ function DayBoundaryOverlay({ chart, axis }: Props) {
       ts.unsubscribeVisibleLogicalRangeChange(schedule);
       ro?.disconnect();
     };
-  }, [chart]);
+  }, [chart, enabled]);
+
+  if (!enabled) return null;
 
   if (axis.segments.length < 2) return null;
-
-  const { boundary } = resolveTokens(TOKEN_SPEC);
 
   const ts = chart.timeScale();
   const boundaries = axis.dayBoundaries.map((b) => {
@@ -60,10 +63,12 @@ function DayBoundaryOverlay({ chart, axis }: Props) {
           <div
             key={b.date}
             data-day-boundary={b.date}
-            className="absolute top-0 bottom-0 w-px"
+            data-testid={`day-boundary-${b.date}`}
+            className="absolute top-0 bottom-0"
             style={{
+              width: `${lineWidth}px`,
               transform: `translateX(${b.x as number}px)`,
-              backgroundImage: `repeating-linear-gradient(to bottom, ${boundary} 0 3px, transparent 3px 6px)`,
+              backgroundImage: `repeating-linear-gradient(to bottom, ${color} 0 3px, transparent 3px 6px)`,
             }}
           />
         ),
