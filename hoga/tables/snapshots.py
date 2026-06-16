@@ -337,6 +337,28 @@ class AskPeakRow:
     max_intra_ms: int
 
 
+@dataclass(frozen=True)
+class AskPeakDualRow:
+    """Day ask peak split into traded-price baseline and all-price peak.
+
+    ``price``/``qty``/``intra_ms`` and ``max_*`` are constrained to ask prices
+    that appeared in continuous trades. ``all_*`` fields use every eligible ask
+    level. Both variants share the same continuous-book/session filters.
+    """
+    price: int
+    qty: int
+    intra_ms: int
+    max_price: int
+    max_qty: int
+    max_intra_ms: int
+    all_price: int
+    all_qty: int
+    all_intra_ms: int
+    all_max_price: int
+    all_max_qty: int
+    all_max_intra_ms: int
+
+
 def query_bucketed_ratio(
     con: duckdb.DuckDBPyConnection,
     *,
@@ -593,4 +615,80 @@ def query_day_ask_peak(
     return AskPeakRow(
         price=int(row[0]), qty=int(row[1]), intra_ms=int(row[2]),
         max_price=int(max_row[0]), max_qty=int(max_row[1]), max_intra_ms=int(max_row[2]),
+    )
+
+
+def query_day_ask_peak_dual(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    trades_path: Path,
+    bucket_ms: int,
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+) -> AskPeakDualRow | None:
+    """Past-day ask peak split into traded-price and all-price variants.
+
+    Uses the same continuous-book/session predicate as ``query_day_ask_peak`` so
+    opening auction, closing auction, VI/collapsed 3-level books, and post-cross
+    re-expansion are excluded identically for both lines.
+    """
+    intra = hhmmssms_to_intra_ms_sql("ts_ms")
+    bounds = [_DEEP_BOOK_SQL]
+    if session_open_ms is not None:
+        bounds.append(f"{intra} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
+    if session_close_ms is not None:
+        bounds.append(f"{intra} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
+    where = " AND ".join(bounds)
+
+    def level_union(src: str) -> str:
+        return " UNION ALL ".join(
+            f"SELECT ask_p{i} AS price, ask_q{i} AS qty, {intra} AS intra_ms "
+            f"FROM {src} WHERE ask_q{i} > 0"
+            for i in range(1, ORDERBOOK_LEVELS + 1)
+        )
+
+    base_ctes = f"""
+        WITH cont AS (
+          SELECT *,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY ({intra} // {int(bucket_ms)})
+                   ORDER BY ts_ms DESC
+                 ) AS rn
+          FROM read_parquet(?) WHERE {where}
+        ),
+        rep AS (SELECT * FROM cont WHERE rn = 1),
+        traded_prices AS (
+          SELECT DISTINCT price FROM read_parquet(?) WHERE side IN (1, -1) AND price > 0
+        )
+    """
+
+    def pick(src: str, *, traded_only: bool) -> tuple[int, int, int] | None:
+        filter_sql = "WHERE price IN (SELECT price FROM traded_prices)" if traded_only else ""
+        return con.execute(
+            f"""
+            {base_ctes},
+            levels AS ({level_union(src)})
+            SELECT price, qty, intra_ms FROM levels
+            {filter_sql}
+            ORDER BY qty DESC, intra_ms ASC LIMIT 1
+            """,
+            [str(path), str(trades_path)],
+        ).fetchone()
+
+    all_close = pick("rep", traded_only=False)
+    if all_close is None:
+        return None
+    all_max = pick("cont", traded_only=False)
+    traded_close = pick("rep", traded_only=True) or all_close
+    traded_max = pick("cont", traded_only=True) or all_max
+    if all_max is None or traded_max is None:
+        return None
+    return AskPeakDualRow(
+        price=int(traded_close[0]), qty=int(traded_close[1]), intra_ms=int(traded_close[2]),
+        max_price=int(traded_max[0]), max_qty=int(traded_max[1]), max_intra_ms=int(traded_max[2]),
+        all_price=int(all_close[0]), all_qty=int(all_close[1]), all_intra_ms=int(all_close[2]),
+        all_max_price=int(all_max[0]),
+        all_max_qty=int(all_max[1]),
+        all_max_intra_ms=int(all_max[2]),
     )

@@ -823,6 +823,43 @@ def test_build_ask_peak_slice_wires_intra_max(tmp_path) -> None:
     assert p.max_t_ms < p.t_ms
 
 
+def test_build_ask_peak_slice_wires_all_price_peak(tmp_path) -> None:
+    """과거 AskPeak은 체결가격 기준과 미체결 포함 최대벽을 함께 싣는다."""
+    from unittest.mock import MagicMock
+    from hoga.api.bundle import build_ask_peak_slice
+    from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
+    from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
+
+    z = tuple([0] * 10)
+    ap = (25000, 26000, 27000, 27100, 27200, 27300, 27400, 27500, 27600, 27700)
+    bp = tuple(24950 - 50 * i for i in range(10))
+    ob = Orderbook(
+        ts_ms=90100000, seq=1,
+        ask_p=ap, ask_q=(1000, 9000, 100, 40, 5, 6, 7, 8, 9, 1), ask_d=z,
+        bid_p=bp, bid_q=tuple([100] * 10), bid_d=z,
+        tot_ask=10170, tot_ask_d=0, tot_bid=1000, tot_bid_d=0,
+    )
+    tr = Trade(
+        ts_ms=90050000, seq=1, price=25000, change_pct=0, qty=1, side=1,
+        cum_vol=1, cum_trades=1, low_so_far=25000, high_so_far=25000,
+        net_pressure=0, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0,
+    )
+    snapshots_write_parquet([ob], tmp_path / "snapshots.parquet")
+    trades_write_parquet([tr], tmp_path / "trades.parquet")
+    eng = MagicMock()
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.conn = duckdb.connect()
+
+    p = build_ask_peak_slice(
+        eng, code="005930", date="20260610", bucket_ms=60_000,
+        source="hogaplay", session_open_ms=90000000, session_close_ms=153000000,
+    )
+
+    assert p is not None
+    assert p.price == 25000 and p.qty == 1000
+    assert p.all_price == 26000 and p.all_qty == 9000
+
+
 def test_range_bundle_ask_peak_field_defaults_none() -> None:
     from hoga.api.models import AskPeak, RangeBundle
     from hoga.api.models import QuoteRatio, FillStrength, VolumeProfile

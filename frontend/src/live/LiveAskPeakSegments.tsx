@@ -110,6 +110,28 @@ function sameSelectedTriple(a: AskPeak, b: AskPeak, intraMax: boolean): boolean 
   return ap === bp && aq === bq && at === bt;
 }
 
+function allPricePeakFromFields(p: AskPeak): AskPeak | null {
+  if (
+    p.all_price == null
+    || p.all_qty == null
+    || p.all_t_ms == null
+    || p.all_max_price == null
+    || p.all_max_qty == null
+    || p.all_max_t_ms == null
+  ) {
+    return null;
+  }
+  return {
+    date: p.date,
+    price: p.all_price,
+    qty: p.all_qty,
+    t_ms: p.all_t_ms,
+    max_price: p.all_max_price,
+    max_qty: p.all_max_qty,
+    max_t_ms: p.all_max_t_ms,
+  };
+}
+
 export function buildAskPeakOverlaySegments({
   dayAskPeaks,
   todayAllPriceAskPeak,
@@ -132,15 +154,22 @@ export function buildAskPeakOverlaySegments({
     baselineStyle.lineWidth,
     intraMax,
   );
-  if (!showAllPrices || !todayAllPriceAskPeak) return baseline;
+  if (!showAllPrices) return baseline;
 
-  const todayBaseline = dayAskPeaks.find((p) => p.date === todayKst);
-  if (todayBaseline && sameSelectedTriple(todayBaseline, todayAllPriceAskPeak, intraMax)) {
-    return baseline;
+  const allPricePeaks: AskPeak[] = [];
+  for (const p of dayAskPeaks) {
+    const allPeak = p.date === todayKst ? todayAllPriceAskPeak : allPricePeakFromFields(p);
+    if (!allPeak) continue;
+    if (sameSelectedTriple(p, allPeak, intraMax)) continue;
+    allPricePeaks.push(allPeak);
   }
+  if (todayAllPriceAskPeak && !dayAskPeaks.some((p) => p.date === todayKst)) {
+    allPricePeaks.push(todayAllPriceAskPeak);
+  }
+  if (allPricePeaks.length === 0) return baseline;
 
   return baseline.concat(buildAskPeakSegments(
-    [todayAllPriceAskPeak],
+    allPricePeaks,
     segments,
     candles,
     axis,

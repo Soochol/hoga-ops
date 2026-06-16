@@ -197,4 +197,39 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ price: 110, color: '#F97316', lineWidth: 1 });
   });
+
+  it('과거일 AskPeak의 all_* 필드로 미체결 포함 선을 추가한다', () => {
+    const past: AskPeak = {
+      date: '20260611',
+      price: 100,
+      qty: 50,
+      t_ms: 120000,
+      max_price: 100,
+      max_qty: 50,
+      max_t_ms: 120000,
+      all_price: 110,
+      all_qty: 80,
+      all_t_ms: 180000,
+      all_max_price: 115,
+      all_max_qty: 90,
+      all_max_t_ms: 180000,
+    };
+
+    const out = buildAskPeakOverlaySegments({
+      dayAskPeaks: [past],
+      todayAllPriceAskPeak: null,
+      segments: [seg('20260611', 60000, 240000)],
+      candles: [candle(60000), candle(120000), candle(180000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: true,
+    });
+
+    expect(out).toHaveLength(2);
+    expect(out.map((s) => s.price)).toEqual([100, 110]);
+    expect(out[1]).toMatchObject({ color: '#F97316', lineWidth: 1 });
+  });
 });

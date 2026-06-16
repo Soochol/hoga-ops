@@ -454,6 +454,12 @@ export type AskPeak = {
   max_price: number;
   max_qty: number;
   max_t_ms: number;
+  all_price?: number | null;
+  all_qty?: number | null;
+  all_t_ms?: number | null;
+  all_max_price?: number | null;
+  all_max_qty?: number | null;
+  all_max_t_ms?: number | null;
 };
 
 export type RangeBundle = {

@@ -436,6 +436,24 @@ def _compute_ask_peak(
         return None
     if not path_obj.exists():
         return None
+    trades_path = path_obj.parent / "trades.parquet"
+    if trades_path.exists():
+        row = snapshots_tbl.query_day_ask_peak_dual(
+            engine.conn, path=path_obj, trades_path=trades_path, bucket_ms=bucket_ms,
+            session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        )
+        if row is None:
+            return None
+        return AskPeak(
+            date=date, price=row.price, qty=row.qty,
+            t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
+            max_price=row.max_price, max_qty=row.max_qty,
+            max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
+            all_price=row.all_price, all_qty=row.all_qty,
+            all_t_ms=ms_from_midnight_to_unix_ms(date, row.all_intra_ms),
+            all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
+            all_max_t_ms=ms_from_midnight_to_unix_ms(date, row.all_max_intra_ms),
+        )
     row = snapshots_tbl.query_day_ask_peak(
         engine.conn, path=path_obj, bucket_ms=bucket_ms,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
