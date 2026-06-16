@@ -24,7 +24,7 @@ function formatTitleBase(base: string, quote: LiveQuote | undefined): string {
 /**
  * Sole writer to `document.title`. Resolves a Code to its Symbol Master name;
  * falls back to the Code itself, then to `'hoga-ops'`. When the live quote cache
- * has the active code, appends current price and change percent.
+ * has the active code, appends current price and non-null change percent.
  *
  * See: docs/superpowers/specs/2026-05-29-browser-tab-title-design.md
  */

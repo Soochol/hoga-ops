@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import * as client from '../api/client';
+import { liveQuotesQueryKey } from '../api/liveQuotes';
 import { useDocumentTitle } from './useDocumentTitle';
 import { SYMBOLS_QUERY_KEY } from '../capture/useSymbols';
 import type { SymbolHit, SymbolsAllResponse } from '../api/types';
@@ -17,14 +18,12 @@ const HITS: SymbolHit[] = [
   },
 ];
 
-const LIVE_QUOTES_QUERY_KEY = (code: string) => ['live-quotes', code] as const;
-
 function seedQuote(
   qc: QueryClient,
   code: string,
   quote: { price: number; change_pct: number | null; change_won: number | null },
 ) {
-  qc.setQueryData(LIVE_QUOTES_QUERY_KEY(code), {
+  qc.setQueryData(liveQuotesQueryKey([code]), {
     phase: 'open',
     quotes: [{ code, ...quote }],
   });
@@ -132,7 +131,7 @@ describe('useDocumentTitle', () => {
     renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
     expect(document.title).toBe('삼성전자');
 
-    qc.setQueryData(LIVE_QUOTES_QUERY_KEY('005930'), {
+    qc.setQueryData(liveQuotesQueryKey(['005930']), {
       phase: 'open',
       quotes: [{ code: '005930', price: 71200, change_pct: 1.23, change_won: 860 }],
     });
