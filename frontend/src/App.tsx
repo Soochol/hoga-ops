@@ -3,6 +3,7 @@ import LeftNav from './nav/LeftNav';
 import RightRail from './rightrail/RightRail';
 import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
 import { ScreenerDrawer } from './screener/ScreenerDrawer';
+import { StudyViewsDrawer } from './studyViews/StudyViewsDrawer';
 import { useRightRailStore } from './state/rightRail';
 import { useEventStream } from './api/eventStream';
 import { useInventoryRecaptureOriginsCleanup } from './inventory/useInventoryRecaptureOrigins';
@@ -39,6 +40,7 @@ export default function App() {
       <main className="overflow-hidden min-w-0"><Outlet /></main>
       {activePanel === 'watchlist' && <WatchlistDrawer />}
       {activePanel === 'screener' && <ScreenerDrawer />}
+      {activePanel === 'savedViews' && <StudyViewsDrawer />}
       <RightRail />
     </div>
   );
