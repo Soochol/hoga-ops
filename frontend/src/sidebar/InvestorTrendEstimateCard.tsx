@@ -80,26 +80,17 @@ export function InvestorTrendEstimateCard({ query }: Props) {
 function QtyCell({ value }: { value: number | null }) {
   return (
     <td className={`px-2 py-1.5 text-right tabular-nums ${qtyClass(value)}`}>
-      {formatQtyCompact(value)}
+      {formatQtyWithCommas(value)}
     </td>
   );
 }
 
-export function formatQtyCompact(value: number | null): string {
+export function formatQtyWithCommas(value: number | null): string {
   if (value === null) return '-';
   if (value === 0) return '0주';
 
   const sign = value > 0 ? '+' : '';
-  const abs = Math.abs(value);
-  if (abs >= 1000) {
-    const compact = trimTrailingZero((abs / 1000).toFixed(1));
-    return `${sign}${value < 0 ? '-' : ''}${compact}k주`;
-  }
-  return `${sign}${value}주`;
-}
-
-function trimTrailingZero(value: string): string {
-  return value.endsWith('.0') ? value.slice(0, -2) : value;
+  return `${sign}${value.toLocaleString('en-US')}주`;
 }
 
 function qtyClass(value: number | null): string {

@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import {
-  formatQtyCompact,
+  formatQtyWithCommas,
   InvestorTrendEstimateCard,
 } from './InvestorTrendEstimateCard';
 import type { LiveInvestorTrendEstimateResponse } from '../api/liveInvestorTrendEstimate';
@@ -28,12 +28,13 @@ function response(
   };
 }
 
-describe('formatQtyCompact', () => {
-  it('formats compact signed Korean share quantities', () => {
-    expect(formatQtyCompact(1500)).toBe('+1.5k주');
-    expect(formatQtyCompact(-200)).toBe('-200주');
-    expect(formatQtyCompact(0)).toBe('0주');
-    expect(formatQtyCompact(null)).toBe('-');
+describe('formatQtyWithCommas', () => {
+  it('formats signed Korean share quantities with comma grouping', () => {
+    expect(formatQtyWithCommas(265_000)).toBe('+265,000주');
+    expect(formatQtyWithCommas(1500)).toBe('+1,500주');
+    expect(formatQtyWithCommas(-200)).toBe('-200주');
+    expect(formatQtyWithCommas(0)).toBe('0주');
+    expect(formatQtyWithCommas(null)).toBe('-');
   });
 });
 
@@ -49,7 +50,7 @@ describe('InvestorTrendEstimateCard', () => {
     expect(screen.getByText('합산')).toBeInTheDocument();
     expect(screen.getByText('09:00')).toBeInTheDocument();
     expect(screen.getByText('09:10')).toBeInTheDocument();
-    expect(screen.getByText('+1.5k주')).toBeInTheDocument();
+    expect(screen.getByText('+1,500주')).toBeInTheDocument();
     expect(screen.getByText('-200주')).toBeInTheDocument();
     expect(screen.getByText('KIS 장중 가집계 · 수량 기준')).toBeInTheDocument();
     expect(screen.getByText('최근 조회 09:15')).toBeInTheDocument();
