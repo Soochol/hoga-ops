@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.1.0] - 2026-06-16
+
+### Added
+- **/live 차트 날짜 구분선 설정 추가**: 사용자가 날짜 구분선 세로선을 켜고 끌 수 있고,
+  이동평균선과 같은 스타일 선택 UI로 색상과 두께를 조정할 수 있다.
+
+### Changed
+- 날짜 구분선 표시 여부와 스타일은 전역 차트 설정에 저장되어 새로고침 후에도 유지된다.
+
+### Fixed
+- 날짜 구분선을 껐다 다시 켤 때 resize observer가 다시 연결되어, 차트 크기 변경 후에도
+  경계선 위치가 정상 갱신된다.
+
 ## [0.8.0.0] - 2026-06-16
 
 ### Added
