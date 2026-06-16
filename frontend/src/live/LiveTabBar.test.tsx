@@ -19,23 +19,23 @@ function setup(over: Partial<ComponentProps<typeof LiveTabBar>> = {}) {
   return props;
 }
 
-it('renders the stock name only (code hidden when the name is known)', () => {
+it('renders the stock name with timeframe (code hidden when the name is known)', () => {
   setup();
-  expect(screen.getByText('삼성전자')).toBeInTheDocument();
+  expect(screen.getByText('삼성전자 1분봉')).toBeInTheDocument();
   expect(screen.queryByText('005930')).toBeNull();
 });
 
 it('falls back to the code when the name is unknown (label === code)', () => {
   setup({
-    tabs: [{ id: 'x', code: '123456', label: '123456', timeframe: '1m', historicalFromDate: null, viewport: null }],
+    tabs: [{ id: 'x', code: '123456', label: '123456', timeframe: 'D', historicalFromDate: null, viewport: null }],
     activeTabId: 'x',
   });
-  expect(screen.getByText('123456')).toBeInTheDocument();
+  expect(screen.getByText('123456 일봉')).toBeInTheDocument();
 });
 
 it('clicking a tab calls onFocus with its id', () => {
   const p = setup();
-  fireEvent.click(screen.getByText('SK하이닉스'));
+  fireEvent.click(screen.getByText('SK하이닉스 1분봉'));
   expect(p.onFocus).toHaveBeenCalledWith('b');
 });
 
@@ -48,7 +48,7 @@ it('clicking the close button calls onClose, not onFocus', () => {
 
 it('middle-click closes the tab', () => {
   const p = setup();
-  fireEvent.mouseDown(screen.getByText('SK하이닉스').closest('[data-tab-id]')!, { button: 1 });
+  fireEvent.mouseDown(screen.getByText('SK하이닉스 1분봉').closest('[data-tab-id]')!, { button: 1 });
   expect(p.onClose).toHaveBeenCalledWith('b');
 });
 
@@ -67,7 +67,7 @@ it('shows an unlimited tab count and keeps the new-tab button enabled', () => {
 it('selects a tab through the overflow menu', () => {
   const p = setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
-  fireEvent.click(within(screen.getByRole('dialog')).getByText('SK하이닉스'));
+  fireEvent.click(within(screen.getByRole('dialog')).getByText('SK하이닉스 1분봉'));
   expect(p.onFocus).toHaveBeenCalledWith('b');
 });
 
@@ -99,7 +99,7 @@ it('scrolls the active tab into view when activeTabId changes', () => {
         onNewTab={vi.fn()}
       />
     );
-    const activeTab = screen.getByText('SK하이닉스').closest('[data-tab-id]')!;
+    const activeTab = screen.getByText('SK하이닉스 1분봉').closest('[data-tab-id]')!;
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(activeTab).toHaveAttribute('data-tab-id', 'b');
@@ -146,7 +146,7 @@ it('bounds tab strip rendering while keeping the active tab visible', () => {
 
   const tablist = screen.getByRole('tablist');
   expect(within(tablist).getAllByRole('tab')).toHaveLength(24);
-  expect(within(tablist).getByText('종목 71')).toBeInTheDocument();
+  expect(within(tablist).getByText('종목 71 1분봉')).toBeInTheDocument();
   expect(within(tablist).queryByText('종목 1')).toBeNull();
   expect(screen.getByText('80 open')).toBeInTheDocument();
 });
@@ -154,8 +154,8 @@ it('bounds tab strip rendering while keeping the active tab visible', () => {
 
 it('drag-and-drop reorders via onReorder(from, to)', () => {
   const p = setup();
-  const elA = screen.getByText('삼성전자').closest('[data-tab-id]')!;
-  const elB = screen.getByText('SK하이닉스').closest('[data-tab-id]')!;
+  const elA = screen.getByText('삼성전자 1분봉').closest('[data-tab-id]')!;
+  const elB = screen.getByText('SK하이닉스 1분봉').closest('[data-tab-id]')!;
   // jsdom DragEvent.dataTransfer is null — provide a stub that round-trips the index.
   const store: Record<string, string> = {};
   const dataTransfer = {
@@ -172,7 +172,7 @@ it('drag-and-drop reorders via onReorder(from, to)', () => {
 
 it('ignores a foreign drop (no tab-index payload)', () => {
   const p = setup();
-  const elB = screen.getByText('SK하이닉스').closest('[data-tab-id]')!; // idx 1
+  const elB = screen.getByText('SK하이닉스 1분봉').closest('[data-tab-id]')!; // idx 1
   const dataTransfer = { setData: () => {}, getData: () => '', types: [] as string[], effectAllowed: '' };
   fireEvent.dragOver(elB, { dataTransfer });
   fireEvent.drop(elB, { dataTransfer });

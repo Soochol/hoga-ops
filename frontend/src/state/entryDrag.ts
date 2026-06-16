@@ -7,8 +7,9 @@ import { create } from 'zustand';
  * 시스템을 행에 얹으면 네이티브 draggable이 pointermove를 가로채 재정렬이 깨진다).
  * 이 store가 드래그 상태(draggingCode/overChart)뿐 아니라 **드롭 타깃 seam**도 소유한다:
  * LiveWorkarea가 mount 시 자신의 히트테스트 술어 `hitTestChart(clientX,clientY)`를 등록하고
- * (unmount 시 해제), WatchlistDrawer의 onDragMove/onDragEnd가 그 술어로 "이 좌표가 차트
- * 위인가"를 묻는다. 차트는 자기 지오메트리를 스스로 소유하고, 패널은 DOM·rect를 모른다.
+ * (unmount 시 해제), 패널의 onDragMove/onDragEnd(WatchlistDrawer, ScreenerDrawer)가
+ * 그 술어로 "이 좌표가 차트 위인가"를 묻는다. 차트는 자기 지오메트리를 스스로 소유하고,
+ * 패널은 DOM·rect를 모른다.
  *
  * 이전 구현은 `document.querySelector('[data-testid="live-workarea"]')`로 테스트 ID를
  * 프로덕션 DOM 계약으로 삼아 무관 트리 건너편에서 rect를 읽었다(리네임/중복 시 조용한
@@ -16,6 +17,8 @@ import { create } from 'zustand';
  * 드래그 고스트는 패널 overflow 경계에서 잘리므로, 워크에어리어 자체가 드롭 어포던스다.
  */
 type ChartHitTest = (clientX: number, clientY: number) => boolean;
+
+type DropPointEvent = { activatorEvent: Event | null; delta: { x: number; y: number } };
 
 type EntryDragStore = {
   /** 드래그 중인 종목 코드. null이면 (entry) 드래그 중이 아니다. */
@@ -54,4 +57,12 @@ export function isPointOnChart(point: { x: number; y: number } | null): boolean 
   if (!point) return false;
   const hit = useEntryDragStore.getState().hitTestChart;
   return hit ? hit(point.x, point.y) : false;
+}
+
+/** dnd-kit 드래그의 최종 포인터 위치를 활성화 이벤트의 시작 좌표 + 누적 delta로 복원한다.
+ *  activatorEvent가 없거나 좌표를 담지 않는 합성 이벤트면 null을 돌려 차트 드롭을 건너뛴다. */
+export function dropPoint(ev: DropPointEvent): { x: number; y: number } | null {
+  const a = ev.activatorEvent as (MouseEvent | PointerEvent) | null;
+  if (!a || typeof a.clientX !== 'number' || typeof a.clientY !== 'number') return null;
+  return { x: a.clientX + ev.delta.x, y: a.clientY + ev.delta.y };
 }
