@@ -1,9 +1,12 @@
 import json
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from hoga.api import study_views as sv
+from hoga.api.study_view_routes import build_router
 from hoga.api.models import (
     ParquetStudySnapshot,
     ParquetStudyView,
@@ -67,6 +70,13 @@ def _req(**overrides):
     }
     base.update(overrides)
     return base
+
+
+@pytest.fixture
+def study_client(tmp_path):
+    app = FastAPI()
+    app.include_router(build_router(data_dir=tmp_path))
+    return TestClient(app)
 
 
 def _view(**overrides):
@@ -196,6 +206,28 @@ def test_parquet_study_view_rejects_invalid_manifest_metadata(overrides):
 def test_study_views_file_defaults_empty():
     assert StudyViewsFile().schema_version == 1
     assert StudyViewsFile().saves == []
+
+
+def test_study_view_routes_crud(study_client):
+    r = study_client.post("/api/study-views/saves", json=_req())
+    assert r.status_code == 201
+    sid = r.json()["id"]
+    assert study_client.get("/api/study-views/saves").json()["saves"][0]["id"] == sid
+    assert study_client.get(f"/api/study-views/saves/{sid}").json()["id"] == sid
+    snap = study_client.get(f"/api/study-views/saves/{sid}/snapshot").json()
+    assert snap["code"] == "005930"
+    r2 = study_client.put(f"/api/study-views/saves/{sid}", json=_req(name="수정"))
+    assert r2.status_code == 200
+    assert r2.json()["id"] == sid
+    assert r2.json()["name"] == "수정"
+    assert study_client.delete(f"/api/study-views/saves/{sid}").status_code == 204
+    assert study_client.get(f"/api/study-views/saves/{sid}").status_code == 404
+
+
+def test_study_view_routes_missing_ids_return_study_specific_404(study_client):
+    r = study_client.get("/api/study-views/saves/missing")
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "study_view_not_found"
 
 
 def test_study_views_load_missing_returns_empty(tmp_path):

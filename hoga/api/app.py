@@ -30,6 +30,7 @@ from hoga.api.heatmap_routes import build_router as build_heatmap_router
 from hoga.api.heatmap import seed_from_watchlist_if_absent
 from hoga.api import screener as _screener_module
 from hoga.api.screener import build_router as build_screener_router
+from hoga.api.study_view_routes import build_router as build_study_view_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
@@ -233,6 +234,7 @@ def create_app(data_dir: Path) -> FastAPI:
     app.include_router(build_watchlist_router(data_dir=data_dir))
     app.include_router(build_heatmap_router(data_dir=data_dir))
     app.include_router(build_screener_router(data_dir=data_dir, bus=bus))
+    app.include_router(build_study_view_router(data_dir=data_dir))
     app.include_router(
         build_live_router(
             get_status=live_get_status,
