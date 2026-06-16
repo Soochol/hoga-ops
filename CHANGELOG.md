@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.6.0] - 2026-06-16
+
+### Added
+- **/live 브라우저 탭 제목에 실시간 시세 표시**: 활성 종목의 브라우저 탭 제목에서
+  종목명/코드와 함께 현재가와 등락률을 볼 수 있다.
+
+### Changed
+- 브라우저 탭 제목에서는 봉 라벨을 제거하고, 앱 안의 Live Tab 라벨과 역할을 분리했다.
+- Live Quote 캐시 키를 공유 helper로 노출해 title 테스트와 quote hook이 같은 캐시 계약을 쓴다.
+
+### Fixed
+- 등락률이 아직 없는 장전/결측 quote에서는 `%`나 placeholder를 붙이지 않고 `종목명 가격`
+  형태로 짧게 표시한다.
+
 ## [0.8.5.0] - 2026-06-16
 
 ### Added
