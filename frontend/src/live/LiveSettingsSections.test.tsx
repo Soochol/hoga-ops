@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import LiveSettingsSections from './LiveSettingsSections';
 
 describe('LiveSettingsSections (2단 nav+detail)', () => {
@@ -26,6 +26,13 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
   it('차트 설정에 날짜 구분선 스타일 선택 버튼이 보인다', () => {
     render(<LiveSettingsSections />);
     expect(screen.getByRole('button', { name: '날짜 구분선 스타일 선택' })).toBeTruthy();
+  });
+
+  it('날짜 구분선 스타일 팔레트에서 기본 색상을 다시 선택할 수 있다', () => {
+    render(<LiveSettingsSections />);
+    fireEvent.click(screen.getByRole('button', { name: '날짜 구분선 스타일 선택' }));
+
+    expect(screen.getByRole('button', { name: '날짜 구분선 색상 #64748B' })).toBeTruthy();
   });
 
   it('날짜 구분선 스타일 선택 버튼은 날짜 구분선 토글 다음, 캔들 툴팁 토글 전에 보인다', () => {

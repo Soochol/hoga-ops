@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react';
 import {
   CHART_TOGGLES,
+  DAY_BOUNDARY_COLOR_DEFAULT,
   categoryOf,
   useChartPrefsStore,
   type ChartToggleCategory,
@@ -61,7 +62,13 @@ function DayBoundaryStyleRow() {
           거래일 경계를 표시하는 세로 점선의 색상과 두께입니다.
         </div>
       </div>
-      <MAStylePicker color={color} lineWidth={lineWidth} onChange={setStyle} label="날짜 구분선" />
+      <MAStylePicker
+        color={color}
+        lineWidth={lineWidth}
+        onChange={setStyle}
+        label="날짜 구분선"
+        extraColors={[DAY_BOUNDARY_COLOR_DEFAULT]}
+      />
     </div>
   );
 }

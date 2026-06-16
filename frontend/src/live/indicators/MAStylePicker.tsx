@@ -21,15 +21,17 @@ type Props = {
   onChange: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   /** aria-label 접두어. 기본 'MA' — 기존 호출부 불변. 매도벽 등 재활용 시 지정. */
   label?: string;
+  extraColors?: readonly string[];
 };
 
 /** MA 슬롯의 color + lineWidth 를 한 popover에서 동시에 고른다.
  *  trigger는 현재 색을 보여주는 작은 swatch. 클릭하면 32색 grid +
  *  4개 굵기 카드가 같이 뜬다. ColorSwatchButton + LineWidthSelect 합본. */
-export default function MAStylePicker({ color, lineWidth, onChange, label }: Props) {
+export default function MAStylePicker({ color, lineWidth, onChange, label, extraColors }: Props) {
   const lbl = label ?? 'MA';
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const colorRows = extraColors?.length ? [extraColors, ...MA_COLOR_ROWS] : MA_COLOR_ROWS;
 
   // 공용 dismiss 계약(바깥 mousedown + Escape)으로 통일 — 자체 useEffect 복붙 제거.
   // 이 픽커는 IndicatorPanel(ModalShell) 안에 떠서 Escape는 모달이 먼저 먹지만,
@@ -98,7 +100,7 @@ export default function MAStylePicker({ color, lineWidth, onChange, label }: Pro
             컬러
           </div>
           <div className="flex flex-col mb-3" style={{ gap: 'var(--space-xs)' }}>
-            {MA_COLOR_ROWS.map((row, ri) => (
+            {colorRows.map((row, ri) => (
               <div key={ri} className="grid grid-cols-8" style={{ gap: 'var(--space-xs)' }}>
                 {row.map((c) => {
                   const selected = c.toLowerCase() === color.toLowerCase();
