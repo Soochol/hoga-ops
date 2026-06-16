@@ -526,6 +526,7 @@ class LiveInvestorEstimateFetcher:
         trading_day = self._today_fn()
         key = (trading_day, code)
         now = monotonic_time.monotonic()
+        self._evict_stale(now=now, trading_day=trading_day)
         cached = self._cache.get(key)
         if cached is not None:
             expires_at, response = cached
@@ -549,12 +550,13 @@ class LiveInvestorEstimateFetcher:
         try:
             raw_rows = await kis.fetch_investor_trend_estimate(code)
             rows = [_investor_estimate_row_to_wire(r) for r in raw_rows]
-        except KisAuthError as e:
+        except KisAuthError:
+            log.warning("investor trend estimate auth failed for %s", code, exc_info=True)
             response = self._error_response(
                 code,
                 trading_day,
                 "kis_credentials_missing",
-                str(e),
+                "KIS authentication failed",
             )
             return self._cache_response(key, response)
         except KisRateLimitError as e:
@@ -598,6 +600,15 @@ class LiveInvestorEstimateFetcher:
     ) -> LiveInvestorTrendEstimateResponse:
         self._cache[key] = (monotonic_time.monotonic() + self._ttl_seconds, response)
         return response
+
+    def _evict_stale(self, *, now: float, trading_day: str) -> None:
+        for key, (expires_at, _response) in list(self._cache.items()):
+            if key[0] != trading_day or now >= expires_at:
+                self._cache.pop(key, None)
+        for state in (self._accumulator, self._last_success_fetched_at_ms):
+            for key in list(state):
+                if key[0] != trading_day:
+                    state.pop(key, None)
 
     def _error_response(
         self,
@@ -702,7 +713,7 @@ def build_router(
     _investor_estimate_fetcher = LiveInvestorEstimateFetcher()
 
     def _kis_for_background() -> "KisClient | None":
-        """배경 REST(quotes·investor-net)용 KisClient — N=2면 account 1(직전엔 유휴였던
+        """배경 REST(quotes·investor-net·investor-trend-estimate)용 KisClient — N=2면 account 1(직전엔 유휴였던
         REST 버킷), 아니면 account 0 폴백(kis_access.kis_for_role, 계정 분리 2026-06-09).
         foreground(past-candles/daily)는 account 0 전용이라 이 헬퍼를 쓰지 않는다.
         data_dir 미배선(베어 단위테스트)이면 None — kis_for_role은 env/싱글톤(프로세스

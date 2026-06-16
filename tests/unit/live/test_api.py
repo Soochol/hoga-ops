@@ -1254,8 +1254,35 @@ async def test_investor_estimate_auth_failure_returns_degraded_credentials_warni
     assert response.status == "error"
     assert response.data_warning
     assert response.data_warning.reason == "kis_credentials_missing"
-    assert response.data_warning.msg == "token issue failed"
+    assert response.data_warning.msg == "KIS authentication failed"
     assert response.rows == []
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_evicts_previous_day_state(monkeypatch) -> None:
+    from hoga.live import api as live_api
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    now = 100.0
+    today = "20260616"
+    monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
+    monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
+
+    fake = _FakeKisForInvestorTrendEstimate([
+        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+        [InvestorTrendEstimateRow(slot="0930", foreign_qty=11, institution_qty=21, sum_qty=32)],
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=60, today_fn=lambda: today)
+
+    await fetcher.fetch(fake, "005930")
+    today = "20260617"
+    now = 101.0
+    await fetcher.fetch(fake, "000660")
+
+    assert ("20260616", "005930") not in fetcher._cache
+    assert ("20260616", "005930") not in fetcher._accumulator
+    assert ("20260616", "005930") not in fetcher._last_success_fetched_at_ms
+    assert ("20260617", "000660") in fetcher._accumulator
 
 
 @pytest.mark.asyncio
@@ -1294,6 +1321,60 @@ async def test_investor_estimate_degraded_failure_is_cached_with_previous_rows(m
     assert [r.slot for r in second_degraded.rows] == ["0900"]
     assert second_degraded.data_warning
     assert second_degraded.data_warning.reason == "kis_rate_limit"
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_api_and_transport_errors_preserve_previous_rows() -> None:
+    import httpx
+
+    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live.kis_client import KisApiError, KisTransportError
+
+    fake = _FakeKisForInvestorTrendEstimate([
+        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+        KisTransportError(httpx.RemoteProtocolError("server disconnected")),
+        KisApiError("KIS999", "upstream rejected request"),
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
+
+    await fetcher.fetch(fake, "005930")
+    transport_response = await fetcher.fetch(fake, "005930")
+    api_response = await fetcher.fetch(fake, "005930")
+
+    assert transport_response.status == "error"
+    assert transport_response.data_warning
+    assert transport_response.data_warning.reason == "kis_api_error"
+    assert [r.slot for r in transport_response.rows] == ["0900"]
+    assert api_response.status == "error"
+    assert api_response.data_warning
+    assert api_response.data_warning.reason == "kis_api_error"
+    assert [r.slot for r in api_response.rows] == ["0900"]
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_parse_error_degrades() -> None:
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    fake = _FakeKisForInvestorTrendEstimate([
+        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+        [
+            InvestorTrendEstimateRow(
+                slot="0910",
+                foreign_qty=11,
+                institution_qty=21,
+                sum_qty=32,
+            ).model_copy(update={"foreign_qty": "not-an-int"})
+        ],
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
+
+    await fetcher.fetch(fake, "005930")
+    response = await fetcher.fetch(fake, "005930")
+
+    assert response.status == "error"
+    assert response.data_warning
+    assert response.data_warning.reason == "parse_error"
+    assert [r.slot for r in response.rows] == ["0900"]
 
 
 @pytest.mark.asyncio
