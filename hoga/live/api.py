@@ -498,6 +498,7 @@ class LiveInvestorEstimateFetcher:
             tuple[str, str],
             dict[str, LiveInvestorTrendEstimateRow],
         ] = {}
+        self._last_success_fetched_at_ms: dict[tuple[str, str], int] = {}
         self._inflight: dict[
             tuple[str, str],
             asyncio.Task[LiveInvestorTrendEstimateResponse],
@@ -578,10 +579,12 @@ class LiveInvestorEstimateFetcher:
 
         merged = list(self._accumulator.get(key, {}).values())
         status: Literal["ok", "empty"] = "ok" if merged else "empty"
+        fetched_at_ms = int(monotonic_time.time() * 1000)
+        self._last_success_fetched_at_ms[key] = fetched_at_ms
         response = self._response(
             code=code,
             trading_day=trading_day,
-            fetched_at_ms=int(monotonic_time.time() * 1000),
+            fetched_at_ms=fetched_at_ms,
             rows=merged,
             status=status,
             warning=None,
@@ -604,11 +607,7 @@ class LiveInvestorEstimateFetcher:
         msg: str,
     ) -> LiveInvestorTrendEstimateResponse:
         key = (trading_day, code)
-        cached = self._cache.get(key)
-        if cached is not None and cached[1].status in {"ok", "empty"}:
-            fetched_at_ms = cached[1].fetched_at_ms
-        else:
-            fetched_at_ms = None
+        fetched_at_ms = self._last_success_fetched_at_ms.get(key)
         rows = list(self._accumulator.get(key, {}).values())
         return self._response(
             code=code,

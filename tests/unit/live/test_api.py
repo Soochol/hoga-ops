@@ -1275,15 +1275,22 @@ async def test_investor_estimate_degraded_failure_is_cached_with_previous_rows(m
     ])
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=60, today_fn=lambda: "20260616")
 
-    await fetcher.fetch(fake, "005930")
+    successful = await fetcher.fetch(fake, "005930")
     now = 161.0
     first_degraded = await fetcher.fetch(fake, "005930")
     now = 162.0
+    cached_degraded = await fetcher.fetch(fake, "005930")
+    now = 222.0
     second_degraded = await fetcher.fetch(fake, "005930")
 
-    assert fake.calls == ["005930", "005930"]
+    assert fake.calls == ["005930", "005930", "005930"]
+    assert successful.fetched_at_ms == 100_000
     assert first_degraded.status == "error"
+    assert cached_degraded.status == "error"
     assert second_degraded.status == "error"
+    assert first_degraded.fetched_at_ms == successful.fetched_at_ms
+    assert cached_degraded.fetched_at_ms == successful.fetched_at_ms
+    assert second_degraded.fetched_at_ms == successful.fetched_at_ms
     assert [r.slot for r in second_degraded.rows] == ["0900"]
     assert second_degraded.data_warning
     assert second_degraded.data_warning.reason == "kis_rate_limit"
