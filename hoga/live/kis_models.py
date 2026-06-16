@@ -62,3 +62,12 @@ class InvestorNetPoint(BaseModel):
     t_ms: int             # epoch ms (UTC) — 09:00 KST anchor
     foreign_net: int      # 외국인 순매수 수량 (KIS frgn_ntby_qty)
     institution_net: int  # 기관계 순매수 수량 (KIS orgn_ntby_qty)
+
+
+class InvestorTrendEstimateRow(BaseModel):
+    """Intraday KIS estimated foreign/institution quantity row for one slot."""
+
+    slot: str
+    foreign_qty: int | None
+    institution_qty: int | None
+    sum_qty: int | None

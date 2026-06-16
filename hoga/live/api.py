@@ -4,20 +4,23 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time as monotonic_time
 from collections.abc import Awaitable
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from hoga.api.params import CODE_PATTERN
 from hoga.live.kis_client import (
     KisApiError,
+    KisAuthError,
     KisQuote,
     KisRateLimitError,
     KisTransportError,
 )
+from hoga.live.kis_models import InvestorTrendEstimateRow
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
@@ -45,6 +48,7 @@ _PAST_MAX_DAYS = 250
 _PAST_CANDLES_CONCURRENCY = 5
 _CODE_RE = re.compile(CODE_PATTERN)
 _KST = timezone(timedelta(hours=9))
+_INVESTOR_ESTIMATE_MAX_CODES_PER_DAY = 256
 
 # Rate-limit retry policy lives in ``KisClient._get`` (ADR-0050). Handlers
 # here just call ``kis.fetch_*`` directly; a ``KisRateLimitError`` that
@@ -55,6 +59,10 @@ _KST = timezone(timedelta(hours=9))
 
 def _today_kst_date() -> date:
     return datetime.now(_KST).date()
+
+
+def _today_kst_yyyymmdd() -> str:
+    return _today_kst_date().strftime("%Y%m%d")
 
 
 def _parse_yyyymmdd(s: str) -> date | None:
@@ -328,6 +336,37 @@ class LiveQuotesResponse(BaseModel):
     quotes: list[LiveQuote]
 
 
+InvestorEstimateWarningReason = Literal[
+    "kis_credentials_missing",
+    "kis_rate_limit",
+    "kis_api_error",
+    "parse_error",
+]
+
+
+class LiveInvestorTrendEstimateWarning(BaseModel):
+    reason: InvestorEstimateWarningReason
+    msg: str
+
+
+class LiveInvestorTrendEstimateRow(BaseModel):
+    slot: str
+    foreign_qty: int | None
+    institution_qty: int | None
+    sum_qty: int | None
+
+
+class LiveInvestorTrendEstimateResponse(BaseModel):
+    code: str
+    trading_day: str
+    fetched_at_ms: int | None
+    rows: list[LiveInvestorTrendEstimateRow]
+    latest: LiveInvestorTrendEstimateRow | None
+    source: Literal["kis"]
+    status: Literal["ok", "empty", "error"]
+    data_warning: LiveInvestorTrendEstimateWarning | None
+
+
 def _quote_phase(now: datetime) -> Literal["pre_open", "open", "closed"]:
     """/quotes 오버레이의 폴링·표시 게이트(스펙 2026-06-08 ⑧).
 
@@ -407,6 +446,249 @@ class LiveQuoteFetcher:
         ]
 
 
+def _investor_estimate_row_to_wire(
+    row: InvestorTrendEstimateRow,
+) -> LiveInvestorTrendEstimateRow:
+    return LiveInvestorTrendEstimateRow(
+        slot=row.slot,
+        foreign_qty=row.foreign_qty,
+        institution_qty=row.institution_qty,
+        sum_qty=row.sum_qty,
+    )
+
+
+def _investor_estimate_has_quantity(row: LiveInvestorTrendEstimateRow) -> bool:
+    return (
+        row.foreign_qty is not None
+        or row.institution_qty is not None
+        or row.sum_qty is not None
+    )
+
+
+def _latest_investor_estimate_row(
+    rows: list[LiveInvestorTrendEstimateRow],
+) -> LiveInvestorTrendEstimateRow | None:
+    usable = [r for r in rows if _investor_estimate_has_quantity(r)]
+    numeric = [(int(r.slot), r) for r in usable if r.slot.isdecimal()]
+    if numeric:
+        return max(numeric, key=lambda pair: pair[0])[1]
+    return usable[-1] if usable else None
+
+
+class LiveInvestorEstimateFetcher:
+    """Fetch/cache intraday investor trend estimates for one process.
+
+    KIS sometimes returns a full intraday history and sometimes only the
+    newest slot. Full-history responses replace same-day state. Latest-only
+    responses merge by slot so repeated polling reconstructs the day locally.
+    """
+
+    def __init__(
+        self,
+        *,
+        ttl_seconds: float = 60.0,
+        today_fn: Callable[[], str] = _today_kst_yyyymmdd,
+    ) -> None:
+        self._ttl_seconds = ttl_seconds
+        self._today_fn = today_fn
+        self._cache: dict[
+            tuple[str, str],
+            tuple[float, LiveInvestorTrendEstimateResponse],
+        ] = {}
+        self._accumulator: dict[
+            tuple[str, str],
+            dict[str, LiveInvestorTrendEstimateRow],
+        ] = {}
+        self._last_success_fetched_at_ms: dict[tuple[str, str], int] = {}
+        self._inflight: dict[
+            tuple[str, str],
+            asyncio.Task[LiveInvestorTrendEstimateResponse],
+        ] = {}
+
+    def credentials_missing(self, code: str) -> LiveInvestorTrendEstimateResponse:
+        trading_day = self._today_fn()
+        return self._response(
+            code=code,
+            trading_day=trading_day,
+            fetched_at_ms=None,
+            rows=[],
+            status="error",
+            warning=LiveInvestorTrendEstimateWarning(
+                reason="kis_credentials_missing",
+                msg="KIS credentials are not configured",
+            ),
+        )
+
+    async def fetch(
+        self,
+        kis: "KisClient",
+        code: str,
+    ) -> LiveInvestorTrendEstimateResponse:
+        trading_day = self._today_fn()
+        key = (trading_day, code)
+        now = monotonic_time.monotonic()
+        self._evict_stale(now=now, trading_day=trading_day)
+        cached = self._cache.get(key)
+        if cached is not None:
+            expires_at, response = cached
+            if now < expires_at:
+                return response
+
+        task = self._inflight.get(key)
+        if task is None:
+            task = asyncio.create_task(self._fetch_uncached(kis, code, trading_day))
+            self._inflight[key] = task
+            task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
+        return await task
+
+    async def _fetch_uncached(
+        self,
+        kis: "KisClient",
+        code: str,
+        trading_day: str,
+    ) -> LiveInvestorTrendEstimateResponse:
+        key = (trading_day, code)
+        try:
+            raw_rows = await kis.fetch_investor_trend_estimate(code)
+            rows = [_investor_estimate_row_to_wire(r) for r in raw_rows]
+        except KisAuthError:
+            log.warning("investor trend estimate auth failed for %s", code, exc_info=True)
+            response = self._error_response(
+                code,
+                trading_day,
+                "kis_credentials_missing",
+                "KIS authentication failed",
+            )
+            return self._cache_response(key, response)
+        except KisRateLimitError as e:
+            response = self._error_response(code, trading_day, "kis_rate_limit", str(e))
+            return self._cache_response(key, response)
+        except KisTransportError as e:
+            response = self._error_response(code, trading_day, "kis_api_error", e.msg_cd)
+            return self._cache_response(key, response)
+        except KisApiError as e:
+            response = self._error_response(code, trading_day, "kis_api_error", e.msg_cd)
+            return self._cache_response(key, response)
+        except ValidationError as e:
+            response = self._error_response(code, trading_day, "parse_error", str(e))
+            return self._cache_response(key, response)
+
+        if not rows:
+            self._accumulator[key] = {}
+            response = self._response(
+                code=code,
+                trading_day=trading_day,
+                fetched_at_ms=int(monotonic_time.time() * 1000),
+                rows=[],
+                status="empty",
+                warning=None,
+            )
+            return self._cache_response(key, response)
+
+        if len(rows) > 1:
+            self._accumulator[key] = {row.slot: row for row in rows}
+        else:
+            current = self._accumulator.setdefault(key, {})
+            for row in rows:
+                current[row.slot] = row
+
+        merged = list(self._accumulator.get(key, {}).values())
+        status: Literal["ok", "empty"] = (
+            "ok" if any(_investor_estimate_has_quantity(row) for row in merged) else "empty"
+        )
+        fetched_at_ms = int(monotonic_time.time() * 1000)
+        if status == "ok":
+            self._last_success_fetched_at_ms[key] = fetched_at_ms
+        response = self._response(
+            code=code,
+            trading_day=trading_day,
+            fetched_at_ms=fetched_at_ms,
+            rows=merged,
+            status=status,
+            warning=None,
+        )
+        return self._cache_response(key, response)
+
+    def _cache_response(
+        self,
+        key: tuple[str, str],
+        response: LiveInvestorTrendEstimateResponse,
+    ) -> LiveInvestorTrendEstimateResponse:
+        self._cache[key] = (monotonic_time.monotonic() + self._ttl_seconds, response)
+        self._evict_over_capacity(trading_day=key[0])
+        return response
+
+    def _evict_stale(self, *, now: float, trading_day: str) -> None:
+        for key, (expires_at, _response) in list(self._cache.items()):
+            if key[0] != trading_day or now >= expires_at:
+                self._cache.pop(key, None)
+        for state in (self._accumulator, self._last_success_fetched_at_ms):
+            for key in list(state):
+                if key[0] != trading_day:
+                    state.pop(key, None)
+
+    def _evict_over_capacity(self, *, trading_day: str) -> None:
+        day_keys = [
+            key
+            for key in set(self._cache) | set(self._accumulator) | set(self._last_success_fetched_at_ms)
+            if key[0] == trading_day
+        ]
+        overflow = len(day_keys) - _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY
+        if overflow <= 0:
+            return
+        oldest = sorted(
+            day_keys,
+            key=lambda key: (
+                self._last_success_fetched_at_ms.get(key, -1),
+                self._cache.get(key, (0.0, None))[0],
+            ),
+        )[:overflow]
+        for key in oldest:
+            self._cache.pop(key, None)
+            self._accumulator.pop(key, None)
+            self._last_success_fetched_at_ms.pop(key, None)
+
+    def _error_response(
+        self,
+        code: str,
+        trading_day: str,
+        reason: InvestorEstimateWarningReason,
+        msg: str,
+    ) -> LiveInvestorTrendEstimateResponse:
+        key = (trading_day, code)
+        fetched_at_ms = self._last_success_fetched_at_ms.get(key)
+        rows = list(self._accumulator.get(key, {}).values())
+        return self._response(
+            code=code,
+            trading_day=trading_day,
+            fetched_at_ms=fetched_at_ms,
+            rows=rows,
+            status="error",
+            warning=LiveInvestorTrendEstimateWarning(reason=reason, msg=msg),
+        )
+
+    def _response(
+        self,
+        *,
+        code: str,
+        trading_day: str,
+        fetched_at_ms: int | None,
+        rows: list[LiveInvestorTrendEstimateRow],
+        status: Literal["ok", "empty", "error"],
+        warning: LiveInvestorTrendEstimateWarning | None,
+    ) -> LiveInvestorTrendEstimateResponse:
+        return LiveInvestorTrendEstimateResponse(
+            code=code,
+            trading_day=trading_day,
+            fetched_at_ms=fetched_at_ms,
+            rows=rows,
+            latest=_latest_investor_estimate_row(rows),
+            source="kis",
+            status=status,
+            data_warning=warning,
+        )
+
+
 def build_router(
     get_status: Callable[[], LiveStatus],
     get_buffer: Callable[[], LiveBuffer] | None = None,
@@ -466,9 +748,10 @@ def build_router(
     # 시세 오버레이 fetch+캐시+게이팅은 LiveQuoteFetcher 가 소유. build_router 호출마다
     # 새 인스턴스라 마지막-시세 캐시 스코프는 종전(per-router 클로저)과 동일.
     _quote_fetcher = LiveQuoteFetcher()
+    _investor_estimate_fetcher = LiveInvestorEstimateFetcher()
 
     def _kis_for_background() -> "KisClient | None":
-        """배경 REST(quotes·investor-net)용 KisClient — N=2면 account 1(직전엔 유휴였던
+        """배경 REST(quotes·investor-net·investor-trend-estimate)용 KisClient — N=2면 account 1(직전엔 유휴였던
         REST 버킷), 아니면 account 0 폴백(kis_access.kis_for_role, 계정 분리 2026-06-09).
         foreground(past-candles/daily)는 account 0 전용이라 이 헬퍼를 쓰지 않는다.
         data_dir 미배선(베어 단위테스트)이면 None — kis_for_role은 env/싱글톤(프로세스
@@ -492,6 +775,23 @@ def build_router(
             phase=phase,
             quotes=await _quote_fetcher.fetch_and_gate(kis, code_list, phase),
         )
+
+    @router.get(
+        "/investor-trend-estimate",
+        response_model=LiveInvestorTrendEstimateResponse,
+    )
+    async def _get_investor_trend_estimate(
+        code: str = Query(...),
+    ) -> LiveInvestorTrendEstimateResponse:
+        if not _CODE_RE.match(code):
+            raise HTTPException(
+                422,
+                {"code": "invalid_code", "msg": "code must be 6 digits"},
+            )
+        kis = _kis_for_background()
+        if kis is None:
+            return _investor_estimate_fetcher.credentials_missing(code)
+        return await _investor_estimate_fetcher.fetch(kis, code)
 
     # past-candles 병렬 fetch의 총량 제어 — 라우터(=프로세스, ADR-0038 단일
     # 워커) 수준 공유: 동시 요청 2건이 떠도 KIS in-flight 합계 ≤ 5.

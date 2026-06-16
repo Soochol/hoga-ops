@@ -2,11 +2,20 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { act } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { LiveSidebar } from './LiveSidebar';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import type { LiveSeriesData } from '../api/liveSeries';
+
+const investorTrendEstimateMock = vi.hoisted(() =>
+  vi.fn(() => ({ data: undefined, isLoading: false, error: null })),
+);
+
+vi.mock('../api/liveInvestorTrendEstimate', () => ({
+  useLiveInvestorTrendEstimate: investorTrendEstimateMock,
+}));
+
+import { LiveSidebar } from './LiveSidebar';
 
 // Live fixture — LiveSidebar receives this as a prop (LivePage-lift refactor).
 // No useLiveSeries mock needed: the sidebar no longer calls the hook.
@@ -63,6 +72,8 @@ function renderSidebar(
 
 describe('LiveSidebar', () => {
   beforeEach(() => {
+    investorTrendEstimateMock.mockClear();
+    investorTrendEstimateMock.mockReturnValue({ data: undefined, isLoading: false, error: null });
     (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     useLiveCursorStore.getState().clearCursor();
@@ -74,6 +85,22 @@ describe('LiveSidebar', () => {
   it('renders the sidebar shell when code is null (waiting state)', () => {
     renderSidebar({ code: null });
     expect(screen.getByTestId('live-sidebar')).toBeInTheDocument();
+  });
+
+  it('calls investor trend estimate hook with the active code', () => {
+    renderSidebar({ code: '005930' });
+
+    expect(investorTrendEstimateMock).toHaveBeenCalledWith('005930');
+  });
+
+  it('renders investor trend estimate card after brokers card', () => {
+    renderSidebar({ code: '005930' });
+
+    const brokers = screen.getByTestId('card-brokers');
+    const estimate = screen.getByTestId('investor-trend-estimate-card');
+    expect(
+      brokers.compareDocumentPosition(estimate) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('reads live data from the prop, not from useLiveSeries (LivePage-lift)', () => {

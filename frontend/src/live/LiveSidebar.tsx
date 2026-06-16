@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import CursorSidebar from '../sidebar/CursorSidebar';
+import { InvestorTrendEstimateCard } from '../sidebar/InvestorTrendEstimateCard';
 import OrderbookTable from '../sidebar/OrderbookTable';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
@@ -18,6 +19,7 @@ import {
   useLiveOrderbookAtCursor,
   useLiveBrokersAtCursor,
 } from '../api/useLiveCursor';
+import { useLiveInvestorTrendEstimate } from '../api/liveInvestorTrendEstimate';
 import type { MinuteTimeframe, LiveTimeframe } from '../state/livePage';
 import { isMinuteTimeframe } from '../state/livePage';
 
@@ -68,6 +70,7 @@ export function LiveSidebar({ code, live }: Props) {
     timeframe && isMinuteTimeframe(timeframe) ? timeframe : null;
   const spotOrderbook = useLiveOrderbookAtCursor({ code, timeframe: spotTimeframe });
   const spotBrokers = useLiveBrokersAtCursor({ code, timeframe: spotTimeframe });
+  const investorTrendEstimate = useLiveInvestorTrendEstimate(code);
 
   // Axis for Auction Mask in spot mode.
   const axis = useLiveAxisStore((s) => s.axis);
@@ -146,6 +149,7 @@ export function LiveSidebar({ code, live }: Props) {
             <BrokerTrajectoryTable series={brokerSeriesForCard} cursorMs={brokerCursorMs} />
           }
         />
+        <InvestorTrendEstimateCard query={investorTrendEstimate} />
       </div>
     </div>
   );
