@@ -53,6 +53,8 @@ const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
 export const ASK_PEAK_DEFAULT_COLOR = '#1D4ED8';
 export const ASK_PEAK_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
+export const ASK_PEAK_ALL_PRICE_DEFAULT_COLOR = '#F97316';
+export const ASK_PEAK_ALL_PRICE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
 
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
@@ -71,6 +73,10 @@ export type PersistedIndicators = {
   askPeakColor: string;
   /** 매도 최대벽 선 두께. 기본 2. */
   askPeakLineWidth: 1 | 2 | 3 | 4;
+  /** 미체결 포함 매도 최대벽 선 색(hex). 기본 #F97316(주황). */
+  askPeakAllPriceColor: string;
+  /** 미체결 포함 매도 최대벽 선 두께. 기본 1. */
+  askPeakAllPriceLineWidth: 1 | 2 | 3 | 4;
   /** 총잔량 pane on/off. Default TRUE(기존 자동표시 보존). */
   quoteTotalsEnabled: boolean;
   /** 호가비 pane on/off. Default TRUE. */
@@ -124,6 +130,10 @@ export function mergeLiveIndicatorPrefs(
     ? (obj.askPeakColor as string) : ASK_PEAK_DEFAULT_COLOR;
   const apWidth = VALID_LINE_WIDTHS.has(obj?.askPeakLineWidth as number)
     ? (obj!.askPeakLineWidth as 1 | 2 | 3 | 4) : ASK_PEAK_DEFAULT_WIDTH;
+  const apAllColor = typeof obj?.askPeakAllPriceColor === 'string' && HEX_COLOR.test(obj.askPeakAllPriceColor as string)
+    ? (obj.askPeakAllPriceColor as string) : ASK_PEAK_ALL_PRICE_DEFAULT_COLOR;
+  const apAllWidth = VALID_LINE_WIDTHS.has(obj?.askPeakAllPriceLineWidth as number)
+    ? (obj!.askPeakAllPriceLineWidth as 1 | 2 | 3 | 4) : ASK_PEAK_ALL_PRICE_DEFAULT_WIDTH;
   // daily MA — opt-in(기본 false), 슬롯 검증·cap·기본값 전략 movingAverages와 동일.
   const dEnabled = obj?.dailyMovingAverageEnabled === true;
   const dHidden = obj?.dailyMovingAverageHidden === true;
@@ -146,6 +156,8 @@ export function mergeLiveIndicatorPrefs(
     askPeakEnabled: apEnabled,
     askPeakColor: apColor,
     askPeakLineWidth: apWidth,
+    askPeakAllPriceColor: apAllColor,
+    askPeakAllPriceLineWidth: apAllWidth,
     quoteTotalsEnabled: qt,
     ratioEnabled: ratio,
     fillStrengthEnabled: fill,

@@ -52,6 +52,7 @@ class TodayAskPeakState:
         all_peak = self.all_peak
         return {
             "coverage": self.coverage,
+            "traded_prices": sorted(self.traded_prices),
             "traded_price": traded.price if traded is not None else None,
             "traded_qty": traded.qty if traded is not None else None,
             "traded_t_ms": traded.t_ms if traded is not None else None,

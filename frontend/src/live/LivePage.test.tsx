@@ -15,9 +15,28 @@ const livePageMocks = vi.hoisted(() => {
     asks: [{ price: 1000, qty: 10 }],
     bids: [{ price: 990, qty: 9 }],
   }];
+  const liveTrade = [{
+    t_ms: 1,
+    trades: [{ t_ms: 1, side: 1, price: 1000, qty: 5 }],
+  }];
   return {
     liveOb,
+    liveTrade,
     dayAskPeakObArgs: [] as unknown[],
+    dayAskPeakTradeArgs: [] as unknown[],
+    dayAskPeakTodayArgs: [] as unknown[],
+    allPriceObArgs: [] as unknown[],
+    allPriceTodayArgs: [] as unknown[],
+    todayAskPeak: {
+      date: '20260616',
+      coverage: 'partial',
+      traded_price: 70000,
+      traded_qty: 1000,
+      traded_t_ms: 1,
+      all_price: 70100,
+      all_qty: 1500,
+      all_t_ms: 2,
+    },
   };
 });
 
@@ -41,14 +60,21 @@ vi.mock('./LiveChartRoot', () => ({
 // available in jsdom. Mock the hook so the shell tests stay unit-level.
 vi.mock('../api/liveSeries', () => ({
   useLiveSeries: () => ({
-    initial: undefined, isLoading: false, error: null,
-    ob: livePageMocks.liveOb, trade: [], broker: [],
+    initial: { ask_peak_today: livePageMocks.todayAskPeak }, isLoading: false, error: null,
+    ob: livePageMocks.liveOb, trade: livePageMocks.liveTrade, broker: [],
   }),
 }));
 
 vi.mock('./useDayAskPeaks', () => ({
-  useDayAskPeaks: (ob: unknown, seeds: unknown) => {
+  useTodayAllPriceAskPeak: (ob: unknown, _seeds: unknown, _today: unknown, _code: unknown, todayAskPeak: unknown) => {
+    livePageMocks.allPriceObArgs.push(ob);
+    livePageMocks.allPriceTodayArgs.push(todayAskPeak);
+    return null;
+  },
+  useDayAskPeaks: (ob: unknown, trade: unknown, seeds: unknown, _today: unknown, _code: unknown, todayAskPeak: unknown) => {
     livePageMocks.dayAskPeakObArgs.push(ob);
+    livePageMocks.dayAskPeakTradeArgs.push(trade);
+    livePageMocks.dayAskPeakTodayArgs.push(todayAskPeak);
     return seeds ?? [];
   },
 }));
@@ -101,6 +127,10 @@ describe('LivePage shell', () => {
     localStorage.clear();
     document.title = 'before-test';
     livePageMocks.dayAskPeakObArgs.length = 0;
+    livePageMocks.dayAskPeakTradeArgs.length = 0;
+    livePageMocks.dayAskPeakTodayArgs.length = 0;
+    livePageMocks.allPriceObArgs.length = 0;
+    livePageMocks.allPriceTodayArgs.length = 0;
     // The tabs store is a module singleton (loaded once at import). The new
     // LivePage tab-bar wiring makes the mount-seed effect read its activeTabId,
     // so reset it per-test to keep tests isolated — without this, a tab opened
@@ -184,13 +214,24 @@ describe('LivePage shell', () => {
     useLivePageStore.setState({ candleTimeframe: '1m' });
     renderWithRouter('/live?code=005930');
     expect(livePageMocks.dayAskPeakObArgs.at(-1)).toBe(livePageMocks.liveOb);
+    expect(livePageMocks.dayAskPeakTradeArgs.at(-1)).toBe(livePageMocks.liveTrade);
+    expect(livePageMocks.allPriceObArgs.at(-1)).toBe(livePageMocks.liveOb);
   });
 
   it('does not feed live orderbook snapshots into ask-peak ratchet on calendar timeframes', () => {
     useLivePageStore.setState({ candleTimeframe: 'D' });
     renderWithRouter('/live?code=005930');
     const ob = livePageMocks.dayAskPeakObArgs.at(-1);
+    const trade = livePageMocks.dayAskPeakTradeArgs.at(-1);
     expect(ob).not.toBe(livePageMocks.liveOb);
     expect(ob).toEqual([]);
+    expect(trade).not.toBe(livePageMocks.liveTrade);
+    expect(trade).toEqual([]);
+  });
+
+  it('passes backend today ask-peak payload to useDayAskPeaks', () => {
+    renderWithRouter('/live?code=005930');
+    expect(livePageMocks.dayAskPeakTodayArgs.at(-1)).toBe(livePageMocks.todayAskPeak);
+    expect(livePageMocks.allPriceTodayArgs.at(-1)).toBe(livePageMocks.todayAskPeak);
   });
 });

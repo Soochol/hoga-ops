@@ -169,7 +169,8 @@ describe('IndicatorPanel', () => {
   it('매도 최대벽 선택 시 스타일 pane(MAStylePicker) 표시', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽' }));
-    expect(screen.getByRole('button', { name: '매도벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '체결가격 기준 최대벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '미체결 포함 최대벽 스타일 선택' })).toBeTruthy();
   });
 
   it('일봉 이동평균선 체크박스 토글 → dailyMovingAverageEnabled 반전', async () => {

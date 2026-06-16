@@ -5,13 +5,14 @@ import asyncio
 import logging
 import re
 import time as monotonic_time
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import TYPE_CHECKING, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ValidationError
+
 from hoga.api.params import CODE_PATTERN
 from hoga.live.kis_client import (
     KisApiError,
@@ -25,7 +26,6 @@ from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
 from . import kis_access
-from . import lifecycle
 from .buffer import LiveBuffer
 from .lifecycle import LiveStatus
 
@@ -693,6 +693,7 @@ def build_router(
     get_status: Callable[[], LiveStatus],
     get_buffer: Callable[[], LiveBuffer] | None = None,
     on_control: Callable[[str], Awaitable[None]] | None = None,
+    get_today_ask_peak: Callable[[str], dict | None] | None = None,
     *,
     data_dir: Path | None = None,
 ) -> APIRouter:
@@ -704,6 +705,8 @@ def build_router(
             singleton. None → /snapshot and /series return 503.
         on_control: optional handler invoked with the action string when
             POST /control is called. None → returns 503 for control requests.
+        get_today_ask_peak: optional callable returning the current
+            ask-peak-today snapshot for a code. None → /series returns null.
     """
     router = APIRouter(prefix="/api/live")
 
@@ -743,6 +746,9 @@ def build_router(
             "session_open_ms": session_open_ms,
             "session_close_ms": None,
             "is_open": True,
+            "ask_peak_today": (
+                get_today_ask_peak(code) if get_today_ask_peak is not None else None
+            ),
         }
 
     # 시세 오버레이 fetch+캐시+게이팅은 LiveQuoteFetcher 가 소유. build_router 호출마다

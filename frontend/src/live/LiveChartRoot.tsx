@@ -94,6 +94,8 @@ interface Props {
   restoreViewport?: TabViewport | null;
   /** LivePage의 useDayAskPeaks 결과(거래일별) — LiveAskPeakSegments에 전달. */
   dayAskPeaks?: readonly AskPeak[];
+  /** Backend today all-price ask peak — optional so existing tests/callers omit it safely. */
+  todayAllPriceAskPeak?: AskPeak | null;
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
 }
@@ -101,7 +103,7 @@ interface Props {
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayKst = '' }: Props) {
+export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, todayKst = '' }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -765,6 +767,7 @@ export function LiveChartRoot({ code, timeframe, bundle, chartBundle, clampEngag
               paneSeries={paneSeries}
               axis={axis}
               dayAskPeaks={dayAskPeaks}
+              todayAllPriceAskPeak={todayAllPriceAskPeak}
               segments={cb.segments}
               candles={cb.candles}
               todayKst={todayKst}

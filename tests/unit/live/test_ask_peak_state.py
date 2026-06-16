@@ -124,6 +124,7 @@ def test_snapshot_returns_none_until_an_eligible_orderbook_peak_exists():
 
     assert state.snapshot() == {
         "coverage": "partial",
+        "traded_prices": [10_000],
         "traded_price": None,
         "traded_qty": None,
         "traded_t_ms": None,

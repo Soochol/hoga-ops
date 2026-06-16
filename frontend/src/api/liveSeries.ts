@@ -7,6 +7,18 @@ import { LiveSnapshotBuffer, type SnapshotKind } from '../live/liveSnapshotBuffe
 import type { ObSnapshot, TradeSnapshot } from '../live/bucketHogaSeries';
 import { unixMsToKSTDate } from '../util/time';
 
+export type LiveTodayAskPeak = {
+  date: string;
+  coverage: 'full' | 'partial';
+  traded_prices: number[];
+  traded_price: number | null;
+  traded_qty: number | null;
+  traded_t_ms: number | null;
+  all_price: number;
+  all_qty: number;
+  all_t_ms: number;
+};
+
 export interface LiveSeriesResponse {
   code: string;
   date: string;
@@ -16,6 +28,7 @@ export interface LiveSeriesResponse {
   snapshots: Array<Record<string, unknown>>;
   trades: Array<Record<string, unknown>>;
   brokers: Array<Record<string, unknown>>;
+  ask_peak_today: LiveTodayAskPeak | null;
 }
 
 /** Return shape of useLiveSeries. Lifted to a named type so the single-call
