@@ -40,7 +40,10 @@ export function useStudyViewMutations() {
     }),
     remove: useMutation({
       mutationFn: deleteStudyView,
-      onSuccess: invalidate,
+      onSuccess: (_result, id) => {
+        invalidate();
+        qc.removeQueries({ queryKey: studyViewSnapshotQuery(id) });
+      },
     }),
   };
 }
