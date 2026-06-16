@@ -34,9 +34,9 @@ export type StudySnapshotBundle = {
   snapshot_to_ms: number;
   segments: { date: string; session_open_ms: number; session_close_ms: number }[];
   candles: { t: number; open: number; high: number; low: number; close: number; volume: number }[];
-  quote_totals: { t: number; bid_total?: number; ask_total?: number; visible: boolean }[];
-  ratio: { t: number; value?: number; visible: boolean }[];
-  fill_strength: { t: number; buy_qty?: number; sell_qty?: number; visible: boolean }[];
+  quote_totals: { t: number; bid_total?: number | null; ask_total?: number | null; visible: boolean }[];
+  ratio: { t: number; value?: number | null; visible: boolean }[];
+  fill_strength: { t: number; buy_qty?: number | null; sell_qty?: number | null; visible: boolean }[];
   data_warnings: string[];
 };
 
@@ -76,10 +76,20 @@ export type ParquetStudyView = {
 };
 
 export type StudyViewsFile = { schema_version: number; saves: ParquetStudyView[] };
-export type ParquetStudyViewWriteRequest = Omit<
-  ParquetStudyView,
-  'id' | 'snapshot_schema_version' | 'snapshot_path' | 'snapshot_size_bytes' | 'created_at_ms' | 'updated_at_ms'
-> & { snapshot: ParquetStudySnapshot };
+export type ParquetStudyViewWriteRequest = {
+  name: string;
+  code: string;
+  label: string;
+  timeframe: LiveTimeframe;
+  snapshot_from_ms: number;
+  snapshot_to_ms: number;
+  viewport: StudyViewport;
+  indicator_state: StudyIndicatorState;
+  memo?: string;
+  tags?: string[];
+  provenance: StudyProvenance;
+  snapshot: ParquetStudySnapshot;
+};
 
 const json = (body: unknown): RequestInit => ({
   headers: { 'Content-Type': 'application/json' },

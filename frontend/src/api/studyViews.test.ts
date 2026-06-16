@@ -5,7 +5,14 @@ vi.mock('../config', () => ({
   DEFAULT_CONFIG: { api_url: '' },
 }));
 
-import { createStudyView, deleteStudyView, getStudyViewSnapshot, listStudyViews, updateStudyView } from './studyViews';
+import {
+  createStudyView,
+  deleteStudyView,
+  getStudyView,
+  getStudyViewSnapshot,
+  listStudyViews,
+  updateStudyView,
+} from './studyViews';
 
 const realFetch = globalThis.fetch;
 
@@ -44,6 +51,11 @@ it('calls study view endpoints', async () => {
 
   fetchMock.mockClear();
 
+  await expect(getStudyView('view1')).resolves.toMatchObject({ id: 'view1' });
+  expect(fetchMock).toHaveBeenCalledWith('/api/study-views/saves/view1', undefined);
+
+  fetchMock.mockClear();
+
   const createBody = { name: '저장뷰' };
   await createStudyView(createBody as any);
   expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -58,7 +70,13 @@ it('calls study view endpoints', async () => {
 
   const updateBody = { name: '수정' };
   await updateStudyView('view1', updateBody as any);
-  expect(fetchMock).toHaveBeenCalledWith('/api/study-views/saves/view1', expect.objectContaining({ method: 'PUT' }));
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/study-views/saves/view1');
+  expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+  }));
+  expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(updateBody);
 
   fetchMock.mockClear();
 
