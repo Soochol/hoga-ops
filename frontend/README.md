@@ -1,6 +1,6 @@
 # hoga-ops Frontend
 
-React + TypeScript + Vite client for the hoga-ops replay viewer.
+React + TypeScript + Vite client for the hoga-ops replay and live market-data workspace.
 
 See `DESIGN.md` at the repo root for the design system and
 `docs/superpowers/designs/2026-05-20-replay-viewer.html` for the approved visual reference.
@@ -33,10 +33,12 @@ npm install
 The backend is a FastAPI app served by uvicorn. From the repo root:
 
 ```bash
-uv run uvicorn hoga.api.app:app --reload --port 8000
+uv run uvicorn hoga.api.app:default_app \
+  --factory --host 127.0.0.1 --port 8000 \
+  --reload --reload-dir hoga
 ```
 
-This exposes the SSE replay stream the frontend consumes.
+This exposes the replay and `/live` APIs the frontend consumes.
 
 ## Runtime configuration
 
@@ -51,7 +53,7 @@ no rebuild required.
 frontend/
   src/
     components/      # presentational React components
-    hooks/           # data hooks (SSE, snapshots, etc.)
+    hooks/           # data hooks
     store/           # Zustand stores
     api/             # fetch + SSE clients
     tests/           # vitest unit + component tests
@@ -61,6 +63,6 @@ frontend/
 
 ## Status
 
-The shell, routing, URL state, and data hooks are wired. Several panes
-(Workarea, ChartStage, CursorSidebarConnected) exist as components but are
-not yet mounted in the live layout — they're scheduled for Phase 11.
+The shell, routing, URL state, replay views, right rail, screeners, heatmap, and `/live`
+chart workspace are wired. Live data features use backend REST/SSE endpoints and degrade
+locally when optional KIS credentials or market data are unavailable.
