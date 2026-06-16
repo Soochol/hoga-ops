@@ -32,7 +32,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import type { WatchlistEntry } from '../api/watchlist';
 import { resolveDrag, resolveFolderDrag, entrySortableId, parseEntrySortableId } from './dragHandlers';
-import { useEntryDragStore, isPointOnChart } from '../state/entryDrag';
+import { useEntryDragStore, isPointOnChart, dropPoint } from '../state/entryDrag';
 
 /** 우측 정렬 앵커드 메뉴 셸 — dim 라벨 헤더 + menuitem children. 패널의 두 메뉴
  *  (헤더 편집 메뉴, 그룹 ⋯ 메뉴)가 공유해 컨테이너/헤더 스타일 드리프트를 막는다. */
@@ -158,17 +158,6 @@ const typeAwareCollision: CollisionDetection = (args) => {
   const same = args.droppableContainers.filter((c) => c.data.current?.type === type);
   return closestCenter({ ...args, droppableContainers: same });
 };
-
-/** "차트로 드롭" 판정: dnd-kit 드래그의 최종 포인터 위치를 활성화 이벤트의 시작 좌표 +
- *  누적 delta로 복원한다(dnd-kit이 droppable 등록 없이도 좌표는 항상 제공). activatorEvent가
- *  없으면(합성 이벤트 등) null을 돌려 차트-드롭을 건너뛰고 일반 재정렬로 폴백한다. 이 좌표가
- *  차트 위인지는 entryDrag의 isPointOnChart(LiveWorkarea 등록 술어)가 판정한다 — 패널은
- *  차트 DOM·rect를 모른다. */
-function dropPoint(ev: { activatorEvent: Event | null; delta: { x: number; y: number } }): { x: number; y: number } | null {
-  const a = ev.activatorEvent as (MouseEvent | PointerEvent) | null;
-  if (!a || typeof a.clientX !== 'number' || typeof a.clientY !== 'number') return null;
-  return { x: a.clientX + ev.delta.x, y: a.clientY + ev.delta.y };
-}
 
 /** 그룹 헤더에 부착할 드래그 핸들 — listeners만(포인터 전용; KeyboardSensor 미도입,
  *  편집 모달 ⠿ 핸들과 동일 계약). */

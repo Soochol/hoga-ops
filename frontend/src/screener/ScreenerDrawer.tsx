@@ -1,5 +1,17 @@
 import { useEffect, useMemo } from 'react';
+import {
+  DndContext,
+  PointerSensor,
+  useDraggable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragMoveEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import { useJumpToLive } from '../live/useJumpToLive';
+import { useEntryDragStore, isPointOnChart, dropPoint } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
 import { useScreenerPanelStore } from '../state/screenerPanel';
 import { useSavedScreeners } from './useSavedScreeners';
@@ -9,7 +21,48 @@ import { useScreenerUpdate } from './useScreenerUpdate';
 import { StalenessChip } from './StalenessChip';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useScreenerRowsLive } from './useScreenerRowsLive';
+import type { ScreenerRowLive } from './useScreenerRowsLive';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
+
+const SCREENER_ENTRY_TYPE = 'screener-entry';
+const SCREENER_DRAG_SENSOR_OPTIONS = { activationConstraint: { distance: 5 } };
+
+function screenerDraggableId(code: string): string {
+  return `${SCREENER_ENTRY_TYPE}:${code}`;
+}
+
+function DraggableScreenerRow({
+  row,
+  active,
+  onActivate,
+}: {
+  row: ScreenerRowLive;
+  active: boolean;
+  onActivate: () => void;
+}) {
+  const { setNodeRef, listeners, attributes, transform, isDragging } = useDraggable({
+    id: screenerDraggableId(row.code),
+    data: { type: SCREENER_ENTRY_TYPE, code: row.code, name: row.name },
+  });
+  return (
+    <QuoteRow
+      name={row.name}
+      price={row.price}
+      pct={row.change_pct}
+      changeWon={row.change_won}
+      active={active}
+      ariaLabel={`${row.name} ${row.code} 차트 열기`}
+      testId={`screener-row-${row.code}`}
+      onClick={onActivate}
+      trailingAction={<WatchlistHeartButton code={row.code} name={row.name} variant="row" />}
+      sortableRef={setNodeRef}
+      sortableStyle={{ transform: CSS.Transform.toString(transform), transition: undefined }}
+      dragListeners={listeners}
+      dragAttributes={attributes}
+      dragging={isDragging}
+    />
+  );
+}
 
 /**
  * Screener panel (ADR-0052) — app-wide sibling of the Watchlist Panel. Pick a
@@ -69,6 +122,33 @@ export function ScreenerDrawer() {
   // 무효화하지 않게 한다(풀페이지 Screener.tsx 와 대칭).
   const scanRows = useMemo(() => lastScan?.rows ?? [], [lastScan]);
   const liveRows = useScreenerRowsLive(scanRows);
+  const sensors = useSensors(useSensor(PointerSensor, SCREENER_DRAG_SENSOR_OPTIONS));
+  const startEntryDrag = useEntryDragStore((s) => s.startDrag);
+  const setOverChart = useEntryDragStore((s) => s.setOverChart);
+  const endEntryDrag = useEntryDragStore((s) => s.endDrag);
+
+  const onDragStart = (ev: DragStartEvent) => {
+    if (ev.active.data.current?.type !== SCREENER_ENTRY_TYPE) return;
+    const d = ev.active.data.current as { code?: string };
+    if (d.code) startEntryDrag(d.code);
+  };
+
+  const onDragMove = (ev: DragMoveEvent) => {
+    if (ev.active.data.current?.type !== SCREENER_ENTRY_TYPE) return;
+    setOverChart(isPointOnChart(dropPoint(ev)));
+  };
+
+  const onDragCancel = () => {
+    endEntryDrag();
+  };
+
+  const onDragEnd = (ev: DragEndEvent) => {
+    const wasScreenerEntry = ev.active.data.current?.type === SCREENER_ENTRY_TYPE;
+    endEntryDrag();
+    if (!wasScreenerEntry || !isPointOnChart(dropPoint(ev))) return;
+    const d = ev.active.data.current as { code?: string; name?: string } | undefined;
+    if (d?.code) openLive(d.code, d.name);
+  };
 
   return (
     <div
@@ -155,22 +235,24 @@ export function ScreenerDrawer() {
             {lastScan.rows.length === 0 ? (
               <div className="p-md text-fg-dim text-sm">조건에 맞는 종목이 없습니다.</div>
             ) : (
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                {liveRows.map((r) => (
-                  <QuoteRow
-                    key={r.code}
-                    name={r.name}
-                    price={r.price}
-                    pct={r.change_pct}
-                    changeWon={r.change_won}
-                    active={r.code === activeCode}
-                    ariaLabel={`${r.name} ${r.code} 차트 열기`}
-                    testId={`screener-row-${r.code}`}
-                    onClick={() => openLive(r.code, r.name)}
-                    trailingAction={<WatchlistHeartButton code={r.code} name={r.name} variant="row" />}
-                  />
-                ))}
-              </ul>
+              <DndContext
+                sensors={sensors}
+                onDragStart={onDragStart}
+                onDragMove={onDragMove}
+                onDragEnd={onDragEnd}
+                onDragCancel={onDragCancel}
+              >
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {liveRows.map((r) => (
+                    <DraggableScreenerRow
+                      key={r.code}
+                      row={r}
+                      active={r.code === activeCode}
+                      onActivate={() => openLive(r.code, r.name)}
+                    />
+                  ))}
+                </ul>
+              </DndContext>
             )}
           </>
         ) : (
@@ -180,4 +262,3 @@ export function ScreenerDrawer() {
     </div>
   );
 }
-
