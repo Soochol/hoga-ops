@@ -11,7 +11,7 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { useJumpToLive } from '../live/useJumpToLive';
-import { useEntryDragStore, isPointOnChart } from '../state/entryDrag';
+import { useEntryDragStore, isPointOnChart, dropPoint } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
 import { useScreenerPanelStore } from '../state/screenerPanel';
 import { useSavedScreeners } from './useSavedScreeners';
@@ -25,15 +25,10 @@ import type { ScreenerRowLive } from './useScreenerRowsLive';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 
 const SCREENER_ENTRY_TYPE = 'screener-entry';
+const SCREENER_DRAG_SENSOR_OPTIONS = { activationConstraint: { distance: 5 } };
 
 function screenerDraggableId(code: string): string {
   return `${SCREENER_ENTRY_TYPE}:${code}`;
-}
-
-function dropPoint(ev: { activatorEvent: Event | null; delta: { x: number; y: number } }): { x: number; y: number } | null {
-  const a = ev.activatorEvent as (MouseEvent | PointerEvent) | null;
-  if (!a || typeof a.clientX !== 'number' || typeof a.clientY !== 'number') return null;
-  return { x: a.clientX + ev.delta.x, y: a.clientY + ev.delta.y };
 }
 
 function DraggableScreenerRow({
@@ -127,7 +122,7 @@ export function ScreenerDrawer() {
   // 무효화하지 않게 한다(풀페이지 Screener.tsx 와 대칭).
   const scanRows = useMemo(() => lastScan?.rows ?? [], [lastScan]);
   const liveRows = useScreenerRowsLive(scanRows);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const sensors = useSensors(useSensor(PointerSensor, SCREENER_DRAG_SENSOR_OPTIONS));
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverChart = useEntryDragStore((s) => s.setOverChart);
   const endEntryDrag = useEntryDragStore((s) => s.endDrag);

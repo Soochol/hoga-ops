@@ -16,7 +16,7 @@ export interface QuoteRowProps {
   testId: string;
   onClick: () => void;
   trailingAction?: React.ReactNode;
-  // --- drag (관심종목 패널 전용; 미전달 시 비-드래그 동작) ---
+  // --- drag (선택 패널용; 미전달 시 비-드래그 동작) ---
   sortableRef?: (node: HTMLElement | null) => void;
   sortableStyle?: Pick<React.CSSProperties, 'transform' | 'transition'>;
   dragListeners?: DraggableSyntheticListeners;

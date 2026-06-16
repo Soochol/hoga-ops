@@ -417,4 +417,68 @@ describe('ScreenerDrawer', () => {
     expect(useEntryDragStore.getState().draggingCode).toBeNull();
     expect(useEntryDragStore.getState().overChart).toBe(false);
   });
+
+  it('ignores non-screener drag payloads without changing chart-drop state', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    const foreign = { active: { id: 'watchlist-entry:005930', data: { current: { type: 'entry', code: '005930', name: '삼성전자' } } } };
+    dnd.onDragStart!(foreign);
+    dnd.onDragMove!({
+      ...foreign,
+      activatorEvent: { clientX: 400, clientY: 300 } as MouseEvent,
+      delta: { x: 0, y: 0 },
+    });
+    dnd.onDragEnd!({
+      ...foreign,
+      activatorEvent: { clientX: 400, clientY: 300 } as MouseEvent,
+      delta: { x: 0, y: 0 },
+    });
+
+    expect(useEntryDragStore.getState().draggingCode).toBeNull();
+    expect(useEntryDragStore.getState().overChart).toBe(false);
+    expect(useLivePageStore.getState().activeCode).toBeNull();
+    expect(screen.getByTestId('pathname').textContent).toBe('/live');
+  });
+
+  it('ignores screener drops when the drag event has no pointer coordinates', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+    const hitTest = () => true;
+    useEntryDragStore.getState().registerChartTarget(hitTest);
+    try {
+      render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+      await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+      dnd.onDragStart!({
+        active: { id: 'screener-entry:005930', data: { current: { type: 'screener-entry', code: '005930', name: '삼성전자' } } },
+      });
+      useEntryDragStore.getState().setOverChart(true);
+      dnd.onDragMove!({
+        active: { id: 'screener-entry:005930', data: { current: { type: 'screener-entry', code: '005930', name: '삼성전자' } } },
+        activatorEvent: null,
+        delta: { x: 0, y: 0 },
+      });
+      dnd.onDragEnd!({
+        active: { id: 'screener-entry:005930', data: { current: { type: 'screener-entry', code: '005930', name: '삼성전자' } } },
+        activatorEvent: null,
+        delta: { x: 0, y: 0 },
+      });
+
+      expect(useEntryDragStore.getState().draggingCode).toBeNull();
+      expect(useEntryDragStore.getState().overChart).toBe(false);
+      expect(useLivePageStore.getState().activeCode).toBeNull();
+      expect(screen.getByTestId('pathname').textContent).toBe('/live');
+    } finally {
+      useEntryDragStore.getState().clearChartTarget(hitTest);
+    }
+  });
 });
