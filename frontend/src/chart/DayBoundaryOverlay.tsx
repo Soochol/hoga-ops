@@ -21,8 +21,13 @@ type Props = {
 function DayBoundaryOverlay({ chart, axis }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
+  const enabled = useActivePrefs((prefs) => prefs.dayBoundaryEnabled);
+  const color = useActivePrefs((prefs) => prefs.dayBoundaryColor);
+  const lineWidth = useActivePrefs((prefs) => prefs.dayBoundaryLineWidth);
 
   useEffect(() => {
+    if (!enabled) return;
+
     const ts = chart.timeScale();
     let raf = 0;
     const schedule = () => {
@@ -39,11 +44,7 @@ function DayBoundaryOverlay({ chart, axis }: Props) {
       ts.unsubscribeVisibleLogicalRangeChange(schedule);
       ro?.disconnect();
     };
-  }, [chart]);
-
-  const enabled = useActivePrefs((prefs) => prefs.dayBoundaryEnabled);
-  const color = useActivePrefs((prefs) => prefs.dayBoundaryColor);
-  const lineWidth = useActivePrefs((prefs) => prefs.dayBoundaryLineWidth);
+  }, [chart, enabled]);
 
   if (!enabled) return null;
 
