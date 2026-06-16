@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
+import * as client from '../api/client';
 import { useDocumentTitle } from './useDocumentTitle';
 import { SYMBOLS_QUERY_KEY } from '../capture/useSymbols';
 import type { SymbolHit, SymbolsAllResponse } from '../api/types';
@@ -15,6 +16,19 @@ const HITS: SymbolHit[] = [
     captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
   },
 ];
+
+const LIVE_QUOTES_QUERY_KEY = (code: string) => ['live-quotes', code] as const;
+
+function seedQuote(
+  qc: QueryClient,
+  code: string,
+  quote: { price: number; change_pct: number | null; change_won: number | null },
+) {
+  qc.setQueryData(LIVE_QUOTES_QUERY_KEY(code), {
+    phase: 'open',
+    quotes: [{ code, ...quote }],
+  });
+}
 
 function makeQc(seedSymbols: SymbolsAllResponse | undefined) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -33,12 +47,10 @@ function wrap(qc: QueryClient) {
 
 beforeEach(() => {
   document.title = 'before-test';
-  // Block any accidental network fetch — useSymbols falls back to data:undefined.
-  vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
-    ok: true,
-    status: 200,
-    json: async () => ({ symbols: [], status: 'fresh', fetched_at_ms: 1 }),
-  } as Response);
+  // Block accidental network resolution. Most tests seed symbols/quotes in
+  // React Query; unseeded queries stay pending so the hook exercises fallback
+  // states without mixing Symbols and Live Quote response shapes.
+  vi.spyOn(client, 'apiCall').mockReturnValue(new Promise<never>(() => {}));
 });
 
 afterEach(() => {
@@ -64,10 +76,32 @@ describe('useDocumentTitle', () => {
     expect(document.title).toBe('삼성전자');
   });
 
-  it('appends the live timeframe label when provided', () => {
+  it('includes live price and positive change percent when quote is cached', () => {
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
-    renderHook(() => useDocumentTitle('005930', '5m'), { wrapper: wrap(qc) });
-    expect(document.title).toBe('삼성전자 5분봉');
+    seedQuote(qc, '005930', { price: 71200, change_pct: 1.23, change_won: 860 });
+    renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
+    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+  });
+
+  it('includes live price and negative change percent when quote is cached', () => {
+    const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
+    seedQuote(qc, '005930', { price: 70500, change_pct: -0.8, change_won: -570 });
+    renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
+    expect(document.title).toBe('삼성전자 70,500 -0.80%');
+  });
+
+  it('includes live price and zero change percent without a plus sign', () => {
+    const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
+    seedQuote(qc, '005930', { price: 70000, change_pct: 0, change_won: 0 });
+    renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
+    expect(document.title).toBe('삼성전자 70,000 0.00%');
+  });
+
+  it('omits change percent when the live quote has null change_pct', () => {
+    const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
+    seedQuote(qc, '005930', { price: 70000, change_pct: null, change_won: null });
+    renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
+    expect(document.title).toBe('삼성전자 70,000');
   });
 
   it('falls back to the raw code when Symbol Master has no match', () => {
@@ -91,6 +125,55 @@ describe('useDocumentTitle', () => {
     expect(document.title).toBe('hoga-ops');
     rerender({ code: '005930' });
     expect(document.title).toBe('삼성전자');
+  });
+
+  it('updates the title when the live quote arrives after the initial render', async () => {
+    const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
+    renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
+    expect(document.title).toBe('삼성전자');
+
+    qc.setQueryData(LIVE_QUOTES_QUERY_KEY('005930'), {
+      phase: 'open',
+      quotes: [{ code: '005930', price: 71200, change_pct: 1.23, change_won: 860 }],
+    });
+
+    await waitFor(() => {
+      expect(document.title).toBe('삼성전자 71,200 +1.23%');
+    });
+  });
+
+  it('does not attach the previous code quote while the new code quote is loading', () => {
+    const qc = makeQc({
+      symbols: [
+        ...HITS,
+        {
+          code: '000660',
+          name: 'SK하이닉스',
+          market: 'KOSPI',
+          captured_count: 0,
+          captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
+        },
+      ],
+      status: 'fresh',
+      fetched_at_ms: 1,
+    });
+    seedQuote(qc, '005930', { price: 71200, change_pct: 1.23, change_won: 860 });
+
+    const { rerender } = renderHook(
+      ({ code }: { code: string }) => useDocumentTitle(code),
+      { wrapper: wrap(qc), initialProps: { code: '005930' } },
+    );
+    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+
+    rerender({ code: '000660' });
+    expect(document.title).toBe('SK하이닉스');
+  });
+
+  it('uses the raw Code as the title base when Symbol Master has no match but quote exists', () => {
+    const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
+    seedQuote(qc, '999999', { price: 12345, change_pct: 4.56, change_won: 540 });
+    renderHook(() => useDocumentTitle('999999'), { wrapper: wrap(qc) });
+    expect(document.title).toBe('999999 12,345 +4.56%');
   });
 
   it('restores "hoga-ops" on unmount', () => {
