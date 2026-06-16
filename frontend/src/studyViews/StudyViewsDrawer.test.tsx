@@ -11,6 +11,7 @@ const updateMutate = vi.fn();
 const removeMutate = vi.fn();
 let liveSource: unknown = null;
 let studySource: unknown = null;
+let mockedSaves: ParquetStudyView[] = [];
 
 const saves: ParquetStudyView[] = [
   {
@@ -73,7 +74,7 @@ const saves: ParquetStudyView[] = [
 
 vi.mock('./useStudyViews', () => ({
   useStudyViews: () => ({
-    data: { schema_version: 1, saves },
+    data: { schema_version: 1, saves: mockedSaves },
     isLoading: false,
     isError: false,
     refetch: vi.fn(),
@@ -168,6 +169,7 @@ beforeEach(() => {
   removeMutate.mockReset();
   liveSource = null;
   studySource = null;
+  mockedSaves = saves;
 });
 
 it('filters by name, code, and memo ignoring whitespace and case', () => {
@@ -257,6 +259,26 @@ it('opens overwrite dialog from current study view primary action', async () => 
   expect(updateMutate.mock.calls[0][0].body.name).toBe('급등 이후');
 });
 
+it('overwrites the current study source even when the saves list is missing the row', async () => {
+  mockedSaves = [saves[1]];
+  studySource = {
+    viewId: 'missing-current',
+    snapshot: snapshotFixture(),
+    bundle: rangeBundleFixture(),
+    captureViewport: () => null,
+  };
+  renderDrawer('/study?view=missing-current');
+
+  await userEvent.click(screen.getByRole('button', { name: '덮어쓰기' }));
+  expect(screen.getByRole('dialog', { name: '저장뷰 덮어쓰기' })).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: '저장' }));
+
+  expect(updateMutate).toHaveBeenCalledTimes(1);
+  expect(createMutate).not.toHaveBeenCalled();
+  expect(updateMutate.mock.calls[0][0].id).toBe('missing-current');
+  expect(updateMutate.mock.calls[0][0].body.name).toBe('삼성전자 5m 저장뷰');
+});
+
 it('confirms delete before calling remove mutation', async () => {
   renderDrawer('/study?view=a');
 
@@ -265,4 +287,22 @@ it('confirms delete before calling remove mutation', async () => {
   await userEvent.click(within(dialog).getByRole('button', { name: '삭제' }));
 
   expect(removeMutate).toHaveBeenCalledWith('a', expect.objectContaining({ onSuccess: expect.any(Function) }));
+});
+
+it('navigates away after deleting the active study view', async () => {
+  studySource = {
+    viewId: 'a',
+    snapshot: snapshotFixture(),
+    bundle: rangeBundleFixture(),
+    captureViewport: () => null,
+  };
+  removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
+  renderDrawer('/study?view=a');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 삭제' }));
+  const dialog = screen.getByRole('dialog', { name: '저장뷰 삭제' });
+  await userEvent.click(within(dialog).getByRole('button', { name: '삭제' }));
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study'));
+  expect(screen.queryByRole('dialog', { name: '저장뷰 삭제' })).toBeNull();
 });

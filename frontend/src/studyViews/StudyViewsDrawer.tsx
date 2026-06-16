@@ -72,10 +72,12 @@ export function StudyViewsDrawer() {
   const navigate = useNavigate();
   const location = useLocation();
   const rows = useMemo(() => filterStudyViews(data?.saves ?? [], query), [data?.saves, query]);
+  const currentStudyViewId = useMemo(() => new URLSearchParams(location.search).get('view'), [location.search]);
   const currentStudyRow = useMemo(
-    () => data?.saves.find((row) => row.id === new URLSearchParams(location.search).get('view')),
-    [data?.saves, location.search],
+    () => data?.saves.find((row) => row.id === currentStudyViewId),
+    [currentStudyViewId, data?.saves],
   );
+  const overwriteStudyViewId = location.pathname === '/study' ? studySource?.viewId ?? currentStudyViewId ?? undefined : undefined;
   const canSaveStudy = location.pathname === '/study' && !!studySource;
   const canSaveLive = location.pathname === '/live' && !!liveSource;
   const canSave = canSaveStudy || canSaveLive;
@@ -138,6 +140,20 @@ export function StudyViewsDrawer() {
     });
   };
 
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    const deletedId = deleteTarget.id;
+    mutations.remove.mutate(deletedId, {
+      onSuccess: () => {
+        setDeleteTarget(null);
+        setDialog(null);
+        if (location.pathname === '/study' && (currentStudyViewId === deletedId || studySource?.viewId === deletedId)) {
+          navigate('/study');
+        }
+      },
+    });
+  };
+
   return (
     <aside id="right-rail-saved-views-panel" className="h-full min-w-0 overflow-hidden border-l bg-bg">
       <div className="h-full flex flex-col">
@@ -146,12 +162,12 @@ export function StudyViewsDrawer() {
           <button
             type="button"
             disabled={!canSave}
-            onClick={() => location.pathname === '/study' && currentStudyRow
-              ? openSaveDialog('overwrite', currentStudyRow.id)
+            onClick={() => location.pathname === '/study' && overwriteStudyViewId
+              ? openSaveDialog('overwrite', overwriteStudyViewId)
               : openSaveDialog('create')}
             className="text-xs px-2 py-1 border rounded disabled:opacity-50"
           >
-            {location.pathname === '/study' && currentStudyRow ? '덮어쓰기' : '현재 뷰 저장'}
+            {location.pathname === '/study' && overwriteStudyViewId ? '덮어쓰기' : '현재 뷰 저장'}
           </button>
         </header>
         <div className="p-3 border-b">
@@ -231,7 +247,7 @@ export function StudyViewsDrawer() {
               <button type="button" onClick={() => setDeleteTarget(null)} className="rounded border px-3 py-1 text-sm">취소</button>
               <button
                 type="button"
-                onClick={() => deleteTarget && mutations.remove.mutate(deleteTarget.id, { onSuccess: () => setDeleteTarget(null) })}
+                onClick={confirmDelete}
                 className="rounded border px-3 py-1 text-sm"
               >
                 삭제
