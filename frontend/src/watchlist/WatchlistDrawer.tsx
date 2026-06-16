@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
+import { makeChangePctOf, sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
 import { deriveCollectionStatus, deriveDisplayStatus } from '../live/collectionStatus';
@@ -53,6 +54,19 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {collapsed ? <path d="M9 6l6 6-6 6" /> : <path d="M6 9l6 6 6-6" />}
+    </svg>
+  );
+}
+
+function SortIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 7h10" />
+      <path d="M4 12h7" />
+      <path d="M4 17h4" />
+      <path d="M17 6v12" />
+      <path d={active ? 'M14 9l3-3 3 3' : 'M14 15l3 3 3-3'} />
     </svg>
   );
 }
@@ -194,6 +208,7 @@ function SortableQuoteRow(props: {
   onContextMenu: (e: React.MouseEvent<HTMLLIElement>) => void;
   onDelete: () => void;
   collectionBadge?: React.ReactNode;
+  dragEnabled?: boolean;
 }) {
   const { entry } = props;
   const { setNodeRef, listeners, transform, transition, isDragging } =
@@ -211,10 +226,10 @@ function SortableQuoteRow(props: {
       onContextMenu={props.onContextMenu}
       onDelete={props.onDelete}
       indented
-      sortableRef={setNodeRef}
-      sortableStyle={{ transform: CSS.Transform.toString(transform), transition }}
-      dragListeners={listeners}
-      dragging={isDragging}
+      sortableRef={props.dragEnabled === false ? undefined : setNodeRef}
+      sortableStyle={props.dragEnabled === false ? undefined : { transform: CSS.Transform.toString(transform), transition }}
+      dragListeners={props.dragEnabled === false ? undefined : listeners}
+      dragging={props.dragEnabled === false ? false : isDragging}
       trailingAction={props.collectionBadge}
     />
   );
@@ -251,6 +266,10 @@ export function WatchlistDrawer() {
   const [editOpen, setEditOpen] = useState(false);
   const [addGroupOpen, setAddGroupOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
+  const [sortMode, setSortMode] = useState<QuoteSortMode>('default');
+  const [sortMenu, setSortMenu] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
+  useDismissablePopover(sortMenu, sortMenuRef, () => setSortMenu(false));
   const [editMenu, setEditMenu] = useState(false);
   const editMenuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(editMenu, editMenuRef, () => setEditMenu(false));
@@ -289,6 +308,7 @@ export function WatchlistDrawer() {
   };
 
   const groups = data ? groupByFolder(data.folders, data.entries) : [];
+  const pctOf = makeChangePctOf(quoteByCode);
   const folderCount = data?.folders.length ?? 0;
   const realFolderIds = groups.filter((g) => g.folder).map((g) => g.folder!.id);
 
@@ -331,6 +351,7 @@ export function WatchlistDrawer() {
   const onDragEnd = (ev: DragEndEvent) => {
     const wasEntry = ev.active.data.current?.type === 'entry';
     endEntryDrag();
+    if (wasEntry && sortMode !== 'default') return;
     // 종목 행을 차트 위에 드롭 → 현재 탭 종목 교체(재정렬 대신). 클릭과 같은 onPick 경로를
     // 재사용한다(/live 위라 navigate는 no-op). 차트 밖 드롭이면 아래 재정렬로 폴백.
     if (wasEntry && isPointOnChart(dropPoint(ev))) {
@@ -365,6 +386,13 @@ export function WatchlistDrawer() {
     }
   };
 
+  const sortItemClass =
+    'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2';
+  const chooseSortMode = (mode: QuoteSortMode) => {
+    setSortMode(mode);
+    setSortMenu(false);
+  };
+
   return (
     <div id="right-rail-watchlist-panel" data-testid="watchlist-panel"
       style={{ width: 'var(--watchlist-panel-w)', height: '100%', background: 'var(--bg-card)',
@@ -375,26 +403,54 @@ export function WatchlistDrawer() {
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-dim)', fontFamily: 'monospace',
                          textTransform: 'uppercase', letterSpacing: '0.08em' }}>관심종목</span>
-          {/* 편집 → 앵커드 메뉴 (이동 메뉴와 같은 relative+absolute+useDismissablePopover 패턴).
+          {/* 정렬/편집 → 앵커드 메뉴 (이동 메뉴와 같은 relative+absolute+useDismissablePopover 패턴).
               패널이 뷰포트 우측 끝이라 right-0으로 안쪽으로 연다 — 클램프 불필요. */}
-          <div className="relative" ref={editMenuRef}>
-            <button type="button" aria-label="관심종목 편집 메뉴" aria-haspopup="menu" aria-expanded={editMenu}
-                    onClick={() => setEditMenu((v) => !v)}
-                    className="text-fg-dim hover:text-accent text-xs">편집</button>
-            {editMenu && (
-              <AnchoredMenu label="관심">
-                <button type="button" role="menuitem"
-                        onClick={() => { setEditMenu(false); setEditOpen(true); }}
-                        className="block w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover">
-                  관심 편집
-                </button>
-                <button type="button" role="menuitem"
-                        onClick={() => { setEditMenu(false); setAddGroupOpen(true); }}
-                        className="block w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover">
-                  새 그룹 만들기
-                </button>
-              </AnchoredMenu>
-            )}
+          <div className="flex items-center gap-1">
+            <div className="relative" ref={sortMenuRef}>
+              <button type="button" aria-label="관심종목 정렬" aria-haspopup="menu" aria-expanded={sortMenu}
+                      onClick={() => setSortMenu((v) => !v)}
+                      className={`grid h-6 w-6 place-items-center text-xs ${sortMode === 'default' ? 'text-fg-dim' : 'text-accent'} hover:text-accent`}>
+                <SortIcon active={sortMode !== 'default'} />
+              </button>
+              {sortMenu && (
+                <AnchoredMenu label="정렬">
+                  <button type="button" role="menuitemradio" aria-checked={sortMode === 'default'}
+                          onClick={() => chooseSortMode('default')}
+                          className={sortItemClass}>
+                    <span aria-hidden className="w-4 text-center">{sortMode === 'default' ? '✓' : ''}</span> 기본
+                  </button>
+                  <button type="button" role="menuitemradio" aria-checked={sortMode === 'change_pct_asc'}
+                          onClick={() => chooseSortMode('change_pct_asc')}
+                          className={sortItemClass}>
+                    <span aria-hidden className="w-4 text-center">{sortMode === 'change_pct_asc' ? '✓' : ''}</span> 등락률 오름차순
+                  </button>
+                  <button type="button" role="menuitemradio" aria-checked={sortMode === 'change_pct_desc'}
+                          onClick={() => chooseSortMode('change_pct_desc')}
+                          className={sortItemClass}>
+                    <span aria-hidden className="w-4 text-center">{sortMode === 'change_pct_desc' ? '✓' : ''}</span> 등락률 내림차순
+                  </button>
+                </AnchoredMenu>
+              )}
+            </div>
+            <div className="relative" ref={editMenuRef}>
+              <button type="button" aria-label="관심종목 편집 메뉴" aria-haspopup="menu" aria-expanded={editMenu}
+                      onClick={() => setEditMenu((v) => !v)}
+                      className="text-fg-dim hover:text-accent text-xs">편집</button>
+              {editMenu && (
+                <AnchoredMenu label="관심">
+                  <button type="button" role="menuitem"
+                          onClick={() => { setEditMenu(false); setEditOpen(true); }}
+                          className="block w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover">
+                    관심 편집
+                  </button>
+                  <button type="button" role="menuitem"
+                          onClick={() => { setEditMenu(false); setAddGroupOpen(true); }}
+                          className="block w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover">
+                    새 그룹 만들기
+                  </button>
+                </AnchoredMenu>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -414,10 +470,12 @@ export function WatchlistDrawer() {
               if (g.entries.length === 0 && g.folder === null) return null; // 빈 미분류는 숨김
               const isCollapsed = collapsed.has(key);
               const folder = g.folder;
+              const displayEntries = sortEntriesByChangePct(g.entries, pctOf, sortMode);
+              const rowDragEnabled = sortMode === 'default';
               const entriesList = !isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  <SortableContext items={g.entries.map((e) => entrySortableId(e.folder_id, e.code))} strategy={verticalListSortingStrategy}>
-                    {g.entries.map((entry) => {
+                  <SortableContext items={displayEntries.map((e) => entrySortableId(e.folder_id, e.code))} strategy={verticalListSortingStrategy}>
+                    {displayEntries.map((entry) => {
                       const q = quoteByCode.get(entry.code);
                       const status = deriveCollectionStatus(entry.code, liveSet, codes, viewedCodes);
                       const badge = <CollectionDot status={deriveDisplayStatus(true, status)} />;
@@ -433,6 +491,7 @@ export function WatchlistDrawer() {
                           onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                           onDelete={() => removeM.mutate(entry.code)}
                           collectionBadge={badge}
+                          dragEnabled={rowDragEnabled}
                         />
                       );
                     })}

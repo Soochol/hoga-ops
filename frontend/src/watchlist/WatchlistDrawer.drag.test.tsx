@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import * as watchlistApi from '../api/watchlist';
@@ -152,5 +152,26 @@ describe('WatchlistDrawer drag wiring', () => {
     } finally {
       useEntryDragStore.getState().clearChartTarget(hitTest);
     }
+  });
+
+  it('entry-drag in change-rate sort mode does not reorder', async () => {
+    const reorderSpy = vi.spyOn(watchlistApi, 'reorderEntries').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' }));
+
+    h.onDragEnd!({
+      active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
+      over: { id: 'f_0000000a:000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
+      activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+      delta: { x: 0, y: 0 },
+    });
+
+    await Promise.resolve();
+    expect(reorderSpy).not.toHaveBeenCalled();
+    expect(useLivePageStore.getState().activeCode).toBeNull();
   });
 });
