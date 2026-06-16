@@ -4,6 +4,7 @@ module (``hoga/tables/{trades,snapshots,brokers,candles}.py``).
 
 from __future__ import annotations
 
+import math
 from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -1008,6 +1009,19 @@ StudySavedFromRoute = Literal["/live", "/study"]
 StudyDataProvenance = Literal["live_mixed", "study_snapshot", "unknown"]
 
 
+def _ensure_finite(value: int | float) -> int | float:
+    if not math.isfinite(float(value)):
+        raise ValueError("must be finite")
+    return value
+
+
+def _strip_nonblank_name(value: str) -> str:
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("name must not be blank")
+    return stripped
+
+
 class StudyViewport(BaseModel):
     right_edge_ms: int
     bar_span: float
@@ -1015,11 +1029,8 @@ class StudyViewport(BaseModel):
 
     @field_validator("right_edge_ms", "bar_span")
     @classmethod
-    def _finite_positive(cls, v: int | float):
-        import math
-        if not math.isfinite(float(v)):
-            raise ValueError("must be finite")
-        return v
+    def _finite(cls, v: int | float):
+        return _ensure_finite(v)
 
     @model_validator(mode="after")
     def _bar_span_positive(self):
@@ -1037,6 +1048,11 @@ class StudyIndicatorState(BaseModel):
     auction_window_mask: bool
     ratio_outlier_filter_enabled: bool
     ratio_outlier_threshold: float
+
+    @field_validator("ratio_outlier_threshold")
+    @classmethod
+    def _finite(cls, v: float):
+        return _ensure_finite(v)
 
 
 class StudyProvenance(BaseModel):
@@ -1058,12 +1074,22 @@ class StudyCandlePoint(BaseModel):
     close: float
     volume: float
 
+    @field_validator("open", "high", "low", "close", "volume")
+    @classmethod
+    def _finite(cls, v: float):
+        return _ensure_finite(v)
+
 
 class StudyQuoteTotalsPoint(BaseModel):
     t: int
     bid_total: float | None = None
     ask_total: float | None = None
     visible: bool
+
+    @field_validator("bid_total", "ask_total")
+    @classmethod
+    def _finite_optional(cls, v: float | None):
+        return None if v is None else _ensure_finite(v)
 
     @model_validator(mode="after")
     def _visible_has_values(self):
@@ -1077,6 +1103,11 @@ class StudyRatioPoint(BaseModel):
     value: float | None = None
     visible: bool
 
+    @field_validator("value")
+    @classmethod
+    def _finite_optional(cls, v: float | None):
+        return None if v is None else _ensure_finite(v)
+
     @model_validator(mode="after")
     def _visible_has_value(self):
         if self.visible and self.value is None:
@@ -1089,6 +1120,11 @@ class StudyFillStrengthPoint(BaseModel):
     buy_qty: float | None = None
     sell_qty: float | None = None
     visible: bool
+
+    @field_validator("buy_qty", "sell_qty")
+    @classmethod
+    def _finite_optional(cls, v: float | None):
+        return None if v is None else _ensure_finite(v)
 
     @model_validator(mode="after")
     def _visible_has_values(self):
@@ -1167,10 +1203,7 @@ class ParquetStudyViewWriteRequest(BaseModel):
     @field_validator("name")
     @classmethod
     def _strip_name(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("name must not be blank")
-        return v
+        return _strip_nonblank_name(v)
 
     @model_validator(mode="after")
     def _request_matches_snapshot(self):
@@ -1192,7 +1225,7 @@ class ParquetStudyViewWriteRequest(BaseModel):
 class ParquetStudyView(BaseModel):
     id: str
     name: str
-    code: str
+    code: str = Field(pattern=CODE_PATTERN)
     label: str
     timeframe: LiveTimeframeModel
     snapshot_from_ms: int
@@ -1207,6 +1240,17 @@ class ParquetStudyView(BaseModel):
     snapshot_size_bytes: int
     created_at_ms: int
     updated_at_ms: int
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str) -> str:
+        return _strip_nonblank_name(v)
+
+    @model_validator(mode="after")
+    def _bounds_are_ordered(self):
+        if self.snapshot_from_ms > self.snapshot_to_ms:
+            raise ValueError("snapshot_from_ms must be <= snapshot_to_ms")
+        return self
 
 
 class StudyViewsFile(BaseModel):
