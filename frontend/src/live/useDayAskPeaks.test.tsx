@@ -273,4 +273,38 @@ describe('useDayAskPeaks', () => {
       max_t_ms: atKst(9, 25),
     });
   });
+
+  it('all-price peak ignores collapsed 3-level auction/VI books', () => {
+    const restPeak = todayAskPeak();
+    const collapsed: ObSnapshot = {
+      t_ms: atKst(10, 0),
+      total_ask_qty: 100001,
+      total_bid_qty: 3,
+      asks: [
+        { price: 29000, qty: 99999 },
+        { price: 29100, qty: 1 },
+        { price: 29200, qty: 1 },
+        ...Array.from({ length: 7 }, () => ({ price: 0, qty: 0 })),
+      ],
+      bids: [
+        { price: 28900, qty: 1 },
+        { price: 28800, qty: 1 },
+        { price: 28700, qty: 1 },
+        ...Array.from({ length: 7 }, () => ({ price: 0, qty: 0 })),
+      ],
+    };
+    const { result, rerender } = renderHook(
+      ({ ob }: { ob: ObSnapshot[] }) =>
+        useTodayAllPriceAskPeak(ob, [], '20260613', '005930', restPeak),
+      { initialProps: { ob: [] as ObSnapshot[] } },
+    );
+
+    expect(result.current?.qty).toBe(12000);
+    rerender({ ob: [collapsed] });
+
+    expect(result.current).toMatchObject({
+      price: 26000,
+      qty: 12000,
+    });
+  });
 });
