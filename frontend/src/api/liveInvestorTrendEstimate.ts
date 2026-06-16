@@ -29,11 +29,15 @@ export interface LiveInvestorTrendEstimateResponse {
 export function liveInvestorTrendEstimateQueryOptions(code: string | null) {
   return {
     queryKey: ['live', 'investor-trend-estimate', code] as const,
-    queryFn: ({ signal }: { signal?: AbortSignal }) =>
-      apiCall<LiveInvestorTrendEstimateResponse>(
+    queryFn: ({ signal }: { signal?: AbortSignal }) => {
+      if (!code) {
+        throw new Error('live investor trend estimate requires a code');
+      }
+      return apiCall<LiveInvestorTrendEstimateResponse>(
         `/api/live/investor-trend-estimate?code=${code}`,
         { signal },
-      ),
+      );
+    },
     enabled: !!code,
     staleTime: 60_000,
     refetchInterval: () => (isKrxRegularSessionNow() ? 60_000 : false),

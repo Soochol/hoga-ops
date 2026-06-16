@@ -122,6 +122,16 @@ describe('liveInvestorTrendEstimateQueryOptions', () => {
     vi.restoreAllMocks();
   });
 
+  it('fails locally and does not call apiCall when queryFn is invoked with null code', () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(RESPONSE_005930);
+    const options = liveInvestorTrendEstimateQueryOptions(null);
+
+    expect(() => options.queryFn({ signal: new AbortController().signal })).toThrow(
+      'live investor trend estimate requires a code',
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it('polls every minute during regular session and disables polling outside it', () => {
     const options = liveInvestorTrendEstimateQueryOptions('005930');
 
