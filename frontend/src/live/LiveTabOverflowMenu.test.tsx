@@ -20,26 +20,34 @@ it('opens a list of all tabs', () => {
   setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
   expect(screen.getByRole('dialog', { name: '열린 탭' })).toBeInTheDocument();
-  expect(screen.getByText('삼성전자')).toBeInTheDocument();
-  expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
-  expect(screen.getByText('NAVER')).toBeInTheDocument();
+  expect(screen.getByText('삼성전자 1분봉')).toBeInTheDocument();
+  expect(screen.getByText('SK하이닉스 1분봉')).toBeInTheDocument();
+  expect(screen.getByText('NAVER 일봉')).toBeInTheDocument();
 });
 
 it('filters by label and code', () => {
   setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
   fireEvent.change(screen.getByPlaceholderText('탭 검색'), { target: { value: '005930' } });
-  expect(screen.getByText('삼성전자')).toBeInTheDocument();
-  expect(screen.queryByText('SK하이닉스')).toBeNull();
+  expect(screen.getByText('삼성전자 1분봉')).toBeInTheDocument();
+  expect(screen.queryByText('SK하이닉스 1분봉')).toBeNull();
   fireEvent.change(screen.getByPlaceholderText('탭 검색'), { target: { value: 'nav' } });
-  expect(screen.getByText('NAVER')).toBeInTheDocument();
-  expect(screen.queryByText('삼성전자')).toBeNull();
+  expect(screen.getByText('NAVER 일봉')).toBeInTheDocument();
+  expect(screen.queryByText('삼성전자 1분봉')).toBeNull();
+});
+
+it('filters by the visible timeframe label', () => {
+  setup();
+  fireEvent.click(screen.getByLabelText('열린 탭 목록'));
+  fireEvent.change(screen.getByPlaceholderText('탭 검색'), { target: { value: '일봉' } });
+  expect(screen.getByText('NAVER 일봉')).toBeInTheDocument();
+  expect(screen.queryByText('삼성전자 1분봉')).toBeNull();
 });
 
 it('selects a tab and closes the menu', () => {
   const { onFocus } = setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
-  fireEvent.click(screen.getByText('NAVER'));
+  fireEvent.click(screen.getByText('NAVER 일봉'));
   expect(onFocus).toHaveBeenCalledWith('c');
   expect(screen.queryByRole('dialog')).toBeNull();
 });
@@ -79,26 +87,26 @@ it('bounds the rendered result list and lets search reach later tabs', () => {
   render(<LiveTabOverflowMenu tabs={manyTabs} activeTabId="tab-0" onFocus={onFocus} onClose={onClose} />);
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
 
-  expect(screen.queryByText('종목 250')).toBeNull();
+  expect(screen.queryByText('종목 250 1분봉')).toBeNull();
   expect(screen.getByText('250개 중 200개 표시')).toBeInTheDocument();
 
   fireEvent.change(screen.getByPlaceholderText('탭 검색'), { target: { value: '100249' } });
-  expect(screen.getByText('종목 250')).toBeInTheDocument();
-  fireEvent.click(screen.getByText('종목 250'));
+  expect(screen.getByText('종목 250 1분봉')).toBeInTheDocument();
+  fireEvent.click(screen.getByText('종목 250 1분봉'));
   expect(onFocus).toHaveBeenCalledWith('tab-249');
 });
 
 it('marks the active tab', () => {
   setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
-  expect(screen.getByLabelText('활성 탭: SK하이닉스')).toBeInTheDocument();
+  expect(screen.getByLabelText('활성 탭: SK하이닉스 1분봉')).toBeInTheDocument();
 });
 
 it('closes a tab from the list without selecting it or dismissing the dialog', () => {
   const { onFocus, onClose } = setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
 
-  fireEvent.click(screen.getByLabelText('탭 닫기: 삼성전자'));
+  fireEvent.click(screen.getByLabelText('탭 닫기: 삼성전자 1분봉'));
 
   expect(onClose).toHaveBeenCalledWith('a');
   expect(onFocus).not.toHaveBeenCalled();

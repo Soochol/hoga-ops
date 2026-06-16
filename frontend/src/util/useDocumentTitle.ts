@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { useSymbols } from '../capture/useSymbols';
+import { formatLiveViewLabel } from '../live/liveViewLabel';
+import type { LiveTimeframe } from '../state/livePage';
 
 const DEFAULT_TITLE = 'hoga-ops';
 
@@ -10,16 +12,17 @@ const DEFAULT_TITLE = 'hoga-ops';
  *
  * See: docs/superpowers/specs/2026-05-29-browser-tab-title-design.md
  */
-export function useDocumentTitle(code: string | null | undefined): void {
+export function useDocumentTitle(code: string | null | undefined, timeframe?: LiveTimeframe): void {
   const { data } = useSymbols();
   useEffect(() => {
     const trimmed = code?.trim() || null;
     const name = trimmed
       ? data?.symbols.find((s) => s.code === trimmed)?.name
       : undefined;
-    document.title = name ?? trimmed ?? DEFAULT_TITLE;
+    const base = name ?? trimmed;
+    document.title = base ? formatLiveViewLabel(base, timeframe) : DEFAULT_TITLE;
     return () => {
       document.title = DEFAULT_TITLE;
     };
-  }, [code, data]);
+  }, [code, data, timeframe]);
 }

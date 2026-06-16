@@ -3,6 +3,28 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.4.0] - 2026-06-16
+
+### Added
+- **/live 외인·기관 추정 수급 카드 추가**: 선택 종목의 KIS 장중 잠정 외국인/기관/합산 수량을
+  거래원 영역 아래에서 시간대별 히스토리로 볼 수 있다.
+- KIS `investor-trend-estimate` REST 연동과 `/api/live/investor-trend-estimate` 백엔드
+  엔드포인트를 추가해, 정규장 중 60초 간격으로 현재 종목의 추정 수급을 조회한다.
+- KIS live 응답 형태를 확인할 수 있는 재현용 probe 스크립트와 측정 README를 추가했다.
+
+### Fixed
+- 추정 수급 조회가 KIS 인증/쿼터/일시 오류를 만나도 기존 live 화면을 깨지 않고, 가능한 경우
+  직전 성공 rows를 지연 상태로 유지하도록 했다.
+- 빈 성공 응답, all-null row, 날짜 전환, 코드 fan-out, 인증 실패 원문 노출 같은 edge case를
+  방어하고 테스트로 고정했다.
+
+## [0.8.3.0] - 2026-06-16
+
+### Changed
+- `/live` 브라우저 탭 제목과 Live Tab 라벨에 현재 봉 타입을 함께 표시한다
+  (`삼성전자 일봉`, `삼성전자 5분봉` 등).
+- 열린 탭 목록에서도 동일한 라벨을 쓰고, 화면에 보이는 봉 타입 텍스트로 검색할 수 있다.
+
 ## [0.8.2.0] - 2026-06-16
 
 ### Added

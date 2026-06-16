@@ -25,6 +25,7 @@ import httpx
 
 from hoga.live.kis_models import (
     InvestorNetPoint,
+    InvestorTrendEstimateRow,
     KisBrokerEntry,
     KisBrokers,
     KisCandle,
@@ -353,6 +354,18 @@ def _prev_day_yyyymmdd(yyyymmdd: str) -> str:
         int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]), tzinfo=KIS_KST,
     )
     return (d - timedelta(days=1)).strftime("%Y%m%d")
+
+
+def _parse_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    text = str(value).strip().replace(",", "")
+    if text == "":
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -949,6 +962,44 @@ class KisClient:
 
         points.sort(key=lambda p: p.t_ms)
         return InvestorNetFetchResult(points=points, violations=violations)
+
+    async def fetch_investor_trend_estimate(
+        self, code: str
+    ) -> list[InvestorTrendEstimateRow]:
+        """Fetch intraday estimated foreign/institution net-buy quantities.
+
+        KIS TR_ID: HHPTJ04160200 (investor-trend-estimate, 종목별 외인기관 추정가집계).
+        Quantities are signed where positive means net buy and negative means
+        net sell. Empty or malformed quantity fields become None.
+        """
+        path = "/uapi/domestic-stock/v1/quotations/investor-trend-estimate"
+        body = await self._get(
+            path=path,
+            tr_id="HHPTJ04160200",
+            params={"MKSC_SHRN_ISCD": code},
+        )
+        raw_rows = body.get("output2")
+        if raw_rows is None:
+            raw_rows = body.get("output")
+        if not isinstance(raw_rows, list):
+            return []
+
+        rows: list[InvestorTrendEstimateRow] = []
+        for raw in raw_rows:
+            if not isinstance(raw, dict):
+                continue
+            slot = str(raw.get("bsop_hour_gb") or "").strip()
+            if not slot:
+                continue
+            rows.append(
+                InvestorTrendEstimateRow(
+                    slot=slot,
+                    foreign_qty=_parse_optional_int(raw.get("frgn_fake_ntby_qty")),
+                    institution_qty=_parse_optional_int(raw.get("orgn_fake_ntby_qty")),
+                    sum_qty=_parse_optional_int(raw.get("sum_fake_ntby_qty")),
+                )
+            )
+        return rows
 
     # ------------------------------------------------------------------
     # fetch_orderbook (FHKST01010200, inquire-asking-price-exp-ccn)

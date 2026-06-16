@@ -1,7 +1,7 @@
 # /live 거래원 하단 외인·기관 추정 수급 카드 — Design
 
-**Date**: 2026-06-16  
-**Status**: Approved for implementation planning  
+**Date**: 2026-06-16
+**Status**: Approved for implementation planning
 **User-approved decisions**:
 - Scope: current `activeCode` single-stock display only.
 - Fetch policy: immediate fetch on `activeCode` change, then 60-second React Query polling during the regular KRX session.

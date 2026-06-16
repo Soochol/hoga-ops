@@ -537,6 +537,63 @@ def _investor_walk_handler(pages: dict[str, list[dict]]):
     return handler
 
 
+def _estimate_row(slot: str, *, frgn: str, orgn: str, total: str) -> dict:
+    return {
+        "bsop_hour_gb": slot,
+        "frgn_fake_ntby_qty": frgn,
+        "orgn_fake_ntby_qty": orgn,
+        "sum_fake_ntby_qty": total,
+    }
+
+
+def _ok_estimate_body(rows: list[dict], *, key: str = "output2") -> dict:
+    return {"rt_cd": "0", "msg_cd": "MCA00000", "msg1": "정상처리 되었습니다.", key: rows}
+
+
+def _estimate_handler(rows: list[dict], *, key: str = "output2"):
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/uapi/domestic-stock/v1/quotations/investor-trend-estimate"
+        assert request.url.params["MKSC_SHRN_ISCD"] == "005930"
+        assert request.headers["tr_id"] == "HHPTJ04160200"
+        return httpx.Response(200, json=_ok_estimate_body(rows, key=key))
+
+    return handler
+
+
+@pytest.mark.anyio
+async def test_fetch_investor_trend_estimate_parses_qty_rows(tmp_path) -> None:
+    client = _make_client(
+        _estimate_handler([
+            _estimate_row("0930", frgn="1,234", orgn="-200", total="1,034"),
+            _estimate_row("1120", frgn="", orgn="bad", total="0"),
+        ]),
+        tmp_path,
+    )
+
+    rows = await client.fetch_investor_trend_estimate("005930")
+
+    assert [r.slot for r in rows] == ["0930", "1120"]
+    assert rows[0].foreign_qty == 1234
+    assert rows[0].institution_qty == -200
+    assert rows[0].sum_qty == 1034
+    assert rows[1].foreign_qty is None
+    assert rows[1].institution_qty is None
+    assert rows[1].sum_qty == 0
+
+
+@pytest.mark.anyio
+async def test_fetch_investor_trend_estimate_accepts_output_fallback(tmp_path) -> None:
+    client = _make_client(
+        _estimate_handler([_estimate_row("1430", frgn="5", orgn="6", total="11")], key="output"),
+        tmp_path,
+    )
+
+    rows = await client.fetch_investor_trend_estimate("005930")
+
+    assert len(rows) == 1
+    assert rows[0].slot == "1430"
+
+
 @pytest.mark.asyncio
 async def test_fetch_investor_net_parses_foreign_and_institution(tmp_path) -> None:
     rows = [
