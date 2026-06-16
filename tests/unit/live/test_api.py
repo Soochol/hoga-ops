@@ -882,7 +882,7 @@ from hoga.live.kis_client import (
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
 )
-from hoga.live.kis_models import InvestorNetPoint
+from hoga.live.kis_models import InvestorNetPoint, InvestorTrendEstimateRow
 
 
 class _FakeKisForInvestor:
@@ -1106,3 +1106,176 @@ def test_past_investor_net_empty_result_cached(tmp_path) -> None:
         assert len(fake.calls) == 1
         assert len(fake.calls) == 1
 
+
+# ----- /api/live/investor-trend-estimate -----
+
+
+class _FakeKisForInvestorTrendEstimate:
+    def __init__(self, responses=None):
+        self.responses = list(responses or [])
+        self.calls: list[str] = []
+
+    async def fetch_investor_trend_estimate(self, code: str):
+        self.calls.append(code)
+        item = self.responses.pop(0) if self.responses else []
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_latest_only_accumulates_same_day_and_overwrites_slot() -> None:
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    fake = _FakeKisForInvestorTrendEstimate([
+        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+        [InvestorTrendEstimateRow(slot="0910", foreign_qty=11, institution_qty=21, sum_qty=32)],
+        [InvestorTrendEstimateRow(slot="0900", foreign_qty=99, institution_qty=1, sum_qty=100)],
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
+
+    r1 = await fetcher.fetch(fake, "005930")
+    r2 = await fetcher.fetch(fake, "005930")
+    r3 = await fetcher.fetch(fake, "005930")
+
+    assert [r.slot for r in r1.rows] == ["0900"]
+    assert [r.slot for r in r2.rows] == ["0900", "0910"]
+    assert [(r.slot, r.foreign_qty) for r in r3.rows] == [("0900", 99), ("0910", 11)]
+    assert r3.latest and r3.latest.slot == "0910"
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_full_history_replaces_latest_only_accumulator() -> None:
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    fake = _FakeKisForInvestorTrendEstimate([
+        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+        [
+            InvestorTrendEstimateRow(slot="0910", foreign_qty=11, institution_qty=21, sum_qty=32),
+            InvestorTrendEstimateRow(slot="0920", foreign_qty=12, institution_qty=22, sum_qty=34),
+        ],
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
+
+    await fetcher.fetch(fake, "005930")
+    response = await fetcher.fetch(fake, "005930")
+
+    assert [r.slot for r in response.rows] == ["0910", "0920"]
+    assert response.latest and response.latest.slot == "0920"
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_ttl_coalesces_calls() -> None:
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    fake = _FakeKisForInvestorTrendEstimate([
+        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=60, today_fn=lambda: "20260616")
+
+    first = await fetcher.fetch(fake, "005930")
+    second = await fetcher.fetch(fake, "005930")
+
+    assert fake.calls == ["005930"]
+    assert second.rows == first.rows
+    assert second.fetched_at_ms == first.fetched_at_ms
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_kis_failure_returns_previous_same_day_rows() -> None:
+    from hoga.live.api import LiveInvestorEstimateFetcher
+    from hoga.live.kis_client import KisRateLimitError
+
+    fake = _FakeKisForInvestorTrendEstimate([
+        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
+        KisRateLimitError("rate limited"),
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
+
+    await fetcher.fetch(fake, "005930")
+    response = await fetcher.fetch(fake, "005930")
+
+    assert response.status == "error"
+    assert response.data_warning and response.data_warning.reason == "kis_rate_limit"
+    assert [r.slot for r in response.rows] == ["0900"]
+
+
+def _investor_estimate_app(tmp_path, fake_kis=None):
+    from fastapi import FastAPI
+    from hoga.live import kis_runtime, lifecycle
+    from hoga.live.api import build_router
+
+    lifecycle.reset_for_tests()
+    if fake_kis is not None:
+        kis_runtime.set_kis_client(fake_kis)
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    return app
+
+
+def test_investor_trend_estimate_route_uses_background_role(tmp_path, monkeypatch) -> None:
+    from hoga.live import kis_access
+
+    fake = _FakeKisForInvestorTrendEstimate([
+        [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)]
+    ])
+    seen = {}
+
+    def fake_kis_for_role(role, data_dir):
+        seen["role"] = role
+        seen["data_dir"] = data_dir
+        return fake
+
+    monkeypatch.setattr(kis_access, "kis_for_role", fake_kis_for_role)
+    app = _investor_estimate_app(tmp_path)
+    r = TestClient(app).get("/api/live/investor-trend-estimate", params={"code": "005930"})
+
+    assert r.status_code == 200
+    assert seen == {"role": "background", "data_dir": tmp_path}
+
+
+def test_investor_trend_estimate_route_returns_expected_rows(tmp_path) -> None:
+    fake = _FakeKisForInvestorTrendEstimate([
+        [
+            InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30),
+            InvestorTrendEstimateRow(slot="0910", foreign_qty=15, institution_qty=None, sum_qty=15),
+        ]
+    ])
+    app = _investor_estimate_app(tmp_path, fake)
+
+    r = TestClient(app).get("/api/live/investor-trend-estimate", params={"code": "005930"})
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["code"] == "005930"
+    assert body["source"] == "kis"
+    assert body["status"] == "ok"
+    assert body["rows"] == [
+        {"slot": "0900", "foreign_qty": 10, "institution_qty": 20, "sum_qty": 30},
+        {"slot": "0910", "foreign_qty": 15, "institution_qty": None, "sum_qty": 15},
+    ]
+    assert body["latest"]["slot"] == "0910"
+    assert body["data_warning"] is None
+
+
+def test_investor_trend_estimate_route_rejects_invalid_code(tmp_path) -> None:
+    app = _investor_estimate_app(tmp_path, _FakeKisForInvestorTrendEstimate())
+
+    r = TestClient(app).get("/api/live/investor-trend-estimate", params={"code": "ABC"})
+
+    assert r.status_code == 422
+
+
+def test_investor_trend_estimate_route_missing_kis_returns_degraded_error(tmp_path) -> None:
+    app = _investor_estimate_app(tmp_path)
+
+    r = TestClient(app).get("/api/live/investor-trend-estimate", params={"code": "005930"})
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["code"] == "005930"
+    assert body["status"] == "error"
+    assert body["fetched_at_ms"] is None
+    assert body["rows"] == []
+    assert body["latest"] is None
+    assert body["data_warning"]["reason"] == "kis_credentials_missing"
