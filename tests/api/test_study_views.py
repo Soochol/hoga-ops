@@ -229,6 +229,23 @@ def test_study_views_create_snapshot_write_failure_does_not_create_manifest_row(
     assert not (tmp_path / "study_views" / "snapshots" / "view1.json").exists()
 
 
+def test_study_views_create_manifest_write_failure_removes_orphan_snapshot(tmp_path, monkeypatch):
+    real_atomic_write_json = sv.atomic_write_json
+
+    def fail_manifest_write(path, payload, *, indent=2):
+        if path.name == "saves.json":
+            raise OSError("manifest write failed")
+        real_atomic_write_json(path, payload, indent=indent)
+
+    monkeypatch.setattr(sv, "atomic_write_json", fail_manifest_write)
+
+    with pytest.raises(OSError, match="manifest write failed"):
+        sv.create_save_sync(tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10)
+
+    assert sv.load_saves(tmp_path).saves == []
+    assert not (tmp_path / "study_views" / "snapshots" / "view1.json").exists()
+
+
 def test_study_views_corrupt_manifest_quarantined(tmp_path):
     p = tmp_path / "study_views" / "saves.json"
     p.parent.mkdir(parents=True)
@@ -265,6 +282,29 @@ def test_study_views_update_manifest_write_failure_keeps_old_snapshot(tmp_path, 
         sv.update_save_sync(tmp_path, id="view1", req=updated_req, now_ms=20)
 
     assert old_snapshot_path.read_text(encoding="utf-8") == old_snapshot_text
+    assert sv.get_save_sync(tmp_path, id="view1") == original
+
+
+def test_study_views_update_snapshot_promotion_failure_rolls_back_manifest(tmp_path, monkeypatch):
+    original = sv.create_save_sync(
+        tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10
+    )
+    snapshot_path = tmp_path / "study_views" / "snapshots" / "view1.json"
+    old_snapshot_text = snapshot_path.read_text(encoding="utf-8")
+    updated_req = ParquetStudyViewWriteRequest.model_validate(_req(snapshot=_snapshot(captured_at_ms=9_000)))
+    real_replace = type(snapshot_path).replace
+
+    def fail_staged_snapshot_replace(self, target):
+        if self.name == "view1.json.staged":
+            raise OSError("snapshot promotion failed")
+        return real_replace(self, target)
+
+    monkeypatch.setattr(type(snapshot_path), "replace", fail_staged_snapshot_replace)
+
+    with pytest.raises(OSError, match="snapshot promotion failed"):
+        sv.update_save_sync(tmp_path, id="view1", req=updated_req, now_ms=20)
+
+    assert snapshot_path.read_text(encoding="utf-8") == old_snapshot_text
     assert sv.get_save_sync(tmp_path, id="view1") == original
 
 

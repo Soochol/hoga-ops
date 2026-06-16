@@ -134,7 +134,14 @@ def create_save_sync(data_dir: Path, *, req: ParquetStudyViewWriteRequest, id: s
     save = _view_from_req(data_dir, req=req, id=id, created_at_ms=now_ms, updated_at_ms=now_ms)
     file.saves.append(save)
     file.saves.sort(key=lambda s: s.updated_at_ms, reverse=True)
-    save_saves(data_dir, file)
+    try:
+        save_saves(data_dir, file)
+    except OSError:
+        try:
+            snapshot_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     return save
 
 
@@ -144,6 +151,7 @@ def update_save_sync(
     file = load_saves(data_dir)
     for idx, old in enumerate(file.saves):
         if old.id == id:
+            old_file = file.model_copy(deep=True)
             staged_path = _staged_snapshot_path(data_dir, id)
             atomic_write_json(staged_path, req.snapshot.model_dump(mode="json"))
             new = _view_from_req(
@@ -159,9 +167,20 @@ def update_save_sync(
             try:
                 save_saves(data_dir, file)
             except OSError:
-                staged_path.unlink(missing_ok=True)
+                try:
+                    staged_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
                 raise
-            staged_path.replace(_snapshot_path(data_dir, id))
+            try:
+                staged_path.replace(_snapshot_path(data_dir, id))
+            except OSError:
+                save_saves(data_dir, old_file)
+                try:
+                    staged_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise
             return new
     raise StudyViewNotFoundError(id)
 
