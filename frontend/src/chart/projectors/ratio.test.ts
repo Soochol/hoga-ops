@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectRatio, type RatioPaneContext } from './ratio';
+import { projectRatio, RATIO_SPEC, type RatioPaneContext } from './ratio';
 import { createVirtualAxis } from '../../util/virtualAxis';
 
 const sessionOpenMs = 1_779_062_400_000;
@@ -14,6 +14,15 @@ const baseCtx: RatioPaneContext = {
 };
 
 describe('projectRatio', () => {
+  it('keeps the zero baseline inside one-sided autoscale ranges', () => {
+    const provider = RATIO_SPEC.series[0].options.autoscaleInfoProvider;
+    expect(provider).toBeTypeOf('function');
+    const res = provider!(() => ({
+      priceRange: { minValue: -0.02, maxValue: -0.01 },
+    }));
+    expect(res?.priceRange).toEqual({ minValue: -0.02, maxValue: 0 });
+  });
+
   it('emits {time, value} using quoteImbalance from bid_total / ask_total', () => {
     const bundle: any = {
       quote_ratio: {
