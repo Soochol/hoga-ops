@@ -17,6 +17,12 @@ export const CHART_TOGGLES = [
     default: true,
   },
   {
+    key: 'dayBoundaryEnabled',
+    label: '날짜 구분선',
+    description: '분봉 차트에서 거래일이 바뀌는 지점에 세로 점선을 표시합니다.',
+    default: true,
+  },
+  {
     key: 'ratioOutlierFilterEnabled',
     label: '호가비 극단값 필터',
     description:
@@ -173,13 +179,21 @@ export const CHART_NUMERIC_PREFS = [
 
 export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];
 
+export const DAY_BOUNDARY_COLOR_DEFAULT = '#64748B';
+export const DAY_BOUNDARY_LINE_WIDTH_DEFAULT: 1 | 2 | 3 | 4 = 1;
+export type DayBoundaryLineWidth = 1 | 2 | 3 | 4;
+
 /** Per-tab chart view preferences. Stored in a `Map<tabId, ChartViewPrefs>`
  *  on the store for parity with `Tab.bundles` (CQ1). Boolean fields come
  *  from `CHART_TOGGLES`; integer numeric fields come from
  *  `CHART_NUMERIC_PREFS`. */
 export type ChartViewPrefs =
   & { [K in ChartToggleKey]: boolean }
-  & { [K in NumericPrefKey]: number };
+  & { [K in NumericPrefKey]: number }
+  & {
+    dayBoundaryColor: string;
+    dayBoundaryLineWidth: DayBoundaryLineWidth;
+  };
 
 const TOGGLE_DEFAULTS = Object.fromEntries(
   CHART_TOGGLES.map((t) => [t.key, t.default]),
@@ -192,6 +206,8 @@ const NUMERIC_DEFAULTS = Object.fromEntries(
 export const DEFAULT_PREFS: ChartViewPrefs = {
   ...TOGGLE_DEFAULTS,
   ...NUMERIC_DEFAULTS,
+  dayBoundaryColor: DAY_BOUNDARY_COLOR_DEFAULT,
+  dayBoundaryLineWidth: DAY_BOUNDARY_LINE_WIDTH_DEFAULT,
 };
 
 import { create } from 'zustand';
@@ -199,6 +215,7 @@ import { create } from 'zustand';
 type ChartPrefsStore = ChartViewPrefs & {
   setToggle: (key: ChartToggleKey, value: boolean) => void;
   setNumericPref: (key: NumericPrefKey, value: number) => void;
+  setDayBoundaryStyle: (patch: { color?: string; lineWidth?: DayBoundaryLineWidth }) => void;
   resetToDefaults: () => void;
 };
 
@@ -206,6 +223,11 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set) => ({
   ...DEFAULT_PREFS,
   setToggle: (key, value) => set({ [key]: value } as Partial<ChartPrefsStore>),
   setNumericPref: (key, value) => set({ [key]: value } as Partial<ChartPrefsStore>),
+  setDayBoundaryStyle: (patch) =>
+    set((s) => ({
+      dayBoundaryColor: patch.color ?? s.dayBoundaryColor,
+      dayBoundaryLineWidth: patch.lineWidth ?? s.dayBoundaryLineWidth,
+    })),
   resetToDefaults: () => set(DEFAULT_PREFS),
 }));
 
