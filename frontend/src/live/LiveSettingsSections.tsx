@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import {
   CHART_TOGGLES,
   categoryOf,
@@ -30,15 +30,20 @@ function CategoryDetail({ category }: { category: ChartToggleCategory }) {
   const keys = CHART_TOGGLES
     .filter((t) => categoryOf(t) === category)
     .map((t) => t.key);
+
+  if (category !== 'chart') {
+    return <IndicatorPrefRows toggleKeys={keys} />;
+  }
+
   return (
     <>
-      <IndicatorPrefRows toggleKeys={keys} />
-      {category === 'chart' && (
-        <>
-          <div className="border-b border-border my-2" />
-          <DayBoundaryStyleRow />
-        </>
-      )}
+      {keys.map((key, idx) => (
+        <Fragment key={key}>
+          {idx > 0 && <div className="border-b border-border my-2" />}
+          <IndicatorPrefRows toggleKeys={[key]} />
+          {key === 'dayBoundaryEnabled' && <DayBoundaryStyleRow />}
+        </Fragment>
+      ))}
     </>
   );
 }
