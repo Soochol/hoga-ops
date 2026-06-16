@@ -1,9 +1,21 @@
-import { CHART_TOGGLES, CHART_NUMERIC_PREFS, DEFAULT_PREFS, type ChartViewPrefs } from './chartPrefs';
+import {
+  CHART_TOGGLES,
+  CHART_NUMERIC_PREFS,
+  DEFAULT_PREFS,
+  type ChartViewPrefs,
+  type DayBoundaryLineWidth,
+} from './chartPrefs';
 import type { useChartPrefsStore } from './chartPrefs';
 import { attachPersistence } from './persistentSubscriber';
 
 export const CHART_PREFS_KEY = 'hoga.chart.prefs.v1';
 const WRITE_DEBOUNCE_MS = 250;
+const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+const DAY_BOUNDARY_WIDTHS = new Set([1, 2, 3, 4]);
+
+function isDayBoundaryLineWidth(v: unknown): v is DayBoundaryLineWidth {
+  return typeof v === 'number' && DAY_BOUNDARY_WIDTHS.has(v);
+}
 
 export function mergePrefs(raw: unknown): ChartViewPrefs {
   const out: ChartViewPrefs = { ...DEFAULT_PREFS };
@@ -18,6 +30,12 @@ export function mergePrefs(raw: unknown): ChartViewPrefs {
     if (typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v) && v >= p.min && v <= p.max) {
       (out as Record<string, unknown>)[p.key] = v;
     }
+  }
+  if (typeof obj.dayBoundaryColor === 'string' && HEX_COLOR_RE.test(obj.dayBoundaryColor)) {
+    out.dayBoundaryColor = obj.dayBoundaryColor.toUpperCase();
+  }
+  if (isDayBoundaryLineWidth(obj.dayBoundaryLineWidth)) {
+    out.dayBoundaryLineWidth = obj.dayBoundaryLineWidth;
   }
   return out;
 }
