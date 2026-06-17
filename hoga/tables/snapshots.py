@@ -253,6 +253,26 @@ def _hhmmssms_to_intra_ms(ts_ms: int) -> int:
     )
 
 
+def _is_continuous_snapshot(
+    snapshot: ApiOrderbookSnapshot,
+    *,
+    last_continuous_ms: int | None,
+) -> bool:
+    if last_continuous_ms is None:
+        return False
+    if _hhmmssms_to_intra_ms(snapshot.ts_ms) > last_continuous_ms:
+        return False
+    ask_deep = sum(level.qty for level in snapshot.ask[_AUCTION_BOOK_DEPTH:])
+    bid_deep = sum(level.qty for level in snapshot.bid[_AUCTION_BOOK_DEPTH:])
+    return ask_deep > 0 and bid_deep > 0
+
+
+def _continuous_representative_pred_sql(*, intra_ms_expr: str, last_continuous_ms: int | None) -> str:
+    if last_continuous_ms is None:
+        return "FALSE"
+    return f"({_DEEP_BOOK_SQL} AND ({intra_ms_expr} <= {last_continuous_ms}))"
+
+
 def query_at(
     con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int
 ) -> ApiOrderbookSnapshot | None:
@@ -538,13 +558,9 @@ def query_bucket_representative(
 
     The representative is the last *continuous-trading* book (depth beyond level
     3) at/before the session close, falling back to the last snapshot in the
-    window when it is fully auction. This mirrors :func:`query_bucketed_ratio`'s
-    representative selection so the sidebar 10호가 (orderbook) spot view shows the
-    SAME snapshot the 호가비·총잔량 indicator labels at a closing Auction Window
-    straddle bucket — i.e. the closing-auction 3-level book is excluded from the
-    spot view, consistent with the indicator (ADR-0062). Without this the
-    `/orderbook` endpoint's `t + bucket_ms` cutoff returns the 15:20+ auction
-    book while the indicator shows the last pre-auction continuous book.
+    window when it is fully auction. Shallow pre-threshold books are not
+    eligible continuous representatives. This keeps the sidebar 10호가 spot view
+    on the same continuous-only contract as saved views.
 
     ``session_close_ms`` None → legacy last-in-window (no structural exclusion).
     Returns None when no snapshot falls in the window.
@@ -553,15 +569,18 @@ def query_bucket_representative(
     last_continuous_ms = _last_continuous_intra_ms(
         con, path=path, session_close_ms=session_close_ms
     )
-    pre_auction_pred = (
-        f"({intra_ms_expr} <= {last_continuous_ms})"
-        if last_continuous_ms is not None
+    continuous_pred = (
+        _continuous_representative_pred_sql(
+            intra_ms_expr=intra_ms_expr,
+            last_continuous_ms=last_continuous_ms,
+        )
+        if session_close_ms is not None
         else "TRUE"
     )
     row = con.execute(
         f"SELECT {_SELECT} FROM read_parquet(?) "
         f"WHERE ts_ms >= ? AND ts_ms <= ? "
-        f"ORDER BY ({pre_auction_pred}) DESC, {_REPRESENTATIVE_ORDER_SQL} LIMIT 1",
+        f"ORDER BY ({continuous_pred}) DESC, {_REPRESENTATIVE_ORDER_SQL} LIMIT 1",
         [str(path), lo_native, hi_native],
     ).fetchone()
     return _row_to_api_snapshot(row) if row is not None else None
@@ -577,10 +596,10 @@ def query_bucket_representatives(
     """Return bucket representatives keyed by ``lo_native``.
 
     Matches :func:`query_bucket_representative` bucket-by-bucket:
-    when ``session_close_ms`` is set, prefer the last snapshot at/before the
-    structural last-continuous threshold and fall back to the window's last
-    snapshot; when ``session_close_ms`` is None, use the legacy last-in-window
-    behavior with no structural exclusion.
+    when ``session_close_ms`` is set, prefer the last deep continuous snapshot
+    inside the window and fall back to the window's last snapshot only when no
+    continuous row exists there; when ``session_close_ms`` is None, use the
+    legacy last-in-window behavior with no structural exclusion.
     """
     if not buckets:
         return {}
@@ -605,13 +624,16 @@ def query_bucket_representatives(
         window = [snap for snap in candidates if lo_native <= snap.ts_ms <= hi_native]
         if not window:
             continue
-        if last_continuous_ms is None:
+        if session_close_ms is None:
             out[int(lo_native)] = window[-1]
             continue
         eligible = [
             snap
             for snap in window
-            if _hhmmssms_to_intra_ms(snap.ts_ms) <= last_continuous_ms
+            if _is_continuous_snapshot(
+                snap,
+                last_continuous_ms=last_continuous_ms,
+            )
         ]
         if eligible:
             out[int(lo_native)] = eligible[-1]

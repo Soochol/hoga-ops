@@ -383,8 +383,8 @@ def test_query_bucket_representative_excludes_auction_snapshot(tmp_path: Path) -
 
 
 def test_query_bucket_representative_fully_auction_falls_back_to_last(tmp_path: Path) -> None:
-    """A fully-auction window (no continuous snapshot in it) falls back to the
-    last snapshot in the window — mirrors query_bucketed_ratio's fallback."""
+    """No-continuous fallback: a fully-auction window returns the last snapshot
+    in the window because no continuous representative exists there."""
     from hoga.tables.snapshots import query_bucket_representative
 
     CLOSE = 153_000_000
@@ -435,13 +435,15 @@ def test_query_bucket_representative_empty_window_returns_none(tmp_path: Path) -
     assert snap is None
 
 
-def test_query_bucket_representatives_keeps_pre_threshold_shallow_row(tmp_path: Path) -> None:
+def test_query_bucket_representatives_prefer_last_continuous_book_over_later_shallow_row(
+    tmp_path: Path,
+) -> None:
     from hoga.tables.snapshots import query_bucket_representative, query_bucket_representatives
 
     obs = [
         _ob(ts_ms=151_958_000, seq=1, ask_q=(10, 20, 30, 40), bid_q=(5, 5, 5, 5)),
         _ob(ts_ms=152_000_000, seq=2, ask_q=(10, 20, 30, 40), bid_q=(6, 6, 6, 6)),
-        _ob(ts_ms=152_000_000, seq=3, ask_q=(11, 22, 33), bid_q=(7, 7, 7)),
+        _ob(ts_ms=152_000_500, seq=3, ask_q=(11, 22, 33), bid_q=(7, 7, 7)),
         _ob(ts_ms=152_058_000, seq=4, ask_q=(99, 98, 97), bid_q=(8, 8, 8)),
     ]
     out = tmp_path / "snapshots.parquet"
@@ -460,11 +462,11 @@ def test_query_bucket_representatives_keeps_pre_threshold_shallow_row(tmp_path: 
             path=out,
             buckets=[(151_958_000, 152_059_999)],
             session_close_ms=153_000_000,
-        )
+    )
 
     assert single is not None
-    assert single.seq == 3
-    assert batch[151_958_000].seq == 3
+    assert single.seq == 2
+    assert batch[151_958_000].seq == 2
     assert single.ask[0].price == batch[151_958_000].ask[0].price == 1
 
 
