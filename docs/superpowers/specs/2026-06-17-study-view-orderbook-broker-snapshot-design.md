@@ -30,7 +30,8 @@ broker data for the whole visible candle range.
 - **Detail source matches snapshot source**: Orderbook and broker enrichment uses
   the same Source as the saved snapshot segment whenever that source is known.
 - **Broker list is bounded**: Broker detail is capped at the top 10 brokers per
-  bucket to keep saved JSON size controlled.
+  bucket using the same ordering policy as the current Cursor Sidebar broker
+  card.
 - **No raw tick archival**: This feature does not store every `snapshots.parquet`
   or `brokers.parquet` row in the visible range.
 
@@ -42,7 +43,7 @@ broker data for the whole visible candle range.
 | Visible bucket coverage | preserves | New payloads are derived from the same visible candle window used by the snapshot builder. |
 | Bucket representative convention | preserves | Reuses the existing candle-close representative rule already used by orderbook hover. |
 | Detail source matches snapshot source | preserves | Bucket enrichment resolves Source from the saved segment containing each candle. |
-| Broker list is bounded | preserves | Each bucket stores at most 10 broker entries. |
+| Broker list is bounded | preserves | Each bucket stores at most 10 broker entries, ordered like the Cursor Sidebar broker card. |
 | No raw tick archival | preserves | Only per-bucket representatives are saved. |
 
 ## Goals
@@ -74,13 +75,13 @@ Extend `StudySnapshotBundle` with two optional arrays:
 type StudyOrderbookBucket = {
   t: number;              // bucket start Unix ms, matching candle `t`
   snapshot: OrderbookSnapshot | null;
-  visible: boolean;
+  available: boolean;
 };
 
 type StudyBrokerBucket = {
   t: number;              // bucket start Unix ms, matching candle `t`
   brokers: StudyBrokerDetail[]; // top 10 at this bucket
-  visible: boolean;
+  available: boolean;
 };
 
 type StudyBrokerDetail = {
@@ -89,16 +90,33 @@ type StudyBrokerDetail = {
   dominant_side: "buy" | "sell";
 };
 
+type StudyDetailWarning = {
+  kind: "orderbook" | "broker";
+  t: number | null;
+  code: string;
+  date: string | null;
+  message: string;
+};
+
 type StudySnapshotBundle = {
   // existing fields...
   orderbook_buckets: StudyOrderbookBucket[];
   broker_buckets: StudyBrokerBucket[];
-  detail_warnings: string[];
+  detail_warnings: StudyDetailWarning[];
 };
 ```
 
 The fields are optional/default-empty in backend validators so older saved
 snapshots still load.
+
+Validation rules:
+
+- Empty `orderbook_buckets` and `broker_buckets` are allowed for legacy
+  snapshots.
+- If either detail array is non-empty, its length must equal `candles.length`.
+- For each index, `detail_bucket.t` must equal the corresponding saved
+  candle's `t`.
+- Detail arrays must be sorted by `t`, matching the saved candle order.
 
 ### Save Flow
 
@@ -122,13 +140,21 @@ For each saved candle bucket:
 5. Store only the bucket representative, not the raw rows inside the bucket.
 
 If an orderbook or broker representative is missing for a bucket, store
-`snapshot: null` or `brokers: []` with `visible: false`. Missing detail should
+`snapshot: null` or `brokers: []` with `available: false`. Missing detail should
 not block saving the chart snapshot.
+
+Enrichment attempts every saved candle bucket, including buckets outside
+continuous trading. The arrays remain dense and aligned with saved candles.
+Orderbook buckets use the continuous-trading representative rule, so Auction
+Window or after-hours buckets may legitimately store `snapshot: null` /
+`available: false`. Broker buckets may still store the day-to-date cumulative
+state when broker parquet has a valid representative for that time.
 
 If enrichment itself fails for a subset of buckets or a parquet file is missing,
 the save still succeeds. The backend stores the chart snapshot and records a
-human-readable `detail_warnings` entry so `/study` can show that some 10-level
-orderbook or broker detail was unavailable.
+structured `detail_warnings` entry so `/study` can show that some 10-level
+orderbook or broker detail was unavailable. The UI may render only `message`,
+but tests and diagnostics should assert `kind`, `date`, and `t` where available.
 
 ### Backend API
 
@@ -151,9 +177,15 @@ the snapshot during create/update:
 This keeps parquet schema knowledge on the server and avoids racing N client
 requests while the save dialog is open.
 
-If implementation cost requires a smaller first step, a backend enrichment
-helper can be called inside `study_views.create_save_sync` and
-`update_save_sync` after pydantic validation but before the snapshot file write.
+Enrichment should be batched from the first implementation. Group visible
+buckets by `(Stock-Date, Source)`, read each relevant `snapshots.parquet` and
+`brokers.parquet` once, and build representative maps for the buckets in that
+group. Avoid one orderbook query plus one broker query per candle bucket; that
+would make save latency scale poorly with zoomed-out views.
+
+A backend enrichment helper can be called inside `study_views.create_save_sync`
+and `update_save_sync` after pydantic validation but before the snapshot file
+write.
 
 ### Orderbook Representative
 
@@ -185,7 +217,8 @@ Broker buckets store the top 10 broker states for the bucket. The value is the
 day-to-date cumulative net state at the bucket representative time, not the
 within-bucket delta. This mirrors the existing broker day trajectory semantics:
 hover detail answers "what was each broker's cumulative net at this point in the
-day?"
+day?" The top-10 ordering follows the existing Cursor Sidebar broker card /
+`/api/brokers/series` policy rather than introducing a study-only sort.
 
 The saved shape is detail-specific rather than reusing `BrokerSeriesEntry`,
 because the snapshot stores one hover state per bucket, not a time series:
@@ -198,7 +231,7 @@ type StudyBrokerBucket = {
     net: number;
     dominant_side: "buy" | "sell";
   }>;
-  visible: boolean;
+  available: boolean;
 };
 ```
 
@@ -219,7 +252,10 @@ Add an adapter lookup for detail:
 
 When `/study` cursor time changes:
 
-1. resolve the cursor to the nearest saved candle bucket start;
+1. resolve the cursor to the saved candle bucket start. Prefer the chart
+   crosshair/logical data point's candle `t`; if only `cursorMs` is available,
+   fall back to the containing bucket rule
+   `bucket_start <= cursorMs < bucket_start + bucket_ms`;
 2. read the matching orderbook bucket and broker bucket from the saved snapshot;
 3. render them in the existing right-side detail UI or a study-specific detail
    panel.
@@ -243,11 +279,13 @@ orderbook and broker buckets.
 | Case | Setup | Expected |
 |------|-------|----------|
 | Snapshot accepts missing detail fields | Legacy snapshot JSON without `orderbook_buckets`/`broker_buckets` | Model validates and defaults both arrays to empty. |
+| Detail arrays align with candles | Snapshot contains enriched detail arrays | Validator requires equal length, sorted `t`, and index-wise `bucket.t == candle.t`. |
 | Save enriches orderbook buckets | Seed `snapshots.parquet`; save two visible candles | Snapshot JSON contains two `orderbook_buckets` aligned by candle `t`. |
-| Orderbook missing is non-fatal | One bucket has no representative snapshot | Save succeeds; bucket has `snapshot: null`, `visible: false`. |
+| Orderbook missing is non-fatal | One bucket has no representative snapshot | Save succeeds; bucket has `snapshot: null`, `available: false`. |
+| Non-continuous bucket stays aligned | Save includes an auction/after-hours candle bucket | Detail arrays still include that `t`; orderbook may be invisible while broker detail can be present. |
 | Enrichment read failure is non-fatal | Mock one parquet read failure during save | Save succeeds and `detail_warnings` records the failure. |
 | Save enriches broker buckets | Seed `brokers.parquet`; save visible candles | Snapshot JSON contains top 10 broker entries per bucket. |
-| Broker cap | Seed more than 10 brokers | Saved bucket contains at most 10 brokers ordered by absolute net. |
+| Broker cap | Seed more than 10 brokers | Saved bucket contains at most 10 brokers ordered by the Cursor Sidebar broker-card policy. |
 | Representative convention | Bucket contains multiple snapshots | Saved orderbook is the last valid representative inside the bucket. |
 | Legacy overwrite | Open old snapshot and overwrite | New snapshot includes orderbook/broker bucket arrays. |
 
@@ -268,9 +306,9 @@ orderbook and broker buckets.
 
 ## Risks / Open Questions
 
-- Backend enrichment may add save latency proportional to visible candle count.
-  If this is noticeable, batch the parquet lookups per Stock-Date rather than
-  issuing one query per bucket.
+- Backend enrichment still adds save latency proportional to visible candle
+  count, but parquet reads must be batched by `(Stock-Date, Source)` to avoid
+  per-bucket query overhead.
 - Broker representative semantics may need a table-level helper if current
   broker queries only return full-day series. Keep that helper inside
   `hoga/tables/brokers.py`.
