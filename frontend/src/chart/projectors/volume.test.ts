@@ -44,7 +44,7 @@ describe('VOLUME_SPEC', () => {
     } as never;
     const ax = { contains: () => true, toVirtual: (t: number) => t } as never;
     const dataFn = VOLUME_SPEC.series[0].data;
-    expect(dataFn(bundle, ax).length).toBe(1);
+    expect(dataFn(bundle, ax, { cumulativeEnabled: false, auctionWindowMask: false }).length).toBe(1);
   });
 
   it('체결강도 누적 라인은 2번째 시리즈로 존재한다', () => {

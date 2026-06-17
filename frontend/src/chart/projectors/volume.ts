@@ -88,4 +88,4 @@ export const VOLUME_SPEC = {
       afterAdd: (series) => addZeroBaselineGuide(series, cumulativeBaseline),
     },
   ],
-} satisfies PaneSpec;
+} satisfies PaneSpec<VolumePaneContext>;
