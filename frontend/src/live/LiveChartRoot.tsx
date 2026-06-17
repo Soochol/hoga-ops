@@ -559,7 +559,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
     }
   }, [chart, cb, timeframe, isPastCandlesLoading, viewKey, revealedKey, restoreViewport]);
 
-  useEffect(() => {
+  const clampDailyLiveEdgeViewport = useCallback(() => {
     if (!chart || !cb || timeframe !== 'D' || cb.candles.length === 0 || isPastCandlesLoading) return;
     const ts = chart.timeScale();
     try {
@@ -581,6 +581,28 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
       // chart torn down between effects
     }
   }, [chart, cb, timeframe, isPastCandlesLoading]);
+
+  useEffect(() => {
+    clampDailyLiveEdgeViewport();
+  }, [clampDailyLiveEdgeViewport]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let raf: number | null = null;
+    const ro = new ResizeObserver(() => {
+      if (raf !== null) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        clampDailyLiveEdgeViewport();
+      });
+    });
+    ro.observe(el);
+    return () => {
+      if (raf !== null) cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [clampDailyLiveEdgeViewport]);
 
   useEffect(() => {
     const el = containerRef.current;
