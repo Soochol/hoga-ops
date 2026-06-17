@@ -506,6 +506,104 @@ def test_study_views_create_enriches_snapshot_detail_buckets(tmp_path):
     assert snap.bundle.detail_warnings == []
 
 
+@pytest.mark.parametrize("timeframe", ["D", "W", "M"])
+def test_study_views_create_calendar_detail_enrichment_uses_segment_session_window(
+    tmp_path, timeframe
+):
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers
+    from hoga.tables.snapshots import Orderbook, write_parquet as write_snapshots
+
+    z = tuple(0 for _ in range(10))
+    ask_p = tuple(70_100 + i for i in range(10))
+    ask_q = tuple(10 + i for i in range(10))
+    bid_p = tuple(70_000 - i for i in range(10))
+    bid_q = tuple(20 + i for i in range(10))
+    date = "20260616"
+    code = "005930"
+    source_dir = tmp_path / "parquet" / date / code / "hogaplay"
+    source_dir.mkdir(parents=True)
+    (source_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "code": code,
+                "date": date,
+                "source": "hogaplay",
+                "regular_session_open_ms": 90_000_000,
+                "regular_session_close_ms": 153_000_000,
+            }
+        ),
+        encoding="utf-8",
+    )
+    write_snapshots(
+        [
+            Orderbook(
+                ts_ms=90_000_500,
+                seq=1,
+                ask_p=ask_p,
+                ask_q=ask_q,
+                ask_d=z,
+                bid_p=bid_p,
+                bid_q=bid_q,
+                bid_d=z,
+                tot_ask=sum(ask_q),
+                tot_ask_d=0,
+                tot_bid=sum(bid_q),
+                tot_bid_d=0,
+            )
+        ],
+        source_dir / "snapshots.parquet",
+    )
+    write_brokers(
+        [
+            BrokerRow(
+                ts_ms=90_000_500,
+                seq=1,
+                side="buy",
+                rank=1,
+                broker="키움증권",
+                qty_today=100,
+                qty_delta=0,
+            )
+        ],
+        source_dir / "brokers.parquet",
+    )
+
+    unix_bucket = hhmmssms_to_unix_ms(date, 90_000_000)
+    raw = _req(timeframe=timeframe)
+    raw["snapshot_from_ms"] = unix_bucket
+    raw["snapshot_to_ms"] = unix_bucket
+    raw["snapshot"]["timeframe"] = timeframe
+    raw["snapshot"]["bucket_kind"] = timeframe
+    raw["snapshot"]["snapshot_from_ms"] = unix_bucket
+    raw["snapshot"]["snapshot_to_ms"] = unix_bucket
+    raw["snapshot"]["bundle"]["timeframe"] = timeframe
+    raw["snapshot"]["bundle"]["snapshot_from_ms"] = unix_bucket
+    raw["snapshot"]["bundle"]["snapshot_to_ms"] = unix_bucket
+    raw["snapshot"]["bundle"]["segments"] = [
+        {
+            "date": date,
+            "session_open_ms": unix_bucket,
+            "session_close_ms": hhmmssms_to_unix_ms(date, 153_000_000),
+            "source": "hogaplay",
+        }
+    ]
+    raw["snapshot"]["bundle"]["candles"] = [
+        {"t": unix_bucket, "open": 1, "high": 2, "low": 1, "close": 2, "volume": 10}
+    ]
+    req = ParquetStudyViewWriteRequest.model_validate(raw)
+
+    sv.create_save_sync(tmp_path, req=req, id="view1", now_ms=10)
+    snap = sv.load_snapshot(tmp_path, id="view1")
+
+    assert snap.bundle.orderbook_buckets[0].available is True
+    assert snap.bundle.orderbook_buckets[0].snapshot is not None
+    assert snap.bundle.orderbook_buckets[0].snapshot.ts_ms == unix_bucket + 500
+    assert snap.bundle.broker_buckets[0].available is True
+    assert snap.bundle.broker_buckets[0].brokers[0].broker == "키움증권"
+    assert snap.bundle.detail_warnings == []
+
+
 def test_study_views_create_detail_enrichment_without_orderbook_representative_disables_broker(
     tmp_path,
 ):
@@ -601,6 +699,48 @@ def test_study_views_create_detail_enrichment_without_orderbook_representative_d
     assert [w.message for w in snap.bundle.detail_warnings] == [
         "no continuous representative for saved candle bucket",
         "broker detail unavailable without orderbook representative",
+    ]
+
+
+def test_study_views_create_detail_enrichment_missing_parquet_is_non_fatal(tmp_path):
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+
+    date = "20260616"
+    unix_bucket = hhmmssms_to_unix_ms(date, 90_000_000)
+    raw = _req()
+    raw["snapshot_from_ms"] = unix_bucket
+    raw["snapshot_to_ms"] = unix_bucket
+    raw["snapshot"]["snapshot_from_ms"] = unix_bucket
+    raw["snapshot"]["snapshot_to_ms"] = unix_bucket
+    raw["snapshot"]["bundle"]["snapshot_from_ms"] = unix_bucket
+    raw["snapshot"]["bundle"]["snapshot_to_ms"] = unix_bucket
+    raw["snapshot"]["bundle"]["segments"] = [
+        {
+            "date": date,
+            "session_open_ms": unix_bucket,
+            "session_close_ms": hhmmssms_to_unix_ms(date, 153_000_000),
+            "source": "hogaplay",
+        }
+    ]
+    raw["snapshot"]["bundle"]["candles"] = [
+        {"t": unix_bucket, "open": 1, "high": 2, "low": 1, "close": 2, "volume": 10}
+    ]
+    req = ParquetStudyViewWriteRequest.model_validate(raw)
+
+    created = sv.create_save_sync(tmp_path, req=req, id="view1", now_ms=10)
+    snap = sv.load_snapshot(tmp_path, id="view1")
+
+    assert created.id == "view1"
+    assert snap.code == "005930"
+    assert snap.bundle.orderbook_buckets[0].t == unix_bucket
+    assert snap.bundle.orderbook_buckets[0].available is False
+    assert snap.bundle.orderbook_buckets[0].snapshot is None
+    assert snap.bundle.broker_buckets[0].t == unix_bucket
+    assert snap.bundle.broker_buckets[0].available is False
+    assert snap.bundle.broker_buckets[0].brokers == []
+    assert [(w.kind, w.message) for w in snap.bundle.detail_warnings] == [
+        ("orderbook", "parquet source missing: hogaplay"),
+        ("broker", "parquet source missing: hogaplay"),
     ]
 
 

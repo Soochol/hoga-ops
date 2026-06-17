@@ -158,8 +158,14 @@ def _resolve_buckets(
             continue
         date = segment.date
         try:
-            lo_native = unix_ms_to_hhmmssms(date, candle.t)
-            hi_native = unix_ms_to_hhmmssms(date, candle.t + bucket_ms - 1)
+            lo_native, hi_native = _native_lookup_window(
+                timeframe=snapshot.timeframe,
+                date=date,
+                session_open_ms=segment.session_open_ms,
+                session_close_ms=segment.session_close_ms,
+                candle_t=candle.t,
+                bucket_ms=bucket_ms,
+            )
         except ValueError:
             warnings.append(
                 StudyDetailWarning(
@@ -190,6 +196,26 @@ def _resolve_buckets(
             )
         )
     return out, warnings
+
+
+def _native_lookup_window(
+    *,
+    timeframe: str,
+    date: str,
+    session_open_ms: int,
+    session_close_ms: int,
+    candle_t: int,
+    bucket_ms: int,
+) -> tuple[int, int]:
+    if timeframe in {"D", "W", "M"}:
+        return (
+            unix_ms_to_hhmmssms(date, session_open_ms),
+            unix_ms_to_hhmmssms(date, session_close_ms),
+        )
+    return (
+        unix_ms_to_hhmmssms(date, candle_t),
+        unix_ms_to_hhmmssms(date, candle_t + bucket_ms - 1),
+    )
 
 
 def _load_orderbooks(
