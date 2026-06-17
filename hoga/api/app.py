@@ -219,8 +219,10 @@ def create_app(data_dir: Path) -> FastAPI:
         allow_origins=[
             "http://localhost:5173",
             "http://127.0.0.1:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
         ],
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_methods=["*"],
         allow_headers=["*"],
     )
     # Liveness probe. Used by the Playwright e2e webServer config and by any
