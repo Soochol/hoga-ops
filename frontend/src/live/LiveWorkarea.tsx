@@ -68,6 +68,8 @@ interface Props {
   live: LiveSeriesData;
   /** LivePage의 useDayAskPeaks 결과(거래일별) — LiveChartRoot → LiveAskPeakSegments로 전달. */
   dayAskPeaks?: readonly AskPeak[];
+  /** Backend today all-price ask peak — optional because tests/legacy callers may omit it. */
+  todayAllPriceAskPeak?: AskPeak | null;
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
   /** LivePage save flows keep this callback and invoke it at save time. */
@@ -88,6 +90,7 @@ export function LiveWorkarea({
   restoreViewport,
   live,
   dayAskPeaks = EMPTY_ASK_PEAKS,
+  todayAllPriceAskPeak = null,
   todayKst = '',
   onViewportCaptureReady,
 }: Props) {
@@ -147,6 +150,7 @@ export function LiveWorkarea({
               pastDataWarnings={pastDataWarnings}
               restoreViewport={restoreViewport}
               dayAskPeaks={dayAskPeaks}
+              todayAllPriceAskPeak={todayAllPriceAskPeak}
               todayKst={todayKst}
               onViewportCaptureReady={onViewportCaptureReady}
             />

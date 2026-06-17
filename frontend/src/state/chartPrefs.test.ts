@@ -145,3 +145,17 @@ describe('날짜 구분선 설정', () => {
     expect(useChartPrefsStore.getState().dayBoundaryLineWidth).toBe(4);
   });
 });
+
+describe('ask peak all-price toggle', () => {
+  it('defaults on and belongs to the indicator modal', () => {
+    expect(DEFAULT_PREFS.askPeakShowAllPrices).toBe(true);
+    const t = CHART_TOGGLES.find((t) => t.key === 'askPeakShowAllPrices');
+    expect(t).toBeDefined();
+    expect(t?.label).toBe('미체결 가격 최대벽도 표시');
+    expect(categoryOf(t!)).toBe('indicator-modal');
+  });
+
+  it('mergePrefs preserves persisted false', () => {
+    expect(mergePrefs({ askPeakShowAllPrices: false }).askPeakShowAllPrices).toBe(false);
+  });
+});

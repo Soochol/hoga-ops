@@ -12,6 +12,8 @@ export type RatchetState = {
   lastTMs: number;
 };
 
+type AskPriceFilter = (price: number) => boolean;
+
 export const FRESH_RATCHET: RatchetState = { peak: null, tradingDay: -1, lastTMs: -1 };
 
 /** seed로 시작한 단조 ratchet에 한 ObSnapshot을 폴드. 연속거래(isContinuousBook) + 개장
@@ -23,6 +25,7 @@ export function foldAskPeak(
   prev: RatchetState,
   seed: DayPeak | null,
   ob: ObSnapshot,
+  allowPrice?: AskPriceFilter,
 ): RatchetState {
   const day = tradingDayOf(ob.t_ms);
   let state = prev;
@@ -34,6 +37,7 @@ export function foldAskPeak(
   let best = state.peak;
   if (isContinuousBook(ob) && isAfterRegularOpen(ob.t_ms) && ob.asks) {
     for (const lv of ob.asks) {
+      if (allowPrice && !allowPrice(lv.price)) continue;
       if (lv.qty > 0 && (best === null || lv.qty > best.qty)) {
         best = { price: lv.price, qty: lv.qty, t_ms: ob.t_ms };
       }
@@ -51,9 +55,10 @@ export function reduceDayAskPeak(
   prev: RatchetState,
   seed: DayPeak | null,
   obs: ReadonlyArray<ObSnapshot>,
+  allowPrice?: AskPriceFilter,
 ): RatchetState {
   let s = prev;
-  for (const ob of obs) s = foldAskPeak(s, seed, ob);
+  for (const ob of obs) s = foldAskPeak(s, seed, ob, allowPrice);
   if (seed && (s.peak === null || seed.qty > s.peak.qty)) {
     s = { ...s, peak: seed };
   }

@@ -81,6 +81,13 @@ export const CHART_TOGGLES = [
     default: false,
     category: 'indicator-modal',
   },
+  {
+    key: 'askPeakShowAllPrices',
+    label: '미체결 가격 최대벽도 표시',
+    description: '오늘 체결가격 기준 최대벽과 미체결 포함 최대벽이 다르면 두 라인을 함께 표시합니다.',
+    default: true,
+    category: 'indicator-modal',
+  },
 ] as const;
 
 export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];

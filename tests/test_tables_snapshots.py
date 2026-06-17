@@ -11,16 +11,19 @@ from hoga.tables.snapshots import (
     PARQUET_SCHEMA,
     PARSERS,
     ApiOrderbookSnapshot,
+    AskPeakDualRow,
     AskPeakRow,
     Orderbook,
     SnapshotValidationError,
     query_at,
+    query_day_ask_peak_dual,
     query_day_ask_peak,
     query_first_ts,
     query_time_bounds,
     validate,
     write_parquet,
 )
+from hoga.tables.trades import Trade, write_parquet as write_trades
 
 
 def _ob_parts(ts_ms: int = 90000435, seq: int = 847) -> list[str]:
@@ -615,6 +618,119 @@ def test_query_day_ask_peak_intra_max_excludes_single_price(tmp_path) -> None:
     assert peak is not None
     assert peak.qty == 300
     assert peak.max_qty == 700
+
+
+def _trade(ts_ms: int, price: int, side: int = 1) -> Trade:
+    return Trade(
+        ts_ms=ts_ms, seq=1, price=price, change_pct=0, qty=1, side=side,
+        cum_vol=1, cum_trades=1, low_so_far=price, high_so_far=price,
+        net_pressure=0, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0,
+    )
+
+
+def test_query_day_ask_peak_dual_splits_traded_and_all_price_peaks(tmp_path) -> None:
+    """과거일도 체결가격 기준과 미체결 포함 최대벽을 따로 산출한다."""
+    obs = [
+        _ob_ap(
+            90100000,
+            [1000, 9000, 100, 40, 5, 6, 7, 8, 9, 1],
+            ask_p=[25000, 26000, 27000, 27100, 27200, 27300, 27400, 27500, 27600, 27700],
+        ),
+    ]
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    write_parquet(obs, snapshots_path)
+    write_trades([_trade(90050000, 25000)], trades_path)
+
+    peak = query_day_ask_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90000000,
+        session_close_ms=153000000,
+    )
+
+    assert peak == AskPeakDualRow(
+        price=25000, qty=1000, intra_ms=32460000,
+        max_price=25000, max_qty=1000, max_intra_ms=32460000,
+        all_price=26000, all_qty=9000, all_intra_ms=32460000,
+        all_max_price=26000, all_max_qty=9000, all_max_intra_ms=32460000,
+    )
+
+
+def test_query_day_ask_peak_dual_excludes_collapsed_books_from_all_price(tmp_path) -> None:
+    """미체결 포함 과거일 peak도 동시호가/VI 3호가 collapsed book을 제외한다."""
+    z = tuple([0] * 10)
+    collapsed = Orderbook(
+        ts_ms=100000000, seq=1,
+        ask_p=(25000, 25050, 25100) + (0,) * 7,
+        ask_q=(99999, 1, 1) + (0,) * 7,
+        ask_d=z,
+        bid_p=(24950, 24900, 24850) + (0,) * 7,
+        bid_q=(1, 1, 1) + (0,) * 7,
+        bid_d=z,
+        tot_ask=100001, tot_ask_d=0, tot_bid=3, tot_bid_d=0,
+    )
+    continuous = _ob_ap(
+        100010000,
+        [300, 2000, 30, 40, 5, 6, 7, 8, 9, 1],
+        ask_p=[25000, 26000, 27000, 27100, 27200, 27300, 27400, 27500, 27600, 27700],
+    )
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    write_parquet([collapsed, continuous], snapshots_path)
+    write_trades([_trade(100000500, 25000)], trades_path)
+
+    peak = query_day_ask_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90000000,
+        session_close_ms=153000000,
+    )
+
+    assert peak is not None
+    assert peak.qty == 300 and peak.price == 25000
+    assert peak.all_qty == 2000 and peak.all_price == 26000
+
+
+def test_query_day_ask_peak_dual_excludes_one_sided_collapsed_ask_book(tmp_path) -> None:
+    """매도 쪽이 3호가로 붕괴했으면 bid 쪽 depth가 남아 있어도 미체결 peak에서 제외한다."""
+    z = tuple([0] * 10)
+    one_sided_collapsed = Orderbook(
+        ts_ms=100000000, seq=1,
+        ask_p=(25000, 25050, 25100) + (0,) * 7,
+        ask_q=(99999, 1, 1) + (0,) * 7,
+        ask_d=z,
+        bid_p=tuple(24950 - 50 * i for i in range(10)),
+        bid_q=tuple([100] * 10),
+        bid_d=z,
+        tot_ask=100001, tot_ask_d=0, tot_bid=1000, tot_bid_d=0,
+    )
+    continuous = _ob_ap(
+        100010000,
+        [300, 2000, 30, 40, 5, 6, 7, 8, 9, 1],
+        ask_p=[25000, 26000, 27000, 27100, 27200, 27300, 27400, 27500, 27600, 27700],
+    )
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    write_parquet([one_sided_collapsed, continuous], snapshots_path)
+    write_trades([_trade(100000500, 25000)], trades_path)
+
+    peak = query_day_ask_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90000000,
+        session_close_ms=153000000,
+    )
+
+    assert peak is not None
+    assert peak.all_qty == 2000 and peak.all_price == 26000
+    assert peak.all_max_qty == 2000 and peak.all_max_price == 26000
 
 
 # ---------------------------------------------------------------------------

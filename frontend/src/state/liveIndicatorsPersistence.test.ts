@@ -14,6 +14,8 @@ describe('mergeLiveIndicatorPrefs', () => {
       askPeakEnabled: false,
       askPeakColor: '#1D4ED8',
       askPeakLineWidth: 2,
+      askPeakAllPriceColor: '#F97316',
+      askPeakAllPriceLineWidth: 1,
       quoteTotalsEnabled: true,
       ratioEnabled: true,
       fillStrengthEnabled: true,
@@ -156,22 +158,39 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
 });
 
 describe('mergeLiveIndicatorPrefs — askPeak', () => {
-  it('레거시(필드 없음): 기본 off/#1D4ED8/2', () => {
+  it('레거시(필드 없음): 기본 off/#1D4ED8/2 + all-price #F97316/1', () => {
     const m = mergeLiveIndicatorPrefs(undefined);
     expect(m.askPeakEnabled).toBe(false);
     expect(m.askPeakColor).toBe('#1D4ED8');
     expect(m.askPeakLineWidth).toBe(2);
+    expect(m.askPeakAllPriceColor).toBe('#F97316');
+    expect(m.askPeakAllPriceLineWidth).toBe(1);
   });
   it('유효값 보존', () => {
-    const m = mergeLiveIndicatorPrefs({ askPeakEnabled: true, askPeakColor: '#EF4444', askPeakLineWidth: 3 });
+    const m = mergeLiveIndicatorPrefs({
+      askPeakEnabled: true,
+      askPeakColor: '#EF4444',
+      askPeakLineWidth: 3,
+      askPeakAllPriceColor: '#22C55E',
+      askPeakAllPriceLineWidth: 4,
+    });
     expect(m.askPeakEnabled).toBe(true);
     expect(m.askPeakColor).toBe('#EF4444');
     expect(m.askPeakLineWidth).toBe(3);
+    expect(m.askPeakAllPriceColor).toBe('#22C55E');
+    expect(m.askPeakAllPriceLineWidth).toBe(4);
   });
   it('이상값 폴백', () => {
-    const m = mergeLiveIndicatorPrefs({ askPeakColor: 'red', askPeakLineWidth: 9 });
+    const m = mergeLiveIndicatorPrefs({
+      askPeakColor: 'red',
+      askPeakLineWidth: 9,
+      askPeakAllPriceColor: 'orange',
+      askPeakAllPriceLineWidth: 0,
+    });
     expect(m.askPeakColor).toBe('#1D4ED8');
     expect(m.askPeakLineWidth).toBe(2);
+    expect(m.askPeakAllPriceColor).toBe('#F97316');
+    expect(m.askPeakAllPriceLineWidth).toBe(1);
   });
 });
 

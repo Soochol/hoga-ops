@@ -98,8 +98,9 @@ class AskPeak(BaseModel):
     ``date``는 이 peak이 속한 거래일(YYYYMMDD) — 프론트가 segment x-구간에 매핑.
     ``t_ms``는 unix ms(KST), 캔들 시각과 동일 좌표계(peak 발생 시점).
 
-    ``price``/``qty``/``t_ms`` = 버킷 종가 대표 위에서의 당일 max(#96 close 변종).
-    ``max_*`` = 버킷 틱-max 위에서의 당일 max(Intra-Bar Max, ADR-0076)."""
+    ``price``/``qty``/``t_ms`` = 체결가격 기준 버킷 종가 대표 위에서의 당일 max.
+    ``max_*`` = 체결가격 기준 버킷 틱-max 위에서의 당일 max(Intra-Bar Max, ADR-0076).
+    ``all_*`` = 미체결 포함(모든 eligible ask price) 기준. None이면 legacy payload."""
     date: str
     price: int
     qty: int
@@ -107,6 +108,12 @@ class AskPeak(BaseModel):
     max_price: int
     max_qty: int
     max_t_ms: int
+    all_price: int | None = None
+    all_qty: int | None = None
+    all_t_ms: int | None = None
+    all_max_price: int | None = None
+    all_max_qty: int | None = None
+    all_max_t_ms: int | None = None
 
 
 class QuoteRatioPoint(BaseModel):

@@ -80,11 +80,113 @@ export function buildAskPeakSegments(
   return out;
 }
 
+type AskPeakLineStyle = {
+  color: string;
+  lineWidth: number;
+};
+
+type BuildAskPeakOverlaySegmentsArgs = {
+  dayAskPeaks: readonly AskPeak[];
+  todayAllPriceAskPeak: AskPeak | null;
+  segments: readonly RangeSegment[];
+  candles: readonly Candle[];
+  axis: VirtualAxis;
+  todayKst: string;
+  baselineStyle: AskPeakLineStyle;
+  allPriceStyle: AskPeakLineStyle;
+  intraMax: boolean;
+  showAllPrices: boolean;
+};
+
+function selectedTriple(p: AskPeak, intraMax: boolean): [number, number, number] {
+  return intraMax
+    ? [p.max_price, p.max_qty, p.max_t_ms]
+    : [p.price, p.qty, p.t_ms];
+}
+
+function sameSelectedTriple(a: AskPeak, b: AskPeak, intraMax: boolean): boolean {
+  const [ap, aq, at] = selectedTriple(a, intraMax);
+  const [bp, bq, bt] = selectedTriple(b, intraMax);
+  return ap === bp && aq === bq && at === bt;
+}
+
+function allPricePeakFromFields(p: AskPeak): AskPeak | null {
+  if (
+    p.all_price == null
+    || p.all_qty == null
+    || p.all_t_ms == null
+    || p.all_max_price == null
+    || p.all_max_qty == null
+    || p.all_max_t_ms == null
+  ) {
+    return null;
+  }
+  return {
+    date: p.date,
+    price: p.all_price,
+    qty: p.all_qty,
+    t_ms: p.all_t_ms,
+    max_price: p.all_max_price,
+    max_qty: p.all_max_qty,
+    max_t_ms: p.all_max_t_ms,
+  };
+}
+
+export function buildAskPeakOverlaySegments({
+  dayAskPeaks,
+  todayAllPriceAskPeak,
+  segments,
+  candles,
+  axis,
+  todayKst,
+  baselineStyle,
+  allPriceStyle,
+  intraMax,
+  showAllPrices,
+}: BuildAskPeakOverlaySegmentsArgs): AskPeakSegment[] {
+  const baseline = buildAskPeakSegments(
+    dayAskPeaks,
+    segments,
+    candles,
+    axis,
+    todayKst,
+    baselineStyle.color,
+    baselineStyle.lineWidth,
+    intraMax,
+  );
+  if (!showAllPrices) return baseline;
+
+  const allPricePeaks: AskPeak[] = [];
+  for (const p of dayAskPeaks) {
+    const allPeak = p.date === todayKst ? todayAllPriceAskPeak : allPricePeakFromFields(p);
+    if (!allPeak) continue;
+    if (sameSelectedTriple(p, allPeak, intraMax)) continue;
+    allPricePeaks.push(allPeak);
+  }
+  if (todayAllPriceAskPeak && !dayAskPeaks.some((p) => p.date === todayKst)) {
+    allPricePeaks.push(todayAllPriceAskPeak);
+  }
+  if (allPricePeaks.length === 0) return baseline;
+
+  return baseline.concat(buildAskPeakSegments(
+    allPricePeaks,
+    segments,
+    candles,
+    axis,
+    todayKst,
+    allPriceStyle.color,
+    allPriceStyle.lineWidth,
+    intraMax,
+  ));
+}
+
 type Props = {
   paneSeries: PaneSeriesMap;
   axis: VirtualAxis;
   /** LivePage의 useDayAskPeaks 결과 — 거래일별 매도 최대벽. */
   dayAskPeaks: readonly AskPeak[];
+  /** Backend today all-price peak — rendered only when askPeakShowAllPrices is on. */
+  todayAllPriceAskPeak?: AskPeak | null;
   segments: readonly RangeSegment[];
   candles: readonly Candle[];
   /** 오늘(KST YYYYMMDD) — 이 날 세그먼트만 라이브 엣지까지 연장·점 표시. */
@@ -94,12 +196,15 @@ type Props = {
 /** 거래일별 매도 최대벽 오버레이. candle series에 커스텀 primitive를 걸어 각 날의 수평 세그먼트를
  *  그린다(풀-너비 price line이 아니라 그날 구간만 → 여러 날 동시 표시). 색·두께·on/off는 스토어.
  *  형제: LiveCurrentPriceLine(현재가 풀-너비 점선). */
-function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles, todayKst }: Props) {
+function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPeak = null, segments, candles, todayKst }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useLivePageStore((s) => s.askPeakEnabled);
   const color = useLivePageStore((s) => s.askPeakColor);
   const lineWidth = useLivePageStore((s) => s.askPeakLineWidth);
+  const allPriceColor = useLivePageStore((s) => s.askPeakAllPriceColor);
+  const allPriceLineWidth = useLivePageStore((s) => s.askPeakAllPriceLineWidth);
   const intraMax = useActivePrefs((s) => s.askPeakIntraMax);
+  const showAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
 
   // 생성: series 핸들당 1회(LiveCurrentPriceLine과 동일 — tf·종목 전환에도 핸들 유지).
@@ -124,10 +229,36 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
     if (!prim) return;
     prim.setSegments(
       enabled
-        ? buildAskPeakSegments(dayAskPeaks, segments, candles, axis, todayKst, color, lineWidth, intraMax)
+        ? buildAskPeakOverlaySegments({
+          dayAskPeaks,
+          todayAllPriceAskPeak,
+          segments,
+          candles,
+          axis,
+          todayKst,
+          baselineStyle: { color, lineWidth },
+          allPriceStyle: { color: allPriceColor, lineWidth: allPriceLineWidth },
+          intraMax,
+          showAllPrices,
+        })
         : [],
     );
-  }, [dayAskPeaks, segments, candles, axis, todayKst, color, lineWidth, enabled, intraMax, series]);
+  }, [
+    dayAskPeaks,
+    todayAllPriceAskPeak,
+    segments,
+    candles,
+    axis,
+    todayKst,
+    color,
+    lineWidth,
+    allPriceColor,
+    allPriceLineWidth,
+    enabled,
+    intraMax,
+    showAllPrices,
+    series,
+  ]);
 
   return null;
 }

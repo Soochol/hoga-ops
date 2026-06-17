@@ -17,6 +17,8 @@ export interface ObSnapshot {
 }
 
 export interface TradeEvent {
+  t_ms?: number;
+  price?: number;
   side: number; // KIS enum: -1 sell, 0 mid, 1 buy, 2 auction
   qty: number;
 }
@@ -28,16 +30,16 @@ export interface TradeSnapshot {
   [field: string]: unknown;
 }
 
-/** A live OB snapshot is a *continuous-trading book* iff it shows depth beyond
- * level 3 (asks[3..] or bids[3..] qty > 0). The closing auction collapses every
- * book to exactly 3 levels. If neither asks nor bids rode along (minute-chart
+/** A live OB snapshot is a *continuous-trading book* iff both sides show depth
+ * beyond level 3 (asks[3..] and bids[3..] qty > 0). The closing auction/VI can
+ * collapse a side to exactly 3 levels. If neither asks nor bids rode along (minute-chart
  * totals-only path) we cannot tell structurally → treat as continuous so the
  * series falls back to legacy last-in-bucket (no spurious masking). */
 export function isContinuousBook(s: ObSnapshot): boolean {
   const hasDeep = (lv: OrderbookLevel[] | undefined): boolean =>
     !!lv && lv.slice(3).some((l) => l.qty > 0);
   if (!s.asks && !s.bids) return true;
-  return hasDeep(s.asks) || hasDeep(s.bids);
+  return hasDeep(s.asks) && hasDeep(s.bids);
 }
 
 /** Bucket label = floor(t_ms / bucketMs) * bucketMs (bucket start). Matches

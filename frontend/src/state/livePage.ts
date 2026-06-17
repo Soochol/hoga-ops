@@ -119,6 +119,7 @@ type Store = Persisted & PersistedIndicators & {
   setMovingAverageHidden: (hidden: boolean) => void;
   setAskPeakEnabled: (enabled: boolean) => void;
   setAskPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
+  setAskPeakAllPriceStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setQuoteTotalsEnabled: (enabled: boolean) => void;
   setRatioEnabled: (enabled: boolean) => void;
   setFillStrengthEnabled: (enabled: boolean) => void;
@@ -177,6 +178,8 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     askPeakEnabled: s.askPeakEnabled,
     askPeakColor: s.askPeakColor,
     askPeakLineWidth: s.askPeakLineWidth,
+    askPeakAllPriceColor: s.askPeakAllPriceColor,
+    askPeakAllPriceLineWidth: s.askPeakAllPriceLineWidth,
     quoteTotalsEnabled: s.quoteTotalsEnabled,
     ratioEnabled: s.ratioEnabled,
     fillStrengthEnabled: s.fillStrengthEnabled,
@@ -308,6 +311,14 @@ export const useLivePageStore = create<Store>((set, get) => ({
     set((s) => ({
       askPeakColor: patch.color ?? s.askPeakColor,
       askPeakLineWidth: patch.lineWidth ?? s.askPeakLineWidth,
+    }));
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setAskPeakAllPriceStyle: (patch) => {
+    set((s) => ({
+      askPeakAllPriceColor: patch.color ?? s.askPeakAllPriceColor,
+      askPeakAllPriceLineWidth: patch.lineWidth ?? s.askPeakAllPriceLineWidth,
     }));
     persistIndicators(snapshotIndicators(get));
   },

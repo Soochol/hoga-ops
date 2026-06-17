@@ -11,8 +11,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 
+from .ask_peak_state import TodayAskPeakState
 from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
 from .session_gate import market_phase, ws_capture_window_async
@@ -25,10 +26,26 @@ _log = logging.getLogger(__name__)
 
 FLUSH_INTERVAL_S = 10.0
 IDLE_INTERVAL_S = 1.0  # 게이트 밖 폴링 주기 — 테스트에서 monkeypatch(리뷰 R3)
+AUCTION_BOOK_DEPTH = 3
 
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _is_continuous_book(
+    asks: Sequence[Mapping[str, object]],
+    bids: Sequence[Mapping[str, object]],
+) -> bool:
+    return _has_deep_qty(asks) and _has_deep_qty(bids)
+
+
+def _has_deep_qty(levels: Sequence[Mapping[str, object]]) -> bool:
+    for level in levels[AUCTION_BOOK_DEPTH:]:
+        qty = level.get("qty")
+        if type(qty) is int and qty > 0:
+            return True
+    return False
 
 
 def _next_window_delay_s(now_s: float, interval_s: float) -> float:
@@ -65,11 +82,79 @@ class LiveStream:
         # R2: 게이트 판정은 flush 루프가 1Hz로 유지 — on_tick은 이 플래그만 읽는다
         # (per-tick 달력 평가는 fetch 실패 모드에서 틱당 동기 네트워크 콜이 됨).
         self._gate_open: bool = False
+        self._ask_peak_by_code: dict[str, TodayAskPeakState] = {}
+        self._ask_peak_date: str | None = None
 
     def set_active_codes(self, codes: set[str]) -> None:
         """Live Set 변경 위임 — start/refresh_live_stream이 호출(advisor C)."""
         self._active_codes = set(codes)
         self._ds.set_active_codes(codes)
+        for code in set(self._ask_peak_by_code) - self._active_codes:
+            del self._ask_peak_by_code[code]
+
+    def _reset_ask_peak_if_date_changed(self) -> None:
+        date = self._date_fn()
+        if self._ask_peak_date is None:
+            self._ask_peak_date = date
+            return
+        if date != self._ask_peak_date:
+            self._ask_peak_by_code.clear()
+            self._ask_peak_date = date
+
+    def _ask_peak_state(self, code: str) -> TodayAskPeakState:
+        self._reset_ask_peak_if_date_changed()
+        return self._ask_peak_by_code.setdefault(code, TodayAskPeakState())
+
+    def ask_peak_snapshot(self, code: str) -> dict | None:
+        self._reset_ask_peak_if_date_changed()
+        state = self._ask_peak_by_code.get(code)
+        if state is None:
+            return None
+        snap = state.snapshot()
+        if snap is None:
+            return None
+        return {"date": self._ask_peak_date, **snap}
+
+    def _ingest_ask_peak(self, tick: WsTick) -> None:
+        if tick.kind is SnapshotKind.TRADE:
+            state: TodayAskPeakState | None = None
+            trades = tick.payload.get("trades")
+            if not isinstance(trades, Sequence) or isinstance(trades, (str, bytes)):
+                return
+            for trade in trades:
+                if not isinstance(trade, Mapping):
+                    continue
+                try:
+                    price = int(trade["price"])
+                    side = int(trade["side"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if state is None:
+                    state = self._ask_peak_state(tick.code)
+                state.ingest_trade(price=price, side=side)
+            return
+
+        if tick.kind is SnapshotKind.OB:
+            if market_phase(tick.t_ms) != "regular":
+                return
+            asks = tick.payload.get("asks")
+            if not isinstance(asks, Sequence) or isinstance(asks, (str, bytes)):
+                return
+            valid_asks = [ask for ask in asks if isinstance(ask, Mapping)]
+            if not valid_asks:
+                return
+            bids = tick.payload.get("bids")
+            valid_bids = (
+                [bid for bid in bids if isinstance(bid, Mapping)]
+                if isinstance(bids, Sequence) and not isinstance(bids, (str, bytes))
+                else []
+            )
+            if not _is_continuous_book(valid_asks, valid_bids):
+                return
+            self._ask_peak_state(tick.code).ingest_orderbook(
+                t_ms=tick.t_ms,
+                asks=valid_asks,
+            )
 
     async def on_tick(self, tick: WsTick) -> None:
         """ws_client 콜백 — 표시 경로(즉시·무게이트) + 저장 경로(누적·게이트)."""
@@ -89,6 +174,7 @@ class LiveStream:
                             payload={**tick.payload, "phase": phase})
         # 표시 경로는 §11에 따라 무게이트 — 항상 publish.
         await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
+        self._ingest_ask_peak(tick)
         # 저장 경로만 게이트 — 15:30 이후 잔여 틱이 다운샘플러에 누적돼 밤을
         # 넘기는 것을 차단(리뷰 C1 벡터 1). 판정은 flush 루프가 유지하는
         # 플래그(리뷰 R2 — per-tick 달력 평가 금지); 닫힘 직후 ≤10s의 잔여

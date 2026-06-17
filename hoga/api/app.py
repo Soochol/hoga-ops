@@ -13,31 +13,29 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from hoga.api import captures as _captures_module
+from hoga.api import screener as _screener_module
 from hoga.api import symbols as _symbols_module
 from hoga.api.calendar import build_router as build_calendar_router
 from hoga.api.captures import build_router as build_captures_router
 from hoga.api.captures import cancel_all_on_shutdown
 from hoga.api.captures import set_bus as set_captures_bus
+from hoga.api.events import build_event_bus
+from hoga.api.heatmap import seed_from_watchlist_if_absent
+from hoga.api.heatmap_routes import build_router as build_heatmap_router
 from hoga.api.queries import QueryEngine
 from hoga.api.routes import build_router
 from hoga.api.scheduler import start_scheduler
-from hoga.api.events import build_event_bus
-from hoga.api.ws import build_ws_router
+from hoga.api.screener import build_router as build_screener_router
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
-from hoga.api.heatmap_routes import build_router as build_heatmap_router
-from hoga.api.heatmap import seed_from_watchlist_if_absent
-from hoga.api import screener as _screener_module
-from hoga.api.screener import build_router as build_screener_router
 from hoga.api.study_view_routes import build_router as build_study_view_router
+from hoga.api.ws import build_ws_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
 from hoga.live.api import build_router as build_live_router
 from hoga.live.kis_runtime import aclose_kis_client
-from hoga.live.lifecycle import get_buffer as live_get_buffer
-from hoga.live.lifecycle import get_status as live_get_status
 from hoga.live.lifecycle import (
     get_active_codes,
     start_live_stream,
@@ -45,6 +43,15 @@ from hoga.live.lifecycle import (
     start_today_promoter,
     stop_live_stream,
     stop_today_promoter,
+)
+from hoga.live.lifecycle import (
+    get_buffer as live_get_buffer,
+)
+from hoga.live.lifecycle import (
+    get_status as live_get_status,
+)
+from hoga.live.lifecycle import (
+    get_today_ask_peak as live_get_today_ask_peak,
 )
 from hoga.live.migrate import migrate_to_v2_layout
 
@@ -240,6 +247,7 @@ def create_app(data_dir: Path) -> FastAPI:
             get_status=live_get_status,
             get_buffer=live_get_buffer,
             on_control=_live_control,
+            get_today_ask_peak=live_get_today_ask_peak,
             data_dir=data_dir,
         )
     )
