@@ -211,30 +211,31 @@ def query_cumulative_details_at(
             t.cursor_ts,
             p.broker,
             p.ts_ms,
+            p.seq,
             SUM(CASE WHEN p.side = 'buy' THEN p.qty_today ELSE -p.qty_today END) AS net
         FROM (SELECT UNNEST(?::BIGINT[]) AS cursor_ts) AS t
         JOIN read_parquet(?) AS p
           ON p.ts_ms <= t.cursor_ts
-        GROUP BY t.cursor_ts, p.broker, p.ts_ms
-        ORDER BY t.cursor_ts, p.broker, p.ts_ms
+        GROUP BY t.cursor_ts, p.broker, p.ts_ms, p.seq
+        ORDER BY t.cursor_ts, p.broker, p.ts_ms, p.seq
         """,
         [uniq, str(path)],
     ).fetchall()
 
-    collapsed: dict[tuple[int, str, int], int] = {}
-    for cursor_ts, raw_broker, ts_ms, net in rows:
-        key = (int(cursor_ts), canonical(raw_broker), int(ts_ms))
+    collapsed: dict[tuple[int, str, int, int], int] = {}
+    for cursor_ts, raw_broker, ts_ms, seq, net in rows:
+        key = (int(cursor_ts), canonical(raw_broker), int(ts_ms), int(seq))
         collapsed[key] = collapsed.get(key, 0) + int(net)
 
-    latest: dict[tuple[int, str], tuple[int, int]] = {}
-    for (cursor_ts, broker, ts_ms), net in collapsed.items():
+    latest: dict[tuple[int, str], tuple[int, int, int]] = {}
+    for (cursor_ts, broker, ts_ms, seq), net in collapsed.items():
         key = (cursor_ts, broker)
         prev = latest.get(key)
-        if prev is None or ts_ms >= prev[0]:
-            latest[key] = (ts_ms, net)
+        if prev is None or (ts_ms, seq) >= prev[:2]:
+            latest[key] = (ts_ms, seq, net)
 
     grouped: dict[int, list[BrokerDetailRow]] = {t: [] for t in uniq}
-    for (cursor_ts, broker), (_ts_ms, net) in latest.items():
+    for (cursor_ts, broker), (_ts_ms, _seq, net) in latest.items():
         grouped[cursor_ts].append(
             BrokerDetailRow(
                 broker=broker,
