@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.8.1] - 2026-06-17
+
+### Fixed
+- **/live 같은 종목·같은 분봉 탭 viewport 분리**: 동일 종목을 여러 탭에 열어도 각 탭의
+  줌/스크롤 상태가 서로 섞이지 않고 탭별로 복원된다.
+
 ## [0.8.8.0] - 2026-06-17
 
 ### Changed

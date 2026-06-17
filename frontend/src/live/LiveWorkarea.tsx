@@ -63,6 +63,8 @@ interface Props {
   /** 활성 탭의 저장된 viewport(ADR-0069 A안). cold 전환 복귀 시 보던 위치 복원용으로
    * LiveChartRoot에 전달. */
   restoreViewport?: TabViewport | null;
+  /** Distinguishes multiple tabs that point at the same code/timeframe. */
+  viewIdentity?: string | null;
   /** Owned by LivePage's single useLiveSeries call. Threaded to LiveSidebar
    * so the LATEST mode reads the same SSE buffer that feeds useLiveBundle. */
   live: LiveSeriesData;
@@ -88,6 +90,7 @@ export function LiveWorkarea({
   isExtending,
   pastDataWarnings,
   restoreViewport,
+  viewIdentity,
   live,
   dayAskPeaks = EMPTY_ASK_PEAKS,
   todayAllPriceAskPeak = null,
@@ -149,6 +152,7 @@ export function LiveWorkarea({
               isExtending={isExtending}
               pastDataWarnings={pastDataWarnings}
               restoreViewport={restoreViewport}
+              viewIdentity={viewIdentity ?? undefined}
               dayAskPeaks={dayAskPeaks}
               todayAllPriceAskPeak={todayAllPriceAskPeak}
               todayKst={todayKst}
