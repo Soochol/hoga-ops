@@ -95,8 +95,9 @@ def ensure_kis_client(
     """Return the per-account KisClient singleton, creating it once.
 
     "one app key = one 15/s bucket" holds PER ACCOUNT — each account_id has at
-    most one client. account 0 carries the data bucket (REST poller / quotes /
-    holiday / screener); account k>0 is used ONLY for WS approval keys (spec §4).
+    most one client. Account role selection lives in kis_access: account 0 is
+    the foreground REST account, while account k>0 can serve background REST
+    capacity as well as per-account WS approval keys.
     Closed at process shutdown via aclose_kis_client — a stream/conn stop must NOT
     close it (R1).
     """

@@ -48,7 +48,7 @@ manual screener update
 DailyKisFetchQueue
         |
         v
-kis_access.fetch_for_role(...)
+kis_access account lease
         |
         v
 KisClient.fetch_past_daily_candles(...)
@@ -72,17 +72,34 @@ Account ownership remains outside the queue:
 ```text
 foreground request
   -> DailyKisFetchQueue lane=foreground
-  -> kis_access.fetch_for_role("foreground")
+  -> kis_access account lease for foreground
   -> account 0
 
 background request
   -> DailyKisFetchQueue lane=background
-  -> kis_access.fetch_for_role("background")
-  -> account 1..N round-robin, auth fallback to account 0
+  -> kis_access account lease for background
+  -> account 1..N round-robin, account 0 fallback only when explicitly allowed
 ```
 
 The queue's job is to decide when work may start. `kis_access` still decides
 which concrete `KisClient` to use.
+
+The existing `kis_access.fetch_for_role("background", ...)` interface is not
+sufficient for the queue path because it may fall back to account 0 internally.
+The queue needs a more explicit account-lease interface:
+
+```python
+lease = kis_access.acquire_account_for_role(
+    "background",
+    data_dir,
+    allow_account0_fallback=False,
+)
+```
+
+The exact shape can differ, but it must expose the selected `account_id` and
+`KisClient` before the KIS request starts. The queue must be able to say
+"background accounts only" for normal background work, and separately allow
+account 0 fallback only when foreground is idle.
 
 Account 0 is the user-latency account. Background fallback to account 0 must be
 strictly limited:
@@ -168,13 +185,25 @@ Preferred implementation direction:
   perform independent per-request rate-limit retries.
 - Let the queue own retry timing for daily candles.
 
+This is a deliberate daily-candle exception to ADR-0050's default rule that
+`KisClient._get` owns `EGW00201` retry. Non-daily KIS data fetches should keep
+the ADR-0050 default. Daily queue callers should use an opt-out path such as
+`fetch_past_daily_candles(..., retry=False)` once that argument exists, so the
+queue is the only daily-TR retry owner.
+
 If that is too invasive for the first patch, keep the existing client retry and
-add queue-level cooldown as a follow-up. The final target should still be one
-daily-TR retry owner.
+add queue-level cooldown as a temporary compatibility step. The final target is
+still one daily-TR retry owner, and the compatibility step should be tracked as
+temporary.
 
 ## Screener Behavior
 
-Screener update should submit one background job per code.
+Screener update should process one background job per code, but it should not
+create thousands of concurrently waiting tasks. The integration should use a
+bounded producer/worker shape whose worker count follows the queue's background
+capacity. The queue is the concurrency boundary; `screener_store.run_update`
+should not keep its independent `_FETCH_CONCURRENCY = 8` behavior for daily KIS
+fetches once routed through the queue.
 
 A single code failure should not kill the entire screener batch. The queue
 integration should change the screener collection path to keep successful
@@ -188,6 +217,11 @@ It should either:
   foreground requests.
 
 The queue-first behavior is required; startup delay is optional extra safety.
+
+Foreground HTTP requests should be cancellable and should not wait forever
+behind a KIS penalty window. If a foreground daily request exhausts the queue's
+retry/cooldown policy, the existing route should degrade through its
+`data_warnings` path rather than hang indefinitely.
 
 ## Observability
 
@@ -214,6 +248,8 @@ Unit tests should cover:
 - `EGW00201` creates a shared cooldown
 - cooldown resumes foreground before background
 - one screener code failure does not fail the entire batch
+- screener does not create one waiting asyncio task per universe Code
+- foreground queue wait is cancellable or degrades through route warnings
 
 Integration tests should cover:
 
@@ -227,10 +263,11 @@ Integration tests should cover:
    defaults.
 2. Route `/api/live/past-daily-candles` through foreground.
 3. Route `screener.trigger_update` through background.
-4. Make screener batch tolerant of per-code failures.
-5. Move daily TR retry ownership from `KisClient` to the queue, or add queue
+4. Replace screener's independent fetch concurrency with bounded queue workers.
+5. Make screener batch tolerant of per-code failures.
+6. Move daily TR retry ownership from `KisClient` to the queue, or add queue
    cooldown first and remove duplicate retry behavior in a follow-up.
-6. Add observability for queue state and screener progress.
+7. Add observability for queue state and screener progress.
 
 ## Success Criteria
 

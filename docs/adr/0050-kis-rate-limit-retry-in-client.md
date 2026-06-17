@@ -119,8 +119,6 @@ C 가 사고의 근본 원인을 코드 구조로 제거 — A 는 *convention* 
 - KIS 의 EGW00201 이 short-window quota 가 아니라 *penalty box* 로 동작하는
   증거 (60s 대기로도 풀리지 않음) — backoff 만으로 부족, circuit breaker 도입.
 
----
-
 ## Amendment (2026-06-05): 토큰 획득 추출 + 동기 보조 경로 예외
 
 **배경.** KRX→KIS 이전(`docs/superpowers/specs/2026-06-05-krx-to-kis-migration-design.md`)으로
@@ -220,3 +218,25 @@ _get                         token-invalid(EGW00121/123) 1회 재발급   [불�
 풀 위생은 *확률적 완화*일 뿐이고(끊긴 이유는 미확정·일시적), `retries=` 는
 `ConnectError` 만 잡아 앱-레벨 재시도와 중복되므로 채택하지 않았다. 본 수정의
 normalize+retry+degrade 가 500 의 완전한 해법이다.
+
+---
+
+## Amendment (2026-06-18) — Daily candle queue owns daily-TR retry
+
+`inquire-daily-itemchartprice` became a shared upstream resource for both
+user-visible `/api/live/past-daily-candles` and unattended screener catch-up.
+Per-request `_get` retry is still the default for KIS data calls, but it is the
+wrong owner for this TR under mixed foreground/background load: many independent
+requests can hit `EGW00201`, sleep for the same 1s, then retry together and
+recreate the spike.
+
+Decision: daily candle calls that pass through `DailyKisFetchQueue` may opt out
+of `_get`'s `EGW00201` retry and let the queue own retry timing, shared cooldown,
+and foreground-first resume for that daily TR. This is a narrow exception to the
+centralized retry rule, not a rollback: all KIS data calls still go through
+`KisClient` methods, and non-daily callers keep the default `_get` retry.
+
+The reason is ownership of the failure domain. `_get` sees one physical request;
+the queue sees the whole daily candle workload, including priority lane, account
+role, and pending background volume. `EGW00201` on this TR is therefore a queue
+backpressure signal, not just a single-call retry signal.
