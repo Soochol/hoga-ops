@@ -92,7 +92,7 @@ export const CHART_TOGGLES = [
   {
     key: 'askPeakShowAllPrices',
     label: '미체결 최대 매도벽 표시',
-    description: '당일 고가보다 위에 있는 미체결 추정 매도벽이 체결 기준 최대벽과 다르면 두 라인을 함께 표시합니다.',
+    description: '당일 고가보다 위에 있는 미체결 추정 매도벽 수량이 체결가격 기준 최대벽 수량보다 클 때만 두 라인을 함께 표시합니다.',
     default: true,
     category: 'indicator-modal',
   },

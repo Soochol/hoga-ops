@@ -2,8 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { formatQtyCompact } from './formatQtyCompact';
 
 describe('formatQtyCompact', () => {
-  it('< 1,000은 천단위 콤마', () => {
-    expect(formatQtyCompact(999)).toBe('999');
+  it('1,000 미만도 k 단위 한 자리 소수로 표시', () => {
+    expect(formatQtyCompact(1)).toBe('<0.1k');
+    expect(formatQtyCompact(49)).toBe('<0.1k');
+    expect(formatQtyCompact(50)).toBe('0.1k');
+    expect(formatQtyCompact(900)).toBe('0.9k');
+    expect(formatQtyCompact(999)).toBe('1k');
     expect(formatQtyCompact(0)).toBe('0');
   });
   it('k 단위 한 자리 소수', () => {
