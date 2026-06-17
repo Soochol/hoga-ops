@@ -71,7 +71,7 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-function SortIcon({ active }: { active: boolean }) {
+function SortIcon({ mode }: { mode: QuoteSortMode }) {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -79,10 +79,17 @@ function SortIcon({ active }: { active: boolean }) {
       <path d="M4 12h7" />
       <path d="M4 17h4" />
       <path d="M17 6v12" />
-      <path d={active ? 'M14 9l3-3 3 3' : 'M14 15l3 3 3-3'} />
+      <path d={mode === 'default' ? 'M14 12l3-3 3 3' : mode === 'change_pct_asc' ? 'M14 15l3-3 3 3' : 'M14 9l3 3 3-3'} />
     </svg>
   );
 }
+
+const sortOrder: QuoteSortMode[] = ['default', 'change_pct_asc', 'change_pct_desc'];
+const sortModeLabel: Record<QuoteSortMode, string> = {
+  default: '기본',
+  change_pct_asc: '등락률 오름차순',
+  change_pct_desc: '등락률 내림차순',
+};
 
 /**
  * 그룹 헤더 행 — 라벨/chevron 클릭 = 접기 토글, 호버 시 ⋯ 메뉴(이름 변경/삭제;
@@ -280,9 +287,6 @@ export function WatchlistDrawer() {
   const [addGroupOpen, setAddGroupOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [sortMode, setSortMode] = useState<QuoteSortMode>(() => readSortModeFromStorage());
-  const [sortMenu, setSortMenu] = useState(false);
-  const sortMenuRef = useRef<HTMLDivElement>(null);
-  useDismissablePopover(sortMenu, sortMenuRef, () => setSortMenu(false));
   const [editMenu, setEditMenu] = useState(false);
   const editMenuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(editMenu, editMenuRef, () => setEditMenu(false));
@@ -402,11 +406,12 @@ export function WatchlistDrawer() {
     }
   };
 
-  const sortItemClass =
-    'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2';
   const chooseSortMode = (mode: QuoteSortMode) => {
     setSortMode(mode);
-    setSortMenu(false);
+  };
+  const cycleSortMode = () => {
+    const index = sortOrder.indexOf(sortMode);
+    chooseSortMode(sortOrder[(index + 1) % sortOrder.length]);
   };
 
   return (
@@ -422,32 +427,16 @@ export function WatchlistDrawer() {
           {/* 정렬/편집 → 앵커드 메뉴 (이동 메뉴와 같은 relative+absolute+useDismissablePopover 패턴).
               패널이 뷰포트 우측 끝이라 right-0으로 안쪽으로 연다 — 클램프 불필요. */}
           <div className="flex items-center gap-1">
-            <div className="relative" ref={sortMenuRef}>
-              <button type="button" aria-label="관심종목 정렬" aria-haspopup="menu" aria-expanded={sortMenu}
-                      onClick={() => setSortMenu((v) => !v)}
-                      className={`grid h-6 w-6 place-items-center text-xs ${sortMode === 'default' ? 'text-fg-dim' : 'text-accent'} hover:text-accent`}>
-                <SortIcon active={sortMode !== 'default'} />
-              </button>
-              {sortMenu && (
-                <AnchoredMenu label="정렬">
-                  <button type="button" role="menuitemradio" aria-checked={sortMode === 'default'}
-                          onClick={() => chooseSortMode('default')}
-                          className={sortItemClass}>
-                    <span aria-hidden className="w-4 text-center">{sortMode === 'default' ? '✓' : ''}</span> 기본
-                  </button>
-                  <button type="button" role="menuitemradio" aria-checked={sortMode === 'change_pct_asc'}
-                          onClick={() => chooseSortMode('change_pct_asc')}
-                          className={sortItemClass}>
-                    <span aria-hidden className="w-4 text-center">{sortMode === 'change_pct_asc' ? '✓' : ''}</span> 등락률 오름차순
-                  </button>
-                  <button type="button" role="menuitemradio" aria-checked={sortMode === 'change_pct_desc'}
-                          onClick={() => chooseSortMode('change_pct_desc')}
-                          className={sortItemClass}>
-                    <span aria-hidden className="w-4 text-center">{sortMode === 'change_pct_desc' ? '✓' : ''}</span> 등락률 내림차순
-                  </button>
-                </AnchoredMenu>
-              )}
-            </div>
+            <button
+              type="button"
+              data-testid="watchlist-sort-button"
+              aria-label={`관심종목 정렬: ${sortModeLabel[sortMode]}`}
+              title={`관심종목 정렬: ${sortModeLabel[sortMode]}`}
+              onClick={() => cycleSortMode()}
+              className="grid h-6 w-6 place-items-center text-xs text-accent hover:text-fg"
+            >
+              <SortIcon mode={sortMode} />
+            </button>
             <div className="relative" ref={editMenuRef}>
               <button type="button" aria-label="관심종목 편집 메뉴" aria-haspopup="menu" aria-expanded={editMenu}
                       onClick={() => setEditMenu((v) => !v)}

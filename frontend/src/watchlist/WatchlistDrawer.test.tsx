@@ -96,22 +96,23 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByText('-1,500원 (0.80%)')).toBeInTheDocument();
   });
 
-  it('opens a sort menu next to the edit menu with default, ascending, and descending choices', async () => {
+  it('cycles sort mode between default, ascending, and descending', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
 
-    await waitFor(() => expect(screen.getByLabelText('관심종목 정렬')).toBeInTheDocument());
-    expect(screen.getByLabelText('관심종목 정렬')).toHaveAttribute('aria-expanded', 'false');
+    const sortButton = await screen.findByTestId('watchlist-sort-button');
+    expect(sortButton).toHaveAttribute('aria-label', '관심종목 정렬: 기본');
     expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
-    expect(screen.getByLabelText('관심종목 정렬')).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(sortButton);
+    expect(screen.getByTestId('watchlist-sort-button')).toHaveAttribute('aria-label', '관심종목 정렬: 등락률 오름차순');
 
-    expect(await screen.findByRole('menu', { name: '정렬' })).toBeInTheDocument();
-    expect(screen.getByRole('menuitemradio', { name: '기본' })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('menuitemradio', { name: '등락률 오름차순' })).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('menuitemradio', { name: '등락률 내림차순' })).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(screen.getByTestId('watchlist-sort-button'));
+    expect(screen.getByTestId('watchlist-sort-button')).toHaveAttribute('aria-label', '관심종목 정렬: 등락률 내림차순');
+
+    fireEvent.click(screen.getByTestId('watchlist-sort-button'));
+    expect(screen.getByTestId('watchlist-sort-button')).toHaveAttribute('aria-label', '관심종목 정렬: 기본');
   });
 
   it('sorts visible watchlist rows by live change rate and resets to default order', async () => {
@@ -144,16 +145,13 @@ describe('WatchlistDrawer', () => {
 
     expect(rowCodes()).toEqual(['005930', '000660', '035420']);
 
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 오름차순' }));
+    fireEvent.click(screen.getByTestId('watchlist-sort-button'));
     expect(rowCodes()).toEqual(['000660', '005930', '035420']);
 
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' }));
+    fireEvent.click(screen.getByTestId('watchlist-sort-button'));
     expect(rowCodes()).toEqual(['035420', '005930', '000660']);
 
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: '기본' }));
+    fireEvent.click(screen.getByTestId('watchlist-sort-button'));
     expect(rowCodes()).toEqual(['005930', '000660', '035420']);
   });
 
@@ -186,8 +184,7 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
 
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' }));
+    fireEvent.click(screen.getByTestId('watchlist-sort-button'));
 
     const swing = screen.getByTestId('watchlist-group-f_0000000a');
     const long = screen.getByTestId('watchlist-group-f_0000000b');
@@ -231,8 +228,7 @@ describe('WatchlistDrawer', () => {
       el.getAttribute('data-testid')?.replace('watchlist-row-', ''));
 
     await waitFor(() => expect(rowCodes()).toEqual(['035420', '005930', '000660']));
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
-    expect(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('watchlist-sort-button')).toHaveAttribute('aria-label', '관심종목 정렬: 등락률 내림차순');
 
     unmount();
     const qc2 = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -269,8 +265,7 @@ describe('WatchlistDrawer', () => {
 
     // invalid persisted mode should not affect ordering (default)
     await waitFor(() => expect(rowCodes()).toEqual(['005930', '000660', '035420']));
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
-    expect(await screen.findByRole('menuitemradio', { name: '기본' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('watchlist-sort-button')).toHaveAttribute('aria-label', '관심종목 정렬: 기본');
   });
 
   it('right-click opens the context menu; 관심 해제 removes the entry and closes', async () => {
