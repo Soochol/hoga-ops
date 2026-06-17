@@ -162,7 +162,6 @@ describe('WatchlistDrawer drag wiring', () => {
 
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
-
     h.onDragEnd!({
       active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
       over: { id: 'f_0000000a:000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },

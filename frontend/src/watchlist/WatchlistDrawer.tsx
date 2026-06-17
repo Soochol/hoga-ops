@@ -121,12 +121,14 @@ function GroupHeader(props: {
   const itemClass =
     'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent';
   const cycleSortMode = () => {
-    if (!props.onSort) return;
-    const next: QuoteSortMode =
-      props.sortMode === 'default' ? 'change_pct_asc'
-      : props.sortMode === 'change_pct_asc' ? 'change_pct_desc'
-      : 'default';
-    props.onSort(next);
+    if (!props.onSort || !props.sortMode) return;
+    if (props.sortMode === 'default') {
+      props.onSort('change_pct_asc');
+    } else if (props.sortMode === 'change_pct_asc') {
+      props.onSort('change_pct_desc');
+    } else {
+      props.onSort('default');
+    }
   };
   return (
     // sticky + bg-bg-card: 패널 배경과 동일색이라 평시엔 투명처럼 보이고, 스크롤
@@ -159,10 +161,9 @@ function GroupHeader(props: {
         <span className="flex-none text-xs font-normal text-fg-dimmer">{props.count}</span>
       </button>
       {props.onSort && (
-        <button type="button" aria-label={`${props.label} 정렬`} onClick={cycleSortMode}
-          className={`${props.sortMode === 'default'
-            ? 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 px-1 leading-none hover:text-fg text-fg-dimmer'
-            : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 px-1 leading-none text-accent hover:text-fg'}`}>
+        <button type="button" aria-label={`${props.label} 정렬`}
+          onClick={cycleSortMode}
+          className={`opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 px-1 leading-none hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
           <SortIcon active={props.sortMode !== 'default'} />
         </button>
       )}

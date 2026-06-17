@@ -83,7 +83,7 @@ test.describe('Watchlist Panel group ⋯ menu', () => {
     await expect(group.getByRole('button', { name: /^단타(\s+\d+)?$/ })).toBeVisible(); // 헤더 갱신
   });
 
-  test('hover reveals group sort icon and clicking it toggles sort without opening a menu', async ({ page }) => {
+  test('hover reveals group sort icon and toggles sort directly', async ({ page }) => {
     const { sortButton, hoverHeader } = await setup(page);
 
     await expect(sortButton).toHaveCSS('opacity', '0');
