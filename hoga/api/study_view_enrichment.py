@@ -65,13 +65,20 @@ def enrich_snapshot_with_details(
                         )
                     )
                 continue
-            orderbook_by_t.update(
-                _load_orderbooks(
-                    engine, code_dir, snapshot.code, date, source, group, warnings
-                )
+            group_orderbooks, representative_native_by_t = _load_orderbooks(
+                engine, code_dir, snapshot.code, date, source, group, warnings
             )
+            orderbook_by_t.update(group_orderbooks)
             broker_by_t.update(
-                _load_brokers(engine, code_dir, snapshot.code, date, group, warnings)
+                _load_brokers(
+                    engine,
+                    code_dir,
+                    snapshot.code,
+                    date,
+                    group,
+                    representative_native_by_t,
+                    warnings,
+                )
             )
 
         orderbook_buckets = [
@@ -193,7 +200,7 @@ def _load_orderbooks(
     source: SourceName,
     buckets: list[_Bucket],
     warnings: list[StudyDetailWarning],
-) -> dict[int, StudyOrderbookBucket]:
+) -> tuple[dict[int, StudyOrderbookBucket], dict[int, int]]:
     path = code_dir / "snapshots.parquet"
     if not path.exists():
         for bucket in buckets:
@@ -206,7 +213,7 @@ def _load_orderbooks(
                     message="snapshots.parquet missing",
                 )
             )
-        return {}
+        return {}, {}
     try:
         meta = engine.get_meta(date, code, source)
         representatives = snapshots_tbl.query_bucket_representatives(
@@ -226,14 +233,16 @@ def _load_orderbooks(
                     message=f"orderbook enrichment failed: {exc}",
                 )
             )
-        return {}
+        return {}, {}
 
     out: dict[int, StudyOrderbookBucket] = {}
+    representative_native_by_t: dict[int, int] = {}
     by_lo = {bucket.lo_native: bucket for bucket in buckets}
     for lo_native, snap in representatives.items():
         bucket = by_lo.get(lo_native)
         if bucket is None:
             continue
+        representative_native_by_t[bucket.t] = snap.ts_ms
         out[bucket.t] = StudyOrderbookBucket(
             t=bucket.t,
             snapshot=snap.model_copy(
@@ -252,7 +261,7 @@ def _load_orderbooks(
                     message="no continuous representative for saved candle bucket",
                 )
             )
-    return out
+    return out, representative_native_by_t
 
 
 def _load_brokers(
@@ -261,6 +270,7 @@ def _load_brokers(
     code: str,
     date: str,
     buckets: list[_Bucket],
+    representative_native_by_t: dict[int, int],
     warnings: list[StudyDetailWarning],
 ) -> dict[int, StudyBrokerBucket]:
     path = code_dir / "brokers.parquet"
@@ -276,14 +286,34 @@ def _load_brokers(
                 )
             )
         return {}
+
+    representative_buckets = [
+        bucket for bucket in buckets if bucket.t in representative_native_by_t
+    ]
+    for bucket in buckets:
+        if bucket.t not in representative_native_by_t:
+            warnings.append(
+                StudyDetailWarning(
+                    kind="broker",
+                    t=bucket.t,
+                    code=code,
+                    date=date,
+                    message="broker detail unavailable without orderbook representative",
+                )
+            )
+    if not representative_buckets:
+        return {}
+
     try:
         details = brokers_tbl.query_cumulative_details_at(
             engine.conn,
             path=path,
-            t_values=[bucket.hi_native for bucket in buckets],
+            t_values=[
+                representative_native_by_t[bucket.t] for bucket in representative_buckets
+            ],
         )
     except Exception as exc:
-        for bucket in buckets:
+        for bucket in representative_buckets:
             warnings.append(
                 StudyDetailWarning(
                     kind="broker",
@@ -296,19 +326,32 @@ def _load_brokers(
         return {}
 
     out: dict[int, StudyBrokerBucket] = {}
-    by_hi = {bucket.hi_native: bucket for bucket in buckets}
-    for hi_native, rows in details.items():
-        bucket = by_hi.get(hi_native)
-        if bucket is None or not rows:
-            continue
-        out[bucket.t] = StudyBrokerBucket(
-            t=bucket.t,
-            available=True,
-            brokers=[
-                StudyBrokerDetail(
-                    broker=row.broker, net=row.net, dominant_side=row.dominant_side
+    by_rep_native: dict[int, list[_Bucket]] = {}
+    for bucket in representative_buckets:
+        by_rep_native.setdefault(representative_native_by_t[bucket.t], []).append(bucket)
+    for rep_native, rep_buckets in by_rep_native.items():
+        rows = details.get(rep_native) or []
+        if not rows:
+            for bucket in rep_buckets:
+                warnings.append(
+                    StudyDetailWarning(
+                        kind="broker",
+                        t=bucket.t,
+                        code=code,
+                        date=date,
+                        message="no broker detail at orderbook representative time",
+                    )
                 )
-                for row in rows
-            ],
-        )
+            continue
+        for bucket in rep_buckets:
+            out[bucket.t] = StudyBrokerBucket(
+                t=bucket.t,
+                available=True,
+                brokers=[
+                    StudyBrokerDetail(
+                        broker=row.broker, net=row.net, dominant_side=row.dominant_side
+                    )
+                    for row in rows
+                ],
+            )
     return out
