@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.7.0] - 2026-06-17
+
+### Changed
+- **/live 외인·기관 추정 집계시간 표시 개선**: 기존 `입력` 번호 대신 `집계시간` 열에서
+  실제 수신 시각을 `1차(09:20)` 형식으로 볼 수 있다.
+- 외인·기관 추정 표의 글자 크기를 거래원 지표 표와 맞춰 같은 밀도로 읽을 수 있게 했다.
+
+### Fixed
+- KIS가 전체 히스토리를 다시 내려줄 때 이미 집계된 과거 행의 수신 시각이 최신 조회 시각으로
+  덮이지 않도록 보존한다.
+
 ## [0.8.6.0] - 2026-06-16
 
 ### Added
