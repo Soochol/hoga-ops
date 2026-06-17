@@ -15,6 +15,7 @@ class Peak:
 @dataclass
 class TodayAskPeakState:
     traded_prices: set[int] = field(default_factory=set)
+    observed_price_peaks: dict[int, Peak] = field(default_factory=dict)
     traded_peak: Peak | None = None
     all_peak: Peak | None = None
     coverage: Literal["full", "partial"] = "partial"
@@ -22,6 +23,14 @@ class TodayAskPeakState:
     def ingest_trade(self, *, price: int, side: int) -> None:
         if side in (1, -1):
             self.traded_prices.add(price)
+            observed_peak = self.observed_price_peaks.get(price)
+            if observed_peak is not None:
+                self.traded_peak = _larger_peak(
+                    self.traded_peak,
+                    price=observed_peak.price,
+                    qty=observed_peak.qty,
+                    t_ms=observed_peak.t_ms,
+                )
 
     def ingest_orderbook(
         self,
@@ -35,6 +44,12 @@ class TodayAskPeakState:
             if price is None or qty is None:
                 continue
 
+            self.observed_price_peaks[price] = _larger_peak(
+                self.observed_price_peaks.get(price),
+                price=price,
+                qty=qty,
+                t_ms=t_ms,
+            )
             self.all_peak = _larger_peak(self.all_peak, price=price, qty=qty, t_ms=t_ms)
             if price in self.traded_prices:
                 self.traded_peak = _larger_peak(

@@ -54,7 +54,7 @@ def test_orderbook_updates_traded_price_peak_only_for_already_traded_prices():
     assert state.traded_peak == Peak(price=10_000, qty=500, t_ms=1_000)
 
 
-def test_later_trade_does_not_retroactively_promote_old_orderbook_wall():
+def test_later_trade_retroactively_promotes_old_orderbook_wall():
     state = TodayAskPeakState()
 
     state.ingest_orderbook(
@@ -63,14 +63,14 @@ def test_later_trade_does_not_retroactively_promote_old_orderbook_wall():
     )
     state.ingest_trade(price=10_500, side=1)
 
-    assert state.traded_peak is None
+    assert state.traded_peak == Peak(price=10_500, qty=5_000, t_ms=1_000)
 
     state.ingest_orderbook(
         t_ms=2_000,
         asks=[{"price": 10_500, "qty": 4_000}],
     )
 
-    assert state.traded_peak == Peak(price=10_500, qty=4_000, t_ms=2_000)
+    assert state.traded_peak == Peak(price=10_500, qty=5_000, t_ms=1_000)
 
 
 def test_strict_qty_ties_keep_the_earliest_peak():
