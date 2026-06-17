@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import * as client from '../api/client';
 import { liveQuotesQueryKey } from '../api/liveQuotes';
-import { useDocumentTitle } from './useDocumentTitle';
+import { useDocumentTitle, useStaticDocumentTitle } from './useDocumentTitle';
 import { SYMBOLS_QUERY_KEY } from '../capture/useSymbols';
 import type { SymbolHit, SymbolsAllResponse } from '../api/types';
 
@@ -179,6 +179,25 @@ describe('useDocumentTitle', () => {
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
     const { unmount } = renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
     expect(document.title).toBe('삼성전자');
+    unmount();
+    expect(document.title).toBe('hoga-ops');
+  });
+});
+
+describe('useStaticDocumentTitle', () => {
+  it('sets document.title to a static page label', () => {
+    renderHook(() => useStaticDocumentTitle('Heatmap'));
+    expect(document.title).toBe('Heatmap');
+  });
+
+  it('sets document.title to "hoga-ops" when title is null', () => {
+    renderHook(() => useStaticDocumentTitle(null));
+    expect(document.title).toBe('hoga-ops');
+  });
+
+  it('restores "hoga-ops" on unmount', () => {
+    const { unmount } = renderHook(() => useStaticDocumentTitle('Capture'));
+    expect(document.title).toBe('Capture');
     unmount();
     expect(document.title).toBe('hoga-ops');
   });
