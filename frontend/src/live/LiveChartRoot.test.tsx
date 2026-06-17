@@ -194,6 +194,9 @@ describe('LiveChartRoot', () => {
       getVisibleRange: vi.fn((): { from: number; to: number } | null => null),
       setVisibleRange: vi.fn(),
       timeToCoordinate: vi.fn(() => null),
+      coordinateToLogical: vi.fn(() => null),
+      width: vi.fn(() => 800),
+      timeToIndex: vi.fn(() => null),
     };
     const chart = {
       addSeries: vi.fn(() => ({
@@ -209,6 +212,7 @@ describe('LiveChartRoot', () => {
       remove: vi.fn(),
       resize: vi.fn(),
       applyOptions: vi.fn(),
+      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
     };
@@ -313,6 +317,52 @@ describe('LiveChartRoot', () => {
 
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 235, to: 255 });
     expect(ts.scrollToPosition).toHaveBeenCalledWith(0, false);
+  });
+
+  it('D timeframe: preserves an explicit user wheel zoom-out across container resize', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    const candles = makeCandles(250);
+    const last = candles[candles.length - 1];
+    ts.getVisibleLogicalRange.mockReturnValue({ from: 235, to: 255 });
+    ts.getVisibleRange.mockReturnValue({ from: TODAY_OPEN_MS / 1000, to: last.ts_ms / 1000 });
+    ts.coordinateToLogical.mockReturnValue(245);
+    ts.timeToIndex.mockReturnValue(249);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    const { container } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={{ ...TODAY_ONLY_BUNDLE, candles }}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    ts.setVisibleLogicalRange.mockClear();
+    act(() => {
+      container.querySelector('[data-testid="live-chart-root"]')!.dispatchEvent(
+        new WheelEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+          deltaY: 220,
+          clientX: 400,
+          clientY: 120,
+        }),
+      );
+    });
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalled();
+
+    ts.setVisibleLogicalRange.mockClear();
+    ts.getVisibleLogicalRange.mockReturnValue({ from: 150, to: 255 });
+    await act(async () => {
+      resizeObserverCallbacks.forEach((callback) => callback([], {} as ResizeObserver));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+
+    expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
   it('D timeframe: caps live-edge viewport captures so stale wide zoom is not persisted', () => {

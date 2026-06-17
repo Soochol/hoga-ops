@@ -29,6 +29,12 @@ export interface TabViewport {
    * → flip back" path returns one bar behind the live edge and reads as broken.
    */
   atLiveEdge: boolean;
+  /**
+   * Captured after an explicit wheel zoom/pan. Daily live-edge self-healing
+   * should preserve this view instead of treating the wider span as an
+   * accidental resize expansion.
+   */
+  userAdjusted?: boolean;
 }
 
 interface LogicalRange {

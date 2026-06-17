@@ -236,6 +236,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
   // Written during render (like axisRef) so it's current before any effect.
   const chartRef = useRef<IChartApi | null>(chart);
   chartRef.current = chart;
+  const userAdjustedDailyViewportRef = useRef(false);
 
   // Viewport capture (ADR-0069 A안): read the live chart's visible range + zoom
   // and pin them to a real-time anchor. The tabs store calls this on switch-away
@@ -256,11 +257,14 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         vp &&
         timeframeRef.current === 'D' &&
         vp.atLiveEdge &&
-        vp.barSpan > DAILY_VISIBLE_BARS
+        vp.barSpan > DAILY_VISIBLE_BARS &&
+        !userAdjustedDailyViewportRef.current
       ) {
         return { ...vp, barSpan: DAILY_VISIBLE_BARS };
       }
-      return vp;
+      return timeframeRef.current === 'D' && userAdjustedDailyViewportRef.current
+        ? { ...vp, userAdjusted: true }
+        : vp;
     } catch {
       return null;
     }
@@ -392,6 +396,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
   const chartReady = revealedKey === viewKey;
   useEffect(() => {
     lastAppliedCountRef.current = null;
+    userAdjustedDailyViewportRef.current = false;
     if (revealRafRef.current !== null) {
       cancelAnimationFrame(revealRafRef.current);
       revealRafRef.current = null;
@@ -413,7 +418,10 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
   useViewportBackfill({ chart, axis, bundle: cb, timeframe, isExtending, code: code ?? '' });
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
-  useWheelInteractions(chart, containerRef, cb, axis);
+  const handleWheelViewportChanged = useCallback(() => {
+    if (timeframeRef.current === 'D') userAdjustedDailyViewportRef.current = true;
+  }, []);
+  useWheelInteractions(chart, containerRef, cb, axis, handleWheelViewportChanged);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands
@@ -473,9 +481,12 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
             )
           : null;
         const viewportForRestore =
-          timeframe === 'D'
+          timeframe === 'D' && !restoreViewport.userAdjusted
             ? { ...restoreViewport, barSpan: Math.min(restoreViewport.barSpan, DAILY_VISIBLE_BARS) }
             : restoreViewport;
+        if (timeframe === 'D' && restoreViewport.userAdjusted) {
+          userAdjustedDailyViewportRef.current = true;
+        }
         const range = computeRestoreRange(viewportForRestore, totalBarsR, idx);
         if (range) {
           tsR.setVisibleLogicalRange({ from: range.from, to: range.to });
@@ -561,6 +572,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
 
   const clampDailyLiveEdgeViewport = useCallback(() => {
     if (!chart || !cb || timeframe !== 'D' || cb.candles.length === 0 || isPastCandlesLoading) return;
+    if (userAdjustedDailyViewportRef.current) return;
     const ts = chart.timeScale();
     try {
       const lastCandleMs = cb.candles[cb.candles.length - 1]?.ts_ms ?? null;

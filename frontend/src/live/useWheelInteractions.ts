@@ -32,6 +32,7 @@ export function useWheelInteractions(
   containerRef: RefObject<HTMLDivElement | null>,
   bundle: RangeBundle | null,
   axis: VirtualAxis,
+  onViewportChanged?: (range: { from: number; to: number }) => void,
 ): void {
   // maxTo ref — bundle 교체(SSE 푸시 포함)마다 값만 갱신, 리스너는 재부착하지
   // 않는다. 오른쪽 벽 = 마지막 캔들 + rightOffset: shift 팬으로 라이브 엣지에
@@ -121,7 +122,10 @@ export function useWheelInteractions(
           lastBarIndex,
           maxSpan,
         });
-        if (outcome) ts.setVisibleLogicalRange(outcome);
+        if (outcome) {
+          ts.setVisibleLogicalRange(outcome);
+          onViewportChanged?.(outcome);
+        }
       } catch {
         // chart torn down between effect runs — 무시 (다음 차트에서 재부착)
       }
@@ -143,5 +147,5 @@ export function useWheelInteractions(
     const wheelTarget = container.parentElement ?? container;
     wheelTarget.addEventListener('wheel', onWheel, { passive: false });
     return () => wheelTarget.removeEventListener('wheel', onWheel);
-  }, [chart, containerRef]);
+  }, [chart, containerRef, onViewportChanged]);
 }
