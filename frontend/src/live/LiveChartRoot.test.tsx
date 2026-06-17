@@ -205,7 +205,7 @@ describe('LiveChartRoot', () => {
     return { chart, ts };
   }
 
-  it('D timeframe: re-applies fitContent when candle count changes (placeholder shrink or extension growth)', () => {
+  it('D timeframe: applies a recent-bar window when candle count changes so candles stay legible', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
     vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
@@ -220,7 +220,8 @@ describe('LiveChartRoot', () => {
       />,
       { wrapper },
     );
-    expect(ts.fitContent).toHaveBeenCalledTimes(1);
+    expect(ts.fitContent).not.toHaveBeenCalled();
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 19 });
 
     rerender(
       <LiveChartRoot
@@ -231,9 +232,10 @@ describe('LiveChartRoot', () => {
         isPastCandlesLoading={false}
       />,
     );
-    // The whole point of the fix: count grew → re-fit so the extended
-    // window's latest bar lands at the right edge.
-    expect(ts.fitContent).toHaveBeenCalledTimes(2);
+    // Count growth from placeholder/extension must keep a readable recent
+    // window instead of fitting all ~250 daily bars into the viewport.
+    expect(ts.fitContent).not.toHaveBeenCalled();
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 150, to: 255 });
 
     rerender(
       <LiveChartRoot
@@ -244,10 +246,9 @@ describe('LiveChartRoot', () => {
         isPastCandlesLoading={false}
       />,
     );
-    // Calendar placeholder data can shrink when the real D window replaces a
-    // wider previous D/W/M daily response. Refit on shrink too; otherwise the
-    // chart keeps the overly compressed bar spacing.
-    expect(ts.fitContent).toHaveBeenCalledTimes(3);
+    // Shrink still re-applies the daily window.
+    expect(ts.fitContent).not.toHaveBeenCalled();
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 85 });
   });
 
   it('1m timeframe: setVisibleLogicalRange applied once even as bars grow (SSE pushes preserved)', () => {
@@ -1932,9 +1933,9 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
     expect(a.ts.setVisibleLogicalRange).toHaveBeenCalled();
 
     rerender(<LiveChartRoot {...chartProps('005930', 'D', withCandles)} />);
-    // The D/W/M fit must land on chart B — with the unkeyed chart state it
-    // fired on the removed chart A and B received ZERO viewport calls.
-    expect(b.ts.fitContent).toHaveBeenCalled();
+    // The D initial viewport must land on chart B — with the unkeyed chart
+    // state it fired on the removed chart A and B received ZERO viewport calls.
+    expect(b.ts.setVisibleLogicalRange).toHaveBeenCalled();
   });
 });
 

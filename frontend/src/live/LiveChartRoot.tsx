@@ -69,6 +69,7 @@ function pad(n: number): string {
 const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
+const DAILY_VISIBLE_BARS = 100;
 
 interface Props {
   code: string | null;
@@ -518,11 +519,21 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         ts.scrollToPosition(0, false);
         lastAppliedCountRef.current = totalBars;
         reveal();
+      } else if (timeframe === 'D') {
+        // Daily carries ~250 bars, and fitContent compresses them to ~2-3px
+        // spacing on normal desktop widths. Use the same "recent window"
+        // policy as minute charts so candle bodies stay legible.
+        if (applied === totalBars) { reveal(); return; }
+        const from = Math.max(0, totalBars - DAILY_VISIBLE_BARS);
+        const to = totalBars + 5; // 5-bar right padding
+        ts.setVisibleLogicalRange({ from, to });
+        lastAppliedCountRef.current = totalBars;
+        reveal();
       } else {
-        // D/W/M re-fit whenever the candle count changes. Growth covers the
-        // 14 → ~250 daily-fetch extension; shrink covers placeholder data from
-        // a wider previous calendar request (for example M/W → D), which would
-        // otherwise leave the D chart stuck at an over-compressed bar spacing.
+        // W/M re-fit whenever the candle count changes. Growth covers the
+        // initial daily-fetch extension; shrink covers placeholder data from
+        // a wider previous calendar request, which would otherwise leave the
+        // chart stuck at an over-compressed bar spacing.
         // historicalFromDate !== null (user-driven extension) short-circuits
         // above, so user scroll is preserved.
         if (applied === totalBars) { reveal(); return; }
