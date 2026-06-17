@@ -89,10 +89,10 @@ function QtyCell({ value }: { value: number | null }) {
 
 export function formatQtyWithCommas(value: number | null): string {
   if (value === null) return '-';
-  if (value === 0) return '0주';
+  if (value === 0) return '0';
 
   const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toLocaleString('en-US')}주`;
+  return `${sign}${value.toLocaleString('en-US')}`;
 }
 
 export function formatAggregationTime(

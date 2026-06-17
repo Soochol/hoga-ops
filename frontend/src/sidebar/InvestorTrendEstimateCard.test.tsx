@@ -43,10 +43,10 @@ function response(
 
 describe('formatQtyWithCommas', () => {
   it('formats signed Korean share quantities with comma grouping', () => {
-    expect(formatQtyWithCommas(265_000)).toBe('+265,000주');
-    expect(formatQtyWithCommas(1500)).toBe('+1,500주');
-    expect(formatQtyWithCommas(-200)).toBe('-200주');
-    expect(formatQtyWithCommas(0)).toBe('0주');
+    expect(formatQtyWithCommas(265_000)).toBe('+265,000');
+    expect(formatQtyWithCommas(1500)).toBe('+1,500');
+    expect(formatQtyWithCommas(-200)).toBe('-200');
+    expect(formatQtyWithCommas(0)).toBe('0');
     expect(formatQtyWithCommas(null)).toBe('-');
   });
 });
@@ -74,8 +74,8 @@ describe('InvestorTrendEstimateCard', () => {
     expect(screen.getByText('합산')).toBeInTheDocument();
     expect(screen.getByText('1차(09:20)')).toBeInTheDocument();
     expect(screen.getByText('2차(09:30)')).toBeInTheDocument();
-    expect(screen.getByText('+1,500주')).toBeInTheDocument();
-    expect(screen.getByText('-200주')).toBeInTheDocument();
+    expect(screen.getByText('+1,500')).toBeInTheDocument();
+    expect(screen.getByText('-200')).toBeInTheDocument();
     expect(screen.getByText('KIS 장중 가집계 · 수량 기준')).toBeInTheDocument();
     expect(screen.getByText('최근 조회 09:15')).toBeInTheDocument();
 
