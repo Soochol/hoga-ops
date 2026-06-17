@@ -115,6 +115,7 @@ vs spot 조회)를 다루기 때문.
 
 **별개 수정(같은 PR):** rightOffset whitespace(마지막 캔들 오른쪽 빈 띠) hover 시 lwc 는
 `CrosshairMode.Normal` 에서 빈 time 이 아니라 가상축을 외삽한 **미래 시각(세션 꼬리
-15:20–15:30)** 을 준다. 그대로 두면 커서가 미래 무데이터 슬롯에 고정돼 빈칸. `LiveChartRoot`
-crosshair 핸들러가 `realMs > 마지막 캔들 ts_ms` 면 "캔들 위 아님"으로 보고 커서를 비워
-LIVE 로 복귀시킨다(이건 spot 데이터 소스와 무관 — 빈 띠는 과거 시점이 아니다).
+15:20–15:30)** 을 준다. 그대로 두면 커서가 미래 무데이터 슬롯에 고정돼 빈칸이 된다.
+`LiveChartRoot` crosshair 핸들러는 `realMs > 마지막 캔들 ts_ms` 를 감지하면
+현재 커서를 최신값으로 되돌리는 대신 **마지막 유효 hover 포인트를 보존**해 사이드바 표시를
+유지한다. (이건 spot 데이터 소스와 무관 — 빈 띠는 과거 시점이 아니다).
