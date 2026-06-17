@@ -1,5 +1,10 @@
 import type { RangeBundle, VolumeProfile } from '../api/types';
-import type { StudySnapshotBundle } from '../api/studyViews';
+import type {
+  StudyBrokerBucket,
+  StudyDetailWarning,
+  StudyOrderbookBucket,
+  StudySnapshotBundle,
+} from '../api/studyViews';
 import { bucketSeconds } from '../state/livePage';
 
 export type StudySnapshotRatioPoint = { t: number; value: number };
@@ -19,6 +24,12 @@ export type StudySnapshotChartInput = {
   ratioBundle: RangeBundle;
 };
 
+export type StudySnapshotDetailInput = {
+  orderbookByBucketStart: Map<number, StudyOrderbookBucket>;
+  brokersByBucketStart: Map<number, StudyBrokerBucket>;
+  detailWarnings: StudyDetailWarning[];
+};
+
 const EMPTY_VOLUME_PROFILE: VolumeProfile = {
   bin_count: 0,
   price_min: 0,
@@ -29,6 +40,25 @@ const EMPTY_VOLUME_PROFILE: VolumeProfile = {
 
 function bucketMsFor(snapshot: StudySnapshotBundle): number {
   return (bucketSeconds(snapshot.timeframe) ?? 60) * 1000;
+}
+
+export function studySnapshotDetails(snapshot: StudySnapshotBundle): StudySnapshotDetailInput {
+  return {
+    orderbookByBucketStart: new Map((snapshot.orderbook_buckets ?? []).map((bucket) => [bucket.t, bucket])),
+    brokersByBucketStart: new Map((snapshot.broker_buckets ?? []).map((bucket) => [bucket.t, bucket])),
+    detailWarnings: snapshot.detail_warnings ?? [],
+  };
+}
+
+export function bucketStartForCursor(
+  candles: Array<{ ts_ms: number }>,
+  bucketMs: number,
+  cursorMs: number,
+): number | null {
+  for (const candle of candles) {
+    if (candle.ts_ms <= cursorMs && cursorMs < candle.ts_ms + bucketMs) return candle.ts_ms;
+  }
+  return null;
 }
 
 export function studySnapshotBundleToRangeBundle(snapshot: StudySnapshotBundle): StudySnapshotRangeBundle {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { studySnapshotBundleToChartInput, studySnapshotBundleToRangeBundle } from './studySnapshotAdapter';
+import {
+  bucketStartForCursor,
+  studySnapshotBundleToChartInput,
+  studySnapshotBundleToRangeBundle,
+  studySnapshotDetails,
+} from './studySnapshotAdapter';
 import type { StudySnapshotBundle } from '../api/studyViews';
 
 function snapshot(overrides: Partial<StudySnapshotBundle> = {}): StudySnapshotBundle {
@@ -161,5 +166,48 @@ describe('studySnapshotBundleToRangeBundle', () => {
 
     expect(bundle.from_date).toBe('');
     expect(bundle.to_date).toBe('');
+  });
+
+  it('builds orderbook and broker lookup maps from saved detail buckets', () => {
+    const s = snapshot({
+      orderbook_buckets: [{
+        t: 1000,
+        available: true,
+        snapshot: {
+          ts_ms: 1999,
+          seq: 1,
+          ask: Array.from({ length: 10 }, (_, i) => ({ price: 101 + i, qty: 10 + i })),
+          bid: Array.from({ length: 10 }, (_, i) => ({ price: 100 - i, qty: 20 + i })),
+          tot_ask: 145,
+          tot_bid: 245,
+        },
+      }],
+      broker_buckets: [{
+        t: 1000,
+        available: true,
+        brokers: [{ broker: '키움증권', net: 100, dominant_side: 'buy' }],
+      }],
+      detail_warnings: [{
+        kind: 'broker',
+        t: 1000,
+        code: '005930',
+        date: '20260616',
+        message: 'partial broker detail',
+      }],
+    } as Partial<StudySnapshotBundle>);
+
+    const details = studySnapshotDetails(s);
+
+    expect(details.orderbookByBucketStart.get(1000)?.snapshot?.seq).toBe(1);
+    expect(details.brokersByBucketStart.get(1000)?.brokers[0].net).toBe(100);
+    expect(details.detailWarnings[0].message).toBe('partial broker detail');
+  });
+
+  it('resolves cursor time by containing bucket, not nearest bucket', () => {
+    const candles = [{ ts_ms: 1000 }, { ts_ms: 2000 }, { ts_ms: 3000 }];
+
+    expect(bucketStartForCursor(candles, 1000, 1999)).toBe(1000);
+    expect(bucketStartForCursor(candles, 1000, 2000)).toBe(2000);
+    expect(bucketStartForCursor(candles, 1000, 999)).toBeNull();
   });
 });

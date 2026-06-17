@@ -1,6 +1,6 @@
 import { apiAction, apiCall } from './client';
 import type { LiveTimeframe } from '../state/livePage';
-import type { AskPeak } from './types';
+import type { AskPeak, OrderbookSnapshot } from './types';
 
 export type StudyAggregationBasis = 'close' | 'intra_period_max';
 export type StudyDataProvenance = 'live_mixed' | 'study_snapshot' | 'unknown';
@@ -28,18 +28,47 @@ export type StudyProvenance = {
   data_provenance: StudyDataProvenance;
 };
 
+export type StudyOrderbookBucket = {
+  t: number;
+  snapshot: OrderbookSnapshot | null;
+  available: boolean;
+};
+
+export type StudyBrokerDetail = {
+  broker: string;
+  net: number;
+  dominant_side: 'buy' | 'sell';
+};
+
+export type StudyBrokerBucket = {
+  t: number;
+  brokers: StudyBrokerDetail[];
+  available: boolean;
+};
+
+export type StudyDetailWarning = {
+  kind: 'orderbook' | 'broker';
+  t: number | null;
+  code: string;
+  date: string | null;
+  message: string;
+};
+
 export type StudySnapshotBundle = {
   code: string;
   timeframe: LiveTimeframe;
   snapshot_from_ms: number;
   snapshot_to_ms: number;
-  segments: { date: string; session_open_ms: number; session_close_ms: number }[];
+  segments: { date: string; session_open_ms: number; session_close_ms: number; source?: string }[];
   candles: { t: number; open: number; high: number; low: number; close: number; volume: number }[];
   quote_totals: { t: number; bid_total?: number | null; ask_total?: number | null; visible: boolean }[];
   ratio: { t: number; value?: number | null; visible: boolean }[];
   fill_strength: { t: number; buy_qty?: number | null; sell_qty?: number | null; visible: boolean }[];
   ask_peaks: AskPeak[];
   data_warnings: string[];
+  orderbook_buckets?: StudyOrderbookBucket[];
+  broker_buckets?: StudyBrokerBucket[];
+  detail_warnings?: StudyDetailWarning[];
 };
 
 export type ParquetStudySnapshot = {
