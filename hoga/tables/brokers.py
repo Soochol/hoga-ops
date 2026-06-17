@@ -144,7 +144,32 @@ def query_day_series(
     for gaps when the broker fell out of both top-5 lists (the frontend
     renders such gaps with a dashed line; see ADR-0023).
     """
-    from hoga.api.models import BrokerSeriesEntry, BrokerSeriesPoint  # local: avoid cycle
+    from hoga.api.models import BrokerSeriesEntry  # local: avoid cycle
+
+    by_broker = _query_canonical_series_points(con, path=path)
+    if not by_broker:
+        return []
+
+    entries = [
+        BrokerSeriesEntry(
+            broker=broker,
+            final_net=points[-1].net,
+            dominant_side="buy" if points[-1].net >= 0 else "sell",
+            points=points,
+        )
+        for broker, points in by_broker.items()
+    ]
+    entries.sort(key=lambda e: (-abs(e.final_net), -e.final_net))
+    return entries[:10]
+
+
+def _query_canonical_series_points(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+) -> dict[str, list["BrokerSeriesPoint"]]:
+    """Return live broker-series points after canonical alias collapse."""
+    from hoga.api.models import BrokerSeriesPoint  # local: avoid cycle
     from hoga.broker_names import canonical
 
     rows = con.execute(
@@ -160,9 +185,6 @@ def query_day_series(
         [str(path)],
     ).fetchall()
 
-    if not rows:
-        return []
-
     # Canonicalize broker names then re-collapse: two raw aliases for the
     # same firm at the same ts_ms must sum into one signed point.
     collapsed: dict[tuple[str, int], int] = {}
@@ -175,18 +197,7 @@ def query_day_series(
         by_broker.setdefault(broker, []).append(
             BrokerSeriesPoint(ts_ms=ts_ms, net=net)
         )
-
-    entries = [
-        BrokerSeriesEntry(
-            broker=broker,
-            final_net=points[-1].net,
-            dominant_side="buy" if points[-1].net >= 0 else "sell",
-            points=points,
-        )
-        for broker, points in by_broker.items()
-    ]
-    entries.sort(key=lambda e: (-abs(e.final_net), -e.final_net))
-    return entries[:10]
+    return by_broker
 
 
 def _final_broker_order(
@@ -195,39 +206,14 @@ def _final_broker_order(
     path: Path,
     limit: int,
 ) -> list[str]:
-    """Return top broker names ordered by final full-file net."""
-    from hoga.broker_names import canonical
-
-    rows = con.execute(
-        """
-        SELECT
-            broker,
-            ts_ms,
-            seq,
-            SUM(CASE WHEN side = 'buy' THEN qty_today ELSE -qty_today END) AS net
-        FROM read_parquet(?)
-        GROUP BY broker, ts_ms, seq
-        ORDER BY broker, ts_ms, seq
-        """,
-        [str(path)],
-    ).fetchall()
-
-    collapsed: dict[tuple[str, int, int], int] = {}
-    for raw_broker, ts_ms, seq, net in rows:
-        key = (canonical(raw_broker), int(ts_ms), int(seq))
-        collapsed[key] = collapsed.get(key, 0) + int(net)
-
-    latest: dict[str, tuple[int, int, int]] = {}
-    for (broker, ts_ms, seq), net in collapsed.items():
-        prev = latest.get(broker)
-        if prev is None or (ts_ms, seq) >= prev[:2]:
-            latest[broker] = (ts_ms, seq, net)
+    """Return top broker names ordered by the same final net as live series."""
+    by_broker = _query_canonical_series_points(con, path=path)
 
     ordered = sorted(
-        latest.items(),
-        key=lambda item: (-abs(item[1][2]), -item[1][2]),
+        by_broker.items(),
+        key=lambda item: (-abs(item[1][-1].net), -item[1][-1].net),
     )
-    return [broker for broker, _state in ordered[:limit]]
+    return [broker for broker, _points in ordered[:limit]]
 
 
 def query_cumulative_details_at(

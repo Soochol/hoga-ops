@@ -505,3 +505,57 @@ def test_query_cumulative_details_at_uses_latest_seq_within_same_ts_ms(
         ("신한투자증권", 60, "buy"),
         ("키움증권", 40, "buy"),
     ]
+
+
+def test_query_cumulative_details_order_matches_day_series_with_same_ts_multi_seq(
+    tmp_path: Path,
+) -> None:
+    from hoga.tables.brokers import (
+        BrokerRow,
+        query_cumulative_details_at,
+        query_day_series,
+        write_parquet,
+    )
+
+    path = tmp_path / "brokers.parquet"
+    rows = [
+        BrokerRow(
+            ts_ms=90_060_000,
+            seq=1,
+            side="buy",
+            rank=1,
+            broker="A증권",
+            qty_today=100,
+            qty_delta=0,
+        ),
+        BrokerRow(
+            ts_ms=90_060_000,
+            seq=2,
+            side="buy",
+            rank=1,
+            broker="A증권",
+            qty_today=1,
+            qty_delta=0,
+        ),
+        BrokerRow(
+            ts_ms=90_060_000,
+            seq=2,
+            side="buy",
+            rank=2,
+            broker="B증권",
+            qty_today=60,
+            qty_delta=0,
+        ),
+    ]
+    write_parquet(rows, path)
+
+    with duckdb.connect(":memory:") as con:
+        live_order = [entry.broker for entry in query_day_series(con, path=path)]
+        details = query_cumulative_details_at(con, path=path, t_values=[90_060_000])
+
+    detail_rows = details[90_060_000]
+    assert [row.broker for row in detail_rows] == live_order
+    assert [(row.broker, row.net) for row in detail_rows] == [
+        ("A증권", 1),
+        ("B증권", 60),
+    ]
