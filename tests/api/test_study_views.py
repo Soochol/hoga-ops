@@ -82,6 +82,32 @@ def _req(**overrides):
     return base
 
 
+def _orderbook_bucket(t=1_000, *, available=True):
+    return {
+        "t": t,
+        "available": available,
+        "snapshot": {
+            "ts_ms": t + 59_000,
+            "seq": 1,
+            "ask": [{"price": 70_100 + i, "qty": 10 + i} for i in range(10)],
+            "bid": [{"price": 70_000 - i, "qty": 20 + i} for i in range(10)],
+            "tot_ask": 145,
+            "tot_bid": 245,
+        } if available else None,
+    }
+
+
+def _broker_bucket(t=1_000, *, available=True):
+    return {
+        "t": t,
+        "available": available,
+        "brokers": [
+            {"broker": "키움증권", "net": 100, "dominant_side": "buy"},
+            {"broker": "JP모간", "net": -80, "dominant_side": "sell"},
+        ] if available else [],
+    }
+
+
 @pytest.fixture
 def study_client(tmp_path):
     app = FastAPI()
@@ -194,6 +220,68 @@ def test_study_snapshot_rejects_non_finite_indicator_threshold():
     snap["indicator_state"] = {**snap["indicator_state"], "ratio_outlier_threshold": float("inf")}
     with pytest.raises(ValidationError):
         ParquetStudySnapshot.model_validate(snap)
+
+
+def test_study_snapshot_defaults_detail_arrays_for_legacy_snapshots():
+    snap = ParquetStudySnapshot.model_validate(_snapshot())
+
+    assert snap.bundle.orderbook_buckets == []
+    assert snap.bundle.broker_buckets == []
+    assert snap.bundle.detail_warnings == []
+
+
+def test_study_snapshot_accepts_aligned_detail_arrays():
+    raw = _snapshot()
+    raw["bundle"]["orderbook_buckets"] = [_orderbook_bucket(1_000)]
+    raw["bundle"]["broker_buckets"] = [_broker_bucket(1_000)]
+    raw["bundle"]["detail_warnings"] = [
+        {
+            "kind": "orderbook",
+            "t": 1_000,
+            "code": "005930",
+            "date": "20260616",
+            "message": "missing representative",
+        }
+    ]
+
+    snap = ParquetStudySnapshot.model_validate(raw)
+
+    assert snap.bundle.orderbook_buckets[0].t == 1_000
+    assert snap.bundle.orderbook_buckets[0].available is True
+    assert snap.bundle.broker_buckets[0].brokers[0].net == 100
+    assert snap.bundle.detail_warnings[0].kind == "orderbook"
+
+
+def test_study_snapshot_rejects_detail_length_mismatch():
+    raw = _snapshot()
+    raw["bundle"]["orderbook_buckets"] = [_orderbook_bucket(1_000), _orderbook_bucket(2_000)]
+
+    with pytest.raises(ValidationError, match="orderbook_buckets must align"):
+        ParquetStudySnapshot.model_validate(raw)
+
+
+def test_study_snapshot_rejects_detail_t_mismatch():
+    raw = _snapshot()
+    raw["bundle"]["broker_buckets"] = [_broker_bucket(1_001)]
+
+    with pytest.raises(ValidationError, match="broker_buckets must align"):
+        ParquetStudySnapshot.model_validate(raw)
+
+
+def test_study_snapshot_rejects_available_orderbook_without_snapshot():
+    raw = _snapshot()
+    raw["bundle"]["orderbook_buckets"] = [{"t": 1_000, "available": True, "snapshot": None}]
+
+    with pytest.raises(ValidationError, match="available orderbook buckets require snapshot"):
+        ParquetStudySnapshot.model_validate(raw)
+
+
+def test_study_snapshot_rejects_available_broker_bucket_without_brokers():
+    raw = _snapshot()
+    raw["bundle"]["broker_buckets"] = [{"t": 1_000, "available": True, "brokers": []}]
+
+    with pytest.raises(ValidationError, match="available broker buckets require brokers"):
+        ParquetStudySnapshot.model_validate(raw)
 
 
 def test_parquet_study_view_trims_name():
