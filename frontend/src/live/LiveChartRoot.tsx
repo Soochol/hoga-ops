@@ -519,12 +519,13 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         lastAppliedCountRef.current = totalBars;
         reveal();
       } else {
-        // D/W/M re-fit only when totalBars grows beyond the count at which
-        // we last fitted. The 14 → ~250 bar growth from the daily-fetch
-        // extension would otherwise be invisible. historicalFromDate !== null
-        // (user-driven extension) short-circuits above, so user scroll is
-        // preserved.
-        if (applied !== null && totalBars <= applied) { reveal(); return; }
+        // D/W/M re-fit whenever the candle count changes. Growth covers the
+        // 14 → ~250 daily-fetch extension; shrink covers placeholder data from
+        // a wider previous calendar request (for example M/W → D), which would
+        // otherwise leave the D chart stuck at an over-compressed bar spacing.
+        // historicalFromDate !== null (user-driven extension) short-circuits
+        // above, so user scroll is preserved.
+        if (applied === totalBars) { reveal(); return; }
         ts.fitContent();
         lastAppliedCountRef.current = totalBars;
         reveal();

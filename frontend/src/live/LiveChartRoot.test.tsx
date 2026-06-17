@@ -205,7 +205,7 @@ describe('LiveChartRoot', () => {
     return { chart, ts };
   }
 
-  it('D timeframe: re-applies fitContent when candle count grows (14 → 250)', () => {
+  it('D timeframe: re-applies fitContent when candle count changes (placeholder shrink or extension growth)', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
     vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
@@ -234,6 +234,20 @@ describe('LiveChartRoot', () => {
     // The whole point of the fix: count grew → re-fit so the extended
     // window's latest bar lands at the right edge.
     expect(ts.fitContent).toHaveBeenCalledTimes(2);
+
+    rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={makeBundleWithCandles(80)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+    // Calendar placeholder data can shrink when the real D window replaces a
+    // wider previous D/W/M daily response. Refit on shrink too; otherwise the
+    // chart keeps the overly compressed bar spacing.
+    expect(ts.fitContent).toHaveBeenCalledTimes(3);
   });
 
   it('1m timeframe: setVisibleLogicalRange applied once even as bars grow (SSE pushes preserved)', () => {
