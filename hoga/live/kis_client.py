@@ -726,6 +726,7 @@ class KisClient:
         *,
         adjust: bool = True,
         foreground: bool = False,
+        retry: bool = True,
     ) -> DailyCandleFetchResult:
         """Fetch daily OHLCV for *code* across [from, to] (KST).
 
@@ -760,7 +761,13 @@ class KisClient:
                 # 0=수정주가(/live 기본·ADR-0048), 1=원주가(스크리너)
                 "FID_ORG_ADJ_PRC": "0" if adjust else "1",
             }
-            body = await self._get(path=path, tr_id=tr_id, params=params, foreground=foreground)
+            body = await self._get(
+                path=path,
+                tr_id=tr_id,
+                params=params,
+                foreground=foreground,
+                retry=retry,
+            )
             rows = body.get("output2") or []
             page_candles: list[KisCandle] = []
             page_earliest: str | None = None

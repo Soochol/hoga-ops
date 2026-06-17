@@ -1623,3 +1623,42 @@ def test_investor_trend_estimate_route_missing_kis_returns_degraded_error(tmp_pa
     assert body["rows"] == []
     assert body["latest"] is None
     assert body["data_warning"]["reason"] == "kis_credentials_missing"
+
+
+def test_past_daily_candles_uses_foreground_queue(monkeypatch, tmp_path):
+    from hoga.live.api import build_router
+    from hoga.live.kis_client import DailyCandleFetchResult, KisCandle
+
+    calls = []
+
+    class FakeQueue:
+        async def fetch_past_daily_candles(
+            self, data_dir, *, lane, code, from_yyyymmdd, to_yyyymmdd, adjust=True
+        ):
+            calls.append((data_dir, lane, code, from_yyyymmdd, to_yyyymmdd, adjust))
+            return DailyCandleFetchResult(candles=[
+                KisCandle(t_ms=1704168000000, open=1, high=2, low=1, close=2, volume=3)
+            ])
+
+    monkeypatch.setattr("hoga.live.api.get_daily_fetch_queue", lambda: FakeQueue())
+    monkeypatch.setattr(
+        "hoga.live.api.kis_access.acquire_account_for_role",
+        lambda role, data_dir: object(),
+    )
+
+    app = FastAPI()
+    app.include_router(
+        build_router(
+            get_status=lambda: {"running": False, "watchlist_count": 0, "kis_calls_today": 0},
+            data_dir=tmp_path,
+        )
+    )
+
+    res = TestClient(app).get(
+        "/api/live/past-daily-candles?code=005930&from=20240101&to=20240102"
+    )
+
+    assert res.status_code == 200
+    assert calls
+    assert calls[0][1] == "foreground"
+    assert calls[0][2] == "005930"

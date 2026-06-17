@@ -74,3 +74,27 @@ def test_status_days_behind_deterministic(tmp_path, monkeypatch):
     r = TestClient(_app(tmp_path)).get("/api/screener/status")
     assert r.status_code == 200
     assert r.json()["days_behind"] == 3
+
+
+def test_screener_status_includes_daily_queue(monkeypatch, tmp_path):
+    import hoga.api.screener as screener_mod
+
+    class FakeQueue:
+        def snapshot(self):
+            return {
+                "queued_foreground": 0,
+                "queued_background": 2,
+                "active_foreground": 0,
+                "active_background": 1,
+                "cooldown_remaining_ms": 500,
+                "daily_rate_limit_count": 3,
+            }
+
+    monkeypatch.setattr(screener_mod, "get_daily_fetch_queue", lambda: FakeQueue())
+
+    r = TestClient(_app(tmp_path)).get("/api/screener/status")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["daily_queue"]["queued_background"] == 2
+    assert body["daily_queue"]["cooldown_remaining_ms"] == 500

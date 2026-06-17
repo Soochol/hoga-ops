@@ -21,6 +21,7 @@ from hoga.live.kis_client import (
     KisRateLimitError,
     KisTransportError,
 )
+from hoga.live.daily_fetch_queue import get_daily_fetch_queue
 from hoga.live.kis_models import InvestorTrendEstimateRow
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
@@ -1027,19 +1028,22 @@ def build_router(
         to: str = Query(...),
     ) -> dict:
         frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
-        # foreground(사용자 일봉 백필): account 0 전용. C1b 2026-06-10: kis_access 단일 seam.
         if data_dir is None:
             raise HTTPException(503, "KIS client not wired")
-        kis = kis_access.kis_for_role("foreground", data_dir)
-        if kis is None:
+        if kis_access.acquire_account_for_role("foreground", data_dir) is None:
             raise HTTPException(503, "KIS client not initialized")
         if daily_cache_instance is None:
             raise HTTPException(503, "past-daily-candles cache not wired (data_dir missing)")
 
         async def fetch_batch(code_: str, from_s: str, to_s: str):
-            # foreground=True: 사용자 일봉 차트 백필 (우선순위 레인). 스크리너 EOD
-            # 배치(screener*.py)는 default background로 사용자 fetch에 양보.
-            result = await kis.fetch_past_daily_candles(code_, from_s, to_s, foreground=True)
+            result = await get_daily_fetch_queue().fetch_past_daily_candles(
+                data_dir,
+                lane="foreground",
+                code=code_,
+                from_yyyymmdd=from_s,
+                to_yyyymmdd=to_s,
+                adjust=True,
+            )
             return [_candle_to_dict(c) for c in result.candles], result.violations
 
         return await batched_daily_walkback(

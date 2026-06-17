@@ -244,9 +244,9 @@ from collections.abc import Awaitable, Callable  # noqa: E402
 
 FetchOne = Callable[[str, str, str], Awaitable[list[DailyBar]]]
 
-# KIS _get 가 15/s leaky-bucket 으로 HTTP rate 를 캡하므로, 동시성은 버킷을 채울
-# 정도면 충분(직렬 RTT 병목 제거, 버킷 초과 아님).
-_FETCH_CONCURRENCY = 8
+# DailyKisFetchQueue가 daily TR의 계정/쿨다운/foreground 보호를 소유하므로,
+# screener 쪽은 universe-sized gather 대신 작은 worker pool로 공급량만 제한한다.
+_FETCH_CONCURRENCY = 2
 
 
 async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
@@ -261,7 +261,30 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
         async with sem:
             return await fetch_one(code, trading_days[0], trading_days[-1])
 
-    fetched = await asyncio.gather(*(_one(c) for c in codes))
+    q: asyncio.Queue[str | None] = asyncio.Queue()
+    for c in codes:
+        q.put_nowait(c)
+    for _ in range(_FETCH_CONCURRENCY):
+        q.put_nowait(None)
+
+    fetched: list[list[DailyBar]] = []
+    failures: list[tuple[str, str]] = []
+
+    async def _worker() -> None:
+        while True:
+            code = await q.get()
+            if code is None:
+                return
+            try:
+                fetched.append(await _one(code))
+            except Exception as e:  # noqa: BLE001
+                failures.append((code, type(e).__name__))
+                log.warning(
+                    "screener update: daily fetch failed code=%s error=%s",
+                    code, type(e).__name__,
+                )
+
+    await asyncio.gather(*(_worker() for _ in range(_FETCH_CONCURRENCY)))
     rows: list[DailyBar] = [b for batch in fetched for b in batch]
     if not rows:
         return 0

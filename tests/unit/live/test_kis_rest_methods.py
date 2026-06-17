@@ -452,6 +452,32 @@ async def test_fetch_past_daily_rate_limit_propagates(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_past_daily_retry_false_does_not_retry_rate_limit(tmp_path) -> None:
+    calls = {"data": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/oauth2/tokenP"):
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        calls["data"] += 1
+        return httpx.Response(200, json={"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "rate"})
+
+    client = KisClient(
+        KisCredentials(app_key="k", app_secret="s"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+        _rate_limit_backoff=(0.0, 0.0, 0.0),
+    )
+    try:
+        with pytest.raises(KisRateLimitError):
+            await client.fetch_past_daily_candles(
+                "005930", "20240101", "20240101", retry=False,
+            )
+        assert calls["data"] == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_fetch_past_daily_paginates_walk_back(tmp_path) -> None:
     page_responses = [
         _ok_daily_body([_daily_row(f"2024010{i}") for i in [5, 4, 3]]),

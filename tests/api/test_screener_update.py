@@ -1,4 +1,5 @@
 import polars as pl
+import pytest
 from pathlib import Path
 from hoga.api.screener_store import last_raw_date, append_rows, write_status, read_status
 from hoga.api import screener as _screener_mod
@@ -80,3 +81,53 @@ def test_gap_trading_days_delegates_when_gap(monkeypatch):
     # next day after 20260529 = 20260530; today 20260601 → delegates to the calendar.
     monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda f, t: [f, t])
     assert _screener_mod._gap_trading_days("20260529", "20260601") == ["20260530", "20260601"]
+
+
+@pytest.mark.asyncio
+async def test_run_update_keeps_successful_codes_when_one_fetch_fails(tmp_path):
+    import datetime as dt
+    from hoga.api import screener_store
+    from hoga.api.screener_store import DailyBar
+
+    sdir = tmp_path / "screener"
+    sdir.mkdir()
+    pl.DataFrame(
+        {
+            "code": ["000001"],
+            "date": [dt.date(2024, 1, 1)],
+            "open": [1.0],
+            "high": [1.0],
+            "low": [1.0],
+            "close": [1.0],
+            "volume": [1],
+        },
+        schema=screener_store._DAILY_PL_SCHEMA,
+    ).write_parquet(sdir / "daily_unadjusted.parquet")
+
+    async def fetch_one(code: str, frm: str, to: str):
+        if code == "000002":
+            raise RuntimeError("boom")
+        return [
+            DailyBar(
+                code=code,
+                date=dt.date(2024, 1, 2),
+                open=2.0,
+                high=2.0,
+                low=2.0,
+                close=2.0,
+                volume=2,
+            )
+        ]
+
+    updated = await screener_store.run_update(
+        sdir,
+        codes=["000001", "000002"],
+        fetch_one=fetch_one,
+        trading_days=["20240102"],
+        now_ms=123,
+    )
+
+    assert updated == 1
+    status = screener_store.read_status(sdir / "status.json")
+    assert status is not None
+    assert status.last_raw_date == "20240102"
