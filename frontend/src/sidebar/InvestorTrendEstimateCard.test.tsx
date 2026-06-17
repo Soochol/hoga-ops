@@ -2,14 +2,27 @@ import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import {
+  formatAggregationTime,
   formatQtyWithCommas,
   InvestorTrendEstimateCard,
 } from './InvestorTrendEstimateCard';
 import type { LiveInvestorTrendEstimateResponse } from '../api/liveInvestorTrendEstimate';
 
 const rows: LiveInvestorTrendEstimateResponse['rows'] = [
-  { slot: '09:00', foreign_qty: 1500, institution_qty: -200, sum_qty: 1300 },
-  { slot: '09:10', foreign_qty: null, institution_qty: 0, sum_qty: 0 },
+  {
+    slot: '1',
+    observed_at_ms: new Date('2026-06-16T00:20:00Z').getTime(),
+    foreign_qty: 1500,
+    institution_qty: -200,
+    sum_qty: 1300,
+  },
+  {
+    slot: '2',
+    observed_at_ms: new Date('2026-06-16T00:30:00Z').getTime(),
+    foreign_qty: null,
+    institution_qty: 0,
+    sum_qty: 0,
+  },
 ];
 
 function response(
@@ -38,25 +51,36 @@ describe('formatQtyWithCommas', () => {
   });
 });
 
+describe('formatAggregationTime', () => {
+  it('renders the actual observed HH:MM with the aggregation round', () => {
+    expect(formatAggregationTime(rows[0], 0)).toBe('1차(09:20)');
+    expect(formatAggregationTime({
+      slot: '0910',
+      observed_at_ms: new Date('2026-06-16T00:40:00Z').getTime(),
+    }, 1)).toBe('2차(09:40)');
+    expect(formatAggregationTime({ slot: '0920' }, 0)).toBe('09:20');
+  });
+});
+
 describe('InvestorTrendEstimateCard', () => {
   it('renders title, all rows, latest marker, fetched time, and footer', () => {
     render(<InvestorTrendEstimateCard query={{ data: response() }} />);
 
     expect(screen.getByTestId('investor-trend-estimate-card')).toBeInTheDocument();
     expect(screen.getByText('외인·기관 추정')).toBeInTheDocument();
-    expect(screen.getByText('입력')).toBeInTheDocument();
+    expect(screen.getByText('집계시간')).toBeInTheDocument();
     expect(screen.getByText('외국인')).toBeInTheDocument();
     expect(screen.getByText('기관')).toBeInTheDocument();
     expect(screen.getByText('합산')).toBeInTheDocument();
-    expect(screen.getByText('09:00')).toBeInTheDocument();
-    expect(screen.getByText('09:10')).toBeInTheDocument();
+    expect(screen.getByText('1차(09:20)')).toBeInTheDocument();
+    expect(screen.getByText('2차(09:30)')).toBeInTheDocument();
     expect(screen.getByText('+1,500주')).toBeInTheDocument();
     expect(screen.getByText('-200주')).toBeInTheDocument();
     expect(screen.getByText('KIS 장중 가집계 · 수량 기준')).toBeInTheDocument();
     expect(screen.getByText('최근 조회 09:15')).toBeInTheDocument();
 
     const latest = screen.getByTestId('investor-estimate-row-latest');
-    expect(within(latest).getByText('09:10')).toBeInTheDocument();
+    expect(within(latest).getByText('2차(09:30)')).toBeInTheDocument();
     expect(screen.getAllByRole('row')).toHaveLength(3);
   });
 
@@ -70,8 +94,8 @@ describe('InvestorTrendEstimateCard', () => {
     );
 
     expect(screen.getByText('조회 지연')).toBeInTheDocument();
-    expect(screen.getByText('09:00')).toBeInTheDocument();
-    expect(screen.getByText('09:10')).toBeInTheDocument();
+    expect(screen.getByText('1차(09:20)')).toBeInTheDocument();
+    expect(screen.getByText('2차(09:30)')).toBeInTheDocument();
   });
 
   it('shows failure when an error response has no rows', () => {
