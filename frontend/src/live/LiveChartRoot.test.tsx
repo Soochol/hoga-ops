@@ -235,7 +235,7 @@ describe('LiveChartRoot', () => {
     // Count growth from placeholder/extension must keep a readable recent
     // window instead of fitting all ~250 daily bars into the viewport.
     expect(ts.fitContent).not.toHaveBeenCalled();
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 150, to: 255 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 220, to: 255 });
 
     rerender(
       <LiveChartRoot
@@ -248,7 +248,7 @@ describe('LiveChartRoot', () => {
     );
     // Shrink still re-applies the daily window.
     expect(ts.fitContent).not.toHaveBeenCalled();
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 85 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 50, to: 85 });
   });
 
   it('1m timeframe: setVisibleLogicalRange applied once even as bars grow (SSE pushes preserved)', () => {
@@ -1131,7 +1131,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         restoreViewport={{ rightEdgeMs: TODAY_OPEN_MS + 250 * 60_000, barSpan: 250, atLiveEdge: true }} />,
       { wrapper },
     );
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 150, to: 255 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 220, to: 255 });
   });
 
   it('restore: no saved viewport → the default 300-bar minute window (regression)', () => {

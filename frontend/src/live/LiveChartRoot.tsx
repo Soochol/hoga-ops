@@ -69,7 +69,7 @@ function pad(n: number): string {
 const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
-const DAILY_VISIBLE_BARS = 100;
+const DAILY_VISIBLE_BARS = 30;
 
 interface Props {
   code: string | null;
@@ -524,9 +524,9 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         lastAppliedCountRef.current = totalBars;
         reveal();
       } else if (timeframe === 'D') {
-        // Daily carries ~250 bars, and fitContent compresses them to ~2-3px
-        // spacing on normal desktop widths. Use the same "recent window"
-        // policy as minute charts so candle bodies stay legible.
+        // Daily carries ~250 bars, and a wide fit/replay-style restore makes
+        // candle bodies look like thin sticks. Keep the initial daily window
+        // close to the minute chart's visual density.
         if (applied === totalBars) { reveal(); return; }
         const from = Math.max(0, totalBars - DAILY_VISIBLE_BARS);
         const to = totalBars + 5; // 5-bar right padding
