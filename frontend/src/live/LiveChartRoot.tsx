@@ -463,7 +463,11 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
               true,
             )
           : null;
-        const range = computeRestoreRange(restoreViewport, totalBarsR, idx);
+        const viewportForRestore =
+          timeframe === 'D'
+            ? { ...restoreViewport, barSpan: Math.min(restoreViewport.barSpan, DAILY_VISIBLE_BARS) }
+            : restoreViewport;
+        const range = computeRestoreRange(viewportForRestore, totalBarsR, idx);
         if (range) {
           tsR.setVisibleLogicalRange({ from: range.from, to: range.to });
           if (range.scrollToRight) tsR.scrollToPosition(0, false);

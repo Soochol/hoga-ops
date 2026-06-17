@@ -1119,6 +1119,21 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.scrollToPosition).toHaveBeenCalledWith(0, false);
   });
 
+  it('restore: D timeframe caps a stale fitContent-sized saved zoom to the daily window', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    render(
+      <LiveChartRoot code="005930" timeframe="D"
+        bundle={todayBundle(Array.from({ length: 250 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={{ rightEdgeMs: TODAY_OPEN_MS + 250 * 60_000, barSpan: 250, atLiveEdge: true }} />,
+      { wrapper },
+    );
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 150, to: 255 });
+  });
+
   it('restore: no saved viewport → the default 300-bar minute window (regression)', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
