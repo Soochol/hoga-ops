@@ -59,10 +59,14 @@ export function studySnapshotBundleToRangeBundle(snapshot: StudySnapshotBundle):
           t: p.t,
           bid_total: p.bid_total,
           ask_total: p.ask_total,
-          bid_max: 0,
-          ask_max: 0,
-          imb_max_bid: 0,
-          imb_max_ask: 0,
+          // Study snapshots persist display-locked quote totals, not the raw
+          // intra-bucket extrema. Mirror the saved value into the max fields so
+          // restored views stay visible when the user has "intra-period max"
+          // enabled globally.
+          bid_max: p.bid_total,
+          ask_max: p.ask_total,
+          imb_max_bid: p.bid_total,
+          imb_max_ask: p.ask_total,
         }];
       }),
     },

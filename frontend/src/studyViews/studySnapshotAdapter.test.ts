@@ -36,10 +36,10 @@ describe('studySnapshotBundleToRangeBundle', () => {
       t: 1000,
       bid_total: 100,
       ask_total: 90,
-      bid_max: 0,
-      ask_max: 0,
-      imb_max_bid: 0,
-      imb_max_ask: 0,
+      bid_max: 100,
+      ask_max: 90,
+      imb_max_bid: 100,
+      imb_max_ask: 90,
     });
     expect(bundle.quote_ratio.points).toHaveLength(1);
     expect(bundle.study_ratio.points).toEqual([{ t: 1000, value: 0.2 }]);
@@ -68,10 +68,10 @@ describe('studySnapshotBundleToRangeBundle', () => {
       t: 1000,
       bid_total: 100,
       ask_total: 90,
-      bid_max: 0,
-      ask_max: 0,
-      imb_max_bid: 0,
-      imb_max_ask: 0,
+      bid_max: 100,
+      ask_max: 90,
+      imb_max_bid: 100,
+      imb_max_ask: 90,
     }]);
     expect(bundle.fill_strength.points).toEqual([{ t: 1000, buy_qty: 5, sell_qty: 4 }]);
   });
@@ -90,10 +90,10 @@ describe('studySnapshotBundleToRangeBundle', () => {
       t: 1000,
       bid_total: 100,
       ask_total: 90,
-      bid_max: 0,
-      ask_max: 0,
-      imb_max_bid: 0,
-      imb_max_ask: 0,
+      bid_max: 100,
+      ask_max: 90,
+      imb_max_bid: 100,
+      imb_max_ask: 90,
     }]);
     expect(bundle.study_ratio.points).toEqual([{ t: 1000, value: -49 }]);
   });
@@ -111,10 +111,10 @@ describe('studySnapshotBundleToRangeBundle', () => {
       t: 1000,
       bid_total: 100,
       ask_total: 90,
-      bid_max: 0,
-      ask_max: 0,
-      imb_max_bid: 0,
-      imb_max_ask: 0,
+      bid_max: 100,
+      ask_max: 90,
+      imb_max_bid: 100,
+      imb_max_ask: 90,
     }]);
     expect(input.ratioBundle.quote_ratio.points).toEqual([
       {
