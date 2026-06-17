@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AskPeak } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
-import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
+import { isContinuousBook, type ObSnapshot, type TradeSnapshot } from './bucketHogaSeries';
+import { isAfterRegularOpen } from '../util/tradingDay';
 import {
   reduceDayAskPeak,
   FRESH_RATCHET,
@@ -12,6 +13,8 @@ import {
 type TradePriceState = {
   prices: Set<number>;
 };
+
+type ObservedPricePeaks = Map<number, DayPeak>;
 
 type BufferCursor<T> = {
   tail: T | null;
@@ -79,6 +82,35 @@ function accumulateTradePrices(state: TradePriceState, trade: ReadonlyArray<Trad
   }
 }
 
+function putLargerPricePeak(peaks: ObservedPricePeaks, peak: DayPeak) {
+  const current = peaks.get(peak.price);
+  if (current === undefined || peak.qty > current.qty) {
+    peaks.set(peak.price, peak);
+  }
+}
+
+function observeAskPricePeaks(peaks: ObservedPricePeaks, obs: ReadonlyArray<ObSnapshot>) {
+  for (const ob of obs) {
+    if (!isContinuousBook(ob) || !isAfterRegularOpen(ob.t_ms) || !ob.asks) continue;
+    for (const lv of ob.asks) {
+      if (lv.qty > 0) putLargerPricePeak(peaks, { price: lv.price, qty: lv.qty, t_ms: ob.t_ms });
+    }
+  }
+}
+
+function bestTradedObservedPeak(
+  seed: DayPeak | null,
+  observed: ObservedPricePeaks,
+  tradedPrices: Set<number>,
+): DayPeak | null {
+  let best = seed;
+  for (const price of tradedPrices) {
+    const peak = observed.get(price);
+    if (peak && (best === null || peak.qty > best.qty)) best = peak;
+  }
+  return best;
+}
+
 export function buildTodayTradedAskPeak(todayAskPeak: LiveTodayAskPeak | null): AskPeak | null {
   if (
     !todayAskPeak
@@ -139,6 +171,7 @@ export function useDayAskPeaks(
   const tradePriceRef = useRef<TradePriceState>(
     freshTradePriceState(backendTodaySeed, backendTradedPrices),
   );
+  const observedPricePeaksRef = useRef<ObservedPricePeaks>(new Map());
   const tradeCursorRef = useRef<BufferCursor<TradeSnapshot>>(freshCursor());
   const obCursorRef = useRef<BufferCursor<ObSnapshot>>(freshCursor());
   const [todayPeak, setTodayPeak] = useState<DayPeak | null>(liveSeed);
@@ -147,6 +180,7 @@ export function useDayAskPeaks(
   useEffect(() => {
     stateRef.current = FRESH_RATCHET;
     tradePriceRef.current = freshTradePriceState(backendTodaySeed, backendTradedPrices);
+    observedPricePeaksRef.current = new Map();
     tradeCursorRef.current = freshCursor();
     obCursorRef.current = freshCursor();
     setTodayPeak(liveSeed);
@@ -158,10 +192,11 @@ export function useDayAskPeaks(
     const unreadTrade = unreadSnapshots(trade, tradeCursorRef.current);
     accumulateTradePrices(tradePriceRef.current, unreadTrade);
     const unreadOb = unreadSnapshots(ob, obCursorRef.current);
+    observeAskPricePeaks(observedPricePeaksRef.current, unreadOb);
     const allowPrice = (price: number) => tradePriceRef.current.prices.has(price);
     const s = reduceDayAskPeak(stateRef.current, liveSeed, unreadOb, allowPrice);
     stateRef.current = s;
-    setTodayPeak(s.peak ?? liveSeed);
+    setTodayPeak(bestTradedObservedPeak(s.peak ?? liveSeed, observedPricePeaksRef.current, tradePriceRef.current.prices));
   }, [ob, trade, liveSeed, todayAskPeak]);
 
   // 과거일 seed(그대로) + 오늘 ratchet 결과(date 부착)를 합친 per-day 리스트.
