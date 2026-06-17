@@ -258,9 +258,7 @@ def _is_continuous_snapshot(
     *,
     last_continuous_ms: int | None,
 ) -> bool:
-    if last_continuous_ms is None:
-        return False
-    if _hhmmssms_to_intra_ms(snapshot.ts_ms) > last_continuous_ms:
+    if last_continuous_ms is not None and _hhmmssms_to_intra_ms(snapshot.ts_ms) > last_continuous_ms:
         return False
     ask_deep = sum(level.qty for level in snapshot.ask[_AUCTION_BOOK_DEPTH:])
     bid_deep = sum(level.qty for level in snapshot.bid[_AUCTION_BOOK_DEPTH:])
@@ -269,7 +267,7 @@ def _is_continuous_snapshot(
 
 def _continuous_representative_pred_sql(*, intra_ms_expr: str, last_continuous_ms: int | None) -> str:
     if last_continuous_ms is None:
-        return "FALSE"
+        return _DEEP_BOOK_SQL
     return f"({_DEEP_BOOK_SQL} AND ({intra_ms_expr} <= {last_continuous_ms}))"
 
 
@@ -562,24 +560,19 @@ def query_bucket_representative(
     continuous row return ``None``. This keeps the sidebar 10호가 spot view on
     the same continuous-only contract as saved views.
 
-    ``session_close_ms`` None → legacy last-in-window (no structural exclusion).
-    Returns None when no snapshot falls in the window.
+    ``session_close_ms`` None disables only the time threshold; the continuous
+    depth requirement still applies. Returns None when no qualifying continuous
+    snapshot falls in the window.
     """
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     last_continuous_ms = _last_continuous_intra_ms(
         con, path=path, session_close_ms=session_close_ms
     )
-    continuous_pred = (
-        _continuous_representative_pred_sql(
-            intra_ms_expr=intra_ms_expr,
-            last_continuous_ms=last_continuous_ms,
-        )
-        if session_close_ms is not None
-        else "TRUE"
+    continuous_pred = _continuous_representative_pred_sql(
+        intra_ms_expr=intra_ms_expr,
+        last_continuous_ms=last_continuous_ms,
     )
-    where_parts = ["ts_ms >= ?", "ts_ms <= ?"]
-    if session_close_ms is not None:
-        where_parts.append(continuous_pred)
+    where_parts = ["ts_ms >= ?", "ts_ms <= ?", continuous_pred]
     row = con.execute(
         f"SELECT {_SELECT} FROM read_parquet(?) "
         f"WHERE {' AND '.join(where_parts)} "
@@ -601,8 +594,8 @@ def query_bucket_representatives(
     Matches :func:`query_bucket_representative` bucket-by-bucket:
     when ``session_close_ms`` is set, keep only the last deep continuous
     snapshot inside the window and omit buckets with no qualifying continuous
-    row; when ``session_close_ms`` is None, use the legacy last-in-window
-    behavior with no structural exclusion.
+    row. When ``session_close_ms`` is None, only the close-time threshold is
+    disabled; shallow or auction rows still never qualify.
     """
     if not buckets:
         return {}
@@ -626,9 +619,6 @@ def query_bucket_representatives(
     for lo_native, hi_native in buckets:
         window = [snap for snap in candidates if lo_native <= snap.ts_ms <= hi_native]
         if not window:
-            continue
-        if session_close_ms is None:
-            out[int(lo_native)] = window[-1]
             continue
         eligible = [
             snap

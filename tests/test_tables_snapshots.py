@@ -401,13 +401,14 @@ def test_query_bucket_representative_fully_auction_returns_none(tmp_path: Path) 
     assert snap is None
 
 
-def test_query_bucket_representative_no_session_close_is_legacy_last(tmp_path: Path) -> None:
-    """session_close_ms None → legacy last-in-window (no structural exclusion)."""
+def test_query_bucket_representative_no_session_close_excludes_later_shallow_row(
+    tmp_path: Path,
+) -> None:
     from hoga.tables.snapshots import query_bucket_representative
 
     obs = [
-        _ob(ts_ms=151_800_000, seq=1, ask_q=(1, 2, 3, 4), bid_q=(1,)),
-        _ob(ts_ms=152_058_000, seq=2, ask_q=(99, 98, 97), bid_q=(7,)),  # auction, but no bound → last wins
+        _ob(ts_ms=151_958_000, seq=1, ask_q=(10, 20, 30, 40), bid_q=(5, 5, 5, 5)),
+        _ob(ts_ms=152_058_000, seq=2, ask_q=(99, 98, 97), bid_q=(7, 7, 7)),
     ]
     out = tmp_path / "snapshots.parquet"
     write_parquet(obs, out)
@@ -416,7 +417,8 @@ def test_query_bucket_representative_no_session_close_is_legacy_last(tmp_path: P
         con, path=out, lo_native=151_800_000, hi_native=152_059_999, session_close_ms=None
     )
     assert snap is not None
-    assert snap.ts_ms == 152_058_000  # legacy last-in-window
+    assert snap.ts_ms == 151_958_000
+    assert snap.seq == 1
 
 
 def test_query_bucket_representative_empty_window_returns_none(tmp_path: Path) -> None:
@@ -490,12 +492,16 @@ def test_query_bucket_representatives_omit_fully_auction_bucket(tmp_path: Path) 
     assert 152_100_000 not in reps
 
 
-def test_query_bucket_representatives_no_session_close_uses_legacy_last(tmp_path: Path) -> None:
+def test_query_bucket_representatives_no_session_close_keep_deep_and_omit_fully_shallow(
+    tmp_path: Path,
+) -> None:
     from hoga.tables.snapshots import query_bucket_representatives
 
     obs = [
-        _ob(ts_ms=151_800_000, seq=1, ask_q=(1, 2, 3, 4), bid_q=(1, 1, 1, 1)),
+        _ob(ts_ms=151_800_000, seq=1, ask_q=(10, 20, 30, 40), bid_q=(5, 5, 5, 5)),
         _ob(ts_ms=152_058_000, seq=2, ask_q=(99, 98, 97), bid_q=(7, 7, 7)),
+        _ob(ts_ms=152_100_000, seq=3, ask_q=(88, 87, 86), bid_q=(6, 6, 6)),
+        _ob(ts_ms=152_200_000, seq=4, ask_q=(77, 76, 75), bid_q=(4, 4, 4)),
     ]
     out = tmp_path / "snapshots.parquet"
     write_parquet(obs, out)
@@ -504,11 +510,12 @@ def test_query_bucket_representatives_no_session_close_uses_legacy_last(tmp_path
         reps = query_bucket_representatives(
             con,
             path=out,
-            buckets=[(151_800_000, 152_059_999)],
+            buckets=[(151_800_000, 152_059_999), (152_100_000, 152_359_999)],
             session_close_ms=None,
         )
 
-    assert reps[151_800_000].ts_ms == 152_058_000
+    assert reps[151_800_000].ts_ms == 151_800_000
+    assert 152_100_000 not in reps
 
 
 def test_query_bucket_representative_and_batch_share_seq_tiebreak(tmp_path: Path) -> None:
