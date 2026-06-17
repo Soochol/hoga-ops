@@ -16,6 +16,15 @@ function snapshot(overrides: Partial<StudySnapshotBundle> = {}): StudySnapshotBu
     ],
     ratio: [{ t: 1000, value: 0.2, visible: true }],
     fill_strength: [{ t: 1000, buy_qty: 5, sell_qty: 4, visible: true }],
+    ask_peaks: [{
+      date: '20260616',
+      price: 70_500,
+      qty: 5_000,
+      t_ms: 1_000,
+      max_price: 70_700,
+      max_qty: 6_000,
+      max_t_ms: 1_000,
+    }],
     data_warnings: ['partial'],
     ...overrides,
   };
@@ -47,7 +56,15 @@ describe('studySnapshotBundleToRangeBundle', () => {
     expect(bundle.volume_profile_range).toEqual({ bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] });
     expect(bundle.volume_profile_by_day).toEqual([]);
     expect(bundle.investorPoints).toEqual([]);
-    expect(bundle.ask_peaks).toEqual([]);
+    expect(bundle.ask_peaks).toEqual([{
+      date: '20260616',
+      price: 70_500,
+      qty: 5_000,
+      t_ms: 1_000,
+      max_price: 70_700,
+      max_qty: 6_000,
+      max_t_ms: 1_000,
+    }]);
   });
 
   it('filters hidden and incomplete quote/fill points', () => {

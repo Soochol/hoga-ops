@@ -115,6 +115,7 @@ function snapshotFixture(): ParquetStudySnapshot {
       quote_totals: [{ t: 1_000, bid_total: 100, ask_total: 90, visible: true }],
       ratio: [{ t: 1_000, value: 0.1, visible: true }],
       fill_strength: [{ t: 1_000, buy_qty: 5, sell_qty: 4, visible: true }],
+      ask_peaks: [],
       data_warnings: [],
     },
     captured_at_ms: 3_000,

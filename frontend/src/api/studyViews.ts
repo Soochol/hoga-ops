@@ -1,5 +1,6 @@
 import { apiAction, apiCall } from './client';
 import type { LiveTimeframe } from '../state/livePage';
+import type { AskPeak } from './types';
 
 export type StudyAggregationBasis = 'close' | 'intra_period_max';
 export type StudyDataProvenance = 'live_mixed' | 'study_snapshot' | 'unknown';
@@ -37,6 +38,7 @@ export type StudySnapshotBundle = {
   quote_totals: { t: number; bid_total?: number | null; ask_total?: number | null; visible: boolean }[];
   ratio: { t: number; value?: number | null; visible: boolean }[];
   fill_strength: { t: number; buy_qty?: number | null; sell_qty?: number | null; visible: boolean }[];
+  ask_peaks: AskPeak[];
   data_warnings: string[];
 };
 
