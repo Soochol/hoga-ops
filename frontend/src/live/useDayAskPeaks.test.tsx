@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
-import type { AskPeak } from '../api/types';
+import type { AskPeak, Candle } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 
@@ -13,6 +13,15 @@ const deep = (t_ms: number, q: number, price = 26000): ObSnapshot => ({
 
 const byDate = (peaks: readonly AskPeak[]) => Object.fromEntries(peaks.map((p) => [p.date, p]));
 const atKst = (hh: number, mm = 0) => Date.UTC(2026, 5, 13, hh - 9, mm);
+const candle = (t_ms: number, low: number, high: number): Candle => ({
+  ts_ms: t_ms,
+  open: low,
+  high,
+  low,
+  close: high,
+  vol_a: 1,
+  vol_b: 0,
+});
 
 const todayAskPeak = (overrides: Partial<LiveTodayAskPeak> = {}): LiveTodayAskPeak => ({
   date: '20260613',
@@ -144,6 +153,59 @@ describe('useDayAskPeaks', () => {
     );
 
     expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
+  });
+
+  it('backend all-price peak가 REST 캔들 범위 안이면 체결 기준선으로 승격한다', () => {
+    const restPeak = todayAskPeak({
+      traded_prices: [],
+      traded_price: null,
+      traded_qty: null,
+      traded_t_ms: null,
+      all_price: 27000,
+      all_qty: 12000,
+      all_t_ms: atKst(10, 42),
+    });
+
+    const { result } = renderHook(
+      () => useDayAskPeaks(
+        [],
+        [],
+        [],
+        '20260613',
+        '005930',
+        restPeak,
+        [candle(atKst(10, 42), 26900, 27100)],
+      ),
+    );
+
+    expect(byDate(result.current)['20260613']).toEqual({
+      date: '20260613',
+      price: 27000,
+      qty: 12000,
+      t_ms: atKst(10, 42),
+      max_price: 27000,
+      max_qty: 12000,
+      max_t_ms: atKst(10, 42),
+    });
+  });
+
+  it('WS trade가 없어도 REST 캔들 범위 안의 live.ob 벽은 체결 기준선 후보가 된다', () => {
+    const { result, rerender } = renderHook(
+      ({ ob, candles }: { ob: ObSnapshot[]; candles: Candle[] }) =>
+        useDayAskPeaks(ob, [], [], '20260613', '005930', null, candles),
+      { initialProps: { ob: [] as ObSnapshot[], candles: [] as Candle[] } },
+    );
+
+    rerender({
+      ob: [deep(atKst(10, 42), 12000, 27000)],
+      candles: [candle(atKst(10, 42), 26900, 27100)],
+    });
+
+    expect(byDate(result.current)['20260613']).toMatchObject({
+      price: 27000,
+      qty: 12000,
+      t_ms: atKst(10, 42),
+    });
   });
 
   it('REST today seed keeps updating traded baseline from later trade prices and OB walls', () => {

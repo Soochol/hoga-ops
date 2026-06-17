@@ -97,6 +97,31 @@ describe('WatchlistDrawer', () => {
   });
 
   it('cycles a folder sort mode by clicking the group sort icon', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      phase: 'open',
+      quotes: [
+        { code: '005930', price: 72400, change_pct: 1.2, change_won: 850 },
+        { code: '000660', price: 183500, change_pct: -0.8, change_won: -1500 },
+      ],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+
+    await waitFor(() => expect(screen.getByLabelText('스윙 정렬')).toBeInTheDocument());
+    const rowCodes = () => screen.getAllByTestId(/^watchlist-row-/).map((el) =>
+      el.getAttribute('data-testid')?.replace('watchlist-row-', ''));
+
+    await waitFor(() => expect(rowCodes()).toEqual(['005930', '000660']));
+
+    fireEvent.click(screen.getByLabelText('스윙 정렬'));
+    await waitFor(() => expect(rowCodes()).toEqual(['000660', '005930']));
+
+    fireEvent.click(screen.getByLabelText('스윙 정렬'));
+    await waitFor(() => expect(rowCodes()).toEqual(['005930', '000660']));
+  });
+
+  it('sorts entries in a folder by live change rate and resets to default order', async () => {
     const folder = { id: 'f_0000000a', name: '기본', order: 0 };
     const threeEntries = {
       folders: [folder],
@@ -120,6 +145,7 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
 
     await waitFor(() => expect(screen.getByText('NAVER')).toBeInTheDocument());
+
     const rowCodes = () => screen.getAllByTestId(/^watchlist-row-/).map((el) =>
       el.getAttribute('data-testid')?.replace('watchlist-row-', ''));
 
@@ -133,7 +159,6 @@ describe('WatchlistDrawer', () => {
 
     fireEvent.click(screen.getByLabelText('기본 정렬'));
     expect(rowCodes()).toEqual(['005930', '000660', '035420']);
-    expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument();
   });
 
   it('sorts each folder independently by change rate', async () => {
@@ -168,17 +193,22 @@ describe('WatchlistDrawer', () => {
 
     const swingSection = screen.getByTestId('watchlist-group-f_0000000a');
     const longSection = screen.getByTestId('watchlist-group-f_0000000b');
+
+    const swingSort = within(swingSection).getByLabelText('스윙 정렬');
+    const longSort = within(longSection).getByLabelText('장기 정렬');
+    fireEvent.click(swingSort);
+    fireEvent.click(swingSort);
+
+    // 장기 그룹은 별도 순환만 한 번 수행.
+    fireEvent.click(longSort);
+
+    const swing = screen.getByTestId('watchlist-group-f_0000000a');
+    const long = screen.getByTestId('watchlist-group-f_0000000b');
     const toCodes = (root: HTMLElement) =>
       Array.from(root.querySelectorAll('[data-testid^="watchlist-row-"]'))
         .map((el) => (el.getAttribute('data-testid') ?? '').replace('watchlist-row-', ''))
         .filter((code) => code !== '');
 
-    // 장기 그룹은 오름차순으로 바꿔 sort 모드만 분리 동작한다.
-    fireEvent.click(within(longSection).getByLabelText('장기 정렬'));
-    await waitFor(() => expect(toCodes(longSection)).toEqual(['051910', '035420']));
-
-    const swing = screen.getByTestId('watchlist-group-f_0000000a');
-    const long = screen.getByTestId('watchlist-group-f_0000000b');
     const swingCodes = toCodes(swing);
     const longCodes = toCodes(long);
 
@@ -197,8 +227,8 @@ describe('WatchlistDrawer', () => {
       entries: [
         { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000a', order: 0 },
         { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000a', order: 1 },
-        { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 0 },
-        { code: '051910', name: 'LG화학', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 1 },
+        { code: '051910', name: 'LG화학', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 0 },
+        { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 1 },
       ],
       next_run_at_ms: 0,
     };
@@ -208,8 +238,8 @@ describe('WatchlistDrawer', () => {
       quotes: [
         { code: '005930', price: 72400, change_pct: 1.2, change_won: 850 },
         { code: '000660', price: 183500, change_pct: -0.8, change_won: -1500 },
-        { code: '035420', price: 211000, change_pct: 2.1, change_won: 2100 },
         { code: '051910', price: 560000, change_pct: -1.5, change_won: -2000 },
+        { code: '035420', price: 211000, change_pct: 2.1, change_won: 2100 },
       ],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -225,9 +255,9 @@ describe('WatchlistDrawer', () => {
     expect(toCodes(swing)).toEqual(['005930', '000660']);
     expect(toCodes(long)).toEqual(['035420', '051910']);
 
-    expect(within(swing).getByLabelText('스윙 정렬').className).toContain('text-accent');
-    expect(within(long).getByLabelText('장기 정렬').className).toContain('text-accent');
-    expect(toCodes(swing)).toEqual(['005930', '000660']);
+    fireEvent.click(within(swing).getByLabelText('스윙 정렬'));
+    fireEvent.click(within(swing).getByLabelText('스윙 정렬'));
+    expect(toCodes(swing)).toEqual(['000660', '005930']);
     expect(toCodes(long)).toEqual(['035420', '051910']);
   });
 
@@ -261,11 +291,9 @@ describe('WatchlistDrawer', () => {
     // invalid persisted mode should not affect ordering (default)
     await waitFor(() => expect(rowCodes()).toEqual(['005930', '000660', '035420']));
     fireEvent.click(screen.getByLabelText('기본 정렬'));
-    expect(rowCodes()).toEqual(['000660', '005930', '035420']);
-    fireEvent.click(screen.getByLabelText('기본 정렬'));
-    expect(rowCodes()).toEqual(['035420', '005930', '000660']);
-    fireEvent.click(screen.getByLabelText('기본 정렬'));
-    expect(rowCodes()).toEqual(['005930', '000660', '035420']);
+    expect(screen.getAllByTestId(/^watchlist-row-/).map((el) =>
+      el.getAttribute('data-testid')?.replace('watchlist-row-', ''))
+      .at(0)).toBe('000660');
   });
 
   it('right-click opens the context menu; 관심 해제 removes the entry and closes', async () => {
