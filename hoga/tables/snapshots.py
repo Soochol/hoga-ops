@@ -254,6 +254,15 @@ def _is_continuous_snapshot(
     )
 
 
+def _hhmmssms_to_intra_ms(ts_ms: int) -> int:
+    return (
+        (ts_ms // 10_000_000) * 3_600_000
+        + ((ts_ms // 100_000) % 100) * 60_000
+        + ((ts_ms // 1_000) % 100) * 1_000
+        + (ts_ms % 1_000)
+    )
+
+
 def query_at(
     con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int
 ) -> ApiOrderbookSnapshot | None:
@@ -575,9 +584,19 @@ def query_bucket_representatives(
     buckets: list[tuple[int, int]],
     session_close_ms: int | None = None,
 ) -> dict[int, ApiOrderbookSnapshot]:
-    """Return last continuous-trading representative snapshots keyed by lo_native."""
+    """Return bucket representatives keyed by ``lo_native``.
+
+    Matches :func:`query_bucket_representative` bucket-by-bucket:
+    when ``session_close_ms`` is set, prefer the last snapshot at/before the
+    structural last-continuous threshold and fall back to the window's last
+    snapshot; when ``session_close_ms`` is None, use the legacy last-in-window
+    behavior with no structural exclusion.
+    """
     if not buckets:
         return {}
+    last_continuous_ms = _last_continuous_intra_ms(
+        con, path=path, session_close_ms=session_close_ms
+    )
     min_lo = min(lo for lo, _hi in buckets)
     max_hi = max(hi for _lo, hi in buckets)
     rows = con.execute(
@@ -593,16 +612,19 @@ def query_bucket_representatives(
     candidates = [_row_to_api_snapshot(row) for row in rows]
     out: dict[int, ApiOrderbookSnapshot] = {}
     for lo_native, hi_native in buckets:
+        window = [snap for snap in candidates if lo_native <= snap.ts_ms <= hi_native]
+        if not window:
+            continue
+        if last_continuous_ms is None:
+            out[int(lo_native)] = window[-1]
+            continue
         eligible = [
-            snap
-            for snap in candidates
-            if lo_native <= snap.ts_ms <= hi_native
-            and _is_continuous_snapshot(snap, session_close_ms=session_close_ms)
+            snap for snap in window if _hhmmssms_to_intra_ms(snap.ts_ms) <= last_continuous_ms
         ]
         if eligible:
             out[int(lo_native)] = eligible[-1]
             continue
-        fallback = [snap for snap in candidates if lo_native <= snap.ts_ms <= hi_native]
+        fallback = window
         if fallback:
             out[int(lo_native)] = fallback[-1]
     return out

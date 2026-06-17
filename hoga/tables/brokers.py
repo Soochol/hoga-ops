@@ -221,12 +221,17 @@ def query_cumulative_details_at(
         [uniq, str(path)],
     ).fetchall()
 
-    latest: dict[tuple[int, str], tuple[int, int]] = {}
+    collapsed: dict[tuple[int, str, int], int] = {}
     for cursor_ts, raw_broker, ts_ms, net in rows:
-        key = (int(cursor_ts), canonical(raw_broker))
+        key = (int(cursor_ts), canonical(raw_broker), int(ts_ms))
+        collapsed[key] = collapsed.get(key, 0) + int(net)
+
+    latest: dict[tuple[int, str], tuple[int, int]] = {}
+    for (cursor_ts, broker, ts_ms), net in collapsed.items():
+        key = (cursor_ts, broker)
         prev = latest.get(key)
-        if prev is None or int(ts_ms) >= prev[0]:
-            latest[key] = (int(ts_ms), int(net))
+        if prev is None or ts_ms >= prev[0]:
+            latest[key] = (ts_ms, net)
 
     grouped: dict[int, list[BrokerDetailRow]] = {t: [] for t in uniq}
     for (cursor_ts, broker), (_ts_ms, net) in latest.items():

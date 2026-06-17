@@ -482,6 +482,27 @@ def test_query_bucket_representatives_returns_last_continuous_snapshot_per_bucke
     assert out[90_000_000].ask[0].price == 102
 
 
+def test_query_bucket_representatives_no_session_close_uses_legacy_last(tmp_path: Path) -> None:
+    from hoga.tables.snapshots import query_bucket_representatives
+
+    obs = [
+        _ob(ts_ms=151_800_000, seq=1, ask_q=(1, 2, 3, 4), bid_q=(1, 1, 1, 1)),
+        _ob(ts_ms=152_058_000, seq=2, ask_q=(99, 98, 97), bid_q=(7, 7, 7)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+
+    with duckdb.connect(":memory:") as con:
+        reps = query_bucket_representatives(
+            con,
+            path=out,
+            buckets=[(151_800_000, 152_059_999)],
+            session_close_ms=None,
+        )
+
+    assert reps[151_800_000].ts_ms == 152_058_000
+
+
 # ---------------------------------------------------------------------------
 # query_day_ask_peak (Task 1): 당일 연속거래 매도 최대벽 집계
 # ---------------------------------------------------------------------------
