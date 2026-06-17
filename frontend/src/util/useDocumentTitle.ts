@@ -45,3 +45,14 @@ export function useDocumentTitle(code: string | null | undefined): void {
     };
   }, [trimmed, data, quote]);
 }
+
+export function useStaticDocumentTitle(title: string | null | undefined): void {
+  const resolved = title?.trim() || DEFAULT_TITLE;
+
+  useEffect(() => {
+    document.title = resolved;
+    return () => {
+      document.title = DEFAULT_TITLE;
+    };
+  }, [resolved]);
+}

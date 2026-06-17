@@ -1,5 +1,5 @@
-import { Outlet } from 'react-router';
-import LeftNav from './nav/LeftNav';
+import { Outlet, useLocation } from 'react-router';
+import LeftNav, { SYSTEM_NAV_ITEMS, WORKSPACE_NAV_ITEMS } from './nav/LeftNav';
 import RightRail from './rightrail/RightRail';
 import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
 import { ScreenerDrawer } from './screener/ScreenerDrawer';
@@ -8,6 +8,13 @@ import { useRightRailStore } from './state/rightRail';
 import { useEventStream } from './api/eventStream';
 import { useInventoryRecaptureOriginsCleanup } from './inventory/useInventoryRecaptureOrigins';
 import { useCaptureQueueSync } from './capture/useCaptureQueue';
+import { useStaticDocumentTitle } from './util/useDocumentTitle';
+
+const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
+  [...WORKSPACE_NAV_ITEMS, ...SYSTEM_NAV_ITEMS]
+    .filter((item) => item.to !== '/live')
+    .map((item) => [item.to, item.label] as const),
+);
 
 export default function App() {
   useEventStream();
@@ -22,6 +29,8 @@ export default function App() {
   // rendered child count: 3 when no panel, 4 when one is open. Panels are
   // mutually exclusive (enum activePanel), so there is never a 2nd panel column.
   const cols = `var(--nav-w) 1fr${activePanel ? ' var(--watchlist-panel-w)' : ''} var(--rail-w)`;
+  const { pathname } = useLocation();
+  const staticTitle = pathname === '/live' ? null : STATIC_ROUTE_TITLES.get(pathname) ?? 'hoga-ops';
 
   return (
     <div
@@ -36,6 +45,7 @@ export default function App() {
         gridTemplateRows: 'minmax(0, 1fr)',
       }}
     >
+      {staticTitle !== null && <StaticDocumentTitle title={staticTitle} />}
       <LeftNav />
       <main className="overflow-hidden min-w-0"><Outlet /></main>
       {activePanel === 'watchlist' && <WatchlistDrawer />}
@@ -44,4 +54,9 @@ export default function App() {
       <RightRail />
     </div>
   );
+}
+
+function StaticDocumentTitle({ title }: { title: string }) {
+  useStaticDocumentTitle(title);
+  return null;
 }

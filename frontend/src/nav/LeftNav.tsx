@@ -2,6 +2,18 @@ import NavItem from './NavItem';
 import StatusDot from './StatusDot';
 import { CaptureStatusPill } from './CaptureStatusPill';
 
+export const WORKSPACE_NAV_ITEMS = [
+  { to: '/live', label: 'Live' },
+  { to: '/heatmap', label: 'Heatmap' },
+  { to: '/screener', label: 'Screener' },
+  { to: '/inventory', label: 'Inventory' },
+  { to: '/capture', label: 'Capture' },
+] as const;
+
+export const SYSTEM_NAV_ITEMS = [
+  { to: '/settings', label: 'Settings' },
+] as const;
+
 export default function LeftNav() {
   return (
     <nav className="flex flex-col h-full bg-bg-subtle border-r">
@@ -14,16 +26,16 @@ export default function LeftNav() {
         </div>
       </div>
       <Section label="Workspace">
-        <NavItem to="/live" label="Live" />
-        <NavItem to="/heatmap" label="Heatmap" />
-        <NavItem to="/screener" label="Screener" />
-        <NavItem to="/inventory" label="Inventory" />
-        <NavItem to="/capture" label="Capture" />
+        {WORKSPACE_NAV_ITEMS.map((item) => (
+          <NavItem key={item.to} to={item.to} label={item.label} />
+        ))}
       </Section>
       <div className="flex-1" />
       <CaptureStatusPill />
       <Section label="System">
-        <NavItem to="/settings" label="Settings" />
+        {SYSTEM_NAV_ITEMS.map((item) => (
+          <NavItem key={item.to} to={item.to} label={item.label} />
+        ))}
       </Section>
       <div className="p-3 border-t flex justify-between font-mono text-xs text-fg-dimmer">
         <StatusDot />
