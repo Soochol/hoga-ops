@@ -110,25 +110,18 @@ function sameSelectedTriple(a: AskPeak, b: AskPeak, intraMax: boolean): boolean 
   return ap === bp && aq === bq && at === bt;
 }
 
-function untradedPeakFromFields(p: AskPeak): AskPeak | null {
-  if (
-    p.untraded_price == null
-    || p.untraded_qty == null
-    || p.untraded_t_ms == null
-    || p.untraded_max_price == null
-    || p.untraded_max_qty == null
-    || p.untraded_max_t_ms == null
-  ) {
-    return null;
-  }
+function untradedPeakFromFields(p: AskPeak, intraMax: boolean): AskPeak | null {
+  const hasCloseTriple = p.untraded_price != null && p.untraded_qty != null && p.untraded_t_ms != null;
+  const hasMaxTriple = p.untraded_max_price != null && p.untraded_max_qty != null && p.untraded_max_t_ms != null;
+  if ((intraMax && !hasMaxTriple) || (!intraMax && !hasCloseTriple)) return null;
   return {
     date: p.date,
-    price: p.untraded_price,
-    qty: p.untraded_qty,
-    t_ms: p.untraded_t_ms,
-    max_price: p.untraded_max_price,
-    max_qty: p.untraded_max_qty,
-    max_t_ms: p.untraded_max_t_ms,
+    price: p.untraded_price ?? p.price,
+    qty: p.untraded_qty ?? p.qty,
+    t_ms: p.untraded_t_ms ?? p.t_ms,
+    max_price: p.untraded_max_price ?? p.max_price,
+    max_qty: p.untraded_max_qty ?? p.max_qty,
+    max_t_ms: p.untraded_max_t_ms ?? p.max_t_ms,
   };
 }
 
@@ -158,12 +151,12 @@ export function buildAskPeakOverlaySegments({
 
   const untradedPeaks: AskPeak[] = [];
   for (const p of dayAskPeaks) {
-    const untradedPeak = untradedPeakFromFields(p);
+    const untradedPeak = untradedPeakFromFields(p, intraMax);
     if (!untradedPeak) continue;
     if (sameSelectedTriple(p, untradedPeak, intraMax)) continue;
     untradedPeaks.push(untradedPeak);
   }
-  const todayUntradedPeak = todayAllPriceAskPeak ? untradedPeakFromFields(todayAllPriceAskPeak) : null;
+  const todayUntradedPeak = todayAllPriceAskPeak ? untradedPeakFromFields(todayAllPriceAskPeak, intraMax) : null;
   if (todayUntradedPeak && !dayAskPeaks.some((p) => p.date === todayKst)) {
     untradedPeaks.push(todayUntradedPeak);
   }
