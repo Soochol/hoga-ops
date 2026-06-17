@@ -55,7 +55,76 @@ KisClient.fetch_past_daily_candles(...)
 ```
 
 The queue is a coordinator, not a replacement for `KisClient`. Existing account
-routing remains in `hoga.live.kis_access`.
+routing remains in `hoga.live.kis_access`, but the queue must be account-aware
+when deciding whether background work is allowed to start.
+
+## Account-Aware Scheduling
+
+The queue must preserve the current role split:
+
+- `foreground` uses account 0.
+- `background` uses account 1..N through existing background routing.
+- background may fall back to account 0 only when no background account is
+  available or usable.
+
+Account ownership remains outside the queue:
+
+```text
+foreground request
+  -> DailyKisFetchQueue lane=foreground
+  -> kis_access.fetch_for_role("foreground")
+  -> account 0
+
+background request
+  -> DailyKisFetchQueue lane=background
+  -> kis_access.fetch_for_role("background")
+  -> account 1..N round-robin, auth fallback to account 0
+```
+
+The queue's job is to decide when work may start. `kis_access` still decides
+which concrete `KisClient` to use.
+
+Account 0 is the user-latency account. Background fallback to account 0 must be
+strictly limited:
+
+- do not start background fallback on account 0 while any foreground request is
+  queued or active;
+- allow at most one background fallback on account 0 at a time;
+- continue to classify that work as background, even though it uses account 0.
+
+Accounts 1..N are background capacity. The queue should scale background
+throughput with the number of configured non-degraded background accounts, but
+only under the global daily TR governor.
+
+Recommended initial limits:
+
+- account 0 foreground concurrency: `3`
+- background concurrency per background account: `1`
+- account 0 background fallback concurrency: `1`, only when foreground is idle
+- global daily TR rate: start conservatively around `5-8` requests per second
+
+These are starting points, not permanent product constants.
+
+## Global Daily TR Governor
+
+Account splitting alone is not sufficient because the real KIS limit may be
+account-scoped, app-scoped, TR-scoped, IP-scoped, or a combination. The queue
+therefore needs both:
+
+- per-account execution slots;
+- one global governor for the KIS daily candle TR.
+
+The global governor applies to every daily candle request, regardless of lane or
+account. It controls:
+
+- global request start rate;
+- shared cooldown after `EGW00201`;
+- foreground-first resume after cooldown.
+
+The implementation should record `account_id`, lane, and TR on rate-limit
+events where practical. The first implementation can use a global daily TR
+cooldown for safety. Later, if logs show limits are truly account-local, the
+queue can add per-account cooldowns without changing the caller contract.
 
 ## Priority Policy
 
@@ -70,7 +139,8 @@ Rules:
 - Background requests do not start while any foreground request is waiting.
 - Already-running background requests are allowed to finish.
 - Initial foreground concurrency should be small, around `3`.
-- Initial background concurrency should be conservative, around `2`.
+- Initial background concurrency should be conservative: one active job per
+  available background account, with a small global cap.
 
 These values should be constants or configuration points so production behavior
 can be tuned from observed KIS limits.
@@ -88,6 +158,9 @@ When the queue observes a daily TR rate-limit failure:
 - Resume with foreground first.
 - Use exponential cooldown with jitter, starting around `1s`, then `2s`, `4s`,
   and capping around `8s`.
+- If rate-limits are isolated to one account, future implementations may cool
+  down only that account lane. The initial behavior should prefer global daily
+  TR cooldown because it is safer under uncertain KIS quota semantics.
 
 Preferred implementation direction:
 
@@ -164,6 +237,8 @@ Integration tests should cover:
 - Opening the frontend while screener recovery is running does not cause a wall
   of KIS `EGW00201` retry logs.
 - User-visible daily chart requests complete before queued screener work.
+- Background work does not consume account 0 while foreground daily chart work
+  is waiting.
 - Screener recovery still eventually catches up when KIS permits traffic.
 - Operators can tell whether delay is due to queued work, cooldown, or upstream
   rate-limit.
