@@ -22,9 +22,9 @@ describe('netAtCursor', () => {
     expect(netAtCursor(e, null)).toBe(0);
   });
 
-  it('returns 0 when cursor precedes broker first observation', () => {
+  it('returns the latest net when cursor precedes broker first observation', () => {
     const e = entry('A', [{ ts_ms: 200, net: 5 }]);
-    expect(netAtCursor(e, 100)).toBe(0);
+    expect(netAtCursor(e, 100)).toBe(5);
   });
 
   it('returns the net of the last point at-or-before cursor', () => {
@@ -49,7 +49,7 @@ describe('netAtCursor', () => {
 
   it('handles single-point series', () => {
     const e = entry('A', [{ ts_ms: 100, net: 5 }]);
-    expect(netAtCursor(e, 50)).toBe(0);
+    expect(netAtCursor(e, 50)).toBe(5);
     expect(netAtCursor(e, 100)).toBe(5);
     expect(netAtCursor(e, 200)).toBe(5);
   });
