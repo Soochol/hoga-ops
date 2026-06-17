@@ -252,6 +252,7 @@ export function LivePage() {
         isExtending={isExtending}
         pastDataWarnings={pastDataWarnings}
         restoreViewport={restoreViewport}
+        viewIdentity={activeTabId}
         live={live}
         dayAskPeaks={dayAskPeaks}
         todayAllPriceAskPeak={todayAllPriceAskPeak}
