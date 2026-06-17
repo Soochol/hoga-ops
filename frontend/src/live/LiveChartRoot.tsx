@@ -69,7 +69,7 @@ function pad(n: number): string {
 const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
-const DAILY_VISIBLE_BARS = 30;
+const DAILY_VISIBLE_BARS = 15;
 
 interface Props {
   code: string | null;
@@ -246,12 +246,21 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
     if (!c) return null;
     try {
       const ts = c.timeScale();
-      return viewportFromRanges(
+      const vp = viewportFromRanges(
         ts.getVisibleLogicalRange(),
         ts.getVisibleRange(),
         axisRef.current,
         lastCandleMsRef.current,
       );
+      if (
+        vp &&
+        timeframeRef.current === 'D' &&
+        vp.atLiveEdge &&
+        vp.barSpan > DAILY_VISIBLE_BARS
+      ) {
+        return { ...vp, barSpan: DAILY_VISIBLE_BARS };
+      }
+      return vp;
     } catch {
       return null;
     }
@@ -549,6 +558,29 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
       // chart torn down between effect runs
     }
   }, [chart, cb, timeframe, isPastCandlesLoading, viewKey, revealedKey, restoreViewport]);
+
+  useEffect(() => {
+    if (!chart || !cb || timeframe !== 'D' || cb.candles.length === 0 || isPastCandlesLoading) return;
+    const ts = chart.timeScale();
+    try {
+      const lastCandleMs = cb.candles[cb.candles.length - 1]?.ts_ms ?? null;
+      const vp = viewportFromRanges(
+        ts.getVisibleLogicalRange(),
+        ts.getVisibleRange(),
+        axisRef.current,
+        lastCandleMs,
+      );
+      if (!vp || !vp.atLiveEdge || vp.barSpan <= DAILY_VISIBLE_BARS + 5) return;
+      const totalBars = cb.candles.length;
+      ts.setVisibleLogicalRange({
+        from: Math.max(0, totalBars - DAILY_VISIBLE_BARS),
+        to: totalBars + 5,
+      });
+      ts.scrollToPosition(0, false);
+    } catch {
+      // chart torn down between effects
+    }
+  }, [chart, cb, timeframe, isPastCandlesLoading]);
 
   useEffect(() => {
     const el = containerRef.current;
