@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
@@ -17,6 +17,7 @@ export function StudyPage() {
   const [params] = useSearchParams();
   const viewId = params.get('view');
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
+  const [isCursorActive, setIsCursorActive] = useState(false);
   const snapshotQuery = useStudyViewSnapshot(viewId);
   const snapshot = snapshotQuery.data;
   const chartInput = useMemo(
@@ -33,8 +34,8 @@ export function StudyPage() {
     captureViewportRef.current = capture;
   }, []);
 
-  useLayoutEffect(() => {
-    useLiveCursorStore.getState().resetCursor();
+  useEffect(() => {
+    setIsCursorActive(false);
   }, [viewId]);
 
   useEffect(() => {
@@ -122,13 +123,14 @@ export function StudyPage() {
           }}
           persistLiveViewport={false}
           onViewportCaptureReady={handleViewportCaptureReady}
+          onCursorActiveChange={setIsCursorActive}
         />
         {details && chartInput && (
           <StudyDetailPanel
             details={details}
             candles={chartInput.bundle.candles}
             bucketMs={bucketMs}
-            cursorMs={cursorMs}
+            cursorMs={isCursorActive ? cursorMs : null}
           />
         )}
       </div>

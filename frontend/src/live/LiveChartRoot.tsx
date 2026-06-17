@@ -115,12 +115,14 @@ interface Props {
   persistLiveViewport?: boolean;
   /** Save flows can read the current chart viewport without coupling to chart internals. */
   onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
+  /** Optional hover activity signal for consumers that must ignore sticky cursor restore. */
+  onCursorActiveChange?: (active: boolean) => void;
 }
 
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady }: Props) {
+export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -719,6 +721,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
     if (!chart) {
       // Session transition safety: when chart instance disappears (view/key
       // change or page unmount), clear sticky state too.
+      onCursorActiveChange?.(false);
       useLiveCursorStore.getState().resetCursor();
       return;
     }
@@ -731,6 +734,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
       // cursor after we've restored.
       if (param.point == null) {
         if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
+        onCursorActiveChange?.(false);
         useLiveCursorStore.getState().restoreCursor();
         return;
       }
@@ -741,6 +745,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         const t = param.time;
         // No usable time (defensive) → not on a bar → keep sticky last point.
         if (typeof t !== 'number' || axis.segments.length === 0) {
+          onCursorActiveChange?.(false);
           store.restoreCursor();
           return;
         }
@@ -758,9 +763,11 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         // whitespace boundary while the live edge was 14:54).
         const lastMs = lastCandleMsRef.current;
         if (lastMs !== null && realMs > lastMs) {
+          onCursorActiveChange?.(false);
           store.restoreCursor();
           return;
         }
+        onCursorActiveChange?.(true);
         store.setCursor(realMs);
       });
     };
@@ -770,9 +777,10 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
       if (pending !== null) cancelAnimationFrame(pending);
       // Preserve user context only while the chart instance is active; on teardown
       // (view key / timeframe navigation) reset both cursor states.
+      onCursorActiveChange?.(false);
       useLiveCursorStore.getState().resetCursor();
     };
-  }, [chart, axis, timeframe]);
+  }, [chart, axis, timeframe, onCursorActiveChange]);
 
   const dwDisabled = isCalendarTimeframe(timeframe) && !forceHogaPanes;
 

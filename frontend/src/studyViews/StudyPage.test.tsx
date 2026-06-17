@@ -205,7 +205,7 @@ describe('StudyPage', () => {
     expect(useRange).not.toHaveBeenCalled();
   });
 
-  it('ignores a stale shared cursor on first /study render and falls back to the latest saved candle', () => {
+  it('falls back to the latest saved candle when sticky cursor remains after hover ends', () => {
     const enriched: ParquetStudySnapshot = {
       ...snapshot,
       timeframe: '1m',
@@ -275,8 +275,30 @@ describe('StudyPage', () => {
     expect(screen.getByText('+200')).toBeTruthy();
     expect(screen.queryByText('키움')).toBeNull();
     expect(screen.queryByText('+100')).toBeNull();
-    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
-    expect(useLiveCursorStore.getState().lastCursorMs).toBeNull();
+    expect(useLiveCursorStore.getState().cursorMs).toBe(1_500);
+    expect(useLiveCursorStore.getState().lastCursorMs).toBe(1_500);
+
+    const props = liveChartRootMock.mock.calls[0][0] as ComponentProps<typeof LiveChartRoot>;
+    expect(props.onCursorActiveChange).toBeTypeOf('function');
+
+    act(() => {
+      props.onCursorActiveChange?.(true);
+      useLiveCursorStore.getState().setCursor(1_500);
+    });
+
+    expect(screen.getByText('키움')).toBeTruthy();
+    expect(screen.getByText('+100')).toBeTruthy();
+    expect(screen.queryByText('미래에셋')).toBeNull();
+    expect(screen.queryByText('+200')).toBeNull();
+
+    act(() => {
+      props.onCursorActiveChange?.(false);
+    });
+
+    expect(screen.getByText('미래에셋')).toBeTruthy();
+    expect(screen.getByText('+200')).toBeTruthy();
+    expect(screen.queryByText('키움')).toBeNull();
+    expect(screen.queryByText('+100')).toBeNull();
     expect(useLiveBundle).not.toHaveBeenCalled();
     expect(useRange).not.toHaveBeenCalled();
   });
