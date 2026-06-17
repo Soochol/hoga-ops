@@ -557,10 +557,10 @@ def query_bucket_representative(
     window ``[lo_native, hi_native]`` (HHMMSSmmm, inclusive).
 
     The representative is the last *continuous-trading* book (depth beyond level
-    3) at/before the session close, falling back to the last snapshot in the
-    window when it is fully auction. Shallow pre-threshold books are not
-    eligible continuous representatives. This keeps the sidebar 10호가 spot view
-    on the same continuous-only contract as saved views.
+    3) at/before the session close. Shallow pre-threshold books are not
+    eligible continuous representatives, and buckets with no qualifying
+    continuous row return ``None``. This keeps the sidebar 10호가 spot view on
+    the same continuous-only contract as saved views.
 
     ``session_close_ms`` None → legacy last-in-window (no structural exclusion).
     Returns None when no snapshot falls in the window.
@@ -577,10 +577,13 @@ def query_bucket_representative(
         if session_close_ms is not None
         else "TRUE"
     )
+    where_parts = ["ts_ms >= ?", "ts_ms <= ?"]
+    if session_close_ms is not None:
+        where_parts.append(continuous_pred)
     row = con.execute(
         f"SELECT {_SELECT} FROM read_parquet(?) "
-        f"WHERE ts_ms >= ? AND ts_ms <= ? "
-        f"ORDER BY ({continuous_pred}) DESC, {_REPRESENTATIVE_ORDER_SQL} LIMIT 1",
+        f"WHERE {' AND '.join(where_parts)} "
+        f"ORDER BY {_REPRESENTATIVE_ORDER_SQL} LIMIT 1",
         [str(path), lo_native, hi_native],
     ).fetchone()
     return _row_to_api_snapshot(row) if row is not None else None
@@ -596,10 +599,10 @@ def query_bucket_representatives(
     """Return bucket representatives keyed by ``lo_native``.
 
     Matches :func:`query_bucket_representative` bucket-by-bucket:
-    when ``session_close_ms`` is set, prefer the last deep continuous snapshot
-    inside the window and fall back to the window's last snapshot only when no
-    continuous row exists there; when ``session_close_ms`` is None, use the
-    legacy last-in-window behavior with no structural exclusion.
+    when ``session_close_ms`` is set, keep only the last deep continuous
+    snapshot inside the window and omit buckets with no qualifying continuous
+    row; when ``session_close_ms`` is None, use the legacy last-in-window
+    behavior with no structural exclusion.
     """
     if not buckets:
         return {}
@@ -637,8 +640,6 @@ def query_bucket_representatives(
         ]
         if eligible:
             out[int(lo_native)] = eligible[-1]
-            continue
-        out[int(lo_native)] = window[-1]
     return out
 
 

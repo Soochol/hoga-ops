@@ -382,9 +382,8 @@ def test_query_bucket_representative_excludes_auction_snapshot(tmp_path: Path) -
     assert sum(1 for l in snap.ask if l.qty > 0) == 4  # 10-level book, not the 3-level auction
 
 
-def test_query_bucket_representative_fully_auction_falls_back_to_last(tmp_path: Path) -> None:
-    """No-continuous fallback: a fully-auction window returns the last snapshot
-    in the window because no continuous representative exists there."""
+def test_query_bucket_representative_fully_auction_returns_none(tmp_path: Path) -> None:
+    """A fully-auction window has no representative because no continuous row qualifies."""
     from hoga.tables.snapshots import query_bucket_representative
 
     CLOSE = 153_000_000
@@ -399,8 +398,7 @@ def test_query_bucket_representative_fully_auction_falls_back_to_last(tmp_path: 
     snap = query_bucket_representative(
         con, path=out, lo_native=152_100_000, hi_native=152_359_999, session_close_ms=CLOSE
     )
-    assert snap is not None
-    assert snap.ts_ms == 152_200_000  # last in the fully-auction window
+    assert snap is None
 
 
 def test_query_bucket_representative_no_session_close_is_legacy_last(tmp_path: Path) -> None:
@@ -468,6 +466,28 @@ def test_query_bucket_representatives_prefer_last_continuous_book_over_later_sha
     assert single.seq == 2
     assert batch[151_958_000].seq == 2
     assert single.ask[0].price == batch[151_958_000].ask[0].price == 1
+
+
+def test_query_bucket_representatives_omit_fully_auction_bucket(tmp_path: Path) -> None:
+    from hoga.tables.snapshots import query_bucket_representatives
+
+    obs = [
+        _ob(ts_ms=151_700_000, seq=1, ask_q=(1, 2, 3, 4), bid_q=(1, 1, 1, 1)),
+        _ob(ts_ms=152_100_000, seq=2, ask_q=(11, 12, 13), bid_q=(2, 2, 2)),
+        _ob(ts_ms=152_200_000, seq=3, ask_q=(21, 22, 23), bid_q=(3, 3, 3)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+
+    with duckdb.connect(":memory:") as con:
+        reps = query_bucket_representatives(
+            con,
+            path=out,
+            buckets=[(152_100_000, 152_359_999)],
+            session_close_ms=153_000_000,
+        )
+
+    assert 152_100_000 not in reps
 
 
 def test_query_bucket_representatives_no_session_close_uses_legacy_last(tmp_path: Path) -> None:
