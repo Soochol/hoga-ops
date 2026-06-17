@@ -78,7 +78,7 @@ export const VOLUME_SPEC = {
         color: cumulative,
         lineWidth: 2,
         lineStyle: 0,
-        priceScaleId: 'right',
+        priceScaleId: '',
         priceLineVisible: false,
         lastValueVisible: false,
         priceFormat: cumulativePriceFormat,
