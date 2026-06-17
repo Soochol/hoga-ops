@@ -503,6 +503,37 @@ def test_query_bucket_representatives_no_session_close_uses_legacy_last(tmp_path
     assert reps[151_800_000].ts_ms == 152_058_000
 
 
+def test_query_bucket_representative_and_batch_share_seq_tiebreak(tmp_path: Path) -> None:
+    from hoga.tables.snapshots import query_bucket_representative, query_bucket_representatives
+
+    obs = [
+        _ob(ts_ms=151_958_000, seq=1, ask_q=(10, 20, 30, 40), bid_q=(5, 5, 5, 5)),
+        _ob(ts_ms=151_958_000, seq=2, ask_q=(11, 21, 31, 41), bid_q=(6, 6, 6, 6)),
+        _ob(ts_ms=152_058_000, seq=3, ask_q=(99, 98, 97), bid_q=(7, 7, 7)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+
+    with duckdb.connect(":memory:") as con:
+        single = query_bucket_representative(
+            con,
+            path=out,
+            lo_native=151_800_000,
+            hi_native=152_059_999,
+            session_close_ms=153_000_000,
+        )
+        batch = query_bucket_representatives(
+            con,
+            path=out,
+            buckets=[(151_800_000, 152_059_999)],
+            session_close_ms=153_000_000,
+        )
+
+    assert single is not None
+    assert batch[151_800_000].seq == 2
+    assert single.seq == batch[151_800_000].seq == 2
+
+
 # ---------------------------------------------------------------------------
 # query_day_ask_peak (Task 1): 당일 연속거래 매도 최대벽 집계
 # ---------------------------------------------------------------------------

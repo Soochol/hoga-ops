@@ -254,6 +254,9 @@ def _is_continuous_snapshot(
     )
 
 
+_REPRESENTATIVE_ORDER_SQL: str = "ts_ms DESC, seq DESC"
+
+
 def _hhmmssms_to_intra_ms(ts_ms: int) -> int:
     return (
         (ts_ms // 10_000_000) * 3_600_000
@@ -571,7 +574,7 @@ def query_bucket_representative(
     row = con.execute(
         f"SELECT {_SELECT} FROM read_parquet(?) "
         f"WHERE ts_ms >= ? AND ts_ms <= ? "
-        f"ORDER BY ({pre_auction_pred}) DESC, ts_ms DESC LIMIT 1",
+        f"ORDER BY ({pre_auction_pred}) DESC, {_REPRESENTATIVE_ORDER_SQL} LIMIT 1",
         [str(path), lo_native, hi_native],
     ).fetchone()
     return _row_to_api_snapshot(row) if row is not None else None
@@ -619,7 +622,9 @@ def query_bucket_representatives(
             out[int(lo_native)] = window[-1]
             continue
         eligible = [
-            snap for snap in window if _hhmmssms_to_intra_ms(snap.ts_ms) <= last_continuous_ms
+            snap
+            for snap in window
+            if _is_continuous_snapshot(snap, session_close_ms=session_close_ms)
         ]
         if eligible:
             out[int(lo_native)] = eligible[-1]
