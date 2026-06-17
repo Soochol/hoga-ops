@@ -83,7 +83,7 @@ test.describe('Watchlist Panel group ⋯ menu', () => {
     await expect(group.getByRole('button', { name: /^단타(\s+\d+)?$/ })).toBeVisible(); // 헤더 갱신
   });
 
-  test('hover reveals group sort icon and its menu in header', async ({ page }) => {
+  test('hover reveals group sort icon and clicking it toggles sort without opening a menu', async ({ page }) => {
     const { sortButton, hoverHeader } = await setup(page);
 
     await expect(sortButton).toHaveCSS('opacity', '0');
@@ -92,10 +92,7 @@ test.describe('Watchlist Panel group ⋯ menu', () => {
     await expect(sortButton).toHaveCSS('opacity', '1');
 
     await sortButton.click();
-    await expect(page.getByRole('menu', { name: '정렬' })).toBeVisible();
-    await expect(page.getByRole('menuitemradio', { name: '기본' })).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByRole('menuitemradio', { name: '등락률 오름차순' })).toBeVisible();
-    await expect(page.getByRole('menuitemradio', { name: '등락률 내림차순' })).toBeVisible();
+    await expect(page.getByRole('menu', { name: '정렬' })).toHaveCount(0);
   });
 
   test('Escape closes the open menu/dialog first — panel stays, next Escape closes it', async ({ page }) => {

@@ -118,14 +118,15 @@ function GroupHeader(props: {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(menuOpen, menuRef, () => setMenuOpen(false));
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const sortMenuRef = useRef<HTMLDivElement>(null);
-  useDismissablePopover(sortMenuOpen, sortMenuRef, () => setSortMenuOpen(false));
   const itemClass =
     'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent';
-  const selectSortMode = (mode: QuoteSortMode) => {
-    props.onSort?.(mode);
-    setSortMenuOpen(false);
+  const cycleSortMode = () => {
+    if (!props.onSort) return;
+    const next: QuoteSortMode =
+      props.sortMode === 'default' ? 'change_pct_asc'
+      : props.sortMode === 'change_pct_asc' ? 'change_pct_desc'
+      : 'default';
+    props.onSort(next);
   };
   return (
     // sticky + bg-bg-card: 패널 배경과 동일색이라 평시엔 투명처럼 보이고, 스크롤
@@ -158,32 +159,12 @@ function GroupHeader(props: {
         <span className="flex-none text-xs font-normal text-fg-dimmer">{props.count}</span>
       </button>
       {props.onSort && (
-        <div className="relative" ref={sortMenuRef}>
-          <button type="button" aria-label={`${props.label} 정렬`} aria-haspopup="menu" aria-expanded={sortMenuOpen}
-            onClick={() => setSortMenuOpen((v) => !v)}
-            className={`${sortMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'} px-1 leading-none hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
-            <SortIcon active={props.sortMode !== 'default'} />
-          </button>
-          {sortMenuOpen && (
-            <AnchoredMenu label="정렬">
-              <button type="button" role="menuitemradio" aria-checked={props.sortMode === 'default'}
-                onClick={() => selectSortMode('default')}
-                className={itemClass}>
-                <span aria-hidden className="w-4 text-center">{props.sortMode === 'default' ? '✓' : ''}</span> 기본
-              </button>
-              <button type="button" role="menuitemradio" aria-checked={props.sortMode === 'change_pct_asc'}
-                onClick={() => selectSortMode('change_pct_asc')}
-                className={itemClass}>
-                <span aria-hidden className="w-4 text-center">{props.sortMode === 'change_pct_asc' ? '✓' : ''}</span> 등락률 오름차순
-              </button>
-              <button type="button" role="menuitemradio" aria-checked={props.sortMode === 'change_pct_desc'}
-                onClick={() => selectSortMode('change_pct_desc')}
-                className={itemClass}>
-                <span aria-hidden className="w-4 text-center">{props.sortMode === 'change_pct_desc' ? '✓' : ''}</span> 등락률 내림차순
-              </button>
-            </AnchoredMenu>
-          )}
-        </div>
+        <button type="button" aria-label={`${props.label} 정렬`} onClick={cycleSortMode}
+          className={`${props.sortMode === 'default'
+            ? 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 px-1 leading-none hover:text-fg text-fg-dimmer'
+            : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 px-1 leading-none text-accent hover:text-fg'}`}>
+          <SortIcon active={props.sortMode !== 'default'} />
+        </button>
       )}
       {props.onRename && (
         <div className="relative" ref={menuRef}>

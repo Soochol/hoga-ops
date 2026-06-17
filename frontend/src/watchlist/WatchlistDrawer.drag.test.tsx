@@ -161,7 +161,7 @@ describe('WatchlistDrawer drag wiring', () => {
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' }));
+    fireEvent.click(screen.getByLabelText('스윙 정렬'));
 
     h.onDragEnd!({
       active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
@@ -219,7 +219,7 @@ describe('WatchlistDrawer drag wiring', () => {
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' }));
+    fireEvent.click(screen.getByLabelText('스윙 정렬'));
 
     h.onDragEnd!({
       active: { id: 'f_0000000b:035420', data: { current: { type: 'entry', folderId: 'f_0000000b', code: '035420', name: 'NAVER' } } },
