@@ -4,6 +4,7 @@ module (``hoga/tables/{trades,snapshots,brokers,candles}.py``).
 
 from __future__ import annotations
 
+import math
 from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -1007,3 +1008,258 @@ class SavedScreener(ScreenerSaveWriteRequest):
 class SavedScreenersFile(BaseModel):
     schema_version: int = 1
     saves: list[SavedScreener] = Field(default_factory=list)
+
+
+LiveTimeframeModel = Literal["1m", "3m", "5m", "10m", "15m", "30m", "D", "W", "M"]
+StudyAggregationBasis = Literal["close", "intra_period_max"]
+StudySavedFromRoute = Literal["/live", "/study"]
+StudyDataProvenance = Literal["live_mixed", "study_snapshot", "unknown"]
+
+
+def _ensure_finite(value: int | float) -> int | float:
+    if not math.isfinite(float(value)):
+        raise ValueError("must be finite")
+    return value
+
+
+def _strip_nonblank_name(value: str) -> str:
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("name must not be blank")
+    return stripped
+
+
+class StudyViewport(BaseModel):
+    right_edge_ms: int
+    bar_span: float
+    at_live_edge: bool
+
+    @field_validator("right_edge_ms", "bar_span")
+    @classmethod
+    def _finite(cls, v: int | float):
+        return _ensure_finite(v)
+
+    @model_validator(mode="after")
+    def _bar_span_positive(self):
+        if self.bar_span <= 0:
+            raise ValueError("bar_span must be positive")
+        return self
+
+
+class StudyIndicatorState(BaseModel):
+    volume_enabled: bool
+    quote_totals_enabled: bool
+    ratio_enabled: bool
+    fill_strength_enabled: bool
+    aggregation_basis: StudyAggregationBasis
+    auction_window_mask: bool
+    ratio_outlier_filter_enabled: bool
+    ratio_outlier_threshold: float
+
+    @field_validator("ratio_outlier_threshold")
+    @classmethod
+    def _finite(cls, v: float):
+        return _ensure_finite(v)
+
+
+class StudyProvenance(BaseModel):
+    saved_from_route: StudySavedFromRoute
+    data_provenance: StudyDataProvenance
+
+
+class StudySegment(BaseModel):
+    date: str
+    session_open_ms: int
+    session_close_ms: int
+
+
+class StudyCandlePoint(BaseModel):
+    t: int
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+    @field_validator("open", "high", "low", "close", "volume")
+    @classmethod
+    def _finite(cls, v: float):
+        return _ensure_finite(v)
+
+
+class StudyQuoteTotalsPoint(BaseModel):
+    t: int
+    bid_total: float | None = None
+    ask_total: float | None = None
+    visible: bool
+
+    @field_validator("bid_total", "ask_total")
+    @classmethod
+    def _finite_optional(cls, v: float | None):
+        return None if v is None else _ensure_finite(v)
+
+    @model_validator(mode="after")
+    def _visible_has_values(self):
+        if self.visible and (self.bid_total is None or self.ask_total is None):
+            raise ValueError("visible quote total points require bid_total and ask_total")
+        return self
+
+
+class StudyRatioPoint(BaseModel):
+    t: int
+    value: float | None = None
+    visible: bool
+
+    @field_validator("value")
+    @classmethod
+    def _finite_optional(cls, v: float | None):
+        return None if v is None else _ensure_finite(v)
+
+    @model_validator(mode="after")
+    def _visible_has_value(self):
+        if self.visible and self.value is None:
+            raise ValueError("visible ratio points require value")
+        return self
+
+
+class StudyFillStrengthPoint(BaseModel):
+    t: int
+    buy_qty: float | None = None
+    sell_qty: float | None = None
+    visible: bool
+
+    @field_validator("buy_qty", "sell_qty")
+    @classmethod
+    def _finite_optional(cls, v: float | None):
+        return None if v is None else _ensure_finite(v)
+
+    @model_validator(mode="after")
+    def _visible_has_values(self):
+        if self.visible and (self.buy_qty is None or self.sell_qty is None):
+            raise ValueError("visible fill strength points require buy_qty and sell_qty")
+        return self
+
+
+class StudySnapshotBundle(BaseModel):
+    code: str = Field(pattern=CODE_PATTERN)
+    timeframe: LiveTimeframeModel
+    snapshot_from_ms: int
+    snapshot_to_ms: int
+    segments: list[StudySegment]
+    candles: list[StudyCandlePoint]
+    quote_totals: list[StudyQuoteTotalsPoint]
+    ratio: list[StudyRatioPoint]
+    fill_strength: list[StudyFillStrengthPoint]
+    data_warnings: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_bundle(self):
+        if self.snapshot_from_ms > self.snapshot_to_ms:
+            raise ValueError("snapshot_from_ms must be <= snapshot_to_ms")
+        for name in ("candles", "quote_totals", "ratio", "fill_strength"):
+            points = getattr(self, name)
+            ts = [p.t for p in points]
+            if ts != sorted(ts):
+                raise ValueError(f"{name} must be sorted by t")
+        return self
+
+
+class ParquetStudySnapshot(BaseModel):
+    schema_version: Literal[1] = 1
+    code: str = Field(pattern=CODE_PATTERN)
+    label: str
+    timeframe: LiveTimeframeModel
+    snapshot_from_ms: int
+    snapshot_to_ms: int
+    bucket_kind: LiveTimeframeModel
+    viewport: StudyViewport
+    indicator_state: StudyIndicatorState
+    provenance: StudyProvenance
+    bundle: StudySnapshotBundle
+    captured_at_ms: int
+
+    @model_validator(mode="after")
+    def _metadata_matches_bundle(self):
+        if self.snapshot_from_ms > self.snapshot_to_ms:
+            raise ValueError("snapshot_from_ms must be <= snapshot_to_ms")
+        if self.bundle.code != self.code:
+            raise ValueError("snapshot bundle code mismatch")
+        if self.bundle.timeframe != self.timeframe:
+            raise ValueError("snapshot bundle timeframe mismatch")
+        if self.bundle.snapshot_from_ms != self.snapshot_from_ms:
+            raise ValueError("snapshot bundle from bound mismatch")
+        if self.bundle.snapshot_to_ms != self.snapshot_to_ms:
+            raise ValueError("snapshot bundle to bound mismatch")
+        return self
+
+
+class ParquetStudyViewWriteRequest(BaseModel):
+    name: str
+    code: str = Field(pattern=CODE_PATTERN)
+    label: str
+    timeframe: LiveTimeframeModel
+    snapshot_from_ms: int
+    snapshot_to_ms: int
+    viewport: StudyViewport
+    indicator_state: StudyIndicatorState
+    snapshot: ParquetStudySnapshot
+    provenance: StudyProvenance
+    memo: str = ""
+    tags: list[str] = Field(default_factory=list)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str) -> str:
+        return _strip_nonblank_name(v)
+
+    @model_validator(mode="after")
+    def _request_matches_snapshot(self):
+        if self.snapshot_from_ms > self.snapshot_to_ms:
+            raise ValueError("snapshot_from_ms must be <= snapshot_to_ms")
+        fields = ("code", "label", "timeframe", "snapshot_from_ms", "snapshot_to_ms")
+        for field in fields:
+            if getattr(self.snapshot, field) != getattr(self, field):
+                raise ValueError(f"snapshot {field} mismatch")
+        if self.snapshot.viewport != self.viewport:
+            raise ValueError("snapshot viewport mismatch")
+        if self.snapshot.indicator_state != self.indicator_state:
+            raise ValueError("snapshot indicator_state mismatch")
+        if self.snapshot.provenance != self.provenance:
+            raise ValueError("snapshot provenance mismatch")
+        return self
+
+
+class ParquetStudyView(BaseModel):
+    id: str
+    name: str
+    code: str = Field(pattern=CODE_PATTERN)
+    label: str
+    timeframe: LiveTimeframeModel
+    snapshot_from_ms: int
+    snapshot_to_ms: int
+    viewport: StudyViewport
+    indicator_state: StudyIndicatorState
+    memo: str
+    tags: list[str]
+    provenance: StudyProvenance
+    snapshot_schema_version: int
+    snapshot_path: str
+    snapshot_size_bytes: int
+    created_at_ms: int
+    updated_at_ms: int
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str) -> str:
+        return _strip_nonblank_name(v)
+
+    @model_validator(mode="after")
+    def _bounds_are_ordered(self):
+        if self.snapshot_from_ms > self.snapshot_to_ms:
+            raise ValueError("snapshot_from_ms must be <= snapshot_to_ms")
+        return self
+
+
+class StudyViewsFile(BaseModel):
+    schema_version: int = 1
+    saves: list[ParquetStudyView] = Field(default_factory=list)

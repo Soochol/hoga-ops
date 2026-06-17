@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
+import type { StudyIndicatorState } from '../api/studyViews';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveBannerState } from './useLiveBannerState';
 import { LiveHeader } from './LiveHeader';
@@ -15,9 +16,16 @@ import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
-import type { AskPeak } from '../api/types';
+import type { AskPeak, RangeBundle } from '../api/types';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
+import type { TabViewport } from './viewportAnchor';
 import { todayKstYyyymmdd } from './liveDateTime';
+import { useChartPrefsStore } from '../state/chartPrefs';
+import {
+  clearCurrentStudySaveSource,
+  setCurrentStudySaveSource,
+  type LiveStudySaveSource,
+} from '../studyViews/studySaveSource';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import LiveSettingsModal from './LiveSettingsModal';
 import { useDocumentTitle } from '../util/useDocumentTitle';
@@ -86,6 +94,14 @@ export function LivePage() {
 
   const activeCode = useLivePageStore((s) => s.activeCode);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
+  const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
+  const quoteTotalsEnabled = useLivePageStore((s) => s.quoteTotalsEnabled);
+  const ratioEnabled = useLivePageStore((s) => s.ratioEnabled);
+  const fillStrengthEnabled = useLivePageStore((s) => s.fillStrengthEnabled);
+  const auctionWindowMask = useChartPrefsStore((s) => s.auctionWindowMask);
+  const ratioIntraMax = useChartPrefsStore((s) => s.ratioIntraMax);
+  const ratioOutlierFilterEnabled = useChartPrefsStore((s) => s.ratioOutlierFilterEnabled);
+  const ratioOutlierThreshold = useChartPrefsStore((s) => s.ratioOutlierThreshold);
   // Active tab's saved viewport (ADR-0069 A안) → LiveChartRoot restores it on
   // cold switch-back. Stable reference (the tab object's viewport field) across
   // SSE renders; only rewritten on switch-away, so it doesn't thrash the chart.
@@ -93,6 +109,10 @@ export function LivePage() {
   useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const viewportCaptureRef = useRef<() => TabViewport | null>(() => null);
+  const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
+    viewportCaptureRef.current = capture;
+  }, []);
 
   // Single live source for the page: useLiveSeries owns the SSE connection
   // and ring buffer; useLiveBundle composes it with KIS past-candles for the
@@ -108,6 +128,61 @@ export function LivePage() {
     today,
     live,
   );
+  const liveSaveBundle = useMemo<RangeBundle | null>(() => {
+    if (!bundle) return null;
+    if (!chartBundle) return bundle;
+    return {
+      ...bundle,
+      from_date: chartBundle.from_date,
+      to_date: chartBundle.to_date,
+      bucket_ms: chartBundle.bucket_ms,
+      segments: chartBundle.segments,
+      candles: chartBundle.candles,
+      volume_profile_range: chartBundle.volume_profile_range,
+      volume_profile_by_day: chartBundle.volume_profile_by_day,
+      investorPoints: chartBundle.investorPoints,
+      ask_peaks: chartBundle.ask_peaks,
+    };
+  }, [bundle, chartBundle]);
+  const indicatorState = useMemo<StudyIndicatorState>(() => ({
+    volume_enabled: volumeEnabled,
+    quote_totals_enabled: quoteTotalsEnabled,
+    ratio_enabled: ratioEnabled,
+    fill_strength_enabled: fillStrengthEnabled,
+    aggregation_basis: ratioIntraMax ? 'intra_period_max' : 'close',
+    auction_window_mask: auctionWindowMask,
+    ratio_outlier_filter_enabled: ratioOutlierFilterEnabled,
+    ratio_outlier_threshold: ratioOutlierThreshold,
+  }), [
+    auctionWindowMask,
+    fillStrengthEnabled,
+    quoteTotalsEnabled,
+    ratioEnabled,
+    ratioIntraMax,
+    ratioOutlierFilterEnabled,
+    ratioOutlierThreshold,
+    volumeEnabled,
+  ]);
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  useEffect(() => {
+    if (!activeCode || !liveSaveBundle) {
+      setCurrentStudySaveSource(null);
+      return undefined;
+    }
+    const source: LiveStudySaveSource = {
+      origin: 'live',
+      code: activeCode,
+      label: activeTab?.label || activeCode,
+      timeframe,
+      bundle: liveSaveBundle,
+      indicatorState,
+      captureViewport: () => viewportCaptureRef.current(),
+    };
+    setCurrentStudySaveSource(source);
+    return () => {
+      clearCurrentStudySaveSource(source);
+    };
+  }, [activeCode, activeTab?.label, indicatorState, liveSaveBundle, timeframe]);
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
   const askPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
   const askPeakSeeds = (chartBundle ?? bundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;
@@ -176,6 +251,7 @@ export function LivePage() {
         dayAskPeaks={dayAskPeaks}
         todayAllPriceAskPeak={todayAllPriceAskPeak}
         todayKst={today}
+        onViewportCaptureReady={handleViewportCaptureReady}
       />
       {indicatorPanelOpen && (
         <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />

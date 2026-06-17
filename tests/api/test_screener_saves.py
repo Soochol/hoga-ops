@@ -119,14 +119,25 @@ async def test_delete_missing_raises(tmp_path):
 
 def test_saves_routes_crud(client):
     # create
-    r = client.post("/api/screener/saves", json={"name": "급등주",
-        "conditions": [{"id": "a", "type": "new_high", "params": {"lookback": 200, "period": 500}}], "universe": {}})
+    r = client.post(
+        "/api/screener/saves",
+        json={
+            "name": "급등주",
+            "conditions": [
+                {"id": "a", "type": "new_high", "params": {"lookback": 200, "period": 500}}
+            ],
+            "universe": {},
+        },
+    )
     assert r.status_code == 201
     sid = r.json()["id"]
     # list
     assert [s["id"] for s in client.get("/api/screener/saves").json()["saves"]] == [sid]
     # put (rename)
-    r2 = client.put(f"/api/screener/saves/{sid}", json={"name": "이름변경", "conditions": [], "universe": {}})
+    r2 = client.put(
+        f"/api/screener/saves/{sid}",
+        json={"name": "이름변경", "conditions": [], "universe": {}},
+    )
     assert r2.status_code == 200 and r2.json()["name"] == "이름변경"
     # delete
     assert client.delete(f"/api/screener/saves/{sid}").status_code == 204
@@ -134,7 +145,8 @@ def test_saves_routes_crud(client):
 
 
 def test_save_blank_name_422(client):
-    assert client.post("/api/screener/saves", json={"name": "", "conditions": [], "universe": {}}).status_code == 422
+    r = client.post("/api/screener/saves", json={"name": "", "conditions": [], "universe": {}})
+    assert r.status_code == 422
 
 
 def test_save_whitespace_only_name_422(client):
@@ -155,7 +167,10 @@ def test_put_preserves_created_bumps_updated(client):
     r = client.post("/api/screener/saves", json={"name": "원본", "conditions": [], "universe": {}})
     body = r.json()
     sid, created = body["id"], body["created_at_ms"]
-    r2 = client.put(f"/api/screener/saves/{sid}", json={"name": "수정", "conditions": [], "universe": {}})
+    r2 = client.put(
+        f"/api/screener/saves/{sid}",
+        json={"name": "수정", "conditions": [], "universe": {}},
+    )
     upd = r2.json()
     assert upd["id"] == sid
     assert upd["created_at_ms"] == created            # preserved

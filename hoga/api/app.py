@@ -29,6 +29,7 @@ from hoga.api.screener import build_router as build_screener_router
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
+from hoga.api.study_view_routes import build_router as build_study_view_router
 from hoga.api.ws import build_ws_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
@@ -240,6 +241,7 @@ def create_app(data_dir: Path) -> FastAPI:
     app.include_router(build_watchlist_router(data_dir=data_dir))
     app.include_router(build_heatmap_router(data_dir=data_dir))
     app.include_router(build_screener_router(data_dir=data_dir, bus=bus))
+    app.include_router(build_study_view_router(data_dir=data_dir))
     app.include_router(
         build_live_router(
             get_status=live_get_status,

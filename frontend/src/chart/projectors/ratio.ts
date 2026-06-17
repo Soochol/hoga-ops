@@ -1,5 +1,6 @@
 import {
   BaselineSeries,
+  type AutoscaleInfoProvider,
   type BaselineData,
   type LineWidth,
   type Time,
@@ -45,6 +46,14 @@ const priceFormat = {
     return (1 + Math.abs(v)).toFixed(1);
   },
   minMove: 0.01,
+};
+
+const includeZeroAutoscale: AutoscaleInfoProvider = (original) => {
+  const res = original();
+  if (!res?.priceRange) return res;
+  res.priceRange.minValue = Math.min(res.priceRange.minValue, 0);
+  res.priceRange.maxValue = Math.max(res.priceRange.maxValue, 0);
+  return res;
 };
 
 export type RatioPaneContext = {
@@ -146,6 +155,11 @@ export const RATIO_SPEC = {
         // With true, the saturated fill (0.55) is concentrated at the data
         // peaks where the user actually looks.
         relativeGradient: true,
+        // BaselineSeries' relative gradient expects the zero baseline to be
+        // inside the autoscaled range. Study snapshots can legitimately contain
+        // a one-sided ratio run, so merge zero into the default range to keep
+        // gradient stops finite while preserving data-driven scale.
+        autoscaleInfoProvider: includeZeroAutoscale,
         topLineColor: ratioAsk,
         topFillColor1: rgba(ratioAsk, 0.55),
         topFillColor2: rgba(ratioAsk, 0.1),

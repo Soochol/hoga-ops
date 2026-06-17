@@ -72,6 +72,8 @@ interface Props {
   todayAllPriceAskPeak?: AskPeak | null;
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
+  /** LivePage save flows keep this callback and invoke it at save time. */
+  onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
 }
 
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
@@ -90,6 +92,7 @@ export function LiveWorkarea({
   dayAskPeaks = EMPTY_ASK_PEAKS,
   todayAllPriceAskPeak = null,
   todayKst = '',
+  onViewportCaptureReady,
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   // 관심종목 행을 차트로 드래그 중일 때만 드롭 오버레이를 띄운다(WatchlistDrawer가 갱신).
@@ -149,6 +152,7 @@ export function LiveWorkarea({
               dayAskPeaks={dayAskPeaks}
               todayAllPriceAskPeak={todayAllPriceAskPeak}
               todayKst={todayKst}
+              onViewportCaptureReady={onViewportCaptureReady}
             />
           </div>
           <div

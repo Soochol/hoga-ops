@@ -8,6 +8,7 @@ import { Screener } from './pages/Screener';
 import Capture from './pages/Capture';
 import Settings from './pages/Settings';
 import { Heatmap } from './pages/Heatmap';
+import { StudyPage } from './studyViews/StudyPage';
 import { initLiveTabsSync } from './state/liveTabs';
 import './styles/global.css';
 
@@ -23,6 +24,7 @@ createRoot(document.getElementById('root')!).render(
         <Route element={<App />}>
           <Route path="/" element={<Navigate to="/live" replace />} />
           <Route path="live" element={<LivePage />} />
+          <Route path="study" element={<StudyPage />} />
           <Route path="heatmap" element={<Heatmap />} />
           <Route path="inventory" element={<Inventory />} />
           <Route path="screener" element={<Screener />} />

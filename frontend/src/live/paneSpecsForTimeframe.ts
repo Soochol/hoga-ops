@@ -15,11 +15,13 @@ export type PaneToggles = {
   quoteTotalsEnabled?: boolean;
   ratioEnabled?: boolean;
   fillStrengthEnabled?: boolean;
+  forceHogaPanes?: boolean;
 };
 
 const NO_TOGGLES: PaneToggles = { foreignNet: false, institutionNet: false };
 
 const isMinute = (tf: LiveTimeframe): boolean => !isCalendarTimeframe(tf);
+const hogaAllowed = (tf: LiveTimeframe, t: PaneToggles): boolean => t.forceHogaPanes === true || isMinute(tf);
 
 /** A pane's mount gate: does this pane mount at this timeframe under these
  *  toggles? */
@@ -41,9 +43,9 @@ type PaneGate = (tf: LiveTimeframe, t: PaneToggles) => boolean;
  */
 const GATE_BY_NAME: Partial<Record<string, PaneGate>> = {
   volume: (_tf, t) => t.volumeEnabled !== false,
-  'quote-totals': (tf, t) => isMinute(tf) && t.quoteTotalsEnabled !== false,
-  ratio: (tf, t) => isMinute(tf) && t.ratioEnabled !== false,
-  'fill-strength': (tf, t) => isMinute(tf) && t.fillStrengthEnabled !== false,
+  'quote-totals': (tf, t) => hogaAllowed(tf, t) && t.quoteTotalsEnabled !== false,
+  ratio: (tf, t) => hogaAllowed(tf, t) && t.ratioEnabled !== false,
+  'fill-strength': (tf, t) => hogaAllowed(tf, t) && t.fillStrengthEnabled !== false,
 };
 
 /**

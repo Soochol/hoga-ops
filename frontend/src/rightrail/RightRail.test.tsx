@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import RightRail from './RightRail';
 import { useRightRailStore } from '../state/rightRail';
@@ -14,6 +14,18 @@ describe('RightRail', () => {
     render(<RightRail />);
     expect(screen.getByLabelText('관심종목 패널 토글')).toBeInTheDocument();
     expect(screen.getByLabelText('스크리너 패널 토글')).toBeInTheDocument();
+  });
+
+  it('renders saved views as the third rail item', () => {
+    render(<RightRail />);
+    expect(screen.getByRole('button', { name: '저장뷰 패널 토글' })).toBeTruthy();
+  });
+
+  it('accepts savedViews from persisted right rail state', async () => {
+    localStorage.setItem('rightRail.layout', JSON.stringify({ activePanel: 'savedViews' }));
+    vi.resetModules();
+    const mod = await import('../state/rightRail');
+    expect(mod.useRightRailStore.getState().activePanel).toBe('savedViews');
   });
 
   it('관심 item opens the watchlist panel', () => {
