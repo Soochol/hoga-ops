@@ -26,6 +26,7 @@ import {
   setCurrentStudySaveSource,
   type LiveStudySaveSource,
 } from '../studyViews/studySaveSource';
+import { LiveStudyViewSaveButton } from '../studyViews/LiveStudyViewSaveButton';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import LiveSettingsModal from './LiveSettingsModal';
 import { useDocumentTitle } from '../util/useDocumentTitle';
@@ -237,6 +238,7 @@ export function LivePage() {
       <LiveToolbar
         onOpenIndicators={() => setIndicatorPanelOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        studySaveControl={<LiveStudyViewSaveButton />}
       />
       <LiveWorkarea
         activeCode={activeCode}

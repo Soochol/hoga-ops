@@ -1,12 +1,14 @@
+import type { ReactNode } from 'react';
 import { LIVE_TIMEFRAMES, useLivePageStore } from '../state/livePage';
 import LiveDrawingMenu from './LiveDrawingMenu';
 
 type Props = {
   onOpenIndicators: () => void;
   onOpenSettings: () => void;
+  studySaveControl?: ReactNode;
 };
 
-export function LiveToolbar({ onOpenIndicators, onOpenSettings }: Props) {
+export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl }: Props) {
   const tf = useLivePageStore((s) => s.candleTimeframe);
   const setTf = useLivePageStore((s) => s.setCandleTimeframe);
   return (
@@ -78,6 +80,7 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings }: Props) {
         <span>설정</span>
       </button>
       <LiveDrawingMenu />
+      {studySaveControl}
     </div>
   );
 }

@@ -47,6 +47,15 @@ def _snapshot(**overrides):
             "quote_totals": [{"t": 1_000, "bid_total": 100, "ask_total": 90, "visible": True}],
             "ratio": [{"t": 1_000, "value": 0.1, "visible": True}],
             "fill_strength": [{"t": 1_000, "buy_qty": 5, "sell_qty": 4, "visible": True}],
+            "ask_peaks": [{
+                "date": "20260616",
+                "price": 70_500,
+                "qty": 5_000,
+                "t_ms": 1_000,
+                "max_price": 70_700,
+                "max_qty": 6_000,
+                "max_t_ms": 1_000,
+            }],
             "data_warnings": [],
         },
         "captured_at_ms": 3_000,
@@ -128,6 +137,7 @@ def test_study_snapshot_allows_hidden_indicator_without_numeric_value():
     snap["bundle"]["ratio"] = [{"t": 1_000, "visible": False}]
     parsed = ParquetStudySnapshot.model_validate(snap)
     assert parsed.bundle.ratio[0].visible is False
+    assert parsed.bundle.ask_peaks[0].qty == 5_000
 
 
 def test_study_snapshot_rejects_unsorted_candles():

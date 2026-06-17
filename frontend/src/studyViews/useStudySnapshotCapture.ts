@@ -44,6 +44,7 @@ export function buildStudySnapshotRequest(args: BuildStudySnapshotArgs): Parquet
   };
 
   const segments = args.bundle.segments.filter((s) => s.session_close_ms >= from && s.session_open_ms <= to);
+  const segmentDates = new Set(segments.map((s) => s.date));
   const hoga = projectStudySnapshotHoga({
     route: args.route,
     bundle: args.bundle,
@@ -81,6 +82,7 @@ export function buildStudySnapshotRequest(args: BuildStudySnapshotArgs): Parquet
       quote_totals: hoga.quote_totals,
       ratio: hoga.ratio,
       fill_strength: hoga.fill_strength,
+      ask_peaks: args.bundle.ask_peaks.filter((p) => segmentDates.has(p.date)),
       data_warnings: dataWarnings(args.bundle),
     },
     captured_at_ms: args.capturedAtMs ?? Date.now(),

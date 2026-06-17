@@ -87,7 +87,7 @@ export function studySnapshotBundleToRangeBundle(snapshot: StudySnapshotBundle):
     volume_profile_range: EMPTY_VOLUME_PROFILE,
     volume_profile_by_day: [],
     investorPoints: [],
-    ask_peaks: [],
+    ask_peaks: snapshot.ask_peaks ?? [],
   };
 }
 

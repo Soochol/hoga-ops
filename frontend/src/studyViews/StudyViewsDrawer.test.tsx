@@ -115,6 +115,7 @@ function snapshotFixture(): ParquetStudySnapshot {
       quote_totals: [{ t: 1_000, bid_total: 100, ask_total: 90, visible: true }],
       ratio: [{ t: 1_000, value: 0.1, visible: true }],
       fill_strength: [{ t: 1_000, buy_qty: 5, sell_qty: 4, visible: true }],
+      ask_peaks: [],
       data_warnings: [],
     },
     captured_at_ms: 3_000,
@@ -185,7 +186,7 @@ it('renders list and no-match state', async () => {
   expect(screen.getByText('차트 화면에서 저장할 수 있습니다.')).toBeTruthy();
 });
 
-it('opens create dialog on live and creates from the live source', async () => {
+it('moves the live save action out of the drawer', () => {
   saveSource = {
     origin: 'live',
     code: '005930',
@@ -197,19 +198,8 @@ it('opens create dialog on live and creates from the live source', async () => {
   };
   renderDrawer('/live');
 
-  await userEvent.click(screen.getByRole('button', { name: '현재 뷰 저장' }));
-  expect(screen.getByRole('dialog', { name: '저장뷰 만들기' })).toBeTruthy();
-  await userEvent.clear(screen.getByLabelText('이름'));
-  await userEvent.type(screen.getByLabelText('이름'), ' 라이브 저장 ');
-  await userEvent.click(screen.getByRole('button', { name: '저장' }));
-
-  expect(createMutate).toHaveBeenCalledTimes(1);
-  const body = createMutate.mock.calls[0][0];
-  expect(body.name).toBe('라이브 저장');
-  expect(body.code).toBe('005930');
-  expect(body.label).toBe('삼성전자');
-  expect(body.provenance.saved_from_route).toBe('/live');
-  expect(body.viewport.at_live_edge).toBe(true);
+  expect(screen.queryByRole('button', { name: '현재 뷰 저장' })).toBeNull();
+  expect(screen.getByText('라이브 상단 툴바에서 저장할 수 있습니다.')).toBeTruthy();
 });
 
 it('creates a new study save and navigates to the created view', async () => {

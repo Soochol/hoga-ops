@@ -46,7 +46,32 @@ function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_by_day: [],
     investorPoints: [],
-    ask_peaks: [],
+    ask_peaks: [
+      {
+        date: '20260616',
+        price: 70_500,
+        qty: 5_000,
+        t_ms: 2_000,
+        max_price: 70_700,
+        max_qty: 6_000,
+        max_t_ms: 3_000,
+        all_price: 70_900,
+        all_qty: 7_000,
+        all_t_ms: 3_000,
+        all_max_price: 71_000,
+        all_max_qty: 8_000,
+        all_max_t_ms: 3_000,
+      },
+      {
+        date: '20260615',
+        price: 69_500,
+        qty: 4_000,
+        t_ms: 1,
+        max_price: 69_700,
+        max_qty: 4_500,
+        max_t_ms: 1,
+      },
+    ],
     ...overrides,
   };
 }
@@ -102,6 +127,23 @@ describe('buildStudySnapshotRequest', () => {
     expect(req.snapshot.bundle.fill_strength).toEqual([
       { t: 2_000, buy_qty: 6, sell_qty: 3, visible: true },
       { t: 3_000, buy_qty: 7, sell_qty: 2, visible: true },
+    ]);
+    expect(req.snapshot.bundle.ask_peaks).toEqual([
+      {
+        date: '20260616',
+        price: 70_500,
+        qty: 5_000,
+        t_ms: 2_000,
+        max_price: 70_700,
+        max_qty: 6_000,
+        max_t_ms: 3_000,
+        all_price: 70_900,
+        all_qty: 7_000,
+        all_t_ms: 3_000,
+        all_max_price: 71_000,
+        all_max_qty: 8_000,
+        all_max_t_ms: 3_000,
+      },
     ]);
   });
 

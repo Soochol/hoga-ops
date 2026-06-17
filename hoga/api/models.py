@@ -1150,6 +1150,7 @@ class StudySnapshotBundle(BaseModel):
     quote_totals: list[StudyQuoteTotalsPoint]
     ratio: list[StudyRatioPoint]
     fill_strength: list[StudyFillStrengthPoint]
+    ask_peaks: list[AskPeak] = Field(default_factory=list)
     data_warnings: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
