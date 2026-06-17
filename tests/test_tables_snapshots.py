@@ -656,7 +656,88 @@ def test_query_day_ask_peak_dual_splits_traded_and_all_price_peaks(tmp_path) -> 
         max_price=25000, max_qty=1000, max_intra_ms=32460000,
         all_price=26000, all_qty=9000, all_intra_ms=32460000,
         all_max_price=26000, all_max_qty=9000, all_max_intra_ms=32460000,
+        untraded_price=26000, untraded_qty=9000, untraded_intra_ms=32460000,
+        untraded_max_price=26000, untraded_max_qty=9000, untraded_max_intra_ms=32460000,
     )
+
+
+def test_query_day_ask_peak_dual_untraded_excludes_prices_at_or_below_day_high(tmp_path) -> None:
+    """미체결 최대벽은 당일 고가 이하 가격을 절대 후보로 쓰지 않는다.
+
+    This reproduces the SPG/KIA class of bug: an all-price ask wall can be the
+    largest wall, but if its price is inside the day's traded range, it must not
+    become the untraded/orange line.
+    """
+    obs = [
+        _ob_ap(
+            90100000,
+            [1000, 9000, 100, 40, 5, 6, 7, 8, 9, 1],
+            ask_p=[25000, 26000, 27000, 27100, 27200, 27300, 27400, 27500, 27600, 27700],
+        ),
+    ]
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    write_parquet(obs, snapshots_path)
+    write_trades([
+        _trade(90050000, 25000),
+        _trade(90060000, 26000),
+    ], trades_path)
+
+    peak = query_day_ask_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90000000,
+        session_close_ms=153000000,
+    )
+
+    assert peak is not None
+    assert peak.all_price == 26000
+    assert peak.all_qty == 9000
+    assert peak.untraded_price == 27000
+    assert peak.untraded_qty == 100
+    assert peak.untraded_intra_ms == 32460000
+    assert peak.untraded_max_price == 27000
+    assert peak.untraded_max_qty == 100
+    assert peak.untraded_max_intra_ms == 32460000
+
+
+def test_query_day_ask_peak_dual_untraded_is_none_when_all_ask_prices_are_at_or_below_day_high(tmp_path) -> None:
+    """당일 고가보다 큰 ask 후보가 없으면 미체결 peak는 null이어야 한다."""
+    obs = [
+        _ob_ap(
+            90100000,
+            [1000, 9000, 100, 40, 5, 6, 7, 8, 9, 1],
+            ask_p=[25000, 26000, 27000, 27100, 27200, 27300, 27400, 27500, 27600, 27700],
+        ),
+    ]
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    write_parquet(obs, snapshots_path)
+    write_trades([
+        _trade(90050000, 25000),
+        _trade(90060000, 27700),
+    ], trades_path)
+
+    peak = query_day_ask_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90000000,
+        session_close_ms=153000000,
+    )
+
+    assert peak is not None
+    assert peak.all_price == 26000
+    assert peak.all_qty == 9000
+    assert peak.untraded_price is None
+    assert peak.untraded_qty is None
+    assert peak.untraded_intra_ms is None
+    assert peak.untraded_max_price is None
+    assert peak.untraded_max_qty is None
+    assert peak.untraded_max_intra_ms is None
 
 
 def test_query_day_ask_peak_dual_excludes_collapsed_books_from_all_price(tmp_path) -> None:
