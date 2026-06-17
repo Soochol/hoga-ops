@@ -35,6 +35,19 @@ import type { WatchlistEntry } from '../api/watchlist';
 import { resolveDrag, resolveFolderDrag, entrySortableId, parseEntrySortableId } from './dragHandlers';
 import { useEntryDragStore, isPointOnChart, dropPoint } from '../state/entryDrag';
 
+// v1 persisted for future migration. Keep this key stable unless migration
+// strategy is intentionally updated; reset fallback behavior is handled by parser.
+const SORT_MODE_STORAGE_KEY = 'watchlist.sortMode.v1';
+
+function readSortModeFromStorage(): QuoteSortMode {
+  const saved = readJsonObject(SORT_MODE_STORAGE_KEY);
+  const raw = saved?.sortMode;
+  if (raw === 'default' || raw === 'change_pct_asc' || raw === 'change_pct_desc') {
+    return raw;
+  }
+  return 'default';
+}
+
 /** 우측 정렬 앵커드 메뉴 셸 — dim 라벨 헤더 + menuitem children. 패널의 두 메뉴
  *  (헤더 편집 메뉴, 그룹 ⋯ 메뉴)가 공유해 컨테이너/헤더 스타일 드리프트를 막는다. */
 function AnchoredMenu({ label, children }: { label: string; children: React.ReactNode }) {
@@ -266,7 +279,7 @@ export function WatchlistDrawer() {
   const [editOpen, setEditOpen] = useState(false);
   const [addGroupOpen, setAddGroupOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
-  const [sortMode, setSortMode] = useState<QuoteSortMode>('default');
+  const [sortMode, setSortMode] = useState<QuoteSortMode>(() => readSortModeFromStorage());
   const [sortMenu, setSortMenu] = useState(false);
   const sortMenuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(sortMenu, sortMenuRef, () => setSortMenu(false));
@@ -311,6 +324,9 @@ export function WatchlistDrawer() {
   const pctOf = makeChangePctOf(quoteByCode);
   const folderCount = data?.folders.length ?? 0;
   const realFolderIds = groups.filter((g) => g.folder).map((g) => g.folder!.id);
+  useEffect(() => {
+    persistJson(SORT_MODE_STORAGE_KEY, { sortMode });
+  }, [sortMode]);
 
   const moveFolder = (folderId: string, dir: -1 | 1) => {
     const ids = swapFolderOrder(data?.folders ?? [], folderId, dir);
