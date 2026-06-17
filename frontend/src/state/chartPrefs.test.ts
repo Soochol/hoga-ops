@@ -164,7 +164,7 @@ describe('ask peak all-price toggle', () => {
     expect(DEFAULT_PREFS.askPeakShowAllPrices).toBe(true);
     const t = CHART_TOGGLES.find((t) => t.key === 'askPeakShowAllPrices');
     expect(t).toBeDefined();
-    expect(t?.label).toBe('미체결 가격 최대벽도 표시');
+    expect(t?.label).toBe('미체결 최대 매도벽 표시');
     expect(categoryOf(t!)).toBe('indicator-modal');
   });
 

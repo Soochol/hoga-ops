@@ -98,16 +98,8 @@ type BuildAskPeakOverlaySegmentsArgs = {
   showAllPrices: boolean;
 };
 
-function selectedTriple(p: AskPeak, intraMax: boolean): [number, number, number] {
-  return intraMax
-    ? [p.max_price, p.max_qty, p.max_t_ms]
-    : [p.price, p.qty, p.t_ms];
-}
-
-function sameSelectedTriple(a: AskPeak, b: AskPeak, intraMax: boolean): boolean {
-  const [ap, aq, at] = selectedTriple(a, intraMax);
-  const [bp, bq, bt] = selectedTriple(b, intraMax);
-  return ap === bp && aq === bq && at === bt;
+function selectedQty(p: AskPeak, intraMax: boolean): number {
+  return intraMax ? p.max_qty : p.qty;
 }
 
 function untradedPeakFromFields(p: AskPeak, intraMax: boolean): AskPeak | null {
@@ -151,14 +143,12 @@ export function buildAskPeakOverlaySegments({
 
   const untradedPeaks: AskPeak[] = [];
   for (const p of dayAskPeaks) {
-    const untradedPeak = untradedPeakFromFields(p, intraMax);
+    const untradedPeak = p.date === todayKst && todayAllPriceAskPeak?.date === todayKst
+      ? todayAllPriceAskPeak
+      : untradedPeakFromFields(p, intraMax);
     if (!untradedPeak) continue;
-    if (sameSelectedTriple(p, untradedPeak, intraMax)) continue;
+    if (selectedQty(untradedPeak, intraMax) <= selectedQty(p, intraMax)) continue;
     untradedPeaks.push(untradedPeak);
-  }
-  const todayUntradedPeak = todayAllPriceAskPeak ? untradedPeakFromFields(todayAllPriceAskPeak, intraMax) : null;
-  if (todayUntradedPeak && !dayAskPeaks.some((p) => p.date === todayKst)) {
-    untradedPeaks.push(todayUntradedPeak);
   }
   if (untradedPeaks.length === 0) return baseline;
 
