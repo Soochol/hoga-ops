@@ -158,6 +158,51 @@ describe('StudyPage', () => {
     expect('study_ratio' in props.ratioBundle!).toBe(false);
   });
 
+  it('renders saved orderbook and broker detail from snapshot without cursor fetch hooks', () => {
+    const enriched: ParquetStudySnapshot = {
+      ...snapshot,
+      timeframe: '1m',
+      bucket_kind: '1m',
+      bundle: {
+        ...snapshot.bundle,
+        timeframe: '1m',
+        orderbook_buckets: [{
+          t: 1_000,
+          available: true,
+          snapshot: {
+            ts_ms: 1_999,
+            seq: 7,
+            ask: Array.from({ length: 10 }, (_, i) => ({ price: 71_000 + i, qty: 10 + i })),
+            bid: Array.from({ length: 10 }, (_, i) => ({ price: 70_900 - i, qty: 20 + i })),
+            tot_ask: 145,
+            tot_bid: 245,
+          },
+        }],
+        broker_buckets: [{
+          t: 1_000,
+          available: true,
+          brokers: [{ broker: '키움증권', net: 100, dominant_side: 'buy' }],
+        }],
+        detail_warnings: [],
+      },
+    };
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: enriched,
+      isLoading: false,
+      isError: false,
+    });
+
+    renderAt('/study?view=view1');
+
+    expect(screen.getByTestId('study-detail-panel')).toBeTruthy();
+    expect(screen.getByText('10호가')).toBeTruthy();
+    expect(screen.getByText('거래원')).toBeTruthy();
+    expect(screen.getByText('키움')).toBeTruthy();
+    expect(screen.getByText('+100')).toBeTruthy();
+    expect(useLiveBundle).not.toHaveBeenCalled();
+    expect(useRange).not.toHaveBeenCalled();
+  });
+
   it('renders an empty state without a view param', () => {
     useStudyViewSnapshotMock.mockReturnValue({
       data: undefined,
