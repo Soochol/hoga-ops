@@ -36,6 +36,13 @@ class BrokerRow:
     qty_delta: int
 
 
+@dataclass(frozen=True)
+class BrokerDetailRow:
+    broker: str
+    net: int
+    dominant_side: BrokerSide
+
+
 # === TSV parser (one row -> 10 entities) ===
 
 
@@ -180,3 +187,57 @@ def query_day_series(
     ]
     entries.sort(key=lambda e: (-abs(e.final_net), -e.final_net))
     return entries[:10]
+
+
+def query_cumulative_details_at(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    t_values: list[int],
+    limit: int = 10,
+) -> dict[int, list[BrokerDetailRow]]:
+    """Top broker cumulative net at each native cursor timestamp.
+
+    The result mirrors Cursor Sidebar ordering: abs(net) desc, then net desc.
+    """
+    from hoga.broker_names import canonical
+
+    if not t_values:
+        return {}
+    uniq = sorted({int(t) for t in t_values})
+    rows = con.execute(
+        """
+        SELECT
+            t.cursor_ts,
+            p.broker,
+            p.ts_ms,
+            SUM(CASE WHEN p.side = 'buy' THEN p.qty_today ELSE -p.qty_today END) AS net
+        FROM (SELECT UNNEST(?::BIGINT[]) AS cursor_ts) AS t
+        JOIN read_parquet(?) AS p
+          ON p.ts_ms <= t.cursor_ts
+        GROUP BY t.cursor_ts, p.broker, p.ts_ms
+        ORDER BY t.cursor_ts, p.broker, p.ts_ms
+        """,
+        [uniq, str(path)],
+    ).fetchall()
+
+    latest: dict[tuple[int, str], tuple[int, int]] = {}
+    for cursor_ts, raw_broker, ts_ms, net in rows:
+        key = (int(cursor_ts), canonical(raw_broker))
+        prev = latest.get(key)
+        if prev is None or int(ts_ms) >= prev[0]:
+            latest[key] = (int(ts_ms), int(net))
+
+    grouped: dict[int, list[BrokerDetailRow]] = {t: [] for t in uniq}
+    for (cursor_ts, broker), (_ts_ms, net) in latest.items():
+        grouped[cursor_ts].append(
+            BrokerDetailRow(
+                broker=broker,
+                net=net,
+                dominant_side="buy" if net >= 0 else "sell",
+            )
+        )
+    for cursor_ts, details in grouped.items():
+        details.sort(key=lambda r: (-abs(r.net), -r.net))
+        grouped[cursor_ts] = details[:limit]
+    return grouped

@@ -241,6 +241,19 @@ def _row_to_api_snapshot(row: tuple) -> ApiOrderbookSnapshot:
     )
 
 
+def _is_continuous_snapshot(
+    snapshot: ApiOrderbookSnapshot,
+    *,
+    session_close_ms: int | None = None,
+) -> bool:
+    if session_close_ms is not None and snapshot.ts_ms > session_close_ms:
+        return False
+    return (
+        sum(level.qty for level in snapshot.ask[_AUCTION_BOOK_DEPTH:]) > 0
+        and sum(level.qty for level in snapshot.bid[_AUCTION_BOOK_DEPTH:]) > 0
+    )
+
+
 def query_at(
     con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int
 ) -> ApiOrderbookSnapshot | None:
@@ -259,6 +272,26 @@ def query_time_bounds(con: duckdb.DuckDBPyConnection, *, path: Path) -> tuple[in
     if row is None or row[0] is None:
         return None
     return int(row[0]), int(row[1])
+
+
+def _last_continuous_intra_ms(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    session_close_ms: int | None,
+) -> int | None:
+    if session_close_ms is None:
+        return None
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
+    row = con.execute(
+        f"SELECT max({intra_ms_expr}) FROM read_parquet(?) "
+        f"WHERE {_DEEP_BOOK_SQL} AND {intra_ms_expr} <= {close_intra_sql}",
+        [str(path)],
+    ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    return int(row[0])
 
 
 def query_first_ts(con: duckdb.DuckDBPyConnection, *, path: Path) -> int | None:
@@ -518,22 +551,14 @@ def query_bucket_representative(
     Returns None when no snapshot falls in the window.
     """
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    if session_close_ms is None:
-        pre_auction_pred = "TRUE"
-    else:
-        deep_book_sql = _DEEP_BOOK_SQL  # SSOT — same predicate as query_day_ask_peak & client isContinuousBook
-        close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
-        thr = con.execute(
-            f"SELECT max({intra_ms_expr}) FROM read_parquet(?) "
-            f"WHERE {deep_book_sql} AND {intra_ms_expr} <= {close_intra_sql}",
-            [str(path)],
-        ).fetchone()
-        last_continuous_ms = int(thr[0]) if thr is not None and thr[0] is not None else None
-        pre_auction_pred = (
-            f"({intra_ms_expr} <= {last_continuous_ms})"
-            if last_continuous_ms is not None
-            else "TRUE"
-        )
+    last_continuous_ms = _last_continuous_intra_ms(
+        con, path=path, session_close_ms=session_close_ms
+    )
+    pre_auction_pred = (
+        f"({intra_ms_expr} <= {last_continuous_ms})"
+        if last_continuous_ms is not None
+        else "TRUE"
+    )
     row = con.execute(
         f"SELECT {_SELECT} FROM read_parquet(?) "
         f"WHERE ts_ms >= ? AND ts_ms <= ? "
@@ -541,6 +566,46 @@ def query_bucket_representative(
         [str(path), lo_native, hi_native],
     ).fetchone()
     return _row_to_api_snapshot(row) if row is not None else None
+
+
+def query_bucket_representatives(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    buckets: list[tuple[int, int]],
+    session_close_ms: int | None = None,
+) -> dict[int, ApiOrderbookSnapshot]:
+    """Return last continuous-trading representative snapshots keyed by lo_native."""
+    if not buckets:
+        return {}
+    min_lo = min(lo for lo, _hi in buckets)
+    max_hi = max(hi for _lo, hi in buckets)
+    rows = con.execute(
+        f"""
+        SELECT {_SELECT}
+        FROM read_parquet(?)
+        WHERE ts_ms BETWEEN ? AND ?
+        ORDER BY ts_ms ASC, seq ASC
+        """,
+        [str(path), min_lo, max_hi],
+    ).fetchall()
+
+    candidates = [_row_to_api_snapshot(row) for row in rows]
+    out: dict[int, ApiOrderbookSnapshot] = {}
+    for lo_native, hi_native in buckets:
+        eligible = [
+            snap
+            for snap in candidates
+            if lo_native <= snap.ts_ms <= hi_native
+            and _is_continuous_snapshot(snap, session_close_ms=session_close_ms)
+        ]
+        if eligible:
+            out[int(lo_native)] = eligible[-1]
+            continue
+        fallback = [snap for snap in candidates if lo_native <= snap.ts_ms <= hi_native]
+        if fallback:
+            out[int(lo_native)] = fallback[-1]
+    return out
 
 
 def query_day_ask_peak(

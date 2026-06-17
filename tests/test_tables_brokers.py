@@ -306,3 +306,28 @@ def test_query_day_series_returns_empty_list_on_empty_parquet(tmp_path: Path) ->
     con = duckdb.connect()
     entries = query_day_series(con, path=out)
     assert entries == []
+
+
+def test_query_cumulative_details_at_returns_top10_at_each_cursor(tmp_path: Path) -> None:
+    import duckdb
+    from hoga.tables.brokers import BrokerRow, query_cumulative_details_at, write_parquet
+
+    path = tmp_path / "brokers.parquet"
+    rows = [
+        BrokerRow(ts_ms=90_000_000, seq=1, side="buy", rank=1, broker="키움증권", qty_today=100, qty_delta=0),
+        BrokerRow(ts_ms=90_000_000, seq=1, side="sell", rank=1, broker="JP모간", qty_today=80, qty_delta=0),
+        BrokerRow(ts_ms=90_060_000, seq=2, side="buy", rank=1, broker="키움증권", qty_today=120, qty_delta=0),
+        BrokerRow(ts_ms=90_060_000, seq=2, side="sell", rank=1, broker="JP모간", qty_today=200, qty_delta=0),
+    ]
+    write_parquet(rows, path)
+
+    with duckdb.connect(":memory:") as con:
+        out = query_cumulative_details_at(con, path=path, t_values=[90_000_000, 90_060_000])
+
+    assert [(r.broker, r.net, r.dominant_side) for r in out[90_000_000]] == [
+        ("키움증권", 100, "buy"),
+        ("JP모간", -80, "sell"),
+    ]
+    assert out[90_060_000][0].broker == "JP모간"
+    assert out[90_060_000][0].net == -200
+    assert out[90_060_000][0].dominant_side == "sell"
