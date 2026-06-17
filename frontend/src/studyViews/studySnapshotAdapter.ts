@@ -13,6 +13,12 @@ export type StudySnapshotRangeBundle = RangeBundle & {
   study_ratio: StudySnapshotRatio;
 };
 
+export type StudySnapshotChartInput = {
+  bundle: StudySnapshotRangeBundle;
+  chartBundle: StudySnapshotRangeBundle;
+  ratioBundle: RangeBundle;
+};
+
 const EMPTY_VOLUME_PROFILE: VolumeProfile = {
   bin_count: 0,
   price_min: 0,
@@ -78,5 +84,54 @@ export function studySnapshotBundleToRangeBundle(snapshot: StudySnapshotBundle):
     volume_profile_by_day: [],
     investorPoints: [],
     ask_peaks: [],
+  };
+}
+
+function ratioDisplayToQuoteRatio(studyRatio: StudySnapshotRatio): RangeBundle['quote_ratio'] {
+  return {
+    bucket_ms: studyRatio.bucket_ms,
+    points: studyRatio.points.map((p) => {
+      const bid_total = p.value >= 0 ? 1 : 1 - p.value;
+      const ask_total = p.value >= 0 ? 1 + p.value : 1;
+      return {
+        t: p.t,
+        bid_total,
+        ask_total,
+        bid_max: bid_total,
+        ask_max: ask_total,
+        imb_max_bid: bid_total,
+        imb_max_ask: ask_total,
+      };
+    }),
+  };
+}
+
+function rangeBundleWithoutStudyRatio(bundle: StudySnapshotRangeBundle): RangeBundle {
+  return {
+    code: bundle.code,
+    from_date: bundle.from_date,
+    to_date: bundle.to_date,
+    bucket_ms: bundle.bucket_ms,
+    segments: bundle.segments,
+    candles: bundle.candles,
+    quote_ratio: bundle.quote_ratio,
+    fill_strength: bundle.fill_strength,
+    volume_profile_range: bundle.volume_profile_range,
+    volume_profile_by_day: bundle.volume_profile_by_day,
+    investorPoints: bundle.investorPoints,
+    ask_peaks: bundle.ask_peaks,
+  };
+}
+
+export function studySnapshotBundleToChartInput(snapshot: StudySnapshotBundle): StudySnapshotChartInput {
+  const bundle = studySnapshotBundleToRangeBundle(snapshot);
+  const ratioBundle: RangeBundle = {
+    ...rangeBundleWithoutStudyRatio(bundle),
+    quote_ratio: ratioDisplayToQuoteRatio(bundle.study_ratio),
+  };
+  return {
+    bundle,
+    chartBundle: bundle,
+    ratioBundle,
   };
 }

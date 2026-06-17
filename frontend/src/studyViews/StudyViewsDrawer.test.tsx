@@ -4,13 +4,13 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { ParquetStudySnapshot, ParquetStudyView } from '../api/studyViews';
+import type { CurrentStudySaveSource } from './studySaveSource';
 import { StudyViewsDrawer, filterStudyViews } from './StudyViewsDrawer';
 
 const createMutate = vi.fn();
 const updateMutate = vi.fn();
 const removeMutate = vi.fn();
-let liveSource: unknown = null;
-let studySource: unknown = null;
+let saveSource: CurrentStudySaveSource | null = null;
 let mockedSaves: ParquetStudyView[] = [];
 
 const saves: ParquetStudyView[] = [
@@ -86,12 +86,8 @@ vi.mock('./useStudyViews', () => ({
   }),
 }));
 
-vi.mock('./StudyPage', () => ({
-  useCurrentStudySaveSource: () => studySource,
-}));
-
-vi.mock('../live/LivePage', () => ({
-  useCurrentLiveSaveSource: () => liveSource,
+vi.mock('./studySaveSource', () => ({
+  useCurrentStudySaveSource: () => saveSource,
 }));
 
 function snapshotFixture(): ParquetStudySnapshot {
@@ -167,8 +163,7 @@ beforeEach(() => {
   createMutate.mockReset();
   updateMutate.mockReset();
   removeMutate.mockReset();
-  liveSource = null;
-  studySource = null;
+  saveSource = null;
   mockedSaves = saves;
 });
 
@@ -191,7 +186,8 @@ it('renders list and no-match state', async () => {
 });
 
 it('opens create dialog on live and creates from the live source', async () => {
-  liveSource = {
+  saveSource = {
+    origin: 'live',
     code: '005930',
     label: '삼성전자',
     timeframe: '5m',
@@ -218,7 +214,8 @@ it('opens create dialog on live and creates from the live source', async () => {
 
 it('creates a new study save and navigates to the created view', async () => {
   const snapshot = snapshotFixture();
-  studySource = {
+  saveSource = {
+    origin: 'study',
     viewId: 'a',
     snapshot,
     bundle: rangeBundleFixture(),
@@ -242,7 +239,8 @@ it('creates a new study save and navigates to the created view', async () => {
 });
 
 it('opens overwrite dialog from current study view primary action', async () => {
-  studySource = {
+  saveSource = {
+    origin: 'study',
     viewId: 'a',
     snapshot: snapshotFixture(),
     bundle: rangeBundleFixture(),
@@ -261,7 +259,8 @@ it('opens overwrite dialog from current study view primary action', async () => 
 
 it('overwrites the current study source even when the saves list is missing the row', async () => {
   mockedSaves = [saves[1]];
-  studySource = {
+  saveSource = {
+    origin: 'study',
     viewId: 'missing-current',
     snapshot: snapshotFixture(),
     bundle: rangeBundleFixture(),
@@ -290,7 +289,8 @@ it('confirms delete before calling remove mutation', async () => {
 });
 
 it('navigates away after deleting the active study view', async () => {
-  studySource = {
+  saveSource = {
+    origin: 'study',
     viewId: 'a',
     snapshot: snapshotFixture(),
     bundle: rangeBundleFixture(),

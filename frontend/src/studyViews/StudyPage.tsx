@@ -1,45 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router';
-import type { RangeBundle } from '../api/types';
-import type { ParquetStudySnapshot } from '../api/studyViews';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useStudyViewSnapshot } from './useStudyViews';
-import { studySnapshotBundleToRangeBundle } from './studySnapshotAdapter';
-
-type CurrentStudySaveSource = {
-  viewId: string;
-  snapshot: ParquetStudySnapshot;
-  bundle: RangeBundle;
-  captureViewport: () => TabViewport | null;
-};
-
-let currentStudySaveSource: CurrentStudySaveSource | null = null;
-const studySaveSourceListeners = new Set<() => void>();
-
-function setCurrentStudySaveSource(next: CurrentStudySaveSource | null) {
-  currentStudySaveSource = next;
-  studySaveSourceListeners.forEach((listener) => listener());
-}
-
-export function useCurrentStudySaveSource() {
-  return useSyncExternalStore(
-    (listener) => {
-      studySaveSourceListeners.add(listener);
-      return () => studySaveSourceListeners.delete(listener);
-    },
-    () => currentStudySaveSource,
-    () => null,
-  );
-}
+import { studySnapshotBundleToChartInput } from './studySnapshotAdapter';
+import {
+  clearCurrentStudySaveSource,
+  setCurrentStudySaveSource,
+  type StoredStudySaveSource,
+} from './studySaveSource';
 
 export function StudyPage() {
   const [params] = useSearchParams();
   const viewId = params.get('view');
   const snapshotQuery = useStudyViewSnapshot(viewId);
   const snapshot = snapshotQuery.data;
-  const bundle = useMemo(
-    () => snapshot ? studySnapshotBundleToRangeBundle(snapshot.bundle) : null,
+  const chartInput = useMemo(
+    () => snapshot ? studySnapshotBundleToChartInput(snapshot.bundle) : null,
     [snapshot],
   );
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
@@ -48,21 +25,22 @@ export function StudyPage() {
   }, []);
 
   useEffect(() => {
-    if (!viewId || !snapshot || !bundle) {
+    if (!viewId || !snapshot || !chartInput) {
       setCurrentStudySaveSource(null);
       return undefined;
     }
-    const source: CurrentStudySaveSource = {
+    const source: StoredStudySaveSource = {
+      origin: 'study',
       viewId,
       snapshot,
-      bundle,
+      bundle: chartInput.bundle,
       captureViewport: () => captureViewportRef.current(),
     };
     setCurrentStudySaveSource(source);
     return () => {
-      if (currentStudySaveSource === source) setCurrentStudySaveSource(null);
+      clearCurrentStudySaveSource(source);
     };
-  }, [bundle, captureViewportRef, snapshot, viewId]);
+  }, [captureViewportRef, chartInput, snapshot, viewId]);
 
   if (!viewId) {
     return (
@@ -84,7 +62,7 @@ export function StudyPage() {
     );
   }
 
-  if (snapshotQuery.isError || !snapshot || !bundle) {
+  if (snapshotQuery.isError || !snapshot || !chartInput) {
     return (
       <section data-testid="study-page-error" className="h-full min-w-0 bg-[var(--bg)] text-[var(--fg)]">
         <div className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
@@ -108,8 +86,9 @@ export function StudyPage() {
         code={snapshot.code}
         timeframe={snapshot.timeframe}
         viewIdentity={viewId}
-        bundle={bundle}
-        chartBundle={bundle}
+        bundle={chartInput.bundle}
+        chartBundle={chartInput.chartBundle}
+        ratioBundle={chartInput.ratioBundle}
         clampEngaged={false}
         isPastCandlesLoading={false}
         isExtending={false}

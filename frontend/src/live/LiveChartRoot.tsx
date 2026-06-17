@@ -50,7 +50,6 @@ import CandleTooltip from './CandleTooltip';
 import HighLowAnnotationOverlay from './HighLowAnnotationOverlay';
 import type { PaneId } from '../chart/drawing/types';
 import { useDrawingHost } from '../chart/useDrawingHost';
-import type { StudySnapshotRangeBundle } from '../studyViews/studySnapshotAdapter';
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -84,6 +83,8 @@ interface Props {
    * doesn't churn the candle path. Optional + falls back to `bundle` so existing
    * single-bundle callers/tests keep working unchanged. */
   chartBundle?: RangeBundle | null;
+  /** Optional pane-specific bundle for ratio display when the source is already display-locked. */
+  ratioBundle?: RangeBundle | null;
   clampEngaged: boolean;
   isPastCandlesLoading: boolean;
   /** useLiveBundle.isExtending. false-edge = 한 스텝 settle → 진행 루프 다음 스텝 판정. */
@@ -114,34 +115,10 @@ interface Props {
   onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
 }
 
-function withStudyRatioAsQuoteRatio(bundle: RangeBundle): RangeBundle {
-  const studyRatio = (bundle as Partial<StudySnapshotRangeBundle>).study_ratio;
-  if (!studyRatio || studyRatio.points.length === 0) return bundle;
-  return {
-    ...bundle,
-    quote_ratio: {
-      bucket_ms: studyRatio.bucket_ms,
-      points: studyRatio.points.map((p) => {
-        const bid_total = p.value >= 0 ? 1 : 1 - p.value;
-        const ask_total = p.value >= 0 ? 1 + p.value : 1;
-        return {
-          t: p.t,
-          bid_total,
-          ask_total,
-          bid_max: bid_total,
-          ask_max: ask_total,
-          imb_max_bid: bid_total,
-          imb_max_ask: ask_total,
-        };
-      }),
-    },
-  };
-}
-
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady }: Props) {
+export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -162,7 +139,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
   // candle path's props referentially identical.
   const cb = chartBundle ?? bundle;
   const hogaBundle = bundle ?? cb;
-  const ratioBundle = useMemo(() => hogaBundle ? withStudyRatioAsQuoteRatio(hogaBundle) : hogaBundle, [hogaBundle]);
+  const paneRatioBundle = ratioBundle ?? hogaBundle;
   // Load identity for the per-view chart remount and the reveal cover.
   const viewKey = viewIdentity ? `${code ?? ''}|${timeframe}|${viewIdentity}` : `${code ?? ''}|${timeframe}`;
   // Chart identity is KEYED by the view it was created for. On a viewKey
@@ -806,7 +783,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
               chart={chart}
               // hoga panes (spec.live) get the live bundle; candle/volume/investor
               // panes get the stable chartBundle so an SSE tick doesn't re-setData them.
-              bundle={spec.name === 'ratio' ? (ratioBundle ?? cb) : spec.live ? (bundle ?? cb) : cb}
+              bundle={spec.name === 'ratio' ? (paneRatioBundle ?? cb) : spec.live ? (bundle ?? cb) : cb}
               axis={axis}
               paneIndex={i}
               spec={spec}

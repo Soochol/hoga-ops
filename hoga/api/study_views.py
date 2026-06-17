@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import datetime as dt
-import json
+from contextlib import suppress
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -14,12 +13,21 @@ from hoga.api.models import (
     ParquetStudyViewWriteRequest,
     StudyViewsFile,
 )
+from hoga.api.versioned_json_file import load_versioned_json_file
 
 _CURRENT_VERSION = 1
 _lock = asyncio.Lock()
 
 
 class StudyViewNotFoundError(Exception):
+    pass
+
+
+class StudyViewSnapshotMissingError(Exception):
+    pass
+
+
+class StudyViewSnapshotInvalidError(Exception):
     pass
 
 
@@ -39,33 +47,13 @@ def _staged_snapshot_path(data_dir: Path, id: str) -> Path:
     return _root(data_dir) / "snapshots" / f"{id}.json.staged"
 
 
-def _quarantine(p: Path, reason: str) -> StudyViewsFile:
-    stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S")
-    backup = p.with_name(f"saves.json.corrupt-{stamp}-{reason}")
-    try:
-        p.rename(backup)
-    except OSError:
-        pass
-    return StudyViewsFile()
-
-
 def load_saves(data_dir: Path) -> StudyViewsFile:
-    p = _manifest_path(data_dir)
-    if not p.exists():
-        return StudyViewsFile()
-    try:
-        raw = json.loads(p.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return _quarantine(p, "badjson")
-    if not isinstance(raw, dict):
-        return _quarantine(p, "badshape")
-    schema_version = raw.get("schema_version", 0)
-    if isinstance(schema_version, int) and schema_version > _CURRENT_VERSION:
-        return _quarantine(p, "future-version")
-    try:
-        return StudyViewsFile.model_validate(raw)
-    except ValidationError:
-        return _quarantine(p, "schema")
+    return load_versioned_json_file(
+        _manifest_path(data_dir),
+        model=StudyViewsFile,
+        current_version=_CURRENT_VERSION,
+        empty_factory=StudyViewsFile,
+    )
 
 
 def save_saves(data_dir: Path, file: StudyViewsFile) -> None:
@@ -76,7 +64,21 @@ def load_snapshot(data_dir: Path, *, id: str) -> ParquetStudySnapshot:
     p = _snapshot_path(data_dir, id)
     if not p.exists():
         raise StudyViewNotFoundError(id)
-    return ParquetStudySnapshot.model_validate_json(p.read_text(encoding="utf-8"))
+    try:
+        return ParquetStudySnapshot.model_validate_json(p.read_text(encoding="utf-8"))
+    except ValidationError as e:
+        raise StudyViewSnapshotInvalidError(id) from e
+
+
+def load_restorable_snapshot(data_dir: Path, *, id: str) -> ParquetStudySnapshot:
+    get_save_sync(data_dir, id=id)
+    p = _snapshot_path(data_dir, id)
+    if not p.exists():
+        raise StudyViewSnapshotMissingError(id)
+    try:
+        return ParquetStudySnapshot.model_validate_json(p.read_text(encoding="utf-8"))
+    except ValidationError as e:
+        raise StudyViewSnapshotInvalidError(id) from e
 
 
 def _view_from_req(
@@ -127,7 +129,9 @@ def get_save_sync(data_dir: Path, *, id: str) -> ParquetStudyView:
     raise StudyViewNotFoundError(id)
 
 
-def create_save_sync(data_dir: Path, *, req: ParquetStudyViewWriteRequest, id: str, now_ms: int) -> ParquetStudyView:
+def create_save_sync(
+    data_dir: Path, *, req: ParquetStudyViewWriteRequest, id: str, now_ms: int
+) -> ParquetStudyView:
     snapshot_path = _snapshot_path(data_dir, id)
     atomic_write_json(snapshot_path, req.snapshot.model_dump(mode="json"))
     file = load_saves(data_dir)
@@ -137,10 +141,8 @@ def create_save_sync(data_dir: Path, *, req: ParquetStudyViewWriteRequest, id: s
     try:
         save_saves(data_dir, file)
     except OSError:
-        try:
+        with suppress(OSError):
             snapshot_path.unlink(missing_ok=True)
-        except OSError:
-            pass
         raise
     return save
 
@@ -167,19 +169,15 @@ def update_save_sync(
             try:
                 save_saves(data_dir, file)
             except OSError:
-                try:
+                with suppress(OSError):
                     staged_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
                 raise
             try:
                 staged_path.replace(_snapshot_path(data_dir, id))
             except OSError:
                 save_saves(data_dir, old_file)
-                try:
+                with suppress(OSError):
                     staged_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
                 raise
             return new
     raise StudyViewNotFoundError(id)
@@ -189,12 +187,16 @@ def delete_save_sync(data_dir: Path, *, id: str) -> None:
     file = load_saves(data_dir)
     if not any(s.id == id for s in file.saves):
         raise StudyViewNotFoundError(id)
+    old_file = file.model_copy(deep=True)
     file.saves = [s for s in file.saves if s.id != id]
     save_saves(data_dir, file)
     try:
         _snapshot_path(data_dir, id).unlink()
     except FileNotFoundError:
         pass
+    except OSError:
+        save_saves(data_dir, old_file)
+        raise
 
 
 async def create_save(

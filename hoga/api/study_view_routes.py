@@ -25,6 +25,16 @@ def _not_found(save_id: str) -> HTTPException:
     )
 
 
+def _snapshot_integrity(save_id: str, *, code: str) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": code,
+            "message": f"study view snapshot integrity error: {save_id}",
+        },
+    )
+
+
 def build_router(*, data_dir: Path) -> APIRouter:
     router = APIRouter(prefix="/api/study-views", tags=["study-views"])
 
@@ -51,10 +61,13 @@ def build_router(*, data_dir: Path) -> APIRouter:
     @router.get("/saves/{save_id}/snapshot", response_model=ParquetStudySnapshot)
     async def get_snapshot(save_id: str) -> ParquetStudySnapshot:
         try:
-            study_views.get_save_sync(data_dir, id=save_id)
-            return study_views.load_snapshot(data_dir, id=save_id)
+            return study_views.load_restorable_snapshot(data_dir, id=save_id)
         except study_views.StudyViewNotFoundError as e:
             raise _not_found(save_id) from e
+        except study_views.StudyViewSnapshotMissingError as e:
+            raise _snapshot_integrity(save_id, code="study_view_snapshot_missing") from e
+        except study_views.StudyViewSnapshotInvalidError as e:
+            raise _snapshot_integrity(save_id, code="study_view_snapshot_invalid") from e
 
     @router.put("/saves/{save_id}", response_model=ParquetStudyView)
     async def update_save(

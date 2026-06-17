@@ -7,13 +7,13 @@ from pydantic import ValidationError
 
 from hoga.api import study_views as sv
 from hoga.api.app import create_app
-from hoga.api.study_view_routes import build_router
 from hoga.api.models import (
     ParquetStudySnapshot,
     ParquetStudyView,
     ParquetStudyViewWriteRequest,
     StudyViewsFile,
 )
+from hoga.api.study_view_routes import build_router
 
 
 def _snapshot(**overrides):
@@ -243,6 +243,38 @@ def test_study_view_routes_missing_ids_return_study_specific_404(study_client):
     assert r.json()["detail"]["code"] == "study_view_not_found"
 
 
+def test_study_view_routes_snapshot_missing_file_returns_integrity_error(tmp_path):
+    app = FastAPI()
+    app.include_router(build_router(data_dir=tmp_path))
+    client = TestClient(app)
+    r = client.post("/api/study-views/saves", json=_req())
+    assert r.status_code == 201
+    sid = r.json()["id"]
+    (tmp_path / "study_views" / "snapshots" / f"{sid}.json").unlink()
+
+    r = client.get(f"/api/study-views/saves/{sid}/snapshot")
+
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "study_view_snapshot_missing"
+
+
+def test_study_view_routes_snapshot_invalid_file_returns_integrity_error(tmp_path):
+    app = FastAPI()
+    app.include_router(build_router(data_dir=tmp_path))
+    client = TestClient(app)
+    r = client.post("/api/study-views/saves", json=_req())
+    assert r.status_code == 201
+    sid = r.json()["id"]
+    (tmp_path / "study_views" / "snapshots" / f"{sid}.json").write_text(
+        "{ not json", encoding="utf-8"
+    )
+
+    r = client.get(f"/api/study-views/saves/{sid}/snapshot")
+
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "study_view_snapshot_invalid"
+
+
 def test_study_view_routes_mounted_in_app_factory(tmp_path):
     client = TestClient(create_app(tmp_path))
     r = client.get("/api/study-views/saves")
@@ -264,7 +296,9 @@ def test_study_views_create_writes_manifest_and_snapshot(tmp_path):
     assert sv.load_snapshot(tmp_path, id="view1").code == "005930"
 
 
-def test_study_views_create_snapshot_write_failure_does_not_create_manifest_row(tmp_path, monkeypatch):
+def test_study_views_create_snapshot_write_failure_does_not_create_manifest_row(
+    tmp_path, monkeypatch
+):
     real_atomic_write_json = sv.atomic_write_json
 
     def fail_snapshot_write(path, payload, *, indent=2):
@@ -275,7 +309,12 @@ def test_study_views_create_snapshot_write_failure_does_not_create_manifest_row(
     monkeypatch.setattr(sv, "atomic_write_json", fail_snapshot_write)
 
     with pytest.raises(OSError, match="snapshot write failed"):
-        sv.create_save_sync(tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10)
+        sv.create_save_sync(
+            tmp_path,
+            req=ParquetStudyViewWriteRequest.model_validate(_req()),
+            id="view1",
+            now_ms=10,
+        )
 
     assert sv.load_saves(tmp_path).saves == []
     assert not (tmp_path / "study_views" / "snapshots" / "view1.json").exists()
@@ -292,7 +331,12 @@ def test_study_views_create_manifest_write_failure_removes_orphan_snapshot(tmp_p
     monkeypatch.setattr(sv, "atomic_write_json", fail_manifest_write)
 
     with pytest.raises(OSError, match="manifest write failed"):
-        sv.create_save_sync(tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10)
+        sv.create_save_sync(
+            tmp_path,
+            req=ParquetStudyViewWriteRequest.model_validate(_req()),
+            id="view1",
+            now_ms=10,
+        )
 
     assert sv.load_saves(tmp_path).saves == []
     assert not (tmp_path / "study_views" / "snapshots" / "view1.json").exists()
@@ -320,7 +364,9 @@ def test_study_views_update_manifest_write_failure_keeps_old_snapshot(tmp_path, 
     )
     old_snapshot_path = tmp_path / "study_views" / "snapshots" / "view1.json"
     old_snapshot_text = old_snapshot_path.read_text(encoding="utf-8")
-    updated_req = ParquetStudyViewWriteRequest.model_validate(_req(snapshot=_snapshot(captured_at_ms=9_000)))
+    updated_req = ParquetStudyViewWriteRequest.model_validate(
+        _req(snapshot=_snapshot(captured_at_ms=9_000))
+    )
     real_atomic_write_json = sv.atomic_write_json
 
     def fail_manifest_write(path, payload, *, indent=2):
@@ -343,7 +389,9 @@ def test_study_views_update_snapshot_promotion_failure_rolls_back_manifest(tmp_p
     )
     snapshot_path = tmp_path / "study_views" / "snapshots" / "view1.json"
     old_snapshot_text = snapshot_path.read_text(encoding="utf-8")
-    updated_req = ParquetStudyViewWriteRequest.model_validate(_req(snapshot=_snapshot(captured_at_ms=9_000)))
+    updated_req = ParquetStudyViewWriteRequest.model_validate(
+        _req(snapshot=_snapshot(captured_at_ms=9_000))
+    )
     real_replace = type(snapshot_path).replace
 
     def fail_staged_snapshot_replace(self, target):
@@ -360,7 +408,9 @@ def test_study_views_update_snapshot_promotion_failure_rolls_back_manifest(tmp_p
     assert sv.get_save_sync(tmp_path, id="view1") == original
 
 
-def test_study_views_delete_manifest_write_failure_keeps_snapshot_and_manifest(tmp_path, monkeypatch):
+def test_study_views_delete_manifest_write_failure_keeps_snapshot_and_manifest(
+    tmp_path, monkeypatch
+):
     original = sv.create_save_sync(
         tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10
     )
@@ -382,10 +432,33 @@ def test_study_views_delete_manifest_write_failure_keeps_snapshot_and_manifest(t
 
 
 def test_study_views_delete_missing_snapshot_still_removes_manifest(tmp_path):
-    sv.create_save_sync(tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10)
+    sv.create_save_sync(
+        tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10
+    )
     (tmp_path / "study_views" / "snapshots" / "view1.json").unlink()
     sv.delete_save_sync(tmp_path, id="view1")
     assert sv.load_saves(tmp_path).saves == []
+
+
+def test_study_views_delete_snapshot_unlink_failure_rolls_back_manifest(tmp_path, monkeypatch):
+    original = sv.create_save_sync(
+        tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10
+    )
+    snapshot_path = tmp_path / "study_views" / "snapshots" / "view1.json"
+    real_unlink = type(snapshot_path).unlink
+
+    def fail_snapshot_unlink(self, missing_ok=False):
+        if self.name == "view1.json":
+            raise OSError("snapshot delete failed")
+        return real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(type(snapshot_path), "unlink", fail_snapshot_unlink)
+
+    with pytest.raises(OSError, match="snapshot delete failed"):
+        sv.delete_save_sync(tmp_path, id="view1")
+
+    assert snapshot_path.exists()
+    assert sv.get_save_sync(tmp_path, id="view1") == original
 
 
 def test_study_views_missing_save_raises(tmp_path):

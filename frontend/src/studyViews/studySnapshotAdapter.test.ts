@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { studySnapshotBundleToRangeBundle } from './studySnapshotAdapter';
+import { studySnapshotBundleToChartInput, studySnapshotBundleToRangeBundle } from './studySnapshotAdapter';
 import type { StudySnapshotBundle } from '../api/studyViews';
 
 function snapshot(overrides: Partial<StudySnapshotBundle> = {}): StudySnapshotBundle {
@@ -96,6 +96,47 @@ describe('studySnapshotBundleToRangeBundle', () => {
       imb_max_ask: 0,
     }]);
     expect(bundle.study_ratio.points).toEqual([{ t: 1000, value: -49 }]);
+  });
+
+  it('adapts saved ratio display into a chart-ready ratio bundle', () => {
+    const input = studySnapshotBundleToChartInput(snapshot({
+      quote_totals: [{ t: 1000, bid_total: 100, ask_total: 90, visible: true }],
+      ratio: [
+        { t: 1000, value: -2, visible: true },
+        { t: 1100, value: 0.5, visible: true },
+      ],
+    }));
+
+    expect(input.bundle.quote_ratio.points).toEqual([{
+      t: 1000,
+      bid_total: 100,
+      ask_total: 90,
+      bid_max: 0,
+      ask_max: 0,
+      imb_max_bid: 0,
+      imb_max_ask: 0,
+    }]);
+    expect(input.ratioBundle.quote_ratio.points).toEqual([
+      {
+        t: 1000,
+        bid_total: 3,
+        ask_total: 1,
+        bid_max: 3,
+        ask_max: 1,
+        imb_max_bid: 3,
+        imb_max_ask: 1,
+      },
+      {
+        t: 1100,
+        bid_total: 1,
+        ask_total: 1.5,
+        bid_max: 1,
+        ask_max: 1.5,
+        imb_max_bid: 1,
+        imb_max_ask: 1.5,
+      },
+    ]);
+    expect('study_ratio' in input.ratioBundle).toBe(false);
   });
 
   it('uses inert date defaults when a snapshot has no segments', () => {

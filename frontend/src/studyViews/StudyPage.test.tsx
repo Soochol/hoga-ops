@@ -129,6 +129,16 @@ describe('StudyPage', () => {
       to_date: '20260616',
       study_ratio: { points: [{ t: 1_000, value: -49 }] },
     });
+    expect(props.ratioBundle?.quote_ratio.points).toEqual([{
+      t: 1_000,
+      bid_total: 50,
+      ask_total: 1,
+      bid_max: 50,
+      ask_max: 1,
+      imb_max_bid: 50,
+      imb_max_ask: 1,
+    }]);
+    expect('study_ratio' in props.ratioBundle!).toBe(false);
   });
 
   it('renders an empty state without a view param', () => {

@@ -2,9 +2,8 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import type { ParquetStudyView, ParquetStudyViewWriteRequest, StudyViewport } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
-import { useCurrentLiveSaveSource } from '../live/LivePage';
 import { chooseSnapshotWindow } from './snapshotWindow';
-import { useCurrentStudySaveSource } from './StudyPage';
+import { useCurrentStudySaveSource } from './studySaveSource';
 import { StudyViewSaveDialog } from './StudyViewSaveDialog';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import { buildStudySnapshotRequest } from './useStudySnapshotCapture';
@@ -64,8 +63,7 @@ function visibleWindow(bundle: RangeBundle, viewport: StudyViewport) {
 export function StudyViewsDrawer() {
   const { data, isLoading, isError, refetch } = useStudyViews();
   const mutations = useStudyViewMutations();
-  const liveSource = useCurrentLiveSaveSource();
-  const studySource = useCurrentStudySaveSource();
+  const saveSource = useCurrentStudySaveSource();
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<SaveDialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ParquetStudyView | null>(null);
@@ -77,6 +75,8 @@ export function StudyViewsDrawer() {
     () => data?.saves.find((row) => row.id === currentStudyViewId),
     [currentStudyViewId, data?.saves],
   );
+  const liveSource = saveSource?.origin === 'live' ? saveSource : null;
+  const studySource = saveSource?.origin === 'study' ? saveSource : null;
   const overwriteStudyViewId = location.pathname === '/study' ? studySource?.viewId ?? currentStudyViewId ?? undefined : undefined;
   const canSaveStudy = location.pathname === '/study' && !!studySource;
   const canSaveLive = location.pathname === '/live' && !!liveSource;

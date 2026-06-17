@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import type { StudyIndicatorState } from '../api/studyViews';
@@ -21,6 +21,11 @@ import type { ObSnapshot } from './bucketHogaSeries';
 import type { TabViewport } from './viewportAnchor';
 import { todayKstYyyymmdd } from './liveDateTime';
 import { useChartPrefsStore } from '../state/chartPrefs';
+import {
+  clearCurrentStudySaveSource,
+  setCurrentStudySaveSource,
+  type LiveStudySaveSource,
+} from '../studyViews/studySaveSource';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import LiveSettingsModal from './LiveSettingsModal';
 import { useDocumentTitle } from '../util/useDocumentTitle';
@@ -28,34 +33,6 @@ import { useDocumentTitle } from '../util/useDocumentTitle';
 /** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 const EMPTY_OB_SNAPSHOTS: readonly ObSnapshot[] = [];
-
-type CurrentLiveSaveSource = {
-  code: string;
-  label: string;
-  timeframe: ReturnType<typeof useLivePageStore.getState>['candleTimeframe'];
-  bundle: RangeBundle;
-  indicatorState: StudyIndicatorState;
-  captureViewport: () => TabViewport | null;
-};
-
-let currentLiveSaveSource: CurrentLiveSaveSource | null = null;
-const liveSaveSourceListeners = new Set<() => void>();
-
-function setCurrentLiveSaveSource(next: CurrentLiveSaveSource | null) {
-  currentLiveSaveSource = next;
-  liveSaveSourceListeners.forEach((listener) => listener());
-}
-
-export function useCurrentLiveSaveSource() {
-  return useSyncExternalStore(
-    (listener) => {
-      liveSaveSourceListeners.add(listener);
-      return () => liveSaveSourceListeners.delete(listener);
-    },
-    () => currentLiveSaveSource,
-    () => null,
-  );
-}
 
 /**
  * /live page — KIS-based real-time indicator chart.
@@ -188,10 +165,11 @@ export function LivePage() {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   useEffect(() => {
     if (!activeCode || !liveSaveBundle) {
-      setCurrentLiveSaveSource(null);
+      setCurrentStudySaveSource(null);
       return undefined;
     }
-    const source: CurrentLiveSaveSource = {
+    const source: LiveStudySaveSource = {
+      origin: 'live',
       code: activeCode,
       label: activeTab?.label || activeCode,
       timeframe,
@@ -199,9 +177,9 @@ export function LivePage() {
       indicatorState,
       captureViewport: () => viewportCaptureRef.current(),
     };
-    setCurrentLiveSaveSource(source);
+    setCurrentStudySaveSource(source);
     return () => {
-      if (currentLiveSaveSource === source) setCurrentLiveSaveSource(null);
+      clearCurrentStudySaveSource(source);
     };
   }, [activeCode, activeTab?.label, indicatorState, liveSaveBundle, timeframe]);
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
