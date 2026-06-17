@@ -17,4 +17,19 @@ describe('LiveToolbar', () => {
     fireEvent.click(screen.getByTestId('live-indicators-button'));
     expect(onOpenIndicators).toHaveBeenCalledOnce();
   });
+
+  it('places current-view save next to the drawing button', () => {
+    render(
+      <LiveToolbar
+        onOpenIndicators={() => {}}
+        onOpenSettings={() => {}}
+        studySaveControl={<button type="button">현재 뷰 저장</button>}
+      />,
+    );
+
+    const drawing = screen.getByRole('button', { name: '그리기' });
+    const save = screen.getByRole('button', { name: '현재 뷰 저장' });
+
+    expect(drawing.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

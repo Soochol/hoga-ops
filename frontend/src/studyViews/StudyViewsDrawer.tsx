@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import type { ParquetStudyView, ParquetStudyViewWriteRequest, StudyViewport } from '../api/studyViews';
-import type { RangeBundle } from '../api/types';
-import { chooseSnapshotWindow } from './snapshotWindow';
+import type { ParquetStudyView, ParquetStudyViewWriteRequest } from '../api/studyViews';
 import { useCurrentStudySaveSource } from './studySaveSource';
+import {
+  defaultStudyViewName,
+  studySnapshotByteSize,
+  viewportFromCapture,
+  visibleWindow,
+} from './studySaveRequest';
 import { StudyViewSaveDialog } from './StudyViewSaveDialog';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import { buildStudySnapshotRequest } from './useStudySnapshotCapture';
@@ -17,48 +21,6 @@ export function filterStudyViews<T extends { name: string; code: string; memo: s
 }
 
 type SaveDialogState = { mode: 'create' | 'overwrite'; id?: string; request: ParquetStudyViewWriteRequest };
-
-function byteSize(value: unknown): number {
-  return new TextEncoder().encode(JSON.stringify(value)).length;
-}
-
-function defaultName(row: ParquetStudyView | undefined, label: string, timeframe: string): string {
-  return row?.name ?? `${label} ${timeframe} 저장뷰`;
-}
-
-function fallbackViewport(bundle: RangeBundle): StudyViewport | null {
-  const last = bundle.candles[bundle.candles.length - 1];
-  if (!last) return null;
-  return {
-    right_edge_ms: last.ts_ms,
-    bar_span: Math.max(1, Math.min(200, bundle.candles.length)),
-    at_live_edge: true,
-  };
-}
-
-function viewportFromCapture(
-  captureViewport: () => { rightEdgeMs: number; barSpan: number; atLiveEdge: boolean } | null,
-  fallback: StudyViewport | null,
-): StudyViewport | null {
-  const captured = captureViewport();
-  if (!captured) return fallback;
-  return {
-    right_edge_ms: captured.rightEdgeMs,
-    bar_span: captured.barSpan,
-    at_live_edge: captured.atLiveEdge,
-  };
-}
-
-function visibleWindow(bundle: RangeBundle, viewport: StudyViewport) {
-  const candles = bundle.candles;
-  if (candles.length === 0) return { fromIndex: 0, toIndex: -1 };
-  const rightIndex = candles.reduce((best, candle, index) => (
-    candle.ts_ms <= viewport.right_edge_ms ? index : best
-  ), 0);
-  const visibleTo = Math.max(0, Math.min(candles.length - 1, rightIndex));
-  const visibleFrom = Math.max(0, visibleTo - Math.ceil(viewport.bar_span) + 1);
-  return chooseSnapshotWindow(candles, visibleFrom, visibleTo);
-}
 
 export function StudyViewsDrawer() {
   const { data, isLoading, isError, refetch } = useStudyViews();
@@ -75,42 +37,18 @@ export function StudyViewsDrawer() {
     () => data?.saves.find((row) => row.id === currentStudyViewId),
     [currentStudyViewId, data?.saves],
   );
-  const liveSource = saveSource?.origin === 'live' ? saveSource : null;
   const studySource = saveSource?.origin === 'study' ? saveSource : null;
   const overwriteStudyViewId = location.pathname === '/study' ? studySource?.viewId ?? currentStudyViewId ?? undefined : undefined;
   const canSaveStudy = location.pathname === '/study' && !!studySource;
-  const canSaveLive = location.pathname === '/live' && !!liveSource;
-  const canSave = canSaveStudy || canSaveLive;
 
   const openSaveDialog = (mode: 'create' | 'overwrite', id?: string) => {
-    if (location.pathname === '/live') {
-      if (!liveSource) return;
-      const viewport = viewportFromCapture(liveSource.captureViewport, fallbackViewport(liveSource.bundle));
-      if (!viewport) return;
-      const window = visibleWindow(liveSource.bundle, viewport);
-      const request = buildStudySnapshotRequest({
-        name: defaultName(undefined, liveSource.label, liveSource.timeframe),
-        memo: '',
-        route: '/live',
-        code: liveSource.code,
-        label: liveSource.label,
-        timeframe: liveSource.timeframe,
-        viewport,
-        indicatorState: liveSource.indicatorState,
-        bundle: liveSource.bundle,
-        fromIndex: window.fromIndex,
-        toIndex: window.toIndex,
-      });
-      setDialog({ mode: 'create', request });
-      return;
-    }
     if (!studySource) return;
     const row = id ? data?.saves.find((save) => save.id === id) : currentStudyRow;
     const viewport = viewportFromCapture(studySource.captureViewport, studySource.snapshot.viewport);
     if (!viewport) return;
     const window = visibleWindow(studySource.bundle, viewport);
     const request = buildStudySnapshotRequest({
-      name: defaultName(mode === 'overwrite' ? row : undefined, studySource.snapshot.label, studySource.snapshot.timeframe),
+      name: defaultStudyViewName(mode === 'overwrite' ? row : undefined, studySource.snapshot.label, studySource.snapshot.timeframe),
       memo: mode === 'overwrite' ? row?.memo ?? '' : '',
       route: '/study',
       code: studySource.snapshot.code,
@@ -159,16 +97,18 @@ export function StudyViewsDrawer() {
       <div className="h-full flex flex-col">
         <header className="px-3 py-2 border-b flex items-center justify-between">
           <h2 className="text-sm font-semibold">저장 뷰</h2>
-          <button
-            type="button"
-            disabled={!canSave}
-            onClick={() => location.pathname === '/study' && overwriteStudyViewId
-              ? openSaveDialog('overwrite', overwriteStudyViewId)
-              : openSaveDialog('create')}
-            className="text-xs px-2 py-1 border rounded disabled:opacity-50"
-          >
-            {location.pathname === '/study' && overwriteStudyViewId ? '덮어쓰기' : '현재 뷰 저장'}
-          </button>
+          {location.pathname === '/study' && (
+            <button
+              type="button"
+              disabled={!canSaveStudy}
+              onClick={() => overwriteStudyViewId
+                ? openSaveDialog('overwrite', overwriteStudyViewId)
+                : openSaveDialog('create')}
+              className="text-xs px-2 py-1 border rounded disabled:opacity-50"
+            >
+              {overwriteStudyViewId ? '덮어쓰기' : '현재 뷰 저장'}
+            </button>
+          )}
         </header>
         <div className="p-3 border-b">
           <input
@@ -177,7 +117,7 @@ export function StudyViewsDrawer() {
             onChange={(e) => setQuery(e.target.value)}
             className="w-full bg-bg-input border rounded px-2 py-1 text-sm"
           />
-          {location.pathname === '/live' && !liveSource && <p className="mt-2 text-xs text-fg-dim">차트를 불러온 뒤 저장할 수 있습니다.</p>}
+          {location.pathname === '/live' && <p className="mt-2 text-xs text-fg-dim">라이브 상단 툴바에서 저장할 수 있습니다.</p>}
           {location.pathname === '/study' && !studySource && <p className="mt-2 text-xs text-fg-dim">학습뷰를 불러온 뒤 저장할 수 있습니다.</p>}
           {location.pathname !== '/live' && location.pathname !== '/study' && (
             <p className="mt-2 text-xs text-fg-dim">차트 화면에서 저장할 수 있습니다.</p>
@@ -233,7 +173,7 @@ export function StudyViewsDrawer() {
           defaultName={dialog.request.name}
           defaultMemo={dialog.request.memo ?? ''}
           barCount={dialog.request.snapshot.bundle.candles.length}
-          sizeBytes={byteSize(dialog.request.snapshot)}
+          sizeBytes={studySnapshotByteSize(dialog.request.snapshot)}
           onCancel={() => setDialog(null)}
           onSubmit={handleDialogSubmit}
         />
