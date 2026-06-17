@@ -594,9 +594,15 @@ class LiveInvestorEstimateFetcher:
             return self._cache_response(key, response)
 
         if len(rows) > 1:
+            latest_slot = _latest_investor_estimate_row(rows)
+            latest_slot_value = latest_slot.slot if latest_slot is not None else None
             prior = self._accumulator.get(key, {})
             self._accumulator[key] = {
-                row.slot: _preserve_investor_estimate_observed_at(prior.get(row.slot), row)
+                row.slot: _preserve_investor_estimate_observed_at(
+                    previous=prior.get(row.slot),
+                    current=row,
+                    latest_slot=latest_slot_value,
+                )
                 for row in rows
             }
         else:
@@ -703,9 +709,13 @@ class LiveInvestorEstimateFetcher:
 def _preserve_investor_estimate_observed_at(
     previous: LiveInvestorTrendEstimateRow | None,
     current: LiveInvestorTrendEstimateRow,
+    *,
+    latest_slot: str | None,
 ) -> LiveInvestorTrendEstimateRow:
     if previous is None:
         return current
+    if latest_slot is not None and previous.slot != latest_slot:
+        return previous
     if (
         previous.foreign_qty == current.foreign_qty
         and previous.institution_qty == current.institution_qty
