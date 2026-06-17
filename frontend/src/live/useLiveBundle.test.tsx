@@ -6,6 +6,8 @@ import { useLiveBundle } from './useLiveBundle';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { LiveSeriesData } from '../api/liveSeries';
+import { createVirtualAxis } from '../util/virtualAxis';
+import { projectVolume } from '../chart/projectors/volume';
 
 // Live fixture — used to be a mock of useLiveSeries when useLiveBundle owned
 // the hook call. After the LivePage-lift refactor, `live` is a prop passed
@@ -166,6 +168,103 @@ describe('useLiveBundle', () => {
     expect(c).toMatchObject({ ts_ms: 1779840000000, open: 70000, vol_a: 1000, vol_b: 0 });
     expect(c).not.toHaveProperty('t_ms');
     expect(c).not.toHaveProperty('volume');
+  });
+
+  it('updates the current minute candle from live trade ticks', () => {
+    const liveWithTrade: LiveSeriesData = {
+      ...liveFixture,
+      trade: [
+        {
+          t_ms: 1779840030000,
+          kind: 'trade',
+          trades: [{ t_ms: 1779840030000, price: 70150, qty: 7, side: 1 }],
+        },
+      ],
+    };
+
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveWithTrade), { wrapper });
+
+    expect(result.current.chartBundle!.candles).toHaveLength(1);
+    expect(result.current.chartBundle!.candles[0]).toMatchObject({
+      ts_ms: 1779840000000,
+      open: 70000,
+      high: 70150,
+      low: 69900,
+      close: 70150,
+      vol_a: 1007,
+      vol_b: 0,
+    });
+  });
+
+  it('appends a new forming candle when live trade ticks move into the next bucket', () => {
+    const liveWithTrade: LiveSeriesData = {
+      ...liveFixture,
+      trade: [
+        {
+          t_ms: 1779840060000,
+          kind: 'trade',
+          trades: [{ t_ms: 1779840060000, price: 70200, qty: 3, side: 1 }],
+        },
+      ],
+    };
+
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveWithTrade), { wrapper });
+
+    expect(result.current.chartBundle!.candles).toHaveLength(2);
+    expect(result.current.chartBundle!.candles[1]).toMatchObject({
+      ts_ms: 1779840060000,
+      open: 70050,
+      high: 70200,
+      low: 70200,
+      close: 70200,
+      vol_a: 3,
+      vol_b: 0,
+    });
+  });
+
+  it('ignores live trade ticks for older buckets', () => {
+    const liveWithOldTrade: LiveSeriesData = {
+      ...liveFixture,
+      trade: [
+        {
+          t_ms: 1779839940000,
+          kind: 'trade',
+          trades: [{ t_ms: 1779839940000, price: 80000, qty: 99, side: 1 }],
+        },
+      ],
+    };
+
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveWithOldTrade), { wrapper });
+
+    expect(result.current.chartBundle!.candles).toEqual([
+      { ts_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 1000, vol_b: 0 },
+    ]);
+  });
+
+  it('feeds synthesized live candle volume into the existing volume projector', () => {
+    const liveWithTrade: LiveSeriesData = {
+      ...liveFixture,
+      trade: [
+        {
+          t_ms: 1779840030000,
+          kind: 'trade',
+          trades: [{ t_ms: 1779840030000, price: 70150, qty: 7, side: 1 }],
+        },
+      ],
+    };
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveWithTrade), { wrapper });
+    const axis = createVirtualAxis([
+      {
+        date: '20260527',
+        sessionOpenMs: 1779840000000,
+        sessionCloseMs: 1779863400000,
+      },
+    ]);
+
+    const volume = projectVolume(result.current.chartBundle!, axis);
+
+    expect(volume).toHaveLength(1);
+    expect(volume[0].value).toBe(1007);
   });
 
   // (c) /diagnose 2026-06-09 후속: 백엔드가 내려준 past-candles 경고를 결과로 노출

@@ -14,6 +14,7 @@ import {
 } from '../api/types';
 import { buildChartBundle, buildHogaSeries, type HogaSeries } from './buildLiveBundle';
 import type { LiveDataWarning } from './liveDataWarnings';
+import type { TradeSnapshot } from './bucketHogaSeries';
 import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
 import {
   regularSessionOpenMs,
@@ -37,6 +38,71 @@ function kisBarToCandle(b: { t_ms: number; open: number; high: number; low: numb
     vol_a: b.volume,
     vol_b: 0,
   };
+}
+
+function bucketStartMs(tMs: number, bucketMs: number): number {
+  return Math.floor(tMs / bucketMs) * bucketMs;
+}
+
+export function overlayLiveTradesOnCandles(
+  candles: readonly Candle[],
+  trades: readonly TradeSnapshot[],
+  bucketMs: number,
+): Candle[] {
+  if (candles.length === 0 || bucketMs <= 0) return [...candles];
+  const out = candles.map((c) => ({ ...c }));
+  const lastBase = candles[candles.length - 1];
+  const lastBaseBucket = bucketStartMs(lastBase.ts_ms, bucketMs);
+  const byBucket = new Map<number, Array<{ price: number; qty: number; tMs: number }>>();
+
+  for (const snapshot of trades) {
+    for (const ev of snapshot.trades) {
+      const tMs = ev.t_ms ?? snapshot.t_ms;
+      if (
+        typeof ev.side !== 'number' ||
+        typeof ev.price !== 'number' ||
+        typeof ev.qty !== 'number' ||
+        !Number.isFinite(tMs) ||
+        !Number.isFinite(ev.price) ||
+        !Number.isFinite(ev.qty) ||
+        ev.qty <= 0
+      ) {
+        continue;
+      }
+      const bucket = bucketStartMs(tMs, bucketMs);
+      if (bucket < lastBaseBucket) continue;
+      const bucketTrades = byBucket.get(bucket) ?? [];
+      bucketTrades.push({ price: ev.price, qty: ev.qty, tMs });
+      byBucket.set(bucket, bucketTrades);
+    }
+  }
+
+  for (const [bucket, bucketTrades] of Array.from(byBucket.entries()).sort((a, b) => a[0] - b[0])) {
+    bucketTrades.sort((a, b) => a.tMs - b.tMs);
+    const lastTrade = bucketTrades[bucketTrades.length - 1];
+    const tradeHigh = Math.max(...bucketTrades.map((t) => t.price));
+    const tradeLow = Math.min(...bucketTrades.map((t) => t.price));
+    const tradeQty = bucketTrades.reduce((sum, t) => sum + t.qty, 0);
+    const last = out[out.length - 1];
+    if (bucket === last.ts_ms) {
+      last.high = Math.max(last.high, tradeHigh);
+      last.low = Math.min(last.low, tradeLow);
+      last.close = lastTrade.price;
+      last.vol_a += tradeQty;
+    } else if (bucket > last.ts_ms) {
+      out.push({
+        ts_ms: bucket,
+        open: last.close,
+        high: tradeHigh,
+        low: tradeLow,
+        close: lastTrade.price,
+        vol_a: tradeQty,
+        vol_b: 0,
+      });
+    }
+  }
+
+  return out;
 }
 
 export interface UseLiveBundleResult {
@@ -164,6 +230,10 @@ export function useLiveBundle(
     const bars = timeframe === 'D' ? raw : aggregateCalendar(raw, timeframe as 'W' | 'M');
     return bars.map(kisBarToCandle);
   }, [isMinute, timeframe, pastCandlesQuery.data, pastDailyCandlesQuery.data]);
+  const liveCandles = useMemo<Candle[]>(
+    () => (isMinute ? overlayLiveTradesOnCandles(kisCandles, live.trade, bucketMs) : kisCandles),
+    [isMinute, kisCandles, live.trade, bucketMs],
+  );
 
   // Session bounds — shared by both bundle halves. Depends only on live.initial
   // (stable across SSE ticks), so it never drives a tick-time rebuild.
@@ -191,7 +261,7 @@ export function useLiveBundle(
       todayDate: todayKstYyyymmdd,
       todaySession,
       pastBundle: past.data ?? null,
-      kisCandles,
+      kisCandles: liveCandles,
       bucketMs,
       hasTodayObSignal,
       investorPoints,
@@ -221,7 +291,7 @@ export function useLiveBundle(
     }
 
     return built;
-  }, [code, todayKstYyyymmdd, todaySession, past.data, kisCandles, bucketMs, hasTodayObSignal, investorPoints]);
+  }, [code, todayKstYyyymmdd, todaySession, past.data, liveCandles, bucketMs, hasTodayObSignal, investorPoints]);
 
   // HOGA side (quote_ratio / fill_strength). Deps INCLUDE ob/trade — this is the
   // ONLY half that rebuilds on an SSE tick.
