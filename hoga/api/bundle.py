@@ -444,15 +444,22 @@ def _compute_ask_peak(
         )
         if row is None:
             return None
+        def _unix_or_none(intra_ms: int | None) -> int | None:
+            return ms_from_midnight_to_unix_ms(date, intra_ms) if intra_ms is not None else None
+
         return AskPeak(
             date=date, price=row.price, qty=row.qty,
             t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
             max_price=row.max_price, max_qty=row.max_qty,
             max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
             all_price=row.all_price, all_qty=row.all_qty,
-            all_t_ms=ms_from_midnight_to_unix_ms(date, row.all_intra_ms),
+            all_t_ms=_unix_or_none(row.all_intra_ms),
             all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
-            all_max_t_ms=ms_from_midnight_to_unix_ms(date, row.all_max_intra_ms),
+            all_max_t_ms=_unix_or_none(row.all_max_intra_ms),
+            untraded_price=row.untraded_price, untraded_qty=row.untraded_qty,
+            untraded_t_ms=_unix_or_none(row.untraded_intra_ms),
+            untraded_max_price=row.untraded_max_price, untraded_max_qty=row.untraded_max_qty,
+            untraded_max_t_ms=_unix_or_none(row.untraded_max_intra_ms),
         )
     row = snapshots_tbl.query_day_ask_peak(
         engine.conn, path=path_obj, bucket_ms=bucket_ms,
