@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -10,6 +11,15 @@ from hoga.live import kis_access
 from hoga.live.kis_client import DailyCandleFetchResult, KisRateLimitError
 
 Lane = Literal["foreground", "background"]
+
+
+@dataclass(frozen=True)
+class DailyKisUnavailable(RuntimeError):
+    lane: Lane
+    reason: str
+
+    def __str__(self) -> str:
+        return f"Daily KIS Fetch Queue unavailable lane={self.lane} reason={self.reason}"
 
 
 class DailyKisFetchQueue:
@@ -102,7 +112,7 @@ class DailyKisFetchQueue:
         try:
             lease = self._acquire_account("foreground", data_dir)
             if lease is None:
-                raise RuntimeError("KIS foreground account unavailable")
+                raise DailyKisUnavailable("foreground", "account_unavailable")
             return await self._call_lease(lease, code, frm, to, adjust, foreground=True)
         finally:
             self._fg_active -= 1
@@ -124,7 +134,7 @@ class DailyKisFetchQueue:
                     "background", data_dir, allow_account0_fallback=True
                 )
             if lease is None:
-                raise RuntimeError("KIS background account unavailable")
+                raise DailyKisUnavailable("background", "account_unavailable")
 
             sem = (
                 self._account0_bg_sem

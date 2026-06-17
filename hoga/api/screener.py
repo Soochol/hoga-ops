@@ -22,7 +22,6 @@ from hoga.api.models import (
 )
 from hoga.api.symbols import _RefreshCoordinator
 from hoga.collector.orchestrator import next_kst_day, now_kst
-from hoga.live import kis_access
 from hoga.live.daily_fetch_queue import get_daily_fetch_queue
 from hoga.live.kis_client import KIS_KST
 
@@ -43,35 +42,9 @@ def _gap_trading_days(last_raw_date: str, today: str) -> list[str]:
     return trading_days_in_range(start, today)
 
 
-async def _kis_fetch_one(client, code: str, frm: str, to: str) -> list[DailyBar]:
-    res = await client.fetch_past_daily_candles(code, frm, to, adjust=False)  # 원주가
-    if res.violations:
-        sample = [
-            {
-                "date": v.date_yyyymmdd,
-                "reason": v.reason,
-                "detail": v.detail,
-            }
-            for v in res.violations[:5]
-        ]
-        if all(v.reason == "out_of_range" for v in res.violations):
-            log.info(
-                "screener daily out-of-range rows code=%s count=%d range=[%s,%s] sample=%s",
-                code, len(res.violations), frm, to, sample,
-            )
-        else:
-            log.warning(
-                "screener daily violations code=%s count=%d range=[%s,%s] sample=%s",
-                code, len(res.violations), frm, to, sample,
-            )
-    return [DailyBar(code=code,
-                     date=datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(),
-                     open=float(c.open), high=float(c.high),
-                     low=float(c.low), close=float(c.close), volume=c.volume)
-            for c in res.candles]
-
-
-async def _kis_fetch_one_via_queue(data_dir: Path, code: str, frm: str, to: str) -> list[DailyBar]:
+async def fetch_screener_daily_bars_via_queue(
+    data_dir: Path, code: str, frm: str, to: str,
+) -> list[DailyBar]:
     res = await get_daily_fetch_queue().fetch_past_daily_candles(
         data_dir,
         lane="background",
@@ -138,12 +111,8 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
     # 라우팅(계정 분리 2026-06-09): N=2면 account 1(유휴 REST 버킷)을 써서, 마감 후
     # 사용자가 차트를 보면(account 0 foreground) 경합하지 않게 한다. N=1/저하면 account 0.
     # 게이트: creds 존재만 확인(없으면 skip). 실제 client는 fetch_one이 per-code로 재해결.
-    if kis_access.acquire_account_for_role("background", data_dir) is None:
-        log.warning("screener update: KIS creds missing, skipping")
-        return 0
-
     async def fetch_one(c: str, f: str, t: str) -> list[DailyBar]:
-        return await _kis_fetch_one_via_queue(data_dir, c, f, t)
+        return await fetch_screener_daily_bars_via_queue(data_dir, c, f, t)
 
     async def _do() -> int:
         n = await screener_store.run_update(

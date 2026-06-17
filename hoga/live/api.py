@@ -21,7 +21,7 @@ from hoga.live.kis_client import (
     KisRateLimitError,
     KisTransportError,
 )
-from hoga.live.daily_fetch_queue import get_daily_fetch_queue
+from hoga.live.daily_fetch_queue import DailyKisUnavailable, get_daily_fetch_queue
 from hoga.live.kis_models import InvestorTrendEstimateRow
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
@@ -1030,8 +1030,6 @@ def build_router(
         frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
         if data_dir is None:
             raise HTTPException(503, "KIS client not wired")
-        if kis_access.acquire_account_for_role("foreground", data_dir) is None:
-            raise HTTPException(503, "KIS client not initialized")
         if daily_cache_instance is None:
             raise HTTPException(503, "past-daily-candles cache not wired (data_dir missing)")
 
@@ -1045,11 +1043,13 @@ def build_router(
                 adjust=True,
             )
             return [_candle_to_dict(c) for c in result.candles], result.violations
-
-        return await batched_daily_walkback(
-            cache=daily_cache_instance, fetch_batch=fetch_batch, output_key="candles",
-            code=code, frm=frm, too=too, today_d=today_d,
-        )
+        try:
+            return await batched_daily_walkback(
+                cache=daily_cache_instance, fetch_batch=fetch_batch, output_key="candles",
+                code=code, frm=frm, too=too, today_d=today_d,
+            )
+        except DailyKisUnavailable as e:
+            raise HTTPException(503, "KIS client not initialized") from e
 
     @router.get("/past-investor-net")
     async def _get_past_investor_net(

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from hoga.live.daily_fetch_queue import DailyKisFetchQueue
+from hoga.live.daily_fetch_queue import DailyKisFetchQueue, DailyKisUnavailable
 from hoga.live.kis_client import DailyCandleFetchResult, KisRateLimitError
 
 
@@ -143,3 +143,27 @@ async def test_rate_limit_sets_cooldown_and_records_status(tmp_path: Path) -> No
     snap = queue.snapshot()
     assert snap["daily_rate_limit_count"] == 1
     assert snap["cooldown_remaining_ms"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_missing_account_raises_typed_unavailable(tmp_path: Path) -> None:
+    def acquire(role, data_dir, *, allow_account0_fallback=True):
+        return None
+
+    queue = DailyKisFetchQueue(
+        acquire_account=acquire,
+        global_rate_per_sec=1000,
+        cooldown_backoff=(0.0,),
+    )
+
+    with pytest.raises(DailyKisUnavailable) as exc:
+        await queue.fetch_past_daily_candles(
+            tmp_path,
+            lane="foreground",
+            code="FG",
+            from_yyyymmdd="20240101",
+            to_yyyymmdd="20240101",
+        )
+
+    assert exc.value.lane == "foreground"
+    assert exc.value.reason == "account_unavailable"
