@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { WatchlistDrawer } from './WatchlistDrawer';
@@ -37,7 +37,7 @@ describe('WatchlistDrawer', () => {
     cleanup();
     // 접기 토글이 watchlist.collapsed를 영속하므로 매 테스트 격리 필수 —
     // 없으면 접기를 수행한 테스트가 이후 테스트의 행 가시성을 오염시킨다.
-    localStorage.clear();
+    window.localStorage.clear();
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
     vi.restoreAllMocks();
     // useQuoteByCode → useQuotes → getQuotes → apiCall('/api/live/quotes')
@@ -96,17 +96,17 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByText('-1,500원 (0.80%)')).toBeInTheDocument();
   });
 
-  it('opens a sort menu next to the edit menu with default, ascending, and descending choices', async () => {
+  it('opens a group sort menu with default, ascending, and descending choices', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
 
-    await waitFor(() => expect(screen.getByLabelText('관심종목 정렬')).toBeInTheDocument());
-    expect(screen.getByLabelText('관심종목 정렬')).toHaveAttribute('aria-expanded', 'false');
+    await waitFor(() => expect(screen.getByLabelText('스윙 정렬')).toBeInTheDocument());
+    expect(screen.getByLabelText('스윙 정렬')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
-    expect(screen.getByLabelText('관심종목 정렬')).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByLabelText('스윙 정렬'));
+    expect(screen.getByLabelText('스윙 정렬')).toHaveAttribute('aria-expanded', 'true');
 
     expect(await screen.findByRole('menu', { name: '정렬' })).toBeInTheDocument();
     expect(screen.getByRole('menuitemradio', { name: '기본' })).toHaveAttribute('aria-checked', 'true');
@@ -114,7 +114,7 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByRole('menuitemradio', { name: '등락률 내림차순' })).toHaveAttribute('aria-checked', 'false');
   });
 
-  it('sorts visible watchlist rows by live change rate and resets to default order', async () => {
+  it('sorts entries in a folder by live change rate and resets to default order', async () => {
     const folder = { id: 'f_0000000a', name: '기본', order: 0 };
     const threeEntries = {
       folders: [folder],
@@ -144,15 +144,15 @@ describe('WatchlistDrawer', () => {
 
     expect(rowCodes()).toEqual(['005930', '000660', '035420']);
 
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    fireEvent.click(screen.getByLabelText('기본 정렬'));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 오름차순' }));
     expect(rowCodes()).toEqual(['000660', '005930', '035420']);
 
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    fireEvent.click(screen.getByLabelText('기본 정렬'));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' }));
     expect(rowCodes()).toEqual(['035420', '005930', '000660']);
 
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    fireEvent.click(screen.getByLabelText('기본 정렬'));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: '기본' }));
     expect(rowCodes()).toEqual(['005930', '000660', '035420']);
   });
@@ -186,8 +186,18 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
 
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' }));
+
+    const swingSection = screen.getByTestId('watchlist-group-f_0000000a');
+    const longSection = screen.getByTestId('watchlist-group-f_0000000b');
+
+    fireEvent.click(within(swingSection).getByLabelText('스윙 정렬'));
+    fireEvent.click(await within(swingSection).findByRole('menuitemradio', { name: '등락률 내림차순' }));
+
+    // 장기 그룹은 기본 정렬을 유지해 분리 동작을 확인한다.
+    fireEvent.click(within(longSection).getByLabelText('장기 정렬'));
+    fireEvent.click(await within(longSection).findByRole('menuitemradio', { name: '등락률 내림차순' }));
+    fireEvent.click(within(longSection).getByLabelText('장기 정렬'));
+    fireEvent.click(await within(longSection).findByRole('menuitemradio', { name: '등락률 오름차순' }));
 
     const swing = screen.getByTestId('watchlist-group-f_0000000a');
     const long = screen.getByTestId('watchlist-group-f_0000000b');
@@ -200,48 +210,56 @@ describe('WatchlistDrawer', () => {
     const longCodes = toCodes(long);
 
     expect(swingCodes).toEqual(['005930', '000660']);
-    expect(longCodes).toEqual(['035420', '051910']);
+    expect(longCodes).toEqual(['051910', '035420']);
   });
 
-  it('restores sort mode from localStorage after remount', async () => {
-    localStorage.setItem('watchlist.sortMode.v1', JSON.stringify({ sortMode: 'change_pct_desc' }));
-    const folder = { id: 'f_0000000a', name: '기본', order: 0 };
-    const threeEntries = {
-      folders: [folder],
+  it('initializes each folder sort mode from legacy storage when not individually saved', async () => {
+    window.localStorage.setItem('watchlist.sortMode.v1', JSON.stringify({ sortMode: 'change_pct_desc' }));
+    const folders = [
+      { id: 'f_0000000a', name: '스윙', order: 0 },
+      { id: 'f_0000000b', name: '장기', order: 1 },
+    ];
+    const multiFolderEntries = {
+      folders,
       entries: [
-        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 0 },
-        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 1 },
-        { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 2 },
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000a', order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000a', order: 1 },
+        { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 0 },
+        { code: '051910', name: 'LG화학', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 1 },
       ],
       next_run_at_ms: 0,
     };
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(threeEntries);
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(multiFolderEntries);
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       phase: 'open',
       quotes: [
         { code: '005930', price: 72400, change_pct: 1.2, change_won: 850 },
         { code: '000660', price: 183500, change_pct: -0.8, change_won: -1500 },
-        { code: '035420', price: 211000, change_pct: 3.4, change_won: 6900 },
+        { code: '035420', price: 211000, change_pct: 2.1, change_won: 2100 },
+        { code: '051910', price: 560000, change_pct: -1.5, change_won: -2000 },
       ],
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getByLabelText('스윙 정렬')).toBeInTheDocument());
 
-    const { unmount } = render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    const rowCodes = () => screen.getAllByTestId(/^watchlist-row-/).map((el) =>
-      el.getAttribute('data-testid')?.replace('watchlist-row-', ''));
+    const swing = screen.getByTestId('watchlist-group-f_0000000a');
+    const long = screen.getByTestId('watchlist-group-f_0000000b');
+    const toCodes = (root: HTMLElement) =>
+      Array.from(root.querySelectorAll('[data-testid^="watchlist-row-"]'))
+        .map((el) => (el.getAttribute('data-testid') ?? '').replace('watchlist-row-', ''))
+        .filter((code) => code !== '');
+    expect(toCodes(swing)).toEqual(['005930', '000660']);
+    expect(toCodes(long)).toEqual(['035420', '051910']);
 
-    await waitFor(() => expect(rowCodes()).toEqual(['035420', '005930', '000660']));
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
-    expect(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' })).toHaveAttribute('aria-checked', 'true');
-
-    unmount();
-    const qc2 = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<WatchlistDrawer />, { wrapper: wrap(qc2, '/inventory') });
-    await waitFor(() => expect(rowCodes()).toEqual(['035420', '005930', '000660']));
+    fireEvent.click(within(swing).getByLabelText('스윙 정렬'));
+    expect(await within(swing).findByRole('menuitemradio', { name: '등락률 내림차순' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(within(long).getByLabelText('장기 정렬'));
+    expect(await within(long).findByRole('menuitemradio', { name: '등락률 내림차순' })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('falls back to default sort mode when persisted mode is invalid', async () => {
-    localStorage.setItem('watchlist.sortMode.v1', JSON.stringify({ sortMode: 'nonsense' }));
+    window.localStorage.setItem('watchlist.sortMode.v1', JSON.stringify({ sortMode: 'nonsense' }));
     const folder = { id: 'f_0000000a', name: '기본', order: 0 };
     const threeEntries = {
       folders: [folder],
@@ -269,7 +287,7 @@ describe('WatchlistDrawer', () => {
 
     // invalid persisted mode should not affect ordering (default)
     await waitFor(() => expect(rowCodes()).toEqual(['005930', '000660', '035420']));
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    fireEvent.click(screen.getByLabelText('기본 정렬'));
     expect(await screen.findByRole('menuitemradio', { name: '기본' })).toHaveAttribute('aria-checked', 'true');
   });
 

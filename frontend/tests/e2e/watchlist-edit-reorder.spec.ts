@@ -16,15 +16,16 @@ const API = 'http://localhost:8000';
 
 interface Entry {
   code: string; name: string; registered_at_kst_date: string;
-  last_success_date: string | null; folder_id: string | null; order: number;
+  last_success_date: string | null; folder_id: string; order: number;
 }
 const NAMES: Record<string, string> = {
   '005930': '삼성전자', '000660': 'SK하이닉스', '035720': '카카오',
 };
+const FOLDER_ID = 'f_a';
 const entriesIn = (codes: string[]): Entry[] =>
   codes.map((code, i) => ({
     code, name: NAMES[code], registered_at_kst_date: '20260527',
-    last_success_date: null, folder_id: null, order: i,
+    last_success_date: null, folder_id: FOLDER_ID, order: i,
   }));
 
 test.describe('Watchlist edit modal drag-reorder', () => {
@@ -32,7 +33,7 @@ test.describe('Watchlist edit modal drag-reorder', () => {
     await installLiveMocks(page);
 
     let order = ['005930', '000660', '035720'];
-    let lastPut: { folder_id: string | null; ordered_codes: string[] } | null = null;
+    let lastPut: { folder_id: string; ordered_codes: string[] } | null = null;
     const json = (route: import('@playwright/test').Route, body: unknown) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -43,8 +44,14 @@ test.describe('Watchlist edit modal drag-reorder', () => {
       order = lastPut!.ordered_codes;
       return route.fulfill({ status: 204, body: '' });
     });
-    await page.route(`${API}/api/watchlist`, (r) =>
-      json(r, { folders: [], entries: entriesIn(order), next_run_at_ms: 0 }));
+    await page.route(`${API}/api/watchlist`, (r) => {
+      if (r.request().method() !== 'GET') return r.fallback();
+      return json(r, {
+        folders: [{ id: FOLDER_ID, name: '테스트 그룹', order: 0 }],
+        entries: entriesIn(order),
+        next_run_at_ms: 0,
+      });
+    });
 
     await page.goto('/live');
     // 패널 열기(영속 상태로 이미 열려 있으면 생략) → 편집 메뉴 → 관심 편집
@@ -55,6 +62,8 @@ test.describe('Watchlist edit modal drag-reorder', () => {
     await editMenuBtn.click();
     await page.getByRole('menuitem', { name: '관심 편집' }).click();
     await expect(page.getByRole('dialog', { name: '관심종목 편집' })).toBeVisible();
+    const editDialog = page.getByRole('dialog', { name: '관심종목 편집' });
+    await editDialog.getByRole('button', { name: '테스트 그룹 3' }).click();
 
     const codesInDom = () =>
       page.locator('[data-testid^="edit-row-"]').evaluateAll((els) =>
@@ -78,7 +87,7 @@ test.describe('Watchlist edit modal drag-reorder', () => {
 
     // PUT 이 기대 순서로 발사되고…
     await expect.poll(() => lastPut?.ordered_codes ?? null).toEqual(['000660', '035720', '005930']);
-    expect(lastPut!.folder_id).toBeNull();             // 미분류 내 정렬
+    expect(lastPut!.folder_id).toBe(FOLDER_ID);        // 그룹 내 정렬
     // …낙관적 캐시가 즉시 행을 재배열한다.
     await expect.poll(codesInDom).toEqual(['000660', '035720', '005930']);
   });

@@ -58,7 +58,7 @@ function wrap(qc: QueryClient) {
 describe('WatchlistDrawer drag wiring', () => {
   beforeEach(() => {
     cleanup();
-    localStorage.clear();
+    window.localStorage.clear();
     h.onDragEnd = null;
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
     vi.restoreAllMocks();
@@ -160,7 +160,7 @@ describe('WatchlistDrawer drag wiring', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    fireEvent.click(screen.getByLabelText('스윙 정렬'));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' }));
 
     h.onDragEnd!({
@@ -176,7 +176,7 @@ describe('WatchlistDrawer drag wiring', () => {
   });
 
   it('entry-drag still does not reorder when change-rate sort mode is restored from localStorage', async () => {
-    localStorage.setItem('watchlist.sortMode.v1', JSON.stringify({ sortMode: 'change_pct_asc' }));
+    window.localStorage.setItem('watchlist.sortMode.v1', JSON.stringify({ sortMode: 'change_pct_asc' }));
     const reorderSpy = vi.spyOn(watchlistApi, 'reorderEntries').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
@@ -192,5 +192,42 @@ describe('WatchlistDrawer drag wiring', () => {
     await Promise.resolve();
     expect(reorderSpy).not.toHaveBeenCalled();
     expect(useLivePageStore.getState().activeCode).toBeNull();
+  });
+
+  it('entry-drag in one folder does not affect another folder default-sort behavior', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValueOnce({
+      folders: FOLDERS,
+      entries: [
+        ...ENTRIES,
+        { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 0 },
+        { code: '051910', name: 'LG화학', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 1 },
+      ],
+      next_run_at_ms: 0,
+    });
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      phase: 'open',
+      quotes: [
+        { code: '005930', price: 72400, change_pct: 1.2, change_won: 850 },
+        { code: '000660', price: 183500, change_pct: -0.8, change_won: -1500 },
+        { code: '035420', price: 211000, change_pct: 2.1, change_won: 2100 },
+        { code: '051910', price: 560000, change_pct: -1.5, change_won: -2000 },
+      ],
+    });
+    const reorderSpy = vi.spyOn(watchlistApi, 'reorderEntries').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('스윙 정렬'));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' }));
+
+    h.onDragEnd!({
+      active: { id: 'f_0000000b:035420', data: { current: { type: 'entry', folderId: 'f_0000000b', code: '035420', name: 'NAVER' } } },
+      over: { id: 'f_0000000b:051910', data: { current: { type: 'entry', folderId: 'f_0000000b' } } },
+      activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+      delta: { x: 0, y: 0 },
+    });
+
+    await waitFor(() => expect(reorderSpy).toHaveBeenCalledWith('f_0000000b', ['051910', '035420']));
   });
 });

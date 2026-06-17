@@ -43,22 +43,32 @@ async function setup(page: import('@playwright/test').Page) {
   await page.route(`${API}/api/watchlist`, (r) => json(r, { ...state, next_run_at_ms: 0 }));
 
   await page.goto('/live');
+  const group = page.locator('[data-testid="watchlist-group-f_a"]');
+  const headerLabelButton = group.getByRole('button', { name: /^스윙(\s+\d+)?$/ });
   const header = page.locator('div.group', { hasText: '스윙' });
   if (!(await header.first().isVisible().catch(() => false))) {
     await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
   }
-  await expect(header.first()).toBeVisible();
-  return { getPatched: () => patched };
+  await expect(headerLabelButton).toBeVisible();
+  return {
+    group,
+    getPatched: () => patched,
+    hoverHeader: async () => {
+      await headerLabelButton.hover();
+    },
+    dots: group.getByRole('button', { name: '스윙 그룹 메뉴' }),
+    sortButton: group.getByRole('button', { name: '스윙 정렬' }),
+    menuByLabel: (label: string) => page.getByRole('menu', { name: label }),
+  };
 }
 
 test.describe('Watchlist Panel group ⋯ menu', () => {
   test('hover reveals ⋯ → 이름 변경 dialog (prefilled) → PATCH and header updates', async ({ page }) => {
-    const { getPatched } = await setup(page);
+    const { getPatched, hoverHeader, dots } = await setup(page);
 
-    const dots = page.getByRole('button', { name: '스윙 그룹 메뉴' });
     // hover 전엔 시각적으로 숨김(opacity 0) — 실 마우스 hover 로 노출
     await expect(dots).toHaveCSS('opacity', '0');
-    await page.getByRole('button', { name: '스윙', exact: true }).hover();
+    await hoverHeader();
     await expect(dots).toHaveCSS('opacity', '1');
 
     await dots.click();
@@ -69,19 +79,35 @@ test.describe('Watchlist Panel group ⋯ menu', () => {
     await page.getByRole('button', { name: '변경' }).click();
 
     await expect.poll(() => getPatched()).toEqual({ id: 'f_a', name: '단타' });
-    await expect(page.getByRole('button', { name: '단타', exact: true })).toBeVisible(); // 헤더 갱신
+    const group = page.locator('[data-testid="watchlist-group-f_a"]');
+    await expect(group.getByRole('button', { name: /^단타(\s+\d+)?$/ })).toBeVisible(); // 헤더 갱신
+  });
+
+  test('hover reveals group sort icon and its menu in header', async ({ page }) => {
+    const { sortButton, hoverHeader } = await setup(page);
+
+    await expect(sortButton).toHaveCSS('opacity', '0');
+
+    await hoverHeader();
+    await expect(sortButton).toHaveCSS('opacity', '1');
+
+    await sortButton.click();
+    await expect(page.getByRole('menu', { name: '정렬' })).toBeVisible();
+    await expect(page.getByRole('menuitemradio', { name: '기본' })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('menuitemradio', { name: '등락률 오름차순' })).toBeVisible();
+    await expect(page.getByRole('menuitemradio', { name: '등락률 내림차순' })).toBeVisible();
   });
 
   test('Escape closes the open menu/dialog first — panel stays, next Escape closes it', async ({ page }) => {
-    await setup(page);
+    const { hoverHeader, dots, menuByLabel } = await setup(page);
     const panel = page.getByTestId('watchlist-panel');
 
     // 메뉴 열고 Escape → 메뉴만 닫힌다
-    await page.getByRole('button', { name: '스윙', exact: true }).hover();
-    await page.getByRole('button', { name: '스윙 그룹 메뉴' }).click();
-    await expect(page.getByRole('menu', { name: '스윙' })).toBeVisible();
+    await hoverHeader();
+    await dots.click();
+    await expect(menuByLabel('스윙')).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('menu', { name: '스윙' })).toHaveCount(0);
+    await expect(menuByLabel('스윙')).toHaveCount(0);
     await expect(panel).toBeVisible();
 
     // 다이얼로그 열고 Escape → 다이얼로그만 닫힌다
