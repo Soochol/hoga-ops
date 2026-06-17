@@ -110,25 +110,25 @@ function sameSelectedTriple(a: AskPeak, b: AskPeak, intraMax: boolean): boolean 
   return ap === bp && aq === bq && at === bt;
 }
 
-function allPricePeakFromFields(p: AskPeak): AskPeak | null {
+function untradedPeakFromFields(p: AskPeak): AskPeak | null {
   if (
-    p.all_price == null
-    || p.all_qty == null
-    || p.all_t_ms == null
-    || p.all_max_price == null
-    || p.all_max_qty == null
-    || p.all_max_t_ms == null
+    p.untraded_price == null
+    || p.untraded_qty == null
+    || p.untraded_t_ms == null
+    || p.untraded_max_price == null
+    || p.untraded_max_qty == null
+    || p.untraded_max_t_ms == null
   ) {
     return null;
   }
   return {
     date: p.date,
-    price: p.all_price,
-    qty: p.all_qty,
-    t_ms: p.all_t_ms,
-    max_price: p.all_max_price,
-    max_qty: p.all_max_qty,
-    max_t_ms: p.all_max_t_ms,
+    price: p.untraded_price,
+    qty: p.untraded_qty,
+    t_ms: p.untraded_t_ms,
+    max_price: p.untraded_max_price,
+    max_qty: p.untraded_max_qty,
+    max_t_ms: p.untraded_max_t_ms,
   };
 }
 
@@ -156,20 +156,21 @@ export function buildAskPeakOverlaySegments({
   );
   if (!showAllPrices) return baseline;
 
-  const allPricePeaks: AskPeak[] = [];
+  const untradedPeaks: AskPeak[] = [];
   for (const p of dayAskPeaks) {
-    const allPeak = p.date === todayKst ? todayAllPriceAskPeak : allPricePeakFromFields(p);
-    if (!allPeak) continue;
-    if (sameSelectedTriple(p, allPeak, intraMax)) continue;
-    allPricePeaks.push(allPeak);
+    const untradedPeak = untradedPeakFromFields(p);
+    if (!untradedPeak) continue;
+    if (sameSelectedTriple(p, untradedPeak, intraMax)) continue;
+    untradedPeaks.push(untradedPeak);
   }
-  if (todayAllPriceAskPeak && !dayAskPeaks.some((p) => p.date === todayKst)) {
-    allPricePeaks.push(todayAllPriceAskPeak);
+  const todayUntradedPeak = todayAllPriceAskPeak ? untradedPeakFromFields(todayAllPriceAskPeak) : null;
+  if (todayUntradedPeak && !dayAskPeaks.some((p) => p.date === todayKst)) {
+    untradedPeaks.push(todayUntradedPeak);
   }
-  if (allPricePeaks.length === 0) return baseline;
+  if (untradedPeaks.length === 0) return baseline;
 
   return baseline.concat(buildAskPeakSegments(
-    allPricePeaks,
+    untradedPeaks,
     segments,
     candles,
     axis,
@@ -185,7 +186,7 @@ type Props = {
   axis: VirtualAxis;
   /** LivePage의 useDayAskPeaks 결과 — 거래일별 매도 최대벽. */
   dayAskPeaks: readonly AskPeak[];
-  /** Backend today all-price peak — rendered only when askPeakShowAllPrices is on. */
+  /** Backend today ask peak payload. Orange overlay renders only its untraded_* fields. */
   todayAllPriceAskPeak?: AskPeak | null;
   segments: readonly RangeSegment[];
   candles: readonly Candle[];

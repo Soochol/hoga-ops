@@ -15,6 +15,18 @@ const peak = (p: Pick<AskPeak, 'date' | 'price' | 'qty' | 't_ms'>): AskPeak => (
   max_qty: p.qty,
   max_t_ms: p.t_ms,
 });
+const peakWithUntraded = (
+  base: Pick<AskPeak, 'date' | 'price' | 'qty' | 't_ms'>,
+  untraded: Pick<AskPeak, 'price' | 'qty' | 't_ms'>,
+): AskPeak => ({
+  ...peak(base),
+  untraded_price: untraded.price,
+  untraded_qty: untraded.qty,
+  untraded_t_ms: untraded.t_ms,
+  untraded_max_price: untraded.price,
+  untraded_max_qty: untraded.qty,
+  untraded_max_t_ms: untraded.t_ms,
+});
 
 describe('buildAskPeakSegments', () => {
   it('과거일=open→close, 오늘=open→마지막 캔들(라이브 엣지) + live 플래그', () => {
@@ -111,15 +123,17 @@ describe('buildAskPeakSegments', () => {
 });
 
 describe('buildAskPeakOverlaySegments', () => {
-  it('오늘 체결가격 기준선과 미체결 포함 선이 다르면 별도 스타일로 둘 다 만든다', () => {
-    const traded = peak({ date: '20260613', price: 100, qty: 50, t_ms: 120000 });
-    const allPrice = peak({ date: '20260613', price: 110, qty: 80, t_ms: 180000 });
+  it('오늘 체결가격 기준선과 미체결 선이 다르면 별도 스타일로 둘 다 만든다', () => {
+    const traded = peakWithUntraded(
+      { date: '20260613', price: 100, qty: 50, t_ms: 120000 },
+      { price: 110, qty: 80, t_ms: 180000 },
+    );
     const segments = [seg('20260613', 60000, 240000)];
     const candles = [candle(60000), candle(120000), candle(180000)];
 
     const out = buildAskPeakOverlaySegments({
       dayAskPeaks: [traded],
-      todayAllPriceAskPeak: allPrice,
+      todayAllPriceAskPeak: null,
       segments,
       candles,
       axis,
@@ -134,6 +148,75 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out.map((s) => s.price)).toEqual([100, 110]);
     expect(out[0]).toMatchObject({ color: '#1D4ED8', lineWidth: 2 });
     expect(out[1]).toMatchObject({ color: '#F97316', lineWidth: 1 });
+  });
+
+  it('all_*만 있고 untraded_*가 없으면 미체결 선을 만들지 않는다', () => {
+    const past: AskPeak = {
+      date: '20260611',
+      price: 100,
+      qty: 50,
+      t_ms: 120000,
+      max_price: 100,
+      max_qty: 50,
+      max_t_ms: 120000,
+      all_price: 110,
+      all_qty: 80,
+      all_t_ms: 180000,
+      all_max_price: 115,
+      all_max_qty: 90,
+      all_max_t_ms: 180000,
+    };
+
+    const out = buildAskPeakOverlaySegments({
+      dayAskPeaks: [past],
+      todayAllPriceAskPeak: null,
+      segments: [seg('20260611', 60000, 240000)],
+      candles: [candle(60000), candle(120000), candle(180000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: true,
+    });
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ price: 100, color: '#1D4ED8', lineWidth: 2 });
+  });
+
+  it('intraMax=true면 미체결 선도 untraded_max_* triple을 사용한다', () => {
+    const traded: AskPeak = {
+      date: '20260611',
+      price: 100,
+      qty: 50,
+      t_ms: 120000,
+      max_price: 101,
+      max_qty: 60,
+      max_t_ms: 130000,
+      untraded_price: 110,
+      untraded_qty: 80,
+      untraded_t_ms: 180000,
+      untraded_max_price: 115,
+      untraded_max_qty: 90,
+      untraded_max_t_ms: 190000,
+    };
+
+    const out = buildAskPeakOverlaySegments({
+      dayAskPeaks: [traded],
+      todayAllPriceAskPeak: null,
+      segments: [seg('20260611', 60000, 240000)],
+      candles: [candle(60000), candle(120000), candle(180000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: true,
+      showAllPrices: true,
+    });
+
+    expect(out).toHaveLength(2);
+    expect(out.map((s) => s.price)).toEqual([101, 115]);
+    expect(out[1]).toMatchObject({ label: '115, 90', color: '#F97316', lineWidth: 1 });
   });
 
   it('미체결 포함 토글이 꺼지면 체결가격 기준선만 만든다', () => {
@@ -179,7 +262,10 @@ describe('buildAskPeakOverlaySegments', () => {
   });
 
   it('아직 체결가격 기준 peak가 없으면 토글 ON일 때 미체결 포함 선만 만든다', () => {
-    const allPrice = peak({ date: '20260613', price: 110, qty: 80, t_ms: 180000 });
+    const allPrice = peakWithUntraded(
+      { date: '20260613', price: 100, qty: 50, t_ms: 120000 },
+      { price: 110, qty: 80, t_ms: 180000 },
+    );
 
     const out = buildAskPeakOverlaySegments({
       dayAskPeaks: [],
@@ -198,7 +284,7 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out[0]).toMatchObject({ price: 110, color: '#F97316', lineWidth: 1 });
   });
 
-  it('과거일 AskPeak의 all_* 필드로 미체결 포함 선을 추가한다', () => {
+  it('과거일 AskPeak의 untraded_* 필드로 미체결 선을 추가한다', () => {
     const past: AskPeak = {
       date: '20260611',
       price: 100,
@@ -207,12 +293,12 @@ describe('buildAskPeakOverlaySegments', () => {
       max_price: 100,
       max_qty: 50,
       max_t_ms: 120000,
-      all_price: 110,
-      all_qty: 80,
-      all_t_ms: 180000,
-      all_max_price: 115,
-      all_max_qty: 90,
-      all_max_t_ms: 180000,
+      untraded_price: 110,
+      untraded_qty: 80,
+      untraded_t_ms: 180000,
+      untraded_max_price: 115,
+      untraded_max_qty: 90,
+      untraded_max_t_ms: 180000,
     };
 
     const out = buildAskPeakOverlaySegments({
