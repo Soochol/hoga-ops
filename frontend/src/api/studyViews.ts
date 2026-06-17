@@ -73,6 +73,7 @@ export type StudySnapshotBundle = {
 
 export type ParquetStudySnapshot = {
   schema_version: 1;
+  source_policy: 'fixed';
   code: string;
   label: string;
   timeframe: LiveTimeframe;

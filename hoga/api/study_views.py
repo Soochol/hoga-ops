@@ -13,7 +13,7 @@ from hoga.api.models import (
     ParquetStudyViewWriteRequest,
     StudyViewsFile,
 )
-from hoga.api.study_view_enrichment import enrich_snapshot_with_details
+from hoga.api.study_snapshot_contract import prepare_restorable_snapshot
 from hoga.api.versioned_json_file import load_versioned_json_file
 
 _CURRENT_VERSION = 1
@@ -134,7 +134,7 @@ def create_save_sync(
     data_dir: Path, *, req: ParquetStudyViewWriteRequest, id: str, now_ms: int
 ) -> ParquetStudyView:
     snapshot_path = _snapshot_path(data_dir, id)
-    enriched_snapshot = enrich_snapshot_with_details(data_dir, req.snapshot)
+    enriched_snapshot = prepare_restorable_snapshot(data_dir, req.snapshot)
     req = req.model_copy(update={"snapshot": enriched_snapshot})
     atomic_write_json(snapshot_path, req.snapshot.model_dump(mode="json"))
     file = load_saves(data_dir)
@@ -158,7 +158,7 @@ def update_save_sync(
         if old.id == id:
             old_file = file.model_copy(deep=True)
             staged_path = _staged_snapshot_path(data_dir, id)
-            enriched_snapshot = enrich_snapshot_with_details(data_dir, req.snapshot)
+            enriched_snapshot = prepare_restorable_snapshot(data_dir, req.snapshot)
             req = req.model_copy(update={"snapshot": enriched_snapshot})
             atomic_write_json(staged_path, req.snapshot.model_dump(mode="json"))
             new = _view_from_req(

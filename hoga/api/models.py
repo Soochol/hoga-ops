@@ -1217,6 +1217,7 @@ class StudySnapshotBundle(BaseModel):
 
 class ParquetStudySnapshot(BaseModel):
     schema_version: Literal[1] = 1
+    source_policy: Literal["fixed"] = "fixed"
     code: str = Field(pattern=CODE_PATTERN)
     label: str
     timeframe: LiveTimeframeModel

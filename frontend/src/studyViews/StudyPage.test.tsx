@@ -38,6 +38,7 @@ import { useLiveCursorStore } from '../live/useLiveCursorStore';
 
 const snapshot: ParquetStudySnapshot = {
   schema_version: 1,
+  source_policy: 'fixed',
   code: '005930',
   label: '삼성전자',
   timeframe: 'D',

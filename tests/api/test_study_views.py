@@ -13,7 +13,9 @@ from hoga.api.models import (
     ParquetStudyViewWriteRequest,
     StudyViewsFile,
 )
+from hoga.api.study_snapshot_contract import prepare_restorable_snapshot
 from hoga.api.study_view_routes import build_router
+from hoga.api.timeenc import hhmmssms_to_unix_ms
 
 
 def _snapshot(**overrides):
@@ -225,9 +227,37 @@ def test_study_snapshot_rejects_non_finite_indicator_threshold():
 def test_study_snapshot_defaults_detail_arrays_for_legacy_snapshots():
     snap = ParquetStudySnapshot.model_validate(_snapshot())
 
+    assert snap.source_policy == "fixed"
     assert snap.bundle.orderbook_buckets == []
     assert snap.bundle.broker_buckets == []
     assert snap.bundle.detail_warnings == []
+
+
+def test_prepare_restorable_snapshot_preserves_fixed_segment_source(tmp_path):
+    date = "20260616"
+    unix_bucket = hhmmssms_to_unix_ms(date, 90_000_000)
+    raw = _snapshot()
+    raw["snapshot_from_ms"] = unix_bucket
+    raw["snapshot_to_ms"] = unix_bucket
+    raw["bundle"]["snapshot_from_ms"] = unix_bucket
+    raw["bundle"]["snapshot_to_ms"] = unix_bucket
+    raw["bundle"]["segments"][0]["source"] = "kis_live"
+    raw["bundle"]["segments"][0]["date"] = date
+    raw["bundle"]["segments"][0]["session_open_ms"] = unix_bucket
+    raw["bundle"]["segments"][0]["session_close_ms"] = hhmmssms_to_unix_ms(date, 153_000_000)
+    raw["bundle"]["candles"] = [
+        {"t": unix_bucket, "open": 1, "high": 2, "low": 1, "close": 2, "volume": 10}
+    ]
+    snap = ParquetStudySnapshot.model_validate(raw)
+
+    prepared = prepare_restorable_snapshot(tmp_path, snap)
+
+    assert prepared.source_policy == "fixed"
+    assert prepared.bundle.segments[0].source == "kis_live"
+    assert [(w.kind, w.message) for w in prepared.bundle.detail_warnings] == [
+        ("orderbook", "parquet source missing: kis_live"),
+        ("broker", "parquet source missing: kis_live"),
+    ]
 
 
 def test_study_snapshot_accepts_aligned_detail_arrays():
@@ -392,6 +422,24 @@ def test_study_views_create_writes_manifest_and_snapshot(tmp_path):
     assert (tmp_path / "study_views" / "saves.json").exists()
     assert (tmp_path / "study_views" / "snapshots" / "view1.json").exists()
     assert sv.load_snapshot(tmp_path, id="view1").code == "005930"
+
+
+def test_study_views_create_uses_snapshot_contract_module(tmp_path, monkeypatch):
+    calls = []
+
+    def prepare(data_dir, snapshot):
+        calls.append((data_dir, snapshot.code))
+        return snapshot.model_copy(update={"source_policy": "fixed"})
+
+    monkeypatch.setattr(sv, "prepare_restorable_snapshot", prepare)
+
+    sv.create_save_sync(
+        tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10
+    )
+    snap = sv.load_snapshot(tmp_path, id="view1")
+
+    assert calls == [(tmp_path, "005930")]
+    assert snap.source_policy == "fixed"
 
 
 def test_study_views_create_enriches_snapshot_detail_buckets(tmp_path):
@@ -854,6 +902,29 @@ def test_study_views_update_snapshot_promotion_failure_rolls_back_manifest(tmp_p
 
     assert snapshot_path.read_text(encoding="utf-8") == old_snapshot_text
     assert sv.get_save_sync(tmp_path, id="view1") == original
+
+
+def test_study_views_update_uses_snapshot_contract_module(tmp_path, monkeypatch):
+    sv.create_save_sync(
+        tmp_path, req=ParquetStudyViewWriteRequest.model_validate(_req()), id="view1", now_ms=10
+    )
+    calls = []
+
+    def prepare(data_dir, snapshot):
+        calls.append((data_dir, snapshot.captured_at_ms))
+        return snapshot.model_copy(update={"source_policy": "fixed"})
+
+    monkeypatch.setattr(sv, "prepare_restorable_snapshot", prepare)
+    updated_req = ParquetStudyViewWriteRequest.model_validate(
+        _req(snapshot=_snapshot(captured_at_ms=9_000))
+    )
+
+    sv.update_save_sync(tmp_path, id="view1", req=updated_req, now_ms=20)
+    snap = sv.load_snapshot(tmp_path, id="view1")
+
+    assert calls == [(tmp_path, 9_000)]
+    assert snap.captured_at_ms == 9_000
+    assert snap.source_policy == "fixed"
 
 
 def test_study_views_delete_manifest_write_failure_keeps_snapshot_and_manifest(
