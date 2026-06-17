@@ -1211,6 +1211,41 @@ async def test_investor_estimate_full_history_replaces_latest_only_accumulator(m
 
 
 @pytest.mark.asyncio
+async def test_investor_estimate_full_history_preserves_past_slot_timestamp(monkeypatch) -> None:
+    from hoga.live import api as live_api
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    now = 100.0
+    monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
+    monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
+    fake = _FakeKisForInvestorTrendEstimate([
+        [
+            InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30),
+            InvestorTrendEstimateRow(slot="0910", foreign_qty=11, institution_qty=21, sum_qty=32),
+        ],
+        [
+            InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30),
+            InvestorTrendEstimateRow(slot="0910", foreign_qty=99, institution_qty=1, sum_qty=100),
+        ],
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
+
+    first = await fetcher.fetch(fake, "005930")
+    now = 160.0
+    second = await fetcher.fetch(fake, "005930")
+
+    assert [r.slot for r in first.rows] == ["0900", "0910"]
+    assert [(r.slot, r.foreign_qty, r.observed_at_ms) for r in first.rows] == [
+        ("0900", 10, 100_000),
+        ("0910", 11, 100_000),
+    ]
+    assert [(r.slot, r.foreign_qty, r.observed_at_ms) for r in second.rows] == [
+        ("0900", 10, 100_000),
+        ("0910", 99, 160_000),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_investor_estimate_empty_success_clears_same_day_accumulator() -> None:
     from hoga.live.api import LiveInvestorEstimateFetcher
 
