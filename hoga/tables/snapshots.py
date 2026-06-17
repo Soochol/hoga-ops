@@ -241,19 +241,6 @@ def _row_to_api_snapshot(row: tuple) -> ApiOrderbookSnapshot:
     )
 
 
-def _is_continuous_snapshot(
-    snapshot: ApiOrderbookSnapshot,
-    *,
-    session_close_ms: int | None = None,
-) -> bool:
-    if session_close_ms is not None and snapshot.ts_ms > session_close_ms:
-        return False
-    return (
-        sum(level.qty for level in snapshot.ask[_AUCTION_BOOK_DEPTH:]) > 0
-        and sum(level.qty for level in snapshot.bid[_AUCTION_BOOK_DEPTH:]) > 0
-    )
-
-
 _REPRESENTATIVE_ORDER_SQL: str = "ts_ms DESC, seq DESC"
 
 
@@ -624,14 +611,12 @@ def query_bucket_representatives(
         eligible = [
             snap
             for snap in window
-            if _is_continuous_snapshot(snap, session_close_ms=session_close_ms)
+            if _hhmmssms_to_intra_ms(snap.ts_ms) <= last_continuous_ms
         ]
         if eligible:
             out[int(lo_native)] = eligible[-1]
             continue
-        fallback = window
-        if fallback:
-            out[int(lo_native)] = fallback[-1]
+        out[int(lo_native)] = window[-1]
     return out
 
 

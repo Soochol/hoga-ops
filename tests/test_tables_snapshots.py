@@ -435,51 +435,37 @@ def test_query_bucket_representative_empty_window_returns_none(tmp_path: Path) -
     assert snap is None
 
 
-def test_query_bucket_representatives_returns_last_continuous_snapshot_per_bucket(tmp_path: Path) -> None:
-    import duckdb
-    from hoga.tables.snapshots import Orderbook, query_bucket_representatives, write_parquet
+def test_query_bucket_representatives_keeps_pre_threshold_shallow_row(tmp_path: Path) -> None:
+    from hoga.tables.snapshots import query_bucket_representative, query_bucket_representatives
 
-    def ob(ts_ms: int, seq: int, *, ask0: int, bid0: int, deep: bool) -> Orderbook:
-        z = tuple(0 for _ in range(10))
-        ask_p = tuple(ask0 + i for i in range(10))
-        bid_p = tuple(bid0 - i for i in range(10))
-        if deep:
-            ask_q = tuple(10 + i for i in range(10))
-            bid_q = tuple(20 + i for i in range(10))
-        else:
-            ask_q = (1, 1, 1, *([0] * 7))
-            bid_q = (1, 1, 1, *([0] * 7))
-        return Orderbook(
-            ts_ms=ts_ms,
-            seq=seq,
-            ask_p=ask_p,
-            ask_q=ask_q,
-            ask_d=z,
-            bid_p=bid_p,
-            bid_q=bid_q,
-            bid_d=z,
-            tot_ask=sum(ask_q),
-            tot_ask_d=0,
-            tot_bid=sum(bid_q),
-            tot_bid_d=0,
-        )
-
-    path = tmp_path / "snapshots.parquet"
-    deep_early = ob(90_000_000, 1, ask0=101, bid0=100, deep=True)
-    deep_late = ob(90_000_500, 2, ask0=102, bid0=99, deep=True)
-    auction = ob(90_001_000, 3, ask0=103, bid0=98, deep=False)
-    write_parquet([deep_early, deep_late, auction], path)
+    obs = [
+        _ob(ts_ms=151_958_000, seq=1, ask_q=(10, 20, 30, 40), bid_q=(5, 5, 5, 5)),
+        _ob(ts_ms=152_000_000, seq=2, ask_q=(10, 20, 30, 40), bid_q=(6, 6, 6, 6)),
+        _ob(ts_ms=152_000_000, seq=3, ask_q=(11, 22, 33), bid_q=(7, 7, 7)),
+        _ob(ts_ms=152_058_000, seq=4, ask_q=(99, 98, 97), bid_q=(8, 8, 8)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
 
     with duckdb.connect(":memory:") as con:
-        out = query_bucket_representatives(
+        single = query_bucket_representative(
             con,
-            path=path,
-            buckets=[(90_000_000, 90_059_999)],
-            session_close_ms=153000000,
+            path=out,
+            lo_native=151_958_000,
+            hi_native=152_059_999,
+            session_close_ms=153_000_000,
+        )
+        batch = query_bucket_representatives(
+            con,
+            path=out,
+            buckets=[(151_958_000, 152_059_999)],
+            session_close_ms=153_000_000,
         )
 
-    assert out[90_000_000].seq == 2
-    assert out[90_000_000].ask[0].price == 102
+    assert single is not None
+    assert single.seq == 3
+    assert batch[151_958_000].seq == 3
+    assert single.ask[0].price == batch[151_958_000].ask[0].price == 1
 
 
 def test_query_bucket_representatives_no_session_close_uses_legacy_last(tmp_path: Path) -> None:
