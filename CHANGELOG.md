@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.8.2] - 2026-06-18
+
+### Fixed
+- **/live 일봉 캔들 두께 리사이즈 복구**: 관심 패널이나 브라우저 폭 변경 후에도
+  일봉 차트가 최근 구간으로 다시 고정되어 캔들이 얇아지지 않는다.
+- 차트 기본 bar spacing을 라이브러리 기본값으로 되돌려 캔들 밀도를 안정적으로 유지했다.
+
 ## [0.8.8.1] - 2026-06-17
 
 ### Fixed

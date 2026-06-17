@@ -3,10 +3,15 @@ import { render, screen, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-// jsdom does not implement ResizeObserver — provide a no-op stub before the
-// component module is loaded so the useEffect doesn't throw.
+const resizeObserverCallbacks: ResizeObserverCallback[] = [];
+
+// jsdom does not implement ResizeObserver — provide a controllable stub before
+// the component module is loaded so resize-driven viewport behavior is testable.
 if (typeof window !== 'undefined' && !window.ResizeObserver) {
   window.ResizeObserver = class ResizeObserver {
+    constructor(callback: ResizeObserverCallback) {
+      resizeObserverCallbacks.push(callback);
+    }
     observe() {}
     unobserve() {}
     disconnect() {}
@@ -87,6 +92,10 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 };
 
 describe('LiveChartRoot', () => {
+  beforeEach(() => {
+    resizeObserverCallbacks.length = 0;
+  });
+
   it('renders root container with chart slot', () => {
     render(
       <LiveChartRoot
@@ -271,6 +280,36 @@ describe('LiveChartRoot', () => {
       />,
       { wrapper },
     );
+
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 235, to: 255 });
+    expect(ts.scrollToPosition).toHaveBeenCalledWith(0, false);
+  });
+
+  it('D timeframe: reclamps the live-edge viewport after container resize widens the visible range', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    const candles = makeCandles(250);
+    const last = candles[candles.length - 1];
+    ts.getVisibleLogicalRange.mockReturnValue({ from: 100, to: 178.25 });
+    ts.getVisibleRange.mockReturnValue({ from: TODAY_OPEN_MS / 1000, to: last.ts_ms / 1000 });
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={{ ...TODAY_ONLY_BUNDLE, candles }}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    ts.setVisibleLogicalRange.mockClear();
+
+    await act(async () => {
+      resizeObserverCallbacks.forEach((callback) => callback([], {} as ResizeObserver));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
 
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 235, to: 255 });
     expect(ts.scrollToPosition).toHaveBeenCalledWith(0, false);

@@ -14,7 +14,7 @@ describe('chartScale', () => {
     expect(CHART_TIMESCALE_OPTIONS.rightOffset).toBe(15);
   });
 
-  it('scales timeScale bar-spacing by 1.25 (rounded up to 8 from 7.5)', () => {
-    expect(CHART_TIMESCALE_OPTIONS.barSpacing).toBe(8);
+  it('keeps timeScale bar-spacing at the library default for dense candles', () => {
+    expect(CHART_TIMESCALE_OPTIONS.barSpacing).toBe(6);
   });
 });
