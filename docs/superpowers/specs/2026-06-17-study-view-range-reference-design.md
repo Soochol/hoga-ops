@@ -1,263 +1,240 @@
-# Study View Range Reference — Design
+# Study View Orderbook and Broker Snapshot — Design
 
 **Date**: 2026-06-17
 **Status**: Approved
-**Scope**: `hoga/api/models.py`, `hoga/api/study_views.py`, `hoga/api/study_view_routes.py`, `hoga/api/bundle.py`, `hoga/tables/{trades,fills,snapshots,brokers}.py`, `frontend/src/studyViews/*`, `frontend/src/live/*`, `frontend/src/api/*`
+**Scope**: `hoga/api/models.py`, `hoga/api/study_views.py`, `hoga/api/study_view_routes.py`, `hoga/api/routes.py`, `hoga/tables/{snapshots,brokers}.py`, `frontend/src/studyViews/*`, `frontend/src/live/*`, `frontend/src/api/*`
 
 ## Problem
 
-`현재 뷰 저장` currently saves a JSON snapshot of the chart data that was visible
-at save time. That makes `/study` a frozen snapshot viewer: it can restore minute
-candles and a few saved indicator values, but it cannot inspect the underlying
-tick-level parquet data, switch into second-level buckets, or show the same
-10-level orderbook and broker detail that the user expects from `/live`.
+`현재 뷰 저장` restores the visible candle and indicator snapshot, but it does
+not restore the 10-level orderbook or broker detail that the user uses while
+studying the chart. After opening a saved study view, hovering a candle cannot
+show the matching orderbook and broker state for that saved visible range.
 
-The desired behavior is different: saving should not copy market data. It should
-save the visible time range, then reopen that range from parquet. A saved view is
-a durable range bookmark over local parquet data, not a market-data archive.
-
-This spec supersedes the snapshot-storage portion of
-`2026-06-16-saved-chart-views-design.md`. The right-rail saved-view UX remains,
-but new saves use range-reference semantics.
+The scope is intentionally smaller than the earlier range-reference idea. The
+existing saved study-view snapshot model remains: saving still persists a frozen
+chart snapshot. This change adds bucket-representative 10-level orderbook and
+broker data for the whole visible candle range.
 
 ## Invariants
 
-- **Saved market data is not duplicated**: New study saves persist metadata and
-  a visible time range only; candles, hoga series, fills, and broker rows remain
-  in the parquet corpus. 근거: user decision in this spec.
-- **Visible range fidelity**: The saved range is the candle range currently
-  visible on screen, from the first visible candle start to the last visible
-  candle end. 근거: user decision, "현재 화면에 보이는 캔들 범위 그대로".
-- **Parquet is the source of truth on restore**: Opening a study view reads the
-  saved range from parquet as it exists at restore time. If today promotion was
-  incomplete at save time but parquet appears later, the same study view may show
-  more data after refresh. 근거: user selected "parquet 기준으로만 저장".
-- **Live indicator parity target**: `/study` aims to expose every `/live`
-  indicator where the required parquet source exists. 근거:
-  `frontend/src/live/indicators/IndicatorPanel.tsx`.
-- **Explicit degradation on source resolution limits**: When a requested
-  second bucket cannot be computed exactly from the available parquet source,
-  the response surfaces a warning and the UI disables or annotates only that
-  incomplete series.
+- **Snapshot restore remains frozen**: A saved study view restores the same data
+  captured at save time. It does not refetch parquet to reconstruct the main
+  chart.
+- **Visible bucket coverage**: The added orderbook and broker payloads cover the
+  same visible candle buckets saved in the snapshot bundle.
+- **Bucket representative convention**: For each saved candle bucket, orderbook
+  and broker detail use the last representative state inside
+  `[bucket_start, bucket_start + bucket_ms)`, aligned with existing
+  `/api/orderbook?bucket_ms=` semantics.
+- **Detail source matches snapshot source**: Orderbook and broker enrichment uses
+  the same Source as the saved snapshot segment whenever that source is known.
+- **Broker list is bounded**: Broker detail is capped at the top 10 brokers per
+  bucket to keep saved JSON size controlled.
+- **No raw tick archival**: This feature does not store every `snapshots.parquet`
+  or `brokers.parquet` row in the visible range.
 
 ## Invariant Impact
 
 | Invariant | Impact | Notes |
 |-----------|--------|-------|
-| Saved market data is not duplicated | intentionally breaks previous snapshot behavior | New saves no longer contain display data. Legacy snapshots remain readable. |
-| Visible range fidelity | preserves | Save flow derives `visible_from_ms` and `visible_to_ms` from the active chart viewport. |
-| Parquet is the source of truth on restore | preserves | `/study` does not depend on live SSE buffers or saved chart-data JSON for new saves. |
-| Live indicator parity target | conditionally preserves | Preserved when source parquet contains the required raw resolution; otherwise warnings explain the missing series. |
-| Explicit degradation on source resolution limits | preserves | Backend response includes range/data warnings; frontend renders disabled states or inline warnings. |
-
-The intentional break from frozen snapshots is acceptable because it matches the
-new product meaning: saved views are analysis range bookmarks. Legacy snapshots
-are kept only for compatibility and can be upgraded by re-saving.
+| Snapshot restore remains frozen | preserves | Existing snapshot save/restore remains the core model. |
+| Visible bucket coverage | preserves | New payloads are derived from the same visible candle window used by the snapshot builder. |
+| Bucket representative convention | preserves | Reuses the existing candle-close representative rule already used by orderbook hover. |
+| Detail source matches snapshot source | preserves | Bucket enrichment resolves Source from the saved segment containing each candle. |
+| Broker list is bounded | preserves | Each bucket stores at most 10 broker entries. |
+| No raw tick archival | preserves | Only per-bucket representatives are saved. |
 
 ## Goals
 
-- Make `현재 뷰 저장` store a range reference instead of a chart-data snapshot.
-- Restore `/study` by reading parquet for the saved range at open time.
-- Support second buckets: `1s`, `5s`, `10s`, and `30s`.
-- Keep existing minute buckets: `1m`, `3m`, `5m`, `10m`, `15m`, and `30m`.
-- Provide `/live` indicator parity in `/study` where parquet inputs support it.
-- Show 10-level orderbook and broker detail for the cursor time in the saved
-  range.
-- Keep legacy snapshot saves loadable while new saves use the range-reference
-  model.
+- Add saved 10-level orderbook data for every visible candle bucket.
+- Add saved broker detail for every visible candle bucket.
+- Keep the current snapshot-based saved view model.
+- Let `/study` hover/cursor detail read from the saved snapshot without live or
+  parquet refetches.
+- Keep saved JSON size bounded by storing one representative per visible bucket,
+  not raw tick rows.
 
 ## Non-Goals
 
-- No true tick-by-tick chart mode in this iteration. Second buckets are the
-  interactive chart resolution.
-- No live-buffer sidecar snapshot for unpromoted today data.
-- No automatic KIS fetch or hogaplay capture when a saved range points at sparse
-  parquet.
-- No cross-machine sync beyond the existing local `data_dir`.
-- No redesign of the right rail or saved-view list beyond labels/warnings needed
-  for range-reference saves.
+- No range-reference saved views in this iteration.
+- No second-level timeframe support.
+- No `/live` realtime second-bucket support.
+- No tick-by-tick replay.
+- No saving raw `snapshots.parquet` or `brokers.parquet` rows.
+- No automatic parquet refresh when a saved view is reopened.
 
 ## Design
 
-### Save Model
+### Snapshot Model Extension
 
-New saves store metadata and range bounds:
+Extend `StudySnapshotBundle` with two optional arrays:
 
 ```ts
-type StudyViewRangeReference = {
-  schema_version: 2;
-  id: string;
-  name: string;
-  code: string;
-  label: string;
-  timeframe: LiveTimeframe | "1s" | "5s" | "10s" | "30s";
-  visible_from_ms: number;
-  visible_to_ms: number;
-  viewport: {
-    right_edge_ms: number;
-    bar_span: number;
-    at_live_edge: boolean;
-  };
-  indicator_state: StudyIndicatorState;
-  source_pref: "hogaplay" | "kis_live";
-  memo: string;
-  tags: string[];
-  provenance: {
-    saved_from_route: "/live" | "/study";
-    data_provenance: "parquet_range";
-  };
-  created_at_ms: number;
-  updated_at_ms: number;
+type StudyOrderbookBucket = {
+  t: number;              // bucket start Unix ms, matching candle `t`
+  snapshot: OrderbookSnapshot | null;
+  visible: boolean;
+};
+
+type StudyBrokerBucket = {
+  t: number;              // bucket start Unix ms, matching candle `t`
+  brokers: StudyBrokerDetail[]; // top 10 at this bucket
+  visible: boolean;
+};
+
+type StudyBrokerDetail = {
+  broker: string;
+  net: number; // day-to-date cumulative net at the representative time
+  dominant_side: "buy" | "sell";
+};
+
+type StudySnapshotBundle = {
+  // existing fields...
+  orderbook_buckets: StudyOrderbookBucket[];
+  broker_buckets: StudyBrokerBucket[];
+  detail_warnings: string[];
 };
 ```
 
-`visible_from_ms` and `visible_to_ms` are Unix milliseconds. The backend derives
-the covering stock-date range from these timestamps during range restore. The
-original `snapshot_path`, `snapshot_size_bytes`, and embedded `snapshot` payload
-are legacy-only fields.
+The fields are optional/default-empty in backend validators so older saved
+snapshots still load.
 
 ### Save Flow
 
-The frontend save action captures the current chart viewport and computes the
-visible candle window. The first visible candle start becomes
-`visible_from_ms`. The last visible candle end becomes `visible_to_ms`, using the
-active bucket width. If the viewport is empty, the save action is disabled.
+The existing save flow already computes the visible candle window and persists
+the visible candles plus indicator values. Keep that behavior.
 
-The save dialog still asks for name and memo. It may show the visible range and
-bucket count, but it no longer reports JSON snapshot size.
+If the visible candle count is large, the save dialog shows a soft warning that
+10-level orderbook and broker detail will increase the saved snapshot size. The
+first warning threshold is 500 visible candles. This is not a hard cap: the user
+can still save the full visible range.
 
-Saving does not force a today promotion. If a range includes data that has not
-yet reached parquet, opening the save shows the parquet subset plus a warning.
+For each saved candle bucket:
 
-### Range Restore API
+1. Compute `bucket_start = candle.t`.
+2. Compute `bucket_end = bucket_start + bucket_ms`.
+3. Load the representative 10-level orderbook snapshot using the same rule as
+   `/api/orderbook?bucket_ms=...`: the last continuous-trading representative
+   inside `[bucket_start, bucket_end)`.
+4. Load broker state for the bucket using the same representative timestamp
+   convention.
+5. Store only the bucket representative, not the raw rows inside the bucket.
 
-Add a range restore endpoint for new saves:
+If an orderbook or broker representative is missing for a bucket, store
+`snapshot: null` or `brokers: []` with `visible: false`. Missing detail should
+not block saving the chart snapshot.
 
-```http
-GET /api/study-views/saves/{save_id}/range?bucket_ms=1000
+If enrichment itself fails for a subset of buckets or a parquet file is missing,
+the save still succeeds. The backend stores the chart snapshot and records a
+human-readable `detail_warnings` entry so `/study` can show that some 10-level
+orderbook or broker detail was unavailable.
+
+### Backend API
+
+The save request should not trust the browser to send orderbook and broker
+payloads assembled from ad hoc client calls. Instead, the backend should enrich
+the snapshot during create/update:
+
+- request body sends the current snapshot bundle and its candle bucket list;
+- backend validates the snapshot as it does today;
+- backend resolves each bucket's Stock-Date and Source from the saved snapshot
+  segment containing that candle. If a legacy segment has no source, fall back to
+  the request's source preference, then the existing hogaplay-preferred behavior;
+- backend also converts the candle timestamp to a KST YYYYMMDD Stock-Date and
+  verifies that it agrees with the matched segment. If segment matching and KST
+  date conversion disagree, the bucket detail is marked missing and a
+  `detail_warnings` entry is recorded;
+- backend queries `snapshots.parquet` and `brokers.parquet`;
+- backend writes the enriched snapshot JSON atomically.
+
+This keeps parquet schema knowledge on the server and avoids racing N client
+requests while the save dialog is open.
+
+If implementation cost requires a smaller first step, a backend enrichment
+helper can be called inside `study_views.create_save_sync` and
+`update_save_sync` after pydantic validation but before the snapshot file write.
+
+### Orderbook Representative
+
+Orderbook buckets mirror `/api/orderbook` with `bucket_ms`:
+
+- convert the bucket start/end Unix-ms values to native HHMMSSmmm for the
+  Stock-Date;
+- query the last continuous-trading snapshot in the bucket;
+- apply the same closing-auction 3-level exclusion already used by
+  `query_bucket_representative`;
+- convert the returned snapshot timestamp back to Unix ms before storing.
+
+The stored object uses the existing `OrderbookSnapshot` wire shape:
+
+```ts
+type OrderbookSnapshot = {
+  ts_ms: number;
+  seq: number;
+  ask: { price: number; qty: number }[];
+  bid: { price: number; qty: number }[];
+  tot_ask: number;
+  tot_bid: number;
+};
 ```
 
-The endpoint:
+### Broker Representative
 
-- loads the save row;
-- validates that it is a range-reference save;
-- derives covering `from_date` and `to_date`;
-- reads only rows whose Unix timestamp intersects
-  `[visible_from_ms, visible_to_ms]`;
-- returns a `RangeBundle`-compatible payload plus warnings and detail capability
-  flags.
+Broker buckets store the top 10 broker states for the bucket. The value is the
+day-to-date cumulative net state at the bucket representative time, not the
+within-bucket delta. This mirrors the existing broker day trajectory semantics:
+hover detail answers "what was each broker's cumulative net at this point in the
+day?"
 
-The endpoint should share builders with `/api/range` where possible, but it is
-separate because `/api/range` is stock-date-range and minute-timeframe oriented.
-Study restore needs Unix-ms clipping and second bucket support.
+The saved shape is detail-specific rather than reusing `BrokerSeriesEntry`,
+because the snapshot stores one hover state per bucket, not a time series:
 
-Allowed study buckets:
-
-```text
-1000, 5000, 10000, 30000,
-60000, 180000, 300000, 600000, 900000, 1800000
+```ts
+type StudyBrokerBucket = {
+  t: number;
+  brokers: Array<{
+    broker: string;
+    net: number;
+    dominant_side: "buy" | "sell";
+  }>;
+  visible: boolean;
+};
 ```
 
-### Second-Bucket Data Rules
+Only one point is needed per bucket for hover detail, and that point is the
+cumulative net at the representative time. If the UI later needs within-bucket
+broker deltas or a full broker trajectory pane inside `/study`, that should be a
+separate design; this iteration restores cursor detail.
 
-Candles:
+### Frontend Restore
 
-- Prefer `trades.parquet` for `1s`, `5s`, `10s`, and `30s` OHLCV.
-- If only `fills.parquet` is available, exact OHLC is not possible because fills
-  are 10-second aggregate rows. For buckets below the source resolution, return
-  candles as unavailable with a warning.
-- Minute and above may continue using existing `candles.parquet` when available.
+`studySnapshotBundleToRangeBundle` continues to adapt saved candles and
+indicator series for `LiveChartRoot`.
 
-Hoga indicators:
+Add an adapter lookup for detail:
 
-- `snapshots.parquet` can produce `총잔량` and `호가비` by selecting the last
-  continuous-trading snapshot inside each bucket, with the existing intra-period
-  max fields where supported.
-- `당일 매도 최대벽` remains bucket-aware and uses the same continuous-trading
-  exclusion rules as `/live`.
+- `orderbookByBucketStart: Map<number, StudyOrderbookBucket>`
+- `brokersByBucketStart: Map<number, StudyBrokerBucket>`
 
-Fill strength:
+When `/study` cursor time changes:
 
-- Use `trades.parquet` for exact sub-10-second buckets.
-- Use `fills.parquet` for 10-second and larger buckets where summing aggregate
-  intervals is exact.
-- Warn and disable the fill-strength series for `1s` or `5s` when only
-  `fills.parquet` exists.
+1. resolve the cursor to the nearest saved candle bucket start;
+2. read the matching orderbook bucket and broker bucket from the saved snapshot;
+3. render them in the existing right-side detail UI or a study-specific detail
+   panel.
 
-Broker data:
+No `/api/orderbook`, `/api/brokers/series`, live SSE, or parquet range request is
+needed while hovering a restored snapshot.
 
-- Read `brokers.parquet` for day-level broker trajectories.
-- Clip emitted points to the saved range.
-- Provide both trajectory panes/series and cursor-time broker detail where the
-  data exists.
+### Legacy Snapshots
 
-### Study Screen
+Older snapshot files lack `orderbook_buckets` and `broker_buckets`. They remain
+valid and render the chart as before. The detail panel should show an empty
+state such as "저장된 10호가/거래원 데이터가 없습니다."
 
-`/study?view=...` first loads the save row. For range-reference saves, it calls
-the study range endpoint using the active bucket. The initial active bucket is
-the saved timeframe. The toolbar includes:
-
-- `1s`
-- `5s`
-- `10s`
-- `30s`
-- existing minute buckets
-
-Changing the bucket refetches or recomputes the same saved range. The viewport
-is restored from the saved `viewport` and clamped to available data.
-
-Legacy snapshot saves still use the existing snapshot adapter. The page can
-branch on `schema_version` or a discriminant field.
-
-### Indicator Parity
-
-`/study` targets all `/live` indicators:
-
-- 이동평균선
-- 일봉 이동평균선
-- 거래량
-- 외국인 순매수량
-- 기관 순매수량
-- 총잔량
-- 호가비
-- 체결강도
-- 당일 매도 최대벽
-- 고저 극값 라벨
-
-Moving averages and high/low labels are computed client-side from restored
-candles. Daily moving averages keep using the existing daily-candle fetch path
-and project onto the study chart axis. Hoga and fill indicators come from the
-study range endpoint. Investor and broker-related series use the available
-parquet-backed series; if the underlying source differs from `/live`, the UI
-labels the limitation instead of silently omitting it.
-
-Saved `indicator_state` is an initial state, not a lock. Users can change
-indicator toggles while studying a saved range.
-
-### Cursor Detail
-
-The right detail area in `/study` should support the same inspection loop as
-`/live`:
-
-- cursor at time `t`;
-- request/orderbook lookup is constrained to the saved range;
-- return the representative 10-level snapshot for the active bucket;
-- show broker detail at or before the cursor time, clipped to the saved range.
-
-This can reuse `/api/orderbook` and `/api/brokers/series` initially if they are
-called with the resolved date and active bucket. A later optimization can add a
-single study detail endpoint that batches orderbook and broker lookup.
-
-### Legacy Migration
-
-Existing snapshot saves remain readable. New saves are range-reference saves.
-
-When a legacy snapshot is open and the user saves or overwrites it, the new write
-uses the range-reference model. The range is computed from the currently visible
-chart, not from the old snapshot file size or serialized bundle.
-
-Deleting a legacy save must still remove its legacy snapshot file. Deleting a
-range-reference save removes only the manifest row.
+When a legacy study view is overwritten, the new snapshot is enriched with
+orderbook and broker buckets.
 
 ## Testing
 
@@ -265,52 +242,45 @@ range-reference save removes only the manifest row.
 
 | Case | Setup | Expected |
 |------|-------|----------|
-| Create range-reference save | POST save body without `snapshot` and with `visible_from_ms/visible_to_ms` | Manifest row is saved; no snapshot file is created. |
-| Reject invalid range | `visible_from_ms > visible_to_ms` | 422 validation error. |
-| Study buckets accepted | Request `bucket_ms` for 1s, 5s, 10s, 30s, and existing minute buckets | Endpoint accepts all allowed values. |
-| Unsupported bucket rejected | Request `bucket_ms=42000` | 400 validation error. |
-| Trades-backed 1s candles | Seed `trades.parquet` with multiple trades in one second | Response OHLCV matches trade aggregation. |
-| Fills-only 1s degradation | Seed only `fills.parquet`; request `bucket_ms=1000` | Response carries warning and omits exact candle/fill series as specified. |
-| Snapshot hoga second buckets | Seed `snapshots.parquet`; request `bucket_ms=5000` | Quote totals/ratio use the bucket representative and intra-bucket fields. |
-| Broker clipping | Seed `brokers.parquet` before, inside, and after saved range | Response emits only in-range points/detail. |
-| Legacy snapshot load | Existing schema-version-1 snapshot save | `/study` still renders through legacy snapshot adapter. |
-| Legacy overwrite upgrade | Open legacy save and overwrite | New manifest row is range-reference; legacy snapshot file is cleaned up or ignored per delete rules. |
+| Snapshot accepts missing detail fields | Legacy snapshot JSON without `orderbook_buckets`/`broker_buckets` | Model validates and defaults both arrays to empty. |
+| Save enriches orderbook buckets | Seed `snapshots.parquet`; save two visible candles | Snapshot JSON contains two `orderbook_buckets` aligned by candle `t`. |
+| Orderbook missing is non-fatal | One bucket has no representative snapshot | Save succeeds; bucket has `snapshot: null`, `visible: false`. |
+| Enrichment read failure is non-fatal | Mock one parquet read failure during save | Save succeeds and `detail_warnings` records the failure. |
+| Save enriches broker buckets | Seed `brokers.parquet`; save visible candles | Snapshot JSON contains top 10 broker entries per bucket. |
+| Broker cap | Seed more than 10 brokers | Saved bucket contains at most 10 brokers ordered by absolute net. |
+| Representative convention | Bucket contains multiple snapshots | Saved orderbook is the last valid representative inside the bucket. |
+| Legacy overwrite | Open old snapshot and overwrite | New snapshot includes orderbook/broker bucket arrays. |
 
 **Invariant regression tests**:
 
-- Saving from a viewport stores visible candle bounds and no chart-data bundle.
-- Restoring the same save after adding parquet rows inside the saved range
-  reflects the new parquet data.
-- Each unavailable sub-series has a warning; missing source data is not silently
-  rendered as zero.
+- Saved candle count and detail bucket count match for successful enrichments.
+- Missing detail data never prevents chart snapshot persistence.
+- Detail enrichment failures are surfaced through `detail_warnings`.
+- No raw per-tick snapshot list is stored.
 
 ### Manual Verification
 
-- Save a historical `/live` viewport, open `/study`, and confirm it starts on
-  the same stock, range, and approximate viewport.
-- Switch between `1s`, `5s`, `10s`, `30s`, and `1m`; confirm the x-axis remains
-  inside the saved range.
-- Hover several buckets and confirm the right panel shows 10-level orderbook and
-  broker detail.
-- Toggle each indicator in the `/study` indicator panel and confirm pane mounts
-  match `/live` behavior where data exists.
-- Open an old snapshot save and confirm it still renders.
+- Save a `/live` viewport with visible candles and known orderbook data.
+- Open `/study?view=...`.
+- Hover several saved candles and confirm the detail panel changes by bucket.
+- Confirm old saved views still open and show a clear missing-detail empty state.
+- Save a range with sparse broker data and confirm chart restore still works.
 
 ## Risks / Open Questions
 
-- `fills.parquet` cannot produce exact 1s/5s OHLC. The spec chooses explicit
-  degradation instead of synthetic precision.
-- The existing `RangeBundle` model may need a small extension for range warnings
-  and capability flags. Keep the wire shape close enough that `LiveChartRoot`
-  can still be shared.
-- Daily moving average projection in a second-bucket study view needs the same
-  daily fetch coverage as minute `/live`.
-- Broker terminology must be kept distinct from foreign/institution investor
-  estimates in UI copy.
+- Backend enrichment may add save latency proportional to visible candle count.
+  If this is noticeable, batch the parquet lookups per Stock-Date rather than
+  issuing one query per bucket.
+- Broker representative semantics may need a table-level helper if current
+  broker queries only return full-day series. Keep that helper inside
+  `hoga/tables/brokers.py`.
+- Saved JSON size increases with visible candle count. The top-10 broker cap and
+  one-orderbook-per-bucket rule keep it bounded, and the save dialog warns above
+  500 visible candles.
 
 ## Out of Scope (Backlog)
 
-- True tick-by-tick replay with event list stepping.
-- Batched study cursor-detail endpoint.
-- Exporting a study view as an immutable evidence package.
-- Auto-capturing missing parquet for a saved range.
+- Range-reference study views.
+- Second-bucket charts.
+- Full broker trajectory panes in `/study`.
+- Tick-by-tick orderbook replay.
