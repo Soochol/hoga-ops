@@ -96,25 +96,7 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByText('-1,500원 (0.80%)')).toBeInTheDocument();
   });
 
-  it('opens a group sort menu with default, ascending, and descending choices', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-
-    await waitFor(() => expect(screen.getByLabelText('스윙 정렬')).toBeInTheDocument());
-    expect(screen.getByLabelText('스윙 정렬')).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByLabelText('스윙 정렬'));
-    expect(screen.getByLabelText('스윙 정렬')).toHaveAttribute('aria-expanded', 'true');
-
-    expect(await screen.findByRole('menu', { name: '정렬' })).toBeInTheDocument();
-    expect(screen.getByRole('menuitemradio', { name: '기본' })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('menuitemradio', { name: '등락률 오름차순' })).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('menuitemradio', { name: '등락률 내림차순' })).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('sorts entries in a folder by live change rate and resets to default order', async () => {
+  it('cycles a folder sort mode by clicking the group sort icon', async () => {
     const folder = { id: 'f_0000000a', name: '기본', order: 0 };
     const threeEntries = {
       folders: [folder],
@@ -138,23 +120,20 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
 
     await waitFor(() => expect(screen.getByText('NAVER')).toBeInTheDocument());
-
     const rowCodes = () => screen.getAllByTestId(/^watchlist-row-/).map((el) =>
       el.getAttribute('data-testid')?.replace('watchlist-row-', ''));
 
     expect(rowCodes()).toEqual(['005930', '000660', '035420']);
 
     fireEvent.click(screen.getByLabelText('기본 정렬'));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 오름차순' }));
     expect(rowCodes()).toEqual(['000660', '005930', '035420']);
 
     fireEvent.click(screen.getByLabelText('기본 정렬'));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' }));
     expect(rowCodes()).toEqual(['035420', '005930', '000660']);
 
     fireEvent.click(screen.getByLabelText('기본 정렬'));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: '기본' }));
     expect(rowCodes()).toEqual(['005930', '000660', '035420']);
+    expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument();
   });
 
   it('sorts each folder independently by change rate', async () => {
@@ -189,23 +168,17 @@ describe('WatchlistDrawer', () => {
 
     const swingSection = screen.getByTestId('watchlist-group-f_0000000a');
     const longSection = screen.getByTestId('watchlist-group-f_0000000b');
-
-    fireEvent.click(within(swingSection).getByLabelText('스윙 정렬'));
-    fireEvent.click(await within(swingSection).findByRole('menuitemradio', { name: '등락률 내림차순' }));
-
-    // 장기 그룹은 기본 정렬을 유지해 분리 동작을 확인한다.
-    fireEvent.click(within(longSection).getByLabelText('장기 정렬'));
-    fireEvent.click(await within(longSection).findByRole('menuitemradio', { name: '등락률 내림차순' }));
-    fireEvent.click(within(longSection).getByLabelText('장기 정렬'));
-    fireEvent.click(await within(longSection).findByRole('menuitemradio', { name: '등락률 오름차순' }));
-
-    const swing = screen.getByTestId('watchlist-group-f_0000000a');
-    const long = screen.getByTestId('watchlist-group-f_0000000b');
     const toCodes = (root: HTMLElement) =>
       Array.from(root.querySelectorAll('[data-testid^="watchlist-row-"]'))
         .map((el) => (el.getAttribute('data-testid') ?? '').replace('watchlist-row-', ''))
         .filter((code) => code !== '');
 
+    // 장기 그룹은 오름차순으로 바꿔 sort 모드만 분리 동작한다.
+    fireEvent.click(within(longSection).getByLabelText('장기 정렬'));
+    await waitFor(() => expect(toCodes(longSection)).toEqual(['051910', '035420']));
+
+    const swing = screen.getByTestId('watchlist-group-f_0000000a');
+    const long = screen.getByTestId('watchlist-group-f_0000000b');
     const swingCodes = toCodes(swing);
     const longCodes = toCodes(long);
 
@@ -252,10 +225,10 @@ describe('WatchlistDrawer', () => {
     expect(toCodes(swing)).toEqual(['005930', '000660']);
     expect(toCodes(long)).toEqual(['035420', '051910']);
 
-    fireEvent.click(within(swing).getByLabelText('스윙 정렬'));
-    expect(await within(swing).findByRole('menuitemradio', { name: '등락률 내림차순' })).toHaveAttribute('aria-checked', 'true');
-    fireEvent.click(within(long).getByLabelText('장기 정렬'));
-    expect(await within(long).findByRole('menuitemradio', { name: '등락률 내림차순' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(swing).getByLabelText('스윙 정렬').className).toContain('text-accent');
+    expect(within(long).getByLabelText('장기 정렬').className).toContain('text-accent');
+    expect(toCodes(swing)).toEqual(['005930', '000660']);
+    expect(toCodes(long)).toEqual(['035420', '051910']);
   });
 
   it('falls back to default sort mode when persisted mode is invalid', async () => {
@@ -288,7 +261,11 @@ describe('WatchlistDrawer', () => {
     // invalid persisted mode should not affect ordering (default)
     await waitFor(() => expect(rowCodes()).toEqual(['005930', '000660', '035420']));
     fireEvent.click(screen.getByLabelText('기본 정렬'));
-    expect(await screen.findByRole('menuitemradio', { name: '기본' })).toHaveAttribute('aria-checked', 'true');
+    expect(rowCodes()).toEqual(['000660', '005930', '035420']);
+    fireEvent.click(screen.getByLabelText('기본 정렬'));
+    expect(rowCodes()).toEqual(['035420', '005930', '000660']);
+    fireEvent.click(screen.getByLabelText('기본 정렬'));
+    expect(rowCodes()).toEqual(['005930', '000660', '035420']);
   });
 
   it('right-click opens the context menu; 관심 해제 removes the entry and closes', async () => {
