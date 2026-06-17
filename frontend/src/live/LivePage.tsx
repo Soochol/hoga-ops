@@ -16,7 +16,7 @@ import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
-import type { AskPeak, RangeBundle } from '../api/types';
+import type { AskPeak, Candle, RangeBundle } from '../api/types';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { TabViewport } from './viewportAnchor';
 import { todayKstYyyymmdd } from './liveDateTime';
@@ -33,6 +33,7 @@ import { useDocumentTitle } from '../util/useDocumentTitle';
 
 /** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
+const EMPTY_CANDLES: readonly Candle[] = [];
 const EMPTY_OB_SNAPSHOTS: readonly ObSnapshot[] = [];
 const EMPTY_TRADE_SNAPSHOTS: readonly TradeSnapshot[] = [];
 
@@ -187,6 +188,7 @@ export function LivePage() {
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
   const askPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
   const askPeakSeeds = (chartBundle ?? bundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;
+  const askPeakCandles = isMinuteTimeframe(timeframe) ? ((chartBundle ?? bundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
   const dayAskPeaks = useDayAskPeaks(
     askPeakOb,
     askPeakTrade,
@@ -194,6 +196,7 @@ export function LivePage() {
     today,
     activeCode,
     live.initial?.ask_peak_today ?? null,
+    askPeakCandles,
   );
   const todayAllPriceAskPeak = useTodayAllPriceAskPeak(
     askPeakOb,
