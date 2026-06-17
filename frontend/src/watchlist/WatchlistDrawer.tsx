@@ -35,17 +35,28 @@ import type { WatchlistEntry } from '../api/watchlist';
 import { resolveDrag, resolveFolderDrag, entrySortableId, parseEntrySortableId } from './dragHandlers';
 import { useEntryDragStore, isPointOnChart, dropPoint } from '../state/entryDrag';
 
-// v1 persisted for future migration. Keep this key stable unless migration
-// strategy is intentionally updated; reset fallback behavior is handled by parser.
-const SORT_MODE_STORAGE_KEY = 'watchlist.sortMode.v1';
+// v1는 기존 전역 정렬 값 마이그레이션 입력으로만 유지.
+const LEGACY_SORT_MODE_STORAGE_KEY = 'watchlist.sortMode.v1';
+// 실폴더 정렬 모드는 폴더 단위 map으로 보관.
+const FOLDER_SORT_MODE_STORAGE_KEY = 'watchlist.folderSortMode.v1';
+type FolderSortModeMap = Record<string, QuoteSortMode>;
+
+function isQuoteSortMode(raw: unknown): raw is QuoteSortMode {
+  return raw === 'default' || raw === 'change_pct_asc' || raw === 'change_pct_desc';
+}
 
 function readSortModeFromStorage(): QuoteSortMode {
-  const saved = readJsonObject(SORT_MODE_STORAGE_KEY);
+  const saved = readJsonObject(LEGACY_SORT_MODE_STORAGE_KEY);
   const raw = saved?.sortMode;
-  if (raw === 'default' || raw === 'change_pct_asc' || raw === 'change_pct_desc') {
-    return raw;
-  }
+  if (isQuoteSortMode(raw)) return raw;
   return 'default';
+}
+
+function readFolderSortModeMapFromStorage(): FolderSortModeMap {
+  const saved = readJsonObject(FOLDER_SORT_MODE_STORAGE_KEY);
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
+  const validEntries = Object.entries(saved).filter(([, value]) => isQuoteSortMode(value));
+  return Object.fromEntries(validEntries) as FolderSortModeMap;
 }
 
 /** 우측 정렬 앵커드 메뉴 셸 — dim 라벨 헤더 + menuitem children. 패널의 두 메뉴
@@ -100,13 +111,22 @@ function GroupHeader(props: {
   onMoveDown?: () => void;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
+  sortMode?: QuoteSortMode;
+  onSort?: (mode: QuoteSortMode) => void;
   dragHandle?: GroupDragHandle;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(menuOpen, menuRef, () => setMenuOpen(false));
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
+  useDismissablePopover(sortMenuOpen, sortMenuRef, () => setSortMenuOpen(false));
   const itemClass =
     'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent';
+  const selectSortMode = (mode: QuoteSortMode) => {
+    props.onSort?.(mode);
+    setSortMenuOpen(false);
+  };
   return (
     // sticky + bg-bg-card: 패널 배경과 동일색이라 평시엔 투명처럼 보이고, 스크롤
     // 시에만 불투명이 드러나 행을 가린다(스펙 §1). 각 그룹 div가 컨테이닝 블록이라
@@ -137,6 +157,34 @@ function GroupHeader(props: {
         <span className="truncate">{props.label}</span>
         <span className="flex-none text-xs font-normal text-fg-dimmer">{props.count}</span>
       </button>
+      {props.onSort && (
+        <div className="relative" ref={sortMenuRef}>
+          <button type="button" aria-label={`${props.label} 정렬`} aria-haspopup="menu" aria-expanded={sortMenuOpen}
+            onClick={() => setSortMenuOpen((v) => !v)}
+            className={`${sortMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'} px-1 leading-none hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
+            <SortIcon active={props.sortMode !== 'default'} />
+          </button>
+          {sortMenuOpen && (
+            <AnchoredMenu label="정렬">
+              <button type="button" role="menuitemradio" aria-checked={props.sortMode === 'default'}
+                onClick={() => selectSortMode('default')}
+                className={itemClass}>
+                <span aria-hidden className="w-4 text-center">{props.sortMode === 'default' ? '✓' : ''}</span> 기본
+              </button>
+              <button type="button" role="menuitemradio" aria-checked={props.sortMode === 'change_pct_asc'}
+                onClick={() => selectSortMode('change_pct_asc')}
+                className={itemClass}>
+                <span aria-hidden className="w-4 text-center">{props.sortMode === 'change_pct_asc' ? '✓' : ''}</span> 등락률 오름차순
+              </button>
+              <button type="button" role="menuitemradio" aria-checked={props.sortMode === 'change_pct_desc'}
+                onClick={() => selectSortMode('change_pct_desc')}
+                className={itemClass}>
+                <span aria-hidden className="w-4 text-center">{props.sortMode === 'change_pct_desc' ? '✓' : ''}</span> 등락률 내림차순
+              </button>
+            </AnchoredMenu>
+          )}
+        </div>
+      )}
       {props.onRename && (
         <div className="relative" ref={menuRef}>
           {/* opacity(레이아웃 유지)로 숨겨 Tab 포커스가 닿게 한다 — display:none이면
@@ -279,10 +327,7 @@ export function WatchlistDrawer() {
   const [editOpen, setEditOpen] = useState(false);
   const [addGroupOpen, setAddGroupOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
-  const [sortMode, setSortMode] = useState<QuoteSortMode>(() => readSortModeFromStorage());
-  const [sortMenu, setSortMenu] = useState(false);
-  const sortMenuRef = useRef<HTMLDivElement>(null);
-  useDismissablePopover(sortMenu, sortMenuRef, () => setSortMenu(false));
+  const [groupSortModes, setGroupSortModes] = useState<FolderSortModeMap>(() => readFolderSortModeMapFromStorage());
   const [editMenu, setEditMenu] = useState(false);
   const editMenuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(editMenu, editMenuRef, () => setEditMenu(false));
@@ -324,9 +369,43 @@ export function WatchlistDrawer() {
   const pctOf = makeChangePctOf(quoteByCode);
   const folderCount = data?.folders.length ?? 0;
   const realFolderIds = groups.filter((g) => g.folder).map((g) => g.folder!.id);
+  const migrationSortMode = readSortModeFromStorage();
   useEffect(() => {
-    persistJson(SORT_MODE_STORAGE_KEY, { sortMode });
-  }, [sortMode]);
+    if (!data) return;
+    const folderIds = data?.folders.map((f) => f.id) ?? [];
+    const seen = new Set(folderIds);
+    const next: FolderSortModeMap = {};
+    let changed = false;
+    folderIds.forEach((id) => {
+      const prev = groupSortModes[id];
+      if (isQuoteSortMode(prev)) {
+        next[id] = prev;
+      } else {
+        next[id] = migrationSortMode;
+        changed = true;
+      }
+    });
+    Object.keys(groupSortModes).forEach((id) => {
+      if (!seen.has(id)) changed = true;
+    });
+    if (!changed && folderIds.every((id) => groupSortModes[id] === next[id])) return;
+    setGroupSortModes(next);
+  }, [data?.folders, groupSortModes, migrationSortMode]);
+
+  useEffect(() => {
+    persistJson(FOLDER_SORT_MODE_STORAGE_KEY, groupSortModes);
+  }, [groupSortModes]);
+
+  const getFolderSortMode = (folderId: string | null) => {
+    if (folderId === null) return 'default';
+    return groupSortModes[folderId] ?? migrationSortMode;
+  };
+  const setFolderSortMode = (folderId: string, mode: QuoteSortMode) => {
+    setGroupSortModes((prev) => {
+      if (prev[folderId] === mode) return prev;
+      return { ...prev, [folderId]: mode };
+    });
+  };
 
   const moveFolder = (folderId: string, dir: -1 | 1) => {
     const ids = swapFolderOrder(data?.folders ?? [], folderId, dir);
@@ -367,7 +446,7 @@ export function WatchlistDrawer() {
   const onDragEnd = (ev: DragEndEvent) => {
     const wasEntry = ev.active.data.current?.type === 'entry';
     endEntryDrag();
-    if (wasEntry && sortMode !== 'default') return;
+    if (wasEntry && getFolderSortMode(parseEntrySortableId(String(ev.active.id)).folderId) !== 'default') return;
     // 종목 행을 차트 위에 드롭 → 현재 탭 종목 교체(재정렬 대신). 클릭과 같은 onPick 경로를
     // 재사용한다(/live 위라 navigate는 no-op). 차트 밖 드롭이면 아래 재정렬로 폴백.
     if (wasEntry && isPointOnChart(dropPoint(ev))) {
@@ -402,13 +481,6 @@ export function WatchlistDrawer() {
     }
   };
 
-  const sortItemClass =
-    'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2';
-  const chooseSortMode = (mode: QuoteSortMode) => {
-    setSortMode(mode);
-    setSortMenu(false);
-  };
-
   return (
     <div id="right-rail-watchlist-panel" data-testid="watchlist-panel"
       style={{ width: 'var(--watchlist-panel-w)', height: '100%', background: 'var(--bg-card)',
@@ -419,35 +491,7 @@ export function WatchlistDrawer() {
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-dim)', fontFamily: 'monospace',
                          textTransform: 'uppercase', letterSpacing: '0.08em' }}>관심종목</span>
-          {/* 정렬/편집 → 앵커드 메뉴 (이동 메뉴와 같은 relative+absolute+useDismissablePopover 패턴).
-              패널이 뷰포트 우측 끝이라 right-0으로 안쪽으로 연다 — 클램프 불필요. */}
           <div className="flex items-center gap-1">
-            <div className="relative" ref={sortMenuRef}>
-              <button type="button" aria-label="관심종목 정렬" aria-haspopup="menu" aria-expanded={sortMenu}
-                      onClick={() => setSortMenu((v) => !v)}
-                      className={`grid h-6 w-6 place-items-center text-xs ${sortMode === 'default' ? 'text-fg-dim' : 'text-accent'} hover:text-accent`}>
-                <SortIcon active={sortMode !== 'default'} />
-              </button>
-              {sortMenu && (
-                <AnchoredMenu label="정렬">
-                  <button type="button" role="menuitemradio" aria-checked={sortMode === 'default'}
-                          onClick={() => chooseSortMode('default')}
-                          className={sortItemClass}>
-                    <span aria-hidden className="w-4 text-center">{sortMode === 'default' ? '✓' : ''}</span> 기본
-                  </button>
-                  <button type="button" role="menuitemradio" aria-checked={sortMode === 'change_pct_asc'}
-                          onClick={() => chooseSortMode('change_pct_asc')}
-                          className={sortItemClass}>
-                    <span aria-hidden className="w-4 text-center">{sortMode === 'change_pct_asc' ? '✓' : ''}</span> 등락률 오름차순
-                  </button>
-                  <button type="button" role="menuitemradio" aria-checked={sortMode === 'change_pct_desc'}
-                          onClick={() => chooseSortMode('change_pct_desc')}
-                          className={sortItemClass}>
-                    <span aria-hidden className="w-4 text-center">{sortMode === 'change_pct_desc' ? '✓' : ''}</span> 등락률 내림차순
-                  </button>
-                </AnchoredMenu>
-              )}
-            </div>
             <div className="relative" ref={editMenuRef}>
               <button type="button" aria-label="관심종목 편집 메뉴" aria-haspopup="menu" aria-expanded={editMenu}
                       onClick={() => setEditMenu((v) => !v)}
@@ -486,8 +530,9 @@ export function WatchlistDrawer() {
               if (g.entries.length === 0 && g.folder === null) return null; // 빈 미분류는 숨김
               const isCollapsed = collapsed.has(key);
               const folder = g.folder;
-              const displayEntries = sortEntriesByChangePct(g.entries, pctOf, sortMode);
-              const rowDragEnabled = sortMode === 'default';
+              const groupSortMode = folder ? getFolderSortMode(folder.id) : 'default';
+              const displayEntries = sortEntriesByChangePct(g.entries, pctOf, groupSortMode);
+              const rowDragEnabled = groupSortMode === 'default';
               const entriesList = !isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   <SortableContext items={displayEntries.map((e) => entrySortableId(e.folder_id, e.code))} strategy={verticalListSortingStrategy}>
@@ -523,6 +568,8 @@ export function WatchlistDrawer() {
                   onMoveDown={folder ? () => moveFolder(folder.id, +1) : undefined}
                   canMoveUp={gi > 0}
                   canMoveDown={gi < folderCount - 1}
+                  sortMode={groupSortMode}
+                  onSort={folder ? (mode) => setFolderSortMode(folder.id, mode) : undefined}
                   dragHandle={dragHandle} />
               );
               return folder ? (

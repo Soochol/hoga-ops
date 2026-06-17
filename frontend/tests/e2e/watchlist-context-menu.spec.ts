@@ -74,13 +74,14 @@ test.describe('Watchlist Panel context menu', () => {
     let movedTo: string | null | undefined;
 
     await page.route(`${API}/api/live/quotes*`, (r) => json(r, { phase: 'open', quotes: [] }));
-    // POST /move — stateful: folder_id 갱신 후 GET 이 새 소속을 반영한다.
-    await page.route(`${API}/api/watchlist/move`, async (route) => {
-      const body = JSON.parse(route.request().postData() || '{}') as
-        { codes: string[]; folder_id: string | null };
-      movedTo = body.folder_id;
-      entries = entries.map((e) =>
-        body.codes.includes(e.code) ? { ...e, folder_id: body.folder_id } : e);
+    // POST /api/watchlist/folders/{id}/members — 그룹 편집에서 체크토글로 멤버십 추가를 수행한다.
+    await page.route(`${API}/api/watchlist/folders/*/members`, async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      const folderId = route.request().url().split('/').at(-2);
+      const code = (JSON.parse(route.request().postData() || '{}') as { code?: string }).code;
+      if (!code || !folderId) return route.fallback();
+      movedTo = folderId;
+      entries = [...entries, { ...entries.find((e) => e.code === code)!, code, folder_id: folderId, order: 0 }];
       return route.fulfill({ status: 204, body: '' });
     });
     await page.route(`${API}/api/watchlist`, (r) =>
@@ -91,13 +92,13 @@ test.describe('Watchlist Panel context menu', () => {
 
     await page.getByTestId('watchlist-row-000660').click({ button: 'right' });
     await expect(page.getByTestId('watchlist-row-menu')).toBeVisible();
-    await page.getByTestId('watchlist-menu-move-f_a').click();     // 스윙으로 이동
+    await page.getByTestId('watchlist-menu-edit-groups').click();
+    const picker = page.getByTestId('watchlist-group-picker');
+    await expect(picker).toBeVisible();
+    await picker.getByRole('menuitemcheckbox').first().click(); // 첫 번째 폴더(스윙) 체크
 
-    await expect.poll(() => movedTo).toBe('f_a');                  // POST /move 발사
-    // refetch 후 000660 이 스윙 그룹(첫 그룹) 아래로 — DOM 행 순서가 뒤집힌다.
-    await expect.poll(() =>
-      page.locator('[data-testid^="watchlist-row-"]').evaluateAll((els) =>
-        els.map((e) => e.getAttribute('data-testid')!.replace('watchlist-row-', ''))),
-    ).toEqual(['000660', '005930']);
+    await expect.poll(() => movedTo).toBe('f_a');                  // POST /folders/{id}/members 발사
+    await expect.poll(() => page.locator('[data-testid="watchlist-row-000660"]').count()).toEqual(2);
+    // 그룹 편집은 멤버십을 토글하므로, 스윙 그룹 추가 후에도 기존 미분류 행은 유지될 수 있다.
   });
 });
