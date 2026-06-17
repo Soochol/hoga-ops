@@ -1,6 +1,7 @@
 """Unit tests for LiveStream orchestrator."""
 import asyncio
 import contextlib
+import json
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -278,6 +279,69 @@ async def test_on_tick_drops_codes_outside_active_set(tmp_path):
     assert series["trades"] == []                    # 표시 ring 재생성 금지
     await stream.flush_once(now_ms=now + 10_000)     # 저장 경로에도 부활 없음
     assert not (tmp_path / "live" / "20260605" / "005930.jsonl").exists()
+
+
+async def test_seed_ask_peak_from_live_file_loads_full_day_peak_and_full_coverage(tmp_path):
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260616", phase_fn=lambda: "regular")
+    live_root = tmp_path / "live"
+    live_root.mkdir(parents=True, exist_ok=True)
+    live_path = live_root / "20260616" / "005930.jsonl"
+    live_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "t_ms": _kst_ms(9, 10),
+            "kind": "ob",
+            "payload": {
+                "code": "005930",
+                "t_ms": _kst_ms(9, 10),
+                "asks": [
+                    {"price": 10_100, "qty": 500},
+                    {"price": 10_200, "qty": 900},
+                    {"price": 10_300, "qty": 10},
+                    {"price": 10_400, "qty": 700},
+                ],
+                "bids": [
+                    {"price": 10_000, "qty": 500},
+                    {"price": 9_900, "qty": 900},
+                    {"price": 9_800, "qty": 10},
+                    {"price": 9_700, "qty": 700},
+                ],
+                "total_ask_qty": 2_110,
+                "total_bid_qty": 2_110,
+            },
+        },
+        {
+            "t_ms": _kst_ms(10, 0),
+            "kind": "trade",
+            "payload": {
+                "trades": [{
+                    "t_ms": _kst_ms(10, 0),
+                    "price": 10_100,
+                    "qty": 1,
+                    "side": 1,
+                    "side_source": "kis_ws",
+                }],
+            },
+        },
+    ]
+    live_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
+
+    stream.seed_ask_peak_from_live_file(code="005930", date="20260616", live_root=live_root)
+
+    assert stream.ask_peak_snapshot("005930") == {
+        "date": "20260616",
+        "coverage": "full",
+        "traded_prices": [10_100],
+        "traded_price": 10_100,
+        "traded_qty": 500,
+        "traded_t_ms": _kst_ms(9, 10),
+        "all_price": 10_200,
+        "all_qty": 900,
+        "all_t_ms": _kst_ms(9, 10),
+    }
 
 
 async def test_on_tick_unfiltered_before_active_set_known(tmp_path):

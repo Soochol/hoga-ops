@@ -9,9 +9,11 @@ per-tick: LiveBuffer.publish (표시, sub-second / ADR-0053 다운스트림 무�
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 
 from .ask_peak_state import TodayAskPeakState
 from .buffer import LiveBuffer
@@ -114,6 +116,42 @@ class LiveStream:
         if snap is None:
             return None
         return {"date": self._ask_peak_date, **snap}
+
+    def seed_ask_peak_from_live_file(self, *, code: str, date: str, live_root: Path) -> None:
+        """Replay today's persisted JSONL into this stream's ask-peak state."""
+        path = live_root / date / f"{code}.jsonl"
+        if not path.exists():
+            return
+        state = self._ask_peak_state(code)
+        loaded = False
+
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                for raw in f:
+                    row = raw.rstrip("\n")
+                    if not row:
+                        continue
+                    try:
+                        payload = json.loads(row)
+                    except json.JSONDecodeError:
+                        continue
+
+                    try:
+                        tick_kind = SnapshotKind(payload.get("kind"))
+                    except ValueError:
+                        continue
+                    t_ms = payload.get("t_ms")
+                    if type(t_ms) is not int:
+                        continue
+                    loaded = True
+                    self._ingest_ask_peak(
+                        WsTick(code=code, t_ms=t_ms, kind=tick_kind, payload=payload.get("payload") or {}),
+                    )
+        except OSError:
+            return
+
+        if loaded:
+            state.coverage = "full"
 
     def _ingest_ask_peak(self, tick: WsTick) -> None:
         if tick.kind is SnapshotKind.TRADE:

@@ -472,6 +472,18 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
         now_ms=_now_ms(), build_conn=_build_conn,
     )
     _state.rest_poller = poller
+
+    date = _today_kst()
+    live_root = data_dir / "live"
+    for conn in _state.streams.values():
+        if conn.stream_obj is None:
+            continue
+        for code in conn.codes:
+            seed = getattr(conn.stream_obj, "seed_ask_peak_from_live_file", None)
+            if seed is None:
+                continue
+            seed(code=code, date=date, live_root=live_root)
+
     return True
 
 

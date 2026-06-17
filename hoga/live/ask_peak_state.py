@@ -23,13 +23,13 @@ class TodayAskPeakState:
     def ingest_trade(self, *, price: int, side: int) -> None:
         if side in (1, -1):
             self.traded_prices.add(price)
-            observed_peak = self.observed_price_peaks.get(price)
-            if observed_peak is not None:
+            observed = self.observed_price_peaks.get(price)
+            if observed is not None:
                 self.traded_peak = _larger_peak(
                     self.traded_peak,
-                    price=observed_peak.price,
-                    qty=observed_peak.qty,
-                    t_ms=observed_peak.t_ms,
+                    price=observed.price,
+                    qty=observed.qty,
+                    t_ms=observed.t_ms,
                 )
 
     def ingest_orderbook(
@@ -51,12 +51,13 @@ class TodayAskPeakState:
                 t_ms=t_ms,
             )
             self.all_peak = _larger_peak(self.all_peak, price=price, qty=qty, t_ms=t_ms)
+            self.observed_price_peaks[price] = _larger_peak(
+                self.observed_price_peaks.get(price), price=price, qty=qty, t_ms=t_ms
+            )
             if price in self.traded_prices:
                 self.traded_peak = _larger_peak(
                     self.traded_peak,
-                    price=price,
-                    qty=qty,
-                    t_ms=t_ms,
+                    price=price, qty=qty, t_ms=t_ms,
                 )
 
     def snapshot(self) -> dict | None:
