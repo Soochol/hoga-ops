@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
@@ -32,6 +32,10 @@ export function StudyPage() {
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     captureViewportRef.current = capture;
   }, []);
+
+  useLayoutEffect(() => {
+    useLiveCursorStore.getState().resetCursor();
+  }, [viewId]);
 
   useEffect(() => {
     if (!viewId || !snapshot || !chartInput) {

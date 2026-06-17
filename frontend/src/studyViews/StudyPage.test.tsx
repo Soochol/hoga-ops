@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import type { ComponentProps } from 'react';
 import type { ParquetStudySnapshot } from '../api/studyViews';
@@ -34,6 +34,7 @@ vi.mock('../api/range', () => ({
 import { StudyPage } from './StudyPage';
 import { useLiveBundle } from '../live/useLiveBundle';
 import { useRange } from '../api/range';
+import { useLiveCursorStore } from '../live/useLiveCursorStore';
 
 const snapshot: ParquetStudySnapshot = {
   schema_version: 1,
@@ -93,6 +94,7 @@ describe('StudyPage', () => {
     liveChartRootMock.mockReset();
     useLiveBundleMock.mockReset();
     useRangeMock.mockReset();
+    useLiveCursorStore.getState().resetCursor();
   });
 
   it('renders a saved snapshot from /study?view=view1 without live or range hooks', () => {
@@ -199,6 +201,82 @@ describe('StudyPage', () => {
     expect(screen.getByText('거래원')).toBeTruthy();
     expect(screen.getByText('키움')).toBeTruthy();
     expect(screen.getByText('+100')).toBeTruthy();
+    expect(useLiveBundle).not.toHaveBeenCalled();
+    expect(useRange).not.toHaveBeenCalled();
+  });
+
+  it('ignores a stale shared cursor on first /study render and falls back to the latest saved candle', () => {
+    const enriched: ParquetStudySnapshot = {
+      ...snapshot,
+      timeframe: '1m',
+      bucket_kind: '1m',
+      bundle: {
+        ...snapshot.bundle,
+        timeframe: '1m',
+        candles: [
+          { t: 1_000, open: 70_000, high: 72_000, low: 69_000, close: 71_000, volume: 100 },
+          { t: 2_000, open: 71_000, high: 73_000, low: 70_000, close: 72_000, volume: 120 },
+        ],
+        orderbook_buckets: [
+          {
+            t: 1_000,
+            available: true,
+            snapshot: {
+              ts_ms: 1_999,
+              seq: 7,
+              ask: Array.from({ length: 10 }, (_, i) => ({ price: 71_000 + i, qty: 10 + i })),
+              bid: Array.from({ length: 10 }, (_, i) => ({ price: 70_900 - i, qty: 20 + i })),
+              tot_ask: 145,
+              tot_bid: 245,
+            },
+          },
+          {
+            t: 2_000,
+            available: true,
+            snapshot: {
+              ts_ms: 2_999,
+              seq: 8,
+              ask: Array.from({ length: 10 }, (_, i) => ({ price: 72_000 + i, qty: 110 + i })),
+              bid: Array.from({ length: 10 }, (_, i) => ({ price: 71_900 - i, qty: 210 + i })),
+              tot_ask: 1_145,
+              tot_bid: 2_145,
+            },
+          },
+        ],
+        broker_buckets: [
+          {
+            t: 1_000,
+            available: true,
+            brokers: [{ broker: '키움증권', net: 100, dominant_side: 'buy' }],
+          },
+          {
+            t: 2_000,
+            available: true,
+            brokers: [{ broker: '미래에셋증권', net: 200, dominant_side: 'buy' }],
+          },
+        ],
+        detail_warnings: [],
+      },
+    };
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: enriched,
+      isLoading: false,
+      isError: false,
+    });
+
+    act(() => {
+      useLiveCursorStore.getState().setCursor(1_500);
+    });
+
+    renderAt('/study?view=view1');
+
+    expect(screen.getByTestId('study-detail-panel')).toBeTruthy();
+    expect(screen.getByText('미래에셋')).toBeTruthy();
+    expect(screen.getByText('+200')).toBeTruthy();
+    expect(screen.queryByText('키움')).toBeNull();
+    expect(screen.queryByText('+100')).toBeNull();
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
+    expect(useLiveCursorStore.getState().lastCursorMs).toBeNull();
     expect(useLiveBundle).not.toHaveBeenCalled();
     expect(useRange).not.toHaveBeenCalled();
   });
