@@ -115,7 +115,7 @@ The `/live` **activeCode** auxiliary card rendered by `LiveSidebar` below the **
 _Avoid_: "Cursor Sidebar card" (does not consume **Cursor**), "investor net" (reserved for **Live Investor Net** daily confirmed/estimated rows), "수급 차트" (history table, not a chart pane), "거래원 확장" (different KIS endpoint, cadence, and provenance from **Broker Day-Trajectory**).
 
 **Live Investor Estimate**:
-The KIS `investor-trend-estimate` intraday estimated foreign/institution net-quantity row history for one **activeCode** and KST trading day, surfaced as the **Live Investor Estimate Card** and refreshed by 60-second regular-session polling; KIS owns the history when it returns multiple slots, while hoga-ops only accumulates same-day observed rows if KIS returns latest-only data.
+The KIS `investor-trend-estimate` intraday estimated foreign/institution net-quantity row history for one **activeCode** and KST trading day, surfaced as the **Live Investor Estimate Card** and refreshed by 60-second regular-session polling; KIS owns the history when it returns multiple slots, while hoga-ops only accumulates same-day observed rows if KIS returns latest-only data. Each wire row carries the KIS slot label plus `observed_at_ms`, the Unix-ms time hoga-ops first observed that row's quantities. The card renders this as an aggregation round with actual observation time (`1차(09:20)`), preserving the earlier observation time when later full-history responses repeat unchanged quantities.
 _Avoid_: "Live Investor Net" (that is the D-only daily chart pane from `investor-trade-by-stock-daily`), "confirmed investor flow" (KIS describes this as 장중 가집계), "amount" / "대금" (this endpoint is quantity-only).
 
 **Right Rail**:
