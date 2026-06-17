@@ -1159,9 +1159,12 @@ class _FakeKisForInvestorTrendEstimate:
 
 
 @pytest.mark.asyncio
-async def test_investor_estimate_latest_only_accumulates_same_day_and_overwrites_slot() -> None:
+async def test_investor_estimate_latest_only_accumulates_same_day_and_overwrites_slot(monkeypatch) -> None:
+    from hoga.live import api as live_api
     from hoga.live.api import LiveInvestorEstimateFetcher
 
+    now = 100.0
+    monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
     fake = _FakeKisForInvestorTrendEstimate([
         [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
         [InvestorTrendEstimateRow(slot="0910", foreign_qty=11, institution_qty=21, sum_qty=32)],
@@ -1170,32 +1173,40 @@ async def test_investor_estimate_latest_only_accumulates_same_day_and_overwrites
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
 
     r1 = await fetcher.fetch(fake, "005930")
+    now = 160.0
     r2 = await fetcher.fetch(fake, "005930")
+    now = 220.0
     r3 = await fetcher.fetch(fake, "005930")
 
     assert [r.slot for r in r1.rows] == ["0900"]
     assert [r.slot for r in r2.rows] == ["0900", "0910"]
     assert [(r.slot, r.foreign_qty) for r in r3.rows] == [("0900", 99), ("0910", 11)]
+    assert [(r.slot, r.observed_at_ms) for r in r3.rows] == [("0900", 220_000), ("0910", 160_000)]
     assert r3.latest and r3.latest.slot == "0910"
 
 
 @pytest.mark.asyncio
-async def test_investor_estimate_full_history_replaces_latest_only_accumulator() -> None:
+async def test_investor_estimate_full_history_replaces_latest_only_accumulator(monkeypatch) -> None:
+    from hoga.live import api as live_api
     from hoga.live.api import LiveInvestorEstimateFetcher
 
+    now = 100.0
+    monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
     fake = _FakeKisForInvestorTrendEstimate([
         [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)],
         [
-            InvestorTrendEstimateRow(slot="0910", foreign_qty=11, institution_qty=21, sum_qty=32),
+            InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30),
             InvestorTrendEstimateRow(slot="0920", foreign_qty=12, institution_qty=22, sum_qty=34),
         ],
     ])
     fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260616")
 
     await fetcher.fetch(fake, "005930")
+    now = 160.0
     response = await fetcher.fetch(fake, "005930")
 
-    assert [r.slot for r in response.rows] == ["0910", "0920"]
+    assert [r.slot for r in response.rows] == ["0900", "0920"]
+    assert [(r.slot, r.observed_at_ms) for r in response.rows] == [("0900", 100_000), ("0920", 160_000)]
     assert response.latest and response.latest.slot == "0920"
 
 
@@ -1537,8 +1548,20 @@ def test_investor_trend_estimate_route_returns_expected_rows(tmp_path) -> None:
     assert body["source"] == "kis"
     assert body["status"] == "ok"
     assert body["rows"] == [
-        {"slot": "0900", "foreign_qty": 10, "institution_qty": 20, "sum_qty": 30},
-        {"slot": "0910", "foreign_qty": 15, "institution_qty": None, "sum_qty": 15},
+        {
+            "slot": "0900",
+            "observed_at_ms": body["fetched_at_ms"],
+            "foreign_qty": 10,
+            "institution_qty": 20,
+            "sum_qty": 30,
+        },
+        {
+            "slot": "0910",
+            "observed_at_ms": body["fetched_at_ms"],
+            "foreign_qty": 15,
+            "institution_qty": None,
+            "sum_qty": 15,
+        },
     ]
     assert body["latest"]["slot"] == "0910"
     assert body["data_warning"] is None

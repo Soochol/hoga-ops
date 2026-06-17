@@ -33,17 +33,17 @@ export function InvestorTrendEstimateCard({ query }: Props) {
 
       {hasRows ? (
         <div className="overflow-hidden">
-          <table className="w-full table-fixed border-collapse font-mono text-[11px]">
+          <table className="w-full table-fixed border-collapse font-mono text-sm tabular-nums">
             <thead className="text-fg-dimmer">
               <tr>
-                <th className="w-[4.25rem] px-2 py-1.5 text-left font-medium">입력</th>
+                <th className="w-[7.5rem] px-2 py-1.5 text-left font-medium">집계시간</th>
                 <th className="px-2 py-1.5 text-right font-medium">외국인</th>
                 <th className="px-2 py-1.5 text-right font-medium">기관</th>
                 <th className="px-2 py-1.5 text-right font-medium">합산</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {rows.map((row, index) => {
                 const isLatest = isLatestRow(row, data?.latest ?? null);
                 return (
                   <tr
@@ -51,7 +51,9 @@ export function InvestorTrendEstimateCard({ query }: Props) {
                     data-testid={isLatest ? 'investor-estimate-row-latest' : undefined}
                     className={isLatest ? 'bg-bg' : undefined}
                   >
-                    <td className="px-2 py-1.5 text-left text-fg-dim">{row.slot}</td>
+                    <td className="px-2 py-1.5 text-left text-fg-dim">
+                      {formatAggregationTime(row, index)}
+                    </td>
                     <QtyCell value={row.foreign_qty} />
                     <QtyCell value={row.institution_qty} />
                     <QtyCell value={row.sum_qty} />
@@ -91,6 +93,28 @@ export function formatQtyWithCommas(value: number | null): string {
 
   const sign = value > 0 ? '+' : '';
   return `${sign}${value.toLocaleString('en-US')}주`;
+}
+
+export function formatAggregationTime(
+  row: Pick<LiveInvestorTrendEstimateRow, 'slot' | 'observed_at_ms'>,
+  index: number,
+): string {
+  if (typeof row.observed_at_ms === 'number') {
+    return `${formatAggregationOrdinal(row.slot, index)}(${formatHourMinute(row.observed_at_ms)})`;
+  }
+  return formatSlotFallback(row.slot);
+}
+
+function formatAggregationOrdinal(slot: string, index: number): string {
+  const normalized = slot.trim();
+  if (/^\d{1,2}$/.test(normalized)) return `${Number(normalized)}차`;
+  return `${index + 1}차`;
+}
+
+function formatSlotFallback(slot: string): string {
+  const normalized = slot.trim();
+  if (/^\d{4}$/.test(normalized)) return `${normalized.slice(0, 2)}:${normalized.slice(2)}`;
+  return normalized;
 }
 
 function qtyClass(value: number | null): string {

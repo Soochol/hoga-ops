@@ -5,6 +5,7 @@ import { isKrxRegularSessionNow } from '../live/liveDateTime';
 
 export interface LiveInvestorTrendEstimateRow {
   slot: string;
+  observed_at_ms?: number;
   foreign_qty: number | null;
   institution_qty: number | null;
   sum_qty: number | null;

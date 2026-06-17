@@ -351,6 +351,7 @@ class LiveInvestorTrendEstimateWarning(BaseModel):
 
 class LiveInvestorTrendEstimateRow(BaseModel):
     slot: str
+    observed_at_ms: int
     foreign_qty: int | None
     institution_qty: int | None
     sum_qty: int | None
@@ -448,9 +449,12 @@ class LiveQuoteFetcher:
 
 def _investor_estimate_row_to_wire(
     row: InvestorTrendEstimateRow,
+    *,
+    observed_at_ms: int,
 ) -> LiveInvestorTrendEstimateRow:
     return LiveInvestorTrendEstimateRow(
         slot=row.slot,
+        observed_at_ms=observed_at_ms,
         foreign_qty=row.foreign_qty,
         institution_qty=row.institution_qty,
         sum_qty=row.sum_qty,
@@ -550,7 +554,11 @@ class LiveInvestorEstimateFetcher:
         key = (trading_day, code)
         try:
             raw_rows = await kis.fetch_investor_trend_estimate(code)
-            rows = [_investor_estimate_row_to_wire(r) for r in raw_rows]
+            fetched_at_ms = int(monotonic_time.time() * 1000)
+            rows = [
+                _investor_estimate_row_to_wire(r, observed_at_ms=fetched_at_ms)
+                for r in raw_rows
+            ]
         except KisAuthError:
             log.warning("investor trend estimate auth failed for %s", code, exc_info=True)
             response = self._error_response(
@@ -578,7 +586,7 @@ class LiveInvestorEstimateFetcher:
             response = self._response(
                 code=code,
                 trading_day=trading_day,
-                fetched_at_ms=int(monotonic_time.time() * 1000),
+                fetched_at_ms=fetched_at_ms,
                 rows=[],
                 status="empty",
                 warning=None,
@@ -586,7 +594,11 @@ class LiveInvestorEstimateFetcher:
             return self._cache_response(key, response)
 
         if len(rows) > 1:
-            self._accumulator[key] = {row.slot: row for row in rows}
+            prior = self._accumulator.get(key, {})
+            self._accumulator[key] = {
+                row.slot: _preserve_investor_estimate_observed_at(prior.get(row.slot), row)
+                for row in rows
+            }
         else:
             current = self._accumulator.setdefault(key, {})
             for row in rows:
@@ -596,7 +608,6 @@ class LiveInvestorEstimateFetcher:
         status: Literal["ok", "empty"] = (
             "ok" if any(_investor_estimate_has_quantity(row) for row in merged) else "empty"
         )
-        fetched_at_ms = int(monotonic_time.time() * 1000)
         if status == "ok":
             self._last_success_fetched_at_ms[key] = fetched_at_ms
         response = self._response(
@@ -687,6 +698,21 @@ class LiveInvestorEstimateFetcher:
             status=status,
             data_warning=warning,
         )
+
+
+def _preserve_investor_estimate_observed_at(
+    previous: LiveInvestorTrendEstimateRow | None,
+    current: LiveInvestorTrendEstimateRow,
+) -> LiveInvestorTrendEstimateRow:
+    if previous is None:
+        return current
+    if (
+        previous.foreign_qty == current.foreign_qty
+        and previous.institution_qty == current.institution_qty
+        and previous.sum_qty == current.sum_qty
+    ):
+        return current.model_copy(update={"observed_at_ms": previous.observed_at_ms})
+    return current
 
 
 def build_router(
