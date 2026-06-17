@@ -65,6 +65,19 @@ describe('candleTooltipEnabled 토글', () => {
   });
 });
 
+describe('거래량 체결강도 누적 토글', () => {
+  it('기본값은 false', () => {
+    expect(DEFAULT_PREFS.volumeFillStrengthCumulative).toBe(false);
+  });
+
+  it('mergePrefs는 false를 보존한다', () => {
+    expect(mergePrefs({ volumeFillStrengthCumulative: false }).volumeFillStrengthCumulative).toBe(false);
+    expect(mergePrefs({ volumeFillStrengthCumulative: true }).volumeFillStrengthCumulative).toBe(true);
+    expect(mergePrefs({ volumeFillStrengthCumulative: 'true' as never }).volumeFillStrengthCumulative)
+      .toBe(DEFAULT_PREFS.volumeFillStrengthCumulative);
+  });
+});
+
 import { CHART_TOGGLES, CHART_NUMERIC_PREFS, categoryOf } from './chartPrefs';
 
 describe('총잔량 급증 설정', () => {

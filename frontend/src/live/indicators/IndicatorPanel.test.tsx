@@ -119,6 +119,13 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText(/기관.*순매수 수량/)).toBeTruthy();
   });
 
+  it('거래량 카테고리 이동 후 체결강도 누적 토글이 노출된다', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '거래량' }));
+    expect(screen.getByTestId('settings-toggle-volumeFillStrengthCumulative')).toBeTruthy();
+    expect(screen.getByText('거래량 — 체결강도 누적')).toBeTruthy();
+  });
+
   it('navigating to a category does NOT toggle its master switch', async () => {
     const { useLivePageStore } = await import('../../state/livePage');
     useLivePageStore.setState({ volumeEnabled: true });

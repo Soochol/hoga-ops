@@ -40,7 +40,7 @@ const histOpts = {
   lastValueVisible: false,
 };
 
-const cumulativePriceFormat = {
+export const cumulativePriceFormat = {
   type: 'custom' as const,
   formatter: (v: number) => v.toLocaleString('ko-KR'),  // sign preserved
   minMove: 1,
@@ -349,7 +349,7 @@ const useFillStrengthContext = (): FillStrengthPaneContext =>
 // runningSum이 후속 전부에 의존해 분리 불가 → 아래 cumulative 캐시를 별도로 쓴다.
 const buyCachedData = makePastCachedProjector(projectBuyPoints, (b) => b.fill_strength.points);
 const sellCachedData = makePastCachedProjector(projectSellPoints, (b) => b.fill_strength.points);
-const cumulativeCachedData = makeCumulativeCachedProjector();
+export const cumulativeCachedData = makeCumulativeCachedProjector();
 
 export const FILL_STRENGTH_SPEC = {
   name: 'fill-strength' as const,

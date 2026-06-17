@@ -46,4 +46,26 @@ describe('VOLUME_SPEC', () => {
     const dataFn = VOLUME_SPEC.series[0].data;
     expect(dataFn(bundle, ax).length).toBe(1);
   });
+
+  it('체결강도 누적 라인은 2번째 시리즈로 존재한다', () => {
+    expect(VOLUME_SPEC.series).toHaveLength(2);
+    const second = VOLUME_SPEC.series[1];
+    expect(second.type).toBeDefined();
+    expect(second.options.priceScaleId).toBe('right');
+  });
+
+  it('토글 off 시 체결강도 누적 시리즈는 빈 데이터', () => {
+    const bundle = {
+      segments: [{ session_open_ms: 0, session_close_ms: 3_600_000, date: '20260527', source: 'kis_live' }],
+      fill_strength: {
+        points: [{ t: 120_000, buy_qty: 100, sell_qty: 20, bucketIndex: 1, session_open_ms: 0, session_close_ms: 3_600_000 }],
+      },
+    } as never;
+    const ax = {
+      contains: (t: number) => t >= 0 && t <= 3_600_000,
+      toVirtual: (t: number) => t,
+    } as never;
+    const dataFn = VOLUME_SPEC.series[1].data as (...args: unknown[]) => { value: number; time: number }[];
+    expect(dataFn(bundle, ax, { cumulativeEnabled: false, auctionWindowMask: false }).length).toBe(0);
+  });
 });
