@@ -189,6 +189,47 @@ def query_day_series(
     return entries[:10]
 
 
+def _final_broker_order(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    limit: int,
+) -> list[str]:
+    """Return top broker names ordered by final full-file net."""
+    from hoga.broker_names import canonical
+
+    rows = con.execute(
+        """
+        SELECT
+            broker,
+            ts_ms,
+            seq,
+            SUM(CASE WHEN side = 'buy' THEN qty_today ELSE -qty_today END) AS net
+        FROM read_parquet(?)
+        GROUP BY broker, ts_ms, seq
+        ORDER BY broker, ts_ms, seq
+        """,
+        [str(path)],
+    ).fetchall()
+
+    collapsed: dict[tuple[str, int, int], int] = {}
+    for raw_broker, ts_ms, seq, net in rows:
+        key = (canonical(raw_broker), int(ts_ms), int(seq))
+        collapsed[key] = collapsed.get(key, 0) + int(net)
+
+    latest: dict[str, tuple[int, int, int]] = {}
+    for (broker, ts_ms, seq), net in collapsed.items():
+        prev = latest.get(broker)
+        if prev is None or (ts_ms, seq) >= prev[:2]:
+            latest[broker] = (ts_ms, seq, net)
+
+    ordered = sorted(
+        latest.items(),
+        key=lambda item: (-abs(item[1][2]), -item[1][2]),
+    )
+    return [broker for broker, _state in ordered[:limit]]
+
+
 def query_cumulative_details_at(
     con: duckdb.DuckDBPyConnection,
     *,
@@ -198,13 +239,19 @@ def query_cumulative_details_at(
 ) -> dict[int, list[BrokerDetailRow]]:
     """Top broker cumulative net at each native cursor timestamp.
 
-    The result mirrors Cursor Sidebar ordering: abs(net) desc, then net desc.
+    The result mirrors Cursor Sidebar ordering: select and order brokers by
+    final full-file net, then project each ordered broker's net at the cursor.
     """
     from hoga.broker_names import canonical
 
     if not t_values:
         return {}
     uniq = sorted({int(t) for t in t_values})
+    final_order = _final_broker_order(con, path=path, limit=limit)
+    final_rank = {broker: idx for idx, broker in enumerate(final_order)}
+    if not final_order:
+        return {t: [] for t in uniq}
+
     rows = con.execute(
         """
         SELECT
@@ -236,6 +283,8 @@ def query_cumulative_details_at(
 
     grouped: dict[int, list[BrokerDetailRow]] = {t: [] for t in uniq}
     for (cursor_ts, broker), (_ts_ms, _seq, net) in latest.items():
+        if broker not in final_rank:
+            continue
         grouped[cursor_ts].append(
             BrokerDetailRow(
                 broker=broker,
@@ -244,6 +293,6 @@ def query_cumulative_details_at(
             )
         )
     for cursor_ts, details in grouped.items():
-        details.sort(key=lambda r: (-abs(r.net), -r.net))
-        grouped[cursor_ts] = details[:limit]
+        details.sort(key=lambda r: final_rank[r.broker])
+        grouped[cursor_ts] = details
     return grouped
