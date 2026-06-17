@@ -174,4 +174,23 @@ describe('WatchlistDrawer drag wiring', () => {
     expect(reorderSpy).not.toHaveBeenCalled();
     expect(useLivePageStore.getState().activeCode).toBeNull();
   });
+
+  it('entry-drag still does not reorder when change-rate sort mode is restored from localStorage', async () => {
+    localStorage.setItem('watchlist.sortMode.v1', JSON.stringify({ sortMode: 'change_pct_asc' }));
+    const reorderSpy = vi.spyOn(watchlistApi, 'reorderEntries').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    h.onDragEnd!({
+      active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
+      over: { id: 'f_0000000a:000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
+      activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+      delta: { x: 0, y: 0 },
+    });
+
+    await Promise.resolve();
+    expect(reorderSpy).not.toHaveBeenCalled();
+    expect(useLivePageStore.getState().activeCode).toBeNull();
+  });
 });

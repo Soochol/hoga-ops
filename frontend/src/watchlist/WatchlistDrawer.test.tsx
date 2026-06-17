@@ -102,9 +102,11 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
 
     await waitFor(() => expect(screen.getByLabelText('관심종목 정렬')).toBeInTheDocument());
+    expect(screen.getByLabelText('관심종목 정렬')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    expect(screen.getByLabelText('관심종목 정렬')).toHaveAttribute('aria-expanded', 'true');
 
     expect(await screen.findByRole('menu', { name: '정렬' })).toBeInTheDocument();
     expect(screen.getByRole('menuitemradio', { name: '기본' })).toHaveAttribute('aria-checked', 'true');
@@ -153,6 +155,122 @@ describe('WatchlistDrawer', () => {
     fireEvent.click(screen.getByLabelText('관심종목 정렬'));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: '기본' }));
     expect(rowCodes()).toEqual(['005930', '000660', '035420']);
+  });
+
+  it('sorts each folder independently by change rate', async () => {
+    const folders = [
+      { id: 'f_0000000a', name: '스윙', order: 0 },
+      { id: 'f_0000000b', name: '장기', order: 1 },
+    ];
+    const multiFolderEntries = {
+      folders,
+      entries: [
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000a', order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000a', order: 1 },
+        { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 0 },
+        { code: '051910', name: 'LG화학', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 1 },
+      ],
+      next_run_at_ms: 0,
+    };
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(multiFolderEntries);
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      phase: 'open',
+      quotes: [
+        { code: '005930', price: 72400, change_pct: 1.2, change_won: 850 },
+        { code: '000660', price: 183500, change_pct: -0.8, change_won: -1500 },
+        { code: '035420', price: 211000, change_pct: 2.1, change_won: 2100 },
+        { code: '051910', price: 560000, change_pct: -1.5, change_won: -2000 },
+      ],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' }));
+
+    const swing = screen.getByTestId('watchlist-group-f_0000000a');
+    const long = screen.getByTestId('watchlist-group-f_0000000b');
+    const toCodes = (root: HTMLElement) =>
+      Array.from(root.querySelectorAll('[data-testid^="watchlist-row-"]'))
+        .map((el) => (el.getAttribute('data-testid') ?? '').replace('watchlist-row-', ''))
+        .filter((code) => code !== '');
+
+    const swingCodes = toCodes(swing);
+    const longCodes = toCodes(long);
+
+    expect(swingCodes).toEqual(['005930', '000660']);
+    expect(longCodes).toEqual(['035420', '051910']);
+  });
+
+  it('restores sort mode from localStorage after remount', async () => {
+    localStorage.setItem('watchlist.sortMode.v1', JSON.stringify({ sortMode: 'change_pct_desc' }));
+    const folder = { id: 'f_0000000a', name: '기본', order: 0 };
+    const threeEntries = {
+      folders: [folder],
+      entries: [
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 1 },
+        { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 2 },
+      ],
+      next_run_at_ms: 0,
+    };
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(threeEntries);
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      phase: 'open',
+      quotes: [
+        { code: '005930', price: 72400, change_pct: 1.2, change_won: 850 },
+        { code: '000660', price: 183500, change_pct: -0.8, change_won: -1500 },
+        { code: '035420', price: 211000, change_pct: 3.4, change_won: 6900 },
+      ],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const { unmount } = render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    const rowCodes = () => screen.getAllByTestId(/^watchlist-row-/).map((el) =>
+      el.getAttribute('data-testid')?.replace('watchlist-row-', ''));
+
+    await waitFor(() => expect(rowCodes()).toEqual(['035420', '005930', '000660']));
+    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    expect(await screen.findByRole('menuitemradio', { name: '등락률 내림차순' })).toHaveAttribute('aria-checked', 'true');
+
+    unmount();
+    const qc2 = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc2, '/inventory') });
+    await waitFor(() => expect(rowCodes()).toEqual(['035420', '005930', '000660']));
+  });
+
+  it('falls back to default sort mode when persisted mode is invalid', async () => {
+    localStorage.setItem('watchlist.sortMode.v1', JSON.stringify({ sortMode: 'nonsense' }));
+    const folder = { id: 'f_0000000a', name: '기본', order: 0 };
+    const threeEntries = {
+      folders: [folder],
+      entries: [
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 1 },
+        { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: folder.id, order: 2 },
+      ],
+      next_run_at_ms: 0,
+    };
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(threeEntries);
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      phase: 'open',
+      quotes: [
+        { code: '005930', price: 72400, change_pct: 1.2, change_won: 850 },
+        { code: '000660', price: 183500, change_pct: -0.8, change_won: -1500 },
+        { code: '035420', price: 211000, change_pct: 3.4, change_won: 6900 },
+      ],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+
+    const rowCodes = () => screen.getAllByTestId(/^watchlist-row-/).map((el) =>
+      el.getAttribute('data-testid')?.replace('watchlist-row-', ''));
+
+    // invalid persisted mode should not affect ordering (default)
+    await waitFor(() => expect(rowCodes()).toEqual(['005930', '000660', '035420']));
+    fireEvent.click(screen.getByLabelText('관심종목 정렬'));
+    expect(await screen.findByRole('menuitemradio', { name: '기본' })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('right-click opens the context menu; 관심 해제 removes the entry and closes', async () => {
