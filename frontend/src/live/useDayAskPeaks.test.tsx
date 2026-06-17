@@ -172,6 +172,31 @@ describe('useDayAskPeaks', () => {
     });
   });
 
+  it('retroactively promotes a previously seen wall once that price trades later', () => {
+    const { result, rerender } = renderHook(
+      ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
+        useDayAskPeaks(ob, trades, [], '20260613', '005930'),
+      { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
+    );
+
+    rerender({
+      trades: [],
+      ob: [deep(atKst(9, 20), 20000, 27000)],
+    });
+    expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
+
+    rerender({
+      trades: [trade(atKst(9, 21), [{ t_ms: atKst(9, 21), side: 1, price: 27000, qty: 10 }])],
+      ob: [deep(atKst(9, 20), 20000, 27000)],
+    });
+
+    expect(byDate(result.current)['20260613']).toMatchObject({
+      price: 27000,
+      qty: 20000,
+      t_ms: atKst(9, 20),
+    });
+  });
+
   it('seeds all backend-traded prices so pre-load non-peak prices remain eligible', () => {
     const restPeak = todayAskPeak({
       traded_prices: [25500, 27000],
