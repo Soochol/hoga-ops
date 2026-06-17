@@ -394,6 +394,119 @@ def test_study_views_create_writes_manifest_and_snapshot(tmp_path):
     assert sv.load_snapshot(tmp_path, id="view1").code == "005930"
 
 
+def test_study_views_create_enriches_snapshot_detail_buckets(tmp_path):
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers
+    from hoga.tables.snapshots import Orderbook, write_parquet as write_snapshots
+
+    z = tuple(0 for _ in range(10))
+    ask_p = tuple(70_100 + i for i in range(10))
+    ask_q = tuple(10 + i for i in range(10))
+    bid_p = tuple(70_000 - i for i in range(10))
+    bid_q = tuple(20 + i for i in range(10))
+    date = "20260616"
+    code = "005930"
+    source_dir = tmp_path / "parquet" / date / code / "hogaplay"
+    source_dir.mkdir(parents=True)
+    (source_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "code": code,
+                "date": date,
+                "source": "hogaplay",
+                "regular_session_open_ms": 90_000_000,
+                "regular_session_close_ms": 153_000_000,
+            }
+        ),
+        encoding="utf-8",
+    )
+    write_snapshots(
+        [
+            Orderbook(
+                ts_ms=90_000_500,
+                seq=1,
+                ask_p=ask_p,
+                ask_q=ask_q,
+                ask_d=z,
+                bid_p=bid_p,
+                bid_q=bid_q,
+                bid_d=z,
+                tot_ask=sum(ask_q),
+                tot_ask_d=0,
+                tot_bid=sum(bid_q),
+                tot_bid_d=0,
+            )
+        ],
+        source_dir / "snapshots.parquet",
+    )
+    write_brokers(
+        [
+            BrokerRow(
+                ts_ms=90_000_500,
+                seq=1,
+                side="buy",
+                rank=1,
+                broker="키움증권",
+                qty_today=100,
+                qty_delta=0,
+            ),
+            BrokerRow(
+                ts_ms=90_000_500,
+                seq=1,
+                side="sell",
+                rank=1,
+                broker="JP모간",
+                qty_today=80,
+                qty_delta=0,
+            ),
+        ],
+        source_dir / "brokers.parquet",
+    )
+
+    unix_bucket = hhmmssms_to_unix_ms(date, 90_000_000)
+    raw = _req()
+    raw["snapshot_from_ms"] = unix_bucket
+    raw["snapshot_to_ms"] = unix_bucket
+    raw["snapshot"]["snapshot_from_ms"] = unix_bucket
+    raw["snapshot"]["snapshot_to_ms"] = unix_bucket
+    raw["snapshot"]["bundle"]["snapshot_from_ms"] = unix_bucket
+    raw["snapshot"]["bundle"]["snapshot_to_ms"] = unix_bucket
+    raw["snapshot"]["bundle"]["segments"] = [
+        {
+            "date": date,
+            "session_open_ms": unix_bucket,
+            "session_close_ms": unix_bucket + 23_400_000,
+            "source": "hogaplay",
+        }
+    ]
+    raw["snapshot"]["bundle"]["candles"] = [
+        {"t": unix_bucket, "open": 1, "high": 2, "low": 1, "close": 2, "volume": 10}
+    ]
+    req = ParquetStudyViewWriteRequest.model_validate(raw)
+
+    sv.create_save_sync(tmp_path, req=req, id="view1", now_ms=10)
+    snap = sv.load_snapshot(tmp_path, id="view1")
+
+    assert snap.bundle.orderbook_buckets[0].t == unix_bucket
+    assert snap.bundle.orderbook_buckets[0].available is True
+    assert snap.bundle.orderbook_buckets[0].snapshot is not None
+    assert snap.bundle.broker_buckets[0].available is True
+    assert snap.bundle.broker_buckets[0].brokers[0].broker == "키움증권"
+    assert snap.bundle.detail_warnings == []
+
+
+def test_study_views_create_detail_enrichment_missing_parquet_is_non_fatal(tmp_path):
+    req = ParquetStudyViewWriteRequest.model_validate(_req())
+
+    sv.create_save_sync(tmp_path, req=req, id="view1", now_ms=10)
+    snap = sv.load_snapshot(tmp_path, id="view1")
+
+    assert snap.code == "005930"
+    assert snap.bundle.orderbook_buckets[0].t == 1_000
+    assert snap.bundle.orderbook_buckets[0].available is False
+    assert any(w.kind in {"orderbook", "broker"} for w in snap.bundle.detail_warnings)
+
+
 def test_study_views_create_snapshot_write_failure_does_not_create_manifest_row(
     tmp_path, monkeypatch
 ):
