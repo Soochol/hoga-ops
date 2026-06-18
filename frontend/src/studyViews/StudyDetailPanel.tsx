@@ -30,21 +30,17 @@ export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorM
     )) ?? null;
   }, [bucketStart, segments]);
   const brokerSeries = useMemo(
-    () => studyBrokerBucketsToSeries(
-      details.brokersByBucketStart,
-      activeSegment
-        ? { fromMs: activeSegment.session_open_ms, toMs: activeSegment.session_close_ms }
-        : null,
-    ),
-    [activeSegment, details.brokersByBucketStart],
+    () => {
+      if (bucketStart == null) return [];
+      return studyBrokerBucketsToSeries(
+        details.brokersByBucketStart,
+        activeSegment
+          ? { fromMs: activeSegment.session_open_ms, toMs: activeSegment.session_close_ms }
+          : null,
+      );
+    },
+    [activeSegment, bucketStart, details.brokersByBucketStart],
   );
-  const visibleBrokerSeries = useMemo(() => {
-    if (bucketStart == null) return [];
-    const bucket = details.brokersByBucketStart.get(bucketStart);
-    if (!bucket?.available) return [];
-    const visible = new Set(bucket.brokers.map((broker) => broker.broker));
-    return brokerSeries.filter((entry) => visible.has(entry.broker));
-  }, [brokerSeries, bucketStart, details.brokersByBucketStart]);
   const snapshot = orderbook?.available ? orderbook.snapshot : null;
 
   return (
@@ -56,7 +52,7 @@ export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorM
       <section>
         <h2 className="border-y px-3 py-2 text-sm font-semibold">거래원</h2>
         <BrokerTrajectoryTable
-          series={visibleBrokerSeries}
+          series={brokerSeries}
           cursorMs={bucketStart}
           gapThresholdMs={Math.max(30_000, bucketMs + 1)}
         />
