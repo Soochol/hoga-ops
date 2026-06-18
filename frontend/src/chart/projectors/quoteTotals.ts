@@ -7,6 +7,7 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
+import { isSyntheticHogaGapPoint, withHogaGapSentinels } from '../util/hogaGapHide';
 import { resolveTokens } from '../../util/tokens';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
@@ -28,12 +29,15 @@ const priceFormat = {
   minMove: 1,
 };
 
+const quoteRatioPointsForBundle = (bundle: RangeBundle): readonly QuoteRatioPoint[] =>
+  withHogaGapSentinels(bundle.quote_ratio.points, bundle.candles ?? [], bundle.bucket_ms);
+
 export function projectBid(
   bundle: RangeBundle,
   axis: VirtualAxis,
   auctionWindowMask: boolean,
 ): LineData<Time>[] {
-  return projectBidPoints(bundle.quote_ratio.points, axis, auctionWindowMask);
+  return projectBidPoints(quoteRatioPointsForBundle(bundle), axis, auctionWindowMask);
 }
 
 /** Points-array variant of {@link projectBid} — see projectRatioPoints /
@@ -49,6 +53,11 @@ export function projectBidPoints(
   for (const p of points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+    if (isSyntheticHogaGapPoint(p)) {
+      maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
+      out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
+      continue;
+    }
     // Auction-window hide (ADR-0029, util/auctionHide.ts). Break the connector
     // from the last pre-auction point so the line doesn't slope into the window.
     if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
@@ -66,7 +75,7 @@ export function projectAsk(
   axis: VirtualAxis,
   auctionWindowMask: boolean,
 ): LineData<Time>[] {
-  return projectAskPoints(bundle.quote_ratio.points, axis, auctionWindowMask);
+  return projectAskPoints(quoteRatioPointsForBundle(bundle), axis, auctionWindowMask);
 }
 
 /** Points-array variant of {@link projectAsk}. */
@@ -80,6 +89,11 @@ export function projectAskPoints(
   for (const p of points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+    if (isSyntheticHogaGapPoint(p)) {
+      maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
+      out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
+      continue;
+    }
     if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
       maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
@@ -175,12 +189,12 @@ export const bidSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCt
 const bidCachedRaw = makePastCachedProjector(
   (pts: readonly QuoteRatioPoint[], a: VirtualAxis, flags: number) =>
     projectBidPoints(pts, a, (flags & 1) !== 0, (flags & 2) !== 0),
-  (b) => b.quote_ratio.points,
+  quoteRatioPointsForBundle,
 );
 const askCachedRaw = makePastCachedProjector(
   (pts: readonly QuoteRatioPoint[], a: VirtualAxis, flags: number) =>
     projectAskPoints(pts, a, (flags & 1) !== 0, (flags & 2) !== 0),
-  (b) => b.quote_ratio.points,
+  quoteRatioPointsForBundle,
 );
 const flagsOf = (c: QuoteTotalsCtx): number => (c.auctionMask ? 1 : 0) | (c.intraMax ? 2 : 0);
 const bidCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => bidCachedRaw(b, a, flagsOf(c));

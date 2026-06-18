@@ -189,3 +189,112 @@ describe('급증 마커 (askSurgeMarkers) — 근접 95% + 재무장 85%', () =>
     expect(askSurgeMarkers(bundle, axis, { ...ctx, surgeStartHHMM: 900 })).toHaveLength(1);
   });
 });
+
+describe('hoga data gaps', () => {
+  function candle(t: number) {
+    return { ts_ms: t, open: 1, high: 1, low: 1, close: 1, vol_a: 0, vol_b: 0 };
+  }
+
+  it('breaks bid/ask connectors across candle buckets with no hoga point', () => {
+    const bundle: any = {
+      bucket_ms: 60_000,
+      candles: [
+        candle(sessionOpenMs),
+        candle(sessionOpenMs + 60_000),
+        candle(sessionOpenMs + 120_000),
+      ],
+      quote_ratio: {
+        points: [
+          {
+            t: sessionOpenMs,
+            bid_total: 100,
+            ask_total: 200,
+            bid_max: 100,
+            ask_max: 200,
+            imb_max_bid: 100,
+            imb_max_ask: 200,
+          },
+          {
+            t: sessionOpenMs + 120_000,
+            bid_total: 150,
+            ask_total: 250,
+            bid_max: 150,
+            ask_max: 250,
+            imb_max_bid: 150,
+            imb_max_ask: 250,
+          },
+        ],
+      },
+    };
+
+    expect(projectBid(bundle, axis, false)).toEqual([
+      { time: 0, value: 100, color: 'rgba(0,0,0,0)' },
+      { time: 60, value: 0, color: 'rgba(0,0,0,0)' },
+      { time: 120, value: 150 },
+    ]);
+    expect(projectAsk(bundle, axis, false)).toEqual([
+      { time: 0, value: 200, color: 'rgba(0,0,0,0)' },
+      { time: 60, value: 0, color: 'rgba(0,0,0,0)' },
+      { time: 120, value: 250 },
+    ]);
+  });
+
+  it('does not synthesize a total line when all hoga data is missing', () => {
+    const bundle: any = {
+      bucket_ms: 60_000,
+      candles: [candle(sessionOpenMs), candle(sessionOpenMs + 60_000)],
+      quote_ratio: { points: [] },
+    };
+
+    expect(projectBid(bundle, axis, false)).toEqual([]);
+    expect(projectAsk(bundle, axis, false)).toEqual([]);
+  });
+
+  it('applies the same hoga gap hiding through QUOTE_TOTALS_SPEC cached data path', () => {
+    const bundle: any = {
+      bucket_ms: 60_000,
+      segments: [
+        { date: '20260518', session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000, source: 'kis_live' },
+      ],
+      candles: [
+        candle(sessionOpenMs),
+        candle(sessionOpenMs + 60_000),
+        candle(sessionOpenMs + 120_000),
+      ],
+      quote_ratio: {
+        points: [
+          {
+            t: sessionOpenMs,
+            bid_total: 100,
+            ask_total: 200,
+            bid_max: 100,
+            ask_max: 200,
+            imb_max_bid: 100,
+            imb_max_ask: 200,
+          },
+          {
+            t: sessionOpenMs + 120_000,
+            bid_total: 150,
+            ask_total: 250,
+            bid_max: 150,
+            ask_max: 250,
+            imb_max_bid: 150,
+            imb_max_ask: 250,
+          },
+        ],
+      },
+    };
+    const ctx = { auctionMask: false, intraMax: false, surgeEnabled: false, surgeApproachPct: 95, surgeRearmPct: 85, surgeStartHHMM: 900 };
+
+    expect(QUOTE_TOTALS_SPEC.series[0].data(bundle, axis, ctx)).toEqual([
+      { time: 0, value: 100, color: 'rgba(0,0,0,0)' },
+      { time: 60, value: 0, color: 'rgba(0,0,0,0)' },
+      { time: 120, value: 150 },
+    ]);
+    expect(QUOTE_TOTALS_SPEC.series[1].data(bundle, axis, ctx)).toEqual([
+      { time: 0, value: 200, color: 'rgba(0,0,0,0)' },
+      { time: 60, value: 0, color: 'rgba(0,0,0,0)' },
+      { time: 120, value: 250 },
+    ]);
+  });
+});
