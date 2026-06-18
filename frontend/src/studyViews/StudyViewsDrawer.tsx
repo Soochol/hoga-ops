@@ -2,24 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import type { ParquetStudyView, ParquetStudyViewWriteRequest } from '../api/studyViews';
 import { useCurrentStudySaveSource } from './studySaveSource';
-import {
-  defaultStudyViewName,
-  studySnapshotByteSize,
-  viewportFromCapture,
-  visibleWindow,
-} from './studySaveRequest';
-import { persistJson, readJsonObject } from '../state/persist';
+import { studySnapshotByteSize } from './studySaveRequest';
+import { makeStudySaveCommand } from './studySaveCommand';
 import { StudyViewSaveDialog } from './StudyViewSaveDialog';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
-import { buildStudySnapshotRequest } from './useStudySnapshotCapture';
 import {
-  filterStudyViewGroups,
-  groupStudyViewsByCode,
   normalizeStudyViewQuery,
-  type StudyViewTreeGroup,
 } from './studyViewTree';
-
-const COLLAPSED_STUDY_VIEW_GROUPS_STORAGE_KEY = 'studyViews.collapsedGroups.v1';
+import { useStudyViewTreeState } from './useStudyViewTreeState';
 
 export function filterStudyViews<T extends { name: string; code: string; memo: string }>(rows: T[], query: string): T[] {
   const q = normalizeStudyViewQuery(query);
@@ -29,28 +19,10 @@ export function filterStudyViews<T extends { name: string; code: string; memo: s
 
 type SaveDialogState = { mode: 'create' | 'overwrite'; id?: string; request: ParquetStudyViewWriteRequest };
 
-function readCollapsedStudyViewGroups(): Set<string> {
-  const saved = readJsonObject(COLLAPSED_STUDY_VIEW_GROUPS_STORAGE_KEY);
-  const keys = saved.keys;
-  if (!Array.isArray(keys)) return new Set();
-  return new Set(keys.filter((key): key is string => typeof key === 'string'));
-}
-
-function persistCollapsedStudyViewGroups(
-  collapsed: Set<string>,
-  groups: StudyViewTreeGroup<ParquetStudyView>[],
-): void {
-  const valid = new Set(groups.map((group) => group.key));
-  persistJson(COLLAPSED_STUDY_VIEW_GROUPS_STORAGE_KEY, {
-    keys: [...collapsed].filter((key) => valid.has(key)),
-  });
-}
-
 export function StudyViewsDrawer() {
   const { data, isLoading, isError, refetch } = useStudyViews();
   const mutations = useStudyViewMutations();
   const saveSource = useCurrentStudySaveSource();
-  const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<SaveDialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ParquetStudyView | null>(null);
   const [renameState, setRenameState] = useState<{ id: string; value: string; error: string | null } | null>(null);
@@ -59,9 +31,15 @@ export function StudyViewsDrawer() {
   const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const allGroups = useMemo(() => groupStudyViewsByCode(data?.saves ?? []), [data?.saves]);
-  const visibleGroups = useMemo(() => filterStudyViewGroups(allGroups, query), [allGroups, query]);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => readCollapsedStudyViewGroups());
+  const {
+    query,
+    setQuery,
+    visibleGroups,
+    isCollapsed,
+    toggleGroup,
+    collapseVisibleGroups,
+    expandVisibleGroups,
+  } = useStudyViewTreeState(data?.saves ?? []);
   const currentStudyViewId = useMemo(() => new URLSearchParams(location.search).get('view'), [location.search]);
   const currentStudyRow = useMemo(
     () => data?.saves.find((row) => row.id === currentStudyViewId),
@@ -81,10 +59,6 @@ export function StudyViewsDrawer() {
   useEffect(() => () => {
     if (pendingNavigateRef.current) clearTimeout(pendingNavigateRef.current);
   }, []);
-
-  useEffect(() => {
-    persistCollapsedStudyViewGroups(collapsedGroups, allGroups);
-  }, [collapsedGroups, allGroups]);
 
   const openSaveDialog = (mode: 'create' | 'overwrite', id?: string) => {
     if (!studySource) return;
@@ -106,31 +80,6 @@ export function StudyViewsDrawer() {
       toIndex: window.toIndex,
     });
     setDialog({ mode, id, request });
-  };
-
-  const toggleGroup = (key: string) => {
-    setCollapsedGroups((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const collapseVisibleGroups = () => {
-    setCollapsedGroups((current) => {
-      const next = new Set(current);
-      for (const group of visibleGroups) next.add(group.key);
-      return next;
-    });
-  };
-
-  const expandVisibleGroups = () => {
-    setCollapsedGroups((current) => {
-      const next = new Set(current);
-      for (const group of visibleGroups) next.delete(group.key);
-      return next;
-    });
   };
 
   const handleDialogSubmit = ({ name, memo }: { name: string; memo: string }) => {
@@ -348,22 +297,22 @@ export function StudyViewsDrawer() {
         )}
         <div className="min-h-0 flex-1 overflow-auto">
           {visibleGroups.map((group) => {
-            const isCollapsed = collapsedGroups.has(group.key);
+            const groupCollapsed = isCollapsed(group.key);
             return (
               <section key={group.key} aria-label={`${group.label} ${group.code} 저장뷰`}>
                 <button
                   type="button"
-                  aria-label={`${group.label} ${group.code} ${isCollapsed ? '펼치기' : '접기'}`}
-                  aria-expanded={!isCollapsed}
+                  aria-label={`${group.label} ${group.code} ${groupCollapsed ? '펼치기' : '접기'}`}
+                  aria-expanded={!groupCollapsed}
                   title={`${group.label} ${group.code}`}
                   onClick={() => toggleGroup(group.key)}
                   className="sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-bg-card px-3 py-1.5 text-left text-sm font-semibold text-fg-dim hover:bg-bg-input-hover"
                 >
-                  <span className="w-3 text-xs" aria-hidden>{isCollapsed ? '▶' : '▼'}</span>
+                  <span className="w-3 text-xs" aria-hidden>{groupCollapsed ? '▶' : '▼'}</span>
                   <span className="min-w-0 flex-1 truncate">{group.label}</span>
                   <span className="text-xs font-normal text-fg-dimmer">{group.rows.length}</span>
                 </button>
-                {!isCollapsed && group.rows.map(renderStudyViewRow)}
+                {!groupCollapsed && group.rows.map(renderStudyViewRow)}
               </section>
             );
           })}
