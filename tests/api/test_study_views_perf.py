@@ -103,8 +103,6 @@ def _request_for(snapshot):
 def test_restorable_load_for_enriched_snapshot_is_json_only(tmp_path, monkeypatch):
     snapshot = _snapshot_with_dense_details(bar_count=200)
     req = ParquetStudyViewWriteRequest.model_validate(_request_for(snapshot))
-    snapshot_path = tmp_path / "study_views" / "snapshots" / "view1.json"
-
     sv.create_save_sync(tmp_path, req=req, id="view1", now_ms=10)
     persisted = sv.load_snapshot(tmp_path, id="view1")
     assert len(persisted.bundle.candles) == 200

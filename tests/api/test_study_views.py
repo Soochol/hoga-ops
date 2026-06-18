@@ -553,7 +553,6 @@ def test_study_views_create_enriches_snapshot_detail_buckets(tmp_path):
     assert snap.bundle.broker_buckets[0].brokers[0].net == 100
     assert snap.bundle.detail_warnings == []
 
-    snapshot_path = tmp_path / "study_views" / "snapshots" / "view1.json"
     restorable = sv.load_restorable_snapshot(tmp_path, id="view1")
 
     assert restorable.bundle.orderbook_buckets[0].available is True
