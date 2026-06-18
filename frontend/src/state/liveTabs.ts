@@ -107,7 +107,8 @@ function isViewport(v: unknown): v is TabViewport {
   return (
     typeof o.rightEdgeMs === 'number' && Number.isFinite(o.rightEdgeMs) &&
     typeof o.barSpan === 'number' && Number.isFinite(o.barSpan) && o.barSpan > 0 &&
-    typeof o.atLiveEdge === 'boolean'
+    typeof o.atLiveEdge === 'boolean' &&
+    (o.userAdjusted === undefined || typeof o.userAdjusted === 'boolean')
   );
 }
 

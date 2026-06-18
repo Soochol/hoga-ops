@@ -25,12 +25,12 @@ export const CHART_LAYOUT_OPTIONS: DeepPartial<LayoutOptions> = {
 };
 
 /**
- * `rightOffset` scaled 1.25× from library default (12 → 15).
- * `barSpacing` scaled 1.25× from library default (6 → 7.5, rounded up to 8).
+ * `rightOffset` stays at 15 (1.25× of the default 12).
+ * `barSpacing` uses default spacing.
  */
 export const CHART_TIMESCALE_OPTIONS: DeepPartial<TimeScaleOptions> = {
   rightOffset: 15,
-  barSpacing: 8,
+  barSpacing: 6,
 };
 
 /** Crosshair line widths stay at 1px for sharpness. No scaling. */

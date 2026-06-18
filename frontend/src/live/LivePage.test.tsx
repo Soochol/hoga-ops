@@ -22,6 +22,7 @@ const livePageMocks = vi.hoisted(() => {
   return {
     liveOb,
     liveTrade,
+    liveChartRootProps: [] as Array<{ code?: string | null; timeframe?: string; viewIdentity?: string }>,
     dayAskPeakObArgs: [] as unknown[],
     dayAskPeakTradeArgs: [] as unknown[],
     dayAskPeakTodayArgs: [] as unknown[],
@@ -53,7 +54,10 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 // activeCode is set. Mock LiveChartRoot so the shell tests stay unit-level
 // and don't have to model lightweight-charts' full v5 series/timeScale API.
 vi.mock('./LiveChartRoot', () => ({
-  LiveChartRoot: () => null,
+  LiveChartRoot: (props: { code?: string | null; timeframe?: string; viewIdentity?: string }) => {
+    livePageMocks.liveChartRootProps.push(props);
+    return null;
+  },
 }));
 
 // LiveSidebar reads live status via useLiveSeries (EventSource), which isn't
@@ -128,6 +132,7 @@ describe('LivePage shell', () => {
     document.title = 'before-test';
     livePageMocks.dayAskPeakObArgs.length = 0;
     livePageMocks.dayAskPeakTradeArgs.length = 0;
+    livePageMocks.liveChartRootProps.length = 0;
     livePageMocks.dayAskPeakTodayArgs.length = 0;
     livePageMocks.allPriceObArgs.length = 0;
     livePageMocks.allPriceTodayArgs.length = 0;
@@ -189,6 +194,24 @@ describe('LivePage shell', () => {
     });
     renderWithRouter();
     expect(screen.getByTestId('live-status-bar').textContent).toContain('035720');
+  });
+
+  it('passes the active tab id as chart view identity so same-code tabs do not share viewport state', () => {
+    useLiveTabsStore.setState({
+      tabs: [
+        { id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null },
+        { id: 'tab-b', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null },
+      ],
+      activeTabId: 'tab-b',
+    });
+
+    renderWithRouter();
+
+    expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
+      code: '005930',
+      timeframe: '1m',
+      viewIdentity: 'tab-b',
+    });
   });
 
   it('shows empty-state placeholder when no activeCode anywhere', () => {

@@ -3,6 +3,31 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.8.2] - 2026-06-18
+
+### Fixed
+- **/live 일봉 캔들 두께 리사이즈 복구**: 관심 패널이나 브라우저 폭 변경 후에도
+  일봉 차트가 최근 구간으로 다시 고정되어 캔들이 얇아지지 않는다.
+- 차트 기본 bar spacing을 라이브러리 기본값으로 되돌려 캔들 밀도를 안정적으로 유지했다.
+
+## [0.8.8.1] - 2026-06-17
+
+### Fixed
+- **/live 같은 종목·같은 분봉 탭 viewport 분리**: 동일 종목을 여러 탭에 열어도 각 탭의
+  줌/스크롤 상태가 서로 섞이지 않고 탭별로 복원된다.
+
+## [0.8.8.0] - 2026-06-17
+
+### Changed
+- **/live 미체결 최대 매도벽 표시 조건 개선**: 미체결 최대벽 물량이 체결가격 기준 최대벽보다
+  클 때만 두 라인을 함께 볼 수 있다.
+- 매도벽 라벨은 1,000주 미만 물량도 `0.9k`처럼 k 단위로 표시해 라벨 형식을 통일했다.
+
+### Fixed
+- 체결가격 기준 최대벽이 아직 없을 때 미체결 최대벽 라인이 단독으로 표시되지 않도록 했다.
+- frontend 개발 의존성 lockfile을 갱신해 `npm audit` 취약점 0건 상태로 정리했다.
+- 거래량 pane spec 타입을 실제 context와 맞춰 build/typecheck 오류를 방지했다.
+
 ## [0.8.7.0] - 2026-06-17
 
 ### Changed

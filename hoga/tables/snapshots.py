@@ -407,6 +407,12 @@ class AskPeakDualRow:
     all_max_price: int
     all_max_qty: int
     all_max_intra_ms: int
+    untraded_price: int | None = None
+    untraded_qty: int | None = None
+    untraded_intra_ms: int | None = None
+    untraded_max_price: int | None = None
+    untraded_max_qty: int | None = None
+    untraded_max_intra_ms: int | None = None
 
 
 def query_bucketed_ratio(
@@ -750,11 +756,21 @@ def query_day_ask_peak_dual(
         rep AS (SELECT * FROM cont WHERE rn = 1),
         traded_prices AS (
           SELECT DISTINCT price FROM read_parquet(?) WHERE side IN (1, -1) AND price > 0
+        ),
+        day_high AS (
+          SELECT max(price) AS price FROM read_parquet(?) WHERE side IN (1, -1) AND price > 0
         )
     """
 
-    def pick(src: str, *, traded_only: bool) -> tuple[int, int, int] | None:
-        filter_sql = "WHERE price IN (SELECT price FROM traded_prices)" if traded_only else ""
+    def pick(src: str, *, mode: str) -> tuple[int, int, int] | None:
+        if mode == "traded":
+            filter_sql = "WHERE price IN (SELECT price FROM traded_prices)"
+        elif mode == "untraded":
+            filter_sql = "WHERE price > (SELECT price FROM day_high)"
+        elif mode == "all":
+            filter_sql = ""
+        else:
+            raise ValueError(f"unknown ask peak pick mode: {mode}")
         return con.execute(
             f"""
             {base_ctes},
@@ -763,15 +779,17 @@ def query_day_ask_peak_dual(
             {filter_sql}
             ORDER BY qty DESC, intra_ms ASC LIMIT 1
             """,
-            [str(path), str(trades_path)],
+            [str(path), str(trades_path), str(trades_path)],
         ).fetchone()
 
-    all_close = pick("rep", traded_only=False)
+    all_close = pick("rep", mode="all")
     if all_close is None:
         return None
-    all_max = pick("cont", traded_only=False)
-    traded_close = pick("rep", traded_only=True) or all_close
-    traded_max = pick("cont", traded_only=True) or all_max
+    all_max = pick("cont", mode="all")
+    traded_close = pick("rep", mode="traded") or all_close
+    traded_max = pick("cont", mode="traded") or all_max
+    untraded_close = pick("rep", mode="untraded")
+    untraded_max = pick("cont", mode="untraded")
     if all_max is None or traded_max is None:
         return None
     return AskPeakDualRow(
@@ -781,4 +799,10 @@ def query_day_ask_peak_dual(
         all_max_price=int(all_max[0]),
         all_max_qty=int(all_max[1]),
         all_max_intra_ms=int(all_max[2]),
+        untraded_price=int(untraded_close[0]) if untraded_close is not None else None,
+        untraded_qty=int(untraded_close[1]) if untraded_close is not None else None,
+        untraded_intra_ms=int(untraded_close[2]) if untraded_close is not None else None,
+        untraded_max_price=int(untraded_max[0]) if untraded_max is not None else None,
+        untraded_max_qty=int(untraded_max[1]) if untraded_max is not None else None,
+        untraded_max_intra_ms=int(untraded_max[2]) if untraded_max is not None else None,
     )

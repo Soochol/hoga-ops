@@ -17,8 +17,8 @@ export default function AskPeakConfig() {
       </h3>
       <p className="text-fg-dim text-xs mb-3">
         차트에 보이는 거래일마다, 그 날 매도 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼
-        수평선을 그립니다. 오늘은 체결가격 기준과 미체결 포함 최대벽을 함께 볼 수 있고, 과거 거래일은 기존 기준
-        단일선으로 표시됩니다. 분봉 차트에서만 표시됩니다.
+        수평선을 그립니다. 미체결 포함 최대벽은 체결가격 기준 최대벽보다 물량이 클 때만 함께 표시됩니다.
+        분봉 차트에서만 표시됩니다.
       </p>
       <div className="space-y-2">
         <div className="flex items-center gap-2">

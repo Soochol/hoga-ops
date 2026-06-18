@@ -100,7 +100,9 @@ class AskPeak(BaseModel):
 
     ``price``/``qty``/``t_ms`` = 체결가격 기준 버킷 종가 대표 위에서의 당일 max.
     ``max_*`` = 체결가격 기준 버킷 틱-max 위에서의 당일 max(Intra-Bar Max, ADR-0076).
-    ``all_*`` = 미체결 포함(모든 eligible ask price) 기준. None이면 legacy payload."""
+    ``all_*`` = 모든 eligible ask price 기준. None이면 legacy payload.
+    ``untraded_*`` = 당일 고가보다 큰 ask price 기준. None이면 후보 없음 또는 legacy payload.
+    """
     date: str
     price: int
     qty: int
@@ -114,6 +116,12 @@ class AskPeak(BaseModel):
     all_max_price: int | None = None
     all_max_qty: int | None = None
     all_max_t_ms: int | None = None
+    untraded_price: int | None = None
+    untraded_qty: int | None = None
+    untraded_t_ms: int | None = None
+    untraded_max_price: int | None = None
+    untraded_max_qty: int | None = None
+    untraded_max_t_ms: int | None = None
 
 
 class QuoteRatioPoint(BaseModel):
